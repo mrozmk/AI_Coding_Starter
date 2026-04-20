@@ -1,0 +1,122 @@
+{
+  "permissions": {
+    "allow": [
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "Bash(ls:*)",
+      "Bash(pwd)",
+      "Bash(echo:*)",
+      "Bash(rg:*)",
+      "Bash(jq:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git stash:*)",
+      "Bash(git tag:*)",
+      "Bash(git describe:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git remote get-url:*)",
+      "Bash(git symbolic-ref:*)",
+      "Bash(git check-ignore *)",
+      "WebFetch(domain:*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git checkout -- *)",
+      "Bash(git checkout .*)",
+      "Bash(git restore .*)",
+      "Bash(git restore --staged *)",
+      "Bash(git branch -D*)",
+      "Bash(git branch -d*)",
+      "Bash(git rebase*)",
+      "Bash(git config*)",
+      "Bash(git remote add*)",
+      "Bash(git remote remove*)",
+      "Bash(git remote set-url*)",
+      "Bash(git remote rename*)",
+      "Bash(git reflog expire*)",
+      "Bash(git gc --prune=now*)",
+      "Bash(git gc --aggressive*)",
+      "Bash(git revert*)",
+      "Bash(git cherry-pick*)",
+      "Bash(git merge*)",
+      "Bash(git rm*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Write(**/.env)",
+      "Write(**/.env.*)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Write(**/id_rsa*)",
+      "Write(**/id_ed25519*)",
+      "Edit(**/id_rsa*)",
+      "Edit(**/id_ed25519*)",
+      "Write(**/*secret*)",
+      "Write(**/*credentials*)",
+      "Edit(**/*secret*)",
+      "Edit(**/*credentials*)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
+      "Edit(**/*.pem)",
+      "Edit(**/*.key)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] BASH   \" + (.tool_input.command // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] FETCH  \" + (.tool_input.url // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] WRITE  \" + (.tool_input.file_path // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] EDIT   \" + (.tool_input.file_path // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
