@@ -17,10 +17,11 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/commit`, `/analysis`, `/prime`, `/create-PRD`, `/create-CLAUDE_MD`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/create-PRD`, `/create-CLAUDE_MD`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
 | `agents/` | Sub-agents — `documentation-manager` |
+| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
 | `templates/` | Starting templates — `CLAUDE-template.md` |
-| `settings.json` | Security-first permissions (git restricted to `/commit` subcommands, deny on secrets, audit-log hooks) |
+| `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
 ### `.agents/`
 
