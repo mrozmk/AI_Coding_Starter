@@ -1,0 +1,22 @@
+{
+  "name": "docflow",
+  "version": "1.0.0",
+  "description": "Documentation workflow automation with Jira and Confluence Data Center integration",
+  "author": {
+    "name": "Divante AI Team",
+    "email": "adam.chrabaszcz@cloudflight.io"
+  },
+  "homepage": "https://gitlab.divante.pl/ai/divante-claude-marketplace",
+  "repository": "https://gitlab.divante.pl/ai/divante-claude-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "confluence",
+    "jira",
+    "atlassian",
+    "readme",
+    "markdown",
+    "adr",
+    "technical-writing"
+  ]
+}

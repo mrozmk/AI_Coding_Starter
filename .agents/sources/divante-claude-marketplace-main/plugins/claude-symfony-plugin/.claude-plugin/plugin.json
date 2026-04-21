@@ -1,0 +1,21 @@
+{
+  "name": "claude-symfony-plugin",
+  "version": "1.0.1",
+  "description": "Symfony 7/8 developer agent with API Platform, Messenger, Security, Events knowledge. Follows SOLID principles and TDD with PHPUnit. Symfony 8 ready - uses PHP 8 attributes only.",
+  "author": {
+    "name": "Divante AI Team",
+    "email": "adam.chrabaszcz@cloudflight.io"
+  },
+  "keywords": [
+    "symfony",
+    "symfony7",
+    "symfony8",
+    "php",
+    "api-platform",
+    "messenger",
+    "doctrine",
+    "phpunit",
+    "tdd"
+  ],
+  "license": "MIT"
+}

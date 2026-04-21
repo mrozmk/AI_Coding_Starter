@@ -201,9 +201,10 @@ rg --files -g "*.{ext}"
 
 | Topic | File |
 |-------|------|
-| Product requirements | `docs/PRD.md` |
 | Architectural decisions | [.agents/memory/decisions.md](.agents/memory/decisions.md) |
+| Jira integration | [.claude/skills/jira/SKILL.md](.claude/skills/jira/SKILL.md) · [.agents/reference/jira-mcp-atlassian.md](.agents/reference/jira-mcp-atlassian.md) |
 | Lessons learned | [.agents/memory/errors.md](.agents/memory/errors.md) |
+| Product requirements | `docs/PRD.md` |
 
 ---
 

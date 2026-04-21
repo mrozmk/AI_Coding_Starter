@@ -1,0 +1,50 @@
+{
+  "name": "divante-claude-marketplace",
+  "owner": {
+    "name": "Divante, a Cloudflight company",
+    "email": "adam.chrabaszcz@cloudflight.io"
+  },
+  "metadata": {
+    "description": "Official Divante plugin marketplace for Claude Code",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "docflow",
+      "source": "./plugins/docflow",
+      "description": "Documentation workflow automation with Jira and Confluence Data Center integration",
+      "version": "1.0.0",
+      "author": {
+        "name": "Divante AI Team",
+        "email": "adam.chrabaszcz@cloudflight.io"
+      },
+      "keywords": ["documentation", "confluence", "jira", "atlassian", "readme", "adr", "technical-writing"],
+      "category": "documentation"
+    },
+    {
+      "name": "claude-symfony-plugin",
+      "source": "./plugins/claude-symfony-plugin",
+      "description": "Symfony 7/8 developer agent with API Platform, Messenger, Security, Events knowledge. Follows SOLID principles and TDD with PHPUnit. Symfony 8 ready - uses PHP 8 attributes only.",
+      "version": "1.1.0",
+      "author": {
+        "name": "Divante AI Team",
+        "email": "adam.chrabaszcz@cloudflight.io"
+      },
+      "keywords": ["symfony", "symfony7", "symfony8", "php", "api-platform", "messenger", "doctrine", "phpunit", "tdd"],
+      "category": "development"
+    },
+    {
+      "name": "git-conventions",
+      "source": "./plugins/git-conventions",
+      "description": "Git workflow conventions enforcement with branch naming and commit message validation",
+      "version": "1.0.0",
+      "author": {
+        "name": "Divante AI Team",
+        "email": "adam.chrabaszcz@cloudflight.io"
+      },
+      "keywords": ["git", "branch-naming", "conventional-commits", "commitlint", "workflow", "validation"],
+      "category": "workflow"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Proactive documentation suggestion hooks for docflow plugin",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Analyze the user's prompt to determine if they are about to commit code or have just finished implementing a feature. Look for phrases like:\n- 'commit', 'git commit', 'push', 'merge'\n- 'finished', 'completed', 'done with', 'implemented'\n- 'ready to deploy', 'PR', 'pull request'\n\nIf the user appears to be committing or completing work, provide a brief suggestion to consider documentation updates. Return a JSON object:\n\n```json\n{\n  \"isCommitRelated\": true/false,\n  \"systemMessage\": \"If commit-related, a brief suggestion like: 'Before committing, consider updating documentation. Use /docflow:readme to update README or /docflow:confluence to create Confluence docs.' Otherwise empty string.\"\n}\n```\n\nKeep suggestions brief and non-intrusive. Only suggest if clearly commit/completion related.",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

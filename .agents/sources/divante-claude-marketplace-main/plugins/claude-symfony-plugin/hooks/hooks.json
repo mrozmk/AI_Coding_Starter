@@ -1,0 +1,18 @@
+{
+  "description": "Pre-commit hook that validates PHPUnit tests pass before allowing git commits",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-tests-before-commit.sh",
+            "condition": "tool_input.command matches 'git commit'",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
