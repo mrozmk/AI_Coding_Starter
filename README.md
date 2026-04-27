@@ -67,14 +67,36 @@ The repo ships a `.mcp.json.example` template. To activate Jira:
 
 ## Quick start
 
-### 1. Clone as a new project
+### 1. Create a new project from this template
+
+This repo is a **GitHub template** — pick whichever method you prefer:
+
+**Option A — GitHub UI (recommended):**
+
+1. Go to <https://github.com/mrozmk/AI_Coding_Starter>
+2. Click **"Use this template"** → **"Create a new repository"**
+3. Name it, choose visibility, create
+4. Clone it locally: `git clone <url-of-new-repo> my-new-project && cd my-new-project`
+
+**Option B — `gh` CLI (one-liner):**
 
 ```bash
-git clone <this-repo> my-new-project
+gh repo create my-new-project --template mrozmk/AI_Coding_Starter --private --clone
+cd my-new-project
+```
+
+Use `--public` instead of `--private` if you want a public repo.
+
+**Option C — manual clone (no GitHub account needed):**
+
+```bash
+git clone https://github.com/mrozmk/AI_Coding_Starter my-new-project
 cd my-new-project
 rm -rf .git
 git init
 ```
+
+All three give you the same result: a fresh project with starter scaffolding and clean git history.
 
 ### 2. Drop raw materials (optional)
 
