@@ -41,6 +41,30 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/m
 
 ---
 
+## Requirements
+
+**Required:**
+- [Claude Code](https://claude.com/claude-code) — the CLI tool that drives all slash commands and skills shipped here.
+- Git — for the `/commit`, `/push`, `/pull`, `/release` workflow.
+
+**Optional (per integration):**
+- **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below for how to enable it.
+- **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
+
+That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/create-CLAUDE_MD` adapts to whatever you initialize).
+
+### Jira integration (optional)
+
+The repo ships a `.mcp.json.example` template. To activate Jira:
+
+1. Copy the template: `cp .mcp.json.example .mcp.json`
+2. Fill in your Atlassian credentials in `.mcp.json` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
+3. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/prime-ba` skip the project prompt.
+
+`.mcp.json` is gitignored — credentials never leave your machine. If you skip this, the `/jira` skill simply hard-stops with a clear error message; nothing else breaks.
+
+---
+
 ## Quick start
 
 ### 1. Clone as a new project

@@ -1,0 +1,29 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Markdown — trailing spaces can be intentional line breaks
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefiles require tabs
+[Makefile]
+indent_style = tab
+
+# JSON / YAML — 2 spaces is conventional and matches default
+[*.{json,yml,yaml}]
+indent_size = 2
+
+# Python — PEP 8 default
+[*.py]
+indent_size = 4
+
+# Go — gofmt default
+[*.go]
+indent_style = tab
