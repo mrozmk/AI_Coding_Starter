@@ -1,6 +1,14 @@
 # CLAUDE.md Template
 
-A flexible template for creating global rules. Adapt the **project-specific sections** (Project Overview, Tech Stack, Commands, Project Structure, Architecture, Code Patterns, Testing, Validation, Key Files, Notes) based on your project type.
+A flexible template for creating global rules. Adapt the **project-specific sections** (Project Overview, Tech Stack, Commands, Architecture, Testing, Validation, Notes) based on your project type.
+
+> **Hard cap: ≤200 lines.** Push detail into memory files instead of bloating `CLAUDE.md`:
+> - Directory tree, file map, naming rules → `.agents/memory/architecture.md`
+> - Patterns and conventions → `.agents/memory/patterns.md`
+> - Architectural decisions → `.agents/memory/decisions.md`
+> - Module-specific knowledge → `.agents/memory/domain/{module}.md`
+>
+> `CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps.
 
 > **DO NOT remove or soften** the following sections — they are the shared baseline for every project generated from this starter kit:
 > `Language Rules`, `Project Knowledge Layers`, `Automatic Behaviors`, `Proactive Agent Usage`, `Plan Mode`, `Search Commands`, `Error Handling`, `Security`, `Git Workflow`, `Code Structure & Modularity`.
@@ -51,45 +59,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## Project Structure
-
-<!-- Describe your folder organization. This varies greatly by project type -->
-
-```
-{root}/
-├── {dir}/     # {description}
-├── {dir}/     # {description}
-└── {dir}/     # {description}
-```
-
----
-
 ## Architecture
 
-<!-- Describe how the code is organized. Examples:
-- Layered (routes → services → data)
-- Component-based (features as self-contained modules)
-- MVC pattern
-- Event-driven
-- etc.
--->
+<!-- One paragraph: high-level pattern + data flow.
+     Full directory map and naming rules live in `.agents/memory/architecture.md`. -->
 
-{Describe the architectural approach and data flow}
+{High-level pattern and data flow. Examples: layered (routes → services → data), component-based, MVC, event-driven.}
 
----
-
-## Code Patterns
-
-<!-- Key patterns and conventions used in this codebase -->
-
-### Naming Conventions
-- {convention}
-
-### File Organization
-- {pattern}
-
-### Error Handling
-- {approach}
+> Detailed source layout, module roles, and naming rules: see [.agents/memory/architecture.md](.agents/memory/architecture.md)
 
 ---
 
@@ -110,16 +87,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 {validation-commands}
 ```
-
----
-
-## Key Files
-
-<!-- Important files to know about -->
-
-| File | Purpose |
-|------|---------|
-| `{path}` | {description} |
 
 ---
 
@@ -189,45 +156,32 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 
 ## Project Knowledge Layers
 
-Five persistent knowledge stores under `.agents/` — each with a distinct purpose and lifecycle. **Before starting any task, read [.agents/memory/index.md](.agents/memory/index.md)** and any relevant file from other layers.
+Five persistent knowledge stores under `.agents/`. **Before starting any task, read [.agents/memory/index.md](.agents/memory/index.md)** — its `When to Read` table tells you what else to load for the current task.
 
-| Layer | Contains | Lifecycle | Written by | Read when |
-|-------|----------|-----------|------------|-----------|
-| [sources/](.agents/sources/) | Raw input materials — briefs, transcripts, sketches, PDFs | Immutable input, pruned manually | Human only | Feeds `/create-PRD` and `/createwikillm` |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns | **Append-only, permanent** | `/commit` memory checkpoint, `/remember` | Before every task (via `/prime`) |
-| [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived, updated as domain evolves | Human + AI (manually) | When feature touches that domain |
-| [specs/](.agents/specs/) | Design docs from `/brainstorm` — what to build and why | Lives with the feature | `/brainstorm` | Before `/plan-feature` |
-| [plans/](.agents/plans/) | Implementation plans — how to build | Short-lived: `active/` → `done/` | `/plan-feature` | During `/execute` |
+| Layer | Contains | Lifecycle | Written by |
+|-------|----------|-----------|------------|
+| [sources/](.agents/sources/) | Raw input materials | Immutable input | Human only |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | `/remember`, `/refresh-brief`, `/create-CLAUDE_MD` |
+| [reference/](.agents/reference/) | Stable reference docs | Long-lived | Human + AI (manually) |
+| [specs/](.agents/specs/) | Design docs from `/brainstorm` | Lives with feature | `/brainstorm` |
+| [plans/](.agents/plans/) | Implementation plans | Short-lived: `active/` → `done/` | `/plan-feature` |
 
-**Flow:** `sources/` (optional raw input) → `/create-PRD` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
+**Flow:** `sources/` → `/create-PRD` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
 
-### Memory — routing discoveries
-
-When you discover something worth remembering, append it immediately to the appropriate file:
-
-| Discovery | File |
-|-----------|------|
-| Bug / lesson learned | `.agents/memory/errors.md` |
-| API behavior / protocol quirk | `.agents/memory/api.md` |
-| Architectural decision | `.agents/memory/decisions.md` |
-| Project-specific pattern | `.agents/memory/patterns.md` |
-| Module-specific knowledge | `.agents/memory/domain/{module}.md` |
-
-If a relevant `domain/` file doesn't exist yet — create it using the template in `index.md`.
-
-> Memory files are **append-style, newest entries at the TOP**, grouped by category.
+> Memory files behave in two modes: **append-style** (`errors.md`, `decisions.md`, `api.md`, `patterns.md`, `domain/{module}.md`) — newest entries at the TOP. **Regenerated** (`architecture.md`, `project-brief.md`, `domain/business-model.md`) — overwritten wholesale by their owning command.
 
 ---
 
 ## Automatic Behaviors
 
-These apply always — no command needed:
+Generic triggers that apply always — no command needed. **Project-specific routing rules** live in `.agents/memory/index.md → When to Read` table, not here.
 
-- **Before any task**: read `.agents/memory/index.md` and any relevant domain memory file
-- **After fixing a bug**: evaluate whether to save to `.agents/memory/errors.md` — ask yourself: *"Would a fresh AI make this mistake again without this entry?"*
-- **Before implementing something new**: check `.agents/plans/active/` for existing plans related to the task
-- **When uncertain about approach**: stop and ask before writing code — **NEVER ASSUME OR GUESS**
+- **Before any task**: read [.agents/memory/index.md](.agents/memory/index.md) — use its `When to Read` table to decide what else to load
+- **Before implementing something new**: check `.agents/plans/active/` for existing plans
+- **When uncertain about approach**: stop and ask — **NEVER ASSUME OR GUESS**
+- **After fixing a bug**: evaluate adding to `.agents/memory/errors.md` — *"Would a fresh AI make this mistake again without this entry?"*
 - **When a `domain/` memory file doesn't exist but is needed**: create it using the template in `.agents/memory/index.md`
+- **Skip rule**: any memory file with frontmatter `status: empty` is a placeholder — do not load it
 
 ---
 

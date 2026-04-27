@@ -150,16 +150,31 @@ Identify files that are important to understand:
 
 ## Phase 3: GENERATE
 
-### Create CLAUDE.md
+This phase produces **two files** in parallel — `CLAUDE.md` (rules) and `.agents/memory/architecture.md` (map). Splitting them is mandatory: `CLAUDE.md` is loaded into every conversation, so heavy structural detail belongs in `architecture.md` (loaded only when relevant).
+
+### 3.1 Create `CLAUDE.md`
 
 Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 
 **Output path**: `CLAUDE.md` (project root)
 
+**Hard cap: ≤200 lines.** If a section pushes you past the cap, push detail into a memory file and leave a one-line pointer in `CLAUDE.md`.
+
+**Where detail lives (NOT in `CLAUDE.md`):**
+
+| Detail type | Goes to |
+|---|---|
+| Directory tree, file map, naming rules | `.agents/memory/architecture.md` |
+| Project-specific patterns (auth flow, error wrapping, query builders) | `.agents/memory/patterns.md` |
+| Architectural decisions and trade-offs | `.agents/memory/decisions.md` |
+| Module-specific knowledge | `.agents/memory/domain/{module}.md` |
+
+`CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps.
+
 **Adapt to the project:**
-- Fill in the **project-specific sections**: `Project Overview`, `Tech Stack`, `Commands`, `Project Structure`, `Architecture`, `Style & Conventions`, `Code Patterns`, `Testing`, `Validation`, `Key Files`, `Notes`.
-- **Fill the `### Default branch` slot** inside the `Git Workflow` section with the workflow identified in Phase 1 (e.g. `` `main` (trunk-based) ``, `` `master` (GitFlow; release branch) ``). The three commands `/push` `/pull` `/release` detect the current branch dynamically — this slot is documentation of the project's convention, not runtime config.
-- **DO NOT remove or soften** the shared baseline sections — they are mandatory for every project generated from this starter kit:
+- Fill in project-specific sections: `Project Overview`, `Tech Stack`, `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Testing`, `Validation`, `Notes`.
+- **Fill the `### Default branch` slot** inside `Git Workflow` with the workflow from Phase 1.
+- **DO NOT remove or soften** these baseline sections — mandatory for every generated `CLAUDE.md`:
   - `Language Rules`
   - `Code Structure & Modularity`
   - `Error Handling`
@@ -170,29 +185,50 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
   - `Proactive Agent Usage`
   - `Plan Mode`
   - `Search Commands`
-- Add project-specific subsections inside those baseline sections only if they extend (not replace) the defaults.
-- Keep it concise — focus on what's useful, but never drop the baseline.
 
-**Key sections to include:**
+**Generate project-specific Automatic Behaviors triggers:**
 
-1. **Project Overview** — What is this and what does it do?
-2. **Tech Stack** — What technologies are used?
-3. **Commands** — How to dev, build, test, lint?
-4. **Structure** — How is the code organized?
-5. **Patterns** — What conventions should be followed?
-6. **Key Files** — What files are important to know?
-7. **Project Memory** — Always included, points to `.agents/memory/`
+The `Automatic Behaviors` block in the template contains only generic triggers (`read index.md`, `check plans/active/`, `ask when uncertain`). Based on detected directories and integrations, append project-specific routing rules to **`.agents/memory/index.md → When to Read` table**, *not* to `CLAUDE.md` itself.
+
+Examples of project-specific triggers (write to `index.md`, derived from what you detected):
+- Detected Stripe / payment SDK → "Working on payments → `domain/business-model.md`"
+- Detected AI SDKs (`openai`, `anthropic`, LangChain) → "Working on AI layer → `domain/{ai-module}.md`, `decisions.md`, `api.md`"
+- Detected job queues (BullMQ, Sidekiq, Celery) → "Working on background jobs → `domain/jobs.md`"
+- Detected i18n libraries → "Adding new locale strings → `domain/i18n.md`"
+
+This keeps `CLAUDE.md` slim and pushes routing logic into the file that's loaded on demand.
 
 **Optional sections (add if relevant):**
-- Architecture (for complex apps)
-- API endpoints (for backends)
-- Component patterns (for frontends)
-- Database patterns (if using a DB)
-- On-demand context references
+- API endpoints (for backends) — link to OpenAPI / route file, do not duplicate
+- On-demand context references — point to wiki / reference docs
 
-### Initialize Project Memory
+### 3.2 Create `.agents/memory/architecture.md`
 
-Memory files are provided by the starter under `.agents/memory/` — they exist already (`index.md`, `errors.md`, `decisions.md`, `api.md`, `patterns.md`). **Do not recreate them.** Extend the existing files as the project evolves. Create files under `.agents/memory/domain/` ad-hoc when a new module needs its own memory file (template in `.agents/memory/index.md`).
+**Output path**: `.agents/memory/architecture.md`
+
+This file is **regeneratable** — re-running `/create-CLAUDE_MD` overwrites it wholesale. Permanent knowledge belongs in `decisions.md` / `patterns.md` / `domain/{module}.md`, not here.
+
+**Frontmatter:**
+```yaml
+---
+status: populated
+populated_by: /create-CLAUDE_MD
+description: Cross-cutting map of the repository — directory structure, file roles, naming rules
+---
+```
+
+**Body sections:**
+
+1. **Source layout** — directory tree of `src/` (or equivalent), one or two levels deep.
+2. **Module roles** — table: `Path | Responsibility`. One row per significant directory.
+3. **Naming rules** — file naming, symbol naming, test file naming.
+4. **Critical conventions** — non-obvious rules that affect *where* new code goes (e.g. "all Stripe webhook handlers live under `src/jobs/billing/`", "shared types in `src/types/`, never inline").
+
+Aim for completeness over brevity — this file replaces what would otherwise bloat `CLAUDE.md`.
+
+### 3.3 Verify Project Memory exists
+
+Memory files ship with the starter — `index.md`, `errors.md`, `decisions.md`, `api.md`, `patterns.md`, `architecture.md`, `project-brief.md`, and `domain/business-model.md`. **Do not recreate them.** Extend `errors.md` / `decisions.md` / `api.md` / `patterns.md` as the project evolves (append-only, newest at top). `architecture.md` is regenerated by this command. `project-brief.md` and `business-model.md` are populated by `/refresh-brief` from PRD. Create new files under `.agents/memory/domain/` ad-hoc when a new module needs its own memory file (template in `.agents/memory/index.md`).
 
 ---
 

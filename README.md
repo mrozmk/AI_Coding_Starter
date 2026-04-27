@@ -17,7 +17,7 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/create-PRD`, `/create-CLAUDE_MD`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/create-PRD`, `/refresh-brief`, `/create-CLAUDE_MD`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
 | `agents/` | Sub-agents — `documentation-manager` |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
 | `templates/` | Starting templates — `CLAUDE-template.md` |
@@ -30,12 +30,14 @@ Five layers of persistent project knowledge:
 | Layer | Contents | Lifecycle |
 |-------|----------|-----------|
 | `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/create-PRD` and `/createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
-| `memory/` | Lessons, decisions, quirks, patterns | Append-only, permanent |
+| `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
 | `specs/` | Design docs from `/brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 
-Full routing of "what goes where" lives in `CLAUDE.md` and `.agents/memory/index.md`.
+Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (≤200 lines) and points to memory files instead of duplicating their content.
+
+**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/create-CLAUDE_MD` or `/refresh-brief`) to populate them.
 
 ---
 
@@ -64,7 +66,17 @@ If you already have briefs, transcripts, sketches, PDFs, or any written material
 
 Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/sources/`. The PRD defines **what** you're building and **why** — including the tech stack choice.
 
-### 4. Initialize project rules (later, not now)
+### 4. Distill the PRD into a fast-load brief
+
+```
+/refresh-brief
+```
+
+> Run this **after** `/create-PRD` to generate `.agents/memory/project-brief.md` — a 50-line TL;DR of the PRD that `/prime` loads instead of the full PRD on every session start. Re-run whenever PRD changes substantially.
+>
+> If the PRD contains pricing/billing/monetization sections, this also seeds `.agents/memory/domain/business-model.md` with code-relevant operational facts (plan IDs, feature gates, Stripe events).
+
+### 5. Initialize project rules (after first scaffolding)
 
 ```
 /create-CLAUDE_MD
@@ -72,9 +84,13 @@ Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/so
 
 > Run this **after** the PRD is written and you have at least some scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 
-When Claude can inspect actual code, it will fill in the placeholder sections of `CLAUDE.md` — overview, tech stack, commands, structure, architecture, conventions.
+It generates **two files** in tandem:
+- `CLAUDE.md` — slim rules file (≤200 lines), filled with project overview, tech stack, commands, conventions
+- `.agents/memory/architecture.md` — full directory map, module roles, naming rules (loaded on demand, not in every conversation)
 
-### 5. Design a feature
+This split keeps `CLAUDE.md` cheap to load every session while preserving the detailed map.
+
+### 6. Design a feature
 
 ```
 /brainstorm <feature idea>
@@ -82,7 +98,7 @@ When Claude can inspect actual code, it will fill in the placeholder sections of
 
 Explores requirements, proposes 2-3 approaches, and writes a design doc to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code is written until the design is approved.
 
-### 6. Plan the implementation
+### 7. Plan the implementation
 
 ```
 /plan-feature          # picks up the newest spec from .agents/specs/
@@ -91,7 +107,7 @@ Explores requirements, proposes 2-3 approaches, and writes a design doc to `.age
 
 Reads the approved spec, analyzes the codebase, and — **only if** the spec declares `External docs required: yes` — performs a web-research phase for the libs/APIs listed in the spec's `External dependencies`. Writes a step-by-step plan to `.agents/plans/active/`.
 
-### 7. Execute
+### 8. Execute
 
 ```
 /execute
@@ -99,7 +115,7 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 
 Runs the active plan. Moves it to `.agents/plans/done/` when complete.
 
-### 8. Commit
+### 9. Commit
 
 ```
 /commit
@@ -113,11 +129,14 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 | Command | When to run |
 |---------|-------------|
-| `/prime` | Start of every session — loads project context and relevant memory |
-| `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible |
-| `/remember <topic>` | After a discovery — routes the entry into the right memory file |
-| `/check-quality` | Before committing — format, lint, type-check, file-size gates |
-| `/explain <code>` | When Claude is exploring unfamiliar code |
+| `/prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
+| `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
+| `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
+| `/refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
+| `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
+| `/remember <topic>` | After a discovery — routes the entry into the right memory file. |
+| `/check-quality` | Before committing — format, lint, type-check, file-size gates. |
+| `/explain <code>` | When Claude is exploring unfamiliar code. |
 
 ---
 

@@ -193,7 +193,7 @@ Summary of invariants carried through: validate parent is Epic → `validate_onl
    ```
    | Key       | Type | Summary            | Status      | Assignee  | Priority |
    |-----------|------|--------------------|-------------|-----------|----------|
-   | PROJ-123  | Bug  | Login returns 500  | In Progress | m.mroz    | High     |
+   | PROJ-123  | Bug  | Login returns 500  | In Progress | j.smith   | High     |
    ```
 5. If `total > 50` → note the total count and ask: `Pokaż następne 50 czy zawęzić query? [next/narrow/skip]`.
 
