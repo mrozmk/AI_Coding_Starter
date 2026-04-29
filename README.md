@@ -17,7 +17,7 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/create-PRD`, `/refresh-brief`, `/create-CLAUDE_MD`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/verify-implementation`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/create-PRD`, `/refresh-brief`, `/stack-research`, `/create-CLAUDE_MD`, `/test-e2e`, `/cleanup-workflow`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
 | `agents/` | Sub-agents — `documentation-manager` |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
 | `templates/` | Starting templates — `CLAUDE-template.md` |
@@ -191,6 +191,8 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 Runs the active plan. Moves it to `.agents/plans/done/` when complete.
 
 > If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
+>
+> Run `/verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
 
 ### 10. Commit
 
@@ -216,6 +218,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/remember <topic>` | After a discovery — routes the entry into the right memory file. |
 | `/check-quality` | Before committing — format, lint, type-check, file-size gates. |
+| `/verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
 | `/explain <code>` | When Claude is exploring unfamiliar code. |
 
 ---

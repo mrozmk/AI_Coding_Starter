@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-04-29
+
+Adds four new commands covering the full feature lifecycle (technology selection, E2E tests, post-execute verification, workflow housekeeping), plus the **Loader Convention** — a project-wide rule that prevents commands from re-loading context already handled by `/prime`.
+
+### Added
+- **`/stack-research`** — technology selection from PRD. Auto-detects which PRD sections to update (`Technology Stack`, `Core Architecture & Patterns`), shows per-section diff preview before applying, and auto-appends a one-line entry to `.agents/memory/decisions.md`. Two modes: project-level (no args, full PRD context) and feature-level (`/stack-research <area>`).
+- **`/test-e2e`** — MCP Playwright E2E test generation with three input modes: empty (plan-driven from `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Soft-fails into degraded mode when MCP Playwright is not configured.
+- **`/verify-implementation`** — post-execute validation. Quality gates read from `CLAUDE.md → Validation` first, fall back to manifest-detected commands. Semantic review is TypeScript/JavaScript-first; React, Tailwind, and Node sections are gated on detected stack.
+- **`/cleanup-workflow`** — replaces `/check-links` with three-phase housekeeping: (1) reference integrity across 5 categories (markdown links, path refs in backticks, section anchors, slash commands, MCP tool refs); (2) memory pruning to `.agents/memory/archive/` with date + code-grounded heuristics and per-entry user decision; (3) workflow health warnings — empty-status stuck >30 days, orphan specs, stale active plans, audit-log size, oversized memory files.
+
+### Changed
+- **Loader Convention** documented in `.agents/memory/index.md`, `CLAUDE.md`, and `CLAUDE-template.md`. Commands trust the context already loaded by `/prime` instead of duplicating reads. Transformer commands (`/refresh-brief`, `/stack-research`, `/create-PRD`) are exempt — they produce primed content. `.agents/memory/archive/` is never auto-loaded.
+- **`/plan-feature`** Phase 1 now leverages primed context: confirms structure from `architecture.md` rather than re-walking the tree, pulls conventions from `patterns.md`, references `errors.md` for known anti-patterns.
+- **`/test-e2e`** Step 0 split into tool-specific reads (Playwright config, package.json scripts) and project-context delegation to `/prime` — no longer reads CLAUDE.md, project-brief, or full PRD directly.
+- **`/prime`** now explicitly skips `.agents/memory/archive/` in addition to `.agents/sources/` and READMEs.
+
+### Fixed
+- Stale pointer in `/brainstorm` and `/check-quality` — both referenced `CLAUDE.md → Project Structure`, a section moved to `.agents/memory/architecture.md` during the v1.0.0 knowledge-layer restructuring. Now point at the correct location.
+
+### Maintenance
+- Removed `/check-links` (subsumed by `/cleanup-workflow` Phase 1 with broader detection scope).
+
 ## [1.0.0] - 2026-04-27
 
 First tagged release of the AI-Assisted Development Starter Kit. Consolidates the bootstrap, Jira integration, cleanup, and knowledge-layer restructuring completed since project inception.
