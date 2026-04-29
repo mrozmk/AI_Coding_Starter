@@ -50,7 +50,7 @@ For each approach cover:
 
 Once you understand what to build, present the design incrementally:
 
-- **Architecture** — how the feature fits into the existing module layout (entry points, services, core abstractions) — read CLAUDE.md `Project Structure` first
+- **Architecture** — how the feature fits into the existing module layout (entry points, services, core abstractions). The directory map and module roles live in `.agents/memory/architecture.md` (loaded by `/prime`). If context isn't primed, ask the user to run `/prime` first rather than re-walking the tree.
 - **New files / modified files** — exact paths
 - **Data flow** — how inputs, events, or timers trigger the feature
 - **Edge cases and error handling** — what can go wrong
@@ -157,6 +157,6 @@ Tell the user:
 - **One question at a time** — never stack questions
 - **Multiple choice preferred** — easier to answer than open-ended
 - **YAGNI ruthlessly** — remove unnecessary complexity from all designs
-- **Follow existing patterns** — read the codebase first (CLAUDE.md `Project Structure` + relevant core/base modules) before proposing new structure
+- **Follow existing patterns** — consult `.agents/memory/architecture.md` and `.agents/memory/patterns.md` (loaded by `/prime`) plus relevant core/base modules before proposing new structure. Don't reinvent conventions the project already documented.
 - **Scale to complexity** — a tiny feature gets a short design doc; a large feature gets a thorough one
 - **Hard gate holds** — no code, no scaffolding, no file creation until design is approved

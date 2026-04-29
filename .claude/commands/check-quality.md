@@ -38,7 +38,7 @@ Run the type-check command if configured. Report errors; do not offer to auto-fi
 
 ### 5. File-size check
 
-Find files exceeding the limit (default 500 lines). Use `rg` + `wc -l`, respecting the project's source directory layout (from `CLAUDE.md` `Project Structure`):
+Find files exceeding the limit (default 500 lines). Use `rg` + `wc -l`, respecting the project's source directory layout (from `.agents/memory/architecture.md` — the `Source layout` / `Module roles` sections):
 
 ```bash
 rg --files -g '*.{ext1,ext2}' <source-dir> | xargs wc -l | sort -rn | head -20

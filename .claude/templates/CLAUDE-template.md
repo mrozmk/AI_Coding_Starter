@@ -182,6 +182,7 @@ Generic triggers that apply always — no command needed. **Project-specific rou
 - **After fixing a bug**: evaluate adding to `.agents/memory/errors.md` — *"Would a fresh AI make this mistake again without this entry?"*
 - **When a `domain/` memory file doesn't exist but is needed**: create it using the template in `.agents/memory/index.md`
 - **Skip rule**: any memory file with frontmatter `status: empty` is a placeholder — do not load it
+- **Loader Convention (when authoring slash commands)**: do NOT re-load project context already handled by `/prime` (CLAUDE.md, project-brief.md, architecture.md, full PRD). Read only files unique to that command's job. See `.agents/memory/index.md → Loader Convention`
 
 ---
 

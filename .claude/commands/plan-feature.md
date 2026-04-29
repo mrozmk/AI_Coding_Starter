@@ -37,16 +37,17 @@ Transform an approved design spec into a **comprehensive implementation plan** t
 
 Treat the spec as given — do not re-litigate the design. Your job here is to fill in implementation context.
 
+> **Loader Convention — leverage primed context.** This phase assumes `/prime` has already loaded `.agents/memory/architecture.md` (directory map, module roles), `.agents/memory/patterns.md` (project-specific patterns), `.agents/memory/decisions.md`, and any populated `domain/*.md`. Do **not** re-walk the directory tree or re-derive conventions that memory already documents — focus on filling gaps unique to this feature. If context isn't primed (no recent `/prime` in conversation), pause and ask the user to run `/prime` first. See [.agents/memory/index.md → Loader Convention](../../.agents/memory/index.md).
+
 **1. Project Structure Analysis**
-- Detect primary language(s), frameworks, and runtime versions.
-- Map directory structure and architectural patterns.
-- Locate configuration files across the common stacks: `package.json` / `tsconfig.json` (Node/TS) · `pyproject.toml` / `requirements.txt` (Python) · `pom.xml` / `build.gradle(.kts)` (JVM) · `go.mod` (Go) · `Cargo.toml` (Rust) · `*.csproj` / `*.sln` (.NET) · `Package.swift` / `Podfile` / `*.xcodeproj` (iOS) · `AndroidManifest.xml` / `build.gradle.kts` (Android) · `pubspec.yaml` (Flutter) · `metro.config.*` (React Native).
+- Confirm directory structure and architectural patterns from `.agents/memory/architecture.md`. Only re-walk the tree if `architecture.md` has `status: empty` or commits since its last regeneration suggest it's stale.
+- Detect primary language(s), frameworks, and runtime versions if not already documented in `architecture.md` or `CLAUDE.md → Tech Stack`.
+- Locate stack-specific config files only when the spec's needs require it: `package.json` / `tsconfig.json` (Node/TS) · `pyproject.toml` / `requirements.txt` (Python) · `pom.xml` / `build.gradle(.kts)` (JVM) · `go.mod` (Go) · `Cargo.toml` (Rust) · `*.csproj` / `*.sln` (.NET) · `Package.swift` / `Podfile` / `*.xcodeproj` (iOS) · `AndroidManifest.xml` / `build.gradle.kts` (Android) · `pubspec.yaml` (Flutter) · `metro.config.*` (React Native).
 
 **2. Pattern Recognition**
+- Pull conventions (naming, file organization, error handling, logging) from `.agents/memory/patterns.md` and `CLAUDE.md → Style & Conventions`. Only inspect the codebase directly if those are silent on the area you need.
 - Search for similar implementations in the codebase (the spec's "Architecture" and "Files" sections name the relevant areas).
-- Identify conventions: naming (CamelCase / snake_case / kebab-case), file organization, error handling, logging.
-- Check `CLAUDE.md` for project-specific rules.
-- Document anti-patterns to avoid.
+- Document anti-patterns to avoid — use `.agents/memory/errors.md` as a starting point; past mistakes are recorded there.
 
 **3. Dependency Analysis**
 - Catalog the libraries the spec's "External dependencies" section names.
@@ -59,7 +60,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 **5. Integration Points**
 - Identify existing files that need updates and new files to create (use the spec's "Files" section as the starting point; extend with what you discover in the codebase).
-- Map router / API registration patterns, database / model patterns, auth / authorization patterns — whatever applies.
+- Map router / API registration patterns, database / model patterns, auth / authorization patterns — whatever applies. Check `.agents/memory/patterns.md` and any relevant `domain/*.md` first; supplement with codebase reading only when memory is thin or silent on the integration.
 
 **Clarify remaining ambiguities**
 - If after reading the spec + codebase something is still unclear, ask the user **before** proceeding. Do not guess.

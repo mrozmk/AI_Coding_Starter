@@ -48,8 +48,9 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/m
 - Git — for the `/commit`, `/push`, `/pull`, `/release` workflow.
 
 **Optional (per integration):**
-- **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below for how to enable it.
+- **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill, or to feed Jira issues into `/test-e2e CS-1`. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
 - **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
+- **MCP Playwright** — only needed if you plan to use `/test-e2e` for browser-driven E2E test generation. See [MCP Playwright setup](#mcp-playwright-optional) below.
 
 That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/create-CLAUDE_MD` adapts to whatever you initialize).
 
@@ -63,9 +64,24 @@ The repo ships a `.mcp.json.example` template. To activate Jira:
 
 `.mcp.json` is gitignored — credentials never leave your machine. If you skip this, the `/jira` skill simply hard-stops with a clear error message; nothing else breaks.
 
+### MCP Playwright (optional)
+
+Required only if you use the `/test-e2e` command. Install via your MCP setup, e.g.:
+
+```bash
+claude mcp add playwright npx -- @anthropic-ai/mcp-playwright
+```
+
+Once installed, `/test-e2e` can drive a real browser to explore your UI and generate Playwright test files. If you skip this, `/test-e2e` falls back to a degraded mode (plan derived from code/spec inspection) instead of failing.
+
 ---
 
 ## Quick start
+
+> **Bootstrap chain (steps 3–7):**
+> `/create-PRD` → `/stack-research` → `/refresh-brief` → `/create-CLAUDE_MD` (after first scaffolding) → `/brainstorm <first feature>`.
+>
+> Each command produces a concrete artifact and feeds the next one. Running them in order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
 
 ### 1. Create a new project from this template
 
@@ -110,25 +126,38 @@ If you already have briefs, transcripts, sketches, PDFs, or any written material
 /create-PRD
 ```
 
-Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/sources/`. The PRD defines **what** you're building and **why** — including the tech stack choice.
+Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/sources/`. The PRD defines **what** you're building and **why** — target users, MVP scope, success criteria. Tech stack is left as a placeholder; you'll fill it in step 4.
 
-### 4. Distill the PRD into a fast-load brief
+### 4. Research the technology stack
+
+```
+/stack-research              # project-level — full stack from PRD (recommended after /create-PRD)
+/stack-research realtime     # feature-level — focused research on a specific area
+```
+
+> Run this **after** `/create-PRD`. Performs structured web research, proposes 2–3 candidate stacks with concrete pros/cons, asks you to approve the recommendation, then **updates the PRD's `Technology Stack` (and `Core Architecture & Patterns` where relevant) sections** — with diff preview and per-section approval before any edit.
+>
+> Also auto-appends a one-line entry to `.agents/memory/decisions.md` (newest at top), so future Claude sessions discover the architectural choice without rereading the full brief.
+
+The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` for long-term reference.
+
+### 5. Distill the PRD into a fast-load brief
 
 ```
 /refresh-brief
 ```
 
-> Run this **after** `/create-PRD` to generate `.agents/memory/project-brief.md` — a 50-line TL;DR of the PRD that `/prime` loads instead of the full PRD on every session start. Re-run whenever PRD changes substantially.
+> Run this **after** `/stack-research` so the brief reflects the now-complete `Technology Stack` section. Generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start. Re-run whenever PRD changes substantially.
 >
 > If the PRD contains pricing/billing/monetization sections, this also seeds `.agents/memory/domain/business-model.md` with code-relevant operational facts (plan IDs, feature gates, Stripe events).
 
-### 5. Initialize project rules (after first scaffolding)
+### 6. Initialize project rules (after first scaffolding)
 
 ```
 /create-CLAUDE_MD
 ```
 
-> Run this **after** the PRD is written and you have at least some scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
+> Run this **after** you have at least some scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 
 It generates **two files** in tandem:
 - `CLAUDE.md` — slim rules file (≤200 lines), filled with project overview, tech stack, commands, conventions
@@ -136,7 +165,7 @@ It generates **two files** in tandem:
 
 This split keeps `CLAUDE.md` cheap to load every session while preserving the detailed map.
 
-### 6. Design a feature
+### 7. Design a feature
 
 ```
 /brainstorm <feature idea>
@@ -144,7 +173,7 @@ This split keeps `CLAUDE.md` cheap to load every session while preserving the de
 
 Explores requirements, proposes 2-3 approaches, and writes a design doc to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code is written until the design is approved.
 
-### 7. Plan the implementation
+### 8. Plan the implementation
 
 ```
 /plan-feature          # picks up the newest spec from .agents/specs/
@@ -153,7 +182,7 @@ Explores requirements, proposes 2-3 approaches, and writes a design doc to `.age
 
 Reads the approved spec, analyzes the codebase, and — **only if** the spec declares `External docs required: yes` — performs a web-research phase for the libs/APIs listed in the spec's `External dependencies`. Writes a step-by-step plan to `.agents/plans/active/`.
 
-### 8. Execute
+### 9. Execute
 
 ```
 /execute
@@ -161,7 +190,9 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 
 Runs the active plan. Moves it to `.agents/plans/done/` when complete.
 
-### 9. Commit
+> If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
+
+### 10. Commit
 
 ```
 /commit
@@ -179,6 +210,9 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
 | `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
 | `/refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
+| `/stack-research` | Once after `/create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/stack-research realtime`, `/stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
+| `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
+| `/cleanup-workflow` | Periodic AI-workflow housekeeping. Three sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phase 3. |
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/remember <topic>` | After a discovery — routes the entry into the right memory file. |
 | `/check-quality` | Before committing — format, lint, type-check, file-size gates. |

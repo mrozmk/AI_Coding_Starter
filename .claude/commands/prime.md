@@ -87,6 +87,7 @@ Do not read plan files in `/prime` itself. Read them only when the user's concre
 ### 8. Skipped deliberately
 
 - `.agents/sources/` — raw inputs for `/create-PRD` and `/prime-ba`, never loaded by engineering `/prime`.
+- `.agents/memory/archive/` — historical pruned entries (created by `/cleanup-workflow` Phase 2). **Never auto-loaded.** Read on demand only when investigating past decisions.
 - `README.md` — typically duplicates brief; load on demand if needed.
 - Subdirectory `README.md` files — on-demand only.
 

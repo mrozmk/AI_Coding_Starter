@@ -39,6 +39,31 @@ Use this table to decide which memory files to load. **Skip any file whose front
 
 ---
 
+## Loader Convention — `/prime` loads, commands trust
+
+Slash commands **MUST NOT** re-load project context that `/prime` already loads. Splitting responsibilities prevents duplication and keeps token cost low.
+
+| What | Loaded by | Used by |
+|------|-----------|---------|
+| `CLAUDE.md`, `index.md`, `project-brief.md`, `architecture.md` (always); `patterns.md`, `decisions.md`, `api.md`, `errors.md`, `domain/*` (full mode) | `/prime` (quick or `/prime full`) | Every subsequent command in the session |
+| Tool-specific configs the command operates on (e.g. `playwright.config.ts` for `/test-e2e`, `pyproject.toml` for a Python-aware command) | The command itself | That command only |
+| Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/refresh-brief`, `/stack-research`, `/create-PRD`) | The transforming command | The transforming command only |
+
+**Why this matters:** PRD can be 2000+ lines. Re-reading it inside every command burns the token budget for context that should already be in the conversation as a 50-line `project-brief.md`. The `When to Read` table above tells the agent which memory files to *consult* on demand; `/prime` is what *loaded* them in the first place.
+
+**When writing a new slash command — guardrails:**
+
+- ❌ Don't read `CLAUDE.md`, `project-brief.md`, `architecture.md`, or `docs/PRD.md` "for context"
+- ❌ Don't duplicate the `/prime` Step 0 stack-detection probe
+- ✅ Add a one-line precondition: "If project context isn't primed, run `/prime` first"
+- ✅ Read only files that are **uniquely your command's job** (tool configs, the spec it's transforming, etc.)
+
+**Exception (rare):** transforming commands like `/refresh-brief`, `/stack-research`, `/create-PRD` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
+
+**Archive folder — never auto-loaded.** `.agents/memory/archive/` holds entries pruned by `/cleanup-workflow` Phase 2. It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
+
+---
+
 ## When to Write
 
 Add to memory when you discover something that:
