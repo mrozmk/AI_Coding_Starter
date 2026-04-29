@@ -41,6 +41,45 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/m
 
 ---
 
+## Two daily flows
+
+This starter supports two distinct roles. Both share the same knowledge layers (`.agents/`, `CLAUDE.md`) — they differ only in the command chain.
+
+> **Why every flow starts with a new chat + prime?** A fresh chat means no leftover context from a previous task that could bias Claude. Priming (`/prime` or `/prime-ba`) is the *first message* in that fresh chat — it loads the project's knowledge layers (PRD brief, architecture map, memory) so Claude reasons over the actual project state instead of guessing. Skipping either step is the most common cause of off-target answers.
+
+### Business Analyst flow
+
+```
+New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira sent
+```
+
+| Step | What it means |
+|------|---------------|
+| **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
+| **`/prime-ba`** | Loads the BA-specific context: `docs/PRD.md`, `.agents/specs/`, and the Jira backlog (via `mcp-atlassian`). Implementation details (`patterns.md`, `errors.md`, code) are intentionally skipped — a BA reasons over product, not internals. |
+| **Source files** | Drop briefs, transcripts, sketches, PDFs into [.agents/sources/](.agents/sources/). Raw input — never modified by Claude. The BA references these files manually when writing the `/brainstorm` prompt; they are not auto-loaded. |
+| **`/brainstorm <feature>`** | Explores the requirement, proposes 2-3 approaches, writes a design spec to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code, no Jira — design gate before anything ships. |
+| **Jira draft** | `/jira create` (single issue) or `/jira bulk` (Epic + Tasks) drafts Epic/Task/Bug from the approved spec. Drafts stay local — nothing leaves your machine until you confirm. |
+| **Jira sent** | Confirm the draft to send it to Jira Cloud via `mcp-atlassian`. Issues are now visible to the team and ready for the Developer flow. |
+
+### Developer flow
+
+```
+New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /execute → /verify-implementation → /commit
+```
+
+| Step | What it means |
+|------|---------------|
+| **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
+| **`/prime`** | Quick mode by default — loads `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, `architecture.md`, plus listings of plans/specs/reference and git state. Use `/prime full` after a long break or for deep multi-area work (also pulls `patterns.md`, `decisions.md`, `api.md`, `errors.md`, populated `domain/*`). |
+| **`/brainstorm <feature>` or `/brainstorm CS-1`** | Free-text feature **or** a Jira key — Jira mode pulls the issue's description and acceptance criteria as input. Output: a design spec in `.agents/specs/`. |
+| **`/plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`. |
+| **`/execute`** | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. |
+| **`/verify-implementation`** | Validates checklist coverage, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs semantic code review, checks UI design compliance. Reports only — no code changes. |
+| **`/commit`** | Conventional-commit message, plus a memory checkpoint — captures lessons / decisions / patterns into `.agents/memory/`. |
+
+---
+
 ## Requirements
 
 **Required:**
