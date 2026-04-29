@@ -27,7 +27,8 @@
       "Bash(git symbolic-ref:*)",
       "Bash(git check-ignore *)",
       "WebFetch(domain:*)",
-      "mcp__atlassian__*"
+      "mcp__atlassian__*",
+      "Bash(git reset *)"
     ],
     "deny": [
       "Bash(git push --force*)",
