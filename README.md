@@ -93,6 +93,33 @@ New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /exec
 
 That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/create-CLAUDE_MD` adapts to whatever you initialize).
 
+### Recommended MCP servers
+
+These three MCP servers extend the shipped commands. Install only what you actually use.
+
+| MCP | What it does | Repo | Used by |
+|-----|--------------|------|---------|
+| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/stack-research`, `/brainstorm` for new deps) |
+| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/verify-implementation` |
+| **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
+
+**Quick install (Claude Code CLI):**
+
+```bash
+# context7 — no credentials required
+claude mcp add context7 -- npx -y @upstash/context7-mcp
+
+# playwright — no credentials required
+claude mcp add playwright -- npx -y @playwright/mcp@latest
+
+# mcp-atlassian — needs Atlassian API token; uses the bundled .mcp.json.example
+#   (see "Jira integration (optional)" below)
+```
+
+After installing, restart your Claude Code session so the new MCP tools register. Verify with `claude mcp list`.
+
+For canonical install commands, env-var configuration, and version pinning, follow the linked repos.
+
 ### Jira integration (optional)
 
 The repo ships a `.mcp.json.example` template. To activate Jira:
@@ -105,10 +132,10 @@ The repo ships a `.mcp.json.example` template. To activate Jira:
 
 ### MCP Playwright (optional)
 
-Required only if you use the `/test-e2e` command. Install via your MCP setup, e.g.:
+Required only if you use the `/test-e2e` command. The starter uses Microsoft's [playwright-mcp](https://github.com/microsoft/playwright-mcp):
 
 ```bash
-claude mcp add playwright npx -- @anthropic-ai/mcp-playwright
+claude mcp add playwright -- npx -y @playwright/mcp@latest
 ```
 
 Once installed, `/test-e2e` can drive a real browser to explore your UI and generate Playwright test files. If you skip this, `/test-e2e` falls back to a degraded mode (plan derived from code/spec inspection) instead of failing.
