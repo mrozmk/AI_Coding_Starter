@@ -340,6 +340,7 @@ User-local overrides live in `.claude/settings.local.json` (gitignored).
 - Add reference docs to `.agents/reference/` as you integrate new APIs/libraries.
 - Drop in new slash commands under `.claude/commands/` — they appear automatically.
 - Tighten or loosen `.claude/settings.json` permissions to match your risk profile.
+- **Sync workflow with upstream** — when this starter ships new commands or updated skills, use the prompt in [docs/sync-from-starter.md](docs/sync-from-starter.md) to refresh `.claude/` and the `.agents/` framework in a downstream project without overwriting your project's memory, specs, or `CLAUDE.md`.
 
 ---
 
