@@ -71,7 +71,20 @@
       "Write(**/*.pem)",
       "Write(**/*.key)",
       "Edit(**/*.pem)",
-      "Edit(**/*.key)"
+      "Edit(**/*.key)",
+      "Bash(*ATATT*)",
+      "Bash(*ghp_*)",
+      "Bash(*github_pat_*)",
+      "Bash(*gho_*)",
+      "Bash(*ghs_*)",
+      "Bash(*ghu_*)",
+      "Bash(*xoxb-*)",
+      "Bash(*xoxp-*)",
+      "Bash(*xapp-*)",
+      "Bash(*xoxa-*)",
+      "Bash(*AKIA*)",
+      "Bash(*ASIA*)",
+      "Bash(*sk-ant-*)"
     ],
     "additionalDirectories": [
       "/tmp"

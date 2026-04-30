@@ -327,10 +327,13 @@ Full rules live in [CLAUDE.md](CLAUDE.md).
 
 - **Git:** AI may run non-destructive operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url` — via the shipped [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) / [/release](.claude/commands/release.md) / [/commit](.claude/commands/commit.md) skills. Destructive operations are **denied by default**: `push --force`, `push --force-with-lease`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`, `branch -D`/`-d`, `rebase`, `merge`, `revert`, `cherry-pick`, `config`, `remote add/remove/set-url`, `reflog expire`, `gc --prune=now`.
 - **Secrets:** `.env*`, `*.pem`, `*.key`, `*secret*`, `*credentials*` — write/edit denied.
+- **Inline tokens in shell:** `Bash` denies any command containing known secret prefixes (`ATATT`, `ghp_`, `github_pat_`, `gho_`, `ghs_`, `ghu_`, `xoxb-`, `xoxp-`, `xapp-`, `xoxa-`, `AKIA`, `ASIA`, `sk-ant-`) — defense-in-depth so a literal token never gets cached in `permissions.allow` after an "Always allow" click.
 - **Dangerous shell:** `rm -rf`, `sudo` — denied.
 - **Hooks:** PreToolUse hooks append a timestamped audit trail to `.claude/audit.log` (gitignored).
 
-User-local overrides live in `.claude/settings.local.json` (gitignored).
+User-local overrides live in `.claude/settings.local.json` (gitignored) — Claude Code writes new "Always allow" approvals there by default, keeping per-session permissions out of the committed `settings.json`.
+
+> ⚠️ **Never approve "Always allow this exact command"** for a Bash invocation that contains a literal secret (`-u "user:hardcodedToken"`, inline `Authorization: Bearer ...`, hardcoded DB URL with embedded password). Claude Code caches the **full literal command**, including the token. Always pass secrets via `$ENV_VARS` instead — `curl -u "$JIRA_USER:$JIRA_TOKEN" ...`. The deny-prefix list above is a safety net, not a substitute for this discipline.
 
 ---
 
