@@ -25,6 +25,10 @@ Thumbs.db
 # ============================================================
 .claude/audit.log
 .claude/settings.local.json
+# /orchestrate umbrella mode creates per-step worktrees (full repo checkouts) here
+.claude/worktrees/
+# Local read-usage telemetry written by track-memory-read.sh (per-clone, not shared)
+.claude/memory-usage.json
 # Guard against accidental copy of ~/.claude/projects/ (transcripts + auto-memory) into repo
 **/.claude/projects/
 

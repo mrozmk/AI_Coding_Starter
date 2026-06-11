@@ -97,7 +97,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] BASH   \" + (.tool_input.command // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-commit.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" BASH",
             "async": true
           }
         ]
@@ -107,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] FETCH  \" + (.tool_input.url // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" FETCH",
             "async": true
           }
         ]
@@ -117,7 +121,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] WRITE  \" + (.tool_input.file_path // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" WRITE",
             "async": true
           }
         ]
@@ -127,7 +131,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M:%S\")) + \"] EDIT   \" + (.tool_input.file_path // \"\")' >> \"$CLAUDE_PROJECT_DIR/.claude/audit.log\" 2>/dev/null || true",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" EDIT",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/track-memory-read.sh\"",
             "async": true
           }
         ]
