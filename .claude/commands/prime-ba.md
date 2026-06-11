@@ -55,24 +55,27 @@ Filenames only — don't read the plans themselves unless the BA asks.
 
 ### 6. Jira Environment + Live Backlog
 
-**Step 6a — Check environment:**
+Jira config lives in environment variables that the MCP server reads directly — **do not** echo them from the shell (printing a token would leak it into `audit.log`). Probe connectivity by attempting a read-only MCP call and reacting to the result.
 
-!`echo "JIRA_URL: $([ -n "$JIRA_URL" ] && echo set || echo MISSING)"; echo "JIRA_USERNAME: $([ -n "$JIRA_USERNAME" ] && echo set || echo MISSING)"; echo "JIRA_API_TOKEN: $([ -n "$JIRA_API_TOKEN" ] && echo set || echo MISSING)"; echo "JIRA_DEFAULT_PROJECT: ${JIRA_DEFAULT_PROJECT:-UNSET}"`
+**Step 6a — Probe connectivity:**
+
+Call `mcp__atlassian__jira_get_all_projects` (read-only, no confirmation needed).
+- **Succeeds** → Jira is configured and reachable. Continue to 6b.
+- **Fails** (auth / connection / not-configured error) → Jira is offline. Skip 6b and note `Jira offline — MCP not configured or unreachable` in the report (the BA can still work without it).
 
 **Step 6b — Fetch live backlog (read-only, no confirmation needed):**
 
-If `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` are all set AND `JIRA_DEFAULT_PROJECT` is set → call:
+Determine the target project key (prefer the project the BA names; otherwise pick from the projects returned in 6a, or ask). Then call, substituting the literal project key:
 
 ```
 mcp__atlassian__jira_search(
-    jql="project = $JIRA_DEFAULT_PROJECT AND type = Epic ORDER BY created DESC",
+    jql="project = <PROJECT_KEY> AND type = Epic ORDER BY created DESC",
     fields="summary,status,assignee,priority",
     limit=10
 )
 ```
 
-If any credential env is MISSING → skip this step silently, note "Jira offline" in the report.
-If `JIRA_DEFAULT_PROJECT` is UNSET → skip the fetch, note that `JIRA_DEFAULT_PROJECT` is not configured (the BA can still query manually via `/jira search`).
+If no project key can be determined → skip the fetch and note that the default project is not configured (the BA can still query manually via `/jira search`).
 
 ### 7. Understand Current Activity
 

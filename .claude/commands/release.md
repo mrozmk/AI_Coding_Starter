@@ -14,7 +14,7 @@ Works across Node (`package.json`), Python (`pyproject.toml`), Rust (`Cargo.toml
   - Use `git log --oneline` to show all commits
   - Suggest starting version: `0.1.0` or `1.0.0`
 - If tags exist:
-  - Run `git log --oneline $(git describe --tags --abbrev=0)..HEAD` to see commits since last tag
+  - Run `git describe --tags --abbrev=0` to get the latest tag, then run `git log --oneline <tag>..HEAD` (substitute the literal tag from the previous output) to see commits since it
 - Determine suggested version bump type based on commits:
   - **Major (X.0.0)**: breaking changes
   - **Minor (x.Y.0)**: new features, backward compatible

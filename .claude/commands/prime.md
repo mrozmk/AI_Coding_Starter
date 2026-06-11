@@ -24,11 +24,14 @@ Read in order:
 - `CLAUDE.md`
 - `.agents/memory/index.md` — routing table for what to load later, on demand
 
-Cheap status probe (no Read calls) for the three regenerated files:
+Status probe for the three regenerated files. For each of:
+- `.agents/memory/architecture.md`
+- `.agents/memory/project-brief.md`
+- `.agents/memory/domain/business-model.md`
 
-!`for f in .agents/memory/architecture.md .agents/memory/project-brief.md .agents/memory/domain/business-model.md; do if [ -f "$f" ]; then s=$(head -10 "$f" | grep -E "^status:" | awk '{print $2}'); echo "$f: ${s:-no-frontmatter}"; fi; done`
+use **`Read` with `limit: 10`** and note the `status:` value in the frontmatter (`populated`, `empty`, or — if there is no `status:` line — treat as `no-frontmatter`). Skip any file that does not exist. The `limit: 10` read of `architecture.md` and `project-brief.md` doubles as the status check for Steps 2–3 — read them in full only if `status: populated`.
 
-Use the output to decide which files to read in Step 2 and Step 3.
+Use these values to decide what to read in Step 2 and Step 3.
 
 ### 2. Goal — always
 
@@ -104,10 +107,10 @@ Use this exact structure:
 
 ### Memory — facts
 
-Run cheap stats:
-!`for f in .agents/memory/index.md .agents/memory/architecture.md .agents/memory/project-brief.md .agents/memory/patterns.md .agents/memory/decisions.md .agents/memory/api.md .agents/memory/errors.md .agents/memory/domain/*.md; do if [ -f "$f" ]; then lines=$(wc -l < "$f"); modified=$(git log -1 --format='%cr' -- "$f" 2>/dev/null || echo "untracked"); echo "$f — $lines lines, last modified: $modified"; fi; done 2>/dev/null`
+Run a cheap stat listing (filesystem size + mtime — no per-file shell loop, no command substitution):
+!`ls -la .agents/memory/*.md .agents/memory/domain/*.md 2>/dev/null`
 
-Render output as a bulleted list of `<file> — <N> lines, modified <relative date>`.
+Render the output as a bulleted list of `<file> — <size>, modified <date>`, one line per memory file the listing returned. (Filesystem size/mtime stand in for line count / commit date — a cheap orientation cue, not a precise metric.)
 
 ### Pipeline — facts
 - `plans/active/`: <N> files: <filenames>
