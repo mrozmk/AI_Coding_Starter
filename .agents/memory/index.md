@@ -8,6 +8,7 @@
 
 | Topic | File | Mode |
 |-------|------|------|
+| User communication style, expectations, what to avoid | [user-profile.md](user-profile.md) | append (manual) |
 | Bugs, failed approaches, lessons learned | [errors.md](errors.md) | append (newest top) |
 | Architectural & technical decisions | [decisions.md](decisions.md) | append (newest top) |
 | API behavior, protocol quirks, auth | [api.md](api.md) | append (newest top) |
@@ -25,6 +26,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 
 | Situation | Files to load |
 |-----------|---------------|
+| Before any non-trivial response | `user-profile.md` (skip if `status: empty`) |
 | New session / `/prime` | `project-brief.md` (or `docs/PRD.md` if brief is empty), `architecture.md` |
 | Before writing code | `patterns.md`, `architecture.md` |
 | Before debugging or investigating a bug | `errors.md` |

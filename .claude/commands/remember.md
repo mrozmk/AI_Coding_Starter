@@ -35,6 +35,7 @@ This command can be triggered explicitly or used mid-task without a commit.
 
 | Type of discovery | Target file |
 |---|---|
+| Feedback on the user's style, expectations, or how to work | `.agents/memory/user-profile.md` |
 | Bug, crash, root cause, lesson learned | `.agents/memory/errors.md` |
 | API response, protocol quirk, undocumented field | `.agents/memory/api.md` |
 | Architectural or technical decision (why X over Y) | `.agents/memory/decisions.md` |

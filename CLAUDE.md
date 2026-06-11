@@ -133,6 +133,7 @@ Five persistent knowledge layers under `.agents/`. **Before starting any task, r
 
 | Discovery | Write to |
 |-----------|----------|
+| User communication style / feedback | [.agents/memory/user-profile.md](.agents/memory/user-profile.md) |
 | Bug / lesson learned | [.agents/memory/errors.md](.agents/memory/errors.md) |
 | API behavior / protocol quirk | [.agents/memory/api.md](.agents/memory/api.md) |
 | Architectural decision | [.agents/memory/decisions.md](.agents/memory/decisions.md) |
@@ -148,6 +149,7 @@ For **what to read** when starting work — see the `When to Read` table in [.ag
 Generic triggers that apply always — no command needed. **Project-specific routing rules** live in [.agents/memory/index.md → When to Read](.agents/memory/index.md), not here, to keep this file slim.
 
 - **Before any task:** read [.agents/memory/index.md](.agents/memory/index.md) — use its `When to Read` table to decide what else to load
+- **Before any non-trivial response:** read [.agents/memory/user-profile.md](.agents/memory/user-profile.md) — the user's communication style, expectations, what to avoid. Skip if its frontmatter is `status: empty`.
 - **Before implementing something new:** check `.agents/plans/active/` for existing plans
 - **When uncertain about approach:** stop and ask — **NEVER ASSUME OR GUESS**
 - **After fixing a bug:** evaluate adding to [.agents/memory/errors.md](.agents/memory/errors.md) — *"Would a fresh Claude make this mistake again without the entry?"*
