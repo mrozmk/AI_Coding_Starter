@@ -52,6 +52,17 @@ Works across Node (`package.json`), Python (`pyproject.toml`), Rust (`Cargo.toml
 - Do not invent sections that do not already exist — only update what is already there
 - Stage `README.md` if it was modified
 
+### 3b. Documentation sync (conditional)
+
+You already have the commit range since the last tag (from Step 1). Inspect its conventional-commit types:
+
+- If the range contains any `feat`, `feat!`, or `BREAKING CHANGE` — i.e. user-facing surface likely changed — **offer** to sync docs: "This release includes feature/breaking changes. Run documentation-manager to sync README / `docs/` before tagging? (yes/no)"
+  - If **yes**: gather the changed files (`git diff --name-only <last-tag>..HEAD`) and spawn `@documentation-manager` with that list and the instruction to sync docs narrowly to what changed (it leaves `.agents/memory/` alone). Its edits are staged with the rest in Step 5.
+  - If **no**: proceed without it.
+- If the range is **only** `fix` / `chore` / `docs` / `style` / `refactor` (no user-facing surface) → **skip silently**. Per documentation-manager's own rule, do not run it when docs would not drift.
+
+This never blocks the release — it is a quality offer, not a gate.
+
 ### 4. Detect project stack and bump version manifest
 
 Detect manifests in priority order and act on the first non-empty match (or on all matches after asking, for monorepos).
@@ -83,7 +94,7 @@ Use `rg --files -g <pattern>` (never `grep`) for presence checks, per the projec
 
 ### 5. Create commit and tag
 
-- Stage all changed files (CHANGELOG.md + any manifest files + README.md if modified)
+- Stage all changed files (CHANGELOG.md + any manifest files + README.md if modified + any docs updated in Step 3b)
 - Create commit:
   ```
   chore: release vX.Y.Z

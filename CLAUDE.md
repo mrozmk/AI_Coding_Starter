@@ -161,7 +161,7 @@ Generic triggers that apply always — no command needed. **Project-specific rou
 
 Available sub-agents (see `.claude/agents/`):
 
-- `documentation-manager` — keeps README, docs, and inline comments in sync after source changes. Invoke when code changes touch public API, architecture, or user-facing behavior. **Do NOT invoke after every commit** — only when documentation would actually drift.
+- `documentation-manager` — keeps README, docs, and inline comments in sync after source changes. Invoke when code changes touch public API, architecture, or user-facing behavior. **Do NOT invoke after every commit** — only when documentation would actually drift. Wired in opt-in/conditionally: `/release` offers it when the release range has `feat`/breaking commits; `/orchestrate --sync-docs` runs it in Phase 7 as a final `docs:` commit.
 - `general-purpose` — complex multi-step research spanning the whole codebase
 - `orchestrator-executor` / `orchestrator-verifier` / `orchestrator-committer` / `orchestrator-designer` — pipeline sub-agents for [/orchestrate](.claude/commands/orchestrate.md). **Not invoked directly** — `/orchestrate` spawns them to run a plan end-to-end (execute → verify → [design] → commit → push, looping fixes, escalating only on blockers). Works out of the box on single-file plans from `/plan-feature` (flat mode); umbrella/DAG mode needs a hand-authored `## Execution Plan` table. The design check auto-skips unless `.agents/specs/design/Ready/` exists.
 

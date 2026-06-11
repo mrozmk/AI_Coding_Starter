@@ -17,6 +17,7 @@ Flags:
 
 - `--resume` — continue an interrupted run by reading umbrella status; pick up at first non-`done` step
 - `--from <step-id>` — start at a specific step id (e.g. `3b1`), treating earlier steps as already done
+- `--sync-docs` — after the pipeline completes, run `documentation-manager` to sync `README` / `docs/` for the whole feature and push a final `docs:` commit (Phase 7, step 5). Off by default; even when set it only acts if the changed files actually touched documented surface (public API, CLI, setup, architecture, a user-facing feature).
 
 ## Phase 0: Resolve plan
 
@@ -389,7 +390,18 @@ When the last step reaches `done`:
      ! git branch -D step-3a step-3b step-6
    ```
    Compute the list from the umbrella table's step ids (or `git branch --merged main` filtered to `step-*`). Do not attempt the deletion yourself; the `! ` prefix runs it in the user's session if they choose.
-5. Emit final summary to the user:
+5. **Documentation sync — only if `--sync-docs` was passed.** Skip entirely otherwise (the default). The pipeline's per-step commits are already pushed, so this is a separate, final `docs:` commit covering the whole feature.
+   - Aggregate `FILES_TOUCHED` across every completed step (from the run-log).
+   - **Decide if it is warranted.** If none of those files plausibly affect documented surface (public API / exported interface, CLI commands or flags, setup/config/install, architecture, or a user-facing feature), log `Doc sync requested but no documented surface changed — nothing to sync.` and skip the spawn. This honors documentation-manager's own rule: do not run it when docs would not drift.
+   - Otherwise spawn `@documentation-manager`:
+     ```
+     CHANGED_FILES:
+     <aggregate FILES_TOUCHED across all steps>
+     The pipeline just shipped the feature in <umbrella name>. Sync README / docs/ / inline docs to match — narrowly, only what these changes affected. Leave .agents/memory/ alone. Report which docs you updated.
+     ```
+   - If it updated docs: spawn `@orchestrator-committer` with those doc paths as `FILES_TOUCHED` and `STEP_ID: docs` to stage and commit `docs: sync docs for <umbrella>` (committer does not push — same split as every step). Then `git push origin main` from the main session. If documentation-manager changed nothing, log `Docs already in sync.` and skip the commit+push.
+   - A doc-sync failure is **not** a pipeline failure — the feature is already shipped and pushed. Report it and continue to the summary.
+6. Emit final summary to the user:
 
 ```
 ✓ Pipeline complete: <umbrella name>
@@ -402,6 +414,7 @@ Total wall time: <hh:mm:ss>
 
 Plans + run-log moved to .agents/plans/done/.
 Merged step branches you may delete: <the `! git branch -D …` line from step 4, or "none">
+Docs: <synced in commit <sha> / already in sync / skipped — no documented surface changed / not requested — pass --sync-docs (this run touched <documented surface>) >
 Deploy is your call.
 ```
 
