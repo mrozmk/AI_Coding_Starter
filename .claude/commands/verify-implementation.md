@@ -11,9 +11,9 @@ Run after `/execute` completes a plan. Validates checklist completion, runs qual
 
 ## 0. Detect Stack
 
-Run a cheap probe to find which manifests are present:
+Run a cheap probe to find which manifests are present (lists only the files that exist; `ls` sends the rest to stderr, which is suppressed):
 
-!`for f in package.json tsconfig.json pyproject.toml Cargo.toml go.mod composer.json tailwind.config.js tailwind.config.ts tailwind.config.cjs; do [ -f "$f" ] && echo "$f"; done`
+!`ls -d package.json tsconfig.json pyproject.toml Cargo.toml go.mod composer.json tailwind.config.js tailwind.config.ts tailwind.config.cjs 2>/dev/null`
 
 Set flags from the output:
 
@@ -130,6 +130,14 @@ Block if ≥3, Warn if 1-2:
 **TypeScript/JavaScript specific *(skip if `!IS_NODE` and `!IS_TS`)*:**
 - `JSON.parse` without try/catch
 - React: missing `<ErrorBoundary>` around async / data-fetching subtrees *(only if `IS_REACT`)*
+
+### HIGH — Silent Failure Patterns (language-agnostic)
+
+The most dangerous defects are not thrown exceptions — they are code that silently did nothing (or the wrong thing) while every green signal (test / lint / build) confirmed "success". Flag:
+
+- **Two-state completion that should be three-state.** A boolean `done` / `ready` that collapses "work hasn't started" and "work finished but produced nothing" into one value. A polled/async result should expose a terminal `empty` state distinct from `ready`, and consumers must exit on **every** terminal state (including `empty`), not only on success — otherwise a poller spins forever on a legitimately-empty result. If a paid/critical operation can legally yield zero artifacts, the surface must say so explicitly.
+- **Stub-beside-real.** Two similarly-named functions where one is a stub/`TODO` (`send` / `sendReal`, `process` / `processFull`) and the caller is wired to the stub → the feature silently no-ops. A green test that asserts the **stub** was called is a false signal — it encodes the bug. Before trusting a feature works, grep which implementation the caller actually imports; require a real end-to-end check for any "X happens on event Y" claim, not just a unit test.
+- **Fire-and-forget on a critical path.** A side effect that **is** the business outcome (email, payment, webhook, queue enqueue) dispatched without awaiting its result and without surfacing failure (`.send().catch(log)` then return success). If the effect is the outcome, await it and propagate a non-success result; reserve fire-and-forget for genuinely best-effort work. Every form/action needs a visible error state for the failure branch — a silent success looks like a stuck button.
 
 ### HIGH — Idiomatic Patterns *(JavaScript/TypeScript only — skip if `!IS_NODE`)*
 

@@ -4,9 +4,9 @@ description: All-in-one AI workflow housekeeping — broken-reference check, mem
 
 # /cleanup-workflow — AI Workflow Maintenance
 
-Three-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when the project's been moving fast and you want to make sure references aren't broken, memory hasn't bloated with stale entries, and orphaned artifacts are surfaced.
+Four-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when the project's been moving fast and you want to make sure references aren't broken, memory hasn't bloated with stale entries, orphaned artifacts are surfaced, and the workflow tooling itself hasn't drifted.
 
-**Always runs all three phases sequentially. No skip arguments.** If you only want a fast pre-commit reference check, that's still cheap as Phase 1 — just stop the run after Phase 1 if you don't want to continue.
+**Always runs all four phases sequentially. No skip arguments.** If you only want a fast pre-commit reference check, that's still cheap as Phase 1 — just stop the run after Phase 1 if you don't want to continue.
 
 ---
 
@@ -147,9 +147,15 @@ Each memory file is structured as `## <date> — <title>` blocks (per starter co
 - If **all** referenced paths are broken (file moved/deleted) → candidate.
 - If **some** broken → soft signal (mention in report but don't auto-flag).
 
-**Both A and B met** → strong candidate (highlighted).
-**A or B met** → candidate.
-**Neither** → keep silently.
+**Heuristic C — usage-based (file-level, from the read-tracking sidecar):**
+- If `.claude/memory-usage.json` exists (written by `track-memory-read.sh`), look up this file's entry.
+- `last_referenced` **older than 90 days** → the whole file is cold (not consulted in a quarter) → its entries are stronger archive candidates.
+- **Absent** from the sidecar → do NOT treat as a signal (tracking may have started recently; absence ≠ unused — false-positive philosophy).
+- This is a file-level hint layered onto the per-entry decision, never an auto-archive trigger.
+
+**A, B and C aligned (old + broken refs + cold)** → strong candidate (highlighted).
+**Any one met** → candidate.
+**None** → keep silently.
 
 ### 2.2 Per-candidate user decision
 
@@ -250,12 +256,10 @@ If no match → warning:
 
 ### 3.3 Signal: stale active plans (>14 days)
 
-```bash
-for f in .agents/plans/active/*.md; do
-  age_days=$(( ( $(date +%s) - $(git log -1 --format='%ct' -- "$f") ) / 86400 ))
-  [ $age_days -gt 14 ] && echo "$f $age_days"
-done
-```
+For each `*.md` file in `.agents/plans/active/`:
+- Run `git log -1 --format=%cd --date=short -- <file>` (substitute the literal filename) to get its last-commit date.
+- Compare that date to today and compute the age in days yourself.
+- If older than 14 days, flag it.
 
 For each match → warning:
 > ⚠️ `<plan>` last touched <X> days ago. Stalled? Either resume with `/execute` or move to `plans/done/` if shipped.
@@ -311,9 +315,74 @@ If zero warnings:
 
 ---
 
+## Phase 4: Workflow Optimization Audit
+
+**Goal:** surface *systemic drift* in the workflow itself — stale auto-loads, internal contradictions, unbounded automation, config gaps. **No actions — flagging only**, same as Phase 3.
+
+**Generic-only rule:** this phase **discovers** what to check by parsing `.claude/commands/`, `.claude/settings.json`, `.mcp.json` / `.mcp.json.example`, `.gitignore`, and `.agents/memory/index.md`. It never hardcodes project-specific paths — what it audits is whatever those files declare.
+
+**False-positive philosophy:** prefer a false-negative to a false-positive. A missed signal costs 30 seconds when it surfaces later; a false alarm trains the user to ignore the report — and then every future signal is lost. When unsure whether something is drift, stay silent.
+
+### 4.1 Auto-load freshness
+
+Parse `prime.md` (and `prime-ba.md`) for the files they load **every** session (the "always" reads). For each:
+- If the file is `status: empty` or missing → it is being loaded (or attempted) every prime for no value → flag.
+- If the file is oversized (> 500 lines for a memory file, or visibly larger than its peers) → flag as a prime-cost signal.
+
+> ⚠️ `/prime` loads `<file>` every session but it is `<empty / 542 lines>`. Consider populating it (`/refresh-brief`, `/create-CLAUDE_MD`) or trimming it (Phase 2).
+
+**Dead-memory cross-check (from the sidecar).** If `.claude/memory-usage.json` exists, flag any append-style memory file whose `last_referenced` is > 90 days old AND that is not in prime's always-load set — it is neither auto-loaded nor consulted on demand, i.e. dead weight worth reviewing (route it to Phase 2 for pruning). A file absent from the sidecar is not flagged (tracking may be new). If the sidecar does not exist yet, note `no read-usage telemetry yet (track-memory-read hook has not run)` and skip this check.
+
+### 4.2 Cross-file duplication & internal contradictions
+
+- **Contradictions:** scan `CLAUDE.md` + `.claude/commands/` for rules that conflict with practice. Canonical example: `CLAUDE.md` mandates "use `rg`, never `grep`/`find`" while a command actually invokes `grep`/`find`. Grep the commands for the forbidden tool and flag each hit.
+- **Duplication:** the same multi-line guidance copied across files drifts out of sync. Flag blocks substantially duplicated between `CLAUDE.md` and a command — the source of truth should live in one place and be linked.
+
+> ⚠️ `CLAUDE.md` mandates `rg` but `<command>.md:<line>` calls `find`/`grep`. Align the command or the rule.
+
+### 4.3 Hook automation review
+
+Read the `hooks` block in `settings.json` and the scripts in `.claude/hooks/`. Flag:
+- **Unbounded log growth:** a hook that appends to a file with no rotation. (The shipped `audit-append.sh` self-rotates at 5000 lines — flag any *other* appender that does not.)
+- **Async + non-idempotent:** an `async` hook performing a non-idempotent mutation (a race between concurrent fires could corrupt state). Idempotent appends/rotations are fine.
+- **Secret leakage:** a hook command that could write a token/secret into a logged field; cross-check against the `deny` token patterns in `settings.json`.
+- **Sync correctness:** a hook meant to *block* (like `guard-commit.sh`) must NOT be `async` — async cannot block. Flag any blocker registered async.
+
+### 4.4 Gitignore & MCP config drift
+
+- **Gitignore coverage:** confirm local-only artifacts are ignored — `.claude/audit.log`, `.claude/worktrees/`, any tool output dir. Flag artifacts present in the tree but not gitignored (they will leak into commits).
+- **MCP config drift:** compare `.mcp.json` against `.mcp.json.example`. Flag missing servers, and missing `--output-dir`/equivalent flags that would dump MCP artifacts into the repo root.
+
+### 4.5 Phase 4 output
+
+```markdown
+🛠 Workflow Optimization — <N> signals detected
+
+⚠️ STALE AUTO-LOAD (<count>):
+   /prime loads project-brief.md every session — status: empty.
+
+⚠️ CONTRADICTIONS (<count>):
+   CLAUDE.md mandates rg; <command>.md:<line> uses find.
+
+⚠️ HOOK RISKS (<count>):
+   <hook> appends to <file> with no rotation.
+
+⚠️ CONFIG DRIFT (<count>):
+   .claude/worktrees/ not in .gitignore.
+
+✅ Other checks: clean.
+```
+
+If zero signals:
+```
+✅ Workflow optimization clean. No systemic drift detected.
+```
+
+---
+
 ## Final Report
 
-After all 3 phases:
+After all 4 phases:
 
 ```markdown
 # /cleanup-workflow run summary — YYYY-MM-DD
@@ -333,6 +402,9 @@ After all 3 phases:
 ## Phase 3: Workflow health
    <N> warnings (see details above).
 
+## Phase 4: Workflow optimization
+   <N> drift signals (auto-load / contradictions / hooks / config).
+
 ## Next steps
    - Fix Phase 1 broken refs (manual).
    - Address Phase 3 warnings as time permits.
@@ -347,6 +419,7 @@ After all 3 phases:
 - **Phase 1: no auto-fix.** Suggestions only — user repairs manually.
 - **Phase 2: archive is the default.** Delete only on explicit user choice.
 - **Phase 3: no actions.** Pure signal — let the user decide.
+- **Phase 4: no actions.** Discovery + flagging only; never hardcode project paths, and prefer a false-negative to a false-positive.
 - **Skip `.agents/memory/archive/**`** in all phases (this command never re-processes its own archive).
 - **Skip `node_modules`, `.git`, `dist`, `build`** in all file scans.
-- **Run order is fixed:** Phase 1 → Phase 2 → Phase 3. User can stop after any phase by interrupting; no resumption — re-run from start next time.
+- **Run order is fixed:** Phase 1 → Phase 2 → Phase 3 → Phase 4. User can stop after any phase by interrupting; no resumption — re-run from start next time.
