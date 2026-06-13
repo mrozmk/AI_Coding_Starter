@@ -11,6 +11,10 @@ argument-hint: [topic or feature idea]
 Do NOT write any code, scaffold files, or take any implementation action until you have presented a design and the user has explicitly approved it. This applies regardless of how simple the feature seems.
 </HARD-GATE>
 
+<WHY-GATE>
+Before proposing **how** to build anything (Step 3), you must understand **what** the user wants AND **why** — the problem it solves, not just the feature requested. A request names a solution; the "why" names the problem. If the why is unclear or implied, **ask for it first** — it is the single most load-bearing question. Without it you will design a technically-correct solution to the wrong problem, miss a simpler path, or miss that the feature isn't needed at all (YAGNI). Never skip straight from a feature request to approaches.
+</WHY-GATE>
+
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 
 Every feature goes through this process. A single new command, a config change, a refactor — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), but you MUST present it and get approval before moving to planning.
@@ -32,10 +36,23 @@ Note the current architecture, patterns in use, and any prior decisions that aff
 
 Ask questions **one at a time**. Do not ask multiple questions in a single message.
 
+- **Why first.** Your opening question establishes the problem (the WHY-GATE) — what outcome the user is really after — before anything about constraints or shape. Get this even if the request sounds concrete.
 - Prefer multiple choice when possible — easier to answer than open-ended
-- Focus on: purpose, constraints, success criteria, edge cases
+- Then focus on: constraints, success criteria, edge cases
 - If the request covers multiple independent subsystems, flag it immediately and help the user decompose it before proceeding
 - Stop when you have enough to propose approaches
+
+**Question discipline (balance, not interrogation).** This is a short clarifying step, not a relentless interview — usually 2–4 questions. Two rules keep it sharp:
+
+- **Explore the codebase instead of asking** whatever the codebase can answer. Don't ask the user "what's the current auth flow" if you can read it — spend questions only on what's in the user's head.
+- **One question per message**, with **your recommended answer attached** — "I'd default to X because Y; agree?" is faster to act on than an open question.
+
+When a clarifying question is worth asking, reach for the type that fits — these are tools, not mandatory rounds:
+
+- **Precision (what exactly):** the user used a fuzzy term — pin it down. "You said 'report' — the live HTML report, or a saved artifact?" Anchor terms to `.agents/memory/architecture.md` where one exists.
+- **Conflict (intent vs the record):** the request seems to drift from a documented decision or the project's vocabulary. "Our `decisions.md` settled on X — does this intentionally revisit that, or did you mean something within X?"
+- **Scenario stress-test (does the boundary hold):** invent a concrete edge case to force precision about scope. "What happens when two users hit this at once / the input is empty / the upstream call fails?"
+- **Code-reality (does the plan match what exists):** the plan assumes behavior the code may not have. Check the code, then reconcile: "The current handler cancels the whole order, but this assumes partial — which is right?"
 
 ### Step 3: Propose 2–3 Approaches
 
