@@ -327,6 +327,88 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 ---
 
+## Orchestration internals — how the agent-spawning commands work
+
+Three commands do heavy multi-step work. They use **two different orchestration mechanisms** and spawn different agents on different models. This section spells out exactly what runs, when, why, and on which model.
+
+### Model strategy (shared across the pipeline)
+
+The principle is **right model for the job** — judgment work on the strongest model, mechanical work on the cheapest:
+
+| Role | Agent | Model | Mutates? | Why |
+|------|-------|-------|----------|-----|
+| Orchestrator (your session) | — (the `/orchestrate` driver) | your interactive model (typically **Opus 4.8**) | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
+| Execute a plan | `orchestrator-executor` | **Sonnet 4.6** (`acceptEdits`) | ✅ code | implementation: fast + capable; per-step overridable to `opus`/`haiku` |
+| Refine (bugs + cleanup) | `orchestrator-refiner` | **Sonnet 4.6** (`acceptEdits`) | ✅ code | runs `code-review --fix` + `simplify` |
+| Verify (code gate) | `orchestrator-verifier` | **Opus 4.8**, `effort: high` | ❌ read-only | the gate must be sharp; independence from the fixer |
+| Design parity | `orchestrator-designer` | **Opus 4.8**, `effort: high` | ❌ read-only | pixel/structural audit vs reference design |
+| Commit | `orchestrator-committer` | **Haiku 4.5** (`acceptEdits`) | ✅ git index | purely mechanical stage+commit — cheapest tier |
+| Doc sync | `documentation-manager` | inherits | ✅ docs | only on `/orchestrate --sync-docs` when docs would drift |
+
+> Keeping the **verifier/designer (judges) on a different, read-only setup from the executor/refiner (fixers)** is deliberate — no agent grades its own homework.
+
+### `/check-implementation` — in-context quality loop (no fleet)
+
+Drives freshly-written code to **commit-ready**, then stops. Runs **in your own session** (you see every step) — it does *not* spawn an executor fleet; the only thing it spawns is the design gate (to isolate visual-tool output). It **applies fixes** but never commits.
+
+```
+resolve scope (plan | diff-only)
+  └─ loop, max 3×:
+       1a /code-review --fix   (correctness — find & fix logic bugs)
+       1b /simplify            (cleanliness — reuse / simplify / efficiency)
+       1c /gates:verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
+       1d @orchestrator-designer  ← spawned, Opus 4.8, ONLY if UI changed AND a reference design exists
+       1e decide: approve → done · gaps → feed into next 1a · blocker / 3× → escalate to you
+  └─ leaves a clean tree → you run /commit
+```
+
+**Why this order:** bugs first (don't polish code you're about to rewrite), cleanliness second, then the read-only gate (it can't invalidate itself), design last (slowest, UI-only). The design gate defaults to **skip** unless the change touches UI *and* a reference design exists.
+
+### `/orchestrate` — full autonomous pipeline (spawns the fleet, commits, pushes)
+
+The only command that takes a plan all the way to **pushed**. Your main session becomes the **orchestrator**: it decides / routes / loops / reports and performs the `git push` itself (push authorization lives in your session, not in sub-agents) — but it never implements, audits, or commits. Each of those is a sub-agent.
+
+**Per step** (sequential; flat = one plan, umbrella = a DAG of steps each in its own git worktree on a named branch, fast-forward-merged to `main`):
+
+```
+5.1  Execute       → @orchestrator-executor   (Sonnet 4.6; per-step model override opus/haiku/sonnet via the plan's Model column)
+5.1-recon          → orchestrator re-derives the facts itself (independent ground-truth, before trusting any report)
+5.1b Refine        → @orchestrator-refiner     (Sonnet 4.6 — code-review --fix + simplify)
+5.2  Verify   ≤3×  → @orchestrator-verifier    (Opus 4.8 high, read-only)        ┐ GAPS loop back
+5.3  Design   ≤2×  → @orchestrator-designer    (Opus 4.8 high, read-only)        ┘ into the next Refine/Execute
+       (5.3 runs ONLY if .agents/specs/design/Ready/ exists)
+5.4  Commit        → @orchestrator-committer   (Haiku 4.5) → clean-build gate
+5.4b Push          → orchestrator (your session) — git push, ff-merge the step branch to main
+```
+
+**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `@documentation-manager` and commits a `docs:` follow-up.
+
+> `/check-implementation` ≈ the 5.1b→5.2 slice of `/orchestrate`, run inline in your session without the commit/push. Use `/check-implementation` when you want to drive + review; `/orchestrate` when you trust the pipeline to ship.
+
+### `/setup:map-codebase` — Workflow fan-out (a different primitive)
+
+Brownfield comprehension uses the **`Workflow` engine**, not the Agent-tool fleet above — a deterministic script with a hard concurrency cap and token budget. Your session drives the **interaction + sequencing** (the two checkpoints, the cascade); the Workflow runs the **parallel compute**.
+
+```
+Phase 0  Scan & filter        (deterministic bash, NO LLM — git ls-files -z, categorize, import-graph in-degree)
+   🛑 Checkpoint 1 — confirm scope (what's analyzed / skipped)
+Phase 1  Fan-out (parallel, concurrency-capped at min(16, cores−2)):
+            N × module-analyzer   (one per module — schema-validated summary, NEVER raw source)
+            docs-analyzer         (README/docs/ADRs → decisions, patterns, the "why")
+            infra-analyzer        (IaC/CI → hosting, deployables, external services)
+Phase 2  Synthesis (from summaries only — never re-reads code):
+            architecture-synthesizer  → architecture.md (+ topology + Mermaid map)
+            reverse-prd-writer         → docs/PRD.md
+            data-model-synthesizer     → domain/data-model.md (if persistence)
+   write artifacts
+   🛑 Checkpoint 2 — validate the reconstructed PRD
+Phase 4  Cascade → /maintain:refresh-brief → /setup:create-CLAUDE_MD
+```
+
+**Anti-flooding contract:** analyzers return distilled summaries, never file contents — so codebase size scales the *number of agents*, not the aggregator's context. Workflow agents inherit your **session model**; the script never holds source code.
+
+---
+
 ## When to run `/setup:createwikillm`
 
 `/setup:createwikillm` bootstraps a persistent, synthesized knowledge base (Karpathy's LLM Wiki pattern). It is **not** part of the minimal flow — run it only when the signals below match your project.
