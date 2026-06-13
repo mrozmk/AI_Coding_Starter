@@ -25,14 +25,24 @@ Only differences explicitly authorized by the user (documented in the plan or in
 
 ## 0. The reference-design contract
 
-The reference design lives in **`.agents/specs/design/Ready/`**. This directory is the opt-in trigger: if it does not exist, there is nothing to audit against (and `/orchestrate` skips the design phase entirely). A reference artifact may be any of:
+The reference design lives in **`.agents/specs/design/Ready/`** *or* in a **live Figma file exposed via Figma MCP** (`mcp__figma__*`). At least one must exist — if neither does, there is nothing to audit against (and `/orchestrate` skips the design phase entirely). A reference artifact may be any of:
 
-- a **standalone HTML/CSS mockup** (the most precise — every value is inspectable),
+- a **live Figma node via Figma MCP** (`mcp__figma__*`) — the canonical source when the design tool is connected (see the priority rule below),
+- a **standalone HTML/CSS mockup** (the most precise *static* form — every value is inspectable),
 - an **exported design** (e.g. a Figma/Sketch export, a design-tokens JSON, a style guide),
 - **annotated screenshots** plus a spec of tokens/spacing,
 - a **component storybook** entry treated as canonical.
 
 Whatever the form, it defines the **expected** model. Read it in full before auditing.
+
+### Reference-source priority (Figma MCP vs. static artifact)
+
+Detect whether **Figma MCP** is connected to this session: check the available tools for any `mcp__figma__*` tool (e.g. `get_code` / `get_variable_defs` / `get_image` / `get_metadata` / `get_code_connect_map` — exact names vary by server).
+
+- **Figma MCP is available** → it is the **canonical** source of the expected model. Pull the design live from Figma (see §3) rather than relying on a possibly-stale HTML export. You still need a target node: prefer a Figma node URL/ID passed as the reference argument; otherwise use the user's current Figma selection if the server exposes it; if neither is resolvable, **ask** for the node link instead of falling back silently. Any static artifact in `Ready/` then serves only as a secondary cross-check, and Figma wins on conflict.
+- **Figma MCP is NOT available** → fall back to the static artifact in `.agents/specs/design/Ready/` exactly as before. Do **not** invent or assume Figma values — audit only against what exists on disk.
+
+Either way, state in the report's **Scope** which source was used (Figma MCP node vs. static file path) so the audit is reproducible.
 
 ---
 
@@ -41,12 +51,12 @@ Whatever the form, it defines the **expected** model. Read it in full before aud
 Parse `$ARGUMENTS`:
 
 1. **Section / component name** (required): the area to audit (e.g. a page section, a component, a screen). May also be a filename.
-2. **Reference file** (optional): explicit path to the reference artifact. If omitted:
-   - Default: the most recent / best-matching artifact in `.agents/specs/design/Ready/`.
-   - If multiple plausible artifacts exist, ask the user which to use.
+2. **Reference** (optional): either a **Figma node URL/ID** (when Figma MCP is the source) or an explicit **path** to a static artifact. If omitted, resolve the source per the §0 priority rule:
+   - **Figma MCP available** → this is the source. Use the Figma node from the argument; else the user's current Figma selection if the server exposes it; else **ask** for the node link. Do **not** STOP, and do **not** silently fall back to a static file — Figma is canonical when connected.
+   - **Figma MCP not available** → default to the most recent / best-matching artifact in `.agents/specs/design/Ready/`. If multiple plausible artifacts exist, ask the user which to use.
 
 If no section provided → STOP and ask which section to audit.
-If no reference design exists at `.agents/specs/design/Ready/` → STOP and tell the user: "No reference design found at `.agents/specs/design/Ready/`. Pass an explicit reference path or add one."
+If **neither** source is resolvable — Figma MCP is not connected **and** no artifact exists at `.agents/specs/design/Ready/` — → STOP and tell the user: "No reference design found: Figma MCP is not connected and `.agents/specs/design/Ready/` is empty. Connect Figma MCP (and pass a node link), pass an explicit reference path, or add an artifact to `Ready/`."
 
 ---
 
@@ -66,6 +76,15 @@ Build a **list of in-scope files** and print it before auditing, so the user kno
 ---
 
 ## 3. Parse the reference → the expected model
+
+> **If Figma MCP is the source** (per §0 priority rule): build the expected model from the live file instead of parsing static markup. Typical flow (adapt to the server's actual tool names):
+> 1. `mcp__figma__get_metadata` (or equivalent) on the target node → the structure tree: every layer, its name/type, and nesting.
+> 2. `mcp__figma__get_variable_defs` (or equivalent) → resolve every design token / variable the node references to its **concrete value** (hex/rgba, px, ms). These are the authoritative token values to diff against §5.14.
+> 3. `mcp__figma__get_code` (or equivalent) → the generated representation of the node, to read exact spacing, typography, radii, shadows, and per-state styles.
+> 4. `mcp__figma__get_image` (or equivalent) → a render of the node for the side-by-side visual comparison in §6 (this is the "reference render" — you don't need to re-render an HTML artifact).
+> 5. `get_code_connect_map` (if present) → maps Figma components to real code components, so you audit the right live files in §2.
+>
+> Map the same five dimensions below onto what Figma exposes. If a dimension Figma can't express (e.g. a runtime `aria-live`) isn't in the file, audit it against the project's design conventions and note the gap — don't treat its absence as "no requirement."
 
 From the reference artifact, extract for the target section:
 
@@ -161,7 +180,7 @@ If the project's dev server (or a reachable deployed URL) is available, validate
 4. If the section has multiple locales, repeat per locale.
 5. `mcp__playwright__browser_snapshot` — capture the accessibility tree.
 6. `mcp__playwright__browser_console_messages` — flag errors/warnings.
-7. Render the reference artifact at the same viewports and screenshot the matching section.
+7. Obtain the **reference render**: if Figma MCP is the source, use the node image from §3 (`mcp__figma__get_image`); otherwise render the static artifact at the same viewports and screenshot the matching section.
 8. Compare side-by-side; note every visible difference (alignment, color saturation, spacing, rendering).
 
 If the dev server is **not** running: skip live screenshots (note it), do not start a long-running server without authorization, and proceed with the static audit. If the reference references external resources (web fonts, CDNs) that won't load offline, note rendering caveats — the audit of values is unaffected.
@@ -201,7 +220,7 @@ The threshold exists because dumping 50+ findings into chat buries the conclusio
 
 ### Scope
 - Live files audited: [list]
-- Reference design: [path + line range]
+- Reference design: [Figma MCP node URL/ID — or — static path + line range]
 - Viewports tested: desktop [✅ / ⏭️ skipped — reason], mobile [✅ / ⏭️]
 - Locales tested: [list / ⏭️]
 
