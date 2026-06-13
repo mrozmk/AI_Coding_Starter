@@ -1,5 +1,5 @@
 ---
-description: Full implementation quality loop — code-review (fix) → simplify → gates:verify-implementation (+ conditional design-parity audit), looping until the gates approve
+description: Full implementation quality loop — code-review (fix) → deep-review (structural cleanup) → verify-implementation (+ conditional design-parity audit), looping until the gates approve
 argument-hint: [plan-name]
 ---
 
@@ -14,7 +14,7 @@ The pieces it composes (each a distinct role — see CLAUDE.md / the command doc
 | Step | Skill / Agent | Role | Mutates? |
 |------|---------------|------|----------|
 | Correctness | `/code-review --fix` | find & fix logic bugs in the diff | ✅ yes |
-| Cleanliness | `/simplify` | apply reuse / simplification / efficiency / altitude cleanups | ✅ yes |
+| Structural cleanup | `/deep-review` | audit structure/maintainability (code-judo, file-size, spaghetti, layering, atomicity); apply high-conviction findings | ✅ yes |
 | Code gate | `/gates:verify-implementation` | tests/lint/build + semantic review + checklist + **code-level** design-token compliance | ❌ read-only |
 | Design gate *(conditional)* | `@orchestrator-designer` → `/gates:design-quality-check` | **pixel/structural parity** vs the reference design (Figma MCP or `.agents/specs/design/Ready/`) — spawned as a sub-agent to isolate its visual-tool output; runs **only** when the change touches UI **and** a reference exists | ❌ read-only |
 
@@ -26,8 +26,8 @@ The pieces it composes (each a distinct role — see CLAUDE.md / the command doc
 
 ## Why this order (correctness → cleanliness → code gate → design gate)
 
-- **Bugs first.** Don't polish code you're about to rewrite — a bug fix often changes the shape that `/simplify` then harmonizes.
-- **Cleanliness second.** `/simplify` refactors, which can introduce regressions — so it must be followed by the gate.
+- **Bugs first.** Don't restructure code you're about to rewrite — a bug fix often changes the shape that `/deep-review` then harmonizes.
+- **Structural cleanup second.** `/deep-review` refactors structure, which can introduce regressions — so it must be followed by the gate.
 - **Code gate next.** `/gates:verify-implementation` is read-only, so it never invalidates itself; it judges the final state and re-runs tests/build, catching any regression a mutator introduced.
 - **Design gate last (conditional).** Pixel/structural parity is the deepest, slowest check and only relevant for UI changes — so it runs after the code gate passes, and only when its preconditions hold (see Step 0). Its gaps feed the same fix channel as the code gate's.
 - **The loop absorbs order sensitivity:** if either gate blocks, its findings feed back into the next correctness pass.
@@ -59,8 +59,8 @@ For `N = 1, 2, 3`:
 **1a. Correctness — `/code-review`.**
 Run `/code-review` at `high` effort over the current diff. Apply the confirmed-bug findings to the working tree (the skill's `--fix` behavior). On iteration `N > 1`, prepend the previous round's unresolved gate findings — **both** the code gate's GAPS (Step 1c) **and** the designer's GAPS (Step 1d) — to the review's focus list, treating them as fixes to apply (a designer GAP is a concrete token/class/value change the fixer can make).
 
-**1b. Cleanliness — `/simplify`.**
-Run `/simplify` over the changed code. It applies reuse / simplification / efficiency / altitude cleanups (quality only — it does not hunt bugs; that was 1a).
+**1b. Structural cleanup — `/deep-review`.**
+Run `/deep-review` (pipeline mode) over the changed code. It audits structure/maintainability — code-judo simplifications, file-size, spaghetti growth, layering, type/boundary cleanliness, atomicity — and applies its high-conviction findings, recording anything that needs a human decision under `NEEDS_HUMAN`. Structure only — it does not hunt bugs; that was 1a.
 
 **1c. Code gate — `/gates:verify-implementation`.**
 Run `/gates:verify-implementation <plan>` (read-only). In diff-only mode, run it without a plan argument. Capture its verdict (`APPROVE` / `WARN` / `BLOCK`) and findings.
@@ -97,7 +97,7 @@ Parse its `=== DESIGNER REPORT ===` block: verdict (`passed` / `failed` / `skipp
 
 Iterations: <N> of 3
 - Correctness (/code-review): <count> bugs fixed — [brief list]
-- Cleanliness (/simplify):    <count> cleanups applied — [brief list]
+- Structural cleanup (/deep-review): <count> findings applied — [brief list]
 - Code gate (/gates:verify-implementation): <APPROVE | WARN | BLOCK>
 - Design gate (@orchestrator-designer): <passed | failed | skipped | not run — [no reference | backend change]>
 
@@ -128,9 +128,9 @@ Append at most one or two entries, newest-first. This step does **not** commit �
 
 ## CRITICAL rules
 
-- **Both gates stay read-only.** `/gates:verify-implementation` and `@orchestrator-designer` must never edit code — only `/code-review --fix` and `/simplify` mutate. Keeping the judges independent of the fixer is the whole point (no grading its own homework).
+- **Both gates stay read-only.** `/gates:verify-implementation` and `@orchestrator-designer` must never edit code — only `/code-review --fix` and `/deep-review` mutate. Keeping the judges independent of the fixer is the whole point (no grading its own homework).
 - **The design gate is conditional and defaults to skip.** Never run it on a change that touches no UI files or when no reference design exists (Step 0 `RUN_DESIGN`). A design audit on a backend change is a bug, not thoroughness.
 - **Cap at 3 iterations — escalate, don't grind.** Iteration limits exist to surface real blockers.
-- **A mutation must be followed by the gate(s).** Never end on a `/simplify` or `/code-review --fix` without re-running the code gate (and the design gate if `RUN_DESIGN`) — a refactor can break tests or shift a token.
+- **A mutation must be followed by the gate(s).** Never end on a `/deep-review` or `/code-review --fix` without re-running the code gate (and the design gate if `RUN_DESIGN`) — a refactor can break tests or shift a token.
 - **Never commit or push.** This command produces a commit-ready tree; committing is `/commit`, the full pipeline is `/orchestrate`.
 - **Non-mechanical blockers go to the human.** If a gate blocks on architecture, a product decision, a structural design gap, or an ambiguous design interpretation, stop and ask — fixers can't resolve those.

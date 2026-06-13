@@ -189,13 +189,22 @@ Skip this section if the plan has no design references.
 - **Reduced motion**: Respect `prefers-reduced-motion` for all animations.
 - **Responsive**: Proper breakpoints for all layouts — Tailwind `sm:`/`md:`/`lg:` if `IS_TAILWIND`, equivalent media queries otherwise.
 
-## 6. Plan-Specific Validation
+## 6. Plan-Specific Validation (Spec axis)
 
-- Does the code satisfy the plan's **acceptance criteria**?
+This is the **spec axis**: distinct from the semantic review above (which judged whether the code is *correct*), this judges whether the change implements the *right thing* — what the plan asked for, no more and no less. Correct code that builds the wrong feature still fails here. Check the diff against the plan along three independent lines, and **quote the plan/spec** for every finding:
+
+- **(a) Missing / partial requirements** — a requirement, acceptance criterion, or task in the plan that is not implemented, or only partially. Name the unmet criterion verbatim.
+- **(b) Unasked-for behavior / scope creep** — code that does something the plan did **not** ask for (extra endpoints, options, side effects, abstractions built "for later"). Unrequested scope is a risk, not a bonus — flag it so the user decides whether it belongs.
+- **(c) Wrong implementation** — a requirement that *is* addressed, but in a way that contradicts the plan's intent or contract (different shape, different semantics, different edge-case behavior than the spec describes).
+
+Then the concrete checks:
+
 - Are all **dependencies** declared in the plan actually imported and used?
 - If the plan specified **test files** — do they exist, run, and pass?
 - If the plan specified **i18n keys** — are they present in all locale files?
 - If the plan required **E2E** — was it validated? Use the project's test runner, MCP Playwright via `/test-e2e` if available, or document a manual check.
+
+If there is no plan (diff-only mode), skip (a)-(c) — there is no spec to compare against — and run only the concrete checks that apply.
 
 ## 7. Final Verdict
 

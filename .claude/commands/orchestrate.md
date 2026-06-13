@@ -169,11 +169,11 @@ Only when both assertions pass do you carry `FILES_TOUCHED` to Step 5.2.
 
 **On every fix-iteration re-spawn of the executor** (from Steps 5.2 / 5.3), pass the SAME `WORKTREE_PATH: <STEP_WORKTREE>` AND the SAME `model` as the initial spawn so the fix runs on the model the step was designed for. Re-run Step 5.1-recon after every re-spawn — a fix iteration can drift the same way the first pass can.
 
-### Step 5.1b — Quality refinement (review + simplify)
+### Step 5.1b — Quality refinement (review + deep-review)
 
-Runs on **every** step, after execution reconciles clean (5.1-recon) and before the verifier gate (5.2). This is where the pipeline applies the same `code-review → simplify` passes that `/check-implementation` runs standalone — fixing correctness bugs and applying cleanups *before* the independent gate judges the result. The verifier (Step 5.2) stays read-only, so the **fixer** (refiner) and the **judge** (verifier) are always different agents — the gate never grades its own work.
+Runs on **every** step, after execution reconciles clean (5.1-recon) and before the verifier gate (5.2). This is where the pipeline applies the same `code-review → deep-review` passes that `/check-implementation` runs standalone — fixing correctness bugs and applying structural cleanups *before* the independent gate judges the result. The verifier (Step 5.2) stays read-only, so the **fixer** (refiner) and the **judge** (verifier) are always different agents — the gate never grades its own work.
 
-This step is not a loop: the refiner runs **once** per step. The verifier's fix iterations (5.2) are correctness-only and handled by the executor — re-refining on every fix iteration is deliberately not done (it would re-spend `code-review`/`simplify` tokens on the bulk of the code that is already clean).
+This step is not a loop: the refiner runs **once** per step. The verifier's fix iterations (5.2) are correctness-only and handled by the executor — re-refining on every fix iteration is deliberately not done (it would re-spend `code-review`/`deep-review` tokens on the bulk of the code that is already clean).
 
 Spawn `@orchestrator-refiner` with the executor's working directory (flat mode: repo root; umbrella mode: `$STEP_WORKTREE`):
 
@@ -183,7 +183,7 @@ STEP_ID: <step_id>
 WORKTREE_PATH: <STEP_WORKTREE>
 FILES_TOUCHED:
 <list from Step 5.1>
-Refine these files per the refiner protocol: /code-review --fix (correctness), then /simplify (cleanliness). Do NOT verify, commit, or push. Report via the Refiner Output Contract.
+Refine these files per the refiner protocol: /code-review --fix (correctness), then /deep-review (structural cleanup — apply high-conviction findings). Do NOT verify, commit, or push. Report via the Refiner Output Contract.
 ```
 
 Parse the `=== REFINER REPORT ===` block.
@@ -193,13 +193,13 @@ Parse the `=== REFINER REPORT ===` block.
 | `completed` | Re-derive `FILES_TOUCHED` + re-reconcile (below), then go to Step 5.2.       |
 | `blocked`   | Mark step `blocked`, escalate with the `BLOCKERS:` list. STOP.               |
 
-**Re-derive `FILES_TOUCHED` + re-reconcile (mandatory).** `/simplify` can touch a file the executor never reported (e.g. a shared util it refactored). So after the refiner returns, recompute the touched set from ground truth and re-run the Step 5.1-recon path reconciliation against the refiner's report:
+**Re-derive `FILES_TOUCHED` + re-reconcile (mandatory).** `/deep-review` can touch a file the executor never reported (e.g. a shared util it refactored). So after the refiner returns, recompute the touched set from ground truth and re-run the Step 5.1-recon path reconciliation against the refiner's report:
 
 ```bash
 git -C "<workdir>" status --porcelain   # ACTUAL_STATUS after refinement
 ```
 
-Set `FILES_TOUCHED` = the union of the executor's list and **every** path in this `ACTUAL_STATUS`. Then re-run the Step 5.1-recon assertions (worktree-toplevel match + every path in the refiner's `FILES_MODIFIED`/`FILES_CREATED` appears in `ACTUAL_STATUS`); on any failure, mark the step `blocked` and escalate. The committer (5.4a) stages this updated `FILES_TOUCHED`, so a simplify-touched file dropped here would be silently left out of the commit — re-deriving is what prevents that.
+Set `FILES_TOUCHED` = the union of the executor's list and **every** path in this `ACTUAL_STATUS`. Then re-run the Step 5.1-recon assertions (worktree-toplevel match + every path in the refiner's `FILES_MODIFIED`/`FILES_CREATED` appears in `ACTUAL_STATUS`); on any failure, mark the step `blocked` and escalate. The committer (5.4a) stages this updated `FILES_TOUCHED`, so a deep-review-touched file dropped here would be silently left out of the commit — re-deriving is what prevents that.
 
 Record the refiner's `NEEDS_HUMAN` notes in the run-log. They are **informational, not blockers** — the verifier gate decides. If the verifier later blocks, include them in the escalation context (a defect the refiner flagged as needs-decision is often the same one the gate trips on).
 
@@ -473,8 +473,8 @@ Deploy is your call.
 
 - Implement, audit, or commit code yourself. Spawn the right sub-agent.
 - Skip the verifier or designer because "executor seemed careful." Quality gates are non-negotiable.
-- Skip the refiner (Step 5.1b), or let it commit/push/verify. The refiner only edits the step's files (`code-review --fix` + `simplify`); committing is the committer's job and the read-only gate is the verifier's. The refiner and the verifier must stay different agents — never collapse fixer and judge into one.
-- Carry the executor's `FILES_TOUCHED` straight to the committer after a refiner run without re-deriving from `git status`. `/simplify` may have touched a shared file the executor never reported; staging the stale list silently drops it from the commit (Step 5.1b re-derive).
+- Skip the refiner (Step 5.1b), or let it commit/push/verify. The refiner only edits the step's files (`code-review --fix` + `deep-review`); committing is the committer's job and the read-only gate is the verifier's. The refiner and the verifier must stay different agents — never collapse fixer and judge into one.
+- Carry the executor's `FILES_TOUCHED` straight to the committer after a refiner run without re-deriving from `git status`. `/deep-review` may have touched a shared file the executor never reported; staging the stale list silently drops it from the commit (Step 5.1b re-derive).
 - Auto-rebase on push conflicts. Always escalate.
 - Run `git push --force` under any circumstance. Even with user instruction, ask for confirmation twice.
 - Mark a step `done` without a successful push (Step 5.4b). The committer commits; you push; both must succeed (or a deliberate user override via Phase 6 option 4).
@@ -486,7 +486,7 @@ Deploy is your call.
 
 ## Reusability note
 
-This command and its sub-agents are project-scoped under `.claude/` for now. They are intentionally generic: they do not reference `wp-plugin`, `Audit AI`, `auditai.cc`, or any project-specific concept. The only project-specific assumption is the convention `.agents/plans/active/` ↔ `.agents/plans/done/` and the umbrella's `## Execution Plan` section format. To port to another project, copy `.claude/agents/orchestrator-*.md` and `.claude/commands/orchestrate.md`, ensure the target project has the `execute`, `gates:verify-implementation`, `commit` skills (and optionally `gates:design-quality-check`), the `code-review` and `simplify` skills used by the refiner (Step 5.1b), and ensure umbrella plans follow the `## Execution Plan` table convention.
+This command and its sub-agents are project-scoped under `.claude/` for now. They are intentionally generic: they do not reference `wp-plugin`, `Audit AI`, `auditai.cc`, or any project-specific concept. The only project-specific assumption is the convention `.agents/plans/active/` ↔ `.agents/plans/done/` and the umbrella's `## Execution Plan` section format. To port to another project, copy `.claude/agents/orchestrator-*.md` and `.claude/commands/orchestrate.md`, ensure the target project has the `execute`, `gates:verify-implementation`, `commit` skills (and optionally `gates:design-quality-check`), the `code-review` and `deep-review` skills used by the refiner (Step 5.1b), and ensure umbrella plans follow the `## Execution Plan` table convention.
 
 > **Push model:** the committer only commits; the orchestrator pushes from the main session (Step 5.4b). This is deliberate — a sub-agent does not inherit the user's push authorization, so delegating the push to a sub-agent gets blocked even on an authorized run. If a target project allows sub-agent pushes, this split is harmless; if it doesn't (most do not), this is required. The `push` skill is therefore NOT needed by the committer agent.
 >
