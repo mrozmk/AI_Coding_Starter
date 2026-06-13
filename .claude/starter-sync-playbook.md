@@ -27,6 +27,7 @@ Save the starter's commit hash (`git -C /tmp/ai-coding-starter-sync rev-parse --
 - `.claude/README.md` — **the framework guide**. Mind the path mapping: in the starter this guide lives as the **root `README.md`** (the GitHub template page); in a bootstrapped project it lives at `.claude/README.md` (moved there by `/setup:create-CLAUDE_MD`). Strategy: overwrite the project's `.claude/README.md` with the content of the starter's **root `README.md`**. Do **not** copy the starter's root README into the project root — that would destroy the project's README (see category C).
 - `.claude/starter-sync-playbook.md` — **this playbook itself**. It is framework content, so it lives under `.claude/` (not `docs/`, which is project-owned / category C) precisely so it can self-update: each sync pulls the newest playbook from upstream. Overwrite wholesale.
 - `.claude/workflows/*.js` — `Workflow` orchestration scripts (e.g. `map-codebase.js`). Framework content — overwrite wholesale.
+- `.claude/STARTER-LICENSE` — the starter's own license, preserved here at bootstrap (the starter's root `LICENSE` is moved here by `/setup:create-CLAUDE_MD` so the project root `LICENSE` is the cloner's own). Path mapping mirrors `.claude/README.md`: overwrite the project's `.claude/STARTER-LICENSE` with the starter's **root `LICENSE`**. Do **not** touch the project's root `LICENSE` (category C).
 
 ### Category B — **merge carefully**, show the diff and ask first
 

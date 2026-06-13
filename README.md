@@ -396,6 +396,10 @@ After bootstrap:
 |------|-------|------------|
 | `README.md` (root) | **your project** | you / `/setup:create-CLAUDE_MD` placeholder fill |
 | `.claude/README.md` | **the framework** | `.claude/starter-sync-playbook.md` (pulls the starter's newest guide) |
+| `LICENSE` (root) | **your project** | `/setup:create-CLAUDE_MD` bootstrap — you pick the license type + copyright holder |
+| `.claude/STARTER-LICENSE` | **the starter** (MIT attribution, preserved) | `.claude/starter-sync-playbook.md` |
+
+> **`LICENSE` gets the same treatment as the README.** On first `/setup:create-CLAUDE_MD`, the starter's MIT license moves to `.claude/STARTER-LICENSE` (preserving the starter author's copyright notice — MIT requires it to survive in copies of the scaffolding) and a fresh root `LICENSE` is generated for *your* project from the type + copyright holder you choose. Later runs leave your `LICENSE` untouched.
 
 When you sync workflow updates from upstream (see below), the framework guide is refreshed at
 `.claude/README.md` — your project's root README is never touched.
