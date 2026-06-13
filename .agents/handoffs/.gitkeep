@@ -1,0 +1,2 @@
+# Keeps .agents/handoffs/ in the repo structure.
+# Actual handoff-*.md files are gitignored (local session scratchpad).
