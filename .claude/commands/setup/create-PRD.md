@@ -154,7 +154,7 @@ After creating the PRD:
 4. **Recommend the concrete next steps, in order:**
    1. Review the PRD and correct anything you disagree with.
    2. Run `/brainstorm <feature idea>` to design the first feature. `/brainstorm` writes the approved design to `.agents/specs/` (including the `External docs required: yes/no` flag), then hands off to `/plan-feature` — which automatically decides whether to run a web-research phase based on that flag.
-   3. Run `/create-CLAUDE_MD` once the first feature has produced scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase and fills in the project-specific sections of `CLAUDE.md`. Skipping it early is fine — the seed `CLAUDE.md` already provides baseline rules.
+   3. Run `/setup:create-CLAUDE_MD` once the first feature has produced scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase and fills in the project-specific sections of `CLAUDE.md`. Skipping it early is fine — the seed `CLAUDE.md` already provides baseline rules.
 
 ## Notes
 

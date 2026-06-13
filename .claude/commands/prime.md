@@ -38,7 +38,7 @@ Use these values to decide what to read in Step 2 and Step 3.
 If `project-brief.md` is `status: populated` → **Read it.**
 
 If `status: empty` (or missing):
-- Emit warning in the report: `⚠️ project-brief.md is empty — run /refresh-brief for faster primes.`
+- Emit warning in the report: `⚠️ project-brief.md is empty — run /maintain:refresh-brief for faster primes.`
 - Minimal fallback: read **first 100 lines** of `docs/PRD.md` (use `Read` with `limit: 100`).
 - If `docs/PRD.md` does not exist → note `no PRD yet` and continue.
 
@@ -47,7 +47,7 @@ If `status: empty` (or missing):
 If `architecture.md` is `status: populated` → **Read it.**
 
 If `status: empty` (or missing):
-- Emit warning: `⚠️ architecture.md is empty — run /create-CLAUDE_MD.`
+- Emit warning: `⚠️ architecture.md is empty — run /setup:create-CLAUDE_MD.`
 - Minimal fallback (no full tree dump):
   !`find . -maxdepth 2 -type d -not -path '*/node_modules*' -not -path '*/.git*' -not -path '*/dist*' -not -path '*/build*' -not -path '*/.venv*' -not -path '*/venv*' -not -path '*/target*' -not -path '*/.next*' 2>/dev/null | head -30`
 
@@ -89,8 +89,8 @@ Do not read plan files in `/prime` itself. Read them only when the user's concre
 
 ### 8. Skipped deliberately
 
-- `.agents/sources/` — raw inputs for `/create-PRD` and `/prime-ba`, never loaded by engineering `/prime`.
-- `.agents/memory/archive/` — historical pruned entries (created by `/cleanup-workflow` Phase 2). **Never auto-loaded.** Read on demand only when investigating past decisions.
+- `.agents/sources/` — raw inputs for `/setup:create-PRD` and `/prime-ba`, never loaded by engineering `/prime`.
+- `.agents/memory/archive/` — historical pruned entries (created by `/maintain:cleanup-workflow` Phase 2). **Never auto-loaded.** Read on demand only when investigating past decisions.
 - `README.md` — typically duplicates brief; load on demand if needed.
 - Subdirectory `README.md` files — on-demand only.
 
@@ -124,8 +124,8 @@ Render the output as a bulleted list of `<file> — <size>, modified <date>`, on
 - Uncommitted: <count> files
 
 ### Warnings (omit section if no warnings)
-- ⚠️ `project-brief.md` empty — run `/refresh-brief`
-- ⚠️ `architecture.md` empty — run `/create-CLAUDE_MD`
+- ⚠️ `project-brief.md` empty — run `/maintain:refresh-brief`
+- ⚠️ `architecture.md` empty — run `/setup:create-CLAUDE_MD`
 
 ### Mode
 - Quick | Full
@@ -138,4 +138,4 @@ Render the output as a bulleted list of `<file> — <size>, modified <date>`, on
 
 - Quick mode is the default because it covers ~90% of sessions cheaply. Full mode pulls in 4-7 extra files plus reference/specs — only worth it when context budget is generous.
 - The `When to Read` table in `index.md` is the **runtime routing** (what to load after `/prime`, mid-conversation). Quick mode trusts that table; full mode pre-loads aggressively to skip later read calls.
-- If both `architecture.md` and `project-brief.md` are empty, `/prime` is operating in *bootstrap mode* — show both warnings and minimal fallbacks. Recommend running `/create-CLAUDE_MD` then `/refresh-brief` (in that order) before further work.
+- If both `architecture.md` and `project-brief.md` are empty, `/prime` is operating in *bootstrap mode* — show both warnings and minimal fallbacks. Recommend running `/setup:create-CLAUDE_MD` then `/maintain:refresh-brief` (in that order) before further work.

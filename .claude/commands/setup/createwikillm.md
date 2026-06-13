@@ -57,7 +57,7 @@ The wiki lives at `.agents/wiki/`. This path is fixed to keep other commands (`/
 What existing files or data will serve as raw material for wiki creation?
 (Claude Code reads these to synthesize wiki pages — it never modifies them.)
 
-> **Default suggestion:** `.agents/sources/` — the starter's shared input layer for raw materials (also used by `/create-PRD`). If that directory already holds relevant briefs/transcripts/data, propose it first, then ask whether additional locations should be added.
+> **Default suggestion:** `.agents/sources/` — the starter's shared input layer for raw materials (also used by `/setup:create-PRD`). If that directory already holds relevant briefs/transcripts/data, propose it first, then ask whether additional locations should be added.
 >
 > Other common examples: `data/knowledge/*.json`, `docs/*.md`, `src/`, API reference files, scraped data files
 
@@ -396,7 +396,7 @@ Answer a question using the project wiki — not guesses, not raw sources.
 ### 1. Orient
 - Read `.agents/wiki/SCHEMA.md` — format and rules
 - Read `.agents/wiki/index.md` — page catalog
-- If either file is missing, STOP and tell the user: "No wiki found. Run `/createwikillm` first."
+- If either file is missing, STOP and tell the user: "No wiki found. Run `/setup:createwikillm` first."
 
 ### 2. Find relevant pages
 - Extract keywords from $ARGUMENTS (English base forms, per SCHEMA `keyword[]` rules)

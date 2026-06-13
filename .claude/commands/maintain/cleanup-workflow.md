@@ -2,7 +2,7 @@
 description: All-in-one AI workflow housekeeping — broken-reference check, memory pruning to archive, workflow health warnings
 ---
 
-# /cleanup-workflow — AI Workflow Maintenance
+# /maintain:cleanup-workflow — AI Workflow Maintenance
 
 Four-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when the project's been moving fast and you want to make sure references aren't broken, memory hasn't bloated with stale entries, orphaned artifacts are surfaced, and the workflow tooling itself hasn't drifted.
 
@@ -178,7 +178,7 @@ Action? [k]eep / [a]rchive / [d]elete (rare) / [s]kip-for-now
 - **Keep** → leave entry in place. Don't ask again this run.
 - **Archive** → move to `.agents/memory/archive/<file>-YYYY-MM-DD.md`, append at TOP (newest at top, same convention as live files).
 - **Delete** → permanently remove from file (use only for truly worthless entries; warn user).
-- **Skip-for-now** → leave entry, but it will reappear in next `/cleanup-workflow` run.
+- **Skip-for-now** → leave entry, but it will reappear in next `/maintain:cleanup-workflow` run.
 
 **Default suggestion when uncertain:** archive. It's reversible (entry still in git history + archive file).
 
@@ -198,7 +198,7 @@ For each "archive" decision:
 
    # Archived entries from `errors.md`
 
-   > These entries were archived by `/cleanup-workflow` because they were stale (date heuristic and/or code-grounded heuristic). Do not load this file in `/prime` or any agent — it is historical record only.
+   > These entries were archived by `/maintain:cleanup-workflow` because they were stale (date heuristic and/or code-grounded heuristic). Do not load this file in `/prime` or any agent — it is historical record only.
    ```
 
 ### 2.4 Phase 2 output
@@ -240,7 +240,7 @@ head -10 <file> | grep -q '^status: empty' && \
 ```
 
 If `status: empty` AND `now - last_modified > 30 days` → warning:
-> ⚠️ `<file>` has `status: empty` and hasn't been touched in <X> days. If your project is past bootstrapping, run the owning command (`/refresh-brief` or `/create-CLAUDE_MD`) to populate it.
+> ⚠️ `<file>` has `status: empty` and hasn't been touched in <X> days. If your project is past bootstrapping, run the owning command (`/maintain:refresh-brief` or `/setup:create-CLAUDE_MD`) to populate it.
 
 ### 3.2 Signal: specs without matching done plan
 
@@ -282,7 +282,7 @@ For each append-style memory file:
 - `api.md` > 500 lines → warning
 - Any `domain/*.md` > 500 lines → warning (excluding `business-model.md` which is regenerated)
 
-> ⚠️ `<file>` is <N> lines. Consider running Phase 2 of `/cleanup-workflow` to prune stale entries (you may have skipped some on the previous run).
+> ⚠️ `<file>` is <N> lines. Consider running Phase 2 of `/maintain:cleanup-workflow` to prune stale entries (you may have skipped some on the previous run).
 
 ### 3.6 Phase 3 output
 
@@ -290,7 +290,7 @@ For each append-style memory file:
 🚦 Workflow Health — <N> signals detected
 
 ⚠️ STATUS: EMPTY STUCK (<count>):
-   .agents/memory/project-brief.md — empty for 47 days. Run /refresh-brief.
+   .agents/memory/project-brief.md — empty for 47 days. Run /maintain:refresh-brief.
    ...
 
 ⚠️ ORPHAN SPECS (<count>):
@@ -303,7 +303,7 @@ For each append-style memory file:
    .claude/audit.log — 7,231 lines. Consider rotating.
 
 ⚠️ LARGE MEMORY FILES (<count>):
-   errors.md — 542 lines. Consider another /cleanup-workflow pass.
+   errors.md — 542 lines. Consider another /maintain:cleanup-workflow pass.
 
 ✅ Other signals: clean.
 ```
@@ -329,7 +329,7 @@ Parse `prime.md` (and `prime-ba.md`) for the files they load **every** session (
 - If the file is `status: empty` or missing → it is being loaded (or attempted) every prime for no value → flag.
 - If the file is oversized (> 500 lines for a memory file, or visibly larger than its peers) → flag as a prime-cost signal.
 
-> ⚠️ `/prime` loads `<file>` every session but it is `<empty / 542 lines>`. Consider populating it (`/refresh-brief`, `/create-CLAUDE_MD`) or trimming it (Phase 2).
+> ⚠️ `/prime` loads `<file>` every session but it is `<empty / 542 lines>`. Consider populating it (`/maintain:refresh-brief`, `/setup:create-CLAUDE_MD`) or trimming it (Phase 2).
 
 **Dead-memory cross-check (from the sidecar).** If `.claude/memory-usage.json` exists, flag any append-style memory file whose `last_referenced` is > 90 days old AND that is not in prime's always-load set — it is neither auto-loaded nor consulted on demand, i.e. dead weight worth reviewing (route it to Phase 2 for pruning). A file absent from the sidecar is not flagged (tracking may be new). If the sidecar does not exist yet, note `no read-usage telemetry yet (track-memory-read hook has not run)` and skip this check.
 
@@ -385,7 +385,7 @@ If zero signals:
 After all 4 phases:
 
 ```markdown
-# /cleanup-workflow run summary — YYYY-MM-DD
+# /maintain:cleanup-workflow run summary — YYYY-MM-DD
 
 ## Phase 1: References
    - Markdown links:    <X> OK, <Y> broken
@@ -408,7 +408,7 @@ After all 4 phases:
 ## Next steps
    - Fix Phase 1 broken refs (manual).
    - Address Phase 3 warnings as time permits.
-   - Re-run /cleanup-workflow before next major milestone.
+   - Re-run /maintain:cleanup-workflow before next major milestone.
 ```
 
 ---

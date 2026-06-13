@@ -22,22 +22,24 @@ Zapisz commit hash startera (`git -C /tmp/ai-coding-starter-sync rev-parse --sho
 - `.claude/commands/*.md` — wszystkie slash commands
 - `.claude/agents/*.md` — definicje subagentów
 - `.claude/skills/**` — definicje skilli (np. `jira/SKILL.md`)
-- `.claude/templates/*.md` — szablony (np. `CLAUDE-template.md`)
+- `.claude/templates/*.md` — szablony (np. `CLAUDE-template.md`, `README-template.md`)
+- `.claude/README.md` — **przewodnik frameworka**. Uwaga na mapowanie ścieżek: w starterze ten przewodnik leży jako **root `README.md`** (na GitHub template page); w projekcie po bootstrapie mieszka w `.claude/README.md` (przeniesiony przez `/setup:create-CLAUDE_MD`). Strategia: nadpisz `.claude/README.md` projektu treścią **root `README.md` startera**. **Nie** kopiuj root README startera do roota projektu — to zniszczyłoby README projektu (patrz kategoria C).
 
 ### Kategoria B — **merge ostrożnie**, najpierw pokaż diff i zapytaj
 
 - `.claude/settings.json` — projekt może mieć własne permissions. Strategia: weź **union** wpisów `permissions.allow` / `permissions.deny` ze startera i projektu. Nie usuwaj wpisów z projektu których nie ma w starterze. Pokaż mi diff przed zapisem.
-- `.agents/memory/index.md` — `Quick Reference` i `Loader Convention` ze startera, ale `When to Read` może mieć projektowe wiersze dopisane przez `/create-CLAUDE_MD`. Strategia: nadpisz strukturą startera, potem przywróć projektowe wiersze (te których nie ma w starterze).
+- `.agents/memory/index.md` — `Quick Reference` i `Loader Convention` ze startera, ale `When to Read` może mieć projektowe wiersze dopisane przez `/setup:create-CLAUDE_MD`. Strategia: nadpisz strukturą startera, potem przywróć projektowe wiersze (te których nie ma w starterze).
 - `.gitignore` — dopisz brakujące wpisy ze startera (np. `.claude/audit.log`, `.mcp.json`, `.agents/memory/archive/`), **nie usuwaj** projektowych.
 - `.mcp.json.example` — nadpisz, jeśli starter ma nowszą wersję.
 
 ### Kategoria C — **nie ruszaj** (treść projektu)
 
 - `CLAUDE.md` — projektowe rules. Jeśli starter ma nową strukturę sekcji, zgłoś to w raporcie i zaproponuj patch — ale nie nadpisuj automatycznie.
-- `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerowane na podstawie projektu (`/create-CLAUDE_MD`, `/refresh-brief`).
+- `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerowane na podstawie projektu (`/setup:create-CLAUDE_MD`, `/maintain:refresh-brief`).
 - `.agents/memory/errors.md`, `decisions.md`, `api.md`, `patterns.md` — append-only, historia projektu.
 - `.agents/sources/`, `.agents/specs/`, `.agents/plans/`, `.agents/reference/`, `.agents/wiki/`, `.agents/memory/archive/` — content projektu.
-- `README.md`, `CHANGELOG.md`, `docs/`, dowolne pliki kodu — dokumentacja i kod projektu.
+- `README.md` (root) — README **projektu** (wygenerowany przez `/setup:create-CLAUDE_MD` na bootstrapie). Nigdy nie nadpisuj treścią startera. Przewodnik frameworka aktualizujesz w `.claude/README.md` (kategoria A).
+- `CHANGELOG.md`, `docs/`, dowolne pliki kodu — dokumentacja i kod projektu.
 
 ## Krok 3: dry-run raport (PRZED jakąkolwiek zmianą)
 
@@ -77,7 +79,7 @@ Pokaż:
 - **Zaktualizowane pliki:** lista
 - **Zmergowane pliki:** lista (settings.json, index.md, .gitignore)
 - **Pominięte (kategoria C):** liczba
-- **Sugestie do akcji:** np. "regeneruj `architecture.md` przez `/create-CLAUDE_MD` jeśli format się zmienił", "uruchom `/prime` żeby zwalidować nowy kontekst"
+- **Sugestie do akcji:** np. "regeneruj `architecture.md` przez `/setup:create-CLAUDE_MD` jeśli format się zmienił", "uruchom `/prime` żeby zwalidować nowy kontekst"
 
 Zaproponuj commit message:
 ```

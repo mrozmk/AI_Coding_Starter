@@ -7,7 +7,7 @@
 #
 # Design note: usage is LOCAL telemetry — your read patterns differ from a teammate's,
 # so it is gitignored and never committed (unlike the original which mutated each memory
-# file's frontmatter, churning git on every read). It feeds /cleanup-workflow's
+# file's frontmatter, churning git on every read). It feeds /maintain:cleanup-workflow's
 # dead-memory pruning (Phase 2) and auto-load freshness (Phase 4.1).
 #
 # Silent on non-memory paths and the archive. Must always exit 0 — runs async; a read

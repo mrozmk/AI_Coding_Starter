@@ -9,7 +9,7 @@ argument-hint: [path-to-prd]
 
 Generate or refresh `.agents/memory/project-brief.md` from a PRD so that `/prime` can load fast project context without reading the entire PRD. When the PRD contains pricing / monetization / billing content, also seed or refresh `.agents/memory/domain/business-model.md` with code-relevant operational facts.
 
-This is an **on-demand** command. It does not run automatically as part of `/create-PRD` — you invoke it when you want a fresh distilled view.
+This is an **on-demand** command. It does not run automatically as part of `/setup:create-PRD` — you invoke it when you want a fresh distilled view.
 
 ## Inputs
 
@@ -21,7 +21,7 @@ This is an **on-demand** command. It does not run automatically as part of `/cre
 
 - Resolve PRD path: `$ARGUMENTS` if provided, otherwise `docs/PRD.md`.
 - If the file does not exist → **stop** and tell the user:
-  > "PRD not found at `<path>`. Run `/create-PRD` first to generate one, or pass an explicit path: `/refresh-brief path/to/prd.md`."
+  > "PRD not found at `<path>`. Run `/setup:create-PRD` first to generate one, or pass an explicit path: `/maintain:refresh-brief path/to/prd.md`."
 - Do not write anything when the PRD is missing.
 
 ### 2. Read PRD
@@ -42,7 +42,7 @@ Path: `.agents/memory/project-brief.md`.
 ```yaml
 ---
 status: populated
-populated_by: /refresh-brief
+populated_by: /maintain:refresh-brief
 description: Distilled TL;DR of the PRD — loaded by /prime instead of full PRD
 ---
 ```
@@ -74,7 +74,7 @@ Path: `.agents/memory/domain/business-model.md`.
 ```yaml
 ---
 status: populated
-populated_by: /refresh-brief
+populated_by: /maintain:refresh-brief
 description: Operational facts about pricing, plans, billing — what the code needs to know about the business model
 ---
 ```

@@ -1,13 +1,24 @@
+<!-- STARTER-KIT-README: this is the framework guide. On bootstrap, /setup:create-CLAUDE_MD moves
+     this file to .claude/README.md and generates a project README in its place. See the
+     "About this README" callout below. -->
+
 # AI-Assisted Development Starter Kit
 
 A minimal, opinionated starter for projects built with [Claude Code](https://claude.com/claude-code) as a first-class development partner.
 
 This repo ships **no application code** — only the scaffolding that makes Claude a reliable collaborator:
 
-- `.claude/` — commands, agents, and permission settings
+- `.claude/` — commands, agents, skills, and permission settings
 - `.agents/` — five persistent knowledge layers (sources, memory, reference, specs, plans)
 - `CLAUDE.md` — project rules seed, ready to be filled in per project
 - `.gitignore`, sensible defaults
+
+> **About this README.** While you read it in the *starter repo*, it documents the **framework**.
+> The first time you run `/setup:create-CLAUDE_MD` in a real project, this guide is moved to
+> `.claude/README.md` and a fresh, project-specific `README.md` is generated in its place (from
+> `.claude/templates/README-template.md`). That keeps the root README describing *your* project
+> while the framework guide stays available at `.claude/README.md`. See
+> [The root README is yours — the framework guide moves aside](#the-root-readme-is-yours--the-framework-guide-moves-aside).
 
 ---
 
@@ -17,10 +28,10 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/verify-implementation`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/create-PRD`, `/refresh-brief`, `/stack-research`, `/create-CLAUDE_MD`, `/test-e2e`, `/cleanup-workflow`, `/check-quality`, `/createwikillm`, `/remember`, `/explain` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/verify-implementation`, `/check-implementation`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/test-e2e`, `/maintain:cleanup-workflow`, `/check-quality`, `/setup:createwikillm`, `/remember`, `/explain` |
 | `agents/` | Sub-agents — `documentation-manager` |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
-| `templates/` | Starting templates — `CLAUDE-template.md` |
+| `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
 ### `.agents/`
@@ -29,7 +40,7 @@ Five layers of persistent project knowledge:
 
 | Layer | Contents | Lifecycle |
 |-------|----------|-----------|
-| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/create-PRD` and `/createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
+| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/setup:create-PRD` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
 | `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
 | `specs/` | Design docs from `/brainstorm` | Lives with the feature |
@@ -37,7 +48,7 @@ Five layers of persistent project knowledge:
 
 Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (≤200 lines) and points to memory files instead of duplicating their content.
 
-**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/create-CLAUDE_MD` or `/refresh-brief`) to populate them.
+**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/setup:create-CLAUDE_MD` or `/maintain:refresh-brief`) to populate them.
 
 ---
 
@@ -91,7 +102,7 @@ New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /exec
 - **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
 - **MCP Playwright** — only needed if you plan to use `/test-e2e` for browser-driven E2E test generation. See [MCP Playwright setup](#mcp-playwright-optional) below.
 
-That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/create-CLAUDE_MD` adapts to whatever you initialize).
+That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/setup:create-CLAUDE_MD` adapts to whatever you initialize).
 
 ### Recommended MCP servers
 
@@ -99,7 +110,7 @@ These three MCP servers extend the shipped commands. Install only what you actua
 
 | MCP | What it does | Repo | Used by |
 |-----|--------------|------|---------|
-| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/stack-research`, `/brainstorm` for new deps) |
+| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/setup:stack-research`, `/brainstorm` for new deps) |
 | **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/verify-implementation` |
 | **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
 
@@ -145,7 +156,7 @@ Once installed, `/test-e2e` can drive a real browser to explore your UI and gene
 ## Quick start
 
 > **Bootstrap chain (steps 3–7):**
-> `/create-PRD` → `/stack-research` → `/refresh-brief` → `/create-CLAUDE_MD` (after first scaffolding) → `/brainstorm <first feature>`.
+> `/setup:create-PRD` → `/setup:stack-research` → `/maintain:refresh-brief` → `/setup:create-CLAUDE_MD` (after first scaffolding) → `/brainstorm <first feature>`.
 >
 > Each command produces a concrete artifact and feeds the next one. Running them in order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
 
@@ -182,14 +193,14 @@ All three give you the same result: a fresh project with starter scaffolding and
 
 ### 2. Drop raw materials (optional)
 
-If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/create-PRD` and `/createwikillm` will pick them up automatically as input context.
+If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/setup:create-PRD` and `/setup:createwikillm` will pick them up automatically as input context.
 
-> **Next step:** once the materials are in place, run `/create-PRD` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation to draft the PRD.
+> **Next step:** once the materials are in place, run `/setup:create-PRD` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation to draft the PRD.
 
 ### 3. Define the product
 
 ```
-/create-PRD
+/setup:create-PRD
 ```
 
 Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/sources/`. The PRD defines **what** you're building and **why** — target users, MVP scope, success criteria. Tech stack is left as a placeholder; you'll fill it in step 4.
@@ -197,11 +208,11 @@ Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/so
 ### 4. Research the technology stack
 
 ```
-/stack-research              # project-level — full stack from PRD (recommended after /create-PRD)
-/stack-research realtime     # feature-level — focused research on a specific area
+/setup:stack-research              # project-level — full stack from PRD (recommended after /setup:create-PRD)
+/setup:stack-research realtime     # feature-level — focused research on a specific area
 ```
 
-> Run this **after** `/create-PRD`. Performs structured web research, proposes 2–3 candidate stacks with concrete pros/cons, asks you to approve the recommendation, then **updates the PRD's `Technology Stack` (and `Core Architecture & Patterns` where relevant) sections** — with diff preview and per-section approval before any edit.
+> Run this **after** `/setup:create-PRD`. Performs structured web research, proposes 2–3 candidate stacks with concrete pros/cons, asks you to approve the recommendation, then **updates the PRD's `Technology Stack` (and `Core Architecture & Patterns` where relevant) sections** — with diff preview and per-section approval before any edit.
 >
 > Also auto-appends a one-line entry to `.agents/memory/decisions.md` (newest at top), so future Claude sessions discover the architectural choice without rereading the full brief.
 
@@ -210,26 +221,27 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 ### 5. Distill the PRD into a fast-load brief
 
 ```
-/refresh-brief
+/maintain:refresh-brief
 ```
 
-> Run this **after** `/stack-research` so the brief reflects the now-complete `Technology Stack` section. Generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start. Re-run whenever PRD changes substantially.
+> Run this **after** `/setup:stack-research` so the brief reflects the now-complete `Technology Stack` section. Generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start. Re-run whenever PRD changes substantially.
 >
 > If the PRD contains pricing/billing/monetization sections, this also seeds `.agents/memory/domain/business-model.md` with code-relevant operational facts (plan IDs, feature gates, Stripe events).
 
 ### 6. Initialize project rules (after first scaffolding)
 
 ```
-/create-CLAUDE_MD
+/setup:create-CLAUDE_MD
 ```
 
 > Run this **after** you have at least some scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 
-It generates **two files** in tandem:
+It generates **three files** in tandem:
 - `CLAUDE.md` — slim rules file (≤200 lines), filled with project overview, tech stack, commands, conventions
 - `.agents/memory/architecture.md` — full directory map, module roles, naming rules (loaded on demand, not in every conversation)
+- `README.md` — the project's human-facing README. On the **first run** this also moves the starter's framework guide to `.claude/README.md` (see [below](#the-root-readme-is-yours--the-framework-guide-moves-aside)).
 
-This split keeps `CLAUDE.md` cheap to load every session while preserving the detailed map.
+The CLAUDE/architecture split keeps `CLAUDE.md` cheap to load every session while preserving the detailed map.
 
 ### 7. Design a feature
 
@@ -277,21 +289,22 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
 | `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
 | `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
-| `/refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
-| `/stack-research` | Once after `/create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/stack-research realtime`, `/stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
+| `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
+| `/setup:stack-research` | Once after `/setup:create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/setup:stack-research realtime`, `/setup:stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
 | `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
-| `/cleanup-workflow` | Periodic AI-workflow housekeeping. Three sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phase 3. |
+| `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Three sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phase 3. |
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/remember <topic>` | After a discovery — routes the entry into the right memory file. |
 | `/check-quality` | Before committing — format, lint, type-check, file-size gates. |
 | `/verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
+| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `simplify` (cleanliness) → `verify-implementation` (read-only gate), looping up to 3× until the gate approves, then stopping for `/commit`. Unlike `/verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
 | `/explain <code>` | When Claude is exploring unfamiliar code. |
 
 ---
 
-## When to run `/createwikillm`
+## When to run `/setup:createwikillm`
 
-`/createwikillm` bootstraps a persistent, synthesized knowledge base (Karpathy's LLM Wiki pattern). It is **not** part of the minimal flow — run it only when the signals below match your project.
+`/setup:createwikillm` bootstraps a persistent, synthesized knowledge base (Karpathy's LLM Wiki pattern). It is **not** part of the minimal flow — run it only when the signals below match your project.
 
 **Run it when:**
 - You have **≥ 3-5 matured specs in `.agents/specs/`** or completed plans in `.agents/plans/done/`, and the same knowledge keeps resurfacing across features.
@@ -305,7 +318,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 - There is **no product-LLM** consuming the wiki at runtime, and `.agents/sources/` is empty or ephemeral.
 - You would be maintaining it "just in case" — an unused wiki rots faster than it helps.
 
-If in doubt: do **not** run it. You can always add `/createwikillm` later; removing an unused wiki after the fact is more work than adding one when you actually need it.
+If in doubt: do **not** run it. You can always add `/setup:createwikillm` later; removing an unused wiki after the fact is more work than adding one when you actually need it.
 
 ---
 
@@ -339,11 +352,44 @@ User-local overrides live in `.claude/settings.local.json` (gitignored) — Clau
 
 ## Customizing the starter
 
-- Edit `CLAUDE.md` placeholders after `/create-CLAUDE_MD` runs — add project-specific rules, naming conventions, key files.
+- Edit `CLAUDE.md` placeholders after `/setup:create-CLAUDE_MD` runs — add project-specific rules, naming conventions, key files.
 - Add reference docs to `.agents/reference/` as you integrate new APIs/libraries.
 - Drop in new slash commands under `.claude/commands/` — they appear automatically.
 - Tighten or loosen `.claude/settings.json` permissions to match your risk profile.
-- **Sync workflow with upstream** — when this starter ships new commands or updated skills, use the prompt in [docs/sync-from-starter.md](docs/sync-from-starter.md) to refresh `.claude/` and the `.agents/` framework in a downstream project without overwriting your project's memory, specs, or `CLAUDE.md`.
+- **Sync workflow with upstream** — when this starter ships new commands or updated skills, refresh `.claude/` and the `.agents/` framework in a downstream project without touching your project's memory, specs, plans, or `CLAUDE.md`. This is a **prompt-playbook, not a slash command**: in a fresh Claude Code chat, ask Claude to run it —
+
+  ```
+  Wykonaj docs/sync-from-starter.md
+  ```
+
+  It clones the upstream starter to `/tmp`, classifies every file into three buckets — **A** overwrite (commands, agents, skills, templates, `.claude/README.md`), **B** merge with a diff (`settings.json` permissions, `index.md`, `.gitignore`, `.mcp.json.example`), **C** never touch (your `CLAUDE.md`, `architecture.md`, append-only memory, specs, plans, root README, code) — then shows a **dry-run report and waits for your approval before writing anything**, and finally proposes a `chore(workflow): sync …` commit. Full procedure and rules: [docs/sync-from-starter.md](docs/sync-from-starter.md).
+
+---
+
+## The root README is yours — the framework guide moves aside
+
+A single root `README.md` can't serve two audiences at once: visitors to the *starter repo* want
+to read about the framework, but your *project* needs its root README to describe the application.
+The starter resolves this with a one-time **swap on bootstrap**, not a delete:
+
+1. **In the starter repo**, the root `README.md` is this framework guide (so the GitHub template
+   page documents the workflow).
+2. **On your first `/setup:create-CLAUDE_MD`**, the command:
+   - moves this guide to `.claude/README.md` (preserved, framework-owned), and
+   - generates a fresh project `README.md` at the root from `.claude/templates/README-template.md`,
+     filled with your project name, description, tech stack, commands, and structure.
+3. **On later `/setup:create-CLAUDE_MD` runs**, your project README is left alone — it only offers to
+   fill leftover `{placeholder}` markers, never clobbering a customized README.
+
+After bootstrap:
+
+| File | Owner | Updated by |
+|------|-------|------------|
+| `README.md` (root) | **your project** | you / `/setup:create-CLAUDE_MD` placeholder fill |
+| `.claude/README.md` | **the framework** | `docs/sync-from-starter.md` (pulls the starter's newest guide) |
+
+When you sync workflow updates from upstream (see below), the framework guide is refreshed at
+`.claude/README.md` — your project's root README is never touched.
 
 ---
 

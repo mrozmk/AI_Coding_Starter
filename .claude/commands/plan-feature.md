@@ -51,7 +51,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 **3. Dependency Analysis**
 - Catalog the libraries the spec's "External dependencies" section names.
-- Find existing reference docs in `.agents/reference/` and `.agents/wiki/` (if the project has a wiki from `/createwikillm`).
+- Find existing reference docs in `.agents/reference/` and `.agents/wiki/` (if the project has a wiki from `/setup:createwikillm`).
 - Note versions and compatibility requirements visible in the manifest.
 
 **4. Testing Patterns**

@@ -1,12 +1,12 @@
 ---
 status: empty
-populated_by: /refresh-brief
+populated_by: /maintain:refresh-brief
 description: Distilled TL;DR of the PRD — loaded by /prime instead of full PRD
 ---
 
 # Project Brief
 
-> Distilled overview for fast context loading. Regenerate with `/refresh-brief` whenever PRD changes substantially. For full details, see `docs/PRD.md`.
+> Distilled overview for fast context loading. Regenerate with `/maintain:refresh-brief` whenever PRD changes substantially. For full details, see `docs/PRD.md`.
 >
 > While `status: empty`, `/prime` falls back to reading `docs/PRD.md` directly.
 

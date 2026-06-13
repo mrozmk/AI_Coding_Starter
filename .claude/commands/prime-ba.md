@@ -95,7 +95,7 @@ From PRD:
 - **MVP scope** — 3-5 bullets of what's in scope
 - **Out of scope** — 2-3 bullets of what's explicitly deferred
 
-If no PRD exists, say so and recommend running `/create-PRD` first.
+If no PRD exists, say so and recommend running `/setup:create-PRD` first.
 
 ### Backlog State
 
@@ -134,7 +134,7 @@ If empty, note "memory/decisions.md puste — decyzje nie były jeszcze zapisywa
 Given the gaps identified, recommend concrete next actions in priority order. Examples:
 - `/brainstorm <feature X>` — spec gap identified in PRD
 - `/jira create epic` — spec exists but no Jira epic
-- `/create-PRD` — no PRD yet, product direction unclear
+- `/setup:create-PRD` — no PRD yet, product direction unclear
 - Refresh PRD — raw sources present but PRD seems outdated
 
 Limit to 3 recommendations max. If nothing obvious, say "backlog wygląda spójnie — jesteś gotów do pracy nad user stories".

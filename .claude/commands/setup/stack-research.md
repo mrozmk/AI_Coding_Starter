@@ -3,7 +3,7 @@ description: Analiza techniczna projektu — wybór technologii i ocena feasibil
 argument-hint: [topic or feature area — leave empty for project-level research from PRD]
 ---
 
-# /stack-research — Technology Discovery & Feasibility
+# /setup:stack-research — Technology Discovery & Feasibility
 
 ## Topic: $ARGUMENTS
 
@@ -13,7 +13,7 @@ Do NOT write any files, create scaffolding, or take any implementation action un
 
 ## Purpose
 
-`/stack-research` is a **technology selection tool**, not an implementation tool. Use it when you need to answer: *"What should we build this with, and why?"* — before writing a single line of code.
+`/setup:stack-research` is a **technology selection tool**, not an implementation tool. Use it when you need to answer: *"What should we build this with, and why?"* — before writing a single line of code.
 
 Two modes, detected from `$ARGUMENTS`:
 
@@ -67,7 +67,7 @@ Before asking anything, attempt to load the PRD as the **primary input**:
 
 **If `docs/PRD.md` does not exist:**
 - Emit a soft warning at the top of your output:
-  > `⚠️ docs/PRD.md not found. /stack-research works best after /create-PRD — without it I have to gather goal/constraints/scale via questions, which duplicates what the PRD would capture. Continuing in fallback mode — consider running /create-PRD first if you want a stronger anchor.`
+  > `⚠️ docs/PRD.md not found. /setup:stack-research works best after /setup:create-PRD — without it I have to gather goal/constraints/scale via questions, which duplicates what the PRD would capture. Continuing in fallback mode — consider running /setup:create-PRD first if you want a stronger anchor.`
 - Continue anyway in *full-discovery mode* (Step 2 asks the complete set of clarifying questions).
 
 Note clearly: what is already decided (locked in), what is open, what is contradicted between sources.
@@ -281,7 +281,7 @@ Wait for explicit approval per section. If user says `edit`, take their adjustme
    ## YYYY-MM-DD — Tech stack: <one-line summary, e.g. "Next.js 15 + Prisma + Postgres + BullMQ + Vercel">
 
    **Why:** <2-3 short clauses tying to the strongest constraints from the brief>
-   **Brief:** [./specs/YYYY-MM-DD-stack-research-<topic>.md](../specs/YYYY-MM-DD-stack-research-<topic>.md)
+   **Brief:** [.agents/specs/YYYY-MM-DD-stack-research-<topic>.md](../../../.agents/specs/YYYY-MM-DD-stack-research-<topic>.md)
    ```
 
    This makes the architectural decision **discoverable** without reading the whole brief — future Claude sessions hit `decisions.md` via `When to Read` table.
@@ -298,8 +298,8 @@ Wait for explicit approval per section. If user says `edit`, take their adjustme
 After PRD + decisions.md are updated, the project state has changed — explicitly chain the next commands:
 
 > **Recommended next steps:**
-> 1. **`/refresh-brief`** — `project-brief.md` is now stale (PRD's Tech Stack section just changed). Regenerate it so future `/prime` calls load the up-to-date brief instead of the old placeholder.
-> 2. **`/create-CLAUDE_MD`** — only if you've already initialized scaffolding (npm init / uv init / etc.). It picks up the chosen stack and fills in `CLAUDE.md` + `.agents/memory/architecture.md`.
+> 1. **`/maintain:refresh-brief`** — `project-brief.md` is now stale (PRD's Tech Stack section just changed). Regenerate it so future `/prime` calls load the up-to-date brief instead of the old placeholder.
+> 2. **`/setup:create-CLAUDE_MD`** — only if you've already initialized scaffolding (npm init / uv init / etc.). It picks up the chosen stack and fills in `CLAUDE.md` + `.agents/memory/architecture.md`.
 > 3. **`/brainstorm <first feature>`** — start designing features with the chosen stack.
 
 If the user is in feature-level mode (had `$ARGUMENTS` originally) and chose to skip PRD update, suggest `/brainstorm` directly.
@@ -318,7 +318,7 @@ Low-confidence claims must be visible, not hidden. A `(60%)` tag is more honest 
 
 ---
 
-## What `/stack-research` is NOT
+## What `/setup:stack-research` is NOT
 
 | This is not… | Use instead |
 |--------------|-------------|
@@ -326,8 +326,8 @@ Low-confidence claims must be visible, not hidden. A `(60%)` tag is more honest 
 | A feature specification | `/brainstorm` |
 | A codebase or architecture analysis | `/analysis` |
 | A quick opinion on tools | Normal conversation |
-| A PRD generator | `/create-PRD` |
-| A brief regenerator | `/refresh-brief` (call AFTER `/stack-research` updates PRD) |
+| A PRD generator | `/setup:create-PRD` |
+| A brief regenerator | `/maintain:refresh-brief` (call AFTER `/setup:stack-research` updates PRD) |
 
 ---
 

@@ -1,12 +1,12 @@
 ---
 status: empty
-populated_by: /refresh-brief
+populated_by: /maintain:refresh-brief
 description: Operational facts about pricing, plans, billing — what the code needs to know about the business model
 ---
 
 # Memory: Business Model & Pricing
 
-> Operational projection of business rules into code-relevant facts. Seeded by `/refresh-brief` from PRD when pricing / monetization / billing content is present.
+> Operational projection of business rules into code-relevant facts. Seeded by `/maintain:refresh-brief` from PRD when pricing / monetization / billing content is present.
 >
 > Scope: only what affects code (plan IDs, feature gates, Stripe events, quota rules). Storytelling and positioning belong in PRD, not here.
 >

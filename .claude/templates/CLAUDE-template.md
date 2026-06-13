@@ -137,7 +137,7 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 
 ### Default branch
 
-> _Filled in by `/create-CLAUDE_MD` at project bootstrap based on the detected git workflow. Example: `` `main` (trunk-based) ``._
+> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap based on the detected git workflow. Example: `` `main` (trunk-based) ``._
 
 ---
 
@@ -161,12 +161,12 @@ Five persistent knowledge stores under `.agents/`. **Before starting any task, r
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input materials | Immutable input | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | `/remember`, `/refresh-brief`, `/create-CLAUDE_MD` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | `/remember`, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs | Long-lived | Human + AI (manually) |
 | [specs/](.agents/specs/) | Design docs from `/brainstorm` | Lives with feature | `/brainstorm` |
 | [plans/](.agents/plans/) | Implementation plans | Short-lived: `active/` → `done/` | `/plan-feature` |
 
-**Flow:** `sources/` → `/create-PRD` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
+**Flow:** `sources/` → `/setup:create-PRD` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
 
 > Memory files behave in two modes: **append-style** (`errors.md`, `decisions.md`, `api.md`, `patterns.md`, `domain/{module}.md`) — newest entries at the TOP. **Regenerated** (`architecture.md`, `project-brief.md`, `domain/business-model.md`) — overwritten wholesale by their owning command.
 
