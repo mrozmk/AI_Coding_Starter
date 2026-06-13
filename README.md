@@ -28,10 +28,12 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/gates:verify-implementation`, `/check-implementation`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/test-e2e`, `/maintain:cleanup-workflow`, `/gates:check-quality`, `/setup:createwikillm` |
-| `agents/` | Sub-agents — `documentation-manager` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/gates:verify-implementation`, `/check-implementation`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/gates:check-quality`, `/setup:createwikillm` |
+| `agents/` | Sub-agents — `documentation-manager` + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
+| `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `audit-append` (audit log), `track-memory-read` (read telemetry), `check-deps` (SessionStart dep preflight). Need `jq`. |
+| `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
 ### `.agents/`
