@@ -85,6 +85,12 @@ mv .agents/plans/active/<plan-file>.md .agents/plans/done/<plan-file>.md
 
 This marks the feature as fully implemented.
 
+### 7. Memory reflection
+
+**Guard first — skip this step if you will run `/check-implementation` or `/orchestrate` next.** Those reflect with the same protocol and richer context, so reflecting here too would risk a duplicate entry. Run this step **only** when `/execute` is your final action before `/commit` (raw execute → commit, no quality loop).
+
+If it applies, run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) over what you just implemented. Apply its bar strictly — **the default is to save nothing**; a plan that executed cleanly rarely teaches a fresh Claude anything. Save only a non-obvious bug root-cause you hit (`errors.md`), an undocumented quirk that bit you (`api.md`), or a deliberate fix-direction decision (`decisions.md`). Append at most one entry, newest-first, and **do not duplicate** anything already in the target file. This does not commit — the memory write is left in the tree for your `/commit`.
+
 ## Output Report
 
 Provide summary:
@@ -107,6 +113,7 @@ Provide summary:
 ### Ready for Commit
 - Confirm all changes are complete
 - Confirm all validations pass
+- Memory: <appended 1 entry to <file> / nothing worth remembering / skipped — running /check-implementation or /orchestrate next>
 - Ready for `/commit` command
 
 ## Notes

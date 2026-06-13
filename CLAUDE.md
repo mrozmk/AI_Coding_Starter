@@ -118,7 +118,7 @@ Five persistent knowledge layers under `.agents/`. **Before starting any task, r
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input materials — briefs, transcripts, sketches, PDFs supplied by the user | Immutable input, pruned manually | Human only (never Claude) |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, project brief | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | `/remember`, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, project brief | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | memory-reflection pass (in `/orchestrate` Phase 7 + `/check-implementation`), `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived, updated as domain evolves | Human + AI (manually) |
 | [specs/](.agents/specs/) | Design docs from `/brainstorm` — what to build and why | Lives with the feature | `/brainstorm` |
 | [plans/](.agents/plans/) | Implementation plans — how to build | Short-lived: `active/` → `done/` | `/plan-feature` |

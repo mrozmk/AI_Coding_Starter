@@ -79,6 +79,69 @@ Do NOT duplicate what's already in [CLAUDE.md](../../CLAUDE.md).
 
 ---
 
+## Memory Reflection Protocol
+
+The **memory-reflection pass** is this project's automatic memory-capture mechanism. (There is no `/remember` command — it was removed. Manual capture still works: say *"zapisz to do pamięci"* and follow the routing in Quick Reference above.)
+
+It runs at the end of a **completed unit of work**, never mid-task:
+
+| Caller | When | Source it reflects on |
+|--------|------|-----------------------|
+| [`/orchestrate`](../../.claude/commands/orchestrate.md) | Phase 7, **friction-gated** — only when the run-log shows a step needed >1 fix iteration, an escalated blocker the user resolved via guidance, or a designer mega-fix. A clean run (everything passed first try) learns nothing → skip. | the durable run-log |
+| [`/check-implementation`](../../.claude/commands/check-implementation.md) | after the final report | the loop's first-hand context — bugs `/code-review` fixed, gate iterations |
+| [`/execute`](../../.claude/commands/execute.md) | after moving the plan to `done/`, **only if no `/check-implementation` or `/orchestrate` follows** (else those reflect instead) | what was just implemented |
+
+### The bar — precision over recall
+
+**Bloated memory is worse than no memory.** Save **only** if a fresh Claude would get it **wrong** without the note. **The default outcome is to save nothing.**
+
+Do NOT save:
+- routine edits, or anything visible by reading the code, git history, or `CLAUDE.md`
+- "the feature works now" / a restatement of the plan
+- a lesson with no actionable takeaway
+- **anything already captured** — before appending, scan the target file's latest entries; if the lesson is already there (e.g. an earlier caller in the same flow saved it), add nothing. This is the de-dup guard for flows with two reflection points (`/execute` → `/check-implementation`).
+
+Save when — and only when — the run produced one of:
+
+| Discovery | Target file |
+|-----------|-------------|
+| Non-obvious bug root-cause + fix | `errors.md` |
+| Undocumented API / protocol quirk | `api.md` |
+| Deliberate X-over-Y decision + rationale | `decisions.md` |
+| Reusable project-specific pattern | `patterns.md` |
+| Knowledge specific to one module | `domain/{module}.md` |
+
+If unsure between two files, pick the most specific. If a `domain/` file doesn't exist yet, create it from the template above.
+
+### Format — append newest-first, never reformat existing entries
+
+**errors.md / api.md / patterns.md / domain/{module}.md:**
+
+```markdown
+## [YYYY-MM-DD] {Short title}
+
+{What happened or was discovered}
+
+**Rule:** {Actionable takeaway — what to do or avoid next time}
+```
+
+**decisions.md:**
+
+```markdown
+## [YYYY-MM-DD] {Decision title}
+
+**Chosen:** {what was chosen}
+**Rejected:** {alternatives considered}
+**Why:** {rationale}
+**Consequences:** {what this affects going forward}
+```
+
+If a discovery is one of the project's most important "always check this" lessons, also add a one-liner to **Quick Reference** above (keep it ≤7 items).
+
+If nothing clears the bar — the common case — write nothing and report one line: `Nothing worth remembering from this run.`
+
+---
+
 ## File Status Convention
 
 The three regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status` flag in their frontmatter:

@@ -435,7 +435,15 @@ When the last step reaches `done`:
      ```
    - If it updated docs: spawn `@orchestrator-committer` with those doc paths as `FILES_TOUCHED` and `STEP_ID: docs` to stage and commit `docs: sync docs for <umbrella>` (committer does not push — same split as every step). Then `git push origin main` from the main session. If documentation-manager changed nothing, log `Docs already in sync.` and skip the commit+push.
    - A doc-sync failure is **not** a pipeline failure — the feature is already shipped and pushed. Report it and continue to the summary.
-6. Emit final summary to the user:
+6. **Memory reflection — friction-gated.** You are a thin router: the real texture of what went hard lived in the sub-agents and is gone. Your one durable record is the **run-log** (Phase 4b). Scan it for *friction signals*:
+   - a step that needed **>1 verifier fix iteration** on the same gap,
+   - a **blocker you escalated** that the user resolved via guidance (Phase 6 option 1),
+   - a **designer mega-fix** (structural rewrite).
+
+   **If the run-log shows none of these → skip entirely. Log `Memory: clean run, nothing to reflect on.` A smooth pipeline learns nothing.**
+
+   If it does show friction, run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) against those run-log entries. Apply its bar strictly — **the default is to save nothing**; a recurring gap is only worth an `errors.md`/`decisions.md` entry if a fresh Claude would repeat the mistake without it. Append at most one or two entries; never pad. Memory writes are **not committed by the pipeline** — leave them in the working tree for the user to `/commit` (consistent with how memory is managed). Record the outcome for the summary's `Memory:` line.
+7. Emit final summary to the user:
 
 ```
 ✓ Pipeline complete: <umbrella name>
@@ -449,6 +457,7 @@ Total wall time: <hh:mm:ss>
 Plans + run-log moved to .agents/plans/done/.
 Merged step branches you may delete: <the `! git branch -D …` line from step 4, or "none">
 Docs: <synced in commit <sha> / already in sync / skipped — no documented surface changed / not requested — pass --sync-docs (this run touched <documented surface>) >
+Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commit / clean run, nothing to reflect on>
 Deploy is your call.
 ```
 

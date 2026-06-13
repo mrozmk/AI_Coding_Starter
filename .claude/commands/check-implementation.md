@@ -103,12 +103,26 @@ Iterations: <N> of 3
 
 Files modified this run: [list]
 Remaining warnings: [Medium issues, or "none"]
+Memory: <appended N entr(y/ies) to <file(s)> / nothing worth remembering from this run>
 
 Verdict: <✅ Ready for /commit | ⚠️ Ready with warnings | ❌ Escalated — needs your decision>
 ```
 
 - **Approved** → `Clean and verified — ready for /commit.` (This command does **not** commit.)
 - **Escalated** → present the unresolved findings and the Phase-6-style options (provide guidance / accept anyway / abort), then stop.
+
+---
+
+## Step 3 — Memory reflection
+
+Unlike `/orchestrate`, this loop ran in your own context — you saw first-hand what `/code-review` fixed and how many iterations the gate took. That is high-quality reflection material, so run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) over this run.
+
+Apply its bar strictly — **the default is to save nothing.** A clean loop (no real bugs, gate approved first try) almost never produces a memory-worthy lesson; do not invent one to justify the step. Save only when the run surfaced something a fresh Claude would get wrong without the note:
+- a **non-obvious bug** `/code-review` had to fix (root-cause, not a typo) → `errors.md`
+- an **undocumented quirk** that explained a failure → `api.md`
+- a **deliberate fix-direction decision** worth its rationale → `decisions.md`
+
+Append at most one or two entries, newest-first. This step does **not** commit — like the rest of the command, it leaves a ready-to-`/commit` tree (a memory write is just another working-tree change). Record the outcome in the report's `Memory:` line.
 
 ---
 
