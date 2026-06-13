@@ -19,6 +19,13 @@ Add newest entries at the **TOP**. Format: what failed · why · fix / rule.
 
 ---
 
+## 2026-06-13 — `rg` silently skips `.claude/` here; subdir command moves also break agent `skills:` lists
+
+**What failed:** during a command reorg (`verify-implementation` / `check-quality` / `design-quality-check` → `commands/gates/`), the initial `rg -l 'verify-implementation'` reference sweep returned **only README.md** — missing `orchestrate.md`, `check-implementation.md`, and four `orchestrator-*` agent files that clearly contained the string.
+**Root cause:** two independent traps. (1) An ignore rule (parent-dir/global gitignore) makes `rg` skip `.claude/` even though the files are git-tracked; `rg --files .claude/...` with an *explicit* path still lists them, masking the problem. CLAUDE.md mandates `rg`, but `rg` is unsafe for a completeness-critical reference sweep here. (2) A command consumed by a sub-agent as a **skill** (listed under `skills:` in the agent frontmatter, e.g. `orchestrator-verifier` → `verify-implementation`) is renamed by the move to `gates:verify-implementation` — if the frontmatter isn't updated the agent silently loses access to the skill. This is *functional* breakage, beyond the cosmetic `/name` doc drift covered in the entry below.
+**Fix:** use `grep -rn` (or `rg --no-ignore`) for any reference sweep that must be exhaustive in this repo. When moving a command into a namespace dir, also update: agent `skills:` frontmatter lists, prose "follow the `<skill>` skill protocol" refs, and `Run /<skill>` invocations in `orchestrate.md`.
+**Rule:** for reference sweeps in this repo, do **not** trust bare `rg` — it hides `.claude/`. Use `grep -rn` or `rg --no-ignore`. After moving a command that any `.claude/agents/*.md` lists under `skills:`, grep the agents dir for the bare (slash-less) command name too, not just `/name`. See also [the subdir-rename entry below].
+
 ## 2026-06-13 — BSD `wc -c` pads output with leading spaces, breaking `^[0-9]+$` validation
 
 **What failed:** `guard-memory.sh` size gate stayed permanently dormant — `TOTAL` never incremented, so the byte sum was always 0 and every edit passed (the hook never blocked even with large memory files).

@@ -3,7 +3,7 @@ description: Verify implementation correctness and code quality after executing 
 argument-hint: [plan-name]
 ---
 
-# /verify-implementation — Verify Plan Execution & Code Quality
+# /gates:verify-implementation — Verify Plan Execution & Code Quality
 
 Run after `/execute` completes a plan. Validates checklist completion, runs quality gates, performs deep semantic code review, and checks design compliance. Do NOT modify code — only report findings.
 

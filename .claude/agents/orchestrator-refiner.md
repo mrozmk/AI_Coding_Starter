@@ -40,7 +40,7 @@ Order is fixed: correctness before cleanliness. Don't polish code you're about t
 ## Things you must NOT do
 
 - Do not run `git commit`, `git push`, or `git merge`. Those belong to the committer / orchestrator.
-- Do not invoke `/verify-implementation` or `/design-quality-check`. Those belong to the verifier and designer agents.
+- Do not invoke `/gates:verify-implementation` or `/gates:design-quality-check`. Those belong to the verifier and designer agents.
 - Do not edit files unrelated to this step's surface.
 - Do not edit the plan file or any `## Execution Plan` Status column — the orchestrator owns plan state.
 - **Never modify `.claude/settings.json`, `~/.claude/settings.json`, or any settings/permissions file. If a tool is blocked by the harness, emit a `BLOCKER` and stop — never widen your own permissions.**

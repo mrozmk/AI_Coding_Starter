@@ -3,11 +3,11 @@ description: Pixel-perfect audit of an implemented UI section vs its reference d
 argument-hint: [section-name] [reference-file?]
 ---
 
-# /design-quality-check — Design-Parity Audit
+# /gates:design-quality-check — Design-Parity Audit
 
 Compare a section of the live application against its **reference design** in `.agents/specs/design/Ready/`. Find **every** deviation — visual, structural, semantic, behavioral, responsive, accessibility. Do NOT modify code. Report findings only.
 
-This command is the inverse of `/verify-implementation`: that one checks code quality against a plan; this one checks **design fidelity** after any implementation pass (initial build, fix-up, redesign).
+This command is the inverse of `/gates:verify-implementation`: that one checks code quality against a plan; this one checks **design fidelity** after any implementation pass (initial build, fix-up, redesign).
 
 > **Stack-neutral.** This skill audits parity for any UI stack — HTML/CSS, React/Vue/Svelte, native, etc. It names dimensions to check (layout, type, color, motion, a11y, …), not the syntax of one framework. Where a concept needs a concrete form (a class name, a token, a unit), resolve it in **the project's own stack** and compare values, not spellings. If your project standardized on a specific toolchain (a CSS framework, an icon set, an i18n format), apply that knowledge when locating and resolving values — but the audit categories below are the same regardless.
 
@@ -261,7 +261,7 @@ Top 5 most impactful:
 
 ### Next steps
 - [If APPROVE: ready for next section / commit / deploy]
-- [If WARN/BLOCK: implement fixes (or run /execute on the linked plan), then re-run /design-quality-check]
+- [If WARN/BLOCK: implement fixes (or run /execute on the linked plan), then re-run /gates:design-quality-check]
 ```
 
 ---

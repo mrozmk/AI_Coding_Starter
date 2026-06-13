@@ -1,5 +1,5 @@
 ---
-description: Full implementation quality loop — code-review (fix) → simplify → verify-implementation, looping until the gate approves
+description: Full implementation quality loop — code-review (fix) → simplify → gates:verify-implementation, looping until the gate approves
 argument-hint: [plan-name]
 ---
 
@@ -7,7 +7,7 @@ argument-hint: [plan-name]
 
 Drive freshly-written code (from a spec/plan or a manual change) to **commit-ready**: fix correctness bugs, clean up, then gate — looping until the read-only gate approves, or a cap is hit and it escalates.
 
-This command **applies fixes**, unlike [/verify-implementation](verify-implementation.md) (report-only gate). It does **not** commit or push, unlike [/orchestrate](orchestrate.md) — it leaves an approved, clean working tree for you to `/commit`.
+This command **applies fixes**, unlike [/gates:verify-implementation](gates/verify-implementation.md) (report-only gate). It does **not** commit or push, unlike [/orchestrate](orchestrate.md) — it leaves an approved, clean working tree for you to `/commit`.
 
 The three pieces it composes (each a distinct role — see CLAUDE.md / the command docs):
 
@@ -15,7 +15,7 @@ The three pieces it composes (each a distinct role — see CLAUDE.md / the comma
 |------|-------|------|----------|
 | Correctness | `/code-review --fix` | find & fix logic bugs in the diff | ✅ yes |
 | Cleanliness | `/simplify` | apply reuse / simplification / efficiency / altitude cleanups | ✅ yes |
-| Gate | `/verify-implementation` | tests/lint/build + semantic review + checklist + design compliance | ❌ read-only |
+| Gate | `/gates:verify-implementation` | tests/lint/build + semantic review + checklist + design compliance | ❌ read-only |
 
 > **Loader Convention.** Assumes `/prime` already loaded project context (`CLAUDE.md`, `architecture.md`, `patterns.md`, etc.). If context isn't primed, run `/prime` first. Do **not** re-read those here.
 
@@ -25,7 +25,7 @@ The three pieces it composes (each a distinct role — see CLAUDE.md / the comma
 
 - **Bugs first.** Don't polish code you're about to rewrite — a bug fix often changes the shape that `/simplify` then harmonizes.
 - **Cleanliness second.** `/simplify` refactors, which can introduce regressions — so it must be followed by the gate.
-- **Gate last.** `/verify-implementation` is read-only, so it never invalidates itself; it judges the final state and re-runs tests/build, catching any regression a mutator introduced.
+- **Gate last.** `/gates:verify-implementation` is read-only, so it never invalidates itself; it judges the final state and re-runs tests/build, catching any regression a mutator introduced.
 - **The loop absorbs order sensitivity:** if the gate blocks, its findings feed back into the next correctness pass.
 
 ---
@@ -52,8 +52,8 @@ Run `/code-review` at `high` effort over the current diff. Apply the confirmed-b
 **1b. Cleanliness — `/simplify`.**
 Run `/simplify` over the changed code. It applies reuse / simplification / efficiency / altitude cleanups (quality only — it does not hunt bugs; that was 1a).
 
-**1c. Gate — `/verify-implementation`.**
-Run `/verify-implementation <plan>` (read-only). In diff-only mode, run it without a plan argument. Capture its verdict (`APPROVE` / `WARN` / `BLOCK`) and findings.
+**1c. Gate — `/gates:verify-implementation`.**
+Run `/gates:verify-implementation <plan>` (read-only). In diff-only mode, run it without a plan argument. Capture its verdict (`APPROVE` / `WARN` / `BLOCK`) and findings.
 
 **1d. Decide:**
 
@@ -76,7 +76,7 @@ Run `/verify-implementation <plan>` (read-only). In diff-only mode, run it witho
 Iterations: <N> of 3
 - Correctness (/code-review): <count> bugs fixed — [brief list]
 - Cleanliness (/simplify):    <count> cleanups applied — [brief list]
-- Gate (/verify-implementation): <APPROVE | WARN | BLOCK>
+- Gate (/gates:verify-implementation): <APPROVE | WARN | BLOCK>
 
 Files modified this run: [list]
 Remaining warnings: [Medium issues, or "none"]
@@ -91,8 +91,8 @@ Verdict: <✅ Ready for /commit | ⚠️ Ready with warnings | ❌ Escalated —
 
 ## CRITICAL rules
 
-- **The gate stays read-only.** `/verify-implementation` must never edit code — only `/code-review --fix` and `/simplify` mutate. Keeping the judge independent of the fixer is the whole point (no grading its own homework).
+- **The gate stays read-only.** `/gates:verify-implementation` must never edit code — only `/code-review --fix` and `/simplify` mutate. Keeping the judge independent of the fixer is the whole point (no grading its own homework).
 - **Cap at 3 iterations — escalate, don't grind.** Iteration limits exist to surface real blockers.
-- **A mutation must be followed by the gate.** Never end on a `/simplify` or `/code-review --fix` without re-running `/verify-implementation` — a refactor can break tests.
+- **A mutation must be followed by the gate.** Never end on a `/simplify` or `/code-review --fix` without re-running `/gates:verify-implementation` — a refactor can break tests.
 - **Never commit or push.** This command produces a commit-ready tree; committing is `/commit`, the full pipeline is `/orchestrate`.
 - **Non-mechanical blockers go to the human.** If the gate blocks on architecture, a product decision, or a structural design gap, stop and ask — fixers can't resolve those.

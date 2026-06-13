@@ -34,7 +34,7 @@ Check the file for the heading `## Execution Plan`.
 
 > **This starter's defaults (read before first use):**
 > - `/plan-feature` emits **single-file plans** (no `## Execution Plan` table), so they run in **flat mode** — which works out of the box. **Umbrella mode** (multi-step DAG + worktrees) requires you to **hand-author** a `## Execution Plan` table (columns `Step | File | Depends On | Status`, optional `Model`); there is no generator for it in this template yet.
-> - The **design check (Step 5.3)** runs the `orchestrator-designer` agent + `design-quality-check` skill (both shipped, stack-neutral). It **auto-skips** whenever `.agents/specs/design/Ready/` is absent (the default), so projects without UI pay nothing. To enable it: create `.agents/specs/design/Ready/` and drop your reference design artifact(s) there.
+> - The **design check (Step 5.3)** runs the `orchestrator-designer` agent + `gates:design-quality-check` skill (both shipped, stack-neutral). It **auto-skips** whenever `.agents/specs/design/Ready/` is absent (the default), so projects without UI pay nothing. To enable it: create `.agents/specs/design/Ready/` and drop your reference design artifact(s) there.
 
 ## Phase 2: Parse Execution Plan table (umbrella only)
 
@@ -211,7 +211,7 @@ Spawn `@orchestrator-verifier` with prompt:
 PLAN_PATH: <file_path>
 FILES_TOUCHED:
 <list>
-Run /verify-implementation per the preloaded skill. Report via the Verifier Output Contract.
+Run /gates:verify-implementation per the preloaded skill. Report via the Verifier Output Contract.
 ```
 
 Parse the `=== VERIFIER REPORT ===` block.
@@ -237,7 +237,7 @@ If the directory exists, spawn `@orchestrator-designer`:
 PLAN_PATH: <file_path>
 FILES_TOUCHED:
 <list>
-Run /design-quality-check per the preloaded skill. Report via the Designer Output Contract.
+Run /gates:design-quality-check per the preloaded skill. Report via the Designer Output Contract.
 ```
 
 Parse the `=== DESIGNER REPORT ===` block.
@@ -477,7 +477,7 @@ Deploy is your call.
 
 ## Reusability note
 
-This command and its sub-agents are project-scoped under `.claude/` for now. They are intentionally generic: they do not reference `wp-plugin`, `Audit AI`, `auditai.cc`, or any project-specific concept. The only project-specific assumption is the convention `.agents/plans/active/` ↔ `.agents/plans/done/` and the umbrella's `## Execution Plan` section format. To port to another project, copy `.claude/agents/orchestrator-*.md` and `.claude/commands/orchestrate.md`, ensure the target project has the `execute`, `verify-implementation`, `commit` skills (and optionally `design-quality-check`), the `code-review` and `simplify` skills used by the refiner (Step 5.1b), and ensure umbrella plans follow the `## Execution Plan` table convention.
+This command and its sub-agents are project-scoped under `.claude/` for now. They are intentionally generic: they do not reference `wp-plugin`, `Audit AI`, `auditai.cc`, or any project-specific concept. The only project-specific assumption is the convention `.agents/plans/active/` ↔ `.agents/plans/done/` and the umbrella's `## Execution Plan` section format. To port to another project, copy `.claude/agents/orchestrator-*.md` and `.claude/commands/orchestrate.md`, ensure the target project has the `execute`, `gates:verify-implementation`, `commit` skills (and optionally `gates:design-quality-check`), the `code-review` and `simplify` skills used by the refiner (Step 5.1b), and ensure umbrella plans follow the `## Execution Plan` table convention.
 
 > **Push model:** the committer only commits; the orchestrator pushes from the main session (Step 5.4b). This is deliberate — a sub-agent does not inherit the user's push authorization, so delegating the push to a sub-agent gets blocked even on an authorized run. If a target project allows sub-agent pushes, this split is harmless; if it doesn't (most do not), this is required. The `push` skill is therefore NOT needed by the committer agent.
 >

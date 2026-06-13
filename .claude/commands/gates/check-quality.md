@@ -2,7 +2,7 @@
 description: Check code quality
 ---
 
-# /check-quality — Run project quality checks
+# /gates:check-quality — Run project quality checks
 
 Run the project's quality gates (format, lint, type-check, size limits) and report findings. Commands are **read from `CLAUDE.md`** — this command does not assume any specific toolchain.
 

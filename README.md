@@ -28,7 +28,7 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/verify-implementation`, `/check-implementation`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/test-e2e`, `/maintain:cleanup-workflow`, `/check-quality`, `/setup:createwikillm`, `/remember`, `/explain` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/gates:verify-implementation`, `/check-implementation`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/test-e2e`, `/maintain:cleanup-workflow`, `/gates:check-quality`, `/setup:createwikillm`, `/remember`, `/explain` |
 | `agents/` | Sub-agents — `documentation-manager` |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
@@ -76,7 +76,7 @@ New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira 
 ### Developer flow
 
 ```
-New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /execute → /verify-implementation → /commit
+New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /execute → /gates:verify-implementation → /commit
 ```
 
 | Step | What it means |
@@ -86,7 +86,7 @@ New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /exec
 | **`/brainstorm <feature>` or `/brainstorm CS-1`** | Free-text feature **or** a Jira key — Jira mode pulls the issue's description and acceptance criteria as input. Output: a design spec in `.agents/specs/`. |
 | **`/plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`. |
 | **`/execute`** | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. |
-| **`/verify-implementation`** | Validates checklist coverage, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs semantic code review, checks UI design compliance. Reports only — no code changes. |
+| **`/gates:verify-implementation`** | Validates checklist coverage, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs semantic code review, checks UI design compliance. Reports only — no code changes. |
 | **`/commit`** | Conventional-commit message, plus a memory checkpoint — captures lessons / decisions / patterns into `.agents/memory/`. |
 
 ---
@@ -111,7 +111,7 @@ These three MCP servers extend the shipped commands. Install only what you actua
 | MCP | What it does | Repo | Used by |
 |-----|--------------|------|---------|
 | **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/setup:stack-research`, `/brainstorm` for new deps) |
-| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/verify-implementation` |
+| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/gates:verify-implementation` |
 | **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
 
 **Quick install (Claude Code CLI):**
@@ -270,7 +270,7 @@ Runs the active plan. Moves it to `.agents/plans/done/` when complete.
 
 > If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
 >
-> Run `/verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
+> Run `/gates:verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
 
 ### 10. Commit
 
@@ -295,9 +295,9 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Three sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phase 3. |
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/remember <topic>` | After a discovery — routes the entry into the right memory file. |
-| `/check-quality` | Before committing — format, lint, type-check, file-size gates. |
-| `/verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
-| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `simplify` (cleanliness) → `verify-implementation` (read-only gate), looping up to 3× until the gate approves, then stopping for `/commit`. Unlike `/verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
+| `/gates:check-quality` | Before committing — format, lint, type-check, file-size gates. |
+| `/gates:verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
+| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `simplify` (cleanliness) → `gates:verify-implementation` (read-only gate), looping up to 3× until the gate approves, then stopping for `/commit`. Unlike `/gates:verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
 | `/explain <code>` | When Claude is exploring unfamiliar code. |
 
 ---
