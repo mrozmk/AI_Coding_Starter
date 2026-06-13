@@ -372,8 +372,6 @@ Full rules live in [CLAUDE.md](CLAUDE.md).
 
 User-local overrides live in `.claude/settings.local.json` (gitignored) — Claude Code writes new "Always allow" approvals there by default, keeping per-session permissions out of the committed `settings.json`.
 
-> ⚠️ **Never approve "Always allow this exact command"** for a Bash invocation that contains a literal secret (`-u "user:hardcodedToken"`, inline `Authorization: Bearer ...`, hardcoded DB URL with embedded password). Claude Code caches the **full literal command**, including the token. Always pass secrets via `$ENV_VARS` instead — `curl -u "$JIRA_USER:$JIRA_TOKEN" ...`. The deny-prefix list above is a safety net, not a substitute for this discipline.
-
 ---
 
 ## Customizing the starter

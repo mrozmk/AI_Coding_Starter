@@ -90,7 +90,6 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 ## Security
 
 - **Never commit secrets** — keep credentials in `.env` / config files ignored by git
-- **Never approve "Always allow this exact command"** for any Bash invocation containing a literal secret (`-u "user:token"`, inline `Authorization` headers, hardcoded DB URLs). Claude Code caches the full literal command in `permissions.allow` — use `$ENV_VARS` instead (`curl -u "$JIRA_USER:$JIRA_TOKEN" ...`). [.claude/settings.json](.claude/settings.json) denies common token prefixes (`ATATT`, `ghp_`, `xoxb-`, `AKIA`, `sk-ant-` …) as a safety net.
 - Validate all user input at system boundaries
 - HTTPS-only for external APIs
 - Error messages must not leak sensitive info
