@@ -77,9 +77,23 @@ New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira 
 
 ### Developer flow
 
+The first half is always the same — **prime → brainstorm → plan-feature** turns an idea (or Jira issue) into an approved, codebase-aware plan. How you take that plan to *shipped* is your call — pick by how much you want to drive:
+
+**A — Manual (more human-in-the-loop):**
+
 ```
-New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /execute → /gates:verify-implementation → /commit
+New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /execute → /check-implementation → /commit → /push
 ```
+
+> You run and review each step. `/check-implementation` **applies** fixes (`code-review --fix` → `simplify`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/commit` and `/push`. Best for high-stakes changes, or when you want eyes on every gate.
+
+**B — Orchestrated (hands-off):**
+
+```
+New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /orchestrate
+```
+
+> `/orchestrate` drives the whole back half end-to-end — execute → refine → verify → [design-check] → commit → push — looping fixes itself and escalating to you only on a real blocker. Best for well-scoped plans you trust the pipeline to ship.
 
 | Step | What it means |
 |------|---------------|
@@ -87,9 +101,12 @@ New chat → /prime → /brainstorm <feature | CS-1> → /plan-feature → /exec
 | **`/prime`** | Quick mode by default — loads `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, `architecture.md`, plus listings of plans/specs/reference and git state. Use `/prime full` after a long break or for deep multi-area work (also pulls `patterns.md`, `decisions.md`, `api.md`, `errors.md`, populated `domain/*`). |
 | **`/brainstorm <feature>` or `/brainstorm CS-1`** | Free-text feature **or** a Jira key — Jira mode pulls the issue's description and acceptance criteria as input. Output: a design spec in `.agents/specs/`. |
 | **`/plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`. |
-| **`/execute`** | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. |
-| **`/gates:verify-implementation`** | Validates checklist coverage, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs semantic code review, checks UI design compliance. Reports only — no code changes. |
-| **`/commit`** | Conventional-commit message, plus a memory checkpoint — captures lessons / decisions / patterns into `.agents/memory/`. |
+| **`/execute`** *(flow A)* | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. |
+| **`/check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `simplify` (cleanliness) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves. **Applies** fixes; leaves a commit-ready tree — does **not** commit. |
+| **`/commit` → `/push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
+| **`/orchestrate`** *(flow B)* | Runs the whole back half as one pipeline — execute → refine → verify → [design] → commit → push — via sub-agents, looping fixes and escalating only on blockers. Replaces the `/execute … /push` tail of flow A. |
+
+> Both flows share the same gates and memory-reflection — `/orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/gates:verify-implementation` is also available standalone when you only want the verdict without applying fixes.
 
 ---
 
