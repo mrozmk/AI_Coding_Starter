@@ -293,6 +293,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
 | `/setup:stack-research` | Once after `/setup:create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/setup:stack-research realtime`, `/setup:stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
 | `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
+| `/maintain:sync-from-starter [--check\|<ref>]` | Pull newer workflow definitions from the upstream starter (commands, agents, skills, hooks, config) without touching project knowledge. 3-way aware via a committed `.claude/.starter-sync.json` provenance manifest; recommends but asks on `settings.json`/hook conflicts. `--check` = dry-run only; `<ref>` = pin to a tag. See [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md). |
 | `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Three sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phase 3. |
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/gates:check-quality` | Before committing — format, lint, type-check, file-size gates. |
@@ -355,13 +356,15 @@ User-local overrides live in `.claude/settings.local.json` (gitignored) — Clau
 - Add reference docs to `.agents/reference/` as you integrate new APIs/libraries.
 - Drop in new slash commands under `.claude/commands/` — they appear automatically.
 - Tighten or loosen `.claude/settings.json` permissions to match your risk profile.
-- **Sync workflow with upstream** — when this starter ships new commands or updated skills, refresh `.claude/` and the `.agents/` framework in a downstream project without touching your project's memory, specs, plans, or `CLAUDE.md`. This is a **prompt-playbook, not a slash command**: in a fresh Claude Code chat, ask Claude to run it —
+- **Sync workflow with upstream** — when this starter ships new commands or updated skills, refresh `.claude/` and the `.agents/` framework in a downstream project without touching your project's memory, specs, plans, or `CLAUDE.md`. Run the command:
 
   ```
-  Wykonaj docs/sync-from-starter.md
+  /maintain:sync-from-starter            # full run: dry-run → approval → apply
+  /maintain:sync-from-starter --check    # report what would change, write nothing
+  /maintain:sync-from-starter v2.1.0     # pin to a specific starter ref
   ```
 
-  It clones the upstream starter to `/tmp`, classifies every file into three buckets — **A** overwrite (commands, agents, skills, templates, `.claude/README.md`), **B** merge with a diff (`settings.json` permissions, `index.md`, `.gitignore`, `.mcp.json.example`), **C** never touch (your `CLAUDE.md`, `architecture.md`, append-only memory, specs, plans, root README, code) — then shows a **dry-run report and waits for your approval before writing anything**, and finally proposes a `chore(workflow): sync …` commit. Full procedure and rules: [docs/sync-from-starter.md](docs/sync-from-starter.md).
+  It clones the upstream starter to `/tmp`, classifies every file into three buckets — **A** overwrite (commands, agents, skills, templates, **hooks**, `.claude/README.md`), **B** merge with a diff (`settings.json` permissions, `index.md`, `.gitignore`, `memory-domains.json`, `.editorconfig`, `.mcp.json.example`), **C** never touch (your `CLAUDE.md`, `architecture.md`, append-only memory, specs, plans, root README, `LICENSE`, code) — then shows a **dry-run report and waits for your approval before writing anything**, and finally proposes a `chore(workflow): sync …` commit. It tracks provenance in a committed `.claude/.starter-sync.json` so repeated syncs become true **3-way merges** (telling intentional local edits from staleness, detecting upstream-deleted files), and on real `settings.json`/hook conflicts it **recommends but asks** rather than overwriting. Authoritative file classification and flow: [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md); command: [.claude/commands/maintain/sync-from-starter.md](.claude/commands/maintain/sync-from-starter.md).
 
 ---
 
@@ -385,7 +388,7 @@ After bootstrap:
 | File | Owner | Updated by |
 |------|-------|------------|
 | `README.md` (root) | **your project** | you / `/setup:create-CLAUDE_MD` placeholder fill |
-| `.claude/README.md` | **the framework** | `docs/sync-from-starter.md` (pulls the starter's newest guide) |
+| `.claude/README.md` | **the framework** | `.claude/starter-sync-playbook.md` (pulls the starter's newest guide) |
 
 When you sync workflow updates from upstream (see below), the framework guide is refreshed at
 `.claude/README.md` — your project's root README is never touched.
