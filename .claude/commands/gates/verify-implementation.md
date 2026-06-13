@@ -199,6 +199,7 @@ This is the **spec axis**: distinct from the semantic review above (which judged
 
 Then the concrete checks:
 
+- Does the code satisfy the plan's **acceptance criteria**?
 - Are all **dependencies** declared in the plan actually imported and used?
 - If the plan specified **test files** — do they exist, run, and pass?
 - If the plan specified **i18n keys** — are they present in all locale files?

@@ -48,8 +48,8 @@ If `architecture.md` is `status: populated` → **Read it.**
 
 If `status: empty` (or missing):
 - Emit warning: `⚠️ architecture.md is empty — run /setup:create-CLAUDE_MD.`
-- Minimal fallback (no full tree dump):
-  !`find . -maxdepth 2 -type d -not -path '*/node_modules*' -not -path '*/.git*' -not -path '*/dist*' -not -path '*/build*' -not -path '*/.venv*' -not -path '*/venv*' -not -path '*/target*' -not -path '*/.next*' 2>/dev/null | head -30`
+- Minimal fallback (no full tree dump). Prefer `rg --files` — it respects `.gitignore`, so generated/vendored dirs drop out for free without an ever-growing `-not -path` list:
+  !`rg --files --max-depth 3 -g '!node_modules' -g '!dist' -g '!build' 2>/dev/null | awk -F/ 'NF>1{NF--; print}' OFS=/ | sort -u | head -40 || find . -maxdepth 2 -type d -not -path '*/node_modules*' -not -path '*/.git*' 2>/dev/null | head -30`
 
 ### 4. Engineering memory — full mode only
 
@@ -87,6 +87,9 @@ Do not read plan files in `/prime` itself. Read them only when the user's concre
 !`git log -10 --oneline`
 !`git status`
 
+Branch sync (ahead/behind origin):
+!`git rev-list --left-right --count @{u}...HEAD 2>/dev/null | awk '{print "behind origin: "$1"  |  ahead of origin: "$2}' || echo 'no upstream tracking branch'`
+
 ### 8. Skipped deliberately
 
 - `.agents/sources/` — raw inputs for `/setup:create-PRD` and `/prime-ba`, never loaded by engineering `/prime`.
@@ -120,6 +123,7 @@ Render the output as a bulleted list of `<file> — <size>, modified <date>`, on
 
 ### Repo — facts
 - Branch: <name>
+- **Branch sync** — explicitly flag if local is ahead of / behind origin (e.g. "7 commits unpushed"), or if the tree is dirty
 - Last commit: <short hash> — <subject> (<age>)
 - Uncommitted: <count> files
 

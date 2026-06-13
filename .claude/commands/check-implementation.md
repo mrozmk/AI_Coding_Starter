@@ -1,5 +1,5 @@
 ---
-description: Full implementation quality loop — code-review (fix) → deep-review (structural cleanup) → verify-implementation (+ conditional design-parity audit), looping until the gates approve
+description: Full implementation quality loop — code-review (fix) → deep-review (structural cleanup) → gates:verify-implementation (+ conditional design-parity audit), looping until the gates approve
 argument-hint: [plan-name]
 ---
 

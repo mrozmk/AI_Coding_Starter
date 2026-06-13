@@ -43,7 +43,7 @@ Use this structure. Keep it scannable — bullets over prose. Omit a section if 
 - Anything waiting on a user decision or an external dependency. Mark what's blocking what.
 
 ## Key context the next agent needs
-- Non-obvious facts, gotchas, or constraints discovered this session that aren't yet in `.agents/memory/` or `CLAUDE.md`. (If it's durable, also consider `/remember` instead.)
+- Non-obvious facts, gotchas, or constraints discovered this session that aren't yet in `.agents/memory/` or `CLAUDE.md`. (If it's durable, consider saving it to `.agents/memory/` per the routing in `index.md` instead.)
 
 ## Artifacts (links, not copies)
 - Plans: `.agents/plans/active/<file>.md`
