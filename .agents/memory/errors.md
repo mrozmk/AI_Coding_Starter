@@ -19,6 +19,13 @@ Add newest entries at the **TOP**. Format: what failed · why · fix / rule.
 
 ---
 
+## 2026-06-13 — BSD `wc -c` pads output with leading spaces, breaking `^[0-9]+$` validation
+
+**What failed:** `guard-memory.sh` size gate stayed permanently dormant — `TOTAL` never incremented, so the byte sum was always 0 and every edit passed (the hook never blocked even with large memory files).
+**Root cause:** `n=$(wc -c < "$file")` on macOS (BSD `wc`) returns the count right-padded with spaces, e.g. `'     200'`. The subsequent guard `printf '%s' "$n" | grep -Eq '^[0-9]+$'` then *failed* (leading spaces aren't digits), so the `&& TOTAL=$((TOTAL + n))` never ran. GNU `wc` doesn't pad, so this only reproduces on macOS/BSD.
+**Fix:** strip whitespace before validating — `n=$(wc -c < "$file" | tr -d '[:space:]')`.
+**Rule:** in shell hooks meant to run on macOS, never feed raw `wc`/`awk` numeric output straight into a `^[0-9]+$` check or `[ -lt ]`. Trim with `tr -d '[:space:]'` first, or use `$(( ))` which tolerates whitespace. This repo's hooks must be BSD-safe.
+
 ## 2026-06-13 — commit-guard reads the staged set BEFORE a compound `add && commit` runs
 
 **What failed:** `git add <files> && git commit -m ...` in a single Bash call either committed the wrong fileset or was blocked by `guard-commit.sh` ("empty staged set").

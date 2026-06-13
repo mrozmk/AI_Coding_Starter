@@ -28,7 +28,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 |-----------|---------------|
 | Before any non-trivial response | `user-profile.md` (skip if `status: empty`) |
 | New session / `/prime` | `project-brief.md` (or `docs/PRD.md` if brief is empty), `architecture.md` |
-| Before writing code | `patterns.md`, `architecture.md` |
+| Before writing code | `patterns.md`, `architecture.md` — but once memory is large, the `guard-memory.sh` hook forces this through a distillation subagent on the first edit per domain (see CLAUDE.md → Automatic Behaviors); load directly only when the hook is dormant |
 | Before debugging or investigating a bug | `errors.md` |
 | Implementing a new feature | `plans/active/`, `specs/{feature}.md` (if exists) |
 | Architectural decision / refactor | `decisions.md`, `architecture.md` |

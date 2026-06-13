@@ -1,0 +1,12 @@
+{
+  "_doc": "Path->domain mapping for the PreToolUse memory-distillation guard (.claude/hooks/guard-memory.sh). Each rule's `match` is a regex tested against the repo-relative file path; FIRST match wins. `domain` may reference regex capture groups as $1..$9 (e.g. match 'src/lib/([^/]+)/' with domain '$1' maps src/lib/ai/foo.ts -> domain 'ai'). A file matching no rule falls back to `fallback`, which is never enforced (soft). The guard also stays fully dormant until errors.md+patterns.md+decisions.md together exceed `size_threshold_bytes`. STARTER DEFAULT: `rules` is empty, so the hook is installed but silent. Copy entries from `_examples` into `rules` and adapt them to your stack to switch it on.",
+  "_examples": [
+    { "match": "^src/lib/([^/]+)/", "domain": "$1" },
+    { "match": "^src/(app|components)/", "domain": "ui" },
+    { "match": "^app/([^/]+)/", "domain": "$1" },
+    { "match": "^packages/([^/]+)/", "domain": "$1" }
+  ],
+  "rules": [],
+  "fallback": "general",
+  "size_threshold_bytes": 24000
+}
