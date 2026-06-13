@@ -50,3 +50,13 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 ## CRITICAL rules:
 - NEVER use `--force` or `--force-with-lease` — they are blocked in `.claude/settings.json`. If rewriting history is genuinely needed, ask the user to run it manually.
 - When pushing to a protected branch (`main`/`master`/`trunk`/`develop`), always ask for confirmation first.
+
+## Pre-publication secret scan (automatic)
+
+Every `git push` is intercepted by the `guard-push.sh` PreToolUse hook — a deterministic, last-line scan of the commits about to be published for secrets (tokens, private keys, credentialed connection strings, hardcoded credentials) and credential files (`.env`, `*.pem`, `*.key`, `.npmrc`, `*.tfstate`, …). On a hit it **blocks the push** (exit 2) and prints the offending file paths (never the values).
+
+- This runs regardless of `/push` — it guards the underlying `git push`, so a hand-rolled push is covered too.
+- **On a block:** remove the secret, rotate it if real, and amend/rewrite the offending commit (history rewrite is denied for the AI — ask the human). Do **not** auto-override.
+- **False positive:** add an inline `# guard-push:allow` marker on the line, or move sample values to a `*.example`/`*.sample` file.
+- **Emergency override (logged to `audit.log`):** the human re-runs as `GUARD_PUSH_SKIP=1 git push …`.
+- If `gitleaks` is on PATH it runs as an additional, broader check; otherwise the built-in baseline scan still applies.
