@@ -15,7 +15,7 @@ Make this template's AI workflow usable inside a **large existing codebase that 
 ## Preconditions
 
 - Must be a git repository. If not → stop: "Not a git repo — initialize first."
-- **Worktree redirect.** If running inside an ephemeral git worktree (`git rev-parse --git-dir` ≠ `git rev-parse --git-common-dir`), redirect all output to the **main repo root** (parent of `--git-common-dir`). Otherwise `architecture.md`/`docs/PRD.md` land in a worktree destroyed when the session ends — taking the knowledge layer with it. (UA practice, issue #133.)
+- **Worktree redirect.** If running inside an ephemeral git worktree (`git rev-parse --git-dir` ≠ `git rev-parse --git-common-dir`), redirect all output to the **main repo root** (parent of `--git-common-dir`). Otherwise `architecture.md`/`docs/PRD.md` land in a worktree destroyed when the session ends — taking the knowledge layer with it. (Practice borrowed from Understand-Anything.)
 - **If the codebase is small** (rough guide: < ~50 source files after filtering) → stop and recommend: "Codebase is small enough — run `/setup:create-CLAUDE_MD` directly; fan-out is unnecessary." Do not spin up the Workflow for a tiny repo.
 - **Loader Convention:** if project context isn't primed in this session, ask the user to run `/prime` first. Do NOT re-load `CLAUDE.md` / `architecture.md` / `project-brief.md` here.
 

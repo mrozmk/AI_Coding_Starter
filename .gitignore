@@ -35,6 +35,7 @@ Thumbs.db
 **/.claude/projects/
 
 # Local AI deployment-context note (starter context for fresh AI windows, not shipped content)
+AI_DEPLOYMENT_CONTEXT.md
 
 
 # ============================================================
