@@ -31,17 +31,39 @@ For EACH task in "Step by Step Tasks":
 #### a. Navigate to the task
 - Identify the file and action required
 - Read existing related files if modifying
+- **If the project exposes an LSP, navigate by symbol** instead of greping/reading whole files: `documentSymbol` to map the target file, `goToDefinition` to jump to a type/util the plan references, `workspaceSymbol` to find the canonical export to import. See CLAUDE.md → Code Navigation (if present).
+- **Before a REFACTOR/REMOVE/rename task**: run `findReferences` / `incomingCalls` on the symbol first — confirm every caller, so nothing is left dangling (grep misses some and matches comments).
 
 #### b. Implement the task
 - Follow the detailed specifications exactly
 - Maintain consistency with existing code patterns
 - Include proper type hints and documentation
 - Add structured logging where appropriate
+- When a task calls an external library/framework API, verify current behavior against up-to-date docs (e.g. Context7 `resolve-library-id` → `get-library-docs`) rather than relying on training data — API surfaces drift between versions.
 
 #### c. Verify as you go
 - After each file change, check syntax
-- Ensure imports are correct
+- Ensure imports are correct — if an LSP is available, `hover` on the imported symbol confirms it resolves and matches the expected signature
 - Verify types are properly defined
+
+### 2.5 Validate User-Facing Flows (when the plan requires E2E)
+
+If the plan's checklist includes a browser-validation item (e.g. "E2E flow tested in the browser" or similar), validate the running app, not just the code:
+
+1. **If the project has an E2E-generation command** (e.g. a `/test-e2e [flow-name]` command), run it to generate browser tests via MCP exploration. It typically needs the dev server running in the background.
+   - Use the flow name from the plan. If unsure, validate the full set.
+   - If no such command exists, fall back to step 2.
+
+2. **Fallback via an MCP browser driver** (e.g. Playwright MCP) — drive the app directly for manual validation:
+   - navigate to the entry-point URL
+   - snapshot the accessibility tree and interactive elements
+   - capture a screenshot as validation evidence
+   - check console messages for JS errors
+   - Save the screenshot path in your output report.
+
+3. **If E2E infrastructure is missing** (no browser-test runner installed, no `tests/e2e/` directory):
+   - Mark the checklist item completed with a NOTE: "E2E validated manually via MCP; dedicated test suite pending runner setup."
+   - Do NOT block plan completion on missing test infrastructure — the checklist item refers to validation, not test-code generation.
 
 ### 3. Implement Testing Strategy
 

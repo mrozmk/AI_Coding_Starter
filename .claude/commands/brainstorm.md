@@ -23,7 +23,7 @@ Before asking any questions:
 
 - Read `.agents/memory/index.md`, then any relevant domain files
 - Check recent commits: `git log --oneline -10`
-- Explore files relevant to the topic
+- Explore files relevant to the topic — use **LSP `workspaceSymbol`** to find existing services/types in the topic area and **`documentSymbol`** to grasp a key file's shape without reading it whole (see CLAUDE.md → Code Navigation)
 - Check CLAUDE.md for project-specific constraints
 
 Note the current architecture, patterns in use, and any prior decisions that affect this feature.
@@ -50,7 +50,7 @@ For each approach cover:
 
 Once you understand what to build, present the design incrementally:
 
-- **Architecture** — how the feature fits into the existing module layout (entry points, services, core abstractions). The directory map and module roles live in `.agents/memory/architecture.md` (loaded by `/prime`). If context isn't primed, ask the user to run `/prime` first rather than re-walking the tree.
+- **Architecture** — how the feature fits into the existing module layout (entry points, services, core abstractions). The directory map and module roles live in `.agents/memory/architecture.md` (loaded by `/prime`). If context isn't primed, ask the user to run `/prime` first rather than re-walking the tree. Use LSP (`workspaceSymbol` to find the abstractions to plug into, `incomingCalls` on an integration point to see who depends on it) before proposing a new flow.
 - **New files / modified files** — exact paths
 - **Data flow** — how inputs, events, or timers trigger the feature
 - **Edge cases and error handling** — what can go wrong

@@ -54,13 +54,13 @@ When you must ask for clarification:
 
 Before forming findings, at minimum:
 
-1. **Read the relevant files fully.** If the question is about a function, read the whole module plus direct callers. If it is about a decision, read every file the decision touches.
+1. **Read the relevant files fully.** If the question is about a function, read the whole module plus direct callers — find those callers with **LSP `incomingCalls` / `findReferences`** (a complete, real caller list; grep misses some and adds comment/string noise). If it is about a decision, read every file the decision touches.
 2. **Check the project knowledge layers:**
    - [.agents/memory/](../../.agents/memory/) — `decisions.md`, `patterns.md`, `errors.md`, `api.md` (and domain files) may already resolve the question.
    - [.agents/specs/](../../.agents/specs/) and [.agents/plans/](../../.agents/plans/) — an active or past feature may have already analyzed this.
    - [.agents/reference/](../../.agents/reference/) — stable domain / API references.
 3. **Verify against current code, not memory alone.** Memory records are point-in-time. Before leaning on a memory entry, confirm it still matches the file it describes — update the memory if it drifted.
-4. **Map impact.** If the analysis touches a potential change, enumerate what the change would ripple into: callers, tests, docs, configs, migrations.
+4. **Map impact.** If the analysis touches a potential change, enumerate what the change would ripple into: callers, tests, docs, configs, migrations. For code callers, derive the list from **LSP `findReferences` / `incomingCalls`** rather than grep — an under-counted impact map is how an analysis anchors a wrong decision.
 5. **Scope-box your investigation.** If the set of files you need to read keeps growing past roughly 15–20, or the investigation branches into multiple unrelated subsystems — **stop, surface the current findings, and check in with the user** before continuing. Rabbit-holing is a failure mode of `/analysis`: a partial answer with a clear stop signal is more useful than an endless dive. When you stop, explain *what* you would investigate next and *why*, so the user can decide whether to greenlight it.
 
 The appropriate depth scales with the question. A small scoping question may need 3 files. An architectural question may need a full sweep. **Err on the side of reading one more file** — but not one more subsystem.
