@@ -19,6 +19,8 @@ Create project-specific global rules that give Claude context about:
 
 ---
 
+> **Large / brownfield codebase?** On a very large existing repo, analyzing inline here floods context. Run [`/setup:map-codebase`](map-codebase.md) first — it fans out the analysis and produces `.agents/memory/architecture.md`, then invokes this command as its final cascade step. When `architecture.md` is already `status: populated` from that run, **consume it** instead of re-walking the whole tree.
+
 ## Phase 1: DISCOVER
 
 ### Identify Project Type
