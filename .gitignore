@@ -34,6 +34,9 @@ Thumbs.db
 # Guard against accidental copy of ~/.claude/projects/ (transcripts + auto-memory) into repo
 **/.claude/projects/
 
+# Local AI deployment-context note (starter context for fresh AI windows, not shipped content)
+AI_DEPLOYMENT_CONTEXT.md
+
 # ============================================================
 # Python
 # ============================================================
