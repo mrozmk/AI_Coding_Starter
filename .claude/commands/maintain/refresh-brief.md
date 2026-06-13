@@ -9,7 +9,7 @@ argument-hint: [path-to-prd]
 
 Generate or refresh `.agents/memory/project-brief.md` from a PRD so that `/prime` can load fast project context without reading the entire PRD. When the PRD contains pricing / monetization / billing content, also seed or refresh `.agents/memory/domain/business-model.md` with code-relevant operational facts.
 
-This is an **on-demand** command. It does not run automatically as part of `/setup:create-PRD` — you invoke it when you want a fresh distilled view.
+**When it runs:** `/setup:create-CLAUDE_MD` invokes this automatically at **first bootstrap** (when `project-brief.md` is still empty), so you don't call it by hand in the bootstrap chain. Beyond that it is an **on-demand `maintain/` command** — invoke it yourself after the PRD changes substantially to re-distill the brief.
 
 ## Inputs
 

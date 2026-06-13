@@ -162,6 +162,14 @@ Identify files that are important to understand:
 
 ---
 
+## Phase 2.5: Refresh the project brief (bootstrap only)
+
+If `docs/PRD.md` exists **and** `.agents/memory/project-brief.md` is `status: empty` (or the PRD is newer than the brief), run **`/maintain:refresh-brief`** now to (re)generate `project-brief.md` (+ `domain/business-model.md` if the PRD has pricing). This must run **before** Phase 3 — the README and `CLAUDE.md` generated below read the brief for the project overview. This folds the brief step into bootstrap so it is not a separate manual call.
+
+**Skip when:** `project-brief.md` is already `populated` and current (do NOT re-distill an unchanged PRD — re-running this command after *code* changes must not pointlessly regenerate the brief), or no `docs/PRD.md` exists yet. `/maintain:refresh-brief` remains a standalone `maintain/` command for later PRD-change refreshes — this step only covers the **first bootstrap**.
+
+---
+
 ## Phase 3: GENERATE
 
 This phase produces **three files** — `CLAUDE.md` (rules), `.agents/memory/architecture.md` (map), and the root `README.md` (project description). `CLAUDE.md` is loaded into every conversation, so heavy structural detail belongs in `architecture.md` (loaded only when relevant); the `README.md` is the human-facing front door and replaces the starter-kit's framework README at the project root.

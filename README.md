@@ -176,10 +176,10 @@ Once installed, `/test-e2e` can drive a real browser to explore your UI and gene
 
 ## Quick start
 
-> **Bootstrap chain (steps 3–7):**
-> `/setup:create-PRD` → `/setup:stack-research` → `/maintain:refresh-brief` → `/setup:create-CLAUDE_MD` (after first scaffolding) → `/brainstorm <first feature>`.
+> **Bootstrap chain:**
+> `/setup:create-PRD` → `/setup:stack-research` → `/setup:create-CLAUDE_MD` (after first scaffolding — it distills the brief for you) → `/brainstorm <first feature>`.
 >
-> Each command produces a concrete artifact and feeds the next one. Running them in order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
+> Each command produces a concrete artifact and feeds the next one. At bootstrap, `/setup:create-CLAUDE_MD` runs the PRD→brief distillation itself, so you don't call `/maintain:refresh-brief` by hand here — that stays a `maintain/` command for later PRD changes. Running them in order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
 
 ### 1. Create a new project from this template
 
@@ -239,15 +239,15 @@ Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/so
 
 The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` for long-term reference.
 
-### 5. Distill the PRD into a fast-load brief
+### 5. Distill the PRD into a fast-load brief — automatic at bootstrap
 
 ```
-/maintain:refresh-brief
+/maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
 ```
 
-> Run this **after** `/setup:stack-research` so the brief reflects the now-complete `Technology Stack` section. Generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start. Re-run whenever PRD changes substantially.
+> **At bootstrap you don't run this** — step 6 (`/setup:create-CLAUDE_MD`) distills the brief for you while it's still empty. `/maintain:refresh-brief` is a **maintenance** command you run later, after the PRD changes substantially.
 >
-> If the PRD contains pricing/billing/monetization sections, this also seeds `.agents/memory/domain/business-model.md` with code-relevant operational facts (plan IDs, feature gates, Stripe events).
+> Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
 
 ### 6. Initialize project rules (after first scaffolding)
 
@@ -256,6 +256,8 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 ```
 
 > Run this **after** you have at least some scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
+>
+> **It also distills the brief for you at bootstrap:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, this command runs the PRD→brief step itself before generating the README/CLAUDE.md — so step 5 isn't a separate manual call. (It skips that if the brief is already current.)
 >
 > **Adopting into a large existing codebase (brownfield)?** Don't run this alone — run [`/setup:map-codebase`](.claude/commands/setup/map-codebase.md) instead. It fans out parallel analysis sub-agents (distilled summaries, no context flooding), produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD` — the whole Phase-1 AI layer in one guided run with two review checkpoints.
 
