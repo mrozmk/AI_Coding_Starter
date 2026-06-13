@@ -19,7 +19,7 @@ Four-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when 
 ### 1.1 Markdown links — `[text](path)`
 
 ```bash
-rg -n '\[([^\]]+)\]\(([^)]+)\)' --glob '*.md' --glob '!node_modules' --glob '!.git'
+rg -n --hidden '\[([^\]]+)\]\(([^)]+)\)' --glob '*.md' --glob '!node_modules' --glob '!.git'
 ```
 
 For each match:
@@ -33,10 +33,10 @@ For each match:
 ### 1.2 Path refs in inline code — `` `<path>` ``
 
 ```bash
-rg -n '`([./][^`]+\.(md|json|toml|yaml|yml|py|ts|tsx|js|jsx))`' --glob '*.md'
-rg -n '`(\.agents/[^`]+)`'                                       --glob '*.md'
-rg -n '`(\.claude/[^`]+)`'                                       --glob '*.md'
-rg -n '`(docs/[^`]+)`'                                           --glob '*.md'
+rg -n --hidden '`([./][^`]+\.(md|json|toml|yaml|yml|py|ts|tsx|js|jsx))`' --glob '*.md'
+rg -n --hidden '`(\.agents/[^`]+)`'  --glob '*.md'
+rg -n --hidden '`(\.claude/[^`]+)`'  --glob '*.md'
+rg -n --hidden '`(docs/[^`]+)`'      --glob '*.md'
 ```
 
 Same skip / resolution / existence rules as 1.1.
@@ -44,8 +44,8 @@ Same skip / resolution / existence rules as 1.1.
 ### 1.3 Section anchors in prose — `"<file> → <section>"`
 
 ```bash
-rg -n '([A-Z][A-Za-z_-]*\.md)\s*→\s*([A-Z][A-Za-z &\-]+)' --glob '*.md'
-rg -n '([A-Z][A-Za-z_-]*\.md)\s*`([A-Za-z &\-]+)`'         --glob '*.md'
+rg -n --hidden '([A-Z][A-Za-z_-]*\.md)\s*→\s*([A-Z][A-Za-z &\-]+)' --glob '*.md'
+rg -n --hidden '([A-Z][A-Za-z_-]*\.md)\s*`([A-Za-z &\-]+)`'         --glob '*.md'
 ```
 
 For each match, capture `(file, section)`. Verify:
@@ -59,7 +59,7 @@ For each match, capture `(file, section)`. Verify:
 ### 1.4 Slash command references — `` `/<command>` `` in prose
 
 ```bash
-rg -n '`(/[a-z][a-z0-9-]*)`' --glob '*.md'
+rg -n --hidden '`(/[a-z][a-z0-9-]*)`' --glob '*.md'
 ```
 
 For each match, verify file `.claude/commands/<command>.md` exists.
@@ -69,7 +69,7 @@ Skip these built-in non-command tokens (they look like commands but are part of 
 ### 1.5 MCP / skill tool references — `` `mcp__*` ``
 
 ```bash
-rg -n '`(mcp__[a-z_]+__[a-z_]+)`' --glob '*.md'
+rg -n --hidden '`(mcp__[a-z_]+__[a-z_]+)`' --glob '*.md'
 ```
 
 For each match, verify the tool name exists in:
