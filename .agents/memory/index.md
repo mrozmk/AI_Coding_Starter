@@ -81,7 +81,7 @@ Do NOT duplicate what's already in [CLAUDE.md](../../CLAUDE.md).
 
 ## Memory Reflection Protocol
 
-The **memory-reflection pass** is this project's automatic memory-capture mechanism. (There is no `/remember` command — it was removed. Manual capture still works: say *"zapisz to do pamięci"* and follow the routing in Quick Reference above.)
+The **memory-reflection pass** is this project's automatic memory-capture mechanism. (There is no `/remember` command — it was removed. Manual capture still works: ask Claude to save it to memory — in the project's communication language (CLAUDE.md → Language Rules) — and follow the routing in Quick Reference above.)
 
 It runs at the end of a **completed unit of work**, never mid-task:
 

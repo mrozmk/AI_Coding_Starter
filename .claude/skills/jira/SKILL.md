@@ -47,7 +47,7 @@ echo "JIRA_DEFAULT_LABELS: ${JIRA_DEFAULT_LABELS:-UNSET}"
 
 **If any of `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` is MISSING:** hard-stop. Tell the user in Polish:
 
-> Brakuje zmiennej środowiskowej `<NAME>`. Uzupełnij ją w `.mcp.json` (dla `JIRA_*` MCP-side) lub `.claude/settings.local.json` (dla `JIRA_DEFAULT_*` skill-side) i zrestartuj Claude Code. Szczegóły: [.agents/reference/jira-mcp-atlassian.md](../../agents/reference/jira-mcp-atlassian.md) sekcja "Setup".
+> Brakuje zmiennej środowiskowej `<NAME>`. Uzupełnij ją w `.mcp.json` (dla `JIRA_*` MCP-side) lub `.claude/settings.local.json` (dla `JIRA_DEFAULT_*` skill-side) i zrestartuj Claude Code. Szczegóły: [.agents/reference/jira-mcp-atlassian.md](../../../.agents/reference/jira-mcp-atlassian.md) sekcja "Setup".
 
 `JIRA_DEFAULT_*` UNSET is NOT a blocker — it just means the skill will ask when it needs those values.
 

@@ -114,6 +114,18 @@ Ask the user which git workflow the project follows (use `AskUserQuestion` if av
 
 Record the chosen workflow label AND the default branch name — both are needed when filling the `Default branch` slot in `CLAUDE.md`.
 
+### Identify Communication Language
+
+Ask the user which language Claude should use when talking to the developer (use `AskUserQuestion` if available). This fills the `{communication-language}` placeholder in the generated `CLAUDE.md` → `Language Rules`. It governs Claude↔dev communication and the default for user-facing prompts emitted by the shipped commands — **not** code, comments, or commit messages, which stay English regardless.
+
+| Option | Effect |
+|--------|--------|
+| Polish (default) | Claude responds to the developer in Polish; command prompts render in Polish. |
+| English | Claude responds in English; command prompts render in English. |
+| Other | Any language the team prefers — record it verbatim. |
+
+**Default to Polish** if the user doesn't care or doesn't answer (the starter's primary audience). Record the chosen language; it substitutes every `{communication-language}` token when filling the template in Phase 3.1.
+
 ---
 
 ## Phase 2: ANALYZE
@@ -174,6 +186,7 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 **Adapt to the project:**
 - Fill in project-specific sections: `Project Overview`, `Tech Stack`, `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Testing`, `Validation`, `Notes`.
 - **Fill the `### Default branch` slot** inside `Git Workflow` with the workflow from Phase 1.
+- **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
 - **DO NOT remove or soften** these baseline sections — mandatory for every generated `CLAUDE.md`:
   - `Language Rules`
   - `Code Structure & Modularity`

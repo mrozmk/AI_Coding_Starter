@@ -1,5 +1,5 @@
 ---
-description: Analiza techniczna projektu — wybór technologii i ocena feasibility na etapie PRD
+description: Technical project analysis — technology selection and feasibility assessment at the PRD stage
 argument-hint: [topic or feature area — leave empty for project-level research from PRD]
 ---
 
@@ -128,7 +128,7 @@ For each stack:
 
 ### Step 5: Present Tech Brief Section by Section
 
-Present incrementally. After each section ask: **"Wygląda dobrze? Kontynuuję?"**
+Present incrementally. After each section, ask for confirmation in the user's communication language (CLAUDE.md → Language Rules): does it look good — continue?
 
 Be ready to revise any section before advancing.
 
@@ -233,7 +233,7 @@ Fix inline. No need to re-review after fixing.
 
 After self-review, present the saved path and ask for review:
 
-> "Tech brief zapisany do `<path>`. Przejrzyj go i daj znać jeśli chcesz coś zmienić."
+> Tell the user, in the project's communication language (CLAUDE.md → Language Rules): the tech brief is saved to `<path>`; review it and say if anything should change.
 
 Wait for the user's response. Make any requested changes, then re-run Step 7. Only proceed when the user explicitly approves.
 

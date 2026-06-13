@@ -19,6 +19,15 @@ Add newest entries at the **TOP**. Format: what failed · why · fix / rule.
 
 ---
 
+## 2026-06-13 — `rg` is a Claude Code shell function; never probe for it from a hook
+
+**What failed:** a new `SessionStart` dep-check hook (`check-deps.sh`) reported `rg` as MISSING on a machine where `rg` works in every Claude Code command.
+**Root cause:** Claude Code ships its own ripgrep and exposes `rg` as a **shell function** (from the session shell snapshot) that routes through the `claude` binary — there is often no standalone `rg` binary on `PATH`. A hook runs as a non-interactive `#!/bin/bash` subprocess that does NOT inherit shell functions, so `command -v rg` returns false even though `rg` is fully available to Claude.
+**Fix:** dropped `rg` from the hook; it now checks only `jq` and `git` (real binaries the hooks actually exec). No hook uses `rg` anyway.
+**Rule:** never probe for `rg` (or any Claude-Code-wrapped command) from a hook/script via `command -v` — it false-negatives in the non-interactive subshell. Only check tools your scripts literally exec as binaries (`jq`, `git`). The CLAUDE.md "use rg" rule is satisfied by Claude's bundled rg, not a system install.
+
+---
+
 ## 2026-06-13 — `rg` silently skips `.claude/` here; subdir command moves also break agent `skills:` lists
 
 **What failed:** during a command reorg (`verify-implementation` / `check-quality` / `design-quality-check` → `commands/gates/`), the initial `rg -l 'verify-implementation'` reference sweep returned **only README.md** — missing `orchestrate.md`, `check-implementation.md`, and four `orchestrator-*` agent files that clearly contained the string.

@@ -1,96 +1,96 @@
-# Sync Claude Code workflow z AI_Coding_Starter
+# Sync Claude Code workflow from AI_Coding_Starter
 
-**Cel:** zaktualizuj definicje workflow (`.claude/`, `.agents/` framework, `.gitignore`, `.mcp.json.example`) w tym projekcie, używając https://github.com/mrozmk/AI_Coding_Starter jako źródła prawdy. **Zachowaj wszystkie treści specyficzne dla projektu** — wymieniaj tylko pliki workflow.
+**Goal:** update the workflow definitions (`.claude/`, the `.agents/` framework, `.gitignore`, `.mcp.json.example`) in this project, using https://github.com/mrozmk/AI_Coding_Starter as the source of truth. **Preserve everything project-specific** — replace only workflow files.
 
-**Założenie:** projekt ma już `.claude/` i `CLAUDE.md` (nawet w starszej wersji). Jeśli ich nie ma — przerwij i powiedz mi, że to bootstrap, nie sync (wtedy użyj GitHub "Use this template" zamiast tego prompta).
+**Assumption:** the project already has `.claude/` and `CLAUDE.md` (even an older version). If it doesn't — stop and tell me this is a bootstrap, not a sync (in that case use GitHub "Use this template" instead of this prompt).
 
 ---
 
-## Krok 1: sklonuj starter do katalogu tymczasowego
+## Step 1: clone the starter into a temp directory
 
 ```bash
 rm -rf /tmp/ai-coding-starter-sync
 git clone --depth 1 https://github.com/mrozmk/AI_Coding_Starter /tmp/ai-coding-starter-sync
 ```
 
-Zapisz commit hash startera (`git -C /tmp/ai-coding-starter-sync rev-parse --short HEAD`) — wykorzystasz w finalnym commit message.
+Save the starter's commit hash (`git -C /tmp/ai-coding-starter-sync rev-parse --short HEAD`) — you'll use it in the final commit message.
 
-## Krok 2: klasyfikacja plików
+## Step 2: classify the files
 
-### Kategoria A — **nadpisz całością ze startera** (workflow definitions, projekt-agnostyczne)
+### Category A — **overwrite wholesale from the starter** (workflow definitions, project-agnostic)
 
-- `.claude/commands/*.md` — wszystkie slash commands
-- `.claude/agents/*.md` — definicje subagentów
-- `.claude/skills/**` — definicje skilli (np. `jira/SKILL.md`)
-- `.claude/templates/*.md` — szablony (np. `CLAUDE-template.md`, `README-template.md`)
-- `.claude/README.md` — **przewodnik frameworka**. Uwaga na mapowanie ścieżek: w starterze ten przewodnik leży jako **root `README.md`** (na GitHub template page); w projekcie po bootstrapie mieszka w `.claude/README.md` (przeniesiony przez `/setup:create-CLAUDE_MD`). Strategia: nadpisz `.claude/README.md` projektu treścią **root `README.md` startera**. **Nie** kopiuj root README startera do roota projektu — to zniszczyłoby README projektu (patrz kategoria C).
+- `.claude/commands/*.md` — all slash commands
+- `.claude/agents/*.md` — subagent definitions
+- `.claude/skills/**` — skill definitions (e.g. `jira/SKILL.md`)
+- `.claude/templates/*.md` — templates (e.g. `CLAUDE-template.md`, `README-template.md`)
+- `.claude/README.md` — **the framework guide**. Mind the path mapping: in the starter this guide lives as the **root `README.md`** (the GitHub template page); in a bootstrapped project it lives at `.claude/README.md` (moved there by `/setup:create-CLAUDE_MD`). Strategy: overwrite the project's `.claude/README.md` with the content of the starter's **root `README.md`**. Do **not** copy the starter's root README into the project root — that would destroy the project's README (see category C).
 
-### Kategoria B — **merge ostrożnie**, najpierw pokaż diff i zapytaj
+### Category B — **merge carefully**, show the diff and ask first
 
-- `.claude/settings.json` — projekt może mieć własne permissions. Strategia: weź **union** wpisów `permissions.allow` / `permissions.deny` ze startera i projektu. Nie usuwaj wpisów z projektu których nie ma w starterze. Pokaż mi diff przed zapisem.
-- `.agents/memory/index.md` — `Quick Reference` i `Loader Convention` ze startera, ale `When to Read` może mieć projektowe wiersze dopisane przez `/setup:create-CLAUDE_MD`. Strategia: nadpisz strukturą startera, potem przywróć projektowe wiersze (te których nie ma w starterze).
-- `.gitignore` — dopisz brakujące wpisy ze startera (np. `.claude/audit.log`, `.mcp.json`, `.agents/memory/archive/`), **nie usuwaj** projektowych.
-- `.mcp.json.example` — nadpisz, jeśli starter ma nowszą wersję.
+- `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.deny` entries from the starter and the project. Do not remove project entries that the starter lacks. Show me the diff before writing.
+- `.agents/memory/index.md` — take `Quick Reference` and `Loader Convention` from the starter, but `When to Read` may have project-specific rows appended by `/setup:create-CLAUDE_MD`. Strategy: overwrite with the starter's structure, then restore the project rows (the ones the starter lacks).
+- `.gitignore` — append the entries missing from the starter (e.g. `.claude/audit.log`, `.mcp.json`, `.agents/memory/archive/`); **do not remove** project ones.
+- `.mcp.json.example` — overwrite if the starter has a newer version.
 
-### Kategoria C — **nie ruszaj** (treść projektu)
+### Category C — **do not touch** (project content)
 
-- `CLAUDE.md` — projektowe rules. Jeśli starter ma nową strukturę sekcji, zgłoś to w raporcie i zaproponuj patch — ale nie nadpisuj automatycznie.
-- `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerowane na podstawie projektu (`/setup:create-CLAUDE_MD`, `/maintain:refresh-brief`).
-- `.agents/memory/errors.md`, `decisions.md`, `api.md`, `patterns.md` — append-only, historia projektu.
-- `.agents/sources/`, `.agents/specs/`, `.agents/plans/`, `.agents/reference/`, `.agents/wiki/`, `.agents/memory/archive/` — content projektu.
-- `README.md` (root) — README **projektu** (wygenerowany przez `/setup:create-CLAUDE_MD` na bootstrapie). Nigdy nie nadpisuj treścią startera. Przewodnik frameworka aktualizujesz w `.claude/README.md` (kategoria A).
-- `CHANGELOG.md`, `docs/`, dowolne pliki kodu — dokumentacja i kod projektu.
+- `CLAUDE.md` — project rules. If the starter has a new section structure, report it and propose a patch — but do not overwrite automatically.
+- `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerated from the project (`/setup:create-CLAUDE_MD`, `/maintain:refresh-brief`).
+- `.agents/memory/errors.md`, `decisions.md`, `api.md`, `patterns.md` — append-only, project history.
+- `.agents/sources/`, `.agents/specs/`, `.agents/plans/`, `.agents/reference/`, `.agents/wiki/`, `.agents/memory/archive/` — project content.
+- `README.md` (root) — the **project** README (generated by `/setup:create-CLAUDE_MD` at bootstrap). Never overwrite with starter content. You update the framework guide in `.claude/README.md` (category A).
+- `CHANGELOG.md`, `docs/`, any source files — project documentation and code.
 
-## Krok 3: dry-run raport (PRZED jakąkolwiek zmianą)
+## Step 3: dry-run report (BEFORE any change)
 
-Pokaż mi:
+Show me:
 
-1. **Kategoria A — diff:**
-   - Pliki **nowe** (są w starterze, nie ma w projekcie) → lista pełnych ścieżek
-   - Pliki **zmienione** (różnią się treścią) → lista + zwięzła informacja "co się zmieniło" (1-2 linie na plik)
-   - Pliki **identyczne** → tylko liczba, bez listy
-   - Pliki **w projekcie ale nie w starterze** → lista, oznacz jako "projektowy custom command? sprawdź czy potrzebny" — NIE usuwaj automatycznie
+1. **Category A — diff:**
+   - **New** files (in the starter, absent from the project) → list of full paths
+   - **Changed** files (content differs) → list + a concise "what changed" note (1-2 lines per file)
+   - **Identical** files → count only, no list
+   - Files **in the project but not in the starter** → list, mark as "project custom command? check if needed" — do NOT delete automatically
 
-2. **Kategoria B — proponowany merge:**
-   - `settings.json`: pokaż które wpisy `allow`/`deny`/`hooks` doda starter, a które wpisy projektu zostają nietknięte
-   - `index.md`: pokaż które wiersze `When to Read` są projektowe i zostaną przeniesione
-   - `.gitignore`: pokaż linie do dopisania
+2. **Category B — proposed merge:**
+   - `settings.json`: show which `allow`/`deny`/`hooks` entries the starter adds, and which project entries stay untouched
+   - `index.md`: show which `When to Read` rows are project-specific and will be carried over
+   - `.gitignore`: show the lines to append
 
-3. **Kategoria C — sygnały:**
-   - Jeśli nazwa sekcji w `CLAUDE.md` startera nie pasuje do projektowego CLAUDE.md (np. starter dodał "Loader Convention" do "Automatic Behaviors") — zgłoś jako sugestię, nie wymuszaj
+3. **Category C — signals:**
+   - If a section name in the starter's `CLAUDE.md` doesn't match the project's `CLAUDE.md` (e.g. the starter added "Loader Convention" to "Automatic Behaviors") — report it as a suggestion, don't enforce
 
-**Czekaj na moją akceptację. Nie pisz nic do dysku przed potwierdzeniem.**
+**Wait for my approval. Do not write anything to disk before confirmation.**
 
-## Krok 4: apply (po mojej akceptacji)
+## Step 4: apply (after my approval)
 
-W kolejności:
-1. Skopiuj kategorię A (nowe + zmienione) — `cp -r` z `/tmp/ai-coding-starter-sync/` do projektu
-2. Wykonaj merge kategorii B — najpierw `settings.json`, potem `index.md`, potem `.gitignore`
+In order:
+1. Copy category A (new + changed) — `cp -r` from `/tmp/ai-coding-starter-sync/` into the project
+2. Perform the category B merge — `settings.json` first, then `index.md`, then `.gitignore`
 3. **Sanity check:**
-   - Wszystkie linki w skopiowanych commands rozwiązują się (`rg -o '\[.*?\]\(.*?\.md.*?\)' .claude/commands/`)
-   - `.agents/memory/index.md` zawiera sekcję `Loader Convention`
-   - `CLAUDE.md` projektu nadal wspomina o aktywnych commands (te w `.claude/commands/`)
-4. Posprzątaj: `rm -rf /tmp/ai-coding-starter-sync`
+   - All links in the copied commands resolve (`rg -o '\[.*?\]\(.*?\.md.*?\)' .claude/commands/`)
+   - `.agents/memory/index.md` contains the `Loader Convention` section
+   - The project's `CLAUDE.md` still mentions the active commands (those in `.claude/commands/`)
+4. Clean up: `rm -rf /tmp/ai-coding-starter-sync`
 
-## Krok 5: raport końcowy
+## Step 5: final report
 
-Pokaż:
-- **Dodane pliki:** lista
-- **Zaktualizowane pliki:** lista
-- **Zmergowane pliki:** lista (settings.json, index.md, .gitignore)
-- **Pominięte (kategoria C):** liczba
-- **Sugestie do akcji:** np. "regeneruj `architecture.md` przez `/setup:create-CLAUDE_MD` jeśli format się zmienił", "uruchom `/prime` żeby zwalidować nowy kontekst"
+Show:
+- **Added files:** list
+- **Updated files:** list
+- **Merged files:** list (settings.json, index.md, .gitignore)
+- **Skipped (category C):** count
+- **Suggested actions:** e.g. "regenerate `architecture.md` via `/setup:create-CLAUDE_MD` if the format changed", "run `/prime` to validate the new context"
 
-Zaproponuj commit message:
+Propose a commit message:
 ```
 chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-hash>
 ```
 
-## Krytyczne zasady
+## Critical rules
 
-- NIGDY nie usuwaj wpisów z `.claude/settings.json` których nie ma w starterze — to są projektowe permissions
-- NIGDY nie nadpisuj plików kategorii C
-- NIGDY nie kasuj projektowych slash commands z `.claude/commands/` — zgłoś, zapytaj
-- NIGDY nie commituj automatycznie — pokaż message i czekaj na `/commit`
-- Dry-run zawsze przed apply
-- Posprzątaj `/tmp/ai-coding-starter-sync` na końcu
+- NEVER remove entries from `.claude/settings.json` that the starter lacks — those are project permissions
+- NEVER overwrite category C files
+- NEVER delete project slash commands from `.claude/commands/` — report and ask
+- NEVER commit automatically — show the message and wait for `/commit`
+- Always dry-run before apply
+- Clean up `/tmp/ai-coding-starter-sync` at the end

@@ -121,13 +121,13 @@ Cross-reference PRD features vs specs/epics. Identify:
 - Specs with **no matching Jira epic** — candidates for creating Epics in Jira
 - Raw sources in `.agents/sources/` that have **no derived spec** — candidates for PRD refresh or `/brainstorm`
 
-Be concrete — name the feature and what's missing. If nothing obvious is missing, say "brak oczywistych luk".
+Be concrete — name the feature and what's missing. If nothing obvious is missing, say so (in the user's communication language — CLAUDE.md → Language Rules).
 
 ### Key Decisions
 
 Top 3-5 entries from `.agents/memory/decisions.md`. One line each — decision + why.
 
-If empty, note "memory/decisions.md puste — decyzje nie były jeszcze zapisywane".
+If empty, note that `memory/decisions.md` is empty — no decisions recorded yet (in the user's communication language — CLAUDE.md → Language Rules).
 
 ### Recommended Next Steps
 
@@ -137,7 +137,7 @@ Given the gaps identified, recommend concrete next actions in priority order. Ex
 - `/setup:create-PRD` — no PRD yet, product direction unclear
 - Refresh PRD — raw sources present but PRD seems outdated
 
-Limit to 3 recommendations max. If nothing obvious, say "backlog wygląda spójnie — jesteś gotów do pracy nad user stories".
+Limit to 3 recommendations max. If nothing obvious, say the backlog looks consistent and is ready for user-story work (in the user's communication language — CLAUDE.md → Language Rules).
 
 ---
 
