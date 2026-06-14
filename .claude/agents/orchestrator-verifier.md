@@ -29,6 +29,15 @@ The parent (orchestrator) will pass:
 
   When in doubt → blocker. The cost of pinging the user once is small; the cost of an executor looping on an unfixable gap is large.
 
+## Project orientation — read only if you need it
+
+Audit against the plan + `FILES_TOUCHED`; that is your scope. When you need to locate a file the plan references but doesn't path, or to judge whether the implementation respects a project-wide rule, these are the signposts. You are read-only — open one only when a verdict genuinely depends on it:
+
+- `.agents/memory/architecture.md` — directory map + module roles, to find *where* a referenced symbol or module lives instead of greping the whole tree.
+- `CLAUDE.md` — global + project rules and the `Validation` section. The plan's testing scope and any sensitive-path test requirement trace back here; use it to judge whether the checklist coverage is honest.
+
+Skip any whose frontmatter says `status: empty`. (You don't need `patterns.md` — judging *adherence* to a convention rarely requires the full convention catalog; the gate skill and the plan already encode what to check.)
+
 ## Things you must NOT do
 
 - Do not modify code.

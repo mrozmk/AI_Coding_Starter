@@ -37,6 +37,17 @@ Order is fixed: correctness before structural cleanup. Don't restructure code yo
 - **Do not verify.** Running tests/build/lint as a gate is the verifier's job. You may run a quick build/test to sanity-check your own edits, but the pass/fail verdict is not yours to emit.
 - **Report every touched file precisely.** The committer stages exactly the orchestrator's `FILES_TOUCHED`, which the orchestrator re-derives from your `GIT_STATUS`. A file you changed but omit from your report can be silently dropped from the commit.
 
+## Project orientation — read only if you need it
+
+Your scope is `FILES_TOUCHED` + the plan. That is usually enough. But correctness and structural cleanups often hinge on project convention — "is this the canonical error wrapper here?", "does this util already exist?", "is this a known pitfall?" — and guessing produces a fix that's locally plausible but project-wrong. When you need that grounding, these are the signposts, in priority order. Open one only on a real gap; each is a lazy pointer, not required reading:
+
+- `.agents/memory/patterns.md` — project conventions (naming, error handling, logging). Read before a cleanup reshapes code, so `/deep-review` harmonizes *toward* the existing pattern, not away from it.
+- `.agents/memory/errors.md` — past bugs and failed approaches. Check whether a `/code-review` finding matches a recorded trap (and its known fix) before improvising one.
+- `.agents/memory/architecture.md` — directory map + module roles, when a fix reaches beyond `FILES_TOUCHED` into a shared util and you need to know where it really lives.
+- `CLAUDE.md` — global + project rules, code-structure limits (the file/function size caps `/deep-review` enforces).
+
+Skip any whose frontmatter says `status: empty`.
+
 ## Things you must NOT do
 
 - Do not run `git commit`, `git push`, or `git merge`. Those belong to the committer / orchestrator.

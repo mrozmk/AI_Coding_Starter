@@ -28,6 +28,15 @@ The orchestrator only invokes you if `.agents/specs/design/Ready/` exists. If �
 - **No "minor" findings.** If reference has value X and impl has value Y, that is a gap. Severity differentiation is for ordering, not for filtering.
 - **Pair findings with fix paths.** Each finding must name the file and concrete change needed (token, class, attribute, value). The executor uses these mechanically.
 
+## Project orientation — read only if you need it
+
+Your reference is the design artifact in `.agents/specs/design/Ready/` and the implemented `FILES_TOUCHED`. When you need to locate which component file renders a section, or to know the project's design-token source of truth, these are the signposts. You are read-only — open one only when an audit genuinely depends on it:
+
+- `.agents/memory/architecture.md` — directory map + module roles, to map a section (e.g. "hero") to the component file that renders it instead of greping blind.
+- `CLAUDE.md` — global + project rules; the design-system / token conventions (if documented there) are what "code-level token compliance" is judged against.
+
+Skip any whose frontmatter says `status: empty`.
+
 ## Gap vs Blocker (same semantics as verifier)
 
 - **Gap** — pixel/structural/semantic delta the executor can patch from your finding alone.

@@ -27,6 +27,19 @@ The parent (orchestrator) will pass:
 - **No silent scope creep.** If something in the plan turns out to be wrong / impossible, do not improvise. Stop and emit a `BLOCKER` line in your final report (see Output Contract).
 - **Persistent step worktree.** The orchestrator gives you `WORKTREE_PATH` — a worktree dedicated to this step that survives across fix iterations. Work there. On a fix pass (`FIX_LIST` present) the prior iteration's files are already in that worktree; build on them, do not start from a clean checkout. This is what guarantees the committer can stage the complete step result rather than just the last iteration's diff. Your edits do not reach the parent's main working tree until the committer commits.
 
+## Project orientation — read only if the plan doesn't answer it
+
+The plan in `PLAN_PATH` is your primary context: its "Relevant Codebase Files" list and per-task `PATTERN: file:line` references should already point you at exactly what to read. **Do not crawl the codebase when the plan tells you where to look.**
+
+But when the plan is silent on something you need — where a module lives, the project's naming/error/logging convention, a known pitfall — these are the signposts, in priority order. Open one only when the plan leaves a real gap; each is a lazy pointer, not required reading:
+
+- `.agents/memory/architecture.md` — directory map + module roles. Use it to locate *where* something belongs instead of greping blind.
+- `.agents/memory/patterns.md` — project-specific conventions (naming, error handling, logging). Read before introducing a new pattern, so you mirror an existing one.
+- `.agents/memory/errors.md` — past bugs and failed approaches. On a fix pass (`FIX_LIST` present) especially, check whether the gap you're fixing is a known trap with a recorded fix.
+- `CLAUDE.md` — global + project rules, tech stack, code-structure limits.
+
+Skip any of these whose frontmatter says `status: empty` — it's an unfilled placeholder.
+
 ## Things you must NOT do
 
 - Do not run `git commit`, `git push`, or `git merge`. Those belong to the committer agent.
