@@ -103,10 +103,12 @@ Branch sync (ahead/behind origin):
 
 **Style: facts-only listing. No interpretation. No duplication of brief content** (the brief is already in context — re-summarizing it wastes output tokens).
 
+**No procedural narration.** Do NOT narrate your own process — no "Zacznę od…", "Czytam pliki…", "Wszystkie pliki populated…", no preamble before tool calls, no recap after them. The `Read` tool calls visible in the UI ARE the proof that loading happened; restating it in prose adds nothing. Narrate only when there is an actual problem to report (→ `Warnings`).
+
 Use this exact structure:
 
 ### Loaded
-- One line listing the files actually read this prime.
+- One dot-separated line of the file names actually read this prime, with the mode as prefix, e.g. `Loaded (quick): CLAUDE.md · index.md · project-brief.md · architecture.md`. This is the glance-check of *which* files entered context — keep it.
 
 ### Memory — facts
 
@@ -130,9 +132,6 @@ Render the output as a bulleted list of `<file> — <size>, modified <date>`, on
 ### Warnings (omit section if no warnings)
 - ⚠️ `project-brief.md` empty — run `/maintain:refresh-brief`
 - ⚠️ `architecture.md` empty — run `/setup:create-CLAUDE_MD`
-
-### Mode
-- Quick | Full
 
 **No closing summary, no "Ready to start". The facts speak for themselves.**
 
