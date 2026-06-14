@@ -266,23 +266,32 @@ Use information-dense keywords for clarity:
 
 ## TESTING STRATEGY
 
-<Adapt testing scope to project size — assessed during Phase 1.>
+<Adapt testing scope to project maturity — assessed during Phase 1.>
 
-**Very small projects (single script / prototype / <5 files):**
+**First, read the maturity signal — in this priority order:**
+
+1. **`CLAUDE.md` → `Validation` section** — if it states a test policy, that is the standard. It wins over everything below.
+2. **Existing test count** — if the repo already has a substantial test suite (say >50 test cases), treat it as a mature project regardless of anything else.
+3. Only if neither exists, fall back to the file-count heuristic below.
+
+> **Do NOT use "has CI" as the maturity signal.** A project with 1000 tests and no CI is mature, not "small". Absence of CI means tests aren't *enforced* before merge — a reason to ask the user about adding CI, never a reason to *lower* the test requirement. Using "no CI → tests optional" is a self-fulfilling prophecy that manufactures coverage gaps.
+
+**Very small projects (single script / prototype / <5 files, no existing suite):**
 
 - Tests are optional. If skipped, document why and list manual validation steps instead.
 - If any tests are written, cover only core/critical functions.
 
-**Small projects (few modules, no CI):**
+**Small projects (few modules, no existing suite):**
 
 - Unit tests for core business logic only — skip boilerplate and trivial getters/setters.
 - At least one happy-path integration test for the main workflow.
 
-**Medium/larger projects (multiple services, has CI):**
+**Mature projects (substantial existing suite OR a test policy in `CLAUDE.md → Validation`):**
 
 - Unit tests per component with edge cases.
 - Integration tests for key workflows.
-- Coverage target: 70%+ (adjust if the project has its own standard in `CLAUDE.md`).
+- **Sensitive paths (payment / auth / webhook / license / locale-redirect) MUST have unit tests** — this is enforced by the Step 5.1d grilling gate, not optional here.
+- Coverage target: 70%+ (adjust if the project states its own standard in `CLAUDE.md`).
 
 ### Core Functions to Test (if applicable)
 
@@ -576,7 +585,22 @@ The other expensive failure class is product decisions that the plan **defers** 
 
 For each unresolved decision → raise a 🟠 MAJOR finding naming the decision and where it will explode if left latent. The point is to force these into an `AskUserQuestion` at **plan-time** (cheap, one round) instead of mid-`/orchestrate` (expensive, halts the pipeline).
 
-> These two gates target a recurring root cause: it is not that the planning model is too weak — backend plans from the same model pass clean. It is that grilling did not press UI plans for a structural contract and did not force latent product decisions. These gates close that gap without needing a stronger model.
+### Step 5.1d — Sensitive-path test gate (MANDATORY if the plan touches payment / auth / webhook / license / locale-redirect routing)
+
+**Trigger:** the plan (or any sub-step) creates or modifies code on a sensitive path — payment/checkout/billing, authentication/session, webhook handlers, license issuance/activation, or locale/redirect routing. Plans that touch none of these skip this gate entirely.
+
+This gate is the test-coverage twin of `5.1b`/`5.1c`. Those two closed the UI and product-decision gaps the same way: by forcing a contract into the plan at plan-time instead of letting it surface mid-pipeline. The remaining soft spot is backend tests — a missing test for a webhook or a checkout call lands in `🟡 MEDIUM` (Step 5.2), which the Step 5.4 `AskUserQuestion` drops by default. So the most failure-prone paths in the system (money, access, entitlement) are exactly where the process is weakest. This gate moves those from a skippable 🟡 to a hard gate.
+
+Watch the locality trap: a route file with no sibling `.test.ts` is NOT automatically untested — in thin-adapter architectures the logic lives in `lib/` and is tested there. Judge by **where the logic lives**, not whether `route.ts` has a test neighbor.
+
+For each sensitive path the plan touches, confirm the plan does **one** of:
+
+1. **Names the test file** — an explicit unit test (existing or to-be-created) covering the path's core logic, with the critical cases enumerated (idempotency for webhooks, env-guard for dev-only license endpoints, locale fallback for routing, failure/refund path for payments).
+2. **Explicitly defers** — a verbatim `DEFER — manual validation only, why: <reason>` line on the sub-step. Deferral is allowed, silent omission is not.
+
+For any sensitive path that does neither → raise a 🟠 MAJOR finding: _"Step <X> touches <sensitive path> but neither names a test file nor marks `DEFER — why:`; the test gap will ship silently because it would otherwise be a skippable 🟡. FIX: name the unit test + its critical cases, or add the explicit DEFER line."_
+
+> These three gates target a recurring root cause: it is not that the planning model is too weak — backend plans from the same model pass clean. It is that grilling did not press UI plans for a structural contract, did not force latent product decisions, and let sensitive-path test gaps fall through to a skippable severity. These gates close those gaps without needing a stronger model.
 
 ### Step 5.2 — Raw critique pass (4 categories)
 

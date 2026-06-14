@@ -43,6 +43,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ---
 
+## Validation
+
+> **Source of truth for quality gates.** `/gates:verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/setup:create-CLAUDE_MD`. Until filled, gates fall back to stack-detected defaults.
+
+```bash
+# Run in order, stop on first failure
+{typecheck-command} && {lint-command} && {test-command}
+```
+
+**Test policy — which layers MUST have tests:**
+
+- Sensitive paths — payment, auth, webhook, license, locale/redirect routing — **MUST** have unit tests (mock external SDKs / DB). A change to these paths without a test is a gate failure, not a 🟡 nice-to-have.
+- Core business logic in `{lib-dir}` — unit tests with edge cases.
+- Thin HTTP adapters / boilerplate / trivial getters — tests optional.
+
+> This section is the maturity signal `/plan-feature` reads to size its TESTING STRATEGY — keep it honest. Absence of CI does **not** mean "small project, tests optional".
+
+---
+
 ## Tech Stack
 
 | Technology | Purpose |
