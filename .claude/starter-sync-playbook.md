@@ -29,6 +29,26 @@ Save the starter's commit hash (`git -C /tmp/ai-coding-starter-sync rev-parse --
 - `.claude/workflows/*.js` — `Workflow` orchestration scripts (e.g. `map-codebase.js`). Framework content — overwrite wholesale.
 - `.claude/STARTER-LICENSE` — the starter's own license, preserved here at bootstrap (the starter's root `LICENSE` is moved here by `/setup:create-CLAUDE_MD` so the project root `LICENSE` is the cloner's own). Path mapping mirrors `.claude/README.md`: overwrite the project's `.claude/STARTER-LICENSE` with the starter's **root `LICENSE`**. Do **not** touch the project's root `LICENSE` (category C).
 
+### Bootstrap-only — **do not check or add in an existing project** (overrides the above)
+
+This playbook is run on an **already-bootstrapped, live project**, not a fresh "Use this template"
+clone. The following are seeding artifacts; re-checking or re-adding them on every sync is pure noise.
+**If the project already has them**, you *may* refresh them as the category-A rules above describe —
+but **if it doesn't, do not add them, and never make them a task or a question:**
+
+- **`.claude/README.md`** (framework guide) and **`.claude/STARTER-LICENSE`** — listed as category A
+  above only for the case where they already exist. In a project that omitted them at bootstrap, leave
+  them out. A one-off manual copy covers the rare case where they're wanted later — it is not a sync job.
+- **`.claude/commands/setup/create-CLAUDE_MD.md`** — sync it as an ordinary category-A command (apply a
+  genuine improvement to how it *runs*), but **never** apply/ask "to keep bootstrap in sync". The
+  bootstrap chain (`create-CLAUDE_MD` → generates `CLAUDE.md` + root `README.md`) already ran once and
+  will not run again in this project, so its starter changes carry no bootstrap obligation here.
+- root `CLAUDE.md`, root `README.md`, root `LICENSE` are category C regardless — never touched.
+
+> Rationale: the sync keeps the **working** toolchain (commands/agents/skills/hooks) current. Effort
+> spent diffing or prompting about the framework README, the starter license, or `CLAUDE.md`
+> regeneration is wasted in a project that's long past bootstrap.
+
 ### Category B — **merge carefully**, show the diff and ask first
 
 - `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.deny` entries from the starter and the project. Do not remove project entries that the starter lacks. Show me the diff before writing.
@@ -71,17 +91,23 @@ Show me:
 ## Step 4: apply (after my approval)
 
 In order:
+
 1. Copy category A (new + changed) — `cp -r` from `/tmp/ai-coding-starter-sync/` into the project
 2. Perform the category B merge — `settings.json` first, then `index.md`, then `.gitignore`
 3. **Sanity check:**
    - All links in the copied commands resolve (`rg -o '\[.*?\]\(.*?\.md.*?\)' .claude/commands/`)
    - `.agents/memory/index.md` contains the `Loader Convention` section
    - The project's `CLAUDE.md` still mentions the active commands (those in `.claude/commands/`)
-4. Clean up: `rm -rf /tmp/ai-coding-starter-sync`
+4. Clean up the `/tmp` clone(s). The sandbox **denies `rm -rf`** (global deny rule — don't disable the
+   sandbox to force it), so delete without it and cover suffixed/leftover variants:
+   `find /tmp/ai-coding-starter-sync /tmp/ai-coding-starter-sync-* -depth -delete 2>/dev/null`
+   then verify `ls -d /tmp/ai-coding-starter* 2>/dev/null` shows no matches. If blocked entirely, ask
+   the user to remove it manually (`! rm -rf …`) — a leftover clone is harmless and must never block the run.
 
 ## Step 5: final report
 
 Show:
+
 - **Added files:** list
 - **Updated files:** list
 - **Merged files:** list (settings.json, index.md, .gitignore)
@@ -89,6 +115,7 @@ Show:
 - **Suggested actions:** e.g. "regenerate `architecture.md` via `/setup:create-CLAUDE_MD` if the format changed", "run `/prime` to validate the new context"
 
 Propose a commit message:
+
 ```
 chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-hash>
 ```
@@ -100,4 +127,5 @@ chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-
 - NEVER delete project slash commands from `.claude/commands/` — report and ask
 - NEVER commit automatically — show the message and wait for `/commit`
 - Always dry-run before apply
-- Clean up `/tmp/ai-coding-starter-sync` at the end
+- NEVER check or add bootstrap-only artifacts (`.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, `create-CLAUDE_MD` as a bootstrap driver) in an existing project — see the "Bootstrap-only" subsection in Step 2
+- Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (sandbox denies `rm -rf`); a leftover clone is harmless and must never block the run
