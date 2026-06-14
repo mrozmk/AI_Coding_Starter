@@ -123,6 +123,21 @@ If zero broken across all 5 categories, output:
 
 ## Phase 2: Memory Pruning
 
+Memory pruning runs at **two granularities, in this order**:
+
+- **Section 2A — entry-level (per-entry).** Cut stale `## <date> — <title>` entries out of
+  living append-style files (the file keeps living). Daily archive `archive/<file>-YYYY-MM-DD.md`.
+- **Section 2B — file-level (per-file).** Archive whole memory files that have gone cold per the
+  read-telemetry sidecar. Quarterly archive `archive/YYYY-Q<N>/<file>`.
+
+**Order matters: 2A → 2B.** Prune entries in living files first, then judge whole dead files — a
+file emptied by 2A becomes an obvious 2B candidate in the same run. The two archive schemes differ
+on purpose (entries vs whole files); both are historical-only and never auto-loaded.
+
+---
+
+### Section 2A — Entry-level pruning (per-entry)
+
 **Goal:** identify stale entries in append-style memory files and offer archiving.
 
 **Files in scope:**
@@ -134,7 +149,7 @@ If zero broken across all 5 categories, output:
 
 **Skip:** `.agents/memory/archive/**`, regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`).
 
-### 2.1 Identify candidate entries via heuristics
+#### 2A.1 Identify candidate entries via heuristics
 
 Each memory file is structured as `## <date> — <title>` blocks (per starter convention). Parse each file into entries.
 
@@ -157,7 +172,7 @@ Each memory file is structured as `## <date> — <title>` blocks (per starter co
 **Any one met** → candidate.
 **None** → keep silently.
 
-### 2.2 Per-candidate user decision
+#### 2A.2 Per-candidate user decision
 
 For each candidate, present:
 
@@ -182,7 +197,7 @@ Action? [k]eep / [a]rchive / [d]elete (rare) / [s]kip-for-now
 
 **Default suggestion when uncertain:** archive. It's reversible (entry still in git history + archive file).
 
-### 2.3 Apply archive moves
+#### 2A.3 Apply archive moves
 
 For each "archive" decision:
 
@@ -201,10 +216,10 @@ For each "archive" decision:
    > These entries were archived by `/maintain:cleanup-workflow` because they were stale (date heuristic and/or code-grounded heuristic). Do not load this file in `/prime` or any agent — it is historical record only.
    ```
 
-### 2.4 Phase 2 output
+#### 2A.4 Section 2A output
 
 ```markdown
-🗂 Memory Pruning — <N> files scanned
+🗂 Memory Pruning — 2A entry-level — <N> files scanned
 
 Per-file results:
   errors.md:    <kept> kept, <archived> archived, <deleted> deleted, <skipped> skipped
@@ -221,6 +236,126 @@ New file sizes:
 Archive created/updated:
   .agents/memory/archive/errors-2026-04-27.md (3 entries)
   .agents/memory/archive/decisions-2026-04-27.md (1 entry)
+```
+
+---
+
+### Section 2B — File-level pruning (from read-telemetry sidecar)
+
+**Goal:** archive whole memory files that have gone cold — never read within the threshold window.
+Where 2A used the sidecar as a *soft* signal (Heuristic C), 2B uses it as the *hard* criterion.
+
+**Propose-only — never auto-archives.** User decides per file.
+
+#### 2B.1 Collect usage from the sidecar + file list
+
+The read-telemetry sidecar `.claude/memory-usage.json` (written async by `track-memory-read.sh`
+after every memory-file `Read`, already introduced in 2A's Heuristic C) is keyed by path relative
+to `.agents/memory/`:
+
+```json
+{ "errors.md": { "last_referenced": "YYYY-MM-DD", "ref_count": N } }
+```
+
+Enumerate every memory file and join it against its sidecar entry. A file with **no sidecar entry**
+has never been read this checkout → treat as `ref_count: 0`, no `last_referenced` (idle measured
+from `created`, see 2B.2). `pinned: true|false` lives in each file's **frontmatter** (a human
+decision, not telemetry) — a pinned file is excluded from proposals regardless of usage.
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+DB=.claude/memory-usage.json
+[ -f "$DB" ] || echo '{}' > "$DB"
+for f in .agents/memory/*.md .agents/memory/domain/*.md; do
+  key="${f#.agents/memory/}"
+  last=$(jq -r --arg k "$key" '.[$k].last_referenced // ""' "$DB")
+  refs=$(jq -r --arg k "$key" '.[$k].ref_count // 0'        "$DB")
+  pinned=$(head -10 "$f" 2>/dev/null | grep -m1 '^pinned:' | sed 's/pinned: //')
+  created=$(head -10 "$f" 2>/dev/null | grep -m1 '^created:' | sed 's/created: //')
+  size=$(wc -l < "$f")
+  echo "$f|${last:-never}|$refs|${pinned:-false}|${created:-?}|$size"
+done
+```
+
+If the sidecar does not exist at all (the hook has never run), report `no read-usage telemetry
+yet (track-memory-read hook has not run)` and skip the rest of 2B.
+
+#### 2B.2 Compute days-idle for each
+
+Threshold is a fixed **180 days** (no command argument — `cleanup-workflow` takes no arguments).
+For each file:
+
+- Has a `last_referenced` in the sidecar → `days_idle = (today − last_referenced).days`
+- No sidecar entry (never read) → `days_idle = (today − created).days` — a file created long ago
+  and never once read is the strongest archival candidate.
+- **Candidate** if: `days_idle >= 180 AND ref_count == 0 AND pinned == false`
+
+> The 180-day threshold can be overridden inline for a single run — 2B.4's `AskUserQuestion` MAY
+> offer "threshold 180 days — change for this run?". This is a per-run choice, not a CLI argument.
+
+**Exclude from candidacy regardless of usage:** `pinned: true` files, `MEMORY.md`, `index.md`,
+`project-brief.md` and the other regenerated files (`architecture.md`, `domain/business-model.md`).
+
+#### 2B.3 Present the file-level audit table
+
+Show three sections:
+
+**A) Pinned files (excluded from archival regardless of usage):**
+
+| File | Size | Created | Last referenced | Refs |
+| ---- | ---- | ------- | --------------- | ---- |
+
+**B) Active files (have refs OR under threshold):**
+
+| File | Size | Days idle | Refs |
+| ---- | ---- | --------- | ---- |
+
+**C) Archival candidates (threshold exceeded, ref_count == 0):**
+
+| File | Size | Days idle | Created |
+| ---- | ---- | --------- | ------- |
+
+If section C is empty, say so explicitly and continue to Phase 3.
+
+#### 2B.4 Per-file user decision
+
+Use `AskUserQuestion` for each candidate (or group if many). The prompt MUST say "archive this
+**file**" — distinct from 2A's "archive this **entry**".
+
+- **Archive** — move the whole file to `.agents/memory/archive/YYYY-Q<N>/<filename>`, remove its
+  entry from `MEMORY.md` *if present*, leave a breadcrumb in `index.md` Quick Reference.
+- **Pin it** — flip `pinned: true` in the file's frontmatter, never propose again.
+- **Keep, reset counter** — set the sidecar `last_referenced` to today (give it another window).
+- **Skip** — leave as-is, will reappear next run.
+
+#### 2B.5 Execute approved file actions
+
+For **Archive**:
+
+1. `mkdir -p .agents/memory/archive/YYYY-Q<N>` (compute the quarter from today).
+2. `git mv <file> .agents/memory/archive/YYYY-Q<N>/`
+3. If the file is referenced in `MEMORY.md` (global auto-memory index — **may not exist in an
+   `.agents/memory/`-based project; this step no-ops cleanly when absent**) or `.agents/memory/index.md`,
+   remove the line or repoint it to the archive location (ask user which).
+4. Report what was archived.
+
+For **Pin**: edit frontmatter `pinned: false` → `pinned: true`.
+
+For **Keep, reset** (the only telemetry *write* in this command alongside Pin's frontmatter flip):
+
+```bash
+jq --arg k "<key>" --arg d "<today>" '.[$k] = {"last_referenced": $d, "ref_count": ((.[$k].ref_count // 0))}' .claude/memory-usage.json > /tmp/mu.json && mv /tmp/mu.json .claude/memory-usage.json
+```
+
+#### 2B.6 Section 2B output
+
+```markdown
+🗂 Memory Pruning — 2B file-level — <N> files scanned
+
+Archival candidates: <archived> archived, <pinned> pinned, <reset> reset, <skipped> skipped
+
+Archive created/updated:
+  .agents/memory/archive/2026-Q2/domain-deploy.md (whole file)
 ```
 
 ---
@@ -331,7 +466,11 @@ Parse `prime.md` (and `prime-ba.md`) for the files they load **every** session (
 
 > ⚠️ `/prime` loads `<file>` every session but it is `<empty / 542 lines>`. Consider populating it (`/maintain:refresh-brief`, `/setup:create-CLAUDE_MD`) or trimming it (Phase 2).
 
-**Dead-memory cross-check (from the sidecar).** If `.claude/memory-usage.json` exists, flag any append-style memory file whose `last_referenced` is > 90 days old AND that is not in prime's always-load set — it is neither auto-loaded nor consulted on demand, i.e. dead weight worth reviewing (route it to Phase 2 for pruning). A file absent from the sidecar is not flagged (tracking may be new). If the sidecar does not exist yet, note `no read-usage telemetry yet (track-memory-read hook has not run)` and skip this check.
+**Dead-memory cross-check → handled by Phase 2B.** Cold whole-file detection from the sidecar
+(`last_referenced` past the threshold, `ref_count == 0`) is owned by **Section 2B** of Phase 2,
+which not only flags but *archives* such files. 4.1 does not re-run that check here — see the 2B
+results earlier in this run. (This keeps a single threshold and one decision point instead of the
+former 90-day flag here vs 2B's 180-day archive criterion.)
 
 ### 4.2 Cross-file duplication & internal contradictions
 
@@ -396,8 +535,9 @@ After all 4 phases:
    Total broken: <N> — fix manually before commit.
 
 ## Phase 2: Memory pruning
-   <K> entries kept, <A> archived, <D> deleted, <S> skipped.
-   Archives: <list of created archive files>.
+   2A entries:  <K> kept, <A> archived, <D> deleted, <S> skipped.
+   2B files:    <A> archived, <P> pinned, <R> reset, <S> skipped.
+   Archives: <list of created archive files / dirs (2A daily, 2B quarterly)>.
 
 ## Phase 3: Workflow health
    <N> warnings (see details above).
@@ -418,6 +558,8 @@ After all 4 phases:
 - **Use `rg`, never `grep` or `find`.**
 - **Phase 1: no auto-fix.** Suggestions only — user repairs manually.
 - **Phase 2: archive is the default.** Delete only on explicit user choice.
+- **Phase 2 runs 2A (entry-level) before 2B (file-level).** 2A cuts stale entries from living files (daily archive `archive/<file>-YYYY-MM-DD.md`); 2B archives whole cold files (quarterly archive `archive/YYYY-Q<N>/`). Both schemes coexist by design.
+- **Phase 2B: archive is the default for cold files.** `Pin` and `Keep, reset` are the only telemetry *writes* the command makes (frontmatter flip / sidecar bump); everything else only reads the sidecar.
 - **Phase 3: no actions.** Pure signal — let the user decide.
 - **Phase 4: no actions.** Discovery + flagging only; never hardcode project paths, and prefer a false-negative to a false-positive.
 - **Skip `.agents/memory/archive/**`** in all phases (this command never re-processes its own archive).

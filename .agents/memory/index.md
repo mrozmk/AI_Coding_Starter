@@ -62,7 +62,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 
 **Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
 
-**Archive folder — never auto-loaded.** `.agents/memory/archive/` holds entries pruned by `/maintain:cleanup-workflow` Phase 2. It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
+**Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content from `/maintain:cleanup-workflow` Phase 2: **entries** cut by Section 2A (`archive/<file>-YYYY-MM-DD.md`) and whole **files** archived by Section 2B (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
 
 ---
 
