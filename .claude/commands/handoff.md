@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Compact the current conversation into a handoff document so a fresh session (or another agent) can pick the work up without context loss. Writes a markdown file to .agents/handoffs/ (gitignored — a local session scratchpad). Run it at a session boundary, before /clear, or when context is getting long. Optional argument describes what the next session will focus on.
+description: Compact the current conversation into a handoff document so a fresh session (or another agent) can pick the work up without context loss. Writes a markdown file to .agents/handoffs/ (a local scratchpad — excluded per-clone via .git/info/exclude, not repo-wide .gitignore, so it stays referenceable with @). Run it at a session boundary, before /clear, or when context is getting long. Optional argument describes what the next session will focus on.
 argument-hint: [what the next session will focus on]
 ---
 
@@ -16,7 +16,14 @@ Write a handoff document that summarizes the current conversation so a fresh age
 
 ## Where it writes
 
-Save to **`.agents/handoffs/handoff-YYYY-MM-DD-<short-kebab-topic>.md`** (the date and a 2-4 word topic from `$ARGUMENTS` or the work in progress). This directory is gitignored — handoffs are a local scratchpad, not versioned repo content. Do **not** write to the project's tracked files. Do **not** write to `/tmp` (it is wiped on restart and the handoff would be lost between sessions).
+Save to **`.agents/handoffs/handoff-YYYY-MM-DD-<short-kebab-topic>.md`** — always prefix the filename with `handoff-` (the date and a 2-4 word topic from `$ARGUMENTS` or the work in progress). The `handoff-` prefix makes the file easy to find and `@`-reference. Handoffs are a **local scratchpad, not versioned repo content** — but they are kept out of git via a *per-clone* `.git/info/exclude` rule, **not** repo-wide `.gitignore`, so the CLI `@` reference and editors still see them (a `.gitignore` entry would grey them out and hide them from `@`). Do **not** write to the project's tracked files. Do **not** write to `/tmp` (it is wiped on restart and the handoff would be lost between sessions).
+
+> **First-time setup per clone** (handoffs won't be ignored until this runs once):
+> ```bash
+> echo '.agents/handoffs/*'         >> .git/info/exclude
+> echo '!.agents/handoffs/.gitkeep' >> .git/info/exclude
+> ```
+> If you find a freshly written handoff showing up in `git status`, this exclude hasn't been set yet — run the two lines above.
 
 If a handoff for the same day+topic already exists, append a new `## Update <time>` section rather than overwriting.
 
