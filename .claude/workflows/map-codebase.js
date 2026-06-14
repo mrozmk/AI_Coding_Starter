@@ -317,7 +317,7 @@ flowchart LR
 ## Critical conventions
 - <non-obvious rules that affect WHERE new code goes, inferred from deps / publicAPI / layering>
 
-Detect architectural layers (API / service / data / UI / util) from the dependency relationships and reflect them in Module roles. If there are no external integrations and no internal services (plain monolith, no third parties), keep the Map section but say so explicitly rather than inventing edges. Be concrete; never fabricate a service or integration not present in the summaries. Output ONLY the markdown body — no frontmatter (the command adds it).
+Detect architectural layers (API / service / data / UI / util) from the dependency relationships and reflect them in Module roles. If there are no external integrations and no internal services (plain monolith, no third parties), keep the Map section but say so explicitly rather than inventing edges. Be concrete; never fabricate a service or integration not present in the summaries. Output ONLY the markdown body — no frontmatter (the command adds it). Start your response IMMEDIATELY with the \`## Source layout\` heading — no preamble, no "I'll synthesize…" or "Let me…" sentence before it.
 
 Infrastructure analysis (for Topology / Map / Infrastructure sections):
 ${infraJson}
@@ -340,7 +340,7 @@ Then write a PRD with these sections; after each section heading append a confid
 - Main Flows (inferred end-to-end flows)
 - Out of Scope / Unknowns (what code cannot reveal — the "why", priorities, non-functional intent)
 
-Be explicit about uncertainty; prefer "appears to / likely" over assertions. Output ONLY the markdown body.
+Be explicit about uncertainty; prefer "appears to / likely" over assertions. Output ONLY the markdown body. Start your response IMMEDIATELY with the exact banner line above — no preamble, no "I'll…" or "Let me…" sentence before it.
 
 Documented intent (the "why" extracted from the repo's docs/ADRs — use it to RAISE confidence and fill the "why" the code cannot show; if empty, rely on inference):
 ${whyContext || 'none found'}
@@ -366,7 +366,7 @@ Output EXACTLY these sections:
 ## Notes
 - <ORM/DB technology if evident; conventions (naming, soft-delete, timestamps, multi-tenancy); anything non-obvious about the schema>
 
-Deduplicate entities that appear in multiple modules. Output ONLY the markdown body — no frontmatter (the command adds it).
+Deduplicate entities that appear in multiple modules. Output ONLY the markdown body — no frontmatter (the command adds it). Start your response IMMEDIATELY with the \`## Entities\` heading — no preamble, no "I'll…" or "Let me…" sentence before it.
 
 Module summaries:
 ${summariesJson}`

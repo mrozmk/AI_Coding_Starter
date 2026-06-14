@@ -55,11 +55,12 @@ Wait for approval. Only then spend tokens on the fan-out.
 
 ## Phase 1-3 — Invoke the Workflow
 
-Call the **`Workflow`** tool:
+Call the **`Workflow`** tool via **`scriptPath`** (a `name:`-based call depends on a named-workflow
+registry that is not guaranteed to resolve `map-codebase` at runtime; `scriptPath` is self-contained):
 
 ```
 Workflow({
-  name: 'map-codebase',
+  scriptPath: '.claude/workflows/map-codebase.js',
   args: {
     modules:     <approved partition — each { name, files, imports, importedBy, isCore }>,
     docFiles:    <discovered docs/ADRs>,
@@ -72,15 +73,29 @@ Workflow({
 })
 ```
 
+> **`args` MUST be a real JSON value, never a JSON-encoded string.** Pass `modules` (and every
+> other field) as the actual array/object/string — `args: { modules: [ {…}, {…} ], … }`, NOT
+> `args: '{"modules": …}'`. The Workflow tool delivers `args` to the script verbatim as structured
+> data; a stringified blob arrives as `typeof args === "string"`, so `args.modules` is `undefined`
+> and the script's `modules.length === 0` guard aborts the run with a misleading "No modules" error.
+> This is a call-site contract — do not defensively `JSON.parse` inside the script.
+
 The script fans out one `module-analyzer` per module (parallel, capped concurrency, schema-validated summaries), then synthesizes — **from the summaries only, never re-reading source** — an architecture body and a reconstructed-PRD body. It returns `{ architectureBody, prdBody, unanalyzed, analyzed, total }`. Track progress in `/workflows`.
 
 ---
 
 ## Write artifacts
 
+**Preamble strip (apply to every `*Body` before writing).** A synthesizer occasionally prefixes its
+output with a conversational lead-in ("I'll synthesize the architecture.md body…", "Let me work
+through…") instead of starting at the first heading. Before persisting any body, check its first
+non-empty line: if it does **not** start with `#` (a heading) or `>` (the PRD banner blockquote),
+drop every leading line until the first line that does. This guarantees artifacts begin at their
+real content (`## Source layout`, `## Entities`, or the PRD banner), not at a model aside.
+
 On return:
 
-1. **`.agents/memory/architecture.md`** — write `architectureBody` with this frontmatter (matches `/setup:create-CLAUDE_MD`'s format), then the body:
+1. **`.agents/memory/architecture.md`** — write `architectureBody` (after the preamble strip) with this frontmatter (matches `/setup:create-CLAUDE_MD`'s format), then the body:
    ```yaml
    ---
    status: populated
