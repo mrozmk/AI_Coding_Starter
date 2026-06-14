@@ -99,15 +99,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-commit.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-commit.sh\""
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-push.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-push.sh\""
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" BASH",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" BASH",
             "async": true
           }
         ]
@@ -117,8 +117,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" FETCH",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" FETCH",
             "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory.sh\""
           }
         ]
       },
@@ -127,11 +136,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory.sh\""
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" WRITE",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" WRITE",
             "async": true
           }
         ]
@@ -141,11 +146,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory.sh\""
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" EDIT",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" EDIT",
             "async": true
           }
         ]
@@ -155,11 +156,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory.sh\""
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" MULTIEDIT",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" MULTIEDIT",
             "async": true
           }
         ]
@@ -171,7 +168,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/track-memory-read.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/track-memory-read.sh\"",
             "async": true
           }
         ]
@@ -181,7 +178,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/nudge-lsp.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/nudge-lsp.sh\""
           }
         ]
       }
@@ -191,7 +188,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-deps.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-deps.sh\""
           }
         ]
       }

@@ -195,6 +195,7 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 
 **Adapt to the project:**
 - Fill in project-specific sections: `Project Overview`, `Tech Stack`, `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Testing`, `Validation`, `Notes`.
+- **LSP detection → `## Code Navigation` section (conditional).** If Phase 1 detected a symbol-level LSP wired into the toolchain (e.g. `typescript-language-server`, `gopls`, `rust-analyzer`, `intelephense`, `pyright` configured for this stack), add a `## Code Navigation (LSP)` section naming the available LSP tools (goToDefinition / findReferences / incomingCalls / hover) and when to prefer them over `rg`. The `nudge-lsp.sh` hook keys its CLAUDE.md pointer off the literal phrase `Code Navigation` — so a project **with** an LSP gets a live reference, and one **without** never gets a dead link. If no LSP is detected, omit the section entirely (do not stub it).
 - **Fill the `### Default branch` slot** inside `Git Workflow` with the workflow from Phase 1.
 - **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
 - **DO NOT remove or soften** these baseline sections — mandatory for every generated `CLAUDE.md`:

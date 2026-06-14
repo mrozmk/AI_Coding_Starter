@@ -33,10 +33,20 @@ case "$GLOB$GREP_PATH" in
   *.json|*.md|*.mdx|*.css|*.scss|*.yml|*.yaml|*.txt|*.html|*.lock) exit 0 ;;
 esac
 
-jq -cn --arg p "$PATTERN" '{
+# Conditional pointer: only reference CLAUDE.md → Code Navigation when that
+# section actually exists (written by /setup:create-CLAUDE_MD when it detects a
+# configured LSP). This keeps the reference live where the docs exist and avoids
+# a dead link in a clone that has no such section — template-conditional, not
+# hardcoded either way.
+REF=""
+if grep -q "Code Navigation" "${CLAUDE_PROJECT_DIR:-.}/CLAUDE.md" 2>/dev/null; then
+  REF=" See CLAUDE.md → Code Navigation."
+fi
+
+jq -cn --arg p "$PATTERN" --arg ref "$REF" '{
   hookSpecificOutput: {
     hookEventName: "PostToolUse",
-    additionalContext: ("Searched for the symbol \"" + $p + "\" with Grep. If you are navigating code (where is it defined, who calls it, its signature) and this project has an LSP wired up, the LSP tool is more precise — goToDefinition / findReferences / incomingCalls / hover return real symbol references, not text matches. Grep stays correct for free-text and non-code files.")
+    additionalContext: ("Searched for the symbol \"" + $p + "\" with Grep. If you are navigating code (where is it defined, who calls it, its signature), an LSP tool is more precise — goToDefinition / findReferences / incomingCalls / hover return real symbol references, not text matches. Grep stays correct for free-text and non-code files." + $ref)
   }
 }' 2>/dev/null
 
