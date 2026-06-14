@@ -48,6 +48,14 @@ When you must ask for clarification:
 
 4. **Never ask for information you can derive.** Read the file, grep the symbol, check the spec — don't offload work the tools can do.
 
+### When to ask: timing matters
+
+Not every open question belongs at the end. Route each one by *when* it can be answered:
+
+- **Blocking the analysis itself** (you cannot proceed or your findings hinge on it) → ask **now, mid-analysis**, via `AskUserQuestion`. Don't push it to a closing list — a question that changes the analysis is useless after the analysis is written.
+- **Dependent on a choice the user hasn't made yet** (the answer only matters *if* they pick option X) → do **not** ask it as a flat question. Attach it to that option as a conditional follow-up — see the "If we proceed" block in the output structure. "If you go with the adapter, we'd still need to confirm whether the cache is shared" is actionable; the same question stripped of its branch is noise.
+- **Genuinely open and choice-independent** (a real unknown that no option resolves) → it can live in the closing block — but only if it actually exists. Do not manufacture open questions to fill a section.
+
 ---
 
 ## Investigation depth (baseline)
@@ -74,15 +82,28 @@ Adapt to the size of the question, but keep the order:
 1. **Understanding** — 2–3 sentences restating the question / problem in your own words. Surfaces misreads immediately.
 2. **Scope of investigation** — the files and layers you actually inspected, as markdown links. Gives the user a handle to disagree ("you missed X").
 3. **Findings** — facts and observations, each tied to a concrete code reference (`path:line`). Keep findings and opinions separated.
-4. **Options considered** — 2–4 alternatives where relevant, each with honest trade-offs (pros **and** cons — never pros-only).
+4. **Options considered** — 2–4 alternatives where relevant. This is the comparison the user came for; make it scannable, not prose:
+   - Give **each option a short paragraph** (what it does, how it fits the existing architecture) followed by an explicit **➕ / ➖ list** — pros **and** cons, never pros-only. One line per point.
+   - Close the section with **one comparison table** summarizing all options across the dimensions that matter for *this* decision. Pick the rows that are actually load-bearing — typical ones: Complexity, Risk, Reversibility, Effort, plus a final **Verdict** row (e.g. ✅ now / later / no). Don't pad the table with rows that don't discriminate between the options.
+   - Use traffic-light glyphs (🟢 🟡 🔴) for at-a-glance rows like Risk where they aid scanning.
+
+   Skip this whole section only when the question genuinely has no alternatives (a pure root-cause investigation) — and say so explicitly rather than inventing strawman options.
 5. **Recommendation** — one recommendation, with the reason in one or two sentences. If the trade-off is close, say so explicitly; do not fake confidence.
 6. **Devil's advocate** — one short paragraph stress-testing your own recommendation: *"This could be the wrong call if …"*, *"This breaks down when …"*. Name the concrete scenario, assumption, or future state that would invalidate it. Never skip this, even when you are confident — confident recommendations are exactly the ones most worth stress-testing.
-7. **Confidence, open questions & blind spots** — for each non-trivial claim, tag confidence (`99% / 80% / 60%`). End with three short lists:
-   - **Open questions** — what is still unknown
-   - **Assumptions** — what you treated as given, and why
-   - **What I did NOT check** — files, layers, scenarios, or test paths you consciously skipped (with a one-line reason: out of scope, time-boxed, requires access you don't have). This gives the user a handle to say "go back and check X" instead of silently trusting an incomplete view.
+7. **If we proceed** *(conditional — include only when real follow-ups exist)* — open questions and next-step unknowns, organized **by the choice they depend on**, not as one flat list:
 
-This last block is the single most valuable part of `/analysis`. Never skip it.
+   > **If you go with A (Adapter):**
+   > - confirm: is the cache shared across tenants?
+   > - verify: SDK request limit under burst
+   >
+   > **If you go with B (Rewrite):**
+   > - decide: big-bang migration or staged?
+
+   Rules for this section:
+   - **Questions that block the analysis are NOT here** — those were asked mid-analysis via `AskUserQuestion` (see "When to ask: timing matters"). This block is only for questions that depend on a not-yet-made decision, plus any genuinely choice-independent unknowns (group those under a plain **"Regardless of choice:"** heading).
+   - **If there are no real follow-up questions, omit this section entirely.** Do not manufacture questions to fill it. A clean analysis with nothing left to ask is a *good* outcome — an empty-but-present "Open questions" section just trains the user to ignore it.
+
+Inline confidence tags stay throughout: for each non-trivial claim, tag `99% / 80% / 60%` at the point you make it — not batched into a closing list.
 
 ---
 
@@ -100,9 +121,25 @@ This last block is the single most valuable part of `/analysis`. Never skip it.
 
 ## At the end
 
-Close with a short "Next steps" block so the user can act on the analysis:
+Close with a compact **TL;DR table** — the whole analysis at a glance, so the user can act without re-reading the body:
 
-- Suggested next command (if any), e.g. *"If you want to proceed, run `/brainstorm` to turn this into a design doc."*
-- Any remaining questions the user should answer before committing to a direction.
+```markdown
+## TL;DR
 
-Never silently transition from analysis to implementation. The handoff is the user's choice.
+| | |
+|---|---|
+| **Recommendation** | Option A — adapter in layer X |
+| **Confidence** | 85% |
+| **Main risk** | technical debt if B is needed later |
+| **Next step** | `/brainstorm` to turn this into a design doc |
+```
+
+Pick the rows that fit the question — Recommendation, Confidence, Main risk, and Next step are the usual four; add or drop rows as the analysis warrants. Keep cells to a short phrase.
+
+Then, **below the table**, one honest block that does not compress into a cell:
+
+> **What I did NOT check:** files, layers, scenarios, or test paths you consciously skipped — each with a one-line reason (out of scope, time-boxed, requires access you don't have).
+
+This block is the single most valuable part of `/analysis` — it gives the user a handle to say "go back and check X" instead of silently trusting an incomplete view. **Never skip it**, even when the table looks tidy.
+
+Never silently transition from analysis to implementation. The handoff (the "Next step" cell) is a suggestion — acting on it is the user's choice.
