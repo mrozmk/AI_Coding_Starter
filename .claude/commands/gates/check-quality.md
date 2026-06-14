@@ -10,7 +10,7 @@ Run the project's quality gates (format, lint, type-check, size limits) and repo
 
 ### 1. Discover commands from CLAUDE.md
 
-Read [CLAUDE.md](../../CLAUDE.md) sections `Commands` and `Code Structure & Modularity`. Extract:
+Read [CLAUDE.md](../../../CLAUDE.md) sections `Commands` and `Code Structure & Modularity`. Extract:
 - **Format command** (e.g. `ruff format`, `prettier --check`, `go fmt`, `cargo fmt`)
 - **Lint command** (e.g. `ruff check`, `eslint`, `cargo clippy`)
 - **Type-check command** (e.g. `mypy`, `tsc --noEmit`) — optional
