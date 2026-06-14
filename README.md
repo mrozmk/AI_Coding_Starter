@@ -28,11 +28,11 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/gates:verify-implementation`, `/check-implementation`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/gates:check-quality`, `/setup:createwikillm` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/handoff`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/memory-audit`, `/retro`, `/setup:createwikillm` |
 | `agents/` | Sub-agents — `documentation-manager` + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
-| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) |
+| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs). Plus two command-bound resource bundles loaded by path (no `SKILL.md`): `design/` (UI-design knowledge for `/design`) and `architecture-review/` (depth/locality method for `/architecture-review`). |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
-| `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `audit-append` (audit log), `track-memory-read` (read telemetry), `check-deps` (SessionStart dep preflight). Need `jq`. |
+| `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `check-deps` (SessionStart dep preflight). Need `jq`. |
 | `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
@@ -356,7 +356,7 @@ Drives freshly-written code to **commit-ready**, then stops. Runs **in your own 
 resolve scope (plan | diff-only)
   └─ loop, max 3×:
        1a /code-review --fix   (correctness — find & fix logic bugs)
-       1b /simplify            (cleanliness — reuse / simplify / efficiency)
+       1b /deep-review         (cleanliness — structural / maintainability cleanup)
        1c /gates:verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
        1d @orchestrator-designer  ← spawned, Opus 4.8, ONLY if UI changed AND a reference design exists
        1e decide: approve → done · gaps → feed into next 1a · blocker / 3× → escalate to you

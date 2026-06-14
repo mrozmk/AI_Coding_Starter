@@ -161,7 +161,7 @@ Five persistent knowledge stores under `.agents/`. **Before starting any task, r
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input materials | Immutable input | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | `/remember`, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | memory-reflection pass (in `/orchestrate` Phase 7 + `/check-implementation`), `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs | Long-lived | Human + AI (manually) |
 | [specs/](.agents/specs/) | Design docs from `/brainstorm` | Lives with feature | `/brainstorm` |
 | [plans/](.agents/plans/) | Implementation plans | Short-lived: `active/` → `done/` | `/plan-feature` |
