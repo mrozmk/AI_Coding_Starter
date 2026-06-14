@@ -88,7 +88,7 @@ Do not read plan files in `/prime` itself. Read them only when the user's concre
 !`git status`
 
 Branch sync (ahead/behind origin):
-!`git rev-list --left-right --count @{u}...HEAD 2>/dev/null | awk '{print "behind origin: "$1"  |  ahead of origin: "$2}' || echo 'no upstream tracking branch'`
+!`up=$(git rev-parse --abbrev-ref --symbolic-full-name 'HEAD@{upstream}' 2>/dev/null) && git rev-list --left-right --count "$up"...HEAD 2>/dev/null | awk '{print "behind origin: "$1"  |  ahead of origin: "$2}' || echo 'no upstream tracking branch'`
 
 ### 8. Skipped deliberately
 
