@@ -19,7 +19,7 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
 6. **Execution Plan section emission for umbrella plans** (Phase 4.6 — MANDATORY if multi-step)
 7. **Critical self-audit with one self-critique loop** (Phase 5 — MANDATORY)
 8. **User-approved fix application in-place + post-fix size re-check** (Phase 6 — MANDATORY)
-9. **External cross-model review loop via codex** (Phase 7 — CONDITIONAL, auto-skips if `codex` is absent)
+9. **External cross-model review loop via codex** (Phase 7 — CONDITIONAL, auto-skips if `codex` is absent; when it runs, min 2 rounds mandatory, 3rd optional)
 
 **Core Principle**: We do NOT write code in this phase. The goal is a context-rich implementation plan that enables one-pass implementation success for AI agents.
 
@@ -779,7 +779,9 @@ command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: abse
 
 ### Step 7.2 — Loop setup (constants)
 
-- **Max rounds:** 3. **Early-exit:** stop before round 3 when codex returns `verdict: "ship"` OR when you accept 0 findings in a round (nothing left worth applying).
+- **Min rounds: 2 (MANDATORY). Max rounds: 3.** You MUST invoke codex at least twice — round 1 and round 2 always run, regardless of what round 1 returns. Early-exit does NOT apply before round 2 completes. A single round is a phase failure, not an early-exit.
+- **Why min 2:** codex's first pass is shaped by the plan's own framing; the second pass — primed with what you already applied — is where it catches the issues the first pass and the self-review both missed. One round defeats the purpose of cross-model review.
+- **Early-exit (only AFTER round 2 has run):** skip round 3 when codex returns `verdict: "ship"` OR when you accept 0 findings in round 2. Round 3 is the only optional round.
 - **Invocation rules (learned from testing — do not deviate):**
   - Run codex **in the repo directory** (`-C <repo-root>`), NEVER in `/tmp` — a non-trusted dir hangs.
   - Always pass `--skip-git-repo-check`.
@@ -873,12 +875,17 @@ Write the score for each finding explicitly (same shape as Step 5.3) so the deci
 
 ### Step 7.7 — Loop control
 
-After scoring + applying a round:
+After scoring + applying a round, branch on **which round just finished**:
 
-- `verdict: "ship"` (empty findings) → **early-exit**, the plan passed cross-model review.
-- 0 findings accepted this round → **early-exit** (nothing left worth applying).
-- Otherwise, and rounds < 3 → run the next round (Step 7.4) with the round-N>1 prompt addendum listing what you applied.
-- After round 3 → stop regardless.
+**After round 1 — NEVER exit. Round 2 is mandatory.**
+- Whatever round 1 returned (`verdict: "ship"`, 0 accepted, anything) → **always run round 2** (Step 7.4) with the round-N>1 prompt addendum listing what you applied (or "nothing applied" if round 1 was empty). Do NOT treat a clean round 1 as a pass — the second cross-model pass is the point of this phase.
+
+**After round 2 — early-exit is now allowed; round 3 is optional.**
+- `verdict: "ship"` (empty findings) in round 2 → **early-exit**, the plan passed cross-model review.
+- 0 findings accepted in round 2 → **early-exit** (nothing left worth applying).
+- Otherwise → run round 3 (Step 7.4) with the round-N>1 addendum.
+
+**After round 3 → stop regardless.**
 
 ### Step 7.8 — Report (no mid-loop questions — surface everything at the end)
 
@@ -887,10 +894,10 @@ Per the agreed flow, Phase 7 runs autonomously (no `AskUserQuestion` between rou
 ```
 ## 🔁 Cross-model review (codex) — <R> round(s)
 
-Round 1: codex raised <n1> · accepted <a1> · dropped <d1>
-Round 2: codex raised <n2> · accepted <a2> · dropped <d2>   (if it ran)
-Round 3: codex raised <n3> · accepted <a3> · dropped <d3>   (if it ran)
-Early-exit: <yes (verdict ship / 0 accepted) | no — hit 3-round cap>
+Round 1: codex raised <n1> · accepted <a1> · dropped <d1>   (always runs)
+Round 2: codex raised <n2> · accepted <a2> · dropped <d2>   (always runs — mandatory)
+Round 3: codex raised <n3> · accepted <a3> · dropped <d3>   (only if round 2 wasn't a clean pass)
+Early-exit after round 2: <yes (verdict ship / 0 accepted) | no — ran round 3 / hit 3-round cap>
 
 Applied fixes (patchable):
 - <plan>.md — <1-line what changed>
