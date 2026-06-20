@@ -87,12 +87,12 @@ If none, flag as "MCP tool not configured in this project" (warning, not blocker
 ❌ MARKDOWN LINKS broken (<count>):
    <source>:<line>
      [<text>](<original>) → tried <resolved>
-     Suggestion: <basename match if exactly one> | brak | niejednoznaczne: <candidates>
+     Suggestion: <basename match if exactly one> | none | ambiguous: <candidates>
 
 ❌ PATH REFS broken (<count>):
    <source>:<line>
      `<path>` — file not found
-     Suggestion: <basename match> | brak | niejednoznaczne
+     Suggestion: <basename match> | none | ambiguous
 
 ❌ SECTION ANCHORS broken (<count>):
    <source>:<line>
