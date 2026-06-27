@@ -138,10 +138,13 @@ Five persistent knowledge layers under `.agents/`. **Before starting any task, r
 | [sources/](.agents/sources/) | Raw input materials — briefs, transcripts, sketches, PDFs supplied by the user | Immutable input, pruned manually | Human only (never Claude) |
 | [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, project brief | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | memory-reflection pass (in `/orchestrate` Phase 7 + `/check-implementation`), `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived, updated as domain evolves | Human + AI (manually) |
+| `backlog.md` *(optional)* | Delivery map — epics + tasks + DAG + work packages (pipeline inputs), MVP first | Generated once, then `Status`/`Ref` written back by the pipeline; structure edited manually | `/setup:create-backlog` (created) · `/plan-feature` + `/orchestrate` (write back `Status`/`Ref`) |
 | [specs/](.agents/specs/) | Design docs from `/brainstorm` — what to build and why | Lives with the feature | `/brainstorm` |
 | [plans/](.agents/plans/) | Implementation plans — how to build | Short-lived: `active/` → `done/` | `/plan-feature` |
 
-**Flow:** `sources/` (optional raw input) → `/setup:create-PRD` → `/maintain:refresh-brief` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
+**Flow:** `sources/` (optional raw input) → `/setup:create-PRD` → `/maintain:refresh-brief` → `[/setup:create-backlog]` *(optional delivery map)* → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
+
+> **`/setup:create-backlog` is opt-in.** It turns the PRD's "Implementation Phases" into a dependency-structured delivery map (`.agents/backlog.md`): epics, a task DAG, and **work packages** that each feed one `/brainstorm → spec → /plan-feature` cycle. Useful for multi-phase projects where sequencing and parallelism across features matter; skip it for small projects. When it exists, `/plan-feature` and `/orchestrate` write `Status`/`Ref` back into it; when it doesn't, the pipeline is unchanged.
 
 > For synthesized cross-reference knowledge, run `/setup:createwikillm` to set up a project wiki.
 

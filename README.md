@@ -28,7 +28,7 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/handoff`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/handoff`, `/prime`, `/prime-ba`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
 | `agents/` | Sub-agents — `documentation-manager` + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs). Plus two command-bound resource bundles loaded by path (no `SKILL.md`): `design/` (UI-design knowledge for `/design`) and `architecture-review/` (depth/locality method for `/architecture-review`). |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
@@ -38,13 +38,14 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 ### `.agents/`
 
-Five layers of persistent project knowledge:
+Layers of persistent project knowledge:
 
 | Layer | Contents | Lifecycle |
 |-------|----------|-----------|
 | `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/setup:create-PRD` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
 | `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
+| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — epics + task DAG + **work packages** (each feeds one `/brainstorm → spec → /plan-feature` cycle), MVP first. Operationalizes the PRD's "Implementation Phases". | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
 | `specs/` | Design docs from `/brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 
@@ -78,6 +79,8 @@ New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira 
 ### Developer flow
 
 The first half is always the same — **prime → brainstorm → plan-feature** turns an idea (a free-text request, or one you lift from a Jira issue) into an approved, codebase-aware plan. How you take that plan to *shipped* is your call — pick by how much you want to drive:
+
+> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into epics, a dependency DAG, and **work packages**. Each work package row then tells you exactly which `/brainstorm <topic>` to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
 
 **A — Manual (more human-in-the-loop):**
 
@@ -249,6 +252,18 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 > **At bootstrap you don't run this** — step 6 (`/setup:create-CLAUDE_MD`) distills the brief for you while it's still empty. `/maintain:refresh-brief` is a **maintenance** command you run later, after the PRD changes substantially.
 >
 > Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
+
+### Optional: Map the delivery before brainstorming feature by feature
+
+```
+/setup:create-backlog
+```
+
+> **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/brainstorm → spec → /plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
+>
+> It's the input to `/brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
+>
+> **Brownfield:** run `/setup:map-codebase` first (it reconstructs the PRD), then this. **Maintenance:** when the backlog exists, `/plan-feature` ticks a work package to `WIP` + records the spec/plan `Ref`, and `/orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
 
 ### 6. Initialize project rules (after first scaffolding)
 

@@ -493,7 +493,8 @@ When the last step reaches `done`:
    **If the run-log shows none of these → skip entirely. Log `Memory: clean run, nothing to reflect on.` A smooth pipeline learns nothing.**
 
    If it does show friction, run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) against those run-log entries. Apply its bar strictly — **the default is to save nothing**; a recurring gap is only worth an `errors.md`/`decisions.md` entry if a fresh Claude would repeat the mistake without it. Append at most one or two entries; never pad. Memory writes are **not committed by the pipeline** — leave them in the working tree for the user to `/commit` (consistent with how memory is managed). Record the outcome for the summary's `Memory:` line.
-7. Emit final summary to the user:
+7. **Backlog write-back — opt-in, skip silently if no backlog.** If `.agents/backlog.md` exists, mark the work package this plan delivered as `Status: DONE` and confirm its `Ref` column carries both the spec and the (now moved to `done/`) plan path. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Touch only `Status`/`Ref` — never the DAG, epic map, or task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). This write is **not committed by the pipeline** — leave it in the working tree for the user to `/commit`, same as memory writes. Record the outcome for the summary's `Backlog:` line.
+8. Emit final summary to the user:
 
 ```
 ✓ Pipeline complete: <umbrella name>
@@ -508,6 +509,7 @@ Plans + run-log moved to .agents/plans/done/.
 Merged step branches you may delete: <the `! git branch -D …` line from step 4, or "none">
 Docs: <synced in commit <sha> / already in sync / skipped — no documented surface changed / not requested — pass --sync-docs (this run touched <documented surface>) >
 Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commit / clean run, nothing to reflect on>
+Backlog: <work package <WP> marked DONE, left uncommitted for you to /commit / no backlog — skipped>
 Deploy is your call.
 ```
 

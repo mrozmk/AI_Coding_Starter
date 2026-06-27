@@ -40,6 +40,7 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
    - **`External docs required`** field (`yes` / `no`)
    - **`External dependencies`** section (list of libs / APIs / services, if any)
 3. If the spec is missing the `External docs required` field, STOP and tell the user: "Spec does not declare `External docs required`. Update the spec via `/brainstorm` or add the field manually, then rerun `/plan-feature`."
+4. **Backlog write-back (opt-in — skip silently if no backlog).** If `.agents/backlog.md` exists, find the work package this spec belongs to (match the spec's feature against the WP whose "Entry" names this spec, or whose task scope this spec covers). If found, set that work package's `Status` to `WIP` and write the spec path into the `Ref` column of its tasks. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Never create the backlog here; only update it when present.
 
 > The spec is the single source of truth for **what** to build and **why**. This command's job is to decide **how**.
 
@@ -1059,6 +1060,7 @@ After Phase 6 completes (plan finalized post-grilling), provide:
 - Complexity assessment
 - Key implementation risks or considerations (post-grilling — should be minimal if the user accepted critical fixes)
 - Estimated confidence score for one-pass success (POST-grilling — typically +1.5 to +2.5 vs pre-grilling)
+- **Backlog write-back (opt-in)** — if `.agents/backlog.md` exists, write the finalized plan path into the `Ref` column (alongside the spec path from Phase 0) for the tasks of this spec's work package, and confirm its `Status` is `WIP`. If no backlog exists, skip silently and omit this line. Do **not** touch the backlog's DAG/structure — only `Ref`/`Status`.
 - **Model recommendation for execution** (see below) — last section of the report
 
 ---

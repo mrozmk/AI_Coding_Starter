@@ -49,7 +49,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 |------|-----------|---------|
 | `CLAUDE.md`, `index.md`, `project-brief.md`, `architecture.md` (always); `patterns.md`, `decisions.md`, `api.md`, `errors.md`, `domain/*` (full mode) | `/prime` (quick or `/prime full`) | Every subsequent command in the session |
 | Tool-specific configs the command operates on (e.g. `playwright.config.ts` for `/test-e2e`, `pyproject.toml` for a Python-aware command) | The command itself | That command only |
-| Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`) | The transforming command | The transforming command only |
+| Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog`) | The transforming command | The transforming command only |
 
 **Why this matters:** PRD can be 2000+ lines. Re-reading it inside every command burns the token budget for context that should already be in the conversation as a 50-line `project-brief.md`. The `When to Read` table above tells the agent which memory files to *consult* on demand; `/prime` is what *loaded* them in the first place.
 
@@ -60,7 +60,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 - ✅ Add a one-line precondition: "If project context isn't primed, run `/prime` first"
 - ✅ Read only files that are **uniquely your command's job** (tool configs, the spec it's transforming, etc.)
 
-**Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
+**Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
 
 **Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content from `/maintain:cleanup-workflow` Phase 2: **entries** cut by Section 2A (`archive/<file>-YYYY-MM-DD.md`) and whole **files** archived by Section 2B (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
 
