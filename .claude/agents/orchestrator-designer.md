@@ -20,7 +20,8 @@ The orchestrator only invokes you if `.agents/specs/design/Ready/` exists. If �
 - `PLAN_PATH` — plan file that produced the UI
 - `WORKTREE_PATH` — the working directory the step's UI lives in (flat mode: repo root; umbrella mode: the step's worktree). **`cd` there before auditing.** In umbrella mode the implemented UI exists ONLY in this worktree until the orchestrator merges it onto `main` later — auditing the repo root would compare the design against a stale `main` without this step's UI.
 - `FILES_TOUCHED` — files the executor modified (use to identify which sections to audit; if a file is e.g. a React component for the hero section, audit hero)
-- Optionally `SECTIONS` — explicit list of sections to audit (e.g. `hero, faq`). If missing, derive from `FILES_TOUCHED`.
+- Optionally `SECTIONS` — explicit list of section **names** to audit (e.g. `hero, faq`). If missing, derive from `FILES_TOUCHED`. Section names only — never a reference URL/path (that is `REFERENCE`).
+- Optionally `REFERENCE` — the reference design source: a Figma node URL/ID (when Figma MCP is the source) or a static artifact path. Pass it through as the reference argument to `/gates:design-quality-check`. If missing, the skill resolves the source itself (Figma selection or the newest artifact in `.agents/specs/design/Ready/`).
 
 ## Operating principles
 

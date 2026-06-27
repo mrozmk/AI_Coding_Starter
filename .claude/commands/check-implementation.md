@@ -57,7 +57,11 @@ If `git status --porcelain` is empty and there is no plan → STOP: `Nothing to 
 For `N = 1, 2, 3`:
 
 **1a. Correctness — `/code-review`.**
-Run `/code-review` at `high` effort over the current diff. Apply the confirmed-bug findings to the working tree (the skill's `--fix` behavior). On iteration `N > 1`, prepend the previous round's unresolved gate findings — **both** the code gate's GAPS (Step 1c) **and** the designer's GAPS (Step 1d) — to the review's focus list, treating them as fixes to apply (a designer GAP is a concrete token/class/value change the fixer can make).
+Run `/code-review` at `high` effort over the current diff. Apply the confirmed-bug findings to the working tree (the skill's `--fix` behavior). On iteration `N > 1`, prepend the previous round's unresolved gate findings to the review's focus list, treating them as fixes to apply. Pull them from **both** gates' actual report contracts:
+- **Code gate (Step 1c):** two sources, because the gate fail-fasts —
+  - **Quality-gate failures first.** When a quality gate (typecheck/lint/test/build) fails, the gate emits `BLOCK` and **skips the semantic review entirely** (`verify-implementation.md` → CRITICAL Rules), so its issue table is empty. The failing command's output *is* the fix list: feed the typecheck/lint/test errors into 1a as the bugs to fix. Never treat an empty issue table on a `BLOCK` as "nothing to fix".
+  - **Then the Critical/High rows** of the **semantic-review issue table** (`| Severity | File | Line | Issue | Fix |`) — that gate reports issues in a table, not in `GAPS:`/`BLOCKERS:` sections, so route by severity column.
+- **Design gate (Step 1d):** every `GAPS:` line from the `@orchestrator-designer` report (all severities — see 1e; a designer GAP is a concrete token/class/value change the fixer can make).
 
 **1b. Structural cleanup — `/deep-review`.**
 Run `/deep-review` (pipeline mode) over the changed code. It audits structure/maintainability — code-judo simplifications, file-size, spaghetti growth, layering, type/boundary cleanliness, atomicity — and applies its high-conviction findings, recording anything that needs a human decision under `NEEDS_HUMAN`. Structure only — it does not hunt bugs; that was 1a.
@@ -66,14 +70,21 @@ Run `/deep-review` (pipeline mode) over the changed code. It audits structure/ma
 Run `/gates:verify-implementation <plan>` (read-only). In diff-only mode, run it without a plan argument. Capture its verdict (`APPROVE` / `WARN` / `BLOCK`) and findings.
 
 **1d. Design gate — `@orchestrator-designer` (conditional).**
-Skip entirely if `RUN_DESIGN` is false (Step 0) — do not spawn. Otherwise spawn the read-only `@orchestrator-designer` sub-agent with:
+Skip entirely if `RUN_DESIGN` is false (Step 0) — do not spawn. Otherwise spawn the read-only `@orchestrator-designer` sub-agent. Pass **all** inputs its contract requires (`orchestrator-designer.md` → Inputs), or it will stall asking for them mid-run:
 
 ```
 PLAN_PATH: <plan path | diff-only>
+WORKTREE_PATH: <repo root — `git rev-parse --show-toplevel`>
 FILES_TOUCHED:
 <the UI files in SCOPE_FILES>
+SECTIONS: <section NAMES only, e.g. "hero, faq", derived from the UI files — or "derive from FILES_TOUCHED">
+REFERENCE: <Figma node URL/ID when the source is Figma MCP; else the static artifact path; else omit to let the gate resolve from .agents/specs/design/Ready/>
 Run /gates:design-quality-check per the preloaded skill. Report via the Designer Output Contract.
 ```
+
+> `SECTIONS` and `REFERENCE` are **separate** inputs: `SECTIONS` is section names only (`orchestrator-designer.md` → Inputs), and the Figma node / artifact path goes in `REFERENCE` (the optional reference argument of `/gates:design-quality-check`). Never put a node link into `SECTIONS` — the sub-agent would treat the URL as a section name.
+
+> **Figma-only reference — resolve the node *before* spawning, or skip.** `RUN_DESIGN` (Step 0) accepts Figma MCP alone, but `@orchestrator-designer` / `/gates:design-quality-check` need a resolvable **node link** for the section, and when one is missing the skill **asks the user** for it (`design-quality-check.md` → Resolve scope) — a prompt the spawned sub-agent runs unattended and cannot answer, so it would stall. Therefore: when the only reference is Figma MCP, you must have a concrete node link (from the plan, the user's current Figma selection, or asked **here in the main thread before spawning**) to pass in the `REFERENCE` input (**not** `SECTIONS` — see above). **If no node link is resolvable, do not spawn** — log `Design gate skipped: Figma reference but no resolvable node link` and treat the design gate as `passed`/`skipped` (same as `RUN_DESIGN = false`). Never spawn the designer into an unanswerable prompt. Default-to-skip from Step 0 keeps this rare.
 
 Parse its `=== DESIGNER REPORT ===` block: verdict (`passed` / `failed` / `skipped`), `GAPS:`, `BLOCKERS:`. A `skipped` verdict (no resolvable reference for the touched sections) counts as a **pass**. Run this only after 1c so the design audit judges a tests-green tree.
 
@@ -83,14 +94,29 @@ Parse its `=== DESIGNER REPORT ===` block: verdict (`passed` / `failed` / `skipp
 |----------------|--------|
 | code `APPROVE` **and** design `passed`/`skipped` | **DONE** — break the loop. |
 | code `WARN` (Medium-only) **and** design `passed`/`skipped` (no gaps) | **DONE** — break; surface the warnings in the final report. |
-| code `BLOCK` **or** design `failed` (GAPS only, no BLOCKERS), `N < 3` | Feed **both** gates' Critical/High GAPS into the next iteration's Step 1a fix list. Loop. |
-| either gate reports **BLOCKERS** (decision-required), or `N = 3` with unresolved GAPS | **STOP** — escalate to the user with the unresolved findings and iteration history. Do not grind. |
+| code `BLOCK` **or** design `failed` (GAPS only, no BLOCKERS), `N < 3` | Feed the next iteration's Step 1a fix list (per the two code-gate sources in 1a): the failing **quality-gate output** (typecheck/lint/test/build errors — present on a `BLOCK` whose issue table is empty because the gate fail-fasted) **and/or** the code gate's **Critical/High** issue-table rows, **plus _all_ design-gate GAPS** (every severity — a `failed` designer verdict means ≥1 gap, and a `MEDIUM`-only report still leaves real, fixable deltas; dropping them would strand the loop with nothing to fix). Loop. |
+| either gate reports **BLOCKERS** (decision-required), or `N = 3` with **any** unresolved gate failure (a `BLOCK`, a quality-gate failure, or unresolved GAPS) | **STOP** — escalate to the user with the unresolved findings and iteration history. Do not grind. |
 
-**1f. No-progress guard.** If a round applied **no** code changes (neither 1a nor 1b touched files) **and** a gate still fails, the remaining issue is not mechanically fixable (architecture, product decision, structural design, an ambiguous design interpretation) → **STOP** and ask the user. The mutators cannot resolve it; looping again would change nothing.
+**1f. No-progress guard.** Fire this **only after** a round that *already had a fix list to act on* — i.e. it carried the previous round's gate findings into 1a (so `N > 1`) — applied **no** code changes (neither 1a nor 1b touched files), **and** a gate still fails with the **same** findings unchanged. Then the remaining issue is not mechanically fixable (architecture, product decision, structural design, an ambiguous design interpretation) → **STOP** and ask the user. The mutators cannot resolve it; looping again would change nothing.
+
+> **Do not fire on a first-pass design failure.** On `N = 1`, 1a/1b act only on the diff, so a clean diff can leave them with nothing to change — yet the design gate may surface concrete, fixable token/class GAPS that were never fed to the fixer. That is **1e's "Loop" case, not a no-progress stop**: those GAPS enter the next round's 1a fix list (per 1e). 1f is the backstop for findings that *survived* a fix attempt, not for findings the fixer hasn't seen yet.
 
 ---
 
-## Step 2 — Final report
+## Step 2 — Memory reflection
+
+Unlike `/orchestrate`, this loop ran in your own context — you saw first-hand what `/code-review` fixed and how many iterations the gate took. That is high-quality reflection material, so run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) over this run **before** writing the final report, so the report's `Memory:` line states what actually happened.
+
+Apply its bar strictly — **the default is to save nothing.** A clean loop (no real bugs, gate approved first try) almost never produces a memory-worthy lesson; do not invent one to justify the step. Save only when the run surfaced something a fresh Claude would get wrong without the note:
+- a **non-obvious bug** `/code-review` had to fix (root-cause, not a typo) → `errors.md`
+- an **undocumented quirk** that explained a failure → `api.md`
+- a **deliberate fix-direction decision** worth its rationale → `decisions.md`
+
+Append at most one or two entries, newest-first. This step does **not** commit — like the rest of the command, it leaves a ready-to-`/commit` tree (a memory write is just another working-tree change). Carry the outcome into the report's `Memory:` line in Step 3.
+
+---
+
+## Step 3 — Final report
 
 ```markdown
 ## Implementation Check: [plan-name | diff-only]
@@ -110,19 +136,6 @@ Verdict: <✅ Ready for /commit | ⚠️ Ready with warnings | ❌ Escalated —
 
 - **Approved** → `Clean and verified — ready for /commit.` (This command does **not** commit.)
 - **Escalated** → present the unresolved findings and the Phase-6-style options (provide guidance / accept anyway / abort), then stop.
-
----
-
-## Step 3 — Memory reflection
-
-Unlike `/orchestrate`, this loop ran in your own context — you saw first-hand what `/code-review` fixed and how many iterations the gate took. That is high-quality reflection material, so run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) over this run.
-
-Apply its bar strictly — **the default is to save nothing.** A clean loop (no real bugs, gate approved first try) almost never produces a memory-worthy lesson; do not invent one to justify the step. Save only when the run surfaced something a fresh Claude would get wrong without the note:
-- a **non-obvious bug** `/code-review` had to fix (root-cause, not a typo) → `errors.md`
-- an **undocumented quirk** that explained a failure → `api.md`
-- a **deliberate fix-direction decision** worth its rationale → `decisions.md`
-
-Append at most one or two entries, newest-first. This step does **not** commit — like the rest of the command, it leaves a ready-to-`/commit` tree (a memory write is just another working-tree change). Record the outcome in the report's `Memory:` line.
 
 ---
 

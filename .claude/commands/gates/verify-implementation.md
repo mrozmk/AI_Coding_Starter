@@ -34,8 +34,8 @@ Use these flags in Steps 3-5 to skip irrelevant sections. Report the detected st
 
 1. If `$ARGUMENTS` looks like a plan name (e.g. `phase-3b-ui-hero-score`) → resolve the file under `.agents/plans/active/` or `.agents/plans/done/`.
 2. If no argument given → use the **most recently modified** plan file in `.agents/plans/active/`.
-3. If no plan found → STOP and tell the user: "No plan found. Pass a plan name or run `/execute` first."
-4. Read the plan file. Extract:
+3. If no plan found → **diff-only mode** (no spec to compare against). Do **not** STOP. Set `PLAN = none`, derive the scope from the working tree (`git status --porcelain` + `git diff`), skip the checklist/acceptance-criteria/spec axes (Steps 2 and the spec-dependent checks in Step 6), and run only the stack-detected quality gates and the semantic review over the changed files. Tell the user once: `No plan found — running in diff-only mode (checklist skipped; quality gates + semantic review over the working-tree diff).` This mode is what `/check-implementation` invokes when it has no plan; it must not abort here.
+4. If a plan was found, read the plan file. Extract:
    - **Checklist** (tasks with completion markers)
    - **Acceptance criteria**
    - **Design references** (Figma links, `design.md`, or `.agents/memory/domain/design.md` if the project has one)
@@ -238,9 +238,11 @@ Critical: [N] | High: [N] | Medium: [N]
 Next steps: [ready for commit / fix listed issues / ask user]
 ```
 
-**Approve**: No Critical/High issues, all gates pass, checklist ≥ 95%.
-**Warn**: Only Medium issues, or checklist 80–95%. Document Medium issues in `.agents/memory/errors.md` and ask user.
-**Block**: Any Critical issue, or ≥3 High issues, or any gate fails, or checklist < 80%.
+> **Diff-only mode (`PLAN = none`):** there is no checklist, so report `Plan Compliance: N/A` and **drop every checklist threshold below** — the verdict is decided by quality gates + semantic-review severity **only**. Read each rule as if its checklist clause were absent (e.g. Approve = no Critical/High issues and all gates pass; Warn = only Medium issues; Block = any Critical/High issue, or any gate fails).
+
+**Approve**: No Critical/High issues, all gates pass, checklist ≥ 95% *(checklist clause N/A in diff-only)*.
+**Warn**: Only Medium issues, or checklist 80–95% *(checklist clause N/A in diff-only)*. **Report** the Medium issues in the verdict and stop there — this gate is read-only (see CRITICAL Rules). Recording them in `.agents/memory/errors.md` and any user decision belong to the caller (`/check-implementation`'s memory-reflection / escalation steps), not to the judge.
+**Block**: Any Critical issue, or **any High issue**, or any gate fails, or checklist < 80% *(checklist clause N/A in diff-only)*. (Any High blocks — this closes the 1–2 High gap so every gates-pass outcome maps to exactly one of `APPROVE`/`WARN`/`BLOCK`, which the caller requires; it also aligns with Approve's "no Critical/High". The earlier "≥3 High" threshold left 1–2 High with no verdict once the checklist clause is N/A.)
 
 ## CRITICAL Rules
 
