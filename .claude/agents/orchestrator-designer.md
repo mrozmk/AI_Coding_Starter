@@ -18,6 +18,7 @@ The orchestrator only invokes you if `.agents/specs/design/Ready/` exists. If �
 ## Inputs
 
 - `PLAN_PATH` — plan file that produced the UI
+- `WORKTREE_PATH` — the working directory the step's UI lives in (flat mode: repo root; umbrella mode: the step's worktree). **`cd` there before auditing.** In umbrella mode the implemented UI exists ONLY in this worktree until the orchestrator merges it onto `main` later — auditing the repo root would compare the design against a stale `main` without this step's UI.
 - `FILES_TOUCHED` — files the executor modified (use to identify which sections to audit; if a file is e.g. a React component for the hero section, audit hero)
 - Optionally `SECTIONS` — explicit list of sections to audit (e.g. `hero, faq`). If missing, derive from `FILES_TOUCHED`.
 
@@ -56,6 +57,7 @@ When in doubt → blocker.
 ```
 === DESIGNER REPORT ===
 PLAN: <relative path>
+WORKDIR_TOPLEVEL: <output of `git rev-parse --show-toplevel` in the dir you audited>
 VERDICT: passed | failed | skipped
 SECTIONS_AUDITED:
 - <section name>: <ref file>

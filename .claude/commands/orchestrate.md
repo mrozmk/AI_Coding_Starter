@@ -110,7 +110,16 @@ Then edit the umbrella's `## Execution Plan` table: change this step's `Status` 
 
 ### Step 5.0b — Create the step's persistent worktree — **umbrella-only**
 
-**Flat mode (atomic plan): skip this step entirely.** Set `STEP_WORKTREE` to the main checkout (the repo root, i.e. the orchestrator's own working directory) and proceed to Step 5.1. There is no branch, no worktree to create or retire.
+**Flat mode (atomic plan): skip the worktree creation — but FIRST run the clean-tree preflight.** Flat mode works directly in the main checkout, with no worktree isolation. So any file the user already had uncommitted in the main checkout sits in the same tree the executor/refiner will touch — and because the Step 5.1b re-derive sweeps **every** dirty path into `FILES_TOUCHED`, an unrelated pre-existing change would be committed under this step's subject (the exact cross-session pollution `/commit` guards against). To prevent that, capture a baseline BEFORE the executor runs:
+
+```bash
+git -C "<repo-root>" status --porcelain   # FLAT_BASELINE — paths already dirty before this step
+```
+
+- **If `FLAT_BASELINE` is non-empty** → STOP and escalate (Phase 6): "Flat-mode run requires a clean main checkout, but these files are already modified/untracked: <list>. Commit, stash, or revert them first, then re-run." Do NOT proceed — there is no worktree to isolate the step's work from theirs. (Alternatively the user may explicitly accept the risk via Phase 6 guidance; default is to refuse.)
+- **If clean** → record `FLAT_BASELINE` as empty, set `STEP_WORKTREE` to the main checkout (the repo root, i.e. the orchestrator's own working directory), and proceed to Step 5.1. There is no branch, no worktree to create or retire.
+
+In **umbrella mode** there is no baseline concern — each step gets its own fresh worktree — so skip the preflight and create the worktree below.
 
 **Umbrella mode: one worktree per step, reused across every fix iteration of that step.** This is the fix for the worktree-isolation data-loss class: if each executor spawn got a fresh checkout, fix iterations would not accumulate and the committer could stage an incomplete result.
 
@@ -199,22 +208,23 @@ Parse the `=== REFINER REPORT ===` block.
 git -C "<workdir>" status --porcelain   # ACTUAL_STATUS after refinement
 ```
 
-Set `FILES_TOUCHED` = the union of the executor's list and **every** path in this `ACTUAL_STATUS`. Then re-run the Step 5.1-recon assertions (worktree-toplevel match + every path in the refiner's `FILES_MODIFIED`/`FILES_CREATED` appears in `ACTUAL_STATUS`); on any failure, mark the step `blocked` and escalate. The committer (5.4a) stages this updated `FILES_TOUCHED`, so a deep-review-touched file dropped here would be silently left out of the commit — re-deriving is what prevents that.
+Set `FILES_TOUCHED` = the union of the executor's list and **every** path in this `ACTUAL_STATUS` — **in flat mode, MINUS any path in `FLAT_BASELINE`** (the files that were already dirty before this step started, per Step 5.0b). This subtraction is the safety net: the preflight should already have refused a dirty flat checkout, but if the user accepted the risk via Phase 6, never let a pre-existing user change ride into this step's commit just because it shares the tree. (Umbrella mode has no baseline — the worktree started clean — so the union stands as-is.) Then re-run the Step 5.1-recon assertions (worktree-toplevel match + every path in the refiner's `FILES_MODIFIED`/`FILES_CREATED` appears in `ACTUAL_STATUS`); on any failure, mark the step `blocked` and escalate. The committer (5.4a) stages this updated `FILES_TOUCHED`, so a deep-review-touched file dropped here would be silently left out of the commit — re-deriving is what prevents that.
 
 Record the refiner's `NEEDS_HUMAN` notes in the run-log. They are **informational, not blockers** — the verifier gate decides. If the verifier later blocks, include them in the escalation context (a defect the refiner flagged as needs-decision is often the same one the gate trips on).
 
 ### Step 5.2 — Verify (loop up to 3 iterations)
 
-Spawn `@orchestrator-verifier` with prompt:
+Spawn `@orchestrator-verifier` **with the step's working directory** (flat mode: repo root; umbrella mode: `$STEP_WORKTREE`) so it audits the code the step actually produced — in umbrella mode that code lives ONLY in the worktree until Step 5.4b merges it onto `main`; a verifier run in the repo root would audit a stale main without this step's changes:
 
 ```
 PLAN_PATH: <file_path>
+WORKTREE_PATH: <STEP_WORKTREE>
 FILES_TOUCHED:
 <list>
-Run /gates:verify-implementation per the preloaded skill. Report via the Verifier Output Contract.
+Work in WORKTREE_PATH (`cd` there first). Run /gates:verify-implementation per the preloaded skill. Report via the Verifier Output Contract, including the `WORKDIR_TOPLEVEL` line.
 ```
 
-Parse the `=== VERIFIER REPORT ===` block.
+Parse the `=== VERIFIER REPORT ===` block. **Assert `WORKDIR_TOPLEVEL` matches the step's working dir** (umbrella: `$STEP_WORKTREE`; flat: repo root), exactly as Step 5.1-recon does — a mismatch means the gate audited the wrong tree; mark the step `blocked` and escalate, do NOT trust the verdict.
 
 Decision table:
 
@@ -231,14 +241,17 @@ When looping with a fix iteration, give the executor the verifier's `GAPS:` bloc
 
 Skip entirely if `.agents/specs/design/Ready/` does not exist (use `Bash` to check). Log: `Design phase skipped: no .agents/specs/design/Ready/`. Proceed to Step 5.4.
 
-If the directory exists, spawn `@orchestrator-designer`:
+If the directory exists, spawn `@orchestrator-designer` **with the step's working directory** (flat mode: repo root; umbrella mode: `$STEP_WORKTREE`) — same reason as the verifier: in umbrella mode the implemented UI lives only in the worktree until the Step 5.4b merge:
 
 ```
 PLAN_PATH: <file_path>
+WORKTREE_PATH: <STEP_WORKTREE>
 FILES_TOUCHED:
 <list>
-Run /gates:design-quality-check per the preloaded skill. Report via the Designer Output Contract.
+Work in WORKTREE_PATH (`cd` there first). Run /gates:design-quality-check per the preloaded skill. Report via the Designer Output Contract, including the `WORKDIR_TOPLEVEL` line.
 ```
+
+Parse the `=== DESIGNER REPORT ===` block. **Assert `WORKDIR_TOPLEVEL` matches the step's working dir** (umbrella: `$STEP_WORKTREE`; flat: repo root) before trusting the verdict — a mismatch means the audit ran against the wrong tree; mark the step `blocked` and escalate.
 
 Parse the `=== DESIGNER REPORT ===` block.
 
@@ -285,7 +298,9 @@ Parse the `=== COMMITTER REPORT ===` block.
 
 **5.4a-bis — Clean-tree build gate (orchestrator, before push).** The committer stages exactly `FILES_TOUCHED` — but a step can commit a _generated artifact_ (a design index, a lockfile, a snapshot, a bundled manifest) while the **source files it was generated from** sit untracked or modified _outside_ the plan's scope. The executor and verifier both ran their builds against the **working tree** (which still contains those stray sources), so the build passed for them — yet the **commit itself is not self-contained**: on a clean checkout (exactly what the deploy server does) the gate that regenerates the artifact sees different sources and fails. This gate catches that class of "passes locally, fails on the server" break _before_ it reaches `origin/main`.
 
-It answers the only question that matters before a push: **does the bare commit build with no uncommitted files present?** This is generic — it knows nothing about any specific gate (`design:index:check`, `check:legal`, …); it just reproduces the server's clean-checkout condition locally.
+It answers the only question that matters before a push: **does the bare commit build with no tracked-but-uncommitted files present?** This is generic — it knows nothing about any specific gate (`design:index:check`, `check:legal`, …); it just reproduces the server's clean-checkout condition locally.
+
+> **Limit — gitignored files are NOT isolated.** The stash below uses `-u` (untracked) but not `-a` (all, incl. ignored), so files matched by `.gitignore` stay in the tree during the build. `-a` is deliberately avoided — stashing ignored build caches/`node_modules` would be slow and can corrupt them on pop. The consequence: if the build greens only because of a leftover **ignored** artifact (e.g. a stale compiled dir), this gate will not catch it. That is an accepted trade-off, not a guarantee gap to paper over — for a stack where ignored artifacts can mask a broken build, prefer the "temporary worktree at the commit SHA" alternative noted at the end of this step.
 
 **Determine the validation command (generic — no hardcoded framework).** This gate must run on any stack, so it does not assume `npm run build`. Resolve the command in priority order: (1) the plan's `## VALIDATION COMMANDS` section — the automatable Level 1/2 entries (typecheck/lint/build/tests); `/plan-feature` emits this section, so it is the most accurate definition of what "builds" means for this change; (2) **stack detection** if the plan has none — `package.json` with a `build` script → `npm run build`; `Cargo.toml` → `cargo build`; `go.mod` → `go build ./...`; `pyproject.toml` → the project's configured check; (3) **nothing determinable** → log `clean-build gate skipped: no validation command for this stack` and proceed to push. A generic template cannot assume a build step exists — do not block a project that legitimately has none.
 
@@ -294,9 +309,19 @@ It answers the only question that matters before a push: **does the bare commit 
 Run from the commit's working directory (flat mode: the main checkout; umbrella mode: `STEP_WORKTREE`):
 
 ```bash
-# Set aside everything NOT in the commit — untracked (-u) and modified — so the
-# tree matches exactly what was committed (== what the server will check out).
+# Set aside everything NOT in the commit — untracked (-u) and modified — so the tree matches
+# what was committed (== what the server checks out). `git stash push -u` both resets tracked
+# files to HEAD and removes untracked ones, reproducing the committed tree. (-u, not -a: ignored
+# files stay — see the limit note above.)
 git stash push -u -m "orchestrate-clean-build-<step_id>"   # no-op + harmless if tree already clean
+
+# Capture the EXACT stash ref we just created, by SHA — NOT by message and NOT a later bare
+# `git stash pop` (which pops stash@{0}). If the push was a no-op (clean tree), stash@{0} is
+# unchanged, so guard on whether the top stash is actually ours before recording the SHA.
+STASH_SHA=""
+if git stash list -n 1 --format='%gs' | grep -q "orchestrate-clean-build-<step_id>"; then
+  STASH_SHA="$(git rev-parse stash@{0})"
+fi
 
 # Validate the bare commit. <VALIDATION_CMD> is the command resolved above (the plan's
 # VALIDATION COMMANDS, else the stack-detected build/test command). For the optional
@@ -304,18 +329,23 @@ git stash push -u -m "orchestrate-clean-build-<step_id>"   # no-op + harmless if
 <VALIDATION_CMD> 2>&1 | tee "/tmp/orchestrate-build-<step_id>.log"
 BUILD_RC=${PIPESTATUS[0]}   # bash: exit code of the command, not tee. (zsh: use ${pipestatus[1]})
 
-# ALWAYS restore the working tree, even if the build failed — never leave the user's
-# stray files stashed. Only pop if we actually stashed (avoid popping an unrelated entry).
-git stash list | grep -q "orchestrate-clean-build-<step_id>" && git stash pop
+# ALWAYS restore the working tree, even if the build failed — never leave the user's stray
+# files stashed. Apply OUR exact stash SHA, never a bare `git stash pop` (it pops stash@{0},
+# which may be someone else's stash if one landed on top). On a clean apply, drop that entry.
+if [ -n "$STASH_SHA" ]; then
+  git stash apply "$STASH_SHA" && \
+    git stash drop "$(git stash list --format='%H %gd' | awk -v s="$STASH_SHA" '$1==s{print $2; exit}')" 2>/dev/null || \
+    echo "⚠ could not cleanly restore stash $STASH_SHA — left intact; resolve manually (see pop-failure safety below)"
+fi
 ```
 
 | Build result                           | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BUILD_RC == 0` | Commit is self-contained and validation passed on the clean tree. Proceed to 5.4b push.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `BUILD_RC != 0`                        | Mark step `blocked`. The commit builds only because uncommitted working-tree files are present — it is NOT self-contained and **will break the server's clean-checkout build**. Do NOT push. Escalate to the user (Phase 6) with: (a) the failing build output (`/tmp/orchestrate-build-<step_id>.log`), (b) the list of files that were stashed (`git stash show -u --stat` before the pop), and (c) the likely diagnosis — a committed generated artifact whose source files were left untracked/unstaged outside the plan scope. The fix is usually to commit those stray sources (or rebuild the artifact without them); both are user decisions. STOP. |
+| `BUILD_RC != 0`                        | Mark step `blocked`. The commit builds only because uncommitted working-tree files are present — it is NOT self-contained and **will break the server's clean-checkout build**. Do NOT push. Escalate to the user (Phase 6) with: (a) the failing build output (`/tmp/orchestrate-build-<step_id>.log`), (b) the list of files that were stashed (`git stash show -u "$STASH_SHA" --stat`, captured before the restore), and (c) the likely diagnosis — a committed generated artifact whose source files were left untracked/unstaged outside the plan scope. The fix is usually to commit those stray sources (or rebuild the artifact without them); both are user decisions. STOP. |
 | (no validation command resolved) | Gate skipped — logged above. Proceed to 5.4b push. The commit was not clean-build-verified; acceptable for a project with no build step, but recorded so it is not mistaken for a verified pass.                                                                                                                                                                                                                                                                                                              |
 
-**Pop-failure safety:** if `git stash pop` reports a conflict (the build wrote files that now collide with the stash), do NOT force it. Surface the conflict to the user verbatim, leave the stash intact (`git stash list` shows it), and STOP — the user resolves the working tree manually. Never `git checkout`/`reset` to clear a pop conflict; that can destroy the user's stray work.
+**Restore-failure safety:** if `git stash apply` reports a conflict (the build wrote files that now collide with the stash), do NOT force it and do NOT `git stash drop` — the apply failed, so dropping would destroy the only copy. Leave the stash intact (`git stash list` shows our `orchestrate-clean-build-<step_id>` entry; its SHA is `$STASH_SHA`), surface the conflict to the user verbatim, and STOP — the user resolves the working tree manually. Never `git checkout`/`reset` to clear the conflict; that can destroy the user's stray work (and both are denied in settings anyway).
 
 > **Why a stash and not a fresh worktree:** in flat mode there is no isolated checkout, so `stash -u` is the cheapest way to reproduce "only the commit, nothing else." In umbrella mode the worktree is usually already clean after the commit, so the stash is a no-op (`git stash` reports "No local changes to save") and the build simply runs on the committed branch — the gate still adds value by catching a stray untracked file the executor left behind in the worktree. The gate is identical in both modes; only the working directory differs.
 
@@ -408,16 +438,36 @@ Then resume the pipeline at Step 5.2 (re-verify after the guided fix).
 
 When the last step reaches `done`:
 
+**1–2 branch by plan type** — a flat/atomic plan has no `## Execution Plan` table and no sub-step files, so the umbrella-shaped steps below do not apply to it.
+
+**Flat mode (atomic plan):**
+
+1. Confirm the single step pushed successfully (Step 5.4b succeeded).
+2. Move just the plan file and its run-log to `done/`:
+   - `mv .agents/plans/active/<plan>.md .agents/plans/done/`
+   - `mv .agents/plans/active/<plan>.run.md .agents/plans/done/ 2>/dev/null || true`
+   - Steps 3 (worktree cleanup) and 4 (branch cleanup) are **no-ops** in flat mode (no worktree, no `step-*` branch). Continue at step 5.
+
+**Umbrella mode:**
+
 1. Read the umbrella `## Execution Plan` table — confirm all rows are `done` or `skipped`.
 2. Move the umbrella, all sub-step files, and the run-log to `.agents/plans/done/`:
    - `mv .agents/plans/active/<umbrella>.md .agents/plans/done/`
    - For each sub-step in the table, `mv .agents/plans/active/<file> .agents/plans/done/`
    - `mv .agents/plans/active/<umbrella>.run.md .agents/plans/done/ 2>/dev/null || true` (the durable run-log from Phase 4b travels with the plan)
-3. **Worktree cleanup.** Remove any step worktrees that survived (e.g. from a blocked step) and prune stale entries — they accumulate full repo checkouts and pollute the repo if left:
+3. **Worktree cleanup — preserve uncommitted work.** Remove step worktrees that survived (e.g. from a blocked step) and prune stale entries — they accumulate full repo checkouts. **But a surviving worktree from a blocked step can hold uncommitted agent work** (e.g. the user chose Phase 6 "mark done anyway" without merging), and `git worktree remove --force` discards it irreversibly — `git worktree` is NOT in the settings deny-list, so nothing else guards this. So force-remove ONLY a worktree that is both clean and fully merged; leave any dirty one in place and report it:
    ```bash
-   for wt in .claude/worktrees/step-*; do git worktree remove "$wt" --force 2>/dev/null || true; done
+   for wt in .claude/worktrees/step-*; do
+     [ -d "$wt" ] || continue
+     if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+       echo "⚠ keeping $wt — it has uncommitted changes (resolve manually)"   # do NOT --force
+     else
+       git worktree remove "$wt" --force 2>/dev/null || true                  # clean → safe to drop
+     fi
+   done
    git worktree prune
    ```
+   List every worktree kept this way in the final summary so the user knows work is parked there. Never `--force`-remove a dirty worktree to "clean up" — that is the user's uncommitted work.
 4. **Branch cleanup — emit a command, do NOT run it.** The now-merged `step-<id>` branches (and any empty ones left by a blocked/aborted step) are harmless but clutter the branch list. Deleting branches is **denied in settings** and is destructive — by project rule, that is the human's call, not the pipeline's. So list the merged step branches and emit a ready-to-paste command for the user, e.g.:
    ```
    These step branches are fully merged into main and safe to delete (your call):
@@ -479,7 +529,9 @@ Deploy is your call.
 - Run `git push --force` under any circumstance. Even with user instruction, ask for confirmation twice.
 - Mark a step `done` without a successful push (Step 5.4b). The committer commits; you push; both must succeed (or a deliberate user override via Phase 6 option 4).
 - Push a commit without passing the clean-tree build gate (Step 5.4a-bis) when a validation command exists. A commit that only builds because untracked/modified working-tree files are present is NOT self-contained and will break the server's clean-checkout build. Never skip the gate "because the executor's build already passed" — the executor built the dirty tree, not the commit. If you enabled the optional post-success-marker hardening (e.g. Next.js `.next/BUILD_ID`), a green `BUILD_RC == 0` with a missing fresh marker counts as a FAILED build (false-green-RC class).
-- Force a `git stash pop` through a conflict in the clean-build gate, or `git checkout`/`reset` to clear one. That can destroy the user's uncommitted work. Surface the conflict and STOP.
+- Force a stash restore (`git stash apply`/`pop`) through a conflict in the clean-build gate, or `git checkout`/`reset` to clear one, or `git stash drop` after a failed apply. Any of these can destroy the user's uncommitted work. Surface the conflict, leave the stash intact, and STOP.
+- Force-remove a worktree (`git worktree remove --force`) that has uncommitted changes during Phase 7 cleanup. `git worktree` is not in the settings deny-list, so this guard lives only here — check `git -C "$wt" status --porcelain` first; keep dirty worktrees and report them.
+- Run a flat-mode pipeline against a dirty main checkout. The Step 5.0b preflight refuses it; never bypass that and let pre-existing user changes share the step's commit.
 - Loop more than the documented iteration counts: 3 verify; design is either 1 mega-fix (structural) or 2 incremental (cosmetic) per the adaptive budget in Step 5.3 — never both, never more. The limits exist to surface real blockers, not to grind.
 - Re-ask a cadence/"continue?" question once the user has said to run without stopping (see Phase 6 cadence rule). Report progress as a statement, not a question.
 - Modify sub-step plan files. The executor is the only agent that may edit code; you only edit the umbrella's Status column.
