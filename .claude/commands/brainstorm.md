@@ -25,14 +25,13 @@ Every feature goes through this process. A single new command, a config change, 
 
 ### Step 1: Read Memory and Explore Context
 
-Before asking any questions:
+> **Loader Convention — trust primed context.** This step assumes `/prime` has already loaded `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, and `architecture.md` (plus `patterns.md` / `decisions.md` in full mode). Do **not** re-read those "for context" — if context isn't primed (no recent `/prime` in conversation), pause and ask the user to run `/prime` first. See [.agents/memory/index.md → Loader Convention](../../.agents/memory/index.md). Read only what is **unique to this topic**:
 
-- Read `.agents/memory/index.md`, then any relevant domain files
+- Consult the `When to Read` table in `.agents/memory/index.md` and load only the **domain files relevant to the topic** (not the whole memory layer)
 - Check recent commits: `git log --oneline -10`
 - Explore files relevant to the topic — use **LSP `workspaceSymbol`** to find existing services/types in the topic area and **`documentSymbol`** to grasp a key file's shape without reading it whole (see CLAUDE.md → Code Navigation)
-- Check CLAUDE.md for project-specific constraints
 
-Note the current architecture, patterns in use, and any prior decisions that affect this feature.
+Note the current architecture, patterns in use, and any prior decisions (from already-primed memory) that affect this feature.
 
 ### Step 2: Resolve What You Can; Ask Only About Directional Decisions
 
@@ -248,7 +247,7 @@ The prompt opens codex up to find **new** classes of problem in the *design*, wh
 >
 > **Bar for reporting (strict, so breadth doesn't become noise):** every finding MUST (a) cite concrete `evidence` — a spec section, a `file:line`, or a documented decision — and (b) give a concrete `consequence` and `fix`. A finding you cannot anchor to the spec or repo is a hypothesis — DROP it yourself before reporting. Prefer 5 anchored findings over 20 speculative ones. Severity must be honest. Mark `kind: "fundamental"` when the finding questions the approach/scope itself (not a spec edit); otherwise `kind: "patchable"`. Set `verdict: "ship"` with an empty `findings` array if the spec is sound.
 >
-> Output ONLY per the schema.
+> **You are read-only.** This is a review: do NOT edit, patch, reformat, or create any files, and do NOT run mutating shell commands. Only read and report. (The sandbox flag is omitted by intent — see Step 8.2 — so this clause is what enforces read-only; honour it.) Output ONLY per the schema.
 
 #### Step 8.4 — Invoke codex in the background, then poll
 
