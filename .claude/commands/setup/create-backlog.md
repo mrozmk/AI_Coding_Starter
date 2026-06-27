@@ -119,12 +119,25 @@ The split keeps the backlog honest: the DAG holds what you push through the pipe
 - **`Wave` (a.k.a. order/priority) is NOT a total order** — it is a priority band. **Duplicate wave numbers are intentional**: tasks in the same wave with no mutual dependency can run in parallel. Never encode the DAG in the wave column; encode it in `Dependencies`.
 - **Work packages** group tasks into coherent themes. **One work package = one `/brainstorm` → one spec → one `/plan-feature`.** A task ID does **not** map 1:1 to a command invocation — a work package does. Each WP row carries the exact pipeline entry to run.
 - **MVP is a sub-graph, not a linear list.** Identify the thinnest set of tasks that proves the product end-to-end, draw their dependency graph, and define DoD as a **fan-in** of specific task IDs (e.g. "DoD = E1-1b AND E2-5"), not "all MVP tasks done".
+- **Each epic carries its *why* (Outcome + Key assumption).** A backlog generated once from a PRD easily keeps the *how* (tasks) but loses the *why* — and an AI agent picking up a work package weeks later will turn an unvalidated assumption into a confident-sounding task. So every epic gets two short fields: **Outcome** (the product effect / whose problem it solves, traced to the PRD) and **Key assumption** (the most load-bearing thing you're *not yet sure of*). The assumption field is an explicit "don't-know-yet" marker the agent can see. Adapted from Torres's opportunity→outcome→assumption mapping and Cagan's discovery/delivery split; it is also the backlog's backward-traceability (why does this exist?). One sentence each — not a discovery essay.
+- **Every work package must pass a readiness check (mini-INVEST) before it enters the pipeline.** Not the full six criteria — the three that actually save the AI flow:
+  - **Independent** — runnable without waiting on another WP (or the dependency is explicit in the DAG).
+  - **Small** — closeable in *one* `/brainstorm → spec → /plan-feature` cycle. If it's three unrelated things ("login + password reset + 2FA"), split into three WPs.
+  - **Testable** — there is a concrete "done" criterion, so the agent knows when to stop.
+
+  This guards **scope creep**, the concrete failure mode of AI agents — given "Auth", an agent will happily build login + reset + 2FA + OAuth + audit log in one pass because "it all fits Auth". The readiness check forces atomicity *before* the pipeline runs. This matters more than story points: points size the work, readiness checks whether it's *one coherent thing*. (Bill Wake's INVEST, used here as a per-WP gate, not a team Definition of Ready.)
+- **Every work package declares an appetite + cut-lines (bounded scope).** Three lines per WP:
+  - **Appetite** — how much this WP is *worth* (not "how long it takes" — that's an estimate; appetite is the budget you're willing to spend). Coarse: e.g. "small — it's a foundation, not a differentiator".
+  - **No-go (now)** — what you deliberately exclude from this WP for now.
+  - **Cut first** — what gets dropped *first* if the WP turns out too big, in priority order.
+
+  Where the readiness check guards size *on entry*, appetite/cut-lines guard size *during the work*. An AI agent has no innate "that's enough — we shipped 80% of the value" instinct; it will polish forever or pile on edge cases nobody asked for. The cut-line is an explicit hand-brake: "if this grows, drop X first, then Y." (Basecamp's Shape Up — "fixed time, variable scope": work must be *bounded*, with explicit exclusions and a cut order.)
 
 ### Phase 4: Generic core vs domain adapters
 
 The backlog has a **universal core** that every project needs, and **optional domain adapters** that only some projects need. Emit the core always; add an adapter **only** when the project's nature calls for it — do not force a greenfield app to invent a taxonomy that only makes sense for a legacy port.
 
-**Universal core (always):** epic map · task inventory with IDs · dependency DAG · waves · work packages as pipeline inputs · MVP as a sub-graph · DoD per epic · critical path · open questions · consciously-out-of-scope · Status + Ref columns.
+**Universal core (always):** epic map (each epic with **Outcome + Key assumption**) · task inventory with IDs · dependency DAG · waves · work packages as pipeline inputs (each with a **readiness check** + **appetite / no-go / cut-first**) · MVP as a sub-graph · DoD per epic · critical path · open questions · consciously-out-of-scope · Status + Ref columns.
 
 **Optional domain adapters (add only when relevant):**
 
@@ -161,20 +174,28 @@ Create `.agents/` if needed (it exists in this template). Write the file with th
 
 ## Epic map (delivery order)
 
-| Epic | Title | Depends on | Why in this order |
-|------|-------|------------|-------------------|
-| **E0** | <foundation> | — | <everything stands on this> |
-| **E1** | … | E0 | … |
+| Epic | Title | Outcome (why — traced to PRD) | Key assumption to validate | Depends on | Why in this order |
+|------|-------|-------------------------------|----------------------------|------------|-------------------|
+| **E0** | <foundation> | <product effect / whose problem> | <the most load-bearing unknown> | — | <everything stands on this> |
+| **E1** | … | … | … | E0 | … |
 
 ## Work packages — pipeline inputs
 
 > **Source of truth for command scope.** The Task table below is the inventory + DAG (what exists,
 > what depends on what) — NOT a "how to run it" map. One *work package* = one coherent theme = one
-> `/brainstorm` → one spec → one `/plan-feature`.
+> `/brainstorm` → one spec → one `/plan-feature`. Each WP carries a **readiness check** (is it ready to
+> enter the pipeline?) and an **appetite + cut-lines** (is its scope bounded?) directly below the table.
 
 | Package | Task scope | Depends on | Entry (how to run) | Status |
 |---------|-----------|-----------|--------------------|--------|
 | **MVP-CORE** | E0-1, E0-3, … | — | `/brainstorm <topic> → spec → /plan-feature <spec>` | TODO |
+
+**MVP-CORE** — readiness: ✓ Independent (DAG deps only) · ✓ Small (one cycle) · ✓ Testable (<concrete done criterion>)
+- Appetite: <small / medium — what it's worth, not how long it takes>
+- No-go (now): <what this WP deliberately excludes>
+- Cut first: <what gets dropped first if it grows too big, in order>
+
+<!-- repeat the readiness + appetite block for every work package -->
 
 ## Task table (inventory + DAG — take command scope from "Work packages" above)
 
