@@ -49,7 +49,7 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
 
 Treat the spec as given — do not re-litigate the design. Your job here is to fill in implementation context.
 
-> **Loader Convention — leverage primed context.** This phase assumes `/prime` has already loaded `.agents/memory/architecture.md` (directory map, module roles), `.agents/memory/patterns.md` (project-specific patterns), `.agents/memory/decisions.md`, and any populated `domain/*.md`. Do **not** re-walk the directory tree or re-derive conventions that memory already documents — focus on filling gaps unique to this feature. If context isn't primed (no recent `/prime` in conversation), pause and ask the user to run `/prime` first. See [.agents/memory/index.md → Loader Convention](../../.agents/memory/index.md).
+> **Loader Convention — leverage primed context.** Quick `/prime` already loaded `CLAUDE.md`, `index.md`, `project-brief.md`, and `.agents/memory/architecture.md` (directory map, module roles) — do **not** re-read those or re-walk the directory tree. But `patterns.md`, `decisions.md`, and `domain/*.md` are **full-mode only** (`/prime full`), so quick mode has NOT loaded them: consult them **on-demand** per the `When to Read` table in `index.md` (load only the ones this feature's domain needs — don't load all defensively). Focus on filling gaps unique to this feature. If context isn't primed at all (no recent `/prime` in conversation), pause and ask the user to run `/prime` first; if the plan spans many areas, prefer `/prime full`. See [.agents/memory/index.md → Loader Convention](../../.agents/memory/index.md).
 
 **1. Project Structure Analysis**
 
@@ -668,7 +668,7 @@ For **EVERY** finding from Step 5.2, ask yourself three questions:
 DECISION: KEEP | DROP | DEMOTE | PROMOTE
 ```
 
-**Drop at least 20% of findings.** If you keep everything, it means either the plan is genuinely perfect (rare), or you are not self-critiquing honestly. Real grounds for dropping: "this is already covered by CLAUDE.md auto-behavior X" / "the model has this in training, see prior work" / "this is a hypothesis, no incident or memory backs it".
+**Drop weak and speculative findings aggressively — but never drop an anchored finding just to hit a number.** As a rule of thumb a healthy raw pass sheds ~20%+; if you keep everything from a large set, you are probably not self-critiquing honestly. The quota serves the filter, not the reverse: with a small raw set (say <5 findings) or when every finding is genuinely anchored and load-bearing, keep them all and state in one line why nothing was dropped. Real grounds for dropping: "this is already covered by CLAUDE.md auto-behavior X" / "the model has this in training, see prior work" / "this is a hypothesis, no incident or memory backs it".
 
 ### Step 5.4 — Present findings to user, ask for fix scope
 
@@ -736,6 +736,14 @@ After applying all fixes, **re-measure every plan file** (fixes may have grown a
 - Update the report for the user about post-fix splits.
 
 This prevents the situation: the plan was 580 LOC (acceptable), grilling added 2 fixes = 720 LOC (over cap), and the user receives a final plan that is already too big. Better to split now than to improvise in `/execute`.
+
+### Step 6.2 — Execution Plan re-sync (umbrella only)
+
+**Mandatory if the plan is an umbrella (has a `## Execution Plan` section). Skip for single atomic plans.**
+
+Phase 4.6 emitted the `## Execution Plan` table from the *pre-grilling* draft. Phase 6 (and any patchable fix from Phase 7) can **add new steps** (Step 6, point 2), **split a file** into `Xa/Xb/Xc`, or **remove a monolith** — leaving the table pointing at files that no longer exist or at step ids that changed. `/orchestrate` treats that table as authoritative and **validates it fail-fast** (every `File` must exist on disk, every `Depends On` must reference an existing Step — see `orchestrate.md` Phase 2). A stale table = the orchestrator STOPs before it runs.
+
+So after Phase 6 fixes (and again after any Phase 7 patchable fix, per Step 7.6), if any step was added / split / removed, **re-run Phase 4.6 on the umbrella** to regenerate the `## Execution Plan` table, then re-validate: every `File` link resolves on disk, every `Depends On` id exists, no cycle. If validation fails → STOP and report (same as Step 4.6.5). Do not hand the user (or `/orchestrate`) a plan whose table no longer matches its files.
 
 **After applying all fixes:** a short diff summary to the user:
 
@@ -842,7 +850,7 @@ The prompt must open codex up to find **new** classes of problem (not a checklis
 >
 > **Bar for reporting (strict, so breadth doesn't become noise):** every finding MUST (a) cite concrete `evidence` — a `file:line`, a repo fact, a memory entry, or the exact plan task id — and (b) give a concrete `consequence` and `fix`. A finding you cannot anchor to the actual plan or repo is a hypothesis — DROP it yourself before reporting. Prefer 5 anchored findings over 20 speculative ones. Severity must be honest. Mark `kind: "fundamental"` when the finding questions the approach/scope itself (not a plan edit); otherwise `kind: "patchable"`. Set `verdict: "ship"` with an empty `findings` array if the plan is sound.
 >
-> Output ONLY per the schema.
+> **You are read-only.** This is a review: do NOT edit, patch, reformat, or create any files, and do NOT run mutating shell commands. Only read and report. (The sandbox flag is omitted by intent — see Step 7.2 — so this clause is what enforces read-only; honour it.) Output ONLY per the schema.
 
 For **round N > 1**, append:
 
@@ -907,7 +915,7 @@ Write the score for each finding explicitly (same shape as Step 5.3) so the deci
 
 ### Step 7.6 — Branch by `kind`
 
-- **`kind: "patchable"` and accepted** → apply in-place now (Edit tool, exactly like Phase 6), then run the **Step 6.1 post-fix size re-check** (a codex fix can push a file over the hard cap → auto-split).
+- **`kind: "patchable"` and accepted** → apply in-place now (Edit tool, exactly like Phase 6), then run the **Step 6.1 post-fix size re-check** (a codex fix can push a file over the hard cap → auto-split) **and the Step 6.2 Execution Plan re-sync** if the fix added / split / removed a step in an umbrella plan (a stale table fails `/orchestrate`'s validation).
 - **`kind: "fundamental"` (any severity that survives scoring)** → do **NOT** apply silently and do **NOT** try to encode it as a plan edit. Collect it as a **🔶 RETHINK SIGNAL**. Fundamental findings are surfaced separately at the end (Step 7.8) and the user is asked explicitly — they are exactly the "is this even the right thing to build?" signal cross-model review exists to catch.
 
 ### Step 7.7 — Loop control
@@ -1027,7 +1035,8 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 - [ ] Every sub-step file is registered in the table
 - [ ] Every `Depends On` references an existing Step id (no dangling refs)
 - [ ] No circular dependencies
-- [ ] All initial statuses are `pending`
+- [ ] All automatable initial statuses are `pending`; human-only steps are `manual` (per Step 4.6.2)
+- [ ] Table re-synced after Phase 6 / Phase 7 fixes (no `File` link or `Depends On` id left stale — Step 6.2)
 - [ ] Visual DAG and complexity table (if kept) are marked as informational supplements
 
 ---
