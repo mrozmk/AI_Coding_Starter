@@ -110,18 +110,20 @@ Construct a single prompt string for `codex exec`. It must contain, in this orde
 
 ### 4. Run Codex in the background
 
-Launch it as a **background Bash process** so the main thread stays responsive and can monitor the heartbeat. **Split the two outputs** so you never have to dig the review out of the orchestration noise:
+Launch it as a **background Bash process** through the shared `codex-bg.sh` wrapper so the main thread stays responsive and can monitor the heartbeat. **Split the two outputs** so you never have to dig the review out of the orchestration noise:
 
 ```bash
-codex exec --sandbox read-only \
-  --output-last-message "$SCRATCH/codex-review.final.md" \
-  "<the assembled prompt from step 3>" \
-  > "$SCRATCH/codex-review.log" 2>&1
+PROMPT="<the assembled prompt from step 3>" \
+OUT="$SCRATCH/codex-review.final.md" \
+LOG="$SCRATCH/codex-review.log" \
+REPO="<repo-root>" \
+bash .claude/lib/codex-bg.sh
 ```
 
-- **`--output-last-message <file>` is the key to a clean read.** It writes ONLY Codex's final message (the actual review) to that file. The `.log` keeps the full run — every `exec`, `rg`, file dump, and `STATUS:` line — which is large (hundreds of KB) and ~95% orchestration noise. **Read the review from `codex-review.final.md`, not the log.** (Same mechanism `/plan-feature` uses for its codex pass.)
-- Do **NOT** add `--output-schema` here — this review is prose, not structured JSON, and (per `plan-feature.md`) `--output-schema` combined with `--sandbox read-only` has hung in testing. `--output-last-message` alone is safe with the sandbox.
-- `--sandbox read-only` — a review must not mutate the repo. Never grant write/full-access here.
+- **Spawn through `.claude/lib/codex-bg.sh`, never raw `codex exec`.** It bakes in the load-bearing flags (`< /dev/null` stdin-guard, `-C <repo>`, `--skip-git-repo-check`) so a backgrounded codex can't hang on stdin or in a non-trusted dir. See [.agents/reference/codex-spawn.md](.agents/reference/codex-spawn.md) for the full contract.
+- This is a **prose** review — do NOT pass `SCHEMA`. With `SCHEMA` unset the wrapper defaults to `--sandbox read-only` (a review must not mutate the repo). Never pass `SANDBOX=workspace-write`/`danger-full-access` here. (Do not combine schema + read-only — that has hung in testing; not an issue here since this review is schema-less.)
+- **`--output-last-message` (baked into the wrapper via `OUT`) is the key to a clean read.** It writes ONLY Codex's final message (the actual review) to `OUT`. The `.log` keeps the full run — every `exec`, `rg`, file dump, and `STATUS:` line — which is large (hundreds of KB) and ~95% orchestration noise. **Read the review from `codex-review.final.md`, not the log.**
+- **Reasoning effort: inherit the config default (xhigh).** Do NOT lower it — this is a review and wants full model power. (To override for one run, prepend `CODEX_EFFORT=<low|medium|high|xhigh>`.)
 - Write the log to the session scratchpad dir (not `/tmp`).
 - Run it with `run_in_background: true`. The harness re-invokes you when it exits; you do not poll in a tight loop.
 
@@ -130,13 +132,19 @@ codex exec --sandbox read-only \
 While Codex is working, surface its progress to the user so they know it's alive. **Heartbeats come from the `.log`; the review comes from `.final.md`** — keep the two reads separate:
 
 - For progress: read only the new `STATUS:` lines from the **`.log`** (`rg '^STATUS:' "$SCRATCH/codex-review.log" | tail -1`) and relay one line: `Codex pracuje: <ostatni status>`. Do not read the whole log — it is huge.
-- The **`.final.md`** is empty until Codex finishes (`--output-last-message` writes it once, at the end). Its appearance / non-emptiness is itself the "done" signal.
+- The **`.final.md`** is empty until Codex finishes (`--output-last-message` writes it once, at the end). A **non-empty** `.final.md` is the only trustworthy "done with a result" signal. The golden rule: process exit (`task-notification completed`, exit 0) by itself does NOT mean codex finished — a backgrounded launcher exits 0 while codex is still working, and a stdin-hung or killed codex also exits without writing. **Always `[ -s "$SCRATCH/codex-review.final.md" ]` before treating the run as done.**
 - Do **not** spin a busy-wait. If you need a fallback timer to re-check a long-running run, schedule a single long wakeup (≥3 min) rather than tight polling — the heartbeat in the log is the primary signal; the timer is just a safety net in case Codex goes silent.
 - If no `STATUS:` line appears for well over 3 minutes and the process is still alive, tell the user it's quiet but not yet exited (don't kill it).
 
 ### 6. Judge the review — honestly, no bias
 
-This is the point of the command. When the process exits (or `codex-review.final.md` becomes non-empty), **read the review from `$SCRATCH/codex-review.final.md`** — the clean final message, not the noisy `.log`. Then **evaluate it as a critic, not a defender**:
+This is the point of the command. The done signal is a **non-empty `codex-review.final.md`** — not the process exit on its own (Step 5, golden rule). When you are re-invoked, branch on the artifact:
+
+- **`codex-review.final.md` non-empty → DONE-OK.** Read the review from it — the clean final message, not the noisy `.log` — and judge it below.
+- **Process exited but `codex-review.final.md` is empty/absent → DONE-FAILED** (stdin-hang, kill, or codex error — NOT "codex returned nothing"). Do NOT read or summarize the empty file as if it were a clean "no findings" review. Retry once (re-spawn from step 4); if it fails again, tell the user the codex review could not complete and stop — **never fabricate a verdict** (project rule: "Never fake it").
+- **Process still running, file still empty → still working.** It may be a long xhigh run — relay a heartbeat (Step 5) and wait; do not kill it.
+
+Once you have a non-empty review, **evaluate it as a critic, not a defender**:
 
 - **Verify, don't trust.** Check each finding against the real source of truth — in **diff mode** the changed code (`file:line`), in **idea mode** the current files the proposal touches *and* the proposal text in the handoff. A second model hallucinates too — confirm the claim holds before you accept it. Quote the real code or the exact proposal section.
 - **Be honest about your own miss.** If Codex caught a real bug, a better approach, or (idea mode) a flaw in the *direction* the main thread overlooked, **say so plainly** — that is exactly why we ran it. Do not minimize a valid finding because it implicates earlier work in this session.
@@ -193,7 +201,7 @@ Then ask whether to act on the accepted findings (skip the question if the revie
 
 - **Pick the mode first, and say which.** `diff` reviews changes already made; `idea` reviews a proposal before any code is written. Auto-detect from git state, allow forcing via the `idea`/`diff` token, and announce the chosen mode to the user. Every downstream step branches on it.
 - **Independence is the product.** Never seed the prompt with the main thread's opinion, expected bugs, or hypotheses. Orientation + scope + open task only. In idea mode this matters more, not less: present the proposal neutrally and invite Codex to reject it — do not frame it as already decided.
-- **Read-only sandbox, always.** A review mutates nothing. Never pass `workspace-write` or `danger-full-access` to `codex exec` for this command.
+- **Read-only sandbox, always.** A review mutates nothing. Spawn via `.claude/lib/codex-bg.sh` with `SCHEMA` unset, so it defaults to `--sandbox read-only`. Never pass `SANDBOX=workspace-write`/`danger-full-access` for this command.
 - **Reference, don't paste — except the proposal in idea mode.** Normally point Codex at the handoff and the diff by path. But in idea mode there is no diff, so the handoff itself must carry the full proposal; that content is the one thing that legitimately lives in the handoff rather than being referenced. Still point at the *files* by path.
 - **Verify every finding against source before accepting it** — Codex can be confidently wrong, just like the main thread. In idea mode, "source" includes both the current files and the proposal text.
 - **Read the review from `--output-last-message`, heartbeats from the log.** The `.final.md` is the clean review; the `.log` is the noisy run trace (read it only for `STATUS:` lines). Never hunt for the verdict inside the log.
