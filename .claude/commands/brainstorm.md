@@ -1,11 +1,13 @@
 ---
 description: Explore requirements and design a solution before planning implementation
-argument-hint: [topic or feature idea]
+argument-hint: "[topic or feature idea | empty → next free backlog task]"
 ---
 
 # Brainstorm: Design Before You Build
 
 ## Topic: $ARGUMENTS
+
+> **If `$ARGUMENTS` is empty, the topic is not given — it is *resolved* in Step 0 below** (default: the next free task from `.agents/backlog.md`). Do not treat an empty invocation as "ask the user what to build" unless Step 0 finds no resolvable task.
 
 <HARD-GATE>
 This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. The gate is on writing code, not on user approval: you advance through design → spec → planning on your own recommendation, stopping for the user only at the directional decisions defined in Step 2.
@@ -22,6 +24,33 @@ Before proposing **how** to build anything (Step 3), you must understand **what*
 Every feature goes through this process. A single new command, a config change, a refactor — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), but you MUST present it and write the spec before moving to planning — even when no question needs asking.
 
 ## Process
+
+### Step 0: Resolve the topic (what are we designing?)
+
+Decide where the topic comes from, in this priority order. Resolve it **before** anything else — the rest of the command operates on the resolved topic.
+
+1. **Explicit topic in `$ARGUMENTS`** → use it verbatim. (User typed `/brainstorm <something>`.) Skip the rest of Step 0.
+2. **User referenced a Jira issue** (the prompt names a `[A-Z]+-\d+` key, or pasted an issue's description / acceptance criteria) → the topic is that issue. Use its summary + AC as the topic. Skip backlog resolution.
+3. **`$ARGUMENTS` is empty AND no Jira reference** → **resolve the next free task from `.agents/backlog.md`** (the default path):
+
+   **a. No backlog?** If `.agents/backlog.md` does not exist or is empty → there is nothing to resolve. STOP and ask the user: *"No topic given and no `.agents/backlog.md` to pull from. Tell me what to design, or run `/setup:create-backlog` first."* Do not invent a topic.
+
+   **b. Find the next free task.** A task is **free** (eligible to start) when **all** hold:
+   - its `Status` is `TODO` (not `WIP`, `DONE`, or `BLOCKED`), **and**
+   - **every** task ID in its `Dependencies` column has `Status: DONE` (the DAG's source of truth is `Dependencies`, not the `Wave` column — never pick a task whose dependencies are unmet).
+
+   Among all free tasks, pick the one with the **lowest `Wave`**; break ties by **table order (topmost first)**. On a fresh backlog this is `E0-1` (the scaffold), which is dependency-free by construction.
+
+   **c. Verify it is *genuinely* not already done** (guard against stale status — a prior `/orchestrate`/`/plan-feature` run may have completed work but left the `Status`/`Ref` write uncommitted or unwritten, so the table can lie). Before committing to the task, cross-check for completion evidence:
+   - Is there a plan for it in `.agents/plans/done/` (match by task ID, work-package name, or feature)? 
+   - Does its `Ref` column already point to a spec **and** a done-plan?
+   - Do recent commits (`git log --oneline -15`) already implement it?
+
+     If the evidence says the task is effectively **done** despite a `TODO` status → treat it as done: note the discrepancy, **skip to the next free task**, and tell the user the backlog status looked stale (so they can correct it). If evidence is ambiguous (some signal but not conclusive) → **ask the user** whether to design it or move on, rather than silently redoing finished work.
+
+   **d. Announce the resolved task** before designing: *"No topic given — taking the next free backlog task: `<ID> — <title>` (Wave `<n>`, deps all DONE). Designing this; say otherwise to pick a different one."* Then proceed with that task as the topic.
+
+> This makes a bare `/brainstorm` mean "design the next thing the backlog says to build" — but only when the user gave no topic and named no Jira issue. An explicit topic or a Jira reference always wins. The verification in (c) is the safety net: a `TODO` row is a *hint*, not proof the work is unstarted.
 
 ### Step 1: Read Memory and Explore Context
 

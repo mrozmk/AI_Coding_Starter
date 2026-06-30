@@ -99,7 +99,7 @@ The backlog **translates** the PRD's "what & why" into "in what structure to del
 **Cross-cutting concerns — security, infrastructure, observability, performance — belong in the backlog, two distinct ways:**
 
 1. **As normal epics/tasks in the DAG** when they are *deliverable work* the pipeline will build:
-   - `E0 Infra` — CI/CD, deploy pipeline, project scaffold (usually the **first** epic — everything stands on it).
+   - `E0 Infra` — CI/CD, deploy pipeline, project scaffold. **MUST be the first epic, and its scaffold task (`E0-1`) MUST be the first task with no dependencies** — on greenfield it is the literal entry point that creates the project skeleton (manifest, entry file, dir layout) the whole MVP stands on; every other MVP task depends on it (directly or transitively). The HARD-GATE still holds: the backlog *describes* `E0-1` as a task, it does not scaffold files itself — `E0-1` produces the skeleton later, when it runs through `/brainstorm → /plan-feature → /execute` like any other work package. (Brownfield exception: a mapped codebase already has a skeleton, so `E0-1` is instead "adopt/normalize existing scaffold" or omitted — record which.)
    - `E2 Auth` — login, sessions, RBAC (security *is* a feature here; it goes through `/brainstorm` like any other WP).
    - `E4 Observability` — logging, metrics, alerting.
    - Performance work with a concrete deliverable (a caching layer, a query-optimization pass) — a normal task.
@@ -176,8 +176,10 @@ Create `.agents/` if needed (it exists in this template). Write the file with th
 
 | Epic | Title | Outcome (why — traced to PRD) | Key assumption to validate | Depends on | Why in this order |
 |------|-------|-------------------------------|----------------------------|------------|-------------------|
-| **E0** | <foundation> | <product effect / whose problem> | <the most load-bearing unknown> | — | <everything stands on this> |
+| **E0** | Foundation (project scaffold) | <product effect / whose problem> | <the most load-bearing unknown> | — | everything stands on the skeleton — MUST be first (greenfield) |
 | **E1** | … | … | … | E0 | … |
+
+> **Greenfield rule:** `E0-1` (project scaffold) is the mandatory first task — dependency-free, every MVP task fans in from it. See Phase 2.5. Brownfield: replace with "adopt existing scaffold" or omit (the codebase already has one).
 
 ## Work packages — pipeline inputs
 

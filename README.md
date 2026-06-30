@@ -4,6 +4,9 @@
 
 # AI-Assisted Development Starter Kit
 
+> ### 👉 Pierwszy raz tutaj? Zacznij od samouczka: **[docs/TUTORIAL.md](docs/TUTORIAL.md)**
+> Prowadzi Cię krok po kroku — od instalacji do pierwszego zacommitowanego kodu — na konkretnym przykładzie. Ten README poniżej to **pełna referencja frameworka** (gęsta, dla osób, które już ogarniają podstawy).
+
 A minimal, opinionated starter for projects built with [Claude Code](https://claude.com/claude-code) as a first-class development partner.
 
 This repo ships **no application code** — only the scaffolding that makes Claude a reliable collaborator:
@@ -260,6 +263,8 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 ```
 
 > **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/brainstorm → spec → /plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
+>
+> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira derives its issues *from* the backlog via `/jira bulk` (a manual/assisted export — there is no automatic sync), one-way: backlog → Jira, never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* task (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
 >
 > It's the input to `/brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
 >

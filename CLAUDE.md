@@ -145,6 +145,8 @@ Five persistent knowledge layers under `.agents/`. **Before starting any task, r
 **Flow:** `sources/` (optional raw input) → `/setup:create-PRD` → `/maintain:refresh-brief` → `[/setup:create-backlog]` *(optional delivery map)* → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
 
 > **`/setup:create-backlog` is opt-in.** It turns the PRD's "Implementation Phases" into a dependency-structured delivery map (`.agents/backlog.md`): epics, a task DAG, and **work packages** that each feed one `/brainstorm → spec → /plan-feature` cycle. Useful for multi-phase projects where sequencing and parallelism across features matter; skip it for small projects. When it exists, `/plan-feature` and `/orchestrate` write `Status`/`Ref` back into it; when it doesn't, the pipeline is unchanged.
+>
+> **Backlog is the single source of truth for delivery order; Jira is an optional mirror of it.** `.agents/backlog.md` (local) holds the canonical "what to build, in what order" map and is created first, always. If a team uses Jira, its issues are derived *from* the backlog — created with `/jira bulk` (a manual/assisted export, there is no automatic sync) — not maintained as a second, parallel list. The direction is one-way: backlog → Jira, never the reverse. A bare `/brainstorm` (no topic argument, no Jira reference) **resolves its topic from the backlog** — it takes the next *free* task (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`), verifies it isn't already done despite a stale status, and designs that. An explicit topic or a referenced Jira issue always overrides this.
 
 > For synthesized cross-reference knowledge, run `/setup:createwikillm` to set up a project wiki.
 
