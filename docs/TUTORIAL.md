@@ -1,177 +1,177 @@
 <!-- TUTORIAL — beginner-first guide for the AI Coding Starter.
-     Written in Polish on purpose (developer-facing manual). Code/commands stay in English.
+     Developer-facing manual. Code/commands stay in English.
      Add new scenarios below the divider following the SAME step rhythm as Scenario 1. -->
 
-# 🚀 Samouczek
+# 🚀 Tutorial
 
 
-Ten template to **zestaw narzędzi**, dzięki którym Claude Code staje się Twoim partnerem do budowania aplikacji — pamięta projekt, planuje, koduje, sprawdza jakość i commituje.
+This template is a **toolkit** that turns Claude Code into your partner for building applications — it remembers the project, plans, codes, checks quality, and commits.
 
 ---
 
-## 🚦 Który przypadek jest Twój?
+## 🚦 Which case is yours?
 
-Wybierz wiersz, który najbardziej do Ciebie pasuje, i kliknij scenariusz.
+Pick the row that fits you best and click the scenario.
 
-| Twoja sytuacja | Scenariusz |
+| Your situation | Scenario |
 |----------------|-----------|
-| Zaczynam **nowy projekt**, to będzie **tylko backend** | 👉 **[Scenariusz 1: Nowy projekt backendowy](#scenariusz-1-nowy-projekt-backendowy-od-zera)** |
-| Zaczynam **nowy projekt** z **backendem i frontendem** (jest interfejs użytkownika) | 👉 **[Scenariusz 2: Nowy projekt z frontendem](#scenariusz-2-nowy-projekt-z-frontendem-od-zera)** |
-| **Mam już gotowe designy** (pliki HTML / Figma) i chcę je wdrożyć | 👉 **[Scenariusz 3: Mam gotowe designy](#scenariusz-3-mam-gotowe-designy-htmlfigma)** |
-| Chcę **wnieść ten workflow do ISTNIEJĄCEGO projektu** (kod już jest) | 👉 **[Scenariusz 4: Istniejący projekt (brownfield)](#scenariusz-4-istniejący-projekt-brownfield)** |
-| Jestem **analitykiem (BA)** — chcę tworzyć zadania w Jirze | 👉 **[Scenariusz 5: Ścieżka analityka (BA → Jira)](#scenariusz-5-ścieżka-analityka-ba--jira)** |
+| I'm starting a **new project**, it will be **backend only** | 👉 **[Scenario 1: New backend project](#scenario-1-new-backend-project)** |
+| I'm starting a **new project** with **backend and frontend** (there's a user interface) | 👉 **[Scenario 2: New project with a frontend](#scenario-2-new-project-with-a-frontend)** |
+| **I already have designs** (HTML / Figma files) and I want to implement them | 👉 **[Scenario 3: I already have designs](#scenario-3-i-already-have-designs-htmlfigma)** |
+| I want to **bring this workflow into an EXISTING project** (code already exists) | 👉 **[Scenario 4: Existing project (brownfield)](#scenario-4-existing-project-brownfield)** |
+| I'm a **business analyst (BA)** — I want to create tasks in Jira | 👉 **[Scenario 5: Analyst path (BA → Jira)](#scenario-5-analyst-path-ba--jira)** |
 
 ---
 
-## 📖 Jak czytać ten samouczek
+## 📖 How to read this tutorial
 
-Każdy krok ma zawsze ten sam, powtarzalny rytm. Szukaj tych czterech ikon:
+Every step always follows the same, repeatable rhythm. Look for these four icons:
 
-- 📋 **Wpisz** — dokładnie to przepisz do Claude Code
-- 💬 **Co się stanie** — czego się spodziewać po tej komendzie
-- ✅ **Skąd wiesz, że OK** — jak sprawdzić, że krok się udał, zanim pójdziesz dalej
-- ⏭️ **Dalej** — co robić następnie
-
-
-
----
-
-# Scenariusz 1: Nowy projekt backendowy
-
-**Co zbudujemy:** prościutkie API listy zadań (TODO) — backend, który pozwala dodawać zadania i odhaczać je jako zrobione. Bez ekranu, bez designu. Idealne na pierwszy raz.
-
-**Czego się nauczysz:** pełnego rytmu pracy z tym template'em — od pomysłu do zacommitowanego kodu.
+- 📋 **Type** — copy this exactly into Claude Code
+- 💬 **What happens** — what to expect from this command
+- ✅ **How you know it's OK** — how to verify the step succeeded before moving on
+- ⏭️ **Next** — what to do next
 
 
 
 ---
 
-## Zanim zaczniesz (jednorazowo)
+# Scenario 1: New backend project
 
-> Ten samouczek zakłada, że masz już zainstalowane **Claude Code** i **Git**. Jeśli nie — patrz [README → Requirements](../README.md#requirements).
+**What we'll build:** a tiny to-do list (TODO) API — a backend that lets you add tasks and check them off as done. No screen, no design. Perfect for the first time.
 
-### Stwórz swoje repo z tego template'u i pobierz je
+**What you'll learn:** the full work rhythm of this template — from idea to committed code.
 
-Najprościej — i od razu z **własnym repozytorium na GitHubie** (przyda się później przy wysyłaniu kodu):
 
-1. Wejdź na **[github.com/mrozmk/AI_Coding_Starter](https://github.com/mrozmk/AI_Coding_Starter)** → kliknij zielony przycisk **„Use this template"** → **„Create a new repository"**.
-2. Nadaj nazwę (np. `moja-apka-todo`), wybierz prywatne/publiczne, **Create repository**.
-3. Skopiuj swoje repo na dysk — w **terminalu** wklej (podmień `twoj-login` na swój):
+
+---
+
+## Before you start (one-time)
+
+> This tutorial assumes you already have **Claude Code** and **Git** installed. If not — see [README → Requirements](../README.md#requirements).
+
+### Create your own repo from this template and download it
+
+The easiest way — and right away with **your own repository on GitHub** (handy later when pushing code):
+
+1. Go to **[github.com/mrozmk/AI_Coding_Starter](https://github.com/mrozmk/AI_Coding_Starter)** → click the green **"Use this template"** button → **"Create a new repository"**.
+2. Give it a name (e.g. `my-todo-app`), choose private/public, **Create repository**.
+3. Download your repo to disk — in the **terminal** paste (replace `your-login` with yours):
    ```bash
-   git clone https://github.com/twoj-login/moja-apka-todo.git
-   cd moja-apka-todo
+   git clone https://github.com/your-login/my-todo-app.git
+   cd my-todo-app
    ```
 
-💬 **Co się stanie:** powstanie **Twoje własne repo** (kopia template'u z czystą historią), a `git clone` pobierze je lokalnie. Ważne: zdalne repozytorium jest **od razu podpięte** (`origin`) — więc w Kroku 11 wystarczy `/push`, nic nie trzeba konfigurować.
+💬 **What happens:** **your own repo** is created (a copy of the template with clean history), and `git clone` downloads it locally. Important: the remote repository is **wired up right away** (`origin`) — so in Step 11 a simple `/push` is enough, nothing to configure.
 
-✅ **Skąd wiesz, że OK:** w folderze `moja-apka-todo` widzisz pliki `CLAUDE.md`, `README.md` oraz foldery `.claude/` i `.agents/`. Komenda `git remote get-url origin` pokazuje URL Twojego repo.
+✅ **How you know it's OK:** in the `my-todo-app` folder you see the files `CLAUDE.md`, `README.md` and the folders `.claude/` and `.agents/`. The command `git remote get-url origin` shows your repo's URL.
 
-⏭️ **Dalej:** Krok 1 — zaczynamy budować.
+⏭️ **Next:** Step 1 — let's start building.
 
 <details>
-<summary>💡 TIP — wolisz bez konta GitHub? (czysty git clone)</summary>
+<summary>💡 TIP — prefer no GitHub account? (plain git clone)</summary>
 
-Możesz pobrać template bez tworzenia repo na GitHubie:
+You can download the template without creating a repo on GitHub:
 ```bash
-git clone https://github.com/mrozmk/AI_Coding_Starter moja-apka-todo
-cd moja-apka-todo
+git clone https://github.com/mrozmk/AI_Coding_Starter my-todo-app
+cd my-todo-app
 rm -rf .git
 git init
 ```
-To daje świeżą, lokalną historię Gita — ale **bez** zdalnego repo. Wtedy w Kroku 11, przed pierwszym `/push`, będziesz musiał ręcznie utworzyć repo i podpiąć je (`git remote add origin <url>`). Wszystkie metody opisuje [README → Quick start](../README.md#quick-start).
+This gives you a fresh, local Git history — but **without** a remote repo. Then in Step 11, before your first `/push`, you'll need to manually create a repo and wire it up (`git remote add origin <url>`). All methods are described in [README → Quick start](../README.md#quick-start).
 </details>
 
 ---
 
-## Część właściwa — budujemy TODO API
+## The main part — building the TODO API
 
-> Otwórz w tym folderze sesję Claude Code (uruchom `claude` w terminalu).
+> Open a Claude Code session in this folder (run `claude` in the terminal).
 
 ---
 
-### Krok 1: Opisz, co chcesz zbudować (PRD)
+### Step 1: Describe what you want to build (PRD)
 
-**(opcjonalnie) Wrzuć swoje materiały do `.agents/sources/`.** Masz już jakieś notatki, brief, zrzut rozmowy, szkic, PDF, listę wymagań etc. Skopiuj te pliki do folderu **`.agents/sources/`**. Claude **automatycznie** je przeczyta przy tworzeniu PRD — nie musisz nic więcej robić, sam fakt że tam są wystarczy.
+**(optional) Drop your materials into `.agents/sources/`.** Already have notes, a brief, a conversation dump, a sketch, a PDF, a requirements list, etc.? Copy those files into the **`.agents/sources/`** folder. Claude will read them **automatically** when creating the PRD — you don't need to do anything else, the mere fact that they're there is enough.
 
-📋 **Wpisz** w Claude Code — możesz podać samą komendę i odpowiadać na pytania, ALBO od razu opisać pomysł:
+📋 **Type** into Claude Code — you can give just the command and answer the questions, OR describe the idea right away:
 ```
 /setup:create-PRD
 ```
-albo z opisem od razu - Claude ma od czego zacząć:
+or with a description right away — Claude has something to start from:
 ```
-/setup:create-PRD Zbuduj mi proste API listy zadań (TODO): dodawanie zadania, lista zadań, oznaczanie jako zrobione, usuwanie. Użytkownik korzysta przez API. Bez logowania i bez UI. Uwzględnij materiały z .agents/sources/.
+/setup:create-PRD Build me a simple to-do list (TODO) API: add a task, list tasks, mark as done, delete. The user works through the API. No login and no UI. Include the materials from .agents/sources/.
 ```
 
-💬 **Co się stanie:** Claude przeczyta Twój opis **oraz** wszystko, co wrzuciłeś do `.agents/sources/`, dopyta o braki (kto użytkownik, co w MVP, co odpuszczamy) i zapisze dokument `docs/PRD.md`.
+💬 **What happens:** Claude reads your description **and** everything you dropped into `.agents/sources/`, asks about gaps (who the user is, what's in the MVP, what we skip), and writes the document `docs/PRD.md`.
 
 
-✅ **Skąd wiesz, że OK:** powstał plik `docs/PRD.md` z sekcjami m.in. „Target Users", „MVP Scope".
+✅ **How you know it's OK:** a `docs/PRD.md` file is created with sections including "Target Users" and "MVP Scope".
 
-⏭️ **Dalej:** Krok 2.
+⏭️ **Next:** Step 2.
 
 <details>
-<summary>💡 TIP — czym jest PRD i po co; czym jest folder sources</summary>
+<summary>💡 TIP — what a PRD is and why; what the sources folder is</summary>
 
-PRD (Product Requirements Document) to opis **co** budujesz i **dlaczego** — nie jak. To fundament, z którego wynika cała reszta: stack, plan, kod. Technologię (stack) celowo zostawiamy na razie pustą — wybierzemy ją w następnym kroku.
+A PRD (Product Requirements Document) describes **what** you're building and **why** — not how. It's the foundation everything else flows from: stack, plan, code. We deliberately leave the technology (stack) empty for now — we'll choose it in the next step.
 
-`.agents/sources/` to **warstwa wejściowa** projektu — wrzucasz tu surowe materiały (briefy, transkrypcje, szkice, PDF-y), a komendy takie jak `/setup:create-PRD` traktują je jako kontekst wejściowy. Claude **nigdy** ich nie modyfikuje — to Twój materiał źródłowy, tylko do odczytu. Pełny opis: [README → krok 3](../README.md#3-define-the-product).
+`.agents/sources/` is the project's **input layer** — you drop raw materials here (briefs, transcripts, sketches, PDFs), and commands like `/setup:create-PRD` treat them as input context. Claude **never** modifies them — they're your source material, read-only. Full description: [README → step 3](../README.md#3-define-the-product).
 </details>
 
 ---
 
-### Krok 2: Pozwól Claude dobrać technologię (stack)
+### Step 2: Let Claude pick the technology (stack)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /setup:stack-research
 ```
 
-💬 **Co się stanie:** Claude przeszuka sieć, zaproponuje 2–3 zestawy technologii pasujące do Twojego PRD (z plusami i minusami), poprosi Cię o zatwierdzenie rekomendacji, a potem **wpisze wybrany stack do PRD**.
+💬 **What happens:** Claude searches the web, proposes 2–3 technology sets that fit your PRD (with pros and cons), asks you to approve the recommendation, and then **writes the chosen stack into the PRD**.
 
-> 💡 **Nie musisz znać żadnej technologii.** Na tym etapie wystarczy przeczytać rekomendację Claude i ją zaakceptować. Dla prostego TODO API będzie to coś lekkiego.
+> 💡 **You don't need to know any technology.** At this stage it's enough to read Claude's recommendation and accept it. For a simple TODO API it will be something lightweight.
 
-✅ **Skąd wiesz, że OK:** w `docs/PRD.md` sekcja „Technology Stack" jest wypełniona, a Claude potwierdził dopisanie decyzji do `.agents/memory/decisions.md`.
+✅ **How you know it's OK:** in `docs/PRD.md` the "Technology Stack" section is filled in, and Claude confirmed the decision was appended to `.agents/memory/decisions.md`.
 
-⏭️ **Dalej:** Krok 3.
+⏭️ **Next:** Step 3.
 
 <details>
-<summary>💡 TIP — dlaczego stack jest osobnym krokiem</summary>
+<summary>💡 TIP — why the stack is a separate step</summary>
 
-Wybór technologii to decyzja, którą warto podjąć świadomie i **zapisać**, żeby przyszłe sesje Claude jej nie podważały. Dlatego `/setup:stack-research` nie tylko wybiera, ale i zapisuje uzasadnienie do pamięci projektu. Stack-agnostyczność to cecha tego template'u — komendy działają tak samo niezależnie od tego, czy wybierzesz Node, Pythona, czy cokolwiek innego.
+Choosing the technology is a decision worth making deliberately and **recording**, so future Claude sessions don't second-guess it. That's why `/setup:stack-research` not only picks but also saves the rationale into the project's memory. Stack-agnosticism is a feature of this template — the commands work the same regardless of whether you choose Node, Python, or anything else.
 </details>
 
 ---
 
-### Krok 3: Rozpisz plan dostarczenia (backlog)
+### Step 3: Lay out the delivery plan (backlog)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /setup:create-backlog
 ```
 
-💬 **Co się stanie:** Claude przeczyta PRD i rozpisze **mapę dostarczenia** do `.agents/backlog.md` — listę „epików" i zadań w kolejności zależności. **Pierwszym zadaniem zawsze jest `E0-1: szkielet projektu`** — fundament, na którym stoi reszta. (Backlog tylko *opisuje* to zadanie — plików nie tworzy; szkielet powstanie w Kroku 4, gdy je wykonasz.)
+💬 **What happens:** Claude reads the PRD and lays out a **delivery map** into `.agents/backlog.md` — a list of "epics" and tasks in dependency order. **The first task is always `E0-1: project scaffold`** — the foundation everything else stands on. (The backlog only *describes* this task — it does not create files; the scaffold is built in Step 4, when you execute it.)
 
-✅ **Skąd wiesz, że OK:** powstał plik `.agents/backlog.md`, a w nim na górze tabeli zadanie `E0-1` typu „project scaffold / szkielet projektu".
+✅ **How you know it's OK:** a `.agents/backlog.md` file is created, and at the top of its table there's a task `E0-1` of type "project scaffold".
 
-⏭️ **Dalej:** Krok 4.
+⏭️ **Next:** Step 4.
 
-> 👥 **Pracujesz z zespołem na Jirze?** Backlog i tak powstaje pierwszy — to **źródło prawdy**. Taski w Jirze tworzysz **na jego podstawie** (ręcznie, komendą `/jira`), nie zamiast niego. Jak to zrobić — patrz **scenariusz 5 (ścieżka analityka/BA)** poniżej. W scenariuszu 1 (solo) Jira nie jest potrzebna.
+> 👥 **Working with a team on Jira?** The backlog is created first anyway — it's the **source of truth**. You create the Jira tasks **based on it** (manually, with the `/jira` command), not instead of it. How to do that — see **Scenario 5 (the analyst/BA path)** below. In Scenario 1 (solo) Jira isn't needed.
 
 <details>
-<summary>💡 TIP — po co backlog i dlaczego szkielet to zadanie, a nie ręczny krok</summary>
+<summary>💡 TIP — why a backlog and why the scaffold is a task, not a manual step</summary>
 
-Backlog to **warstwa między PRD a pojedynczym planem**: PRD mówi *co i dlaczego* (proza), backlog mówi *w jakiej strukturze zależności to dostarczyć* (zadania z ID, DAG, kolejność). Dzięki temu szkielet projektu nie jest „ręcznym hackiem w terminalu", tylko **pierwszym normalnym zadaniem pipeline'u** — przejdzie przez te same bramki jakości co każda inna funkcja.
+The backlog is the **layer between the PRD and a single plan**: the PRD says *what and why* (prose), the backlog says *in what dependency structure to deliver it* (tasks with IDs, a DAG, ordering). Thanks to this, the project scaffold isn't a "manual terminal hack" but the **first normal pipeline task** — it goes through the same quality gates as any other feature.
 
-`.agents/backlog.md` jest **jednym źródłem prawdy** dla „co budować w jakiej kolejności".
+`.agents/backlog.md` is the **single source of truth** for "what to build, in what order".
 </details>
 
 ---
 
-### Krok 4: Zbuduj szkielet projektu (pierwszy przejazd pipeline'em)
+### Step 4: Build the project scaffold (first pass through the pipeline)
 
-> 🆕 **Tu po raz pierwszy przechodzisz pełny cykl pracy:** `/prime` → `/brainstorm` → `/plan-feature` → `/execute`. Zrobisz go najpierw na **zadaniu szkieletu** (`E0-1` z backloga) — to lekka rozgrzewka. Potem (Krok 6) powtórzysz ten sam cykl na prawdziwej funkcji. Ten rytm to serce całego workflow.
+> 🆕 **Here you go through the full work cycle for the first time:** `/prime` → `/brainstorm` → `/plan-feature` → `/execute`. You'll do it first on the **scaffold task** (`E0-1` from the backlog) — a light warm-up. Then (Step 6) you'll repeat the same cycle on a real feature. This rhythm is the heart of the whole workflow.
 
-📋 **Wpisz** (kolejno, czekając aż każda komenda skończy):
+📋 **Type** (one after another, waiting for each command to finish):
 ```
 /prime
 /brainstorm
@@ -179,683 +179,682 @@ Backlog to **warstwa między PRD a pojedynczym planem**: PRD mówi *co i dlaczeg
 /execute
 ```
 
-💬 **Co się stanie, po kolei:**
-- `/prime` — Claude wczyta kontekst projektu (PRD, backlog, reguły).
-- `/brainstorm` — bez argumentu **sam weźmie pierwsze wolne zadanie z backloga** (czyli `E0-1: szkielet projektu`), ogłosi które, i zaprojektuje *jak* ma wyglądać. Spec zapisze do `.agents/specs/`.
-- `/plan-feature` — rozpisze plan krok po kroku do `.agents/plans/active/`.
-- `/execute` — **utworzy realne pliki szkieletu** (manifest zależności, plik startowy serwera, układ katalogów) i przeniesie plan do `.agents/plans/done/`.
+💬 **What happens, in order:**
+- `/prime` — Claude loads the project context (PRD, backlog, rules).
+- `/brainstorm` — with no argument it **takes the first free task from the backlog itself** (i.e. `E0-1: project scaffold`), announces which one, and designs *how* it should look. It writes the spec into `.agents/specs/`.
+- `/plan-feature` — lays out a step-by-step plan into `.agents/plans/active/`.
+- `/execute` — **creates the actual scaffold files** (dependency manifest, server entry file, directory layout) and moves the plan to `.agents/plans/done/`.
 
-✅ **Skąd wiesz, że OK:** w projekcie pojawiły się startowe pliki właściwe dla Twojego stacku (Claude je wymieni), a plan trafił z `active/` do `done/`. Masz „pusty dom", który zaraz umeblujesz funkcją TODO.
+✅ **How you know it's OK:** starter files appropriate for your stack appeared in the project (Claude will list them), and the plan moved from `active/` to `done/`. You have an "empty house" you'll furnish with the TODO feature in a moment.
 
-⏭️ **Dalej:** Krok 5.
+⏭️ **Next:** Step 5.
 
-> 💡 **Puste `/brainstorm` = „weź następne zadanie z backloga".** Gdy nie podasz tematu (i nie wskażesz zadania Jiry), `/brainstorm` sam sięga do `backlog.md`, bierze pierwsze **wolne** zadanie (status `TODO`, zależności spełnione) i upewnia się, że naprawdę nie jest już zrobione. Dzięki temu nie musisz przepisywać nazw zadań — po prostu pracujesz „od góry backloga". Chcesz konkretne zadanie? Podaj temat: `/brainstorm oznaczanie zadania jako zrobione`.
+> 💡 **Empty `/brainstorm` = "take the next task from the backlog".** When you don't provide a topic (and don't point to a Jira task), `/brainstorm` reaches into `backlog.md` itself, takes the first **free** task (status `TODO`, dependencies satisfied) and makes sure it really isn't already done. Thanks to this you don't have to retype task names — you just work "from the top of the backlog". Want a specific task? Provide a topic: `/brainstorm mark a task as done`.
 
-> 💡 **Dlaczego szkielet jest osobnym przejazdem, a nie ręczną komendą?** Bo dzięki temu nawet fundament projektu przechodzi przez normalny, kontrolowany pipeline — a Ty ćwiczysz cały rytm na czymś prostym, zanim zrobisz to na prawdziwej funkcji.
+> 💡 **Why is the scaffold a separate pass and not a manual command?** Because this way even the project's foundation goes through the normal, controlled pipeline — and you practice the whole rhythm on something simple before doing it on a real feature.
 
 <details>
-<summary>💡 TIP — co robi każda z tych czterech komend</summary>
+<summary>💡 TIP — what each of these four commands does</summary>
 
-To są cztery filary codziennej pracy:
-- **`/prime`** — ładuje kontekst projektu na start sesji (reguły, mapę, streszczenie PRD). Zawsze pierwsza komenda w świeżym czacie.
-- **`/brainstorm`** — twarda brama projektowa: najpierw *co i jak*, dopiero potem kod. Zapobiega pisaniu czegoś, co za chwilę trzeba wyrzucić.
-- **`/plan-feature`** — zamienia spec w konkretny plan i sam go „przepytuje" (samokrytyka), zanim cokolwiek napisze.
-- **`/execute`** — dopiero teraz powstaje kod, ściśle wg planu.
+These are the four pillars of daily work:
+- **`/prime`** — loads the project context at the start of a session (rules, map, PRD summary). Always the first command in a fresh chat.
+- **`/brainstorm`** — a hard design gate: first *what and how*, only then code. Prevents writing something you'd have to throw away in a moment.
+- **`/plan-feature`** — turns a spec into a concrete plan and "interrogates" it itself (self-critique) before writing anything.
+- **`/execute`** — only now is code produced, strictly following the plan.
 
-Każda z nich ma w README pełny opis: [Two daily flows](../README.md#two-daily-flows).
+Each of them has a full description in the README: [Two daily flows](../README.md#two-daily-flows).
 </details>
 
 ---
 
-### Krok 5: Stwórz reguły projektu (CLAUDE.md)
+### Step 5: Create the project rules (CLAUDE.md)
 
-> Teraz, gdy szkielet **już istnieje**, Claude ma co przeanalizować. (Gdyby repo było puste, ta komenda nie miałaby z czego czytać — dlatego jest po Kroku 4, nie przed.)
+> Now that the scaffold **already exists**, Claude has something to analyze. (If the repo were empty, this command would have nothing to read — that's why it's after Step 4, not before.)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /setup:create-CLAUDE_MD
 ```
 
-💬 **Co się stanie:** Claude przeanalizuje Twój świeży szkielet i wygeneruje trzy rzeczy: dopracowany `CLAUDE.md` (reguły projektu), `.agents/memory/architecture.md` (mapę projektu) oraz **nowy `README.md` opisujący TWÓJ projekt** (dotychczasowy przewodnik frameworka przeniesie się do `.claude/README.md`).
+💬 **What happens:** Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
 
-✅ **Skąd wiesz, że OK:** `CLAUDE.md` ma teraz wypełnione sekcje o Twoim projekcie (nie placeholdery `{...}`), a w roocie jest README o Twojej apce TODO.
+✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root has a README about your TODO app.
 
-⏭️ **Dalej:** Krok 6 — pierwsza prawdziwa funkcja.
+⏭️ **Next:** Step 6 — the first real feature.
 
 <details>
-<summary>💡 TIP — co się stało z oryginalnym README</summary>
+<summary>💡 TIP — what happened to the original README</summary>
 
-Przy pierwszym uruchomieniu `/setup:create-CLAUDE_MD` template robi „zamianę": przenosi swój przewodnik frameworka do `.claude/README.md` (zostaje dostępny), a w roocie tworzy README Twojego projektu. Dzięki temu strona Twojego repo opisuje Twoją apkę, a nie template. Ten samouczek (`docs/TUTORIAL.md`) zostaje nietknięty. Szczegóły: [README → „The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
+On the first run of `/setup:create-CLAUDE_MD` the template performs a "swap": it moves its framework guide to `.claude/README.md` (it stays available), and creates your project's README at the root. This way your repo's page describes your app, not the template. This tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [README → "The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
 </details>
 
 ---
 
-### Krok 6: Zaprojektuj pierwszą funkcję (brainstorm)
+### Step 6: Design the first feature (brainstorm)
 
-> 🆕 **Drugi przejazd tym samym cyklem** — tym razem na prawdziwej funkcji TODO. Zwróć uwagę: kroki są praktycznie identyczne jak w Kroku 4. To NIE przypadek — `/brainstorm` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit` to rytm, który powtarzasz dla **każdej** funkcji do końca życia projektu.
+> 🆕 **A second pass through the same cycle** — this time on the real TODO feature. Note: the steps are practically identical to Step 4. That's NOT a coincidence — `/brainstorm` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit` is the rhythm you repeat for **every** feature for the rest of the project's life.
 
-Najpierw odśwież kontekst, nowe okni chatu a następnie `/prime`):
+First refresh the context (a new chat window, then `/prime`):
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /prime
 ```
-💬 **Co się stanie:** Claude wczyta reguły projektu, mapę architektury i streszczenie PRD. Teraz „wie", co budujecie — łącznie ze świeżo utworzonym szkieletem.
+💬 **What happens:** Claude loads the project rules, the architecture map and the PRD summary. Now it "knows" what you're building — including the freshly created scaffold.
 
-✅ **Skąd wiesz, że OK:** Claude wypisze krótkie podsumowanie projektu bez ostrzeżeń o pustych plikach.
+✅ **How you know it's OK:** Claude prints a short project summary without warnings about empty files.
 
-Teraz zaprojektuj funkcję:
+Now design the feature:
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
-/brainstorm dodawanie i wyświetlanie zadań TODO
+/brainstorm adding and displaying TODO tasks
 ```
 
-💬 **Co się stanie:** Claude przeanalizuje wymaganie, zaproponuje 2–3 podejścia i zapisze dokument projektowy (spec) do `.agents/specs/`. **Na tym etapie nie powstaje jeszcze żaden kod** — to brama projektowa przed pisaniem.
+💬 **What happens:** Claude analyzes the requirement, proposes 2–3 approaches, and writes a design document (spec) into `.agents/specs/`. **No code is produced yet at this stage** — it's a design gate before writing.
 
-✅ **Skąd wiesz, że OK:** powstał plik w `.agents/specs/` z datą i nazwą tematu, a Claude opisał wybrane podejście.
+✅ **How you know it's OK:** a file appeared in `.agents/specs/` with a date and the topic name, and Claude described the chosen approach.
 
-⏭️ **Dalej:** Krok 7.
+⏭️ **Next:** Step 7.
 
 ---
 
-### Krok 7: Zrób szczegółowy plan (plan-feature)
+### Step 7: Make a detailed plan (plan-feature)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /plan-feature
 ```
 
-💬 **Co się stanie:** Claude weźmie najnowszy spec, przeanalizuje Twój kod i napisze **plan krok po kroku** do `.agents/plans/active/`. Potem sam go „przepyta" (samokrytyka), żeby wyłapać luki, zanim cokolwiek napisze.
+💬 **What happens:** Claude takes the latest spec, analyzes your code, and writes a **step-by-step plan** into `.agents/plans/active/`. Then it "interrogates" it itself (self-critique) to catch gaps before writing anything.
 
-✅ **Skąd wiesz, że OK:** w `.agents/plans/active/` jest plik z planem (lista konkretnych kroków implementacji), a Claude zgłosił, że plan jest gotowy.
+✅ **How you know it's OK:** there's a plan file in `.agents/plans/active/` (a list of concrete implementation steps), and Claude reported the plan is ready.
 
-⏭️ **Dalej:** Krok 8.
+⏭️ **Next:** Step 8.
 
 ---
 
-### Krok 8: Napisz kod (execute)
+### Step 8: Write the code (execute)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /execute
 ```
 
-💬 **Co się stanie:** Claude wykona plan od góry do dołu — napisze prawdziwy kod TODO API. Gdy skończy, przeniesie plan z `active/` do `done/`.
+💬 **What happens:** Claude executes the plan top to bottom — it writes the real TODO API code. When it finishes, it moves the plan from `active/` to `done/`.
 
-✅ **Skąd wiesz, że OK:** powstał kod realizujący funkcję, a plan zniknął z `.agents/plans/active/` i pojawił się w `.agents/plans/done/`.
+✅ **How you know it's OK:** code implementing the feature was produced, and the plan disappeared from `.agents/plans/active/` and appeared in `.agents/plans/done/`.
 
-⏭️ **Dalej:** Krok 9 — sprawdzamy jakość.
+⏭️ **Next:** Step 9 — we check quality.
 
 ---
 
-### Krok 9: Sprawdź jakość (check-implementation)
+### Step 9: Check quality (check-implementation)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /check-implementation
 ```
 
-💬 **Co się stanie:** Claude uruchomi pełną pętlę jakości — znajdzie i **naprawi** błędy logiczne, posprząta kod, a potem przepuści całość przez bramki (testy, lint, build). Pętla powtarza się (do 3 razy), aż wszystko przejdzie. Na koniec zostawia **czyste, gotowe do commita** drzewo — ale **sam nie commituje**.
+💬 **What happens:** Claude runs the full quality loop — it finds and **fixes** logic bugs, cleans up the code, and then runs everything through the gates (tests, lint, build). The loop repeats (up to 3 times) until everything passes. At the end it leaves a **clean, commit-ready** tree — but it **doesn't commit itself**.
 
-✅ **Skąd wiesz, że OK:** Claude zgłasza, że bramki zaakceptowały zmiany („DONE / APPROVE") i kod jest gotowy do commita.
+✅ **How you know it's OK:** Claude reports that the gates accepted the changes ("DONE / APPROVE") and the code is ready to commit.
 
-⏭️ **Dalej:** Krok 10.
+⏭️ **Next:** Step 10.
 
 <details>
-<summary>💡 TIP — czym to się różni od zwykłego sprawdzenia</summary>
+<summary>💡 TIP — how this differs from a plain check</summary>
 
-Jest też `/gates:verify-implementation` — ale ona tylko **raportuje** problemy, nie naprawia. `/check-implementation` **naprawia** (code-review --fix → deep-review → bramka), w pętli. Jeśli masz zainstalowany `codex`, na końcu drugi, niezależny model przejrzy kod „na świeżo" — często łapie to, co pierwszy model przeoczył. Specjalnie nie commituje, żeby ostatnie słowo należało do Ciebie.
+There's also `/gates:verify-implementation` — but it only **reports** problems, it doesn't fix them. `/check-implementation` **fixes** (code-review --fix → deep-review → gate), in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
 </details>
 
 ---
 
-### Krok 10: Zapisz zmiany (commit)
+### Step 10: Save the changes (commit)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /commit
 ```
 
-💬 **Co się stanie:** Claude utworzy commit z porządną wiadomością (w formacie konwencjonalnym, np. `feat: add TODO creation endpoint`) i przy okazji zapisze ewentualne wnioski/decyzje do pamięci projektu.
+💬 **What happens:** Claude creates a commit with a proper message (in conventional format, e.g. `feat: add TODO creation endpoint`) and, while at it, records any conclusions/decisions into the project's memory.
 
-✅ **Skąd wiesz, że OK:** `git log` pokazuje Twój nowy commit; drzewo robocze jest czyste.
+✅ **How you know it's OK:** `git log` shows your new commit; the working tree is clean.
 
-⏭️ **Dalej:** Krok 11 (opcjonalny) lub kolejna funkcja.
+⏭️ **Next:** Step 11 (optional) or the next feature.
 
 ---
 
-### Krok 11: Wyślij na GitHub (opcjonalnie)
+### Step 11: Push to GitHub (optional)
 
-Jeśli pobrałeś projekt przez **„Use this template"** (zalecana metoda z sekcji „Zanim zaczniesz"), Twoje zdalne repo jest już podpięte — wystarczy:
+If you downloaded the project via **"Use this template"** (the recommended method from the "Before you start" section), your remote repo is already wired up — just:
 
-📋 **Wpisz** (w Claude Code):
+📋 **Type** (in Claude Code):
 ```
 /push
 ```
 
-💬 **Co się stanie:** Claude wypchnie Twoje commity do zdalnego repo (najpierw przeskanuje je pod kątem sekretów — to wbudowane zabezpieczenie). Tę komendę powtarzasz po każdym `/commit`, który chcesz opublikować.
+💬 **What happens:** Claude pushes your commits to the remote repo (it first scans them for secrets — a built-in safeguard). You repeat this command after each `/commit` you want to publish.
 
-✅ **Skąd wiesz, że OK:** push przeszedł bez błędów; odświeżasz stronę repo na GitHubie i widzisz swój kod.
+✅ **How you know it's OK:** the push went through without errors; you refresh the repo page on GitHub and see your code.
 
-> 🔌 **Pobierałeś przez czysty `git clone` (wariant z TIP-a)?** Wtedy nie masz jeszcze zdalnego repo. Raz, przed pierwszym `/push`: utwórz puste repo na GitHub/GitLab, skopiuj jego URL i w **terminalu** wklej `git remote add origin <url>`. (`git remote add` jest celowo zablokowane dla Claude — robisz to świadomie sam.)
+> 🔌 **Did you download via plain `git clone` (the TIP variant)?** Then you don't have a remote repo yet. Once, before your first `/push`: create an empty repo on GitHub/GitLab, copy its URL and in the **terminal** paste `git remote add origin <url>`. (`git remote add` is deliberately blocked for Claude — you do it deliberately yourself.)
 
 ---
 
-## 🎉 Gratulacje — zamknąłeś pełny cykl!
+## 🎉 Congratulations — you've closed the full cycle!
 
-Właśnie przeszedłeś całą drogę: **pomysł → PRD → stack → projekt → plan → kod → jakość → commit**.
+You've just gone all the way: **idea → PRD → stack → design → plan → code → quality → commit**.
 
-### Co dalej?
+### What's next?
 
-**Kolejna funkcja?** Powtórz **kroki 6–10** dla nowej rzeczy (np. „oznaczanie zadania jako zrobione"). Świeży czat → `/prime` → `/brainstorm <funkcja>` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit`. To Twój codzienny rytm — ten sam, który przećwiczyłeś dwa razy (na szkielecie i na pierwszej funkcji).
+**Another feature?** Repeat **steps 6–10** for a new thing (e.g. "mark a task as done"). Fresh chat → `/prime` → `/brainstorm <feature>` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit`. That's your daily rhythm — the same one you practiced twice (on the scaffold and on the first feature).
 
-**Chcesz szybciej, bez klikania każdego kroku?** Gdy nabierzesz wprawy, kroki 8–11 możesz zastąpić **jedną** komendą:
+**Want it faster, without clicking through each step?** Once you're comfortable, you can replace steps 8–11 with **one** command:
 ```
 /orchestrate
 ```
-Ona sama wykona: napisz kod → posprzątaj → sprawdź → commit → push, pętląc poprawki i pytając Cię tylko przy realnym problemie. To ścieżka „hands-off". **Polecam ją dopiero, gdy rozumiesz, co dzieje się w krokach 7–9 osobno** — żeby umieć zareagować, gdy coś pójdzie nie tak.
+It does it all itself: write code → clean up → check → commit → push, looping fixes and asking you only on a real problem. That's the "hands-off" path. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
 
-> Pełne porównanie obu ścieżek (manualnej A i automatycznej B) oraz opis, co dokładnie robi każda komenda: [README → Two daily flows](../README.md#two-daily-flows).
-
----
-
-# Scenariusz 2: Nowy projekt z frontendem (od zera)
-
-**Co zbudujemy:** to samo TODO, ale **z ekranem** — backend (API) + frontend (interfejs, w którym klikasz). Użytkownik dodaje zadania w przeglądarce, nie tylko przez API.
-
-**Czego się nauczysz:** tego samego rytmu co w Scenariuszu 1 **plus** dwóch nowych komend dla warstwy wizualnej: **`/design`** (projekt UI) i **`/test-e2e`** (testy w przeglądarce).
-
-> 📌 **To rozszerzenie Scenariusza 1, nie nowy schemat.** Rytm `PRD → stack → backlog → prime → brainstorm → plan → execute → check → commit` jest identyczny. Poniżej opisuję **tylko to, co dochodzi lub się zmienia** — resztę bierzesz wprost ze Scenariusza 1. Jeśli nie robiłeś S1 — zacznij od niego, tu będzie łatwiej.
+> A full comparison of both paths (manual A and automatic B) and a description of exactly what each command does: [README → Two daily flows](../README.md#two-daily-flows).
 
 ---
 
-## Zanim zaczniesz (jednorazowo)
+# Scenario 2: New project with a frontend
 
-Tak samo jak w Scenariuszu 1 — [stwórz swoje repo z template'u i pobierz je](#stwórz-swoje-repo-z-tego-templateu-i-pobierz-je). Otwórz sesję Claude Code w folderze projektu (`claude`).
+**What we'll build:** the same TODO, but **with a screen** — backend (API) + frontend (the interface you click). The user adds tasks in the browser, not just through the API.
+
+**What you'll learn:** the same rhythm as in Scenario 1 **plus** two new commands for the visual layer: **`/design`** (UI design) and **`/test-e2e`** (browser tests).
+
+> 📌 **This is an extension of Scenario 1, not a new scheme.** The rhythm `PRD → stack → backlog → prime → brainstorm → plan → execute → check → commit` is identical. Below I describe **only what's added or changes** — take the rest straight from Scenario 1. If you haven't done S1 — start there, this will be easier.
 
 ---
 
-### Krok 1–3: PRD, stack, backlog — jak w S1, z jedną różnicą
+## Before you start (one-time)
 
-Przejdź [Krok 1](#krok-1-opisz-co-chcesz-zbudować-prd), [Krok 2](#krok-2-pozwól-claude-dobrać-technologię-stack) i [Krok 3](#krok-3-rozpisz-plan-dostarczenia-backlog) **dokładnie jak w Scenariuszu 1**. Jedyna różnica jest w opisie PRD — napisz wprost, że chcesz **interfejs użytkownika**:
+Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`).
 
-📋 **Wpisz** (przykład):
+---
+
+### Steps 1–3: PRD, stack, backlog — like in S1, with one difference
+
+Go through [Step 1](#step-1-describe-what-you-want-to-build-prd), [Step 2](#step-2-let-claude-pick-the-technology-stack) and [Step 3](#step-3-lay-out-the-delivery-plan-backlog) **exactly like in Scenario 1**. The only difference is in the PRD description — say explicitly that you want a **user interface**:
+
+📋 **Type** (example):
 ```
-/setup:create-PRD Zbuduj aplikację listy zadań (TODO) z interfejsem w przeglądarce: dodawanie zadania, lista zadań, odhaczanie jako zrobione, usuwanie. Backend (API) + frontend (web UI). Bez logowania. Uwzględnij materiały z .agents/sources/.
+/setup:create-PRD Build a to-do list (TODO) application with a browser interface: add a task, list tasks, check off as done, delete. Backend (API) + frontend (web UI). No login. Include the materials from .agents/sources/.
 ```
 
-💬 **Co się zmienia dalej:** `/setup:stack-research` zaproponuje teraz **dwie** warstwy (backend + frontend), a `/setup:create-backlog` rozpisze backlog, w którym oprócz `E0-1: szkielet projektu` pojawią się zadania frontendowe. Reszta (jak czytać, jak sprawdzić) — identyczna.
+💬 **What changes from here on:** `/setup:stack-research` will now propose **two** layers (backend + frontend), and `/setup:create-backlog` will lay out a backlog where, besides `E0-1: project scaffold`, frontend tasks appear. The rest (how to read, how to verify) — identical.
 
-⏭️ **Dalej:** Krok 4.
-
----
-
-### Krok 4–5: Szkielet + reguły projektu — jak w S1
-
-Wykonaj [Krok 4](#krok-4-zbuduj-szkielet-projektu-pierwszy-przejazd-pipelineem) (`/prime` → `/brainstorm` → `/plan-feature` → `/execute` na zadaniu `E0-1`) i [Krok 5](#krok-5-stwórz-reguły-projektu-claudemd) (`/setup:create-CLAUDE_MD`) **bez zmian**. Szkielet będzie teraz zawierał też część frontendową (Claude wymieni utworzone pliki).
-
-⏭️ **Dalej:** Krok 6 — pierwsza funkcja, tu zaczyna się część nowa.
+⏭️ **Next:** Step 4.
 
 ---
 
-### Krok 6: Zaprojektuj pierwszą funkcję (brainstorm) — jak w S1
+### Steps 4–5: Scaffold + project rules — like in S1
 
-Świeży czat → `/prime`, potem zaprojektuj funkcję — [tak jak w Kroku 6 S1](#krok-6-zaprojektuj-pierwszą-funkcję-brainstorm):
+Do [Step 4](#step-4-build-the-project-scaffold-first-pass-through-the-pipeline) (`/prime` → `/brainstorm` → `/plan-feature` → `/execute` on task `E0-1`) and [Step 5](#step-5-create-the-project-rules-claudemd) (`/setup:create-CLAUDE_MD`) **unchanged**. The scaffold will now also contain the frontend part (Claude will list the created files).
 
-📋 **Wpisz:**
+⏭️ **Next:** Step 6 — the first feature, where the new part begins.
+
+---
+
+### Step 6: Design the first feature (brainstorm) — like in S1
+
+Fresh chat → `/prime`, then design the feature — [just like in Step 6 of S1](#step-6-design-the-first-feature-brainstorm):
+
+📋 **Type:**
 ```
 /prime
-/brainstorm dodawanie i wyświetlanie zadań TODO (API + ekran)
+/brainstorm adding and displaying TODO tasks (API + screen)
 ```
 
-💬 **Co się stanie:** powstanie spec w `.agents/specs/` — opis *co i jak*, łącznie z tym, że funkcja ma warstwę wizualną. Wciąż **bez kodu**.
+💬 **What happens:** a spec is created in `.agents/specs/` — a description of *what and how*, including that the feature has a visual layer. Still **no code**.
 
-⏭️ **Dalej:** Krok 6.5 — **NOWY krok: projekt UI.**
+⏭️ **Next:** Step 6.5 — **NEW step: UI design.**
 
 ---
 
-### 🆕 Krok 6.5: Zaprojektuj wygląd (design)
+### 🆕 Step 6.5: Design the look (design)
 
-> To krok, którego **nie ma** w Scenariuszu 1. Zanim napiszesz frontend, najpierw projektujesz, jak ma wyglądać — żeby kod realizował konkretny, przemyślany layout, a nie „cokolwiek".
+> This is a step that **isn't** in Scenario 1. Before you write the frontend, you first design how it should look — so the code implements a concrete, thought-through layout, not "whatever".
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
-/design ekran listy zadań TODO
+/design TODO task list screen
 ```
 
-💬 **Co się stanie:** Claude wczyta wiedzę o projektowaniu i tokeny designu projektu, zapyta, czy chcesz **1 wariant** (dopracowanie) czy **3** (różne podejścia), wygeneruje makietę(-y) i **sam sprawdzi** każdą względem zasad jakości, zanim Ci ją pokaże. Zatwierdzony projekt zapisze do `.agents/specs/design/Ready/`.
+💬 **What happens:** Claude loads the design knowledge and the project's design tokens, asks whether you want **1 variant** (refinement) or **3** (different approaches), generates the mockup(s), and **checks each one itself** against quality rules before showing it to you. It saves the approved design into `.agents/specs/design/Ready/`.
 
-✅ **Skąd wiesz, że OK:** w `.agents/specs/design/Ready/` jest plik z makietą Twojego ekranu, a Claude potwierdził, że przeszła bramkę self-check.
+✅ **How you know it's OK:** there's a file with your screen's mockup in `.agents/specs/design/Ready/`, and Claude confirmed it passed the self-check gate.
 
-⏭️ **Dalej:** Krok 7 — plan i kod.
+⏭️ **Next:** Step 7 — plan and code.
 
 <details>
-<summary>💡 TIP — czym jest „Ready/" i dlaczego design jest osobnym krokiem</summary>
+<summary>💡 TIP — what "Ready/" is and why design is a separate step</summary>
 
-`.agents/specs/design/Ready/` to umówione miejsce na **zatwierdzone** makiety — sięgają do niego później bramka `/gates:design-quality-check` i pipeline `/orchestrate`, żeby porównać gotowy UI z projektem. Oddzielenie „jak ma wyglądać" (design) od „jak to napisać" (plan) sprawia, że `/execute` ma konkretny wzorzec do odwzorowania, a nie zgaduje layout. Jeśli **masz już gotowe designy** (HTML/Figma) i nie chcesz ich generować — to Scenariusz 3.
+`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/gates:design-quality-check` gate and the `/orchestrate` pipeline reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
 </details>
 
 ---
 
-### Krok 7–8: Plan i kod (plan-feature → execute) — jak w S1
+### Steps 7–8: Plan and code (plan-feature → execute) — like in S1
 
-Wykonaj [Krok 7](#krok-7-zrób-szczegółowy-plan-plan-feature) i [Krok 8](#krok-8-napisz-kod-execute) **bez zmian**. Różnica jest tylko w treści: `/plan-feature` uwzględni makietę z `Ready/`, a `/execute` napisze **i backend, i frontend** wg planu.
+Do [Step 7](#step-7-make-a-detailed-plan-plan-feature) and [Step 8](#step-8-write-the-code-execute) **unchanged**. The only difference is in the content: `/plan-feature` will account for the mockup in `Ready/`, and `/execute` will write **both backend and frontend** per the plan.
 
-⏭️ **Dalej:** Krok 9 — jakość, tu dochodzą testy przeglądarki.
-
----
-
-### Krok 9: Sprawdź jakość (check-implementation) — jak w S1
-
-Wykonaj [Krok 9](#krok-9-sprawdź-jakość-check-implementation) **bez zmian** — ta sama pętla code-review → bramki, zostawia czyste drzewo, sam nie commituje.
-
-⏭️ **Dalej:** Krok 9.5 — **NOWE: testy w przeglądarce.**
+⏭️ **Next:** Step 9 — quality, where browser tests are added.
 
 ---
 
-### 🆕 Krok 9.5: Przetestuj klikając (test-e2e)
+### Step 9: Check quality (check-implementation) — like in S1
 
-> Drugi krok, którego nie ma w S1. Skoro masz ekran, warto sprawdzić, że **realnie działa w przeglądarce** — kliknięcie „dodaj", pojawienie się zadania, odhaczenie.
+Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the same code-review → gates loop, leaves a clean tree, doesn't commit itself.
 
-📋 **Wpisz:**
+⏭️ **Next:** Step 9.5 — **NEW: browser tests.**
+
+---
+
+### 🆕 Step 9.5: Test by clicking (test-e2e)
+
+> A second step that isn't in S1. Since you have a screen, it's worth verifying it **actually works in the browser** — clicking "add", the task appearing, checking it off.
+
+📋 **Type:**
 ```
-/test-e2e dodawanie zadania
+/test-e2e adding a task
 ```
 
-💬 **Co się stanie:** Claude **najpierw wyklika** Twój ekran w prawdziwej przeglądarce (przez Playwright), pokaże plan testu i **poczeka na Twoją zgodę** — dopiero potem wygeneruje testy E2E i je uruchomi.
+💬 **What happens:** Claude **first clicks through** your screen in a real browser (via Playwright), shows the test plan, and **waits for your approval** — only then does it generate the E2E tests and run them.
 
-✅ **Skąd wiesz, że OK:** powstał plik testu E2E, a uruchomienie kończy się na zielono (Claude pokaże wynik).
+✅ **How you know it's OK:** an E2E test file is created, and the run finishes green (Claude will show the result).
 
-⏭️ **Dalej:** Krok 10 — commit.
+⏭️ **Next:** Step 10 — commit.
 
 <details>
-<summary>💡 TIP — co, jeśli nie mam jeszcze skonfigurowanego Playwrighta</summary>
+<summary>💡 TIP — what if I don't have Playwright configured yet</summary>
 
-`/test-e2e` korzysta z MCP Playwright (automatyzacja przeglądarki). Jeśli backend frontu nie wystawia jeszcze serwera deweloperskiego albo nie masz Playwrighta, Claude o tym powie i zaproponuje, co skonfigurować. Na pierwszym, prostym ekranie możesz ten krok pominąć i wrócić do niego później — testy E2E nie są wymagane do commita. Argument może też być pusty (`/test-e2e`) — wtedy bierze listę przepływów z `Testing Strategy` w aktywnym planie.
+`/test-e2e` uses MCP Playwright (browser automation). If your frontend doesn't yet expose a dev server or you don't have Playwright, Claude will say so and suggest what to configure. On the first, simple screen you can skip this step and come back to it later — E2E tests aren't required to commit. The argument can also be empty (`/test-e2e`) — then it takes the flow list from the `Testing Strategy` in the active plan.
 </details>
 
 ---
 
-### Krok 10–11: Commit i push — jak w S1
+### Steps 10–11: Commit and push — like in S1
 
-[Krok 10 (`/commit`)](#krok-10-zapisz-zmiany-commit) i [Krok 11 (`/push`)](#krok-11-wyślij-na-github-opcjonalnie) — **bez zmian**.
-
----
-
-## 🎉 Gratulacje — masz działającą aplikację z ekranem!
-
-Cykl jest ten sam co w S1, wzbogacony o dwa kroki wizualne:
-**pomysł → PRD → stack → backlog → szkielet → brainstorm → 🆕 design → plan → kod → jakość → 🆕 testy E2E → commit.**
-
-**Kolejna funkcja z ekranem?** Powtarzasz: świeży czat → `/prime` → `/brainstorm <funkcja>` → `/design <ekran>` → `/plan-feature` → `/execute` → `/check-implementation` → `/test-e2e <flow>` → `/commit`. Funkcje *bez* warstwy wizualnej (czysto backendowe) robisz krótszą ścieżką z S1 — pomijasz `/design` i `/test-e2e`.
-
-> Masz już gotowe makiety (HTML/Figma) zamiast generować je `/design`? → **Scenariusz 3**.
+[Step 10 (`/commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/push`)](#step-11-push-to-github-optional) — **unchanged**.
 
 ---
 
-# Scenariusz 3: Mam gotowe designy (HTML/Figma)
+## 🎉 Congratulations — you have a working app with a screen!
 
-**Co zbudujemy:** to samo TODO z ekranem co w Scenariuszu 2 — ale **nie generujemy** wyglądu komendą `/design`. Wygląd już masz: makiety HTML albo plik w Figmie. Zadaniem Claude jest **wdrożyć je wiernie** i sprawdzić, czy kod zgadza się z projektem co do piksela.
+The cycle is the same as in S1, enriched with two visual steps:
+**idea → PRD → stack → backlog → scaffold → brainstorm → 🆕 design → plan → code → quality → 🆕 E2E tests → commit.**
 
-**Czego się nauczysz:** jak **wprowadzić zewnętrzny design** do template'u i jak działa **bramka parytetu** `/gates:design-quality-check` (kod vs. projekt).
+**Another feature with a screen?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → `/design <screen>` → `/plan-feature` → `/execute` → `/check-implementation` → `/test-e2e <flow>` → `/commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/design` and `/test-e2e`.
 
-> 📌 **To wariant Scenariusza 2.** Różnica jest jedna i prosta: zamiast *generować* makietę (`/design`), **dostarczasz własną** — i dochodzi krok sprawdzania zgodności z nią. Cały rytm `PRD → stack → backlog → szkielet → brainstorm → plan → execute → check → commit` jest identyczny. Jeśli nie robiłeś S2 — przejrzyj go najpierw, tu będzie jasniej.
-
----
-
-## Zanim zaczniesz (jednorazowo)
-
-Tak samo jak wcześniej — [stwórz swoje repo z template'u i pobierz je](#stwórz-swoje-repo-z-tego-templateu-i-pobierz-je), otwórz sesję Claude Code (`claude`).
-
-**Przygotuj swój design** — wybierz JEDEN ze sposobów:
-
-- **Mam makiety HTML/CSS** → najprostsze. Zapamiętaj, gdzie są te pliki (w Kroku 6.5 przeniesiemy je w umówione miejsce).
-- **Mam projekt w Figmie** → upewnij się, że masz podpięty **Figma MCP** w Claude Code (i link do węzła/ekranu). Wtedy Claude pobierze design **na żywo** z Figmy.
-
-⏭️ **Dalej:** Kroki 1–6 jak w S2.
+> Already have mockups (HTML/Figma) instead of generating them with `/design`? → **Scenario 3**.
 
 ---
 
-### Krok 1–6: PRD, stack, backlog, szkielet, reguły, brainstorm — jak w S2
+# Scenario 3: I already have designs (HTML/Figma)
 
-Przejdź [Krok 1–3](#krok-13-prd-stack-backlog--jak-w-s1-z-jedną-różnicą), [Krok 4–5](#krok-45-szkielet--reguły-projektu--jak-w-s1) i [Krok 6 (brainstorm)](#krok-6-zaprojektuj-pierwszą-funkcję-brainstorm--jak-w-s1) **dokładnie jak w Scenariuszu 2** — łącznie z opisem PRD wskazującym, że jest interfejs użytkownika. Nic się tu nie zmienia.
+**What we'll build:** the same TODO with a screen as in Scenario 2 — but **we don't generate** the look with the `/design` command. You already have the look: HTML mockups or a Figma file. Claude's job is to **implement them faithfully** and check that the code matches the design pixel for pixel.
 
-⏭️ **Dalej:** Krok 6.5 — tu zaczyna się różnica między S3 a S2.
+**What you'll learn:** how to **bring an external design** into the template and how the **parity gate** `/gates:design-quality-check` (code vs. design) works.
+
+> 📌 **This is a variant of Scenario 2.** There's one simple difference: instead of *generating* a mockup (`/design`), you **supply your own** — and a consistency-check step is added. The whole rhythm `PRD → stack → backlog → scaffold → brainstorm → plan → execute → check → commit` is identical. If you haven't done S2 — review it first, this will be clearer.
 
 ---
 
-### 🔀 Krok 6.5: Wprowadź swój design (zamiast generować)
+## Before you start (one-time)
 
-> W Scenariuszu 2 ten krok *generował* makietę przez `/design`. **Tu go pomijasz** — bo design już masz. Zamiast tego **udostępniasz** swój projekt Claude.
+Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`).
 
-**Wariant A — masz makiety HTML/CSS:**
+**Prepare your design** — pick ONE of the ways:
 
-Połóż każdą makietę w umówionym katalogu **`.agents/specs/design/Ready/{obszar}/{Nazwa}.html`** (np. `.agents/specs/design/Ready/todo/TaskList.html`). Możesz to zrobić ręcznie albo poprosić Claude:
+- **I have HTML/CSS mockups** → the simplest. Remember where those files are (in Step 6.5 we'll move them to the agreed place).
+- **I have a design in Figma** → make sure you have **Figma MCP** wired into Claude Code (and a link to the node/screen). Then Claude will pull the design **live** from Figma.
 
-📋 **Wpisz** (przykład):
+⏭️ **Next:** Steps 1–6 as in S2.
+
+---
+
+### Steps 1–6: PRD, stack, backlog, scaffold, rules, brainstorm — like in S2
+
+Go through [Steps 1–3](#steps-13-prd-stack-backlog--like-in-s1-with-one-difference), [Steps 4–5](#steps-45-scaffold--project-rules--like-in-s1) and [Step 6 (brainstorm)](#step-6-design-the-first-feature-brainstorm--like-in-s1) **exactly like in Scenario 2** — including the PRD description indicating there's a user interface. Nothing changes here.
+
+⏭️ **Next:** Step 6.5 — this is where the difference between S3 and S2 begins.
+
+---
+
+### 🔀 Step 6.5: Bring in your design (instead of generating it)
+
+> In Scenario 2 this step *generated* a mockup via `/design`. **Here you skip it** — because you already have the design. Instead, you **make** your design available to Claude.
+
+**Variant A — you have HTML/CSS mockups:**
+
+Put each mockup in the agreed directory **`.agents/specs/design/Ready/{area}/{Name}.html`** (e.g. `.agents/specs/design/Ready/todo/TaskList.html`). You can do it manually or ask Claude:
+
+📋 **Type** (example):
 ```
-Mam gotowe makiety w folderze ./moje-designy. Przenieś je do .agents/specs/design/Ready/ w odpowiednie obszary i dodaj wymagany frontmatter (name, priority, status).
+I have ready mockups in the ./my-designs folder. Move them into .agents/specs/design/Ready/ under the appropriate areas and add the required frontmatter (name, priority, status).
 ```
 
-**Wariant B — masz Figmę:**
+**Variant B — you have Figma:**
 
-Nic nie kopiujesz. Trzymaj pod ręką **link do węzła/ekranu w Figmie** — podasz go w kroku sprawdzania parytetu. Bramka pobierze design na żywo z Figmy (Figma jest źródłem nadrzędnym).
+You don't copy anything. Keep the **link to the Figma node/screen** handy — you'll provide it in the parity-check step. The gate pulls the design live from Figma (Figma is the authoritative source).
 
-💬 **Co się stanie:** ustawiasz **źródło prawdy o wyglądzie**. Od teraz `/plan-feature`, `/execute` i bramka parytetu mają konkretny wzorzec do odwzorowania — zamiast zgadywać layout.
+💬 **What happens:** you set the **source of truth for the look**. From now on `/plan-feature`, `/execute` and the parity gate have a concrete reference to reproduce — instead of guessing the layout.
 
-✅ **Skąd wiesz, że OK:** (A) w `.agents/specs/design/Ready/.../` leżą Twoje pliki `.html` z frontmatterem; (B) masz działający Figma MCP i link do ekranu.
+✅ **How you know it's OK:** (A) your `.html` files with frontmatter are in `.agents/specs/design/Ready/.../`; (B) you have a working Figma MCP and a link to the screen.
 
-⏭️ **Dalej:** Krok 7 — plan i kod.
+⏭️ **Next:** Step 7 — plan and code.
 
 <details>
-<summary>💡 TIP — dlaczego akurat „Ready/" i co to za frontmatter</summary>
+<summary>💡 TIP — why "Ready/" specifically and what that frontmatter is</summary>
 
-`.agents/specs/design/Ready/` to to samo miejsce, do którego `/design` zapisuje *wygenerowane* makiety — więc reszta narzędzi (bramka parytetu, `/orchestrate`) szuka projektu zawsze tam, niezależnie czy powstał automatycznie, czy go wniosłeś. Frontmatter (`name` + `priority` + `status`) na górze pliku pozwala narzędziom rozpoznać i uporządkować makiety. Figma nie wymaga kopiowania do `Ready/` — przy podpiętym MCP bramka czyta projekt bezpośrednio i wygrywa on z ewentualnym statycznym HTML przy rozbieżności.
+`.agents/specs/design/Ready/` is the same place `/design` saves *generated* mockups — so the rest of the tooling (the parity gate, `/orchestrate`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
 </details>
 
 ---
 
-### Krok 7–9: Plan, kod, jakość — jak w S2
+### Steps 7–9: Plan, code, quality — like in S2
 
-Wykonaj [Krok 7–8 (`/plan-feature` → `/execute`)](#krok-78-plan-i-kod-plan-feature--execute--jak-w-s1) i [Krok 9 (`/check-implementation`)](#krok-9-sprawdź-jakość-check-implementation--jak-w-s1) **bez zmian**. `/execute` napisze kod odwzorowujący **Twoją** makietę z `Ready/` (lub z Figmy).
+Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-feature--execute--like-in-s1) and [Step 9 (`/check-implementation`)](#step-9-check-quality-check-implementation--like-in-s1) **unchanged**. `/execute` will write code reproducing **your** mockup from `Ready/` (or from Figma).
 
-⏭️ **Dalej:** Krok 9.4 — **NOWE w S3: sprawdzenie zgodności z designem.**
+⏭️ **Next:** Step 9.4 — **NEW in S3: checking consistency with the design.**
 
 ---
 
-### 🆕 Krok 9.4: Sprawdź zgodność z projektem (design-quality-check)
+### 🆕 Step 9.4: Check consistency with the design (design-quality-check)
 
-> Krok specyficzny dla S3 (i przydatny zawsze, gdy masz wzorcowy design). Skoro masz **konkretny** projekt, warto zweryfikować, czy kod odwzorował go **dokładnie** — kolory, odstępy, typografia, zachowanie.
+> A step specific to S3 (and useful any time you have a reference design). Since you have a **concrete** design, it's worth verifying that the code reproduced it **exactly** — colors, spacing, typography, behavior.
 
-📋 **Wpisz** (A — HTML; podaj nazwę sekcji):
+📋 **Type** (A — HTML; provide the section name):
 ```
-/gates:design-quality-check lista zadań
+/gates:design-quality-check task list
 ```
-📋 lub (B — Figma; dodaj link do węzła):
+📋 or (B — Figma; add the node link):
 ```
-/gates:design-quality-check lista zadań <link-do-wezla-figma>
+/gates:design-quality-check task list <figma-node-link>
 ```
 
-💬 **Co się stanie:** Claude porówna gotowy ekran z Twoim wzorcem i **wypisze każdą rozbieżność** (wizualną, układu, dostępności, zachowania). **Niczego nie naprawia** — tylko raportuje. Ty decydujesz, co poprawić.
+💬 **What happens:** Claude compares the finished screen with your reference and **lists every deviation** (visual, layout, accessibility, behavior). It **fixes nothing** — it only reports. You decide what to fix.
 
-✅ **Skąd wiesz, że OK:** dostajesz raport rozbieżności. Brak różnic (albo same „autoryzowane") = parytet osiągnięty.
+✅ **How you know it's OK:** you get a deviation report. No differences (or only "authorized" ones) = parity achieved.
 
-⏭️ **Dalej:** jeśli są rozbieżności → popraw je (`/execute` lub `/check-implementation`) i uruchom bramkę ponownie. Gdy czysto → Krok 9.5.
+⏭️ **Next:** if there are deviations → fix them (`/execute` or `/check-implementation`) and run the gate again. When clean → Step 9.5.
 
 <details>
-<summary>💡 TIP — to bramka raportująca, nie naprawiająca</summary>
+<summary>💡 TIP — it's a reporting gate, not a fixing one</summary>
 
-`/gates:design-quality-check` jest odwrotnością `/gates:verify-implementation`: tamta sprawdza kod względem *planu*, ta — wierność względem *designu*. Filozofia: **w designie nie ma „drobnych" różnic** — jeśli wzorzec ma jakąś wartość, a kod inną, to defekt. Bramka go wymieni; decyzja o akceptacji należy do Ciebie. Przy podpiętej Figmie audyt bierze wartości na żywo z Figmy; bez niej — ze statycznego HTML w `Ready/`.
+`/gates:design-quality-check` is the inverse of `/gates:verify-implementation`: the latter checks code against the *plan*, this one — fidelity against the *design*. Philosophy: **in design there are no "minor" differences** — if the reference has a value and the code has a different one, that's a defect. The gate will list it; the decision to accept is yours. With Figma wired up, the audit takes values live from Figma; without it — from the static HTML in `Ready/`.
 </details>
 
 ---
 
-### Krok 9.5–11: Testy E2E, commit, push — jak w S2
+### Steps 9.5–11: E2E tests, commit, push — like in S2
 
-[Krok 9.5 (`/test-e2e`)](#-krok-95-przetestuj-klikając-test-e2e), [Krok 10 (`/commit`)](#krok-10-zapisz-zmiany-commit) i [Krok 11 (`/push`)](#krok-11-wyślij-na-github-opcjonalnie) — **bez zmian**.
-
----
-
-## 🎉 Gratulacje — wdrożyłeś własny design!
-
-Cykl jak w S2, ale wygląd pochodzi od Ciebie, a kod jest z nim zweryfikowany co do piksela:
-**pomysł → PRD → stack → backlog → szkielet → brainstorm → 🔀 Twój design w `Ready/` → plan → kod → jakość → 🆕 parytet z designem → testy E2E → commit.**
-
-**Kolejny ekran z gotowym designem?** Powtarzasz: świeży czat → `/prime` → `/brainstorm <funkcja>` → *(połóż makietę w `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <sekcja>` → `/test-e2e <flow>` → `/commit`.
-
-> Chcesz, żeby Claude **sam zaprojektował** wygląd zamiast dostarczać własny? → **Scenariusz 2** (krok `/design`).
+[Step 9.5 (`/test-e2e`)](#-step-95-test-by-clicking-test-e2e), [Step 10 (`/commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/push`)](#step-11-push-to-github-optional) — **unchanged**.
 
 ---
 
-# Scenariusz 4: Istniejący projekt (brownfield)
+## 🎉 Congratulations — you've implemented your own design!
 
-**Co zrobimy:** weźmiemy **projekt, który już ma kod** (powstał bez tego template'u) i **wniesiemy do niego cały ten workflow** — pamięć projektu, mapę architektury, reguły, backlog. Cel: od jutra pracować nad tym kodem tym samym rytmem co w S1–S3.
+The cycle is like in S2, but the look comes from you, and the code is verified against it pixel for pixel:
+**idea → PRD → stack → backlog → scaffold → brainstorm → 🔀 your design in `Ready/` → plan → code → quality → 🆕 design parity → E2E tests → commit.**
 
-**Czego się nauczysz:** jak Claude **rozumie cudzy/starszy kod** komendą **`/setup:map-codebase`** i jak z tego zrozumienia powstaje pamięć projektu, do której podpinasz dalszą pracę.
+**Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <section>` → `/test-e2e <flow>` → `/commit`.
 
-> 📌 **To inny początek niż S1–S3.** Tam zaczynałeś od pustego pomysłu (PRD → stack → szkielet). Tu **kod już jest** — więc najpierw template trzeba *wnieść* do repo, a Claude musi *zrozumieć* to, co zastał. Dopiero potem wracasz do znajomego rytmu `brainstorm → plan → execute → check → commit`. 🔴 Trudniejszy, bo dotyczy realnego, istniejącego kodu.
+> Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/design` step).
 
 ---
 
-## Zanim zaczniesz — wnieś template do swojego repo
+# Scenario 4: Existing project (brownfield)
 
-> **Nie** używasz tu „Use this template". Twój projekt już istnieje — to do **niego** dokładamy narzędzia.
+**What we'll do:** take **a project that already has code** (created without this template) and **bring this whole workflow into it** — project memory, an architecture map, rules, a backlog. The goal: from tomorrow, work on that code with the same rhythm as in S1–S3.
 
-W terminalu, w folderze **swojego** projektu (zrób najpierw kopię/branch zapasowy):
+**What you'll learn:** how Claude **understands someone else's/legacy code** with the **`/setup:map-codebase`** command and how that understanding becomes project memory you hook further work into.
+
+> 📌 **This is a different start than S1–S3.** There you started from an empty idea (PRD → stack → scaffold). Here **the code already exists** — so first the template has to be *brought* into the repo, and Claude has to *understand* what it found. Only then do you return to the familiar rhythm `brainstorm → plan → execute → check → commit`. 🔴 Harder, because it deals with real, existing code.
+
+---
+
+## Before you start — bring the template into your repo
+
+> Here you do **not** use "Use this template". Your project already exists — we add the tools to **it**.
+
+In the terminal, in **your** project folder (make a backup/branch first):
 
 ```bash
-# w katalogu istniejącego projektu
-git checkout -b adopt-ai-workflow      # bezpieczny branch na adopcję
-# skopiuj z template'u tylko warstwę narzędzi (bez jego kodu/aplikacji):
-#   .claude/  i  .agents/  oraz  CLAUDE.md
+# in the existing project's directory
+git checkout -b adopt-ai-workflow      # a safe branch for adoption
+# copy only the tooling layer from the template (without its code/application):
+#   .claude/  and  .agents/  plus  CLAUDE.md
 ```
 
-📋 Najprościej: pobierz template obok, skopiuj z niego `.claude/`, `.agents/` i `CLAUDE.md` do swojego repo:
+📋 The easiest way: download the template alongside, copy `.claude/`, `.agents/` and `CLAUDE.md` from it into your repo:
 ```bash
 git clone https://github.com/mrozmk/AI_Coding_Starter /tmp/ai-starter
 cp -R /tmp/ai-starter/.claude /tmp/ai-starter/.agents /tmp/ai-starter/CLAUDE.md .
 ```
 
-💬 **Co się stanie:** Twój projekt dostaje warstwę `.claude/` (komendy, hooki, ustawienia) i `.agents/` (pamięć, reference, specs, plans) oraz `CLAUDE.md` z regułami. **Twój kod pozostaje nietknięty** — dokładamy tylko rusztowanie.
+💬 **What happens:** your project gets the `.claude/` layer (commands, hooks, settings) and `.agents/` (memory, reference, specs, plans) plus `CLAUDE.md` with rules. **Your code stays untouched** — we only add the scaffolding.
 
-✅ **Skąd wiesz, że OK:** obok swojego kodu masz teraz foldery `.claude/` i `.agents/` oraz plik `CLAUDE.md` (z placeholderami `{...}` — wypełnimy je za chwilę).
+✅ **How you know it's OK:** alongside your code you now have the folders `.claude/` and `.agents/` and the file `CLAUDE.md` (with `{...}` placeholders — we'll fill them in shortly).
 
-⏭️ **Dalej:** otwórz sesję Claude Code (`claude`) i przejdź do Kroku 1.
+⏭️ **Next:** open a Claude Code session (`claude`) and go to Step 1.
 
 <details>
-<summary>💡 TIP — dlaczego kopiujemy tylko `.claude/`, `.agents/` i `CLAUDE.md`</summary>
+<summary>💡 TIP — why we copy only `.claude/`, `.agents/` and `CLAUDE.md`</summary>
 
-To są jedyne części template'u, które są „silnikiem" workflow — reszta repozytorium template'u (przykładowy `README.md`, `docs/`, `LICENSE`) dotyczy *samego template'u*, nie Twojego projektu. Wnosząc tylko warstwę narzędzi, nie mieszasz swojego kodu z cudzym. Branch `adopt-ai-workflow` daje Ci czysty punkt cofnięcia, gdyby coś poszło nie tak.
+These are the only parts of the template that are the "engine" of the workflow — the rest of the template repository (the example `README.md`, `docs/`, `LICENSE`) is about *the template itself*, not your project. By bringing only the tooling layer, you don't mix your code with someone else's. The `adopt-ai-workflow` branch gives you a clean rollback point if something goes wrong.
 </details>
 
 ---
 
-### Krok 1: Pozwól Claude zrozumieć Twój kod (map-codebase)
+### Step 1: Let Claude understand your code (map-codebase)
 
-> To **serce** tego scenariusza i zarazem jego największa różnica względem S1–S3. Zamiast pisać PRD od zera, Claude **czyta istniejący kod** i odtwarza z niego wiedzę o projekcie.
+> This is the **heart** of this scenario and at the same time its biggest difference from S1–S3. Instead of writing a PRD from scratch, Claude **reads the existing code** and reconstructs knowledge about the project from it.
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /prime
 /setup:map-codebase
 ```
 
-💬 **Co się stanie:** `/setup:map-codebase` przeskanuje repo, podzieli je na moduły i **równolegle** (wiele agentów) zrozumie kod, a potem wytworzy: `.agents/memory/architecture.md` (mapa projektu) **oraz zrekonstruowany `docs/PRD.md`** (co ta aplikacja właściwie robi). Po drodze **dwa razy zapyta Cię o zgodę** — najpierw co analizować (zakres, lista pomijanych plików), potem przy podsumowaniu. Na koniec sam pociągnie dalej: odświeży brief i wygeneruje `CLAUDE.md`.
+💬 **What happens:** `/setup:map-codebase` scans the repo, splits it into modules and understands the code **in parallel** (many agents), then produces: `.agents/memory/architecture.md` (the project map) **and a reconstructed `docs/PRD.md`** (what this application actually does). Along the way it **asks for your approval twice** — first what to analyze (scope, list of skipped files), then at the summary. At the end it carries on itself: refreshes the brief and generates `CLAUDE.md`.
 
-✅ **Skąd wiesz, że OK:** powstały `.agents/memory/architecture.md` i `docs/PRD.md`, a `CLAUDE.md` ma wypełnione sekcje o Twoim projekcie (nie placeholdery `{...}`).
+✅ **How you know it's OK:** `.agents/memory/architecture.md` and `docs/PRD.md` were created, and `CLAUDE.md` has filled-in sections about your project (not `{...}` placeholders).
 
-⏭️ **Dalej:** Krok 2.
+⏭️ **Next:** Step 2.
 
-> ⚠️ **Mały projekt (< ~50 plików)?** `/setup:map-codebase` sam Ci powie, że fan-out jest zbędny i poprosi, żebyś zamiast niego uruchomił po prostu **`/setup:create-CLAUDE_MD`** (analizuje kod bezpośrednio). Wtedy pomijasz map-codebase i robisz tę jedną komendę.
+> ⚠️ **Small project (< ~50 files)?** `/setup:map-codebase` will tell you itself that fan-out is unnecessary and ask you to just run **`/setup:create-CLAUDE_MD`** instead (it analyzes the code directly). Then you skip map-codebase and do that one command.
 
 <details>
-<summary>💡 TIP — dlaczego to oddzielna, „ciężka" komenda</summary>
+<summary>💡 TIP — why this is a separate, "heavy" command</summary>
 
-Duży, istniejący kod nie zmieści się w jednym kontekście. `/setup:map-codebase` rozkłada pracę na wielu agentów, z których **każdy zwraca tylko zwięzłe streszczenie (~1–2k)** — dzięki temu rozmiar repo wpływa na *liczbę* agentów, nie na zapchanie kontekstu. To jednorazowy bootstrap: raz zrozumiany kod ląduje w pamięci projektu (`architecture.md`, PRD, brief), z której korzystają wszystkie kolejne komendy. Pełny opis: [README → Adoption scenarios](../README.md).
+A large, existing codebase won't fit in a single context. `/setup:map-codebase` distributes the work across many agents, each of which **returns only a concise summary (~1–2k)** — so the repo's size affects the *number* of agents, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`, PRD, brief), which all subsequent commands use. Full description: [README → Adoption scenarios](../README.md).
 </details>
 
 ---
 
-### Krok 2: Rozpisz backlog na bazie istniejącego kodu (opcjonalnie)
+### Step 2: Lay out a backlog based on the existing code (optional)
 
-> Tak jak w S1, backlog jest źródłem prawdy o kolejności pracy — ale tu powstaje **na bazie zmapowanego kodu i zrekonstruowanego PRD**, nie pustego pomysłu.
+> Just like in S1, the backlog is the source of truth for work order — but here it's created **based on the mapped code and the reconstructed PRD**, not an empty idea.
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /setup:create-backlog
 ```
 
-💬 **Co się stanie:** Claude przeczyta zrekonstruowany PRD + `architecture.md` i rozpisze mapę dostarczenia dla **dalszego rozwoju** projektu. Uwaga na różnicę: zadanie `E0-1` **nie** jest „stwórz szkielet" (szkielet już masz) — będzie to „zaadaptuj/uporządkuj istniejący szkielet" albo zostanie pominięte.
+💬 **What happens:** Claude reads the reconstructed PRD + `architecture.md` and lays out a delivery map for the project's **further development**. Note the difference: the `E0-1` task is **not** "create the scaffold" (you already have a scaffold) — it will be "adopt/normalize the existing scaffold" or it gets omitted.
 
-✅ **Skąd wiesz, że OK:** powstał `.agents/backlog.md` z zadaniami opisującymi to, co chcesz dalej zbudować/zmienić w istniejącym kodzie.
+✅ **How you know it's OK:** a `.agents/backlog.md` was created with tasks describing what you want to build/change next in the existing code.
 
-⏭️ **Dalej:** Krok 3 — i od tej pory jesteś już w znajomym rytmie.
+⏭️ **Next:** Step 3 — and from here on you're already in the familiar rhythm.
 
-> 💡 Backlog jest opcjonalny. Jeśli masz konkretną zmianę do wprowadzenia od razu, możesz go pominąć i przejść do Kroku 3, podając temat wprost w `/brainstorm`.
+> 💡 The backlog is optional. If you have a concrete change to make right away, you can skip it and go to Step 3, giving the topic directly to `/brainstorm`.
 
 ---
 
-### Krok 3: Pracuj jak w S1 — kolejna zmiana w istniejącym kodzie
+### Step 3: Work like in S1 — the next change in existing code
 
-> Od tego miejsca **brownfield wygląda identycznie jak greenfield.** Masz już pamięć projektu, mapę i reguły — więc każda zmiana to ten sam cykl co w Scenariuszu 1, tyle że Claude działa na realnym, istniejącym kodzie.
+> From here on, **brownfield looks identical to greenfield.** You already have the project memory, the map and the rules — so every change is the same cycle as in Scenario 1, except Claude works on real, existing code.
 
-📋 **Wpisz** (świeży czat na każdą zmianę):
+📋 **Type** (fresh chat for each change):
 ```
 /prime
-/brainstorm <opis zmiany, np. dodaj eksport zadań do CSV>
+/brainstorm <change description, e.g. add CSV export of tasks>
 /plan-feature
 /execute
 /check-implementation
 /commit
 ```
 
-💬 **Co się stanie:** dokładnie to samo co w [Krokach 6–10 Scenariusza 1](#krok-6-zaprojektuj-pierwszą-funkcję-brainstorm) — z tą różnicą, że `/brainstorm` i `/plan-feature` uwzględniają **istniejącą architekturę** (z `architecture.md`), więc nowy kod wpasowuje się w to, co już jest, zamiast tworzyć duplikaty.
+💬 **What happens:** exactly the same as in [Steps 6–10 of Scenario 1](#step-6-design-the-first-feature-brainstorm) — except that `/brainstorm` and `/plan-feature` account for the **existing architecture** (from `architecture.md`), so new code fits into what's already there instead of creating duplicates.
 
-✅ **Skąd wiesz, że OK:** zmiana jest zaimplementowana zgodnie z istniejącymi wzorcami projektu, bramki jakości przeszły, commit utworzony.
+✅ **How you know it's OK:** the change is implemented in line with the project's existing patterns, the quality gates passed, the commit was created.
 
-⏭️ **Dalej:** powtarzasz Krok 3 dla każdej kolejnej zmiany; `/push` gdy chcesz wypchnąć (jak [Krok 11 S1](#krok-11-wyślij-na-github-opcjonalnie)).
+⏭️ **Next:** you repeat Step 3 for each subsequent change; `/push` when you want to push (like [Step 11 of S1](#step-11-push-to-github-optional)).
 
-> 🖥️ **Projekt ma frontend / gotowe designy?** Dołóż do tego cyklu kroki z S2/S3 — `/design` (lub własna makieta w `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield łączy się z każdym z nich.
-
----
-
-## 🎉 Gratulacje — Twój istniejący projekt mówi teraz tym samym językiem!
-
-Zamiast zaczynać od pomysłu, zaczęliśmy od **kodu, który już był**:
-**wnieś template → 🆕 zrozum kod (`map-codebase`) → pamięć + mapa + reguły → backlog → i od teraz zwykły rytm `brainstorm → plan → execute → check → commit`.**
-
-Najtrudniejszą część (zrozumienie zastanego kodu) robisz **raz**. Potem brownfield niczym nie różni się od greenfielda — ta sama pętla, te same komendy, te same bramki jakości.
-
-> Projekt jest nowy, a nie istniejący? → wróć do **Scenariusza 1** (backend) lub **2/3** (z frontendem).
+> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design` (or your own mockup in `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
 
 ---
 
-# Scenariusz 5: Ścieżka analityka (BA → Jira)
+## 🎉 Congratulations — your existing project now speaks the same language!
 
-**Co zrobimy:** zamienimy **pomysł** w uporządkowaną pracę — PRD, **backlog** (mapa dostarczenia), a na końcu **zadania w Jirze** dla zespołu. **Bez pisania kodu.** To ścieżka analityka biznesowego / Product Ownera.
+Instead of starting from an idea, we started from **code that was already there**:
+**bring in the template → 🆕 understand the code (`map-codebase`) → memory + map + rules → backlog → and from now on the usual rhythm `brainstorm → plan → execute → check → commit`.**
 
-**Czego się nauczysz:** jak z surowych materiałów zrobić PRD i backlog, oraz jak **wyeksportować backlog do Jiry** (epiki + taski) komendą `/jira` — pamiętając, że **backlog jest źródłem prawdy, a Jira jego lustrem**.
+The hardest part (understanding the existing code) you do **once**. After that brownfield is no different from greenfield — the same loop, the same commands, the same quality gates.
 
-> 📌 **To ścieżka „bez kodu".** Kończysz tam, gdzie deweloper zaczyna kodować: na gotowym backlogu i zadaniach w Jirze. Pierwsze kroki (PRD, backlog) są wspólne z S1 — różnica jest w priorytecie (kontekst produktowy, nie implementacyjny) i w finale (eksport do Jiry).
-
----
-
-## Zanim zaczniesz (jednorazowo)
-
-[Stwórz swoje repo z template'u i pobierz je](#stwórz-swoje-repo-z-tego-templateu-i-pobierz-je) (albo dołącz do istniejącego repo zespołu). Otwórz sesję Claude Code (`claude`).
-
-**Chcesz eksportować do Jiry (Krok 4)?** Potrzebujesz skonfigurowanego **MCP Atlassian** — zmiennych `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`. Jak je ustawić: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Bez tego zrobisz Kroki 1–3 (PRD + backlog), a eksport dołożysz później.
-
-⏭️ **Dalej:** Krok 1.
+> Is the project new, not existing? → go back to **Scenario 1** (backend) or **2/3** (with a frontend).
 
 ---
 
-### Krok 1: Zbierz materiały i opisz produkt (sources + PRD)
+# Scenario 5: Analyst path (BA → Jira)
 
-> Jako analityk najczęściej masz już **materiały wejściowe** — notatki ze spotkań, brief, transkrypcje, zrzuty wymagań. To Twój punkt startu.
+**What we'll do:** turn an **idea** into organized work — a PRD, a **backlog** (delivery map), and finally **tasks in Jira** for the team. **Without writing code.** This is the path of a business analyst / Product Owner.
 
-**Wrzuć materiały do `.agents/sources/`.** Skopiuj tam wszystkie pliki (briefy, transkrypcje, PDF-y, szkice). Claude przeczyta je **automatycznie** przy tworzeniu PRD.
+**What you'll learn:** how to turn raw materials into a PRD and a backlog, and how to **export the backlog to Jira** (epics + tasks) with the `/jira` command — remembering that **the backlog is the source of truth, and Jira is its mirror**.
 
-📋 **Wpisz:**
+> 📌 **This is the "no code" path.** You finish where a developer starts coding: with a ready backlog and tasks in Jira. The first steps (PRD, backlog) are shared with S1 — the difference is in the priority (product context, not implementation) and in the finale (export to Jira).
+
+---
+
+## Before you start (one-time)
+
+[Create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it) (or join the team's existing repo). Open a Claude Code session (`claude`).
+
+**Want to export to Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (PRD + backlog) and add the export later.
+
+⏭️ **Next:** Step 1.
+
+---
+
+### Step 1: Gather materials and describe the product (sources + PRD)
+
+> As an analyst you most often already have **input materials** — meeting notes, a brief, transcripts, requirement dumps. That's your starting point.
+
+**Drop the materials into `.agents/sources/`.** Copy all the files there (briefs, transcripts, PDFs, sketches). Claude will read them **automatically** when creating the PRD.
+
+📋 **Type:**
 ```
-/setup:create-PRD Na podstawie materiałów z .agents/sources/ opisz produkt: <jedno zdanie o co chodzi>. Dla kogo, jaki problem rozwiązuje, co jest w MVP.
+/setup:create-PRD Based on the materials in .agents/sources/, describe the product: <one sentence about what it is>. For whom, what problem it solves, what's in the MVP.
 ```
 
-💬 **Co się stanie:** Claude przeczyta `.agents/sources/`, dopyta o braki (użytkownicy, zakres MVP, co odpuszczamy) i zapisze `docs/PRD.md` — formalny opis *co i dlaczego*.
+💬 **What happens:** Claude reads `.agents/sources/`, asks about gaps (users, MVP scope, what we skip) and writes `docs/PRD.md` — a formal description of *what and why*.
 
-✅ **Skąd wiesz, że OK:** powstał `docs/PRD.md` z sekcjami „Target Users", „MVP Scope", „Implementation Phases".
+✅ **How you know it's OK:** a `docs/PRD.md` was created with sections "Target Users", "MVP Scope", "Implementation Phases".
 
-⏭️ **Dalej:** Krok 2.
+⏭️ **Next:** Step 2.
 
 <details>
-<summary>💡 TIP — to ten sam PRD co w S1; tu tylko bardziej go „dopieszczasz"</summary>
+<summary>💡 TIP — it's the same PRD as in S1; here you just "polish" it more</summary>
 
-PRD jest wspólnym fundamentem wszystkich scenariuszy. Różnica w ścieżce BA: zwykle spędzasz tu więcej czasu (to Twój główny produkt pracy), korzystasz mocno z `.agents/sources/` i nie przechodzisz potem do kodu. Stack możesz zostawić pusty albo uruchomić `/setup:stack-research` jako rekomendację dla zespołu — to opcjonalne.
+The PRD is the common foundation of all scenarios. The difference on the BA path: you usually spend more time here (it's your main work product), you rely heavily on `.agents/sources/`, and you don't move on to code afterward. You can leave the stack empty or run `/setup:stack-research` as a recommendation for the team — that's optional.
 </details>
 
 ---
 
-### Krok 2: Wczytaj kontekst produktowy (prime-ba)
+### Step 2: Load the product context (prime-ba)
 
-> Dla pracy analityka jest **dedykowana** komenda priming — ładuje kontekst **produktowy** (PRD, specy, decyzje, backlog), a nie implementacyjny jak zwykłe `/prime`.
+> For analyst work there's a **dedicated** priming command — it loads the **product** context (PRD, specs, decisions, backlog), not the implementation context like the regular `/prime`.
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /prime-ba
 ```
 
-💬 **Co się stanie:** Claude wczyta `PRD.md`, materiały z `sources/`, zatwierdzone specy z `.agents/specs/`, decyzje i żywy backlog — czyli wszystko, czego analityk potrzebuje, by rozpisywać i porządkować pracę.
+💬 **What happens:** Claude loads `PRD.md`, the materials from `sources/`, the approved specs from `.agents/specs/`, the decisions and the live backlog — i.e. everything an analyst needs to lay out and organize work.
 
-✅ **Skąd wiesz, że OK:** Claude wypisze podsumowanie produktu (dla kogo, MVP, stan prac) bez sięgania po szczegóły implementacyjne.
+✅ **How you know it's OK:** Claude prints a product summary (for whom, MVP, state of work) without reaching for implementation details.
 
-⏭️ **Dalej:** Krok 3.
+⏭️ **Next:** Step 3.
 
 ---
 
-### Krok 3: Rozpisz backlog (źródło prawdy)
+### Step 3: Lay out the backlog (source of truth)
 
-📋 **Wpisz:**
+📋 **Type:**
 ```
 /setup:create-backlog
 ```
 
-💬 **Co się stanie:** Claude zamieni PRD w **mapę dostarczenia** w `.agents/backlog.md` — epiki, zadania z ID (`E0-1`, `E1-2`, …), zależności (DAG) i kolejność. To **kanoniczna** lista „co budować, w jakiej kolejności".
+💬 **What happens:** Claude turns the PRD into a **delivery map** in `.agents/backlog.md` — epics, tasks with IDs (`E0-1`, `E1-2`, …), dependencies (DAG) and ordering. This is the **canonical** list of "what to build, in what order".
 
-✅ **Skąd wiesz, że OK:** powstał `.agents/backlog.md` z tabelą epików i zadań.
+✅ **How you know it's OK:** a `.agents/backlog.md` was created with a table of epics and tasks.
 
-⏭️ **Dalej:** Krok 4 — eksport do Jiry.
+⏭️ **Next:** Step 4 — export to Jira.
 
-> 🔑 **Backlog jest źródłem prawdy, Jira jego lustrem.** Zadania w Jirze tworzysz **na podstawie** backloga (jednokierunkowo: backlog → Jira). Nie utrzymujesz dwóch równoległych list — backlog jest pierwszy i nadrzędny, Jira to jego eksport dla zespołu.
+> 🔑 **The backlog is the source of truth, Jira is its mirror.** You create the Jira tasks **based on** the backlog (one-way: backlog → Jira). You don't maintain two parallel lists — the backlog is first and authoritative, Jira is its export for the team.
 
 <details>
-<summary>💡 TIP — dlaczego backlog, a nie od razu Jira</summary>
+<summary>💡 TIP — why a backlog and not Jira right away</summary>
 
-Backlog (`.agents/backlog.md`) żyje **w repo, obok kodu** — jest wersjonowany, czytany przez resztę pipeline'u (`/brainstorm`, `/plan-feature`) i nie wymaga połączenia z Jirą. Jira jest świetna dla zespołu, ale jako *odbiorca* struktury, nie jej autor. Gdybyś rozpisywał strukturę bezpośrednio w Jirze, reszta narzędzi template'u nie miałaby z czego korzystać. Dlatego kolejność jest zawsze: PRD → backlog → (opcjonalnie) Jira.
+The backlog (`.agents/backlog.md`) lives **in the repo, next to the code** — it's versioned, read by the rest of the pipeline (`/brainstorm`, `/plan-feature`) and doesn't require a connection to Jira. Jira is great for the team, but as a *consumer* of the structure, not its author. If you laid out the structure directly in Jira, the rest of the template's tooling would have nothing to work from. That's why the order is always: PRD → backlog → (optionally) Jira.
 </details>
 
 ---
 
-### Krok 4: Wyeksportuj backlog do Jiry (opcjonalnie)
+### Step 4: Export the backlog to Jira (optional)
 
-> Krok dla zespołów na Jirze. Przenosisz strukturę z backloga do Jiry — **Ty prowadzisz, Claude wykonuje**, z potwierdzeniem przed każdym zapisem.
+> A step for teams on Jira. You move the structure from the backlog to Jira — **you lead, Claude executes**, with confirmation before each write.
 
-**Najpierw epiki.** Dla każdego epiku z backloga utwórz Epic w Jirze:
+**Epics first.** For each epic from the backlog, create an Epic in Jira:
 
-📋 **Wpisz** (przykład):
+📋 **Type** (example):
 ```
-/jira create Epic — utwórz epiki odpowiadające epikom z .agents/backlog.md
-```
-
-**Potem taski pod każdym epikiem** — komendą `bulk` (masowe tworzenie pod jednym parentem):
-
-📋 **Wpisz** (przykład, podmień klucz epiku):
-```
-/jira bulk PROJ-100 — utwórz taski z zadań epiku E1 z .agents/backlog.md
+/jira create Epic — create epics corresponding to the epics in .agents/backlog.md
 ```
 
-💬 **Co się stanie:** Claude pokaże **plan jako tabelę i poczeka na Twoje `y`** przed jakimkolwiek zapisem do Jiry (Jira nie ma cofania — to celowe zabezpieczenie). Po potwierdzeniu utworzy epiki i taski.
+**Then tasks under each epic** — with the `bulk` command (mass creation under one parent):
 
-✅ **Skąd wiesz, że OK:** w Jirze pojawiły się epiki i taski odpowiadające backlogowi; Claude pokaże raport z kluczami utworzonych zadań.
+📋 **Type** (example, replace the epic key):
+```
+/jira bulk PROJ-100 — create tasks from the tasks of epic E1 in .agents/backlog.md
+```
 
-⏭️ **Dalej:** gotowe — zespół ma zadania, Ty masz backlog jako źródło prawdy.
+💬 **What happens:** Claude shows **the plan as a table and waits for your `y`** before any write to Jira (Jira has no undo — that's a deliberate safeguard). After confirmation it creates the epics and tasks.
 
-> ⚠️ **To eksport ręcznie prowadzony, nie automatyczna synchronizacja.** Nie ma „przycisku sync". Ty decydujesz, co i kiedy przenieść; Claude generuje treść zadań z backloga i tworzy je po Twoim potwierdzeniu. Kierunek jest jednokierunkowy — zmiany robisz w backlogu, potem ewentualnie odtwarzasz w Jirze.
+✅ **How you know it's OK:** epics and tasks corresponding to the backlog appeared in Jira; Claude shows a report with the keys of the created tasks.
+
+⏭️ **Next:** done — the team has tasks, you have the backlog as the source of truth.
+
+> ⚠️ **This is a manually-driven export, not automatic synchronization.** There's no "sync button". You decide what to move and when; Claude generates the task content from the backlog and creates them after your confirmation. The direction is one-way — you make changes in the backlog, then optionally reproduce them in Jira.
 
 <details>
-<summary>💡 TIP — co dokładnie robi `/jira bulk` i dlaczego dry-run</summary>
+<summary>💡 TIP — what exactly `/jira bulk` does and why dry-run</summary>
 
-`/jira bulk <EPIC-KEY> <ile> <temat>` tworzy wiele tasków pod jednym Epikiem. Treść zadań **generuje model** na podstawie tematu i kontekstu (tu: zadań z backloga) — to dlatego krok jest „assisted", a nie automatyczny import 1:1. Każda operacja zapisująca (create, bulk, update, link) ma **twardą zasadę dry-run**: najpierw tabela do akceptacji, dopiero po `y` realny zapis. Pełny opis i parametry: [.claude/skills/jira/SKILL.md](../.claude/skills/jira/SKILL.md).
+`/jira bulk <EPIC-KEY> <count> <topic>` creates multiple tasks under one Epic. The task content is **generated by the model** based on the topic and context (here: the tasks from the backlog) — that's why the step is "assisted" and not a 1:1 automatic import. Every writing operation (create, bulk, update, link) has a **hard dry-run rule**: a table for approval first, the actual write only after `y`. Full description and parameters: [.claude/skills/jira/SKILL.md](../.claude/skills/jira/SKILL.md).
 </details>
 
 ---
 
-## 🎉 Gratulacje — masz gotowy backlog i zadania dla zespołu!
+## 🎉 Congratulations — you have a ready backlog and tasks for the team!
 
-Przeszedłeś ścieżkę analityka bez pisania kodu:
-**materiały (`sources/`) → PRD → kontekst produktowy (`prime-ba`) → backlog (źródło prawdy) → 🔁 eksport do Jiry (lustro).**
+You went through the analyst path without writing code:
+**materials (`sources/`) → PRD → product context (`prime-ba`) → backlog (source of truth) → 🔁 export to Jira (mirror).**
 
-**Co dalej?** Deweloperzy biorą Twój backlog i wchodzą w ścieżki S1–S4: świeży czat → `/prime` → puste `/brainstorm` (samo bierze **następne wolne zadanie z backloga**) → `/plan-feature` → `/execute` → … Twoja struktura napędza ich pracę bez przepisywania.
+**What's next?** Developers take your backlog and enter the S1–S4 paths: fresh chat → `/prime` → empty `/brainstorm` (which takes the **next free task from the backlog** itself) → `/plan-feature` → `/execute` → … Your structure drives their work without retyping.
 
-> Chcesz też **zaprojektować ekrany** dla zespołu (nie tylko zadania)? Zajrzyj do **Scenariusza 2/3** — krok `/design`.
-
+> Want to also **design screens** for the team (not just tasks)? Check **Scenario 2/3** — the `/design` step.

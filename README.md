@@ -4,8 +4,8 @@
 
 # AI-Assisted Development Starter Kit
 
-> ### 👉 Pierwszy raz tutaj? Zacznij od samouczka: **[docs/TUTORIAL.md](docs/TUTORIAL.md)**
-> Prowadzi Cię krok po kroku — od instalacji do pierwszego zacommitowanego kodu — na konkretnym przykładzie. Ten README poniżej to **pełna referencja frameworka** (gęsta, dla osób, które już ogarniają podstawy).
+> ### 👉 First time here? Start with the tutorial: **[docs/TUTORIAL.md](docs/TUTORIAL.md)**
+> It walks you step by step — from setup to your first committed code — on a concrete example. The README below is the **full framework reference** (dense, for people who already grasp the basics).
 
 A minimal, opinionated starter for projects built with [Claude Code](https://claude.com/claude-code) as a first-class development partner.
 
