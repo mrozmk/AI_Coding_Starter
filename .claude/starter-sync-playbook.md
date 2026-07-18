@@ -98,8 +98,8 @@ In order:
    - All links in the copied commands resolve (`rg -o '\[.*?\]\(.*?\.md.*?\)' .claude/commands/`)
    - `.agents/memory/index.md` contains the `Loader Convention` section
    - The project's `CLAUDE.md` still mentions the active commands (those in `.claude/commands/`)
-4. Clean up the `/tmp` clone(s). The sandbox **denies `rm -rf`** (global deny rule — don't disable the
-   sandbox to force it), so delete without it and cover suffixed/leftover variants:
+4. Clean up the `/tmp` clone(s). `rm -rf` is `ask`-tier in settings (it prompts for approval; the sandbox may also
+   restrict it), so delete without it and cover suffixed/leftover variants:
    `find /tmp/ai-coding-starter-sync /tmp/ai-coding-starter-sync-* -depth -delete 2>/dev/null`
    then verify `ls -d /tmp/ai-coding-starter* 2>/dev/null` shows no matches. If blocked entirely, ask
    the user to remove it manually (`! rm -rf …`) — a leftover clone is harmless and must never block the run.
@@ -128,4 +128,4 @@ chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-
 - NEVER commit automatically — show the message and wait for `/commit`
 - Always dry-run before apply
 - NEVER check or add bootstrap-only artifacts (`.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, `create-CLAUDE_MD` as a bootstrap driver) in an existing project — see the "Bootstrap-only" subsection in Step 2
-- Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (sandbox denies `rm -rf`); a leftover clone is harmless and must never block the run
+- Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (`rm -rf` is `ask`-tier in settings, not denied); a leftover clone is harmless and must never block the run

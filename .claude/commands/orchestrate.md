@@ -368,7 +368,7 @@ git merge --ff-only "step-<step_id>"   # fast-forward main onto the step branch
 git push origin main
 ```
 
-Cross-check the resulting `git rev-parse HEAD` against the `COMMIT_SHA` from the committer report — they must match. Sequential execution (Phase 3) guarantees `main` only advances via this pipeline, so `--ff-only` always succeeds mid-run. If it ever does not (someone pushed to main mid-run, violating the project convention), the merge fails cleanly — see the rejected row below. Never substitute `git cherry-pick` or `git merge --no-ff` to force the commit through; those are denied in settings and would diverge from the deterministic ff model.
+Cross-check the resulting `git rev-parse HEAD` against the `COMMIT_SHA` from the committer report — they must match. Sequential execution (Phase 3) guarantees `main` only advances via this pipeline, so `--ff-only` always succeeds mid-run. If it ever does not (someone pushed to main mid-run, violating the project convention), the merge fails cleanly — see the rejected row below. Never substitute `git cherry-pick` or `git merge --no-ff` to force the commit through; `cherry-pick` is denied and `merge --no-ff` is `ask`-tier in settings, and either would diverge from the deterministic ff model.
 
 | Push outcome                             | Action                                                                                                                                                                                                                            |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -389,7 +389,7 @@ If we reached here, step succeeded end-to-end.
 git worktree remove "<STEP_WORKTREE>" --force 2>/dev/null || true
 ```
 
-The now-merged `step-<step_id>` branch is left in place (deleting branches is denied in settings, and a fully-merged branch is harmless); `git worktree prune` in Phase 7 cleans up worktree metadata. Continue to next step in topological order.
+The now-merged `step-<step_id>` branch is left in place (deleting branches is an `ask`-tier op the pipeline leaves to the human, and a fully-merged branch is harmless); `git worktree prune` in Phase 7 cleans up worktree metadata. Continue to next step in topological order.
 
 > **Status-table edit hygiene:** each step touches the umbrella table exactly twice (5.0 `→in_progress`, 5.5 `→done`). Always copy the Status cell text verbatim from your last read of the file before editing — a casing/whitespace mismatch in the path or cell makes the Edit fail silently and forces a retry. Re-read the umbrella only if a prior Edit reported a no-match.
 
@@ -455,7 +455,7 @@ When the last step reaches `done`:
    - `mv .agents/plans/active/<umbrella>.md .agents/plans/done/`
    - For each sub-step in the table, `mv .agents/plans/active/<file> .agents/plans/done/`
    - `mv .agents/plans/active/<umbrella>.run.md .agents/plans/done/ 2>/dev/null || true` (the durable run-log from Phase 4b travels with the plan)
-3. **Worktree cleanup — preserve uncommitted work.** Remove step worktrees that survived (e.g. from a blocked step) and prune stale entries — they accumulate full repo checkouts. **But a surviving worktree from a blocked step can hold uncommitted agent work** (e.g. the user chose Phase 6 "mark done anyway" without merging), and `git worktree remove --force` discards it irreversibly — `git worktree` is NOT in the settings deny-list, so nothing else guards this. So force-remove ONLY a worktree that is both clean and fully merged; leave any dirty one in place and report it:
+3. **Worktree cleanup — preserve uncommitted work.** Remove step worktrees that survived (e.g. from a blocked step) and prune stale entries — they accumulate full repo checkouts. **But a surviving worktree from a blocked step can hold uncommitted agent work** (e.g. the user chose Phase 6 "mark done anyway" without merging), and `git worktree remove --force` discards it irreversibly — `git worktree remove` is allow-listed in settings (not denied), so nothing else guards this. So force-remove ONLY a worktree that is both clean and fully merged; leave any dirty one in place and report it:
    ```bash
    for wt in .claude/worktrees/step-*; do
      [ -d "$wt" ] || continue
@@ -468,7 +468,7 @@ When the last step reaches `done`:
    git worktree prune
    ```
    List every worktree kept this way in the final summary so the user knows work is parked there. Never `--force`-remove a dirty worktree to "clean up" — that is the user's uncommitted work.
-4. **Branch cleanup — emit a command, do NOT run it.** The now-merged `step-<id>` branches (and any empty ones left by a blocked/aborted step) are harmless but clutter the branch list. Deleting branches is **denied in settings** and is destructive — by project rule, that is the human's call, not the pipeline's. So list the merged step branches and emit a ready-to-paste command for the user, e.g.:
+4. **Branch cleanup — emit a command, do NOT run it.** The now-merged `step-<id>` branches (and any empty ones left by a blocked/aborted step) are harmless but clutter the branch list. Deleting branches is an **`ask`-tier operation** in settings (each deletion prompts) and is destructive — by project rule, that is the human's call, not the pipeline's. So list the merged step branches and emit a ready-to-paste command for the user, e.g.:
    ```
    These step branches are fully merged into main and safe to delete (your call):
      ! git branch -D step-3a step-3b step-6
@@ -532,7 +532,7 @@ Deploy is your call.
 - Mark a step `done` without a successful push (Step 5.4b). The committer commits; you push; both must succeed (or a deliberate user override via Phase 6 option 4).
 - Push a commit without passing the clean-tree build gate (Step 5.4a-bis) when a validation command exists. A commit that only builds because untracked/modified working-tree files are present is NOT self-contained and will break the server's clean-checkout build. Never skip the gate "because the executor's build already passed" — the executor built the dirty tree, not the commit. If you enabled the optional post-success-marker hardening (e.g. Next.js `.next/BUILD_ID`), a green `BUILD_RC == 0` with a missing fresh marker counts as a FAILED build (false-green-RC class).
 - Force a stash restore (`git stash apply`/`pop`) through a conflict in the clean-build gate, or `git checkout`/`reset` to clear one, or `git stash drop` after a failed apply. Any of these can destroy the user's uncommitted work. Surface the conflict, leave the stash intact, and STOP.
-- Force-remove a worktree (`git worktree remove --force`) that has uncommitted changes during Phase 7 cleanup. `git worktree` is not in the settings deny-list, so this guard lives only here — check `git -C "$wt" status --porcelain` first; keep dirty worktrees and report them.
+- Force-remove a worktree (`git worktree remove --force`) that has uncommitted changes during Phase 7 cleanup. `git worktree remove` is allow-listed in settings (not denied), so this guard lives only here — check `git -C "$wt" status --porcelain` first; keep dirty worktrees and report them.
 - Run a flat-mode pipeline against a dirty main checkout. The Step 5.0b preflight refuses it; never bypass that and let pre-existing user changes share the step's commit.
 - Loop more than the documented iteration counts: 3 verify; design is either 1 mega-fix (structural) or 2 incremental (cosmetic) per the adaptive budget in Step 5.3 — never both, never more. The limits exist to surface real blockers, not to grind.
 - Re-ask a cadence/"continue?" question once the user has said to run without stopping (see Phase 6 cadence rule). Report progress as a statement, not a question.

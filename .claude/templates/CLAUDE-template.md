@@ -132,7 +132,11 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 - **Commits:** use `/commit` skill — conventional commits (`feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`).
 - **Remote sync:** use `/push` and `/pull` skills — both detect the current branch dynamically via `git rev-parse --abbrev-ref HEAD`. No need to specify a branch.
 - **Releases:** use `/release` skill — detects project stack (`package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod` / `composer.json` / `VERSION`), bumps the right manifest, updates CHANGELOG, creates an annotated tag.
-- **AI git policy:** AI may run **non-destructive** git operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url`. **Destructive operations are denied** in `.claude/settings.json`: `push --force`, `push --force-with-lease`, `push -f`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`, `branch -D`/`-d`, `rebase`, `merge`, `revert`, `cherry-pick`, `config`, `remote add/remove/set-url`, `reflog expire`, `gc --prune=now`. When an AI agent needs any of these, it must stop and ask the human.
+- **AI git policy — three permission tiers** in `.claude/settings.json`. Precedence is `deny` > `ask` > `allow`: a `deny` rule is an absolute block that no prompt or classifier can override, and an `ask` rule always prompts even in auto mode (the classifier cannot auto-approve it).
+  - **`allow`** (AI runs freely): inspection ops — `status`, `diff`, `log`, `rev-parse`, `rev-list`, `describe`, `ls-remote`, `symbolic-ref`, `check-ignore`, `remote get-url` — plus safe mutations `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `revert`, `merge --ff-only`, and `worktree add`/`list`/`prune`/`remove` (required by umbrella-mode `/orchestrate`).
+  - **`ask`** (AI may run, but each call prompts the human for one-time approval): `merge --no-ff`/`--squash`, `branch -d`/`-D`, `rm`, `rm -rf`, `remote add`.
+  - **`deny`** (hard block — AI must stop and the human runs it manually): `push --force`/`--force-with-lease`/`-f`, `reset --hard`, `clean -f*`, `checkout -- *`/`checkout .*`, `restore .`/`restore --staged`, `rebase`, `cherry-pick`, `config`, `remote remove`/`set-url`/`rename`, `reflog expire`, `gc --prune=now`/`--aggressive`, `sudo`.
+  - A bare `git merge` and `git reset` (soft/mixed) are in none of the lists — they prompt interactively.
 - **Never include AI attribution** in commit messages unless explicitly requested.
 
 ### Default branch

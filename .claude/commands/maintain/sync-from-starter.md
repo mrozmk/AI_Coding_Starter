@@ -92,7 +92,7 @@ Look for **`.claude/.starter-sync.json`** (committed — shared team state):
 git clone https://github.com/mrozmk/AI_Coding_Starter /tmp/ai-coding-starter-sync
 ```
 
-- If `/tmp/ai-coding-starter-sync` already exists, remove it first (the sandbox may deny `rm -rf` chained with `git clone` — run the removal as its own step, or clone into a suffixed dir).
+- If `/tmp/ai-coding-starter-sync` already exists, remove it first (`rm -rf` is `ask`-tier so it prompts, and chaining it with `git clone` can fail — run the removal as its own step, or clone into a suffixed dir).
 - If a `<ref>` arg was given: `git -C /tmp/ai-coding-starter-sync checkout <ref>` (fail loudly if the ref doesn't exist — do not silently fall back to `main`).
 - Record `theirs` hash: `git -C /tmp/ai-coding-starter-sync rev-parse --short HEAD`.
 - If `base` exists, also record the upstream delta for the report: `git -C /tmp/ai-coding-starter-sync log --oneline <base>..HEAD` → "N upstream commits since last sync".
@@ -215,8 +215,8 @@ This is what makes the _next_ sync a true 3-way merge. Include it in the staged 
 
 - **Remove the starter clone(s) from `/tmp`.** Clean up the dir you cloned into (and any suffixed
   variant or leftover from a prior run, e.g. both `/tmp/ai-coding-starter-sync` and
-  `/tmp/ai-coding-starter-sync-<date>`). The sandbox **denies `rm -rf`** (global deny rule — do not try
-  to disable the sandbox to force it), so use a non-`rm -rf` deletion:
+  `/tmp/ai-coding-starter-sync-<date>`). `rm -rf` is `ask`-tier in settings (it prompts for approval; the sandbox may
+  also restrict it), so use a non-`rm -rf` deletion:
   ```bash
   find /tmp/ai-coding-starter-sync /tmp/ai-coding-starter-sync-* -depth -delete 2>/dev/null
   ```
@@ -248,4 +248,4 @@ This is what makes the _next_ sync a true 3-way merge. Include it in the staged 
 - `--check` never writes and never spawns edit subagents.
 - **NEVER task bootstrap-only artifacts** (Step 2.5.1b) — `.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, and `create-CLAUDE_MD` *as a bootstrap driver*. This sync runs on a live project; the bootstrap chain already ran. Note them in one line, never gate on them.
 - **ALWAYS keep a findings handoff** (Step 0a) — append upstream regressions / contribution candidates to `.agents/handoffs/starter-upstream-regressions.md` as you make keep-project decisions. It's a local scratchpad; never stage/commit it.
-- Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (the sandbox denies `rm -rf`; don't disable the sandbox). A leftover clone is harmless — never let cleanup block the run.
+- Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (`rm -rf` is `ask`-tier in settings, not denied). A leftover clone is harmless — never let cleanup block the run.
