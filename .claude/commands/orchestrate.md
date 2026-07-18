@@ -1,6 +1,6 @@
 ---
 description: Run a multi-step plan end-to-end — execute → refine → verify → design-check → commit → push, looping fixes until passed, escalating only on blockers
-argument-hint: "<path-to-plan> [--resume] [--from <step-id>]"
+argument-hint: "<path-to-plan> [--resume] [--from <step-id>] | --integrate <orch-id>..."
 ---
 
 # /orchestrate — Pipeline Runner
@@ -17,13 +17,15 @@ Flags:
 
 - `--resume` — continue an interrupted run by reading umbrella status; pick up at first non-`done` step
 - `--from <step-id>` — start at a specific step id (e.g. `3b1`), treating earlier steps as already done
+- `--integrate <orch-id>...` — **not a build run.** Skip the whole pipeline and run the supervised **Integration mode** merge queue (below): bring the listed parallel run-branches onto `main`, one at a time, each merge prompting once. Run once from a clone on `main` after all parallel builds finish. Mutually exclusive with a plan path.
 - `--sync-docs` — after the pipeline completes, run `documentation-manager` to sync `README` / `docs/` for the whole feature and push a final `docs:` commit (Phase 7, step 5). Off by default; even when set it only acts if the changed files actually touched documented surface (public API, CLI, setup, architecture, a user-facing feature).
 
-## Phase 0: Resolve plan
+## Phase 0: Resolve mode + plan
 
-1. If `$ARGUMENTS` is a path to an `.md` file under `.agents/plans/active/` → use it.
-2. Else stop and tell user: `Pass a plan path: /orchestrate .agents/plans/active/<plan>.md`.
-3. Read the plan file fully.
+1. **Integration mode (`--integrate`)** — if `$ARGUMENTS` begins with `--integrate` followed by one or more branch ids (`orch-<id> …`, NOT a `.md` path), skip the whole build pipeline and jump to **Integration mode** (below). **Parse this before the "pass a plan path" error in step 3** — an `--integrate` invocation carries branch ids, not a plan path.
+2. Else if `$ARGUMENTS` is a path to an `.md` file under `.agents/plans/active/` → use it as the plan; continue to Phase 1.
+3. Else stop and tell user: `Pass a plan path: /orchestrate .agents/plans/active/<plan>.md` — or run the merge queue: `/orchestrate --integrate orch-a orch-b …`.
+4. Read the plan file fully.
 
 ## Phase 1: Detect plan type
 
@@ -76,16 +78,32 @@ Filter:
 
 If all steps are `done` or `skipped` → emit "All steps complete. Run complete." and STOP. (A remaining `manual` step is NOT "complete" — it pauses per above.)
 
-## Phase 4: Capture upstream SHA
+## Phase 4: Resolve target branch + capture upstream SHA
 
-Once at the start of the run:
+Once at the start of the run.
+
+**Resolve `TARGET_BRANCH` (this run's push target):**
 
 ```bash
-git fetch origin main
-git rev-parse origin/main
+git rev-parse --abbrev-ref HEAD   # → TARGET_BRANCH (e.g. main, or orch-<id> in a parallel run)
 ```
 
-Store as `EXPECTED_UPSTREAM_AT_START`. This is informational — the committer does not enforce it; user convention is "no manual pushes to main during /orchestrate" (per project decision).
+Substitute the **literal** branch name into every command below wherever `<TARGET_BRANCH>` appears — do NOT rely on a shell variable, each command runs in a fresh shell (`push.md:9`).
+
+- If the output is literal `HEAD` → **detached HEAD**. STOP: "Detached HEAD — checkout a branch before /orchestrate." (`push.md:10-11`.)
+- **On `main` (the single-run default) everything below is byte-for-byte today's behavior.** On an `orch-<id>` branch (a parallel run — see [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md)) per-step work pushes to `origin/<TARGET_BRANCH>`; the results are brought onto `main` later by the supervised **Integration mode** (`--integrate`, below).
+- **Build-log slug:** for the OS-global `/tmp` build-log path (shared even across separate clones), use `TARGET_SLUG` = `<TARGET_BRANCH>` with every `/` replaced by `-`. The runbook mandates `orch-<id>` (no slash), but this keeps a single run on a slashy branch like `feat/x` safe.
+
+**Capture the upstream SHA:**
+
+```bash
+git fetch origin "<TARGET_BRANCH>"
+git rev-parse "origin/<TARGET_BRANCH>"
+```
+
+Store as `EXPECTED_UPSTREAM_AT_START`. This is informational — the committer does not enforce it; user convention is "no manual pushes to the run branch during /orchestrate" (per project decision).
+
+- **New-branch fallback (`push.md:15`):** if `git rev-parse "origin/<TARGET_BRANCH>"` fails because the branch does not exist on the remote yet (the first build run on a fresh `orch-<id>`), record `EXPECTED_UPSTREAM_AT_START = none` instead of erroring.
 
 ### Phase 4b — Open a durable run-log (NOT /tmp)
 
@@ -95,6 +113,19 @@ Create (or append to, on `--resume`) a run-log next to the plan so the run's sta
 - Flat/atomic plan → `RUN_LOG = .agents/plans/active/<plan>.run.md`
 
 Append to `RUN_LOG` as the run progresses (one entry per step is enough): step id, the model spawned, the parsed sub-agent reports (verdict/status lines + any blockers/gaps), the Step 5.1-recon result, and each pushed `COMMIT_SHA`. This is a log you write with the Write/Edit tool, not a sub-agent artifact. In Phase 7 it moves to `done/` alongside the plan.
+
+**Run-log contract — friction records (feeds central reflection).** The base entries above (verdicts/gaps/SHAs) are enough for `--resume`, but they are NOT enough for the **central** memory reflection that Integration mode runs from the merged run-logs — in a parallel run the build clones no longer reflect first-person (they skip Phase 7 steps 6–7). So on **every friction iteration** — a verifier/designer fix loop, a Phase 6 user-guided retry, or a designer mega-fix — also append a structured record:
+
+```
+- ITERATION <n> (step <id>): {gap | blocker}
+  ROOT_CAUSE: <why it failed — from the executor's NOTES on the fix re-spawn>
+  APPLIED_CHANGE: <what the fix changed — from the executor's NOTES>
+  OUTCOME: <resolved | still-failing | escalated>
+  USER_GUIDANCE: <verbatim, when this was a Phase 6 option-1 retry — else omit the line>
+  MEMORY_CANDIDATE: <one line the reflection pass might keep — else omit the line>
+```
+
+Also record, **once per run**, the backlog **work-package id + source `Ref`** this plan delivers (read from the plan header / `.agents/backlog.md`), so the central backlog write-back knows which WP to mark `DONE`. A clean iteration (passed first try) writes NO friction record — only the base step entry. Central reflection consumes THESE records, not the bare verdict lines.
 
 ## Phase 5: Step loop
 
@@ -235,7 +266,7 @@ Decision table:
 | `failed` | empty     | = 3             | Mark step `blocked`, escalate: "Verifier still reports gaps after 3 fix iterations. Gaps: [...]. Iterations tried: [...]." STOP pipeline.                 |
 | `failed` | non-empty | any             | Mark step `blocked`, escalate with `BLOCKERS:` list. STOP pipeline.                                                                                       |
 
-When looping with a fix iteration, give the executor the verifier's `GAPS:` block verbatim as `FIX_LIST` and add: `This is fix iteration <N> of 3 for step <step_id>.`
+When looping with a fix iteration, give the executor the verifier's `GAPS:` block verbatim as `FIX_LIST` and add: `This is fix iteration <N> of 3 for step <step_id>. In your NOTES, include ROOT_CAUSE: (why the gap existed), APPLIED_CHANGE: (what you changed), OUTCOME: (resolved | still-failing).` Copy those three NOTES fields into a run-log friction record (Phase 4b) — they are the material the central memory reflection consumes.
 
 ### Step 5.3 — Design check (loop up to 2 iterations, conditional)
 
@@ -326,7 +357,7 @@ fi
 # Validate the bare commit. <VALIDATION_CMD> is the command resolved above (the plan's
 # VALIDATION COMMANDS, else the stack-detected build/test command). For the optional
 # post-success-marker hardening, `rm -f <marker>` here and check `[ -s <marker> ]` below.
-<VALIDATION_CMD> 2>&1 | tee "/tmp/orchestrate-build-<step_id>.log"
+<VALIDATION_CMD> 2>&1 | tee "/tmp/orchestrate-build-<TARGET_SLUG>-<step_id>.log"
 BUILD_RC=${PIPESTATUS[0]}   # bash: exit code of the command, not tee. (zsh: use ${pipestatus[1]})
 
 # ALWAYS restore the working tree, even if the build failed — never leave the user's stray
@@ -342,7 +373,7 @@ fi
 | Build result                           | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BUILD_RC == 0` | Commit is self-contained and validation passed on the clean tree. Proceed to 5.4b push.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `BUILD_RC != 0`                        | Mark step `blocked`. The commit builds only because uncommitted working-tree files are present — it is NOT self-contained and **will break the server's clean-checkout build**. Do NOT push. Escalate to the user (Phase 6) with: (a) the failing build output (`/tmp/orchestrate-build-<step_id>.log`), (b) the list of files that were stashed (`git stash show -u "$STASH_SHA" --stat`, captured before the restore), and (c) the likely diagnosis — a committed generated artifact whose source files were left untracked/unstaged outside the plan scope. The fix is usually to commit those stray sources (or rebuild the artifact without them); both are user decisions. STOP. |
+| `BUILD_RC != 0`                        | Mark step `blocked`. The commit builds only because uncommitted working-tree files are present — it is NOT self-contained and **will break the server's clean-checkout build**. Do NOT push. Escalate to the user (Phase 6) with: (a) the failing build output (`/tmp/orchestrate-build-<TARGET_SLUG>-<step_id>.log`), (b) the list of files that were stashed (`git stash show -u "$STASH_SHA" --stat`, captured before the restore), and (c) the likely diagnosis — a committed generated artifact whose source files were left untracked/unstaged outside the plan scope. The fix is usually to commit those stray sources (or rebuild the artifact without them); both are user decisions. STOP. |
 | (no validation command resolved) | Gate skipped — logged above. Proceed to 5.4b push. The commit was not clean-build-verified; acceptable for a project with no build step, but recorded so it is not mistaken for a verified pass.                                                                                                                                                                                                                                                                                                              |
 
 **Restore-failure safety:** if `git stash apply` reports a conflict (the build wrote files that now collide with the stash), do NOT force it and do NOT `git stash drop` — the apply failed, so dropping would destroy the only copy. Leave the stash intact (`git stash list` shows our `orchestrate-clean-build-<step_id>` entry; its SHA is `$STASH_SHA`), surface the conflict to the user verbatim, and STOP — the user resolves the working tree manually. Never `git checkout`/`reset` to clear the conflict; that can destroy the user's stray work (and both are denied in settings anyway).
@@ -351,24 +382,25 @@ fi
 
 **5.4b — Reconcile + push (orchestrator, main session).** The push must originate from the main session where the user's authorization lives — do NOT spawn a sub-agent for it.
 
-**Flat mode (atomic plan):** the committer already committed directly on `main` in the main checkout. There is nothing to merge. Just push:
+**Flat mode (atomic plan):** the committer already committed directly on the current branch `<TARGET_BRANCH>` in the main checkout. There is nothing to merge. Just push:
 
 ```bash
-git push origin main
+git push origin "<TARGET_BRANCH>"
 ```
 
-**Umbrella mode:** the committer committed on the step's named branch `step-<step_id>` in its worktree. Bring it onto `main` by fast-forward, then push:
+**Umbrella mode:** the committer committed on the step's named branch `step-<step_id>` in its worktree. Bring it onto the run branch `<TARGET_BRANCH>` by fast-forward, then push:
 
 ```bash
 # The committer committed on the named branch step-<step_id> (created in Step 5.0b).
-# Because the branch is named (not a detached HEAD) and main has not moved during this
-# step (sequential execution, Phase 3), this fast-forward is deterministic — no fetch
-# of a loose SHA and no cherry-pick are ever needed.
-git merge --ff-only "step-<step_id>"   # fast-forward main onto the step branch
-git push origin main
+# Because the branch is named (not a detached HEAD) and the run branch <TARGET_BRANCH> has
+# not moved during this step (sequential execution, Phase 3), this fast-forward is
+# deterministic — no fetch of a loose SHA and no cherry-pick are ever needed. The merge runs
+# on the checked-out run branch; in a single run on main that IS main (today's behavior).
+git merge --ff-only "step-<step_id>"   # fast-forward <TARGET_BRANCH> onto the step branch
+git push origin "<TARGET_BRANCH>"
 ```
 
-Cross-check the resulting `git rev-parse HEAD` against the `COMMIT_SHA` from the committer report — they must match. Sequential execution (Phase 3) guarantees `main` only advances via this pipeline, so `--ff-only` always succeeds mid-run. If it ever does not (someone pushed to main mid-run, violating the project convention), the merge fails cleanly — see the rejected row below. Never substitute `git cherry-pick` or `git merge --no-ff` to force the commit through; `cherry-pick` is denied and `merge --no-ff` is `ask`-tier in settings, and either would diverge from the deterministic ff model.
+Cross-check the resulting `git rev-parse HEAD` against the `COMMIT_SHA` from the committer report — they must match. Sequential execution (Phase 3) guarantees the run branch `<TARGET_BRANCH>` only advances via this pipeline (per clone), so `--ff-only` always succeeds mid-run. If it ever does not (someone pushed to `<TARGET_BRANCH>` mid-run, violating the project convention), the merge fails cleanly — see the rejected row below. Never substitute `git cherry-pick` or `git merge --no-ff` to force the commit through; `cherry-pick` is denied and `merge --no-ff` is `ask`-tier in settings, and either would diverge from the deterministic ff model.
 
 | Push outcome                             | Action                                                                                                                                                                                                                            |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -429,14 +461,19 @@ STEP_ID: <step_id>
 USER_GUIDANCE:
 <verbatim user input>
 
-This is a user-guided retry after a blocker. Apply the guidance and execute the plan. Report via the Executor Output Contract.
+This is a user-guided retry after a blocker. Apply the guidance and execute the plan. In your NOTES, include ROOT_CAUSE / APPLIED_CHANGE / OUTCOME. Report via the Executor Output Contract.
 ```
 
-Then resume the pipeline at Step 5.2 (re-verify after the guided fix).
+Write a run-log friction record (Phase 4b) for this retry: the `USER_GUIDANCE` verbatim plus the executor's ROOT_CAUSE / APPLIED_CHANGE / OUTCOME. Then resume the pipeline at Step 5.2 (re-verify after the guided fix).
 
 ## Phase 7: Pipeline completion
 
 When the last step reaches `done`:
+
+**Branch-aware completion (read first — `TARGET_BRANCH` from Phase 4).**
+
+- **`TARGET_BRANCH == main`** (single run — today's default): run every step below exactly as written. No `chore: workflow-state` commit; memory/backlog reflection runs here.
+- **`TARGET_BRANCH != main`** (a parallel `orch-<id>` build run): two differences — **(a)** after the plan-move, make a **`chore: workflow-state` commit** (flat step 2b / umbrella step 4b) so the moved plan + run-log files travel onto `main` via the later `--integrate` merge — git does NOT move uncommitted files; **(b)** **SKIP the memory-reflection (step 6) and backlog write-back (step 7)** — those run once, centrally, in **Integration mode** from the merged run-logs. A build clone ships only the plan-move + run-log, so deleting it afterward is safe.
 
 **1–2 branch by plan type** — a flat/atomic plan has no `## Execution Plan` table and no sub-step files, so the umbrella-shaped steps below do not apply to it.
 
@@ -446,7 +483,11 @@ When the last step reaches `done`:
 2. Move just the plan file and its run-log to `done/`:
    - `mv .agents/plans/active/<plan>.md .agents/plans/done/`
    - `mv .agents/plans/active/<plan>.run.md .agents/plans/done/ 2>/dev/null || true`
-   - Steps 3 (worktree cleanup) and 4 (branch cleanup) are **no-ops** in flat mode (no worktree, no `step-*` branch). Continue at step 5.
+2b. **Workflow-state commit — parallel runs only (`TARGET_BRANCH != main`).** Skip on a single run (`TARGET_BRANCH == main`): the move stays a local, uncommitted working-tree change for the user to `/commit`, exactly as today. On an `orch-<id>` run, the moved files must be committed + pushed or the `--integrate` merge can't carry them onto `main`. Same mechanism as umbrella step 4b, but the rename list is just the single plan + its run-log:
+   - `mv` from step 2 leaves delete(old)+add(new) pairs in `git status`. Spawn `@orchestrator-committer` with `STEP_ID: workflow-state` and the two `<old> → <new>` rename pairs; it stages both sides of each (`git add -- <old> <new>`) via its bounded exception and commits `chore: move <plan> + run-log to done/`. Do NOT push from the committer.
+   - Then push from the main session: `git push origin "<TARGET_BRANCH>"`. Memory/backlog are NOT committed here (central reconciliation in Integration mode).
+
+   Steps 3 (worktree cleanup) and 4 (branch cleanup) are **no-ops** in flat mode (no worktree, no `step-*` branch). Continue at step 5.
 
 **Umbrella mode:**
 
@@ -474,6 +515,19 @@ When the last step reaches `done`:
      ! git branch -D step-3a step-3b step-6
    ```
    Compute the list from the umbrella table's step ids (or `git branch --merged main` filtered to `step-*`). Do not attempt the deletion yourself; the `! ` prefix runs it in the user's session if they choose.
+4b. **Workflow-state commit — parallel runs only (`TARGET_BRANCH != main`).** Skip entirely on a single run (`TARGET_BRANCH == main`): the plan-move stays a local, uncommitted working-tree change for the user to `/commit`, exactly as today. On an `orch-<id>` run, the moved files must be **committed and pushed** or the later `--integrate` merge won't carry them onto `main` — git does not move uncommitted files. The `mv`s in step 2 show in `git status` as delete(old)+add(new) pairs.
+   - **Ownership.** The orchestrator can't commit and the committer can't move the plan — so the orchestrator already did the moves (step 2), and now spawns `@orchestrator-committer` to stage + commit them via a bounded exception:
+     ```
+     STEP_ID: workflow-state
+     RENAME_PAIRS:
+     - .agents/plans/active/<umbrella>.md → .agents/plans/done/<umbrella>.md
+     - .agents/plans/active/<sub-step-1>.md → .agents/plans/done/<sub-step-1>.md
+     - ...  (EVERY sub-step file from the umbrella table)
+     - .agents/plans/active/<umbrella>.run.md → .agents/plans/done/<umbrella>.run.md
+     Stage BOTH sides of every rename (git add -- <old> <new>) and commit `chore: move <umbrella> plan + run-log to done/`. Do NOT push. Report via the Committer Output Contract.
+     ```
+   - Stage **every** moved file — the umbrella AND every sub-step file AND the run-log (all of step 2), not just one. A rename shows as delete+add; both sides of each must be staged or the deletion is silently dropped.
+   - Then push from the main session: `git push origin "<TARGET_BRANCH>"`. Memory/backlog are NOT committed here (central reconciliation in Integration mode).
 5. **Documentation sync — only if `--sync-docs` was passed.** Skip entirely otherwise (the default). The pipeline's per-step commits are already pushed, so this is a separate, final `docs:` commit covering the whole feature.
    - Aggregate `FILES_TOUCHED` across every completed step (from the run-log).
    - **Decide if it is warranted.** If none of those files plausibly affect documented surface (public API / exported interface, CLI commands or flags, setup/config/install, architecture, or a user-facing feature), log `Doc sync requested but no documented surface changed — nothing to sync.` and skip the spawn. This honors documentation-manager's own rule: do not run it when docs would not drift.
@@ -483,9 +537,9 @@ When the last step reaches `done`:
      <aggregate FILES_TOUCHED across all steps>
      The pipeline just shipped the feature in <umbrella name>. Sync README / docs/ / inline docs to match — narrowly, only what these changes affected. Leave .agents/memory/ alone. Report which docs you updated.
      ```
-   - If it updated docs: spawn `@orchestrator-committer` with those doc paths as `FILES_TOUCHED` and `STEP_ID: docs` to stage and commit `docs: sync docs for <umbrella>` (committer does not push — same split as every step). Then `git push origin main` from the main session. If documentation-manager changed nothing, log `Docs already in sync.` and skip the commit+push.
+   - If it updated docs: spawn `@orchestrator-committer` with those doc paths as `FILES_TOUCHED` and `STEP_ID: docs` to stage and commit `docs: sync docs for <umbrella>` (committer does not push — same split as every step). Then `git push origin "<TARGET_BRANCH>"` from the main session. If documentation-manager changed nothing, log `Docs already in sync.` and skip the commit+push.
    - A doc-sync failure is **not** a pipeline failure — the feature is already shipped and pushed. Report it and continue to the summary.
-6. **Memory reflection — friction-gated.** You are a thin router: the real texture of what went hard lived in the sub-agents and is gone. Your one durable record is the **run-log** (Phase 4b). Scan it for *friction signals*:
+6. **Memory reflection — friction-gated.** **(Parallel run — `TARGET_BRANCH != main` — SKIP this step: memory reflection runs once, centrally, in Integration mode from the merged run-logs. This step runs only on a single run to `main`.)** You are a thin router: the real texture of what went hard lived in the sub-agents and is gone. Your one durable record is the **run-log** (Phase 4b). Scan it for *friction signals*:
    - a step that needed **>1 verifier fix iteration** on the same gap,
    - a **blocker you escalated** that the user resolved via guidance (Phase 6 option 1),
    - a **designer mega-fix** (structural rewrite).
@@ -493,7 +547,7 @@ When the last step reaches `done`:
    **If the run-log shows none of these → skip entirely. Log `Memory: clean run, nothing to reflect on.` A smooth pipeline learns nothing.**
 
    If it does show friction, run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) against those run-log entries. Apply its bar strictly — **the default is to save nothing**; a recurring gap is only worth an `errors.md`/`decisions.md` entry if a fresh Claude would repeat the mistake without it. Append at most one or two entries; never pad. Memory writes are **not committed by the pipeline** — leave them in the working tree for the user to `/commit` (consistent with how memory is managed). Record the outcome for the summary's `Memory:` line.
-7. **Backlog write-back — opt-in, skip silently if no backlog.** If `.agents/backlog.md` exists, mark the work package this plan delivered as `Status: DONE` and confirm its `Ref` column carries both the spec and the (now moved to `done/`) plan path. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Touch only `Status`/`Ref` — never the DAG, epic map, or task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). This write is **not committed by the pipeline** — leave it in the working tree for the user to `/commit`, same as memory writes. Record the outcome for the summary's `Backlog:` line.
+7. **Backlog write-back — opt-in, skip silently if no backlog.** **(Parallel run — `TARGET_BRANCH != main` — SKIP this step: the backlog write-back runs once, centrally, in Integration mode. This step runs only on a single run to `main`.)** If `.agents/backlog.md` exists, mark the work package this plan delivered as `Status: DONE` and confirm its `Ref` column carries both the spec and the (now moved to `done/`) plan path. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Touch only `Status`/`Ref` — never the DAG, epic map, or task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). This write is **not committed by the pipeline** — leave it in the working tree for the user to `/commit`, same as memory writes. Record the outcome for the summary's `Backlog:` line.
 8. Emit final summary to the user:
 
 ```
@@ -511,6 +565,106 @@ Docs: <synced in commit <sha> / already in sync / skipped — no documented surf
 Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commit / clean run, nothing to reflect on>
 Backlog: <work package <WP> marked DONE, left uncommitted for you to /commit / no backlog — skipped>
 Deploy is your call.
+```
+
+## Integration mode (`--integrate`) — supervised merge queue
+
+Entered directly from Phase 0 when invoked as `/orchestrate --integrate orch-a orch-b …`. **Phases 1–7 do NOT run.** This is a standalone, single-threaded, human-supervised merge queue that brings the completed parallel run-branches onto `main`. Run it once, from a clone checked out on `main`, after every parallel build has finished and pushed. Operator runbook: [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md).
+
+**Why supervised and not auto-merged.** Each integration merge is `git merge --no-ff` — an `ask`-tier op that prompts once. That prompt IS the design, not an obstacle: there is **no `settings.json` change and no new hook**. Auto-approving the merge was deliberately rejected — a scoped `allow` glob can't express "only origin's `orch-*`" (permission globs aren't argument-aware, and a branch name doesn't prove origin), and a PreToolUse `allow` hook does not bypass a matching `ask` rule. Expect **one approval prompt per branch**. The other git ops used here (`worktree add/remove`, `merge --ff-only`, `fetch`, `push`) are already `allow`-tier.
+
+### Queue preflight (once, before any merge)
+
+All must hold or STOP with guidance (Phase 6), before touching any branch:
+
+```bash
+git rev-parse --abbrev-ref HEAD          # MUST be `main` — the queue advances main; temp branches root at main
+git status --porcelain                   # MUST be empty — clean tree (same clean-tree check as Step 5.0b FLAT_BASELINE)
+git rev-parse -q --verify MERGE_HEAD     # MUST be empty — no merge already in progress
+git fetch origin main
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]   # MUST hold — local main == origin/main
+```
+
+- Not on `main` → STOP: "Run --integrate from a checkout on `main` (temp branches root at main)."
+- Dirty tree → STOP: "Integration needs a clean `main` checkout; commit/stash/revert first."
+- Mid-merge (`MERGE_HEAD` present) → STOP: "Finish or abort the in-progress merge first."
+- `HEAD != origin/main` → STOP: "Local `main` diverged from origin/main; reconcile first (`/pull`)."
+
+### Per branch, sequentially — validate on a TEMP BRANCH, advance `main` only on success
+
+Process the branches in **argument order**. A worktree needs a committed commit-ish, so the merge is committed on an isolated temp branch and validated there; `main` is advanced only after the gate passes, by fast-forward. **`main` never moves until validation passes → rollback is just discarding the temp worktree/branch, never a `reset --hard`** (denied anyway).
+
+For each branch `BRANCH` (`orch-<id>`), with `ID = ${BRANCH#orch-}`:
+
+1. **Fetch + pin the exact tip.** Merge the pinned SHA, never a bare local branch name (absent/stale):
+   ```bash
+   git fetch origin "<BRANCH>"
+   MERGE_SHA="$(git rev-parse FETCH_HEAD)"   # exact tip of origin/<BRANCH> right now
+   SHORT="${MERGE_SHA:0:8}"
+   ```
+2. **Collision-free temp branch + worktree.** Name it by the pinned SHA so a re-run with an updated tip can never collide with a leftover from a crashed prior attempt:
+   ```bash
+   TMPB="integrate-<ID>-$SHORT"
+   WT=".claude/worktrees/$TMPB"
+   # If a same-SHA attempt crashed earlier, TMPB and WT sit on abandoned temp state — safe to discard:
+   git worktree remove --force "$WT" 2>/dev/null; git branch -D "$TMPB" 2>/dev/null
+   git worktree add "$WT" -b "$TMPB" main       # temp branch rooted at the current (validated) main
+   ```
+   Never reuse a bare `integrate-<ID>` (a re-run with a moved tip would collide with a leftover branch).
+3. **Merge on the temp branch — prompts once (`ask` tier).** `--no-edit` is **mandatory**: without it the merge may open an editor and hang the non-interactive orchestration shell:
+   ```bash
+   git -C "$WT" merge --no-ff --no-edit "$MERGE_SHA"
+   ```
+   This is the one `ask` prompt per branch (`Bash(git merge --no-ff*)` matches regardless of the SHA arg — do NOT suppress it). **On conflict:** abort and clean up; `main` is untouched; mark blocked and escalate (Phase 6):
+   ```bash
+   git -C "$WT" merge --abort
+   git worktree remove --force "$WT"; git branch -D "$TMPB"
+   ```
+4. **Validate in the temp worktree** — a clean checkout of exactly the committed merge (the immutable snapshot: a build that dirties `$WT` can't corrupt what gets pushed, because `main` is advanced from the committed `$TMPB`, not the working tree). Resolve `VALIDATION_CMD` per **Gate command source** below and run it **in `$WT`**. On failure: clean up (`git worktree remove --force "$WT"; git branch -D "$TMPB"` — build dirt is disposable) and escalate; `main` untouched (never a denied `reset --hard`).
+5. **Re-pin check, then advance `main`.** Before moving `main`, confirm the run branch's tip has not moved since step 1 (a mid-queue push during the long gate):
+   ```bash
+   git fetch origin "<BRANCH>"
+   [ "$(git rev-parse FETCH_HEAD)" = "$MERGE_SHA" ]   # MUST still equal the pinned SHA
+   ```
+   Moved → clean up + escalate; do NOT merge a stale tip. Holds → fast-forward `main` onto the validated temp branch and push (ff always succeeds — the merge commit's first parent IS `main`):
+   ```bash
+   git merge --ff-only "$TMPB"      # on main
+   git push origin main
+   ```
+   Non-ff on push → escalate, never force.
+6. **Cleanup + re-assert.** The temp branch is now fully merged into the pushed `main`, so force-removing its worktree is safe ([CLAUDE.md](../../CLAUDE.md) Git Workflow — force-remove guard: clean + fully merged):
+   ```bash
+   git worktree remove --force "$WT"
+   [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]   # re-assert before the next branch
+   ```
+   Leave `$TMPB` for the human to delete (`git branch -d` is `ask`-tier) — list it in the final summary. Then proceed to the next branch in the queue.
+
+### Gate command source
+
+Resolve `VALIDATION_CMD` in priority order (record the chosen source in the run-log):
+
+1. **`CLAUDE.md → Validation` FIRST** — the documented "Source of truth for quality gates" (CLAUDE.md `Validation` section). Run that sequence, fail-fast. Only if the section is absent or still holds `{placeholder}` markers → fall through.
+2. **Stack detection** — `package.json` with the relevant script → `npm run …`; `Cargo.toml` → `cargo build && cargo test`; `go.mod` → `go build ./...`; `pyproject.toml` → the project's configured check.
+3. **Neither** → log `integration gate skipped: no validation command` and proceed (fail-open — a template project with no build step must not be blocked).
+
+### Central reconciliation (once, after the queue drains)
+
+The run-log (Phase 4b) carries no memory/backlog patches, and each build clone's Phase 7 leaves memory/backlog **local + uncommitted** — so those deltas can never arrive via git. Therefore the memory/backlog step runs **centrally, once, here**, not in the build clones:
+
+- **Build clones SKIP the Phase-7 memory/backlog reflection** (Phase 7 steps 6–7) — they commit only the plan-move + run-log (`chore: workflow-state`). This is what makes deleting a clone after its build safe.
+- Each integrated branch carried its `chore: workflow-state` commit onto `main`, so every run-log now sits in the main checkout under `.agents/plans/done/`. Run the **Memory Reflection Protocol** ([.agents/memory/index.md](../../.agents/memory/index.md)) **over the merged run-logs** — consuming the Phase-4b friction records (`ROOT_CAUSE` / `APPLIED_CHANGE` / `OUTCOME` / `USER_GUIDANCE` / `MEMORY_CANDIDATE`), not bare verdict lines — applying its bar strictly (default: save nothing). Then do the **backlog write-back** for each delivered work package (`Status: DONE` + `Ref`), exactly as Phase 7 step 7 describes, for all integrated runs at once.
+- Leave the central memory/backlog writes **uncommitted** in the working tree for the user to `/commit` (consistent with how memory is managed everywhere else).
+
+### Integration summary
+
+```
+✓ Integration complete: <N> branch(es) merged onto main
+Merged: <BRANCH → merge SHA> per branch
+Gate source: <CLAUDE.md Validation | stack-detected <cmd> | skipped (none)>
+Escalated: <branch + reason, or "none">
+Temp branches to delete (your call): ! git branch -D integrate-a-<sha> integrate-b-<sha> …
+Memory: <appended N entr(y/ies), left uncommitted for you to /commit | nothing to reflect on>
+Backlog: <WP(s) marked DONE, left uncommitted | no backlog — skipped>
 ```
 
 ## Failure modes you must handle
@@ -537,6 +691,7 @@ Deploy is your call.
 - Loop more than the documented iteration counts: 3 verify; design is either 1 mega-fix (structural) or 2 incremental (cosmetic) per the adaptive budget in Step 5.3 — never both, never more. The limits exist to surface real blockers, not to grind.
 - Re-ask a cadence/"continue?" question once the user has said to run without stopping (see Phase 6 cadence rule). Report progress as a statement, not a question.
 - Modify sub-step plan files. The executor is the only agent that may edit code; you only edit the umbrella's Status column.
+- **(Integration mode)** `--force` an integration merge or push; auto-resolve an integration conflict (abort + escalate — the human re-orders or resolves); advance `main` before its temp-branch gate passed; or `reset --hard` to roll back a bad merge. `main` never moves until the gate passes, so rollback is always just discarding the temp worktree/branch. Never suppress the per-merge `ask` prompt (no `settings.json`/hook change).
 
 ## Reusability note
 
@@ -546,4 +701,4 @@ This command and its sub-agents are project-scoped under `.claude/` for now. The
 >
 > **Worktree model:** applies to **umbrella plans only**. One persistent worktree per step (`.claude/worktrees/step-<id>`) on a named branch `step-<id>`, reused across all fix iterations of that step, fast-forward-merged onto `main` in Step 5.4b, retired on step completion (Step 5.5) and swept in Phase 7. This replaces per-spawn isolated worktrees, which silently dropped completed work when a step ran multiple fix iterations in different worktrees. The named branch (vs the old detached-HEAD `worktree add <path> HEAD`) makes 5.4b a deterministic `merge --ff-only step-<id>` — no fetch-by-SHA, no cherry-pick fallback.
 >
-> **Flat model (atomic plans):** a single-step plan with no `## Execution Plan` table runs with **no worktree, no branch, no merge**. Executor and committer work in the main checkout, the committer commits straight onto `main`, and the orchestrator just `git push origin main` — identical to `/commit` + `/push`. With only one step there is nothing to isolate (no competing steps, no main-advance race), so the worktree/branch/merge round-trip would be pure overhead and a needless fast-forward failure surface. The Phase 7 `git worktree remove` / `prune` sweep is a harmless no-op in flat mode.
+> **Flat model (atomic plans):** a single-step plan with no `## Execution Plan` table runs with **no worktree, no branch, no merge**. Executor and committer work in the main checkout, the committer commits straight onto the current branch, and the orchestrator just `git push origin "<TARGET_BRANCH>"` (`main` for a single run) — identical to `/commit` + `/push`. With only one step there is nothing to isolate (no competing steps, no main-advance race), so the worktree/branch/merge round-trip would be pure overhead and a needless fast-forward failure surface. The Phase 7 `git worktree remove` / `prune` sweep is a harmless no-op in flat mode.
