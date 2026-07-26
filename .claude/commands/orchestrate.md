@@ -35,16 +35,16 @@ Check the file for the heading `## Execution Plan`.
 - **Not found** → single atomic plan. Run **one pipeline cycle** for this file (skip DAG handling, single iteration of Phase 3-7). Use `STEP_ID = "atomic"` in sub-agent prompts. An atomic plan runs in **flat mode**: no worktree, no branch, no merge — the executor and committer work directly in the main checkout and the orchestrator pushes `main`, exactly like `/commit` + `/push`. There is only one step, so the worktree isolation that umbrella mode needs (accumulating fix iterations, keeping `main` advancing only via ff-merge) buys nothing here — it only adds a worktree/branch/merge round-trip that can fail to fast-forward. Flat mode skips Steps 5.0b, the merge half of 5.4b, and the worktree-retire half of 5.5 (those steps below are explicitly marked **umbrella-only**).
 
 > **This starter's defaults (read before first use):**
-> - `/plan-feature` emits **single-file plans** (no `## Execution Plan` table), so they run in **flat mode** — which works out of the box. **Umbrella mode** (multi-step DAG + worktrees) requires you to **hand-author** a `## Execution Plan` table (columns `Step | File | Depends On | Status`, optional `Model`); there is no generator for it in this template yet.
+> - `/plan-feature` emits **single-file plans** (no `## Execution Plan` table), so they run in **flat mode** — which works out of the box. **Umbrella mode** (multi-step DAG + worktrees) requires you to **hand-author** a `## Execution Plan` table (columns `Step | File | Depends On | Status`, optional `Effort`); there is no generator for it in this template yet.
 > - The **design check (Step 5.3)** runs the `orchestrator-designer` agent + `gates:design-quality-check` skill (both shipped, stack-neutral). It **auto-skips** whenever `.agents/specs/design/Ready/` is absent (the default), so projects without UI pay nothing. To enable it: create `.agents/specs/design/Ready/` and drop your reference design artifact(s) there.
 
 ## Phase 2: Parse Execution Plan table (umbrella only)
 
-Locate the markdown table under `## Execution Plan`. Required columns: `Step`, `File`, `Depends On`, `Status`. Optional column: `Model`.
+Locate the markdown table under `## Execution Plan`. Required columns: `Step`, `File`, `Depends On`, `Status`. Optional column: `Effort`.
 
-For each row, extract `(step_id, file_path, depends_on_list, status, model)`. Build a DAG.
+For each row, extract `(step_id, file_path, depends_on_list, status, effort)`. Build a DAG.
 
-**`Model` column (optional):** if present, its value is the model to spawn the executor with for that step — one of `sonnet` | `opus` | `haiku` (lowercase). It overrides the executor agent's default model (`claude-sonnet-4-6`) at spawn time via the `Agent` tool's `model` parameter. If the column is absent, or a row's cell is empty / `—`, the executor runs on its default (`sonnet`). Note: only the model is selectable per-step — `effort` and `fast` are NOT per-spawn-overridable through the `Agent` tool (they are fixed in an agent's own definition), so the plan only carries a model, not an effort level.
+**`Effort` column (optional):** the plan author's per-step difficulty marker — `low` or `medium` (lowercase). It selects **which executor agent to spawn**, not a spawn parameter: `medium` → `@orchestrator-executor-hard`, `low` / empty / `—` / column absent → `@orchestrator-executor`. Effort and model are NOT per-spawn-overridable through the `Agent` tool — they are fixed in each agent's own frontmatter, which is why the harder tier is a separate agent file rather than an argument. Never pass the `Agent` tool's `model` parameter: it silently overrides the agent definition and would defeat the pinning.
 
 **Validation (fail fast):**
 
@@ -52,7 +52,7 @@ For each row, extract `(step_id, file_path, depends_on_list, status, model)`. Bu
 - Every `Depends On` id must reference an existing Step in the same table (or `—` / empty).
 - No circular dependencies (topological sort must succeed).
 - `Status` must be one of `pending | in_progress | done | blocked | skipped | manual`.
-- If `Model` column present, each non-empty cell must be one of `sonnet | opus | haiku` (or `—`).
+- If `Effort` column present, each non-empty cell must be one of `low | medium` (or `—`).
 
 If validation fails → emit error to user with specifics, STOP. Do not silently proceed.
 
@@ -171,7 +171,7 @@ If `git worktree add` fails for a reason other than "already exists" (e.g. dirty
 
 ### Step 5.1 — Execute
 
-Spawn `@orchestrator-executor`. If this step has a `Model` value in the Execution Plan table (`opus` / `haiku` / `sonnet`), pass it as the `Agent` tool's `model` parameter so the executor runs on that model — it overrides the agent's default (`claude-sonnet-4-6`). If the step has no `Model` cell (or `—`), omit the parameter and the executor runs on its default.
+Pick the executor by this step's difficulty: **flat mode** reads the plan header field `**Execution effort:**`; **umbrella mode** reads the step's `Effort` cell. `medium` → spawn `@orchestrator-executor-hard`; `low`, any other value, or a missing field/cell → spawn `@orchestrator-executor`.
 
 Prompt:
 
@@ -182,7 +182,7 @@ WORKTREE_PATH: <STEP_WORKTREE>
 Execute this plan per the `execute` skill in the given worktree. Report via the Executor Output Contract.
 ```
 
-(Agent call: `model: <step's Model value>` when the column gives one. The model choice is the plan author's per-step judgment — heavy schema/UI/concurrency steps get `opus`, mechanical 1:1 steps get `sonnet`/`haiku`.)
+(Spawn via `subagent_type` only — **never** pass the `Agent` tool's `model` parameter; it would silently override the agent's own frontmatter. The difficulty call is the plan author's per-step judgment: multi-module coordination, pattern-level decisions inside a step, and silent-failure-with-production-cost work get `medium`; mechanical 1:1-from-pattern steps get `low`.)
 
 Parse the `=== EXECUTOR REPORT ===` block from the agent's output.
 

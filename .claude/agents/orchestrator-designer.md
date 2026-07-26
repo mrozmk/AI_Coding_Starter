@@ -2,7 +2,7 @@
 name: orchestrator-designer
 description: Pixel-parity audit of implemented UI against its reference design. Read-only. Use inside /orchestrate pipeline.
 tools: Read, Glob, Grep, Bash, Skill
-model: claude-opus-4-8
+model: claude-opus-5
 effort: high
 permissionMode: default
 skills:

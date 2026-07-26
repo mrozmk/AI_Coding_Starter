@@ -354,19 +354,22 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 Three commands do heavy multi-step work. They use **two different orchestration mechanisms** and spawn different agents on different models. This section spells out exactly what runs, when, why, and on which model.
 
-### Model strategy (shared across the pipeline)
+### Model & effort strategy (shared across the pipeline)
 
-The principle is **right model for the job** — judgment work on the strongest model, mechanical work on the cheapest:
+**One model everywhere — Opus 5 — and effort chosen per role.** Effort cannot be passed at spawn time (the `Agent` tool takes `model`, not `effort`), so it lives in each agent's frontmatter; that is also why the harder executor tier is a separate agent file rather than an argument. The rule is **lower the effort for doers, never for gates**: a false "pass" from a weakened audit lets a defect onto `main` and costs more than every token it saved.
 
-| Role | Agent | Model | Mutates? | Why |
-|------|-------|-------|----------|-----|
-| Orchestrator (your session) | — (the `/orchestrate` driver) | your interactive model (typically **Opus 4.8**) | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
-| Execute a plan | `orchestrator-executor` | **Sonnet 4.6** (`acceptEdits`) | ✅ code | implementation: fast + capable; per-step overridable to `opus`/`haiku` |
-| Refine (bugs + cleanup) | `orchestrator-refiner` | **Sonnet 4.6** (`acceptEdits`) | ✅ code | runs `code-review --fix` + `simplify` |
-| Verify (code gate) | `orchestrator-verifier` | **Opus 4.8**, `effort: high` | ❌ read-only | the gate must be sharp; independence from the fixer |
-| Design parity | `orchestrator-designer` | **Opus 4.8**, `effort: high` | ❌ read-only | pixel/structural audit vs reference design |
-| Commit | `orchestrator-committer` | **Haiku 4.5** (`acceptEdits`) | ✅ git index | purely mechanical stage+commit — cheapest tier |
-| Doc sync | `documentation-manager` | inherits | ✅ docs | only on `/orchestrate --sync-docs` when docs would drift |
+| Role | Agent | Effort | Mutates? | Why |
+|------|-------|--------|----------|-----|
+| Orchestrator (your session) | — (the `/orchestrate` driver) | your interactive session's setting | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
+| Execute a plan | `orchestrator-executor` | `low` (`acceptEdits`) | ✅ code | implementation against a plan that already did the thinking |
+| Execute a hard step | `orchestrator-executor-hard` | `medium` (`acceptEdits`) | ✅ code | same contract, more reasoning — spawned when the plan marks the step `medium` |
+| Refine (bugs + cleanup) | `orchestrator-refiner` | `low` (`acceptEdits`) | ✅ code | runs `code-review --fix` + `simplify` |
+| Verify (code gate) | `orchestrator-verifier` | **`high`** | ❌ read-only | the gate must be sharp; independence from the fixer |
+| Design parity | `orchestrator-designer` | **`high`** | ❌ read-only | pixel/structural audit vs reference design |
+| Commit | `orchestrator-committer` | `low` (`acceptEdits`) | ✅ git index | purely mechanical stage+commit |
+| Doc sync | `documentation-manager` | `low` | ✅ docs | only on `/orchestrate --sync-docs` when docs would drift |
+
+> **Difficulty travels in the plan, not the terminal.** `/plan-feature` writes `**Execution effort:** low | medium` into a single-file plan's header, or an `Effort` cell per row in an umbrella plan's `## Execution Plan` table. `/orchestrate` reads that to choose between `orchestrator-executor` and `orchestrator-executor-hard`. Changing the pinned model means editing `model:` in `.claude/agents/*.md` — a deliberate sync point, so the pipeline never silently drifts onto a costlier tier.
 
 > Keeping the **verifier/designer (judges) on a different, read-only setup from the executor/refiner (fixers)** is deliberate — no agent grades its own homework.
 

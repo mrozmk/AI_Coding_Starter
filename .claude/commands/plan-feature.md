@@ -153,6 +153,7 @@ The following plan should be complete, but it's important that you validate code
 
 **Source spec:** `.agents/specs/<spec-file>.md`
 **External docs required:** yes | no
+**Execution effort:** low | medium
 
 ## Feature Description
 
@@ -484,7 +485,7 @@ Insert this section into the umbrella file, **immediately after the "## Step map
 - **File**: relative markdown link to the sub-step file. The filename must exist in the same directory.
 - **Depends On**: comma-separated list of Step ids that must reach `done` before this step starts. Use `—` (em dash) for no dependencies.
 - **Status**: all automatable entries start as `pending`. The orchestrator (or user) flips them to `in_progress`, `done`, `blocked`, `skipped`. Use **`manual`** (set by YOU at plan time) for any step that is NOT automatable — external form submissions, interactive logins, screenshot capture, anything needing human judgment. The orchestrator pauses (does not spawn) when it reaches a `manual` step and tells the user to do it by hand, then `--resume`.
-- **Model**: which model the orchestrator spawns the executor with for that step — `sonnet` | `opus` | `haiku` (or `—` / omit to use the executor default). Derive this from the per-stage model recommendation (see "Model Recommendation" section of this report): mechanical 1:1-from-pattern steps → `sonnet`; multi-module coordination, copy-sensitive UI, pattern-level decisions, concurrency/state reasoning → `opus`; trivial mechanical steps → `haiku`. Only the model is selectable per-step — `effort`/`fast` are not per-spawn-overridable, so do not try to encode them here.
+- **Effort**: the difficulty marker that decides which executor agent the orchestrator spawns for that step — `low` | `medium` (or `—` / omit for `low`). Derive it from the per-stage recommendation (see "Execution Effort Recommendation" below): mechanical 1:1-from-pattern steps → `low`; multi-module coordination, copy-sensitive UI, pattern-level decisions, concurrency/state reasoning → `medium`. `medium` spawns `@orchestrator-executor-hard`; everything else spawns `@orchestrator-executor`. Do not invent a third level and do not name a model here — model and effort are fixed in each agent's frontmatter, not passed at spawn time.
 
 **Dependency rules:**
 
@@ -549,7 +550,7 @@ If validation fails (cycle detected, dangling dependency id) → STOP, report to
 
 After Phase 4 the plan exists in `active/`, but it is **not final**. This phase detects gaps, contradictions, and under-specifications before the user or `/execute` relies on it.
 
-**Core principle:** we look for HOLES that will realistically stop the execution agent (the project's default execution model is the reference point — because that is the model the plan must succeed on per the Model Recommendation section). We do NOT manufacture holes. Better to return 3 real findings than 15 hypothetical ones.
+**Core principle:** we look for HOLES that will realistically stop the execution agent (**Opus 5 at effort `low`** is the reference point — that is the executor the plan must succeed on unless the Execution Effort Recommendation escalates it). We do NOT manufacture holes. Better to return 3 real findings than 15 hypothetical ones.
 
 ### Step 5.1 — Load grilling context
 
@@ -1007,6 +1008,7 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 - [ ] Tasks ordered by dependency (can execute top-to-bottom)
 - [ ] Each task is atomic and independently testable
 - [ ] Pattern references include specific `file:line` numbers
+- [ ] Executor effort is carried **in the plan file** (header `**Execution effort:**` or the table's `Effort` cell), not only in the report
 
 ### Pattern Consistency ✓
 
@@ -1063,37 +1065,47 @@ After Phase 6 completes (plan finalized post-grilling), provide:
 - Key implementation risks or considerations (post-grilling — should be minimal if the user accepted critical fixes)
 - Estimated confidence score for one-pass success (POST-grilling — typically +1.5 to +2.5 vs pre-grilling)
 - **Backlog write-back (opt-in)** — if `.agents/backlog.md` exists, write the finalized plan path into the `Ref` column (alongside the spec path from Phase 0) for the tasks of this spec's work package, and confirm its `Status` is `WIP`. If no backlog exists, skip silently and omit this line. Do **not** touch the backlog's DAG/structure — only `Ref`/`Status`.
-- **Model recommendation for execution** (see below) — last section of the report
+- **Execution effort recommendation** (see below) — last section of the report
 
 ---
 
-## Model Recommendation (mandatory final section of the report)
+## Execution Effort Recommendation (mandatory final section of the report)
 
-End the report with **one** explicit recommendation, picking exactly one of three tiers. This is the last thing the user sees in the terminal — make it actionable, not hedged. Use the model names the project configures for its execution and orchestration agents (the orchestrator spawns executors with a `sonnet` | `opus` | `haiku` model class; map your recommendation to whichever the project sets as default and escalation models).
+End the report with **one** explicit recommendation, picking exactly one of two levels. Every executor runs on **Opus 5**; the only thing you choose is reasoning effort, which decides which executor agent the orchestrator spawns.
 
-**Tiers:**
+**Levels:**
 
-- **Fast tier (no thinking)** — fast, cheap, enough for mechanical migrations, small refactors, text edits, new components mirrored 1:1 from existing ones. Choose by default when the plan has `file:line` references, concrete keys to reuse, and no copy-language or critical logic.
-- **High tier** — required when coordinating multiple modules in one pass, copy must read naturally in multiple languages, "pick a pattern from three options" decisions inside a stage, a refactor touching >5 files, or a plan with looser guidance than `file:line`.
-- **High tier + thinking** — a _silent_ error has a real production cost (payments, auth, data migrations, mass rename across >10 files), ICU plurals with complex plural forms, locale-aware logic, reasoning about concurrent state, correctness criteria hard to verify with an automated test. Use sparingly.
+- **`Opus 5 · effort low`** → `@orchestrator-executor`. Enough for mechanical migrations, small refactors, text edits, and components mirrored 1:1 from existing ones. Choose by default when the plan has `file:line` references, concrete keys to reuse, and no copy-language or critical logic.
+- **`Opus 5 · effort medium`** → `@orchestrator-executor-hard`. Required when a step coordinates ≥3 modules in one pass, carries brand-voice or multi-locale copy, makes pattern-level decisions inside the step, refactors >5 files, gives guidance looser than `file:line`, reasons about concurrent state, or where a **silent** failure has a real production cost (payments, auth, compliance, data migration, mass rename across >10 files).
+
+**Where the recommendation must land (this is the part that actually runs):**
+
+| Plan type | Write it into | Orchestrator reads it in |
+| --- | --- | --- |
+| Single-file (default output of this command) | the header field `**Execution effort:** low \| medium` | Phase 1 (flat mode) |
+| Umbrella (`## Execution Plan` table) | the per-step `Effort` cell | Phase 2 |
+
+**Never invent a third level (`high`, `xhigh`, `fast`) or name a different model — the pipeline cannot spawn them.**
 
 **Output format (last section of the report, literally this shape):**
 
 ```
-## 🎯 Recommended model for execution
+## 🎯 Recommended execution effort
 
-**{choice}** — {1-2 sentences of rationale, referencing the real characteristics of THIS plan, not generically}
+**{Opus 5 · effort low | Opus 5 · effort medium}** — {1-2 sentences of rationale, referencing the real characteristics of THIS plan, not generically}
 
-{If the plan is staged — a per-stage table with the model and a 1-sentence why.}
+Written to the plan: `{the exact line or cell you wrote}`
 
-{If a sensible optimization exists (e.g. split stage X into two sessions, add one sentence to the executor prompt), list it in 1-2 bullets.}
+{If the plan is staged — a per-step table with the effort and a 1-sentence why.}
+
+{If a sensible optimization exists (e.g. split step X into two sessions, add one sentence to the executor prompt), list it in 1-2 bullets.}
 ```
 
 **Selection rules (apply in order):**
 
-1. Default to the **fast tier (no thinking)** — most tasks deserve it, the plan exists so a cheaper model can succeed.
-2. Escalate to the **high tier** when the plan has ≥3 areas to coordinate at once, copy that needs linguistic feel (multi-locale tone, brand voice), or pattern-level decisions inside a stage.
-3. Escalate to the **high tier + thinking** _only_ when: a silent error costs money/data/trust, the plan contains ICU plurals or locale-aware numbers/dates, or it requires reasoning about concurrency/state-machine logic.
-4. A staged plan with varied complexity → different models per stage. Don't pretend all stages are equal — that misinforms the user.
-5. Don't hedge. **One recommendation** per task (or per stage in a staged plan). If a task tolerates more than one tier — pick the cheaper one.
-6. Don't use words like "consider", "it's worth", "maybe". Write: "Fast tier (no thinking) — because X and Y."
+1. Default to **`effort low`** — most tasks deserve it, the plan exists so a cheaper pass can succeed.
+2. Escalate to **`effort medium`** only when the plan hits one of the triggers listed above. One trigger is enough; do not require several.
+3. A staged plan with varied complexity → different effort per step. Don't pretend all steps are equal — that misinforms the user.
+4. Don't hedge. **One recommendation** per task (or per step in a staged plan). If a task tolerates both — pick `low`.
+5. Don't use words like "consider", "it's worth", "maybe". Write: "Opus 5 · effort low — because X and Y."
+6. **The recommendation is binding, not advisory.** Write it into the plan file before you report it, and quote the line you wrote. A recommendation that exists only in this report and not in the plan file is a defect: `/orchestrate` reads the plan, not the terminal.

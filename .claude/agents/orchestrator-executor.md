@@ -2,7 +2,8 @@
 name: orchestrator-executor
 description: Execute a single implementation plan end-to-end. Use when running a step of a multi-step pipeline orchestrated by /orchestrate.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill
-model: claude-sonnet-4-6
+model: claude-opus-5
+effort: low
 permissionMode: acceptEdits
 skills:
   - execute

@@ -2,7 +2,8 @@
 name: orchestrator-committer
 description: Stage exact file list and commit with a conventional-commits message. Does NOT push — the orchestrator pushes from the main session. Use inside /orchestrate pipeline.
 tools: Bash, Read, Skill
-model: claude-haiku-4-5
+model: claude-opus-5
+effort: low
 permissionMode: acceptEdits
 skills:
   - commit
