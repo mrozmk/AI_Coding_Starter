@@ -139,6 +139,10 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
   - A bare `git merge` and `git reset` (soft/mixed) are in none of the lists — they prompt interactively.
 - **Never include AI attribution** in commit messages unless explicitly requested.
 
+**Orchestrate publish:** {push | branch-local}
+
+> _Filled in by `/setup:create-CLAUDE_MD`._ The publish mode `/orchestrate` uses with no `--publish` flag. `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Choose `branch-local` for a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side, not merely unwelcome. Omitting the line means `push`.
+
 ### Default branch
 
 > _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap based on the detected git workflow. Example: `` `main` (trunk-based) ``._

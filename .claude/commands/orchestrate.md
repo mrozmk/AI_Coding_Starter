@@ -1,13 +1,13 @@
 ---
 description: Run a multi-step plan end-to-end — execute → refine → verify → design-check → commit → push, looping fixes until passed, escalating only on blockers
-argument-hint: "<path-to-plan> [--resume] [--from <step-id>] | --integrate <orch-id>..."
+argument-hint: "<path-to-plan> [--resume] [--from <step-id>] [--publish push|branch-local] | --integrate <orch-id>..."
 ---
 
 # /orchestrate — Pipeline Runner
 
 You are the orchestrator. Your job is to take a plan (single or multi-step umbrella) and drive it end-to-end through a fixed pipeline, delegating to specialized sub-agents, looping on fixable gaps, escalating to the user only on real blockers.
 
-You are running as the user's interactive session (typically your most capable model — e.g. Opus). You do **not** implement code, audit code, or commit code — those are sub-agent jobs. You **decide**, **route**, **loop**, **report**. The one git action you DO perform yourself is `git push` (Step 5.4b) — because the push authorization lives in your main session and does not transfer to sub-agents.
+You are running as the user's interactive session (typically your most capable model — e.g. Opus). You do **not** implement code, audit code, or commit code — those are sub-agent jobs. You **decide**, **route**, **loop**, **report**. The one git action you DO perform yourself is `git push` (Step 5.4b) — because the push authorization lives in your main session and does not transfer to sub-agents. In `branch-local` publish mode (Phase 4) you perform no git action at all: the pipeline commits but never publishes.
 
 ## Input
 
@@ -19,6 +19,7 @@ Flags:
 - `--from <step-id>` — start at a specific step id (e.g. `3b1`), treating earlier steps as already done
 - `--integrate <orch-id>...` — **not a build run.** Skip the whole pipeline and run the supervised **Integration mode** merge queue (below): bring the listed parallel run-branches onto `main`, one at a time, each merge prompting once. Run once from a clone on `main` after all parallel builds finish. Mutually exclusive with a plan path.
 - `--sync-docs` — after the pipeline completes, run `documentation-manager` to sync `README` / `docs/` for the whole feature and push a final `docs:` commit (Phase 7, step 5). Off by default; even when set it only acts if the changed files actually touched documented surface (public API, CLI, setup, architecture, a user-facing feature).
+- `--publish push | branch-local` — **where the pipeline's commits end up.** `push` (default) is today's behavior: every step commit is pushed to `origin/<TARGET_BRANCH>`. `branch-local` commits exactly the same way but **never runs `git push`** — the work stays on the local branch and publishing is a separate human act (open a PR, review, merge). Resolved in Phase 4; see the publish-mode rule there.
 
 ## Phase 0: Resolve mode + plan
 
@@ -94,7 +95,23 @@ Substitute the **literal** branch name into every command below wherever `<TARGE
 - **On `main` (the single-run default) everything below is byte-for-byte today's behavior.** On an `orch-<id>` branch (a parallel run — see [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md)) per-step work pushes to `origin/<TARGET_BRANCH>`; the results are brought onto `main` later by the supervised **Integration mode** (`--integrate`, below).
 - **Build-log slug:** for the OS-global `/tmp` build-log path (shared even across separate clones), use `TARGET_SLUG` = `<TARGET_BRANCH>` with every `/` replaced by `-`. The runbook mandates `orch-<id>` (no slash), but this keeps a single run on a slashy branch like `feat/x` safe.
 
+**Resolve `PUBLISH_MODE` (does this pipeline push at all?):**
+
+Not every repo lets a pipeline push. In a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review) a push to the run branch is not merely undesirable — it is **rejected server-side**, so a hardcoded push turns the last step of an otherwise successful run into a failure. Resolve once, in this order (first match wins):
+
+1. **`--publish <mode>` passed** → use it. Explicit beats everything.
+2. **Project declares a default** — a `**Orchestrate publish:** branch-local` (or `push`) line under `CLAUDE.md` → *Git Workflow*. Read it if present.
+3. **Neither** → `push`. This is today's behavior, so an existing project that upgrades notices nothing.
+
+**The rule, once resolved:** in `branch-local` mode **every** `git push origin "<TARGET_BRANCH>"` in this document — Step 5.4b, Phase 7 steps 2b / 4b / 5, and any other — is a **silent no-op**. Nothing else changes: the committer still commits, worktrees still merge `--ff-only` onto the run branch, gates still gate. Only publication is withheld. Do not "helpfully" push anyway because the run went well, and do not substitute a different remote-mutating command for the skipped push.
+
+- **`branch-local` + `--integrate` is a contradiction** — Integration mode exists to publish parallel run branches and merge them onto `main`. If both are in play, STOP and tell the user: *"`--integrate` is a publish operation; it can't run under `branch-local`. Merge locally and open a PR instead."*
+- **`branch-local` + a parallel `orch-<id>` run:** the `chore: workflow-state` commits (Phase 7 steps 2b / 4b) still happen — they must, or the moved plan + run-log would be lost — they just aren't pushed. Note in the summary that the branch has to reach `main` by some other route.
+- **Push rejected while in `push` mode** (`pre-receive`/`protected branch`/`GH006`-class rejection) → this project is PR-gated and mode 3's default guessed wrong. Do **not** retry, and **never** escalate to `--force` (denied in `settings.json` regardless). Switch to `branch-local` for the remainder of the run, log it once, and say so in the final summary: *"push rejected — `<branch>` looks protected; continuing branch-local. Declare `**Orchestrate publish:** branch-local` in CLAUDE.md to skip this next time."* A protected branch is a **project fact, not a run failure** — the commits are safe locally, so degrade gracefully rather than aborting a pipeline that did its job.
+
 **Capture the upstream SHA:**
+
+> `branch-local` still fetches — the SHA is informational and a stale upstream is worth knowing about either way. Only the *push* is suppressed.
 
 ```bash
 git fetch origin "<TARGET_BRANCH>"
@@ -344,15 +361,20 @@ Run from the commit's working directory (flat mode: the main checkout; umbrella 
 # what was committed (== what the server checks out). `git stash push -u` both resets tracked
 # files to HEAD and removes untracked ones, reproducing the committed tree. (-u, not -a: ignored
 # files stay — see the limit note above.)
-git stash push -u -m "orchestrate-clean-build-<step_id>"   # no-op + harmless if tree already clean
+# Scope the marker by the step's commit SHA, not just the step id: a crashed earlier attempt at
+# THIS step may have deliberately left its stash intact (see restore-failure safety below), and a
+# step-id-only marker would match that stale entry on the retry. HEAD here is the commit the
+# committer just made in 5.4a, so it is unique per attempt.
+MARKER="orchestrate-clean-build-<step_id>-$(git rev-parse --short HEAD)"
+git stash push -u -m "$MARKER"   # no-op + harmless if tree already clean
 
-# Capture the EXACT stash ref we just created, by SHA — NOT by message and NOT a later bare
-# `git stash pop` (which pops stash@{0}). If the push was a no-op (clean tree), stash@{0} is
-# unchanged, so guard on whether the top stash is actually ours before recording the SHA.
-STASH_SHA=""
-if git stash list -n 1 --format='%gs' | grep -q "orchestrate-clean-build-<step_id>"; then
-  STASH_SHA="$(git rev-parse stash@{0})"
-fi
+# Capture the EXACT stash ref we just created, by SHA — NOT by message alone and NOT a later bare
+# `git stash pop` (which pops stash@{0}). Resolve it by searching the WHOLE list for our marker,
+# never by assuming stash@{0} is ours — two ways it is not: (a) a no-op push on an already-clean
+# tree leaves the previous top in place, (b) `refs/stash` is shared with every worktree of this
+# repo, so anything else operating on it can land an entry on top between our push and this read.
+# An empty STASH_SHA here means "we stashed nothing", which the restore below correctly skips.
+STASH_SHA="$(git stash list --format='%H %gs' | awk -v m="$MARKER" 'index($0, m) {print $1; exit}')"
 
 # Validate the bare commit. <VALIDATION_CMD> is the command resolved above (the plan's
 # VALIDATION COMMANDS, else the stack-detected build/test command). For the optional
@@ -376,11 +398,13 @@ fi
 | `BUILD_RC != 0`                        | Mark step `blocked`. The commit builds only because uncommitted working-tree files are present — it is NOT self-contained and **will break the server's clean-checkout build**. Do NOT push. Escalate to the user (Phase 6) with: (a) the failing build output (`/tmp/orchestrate-build-<TARGET_SLUG>-<step_id>.log`), (b) the list of files that were stashed (`git stash show -u "$STASH_SHA" --stat`, captured before the restore), and (c) the likely diagnosis — a committed generated artifact whose source files were left untracked/unstaged outside the plan scope. The fix is usually to commit those stray sources (or rebuild the artifact without them); both are user decisions. STOP. |
 | (no validation command resolved) | Gate skipped — logged above. Proceed to 5.4b push. The commit was not clean-build-verified; acceptable for a project with no build step, but recorded so it is not mistaken for a verified pass.                                                                                                                                                                                                                                                                                                              |
 
-**Restore-failure safety:** if `git stash apply` reports a conflict (the build wrote files that now collide with the stash), do NOT force it and do NOT `git stash drop` — the apply failed, so dropping would destroy the only copy. Leave the stash intact (`git stash list` shows our `orchestrate-clean-build-<step_id>` entry; its SHA is `$STASH_SHA`), surface the conflict to the user verbatim, and STOP — the user resolves the working tree manually. Never `git checkout`/`reset` to clear the conflict; that can destroy the user's stray work (and both are denied in settings anyway).
+**Restore-failure safety:** if `git stash apply` reports a conflict (the build wrote files that now collide with the stash), do NOT force it and do NOT `git stash drop` — the apply failed, so dropping would destroy the only copy. Leave the stash intact (`git stash list` shows our `orchestrate-clean-build-<step_id>-<short-sha>` entry; its SHA is `$STASH_SHA`), surface the conflict to the user verbatim, and STOP — the user resolves the working tree manually. Never `git checkout`/`reset` to clear the conflict; that can destroy the user's stray work (and both are denied in settings anyway).
 
 > **Why a stash and not a fresh worktree:** in flat mode there is no isolated checkout, so `stash -u` is the cheapest way to reproduce "only the commit, nothing else." In umbrella mode the worktree is usually already clean after the commit, so the stash is a no-op (`git stash` reports "No local changes to save") and the build simply runs on the committed branch — the gate still adds value by catching a stray untracked file the executor left behind in the worktree. The gate is identical in both modes; only the working directory differs.
 
 **5.4b — Reconcile + push (orchestrator, main session).** The push must originate from the main session where the user's authorization lives — do NOT spawn a sub-agent for it.
+
+> **`PUBLISH_MODE == branch-local` (Phase 4):** skip every `git push` in this step. In umbrella mode still run the `git merge --ff-only` — the step branch must land on the run branch either way; only publication is withheld.
 
 **Flat mode (atomic plan):** the committer already committed directly on the current branch `<TARGET_BRANCH>` in the main checkout. There is nothing to merge. Just push:
 
@@ -560,6 +584,7 @@ Blockers escalated: <count, with brief notes>
 Total wall time: <hh:mm:ss>
 
 Plans + run-log moved to .agents/plans/done/.
+Publish: <pushed to origin/<TARGET_BRANCH> / branch-local — <N> commit(s) on <TARGET_BRANCH>, NOT pushed; publish it yourself (/push, or your project PR command) / branch-local after push was rejected (<branch> protected)>
 Merged step branches you may delete: <the `! git branch -D …` line from step 4, or "none">
 Docs: <synced in commit <sha> / already in sync / skipped — no documented surface changed / not requested — pass --sync-docs (this run touched <documented surface>) >
 Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commit / clean run, nothing to reflect on>
