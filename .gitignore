@@ -34,6 +34,16 @@ Thumbs.db
 # Guard against accidental copy of ~/.claude/projects/ (transcripts + auto-memory) into repo
 **/.claude/projects/
 
+# ============================================================
+# Per-developer memory — committed as .example, filled in locally
+# ============================================================
+# Each developer copies user-profile.md.example -> user-profile.md and describes how THEY
+# work. Committing it would push one person's preferences into everyone else's checkout.
+# One-time untrack when adopting this rule in a repo that already tracked the file:
+#   git rm --cached .agents/memory/user-profile.md
+# (the working copy survives and becomes that developer's local profile)
+.agents/memory/user-profile.md
+
 # Local AI deployment-context note (starter context for fresh AI windows, not shipped content)
 AI_DEPLOYMENT_CONTEXT.md
 
@@ -124,6 +134,14 @@ captures/
 .packages
 .pub-cache/
 .pub/
+
+# ============================================================
+# QA / browser-automation evidence — point-in-time, never repo history
+# ============================================================
+# Screenshots, traces and network dumps written by Playwright MCP during /test-e2e
+# and QA runs. Keep the path in sync with .claude/qa-env.json -> artifacts_dir;
+# .claude/lib/qa-probe.sh warns when the two disagree.
+.playwright-mcp/
 
 # ============================================================
 # Logs & temp

@@ -1,0 +1,11 @@
+{
+  "_doc": "Scope + thresholds for the PostToolUse comment-noise nudge (.claude/hooks/guard-comments.sh). `src_globs` are matched against the repo-relative path with shell `case` globbing, where `*` spans `/` too — so `src/*` covers `src/lib/deep/file.ts`. STARTER DEFAULT: `src_globs` is empty, so the hook is installed but fully silent. Copy entries from `_examples` and adapt them to your layout to switch it on. Tests, stories, generated files (`@generated` / `DO NOT EDIT`) and vendored trees are always exempt, whatever the globs say. The nudge never blocks — it appends a re-read instruction after the write.",
+  "_examples": ["src/*", "lib/*", "app/*", "apps/*", "libs/*", "packages/*", "internal/*", "cmd/*"],
+  "src_globs": [],
+
+  "_min_comment_lines_doc": "Floor: writes with this many comment lines or fewer never nudge, whatever the ratio. Spares a single legitimate 1-2 line why-comment in a small edit.",
+  "min_comment_lines": 3,
+
+  "_max_comment_percent_doc": "Comment lines as a percentage of non-blank written lines. Set it to YOUR codebase's CURRENT density, not to an aspiration — then the nudge marks 'this write is worse than what already exists' instead of enforcing a new ideal nobody has met. Measure it once per language, e.g.: rg -c '^\\s*//' --glob 'src/**/*.ts' | awk -F: '{c+=$2} END {print c}' against the same glob's non-blank line count.",
+  "max_comment_percent": 15
+}

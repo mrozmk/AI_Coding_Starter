@@ -33,6 +33,7 @@
       "Bash(git worktree list:*)",
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
+      "Bash(bash .claude/lib/qa-probe.sh)",
       "WebFetch(domain:*)",
       "mcp__atlassian__*"
     ],
@@ -169,6 +170,15 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-comments.sh\""
+          }
+        ]
+      },
       {
         "matcher": "Read",
         "hooks": [
