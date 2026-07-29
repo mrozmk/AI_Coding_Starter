@@ -225,7 +225,7 @@ If 1.5d applied nothing (clean review, or all findings dropped/fundamental) → 
 
 ## Step 2 — Memory reflection
 
-Unlike `/orchestrate`, this loop ran in your own context — you saw first-hand what `/code-review` fixed and how many iterations the gate took. That is high-quality reflection material, so run the **Memory Reflection Protocol** in [.agents/memory/index.md](../../.agents/memory/index.md) over this run **before** writing the final report, so the report's `Memory:` line states what actually happened.
+Unlike `/orchestrate`, this loop ran in your own context — you saw first-hand what `/code-review` fixed and how many iterations the gate took. That is high-quality reflection material, so read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** over this run **before** writing the final report, so the report's `Memory:` line states what actually happened.
 
 Apply its bar strictly — **the default is to save nothing.** A clean loop (no real bugs, gate approved first try) almost never produces a memory-worthy lesson; do not invent one to justify the step. Save only when the run surfaced something a fresh Claude would get wrong without the note:
 - a **non-obvious bug** `/code-review` had to fix (root-cause, not a typo) → `errors.md`

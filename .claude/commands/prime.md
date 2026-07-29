@@ -94,6 +94,7 @@ Branch sync (ahead/behind origin):
 
 - `.agents/sources/` — raw inputs for `/setup:create-PRD` and `/prime-ba`, never loaded by engineering `/prime`.
 - `.agents/memory/archive/` — historical pruned entries (created by `/maintain:cleanup-workflow` Phase 2). **Never auto-loaded.** Read on demand only when investigating past decisions.
+- `.agents/memory/reflection-protocol.md` — write-time material (the save-or-not bar, entry formats, domain template). Loaded by the reflection callers at the end of a run, **never** by `/prime` in either mode.
 - `README.md` — typically duplicates brief; load on demand if needed.
 - Subdirectory `README.md` files — on-demand only.
 
