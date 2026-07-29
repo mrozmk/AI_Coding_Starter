@@ -35,7 +35,9 @@ Use this table to decide which memory files to load. **Skip any file whose front
 | Touching API integration / external protocol | `api.md` |
 | Working on a specific module | `domain/{module}.md` |
 | Working on payments / billing / pricing | `domain/business-model.md` |
+| Verifying acceptance criteria against a running system | `.agents/reference/qa-evidence-families.md` (or run `/prime-qa`, which loads it) |
 | Adding to existing patterns / introducing new one | `patterns.md`, `decisions.md` |
+| **Writing** to memory — end of a completed unit of work, or creating a `domain/` file | [`reflection-protocol.md`](reflection-protocol.md) (never loaded by `/prime`) |
 
 > **Project-specific rows** are appended here by `/setup:create-CLAUDE_MD` once detected (e.g. AI layer → specific domain files, i18n module → its own row). Keep them in this table, not in `CLAUDE.md`.
 
@@ -62,6 +64,28 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 
 **Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
 
+---
+
+## Output-Discipline Convention — every shaping rule states when it yields
+
+A rule that constrains the **shape** of output — a length cap, an item limit, "one X per Y", a mandatory section, a fixed report skeleton — **MUST** carry the condition under which it yields. Write the yield in the same breath as the rule, not in a distant caveat.
+
+- ❌ `Cap the report at 8 lines.`
+- ✅ `Cap the report at 8 lines — unless a blocker needs its reproduction steps, which are never compressed.`
+
+**Why.** A shaping rule with no stated exception fails in both directions, and both failures are silent. Either the agent obeys it where it does damage (truncating the third of five real findings to respect a limit of five), or it quietly breaks the rule and nothing records that a judgment call was made. An explicit yield turns a violation into a **decision the reader can see and overrule**.
+
+**This applies to shaping rules only — not to guardrails.** A rule that protects correctness, safety, or the command's identity is meant to be absolute and must stay that way: *"never split without asking"*, *"never lower the test requirement"*, *"never write code during `/analysis`"*, *"do NOT use `--force`"*. Do not weaken a guardrail by bolting an escape hatch onto it. If you cannot tell which kind you are writing, ask: *would a reasonable exception ever make the output better, or only more convenient?* Only the first kind gets a yield.
+
+**Two output surfaces, different rules.** Commands write for two readers, and a rule tuned for one can damage the other:
+
+| Surface | Reader | Optimize for |
+|---|---|---|
+| **Artifacts** (`specs/*.md`, `plans/*.md`, memory files) | An **agent**, later, in a fresh context window | Density, completeness, `file:line` anchors. Length caps here exist for attention budget, not for readability |
+| **Terminal reports** (what the command prints when it finishes) | A **human**, now | Scannability, the state, one concrete next step |
+
+Never import a terminal-report rule ("cap the list", "lead with the action") into an artifact template — a truncated plan is a broken plan.
+
 **Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content from `/maintain:cleanup-workflow` Phase 2: **entries** cut by Section 2A (`archive/<file>-YYYY-MM-DD.md`) and whole **files** archived by Section 2B (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
 
 ---
@@ -79,66 +103,13 @@ Do NOT duplicate what's already in [CLAUDE.md](../../CLAUDE.md).
 
 ---
 
-## Memory Reflection Protocol
+## Memory Reflection Protocol → [reflection-protocol.md](reflection-protocol.md)
 
-The **memory-reflection pass** is this project's automatic memory-capture mechanism. (There is no `/remember` command — it was removed. Manual capture still works: ask Claude to save it to memory — in the project's communication language (CLAUDE.md → Language Rules) — and follow the routing in Quick Reference above.)
+The reflection pass (when it runs, the save-or-not bar, the entry formats) and the **domain-file template** live in [reflection-protocol.md](reflection-protocol.md) — **not here**.
 
-It runs at the end of a **completed unit of work**, never mid-task:
+Read that file when you are about to **write** memory: at the end of a completed unit of work (`/execute`, `/check-implementation`, `/orchestrate` Phase 7), or when a `domain/{module}.md` file needs creating. Every other session never loads it.
 
-| Caller | When | Source it reflects on |
-|--------|------|-----------------------|
-| [`/orchestrate`](../../.claude/commands/orchestrate.md) | Phase 7, **friction-gated** — only when the run-log shows a step needed >1 fix iteration, an escalated blocker the user resolved via guidance, or a designer mega-fix. A clean run (everything passed first try) learns nothing → skip. | the durable run-log |
-| [`/check-implementation`](../../.claude/commands/check-implementation.md) | after the final report | the loop's first-hand context — bugs `/code-review` fixed, gate iterations |
-| [`/execute`](../../.claude/commands/execute.md) | after moving the plan to `done/`, **only if no `/check-implementation` or `/orchestrate` follows** (else those reflect instead) | what was just implemented |
-
-### The bar — precision over recall
-
-**Bloated memory is worse than no memory.** Save **only** if a fresh Claude would get it **wrong** without the note. **The default outcome is to save nothing.**
-
-Do NOT save:
-- routine edits, or anything visible by reading the code, git history, or `CLAUDE.md`
-- "the feature works now" / a restatement of the plan
-- a lesson with no actionable takeaway
-- **anything already captured** — before appending, scan the target file's latest entries; if the lesson is already there (e.g. an earlier caller in the same flow saved it), add nothing. This is the de-dup guard for flows with two reflection points (`/execute` → `/check-implementation`).
-
-Save when — and only when — the run produced one of:
-
-| Discovery | Target file |
-|-----------|-------------|
-| Non-obvious bug root-cause + fix | `errors.md` |
-| Undocumented API / protocol quirk | `api.md` |
-| Deliberate X-over-Y decision + rationale | `decisions.md` |
-| Reusable project-specific pattern | `patterns.md` |
-| Knowledge specific to one module | `domain/{module}.md` |
-
-If unsure between two files, pick the most specific. If a `domain/` file doesn't exist yet, create it from the template above.
-
-### Format — append newest-first, never reformat existing entries
-
-**errors.md / api.md / patterns.md / domain/{module}.md:**
-
-```markdown
-## [YYYY-MM-DD] {Short title}
-
-{What happened or was discovered}
-
-**Rule:** {Actionable takeaway — what to do or avoid next time}
-```
-
-**decisions.md:**
-
-```markdown
-## [YYYY-MM-DD] {Decision title}
-
-**Chosen:** {what was chosen}
-**Rejected:** {alternatives considered}
-**Why:** {rationale}
-**Consequences:** {what this affects going forward}
-```
-
-If a discovery is one of the project's most important "always check this" lessons, also add a one-liner to **Quick Reference** above (keep it ≤7 items).
-
-If nothing clears the bar — the common case — write nothing and report one line: `Nothing worth remembering from this run.`
+The one-line version, so a caller knows whether it is even worth opening: **the default outcome is to save nothing** — append only what a fresh Claude would otherwise get wrong, newest entry at the TOP, never duplicating what is already in the file.
 
 ---
 
@@ -156,34 +127,6 @@ When a regenerated file has `status: empty`, prefer falling back to its source (
 
 ---
 
-## Domain File Template
+## Domain File Template → [reflection-protocol.md](reflection-protocol.md#domain-file-template)
 
-When creating a file in `domain/` for a specific module or subsystem:
-
-```markdown
----
-status: populated
-description: {one-line — what this module does and why this memory exists}
----
-
-# Memory: {module_name}
-
-{One-line summary of what this module does}
-
-**Source:** `{path/to/module}`
-
----
-
-## Key Logic
-- {non-obvious rule 1}
-- {non-obvious rule 2}
-
-## External Contracts
-- {field / endpoint / config key} — {what it represents here}
-
-## Known Edge Cases
-- {scenario} → {behavior}
-
-## Related Decisions
-- See [../decisions.md](../decisions.md) entry: {date} — {title}
-```
+Creating `domain/{module}.md` is a memory **write**, so its template lives with the other write-time material in [reflection-protocol.md](reflection-protocol.md#domain-file-template). After creating one, add its row to the `When to Read` table above.

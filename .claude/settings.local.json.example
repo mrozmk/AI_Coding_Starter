@@ -1,0 +1,16 @@
+{
+  "_comment": [
+    "Per-developer local overrides. Copy to .claude/settings.local.json (gitignored) and edit.",
+    "Never commit the real file — it carries machine-specific paths and personal allow rules.",
+    "Project-wide rules belong in .claude/settings.json instead, so the whole team gets them."
+  ],
+  "env": {
+    "JIRA_DEFAULT_PROJECT": "REPLACE-WITH-PROJECT-KEY",
+    "JIRA_DEFAULT_COMPONENTS": "",
+    "JIRA_DEFAULT_LABELS": "from-claude"
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "atlassian"
+  ]
+}

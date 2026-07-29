@@ -83,7 +83,7 @@ Adapt to the size of the question, but keep the order:
 2. **Scope of investigation** — the files and layers you actually inspected, as markdown links. Gives the user a handle to disagree ("you missed X").
 3. **Findings** — facts and observations, each tied to a concrete code reference (`path:line`). Keep findings and opinions separated.
 4. **Options considered** — 2–4 alternatives where relevant. This is the comparison the user came for; make it scannable, not prose:
-   - Give **each option a short paragraph** (what it does, how it fits the existing architecture) followed by an explicit **➕ / ➖ list** — pros **and** cons, never pros-only. One line per point.
+   - Give **each option a short paragraph** (what it does, how it fits the existing architecture) followed by an explicit **➕ / ➖ list** — pros **and** cons, never pros-only. One line per point — *yields when a single point carries the decision*: a trade-off the whole choice hinges on gets the sentences it needs rather than being compressed into a line that the reader cannot act on. The "pros **and** cons" half does **not** yield — a pros-only option list is advocacy, not analysis.
    - Close the section with **one comparison table** summarizing all options across the dimensions that matter for *this* decision. Pick the rows that are actually load-bearing — typical ones: Complexity, Risk, Reversibility, Effort, plus a final **Verdict** row (e.g. ✅ now / later / no). Don't pad the table with rows that don't discriminate between the options.
    - Use traffic-light glyphs (🟢 🟡 🔴) for at-a-glance rows like Risk where they aid scanning.
 

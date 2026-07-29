@@ -1,0 +1,36 @@
+{
+  "_doc": "QA environment description, read by .claude/lib/qa-probe.sh (which /prime-qa injects at command load). STARTER DEFAULT: `base_url` and `local_url` are empty, so the probe reports 'not configured' and /prime-qa still loads the QA context — it just cannot resolve a BASE_URL. Fill this in per project. Nothing here is secret: it is hosts and commands, never credentials. Credentials stay in .env, which the probe only stats (size + mtime), never reads.",
+
+  "_base_url_doc": "Candidate DEPLOYED host QA verifies against, no trailing slash. Empty => skip deployed probing and go straight to local.",
+  "base_url": "",
+
+  "_probe_paths_doc": "Paths appended to base_url that must ALL be reachable for the deployed host to be chosen. Name the routes QA actually needs (the app entry point, a component workbench, an API health route) — not just '/', or a half-deployed host reads as healthy.",
+  "probe_paths": ["/"],
+
+  "_local_url_doc": "Local fallback root, used when the deployed host is unreachable or a probe path fails. Empty => no fallback, and the probe says so instead of inventing one.",
+  "local_url": "",
+
+  "_local_serve_command_doc": "How a QA session starts the app itself when it falls back to local. Printed for the tester; the probe never runs it.",
+  "local_serve_command": "",
+
+  "_local_serve_command_alt_port_doc": "Same, for a SECOND concurrent QA session — the first already holds the default port. Leave empty if parallel local sessions are not a thing here.",
+  "local_serve_command_alt_port": "",
+
+  "_build_sha_url_doc": "Optional URL returning the DEPLOYED build's commit SHA (a build-info endpoint, or an HTML page carrying <meta name=\"build-sha\">). Used to detect a deployed build lagging local HEAD. Empty => the probe stamps 'skew not verified' rather than fabricating an endpoint — an unverified skew must never read as a verified match.",
+  "build_sha_url": "",
+
+  "_artifacts_dir_doc": "Where QA persists screenshots / traces. Must be gitignored — QA evidence is point-in-time, not repo history. The probe warns if it is not.",
+  "artifacts_dir": ".playwright-mcp",
+
+  "_env_file_doc": "Credentials file whose PRESENCE (never contents) is part of the preflight.",
+  "env_file": ".env",
+
+  "_browser_mcp_process_pattern_doc": "pgrep pattern counting browser-automation MCP servers already running on this machine — information about parallel QA sessions, not a gate.",
+  "browser_mcp_process_pattern": "@playwright/mcp",
+
+  "_mcp_config_file_doc": "MCP config checked for the flag that makes concurrent browser sessions safe.",
+  "mcp_config_file": ".mcp.json",
+
+  "_parallel_safe_flag_doc": "The flag that isolates each browser session's profile (Playwright MCP: --isolated). Without it a second concurrent QA session collides with the first.",
+  "parallel_safe_flag": "--isolated"
+}

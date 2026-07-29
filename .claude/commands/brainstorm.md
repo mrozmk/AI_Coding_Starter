@@ -33,7 +33,12 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 2. **User referenced a Jira issue** (the prompt names a `[A-Z]+-\d+` key, or pasted an issue's description / acceptance criteria) → the topic is that issue. Use its summary + AC as the topic. Skip backlog resolution.
 3. **`$ARGUMENTS` is empty AND no Jira reference** → **resolve the next free task from `.agents/backlog.md`** (the default path):
 
-   **a. No backlog?** If `.agents/backlog.md` does not exist or is empty → there is nothing to resolve. STOP and ask the user: *"No topic given and no `.agents/backlog.md` to pull from. Tell me what to design, or run `/setup:create-backlog` first."* Do not invent a topic.
+   **a. No backlog?** If `.agents/backlog.md` does not exist or is empty, the file backlog is not this project's backlog — check for an **issue tracker** before giving up. A tracker counts as configured when a tracker skill is present (e.g. `.claude/skills/jira/SKILL.md`) **or** `.mcp.json` declares a tracker MCP server.
+
+   - **Tracker configured** → ask the user which issue to design, offering to pull candidates: *"No topic given and no `.agents/backlog.md`. This project's backlog looks like `<tracker>` — want me to fetch your open issues to pick from, or tell me the issue key?"* If they accept, query the tracker for issues assigned to them / in the current sprint, present the candidates, and let them choose. Once chosen, treat it exactly like path 2 (topic = issue summary + AC) and skip (b)–(d) — the DAG logic below is backlog-file-specific and does not apply to tracker issues.
+   - **No tracker either** → there is nothing to resolve. STOP and ask the user: *"No topic given, no `.agents/backlog.md`, no issue tracker configured. Tell me what to design, or run `/setup:create-backlog` first."* Do not invent a topic.
+
+   Never tell a tracker-driven project to run `/setup:create-backlog` — it already has a backlog, just not as a file.
 
    **b. Find the next free task.** A task is **free** (eligible to start) when **all** hold:
    - its `Status` is `TODO` (not `WIP`, `DONE`, or `BLOCKED`), **and**
@@ -62,6 +67,30 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 
 Note the current architecture, patterns in use, and any prior decisions (from already-primed memory) that affect this feature.
 
+### Step 1.5: Scope Gate — readiness + appetite
+
+Context is loaded, so you can now judge **size** — do this *before* designing, because a design produced for a topic that is secretly three features bakes the scope creep in, and neither Step 6's self-review nor `/plan-feature` will pull it back out.
+
+**a. Readiness check (mini-INVEST).** Not the full six criteria — the three that actually save the AI flow:
+
+- **Independent** — designable without waiting on another unbuilt piece (or the dependency is explicit and already satisfied).
+- **Small** — closeable in *one* `/brainstorm → spec → /plan-feature` cycle. If it's three unrelated things ("login + password reset + 2FA"), it is not one topic.
+- **Testable** — there is a concrete "done" criterion, so the agent knows when to stop.
+
+This guards **scope creep**, the concrete failure mode of AI agents — given "Auth", an agent will happily design login + reset + 2FA + OAuth + audit log in one pass because "it all fits Auth". (Bill Wake's INVEST, used here as a per-topic entry gate, not a team Definition of Ready.)
+
+If the topic **fails Small** → say so and propose a split into 2–3 sequenced topics, recommending which one to design *now*. Follow Step 2's decide-vs-ask rule: the split itself is a directional call, so put it to the user rather than silently designing a slice they didn't pick. If it fails **Testable** → state the done-criterion you're assuming and carry it into the spec.
+
+**b. Appetite + cut-lines (bounded scope).** Decide these yourself from the topic and context; surface them in Step 4 as assumptions the user can correct:
+
+- **Appetite** — how much this topic is *worth* (not "how long it takes" — that's an estimate; appetite is the budget you're willing to spend). Coarse: e.g. "small — it's a foundation, not a differentiator".
+- **No-go (now)** — what you deliberately exclude for now. Feeds the spec's `## Out of Scope`.
+- **Cut first** — what gets dropped *first* if the work turns out too big, in priority order.
+
+Where the readiness check guards size *on entry*, appetite/cut-lines guard size *during the work*. An AI agent has no innate "that's enough — we shipped 80% of the value" instinct; it will polish forever or pile on edge cases nobody asked for. The cut-line is an explicit hand-brake: "if this grows, drop X first, then Y." (Basecamp's Shape Up — "fixed time, variable scope": work must be *bounded*, with explicit exclusions and a cut order.)
+
+> **Already have a work package?** When the topic came from a `.agents/backlog.md` work package (Step 0 path 3), that WP already carries a readiness check and an appetite/cut-first block — **reuse them, do not re-derive**. Only re-run this step if the design work reveals the WP's framing was wrong, and say so if it does.
+
 ### Step 2: Resolve What You Can; Ask Only About Directional Decisions
 
 **Default to deciding, not asking.** The user wants few questions, each high-value. Most "clarifications" are things you can settle yourself — resolve them from the codebase, memory, and your own recommendation, then state the assumption you made and move on. Reserve questions for the small set that genuinely needs the user.
@@ -78,7 +107,7 @@ The **why** (WHY-GATE) is the standing exception — always allowed even if it d
 
 **Mechanics when you DO ask:**
 
-- **One question per message** — never stack questions. Prefer multiple choice (use `AskUserQuestion`).
+- **One round of questions, not a serial interrogation** — prefer multiple choice (use `AskUserQuestion`). **Yields when the forks are independent:** `AskUserQuestion` takes up to 4 questions in a single call, and 2–3 genuinely independent directional forks belong in **one** call — that is one interruption instead of three, and the user sees the whole decision surface at once. What this rule forbids is a *wall of prose questions* and *ping-pong* — asking, waiting, asking again about something you could have raised in the same breath. If a later answer would change how you phrase an earlier question, they are dependent: ask the first one alone.
 - **Lead with your recommendation** — "I'd go with X because Y; the alternative Z would mean … — which direction?" A directional question still carries your pick; you're asking to confirm the *fork*, not to offload the decision.
 - Stop asking the moment you have enough to choose an approach. There is **no minimum** number of questions — zero is the right count for a feature with no real fork.
 
@@ -111,6 +140,7 @@ Once you understand what to build, present the complete design **in one pass** �
 - **Edge cases and error handling** — what can go wrong
 - **External integrations** — if the feature calls an external API/service, cite the relevant file in `.agents/reference/` (if one exists); otherwise flag that a reference doc should be added before implementation
 - **Assumptions** — list every default you resolved yourself in Step 2 as "Assumed X (because Y)". This is where the user catches a wrong call without you having had to ask up front.
+- **Appetite & cut lines** — the appetite, no-go, and cut-first order from Step 1.5, in three short lines. State them as calls the user can overrule; a wrong appetite is cheapest to correct here, before any planning happens.
 
 Present it, then proceed to write the spec (Step 5). Do **not** wait for per-section approval and do **not** wait for whole-design approval — there is no approval gate. The user sees the full design here and the saved spec at Step 7, and can interject at either point, but you keep moving on your own recommendation. If, while presenting, you hit a genuine **directional** fork you missed in Step 2, ask it (per Step 2 rules); otherwise keep going.
 
@@ -164,7 +194,14 @@ Create `.agents/specs/` if it doesn't exist.
 
 ## Out of Scope
 
-<What this explicitly does NOT do>
+<What this explicitly does NOT do — the "No-go (now)" from the scope gate>
+
+## Appetite & Cut Lines
+
+- **Appetite:** <how much this is worth — a budget, not an estimate>
+- **Cut first:** <what gets dropped first if this grows too big, in priority order>
+
+<Read by `/plan-feature` when sizing, and by `/orchestrate` when a step overruns — it is the standing answer to "what do we drop?", so it must survive into the plan.>
 
 ## Open Questions
 

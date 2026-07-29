@@ -33,7 +33,7 @@ done
 # so $missing doubles as the install list.
 echo "⚠️  Workflow preflight: missing required tool(s) on PATH:$missing"
 echo "   Impact:"
-case "$missing" in *jq*)  echo "   - jq: memory-distillation guard, audit log and read telemetry silently no-op (those hooks fail open)." ;; esac
+case "$missing" in *jq*)  echo "   - jq: memory-distillation guard, comment-noise nudge, audit log, read telemetry and the QA environment probe silently no-op (all fail open)." ;; esac
 case "$missing" in *git*) echo "   - git: /commit, /push, /pull, /release and every git-based hook are unavailable." ;; esac
 echo "   Install — macOS: brew install$missing · Debian/Ubuntu: sudo apt install$missing · then restart the session."
 exit 0

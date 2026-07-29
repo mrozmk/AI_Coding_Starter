@@ -116,6 +116,14 @@ Ask the user which git workflow the project follows (use `AskUserQuestion` if av
 
 Record the chosen workflow label AND the default branch name — both are needed when filling the `Default branch` slot in `CLAUDE.md`.
 
+**Then derive the `Orchestrate publish` slot from the same answer** — do not ask a second question, the workflow already implies it:
+
+- **GitFlow**, or any answer describing mandatory PR review / protected branches → `branch-local`. In these repos a pipeline push to the integration branch is rejected server-side, so `/orchestrate` must commit and stop.
+- **Trunk-based** / **Feature-branch off `main`** → `push`.
+- **Other / custom** → ask the one follow-up: *"Can an automated pipeline push directly to `<default-branch>`, or does everything go through a PR?"* PR-only → `branch-local`.
+
+State the derived value when you present the summary, so the user can correct a wrong inference cheaply.
+
 ### Identify Communication Language
 
 Ask the user which language Claude should use when talking to the developer (use `AskUserQuestion` if available). This fills the `{communication-language}` placeholder in the generated `CLAUDE.md` → `Language Rules`. It governs Claude↔dev communication and the default for user-facing prompts emitted by the shipped commands — **not** code, comments, or commit messages, which stay English regardless.
@@ -197,6 +205,7 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 - Fill in project-specific sections: `Project Overview`, `Tech Stack`, `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Testing`, `Validation`, `Notes`.
 - **LSP detection → `## Code Navigation` section (conditional).** If Phase 1 detected a symbol-level LSP wired into the toolchain (e.g. `typescript-language-server`, `gopls`, `rust-analyzer`, `intelephense`, `pyright` configured for this stack), add a `## Code Navigation (LSP)` section naming the available LSP tools (goToDefinition / findReferences / incomingCalls / hover) and when to prefer them over `rg`. The `nudge-lsp.sh` hook keys its CLAUDE.md pointer off the literal phrase `Code Navigation` — so a project **with** an LSP gets a live reference, and one **without** never gets a dead link. If no LSP is detected, omit the section entirely (do not stub it).
 - **Fill the `### Default branch` slot** inside `Git Workflow` with the workflow from Phase 1.
+- **Fill the `**Orchestrate publish:**` slot** in the same section with the value derived in Phase 1 (`push` / `branch-local`). Leave no `{push | branch-local}` placeholder in the output.
 - **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
 - **DO NOT remove or soften** these baseline sections — mandatory for every generated `CLAUDE.md`:
   - `Language Rules`

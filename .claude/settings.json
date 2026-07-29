@@ -33,6 +33,7 @@
       "Bash(git worktree list:*)",
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
+      "Bash(bash .claude/lib/qa-probe.sh)",
       "WebFetch(domain:*)",
       "mcp__atlassian__*"
     ],
@@ -72,6 +73,14 @@
       "Edit(**/*credentials*)",
       "Edit(**/*.pem)",
       "Edit(**/*.key)",
+      "Write(**/.env)",
+      "Write(**/.env.*)",
+      "Write(**/id_rsa*)",
+      "Write(**/id_ed25519*)",
+      "Write(**/*secret*)",
+      "Write(**/*credentials*)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
       "Bash(*ATATT*)",
       "Bash(*ghp_*)",
       "Bash(*github_pat_*)",
@@ -161,6 +170,15 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-comments.sh\""
+          }
+        ]
+      },
       {
         "matcher": "Read",
         "hooks": [
