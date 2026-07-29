@@ -62,6 +62,28 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 
 **Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
 
+---
+
+## Output-Discipline Convention — every shaping rule states when it yields
+
+A rule that constrains the **shape** of output — a length cap, an item limit, "one X per Y", a mandatory section, a fixed report skeleton — **MUST** carry the condition under which it yields. Write the yield in the same breath as the rule, not in a distant caveat.
+
+- ❌ `Cap the report at 8 lines.`
+- ✅ `Cap the report at 8 lines — unless a blocker needs its reproduction steps, which are never compressed.`
+
+**Why.** A shaping rule with no stated exception fails in both directions, and both failures are silent. Either the agent obeys it where it does damage (truncating the third of five real findings to respect a limit of five), or it quietly breaks the rule and nothing records that a judgment call was made. An explicit yield turns a violation into a **decision the reader can see and overrule**.
+
+**This applies to shaping rules only — not to guardrails.** A rule that protects correctness, safety, or the command's identity is meant to be absolute and must stay that way: *"never split without asking"*, *"never lower the test requirement"*, *"never write code during `/analysis`"*, *"do NOT use `--force`"*. Do not weaken a guardrail by bolting an escape hatch onto it. If you cannot tell which kind you are writing, ask: *would a reasonable exception ever make the output better, or only more convenient?* Only the first kind gets a yield.
+
+**Two output surfaces, different rules.** Commands write for two readers, and a rule tuned for one can damage the other:
+
+| Surface | Reader | Optimize for |
+|---|---|---|
+| **Artifacts** (`specs/*.md`, `plans/*.md`, memory files) | An **agent**, later, in a fresh context window | Density, completeness, `file:line` anchors. Length caps here exist for attention budget, not for readability |
+| **Terminal reports** (what the command prints when it finishes) | A **human**, now | Scannability, the state, one concrete next step |
+
+Never import a terminal-report rule ("cap the list", "lead with the action") into an artifact template — a truncated plan is a broken plan.
+
 **Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content from `/maintain:cleanup-workflow` Phase 2: **entries** cut by Section 2A (`archive/<file>-YYYY-MM-DD.md`) and whole **files** archived by Section 2B (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
 
 ---
