@@ -33,7 +33,7 @@ For each match:
 ### 1.2 Path refs in inline code — `` `<path>` ``
 
 ```bash
-rg -n --hidden '`([./][^`]+\.(md|json|toml|yaml|yml|py|ts|tsx|js|jsx))`' --glob '*.md'
+rg -n --hidden '`([./][^`]+\.(md|json|toml|yaml|yml|py|ts|tsx|mts|cts|js|jsx|mjs|cjs|sh))`' --glob '*.md'
 rg -n --hidden '`(\.agents/[^`]+)`'  --glob '*.md'
 rg -n --hidden '`(\.claude/[^`]+)`'  --glob '*.md'
 rg -n --hidden '`(docs/[^`]+)`'      --glob '*.md'
