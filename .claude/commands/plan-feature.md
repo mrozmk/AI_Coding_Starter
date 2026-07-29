@@ -15,8 +15,8 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
 2. External research if needed (Phase 2)
 3. Strategic thinking (Phase 3)
 4. Initial plan draft (Phase 4)
-5. **Size budget check + auto-split if over hard cap** (Phase 4.5 — MANDATORY)
-6. **Execution Plan section emission for umbrella plans** (Phase 4.6 — MANDATORY if multi-step)
+5. **Split decision — parallelism first, size second; never automatic** (Phase 4.5 — MANDATORY)
+6. **Execution Plan section emission for umbrella plans** (Phase 4.6 — only when Phase 4.5 produced an umbrella)
 7. **Critical self-audit with one self-critique loop** (Phase 5 — MANDATORY)
 8. **User-approved fix application in-place + post-fix size re-check** (Phase 6 — MANDATORY)
 9. **External cross-model review loop via codex** (Phase 7 — CONDITIONAL, auto-skips if `codex` is absent; when it runs, min 2 rounds mandatory, 3rd optional)
@@ -39,6 +39,7 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
    - Architecture, files, edge cases
    - **`External docs required`** field (`yes` / `no`)
    - **`External dependencies`** section (list of libs / APIs / services, if any)
+   - **`Appetite & Cut Lines`** section, if present — the appetite is a **budget on the plan's size**, not a nice-to-have note. A "small appetite" spec that yields a 12-step plan means the plan overshot the design's own bound: cut back to the appetite, or say explicitly why the appetite was wrong. Carry the **Cut first** order verbatim into the plan (see the plan template) so the executor and `/orchestrate` inherit a standing answer to "what do we drop?" instead of improvising one under pressure. Specs written before this section existed simply won't have it — proceed without it, don't STOP.
 3. If the spec is missing the `External docs required` field, STOP and tell the user: "Spec does not declare `External docs required`. Update the spec via `/brainstorm` or add the field manually, then rerun `/plan-feature`."
 4. **Backlog write-back (opt-in — skip silently if no backlog).** If `.agents/backlog.md` exists, find the work package this spec belongs to (match the spec's feature against the WP whose "Entry" names this spec, or whose task scope this spec covers). If found, set that work package's `Status` to `WIP` and write the spec path into the `Ref` column of its tasks. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Never create the backlog here; only update it when present.
 
@@ -128,21 +129,28 @@ Spec may leave some of these open — resolve them here.
 
 ## Phase 4: Plan Structure Generation — Initial Draft
 
-This produces the **first draft** of the plan. The plan is NOT final until Phase 4.5 (size budget) + Phase 5 (grilling) + Phase 6 (apply fixes) complete. Do not show the plan path to the user yet — they'll see it after Phase 6.
+This produces the **first draft** of the plan. The plan is NOT final until Phase 4.5 (split decision) + Phase 5 (grilling) + Phase 6 (apply fixes) complete. Do not show the plan path to the user yet — they'll see it after Phase 6.
 
 **Size budgeting awareness while drafting (read before writing):**
 
 Plans MUST fit within the effective attention window of the execution model. Even models with a large nominal context (e.g. 200K) have practical attention that degrades above ~50K input tokens. The executor must hold: plan + spec + memory files + CLAUDE.md + grep results + file contents being edited. That leaves ~30K tokens of safe headroom for the plan itself.
 
+> **Phase 4 produces exactly ONE file by default.** Multi-step work lives in that file as `## Step N` sections. Splitting into several files is a decision made in Phase 4.5 — it is **asked, never automatic** — because a split changes the plan's execution contract (worktrees, branches, per-step merges, or a multi-clone run), not just its formatting.
+
 **Per-file size budget** (enforced in Phase 4.5):
 
 | File type                                                          | Soft target (LOC) | Hard cap (LOC) | Soft (chars) | Hard (chars) | Why                                                                            |
 | ----------------------------------------------------------------- | ----------------- | -------------- | ------------ | ------------ | ------------------------------------------------------------------------------ |
-| **Umbrella / parent** (decisions + risk register + step map)      | 250               | 350            | 10 000       | 14 000       | Loaded by every sub-step as context — must stay lightweight                    |
-| **Sub-step (implementation)**                                     | 400               | 600            | 16 000       | 24 000       | Code snippets + tasks + DoD. High density but still readable in one pass       |
-| **Post-launch / monitoring step** (runbooks, alerts)              | 350               | 500            | 14 000       | 20 000       | Low density (mostly prose + procedure), does not need to be larger             |
+| **Single-file plan (the default shape)**                          | 600               | 1 200          | 36 000       | 72 000       | No split to gain from — the only limits are executor attention and grillability |
+| **Umbrella / parent** (decisions + risk register + step map)      | 250               | 350            | 15 000       | 21 000       | Loaded by every sub-step as context — must stay lightweight                    |
+| **Sub-step (implementation)**                                     | 400               | 600            | 24 000       | 36 000       | Code snippets + tasks + DoD. High density but still readable in one pass       |
+| **Post-launch / monitoring step** (runbooks, alerts)              | 350               | 500            | 21 000       | 30 000       | Low density (mostly prose + procedure), does not need to be larger             |
 
-While drafting, target the **soft cap**. Hard cap is the trigger for Phase 4.5 auto-split. Plans above hard cap will be split — don't fight it, just write them naturally and let Phase 4.5 do the work.
+> **Both axes assume ~60 chars/LOC** — measure your own plans and re-derive if your prose runs denser or looser. This ratio is load-bearing: at the 40 chars/LOC these caps used to assume, the char axis trips ~1.5× earlier than the LOC axis, so every dual-axis check silently collapses into a char check and the documented LOC caps become decorative. If you change one axis, change both.
+>
+> **Where the single-file hard cap comes from:** 1 200 LOC ≈ 72 000 chars ≈ ~18–20K tokens — about two-thirds of the ~30K headroom above, leaving room for the spec, memory, and the file contents the executor also holds. It is deliberately *not* set at the full 30K (~2 000 LOC): Phase 5 has to grill this file, and grilling quality degrades on a huge plan well before execution does.
+
+While drafting, target the **soft cap**. Crossing the hard cap does not split the plan by itself — it opens the Phase 4.5 question. Write the plan naturally and let Phase 4.5 decide with the user.
 
 **Create the plan with the following structure.** Sections marked `⟂ conditional` appear only when relevant.
 
@@ -153,6 +161,9 @@ The following plan should be complete, but it's important that you validate code
 
 **Source spec:** `.agents/specs/<spec-file>.md`
 **External docs required:** yes | no
+**Appetite:** <from the spec's Appetite & Cut Lines — omit this line and the next if the spec has none>
+**Cut first (if this overruns):** <the spec's cut order, verbatim>
+
 
 ## Feature Description
 
@@ -349,11 +360,16 @@ Execute every applicable command to ensure zero regressions and feature correctn
 
 ---
 
-## Phase 4.5: Size Budget Check + Auto-Split
+## Phase 4.5: Split Decision (parallelism first, size second)
 
 **Mandatory. Always runs after Phase 4. Before Phase 5.**
 
-After the Phase 4 draft, measure the size of every plan file created (umbrella + sub-steps if they already exist). Goal: guarantee that no file exceeds the hard cap before grilling starts — because a huge plan means a huge grilling pass, a huge Phase 6 edit, and a poor loop.
+After the Phase 4 draft, decide whether the plan ships as one file or several. Two questions, in this order — they are independent, and conflating them is how a plain plan ends up split for being a plain plan:
+
+- **Gate A — is there parallelism to harvest?** A *structural* question about the work. Asked first, **regardless of size**.
+- **Gate B — is the file too big to execute and grill well?** An *attention* question. Asked only when Gate A says no.
+
+> **What a split actually buys — read this before deciding.** `/orchestrate` Phase 3 does a topological sort and then executes **sequentially — "no parallel branches in MVP, even when DAG allows it"**. So splitting one plan into an umbrella + sub-steps buys **context hygiene only, never speed**; it costs a worktree, a branch, and a merge per step. Real concurrency comes from a different shape: **several independent top-level plans, one per clone**, run as separate `/orchestrate` invocations and merged by `--integrate` ([.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md)). The `Depends On` column exists to record order, not to be parallelized. Do not sell a split as a speedup unless it produces separate plans.
 
 ### Step 4.5.1 — Measure
 
@@ -369,26 +385,69 @@ done
 
 ### Step 4.5.2 — Classify
 
-Per file, classify the type (umbrella / sub-step / monitoring) from its name + content:
+Per file, classify the type from its name + content:
 
 - name has a `-N-` or `-Na-` pattern + references an umbrella → **sub-step**
 - name is a root (e.g. `feature-launch.md`) + contains "step map" / "decisions" / "risk register" → **umbrella**
 - name has `monitoring` / `post-launch` / `hardening` / `runbook` → **monitoring**
-- other (single-file plan without a split) → **sub-step** budget (the most common case)
+- other — a single file that is not part of a split → **single-file plan** (the most common case, and the default shape)
 
-### Step 4.5.3 — Decide action per file
+> A single-file plan is measured against the **single-file** budget (600 / 1 200 LOC), never the sub-step budget. The sub-step cap is sized for *one slice of an already-split plan*; applying it to a whole plan means a plan gets split for being a plan.
 
-From the budget in Phase 4:
+### Step 4.5.3 — Gate A: is the work parallel-decomposable?
+
+Ask this **before** looking at any size number, and ask it even when the plan is comfortably under its soft target — parallelism is worth harvesting at any size, and size is worth acting on only when parallelism is not.
+
+The plan is parallel-decomposable when you can cut it into **≥2 tracks** where **both** hold:
+
+- **No output dependency** — no track consumes what another track creates (no "track B imports the service track A adds"). Shared *read-only* context is fine; shared *new* artifacts are not.
+- **Disjoint file sets** — the tracks edit different files. Overlap means an integration conflict later, which erodes the whole benefit (`parallel-orchestration.md`: "expect an integration conflict on the second branch… it erodes the parallelism benefit").
+
+Judge from the task list you just drafted, not from wishful grouping. Two tracks that both touch the same store, router, or shared type are **not** disjoint.
+
+- **Gate A passes** → offer the parallel split (option **b** in Step 4.5.4) *whatever the file size is*. The output is **N independent top-level plans**, not an umbrella.
+- **Gate A fails** (a strictly sequential chain, or tracks that overlap) → do **not** split for structure. Fall through to Gate B.
+
+**State the verdict either way**, in one line, with the reason — e.g. `Gate A: fails — every task depends on the migration in task 2 (sequential chain)`. A silent gate is one the user cannot correct.
+
+### Step 4.5.3b — Gate B: size (only when Gate A failed)
+
+From the budget in Phase 4, using the class from Step 4.5.2:
 
 | State                          | Action                                                                                                   |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | ≤ soft target                  | ✅ OK, nothing                                                                                           |
-| > soft target BUT ≤ hard cap   | ⚠️ Log warning ("X is 480 LOC, target 400 — acceptable but Phase 5 will scrutinize density"), nothing more |
-| > hard cap                     | 🔴 **Auto-split (Step 4.5.4)** — without asking the user                                                  |
+| > soft target BUT ≤ hard cap   | ⚠️ Log warning ("X is 700 LOC, target 600 — acceptable but Phase 5 will scrutinize density"), nothing more |
+| > hard cap                     | 🔴 **Ask the user (Step 4.5.4)** — never split on your own                                               |
 
-### Step 4.5.4 — Auto-split strategy
+### Step 4.5.4 — Over the hard cap, or Gate A passed: ask the user
 
-Per file type:
+**Never split without an answer.** A split changes the plan's execution contract — one file runs under `/execute` or `/orchestrate`'s flat mode with no worktree/branch/merge at all; an umbrella runs the full per-step machinery; separate plans mean a multi-clone operator flow. That is the user's call, not a line-count's.
+
+Use `AskUserQuestion`. Present only the options that apply, recommend one, and **STOP without an answer** — do not proceed to Phase 5 on an assumption.
+
+- **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow`, a per-task `PATTERN` / `GOTCHA` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
+- **(b) Split into parallel top-level plans** — *offered only when Gate A passed.* Produces N independent plans in `.agents/plans/active/`, each runnable in its own clone. This is the only option that buys wall-clock. Say so, and say what it costs (below).
+- **(c) Split into a sequential umbrella + sub-steps** — context hygiene only, **no speedup**. Appropriate when one file is genuinely unwieldy but the work is a dependency chain.
+- **(d) Narrow the scope / return to `/brainstorm`** — the spec is too broad for one task. Point at the spec's `Appetite & Cut Lines` if it has them: the cut order is the standing answer to what goes first.
+
+**The cost of option (b), state it when offering.** Separate plans lose the umbrella's shared context — strategic decisions and the risk register live in one place today. Each parallel plan must either restate them (costing the density you just split to protect) or reference the spec. Prefer referencing the spec; if a decision is *not* in the spec, put it there rather than copying it into N plans.
+
+**Step 6.1 re-enters this same question** if grilling pushes a file back over the cap. It does not silently split then either.
+
+### Step 4.5.4b — Split mechanics (only after the user chose b or c)
+
+**Option (b) — parallel top-level plans.** One plan per track from Gate A. These are peers, not a hierarchy:
+
+1. Name them for their track, not with step ordinals: `<feature>-<track>.md` (e.g. `checkout-payments.md`, `checkout-shipping.md`). Ordinals imply a sequence that does not exist here.
+2. Each is a **complete standalone plan** with the full single-file structure — its own tasks, DoD, validation commands, and `**Source spec:**` line pointing at the shared spec.
+3. **No `## Execution Plan` section in any of them** — they are single-file plans (see Phase 4.6), and each will be run by its own `/orchestrate` invocation in flat mode.
+4. Record the disjointness you asserted in Gate A: give each plan a one-line `**Parallel track:** <name> — owns <file globs>; does not touch <the other tracks' globs>`. This is what the operator checks before running them concurrently, and what makes an integration conflict diagnosable instead of surprising.
+5. Tell the user how to actually run them, since this shape needs an operator flow the single-plan case does not: one clone per plan, then a single `--integrate` pass. Point at [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md) rather than restating the runbook.
+
+> If the tracks turn out to share a file after all, they are not parallel — fold them back into one plan (option a) or a sequential umbrella (option c). A "parallel" split whose branches conflict on merge is strictly worse than never having split.
+
+**Option (c) — sequential umbrella + sub-steps.** Per file type:
 
 **Sub-step over hard cap (e.g. a 675 LOC implementation step):**
 
@@ -404,7 +463,7 @@ Per file type:
    - The complexity-per-step table is updated.
 5. **Update cross-references** in all other plan files that referenced the old `X` — e.g. "Blocker: Step X done" → "Blocker: Step Xa+Xb done".
 6. Delete the old `<plan>-X.md`.
-7. **Re-measure** the split files — if any sub-step STILL exceeds the hard cap, split recursively (max 2 levels: `Xa` → `Xa1/Xa2/Xa3`; beyond that STOP and flag to the user "spec too broad for this stage, consider /brainstorm").
+7. **Re-measure** the split files — if any sub-step STILL exceeds the hard cap, return to Step 4.5.4 and ask again (naming what the split already achieved). Do not split recursively on your own: a second automatic level compounds the same unasked structural decision. If the answer is "split again" twice over, the honest reading is that the spec is too broad for one plan — say so and recommend option (d).
 
 **Umbrella over hard cap:**
 
@@ -421,42 +480,47 @@ Very rare. Strategy:
 1. Move runbooks into `docs/runbooks/*.md` (linked from the plan) — a runbook is an operational doc, not part of the implementation plan.
 2. The plan keeps: monitoring setup tasks + alert config + chaos test, without the runbook content.
 
-### Step 4.5.5 — Report split summary
+### Step 4.5.5 — Report the split decision
 
-After auto-split, report a short summary to the user (before Phase 5):
+Report a short summary to the user (before Phase 5). Always state **both** gates, including when nothing happened — "no split" is a decision, and showing the reasoning is what lets the user overrule it:
 
 ```
-## 📏 Size budget check
+## 📏 Split decision
 
-Files measured: <N>
-Within target: <K> files
-Above target (acceptable): <L> files
-**Auto-split (over hard cap): <M> files**
+Gate A (parallelism): <passed — <N> disjoint tracks: <names> | failed — <one-line reason>>
+Gate B (size):        <not reached | <file> is <X> LOC / <Y> chars vs <soft>/<hard> cap>
 
-Splits applied:
-  <old-file>.md (<X> LOC) → <new-fileA>.md (<Ya> LOC) + <new-fileB>.md (<Yb> LOC) + <new-fileC>.md (<Yc> LOC)
-  Split rationale: <functional|dependency|surface>
+Decision: <single file, no split | parallel plans (user chose b) | sequential umbrella (user chose c) | densified in place (user chose a)>
 
-Files within budget — proceeding to grilling...
+<If split — the resulting files:>
+  <file>.md (<X> LOC)  <for option b: — track "<name>", owns <globs>>
+
+<For option b only:>
+Run them concurrently: one clone per plan, then a single `/orchestrate --integrate` pass.
+See .agents/reference/parallel-orchestration.md.
+
+Proceeding to grilling...
 ```
 
 ---
 
 ## Phase 4.6: Execution Plan Section (Umbrella Only)
 
-**Mandatory if Phase 4.5 produced an umbrella + sub-steps (or the plan started as a multi-step umbrella). Skip if a single atomic plan.**
+**Runs only if the user chose option (c) in Step 4.5.4 — a sequential umbrella + sub-steps — or the plan arrived as a multi-step umbrella. Skipped for a single-file plan and for parallel top-level plans (option b), which are single-file plans themselves.**
 
 The orchestrator (`/orchestrate`) reads the umbrella plan to determine step order, dependencies, and progress. This phase emits the canonical machine-readable section it parses.
 
-### Step 4.6.1 — Detect umbrella
+> **An umbrella is a sequential decomposition.** `/orchestrate` Phase 3 executes its steps one after another — the `Depends On` column records order, it is not exploited for concurrency ("no parallel branches in MVP, even when DAG allows it"). Emit this section for context hygiene, never as a promise of speed.
 
-The plan is an umbrella if **any** of:
+### Step 4.6.1 — Confirm the umbrella
 
-- More than 1 sub-step file exists (post-split or pre-existing)
-- The plan title / structure references "step map" / "Steps" / a dependency graph
-- The plan filename matches `<feature>.md` while sub-files match `<feature>-{N|Na|Nb}-*.md`
+Umbrella status is **opt-in, not inferred**: the plan is an umbrella only when Step 4.5.4 produced one (option c), or the plan already arrived as one with sub-step files on disk. There is no heuristic — do not infer an umbrella from a section named "Step map", from the word "Steps", or from a dependency graph in the prose.
 
-A single atomic plan (no umbrella) → skip this entire phase.
+> **Why the heuristic was removed (a real failure mode):** a single-file plan containing a `## Step map` section used to be detected as an umbrella and given a `## Execution Plan` table whose `File` cells pointed at sub-step files that were never created. `/orchestrate` Phase 2 validates every `File` cell against disk and **fails fast** — so the plan STOPs the orchestrator before a single step runs. Opt-in removes the failure mode at the source.
+
+**Invariant:** a single-file plan **never** carries a `## Execution Plan` section. If you are about to emit one, re-check which shape you are in — emitting it on a single file breaks `/orchestrate`.
+
+Single-file plan (including each parallel plan from option b) → skip this entire phase.
 
 ### Step 4.6.2 — Emit `## Execution Plan` section
 
@@ -731,12 +795,13 @@ Apply ALL findings the user accepted in Step 5.4. For each finding:
 
 ### Step 6.1 — Post-fix size re-check (mirror Phase 4.5)
 
-After applying all fixes, **re-measure every plan file** (fixes may have grown a step over the hard cap). If any file is now > hard cap:
+After applying all fixes, **re-measure every plan file** (fixes may have grown a file over the hard cap). If any file is now > hard cap:
 
-- Run the auto-split logic from Phase 4.5.4 on that file (the split logic per type).
-- Update the report for the user about post-fix splits.
+- **Re-enter the Step 4.5.4 question** — same options, same rule that a split is never automatic. Gate A does not need re-running unless the fixes changed the dependency structure (a fix that adds a genuinely independent track *does* re-open it).
+- When re-asking, say what changed: `the plan was 900 LOC (acceptable), grilling added 2 fixes → 1 320 LOC (over the 1 200 cap)`. The user is answering a *new* question, not the same one twice.
+- Update the report for the user about any post-fix split.
 
-This prevents the situation: the plan was 580 LOC (acceptable), grilling added 2 fixes = 720 LOC (over cap), and the user receives a final plan that is already too big. Better to split now than to improvise in `/execute`.
+This prevents the situation: the plan was 900 LOC (acceptable), grilling added 2 fixes = 1 320 LOC (over cap), and the user receives a final plan that is already too big. Better to settle it now than to improvise in `/execute`.
 
 ### Step 6.2 — Execution Plan re-sync (umbrella only)
 
@@ -914,7 +979,7 @@ Write the score for each finding explicitly (same shape as Step 5.3) so the deci
 
 ### Step 7.6 — Branch by `kind`
 
-- **`kind: "patchable"` and accepted** → apply in-place now (Edit tool, exactly like Phase 6), then run the **Step 6.1 post-fix size re-check** (a codex fix can push a file over the hard cap → auto-split) **and the Step 6.2 Execution Plan re-sync** if the fix added / split / removed a step in an umbrella plan (a stale table fails `/orchestrate`'s validation).
+- **`kind: "patchable"` and accepted** → apply in-place now (Edit tool, exactly like Phase 6), then run the **Step 6.1 post-fix size re-check** (a codex fix can push a file over the hard cap → re-enter the Step 4.5.4 question) **and the Step 6.2 Execution Plan re-sync** if the fix added / split / removed a step in an umbrella plan (a stale table fails `/orchestrate`'s validation).
 - **`kind: "fundamental"` (any severity that survives scoring)** → do **NOT** apply silently and do **NOT** try to encode it as a plan edit. Collect it as a **🔶 RETHINK SIGNAL**. Fundamental findings are surfaced separately at the end (Step 7.8) and the user is asked explicitly — they are exactly the "is this even the right thing to build?" signal cross-model review exists to catch.
 
 ### Step 7.7 — Loop control
@@ -1023,13 +1088,17 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 
 ### Size Within Budget ✓
 
-- [ ] Every plan file ≤ hard cap (Phase 4.5 thresholds — 600 LOC sub-step / 350 LOC umbrella / 500 LOC monitoring)
+- [ ] Every plan file ≤ hard cap (Phase 4.5 thresholds — 1 200 LOC single-file / 600 LOC sub-step / 350 LOC umbrella / 500 LOC monitoring)
+- [ ] A single-file plan was measured against the **single-file** budget, not the sub-step budget
 - [ ] If above soft target, density justifies it (no filler / repetition)
-- [ ] Phase 4.5 split report exists in conversation log (proof check ran)
+- [ ] Phase 4.5 split-decision report exists in conversation log, stating **both** gates (proof check ran)
+- [ ] No split happened without an explicit user answer
 - [ ] Post-fix re-check (Step 6.1) shows all files within budget after grilling applied
 
 ### Execution Plan ✓ (umbrella only)
 
+- [ ] A single-file plan has **no** `## Execution Plan` section (this whole block is skipped)
+- [ ] Parallel top-level plans (option b) each carry a `**Parallel track:**` line and no `## Execution Plan` section
 - [ ] Umbrella plan has `## Execution Plan` section with canonical table format
 - [ ] Every sub-step file is registered in the table
 - [ ] Every `Depends On` references an existing Step id (no dangling refs)
