@@ -181,12 +181,13 @@ For **what to read** when starting work — see the `When to Read` table in [.ag
 Generic triggers that apply always — no command needed. **Project-specific routing rules** live in [.agents/memory/index.md → When to Read](.agents/memory/index.md), not here, to keep this file slim.
 
 - **Before any task:** read [.agents/memory/index.md](.agents/memory/index.md) — use its `When to Read` table to decide what else to load
-- **Before any non-trivial response:** read [.agents/memory/user-profile.md](.agents/memory/user-profile.md) — the user's communication style, expectations, what to avoid. Skip if its frontmatter is `status: empty`.
+- **Before any non-trivial response:** read [.agents/memory/user-profile.md](.agents/memory/user-profile.md) — the user's communication style, expectations, what to avoid. Skip if its frontmatter is `status: empty`, or if the file is absent (it is gitignored and per-developer: `cp .agents/memory/user-profile.md.example .agents/memory/user-profile.md`).
 - **Before implementing something new:** check `.agents/plans/active/` for existing plans
 - **Before editing code (enforced by `guard-memory.sh`):** the PreToolUse hook hard-blocks the *first* code edit in each memory domain per session. When blocked, **delegate a `general-purpose` subagent** to read `errors.md` + `patterns.md` + `decisions.md` in full and return only the ~2k of entries relevant to your task; absorb that, then `touch` the marker (the hook prints the exact command). This keeps the monoliths out of the main window — the subagent pays the read cost once per domain. The hook stays **dormant** until those three files together exceed the size threshold *and* until path→domain rules are filled in [.claude/memory-domains.json](.claude/memory-domains.json), so young projects feel nothing. **To switch it on for your stack:** copy an entry from that file's `_examples` into `rules` and adapt the path regex (e.g. `src/lib/([^/]+)/` → `$1`).
 - **When uncertain about approach:** stop and ask — **NEVER ASSUME OR GUESS**
 - **After fixing a bug:** evaluate adding to [.agents/memory/errors.md](.agents/memory/errors.md) — *"Would a fresh Claude make this mistake again without the entry?"*
-- **When a `domain/` memory file doesn't exist but is needed:** create it using the template in [.agents/memory/index.md](.agents/memory/index.md)
+- **When a `domain/` memory file doesn't exist but is needed:** create it using the template in [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md)
+- **When writing to memory at the end of a run:** read [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) first — the save-or-not bar and the entry formats live there, deliberately outside the `/prime` payload
 - **Skip rule:** any memory file with frontmatter `status: empty` is a placeholder — do not load it
 - **Loader Convention (when authoring slash commands):** do NOT re-load project context already handled by `/prime` (CLAUDE.md, project-brief.md, architecture.md, full PRD). Read only files unique to that command's job. See [.agents/memory/index.md → Loader Convention](.agents/memory/index.md)
 - **Output-Discipline Convention (when authoring slash commands):** every rule that shapes output — a length cap, an item limit, a mandatory section — states the condition under which it **yields**. Guardrails (correctness, safety, the command's identity) stay absolute and get no escape hatch. Artifacts and terminal reports are different surfaces with different rules. See [.agents/memory/index.md → Output-Discipline Convention](.agents/memory/index.md)
@@ -199,6 +200,7 @@ Available sub-agents (see `.claude/agents/`):
 
 - `documentation-manager` — keeps README, docs, and inline comments in sync after source changes. Invoke when code changes touch public API, architecture, or user-facing behavior. **Do NOT invoke after every commit** — only when documentation would actually drift. Wired in opt-in/conditionally: `/release` offers it when the release range has `feat`/breaking commits; `/orchestrate --sync-docs` runs it in Phase 7 as a final `docs:` commit.
 - `general-purpose` — complex multi-step research spanning the whole codebase
+- `qa-contract` — Lane P verifier for [/qa-verify](.claude/commands/qa-verify.md). **Not invoked directly** — `/qa-verify` spawns it (in parallel, browser-free) with only the acceptance criteria that belong to the `contract / type / boundary` evidence family, and it returns the registry's canonical JSON verdict array. **Read-only**: it never edits, never fixes a defect it finds, and never re-runs the quality gate — it cites the gate's status instead.
 - `orchestrator-executor` / `orchestrator-refiner` / `orchestrator-verifier` / `orchestrator-committer` / `orchestrator-designer` — pipeline sub-agents for [/orchestrate](.claude/commands/orchestrate.md). **Not invoked directly** — `/orchestrate` spawns them to run a plan end-to-end (execute → refine → verify → [design] → commit → push, looping fixes, escalating only on blockers). The refiner (Step 5.1b) applies `code-review --fix` + `simplify` before the read-only verifier gate — the same loop [/check-implementation](.claude/commands/check-implementation.md) runs standalone. Works out of the box on single-file plans from `/plan-feature` (flat mode); umbrella/DAG mode needs a hand-authored `## Execution Plan` table. The design check auto-skips unless `.agents/specs/design/Ready/` exists.
 
 ---
@@ -228,6 +230,7 @@ rg --files -g "*.{ext}"
 | Project brief (TL;DR of PRD) | [.agents/memory/project-brief.md](.agents/memory/project-brief.md) |
 | Architectural decisions | [.agents/memory/decisions.md](.agents/memory/decisions.md) |
 | Jira integration | [.claude/skills/jira/SKILL.md](.claude/skills/jira/SKILL.md) · [.agents/reference/jira-mcp-atlassian.md](.agents/reference/jira-mcp-atlassian.md) |
+| QA evidence families (AC verification contract) | [.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md) |
 | Lessons learned | [.agents/memory/errors.md](.agents/memory/errors.md) |
 | Product requirements | `docs/PRD.md` |
 
