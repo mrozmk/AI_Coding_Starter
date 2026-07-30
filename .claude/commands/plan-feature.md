@@ -533,12 +533,12 @@ Insert this section into the umbrella file, **immediately after the "## Step map
 
 > **For orchestrator.** Single source of truth for step order, dependencies, and progress. Statuses updated in-place by `/orchestrate` (or manually). Valid statuses: `pending` | `in_progress` | `done` | `blocked` | `skipped` | `manual`.
 
-| Step | File                                                     | Depends On | Status  | Model  |
+| Step | File                                                     | Depends On | Status  | Effort |
 | ---- | -------------------------------------------------------- | ---------- | ------- | ------ |
-| 1    | [<plan>-1-<descriptor>.md](./<plan>-1-<descriptor>.md)   | —          | pending | sonnet |
-| 2    | [<plan>-2-<descriptor>.md](./<plan>-2-<descriptor>.md)   | 1          | pending | opus   |
-| 3a   | [<plan>-3a-<descriptor>.md](./<plan>-3a-<descriptor>.md) | 2          | pending | opus   |
-| 3b   | [<plan>-3b-<descriptor>.md](./<plan>-3b-<descriptor>.md) | 3a         | pending | sonnet |
+| 1    | [<plan>-1-<descriptor>.md](./<plan>-1-<descriptor>.md)   | —          | pending | low    |
+| 2    | [<plan>-2-<descriptor>.md](./<plan>-2-<descriptor>.md)   | 1          | pending | medium |
+| 3a   | [<plan>-3a-<descriptor>.md](./<plan>-3a-<descriptor>.md) | 2          | pending | medium |
+| 3b   | [<plan>-3b-<descriptor>.md](./<plan>-3b-<descriptor>.md) | 3a         | pending | low    |
 | ...  | ...                                                      | ...        | pending | ...    |
 ```
 
@@ -856,7 +856,7 @@ command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: abse
 - **Min rounds: 2 (MANDATORY). Max rounds: 3.** You MUST invoke codex at least twice — round 1 and round 2 always run, regardless of what round 1 returns. Early-exit does NOT apply before round 2 completes. A single round is a phase failure, not an early-exit.
 - **Why min 2:** codex's first pass is shaped by the plan's own framing; the second pass — primed with what you already applied — is where it catches the issues the first pass and the self-review both missed. One round defeats the purpose of cross-model review.
 - **Early-exit (only AFTER round 2 has run):** skip round 3 when codex returns `verdict: "ship"` OR when you accept 0 findings in round 2. Round 3 is the only optional round.
-- **Invocation rules (canonical spawn lives in `.claude/lib/codex-bg.sh` — see [.agents/reference/codex-spawn.md](.agents/reference/codex-spawn.md) for the full contract; the rules below are why):**
+- **Invocation rules (canonical spawn lives in `.claude/lib/codex-bg.sh` — see [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md) for the full contract; the rules below are why):**
   - **Spawn through the `codex-bg.sh` wrapper, never raw `codex exec`.** It bakes in the load-bearing flags (`< /dev/null` stdin-guard, `-C <repo-root>`, `--skip-git-repo-check`) so they cannot drift or be summarized away. Pass `SCHEMA` for structured JSON output. The wrapper omits `--sandbox` whenever `SCHEMA` is set (read-only + schema hung in testing); read-only is enforced by the prompt instead.
   - **Reasoning effort: inherit the config default (xhigh).** Do NOT lower it — this is a review and wants full model power. The cure for a long run is the high `HARD_KILL` ceiling (Step 7.2), not a weaker model.
   - **Run codex in the BACKGROUND via the harness, never as a blocking foreground call.** A codex review at xhigh routinely takes many minutes; a blocking call hangs the whole `/plan-feature` thread on one tool call with no progress signal. Launch the wrapper with `run_in_background: true` (the harness owns the process, returns a task ID, and re-invokes you with a `<task-notification>` when it exits — Step 7.4). Do **NOT** also shell-background it with a trailing `&` / `echo $!` — that double-backgrounds the call: `$!` then names the launcher, the wrapper exits `0` immediately, and a PID liveness probe falsely reports "done" while codex is still starting. A foreground codex call, or a shell-backgrounded one, is a defect.

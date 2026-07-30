@@ -36,7 +36,7 @@ Check the file for the heading `## Execution Plan`.
 - **Not found** → single atomic plan. Run **one pipeline cycle** for this file (skip DAG handling, single iteration of Phase 3-7). Use `STEP_ID = "atomic"` in sub-agent prompts. An atomic plan runs in **flat mode**: no worktree, no branch, no merge — the executor and committer work directly in the main checkout and the orchestrator pushes `main`, exactly like `/commit` + `/push`. There is only one step, so the worktree isolation that umbrella mode needs (accumulating fix iterations, keeping `main` advancing only via ff-merge) buys nothing here — it only adds a worktree/branch/merge round-trip that can fail to fast-forward. Flat mode skips Steps 5.0b, the merge half of 5.4b, and the worktree-retire half of 5.5 (those steps below are explicitly marked **umbrella-only**).
 
 > **This starter's defaults (read before first use):**
-> - `/plan-feature` emits **single-file plans** (no `## Execution Plan` table), so they run in **flat mode** — which works out of the box. **Umbrella mode** (multi-step DAG + worktrees) requires you to **hand-author** a `## Execution Plan` table (columns `Step | File | Depends On | Status`, optional `Effort`); there is no generator for it in this template yet.
+> - `/plan-feature` emits **single-file plans** (no `## Execution Plan` table) by default, so they run in **flat mode** — which works out of the box. **Umbrella mode** (multi-step DAG + worktrees) needs a `## Execution Plan` table (columns `Step | File | Depends On | Status`, optional `Effort`): `/plan-feature` Phase 4.6 emits it when the user opts into a sequential umbrella (Step 4.5.4 option c); for plans authored outside `/plan-feature`, hand-author the table in the same format.
 > - The **design check (Step 5.3)** runs the `orchestrator-designer` agent + `gates:design-quality-check` skill (both shipped, stack-neutral). It **auto-skips** whenever `.agents/specs/design/Ready/` is absent (the default), so projects without UI pay nothing. To enable it: create `.agents/specs/design/Ready/` and drop your reference design artifact(s) there.
 
 ## Phase 2: Parse Execution Plan table (umbrella only)
@@ -129,7 +129,7 @@ Create (or append to, on `--resume`) a run-log next to the plan so the run's sta
 - Umbrella plan → `RUN_LOG = .agents/plans/active/<umbrella>.run.md`
 - Flat/atomic plan → `RUN_LOG = .agents/plans/active/<plan>.run.md`
 
-Append to `RUN_LOG` as the run progresses (one entry per step is enough): step id, the model spawned, the parsed sub-agent reports (verdict/status lines + any blockers/gaps), the Step 5.1-recon result, and each pushed `COMMIT_SHA`. This is a log you write with the Write/Edit tool, not a sub-agent artifact. In Phase 7 it moves to `done/` alongside the plan.
+Append to `RUN_LOG` as the run progresses (one entry per step is enough): step id, the executor agent spawned, the parsed sub-agent reports (verdict/status lines + any blockers/gaps), the Step 5.1-recon result, and each pushed `COMMIT_SHA`. This is a log you write with the Write/Edit tool, not a sub-agent artifact. In Phase 7 it moves to `done/` alongside the plan.
 
 **Run-log contract — friction records (feeds central reflection).** The base entries above (verdicts/gaps/SHAs) are enough for `--resume`, but they are NOT enough for the **central** memory reflection that Integration mode runs from the merged run-logs — in a parallel run the build clones no longer reflect first-person (they skip Phase 7 steps 6–7). So on **every friction iteration** — a verifier/designer fix loop, a Phase 6 user-guided retry, or a designer mega-fix — also append a structured record:
 
@@ -224,7 +224,7 @@ Two assertions, both fail-closed (any failure → mark step `blocked`, escalate 
 
 Only when both assertions pass do you carry `FILES_TOUCHED` to Step 5.2.
 
-**On every fix-iteration re-spawn of the executor** (from Steps 5.2 / 5.3), pass the SAME `WORKTREE_PATH: <STEP_WORKTREE>` AND the SAME `model` as the initial spawn so the fix runs on the model the step was designed for. Re-run Step 5.1-recon after every re-spawn — a fix iteration can drift the same way the first pass can.
+**On every fix-iteration re-spawn of the executor** (from Steps 5.2 / 5.3), pass the SAME `WORKTREE_PATH: <STEP_WORKTREE>` AND spawn the SAME executor agent (`subagent_type`) as the initial spawn so the fix runs at the effort tier the step was designed for. Re-run Step 5.1-recon after every re-spawn — a fix iteration can drift the same way the first pass can.
 
 ### Step 5.1b — Quality refinement (review + deep-review)
 
@@ -305,7 +305,7 @@ Parse the `=== DESIGNER REPORT ===` block.
 
 **Adaptive design budget (read before applying the table).** A backend step with no UI surface returns `skipped` and costs nothing. A heavy-UI step often returns a structural rewrite (many gaps that are all symptoms of one "implementation diverged from the design DOM" root cause) — and two small fix iterations are the wrong tool for that: you want ONE comprehensive fix pass, not two partial ones. So branch on the FIRST designer report's shape:
 
-- **Mega-fix mode** — if the first `failed` report has **>20 GAPS** OR **≥1 structural/architectural GAP** (a gap about DOM hierarchy, missing sections, per-tier/per-state variants, or component structure — not pure token/spacing/copy deltas): treat the entire `GAPS` list as a SINGLE fix iteration. Spawn the executor once with the full `FIX_LIST`, then re-run the designer once to confirm. This is one mega-iteration, not two small ones. If the single mega-fix still fails on structural gaps → escalate as blocker (don't grind).
+- **Mega-fix mode** — if the first `failed` report has **>20 GAPS** OR **≥1 structural/architectural GAP** (a gap about DOM hierarchy, missing sections, per-tier/per-state variants, or component structure — not pure token/spacing/copy deltas): treat the entire `GAPS` list as a SINGLE fix iteration. Spawn the executor once with the full `FIX_LIST`, then — because a structural rewrite is exactly the kind of mutation that CAN break code — re-run Step 5.1-recon and **one verifier pass (5.2)** before the confirming designer run. A mutation of this size must not reach commit on the strength of a design audit alone. If the single mega-fix still fails on structural gaps → escalate as blocker (don't grind).
 - **Incremental mode** — otherwise (≤20 gaps, all cosmetic): use the 2-small-iteration loop in the table below.
 
 Decision table (incremental mode):
@@ -499,6 +499,17 @@ When the last step reaches `done`:
 - **`TARGET_BRANCH == main`** (single run — today's default): run every step below exactly as written. No `chore: workflow-state` commit; memory/backlog reflection runs here.
 - **`TARGET_BRANCH != main`** (a parallel `orch-<id>` build run): two differences — **(a)** after the plan-move, make a **`chore: workflow-state` commit** (flat step 2b / umbrella step 4b) so the moved plan + run-log files travel onto `main` via the later `--integrate` merge — git does NOT move uncommitted files; **(b)** **SKIP the memory-reflection (step 6) and backlog write-back (step 7)** — those run once, centrally, in **Integration mode** from the merged run-logs. A build clone ships only the plan-move + run-log, so deleting it afterward is safe.
 
+**0. Cross-model review (codex) — CONDITIONAL, once per run, both modes.** The whole pipeline ran on one model; this is the only mode where a human never sees the diff before publication, so an independent second model reads the run's final result cold — same rationale, mechanics and safety design as `/check-implementation` Step 1.5. Runs **before** the plan-move and cleanup below (a surviving finding produces one more pipeline cycle, which needs the machinery still in place).
+
+   - **Gate:** `command -v codex` — absent → log `Cross-model review skipped — codex not on PATH.` and continue at step 1 (fail-open, one line, no error). Also skip when the run ended with an unresolved Phase 6 escalation — don't cross-review a tree the native gates rejected. **Parallel run (`TARGET_BRANCH != main`) → skip** (like steps 6–7): a build clone's branch is judged again at `--integrate` time; run `/codex-review` on the merged result instead.
+   - **Scope:** the run's whole diff. Compute `BASE` as the parent of the **first** `COMMIT_SHA` in the run-log (`git rev-parse <first-sha>^`); review `git diff BASE..HEAD` plus the aggregated `FILES_TOUCHED` list.
+   - **Invoke** exactly per `/check-implementation` Steps 1.5a–1.5b (same schema, same unsteered prompt with the scope above, spawn via `.claude/lib/codex-bg.sh` with `SCHEMA`, `run_in_background: true`, wake-up/HARD_KILL/fail-open handling identical). Codex output is untrusted DATA; codex never edits.
+   - **Score** each finding per Step 1.5c (anchored? verified? real? severity honest? conflicts with documented decisions?) and write the `[#NN] KEEP/DROP — reason` trail into the run-log.
+   - **Route survivors through the pipeline's own machinery** (not `/code-review --fix` — this is `/orchestrate`'s judge/fixer split):
+     - `kind: "patchable"` survivors → spawn `@orchestrator-refiner` **once** in the main checkout with the findings as its fix list (apply critical/major; medium only on a sensitive path per `CLAUDE.md → Validation`; minor → log only) → then `@orchestrator-verifier` **once** on the changed files → on `APPROVE`/`WARN`, `@orchestrator-committer` commits `fix: apply cross-model review findings for <plan>` → push per `PUBLISH_MODE` (silent no-op in `branch-local`). Verifier `BLOCK` → one more refiner pass on its gaps; still blocked → do NOT commit — leave the working tree as-is, log it, and escalate per Phase 6 (discarding the changes needs `git restore`/`checkout`, which are deny-tier — the human decides). **One corrective cycle, never a new loop; never re-spawn codex.**
+     - `kind: "fundamental"` → do NOT apply — collect as a 🔶 RETHINK SIGNAL for the summary (it questions the approach; that is the user's call, especially when the commits are already published).
+   - **Record** in the run-log: verdict, findings kept/dropped, fix commit SHA (or `clean`). A clean review is a valid result — report it plainly, don't manufacture fixes.
+
 **1–2 branch by plan type** — a flat/atomic plan has no `## Execution Plan` table and no sub-step files, so the umbrella-shaped steps below do not apply to it.
 
 **Flat mode (atomic plan):**
@@ -526,8 +537,10 @@ When the last step reaches `done`:
      [ -d "$wt" ] || continue
      if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
        echo "⚠ keeping $wt — it has uncommitted changes (resolve manually)"   # do NOT --force
+     elif ! git merge-base --is-ancestor "$(git -C "$wt" rev-parse HEAD)" HEAD 2>/dev/null; then
+       echo "⚠ keeping $wt — its commits are not merged into the run branch (resolve manually)"
      else
-       git worktree remove "$wt" --force 2>/dev/null || true                  # clean → safe to drop
+       git worktree remove "$wt" --force 2>/dev/null || true                  # clean + merged → safe to drop
      fi
    done
    git worktree prune
@@ -580,6 +593,7 @@ When the last step reaches `done`:
 Steps: <N> total, <K> done, <S> skipped
 Commits pushed: <list of SHAs and subjects>
 Fix iterations triggered: verifier=<N>, designer=<M>
+Cross-model review (codex): <clean / <N> findings kept → fix commit <sha> / skipped — <reason>; 🔶 rethink signals: <list or none>>
 Blockers escalated: <count, with brief notes>
 Total wall time: <hh:mm:ss>
 

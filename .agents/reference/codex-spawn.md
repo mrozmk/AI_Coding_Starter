@@ -1,7 +1,8 @@
 # Reference: spawning `codex exec` as a background review (the canonical pattern)
 
 The single source of truth for how any slash command launches Codex (`codex exec`) in the
-background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8.4), and
+background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8.4),
+`/check-implementation` (Step 1.5), `/orchestrate` (Phase 7 step 0), and
 `/codex-review` all link here. The executable form is `.claude/lib/codex-bg.sh` — this file is the
 *why*; the wrapper is the *how*. If you add a new command that runs codex, reuse the wrapper and
 link here; do **not** copy a fresh `codex exec` invocation into the command (that drift is exactly

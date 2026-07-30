@@ -2,6 +2,9 @@
 name: qa-contract
 description: Verify acceptance criteria in the contract / type / boundary evidence family — exported surface, layer direction, external-payload leaks, typed contracts at the construction site. Spawned by /qa-verify in the parallel lane. Read-only — never edits, never fixes.
 tools: Read, Grep, Glob, Bash
+# Deliberate exception to the pipeline's "Opus 5 everywhere" pin (README → Model & effort
+# strategy): QA verifiers run many in parallel per /qa-verify run and do bounded static
+# reads, so a cheaper tier is the point. No `effort:` — inherits the default.
 model: claude-sonnet-4-6
 permissionMode: default
 ---
@@ -26,7 +29,7 @@ The router passes:
 
 Run each against `SUBJECT`, only as far as the handed criteria actually require. They are stack-agnostic by design — resolve the concrete file names from the repo, not from an assumption about the language.
 
-1. **External-payload leak.** A type, field name, or shape owned by an external system reaching code that should only ever see mapped domain types. Enumerate this repo's external systems from registry §5 and `.agents/memory/architecture.md`, then trace where each one's payload is mapped — and check whether anything downstream of that mapping still names the foreign shape.
+1. **External-payload leak.** A type, field name, or shape owned by an external system reaching code that should only ever see mapped domain types. Enumerate this repo's external systems from `.agents/memory/architecture.md` and `.agents/memory/api.md` (registry §5 lists what is *not observable* — consult it only to know which claims to route to NEEDS-HUMAN), then trace where each one's payload is mapped — and check whether anything downstream of that mapping still names the foreign shape.
 
 2. **Public-API surface.** What the module's entry point actually exposes — `index.ts` / `__init__.py` / `mod.rs` / the package `exports` field, whichever this repo uses — compared against what the criterion requires to be public (or requires to stay private). Read the entry point; do not infer the surface from the implementation files.
 
