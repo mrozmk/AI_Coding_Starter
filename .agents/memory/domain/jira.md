@@ -1,3 +1,8 @@
+---
+status: empty
+description: Jira Cloud integration quirks discovered at runtime — placeholder until first real use
+---
+
 # Memory: jira
 
 Jira Cloud integration via mcp-atlassian MCP server.
