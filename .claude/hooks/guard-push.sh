@@ -48,8 +48,10 @@ CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""' 2>/dev/null)
 [ -z "$CMD" ] && exit 0
 
-# Only act on `git push`. Leave every other command untouched.
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push([[:space:]]|$)' || exit 0
+# Only act on `git push`. Leave every other command untouched. Global flags may sit
+# between `git` and `push` (`git -C <dir> push`, `git -c k=v push`) — cover them, or
+# those forms bypass the scan entirely.
+printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || exit 0
 
 # Forms with nothing to scan → allow.
 #   --dry-run            : not publishing
@@ -67,18 +69,51 @@ if printf '%s' "$CMD" | grep -Eq 'GUARD_PUSH_SKIP=(1|true|yes)'; then
   exit 0
 fi
 
-# --- resolve the range about to be published -------------------------------------
-DIR="$CWD"
+# --- resolve the repo the push publishes from -------------------------------------
+# Mirrors guard-commit.sh: a directory named IN the command is where the push actually
+# runs, so it beats the caller's cwd. Without this, `cd <worktree> && git push` or
+# `git -C <repo> push` is scanned against the caller's repo/branch — the wrong commits.
+DIR=$(printf '%s' "$CMD" | sed -nE "s/.*git[[:space:]]+-C[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p" | head -1)
+if [ -z "$DIR" ]; then
+  DIR=$(printf '%s' "$CMD" | sed -nE "s/^[[:space:]]*cd[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]&;|]+)).*/\2\3\4/p" | head -1)
+fi
+[ -z "$DIR" ] && DIR="$CWD"
 [ -z "$DIR" ] && DIR="$CLAUDE_PROJECT_DIR"
 [ -z "$DIR" ] && DIR="$PWD"
+case "$DIR" in
+  /*) ;;
+  *)  DIR="${CWD:-$PWD}/$DIR" ;;
+esac
+git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1 || DIR="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
-BRANCH=$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
+# --- resolve the tip about to be published ----------------------------------------
+# `git push origin <ref>` publishes <ref>, not the checked-out branch. Take the first
+# refspec's source side when it resolves to a local ref; otherwise fall back to HEAD
+# (fail toward scanning something rather than skipping the scan).
+PUSHARGS=$(printf '%s' "$CMD" | sed -nE 's/.*git[[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+[[:space:]]+)*push[[:space:]]+([^;&|]*).*/\2/p' | head -1)
+TIP="HEAD"; SRC=""; REMOTE_SEEN=""
+set -f
+for a in $PUSHARGS; do
+  case "$a" in
+    -*) continue ;;                                              # flags carry no refs
+    *)  if [ -z "$REMOTE_SEEN" ]; then REMOTE_SEEN=1; continue; fi  # first bare arg = remote
+        SRC="${a%%:*}"                                           # refspec source side
+        break ;;
+  esac
+done
+set +f
+if [ -n "$SRC" ] && git -C "$DIR" rev-parse --verify --quiet "$SRC" >/dev/null 2>&1; then
+  TIP="$SRC"
+fi
+
+BRANCH="$TIP"
+[ "$TIP" = "HEAD" ] && BRANCH=$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -z "$BRANCH" ] || [ "$BRANCH" = "HEAD" ]; then
-  RANGE="HEAD --not --remotes"                       # detached: commits not on any remote
+  RANGE="$TIP --not --remotes"                       # detached: commits not on any remote
 elif git -C "$DIR" rev-parse --verify --quiet "origin/$BRANCH" >/dev/null 2>&1; then
-  RANGE="origin/$BRANCH..HEAD"                        # tracked branch: only the delta
+  RANGE="origin/$BRANCH..$TIP"                        # tracked branch: only the delta
 else
-  RANGE="HEAD --not --remotes"                        # new branch: bound to un-pushed commits
+  RANGE="$TIP --not --remotes"                        # new branch: bound to un-pushed commits
 fi
 
 # --- collect ADDED, non-allowlisted lines (path<TAB>content) ----------------------

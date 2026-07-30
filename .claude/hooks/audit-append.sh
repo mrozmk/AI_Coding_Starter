@@ -17,6 +17,9 @@ LABEL="$1"
 PAYLOAD=$(cat)
 L="$CLAUDE_PROJECT_DIR/.claude/audit.log"
 
+# Without jq we cannot extract the value — skip loudly rather than logging blank lines.
+command -v jq >/dev/null 2>&1 || { echo "audit-append: jq not found — audit entry skipped" >&2; exit 0; }
+
 case "$LABEL" in
   BASH)  V=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""'   2>/dev/null) ;;
   FETCH) V=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.url // ""'       2>/dev/null) ;;

@@ -27,7 +27,9 @@ CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""' 2>/dev/null)
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit([[:space:]]|$)' || exit 0
 
 # Skip forms where an empty staged set against the index is legitimate or harmless.
-printf '%s' "$CMD" | grep -Eq -- '--amend|--dry-run|--no-edit|--help|(^|[[:space:]])-h([[:space:]]|$)' && exit 0
+# `-a`/`--all` (incl. combined `-am`) stages tracked modifications at commit time, so
+# an empty index is normal for it — blocking it with "nothing staged" is a false hit.
+printf '%s' "$CMD" | grep -Eq -- '--amend|--dry-run|--no-edit|--help|--all([[:space:]]|$)|(^|[[:space:]])-[a-zA-Z]*a[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])-h([[:space:]]|$)' && exit 0
 
 # Resolve the git dir to inspect. Order matters: a directory named IN the command is
 # where the commit actually lands, so it beats the caller's cwd. Without this, umbrella

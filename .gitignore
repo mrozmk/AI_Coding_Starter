@@ -29,6 +29,8 @@ Thumbs.db
 .claude/worktrees/
 # Local read-usage telemetry written by track-memory-read.sh (per-clone, not shared)
 .claude/memory-usage.json
+# Harness runtime state (created by Claude Code at run time, never shared)
+.claude/scheduled_tasks.lock
 # Atomic-write temp from the same hook (jq > $DB.tmp && mv) — a crash can leave it behind
 .claude/*.tmp
 # Guard against accidental copy of ~/.claude/projects/ (transcripts + auto-memory) into repo
