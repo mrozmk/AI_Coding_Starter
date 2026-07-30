@@ -9,10 +9,11 @@
 #       post-hoc review can compare what each commit staged vs. what the plan declared.
 #
 # Mechanics (verified against Claude Code hooks docs):
-#   - stdin carries the full PreToolUse JSON, incl. `.tool_input.command` and `.cwd`
-#     (`.cwd` = the dir the Bash command will run in — the worktree in umbrella mode,
-#      the repo root in flat mode; using it makes the staged-index check hit the RIGHT
-#      git index in both modes).
+#   - stdin carries the full PreToolUse JSON, incl. `.tool_input.command` and `.cwd`.
+#     `.cwd` is the CALLER's working directory — NOT the directory the command ends up
+#     running in. A committer that does `cd <worktree> && git commit` still reports the
+#     repo root in `.cwd`, so trusting it alone reads the wrong index and blocks every
+#     umbrella-mode step commit. Resolve the dir from the command itself first.
 #   - exit 2 blocks the tool and feeds stderr back to Claude. exit 0 allows.
 # MUST be registered as a SYNCHRONOUS hook (no "async": true) or the block won't apply.
 
@@ -28,10 +29,35 @@ printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit([[:space:
 # Skip forms where an empty staged set against the index is legitimate or harmless.
 printf '%s' "$CMD" | grep -Eq -- '--amend|--dry-run|--no-edit|--help|(^|[[:space:]])-h([[:space:]]|$)' && exit 0
 
-# Resolve the git dir to inspect: the command's cwd if usable, else the project root.
-DIR="$CWD"
+# Resolve the git dir to inspect. Order matters: a directory named IN the command is
+# where the commit actually lands, so it beats the caller's cwd. Without this, umbrella
+# mode (`cd <worktree> && git commit`) is checked against the repo-root index, which is
+# empty — the guard then blocks a perfectly real commit.
+DIR=""
+
+# 1) explicit `git -C <dir> ... commit`
+DIR=$(printf '%s' "$CMD" | sed -nE "s/.*git[[:space:]]+-C[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p" | head -1)
+
+# 2) leading `cd <dir> && ...` (the shape the orchestrate committer uses)
+if [ -z "$DIR" ]; then
+  DIR=$(printf '%s' "$CMD" | sed -nE "s/^[[:space:]]*cd[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]&;|]+)).*/\2\3\4/p" | head -1)
+fi
+
+# 3) fall back to the caller's cwd, then the project root
+[ -z "$DIR" ] && DIR="$CWD"
 [ -z "$DIR" ] && DIR="$CLAUDE_PROJECT_DIR"
 [ -z "$DIR" ] && DIR="$PWD"
+
+# A dir taken from the command may be relative — resolve it against the caller's cwd.
+case "$DIR" in
+  /*) ;;
+  *)  DIR="${CWD:-$PWD}/$DIR" ;;
+esac
+
+# If the resolved dir is not usable as a git dir, fall back rather than blocking a real
+# commit on a parse artifact. The guard must fail toward its own correctness, not toward
+# refusing work it simply could not locate.
+git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1 || DIR="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
 STAGED=$(git -C "$DIR" diff --cached --name-only 2>/dev/null)
 
