@@ -11,9 +11,9 @@ Run after `/execute` completes a plan. Validates checklist completion, runs qual
 
 ## 0. Detect Stack
 
-Run a cheap probe to find which manifests are present (lists only the files that exist; `ls` sends the rest to stderr, which is suppressed):
+Run a cheap probe to find which manifests are present (lists only the files that exist; `ls` sends the rest to stderr, which is suppressed). The trailing `|| true` matters: with **no** manifest at all — a docs-only repo, or this starter template itself — `ls` exits non-zero, and a non-zero probe aborts the whole skill load. An empty stack is a valid answer, not an error.
 
-!`ls -d package.json tsconfig.json pyproject.toml Cargo.toml go.mod composer.json tailwind.config.js tailwind.config.ts tailwind.config.cjs 2>/dev/null`
+!`ls -d package.json tsconfig.json pyproject.toml Cargo.toml go.mod composer.json tailwind.config.js tailwind.config.ts tailwind.config.cjs 2>/dev/null || true`
 
 Set flags from the output:
 
