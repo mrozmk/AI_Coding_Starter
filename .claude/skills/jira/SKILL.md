@@ -13,6 +13,8 @@ Single entry point for all Jira Cloud operations on Epics, Tasks, and Bugs. All 
 
 For parameter shapes and deeper protocol detail, defer to `.agents/reference/jira-mcp-atlassian.md`.
 
+**Delivery order — when `.agents/backlog.md` exists.** In projects that have a backlog, it is the source of truth for delivery order, and Jira mirrors it **one-way**: backlog → Jira, exported with `/jira bulk` (manual/assisted — there is no automatic sync). Never reconstruct backlog ordering from Jira, and never treat Jira as a second, parallel delivery map. The backlog is optional: in a project without one this rule simply does not apply, and every flow below — create, update, search, comment, link, transition — works exactly as documented.
+
 ---
 
 <HARD-GATE>

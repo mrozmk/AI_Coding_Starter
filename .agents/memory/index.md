@@ -20,6 +20,16 @@
 
 ---
 
+## Memory scope — `.agents/memory/` is the only memory surface
+
+All project knowledge — lessons, decisions, quirks, patterns — goes to the files listed above, inside the repository. **Never route project knowledge to Claude Code's native per-user memory directory** (or any other out-of-repo memory store), even when the harness offers it. This is about *where project memory lives*; it does not restrict the user's own global config, which only they change and only when they ask.
+
+> Memory that lives outside the repo is invisible to everyone but the one developer who wrote it: not to teammates, not to CI, not to any other tool or agent reading the project. It is not reviewed, not versioned with the code it describes, and it does not travel with a clone. Committed memory is; that is the whole point of this layer. If a discovery is worth remembering, it is worth committing.
+>
+> **One deliberate exception:** [`user-profile.md`](user-profile.md) is per-developer and gitignored. It still lives in `.agents/memory/` — inside the repo tree, next to the rest — it just isn't committed, because it describes one person, not the project.
+
+---
+
 ## When to Read — what to load for the current task
 
 Use this table to decide which memory files to load. **Skip any file whose frontmatter says `status: empty`** — those are unfilled templates.
