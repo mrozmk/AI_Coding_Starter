@@ -31,8 +31,8 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
-| `agents/` | Sub-agents — `documentation-manager` + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
+| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
+| `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs). Plus two command-bound resource bundles loaded by path (no `SKILL.md`): `design/` (UI-design knowledge for `/design`) and `architecture-review/` (depth/locality method for `/architecture-review`). |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
 | `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `guard-comments` (comment-noise nudge — dormant until `comment-guard.json` names your source dirs), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `check-deps` (SessionStart dep preflight). Need `jq`. |
@@ -52,7 +52,7 @@ Layers of persistent project knowledge:
 | `specs/` | Design docs from `/brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 
-Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (≤200 lines) and points to memory files instead of duplicating their content.
+Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/setup:create-CLAUDE_MD`) and points to memory files instead of duplicating their content.
 
 **Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/setup:create-CLAUDE_MD` or `/maintain:refresh-brief`) to populate them.
 
@@ -91,7 +91,7 @@ The first half is always the same — **prime → brainstorm → plan-feature** 
 New chat → /prime → /brainstorm <feature> → /plan-feature → /execute → /check-implementation → /commit → /push
 ```
 
-> You run and review each step. `/check-implementation` **applies** fixes (`code-review --fix` → `simplify`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/commit` and `/push`. Best for high-stakes changes, or when you want eyes on every gate.
+> You run and review each step. `/check-implementation` **applies** fixes (`code-review --fix` → `deep-review`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/commit` and `/push`. Best for high-stakes changes, or when you want eyes on every gate.
 
 **B — Orchestrated (hands-off):**
 
@@ -108,7 +108,7 @@ New chat → /prime → /brainstorm <feature> → /plan-feature → /orchestrate
 | **`/brainstorm <feature>`** | Explores a free-text feature request — references any Jira issue's description / acceptance criteria you paste into the prompt, but does not fetch Jira itself. Output: a design spec in `.agents/specs/`. If `codex` is installed, a cross-model pass reviews the spec before it advances (auto-skips otherwise). |
 | **`/plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`, then **grills** it (self-critique) and — if `codex` is installed — runs an independent cross-model review loop (Phase 7) before handing the plan over. |
 | **`/execute`** *(flow A)* | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. |
-| **`/check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `simplify` (cleanliness) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves. **Applies** fixes; leaves a commit-ready tree — does **not** commit. |
+| **`/check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves; a one-shot codex cross-review of the approved diff follows (if `codex` is installed). **Applies** fixes; leaves a commit-ready tree — does **not** commit. |
 | **`/commit` → `/push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
 | **`/orchestrate`** *(flow B)* | Runs the whole back half as one pipeline — execute → refine → verify → [design] → commit → push — via sub-agents, looping fixes and escalating only on blockers. Replaces the `/execute … /push` tail of flow A. |
 
@@ -123,7 +123,7 @@ New chat → /prime → /brainstorm <feature> → /plan-feature → /orchestrate
 - Git — for the `/commit`, `/push`, `/pull`, `/release` workflow.
 - [`jq`](https://jqlang.github.io/jq/) — required by the workflow hooks (`guard-memory`, `track-memory-read`, `audit-append`, `guard-push`). Most **fail open silently** without it: the memory-distillation guard never fires, the audit log stays empty, and read telemetry is not recorded — with no error shown. `guard-push` fails open **loudly** (it prints a "secret scan SKIPPED" warning) so the security gap is visible. Install via `brew install jq` / `apt install jq` before relying on those safeguards.
 - [`gitleaks`](https://github.com/gitleaks/gitleaks) *(optional)* — if on `PATH`, `guard-push` runs it as a broader entropy/ruleset pass on top of its built-in baseline scan. Without it the baseline (known-format tokens, private keys, credential files, hardcoded assignments) still applies.
-- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review**: a second, independent model (GPT-class) reviews work the primary thread produced. Used by `/codex-review` (standalone diff/proposal review), and as a conditional gate inside `/plan-feature` (Phase 7) and `/brainstorm` (Step 8). The two gates **skip cleanly** when `codex` is not on `PATH` (each logs one "skipped — codex not on PATH" line, no error), keeping the harness portable; the standalone `/codex-review` instead **hard-stops** with a clear install/login message, since running it without `codex` has no fallback. Install + `codex login` to activate.
+- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review**: a second, independent model (GPT-class) reviews work the primary thread produced. Used by `/codex-review` (standalone diff/proposal review), and as a conditional gate inside `/plan-feature` (Phase 7), `/brainstorm` (Step 8), `/check-implementation` (Step 1.5, on the gate-approved diff) and `/orchestrate` (Phase 7 step 0, on the whole run's diff). The conditional gates **skip cleanly** when `codex` is not on `PATH` (each logs one "skipped — codex not on PATH" line, no error), keeping the harness portable; the standalone `/codex-review` instead **hard-stops** with a clear install/login message, since running it without `codex` has no fallback. Install + `codex login` to activate.
 
 **Optional (per integration):**
 - **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill, or to feed Jira issues into `/test-e2e CS-1`. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
@@ -283,7 +283,7 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 > **Adopting into a large existing codebase (brownfield)?** Don't run this alone — run [`/setup:map-codebase`](.claude/commands/setup/map-codebase.md) instead. It fans out parallel analysis sub-agents (distilled summaries, no context flooding), produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD` — the whole Phase-1 AI layer in one guided run with two review checkpoints.
 
 It generates **three files** in tandem:
-- `CLAUDE.md` — slim rules file (≤200 lines), filled with project overview, tech stack, commands, conventions
+- `CLAUDE.md` — slim rules file (hard cap ≤165 lines / ≤9 500 chars), filled with project overview, tech stack, commands, conventions
 - `.agents/memory/architecture.md` — full directory map, module roles, naming rules (loaded on demand, not in every conversation)
 - `README.md` — the project's human-facing README. On the **first run** this also moves the starter's framework guide to `.claude/README.md` (see [below](#the-root-readme-is-yours--the-framework-guide-moves-aside)).
 
@@ -336,7 +336,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
 | `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
 | `/prime-qa` | When verifying acceptance criteria against a running system — loads `errors.md` + `domain/*` + the QA evidence taxonomy, then runs an injected environment preflight (host reachability, build skew, credentials presence, parallel-session safety) that resolves `BASE_URL` deterministically. Deliberately **never** reads `specs/` or `plans/`: the author's intent biases the verdict toward what was meant rather than what shipped. Configure hosts in `.claude/qa-env.json`. Self-contained — do not run `/prime` first. |
-| `/qa-verify [key\|spec\|task-id]` | After `/prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one lane**: the browser-free static verifier `qa-contract`; the browser (`S`) and design (`I`) lanes are declared in the registry and **guarded** — their ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
+| `/qa-verify [key\|spec\|task-id]` | After `/prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one verifier**: the browser-free static `qa-contract`; every other family's verifier (including the rest of lane P, e.g. `qa-config`, plus the browser `S` and design `I` lanes) is declared in the registry and **guarded** — its ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
 | `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
 | `/setup:stack-research` | Once after `/setup:create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/setup:stack-research realtime`, `/setup:stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
 | `/setup:map-codebase` | **Brownfield bootstrap** — adopting the workflow into a large existing codebase that never had AI. One run: parallel fan-out comprehension (distilled summaries, no context flooding) → `architecture.md` + reconstructed `docs/PRD.md` → cascades into `/maintain:refresh-brief` + `/setup:create-CLAUDE_MD`. Two review checkpoints (scope; PRD validation). See [.claude/commands/setup/map-codebase.md](.claude/commands/setup/map-codebase.md). |
@@ -347,14 +347,14 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/gates:check-quality` | Before committing — format, lint, type-check, file-size gates. |
 | `/gates:verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
-| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `simplify` (cleanliness) → `gates:verify-implementation` (read-only gate), looping up to 3× until the gate approves, then stopping for `/commit`. Unlike `/gates:verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
+| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/commit`. Unlike `/gates:verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
 | `/codex-review [idea\|diff] [hint]` | **Independent cross-model review** — hands the current work to `codex` (a different model) for a review steered by zero opinions, then judges its findings honestly back in the main thread. Two modes, auto-detected: **`diff`** reviews CHANGES already made (uncommitted/unpushed work), **`idea`** reviews a PROPOSAL before any code is written. Codex orients itself by replaying `/prime`, runs detached with a heartbeat every ~3 min, and only advises — you decide what to apply. Requires `codex` on `PATH` (see Requirements); hard-stops with a clear message if absent. |
 
 ---
 
 ## Orchestration internals — how the agent-spawning commands work
 
-Three commands do heavy multi-step work. They use **two different orchestration mechanisms** and spawn different agents on different models. This section spells out exactly what runs, when, why, and on which model.
+Three commands do heavy multi-step work. They use **two different orchestration mechanisms** and spawn different agents per role. This section spells out exactly what runs, when, why, and at which effort.
 
 ### Model & effort strategy (shared across the pipeline)
 
@@ -365,7 +365,7 @@ Three commands do heavy multi-step work. They use **two different orchestration 
 | Orchestrator (your session) | — (the `/orchestrate` driver) | your interactive session's setting | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
 | Execute a plan | `orchestrator-executor` | `low` (`acceptEdits`) | ✅ code | implementation against a plan that already did the thinking |
 | Execute a hard step | `orchestrator-executor-hard` | `medium` (`acceptEdits`) | ✅ code | same contract, more reasoning — spawned when the plan marks the step `medium` |
-| Refine (bugs + cleanup) | `orchestrator-refiner` | `low` (`acceptEdits`) | ✅ code | runs `code-review --fix` + `simplify` |
+| Refine (bugs + cleanup) | `orchestrator-refiner` | `low` (`acceptEdits`) | ✅ code | runs `code-review --fix` + `deep-review` |
 | Verify (code gate) | `orchestrator-verifier` | **`high`** | ❌ read-only | the gate must be sharp; independence from the fixer |
 | Design parity | `orchestrator-designer` | **`high`** | ❌ read-only | pixel/structural audit vs reference design |
 | Commit | `orchestrator-committer` | `low` (`acceptEdits`) | ✅ git index | purely mechanical stage+commit |
@@ -374,6 +374,8 @@ Three commands do heavy multi-step work. They use **two different orchestration 
 > **Difficulty travels in the plan, not the terminal.** `/plan-feature` writes `**Execution effort:** low | medium` into a single-file plan's header, or an `Effort` cell per row in an umbrella plan's `## Execution Plan` table. `/orchestrate` reads that to choose between `orchestrator-executor` and `orchestrator-executor-hard`. Changing the pinned model means editing `model:` in `.claude/agents/*.md` — a deliberate sync point, so the pipeline never silently drifts onto a costlier tier.
 
 > Keeping the **verifier/designer (judges) on a different, read-only setup from the executor/refiner (fixers)** is deliberate — no agent grades its own homework.
+
+> **One deliberate exception:** the `/qa-verify` verifiers (today: `qa-contract`) pin a cheaper Sonnet tier instead of Opus 5 — they run many in parallel per QA run and do bounded static reads, so the per-agent model cost, not judgment depth, dominates.
 
 ### `/check-implementation` — in-context quality loop (no fleet)
 
@@ -385,8 +387,10 @@ resolve scope (plan | diff-only)
        1a /code-review --fix   (correctness — find & fix logic bugs)
        1b /deep-review         (cleanliness — structural / maintainability cleanup)
        1c /gates:verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
-       1d @orchestrator-designer  ← spawned, Opus 4.8, ONLY if UI changed AND a reference design exists
+       1d @orchestrator-designer  ← spawned, Opus 5 high, ONLY if UI changed AND a reference design exists
        1e decide: approve → done · gaps → feed into next 1a · blocker / 3× → escalate to you
+  └─ 1.5 cross-model review ← codex (different model, read-only judge; only if installed) reads the
+       gate-approved diff cold — surviving findings get ONE fixer pass + re-gate, never a new loop
   └─ leaves a clean tree → you run /commit
 ```
 
@@ -399,17 +403,20 @@ The only command that takes a plan all the way to **pushed**. Your main session 
 **Per step** (sequential; flat = one plan, umbrella = a DAG of steps each in its own git worktree on a named branch, fast-forward-merged to `main`):
 
 ```
-5.1  Execute       → @orchestrator-executor   (Sonnet 4.6; per-step model override opus/haiku/sonnet via the plan's Model column)
+5.1  Execute       → @orchestrator-executor   (Opus 5 low; the plan's Effort column routes `medium` steps to @orchestrator-executor-hard)
 5.1-recon          → orchestrator re-derives the facts itself (independent ground-truth, before trusting any report)
-5.1b Refine        → @orchestrator-refiner     (Sonnet 4.6 — code-review --fix + simplify)
-5.2  Verify   ≤3×  → @orchestrator-verifier    (Opus 4.8 high, read-only)        ┐ GAPS loop back
-5.3  Design   ≤2×  → @orchestrator-designer    (Opus 4.8 high, read-only)        ┘ into the next Refine/Execute
+5.1b Refine        → @orchestrator-refiner     (Opus 5 low — code-review --fix + deep-review)
+5.2  Verify   ≤3×  → @orchestrator-verifier    (Opus 5 high, read-only)          ┐ GAPS loop back
+5.3  Design   ≤2×  → @orchestrator-designer    (Opus 5 high, read-only)          ┘ into the next Refine/Execute
        (5.3 runs ONLY if .agents/specs/design/Ready/ exists)
-5.4  Commit        → @orchestrator-committer   (Haiku 4.5) → clean-build gate
+5.4  Commit        → @orchestrator-committer   (Opus 5 low) → clean-build gate
 5.4b Push          → orchestrator (your session) — git push, ff-merge the step branch to main
+─ once, end of run ─
+7.0  Cross-model   → codex (different model, read-only judge; only if installed) reviews the whole
+     review          run's diff cold — surviving findings get ONE refine→verify→commit cycle
 ```
 
-**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `@documentation-manager` and commits a `docs:` follow-up.
+**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) an independent codex pass cross-reviews the whole run's diff (step 0, only if `codex` is installed — surviving findings get one refine→verify→commit cycle), then it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `@documentation-manager` and commits a `docs:` follow-up.
 
 > `/check-implementation` ≈ the 5.1b→5.2 slice of `/orchestrate`, run inline in your session without the commit/push. Use `/check-implementation` when you want to drive + review; `/orchestrate` when you trust the pipeline to ship.
 
@@ -473,11 +480,11 @@ Full rules live in [CLAUDE.md](CLAUDE.md).
 
 `.claude/settings.json` ships a security-first policy:
 
-- **Git:** AI may run non-destructive operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url`, plus `revert` (only ever adds a new commit) and `merge --ff-only` (no merge commit, no history rewrite) — via the shipped [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) / [/release](.claude/commands/release.md) / [/commit](.claude/commands/commit.md) skills. Destructive operations are **denied by default** (the full list is in `settings.json` — e.g. `push --force`/`-f`/`--force-with-lease`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`/`--staged`, `rm`, `branch -D`/`-d`, `rebase`, `merge --no-ff`/`--squash` (a bare `git merge` and `git reset` soft/mixed are not auto-allowed either — they prompt), `cherry-pick`, `config`, `remote add/remove/set-url`/`rename`, `reflog expire`, `gc --prune=now`/`--aggressive`).
+- **Git:** AI may run non-destructive operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url`, plus `revert` (only ever adds a new commit) and `merge --ff-only` (no merge commit, no history rewrite) — via the shipped [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) / [/release](.claude/commands/release.md) / [/commit](.claude/commands/commit.md) skills. The rest sits in two guard tiers (full lists in `settings.json`): **denied** — no prompt can override — are `push --force`/`-f`/`--force-with-lease`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`/`--staged`, `rebase` (incl. `pull --rebase`), `cherry-pick`, `config`, `remote remove/set-url/rename`, `reflog expire`, `gc --prune=now`/`--aggressive`; **ask-tier** — always prompts, even in auto mode — are `git rm`, `branch -d`/`-D`, `merge --no-ff`/`--squash`, `remote add`, `rm -rf`. A bare `git merge` and `git reset` soft/mixed are in no list — they prompt interactively.
 - **Secrets:** `.env*`, `*.pem`, `*.key`, `*secret*`, `*credentials*` — write/edit denied.
 - **Inline tokens in shell:** `Bash` denies any command containing known secret prefixes (`ATATT`, `ghp_`, `github_pat_`, `gho_`, `ghs_`, `ghu_`, `xoxb-`, `xoxp-`, `xapp-`, `xoxa-`, `AKIA`, `ASIA`, `sk-ant-`) — defense-in-depth so a literal token never gets cached in `permissions.allow` after an "Always allow" click.
 - **Secrets in pushed content:** the `guard-push` hook scans every `git push` for secrets in the commits about to be published — closing the gap the deny-prefixes leave open (a token in file *content*, not in a shell command). It blocks (exit 2) on known-format tokens, private keys, credentialed connection strings, hardcoded credential assignments, and credential files (`.env`, `*.pem`, `*.key`, `.npmrc`, `*.tfstate`, …); uses `gitleaks` for a broader pass if installed. Escape hatches: inline `# guard-push:allow`, `*.example` files, or `GUARD_PUSH_SKIP=1 git push` (logged to `audit.log`). See [/push](.claude/commands/push.md).
-- **Dangerous shell:** `rm -rf`, `sudo` — denied.
+- **Dangerous shell:** `sudo` — denied; `rm -rf` — ask-tier (always prompts).
 - **Hooks:** PreToolUse hooks append a timestamped audit trail to `.claude/audit.log` (gitignored).
 
 User-local overrides live in `.claude/settings.local.json` (gitignored) — Claude Code writes new "Always allow" approvals there by default, keeping per-session permissions out of the committed `settings.json`.

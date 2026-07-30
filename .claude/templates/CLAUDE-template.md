@@ -77,11 +77,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Validation
 
-<!-- Commands to run before committing -->
+> **Source of truth for quality gates.** `/gates:verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast).
 
 ```bash
+# Run in order, stop on first failure
 {validation-commands}
 ```
+
+**Test policy — which layers MUST have tests:**
+
+- Sensitive paths — {sensitive-paths, e.g. payment, auth, webhook, license, locale/redirect routing} — **MUST** have unit tests (mock external SDKs / DB). A change to these paths without a test is a gate failure, not a 🟡 nice-to-have.
+- Core business logic in `{lib-dir}` — unit tests with edge cases.
+- Thin HTTP adapters / boilerplate / trivial getters — tests optional.
+
+> This section is the maturity signal `/plan-feature` reads to size its TESTING STRATEGY — keep it honest. Absence of CI does **not** mean "small project, tests optional".
 
 ---
 
@@ -145,10 +154,11 @@ Knowledge layers under `.agents/`. **Before any task read [.agents/memory/index.
 | [sources/](.agents/sources/) | Raw input — briefs, transcripts, sketches, PDFs | Immutable, pruned manually | Human only |
 | [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at top) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
+| `backlog.md` *(optional)* | Delivery map — epics, task DAG, work packages | `Status`/`Ref` written back by the pipeline | `/setup:create-backlog` · `/plan-feature` · `/orchestrate` |
 | [specs/](.agents/specs/) | Design docs — what to build and why | Lives with the feature | `/brainstorm` |
 | [plans/](.agents/plans/) | Implementation plans — how to build | Short-lived: `active/` → `done/` | `/plan-feature` |
 
-**Flow:** `sources/` → `/setup:create-PRD` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
+**Flow:** `sources/` → `/setup:create-PRD` → `/maintain:refresh-brief` → `[/setup:create-backlog]` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
 
 ---
 
@@ -159,7 +169,7 @@ Generic triggers, always on. **Project-specific routing** lives in `.agents/memo
 - **Before any task:** read [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table decides what else to load
 - **Before any non-trivial response:** read `.agents/memory/user-profile.md` — style, expectations, what to avoid. Skip if `status: empty` or absent (gitignored, per-developer — copy `user-profile.md.example`).
 - **Before implementing something new:** check `.agents/plans/active/` for existing plans
-- **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until `.claude/memory-domains.json` has path→domain rules.
+- **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until `.claude/memory-domains.json` has path→domain rules **and** memory outgrows its size threshold (both required).
 - **When uncertain about approach:** make routine judgment calls yourself; stop and ask when different readings of the request would lead to materially different work
 - **After fixing a bug:** consider an entry in `.agents/memory/errors.md` — *"Would a fresh Claude make this mistake again without it?"*
 - **When a `domain/` memory file doesn't exist but is needed:** create it from the template in `.agents/memory/reflection-protocol.md`

@@ -672,7 +672,7 @@ These are the only parts of the template that are the "engine" of the workflow �
 <details>
 <summary>💡 TIP — why this is a separate, "heavy" command</summary>
 
-A large, existing codebase won't fit in a single context. `/setup:map-codebase` distributes the work across many agents, each of which **returns only a concise summary (~1–2k)** — so the repo's size affects the *number* of agents, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`, PRD, brief), which all subsequent commands use. Full description: [README → Adoption scenarios](../README.md).
+A large, existing codebase won't fit in a single context. `/setup:map-codebase` distributes the work across many agents, each of which **returns only a concise summary (~1–2k)** — so the repo's size affects the *number* of agents, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`, PRD, brief), which all subsequent commands use. Full description: [.claude/commands/setup/map-codebase.md](../.claude/commands/setup/map-codebase.md).
 </details>
 
 ---

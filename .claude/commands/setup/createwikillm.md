@@ -248,10 +248,10 @@ updated: {today}
 
 **Update `CLAUDE.md` — insert a new row into the `## Project Knowledge Layers` table.** Do NOT add a separate "Developer Wiki" section. The wiki is a first-class knowledge layer, not an addendum.
 
-Insert the new row between the existing `plans/` row and the blank line that follows it, matching the existing table's column count (5) and spacing:
+Insert the new row between the existing `plans/` row and the blank line that follows it, matching the existing table's column count (4: Layer | Contains | Lifecycle | Written by) and spacing:
 
 ```
-| [wiki/](.agents/wiki/) | Synthesized knowledge — concepts, references, meta | Append + periodic lint | `/wiki-ingest` | Feature touches a covered domain |
+| [wiki/](.agents/wiki/) | Synthesized knowledge — concepts, references, meta | Append + periodic lint | `/wiki-ingest` |
 ```
 
 Leave the `**Flow:**` line directly below the table untouched — the wiki is orthogonal to `brainstorm → plan → execute` and should not appear in the core flow unless the user explicitly requests it.
