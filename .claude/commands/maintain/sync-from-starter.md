@@ -149,7 +149,7 @@ This is what makes the run task-driven. **Do the diff FIRST (Step 2), then turn 
 | Project **loosened** what the starter keeps strict                                 | **Ask** (lean starter)               | may be deliberate, but it's a security debt — surface it explicitly |
 | `memory-domains.json` `rules` populated in project, starter only ships `_examples` | **Keep project rules** (Recommended) | path regexes are project-specific                                   |
 
-Pure additions (allow/deny present in one side only) follow the playbook's **union** rule with no prompt — but still surface them in that task's analysis so the user sees what the union added.
+Pure additions (allow/ask/deny present in one side only) follow the playbook's **union** rule with no prompt — but still surface them in that task's analysis so the user sees what the union added.
 
 ## Step 4: The per-task loop — analyze → user gate → delegate edit
 

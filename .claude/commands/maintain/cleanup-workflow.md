@@ -59,12 +59,12 @@ For each match, capture `(file, section)`. Verify:
 ### 1.4 Slash command references — `` `/<command>` `` in prose
 
 ```bash
-rg -n --hidden '`(/[a-z][a-z0-9-]*)`' --glob '*.md'
+rg -n --hidden '`(/[a-z][a-z0-9-]*(:[a-z][a-z0-9_-]*)?)`' --glob '*.md'
 ```
 
-For each match, verify file `.claude/commands/<command>.md` exists.
+For each match, verify the command file exists: bare `/name` → `.claude/commands/<name>.md`; namespaced `/ns:name` → `.claude/commands/<ns>/<name>.md`.
 
-Skip these built-in non-command tokens (they look like commands but are part of CLI grammar): `/help`, `/init`, `/clear`, `/config`, `/login`, `/logout`, `/cost`, `/status`, `/release-notes`, `/exit`.
+Skip these built-in non-command tokens (they look like commands but are part of CLI grammar): `/help`, `/init`, `/clear`, `/config`, `/login`, `/logout`, `/cost`, `/status`, `/release-notes`, `/exit`. Also skip skills bundled with Claude Code itself (they resolve without a file in this repo): `/code-review`, `/review`, `/security-review`, `/simplify`.
 
 ### 1.5 MCP / skill tool references — `` `mcp__*` ``
 
@@ -151,10 +151,11 @@ on purpose (entries vs whole files); both are historical-only and never auto-loa
 
 #### 2A.1 Identify candidate entries via heuristics
 
-Each memory file is structured as `## <date> — <title>` blocks (per starter convention). Parse each file into entries.
+`errors.md`, `decisions.md` and `domain/*.md` are structured as `## <date> — <title>` blocks (per starter convention); `patterns.md` and `api.md` use **topical, undated** `## <name>` headers. Parse each file into `##`-delimited entries either way.
 
-**Heuristic A — date-based:**
+**Heuristic A — date-based (dated entries only):**
 - Entry header date is older than **6 months** from today → candidate.
+- Undated topical entries (patterns/api) never match A — judge them by B and C alone.
 
 **Heuristic B — code-grounded:**
 - Extract path-like tokens from entry body: `src/**/*`, `lib/**/*`, `.agents/**/*`, file names with extensions.
@@ -265,7 +266,10 @@ decision, not telemetry) — a pinned file is excluded from proposals regardless
 ```bash
 cd "$(git rev-parse --show-toplevel)"
 DB=.claude/memory-usage.json
-[ -f "$DB" ] || echo '{}' > "$DB"
+# Do NOT create the sidecar here — 2B is read-only on telemetry, and the "no sidecar →
+# skip 2B" guard below must stay reachable (a created-empty sidecar would turn every
+# file into a false archive candidate via days-since-created).
+[ -f "$DB" ] || { echo "no read-usage telemetry yet (track-memory-read hook has not run) — skipping 2B"; exit 0; }
 for f in .agents/memory/*.md .agents/memory/domain/*.md; do
   key="${f#.agents/memory/}"
   last=$(jq -r --arg k "$key" '.[$k].last_referenced // ""' "$DB")
@@ -363,6 +367,8 @@ Archive created/updated:
 ## Phase 3: Workflow Health Warnings
 
 **Goal:** surface signals of workflow drift. **No actions** — just flagging.
+
+**Input — retro signals:** if `.agents/retros/` exists, read the `## Signals for /maintain:cleanup-workflow` section of the newest ~3 retros and fold any actionable items into this phase's report (`/retro` produces raw signal; this phase is its declared consumer).
 
 ### 3.1 Signal: `status: empty` stuck longer than 30 days
 

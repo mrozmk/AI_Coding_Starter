@@ -21,7 +21,7 @@ argument-hint: [full]
 ### 1. Frame — always
 
 Read in order:
-- `CLAUDE.md`
+- `CLAUDE.md` — **already injected by the harness every session**; do not re-read it with a `Read` call, just count it as loaded
 - `.agents/memory/index.md` — routing table for what to load later, on demand
 
 Status probe for the three regenerated files. For each of:
@@ -29,13 +29,13 @@ Status probe for the three regenerated files. For each of:
 - `.agents/memory/project-brief.md`
 - `.agents/memory/domain/business-model.md`
 
-use **`Read` with `limit: 10`** and note the `status:` value in the frontmatter (`populated`, `empty`, or — if there is no `status:` line — treat as `no-frontmatter`). Skip any file that does not exist. The `limit: 10` read of `architecture.md` and `project-brief.md` doubles as the status check for Steps 2–3 — read them in full only if `status: populated`.
+use **`Read` with `limit: 10`** and note the `status:` value in the frontmatter (`populated`, `seeded`, `empty`, or — if there is no `status:` line — treat as `no-frontmatter`). Skip any file that does not exist. The `limit: 10` read of `architecture.md` and `project-brief.md` doubles as the status check for Steps 2–3 — read them in full only if `status: populated` or `seeded` (per the File Status Convention in `index.md`, a seeded file carries real content).
 
 Use these values to decide what to read in Step 2 and Step 3.
 
 ### 2. Goal — always
 
-If `project-brief.md` is `status: populated` → **Read it.**
+If `project-brief.md` is `status: populated` or `seeded` → **Read it.**
 
 If `status: empty` (or missing):
 - Emit warning in the report: `⚠️ project-brief.md is empty — run /maintain:refresh-brief for faster primes.`
@@ -44,7 +44,7 @@ If `status: empty` (or missing):
 
 ### 3. Map — always
 
-If `architecture.md` is `status: populated` → **Read it.**
+If `architecture.md` is `status: populated` or `seeded` → **Read it.**
 
 If `status: empty` (or missing):
 - Emit warning: `⚠️ architecture.md is empty — run /setup:create-CLAUDE_MD.`

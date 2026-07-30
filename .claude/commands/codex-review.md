@@ -120,7 +120,7 @@ REPO="<repo-root>" \
 bash .claude/lib/codex-bg.sh
 ```
 
-- **Spawn through `.claude/lib/codex-bg.sh`, never raw `codex exec`.** It bakes in the load-bearing flags (`< /dev/null` stdin-guard, `-C <repo>`, `--skip-git-repo-check`) so a backgrounded codex can't hang on stdin or in a non-trusted dir. See [.agents/reference/codex-spawn.md](.agents/reference/codex-spawn.md) for the full contract.
+- **Spawn through `.claude/lib/codex-bg.sh`, never raw `codex exec`.** It bakes in the load-bearing flags (`< /dev/null` stdin-guard, `-C <repo>`, `--skip-git-repo-check`) so a backgrounded codex can't hang on stdin or in a non-trusted dir. See [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md) for the full contract.
 - This is a **prose** review — do NOT pass `SCHEMA`. With `SCHEMA` unset the wrapper defaults to `--sandbox read-only` (a review must not mutate the repo). Never pass `SANDBOX=workspace-write`/`danger-full-access` here. (Do not combine schema + read-only — that has hung in testing; not an issue here since this review is schema-less.)
 - **`--output-last-message` (baked into the wrapper via `OUT`) is the key to a clean read.** It writes ONLY Codex's final message (the actual review) to `OUT`. The `.log` keeps the full run — every `exec`, `rg`, file dump, and `STATUS:` line — which is large (hundreds of KB) and ~95% orchestration noise. **Read the review from `codex-review.final.md`, not the log.**
 - **Reasoning effort: inherit the config default (xhigh).** Do NOT lower it — this is a review and wants full model power. (To override for one run, prepend `CODEX_EFFORT=<low|medium|high|xhigh>`.)

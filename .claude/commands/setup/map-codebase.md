@@ -4,7 +4,7 @@ description: Bootstrap the full AI knowledge layer for a large existing codebase
 
 # /setup:map-codebase — Brownfield Comprehension Orchestrator
 
-Make this template's AI workflow usable inside a **large existing codebase that never had AI** (adoption Scenario 3). One run drives the entire brownfield Phase-1 bootstrap: it comprehends the code at scale via a parallel fan-out, then produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD`.
+Make this template's AI workflow usable inside a **large existing codebase that never had AI** (tutorial Scenario 4: existing project / brownfield). One run drives the entire brownfield Phase-1 bootstrap: it comprehends the code at scale via a parallel fan-out, then produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD`.
 
 **Anti-flooding principle:** the analysis sub-agents return **distilled structured summaries (~1-2k each), never raw source**. The aggregator only ever holds summaries — so codebase size scales the *number of agents*, not the context. The heavy parallel work runs inside the `Workflow` script [`.claude/workflows/map-codebase.js`](../../workflows/map-codebase.js); **this command owns interaction (two checkpoints) and sequencing (the cascade)** because `Workflow` is non-interactive and has no filesystem access.
 

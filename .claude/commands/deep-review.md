@@ -6,7 +6,7 @@ argument-hint: [files-or-diff | empty = current working-tree diff]
 
 # /deep-review — Deep Structural Quality Audit
 
-An aggressive maintainability reviewer. It audits the **structure** of a change — abstraction quality, file size, spaghetti growth, layering, atomicity — and pushes for the version that makes the code feel inevitable in hindsight. It is the **cleanliness** stage of the quality pipeline (`/orchestrate` Step 5.1b, `/orchestrator-refiner`, `/check-implementation`), run **after** `/code-review --fix` has handled correctness.
+An aggressive maintainability reviewer. It audits the **structure** of a change — abstraction quality, file size, spaghetti growth, layering, atomicity — and pushes for the version that makes the code feel inevitable in hindsight. It is the **cleanliness** stage of the quality pipeline (`/orchestrate` Step 5.1b, `@orchestrator-refiner`, `/check-implementation`), run **after** `/code-review --fix` has handled correctness.
 
 **Scope boundary — read first.** This skill does **not** hunt for logic bugs, security holes, runtime errors, race conditions, null-handling, or wrong API usage. That is `/code-review`'s job, and it runs before this. Do not re-flag correctness defects here. This skill judges *how the change is built*, not *whether it works*.
 

@@ -20,7 +20,7 @@ This command is deliberately distinct from three neighbours. Pick the right tool
 
 - **`/deep-review`** — per-diff structural audit of a *change*, runs *inside* the quality pipeline, and **mutates** code (it applies fixes). `/architecture-review` is **codebase-wide**, **on-demand** (outside any feature cycle), and **analyze-only**.
 - **`/analysis`** — a scope-boxed thinking tool for one decision or question; writes **no files**. `/architecture-review` sweeps the whole base and **emits an HTML report** of multiple ranked candidates.
-- **`/map-codebase`** — brownfield bootstrap that **documents** an unfamiliar codebase into the knowledge layer; it describes what exists, it does not hunt for debt. `/architecture-review` assumes the map exists and goes looking for **shallow modules worth deepening**.
+- **`/setup:map-codebase`** — brownfield bootstrap that **documents** an unfamiliar codebase into the knowledge layer; it describes what exists, it does not hunt for debt. `/architecture-review` assumes the map exists and goes looking for **shallow modules worth deepening**.
 
 > In one line: **codebase-wide, on-demand, analyze-only.** It finds refactor candidates; it does not document, decide-in-isolation, or change code.
 

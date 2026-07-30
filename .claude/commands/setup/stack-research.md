@@ -281,7 +281,7 @@ Wait for explicit approval per section. If user says `edit`, take their adjustme
    ## YYYY-MM-DD — Tech stack: <one-line summary, e.g. "Next.js 15 + Prisma + Postgres + BullMQ + Vercel">
 
    **Why:** <2-3 short clauses tying to the strongest constraints from the brief>
-   **Brief:** [.agents/specs/YYYY-MM-DD-stack-research-<topic>.md](../../../.agents/specs/YYYY-MM-DD-stack-research-<topic>.md)
+   **Brief:** [.agents/specs/YYYY-MM-DD-stack-research-<topic>.md](../specs/YYYY-MM-DD-stack-research-<topic>.md)
    ```
 
    This makes the architectural decision **discoverable** without reading the whole brief — future Claude sessions hit `decisions.md` via `When to Read` table.

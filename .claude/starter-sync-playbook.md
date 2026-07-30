@@ -54,7 +54,7 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 
 ### Category B — **merge carefully**, show the diff and ask first
 
-- `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.deny` entries from the starter and the project. Do not remove project entries that the starter lacks. Show me the diff before writing.
+- `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.ask` / `permissions.deny` entries from the starter and the project (all three tiers — `ask` is a first-class tier, not an afterthought). Do not remove project entries that the starter lacks. Show me the diff before writing.
 - `.agents/memory/index.md` — take `Quick Reference` and `Loader Convention` from the starter, but `When to Read` may have project-specific rows appended by `/setup:create-CLAUDE_MD`. Strategy: overwrite with the starter's structure, then restore the project rows (the ones the starter lacks).
 - `.gitignore` — append the entries missing from the starter (e.g. `.claude/audit.log`, `.mcp.json`, `.agents/memory/archive/`); **do not remove** project ones.
 - `.mcp.json.example` — overwrite if the starter has a newer version.
@@ -85,7 +85,7 @@ Show me:
    - Files **in the project but not in the starter** → list, mark as "project custom command? check if needed" — do NOT delete automatically
 
 2. **Category B — proposed merge:**
-   - `settings.json`: show which `allow`/`deny`/`hooks` entries the starter adds, and which project entries stay untouched
+   - `settings.json`: show which `allow`/`ask`/`deny`/`hooks` entries the starter adds, and which project entries stay untouched
    - `index.md`: show which `When to Read` rows are project-specific and will be carried over
    - `.gitignore`: show the lines to append
 

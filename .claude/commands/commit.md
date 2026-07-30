@@ -48,7 +48,7 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 7. Stage the approved set with explicit `git add <path>` calls, one path per file. Do NOT use `git add .` or `git add -A` — both bypass the scoping you just established. Skip `.env`, credentials, large binaries, `node_modules` even if they appear in your set (refuse + warn the user).
 
 8. Create the commit with the generated message — **no further confirmation needed at this point**.
-9. **Memory checkpoint** — before finishing, review the work done in this commit and ask yourself:
+9. **Memory checkpoint** — read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) first: its save-or-not bar and de-dup guard govern this step (default outcome: save nothing; if `/execute` or `/check-implementation` already reflected in this flow, there is usually nothing left). Then review the work done in this commit and ask yourself:
    - Did a bug occur and get fixed? → append to `.agents/memory/errors.md`
    - Was an API or protocol behavior discovered? → append to `.agents/memory/api.md`
    - Was an architectural decision made? → append to `.agents/memory/decisions.md`

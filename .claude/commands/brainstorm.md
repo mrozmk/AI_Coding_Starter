@@ -63,7 +63,7 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 
 - Consult the `When to Read` table in `.agents/memory/index.md` and load only the **domain files relevant to the topic** (not the whole memory layer)
 - Check recent commits: `git log --oneline -10`
-- Explore files relevant to the topic — use **LSP `workspaceSymbol`** to find existing services/types in the topic area and **`documentSymbol`** to grasp a key file's shape without reading it whole (see CLAUDE.md → Code Navigation)
+- Explore files relevant to the topic — use **LSP `workspaceSymbol`** to find existing services/types in the topic area and **`documentSymbol`** to grasp a key file's shape without reading it whole (see CLAUDE.md → Code Navigation, if present)
 
 Note the current architecture, patterns in use, and any prior decisions (from already-primed memory) that affect this feature.
 
@@ -251,7 +251,7 @@ command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: abse
 #### Step 8.2 — Setup (constants)
 
 - **Rounds: 1.** Unlike `/plan-feature` Phase 7 (which grills a heavyweight execution plan over min 2 rounds), a spec is a smaller, higher-level artifact — one cross-model pass is the right cost/value trade. Do not loop.
-- **Invocation rules (canonical spawn lives in `.claude/lib/codex-bg.sh` — see [.agents/reference/codex-spawn.md](.agents/reference/codex-spawn.md) for the full contract; same rules as `/plan-feature` Phase 7):**
+- **Invocation rules (canonical spawn lives in `.claude/lib/codex-bg.sh` — see [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md) for the full contract; same rules as `/plan-feature` Phase 7):**
   - **Spawn through the `codex-bg.sh` wrapper, never raw `codex exec`.** It bakes in the load-bearing flags (`< /dev/null` stdin-guard, `-C <repo-root>`, `--skip-git-repo-check`) so they cannot drift or be summarized away. Pass `SCHEMA` for structured JSON output. The wrapper omits `--sandbox` whenever `SCHEMA` is set (read-only + schema hung in testing); read-only is enforced by the prompt instead.
   - **Reasoning effort: inherit the config default (xhigh).** Do NOT lower it — this is a review and wants full model power. The cure for a long run is the high `HARD_KILL` ceiling below, not a weaker model.
   - **Run codex in the BACKGROUND via the harness, never as a blocking foreground call.** A codex review at xhigh can take many minutes; a blocking call hangs the whole `/brainstorm` thread on one tool call with no progress signal. Launch the wrapper with `run_in_background: true` (the harness owns the process, returns a task ID, and re-invokes you with a `<task-notification>` when it exits — Step 8.4). Do **NOT** also shell-background it with a trailing `&` / `echo $!` — that double-backgrounds the call: `$!` then names the launcher, the wrapper exits `0` immediately, and a PID liveness probe falsely reports "done" while codex is still starting. A foreground codex call, or a shell-backgrounded one, is a defect.

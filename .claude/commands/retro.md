@@ -1,5 +1,5 @@
 ---
-description: Generate evidence-based session retrospective from transcript. Refuses to write opinion-only or self-flattering reports. Output feeds /cleanup-workflow.
+description: Generate evidence-based session retrospective from transcript. Refuses to write opinion-only or self-flattering reports. Output feeds /maintain:cleanup-workflow.
 ---
 
 # /retro — Session Retrospective (Evidence-Based)
@@ -24,7 +24,7 @@ description: Generate evidence-based session retrospective from transcript. Refu
 
 5. **Never edit code, never run tests, never modify the repo state.** The retro lives in exactly one new `.md` file. Nothing else changes.
 
-6. **Output language is English** regardless of conversation language. This is for portability across projects and stable aggregation by `/cleanup-workflow`.
+6. **Output language is English** regardless of conversation language. This is for portability across projects and stable aggregation by `/maintain:cleanup-workflow`.
 
 ---
 
@@ -514,7 +514,7 @@ Transcripts capture tool calls. They do NOT capture:
 
 These are blind spots of evidence-based retro. They are out of scope for this report — do not paper over them with guesses.
 
-## Signals for /cleanup-workflow
+## Signals for /maintain:cleanup-workflow
 
 List 1–3 specific, actionable signals. Each must reference a count or path from the JSON. If no signal is concrete enough, write `N/A`.
 
@@ -684,9 +684,9 @@ Then print the same "saved" message as the happy path, plus the warning list.
 | A spec or PRD                         | `/brainstorm`            |
 | A code review                         | `/review`                |
 | A casual "how did it go" post         | A normal chat message    |
-| A workflow change proposal            | `/cleanup-workflow`      |
+| A workflow change proposal            | `/maintain:cleanup-workflow`      |
 
-`/retro` produces *raw signal*. `/cleanup-workflow` acts on aggregated signal across multiple retros.
+`/retro` produces *raw signal*. `/maintain:cleanup-workflow` acts on aggregated signal across multiple retros.
 
 ---
 

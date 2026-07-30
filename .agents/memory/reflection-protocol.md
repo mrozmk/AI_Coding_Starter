@@ -20,6 +20,7 @@ It runs at the end of a **completed unit of work**, never mid-task:
 | [`/orchestrate`](../../.claude/commands/orchestrate.md) | Phase 7, **friction-gated** — only when the run-log shows a step needed >1 fix iteration, an escalated blocker the user resolved via guidance, or a designer mega-fix. A clean run (everything passed first try) learns nothing → skip. | the durable run-log |
 | [`/check-implementation`](../../.claude/commands/check-implementation.md) | after the final report | the loop's first-hand context — bugs `/code-review` fixed, gate iterations |
 | [`/execute`](../../.claude/commands/execute.md) | after moving the plan to `done/`, **only if no `/check-implementation` or `/orchestrate` follows** (else those reflect instead) | what was just implemented |
+| [`/commit`](../../.claude/commands/commit.md) | Step 9 memory checkpoint — a lightweight pass over what the commit just captured; the bar and de-dup guard below apply in full (an earlier reflection in the same flow usually means there is nothing left to save) | the committed change set |
 
 There is no `/remember` command. Manual capture still works: ask Claude to save it to memory — in the project's communication language (CLAUDE.md → Language Rules) — and follow the routing in [Quick Reference in index.md](index.md#quick-reference--where-to-write-discoveries).
 
@@ -56,28 +57,17 @@ If nothing clears the bar — the common case — write nothing and report one l
 
 Append-mode files put the **newest entry at the TOP**. Never rewrite or re-order what is already there.
 
-**errors.md / api.md / patterns.md / domain/{module}.md:**
+**errors.md / decisions.md / domain/{module}.md — dated entries:**
 
 ```markdown
-## [YYYY-MM-DD] {Short title}
-
-{What happened or was discovered}
-
-**Rule:** {Actionable takeaway — what to do or avoid next time}
+## YYYY-MM-DD — {Short title}
 ```
 
-**decisions.md:**
+Body fields follow the `## Format` block at the top of each target file (errors: *What failed / Root cause / Fix* · decisions: *Decision / Why / Alternatives considered / Impact* · domain: free-form, ending in a **Rule:** takeaway). The dated em-dash heading is load-bearing: `/maintain:cleanup-workflow` Phase 2A parses `## <date> — <title>` blocks to find stale entries — a differently-shaped heading is invisible to pruning.
 
-```markdown
-## [YYYY-MM-DD] {Decision title}
+**patterns.md / api.md — topical, not dated:** their seed `## Format` blocks group by pattern name / service name. Append under the matching topic heading (or add a new one); don't force a date into the heading.
 
-**Chosen:** {what was chosen}
-**Rejected:** {alternatives considered}
-**Why:** {rationale}
-**Consequences:** {what this affects going forward}
-```
-
-If a discovery is one of the project's most important "always check this" lessons, also add a one-liner to [Quick Reference in index.md](index.md#quick-reference--where-to-write-discoveries) (keep it ≤7 items).
+If a discovery is one of the project's most important "always check this" lessons, also add a one-liner to [Quick Reference in index.md](index.md#quick-reference--where-to-write-discoveries) — keep that table lean (add only true "always check this" rows; when it outgrows ~a dozen, prune one before adding another).
 
 ---
 
