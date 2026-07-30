@@ -188,7 +188,7 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 
 **Output path**: `CLAUDE.md` (project root)
 
-**Hard cap: ≤200 lines.** If a section pushes you past the cap, push detail into a memory file and leave a one-line pointer in `CLAUDE.md`.
+**Hard cap: ≤165 lines and ≤9 500 characters.** Both axes are hard — a 160-line file at 15 000 chars has not solved the problem. `CLAUDE.md` loads into every conversation, so its size is a tax on every session. If a section pushes you past either number, push the detail into the memory file named in the table below and leave a one-line pointer behind. **Per-section budget:** a section carries its rule plus a pointer, not the rule plus its explanation. Where an explanation is genuinely load-bearing, keep it as a one-line `>` blockquote.
 
 **Where detail lives (NOT in `CLAUDE.md`):**
 
@@ -209,19 +209,38 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 - **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
 - **DO NOT remove or soften** these baseline sections — mandatory for every generated `CLAUDE.md`:
   - `Language Rules`
+  - `Validation`
+  - `Commands`
   - `Code Structure & Modularity`
+  - `Style & Conventions`
+  - `Tech Stack`
   - `Error Handling`
   - `Security`
   - `Git Workflow`
   - `Project Knowledge Layers`
   - `Automatic Behaviors`
-  - `Proactive Agent Usage`
-  - `Plan Mode`
   - `Search Commands`
+
+**Why those headings are mandatory — the reason, not just the list.** Their exact heading text is an **API**. Slash commands and hooks address them by name, in several syntaxes (`CLAUDE.md → Validation`, a markdown link plus the section name, a bare `` `## Git Workflow` `` literal), and one hook greps `CLAUDE.md` for a literal phrase. Renaming or deleting one of them **throws no error** — the consumer just silently stops finding what it was pointing at. `Error Handling` is retained on policy grounds rather than by a known consumer; keep it anyway. A thirteenth string is **conditional**: `Code Navigation`, emitted as `## Code Navigation (LSP)` only for LSP projects (see the LSP-detection rule above) — the contract there is the *substring*, not the full heading.
+
+Deliberately no `file:line` list of consumers here: offsets decay within a handful of commits and this file ships to every project, read long after the lines have moved. Heading **names** are stable. Re-derive the consumers when you need them, searching **from the headings outward** (never from pointer syntaxes inward — a heading no known syntax matches is invisible, and a false positive only costs one kept line):
+
+```bash
+# For every heading CLAUDE.md has, count references to its literal text across the harness.
+rg -o '^## (.+)$' -r '$1' CLAUDE.md | sort -u | while IFS= read -r h; do
+  printf '%-32s refs:%s\n' "$h" \
+    "$(rg -l -F --glob '!**/templates/**' --glob '!**/create-CLAUDE_MD.md' -- "$h" .claude/ .agents/ | wc -l | tr -d ' ')"
+done   # --glob MUST precede --, or ripgrep reads it as a path and applies no exclusion
+```
+
+**Two lines inside `Git Workflow` are mandatory *content*, not prose to trim** — the list above is heading-only and cannot protect a line:
+
+- the `**Orchestrate publish:**` line plus its explanatory blockquote (you derive the value in Phase 1 and fill it below). Drop it and `/orchestrate` silently falls back to `push` — so a PR-gated project that had declared `branch-local` starts pushing again after regeneration.
+- the `git worktree remove --force` guard sentence — unlike the permission tiers, it is not a restatement of `settings.json`; that guard exists nowhere else.
 
 **Generate project-specific Automatic Behaviors triggers:**
 
-The `Automatic Behaviors` block in the template contains only generic triggers (`read index.md`, `check plans/active/`, `ask when uncertain`). Based on detected directories and integrations, append project-specific routing rules to **`.agents/memory/index.md → When to Read` table**, *not* to `CLAUDE.md` itself.
+The `Automatic Behaviors` block in the template carries the generic baseline triggers. Based on detected directories and integrations, append project-specific routing rules to **`.agents/memory/index.md → When to Read` table**, *not* to `CLAUDE.md` itself.
 
 Examples of project-specific triggers (write to `index.md`, derived from what you detected):
 - Detected Stripe / payment SDK → "Working on payments → `domain/business-model.md`"
@@ -233,7 +252,8 @@ This keeps `CLAUDE.md` slim and pushes routing logic into the file that's loaded
 
 **Optional sections (add if relevant):**
 - API endpoints (for backends) — link to OpenAPI / route file, do not duplicate
-- On-demand context references — point to wiki / reference docs
+
+Do **not** add a pointer-table section (wiki links, reference-doc index) to `CLAUDE.md` — those belong in `.agents/memory/index.md → When to Read` or `.agents/reference/`. A second pointer table beside `index.md` is exactly the always-loaded bloat this cap exists to prevent.
 
 ### 3.2 Create `.agents/memory/architecture.md`
 
@@ -295,6 +315,19 @@ Never overwrite a project's existing `LICENSE` on a refresh run, and never move 
 
 Memory files ship with the starter — `index.md`, `errors.md`, `decisions.md`, `api.md`, `patterns.md`, `architecture.md`, `project-brief.md`, and `domain/business-model.md`. **Do not recreate them.** Extend `errors.md` / `decisions.md` / `api.md` / `patterns.md` as the project evolves (append-only, newest at top). `architecture.md` is regenerated by this command. `project-brief.md` and `business-model.md` are populated by `/maintain:refresh-brief` from PRD. Create new files under `.agents/memory/domain/` ad-hoc when a new module needs its own memory file (template in `.agents/memory/index.md`).
 
+### 3.6 Cap gate — run this, do not assume it passed
+
+A declared cap enforces nothing: this starter's own seed `CLAUDE.md` drifted to 239 lines while a `≤200` cap sat written down in two separate files. **Measure the file you just wrote:**
+
+```bash
+L=$(wc -l < CLAUDE.md); C=$(wc -c < CLAUDE.md)
+printf 'CLAUDE.md: %s lines / %s chars (cap 165 / 9500)\n' "$L" "$C"
+[ "$L" -gt 165 ]  && echo "OVER LINE CAP — move detail into a memory file and re-measure"
+[ "$C" -gt 9500 ] && echo "OVER CHAR CAP — move detail into a memory file and re-measure"
+```
+
+While either branch fires, push detail out of `CLAUDE.md` into the memory file named in the *Where detail lives* table above, leave a one-line pointer, and re-run the two commands. Cut prose, never a mandatory section, a mandatory content line, or a rule. If a mandatory rule genuinely makes compliance impossible, stop cutting and **say so explicitly in the Phase 4 report** with the final numbers — an over-cap file with every rule intact beats an on-cap file missing a contract, and the second failure is silent.
+
 ---
 
 ## Phase 4: OUTPUT
@@ -303,6 +336,10 @@ Memory files ship with the starter — `index.md`, `errors.md`, `decisions.md`, 
 ## Global Rules Created
 
 **Files**: `CLAUDE.md`, `.agents/memory/architecture.md`, `README.md`
+
+### Size
+
+`CLAUDE.md`: {lines} lines / {chars} chars (cap 165 / 9 500) — {"within cap" | "over cap because <mandatory rule>"}
 
 ### Project Type
 

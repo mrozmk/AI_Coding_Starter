@@ -2,7 +2,7 @@
 
 A flexible template for creating global rules. Adapt the **project-specific sections** (Project Overview, Tech Stack, Commands, Architecture, Testing, Validation, Notes) based on your project type.
 
-> **Hard cap: ≤200 lines.** Push detail into memory files instead of bloating `CLAUDE.md`:
+> **Hard cap: ≤165 lines and ≤9 500 characters**, measured on the generated body (from `# CLAUDE.md` below), not on this preamble. Push detail into memory files instead of bloating `CLAUDE.md`:
 > - Directory tree, file map, naming rules → `.agents/memory/architecture.md`
 > - Patterns and conventions → `.agents/memory/patterns.md`
 > - Architectural decisions → `.agents/memory/decisions.md`
@@ -11,7 +11,7 @@ A flexible template for creating global rules. Adapt the **project-specific sect
 > `CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps.
 
 > **DO NOT remove or soften** the following sections — they are the shared baseline for every project generated from this starter kit:
-> `Language Rules`, `Project Knowledge Layers`, `Automatic Behaviors`, `Proactive Agent Usage`, `Plan Mode`, `Search Commands`, `Error Handling`, `Security`, `Git Workflow`, `Code Structure & Modularity`.
+> `Language Rules`, `Validation`, `Commands`, `Code Structure & Modularity`, `Style & Conventions`, `Tech Stack`, `Automatic Behaviors`, `Search Commands`, `Security`, `Git Workflow`, `Project Knowledge Layers`, `Error Handling`. Their exact heading text is an API — slash commands and hooks address them by name, so a rename or a deletion breaks a consumer silently. Two lines inside `Git Workflow` are mandatory content too: the `**Orchestrate publish:**` line with its blockquote, and the `git worktree remove --force` guard sentence.
 >
 > Placeholder-style sections (marked with `{placeholder}` or `<!-- comment -->`) are the ones you fill in per project.
 
@@ -61,12 +61,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-<!-- One paragraph: high-level pattern + data flow.
-     Full directory map and naming rules live in `.agents/memory/architecture.md`. -->
-
-{High-level pattern and data flow. Examples: layered (routes → services → data), component-based, MVC, event-driven.}
-
-> Detailed source layout, module roles, and naming rules: see [.agents/memory/architecture.md](.agents/memory/architecture.md)
+{One paragraph: high-level pattern + data flow. Examples: layered (routes → services → data), component-based, MVC, event-driven.} Source layout, module roles and naming rules live in [.agents/memory/architecture.md](.agents/memory/architecture.md).
 
 ---
 
@@ -92,14 +87,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Code Structure & Modularity
 
-Generic defaults — tune per project:
-
-- Files: max **500 lines**
-- Functions: max **50 lines**, single responsibility
-- Classes: max **100 lines**, single concept
-- Line length: max **100 characters**
-
-Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
+Generic defaults — tune per project: files max **500 lines** · functions max **50 lines**, single responsibility · classes max **100 lines**, single concept · lines max **100 characters**. Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 
 ---
 
@@ -111,32 +99,21 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 
 ## Error Handling
 
-- Specific exceptions only — no bare `except` / generic catch
-- Per-module logger, not `print`
-- Fail fast on programmer errors; graceful degradation on user/env errors
-- Error messages must **not leak** secrets, tokens, or internal paths
+Specific exceptions only — no bare `except` / generic catch · per-module logger, not `print` · fail fast on programmer errors, degrade gracefully on user/env errors · messages must **not leak** secrets, tokens, or internal paths.
 
 ---
 
 ## Security
 
-- **Never commit secrets** — keep credentials in `.env` / config files ignored by git
-- Validate all user input at system boundaries
-- HTTPS-only for external APIs
-- Error messages must not leak sensitive info
+**Never commit secrets** — credentials live in gitignored `.env` / config. Validate all user input at system boundaries · HTTPS-only for external APIs · error messages must not leak sensitive info.
 
 ---
 
 ## Git Workflow
 
-- **Commits:** use `/commit` skill — conventional commits (`feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`).
-- **Remote sync:** use `/push` and `/pull` skills — both detect the current branch dynamically via `git rev-parse --abbrev-ref HEAD`. No need to specify a branch.
-- **Releases:** use `/release` skill — detects project stack (`package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod` / `composer.json` / `VERSION`), bumps the right manifest, updates CHANGELOG, creates an annotated tag.
-- **AI git policy — three permission tiers** in `.claude/settings.json`. Precedence is `deny` > `ask` > `allow`: a `deny` rule is an absolute block that no prompt or classifier can override, and an `ask` rule always prompts even in auto mode (the classifier cannot auto-approve it).
-  - **`allow`** (AI runs freely): inspection ops — `status`, `diff`, `log`, `rev-parse`, `rev-list`, `describe`, `ls-remote`, `symbolic-ref`, `check-ignore`, `remote get-url` — plus safe mutations `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `revert`, `merge --ff-only`, and `worktree add`/`list`/`prune`/`remove` (required by umbrella-mode `/orchestrate`).
-  - **`ask`** (AI may run, but each call prompts the human for one-time approval): `merge --no-ff`/`--squash`, `branch -d`/`-D`, `rm`, `rm -rf`, `remote add`.
-  - **`deny`** (hard block — AI must stop and the human runs it manually): `push --force`/`--force-with-lease`/`-f`, `reset --hard`, `clean -f*`, `checkout -- *`/`checkout .*`, `restore .`/`restore --staged`, `rebase`, `cherry-pick`, `config`, `remote remove`/`set-url`/`rename`, `reflog expire`, `gc --prune=now`/`--aggressive`, `sudo`.
-  - A bare `git merge` and `git reset` (soft/mixed) are in none of the lists — they prompt interactively.
+- **Commits · sync · releases:** `/commit` (conventional commits), `/push` / `/pull` (they resolve the current branch), `/release` (bumps the detected manifest, CHANGELOG, tag).
+- **AI git policy — three permission tiers** in `.claude/settings.json`, the source of truth for which command sits where. Precedence `deny` > `ask` > `allow`: `deny` is absolute — no prompt or classifier overrides it; `ask` always prompts, even in auto mode; anything in no list (bare `git merge`, soft/mixed `git reset`) prompts interactively.
+- **`git worktree remove --force` can discard uncommitted work.** Its only guard is `/orchestrate`'s `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged. `/orchestrate` pushes the current branch, not a hardcoded `main`.
 - **Never include AI attribution** in commit messages unless explicitly requested.
 
 **Orchestrate publish:** {push | branch-local}
@@ -155,78 +132,47 @@ Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 |---------|----------|
 | Claude ↔ developer communication | **{communication-language}** — always (set at bootstrap by `/setup:create-CLAUDE_MD`; default Polish) |
 | Code, comments, docstrings, commit messages, technical docs | **English** — always |
-| App UI, user-facing messages, error messages in the app | **As defined in PRD** (default: {communication-language} unless specified otherwise) |
-
-> Claude always responds to the developer in **{communication-language}**. Code stays in English regardless of that choice.
-> App language follows the product requirement — check PRD in `docs/PRD.md` or ask if unclear.
+| App UI, user-facing messages, error messages in the app | **As defined in PRD** (default: {communication-language}) — check `docs/PRD.md` or ask if unclear |
 
 ---
 
 ## Project Knowledge Layers
 
-Five persistent knowledge stores under `.agents/`. **Before starting any task, read [.agents/memory/index.md](.agents/memory/index.md)** — its `When to Read` table tells you what else to load for the current task.
+Knowledge layers under `.agents/`. **Before any task read [.agents/memory/index.md](.agents/memory/index.md)** — `When to Read` (what to load), `Quick Reference` (where to write a discovery), `Memory scope` (why memory stays in the repo).
 
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
-| [sources/](.agents/sources/) | Raw input materials | Immutable input | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map | Append-only (most files) · regenerated (`architecture.md`, `project-brief.md`, `domain/business-model.md`) | memory-reflection pass (in `/orchestrate` Phase 7 + `/check-implementation`), `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
-| [reference/](.agents/reference/) | Stable reference docs | Long-lived | Human + AI (manually) |
-| [specs/](.agents/specs/) | Design docs from `/brainstorm` | Lives with feature | `/brainstorm` |
-| [plans/](.agents/plans/) | Implementation plans | Short-lived: `active/` → `done/` | `/plan-feature` |
+| [sources/](.agents/sources/) | Raw input — briefs, transcripts, sketches, PDFs | Immutable, pruned manually | Human only |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at top) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
+| [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
+| [specs/](.agents/specs/) | Design docs — what to build and why | Lives with the feature | `/brainstorm` |
+| [plans/](.agents/plans/) | Implementation plans — how to build | Short-lived: `active/` → `done/` | `/plan-feature` |
 
 **Flow:** `sources/` → `/setup:create-PRD` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
-
-> Memory files behave in two modes: **append-style** (`errors.md`, `decisions.md`, `api.md`, `patterns.md`, `domain/{module}.md`) — newest entries at the TOP. **Regenerated** (`architecture.md`, `project-brief.md`, `domain/business-model.md`) — overwritten wholesale by their owning command.
 
 ---
 
 ## Automatic Behaviors
 
-Generic triggers that apply always — no command needed. **Project-specific routing rules** live in `.agents/memory/index.md → When to Read` table, not here.
+Generic triggers, always on. **Project-specific routing** lives in `.agents/memory/index.md → When to Read`, not here.
 
-- **Before any task**: read [.agents/memory/index.md](.agents/memory/index.md) — use its `When to Read` table to decide what else to load
-- **Before implementing something new**: check `.agents/plans/active/` for existing plans
-- **When uncertain about approach**: stop and ask — **NEVER ASSUME OR GUESS**
-- **After fixing a bug**: evaluate adding to `.agents/memory/errors.md` — *"Would a fresh AI make this mistake again without this entry?"*
-- **When a `domain/` memory file doesn't exist but is needed**: create it using the template in `.agents/memory/index.md`
-- **Skip rule**: any memory file with frontmatter `status: empty` is a placeholder — do not load it
-- **Loader Convention (when authoring slash commands)**: do NOT re-load project context already handled by `/prime` (CLAUDE.md, project-brief.md, architecture.md, full PRD). Read only files unique to that command's job. See `.agents/memory/index.md → Loader Convention`
-
----
-
-## Proactive Agent Usage
-
-Available sub-agents (see `.claude/agents/`):
-
-- `documentation-manager` — keeps README, docs, and inline comments in sync after source changes. Invoke when code changes touch public API, architecture, or user-facing behavior. **Do NOT invoke after every commit** — only when documentation would actually drift.
-- `general-purpose` — complex multi-step research spanning the whole codebase
-
----
-
-## Plan Mode
-
-In plan mode, apply the 99% certainty protocol before every action. For deep analytical passes (architectural trade-offs, root-cause investigations, "should we do X or Y"), use `/analysis` — it enforces the 99% rule, prefers the `AskUserQuestion` tool for clarifications, and never writes code or files.
+- **Before any task:** read [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table decides what else to load
+- **Before any non-trivial response:** read `.agents/memory/user-profile.md` — style, expectations, what to avoid. Skip if `status: empty` or absent (gitignored, per-developer — copy `user-profile.md.example`).
+- **Before implementing something new:** check `.agents/plans/active/` for existing plans
+- **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until `.claude/memory-domains.json` has path→domain rules.
+- **When uncertain about approach:** make routine judgment calls yourself; stop and ask when different readings of the request would lead to materially different work
+- **After fixing a bug:** consider an entry in `.agents/memory/errors.md` — *"Would a fresh Claude make this mistake again without it?"*
+- **When a `domain/` memory file doesn't exist but is needed:** create it from the template in `.agents/memory/reflection-protocol.md`
+- **When writing to memory at the end of a run:** read `.agents/memory/reflection-protocol.md` first — the save-or-not bar and entry formats live there, outside the `/prime` payload
+- **Skip rule:** any memory file with frontmatter `status: empty` is a placeholder — do not load it
+- **Loader Convention (when authoring slash commands):** never re-load context `/prime` already handles (CLAUDE.md, project-brief.md, architecture.md, full PRD) — read only files unique to that command's job. See `.agents/memory/index.md → Loader Convention`
+- **Output-Discipline Convention (when authoring slash commands):** every rule that shapes output — a length cap, an item limit, a mandatory section — states the condition under which it **yields**. Guardrails (correctness, safety, the command's identity) stay absolute. See `.agents/memory/index.md → Output-Discipline Convention`
 
 ---
 
 ## Search Commands
 
-**CRITICAL:** use `rg` (ripgrep), never `grep` or `find`:
-
-```bash
-rg "pattern"
-rg --files -g "*.{ext}"
-```
-
----
-
-## On-Demand Context
-
-<!-- Optional: Reference docs for deeper context -->
-
-| Topic | File |
-|-------|------|
-| {topic} | `{path}` |
+**CRITICAL:** use `rg` (ripgrep), never `grep` or `find` — e.g. `rg "pattern"`, `rg --files -g "*.{ext}"`.
 
 ---
 
