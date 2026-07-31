@@ -134,6 +134,12 @@ Memory pruning runs at **two granularities, in this order**:
 file emptied by 2A becomes an obvious 2B candidate in the same run. The two archive schemes differ
 on purpose (entries vs whole files); both are historical-only and never auto-loaded.
 
+> **Prune on an up-to-date branch, and merge that commit on its own.** The memory logs carry
+> `merge=union` (`.gitattributes`), so an entry deleted here **comes back** if another branch still
+> carries it — union keeps both sides, and a deletion is not a side it can see. Pulling first and
+> merging the pruning commit alone, rather than inside a batch of feature work, is what keeps the
+> cut from being silently undone.
+
 ---
 
 ### Section 2A — Entry-level pruning (per-entry)

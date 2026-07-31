@@ -1,0 +1,44 @@
+# Merge behaviour for the AI memory layer.
+#
+# WHY THIS FILE EXISTS
+# Parallel `/orchestrate` runs build on separate `orch-<id>` branches, and every one
+# of them ends with a memory-reflection pass that inserts a new entry at the top of
+# .agents/memory/errors.md (or a sibling log). `/orchestrate --integrate` then merges
+# those branches LOCALLY (git merge --no-ff — see .agents/reference/parallel-orchestration.md).
+# Two branches appending to the same log touch the same hunk, so without `union` that
+# is a guaranteed conflict — on a file where both sides are correct and the right
+# resolution is always "keep both".
+#
+# `union` is a BUILT-IN git merge driver: for a region both sides changed it emits
+# both sides' lines instead of conflict markers. Nothing needs to be configured
+# per-clone for it to work.
+
+# --- Append-only logs: keep both sides ----------------------------------------
+# Note `*` does not cross `/`, so the direct children, domain/ and archive/ each
+# need their own line.
+.agents/memory/*.md         merge=union
+.agents/memory/domain/*.md  merge=union
+.agents/memory/archive/**   merge=union
+
+# --- Exclusions: this block is a SAFETY BOUNDARY, not tidiness -----------------
+# `union` emits NO conflict markers. On a file that is edited or regenerated in
+# place, a line changed differently on two branches is duplicated SILENTLY, with
+# nothing to flag it. These files are exactly that, so they must keep git's normal
+# 3-way merge:
+#   - index.md, reflection-protocol.md      edited in place
+#   - architecture.md, project-brief.md,
+#     domain/business-model.md              regenerated wholesale (.agents/memory/index.md)
+#   - user-profile.md                       gitignored; listed so the intent survives
+#
+# `!merge` (Unspecified) is required here. `-merge` (Unset) is NOT the same thing —
+# it makes git treat the path as binary and refuse to merge content at all.
+# These lines must stay BELOW the rules above: a later match wins.
+.agents/memory/index.md                 !merge
+.agents/memory/reflection-protocol.md   !merge
+.agents/memory/architecture.md          !merge
+.agents/memory/project-brief.md         !merge
+.agents/memory/domain/business-model.md !merge
+.agents/memory/user-profile.md          !merge
+
+# Adding a new REGENERATED file under domain/? Add it to the block above, or the
+# `domain/*.md` rule sweeps it into the union set and its rewrites merge silently.

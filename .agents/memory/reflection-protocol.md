@@ -69,6 +69,15 @@ Body fields follow the `## Format` block at the top of each target file (errors:
 
 If a discovery is one of the project's most important "always check this" lessons, also add a one-liner to [Quick Reference in index.md](index.md#quick-reference--where-to-write-discoveries) — keep that table lean (add only true "always check this" rows; when it outgrows ~a dozen, prune one before adding another).
 
+### These log files carry `merge=union`
+
+`.gitattributes` declares the built-in `union` merge driver for the append-mode logs (`errors.md`, `decisions.md`, `patterns.md`, `api.md`, `domain/*.md`, `archive/**`). That is why two branches whose reflection passes both appended an entry merge cleanly instead of conflicting. Two consequences you own:
+
+- **"Never reformat existing entries" is load-bearing, not stylistic.** Union emits **no conflict markers**. If two branches change the *same existing line* differently, both versions survive into the merged file and nothing flags it — a silent duplicate that only a reader will ever catch. Appending is always safe; editing what is already there is not.
+- **After a merge, entries appear ours-then-theirs, not in date order.** Union concatenates by merge side, not by timestamp, so two entries written on concurrent branches can sit a few days out of order at the top. Expected and cosmetic — reorder by hand if it bothers you, or leave it.
+
+Files that are *edited or regenerated in place* — including this one — are deliberately excluded from `union` and keep git's normal 3-way merge. The exclusion block in `.gitattributes` says which and why.
+
 ---
 
 ## Domain File Template
