@@ -107,9 +107,10 @@ A slash command can embed a shell probe with `` !`…` ``. The harness runs it *
 
 **Write probes whose success does not depend on what they find.** "Nothing matched" is a valid answer for every probe we ship — a fresh project has no `domain/` files, a docs-only repo has no manifest.
 
-- ✅ `find <dir> -maxdepth 1 -name '*.md'` — `find` exits 0 whether or not it matches
+- ✅ `find <dir> -maxdepth 1 -name '*.md'` — `find` exits 0 whether or not it matches, **provided `<dir>` itself exists**. Root the probe at a directory that is always present (`find . …`, `find .agents/memory -path '*/domain/*.md'`), never at the optional directory you are probing for.
 - ✅ `find . -maxdepth 1 -type f \( -name a -o -name b \)` — the multi-candidate form
 - ✅ `<cmd> || echo "(none)"` — acceptable when the fallback text is genuinely useful output
+- ❌ `find <maybe-missing-dir> …` — a missing search **root** makes `find` exit non-zero, and `2>/dev/null` mutes the message, not the status
 - ❌ `ls <a> <b> <c>` — exits non-zero if **any** argument is missing, and `2>/dev/null` mutes the message, not the status
 - ❌ `ls <glob>` — exits non-zero when the glob matches nothing
 - ❌ `for f in …; do [ -f "$f" ] && echo "$f"; done` — the loop returns the **last** iteration's status, so a missing final candidate fails the whole probe

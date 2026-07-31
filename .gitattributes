@@ -42,3 +42,9 @@
 
 # Adding a new REGENERATED file under domain/? Add it to the block above, or the
 # `domain/*.md` rule sweeps it into the union set and its rewrites merge silently.
+#
+# A domain/ PLACEHOLDER (frontmatter `status: empty`) is union-merged too, and its
+# FIRST population is an in-place rewrite of that frontmatter — two branches doing
+# it concurrently merge into corrupt frontmatter with exit 0. Populate a placeholder
+# only on an up-to-date branch and merge that commit alone — see
+# .agents/memory/reflection-protocol.md ("These log files carry merge=union").

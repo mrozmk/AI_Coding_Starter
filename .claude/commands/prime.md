@@ -63,7 +63,7 @@ If `status: empty` (or missing):
 
 Then domain files — list and read each populated one:
 
-!`find .agents/memory/domain -maxdepth 1 -name '*.md' 2>/dev/null`
+!`find .agents/memory -maxdepth 2 -path '*/domain/*.md' 2>/dev/null`
 
 For each listed file: read it. For `domain/business-model.md` specifically, honor the `status: populated` check from Step 1 (skip if empty).
 

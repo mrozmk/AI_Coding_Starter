@@ -50,7 +50,6 @@
       "WebFetch(domain:pkg.go.dev)",
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:crates.io)",
-      "WebFetch(domain:readthedocs.io)",
       "mcp__atlassian__*"
     ],
     "ask": [
@@ -82,6 +81,10 @@
       "Bash(git gc --prune=now*)",
       "Bash(git gc --aggressive*)",
       "Bash(git cherry-pick*)",
+      "Bash(git switch* -f*)",
+      "Bash(git switch* -C*)",
+      "Bash(git switch*--force*)",
+      "Bash(git switch*--discard-changes*)",
       "Bash(sudo:*)",
       "Edit(**/.env)",
       "Edit(**/.env.*)",

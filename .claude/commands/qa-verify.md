@@ -134,7 +134,7 @@ State plainly: **nothing has run yet**; correcting a misclassification, a wrong 
 
 - **Lane P** (parallel, browser-free, non-mutating) — spawn each built verifier **once**, with only its own family's `AC_SUBSET` (a JSON object `{ac_id: "AC text"}`), plus `SUBJECT` and `GATE_STATUS`. Several Lane-P agents may run concurrently because nothing they touch is a singleton.
 - **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. Dispatch rules below.
-- **Lane I** (inline in this session) — exists because **some MCP servers are reachable only from the parent session**, never from a spawned sub-agent. Guarded in Phase A.
+- **Lane I** (inline in this session) — exists because **some MCP servers are reachable only from the parent session**, never from a spawned sub-agent. Still guarded by Phase 0: its verifier is not in the injected listing, so its rows resolve to `NEEDS-HUMAN`.
 
 ### Lane S dispatch
 

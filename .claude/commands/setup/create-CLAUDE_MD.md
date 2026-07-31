@@ -263,7 +263,7 @@ done   # --glob MUST precede --, or ripgrep reads it as a path and applies no ex
 
 - the `**Orchestrate publish:**` line plus its explanatory blockquote (you derive the value in Phase 1 and fill it below). Drop it and `/orchestrate` silently falls back to `push` — so a PR-gated project that had declared `branch-local` starts pushing again after regeneration.
 - the `git worktree remove --force` guard sentence — unlike the permission tiers, it is not a restatement of `settings.json`; that guard exists nowhere else.
-- the `### Branch model` block plus its explanatory blockquote. Trim it and `/switch-to`, `/start-task` and `/pr-create` lose their only source of branch facts — and they fail **silently**, by falling back to a guess rather than erroring.
+- the `### Branch model` block plus its explanatory blockquote. Trim it and every branch decision (where to base work, where a PR lands, which branches are protected) loses its only declared source — and fails **silently**, by falling back to a guess rather than erroring.
 
 **Generate project-specific Automatic Behaviors triggers:**
 

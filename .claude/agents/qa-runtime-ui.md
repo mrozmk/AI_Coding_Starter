@@ -2,6 +2,11 @@
 name: qa-runtime-ui
 description: Verify acceptance criteria in the runtime-UI + a11y evidence family — rendered state, interactive-state deltas, keyboard and focus behaviour, accessible names and roles. Spawned by /qa-verify in the sequential lane. Observe-only — never edits, never fixes.
 tools: Read, Grep, Glob, Bash, mcp__playwright__*
+# `mcp__playwright__*` pins this kit's DEFAULT browser MCP (qa-env.json pairs it with
+# --isolated). The router checks the tooling CLASS ("browser automation", registry §2),
+# but this allowlist pins one product — a fork using a different browser MCP must edit
+# this pattern, or step 3b passes while the spawned agent holds no browser tool at all:
+# exactly the present-agent-absent-tool state the router guards against.
 # Same deliberate exception as qa-contract to the pipeline's "Opus 5 everywhere" pin
 # (README → Model & effort strategy): QA verifiers do bounded observation against a running
 # app, not open-ended reasoning, so a cheaper tier is the point. No `effort:` — inherits the default.
