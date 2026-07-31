@@ -32,12 +32,16 @@ KEY="${FILE##*.agents/memory/}"
 TODAY=$(date +%Y-%m-%d)
 DB="$CLAUDE_PROJECT_DIR/.claude/memory-usage.json"
 
-[ -f "$DB" ] || echo '{}' > "$DB" 2>/dev/null
+# Self-heal on missing OR unusable. Testing -f alone is not enough: a 0-byte or malformed
+# sidecar (an interrupted write, a `touch`) makes every jq below fail, so the `&& mv` never
+# fires and the file stays broken forever — telemetry dies silently while looking healthy,
+# and /maintain:cleanup-workflow then prunes on age alone believing it has usage data.
+{ [ -s "$DB" ] && jq -e . "$DB" >/dev/null 2>&1; } || echo '{}' > "$DB" 2>/dev/null
 
 # Read-modify-write via temp + atomic mv. A rare lost increment under concurrent async
 # fires is acceptable — this is a best-effort metric, same idempotency stance as the audit log.
 jq --arg k "$KEY" --arg d "$TODAY" \
   '.[$k] = {"last_referenced": $d, "ref_count": ((.[$k].ref_count // 0) + 1)}' \
-  "$DB" > "$DB.tmp" 2>/dev/null && mv "$DB.tmp" "$DB" 2>/dev/null
+  "$DB" > "$DB.tmp" 2>/dev/null && mv "$DB.tmp" "$DB" 2>/dev/null || rm -f "$DB.tmp" 2>/dev/null
 
 exit 0

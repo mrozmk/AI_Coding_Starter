@@ -11,7 +11,27 @@ argument-hint: [path-to-plan]
 
 1. If `$ARGUMENTS` looks like a path to an existing `.md` file under `.agents/plans/active/` → use it as the plan path.
 2. Otherwise → pick the **newest** file in `.agents/plans/active/` by modification time. If that directory is empty or does not exist, STOP and tell the user: "No active plan found. Run `/plan-feature <spec>` first, or pass an explicit path."
-3. Use the resolved path as the plan to execute in every step below.
+3. **Umbrella guard — apply before executing anything.** Newest-by-mtime is not safe on its own: when `/plan-feature` Step 4.5.4 option (c) splits a plan, the sub-step files it writes are the newest files in `active/`. Without this guard `/execute` implements **one slice**, reports the feature done, and moves the whole family to `done/`. `/orchestrate` already refuses umbrellas in flat mode; `/execute` must too.
+
+   The resolved plan is an **umbrella** when **either**:
+
+   1. it contains the heading `## Execution Plan` **and** that table's **header row** has a `File` column — an umbrella's cells are markdown links to real files, so check the header, not a cell; or
+   2. sibling files `<base>-<N|Na>-*.md` exist next to `<base>.md` in the same directory.
+
+   **Deriving `<base>`:** take the filename and find the **last** `-<digits><optional single letter>-` segment; everything before it is `<base>`, everything after is the descriptor. A filename with **no** such segment is its own `<base>` — it can only be a root, so rule 2 asks whether `<stem>-<N|Na>-*.md` siblings exist beside it.
+
+   - `payments-refund-4-reconciliation.md` → last `-4-` → base `payments-refund` (a descriptor may itself contain hyphens — that is why it must be the *last* segment)
+   - `search-overlay-2a-component.md` → last `-2a-` → base `search-overlay`
+   - `proj-118-promo-banner.md` → last match is `-118-` → base would be `proj`, and `proj.md` does not exist, so rule 2 does not fire. A ticket-number prefix always yields a candidate base, so rule 2 **must** be gated on that base file existing on disk.
+
+   Then act on the classification:
+
+   - **Umbrella** → STOP: "`<file>` is an umbrella plan (N steps). Run `/orchestrate <file>` — `/execute` runs one plan file, it does not walk the step DAG."
+   - **Sub-step reached by auto-resolution** (no `$ARGUMENTS`) → STOP with the same pointer, naming the umbrella. Never silently implement one step of a multi-step plan.
+   - **Sub-step passed explicitly** → proceed, warning once: "Executing step N of `<base>.md` only; steps `<list>` remain."
+   - A file carrying `## Execution Plan` but **no** `File` column and **no** siblings — the legacy in-file step map, from plans written before Phase 4.6 emitted that column — is **not** an umbrella: run it normally. Keep this carve-out even though `/plan-feature` no longer emits that shape, because it covers plans already on disk: without it `/execute` refuses the file while `/orchestrate` rejects it for the missing `File` column, so nothing could run it.
+
+4. Use the resolved path as the plan to execute in every step below.
 
 Read the resolved plan file.
 
@@ -38,6 +58,7 @@ For EACH task in "Step by Step Tasks":
 - Follow the detailed specifications exactly
 - Maintain consistency with existing code patterns
 - Include proper type hints and documentation
+- **Comments: why, not what — cap 1-2 lines.** Do not narrate the code you just wrote. A comment restating the adjacent statement, echoing a name, or repeating the signature is noise `/deep-review` will delete downstream — don't write it in the first place. See CLAUDE.md → Style & Conventions.
 - Add structured logging where appropriate
 - When a task calls an external library/framework API, verify current behavior against up-to-date docs (e.g. Context7 `resolve-library-id` → `get-library-docs`) rather than relying on training data — API surfaces drift between versions.
 
@@ -106,6 +127,8 @@ mv .agents/plans/active/<plan-file>.md .agents/plans/done/<plan-file>.md
 ```
 
 This marks the feature as fully implemented.
+
+**Exception — an explicitly-passed sub-step** (the third branch of the Phase 0 umbrella guard): do **not** `mv` it. Flip that row's `Status` to `done` in the umbrella's `## Execution Plan` table and leave the whole family in `active/`. The umbrella and its sub-steps move to `done/` together, only once every row is `done` — moving one slice would report a feature as shipped while the rest of it is still unwritten.
 
 ### 7. Memory reflection
 

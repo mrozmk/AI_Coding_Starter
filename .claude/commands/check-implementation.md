@@ -40,6 +40,11 @@ The pieces it composes (each a distinct role — see CLAUDE.md / the command doc
 
 1. If `$ARGUMENTS` is a plan name (e.g. `phase-3b-ui-hero`) → resolve the file under `.agents/plans/active/` or `.agents/plans/done/`.
 2. If no argument → use the **most-recently-modified** plan in `.agents/plans/active/`.
+
+   **Promote an auto-resolved sub-step to its umbrella.** When mtime resolution lands on `<base>-<N|Na>-*.md` and `<base>.md` exists in the same directory, verify against **`<base>.md`** instead — the umbrella carries the feature-level Definition of Done that a single step's checklist cannot, so verifying the slice would pass a feature that is only partly built. Say which file you used: `Resolved to umbrella <base>.md (checklist covers all N steps).` (`<base>` is derived the same way as in `/execute` Phase 0 — the **last** `-<digits><optional single letter>-` segment, gated on the base file existing.)
+
+   > Deliberately asymmetric with `/execute`, which **stops** on the same input. `/execute` writes code, so implementing the wrong slice is destructive; this command is read-only and has a diff-only fallback, so it can widen scope and report what it did instead of refusing.
+
 3. If no plan is found → **diff-only mode**: scope is the current working-tree change set. Tell the user: `No plan found — running in diff-only mode (code gate skips the checklist; design gate still runs if its preconditions hold).`
 
 Derive `SCOPE_FILES` = the plan's expected files (if any) **∪** the working-tree changes from `git status --porcelain`. The correctness and cleanliness steps act on the changed code; the gate validates against the plan when one exists.

@@ -16,7 +16,7 @@ You are a verification agent inside the `/orchestrate` pipeline. Your job is to 
 The parent (orchestrator) will pass:
 
 - `PLAN_PATH` — relative path to the plan file the executor implemented
-- `WORKTREE_PATH` — the working directory the step's code lives in (flat mode: repo root; umbrella mode: the step's worktree). **`cd` there before auditing.** In umbrella mode the step's changes exist ONLY in this worktree until the orchestrator merges them onto `main` later — auditing the repo root instead would verify a stale `main` without this step's work.
+- `WORKTREE_PATH` — the working directory the step's code lives in (flat mode: repo root; umbrella mode: the step's worktree). **`cd` there before auditing.** In umbrella mode the step's changes exist ONLY in this worktree until the orchestrator merges them onto the run branch later (`main` for a single run, `orch-<id>` for a parallel run — `/orchestrate` is branch-aware) — auditing the repo root instead would verify a stale branch without this step's work.
 - `FILES_TOUCHED` — list of files the executor reported as modified/created (use this to scope your audit; if missing, fall back to `git status` / `git diff HEAD` in `WORKTREE_PATH`)
 
 ## Operating principles

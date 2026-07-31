@@ -63,7 +63,7 @@ If `status: empty` (or missing):
 
 Then domain files — list and read each populated one:
 
-!`ls .agents/memory/domain/*.md 2>/dev/null`
+!`find .agents/memory/domain -maxdepth 1 -name '*.md' 2>/dev/null`
 
 For each listed file: read it. For `domain/business-model.md` specifically, honor the `status: populated` check from Step 1 (skip if empty).
 
@@ -114,7 +114,7 @@ Use this exact structure:
 ### Memory — facts
 
 Run a cheap stat listing (filesystem size + mtime — no per-file shell loop, no command substitution):
-!`ls -la .agents/memory/*.md .agents/memory/domain/*.md 2>/dev/null`
+!`find .agents/memory -maxdepth 2 -name '*.md' -not -path '*/archive/*' -exec ls -la {} + 2>/dev/null`
 
 Render the output as a bulleted list of `<file> — <size>, modified <date>`, one line per memory file the listing returned. (Filesystem size/mtime stand in for line count / commit date — a cheap orientation cue, not a precise metric.)
 
