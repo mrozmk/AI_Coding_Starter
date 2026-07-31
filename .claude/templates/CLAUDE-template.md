@@ -142,9 +142,15 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 > _Filled in by `/setup:create-CLAUDE_MD`._ The publish mode `/orchestrate` uses with no `--publish` flag. `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Choose `branch-local` for a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side, not merely unwelcome. Omitting the line means `push`.
 
-### Default branch
+### Branch model
 
-> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap based on the detected git workflow. Example: `` `main` (trunk-based) ``._
+**Preset:** {trunk | feature-branch | gitflow | custom} · **Trunk:** `{branch}` · **Integration:** `{branch}`
+**Branch names:** `{<type>/<KEY>-<slug> | <type>/<slug>}` — types: {closed list of allowed types}
+**Base → PR dest:** {base and PR-destination rule, including per-type exceptions}
+**Protected:** {branches that are never a PR source and never a pipeline push target, or `none`}
+**Merge:** {per-type strategy — emit ONLY when the project deviates from its preset; otherwise delete this line}
+
+> _Filled in by `/setup:create-CLAUDE_MD`._ The single source of branch facts — `/switch-to`, `/start-task` and `/pr-create` read it instead of embedding their own. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ---
 

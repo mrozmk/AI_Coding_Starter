@@ -120,9 +120,9 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 > The publish mode `/orchestrate` uses when no `--publish` flag is given (Phase 4, resolution step 2). `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Set this to `branch-local` in any PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side rather than merely unwelcome. Omitting the line means `push`.
 
-### Default branch
+### Branch model
 
-> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap based on the detected git workflow. Example: `` `main` (trunk-based) ``._
+> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap._ The single source of branch facts — `/switch-to`, `/start-task` and `/pr-create` read it instead of embedding their own. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ---
 

@@ -96,7 +96,7 @@ Explore the codebase to understand organization:
 
 ### Identify Git Workflow
 
-Ask the user which git workflow the project follows (use `AskUserQuestion` if available). The answer feeds the `Default branch` slot in the generated `CLAUDE.md` and shapes any branch-convention guidance.
+Ask the user which git workflow the project follows (use `AskUserQuestion` if available). The answer selects a **preset**, and the preset fills every field of the `### Branch model` block in the generated `CLAUDE.md` — trunk, integration branch, name pattern, allowed types, PR destination, protected branches. **One question, six fields — do not ask a follow-up per field.**
 
 **Detect a sensible default first** (do not block greenfield projects):
 
@@ -106,21 +106,36 @@ Ask the user which git workflow the project follows (use `AskUserQuestion` if av
 
 **Then present these options to the user:**
 
-| Option | Description | Default branch |
-|--------|-------------|----------------|
-| Trunk-based on `main` | All work merges to `main` via PRs. No long-lived branches. | `main` |
-| Trunk-based on `master` | Same as above, legacy naming. | `master` |
-| GitFlow | `main` + `develop` + feature / release / hotfix branches. | `main` (release target) |
-| Feature-branch off `main` | PR-centric, no `develop`. Short-lived feature branches. | `main` |
-| Other / custom | Ask the user to describe. | user-specified |
+| Option | Description | Preset | Trunk |
+|--------|-------------|--------|-------|
+| Trunk-based on `main` | All work merges to `main` via PRs. No long-lived branches. | `trunk` | `main` |
+| Trunk-based on `master` | Same as above, legacy naming. | `trunk` | `master` |
+| GitFlow | `main` + `develop` + feature / release / hotfix branches. | `gitflow` | `main` (release target) |
+| Feature-branch off `main` | PR-centric, no `develop`. Short-lived feature branches. | `feature-branch` | `main` |
+| Other / custom | Ask the user to describe. | `custom` | user-specified |
 
-Record the chosen workflow label AND the default branch name — both are needed when filling the `Default branch` slot in `CLAUDE.md`.
+**Then expand the preset into the remaining `### Branch model` fields — without asking anything further:**
+
+| Preset | Integration | Branch names — types | Base → PR dest | Protected | Merge (implied) |
+|--------|-------------|----------------------|----------------|-----------|-----------------|
+| `trunk` | = Trunk | `feat` `fix` `chore` `refactor` | everything off Trunk → PR to Trunk | `none` | squash |
+| `feature-branch` | = Trunk | `feat` `fix` `chore` `refactor` | everything off Trunk → PR to Trunk | Trunk | squash |
+| `gitflow` | `develop` | `feature` `bugfix` `refactor` `chore` `release` `hotfix` | all types off Integration → PR to Integration; `release`/`hotfix` off Trunk → PR to Trunk **and** back-merge Integration | Trunk, Integration | squash for working types; merge commit for `release`/`hotfix` |
+| `custom` | ask | ask | ask | ask | ask |
+
+**Emit `**Merge:**` ONLY when the project's real strategy differs from the implied value** — otherwise omit the line entirely. The block's blockquote states the fallback, so a consumer never has to ask and never has to read this table at run time.
+
+**The `<KEY>` segment of the name pattern is derived, never asked.** A tracker is configured when a tracker skill is present (e.g. `.claude/skills/jira/SKILL.md`) **or** `.mcp.json` declares a tracker MCP server — the same predicate `/brainstorm` Step 0 uses. Tracker present → `<type>/<KEY>-<slug>`; absent → `<type>/<slug>`.
+
+**Repo with no commits yet** — the detection rule above says to default to `main` (trunk-based) and **skip the question entirely**. That path must still yield a complete block, so treat it as an implicit `trunk` preset — **Preset:** `trunk` · **Trunk:** `main` · **Integration:** `main` · **Branch names:** types `feat` `fix` `chore` `refactor` · **Base → PR dest:** everything off `main` → PR to `main` · **Protected:** `none`. Do not emit `**Merge:**`. Never leave a field unresolved because the question was skipped.
+
+Record the preset **and** all six field values — together they fill the `### Branch model` block in `CLAUDE.md`.
 
 **Then derive the `Orchestrate publish` slot from the same answer** — do not ask a second question, the workflow already implies it:
 
 - **GitFlow**, or any answer describing mandatory PR review / protected branches → `branch-local`. In these repos a pipeline push to the integration branch is rejected server-side, so `/orchestrate` must commit and stop.
 - **Trunk-based** / **Feature-branch off `main`** → `push`.
-- **Other / custom** → ask the one follow-up: *"Can an automated pipeline push directly to `<default-branch>`, or does everything go through a PR?"* PR-only → `branch-local`.
+- **Other / custom** → ask the one follow-up: *"Can an automated pipeline push directly to `<trunk>`, or does everything go through a PR?"* PR-only → `branch-local`.
 
 State the derived value when you present the summary, so the user can correct a wrong inference cheaply.
 
@@ -212,7 +227,7 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 **Adapt to the project:**
 - Fill in project-specific sections: `Project Overview`, `Tech Stack`, `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Testing`, `Validation`, `Notes`.
 - **LSP detection → `## Code Navigation` section (conditional).** If Phase 1 detected a symbol-level LSP wired into the toolchain (e.g. `typescript-language-server`, `gopls`, `rust-analyzer`, `intelephense`, `pyright` configured for this stack), add a `## Code Navigation (LSP)` section naming the available LSP tools (goToDefinition / findReferences / incomingCalls / hover) and when to prefer them over `rg`. The `nudge-lsp.sh` hook keys its CLAUDE.md pointer off the literal phrase `Code Navigation` — so a project **with** an LSP gets a live reference, and one **without** never gets a dead link. If no LSP is detected, omit the section entirely (do not stub it).
-- **Fill the `### Default branch` slot** inside `Git Workflow` with the workflow from Phase 1.
+- **Fill the `### Branch model` block** inside `Git Workflow` with the preset and all six field values derived in Phase 1. Leave no `{…}` placeholder in the output. Omit the optional `**Merge:**` line unless the project deviates from its preset.
 - **Fill the `**Orchestrate publish:**` slot** in the same section with the value derived in Phase 1 (`push` / `branch-local`). Leave no `{push | branch-local}` placeholder in the output.
 - **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
 - **Fill the `**Project docs hosts allowed for `WebFetch`:**` slot** in `Security` from the stack detected in Phase 1 — the documentation and API hosts this project will actually read (e.g. `docs.stripe.com` for a Stripe integration, `angular.dev` for Angular, the company's own docs host). Then **add each as a `WebFetch(domain:<host>)` entry to `.claude/settings.json → permissions.allow`**, next to the shipped defaults. Write `none beyond the defaults` when nothing stack-specific applies — never leave the `{list …}` placeholder.
@@ -244,10 +259,11 @@ rg -o '^## (.+)$' -r '$1' CLAUDE.md | sort -u | while IFS= read -r h; do
 done   # --glob MUST precede --, or ripgrep reads it as a path and applies no exclusion
 ```
 
-**Two lines inside `Git Workflow` are mandatory *content*, not prose to trim** — the list above is heading-only and cannot protect a line:
+**Three items inside `Git Workflow` are mandatory *content*, not prose to trim** — the list above is heading-only and cannot protect a line:
 
 - the `**Orchestrate publish:**` line plus its explanatory blockquote (you derive the value in Phase 1 and fill it below). Drop it and `/orchestrate` silently falls back to `push` — so a PR-gated project that had declared `branch-local` starts pushing again after regeneration.
 - the `git worktree remove --force` guard sentence — unlike the permission tiers, it is not a restatement of `settings.json`; that guard exists nowhere else.
+- the `### Branch model` block plus its explanatory blockquote. Trim it and `/switch-to`, `/start-task` and `/pr-create` lose their only source of branch facts — and they fail **silently**, by falling back to a guess rather than erroring.
 
 **Generate project-specific Automatic Behaviors triggers:**
 
