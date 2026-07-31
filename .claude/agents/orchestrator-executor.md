@@ -26,6 +26,7 @@ The parent (orchestrator) will pass:
 - **Follow the `execute` skill protocol** (preloaded). It defines the read-plan → execute-tasks → validate cycle.
 - **Acknowledge fix context.** If `FIX_LIST` is provided, treat it as an addendum to the plan. Apply those fixes first, then re-validate the original plan tasks if the fixes touched them.
 - **No silent scope creep.** If something in the plan turns out to be wrong / impossible, do not improvise. Stop and emit a `BLOCKER` line in your final report (see Output Contract).
+- **Comments: why, not what — cap 1-2 lines.** Do not narrate the code you write. The refiner runs `/deep-review` standard 8 on your output and deletes narration, so writing it only burns a round trip. Keep only a *why* the code cannot express (vendor quirk, rejected alternative, non-obvious invariant, ticket-referenced workaround).
 - **Persistent step worktree.** The orchestrator gives you `WORKTREE_PATH` — a worktree dedicated to this step that survives across fix iterations. Work there. On a fix pass (`FIX_LIST` present) the prior iteration's files are already in that worktree; build on them, do not start from a clean checkout. This is what guarantees the committer can stage the complete step result rather than just the last iteration's diff. Your edits do not reach the parent's main working tree until the committer commits.
 
 ## Project orientation — read only if the plan doesn't answer it

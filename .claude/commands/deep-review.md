@@ -65,6 +65,14 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 - If related updates can leave state half-applied, push for a more atomic structure.
 - Do not over-index on micro-optimizations, but do flag avoidable orchestration complexity that makes the implementation more brittle.
 
+**8. Treat comment noise as a structural smell, and delete it.**
+- Narration comments — restating the adjacent statement, echoing a variable / constant / function name, or repeating what the signature already says — are noise, not documentation; **remove them**.
+- A multi-line justification attached to a one-line change is a smell: the reasoning belongs in `.agents/memory/` or the spec with a one-line pointer from the code, or it is not needed at all.
+- Comment noise is a **high-conviction + obvious-fix** finding — in pipeline mode **apply the deletion**, do not merely note it. It is explicitly **not** a low-tier legibility note; without this line the routing table below files it under "Low tier" and nothing ever removes it.
+- **Keep** every comment that records a genuine *why* — a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Deleting one of those is a regression, not a cleanup, and this clause is what stops the standard from over-correcting.
+
+> This is the step with **write authority** in the comment loop. `guard-comments.sh` only nudges at write time, and `/gates:verify-implementation` only warns — this standard is reached from two independent paths (`orchestrator-refiner` inside `/orchestrate`, and `/check-implementation` Step 1b), which is why the deletion lives here rather than in either of those.
+
 ---
 
 ## What you do with findings

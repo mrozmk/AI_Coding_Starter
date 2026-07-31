@@ -169,16 +169,6 @@ The following plan should be complete, but it's important that you validate code
 
 <Derived from spec's Summary + Problem/Solution — expand with implementation-level detail>
 
-## User Story
-
-As a <type of user>
-I want to <action/goal>
-So that <benefit/value>
-
-## Problem Statement
-
-<From spec's Problem — keep tight>
-
 ## Solution Statement
 
 <From spec's Solution — refined with concrete implementation approach>
@@ -230,25 +220,6 @@ So that <benefit/value>
 
 ---
 
-## IMPLEMENTATION PLAN
-
-### Phase 1: Foundation
-
-<Foundational work needed before main implementation — schemas, types, interfaces, dependency wiring>
-
-### Phase 2: Core Implementation
-
-<Main implementation — business logic, services, endpoints, data models>
-
-### Phase 3: Integration
-
-<How the feature integrates with existing functionality — routers, handlers, config, middleware>
-
-### Phase 4: Testing & Validation ⟂ conditional — include only if tests are warranted for project size (see Testing Strategy)
-
-<Unit / integration tests, edge-case coverage, acceptance validation>
-
----
 
 ## STEP-BY-STEP TASKS
 
@@ -316,15 +287,11 @@ Use information-dense keywords for clarity:
 
 Execute every applicable command to ensure zero regressions and feature correctness.
 
-### Level 1: Syntax & Style
+### Level 1: Automated
 
-<Project-specific linting and formatting commands>
+<Project-specific lint / format / type-check commands, then the test commands. Skip the test line if tests were deemed unnecessary above. `/orchestrate` Step 5.4 parses this section to derive the build command — keep it present and executable even when it is one line.>
 
-### Level 2: Tests
-
-<Project-specific test commands — skip if tests were deemed unnecessary above>
-
-### Level 3: Manual Validation
+### Level 2: Manual Validation
 
 <Feature-specific manual testing steps — API calls, UI testing, etc. Always required regardless of project size>
 
@@ -338,16 +305,6 @@ Execute every applicable command to ensure zero regressions and feature correctn
 - [ ] No regressions in existing functionality
 - [ ] Tests written where appropriate for project size
 - [ ] Security considerations addressed (if applicable)
-
----
-
-## COMPLETION CHECKLIST
-
-- [ ] All tasks completed in order
-- [ ] Each task validation passed immediately
-- [ ] All validation commands executed successfully
-- [ ] Manual testing confirms feature works
-- [ ] Acceptance criteria all met
 
 ---
 

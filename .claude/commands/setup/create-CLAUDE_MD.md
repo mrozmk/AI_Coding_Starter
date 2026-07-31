@@ -134,7 +134,15 @@ Ask the user which language Claude should use when talking to the developer (use
 | English | Claude responds in English; command prompts render in English. |
 | Other | Any language the team prefers — record it verbatim. |
 
-**Default to Polish** if the user doesn't care or doesn't answer (the starter's primary audience). Record the chosen language; it substitutes every `{communication-language}` token when filling the template in Phase 3.1.
+**Detect a sensible default first** (this command is explicitly re-runnable, and a refresh must not silently undo a prior choice):
+
+- If `CLAUDE.md` already exists, read its `Language Rules` row and offer **that** language as the default.
+- Otherwise, if the project has substantial prose docs (`README.md`, `docs/`), infer from the language they are written in.
+- Otherwise, **default to Polish** (the starter's primary audience).
+
+> Without the first check, a refresh run on an English-configured project resets it to Polish — silently, because `{communication-language}` is substituted straight into the regenerated file and nothing reports the change. The same detect-then-ask shape is already used for the git workflow above.
+
+Record the chosen language; it substitutes every `{communication-language}` token when filling the template in Phase 3.1.
 
 ---
 
@@ -207,6 +215,9 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 - **Fill the `### Default branch` slot** inside `Git Workflow` with the workflow from Phase 1.
 - **Fill the `**Orchestrate publish:**` slot** in the same section with the value derived in Phase 1 (`push` / `branch-local`). Leave no `{push | branch-local}` placeholder in the output.
 - **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
+- **Fill the `**Project docs hosts allowed for `WebFetch`:**` slot** in `Security` from the stack detected in Phase 1 — the documentation and API hosts this project will actually read (e.g. `docs.stripe.com` for a Stripe integration, `angular.dev` for Angular, the company's own docs host). Then **add each as a `WebFetch(domain:<host>)` entry to `.claude/settings.json → permissions.allow`**, next to the shipped defaults. Write `none beyond the defaults` when nothing stack-specific applies — never leave the `{list …}` placeholder.
+
+  > This is the one place the egress allowlist grows. It is deliberately narrow: the alternative — restoring `WebFetch(domain:*)` because prompts are annoying — removes the only control standing between an injected instruction and an attacker-chosen URL. Add hosts you can name a reason for; let the rest prompt.
 - **DO NOT remove or soften** these baseline sections — mandatory for every generated `CLAUDE.md`:
   - `Language Rules`
   - `Validation`

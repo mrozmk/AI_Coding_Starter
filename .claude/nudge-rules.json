@@ -1,0 +1,13 @@
+{
+  "_doc": "PostToolUse reminders per file class, read by .claude/hooks/nudge-files.sh. Each rule has a `glob` matched against the repo-relative path with shell `case` globbing (`*` spans `/` too, so `src/*` matches `src/lib/deep/file.ts`) and a `message` emitted as additionalContext after a matching write. FIRST match wins — order the rules most-specific first. The hook NEVER blocks: the write already happened, so a false positive costs one re-read, not a wedged edit. Empty `rules` => the hook is installed but fully silent, which is the shipped default.",
+
+  "_why_doc": "A prose rule in CLAUDE.md is unenforceable once it falls out of the context window. This restates the rule for a file class at the moment a write lands in it. Use it for classes where the cost of getting it wrong is high and the rule is easy to forget: a central design-token file, a migrations directory, a public API barrel, a generated client, an i18n catalogue. Keep each message to the rule plus where to read more — a paragraph here is a paragraph nobody reads.",
+
+  "_examples": [
+    { "glob": "*/tokens/_semantic.*", "message": "Central design-token file. Only cross-component semantic roles belong here; a value consumed by exactly one component is declared component-local. See CLAUDE.md -> Style & Conventions." },
+    { "glob": "*/migrations/*", "message": "Migration: forward-only and reversible. No data backfill in the same file as a schema change." },
+    { "glob": "src/*/index.ts", "message": "Public barrel — an export added here is a published contract. Confirm it is meant to be public before adding it." }
+  ],
+
+  "rules": []
+}

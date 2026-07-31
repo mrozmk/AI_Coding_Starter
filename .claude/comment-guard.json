@@ -6,6 +6,6 @@
   "_min_comment_lines_doc": "Floor: writes with this many comment lines or fewer never nudge, whatever the ratio. Spares a single legitimate 1-2 line why-comment in a small edit.",
   "min_comment_lines": 3,
 
-  "_max_comment_percent_doc": "Comment lines as a percentage of non-blank written lines. Set it to YOUR codebase's CURRENT density, not to an aspiration — then the nudge marks 'this write is worse than what already exists' instead of enforcing a new ideal nobody has met. Measure it once per language, e.g.: rg -c '^\\s*//' --glob 'src/**/*.ts' | awk -F: '{c+=$2} END {print c}' against the same glob's non-blank line count.",
+  "_max_comment_percent_doc": "Comment lines as a percentage of non-blank written lines. Set it to YOUR codebase's CURRENT density, not to an aspiration — then the nudge marks 'this write is worse than what already exists' instead of enforcing a new ideal nobody has met. Measure it once per language, e.g.: rg -c '^\\s*//' --glob 'src/**/*.ts' | awk -F: '{c+=$2} END {print c}' against the same glob's non-blank line count. A threshold set BELOW current density fires on almost every write, and a nudge that always fires is one the model and the reader both learn to skip — so err high and tighten later, never the reverse.",
   "max_comment_percent": 15
 }

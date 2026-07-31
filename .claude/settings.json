@@ -9,6 +9,10 @@
       "Bash(echo:*)",
       "Bash(rg:*)",
       "Bash(jq:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(git switch *)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -34,7 +38,19 @@
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
       "Bash(bash .claude/lib/qa-probe.sh)",
-      "WebFetch(domain:*)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.python.org)",
+      "WebFetch(domain:pkg.go.dev)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:readthedocs.io)",
       "mcp__atlassian__*"
     ],
     "ask": [
@@ -95,7 +111,18 @@
       "Bash(*xoxa-*)",
       "Bash(*AKIA*)",
       "Bash(*ASIA*)",
-      "Bash(*sk-ant-*)"
+      "Bash(*sk-ant-*)",
+      "Bash(*curl*-d *)",
+      "Bash(*curl*--data*)",
+      "Bash(*curl*-F *)",
+      "Bash(*curl*--form*)",
+      "Bash(*curl*-T *)",
+      "Bash(*curl*--upload-file*)",
+      "Bash(*curl*--json*)",
+      "Bash(*curl*-X *)",
+      "Bash(*curl*--request*)",
+      "Bash(*wget*--post*)",
+      "Bash(*wget*--body*)"
     ],
     "additionalDirectories": [
       "/tmp"
@@ -178,6 +205,10 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-comments.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/nudge-files.sh\""
           }
         ]
       },

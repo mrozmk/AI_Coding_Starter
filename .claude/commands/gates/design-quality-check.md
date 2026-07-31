@@ -162,6 +162,17 @@ Exact icon identity (similarly-named glyphs are different), weight/variant, size
 ### 5.14 Design tokens
 For every token the section references: does it exist in the live app, and does its **value** match the design's? Naming differences are not defects if values match; value differences always are.
 
+**Audit both directions.** Checking only "does the referenced token exist and match?" misses the most common real drift — writing `#1a1a1a` where a token already holds `#1a1a1a`:
+
+- A raw literal where a **same-value token already exists** is a defect.
+- A literal is allowed only when **no token exists** for that value, and only with a one-line justification.
+- Do not mix token references and literals for the **same property** in one component.
+- Token sourcing must stay **consistent across breakpoints**.
+
+> **Over-correction guard:** a genuinely token-less literal that carries its justification is **not** a defect — do not flag it. Flagging those is how a team learns to ignore this section.
+>
+> This wording is deliberately identical to `/gates:verify-implementation` → §5 Design Compliance. Two gates stating the same rule differently is how one of them stops being believed — change both or neither.
+
 ### 5.15 Animations & keyframes
 Keyframe names (or intentional aliases) match, each step's property values match, animation timing/iteration/direction/delay/fill-mode match, compound animations preserve order.
 

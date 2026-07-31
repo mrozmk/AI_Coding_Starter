@@ -36,7 +36,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 
 | Situation | Files to load |
 |-----------|---------------|
-| Before any non-trivial response | `user-profile.md` (skip if `status: empty`) |
+| Before any non-trivial response | `user-profile.md` (skip if **absent** or `status: empty` — it is gitignored and per-developer, so on a fresh clone it does not exist at all; treat that as "skip", not as an error) |
 | New session / `/prime` | `project-brief.md` (or `docs/PRD.md` if brief is empty), `architecture.md` |
 | Before writing code | `patterns.md`, `architecture.md` — but once memory is large **and** `memory-domains.json` has path→domain rules (both required, else the hook stays dormant), `guard-memory.sh` forces this through a distillation subagent on the first edit per domain (see CLAUDE.md → Automatic Behaviors); load directly only when the hook is dormant |
 | Before debugging or investigating a bug | `errors.md` |
@@ -59,7 +59,8 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 
 | What | Loaded by | Used by |
 |------|-----------|---------|
-| `CLAUDE.md`, `index.md`, `project-brief.md`, `architecture.md` (always); `patterns.md`, `decisions.md`, `api.md`, `errors.md`, `domain/*` (full mode) | `/prime` (quick or `/prime full`) | Every subsequent command in the session |
+| `CLAUDE.md` | **The harness — injected every session.** Do **not** re-read it in `/prime` or in any command | Everything, always |
+| `index.md`, `project-brief.md`, `architecture.md` (always); `patterns.md`, `decisions.md`, `api.md`, `errors.md`, `domain/*` (full mode) | `/prime` (quick or `/prime full`) | Every subsequent command in the session |
 | Tool-specific configs the command operates on (e.g. `playwright.config.ts` for `/test-e2e`, `pyproject.toml` for a Python-aware command) | The command itself | That command only |
 | Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog`) | The transforming command | The transforming command only |
 
@@ -97,6 +98,26 @@ A rule that constrains the **shape** of output — a length cap, an item limit, 
 Never import a terminal-report rule ("cap the list", "lead with the action") into an artifact template — a truncated plan is a broken plan.
 
 **Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content from `/maintain:cleanup-workflow` Phase 2: **entries** cut by Section 2A (`archive/<file>-YYYY-MM-DD.md`) and whole **files** archived by Section 2B (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
+
+---
+
+## Probe Convention — every `!`-prefixed command exits 0 by construction
+
+A slash command can embed a shell probe with `` !`…` ``. The harness runs it **at skill-load time** and treats **any non-zero exit as a failed load** — the command's body never renders and the user sees a shell error instead of the skill. So a probe's exit code is part of its contract, not an afterthought.
+
+**Write probes whose success does not depend on what they find.** "Nothing matched" is a valid answer for every probe we ship — a fresh project has no `domain/` files, a docs-only repo has no manifest.
+
+- ✅ `find <dir> -maxdepth 1 -name '*.md'` — `find` exits 0 whether or not it matches
+- ✅ `find . -maxdepth 1 -type f \( -name a -o -name b \)` — the multi-candidate form
+- ✅ `<cmd> || echo "(none)"` — acceptable when the fallback text is genuinely useful output
+- ❌ `ls <a> <b> <c>` — exits non-zero if **any** argument is missing, and `2>/dev/null` mutes the message, not the status
+- ❌ `ls <glob>` — exits non-zero when the glob matches nothing
+- ❌ `for f in …; do [ -f "$f" ] && echo "$f"; done` — the loop returns the **last** iteration's status, so a missing final candidate fails the whole probe
+- ❌ a trailing `|| true` bolted onto any of the above — it works, but it puts the correctness of the load on one easily-deleted token
+
+**Why this is a convention and not a bug report.** This exact failure has now been introduced three separate times across this harness and its downstreams — twice with `ls <list>`, once with a `for` loop — each time producing the same symptom: a skill that silently refuses to load, reported by the harness as a shell error naming a file that is merely *absent*. It is invisible in review because the probe works perfectly in whichever repo the author tested it in. Prefer the structural fix (`find`) over the defensive one (`|| true`).
+
+**When editing a command that has a probe, test the empty case** — run it in a directory where nothing it looks for exists and confirm `echo $?` prints `0`.
 
 ---
 

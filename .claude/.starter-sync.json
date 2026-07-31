@@ -1,0 +1,7 @@
+{
+  "_doc": "Sync provenance for a project forked from the AI Coding Starter. /maintain:sync-from-starter reads `last_sync_commit` as the merge base for its 3-way comparison and rewrites this file after a successful sync. In the STARTER ITSELF every field stays null/default — the starter is upstream and has no parent; the file ships so a fresh fork has the shape already present instead of the sync command guessing a base.",
+  "starter_repo": "https://github.com/mrozmk/AI_Coding_Starter",
+  "last_sync_commit": null,
+  "last_sync_ref": "main",
+  "last_sync_date": null
+}

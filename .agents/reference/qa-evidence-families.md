@@ -45,13 +45,13 @@ Add stack-specific families here. They participate in classification (§3), the 
 
 Family → the verifier that owns it → the **execution lane** it must run in.
 
-| Family | Verifier | Lane |
-|---|---|---|
-| `runtime / behavior` | `qa-runtime` | S |
-| `runtime-UI + a11y` | `qa-runtime-ui` | S |
-| `design parity` | `qa-design-parity` | I |
-| `contract / type / boundary` | `qa-contract` | P |
-| `config / external` | `qa-config` | P |
+| Family | Verifier | Lane | Required tooling |
+|---|---|---|---|
+| `runtime / behavior` | `qa-runtime` | S | browser automation |
+| `runtime-UI + a11y` | `qa-runtime-ui` | S | browser automation |
+| `design parity` | `qa-design-parity` | I | design-tool MCP |
+| `contract / type / boundary` | `qa-contract` | P | none — filesystem only |
+| `config / external` | `qa-config` | P | none — filesystem only |
 
 **Lanes** — forced by hard constraints, not by taste:
 
@@ -63,7 +63,9 @@ Family → the verifier that owns it → the **execution lane** it must run in.
 
 **Build status is derived, never declared here.** There is deliberately **no build-status column** in the table above. `/qa-verify` derives it in Phase 0 from an injected `ls .claude/agents/qa-*.md` and treats any family whose canonical verifier is absent from that listing as guarded. A hand-maintained column can lie at exactly the moment the guard exists to fire — the router spawns an agent whose file does not exist and the run errors out. The roster names the *intended* verifier; whether it *exists* is a fact read off the filesystem.
 
-At the time of writing, only `qa-contract` is built. The other four rows are declared and guarded — their ACs route to `NEEDS-HUMAN` with the missing verifier named.
+**Required tooling is a class, not a product.** The column names the *kind* of capability a family needs — "browser automation", "design-tool MCP" — never a specific server, so a project that swaps one browser MCP for another does not have to edit this table. It is checked at dispatch time exactly as build status is, and against the same principle: **a present agent file with an absent tool is the worst state in the system**, because the agent still produces a confident row that reads as observed evidence. When the class is unreachable this session, the family resolves to `NEEDS-HUMAN` (`design parity`: `not-verified`) with the missing class named — never to a pass, and never by spawning the agent anyway.
+
+At the time of writing, `qa-contract` and `qa-runtime-ui` are built. The other three rows are declared and guarded — their ACs route to `NEEDS-HUMAN` with the missing verifier named.
 
 ---
 

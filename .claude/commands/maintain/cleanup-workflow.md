@@ -269,7 +269,10 @@ DB=.claude/memory-usage.json
 # Do NOT create the sidecar here — 2B is read-only on telemetry, and the "no sidecar →
 # skip 2B" guard below must stay reachable (a created-empty sidecar would turn every
 # file into a false archive candidate via days-since-created).
-[ -f "$DB" ] || { echo "no read-usage telemetry yet (track-memory-read hook has not run) — skipping 2B"; exit 0; }
+# Unusable counts as absent: -f alone passes a 0-byte or malformed sidecar, and then every
+# jq below returns empty — so every file reads as "never referenced" and becomes a false
+# archive candidate, which is the exact damage this guard exists to prevent.
+{ [ -s "$DB" ] && jq -e . "$DB" >/dev/null 2>&1; } || { echo "no usable read-usage telemetry (track-memory-read hook has not run, or the sidecar is empty/corrupt) — skipping 2B"; exit 0; }
 for f in .agents/memory/*.md .agents/memory/domain/*.md; do
   key="${f#.agents/memory/}"
   last=$(jq -r --arg k "$key" '.[$k].last_referenced // ""' "$DB")
@@ -281,8 +284,10 @@ for f in .agents/memory/*.md .agents/memory/domain/*.md; do
 done
 ```
 
-If the sidecar does not exist at all (the hook has never run), report `no read-usage telemetry
-yet (track-memory-read hook has not run)` and skip the rest of 2B.
+If the sidecar is absent or unusable (the hook has never run, or the file is empty/corrupt),
+report `no usable read-usage telemetry` and skip the rest of 2B. Report it as *missing telemetry* —
+never as "zero reads". A file nobody has read and a file whose reads were never recorded look
+identical here, and only the first is an archive candidate.
 
 #### 2B.2 Compute days-idle for each
 
@@ -480,7 +485,11 @@ former 90-day flag here vs 2B's 180-day archive criterion.)
 
 ### 4.2 Cross-file duplication & internal contradictions
 
-- **Contradictions:** scan `CLAUDE.md` + `.claude/commands/` for rules that conflict with practice. Canonical example: `CLAUDE.md` mandates "use `rg`, never `grep`/`find`" while a command actually invokes `grep`/`find`. Grep the commands for the forbidden tool and flag each hit.
+- **Contradictions:** scan `CLAUDE.md` + `.claude/commands/` for rules that conflict with practice. Canonical example: `CLAUDE.md` mandates "use `rg`, never `grep`/`find`" while a command actually invokes `grep`/`find`. Search the commands for the forbidden tool and flag each hit.
+
+  **Exempt: bounded single-file field extraction.** A pipeline that reads one named file and pulls one field out of it — `head -10 "$f" | grep -m1 '^pinned:'`, `head -10 <file> | grep -q '^status: empty'`, `wc -l file | awk '{print $1}'` — is not a file search and must **not** be flagged. The rule this check enforces is about *finding files by content across a tree*, which is what `rg` replaces; it was never about parsing a line out of a known file, and `rg` is not the better tool for that.
+
+  > This command itself uses exactly those forms (`grep -m1` twice in Phase 2B, `grep -q` in Phase 3, `awk` in Phase 4.1). Without this exemption Phase 4.2 reports **itself** as a contradiction on every single run — and a report that always contains a known-false line is one the reader learns to skim, which is the failure this whole phase exists to avoid.
 - **Duplication:** the same multi-line guidance copied across files drifts out of sync. Flag blocks substantially duplicated between `CLAUDE.md` and a command — the source of truth should live in one place and be linked.
 
 > ⚠️ `CLAUDE.md` mandates `rg` but `<command>.md:<line>` calls `find`/`grep`. Align the command or the rule.
@@ -561,7 +570,7 @@ After all 4 phases:
 
 ## Rules
 
-- **Use `rg`, never `grep` or `find`.**
+- **Use `rg`, never `grep` or `find`** — for *searching*. A bounded single-file field extraction (`head -N | grep -m1 '^key:'`, `wc -l | awk '{print $1}'`) is not a search and is exempt, both from the rule and from Phase 4.2's contradiction check.
 - **Phase 1: no auto-fix.** Suggestions only — user repairs manually.
 - **Phase 2: archive is the default.** Delete only on explicit user choice.
 - **Phase 2 runs 2A (entry-level) before 2B (file-level).** 2A cuts stale entries from living files (daily archive `archive/<file>-YYYY-MM-DD.md`); 2B archives whole cold files (quarterly archive `archive/YYYY-Q<N>/`). Both schemes coexist by design.

@@ -11,9 +11,9 @@ Run after `/execute` completes a plan. Validates checklist completion, runs qual
 
 ## 0. Detect Stack
 
-Run a cheap probe to find which manifests are present (lists only the files that exist; `ls` sends the rest to stderr, which is suppressed). The trailing `|| true` matters: with **no** manifest at all — a docs-only repo, or this starter template itself — `ls` exits non-zero, and a non-zero probe aborts the whole skill load. An empty stack is a valid answer, not an error.
+Run a cheap probe to find which manifests are present. It lists only the files that exist and **exits 0 by construction** — `find` returns success whether or not it matches, so an empty stack (a docs-only repo, or this starter template itself) is a valid answer rather than a non-zero exit that aborts the whole skill load. Do not rewrite this as `ls <list>`, `[ -f x ]`, or a `for` loop: each of those exits non-zero when a candidate is missing, and the trailing `|| true` that papers over it is one careless edit away from being dropped.
 
-!`ls -d package.json tsconfig.json pyproject.toml Cargo.toml go.mod composer.json tailwind.config.js tailwind.config.ts tailwind.config.cjs 2>/dev/null || true`
+!`find . -maxdepth 1 -type f \( -name package.json -o -name tsconfig.json -o -name pyproject.toml -o -name Cargo.toml -o -name go.mod -o -name composer.json \)`
 
 Set flags from the output:
 
@@ -23,7 +23,6 @@ Set flags from the output:
 | `IS_TS` | `tsconfig.json` exists OR `package.json` lists `typescript` in deps |
 | `IS_REACT` | `package.json` lists `react` in deps |
 | `IS_NEXT` | `package.json` lists `next` in deps |
-| `IS_TAILWIND` | any `tailwind.config.*` exists OR `package.json` lists `tailwindcss` |
 | `IS_PYTHON` | `pyproject.toml` exists |
 | `IS_GO` | `go.mod` exists |
 | `IS_RUST` | `Cargo.toml` exists |
@@ -96,6 +95,7 @@ These apply to every project regardless of stack:
 - SQL/NoSQL injection — string concatenation in queries; must use parameterized queries / prepared statements / ORM
 - Path traversal — file APIs without `path.resolve` + allowlist prefix validation
 - Hardcoded secrets (API keys, tokens, passwords) — must use env vars or a secret manager
+- **SSR: server-only secrets embedded into the rendered HTML payload** (any SSR framework) — a value read on the server and serialized into the page, hydration state, or an inlined script reaches the client even though it never appears in client source. Distinct from the bullet above: the secret *is* correctly held in an env var, and still ships.
 - Prototype pollution / unsafe object merging from untrusted sources (JS); equivalent in other langs (e.g. Python `pickle.loads` on untrusted data, YAML unsafe load)
 - User input passed to subprocess / shell without strict allowlist validation
 
@@ -179,15 +179,32 @@ The most dangerous defects are not thrown exceptions — they are code that sile
 - Deep optional chaining without fallback (`a?.b?.c?.d`) — add `?? fallback`
 - Inconsistent naming — follow language convention (camelCase JS/TS, snake_case Python/Rust, etc.)
 
+### MEDIUM — Comment noise (Warn only, language-agnostic)
+
+Report narration added by this change: a comment restating the adjacent statement, echoing a variable / constant / function name, or repeating what the signature already says. Also flag a multi-line justification attached to a one-line change — that reasoning belongs in `.agents/memory/` or the spec, with a one-line pointer from the code.
+
+**Do not flag** a comment that records a genuine *why* — a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Those are the comments the rule exists to protect, and a warning on one trains the reader to ignore this whole section.
+
+> Warn only, deliberately: this command is read-only. `/deep-review` standard 8 is what deletes the noise, and `guard-comments.sh` is what nudges at write time. See CLAUDE.md → Style & Conventions.
+
 ## 5. Design Compliance (UI plans only)
 
 Skip this section if the plan has no design references.
 
-- **Design tokens**: No hardcoded literal values for colors, spacing, fonts, or radii. Use the project's design system — Tailwind classes (if `IS_TAILWIND`), CSS custom properties, theme tokens, or design-system components — whatever the project standardized on.
+- **Design tokens**: No hardcoded literal values for colors, spacing, fonts, or radii. Use whatever the project standardized on — read it from CLAUDE.md → Style & Conventions rather than guessing: utility classes, CSS custom properties, theme tokens, or design-system components. Judge against the convention the codebase actually uses.
+
+  **Audit both directions.** Checking only "does the referenced token exist and match?" misses the most common real drift — writing `#1a1a1a` where a token already holds `#1a1a1a`:
+
+  - A raw literal where a **same-value token already exists** is a defect.
+  - A literal is allowed only when **no token exists** for that value, and only with a one-line justification.
+  - Do not mix token references and literals for the **same property** in one component.
+  - Token sourcing must stay **consistent across breakpoints**.
+
+  > **Over-correction guard:** a genuinely token-less literal that carries its justification is **not** a defect — do not flag it. Flagging those is how a team learns to ignore this section.
 - **Animations**: No `transition: all`. Use explicit properties with named easing curves. If the project has a documented animation language (e.g. `.agents/memory/domain/design.md`), follow it.
 - **Accessibility**: ARIA labels, focus management, keyboard navigation, color contrast (WCAG AA minimum).
 - **Reduced motion**: Respect `prefers-reduced-motion` for all animations.
-- **Responsive**: Proper breakpoints for all layouts — Tailwind `sm:`/`md:`/`lg:` if `IS_TAILWIND`, equivalent media queries otherwise.
+- **Responsive**: Proper breakpoints for all layouts, expressed the way this project expresses them — utility-framework breakpoint prefixes, media queries, or container queries. Flag a layout that hardcodes one viewport, not the syntax it chose.
 
 ## 6. Plan-Specific Validation (Spec axis)
 

@@ -45,7 +45,7 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 
 6. Analyze the changes you ARE staging and generate a commit message following the canon format below. The message must describe only the files actually being staged — not the foreign ones.
 
-7. Stage the approved set with explicit `git add <path>` calls, one path per file. Do NOT use `git add .` or `git add -A` — both bypass the scoping you just established. Skip `.env`, credentials, large binaries, `node_modules` even if they appear in your set (refuse + warn the user).
+7. Stage the approved set with explicit `git add <path>` calls, one path per file. Do NOT use `git add .`, `git add -A`, or `git add -u` — all three bypass the scoping you just established. `-u` is the easy one to miss: it stages every *tracked* modification, which is exactly the FOREIGN set you just classified out. Skip `.env`, credentials, large binaries, `node_modules` even if they appear in your set (refuse + warn the user).
 
 8. Create the commit with the generated message — **no further confirmation needed at this point**.
 9. **Memory checkpoint** — read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) first: its save-or-not bar and de-dup guard govern this step (default outcome: save nothing; if `/execute` or `/check-implementation` already reflected in this flow, there is usually nothing left). Then review the work done in this commit and ask yourself:
@@ -55,7 +55,8 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
    - Was a project-specific pattern identified? → append to `.agents/memory/patterns.md`
    - Was something module-specific learned? → append to `.agents/memory/domain/{module}.md` (create if needed)
    - If nothing worth remembering — skip silently, do not mention it
-   - If memory files were updated as part of this checkpoint, they count as yours — `git add` them and create a follow-up commit (or `git commit --amend` if the previous commit was literally seconds ago and unpushed). Do NOT mix unrelated FOREIGN files into the amend either way.
+   - If memory files were updated as part of this checkpoint, they count as yours — but do **not** fold them into the main commit. `git add` them and create a **separate** `chore(memory): <topic>` commit. A memory write is a different kind of change from the code it came from, and separating them keeps both diffs readable.
+   - Do **not** `git commit --amend`. "The previous commit was seconds ago and unpushed" is not a safe test in this kit: `/orchestrate` pushes step commits as it goes, so the commit you are about to rewrite may already be published. A second commit is always correct; an amend is only sometimes correct, and the difference is invisible from here.
 10. Show a brief summary: list of staged files, the commit message used, and the SHA.
 
 ## Commit message canon:

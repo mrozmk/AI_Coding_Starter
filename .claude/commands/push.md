@@ -30,7 +30,9 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 
 ### 4. Push commits
 
-- Run: `git push origin "<branch>"`
+- Check whether the branch has an upstream: `git rev-parse --abbrev-ref --symbolic-full-name '@{u}'`
+  - **No upstream** (the command fails) → push with `-u`: `git push -u origin "<branch>"`. Without it a first push leaves no tracking ref, so `git status` never reports ahead/behind and **this command's own step 1** (`git log HEAD..origin/<branch>`) permanently takes the "branch doesn't exist on remote" path — `/push` would keep behaving as if nothing had ever been published.
+  - **Upstream exists** → `git push origin "<branch>"`
 - If push is rejected (non-fast-forward):
   - Do NOT force push automatically
   - Inform the user: "Push rejected — remote has commits not in local history. Run /pull first, then /push again."
@@ -48,7 +50,7 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 - Confirm: "Push complete. `origin/<branch>` is up to date."
 
 ## CRITICAL rules:
-- NEVER use `--force` or `--force-with-lease` — they are blocked in `.claude/settings.json`. If rewriting history is genuinely needed, ask the user to run it manually.
+- NEVER use `--force` or `--force-with-lease` — they are blocked in `.claude/settings.json`. **Resolve forward, don't delegate the rewrite:** integrate with `/pull` then `/push`, or undo the bad commit with `git revert`. Do not tell the user to run the force-push by hand — that turns a deliberate `deny` into a suggestion, and published history stays rewritten either way. If a rewrite is genuinely the only option, say why the forward paths do not work and let the user decide unprompted.
 - When pushing to a protected branch (`main`/`master`/`trunk`/`develop`), always ask for confirmation first.
 
 ## Pre-publication secret scan (automatic)

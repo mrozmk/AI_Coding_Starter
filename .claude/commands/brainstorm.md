@@ -130,6 +130,8 @@ For each approach cover:
 - Pros and cons
 - Complexity and risk
 
+**Write the outcome into the spec, not just into the chat.** The spec's `## Solution` records the chosen approach **and each rejected one with a one-line rationale**. Rejecting an option in conversation and saving only the winner loses the reasoning at exactly the point later stages need it: `/plan-feature`'s Step 8 asks the cross-model reviewer *"is there a fundamentally simpler way?"*, and with no rejected-alternatives record that reviewer re-proposes options this step already killed — as `fundamental` findings, which are the **only** class escalated to the user. An unrecorded rejection becomes a spurious interrupt on the one path reserved for real forks.
+
 ### Step 4: Present the Design
 
 Once you understand what to build, present the complete design **in one pass** — do not gate section-by-section and do not ask "shall I continue?" between parts. Cover:
@@ -146,7 +148,7 @@ Present it, then proceed to write the spec (Step 5). Do **not** wait for per-sec
 
 ### Step 5: Write Design Doc
 
-Save the approved design to:
+Save the design to:
 
 ```
 .agents/specs/YYYY-MM-DD-<kebab-case-topic>.md
@@ -173,7 +175,11 @@ Create `.agents/specs/` if it doesn't exist.
 
 ## Solution
 
-<Chosen approach and rationale>
+<Chosen approach and rationale, followed by each rejected approach with a one-line reason — see Step 3>
+
+## Assumptions
+
+<Every default you resolved yourself in Step 2, one bullet each, as "Assumed X (because Y)". If none, write "None — no defaults taken without asking". This section is never omitted and never left blank: an assumption that exists only in the conversation is invisible to `/plan-feature`, to `/orchestrate`, and to the cross-model reviewer that reads this file.>
 
 ## Architecture
 
@@ -421,14 +427,24 @@ If codex surfaced a **recurring** design mistake (a class of gap `/brainstorm` k
 Hand off to `/plan-feature`. There is a single planning command — whether it performs a web-research phase is decided automatically from the `External docs required` flag in the spec (set in Step 5).
 
 Tell the user:
-- the path to the approved spec,
+- the path to the saved spec,
 - the value of `External docs required` (yes/no) and what it means in practice ("planning will fetch web docs for X" or "planning skips external research — all deps covered by `.agents/reference/`").
+
+<TERMINAL-GATE>
+**STOP. `/brainstorm` is complete.**
+
+Do **NOT** write code. Do **NOT** scaffold files. **Do NOT auto-run `/plan-feature`** — naming it above is a handoff pointer for the user, not an instruction to yourself.
+
+Report the spec path and end your turn.
+</TERMINAL-GATE>
+
+> The gate is repeated here, at the end, rather than only at the top of the file. Step 8 can put a background review and many turns of polling between the opening `<HARD-GATE>` and this point, and "hand off to `/plan-feature`" is the kind of line a long session reads as a command. A gate that is only stated where it is easy to forget is not a gate.
 
 ---
 
 ## Key Principles
 
-- **One question at a time** — never stack questions
+- **Batch independent forks, never ping-pong** — 2–3 genuinely independent directional questions belong in **one** `AskUserQuestion` call (it takes up to 4), so the user sees the whole decision surface at once instead of being interrupted three times. Ask alone only when a later answer would change how you phrase an earlier one. What is forbidden is a wall of prose questions and serial interrogation — not a single well-formed multi-question call. See Step 2.
 - **Multiple choice preferred** — easier to answer than open-ended
 - **YAGNI ruthlessly** — remove unnecessary complexity from all designs
 - **Follow existing patterns** — consult `.agents/memory/architecture.md` and `.agents/memory/patterns.md` (loaded by `/prime`) plus relevant core/base modules before proposing new structure. Don't reinvent conventions the project already documented.

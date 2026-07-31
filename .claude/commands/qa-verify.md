@@ -61,6 +61,21 @@ Read a task's acceptance criteria, assign each a stable id, classify each into a
 
 Never leave it implicit. `qa-contract` is told to **cite** this value instead of re-running the gate, and it cannot cite a value that was never set. It is passed verbatim to every verifier and stamped into the matrix header.
 
+**Resolve the environment, and carry it all the way to the signature.** `/prime-qa` runs `.claude/lib/qa-probe.sh`, which already computes these deterministically — read them off its output, do not re-probe:
+
+- `BASE_URL` — from the probe's `RESOLVED-BASE_URL`. Unresolved is **not** fatal: it forces every runtime family to `NEEDS-HUMAN`, which is a correct outcome, not a failed run.
+- `BASE_URL_REASON` — from `RESOLVED-REASON`. *Why* this host was chosen is the part a reviewer cannot reconstruct later.
+- `BUILD_SKEW` — the probe's `build-skew:` line, **verbatim**. Do not normalise it into an enum of your own; consume the four states it actually emits:
+
+| Probe emits | Meaning | How the runtime / SSR / visual rows are stamped |
+|---|---|---|
+| `not-applicable` | The deployed host was not used — this run is against `local_url`. **The default whenever `base_url` is empty.** | **No skew warning.** Stamp the host instead: `verified against local <URL>` |
+| `NOT-VERIFIED — <reason>` | Deployed host in use, but skew could not be established (no `build_sha_url`, or it returned no SHA) | `⚠️ skew not verified — deployed build may lag HEAD` |
+| `matched (<sha>)` | Deployed build SHA matches local HEAD | No warning; stamp the SHA |
+| `MISMATCH — <detail>` | SHAs differ. The probe then sets `DEPLOYED_OK=0` and **falls back to local**, so this run is on local — not on a lagging deployed build | `⚠️ deployed build rejected (SHA mismatch) — verified against local instead` |
+
+> **Never collapse `not-applicable` into the not-verified warning.** A starter ships `base_url: ""`, so doing that stamps "deployed build may lag HEAD" on every local run — a warning that fires on the default configuration is one people stop reading, which is the exact failure this stamping exists to prevent. `prime-qa.md` puts the same rule the other way round: *unverified is not "matched"*. Both directions matter.
+
 ## Step 0.5 — Resolve `SUBJECT`
 
 `SUBJECT` is the named symbol / module / package the criteria are about. It scopes every static probe. Derive it from the AC text plus the source's own fields — the tracker issue's component, the spec's `## Files` section, or the plan the work came from.
@@ -78,6 +93,16 @@ Which verifiers actually exist on disk, injected at command load:
 1. **Assign ids.** Walk the criteria in **document order** and assign `AC-1 … AC-n`. Tracker criteria arrive as unnumbered bullets, and `ac_id` is the join key for the entire run — ids are assigned once, here, and never renumbered afterwards.
 2. **Classify semantically** per `registry §3`. Reason about what evidence would settle each criterion; never keyword-match. One AC may map to several families — emit **one row per (ac_id, family)** pair.
 3. **Guard unbuilt verifiers.** For each row, look up the family's canonical verifier in `registry §2`, then check the injected listing above. If that agent file is **not** in the listing → `verdict: NEEDS-HUMAN`, `agent: (none)`, and a note naming the missing verifier. **Never spawn an agent that is absent from the listing** — the listing, not the roster table, is the truth about what exists.
+
+3b. **Guard unreachable tooling.** A built verifier is not a usable one. For each row, read the family's `Required tooling` class from `registry §2` and check this session's MCP roster for a server of that class:
+
+   - **browser automation** absent → `verdict: NEEDS-HUMAN`, `agent: (none)`, note naming the missing class. Do **not** spawn.
+   - **design-tool MCP** absent → `verdict: not-verified`, never a pass.
+   - **none — filesystem only** → nothing to check.
+
+   Neither case hard-stops the run; the other lanes proceed. Check the **class**, not a product name — any browser MCP satisfies `browser automation`, and hardcoding one server here would re-couple the router to a single stack.
+
+   > **Why this is a separate guard from step 3.** Step 3 asks *does the agent exist*; this asks *can it actually observe*. The gap between them is the worst state in the system: a present agent file with an absent tool still returns a confident row, and that row reads as observed evidence. The failure it prevents is concrete — a verifier lacking hover/evaluate tools reporting an interactive-state criterion from reading stylesheets rather than from observation.
 4. **Apply `registry §5`** — the not-observable list — to every row regardless of family. A match is `NEEDS-HUMAN` with the entry's reason quoted, whatever the code suggests.
 
 **An AC that maps to no family is a legitimate outcome, not a failure of the run.** Criteria like *"the code should be maintainable"* carry no evidence family. Give it **one row** with `family: (unclassifiable)`, `agent: (none)`, `verdict: NEEDS-HUMAN`, and a note saying why it carries no evidence family. Do **not** stretch a classification to fit, and do **not** let the Phase-3 completeness assertion read it as a bug — an unclassifiable AC *has* its row.
@@ -89,14 +114,15 @@ Which verifiers actually exist on disk, injected at command load:
 Print, in this order:
 
 1. `SUBJECT: <resolved | (unresolved)>` and `GATE_STATUS: <green | not-run | unknown>`.
-2. The classification table:
+2. `BASE_URL: <value | (unresolved)> (<reason>)` and `BUILD_SKEW: <the probe's line, verbatim>`. These print **here**, before the table and therefore before the approval — the environment a matrix was verified against is part of what the human is approving, and it is unrecoverable afterwards.
+3. The classification table:
 
    | AC | Criterion (short) | Family | Verifier | Lane | Pre-verdict |
    |---|---|---|---|---|---|
 
-3. Then **stop and ask for explicit approval.**
+4. Then **stop and ask for explicit approval.**
 
-State plainly: **nothing has run yet**; correcting a misclassification, a wrong `SUBJECT`, or a wrong `GATE_STATUS` right now is free. Do not proceed on silence, on a "looks good" that arrived before the table, or on an approval of something else.
+State plainly: **nothing has run yet**; correcting a misclassification, a wrong `SUBJECT`, a wrong `GATE_STATUS`, or a wrong `BASE_URL` right now is free. Do not proceed on silence, on a "looks good" that arrived before the table, or on an approval of something else.
 
 > **Row cap.** The table is never truncated — every AC gets its row even at forty of them. A dropped row is the exact failure this command exists to prevent, so the usual "keep it scannable" rule yields here. Shorten the *criterion text* column instead; never the row count.
 
@@ -104,11 +130,29 @@ State plainly: **nothing has run yet**; correcting a misclassification, a wrong 
 
 ## Phase 2 — Verify
 
-**Phase A ships exactly one lane.** Only Lane P runs; Lanes S and I are declared in `registry §2` and guarded by Phase 0. Do not write or improvise dispatch for a verifier that is not in the injected listing.
+**Lanes P and S are built; Lane I is still guarded.** Never write or improvise dispatch for a verifier that is not in the injected listing — the Phase-0 guards decide what runs, not this section.
 
-- **Lane P** (parallel, browser-free, non-mutating) — spawn each built verifier **once**, with only its own family's `AC_SUBSET` (a JSON object `{ac_id: "AC text"}`), plus `SUBJECT` and `GATE_STATUS`. In Phase A that means `qa-contract` and nothing else. Several Lane-P agents may run concurrently because nothing they touch is a singleton.
-- **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. Guarded in Phase A.
+- **Lane P** (parallel, browser-free, non-mutating) — spawn each built verifier **once**, with only its own family's `AC_SUBSET` (a JSON object `{ac_id: "AC text"}`), plus `SUBJECT` and `GATE_STATUS`. Several Lane-P agents may run concurrently because nothing they touch is a singleton.
+- **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. Dispatch rules below.
 - **Lane I** (inline in this session) — exists because **some MCP servers are reachable only from the parent session**, never from a spawned sub-agent. Guarded in Phase A.
+
+### Lane S dispatch
+
+**Run Lane S after every Lane P agent has returned, and run at most one Lane S agent at a time.** This is not a scheduling preference — it is the constraint the lane exists for.
+
+**Preflight, once, before the first browser verifier:**
+
+1. **Tooling** — is a server of the `browser automation` class in this session's roster? (Phase 0 step 3b already resolved this; do not re-decide it here.)
+2. **Liveness** — can the browser answer a single navigation within **~60 s**? Anything slower is a hung driver, not a slow one.
+3. **Neighbours** — count already-running browser MCP servers using `qa-env.json → browser_mcp_process_pattern`. **Record the count; never gate on it.** It is diagnostic context for a collision, not permission to proceed.
+
+**On a preflight failure — a timeout, or a profile reported as already in use — abort the lane:**
+
+- Mark every criterion routed to Lane S as `NEEDS-HUMAN`, quoting the actual error in `notes`.
+- **Continue Lanes P and I.** One dead lane is not a dead run.
+- **Never retry in a loop.** Two sessions contending for one browser profile can burn tens of minutes and will not resolve themselves; the failure needs a human, and a retry loop is what stops it from reaching one.
+
+**What to pass:** `AC_SUBSET`, `SUBJECT`, `GATE_STATUS`, the router-resolved `BASE_URL`, and `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`. **If that template is empty, skip the lane** and route its criteria to `NEEDS-HUMAN` with `no component mount point configured` as the reason. A project with no way to mount a component in isolation is a normal state — say so rather than pointing the verifier at a guessed route.
 
 **Collect each agent's JSON array** per `registry §6`. If it does not parse: retry **once** with the same subset. Still failing → that agent's ACs become `NEEDS-HUMAN` with the parse failure quoted in `notes`. **Never silently drop an agent's ACs** — a missing row reads as approval.
 
@@ -157,7 +201,8 @@ Write to `.agents/handoffs/qa-<slug>-ac-matrix.md`, where `<slug>` is:
 
 The file is local markdown, so a table is fine here (only the tracker comment is constrained — see below). Include:
 
-- A header stamping `SUBJECT`, `GATE_STATUS`, the AC source, and the date.
+- A header stamping `SUBJECT`, `GATE_STATUS`, **`BASE_URL` + its resolution reason**, **`BUILD_SKEW`**, the AC source, and the date. A matrix carries a human signature; the environment it was verified against must be readable off the artifact, not reconstructed from a session nobody kept.
+- **Every runtime / SSR / visual row carries the skew stamp** from the Step 0 state table — including the `not-applicable` case, which stamps the local host rather than a warning.
 - One row per AC: family · agent · evidence · artifact paths · auto-verdict · severity (`FAIL` rows only) · **an empty sign-off box** for the human.
 - The source rows behind any merged verdict.
 - **The blocker tally:** count of `FAIL` rows with severity `blocker`. **≥1 blocker ⇒ not acceptable**, stated in those words.
@@ -233,4 +278,4 @@ One bullet per AC: `AC-n — <verdict>[ / <severity>] — <one-line evidence>`, 
 - **Why the classification gate is a full stop.** Misclassification is the cheapest error to fix before verification and the most expensive after — the run spends its whole budget gathering the wrong evidence and produces a matrix that looks complete. Stopping is not caution; it is the only moment the correction is free.
 - **Why build status is derived, not declared.** A hand-maintained "is it built?" column can lie at exactly the moment the guard exists to fire, and the run then errors out spawning an agent whose file does not exist. Reading `.claude/agents/` removes the failure mode instead of documenting it.
 - **Why every sub-agent re-reads the registry.** A spawned agent starts with fresh context and does not inherit this session's copy. One shared file read independently is what keeps the router and its verifiers speaking the same protocol.
-- **Why Phase A ships one lane.** The browser lane requires the project to describe how a component is mounted for observation, and many projects have no answer. The Phase-0 guard is what makes shipping one lane *honest* rather than *partial*: the unbuilt lanes degrade their criteria to `NEEDS-HUMAN` with the reason stated, instead of quietly not appearing.
+- **Why the browser lane is dormant by default rather than absent.** Lane S needs the project to describe how a component is mounted for observation (`qa-env.json → component_mount_url_template`), and many projects have no answer. Shipping it dormant is what makes a partial roster *honest*: an unconfigured or untooled lane degrades its criteria to `NEEDS-HUMAN` with the reason stated, instead of quietly not appearing. The two Phase-0 guards are the same idea at two altitudes — step 3 asks whether the verifier **exists**, step 3b asks whether it can **observe**. A row that passes both is the only kind that may claim evidence.
