@@ -475,9 +475,9 @@ This section requires cross-referencing files loaded by `/prime` (or another alw
 
 <If `slash_command_counts` includes "prime" (or equivalent context-loading command):>
 - /prime invoked at: <ts from slash_commands entry>
-- Files /prime instructs to read (parsed from `.claude/commands/prime.md`): <list>
-- Of those, re-read during session (cross-check with `read_paths_top` from JSON): <list>
-- Loaded but NOT re-read: <candidate prune list — each path with 0 Read hits>
+- Files /prime loaded: **not reconstructible** — /prime's reference selection is size-dependent and invocation-specific, and the extracted JSON carries no ordered read events and no assistant report text. Parsing the command definition (the old method) is wrong in both directions: it names files the budget skipped and misses files it loaded. Report N/A with this reason rather than a guess.
+- Of those, re-read during session (cross-check with `read_paths_top` from JSON): **blocked on the extractor** — `read_paths_top` is a frequency counter capped at 15 with no timestamps, so it cannot separate a prime-time load from a later re-read.
+- Loaded but NOT re-read: **blocked on the extractor** — the `loaded_files - referenced_files` rule above is sound; its left-hand input does not exist in the JSON. Do not substitute a plausible list.
 
 <If /prime (or equivalent) NOT in slash_commands:>
 N/A — no context-loading slash command detected this session (slash_commands list: <list from JSON>).
