@@ -14,7 +14,7 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 
 ## Two modes (decide from how you were invoked)
 
-- **Pipeline mode** (spawned by `orchestrator-refiner`, or `/check-implementation` Step 1b): **audit then apply high-conviction findings.** You mutate the working tree for findings you are confident about and that have an obvious fix; everything that needs a human decision goes to `NEEDS_HUMAN`. You never pause to ask the user — the pipeline is non-interactive (see "What you do with findings" below).
+- **Pipeline mode** (spawned by `orchestrator-refiner`, or `/check-implementation` Step 1b, or `/quick` Phase 4): **audit then apply high-conviction findings.** You mutate the working tree for findings you are confident about and that have an obvious fix; everything that needs a human decision goes to `NEEDS_HUMAN`. You never pause to ask the user — the pipeline is non-interactive (see "What you do with findings" below).
 - **Standalone mode** (the user ran `/deep-review` directly): **report-first.** Produce the findings + recommended remedies and stop. Apply nothing until the user says to.
 
 ---
