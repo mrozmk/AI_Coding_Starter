@@ -683,7 +683,7 @@ For each branch `BRANCH` (`orch-<id>`), with `ID = ${BRANCH#orch-}`:
 Resolve `VALIDATION_CMD` in priority order (record the chosen source in the run-log):
 
 1. **`CLAUDE.md → Validation` FIRST** — the documented "Source of truth for quality gates" (CLAUDE.md `Validation` section). Run that sequence, fail-fast. Only if the section is absent or still holds `{placeholder}` markers → fall through.
-2. **Stack detection** — `package.json` with the relevant script → `npm run …`; `Cargo.toml` → `cargo build && cargo test`; `go.mod` → `go build ./...`; `pyproject.toml` → the project's configured check.
+2. **Stack detection** — `package.json` with the relevant script → `npm run …`; `Cargo.toml` → `cargo build && cargo test`; `go.mod` → `go build ./...`; `pyproject.toml` → the project's configured check. Then log `validation gate: Validation section absent or placeholder, running stack-detected fallback: <cmd>`, naming the command actually substituted — this tier is the common one, and it was the only silent step in the ladder. (The log text deliberately avoids the `<file> → <section>` shape; `/maintain:cleanup-workflow` 1.3 scans for it, and a log template is not a reference.)
 3. **Neither** → log `integration gate skipped: no validation command` and proceed (fail-open — a template project with no build step must not be blocked).
 
 ### Central reconciliation (once, after the queue drains)

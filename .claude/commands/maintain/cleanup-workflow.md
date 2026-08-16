@@ -14,7 +14,7 @@ Four-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when 
 
 **Goal:** find broken refs that point at files / sections / commands / tools that no longer exist.
 
-**Scope — 5 detection categories** (run all, fast, no user judgment needed):
+**Scope — 6 detection categories** (run all, fast, no user judgment needed):
 
 ### 1.1 Markdown links — `[text](path)`
 
@@ -26,7 +26,8 @@ For each match:
 - Skip URLs starting with `http://`, `https://`
 - Skip anchor-only `#section`
 - Skip empty `()`
-- For `path#anchor`, strip `#anchor` — only verify file exists
+- For `path#anchor` resolving to an `.md` file **inside the repo**, verify the anchor too — against the target file's **heading slugs**: lowercase the heading, replace spaces with hyphens, drop everything that is not a letter, digit or hyphen (`## Search Commands` → `search-commands`). Anything else — external URLs, non-Markdown targets — keeps strip-and-skip: drop `#anchor`, verify only that the file exists.
+  - Two headings that slug identically resolve to the first and pass, matching GitHub's own behaviour. Do not report collisions.
 - Resolve relative to source file's directory; absolute paths from project root
 - Check existence via `rg --files` or `ls`
 
@@ -46,7 +47,13 @@ Same skip / resolution / existence rules as 1.1.
 ```bash
 rg -n --hidden '([A-Z][A-Za-z_-]*\.md)\s*→\s*([A-Z][A-Za-z &\-]+)' --glob '*.md'
 rg -n --hidden '([A-Z][A-Za-z_-]*\.md)\s*`([A-Za-z &\-]+)`'         --glob '*.md'
+rg -n --hidden '`([A-Z][A-Za-z_-]*\.md)`\s*→\s*`?([A-Z][A-Za-z-]*(?:\s+(?:&\s+)?[A-Z][A-Za-z-]*){0,4})' --glob '*.md'
 ```
+
+The third line covers the **backticked filename form** — `` `CLAUDE.md` → Validation `` — which the first two cannot see. The forms are disjoint by construction: a backtick sits between `.md` and `→` in the new one, so no reference is counted twice. Two filters keep the widening from producing noise:
+
+- **The section capture takes at most five Title-Case tokens and stops before the first lowercase token**, bounded in the pattern rather than trimmed afterwards. Real references trail the section name with explanation — `` `CLAUDE.md` → Validation test policy ``, `CLAUDE.md → Style & Conventions rather than guessing` — and a Title-Case test applied to the whole capture would discard them, trading one blind spot for another.
+- **The captured file must exist** (rule 1 below), which drops `` `DESIGN.md` → extract palette `` — an arrow used as prose about a file fetched from someone else's repo, not a section reference.
 
 For each match, capture `(file, section)`. Verify:
 1. The file exists.
@@ -79,7 +86,46 @@ For each match, verify the tool name exists in:
 
 If none, flag as "MCP tool not configured in this project" (warning, not blocker — user may have it set up locally).
 
-### 1.6 Phase 1 output
+### 1.6 CLAUDE.md section contract
+
+The contract is data, not prose: the rows between `CLAUDE-CONTRACT:BEGIN` and `CLAUDE-CONTRACT:END` in [.claude/templates/CLAUDE-template.md](../../templates/CLAUDE-template.md), each one `| <item> | <kind> | <tier> |`.
+
+```bash
+find .claude -maxdepth 2 -name 'CLAUDE-template.md'   # contract source present?
+find . -maxdepth 1 -name 'CLAUDE.md'                  # target present?
+# only once BOTH lines above returned a path:
+awk '/CLAUDE-CONTRACT:BEGIN/,/CLAUDE-CONTRACT:END/' .claude/templates/CLAUDE-template.md
+rg -n '^#+\s+' CLAUDE.md
+```
+
+Guard both inputs **before** any probe touches them — `rg` on a missing file exits `2`, and per [.agents/memory/index.md](../../../.agents/memory/index.md) → Probe Convention a non-zero exit from an embedded probe fails the whole skill load, so the user sees a shell error naming a file that is merely absent:
+
+- Contract source absent → report `contract source missing — section check skipped`, loud, and let the remaining categories run. Never a silent green.
+- `CLAUDE.md` absent → report `CLAUDE.md not found — contract check skipped` and return.
+
+For each contract row, by `kind`:
+
+- **`heading`** — normalize every `CLAUDE.md` heading (trim, strip trailing `#`, collapse whitespace) and compare the item **literally and exactly**, regex-escaping it first because names contain `&`. Heading *level* drift (`###` vs `##`) is accepted — consumers read by name, not depth. A prefix match is not: `## Validation Legacy` does not satisfy `Validation`.
+- **`content:<Section>`** — bound the search to that section's body (its heading up to the next `## `) and check **the component, not just its marker**; a marker-only search passes on a gutted section:
+  - `**Orchestrate publish:**` — the label, a real value on the same line (`push` or `branch-local`, never a `{…}` placeholder), **and** its explanatory blockquote, bounded to the span between the label and the next peer item or `### Branch model`. Unbounded, any later blockquote in the section satisfies it.
+  - `git worktree remove --force` — the full guard sentence, not an incidental mention of the command elsewhere.
+  - `### Branch model` — the heading **and six labelled assignments** (`**Preset:**` … `**Protected:**`) carrying non-placeholder values, matched **outside** blockquote lines. Field *names* are not enough: an explanatory blockquote can name all six and assign none, and that block holds no branch facts at all. The template's assignment form is the shape to require.
+- **`conditional:lsp`** — match `Code Navigation` by **substring** (the heading ships as `## Code Navigation (LSP)`, and the contract is the substring). This is the single documented exception to exact matching; do not generalize it. Report it missing **only when the precondition holds**, and that precondition is **repo-scoped declaration, never machine state**:
+  - ✅ an LSP package declared in a project manifest (`package.json` dependencies, `pyproject.toml`, `Cargo.toml`, `go.mod`) or an in-repo editor/LSP config naming one.
+  - ❌ never `command -v` — a language server on `PATH` says nothing about this repo, and a check whose verdict depends on whose laptop runs it is worse than no check.
+  - ❌ never a plain text search for the indicator names, not even a narrowed one. They occur as prose throughout `.claude/` and `.agents/`, and `pyright` is a substring of `Copyright` — measured here, a bare name search self-detects an LSP off the `LICENSE` header of a repo that declares none. Read manifests, not text.
+
+  Declared + substring absent → **tier 2** (the `nudge-lsp.sh` pointer goes quiet — a lost hint, not a switched code path). Not declared → **silent**, never a finding.
+
+Heading present but its body still `{placeholder}` → report `present but unfilled`, counted as absent for tier 1. A stub that satisfies a presence check is worse than an absent section, which is why this is a distinct outcome rather than a pass.
+
+**Tier 3 — unknown targets.** From 1.3's matches take only those whose target file is `CLAUDE.md`, then subtract the contract items, the conditionals, and `CLAUDE.md`'s actual headings; what remains is a reference to a section this contract does not know. Restricting by target file **first** is what keeps a perfectly valid `README.md → Installation` out of a *contract* finding — non-`CLAUDE.md` references stay 1.3's business.
+
+Normalize each candidate to its **leading Title-Case run** before subtracting — the same bound the third 1.3 pattern applies, because the first one does not: it captures lowercase too, so `CLAUDE.md → Style & Conventions rather than guessing` arrives with its explanation attached and would be reported as an unknown section that nobody ever referenced.
+
+Report only — this category never edits `CLAUDE.md` (see the standing rule after 1.7).
+
+### 1.7 Phase 1 output
 
 ```markdown
 📎 Reference Integrity — <N> markdown files scanned
@@ -109,12 +155,18 @@ If none, flag as "MCP tool not configured in this project" (warning, not blocker
      `mcp__<name>` — not detected in this project's MCP config
      Hint: check .mcp.json or claude mcp list
 
+❌ CLAUDE.md CONTRACT broken (<count>):
+   tier 1 — <item> (<kind>) — absent | present but unfilled
+   tier 2 — <item> (<kind>) — absent | present but unfilled
+   tier 3 — unknown target: <source>:<line> — "CLAUDE.md → <section>"
+     Available headings in CLAUDE.md: <list of ## headings>
+
 ✅ <total OK> references valid
 ```
 
-If zero broken across all 5 categories, output:
+If zero broken across all 6 categories, output:
 ```
-✅ All references valid (<total> checked across 5 categories).
+✅ All references valid (<total> checked across 6 categories).
 ```
 
 **No auto-fix.** User decides what to repair. Continue to Phase 2 after report.

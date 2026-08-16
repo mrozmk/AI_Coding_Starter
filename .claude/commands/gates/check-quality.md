@@ -18,6 +18,8 @@ Read [CLAUDE.md](../../../CLAUDE.md) section `Validation` first — it is the de
 
 If `CLAUDE.md` does not define these, ask the user once which toolchain to use, then offer to save the answer to `CLAUDE.md` for next time.
 
+**Record provenance per resolved value, not once for the step.** Discovery is field-level — `Validation` may supply lint and type-check while `Commands` supplies the format command and the size limits come from somewhere else entirely — so a single source line for the whole step would conceal a per-field fallback. Tag each value with one of: `Validation` · `Commands` · `Code Structure & Modularity` · `default <values>` · `user`. `default` is not decoration: when `Code Structure & Modularity` is absent or unfilled the 500 / 50 / 100 limits come from this command itself, and attributing them to a section that never supplied them hides exactly the drift the tag exists to reveal. Answers the user gave at the prompt above are `[src: user]`.
+
 ### 2. Format check
 
 Run the format command in **check mode** (no writes). If it reports issues:
@@ -55,11 +57,13 @@ Quickly scan for likely-oversized functions or classes using a language-appropri
 ```
 Code Quality Report
 ===================
-Formatting:  ✅ OK / ❌ N issues
-Linting:     ✅ OK / ❌ N issues
-Type check:  ✅ OK / ❌ N errors / ⚠️ skipped (not configured)
-File sizes:  ✅ all within <limit> lines / ❌ [list files over limit]
+Formatting:  ✅ OK / ❌ N issues                          [src: Commands]
+Linting:     ✅ OK / ❌ N issues                          [src: Validation]
+Type check:  ✅ OK / ❌ N errors / ⚠️ skipped              [src: Validation]
+File sizes:  ✅ all within <limit> lines                  [src: default 500/50/100]
 ```
+
+The trailing `[src: <source>]` tag is a fixed format, not a suggestion — it names where that one value came from, so a fallback cannot pass as a project declaration.
 
 ## CRITICAL rules
 

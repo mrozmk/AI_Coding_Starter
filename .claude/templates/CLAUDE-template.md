@@ -10,10 +10,33 @@ A flexible template for creating global rules. Adapt the **project-specific sect
 >
 > `CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps.
 
-> **DO NOT remove or soften** the following sections — they are the shared baseline for every project generated from this starter kit:
-> `Language Rules`, `Validation`, `Commands`, `Code Structure & Modularity`, `Style & Conventions`, `Tech Stack`, `Automatic Behaviors`, `Search Commands`, `Security`, `Git Workflow`, `Project Knowledge Layers`, `Error Handling`. Their exact heading text is an API — slash commands and hooks address them by name, so a rename or a deletion breaks a consumer silently. Two lines inside `Git Workflow` are mandatory content too: the `**Orchestrate publish:**` line with its blockquote, and the `git worktree remove --force` guard sentence.
+> **DO NOT remove or soften** the baseline sections — they are the shared contract for every project generated from this starter kit. The mandatory items — headings, `Git Workflow` content lines, and the LSP-conditional section — are listed in the contract block below; `/maintain:cleanup-workflow` 1.6 reads it. Their exact heading text is an API — slash commands and hooks address them by name, so a rename or a deletion breaks a consumer silently.
 >
 > Placeholder-style sections (marked with `{placeholder}` or `<!-- comment -->`) are the ones you fill in per project.
+
+<!-- CLAUDE-CONTRACT:BEGIN — machine-readable; parsed by /maintain:cleanup-workflow 1.6.
+     PREAMBLE ONLY: never copy this block into a generated CLAUDE.md. -->
+
+| Item | Kind | Tier |
+|------|------|------|
+| Language Rules | heading | 1 |
+| Validation | heading | 1 |
+| Git Workflow | heading | 1 |
+| **Orchestrate publish:** | content:Git Workflow | 1 |
+| git worktree remove --force | content:Git Workflow | 1 |
+| ### Branch model | content:Git Workflow | 1 |
+| Commands | heading | 2 |
+| Code Structure & Modularity | heading | 2 |
+| Style & Conventions | heading | 2 |
+| Tech Stack | heading | 2 |
+| Automatic Behaviors | heading | 2 |
+| Search Commands | heading | 2 |
+| Security | heading | 2 |
+| Project Knowledge Layers | heading | 2 |
+| Error Handling | heading | 2 |
+| Code Navigation | conditional:lsp | — |
+
+<!-- CLAUDE-CONTRACT:END -->
 
 ---
 
