@@ -41,7 +41,7 @@ The pieces it composes (each a distinct role — see CLAUDE.md / the command doc
 1. If `$ARGUMENTS` is a plan name (e.g. `phase-3b-ui-hero`) → resolve the file under `.agents/plans/active/` or `.agents/plans/done/`.
 2. If no argument → use the **most-recently-modified** plan in `.agents/plans/active/`.
 
-   **Promote an auto-resolved sub-step to its umbrella.** When mtime resolution lands on `<base>-<N|Na>-*.md` and `<base>.md` exists in the same directory, verify against **`<base>.md`** instead — the umbrella carries the feature-level Definition of Done that a single step's checklist cannot, so verifying the slice would pass a feature that is only partly built. Say which file you used: `Resolved to umbrella <base>.md (checklist covers all N steps).` (`<base>` is derived the same way as in `/execute` Phase 0 — the **last** `-<digits><optional single letter>-` segment, gated on the base file existing.)
+   **Promote an auto-resolved sub-step to its umbrella.** When mtime resolution lands on `<base>-<N|Na>-*.md` and `<base>.md` exists in the same directory, verify against **`<base>.md`** instead — the umbrella carries the feature-level acceptance criteria (and, via the gate, the aggregated task coverage of all its sub-steps) that a single step's checklist cannot, so verifying the slice would pass a feature that is only partly built. Say which file you used: `Resolved to umbrella <base>.md (checklist covers all N steps).` (`<base>` is derived the same way as in `/execute` Phase 0 — the **last** `-<digits><optional single letter>-` segment, gated on the base file existing.)
 
    > Deliberately asymmetric with `/execute`, which **stops** on the same input. `/execute` writes code, so implementing the wrong slice is destructive; this command is read-only and has a diff-only fallback, so it can widen scope and report what it did instead of refusing.
 
@@ -65,8 +65,9 @@ For `N = 1, 2, 3`:
 
 **1a. Correctness — `/code-review`.**
 Run `/code-review` at `high` effort over the current diff. Apply the confirmed-bug findings to the working tree (the skill's `--fix` behavior). On iteration `N > 1`, prepend the previous round's unresolved gate findings to the review's focus list, treating them as fixes to apply. Pull them from **both** gates' actual report contracts:
-- **Code gate (Step 1c):** two sources, because the gate fail-fasts —
+- **Code gate (Step 1c):** three sources, because the gate fail-fasts and judges two axes —
   - **Quality-gate failures first.** When a quality gate (typecheck/lint/test/build) fails, the gate emits `BLOCK` and **skips the semantic review entirely** (`verify-implementation.md` → CRITICAL Rules), so its issue table is empty. The failing command's output *is* the fix list: feed the typecheck/lint/test errors into 1a as the bugs to fix. Never treat an empty issue table on a `BLOCK` as "nothing to fix".
+  - **Then the failing tasks** from the gate's `### Plan Compliance` block (`verify-implementation.md` §2). Each failed task names which `EXPECT` or `VALIDATE` failed and the path or command — that detail *is* the fix instruction, so carry it verbatim into 1a. A **plan-contract error** (task headings with no marker or no `EXPECT`) is the exception: it is not a code gap and no fixer can repair it, so escalate to the user immediately instead of entering the loop.
   - **Then the Critical/High rows** of the **semantic-review issue table** (`| Severity | File | Line | Issue | Fix |`) — that gate reports issues in a table, not in `GAPS:`/`BLOCKERS:` sections, so route by severity column.
 - **Design gate (Step 1d):** every `GAPS:` line from the `@orchestrator-designer` report (all severities — see 1e; a designer GAP is a concrete token/class/value change the fixer can make).
 
@@ -100,7 +101,7 @@ Parse its `=== DESIGNER REPORT ===` block: verdict (`passed` / `failed` / `skipp
 | Combined state | Action |
 |----------------|--------|
 | code `APPROVE` **and** design `passed`/`skipped` | **DONE** — break the loop. |
-| code `WARN` (Medium-only) **and** design `passed`/`skipped` (no gaps) | **DONE** — break; surface the warnings in the final report. |
+| code `WARN` (Medium-only, **task axis clean**) **and** design `passed`/`skipped` (no gaps) | **DONE** — break; surface the warnings in the final report. A `WARN` never means a task is missing: a failing mandatory task arrives as `BLOCK` and loops. |
 | code `BLOCK` **or** design `failed` (GAPS only, no BLOCKERS), `N < 3` | Feed the next iteration's Step 1a fix list (per the two code-gate sources in 1a): the failing **quality-gate output** (typecheck/lint/test/build errors — present on a `BLOCK` whose issue table is empty because the gate fail-fasted) **and/or** the code gate's **Critical/High** issue-table rows, **plus _all_ design-gate GAPS** (every severity — a `failed` designer verdict means ≥1 gap, and a `MEDIUM`-only report still leaves real, fixable deltas; dropping them would strand the loop with nothing to fix). Loop. |
 | either gate reports **BLOCKERS** (decision-required), or `N = 3` with **any** unresolved gate failure (a `BLOCK`, a quality-gate failure, or unresolved GAPS) | **STOP** — escalate to the user with the unresolved findings and iteration history. Do not grind. |
 

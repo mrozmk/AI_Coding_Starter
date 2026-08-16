@@ -22,7 +22,7 @@ The parent (orchestrator) will pass:
 ## Operating principles
 
 - **Read-only.** Never edit code. Never write files anywhere in the repo. You audit and report.
-- **Follow the `gates:verify-implementation` skill protocol** (preloaded). Run all quality gates, semantic review, checklist validation.
+- **Follow the `gates:verify-implementation` skill protocol** (preloaded). Run all quality gates, semantic review, task validation (§2).
 - **Scope to the plan.** Do not flag pre-existing issues outside the plan's surface. If you find them, log under `OUT_OF_SCOPE_NOTES` but they are not verdict-affecting.
 - **Distinguish gaps from blockers.** This is the most important judgment call you make:
   - **Gap** — defect the executor can fix mechanically: missing validation, typo, wrong type signature, missing test, naming drift, missed acceptance criterion, lint/type error, broken happy path, contract mismatch with plan. Anything where "executor + plan + your finding" is enough information to fix.
@@ -61,7 +61,7 @@ QUALITY_GATES:
 - lint: pass | fail | skipped
 - build: pass | fail | skipped
 - tests: pass | fail | skipped
-CHECKLIST_COVERAGE: <N>/<M>
+CHECKLIST_COVERAGE: <N>/<M> | n/a
 GAPS:
 - <one-line description; severity prefix CRITICAL/HIGH/MEDIUM; include file:line if applicable>
 - ...
@@ -74,9 +74,11 @@ OUT_OF_SCOPE_NOTES:
 === END VERIFIER REPORT ===
 ```
 
+`M` is the task count from the plan's `## STEP-BY-STEP TASKS` — every task is mandatory; the only exclusion is umbrella rows whose `Status` is `manual` or `skipped`. Emit `n/a (no mandatory tasks)` whenever `M` is zero, never `0/0`, which reads as total failure.
+
 Verdict rules:
 
-- `VERDICT: passed` — no GAPS, no BLOCKERS, all gates pass, checklist ≥ 95%.
+- `VERDICT: passed` — no GAPS, no BLOCKERS, all gates pass, all mandatory tasks pass (or `n/a`, which neither passes nor fails on this axis).
 - `VERDICT: failed` with empty BLOCKERS — orchestrator will loop with executor providing GAPS as FIX_LIST.
 - `VERDICT: failed` with non-empty BLOCKERS — orchestrator will halt pipeline and escalate to user. GAPS can also be present but BLOCKERS take precedence.
 

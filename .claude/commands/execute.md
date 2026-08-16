@@ -69,7 +69,7 @@ For EACH task in "Step by Step Tasks":
 
 ### 2.5 Validate User-Facing Flows (when the plan requires E2E)
 
-If the plan's checklist includes a browser-validation item (e.g. "E2E flow tested in the browser" or similar), validate the running app, not just the code:
+If the plan requires browser validation (e.g. a task or acceptance criterion reading "E2E flow tested in the browser" or similar), validate the running app, not just the code:
 
 1. **If the project has an E2E-generation command** (e.g. a `/test-e2e [flow-name]` command), run it to generate browser tests via MCP exploration. It typically needs the dev server running in the background.
    - Use the flow name from the plan. If unsure, validate the full set.
@@ -83,8 +83,10 @@ If the plan's checklist includes a browser-validation item (e.g. "E2E flow teste
    - Save the screenshot path in your output report.
 
 3. **If E2E infrastructure is missing** (no browser-test runner installed, no `tests/e2e/` directory):
-   - Mark the checklist item completed with a NOTE: "E2E validated manually via MCP; dedicated test suite pending runner setup."
-   - Do NOT block plan completion on missing test infrastructure — the checklist item refers to validation, not test-code generation.
+   - Record it as **evidence in your output report**: `E2E: validated manually via MCP; dedicated suite pending runner setup.`
+   - Do NOT block plan completion on missing test infrastructure — the requirement refers to validation, not test-code generation.
+
+> **Never tick a task's `- [ ]` marker.** Those markers are **parse anchors** for `/gates:verify-implementation` §2; a completion signal written by the agent whose work is being judged measures its self-report rather than the filesystem, which is precisely what the gate exists to avoid. This forbids the *task* marker only — it says nothing about an umbrella's `## Execution Plan` **Status** cells, which `/orchestrate` edits in-place by design.
 
 ### 3. Implement Testing Strategy
 

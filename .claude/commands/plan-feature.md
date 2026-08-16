@@ -238,11 +238,16 @@ Use information-dense keywords for clarity:
 
 ### {ACTION} {target_file}
 
+- [ ]
+
 - **IMPLEMENT**: {Specific implementation detail}
 - **PATTERN**: {Reference to existing pattern — file:line}
 - **IMPORTS**: {Required imports and dependencies}
 - **GOTCHA**: {Known issues or constraints to avoid}
+- **EXPECT**: present | absent | contains | not-contains — {path}[ :: {literal or symbol}]
 - **VALIDATE**: `{executable validation command}`
+
+The `- [ ]` body line is a **parse anchor** for `/gates:verify-implementation` §2, which counts tasks here rather than in `## ACCEPTANCE CRITERIA` — the executor never writes it, because a completion signal written by the agent being judged measures its self-report, not the filesystem. `EXPECT` is **required on every task** and repeatable; it is the assertion the gate actually verifies, because `IMPLEMENT` is prose and `PATTERN` points at an example — neither is checkable. **Every task in a plan is mandatory** (`:226` above, and `/execute`'s "For EACH task"): there is deliberately no per-task opt-out, since a field only the counter honours would let work the plan mandates vanish from the completion signal.
 
 <Continue with all tasks in dependency order…>
 
@@ -298,6 +303,8 @@ Execute every applicable command to ensure zero regressions and feature correctn
 ---
 
 ## ACCEPTANCE CRITERIA
+
+<The **semantic** done-criterion: these are **judged, never counted** — by a human or a reviewing agent. The counted list is `## STEP-BY-STEP TASKS`, which carries the `EXPECT` assertions a gate can mechanically verify; these six name no file and no content, so a percentage over them is not computable.>
 
 - [ ] Feature implements all specified functionality
 - [ ] All validation commands pass with zero errors
@@ -383,7 +390,7 @@ From the budget in Phase 4, using the class from Step 4.5.2:
 
 Use `AskUserQuestion`. Present only the options that apply, recommend one, and **STOP without an answer** — do not proceed to Phase 5 on an assumption.
 
-- **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow`, a per-task `PATTERN` / `GOTCHA` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
+- **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow`, a per-task `PATTERN` / `GOTCHA` / `EXPECT` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
 - **(b) Split into parallel top-level plans** — *offered only when Gate A passed.* Produces N independent plans in `.agents/plans/active/`, each runnable in its own clone. This is the only option that buys wall-clock. Say so, and say what it costs (below).
 - **(c) Split into a sequential umbrella + sub-steps** — context hygiene only, **no speedup**. Appropriate when one file is genuinely unwieldy but the work is a dependency chain.
 - **(d) Narrow the scope / return to `/brainstorm`** — the spec is too broad for one task. Point at the spec's `Appetite & Cut Lines` if it has them: the cut order is the standing answer to what goes first.
@@ -481,7 +488,7 @@ Single-file plan (including each parallel plan from option b) → skip this enti
 
 ### Step 4.6.2 — Emit `## Execution Plan` section
 
-Insert this section into the umbrella file, **immediately after the "## Step map" / "## Strategic decisions" sections and before "## Definition of Done"** (or an analogous position — near the top, before the risk register).
+Insert this section into the umbrella file, **immediately after the "## Step map" / "## Strategic decisions" sections and before "## ACCEPTANCE CRITERIA"** (or an analogous position — near the top, before the risk register).
 
 **Canonical format** (the orchestrator parses by header match + table column names):
 
@@ -1021,7 +1028,7 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 - [ ] External library usage documented with links — **only if `External docs required: yes`**
 - [ ] Integration points clearly mapped
 - [ ] Gotchas and anti-patterns captured
-- [ ] Every task has an executable validation command
+- [ ] Every task has an executable validation command **and** at least one well-formed `EXPECT` assertion
 
 ### Implementation Ready ✓
 
@@ -1070,7 +1077,7 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 ## Success Metrics
 
 - **One-Pass Implementation** — execution agent can complete the feature without additional research or clarification.
-- **Validation Complete** — every task has at least one working validation command.
+- **Validation Complete** — every task has at least one working validation command and at least one well-formed `EXPECT` assertion.
 - **Context Rich** — the plan passes the "No Prior Knowledge Test": someone unfamiliar with the codebase can implement using only the plan (plus the spec it points to).
 - **Grilled** — Phase 5 + 6 completed. Plan reflects user-accepted findings. Pre-grilling drift defended against.
 - **Confidence Score (post-grilling)**: #/10 that execution will succeed on the first attempt.

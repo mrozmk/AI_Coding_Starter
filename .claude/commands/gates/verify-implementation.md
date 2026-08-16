@@ -5,7 +5,7 @@ argument-hint: [plan-name]
 
 # /gates:verify-implementation — Verify Plan Execution & Code Quality
 
-Run after `/execute` completes a plan. Validates checklist completion, runs quality gates, performs deep semantic code review, and checks design compliance. Do NOT modify code — only report findings.
+Run after `/execute` completes a plan. Validates task completion, runs quality gates, performs deep semantic code review, and checks design compliance. Do NOT modify code — only report findings.
 
 > **Stack note:** The semantic review below has the most depth for **TypeScript/JavaScript** (the most common stack in projects using this starter). Sections explicitly tagged *"TypeScript/JavaScript only"*, *"Node.js only"*, or *"React only"* run conditionally based on the stack detection in Step 0. For other languages (Python/Go/Rust/etc.), the language-agnostic rules (Security, Error Handling, Performance, Best Practices) apply; per-language deep checks would need to be extended in this command.
 
@@ -35,26 +35,39 @@ Use these flags in Steps 3-5 to skip irrelevant sections. Report the detected st
 2. If no argument given → use the **most recently modified** plan file in `.agents/plans/active/`.
 3. If no plan found → **diff-only mode** (no spec to compare against). Do **not** STOP. Set `PLAN = none`, derive the scope from the working tree (`git status --porcelain` + `git diff`), skip the checklist/acceptance-criteria/spec axes (Steps 2 and the spec-dependent checks in Step 6), and run only the stack-detected quality gates and the semantic review over the changed files. Tell the user once: `No plan found — running in diff-only mode (checklist skipped; quality gates + semantic review over the working-tree diff).` This mode is what `/check-implementation` invokes when it has no plan; it must not abort here.
 4. If a plan was found, read the plan file. Extract:
-   - **Checklist** (tasks with completion markers)
+   - **Tasks** — `## STEP-BY-STEP TASKS`, each with its `- [ ]` marker, `EXPECT` assertions and `VALIDATE` command
    - **Acceptance criteria**
    - **Design references** (Figma links, `design.md`, or `.agents/memory/domain/design.md` if the project has one)
    - **Test commands** (from Testing Strategy section)
    - **Files expected** to be created or modified
 
-## 2. Checklist Validation
+## 2. Task Validation
 
-For each checklist item in the plan:
-- Does the expected file exist? Use `Glob`.
-- Does it contain expected content? Use `Grep`.
+**The counted list is `## STEP-BY-STEP TASKS`, not `## ACCEPTANCE CRITERIA`.** The acceptance criteria are prose assertions naming no file and no content — they are judged semantically in the review axis (Step 6), never turned into a percentage.
+
+For each task in `## STEP-BY-STEP TASKS`:
+
+- Verify **every** one of its `EXPECT` assertions:
+  - `present` / `absent` — `Glob` the named path.
+  - `contains` / `not-contains` — **fixed-string** search on the named literal (`rg -F`), never a regex and never an improvised query of your own. The assertion is what the plan declared; substituting a broader query verifies something the plan did not claim.
+- Run its `VALIDATE` command. **Contract: exit 0 on success, non-zero on failure.** (The exit-zero-by-construction rule in `.agents/memory/index.md` → Probe Convention governs `!`-prefixed *skill-load* probes only — applying it here would make a failing check indistinguishable from a passing one.)
 - Are tests mentioned in the plan present and passing?
+
+**100% of tasks must pass.** One unimplemented task is a `BLOCK`, never a warning — every task in a plan is mandatory, so a partial score describes a feature that was not built.
+
+**Malformed or legacy plans BLOCK — they do not fail open.** If `## STEP-BY-STEP TASKS` contains task headings that carry no `- [ ]` marker or no `EXPECT`, report a **contract error** and `BLOCK`. Reading a pre-contract plan as "zero tasks" would silently make this axis a no-op on exactly the plans that need it.
+
+**`M` is the task count.** Every task is mandatory; the only exclusion is at the umbrella level, where rows whose `Status` is `manual` or `skipped` are not counted. Whenever `M` reaches zero — no tasks at all, or every umbrella row excluded — report `Plan Compliance: n/a (no mandatory tasks)` and fall through to the semantic and quality-gate axes. Never report `0%`.
+
+**Umbrella plans aggregate.** Collect tasks from every sub-step file named in the `File` column of the umbrella's `## Execution Plan` table (links are relative to the umbrella's own directory) and report a single combined `X/Y` across all of them — **excluding rows whose `Status` is `manual` or `skipped`**, which are reported separately rather than counted. A `manual` step is by definition one the pipeline cannot verify from the filesystem (external forms, interactive logins, human judgment — `plan-feature.md` Step 4.6.2); counting it mechanically would fail every umbrella that legitimately contains one. The `n/a` path is only for plans with neither own tasks nor sub-steps.
 
 Report:
 ```
 Plan Compliance: X/Y tasks verified
-Missing: [list if any]
+Missing: [list if any — per task: which EXPECT or VALIDATE failed, and the path or command]
 ```
 
-If checklist completion < 80%, STOP and report as **BLOCK**.
+If any mandatory task fails, STOP and report as **BLOCK**.
 
 ## 3. Quality Gates
 
@@ -234,6 +247,7 @@ If there is no plan (diff-only mode), skip (a)-(c) — there is no spec to compa
 
 ### Plan Compliance
 X/Y tasks verified | Missing: [list or "none"]
+[or, when M is zero:] n/a (no mandatory tasks)
 
 ### Quality Gates
 Source: [CLAUDE.md Validation / stack-detected fallback / skipped]
@@ -255,11 +269,13 @@ Critical: [N] | High: [N] | Medium: [N]
 Next steps: [ready for commit / fix listed issues / ask user]
 ```
 
-> **Diff-only mode (`PLAN = none`):** there is no checklist, so report `Plan Compliance: N/A` and **drop every checklist threshold below** — the verdict is decided by quality gates + semantic-review severity **only**. Read each rule as if its checklist clause were absent (e.g. Approve = no Critical/High issues and all gates pass; Warn = only Medium issues; Block = any Critical/High issue, or any gate fails).
+> **Diff-only mode (`PLAN = none`):** there is no plan, so report `Plan Compliance: N/A` and **drop every task clause below** — the verdict is decided by quality gates + semantic-review severity **only**. Read each rule as if its task clause were absent (e.g. Approve = no Critical/High issues and all gates pass; Warn = only Medium issues; Block = any Critical/High issue, or any gate fails).
 
-**Approve**: No Critical/High issues, all gates pass, checklist ≥ 95% *(checklist clause N/A in diff-only)*.
-**Warn**: Only Medium issues, or checklist 80–95% *(checklist clause N/A in diff-only)*. **Report** the Medium issues in the verdict and stop there — this gate is read-only (see CRITICAL Rules). Recording them in `.agents/memory/errors.md` and any user decision belong to the caller (`/check-implementation`'s memory-reflection / escalation steps), not to the judge.
-**Block**: Any Critical issue, or **any High issue**, or any gate fails, or checklist < 80% *(checklist clause N/A in diff-only)*. (Any High blocks — this closes the 1–2 High gap so every gates-pass outcome maps to exactly one of `APPROVE`/`WARN`/`BLOCK`, which the caller requires; it also aligns with Approve's "no Critical/High". The earlier "≥3 High" threshold left 1–2 High with no verdict once the checklist clause is N/A.)
+The two axes are decided separately. **Task axis** (`## STEP-BY-STEP TASKS`, §2): any mandatory task failing → `Block`; all passing, or `n/a`, → no objection from this axis — there is no warn band here, because a task is either done or it is not. **Semantic axis** (acceptance criteria + review issues): the Medium-only warn band lives here, where a finding is a matter of judgement.
+
+**Approve**: No Critical/High issues, all gates pass, all mandatory tasks pass or `n/a` *(task clause N/A in diff-only)*.
+**Warn**: Only Medium issues, with the task axis clean *(task clause N/A in diff-only)*. **Report** the Medium issues in the verdict and stop there — this gate is read-only (see CRITICAL Rules). Recording them in `.agents/memory/errors.md` and any user decision belong to the caller (`/check-implementation`'s memory-reflection / escalation steps), not to the judge.
+**Block**: Any Critical issue, or **any High issue**, or any gate fails, or **any mandatory task fails**, or a plan-contract error *(task clause N/A in diff-only)*. (Any High blocks — this closes the 1–2 High gap so every gates-pass outcome maps to exactly one of `APPROVE`/`WARN`/`BLOCK`, which the caller requires; it also aligns with Approve's "no Critical/High". The earlier "≥3 High" threshold left 1–2 High with no verdict once the task clause is N/A.)
 
 ## CRITICAL Rules
 
