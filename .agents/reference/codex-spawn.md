@@ -118,5 +118,11 @@ ceiling if codex needs longer; never retune by lowering reasoning effort.
 | `/plan-feature` Phase 7 | 6 min | 3 min | 50 min (per round, min 2 rounds) |
 | `/brainstorm` Step 8.4 | 4 min | 3 min | 40 min (single round) |
 | `/codex-review` | (long-wakeup fallback; heartbeat from log is primary) | — | no hard ceiling — relay heartbeats, kill only on a genuine hang |
+| `/quick` Phase 2 | 4 min | 3 min | 25 min — then proceed without the opinion, reported on its own line |
+| `/architecture-review --codex` Phase 0 | 8 min | 5 min | 60 min (whole-codebase sweep) — then render the report from one sweep |
+
+> `/quick` is the one caller with a **short** ceiling, and deliberately so: it reviews a plan for a
+> small change, so a run past 25 minutes is a hang, not depth. Its lane must stay fast — the fail-open
+> is the review being *reported as missing*, never the command stalling.
 
 Retune these in the command files; keep this table in sync.

@@ -78,5 +78,11 @@ fi
 
 args+=(--output-last-message "$OUT")
 
+# Truncate OUT before spawning. Every caller treats "OUT non-empty" as the done
+# signal (exit 0 alone is not trustworthy — see the header), and codex writes it
+# only at the very end. A second run reusing the same OUT path would otherwise
+# read the PREVIOUS run's review as this run's result and proceed without one.
+: > "$OUT"
+
 # `< /dev/null` is the load-bearing stdin guard — never remove it.
 codex "${args[@]}" "$PROMPT" < /dev/null > "${OUT}.stdout" 2> "$LOG"
