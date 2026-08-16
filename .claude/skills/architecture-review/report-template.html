@@ -15,6 +15,16 @@
   Use a graph/flowchart for call-flow & dependency shapes. The "before" should read as shallow /
   scattered (many thin nodes, caller-side complexity); the "after" as deep (one module, callers thin).
 
+  Two-sweep mode (--codex): {{#if twoSweep}} renders the agreement strip in the intro, and each card
+  carries a {{sourceLabel}} — "both sweeps" / "Codex only" / "this sweep only" / "disagreement".
+  A "Codex only" card is what we missed: never demote it below our own candidates. Omit every
+  {{#if twoSweep}} block entirely on a single-sweep run — no empty strip, no "n/a" labels.
+
+  Hotspots ({{#each hotspots}}): the /deep-review hand-off, NOT a second findings list. Signals are
+  countable facts only (lines, branches, callers, test file present/absent) — never a quality verdict;
+  judging the code inside is /deep-review's job. Omit the whole <section> when nothing crossed the
+  thresholds — an empty table reads as "checked and fine". Cap at 10 rows.
+
   Vocabulary: use GLOSSARY.md terms exactly in all prose — module, interface, depth, deep, shallow,
   seam, adapter, leverage, locality. Forbidden: "component" for module, "API" for interface,
   "wrapper"/"boundary" where module/seam is meant. Editorial-plain tone, no hedging.
@@ -122,6 +132,50 @@
       .diagram.after  .cap { color: var(--green); }
       .mermaid { background: transparent; font-size: 13px; }
 
+      /* Two-sweep provenance (--codex) */
+      .sweeps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+      .sweep-stat {
+        background: var(--bg); border: 1px solid var(--line-soft); border-radius: 12px;
+        padding: 10px 14px; min-width: 120px;
+      }
+      .sweep-stat .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+      .sweep-stat .v { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.3; }
+      .sweep-stat.miss .v { color: var(--amber); }
+      .sweep-note { font-size: 12px; color: var(--ink-3); margin: 10px 0 0; }
+      .src {
+        text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; font-weight: 600;
+        color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px;
+        padding: 4px 10px; display: inline-block; white-space: nowrap;
+      }
+      .src-codex { color: var(--amber); border-color: var(--amber); }
+      .src-both  { color: var(--green); border-color: var(--green); }
+      .src-split { color: var(--slate); border-color: var(--slate); }
+
+      /* Hotspots — the /deep-review hand-off, deliberately quieter than a candidate card */
+      .hotspots { background: #fff; border: 1px solid var(--line-soft); border-radius: 20px; padding: 28px 32px; }
+      .hotspots h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 6px; }
+      .hotspots .lead { color: var(--ink-2); margin: 0 0 4px; }
+      .hotspots .thresholds { font-size: 12px; color: var(--ink-3); margin: 0; }
+      .hs-scroll { overflow-x: auto; margin-top: 16px; }
+      table.hs { width: 100%; border-collapse: collapse; font-size: 13px; }
+      table.hs th {
+        text-align: left; text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px;
+        font-weight: 600; color: var(--ink-3); padding: 0 12px 8px 0; border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+      }
+      table.hs td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: var(--ink-2); }
+      table.hs tr:last-child td { border-bottom: none; }
+      table.hs td:first-child, table.hs th:first-child { padding-left: 0; }
+      .hs-area { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--ink); }
+      .hs-signals { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+      .hs-cmd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--ink);
+        background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
+        padding: 5px 9px; display: inline-block; white-space: nowrap;
+      }
+      .hs-also { display: block; margin-top: 4px; font-size: 11px; color: var(--amber); }
+      .hs-note { font-size: 12px; color: var(--ink-3); margin: 14px 0 0; }
+
       /* Top recommendation */
       .top-rec { background: var(--dark); color: #fff; border-radius: 20px; padding: 28px 32px; }
       .top-rec .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: #888; margin-bottom: 10px; }
@@ -157,6 +211,34 @@
           <span class="badge badge-worth">Worth exploring</span>
           <span class="badge badge-speculative">Speculative</span>
         </div>
+
+        <!-- Two-sweep mode only — omit entirely on a single-sweep run -->
+        {{#if twoSweep}}
+        <div class="section-label">Two independent sweeps</div>
+        <div class="sweeps">
+          <div class="sweep-stat">
+            <div class="k">Both sweeps</div>
+            <div class="v">{{sweepAgreed}}</div>
+          </div>
+          <div class="sweep-stat miss">
+            <div class="k">Codex only</div>
+            <div class="v">{{sweepCodexOnly}}</div>
+          </div>
+          <div class="sweep-stat">
+            <div class="k">This sweep only</div>
+            <div class="v">{{sweepOursOnly}}</div>
+          </div>
+          <div class="sweep-stat">
+            <div class="k">Disagreement</div>
+            <div class="v">{{sweepDisputed}}</div>
+          </div>
+        </div>
+        <p class="sweep-note">
+          Both sweeps used the same method and the same codebase, and neither saw the other's findings.
+          “Codex only” is what this sweep missed — every one was verified against the code before it
+          earned a card.{{#if sweepDropped}} {{sweepDropped}} candidate(s) were dropped on verification.{{/if}}
+        </p>
+        {{/if}}
       </div>
 
       <!-- Candidates -->
@@ -164,9 +246,16 @@
       <div class="cand">
         <div class="cand-head">
           <h2 class="cand-title">{{title}}</h2>
-          <span class="badge badge-{{recommendation}}">{{recommendationLabel}}</span>
+          <span>
+            {{#if twoSweep}}<span class="src src-{{sourceClass}}">{{sourceLabel}}</span> {{/if}}<span class="badge badge-{{recommendation}}">{{recommendationLabel}}</span>
+          </span>
         </div>
         <div class="cand-files">{{files}}</div>
+
+        {{#if disagreement}}
+        <div class="section-label">Where the sweeps disagreed</div>
+        <p>{{disagreement}}</p>
+        {{/if}}
 
         <div class="section-label">Problem</div>
         <p>{{problem}}</p>
@@ -199,6 +288,49 @@
         </div>
       </div>
       {{/each}}
+
+      <!-- Hotspots — omit this entire block when no area crossed the thresholds -->
+      {{#if hotspots}}
+      <div class="hotspots">
+        <h2>Hotspots — hand-off to <code>/deep-review</code></h2>
+        <p class="lead">
+          Measurements, not verdicts. These areas are where a per-file structural pass is most likely to
+          pay off; whether the code inside is any good is <code>/deep-review</code>'s call, not this
+          review's. Run the command on the right to find out.
+        </p>
+        <p class="thresholds">Thresholds used: {{hotspotThresholds}}</p>
+
+        <div class="hs-scroll">
+          <table class="hs">
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Signals</th>
+                <th>Why listed</th>
+                <th>Command</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each hotspots}}
+              <tr>
+                <td class="hs-area">{{area}}</td>
+                <td class="hs-signals">{{signals}}</td>
+                <td>
+                  {{whyListed}}
+                  {{#if alsoCandidate}}<span class="hs-also">Also in candidate “{{alsoCandidate}}” — do the deepening first; it may delete this code.</span>{{/if}}
+                </td>
+                <td><span class="hs-cmd">/deep-review {{paths}}</span></td>
+              </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        </div>
+
+        {{#if hotspotsWithheld}}
+        <p class="hs-note">{{hotspotsWithheld}} further area(s) crossed a threshold but are not listed — ranked by {{hotspotRankingRule}}.</p>
+        {{/if}}
+      </div>
+      {{/if}}
 
       <!-- Top recommendation -->
       <div class="top-rec">
