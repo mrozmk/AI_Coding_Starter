@@ -10,7 +10,7 @@ argument-hint: "[topic or feature idea | empty → next free backlog task]"
 > **If `$ARGUMENTS` is empty, the topic is not given — it is *resolved* in Step 0 below** (default: the next free task from `.agents/backlog.md`). Do not treat an empty invocation as "ask the user what to build" unless Step 0 finds no resolvable task.
 
 <HARD-GATE>
-This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. The gate is on writing code, not on user approval: you advance through design → spec → planning on your own recommendation, stopping for the user only at the directional decisions defined in Step 2.
+This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. You advance through design → spec → cross-model review on your own recommendation, stopping for the user only at the directional decisions defined in Step 2 — and then once, at the **single approval point in Step 9**, before handing off to planning.
 </HARD-GATE>
 
 <WHY-GATE>
@@ -144,7 +144,7 @@ Once you understand what to build, present the complete design **in one pass** �
 - **Assumptions** — list every default you resolved yourself in Step 2 as "Assumed X (because Y)". This is where the user catches a wrong call without you having had to ask up front.
 - **Appetite & cut lines** — the appetite, no-go, and cut-first order from Step 1.5, in three short lines. State them as calls the user can overrule; a wrong appetite is cheapest to correct here, before any planning happens.
 
-Present it, then proceed to write the spec (Step 5). Do **not** wait for per-section approval and do **not** wait for whole-design approval — there is no approval gate. The user sees the full design here and the saved spec at Step 7, and can interject at either point, but you keep moving on your own recommendation. If, while presenting, you hit a genuine **directional** fork you missed in Step 2, ask it (per Step 2 rules); otherwise keep going.
+Present it, then proceed to write the spec (Step 5). Do **not** wait for per-section approval and do **not** wait for whole-design approval **here** — there is no gate at this step. The single approval point is Step 9, once the spec is final; until then you keep moving on your own recommendation. The user sees the full design here and the saved spec at Step 7 and can interject at either point, but you do not idle for it. If, while presenting, you hit a genuine **directional** fork you missed in Step 2, ask it (per Step 2 rules); otherwise keep going.
 
 ### Step 5: Write Design Doc
 
@@ -162,7 +162,7 @@ Create `.agents/specs/` if it doesn't exist.
 # Design: <Feature Name>
 
 **Date:** YYYY-MM-DD
-**Status:** Approved
+**Status:** Draft
 **External docs required:** yes | no
 
 ## Summary
@@ -214,6 +214,8 @@ Create `.agents/specs/` if it doesn't exist.
 <Anything unresolved — if none, delete this section>
 ```
 
+**`Status` starts at `Draft`** and is flipped to `Approved` in Step 9, after the user accepts. Write `Draft` even when the design feels obviously right — the field records whether a human accepted this spec, and a spec that hardcodes `Approved` at birth answers that question with a lie. Nothing reads the field: `/plan-feature` neither checks it nor refuses a `Draft`. It is a note for the human who opens `.agents/specs/` a month from now and asks whether the design was ever signed off — deliberately a marker, not an enforced invariant.
+
 **Setting `External docs required`:**
 - **yes** — the implementation needs documentation that is NOT already in `.agents/reference/`: a brand-new library, a new third-party API, an unfamiliar framework feature, or a version that introduces breaking changes.
 - **no** — all external integrations are already documented in `.agents/reference/`, or the feature is purely internal (refactor, internal logic, UI polish on existing components).
@@ -235,15 +237,15 @@ Fix inline. No need to re-review after fixing.
 
 After self-review, **inform** the user — do not block waiting for sign-off:
 
-> Tell the user, in the project's communication language (CLAUDE.md → Language Rules): the spec is saved to `<path>` and you're proceeding to the cross-model review (Step 8) / planning (Step 9); summarize the design in 2–3 lines and the key assumptions you made, and invite them to flag anything before planning starts.
+> Tell the user, in the project's communication language (CLAUDE.md → Language Rules): the spec is saved to `<path>` as a **Draft** and you're proceeding to the cross-model review (Step 8); summarize the design in 2–3 lines and the key assumptions you made, and say that you will come back at Step 9 with the final spec for their approval before anything advances to planning.
 
-Then **continue** to Step 8. This is a notification, not a gate — the user has the design in front of them and can interject, but you do not idle for explicit approval. If the user *does* respond with changes, apply them and re-run Step 6 before continuing. The HARD-GATE still holds: this is design/spec work only — no code is written here regardless.
+Then **continue** to Step 8. This is a notification, not the gate — the gate is Step 9, and it sits *after* the cross-model review for a reason: Step 8 can still change this spec, so approving it here would mean approving one artifact while `/plan-feature` receives another. The user can interject now, but you do not idle for it. If the user *does* respond with changes, apply them and re-run Step 6 before continuing. The HARD-GATE still holds: this is design/spec work only — no code is written here regardless.
 
 ### Step 8: External Cross-Model Review of the Spec — **CONDITIONAL (codex)**
 
 **Conditional step. Runs after the spec is written and presented (Step 7), only if `codex` is on PATH. Auto-skips otherwise.** This mirrors `/plan-feature` Phase 7 — an independent second model reviews the artifact before it advances — but here the artifact is the **spec (a design proposal)**, not an implementation plan, so the mandate is "is this the right thing to build, designed the right way?" not "can an executor run this?".
 
-The safety asymmetry that makes this cheap: **codex only advises — YOU decide.** Codex never edits the spec. It returns findings; you score each, then **auto-apply the valuable ones in-place without asking the user** (they are anchored refinements on top of a design the user has already seen — a cross-model gate that needed a manual round for every nit would not be worth running). The one exception is a finding that questions the **approach itself** (`kind: "fundamental"`) — that is not a refinement, it reopens the design direction, so it is surfaced to the user instead of applied silently. This is exactly the "directional decision" carve-out: codex auto-applies details, the user decides forks.
+The safety asymmetry that makes this cheap: **codex only advises — YOU decide.** Codex never edits the spec. It returns findings; you score each, then **auto-apply the valuable ones in-place without asking the user** — a cross-model gate that needed a manual round for every nit would not be worth running. The carve-out is `kind: "fundamental"`: a finding that questions the **approach**, or that changes or expands **what gets built**. Neither is a refinement — both reopen a decision the user owns — so they are carried to the Step 9 approval point instead of applied silently. Codex auto-applies details; the user decides forks and scope.
 
 #### Step 8.1 — Gate: is codex available?
 
@@ -286,7 +288,7 @@ command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: abse
         "required": ["severity", "kind", "where", "problem", "consequence", "fix", "evidence"],
         "properties": {
           "severity":    { "type": "string", "enum": ["critical", "major", "medium", "minor"] },
-          "kind":        { "type": "string", "enum": ["patchable", "fundamental"], "description": "patchable = a fix that edits the spec in place (tightens a requirement, fixes a contradiction, adds a missing edge case); fundamental = questions the approach/scope/whether to build this at all (cannot be applied as a spec edit)" },
+          "kind":        { "type": "string", "enum": ["patchable", "fundamental"], "description": "patchable = the fix does not change what gets built; fundamental = it questions the approach, or it changes or expands what gets built. See the 'Classifying kind' rule in the prompt." },
           "where":       { "type": "string", "description": "spec section (e.g. 'Architecture', 'Files', 'Edge Cases') or repo file:line" },
           "problem":     { "type": "string" },
           "consequence": { "type": "string" },
@@ -315,7 +317,9 @@ The prompt opens codex up to find **new** classes of problem in the *design*, wh
 > - **Risk** — anything the spec under-specifies on a sensitive path the project defines (per `CLAUDE.md` → Validation, e.g. payment, auth, webhook, license, locale/redirect routing, or domain-specific money/safety code).
 > - **Anything else that makes you stop and say "wait, are we sure about this?"**
 >
-> **Bar for reporting (strict, so breadth doesn't become noise):** every finding MUST (a) cite concrete `evidence` — a spec section, a `file:line`, or a documented decision — and (b) give a concrete `consequence` and `fix`. A finding you cannot anchor to the spec or repo is a hypothesis — DROP it yourself before reporting. Prefer 5 anchored findings over 20 speculative ones. Severity must be honest. Mark `kind: "fundamental"` when the finding questions the approach/scope itself (not a spec edit); otherwise `kind: "patchable"`. Set `verdict: "ship"` with an empty `findings` array if the spec is sound.
+> **Bar for reporting (strict, so breadth doesn't become noise):** every finding MUST (a) cite concrete `evidence` — a spec section, a `file:line`, or a documented decision — and (b) give a concrete `consequence` and `fix`. A finding you cannot anchor to the spec or repo is a hypothesis — DROP it yourself before reporting. Prefer 5 anchored findings over 20 speculative ones. Severity must be honest. Set `verdict: "ship"` with an empty `findings` array if the spec is sound.
+>
+> **Classifying `kind` — the test is what the fix *changes*, not what it mentions.** Before marking anything `patchable`, check it against the spec's `## Out of Scope` and `## Appetite & Cut Lines`. `patchable` means the fix leaves what-gets-built untouched: an internal contradiction, a false assumption about the repo, an already-agreed requirement stated ambiguously. Mark `fundamental` when the fix questions the approach **or** changes or expands what gets built — user-visible capability, acceptance criteria, a public contract, or something the spec explicitly excluded or put on the cut line. A new file, dependency or edge case is **not** automatically `fundamental`: it is `patchable` when it merely completes the behaviour already chosen, and `fundamental` when it adds behaviour nobody asked for. Judge by that effect, never by the nouns in the finding.
 >
 > **You are read-only.** This is a review: do NOT edit, patch, reformat, or create any files, and do NOT run mutating shell commands. Only read and report. (The sandbox flag is omitted by intent — see Step 8.2 — so this clause is what enforces read-only; honour it.) Output ONLY per the schema.
 
@@ -355,11 +359,11 @@ Record the returned **task ID** and the step's start time (the harness timestamp
 TaskStop  task_id=<the task ID from (a)>
 ```
 
-Log `Step 8: codex exceeded HARD_KILL (40m) — stopped, review skipped (fail-open)` and proceed to Step 9 with the spec as-is. **Never let a slow/stuck codex block the spec from advancing to planning.**
+Log `Step 8: codex exceeded HARD_KILL (40m) — stopped, review skipped (fail-open)` and proceed to Step 9 with the spec as-is. **Never let a slow/stuck codex block the spec from reaching the Step 9 approval point.** Fail-open skips the *review*, never the gate — an absent second opinion is reported at Step 9, not routed around it.
 
 **(d) Parse the result.** Read `<out-file>` as JSON.
 
-- **Parse fails** (or `DONE-FAILED` from (b)) → retry once with the same prompt (re-spawn from (a)). Still fails → skip the step, log `Step 8: codex returned unparseable output, cross-model review skipped` and keep the spec as-is (fail-open). Never let a codex failure block the spec from advancing to planning.
+- **Parse fails** (or `DONE-FAILED` from (b)) → retry once with the same prompt (re-spawn from (a)). Still fails → skip the step, log `Step 8: codex returned unparseable output, cross-model review skipped` and keep the spec as-is (fail-open). Never let a codex failure block the spec from reaching the Step 9 approval point.
 
 #### Step 8.5 — Score each finding (YOU decide)
 
@@ -369,13 +373,16 @@ For every finding codex returns, ask:
 2. **Real refinement?** — would applying it make the spec measurably better (fix a contradiction, close an edge case, correct a false assumption about the repo)? Cosmetic / stylistic / "nice to mention" → **DROP**.
 3. **Severity honest?** — demote/promote to match reality.
 4. **Conflicts with a documented decision?** — if the finding fights `patterns.md` / `decisions.md` / `CLAUDE.md`, our memory wins → **DROP**. Codex pushing its own conventions is not a defect in our spec.
+5. **Does it change what gets built?** — re-derive `kind` yourself instead of trusting codex's label. Applying this fix, would the spec end up promising a different user-visible capability, a different acceptance criterion, a different public contract, or something it listed under `## Out of Scope` / put on a cut line in `## Appetite & Cut Lines`? Yes → **reclassify to `fundamental`**, whatever codex called it. This is the one scoring question that can *promote* a finding rather than drop it, and it exists because the auto-apply in Step 8.6 is the only place a second model can quietly enlarge a design the user already bounded in Step 1.5.
 
-Write the score for each finding explicitly (one line: `[#NN] KEEP/DROP — reason`) so the decision trail is visible to the user.
+Write the score for each finding explicitly (one line: `[#NN] KEEP/DROP — reason`, plus `→ reclassified to fundamental` where question 5 fired) so the decision trail is visible to the user.
 
 #### Step 8.6 — Apply, branching by `kind`
 
-- **`kind: "patchable"` and it survived scoring** → **apply in-place now, WITHOUT asking the user** (Edit tool, exactly like Step 6). This is the auto-apply: valuable, anchored refinements land directly in the spec. Apply 🔴 / 🟠 with a valid anchor; apply 🟡 only when it touches a sensitive path the project defines (per `CLAUDE.md` → Validation). 🟢 → log it, do not apply.
-- **`kind: "fundamental"` (any severity that survives scoring)** → do **NOT** apply silently and do **NOT** rewrite the spec's direction on your own. A fundamental finding reopens the design direction — collect it as a **🔶 RETHINK SIGNAL** and surface it (Step 8.7). This is a directional decision, so it is one of the few places the user must decide.
+Use the `kind` you arrived at in Step 8.5 (question 5), not the raw label codex sent.
+
+- **`kind: "patchable"` and it survived scoring** → **apply in-place now, WITHOUT asking the user** (Edit tool, exactly like Step 6). This is the auto-apply, and it is bounded to fixes that leave what-gets-built unchanged: contradictions, false assumptions about the repo, ambiguity in an already-agreed requirement. Apply 🔴 / 🟠 with a valid anchor; apply 🟡 only when it touches a sensitive path the project defines (per `CLAUDE.md` → Validation). 🟢 → log it, do not apply.
+- **`kind: "fundamental"` (any severity that survives scoring)** → do **NOT** apply silently and do **NOT** rewrite the spec's direction or widen its scope on your own. A fundamental finding reopens a decision the user owns — whether it questions the approach or enlarges what gets built. Collect it as a **🔶 RETHINK SIGNAL**, report it in Step 8.7, and put it to the user at the Step 9 approval point.
 
 After applying patchable fixes, re-read the affected spec sections once to confirm they remain internally consistent (a fix can contradict another section). If it introduced a contradiction, reconcile it inline.
 
@@ -397,12 +404,12 @@ Dropped (with reason — proof the filter ran):
 - ...
 ```
 
-**If any 🔶 RETHINK SIGNAL was collected**, append this block and ASK the user (this is the ONLY user interaction in Step 8), in the project's communication language (CLAUDE.md → Language Rules):
+**If any 🔶 RETHINK SIGNAL was collected**, append this block to the report:
 
 ```
 ## 🔶 Rethink signals from cross-model review
 
-codex questions the design itself (not a patchable spec edit):
+codex reopened a decision you own — it questions the design, or it would enlarge what gets built:
 
 [#F1] <severity> <title>
   WHERE: <where>   EVIDENCE: <evidence>
@@ -410,19 +417,36 @@ codex questions the design itself (not a patchable spec edit):
   → <consequence>
 ```
 
-> "codex raised <K> fundamental concern(s) about the design, not just patchable refinements. How do you want to proceed?"
->
-> - **Keep the spec as approved** — you disagree with the rethink signal; the spec stands and we move to planning.
-> - **Revise the spec now** — apply the rethink signal(s) (return to Step 4 to reshape the design, then re-run Steps 6–7).
-> - **Discuss each** — walk through the fundamental findings one by one and decide per-finding.
+**Report them here; decide them in Step 9.** Do not open a separate question at this step — carry the collected signals forward into the single approval point, where the user sees them next to the assumptions and the applied edits and answers once. Step 8 has no user interaction of its own.
 
-If there were **no** rethink signals and patchable fixes were applied (or codex returned `ship`), proceed straight to Step 9 — a clean cross-model pass is a good outcome, no question needed.
+Then proceed to Step 9 either way. A clean cross-model pass is a good outcome, and it changes nothing about the approval point — it just means there are no rethink signals to carry into it.
 
 #### Step 8.8 — Memory
 
 If codex surfaced a **recurring** design mistake (a class of gap `/brainstorm` keeps producing in this project), save the RULE (not the finding) to `.agents/memory/patterns.md` — so the next spec avoids it before codex even runs. Do not save individual findings as memory.
 
-### Step 9: Transition to Planning
+### Step 9: Approval, then Transition to Planning
+
+This is the one place `/brainstorm` stops and waits. The spec is final here — Step 6 self-review and Step 8's auto-apply are both behind you — so what the user accepts is exactly what `/plan-feature` will read.
+
+**What this gate is not:** it is not "approve every decision in the spec", and it does **not** reopen Step 2's question economy. You still resolved every detail yourself and asked nothing along the way. This is the single moment where the calls you made on the user's behalf get shown for correction — the payment of the promise Step 2 and Step 4 make when they write *"the user can correct it when they see the spec."* Nothing about it licenses asking more questions earlier.
+
+**Present, in the project's communication language (CLAUDE.md → Language Rules), in one message:**
+
+1. **Assumptions** — every "Assumed X (because Y)" from Step 4. This is the substance of the gate; do not compress it away.
+2. **Bounds** — appetite, no-go, and cut-first order from Step 1.5, plus the spec's `## Out of Scope`.
+3. **What the cross-model review changed** — the material edits Step 8.6 auto-applied (skip the cosmetic ones), so the user is accepting the spec that exists, not the one they saw at Step 7. Omit this line entirely when Step 8 was skipped or clean.
+4. **🔶 Rethink signals** carried from Step 8.7, if any.
+
+**Then ask once** (`AskUserQuestion`), leading with your recommendation:
+
+> - **Approve** — the spec stands as written; we move to planning.
+> - **Correct something** — name the assumption, bound, or applied edit to change; you fix it, re-run Step 6, and come back here.
+> - **Revise the design** *(offer only when a rethink signal exists)* — the signal lands; return to Step 4 to reshape the design, then re-run Steps 6–8 and return here.
+
+**On approval:** flip the spec's `**Status:**` from `Draft` to `Approved`, then hand off.
+
+> **This gate is a guardrail, not a shaping rule — it has no yield condition** (`.agents/memory/index.md` → Output-Discipline Convention). It is what makes `/brainstorm` a design gate rather than a design *suggestion*, and it is the reason every other step is allowed to move without asking. Nothing in `.claude/` invokes `/brainstorm` programmatically — it is a human-invoked command in every path the repo has — so there is no non-interactive caller for a yield to serve, and `/deep-review`'s two-mode split would be modelling a caller that does not exist. If one is ever added, that is the moment to design a second mode, with a real case in hand.
 
 Hand off to `/plan-feature`. There is a single planning command — whether it performs a web-research phase is decided automatically from the `External docs required` flag in the spec (set in Step 5).
 
@@ -450,4 +474,5 @@ Report the spec path and end your turn.
 - **Follow existing patterns** — consult `.agents/memory/architecture.md` and `.agents/memory/patterns.md` (loaded by `/prime`) plus relevant core/base modules before proposing new structure. Don't reinvent conventions the project already documented.
 - **Scale to complexity** — a tiny feature gets a short design doc; a large feature gets a thorough one
 - **Ask only at forks** — resolve every detail yourself; spend questions only on directional/architectural decisions and the why (Step 2). Zero questions is the right count for a feature with no real fork.
-- **Hard gate holds** — `/brainstorm` writes a design and a spec, never code; no scaffolding, no implementation. Advancing through the steps does not require user approval, only the absence of code.
+- **Hard gate holds** — `/brainstorm` writes a design and a spec, never code; no scaffolding, no implementation.
+- **One approval, at the end** — advancing through design, spec and cross-model review needs no sign-off; handing off to planning does. The single gate is Step 9, on a final spec. Asking nothing along the way is what earns the right to ask once at the end.
