@@ -92,6 +92,8 @@ The first half is always the same — **prime → brainstorm → plan-feature** 
 New chat → /prime → /brainstorm <feature> → /plan-feature → /execute → /check-implementation → /commit → /push
 ```
 
+Tracker-driven variant — `/start-task <KEY>` replaces the first three steps (branch + prime + brainstorm from the issue); in a PR-gated repo `/pr-create` replaces `/push`.
+
 > You run and review each step. `/check-implementation` **applies** fixes (`code-review --fix` → `deep-review`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/commit` and `/push`. Best for high-stakes changes, or when you want eyes on every gate.
 
 **B — Orchestrated (hands-off):**
@@ -160,7 +162,7 @@ claude mcp add context7 -- npx -y @upstash/context7-mcp
 # playwright — no credentials required
 claude mcp add playwright -- npx -y @playwright/mcp@latest
 
-# mcp-atlassian — needs Atlassian API token; uses the bundled .mcp.json.example
+# mcp-atlassian — declared in the committed .mcp.json; needs credentials in .env
 #   (see "Jira integration (optional)" below)
 ```
 
@@ -170,13 +172,14 @@ For canonical install commands, env-var configuration, and version pinning, foll
 
 ### Jira integration (optional)
 
-The repo ships a `.mcp.json.example` template. To activate Jira:
+The committed `.mcp.json` declares the `atlassian` server and reads its credentials from `.env` (`--env-file .env`). To activate Jira:
 
-1. Copy the template: `cp .mcp.json.example .mcp.json`
-2. Fill in your Atlassian credentials in `.mcp.json` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
-3. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/prime-ba` skip the project prompt.
+1. Copy the template: `cp .env.example .env`
+2. Fill in your Atlassian credentials in `.env` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
+3. Restart Claude Code — the MCP server loads `.env` at startup, not per call. Repeat after every edit of `.env`.
+4. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/prime-ba` skip the project prompt.
 
-`.mcp.json` is gitignored — credentials never leave your machine. If you skip this, the `/jira` skill simply hard-stops with a clear error message; nothing else breaks.
+`.env` is gitignored — credentials never leave your machine; `.mcp.json` holds no secrets, so the server list stays shared and synced via `/maintain:sync-from-starter`. If you skip this, the `/jira` skill simply hard-stops with a clear error message; nothing else breaks.
 
 ### MCP Playwright (optional)
 
@@ -341,6 +344,10 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 | Command | When to run |
 |---------|-------------|
+| `/confluence <url \| id \| search \| new "Title" \| publish <draft>>` | Reading or authoring Confluence pages — same MCP server and token as `/jira` (`CONFLUENCE_*` in `.env`). Authoring is local-first: draft in `.agents/handoffs/confluence-drafts/`, publish only on explicit `y`. |
+| `/pr-create [KEY]` | Work is committed and ready for review — pushes via `/push`, derives title/dest/merge strategy from the tracker + Branch model, fills the repo's PR template honestly, prints the create-PR URL. Never opens or merges the PR. |
+| `/pr-comments [KEY]` | Reviewers left comments on your PR (GitHub / Bitbucket / GitLab, detected from `origin`) — pulls the threads, triages which still need you, proposes a reply + optional fix per thread, posts only on a per-thread `y`. Never resolves threads, never commits. |
+| `/start-task <KEY>` | Starting a tracker issue — fetches it, proposes `<type>/<KEY>-<slug>` (confirmed), cuts the branch off the fresh base from the Branch model, then runs `/prime` + `/brainstorm <KEY>`. Soft-fails to a typed title when the tracker MCP is absent. |
 | `/prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
 | `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
 | `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
@@ -516,7 +523,7 @@ User-local overrides live in `.claude/settings.local.json` (gitignored) — Clau
   /maintain:sync-from-starter v2.1.0     # pin to a specific starter ref
   ```
 
-  It clones the upstream starter to `/tmp`, classifies every file into three buckets — **A** overwrite (commands, agents, skills, templates, **hooks**, `.claude/README.md`), **B** merge with a diff (`settings.json` permissions, `index.md`, `.gitignore`, `memory-domains.json`, `.editorconfig`, `.mcp.json.example`), **C** never touch (your `CLAUDE.md`, `architecture.md`, append-only memory, specs, plans, root README, `LICENSE`, code) — then shows a **dry-run report and waits for your approval before writing anything**, and finally proposes a `chore(workflow): sync …` commit. It tracks provenance in a committed `.claude/.starter-sync.json` so repeated syncs become true **3-way merges** (telling intentional local edits from staleness, detecting upstream-deleted files), and on real `settings.json`/hook conflicts it **recommends but asks** rather than overwriting. Authoritative file classification and flow: [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md); command: [.claude/commands/maintain/sync-from-starter.md](.claude/commands/maintain/sync-from-starter.md).
+  It clones the upstream starter to `/tmp`, classifies every file into three buckets — **A** overwrite (commands, agents, skills, templates, **hooks**, `.claude/README.md`), **B** merge with a diff (`settings.json` permissions, `index.md`, `.gitignore`, `memory-domains.json`, `.editorconfig`, `.mcp.json`, `.env.example`), **C** never touch (your `CLAUDE.md`, `architecture.md`, append-only memory, specs, plans, root README, `LICENSE`, code) — then shows a **dry-run report and waits for your approval before writing anything**, and finally proposes a `chore(workflow): sync …` commit. It tracks provenance in a committed `.claude/.starter-sync.json` so repeated syncs become true **3-way merges** (telling intentional local edits from staleness, detecting upstream-deleted files), and on real `settings.json`/hook conflicts it **recommends but asks** rather than overwriting. Authoritative file classification and flow: [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md); command: [.claude/commands/maintain/sync-from-starter.md](.claude/commands/maintain/sync-from-starter.md).
 
 ---
 

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Write",
@@ -38,6 +39,7 @@
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
       "Bash(bash .claude/lib/qa-probe.sh)",
+      "Bash(bash .claude/skills/pr-comments/references/pr-api.sh:*)",
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:github.com)",
@@ -50,9 +52,23 @@
       "WebFetch(domain:pkg.go.dev)",
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:crates.io)",
-      "mcp__atlassian__*"
+      "mcp__atlassian__jira_search*",
+      "mcp__atlassian__jira_get_*",
+      "mcp__atlassian__jira_batch_get_*",
+      "mcp__atlassian__confluence_search*",
+      "mcp__atlassian__confluence_get_*"
     ],
     "ask": [
+      "mcp__atlassian__jira_create_*",
+      "mcp__atlassian__jira_update_*",
+      "mcp__atlassian__jira_add_*",
+      "mcp__atlassian__jira_transition_issue",
+      "mcp__atlassian__jira_batch_create_*",
+      "mcp__atlassian__jira_link_to_epic",
+      "mcp__atlassian__confluence_create_*",
+      "mcp__atlassian__confluence_update_*",
+      "mcp__atlassian__confluence_add_*",
+      "Edit(**/.env.*)",
       "Bash(git merge --no-ff*)",
       "Bash(git merge --squash*)",
       "Bash(git branch -d*)",
@@ -62,6 +78,9 @@
       "Bash(git remote add:*)"
     ],
     "deny": [
+      "mcp__atlassian__jira_delete_*",
+      "mcp__atlassian__confluence_delete_*",
+      "mcp__atlassian__confluence_set_page_restrictions",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git reset --hard*)",
@@ -87,7 +106,6 @@
       "Bash(git switch*--discard-changes*)",
       "Bash(sudo:*)",
       "Edit(**/.env)",
-      "Edit(**/.env.*)",
       "Edit(**/id_rsa*)",
       "Edit(**/id_ed25519*)",
       "Edit(**/*secret*)",
@@ -233,6 +251,10 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-deps.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-project-deps.sh\""
           }
         ]
       }

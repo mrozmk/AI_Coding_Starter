@@ -49,6 +49,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 {typecheck-command} && {lint-command} && {test-command}
 ```
 
+**Runtime smoke — optional fourth, conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check in [.agents/reference/runtime-smoke.md](.agents/reference/runtime-smoke.md). No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass). Delete this paragraph in a project with no rendered UI.
+
 **Test policy — which layers MUST have tests:**
 
 - Sensitive paths — payment, auth, webhook, license, locale/redirect routing — **MUST** have unit tests (mock external SDKs / DB). A change to these paths without a test is a gate failure, not a 🟡 nice-to-have.
@@ -99,6 +101,8 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Never commit secrets** — credentials live in gitignored `.env` / config. Validate all user input at system boundaries · HTTPS-only for external APIs · error messages must not leak sensitive info.
 
+**`.env` is `deny` for edits; `.env.*` is `ask`.** Permission globs have no negation, so the only way to keep the committed `.env.example` editable is to prompt on every `.env.<suffix>` instead of blocking it. No such secret-bearing file exists in the starter today — if a project introduces one (`.env.local`, `.env.production`), add an explicit `Edit(**/<that file>)` deny in the same commit that creates it.
+
 **Egress policy — the AI can read a secret, so the guard is on sending it.** The file-write denies in [.claude/settings.json](.claude/settings.json) stop the agent *writing* `.env`, keys and PEMs; they do nothing about an injected instruction that reads one and ships it out. Two rules narrow that:
 
 - **`WebFetch` is an allowlist, not `domain:*`.** A blanket allow means an exfiltration URL needs no prompt and leaves no shell string for a deny-glob to match — `audit-append.sh` records it afterwards, which is forensics, not prevention. The shipped list covers common documentation and package hosts; `/setup:create-CLAUDE_MD` appends stack-specific ones. Anything else prompts. **Do not widen it back to `domain:*`** to silence prompts — a prompt on an unknown host is the control working.
@@ -106,13 +110,18 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 > **Honest limit:** these are string globs, not argument-aware parsing — defense-in-depth, not a boundary. Uncovered: the attached-value spellings `curl -XPOST` / `-d@.env` (the globs require a trailing space, so these fall through to a prompt — `curl` is not allowlisted, so they still prompt rather than run), `curl -K <configfile>`, `python3 -c "requests.post(...)"`, `nc`, and base64 smuggled in a GET query. Treat them as raising the cost of an accident, not as a guarantee against a determined injection.
 
+**Recorded exception: `pr-api.sh`.** [.claude/skills/pr-comments/references/pr-api.sh](.claude/skills/pr-comments/references/pr-api.sh) is allow-listed whole in `settings.json` — its `reply` subcommand runs `curl -X POST … -d @body` *inside* the script, where no deny glob can see it (permissions match the Bash command string, not subprocesses). This bypasses the egress denies by design. Mitigations: it is the **only** script with that allowance; it posts solely after a per-thread human `y` inside `/pr-comments` (HARD-GATE 1); and credentials travel only as request headers to the host derived from `origin`, never in a URL or on stdout. Do not add a second script to that allowance without recording it here.
+
 ---
 
 ## Git Workflow
 
 - **Commits · sync · releases:** [/commit](.claude/commands/commit.md) (conventional commits), [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) (they resolve the current branch), [/release](.claude/commands/release.md) (bumps the detected manifest, CHANGELOG, tag).
 - **AI git policy — three permission tiers** in [.claude/settings.json](.claude/settings.json), the source of truth for which command sits where. Precedence `deny` > `ask` > `allow`: `deny` is absolute — no prompt or classifier overrides it; `ask` always prompts, even in auto mode; anything in no list (bare `git merge`, soft/mixed `git reset`) prompts interactively.
-- **`git worktree remove --force` can discard uncommitted work.** Its only guard is [/orchestrate](.claude/commands/orchestrate.md)'s `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged.
+- **`git worktree remove --force` can discard uncommitted work.** Its only guard is [/orchestrate](.claude/commands/orchestrate.md)'s `status --porcelain` check (Step 5.5 and Phase 7), which force-removes a worktree only when it is clean and fully merged.
+- **`git worktree` and `git merge --ff-only` are reserved for the `/orchestrate` pipeline.** They are allow-listed in `settings.json` only so the pipeline runs without per-step prompts; an allow cannot be scoped to one command, so this is a behavioral rule, not a hard gate. Do not use either ad hoc in a normal session.
+- **A new branch must not track a protected branch.** `git switch -c` / `checkout -b` from `origin/<protected>` auto-sets that branch as upstream, so a bare `git push` targets it directly. Create with `--no-track` (or run `git branch --unset-upstream` right after) and let [/push](.claude/commands/push.md) set the upstream on first push.
+- **Protected branches refuse commits and pipeline runs** — [/commit](.claude/commands/commit.md) and [/orchestrate](.claude/commands/orchestrate.md) Phase 4 read **Protected** from the Branch model block below. Block absent or field empty → no branch is protected and both proceed (the starter's own default is committing on `main`).
 - **[/orchestrate](.claude/commands/orchestrate.md) pushes the current branch**, not a hardcoded `main`; parallel runs and the supervised `--integrate` merge queue: [.agents/reference/parallel-orchestration.md](.agents/reference/parallel-orchestration.md).
 - **Never include AI attribution** in commit messages unless explicitly requested.
 
@@ -152,6 +161,7 @@ Generic triggers, always on. **Project-specific routing** lives in [.agents/memo
 - **Before implementing something new:** check `.agents/plans/active/` for existing plans
 - **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until [.claude/memory-domains.json](.claude/memory-domains.json) has path→domain rules **and** memory outgrows its size threshold (both required).
 - **When uncertain about approach:** make routine judgment calls yourself; stop and ask when different readings of the request would lead to materially different work
+- **After a `/qa-verify` run with interaction rows** (Playwright methods, or a Tier-2 driver run): offer to promote the recorded sequence into a regression test per [.agents/reference/qa-to-regression-test.md](.agents/reference/qa-to-regression-test.md) — QA never writes tests itself, so the sequence is lost otherwise
 - **After fixing a bug:** consider an entry in [.agents/memory/errors.md](.agents/memory/errors.md) — *"Would a fresh Claude make this mistake again without it?"*
 - **When a `domain/` memory file doesn't exist but is needed:** create it from the template in [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md)
 - **When writing to memory at the end of a run:** read [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) first — the save-or-not bar and entry formats live there, outside the `/prime` payload
@@ -163,7 +173,7 @@ Generic triggers, always on. **Project-specific routing** lives in [.agents/memo
 
 ## Search Commands
 
-**CRITICAL:** use `rg` (ripgrep), never `grep` or `find` — e.g. `rg "pattern"`, `rg --files -g "*.{ext}"`.
+**CRITICAL:** use `rg` (ripgrep), never `grep` or `find` — e.g. `rg "pattern"`, `rg --files -g "*.{ext}"`. `rg` skips hidden dirs — a sweep over `.claude/` or `.agents/` needs `rg --hidden -g '!.git'`.
 
 ---
 
