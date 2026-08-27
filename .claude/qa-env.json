@@ -16,6 +16,9 @@
   "_local_serve_command_alt_port_doc": "Same, for a SECOND concurrent QA session — the first already holds the default port. Leave empty if parallel local sessions are not a thing here.",
   "local_serve_command_alt_port": "",
 
+  "_local_serve_command_tier1_doc": "Non-browser apps only (see qa-evidence-families.md §2 tiers). How to start the app in the OTHER tier than local_serve_command — typically inspection-only, without the driver extension that Tier 2 needs but that mocks the device keyboard. Empty => the app has a single way to run.",
+  "local_serve_command_tier1": "",
+
   "_build_sha_url_doc": "Optional URL returning the DEPLOYED build's commit SHA (a build-info endpoint, or an HTML page carrying <meta name=\"build-sha\">). Used to detect a deployed build lagging local HEAD. Empty => the probe stamps 'skew not verified' rather than fabricating an endpoint — an unverified skew must never read as a verified match.",
   "build_sha_url": "",
 

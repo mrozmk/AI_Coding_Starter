@@ -14,6 +14,8 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 
 2. If `git status --porcelain` output is empty — inform the user: "Nothing to commit, working tree clean." and stop.
 
+   **Protected-branch refuse.** Read **Protected** from `CLAUDE.md → ### Branch model`. If the current branch (`git rev-parse --abbrev-ref HEAD`) is listed there, stop: "Branch `<branch>` is protected — cut a working branch first (see Branch model)." Continue only on an explicit user override in this turn. Block absent or field empty → nothing is protected, proceed.
+
 3. **Determine "your" files** — the set you actually touched in this session:
    - Reconstruct from your transcript: every successful `Edit`, `Write`, `NotebookEdit`, `MultiEdit`, plus any `mv`/`rm`/file-creating `Bash` you ran. Track absolute paths; normalize to repo-relative.
    - Memory files you updated as part of step 9 (memory checkpoint) below count as yours too.
@@ -25,7 +27,23 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
    - **FOREIGN** = modified files NOT in your tracked set. These will NOT be staged automatically.
    - **UNTRACKED** = `??` files. Only stage if they are clearly part of your work (created by your `Write`/`Bash`); otherwise treat as FOREIGN.
 
-5. **Report the classification** for transparency, then proceed without waiting:
+5. **Stop if nothing is yours.** If the working tree is dirty, the user gave no explicit paths in the `/commit` argument, and the OWNED set (including untracked files your own `Write`/`Bash` created) is **empty** — print the block below and STOP. Do not stage, do not commit, do not ask whether to include the FOREIGN files. Argument-mode (`/commit <paths>`) never reaches this gate — step 3 exempts it.
+
+   ```
+   Nothing of yours to commit.
+
+   The working tree has <N> changed file(s), but none were edited in this session —
+   there is nothing this command may stage on its own.
+
+   Not staging (changed by something else):
+     M  <path>
+     ?? <path>
+
+   To commit any of them anyway, name them explicitly:
+     /commit <path> <path>
+   ```
+
+5b. **Report the classification** for transparency, then proceed without waiting:
 
    ```
    Staging (your edits this session):
@@ -45,7 +63,7 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 
 6. Analyze the changes you ARE staging and generate a commit message following the canon format below. The message must describe only the files actually being staged — not the foreign ones.
 
-7. Stage the approved set with explicit `git add <path>` calls, one path per file. Do NOT use `git add .`, `git add -A`, or `git add -u` — all three bypass the scoping you just established. `-u` is the easy one to miss: it stages every *tracked* modification, which is exactly the FOREIGN set you just classified out. Skip `.env`, credentials, large binaries, `node_modules` even if they appear in your set (refuse + warn the user).
+7. Stage the approved set with explicit `git add <path>` calls, one path per file, **in a separate Bash call from the commit** — `guard-commit.sh` inspects the staged set before a chained `git add … && git commit` runs and blocks it as an empty commit. Do NOT use `git add .`, `git add -A`, or `git add -u` — all three bypass the scoping you just established. `-u` is the easy one to miss: it stages every *tracked* modification, which is exactly the FOREIGN set you just classified out. Skip `.env`, credentials, large binaries, `node_modules` even if they appear in your set (refuse + warn the user).
 
 8. Create the commit with the generated message — **no further confirmation needed at this point**.
 9. **Memory checkpoint** — read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) first: its save-or-not bar and de-dup guard govern this step (default outcome: save nothing; if `/execute` or `/check-implementation` already reflected in this flow, there is usually nothing left). Then review the work done in this commit and ask yourself:
@@ -90,3 +108,4 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 - NEVER auto-stage a FOREIGN file (one not in your session's edit set). Reason: the user runs multiple LLM windows in parallel — committing another window's in-flight work under the wrong subject pollutes git history and is hard to untangle later.
 - NEVER ask the user "should I commit all?" / "should I include the skipped files?". Default is always: commit OWNED set, skip FOREIGN, no confirmation. Only deviate if the user _unprompted_ told you to include specific files.
 - If the user is silent about FOREIGN files, treat that as "skip them" — never as "include everything".
+- An empty OWNED set on a dirty tree is a STOP, never a licence to widen scope. Print the "Nothing of yours to commit." block naming `/commit <paths>` and end the turn — do not fall through to staging, and do not ask.

@@ -76,12 +76,12 @@ Skip these built-in non-command tokens (they look like commands but are part of 
 ### 1.5 MCP / skill tool references — `` `mcp__*` ``
 
 ```bash
-rg -n --hidden '`(mcp__[a-z_]+__[a-z_]+)`' --glob '*.md'
+rg -n --hidden '`(mcp__[a-z_-]+__[a-z_]+)`' --glob '*.md'
 ```
 
 For each match, verify the tool name exists in:
 - The MCP tool listing of the current session (if available)
-- OR `.mcp.json.example` (look for the MCP server name as a hint)
+- OR `.mcp.json` (look for the MCP server name as a hint)
 - OR `.claude/skills/<name>/` directory
 
 If none, flag as "MCP tool not configured in this project" (warning, not blocker — user may have it set up locally).
@@ -205,7 +205,7 @@ on purpose (entries vs whole files); both are historical-only and never auto-loa
 - `.agents/memory/api.md`
 - `.agents/memory/domain/*.md`
 
-**Skip:** `.agents/memory/archive/**`, regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`).
+**Skip:** `.agents/memory/archive/**`, regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`), and `user-profile.md` (per-developer, gitignored — never pruned).
 
 #### 2A.1 Identify candidate entries via heuristics
 
@@ -360,7 +360,7 @@ For each file:
 > The 180-day threshold can be overridden inline for a single run — 2B.4's `AskUserQuestion` MAY
 > offer "threshold 180 days — change for this run?". This is a per-run choice, not a CLI argument.
 
-**Exclude from candidacy regardless of usage:** `pinned: true` files, `MEMORY.md`, `index.md`,
+**Exclude from candidacy regardless of usage:** `pinned: true` files, `MEMORY.md`, `index.md`, `user-profile.md`,
 `project-brief.md` and the other regenerated files (`architecture.md`, `domain/business-model.md`).
 
 #### 2B.3 Present the file-level audit table
@@ -523,7 +523,7 @@ If zero warnings:
 
 **Goal:** surface *systemic drift* in the workflow itself — stale auto-loads, internal contradictions, unbounded automation, config gaps. **No actions — flagging only**, same as Phase 3.
 
-**Generic-only rule:** this phase **discovers** what to check by parsing `.claude/commands/`, `.claude/settings.json`, `.mcp.json` / `.mcp.json.example`, `.gitignore`, and `.agents/memory/index.md`. It never hardcodes project-specific paths — what it audits is whatever those files declare.
+**Generic-only rule:** this phase **discovers** what to check by parsing `.claude/commands/`, `.claude/settings.json`, `.mcp.json`, `.env.example`, `.gitignore`, and `.agents/memory/index.md`. It never hardcodes project-specific paths — what it audits is whatever those files declare.
 
 **False-positive philosophy:** prefer a false-negative to a false-positive. A missed signal costs 30 seconds when it surfaces later; a false alarm trains the user to ignore the report — and then every future signal is lost. When unsure whether something is drift, stay silent.
 
@@ -563,7 +563,7 @@ Read the `hooks` block in `settings.json` and the scripts in `.claude/hooks/`. F
 ### 4.4 Gitignore & MCP config drift
 
 - **Gitignore coverage:** confirm local-only artifacts are ignored — `.claude/audit.log`, `.claude/worktrees/`, any tool output dir. Flag artifacts present in the tree but not gitignored (they will leak into commits).
-- **MCP config drift:** compare `.mcp.json` against `.mcp.json.example`. Flag missing servers, and missing `--output-dir`/equivalent flags that would dump MCP artifacts into the repo root.
+- **MCP config drift:** `.mcp.json` is committed and must hold no secrets — flag any `env` block with a literal credential (secrets belong in `.env` via `--env-file`). Flag `.env.example` keys missing for a declared server, and missing `--output-dir`/equivalent flags that would dump MCP artifacts into the repo root.
 
 ### 4.5 Phase 4 output
 

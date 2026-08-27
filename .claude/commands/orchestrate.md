@@ -92,6 +92,7 @@ git rev-parse --abbrev-ref HEAD   # → TARGET_BRANCH (e.g. main, or orch-<id> i
 Substitute the **literal** branch name into every command below wherever `<TARGET_BRANCH>` appears — do NOT rely on a shell variable, each command runs in a fresh shell (`push.md:9`).
 
 - If the output is literal `HEAD` → **detached HEAD**. STOP: "Detached HEAD — checkout a branch before /orchestrate." (`push.md:10-11`.)
+- If `TARGET_BRANCH` is listed under **Protected** in `CLAUDE.md → ### Branch model` → STOP: "`<TARGET_BRANCH>` is protected — run /orchestrate from a working branch." The pipeline commits (and in `push` mode pushes) to this branch on every step; a protected branch would reject that server-side or, worse, accept it. Block absent or field empty → nothing is protected (the single-run-on-`main` default stays byte-for-byte).
 - **On `main` (the single-run default) everything below is byte-for-byte today's behavior.** On an `orch-<id>` branch (a parallel run — see [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md)) per-step work pushes to `origin/<TARGET_BRANCH>`; the results are brought onto `main` later by the supervised **Integration mode** (`--integrate`, below).
 - **Build-log slug:** for the OS-global `/tmp` build-log path (shared even across separate clones), use `TARGET_SLUG` = `<TARGET_BRANCH>` with every `/` replaced by `-`. The runbook mandates `orch-<id>` (no slash), but this keeps a single run on a slashy branch like `feat/x` safe.
 
@@ -303,7 +304,7 @@ Parse the `=== DESIGNER REPORT ===` block. **Assert `WORKDIR_TOPLEVEL` matches t
 
 Parse the `=== DESIGNER REPORT ===` block.
 
-**Adaptive design budget (read before applying the table).** A backend step with no UI surface returns `skipped` and costs nothing. A heavy-UI step often returns a structural rewrite (many gaps that are all symptoms of one "implementation diverged from the design DOM" root cause) — and two small fix iterations are the wrong tool for that: you want ONE comprehensive fix pass, not two partial ones. So branch on the FIRST designer report's shape:
+**Adaptive design budget (read before applying the table).** A backend step with no UI surface returns `skipped` and costs nothing; a UI step whose reference could not be resolved returns `not-verified` — carried forward as a warning, never treated as `passed`. A heavy-UI step often returns a structural rewrite (many gaps that are all symptoms of one "implementation diverged from the design DOM" root cause) — and two small fix iterations are the wrong tool for that: you want ONE comprehensive fix pass, not two partial ones. So branch on the FIRST designer report's shape:
 
 - **Mega-fix mode** — if the first `failed` report has **>20 GAPS** OR **≥1 structural/architectural GAP** (a gap about DOM hierarchy, missing sections, per-tier/per-state variants, or component structure — not pure token/spacing/copy deltas): treat the entire `GAPS` list as a SINGLE fix iteration. Spawn the executor once with the full `FIX_LIST`, then — because a structural rewrite is exactly the kind of mutation that CAN break code — re-run Step 5.1-recon and **one verifier pass (5.2)** before the confirming designer run. A mutation of this size must not reach commit on the strength of a design audit alone. If the single mega-fix still fails on structural gaps → escalate as blocker (don't grind).
 - **Incremental mode** — otherwise (≤20 gaps, all cosmetic): use the 2-small-iteration loop in the table below.
@@ -313,6 +314,7 @@ Decision table (incremental mode):
 | Verdict               | Blockers  | Iteration count | Action                                                                                                                                                                 |
 | --------------------- | --------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `passed` or `skipped` | (any)     | any             | Go to Step 5.4                                                                                                                                                         |
+| `not-verified`        | (any)     | any             | Go to Step 5.4, but record `design: not-verified — <reason>` in the run-log step entry and in the final summary. Not a pass, not a loop — the UI change was not checked. |
 | `failed`              | empty     | < 2             | Spawn executor with `FIX_LIST = GAPS` from designer (reuse the step worktree). Then loop back to Step 5.3 (do NOT re-run verifier — fixing design rarely breaks code). |
 | `failed`              | empty     | = 2             | Mark `blocked`, escalate: "Designer still reports deltas after 2 fix iterations." STOP.                                                                                |
 | `failed`              | non-empty | any             | Mark `blocked`, escalate. STOP.                                                                                                                                        |
@@ -439,11 +441,17 @@ If we reached here, step succeeded end-to-end.
 
 **Flat mode (atomic plan):** there is no umbrella table and no worktree. The single step is done — go straight to Phase 7.
 
-**Umbrella mode:** edit the umbrella `## Execution Plan` table: change this step's `Status` from `in_progress` to `done`. Then retire this step's worktree (its work is now merged into `main`):
+**Umbrella mode:** edit the umbrella `## Execution Plan` table: change this step's `Status` from `in_progress` to `done`. Then retire this step's worktree (its work is now merged into `main`) — **guarded**, same rule as Phase 7 step 3: `--force` only when the tree is clean, because `git worktree remove` is allow-listed and this check is the only thing between `--force` and lost work:
 
 ```bash
-git worktree remove "<STEP_WORKTREE>" --force 2>/dev/null || true
+if [ -n "$(git -C "<STEP_WORKTREE>" status --porcelain 2>/dev/null)" ]; then
+  echo "⚠ keeping <STEP_WORKTREE> — it has uncommitted changes (resolve manually)"   # do NOT --force
+else
+  git worktree remove "<STEP_WORKTREE>" --force 2>/dev/null || true
+fi
 ```
+
+A kept worktree is not an error for the step (its commit is already merged) — list it in the final summary so the user resolves it.
 
 The now-merged `step-<step_id>` branch is left in place (deleting branches is an `ask`-tier op the pipeline leaves to the human, and a fully-merged branch is harmless); `git worktree prune` in Phase 7 cleans up worktree metadata. Continue to next step in topological order.
 
@@ -598,7 +606,7 @@ Blockers escalated: <count, with brief notes>
 Total wall time: <hh:mm:ss>
 
 Plans + run-log moved to .agents/plans/done/.
-Publish: <pushed to origin/<TARGET_BRANCH> / branch-local — <N> commit(s) on <TARGET_BRANCH>, NOT pushed; publish it yourself (/push, or your project PR command) / branch-local after push was rejected (<branch> protected)>
+Publish: <pushed to origin/<TARGET_BRANCH> / branch-local — <N> commit(s) on <TARGET_BRANCH>, NOT pushed; publish it yourself (/pr-create prepares the PR, or /push) / branch-local after push was rejected (<branch> protected)>
 Merged step branches you may delete: <the `! git branch -D …` line from step 4, or "none">
 Docs: <synced in commit <sha> / already in sync / skipped — no documented surface changed / not requested — pass --sync-docs (this run touched <documented surface>) >
 Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commit / clean run, nothing to reflect on>
@@ -725,7 +733,7 @@ Backlog: <WP(s) marked DONE, left uncommitted | no backlog — skipped>
 - Mark a step `done` without a successful push (Step 5.4b). The committer commits; you push; both must succeed (or a deliberate user override via Phase 6 option 4).
 - Push a commit without passing the clean-tree build gate (Step 5.4a-bis) when a validation command exists. A commit that only builds because untracked/modified working-tree files are present is NOT self-contained and will break the server's clean-checkout build. Never skip the gate "because the executor's build already passed" — the executor built the dirty tree, not the commit. If you enabled the optional post-success-marker hardening (e.g. Next.js `.next/BUILD_ID`), a green `BUILD_RC == 0` with a missing fresh marker counts as a FAILED build (false-green-RC class).
 - Force a stash restore (`git stash apply`/`pop`) through a conflict in the clean-build gate, or `git checkout`/`reset` to clear one, or `git stash drop` after a failed apply. Any of these can destroy the user's uncommitted work. Surface the conflict, leave the stash intact, and STOP.
-- Force-remove a worktree (`git worktree remove --force`) that has uncommitted changes during Phase 7 cleanup. `git worktree remove` is allow-listed in settings (not denied), so this guard lives only here — check `git -C "$wt" status --porcelain` first; keep dirty worktrees and report them.
+- Force-remove a worktree (`git worktree remove --force`) that has uncommitted changes — Step 5.5 or Phase 7 cleanup. `git worktree remove` is allow-listed in settings (not denied), so this guard lives only here — check `git -C "$wt" status --porcelain` first; keep dirty worktrees and report them.
 - Run a flat-mode pipeline against a dirty main checkout. The Step 5.0b preflight refuses it; never bypass that and let pre-existing user changes share the step's commit.
 - Loop more than the documented iteration counts: 3 verify; design is either 1 mega-fix (structural) or 2 incremental (cosmetic) per the adaptive budget in Step 5.3 — never both, never more. The limits exist to surface real blockers, not to grind.
 - Re-ask a cadence/"continue?" question once the user has said to run without stopping (see Phase 6 cadence rule). Report progress as a statement, not a question.

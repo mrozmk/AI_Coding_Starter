@@ -2,7 +2,10 @@
 # PreToolUse(Bash) guard for `git commit`.
 #
 # Two jobs, both fail-closed-safe (default to allowing non-commit commands):
-#   D1 (hard block): refuse a `git commit` whose staged set is EMPTY. This kills the
+#   D1 (hard block): refuse a `git commit` whose staged set is EMPTY. Side effect by design:
+#       a chained `git add X && git commit` is ALWAYS blocked — the hook runs before the chain,
+#       so the index is still empty. Commands must stage and commit in two calls.
+#       Original D1 rationale: refuse a `git commit` whose staged set is EMPTY. This kills the
 #       class where an orchestrate committer reports a SHA for a hallucinated/empty
 #       commit — a prose contract cannot stop that; exit 2 can.
 #   D2 (forensic log): for a real commit, append the staged file set to audit.log so a

@@ -226,6 +226,8 @@ The threshold exists because dumping 50+ findings into chat buries the conclusio
 
 ## 9. Output template
 
+> **`VERDICT:` line — the machine-readable token inline callers and `@orchestrator-designer` parse.** `passed` = no findings; `failed` = any finding; `not-verified` = UI in scope but parity could not be checked (reference tool not connected or errored / empty payload, no resolvable node or artifact, app unreachable). Emit `not-verified` with the reason instead of inventing values or falling back to a weaker source — it is **not checked, never a pass**.
+
 ```markdown
 ## Design Quality Check: <section> vs <reference>
 
@@ -234,6 +236,8 @@ The threshold exists because dumping 50+ findings into chat buries the conclusio
 - Reference design: [Figma MCP node URL/ID — or — static path + line range]
 - Viewports tested: desktop [✅ / ⏭️ skipped — reason], mobile [✅ / ⏭️]
 - Locales tested: [list / ⏭️]
+
+VERDICT: passed | failed | not-verified
 
 ### Summary
 Total findings: N

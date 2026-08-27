@@ -67,6 +67,15 @@ Family → the verifier that owns it → the **execution lane** it must run in.
 
 At the time of writing, `qa-contract` and `qa-runtime-ui` are built. The other three rows are declared and guarded — their ACs route to `NEEDS-HUMAN` with the missing verifier named.
 
+**Non-browser apps (mobile / desktop / TUI) — tiers of running-app evidence.** When Lane S observes an app through an app-level MCP instead of a browser (archetype: `.claude/agents/qa-runtime-app.md.example`), the verifier must state which tier it ran in, per row:
+
+| Tier | Needs | What it can settle |
+|---|---|---|
+| **1 — inspection** | the app running + an inspector connection | rendered element tree, runtime errors, device screenshots — *state*, never *change* |
+| **2 — interaction** | Tier 1 + a driver extension (`qa-env.json → local_serve_command_tier1` starts the app *without* it; the default `local_serve_command` starts it *with* it, or vice-versa — the project decides) | tap · scroll · text entry · wait-for · semantics finders · before/after deltas |
+
+A criterion that can only be settled by *doing something* to the app is `NEEDS-HUMAN` while the driver is absent — never a `PASS` inferred from the static tree. The verifier detects its own tier (a driver health call) and stamps it in every row's `notes`; a matrix row without a tier is not attributable. `MOUNT_TARGETS` for such apps is a navigation recipe, not a URL. **A Tier-2 run is worth more than its verdict**: the recorded call sequence is promotable into a regression test — see `.agents/reference/qa-to-regression-test.md`.
+
 ---
 
 ## 3. Semantic classification signals  `[framework]`
@@ -132,6 +141,10 @@ Criteria that **cannot** be settled here, whatever the family says. A match mean
 |---|---|---|
 | *(template)* `<the shape of criterion this covers>` | `<the concrete missing capability — tooling, access, or environment>` | `<what would have to exist>` |
 | Pixel-level visual regression against a previous release | No visual-regression tooling and no stored baselines in this repo | A baseline snapshot suite wired into CI |
+| *(non-browser apps)* Content inside an embedded webview | The inspector sees one platform-view node with no children | A browser-automation lane pointed at the embedded page's URL |
+| *(non-browser apps)* What a screen reader actually announces | A semantics/accessibility label being present and reachable is provable; VoiceOver / TalkBack output is not | A manual assistive-technology pass |
+| *(non-browser apps)* Behaviour that exists only in a release build | QA runs debug/profile builds; stripped, obfuscated or flag-gated release paths never execute | A release-build QA target in `qa-env.json` |
+| Behaviour gated by a remote feature flag or config the QA environment cannot toggle | The verifier observes whatever the flag currently serves; it cannot prove the other branch | A flag-override mechanism reachable from the QA build |
 
 **Absence must be proven.** Before any *"X does not exist"* claim — a missing export, an absent config key, an unimplemented handler — **enumerate the search surface you actually checked and cite it**: the globs, the commands, the paths. A bare "not found" is not presentable evidence. An absence claim resting on a **single** method is downgraded by the router's self-audit (`/qa-verify` Phase 2.5), and the downgrade is logged in the row's `notes`. Two traps in particular:
 

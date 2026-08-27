@@ -17,10 +17,10 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 
 ### 2. Confirm protected-branch push
 
-- If `<branch>` is one of `main`, `master`, `trunk`, `develop`:
+- Read **Protected** from `CLAUDE.md → ### Branch model`; if the block is absent or the field empty, fall back to `main`, `master`, `trunk`, `develop`. If `<branch>` is in that set:
   - Show the user: "You are about to push directly to protected branch `<branch>`. Confirm? (yes/no)"
   - If the user declines, stop here.
-- Otherwise proceed silently.
+- Otherwise: if the Branch model declares a **Branch names** pattern (e.g. `<type>/<KEY>-<slug>`) and `<branch>` does not match it, **warn once and continue** — a naming slip is worth a note, not a blocked push. No pattern declared → nothing to check.
 
 ### 3. Check for unpushed tags
 
@@ -50,8 +50,9 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 - Confirm: "Push complete. `origin/<branch>` is up to date."
 
 ## CRITICAL rules:
+- **Reverting a merge:** `git revert -m 1 <merge>` run on the *base* branch (e.g. develop after a develop→feature merge) removes the base's own commits, not the feature's. Revert on the branch that received the merge, and only with the parent number checked against `git show --format=%P`.
 - NEVER use `--force` or `--force-with-lease` — they are blocked in `.claude/settings.json`. **Resolve forward, don't delegate the rewrite:** integrate with `/pull` then `/push`, or undo the bad commit with `git revert`. Do not tell the user to run the force-push by hand — that turns a deliberate `deny` into a suggestion, and published history stays rewritten either way. If a rewrite is genuinely the only option, say why the forward paths do not work and let the user decide unprompted.
-- When pushing to a protected branch (`main`/`master`/`trunk`/`develop`), always ask for confirmation first.
+- When pushing to a protected branch (the Branch model's **Protected** set; fallback `main`/`master`/`trunk`/`develop`), always ask for confirmation first. Never work around a refusal with a refspec (`git push origin HEAD:<protected>`) — the **destination** is what is protected, not the syntax.
 
 ## Pre-publication secret scan (automatic)
 

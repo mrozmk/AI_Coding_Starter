@@ -181,15 +181,20 @@ const INFRA_ANALYSIS = {
   },
 }
 
-const modules = Array.isArray(args && args.modules) ? args.modules : []
-const docFiles = Array.isArray(args && args.docFiles) ? args.docFiles : []
-const infraFiles = Array.isArray(args && args.infraFiles) ? args.infraFiles : []
-const today = (args && args.today) || 'unknown-date'
-const projectName = (args && args.projectName) || 'this project'
+// `args` has been observed arriving as a JSON *string* (verified on a 150-byte payload, so not a
+// size limit). Parse ONLY in that case; a genuine syntax error still throws instead of degrading
+// to `{}`. If the harness delivers a structured value this is a no-op.
+const rawArgs = typeof args === 'string' ? JSON.parse(args) : args
+
+const modules = Array.isArray(rawArgs && rawArgs.modules) ? rawArgs.modules : []
+const docFiles = Array.isArray(rawArgs && rawArgs.docFiles) ? rawArgs.docFiles : []
+const infraFiles = Array.isArray(rawArgs && rawArgs.infraFiles) ? rawArgs.infraFiles : []
+const today = (rawArgs && rawArgs.today) || 'unknown-date'
+const projectName = (rawArgs && rawArgs.projectName) || 'this project'
 // Grounding context (UA practice): inject README head + detected entry point into
 // every analyzer so module summaries align with the project's own narrative.
-const readmeHead = (args && args.readmeHead) || ''
-const entryPoint = (args && args.entryPoint) || ''
+const readmeHead = (rawArgs && rawArgs.readmeHead) || ''
+const entryPoint = (rawArgs && rawArgs.entryPoint) || ''
 
 if (modules.length === 0) {
   return {

@@ -86,9 +86,18 @@ If `CLAUDE.md` has no `Validation` section, or the section still contains placeh
 
 If any command fails, STOP (fail fast) and report which gate failed.
 
+**Red before you touched anything?** Prove it before blaming the change: `git stash push -u` → re-run the failing gate → `git stash pop`. Still red → pre-existing, report it as such (stale gitignored build output is the recurring cause — never "fix" it with `git clean -f*`). Green after stash → the change did break it.
+
+**Exit 0 is not green.** Read the runner's own "N tests / N files" line; 0 tasks executed means nothing ran, not that everything passed.
+
+**A gate finding describes the target state, not the delta contract.** When a finding is applied as a fix, re-check the fixed code against the plan's acceptance criteria — a fix that satisfies the linter can still remove behaviour the task required.
+
+**Conditional runtime smoke.** If the Validation section carries the *Runtime smoke* paragraph and its conditions hold (change touches the named UI paths, an app is running), perform `.agents/reference/runtime-smoke.md` after the shell gates and add its line to the report. Conditions not met → `Runtime smoke: SKIPPED — <reason>`; a skipped smoke never turns the gate red and never counts as a pass.
+
 Report:
 ```
 Quality Gates: [PASS / FAIL / SKIPPED]
+Runtime smoke: [PASS / FAIL / SKIPPED — <reason> / not configured]
 Source: [CLAUDE.md Validation section / stack-detected fallback / skipped — no manifest]
 Details: [which gate failed, if any]
 ```

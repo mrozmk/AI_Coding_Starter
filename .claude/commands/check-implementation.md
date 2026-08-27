@@ -92,16 +92,17 @@ Run /gates:design-quality-check per the preloaded skill. Report via the Designer
 
 > `SECTIONS` and `REFERENCE` are **separate** inputs: `SECTIONS` is section names only (`orchestrator-designer.md` → Inputs), and the Figma node / artifact path goes in `REFERENCE` (the optional reference argument of `/gates:design-quality-check`). Never put a node link into `SECTIONS` — the sub-agent would treat the URL as a section name.
 
-> **Figma-only reference — resolve the node *before* spawning, or skip.** `RUN_DESIGN` (Step 0) accepts Figma MCP alone, but `@orchestrator-designer` / `/gates:design-quality-check` need a resolvable **node link** for the section, and when one is missing the skill **asks the user** for it (`design-quality-check.md` → Resolve scope) — a prompt the spawned sub-agent runs unattended and cannot answer, so it would stall. Therefore: when the only reference is Figma MCP, you must have a concrete node link (from the plan, the user's current Figma selection, or asked **here in the main thread before spawning**) to pass in the `REFERENCE` input (**not** `SECTIONS` — see above). **If no node link is resolvable, do not spawn** — log `Design gate skipped: Figma reference but no resolvable node link` and treat the design gate as `passed`/`skipped` (same as `RUN_DESIGN = false`). Never spawn the designer into an unanswerable prompt. Default-to-skip from Step 0 keeps this rare.
+> **Figma-only reference — resolve the node *before* spawning, or skip.** `RUN_DESIGN` (Step 0) accepts Figma MCP alone, but `@orchestrator-designer` / `/gates:design-quality-check` need a resolvable **node link** for the section, and when one is missing the skill **asks the user** for it (`design-quality-check.md` → Resolve scope) — a prompt the spawned sub-agent runs unattended and cannot answer, so it would stall. Therefore: when the only reference is Figma MCP, you must have a concrete node link (from the plan, the user's current Figma selection, or asked **here in the main thread before spawning**) to pass in the `REFERENCE` input (**not** `SECTIONS` — see above). **If no node link is resolvable, do not spawn** — log `Design gate not verified: Figma reference but no resolvable node link` and treat the design gate as `not-verified` (UI was touched and a reference exists, so this is *unchecked*, not `skipped`). Never spawn the designer into an unanswerable prompt. Default-to-skip from Step 0 keeps this rare.
 
-Parse its `=== DESIGNER REPORT ===` block: verdict (`passed` / `failed` / `skipped`), `GAPS:`, `BLOCKERS:`. A `skipped` verdict (no resolvable reference for the touched sections) counts as a **pass**. Run this only after 1c so the design audit judges a tests-green tree.
+Parse its `=== DESIGNER REPORT ===` block: verdict (`passed` / `failed` / `skipped` / `not-verified`), `GAPS:`, `BLOCKERS:`. `skipped` (no UI surface in scope) counts as a **pass**. `not-verified` (UI touched, parity could not be checked — no resolvable reference, reference tool error, app unreachable) is **NOT a pass**: it is carried into the final verdict as a warning, never silently treated as green, and never looped on (nothing mechanical to fix). Run this only after 1c so the design audit judges a tests-green tree.
 
-**1e. Decide** — combine the code-gate verdict with the design-gate verdict (treat the design gate as `passed` when `RUN_DESIGN` is false):
+**1e. Decide** — combine the code-gate verdict with the design-gate verdict (treat the design gate as `passed` when `RUN_DESIGN` is false; `not-verified` is non-blocking but never green — see its row):
 
 | Combined state | Action |
 |----------------|--------|
 | code `APPROVE` **and** design `passed`/`skipped` | **DONE** — break the loop. |
 | code `WARN` (Medium-only, **task axis clean**) **and** design `passed`/`skipped` (no gaps) | **DONE** — break; surface the warnings in the final report. A `WARN` never means a task is missing: a failing mandatory task arrives as `BLOCK` and loops. |
+| code `APPROVE`/`WARN` (Medium-only) **and** design `not-verified` | **DONE** — break; the final verdict carries `⚠️ design parity NOT verified`. Do **not** loop on it — it is not a fixable gap. |
 | code `BLOCK` **or** design `failed` (GAPS only, no BLOCKERS), `N < 3` | Feed the next iteration's Step 1a fix list (per the two code-gate sources in 1a): the failing **quality-gate output** (typecheck/lint/test/build errors — present on a `BLOCK` whose issue table is empty because the gate fail-fasted) **and/or** the code gate's **Critical/High** issue-table rows, **plus _all_ design-gate GAPS** (every severity — a `failed` designer verdict means ≥1 gap, and a `MEDIUM`-only report still leaves real, fixable deltas; dropping them would strand the loop with nothing to fix). Loop. |
 | either gate reports **BLOCKERS** (decision-required), or `N = 3` with **any** unresolved gate failure (a `BLOCK`, a quality-gate failure, or unresolved GAPS) | **STOP** — escalate to the user with the unresolved findings and iteration history. Do not grind. |
 
@@ -251,7 +252,7 @@ Iterations: <N> of 3
 - Correctness (/code-review): <count> bugs fixed — [brief list]
 - Structural cleanup (/deep-review): <count> findings applied — [brief list]
 - Code gate (/gates:verify-implementation): <APPROVE | WARN | BLOCK>
-- Design gate (@orchestrator-designer): <passed | failed | skipped | not run — [no reference | backend change]>
+- Design gate (@orchestrator-designer): <passed | failed | skipped | not-verified — [reason] | not run — [no reference | backend change]>
 - Cross-model review (codex): <verdict ship/revise — N findings, M applied via fixer | clean | skipped — [not on PATH | loop escalated]>
 
 Files modified this run: [list]
@@ -260,6 +261,7 @@ Remaining warnings: [Medium issues, or "none"]
 Memory: <appended N entr(y/ies) to <file(s)> / nothing worth remembering from this run>
 
 Verdict: <✅ Ready for /commit | ⚠️ Ready with warnings | ❌ Escalated — needs your decision>
+<⚠️ design parity NOT verified — <reason>; this UI change was not checked against the design (include only when the design gate returned not-verified — it is an outcome, never omitted)>
 ```
 
 - **Approved** → `Clean and verified — ready for /commit.` (This command does **not** commit.)

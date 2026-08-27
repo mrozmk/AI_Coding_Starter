@@ -107,6 +107,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 {validation-commands}
 ```
 
+**Runtime smoke — optional fourth, conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check in `.agents/reference/runtime-smoke.md`. No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass). Delete this paragraph in a project with no rendered UI.
+
 **Test policy — which layers MUST have tests:**
 
 - Sensitive paths — {sensitive-paths, e.g. payment, auth, webhook, license, locale/redirect routing} — **MUST** have unit tests (mock external SDKs / DB). A change to these paths without a test is a gate failure, not a 🟡 nice-to-have.

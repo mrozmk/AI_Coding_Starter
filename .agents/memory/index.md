@@ -122,6 +122,19 @@ A slash command can embed a shell probe with `` !`…` ``. The harness runs it *
 
 ---
 
+## Harness Facts — how the agent's shell actually behaves
+
+Verified across downstream projects; each one cost a session before it was written down. Rules, not memories — they hold in every clone.
+
+- **`rg` from the repo root never searches `.agents/` or `.claude/`** (hidden dirs). Any harness-wide sweep needs `rg --hidden -g '!.git'` or explicit paths — a sweep that "found zero refs" without `--hidden` found nothing because it looked nowhere.
+- **The agent's Bash has no TTY.** Interactive prompts crash before reading stdin (`promptChoice` stack traces, hung pickers). Always pass the tool's non-interactive flag (`--no-select`, `--yes`, `CI=1`).
+- **Bash cwd persists between calls.** A "scoped lint OK" after a chained `&&` may have run somewhere else — prefix with an absolute `cd <root> &&` and read the tool's own "N files processed" count, not the exit code.
+- **Never probe `.env` from Bash** — every spelling that reads it is denied and the denial is silent about why. The SessionStart hook `check-project-deps.sh` is the one sanctioned check; for anything else hand the user a `!`-prefixed command.
+- **Chained `git add X && git commit` is always blocked** — `guard-commit.sh` inspects the staged set *before* the chain runs and sees it empty. Stage and commit in two calls.
+- **Network-reaching plan tasks (`curl`, `pip install`, `npm i <new>`) park an `/orchestrate` sub-agent** on a permission prompt it cannot answer. Sequence them as a leading human-assisted task; never widen `allow` to get past it.
+
+---
+
 ## When to Write
 
 Add to memory when you discover something that:

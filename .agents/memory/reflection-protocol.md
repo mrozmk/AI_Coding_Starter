@@ -57,6 +57,8 @@ If nothing clears the bar — the common case — write nothing and report one l
 
 Append-mode files put the **newest entry at the TOP**. Never rewrite or re-order what is already there.
 
+**Supersession.** When a later decision overturns an earlier one, do not edit or delete the old entry — prefix its title with `⚠️ SUPERSEDED <YYYY-MM-DD>` and add the new entry at the top linking back. A memory entry outranks an archived plan or spec that says otherwise. Record the **rejected alternative** in the new entry as the trap to avoid re-proposing: an omission is invisible, a named rejection is not.
+
 **errors.md / decisions.md / domain/{module}.md — dated entries:**
 
 ```markdown

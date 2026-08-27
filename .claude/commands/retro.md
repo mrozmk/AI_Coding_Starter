@@ -50,13 +50,23 @@ Run this Bash one-liner. If anything fails, STOP and tell the user.
 ```bash
 SID="${CLAUDE_CODE_SESSION_ID:-}"
 CWD="$(pwd)"
-# Claude Code sluggifies the project path by replacing both '/' and ' ' with '-'.
-# A naive `tr '/' '-'` alone breaks for any cwd that contains spaces (e.g. "My Project").
-SLUG_PATH="$(echo "$CWD" | tr '/ ' '--')"
+# Claude Code maps EVERY non-alphanumeric char to '-', one-for-one (verified:
+# "AI_Coding_Starter - Base with Jira v2" -> "...-AI-Coding-Starter---Base-with-Jira-v2").
+SLUG_PATH="$(printf '%s' "$CWD" | tr -c '[:alnum:]' '-')"
 TRANSCRIPT_DEFAULT="${HOME}/.claude/projects/${SLUG_PATH}/${SID}.jsonl"
 
 # Use --transcript override if provided, else default
 TRANSCRIPT="${RETRO_TRANSCRIPT_OVERRIDE:-$TRANSCRIPT_DEFAULT}"
+
+# The slug rule is undocumented and may change; the session id is stable — fall back to it.
+if [ ! -f "$TRANSCRIPT" ] && [ -n "$SID" ] && [ -d "${HOME}/.claude/projects" ]; then
+  FOUND="$(find "${HOME}/.claude/projects" -maxdepth 2 -name "${SID}.jsonl" -type f)"
+  HITS="$(printf '%s' "$FOUND" | awk 'END{print NR}')"
+  if [ -n "$FOUND" ]; then
+    [ "$HITS" -gt 1 ] && echo "WARNING: ${HITS} transcripts match this session id — using the first."
+    TRANSCRIPT="$(printf '%s\n' "$FOUND" | head -1)"
+  fi
+fi
 
 echo "SID=$SID"
 echo "TRANSCRIPT=$TRANSCRIPT"

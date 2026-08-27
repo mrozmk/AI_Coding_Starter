@@ -26,7 +26,7 @@ Read a task's acceptance criteria, assign each a stable id, classify each into a
 **Is NOT:**
 
 - **not an AC oracle** — the auto-verdict is *evidence*, not acceptance. A human signs each row.
-- **not a regression-test author** — that is `/test-e2e`.
+- **not a regression-test author** — that is `/test-e2e`; promoting this run's recorded interaction sequence into a test is the human-requested procedure in `.agents/reference/qa-to-regression-test.md`.
 - **not a code-quality gate** — that is `/check-implementation` and `/gates:verify-implementation`. This command cites their result; it never reproduces it.
 - **not a fixer** — see the second hard gate.
 
