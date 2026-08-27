@@ -22,10 +22,10 @@ Before exploring or testing, gather project-specific context from existing artif
 | Pattern | Mode | What to do |
 |---------|------|------------|
 | empty / `all` | **plan-driven** | Read the latest plan in `.agents/plans/active/` → extract its `Testing Strategy` section → flow list comes from there |
-| matches regex `^[A-Z]+-\d+$` (e.g. `CS-1`, `PROJ-42`) | **jira-driven** | Verify MCP atlassian is configured (env vars `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` set) → call `mcp__atlassian__jira_get_issue` → extract description, acceptance criteria, linked epic context |
+| matches regex `^[A-Z]+-\d+$` (e.g. `CS-1`, `PROJ-42`) | **jira-driven** | Verify MCP atlassian is configured (`JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` present in `.env`) → call `mcp__atlassian__jira_get_issue` → extract description, acceptance criteria, linked epic context |
 | any other string (e.g. `auth-login`, `checkout-happy-path`) | **flow-name** | Treat as user-provided flow label; gather context from conversation in Phase 1 |
 
-**Soft-fail for jira-driven mode:** if `$ARGUMENTS` looks like a Jira key but MCP atlassian is not configured (any of `JIRA_URL` / `JIRA_USERNAME` / `JIRA_API_TOKEN` missing):
+**Soft-fail for jira-driven mode:** if `$ARGUMENTS` looks like a Jira key but MCP atlassian is not configured (any of `JIRA_URL` / `JIRA_USERNAME` / `JIRA_API_TOKEN` missing from `.env`):
 
 > ⚠️ "`$ARGUMENTS` looks like a Jira key, but MCP atlassian is not configured. Treat it as a flow name and continue, or stop and configure Jira first?"
 

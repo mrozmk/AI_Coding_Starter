@@ -1,6 +1,6 @@
 # Sync Claude Code workflow from AI_Coding_Starter
 
-**Goal:** update the workflow definitions (`.claude/`, the `.agents/` framework, `.gitignore`, `.mcp.json.example`) in this project, using https://github.com/mrozmk/AI_Coding_Starter as the source of truth. **Preserve everything project-specific** — replace only workflow files.
+**Goal:** update the workflow definitions (`.claude/`, the `.agents/` framework, `.gitignore`, `.mcp.json`, `.env.example`) in this project, using https://github.com/mrozmk/AI_Coding_Starter as the source of truth. **Preserve everything project-specific** — replace only workflow files.
 
 **Assumption:** the project already has `.claude/` and `CLAUDE.md` (even an older version). If it doesn't — stop and tell me this is a bootstrap, not a sync (in that case use GitHub "Use this template" instead of this prompt).
 
@@ -23,7 +23,7 @@ Save the starter's commit hash (`git -C /tmp/ai-coding-starter-sync rev-parse --
 - `.claude/agents/*.md` — subagent definitions
 - `.claude/skills/**` — skill definitions (e.g. `jira/SKILL.md`)
 - `.claude/templates/*.md` — templates (e.g. `CLAUDE-template.md`, `README-template.md`)
-- `.claude/hooks/*.sh` — workflow hook scripts (`audit-append`, `check-deps`, `guard-commit`, `guard-push`, `guard-memory`, `guard-comments`, `track-memory-read`, `nudge-lsp`). **Coupled with `settings.json`** — the `hooks` block there references these scripts by path, so they must sync together. After copying, restore the executable bit: `chmod +x .claude/hooks/*.sh`.
+- `.claude/hooks/*.sh` — workflow hook scripts (`audit-append`, `check-deps`, `guard-commit`, `guard-push`, `guard-memory`, `guard-comments`, `track-memory-read`, `nudge-lsp`). **Exception: `check-project-deps.sh` is project-owned (category C)** — the starter ships a skeleton; the project fills its toolchain block; a sync never overwrites it. **Coupled with `settings.json`** — the `hooks` block there references these scripts by path, so they must sync together. After copying, restore the executable bit: `chmod +x .claude/hooks/*.sh`.
 - `.claude/lib/*.sh` — helper scripts commands invoke directly (`codex-bg.sh`, `qa-probe.sh`). **Coupled with `settings.json`** the same way hooks are: `qa-probe.sh` is reached through an exact `permissions.allow` entry, so a renamed script silently starts prompting. Sync them together and `chmod +x .claude/lib/*.sh` afterwards.
 - `.agents/memory/reflection-protocol.md` — the memory write-time protocol + entry/domain templates. Pure framework content (no project entries live in it — those go to `errors.md` / `decisions.md` / …), so overwrite wholesale.
 - `*.example` seed files — `.agents/memory/user-profile.md.example`, `.claude/settings.local.json.example`. Overwrite the `.example`; **never** touch the developer's real `user-profile.md` / `settings.local.json` (both gitignored, category C by nature).
@@ -56,8 +56,9 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 
 - `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.ask` / `permissions.deny` entries from the starter and the project (all three tiers — `ask` is a first-class tier, not an afterthought). Do not remove project entries that the starter lacks. Show me the diff before writing.
 - `.agents/memory/index.md` — take `Quick Reference` and `Loader Convention` from the starter, but `When to Read` may have project-specific rows appended by `/setup:create-CLAUDE_MD`. Strategy: overwrite with the starter's structure, then restore the project rows (the ones the starter lacks).
-- `.gitignore` — append the entries missing from the starter (e.g. `.claude/audit.log`, `.mcp.json`, `.agents/memory/archive/`); **do not remove** project ones.
-- `.mcp.json.example` — overwrite if the starter has a newer version.
+- `.gitignore` — append the entries missing from the starter (e.g. `.claude/audit.log`, `.env`, `.agents/memory/archive/`); **do not remove** project ones.
+- `.mcp.json` — **union** of `mcpServers`: add starter servers the project lacks, never remove or rewrite project ones. It must stay secret-free (credentials live in `.env` via `--env-file`).
+- `.env.example` — append the starter's variables the project lacks; never remove project ones.
 - `.claude/memory-domains.json` — the `guard-memory` path→domain rules. Strategy: take the starter's `_examples` and any new keys, but **preserve project-filled `rules`** (the project's path regexes are project-specific). Show the diff; never wipe populated `rules`.
 - `.claude/comment-guard.json` — the `guard-comments` scope + thresholds. Same strategy as `memory-domains.json`: take the starter's `_examples` and any new keys, but **preserve a project-filled `src_globs`** and any tuned `max_comment_percent` (that number is meant to be the project's own comment density, not the starter's default). Show the diff; never wipe a populated `src_globs`.
 - `.agents/reference/qa-evidence-families.md` — **an explicit exception to Category C's blanket "`.agents/reference/` — do not touch"**, and it must stay marked as one: without this line the two rules read as contradictory and a future sync picks the wrong one. Strategy is the same as `.agents/memory/index.md` above, and that entry is the precedent: the **framework** sections (`§1` families, `§3` classification signals, `§4` worked examples, `§6` output contract) overwrite from the starter, while the **project** sections (`§2` verifier roster, `§5` not-observable list) are preserved verbatim. Each `##` heading in the file carries a `[framework]` / `[project]` marker — route by that marker, never by section number alone. Show the diff before writing.
@@ -65,6 +66,8 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 - `.editorconfig` — append/merge missing keys from the starter; do not drop project-specific overrides.
 
 ### Category C — **do not touch** (project content)
+
+- `.claude/hooks/check-project-deps.sh` — the project-owned SessionStart preflight (toolchain + `.env` shape + MCP commands). The starter ships only the skeleton; never overwrite a project's filled copy.
 
 - `CLAUDE.md` — project rules. If the starter has a new section structure, report it and propose a patch — but do not overwrite automatically.
 - `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerated from the project (`/setup:create-CLAUDE_MD`, `/maintain:refresh-brief`).

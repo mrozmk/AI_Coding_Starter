@@ -22,14 +22,14 @@ Two files, separate concerns:
 
 | File | Gitignored? | Content | Read by |
 |---|---|---|---|
-| `.mcp.json` | yes | Inline MCP-server env: `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` | MCP server process |
-| `.claude/settings.local.json` | yes | Skill defaults env: `JIRA_DEFAULT_PROJECT`, `JIRA_DEFAULT_COMPONENTS`, `JIRA_DEFAULT_LABELS` | Claude Code / skill |
+| `.env` | yes | MCP-server env: `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` — loaded by `.mcp.json` → `--env-file .env` | MCP server process |
+| `.claude/settings.local.json` | yes | Skill defaults env: `JIRA_DEFAULT_PROJECT`, `JIRA_DEFAULT_COMPONENTS`, `JIRA_DEFAULT_LABELS`, `JIRA_BUG_EPIC` (catch-all Epic for Bugs with no matching feature Epic; empty → the skill asks) | Claude Code / skill |
 
-Template for new clones: `.mcp.json.example` (committed, same shape with placeholder values). Copy to `.mcp.json` and fill real values.
+Template for new clones: `.env.example` (committed, placeholder values). Copy to `.env` and fill real values. `.mcp.json` is committed and holds no secrets — only the server list.
 
 ### First run
 
-Claude Code must be **restarted** after creating `.mcp.json` for the first time (MCP config is loaded at startup, not watched). After restart, `/mcp` shows the `atlassian` server as connected.
+Claude Code must be **restarted** after creating or editing `.env` (the MCP server reads the file at startup, not per call). After restart, `/mcp` shows the `atlassian` server as connected.
 
 ---
 

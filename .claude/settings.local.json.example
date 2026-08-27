@@ -7,7 +7,9 @@
   "env": {
     "JIRA_DEFAULT_PROJECT": "REPLACE-WITH-PROJECT-KEY",
     "JIRA_DEFAULT_COMPONENTS": "",
-    "JIRA_DEFAULT_LABELS": "from-claude"
+    "JIRA_DEFAULT_LABELS": "from-claude",
+    "JIRA_BUG_EPIC": "",
+    "CONFLUENCE_DEFAULT_SPACE": ""
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [

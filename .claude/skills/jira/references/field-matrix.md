@@ -54,7 +54,8 @@ Identical to Task except `issue_type="Bug"`. Reproduces here for clarity of the 
 | Summary | required | `summary` | Same as Task. |
 | Issue type | required | `issue_type` | Literal `"Bug"`. |
 | **Parent Epic** | **required by skill invariant** | `additional_fields='{"parent": "EPIC-KEY"}'` | Same as Task. |
-| Description | optional | `description` | Markdown. Use Bug template (steps to reproduce / expected / actual / environment). |
+| Description | optional | `description` | Markdown. Use the evidence-grade Bug template (summary / steps / expected / actual / evidence / root cause / AC / out of scope). |
+| Attachments | optional | `attachments` on `jira_update_issue` | After create. Paths must be inside the project root; verify via `uploaded[]` — see `attachments.md`. |
 | Labels | optional | `additional_fields='{"labels": ["l1","l2"]}'` | As Task. |
 | Components | optional | `components` | As Task. |
 | Assignee | optional | `assignee` | As Task. |

@@ -14,7 +14,9 @@ Thumbs.db
 # ============================================================
 .env
 .env.*
-.mcp.json
+!.env.example
+# Staged copies of files queued for Jira upload — see .claude/skills/jira/references/attachments.md
+.jira-attachments/
 *.pem
 *.key
 *secret*

@@ -54,32 +54,61 @@ Implementation guidance, constraints, dependencies. Keep short. Link to docs rat
 
 ## Bug
 
+Evidence-grade: measured values, cited sources, a testable fix boundary. There is no standalone
+`Environment` section — the reproducing viewport, locale and state belong in _Steps to
+reproduce_; the build/SHA and whatever could not be verified belong in _Notes_.
+
 ```markdown
-## Steps to Reproduce
+## Summary
 
-1. First step
-2. Second step
-3. Third step
+One or two sentences: what is wrong, on which component or surface, and the exact range or
+condition under which it happens. Bold the affected range when it is narrower than the
+component — **The affected range is 768–1023 px.**
 
-## Expected Behavior
+## Steps to reproduce
 
-What should have happened.
+1. Open <a concrete reproduction URL — route, story, or dev page>
+2. <the exact state that triggers it: viewport WxH, locale, logged-in/anonymous, data used>
+3. Compare against <the design or spec source — design node link, ADR, ticket>
 
-## Actual Behavior
+## Expected result
 
-What actually happened. Include error messages verbatim inside backticks.
+What the design or spec says must happen, citing the source rather than paraphrasing it.
+Enumerate the concrete elements — what is visible, what is hidden, sizes, spacing — so the
+fix is verifiable without opening the design tool.
 
-## Environment
+## Actual result
 
-- App version:
-- Platform / OS:
-- Browser (if applicable):
+What happens instead, in **measured** values: element sizes, visibility, counts, real error
+strings in backticks. Not impressions. Name where the measurement was taken, e.g. "Measured
+at 1022x593".
 
 ## Evidence
 
-- Screenshot:
-- Log excerpt:
-- Related issue:
+- Screenshot: <filename> — <what it proves>
+- Log excerpt or console error, in a fenced block
+
+## Root cause
+
+The file and the offending fragment, quoted. If the cause is not yet known, delete this
+section rather than speculating in it.
+
+## Acceptance criteria
+
+- <Testable statement of the fixed behaviour>
+- <What must stay unchanged — the regression boundary>
+- <How it is verified when unit tests cannot cover it, e.g. jsdom performs no layout, so
+  breakpoint behaviour is verified in the browser>
+
+## Out of scope
+
+- <Adjacent components or systems this bug deliberately does not cover>
+
+## Notes
+
+- Where it was found (which build, which date) and anything that could not be verified.
+- Related issue keys, and whether the same mistake may exist elsewhere.
+- Suggested branch: `bugfix/<KEY>-short-title`.
 ```
 
 ---

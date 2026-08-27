@@ -22,9 +22,11 @@ Three invariants — they hold for every invocation, every turn, for the duratio
 
 1. **Dry-run first.** Every mutating operation (create, update, transition, comment, link, bulk-create) MUST present the plan as a markdown table or diff and wait for explicit user confirmation (`y`) before the mutating MCP call. Even if the user seemed to pre-approve in an earlier turn — re-display and re-ask. Jira has no transactions and no undo.
 
+   **The printed draft is complete or it is not a draft.** Print the field table **and the entire rendered description body, verbatim** — never a summary, a list of section names, or "description as discussed above" — plus the list of files queued for upload. This binds hardest on Bugs, whose descriptions are long enough to tempt abbreviation. On `edit`, apply the user's corrections and re-print the whole draft again before asking.
+
 2. **No default creation.** If any of these is missing, STOP and ask — do not guess or fabricate:
    - `project_key` (fall back to `$JIRA_DEFAULT_PROJECT` only if set; otherwise ask)
-   - `parent_epic_key` for Task and Bug (always required — no Task / Bug is created "free-floating")
+   - `parent_epic_key` for Task and Bug (always required — no Task / Bug is created "free-floating"). For **Bug** the skill resolves a candidate itself and proposes it — see Flow A step 2.
    - `summary`
    - `issue_type` (Epic / Task / Bug only)
    - `components` when `$JIRA_DEFAULT_COMPONENTS` is empty AND user did not supply
@@ -36,22 +38,19 @@ Three invariants — they hold for every invocation, every turn, for the duratio
 
 ## Step 1 — Environment preflight
 
-Run this check before every session-first invocation of a mutating operation. If the session already completed a successful MCP call, skip — environment is known good.
+The first MCP call of a session validates the environment — no shell probe. The `JIRA_*` credentials live in `.env` and reach only the MCP server process; they are invisible to this shell, so a shell check proves nothing. If any read-only tool (the flow's own first `jira_get_issue` / `jira_search`, or `mcp__atlassian__jira_get_user_profile`) returns `success: true`, the server is connected and authenticated. If the session already completed a successful MCP call, skip preflight entirely.
 
-```!
-echo "JIRA_URL: $([ -n "$JIRA_URL" ] && echo set || echo MISSING)"
-echo "JIRA_USERNAME: $([ -n "$JIRA_USERNAME" ] && echo set || echo MISSING)"
-echo "JIRA_API_TOKEN: $([ -n "$JIRA_API_TOKEN" ] && echo set || echo MISSING)"
-echo "JIRA_DEFAULT_PROJECT: ${JIRA_DEFAULT_PROJECT:-UNSET}"
-echo "JIRA_DEFAULT_COMPONENTS: ${JIRA_DEFAULT_COMPONENTS:-UNSET}"
-echo "JIRA_DEFAULT_LABELS: ${JIRA_DEFAULT_LABELS:-UNSET}"
-```
+**On MCP error** — server disconnected, `401`, `403`, or an error about missing/blank `JIRA_*` env (`.env` absent or not loaded): hard-stop. Tell the user in Polish:
 
-**If any of `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` is MISSING:** hard-stop. Tell the user in Polish:
+> MCP atlassian nie odpowiada poprawnie. Sprawdź:
+>
+> 1. Czy istnieje lokalny `.env` z realnymi wartościami `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` (skopiuj `.env.example` → `.env`). `.mcp.json` jest commitowany i bez sekretów — tylko wskazuje serwerowi `.env` przez `--env-file .env`.
+> 2. Czy token jest ważny — nowy wygenerujesz na [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
+> 3. Czy Claude Code został **w pełni** zrestartowany po ostatniej edycji `.env` — serwer MCP czyta plik przy starcie, nie przy każdym wywołaniu.
+>
+> Szczegóły: [.agents/reference/jira-mcp-atlassian.md](../../../.agents/reference/jira-mcp-atlassian.md) sekcja "Setup".
 
-> Brakuje zmiennej środowiskowej `<NAME>`. Uzupełnij ją w `.mcp.json` (dla `JIRA_*` MCP-side) lub `.claude/settings.local.json` (dla `JIRA_DEFAULT_*` skill-side) i zrestartuj Claude Code. Szczegóły: [.agents/reference/jira-mcp-atlassian.md](../../../.agents/reference/jira-mcp-atlassian.md) sekcja "Setup".
-
-`JIRA_DEFAULT_*` UNSET is NOT a blocker — it just means the skill will ask when it needs those values.
+**Skill-level defaults** (`JIRA_DEFAULT_PROJECT`, `JIRA_DEFAULT_COMPONENTS`, `JIRA_DEFAULT_LABELS`, `JIRA_BUG_EPIC`) live in `.claude/settings.local.json`, not `.env` — the MCP-server env never reaches the skill. UNSET is NOT a blocker — the skill asks when it needs a value.
 
 ---
 
@@ -80,31 +79,47 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
 1. **Identify** the target issue type: `Epic`, `Task`, or `Bug`. If user didn't say, ask.
 2. **Gather required fields** per `references/field-matrix.md`:
    - Epic: `project_key` (or `$JIRA_DEFAULT_PROJECT`), `summary`.
-   - Task/Bug: above + `parent_epic_key`.
+   - Task: above + `parent_epic_key` — ask the user for it.
+   - Bug: above, but **resolve the parent Epic yourself** instead of asking:
+
+     ```
+     jira_search(
+         jql="project = <project_key> AND issuetype = Epic AND resolution = Unresolved",
+         fields="summary",
+         limit=50
+     )
+     ```
+
+     Match the bug's subject area against the epic summaries and carry the best candidate into the dry-run **with a one-line rationale**. Decision rule, so "clear match" is not left to taste: a candidate wins only when it is the single epic whose subject area contains the bug's. When a runner-up is equally defensible, or the bug's symptom and root cause sit under different epics, that **is** the multi-epic case.
+
+     Multi-epic or no match → fall back to the catch-all bug Epic `$JIRA_BUG_EPIC` and say so in the dry-run. Sanity-check the fallback by fetching its summary rather than trusting the key blindly; if `$JIRA_BUG_EPIC` is unset or does not resolve, ask the user.
+
+     If the result set hits the 50-row cap, paginate with `start_at` — never silently truncate. The proposal is never applied silently: the user confirms it or overrides with any Epic key.
    - If any required field missing → stop and ask per HARD-GATE invariant 2.
 3. **Fill optional fields** from `$JIRA_DEFAULT_COMPONENTS`, `$JIRA_DEFAULT_LABELS` if set; otherwise skip.
-4. **Generate description** from the appropriate template in `references/description-templates.md`. Skip sections the user didn't provide content for — don't leave placeholders.
+4. **Generate description** from the appropriate template in `references/description-templates.md`. Skip sections the user didn't provide content for — don't leave placeholders. For a **Bug**, also ask for screenshot paths proving the defect, and read `references/attachments.md` before the dry-run.
 5. **Components validation** — if any component name was provided:
    ```
    jira_get_issue(issue_key="<parent-or-first-issue-in-project>", fields="components")
    ```
    Build a valid-components set; drop unknowns from the plan with a note.
-6. **Dry-run table**:
+6. **Dry-run table** — add an `Attachments` row only when files are queued:
    ```markdown
    Tworzę <type> w projekcie <project_key>:
 
-   | Field       | Value                         |
-   |-------------|-------------------------------|
-   | Summary     | ...                           |
-   | Type        | Task                          |
-   | Parent      | PROJ-100                      |
-   | Components  | backend                       |
-   | Labels      | from-claude                   |
-   | Assignee    | (none)                        |
-   | Priority    | (default)                     |
+   | Field       | Value                                 |
+   |-------------|---------------------------------------|
+   | Summary     | ...                                   |
+   | Type        | Bug                                   |
+   | Parent      | PROJ-100 — <why this epic was chosen> |
+   | Components  | backend                               |
+   | Labels      | from-claude                           |
+   | Attachments | shot-1.png, shot-2.png                |
+   | Assignee    | (none)                                |
+   | Priority    | (default)                             |
 
    Description:
-   <rendered markdown>
+   <the entire rendered markdown, verbatim — see HARD-GATE invariant 1>
 
    Tworzę? [y/n/edit]
    ```
@@ -121,10 +136,13 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
    ```
    - On 400 "parent field not available" → retry with `'{"epic_link": "PROJ-100"}'`.
    - On 400 about a required custom field → show error, ask user for value, retry once with the field added. Offer to capture the pattern to `.agents/memory/domain/jira.md`.
-8. **Report**:
+8. **Attach queued files**, if any — per `references/attachments.md`: stage into `.jira-attachments/`, `jira_update_issue(..., fields="{}", attachments=...)`, then verify against `uploaded[]` / `failed[]`. **Never trust the response's `success` flag** — it returns `true` even when every file failed.
+9. **Report** — the key first, then the attachment outcome:
    ```
    Utworzone: <NEW-KEY> — $JIRA_URL/browse/<NEW-KEY>
+   Załączone: shot-1.png · Nieudane: shot-2.png (<error>)
    ```
+   A failed upload never invalidates the created issue.
 
 ---
 
@@ -269,6 +287,7 @@ Summary of invariants carried through: `jira_get_transitions` first → pick id 
 - **`description` and `comment`**: markdown. `mcp-atlassian` converts to ADF.
 - **`labels`**: inside `additional_fields` as array of strings — `'{"labels": ["x","y"]}'`.
 - **`additional_fields`**: a JSON **string** (stringified JSON), not a dict literal.
+- **`attachments`**: comma-separated paths on `jira_update_issue`, after the issue exists. Paths must resolve **inside the project root** — see [`references/attachments.md`](references/attachments.md).
 
 Full matrix: [`references/field-matrix.md`](references/field-matrix.md).
 
