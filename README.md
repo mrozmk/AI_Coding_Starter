@@ -31,7 +31,7 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
+| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
 | `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs). Plus two command-bound resource bundles loaded by path (no `SKILL.md`): `design/` (UI-design knowledge for `/design`) and `architecture-review/` (depth/locality method for `/architecture-review`). |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap) |
@@ -174,7 +174,7 @@ For canonical install commands, env-var configuration, and version pinning, foll
 
 The committed `.mcp.json` declares the `atlassian` server and reads its credentials from `.env` (`--env-file .env`). To activate Jira:
 
-1. Copy the template: `cp .env.example .env`
+1. Answer **Jira: yes** in `/setup:start` — it activates the Jira block in `.env.example` (or uncomment it by hand). Then copy the template: `cp .env.example .env && chmod 600 .env`
 2. Fill in your Atlassian credentials in `.env` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
 3. Restart Claude Code — the MCP server loads `.env` at startup, not per call. Repeat after every edit of `.env`.
 4. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/prime-ba` skip the project prompt.
@@ -261,7 +261,7 @@ Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/so
 
 The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` for long-term reference.
 
-### 5. Distill the PRD into a fast-load brief — automatic at bootstrap
+### 5. Distill the PRD into a fast-load brief
 
 ```
 /maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
@@ -277,7 +277,7 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /setup:create-backlog
 ```
 
-> **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/brainstorm → spec → /plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
+> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/brainstorm → spec → /plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
 >
 > **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira derives its issues *from* the backlog via `/jira bulk` (a manual/assisted export — there is no automatic sync), one-way: backlog → Jira, never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* task (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
 >
@@ -291,9 +291,9 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /setup:create-CLAUDE_MD
 ```
 
-> Run this **after** you have at least some scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
+> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. Then run `/setup:start --rerun` once (it fills the toolchain preflight in `check-project-deps.sh` now that a manifest exists) and this command. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 >
-> **It also distills the brief for you at bootstrap:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, this command runs the PRD→brief step itself before generating the README/CLAUDE.md — so step 5 isn't a separate manual call. (It skips that if the brief is already current.)
+> It reads the branch model and language from `.claude/project-profile.json` (written by `/setup:start`) instead of asking again, and refuses to silently overwrite a `CLAUDE.md` value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it runs the PRD→brief step itself first (skipped when the brief is current).
 >
 > **Adopting into a large existing codebase (brownfield)?** Don't run this alone — run [`/setup:map-codebase`](.claude/commands/setup/map-codebase.md) instead. It fans out parallel analysis sub-agents (distilled summaries, no context flooding), produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD` — the whole Phase-1 AI layer in one guided run with two review checkpoints.
 

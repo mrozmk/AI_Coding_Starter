@@ -213,12 +213,13 @@ Each of them has a full description in the README: [Two daily flows](../README.m
 
 > Now that the scaffold **already exists**, Claude has something to analyze. (If the repo were empty, this command would have nothing to read — that's why it's after Step 4, not before.)
 
-📋 **Type:**
+📋 **Type** (one after another):
 ```
+/setup:start --rerun
 /setup:create-CLAUDE_MD
 ```
 
-💬 **What happens:** Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
+💬 **What happens:** `/setup:start --rerun` shows your earlier answers (keep them) and fills the one thing it skipped at the start — the toolchain check in `.claude/hooks/check-project-deps.sh`, now that a manifest (`package.json`, `pyproject.toml`, …) exists. Then Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
 
 ✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root has a README about your TODO app.
 
@@ -374,7 +375,7 @@ It does it all itself: write code → clean up → check → commit → push, lo
 
 ## Before you start (one-time)
 
-Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`).
+Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`) and run `/setup:start` first.
 
 ---
 
@@ -508,7 +509,7 @@ The cycle is the same as in S1, enriched with two visual steps:
 
 ## Before you start (one-time)
 
-Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`).
+Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`) and run `/setup:start` first.
 
 **Prepare your design** — pick ONE of the ways:
 
@@ -751,7 +752,9 @@ The hardest part (understanding the existing code) you do **once**. After that b
 
 [Create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it) (or join the team's existing repo). Open a Claude Code session (`claude`).
 
-**Want to export to Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (PRD + backlog) and add the export later.
+Run `/setup:start` first and answer **Jira: yes** — it activates the Jira block in `.env.example` and keeps the `/jira` commands.
+
+**Want to export to Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` in `.env`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (PRD + backlog) and add the export later.
 
 ⏭️ **Next:** Step 1.
 
