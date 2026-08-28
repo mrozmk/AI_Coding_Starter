@@ -69,7 +69,7 @@ For each match, capture `(file, section)`. Verify:
 rg -n --hidden '`(/[a-z][a-z0-9-]*(:[a-z][a-z0-9_-]*)?)`' --glob '*.md'
 ```
 
-For each match, verify the command file exists: bare `/name` → `.claude/commands/<name>.md`; namespaced `/ns:name` → `.claude/commands/<ns>/<name>.md`.
+For each match, verify the command file exists: bare `/name` → `.claude/commands/<name>.md` **or** `.claude/skills/<name>/SKILL.md` (project skills such as `/pr-comments`, `/jira`, `/confluence` mount under `skills/`); namespaced `/ns:name` → `.claude/commands/<ns>/<name>.md`.
 
 Skip these built-in non-command tokens (they look like commands but are part of CLI grammar): `/help`, `/init`, `/clear`, `/config`, `/login`, `/logout`, `/cost`, `/status`, `/release-notes`, `/exit`. Also skip skills bundled with Claude Code itself (they resolve without a file in this repo): `/code-review`, `/review`, `/security-review`, `/simplify`.
 

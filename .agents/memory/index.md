@@ -44,6 +44,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 | Architectural decision / refactor | `decisions.md`, `architecture.md` |
 | Touching API integration / external protocol | `api.md` |
 | Working on a specific module | `domain/{module}.md` |
+| Bootstrapping a fresh clone / choosing which command groups to keep | `.claude/project-profile.json` (written by `/setup:start`; `.example` documents the schema) |
 | Working on payments / billing / pricing | `domain/business-model.md` |
 | Verifying acceptance criteria against a running system | `.agents/reference/qa-evidence-families.md` (or run `/prime-qa`, which loads it) |
 | Adding to existing patterns / introducing new one | `patterns.md`, `decisions.md` |

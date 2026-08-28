@@ -1,0 +1,53 @@
+{
+  "_doc": "Project profile — written by /setup:start after the bootstrap interview, committed. Machine-readable mirror of the answers; `CLAUDE.md → ### Branch model` and `Language Rules` are the human-readable mirror and are filled from the same values. Consumers: /setup:create-CLAUDE_MD (workflow, language), /pr-create (git_host), /maintain:sync-from-starter (excluded paths + which .mcp.json / settings.json entries to skip). Copy to project-profile.json only via /setup:start — never by hand.",
+
+  "schema": 1,
+
+  "_mode_doc": "greenfield | brownfield. Detected from the project file count (>= 50 files => brownfield), confirmed in the interview.",
+  "mode": "greenfield",
+
+  "_git_host_doc": "github | bitbucket | gitlab | none. Detected from `origin`, confirmed. `none` = no remote yet; PR credentials are deferred until one exists.",
+  "git_host": "github",
+
+  "_workflow_doc": "Asked: preset + pr_required (Screen 1, Q3). Everything else is DERIVED once from the preset table in create-CLAUDE_MD → Identify Git Workflow and never asked. preset is one of trunk | feature-branch | gitflow — `custom` is not a profile value; a custom workflow goes through /setup:create-CLAUDE_MD instead. pr_required=false (\"I push straight to main\") overrides pr_dest / protected / merge / orchestrate_publish as shown here.",
+  "workflow": {
+    "_preset_doc": "trunk | feature-branch | gitflow",
+    "preset": "trunk",
+    "pr_required": false,
+    "trunk": "main",
+    "integration": "main",
+    "branch_types": ["feat", "fix", "chore", "refactor"],
+    "_branch_pattern_doc": "Derived from the tracker answer: jira => <type>/<KEY>-<slug>, none => <type>/<slug>.",
+    "branch_pattern": "<type>/<slug>",
+    "pr_dest": "commit on main or short-lived branches merged locally — no PR",
+    "protected": [],
+    "_merge_doc": "squash | merge-commit | ff. `ff` only for the direct-push override; otherwise the preset's implied value.",
+    "merge": "ff",
+    "_orchestrate_publish_doc": "push | branch-local. gitflow and any PR-gated flow => branch-local; direct push and feature-branch => push.",
+    "orchestrate_publish": "push"
+  },
+
+  "_tracker_doc": "jira | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md.",
+  "tracker": "none",
+
+  "_confluence_doc": "Asked (Screen 2, Q5). Shares the Atlassian MCP server and token with Jira.",
+  "confluence": false,
+
+  "_codex_doc": "Asked (Screen 2, Q6) as a TEAM question. `command -v codex` on the bootstrap machine is informational only and never sets this field — the file is shared.",
+  "codex": false,
+
+  "_app_surface_doc": "unknown | none | web | mobile | desktop | tui. NOT asked by /setup:start — always written as `unknown`, which keeps all QA tooling. /setup:create-CLAUDE_MD detects it from the stack once code exists.",
+  "app_surface": "unknown",
+
+  "_language_doc": "pl | en. Asked first (Screen 0). Governs Claude <-> developer communication only; code, comments and commits stay English.",
+  "language": "pl",
+
+  "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web.",
+  "commands": {
+    "pr": true,
+    "jira": false,
+    "confluence": false,
+    "codex": false,
+    "qa_runtime_ui": true
+  }
+}

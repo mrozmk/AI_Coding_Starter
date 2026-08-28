@@ -165,7 +165,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Orchestrate publish:** {push | branch-local}
 
-> _Filled in by `/setup:create-CLAUDE_MD`._ The publish mode `/orchestrate` uses with no `--publish` flag. `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Choose `branch-local` for a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side, not merely unwelcome. Omitting the line means `push`.
+> _Filled in by `/setup:create-CLAUDE_MD`._ Filled from `.claude/project-profile.json` when `/setup:start` ran; otherwise by `/setup:create-CLAUDE_MD`. The publish mode `/orchestrate` uses with no `--publish` flag. `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Choose `branch-local` for a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side, not merely unwelcome. Omitting the line means `push`.
 
 ### Branch model
 
@@ -175,7 +175,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 **Protected:** {branches that are never a PR source and never a pipeline push target, or `none`}
 **Merge:** {per-type strategy — emit ONLY when the project deviates from its preset; otherwise delete this line}
 
-> _Filled in by `/setup:create-CLAUDE_MD`._ The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
+> _Filled in by `/setup:create-CLAUDE_MD`._ Filled from `.claude/project-profile.json` when `/setup:start` ran; otherwise by `/setup:create-CLAUDE_MD`. The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ---
 

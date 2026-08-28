@@ -87,6 +87,8 @@ This gives you a fresh, local Git history — but **without** a remote repo. The
 
 > Open a Claude Code session in this folder (run `claude` in the terminal).
 
+> **First run `/setup:start`.** It asks seven short questions, prepares the config files, and prints the exact order of the steps below for your project — this tutorial explains each of them.
+
 ---
 
 ### Step 1: Describe what you want to build (PRD)
@@ -635,7 +637,11 @@ git checkout -b adopt-ai-workflow      # a safe branch for adoption
 ```bash
 git clone https://github.com/mrozmk/AI_Coding_Starter /tmp/ai-starter
 cp -R /tmp/ai-starter/.claude /tmp/ai-starter/.agents /tmp/ai-starter/CLAUDE.md .
+[ -f .env.example ] || cp /tmp/ai-starter/.env.example .
+[ -f .mcp.json ]    || cp /tmp/ai-starter/.mcp.json .
 ```
+
+If your repo already has an `.env.example` or `.mcp.json`, do **not** overwrite them — merge by hand (add the starter's integration blocks / MCP servers, keep yours), as `.claude/starter-sync-playbook.md` → Category B describes. Then run `/setup:start` before anything else.
 
 💬 **What happens:** your project gets the `.claude/` layer (commands, hooks, settings) and `.agents/` (memory, reference, specs, plans) plus `CLAUDE.md` with rules. **Your code stays untouched** — we only add the scaffolding.
 

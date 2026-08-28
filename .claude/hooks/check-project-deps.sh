@@ -28,7 +28,7 @@ add() { problems="${problems}  - $1"$'\n'; }
 note() { problems="${problems}      $1"$'\n'; }
 
 # ---------------------------------------------------------------- toolchain ---
-# {Filled per project by /setup:create-CLAUDE_MD.} Cheap `command -v` proxies only.
+# {Filled by /setup:start (stack-detected) or by hand.} Cheap `command -v` proxies only.
 # Examples:
 #   command -v node >/dev/null 2>&1 || add "node not on PATH — Validation gates will fail. Install: brew install node"
 #   [ -d node_modules ] || add "node_modules missing — run 'npm install' before the gates."
@@ -41,8 +41,10 @@ note() { problems="${problems}      $1"$'\n'; }
 # list here. Convention: an ACTIVE line (`KEY=...`) is required; an OPTIONAL
 # integration is shipped commented out (`# KEY=...`) and is not checked.
 if [ -f .env.example ]; then
+  active=$(grep -cE '^[A-Z][A-Z0-9_]*=' .env.example)
   if [ ! -f .env ]; then
-    add ".env missing — MCP servers declared in .mcp.json start without credentials. Copy .env.example to .env and fill it in, then restart Claude Code."
+    # No active key => no integration needs credentials; a no-Jira, no-PR project must not be nagged.
+    [ "$active" -gt 0 ] && add ".env missing — MCP servers declared in .mcp.json start without credentials. Copy .env.example to .env and fill it in, then restart Claude Code."
   else
     while IFS= read -r k; do
       [ -z "$k" ] && continue

@@ -96,6 +96,8 @@ Explore the codebase to understand organization:
 
 ### Identify Git Workflow
 
+**Profile first.** If `.claude/project-profile.json` exists with `workflow.preset`, take the expanded `workflow.*` values from it and **do not ask** — but only while the `### Branch model` block in `CLAUDE.md` is still empty/placeholder. If the block is already populated **and differs** from the profile → STOP and ask which one is right, then write the answer to both (drift rule — the same safeguard the language check below applies). No profile, or `preset` missing (custom workflow) → ask as below.
+
 Ask the user which git workflow the project follows (use `AskUserQuestion` if available). The answer selects a **preset**, and the preset fills every field of the `### Branch model` block in the generated `CLAUDE.md` — trunk, integration branch, name pattern, allowed types, PR destination, protected branches. **One question, six fields — do not ask a follow-up per field.**
 
 **Detect a sensible default first** (do not block greenfield projects):
@@ -141,6 +143,8 @@ State the derived value when you present the summary, so the user can correct a 
 
 ### Identify Communication Language
 
+**Profile first.** `.claude/project-profile.json → language` wins over asking while the `Language Rules` row still holds the seed value or the `{communication-language}` token; a populated row that differs from the profile → STOP and ask, then write both.
+
 Ask the user which language Claude should use when talking to the developer (use `AskUserQuestion` if available). This fills the `{communication-language}` placeholder in the generated `CLAUDE.md` → `Language Rules`. It governs Claude↔dev communication and the default for user-facing prompts emitted by the shipped commands — **not** code, comments, or commit messages, which stay English regardless.
 
 | Option | Effect |
@@ -158,6 +162,10 @@ Ask the user which language Claude should use when talking to the developer (use
 > Without the first check, a refresh run on an English-configured project resets it to Polish — silently, because `{communication-language}` is substituted straight into the regenerated file and nothing reports the change. The same detect-then-ask shape is already used for the git workflow above.
 
 Record the chosen language; it substitutes every `{communication-language}` token when filling the template in Phase 3.1.
+
+### Post-scaffold configuration (from profile) — pointer, not implemented here
+
+Once code exists, this command is the natural owner of the day-two configuration `/setup:start` deliberately leaves alone: `comment-guard.json` source globs, `memory-domains.json` rules, `settings.local.json` from its `.example`, `app_surface` detection from the stack (and pruning `playwright` / `qa-runtime-ui` when it is not `web`), and the toolchain block in `check-project-deps.sh`. Deliberately left out of `/setup:start` (it needs code to exist); not part of this command yet.
 
 ---
 

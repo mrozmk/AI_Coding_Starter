@@ -39,6 +39,8 @@ clone. The following are seeding artifacts; re-checking or re-adding them on eve
 **If the project already has them**, you *may* refresh them as the category-A rules above describe —
 but **if it doesn't, do not add them, and never make them a task or a question:**
 
+> Profile-excluded paths (`.claude/.starter-sync.json → excluded`) follow the same rule — see the Critical rules exception below; the list lives in that file, not here.
+
 - **`.claude/README.md`** (framework guide) and **`.claude/STARTER-LICENSE`** — listed as category A
   above only for the case where they already exist. In a project that omitted them at bootstrap, leave
   them out. A one-off manual copy covers the rare case where they're wanted later — it is not a sync job.
@@ -133,7 +135,7 @@ chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-
 
 - NEVER remove entries from `.claude/settings.json` that the starter lacks — those are project permissions
 - NEVER overwrite category C files
-- NEVER delete project slash commands from `.claude/commands/` — report and ask
+- NEVER delete project slash commands from `.claude/commands/` — report and ask. **Exception:** paths in `.claude/.starter-sync.json → excluded` were pruned by `/setup:start` after explicit confirmation — never re-add them and never create a task for them
 - NEVER commit automatically — show the message and wait for `/commit`
 - Always dry-run before apply
 - NEVER check or add bootstrap-only artifacts (`.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, `create-CLAUDE_MD` as a bootstrap driver) in an existing project — see the "Bootstrap-only" subsection in Step 2

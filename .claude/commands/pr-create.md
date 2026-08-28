@@ -58,7 +58,7 @@ Run in parallel: `git rev-parse --abbrev-ref HEAD` (→ `BRANCH`), `git status -
 
 ### Step 3 — Host detection
 
-Parse the `origin` URL (`git@<host>:<owner>/<repo>.git` or `https://<host>/<owner>/<repo>.git`;
+Read `git_host` from `.claude/project-profile.json` first (`github` | `bitbucket` | `gitlab`); fall back to parsing `origin` only when the profile is absent or `git_host` is `none`. Parse the `origin` URL (`git@<host>:<owner>/<repo>.git` or `https://<host>/<owner>/<repo>.git`;
 strip `.git`):
 
 | Host | Create-PR URL | PR template lookup order |

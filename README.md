@@ -195,10 +195,13 @@ Once installed, `/test-e2e` can drive a real browser to explore your UI and gene
 
 ## Quick start
 
-> **Bootstrap chain:**
-> `/setup:create-PRD` → `/setup:stack-research` → `/setup:create-CLAUDE_MD` (after first scaffolding — it distills the brief for you) → `/brainstorm <first feature>`.
+> **Bootstrap chain:** `/setup:start` → it prints the rest, in order, for your kind of project.
 >
-> Each command produces a concrete artifact and feeds the next one. At bootstrap, `/setup:create-CLAUDE_MD` runs the PRD→brief distillation itself, so you don't call `/maintain:refresh-brief` by hand here — that stays a `maintain/` command for later PRD changes. Running them in order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
+> Each command produces a concrete artifact and feeds the next one. Running them in the printed order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
+
+### 0. Run `/setup:start`
+
+Open `claude` in the fresh clone and run `/setup:start`. It asks seven plain-language questions (language, new or existing code, where the repo is hosted, how code reaches `main`, Jira, Confluence, Codex), writes `.claude/project-profile.json`, prepares `.env.example` / `.mcp.json` / the `CLAUDE.md` branch model, offers to remove the command groups you will never use, and prints the numbered list of what to run next. The detailed steps below are that list, explained.
 
 ### 1. Create a new project from this template
 
@@ -264,7 +267,7 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
 ```
 
-> **At bootstrap you don't run this** — step 6 (`/setup:create-CLAUDE_MD`) distills the brief for you while it's still empty. `/maintain:refresh-brief` is a **maintenance** command you run later, after the PRD changes substantially.
+> `/setup:start` prints when to run it (after `/setup:stack-research`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty.
 >
 > Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
 
@@ -344,6 +347,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 | Command | When to run |
 |---------|-------------|
+| `/setup:start [--rerun]` | Once, right after cloning (or adopting the harness into an existing repo): interview → `.claude/project-profile.json` → day-one config → optional command pruning → the ordered list of next commands. `--rerun` to change answers. |
 | `/confluence <url \| id \| search \| new "Title" \| publish <draft>>` | Reading or authoring Confluence pages — same MCP server and token as `/jira` (`CONFLUENCE_*` in `.env`). Authoring is local-first: draft in `.agents/handoffs/confluence-drafts/`, publish only on explicit `y`. |
 | `/pr-create [KEY]` | Work is committed and ready for review — pushes via `/push`, derives title/dest/merge strategy from the tracker + Branch model, fills the repo's PR template honestly, prints the create-PR URL. Never opens or merges the PR. |
 | `/pr-comments [KEY]` | Reviewers left comments on your PR (GitHub / Bitbucket / GitLab, detected from `origin`) — pulls the threads, triages which still need you, proposes a reply + optional fix per thread, posts only on a per-thread `y`. Never resolves threads, never commits. |
