@@ -39,6 +39,7 @@
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
       "Bash(bash .claude/lib/qa-probe.sh)",
+      "Bash(bash .claude/lib/git-baseline.sh:*)",
       "Bash(bash .claude/skills/pr-comments/references/pr-api.sh:*)",
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:docs.anthropic.com)",
@@ -222,11 +223,15 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/nudge-files.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory-scope.sh\""
           }
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|Bash",
         "hooks": [
           {
             "type": "command",

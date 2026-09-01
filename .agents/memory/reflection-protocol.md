@@ -41,7 +41,9 @@ Save when — and only when — the run produced one of:
 
 | Discovery | Target file |
 |-----------|-------------|
-| Non-obvious bug root-cause + fix | `errors.md` |
+| Non-obvious defect in **application code** — root cause + fix, naming the file | `errors.md` |
+| Friction in the **toolchain**: slash command, hook, subagent, MCP, shell/git/CLI, a lying debugging tool, a misread design file / ticket / review comment | `domain/harness.md` |
+| Spec / test-runner / Storybook / Playwright / jsdom trap | `domain/testing.md` |
 | Undocumented API / protocol quirk | `api.md` |
 | Deliberate X-over-Y decision + rationale | `decisions.md` |
 | Reusable project-specific pattern | `patterns.md` |
@@ -49,15 +51,19 @@ Save when — and only when — the run produced one of:
 
 If unsure between two files, pick the most specific. If a `domain/` file doesn't exist yet, create it from the template below.
 
+**`errors.md` is application code only.** Before writing there, check the **Scope** section at the top of that file — the entry must name a source file or symbol of the shipped application. Toolchain friction goes to `domain/harness.md`, test-harness traps to `domain/testing.md`. `guard-memory-scope.sh` nudges on a misroute but does not block.
+
+**Prefer a fix over an entry.** If the friction was a defect in `.claude/` you can repair, repair it. `domain/harness.md` is for what cannot be fixed (shell semantics, vendor tool behaviour) or will recur despite the fix.
+
 If nothing clears the bar — the common case — write nothing and report one line: `Nothing worth remembering from this run.`
 
 ---
 
-## Format — append newest-first, never reformat existing entries
+## Format — append at the END, never reformat existing entries
 
-Append-mode files put the **newest entry at the TOP**. Never rewrite or re-order what is already there.
+Append-mode files put the **newest entry at the END**. Never rewrite or re-order what is already there.
 
-**Supersession.** When a later decision overturns an earlier one, do not edit or delete the old entry — prefix its title with `⚠️ SUPERSEDED <YYYY-MM-DD>` and add the new entry at the top linking back. A memory entry outranks an archived plan or spec that says otherwise. Record the **rejected alternative** in the new entry as the trap to avoid re-proposing: an omission is invisible, a named rejection is not.
+**Supersession.** When a later decision overturns an earlier one, do not edit or delete the old entry — prefix its title with `⚠️ SUPERSEDED <YYYY-MM-DD>` and append the new entry linking back. A memory entry outranks an archived plan or spec that says otherwise. Record the **rejected alternative** in the new entry as the trap to avoid re-proposing: an omission is invisible, a named rejection is not.
 
 **errors.md / decisions.md / domain/{module}.md — dated entries:**
 
@@ -91,6 +97,8 @@ When creating a file in `domain/` for a specific module or subsystem:
 ---
 status: populated
 description: {one-line — what this module does and why this memory exists}
+created: YYYY-MM-DD   # cleanup-workflow 2B measures idle time from this
+pinned: false         # true = never proposed for archival
 ---
 
 # Memory: {module_name}

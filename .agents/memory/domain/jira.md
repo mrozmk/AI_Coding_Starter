@@ -1,6 +1,8 @@
 ---
 status: empty
 description: Jira Cloud integration quirks discovered at runtime — placeholder until first real use
+created: 2026-08-31
+pinned: false
 ---
 
 # Memory: jira

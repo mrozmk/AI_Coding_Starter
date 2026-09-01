@@ -1,5 +1,5 @@
 {
-  "_doc": "Path->domain mapping for the PreToolUse memory-distillation guard (.claude/hooks/guard-memory.sh). Each rule's `match` is a regex tested against the repo-relative file path; FIRST match wins. `domain` may reference regex capture groups as $1..$9 (e.g. match 'src/lib/([^/]+)/' with domain '$1' maps src/lib/ai/foo.ts -> domain 'ai'). A file matching no rule falls back to `fallback`, which is never enforced (soft). The guard also stays fully dormant until errors.md+patterns.md+decisions.md together exceed `size_threshold_bytes`. STARTER DEFAULT: `rules` is empty, so the hook is installed but silent. Copy entries from `_examples` into `rules` and adapt them to your stack to switch it on.",
+  "_doc": "Path->domain mapping for the PreToolUse memory-distillation guard (.claude/hooks/guard-memory.sh). Each rule's `match` is a regex tested against the repo-relative file path; FIRST match wins. `domain` may reference regex capture groups as $1..$9 (e.g. match 'src/lib/([^/]+)/' with domain '$1' maps src/lib/ai/foo.ts -> domain 'ai'). A file matching no rule falls back to `fallback`, which is never enforced (soft). The guard also stays fully dormant until errors.md+patterns.md+decisions.md together exceed `size_threshold_bytes`. STARTER DEFAULT: `rules` is empty, so the hook is installed but silent. Copy entries from `_examples` into `rules` and adapt them to your stack to switch it on. A separate key, `app_source_regex`, feeds guard-memory-scope.sh (the errors.md scope nudge) and is documented in `_app_source_regex_doc`.",
   "_examples": [
     { "match": "^src/lib/([^/]+)/", "domain": "$1" },
     { "match": "^src/(app|components)/", "domain": "ui" },
@@ -8,5 +8,7 @@
   ],
   "rules": [],
   "fallback": "general",
-  "size_threshold_bytes": 24000
+  "size_threshold_bytes": 24000,
+  "_app_source_regex_doc": "ERE tested by guard-memory-scope.sh against the WHOLE TEXT of an entry written to errors.md (grep -E over the entry, not over a path) — it must match an application source path appearing anywhere in the prose, so do NOT anchor it with ^. Empty => that hook is dormant. Examples: '(^|[^A-Za-z0-9_])src/[A-Za-z0-9_./-]+', '(apps|libs)/[A-Za-z0-9_./-]+', '(app|lib|packages)/[A-Za-z0-9_./-]+'.",
+  "app_source_regex": ""
 }

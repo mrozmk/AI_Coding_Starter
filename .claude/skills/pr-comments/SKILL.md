@@ -67,6 +67,7 @@ bash .claude/skills/pr-comments/references/pr-api.sh list-open-with-comments --m
 ```
 
 - Valid JSON back → credentials and auth are good; keep the result for 0b's no-arg path.
+- Bitbucket has two modes: `BITBUCKET_EMAIL` + `BITBUCKET_TOKEN` is Basic auth with a personal token (replies post as you), while `BITBUCKET_TOKEN` alone is a repository access token sent as Bearer — `whoami` / `--mine` exit `5` there, so drop `--mine` from the probe and expect replies to post as the repo bot.
 - Error → **hard-stop**, secret-free. The exit code names the cause:
 
   | Exit / status | Host | Cause | Tell the author (in Polish) |
@@ -75,11 +76,11 @@ bash .claude/skills/pr-comments/references/pr-api.sh list-open-with-comments --m
   | `3` | all | token missing (`GITHUB_TOKEN` / `BITBUCKET_TOKEN` / `GITLAB_TOKEN`) | Dodaj token do `.env` — link i zakresy w `pr-host-api.md` |
   | `6` | Bitbucket | no `BITBUCKET_EMAIL` | Basic auth wymaga e-maila konta Atlassian jako loginu |
   | `7` | — | unsupported host (or GHE without `GITHUB_API_URL`) | Skill obsługuje github.com, bitbucket.org, gitlab.\* |
-  | `4` + `401` | all | expired / wrong token; Bitbucket: **or** a wrong email alias | Wygeneruj nowy token; na Bitbucket sprawdź alias e-mail |
+  | `4` + `401` | all | expired / wrong token; Bitbucket: **or** a wrong email alias, **or** a personal token sent as Bearer because `BITBUCKET_EMAIL` is unset (the helper prints a NOTE) | Wygeneruj nowy token; na Bitbucket sprawdź alias e-mail lub dodaj `BITBUCKET_EMAIL` do `.env` |
   | `4` + `403` on everything | all | token has no scopes for this repo | Utwórz token ponownie z właściwymi zakresami |
   | `4` + `403` on `reply` only | all | read-only token | GitHub: *Pull requests: write* · Bitbucket: `write:pullrequest:bitbucket` · GitLab: scope `api` |
   | `4` + `404` | GitHub | fine-grained PAT not granted to this repo | Dodaj repozytorium do zakresu tokenu |
-  | `5` | all | `--mine` could not identify you (`GET /user` failed) | Bitbucket: dodaj `read:user:bitbucket`; GitHub/GitLab: token bez dostępu do `/user` |
+  | `5` | all | `--mine` could not identify you (`GET /user` failed, or a Bitbucket repository access token — no identity) | Bitbucket: dodaj `read:user:bitbucket` lub użyj tokenu osobistego z `BITBUCKET_EMAIL`; GitHub/GitLab: token bez dostępu do `/user` |
 
   **`.env` is written by a human** — hand the author a `!`-prefixed command, never write it yourself.
   Never fail silently, never print a credential.

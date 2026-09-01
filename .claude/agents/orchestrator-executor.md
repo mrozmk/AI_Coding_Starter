@@ -37,6 +37,7 @@ But when the plan is silent on something you need — where a module lives, the 
 
 - `.agents/memory/architecture.md` — directory map + module roles. Use it to locate *where* something belongs instead of greping blind.
 - `.agents/memory/patterns.md` — project-specific conventions (naming, error handling, logging). Read before introducing a new pattern, so you mirror an existing one.
+- `.agents/memory/domain/<domain>.md` — the domain file(s) for the paths the plan touches (map: `.claude/memory-domains.json`; skip while `status: empty`). Read before `errors.md` — a domain file holds the module's own traps.
 - `.agents/memory/errors.md` — past bugs and failed approaches. On a fix pass (`FIX_LIST` present) especially, check whether the gap you're fixing is a known trap with a recorded fix.
 - `CLAUDE.md` — global + project rules, tech stack, code-structure limits.
 

@@ -1,8 +1,13 @@
+---
+created: 2026-08-31
+pinned: false
+---
+
 # Memory: Decisions
 
 Architectural and technical decisions with rationale.
 
-Add newest entries at the **TOP**.
+Add newest entries at the **END**.
 
 ---
 
@@ -19,4 +24,4 @@ Add newest entries at the **TOP**.
 
 ---
 
-<!-- No entries yet. First decision goes here, newest at the top. -->
+<!-- No entries yet. First decision goes here, newest at the end. -->

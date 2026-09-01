@@ -15,6 +15,7 @@
 #   GitHub     GITHUB_TOKEN                     Bearer  (fine-grained PAT: Pull requests r/w)
 #   Bitbucket  BITBUCKET_EMAIL + BITBUCKET_TOKEN Basic  (personal Atlassian API token — a
 #              personal token so replies post as YOU, not as a repo bot)
+#   Bitbucket  BITBUCKET_TOKEN alone            Bearer  (repository access token — repo-scoped bot; whoami/--mine unsupported)
 #   GitLab     GITLAB_TOKEN                     PRIVATE-TOKEN (scope: api)
 #
 # Subcommands (identical contract on every host):
@@ -32,8 +33,8 @@
 #   comment rows  { id, body, author, path, line, parent_id, resolved (bool|null), created_at }
 #   reply         { id, created_at, url }
 #
-# Exit codes: 2 bad args · 3 no token · 4 HTTP error · 5 --mine could not identify you ·
-#             6 no BITBUCKET_EMAIL · 7 unsupported host.
+# Exit codes: 2 bad args · 3 no token · 4 HTTP error · 7 unsupported host ·
+#             5 whoami/--mine could not identify you (incl. Bitbucket bearer mode — no identity).
 #
 # Offline testing — PR_API_FIXTURE_DIR=<dir> makes api_get / api_post read canned responses
 # instead of calling curl, so the jq normalisation can be unit-tested without a token:
@@ -71,6 +72,9 @@ esac
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# Bitbucket only: `basic` (personal token) or `bearer` (repository access token). Declared
+# up front because `set -u` would abort the identity checks below on the non-Bitbucket paths.
+BB_AUTH_MODE=""
 
 # --- credentials: env first, then repo-root .env; never echoed --------------
 ENV_FILE="$(git rev-parse --show-toplevel 2>/dev/null || echo .)/.env"
@@ -116,16 +120,18 @@ case "$KIND" in
     TOKEN="$(need_token BITBUCKET_TOKEN "Create an Atlassian API token with scopes (app Bitbucket: read:pullrequest:bitbucket + read:user:bitbucket) and add BITBUCKET_TOKEN=... to .env.")"
     EMAIL="${BITBUCKET_EMAIL:-}"
     [ -z "$EMAIL" ] && EMAIL="$(read_env_var BITBUCKET_EMAIL)"
-    # Basic auth with an empty username returns 401 — byte-identical to an expired token, and
-    # the two have completely different fixes. Catch it here so the message names the cause.
+    # No email + a token = a repository access token, which Bitbucket accepts only as Bearer.
+    # It carries no user identity, so whoami / --mine are refused below instead of 401-ing.
     if [ -z "$EMAIL" ]; then
-      echo "ERROR: BITBUCKET_EMAIL not found (checked \$BITBUCKET_EMAIL and repo .env)." >&2
-      echo "       Basic auth needs your Atlassian ACCOUNT EMAIL as the username. Without it every" >&2
-      echo "       call returns 401, which looks exactly like an expired token." >&2
-      echo "       Add BITBUCKET_EMAIL=<your-atlassian-account-email> to .env — see .env.example." >&2
-      exit 6
+      BB_AUTH_MODE=bearer
+      # Loud on purpose: a PERSONAL token that merely lacks BITBUCKET_EMAIL would 401 as Bearer —
+      # byte-identical to an expired token — so name the real fix before that happens.
+      echo "NOTE: BITBUCKET_EMAIL not set — sending BITBUCKET_TOKEN as Bearer (repository access token). If yours is a PERSONAL token, add BITBUCKET_EMAIL=... to .env, or every call returns 401." >&2
+      AUTH=(-H "Authorization: Bearer ${TOKEN}" -H "Accept: application/json")
+    else
+      BB_AUTH_MODE=basic
+      AUTH=(-u "${EMAIL}:${TOKEN}" -H "Accept: application/json")
     fi
-    AUTH=(-u "${EMAIL}:${TOKEN}" -H "Accept: application/json")
     ;;
   gitlab)
     TOKEN="$(need_token GITLAB_TOKEN "Create a personal access token (scope: api) and add GITLAB_TOKEN=... to .env.")"
@@ -273,6 +279,7 @@ fetch_open_prs() {  # $1 out
 
 # Token owner as { id, login, name } — the `id` is what --mine compares against.
 fetch_me() {  # $1 out
+  bearer_has_no_identity  # a repo token has no /user — every present and future identity consumer fails loudly here
   case "$KIND" in
     github)
       api_get "$API_BASE/user" "$1" || return 4
@@ -298,6 +305,13 @@ author_key_of_me() {
   esac
 }
 
+# A repository access token is the repo, not a person — there is no /user to ask.
+bearer_has_no_identity() {
+  [ "$BB_AUTH_MODE" = bearer ] || return 0
+  echo "ERROR: repository access tokens carry no user identity — 'whoami' and '--mine' need a personal token with BITBUCKET_EMAIL (Basic auth). Omit --mine, or switch credentials." >&2
+  exit 5
+}
+
 usage() {
   echo "usage: pr-api.sh {resolve-pr <KEY>|whoami|list-open-with-comments [--mine]|comments <PR>|diff <PR>|reply <PR> <PARENT_ID> <FILE>}" >&2
   exit 2
@@ -317,6 +331,7 @@ case "$CMD" in
     ;;
 
   whoami)
+    bearer_has_no_identity
     fetch_me "$TMP/user.json"
     cat "$TMP/user.json"
     ;;
@@ -324,6 +339,7 @@ case "$CMD" in
   list-open-with-comments)
     MINE=0
     [ "${2:-}" = "--mine" ] && MINE=1
+    [ "$MINE" = "1" ] && bearer_has_no_identity
     fetch_open_prs "$TMP/prs.json"
     if [ "$MINE" = "1" ]; then
       ME=""

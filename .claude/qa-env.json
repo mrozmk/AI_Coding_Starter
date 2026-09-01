@@ -38,5 +38,17 @@
   "parallel_safe_flag": "--isolated",
 
   "_component_mount_url_template_doc": "How ONE component is reached for observation by the runtime-UI verifier. Placeholders: {BASE_URL}, {id}, {route}. Component workbench => '{BASE_URL}/storybook?path=/story/{id}'; plain app route => '{BASE_URL}/{route}'; custom harness => whatever mounts one component in isolation. EMPTY => dormant: qa-runtime-ui returns NEEDS-HUMAN for every criterion instead of guessing a URL. A project with no component mount point is a normal state, not a misconfiguration.",
-  "component_mount_url_template": ""
+  "component_mount_url_template": "",
+
+  "_touch_sweep_widths_doc": "Widths the cross-device verifier (qa-runtime-device) sweeps on a TOUCH device profile — one per touch-plausible tier, taken at the tier's lower edge where its min-width query first fires (e.g. [360, 390, 768]). Empty => the device lane has no tiers to sweep and its rows route to NEEDS-HUMAN.",
+  "touch_sweep_widths": [],
+
+  "_pointer_sweep_widths_doc": "Widths the desktop lane (qa-runtime-ui, /gates:design-quality-check) sweeps with a fine pointer — one per pointer tier, lower edge (e.g. [1024, 1440, 1920]). Never overlap with touch_sweep_widths: a touch device at a desktop width is a configuration no user has.",
+  "pointer_sweep_widths": [],
+
+  "_breakpoint_token_prefix_doc": "CSS custom-property prefix of the project's breakpoint tokens (e.g. '--bp-'). The device verifier reads every '<prefix>*' via getComputedStyle(document.documentElement) and cross-checks it against the token source named in CLAUDE.md — a mismatch means stale compiled CSS, and every tier reading would be wrong. Empty => the cross-check is skipped and said so.",
+  "breakpoint_token_prefix": "",
+
+  "_device_mcp_server_doc": "Name of the device-mode browser MCP server in .mcp.json (the one started with a mobile/touch profile, separate from the desktop browser server). Empty => family `cross-device / viewport` routes to NEEDS-HUMAN; the desktop server is never used as a stand-in.",
+  "device_mcp_server": ""
 }

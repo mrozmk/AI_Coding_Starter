@@ -47,6 +47,8 @@ ENVFILE=$(cfg env_file)
 PGREP_PAT=$(cfg browser_mcp_process_pattern)
 MCPFILE=$(cfg mcp_config_file)
 SAFEFLAG=$(cfg parallel_safe_flag)
+DEVICE_MCP=$(cfg device_mcp_server)
+BP_PREFIX=$(cfg breakpoint_token_prefix)
 
 emit "qa-config: present"
 
@@ -185,6 +187,17 @@ if [ -n "$MCPFILE" ] && [ -f "$ROOT/$MCPFILE" ]; then
 elif [ -n "$MCPFILE" ]; then
   emit "mcp-config $MCPFILE: MISSING"
 fi
+
+# --- Cross-device lane (information only, never a gate) -----------------------
+# Names and widths the device verifier needs; an empty value is a normal state the
+# router already handles by routing the family to NEEDS-HUMAN.
+emit "device_mcp_server: ${DEVICE_MCP:-unset}"
+for k in touch_sweep_widths pointer_sweep_widths; do
+  N=$(jq -r --arg k "$k" '(.[$k] // []) | length' "$CONFIG" 2>/dev/null)
+  printf '%s' "$N" | grep -Eq '^[0-9]+$' || N=0
+  if [ "$N" -gt 0 ]; then emit "$k: $N widths"; else emit "$k: unset"; fi
+done
+emit "breakpoint_token_prefix: ${BP_PREFIX:-unset}"
 
 # --- Artifacts destination -----------------------------------------------------
 if [ -n "$ARTIFACTS" ]; then

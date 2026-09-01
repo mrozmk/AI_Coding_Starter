@@ -1,8 +1,13 @@
+---
+created: 2026-08-31
+pinned: false
+---
+
 # Memory: API & Protocol Discoveries
 
 Discoveries about external APIs, protocols, services — auth behavior, undocumented fields, surprising responses, rate-limit quirks.
 
-Add newest entries at the **TOP**. Group by API / service name.
+Add newest entries at the **END**. Group by API / service name.
 
 ---
 

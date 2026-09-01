@@ -43,6 +43,7 @@ Order is fixed: correctness before structural cleanup. Don't restructure code yo
 Your scope is `FILES_TOUCHED` + the plan. That is usually enough. But correctness and structural cleanups often hinge on project convention — "is this the canonical error wrapper here?", "does this util already exist?", "is this a known pitfall?" — and guessing produces a fix that's locally plausible but project-wrong. When you need that grounding, these are the signposts, in priority order. Open one only on a real gap; each is a lazy pointer, not required reading:
 
 - `.agents/memory/patterns.md` — project conventions (naming, error handling, logging). Read before a cleanup reshapes code, so `/deep-review` harmonizes *toward* the existing pattern, not away from it.
+- `.agents/memory/domain/<domain>.md` — the domain file(s) for the paths the plan touches (map: `.claude/memory-domains.json`; skip while `status: empty`). Read before `errors.md` — a domain file holds the module's own traps.
 - `.agents/memory/errors.md` — past bugs and failed approaches. Check whether a `/code-review` finding matches a recorded trap (and its known fix) before improvising one.
 - `.agents/memory/architecture.md` — directory map + module roles, when a fix reaches beyond `FILES_TOUCHED` into a shared util and you need to know where it really lives.
 - `CLAUDE.md` — global + project rules, code-structure limits (the file/function size caps `/deep-review` enforces).

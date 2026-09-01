@@ -96,6 +96,13 @@ From the reference artifact, extract for the target section:
 
 This is the **expected** model.
 
+**Geometry rules for the expected model** (a design file is the source of layout; the ticket owns behaviour):
+
+- **Geometry comes from the frame, behaviour from the ticket.** On a layout disagreement between the two, the frame wins and the contradiction is reported in the findings — never implemented around.
+- **Enumerate the reference's per-state variant frames** (hover / active / error / empty …) before routing states through one component. A ticket's collective phrase ("the card states") does not mean one render channel — each variant frame is its own expected model.
+- **An inter-element gap = the sum of paddings up to the common auto-layout parent + that parent's `gap`.** Verify it in the actual model by `getBoundingClientRect()` deltas between the two elements, never by reading one frame's padding alone.
+- **A frame whose height equals a standard viewport** (the project's sweep heights, or 900 / 812 by default) **is a full-screen surface**, not a component — audit it against the viewport, including its overflow behaviour.
+
 ---
 
 ## 4. Build the actual model
@@ -186,8 +193,7 @@ Vendor prefixes where the design uses them, mobile viewport-unit handling, subpi
 If the project's dev server (or a reachable deployed URL) is available, validate rendering — otherwise do a static-only audit and say so.
 
 1. `mcp__playwright__browser_navigate` to the page hosting the section (use the project's local dev URL; ask if unknown — do **not** assume a hardcoded host).
-2. `mcp__playwright__browser_resize` to a desktop size (e.g. 1440×900), screenshot the section.
-3. `mcp__playwright__browser_resize` to a mobile size (e.g. 375×812), screenshot the section.
+2./3. `mcp__playwright__browser_resize` to each width in `.claude/qa-env.json → pointer_sweep_widths` (height **900**) and `touch_sweep_widths` (height **812**), screenshot the section at each — the config carries widths only; heights are fixed so runs are comparable. Both unset → 1440×900 and 375×812, and the report states `widths: fallback (qa-env.json sweep widths unset)`.
 4. If the section has multiple locales, repeat per locale.
 5. `mcp__playwright__browser_snapshot` — capture the accessibility tree.
 6. `mcp__playwright__browser_console_messages` — flag errors/warnings.

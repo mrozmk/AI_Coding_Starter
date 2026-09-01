@@ -19,11 +19,18 @@ An *evidence family* is the **kind of evidence** an acceptance criterion needs b
 | `design parity` | The implemented UI matches its reference design — spacing, type scale, tokens, states | `qa-design-parity` | collector |
 | `contract / type / boundary` | Statically provable structure — exported surface, type contracts, layer/dependency direction, payload boundaries | `qa-contract` | verifier |
 | `config / external` | Required configuration, environment wiring, or an integration with a system outside this repo is present and correctly addressed | `qa-config` | collector |
+| `cross-device / viewport` | The rendered surface behaves as required at every width tier and under the input modality a real device carries — breakpoint layout, tap-target size, a `hover:`/`pointer:` branch, a `matchMedia` switch | `qa-runtime-device` | verifier |
 
 **Role** is what the verifier is *allowed to conclude*:
 
 - `verifier` — may decide the criterion autonomously **in this repo**, because the evidence is fully observable here.
 - `collector` — gathers and presents evidence but must not emit `PASS` on its own; its rows arrive at the matrix as `NEEDS-HUMAN` unless a human judges them. Design parity ends in a human eye; `config / external` ends in a system this repo cannot reach.
+
+`cross-device / viewport` is a sibling of `runtime-UI + a11y`, not a replacement: the latter judges the rendered surface, the former judges it **at every width and under a coarse pointer**.
+
+### Tier coverage is split by input modality
+
+A device profile carries `hover: none` at every width; a desktop context carries `hover: hover` at every width. So coverage is split by **modality**, one lane each: `qa-runtime-device` sweeps the touch-plausible tiers (`qa-env.json → touch_sweep_widths`), `qa-runtime-ui` sweeps the pointer tiers (`qa-env.json → pointer_sweep_widths`). One width per tier, taken at the tier's **lower edge** — where its `min-width` query first fires and the layout is tightest, which is where overflow and truncation actually break. A second width inside the same tier fires an identical set of queries and proves nothing new. Never produce a fictional combination — a touch device at a desktop width, or a mouse at a phone width: a `hover:`- or `pointer:`-gated branch judged on the wrong lane is a **guaranteed false FAIL**, because the branch under test never activates there.
 
 ### 1a. Project extensions  `[project]`
 
@@ -52,6 +59,7 @@ Family → the verifier that owns it → the **execution lane** it must run in.
 | `design parity` | `qa-design-parity` | I | design-tool MCP |
 | `contract / type / boundary` | `qa-contract` | P | none — filesystem only |
 | `config / external` | `qa-config` | P | none — filesystem only |
+| `cross-device / viewport` | `qa-runtime-device` | S | browser automation (device-mode server, `qa-env.json → device_mcp_server`) |
 
 **Lanes** — forced by hard constraints, not by taste:
 
@@ -91,6 +99,7 @@ A criterion that can only be settled by *doing something* to the app is `NEEDS-H
 | `design parity` | asserts likeness to a reference — spacing, scale, token, state styling, "matches the design". The proof is a comparison against an artifact outside the code |
 | `contract / type / boundary` | asserts a structural fact provable without running anything — what a module exports, which types cross a boundary, which layer may import which, where an error type is constructed, whether an external payload shape leaks past its adapter |
 | `config / external` | asserts something about an environment, a credential, a feature flag, a deployment target, or a third-party system's behaviour. The proof is partly or wholly outside this repo |
+| `cross-device / viewport` | asserts behaviour that depends on **viewport width or input modality** — layout at a given breakpoint, touch-target size, a `hover:`/`pointer:` branch, a `matchMedia`-driven switch. The boundary against `runtime-UI + a11y`: that family answers *does it render correctly*, this family answers *at every width and on touch* |
 
 **An AC that maps to no family is a legitimate outcome.** *"The code should be maintainable"* carries no evidence family at all. It gets one row with `family: "(unclassifiable)"` and `verdict: "NEEDS-HUMAN"`, and a note saying it carries no evidence family. Do **not** stretch a classification to fit — a forced family produces a confident answer to a question nobody asked.
 
@@ -145,6 +154,8 @@ Criteria that **cannot** be settled here, whatever the family says. A match mean
 | *(non-browser apps)* What a screen reader actually announces | A semantics/accessibility label being present and reachable is provable; VoiceOver / TalkBack output is not | A manual assistive-technology pass |
 | *(non-browser apps)* Behaviour that exists only in a release build | QA runs debug/profile builds; stripped, obfuscated or flag-gated release paths never execute | A release-build QA target in `qa-env.json` |
 | Behaviour gated by a remote feature flag or config the QA environment cannot toggle | The verifier observes whatever the flag currently serves; it cannot prove the other branch | A flag-override mechanism reachable from the QA build |
+| iOS-Safari-only behaviour — `100vh` vs `dvh`/`svh` under collapsing browser chrome, `env(safe-area-inset-*)`, momentum scrolling, input-focus auto-zoom, `position: fixed` with the soft keyboard open | An automation engine's WebKit is not iOS Safari and cannot be made into it; the device lane emulates a viewport and a pointer, not the OS | A manual pass on a physical iOS device |
+| Cross-engine (WebKit / Firefox) rendering deltas — "renders identically in Safari/Firefox" | Both QA browser lanes run one engine by design | An engine-matrix suite in CI |
 
 **Absence must be proven.** Before any *"X does not exist"* claim — a missing export, an absent config key, an unimplemented handler — **enumerate the search surface you actually checked and cite it**: the globs, the commands, the paths. A bare "not found" is not presentable evidence. An absence claim resting on a **single** method is downgraded by the router's self-audit (`/qa-verify` Phase 2.5), and the downgrade is logged in the row's `notes`. Two traps in particular:
 

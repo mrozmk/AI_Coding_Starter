@@ -100,7 +100,8 @@ cp .env.example .env   # then fill in the values
 
 This repository uses an AI-assisted development workflow driven by [Claude Code](https://claude.com/claude-code).
 The framework (slash commands, knowledge layers, conventions) is documented in
-[.claude/README.md](.claude/README.md). Project rules for Claude live in [CLAUDE.md](CLAUDE.md).
+[.claude/README.md](.claude/README.md). Project rules for Claude live in [CLAUDE.md](CLAUDE.md),
+testing rules in [TESTING.md](TESTING.md), and the merge bar in [docs/DEFINITION-OF-DONE.md](docs/DEFINITION-OF-DONE.md).
 
 <!-- Remove this section if the project does not use the AI workflow framework. -->
 

@@ -41,6 +41,12 @@ honest verdict — a distinct state, not a lesser `PASS`.
 3. **Reload** (browser: page reload; app: hot reload). A reload that cannot apply the change —
    `const` values, DI graph, entry point, build-time config — proves nothing: ask for a full
    restart or report `SKIPPED` quoting why. Reload rejected → `SKIPPED` with the message.
+   - Source edits reach a running dev server through reload/HMR (the step above). **Serve/build
+     config edits do not** — asset globs, proxy rules, env, `project.json`/`vite.config`-class
+     files need a restart. When the diff touches such a file, confirm the server was started
+     **after** that edit (`lsof -ti:<port>` → process start time vs. the config file's mtime);
+     older → `SKIPPED — server predates a config change, restart it`. Never gate ordinary
+     source edits on process age.
 4. **Read the delta.** Everything raised after the baseline is attributable to the change.
    Confirm the changed subtree is **present** — a component whose render threw is replaced by
    an error boundary or blank, so an absence is a finding, not a quiet pass.

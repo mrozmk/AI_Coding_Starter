@@ -67,7 +67,7 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 
 8. Create the commit with the generated message — **no further confirmation needed at this point**.
 9. **Memory checkpoint** — read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) first: its save-or-not bar and de-dup guard govern this step (default outcome: save nothing; if `/execute` or `/check-implementation` already reflected in this flow, there is usually nothing left). Then review the work done in this commit and ask yourself:
-   - Did a bug occur and get fixed? → append to `.agents/memory/errors.md`
+   - Did a bug occur and get fixed? → application defect → append to `.agents/memory/errors.md` (name the source file); toolchain friction → `.agents/memory/domain/harness.md` — per the reflection-protocol target table
    - Was an API or protocol behavior discovered? → append to `.agents/memory/api.md`
    - Was an architectural decision made? → append to `.agents/memory/decisions.md`
    - Was a project-specific pattern identified? → append to `.agents/memory/patterns.md`

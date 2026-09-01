@@ -2,7 +2,7 @@
 #
 # WHY THIS FILE EXISTS
 # Parallel `/orchestrate` runs build on separate `orch-<id>` branches, and every one
-# of them ends with a memory-reflection pass that inserts a new entry at the top of
+# of them ends with a memory-reflection pass that appends a new entry to
 # .agents/memory/errors.md (or a sibling log). `/orchestrate --integrate` then merges
 # those branches LOCALLY (git merge --no-ff — see .agents/reference/parallel-orchestration.md).
 # Two branches appending to the same log touch the same hunk, so without `union` that
@@ -12,6 +12,10 @@
 # `union` is a BUILT-IN git merge driver: for a region both sides changed it emits
 # both sides' lines instead of conflict markers. Nothing needs to be configured
 # per-clone for it to work.
+
+# Normalise line endings: mixed CRLF/LF clones churn every diff (seen on Windows
+# checkouts downstream). First rule on purpose — later `merge=` lines stack on top.
+* text=auto eol=lf
 
 # --- Append-only logs: keep both sides ----------------------------------------
 # Note `*` does not cross `/`, so the direct children, domain/ and archive/ each

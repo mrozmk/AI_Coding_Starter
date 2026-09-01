@@ -275,7 +275,7 @@ Wait for explicit approval per section. If user says `edit`, take their adjustme
 #### Step 8c: After approvals, write PRD update + decisions.md entry
 
 1. Apply approved section edits to `docs/PRD.md` using `Edit` (one section at a time, one Edit call per section).
-2. **Append a one-line entry to `.agents/memory/decisions.md`** (newest at TOP per starter convention):
+2. **Append a one-line entry to `.agents/memory/decisions.md`** (newest at END per starter convention):
 
    ```markdown
    ## YYYY-MM-DD — Tech stack: <one-line summary, e.g. "Next.js 15 + Prisma + Postgres + BullMQ + Vercel">

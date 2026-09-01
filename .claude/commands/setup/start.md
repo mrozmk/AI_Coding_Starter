@@ -109,7 +109,7 @@ Show the full profile and the `commands.*` manifest on Screen 3. Write the file 
 
 ## Phase B — Configure
 
-Seven ordered steps. Each reports one line `created | kept | skipped(<why>)`. Never rewrite a whole file — replace only the named block or entry.
+Eight ordered steps. Each reports one line `created | kept | skipped(<why>)`. Never rewrite a whole file — replace only the named block or entry.
 
 **1. `.env.example` contract.** Toggle blocks by commenting/uncommenting whole lines (keep the explanatory comments):
 - Jira block (`JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`) active **iff** `tracker=jira`.
@@ -146,7 +146,7 @@ Groups and their known coupled edits:
 | `jira` | `.claude/skills/jira/`, `.claude/commands/start-task.md`, `.claude/commands/prime-ba.md`, `.agents/reference/jira-mcp-atlassian.md`, `.agents/memory/domain/jira.md` **only while its frontmatter says `status: empty`** (otherwise keep — project knowledge) | drop only `mcp__atlassian__jira_*` entries in `.claude/settings.json` (keep `confluence_*` while Confluence is enabled; drop all Atlassian entries only when both are disabled); `/start-task`, `/prime-ba` rows in `README.md`; the `jira-mcp-atlassian.md` links in `.claude/commands/qa-verify.md` and `docs/TUTORIAL.md` |
 | `confluence` | `.claude/skills/confluence/` | `mcp__atlassian__confluence_*` entries in `.claude/settings.json` (only if Jira is also disabled — otherwise they are harmless, keep); `/confluence` row in `README.md` |
 | `codex` | `.claude/commands/codex-review.md` (every other Codex hook fails open — keep them) | `/codex-review` mentions in `README.md`, `.claude/commands/check-implementation.md`, `.claude/commands/quick-change.md` |
-| `qa_runtime_ui` | `.claude/agents/qa-runtime-ui.md` (keep `qa-runtime-app.md.example`) | `qa-runtime-ui` mentions in `.agents/reference/qa-evidence-families.md`, `README.md` |
+| `qa_runtime_ui` | `.claude/agents/qa-runtime-ui.md` (keep `qa-runtime-app.md.example` and `qa-runtime-device.md.example`) | `qa-runtime-ui` and `qa-runtime-device` mentions in `.agents/reference/qa-evidence-families.md`, `README.md` |
 
 (i) **Inventory.** For every identifier of the group's files — full path, basename, stem, slash name (`/codex-review`), skill name (`pr-comments`), agent name (`qa-runtime-ui`) — run `rg --hidden -g '!.git' -l -F '<identifier>' .claude .agents CLAUDE.md README.md docs`, **excluding the control documents** `.claude/commands/setup/start.md`, `.agents/specs/**`, `.agents/plans/**` (they name every group by design). Add every hit to the coupled-edit list. Classify each hit as *link/row* (delete the line) or *sentence* (reword to "(not installed in this project)"). **Any hit you cannot classify → keep the group**, print the hits, move to the next group.
 
@@ -159,6 +159,25 @@ Groups and their known coupled edits:
 (v) **Record.** Append the deleted paths to `.claude/.starter-sync.json → excluded` (directory entries with a trailing `/`). `/maintain:sync-from-starter` skips them and respects the profile when merging `.mcp.json` / `settings.json`.
 
 After all groups: run the six reference sweeps from `.claude/commands/maintain/cleanup-workflow.md → Phase 1` (markdown links 1.1, inline path refs 1.2, section anchors 1.3, slash commands 1.4, MCP refs 1.5, CLAUDE.md contract 1.6) **inline, read-only**, with the same control-document exclusion, and print leftovers verbatim. Never invoke `/maintain:cleanup-workflow` itself — it has a pruning phase. Leftovers are a report, not a gate: they mean step (i) missed an identifier; tell the user to fix them by hand.
+
+**8. Convention docs.** Three files, each `created | kept` — never overwrite an existing one.
+
+- `.claude/templates/TESTING-template.md → TESTING.md`, with the three slots resolved by this **stack table** (`/setup:create-CLAUDE_MD` references it as "the TESTING slot table in `setup/start.md` step 8" — one table, two callers; do not duplicate it):
+
+  | Manifest | `{test-runner}` | `{test-command}` | `{coverage-tool}` |
+  |---|---|---|---|
+  | `package.json` | first of `vitest` / `jest` / `mocha` / `node:test` found in `devDependencies`, else `unknown` | `<pm> test`, where `<pm>` comes from the `packageManager` field, else the lockfile (`pnpm-lock.yaml` → `pnpm`, `yarn.lock` → `yarn`, `bun.lockb`/`bun.lock` → `bun`, `package-lock.json` or none → `npm`) — **never the raw `scripts.test` body** (local binaries are on PATH only under the package manager); `unknown` when `scripts.test` is absent | `@vitest/coverage-v8` or `@vitest/coverage-istanbul` if listed; else `jest --coverage` when the runner is jest; else `c8` / `nyc` if listed; else `unknown` |
+  | `pyproject.toml` / `requirements*.txt` | `pytest` | `pytest` | `pytest-cov` — all three `unknown` if `pytest` is absent from the deps |
+  | `go.mod` | `go test` | `go test ./...` | `go test -cover ./...` |
+  | `Cargo.toml` | `cargo test` | `cargo test` | `cargo llvm-cov` if in dev-deps, else `unknown` |
+  | `pubspec.yaml` | `flutter test` | `flutter test` | `flutter test --coverage` |
+  | *(no manifest)* | `unknown` | `unknown` | `unknown` |
+
+  Any `unknown` stays as the literal `{slot}` in the file and is listed in the report as "fill after the scaffold".
+- `.claude/templates/DEFINITION-OF-DONE-template.md → docs/DEFINITION-OF-DONE.md`.
+- `.claude/templates/PULL_REQUEST_TEMPLATE.md` → the host path from `pr-create.md` → PR template lookup order: `github` → `.github/PULL_REQUEST_TEMPLATE.md`, `bitbucket` → `.bitbucket/pull_request_template.md`, `gitlab` → `.gitlab/merge_request_templates/Default.md`, `none` → `skipped(no remote)`.
+
+**`mkdir -p` the destination directory first** (`docs/`, `.github/`, `.bitbucket/`, `.gitlab/merge_request_templates/` — none exists in a fresh clone; idempotent).
 
 ---
 
@@ -182,6 +201,19 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 2. `/setup:map-codebase` — architecture map + reconstructed PRD, then its own cascade
 3. `/setup:create-backlog` — optional
 
+**Suggestions — printed, never executed.** `/setup:start` installs no packages and adds no MCP servers; these are for the human to copy if wanted:
+
+- **(a) Commit-message enforcement (JS projects).** A commitlint `parserPreset.headerPattern` accepting an optional `[<KEY>-NN] ` prefix — derive the `<KEY>` regex from the tracker key pattern (default `[A-Z]+-\d+`), e.g. `^(?:\[[A-Z]+-\d+\] )?(\w+)(?:\(([^)]+)\))?!?: (.+)$` with `headerCorrespondence: ['type', 'scope', 'subject']` — plus a husky `commit-msg` hook running `commitlint --edit "$1"`. Install only if you want local enforcement of `/commit`'s format.
+- **(b) Harness ownership.** A CODEOWNERS stanza routing the AI-workflow files to a tech-lead owner, so a change to the rules gets a rules-owner review:
+
+  ```
+  .claude/**                  @<tech-lead>
+  .agents/**                  @<tech-lead>
+  CLAUDE.md                   @<tech-lead>
+  TESTING.md                  @<tech-lead>
+  docs/DEFINITION-OF-DONE.md  @<tech-lead>
+  ```
+
 ---
 
 ## Re-run (profile exists, or `--rerun`)
@@ -189,7 +221,7 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 - Show the current profile as a table; for each screen ask **keep / change**. Changed answers re-derive the profile (A.3) and re-run Phase B — steps report `kept` for anything already in place.
 - Enabled → disabled for a group: the normal pruning path (step 7).
 - **Disabled → enabled for a pruned group is refused.** Print exactly: `Group <x> was pruned. To restore: remove its paths from .claude/.starter-sync.json → excluded, then run /maintain:sync-from-starter — it re-offers them.` Restoring is not built into this command.
-- Never re-create a file reported `kept`; never re-delete.
+- Never re-create a file reported `kept`; never re-delete. Unresolved `{slot}` tokens in `TESTING.md` are filled by `/setup:create-CLAUDE_MD`, not by a re-run.
 
 ---
 

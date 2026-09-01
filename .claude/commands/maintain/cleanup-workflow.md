@@ -214,6 +214,7 @@ on purpose (entries vs whole files); both are historical-only and never auto-loa
 **Heuristic A — date-based (dated entries only):**
 - Entry header date is older than **6 months** from today → candidate.
 - Undated topical entries (patterns/api) never match A — judge them by B and C alone.
+- Entry header carries **no date at all** (a `## <title>` with no `YYYY-MM-DD —` in a dated file) → report it in a separate `undated` bucket (count per file + titles). **Entry region only:** skip the preamble headings `## Scope` and `## Format` and anything inside a fenced code block — only `##` blocks after the `## Format` block's closing `---` are entries. Undated entries are invisible to heuristic A; the fix is to date them (`git log --diff-filter=A -S'<title>' --format=%as -- <file>`), never to skip them silently.
 
 **Heuristic B — code-grounded:**
 - Extract path-like tokens from entry body: `src/**/*`, `lib/**/*`, `.agents/**/*`, file names with extensions.
@@ -250,7 +251,7 @@ Action? [k]eep / [a]rchive / [d]elete (rare) / [s]kip-for-now
 ```
 
 - **Keep** → leave entry in place. Don't ask again this run.
-- **Archive** → move to `.agents/memory/archive/<file>-YYYY-MM-DD.md`, append at TOP (newest at top, same convention as live files).
+- **Archive** → move to `.agents/memory/archive/<file>-YYYY-MM-DD.md`, append at END (newest at end, same convention as live files).
 - **Delete** → permanently remove from file (use only for truly worthless entries; warn user).
 - **Skip-for-now** → leave entry, but it will reappear in next `/maintain:cleanup-workflow` run.
 
@@ -261,7 +262,7 @@ Action? [k]eep / [a]rchive / [d]elete (rare) / [s]kip-for-now
 For each "archive" decision:
 
 1. Ensure `.agents/memory/archive/` exists (create with `.gitkeep` if absent).
-2. Append to `.agents/memory/archive/<original-filename>-YYYY-MM-DD.md` (one archive file per source file per archive day — entries from the same source on the same day go into one file). Newest entries at the TOP.
+2. Append to `.agents/memory/archive/<original-filename>-YYYY-MM-DD.md` (one archive file per source file per archive day — entries from the same source on the same day go into one file). Newest entries at the END (same convention as live files).
 3. Remove the entry from the source file.
 4. Add archive header at top of new archive file (only on first creation):
    ```markdown
@@ -295,6 +296,10 @@ New file sizes:
 Archive created/updated:
   .agents/memory/archive/errors-2026-04-27.md (3 entries)
   .agents/memory/archive/decisions-2026-04-27.md (1 entry)
+
+Undated entries (invisible to heuristic A — date them, never skip):
+  errors.md:    <n> — "<title>", "<title>"
+  domain/foo.md:<n> — "<title>"
 ```
 
 ---
@@ -355,7 +360,8 @@ For each file:
 - Has a `last_referenced` in the sidecar → `days_idle = (today − last_referenced).days`
 - No sidecar entry (never read) → `days_idle = (today − created).days` — a file created long ago
   and never once read is the strongest archival candidate.
-- **Candidate** if: `days_idle >= 180 AND ref_count == 0 AND pinned == false`
+- **Candidate** if: `days_idle >= 180 AND pinned == false` — `ref_count` is reported, never gated on: a lifetime counter would make any file read once permanently ineligible.
+- No `created:` frontmatter → use the git add date: `git log --diff-filter=A --format=%as -1 -- <file>`; if that is empty too, report `created=?` and exclude the file from candidacy (never guess).
 
 > The 180-day threshold can be overridden inline for a single run — 2B.4's `AskUserQuestion` MAY
 > offer "threshold 180 days — change for this run?". This is a per-run choice, not a CLI argument.
@@ -377,7 +383,7 @@ Show three sections:
 | File | Size | Days idle | Refs |
 | ---- | ---- | --------- | ---- |
 
-**C) Archival candidates (threshold exceeded, ref_count == 0):**
+**C) Archival candidates (idle ≥ threshold, not pinned):**
 
 | File | Size | Days idle | Created |
 | ---- | ---- | --------- | ------- |
@@ -391,7 +397,7 @@ Use `AskUserQuestion` for each candidate (or group if many). The prompt MUST say
 
 - **Archive** — move the whole file to `.agents/memory/archive/YYYY-Q<N>/<filename>`, remove its
   entry from `MEMORY.md` *if present*, leave a breadcrumb in `index.md` Quick Reference.
-- **Pin it** — flip `pinned: true` in the file's frontmatter, never propose again.
+- **Pin it** — insert `pinned: true` into the frontmatter (create the line if absent), never propose again.
 - **Keep, reset counter** — set the sidecar `last_referenced` to today (give it another window).
 - **Skip** — leave as-is, will reappear next run.
 
@@ -406,7 +412,7 @@ For **Archive**:
    remove the line or repoint it to the archive location (ask user which).
 4. Report what was archived.
 
-For **Pin**: edit frontmatter `pinned: false` → `pinned: true`.
+For **Pin**: edit frontmatter `pinned: false` → `pinned: true` (insert the line if absent).
 
 For **Keep, reset** (the only telemetry *write* in this command alongside Pin's frontmatter flip):
 
@@ -453,7 +459,7 @@ ls .agents/specs/*.md 2>/dev/null
 ls .agents/plans/done/*.md 2>/dev/null
 ```
 
-For each spec, check whether a plan with a matching topic exists in `plans/done/` or `plans/active/`. Match heuristic: kebab-case topic in filename.
+For each spec, check whether a plan with a matching topic exists in `plans/done/` or `plans/active/`. Match heuristic: the plan filename contains the spec's tracker key (`[a-z]+-[0-9]+`, lower-cased) **or** its kebab-case topic with the date prefix and key stripped (spec `2026-06-08-abc-26-feature-x.md` matches plan `feature-x.md`). Key-only matching produces false orphans for plans that carry no key.
 
 If no match → warning:
 > ⚠️ `<spec>` has no matching plan in `plans/active/` or `plans/done/`. Designed but never implemented? Consider closing or running `/plan-feature`.
@@ -480,7 +486,7 @@ If `> 5000 lines` → warning:
 ### 3.5 Signal: memory file size thresholds
 
 For each append-style memory file:
-- `errors.md` > 500 lines → warning
+- `errors.md` > 300 lines → warning. Tighter than its peers on purpose: it is loaded whole on every debugging session and holds application defects only (its **Scope** section). Crossing 300 usually means misrouted entries, not real growth — audit against Scope before pruning by age.
 - `decisions.md` > 500 lines → warning
 - `patterns.md` > 500 lines → warning
 - `api.md` > 500 lines → warning
@@ -536,7 +542,7 @@ Parse `prime.md` (and `prime-ba.md`) for the files they load **every** session (
 > ⚠️ `/prime` loads `<file>` every session but it is `<empty / 542 lines>`. Consider populating it (`/maintain:refresh-brief`, `/setup:create-CLAUDE_MD`) or trimming it (Phase 2).
 
 **Dead-memory cross-check → handled by Phase 2B.** Cold whole-file detection from the sidecar
-(`last_referenced` past the threshold, `ref_count == 0`) is owned by **Section 2B** of Phase 2,
+(`last_referenced` past the threshold, not pinned — `ref_count` is reported, never gated on) is owned by **Section 2B** of Phase 2,
 which not only flags but *archives* such files. 4.1 does not re-run that check here — see the 2B
 results earlier in this run. (This keeps a single threshold and one decision point instead of the
 former 90-day flag here vs 2B's 180-day archive criterion.)

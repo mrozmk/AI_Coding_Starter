@@ -117,7 +117,7 @@ On return:
    ```
    Then add a brief **`## Data Model`** section to `architecture.md` that points to it: "Persistence schema: see [domain/data-model.md](domain/data-model.md)." If `hasDataModel` is false, skip both (the project has no detected persistence layer) and say so in the report.
 4. **Seed knowledge layers from `docsAnalysis`** (only the non-empty parts):
-   - **`.agents/memory/decisions.md`** — for each `documentedDecisions` entry, **append** (newest at top) an entry in the file's format (`## [<date>] <title>` + **Chosen/Why/Consequences**), tagged `(imported from ADR: <source>)`. These are real, sourced decisions — appropriate to seed at brownfield bootstrap; they are reviewable at Checkpoint 2.
+   - **`.agents/memory/decisions.md`** — for each `documentedDecisions` entry, **append** (newest at end) an entry in the file's format (`## [<date>] <title>` + **Chosen/Why/Consequences**), tagged `(imported from ADR: <source>)`. These are real, sourced decisions — appropriate to seed at brownfield bootstrap; they are reviewable at Checkpoint 2.
    - **`.agents/memory/patterns.md`** — for each `documentedPatterns` entry, **append** in the patterns format, tagged with its `source`.
    - Infrastructure needs no separate write — it is already folded into `architecture.md` (`## Infrastructure` + the Service & Integration Map) by the synthesizer.
    - If `docsAnalysis` is null (no docs/ADRs found), skip and note it in the report.

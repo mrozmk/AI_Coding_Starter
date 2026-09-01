@@ -1,9 +1,14 @@
+---
+created: 2026-08-31
+pinned: false
+---
+
 # Memory: Patterns
 
 Project-specific implementation patterns discovered during development.
 These are patterns **NOT obvious** from the codebase alone — if a convention is visible in the code at a glance, it doesn't belong here.
 
-Add newest entries at the **TOP**.
+Add newest entries at the **END**.
 
 ---
 

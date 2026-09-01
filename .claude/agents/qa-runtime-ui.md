@@ -33,6 +33,7 @@ The router passes:
 - **`GATE_STATUS`** — `green` · `not-run` · `unknown`. **Cite it; never re-derive it.**
 - **`BASE_URL`** — the host the router resolved. Never probe for your own.
 - **`MOUNT_TARGETS`** — which components/routes to observe, and the mount template resolved from `.claude/qa-env.json → component_mount_url_template`.
+- **`SWEEP_WIDTHS`** *(optional)* — pointer-tier widths (`qa-env.json → pointer_sweep_widths`), passed by the router when a criterion is tier-scoped. Resize the browser to each width (fine-pointer profile) and attribute the verdict to its tier; absent → observe at the default viewport and never improvise widths.
 
 **If the mount template is empty, stop and report — do not improvise a URL.** Return `NEEDS-HUMAN` for every criterion with `notes: "no component mount point configured (qa-env.json → component_mount_url_template)"`. A project with no way to mount one component in isolation is a normal state; guessing a route and reporting what you find there is how a verdict gets attached to the wrong thing.
 
@@ -59,6 +60,7 @@ This is the part that separates a verdict from a guess. Each rule exists because
 | **Profile already in use** | The driver refuses to start, or reports the user-data directory is locked | Another QA session owns the browser. **Report and stop the lane** — every criterion becomes `NEEDS-HUMAN` with the collision named. Never retry in a loop; two sessions on one profile corrupt both. |
 | **Navigation never settles** | The wait-for-condition times out on a page that keeps loading | Capture the console and the last a11y snapshot, then return `NEEDS-HUMAN` for the affected criteria with the URL and the timeout quoted. A screenshot of a half-rendered page is not evidence of a defect. |
 | **Element found but not reachable** | The node exists in the tree but a click does nothing | Check `pointer-events`, `inert`, `opacity`, `visibility`, and whether something overlays it. A programmatic dispatch bypasses hit-testing and can manufacture a state no real user can reach — verify reachability before reporting either a pass or a failure. |
+| **Probe passes, user cannot** | A programmatic dispatch or `scrollIntoView` reaches the node | Programmatic DOM probes bypass hit-testing and `window.scrollTo` is inert under `overflow: hidden`. Pair every reachability claim with a **positive control** — an element known to be unreachable must read as unreachable in the same probe, or the probe proves nothing. |
 
 ## Artifacts
 

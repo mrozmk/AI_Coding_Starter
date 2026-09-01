@@ -99,6 +99,8 @@ wins, duplicates warned), and are sent **only as request headers** — never in 
 
 Auth uses a **personal Atlassian API token with scopes**, sent as HTTP **Basic** auth.
 
+- **Repository access token → Bearer.** With `BITBUCKET_TOKEN` set and `BITBUCKET_EMAIL` unset the helper sends `Authorization: Bearer` instead. Such a token has no `/user` — `whoami` and `--mine` exit **5** — and every `reply` posts as the repository bot, not as you.
+
 **App Passwords are gone** (removed 2026-07-28). **A Repository Access Token is the wrong tool** even
 though it works: it carries no personal identity, so every reply it posts is authored by a bot
 avatar, permanently — the reason the skill's HARD-GATE 3 says "replies post as you".

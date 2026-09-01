@@ -55,6 +55,7 @@ Pull the latest changes on the current branch from origin. Branch is detected dy
   - Inform the user: "Pull failed due to merge conflicts. Resolve them manually, then commit the merge."
   - Show conflicting files: `git diff --name-only --diff-filter=U`
   - Stop here.
+- After the user resolves conflicts, before the merge commit: re-diff the branch's own commits against the result (`git log <base>..HEAD --oneline`, then `rg` each commit's load-bearing lines) — a resolution that "makes the hunks apply" can drop this branch's fix silently; a lost single-line declaration fails no build.
 - If pull fails for any other reason:
   - If changes were stashed, restore them: `git stash pop`
   - Show the error and stop.

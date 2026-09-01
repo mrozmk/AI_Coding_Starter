@@ -62,6 +62,7 @@ down. So treat a findings handoff as a **first-class output of every sync**, exa
   `.git/info/exclude` (so it stays `@`-referenceable, not greyed out). Do not stage or commit it.
 - At the end, the final report points the user at this file ("findings for improving the starter:
   `@.agents/handoffs/starter-upstream-regressions.md`").
+- The ledger's three kinds and the reverse-contribution flow are described in `.claude/starter-sync-playbook.md`; findings written there are what the starter mines for its own upgrades.
 
 > Why this is a step, not an afterthought: the orchestrator holds the full diff + the reasoning for
 > every keep-project decision **only during the run**. That context is the raw material for fixing the

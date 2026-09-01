@@ -1,0 +1,13 @@
+# ADR Index — EXAMPLE
+
+> Copy to `adr-index.md` when architectural decisions live **outside** the repo (wiki, Confluence, a docs site) and add a `When to Read` row in `.agents/memory/index.md` ("Architectural decision / refactor → `reference/adr-index.md`"). Decisions made *in* the repo belong in `.agents/memory/decisions.md`; this file only points at the external ones so a session can find them without a wiki search.
+
+| ADR | Title | Where it lives (link) | Applied in repo (paths) | Status |
+|-----|-------|-----------------------|-------------------------|--------|
+| ADR-3 | Server-side rendering for public pages | https://example.atlassian.net/wiki/spaces/ENG/pages/123/ADR-3 | `src/app/server.ts`, `src/app/routes/public/` | accepted |
+
+## Corrections
+
+Record here every ADR reference that turned out to be wrong, so the next session does not chase it again:
+
+- ADR-7 is cited in two specs but never existed — the decision it refers to is `decisions.md` 2026-05-01 ("single build target"). Cite that entry instead.

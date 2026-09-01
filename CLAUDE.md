@@ -77,7 +77,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Code Structure & Modularity
 
-Generic defaults — tune per project: files max **500 lines** · functions max **50 lines**, single responsibility · classes max **100 lines**, single concept · lines max **100 characters**. Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
+Generic defaults — tune per project: files max **500 lines** · functions max **50 lines**, single responsibility · classes soft **150** / hard **250 lines**, single concept — cohesion first: extract pure functions, never split a cohesive class to hit a number · lines max **100 characters**. Core principles: **KISS**, **YAGNI**, **SOLID** (SRP, OCP, DIP), **Fail Fast**.
 
 ---
 
@@ -112,6 +112,8 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Recorded exception: `pr-api.sh`.** [.claude/skills/pr-comments/references/pr-api.sh](.claude/skills/pr-comments/references/pr-api.sh) is allow-listed whole in `settings.json` — its `reply` subcommand runs `curl -X POST … -d @body` *inside* the script, where no deny glob can see it (permissions match the Bash command string, not subprocesses). This bypasses the egress denies by design. Mitigations: it is the **only** script with that allowance; it posts solely after a per-thread human `y` inside `/pr-comments` (HARD-GATE 1); and credentials travel only as request headers to the host derived from `origin`, never in a URL or on stdout. Do not add a second script to that allowance without recording it here.
 
+**Recorded allowance: `git-baseline.sh`.** `Bash(bash .claude/lib/git-baseline.sh:*)` is allow-listed so the mandatory post-Codex tamper check in `/execute codex` / `/check-implementation codex` runs without mid-pipeline prompts. Unlike `pr-api.sh` it performs **no egress** — it only writes fixed snapshot filenames (`meta.txt`, `ignored.z`, `ignored.txt`, `sensitive.sha`, `after/*`) under the directory the caller passes, which is a narrow local-write channel that skips the usual write prompt. Point it only at the session scratchpad; widening it to other scripts needs a note here.
+
 ---
 
 ## Git Workflow
@@ -142,7 +144,7 @@ Knowledge layers under `.agents/`. **Before any task read [.agents/memory/index.
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input — briefs, transcripts, sketches, PDFs | Immutable, pruned manually | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at top) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
 | `backlog.md` *(optional)* | Delivery map — epics, task DAG, work packages | `Status`/`Ref` written back by the pipeline | `/setup:create-backlog` · `/plan-feature` · `/orchestrate` |
 | [specs/](.agents/specs/) | Design docs — what to build and why | Lives with the feature | `/brainstorm` |
@@ -162,7 +164,7 @@ Generic triggers, always on. **Project-specific routing** lives in [.agents/memo
 - **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until [.claude/memory-domains.json](.claude/memory-domains.json) has path→domain rules **and** memory outgrows its size threshold (both required).
 - **When uncertain about approach:** make routine judgment calls yourself; stop and ask when different readings of the request would lead to materially different work
 - **After a `/qa-verify` run with interaction rows** (Playwright methods, or a Tier-2 driver run): offer to promote the recorded sequence into a regression test per [.agents/reference/qa-to-regression-test.md](.agents/reference/qa-to-regression-test.md) — QA never writes tests itself, so the sequence is lost otherwise
-- **After fixing a bug:** consider an entry in [.agents/memory/errors.md](.agents/memory/errors.md) — *"Would a fresh Claude make this mistake again without it?"*
+- **After fixing a bug:** route the lesson per [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) → target table — a defect in application code → `errors.md` (it must name the source file); friction in a slash command, hook, MCP server or shell/git invocation → `domain/harness.md`. Ask *"Would a fresh Claude make this mistake again without it?"* — the default is to write nothing.
 - **When a `domain/` memory file doesn't exist but is needed:** create it from the template in [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md)
 - **When writing to memory at the end of a run:** read [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) first — the save-or-not bar and entry formats live there, outside the `/prime` payload
 - **Skip rule:** any memory file with frontmatter `status: empty` is a placeholder — do not load it
