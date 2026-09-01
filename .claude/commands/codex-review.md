@@ -113,6 +113,7 @@ Construct a single prompt string for `codex exec`. It must contain, in this orde
 Launch it as a **background Bash process** through the shared `codex-bg.sh` wrapper so the main thread stays responsive and can monitor the heartbeat. **Split the two outputs** so you never have to dig the review out of the orchestration noise:
 
 ```bash
+CODEX_EFFORT=high \
 PROMPT="<the assembled prompt from step 3>" \
 OUT="$SCRATCH/codex-review.final.md" \
 LOG="$SCRATCH/codex-review.log" \
@@ -123,7 +124,7 @@ bash .claude/lib/codex-bg.sh
 - **Spawn through `.claude/lib/codex-bg.sh`, never raw `codex exec`.** It bakes in the load-bearing flags (`< /dev/null` stdin-guard, `-C <repo>`, `--skip-git-repo-check`) so a backgrounded codex can't hang on stdin or in a non-trusted dir. See [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md) for the full contract.
 - This is a **prose** review — do NOT pass `SCHEMA`. With `SCHEMA` unset the wrapper defaults to `--sandbox read-only` (a review must not mutate the repo). Never pass `SANDBOX=workspace-write`/`danger-full-access` here. (Do not combine schema + read-only — that has hung in testing; not an issue here since this review is schema-less.)
 - **`--output-last-message` (baked into the wrapper via `OUT`) is the key to a clean read.** It writes ONLY Codex's final message (the actual review) to `OUT`. The `.log` keeps the full run — every `exec`, `rg`, file dump, and `STATUS:` line — which is large (hundreds of KB) and ~95% orchestration noise. **Read the review from `codex-review.final.md`, not the log.**
-- **Reasoning effort: inherit the config default (xhigh).** Do NOT lower it — this is a review and wants full model power. (To override for one run, prepend `CODEX_EFFORT=<low|medium|high|xhigh>`.)
+- **Reasoning effort: pinned `CODEX_EFFORT=high`.** Mandatory — the wrapper refuses to spawn without it (`codex-spawn.md` → Effort matrix). Never fall back to the config default and never lower it here.
 - Write the log to the session scratchpad dir (not `/tmp`).
 - Run it with `run_in_background: true`. The harness re-invokes you when it exits; you do not poll in a tight loop.
 
@@ -142,7 +143,8 @@ This is the point of the command. The done signal is a **non-empty `codex-review
 
 - **`codex-review.final.md` non-empty → DONE-OK.** Read the review from it — the clean final message, not the noisy `.log` — and judge it below.
 - **Process exited but `codex-review.final.md` is empty/absent → DONE-FAILED** (stdin-hang, kill, or codex error — NOT "codex returned nothing"). Do NOT read or summarize the empty file as if it were a clean "no findings" review. Retry once (re-spawn from step 4); if it fails again, tell the user the codex review could not complete and stop — **never fabricate a verdict** (project rule: "Never fake it").
-- **Process still running, file still empty → still working.** It may be a long xhigh run — relay a heartbeat (Step 5) and wait; do not kill it.
+- **Process still running, file still empty → still working.** It may be a long `high` run — relay a heartbeat (Step 5) and wait; do not kill it.
+- **If a fallback wakeup was scheduled in Step 5:** call `ScheduleWakeup stop: true` the moment the result is in hand — including **before** the Step 6 retry re-spawn (cancel-on-every-exit rule: `codex-spawn.md` → polling loop, step 3).
 
 Once you have a non-empty review, **evaluate it as a critic, not a defender**:
 

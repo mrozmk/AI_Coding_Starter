@@ -28,7 +28,7 @@ This command is deliberately distinct from three neighbours. Pick the right tool
 
 ## Phase 0 — Second sweep by Codex (`--codex`, opt-in)
 
-Strip a bare `--codex` token from `$ARGUMENTS` before treating the rest as the focus argument. **Without the flag, skip this phase entirely** and run the review exactly as it ran before — a full `xhigh` Codex sweep of a whole codebase is slow and expensive, and this command is already on-demand.
+Strip a bare `--codex` token from `$ARGUMENTS` before treating the rest as the focus argument. **Without the flag, skip this phase entirely** and run the review exactly as it ran before — a full `high`-effort Codex sweep of a whole codebase is slow and expensive, and this command is already on-demand.
 
 With the flag: launch Codex on **the same task, with the same method, over the same codebase**, at the very start — so it works while Phase 1 runs. Two sweeps in parallel, not one sweep and one critique.
 
@@ -52,6 +52,7 @@ Do **not** put our opinions, expected findings, or severity hints in the prompt.
 **Launch** through the shared wrapper, in the background, read-only, prose (no `SCHEMA`) — the contract is [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md):
 
 ```bash
+CODEX_EFFORT=high \
 PROMPT="<the assembled prompt>" \
 OUT="$SCRATCH/architecture-codex.final.md" \
 LOG="$SCRATCH/architecture-codex.log" \
@@ -59,9 +60,9 @@ REPO="<repo-root>" \
 bash .claude/lib/codex-bg.sh
 ```
 
-Never inline `codex exec`. Never pass `SANDBOX=workspace-write` — a review mutates nothing. Run with `run_in_background: true`, then **go straight into Phase 1** rather than waiting; that concurrency is the point of running it first.
+Never inline `codex exec`. Never pass `SANDBOX=workspace-write` — a review mutates nothing (that mode belongs to `/execute codex` / `/check-implementation codex` only). Run with `run_in_background: true`, then **go straight into Phase 1** rather than waiting; that concurrency is the point of running it first.
 
-**Done signal: a non-empty `architecture-codex.final.md`, never process exit alone.** A backgrounded launcher exits 0 while Codex is still thinking, and a hung or killed run also exits without writing. Heartbeats come from the `.log` (`rg '^STATUS:' … | tail -1`) — never read the whole log, it is hundreds of KB of orchestration noise. If Phase 1 finishes first, relay a heartbeat and wait; if Codex is still empty after a long silence, say so and either wait or proceed with one sweep — do not kill a slow-but-alive run, and do not read an empty `.final.md` as "Codex found nothing".
+**Done signal: a non-empty `architecture-codex.final.md`, never process exit alone.** A backgrounded launcher exits 0 while Codex is still thinking, and a hung or killed run also exits without writing. Heartbeats come from the `.log` (`rg '^STATUS:' … | tail -1`) — never read the whole log, it is hundreds of KB of orchestration noise. If Phase 1 finishes first, relay a heartbeat and wait while the log still grows; never read an empty `.final.md` as "Codex found nothing". Three exits, each ending with `ScheduleWakeup stop: true` (cancel-on-every-exit rule: `codex-spawn.md` → polling loop, step 3): **DONE-OK** — `.final.md` non-empty → merge the sweep; **DONE-FAILED** — process exited, file empty → stop the wakeup, retry once, then render from Claude's sweep alone and say so; **hard kill** — elapsed ≥ 60 min (`codex-spawn.md` → ceilings) → `TaskStop`, stop the wakeup, render from one sweep. Never leave a wakeup or task armed after the report is written — a stale one re-invokes this command on finished work.
 
 ---
 

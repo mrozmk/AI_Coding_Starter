@@ -17,13 +17,10 @@
 #   2. wrong cwd — codex hangs in a non-trusted dir; always run with `-C <repo>`
 #      and `--skip-git-repo-check`.
 #
-# WHAT IT DELIBERATELY DOES NOT DO:
-#   - It does NOT force a reasoning effort. With no CODEX_EFFORT set, codex
-#     inherits the user's ~/.codex/config.toml default (xhigh) — by design:
-#     a review wants full model power. The killer was never xhigh; it was a
-#     too-low HARD_KILL ceiling murdering a slow-but-alive process. That ceiling
-#     lives in the command's polling loop, NOT here. Set CODEX_EFFORT only to
-#     override for a specific run.
+# WHAT IT DOES AND DOES NOT DO:
+#   - It REQUIRES CODEX_EFFORT and pins it on the command line — never inherited
+#     from ~/.codex/config.toml. Per-caller levels and the rationale:
+#     .agents/reference/codex-spawn.md → Effort matrix.
 #   - It does NOT poll, heartbeat, or kill. Lifecycle (ScheduleWakeup cadence,
 #     HARD_KILL backstop, TaskStop) stays in the command instructions — the
 #     wrapper only guarantees a correct spawn. Launch it with the harness'
@@ -43,8 +40,11 @@
 #                         combine read-only with SCHEMA — that combination has
 #                         hung in testing. When SCHEMA is set, leave SANDBOX
 #                         unset (the prompt enforces read-only instead).
-#   CODEX_EFFORT (optional) — model_reasoning_effort override (low|medium|high|
-#                         xhigh). Unset == inherit config default (xhigh).
+#                         workspace-write is the executor/fixer mode
+#                         (/execute codex, /check-implementation codex);
+#                         reviewers never set it.
+#   CODEX_EFFORT (required) — model_reasoning_effort (low|medium|high|xhigh).
+#                         Pinned per caller; see codex-spawn.md → Effort matrix.
 #
 # Stdout of codex is empty by design (result goes to OUT); $OUT.stdout captures
 # it only so nothing leaks to the terminal.
@@ -54,6 +54,12 @@ set -euo pipefail
 : "${PROMPT:?codex-bg.sh: PROMPT is required}"
 : "${OUT:?codex-bg.sh: OUT is required}"
 : "${LOG:?codex-bg.sh: LOG is required}"
+: "${CODEX_EFFORT:?codex-bg.sh: CODEX_EFFORT is required (low|medium|high|xhigh) — see .agents/reference/codex-spawn.md → Effort matrix}"
+case "$CODEX_EFFORT" in
+  low|medium|high|xhigh) ;;
+  # A typo would reach the API, fail with an empty OUT and be misread as "codex returned nothing".
+  *) echo "codex-bg.sh: CODEX_EFFORT='$CODEX_EFFORT' is not one of low|medium|high|xhigh" >&2; exit 2 ;;
+esac
 
 REPO="${REPO:-$PWD}"
 
@@ -62,12 +68,7 @@ if ! command -v codex >/dev/null 2>&1; then
   exit 127
 fi
 
-args=(exec --skip-git-repo-check -C "$REPO")
-
-# Reasoning: inherit config default (xhigh) unless explicitly overridden.
-if [ -n "${CODEX_EFFORT:-}" ]; then
-  args+=(-c "model_reasoning_effort=${CODEX_EFFORT}")
-fi
+args=(exec --skip-git-repo-check -C "$REPO" -c "model_reasoning_effort=${CODEX_EFFORT}")
 
 # Sandbox vs schema are mutually exclusive in practice (see contract note).
 if [ -n "${SCHEMA:-}" ]; then

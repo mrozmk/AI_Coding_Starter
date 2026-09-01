@@ -93,6 +93,7 @@ Append the anti-forcing clause verbatim (*"Calibrate to what is actually there. 
 Spawn through the shared wrapper, background, read-only, prose (no `SCHEMA`):
 
 ```bash
+CODEX_EFFORT=high \
 PROMPT="<the assembled prompt>" \
 OUT="$SCRATCH/quick-change-codex.final.md" \
 LOG="$SCRATCH/quick-change-codex.log" \
@@ -100,7 +101,7 @@ REPO="<repo-root>" \
 bash .claude/lib/codex-bg.sh
 ```
 
-**Lifecycle — do not invent one here.** Launch with `run_in_background: true` (never a trailing `&`) and follow the canonical polling contract in [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md), which carries this command's `FIRST_CHECK` / `POLL_INTERVAL` / `HARD_KILL` row. The ceiling is short by design — a plan review for a small change that runs past it is hung, not thorough — and hitting it fails **open**: continue without the opinion and report it, never stall the lane.
+**Lifecycle — do not invent one here.** Launch with `run_in_background: true` (never a trailing `&`) and follow the canonical polling contract in [.agents/reference/codex-spawn.md](../../.agents/reference/codex-spawn.md), which carries this command's `FIRST_CHECK` / `POLL_INTERVAL` / `HARD_KILL` row. The ceiling is short by design — a plan review for a small change that runs past it is hung, not thorough — and hitting it fails **open**: continue without the opinion and report it, never stall the lane. Effort is pinned `high` (the fast lane is fast because of its ceiling, not a weaker model). That contract includes the cancel-on-every-exit rule (`ScheduleWakeup stop: true`, polling loop step 3).
 
 **Wait for it. Do not start implementing while it runs** — the entire value of this phase is that no code exists yet, and a half-written implementation turns an open question into something you defend. Relay `STATUS:` lines from the `.log` (never read the whole log).
 
