@@ -49,3 +49,10 @@ This file is **application code only**. It is loaded whole when debugging, so ev
 ---
 
 <!-- No entries yet. First application-code lesson goes here (newest at the END). -->
+
+## 2026-09-06 — Approval verify rejected a spec because the author explained its answer
+
+**What failed:** live smoke run 8 (Claude author): `approval.mjs verify` refused the spec with "unusable **External docs required:**", so the receipt round-trip and both plan-feature assertions went red although the flow had passed in runs 5–6.
+**Root cause:** the parser accepted only a bare `yes`/`no`; the model wrote `yes — object-storage SDK reference …`, which any human author would also do.
+**Fix:** `harness-source/scripts/approval.mjs` reads the leading word (`/^(yes|no)\b/i`, template placeholder `yes | no` still rejected); tests in `tests/harness/approval.test.mjs`.
+**Rule:** a hard gate that parses model- or human-written prose must accept the value plus trailing rationale, and its unit test must include a line observed from a real author, not only the template.
