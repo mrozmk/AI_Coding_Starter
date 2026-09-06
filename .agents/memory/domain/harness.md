@@ -1,5 +1,5 @@
 ---
-status: populated
+status: empty
 description: Harness & workflow lessons — the AI toolchain itself (.claude/ commands, hooks, subagents, MCP), shell/git/CLI traps, and requirement-reading failures (design file, ticket, review comment). NOT application code — that stays in errors.md.
 created: 2026-08-31
 pinned: false
@@ -15,9 +15,4 @@ Domain file — load per [index.md](../index.md) `When to Read`. Add newest entr
 
 ---
 
-## 2026-09-06 — Live smoke evidence is bound to source bytes: batch fixes, then run once
-
-**What failed:** eight ~60-minute installed-host runs in two days; every fix to a fixture, an assertion or a doc changed `source_digest` and invalidated the previous evidence, so each fix cost another full run. Run 7 additionally died after the hour on an archive-slot collision that a pre-run check would have caught in a second.
-**Root cause:** running `smoke-harness.mjs --live` after every single correction instead of collecting corrections offline first; archiving evidence at the end of the run.
-**Fix:** `scripts/lib/smoke-live.mjs` archives previous evidence *before* the first model call into the first free numbered slot; evidence from a failed run is still written.
-**Rule:** after a red live run, read every receipt, fix everything offline, run the full offline gate, and only then spend one live run. Never launch a live run to check a single assertion.
+<!-- No entries yet. Flip `status: empty` to `status: populated` with the first one. -->
