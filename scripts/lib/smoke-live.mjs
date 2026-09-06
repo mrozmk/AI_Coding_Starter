@@ -56,7 +56,7 @@ function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 }
 
-const SPEC_TEXT = '# Design: Nightly export\n\n**Date:** 2026-09-05\n**Status:** Draft\n**External docs required:** no\n**Approval:** none — written by approval.mjs\n\n## Summary\n\nA nightly CSV export of orders to object storage.\n\n## Problem\n\nOps downloads reports by hand.\n\n## Solution\n\nCron-triggered worker writes `orders-YYYY-MM-DD.csv`. Rejected: manual export (error-prone).\n\n## Assumptions\n\n- Assumed UTC schedule (because the ops team is single-region).\n\n## Files\n\n- **New:** `src/export/job.ts`\n\n## Edge Cases\n\nEmpty day → header-only file.\n\n## Out of Scope\n\nIncremental exports.\n\n## Appetite & Cut Lines\n\n- **Appetite:** small\n- **Cut first:** retries\n\n## Independent Review\n\n(filled by the run)\n';
+const SPEC_TEXT = '# Design: Nightly export\n\n**Date:** 2026-09-05\n**Status:** Draft\n**External docs required:** no\n**Approval:** none — written by approval.mjs\n\n## Summary\n\nA nightly CSV export of orders to object storage.\n\n## Problem\n\nOps downloads reports by hand.\n\n## Solution\n\nCron-triggered worker writes `orders-YYYY-MM-DD.csv`. Rejected: manual export (error-prone).\n\n## Assumptions\n\n- Assumed UTC schedule (because the ops team is single-region).\n\n## Files\n\n- **New:** `src/export/job.ts`\n\n## Edge Cases\n\nEmpty day → header-only file.\n\n## Out of Scope\n\nIncremental exports.\n\n## Appetite & Cut Lines\n\n- **Appetite:** small\n- **Cut first:** retries\n\n## Independent Review\n\nWaived by the user on 2026-09-05 (synthetic live-smoke fixture): "no independent review for this fixture spec — proceed to planning". Recorded per references/review-contract.md → Recording.\n';
 export const SPEC_REL = '.agents/specs/2026-09-05-nightly-export.md';
 
 // Seven synthetic project roots. `empty` is a bare git repository — nothing pre-seeded.
@@ -118,15 +118,19 @@ export function makeFixtures(repoRoot) {
 }
 
 // Evidence is never overwritten in place: the previous JSON/MD move byte-for-byte under history/.
+// Never overwrite evidence in place: the previous run moves byte-for-byte into the
+// first free history slot `<version>-<date>[-N]`, so a second run on one day cannot collide.
 export function archivePreviousEvidence(repoRoot, { version, today = new Date().toISOString().slice(0, 10) }) {
   const dir = path.join(repoRoot, 'docs/harness');
+  const names = ['release-readiness.json', 'release-readiness.md'].filter((n) => fs.existsSync(path.join(dir, n)));
+  if (names.length === 0) return [];
+  let slot = path.join(dir, 'history', `${version}-${today}`);
+  for (let n = 2; fs.existsSync(slot); n++) slot = path.join(dir, 'history', `${version}-${today}-${n}`);
+  fs.mkdirSync(slot, { recursive: true });
   const moved = [];
-  for (const name of ['release-readiness.json', 'release-readiness.md']) {
+  for (const name of names) {
     const src = path.join(dir, name);
-    if (!fs.existsSync(src)) continue;
-    const dest = path.join(dir, 'history', `${version}-${today}`, name);
-    if (fs.existsSync(dest)) throw new Error(`history slot already used: ${dest}`);
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    const dest = path.join(slot, name);
     fs.copyFileSync(src, dest);
     if (sha256Hex(fs.readFileSync(dest)) !== sha256Hex(fs.readFileSync(src))) throw new Error('archive copy differs');
     fs.rmSync(src);
@@ -272,7 +276,7 @@ async function hostFlow(host, root, fixtures, { evidence, receiptsDir, opts = {}
   // What a non-interactive run can prove: the profile's continuation never fires without the user's
   // approval. "Exactly one plan after an interactive approval" needs a human at the approval point and
   // is NOT claimed by this assertion; plan-feature-writes-plan-no-execute covers the plan itself.
-  assertRes('continuation-gated-by-approval', contPlans.length === 0 && !contApproved && /approv|required-decision|needs-context|missing-file/i.test(cont.text) && srcCount(project) === srcBefore && git(project, ['rev-parse', 'HEAD']) === before, `profile after_brainstorm=plan-feature without an approval: plans=${contPlans.length} approved=${contApproved} names-approval-gate=${/approv|required-decision|needs-context|missing-file/i.test(cont.text)} src-untouched=${srcCount(project) === srcBefore} exit=${cont.status} (automatic continuation after an interactive approval is not provable non-interactively and is not claimed)`, rec('brainstorm-continuation', `${cont.text}\n---stderr---\n${cont.stderr}\nplans=${contPlans.join(',')}`));
+  assertRes('continuation-gated-by-approval', contPlans.length === 0 && !contApproved && srcCount(project) === srcBefore && git(project, ['rev-parse', 'HEAD']) === before, `profile after_brainstorm=plan-feature without an approval: plans=${contPlans.length} approved=${contApproved} stopped-at=${/approv/i.test(cont.text) ? 'approval point' : /\?/.test(cont.text) ? 'a question to the user' : 'unknown'} src-untouched=${srcCount(project) === srcBefore} exit=${cont.status} (automatic continuation after an interactive approval is not provable non-interactively and is not claimed)`, rec('brainstorm-continuation', `${cont.text}\n---stderr---\n${cont.stderr}\nplans=${contPlans.join(',')}`));
   for (const f of contPlans) fs.rmSync(path.join(project, '.agents/plans/active', f));
 
   hostSkill(host, fixtures.projects['review-opt-out'], invoke('prime'));
@@ -377,8 +381,8 @@ export async function runLiveSmoke({ repoRoot, opts }) {
   const { harness, rendered, sourceDigest } = renderAll(repoRoot);
   const bundleDir = path.resolve(opts.bundle ?? `dist/harness-${harness.version}`);
   const receiptsDir = path.resolve(opts['receipts-dir'] ?? path.join(os.tmpdir(), `harness-live-receipts-${Date.now()}`));
-  // A candidate bundle is exactly what this run tests; its own "not a release" note is expected here.
-  const bundleErrors = fs.existsSync(bundleDir) ? validateBundle(bundleDir).filter((e) => !/^CANDIDATE bundle/.test(e)) : [`bundle missing: ${bundleDir} — run build-harness --export first`];
+  // An unverified bundle is exactly what this run tests; that note is expected here.
+  const bundleErrors = fs.existsSync(bundleDir) ? validateBundle(bundleDir).filter((e) => !/^evidence not verified/.test(e)) : [`bundle missing: ${bundleDir} — run build-harness --export first`];
   const release = bundleErrors.length === 0 ? readJson(path.join(bundleDir, 'harness-release.json')) : { name: harness.name, version: harness.version, source_digest: sourceDigest };
   const evidence = newEvidence({
     kind: 'release-readiness', mode: 'live',
@@ -392,6 +396,8 @@ export async function runLiveSmoke({ repoRoot, opts }) {
   addAssertion(evidence, { name: 'bundle:validates', required: true, outcome: bundleErrors.length === 0 ? 'pass' : 'fail', observation: bundleErrors.join('; ') || `bundle ${release.version} source ${release.source_digest.slice(0, 12)}…`, receipt_sha256: rb });
 
   const fixtures = makeFixtures(repoRoot);
+  const archived = archivePreviousEvidence(repoRoot, { version: harness.version });
+  if (archived.length) evidence.notes.push(`previous evidence archived byte-for-byte: ${archived.join(', ')}`);
   const rf = addReceipt(evidence, receiptsDir, 'fixtures.json', JSON.stringify(Object.keys(fixtures.projects)));
   addAssertion(evidence, { name: 'fixtures:seven-project-types', required: true, outcome: Object.keys(fixtures.projects).length === FIXTURE_NAMES.length ? 'pass' : 'fail', observation: `${Object.keys(fixtures.projects).join(' · ')} created fresh with git history`, receipt_sha256: rf });
   evidence.inputs.fixtures = Object.keys(fixtures.projects);
@@ -421,8 +427,6 @@ export async function runLiveSmoke({ repoRoot, opts }) {
   evidence.receipts.files.push(...probe.evidence.receipts.files.filter((f) => !evidence.receipts.files.some((e) => e.name === f.name)));
   evidence.notes.push(...probe.evidence.notes, `installed roots: ${JSON.stringify(roots)}`, 'External policy context: admin-managed CLI settings remain enforced.');
 
-  const archived = archivePreviousEvidence(repoRoot, { version: harness.version });
-  if (archived.length) evidence.notes.push(`previous evidence archived byte-for-byte: ${archived.join(', ')}`);
   const out = path.join(repoRoot, 'docs/harness/release-readiness.json');
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, `${JSON.stringify(evidence, null, 2)}\n`);

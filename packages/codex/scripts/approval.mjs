@@ -87,7 +87,9 @@ export function verifyApproval({ projectRoot, spec }) {
   const status = text.match(STATUS_RE)?.[1]?.trim() ?? null;
   if (status !== 'Approved') errors.push(`spec status is ${status ?? 'missing'}, not Approved`);
   // plan-feature's research step keys off this field; a spec without it cannot say whether docs were needed.
-  const docs = text.match(/^\*\*External docs required:\*\*[ \t]*(.*)$/m)?.[1]?.trim() ?? null;
+  // Authors append a rationale after the value ("yes — SDK reference for …"); only the leading word decides.
+  const docsLine = text.match(/^\*\*External docs required:\*\*[ \t]*(.*)$/m)?.[1]?.trim() ?? null;
+  const docs = docsLine?.match(/^(yes|no)\b(?![ \t]*\|)/i)?.[1]?.toLowerCase() ?? docsLine;
   if (!['yes', 'no'].includes(docs)) errors.push(`spec ${docs === null ? 'lacks' : `has an unusable`} **External docs required:** ${docs === null ? '(yes | no)' : `(${docs})`} — fix it in brainstorm or by hand, then re-approve`);
   const receiptRel = receiptPathFor(rel);
   const receiptAbs = path.join(root, receiptRel);

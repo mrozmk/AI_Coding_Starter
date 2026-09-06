@@ -6,7 +6,7 @@ The shared contract between `brainstorm`, `plan-feature`, the execution/verifica
 
 - Path `.agents/specs/YYYY-MM-DD-<kebab-topic>.md`, structure from `templates/brainstorm-spec.template.md`.
 - `**Status:**` is `Draft` at birth and becomes `Approved` only by the user's decision at the brainstorm approval point.
-- `**External docs required:** yes | no` is mandatory; `approval.mjs verify` refuses a spec without a usable value, so plan-feature never plans from a spec that cannot say whether research was needed.
+- `**External docs required:** yes | no` is mandatory (a rationale may follow the value, e.g. `yes — SDK reference for …`; the untouched template placeholder is not a value); `approval.mjs verify` refuses a spec without a usable value, so plan-feature never plans from a spec that cannot say whether research was needed.
 - Approval identity is **external**: `scripts/approval.mjs stamp` applies only the declared metadata transition (`**Status:** Approved`, `**Approval:** receipt \`.agents/approvals/<spec>.approval.json\` — approved by the user on <date>`), hashes the final bytes and writes the receipt (`spec`, `sha256`, `bytes`, `draft_sha256`, `approved_on`, `decision`). A spec never contains its own whole-file hash. `plan-feature` runs `approval.mjs verify`: Draft, missing/invalid receipt, an interrupted stamp or any byte changed after approval → refused. An editorial edit after approval needs a new stamp (user re-approves the bytes), not automatically another substantive review.
 - `## Independent Review` records every review round (see `review-contract.md`). A blocked opinion is recorded as blocked, with the user's explicit waiver text if one was given. It is never rewritten as `ship`.
 

@@ -135,14 +135,14 @@ The planning half of the workflow (`prime`, `brainstorm`, `plan-feature`, `setup
 node scripts/check-harness.mjs --all        # syntax · inventory · links · tests · generated drift
 node scripts/build-harness.mjs              # packages/{claude,codex} + both marketplace manifests
 node scripts/smoke-harness.mjs --offline    # installed-cache contracts without installing anything
-node scripts/build-harness.mjs --export dist/harness-0.1.0 --candidate   # candidate bundle; drop --candidate only with green, current live evidence
+node scripts/build-harness.mjs --export dist/harness-0.1.0   # bundle; harness-release.json says whether live evidence is verified
 
 # install from the exported bundle (operator actions)
 claude plugin marketplace add dist/harness-0.1.0 --scope project && claude plugin install harness@ai-coding-starter --scope project
 codex  plugin marketplace add dist/harness-0.1.0 && codex plugin add harness@ai-coding-starter --json
 ```
 
-Runbook, capability matrix and live evidence: [docs/harness/](docs/harness/) — `installation.md`, `capabilities.md`, `reviewer-capabilities.json`, `release-readiness.json` (five installed-host runs recorded; the bundle ships as a **candidate** — see `capabilities.md` → T16 status). The packaged copy of the runbook (`references/installation.md`) also defines the `migrated` record that keeps `/maintain:sync-from-starter` from re-offering replaced legacy files.
+Runbook, capability matrix and live evidence: [docs/harness/](docs/harness/) — `installation.md`, `capabilities.md`, `reviewer-capabilities.json`, `release-readiness.json` (eight installed-host runs recorded; the bundle ships **unverified** until a run on the current bytes is green — see `capabilities.md` → T16 status). The packaged copy of the runbook (`references/installation.md`) also defines the `migrated` record that keeps `/maintain:sync-from-starter` from re-offering replaced legacy files.
 
 ## Requirements
 

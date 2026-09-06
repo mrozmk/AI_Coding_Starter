@@ -21,7 +21,7 @@ export const EVIDENCE_DOCS = [
 
 const releaseSchema = {
   type: 'object',
-  required: ['schema_version', 'name', 'version', 'source_digest', 'packages', 'tested_cli', 'evidence', 'git'],
+  required: ['schema_version', 'name', 'version', 'source_digest', 'packages', 'tested_cli', 'evidence', 'evidence_verified', 'git'],
   properties: {
     schema_version: { const: 1 },
     version: { type: 'string', pattern: '^\\d+\\.\\d+\\.\\d+$' },
@@ -34,6 +34,7 @@ const releaseSchema = {
       },
     },
     evidence: { type: 'array', minItems: 1, items: { type: 'object', required: ['path', 'sha256'] } },
+    evidence_verified: { type: 'boolean' },
     git: { type: 'object', required: ['commit', 'dirty'] },
   },
 };
@@ -47,10 +48,10 @@ export function gitProvenance(repoRoot) {
   return { commit, branch: run(['branch', '--show-current']), dirty: status === null ? null : status.length > 0 };
 }
 
-// `candidate: true` exports before the live run exists: evidence docs that are not there yet are
-// listed under `evidence_missing`, so the bundle is usable for the installed-host validation but
-// says on its face that it is untested.
-export function exportBundle({ repoRoot, destDir, harness, rendered, candidate = false, requiredAssertions = {} }) {
+// `evidenceVerified` is the caller's verdict on the live evidence (passing + current). When false
+// the bundle carries no live evidence at all and says so in harness-release.json; it is still a
+// complete, installable package for the installed-host validation.
+export function exportBundle({ repoRoot, destDir, harness, rendered, evidenceVerified = false, requiredAssertions = {} }) {
   const dest = path.resolve(destDir);
   if (fs.existsSync(dest)) {
     const { files } = listFiles(dest);
@@ -75,10 +76,10 @@ export function exportBundle({ repoRoot, destDir, harness, rendered, candidate =
   const evidenceMissing = [];
   for (const rel of EVIDENCE_DOCS) {
     const src = path.join(repoRoot, rel);
-    // A candidate carries no live evidence at all: whatever exists belongs to earlier bytes.
+    // Unverified evidence is not shipped: whatever exists belongs to earlier bytes or failed.
     const live = /release-readiness|reviewer-capabilities/.test(rel);
-    if (!fs.existsSync(src) || (candidate && live)) {
-      if (!candidate) throw new Error(`bundle export needs ${rel} — produce it first (live run), or export with --candidate`);
+    if (!fs.existsSync(src) || (!evidenceVerified && live)) {
+      if (evidenceVerified) throw new Error(`bundle export needs ${rel} — produce it first (live run)`);
       evidenceMissing.push(rel);
       continue;
     }
@@ -95,7 +96,8 @@ export function exportBundle({ repoRoot, destDir, harness, rendered, candidate =
     tested_cli: harness.runtime,
     evidence,
     required_assertions: requiredAssertions,
-    ...(candidate ? { candidate: true, evidence_missing: evidenceMissing, note: 'CANDIDATE bundle: not validated on an installed host; the listed evidence does not exist yet' } : {}),
+    evidence_verified: evidenceVerified,
+    ...(evidenceVerified ? {} : { evidence_missing: evidenceMissing, note: 'live evidence not verified for these bytes: not validated on an installed host' }),
     git: gitProvenance(repoRoot),
   };
   writeBytes(path.join(dest, RELEASE_FILE), `${JSON.stringify(release, null, 2)}\n`);
@@ -135,15 +137,15 @@ export function validateBundle(bundleDir) {
     const abs = path.join(dir, ev.path);
     if (!fs.existsSync(abs)) { errors.push(`evidence missing: ${ev.path}`); continue; }
     if (sha256Hex(fs.readFileSync(abs)) !== ev.sha256) { errors.push(`evidence hash mismatch: ${ev.path}`); continue; }
-    if (!ev.path.endsWith('.json') || release.candidate) continue;
+    if (!ev.path.endsWith('.json') || !release.evidence_verified) continue;
     // Integrity is not success: a bundle that ships failed or stale evidence is not a tested bundle.
     let doc;
     try { doc = readJson(abs); } catch (e) { errors.push(`evidence unreadable: ${ev.path}: ${e.message}`); continue; }
     const kind = ev.path.includes('release-readiness') ? 'release-readiness' : ev.path.includes('reviewer-capabilities') ? 'reviewer-capabilities' : null;
     const expectedInputs = kind === 'release-readiness' ? { source_digest: release.source_digest, 'packages.claude.payload_digest': release.packages.claude.payload_digest, 'packages.codex.payload_digest': release.packages.codex.payload_digest } : {};
     errors.push(...validateEvidence(doc, { kind, mode: 'live', expectedInputs, requiredAssertions: (release.required_assertions?.[kind] ?? []) }).map((e) => `${ev.path}: ${e}`));
-    if (!release.candidate && !doc.assertions?.some((a) => a.required)) errors.push(`${ev.path}: no required assertion at all`);
+    if (!doc.assertions?.some((a) => a.required)) errors.push(`${ev.path}: no required assertion at all`);
   }
-  if (release.candidate) errors.push('CANDIDATE bundle: not validated on an installed host — not a release');
+  if (!release.evidence_verified) errors.push('evidence not verified: this bundle was not validated on an installed host');
   return errors;
 }

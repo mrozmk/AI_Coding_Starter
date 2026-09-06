@@ -146,15 +146,15 @@ test('export writes a bundle whose marketplaces resolve inside it and validate',
   }
   const { harness, rendered } = renderAll(repo);
   const dest = path.join(tmp(), 'bundle');
-  const candidate = exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, candidate: true });
-  assert.equal(candidate.release.candidate, true);
-  assert.ok(candidate.release.evidence_missing.some((p) => /release-readiness\.json/.test(p)), 'a candidate never carries live evidence, stale or not');
+  const unverified = exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, evidenceVerified: false });
+  assert.equal(unverified.release.evidence_verified, false);
+  assert.ok(unverified.release.evidence_missing.some((p) => /release-readiness\.json/.test(p)), 'an unverified bundle never carries live evidence, stale or not');
   assert.ok(!fs.existsSync(path.join(dest, 'docs/harness/release-readiness.json')));
-  assert.deepEqual(validateBundle(dest).filter((e) => !/^CANDIDATE bundle/.test(e)), [], 'candidate = package integrity only; earlier failed evidence cannot poison it');
-  assert.ok(validateBundle(dest).some((e) => /CANDIDATE bundle/.test(e)), 'a candidate never validates as a release');
+  assert.deepEqual(validateBundle(dest).filter((e) => !/^evidence not verified/.test(e)), [], 'unverified = package integrity only; earlier failed evidence cannot poison it');
+  assert.ok(validateBundle(dest).some((e) => /evidence not verified/.test(e)));
   // A "tested" bundle needs passing, current evidence: fixture JSON that is not evidence is refused.
   assert.ok(validateBundle(path.join(tmp(), 'nope')).length > 0);
-  const { release } = exportBundle({ repoRoot: repo, destDir: dest, harness, rendered });
+  const { release } = exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, evidenceVerified: true });
   assert.equal(release.version, '0.0.1');
   const errors = validateBundle(dest);
   assert.ok(errors.some((e) => /release-readiness\.json/.test(e)), `integrity alone is not success: ${errors.join('; ')}`);
@@ -162,22 +162,22 @@ test('export writes a bundle whose marketplaces resolve inside it and validate',
   const good = (kind, inputs) => { const ev = newEvidence({ kind, mode: 'live', cli: {}, models: {}, effort: {}, configDigest: '0'.repeat(64), inputs }); const r = addReceipt(ev, path.join(repo, 'receipts'), `${kind}.json`, '{}'); addAssertion(ev, { name: 'x:ok', outcome: 'pass', observation: 'o', receipt_sha256: r }); return ev; };
   fs.writeFileSync(path.join(repo, 'docs/harness/release-readiness.json'), JSON.stringify(good('release-readiness', { source_digest: rendered.claude.marker.source_digest, packages: { claude: { payload_digest: rendered.claude.marker.payload_digest }, codex: { payload_digest: rendered.codex.marker.payload_digest } } })));
   fs.writeFileSync(path.join(repo, 'docs/harness/reviewer-capabilities.json'), JSON.stringify(good('reviewer-capabilities', {})));
-  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, requiredAssertions: { 'release-readiness': ['x:ok'], 'reviewer-capabilities': ['x:ok'] } });
+  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, evidenceVerified: true, requiredAssertions: { 'release-readiness': ['x:ok'], 'reviewer-capabilities': ['x:ok'] } });
   assert.deepEqual(validateBundle(dest), []);
   const failed = JSON.parse(fs.readFileSync(path.join(repo, 'docs/harness/release-readiness.json'), 'utf8'));
   failed.assertions[0].outcome = 'fail';
   fs.writeFileSync(path.join(repo, 'docs/harness/release-readiness.json'), JSON.stringify(failed));
-  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, requiredAssertions: { 'release-readiness': ['x:ok'] } });
+  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, evidenceVerified: true, requiredAssertions: { 'release-readiness': ['x:ok'] } });
   assert.ok(validateBundle(dest).some((e) => /x:ok/.test(e)), 'a failed required assertion is refused even with matching hashes');
-  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, requiredAssertions: { 'release-readiness': ['x:ok'] } });
+  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, evidenceVerified: true, requiredAssertions: { 'release-readiness': ['x:ok'] } });
   fs.writeFileSync(path.join(repo, 'docs/harness/release-readiness.json'), JSON.stringify(good('release-readiness', { source_digest: rendered.claude.marker.source_digest, packages: { claude: { payload_digest: rendered.claude.marker.payload_digest }, codex: { payload_digest: rendered.codex.marker.payload_digest } } })));
-  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, requiredAssertions: { 'release-readiness': ['x:ok'], 'reviewer-capabilities': ['x:ok'] } });
+  exportBundle({ repoRoot: repo, destDir: dest, harness, rendered, evidenceVerified: true, requiredAssertions: { 'release-readiness': ['x:ok'], 'reviewer-capabilities': ['x:ok'] } });
   assert.deepEqual(validateBundle(dest), []);
   const mp = JSON.parse(fs.readFileSync(path.join(dest, '.claude-plugin/marketplace.json'), 'utf8'));
   assert.equal(mp.plugins[0].source, './packages/claude');
   fs.appendFileSync(path.join(dest, 'packages/claude/references/demo.md'), 'x');
   assert.ok(validateBundle(dest).some((e) => /content changed|byte length/.test(e)));
-  assert.throws(() => exportBundle({ repoRoot: repo, destDir: path.join(dest, 'packages'), harness, rendered }), /refusing to export/);
+  assert.throws(() => exportBundle({ repoRoot: repo, destDir: path.join(dest, 'packages'), harness, rendered, evidenceVerified: true }), /refusing to export/);
 });
 
 test('marketplace manifests use relative ./ sources and the shared marketplace name', () => {

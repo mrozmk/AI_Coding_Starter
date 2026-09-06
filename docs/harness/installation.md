@@ -1,13 +1,13 @@
-# Harness plugin — installation and release runbook (candidate 0.1.0)
+# Harness plugin — installation and release runbook (0.1.0)
 
 > Operator document for the AI Coding Starter release bundle. The packaged, version-pinned copy of the same procedure ships inside both plugins as `references/installation.md` (install, bind, activation, update, rollback, migration record); this file adds the release-engineering steps and the current status. Every command below is a human action.
 
 ## Status — read this first
 
-- **Candidate frozen:** `release-candidate.json` records the version and the exact source/payload digests a live run must match.
-- **Installed-host validation (T16) ran five times on both CLIs** (2026-09-05/06; `history/*-live-run*`, current `release-readiness.json` = run 5). Procedures, review in both directions and all 24 hook scenarios passed on both hosts; Codex hooks trusted via `/hooks`. The remaining five required `fail` rows of run 5 were assessed on receipts as over-literal assertions (since corrected and replayed green on the same receipts) plus one transient provider error (re-probed green, `history/0.1.0-2026-09-06-probe-run2-codex/`). The operator closed T16 on that basis without a sixth run — see `capabilities.md` → T16 status.
-- **Consequence:** the evidence file predates the assertion fixes, so `build-harness.mjs --export` without `--candidate` refuses (stale `source_digest`, one required `fail`). The shipped bundle is a **candidate**; a tested release needs one full run on the current bytes. The plugin is *planning + review + guard portability verified*, **hooks not activated in any real project** — do not migrate a real project, the legacy `.claude/` hooks stay registered.
-- **Reviewer capability evidence:** `reviewer-capabilities.json` was recorded against earlier adapter bytes (`preflight --verify-capabilities` reports a stale digest); the isolation assertions were re-proven for Codex on 2026-09-06 and for both hosts in every live run's `denial:*` rows.
+- **Version 0.1.0** (`harness-source/harness.json`). Identity of any build is its `harness-build.json` (source + payload digests); a bundle's `harness-release.json` repeats them and says whether live evidence is **verified** (`evidence_verified: true` only when both evidence files exist, every required assertion passed and their digests match the exported bytes). There is no separate identity file.
+- **Installed-host validation (T16): eight runs on both CLIs** (2026-09-05/06; history under `history/`, current `release-readiness.json` = run 8: 77 pass). **Codex: every required assertion passed** — review in both directions, all hook scenarios, `hooks-fired` and the operator's `hooks-trusted` acknowledgement, `$prime` on an empty repository, plan-feature, continuation gating. **Claude Code: three required rows red from one defect** — the live author wrote `**External docs required:** yes — <rationale>` and `approval.mjs verify` accepted only a bare `yes`/`no`, so the receipt round-trip failed and the two downstream plan-feature rows (write plan, refuse post-approval mutation) had no approved spec to work on; both had passed in runs 5–6. The parser now reads the leading word (unit-tested against the observed line). Every earlier Claude required row passed in run 8, including hooks firing in a real session.
+- **Consequence:** the parser fix changes the source bytes after run 8, so `build-harness.mjs --export` produces an **unverified** bundle (`evidence_verified: false`, no live evidence shipped). One more full live run on the current bytes is the only remaining step to a verified bundle; the operator decided (2026-09-06) to stop the run loop here. The plugin is *planning + review + guard portability implemented and verified on both hosts*, **hooks not activated in any real project** — do not migrate a real project yet.
+- **Reviewer capability evidence:** `reviewer-capabilities.json` is stale against the current adapter/runner bytes (`preflight --verify-capabilities` says so); the same isolation assertions are re-proven in every live run's `denial:*` rows.
 
 ## What you get
 
@@ -15,23 +15,22 @@ Two natively installable plugins built from one source (`harness-source/`): `pac
 
 Runtime: Node ≥ 22 (tested 24.10.0), Claude Code 2.1.257 and Codex CLI 0.153.4 (the versions the live run must record), Git. Legacy `.claude/` Bash hooks keep their `jq` requirement; the ported Node hooks need none.
 
-## Produce and verify the candidate (release engineer)
+## Produce and verify a build (release engineer)
 
 ```bash
 node scripts/check-harness.mjs --all                         # syntax, inventory, links, contracts (parity ledgers), tests, generated drift
 node scripts/smoke-harness.mjs --offline                     # package bytes, marketplaces, namespaces, installed-copy scripts and hook runner, locator
 node scripts/build-harness.mjs --parity-docs                 # docs/harness/{instruction,hook}-parity.md from the ledgers
-node scripts/build-harness.mjs --freeze                      # docs/harness/release-candidate.json — identities T16 must match
 ```
 
-Any source change after the freeze changes `source_digest`; re-freeze and treat every earlier live evidence as invalid for the new bytes.
+Any source change changes `source_digest`; every earlier live evidence is then invalid for the new bytes by construction (`--verify-evidence` compares digests).
 
-## Installed-host validation — T16 (operator gate; five runs recorded, see Status)
+## Installed-host validation — T16 (operator gate; eight runs recorded, see Status)
 
 Requires separate authorization for: creating synthetic workspaces under `$TMPDIR`, adding a local marketplace and installing the plugin in both CLIs (`--scope local` on Claude Code; user-level on Codex), trusting the plugin hooks in each host, and live model calls (both reviewers, both authors). Nothing here touches a real project.
 
 ```bash
-node scripts/build-harness.mjs --export dist/harness-0.1.0
+node scripts/build-harness.mjs --export dist/harness-0.1.0   # unverified until the run below is green
 node scripts/check-harness.mjs --bundle dist/harness-0.1.0
 # 1. reviewer probe (archive the old evidence first — never overwrite in place)
 mkdir -p docs/harness/history/0.1.0-<date> && git mv docs/harness/reviewer-capabilities.json docs/harness/reviewer-capabilities.md docs/harness/history/0.1.0-<date>/

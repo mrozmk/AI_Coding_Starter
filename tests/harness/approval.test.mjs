@@ -99,4 +99,11 @@ test('a spec without a usable External docs required line never verifies', () =>
     assert.equal(v.ok, false, variant);
     assert.ok(v.errors.some((e) => /External docs required/.test(e)), `${variant}: ${v.errors}`);
   }
+  // a value with a trailing rationale is usable (observed from a live author, run 8); the untouched template placeholder is not
+  for (const [line, ok] of [['**External docs required:** yes — object-storage SDK reference (no `.agents/reference/` doc yet)\n', true], ['**External docs required:** No\n', true], ['**External docs required:** yes | no\n', false]]) {
+    const root = project();
+    fs.writeFileSync(path.join(root, SPEC), DRAFT.replace('**External docs required:** no\n', line));
+    stampApproval({ projectRoot: root, spec: SPEC, expectedSha: sha256Hex(fs.readFileSync(path.join(root, SPEC))), decision: 'user said approve', date: '2026-09-05', consent: true });
+    assert.equal(verifyApproval({ projectRoot: root, spec: SPEC }).ok, ok, line);
+  }
 });

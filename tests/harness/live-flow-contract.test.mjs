@@ -113,5 +113,7 @@ test('hook scenarios run through the runner offline against a synthetic project 
   assert.equal(fs.readFileSync(path.join(repoCopy, moved[0]), 'utf8'), '{"old":true}\n');
   assert.ok(!fs.existsSync(path.join(repoCopy, 'docs/harness/release-readiness.json')));
   fs.writeFileSync(path.join(repoCopy, 'docs/harness/release-readiness.json'), '{"new":true}\n');
-  assert.throws(() => archivePreviousEvidence(repoCopy, { version: '0.1.0', today: '2026-09-05' }), /history slot already used/);
+  const again = archivePreviousEvidence(repoCopy, { version: '0.1.0', today: '2026-09-05' });
+  assert.deepEqual(again, ['docs/harness/history/0.1.0-2026-09-05-2/release-readiness.json'], 'a taken slot yields the next numbered one, never an overwrite');
+  assert.equal(fs.readFileSync(path.join(repoCopy, moved[0]), 'utf8'), '{"old":true}\n', 'the earlier archive is untouched');
 });
