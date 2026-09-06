@@ -1,0 +1,15 @@
+{
+  "name": "ai-coding-starter",
+  "interface": {
+    "displayName": "AI Coding Starter harness"
+  },
+  "plugins": [
+    {
+      "name": "harness",
+      "source": {
+        "source": "local",
+        "path": "./packages/codex"
+      }
+    }
+  ]
+}

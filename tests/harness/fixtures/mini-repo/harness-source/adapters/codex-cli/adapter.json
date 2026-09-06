@@ -1,0 +1,1 @@
+{ "schema_version": 1, "host": "codex", "cli": "codex", "skill_frontmatter": {}, "skill_frontmatter_passthrough": [], "skill_metadata": { "allow_implicit_invocation": false } }

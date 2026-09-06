@@ -1,0 +1,46 @@
+---
+status: empty
+---
+
+# User Profile — per-developer (TEMPLATE)
+
+This is the **committed template**. Every developer on the project starts from the same file, then
+keeps their own filled-in copy **locally** — `.agents/memory/user-profile.md` is gitignored, so your
+notes about how *you* work never land in someone else's checkout.
+
+**First-time setup (run once after cloning):**
+
+```bash
+cp .agents/memory/user-profile.md.example .agents/memory/user-profile.md
+```
+
+Then fill in the sections below in your copy and flip the frontmatter to `status: populated`.
+Until it says `populated`, every command that would load it skips it (CLAUDE.md → Automatic Behaviors),
+so an unfilled profile costs nothing.
+
+> Solo project? Same flow — the copy just happens to be the only one.
+
+---
+
+## Communication style
+
+- <e.g. terse vs. detailed; tolerates typos; preferred response language>
+- <what they mean by "review"/"compare"/"what do you think" — praise vs. critique>
+
+## Response expectations
+
+- <filler tolerance; concrete numbers/paths vs. generalities; tables vs. prose>
+- <fact-check external claims before trusting them? recommendation at the end?>
+
+## Technical decisions
+
+- <MVP-first vs. thorough; autonomy level: propose+approve vs. auto-act>
+- <appreciates smaller-than-asked scope? wants plan confirmation before building?>
+
+## What to avoid
+
+- <docstrings/comments unless asked? emoji? out-of-scope refactors? spawning agents?>
+
+## Workflow preferences
+
+- <where plans live; commit conventions; how project-brief is refreshed>

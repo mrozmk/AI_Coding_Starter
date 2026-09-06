@@ -1,0 +1,1 @@
+{ "schema_version": 1, "host": "claude", "cli": "claude", "skill_frontmatter": { "disable-model-invocation": true }, "skill_frontmatter_passthrough": ["argument-hint"], "manifest_keywords": ["fixture"] }

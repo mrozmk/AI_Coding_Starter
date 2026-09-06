@@ -40,6 +40,8 @@ clone. The following are seeding artifacts; re-checking or re-adding them on eve
 but **if it doesn't, do not add them, and never make them a task or a question:**
 
 > Profile-excluded paths (`.claude/.starter-sync.json → excluded`) follow the same rule — see the Critical rules exception below; the list lives in that file, not here.
+>
+> **Migrated paths and configuration entries.** A project that adopted the `harness` plugin records each replaced legacy file in `.claude/.starter-sync.json → migrated` (`path`, `replaced_by`, `release`, `deleted`, `date`) and each replaced hook / permission / MCP entry in `→ migrated_config` (`file`, `kind`, `identity`, `replaced_by`, `release`). Field schema: the plugin's `references/installation.md → Migration record`. A migrated path is an **intentional deletion**: 3-way sees "in base, upstream, absent locally" and offers nothing — no task, no re-add. A migrated config identity is skipped by every Category-B union, because a file-level exclusion cannot stop a hook or permission from being re-added. `sync-filter.mjs` (in the installed plugin's `scripts/`, or `harness-source/scripts/sync-filter.mjs` in the starter checkout — a legacy-only downstream needs no plugin) implements both rules, the profile-aware union, the activation preview (one owner per hook/command; `recordMigration` only after a verified replacement) and the rollback plan. The starter itself keeps `migrated: []`, `migrated_config: []` and null provenance — it is upstream, not its own downstream.
 
 - **`.claude/README.md`** (framework guide) and **`.claude/STARTER-LICENSE`** — listed as category A
   above only for the case where they already exist. In a project that omitted them at bootstrap, leave
@@ -56,7 +58,7 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 
 ### Category B — **merge carefully**, show the diff and ask first
 
-- `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.ask` / `permissions.deny` entries from the starter and the project (all three tiers — `ask` is a first-class tier, not an afterthought). Do not remove project entries that the starter lacks. Show me the diff before writing.
+- `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.ask` / `permissions.deny` entries from the starter and the project (all three tiers — `ask` is a first-class tier, not an afterthought). Do not remove project entries that the starter lacks. **Skip every identity listed in `.starter-sync.json → migrated_config`** (permissions and hooks the plugin replaced) — `sync-filter.mjs union` does exactly this and lists what it added and skipped. Show me the diff before writing.
 - `.agents/memory/index.md` — take `Quick Reference` and `Loader Convention` from the starter, but `When to Read` may have project-specific rows appended by `/setup:create-CLAUDE_MD`. Strategy: overwrite with the starter's structure, then restore the project rows (the ones the starter lacks).
 - `.agents/memory/*.md` headers (append-mode logs) — the starter's convention is **newest at the END**. Syncing the header changes the instruction only; existing entries are never reordered. A downstream that still has newest-at-TOP files either reverses them once by hand or accepts mixed order — both are fine, `cleanup-workflow` parses dated `##` blocks in any order.
 - `.gitignore` — append the entries missing from the starter (e.g. `.claude/audit.log`, `.env`, `.agents/memory/archive/`); **do not remove** project ones.
@@ -136,7 +138,7 @@ chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-
 
 - NEVER remove entries from `.claude/settings.json` that the starter lacks — those are project permissions
 - NEVER overwrite category C files
-- NEVER delete project slash commands from `.claude/commands/` — report and ask. **Exception:** paths in `.claude/.starter-sync.json → excluded` were pruned by `/setup:start` after explicit confirmation — never re-add them and never create a task for them
+- NEVER delete project slash commands from `.claude/commands/` — report and ask. **Exception:** paths in `.claude/.starter-sync.json → excluded` were pruned by `/setup:start` after explicit confirmation, and paths in `→ migrated` were replaced by the `harness` plugin (intentional deletion) — never re-add either and never create a task for them; never re-add a `→ migrated_config` identity through a union
 - NEVER commit automatically — show the message and wait for `/commit`
 - Always dry-run before apply
 - NEVER check or add bootstrap-only artifacts (`.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, `create-CLAUDE_MD` as a bootstrap driver) in an existing project — see the "Bootstrap-only" subsection in Step 2

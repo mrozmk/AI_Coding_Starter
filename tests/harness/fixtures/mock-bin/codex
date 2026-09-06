@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+// Mock `codex exec` for offline adapter tests. Behaviour selected by MOCK_MODE.
+const fs = require('node:fs');
+const mode = process.env.MOCK_MODE || 'ok';
+const args = process.argv.slice(2);
+if (args[0] === 'login') { process.stdout.write('Logged in using ChatGPT\n'); process.exit(0); }
+if (args[0] === '--version') { process.stdout.write('codex-cli 9.9.9\n'); process.exit(0); }
+const outIdx = args.indexOf('--output-last-message');
+const outFile = outIdx !== -1 ? args[outIdx + 1] : null;
+let stdin = '';
+process.stdin.on('data', (d) => { stdin += d; });
+process.stdin.on('end', () => {
+  if (process.env.MOCK_RECORD) fs.writeFileSync(process.env.MOCK_RECORD, JSON.stringify({ args, stdinBytes: Buffer.byteLength(stdin), stdinHead: stdin.slice(0, 200), cwd: process.cwd(), depth: process.env.HARNESS_REVIEW_DEPTH || null }));
+  if (mode === 'auth') { process.stderr.write('Error: not logged in\n'); process.exit(1); }
+  if (mode === 'hang') { setTimeout(() => process.exit(0), 60000); return; }
+  if (mode === 'empty' || mode === 'stale') process.exit(0);
+  const model = mode === 'wrong-model' ? 'gpt-4.1' : 'gpt-6-astra';
+  process.stderr.write(`OpenAI Codex v0.0.0-mock\n--------\nworkdir: ${process.cwd()}\nmodel: ${model}\nprovider: openai\napproval: never\nsandbox: read-only\nreasoning effort: ${process.env.MOCK_EFFORT || 'high'}\nsession id: mock\n--------\nuser\n(prompt)\n`);
+  if (mode === 'tool') process.stderr.write('exec\nbash -lc ls\n');
+  const output = mode === 'malformed' ? 'Sure! Here is my review: verdict ship'
+    : mode === 'gap-typed' ? JSON.stringify({ verdict: 'revise', findings: [], evidence_read: ['plugin:skills/prime/SKILL.md'], missing_context: [{ kind: 'missing-file', detail: 'src/export/job.ts' }] })
+    : mode === 'contradictory' ? JSON.stringify({ verdict: 'ship', findings: [{ severity: 'major', kind: 'patchable', where: 'Files', problem: 'p', consequence: 'c', fix: 'f', evidence: 'CLAUDE.md' }], evidence_read: ['CLAUDE.md'], missing_context: [] })
+    : mode === 'ship' ? JSON.stringify({ verdict: 'ship', findings: [{ severity: 'minor', kind: 'patchable', where: 'Files', problem: 'p', consequence: 'c', fix: 'f', evidence: 'CLAUDE.md' }], evidence_read: ['CLAUDE.md', 'plugin:skills/prime/SKILL.md'], missing_context: [] })
+    : JSON.stringify({ verdict: 'revise', findings: [{ severity: 'major', kind: 'patchable', where: 'Files', problem: 'missing test file', consequence: 'untested path', fix: 'add test', evidence: '.agents/specs/2026-01-01-fixture.md' }], evidence_read: ['plugin:skills/prime/SKILL.md'], missing_context: [] });
+  if (outFile) fs.writeFileSync(outFile, output);
+  process.stderr.write('codex\n(final)\ntokens used\n1\n');
+  process.exit(0);
+});

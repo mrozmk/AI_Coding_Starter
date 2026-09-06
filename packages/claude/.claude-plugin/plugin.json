@@ -1,0 +1,17 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "description": "Planning and review procedures (prime, brainstorm, plan-feature, setup-start, handoff) with fail-closed cross-model review, packaged for Claude Code and Codex CLI from one source.",
+  "displayName": "AI Coding Starter harness",
+  "author": {
+    "name": "AI Coding Starter"
+  },
+  "license": "MIT",
+  "keywords": [
+    "planning",
+    "review",
+    "harness",
+    "ai-coding-starter"
+  ],
+  "skills": "./skills/"
+}

@@ -1,0 +1,12 @@
+{
+  "schema": 2,
+  "language": "en",
+  "mode": "brownfield",
+  "git_host": "gitlab",
+  "tracker": "none",
+  "author_host": "codex",
+  "roles": { "reviewer": { "codex": { "model": "gpt-6-astra", "effort": "medium" } } },
+  "planning": { "after_brainstorm": "plan-feature" },
+  "groups": { "planning": true, "review": true, "execution": false },
+  "project_specific": ["kept"]
+}

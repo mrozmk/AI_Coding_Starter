@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project profile (schema 2)",
+  "description": "Canonical file: .agents/project-profile.json. Shared by both hosts. A legacy .claude/project-profile.json (schema 1) is read and written in place, with the schema-2-only fields stored under its `harness` key; see scripts/profile.mjs. Unknown keys are always preserved.",
+  "type": "object",
+  "required": ["schema", "language"],
+  "properties": {
+    "schema": { "const": 2 },
+    "language": { "enum": ["pl", "en"] },
+    "mode": { "enum": ["greenfield", "brownfield"] },
+    "git_host": { "enum": ["github", "bitbucket", "gitlab", "none"] },
+    "workflow": {
+      "type": "object",
+      "properties": {
+        "preset": { "enum": ["trunk", "feature-branch", "gitflow"] },
+        "pr_required": { "type": "boolean" },
+        "trunk": { "type": "string" },
+        "integration": { "type": "string" },
+        "branch_types": { "type": "array", "items": { "type": "string" } },
+        "branch_pattern": { "type": "string" },
+        "pr_dest": { "type": "string" },
+        "protected": { "type": "array", "items": { "type": "string" } },
+        "merge": { "enum": ["squash", "merge-commit", "ff"] },
+        "orchestrate_publish": { "enum": ["push", "branch-local"] }
+      }
+    },
+    "tracker": { "enum": ["jira", "none"] },
+    "confluence": { "type": "boolean" },
+    "codex": { "type": "boolean" },
+    "app_surface": { "enum": ["unknown", "none", "web", "mobile", "desktop", "tui"] },
+    "commands": { "type": "object", "additionalProperties": { "type": "boolean" } },
+    "author_host": { "enum": ["claude", "codex"] },
+    "roles": {
+      "type": "object",
+      "properties": {
+        "executor": { "$ref": "#/$defs/role" },
+        "reviewer": {
+          "type": "object",
+          "properties": {
+            "claude": { "$ref": "#/$defs/role" },
+            "codex": { "$ref": "#/$defs/role" }
+          }
+        }
+      }
+    },
+    "planning": {
+      "type": "object",
+      "properties": {
+        "after_brainstorm": { "enum": ["stop", "plan-feature"] }
+      }
+    },
+    "groups": {
+      "type": "object",
+      "description": "Plugin capability groups. false disables every entrypoint of the group; the plugin cache is never pruned.",
+      "additionalProperties": { "type": "boolean" }
+    }
+  },
+  "$defs": {
+    "role": {
+      "type": "object",
+      "required": ["model", "effort"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "effort": { "enum": ["low", "medium", "high", "xhigh"] }
+      }
+    }
+  }
+}

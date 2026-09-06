@@ -1,0 +1,14 @@
+{
+  "_doc": "legacy schema 1 fixture",
+  "schema": 1,
+  "mode": "greenfield",
+  "git_host": "github",
+  "workflow": { "preset": "trunk", "pr_required": false, "trunk": "main", "integration": "main", "branch_types": ["feat", "fix"], "branch_pattern": "<type>/<slug>", "pr_dest": "commit on main", "protected": [], "merge": "ff", "orchestrate_publish": "push" },
+  "tracker": "none",
+  "confluence": false,
+  "codex": true,
+  "app_surface": "unknown",
+  "language": "pl",
+  "commands": { "pr": true, "jira": false, "confluence": false, "codex": true, "qa_runtime_ui": true },
+  "custom_unknown_key": { "keep": "me" }
+}

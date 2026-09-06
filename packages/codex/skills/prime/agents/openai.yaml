@@ -1,0 +1,5 @@
+interface:
+  display_name: prime
+  short_description: Load project context for an engineering session — shared rules, memory routing, brief, architecture, profile, plans, ...
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,91 @@
+{
+  "description": "AI Coding Starter harness \u2014 synchronous commit/push/memory guards, advisory comment/file-class/memory-scope nudges, local telemetry and audit, session preflight.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"${PLUGIN_ROOT}\" ] || { echo \"BLOCKED: PLUGIN_ROOT is not set \u2014 the guard-commit guard cannot run and blocks instead of vanishing\" >&2; exit 2; }; node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook guard-commit",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "[ -n \"${PLUGIN_ROOT}\" ] || { echo \"BLOCKED: PLUGIN_ROOT is not set \u2014 the guard-push guard cannot run and blocks instead of vanishing\" >&2; exit 2; }; node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook guard-push",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook audit-append",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"${PLUGIN_ROOT}\" ] || { echo \"BLOCKED: PLUGIN_ROOT is not set \u2014 the guard-memory guard cannot run and blocks instead of vanishing\" >&2; exit 2; }; node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook guard-memory",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook audit-append",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook guard-comments"
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook nudge-files"
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook guard-memory-scope"
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook audit-append",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook audit-append",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook track-memory-read",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook-runner.mjs\" --host codex --hook check-deps"
+          }
+        ]
+      }
+    ]
+  }
+}

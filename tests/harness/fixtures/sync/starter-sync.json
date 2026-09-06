@@ -1,0 +1,17 @@
+{
+  "starter_repo": "https://github.com/mrozmk/AI_Coding_Starter",
+  "last_sync_commit": "697a790",
+  "last_sync_ref": "main",
+  "last_sync_date": "2026-09-01",
+  "excluded": [".claude/skills/jira/", ".claude/commands/start-task.md"],
+  "project_specific_flag": true,
+  "migrated": [
+    { "path": ".claude/commands/brainstorm.md", "replaced_by": "harness:brainstorm", "release": "0.1.0", "deleted": true, "date": "2026-09-05" },
+    { "path": ".claude/commands/setup/start.md", "replaced_by": "harness:setup-start", "release": "0.1.0", "deleted": false, "date": "2026-09-05" }
+  ],
+  "migrated_config": [
+    { "file": ".claude/settings.json", "kind": "hook", "identity": "PreToolUse|Bash|bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/legacy-review.sh\"", "replaced_by": "harness", "release": "0.1.0" },
+    { "file": ".claude/settings.json", "kind": "permission", "identity": "permissions.allow|Bash(bash .claude/lib/codex-bg.sh:*)", "replaced_by": "harness", "release": "0.1.0" },
+    { "file": ".mcp.json", "kind": "mcpServer", "identity": "legacy-review", "replaced_by": "harness", "release": "0.1.0" }
+  ]
+}
