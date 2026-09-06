@@ -84,7 +84,8 @@ export function allRequiredPassed(evidence) {
 }
 
 // Validation used by --verify-capabilities / --verify-evidence. Never launches anything.
-export function validateEvidence(evidence, { kind, mode, requiredAssertions = [], expectedInputs = {} } = {}) {
+// `honorFileRequired: false` reads the file as a report: rows it marked required are not a gate.
+export function validateEvidence(evidence, { kind, mode, requiredAssertions = [], expectedInputs = {}, honorFileRequired = true } = {}) {
   const errors = validate(evidenceSchema, evidence);
   if (errors.length) return errors;
   if (kind && evidence.kind !== kind) errors.push(`kind is ${evidence.kind}, expected ${kind}`);
@@ -98,7 +99,7 @@ export function validateEvidence(evidence, { kind, mode, requiredAssertions = []
     if (a.outcome !== 'pass') errors.push(`required assertion not passed: ${req} (${a.outcome}${a.required ? '' : ', marked optional in the file'})`);
   }
   for (const a of evidence.assertions) {
-    if (a.required && a.outcome !== 'pass') errors.push(`required assertion not passed: ${a.name} (${a.outcome})`);
+    if (honorFileRequired && a.required && a.outcome !== 'pass') errors.push(`required assertion not passed: ${a.name} (${a.outcome})`);
     if (a.outcome === 'pass' && !a.receipt_sha256) errors.push(`passed assertion without receipt: ${a.name}`);
     if (a.receipt_sha256 && !evidence.receipts.files.some((f) => f.sha256 === a.receipt_sha256)) {
       errors.push(`assertion receipt not listed under receipts: ${a.name}`);

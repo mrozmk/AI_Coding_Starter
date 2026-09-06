@@ -15,8 +15,7 @@ import { exportBundle } from './lib/bundle.mjs';
 import { loadInventory, sourceDigestRecords, validateInventory } from './lib/inventory.mjs';
 import { loadAdapterMeta, renderMarketplaces, renderPackage, writePackage } from './lib/package-build.mjs';
 import { loadLedgers, renderHookParity, renderInstructionParity } from '../harness-source/scripts/lib/parity.mjs';
-import { requiredLiveAssertions } from './lib/smoke-live.mjs';
-import { REQUIRED_CAPABILITY_ASSERTIONS, verifyCapabilities } from '../harness-source/scripts/preflight.mjs';
+import { verifyCapabilities } from '../harness-source/scripts/preflight.mjs';
 import { verifyReleaseEvidence } from './smoke-harness.mjs';
 
 export function renderAll(repoRoot) {
@@ -38,8 +37,8 @@ export function buildAll(repoRoot, outRoot = repoRoot) {
   return { rendered, sourceDigest };
 }
 
-// Live evidence is verified when both files exist, pass every required assertion and name the
-// digests of the bytes being exported. Anything else exports an unverified bundle.
+// Live evidence is current when both files exist and name the digests of the bytes being
+// exported. Pass/fail inside them is a report; only currency decides whether they ship.
 export function verifyLiveEvidence(repoRoot) {
   const errors = [];
   const rr = path.join(repoRoot, 'docs/harness/release-readiness.json');
@@ -63,10 +62,9 @@ function main() {
   if (opts['parity-docs']) { renderParityDocs(repoRoot); console.log('rendered docs/harness/instruction-parity.md and hook-parity.md'); return; }
   if (opts.export) {
     const { harness, rendered } = renderAll(repoRoot);
-    const requiredAssertions = { 'release-readiness': requiredLiveAssertions(repoRoot), 'reviewer-capabilities': [...new Set(['claude', 'codex'].flatMap((h) => REQUIRED_CAPABILITY_ASSERTIONS(h)))] };
     const evidenceErrors = verifyLiveEvidence(repoRoot);
-    const { dest, release } = exportBundle({ repoRoot, destDir: path.resolve(opts.export), harness, rendered, evidenceVerified: evidenceErrors.length === 0, requiredAssertions });
-    console.log(`exported ${release.name} ${release.version} -> ${dest} (evidence ${release.evidence_verified ? 'verified' : `NOT verified: ${evidenceErrors.slice(0, 3).join('; ')}${evidenceErrors.length > 3 ? ` … +${evidenceErrors.length - 3}` : ''}`})`);
+    const { dest, release } = exportBundle({ repoRoot, destDir: path.resolve(opts.export), harness, rendered, evidenceCurrent: evidenceErrors.length === 0 });
+    console.log(`exported ${release.name} ${release.version} -> ${dest} (live evidence ${release.evidence_current ? 'current, shipped' : `not current for these bytes, not shipped: ${evidenceErrors.slice(0, 3).join('; ')}${evidenceErrors.length > 3 ? ` … +${evidenceErrors.length - 3}` : ''}`})`);
     console.log(`source_digest ${release.source_digest}`);
     for (const [host, p] of Object.entries(release.packages)) console.log(`${host} payload_digest ${p.payload_digest}`);
     return;

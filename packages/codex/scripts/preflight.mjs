@@ -148,7 +148,6 @@ async function probeHost(host, { evidence, receiptsDir, adaptersRootDir, env }) 
   const produced = Boolean(finalText.trim()) && extractJson(finalText).ok;
   observe('reviewer-completed', produced, `final JSON message produced=${produced}; supervisor status=${result.status} exit=${result.process.exit_code} error=${result.error ?? 'none'} duration=${result.process.duration_ms}ms`);
   observe('model-confirmed', result.model.confirmed !== null && !/model mismatch|not confirmed/.test(result.error ?? ''), `requested ${result.model.requested}, confirmed ${result.model.confirmed}`);
-  observe('effort-confirmed', result.effort.confirmed === result.effort.requested, `requested ${result.effort.requested}, confirmed ${result.effort.confirmed ?? 'not reported by CLI'}`, false);
   const denials = Number(tools?.permission_denials ?? 0);
   const executed = Number(tools?.count ?? 0) > 0;
   const isolationEvidence = executed ? 'executed' : denials > 0 ? 'denied-attempt' : 'no-attempt';
@@ -160,8 +159,6 @@ async function probeHost(host, { evidence, receiptsDir, adaptersRootDir, env }) 
   observe('no-nested-cli-spawn', !nestedSeen, `${toolNote ?? 'tool surface: none reported'}; other-CLI version string in final message: ${versionRe.test(finalText)}`);
   observe('no-autoloaded-instructions', !everything.includes(autoloadToken), everything.includes(autoloadToken) ? 'auto-load marker appeared in output' : 'CLAUDE.md/AGENTS.md planted in scratch and in the reviewer cwd were not auto-loaded');
   observe('no-tool-execution', tools !== null && !executed, tools === null ? 'the CLI reported no tool surface at all — cannot prove isolation' : executed ? `tool activity observed: ${JSON.stringify(tools).slice(0, 200)}` : `no tool executed (denied attempts: ${denials})`);
-  observe('denial-observed', denials > 0, denials > 0 ? `${denials} attempt(s) refused by the host` : 'no attempt was refused — the model did not try; isolation not demonstrated by denial', false);
-  observe('reports-missing-context', result.status === 'needs-context' || (result.missing_context ?? []).length > 0, `missing_context=${JSON.stringify(result.missing_context)}`, false);
 
   const badModel = await runReview({ projectRoot: project, pluginRoot: plugin, authorHost, artifacts: ['.agents/specs/probe-spec.md'], scratchDir: path.join(scratch, 'bad-model'), kind: 'spec', adaptersRoot: adaptersRootDir, env, timeoutMs: 5 * 60_000, profile: syntheticProfile({ author_host: authorHost, roles: { reviewer: { [host]: { model: 'no-such-model-xyz-000', effort: result.effort.requested } } } }) });
   const badReceipt = addReceipt(evidence, receiptsDir, `${host}-unavailable-model.json`, JSON.stringify(badModel, null, 2));

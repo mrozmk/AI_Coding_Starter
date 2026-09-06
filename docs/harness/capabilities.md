@@ -1,8 +1,8 @@
 # Harness plugin — capability matrix (0.1.0, planning/review + guard portability)
 
-> Honest per-host state of the harness plugin (remediation tasks T01–T17 completed 2026-09-06). Vocabulary: **implemented** — code + offline tests exist; **verified** — an installed-host run recorded it in `release-readiness.json`; **conditional / dormant** — applies only under the named precondition or configuration; **legacy-only** — still served by the project's `.claude/` files, not by the plugin; **blocked** — waiting on an operator step; **retired** — dropped with a recorded decision.
+> Honest per-host state of the harness plugin (remediation tasks T01–T17 completed 2026-09-06). Vocabulary: **implemented** — code + offline tests exist; **verified** — an installed-host run observed it in `release-readiness.json`; **conditional / dormant** — applies only under the named precondition or configuration; **legacy-only** — still served by the project's `.claude/` files, not by the plugin; **blocked** — waiting on an operator step; **retired** — dropped with a recorded decision.
 >
-> **T16 status (2026-09-06).** Eight installed-host runs on both CLIs (history under `history/`; current `release-readiness.json` = run 8, 77 pass). **Codex: all required assertions pass** (review both directions, all hook scenarios, hooks fired and trusted, `$prime` on an empty repository, plan-feature, continuation gating). **Claude Code: three required rows red from one parser defect** — the author wrote `External docs required: yes — <rationale>` and `approval.mjs` accepted only a bare value; the receipt round-trip and its two dependent plan-feature rows failed (both had passed in runs 5–6, every other Claude row passed in run 8). Fixed and unit-tested after the run, so the exported bundle is **unverified** (`evidence_verified: false`) until one more live run — the operator stopped the loop here.
+> **Live evidence (2026-09-06).** Eleven installed-host runs on both CLIs (history under `history/`; current `release-readiness.json` = run 10, 79 rows passed). Claude Code: every row passed. Codex: every row passed except `$prime` in an empty repository, which is no longer asserted (host-dependent skill discovery, recorded below). Run 11 was aborted by the Codex account's usage limit and is kept in history for the record. **Live evidence is a report, never a gate** — build, export, bundle check and installation do not depend on it.
 >
 > Hook parity is implemented and verified on both hosts (25/25 hook scenarios across hosts), but **not activated in any real project**: the legacy `.claude/` hooks stay registered until an explicit activation per `installation.md`.
 
@@ -66,11 +66,12 @@ Per-hook detail: [hook-parity.md](hook-parity.md). Summary:
 
 ## Known limits recorded so far
 
-- Claude Code's JSON output confirms the model but not the effort level; the adapter pins `--effort high` and reports confirmation as `null` rather than guessing.
+- Claude Code's JSON output confirms the model but not the effort level; the adapter pins `--effort high` and records confirmation as `null` rather than guessing (no assertion depends on it).
 - Claude Code bills a small helper model alongside the reviewer; the adapter names the model with the most output tokens as the reviewer and records all billed models.
 - Codex `exec --json` events carry no model name on 0.153.4; the adapter reads the CLI's own header (`model:`, `reasoning effort:`, `sandbox:`, `approval:`).
-- A cooperative reviewer that never *tries* to read the canary yields "no leak observed", not "denial observed"; the probe labels this (`denial-observed` is optional and honest).
-- Codex skill discovery in a bare repository is not deterministic: run 6 saw `$prime` unresolved (the model searched `~/.codex/skills`), run 8 resolved it from the installed plugin with the same bytes. If `$prime` is not found, run the installed `skills/prime/SKILL.md` by path once; the rendered rules point at the plugin afterwards.
+- A cooperative reviewer that never *tries* to read the canary yields "no leak observed", not "denial observed"; the probe labels the isolation evidence accordingly and asserts only that no leak happened.
+- Codex skill discovery in a bare repository is not deterministic: runs 6, 10 and 11 saw `$prime` unresolved (the model searched `~/.codex/skills`), run 8 resolved it from the installed plugin with the same bytes. If `$prime` is not found, run the installed `skills/prime/SKILL.md` by path once; the rendered rules point at the plugin afterwards. The live smoke applies the same fallback and records which path was taken.
+- A Codex usage-limit exhaustion mid-run fails every Codex call with exit 1 and a quota message (run 11); the evidence file records it as observed.
 - Codex's `workspace-write` sandbox protects `.agents/`; a Codex author needs `sandbox_workspace_write.writable_roots` to include the project's `.agents` (observed 2026-09-06 — the live smoke passes it per call; real projects configure it once).
 - Codex rejects any top-level field in `hooks/hooks.json` other than `description` and `hooks` (observed 2026-09-06); both manifests carry only those.
 - Admin-managed policy of either CLI stays in force and is reported as external policy context; the adapters do not and cannot disable it.

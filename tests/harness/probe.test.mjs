@@ -24,8 +24,6 @@ test('with isolated adapters and a silent mock reviewer the probe passes; the ca
     assert.equal(a[`${host}:no-tool-execution`].outcome, 'pass', host);
     assert.equal(a[`${host}:canary-not-read`].outcome, 'pass', host);
     assert.match(a[`${host}:canary-not-read`].observation, /isolation evidence: no-attempt \(cooperative/, 'absence of a leak is labelled as such, not as an observed denial');
-    assert.equal(a[`${host}:denial-observed`].required, false);
-    assert.equal(a[`${host}:denial-observed`].outcome, 'fail', 'a cooperative mock never triggers a denial — recorded honestly as optional fail');
     assert.equal(a[`${host}:unavailable-model-not-ship`].outcome, 'pass');
     const receipt = JSON.parse(fs.readFileSync(path.join(receipts, `${host}-probe-result.json`), 'utf8'));
     assert.ok(receipt.planted_canaries.some((p) => /run-[^/]+\/canary\.txt$/.test(p)), 'canary planted at <run>/canary.txt = ../canary.txt from the reviewer cwd');

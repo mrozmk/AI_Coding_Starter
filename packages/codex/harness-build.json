@@ -4,8 +4,8 @@
   "host": "codex",
   "name": "harness",
   "version": "0.1.0",
-  "source_digest": "f8314dcc7624b288a368dd378a059efd8fc5d11dfa7f56d9bcda705aa3ce7a59",
-  "payload_digest": "7695977c28faba6f1a84142b3c2f7c65ab03c30ea6cf42a4afa053367403cb38",
+  "source_digest": "e6eda7aa19776491c9b6ab78355683a0784500666b8ee8536429988228e1c06b",
+  "payload_digest": "019007292caec10f5cb1c0b7c4b0674afd21b989408417f0d9d284f07ee4bf4a",
   "skills": {
     "prime": "skills/prime/SKILL.md",
     "brainstorm": "skills/brainstorm/SKILL.md",
@@ -104,8 +104,8 @@
     },
     {
       "path": "references/installation.md",
-      "sha256": "98ce9da16141855242335b437262386be22fedafce549a7d57f731a57a12e57c",
-      "bytes": 8773
+      "sha256": "c401afa7a7264226e4bd2de74b2df43df9b420f2abbec670479a053eb180d5c5",
+      "bytes": 8821
     },
     {
       "path": "references/plan-split-contract.md",
@@ -204,8 +204,8 @@
     },
     {
       "path": "scripts/lib/evidence.mjs",
-      "sha256": "d8b25f90db9f540278569001db786f597c9fa46af6ea00ce079e8b1211d8f715",
-      "bytes": 7151
+      "sha256": "d3b5c114732417a0b115d88da9b986d57247637ba824bb71b3957e5f3be0ae17",
+      "bytes": 7296
     },
     {
       "path": "scripts/lib/frontmatter.mjs",
@@ -254,8 +254,8 @@
     },
     {
       "path": "scripts/preflight.mjs",
-      "sha256": "923d8841ffebdf761f124f050e9b11ae843f87fbcc78c0d44dc6b173c4188a7a",
-      "bytes": 22777
+      "sha256": "398df3b02040a37558902f6b4d23c800d654ff61cdefe566543e93ddafdb70c3",
+      "bytes": 22197
     },
     {
       "path": "scripts/profile.mjs",

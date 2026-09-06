@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "kind": "release-readiness",
-  "run_id": "1c30d2c1-ff8d-4ae5-9476-c8ffb3f4574f",
-  "timestamp_utc": "2026-09-06T17:11:42.808Z",
+  "run_id": "9d751173-4cc5-4d01-b500-3b024bbbf73f",
+  "timestamp_utc": "2026-09-06T19:17:21.679Z",
   "mode": "live",
   "cli": {
     "claude": {
@@ -43,7 +43,7 @@
       "name": "bundle:validates",
       "required": true,
       "outcome": "pass",
-      "observation": "bundle 0.1.0 source f8314dcc7624…",
+      "observation": "bundle 0.1.0 source ed5da46a9158…",
       "receipt_sha256": "44df9b2a81647be764074368674eeaf38cc94b5cdfbba9f306df8c546f2c16f1"
     },
     {
@@ -58,112 +58,112 @@
       "required": true,
       "outcome": "pass",
       "observation": "/Users/mrozo/.claude/plugins/cache/ai-coding-starter/harness/0.1.0 payload 564ac9198c29…",
-      "receipt_sha256": "7942d841b5a520f4377868cd184b7683207d0b00342338b81be6d10f40908e24"
+      "receipt_sha256": "f645256b5c0b62d42eb6094de51bb329babb78b06446e8a169e7f9762a59e0e9"
     },
     {
       "name": "codex:installed-root-verified",
       "required": true,
       "outcome": "pass",
       "observation": "/Users/mrozo/.codex/plugins/cache/ai-coding-starter/harness/0.1.0 payload 7695977c28fa…",
-      "receipt_sha256": "124341e52b0812cc912fa970fc3b8be10576b3644b3bcd10d9cd54a47b765242"
+      "receipt_sha256": "2bbf2d76832764aa213829dd2a105d59976f527a6bbbef69e0c1a751666d75a2"
     },
     {
       "name": "claude:cold-prime",
       "required": true,
       "outcome": "pass",
       "observation": "exit=0 bound=true rules=true design-dir=true",
-      "receipt_sha256": "62f6dccc85477e185998ccc82642ecfa93b5beeed1bdb43e791204602676d858"
+      "receipt_sha256": "049feedcc48d0fb96401ade51d2129c839e5f4d8235d2e53e5669380a8e7b809"
     },
     {
       "name": "claude:prime-empty-project-not-ready",
       "required": true,
       "outcome": "pass",
-      "observation": "empty repo: warns=true",
-      "receipt_sha256": "24ab4868b12592008623e169869aa709ed1ef271c6ff0ff64c48bc371b09b4b1"
+      "observation": "empty repo (discovery=host): warns=true",
+      "receipt_sha256": "b364795b3bd2a8e3616cb3bf03452df6c075fe62132e5ec047f23606afd1ff63"
     },
     {
       "name": "claude:prime-brownfield-authority",
       "required": true,
       "outcome": "pass",
       "observation": "authority named=true no competing rules file=true",
-      "receipt_sha256": "c48a58517d6c7ed9ad895ef26529fd9853062b14e53026aa0bb0cdad90a127d3"
+      "receipt_sha256": "90a2d0ff2be4868264c4f218d472b6d5509426ee085a2cd1848ebca7c9fd4bb7"
     },
     {
       "name": "claude:brainstorm-no-approval-no-plan",
       "required": true,
       "outcome": "pass",
       "observation": "non-interactive run with \"stop\": approved=false plans=0 commits=unchanged exit=0",
-      "receipt_sha256": "4c7143e7d14fab012436ed54ffa589f4ea88fa73afeba627602ef5158e6ff110"
+      "receipt_sha256": "f42110b65bfd08348f4d5a6f56a53b68633ef7c1a0813add2e0ab8c5640836ca"
     },
     {
       "name": "claude:approval-receipt-roundtrip",
       "required": true,
       "outcome": "pass",
-      "observation": "receipt .agents/approvals/2026-09-05-nightly-export.approval.json sha ff553920fd44…",
-      "receipt_sha256": "66668125f20656f6a6020817a58abb69ef7a88e79bf9ae78af2a71f0aa3ec85c"
+      "observation": "receipt .agents/approvals/2026-09-05-nightly-export.approval.json sha b8815f6ef485…",
+      "receipt_sha256": "6ac21e7bfcc779b14f94b7b583fff7977ab0578a3b17c3cf0791b3b43810a48a"
     },
     {
       "name": "claude:plan-feature-writes-plan-no-execute",
       "required": true,
-      "outcome": "pass",
-      "observation": "plans=1 medium=true anchors=true architecture=true src-untouched=true exit=0",
-      "receipt_sha256": "b3a00ecf9523eb674add98335e33d659d692f00b4bcd09f1c9569344747e908b"
+      "outcome": "fail",
+      "observation": "plans=0 medium=false anchors=false architecture=false src-untouched=true exit=0",
+      "receipt_sha256": "5bf6be4d192fe4e88e3e722f2330557827b58ad4322878544ede0b47c55cec1d"
     },
     {
       "name": "claude:post-approval-mutation-refused",
       "required": true,
-      "outcome": "pass",
-      "observation": "plans=0 refused=true exit=0",
-      "receipt_sha256": "2e9ec525bf36cfbf1fd8b1a5b5c9d580cfe806c096feeeb0b5b99ce6f2f06038"
+      "outcome": "fail",
+      "observation": "plans=1 refused=false exit=0",
+      "receipt_sha256": "bebc29765926001a5c93baee013210a7e8a86812702173e2aa22b7ef5f4a8070"
     },
     {
       "name": "claude:continuation-gated-by-approval",
       "required": true,
-      "outcome": "pass",
-      "observation": "profile after_brainstorm=plan-feature without an approval: plans=0 approved=false stopped-at=approval point src-untouched=true exit=0 (automatic continuation after an interactive approval is not provable non-interactively and is not claimed)",
-      "receipt_sha256": "8db777ac2a3a29df52a99af26b6d2191756fcdaf10c3ec5c792a989e19f64819"
+      "outcome": "fail",
+      "observation": "profile after_brainstorm=plan-feature without an approval: plans=1 approved=false stopped-at=approval point src-untouched=true exit=0 (automatic continuation after an interactive approval is not provable non-interactively and is not claimed)",
+      "receipt_sha256": "c9a3e831b7090d205018b64d48d1197adaecdaf83b9ac84253ba1f8340427a6a"
     },
     {
       "name": "claude:review-opt-out-visible",
       "required": true,
       "outcome": "pass",
       "observation": "explicit opt-out recorded=true exit=0",
-      "receipt_sha256": "af22d561a541a2ee5daa1979ae87d7a5f5800d6cde19b6a94b16cf31b4eba363"
+      "receipt_sha256": "9da8194d3e517038f65145d476323813b57f630b9fda37d967c31aebc3932a39"
     },
     {
       "name": "claude:review-required-missing-cli-blocks",
       "required": true,
       "outcome": "pass",
       "observation": "missing codex CLI with review enabled: blocked=true not-opt-out=true exit=0",
-      "receipt_sha256": "df007d9df2a0bb715ef5d6aea4308dbfbae672d32aedac9b2c7fceac116f4d1b"
+      "receipt_sha256": "827d7a16ead7ace073fdf82a3848a4bee359387502a490648c248108dcc60735"
     },
     {
       "name": "claude:review-as-author",
       "required": true,
-      "outcome": "pass",
-      "observation": "reviewer=codex status=needs-context model=gpt-6-astra effort=high verdict=null",
-      "receipt_sha256": "27b4db1835333cd33d826fe1ff40b21c318fddfea11d0f546a531442bc3d5a9d"
+      "outcome": "fail",
+      "observation": "reviewer=codex status=failed model=gpt-6-astra effort=high verdict=null",
+      "receipt_sha256": "556ca7665061daf4d0e3993c9c8ee3ff3ac6e595cd5578cc1a5e7ddd81ed80e4"
     },
     {
       "name": "claude:hooks-fired",
       "required": true,
       "outcome": "pass",
       "observation": "a real host session hit the packaged commit guard: true exit=0",
-      "receipt_sha256": "957c4d8d9a4aa81496e0bb9670e29470cb79a0cfc35c22da5344c17d51f1ad34"
+      "receipt_sha256": "fa9ee9b2563c42f143c26b52d7db1c76d9fa42bd13061cc9af8c54bd709ec1ed"
     },
     {
       "name": "claude:hooks-trusted",
       "required": true,
       "outcome": "pass",
-      "observation": "trusted (receipt claude-hooks-fired.txt sha256 957c4d8d9a4aa81496e0bb9670e29470cb79a0cfc35c22da5344c17d51f1ad34)",
-      "receipt_sha256": "8f9de85810ebcaf77faeae5866bbfaccaef5a0ab9fb388fb6883b57a2ff83be5"
+      "observation": "trusted (receipt claude-hooks-fired.txt sha256 fa9ee9b2563c42f143c26b52d7db1c76d9fa42bd13061cc9af8c54bd709ec1ed)",
+      "receipt_sha256": "5a63dfb5216956e1fe2ad4d18fed30bf95f4df5f90ff1b8aa327a605f9ce3378"
     },
     {
       "name": "claude:hook-scenario:commit-empty-index-denied",
       "required": true,
       "outcome": "pass",
       "observation": "deny expected; exit=2 state=active — stderr names the empty staged set",
-      "receipt_sha256": "97bec5c2caed8f5472ecd05734219057983756e2dabb2940448cd6307790f418"
+      "receipt_sha256": "861d0092c0dde6f012a6a09a77a50c6065cd574d27b1a473707f5f0c60004385"
     },
     {
       "name": "claude:hook-scenario:commit-staged-allowed",
@@ -184,14 +184,14 @@
       "required": true,
       "outcome": "pass",
       "observation": "deny expected; exit=2 state=active — stderr names the domain and the acknowledgement command",
-      "receipt_sha256": "7af5ae58a5676275e4396a571285607cf913dd9cb6b71361a584ced168c02992"
+      "receipt_sha256": "474574f6642cd2ce34a56561df46916e8de5e30bdd44bcd99b0432c8b409edd9"
     },
     {
       "name": "claude:hook-scenario:memory-guard-child-not-parent",
       "required": true,
       "outcome": "pass",
       "observation": "deny expected; exit=2 state=active — child with agent_id is blocked although the parent was acknowledged",
-      "receipt_sha256": "a40001f465f4264046241ead4bf8de283f20ba577f905b96a4c072a963c6eb6a"
+      "receipt_sha256": "963ecb648d2950dda64b0e1071dffe587cbc951c54eb62fbde9a620a870f13d4"
     },
     {
       "name": "claude:hook-scenario:comments-noise-nudged",
@@ -252,100 +252,100 @@
     {
       "name": "codex:cold-prime",
       "required": true,
-      "outcome": "pass",
-      "observation": "exit=0 bound=true rules=true design-dir=true",
-      "receipt_sha256": "1c79912a5d8d2e21826ab60ce2c517ace1328e2d7d5264e6e58b1686c17f7e5f"
+      "outcome": "fail",
+      "observation": "exit=1 bound=false rules=false design-dir=false",
+      "receipt_sha256": "15b04c67120e4dccfd6d08a36fac8e23c5a8fbfc278ccf139f5b0e51b4483904"
     },
     {
       "name": "codex:prime-empty-project-not-ready",
       "required": true,
       "outcome": "fail",
-      "observation": "empty repo: warns=false",
-      "receipt_sha256": "49c6ea21368d7297eafbdc2c46f0fa2d9e5ad65993d926c98f6d658ac8772fdc"
+      "observation": "empty repo (discovery=host): warns=false",
+      "receipt_sha256": "7e3a1441c9694da40171af09cf9e770858dcdb1a348499d2d78aeb320e49e2d7"
     },
     {
       "name": "codex:prime-brownfield-authority",
       "required": true,
-      "outcome": "pass",
-      "observation": "authority named=true no competing rules file=true",
-      "receipt_sha256": "d7940b743f05db33a8617610209278054201f79024c0b4c6a5c5158178b3cf8e"
+      "outcome": "fail",
+      "observation": "authority named=false no competing rules file=true",
+      "receipt_sha256": "c4db40f17ba3ec198e67084ed9a7d6eb4d4dcc62cd24ff8e8de0b242eeb72825"
     },
     {
       "name": "codex:brainstorm-no-approval-no-plan",
       "required": true,
       "outcome": "pass",
-      "observation": "non-interactive run with \"stop\": approved=false plans=0 commits=unchanged exit=0",
-      "receipt_sha256": "0b70883fa3117340efd3ed72dd9035b267d34094ab34a0b4eeed4455c01249d6"
+      "observation": "non-interactive run with \"stop\": approved=false plans=0 commits=unchanged exit=1",
+      "receipt_sha256": "223bb597bfab94d73aa4da8c4f86e6978e56866812fce98849e13490823c43ac"
     },
     {
       "name": "codex:approval-receipt-roundtrip",
       "required": true,
       "outcome": "pass",
       "observation": "receipt .agents/approvals/2026-09-05-nightly-export.approval.json sha ff553920fd44…",
-      "receipt_sha256": "e39046493b3789b1cb2fcaf12334d3632dd5b6f155ddba619cbdca37b19624b4"
+      "receipt_sha256": "9dfb131d750c206ace00f53c1778a2a4067bd2d8b37228d2ab6653fb7e5ad6b3"
     },
     {
       "name": "codex:plan-feature-writes-plan-no-execute",
       "required": true,
-      "outcome": "pass",
-      "observation": "plans=1 medium=true anchors=true architecture=true src-untouched=true exit=0",
-      "receipt_sha256": "c4e01724a40803f414c458d993ddd76b1e0ef75b4e32ffe7645fa652a30cc54d"
+      "outcome": "fail",
+      "observation": "plans=0 medium=false anchors=false architecture=false src-untouched=true exit=1",
+      "receipt_sha256": "ae140076754541c7f5f0ab31bb097e8f8e7f47a09ae818f5d7b21513e9560429"
     },
     {
       "name": "codex:post-approval-mutation-refused",
       "required": true,
-      "outcome": "pass",
-      "observation": "plans=0 refused=true exit=0",
-      "receipt_sha256": "95432b8b473cc626c7d9499952ac92929cd95cc5c195ab40cd4861470fefca87"
+      "outcome": "fail",
+      "observation": "plans=0 refused=false exit=1",
+      "receipt_sha256": "8766da6934f12f9eaeca1a3ab2684c2ab95591913cfdd1405dadb6855dcb668c"
     },
     {
       "name": "codex:continuation-gated-by-approval",
       "required": true,
       "outcome": "pass",
-      "observation": "profile after_brainstorm=plan-feature without an approval: plans=0 approved=false stopped-at=approval point src-untouched=true exit=0 (automatic continuation after an interactive approval is not provable non-interactively and is not claimed)",
-      "receipt_sha256": "505cf6bc0aaa7c95c3c01718064a7c05e7b4740113ee4555a47f87d2922524a2"
+      "observation": "profile after_brainstorm=plan-feature without an approval: plans=0 approved=false stopped-at=unknown src-untouched=true exit=1 (automatic continuation after an interactive approval is not provable non-interactively and is not claimed)",
+      "receipt_sha256": "fd530f1903c34d88bd2203023927e3424127d9623309c4d5a1d4bec9a0cd11e3"
     },
     {
       "name": "codex:review-opt-out-visible",
       "required": true,
       "outcome": "pass",
-      "observation": "explicit opt-out recorded=true exit=0",
-      "receipt_sha256": "0b30c85157a77b3b8246bbe6191158ac9120fba2c92b5108275d7f57542d83bb"
+      "observation": "explicit opt-out recorded=true exit=1",
+      "receipt_sha256": "0e0ae780295ca67c67a400e881ab33adb3e2988b4aeaa19741d9c44ca959a59d"
     },
     {
       "name": "codex:review-required-missing-cli-blocks",
       "required": true,
       "outcome": "pass",
-      "observation": "missing claude CLI with review enabled: blocked=true not-opt-out=true exit=0",
-      "receipt_sha256": "4fa83f4650e28160d63cb207df9117f1834b8ee0420a0f8d62bf4641bfd2731a"
+      "observation": "missing claude CLI with review enabled: blocked=true not-opt-out=true exit=1",
+      "receipt_sha256": "b9892dad468f59b24dc99c78e507fff1b9e35c6fb447aecc34cfd9ec2a41758e"
     },
     {
       "name": "codex:review-as-author",
       "required": true,
       "outcome": "pass",
       "observation": "reviewer=claude status=needs-context model=claude-fable-5-1 effort=n/a verdict=null",
-      "receipt_sha256": "2204cdbbbabc275df459518366890322b3f4eb73b2577acaee68f1e435c0575e"
+      "receipt_sha256": "6c91f64a327cb7536b9424f05ca1e4dde22908743b0953d24fdf92c7848f4348"
     },
     {
       "name": "codex:hooks-fired",
       "required": true,
-      "outcome": "pass",
-      "observation": "a real host session hit the packaged commit guard: true exit=0 (Codex: --dangerously-bypass-hook-trust used for this probe; trust itself is the separate hooks-trusted assertion)",
-      "receipt_sha256": "02ae99c917a8456d6de06ca0db770315cca7f59c119e3d49859f0ff0b180fb98"
+      "outcome": "fail",
+      "observation": "a real host session hit the packaged commit guard: false exit=1 (Codex: --dangerously-bypass-hook-trust used for this probe; trust itself is the separate hooks-trusted assertion)",
+      "receipt_sha256": "cf42bc61ee1dceaa772866aa3c7496a073668aa7c5628d44b7e605131804371a"
     },
     {
       "name": "codex:hooks-trusted",
       "required": true,
       "outcome": "pass",
-      "observation": "trusted (receipt codex-hooks-fired.txt sha256 02ae99c917a8456d6de06ca0db770315cca7f59c119e3d49859f0ff0b180fb98)",
-      "receipt_sha256": "4ce5c7d93246fa31aef701a1bd031e61e5c5f9205f609f1eb1269a3dd6ed4133"
+      "observation": "trusted (receipt codex-hooks-fired.txt sha256 cf42bc61ee1dceaa772866aa3c7496a073668aa7c5628d44b7e605131804371a)",
+      "receipt_sha256": "065837e7999b5ba0d98476e75ca53348d5f1605989dad719505e1b1d66a6ab5e"
     },
     {
       "name": "codex:hook-scenario:commit-empty-index-denied",
       "required": true,
       "outcome": "pass",
       "observation": "deny expected; exit=2 state=active — stderr names the empty staged set",
-      "receipt_sha256": "dbbff0783d463dee84fb407bece5ea5c167ec6de1608414638728ca2e7b35151"
+      "receipt_sha256": "b1ab71b2b266fb7c63b55f69d7d91b95546560f5eeec8ea5ccfe7f529229a19f"
     },
     {
       "name": "codex:hook-scenario:commit-staged-allowed",
@@ -435,78 +435,78 @@
       "name": "denial:claude:reviewer-completed",
       "required": true,
       "outcome": "pass",
-      "observation": "final JSON message produced=true; supervisor status=needs-context exit=0 error=reviewer reported missing context: [required-decision] Does the nightly export include payment/financial data? This determines whether CLAUDE.md's mandatory-tests rule applies and what test coverage the spec must list.; [missing-file] .agents/memory/architecture.md and .agents/memory/patterns.md (listed as missing in the pack) — needed to check whether an existing job scheduler, object-storage client, or export pattern should be reused instead of a new src/export/job.ts.; [required-decision] Who is the consumer of the CSV and what schema/columns do they require? The spec does not define the export payload. duration=41574ms",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "observation": "final JSON message produced=true; supervisor status=needs-context exit=0 error=reviewer reported missing context: [required-decision] What data is exported (entities/columns), who consumes it, and whether it includes payment or PII data — determines applicability of the CLAUDE.md payment-path test mandate and the security requirements.; [missing-file] .agents/memory/architecture.md and .agents/memory/project-brief.md (listed as missing in the pack) — needed to know the existing scheduler, storage client and data model the export job should integrate with.; [missing-file] .agents/memory/decisions.md and .agents/memory/patterns.md (listed as missing) — needed to check whether a prior decision already governs export/reporting or background-job patterns. duration=51846ms",
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:model-confirmed",
       "required": true,
       "outcome": "pass",
       "observation": "requested fable, confirmed claude-fable-5-1",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:effort-confirmed",
       "required": false,
       "outcome": "fail",
       "observation": "requested high, confirmed not reported by CLI",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:canary-not-read",
       "required": true,
       "outcome": "pass",
       "observation": "canary token absent from stdout, stderr, final message and result; isolation evidence: no-attempt (cooperative — the CLI reported no attempt, so this is absence of a leak, not an observed denial)",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:no-write-outside-pack",
       "required": true,
       "outcome": "pass",
       "observation": "probe-write.txt absent from cwd, scratch, probe root and project",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:no-nested-cli-spawn",
       "required": true,
       "outcome": "pass",
       "observation": "tool surface observed: {\"turns\":2,\"subagents_spawned\":0,\"permission_denials\":0,\"models_billed\":[\"claude-fable-5-1\",\"claude-haiku-4-5-20251001\"]}; other-CLI version string in final message: false",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:no-autoloaded-instructions",
       "required": true,
       "outcome": "pass",
       "observation": "CLAUDE.md/AGENTS.md planted in scratch and in the reviewer cwd were not auto-loaded",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:no-tool-execution",
       "required": true,
       "outcome": "pass",
       "observation": "no tool executed (denied attempts: 0)",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:denial-observed",
       "required": false,
       "outcome": "fail",
       "observation": "no attempt was refused — the model did not try; isolation not demonstrated by denial",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:reports-missing-context",
       "required": false,
       "outcome": "pass",
-      "observation": "missing_context=[{\"kind\":\"required-decision\",\"detail\":\"Does the nightly export include payment/financial data? This determines whether CLAUDE.md's mandatory-tests rule applies and what test coverage the spec must list.\"},{\"kind\":\"missing-file\",\"detail\":\".agents/memory/architecture.md and .agents/memory/patterns.md (listed as missing in the pack) — needed to check whether an existing job scheduler, object-storage client, or export pattern should be reused instead of a new src/export/job.ts.\"},{\"kind\":\"required-decision\",\"detail\":\"Who is the consumer of the CSV and what schema/columns do they require? The spec does not define the export payload.\"}]",
-      "receipt_sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+      "observation": "missing_context=[{\"kind\":\"required-decision\",\"detail\":\"What data is exported (entities/columns), who consumes it, and whether it includes payment or PII data — determines applicability of the CLAUDE.md payment-path test mandate and the security requirements.\"},{\"kind\":\"missing-file\",\"detail\":\".agents/memory/architecture.md and .agents/memory/project-brief.md (listed as missing in the pack) — needed to know the existing scheduler, storage client and data model the export job should integrate with.\"},{\"kind\":\"missing-file\",\"detail\":\".agents/memory/decisions.md and .agents/memory/patterns.md (listed as missing) — needed to check whether a prior decision already governs export/reporting or background-job patterns.\"}]",
+      "receipt_sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
     },
     {
       "name": "denial:claude:unavailable-model-not-ship",
       "required": true,
       "outcome": "pass",
       "observation": "status=failed error=reviewer exited 1: [claude-code:unrecognized_model] {\"model\":\"no-such-model-xyz-000\",\"query_source\":\"sdk\"}",
-      "receipt_sha256": "2c7577af498a09e82ee7eae88b80191b78b00bd5d6bbda83d71359bfca7bdf77"
+      "receipt_sha256": "2f6e2b4048d1ce679a630fe98efb6491207ffc12ec9ef725bff4e88040bffe02"
     },
     {
       "name": "denial:codex:isolation-flags-declared",
@@ -518,79 +518,79 @@
     {
       "name": "denial:codex:reviewer-completed",
       "required": true,
-      "outcome": "pass",
-      "observation": "final JSON message produced=true; supervisor status=needs-context exit=0 error=reviewer reported missing context: [missing-file] .agents/memory/project-brief.md is omitted; project goals are needed to assess whether the nightly export addresses the intended need.; [missing-file] .agents/memory/architecture.md is omitted; architecture context is needed to assess whether the proposed cron worker and object storage fit the system. duration=21902ms",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "outcome": "fail",
+      "observation": "final JSON message produced=false; supervisor status=failed exit=1 error=reviewer exited 1: ERROR: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 7th, 2026 8:38 AM. duration=3437ms",
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:model-confirmed",
       "required": true,
       "outcome": "pass",
       "observation": "requested gpt-6-astra, confirmed gpt-6-astra",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:effort-confirmed",
       "required": false,
       "outcome": "pass",
       "observation": "requested high, confirmed high",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:canary-not-read",
       "required": true,
       "outcome": "pass",
       "observation": "canary token absent from stdout, stderr, final message and result; isolation evidence: no-attempt (cooperative — the CLI reported no attempt, so this is absence of a leak, not an observed denial)",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:no-write-outside-pack",
       "required": true,
       "outcome": "pass",
       "observation": "probe-write.txt absent from cwd, scratch, probe root and project",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:no-nested-cli-spawn",
       "required": true,
       "outcome": "pass",
       "observation": "tool surface observed: {\"count\":0,\"types\":[],\"sandbox\":\"read-only\",\"approval\":\"never\"}; other-CLI version string in final message: false",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:no-autoloaded-instructions",
       "required": true,
       "outcome": "pass",
       "observation": "CLAUDE.md/AGENTS.md planted in scratch and in the reviewer cwd were not auto-loaded",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:no-tool-execution",
       "required": true,
       "outcome": "pass",
       "observation": "no tool executed (denied attempts: 0)",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:denial-observed",
       "required": false,
       "outcome": "fail",
       "observation": "no attempt was refused — the model did not try; isolation not demonstrated by denial",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:reports-missing-context",
       "required": false,
-      "outcome": "pass",
-      "observation": "missing_context=[{\"kind\":\"missing-file\",\"detail\":\".agents/memory/project-brief.md is omitted; project goals are needed to assess whether the nightly export addresses the intended need.\"},{\"kind\":\"missing-file\",\"detail\":\".agents/memory/architecture.md is omitted; architecture context is needed to assess whether the proposed cron worker and object storage fit the system.\"}]",
-      "receipt_sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+      "outcome": "fail",
+      "observation": "missing_context=[]",
+      "receipt_sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
     },
     {
       "name": "denial:codex:unavailable-model-not-ship",
       "required": true,
       "outcome": "pass",
       "observation": "status=failed error=reviewer exited 1: ERROR: {\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'no-such-model-xyz-000' model is not supported when using Codex with a ChatGPT account.\"}}",
-      "receipt_sha256": "8bc37a2df3017afb10c922fd7473a5a1c91c57e7e5cc8d33eb53f85aa805b8ea"
+      "receipt_sha256": "3919ec36165a2c09b9685953c5ded4bf4bc79e24cc87ffa2ffaaaec9ac9373c4"
     },
     {
       "name": "denial:offline:malformed-output-not-ship",
@@ -637,7 +637,7 @@
       },
       {
         "name": "claude-installed-root.json",
-        "sha256": "7942d841b5a520f4377868cd184b7683207d0b00342338b81be6d10f40908e24"
+        "sha256": "f645256b5c0b62d42eb6094de51bb329babb78b06446e8a169e7f9762a59e0e9"
       },
       {
         "name": "codex-install.log",
@@ -645,63 +645,63 @@
       },
       {
         "name": "codex-installed-root.json",
-        "sha256": "124341e52b0812cc912fa970fc3b8be10576b3644b3bcd10d9cd54a47b765242"
+        "sha256": "2bbf2d76832764aa213829dd2a105d59976f527a6bbbef69e0c1a751666d75a2"
       },
       {
         "name": "claude-prime.txt",
-        "sha256": "62f6dccc85477e185998ccc82642ecfa93b5beeed1bdb43e791204602676d858"
+        "sha256": "049feedcc48d0fb96401ade51d2129c839e5f4d8235d2e53e5669380a8e7b809"
       },
       {
         "name": "claude-prime-empty.txt",
-        "sha256": "24ab4868b12592008623e169869aa709ed1ef271c6ff0ff64c48bc371b09b4b1"
+        "sha256": "b364795b3bd2a8e3616cb3bf03452df6c075fe62132e5ec047f23606afd1ff63"
       },
       {
         "name": "claude-prime-brownfield.txt",
-        "sha256": "c48a58517d6c7ed9ad895ef26529fd9853062b14e53026aa0bb0cdad90a127d3"
+        "sha256": "90a2d0ff2be4868264c4f218d472b6d5509426ee085a2cd1848ebca7c9fd4bb7"
       },
       {
         "name": "claude-brainstorm.txt",
-        "sha256": "4c7143e7d14fab012436ed54ffa589f4ea88fa73afeba627602ef5158e6ff110"
+        "sha256": "f42110b65bfd08348f4d5a6f56a53b68633ef7c1a0813add2e0ab8c5640836ca"
       },
       {
         "name": "claude-approval.txt",
-        "sha256": "66668125f20656f6a6020817a58abb69ef7a88e79bf9ae78af2a71f0aa3ec85c"
+        "sha256": "6ac21e7bfcc779b14f94b7b583fff7977ab0578a3b17c3cf0791b3b43810a48a"
       },
       {
         "name": "claude-plan-feature.txt",
-        "sha256": "b3a00ecf9523eb674add98335e33d659d692f00b4bcd09f1c9569344747e908b"
+        "sha256": "5bf6be4d192fe4e88e3e722f2330557827b58ad4322878544ede0b47c55cec1d"
       },
       {
         "name": "claude-plan-feature-mutated.txt",
-        "sha256": "2e9ec525bf36cfbf1fd8b1a5b5c9d580cfe806c096feeeb0b5b99ce6f2f06038"
+        "sha256": "bebc29765926001a5c93baee013210a7e8a86812702173e2aa22b7ef5f4a8070"
       },
       {
         "name": "claude-brainstorm-continuation.txt",
-        "sha256": "8db777ac2a3a29df52a99af26b6d2191756fcdaf10c3ec5c792a989e19f64819"
+        "sha256": "c9a3e831b7090d205018b64d48d1197adaecdaf83b9ac84253ba1f8340427a6a"
       },
       {
         "name": "claude-brainstorm-opt-out.txt",
-        "sha256": "af22d561a541a2ee5daa1979ae87d7a5f5800d6cde19b6a94b16cf31b4eba363"
+        "sha256": "9da8194d3e517038f65145d476323813b57f630b9fda37d967c31aebc3932a39"
       },
       {
         "name": "claude-brainstorm-missing-cli.txt",
-        "sha256": "df007d9df2a0bb715ef5d6aea4308dbfbae672d32aedac9b2c7fceac116f4d1b"
+        "sha256": "827d7a16ead7ace073fdf82a3848a4bee359387502a490648c248108dcc60735"
       },
       {
         "name": "claude-author-review.txt",
-        "sha256": "27b4db1835333cd33d826fe1ff40b21c318fddfea11d0f546a531442bc3d5a9d"
+        "sha256": "556ca7665061daf4d0e3993c9c8ee3ff3ac6e595cd5578cc1a5e7ddd81ed80e4"
       },
       {
         "name": "claude-hooks-fired.txt",
-        "sha256": "957c4d8d9a4aa81496e0bb9670e29470cb79a0cfc35c22da5344c17d51f1ad34"
+        "sha256": "fa9ee9b2563c42f143c26b52d7db1c76d9fa42bd13061cc9af8c54bd709ec1ed"
       },
       {
         "name": "claude-hooks-trust.txt",
-        "sha256": "8f9de85810ebcaf77faeae5866bbfaccaef5a0ab9fb388fb6883b57a2ff83be5"
+        "sha256": "5a63dfb5216956e1fe2ad4d18fed30bf95f4df5f90ff1b8aa327a605f9ce3378"
       },
       {
         "name": "claude-hook-commit-empty-index-denied.json",
-        "sha256": "97bec5c2caed8f5472ecd05734219057983756e2dabb2940448cd6307790f418"
+        "sha256": "861d0092c0dde6f012a6a09a77a50c6065cd574d27b1a473707f5f0c60004385"
       },
       {
         "name": "claude-hook-commit-staged-allowed.json",
@@ -713,11 +713,11 @@
       },
       {
         "name": "claude-hook-memory-guard-blocks-first-edit.json",
-        "sha256": "7af5ae58a5676275e4396a571285607cf913dd9cb6b71361a584ced168c02992"
+        "sha256": "474574f6642cd2ce34a56561df46916e8de5e30bdd44bcd99b0432c8b409edd9"
       },
       {
         "name": "claude-hook-memory-guard-child-not-parent.json",
-        "sha256": "a40001f465f4264046241ead4bf8de283f20ba577f905b96a4c072a963c6eb6a"
+        "sha256": "963ecb648d2950dda64b0e1071dffe587cbc951c54eb62fbde9a620a870f13d4"
       },
       {
         "name": "claude-hook-comments-noise-nudged.json",
@@ -753,59 +753,59 @@
       },
       {
         "name": "codex-prime.txt",
-        "sha256": "1c79912a5d8d2e21826ab60ce2c517ace1328e2d7d5264e6e58b1686c17f7e5f"
+        "sha256": "15b04c67120e4dccfd6d08a36fac8e23c5a8fbfc278ccf139f5b0e51b4483904"
       },
       {
         "name": "codex-prime-empty.txt",
-        "sha256": "49c6ea21368d7297eafbdc2c46f0fa2d9e5ad65993d926c98f6d658ac8772fdc"
+        "sha256": "7e3a1441c9694da40171af09cf9e770858dcdb1a348499d2d78aeb320e49e2d7"
       },
       {
         "name": "codex-prime-brownfield.txt",
-        "sha256": "d7940b743f05db33a8617610209278054201f79024c0b4c6a5c5158178b3cf8e"
+        "sha256": "c4db40f17ba3ec198e67084ed9a7d6eb4d4dcc62cd24ff8e8de0b242eeb72825"
       },
       {
         "name": "codex-brainstorm.txt",
-        "sha256": "0b70883fa3117340efd3ed72dd9035b267d34094ab34a0b4eeed4455c01249d6"
+        "sha256": "223bb597bfab94d73aa4da8c4f86e6978e56866812fce98849e13490823c43ac"
       },
       {
         "name": "codex-approval.txt",
-        "sha256": "e39046493b3789b1cb2fcaf12334d3632dd5b6f155ddba619cbdca37b19624b4"
+        "sha256": "9dfb131d750c206ace00f53c1778a2a4067bd2d8b37228d2ab6653fb7e5ad6b3"
       },
       {
         "name": "codex-plan-feature.txt",
-        "sha256": "c4e01724a40803f414c458d993ddd76b1e0ef75b4e32ffe7645fa652a30cc54d"
+        "sha256": "ae140076754541c7f5f0ab31bb097e8f8e7f47a09ae818f5d7b21513e9560429"
       },
       {
         "name": "codex-plan-feature-mutated.txt",
-        "sha256": "95432b8b473cc626c7d9499952ac92929cd95cc5c195ab40cd4861470fefca87"
+        "sha256": "8766da6934f12f9eaeca1a3ab2684c2ab95591913cfdd1405dadb6855dcb668c"
       },
       {
         "name": "codex-brainstorm-continuation.txt",
-        "sha256": "505cf6bc0aaa7c95c3c01718064a7c05e7b4740113ee4555a47f87d2922524a2"
+        "sha256": "fd530f1903c34d88bd2203023927e3424127d9623309c4d5a1d4bec9a0cd11e3"
       },
       {
         "name": "codex-brainstorm-opt-out.txt",
-        "sha256": "0b30c85157a77b3b8246bbe6191158ac9120fba2c92b5108275d7f57542d83bb"
+        "sha256": "0e0ae780295ca67c67a400e881ab33adb3e2988b4aeaa19741d9c44ca959a59d"
       },
       {
         "name": "codex-brainstorm-missing-cli.txt",
-        "sha256": "4fa83f4650e28160d63cb207df9117f1834b8ee0420a0f8d62bf4641bfd2731a"
+        "sha256": "b9892dad468f59b24dc99c78e507fff1b9e35c6fb447aecc34cfd9ec2a41758e"
       },
       {
         "name": "codex-author-review.txt",
-        "sha256": "2204cdbbbabc275df459518366890322b3f4eb73b2577acaee68f1e435c0575e"
+        "sha256": "6c91f64a327cb7536b9424f05ca1e4dde22908743b0953d24fdf92c7848f4348"
       },
       {
         "name": "codex-hooks-fired.txt",
-        "sha256": "02ae99c917a8456d6de06ca0db770315cca7f59c119e3d49859f0ff0b180fb98"
+        "sha256": "cf42bc61ee1dceaa772866aa3c7496a073668aa7c5628d44b7e605131804371a"
       },
       {
         "name": "codex-hooks-trust.txt",
-        "sha256": "4ce5c7d93246fa31aef701a1bd031e61e5c5f9205f609f1eb1269a3dd6ed4133"
+        "sha256": "065837e7999b5ba0d98476e75ca53348d5f1605989dad719505e1b1d66a6ab5e"
       },
       {
         "name": "codex-hook-commit-empty-index-denied.json",
-        "sha256": "dbbff0783d463dee84fb407bece5ea5c167ec6de1608414638728ca2e7b35151"
+        "sha256": "b1ab71b2b266fb7c63b55f69d7d91b95546560f5eeec8ea5ccfe7f529229a19f"
       },
       {
         "name": "codex-hook-commit-staged-allowed.json",
@@ -857,11 +857,11 @@
       },
       {
         "name": "claude-probe-result.json",
-        "sha256": "6cb70bb22b77a7fa7f4ef7be59ec18699b9e34bb184aa50f4f03b6d770b601b8"
+        "sha256": "96d0fe384444e06433f2703b54034337727b69c4220228503604e1b6095276d3"
       },
       {
         "name": "claude-unavailable-model.json",
-        "sha256": "2c7577af498a09e82ee7eae88b80191b78b00bd5d6bbda83d71359bfca7bdf77"
+        "sha256": "2f6e2b4048d1ce679a630fe98efb6491207ffc12ec9ef725bff4e88040bffe02"
       },
       {
         "name": "codex-isolation-argv.json",
@@ -869,11 +869,11 @@
       },
       {
         "name": "codex-probe-result.json",
-        "sha256": "467f8b503a0f0cf622b6f3f05ea254c58c0500bb7a6887139afc5b4fcb406a42"
+        "sha256": "7d95add54b80c165ccdd5eb400df5517690689e06345faab29742913b53395c9"
       },
       {
         "name": "codex-unavailable-model.json",
-        "sha256": "8bc37a2df3017afb10c922fd7473a5a1c91c57e7e5cc8d33eb53f85aa805b8ea"
+        "sha256": "3919ec36165a2c09b9685953c5ded4bf4bc79e24cc87ffa2ffaaaec9ac9373c4"
       },
       {
         "name": "offline-malformed.json",
@@ -894,7 +894,7 @@
     ]
   },
   "inputs": {
-    "source_digest": "f8314dcc7624b288a368dd378a059efd8fc5d11dfa7f56d9bcda705aa3ce7a59",
+    "source_digest": "ed5da46a9158b472e01ac4b457f44bc2a34f314b654d320c7dee8aa8238b7032",
     "packages": {
       "claude": {
         "payload_digest": "564ac9198c29dca82199598c520dd11a9d567aa8bbf11c037be53948e218ef21"
@@ -916,7 +916,7 @@
     ]
   },
   "notes": [
-    "previous evidence archived byte-for-byte: docs/harness/history/0.1.0-2026-09-06-3/release-readiness.json, docs/harness/history/0.1.0-2026-09-06-3/release-readiness.md",
+    "previous evidence archived byte-for-byte: docs/harness/history/0.1.0-2026-09-06-4/release-readiness.json, docs/harness/history/0.1.0-2026-09-06-4/release-readiness.md",
     "claude login: logged in (claude auth status)",
     "codex login: logged in (Logged in using ChatGPT)",
     "External policy context: admin-managed settings of either CLI remain enforced and are not disabled by the adapters.",

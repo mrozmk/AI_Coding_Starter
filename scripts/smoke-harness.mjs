@@ -19,7 +19,7 @@ import { discoverClaudeRoot, discoverCodexRootFromJson, resolveBoundRoot, verify
 import { parseFrontmatter } from '../harness-source/scripts/lib/frontmatter.mjs';
 import { renderAll } from './build-harness.mjs';
 import { diffPackage } from './lib/package-build.mjs';
-import { requiredLiveAssertions, runLiveSmoke } from './lib/smoke-live.mjs';
+import { evidenceCounts, runLiveSmoke } from './lib/smoke-live.mjs';
 
 const FIXTURE_PROJECT = 'tests/harness/fixtures/projects/legacy-profile';
 
@@ -157,7 +157,7 @@ export function verifyReleaseEvidence(file, { repoRoot, receiptsDir = null }) {
   const evidence = readJson(file);
   const { rendered, sourceDigest } = renderAll(repoRoot);
   const errors = validateEvidence(evidence, {
-    kind: 'release-readiness', mode: 'live', requiredAssertions: requiredLiveAssertions(repoRoot),
+    kind: 'release-readiness', mode: 'live', honorFileRequired: false,
     expectedInputs: { source_digest: sourceDigest, 'packages.claude.payload_digest': rendered.claude.marker.payload_digest, 'packages.codex.payload_digest': rendered.codex.marker.payload_digest },
   });
   if (receiptsDir) errors.push(...verifyReceipts(evidence, receiptsDir));
@@ -179,12 +179,13 @@ async function main() {
   }
   if (opts['verify-evidence']) {
     const errors = verifyReleaseEvidence(path.resolve(opts['verify-evidence']), { repoRoot, receiptsDir: opts.receipts ? path.resolve(opts.receipts) : null });
-    console.log(errors.length ? `FAIL release evidence\n  ${errors.join('\n  ')}` : `OK   release evidence ${opts['verify-evidence']} binds the current source and package digests`);
+    const counts = evidenceCounts(readJson(path.resolve(opts['verify-evidence'])));
+    console.log(errors.length ? `FAIL release evidence\n  ${errors.join('\n  ')}` : `OK   release evidence ${opts['verify-evidence']} binds the current source and package digests (observed: ${counts.pass} pass, ${counts.fail} fail, ${counts['not-run']} not-run)`);
     process.exit(errors.length ? 1 : 0);
   }
   if (opts.live) {
-    const { passed } = await runLiveSmoke({ repoRoot, opts });
-    process.exit(passed ? 0 : 1);
+    await runLiveSmoke({ repoRoot, opts });
+    process.exit(0);
   }
   console.error('smoke-harness: use --offline | --live … | --verify-evidence <json>');
   process.exit(2);

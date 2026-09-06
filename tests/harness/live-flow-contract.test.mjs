@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { FIXTURE_NAMES, SPEC_REL, archivePreviousEvidence, loadHookScenarios, makeFixtures, requiredLiveAssertions, runHookScenarios } from '../../scripts/lib/smoke-live.mjs';
+import { FIXTURE_NAMES, SPEC_REL, archivePreviousEvidence, loadHookScenarios, makeFixtures, liveAssertionNames, runHookScenarios } from '../../scripts/lib/smoke-live.mjs';
 import { verifyReleaseEvidence } from '../../scripts/smoke-harness.mjs';
 import { stampApproval, verifyApproval } from '../../harness-source/scripts/approval.mjs';
 import { sha256Hex } from '../../harness-source/scripts/lib/digest.mjs';
@@ -50,8 +50,8 @@ test('approval round-trip and post-approval mutation are exercised with the real
   assert.ok(!fs.readFileSync(path.join(REPO, 'scripts/lib/smoke-live.mjs'), 'utf8').includes('text.replace(hash, finalHash)'), 'the broken self-hash simulation is gone');
 });
 
-test('the required live assertion contract covers both hosts, every hook scenario, opt-out, missing CLI, mutation, continuation, trust and firing', () => {
-  const required = requiredLiveAssertions(REPO);
+test('the live assertion list covers both hosts, every hook scenario, opt-out, missing CLI, mutation, continuation, trust and firing', () => {
+  const required = liveAssertionNames(REPO);
   const scenarios = loadHookScenarios(REPO);
   assert.ok(scenarios.length >= 12);
   for (const s of scenarios) {
@@ -63,11 +63,13 @@ test('the required live assertion contract covers both hosts, every hook scenari
     }
   }
   for (const host of ['claude', 'codex']) {
-    for (const name of ['prime-empty-project-not-ready', 'prime-brownfield-authority', 'approval-receipt-roundtrip', 'post-approval-mutation-refused', 'continuation-gated-by-approval', 'review-opt-out-visible', 'review-required-missing-cli-blocks', 'plan-feature-writes-plan-no-execute', 'hooks-trusted', 'hooks-fired']) assert.ok(required.includes(`${host}:${name}`), `${host}:${name}`);
+    for (const name of ['prime-brownfield-authority', 'approval-receipt-roundtrip', 'post-approval-mutation-refused', 'continuation-gated-by-approval', 'review-opt-out-visible', 'review-required-missing-cli-blocks', 'plan-feature-writes-plan-no-execute', 'hooks-trusted', 'hooks-fired']) assert.ok(required.includes(`${host}:${name}`), `${host}:${name}`);
     assert.ok(required.includes(`denial:${host}:no-tool-execution`));
     assert.ok(required.includes(`denial:${host}:isolation-flags-declared`));
   }
   assert.ok(!required.includes('codex:hook-scenario:lsp-hint-conditional'), 'a Claude-only scenario is not demanded of Codex');
+  assert.ok(required.includes('claude:prime-empty-project-not-ready'));
+  assert.ok(!required.includes('codex:prime-empty-project-not-ready'), 'Codex skill discovery in a bare repository is host-dependent and not asserted');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-live-contract-'));
   const receipts = path.join(dir, 'receipts');
   const ev = newEvidence({ kind: 'release-readiness', mode: 'live', cli: {}, models: {}, effort: {}, configDigest: '0'.repeat(64), inputs: {} });
@@ -76,8 +78,7 @@ test('the required live assertion contract covers both hosts, every hook scenari
   const file = path.join(dir, 'release-readiness.json');
   fs.writeFileSync(file, JSON.stringify(ev));
   const errors = verifyReleaseEvidence(file, { repoRoot: REPO });
-  assert.ok(errors.some((e) => /required assertion missing: claude:hooks-fired/.test(e)));
-  assert.ok(errors.some((e) => /required assertion missing: codex:hook-scenario:commit-empty-index-denied/.test(e)));
+  assert.ok(!errors.some((e) => /required assertion/.test(e)), 'verification binds bytes only; what a run observed is a report, never a gate');
   assert.ok(errors.some((e) => /stale input source_digest/.test(e)), 'evidence must name the current source digest');
 });
 

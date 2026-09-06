@@ -4,10 +4,10 @@
 
 ## Status — read this first
 
-- **Version 0.1.0** (`harness-source/harness.json`). Identity of any build is its `harness-build.json` (source + payload digests); a bundle's `harness-release.json` repeats them and says whether live evidence is **verified** (`evidence_verified: true` only when both evidence files exist, every required assertion passed and their digests match the exported bytes). There is no separate identity file.
-- **Installed-host validation (T16): eight runs on both CLIs** (2026-09-05/06; history under `history/`, current `release-readiness.json` = run 8: 77 pass). **Codex: every required assertion passed** — review in both directions, all hook scenarios, `hooks-fired` and the operator's `hooks-trusted` acknowledgement, `$prime` on an empty repository, plan-feature, continuation gating. **Claude Code: three required rows red from one defect** — the live author wrote `**External docs required:** yes — <rationale>` and `approval.mjs verify` accepted only a bare `yes`/`no`, so the receipt round-trip failed and the two downstream plan-feature rows (write plan, refuse post-approval mutation) had no approved spec to work on; both had passed in runs 5–6. The parser now reads the leading word (unit-tested against the observed line). Every earlier Claude required row passed in run 8, including hooks firing in a real session.
-- **Consequence:** the parser fix changes the source bytes after run 8, so `build-harness.mjs --export` produces an **unverified** bundle (`evidence_verified: false`, no live evidence shipped). One more full live run on the current bytes is the only remaining step to a verified bundle; the operator decided (2026-09-06) to stop the run loop here. The plugin is *planning + review + guard portability implemented and verified on both hosts*, **hooks not activated in any real project** — do not migrate a real project yet.
-- **Reviewer capability evidence:** `reviewer-capabilities.json` is stale against the current adapter/runner bytes (`preflight --verify-capabilities` says so); the same isolation assertions are re-proven in every live run's `denial:*` rows.
+- **Version 0.1.0** (`harness-source/harness.json`). Identity of any build is its `harness-build.json` (source + payload digests); a bundle's `harness-release.json` repeats them and says whether the live evidence on disk describes these bytes (`evidence_current`). Evidence for other bytes is not shipped.
+- **Live evidence is a report, not a gate.** `docs/harness/release-readiness.json` records what an installed-host run observed on both CLIs — nothing in the build, export, bundle check or installation requires any row of it to pass. Read it to know how the hosts behaved; decide for yourself what matters for your project. History of earlier runs: `history/`.
+- **Current evidence (run 10, 2026-09-06, 79 rows passed).** Claude Code: every row passed, including plugin hooks firing in a real session, review by Codex, planning skills, guards. Codex: every row passed except `$prime` in an empty repository (not asserted any more — plugin skill discovery in a bare repository is host-dependent; see Remaining gaps). Reviewer isolation probe (`reviewer-capabilities.json`) predates the last adapter edits and is reported as stale by `preflight --verify-capabilities`; its isolation rows are re-observed in every live run's `denial:*` rows.
+- **Hooks are not activated in any real project** — the legacy `.claude/` hooks stay registered until an explicit activation per `references/installation.md`.
 
 ## What you get
 
@@ -25,12 +25,12 @@ node scripts/build-harness.mjs --parity-docs                 # docs/harness/{ins
 
 Any source change changes `source_digest`; every earlier live evidence is then invalid for the new bytes by construction (`--verify-evidence` compares digests).
 
-## Installed-host validation — T16 (operator gate; eight runs recorded, see Status)
+## Installed-host validation — live smoke (operator-run report; eleven runs recorded, see Status)
 
 Requires separate authorization for: creating synthetic workspaces under `$TMPDIR`, adding a local marketplace and installing the plugin in both CLIs (`--scope local` on Claude Code; user-level on Codex), trusting the plugin hooks in each host, and live model calls (both reviewers, both authors). Nothing here touches a real project.
 
 ```bash
-node scripts/build-harness.mjs --export dist/harness-0.1.0   # unverified until the run below is green
+node scripts/build-harness.mjs --export dist/harness-0.1.0   # ships live evidence only when it names these bytes
 node scripts/check-harness.mjs --bundle dist/harness-0.1.0
 # 1. reviewer probe (archive the old evidence first — never overwrite in place)
 mkdir -p docs/harness/history/0.1.0-<date> && git mv docs/harness/reviewer-capabilities.json docs/harness/reviewer-capabilities.md docs/harness/history/0.1.0-<date>/
@@ -40,7 +40,7 @@ node scripts/smoke-harness.mjs --live --bundle dist/harness-0.1.0 [--install] [-
 node scripts/smoke-harness.mjs --verify-evidence docs/harness/release-readiness.json --receipts <local dir>
 ```
 
-What the live run must observe per host (the full list is `requiredLiveAssertions` in `scripts/lib/smoke-live.mjs`): cold prime; prime on an empty repository reporting *not ready*; prime on a brownfield project naming `CLAUDE.md` as authority; brainstorm with `stop` producing no approval and no plan; approval receipt round-trip through `approval.mjs`; plan-feature writing a plan and executing nothing; plan-feature refusing a spec edited after approval; the profile's continuation never fires without the user's approval (automatic continuation after an interactive approval is not provable non-interactively and is not claimed); the review opt-out visible; review enabled with the other CLI missing **blocking**; a review in each direction with confirmed model; **hooks trusted** (operator acknowledgement) and **hooks fired** by a real host session; every scenario in `contracts/hook-scenarios.json` through the installed runner; the reviewer denial probe from the installed adapters. Record actual CLI versions and requested/confirmed model/effort honestly. A required failure means the release is not ready; fix and re-run the whole live suite. Stop at any missing authority, login, trust or network and report the exact human step; never widen a permission to pass.
+What the live run records per host (the full list is `liveAssertionNames` in `scripts/lib/smoke-live.mjs`): cold prime; prime on an empty repository reporting *not ready* (Claude only); prime on a brownfield project naming `CLAUDE.md` as authority; brainstorm with `stop` producing no approval and no plan; approval receipt round-trip through `approval.mjs`; plan-feature writing a plan and executing nothing; plan-feature refusing a spec edited after approval; the profile's continuation never firing without the user's approval; the review opt-out visible; review enabled with the other CLI missing **blocking**; a review in each direction with confirmed model; hooks trusted (operator acknowledgement) and hooks fired by a real host session; every scenario in `contracts/hook-scenarios.json` through the installed runner; the reviewer isolation probe from the installed adapters. Actual CLI versions and requested/confirmed model/effort are recorded as observed. A failed row is information about the host on that day, not a verdict on the release — read the receipt, decide, and re-run only when you want fresh evidence. Stop at any missing authority, login, trust or network and report the exact human step; never widen a permission to pass.
 
 ## Install (both hosts)
 
