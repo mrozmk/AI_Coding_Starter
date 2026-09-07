@@ -105,7 +105,7 @@ Knowledge layers under `.agents/`. **Before any task read `.agents/memory/index.
 | `memory/` | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, bootstrap commands |
 | `reference/` | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
 | `backlog.md` *(optional)* | Delivery map — epics, task DAG, work packages | `Status`/`Ref` written back by planning | backlog bootstrap · `plan-feature` |
-| `specs/` + `approvals/` | Design docs and their approval receipts | Lives with the feature | `brainstorm` + `approval.mjs` |
+| `specs/` | Design docs, each carrying its own approval stamp | Lives with the feature | `brainstorm` + `approval.mjs` |
 | `plans/` | Implementation plans | Short-lived: `active/` → `done/` | `plan-feature` |
 | `handoffs/` | Session handoffs (local scratchpad) | Per clone | `handoff` |
 
@@ -131,4 +131,4 @@ This project declares `{lsp-tool}`. Navigate by symbol where the host exposes it
 
 ## Working with the harness plugin
 
-Start every session with `prime`. Planning: `brainstorm` → spec (Draft) → independent closed-context review → the user's single approval (`approval.mjs` receipt) → optionally `plan-feature` (profile `planning.after_brainstorm`). No planning skill writes application code, commits, pushes or deploys. Profile: `.agents/project-profile.json` (legacy `.claude/project-profile.json` still read in place). Installed version: `.agents/harness-version.json` (portable) + `.agents/harness-state/` (machine-local, gitignored).
+Start every session with `prime`. Planning: `brainstorm` → spec (Draft) → independent closed-context review → the user's single approval (`approval.mjs` stamp) → optionally `plan-feature` (profile `planning.after_brainstorm`). No planning skill writes application code, commits, pushes or deploys. Profile: `.agents/project-profile.json` (legacy `.claude/project-profile.json` still read in place). Installed version: `.agents/harness-version.json` (portable) + `.agents/harness-state/` (machine-local, gitignored).

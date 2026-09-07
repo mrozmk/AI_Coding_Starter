@@ -37,7 +37,7 @@ export function liveAssertionNames(repoRoot) {
     'fixtures:seven-project-types',
     ...HOSTS.flatMap((h) => [
       `${h}:installed-root-verified`, `${h}:cold-prime`, `${h}:prime-empty-project-not-ready`, `${h}:prime-brownfield-authority`,
-      `${h}:brainstorm-no-approval-no-plan`, `${h}:approval-receipt-roundtrip`, `${h}:post-approval-mutation-refused`,
+      `${h}:brainstorm-no-approval-no-plan`, `${h}:approval-roundtrip`, `${h}:post-approval-mutation-refused`,
       `${h}:plan-feature-writes-plan-no-execute`, `${h}:continuation-gated-by-approval`, `${h}:review-opt-out-visible`, `${h}:review-required-missing-cli-blocks`,
       `${h}:review-as-author`, `${h}:hooks-trusted`, `${h}:hooks-fired`,
       ...scenarios.filter((s) => !s.hosts || s.hosts.includes(h)).map((s) => `${h}:hook-scenario:${s.id}`),
@@ -275,7 +275,7 @@ async function hostFlow(host, root, fixtures, { evidence, receiptsDir, opts = {}
   const spec = path.join(project, SPEC_REL);
   const stamp = stampApproval({ projectRoot: project, spec: SPEC_REL, expectedSha: sha256Hex(fs.readFileSync(spec)), decision: 'live smoke operator approval', date: '2026-09-05', consent: true });
   const ok = verifyApproval({ projectRoot: project, spec: SPEC_REL });
-  assertRes('approval-receipt-roundtrip', stamp.written && ok.ok, ok.ok ? `receipt ${ok.receipt} sha ${ok.sha256.slice(0, 12)}…` : ok.errors.join('; '), rec('approval', JSON.stringify({ stamp, ok }, null, 2)));
+  assertRes('approval-roundtrip', stamp.written && ok.ok, ok.ok ? `in-spec stamp, body sha ${ok.sha256.slice(0, 12)}…` : ok.errors.join('; '), rec('approval', JSON.stringify({ stamp, ok }, null, 2)));
 
   const srcBefore = srcCount(project);
   const pf = skill(project, `${invoke('plan-feature')} ${SPEC_REL}`, { write: true });
@@ -289,7 +289,6 @@ async function hostFlow(host, root, fixtures, { evidence, receiptsDir, opts = {}
   const mutated = skill(project, `${invoke('plan-feature')} ${SPEC_REL}`, { write: true });
   assertRes('post-approval-mutation-refused', listPlans(project).length === 0 && /changed after approval|re-approve|verify/.test(mutated.text), `plans=${listPlans(project).length} refused=${/changed after approval|re-approve/.test(mutated.text)} exit=${mutated.status}`, rec('plan-feature-mutated', `${mutated.text}\n---stderr---\n${mutated.stderr}`));
   git(project, ['checkout', '--', SPEC_REL]);
-  fs.rmSync(path.join(project, '.agents/approvals'), { recursive: true, force: true });
 
   // The WHY-GATE asks for the problem before any approach; a non-interactive run must carry it in the input.
   const cont = skill(project, `${invoke('brainstorm')} weekly report of exported orders — why: ops reconciles Monday export counts against orders by hand and misses gaps`, { write: true });

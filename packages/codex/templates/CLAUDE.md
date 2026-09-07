@@ -98,7 +98,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 ## Project Knowledge Layers
 
-Knowledge layers under `.agents/`. **Before any task read `.agents/memory/index.md`** — `When to Read`, `Quick Reference`, `Memory scope`. Layers: `sources/` (raw, human-only) · `memory/` (append-only lessons; some regenerated) · `reference/` (long-lived) · `backlog.md` (optional delivery map) · `specs/` + `approvals/` (designs and receipts) · `plans/` (`active/` → `done/`) · `handoffs/` (local scratchpad).
+Knowledge layers under `.agents/`. **Before any task read `.agents/memory/index.md`** — `When to Read`, `Quick Reference`, `Memory scope`. Layers: `sources/` (raw, human-only) · `memory/` (append-only lessons; some regenerated) · `reference/` (long-lived) · `backlog.md` (optional delivery map) · `specs/` (designs, each with its approval stamp) · `plans/` (`active/` → `done/`) · `handoffs/` (local scratchpad).
 
 ## Automatic Behaviors
 
@@ -123,6 +123,7 @@ This project declares `{lsp-tool}`. Prefer `goToDefinition` / `findReferences` /
 ## Working with the harness plugin
 
 - Start with `/harness:prime`. Then `/harness:brainstorm` → spec → review → your approval → optionally `/harness:plan-feature` (profile `planning.after_brainstorm`).
+- Plugin scripts run without prompts only through the machine-local allowance `setup-start` offers (`.claude/settings.local.json`); `settings.json` denies writes under `~/.claude/plugins/**` so the cache stays what the marketplace installed.
 - Planning skills start only from a user command (`/harness:<skill>` or a project wrapper like `/brainstorm`); never start one from a description match.
 - Reviews run closed-context and read-only; a missing opinion is reported, never converted into approval.
 - Profile: `.agents/project-profile.json` (legacy `.claude/project-profile.json` still read). Installed version binding: `.agents/harness-version.json` + `.agents/harness-state/`.

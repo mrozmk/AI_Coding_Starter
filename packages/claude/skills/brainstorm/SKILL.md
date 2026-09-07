@@ -82,14 +82,14 @@ A blocked opinion **stops advancement**. Only the user may waive it, explicitly,
 
 Finish the spec first — including `## Independent Review` — because approval binds to final bytes. Present in one message: assumptions, bounds, what the review changed, rethink signals, and the review's `summary_line` verbatim (execution first, then verdict or blocked). Ask once: **Approve** · **Correct something** · **Revise the design** (only with rethink signals).
 
-On approve, record the identity **outside** the spec (a spec never contains its own hash):
+On approve, stamp the identity into the spec's own `**Approval:**` line:
 
 ```
 node <plugin_root>/scripts/approval.mjs stamp --project-root <project_root> --spec <spec path> \
   --expected $(shasum -a 256 <spec path> | cut -d' ' -f1) --decision "<where the user said approve>" --consent yes
 ```
 
-The helper applies exactly two metadata edits (`**Status:** Approved`, `**Approval:** receipt …`), hashes the final bytes and writes `.agents/approvals/<spec>.approval.json`. `--expected` must be the hash of the bytes the user just saw; a mismatch means the file moved under them — re-present. Never edit the spec after stamping: `plan-feature` runs `approval.mjs verify` and refuses a changed file. An editorial fix after approval needs a new stamp (the user re-approves the bytes); it does not by itself need another independent review (`references/review-contract.md → Repeat policy`).
+The helper applies exactly two metadata edits (`**Status:** Approved`, `**Approval:** approved … · body-sha256 …`) and writes nothing else — the hash covers the file with the approval line excluded, so the stamp cannot invalidate itself. `--expected` must be the hash of the bytes the user just saw; a mismatch means the file moved under them — re-present. Never edit the spec after stamping: `plan-feature` runs `approval.mjs verify` and refuses a changed file. An editorial fix after approval needs a new stamp (the user re-approves the bytes); it does not by itself need another independent review (`references/review-contract.md → Repeat policy`).
 
 ### 10. Continuation — exactly once, never execute
 
@@ -99,7 +99,7 @@ Read `planning.after_brainstorm` from `profile.mjs read` (absent → `stop`). Th
 |---|---|---|
 | yes | any | stop; report the spec path |
 | no | `stop` or absent | stop; report the spec path and that `plan-feature <spec>` is the next step |
-| no | `plan-feature` | continue **once** into `plan-feature` with the exact spec path (its receipt carries the SHA-256) |
+| no | `plan-feature` | continue **once** into `plan-feature` with the exact spec path (its approval line carries the SHA-256) |
 
 Continuation on Claude Code: invoke `/harness:plan-feature <spec path>`. If the host blocks a nested user-only skill call, read `<plugin_root>/skills/plan-feature/SKILL.md` and carry it out directly in this conversation — that is the documented approved continuation, not a workaround for a stop. On Codex: invoke `$plan-feature <spec path>`, or read that file and follow it. In both cases the plan is written but **never executed**; the run ends after the plan report.
 

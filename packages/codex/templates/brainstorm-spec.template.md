@@ -3,7 +3,7 @@
 **Date:** YYYY-MM-DD
 **Status:** Draft
 **External docs required:** yes | no
-**Approval:** none — written only by `scripts/approval.mjs stamp` after the user's explicit decision at the brainstorm approval point. The receipt `.agents/approvals/<this file>.approval.json` names the approved bytes; any later edit to this file invalidates it. This file never contains its own hash.
+**Approval:** none — replaced by `scripts/approval.mjs stamp` after the user's explicit decision at the brainstorm approval point. The stamp names the approved bytes (hashed with this line excluded); any later edit to this file invalidates it.
 
 ## Summary
 

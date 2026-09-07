@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Spec approval identity (T02). A spec never carries its own whole-file hash: the approval is an
-// external receipt under .agents/approvals/ that names the final approved bytes. `stamp` applies
-// only the declared metadata transition (Status → Approved, Approval → receipt pointer), hashes the
-// result and writes the receipt; `verify` recomputes the hash and compares. Any later edit fails.
+// Spec approval identity (T02). The approval lives in the spec's own `**Approval:**` line and names
+// the bytes it approves. A file can name its own hash because the hash is taken over the CANONICAL
+// form: that line removed and `**Status:**` normalized to Approved. A Draft and its stamped form
+// canonicalize identically, so stamping is hash-neutral and no external receipt is needed.
+// `stamp` applies the declared metadata transition; `verify` recanonicalizes and compares.
+// Any edit to any other byte fails.
 //
 //   node scripts/approval.mjs stamp  --project-root <dir> --spec <rel> --expected <sha256 of the draft you approved> \
 //        --decision "<who/where the decision was made>" [--date YYYY-MM-DD] --consent yes
@@ -14,13 +16,24 @@ import { parseArgv, requireOpt } from './lib/argv.mjs';
 import { sha256Hex } from './lib/digest.mjs';
 import { isInside, realpathOrSelf, toPosix } from './lib/fsx.mjs';
 
-export const APPROVALS_DIR = '.agents/approvals';
 const STATUS_RE = /^\*\*Status:\*\*[ \t]*(.*)$/m;
 const APPROVAL_RE = /^\*\*Approval:\*\*.*$/m;
+const APPROVAL_LINE_RE = /^\*\*Approval:\*\*.*(?:\r?\n)?/m;
+const STAMP_RE = /^\*\*Approval:\*\* approved by the user on (\d{4}-\d{2}-\d{2}) · decision: (.+) · body-sha256 `([0-9a-f]{64})`[ \t]*$/m;
 
-export function receiptPathFor(specRel) {
-  const base = path.posix.basename(toPosix(specRel)).replace(/\.md$/, '');
-  return `${APPROVALS_DIR}/${base}.approval.json`;
+export function approvalLine({ date, decision, bodySha }) {
+  return `**Approval:** approved by the user on ${date} · decision: ${decision} · body-sha256 \`${bodySha}\``;
+}
+
+// The bytes an approval binds to: everything except the approval line itself, with the status word
+// pinned. This is what makes the hash quotable inside the file it measures.
+export function canonicalBytes(text) {
+  const stripped = text.replace(APPROVAL_LINE_RE, '');
+  return Buffer.from(stripped.replace(STATUS_RE, () => '**Status:** Approved'), 'utf8');
+}
+
+export function bodySha256(text) {
+  return sha256Hex(canonicalBytes(text));
 }
 
 function resolveSpec(projectRoot, spec) {
@@ -38,52 +51,45 @@ function atomicWrite(file, bytes) {
 }
 
 // The only edit approval is allowed to make: two metadata lines. Anything else is the user's.
-export function applyTransition(text, { receiptRel, date }) {
+export function applyTransition(text, { date, decision, bodySha }) {
   const status = text.match(STATUS_RE);
   if (!status) throw new Error('spec has no **Status:** line');
   if (!/^(Draft|Approved)\b/.test(status[1].trim())) throw new Error(`spec status is "${status[1].trim()}" — only Draft (or a stale Approved) can be stamped`);
-  let out = text.replace(STATUS_RE, '**Status:** Approved');
-  const line = `**Approval:** receipt \`${receiptRel}\` — approved by the user on ${date}`;
-  out = APPROVAL_RE.test(out) ? out.replace(APPROVAL_RE, line) : out.replace(/^\*\*Status:\*\* Approved$/m, `**Status:** Approved\n${line}`);
+  const line = approvalLine({ date, decision, bodySha });
+  let out = text.replace(STATUS_RE, () => '**Status:** Approved');
+  out = APPROVAL_RE.test(out) ? out.replace(APPROVAL_RE, () => line) : out.replace(/^\*\*Status:\*\* Approved$/m, () => `**Status:** Approved\n${line}`);
   return out;
 }
 
 export function stampApproval({ projectRoot, spec, expectedSha, decision, date = new Date().toISOString().slice(0, 10), consent = false }) {
-  const { root, abs, rel } = resolveSpec(projectRoot, spec);
+  const { abs, rel } = resolveSpec(projectRoot, spec);
   if (!fs.existsSync(abs)) throw new Error(`spec not found: ${rel}`);
-  if (!decision || !decision.trim()) throw new Error('--decision is required: record where the user approved (message, ticket, review round)');
+  // Collapsed to one line: the approval is a single metadata line, and a newline would forge others.
+  const ref = (decision ?? '').replace(/\s+/g, ' ').trim();
+  if (!ref) throw new Error('--decision is required: record where the user approved (message, ticket, review round)');
   const draft = fs.readFileSync(abs);
   const draftSha = sha256Hex(draft);
   if (!expectedSha) throw new Error('--expected is required: the SHA-256 of the draft bytes the user approved');
   if (expectedSha !== draftSha) throw new Error(`spec changed since the approved draft (expected ${expectedSha.slice(0, 12)}…, found ${draftSha.slice(0, 12)}…) — re-present it for approval`);
-  const receiptRel = receiptPathFor(rel);
-  const finalText = applyTransition(draft.toString('utf8'), { receiptRel, date });
+  const draftText = draft.toString('utf8');
+  const bodySha = bodySha256(draftText);
+  const finalText = applyTransition(draftText, { date, decision: ref, bodySha });
+  if (bodySha256(finalText) !== bodySha) throw new Error('the approval transition would change the canonical body — refusing to stamp');
   const finalBytes = Buffer.from(finalText, 'utf8');
-  const receipt = {
-    schema_version: 1,
-    spec: rel,
-    sha256: sha256Hex(finalBytes),
-    bytes: finalBytes.length,
-    draft_sha256: draftSha,
-    approved_on: date,
-    decision,
-    stamped_at: new Date().toISOString(),
-  };
-  const preview = { spec: rel, receipt: receiptRel, draft_sha256: draftSha, final_sha256: receipt.sha256, transition: ['**Status:** Approved', `**Approval:** receipt \`${receiptRel}\``] };
+  const approval = { schema_version: 2, spec: rel, sha256: bodySha, bytes: finalBytes.length, draft_sha256: draftSha, approved_on: date, decision: ref };
+  const preview = { spec: rel, draft_sha256: draftSha, body_sha256: bodySha, transition: ['**Status:** Approved', approvalLine({ date, decision: ref, bodySha })] };
   if (!consent) return { written: false, preview };
   atomicWrite(abs, finalBytes);
-  atomicWrite(path.join(root, receiptRel), `${JSON.stringify(receipt, null, 2)}\n`);
-  return { written: true, preview, receipt };
+  return { written: true, preview, approval };
 }
 
 export function verifyApproval({ projectRoot, spec }) {
   const errors = [];
-  let root; let abs; let rel;
-  try { ({ root, abs, rel } = resolveSpec(projectRoot, spec)); } catch (e) { return { ok: false, errors: [e.message] }; }
+  let abs; let rel;
+  try { ({ abs, rel } = resolveSpec(projectRoot, spec)); } catch (e) { return { ok: false, errors: [e.message] }; }
   if (!fs.existsSync(abs)) return { ok: false, errors: [`spec not found: ${rel}`] };
-  const bytes = fs.readFileSync(abs);
-  const sha256 = sha256Hex(bytes);
-  const text = bytes.toString('utf8');
+  const text = fs.readFileSync(abs, 'utf8');
+  const sha256 = bodySha256(text);
   const status = text.match(STATUS_RE)?.[1]?.trim() ?? null;
   if (status !== 'Approved') errors.push(`spec status is ${status ?? 'missing'}, not Approved`);
   // plan-feature's research step keys off this field; a spec without it cannot say whether docs were needed.
@@ -91,23 +97,16 @@ export function verifyApproval({ projectRoot, spec }) {
   const docsLine = text.match(/^\*\*External docs required:\*\*[ \t]*(.*)$/m)?.[1]?.trim() ?? null;
   const docs = docsLine?.match(/^(yes|no)\b(?![ \t]*\|)/i)?.[1]?.toLowerCase() ?? docsLine;
   if (!['yes', 'no'].includes(docs)) errors.push(`spec ${docs === null ? 'lacks' : `has an unusable`} **External docs required:** ${docs === null ? '(yes | no)' : `(${docs})`} — fix it in brainstorm or by hand, then re-approve`);
-  const receiptRel = receiptPathFor(rel);
-  const receiptAbs = path.join(root, receiptRel);
-  if (!isInside(root, receiptAbs)) errors.push(`receipt path escapes the project: ${receiptRel}`);
-  if (!fs.existsSync(receiptAbs)) errors.push(`no approval receipt at ${receiptRel} — the spec was never stamped, or the stamp was interrupted`);
-  let receipt = null;
-  if (errors.length === 0) {
-    try { receipt = JSON.parse(fs.readFileSync(receiptAbs, 'utf8')); } catch (e) { errors.push(`receipt unreadable: ${e.message}`); }
+  const stamp = text.match(STAMP_RE);
+  if (!stamp) {
+    errors.push(APPROVAL_RE.test(text)
+      ? 'the **Approval:** line is not a stamp (expected "approved by the user on <date> · decision: <ref> · body-sha256 `<hash>`") — the spec was never stamped, or the line was hand-edited'
+      : 'spec has no **Approval:** line — it was never stamped');
+    return { ok: false, errors, spec: rel, sha256, approved_on: null, decision: null };
   }
-  if (receipt) {
-    if (receipt.schema_version !== 1) errors.push('receipt schema_version must be 1');
-    if (receipt.spec !== rel) errors.push(`receipt names ${receipt.spec}, not ${rel}`);
-    if (!/^[0-9a-f]{64}$/.test(receipt.sha256 ?? '')) errors.push('receipt sha256 malformed');
-    else if (receipt.sha256 !== sha256) errors.push(`spec bytes changed after approval (receipt ${receipt.sha256.slice(0, 12)}…, current ${sha256.slice(0, 12)}…) — re-approve`);
-    if (!receipt.decision) errors.push('receipt has no decision reference');
-    if (!text.includes(`receipt \`${receiptRel}\``)) errors.push('spec Approval line does not point at its receipt');
-  }
-  return { ok: errors.length === 0, errors, spec: rel, sha256, receipt: receiptRel, decision: receipt?.decision ?? null, approved_on: receipt?.approved_on ?? null };
+  const [, approvedOn, decision, approvedSha] = stamp;
+  if (approvedSha !== sha256) errors.push(`spec bytes changed after approval (approved ${approvedSha.slice(0, 12)}…, current ${sha256.slice(0, 12)}…) — re-approve`);
+  return { ok: errors.length === 0, errors, spec: rel, sha256, approved_on: approvedOn, decision };
 }
 
 function main() {

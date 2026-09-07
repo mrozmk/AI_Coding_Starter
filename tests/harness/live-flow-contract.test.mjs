@@ -35,14 +35,15 @@ test('fixtures: a genuinely empty project, a brownfield project with authoritati
   for (const p of Object.values(projects)) assert.match(execFileSync('git', ['-C', p, 'log', '--oneline'], { encoding: 'utf8' }), /fixture/);
 });
 
-test('approval round-trip and post-approval mutation are exercised with the real helper, never a self-hash', () => {
+test('approval round-trip and post-approval mutation are exercised with the real helper, in the spec itself', () => {
   const { projects } = makeFixtures(REPO);
   const project = projects['different-rules'];
   const spec = path.join(project, SPEC_REL);
   const res = stampApproval({ projectRoot: project, spec: SPEC_REL, expectedSha: sha256Hex(fs.readFileSync(spec)), decision: 'contract test', date: '2026-09-05', consent: true });
   assert.equal(res.written, true);
   assert.equal(verifyApproval({ projectRoot: project, spec: SPEC_REL }).ok, true);
-  assert.ok(!fs.readFileSync(spec, 'utf8').includes(res.receipt.sha256));
+  assert.ok(fs.readFileSync(spec, 'utf8').includes(res.approval.sha256), 'the stamp names its own canonical bytes');
+  assert.ok(!fs.existsSync(path.join(project, '.agents/approvals')), 'no receipt directory is created');
   fs.appendFileSync(spec, '\nedited after approval\n');
   const after = verifyApproval({ projectRoot: project, spec: SPEC_REL });
   assert.equal(after.ok, false);
@@ -63,7 +64,7 @@ test('the live assertion list covers both hosts, every hook scenario, opt-out, m
     }
   }
   for (const host of ['claude', 'codex']) {
-    for (const name of ['prime-brownfield-authority', 'approval-receipt-roundtrip', 'post-approval-mutation-refused', 'continuation-gated-by-approval', 'review-opt-out-visible', 'review-required-missing-cli-blocks', 'plan-feature-writes-plan-no-execute', 'hooks-trusted', 'hooks-fired']) assert.ok(required.includes(`${host}:${name}`), `${host}:${name}`);
+    for (const name of ['prime-brownfield-authority', 'approval-roundtrip', 'post-approval-mutation-refused', 'continuation-gated-by-approval', 'review-opt-out-visible', 'review-required-missing-cli-blocks', 'plan-feature-writes-plan-no-execute', 'hooks-trusted', 'hooks-fired']) assert.ok(required.includes(`${host}:${name}`), `${host}:${name}`);
     assert.ok(required.includes(`denial:${host}:no-tool-execution`));
     assert.ok(required.includes(`denial:${host}:isolation-flags-declared`));
   }

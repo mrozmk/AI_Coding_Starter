@@ -62,7 +62,7 @@ test('plan template and planning contract carry explicit medium and legacy-low s
 test('brainstorm: approval binds to the spec hash, stop wins, both continuation values, no auto-execute', () => {
   const b = read('harness-source/skills/brainstorm/SKILL.md');
   assert.match(b, /approval\.mjs stamp/);
-  assert.match(b, /never contains its own hash/);
+  assert.match(b, /body-sha256/);
   assert.match(b, /Status:\*\* Approved/);
   assert.match(b, /`stop`, `only spec` or `no plan`/);
   assert.match(b, /\| yes \| any \| stop/);
@@ -74,7 +74,7 @@ test('brainstorm: approval binds to the spec hash, stop wins, both continuation 
   const spec = read('harness-source/templates/brainstorm-spec.template.md');
   assert.match(spec, /\*\*Status:\*\* Draft/);
   assert.match(spec, /\*\*Approval:\*\*/);
-  assert.match(spec, /never contains its own hash/);
+  assert.match(spec, /hashed with this line excluded/);
   assert.match(spec, /## Independent Review/);
 });
 
@@ -82,7 +82,7 @@ test('plan-feature refuses a spec whose bytes changed after approval and never p
   const p = read('harness-source/skills/plan-feature/SKILL.md');
   assert.match(p, /never pick a spec by modification time/);
   assert.match(p, /approval\.mjs verify/);
-  assert.match(p, /never carries its own hash/);
+  assert.match(p, /body-sha256/);
   assert.match(p, /never runs the plan/);
   assert.match(p, /Maximum three substantive rounds|maximum three substantive rounds/);
 });

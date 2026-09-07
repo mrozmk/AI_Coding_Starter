@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { MEMORY_SEED, readiness, seedMemory } from '../../harness-source/scripts/bootstrap.mjs';
+import { MEMORY_SEED, SCAFFOLD_DIRS, readiness, seedMemory } from '../../harness-source/scripts/bootstrap.mjs';
 import { applyRules } from '../../harness-source/scripts/rules.mjs';
 import { updateProfile } from '../../harness-source/scripts/profile.mjs';
 import { verifyPackageRoot, writeReceipt } from '../../harness-source/scripts/lib/locator.mjs';
@@ -27,7 +27,7 @@ test('a bare repository receives the routing, reflection and empty placeholder f
   assert.equal(preview.created, 0);
   assert.ok(!fs.existsSync(path.join(root, '.agents')), 'no consent → nothing written');
   const res = seedMemory({ projectRoot: root, consent: true, today: '2026-09-05' });
-  assert.equal(res.created, MEMORY_SEED.length + 7, 'seed files plus scaffold dirs');
+  assert.equal(res.created, MEMORY_SEED.length + SCAFFOLD_DIRS.length, 'seed files plus scaffold dirs');
   for (const rel of MEMORY_SEED) assert.ok(fs.existsSync(path.join(root, '.agents/memory', rel)), rel);
   const errors = fs.readFileSync(path.join(root, '.agents/memory/errors.md'), 'utf8');
   assert.match(errors, /created: 2026-09-05/);

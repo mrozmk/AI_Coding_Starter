@@ -19,7 +19,7 @@ import { dependencyPreflight } from './preflight-deps.mjs';
 export const MEMORY_DIR = '.agents/memory';
 // Seed set: routing/reflection + empty placeholders. user-profile stays an .example (per-developer).
 export const MEMORY_SEED = ['index.md', 'reflection-protocol.md', 'project-brief.md', 'architecture.md', 'patterns.md', 'decisions.md', 'errors.md', 'api.md', 'domain/business-model.md', 'user-profile.md.example'];
-export const SCAFFOLD_DIRS = ['.agents/specs', '.agents/plans/active', '.agents/plans/done', '.agents/reference', '.agents/sources', '.agents/approvals', '.agents/memory/domain'];
+export const SCAFFOLD_DIRS = ['.agents/specs', '.agents/plans/active', '.agents/plans/done', '.agents/reference', '.agents/sources', '.agents/memory/domain'];
 
 function memoryTemplates() {
   return path.join(templatesDir(), 'memory');
