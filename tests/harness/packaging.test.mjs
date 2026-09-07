@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildAll, renderAll } from '../../scripts/build-harness.mjs';
 import { exportBundle, validateBundle } from '../../scripts/lib/bundle.mjs';
-import { MARKER, diffPackage, readMarker, renderMarketplaces, writePackage } from '../../scripts/lib/package-build.mjs';
+import { MARKER, diffPackage, readMarker, renderMarketplaces, renderWrappers, writePackage } from '../../scripts/lib/package-build.mjs';
+import { WRAPPER_NOTE, wrapperCommandFor } from '../../harness-source/scripts/lib/wrapper.mjs';
 import { verifyPackageRoot } from '../../harness-source/scripts/lib/locator.mjs';
 import { parseFrontmatter } from '../../harness-source/scripts/lib/frontmatter.mjs';
 import { addAssertion, addReceipt, newEvidence } from '../../harness-source/scripts/lib/evidence.mjs';
@@ -176,4 +177,24 @@ test('marketplace manifests use relative ./ sources and the shared marketplace n
   assert.equal(claude.name, codex.name);
   assert.equal(claude.plugins[0].source, './packages/claude');
   assert.deepEqual(codex.plugins[0].source, { source: 'local', path: './packages/codex' });
+});
+
+test('wrappers: one per skill with a top-level legacy command, claude-only, written into the starter commands dir', () => {
+  const REPO = path.resolve(import.meta.dirname, '../..');
+  const { inventory, harness, rendered, wrappers } = renderAll(REPO);
+  const expected = inventory.entries.map(wrapperCommandFor).filter(Boolean).sort();
+  assert.deepEqual(expected, ['brainstorm', 'handoff', 'plan-feature', 'prime'], 'namespaced setup/start.md gets no wrapper');
+  assert.deepEqual([...wrappers.keys()].sort(), expected);
+  for (const [command, text] of wrappers) {
+    const skill = inventory.entries.find((e) => wrapperCommandFor(e) === command).id;
+    assert.ok(text.includes(WRAPPER_NOTE), `${command}: generated note`);
+    assert.ok(text.includes(`Skill tool with skill \`harness:${skill}\` and args \`$ARGUMENTS\` verbatim`), `${command}: routes to the skill`);
+    assert.ok(text.includes('mrozmk/AI_Coding_Starter@release'), `${command}: names the release channel`);
+    assert.ok(rendered.claude.files.has(`templates/wrappers/${command}.md`), `${command}: packaged for claude`);
+    assert.ok(!rendered.codex.files.has(`templates/wrappers/${command}.md`), `${command}: not packaged for codex`);
+  }
+  assert.deepEqual(renderWrappers({ repoRoot: REPO, inventory, harness }), wrappers);
+  const out = tmp();
+  buildAll(REPO, out);
+  for (const command of expected) assert.equal(fs.readFileSync(path.join(out, '.claude/commands', `${command}.md`), 'utf8'), wrappers.get(command));
 });

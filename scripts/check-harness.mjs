@@ -3,7 +3,7 @@
 //   --inventory   schema, ids, dependencies, ownership, legacy classification coverage
 //   --syntax      node --check on every .mjs, JSON parse, SKILL.md frontmatter, TOML shape
 //   --links       every inventory source exists; Markdown links and import specifiers resolve
-//   --generated   packages/ and marketplace manifests match a fresh render byte for byte
+//   --generated   packages/, marketplace manifests and starter wrappers match a fresh render byte for byte
 //   --tests       node --test over tests/harness with nonzero counts
 //   --contracts   parity ledgers (instruction + hook) validate with nonzero counts; scenarios resolve
 //   --all         syntax + inventory + links + contracts + tests + generated
@@ -19,6 +19,7 @@ import { listFiles, readJson, realpathOrSelf } from '../harness-source/scripts/l
 import { renderAll } from './build-harness.mjs';
 import { validateBundle } from './lib/bundle.mjs';
 import { loadInventory, unclaimedSources, validateInventory } from './lib/inventory.mjs';
+import { WRAPPER_NOTE } from '../harness-source/scripts/lib/wrapper.mjs';
 import { diffPackage, renderMarketplaces } from './lib/package-build.mjs';
 import { checkParity } from '../harness-source/scripts/lib/parity.mjs';
 
@@ -98,7 +99,7 @@ export function checkLinks(repoRoot) {
 
 export function checkGenerated(repoRoot) {
   const errors = [];
-  const { harness, rendered } = renderAll(repoRoot);
+  const { harness, rendered, wrappers } = renderAll(repoRoot);
   for (const [host, pkg] of Object.entries(rendered)) {
     const pkgDir = path.join(repoRoot, 'packages', host);
     if (!fs.existsSync(pkgDir)) { errors.push(`${host}: packages/${host} not built`); continue; }
@@ -108,6 +109,19 @@ export function checkGenerated(repoRoot) {
     const abs = path.join(repoRoot, rel);
     if (!fs.existsSync(abs)) errors.push(`${rel} missing`);
     else if (fs.readFileSync(abs, 'utf8') !== text) errors.push(`${rel} differs from render`);
+  }
+  // Starter wrappers: every rendered wrapper present and identical; no orphaned generated wrapper left behind.
+  const commandsDir = path.join(repoRoot, '.claude/commands');
+  for (const [command, text] of wrappers) {
+    const abs = path.join(commandsDir, `${command}.md`);
+    if (!fs.existsSync(abs)) errors.push(`.claude/commands/${command}.md missing (rendered wrapper)`);
+    else if (fs.readFileSync(abs, 'utf8') !== text) errors.push(`.claude/commands/${command}.md differs from the rendered wrapper`);
+  }
+  if (fs.existsSync(commandsDir)) {
+    for (const f of listFiles(commandsDir).files.filter((f) => f.endsWith('.md'))) {
+      const command = f.slice(0, -3);
+      if (!wrappers.has(command) && fs.readFileSync(path.join(commandsDir, f), 'utf8').includes(WRAPPER_NOTE)) errors.push(`.claude/commands/${f} is a generated wrapper with no skill behind it (stale)`);
+    }
   }
   return errors;
 }

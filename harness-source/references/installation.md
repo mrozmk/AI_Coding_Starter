@@ -6,20 +6,22 @@ Operator runbook for the `harness` plugin (planning/review release). Every comma
 
 Node ≥ 22 (tested 24.10.0) · Claude Code CLI (tested 2.1.257) and/or Codex CLI (tested 0.153.4), each logged in (`claude auth status`, `codex login status`) · Git for provenance. The second CLI is needed only when independent review is enabled (it always is by default).
 
-## Install from a release bundle
+## Install from the release channel
 
-The bundle `dist/harness-<version>/` carries both packages, both marketplace manifests, `harness-release.json` and the evidence files. Marketplace paths resolve inside the bundle. Use a copy of the tested bundle, not a starter checkout.
+The marketplace is the starter repository on its `release` branch (`harness.json → marketplace_source` + `release_ref`); `main` is the working branch and is never a channel. Claude Code refreshes a git marketplace at session start when auto-update is on for it (`/plugin → Marketplaces`), and adopts a new plugin only when `version` changed.
 
 ```bash
 # Claude Code — project scope keeps the install out of user settings
-claude plugin marketplace add <bundle path> --scope project
+claude plugin marketplace add mrozmk/AI_Coding_Starter@release
 claude plugin install harness@ai-coding-starter --scope project
 claude plugin list --json          # installPath = the installed root to bind
 
 # Codex CLI
-codex plugin marketplace add <bundle path>
+codex plugin marketplace add mrozmk/AI_Coding_Starter --ref release
 codex plugin add harness@ai-coding-starter --json   # the JSON names the installed root
 ```
+
+A release bundle (`dist/harness-<version>/`, both packages, both marketplace manifests, `harness-release.json`, evidence) still installs the same way from a directory path; a directory marketplace never auto-updates.
 
 Then bind each installed root to the project (verifies marker, payload digest, skill paths; writes `.agents/harness-version.json`):
 
@@ -32,7 +34,7 @@ Run `prime` in each host; it must report `harness <version> bound`. A `--plugin-
 
 ## Codex: writable `.agents/`
 
-**Codex sandbox and `.agents/`.** Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its own marketplace config there), and the harness stores specs, plans, approvals, memory and the version receipt exactly there. A Codex author session needs `sandbox_workspace_write.writable_roots` to include the project's `.agents` directory — in `~/.codex/config.toml` (absolute path) or in a **trusted** project `.codex/config.toml` (a project-level file is ignored until the project is trusted; observed 2026-09-06 on Codex 0.153.4). Without it every planning skill reports the write as blocked; nothing is written elsewhere.
+**Codex sandbox and `.agents/`.** Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its own marketplace config there), and the harness stores specs, plans, memory and the version receipt exactly there. A Codex author session needs `sandbox_workspace_write.writable_roots` to include the project's `.agents` directory — in `~/.codex/config.toml` (absolute path) or in a **trusted** project `.codex/config.toml` (a project-level file is ignored until the project is trusted; observed 2026-09-06 on Codex 0.153.4). Without it every planning skill reports the write as blocked; nothing is written elsewhere.
 
 ## Verify
 
@@ -48,7 +50,7 @@ node scripts/smoke-harness.mjs --verify-evidence docs/harness/release-readiness.
 
 ## Activation — one owner per command and hook
 
-Installing the plugin activates nothing in a project. Legacy `.claude/commands/*.md` and the Bash hooks in `.claude/settings.json` keep running until the operator records their replacement. The preview is computed, never applied:
+Installing the plugin activates nothing in a project. Legacy `.claude/commands/*.md` and the Bash hooks in `.claude/settings.json` keep running until the operator records their replacement. The exception is a **wrapper**: `setup-start` copies `templates/wrappers/*.md` over the legacy top-level command files so the bare command routes to the plugin skill — those stay ordinary starter files (sync category A), never `migrated` records. The preview is computed, never applied:
 
 ```bash
 node <installed root>/scripts/sync-filter.mjs activation --manifest .claude/.starter-sync.json \
@@ -57,13 +59,16 @@ node <installed root>/scripts/sync-filter.mjs activation --manifest .claude/.sta
 
 It lists every hook id with its owner after activation (`legacy`, `plugin`, or `duplicate` — two owners, a decision required), the exact `settings.json` identities the plugin would replace, the project-owned entries that never migrate (`check-project-deps`), and the rollback data. Activation of a hook id means: the plugin's hooks are trusted on this host (`/hooks` in Codex; plugin enable in Claude Code — recorded locally by `acknowledgeHooks`), the installed-host scenario for that hook passed, the legacy entry is removed from `settings.json`, and only then `recordMigration` adds the `migrated_config` record with the evidence name. A duplicate owner is a mistake, not a transition state. Codex advisory nudges and Claude-only events (Grep, WebFetch) stay legacy-only where the ledger says so (`contracts/hook-parity.json`).
 
-## Update
+## Publish (starter maintainer)
 
-1. Obtain the new tested bundle; read its `harness-release.json` (version, digests, evidence).
+`node scripts/release-harness.mjs` after the version bump: it refuses a dirty tree, a version not newer than `origin/release`, or a failing `check-harness --all`, then prints the two pushes (`main`, `main:release`); `--push yes` performs them.
+
+## Update (project)
+
+1. Claude Code with auto-update: the new version arrives at the next session start; `prime` then reports `harness <new> installed, project pinned to <old>` with the exact bind command. Without auto-update: `claude plugin marketplace update ai-coding-starter` + `claude plugin update harness@ai-coding-starter`. Codex: `codex plugin marketplace upgrade` + `codex plugin add harness@ai-coding-starter --json`.
 2. Finish or stop running sessions — never switch versions under a live executor.
-3. `claude plugin update harness@ai-coding-starter` / re-add the Codex marketplace and `codex plugin add` again.
-4. Re-bind (`profile.mjs bind`) for each host; the old binding is invalid by design.
-5. Nothing in the project (profile, plans, specs, memory, rules) is changed by an update. Version changes are a deliberate act.
+3. Adopt deliberately: re-bind (`profile.mjs bind`) for each host; the old binding is invalid by design, and `prime` never binds on its own — the committed receipt is the project's pin, not a per-machine side effect.
+4. Nothing in the project (profile, plans, specs, memory, rules) is changed by an update. Version changes are a deliberate act.
 
 ## Rollback
 

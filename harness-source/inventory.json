@@ -304,7 +304,8 @@
       "phase": "planning",
       "dependencies": [
         "lib-argv",
-        "lib-fsx"
+        "lib-fsx",
+        "lib-wrapper"
       ],
       "legacy": [
         ".claude/commands/maintain/sync-from-starter.md"
@@ -576,7 +577,7 @@
       "legacy": [
         ".claude/commands/brainstorm.md"
       ],
-      "description": "External approval receipt: stamp the declared metadata transition and verify final spec bytes."
+      "description": "In-spec approval stamp: apply the declared metadata transition and verify the canonical spec bytes."
     },
     {
       "id": "rules",
@@ -669,7 +670,7 @@
         "hook-lsp-hint",
         "hook-deps"
       ],
-      "description": "Shared hook runner: host payload \u2192 normalized event \u2192 core policy \u2192 host-supported response."
+      "description": "Shared hook runner: host payload → normalized event → core policy → host-supported response."
     },
     {
       "id": "hook-commit",
@@ -817,6 +818,15 @@
       "owner": "core",
       "phase": "planning",
       "dependencies": []
+    },
+    {
+      "id": "lib-wrapper",
+      "kind": "script-lib",
+      "source": "harness-source/scripts/lib/wrapper.mjs",
+      "owner": "core",
+      "phase": "planning",
+      "dependencies": [],
+      "description": "Project-side wrapper commands for plugin skills (templates/wrappers/, starter .claude/commands/, sync-filter stubs)."
     }
   ],
   "host_provided": [

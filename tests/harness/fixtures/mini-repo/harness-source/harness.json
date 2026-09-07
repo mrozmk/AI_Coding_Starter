@@ -5,9 +5,23 @@
   "display_name": "Fixture harness",
   "description": "Synthetic fixture for packaging tests.",
   "marketplace_name": "fixture-market",
-  "owner": { "name": "Fixture" },
+  "owner": {
+    "name": "Fixture"
+  },
   "license": "MIT",
-  "runtime": { "node": ">=22", "hosts": { "claude": { "cli": "claude" }, "codex": { "cli": "codex" } } },
+  "runtime": {
+    "node": ">=22",
+    "hosts": {
+      "claude": {
+        "cli": "claude"
+      },
+      "codex": {
+        "cli": "codex"
+      }
+    }
+  },
   "release_scope": "planning-review",
-  "skill_entry_dir": "skills"
+  "skill_entry_dir": "skills",
+  "marketplace_source": "example/mini-repo",
+  "release_ref": "release"
 }

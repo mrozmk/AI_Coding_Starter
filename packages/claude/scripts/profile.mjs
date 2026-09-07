@@ -237,7 +237,14 @@ export function checkVersion({ projectRoot, host, pluginRoot }) {
     const here = verifyPackageRoot(pluginRoot, { host });
     if (!here.ok) return { ok: false, errors: here.errors };
     if (here.marker.payload_digest !== bound.marker.payload_digest) {
-      return { ok: false, errors: [`running from ${here.root} (payload ${here.marker.payload_digest.slice(0, 12)}…) but the project is bound to ${bound.root} (payload ${bound.marker.payload_digest.slice(0, 12)}…) — re-bind or use the bound installation`] };
+      const error = `running from ${here.root} (payload ${here.marker.payload_digest.slice(0, 12)}…) but the project is bound to ${bound.root} (payload ${bound.marker.payload_digest.slice(0, 12)}…) — re-bind or use the bound installation`;
+      // A different VERSION of the same plugin is an update the host adopted (auto-update); the
+      // project pin stays until the operator binds it — reported, never applied here. The same
+      // version with other bytes is not an update and gets no such hint.
+      const upgrade = here.marker.name === bound.marker.name && here.marker.version !== bound.marker.version
+        ? { from: bound.marker.version, to: here.marker.version, root: here.root, adopt: `node ${here.root}/scripts/profile.mjs bind --project-root ${projectRoot} --host ${host} --plugin-root ${here.root}` }
+        : null;
+      return { ok: false, errors: [error], ...(upgrade && { upgrade }) };
     }
     // Same release bytes from another directory (a host may run a local-marketplace plugin from its
     // source path while the registry names the cache copy): the binding is to the release, so it holds.

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Build both host packages from harness-source/ (deterministic bytes), write the native marketplace
 // manifests, or export the release bundle. Usage:
-//   node scripts/build-harness.mjs                      # packages/{claude,codex} + marketplaces
-//   node scripts/build-harness.mjs --export dist/harness-0.1.2   # bundle; harness-release.json says whether live evidence is verified
+//   node scripts/build-harness.mjs                      # packages/{claude,codex} + marketplaces + starter wrappers (.claude/commands/)
+//   node scripts/build-harness.mjs --export dist/harness-0.1.3   # bundle; harness-release.json says whether live evidence is verified
 //   node scripts/build-harness.mjs --out <dir>          # build into another destination (tests)
 //   node scripts/build-harness.mjs --parity-docs        # render docs/harness/{instruction,hook}-parity.md from the ledgers
 import fs from 'node:fs';
@@ -13,7 +13,7 @@ import { recordsDigest } from '../harness-source/scripts/lib/digest.mjs';
 import { realpathOrSelf, writeBytes } from '../harness-source/scripts/lib/fsx.mjs';
 import { exportBundle } from './lib/bundle.mjs';
 import { loadInventory, sourceDigestRecords, validateInventory } from './lib/inventory.mjs';
-import { loadAdapterMeta, renderMarketplaces, renderPackage, writePackage } from './lib/package-build.mjs';
+import { loadAdapterMeta, renderMarketplaces, renderPackage, renderWrappers, writePackage } from './lib/package-build.mjs';
 import { loadLedgers, renderHookParity, renderInstructionParity } from '../harness-source/scripts/lib/parity.mjs';
 import { verifyCapabilities } from '../harness-source/scripts/preflight.mjs';
 import { verifyReleaseEvidence } from './smoke-harness.mjs';
@@ -24,16 +24,19 @@ export function renderAll(repoRoot) {
   if (errors.length) throw new Error(`inventory invalid:\n  ${errors.join('\n  ')}`);
   const sourceDigest = recordsDigest(sourceDigestRecords(inventory, repoRoot));
   const rendered = {};
+  const wrappers = renderWrappers({ repoRoot, inventory, harness });
   for (const host of inventory.hosts) {
-    rendered[host] = renderPackage({ repoRoot, inventory, harness, host, adapterMeta: loadAdapterMeta(repoRoot, host), sourceDigest });
+    rendered[host] = renderPackage({ repoRoot, inventory, harness, host, adapterMeta: loadAdapterMeta(repoRoot, host), sourceDigest, wrappers });
   }
-  return { inventory, harness, rendered, sourceDigest };
+  return { inventory, harness, rendered, sourceDigest, wrappers };
 }
 
 export function buildAll(repoRoot, outRoot = repoRoot) {
-  const { harness, rendered, sourceDigest } = renderAll(repoRoot);
+  const { harness, rendered, sourceDigest, wrappers } = renderAll(repoRoot);
   for (const [host, pkg] of Object.entries(rendered)) writePackage(path.join(outRoot, 'packages', host), pkg);
   for (const [rel, text] of Object.entries(renderMarketplaces(harness))) writeBytes(path.join(outRoot, rel), text);
+  // The starter is downstream #0: its own .claude/commands/ carries the same wrappers (sync category A).
+  for (const [command, text] of wrappers) writeBytes(path.join(outRoot, '.claude/commands', `${command}.md`), text);
   return { rendered, sourceDigest };
 }
 
