@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const mode = process.env.MOCK_MODE || 'ok';
 const args = process.argv.slice(2);
-if (args[0] === 'login') { process.stdout.write('Logged in using ChatGPT\n'); process.exit(0); }
+if (args[0] === 'login') { process.stdout.write(mode === 'auth-preflight' ? 'Not logged in\n' : 'Logged in using ChatGPT\n'); process.exit(0); }
 if (args[0] === '--version') { process.stdout.write('codex-cli 9.9.9\n'); process.exit(0); }
 const outIdx = args.indexOf('--output-last-message');
 const outFile = outIdx !== -1 ? args[outIdx + 1] : null;

@@ -66,10 +66,10 @@ node <plugin_root>/scripts/review-orchestrator.mjs --project-root <project_root>
 
 **Consent boundary first.** Run the same command with `--dry-run yes`: it builds the pack and writes `<run>/pack.outbound.json` without spawning anything. Print its summary — provider, reviewer host, file count and bytes, every `path` with its roles, and the omissions. The standing consent is the profile's `groups.review=true` **for the documented pack scope** (prime instructions, project rules, routed non-empty memory, the spec, the `--dep` files you named); a manifest that lists anything outside that scope, or a file the user did not expect, stops here until the user says go. Only then run the real command (without `--dry-run`). Never send first and show later.
 
-Lifecycle per host, ceilings, and the polling shape are in `references/review-contract.md` (Claude: background + wake-ups; Codex: foreground wait; 50-minute ceiling inside the orchestrator). Then read the printed result JSON:
+Lifecycle per host, ceilings, and the polling shape are in `references/review-contract.md` (Claude: background + wake-ups; Codex: foreground wait; 50-minute ceiling inside the orchestrator). Then read the printed result JSON. **First print its `summary_line` verbatim** (`Review: NOT EXECUTED | EXECUTED, OPINION REJECTED | EXECUTED, OPINION INCOMPLETE | EXECUTED, COMPLETED — …`); it is the only sentence allowed to say whether the second model worked (`references/review-contract.md → Execution status`). Then act on `status`:
 
 - `completed` → score each finding (anchored? real refinement? honest severity? conflicts with documented decisions? changes what gets built?). Apply surviving `patchable` findings in place; collect `fundamental` ones as 🔶 rethink signals for Step 9. Re-run Step 6 once after edits.
-- `needs-context` → supply the missing files as `--dep` (typed: `missing-file` → add the file; `required-decision` → ask the user and record the answer in the spec; `external-fact` → verify against current docs and add it as a dependency) and re-run — the orchestrator treats it as a continuation, not a new round, at most twice; after that the gaps are the user's decision.
+- `needs-context` → supply the missing files as `--dep` (typed: `missing-file` → add the file; `required-decision` → ask the user and record the answer in the spec; `external-fact` → verify against current docs and add it as a dependency), run `--dry-run yes` again, show only the files **added** since the previous manifest, wait for the user's go (a host-level consent control may ask for it separately — stop with that question, never bypass it), then re-run — the orchestrator treats it as a continuation, not a new round, at most twice; after that the gaps are the user's decision.
 - `failed` / `skipped` → the opinion is blocked. Report the error verbatim. A technical retry is allowed once the earlier process is gone (`canTechnicalRetry`); never re-run while it lives.
 
 A blocked opinion **stops advancement**. Only the user may waive it, explicitly, and the waiver is written into the spec's `## Independent Review` with the user's words. Never convert a blocked opinion into `ship`. Record in `## Independent Review`: reviewer host/model/effort (requested and confirmed), `review_id`, reviewed SHA-256, verdict, accepted and rejected findings with reasons. The first opinion stands; repeat only per the repeat-policy table in `references/review-contract.md`.
@@ -78,7 +78,7 @@ A blocked opinion **stops advancement**. Only the user may waive it, explicitly,
 
 ### 9. Approval — the one stop
 
-Finish the spec first — including `## Independent Review` — because approval binds to final bytes. Present in one message: assumptions, bounds, what the review changed, rethink signals, review status (verdict or blocked). Ask once: **Approve** · **Correct something** · **Revise the design** (only with rethink signals).
+Finish the spec first — including `## Independent Review` — because approval binds to final bytes. Present in one message: assumptions, bounds, what the review changed, rethink signals, and the review's `summary_line` verbatim (execution first, then verdict or blocked). Ask once: **Approve** · **Correct something** · **Revise the design** (only with rethink signals).
 
 On approve, record the identity **outside** the spec (a spec never contains its own hash):
 
@@ -101,4 +101,4 @@ Read `planning.after_brainstorm` from `profile.mjs read` (absent → `stop`). Th
 
 Continuation on Claude Code: invoke `/harness:plan-feature <spec path>`. If the host blocks a nested user-only skill call, read `<plugin_root>/skills/plan-feature/SKILL.md` and carry it out directly in this conversation — that is the documented approved continuation, not a workaround for a stop. On Codex: invoke `$plan-feature <spec path>`, or read that file and follow it. In both cases the plan is written but **never executed**; the run ends after the plan report.
 
-Report the spec path, `External docs required`, review status, and whether continuation happened. Stop.
+Report the spec path, `External docs required`, the review's `summary_line` verbatim, and whether continuation happened. Stop.

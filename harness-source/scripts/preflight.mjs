@@ -18,7 +18,7 @@ import { parseArgv } from './lib/argv.mjs';
 import { recordsDigest } from './lib/digest.mjs';
 import { addAssertion, addReceipt, allRequiredPassed, newEvidence, renderEvidenceMarkdown, validateEvidence, verifyReceipts } from './lib/evidence.mjs';
 import { readJson, realpathOrSelf, toPosix } from './lib/fsx.mjs';
-import { findOnPath, runReview } from './review-orchestrator.mjs';
+import { findOnPath, loginState, runReview } from './review-orchestrator.mjs';
 import { judgeOutput, extractJson } from './review-result.mjs';
 import { syntheticProfile } from './profile.mjs';
 
@@ -71,17 +71,6 @@ export function cliVersion(cmd, envPath) {
   if (!bin) return { present: false, version: null };
   const r = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 20_000 });
   return { present: true, version: (r.stdout || r.stderr || '').trim().split('\n')[0] || null, path: bin };
-}
-
-export function loginState(host, envPath) {
-  const bin = findOnPath(host, envPath);
-  if (!bin) return { loggedIn: null, detail: 'cli missing' };
-  const r = host === 'claude' ? spawnSync(bin, ['auth', 'status'], { encoding: 'utf8', timeout: 20_000 }) : spawnSync(bin, ['login', 'status'], { encoding: 'utf8', timeout: 20_000 });
-  const text = `${r.stdout}${r.stderr}`;
-  if (host === 'claude') {
-    try { return { loggedIn: JSON.parse(r.stdout).loggedIn === true, detail: 'claude auth status' }; } catch { return { loggedIn: /logged in/i.test(text) && !/not logged/i.test(text), detail: text.trim().slice(0, 120) }; }
-  }
-  return { loggedIn: /logged in/i.test(text) && !/not logged/i.test(text), detail: text.trim().slice(0, 120) };
 }
 
 function syntheticProject(dir, { canaryToken, autoloadToken, otherCli }) {

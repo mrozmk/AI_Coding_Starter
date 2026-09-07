@@ -12,7 +12,7 @@
 // a repeat needs a material --change, at most MAX_ROUNDS opinions, and never while a child is alive.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseArgv, requireOpt } from './lib/argv.mjs';
@@ -56,6 +56,38 @@ export function findOnPath(command, envPath = process.env.PATH ?? '') {
     } catch { /* keep looking */ }
   }
   return null;
+}
+
+// Login state of a reviewer CLI, probed in the SAME execution context the child will get (env, PATH,
+// sandbox). A Codex sandbox on macOS can hide the Keychain from a logged-in `claude`; only this probe
+// sees that. null = CLI missing or the status output is unreadable (never treated as logged in).
+export function loginState(host, envPath = process.env.PATH ?? '', env = process.env) {
+  const bin = findOnPath(host, envPath);
+  if (!bin) return { loggedIn: null, detail: 'cli missing' };
+  const r = spawnSync(bin, host === 'claude' ? ['auth', 'status'] : ['login', 'status'], { encoding: 'utf8', timeout: 20_000, env });
+  const text = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  if (host === 'claude') {
+    try { return { loggedIn: JSON.parse(r.stdout).loggedIn === true, detail: 'claude auth status' }; } catch { return { loggedIn: /logged in/i.test(text) && !/not logged/i.test(text), detail: text.trim().slice(0, 120) }; }
+  }
+  return { loggedIn: /logged in/i.test(text) && !/not logged/i.test(text), detail: text.trim().slice(0, 120) };
+}
+
+// Did the second model actually work? Derived from facts, never from `status` alone: a needs-context
+// raised while packing, or a failed spawn, has no confirmed model and is NOT an executed review.
+export function executionOf(result) {
+  const modelRan = Boolean(result.model?.confirmed) && result.process?.exit_code !== null;
+  if (!modelRan) return 'not-executed';
+  if (result.status === 'completed') return 'executed-complete';
+  if (result.status === 'needs-context' && (result.evidence_read ?? []).length > 0) return 'executed-incomplete';
+  return 'executed-rejected';
+}
+
+export function summaryLine(result) {
+  const execution = executionOf(result);
+  if (execution === 'executed-complete') return `Review: EXECUTED, COMPLETED — ${result.verdict} (${result.model.confirmed}, review ${result.review_id.slice(0, 8)})`;
+  if (execution === 'executed-incomplete') return `Review: EXECUTED, OPINION INCOMPLETE — ${result.missing_context.length} missing context item(s) (${result.model.confirmed}, review ${result.review_id.slice(0, 8)})`;
+  if (execution === 'executed-rejected') return `Review: EXECUTED, OPINION REJECTED — ${result.error} (${result.model.confirmed}, review ${result.review_id.slice(0, 8)})`;
+  return `Review: NOT EXECUTED — ${result.error ?? result.status}`;
 }
 
 export function reviewerPrompt({ kind, artifacts, round, repeatReason }) {
@@ -147,6 +179,8 @@ export async function runReview(options) {
   };
   const finish = (patch) => {
     const result = { ...base, ...patch, missing_context: normalizeMissingContext(patch.missing_context ?? []) };
+    result.execution = executionOf(result);
+    result.summary_line = summaryLine(result);
     const errors = validateReviewResult(result);
     if (errors.length) throw new Error(`internal: review result invalid: ${errors.join('; ')}`);
     if (scratchDir) fs.writeFileSync(path.join(scratchDir, `review-${reviewId}.json`), `${JSON.stringify(result, null, 2)}\n`);
@@ -178,6 +212,8 @@ export async function runReview(options) {
   const adapter = await loadAdapter(reviewerHost, adaptersRoot);
   const cliPath = findOnPath(adapter.host === 'claude' ? 'claude' : 'codex', env.PATH);
   if (!cliPath) return finish({ status: 'failed', error: `${reviewerHost} CLI not on PATH — no opinion; do not substitute a model` });
+  const login = loginState(adapter.host, env.PATH, env);
+  if (login.loggedIn !== true) return finish({ status: 'failed', error: `${reviewerHost} CLI not logged in in this execution context (${login.detail}) — log in where the orchestrator runs, or run it outside the sandbox; no opinion, no technical attempt spent` });
 
   const pack = buildContextPack({ projectRoot, pluginRoot, artifacts, deps, maxBytes, readSet, allowExceptions });
   if (!pack.ok) return finish({ status: pack.reason === 'needs-context' ? 'needs-context' : 'failed', error: `${pack.reason}: ${pack.detail}` });
@@ -287,6 +323,7 @@ async function main() {
     timeoutMs: opts['timeout-minutes'] ? Number(opts['timeout-minutes']) * 60_000 : null,
   });
   console.log(JSON.stringify(result, null, 2));
+  console.error(result.summary_line);
   process.exit(result.status === 'completed' ? 0 : 3);
 }
 

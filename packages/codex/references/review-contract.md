@@ -37,11 +37,24 @@ node <plugin_root>/scripts/review-orchestrator.mjs --project-root <root> --plugi
 |---|---|---|
 | `completed` + `ship` | anchored, no gaps | record; advance |
 | `completed` + `revise` | findings to score | score → apply patchable → rethink signals for fundamental |
-| `needs-context` | reviewer listed typed gaps: `missing-file` (add `--dep`, run once more), `required-decision` (the user decides; record it; review again only if material), `external-fact` (verify against current docs, add as dependency), `unspecified` (treat as required) | every kind blocks until resolved |
-| `failed` | CLI missing/unauthenticated, exit ≠ 0, empty or malformed output, model/effort mismatch, artifact changed mid-review, timeout, cancelled | blocked; report the `error` verbatim |
+| `needs-context` | reviewer listed typed gaps: `missing-file` (add `--dep`, run once more), `required-decision` (the user decides; record it; review again only if material), `external-fact` (verify against current docs, add as dependency), `unspecified` (treat as required) | every kind blocks until resolved; before the re-run, `--dry-run yes` again and show only the files **added** since the previous `pack.outbound.json` — a host-level consent control (Codex managed permissions) may ask separately for the extended payload: stop with that question, never bypass it |
+| `failed` | CLI missing or not logged in **in the orchestrator's own execution context** (probed before any spawn), exit ≠ 0, empty or malformed output, model/effort mismatch, artifact changed mid-review, timeout, cancelled | blocked; report the `error` verbatim |
 | `skipped` | nested depth or `review` group disabled | not an opinion; say so |
 
 Anything other than `completed` **blocks advancement** until resolved or explicitly waived by the user; the waiver text is recorded next to the blocked result. Empty stdout, exit 0 alone, or an old result file is never a positive review.
+
+## Execution status — did the second model actually work?
+
+`status` says what the opinion is worth; `execution` says whether a model ever handled the input. The orchestrator derives it from facts (`model.confirmed`, `process.exit_code`, `status`, `evidence_read`), never from `status` alone — a `needs-context` raised while packing, or a `failed` on an unauthenticated CLI, has no confirmed model and is `not-executed` even though `argv` shows a full `claude --model …` call.
+
+| `execution` | Facts | `summary_line` |
+|---|---|---|
+| `not-executed` | no confirmed model, or no exit code | `Review: NOT EXECUTED — <error>` |
+| `executed-rejected` | model confirmed, output rejected outside the model (`failed`) | `Review: EXECUTED, OPINION REJECTED — <error>` |
+| `executed-incomplete` | model confirmed, `needs-context` with read evidence | `Review: EXECUTED, OPINION INCOMPLETE — <n> missing context item(s)` |
+| `executed-complete` | validated `completed` | `Review: EXECUTED, COMPLETED — ship\|revise` |
+
+**Every calling skill prints `summary_line` verbatim** as the first line of its review report and again in its final summary. A launched process is never called "a second opinion"; only `executed-complete` is one.
 
 ## Scoring findings (the author decides)
 

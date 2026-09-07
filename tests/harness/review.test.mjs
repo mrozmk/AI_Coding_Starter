@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { canTechnicalRetry, findOnPath, repeatPolicy, reviewerFor, runReview, MAX_ROUNDS } from '../../harness-source/scripts/review-orchestrator.mjs';
+import { canTechnicalRetry, executionOf, findOnPath, loginState, repeatPolicy, reviewerFor, runReview, MAX_ROUNDS } from '../../harness-source/scripts/review-orchestrator.mjs';
 import { syntheticProfile } from '../../harness-source/scripts/profile.mjs';
 import { blocksAdvancement, extractJson, judgeOutput, validateReviewResult } from '../../harness-source/scripts/review-result.mjs';
 import { REQUIRED_CAPABILITY_ASSERTIONS, adapterConfigDigest, verifyCapabilities } from '../../harness-source/scripts/preflight.mjs';
@@ -96,6 +96,47 @@ test('missing CLI, auth failure, nonzero exit: no opinion, never ship', async ()
   const nz = await review('codex', 'nonzero');
   assert.equal(nz.result.status, 'failed');
   assert.equal(nz.result.verdict, null);
+});
+
+test('execution status is derived from facts: a launched process is not an executed review', async () => {
+  const noCli = await runReview({ projectRoot: project(), pluginRoot: plugin(), authorHost: 'claude', artifacts: ['.agents/specs/2026-01-01-fixture.md'], scratchDir: fs.mkdtempSync(path.join(os.tmpdir(), 'harness-exec-')), adaptersRoot: ADAPTERS, env: { PATH: EMPTY_BIN }, profile: syntheticProfile() });
+  assert.equal(noCli.execution, 'not-executed');
+  assert.match(noCli.summary_line, /^Review: NOT EXECUTED — .*not on PATH/);
+
+  for (const author of ['claude', 'codex']) {
+    const pre = await review(author, 'auth-preflight');
+    assert.equal(pre.result.status, 'failed', `${author}: login probe fails closed`);
+    assert.equal(pre.result.execution, 'not-executed');
+    assert.match(pre.result.error, /not logged in in this execution context/);
+    assert.equal(pre.result.process.exit_code, null, `${author}: nothing was spawned`);
+    assert.match(pre.result.summary_line, /^Review: NOT EXECUTED — /);
+  }
+  assert.equal(loginState('claude', env('auth-preflight').PATH, env('auth-preflight')).loggedIn, false);
+  assert.equal(loginState('codex', env('ok').PATH, env('ok')).loggedIn, true);
+  assert.equal(loginState('claude', EMPTY_BIN).loggedIn, null);
+
+  const authLate = await review('codex', 'auth');
+  assert.equal(authLate.result.execution, 'not-executed', 'exit 1 before a confirmed model is not an execution');
+
+  const packGap = await runReview({ projectRoot: project(), pluginRoot: plugin(), authorHost: 'claude', artifacts: ['.agents/specs/does-not-exist.md'], scratchDir: fs.mkdtempSync(path.join(os.tmpdir(), 'harness-exec-')), adaptersRoot: ADAPTERS, env: env('ok'), profile: syntheticProfile() });
+  assert.equal(packGap.status, 'needs-context');
+  assert.equal(packGap.execution, 'not-executed', 'needs-context raised while packing never counts as an executed review');
+  assert.match(packGap.summary_line, /^Review: NOT EXECUTED — /);
+
+  const gap = await review('codex', 'gap');
+  assert.equal(gap.result.execution, 'executed-incomplete');
+  assert.match(gap.result.summary_line, /^Review: EXECUTED, OPINION INCOMPLETE — 1 missing context item\(s\) \(claude-fable-5-1/);
+
+  const rejected = await review('codex', 'contradictory');
+  assert.equal(rejected.result.status, 'failed');
+  assert.equal(rejected.result.execution, 'executed-rejected');
+  assert.match(rejected.result.summary_line, /^Review: EXECUTED, OPINION REJECTED — /);
+
+  const ok = await review('codex', 'ok');
+  assert.equal(ok.result.execution, 'executed-complete');
+  assert.match(ok.result.summary_line, /^Review: EXECUTED, COMPLETED — ship \(claude-fable-5-1/);
+  assert.deepEqual(validateReviewResult(ok.result), []);
+  assert.equal(executionOf({ ...ok.result, model: { requested: 'fable', confirmed: null } }), 'not-executed');
 });
 
 test('empty, malformed, stale and unanchored outputs fail; a reported gap is needs-context, not ship', async () => {

@@ -3,80 +3,351 @@
   "title": "Independent review result (schema 2; schema-1 records still readable)",
   "description": "Written by scripts/review-orchestrator.mjs after a reviewer child exits. `reviewer_output` is what the model returned (validated separately by `$defs/reviewer_output`). A result whose status is not `completed` never advances an artifact. Schema 2 types `missing_context` items ({kind, detail}); schema-1 records carry strings and are normalized by review-result.mjs readReviewResult.",
   "type": "object",
-  "required": ["schema_version", "review_id", "created_utc", "author_host", "reviewer_host", "status", "verdict", "model", "effort", "artifacts", "pack", "process", "findings", "missing_context", "error", "round"],
+  "required": [
+    "schema_version",
+    "review_id",
+    "created_utc",
+    "author_host",
+    "reviewer_host",
+    "status",
+    "verdict",
+    "model",
+    "effort",
+    "artifacts",
+    "pack",
+    "process",
+    "findings",
+    "missing_context",
+    "error",
+    "round"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "enum": [1, 2] },
-    "review_id": { "type": "string", "minLength": 8 },
-    "created_utc": { "type": "string" },
-    "author_host": { "enum": ["claude", "codex"] },
-    "reviewer_host": { "enum": ["claude", "codex"] },
-    "status": { "enum": ["completed", "failed", "skipped", "needs-context"] },
-    "verdict": { "enum": ["ship", "revise", null] },
-    "model": { "$ref": "#/$defs/identity" },
-    "effort": { "$ref": "#/$defs/identity" },
-    "artifacts": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["path", "sha256"], "properties": { "path": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } } },
-    "pack": { "type": ["object", "null"], "properties": { "pack_id": { "type": "string" }, "pack_digest": { "type": "string" }, "bytes": { "type": "integer" }, "files": { "type": "integer" } } },
-    "process": {
-      "type": "object",
-      "required": ["exit_code", "signal", "duration_ms", "timed_out", "cancelled", "stdout_bytes", "argv"],
-      "properties": {
-        "exit_code": { "type": ["integer", "null"] },
-        "signal": { "type": ["string", "null"] },
-        "duration_ms": { "type": "integer", "minimum": 0 },
-        "timed_out": { "type": "boolean" },
-        "cancelled": { "type": "boolean" },
-        "stdout_bytes": { "type": "integer" },
-        "argv": { "type": "array", "items": { "type": "string" } }
+    "schema_version": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "review_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "created_utc": {
+      "type": "string"
+    },
+    "author_host": {
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "reviewer_host": {
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "failed",
+        "skipped",
+        "needs-context"
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "ship",
+        "revise",
+        null
+      ]
+    },
+    "model": {
+      "$ref": "#/$defs/identity"
+    },
+    "effort": {
+      "$ref": "#/$defs/identity"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
       }
     },
-    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
-    "missing_context": { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "$ref": "#/$defs/missing_context_item" }] } },
-    "evidence_read": { "type": "array", "items": { "type": "string" } },
-    "error": { "type": ["string", "null"] },
-    "round": { "type": "integer", "minimum": 1 },
-    "repeat_reason": { "type": ["string", "null"] },
-    "requires_user_decision": { "type": "boolean" },
-    "notes": { "type": "array", "items": { "type": "string" } }
+    "pack": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "pack_id": {
+          "type": "string"
+        },
+        "pack_digest": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        },
+        "files": {
+          "type": "integer"
+        }
+      }
+    },
+    "process": {
+      "type": "object",
+      "required": [
+        "exit_code",
+        "signal",
+        "duration_ms",
+        "timed_out",
+        "cancelled",
+        "stdout_bytes",
+        "argv"
+      ],
+      "properties": {
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "signal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "stdout_bytes": {
+          "type": "integer"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "missing_context": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/missing_context_item"
+          }
+        ]
+      }
+    },
+    "evidence_read": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "round": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "repeat_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requires_user_decision": {
+      "type": "boolean"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "execution": {
+      "enum": [
+        "not-executed",
+        "executed-rejected",
+        "executed-incomplete",
+        "executed-complete"
+      ],
+      "description": "Derived by the orchestrator from model.confirmed, process.exit_code, status and evidence_read. not-executed = the second model never handled the input (missing/unauthenticated CLI, pack failure, spawn failure). Absent on schema-2 records written before 0.1.2."
+    },
+    "summary_line": {
+      "type": "string",
+      "description": "One line the calling skill prints verbatim: Review: NOT EXECUTED | EXECUTED, OPINION REJECTED | EXECUTED, OPINION INCOMPLETE | EXECUTED, COMPLETED — <verdict>."
+    }
   },
   "$defs": {
     "identity": {
       "type": "object",
-      "required": ["requested", "confirmed"],
-      "properties": { "requested": { "type": ["string", "null"] }, "confirmed": { "type": ["string", "null"] } }
+      "required": [
+        "requested",
+        "confirmed"
+      ],
+      "properties": {
+        "requested": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirmed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     },
     "finding": {
       "type": "object",
-      "required": ["severity", "kind", "where", "problem", "consequence", "fix", "evidence"],
+      "required": [
+        "severity",
+        "kind",
+        "where",
+        "problem",
+        "consequence",
+        "fix",
+        "evidence"
+      ],
       "additionalProperties": false,
       "properties": {
-        "severity": { "enum": ["critical", "major", "medium", "minor"] },
-        "kind": { "enum": ["patchable", "fundamental"] },
-        "where": { "type": "string" },
-        "problem": { "type": "string" },
-        "consequence": { "type": "string" },
-        "fix": { "type": "string" },
-        "evidence": { "type": "string", "minLength": 1 }
+        "severity": {
+          "enum": [
+            "critical",
+            "major",
+            "medium",
+            "minor"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "patchable",
+            "fundamental"
+          ]
+        },
+        "where": {
+          "type": "string"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "consequence": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "missing_context_item": {
       "type": "object",
-      "required": ["kind", "detail"],
+      "required": [
+        "kind",
+        "detail"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "enum": ["missing-file", "required-decision", "external-fact", "unspecified"] },
-        "detail": { "type": "string", "minLength": 1 }
+        "kind": {
+          "enum": [
+            "missing-file",
+            "required-decision",
+            "external-fact",
+            "unspecified"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "reviewer_output": {
       "type": "object",
-      "required": ["verdict", "findings", "evidence_read", "missing_context"],
+      "required": [
+        "verdict",
+        "findings",
+        "evidence_read",
+        "missing_context"
+      ],
       "additionalProperties": false,
       "properties": {
-        "verdict": { "enum": ["ship", "revise"] },
-        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
-        "evidence_read": { "type": "array", "items": { "type": "string" } },
-        "missing_context": { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "$ref": "#/$defs/missing_context_item" }] } }
+        "verdict": {
+          "enum": [
+            "ship",
+            "revise"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "evidence_read": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_context": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/missing_context_item"
+              }
+            ]
+          }
+        }
       }
     }
   }
