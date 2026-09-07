@@ -2,6 +2,7 @@
 name: brainstorm
 description: Design before building — resolve the topic, understand the why, write a Draft spec, get one independent cross-model review, then stop for the user's single approval. Produces a spec, never code. Optional continuation to plan-feature only when the profile asks for it and the user did not say stop.
 argument-hint: "[topic | tracker key | empty → next free backlog task]"
+wrapper-description: Design before building: spec plus one independent review
 ---
 
 # brainstorm — design before you build

@@ -1,0 +1,5 @@
+interface:
+  display_name: commit
+  short_description: Create a clean git commit scoped to the files this session edited — foreign changes from parallel sessions are report...
+policy:
+  allow_implicit_invocation: false

@@ -827,6 +827,109 @@
       "phase": "planning",
       "dependencies": [],
       "description": "Project-side wrapper commands for plugin skills (templates/wrappers/, starter .claude/commands/, sync-filter stubs)."
+    },
+    {
+      "id": "commit",
+      "kind": "skill",
+      "source": "harness-source/skills/commit/SKILL.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/commit.md",
+        "/commit"
+      ],
+      "description": "Create a clean git commit scoped to the files this session edited; foreign changes are reported, never staged."
+    },
+    {
+      "id": "push",
+      "kind": "skill",
+      "source": "harness-source/skills/push/SKILL.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/push.md",
+        "/push"
+      ],
+      "description": "Push local commits to origin on the current branch with protected-branch confirmation and tag push."
+    },
+    {
+      "id": "pull",
+      "kind": "skill",
+      "source": "harness-source/skills/pull/SKILL.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/pull.md",
+        "/pull"
+      ],
+      "description": "Pull the latest changes on the current branch from origin with auto-stash and conflict stop."
+    },
+    {
+      "id": "release",
+      "kind": "skill",
+      "source": "harness-source/skills/release/SKILL.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [
+        "profile",
+        "agent-documentation-manager"
+      ],
+      "legacy": [
+        ".claude/commands/release.md",
+        "/release"
+      ],
+      "description": "Create a version release: CHANGELOG (if kept), manifest bump, optional doc sync, commit, annotated tag."
+    },
+    {
+      "id": "pr-create",
+      "kind": "skill",
+      "source": "harness-source/skills/pr-create/SKILL.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/pr-create.md",
+        "/pr-create"
+      ],
+      "description": "Prepare a pull request: push, title and destination from the Branch model and tracker, filled template, create-PR URL."
+    },
+    {
+      "id": "start-task",
+      "kind": "skill",
+      "source": "harness-source/skills/start-task/SKILL.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/start-task.md",
+        "/start-task"
+      ],
+      "description": "Bootstrap a tracker task: branch type from the issue, working branch off the fresh base, prime, brainstorm."
+    },
+    {
+      "id": "agent-documentation-manager",
+      "kind": "agent",
+      "source": "harness-source/agents/documentation-manager.md",
+      "owner": "core",
+      "phase": "git",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/documentation-manager.md"
+      ],
+      "description": "Documentation sync agent spawned by release on Claude Code (harness:documentation-manager); Codex performs the sync inline."
     }
   ],
   "host_provided": [
@@ -892,33 +995,33 @@
     },
     {
       "path": ".claude/commands/commit.md",
-      "class": "deferred",
-      "note": "git"
+      "class": "migrated",
+      "replaced_by": "commit"
     },
     {
       "path": ".claude/commands/push.md",
-      "class": "deferred",
-      "note": "git"
+      "class": "migrated",
+      "replaced_by": "push"
     },
     {
       "path": ".claude/commands/pull.md",
-      "class": "deferred",
-      "note": "git"
+      "class": "migrated",
+      "replaced_by": "pull"
     },
     {
       "path": ".claude/commands/release.md",
-      "class": "deferred",
-      "note": "git"
+      "class": "migrated",
+      "replaced_by": "release"
     },
     {
       "path": ".claude/commands/pr-create.md",
-      "class": "deferred",
-      "note": "git host integration"
+      "class": "migrated",
+      "replaced_by": "pr-create"
     },
     {
       "path": ".claude/commands/start-task.md",
-      "class": "deferred",
-      "note": "tracker + git"
+      "class": "migrated",
+      "replaced_by": "start-task"
     },
     {
       "path": ".claude/commands/codex-review.md",
@@ -1047,8 +1150,9 @@
     },
     {
       "path": ".claude/agents/documentation-manager.md",
-      "class": "deferred",
-      "note": "agents fleet"
+      "class": "migrated",
+      "note": "local copy retained until orchestrate (its other caller) migrates; the plugin ships harness:documentation-manager",
+      "replaced_by": "agent-documentation-manager"
     },
     {
       "path": ".claude/agents/orchestrator-committer.md",

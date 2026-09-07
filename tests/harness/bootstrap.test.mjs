@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { MEMORY_SEED, SCAFFOLD_DIRS, readiness, seedMemory } from '../../harness-source/scripts/bootstrap.mjs';
+import { MEMORY_SEED, SCAFFOLD_DIRS, readiness, seedMemory, syncWrappers } from '../../harness-source/scripts/bootstrap.mjs';
 import { applyRules } from '../../harness-source/scripts/rules.mjs';
 import { updateProfile } from '../../harness-source/scripts/profile.mjs';
 import { verifyPackageRoot, writeReceipt } from '../../harness-source/scripts/lib/locator.mjs';
@@ -89,4 +89,25 @@ test('readiness: operational rules, profile and binding block; absent optional k
   assert.equal(r.profile.groups.review, true);
   assert.equal(r.dependencies.project.ran, false, 'no project preflight script → nothing project-specific checked');
   assert.match(r.dependencies.project.error, /not present/);
+});
+
+test('wrapper adoption previews created/updated/kept, flags project edits, writes only with consent', () => {
+  const REPO = path.resolve(import.meta.dirname, '../..');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-wrap-'));
+  buildAll(REPO, out);
+  const plugin = path.join(out, 'packages/claude');
+  const project = bare();
+  fs.mkdirSync(path.join(project, '.claude/commands'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.claude/commands/commit.md'), '---\ndescription: project-specific commit\n---\nlocal edits\n');
+  const preview = syncWrappers({ projectRoot: project, pluginRoot: plugin });
+  assert.equal(preview.written, false);
+  const byPath = Object.fromEntries(preview.files.map((f) => [f.path, f]));
+  assert.equal(byPath['.claude/commands/prime.md'].status, 'created');
+  assert.equal(byPath['.claude/commands/commit.md'].status, 'updated');
+  assert.equal(byPath['.claude/commands/commit.md'].replaces_local_edit, true);
+  assert.ok(!fs.existsSync(path.join(project, '.claude/commands/prime.md')), 'preview writes nothing');
+  const applied = syncWrappers({ projectRoot: project, pluginRoot: plugin, consent: true });
+  assert.ok(applied.files.every((f) => f.status === 'created' || f.status === 'updated'));
+  assert.equal(syncWrappers({ projectRoot: project, pluginRoot: plugin }).files.every((f) => f.status === 'kept'), true);
+  assert.equal(syncWrappers({ projectRoot: project, pluginRoot: path.join(out, 'packages/codex') }).ok, false, 'codex package carries no wrappers');
 });

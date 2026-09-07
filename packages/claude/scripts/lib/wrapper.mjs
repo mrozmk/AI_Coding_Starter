@@ -9,15 +9,23 @@ export function wrapperCommandFor(entry) {
   return hit ? hit.slice('.claude/commands/'.length, -'.md'.length) : null;
 }
 
-export function shortDescription(description) {
+// First sentence, hard-capped at MAX_WRAPPER_DESCRIPTION chars on a word boundary. A skill that wants
+// a specific wrapper line sets `wrapper-description` in its frontmatter instead.
+export const MAX_WRAPPER_DESCRIPTION = 80;
+export function wrapperDescription(description) {
   const cut = description.search(/ — |\. |: /);
-  return (cut > 0 ? description.slice(0, cut) : description).trim().replace(/\.$/, '');
+  let s = (cut > 0 ? description.slice(0, cut) : description).trim().replace(/\.$/, '');
+  if (s.length > MAX_WRAPPER_DESCRIPTION) {
+    const head = s.slice(0, MAX_WRAPPER_DESCRIPTION - 1);
+    s = `${head.slice(0, Math.max(head.lastIndexOf(' '), 20)).replace(/[,;]$/, '')}…`;
+  }
+  return s;
 }
 
 // `installSource` (owner/repo@ref) adds the install hint; a downstream stub written next to a bound
 // installation passes none — the plugin is already there.
 export function renderWrapper({ command, skill, description, argumentHint = null, plugin = 'harness', marketplace = 'ai-coding-starter', installSource = null, boundRoot = null }) {
-  const fm = [`description: ${shortDescription(description)} (wrapper for the ${plugin} plugin skill)`];
+  const fm = [`description: ${description} (wrapper for the ${plugin} plugin skill)`];
   if (argumentHint) fm.push(`argument-hint: ${JSON.stringify(String(argumentHint))}`);
   const enable = installSource ? ` To enable it here: \`claude plugin install ${plugin}@${marketplace} --scope project\` (after \`claude plugin marketplace add ${installSource}\`), or start the session with \`claude --plugin-dir packages/claude\` for development.` : '';
   const where = boundRoot ? ` The plugin is bound at \`${boundRoot}\` (recorded in \`.agents/harness-version.json\` + \`.agents/harness-state/\`).` : '';

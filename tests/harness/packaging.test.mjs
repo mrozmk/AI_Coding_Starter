@@ -192,7 +192,7 @@ test('wrappers: one per skill with a top-level legacy command, claude-only, writ
   const REPO = path.resolve(import.meta.dirname, '../..');
   const { inventory, harness, rendered, wrappers } = renderAll(REPO);
   const expected = inventory.entries.map(wrapperCommandFor).filter(Boolean).sort();
-  assert.deepEqual(expected, ['brainstorm', 'handoff', 'plan-feature', 'prime'], 'namespaced setup/start.md gets no wrapper');
+  assert.deepEqual(expected, ['brainstorm', 'commit', 'handoff', 'plan-feature', 'pr-create', 'prime', 'pull', 'push', 'release', 'start-task'], 'namespaced setup/start.md gets no wrapper');
   assert.deepEqual([...wrappers.keys()].sort(), expected);
   for (const [command, text] of wrappers) {
     const skill = inventory.entries.find((e) => wrapperCommandFor(e) === command).id;
@@ -203,7 +203,26 @@ test('wrappers: one per skill with a top-level legacy command, claude-only, writ
     assert.ok(!rendered.codex.files.has(`templates/wrappers/${command}.md`), `${command}: not packaged for codex`);
   }
   assert.deepEqual(renderWrappers({ repoRoot: REPO, inventory, harness }), wrappers);
+  for (const [command, text] of wrappers) {
+    const desc = parseFrontmatter(text).data.description;
+    assert.ok(desc.length <= 80 + ' (wrapper for the harness plugin skill)'.length, `${command}: wrapper description capped: ${desc}`);
+  }
+  assert.ok(rendered.claude.files.has('agents/documentation-manager.md'), 'agent packaged for claude');
+  assert.ok(!rendered.codex.files.has('agents/documentation-manager.md'), 'codex carries no agents');
+  assert.equal(rendered.claude.marker.agents['agent-documentation-manager'], 'agents/documentation-manager.md');
+  assert.deepEqual(rendered.codex.marker.agents, {});
   const out = tmp();
   buildAll(REPO, out);
   for (const command of expected) assert.equal(fs.readFileSync(path.join(out, '.claude/commands', `${command}.md`), 'utf8'), wrappers.get(command));
+});
+
+test('installed-root check verifies every declared agent entry', () => {
+  const REPO = path.resolve(import.meta.dirname, '../..');
+  const out = tmp();
+  buildAll(REPO, out);
+  const root = path.join(out, 'packages/claude');
+  assert.equal(verifyPackageRoot(root, { host: 'claude' }).ok, true);
+  fs.rmSync(path.join(root, 'agents/documentation-manager.md'));
+  const broken = verifyPackageRoot(root, { host: 'claude' });
+  assert.ok(broken.errors.some((e) => /agent entry missing: agent-documentation-manager/.test(e)), broken.errors.join('; '));
 });

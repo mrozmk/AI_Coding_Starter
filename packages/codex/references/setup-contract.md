@@ -59,4 +59,5 @@ Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its 
 |---|---|---|
 | `.env.example` toggles, `.mcp.json` pruning, toolchain block, command-group pruning, TESTING/DoD/PR templates | `.claude/commands/setup/start.md` | report `legacy bootstrap not installed — skipped` and stop that step |
 | PRD, brief, backlog, CLAUDE.md generation, codebase map | `.claude/commands/setup/*.md`, `maintain/refresh-brief.md` | same |
-| execute, check, commit, push, orchestrate | legacy commands (`groups.execution/git` are `false` in this release) | the skill names the dependency and stops |
+| execute, check, orchestrate, gates | legacy commands (`groups.execution` is `false` in this release) | the skill names the dependency and stops |
+| commit, push, pull, release, pr-create, start-task | plugin skills (`groups.git`, `true` by default since 0.2.0; each skill checks it first) | `git group disabled in the project profile` |

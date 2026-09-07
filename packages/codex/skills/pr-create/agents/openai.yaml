@@ -1,0 +1,5 @@
+interface:
+  display_name: pr-create
+  short_description: Prepare a pull request — push the branch, derive title and destination from the Branch model and the tracker, fill th...
+policy:
+  allow_implicit_invocation: false

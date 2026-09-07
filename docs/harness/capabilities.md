@@ -62,7 +62,8 @@ Per-hook detail: [hook-parity.md](hook-parity.md). Summary:
 | Portable `harness-version.json` + local `harness-state/` binding; schema-1 receipts migrated with consent | implemented | implemented | `binding-portability.test.mjs` |
 | Profile-aware, migration-aware settings/MCP unions; activation preview; rollback restores ownership; legacy-only downstream sync | implemented | implemented | `migration.test.mjs`, `permissions.test.mjs` |
 | Deterministic packages, marker with hook targets, package validation (paths, hook targets, no private data) | built | built | `packaging.test.mjs`, `smoke --offline` |
-| execute / check-implementation / gates / commit / push / orchestrate / PR / Jira / Confluence / QA | legacy only | not available | deferred, unchanged |
+| commit / push / pull / release / pr-create / start-task (`groups.git`) | skills + `harness:documentation-manager` agent (release) | skills; the doc sync runs inline (no agents) | `skills.test.mjs`, `packaging.test.mjs` |
+| execute / check-implementation / gates / orchestrate / Jira / Confluence / QA | legacy only | not available | deferred, unchanged |
 
 ## Known limits recorded so far
 

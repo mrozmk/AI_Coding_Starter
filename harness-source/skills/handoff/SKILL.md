@@ -2,6 +2,7 @@
 name: handoff
 description: Compact the current session into a handoff document under .agents/handoffs/ so a fresh session on either host can continue without re-deriving context. Transfer, not transcript. Run at a session boundary or when context grows long.
 argument-hint: "[what the next session will focus on]"
+wrapper-description: Write a handoff document for the next session
 ---
 
 # handoff — session handoff document

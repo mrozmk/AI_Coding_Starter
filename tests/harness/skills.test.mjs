@@ -6,10 +6,13 @@ import { renderAll } from '../../scripts/build-harness.mjs';
 import { parseFrontmatter } from '../../harness-source/scripts/lib/frontmatter.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
-const SKILLS = ['prime', 'brainstorm', 'plan-feature', 'setup-start', 'handoff'];
+const INVENTORY = JSON.parse(fs.readFileSync(path.join(REPO, 'harness-source/inventory.json'), 'utf8'));
+const SKILL_ENTRIES = INVENTORY.entries.filter((e) => e.kind === 'skill');
+const SKILLS = SKILL_ENTRIES.map((e) => e.id);
 const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
 
-test('five skills exist with flat kebab-case names matching their directory and inventory id', () => {
+test('every inventory skill exists with a flat kebab-case name matching its directory and inventory id', () => {
+  assert.ok(SKILLS.length >= 11, `expected the planning and git skills, got ${SKILLS.length}`);
   for (const id of SKILLS) {
     const { data, body } = parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`));
     assert.equal(data.name, id);
@@ -17,7 +20,20 @@ test('five skills exist with flat kebab-case names matching their directory and 
     assert.ok(data.description.length > 40, `${id} description`);
     assert.ok(!body.includes('$ARGUMENTS'), `${id} must describe its input, not rely on $ARGUMENTS`);
     assert.ok(!/\/Users\//.test(body), `${id} embeds a machine path`);
+    assert.ok(!/\]\(\.\.\//.test(body), `${id} keeps a project-relative markdown link that breaks under skills/<id>/`);
   }
+});
+
+test('git skills check their group first and name nested skills for both hosts', () => {
+  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'git')) {
+    const { body } = parseFrontmatter(read(e.source));
+    assert.match(body, /profile\.mjs groups[^\n]*`git` must be `true`/, `${e.id}: git group check`);
+    assert.match(body, /On Codex this skill is `\$/, `${e.id}: names its Codex form`);
+    for (const m of body.matchAll(/`\/harness:([a-z-]+)`/g)) assert.ok(body.includes(`\`$${m[1]}\` (Codex)`), `${e.id}: /harness:${m[1]} without its Codex twin`);
+  }
+  const release = parseFrontmatter(read('harness-source/skills/release/SKILL.md')).body;
+  assert.match(release, /harness:documentation-manager/);
+  assert.match(release, /on Codex, which has no agents/);
 });
 
 test('host metadata: Claude entries stay Skill-tool invocable (wrappers need it), Codex entries disable implicit invocation', () => {

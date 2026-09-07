@@ -68,6 +68,7 @@ It lists every hook id with its owner after activation (`legacy`, `plugin`, or `
 1. Claude Code with auto-update: the new version arrives at the next session start; `prime` then reports `harness <new> installed, project pinned to <old>` with the exact bind command. Without auto-update: `claude plugin marketplace update ai-coding-starter` + `claude plugin update harness@ai-coding-starter`. Codex: `codex plugin marketplace upgrade` + `codex plugin add harness@ai-coding-starter --json`.
 2. Finish or stop running sessions — never switch versions under a live executor.
 3. Adopt deliberately: re-bind (`profile.mjs bind`) for each host; the old binding is invalid by design, and `prime` never binds on its own — the committed receipt is the project's pin, not a per-machine side effect.
+3b. Claude Code: `node <installed root>/scripts/bootstrap.mjs wrappers --project-root <project> --plugin-root <installed root>` previews the project wrappers the version adds or changes; `--consent yes` writes them. Re-binding alone never touches `.claude/commands/`.
 4. Nothing in the project (profile, plans, specs, memory, rules) is changed by an update. Version changes are a deliberate act.
 
 ## Rollback

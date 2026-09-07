@@ -60,6 +60,9 @@ export function verifyPackageRoot(root, { host, expectedName, expectedVersion, e
   for (const [id, rel] of Object.entries(marker.skills ?? {})) {
     if (!fs.existsSync(path.join(real, rel))) errors.push(`skill entry missing: ${id} -> ${rel}`);
   }
+  for (const [id, rel] of Object.entries(marker.agents ?? {})) {
+    if (!fs.existsSync(path.join(real, rel))) errors.push(`agent entry missing: ${id} -> ${rel}`);
+  }
   const nativeManifest = marker.host === 'claude' ? '.claude-plugin/plugin.json' : '.codex-plugin/plugin.json';
   const manifestPath = path.join(real, nativeManifest);
   if (!fs.existsSync(manifestPath)) errors.push(`native manifest missing: ${nativeManifest}`);

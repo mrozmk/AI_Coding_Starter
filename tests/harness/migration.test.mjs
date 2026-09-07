@@ -26,7 +26,15 @@ test('activation preview shows one owner per hook, flags duplicates, lists exact
   assert.match(plan.note, /two owners/);
   assert.ok(plan.rollback.restore_identities.includes('PreToolUse|Bash|bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-commit.sh"'));
   assert.match(plan.rollback.note, /never purges a plugin cache/);
+  const orphan = activationPlan({ settings: { hooks: {} }, pluginHooks, release: '0.1.0', manifest: { migrated: [], migrated_config: [
+    { file: '.claude/settings.json', kind: 'hook', identity: 'SessionStart||bash "$CLAUDE_PROJECT_DIR/.claude/hooks/check-project-deps.sh"', replaced_by: 'harness', release: '0.1.0' },
+    { file: '.claude/settings.json', kind: 'hook', identity: 'PreToolUse|Bash|bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-commit.sh"', replaced_by: 'harness', release: '0.1.0' },
+    { file: '.mcp.json', kind: 'mcpServer', identity: 'atlassian', replaced_by: 'harness', release: '0.1.0' },
+  ] } });
+  assert.deepEqual(orphan.orphaned_records.map((r) => r.id), ['check-project-deps'], 'a migrated record no plugin hook owns is flagged; guard-commit is owned; mcp records are not hooks');
+  assert.match(orphan.orphaned_records[0].note, /restore the legacy entry/);
   const noLegacy = activationPlan({ settings: { hooks: {} }, pluginHooks, release: '0.1.0' });
+  assert.deepEqual(noLegacy.orphaned_records, []);
   assert.ok(noLegacy.rows.every((r) => r.owner === 'plugin'));
   assert.equal(noLegacy.conflicts.length, 0);
   assert.equal(JSON.stringify(settings), fs.readFileSync(path.join(REPO, '.claude/settings.json'), 'utf8') === JSON.stringify(settings) ? JSON.stringify(settings) : JSON.stringify(settings), 'settings.json untouched');

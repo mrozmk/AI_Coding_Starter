@@ -1,0 +1,5 @@
+interface:
+  display_name: start-task
+  short_description: Bootstrap a tracker task end-to-end — derive the branch type from the issue, cut a working branch off the freshly pul...
+policy:
+  allow_implicit_invocation: false

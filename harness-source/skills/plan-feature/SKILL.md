@@ -2,6 +2,7 @@
 name: plan-feature
 description: Turn an approved spec into an implementation plan with EXPECT/VALIDATE tasks and an explicit execution effort (medium by default), grill it, get an independent cross-model review, and hand the plan back. Writes a plan file; never executes it.
 argument-hint: "<approved spec path>"
+wrapper-description: Turn an approved spec into an implementation plan
 ---
 
 # plan-feature — plan from an approved spec

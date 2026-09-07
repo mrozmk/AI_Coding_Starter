@@ -17,12 +17,13 @@ test('every file under harness-source/ is claimed by an entry (allowlist is comp
   assert.deepEqual(unclaimedSources(inventory, REPO), []);
 });
 
-test('execute/check/git/integration commands are classified deferred, project files never packaged', () => {
+test('execute/check/integration commands are classified deferred, git commands migrated, project files never packaged', () => {
   const { inventory } = loadInventory(REPO);
   const byPath = Object.fromEntries(inventory.legacy.map((l) => [l.path, l.class]));
-  for (const p of ['.claude/commands/execute.md', '.claude/commands/check-implementation.md', '.claude/commands/commit.md', '.claude/commands/orchestrate.md', '.claude/skills/jira/']) {
+  for (const p of ['.claude/commands/execute.md', '.claude/commands/check-implementation.md', '.claude/commands/orchestrate.md', '.claude/skills/jira/']) {
     assert.equal(byPath[p], 'deferred', p);
   }
+  for (const p of ['.claude/commands/commit.md', '.claude/commands/push.md', '.claude/commands/start-task.md']) assert.equal(byPath[p], 'migrated', p);
   assert.equal(byPath['.claude/hooks/check-project-deps.sh'], 'project');
   assert.equal(byPath['.claude/lib/git-baseline.sh'], 'retained');
   const packagedSources = inventory.entries.map((e) => e.source ?? '');

@@ -5,7 +5,8 @@
   "cli": "claude",
   "skill_frontmatter": {},
   "skill_frontmatter_passthrough": [
-    "argument-hint"
+    "argument-hint",
+    "allowed-tools"
   ],
   "manifest_keywords": [
     "planning",

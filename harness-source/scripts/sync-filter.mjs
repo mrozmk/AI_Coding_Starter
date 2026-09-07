@@ -170,7 +170,7 @@ function pluginHookId(command) {
 
 // Activation preview: for every hook id, who owns it after activation — the legacy Bash entry in
 // settings.json, the plugin manifest, or both (a duplicate that must be resolved). Computes only.
-export function activationPlan({ settings, pluginHooks, release, file = '.claude/settings.json' }) {
+export function activationPlan({ settings, pluginHooks, release, file = '.claude/settings.json', manifest = null }) {
   const legacy = new Map();
   for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
     for (const g of groups) for (const h of g.hooks ?? []) {
@@ -198,12 +198,21 @@ export function activationPlan({ settings, pluginHooks, release, file = '.claude
   });
   const conflicts = rows.filter((r) => r.owner === 'duplicate').map((r) => r.id);
   const projectOwned = rows.filter((r) => r.owner === 'legacy' && !plugin.has(r.id)).map((r) => r.id);
+  // A migrated_config hook record whose logical id no plugin hook owns is a hook nobody runs any
+  // more (0.1.0 pilot: check-project-deps was recorded as migrated and silently stopped). Compared by
+  // id, never by identity string — legacy and plugin command strings differ on purpose.
+  const orphaned = (manifest?.migrated_config ?? [])
+    .filter((r) => r.kind === 'hook' && typeof r.identity === 'string')
+    .map((r) => ({ identity: r.identity, id: legacyHookId(r.identity.split('|').slice(2).join('|')) }))
+    .filter((r) => !r.id || !plugin.has(r.id))
+    .map((r) => ({ ...r, note: r.id ? `recorded as migrated but no plugin hook is named ${r.id} — restore the legacy entry and drop the record` : 'malformed identity (expected <event>|<matcher>|<command>)' }));
   return {
     release,
     file,
     rows,
     conflicts,
     project_owned_only: projectOwned,
+    orphaned_records: orphaned,
     rollback: { restore_identities: rows.flatMap((r) => r.replaced_identities), note: 'Rollback restores ownership: the listed legacy identities return to settings.json and their migrated_config records are dropped. It never purges a plugin cache.' },
     requires_confirmation: true,
     note: conflicts.length ? `${conflicts.length} hook(s) would have two owners after activation — choose legacy or plugin for each before recording anything` : 'one owner per hook',
@@ -260,7 +269,7 @@ function main() {
   else if (cmd === 'union') {
     const profile = opts['profile-view'] ? readJson(String(opts['profile-view'])) : null;
     out = unionSettings(manifest, readJson(requireOpt(opts, 'ours')), readJson(requireOpt(opts, 'theirs')), { profile });
-  } else if (cmd === 'activation') out = activationPlan({ settings: readJson(requireOpt(opts, 'settings')), pluginHooks: readJson(requireOpt(opts, 'plugin-hooks')), release: requireOpt(opts, 'release') });
+  } else if (cmd === 'activation') out = activationPlan({ settings: readJson(requireOpt(opts, 'settings')), pluginHooks: readJson(requireOpt(opts, 'plugin-hooks')), release: requireOpt(opts, 'release'), manifest });
   else if (cmd === 'rollback') out = rollbackPlan(manifest, requireOpt(opts, 'release'));
   else throw new Error(`unknown command ${cmd}; use tasks | union | activation | rollback`);
   console.log(JSON.stringify(out, null, 2));

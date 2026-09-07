@@ -1,0 +1,5 @@
+interface:
+  display_name: push
+  short_description: Push local commits to origin on the current branch — detects the branch, confirms a protected-branch push, sets the u...
+policy:
+  allow_implicit_invocation: false

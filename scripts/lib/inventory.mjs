@@ -5,7 +5,7 @@ import path from 'node:path';
 import { listFiles, readJson, toPosix } from '../../harness-source/scripts/lib/fsx.mjs';
 import { validate } from '../../harness-source/scripts/lib/schema.mjs';
 
-export const KINDS = ['skill', 'reference', 'template', 'memory-template', 'contract', 'schema', 'script', 'script-lib', 'adapter', 'hook-core', 'hook-adapter', 'manifest'];
+export const KINDS = ['skill', 'agent', 'reference', 'template', 'memory-template', 'contract', 'schema', 'script', 'script-lib', 'adapter', 'hook-core', 'hook-adapter', 'manifest'];
 export const OWNERS = ['core', 'adapter:claude', 'adapter:codex', 'build'];
 export const LEGACY_CLASSES = ['migrated', 'deferred', 'project', 'retained', 'host-provided'];
 export const HOSTS = ['claude', 'codex'];
@@ -29,7 +29,7 @@ const inventorySchema = {
           id: { type: 'string', pattern: ID_PATTERN },
           kind: { enum: KINDS },
           owner: { enum: OWNERS },
-          phase: { enum: ['planning'] },
+          phase: { enum: ['planning', 'git'] },
           dependencies: { type: 'array', items: { type: 'string' } },
           source: { type: 'string' },
           output: { type: 'string' },
@@ -63,6 +63,7 @@ export function validateInventory(inventory, repoRoot) {
     if (e.kind === 'hook-adapter' && e.source && e.source.endsWith('hooks.json') && !e.host) errors.push(`${e.id}: a native hooks manifest needs host`);
     if (e.source && path.isAbsolute(e.source)) errors.push(`${e.id}: absolute source path`);
     if (e.kind === 'memory-template' && e.source && !e.source.startsWith('harness-source/templates/memory/')) errors.push(`${e.id}: memory-template source must live under harness-source/templates/memory/`);
+    if (e.kind === 'agent' && e.source && !e.source.startsWith('harness-source/agents/')) errors.push(`${e.id}: agent source must live under harness-source/agents/`);
     if (e.output !== undefined && e.kind !== 'manifest' && !safeOutput(e.output)) errors.push(`${e.id}: output must be a package-relative POSIX path without .. or a leading /`);
   }
   for (const e of inventory.entries) {
@@ -106,6 +107,8 @@ export function outputsFor(entry, host) {
       return host === 'codex'
         ? [`skills/${entry.id}/SKILL.md`, `skills/${entry.id}/agents/openai.yaml`]
         : [`skills/${entry.id}/SKILL.md`];
+    // Agents are a Claude Code component; Codex plugins carry none.
+    case 'agent': return host === 'claude' ? [`agents/${base}`] : [];
     case 'reference': return [`references/${base}`];
     case 'template': return [`templates/${base}`];
     case 'memory-template': return [`templates/memory/${entry.source.slice('harness-source/templates/memory/'.length)}`];
