@@ -179,7 +179,7 @@ allowed. The golden rule's text stays as written for reviewers.
 **Prompt guardrails — the canonical block.** Each caller pastes it whole and adds only its own
 delta: the executor adds "stay inside the plan's files and their tests"; the fixer reports each
 finding as `applied` / `skipped — <reason>` instead of `## Deviations`.
-- Orient via the quick-mode steps of `.claude/commands/prime.md` (read the file — Codex has no
+- Orient via the quick-mode steps of `.agents/reference/orientation.md` (read the file — Codex has no
   slash commands; do not try to run it). Two carve-outs: read `CLAUDE.md` in full (prime.md's
   "already injected" note is false for Codex) and skip prime.md's repo-state step (`git rev-list`
   is outside the allowlist). Ignore LSP / Context7 / MCP bullets wherever they appear — the plan's

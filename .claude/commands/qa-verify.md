@@ -219,7 +219,7 @@ The file is local markdown, so a table is fine here (only the tracker comment is
 git check-ignore -q .agents/handoffs/<matrix-file> || echo "handoffs are NOT git-excluded in this clone"
 ```
 
-`check-ignore` honours `.git/info/exclude`, so a non-zero exit means the rule is missing. When it is, print the two-line setup from `.claude/commands/handoff.md`:
+`check-ignore` honours `.git/info/exclude`, so a non-zero exit means the rule is missing. When it is, print the two-line setup:
 
 ```bash
 echo '.agents/handoffs/*'         >> .git/info/exclude

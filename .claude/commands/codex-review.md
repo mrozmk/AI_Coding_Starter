@@ -84,7 +84,7 @@ Establish, in plain terms, **what Codex is reviewing** so the brief is precise b
 Construct a single prompt string for `codex exec`. It must contain, in this order:
 
 1. **Orientation (the "prime" step).** Tell Codex to orient itself in the project *before* reviewing, by reading and following the steps of this project's prime command definition — give it the literal path:
-   > "First, orient yourself in this project: read `.claude/commands/prime.md` and follow its quick-mode steps (read `CLAUDE.md`, `.agents/memory/index.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`). That tells you the project's layout, conventions, and where things live. Do not run it as a slash command — you don't have one; just read that file and do what it says."
+   > "First, orient yourself in this project: read `.agents/reference/orientation.md` and follow its quick-mode steps (read `CLAUDE.md`, `.agents/memory/index.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`). That tells you the project's layout, conventions, and where things live. Do not run it as a slash command — you don't have one; just read that file and do what it says."
 
    Codex has no `/prime` of its own, so we point it at the **file** and let it execute the steps. This is the user's explicit choice: give it the path to `prime.md`.
 

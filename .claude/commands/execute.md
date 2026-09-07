@@ -68,7 +68,7 @@ Claude stays the **supervisor**: it resolves the plan, guards the tree, spawns o
 
    **Prompt** (fill the `<...>` slots):
 
-   > You are implementing an approved plan in this repository. First orient yourself: read `.claude/commands/prime.md` and follow its quick-mode steps (read `CLAUDE.md`, `.agents/memory/index.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`). Do not run it as a slash command — you have none; read the file and do what it says. Two carve-outs: read `CLAUDE.md` in full (prime.md calls it "already injected" — that is not true for you), and skip prime.md's repo-state step (`git rev-list` is outside your git allowlist).
+   > You are implementing an approved plan in this repository. First orient yourself: read `.agents/reference/orientation.md` and follow its quick-mode steps (read `CLAUDE.md`, `.agents/memory/index.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`). Do not run it as a slash command — you have none; read the file and do what it says. Two carve-outs: read `CLAUDE.md` in full (prime.md calls it "already injected" — that is not true for you), and skip prime.md's repo-state step (`git rev-list` is outside your git allowlist).
    >
    > Then open `.claude/commands/execute.md` and perform **only** the sections `### 1.` to `### 4.` under `## Execution Instructions` for the plan `<plan-path>`. Skip 2.5, 5, 6 and 7. Ignore the LSP and Context7 bullets in 2.a–2.c — you have neither; the plan's `file:line` references and API notes are your documentation. **Ignore the `## Codex executor mode` section entirely — it is the supervisor's script, not yours; do not spawn codex, do not poll.**
    >

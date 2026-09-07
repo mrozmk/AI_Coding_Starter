@@ -40,7 +40,7 @@ With the flag: launch Codex on **the same task, with the same method, over the s
 
 **Assemble the prompt** in this order:
 
-1. **Orientation** — "First, orient yourself in this project: read `.claude/commands/prime.md` and follow its quick-mode steps. Do not run it as a slash command — just read that file and do what it says."
+1. **Orientation** — "First, orient yourself in this project: read `.agents/reference/orientation.md` and follow its quick-mode steps. Do not run it as a slash command — just read that file and do what it says."
 2. **The method** — "Then read `.claude/skills/architecture-review/GLOSSARY.md` and `.claude/skills/architecture-review/DEEPENING.md`. They define the vocabulary and the method: depth as leverage per unit of interface complexity, the deletion test, seam discipline, the four dependency categories. Use those terms exactly."
 3. **The task** — "Sweep this codebase for **deepening opportunities**: shallow modules whose interface is nearly as complex as their implementation, pass-through layers, clusters worth merging into one deep module, and maintenance scattered across callers. Apply the deletion test to everything you suspect is shallow. For each candidate report: the files, the problem in GLOSSARY terms, the deepening you propose, and what callers and maintainers gain. Cite by `file:line`." Add the focus argument if the user gave one; otherwise say the whole base is in scope.
 4. **The out-of-scope catch** — "If you notice areas that are simply large, branchy or untested but are *not* depth problems, list them separately at the end under `OUT-OF-LENS:`, one line each, files only. Do not mix them into the candidates." (These feed Hotspots in Phase 2b; the split keeps them from polluting the candidate list.)
