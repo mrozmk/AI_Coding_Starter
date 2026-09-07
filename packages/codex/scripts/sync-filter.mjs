@@ -230,8 +230,11 @@ export function recordMigration(manifest, { path: filePath = null, config = null
 // It names the installed, bound package — never a starter checkout path.
 export function renderStub({ command, skill, host, boundRoot }) {
   if (!boundRoot) throw new Error('a stub needs the bound installed root (resolveBoundRoot) — never a starter checkout');
-  const invoke = host === 'claude' ? `/harness:${skill}` : `$${skill}`;
-  return `---\ndescription: Migrated to the harness plugin — run ${invoke}\n---\n\n# ${command} — migrated\n\nThis command moved to the installed \`harness\` plugin (bound at \`${boundRoot}\`, recorded in \`.agents/harness-version.json\` + \`.agents/harness-state/\`). Run ${invoke}. This stub is kept only so old references resolve; it performs nothing.\n`;
+  const where = `bound at \`${boundRoot}\`, recorded in \`.agents/harness-version.json\` + \`.agents/harness-state/\``;
+  if (host === 'claude') {
+    return `---\ndescription: Wrapper — runs the harness plugin skill /harness:${skill}\nargument-hint: "[same input as /harness:${skill}]"\n---\n\n# ${command} → harness:${skill}\n\nInvoke the Skill tool with skill \`harness:${skill}\` and args \`$ARGUMENTS\` verbatim, then follow that skill; do nothing else first. The skill lives in the installed \`harness\` plugin (${where}). If the Skill tool reports the skill unknown, the plugin is not enabled in this project — say so and stop.\n`;
+  }
+  return `---\ndescription: Migrated to the harness plugin — run $${skill}\n---\n\n# ${command} — migrated\n\nThis command moved to the installed \`harness\` plugin (${where}). Run $${skill}. This stub is kept only so old references resolve; it performs nothing.\n`;
 }
 
 // Rollback plan for one release: which migrated paths/entries would be re-offered by the next sync

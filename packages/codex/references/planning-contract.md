@@ -35,8 +35,8 @@ Keep the heading names, the anchor, `EXPECT` and `VALIDATE` exactly until the ge
 
 - `planning.after_brainstorm` in the profile: `stop` | `plan-feature`; absent means `stop`.
 - The user's explicit `stop` / `only spec` in the brainstorm input wins over `plan-feature`.
-- Continuation runs **once**, with the exact approved spec path (its receipt carries the hash), writes a plan, and never runs the execution stage. Neither host starts a planning skill from a description match; the entrypoints are user-invoked (Claude: `disable-model-invocation`; Codex: `allow_implicit_invocation: false`).
-- Claude Code may block a nested user-only skill call. After the user's explicit approval the active brainstorm then reads `skills/plan-feature/SKILL.md` and performs it directly. That is the documented approved continuation; it is never used to bypass a stop.
+- Continuation runs **once**, with the exact approved spec path (its receipt carries the hash), writes a plan, and never runs the execution stage. Neither host starts a planning skill from a description match. Codex enforces it with `allow_implicit_invocation: false`; Claude Code carries no frontmatter gate (`disable-model-invocation` would also block the project wrapper commands `/brainstorm` → Skill tool `harness:brainstorm`), so there the rule lives in the skill text and the project rules.
+- On Claude Code the continuation is a Skill tool call (`harness:plan-feature`). If the host blocks the nested call, the active brainstorm reads `skills/plan-feature/SKILL.md` and performs it directly after the user's explicit approval. That is the documented approved continuation; it is never used to bypass a stop.
 
 ## Grilling checklist (plan-feature Phase 4)
 

@@ -75,6 +75,7 @@ test('legacy-only downstream sync works from a starter checkout without any plug
 test('compatibility stubs reference the installed, bound package — never a starter checkout', () => {
   const stub = renderStub({ command: '/brainstorm', skill: 'brainstorm', host: 'claude', boundRoot: '/Users/dev/.claude/plugins/cache/ai-coding-starter/harness/0.1.0' });
   assert.match(stub, /\/harness:brainstorm/);
+  assert.match(stub, /Skill tool with skill `harness:brainstorm` and args `\$ARGUMENTS`/);
   assert.match(stub, /harness-state/);
   assert.ok(!stub.includes('harness-source'));
   assert.throws(() => renderStub({ command: '/brainstorm', skill: 'brainstorm', host: 'codex', boundRoot: null }), /never a starter checkout/);

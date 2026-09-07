@@ -123,6 +123,6 @@ This project declares `{lsp-tool}`. Prefer `goToDefinition` / `findReferences` /
 ## Working with the harness plugin
 
 - Start with `/harness:prime`. Then `/harness:brainstorm` → spec → review → your approval → optionally `/harness:plan-feature` (profile `planning.after_brainstorm`).
-- Planning skills are user-invoked only; the model never starts them from a description match.
+- Planning skills start only from a user command (`/harness:<skill>` or a project wrapper like `/brainstorm`); never start one from a description match.
 - Reviews run closed-context and read-only; a missing opinion is reported, never converted into approval.
 - Profile: `.agents/project-profile.json` (legacy `.claude/project-profile.json` still read). Installed version binding: `.agents/harness-version.json` + `.agents/harness-state/`.

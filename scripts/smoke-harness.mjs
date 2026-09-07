@@ -39,7 +39,7 @@ export function offlineSmoke(repoRoot) {
     check(results, `${host}:marker-payload-identity`, root.ok, root.errors.join('; ') || `payload ${root.marker.payload_digest.slice(0, 12)}…`);
     checkNamespaces(results, host, pkgDir, harness);
     checkLeakage(results, host, pkgDir);
-    checkScriptsFromCopy(results, host, pkgDir, repoRoot);
+    checkScriptsFromCopy(results, host, pkgDir, repoRoot, harness);
     checkLocator(results, host, pkgDir, harness);
   }
   checkMarketplaces(results, repoRoot, harness);
@@ -58,13 +58,12 @@ function checkNamespaces(results, host, pkgDir, harness) {
     if (!fs.existsSync(skill)) { problems.push(`${dir}: no SKILL.md`); continue; }
     const { data } = parseFrontmatter(fs.readFileSync(skill, 'utf8'));
     if (data.name !== dir || !/^[a-z][a-z0-9-]*$/.test(dir)) problems.push(`${dir}: name ${data.name}`);
-    if (host === 'claude' && data['disable-model-invocation'] !== true) problems.push(`${dir}: model invocation not disabled`);
     if (host === 'codex') {
       const yaml = path.join(skillsDir, dir, 'agents/openai.yaml');
       if (!fs.existsSync(yaml) || !/allow_implicit_invocation: false/.test(fs.readFileSync(yaml, 'utf8'))) problems.push(`${dir}: implicit invocation not disabled`);
     }
   }
-  check(results, `${host}:skill-namespaces-and-invocation-metadata`, problems.length === 0, problems.join('; ') || `${fs.readdirSync(skillsDir).length} skills, flat kebab ids, user-invoked only`);
+  check(results, `${host}:skill-namespaces-and-invocation-metadata`, problems.length === 0, problems.join('; ') || `${fs.readdirSync(skillsDir).length} skills, flat kebab ids${host === 'claude' ? ', Skill-tool invocable (wrappers)' : ', user-invoked only'}`);
 }
 
 function checkLeakage(results, host, pkgDir) {
@@ -84,9 +83,9 @@ function checkLeakage(results, host, pkgDir) {
 
 // Copy the package to a temp dir named like an install cache and run its scripts from there with cwd
 // elsewhere — proves the scripts resolve lib/, schemas/ and skills/ relative to themselves.
-function checkScriptsFromCopy(results, host, pkgDir, repoRoot) {
+function checkScriptsFromCopy(results, host, pkgDir, repoRoot, harness) {
   const cache = fs.mkdtempSync(path.join(os.tmpdir(), `harness-cache-${host}-`));
-  const installed = path.join(cache, 'ai-coding-starter', 'harness', '0.1.0');
+  const installed = path.join(cache, 'ai-coding-starter', 'harness', harness.version);
   fs.cpSync(pkgDir, installed, { recursive: true });
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'harness smoke project-'));
   fs.cpSync(path.join(repoRoot, FIXTURE_PROJECT), project, { recursive: true });

@@ -127,7 +127,7 @@ New chat → /prime → /quick-change <what to change> → /commit
 
 ---
 
-## Harness plugin — planning/review release (0.1.0)
+## Harness plugin — planning/review release (0.1.1)
 
 The planning half of the workflow (`prime`, `brainstorm`, `plan-feature`, `setup-start`, `handoff`) is also authored once under `harness-source/` and built into two natively installable plugins — `packages/claude` for Claude Code and `packages/codex` for Codex CLI — with fail-closed cross-model review in both directions (Claude author → Codex reviewer, Codex author → Claude reviewer). The legacy `.claude/commands/` stay the execution/Git release; nothing in the plugin executes code, commits or pushes.
 
@@ -135,11 +135,11 @@ The planning half of the workflow (`prime`, `brainstorm`, `plan-feature`, `setup
 node scripts/check-harness.mjs --all        # syntax · inventory · links · tests · generated drift
 node scripts/build-harness.mjs              # packages/{claude,codex} + both marketplace manifests
 node scripts/smoke-harness.mjs --offline    # installed-cache contracts without installing anything
-node scripts/build-harness.mjs --export dist/harness-0.1.0   # bundle; harness-release.json says whether live evidence for these bytes ships
+node scripts/build-harness.mjs --export dist/harness-0.1.1   # bundle; harness-release.json says whether live evidence for these bytes ships
 
 # install from the exported bundle (operator actions)
-claude plugin marketplace add dist/harness-0.1.0 --scope project && claude plugin install harness@ai-coding-starter --scope project
-codex  plugin marketplace add dist/harness-0.1.0 && codex plugin add harness@ai-coding-starter --json
+claude plugin marketplace add dist/harness-0.1.1 --scope project && claude plugin install harness@ai-coding-starter --scope project
+codex  plugin marketplace add dist/harness-0.1.1 && codex plugin add harness@ai-coding-starter --json
 ```
 
 Runbook, capability matrix and live evidence: [docs/harness/](docs/harness/) — `installation.md`, `capabilities.md`, `reviewer-capabilities.json`, `release-readiness.json` (a report of observed host behavior — eleven installed-host runs recorded, never a gate; see `capabilities.md`). The packaged copy of the runbook (`references/installation.md`) also defines the `migrated` record that keeps `/maintain:sync-from-starter` from re-offering replaced legacy files.

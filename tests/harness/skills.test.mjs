@@ -20,11 +20,11 @@ test('five skills exist with flat kebab-case names matching their directory and 
   }
 });
 
-test('host metadata: Claude entries are user-only, Codex entries disable implicit invocation', () => {
+test('host metadata: Claude entries stay Skill-tool invocable (wrappers need it), Codex entries disable implicit invocation', () => {
   const { rendered } = renderAll(REPO);
   for (const id of SKILLS) {
     const claude = parseFrontmatter(rendered.claude.files.get(`skills/${id}/SKILL.md`).toString()).data;
-    assert.equal(claude['disable-model-invocation'], true, `${id} claude`);
+    assert.equal(claude['disable-model-invocation'], undefined, `${id} claude: a frontmatter gate breaks the /${id} wrapper`);
     const yaml = rendered.codex.files.get(`skills/${id}/agents/openai.yaml`).toString();
     assert.match(yaml, /allow_implicit_invocation: false/, `${id} codex`);
     const codex = parseFrontmatter(rendered.codex.files.get(`skills/${id}/SKILL.md`).toString()).data;

@@ -1,11 +1,9 @@
 {
-  "_doc": "Claude Code host adapter. `skill_frontmatter` is merged into every packaged SKILL.md; the planning entrypoints stay user-invocable only (contract 5). `reviewer` describes the Claude reviewer child spawned by review.mjs when the author host is Codex (contract 8).",
+  "_doc": "Claude Code host adapter. `skill_frontmatter` is merged into every packaged SKILL.md; no `disable-model-invocation` — it would also block a project wrapper command (`/brainstorm` → Skill tool `harness:brainstorm`) and the approved brainstorm → plan-feature continuation; contract 5 (never started from a description match) is carried by the skill text and the project rules, not by frontmatter. `reviewer` describes the Claude reviewer child spawned by review.mjs when the author host is Codex (contract 8).",
   "schema_version": 1,
   "host": "claude",
   "cli": "claude",
-  "skill_frontmatter": {
-    "disable-model-invocation": true
-  },
+  "skill_frontmatter": {},
   "skill_frontmatter_passthrough": [
     "argument-hint"
   ],
@@ -40,5 +38,5 @@
     "stdin": "context-pack",
     "timeout_minutes": 50
   },
-  "_hooks_doc": "Claude Code plugin hooks manifest (packaged as hooks/hooks.json). Every entry runs the shared hook-runner with the hook id; the policy lives in hooks/core/*.mjs and is identical for both hosts. Plugin hooks MERGE with the project's .claude/settings.json hooks \u2014 a project that still registers the legacy Bash hooks runs both until it records the replacement (installation.md \u2192 Activation). Nothing here is active in any project until the operator installs and trusts the plugin. Native manifests carry only `description` and `hooks`: Codex rejects any other top-level field (observed 2026-09-06: \"unknown field `_doc`\")."
+  "_hooks_doc": "Claude Code plugin hooks manifest (packaged as hooks/hooks.json). Every entry runs the shared hook-runner with the hook id; the policy lives in hooks/core/*.mjs and is identical for both hosts. Plugin hooks MERGE with the project's .claude/settings.json hooks — a project that still registers the legacy Bash hooks runs both until it records the replacement (installation.md → Activation). Nothing here is active in any project until the operator installs and trusts the plugin. Native manifests carry only `description` and `hooks`: Codex rejects any other top-level field (observed 2026-09-06: \"unknown field `_doc`\")."
 }
