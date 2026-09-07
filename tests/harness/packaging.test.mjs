@@ -122,6 +122,14 @@ test('tampered marker or payload is detected by the installed-root check', () =>
   fs.writeFileSync(path.join(pkgDir, 'unexpected.md'), 'x');
   check = verifyPackageRoot(pkgDir, { host: 'codex' });
   assert.ok(check.errors.some((e) => /unknown extra/.test(e)));
+  // Claude Code's own session lockfiles live in the installed root; they are host-owned, not tampering.
+  const claudeRoot = path.join(out, 'packages/claude');
+  fs.mkdirSync(path.join(claudeRoot, '.in_use'), { recursive: true });
+  fs.writeFileSync(path.join(claudeRoot, '.in_use/12345'), '');
+  const withLock = verifyPackageRoot(claudeRoot, { host: 'claude' });
+  const codexLock = path.join(pkgDir, '.in_use'); fs.mkdirSync(codexLock, { recursive: true }); fs.writeFileSync(path.join(codexLock, '1'), '');
+  assert.ok(verifyPackageRoot(pkgDir, { host: 'codex' }).errors.some((e) => /unknown extra/.test(e)), 'codex owns no such directory');
+  assert.ok(!withLock.errors.some((e) => /unknown extra/.test(e)), `.in_use/ is host-owned on claude: ${withLock.errors.join('; ')}`);
 });
 
 test('packages leak no checkout paths, secrets or project data', () => {

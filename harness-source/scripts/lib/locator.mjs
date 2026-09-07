@@ -17,9 +17,14 @@ export const RECEIPT = '.agents/harness-version.json';
 export const STATE_DIR = '.agents/harness-state';
 export const STATE_FILE = `${STATE_DIR}/binding.json`;
 
-// Files a host writes into an installed root that are not part of the payload. Empty until the
-// live smoke (T16) proves a host does so; unknown extras block binding.
-export const HOST_OWNED_EXTRAS = { claude: [], codex: [] };
+// Files a host writes into an installed root that are not part of the payload; a trailing slash
+// names a directory the host owns. Claude Code keeps session lockfiles in `.in_use/<pid>` (observed
+// 2026-09-07, Claude Code 2.1.x — it invalidated every binding). Anything else blocks binding.
+export const HOST_OWNED_EXTRAS = { claude: ['.in_use/'], codex: [] };
+
+export function isHostOwnedExtra(host, rel) {
+  return (HOST_OWNED_EXTRAS[host] ?? []).some((allowed) => allowed.endsWith('/') ? rel.startsWith(allowed) : rel === allowed);
+}
 
 export function verifyPackageRoot(root, { host, expectedName, expectedVersion, expectedSourceDigest } = {}) {
   const errors = [];
@@ -48,8 +53,7 @@ export function verifyPackageRoot(root, { host, expectedName, expectedVersion, e
   }
   const listed = new Set([...(marker.files ?? []).map((f) => f.path), MARKER]);
   const { files, symlinks } = listFiles(real);
-  const allowedExtras = new Set(HOST_OWNED_EXTRAS[marker.host] ?? []);
-  const extras = files.filter((p) => !listed.has(p) && !allowedExtras.has(p));
+  const extras = files.filter((p) => !listed.has(p) && !isHostOwnedExtra(marker.host, p));
   if (extras.length) errors.push(`unknown extra files in installed root (block): ${extras.join(', ')}`);
   if (symlinks.length) errors.push(`symlinks in installed root: ${symlinks.join(', ')}`);
   for (const [id, rel] of Object.entries(marker.skills ?? {})) {

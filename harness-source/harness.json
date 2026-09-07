@@ -2,7 +2,7 @@
   "_doc": "Release identity of the dual-host harness. Both native manifests, the build marker and the release bundle read name/version from here; nothing else declares a version. `marketplace_source` + `release_ref` name the git marketplace channel projects install from; scripts/release-harness.mjs publishes to it.",
   "schema_version": 1,
   "name": "harness",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "display_name": "AI Coding Starter harness",
   "description": "Planning and review procedures (prime, brainstorm, plan-feature, setup-start, handoff) with fail-closed cross-model review, packaged for Claude Code and Codex CLI from one source.",
   "marketplace_name": "ai-coding-starter",
