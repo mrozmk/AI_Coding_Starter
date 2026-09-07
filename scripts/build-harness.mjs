@@ -2,7 +2,7 @@
 // Build both host packages from harness-source/ (deterministic bytes), write the native marketplace
 // manifests, or export the release bundle. Usage:
 //   node scripts/build-harness.mjs                      # packages/{claude,codex} + marketplaces + starter wrappers (.claude/commands/)
-//   node scripts/build-harness.mjs --export dist/harness-0.1.4   # bundle; harness-release.json says whether live evidence is verified
+//   node scripts/build-harness.mjs --export dist/harness-0.1.5   # bundle; harness-release.json says whether live evidence is verified
 //   node scripts/build-harness.mjs --out <dir>          # build into another destination (tests)
 //   node scripts/build-harness.mjs --parity-docs        # render docs/harness/{instruction,hook}-parity.md from the ledgers
 import fs from 'node:fs';

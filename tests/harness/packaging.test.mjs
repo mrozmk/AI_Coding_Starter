@@ -126,6 +126,7 @@ test('tampered marker or payload is detected by the installed-root check', () =>
   const claudeRoot = path.join(out, 'packages/claude');
   fs.mkdirSync(path.join(claudeRoot, '.in_use'), { recursive: true });
   fs.writeFileSync(path.join(claudeRoot, '.in_use/12345'), '');
+  fs.writeFileSync(path.join(claudeRoot, '.orphaned_at'), '2026-09-07T00:00:00Z');
   const withLock = verifyPackageRoot(claudeRoot, { host: 'claude' });
   const codexLock = path.join(pkgDir, '.in_use'); fs.mkdirSync(codexLock, { recursive: true }); fs.writeFileSync(path.join(codexLock, '1'), '');
   assert.ok(verifyPackageRoot(pkgDir, { host: 'codex' }).errors.some((e) => /unknown extra/.test(e)), 'codex owns no such directory');

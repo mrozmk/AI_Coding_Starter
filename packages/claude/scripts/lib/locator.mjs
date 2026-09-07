@@ -18,9 +18,10 @@ export const STATE_DIR = '.agents/harness-state';
 export const STATE_FILE = `${STATE_DIR}/binding.json`;
 
 // Files a host writes into an installed root that are not part of the payload; a trailing slash
-// names a directory the host owns. Claude Code keeps session lockfiles in `.in_use/<pid>` (observed
-// 2026-09-07, Claude Code 2.1.x — it invalidated every binding). Anything else blocks binding.
-export const HOST_OWNED_EXTRAS = { claude: ['.in_use/'], codex: [] };
+// names a directory the host owns. Claude Code keeps session lockfiles in `.in_use/<pid>` and stamps
+// a superseded version root with `.orphaned_at` (both observed 2026-09-07, Claude Code 2.1.x — the
+// lockfile invalidated every binding). Anything else blocks binding.
+export const HOST_OWNED_EXTRAS = { claude: ['.in_use/', '.orphaned_at'], codex: [] };
 
 export function isHostOwnedExtra(host, rel) {
   return (HOST_OWNED_EXTRAS[host] ?? []).some((allowed) => allowed.endsWith('/') ? rel.startsWith(allowed) : rel === allowed);

@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Planning and review procedures (prime, brainstorm, plan-feature, setup-start, handoff) with fail-closed cross-model review, packaged for Claude Code and Codex CLI from one source.",
   "skills": "./skills/"
 }

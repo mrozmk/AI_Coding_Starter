@@ -127,7 +127,7 @@ New chat → /prime → /quick-change <what to change> → /commit
 
 ---
 
-## Harness plugin — planning/review release (0.1.4)
+## Harness plugin — planning/review release (0.1.5)
 
 The planning half of the workflow (`prime`, `brainstorm`, `plan-feature`, `setup-start`, `handoff`) is also authored once under `harness-source/` and built into two natively installable plugins — `packages/claude` for Claude Code and `packages/codex` for Codex CLI — with fail-closed cross-model review in both directions (Claude author → Codex reviewer, Codex author → Claude reviewer). The legacy `.claude/commands/` stay the execution/Git release; nothing in the plugin executes code, commits or pushes.
 
@@ -136,7 +136,7 @@ node scripts/check-harness.mjs --all        # syntax · inventory · links · te
 node scripts/build-harness.mjs              # packages/{claude,codex} + both marketplace manifests
 node scripts/smoke-harness.mjs --offline    # installed-cache contracts without installing anything
 node scripts/release-harness.mjs            # gates, then the two pushes (main, main:release) — the marketplace channel
-node scripts/build-harness.mjs --export dist/harness-0.1.4   # bundle; harness-release.json says whether live evidence for these bytes ships
+node scripts/build-harness.mjs --export dist/harness-0.1.5   # bundle; harness-release.json says whether live evidence for these bytes ships
 
 # install from the release channel (operator actions)
 claude plugin marketplace add mrozmk/AI_Coding_Starter@release && claude plugin install harness@ai-coding-starter --scope project
