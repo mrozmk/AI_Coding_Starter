@@ -78,7 +78,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 ## Git Workflow
 
-- Conventional commits: `type(scope): subject`, imperative, lowercase, ≤72 chars; body explains *why*. No AI attribution in commits or PRs.
+- Conventional commits: `type(scope): subject`, imperative, lowercase, ≤72 chars; body explains *why*. AI attribution in commits is switched off by `"attribution": { "commit": "", "pr": "", "sessionUrl": false }` in `.claude/settings.json` (a setting, not a prose rule — keep the key).
 - Never force-push; destructive git operations require an explicit human decision. History rewrite is a human act.
 - **`git worktree remove --force` can discard uncommitted work.** Its only guard is the orchestrate pipeline's `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged. Never use it ad hoc.
 - A new branch must not track a protected branch (`--no-track`); the push command sets the upstream on first push.

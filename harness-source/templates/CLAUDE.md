@@ -72,7 +72,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 - **Commits · sync · releases:** `/commit` (conventional commits), `/push` / `/pull`, `/release` — legacy commands, still project-local.
 - **AI git policy — three permission tiers** in `.claude/settings.json`: `deny` > `ask` > `allow`; `deny` is absolute.
 - **`git worktree remove --force` can discard uncommitted work.** Its only guard is `/orchestrate`'s `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged. `/orchestrate` pushes the current branch, not a hardcoded `main`.
-- **Never include AI attribution** in commit messages unless explicitly requested.
+- **AI attribution in commits is switched off in `settings.json`** (`"attribution": { "commit": "", "pr": "", "sessionUrl": false }`), not forbidden by prose: by default the host injects a session-level instruction to append `Co-Authored-By` and `Claude-Session` trailers that outranks any rule file, and a prose rule the model can be overruled on is worse than none. The older `includeCoAuthoredBy` is deprecated and silences only the first trailer. Keep the key; do not re-add the prohibition to `/commit`.
 
 **Orchestrate publish:** {publish}
 

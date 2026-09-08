@@ -105,8 +105,6 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 
 ## CRITICAL rules:
 
-- NEVER add "Co-Authored-By: Claude" or any Claude attribution
-- NEVER add "🤖 Generated with Claude Code" markers
 - NO version tags — this command creates commits only
 - NEVER push — local commit only
 - NEVER `git add .` / `git add -A` / `git add -u` — they bypass session scoping and silently sweep up other windows' work. Always pass explicit paths.

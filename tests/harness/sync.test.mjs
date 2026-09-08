@@ -34,6 +34,15 @@ test('3-way: a migrated path absent locally is an intentional deletion, not stal
   assert.equal(threeWayVerdict(manifest, '.claude/commands/gone.md', { base: 'a', ours: 'a', theirs: null }).verdict, 'safe-upstream-deletion');
 });
 
+test('settings union: upstream top-level keys are copied whole when absent, a project value always wins', () => {
+  const { merged, added } = unionSettings(manifest, ours, theirs);
+  assert.deepEqual(merged.attribution, { commit: '', pr: '', sessionUrl: false }, 'attribution arrives from upstream');
+  assert.ok(added.includes('settings.attribution'));
+  const kept = unionSettings(manifest, { ...ours, attribution: { sessionUrl: true } }, theirs).merged;
+  assert.deepEqual(kept.attribution, { sessionUrl: true }, 'project object kept whole, never deep-merged');
+  assert.equal(unionSettings(manifest, ours, { ...theirs, $schema: 'x' }).merged.$schema, undefined, '$schema is never copied');
+});
+
 test('settings union: adds upstream entries, keeps project entries, never resurrects migrated identities', () => {
   const { merged, added, skipped } = unionSettings(manifest, ours, theirs);
   assert.ok(merged.permissions.allow.includes('Bash(project-only:*)'), 'project entry kept');

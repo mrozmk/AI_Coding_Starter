@@ -127,7 +127,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 - **A new branch must not track a protected branch.** `git switch -c` / `checkout -b` from `origin/<protected>` auto-sets that branch as upstream, so a bare `git push` targets it directly. Create with `--no-track` (or run `git branch --unset-upstream` right after) and let [/push](.claude/commands/push.md) set the upstream on first push.
 - **Protected branches refuse commits and pipeline runs** — [/commit](.claude/commands/commit.md) and [/orchestrate](.claude/commands/orchestrate.md) Phase 4 read **Protected** from the Branch model block below. Block absent or field empty → no branch is protected and both proceed (the starter's own default is committing on `main`).
 - **[/orchestrate](.claude/commands/orchestrate.md) pushes the current branch**, not a hardcoded `main`; parallel runs and the supervised `--integrate` merge queue: [.agents/reference/parallel-orchestration.md](.agents/reference/parallel-orchestration.md).
-- **Never include AI attribution** in commit messages unless explicitly requested.
+- **AI attribution in commits is switched off in `settings.json`** (`"attribution": { "commit": "", "pr": "", "sessionUrl": false }`), not forbidden by prose: by default the host injects a session-level instruction to append `Co-Authored-By` and `Claude-Session` trailers that outranks any rule file, and a prose rule the model can be overruled on is worse than none. The older `includeCoAuthoredBy` is deprecated and silences only the first trailer. Keep the key; do not re-add the prohibition to `/commit`.
 
 **Orchestrate publish:** push
 

@@ -85,12 +85,20 @@ export function disabledByProfile(view) {
 
 // Union of settings.json permissions and hooks that never resurrects a migrated identity, never
 // adds an entry a disabled profile group owns, and never removes a project entry. Unknown keys of
-// `ours` are carried verbatim.
+// `ours` are carried verbatim. Other top-level keys upstream introduces (e.g. `attribution`) are
+// copied whole only when the project has no value for them — a project value always wins, and no
+// deep merge is attempted (only permissions and hooks are unioned entry by entry).
 export function unionSettings(manifest, ours, theirs, { file = '.claude/settings.json', profile = null } = {}) {
   const merged = structuredClone(ours);
   const added = [];
   const skipped = [];
   const disabled = disabledByProfile(profile);
+  for (const [key, value] of Object.entries(theirs ?? {})) {
+    if (key === 'permissions' || key === 'hooks' || key === '$schema') continue;
+    if (key in merged) continue;
+    merged[key] = structuredClone(value);
+    added.push(`settings.${key}`);
+  }
   merged.permissions = merged.permissions ?? {};
   for (const tier of ['allow', 'ask', 'deny']) {
     const skipIds = migratedIdentities(manifest, file, 'permission');

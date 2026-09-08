@@ -136,8 +136,6 @@ git tag -a vX.Y.Z -m "Version X.Y.Z - [one-line description]"
 
 ## CRITICAL rules:
 - NEVER proceed past step 1 without user confirming the version number
-- NEVER add "Co-Authored-By: Claude" or any Claude attribution
-- NEVER add "🤖 Generated with Claude Code" markers
 - NEVER create a `CHANGELOG.md` that does not already exist — update it only if the project keeps one; create one solely on the user's explicit request (its absence is a deliberate choice)
 - When a CHANGELOG exists, always derive its content from actual commits — never invent entries
 - NEVER create an empty release commit — if Steps 2–4 changed no files, tag HEAD directly
