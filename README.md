@@ -31,8 +31,8 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
-| `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
+| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/harness:gates-verify-implementation`, `/harness:gates-design-quality-check`, `/harness:gates-check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
+| `agents/` | Sub-agents that stay in the project — the `/qa-verify` verifiers (`qa-contract`, `qa-runtime-ui`). The `/orchestrate` pipeline agents (`harness:orchestrator-executor`, `-executor-hard`, `-refiner`, `-verifier`, `-committer`, `-designer`) and `harness:documentation-manager` ship in the `harness` plugin since 0.3.0. |
 | `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs). Plus two command-bound resource bundles loaded by path (no `SKILL.md`): `design/` (UI-design knowledge for `/design`) and `architecture-review/` (depth/locality method for `/architecture-review`). |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs placed by `/setup:start` step 8) |
 | `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `guard-comments` (comment-noise nudge — dormant until `comment-guard.json` names your source dirs), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `check-deps` (SessionStart dep preflight). Need `jq`. |
@@ -123,7 +123,7 @@ New chat → /prime → /quick-change <what to change> → /commit
 | **`/commit` → `/push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
 | **`/orchestrate`** *(flow B)* | Runs the whole back half as one pipeline — execute → refine → verify → [design] → commit → push — via sub-agents, looping fixes and escalating only on blockers. Replaces the `/execute … /push` tail of flow A. |
 
-> Both flows share the same gates and memory-reflection — `/orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/gates:verify-implementation` is also available standalone when you only want the verdict without applying fixes.
+> Both flows share the same gates and memory-reflection — `/orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/harness:gates-verify-implementation` is also available standalone when you only want the verdict without applying fixes.
 
 ---
 
@@ -152,7 +152,7 @@ Runbook, capability matrix and live evidence: [docs/harness/](docs/harness/) —
 - Git — for the `/commit`, `/push`, `/pull`, `/release` workflow.
 - [`jq`](https://jqlang.github.io/jq/) — required by the workflow hooks (`guard-memory`, `track-memory-read`, `audit-append`, `guard-push`). Most **fail open silently** without it: the memory-distillation guard never fires, the audit log stays empty, and read telemetry is not recorded — with no error shown. `guard-push` fails open **loudly** (it prints a "secret scan SKIPPED" warning) so the security gap is visible. Install via `brew install jq` / `apt install jq` before relying on those safeguards.
 - [`gitleaks`](https://github.com/gitleaks/gitleaks) *(optional)* — if on `PATH`, `guard-push` runs it as a broader entropy/ruleset pass on top of its built-in baseline scan. Without it the baseline (known-format tokens, private keys, credential files, hardcoded assignments) still applies.
-- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review**: a second, independent model (GPT-class) reviews work the primary thread produced. Used by `/codex-review` (standalone diff/proposal review), by `/quick-change` (Phase 2, on the plan before any code exists), and as a conditional gate inside `/plan-feature` (Phase 7), `/brainstorm` (Step 8), `/check-implementation` (Step 1.5, on the gate-approved diff), `/architecture-review --codex` (Phase 0, a second independent sweep) and `/orchestrate` (Phase 7 step 0, on the whole run's diff). The conditional gates **skip cleanly** when `codex` is not on `PATH` (each logs one "skipped — codex not on PATH" line, no error), keeping the harness portable; the standalone `/codex-review` instead **hard-stops** with a clear install/login message, since running it without `codex` has no fallback. **`/quick-change` sits between the two:** its review is mandatory in the sense that nothing you can type disables it, but an absent `codex` degrades the run rather than blocking it — the missing opinion is reported on its own line instead of being silently dropped. Install + `codex login` to activate.
+- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review and delegation**: a second, independent model (GPT-class) reviews or implements work the primary thread supervises. Every call goes through the plugin's supervised scripts — `review-orchestrator.mjs` for specs and plans (`/brainstorm` Step 8, `/plan-feature` Phase 7) and `executor-orchestrator.mjs` for code: read mode in `/quick-change` (Phase 2, on the plan before any code exists), `/check-implementation` (Step 1.5, on the gate-approved diff), `/architecture-review --codex` (Phase 0, a second independent sweep) and `/orchestrate` (Phase 7 step 0, on the whole run's diff); write mode in `/execute codex` and the `/check-implementation codex` fixer. Whether the team reviews is a profile choice (`groups.review`), never inferred from installed CLIs: with the group on and `codex` absent, the step is **blocked, not skipped**; with the group off, every skill reports the opt-out on its own line. Install + `codex login` to activate.
 
 **Optional (per integration):**
 - **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill, or to feed Jira issues into `/test-e2e CS-1`. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
@@ -168,7 +168,7 @@ These three MCP servers extend the shipped commands. Install only what you actua
 | MCP | What it does | Repo | Used by |
 |-----|--------------|------|---------|
 | **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/setup:stack-research`, `/brainstorm` for new deps) |
-| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/gates:verify-implementation` |
+| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/harness:gates-verify-implementation` |
 | **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
 
 **Quick install (Claude Code CLI):**
@@ -349,7 +349,7 @@ Runs the active plan. Moves it to `.agents/plans/done/` when complete.
 
 > If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
 >
-> Run `/gates:verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
+> Run `/harness:gates-verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
 
 ### 10. Commit
 
@@ -384,11 +384,10 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/retro` | At the end of a long or frictional session, before `/clear` — generates an **evidence-based** session retrospective from the session's `.jsonl` transcript (paths, counts, tool-call refs, timestamps; no opinions or self-assessment). Refuses to write when the session was trivial or friction-free (`<15` tool calls, `<5` min, or zero friction signals) — `--force` overrides loudly. Saves one `.md` under `.agents/retros/` (or `.claude/retros/`); never touches code or repo state. Output feeds `/maintain:cleanup-workflow`. Flags: `--dry-run`, `--force`, `--transcript <path>`, `--slug <kebab>`. |
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/simply [topic]` | Re-explains what just happened in plain language — what I did / did it work / what now, in the project's communication language. No new work, no file edits, no memory writes; empty argument defaults to the immediately preceding work. |
-| `/gates:check-quality` | Before committing — format, lint, type-check, file-size gates. |
-| `/gates:verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
-| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/commit`. Unlike `/gates:verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
+| `/harness:gates-check-quality` | Before committing — format, lint, type-check, file-size gates. |
+| `/harness:gates-verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
+| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `harness:gates-verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/commit`. Unlike `/harness:gates-verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
 | `/quick-change <what to change>` | **The fast lane for small changes** — when `/brainstorm → /plan-feature → /execute` is too heavy but "just do it" is too risky. Short plan in chat (no spec, no plan file) → **`codex` reviews the plan before any code exists** (idea mode) → implement → `/code-review` at low effort → `/deep-review` → the `CLAUDE.md → Validation` gates. The review is **mandatory — there is no opt-out flag**; it is skipped only when `codex` is not installed, and the report says so on its own line. A Phase 0 guard always fires when the change touches a sensitive path, spans >~5 files, adds a dependency, changes a schema/contract, or needs a design reference — it names the criterion and recommends the real route, and you may override it. Writes nothing to `.agents/`, never commits. |
-| `/codex-review [idea\|diff] [hint]` | **Independent cross-model review** — hands the current work to `codex` (a different model) for a review steered by zero opinions, then judges its findings honestly back in the main thread. Two modes, auto-detected: **`diff`** reviews CHANGES already made (uncommitted/unpushed work), **`idea`** reviews a PROPOSAL before any code is written. Codex orients itself by replaying `/prime`, runs detached with a heartbeat every ~3 min, and only advises — you decide what to apply. Requires `codex` on `PATH` (see Requirements); hard-stops with a clear message if absent. |
 
 Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLAUDE.md` to a tech lead in CODEOWNERS, so a change to the rules gets a rules-owner review (`/setup:start` prints the stanza).
 
@@ -428,8 +427,8 @@ resolve scope (plan | diff-only)
   └─ loop, max 3×:
        1a /code-review --fix   (correctness — find & fix logic bugs)
        1b /deep-review         (cleanliness — structural / maintainability cleanup)
-       1c /gates:verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
-       1d @orchestrator-designer  ← spawned, Opus 5 high, ONLY if UI changed AND a reference design exists
+       1c /harness:gates-verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
+       1d harness:orchestrator-designer  ← spawned, Opus 5 high, ONLY if UI changed AND a reference design exists
        1e decide: approve → done · gaps → feed into next 1a · blocker / 3× → escalate to you
   └─ 1.5 cross-model review ← codex (different model, read-only judge; only if installed) reads the
        gate-approved diff cold — surviving findings get ONE fixer pass + re-gate, never a new loop
@@ -445,20 +444,20 @@ The only command that takes a plan all the way to **pushed**. Your main session 
 **Per step** (sequential; flat = one plan, umbrella = a DAG of steps each in its own git worktree on a named branch, fast-forward-merged to `main`):
 
 ```
-5.1  Execute       → @orchestrator-executor   (Opus 5 low; the plan's Effort column routes `medium` steps to @orchestrator-executor-hard)
+5.1  Execute       → harness:orchestrator-executor   (Opus 5 low; the plan's Effort column routes `medium` steps to harness:orchestrator-executor-hard)
 5.1-recon          → orchestrator re-derives the facts itself (independent ground-truth, before trusting any report)
-5.1b Refine        → @orchestrator-refiner     (Opus 5 low — code-review --fix + deep-review)
-5.2  Verify   ≤3×  → @orchestrator-verifier    (Opus 5 high, read-only)          ┐ GAPS loop back
-5.3  Design   ≤2×  → @orchestrator-designer    (Opus 5 high, read-only)          ┘ into the next Refine/Execute
+5.1b Refine        → harness:orchestrator-refiner     (Opus 5 low — code-review --fix + deep-review)
+5.2  Verify   ≤3×  → harness:orchestrator-verifier    (Opus 5 high, read-only)          ┐ GAPS loop back
+5.3  Design   ≤2×  → harness:orchestrator-designer    (Opus 5 high, read-only)          ┘ into the next Refine/Execute
        (5.3 runs ONLY if .agents/specs/design/Ready/ exists)
-5.4  Commit        → @orchestrator-committer   (Opus 5 low) → clean-build gate
+5.4  Commit        → harness:orchestrator-committer   (Opus 5 low) → clean-build gate
 5.4b Push          → orchestrator (your session) — git push, ff-merge the step branch to main
 ─ once, end of run ─
 7.0  Cross-model   → codex (different model, read-only judge; only if installed) reviews the whole
      review          run's diff cold — surviving findings get ONE refine→verify→commit cycle
 ```
 
-**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) an independent codex pass cross-reviews the whole run's diff (step 0, only if `codex` is installed — surviving findings get one refine→verify→commit cycle), then it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `@documentation-manager` and commits a `docs:` follow-up.
+**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) an independent codex pass cross-reviews the whole run's diff (step 0, when the profile's `review` group is on — surviving findings get one refine→verify→commit cycle), then it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `harness:documentation-manager` and commits a `docs:` follow-up.
 
 > `/check-implementation` ≈ the 5.1b→5.2 slice of `/orchestrate`, run inline in your session without the commit/push. Use `/check-implementation` when you want to drive + review; `/orchestrate` when you trust the pipeline to ship.
 

@@ -63,7 +63,8 @@ Per-hook detail: [hook-parity.md](hook-parity.md). Summary:
 | Profile-aware, migration-aware settings/MCP unions; activation preview; rollback restores ownership; legacy-only downstream sync | implemented | implemented | `migration.test.mjs`, `permissions.test.mjs` |
 | Deterministic packages, marker with hook targets, package validation (paths, hook targets, no private data) | built | built | `packaging.test.mjs`, `smoke --offline` |
 | commit / push / pull / release / pr-create / start-task (`groups.git`) | skills + `harness:documentation-manager` agent (release) | skills; the doc sync runs inline (no agents) | `skills.test.mjs`, `packaging.test.mjs` |
-| execute / check-implementation / gates / orchestrate / Jira / Confluence / QA | legacy only | not available | deferred, unchanged |
+| execute / check-implementation / quick-change / deep-review / orchestrate / gates / analysis / recon / design / test-e2e / architecture-review (`groups.execution`) | skills + 6 `harness:orchestrator-*` agents + `executor-orchestrator.mjs` | skills; orchestrate / check-implementation / quick-change / architecture-review refuse (no agents, host-provided code-review); recon / design sequential | `skills.test.mjs`, `executor.test.mjs`, `git-baseline.test.mjs` |
+| Jira / Confluence / QA | legacy only | not available | deferred, unchanged |
 
 ## Known limits recorded so far
 

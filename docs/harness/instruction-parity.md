@@ -57,17 +57,43 @@
 | `perm.git-tiers` | .claude/settings.json → permissions allow/ask/deny for git | all | hard | .claude/settings.json | .claude/settings.json permission tiers | — | **legacy-only** | tests/harness/permissions.test.mjs |
 | `perm.env-write-deny` | .claude/settings.json → Edit(**/.env) deny | all | hard | .claude/settings.json | .claude/settings.json | — | **gap** | tests/harness/permissions.test.mjs |
 | `hooks.ledger` | .claude/settings.json → hooks block | all | hard | harness-source/contracts/hook-parity.json | adapters/claude-code/hooks.json | adapters/codex-cli/hooks.json | **migrated** | tests/harness/parity.test.mjs |
+| `skill.gates-check-quality` | .claude/commands/gates/check-quality.md → /gates:check-quality | all | hard | harness-source/skills/gates-check-quality/SKILL.md#/harness:gates-check-quality — Run project quality checks | /harness:gates-check-quality | $gates-check-quality | **migrated** | tests/harness/skills.test.mjs |
+| `skill.gates-verify-implementation` | .claude/commands/gates/verify-implementation.md → /gates:verify-implementation | all | hard | harness-source/skills/gates-verify-implementation/SKILL.md#/harness:gates-verify-implementation — Verify Plan Execution & Code Quality | /harness:gates-verify-implementation | $gates-verify-implementation | **migrated** | tests/harness/skills.test.mjs |
+| `skill.gates-design-quality-check` | .claude/commands/gates/design-quality-check.md → /gates:design-quality-check | all | hard | harness-source/skills/gates-design-quality-check/SKILL.md#/harness:gates-design-quality-check — Design-Parity Audit | /harness:gates-design-quality-check | $gates-design-quality-check | **migrated** | tests/harness/skills.test.mjs |
+| `skill.deep-review` | .claude/commands/deep-review.md → /deep-review | all | hard | harness-source/skills/deep-review/SKILL.md#`/harness:deep-review` (Claude Code) · `$deep-review` (Codex) — Deep Structural Quality Audit | /harness:deep-review | $deep-review | **migrated** | tests/harness/skills.test.mjs |
+| `skill.analysis` | .claude/commands/analysis.md → /analysis | all | hard | harness-source/skills/analysis/SKILL.md#`/harness:analysis` (Claude Code) · `$analysis` (Codex) — deep analytical pass | /harness:analysis | $analysis | **migrated** | tests/harness/skills.test.mjs |
+| `skill.test-e2e` | .claude/commands/test-e2e.md → /test-e2e | all | hard | harness-source/skills/test-e2e/SKILL.md#Test E2E: Explore → Plan → Generate | /harness:test-e2e | $test-e2e | **migrated** | tests/harness/skills.test.mjs |
+| `skill.execute` | .claude/commands/execute.md → /execute | all | hard | harness-source/skills/execute/SKILL.md#Execute: Implement from Plan | /execute (wrapper) → harness:execute | $execute (plain mode) | **migrated** | tests/harness/skills.test.mjs |
+| `skill.recon` | .claude/commands/recon.md → /recon | conditional:claude-host | hard | harness-source/skills/recon/SKILL.md#Recon: Assemble Context Before You Design | /recon (wrapper) → harness:recon, research waves as parallel agents | $recon — the same waves run sequentially in-session (no agents) | **conditional** | tests/harness/skills.test.mjs |
+| `skill.design` | .claude/commands/design.md → /design | conditional:claude-host | hard | harness-source/skills/design/SKILL.md#`/harness:design` (Claude Code) · `$design` (Codex) — Guided UI Design with Variants + Self-Check Gate | /design (wrapper) → harness:design, 3 variants as parallel agents | $design — the three variants run sequentially in-session (no agents) | **conditional** | tests/harness/skills.test.mjs |
+| `skill.orchestrate` | .claude/commands/orchestrate.md → /orchestrate | all | hard | harness-source/skills/orchestrate/SKILL.md#/orchestrate — Pipeline Runner | /orchestrate (wrapper) → harness:orchestrate + six harness:orchestrator-* agents | — | **legacy-only** | tests/harness/skills.test.mjs |
+| `skill.check-implementation` | .claude/commands/check-implementation.md → /check-implementation | all | hard | harness-source/skills/check-implementation/SKILL.md#/check-implementation — Full Implementation Quality Loop | /check-implementation (wrapper) → harness:check-implementation | — | **legacy-only** | tests/harness/skills.test.mjs |
+| `skill.quick-change` | .claude/commands/quick-change.md → /quick-change | all | hard | harness-source/skills/quick-change/SKILL.md#/quick-change — Fast Lane for Small Changes | /quick-change (wrapper) → harness:quick-change | — | **legacy-only** | tests/harness/skills.test.mjs |
+| `skill.architecture-review` | .claude/commands/architecture-review.md → /architecture-review | all | hard | harness-source/skills/architecture-review/SKILL.md#/architecture-review — Codebase-Wide Architecture Audit | /architecture-review (wrapper) → harness:architecture-review | — | **legacy-only** | tests/harness/skills.test.mjs |
+| `skill.execute-codex-mode` | .claude/commands/execute.md → Codex executor mode | all | hard | harness-source/references/executor-contract.md#Roles and direction | /execute codex → scripts/executor-orchestrator.mjs --mode write | — | **legacy-only** | tests/harness/executor.test.mjs |
+| `agent.orchestrator-fleet` | .claude/agents/orchestrator-executor.md → orchestrator-* agents (6) | all | hard | harness-source/agents/orchestrator-executor.md | agents/orchestrator-*.md (packaged, harness:orchestrator-* subagent types) | — | **legacy-only** | tests/harness/packaging.test.mjs |
+| `exec.executor-orchestrator` | .claude/lib/codex-bg.sh → write-enabled Codex spawn | all | hard | harness-source/scripts/executor-orchestrator.mjs | scripts/executor-orchestrator.mjs (read \| write mode, worktree lock, run-relative snapshot) | scripts/executor-orchestrator.mjs — refuses a Codex author | **migrated** | tests/harness/executor.test.mjs |
+| `exec.git-baseline` | .claude/lib/git-baseline.sh → capture / compare tamper check | all | hard | harness-source/scripts/git-baseline.mjs | scripts/git-baseline.mjs (snapshot pair around every executor child) | scripts/git-baseline.mjs | **migrated** | tests/harness/git-baseline.test.mjs |
+| `exec.codex-review` | .claude/commands/codex-review.md → /codex-review | all | advisory | harness-source/scripts/review-orchestrator.mjs | — | — | **retired** | tests/harness/review.test.mjs |
+| `exec.codex-bg` | .claude/lib/codex-bg.sh → codex-bg.sh wrapper | all | hard | harness-source/scripts/executor-orchestrator.mjs | — | — | **retired** | tests/harness/executor.test.mjs |
 
 ## Totals
 
 - compat-rendered: 14
-- migrated: 29
-- conditional: 7
-- legacy-only: 2
+- migrated: 38
+- conditional: 9
+- legacy-only: 8
 - gap: 1
+- retired: 2
 
 ## Not certified (gap / legacy-only)
 
 - `setup.legacy-only-routing` — no note
 - `perm.git-tiers` — Project-owned settings file. Codex has no equivalent string-glob tiers; sandbox + approval_policy are the host controls. Reported, not claimed.
 - `perm.env-write-deny` — Project-owned settings file. No Codex-side write deny exists; the push guard still catches a committed .env before publication. Recorded as a gap, not certified.
+- `skill.orchestrate` — Claude-only: every stage is a subagent and the pipeline uses git worktree; Codex has neither. The skill refuses on Codex.
+- `skill.check-implementation` — Claude-only: composes the host-provided code-review with subagent gates; judge ≠ fixer has no Codex-side equivalent. The skill refuses on Codex.
+- `skill.quick-change` — Claude-only: Phase 4 leans on the host-provided code-review and the judge-is-not-the-fixer split. The skill refuses on Codex.
+- `skill.architecture-review` — Claude-only: Phases 1 and 3 fan out read-only subagents over the codebase. The skill refuses on Codex.
+- `skill.execute-codex-mode` — A Codex author has no cross-model executor in this release; the orchestrator refuses --author-host codex.
+- `agent.orchestrator-fleet` — Codex plugins carry no agents (outputsFor gives Codex none).

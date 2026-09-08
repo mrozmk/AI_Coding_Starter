@@ -100,7 +100,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Validation
 
-> **Source of truth for quality gates.** `/gates:verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast).
+> **Source of truth for quality gates.** `/harness:gates-verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast).
 
 ```bash
 # Run in order, stop on first failure
@@ -131,7 +131,7 @@ Generic defaults — tune per project: files max **500 lines** · functions max 
 
 **Comments: why, not what — cap 1-2 lines.** A comment that restates the adjacent statement, echoes a variable / constant / function name, or repeats what the signature already says is **noise, and gets deleted**. Keep only a *why* the code cannot express: a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Longer reasoning belongs in `.agents/memory/` or the spec, with a one-line pointer from the code.
 
-> Enforced at three altitudes, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/gates:verify-implementation` warns on it. All three point back at this section by name — **do not rename this heading or drop this rule**; a rename silently orphans their pointers, and nothing then holds the rule's write authority.
+> Enforced at three altitudes, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/harness:gates-verify-implementation` warns on it. All three point back at this section by name — **do not rename this heading or drop this rule**; a rename silently orphans their pointers, and nothing then holds the rule's write authority.
 
 ---
 

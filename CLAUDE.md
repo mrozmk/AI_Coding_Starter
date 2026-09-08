@@ -42,7 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Validation
 
-> **Source of truth for quality gates.** `/gates:verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/setup:create-CLAUDE_MD`. Until filled, gates fall back to stack-detected defaults.
+> **Source of truth for quality gates.** `/harness:gates-verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/setup:create-CLAUDE_MD`. Until filled, gates fall back to stack-detected defaults.
 
 ```bash
 # Run in order, stop on first failure
@@ -87,7 +87,7 @@ Generic defaults — tune per project: files max **500 lines** · functions max 
 
 **Comments: why, not what — cap 1-2 lines.** A comment that restates the adjacent statement, echoes a variable / constant / function name, or repeats what the signature already says is **noise, and gets deleted**. Keep only a *why* the code cannot express: a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Longer reasoning belongs in `.agents/memory/` or the spec, with a one-line pointer from the code.
 
-> This rule is **enforced at three altitudes**, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/gates:verify-implementation` warns on it. All three point back at this section by name — keep the heading and the rule together.
+> This rule is **enforced at three altitudes**, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/harness:gates-verify-implementation` warns on it. All three point back at this section by name — keep the heading and the rule together.
 
 ---
 
@@ -114,7 +114,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Recorded allowance: harness plugin scripts (machine-local).** Plugin skills run `node <installed root>/scripts/*.mjs`. The allow rule for that lives in the gitignored `.claude/settings.local.json` as the absolute, version-agnostic cache directory (`Bash(node /Users/<you>/.claude/plugins/cache/ai-coding-starter/harness/*)`), written by `/harness:setup-start` with consent. It is deliberately **not** a portable glob in `settings.json`: with `Write` allowed, a rule like `Bash(node */…/harness/*)` would also run a file the agent wrote under a matching path. The shared guard is the other way round — `settings.json` denies `Write`/`Edit` under `~/.claude/plugins/**`, so the cache holds only what the marketplace installed.
 
-**Recorded allowance: `git-baseline.sh`.** `Bash(bash .claude/lib/git-baseline.sh:*)` is allow-listed so the mandatory post-Codex tamper check in `/execute codex` / `/check-implementation codex` runs without mid-pipeline prompts. Unlike `pr-api.sh` it performs **no egress** — it only writes fixed snapshot filenames (`meta.txt`, `ignored.z`, `ignored.txt`, `sensitive.sha`, `after/*`) under the directory the caller passes, which is a narrow local-write channel that skips the usual write prompt. Point it only at the session scratchpad; widening it to other scripts needs a note here.
+**Recorded allowance: plugin executor.** The Codex executor (`/execute codex`, `/check-implementation codex`, the cross-model reviews) runs as `node <installed root>/scripts/executor-orchestrator.mjs` under the machine-local plugin-script allowance above. The supervisor itself writes only bookkeeping — the run directory under the session scratchpad passed as `--scratch` and a lock file under the repository's git dir. **The child it starts in write mode has workspace-write authority over the repository** (`--sandbox workspace-write`, shell enabled); that authority is bounded after the fact, not prevented: the run-relative snapshot compares selected git metadata (HEAD, branch, stash, refs, index, config), every tracked and untracked non-ignored path, the secret-looking subset of ignored files and the declared `--scope`, and the calling skill stops on any deviation or out-of-scope path. It does not enumerate arbitrary `.git/` contents and does not hash ordinary ignored build output; writes under `.git/` are the sandbox's job, not the snapshot's. Read mode runs the child under `--sandbox read-only` and rejects the opinion if the tree changed anyway. Network egress is disabled on the child by the adapter's feature flags (`web_search`, browser and app surfaces), which is configuration, not a boundary — the same honest-limit caveat as the curl globs above. The legacy baseline-script allowance was removed together with that script in harness 0.3.0.
 
 ---
 

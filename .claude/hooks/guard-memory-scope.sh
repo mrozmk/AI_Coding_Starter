@@ -54,7 +54,7 @@ CONTENT=$(printf '%s' "$INPUT" | jq -r '
 # A rewrite of the file's own Scope/Format preamble is maintenance, not an entry.
 printf '%s' "$CONTENT" | grep -q '^## Scope' && exit 0
 
-HARNESS_RE='\.claude/|\.agents/|slash command|slash-command|subagent|MCP |orchestrate|/gates:|\bhooks?\b|PreToolUse|PostToolUse|\bzsh\b|\bbash\b|ripgrep|\brg \b|git merge|git rebase|design file|Jira ticket|design ticket|review comment|DevTools'
+HARNESS_RE='\.claude/|\.agents/|slash command|slash-command|subagent|MCP |orchestrate|gates(:|-)|\bhooks?\b|PreToolUse|PostToolUse|\bzsh\b|\bbash\b|ripgrep|\brg \b|git merge|git rebase|design file|Jira ticket|design ticket|review comment|DevTools'
 TEST_RE='\.spec\.|\.test\.|test runner|Storybook|Playwright|jsdom|coverage threshold|snapshot test'
 
 REASONS=""

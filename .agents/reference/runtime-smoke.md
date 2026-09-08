@@ -1,7 +1,7 @@
 # Reference: runtime smoke check (conditional fourth validation step)
 
 The procedure behind the optional **Runtime smoke** paragraph in `CLAUDE.md → Validation`. It is
-**not** a slash command — whoever runs the gate (`/gates:verify-implementation`,
+**not** a slash command — whoever runs the gate (`/harness:gates-verify-implementation`,
 `/check-implementation`, `/orchestrate`) reads and performs it when its conditions hold.
 
 **Why it exists.** The shell gates (typecheck, lint, test) are static — none renders a frame.

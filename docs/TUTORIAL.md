@@ -308,7 +308,7 @@ Now design the feature:
 <details>
 <summary>💡 TIP — how this differs from a plain check</summary>
 
-There's also `/gates:verify-implementation` — but it only **reports** problems, it doesn't fix them. `/check-implementation` **fixes** (code-review --fix → deep-review → gate), in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
+There's also `/harness:gates-verify-implementation` — but it only **reports** problems, it doesn't fix them. `/check-implementation` **fixes** (code-review --fix → deep-review → gate), in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
 </details>
 
 ---
@@ -436,7 +436,7 @@ Fresh chat → `/prime`, then design the feature — [just like in Step 6 of S1]
 <details>
 <summary>💡 TIP — what "Ready/" is and why design is a separate step</summary>
 
-`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/gates:design-quality-check` gate and the `/orchestrate` pipeline reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
+`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/harness:gates-design-quality-check` gate and the `/orchestrate` pipeline reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
 </details>
 
 ---
@@ -501,7 +501,7 @@ The cycle is the same as in S1, enriched with two visual steps:
 
 **What we'll build:** the same TODO with a screen as in Scenario 2 — but **we don't generate** the look with the `/design` command. You already have the look: HTML mockups or a Figma file. Claude's job is to **implement them faithfully** and check that the code matches the design pixel for pixel.
 
-**What you'll learn:** how to **bring an external design** into the template and how the **parity gate** `/gates:design-quality-check` (code vs. design) works.
+**What you'll learn:** how to **bring an external design** into the template and how the **parity gate** `/harness:gates-design-quality-check` (code vs. design) works.
 
 > 📌 **This is a variant of Scenario 2.** There's one simple difference: instead of *generating* a mockup (`/design`), you **supply your own** — and a consistency-check step is added. The whole rhythm `PRD → stack → backlog → scaffold → brainstorm → plan → execute → check → commit` is identical. If you haven't done S2 — review it first, this will be clearer.
 
@@ -573,11 +573,11 @@ Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-f
 
 📋 **Type** (A — HTML; provide the section name):
 ```
-/gates:design-quality-check task list
+/harness:gates-design-quality-check task list
 ```
 📋 or (B — Figma; add the node link):
 ```
-/gates:design-quality-check task list <figma-node-link>
+/harness:gates-design-quality-check task list <figma-node-link>
 ```
 
 💬 **What happens:** Claude compares the finished screen with your reference and **lists every deviation** (visual, layout, accessibility, behavior). It **fixes nothing** — it only reports. You decide what to fix.
@@ -589,7 +589,7 @@ Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-f
 <details>
 <summary>💡 TIP — it's a reporting gate, not a fixing one</summary>
 
-`/gates:design-quality-check` is the inverse of `/gates:verify-implementation`: the latter checks code against the *plan*, this one — fidelity against the *design*. Philosophy: **in design there are no "minor" differences** — if the reference has a value and the code has a different one, that's a defect. The gate will list it; the decision to accept is yours. With Figma wired up, the audit takes values live from Figma; without it — from the static HTML in `Ready/`.
+`/harness:gates-design-quality-check` is the inverse of `/harness:gates-verify-implementation`: the latter checks code against the *plan*, this one — fidelity against the *design*. Philosophy: **in design there are no "minor" differences** — if the reference has a value and the code has a different one, that's a defect. The gate will list it; the decision to accept is yours. With Figma wired up, the audit takes values live from Figma; without it — from the static HTML in `Ready/`.
 </details>
 
 ---
@@ -605,7 +605,7 @@ Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-f
 The cycle is like in S2, but the look comes from you, and the code is verified against it pixel for pixel:
 **idea → PRD → stack → backlog → scaffold → brainstorm → 🔀 your design in `Ready/` → plan → code → quality → 🆕 design parity → E2E tests → commit.**
 
-**Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <section>` → `/test-e2e <flow>` → `/commit`.
+**Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/harness:gates-design-quality-check <section>` → `/test-e2e <flow>` → `/commit`.
 
 > Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/design` step).
 
@@ -723,7 +723,7 @@ A large, existing codebase won't fit in a single context. `/setup:map-codebase` 
 
 ⏭️ **Next:** you repeat Step 3 for each subsequent change; `/push` when you want to push (like [Step 11 of S1](#step-11-push-to-github-optional)).
 
-> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design` (or your own mockup in `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
+> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design` (or your own mockup in `Ready/`), `/harness:gates-design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
 
 ---
 

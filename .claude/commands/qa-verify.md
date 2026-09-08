@@ -27,7 +27,7 @@ Read a task's acceptance criteria, assign each a stable id, classify each into a
 
 - **not an AC oracle** — the auto-verdict is *evidence*, not acceptance. A human signs each row.
 - **not a regression-test author** — that is `/test-e2e`; promoting this run's recorded interaction sequence into a test is the human-requested procedure in `.agents/reference/qa-to-regression-test.md`.
-- **not a code-quality gate** — that is `/check-implementation` and `/gates:verify-implementation`. This command cites their result; it never reproduces it.
+- **not a code-quality gate** — that is `/check-implementation` and `/harness:gates-verify-implementation`. This command cites their result; it never reproduces it.
 - **not a fixer** — see the second hard gate.
 
 ---
@@ -271,7 +271,7 @@ One bullet per AC: `AC-n — <verdict>[ / <severity>] — <one-line evidence>`, 
 - **Never present a `FAIL` confirmed by one method or one artifact.** Phase 2.5 downgrades it and logs the downgrade.
 - **Never drop an AC.** Every id from Phase 0 reaches the matrix — including unclassifiable ones, guarded ones, and ones whose agent returned garbage. Absence reads as approval, which is the failure mode this command exists to remove.
 - **Never declare something absent without showing the negative search** — the globs, the commands, the paths.
-- **Never re-run the quality gate.** Cite `GATE_STATUS`. `/gates:verify-implementation` owns that check and may have just passed on this exact tree.
+- **Never re-run the quality gate.** Cite `GATE_STATUS`. `/harness:gates-verify-implementation` owns that check and may have just passed on this exact tree.
 - **Never mutate.** Both hard gates at the top are absolute — no source edit, no fix, no status transition, nothing before Phase 1 approval.
 - **Never post to the tracker without explicit approval**, and never post a table or a `- [ ]` list when you do.
 
