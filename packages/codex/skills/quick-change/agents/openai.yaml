@@ -1,0 +1,5 @@
+interface:
+  display_name: quick-change
+  short_description: The fast lane for small changes — a short in-session plan (no spec, no plan file), a mandatory independent Codex revi...
+policy:
+  allow_implicit_invocation: false

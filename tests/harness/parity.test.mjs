@@ -93,3 +93,19 @@ test('rendered Markdown names every row and its status', () => {
   for (const h of hooks.hooks) assert.ok(hm.includes(`\`${h.id}\``));
   assert.match(hm, /Activation: \*\*none\*\*/);
 });
+
+test('every execution-stage skill has a ledger row; Codex-null rows say why; the agent-bound skills are legacy-only', () => {
+  const { instructions } = loadLedgers(REPO);
+  const inventory = JSON.parse(fs.readFileSync(path.join(REPO, 'harness-source/inventory.json'), 'utf8'));
+  const rows = Object.fromEntries(instructions.entries.map((e) => [e.id, e]));
+  for (const e of inventory.entries.filter((x) => x.kind === 'skill' && x.phase === 'execution')) {
+    assert.ok(rows[`skill.${e.id}`], `skill.${e.id} has no parity row`);
+  }
+  for (const e of instructions.entries.filter((x) => x.destinations.codex === null)) {
+    assert.ok((e.rationale ?? e.note ?? '').length > 0, `${e.id}: a Codex-null row must say why`);
+  }
+  for (const id of ['skill.orchestrate', 'skill.check-implementation', 'skill.quick-change', 'skill.architecture-review']) {
+    assert.equal(rows[id].status, 'legacy-only', id);
+  }
+  for (const id of ['exec.codex-review', 'exec.codex-bg']) assert.equal(rows[id].status, 'retired', id);
+});

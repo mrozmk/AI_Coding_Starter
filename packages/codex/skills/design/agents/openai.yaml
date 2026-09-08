@@ -1,0 +1,5 @@
+interface:
+  display_name: design
+  short_description: Guided UI design with forced knowledge load, optional multi-variant generation, and a self-check quality gate before ...
+policy:
+  allow_implicit_invocation: false

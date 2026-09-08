@@ -59,5 +59,6 @@ Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its 
 |---|---|---|
 | `.env.example` toggles, `.mcp.json` pruning, toolchain block, command-group pruning, TESTING/DoD/PR templates | `.claude/commands/setup/start.md` | report `legacy bootstrap not installed — skipped` and stop that step |
 | PRD, brief, backlog, CLAUDE.md generation, codebase map | `.claude/commands/setup/*.md`, `maintain/refresh-brief.md` | same |
-| execute, check, orchestrate, gates | legacy commands (`groups.execution` is `false` in this release) | the skill names the dependency and stops |
+| execute, check-implementation, orchestrate, gates, quick-change, deep-review, analysis, recon, design, test-e2e, architecture-review | plugin skills (`groups.execution`, default `true` for profiles written by 0.3.0 `setup-start`; 0.2.0 profiles keep `false` until set) | `execution group disabled in the project profile` |
+| supervised Codex executor (`execute codex`, the `check-implementation` fixer, cross-model code reviews) | `scripts/executor-orchestrator.mjs` — Claude authors only; needs `groups.execution` (write) and `groups.execution` + `groups.review` (read) | refuses a Codex author; with a group on and the `codex` CLI absent it is blocked, not skipped |
 | commit, push, pull, release, pr-create, start-task | plugin skills (`groups.git`, `true` by default since 0.2.0; each skill checks it first) | `git group disabled in the project profile` |

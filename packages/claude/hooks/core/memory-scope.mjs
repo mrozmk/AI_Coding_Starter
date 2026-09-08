@@ -4,7 +4,7 @@
 export const id = 'guard-memory-scope';
 export const strength = 'advisory';
 
-const HARNESS_RE = /\.claude\/|\.agents\/|slash command|slash-command|subagent|MCP |orchestrate|\/gates:|\bhooks?\b|PreToolUse|PostToolUse|\bzsh\b|\bbash\b|ripgrep|\brg \b|git merge|git rebase|design file|Jira ticket|design ticket|review comment|DevTools/;
+const HARNESS_RE = /\.claude\/|\.agents\/|slash command|slash-command|subagent|MCP |orchestrate|gates(:|-)|\bhooks?\b|PreToolUse|PostToolUse|\bzsh\b|\bbash\b|ripgrep|\brg \b|git merge|git rebase|design file|Jira ticket|design ticket|review comment|DevTools/;
 const TEST_RE = /\.spec\.|\.test\.|test runner|Storybook|Playwright|jsdom|coverage threshold|snapshot test/;
 
 export async function run(event, ctx) {

@@ -23,7 +23,7 @@
 
 ## Validation
 
-> Source of truth for quality gates. Run in order, stop on first failure. Legacy gates (`/gates:verify-implementation`, `/orchestrate`) read this section by name.
+> Source of truth for quality gates. Run in order, stop on first failure. Legacy gates (`/harness:gates-verify-implementation`, `/orchestrate`) read this section by name.
 
 ```bash
 {validation-command}

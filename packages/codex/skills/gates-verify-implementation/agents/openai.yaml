@@ -1,0 +1,5 @@
+interface:
+  display_name: gates-verify-implementation
+  short_description: Verify implementation correctness and code quality after executing a plan — task completion, quality gates, deep sema...
+policy:
+  allow_implicit_invocation: false

@@ -7,7 +7,7 @@ import { validate } from '../../harness-source/scripts/lib/schema.mjs';
 
 export const KINDS = ['skill', 'agent', 'reference', 'template', 'memory-template', 'contract', 'schema', 'script', 'script-lib', 'adapter', 'hook-core', 'hook-adapter', 'manifest'];
 export const OWNERS = ['core', 'adapter:claude', 'adapter:codex', 'build'];
-export const LEGACY_CLASSES = ['migrated', 'deferred', 'project', 'retained', 'host-provided'];
+export const LEGACY_CLASSES = ['migrated', 'deferred', 'project', 'retained', 'host-provided', 'retired'];
 export const HOSTS = ['claude', 'codex'];
 const ID_PATTERN = '^[a-z][a-z0-9-]*$';
 
@@ -29,7 +29,7 @@ const inventorySchema = {
           id: { type: 'string', pattern: ID_PATTERN },
           kind: { enum: KINDS },
           owner: { enum: OWNERS },
-          phase: { enum: ['planning', 'git'] },
+          phase: { enum: ['planning', 'git', 'execution'] },
           dependencies: { type: 'array', items: { type: 'string' } },
           source: { type: 'string' },
           output: { type: 'string' },
@@ -74,7 +74,14 @@ export function validateInventory(inventory, repoRoot) {
     if (legacyClaimed.has(l.path)) errors.push(`legacy path listed twice: ${l.path}`);
     legacyClaimed.add(l.path);
     if (l.class === 'migrated' && !ids.has(l.replaced_by)) errors.push(`${l.path}: migrated but replaced_by unknown`);
-    if (!fs.existsSync(path.join(repoRoot, l.path))) errors.push(`legacy path does not exist: ${l.path}`);
+    // A tombstone is the record of a deletion: the replacement must be a real entry and the file
+    // must be gone, or the row is a lie in one direction or the other.
+    if (l.class === 'retired') {
+      if (!ids.has(l.replaced_by)) errors.push(`${l.path}: retired but replaced_by unknown`);
+      if (fs.existsSync(path.join(repoRoot, l.path))) errors.push(`retired legacy path still exists: ${l.path}`);
+    } else if (!fs.existsSync(path.join(repoRoot, l.path))) {
+      errors.push(`legacy path does not exist: ${l.path}`);
+    }
   }
   // Every existing harness file under .claude/ must be classified (exact or by directory prefix).
   const { files } = listFiles(path.join(repoRoot, '.claude'));
@@ -89,6 +96,11 @@ export function validateInventory(inventory, repoRoot) {
 
 // Explicit output mapping (contract: safe, package-relative, never recursive). Used by
 // memory templates and hook files whose destination is not derivable from the kind alone.
+// Retired legacy paths, for the build marker: what this version deleted, recorded not implied.
+export function RETIRED_LEGACY(inventory) {
+  return inventory.legacy.filter((l) => l.class === 'retired').map((l) => l.path).sort();
+}
+
 export function safeOutput(out) {
   return typeof out === 'string' && out.length > 0 && !path.posix.isAbsolute(out) && !out.split('/').includes('..') && !out.includes('\\') && !out.endsWith('/');
 }

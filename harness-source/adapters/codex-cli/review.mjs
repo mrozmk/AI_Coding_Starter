@@ -52,10 +52,26 @@ export function parseHeader(stderrText) {
   return header;
 }
 
-export function parseOutput({ stderr, outFile }) {
+// Normalised for echo matching only: CRLF folded, trailing whitespace per line dropped, trailing
+// blank lines dropped. The CLI re-prints the whole stdin after the header, so an `exec`-looking line
+// that the caller itself wrote would otherwise be counted as the reviewer's own tool activity.
+function normalizeEcho(s) {
+  return s.replace(/\r\n/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+}
+
+export function parseOutput({ stderr, outFile, stdinText }) {
   const text = (stderr ?? '').toString('utf8');
   const header = parseHeader(text);
-  const body = text.split('--------').slice(2).join('--------');
+  // Only a complete, contiguous echo is removed: a partial or altered one must never hide activity,
+  // so anything less falls back to scanning the whole stream.
+  let scanned = text;
+  if (stdinText) {
+    const echo = normalizeEcho(String(stdinText));
+    const normalized = normalizeEcho(text);
+    const at = echo ? normalized.indexOf(echo) : -1;
+    if (at !== -1) scanned = normalized.slice(0, at) + normalized.slice(at + echo.length);
+  }
+  const body = scanned.split('--------').slice(2).join('--------');
   const toolCalls = body.split('\n').filter((l) => /^(exec|tool|mcp|apply_patch|shell|spawn_agent|codex \$)/.test(l.trim())).map((l) => l.trim().slice(0, 80));
   const finalText = outFile && fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8') : '';
   return {

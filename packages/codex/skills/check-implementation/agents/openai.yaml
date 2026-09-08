@@ -1,0 +1,5 @@
+interface:
+  display_name: check-implementation
+  short_description: Full implementation quality loop — code-review (fix) → deep-review (structural cleanup) → the verify-implementation g...
+policy:
+  allow_implicit_invocation: false

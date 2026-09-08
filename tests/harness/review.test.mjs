@@ -258,3 +258,22 @@ test('capability evidence: config digest binds the adapter bytes; missing requir
   assert.deepEqual(validateEvidence(demoted), [], 'the file alone cannot tell which gates matter…');
   assert.ok(validateEvidence(demoted, { requiredAssertions: [demoted.assertions[2].name] }).some((e) => /not passed.*marked optional in the file/.test(e)), '…the verifier\'s list does');
 });
+
+test('codex stderr scan skips the echoed stdin only when the echo is complete and contiguous', () => {
+  const stdin = 'Implement the plan.\ntools: Read, Write\nexec something\nEnd of prompt.';
+  const head = 'OpenAI Codex v0.0.0-mock\n--------\nmodel: gpt-6-astra\nreasoning effort: high\n--------\nuser\n';
+  const activity = 'exec\nbash -lc ls\n';
+
+  const echoed = codexAdapter.parseOutput({ stderr: `${head}${stdin}\n`, stdinText: stdin });
+  assert.equal(echoed.toolUses.count, 0, 'the caller\'s own prompt is not the reviewer\'s tool activity');
+
+  const after = codexAdapter.parseOutput({ stderr: `${head}${stdin}\n${activity}`, stdinText: stdin });
+  assert.ok(after.toolUses.count > 0, 'activity outside the echo is still counted');
+
+  const altered = `${stdin.split('\n')[0]}\nsomething else entirely\nexec injected\n${stdin.split('\n').at(-1)}`;
+  const partial = codexAdapter.parseOutput({ stderr: `${head}${altered}\n`, stdinText: stdin });
+  assert.ok(partial.toolUses.count > 0, 'an altered echo hides nothing — the whole stream is scanned');
+
+  const legacy = codexAdapter.parseOutput({ stderr: `${head}${stdin}\n` });
+  assert.ok(legacy.toolUses.count > 0, 'without stdinText the scan behaves exactly as before');
+});

@@ -11,6 +11,7 @@ let stdin = '';
 process.stdin.on('data', (d) => { stdin += d; });
 process.stdin.on('end', () => {
   if (process.env.MOCK_RECORD) fs.writeFileSync(process.env.MOCK_RECORD, JSON.stringify({ args, stdinBytes: Buffer.byteLength(stdin), stdinHead: stdin.slice(0, 200), cwd: process.cwd(), depth: process.env.HARNESS_REVIEW_DEPTH || null }));
+  if (mode.startsWith('exec-')) return executor();
   if (mode === 'auth') { process.stderr.write('Error: not logged in\n'); process.exit(1); }
   if (mode === 'hang') { setTimeout(() => process.exit(0), 60000); return; }
   if (mode === 'empty' || mode === 'stale') process.exit(0);
@@ -26,3 +27,44 @@ process.stdin.on('end', () => {
   process.stderr.write('codex\n(final)\ntokens used\n1\n');
   process.exit(0);
 });
+
+// Executor modes (MOCK_MODE starting with `exec-`): a worker child that reads its sandbox and repo
+// from argv and, unlike the reviewer modes, may write into the repo before it exits.
+function executor() {
+  const path = require('node:path');
+  const sandbox = args[args.indexOf('--sandbox') + 1];
+  const repo = args[args.indexOf('-C') + 1];
+  const write = (rel, text) => {
+    const abs = path.join(repo, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, text);
+  };
+  const touch = process.env.MOCK_TOUCH || 'src/app.js';
+  if (mode === 'exec-auth-mid-run') { process.stderr.write('OpenAI Codex v0.0.0-mock\n'); process.exit(1); }
+  const model = mode === 'exec-wrong-model' ? 'gpt-4.1' : 'gpt-6-astra';
+  process.stderr.write(`OpenAI Codex v0.0.0-mock\n--------\nworkdir: ${repo}\nmodel: ${model}\nprovider: openai\napproval: never\nsandbox: ${sandbox}\nreasoning effort: ${process.env.MOCK_EFFORT || 'high'}\nsession id: mock\n--------\nuser\n(prompt)\n`);
+  if (mode === 'exec-nonzero') process.exit(7);
+  if (mode === 'exec-hang') { setTimeout(() => process.exit(0), 60000); return; }
+  let final = '## Output Report\nok\n';
+  if (mode === 'exec-write-ok' || mode === 'exec-wrong-model') write(touch, `changed by the mock ${Date.now()}\n`);
+  if (mode === 'exec-write-tamper') { write(touch, 'changed\n'); write('.agents/plans/x.md', 'tampered\n'); }
+  if (mode === 'exec-write-outside-scope') { write(touch, 'changed\n'); write('other.js', 'outside\n'); }
+  if (mode === 'exec-write-empty-with-delta') { write(touch, 'changed\n'); final = ''; }
+  if (mode === 'exec-write-empty') final = '';
+  // A write-mode run that reports and changes nothing — the shape a corrective run on an already
+  // dirty tree takes when the fix turns out to be unnecessary.
+  if (mode === 'exec-write-noop') final = '## Output Report\nnothing to change\n';
+  if (mode === 'exec-read-ok') final = 'opinion\n';
+  if (mode === 'exec-read-wrote') { write(touch, 'read-only child wrote this\n'); final = 'opinion\n'; }
+  if (mode === 'exec-read-schema-ok') final = JSON.stringify({ verdict: 'ship', findings: [] });
+  if (mode === 'exec-read-schema-bad') final = 'not json';
+  if (mode === 'exec-write-leaves-descendant') {
+    write(touch, 'leader wrote this\n');
+    // Same process group as the leader on purpose: the orchestrator must notice a descendant that
+    // outlives its parent, which a detached grandchild would hide.
+    require('node:child_process').spawn(process.execPath, ['-e', `setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(path.join(repo, 'late.js'))}, 'late\\n'), 2000)`], { stdio: 'ignore' }).unref();
+  }
+  if (outFile) fs.writeFileSync(outFile, final);
+  process.stderr.write('codex\n(final)\ntokens used\n1\n');
+  process.exit(0);
+}

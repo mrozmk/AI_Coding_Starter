@@ -12,7 +12,7 @@ const SKILLS = SKILL_ENTRIES.map((e) => e.id);
 const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
 
 test('every inventory skill exists with a flat kebab-case name matching its directory and inventory id', () => {
-  assert.ok(SKILLS.length >= 11, `expected the planning and git skills, got ${SKILLS.length}`);
+  assert.ok(SKILLS.length >= 24, `expected the planning, git and execution skills, got ${SKILLS.length}`);
   for (const id of SKILLS) {
     const { data, body } = parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`));
     assert.equal(data.name, id);
@@ -24,12 +24,19 @@ test('every inventory skill exists with a flat kebab-case name matching its dire
   }
 });
 
-test('git skills check their group first and name nested skills for both hosts', () => {
-  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'git')) {
+test('group-gated skills check their own group first and name nested skills for both hosts', () => {
+  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'git' || x.phase === 'execution')) {
     const { body } = parseFrontmatter(read(e.source));
-    assert.match(body, /profile\.mjs groups[^\n]*`git` must be `true`/, `${e.id}: git group check`);
+    assert.match(body, new RegExp(`profile\\.mjs groups[^\\n]*\`${e.phase}\` must be \`true\``), `${e.id}: ${e.phase} group check`);
     assert.match(body, /On Codex this skill is `\$/, `${e.id}: names its Codex form`);
     for (const m of body.matchAll(/`\/harness:([a-z-]+)`/g)) assert.ok(body.includes(`\`$${m[1]}\` (Codex)`), `${e.id}: /harness:${m[1]} without its Codex twin`);
+  }
+  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'execution')) {
+    const { body } = parseFrontmatter(read(e.source));
+    assert.ok(body.includes(`On Codex this skill is \`$${e.id}\``), `${e.id}: names its Codex form`);
+  }
+  for (const id of ['orchestrate', 'check-implementation', 'quick-change', 'architecture-review']) {
+    assert.match(parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`)).body, /On Codex this skill refuses/, `${id}: Codex refusal`);
   }
   const release = parseFrontmatter(read('harness-source/skills/release/SKILL.md')).body;
   assert.match(release, /harness:documentation-manager/);
@@ -169,4 +176,15 @@ test('plan split contract: user decision, parallel-track line, Execution Plan ta
   const inv = JSON.parse(read('harness-source/inventory.json'));
   assert.ok(inv.entries.find((e) => e.id === 'ref-plan-split-contract'), 'inventory lists the split contract');
   assert.ok(inv.entries.find((e) => e.id === 'plan-feature').dependencies.includes('ref-plan-split-contract'));
+});
+
+// The stage-2 migration deleted these paths and spellings; a body that still names one would send a
+// reader (or a child process) to a file the release no longer ships.
+test('no migrated skill body reaches back into the starter checkout', () => {
+  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'execution')) {
+    const { body } = parseFrontmatter(read(e.source));
+    for (const banned of ['codex-bg.sh', 'git-baseline.sh', 'codex-spawn.md', '@orchestrator-', '/gates:', '.claude/skills/', '.claude/agents/', '.claude/lib/']) {
+      assert.ok(!body.includes(banned), `${e.id} still names ${banned}`);
+    }
+  }
 });

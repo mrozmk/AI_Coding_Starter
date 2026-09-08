@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { loadInventory, outputsFor, sourceDigestRecords, unclaimedSources, validateInventory } from '../../scripts/lib/inventory.mjs';
+import { RETIRED_LEGACY, loadInventory, outputsFor, sourceDigestRecords, unclaimedSources, validateInventory } from '../../scripts/lib/inventory.mjs';
 import { recordsDigest, sha256Hex } from '../../harness-source/scripts/lib/digest.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
@@ -17,15 +17,19 @@ test('every file under harness-source/ is claimed by an entry (allowlist is comp
   assert.deepEqual(unclaimedSources(inventory, REPO), []);
 });
 
-test('execute/check/integration commands are classified deferred, git commands migrated, project files never packaged', () => {
+test('execution and git commands are classified migrated, tracker skills deferred, project files never packaged', () => {
   const { inventory } = loadInventory(REPO);
   const byPath = Object.fromEntries(inventory.legacy.map((l) => [l.path, l.class]));
-  for (const p of ['.claude/commands/execute.md', '.claude/commands/check-implementation.md', '.claude/commands/orchestrate.md', '.claude/skills/jira/']) {
-    assert.equal(byPath[p], 'deferred', p);
+  assert.equal(byPath['.claude/skills/jira/'], 'deferred');
+  for (const p of ['.claude/commands/execute.md', '.claude/commands/check-implementation.md', '.claude/commands/orchestrate.md',
+    '.claude/commands/commit.md', '.claude/commands/push.md', '.claude/commands/start-task.md']) {
+    assert.equal(byPath[p], 'migrated', p);
   }
-  for (const p of ['.claude/commands/commit.md', '.claude/commands/push.md', '.claude/commands/start-task.md']) assert.equal(byPath[p], 'migrated', p);
+  for (const p of ['.claude/lib/git-baseline.sh', '.claude/lib/codex-bg.sh', '.claude/commands/gates/verify-implementation.md',
+    '.claude/agents/orchestrator-executor.md', '.claude/commands/codex-review.md']) {
+    assert.equal(byPath[p], 'retired', p);
+  }
   assert.equal(byPath['.claude/hooks/check-project-deps.sh'], 'project');
-  assert.equal(byPath['.claude/lib/git-baseline.sh'], 'retained');
   const packagedSources = inventory.entries.map((e) => e.source ?? '');
   assert.ok(packagedSources.every((s) => s === '' || s.startsWith('harness-source/')), 'only harness-source/ is packaged');
 });
@@ -57,6 +61,34 @@ test('fixture inventory validates and rejects broken shapes', () => {
   const badClass = structuredClone(inventory);
   badClass.legacy[0].class = 'whatever';
   assert.ok(validateInventory(badClass, FIXTURE).length > 0);
+
+  const retiredPresent = structuredClone(inventory);
+  retiredPresent.legacy.push({ path: '.claude/commands/demo.md', class: 'retired', replaced_by: 'demo' });
+  retiredPresent.legacy[0] = { path: '.claude/commands/gone.md', class: 'retired', replaced_by: 'demo' };
+  assert.ok(validateInventory(retiredPresent, FIXTURE).some((e) => e.includes('still exists')));
+
+  const retiredNoReplacement = structuredClone(inventory);
+  retiredNoReplacement.legacy[0] = { path: '.claude/commands/gone.md', class: 'retired' };
+  assert.ok(validateInventory(retiredNoReplacement, FIXTURE).some((e) => e.includes('replaced_by unknown')));
+
+  const retiredOk = structuredClone(inventory);
+  retiredOk.legacy.push({ path: '.claude/commands/gone.md', class: 'retired', replaced_by: 'demo' });
+  assert.deepEqual(validateInventory(retiredOk, FIXTURE), [], 'a retired row with a known replacement and an absent path is valid');
+
+  const executionPhase = structuredClone(inventory);
+  executionPhase.entries[1].phase = 'execution';
+  assert.deepEqual(validateInventory(executionPhase, FIXTURE), [], "phase: 'execution' validates");
+  const badPhase = structuredClone(inventory);
+  badPhase.entries[1].phase = 'quality';
+  assert.ok(validateInventory(badPhase, FIXTURE).some((e) => e.includes('phase')));
+});
+
+test('RETIRED_LEGACY lists tombstoned paths, sorted', () => {
+  const { inventory } = loadInventory(FIXTURE);
+  assert.deepEqual(RETIRED_LEGACY(inventory), []);
+  const retired = structuredClone(inventory);
+  retired.legacy.push({ path: '.claude/lib/z.sh', class: 'retired', replaced_by: 'demo' }, { path: '.claude/lib/a.sh', class: 'retired', replaced_by: 'demo' });
+  assert.deepEqual(RETIRED_LEGACY(retired), ['.claude/lib/a.sh', '.claude/lib/z.sh']);
 });
 
 test('outputsFor maps kinds to flat package paths; manifests are host-specific', () => {

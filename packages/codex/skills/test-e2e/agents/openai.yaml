@@ -1,0 +1,5 @@
+interface:
+  display_name: test-e2e
+  short_description: Write E2E tests for a user flow using MCP Playwright browser automation — explore the running UI, produce a test plan...
+policy:
+  allow_implicit_invocation: false

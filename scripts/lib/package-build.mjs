@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileEntries, recordsDigest } from '../../harness-source/scripts/lib/digest.mjs';
 import { parseFrontmatter, serializeFrontmatter, serializeScalar } from '../../harness-source/scripts/lib/frontmatter.mjs';
 import { assertInside, listFiles, readJson } from '../../harness-source/scripts/lib/fsx.mjs';
-import { outputsFor, sourceDigestRecords } from './inventory.mjs';
+import { RETIRED_LEGACY, outputsFor, sourceDigestRecords } from './inventory.mjs';
 import { CORES } from '../../harness-source/scripts/hook-runner.mjs';
 import { renderWrapper, wrapperCommandFor, wrapperDescription } from '../../harness-source/scripts/lib/wrapper.mjs';
 
@@ -75,6 +75,9 @@ export function renderPackage({ repoRoot, inventory, harness, host, adapterMeta,
     skills,
     agents,
     hooks,
+    // What this version deleted, recorded in the package itself: an upgrade can tell a project
+    // which files it must remove, instead of leaving orphans behind.
+    retired: RETIRED_LEGACY(inventory),
     files: fileEntries(records),
   };
   const problems = validateRendered({ files, marker, host });

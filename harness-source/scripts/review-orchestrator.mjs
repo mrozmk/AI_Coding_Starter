@@ -242,7 +242,8 @@ export async function runReview(options) {
   const prompt = reviewerPrompt({ kind, artifacts, round: base.round, repeatReason: base.repeat_reason });
   const spec = adapter.buildSpawn({ model: role.model, effort: role.effort, scratchCwd: cwd, schemaFile, outFile, systemPrompt: prompt });
   const timeout = timeoutMs ?? adapter.defaults().timeoutMinutes * 60_000;
-  const proc = await runChild({ command: cliPath, args: spec.args, cwd, env: { ...env, ...spec.env, [DEPTH_ENV]: '1', HARNESS_REVIEW_ROLE: 'reviewer', HARNESS_REVIEW_ID: reviewId }, stdin: `${prompt}\n\n${pack.text}`, timeoutMs: timeout, signal, runDir });
+  const stdinText = `${prompt}\n\n${pack.text}`;
+  const proc = await runChild({ command: cliPath, args: spec.args, cwd, env: { ...env, ...spec.env, [DEPTH_ENV]: '1', HARNESS_REVIEW_ROLE: 'reviewer', HARNESS_REVIEW_ID: reviewId }, stdin: stdinText, timeoutMs: timeout, signal, runDir });
   base.process = { exit_code: proc.exitCode, signal: proc.signal, duration_ms: proc.durationMs, timed_out: proc.timedOut, cancelled: proc.cancelled, stdout_bytes: proc.stdout.length, argv: [spec.command, ...spec.args] };
   base.notes.push(`isolation: ${spec.isolation.join(' ')}`, spec.external_policy_note);
 
@@ -252,7 +253,7 @@ export async function runReview(options) {
   if (drifted.length) return finish({ status: 'failed', error: `packed context changed while the review was running (${drifted.join(', ')}) — the opinion does not cover the new bytes` });
   if (proc.timedOut) return finish({ status: 'failed', error: `reviewer exceeded ${Math.round(timeout / 60_000)} min and was terminated (no retry while the process lives; retry once it is gone)` });
   if (proc.cancelled) return finish({ status: 'failed', error: 'review cancelled by the supervisor' });
-  const parsed = adapter.parseOutput({ stdout: proc.stdout, stderr: proc.stderr, outFile });
+  const parsed = adapter.parseOutput({ stdout: proc.stdout, stderr: proc.stderr, outFile, stdinText });
   base.model.confirmed = parsed.confirmed.model;
   base.effort.confirmed = parsed.confirmed.effort;
   if (parsed.toolUses) base.notes.push(`tool surface observed: ${JSON.stringify(parsed.toolUses)}`);
@@ -273,7 +274,7 @@ export async function runReview(options) {
 }
 
 // One child, one settle. `close` fires once; a late `error`/`exit` after settling is ignored.
-export function runChild({ command, args, cwd, env, stdin, timeoutMs, signal, runDir }) {
+export function runChild({ command, args, cwd, env, stdin, timeoutMs, signal, runDir, onSpawn = null }) {
   return new Promise((resolve) => {
     const started = Date.now();
     const stdout = [];
@@ -283,6 +284,9 @@ export function runChild({ command, args, cwd, env, stdin, timeoutMs, signal, ru
     let cancelled = false;
     const child = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
     if (runDir && child.pid) fs.writeFileSync(path.join(runDir, 'pid'), String(child.pid));
+    // Detached, so the pid is also the process-group id — a supervisor that must outlive the leader
+    // needs it before the child can exit, which a pid-file poll cannot guarantee.
+    if (onSpawn && child.pid) onSpawn(child.pid);
     const killTree = (sig) => {
       try { process.platform === 'win32' ? child.kill(sig) : process.kill(-child.pid, sig); } catch { /* already gone */ }
     };

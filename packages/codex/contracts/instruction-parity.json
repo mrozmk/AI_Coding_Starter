@@ -5,83 +5,1478 @@
     "_doc": "The tier-1/tier-2 rows of the old CLAUDE-template contract block (parsed by /maintain:cleanup-workflow 1.6). Every item must be claimed by exactly one entry below; an unclaimed item is an unclassified removal and fails the check.",
     "source": ".claude/templates/CLAUDE-template.md",
     "items": [
-      { "item": "Language Rules", "kind": "heading", "tier": 1 },
-      { "item": "Validation", "kind": "heading", "tier": 1 },
-      { "item": "Git Workflow", "kind": "heading", "tier": 1 },
-      { "item": "**Orchestrate publish:**", "kind": "content:Git Workflow", "tier": 1 },
-      { "item": "git worktree remove --force", "kind": "content:Git Workflow", "tier": 1 },
-      { "item": "### Branch model", "kind": "content:Git Workflow", "tier": 1 },
-      { "item": "Commands", "kind": "heading", "tier": 2 },
-      { "item": "Code Structure & Modularity", "kind": "heading", "tier": 2 },
-      { "item": "Style & Conventions", "kind": "heading", "tier": 2 },
-      { "item": "Tech Stack", "kind": "heading", "tier": 2 },
-      { "item": "Automatic Behaviors", "kind": "heading", "tier": 2 },
-      { "item": "Search Commands", "kind": "heading", "tier": 2 },
-      { "item": "Security", "kind": "heading", "tier": 2 },
-      { "item": "Project Knowledge Layers", "kind": "heading", "tier": 2 },
-      { "item": "Error Handling", "kind": "heading", "tier": 2 },
-      { "item": "Code Navigation", "kind": "conditional:lsp", "tier": null }
+      {
+        "item": "Language Rules",
+        "kind": "heading",
+        "tier": 1
+      },
+      {
+        "item": "Validation",
+        "kind": "heading",
+        "tier": 1
+      },
+      {
+        "item": "Git Workflow",
+        "kind": "heading",
+        "tier": 1
+      },
+      {
+        "item": "**Orchestrate publish:**",
+        "kind": "content:Git Workflow",
+        "tier": 1
+      },
+      {
+        "item": "git worktree remove --force",
+        "kind": "content:Git Workflow",
+        "tier": 1
+      },
+      {
+        "item": "### Branch model",
+        "kind": "content:Git Workflow",
+        "tier": 1
+      },
+      {
+        "item": "Commands",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Code Structure & Modularity",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Style & Conventions",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Tech Stack",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Automatic Behaviors",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Search Commands",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Security",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Project Knowledge Layers",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Error Handling",
+        "kind": "heading",
+        "tier": 2
+      },
+      {
+        "item": "Code Navigation",
+        "kind": "conditional:lsp",
+        "tier": null
+      }
     ]
   },
   "entries": [
-    { "id": "rule.language-rules", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Language Rules" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Language", "destinations": { "claude": "CLAUDE.md#Language Rules (brownfield: kept; greenfield: rendered by rules.mjs)", "codex": "AGENTS.md → CLAUDE.md (brownfield) | .agents/project-rules.md#Language (greenfield)" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.validation", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Validation" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Validation", "destinations": { "claude": "CLAUDE.md#Validation", "codex": ".agents/project-rules.md#Validation | CLAUDE.md#Validation via AGENTS.md" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "unresolved required placeholders mean incomplete, never ready" }, "status": "compat-rendered" },
-    { "id": "rule.test-policy", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Validation" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Validation", "destinations": { "claude": "CLAUDE.md#Validation", "codex": ".agents/project-rules.md#Validation" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "rendered rules carry the sensitive-path test policy" }, "status": "migrated", "note": "Sensitive paths MUST have tests; plan-feature reads it to size TESTING STRATEGY." },
-    { "id": "rule.runtime-smoke", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Validation" }, "applicability": "conditional:ui", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Validation", "destinations": { "claude": "CLAUDE.md#Validation (runtime smoke paragraph, rendered when app_surface != none)", "codex": ".agents/project-rules.md#Validation" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "runtime smoke paragraph is rendered only for rendered-UI projects" }, "status": "conditional" },
-    { "id": "rule.git-workflow", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Git Workflow" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Git", "destinations": { "claude": "CLAUDE.md#Git Workflow", "codex": ".agents/project-rules.md#Git" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.orchestrate-publish", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "**Orchestrate publish:**" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/rules.mjs#derivePublish", "destinations": { "claude": "CLAUDE.md#Git Workflow (**Orchestrate publish:** <profile-derived>)", "codex": ".agents/project-rules.md#Git (same value)" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "publish is derived from the profile: trunk → push, PR-gated presets → branch-local, never a hardcoded push" }, "status": "migrated" },
-    { "id": "rule.worktree-remove-guard", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "git worktree remove --force" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Git", "destinations": { "claude": "CLAUDE.md#Git Workflow", "codex": ".agents/project-rules.md#Git" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.branch-model", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "### Branch model" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/rules.mjs#branchModel", "destinations": { "claude": "CLAUDE.md#Git Workflow → ### Branch model (six labelled assignments)", "codex": ".agents/project-rules.md#Git → ### Branch model" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "branch model renders six labelled assignments from the preset" }, "status": "migrated" },
-    { "id": "rule.commands", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Commands" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Commands", "destinations": { "claude": "CLAUDE.md#Commands", "codex": ".agents/project-rules.md#Commands" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.code-structure", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Code Structure & Modularity" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Code Structure & Modularity", "destinations": { "claude": "CLAUDE.md#Code Structure & Modularity", "codex": ".agents/project-rules.md#Code Structure & Modularity" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered", "note": "KISS / YAGNI / SOLID / Fail Fast and the size defaults restored (audit F2)." },
-    { "id": "rule.style-conventions", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Style & Conventions" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Style & Conventions", "destinations": { "claude": "CLAUDE.md#Style & Conventions", "codex": ".agents/project-rules.md#Style & Conventions" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.comments-why-not-what", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Style & Conventions" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Style & Conventions", "destinations": { "claude": "CLAUDE.md#Style & Conventions + hook comments (advisory)", "codex": ".agents/project-rules.md#Style & Conventions + hook comments (advisory)" }, "check": { "test": "tests/harness/hook-advisory.test.mjs", "name": "comments: nudges above the configured density and stays silent on tests, generated files and small edits" }, "status": "migrated" },
-    { "id": "rule.tech-stack", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Tech Stack" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Tech Stack", "destinations": { "claude": "CLAUDE.md#Tech Stack", "codex": ".agents/project-rules.md#Tech Stack" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.automatic-behaviors", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Automatic Behaviors" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Automatic Behaviors", "destinations": { "claude": "CLAUDE.md#Automatic Behaviors", "codex": ".agents/project-rules.md#Automatic Behaviors" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.search-commands", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Search Commands" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Search Commands", "destinations": { "claude": "CLAUDE.md#Search Commands", "codex": ".agents/project-rules.md#Search Commands" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.security", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Security" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Security", "destinations": { "claude": "CLAUDE.md#Security", "codex": ".agents/project-rules.md#Security" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.egress-policy", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Security" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/project-rules.md#Security", "destinations": { "claude": "CLAUDE.md#Security (WebFetch allowlist + curl/wget denies enforced by .claude/settings.json)", "codex": ".agents/project-rules.md#Security (policy text only — Codex has no string-glob permission tiers; sandbox/approval policy is the host control)" }, "check": { "test": "tests/harness/permissions.test.mjs", "name": "permission policies map explicitly per host and unsupported enforcement is reported, never copied" }, "status": "conditional", "note": "Enforcement strength differs per host and is reported as such; the rule text is shared." },
-    { "id": "rule.knowledge-layers", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Project Knowledge Layers" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Project Knowledge Layers", "destinations": { "claude": "CLAUDE.md#Project Knowledge Layers", "codex": ".agents/project-rules.md#Project Knowledge Layers" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.error-handling", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Error Handling" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Error Handling", "destinations": { "claude": "CLAUDE.md#Error Handling", "codex": ".agents/project-rules.md#Error Handling" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract" }, "status": "compat-rendered" },
-    { "id": "rule.code-navigation", "legacy": { "file": ".claude/templates/CLAUDE-template.md", "item": "Code Navigation" }, "applicability": "conditional:lsp", "strength": "advisory", "owner": "harness-source/templates/project-rules.md#Code Navigation", "destinations": { "claude": "CLAUDE.md#Code Navigation (LSP) — rendered only when the project manifest declares an LSP", "codex": ".agents/project-rules.md#Code Navigation (LSP) — same precondition; Codex exposes no symbol-navigation tool, so the section is informational" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "code navigation section is rendered only when an LSP is declared" }, "status": "conditional" },
-
-    { "id": "memory.index-routing", "legacy": { "file": ".agents/memory/index.md", "item": "When to Read / Quick Reference" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/memory/index.md", "destinations": { "claude": ".agents/memory/index.md (seeded absent-only by setup-start)", "codex": ".agents/memory/index.md" }, "check": { "test": "tests/harness/bootstrap.test.mjs", "name": "a bare repository receives the routing, reflection and empty placeholder files; existing memory is never overwritten" }, "status": "migrated" },
-    { "id": "memory.loader-convention", "legacy": { "file": ".agents/memory/index.md", "item": "Loader Convention" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/memory/index.md#Loader Convention", "destinations": { "claude": ".agents/memory/index.md", "codex": ".agents/memory/index.md" }, "check": { "test": "tests/harness/bootstrap.test.mjs", "name": "seeded index carries the loader, output-discipline and status conventions" }, "status": "migrated" },
-    { "id": "memory.output-discipline", "legacy": { "file": ".agents/memory/index.md", "item": "Output-Discipline Convention" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/memory/index.md#Output-Discipline Convention", "destinations": { "claude": ".agents/memory/index.md", "codex": ".agents/memory/index.md" }, "check": { "test": "tests/harness/bootstrap.test.mjs", "name": "seeded index carries the loader, output-discipline and status conventions" }, "status": "migrated" },
-    { "id": "memory.status-convention", "legacy": { "file": ".agents/memory/index.md", "item": "File Status Convention" }, "applicability": "all", "strength": "hard", "owner": "harness-source/templates/memory/index.md#File Status Convention", "destinations": { "claude": ".agents/memory/index.md + prime skill", "codex": ".agents/memory/index.md + prime skill" }, "check": { "test": "tests/harness/context-identity.test.mjs", "name": "status-gated memory is skipped when empty and the omission is recorded" }, "status": "migrated" },
-    { "id": "memory.reflection-protocol", "legacy": { "file": ".agents/memory/reflection-protocol.md", "item": "Memory Reflection Protocol" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/memory/reflection-protocol.md", "destinations": { "claude": ".agents/memory/reflection-protocol.md", "codex": ".agents/memory/reflection-protocol.md" }, "check": { "test": "tests/harness/bootstrap.test.mjs", "name": "a bare repository receives the routing, reflection and empty placeholder files; existing memory is never overwritten" }, "status": "migrated" },
-    { "id": "memory.archive-excluded", "legacy": { "file": ".agents/memory/index.md", "item": "Archive folder — never auto-loaded" }, "applicability": "all", "strength": "hard", "owner": "harness-source/skills/prime/SKILL.md", "destinations": { "claude": "prime skill + context-pack exclusion", "codex": "prime skill + context-pack exclusion" }, "check": { "test": "tests/harness/context-identity.test.mjs", "name": "archive and private inputs are never packed even when requested as a dependency" }, "status": "migrated" },
-    { "id": "memory.user-profile-local-only", "legacy": { "file": "CLAUDE.md", "item": "Automatic Behaviors → user-profile.md" }, "applicability": "all", "strength": "hard", "owner": "harness-source/skills/prime/SKILL.md", "destinations": { "claude": "prime reads the local opted-in profile for the author; context-pack never exports it", "codex": "same" }, "check": { "test": "tests/harness/export-policy.test.mjs", "name": "user-profile, keys, raw inputs and handoffs stay out of every reviewer pack" }, "status": "migrated", "note": "Author-side personalization and reviewer export are two policies (Fable F13)." },
-
-    { "id": "plan.approval-identity", "legacy": { "file": ".claude/commands/brainstorm.md", "item": "Step 9 approval" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/approval.mjs", "destinations": { "claude": "brainstorm Step 9 → approval.mjs stamp; plan-feature Phase 0 → approval.mjs verify", "codex": "same" }, "check": { "test": "tests/harness/approval.test.mjs", "name": "approved unchanged bytes verify; a one-byte edit and a missing or hand-edited approval line fail" }, "status": "migrated" },
-    { "id": "plan.execution-effort", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Execution Effort Recommendation" }, "applicability": "all", "strength": "hard", "owner": "harness-source/references/planning-contract.md#Execution effort", "destinations": { "claude": "plan header **Execution effort:** medium (explicit low; missing field → legacy low)", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "plan template and planning contract carry explicit medium and legacy-low semantics" }, "status": "migrated" },
-    { "id": "plan.expect-validate-anchors", "legacy": { "file": ".claude/commands/gates/verify-implementation.md", "item": "STEP-BY-STEP TASKS parser" }, "applicability": "all", "strength": "hard", "owner": "harness-source/references/planning-contract.md#Plan file", "destinations": { "claude": "plan template", "codex": "plan template" }, "check": { "test": "tests/harness/planning-flow.test.mjs", "name": "plan template keeps the parse anchors, EXPECT and VALIDATE exactly" }, "status": "migrated" },
-    { "id": "plan.backlog-writeback", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Phase 0.4 + Report backlog write-back" }, "applicability": "conditional:backlog", "strength": "advisory", "owner": "harness-source/scripts/backlog.mjs", "destinations": { "claude": "plan-feature Phase 0/6 → backlog.mjs", "codex": "same" }, "check": { "test": "tests/harness/planning-flow.test.mjs", "name": "backlog write-back updates exactly the matched work package; none or ambiguous ownership writes nothing" }, "status": "conditional" },
-    { "id": "plan.architecture-contract", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Phases 1–3 architecture context" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/templates/plan-feature-plan.template.md#Architecture and contracts", "destinations": { "claude": "plan template", "codex": "plan template" }, "check": { "test": "tests/harness/planning-flow.test.mjs", "name": "plan template carries the architecture/contract block and the conditional UI contract" }, "status": "migrated" },
-    { "id": "plan.ui-structural-contract", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Step 5.1b UI structural-contract gate" }, "applicability": "conditional:ui", "strength": "hard", "owner": "harness-source/skills/plan-feature/SKILL.md#4", "destinations": { "claude": "plan-feature grill + template UI section", "codex": "same" }, "check": { "test": "tests/harness/planning-flow.test.mjs", "name": "plan template carries the architecture/contract block and the conditional UI contract" }, "status": "conditional" },
-    { "id": "plan.sensitive-path-tests", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Step 5.1d sensitive-path test gate" }, "applicability": "all", "strength": "hard", "owner": "harness-source/references/planning-contract.md#Grilling checklist", "destinations": { "claude": "plan-feature grill", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "plan-feature refuses a spec whose bytes changed after approval and never picks by mtime" }, "status": "migrated" },
-    { "id": "plan.split-contract", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Phase 4.5 split decision + Phase 4.6 Execution Plan" }, "applicability": "all", "strength": "hard", "owner": "harness-source/references/plan-split-contract.md", "destinations": { "claude": "plan-feature Step 3/4/5 → references/plan-split-contract.md (read only when the user chose a split)", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "plan split contract: user decision, parallel-track line, Execution Plan table with manual and effort, no table on a single file, re-measure" }, "status": "migrated" },
-    { "id": "plan.external-docs-required", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "Phase 0 step 3 STOP on missing External docs required" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/approval.mjs", "destinations": { "claude": "plan-feature Step 0 → approval.mjs verify refuses the spec", "codex": "same" }, "check": { "test": "tests/harness/approval.test.mjs", "name": "a spec without a usable External docs required line never verifies" }, "status": "migrated" },
-    { "id": "plan.why-gate", "legacy": { "file": ".claude/commands/brainstorm.md", "item": "WHY-GATE" }, "applicability": "all", "strength": "hard", "owner": "harness-source/skills/brainstorm/SKILL.md", "destinations": { "claude": "brainstorm Step 2 WHY-GATE — ask for the why before any approach", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "brainstorm keeps the WHY-GATE obligation, backlog appetite inheritance and the ticket-vs-design rule" }, "status": "migrated" },
-    { "id": "plan.backlog-appetite-inherit", "legacy": { "file": ".claude/commands/brainstorm.md", "item": "Step 1.5 — Already have a work package? reuse appetite/cut-first" }, "applicability": "conditional:backlog", "strength": "hard", "owner": "harness-source/skills/brainstorm/SKILL.md", "destinations": { "claude": "brainstorm Step 1.5 exception — inherit the work package appetite/cut-first verbatim", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "brainstorm keeps the WHY-GATE obligation, backlog appetite inheritance and the ticket-vs-design rule" }, "status": "conditional" },
-    { "id": "plan.design-vs-ticket", "legacy": { "file": ".claude/commands/brainstorm.md", "item": "Step 1 — frame is the spec for geometry, ticket for behaviour" }, "applicability": "conditional:design-reference", "strength": "hard", "owner": "harness-source/skills/brainstorm/SKILL.md", "destinations": { "claude": "brainstorm Step 1 — geometry from the frame, behaviour from the ticket, contradiction recorded in the spec", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "brainstorm keeps the WHY-GATE obligation, backlog appetite inheritance and the ticket-vs-design rule" }, "status": "conditional" },
-    { "id": "rule.compat-drift", "legacy": { "file": ".claude/commands/gates/verify-implementation.md", "item": "Quality Gates source of truth: CLAUDE.md → Validation" }, "applicability": "greenfield", "strength": "hard", "owner": "harness-source/scripts/rules.mjs", "destinations": { "claude": "rules.mjs authority/check report drift between .agents/project-rules.md and the generated CLAUDE.md and mark the project not ready; render re-syncs the mirrored facts (validation, publish, branch model, language) into the generated copy only", "codex": "AGENTS.md → .agents/project-rules.md (no compat copy to drift)" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "a hand edit to project-rules.md is drift: not ready until the generated CLAUDE.md is re-synced; a hand-written CLAUDE.md is never overwritten" }, "status": "compat-rendered" },
-    { "id": "plan.no-execute", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "HARD-GATE" }, "applicability": "all", "strength": "hard", "owner": "harness-source/skills/plan-feature/SKILL.md", "destinations": { "claude": "plan-feature HARD-GATE", "codex": "same" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "plan-feature refuses a spec whose bytes changed after approval and never picks by mtime" }, "status": "migrated" },
-
-    { "id": "review.closed-context", "legacy": { "file": ".claude/commands/codex-review.md", "item": "isolated reviewer" }, "applicability": "all", "strength": "hard", "owner": "harness-source/references/review-contract.md#Boundary", "destinations": { "claude": "adapters/codex-cli/review.mjs", "codex": "adapters/claude-code/review.mjs" }, "check": { "test": "tests/harness/probe.test.mjs", "name": "a deliberately permissive adapter fails the isolation probe" }, "status": "migrated" },
-    { "id": "review.export-policy", "legacy": { "file": "CLAUDE.md", "item": "Security → egress policy" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/context-pack.mjs#EXCLUDE_RE", "destinations": { "claude": "context-pack + outbound manifest", "codex": "same" }, "check": { "test": "tests/harness/export-policy.test.mjs", "name": "user-profile, keys, raw inputs and handoffs stay out of every reviewer pack" }, "status": "migrated" },
-    { "id": "review.typed-missing-context", "legacy": { "file": ".claude/commands/codex-review.md", "item": "missing evidence handling" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/review-result.mjs#judgeOutput", "destinations": { "claude": "review-result.mjs", "codex": "review-result.mjs" }, "check": { "test": "tests/harness/review-contract.test.mjs", "name": "missing context is typed; required unresolved items block; no heuristic manufactures completed" }, "status": "migrated" },
-    { "id": "review.contradictory-ship-rejected", "legacy": { "file": ".claude/commands/codex-review.md", "item": "verdict consistency" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/review-result.mjs#judgeOutput", "destinations": { "claude": "review-result.mjs", "codex": "review-result.mjs" }, "check": { "test": "tests/harness/review-contract.test.mjs", "name": "ship with critical/major/fundamental findings, invalid evidence references, CLI error envelopes and unexpected tool activity are rejected" }, "status": "migrated" },
-    { "id": "review.rounds-ledger", "legacy": { "file": ".claude/commands/plan-feature.md", "item": "cross-model review rounds" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/review-orchestrator.mjs#roundsLedger", "destinations": { "claude": "review-orchestrator.mjs", "codex": "review-orchestrator.mjs" }, "check": { "test": "tests/harness/review-contract.test.mjs", "name": "the orchestrator supervises the max-three ledger per artifact lineage and separates technical retries" }, "status": "migrated" },
-
-    { "id": "setup.consent-gated-writes", "legacy": { "file": ".claude/commands/setup/start.md", "item": "summary screen approval" }, "applicability": "all", "strength": "hard", "owner": "harness-source/scripts/profile.mjs#updateProfile", "destinations": { "claude": "setup-start Phase B", "codex": "same" }, "check": { "test": "tests/harness/profile-cli.test.mjs", "name": "structured JSON updates are atomic: an invalid value leaves no partial profile" }, "status": "migrated" },
-    { "id": "setup.review-choice-explicit", "legacy": { "file": ".claude/commands/setup/start.md", "item": "Screen 2 Codex second opinion" }, "applicability": "all", "strength": "hard", "owner": "harness-source/skills/setup-start/SKILL.md#Screen 3", "destinations": { "claude": "profile groups.review + roles.reviewer.<other>", "codex": "same" }, "check": { "test": "tests/harness/profile-cli.test.mjs", "name": "missing, invalid or conflicting profiles never report enabled groups" }, "status": "migrated" },
-    { "id": "setup.brownfield-authority", "legacy": { "file": ".claude/commands/setup/start.md", "item": "never overwrite a populated CLAUDE.md" }, "applicability": "brownfield", "strength": "hard", "owner": "harness-source/scripts/rules.mjs#resolveRulesAuthority", "destinations": { "claude": "CLAUDE.md kept whole", "codex": "AGENTS.md rendered to load CLAUDE.md; no competing project-rules file" }, "check": { "test": "tests/harness/rules.test.mjs", "name": "brownfield: populated CLAUDE.md stays the authority and AGENTS.md points at it; no competing project-rules file is created" }, "status": "migrated" },
-    { "id": "setup.legacy-only-routing", "legacy": { "file": ".claude/commands/setup/start.md", "item": ".env/.mcp/toolchain/command pruning" }, "applicability": "all", "strength": "advisory", "owner": "harness-source/references/setup-contract.md#Legacy-only dependencies", "destinations": { "claude": "routed to /setup:start when present", "codex": "reported as skipped" }, "check": { "test": "tests/harness/skills.test.mjs", "name": "setup-start: consent-gated writes, no cache pruning, legacy-only routing, canonical vs legacy file" }, "status": "legacy-only" },
-
-    { "id": "perm.git-tiers", "legacy": { "file": ".claude/settings.json", "item": "permissions allow/ask/deny for git" }, "applicability": "all", "strength": "hard", "owner": ".claude/settings.json", "destinations": { "claude": ".claude/settings.json permission tiers", "codex": null }, "check": { "test": "tests/harness/permissions.test.mjs", "name": "permission policies map explicitly per host and unsupported enforcement is reported, never copied" }, "status": "legacy-only", "note": "Project-owned settings file. Codex has no equivalent string-glob tiers; sandbox + approval_policy are the host controls. Reported, not claimed." },
-    { "id": "perm.env-write-deny", "legacy": { "file": ".claude/settings.json", "item": "Edit(**/.env) deny" }, "applicability": "all", "strength": "hard", "owner": ".claude/settings.json", "destinations": { "claude": ".claude/settings.json", "codex": null }, "check": { "test": "tests/harness/permissions.test.mjs", "name": "permission policies map explicitly per host and unsupported enforcement is reported, never copied" }, "status": "gap", "note": "Project-owned settings file. No Codex-side write deny exists; the push guard still catches a committed .env before publication. Recorded as a gap, not certified." },
-
-    { "id": "hooks.ledger", "legacy": { "file": ".claude/settings.json", "item": "hooks block" }, "applicability": "all", "strength": "hard", "owner": "harness-source/contracts/hook-parity.json", "destinations": { "claude": "adapters/claude-code/hooks.json", "codex": "adapters/codex-cli/hooks.json" }, "check": { "test": "tests/harness/parity.test.mjs", "name": "hook ledger covers all 11 legacy hooks with a core owner, per-host state and a test" }, "status": "migrated", "note": "Per-hook status lives in hook-parity.json; portability is implemented and unit-tested, not activated in any real project (T16 pending)." }
+    {
+      "id": "rule.language-rules",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Language Rules"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Language",
+      "destinations": {
+        "claude": "CLAUDE.md#Language Rules (brownfield: kept; greenfield: rendered by rules.mjs)",
+        "codex": "AGENTS.md → CLAUDE.md (brownfield) | .agents/project-rules.md#Language (greenfield)"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.validation",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Validation"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Validation",
+      "destinations": {
+        "claude": "CLAUDE.md#Validation",
+        "codex": ".agents/project-rules.md#Validation | CLAUDE.md#Validation via AGENTS.md"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "unresolved required placeholders mean incomplete, never ready"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.test-policy",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Validation"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Validation",
+      "destinations": {
+        "claude": "CLAUDE.md#Validation",
+        "codex": ".agents/project-rules.md#Validation"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "rendered rules carry the sensitive-path test policy"
+      },
+      "status": "migrated",
+      "note": "Sensitive paths MUST have tests; plan-feature reads it to size TESTING STRATEGY."
+    },
+    {
+      "id": "rule.runtime-smoke",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Validation"
+      },
+      "applicability": "conditional:ui",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Validation",
+      "destinations": {
+        "claude": "CLAUDE.md#Validation (runtime smoke paragraph, rendered when app_surface != none)",
+        "codex": ".agents/project-rules.md#Validation"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "runtime smoke paragraph is rendered only for rendered-UI projects"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "rule.git-workflow",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Git Workflow"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Git",
+      "destinations": {
+        "claude": "CLAUDE.md#Git Workflow",
+        "codex": ".agents/project-rules.md#Git"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.orchestrate-publish",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "**Orchestrate publish:**"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/rules.mjs#derivePublish",
+      "destinations": {
+        "claude": "CLAUDE.md#Git Workflow (**Orchestrate publish:** <profile-derived>)",
+        "codex": ".agents/project-rules.md#Git (same value)"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "publish is derived from the profile: trunk → push, PR-gated presets → branch-local, never a hardcoded push"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "rule.worktree-remove-guard",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "git worktree remove --force"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Git",
+      "destinations": {
+        "claude": "CLAUDE.md#Git Workflow",
+        "codex": ".agents/project-rules.md#Git"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.branch-model",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "### Branch model"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/rules.mjs#branchModel",
+      "destinations": {
+        "claude": "CLAUDE.md#Git Workflow → ### Branch model (six labelled assignments)",
+        "codex": ".agents/project-rules.md#Git → ### Branch model"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "branch model renders six labelled assignments from the preset"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "rule.commands",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Commands"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Commands",
+      "destinations": {
+        "claude": "CLAUDE.md#Commands",
+        "codex": ".agents/project-rules.md#Commands"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.code-structure",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Code Structure & Modularity"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Code Structure & Modularity",
+      "destinations": {
+        "claude": "CLAUDE.md#Code Structure & Modularity",
+        "codex": ".agents/project-rules.md#Code Structure & Modularity"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered",
+      "note": "KISS / YAGNI / SOLID / Fail Fast and the size defaults restored (audit F2)."
+    },
+    {
+      "id": "rule.style-conventions",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Style & Conventions"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Style & Conventions",
+      "destinations": {
+        "claude": "CLAUDE.md#Style & Conventions",
+        "codex": ".agents/project-rules.md#Style & Conventions"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.comments-why-not-what",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Style & Conventions"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Style & Conventions",
+      "destinations": {
+        "claude": "CLAUDE.md#Style & Conventions + hook comments (advisory)",
+        "codex": ".agents/project-rules.md#Style & Conventions + hook comments (advisory)"
+      },
+      "check": {
+        "test": "tests/harness/hook-advisory.test.mjs",
+        "name": "comments: nudges above the configured density and stays silent on tests, generated files and small edits"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "rule.tech-stack",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Tech Stack"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Tech Stack",
+      "destinations": {
+        "claude": "CLAUDE.md#Tech Stack",
+        "codex": ".agents/project-rules.md#Tech Stack"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.automatic-behaviors",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Automatic Behaviors"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Automatic Behaviors",
+      "destinations": {
+        "claude": "CLAUDE.md#Automatic Behaviors",
+        "codex": ".agents/project-rules.md#Automatic Behaviors"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.search-commands",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Search Commands"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Search Commands",
+      "destinations": {
+        "claude": "CLAUDE.md#Search Commands",
+        "codex": ".agents/project-rules.md#Search Commands"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.security",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Security"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Security",
+      "destinations": {
+        "claude": "CLAUDE.md#Security",
+        "codex": ".agents/project-rules.md#Security"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.egress-policy",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Security"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/project-rules.md#Security",
+      "destinations": {
+        "claude": "CLAUDE.md#Security (WebFetch allowlist + curl/wget denies enforced by .claude/settings.json)",
+        "codex": ".agents/project-rules.md#Security (policy text only — Codex has no string-glob permission tiers; sandbox/approval policy is the host control)"
+      },
+      "check": {
+        "test": "tests/harness/permissions.test.mjs",
+        "name": "permission policies map explicitly per host and unsupported enforcement is reported, never copied"
+      },
+      "status": "conditional",
+      "note": "Enforcement strength differs per host and is reported as such; the rule text is shared."
+    },
+    {
+      "id": "rule.knowledge-layers",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Project Knowledge Layers"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Project Knowledge Layers",
+      "destinations": {
+        "claude": "CLAUDE.md#Project Knowledge Layers",
+        "codex": ".agents/project-rules.md#Project Knowledge Layers"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.error-handling",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Error Handling"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Error Handling",
+      "destinations": {
+        "claude": "CLAUDE.md#Error Handling",
+        "codex": ".agents/project-rules.md#Error Handling"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "greenfield render satisfies the legacy tier-1/tier-2 heading contract"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "rule.code-navigation",
+      "legacy": {
+        "file": ".claude/templates/CLAUDE-template.md",
+        "item": "Code Navigation"
+      },
+      "applicability": "conditional:lsp",
+      "strength": "advisory",
+      "owner": "harness-source/templates/project-rules.md#Code Navigation",
+      "destinations": {
+        "claude": "CLAUDE.md#Code Navigation (LSP) — rendered only when the project manifest declares an LSP",
+        "codex": ".agents/project-rules.md#Code Navigation (LSP) — same precondition; Codex exposes no symbol-navigation tool, so the section is informational"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "code navigation section is rendered only when an LSP is declared"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "memory.index-routing",
+      "legacy": {
+        "file": ".agents/memory/index.md",
+        "item": "When to Read / Quick Reference"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/memory/index.md",
+      "destinations": {
+        "claude": ".agents/memory/index.md (seeded absent-only by setup-start)",
+        "codex": ".agents/memory/index.md"
+      },
+      "check": {
+        "test": "tests/harness/bootstrap.test.mjs",
+        "name": "a bare repository receives the routing, reflection and empty placeholder files; existing memory is never overwritten"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "memory.loader-convention",
+      "legacy": {
+        "file": ".agents/memory/index.md",
+        "item": "Loader Convention"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/memory/index.md#Loader Convention",
+      "destinations": {
+        "claude": ".agents/memory/index.md",
+        "codex": ".agents/memory/index.md"
+      },
+      "check": {
+        "test": "tests/harness/bootstrap.test.mjs",
+        "name": "seeded index carries the loader, output-discipline and status conventions"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "memory.output-discipline",
+      "legacy": {
+        "file": ".agents/memory/index.md",
+        "item": "Output-Discipline Convention"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/memory/index.md#Output-Discipline Convention",
+      "destinations": {
+        "claude": ".agents/memory/index.md",
+        "codex": ".agents/memory/index.md"
+      },
+      "check": {
+        "test": "tests/harness/bootstrap.test.mjs",
+        "name": "seeded index carries the loader, output-discipline and status conventions"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "memory.status-convention",
+      "legacy": {
+        "file": ".agents/memory/index.md",
+        "item": "File Status Convention"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/templates/memory/index.md#File Status Convention",
+      "destinations": {
+        "claude": ".agents/memory/index.md + prime skill",
+        "codex": ".agents/memory/index.md + prime skill"
+      },
+      "check": {
+        "test": "tests/harness/context-identity.test.mjs",
+        "name": "status-gated memory is skipped when empty and the omission is recorded"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "memory.reflection-protocol",
+      "legacy": {
+        "file": ".agents/memory/reflection-protocol.md",
+        "item": "Memory Reflection Protocol"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/memory/reflection-protocol.md",
+      "destinations": {
+        "claude": ".agents/memory/reflection-protocol.md",
+        "codex": ".agents/memory/reflection-protocol.md"
+      },
+      "check": {
+        "test": "tests/harness/bootstrap.test.mjs",
+        "name": "a bare repository receives the routing, reflection and empty placeholder files; existing memory is never overwritten"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "memory.archive-excluded",
+      "legacy": {
+        "file": ".agents/memory/index.md",
+        "item": "Archive folder — never auto-loaded"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/prime/SKILL.md",
+      "destinations": {
+        "claude": "prime skill + context-pack exclusion",
+        "codex": "prime skill + context-pack exclusion"
+      },
+      "check": {
+        "test": "tests/harness/context-identity.test.mjs",
+        "name": "archive and private inputs are never packed even when requested as a dependency"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "memory.user-profile-local-only",
+      "legacy": {
+        "file": "CLAUDE.md",
+        "item": "Automatic Behaviors → user-profile.md"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/prime/SKILL.md",
+      "destinations": {
+        "claude": "prime reads the local opted-in profile for the author; context-pack never exports it",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/export-policy.test.mjs",
+        "name": "user-profile, keys, raw inputs and handoffs stay out of every reviewer pack"
+      },
+      "status": "migrated",
+      "note": "Author-side personalization and reviewer export are two policies (Fable F13)."
+    },
+    {
+      "id": "plan.approval-identity",
+      "legacy": {
+        "file": ".claude/commands/brainstorm.md",
+        "item": "Step 9 approval"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/approval.mjs",
+      "destinations": {
+        "claude": "brainstorm Step 9 → approval.mjs stamp; plan-feature Phase 0 → approval.mjs verify",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/approval.test.mjs",
+        "name": "approved unchanged bytes verify; a one-byte edit and a missing or hand-edited approval line fail"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.execution-effort",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Execution Effort Recommendation"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/references/planning-contract.md#Execution effort",
+      "destinations": {
+        "claude": "plan header **Execution effort:** medium (explicit low; missing field → legacy low)",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "plan template and planning contract carry explicit medium and legacy-low semantics"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.expect-validate-anchors",
+      "legacy": {
+        "file": ".claude/commands/gates/verify-implementation.md",
+        "item": "STEP-BY-STEP TASKS parser"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/references/planning-contract.md#Plan file",
+      "destinations": {
+        "claude": "plan template",
+        "codex": "plan template"
+      },
+      "check": {
+        "test": "tests/harness/planning-flow.test.mjs",
+        "name": "plan template keeps the parse anchors, EXPECT and VALIDATE exactly"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.backlog-writeback",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Phase 0.4 + Report backlog write-back"
+      },
+      "applicability": "conditional:backlog",
+      "strength": "advisory",
+      "owner": "harness-source/scripts/backlog.mjs",
+      "destinations": {
+        "claude": "plan-feature Phase 0/6 → backlog.mjs",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/planning-flow.test.mjs",
+        "name": "backlog write-back updates exactly the matched work package; none or ambiguous ownership writes nothing"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "plan.architecture-contract",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Phases 1–3 architecture context"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/templates/plan-feature-plan.template.md#Architecture and contracts",
+      "destinations": {
+        "claude": "plan template",
+        "codex": "plan template"
+      },
+      "check": {
+        "test": "tests/harness/planning-flow.test.mjs",
+        "name": "plan template carries the architecture/contract block and the conditional UI contract"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.ui-structural-contract",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Step 5.1b UI structural-contract gate"
+      },
+      "applicability": "conditional:ui",
+      "strength": "hard",
+      "owner": "harness-source/skills/plan-feature/SKILL.md#4",
+      "destinations": {
+        "claude": "plan-feature grill + template UI section",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/planning-flow.test.mjs",
+        "name": "plan template carries the architecture/contract block and the conditional UI contract"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "plan.sensitive-path-tests",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Step 5.1d sensitive-path test gate"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/references/planning-contract.md#Grilling checklist",
+      "destinations": {
+        "claude": "plan-feature grill",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "plan-feature refuses a spec whose bytes changed after approval and never picks by mtime"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.split-contract",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Phase 4.5 split decision + Phase 4.6 Execution Plan"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/references/plan-split-contract.md",
+      "destinations": {
+        "claude": "plan-feature Step 3/4/5 → references/plan-split-contract.md (read only when the user chose a split)",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "plan split contract: user decision, parallel-track line, Execution Plan table with manual and effort, no table on a single file, re-measure"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.external-docs-required",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "Phase 0 step 3 STOP on missing External docs required"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/approval.mjs",
+      "destinations": {
+        "claude": "plan-feature Step 0 → approval.mjs verify refuses the spec",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/approval.test.mjs",
+        "name": "a spec without a usable External docs required line never verifies"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.why-gate",
+      "legacy": {
+        "file": ".claude/commands/brainstorm.md",
+        "item": "WHY-GATE"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/brainstorm/SKILL.md",
+      "destinations": {
+        "claude": "brainstorm Step 2 WHY-GATE — ask for the why before any approach",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "brainstorm keeps the WHY-GATE obligation, backlog appetite inheritance and the ticket-vs-design rule"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "plan.backlog-appetite-inherit",
+      "legacy": {
+        "file": ".claude/commands/brainstorm.md",
+        "item": "Step 1.5 — Already have a work package? reuse appetite/cut-first"
+      },
+      "applicability": "conditional:backlog",
+      "strength": "hard",
+      "owner": "harness-source/skills/brainstorm/SKILL.md",
+      "destinations": {
+        "claude": "brainstorm Step 1.5 exception — inherit the work package appetite/cut-first verbatim",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "brainstorm keeps the WHY-GATE obligation, backlog appetite inheritance and the ticket-vs-design rule"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "plan.design-vs-ticket",
+      "legacy": {
+        "file": ".claude/commands/brainstorm.md",
+        "item": "Step 1 — frame is the spec for geometry, ticket for behaviour"
+      },
+      "applicability": "conditional:design-reference",
+      "strength": "hard",
+      "owner": "harness-source/skills/brainstorm/SKILL.md",
+      "destinations": {
+        "claude": "brainstorm Step 1 — geometry from the frame, behaviour from the ticket, contradiction recorded in the spec",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "brainstorm keeps the WHY-GATE obligation, backlog appetite inheritance and the ticket-vs-design rule"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "rule.compat-drift",
+      "legacy": {
+        "file": ".claude/commands/gates/verify-implementation.md",
+        "item": "Quality Gates source of truth: CLAUDE.md → Validation"
+      },
+      "applicability": "greenfield",
+      "strength": "hard",
+      "owner": "harness-source/scripts/rules.mjs",
+      "destinations": {
+        "claude": "rules.mjs authority/check report drift between .agents/project-rules.md and the generated CLAUDE.md and mark the project not ready; render re-syncs the mirrored facts (validation, publish, branch model, language) into the generated copy only",
+        "codex": "AGENTS.md → .agents/project-rules.md (no compat copy to drift)"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "a hand edit to project-rules.md is drift: not ready until the generated CLAUDE.md is re-synced; a hand-written CLAUDE.md is never overwritten"
+      },
+      "status": "compat-rendered"
+    },
+    {
+      "id": "plan.no-execute",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "HARD-GATE"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/plan-feature/SKILL.md",
+      "destinations": {
+        "claude": "plan-feature HARD-GATE",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "plan-feature refuses a spec whose bytes changed after approval and never picks by mtime"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "review.closed-context",
+      "legacy": {
+        "file": ".claude/commands/codex-review.md",
+        "item": "isolated reviewer"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/references/review-contract.md#Boundary",
+      "destinations": {
+        "claude": "adapters/codex-cli/review.mjs",
+        "codex": "adapters/claude-code/review.mjs"
+      },
+      "check": {
+        "test": "tests/harness/probe.test.mjs",
+        "name": "a deliberately permissive adapter fails the isolation probe"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "review.export-policy",
+      "legacy": {
+        "file": "CLAUDE.md",
+        "item": "Security → egress policy"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/context-pack.mjs#EXCLUDE_RE",
+      "destinations": {
+        "claude": "context-pack + outbound manifest",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/export-policy.test.mjs",
+        "name": "user-profile, keys, raw inputs and handoffs stay out of every reviewer pack"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "review.typed-missing-context",
+      "legacy": {
+        "file": ".claude/commands/codex-review.md",
+        "item": "missing evidence handling"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/review-result.mjs#judgeOutput",
+      "destinations": {
+        "claude": "review-result.mjs",
+        "codex": "review-result.mjs"
+      },
+      "check": {
+        "test": "tests/harness/review-contract.test.mjs",
+        "name": "missing context is typed; required unresolved items block; no heuristic manufactures completed"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "review.contradictory-ship-rejected",
+      "legacy": {
+        "file": ".claude/commands/codex-review.md",
+        "item": "verdict consistency"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/review-result.mjs#judgeOutput",
+      "destinations": {
+        "claude": "review-result.mjs",
+        "codex": "review-result.mjs"
+      },
+      "check": {
+        "test": "tests/harness/review-contract.test.mjs",
+        "name": "ship with critical/major/fundamental findings, invalid evidence references, CLI error envelopes and unexpected tool activity are rejected"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "review.rounds-ledger",
+      "legacy": {
+        "file": ".claude/commands/plan-feature.md",
+        "item": "cross-model review rounds"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/review-orchestrator.mjs#roundsLedger",
+      "destinations": {
+        "claude": "review-orchestrator.mjs",
+        "codex": "review-orchestrator.mjs"
+      },
+      "check": {
+        "test": "tests/harness/review-contract.test.mjs",
+        "name": "the orchestrator supervises the max-three ledger per artifact lineage and separates technical retries"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "setup.consent-gated-writes",
+      "legacy": {
+        "file": ".claude/commands/setup/start.md",
+        "item": "summary screen approval"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/profile.mjs#updateProfile",
+      "destinations": {
+        "claude": "setup-start Phase B",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/profile-cli.test.mjs",
+        "name": "structured JSON updates are atomic: an invalid value leaves no partial profile"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "setup.review-choice-explicit",
+      "legacy": {
+        "file": ".claude/commands/setup/start.md",
+        "item": "Screen 2 Codex second opinion"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/setup-start/SKILL.md#Screen 3",
+      "destinations": {
+        "claude": "profile groups.review + roles.reviewer.<other>",
+        "codex": "same"
+      },
+      "check": {
+        "test": "tests/harness/profile-cli.test.mjs",
+        "name": "missing, invalid or conflicting profiles never report enabled groups"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "setup.brownfield-authority",
+      "legacy": {
+        "file": ".claude/commands/setup/start.md",
+        "item": "never overwrite a populated CLAUDE.md"
+      },
+      "applicability": "brownfield",
+      "strength": "hard",
+      "owner": "harness-source/scripts/rules.mjs#resolveRulesAuthority",
+      "destinations": {
+        "claude": "CLAUDE.md kept whole",
+        "codex": "AGENTS.md rendered to load CLAUDE.md; no competing project-rules file"
+      },
+      "check": {
+        "test": "tests/harness/rules.test.mjs",
+        "name": "brownfield: populated CLAUDE.md stays the authority and AGENTS.md points at it; no competing project-rules file is created"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "setup.legacy-only-routing",
+      "legacy": {
+        "file": ".claude/commands/setup/start.md",
+        "item": ".env/.mcp/toolchain/command pruning"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/references/setup-contract.md#Legacy-only dependencies",
+      "destinations": {
+        "claude": "routed to /setup:start when present",
+        "codex": "reported as skipped"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "setup-start: consent-gated writes, no cache pruning, legacy-only routing, canonical vs legacy file"
+      },
+      "status": "legacy-only"
+    },
+    {
+      "id": "perm.git-tiers",
+      "legacy": {
+        "file": ".claude/settings.json",
+        "item": "permissions allow/ask/deny for git"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": ".claude/settings.json",
+      "destinations": {
+        "claude": ".claude/settings.json permission tiers",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/permissions.test.mjs",
+        "name": "permission policies map explicitly per host and unsupported enforcement is reported, never copied"
+      },
+      "status": "legacy-only",
+      "note": "Project-owned settings file. Codex has no equivalent string-glob tiers; sandbox + approval_policy are the host controls. Reported, not claimed."
+    },
+    {
+      "id": "perm.env-write-deny",
+      "legacy": {
+        "file": ".claude/settings.json",
+        "item": "Edit(**/.env) deny"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": ".claude/settings.json",
+      "destinations": {
+        "claude": ".claude/settings.json",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/permissions.test.mjs",
+        "name": "permission policies map explicitly per host and unsupported enforcement is reported, never copied"
+      },
+      "status": "gap",
+      "note": "Project-owned settings file. No Codex-side write deny exists; the push guard still catches a committed .env before publication. Recorded as a gap, not certified."
+    },
+    {
+      "id": "hooks.ledger",
+      "legacy": {
+        "file": ".claude/settings.json",
+        "item": "hooks block"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/contracts/hook-parity.json",
+      "destinations": {
+        "claude": "adapters/claude-code/hooks.json",
+        "codex": "adapters/codex-cli/hooks.json"
+      },
+      "check": {
+        "test": "tests/harness/parity.test.mjs",
+        "name": "hook ledger covers all 11 legacy hooks with a core owner, per-host state and a test"
+      },
+      "status": "migrated",
+      "note": "Per-hook status lives in hook-parity.json; portability is implemented and unit-tested, not activated in any real project (T16 pending)."
+    },
+    {
+      "id": "skill.gates-check-quality",
+      "legacy": {
+        "file": ".claude/commands/gates/check-quality.md",
+        "item": "/gates:check-quality"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/gates-check-quality/SKILL.md#/harness:gates-check-quality — Run project quality checks",
+      "destinations": {
+        "claude": "/harness:gates-check-quality",
+        "codex": "$gates-check-quality"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.gates-verify-implementation",
+      "legacy": {
+        "file": ".claude/commands/gates/verify-implementation.md",
+        "item": "/gates:verify-implementation"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/gates-verify-implementation/SKILL.md#/harness:gates-verify-implementation — Verify Plan Execution & Code Quality",
+      "destinations": {
+        "claude": "/harness:gates-verify-implementation",
+        "codex": "$gates-verify-implementation"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.gates-design-quality-check",
+      "legacy": {
+        "file": ".claude/commands/gates/design-quality-check.md",
+        "item": "/gates:design-quality-check"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/gates-design-quality-check/SKILL.md#/harness:gates-design-quality-check — Design-Parity Audit",
+      "destinations": {
+        "claude": "/harness:gates-design-quality-check",
+        "codex": "$gates-design-quality-check"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.deep-review",
+      "legacy": {
+        "file": ".claude/commands/deep-review.md",
+        "item": "/deep-review"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/deep-review/SKILL.md#`/harness:deep-review` (Claude Code) · `$deep-review` (Codex) — Deep Structural Quality Audit",
+      "destinations": {
+        "claude": "/harness:deep-review",
+        "codex": "$deep-review"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.analysis",
+      "legacy": {
+        "file": ".claude/commands/analysis.md",
+        "item": "/analysis"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/analysis/SKILL.md#`/harness:analysis` (Claude Code) · `$analysis` (Codex) — deep analytical pass",
+      "destinations": {
+        "claude": "/harness:analysis",
+        "codex": "$analysis"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.test-e2e",
+      "legacy": {
+        "file": ".claude/commands/test-e2e.md",
+        "item": "/test-e2e"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/test-e2e/SKILL.md#Test E2E: Explore → Plan → Generate",
+      "destinations": {
+        "claude": "/harness:test-e2e",
+        "codex": "$test-e2e"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.execute",
+      "legacy": {
+        "file": ".claude/commands/execute.md",
+        "item": "/execute"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/execute/SKILL.md#Execute: Implement from Plan",
+      "destinations": {
+        "claude": "/execute (wrapper) → harness:execute",
+        "codex": "$execute (plain mode)"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "skill.recon",
+      "legacy": {
+        "file": ".claude/commands/recon.md",
+        "item": "/recon"
+      },
+      "applicability": "conditional:claude-host",
+      "strength": "hard",
+      "owner": "harness-source/skills/recon/SKILL.md#Recon: Assemble Context Before You Design",
+      "destinations": {
+        "claude": "/recon (wrapper) → harness:recon, research waves as parallel agents",
+        "codex": "$recon — the same waves run sequentially in-session (no agents)"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "skill.design",
+      "legacy": {
+        "file": ".claude/commands/design.md",
+        "item": "/design"
+      },
+      "applicability": "conditional:claude-host",
+      "strength": "hard",
+      "owner": "harness-source/skills/design/SKILL.md#`/harness:design` (Claude Code) · `$design` (Codex) — Guided UI Design with Variants + Self-Check Gate",
+      "destinations": {
+        "claude": "/design (wrapper) → harness:design, 3 variants as parallel agents",
+        "codex": "$design — the three variants run sequentially in-session (no agents)"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "skill.orchestrate",
+      "legacy": {
+        "file": ".claude/commands/orchestrate.md",
+        "item": "/orchestrate"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/orchestrate/SKILL.md#/orchestrate — Pipeline Runner",
+      "destinations": {
+        "claude": "/orchestrate (wrapper) → harness:orchestrate + six harness:orchestrator-* agents",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "legacy-only",
+      "note": "Claude-only: every stage is a subagent and the pipeline uses git worktree; Codex has neither. The skill refuses on Codex.",
+      "rationale": "A sequential rewrite would be a different pipeline, not this one; refusing is honest where emulating would be a silent downgrade."
+    },
+    {
+      "id": "skill.check-implementation",
+      "legacy": {
+        "file": ".claude/commands/check-implementation.md",
+        "item": "/check-implementation"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/check-implementation/SKILL.md#/check-implementation — Full Implementation Quality Loop",
+      "destinations": {
+        "claude": "/check-implementation (wrapper) → harness:check-implementation",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "legacy-only",
+      "note": "Claude-only: composes the host-provided code-review with subagent gates; judge ≠ fixer has no Codex-side equivalent. The skill refuses on Codex.",
+      "rationale": "Codex ships no code-review skill and no agents; the loop cannot keep the judge and the fixer separate there."
+    },
+    {
+      "id": "skill.quick-change",
+      "legacy": {
+        "file": ".claude/commands/quick-change.md",
+        "item": "/quick-change"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/quick-change/SKILL.md#/quick-change — Fast Lane for Small Changes",
+      "destinations": {
+        "claude": "/quick-change (wrapper) → harness:quick-change",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "legacy-only",
+      "note": "Claude-only: Phase 4 leans on the host-provided code-review and the judge-is-not-the-fixer split. The skill refuses on Codex.",
+      "rationale": "Same constraint as check-implementation on a shorter lane."
+    },
+    {
+      "id": "skill.architecture-review",
+      "legacy": {
+        "file": ".claude/commands/architecture-review.md",
+        "item": "/architecture-review"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/skills/architecture-review/SKILL.md#/architecture-review — Codebase-Wide Architecture Audit",
+      "destinations": {
+        "claude": "/architecture-review (wrapper) → harness:architecture-review",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "group-gated skills check their own group first and name nested skills for both hosts"
+      },
+      "status": "legacy-only",
+      "note": "Claude-only: Phases 1 and 3 fan out read-only subagents over the codebase. The skill refuses on Codex.",
+      "rationale": "A single-threaded sweep would be a different, weaker product."
+    },
+    {
+      "id": "skill.execute-codex-mode",
+      "legacy": {
+        "file": ".claude/commands/execute.md",
+        "item": "Codex executor mode"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/references/executor-contract.md#Roles and direction",
+      "destinations": {
+        "claude": "/execute codex → scripts/executor-orchestrator.mjs --mode write",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/executor.test.mjs",
+        "name": "a Codex author is refused: one model never marks its own work"
+      },
+      "status": "legacy-only",
+      "note": "A Codex author has no cross-model executor in this release; the orchestrator refuses --author-host codex.",
+      "rationale": "The executor exists to give a Claude author a second model; a Codex author spawning Codex would be one model marking its own work."
+    },
+    {
+      "id": "agent.orchestrator-fleet",
+      "legacy": {
+        "file": ".claude/agents/orchestrator-executor.md",
+        "item": "orchestrator-* agents (6)"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/agents/orchestrator-executor.md",
+      "destinations": {
+        "claude": "agents/orchestrator-*.md (packaged, harness:orchestrator-* subagent types)",
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/packaging.test.mjs",
+        "name": "wrappers: one per skill with a top-level legacy command, claude-only, written into the starter commands dir"
+      },
+      "status": "legacy-only",
+      "note": "Codex plugins carry no agents (outputsFor gives Codex none)."
+    },
+    {
+      "id": "exec.executor-orchestrator",
+      "legacy": {
+        "file": ".claude/lib/codex-bg.sh",
+        "item": "write-enabled Codex spawn"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/executor-orchestrator.mjs",
+      "destinations": {
+        "claude": "scripts/executor-orchestrator.mjs (read | write mode, worktree lock, run-relative snapshot)",
+        "codex": "scripts/executor-orchestrator.mjs — refuses a Codex author"
+      },
+      "check": {
+        "test": "tests/harness/executor.test.mjs",
+        "name": "a clean write run: completed, delta inside scope, workspace-write argv, prompt on stdin"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "exec.git-baseline",
+      "legacy": {
+        "file": ".claude/lib/git-baseline.sh",
+        "item": "capture / compare tamper check"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/git-baseline.mjs",
+      "destinations": {
+        "claude": "scripts/git-baseline.mjs (snapshot pair around every executor child)",
+        "codex": "scripts/git-baseline.mjs"
+      },
+      "check": {
+        "test": "tests/harness/git-baseline.test.mjs",
+        "name": "a protected file already dirty before both snapshots is exempt; a further edit is not"
+      },
+      "status": "migrated"
+    },
+    {
+      "id": "exec.codex-review",
+      "legacy": {
+        "file": ".claude/commands/codex-review.md",
+        "item": "/codex-review"
+      },
+      "applicability": "all",
+      "strength": "advisory",
+      "owner": "harness-source/scripts/review-orchestrator.mjs",
+      "destinations": {
+        "claude": null,
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/review.test.mjs",
+        "name": "execution status is derived from facts: a launched process is not an executed review"
+      },
+      "status": "retired",
+      "rationale": "standalone prose review superseded by review-orchestrator (specs/plans) and executor-orchestrator read mode (code opinions)",
+      "decision": "spec 2026-09-07-harness-stage-2-execution-slice.md → Solution item 4, approved 2026-09-07"
+    },
+    {
+      "id": "exec.codex-bg",
+      "legacy": {
+        "file": ".claude/lib/codex-bg.sh",
+        "item": "codex-bg.sh wrapper"
+      },
+      "applicability": "all",
+      "strength": "hard",
+      "owner": "harness-source/scripts/executor-orchestrator.mjs",
+      "destinations": {
+        "claude": null,
+        "codex": null
+      },
+      "check": {
+        "test": "tests/harness/executor.test.mjs",
+        "name": "a descendant that outlives the leader is terminated before the tree is measured"
+      },
+      "status": "retired",
+      "rationale": "shell spawner without lifecycle, execution status or tamper check on 3 of 5 call sites; replaced by the supervised executor",
+      "decision": "spec 2026-09-07-harness-stage-2-execution-slice.md → Solution item 4, approved 2026-09-07"
+    }
   ]
 }

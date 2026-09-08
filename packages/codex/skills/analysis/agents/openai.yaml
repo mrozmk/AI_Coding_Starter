@@ -1,0 +1,5 @@
+interface:
+  display_name: analysis
+  short_description: Deep analysis of a problem, decision, or codebase area — no code written, no files created.
+policy:
+  allow_implicit_invocation: false

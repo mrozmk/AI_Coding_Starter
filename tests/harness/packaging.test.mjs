@@ -192,7 +192,7 @@ test('wrappers: one per skill with a top-level legacy command, claude-only, writ
   const REPO = path.resolve(import.meta.dirname, '../..');
   const { inventory, harness, rendered, wrappers } = renderAll(REPO);
   const expected = inventory.entries.map(wrapperCommandFor).filter(Boolean).sort();
-  assert.deepEqual(expected, ['brainstorm', 'commit', 'handoff', 'plan-feature', 'pr-create', 'prime', 'pull', 'push', 'release', 'start-task'], 'namespaced setup/start.md gets no wrapper');
+  assert.deepEqual(expected, ['analysis', 'architecture-review', 'brainstorm', 'check-implementation', 'commit', 'deep-review', 'design', 'execute', 'handoff', 'orchestrate', 'plan-feature', 'pr-create', 'prime', 'pull', 'push', 'quick-change', 'recon', 'release', 'start-task', 'test-e2e'], 'namespaced setup/ and gates/ commands get no wrapper');
   assert.deepEqual([...wrappers.keys()].sort(), expected);
   for (const [command, text] of wrappers) {
     const skill = inventory.entries.find((e) => wrapperCommandFor(e) === command).id;
@@ -210,6 +210,11 @@ test('wrappers: one per skill with a top-level legacy command, claude-only, writ
   assert.ok(rendered.claude.files.has('agents/documentation-manager.md'), 'agent packaged for claude');
   assert.ok(!rendered.codex.files.has('agents/documentation-manager.md'), 'codex carries no agents');
   assert.equal(rendered.claude.marker.agents['agent-documentation-manager'], 'agents/documentation-manager.md');
+  assert.equal(Object.keys(rendered.claude.marker.agents).length, 7, 'documentation-manager plus the six orchestrator agents');
+  for (const host of ['claude', 'codex']) {
+    assert.ok(Array.isArray(rendered[host].marker.retired), `${host}: the marker records what the release retired`);
+    for (const p of ['.claude/lib/git-baseline.sh', '.claude/commands/codex-review.md']) assert.ok(rendered[host].marker.retired.includes(p), `${host}: ${p} tombstoned in the marker`);
+  }
   assert.deepEqual(rendered.codex.marker.agents, {});
   const out = tmp();
   buildAll(REPO, out);

@@ -930,6 +930,452 @@
         ".claude/agents/documentation-manager.md"
       ],
       "description": "Documentation sync agent spawned by release on Claude Code (harness:documentation-manager); Codex performs the sync inline."
+    },
+    {
+      "id": "ref-orientation",
+      "kind": "reference",
+      "source": "harness-source/references/orientation.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-executor-contract",
+      "kind": "reference",
+      "source": "harness-source/references/executor-contract.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "schema-executor-result",
+      "kind": "schema",
+      "source": "harness-source/schemas/executor-result.schema.json",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "adapter-codex-execute",
+      "kind": "adapter",
+      "host_dir": "codex-cli",
+      "source": "harness-source/adapters/codex-cli/execute.mjs",
+      "owner": "adapter:codex",
+      "phase": "execution",
+      "dependencies": [
+        "adapter-codex-json",
+        "adapter-codex-review"
+      ]
+    },
+    {
+      "id": "git-baseline",
+      "kind": "script",
+      "source": "harness-source/scripts/git-baseline.mjs",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "lib-argv",
+        "lib-fsx"
+      ]
+    },
+    {
+      "id": "executor-orchestrator",
+      "kind": "script",
+      "source": "harness-source/scripts/executor-orchestrator.mjs",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "git-baseline",
+        "profile",
+        "review-orchestrator",
+        "adapter-codex-execute",
+        "schema-executor-result",
+        "lib-argv",
+        "lib-fsx",
+        "lib-schema"
+      ]
+    },
+    {
+      "id": "ref-design-credits",
+      "kind": "reference",
+      "source": "harness-source/references/design/CREDITS.md",
+      "output": "references/design/CREDITS.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-design-dials",
+      "kind": "reference",
+      "source": "harness-source/references/design/dials.md",
+      "output": "references/design/dials.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-design-emil",
+      "kind": "reference",
+      "source": "harness-source/references/design/emil-design.md",
+      "output": "references/design/emil-design.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-design-hands",
+      "kind": "reference",
+      "source": "harness-source/references/design/hands.md",
+      "output": "references/design/hands.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-design-redesign",
+      "kind": "reference",
+      "source": "harness-source/references/design/redesign.md",
+      "output": "references/design/redesign.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-design-self-check",
+      "kind": "reference",
+      "source": "harness-source/references/design/self-check.md",
+      "output": "references/design/self-check.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-arch-deepening",
+      "kind": "reference",
+      "source": "harness-source/references/architecture-review/DEEPENING.md",
+      "output": "references/architecture-review/DEEPENING.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-arch-glossary",
+      "kind": "reference",
+      "source": "harness-source/references/architecture-review/GLOSSARY.md",
+      "output": "references/architecture-review/GLOSSARY.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-arch-interface-design",
+      "kind": "reference",
+      "source": "harness-source/references/architecture-review/INTERFACE-DESIGN.md",
+      "output": "references/architecture-review/INTERFACE-DESIGN.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "ref-arch-report-template",
+      "kind": "reference",
+      "source": "harness-source/references/architecture-review/report-template.html",
+      "output": "references/architecture-review/report-template.html",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": []
+    },
+    {
+      "id": "agent-orchestrator-executor",
+      "kind": "agent",
+      "source": "harness-source/agents/orchestrator-executor.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/orchestrator-executor.md"
+      ]
+    },
+    {
+      "id": "agent-orchestrator-executor-hard",
+      "kind": "agent",
+      "source": "harness-source/agents/orchestrator-executor-hard.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/orchestrator-executor-hard.md"
+      ]
+    },
+    {
+      "id": "agent-orchestrator-refiner",
+      "kind": "agent",
+      "source": "harness-source/agents/orchestrator-refiner.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/orchestrator-refiner.md"
+      ]
+    },
+    {
+      "id": "agent-orchestrator-verifier",
+      "kind": "agent",
+      "source": "harness-source/agents/orchestrator-verifier.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/orchestrator-verifier.md"
+      ]
+    },
+    {
+      "id": "agent-orchestrator-designer",
+      "kind": "agent",
+      "source": "harness-source/agents/orchestrator-designer.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/orchestrator-designer.md"
+      ]
+    },
+    {
+      "id": "agent-orchestrator-committer",
+      "kind": "agent",
+      "source": "harness-source/agents/orchestrator-committer.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".claude/agents/orchestrator-committer.md"
+      ]
+    },
+    {
+      "id": "gates-check-quality",
+      "kind": "skill",
+      "source": "harness-source/skills/gates-check-quality/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/gates/check-quality.md",
+        "/gates:check-quality"
+      ]
+    },
+    {
+      "id": "gates-verify-implementation",
+      "kind": "skill",
+      "source": "harness-source/skills/gates-verify-implementation/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/gates/verify-implementation.md",
+        "/gates:verify-implementation"
+      ]
+    },
+    {
+      "id": "gates-design-quality-check",
+      "kind": "skill",
+      "source": "harness-source/skills/gates-design-quality-check/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/gates/design-quality-check.md",
+        "/gates:design-quality-check"
+      ]
+    },
+    {
+      "id": "deep-review",
+      "kind": "skill",
+      "source": "harness-source/skills/deep-review/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/deep-review.md",
+        "/deep-review"
+      ]
+    },
+    {
+      "id": "analysis",
+      "kind": "skill",
+      "source": "harness-source/skills/analysis/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/analysis.md",
+        "/analysis"
+      ]
+    },
+    {
+      "id": "recon",
+      "kind": "skill",
+      "source": "harness-source/skills/recon/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/recon.md",
+        "/recon"
+      ]
+    },
+    {
+      "id": "design",
+      "kind": "skill",
+      "source": "harness-source/skills/design/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile",
+        "ref-design-credits",
+        "ref-design-dials",
+        "ref-design-emil",
+        "ref-design-hands",
+        "ref-design-redesign",
+        "ref-design-self-check"
+      ],
+      "legacy": [
+        ".claude/commands/design.md",
+        "/design"
+      ]
+    },
+    {
+      "id": "test-e2e",
+      "kind": "skill",
+      "source": "harness-source/skills/test-e2e/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/test-e2e.md",
+        "/test-e2e"
+      ]
+    },
+    {
+      "id": "architecture-review",
+      "kind": "skill",
+      "source": "harness-source/skills/architecture-review/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile",
+        "executor-orchestrator",
+        "ref-executor-contract",
+        "ref-orientation",
+        "ref-arch-deepening",
+        "ref-arch-glossary",
+        "ref-arch-interface-design",
+        "ref-arch-report-template"
+      ],
+      "legacy": [
+        ".claude/commands/architecture-review.md",
+        "/architecture-review"
+      ]
+    },
+    {
+      "id": "quick-change",
+      "kind": "skill",
+      "source": "harness-source/skills/quick-change/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile",
+        "executor-orchestrator",
+        "ref-executor-contract",
+        "ref-orientation",
+        "deep-review"
+      ],
+      "legacy": [
+        ".claude/commands/quick-change.md",
+        "/quick-change"
+      ]
+    },
+    {
+      "id": "execute",
+      "kind": "skill",
+      "source": "harness-source/skills/execute/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile",
+        "executor-orchestrator",
+        "ref-executor-contract",
+        "ref-orientation",
+        "gates-verify-implementation"
+      ],
+      "legacy": [
+        ".claude/commands/execute.md",
+        "/execute"
+      ]
+    },
+    {
+      "id": "check-implementation",
+      "kind": "skill",
+      "source": "harness-source/skills/check-implementation/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile",
+        "executor-orchestrator",
+        "ref-executor-contract",
+        "ref-orientation",
+        "gates-verify-implementation",
+        "gates-design-quality-check",
+        "deep-review",
+        "agent-orchestrator-designer"
+      ],
+      "legacy": [
+        ".claude/commands/check-implementation.md",
+        "/check-implementation"
+      ]
+    },
+    {
+      "id": "orchestrate",
+      "kind": "skill",
+      "source": "harness-source/skills/orchestrate/SKILL.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [
+        "profile",
+        "executor-orchestrator",
+        "ref-executor-contract",
+        "ref-orientation",
+        "gates-verify-implementation",
+        "gates-design-quality-check",
+        "gates-check-quality",
+        "execute",
+        "deep-review",
+        "commit",
+        "agent-orchestrator-executor",
+        "agent-orchestrator-executor-hard",
+        "agent-orchestrator-refiner",
+        "agent-orchestrator-verifier",
+        "agent-orchestrator-designer",
+        "agent-orchestrator-committer",
+        "agent-documentation-manager"
+      ],
+      "legacy": [
+        ".claude/commands/orchestrate.md",
+        "/orchestrate"
+      ]
     }
   ],
   "host_provided": [
@@ -939,7 +1385,7 @@
         "claude"
       ],
       "used_by": [
-        ".claude/agents/orchestrator-refiner.md"
+        "harness-source/agents/orchestrator-refiner.md"
       ],
       "note": "Built into Claude Code (no local file). Deferred with /check-implementation; the plugin uses neutral procedure ids, never this name."
     },
@@ -980,18 +1426,21 @@
     },
     {
       "path": ".claude/commands/execute.md",
-      "class": "deferred",
-      "note": "execution stage"
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "execute"
     },
     {
       "path": ".claude/commands/check-implementation.md",
-      "class": "deferred",
-      "note": "execution stage"
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "check-implementation"
     },
     {
       "path": ".claude/commands/orchestrate.md",
-      "class": "deferred",
-      "note": "git automation / orchestration"
+      "class": "migrated",
+      "note": "git automation / orchestration",
+      "replaced_by": "orchestrate"
     },
     {
       "path": ".claude/commands/commit.md",
@@ -1025,48 +1474,54 @@
     },
     {
       "path": ".claude/commands/codex-review.md",
-      "class": "deferred",
-      "note": "standalone review; superseded by review-orchestrator in a later stage"
+      "class": "retired",
+      "note": "specs/plans via review-orchestrator; ad-hoc code opinions via executor-orchestrator read mode",
+      "replaced_by": "review-orchestrator"
     },
     {
       "path": ".claude/commands/quick-change.md",
-      "class": "deferred",
-      "note": "execution stage"
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "quick-change"
     },
     {
       "path": ".claude/commands/deep-review.md",
-      "class": "deferred",
-      "note": "execution stage"
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "deep-review"
     },
     {
       "path": ".claude/commands/gates/check-quality.md",
-      "class": "deferred",
-      "note": "execution gate"
+      "class": "retired",
+      "replaced_by": "gates-check-quality"
     },
     {
       "path": ".claude/commands/gates/design-quality-check.md",
-      "class": "deferred",
-      "note": "execution gate"
+      "class": "retired",
+      "replaced_by": "gates-design-quality-check"
     },
     {
       "path": ".claude/commands/gates/verify-implementation.md",
-      "class": "deferred",
-      "note": "execution gate; its EXPECT/VALIDATE parser is the contract plans must keep"
+      "class": "retired",
+      "replaced_by": "gates-verify-implementation"
     },
     {
       "path": ".claude/commands/analysis.md",
-      "class": "deferred",
-      "note": "peripheral"
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "analysis"
     },
     {
       "path": ".claude/commands/architecture-review.md",
-      "class": "deferred",
-      "note": "peripheral"
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "architecture-review"
     },
     {
       "path": ".claude/commands/design.md",
-      "class": "deferred",
-      "note": "peripheral"
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "design"
     },
     {
       "path": ".claude/commands/prime-ba.md",
@@ -1085,8 +1540,9 @@
     },
     {
       "path": ".claude/commands/recon.md",
-      "class": "deferred",
-      "note": "peripheral"
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "recon"
     },
     {
       "path": ".claude/commands/retro.md",
@@ -1100,8 +1556,9 @@
     },
     {
       "path": ".claude/commands/test-e2e.md",
-      "class": "deferred",
-      "note": "QA"
+      "class": "migrated",
+      "note": "QA",
+      "replaced_by": "test-e2e"
     },
     {
       "path": ".claude/commands/maintain/cleanup-workflow.md",
@@ -1150,39 +1607,38 @@
     },
     {
       "path": ".claude/agents/documentation-manager.md",
-      "class": "migrated",
-      "note": "local copy retained until orchestrate (its other caller) migrates; the plugin ships harness:documentation-manager",
+      "class": "retired",
       "replaced_by": "agent-documentation-manager"
     },
     {
       "path": ".claude/agents/orchestrator-committer.md",
-      "class": "deferred",
-      "note": "agents fleet"
+      "class": "retired",
+      "replaced_by": "agent-orchestrator-committer"
     },
     {
       "path": ".claude/agents/orchestrator-designer.md",
-      "class": "deferred",
-      "note": "agents fleet"
+      "class": "retired",
+      "replaced_by": "agent-orchestrator-designer"
     },
     {
       "path": ".claude/agents/orchestrator-executor-hard.md",
-      "class": "deferred",
-      "note": "agents fleet; executor identity Opus/medium preserved"
+      "class": "retired",
+      "replaced_by": "agent-orchestrator-executor-hard"
     },
     {
       "path": ".claude/agents/orchestrator-executor.md",
-      "class": "deferred",
-      "note": "agents fleet"
+      "class": "retired",
+      "replaced_by": "agent-orchestrator-executor"
     },
     {
       "path": ".claude/agents/orchestrator-refiner.md",
-      "class": "deferred",
-      "note": "agents fleet; depends on host-provided code-review"
+      "class": "retired",
+      "replaced_by": "agent-orchestrator-refiner"
     },
     {
       "path": ".claude/agents/orchestrator-verifier.md",
-      "class": "deferred",
-      "note": "agents fleet"
+      "class": "retired",
+      "replaced_by": "agent-orchestrator-verifier"
     },
     {
       "path": ".claude/agents/qa-contract.md",
@@ -1261,13 +1717,13 @@
     },
     {
       "path": ".claude/lib/codex-bg.sh",
-      "class": "retained",
-      "note": "legacy review spawner; SCHEMA branch does not meet the new reviewer contract and is not migrated"
+      "class": "retired",
+      "replaced_by": "executor-orchestrator"
     },
     {
       "path": ".claude/lib/git-baseline.sh",
-      "class": "retained",
-      "note": "permission-pinned executor helper; stays put"
+      "class": "retired",
+      "replaced_by": "git-baseline"
     },
     {
       "path": ".claude/lib/qa-probe.sh",
@@ -1276,8 +1732,8 @@
     },
     {
       "path": ".claude/skills/architecture-review/",
-      "class": "deferred",
-      "note": "peripheral resource bundle"
+      "class": "retired",
+      "replaced_by": "architecture-review"
     },
     {
       "path": ".claude/skills/confluence/",
@@ -1286,8 +1742,8 @@
     },
     {
       "path": ".claude/skills/design/",
-      "class": "deferred",
-      "note": "peripheral resource bundle"
+      "class": "retired",
+      "replaced_by": "design"
     },
     {
       "path": ".claude/skills/jira/",
