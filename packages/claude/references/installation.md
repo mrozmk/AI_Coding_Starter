@@ -61,7 +61,7 @@ It lists every hook id with its owner after activation (`legacy`, `plugin`, or `
 
 ## Publish (starter maintainer)
 
-`node scripts/release-harness.mjs` after the version bump: it refuses a dirty tree, a version not newer than `origin/release`, or a failing `check-harness --all`, then prints the two pushes (`main`, `main:release`); `--push yes` performs them.
+The plugin is developed in a separate private repository (Harness-Dev); the template repository's `main` carries the template only. The publisher lives in Harness-Dev and takes the template checkout as `--template-root <dir>` (default `../AI_Coding_Starter`, env `HARNESS_TEMPLATE_ROOT`): `node scripts/release-harness.mjs --template-root <dir>` after the version bump refuses a template that is not on `main` or not clean, a local `release` that disagrees with `origin/release`, a version not newer than the one published on `origin/release`, a failing `check-harness --all` / `smoke-harness --offline`, or a dirty Harness-Dev tree. It then snapshots the template's `main` plus the build output (`packages/`, both marketplace manifests) into one commit on `release` — `release(harness): <version> from main@<sha>` — made in a temporary worktree under the template's `.git/harness-publish/`, and pushes **only** `release` with `--push yes` (without it, the exact push command is printed). The template's `main` is pushed by the maintainer, by hand, after the installed-host proof; no script pushes it and nothing is ever forced.
 
 ## Update (project)
 
@@ -88,13 +88,23 @@ It lists every hook id with its owner after activation (`legacy`, `plugin`, or `
 5. **Rewrite the `git-baseline.sh` paragraph** of the project's `CLAUDE.md` (Security → *Recorded allowance*) as the starter did: the executor runs as `node <installed root>/scripts/executor-orchestrator.mjs` under the machine-local plugin-script allowance; its only local write channels are the scratch run directory and a lock under the git dir; the write-mode child's authority is bounded after the fact by the run-relative snapshot, not prevented.
 6. **Codex host:** `orchestrate`, `check-implementation`, `quick-change` and `architecture-review` refuse on Codex (no agents; host-provided `code-review`; judge ≠ fixer), `execute codex` refuses (a Codex author has no cross-model executor), `recon` and `design` run their waves sequentially. Every other migrated skill runs identically on both hosts. The ledger row per skill is in `docs/harness/instruction-parity.md`.
 
+## Migrating 0.5.0 → 0.6.0 (downstream, by hand)
+
+0.6.0 splits the repositories: the plugin source, its tests, the build and the publisher moved out of the template into a private development repository, and the template's `main` no longer ships the 29 generated command wrappers (`.claude/commands/<skill>.md`), `.claude-plugin/`, `.agents/plugins/marketplace.json` or any of the development apparatus. The `release` branch is now a snapshot of the template's `main` plus `packages/` and both marketplace manifests — the install commands above are unchanged. **Nothing in your project is touched by the update**; the wrappers you already have keep working exactly as before, because each one only routes to the installed plugin skill.
+
+1. **Update and re-bind** per *Update (project)* above, both hosts.
+2. **The next `sync-from-starter` offers to remove wrappers.** The template deleted them, so an unchanged wrapper in your project shows up as a safe upstream deletion. Either decline — the files are yours to keep — or list them under `.claude/.starter-sync.json → excluded` so they are never offered again. `setup-start` (Binding step) and `node <installed root>/scripts/bootstrap.mjs wrappers --consent yes` write the current wrapper set on request; the template is no longer where they come from.
+3. **Before accepting any deletion, audit your `CLAUDE.md`** for links to `.claude/commands/{commit,push,pull,release,orchestrate}.md` (the starter's *Git Workflow* section carried five) and rewrite each as the skill invocation — `/harness:commit`, `/harness:push`, `/harness:pull`, `/harness:release`, `/harness:orchestrate` — first. A deletion accepted before the rewrite leaves dangling links in the rules file.
+4. **Still on the 0.5.0 sync command with no plugin installed?** Its helper fallback pointed at `harness-source/scripts/sync-filter.mjs` in the starter checkout, which `main` no longer carries. Run it once as `/maintain:sync-from-starter release` — a clone of the `release` branch — and point the helper at `packages/claude/scripts/sync-filter.mjs` in that clone. The updated command names that location itself, so the detour ends with that one sync. Helper resolution order from 0.6.0 on: the installed plugin root the plugin itself resolves (`resolveBoundRoot`, the same lookup `check-version` uses) at `<root>/scripts/sync-filter.mjs`; otherwise a clone of the template's `release` branch at `packages/claude/scripts/sync-filter.mjs`.
+5. **Codex** installs from a `release` clone as before (`codex plugin marketplace add … --ref release`); nothing changes for it.
+
 ## Rollback
 
 Rollback restores **ownership**, not merely an empty plugin directory. `node <installed root>/scripts/sync-filter.mjs rollback --manifest .claude/.starter-sync.json --release <version>` names the legacy paths and `settings.json` identities that return to the project once their `migrated*` records are dropped; the next `/maintain:sync-from-starter` re-offers them. Then disable or remove the plugin (`claude plugin disable|uninstall`, `codex plugin remove`), install the previous bundle if one is wanted, re-bind. Code, specs, plans, memory, `.agents/harness-state/` telemetry and other people's work stay untouched. No `git reset --hard`, no worktree deletion, no recursive cache purge.
 
 ## Legacy-only downstream sync
 
-A project that has not installed the plugin still syncs: `/maintain:sync-from-starter` runs `harness-source/scripts/sync-filter.mjs` from the starter checkout it already clones, with `migrated: []` and no plugin root. The same decision tables apply; nothing requires an installation.
+A project that has not installed the plugin still syncs: `/maintain:sync-from-starter` resolves the helper first from the installed plugin root the plugin itself resolves (`resolveBoundRoot`, the same lookup `check-version` uses) at `<root>/scripts/sync-filter.mjs`; without a binding it uses a clone of the template's **`release`** branch at `packages/claude/scripts/sync-filter.mjs` (`/maintain:sync-from-starter release`), with `migrated: []` and no plugin root — `main` no longer carries the helper. The same decision tables apply; nothing requires an installation.
 
 ## Migration record — `.claude/.starter-sync.json`
 

@@ -1,4 +1,0 @@
----
-status: empty
----
-# Brief placeholder

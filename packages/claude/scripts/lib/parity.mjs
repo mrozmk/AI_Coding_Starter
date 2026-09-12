@@ -76,7 +76,13 @@ function ownerFile(owner) {
   return owner.split('#')[0];
 }
 
-export function checkInstructionLedger(ledger, repoRoot) {
+// Legacy paths (`.claude/…`) live in the template tree, which may be a separate checkout from the
+// plugin source: `legacyRoot` resolves them, `repoRoot` resolves everything under harness-source/ and tests/.
+function legacyAbs(repoRoot, legacyRoot, rel) {
+  return path.join(rel.startsWith('.claude/') ? legacyRoot : repoRoot, rel);
+}
+
+export function checkInstructionLedger(ledger, repoRoot, { legacyRoot = repoRoot } = {}) {
   const errors = validate(instructionSchema, ledger);
   if (errors.length) return errors;
   const ids = new Set();
@@ -86,7 +92,7 @@ export function checkInstructionLedger(ledger, repoRoot) {
     ids.add(e.id);
     if (e.legacy.file === ledger.legacy_contract.source) claimed.add(e.legacy.item);
     const owner = ownerFile(e.owner);
-    if (!fs.existsSync(path.join(repoRoot, owner))) errors.push(`${e.id}: owner does not exist: ${owner}`);
+    if (!fs.existsSync(legacyAbs(repoRoot, legacyRoot, owner))) errors.push(`${e.id}: owner does not exist: ${owner}`);
     if (e.status !== 'legacy-only' && e.status !== 'gap' && !owner.startsWith('harness-source/')) errors.push(`${e.id}: a ${e.status} rule must be owned under harness-source/ (got ${owner})`);
     if (!fs.existsSync(path.join(repoRoot, e.check.test))) errors.push(`${e.id}: check test missing: ${e.check.test}`);
     if (e.destinations.claude === null && e.destinations.codex === null && e.status !== 'retired') errors.push(`${e.id}: no destination on either host — classify as retired with a rationale or name a destination`);
@@ -100,7 +106,7 @@ export function checkInstructionLedger(ledger, repoRoot) {
   return errors;
 }
 
-export function checkHookLedger(ledger, repoRoot, { legacyHooksDir = '.claude/hooks' } = {}) {
+export function checkHookLedger(ledger, repoRoot, { legacyHooksDir = '.claude/hooks', legacyRoot = repoRoot } = {}) {
   const errors = validate(hookSchema, ledger);
   if (errors.length) return errors;
   const ids = new Set();
@@ -109,7 +115,7 @@ export function checkHookLedger(ledger, repoRoot, { legacyHooksDir = '.claude/ho
     if (ids.has(h.id)) errors.push(`duplicate hook id ${h.id}`);
     ids.add(h.id);
     covered.add(path.posix.basename(h.legacy));
-    if (!fs.existsSync(path.join(repoRoot, h.legacy))) errors.push(`${h.id}: legacy script missing: ${h.legacy}`);
+    if (!fs.existsSync(legacyAbs(repoRoot, legacyRoot, h.legacy))) errors.push(`${h.id}: legacy script missing: ${h.legacy}`);
     const states = Object.values(h.hosts).map((x) => x.state);
     if (states.includes('ported') || states.includes('conditional')) {
       if (!h.core) errors.push(`${h.id}: a ported/conditional hook needs a shared core`);
@@ -118,7 +124,7 @@ export function checkHookLedger(ledger, repoRoot, { legacyHooksDir = '.claude/ho
     if (states.includes('retired') && (!h.rationale || !h.decision)) errors.push(`${h.id}: retirement needs rationale and decision`);
     for (const t of h.tests) if (!fs.existsSync(path.join(repoRoot, t))) errors.push(`${h.id}: test missing: ${t}`);
   }
-  const dir = path.join(repoRoot, legacyHooksDir);
+  const dir = path.join(legacyRoot, legacyHooksDir);
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir)) {
       if (f.endsWith('.sh') && !covered.has(f)) errors.push(`legacy hook not in the ledger: ${legacyHooksDir}/${f}`);
@@ -128,10 +134,10 @@ export function checkHookLedger(ledger, repoRoot, { legacyHooksDir = '.claude/ho
   return errors;
 }
 
-export function checkParity(repoRoot) {
+export function checkParity(repoRoot, { legacyRoot = repoRoot } = {}) {
   const { instructions, hooks } = loadLedgers(repoRoot);
   return {
-    errors: [...checkInstructionLedger(instructions, repoRoot).map((e) => `instruction-parity: ${e}`), ...checkHookLedger(hooks, repoRoot).map((e) => `hook-parity: ${e}`)],
+    errors: [...checkInstructionLedger(instructions, repoRoot, { legacyRoot }).map((e) => `instruction-parity: ${e}`), ...checkHookLedger(hooks, repoRoot, { legacyRoot }).map((e) => `hook-parity: ${e}`)],
     counts: { instructions: instructions.entries.length, hooks: hooks.hooks.length, legacy_items: instructions.legacy_contract.items.length },
   };
 }
