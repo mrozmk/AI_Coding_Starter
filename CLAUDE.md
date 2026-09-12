@@ -49,7 +49,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 {typecheck-command} && {lint-command} && {test-command}
 ```
 
-**Runtime smoke — optional fourth, conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check in [.agents/reference/runtime-smoke.md](.agents/reference/runtime-smoke.md). No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass). Delete this paragraph in a project with no rendered UI.
+**Runtime smoke — optional fourth, conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check the harness reference `runtime-smoke.md` describes. No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass). Delete this paragraph in a project with no rendered UI.
 
 **Test policy — which layers MUST have tests:**
 
@@ -126,7 +126,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 - **`git worktree` and `git merge --ff-only` are reserved for the `/orchestrate` pipeline.** They are allow-listed in `settings.json` only so the pipeline runs without per-step prompts; an allow cannot be scoped to one command, so this is a behavioral rule, not a hard gate. Do not use either ad hoc in a normal session.
 - **A new branch must not track a protected branch.** `git switch -c` / `checkout -b` from `origin/<protected>` auto-sets that branch as upstream, so a bare `git push` targets it directly. Create with `--no-track` (or run `git branch --unset-upstream` right after) and let [/push](.claude/commands/push.md) set the upstream on first push.
 - **Protected branches refuse commits and pipeline runs** — [/commit](.claude/commands/commit.md) and [/orchestrate](.claude/commands/orchestrate.md) Phase 4 read **Protected** from the Branch model block below. Block absent or field empty → no branch is protected and both proceed (the starter's own default is committing on `main`).
-- **[/orchestrate](.claude/commands/orchestrate.md) pushes the current branch**, not a hardcoded `main`; parallel runs and the supervised `--integrate` merge queue: [.agents/reference/parallel-orchestration.md](.agents/reference/parallel-orchestration.md).
+- **[/orchestrate](.claude/commands/orchestrate.md) pushes the current branch**, not a hardcoded `main`; parallel runs and the supervised `--integrate` merge queue: the harness reference `parallel-orchestration.md`.
 - **AI attribution in commits is switched off in `settings.json`** (`"attribution": { "commit": "", "pr": "", "sessionUrl": false }`), not forbidden by prose: by default the host injects a session-level instruction to append `Co-Authored-By` and `Claude-Session` trailers that outranks any rule file, and a prose rule the model can be overruled on is worse than none. The older `includeCoAuthoredBy` is deprecated and silences only the first trailer. Keep the key; do not re-add the prohibition to `/commit`.
 
 **Orchestrate publish:** push
@@ -165,7 +165,7 @@ Generic triggers, always on. **Project-specific routing** lives in [.agents/memo
 - **Before implementing something new:** check `.agents/plans/active/` for existing plans
 - **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until [.claude/memory-domains.json](.claude/memory-domains.json) has path→domain rules **and** memory outgrows its size threshold (both required).
 - **When uncertain about approach:** make routine judgment calls yourself; stop and ask when different readings of the request would lead to materially different work
-- **After a `/qa-verify` run with interaction rows** (Playwright methods, or a Tier-2 driver run): offer to promote the recorded sequence into a regression test per [.agents/reference/qa-to-regression-test.md](.agents/reference/qa-to-regression-test.md) — QA never writes tests itself, so the sequence is lost otherwise
+- **After a `/qa-verify` run with interaction rows** (Playwright methods, or a Tier-2 driver run): offer to promote the recorded sequence into a regression test per the harness reference `qa-to-regression-test.md` — QA never writes tests itself, so the sequence is lost otherwise
 - **After fixing a bug:** route the lesson per [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) → target table — a defect in application code → `errors.md` (it must name the source file); friction in a slash command, hook, MCP server or shell/git invocation → `domain/harness.md`. Ask *"Would a fresh Claude make this mistake again without it?"* — the default is to write nothing.
 - **When a `domain/` memory file doesn't exist but is needed:** create it from the template in [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md)
 - **When writing to memory at the end of a run:** read [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) first — the save-or-not bar and entry formats live there, outside the `/prime` payload

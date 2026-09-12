@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { CANONICAL, LEGACY, effective, readProfile, semanticErrors, syntheticProfile, updateProfile } from '../../harness-source/scripts/profile.mjs';
+import { CANONICAL, DEFAULT_GROUPS, LEGACY, effective, readProfile, semanticErrors, syntheticProfile, updateProfile } from '../../harness-source/scripts/profile.mjs';
 
 const CLI = path.resolve(import.meta.dirname, '../../harness-source/scripts/profile.mjs');
 const PROJECTS = path.join(import.meta.dirname, 'fixtures/projects');
@@ -69,7 +69,10 @@ test('missing, invalid or conflicting profiles never report enabled groups', () 
   assert.equal(missing.status, 2);
   assert.match(missing.stdout, /"groups": null/);
   assert.match(missing.stdout, /"blocked": "no project profile/);
-  assert.deepEqual(Object.values(effective(readProfile(path.join(PROJECTS, 'no-profile'))).groups), [false, false, false, false, false, false]);
+  // Derived from DEFAULT_GROUPS, so a group added later is covered without editing this line.
+  const none = effective(readProfile(path.join(PROJECTS, 'no-profile'))).groups;
+  assert.deepEqual(Object.keys(none).sort(), Object.keys(DEFAULT_GROUPS).sort(), 'every declared group is reported');
+  assert.deepEqual(Object.values(none), Object.keys(none).map(() => false));
 
   const conflict = copy('conflict');
   const c = cli(conflict, ['groups']);

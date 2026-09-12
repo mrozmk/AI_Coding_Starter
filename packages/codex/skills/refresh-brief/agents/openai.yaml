@@ -1,0 +1,5 @@
+interface:
+  display_name: refresh-brief
+  short_description: Distil a PRD into .agents/memory/project-brief.md so prime loads fast project context without reading the whole PRD, ...
+policy:
+  allow_implicit_invocation: false

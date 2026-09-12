@@ -10,6 +10,9 @@ export const OWNERS = ['core', 'adapter:claude', 'adapter:codex', 'build'];
 export const LEGACY_CLASSES = ['migrated', 'deferred', 'project', 'retained', 'host-provided', 'retired'];
 export const HOSTS = ['claude', 'codex'];
 const ID_PATTERN = '^[a-z][a-z0-9-]*$';
+// A wrapper command path: one optional namespace segment, whose second half may be mixed-case
+// because `create-PRD` is the real filename under .claude/commands/setup/.
+const WRAPPER_PATTERN = '^[a-z][a-z0-9-]*(/[A-Za-z][A-Za-z0-9_-]*)?$';
 
 // Local-only files that git ignores; never part of the classification duty.
 const LOCAL_ONLY = /^\.claude\/(audit\.log|memory-usage\.json|settings\.local\.json|scheduled_tasks\.lock|worktrees\/|first-run|assistant-daemon-state\.json|.*\.tmp)$|(^|\/)\.DS_Store$/;
@@ -29,10 +32,11 @@ const inventorySchema = {
           id: { type: 'string', pattern: ID_PATTERN },
           kind: { enum: KINDS },
           owner: { enum: OWNERS },
-          phase: { enum: ['planning', 'git', 'execution'] },
+          phase: { enum: ['planning', 'git', 'execution', 'product', 'qa', 'integration'] },
           dependencies: { type: 'array', items: { type: 'string' } },
           source: { type: 'string' },
           output: { type: 'string' },
+          wrapper: { type: 'string', pattern: WRAPPER_PATTERN },
           host: { enum: HOSTS },
           legacy: { type: 'array', items: { type: 'string' } },
         },
@@ -51,7 +55,13 @@ export function loadInventory(repoRoot) {
 export function validateInventory(inventory, repoRoot) {
   const errors = validate(inventorySchema, inventory);
   const ids = new Set();
+  const wrappers = new Map();
   for (const e of inventory.entries) {
+    if (e.wrapper !== undefined) {
+      if (e.kind !== 'skill') errors.push(`${e.id}: wrapper is only valid on a skill entry`);
+      if (wrappers.has(e.wrapper)) errors.push(`${e.id}: wrapper ${e.wrapper} already declared by ${wrappers.get(e.wrapper)}`);
+      else wrappers.set(e.wrapper, e.id);
+    }
     if (ids.has(e.id)) errors.push(`duplicate id ${e.id}`);
     ids.add(e.id);
     if (e.kind === 'manifest') {
@@ -70,9 +80,11 @@ export function validateInventory(inventory, repoRoot) {
     for (const d of e.dependencies) if (!ids.has(d)) errors.push(`${e.id}: unknown dependency ${d}`);
   }
   const legacyClaimed = new Set();
+  const retiredPaths = new Set();
   for (const l of inventory.legacy) {
     if (legacyClaimed.has(l.path)) errors.push(`legacy path listed twice: ${l.path}`);
     legacyClaimed.add(l.path);
+    if (l.class === 'retired') retiredPaths.add(l.path);
     if (l.class === 'migrated' && !ids.has(l.replaced_by)) errors.push(`${l.path}: migrated but replaced_by unknown`);
     // A tombstone is the record of a deletion: the replacement must be a real entry and the file
     // must be gone, or the row is a lie in one direction or the other.
@@ -82,6 +94,12 @@ export function validateInventory(inventory, repoRoot) {
     } else if (!fs.existsSync(path.join(repoRoot, l.path))) {
       errors.push(`legacy path does not exist: ${l.path}`);
     }
+  }
+  // A generated wrapper writes the command file back into a downstream project, where no build gate
+  // runs — pointing one at a tombstoned path would silently resurrect the file this release deleted.
+  for (const [wrapper, id] of wrappers) {
+    const p = `.claude/commands/${wrapper}.md`;
+    if (retiredPaths.has(p)) errors.push(`${id}: wrapper ${wrapper} resolves to retired legacy path ${p}`);
   }
   // Every existing harness file under .claude/ must be classified (exact or by directory prefix).
   const { files } = listFiles(path.join(repoRoot, '.claude'));

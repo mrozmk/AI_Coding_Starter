@@ -39,7 +39,6 @@
       "Bash(git worktree list:*)",
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
-      "Bash(bash .claude/lib/qa-probe.sh)",
       "Bash(bash .claude/skills/pr-comments/references/pr-api.sh:*)",
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:docs.anthropic.com)",

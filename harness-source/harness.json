@@ -2,9 +2,9 @@
   "_doc": "Release identity of the dual-host harness. Both native manifests, the build marker and the release bundle read name/version from here; nothing else declares a version. `marketplace_source` + `release_ref` name the git marketplace channel projects install from; scripts/release-harness.mjs publishes to it.",
   "schema_version": 1,
   "name": "harness",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "display_name": "AI Coding Starter harness",
-  "description": "Planning and review procedures (prime, brainstorm, plan-feature, setup-start, handoff) with fail-closed cross-model review, packaged for Claude Code and Codex CLI from one source, plus the execution and quality stage (execute, check-implementation, quick-change, deep-review, orchestrate, gates, recon, analysis, design, test-e2e, architecture-review) with a supervised Codex executor.",
+  "description": "Planning and review procedures (prime, brainstorm, plan-feature, setup-start, handoff) with fail-closed cross-model review, packaged for Claude Code and Codex CLI from one source; the execution and quality stage (execute, check-implementation, quick-change, deep-review, orchestrate, gates, recon, analysis, design, test-e2e, architecture-review) with a supervised Codex executor; the product slice (create-prd, refresh-brief, create-backlog, stack-research, prime-ba); acceptance-criteria verification (qa-verify, prime-qa and two shipped verifiers that run as agents on Claude Code and inline on Codex); the session peripherals retro and simply; and the Atlassian integrations jira and confluence.",
   "marketplace_name": "ai-coding-starter",
   "owner": {
     "name": "AI Coding Starter"
@@ -24,7 +24,7 @@
       }
     }
   },
-  "release_scope": "planning-review-git-execution",
+  "release_scope": "planning-review-git-execution-product-qa-integration",
   "skill_entry_dir": "skills",
   "marketplace_source": "mrozmk/AI_Coding_Starter",
   "release_ref": "release"

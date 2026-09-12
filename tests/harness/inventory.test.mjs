@@ -17,16 +17,31 @@ test('every file under harness-source/ is claimed by an entry (allowlist is comp
   assert.deepEqual(unclaimedSources(inventory, REPO), []);
 });
 
-test('execution and git commands are classified migrated, tracker skills deferred, project files never packaged', () => {
+test('execution, git, product and QA commands are classified migrated, the ported skills retired, project files never packaged', () => {
   const { inventory } = loadInventory(REPO);
   const byPath = Object.fromEntries(inventory.legacy.map((l) => [l.path, l.class]));
-  assert.equal(byPath['.claude/skills/jira/'], 'deferred');
+  const byReplacement = Object.fromEntries(inventory.legacy.map((l) => [l.path, l.replaced_by]));
+  // The Atlassian skills moved into the plugin whole, so their legacy directories are tombstones now.
+  assert.equal(byPath['.claude/skills/jira/'], 'retired');
+  assert.equal(byReplacement['.claude/skills/jira/'], 'jira');
+  assert.equal(byPath['.claude/skills/confluence/'], 'retired');
+  assert.equal(byReplacement['.claude/skills/confluence/'], 'confluence');
+  assert.equal(byPath['.claude/skills/pr-comments/'], 'retained', 'pr-comments stays put — its settings.json allowance is recorded');
   for (const p of ['.claude/commands/execute.md', '.claude/commands/check-implementation.md', '.claude/commands/orchestrate.md',
-    '.claude/commands/commit.md', '.claude/commands/push.md', '.claude/commands/start-task.md']) {
+    '.claude/commands/commit.md', '.claude/commands/push.md', '.claude/commands/start-task.md',
+    '.claude/commands/setup/create-PRD.md', '.claude/commands/maintain/refresh-brief.md', '.claude/commands/setup/create-backlog.md',
+    '.claude/commands/setup/stack-research.md', '.claude/commands/prime-ba.md', '.claude/commands/prime-qa.md',
+    '.claude/commands/qa-verify.md', '.claude/commands/retro.md', '.claude/commands/simply.md']) {
     assert.equal(byPath[p], 'migrated', p);
   }
+  // setup-start is migrated but deliberately NOT wrapper-eligible: a generated wrapper would
+  // overwrite the legacy bootstrap body that still serves the steps the plugin does not perform.
+  assert.equal(byPath['.claude/commands/setup/start.md'], 'migrated');
+  assert.equal(inventory.entries.find((e) => e.id === 'setup-start').wrapper, undefined);
   for (const p of ['.claude/lib/git-baseline.sh', '.claude/lib/codex-bg.sh', '.claude/commands/gates/verify-implementation.md',
-    '.claude/agents/orchestrator-executor.md', '.claude/commands/codex-review.md']) {
+    '.claude/agents/orchestrator-executor.md', '.claude/commands/codex-review.md',
+    '.claude/lib/qa-probe.sh', '.claude/agents/qa-contract.md', '.claude/agents/qa-runtime-ui.md',
+    '.claude/agents/qa-runtime-app.md.example', '.claude/agents/qa-runtime-device.md.example']) {
     assert.equal(byPath[p], 'retired', p);
   }
   assert.equal(byPath['.claude/hooks/check-project-deps.sh'], 'project');

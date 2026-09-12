@@ -100,7 +100,7 @@ Substitute the **literal** branch name into every command below wherever `<TARGE
 
 - If the output is literal `HEAD` → **detached HEAD**. STOP: "Detached HEAD — checkout a branch before /orchestrate." (`push.md:10-11`.)
 - If `TARGET_BRANCH` is listed under **Protected** in `CLAUDE.md → ### Branch model` → STOP: "`<TARGET_BRANCH>` is protected — run /orchestrate from a working branch." The pipeline commits (and in `push` mode pushes) to this branch on every step; a protected branch would reject that server-side or, worse, accept it. Block absent or field empty → nothing is protected (the single-run-on-`main` default stays byte-for-byte).
-- **On `main` (the single-run default) everything below is byte-for-byte today's behavior.** On an `orch-<id>` branch (a parallel run — see `.agents/reference/parallel-orchestration.md`) per-step work pushes to `origin/<TARGET_BRANCH>`; the results are brought onto `main` later by the supervised **Integration mode** (`--integrate`, below).
+- **On `main` (the single-run default) everything below is byte-for-byte today's behavior.** On an `orch-<id>` branch (a parallel run — see `references/parallel-orchestration.md`) per-step work pushes to `origin/<TARGET_BRANCH>`; the results are brought onto `main` later by the supervised **Integration mode** (`--integrate`, below).
 - **Build-log slug:** for the OS-global `/tmp` build-log path (shared even across separate clones), use `TARGET_SLUG` = `<TARGET_BRANCH>` with every `/` replaced by `-`. The runbook mandates `orch-<id>` (no slash), but this keeps a single run on a slashy branch like `feat/x` safe.
 
 **Resolve `PUBLISH_MODE` (does this pipeline push at all?):**
@@ -635,7 +635,7 @@ Deploy is your call.
 
 ## Integration mode (`--integrate`) — supervised merge queue
 
-Entered directly from Phase 0 when invoked as `/orchestrate --integrate orch-a orch-b …`. **Phases 1–7 do NOT run.** This is a standalone, single-threaded, human-supervised merge queue that brings the completed parallel run-branches onto `main`. Run it once, from a clone checked out on `main`, after every parallel build has finished and pushed. Operator runbook: `.agents/reference/parallel-orchestration.md`.
+Entered directly from Phase 0 when invoked as `/orchestrate --integrate orch-a orch-b …`. **Phases 1–7 do NOT run.** This is a standalone, single-threaded, human-supervised merge queue that brings the completed parallel run-branches onto `main`. Run it once, from a clone checked out on `main`, after every parallel build has finished and pushed. Operator runbook: `references/parallel-orchestration.md`.
 
 **Why supervised and not auto-merged.** Each integration merge is `git merge --no-ff` — an `ask`-tier op that prompts once. That prompt IS the design, not an obstacle: there is **no `settings.json` change and no new hook**. Auto-approving the merge was deliberately rejected — a scoped `allow` glob can't express "only origin's `orch-*`" (permission globs aren't argument-aware, and a branch name doesn't prove origin), and a PreToolUse `allow` hook does not bypass a matching `ask` rule. Expect **one approval prompt per branch**. The other git ops used here (`worktree add/remove`, `merge --ff-only`, `fetch`, `push`) are already `allow`-tier.
 

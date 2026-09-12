@@ -1,5 +1,5 @@
 {
-  "_doc": "QA environment description, read by .claude/lib/qa-probe.sh (which /prime-qa injects at command load). STARTER DEFAULT: `base_url` and `local_url` are empty, so the probe reports 'not configured' and /prime-qa still loads the QA context — it just cannot resolve a BASE_URL. Fill this in per project. Nothing here is secret: it is hosts and commands, never credentials. Credentials stay in .env, which the probe only stats (size + mtime), never reads.",
+  "_doc": "QA environment description, read by the harness probe `scripts/qa-probe.mjs` (which `prime-qa` runs as its first step). STARTER DEFAULT: `base_url` and `local_url` are empty, so the probe reports 'not configured' and /prime-qa still loads the QA context — it just cannot resolve a BASE_URL. Fill this in per project. Nothing here is secret: it is hosts and commands, never credentials. Credentials stay in .env, which the probe only stats (size + mtime), never reads.",
 
   "_base_url_doc": "Candidate DEPLOYED host QA verifies against, no trailing slash. Empty => skip deployed probing and go straight to local.",
   "base_url": "",

@@ -39,6 +39,8 @@ Preset expansion (`scripts/rules.mjs branchModel` / `derivePublish`): `trunk` �
 
 ## Groups
 
+Groups: `planning` · `review` · `execution` · `git` · `product` · `qa` · `tracker` · `confluence`.
+
 A `false` group disables every entrypoint of that group even though the skill is installed: the skill checks `profile.mjs groups` first and stops with `<group> disabled in the project profile`. Disabling never prunes the shared plugin cache; enabling is a profile change after confirmation plus a dependency preflight (e.g. tracker credentials) — no cache edit, no file restore. A tracker counts as configured only when the profile says so, never because a skill exists.
 
 ## Binding (`.agents/harness-version.json`)
@@ -58,7 +60,10 @@ Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its 
 | Need | Legacy owner | Behaviour when absent |
 |---|---|---|
 | `.env.example` toggles, `.mcp.json` pruning, toolchain block, command-group pruning, TESTING/DoD/PR templates | `.claude/commands/setup/start.md` | report `legacy bootstrap not installed — skipped` and stop that step |
-| PRD, brief, backlog, CLAUDE.md generation, codebase map | `.claude/commands/setup/*.md`, `maintain/refresh-brief.md` | same |
+| PRD, brief, backlog, stack research, BA priming | plugin skills (`groups.product`, default `true` for profiles written by 0.4.0 `setup-start`; older profiles keep `false` until set) | `product group disabled in the project profile` |
+| acceptance-criteria verification, QA priming, the two shipped verifiers and their procedures | plugin skills (`groups.qa`, default `false` — an explicit Screen 3 answer) | `qa group disabled in the project profile` |
+| Jira and Confluence flows, the Atlassian reference bundle | plugin skills (`groups.tracker` / `groups.confluence`); the MCP server, its permission tiers and the `JIRA_*` / `CONFLUENCE_*` variables stay project-side | `tracker` / `confluence group disabled in the project profile`; server absent from the session roster → say so and stop |
+| `CLAUDE.md` generation, codebase map, LLM wiki, workflow housekeeping | `.claude/commands/setup/{create-CLAUDE_MD,map-codebase,createwikillm}.md`, `maintain/cleanup-workflow.md` | report `legacy bootstrap not installed — skipped` and stop that step |
 | execute, check-implementation, orchestrate, gates, quick-change, deep-review, analysis, recon, design, test-e2e, architecture-review | plugin skills (`groups.execution`, default `true` for profiles written by 0.3.0 `setup-start`; 0.2.0 profiles keep `false` until set) | `execution group disabled in the project profile` |
 | supervised Codex executor (`execute codex`, the `check-implementation` fixer, cross-model code reviews) | `scripts/executor-orchestrator.mjs` — Claude authors only; needs `groups.execution` (write) and `groups.execution` + `groups.review` (read) | refuses a Codex author; with a group on and the `codex` CLI absent it is blocked, not skipped |
 | commit, push, pull, release, pr-create, start-task | plugin skills (`groups.git`, `true` by default since 0.2.0; each skill checks it first) | `git group disabled in the project profile` |

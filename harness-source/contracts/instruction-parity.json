@@ -154,14 +154,71 @@
       },
       "applicability": "conditional:ui",
       "strength": "hard",
-      "owner": "harness-source/templates/project-rules.md#Validation",
+      "owner": "harness-source/references/runtime-smoke.md",
       "destinations": {
-        "claude": "CLAUDE.md#Validation (runtime smoke paragraph, rendered when app_surface != none)",
-        "codex": ".agents/project-rules.md#Validation"
+        "claude": "plugin reference references/runtime-smoke.md, cited from CLAUDE.md#Validation (rendered when app_surface != none)",
+        "codex": "plugin reference references/runtime-smoke.md, cited from .agents/project-rules.md#Validation"
       },
       "check": {
         "test": "tests/harness/rules.test.mjs",
         "name": "runtime smoke paragraph is rendered only for rendered-UI projects"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "qa.evidence-families-split",
+      "legacy": {
+        "file": ".agents/reference/qa-evidence-families.md",
+        "item": "Ownership"
+      },
+      "applicability": "conditional:qa",
+      "strength": "hard",
+      "owner": "harness-source/references/qa-evidence-families.md",
+      "destinations": {
+        "claude": "plugin reference references/qa-evidence-families.md + project overlay .agents/reference/qa-evidence-families.md (seeded absent-only)",
+        "codex": "same two halves"
+      },
+      "check": {
+        "test": "tests/harness/bootstrap.test.mjs",
+        "name": "a bare repository receives the routing, reflection and empty placeholder files; existing memory is never overwritten"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "qa.verifier-procedure-contract",
+      "legacy": {
+        "file": ".claude/agents/qa-contract.md",
+        "item": "Mandatory first action"
+      },
+      "applicability": "conditional:qa",
+      "strength": "hard",
+      "owner": "harness-source/references/qa/contract-procedure.md",
+      "destinations": {
+        "claude": "agents/qa-contract.md cites references/qa/contract-procedure.md",
+        "codex": "the qa-verify router reads references/qa/contract-procedure.md and runs the lane inline"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "skills declare the group their capability belongs to, and the ungrouped ones declare none"
+      },
+      "status": "conditional"
+    },
+    {
+      "id": "qa.runtime-ui-procedure-contract",
+      "legacy": {
+        "file": ".claude/agents/qa-runtime-ui.md",
+        "item": "Observation discipline"
+      },
+      "applicability": "conditional:qa",
+      "strength": "hard",
+      "owner": "harness-source/references/qa/runtime-ui-procedure.md",
+      "destinations": {
+        "claude": "agents/qa-runtime-ui.md cites references/qa/runtime-ui-procedure.md",
+        "codex": "the qa-verify router reads references/qa/runtime-ui-procedure.md and runs the lane inline"
+      },
+      "check": {
+        "test": "tests/harness/skills.test.mjs",
+        "name": "skills declare the group their capability belongs to, and the ungrouped ones declare none"
       },
       "status": "conditional"
     },

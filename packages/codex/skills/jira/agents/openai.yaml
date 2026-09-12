@@ -1,0 +1,5 @@
+interface:
+  display_name: jira
+  short_description: Create, edit, search, comment, link, and transition Jira Cloud Epics, Tasks, and Bugs via mcp-atlassian.
+policy:
+  allow_implicit_invocation: false

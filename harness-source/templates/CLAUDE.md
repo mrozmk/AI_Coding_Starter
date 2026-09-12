@@ -36,7 +36,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ```
 <!-- if:ui -->
 
-**Runtime smoke — optional conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs a baseline → reload → diff check (`.agents/reference/runtime-smoke.md` when present). No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass).
+**Runtime smoke — optional conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check the harness reference `runtime-smoke.md` describes. No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass).
 <!-- endif:ui -->
 
 **Test policy — which layers MUST have tests:**

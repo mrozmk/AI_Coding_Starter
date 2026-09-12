@@ -1,0 +1,5 @@
+interface:
+  display_name: create-backlog
+  short_description: Generate .agents/backlog.md — the delivery map that operationalizes a PRD into epics, a task DAG and work packages th...
+policy:
+  allow_implicit_invocation: false

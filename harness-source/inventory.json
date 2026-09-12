@@ -22,6 +22,7 @@
       "source": "harness-source/skills/prime/SKILL.md",
       "owner": "core",
       "phase": "planning",
+      "wrapper": "prime",
       "dependencies": [
         "ref-setup-contract",
         "context-pack",
@@ -41,6 +42,7 @@
       "source": "harness-source/skills/brainstorm/SKILL.md",
       "owner": "core",
       "phase": "planning",
+      "wrapper": "brainstorm",
       "dependencies": [
         "ref-planning-contract",
         "ref-review-contract",
@@ -62,6 +64,7 @@
       "source": "harness-source/skills/plan-feature/SKILL.md",
       "owner": "core",
       "phase": "planning",
+      "wrapper": "plan-feature",
       "dependencies": [
         "ref-planning-contract",
         "ref-plan-split-contract",
@@ -109,6 +112,7 @@
       "source": "harness-source/skills/handoff/SKILL.md",
       "owner": "core",
       "phase": "planning",
+      "wrapper": "handoff",
       "dependencies": [
         "tpl-handoff"
       ],
@@ -834,6 +838,7 @@
       "source": "harness-source/skills/commit/SKILL.md",
       "owner": "core",
       "phase": "git",
+      "wrapper": "commit",
       "dependencies": [
         "profile"
       ],
@@ -849,6 +854,7 @@
       "source": "harness-source/skills/push/SKILL.md",
       "owner": "core",
       "phase": "git",
+      "wrapper": "push",
       "dependencies": [
         "profile"
       ],
@@ -864,6 +870,7 @@
       "source": "harness-source/skills/pull/SKILL.md",
       "owner": "core",
       "phase": "git",
+      "wrapper": "pull",
       "dependencies": [
         "profile"
       ],
@@ -879,6 +886,7 @@
       "source": "harness-source/skills/release/SKILL.md",
       "owner": "core",
       "phase": "git",
+      "wrapper": "release",
       "dependencies": [
         "profile",
         "agent-documentation-manager"
@@ -895,6 +903,7 @@
       "source": "harness-source/skills/pr-create/SKILL.md",
       "owner": "core",
       "phase": "git",
+      "wrapper": "pr-create",
       "dependencies": [
         "profile"
       ],
@@ -910,6 +919,7 @@
       "source": "harness-source/skills/start-task/SKILL.md",
       "owner": "core",
       "phase": "git",
+      "wrapper": "start-task",
       "dependencies": [
         "profile"
       ],
@@ -965,6 +975,443 @@
       "dependencies": [
         "adapter-codex-json",
         "adapter-codex-review"
+      ]
+    },
+    {
+      "id": "ref-qa-to-regression-test",
+      "kind": "reference",
+      "source": "harness-source/references/qa-to-regression-test.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [],
+      "legacy": [
+        ".agents/reference/qa-to-regression-test.md"
+      ],
+      "description": "Promoting a recorded QA interaction sequence into a regression test."
+    },
+    {
+      "id": "ref-runtime-smoke",
+      "kind": "reference",
+      "source": "harness-source/references/runtime-smoke.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".agents/reference/runtime-smoke.md"
+      ],
+      "description": "Baseline to reload to diff runtime smoke procedure performed by the verify-implementation gate."
+    },
+    {
+      "id": "ref-parallel-orchestration",
+      "kind": "reference",
+      "source": "harness-source/references/parallel-orchestration.md",
+      "owner": "core",
+      "phase": "execution",
+      "dependencies": [],
+      "legacy": [
+        ".agents/reference/parallel-orchestration.md"
+      ],
+      "description": "Parallel orchestrate runs and the supervised integration merge queue: operator runbook."
+    },
+    {
+      "id": "ref-jira-mcp-atlassian",
+      "kind": "reference",
+      "source": "harness-source/references/jira-mcp-atlassian.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [],
+      "legacy": [
+        ".agents/reference/jira-mcp-atlassian.md"
+      ],
+      "description": "Atlassian MCP quirks: ADF safe subset, field shapes, transition and search behaviour."
+    },
+    {
+      "id": "ref-jira-attachments",
+      "kind": "reference",
+      "source": "harness-source/references/jira/attachments.md",
+      "output": "references/jira/attachments.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "ref-jira-mcp-atlassian"
+      ],
+      "legacy": [
+        ".claude/skills/jira/references/attachments.md"
+      ]
+    },
+    {
+      "id": "ref-jira-bulk-pattern",
+      "kind": "reference",
+      "source": "harness-source/references/jira/bulk-pattern.md",
+      "output": "references/jira/bulk-pattern.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "ref-jira-mcp-atlassian"
+      ],
+      "legacy": [
+        ".claude/skills/jira/references/bulk-pattern.md"
+      ]
+    },
+    {
+      "id": "ref-jira-description-templates",
+      "kind": "reference",
+      "source": "harness-source/references/jira/description-templates.md",
+      "output": "references/jira/description-templates.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "ref-jira-mcp-atlassian"
+      ],
+      "legacy": [
+        ".claude/skills/jira/references/description-templates.md"
+      ]
+    },
+    {
+      "id": "ref-jira-field-matrix",
+      "kind": "reference",
+      "source": "harness-source/references/jira/field-matrix.md",
+      "output": "references/jira/field-matrix.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "ref-jira-mcp-atlassian"
+      ],
+      "legacy": [
+        ".claude/skills/jira/references/field-matrix.md"
+      ]
+    },
+    {
+      "id": "ref-jira-jql-cookbook",
+      "kind": "reference",
+      "source": "harness-source/references/jira/jql-cookbook.md",
+      "output": "references/jira/jql-cookbook.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "ref-jira-mcp-atlassian"
+      ],
+      "legacy": [
+        ".claude/skills/jira/references/jql-cookbook.md"
+      ]
+    },
+    {
+      "id": "ref-jira-transition-pattern",
+      "kind": "reference",
+      "source": "harness-source/references/jira/transition-pattern.md",
+      "output": "references/jira/transition-pattern.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "ref-jira-mcp-atlassian"
+      ],
+      "legacy": [
+        ".claude/skills/jira/references/transition-pattern.md"
+      ]
+    },
+    {
+      "id": "ref-qa-evidence-families",
+      "kind": "reference",
+      "source": "harness-source/references/qa-evidence-families.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [],
+      "legacy": [
+        ".agents/reference/qa-evidence-families.md"
+      ],
+      "description": "QA evidence families, framework half: the taxonomy, classification signals, worked examples and the verifier output contract."
+    },
+    {
+      "id": "ref-qa-contract-procedure",
+      "kind": "reference",
+      "source": "harness-source/references/qa/contract-procedure.md",
+      "output": "references/qa/contract-procedure.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-evidence-families"
+      ],
+      "description": "Contract/type/boundary verifier procedure, read by the Claude agent and run inline by the Codex router."
+    },
+    {
+      "id": "ref-qa-runtime-ui-procedure",
+      "kind": "reference",
+      "source": "harness-source/references/qa/runtime-ui-procedure.md",
+      "output": "references/qa/runtime-ui-procedure.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-evidence-families"
+      ],
+      "description": "Runtime-UI + a11y verifier procedure, read by the Claude agent and run inline by the Codex router."
+    },
+    {
+      "id": "agent-qa-contract",
+      "kind": "agent",
+      "source": "harness-source/agents/qa-contract.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-contract-procedure",
+        "ref-qa-evidence-families"
+      ],
+      "legacy": [
+        ".claude/agents/qa-contract.md"
+      ],
+      "description": "Registered Lane P verifier (Claude Code only); Codex runs the same procedure inline."
+    },
+    {
+      "id": "agent-qa-runtime-ui",
+      "kind": "agent",
+      "source": "harness-source/agents/qa-runtime-ui.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-runtime-ui-procedure",
+        "ref-qa-evidence-families"
+      ],
+      "legacy": [
+        ".claude/agents/qa-runtime-ui.md"
+      ],
+      "description": "Registered Lane S verifier (Claude Code only); Codex runs the same procedure inline."
+    },
+    {
+      "id": "tpl-agent-qa-runtime-app",
+      "kind": "template",
+      "source": "harness-source/templates/agents/qa-runtime-app.md",
+      "output": "templates/agents/qa-runtime-app.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-evidence-families"
+      ],
+      "legacy": [
+        ".claude/agents/qa-runtime-app.md.example"
+      ],
+      "description": "Opt-in app-lane verifier template: copy into the project to activate the non-browser running-app lane."
+    },
+    {
+      "id": "tpl-agent-qa-runtime-device",
+      "kind": "template",
+      "source": "harness-source/templates/agents/qa-runtime-device.md",
+      "output": "templates/agents/qa-runtime-device.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-evidence-families"
+      ],
+      "legacy": [
+        ".claude/agents/qa-runtime-device.md.example"
+      ],
+      "description": "Opt-in cross-device lane verifier template: copy into the project to activate the touch-tier sweep."
+    },
+    {
+      "id": "tpl-qa-evidence-families-project",
+      "kind": "template",
+      "source": "harness-source/templates/reference/qa-evidence-families-project.md",
+      "output": "templates/reference/qa-evidence-families-project.md",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "ref-qa-evidence-families"
+      ],
+      "description": "Absent-only seed for the project half of the QA evidence families: extensions, verifier roster, not-observable exclusions."
+    },
+    {
+      "id": "create-prd",
+      "kind": "skill",
+      "source": "harness-source/skills/create-prd/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "setup/create-PRD",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/setup/create-PRD.md",
+        "/setup:create-PRD"
+      ]
+    },
+    {
+      "id": "refresh-brief",
+      "kind": "skill",
+      "source": "harness-source/skills/refresh-brief/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "maintain/refresh-brief",
+      "dependencies": [
+        "profile",
+        "mem-project-brief-md",
+        "mem-domain-business-model-md"
+      ],
+      "legacy": [
+        ".claude/commands/maintain/refresh-brief.md",
+        "/maintain:refresh-brief"
+      ]
+    },
+    {
+      "id": "create-backlog",
+      "kind": "skill",
+      "source": "harness-source/skills/create-backlog/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "setup/create-backlog",
+      "dependencies": [
+        "profile",
+        "backlog"
+      ],
+      "legacy": [
+        ".claude/commands/setup/create-backlog.md",
+        "/setup:create-backlog"
+      ]
+    },
+    {
+      "id": "stack-research",
+      "kind": "skill",
+      "source": "harness-source/skills/stack-research/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "setup/stack-research",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/commands/setup/stack-research.md",
+        "/setup:stack-research"
+      ]
+    },
+    {
+      "id": "prime-ba",
+      "kind": "skill",
+      "source": "harness-source/skills/prime-ba/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "prime-ba",
+      "dependencies": [
+        "profile",
+        "backlog"
+      ],
+      "legacy": [
+        ".claude/commands/prime-ba.md",
+        "/prime-ba"
+      ]
+    },
+    {
+      "id": "retro",
+      "kind": "skill",
+      "source": "harness-source/skills/retro/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "retro",
+      "dependencies": [],
+      "legacy": [
+        ".claude/commands/retro.md",
+        "/retro"
+      ]
+    },
+    {
+      "id": "simply",
+      "kind": "skill",
+      "source": "harness-source/skills/simply/SKILL.md",
+      "owner": "core",
+      "phase": "product",
+      "wrapper": "simply",
+      "dependencies": [],
+      "legacy": [
+        ".claude/commands/simply.md",
+        "/simply"
+      ]
+    },
+    {
+      "id": "jira",
+      "kind": "skill",
+      "source": "harness-source/skills/jira/SKILL.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "profile",
+        "ref-jira-mcp-atlassian",
+        "ref-jira-attachments",
+        "ref-jira-bulk-pattern",
+        "ref-jira-description-templates",
+        "ref-jira-field-matrix",
+        "ref-jira-jql-cookbook",
+        "ref-jira-transition-pattern"
+      ],
+      "legacy": [
+        ".claude/skills/jira/",
+        "/jira"
+      ]
+    },
+    {
+      "id": "confluence",
+      "kind": "skill",
+      "source": "harness-source/skills/confluence/SKILL.md",
+      "owner": "core",
+      "phase": "integration",
+      "dependencies": [
+        "profile"
+      ],
+      "legacy": [
+        ".claude/skills/confluence/",
+        "/confluence"
+      ]
+    },
+    {
+      "id": "qa-probe",
+      "kind": "script",
+      "source": "harness-source/scripts/qa-probe.mjs",
+      "owner": "core",
+      "phase": "qa",
+      "dependencies": [
+        "lib-argv",
+        "lib-fsx"
+      ],
+      "legacy": [
+        ".claude/lib/qa-probe.sh"
+      ],
+      "description": "QA environment preflight: qa-env.json facts, host reachability, build skew and the deterministic BASE_URL resolution. Takes no target argument."
+    },
+    {
+      "id": "prime-qa",
+      "kind": "skill",
+      "source": "harness-source/skills/prime-qa/SKILL.md",
+      "owner": "core",
+      "phase": "qa",
+      "wrapper": "prime-qa",
+      "dependencies": [
+        "qa-probe",
+        "profile",
+        "rules",
+        "ref-qa-evidence-families",
+        "tpl-qa-evidence-families-project"
+      ],
+      "legacy": [
+        ".claude/commands/prime-qa.md",
+        "/prime-qa"
+      ]
+    },
+    {
+      "id": "qa-verify",
+      "kind": "skill",
+      "source": "harness-source/skills/qa-verify/SKILL.md",
+      "owner": "core",
+      "phase": "qa",
+      "wrapper": "qa-verify",
+      "dependencies": [
+        "profile",
+        "qa-probe",
+        "ref-qa-evidence-families",
+        "ref-qa-contract-procedure",
+        "ref-qa-runtime-ui-procedure",
+        "ref-qa-to-regression-test",
+        "ref-jira-mcp-atlassian",
+        "agent-qa-contract",
+        "agent-qa-runtime-ui"
+      ],
+      "legacy": [
+        ".claude/commands/qa-verify.md",
+        "/qa-verify"
       ]
     },
     {
@@ -1199,6 +1646,7 @@
       "source": "harness-source/skills/deep-review/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "deep-review",
       "dependencies": [
         "profile"
       ],
@@ -1213,6 +1661,7 @@
       "source": "harness-source/skills/analysis/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "analysis",
       "dependencies": [
         "profile"
       ],
@@ -1227,6 +1676,7 @@
       "source": "harness-source/skills/recon/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "recon",
       "dependencies": [
         "profile"
       ],
@@ -1241,6 +1691,7 @@
       "source": "harness-source/skills/design/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "design",
       "dependencies": [
         "profile",
         "ref-design-credits",
@@ -1261,6 +1712,7 @@
       "source": "harness-source/skills/test-e2e/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "test-e2e",
       "dependencies": [
         "profile"
       ],
@@ -1275,6 +1727,7 @@
       "source": "harness-source/skills/architecture-review/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "architecture-review",
       "dependencies": [
         "profile",
         "executor-orchestrator",
@@ -1296,6 +1749,7 @@
       "source": "harness-source/skills/quick-change/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "quick-change",
       "dependencies": [
         "profile",
         "executor-orchestrator",
@@ -1314,6 +1768,7 @@
       "source": "harness-source/skills/execute/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "execute",
       "dependencies": [
         "profile",
         "executor-orchestrator",
@@ -1332,6 +1787,7 @@
       "source": "harness-source/skills/check-implementation/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "check-implementation",
       "dependencies": [
         "profile",
         "executor-orchestrator",
@@ -1353,6 +1809,7 @@
       "source": "harness-source/skills/orchestrate/SKILL.md",
       "owner": "core",
       "phase": "execution",
+      "wrapper": "orchestrate",
       "dependencies": [
         "profile",
         "executor-orchestrator",
@@ -1400,210 +1857,9 @@
   ],
   "legacy": [
     {
-      "path": ".claude/commands/prime.md",
-      "class": "migrated",
-      "replaced_by": "prime"
-    },
-    {
-      "path": ".claude/commands/brainstorm.md",
-      "class": "migrated",
-      "replaced_by": "brainstorm"
-    },
-    {
-      "path": ".claude/commands/plan-feature.md",
-      "class": "migrated",
-      "replaced_by": "plan-feature"
-    },
-    {
-      "path": ".claude/commands/setup/start.md",
-      "class": "migrated",
-      "replaced_by": "setup-start"
-    },
-    {
-      "path": ".claude/commands/handoff.md",
-      "class": "migrated",
-      "replaced_by": "handoff"
-    },
-    {
-      "path": ".claude/commands/execute.md",
-      "class": "migrated",
-      "note": "execution stage",
-      "replaced_by": "execute"
-    },
-    {
-      "path": ".claude/commands/check-implementation.md",
-      "class": "migrated",
-      "note": "execution stage",
-      "replaced_by": "check-implementation"
-    },
-    {
-      "path": ".claude/commands/orchestrate.md",
-      "class": "migrated",
-      "note": "git automation / orchestration",
-      "replaced_by": "orchestrate"
-    },
-    {
-      "path": ".claude/commands/commit.md",
-      "class": "migrated",
-      "replaced_by": "commit"
-    },
-    {
-      "path": ".claude/commands/push.md",
-      "class": "migrated",
-      "replaced_by": "push"
-    },
-    {
-      "path": ".claude/commands/pull.md",
-      "class": "migrated",
-      "replaced_by": "pull"
-    },
-    {
-      "path": ".claude/commands/release.md",
-      "class": "migrated",
-      "replaced_by": "release"
-    },
-    {
-      "path": ".claude/commands/pr-create.md",
-      "class": "migrated",
-      "replaced_by": "pr-create"
-    },
-    {
-      "path": ".claude/commands/start-task.md",
-      "class": "migrated",
-      "replaced_by": "start-task"
-    },
-    {
-      "path": ".claude/commands/codex-review.md",
-      "class": "retired",
-      "note": "specs/plans via review-orchestrator; ad-hoc code opinions via executor-orchestrator read mode",
-      "replaced_by": "review-orchestrator"
-    },
-    {
-      "path": ".claude/commands/quick-change.md",
-      "class": "migrated",
-      "note": "execution stage",
-      "replaced_by": "quick-change"
-    },
-    {
-      "path": ".claude/commands/deep-review.md",
-      "class": "migrated",
-      "note": "execution stage",
-      "replaced_by": "deep-review"
-    },
-    {
-      "path": ".claude/commands/gates/check-quality.md",
-      "class": "retired",
-      "replaced_by": "gates-check-quality"
-    },
-    {
-      "path": ".claude/commands/gates/design-quality-check.md",
-      "class": "retired",
-      "replaced_by": "gates-design-quality-check"
-    },
-    {
-      "path": ".claude/commands/gates/verify-implementation.md",
-      "class": "retired",
-      "replaced_by": "gates-verify-implementation"
-    },
-    {
-      "path": ".claude/commands/analysis.md",
-      "class": "migrated",
-      "note": "peripheral",
-      "replaced_by": "analysis"
-    },
-    {
-      "path": ".claude/commands/architecture-review.md",
-      "class": "migrated",
-      "note": "peripheral",
-      "replaced_by": "architecture-review"
-    },
-    {
-      "path": ".claude/commands/design.md",
-      "class": "migrated",
-      "note": "peripheral",
-      "replaced_by": "design"
-    },
-    {
-      "path": ".claude/commands/prime-ba.md",
-      "class": "deferred",
-      "note": "integration (tracker)"
-    },
-    {
-      "path": ".claude/commands/prime-qa.md",
-      "class": "deferred",
-      "note": "QA"
-    },
-    {
-      "path": ".claude/commands/qa-verify.md",
-      "class": "deferred",
-      "note": "QA"
-    },
-    {
-      "path": ".claude/commands/recon.md",
-      "class": "migrated",
-      "note": "peripheral",
-      "replaced_by": "recon"
-    },
-    {
-      "path": ".claude/commands/retro.md",
-      "class": "deferred",
-      "note": "peripheral"
-    },
-    {
-      "path": ".claude/commands/simply.md",
-      "class": "deferred",
-      "note": "peripheral"
-    },
-    {
-      "path": ".claude/commands/test-e2e.md",
-      "class": "migrated",
-      "note": "QA",
-      "replaced_by": "test-e2e"
-    },
-    {
-      "path": ".claude/commands/maintain/cleanup-workflow.md",
-      "class": "deferred",
-      "note": "maintenance"
-    },
-    {
-      "path": ".claude/commands/maintain/refresh-brief.md",
-      "class": "deferred",
-      "note": "bootstrap"
-    },
-    {
-      "path": ".claude/commands/maintain/sync-from-starter.md",
-      "class": "retained",
-      "note": "extended in this release with the migrated-record semantics; stays a project-local command"
-    },
-    {
-      "path": ".claude/commands/setup/create-CLAUDE_MD.md",
-      "class": "deferred",
-      "note": "bootstrap"
-    },
-    {
-      "path": ".claude/commands/setup/create-PRD.md",
-      "class": "deferred",
-      "note": "bootstrap"
-    },
-    {
-      "path": ".claude/commands/setup/create-backlog.md",
-      "class": "deferred",
-      "note": "bootstrap"
-    },
-    {
-      "path": ".claude/commands/setup/createwikillm.md",
-      "class": "deferred",
-      "note": "bootstrap"
-    },
-    {
-      "path": ".claude/commands/setup/map-codebase.md",
-      "class": "deferred",
-      "note": "bootstrap"
-    },
-    {
-      "path": ".claude/commands/setup/stack-research.md",
-      "class": "deferred",
-      "note": "bootstrap"
+      "path": ".claude/.starter-sync.json",
+      "class": "project",
+      "note": "sync provenance; gains migrated records"
     },
     {
       "path": ".claude/agents/documentation-manager.md",
@@ -1642,23 +1898,234 @@
     },
     {
       "path": ".claude/agents/qa-contract.md",
-      "class": "deferred",
-      "note": "QA"
+      "class": "retired",
+      "replaced_by": "agent-qa-contract"
     },
     {
       "path": ".claude/agents/qa-runtime-app.md.example",
-      "class": "deferred",
-      "note": "QA"
+      "class": "retired",
+      "replaced_by": "tpl-agent-qa-runtime-app"
     },
     {
       "path": ".claude/agents/qa-runtime-device.md.example",
-      "class": "deferred",
-      "note": "QA"
+      "class": "retired",
+      "replaced_by": "tpl-agent-qa-runtime-device"
     },
     {
       "path": ".claude/agents/qa-runtime-ui.md",
+      "class": "retired",
+      "replaced_by": "agent-qa-runtime-ui"
+    },
+    {
+      "path": ".claude/commands/analysis.md",
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "analysis"
+    },
+    {
+      "path": ".claude/commands/architecture-review.md",
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "architecture-review"
+    },
+    {
+      "path": ".claude/commands/brainstorm.md",
+      "class": "migrated",
+      "replaced_by": "brainstorm"
+    },
+    {
+      "path": ".claude/commands/check-implementation.md",
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "check-implementation"
+    },
+    {
+      "path": ".claude/commands/codex-review.md",
+      "class": "retired",
+      "note": "specs/plans via review-orchestrator; ad-hoc code opinions via executor-orchestrator read mode",
+      "replaced_by": "review-orchestrator"
+    },
+    {
+      "path": ".claude/commands/commit.md",
+      "class": "migrated",
+      "replaced_by": "commit"
+    },
+    {
+      "path": ".claude/commands/deep-review.md",
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "deep-review"
+    },
+    {
+      "path": ".claude/commands/design.md",
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "design"
+    },
+    {
+      "path": ".claude/commands/execute.md",
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "execute"
+    },
+    {
+      "path": ".claude/commands/gates/check-quality.md",
+      "class": "retired",
+      "replaced_by": "gates-check-quality"
+    },
+    {
+      "path": ".claude/commands/gates/design-quality-check.md",
+      "class": "retired",
+      "replaced_by": "gates-design-quality-check"
+    },
+    {
+      "path": ".claude/commands/gates/verify-implementation.md",
+      "class": "retired",
+      "replaced_by": "gates-verify-implementation"
+    },
+    {
+      "path": ".claude/commands/handoff.md",
+      "class": "migrated",
+      "replaced_by": "handoff"
+    },
+    {
+      "path": ".claude/commands/maintain/cleanup-workflow.md",
       "class": "deferred",
-      "note": "QA"
+      "note": "maintenance"
+    },
+    {
+      "path": ".claude/commands/maintain/refresh-brief.md",
+      "class": "migrated",
+      "replaced_by": "refresh-brief"
+    },
+    {
+      "path": ".claude/commands/maintain/sync-from-starter.md",
+      "class": "retained",
+      "note": "extended in this release with the migrated-record semantics; stays a project-local command"
+    },
+    {
+      "path": ".claude/commands/orchestrate.md",
+      "class": "migrated",
+      "note": "git automation / orchestration",
+      "replaced_by": "orchestrate"
+    },
+    {
+      "path": ".claude/commands/plan-feature.md",
+      "class": "migrated",
+      "replaced_by": "plan-feature"
+    },
+    {
+      "path": ".claude/commands/pr-create.md",
+      "class": "migrated",
+      "replaced_by": "pr-create"
+    },
+    {
+      "path": ".claude/commands/prime-ba.md",
+      "class": "migrated",
+      "replaced_by": "prime-ba"
+    },
+    {
+      "path": ".claude/commands/prime-qa.md",
+      "class": "migrated",
+      "replaced_by": "prime-qa"
+    },
+    {
+      "path": ".claude/commands/prime.md",
+      "class": "migrated",
+      "replaced_by": "prime"
+    },
+    {
+      "path": ".claude/commands/pull.md",
+      "class": "migrated",
+      "replaced_by": "pull"
+    },
+    {
+      "path": ".claude/commands/push.md",
+      "class": "migrated",
+      "replaced_by": "push"
+    },
+    {
+      "path": ".claude/commands/qa-verify.md",
+      "class": "migrated",
+      "replaced_by": "qa-verify"
+    },
+    {
+      "path": ".claude/commands/quick-change.md",
+      "class": "migrated",
+      "note": "execution stage",
+      "replaced_by": "quick-change"
+    },
+    {
+      "path": ".claude/commands/recon.md",
+      "class": "migrated",
+      "note": "peripheral",
+      "replaced_by": "recon"
+    },
+    {
+      "path": ".claude/commands/release.md",
+      "class": "migrated",
+      "replaced_by": "release"
+    },
+    {
+      "path": ".claude/commands/retro.md",
+      "class": "migrated",
+      "replaced_by": "retro"
+    },
+    {
+      "path": ".claude/commands/setup/create-CLAUDE_MD.md",
+      "class": "deferred",
+      "note": "bootstrap"
+    },
+    {
+      "path": ".claude/commands/setup/create-PRD.md",
+      "class": "migrated",
+      "replaced_by": "create-prd"
+    },
+    {
+      "path": ".claude/commands/setup/create-backlog.md",
+      "class": "migrated",
+      "replaced_by": "create-backlog"
+    },
+    {
+      "path": ".claude/commands/setup/createwikillm.md",
+      "class": "deferred",
+      "note": "bootstrap"
+    },
+    {
+      "path": ".claude/commands/setup/map-codebase.md",
+      "class": "deferred",
+      "note": "bootstrap"
+    },
+    {
+      "path": ".claude/commands/setup/stack-research.md",
+      "class": "migrated",
+      "replaced_by": "stack-research"
+    },
+    {
+      "path": ".claude/commands/setup/start.md",
+      "class": "migrated",
+      "replaced_by": "setup-start"
+    },
+    {
+      "path": ".claude/commands/simply.md",
+      "class": "migrated",
+      "replaced_by": "simply"
+    },
+    {
+      "path": ".claude/commands/start-task.md",
+      "class": "migrated",
+      "replaced_by": "start-task"
+    },
+    {
+      "path": ".claude/commands/test-e2e.md",
+      "class": "migrated",
+      "note": "QA",
+      "replaced_by": "test-e2e"
+    },
+    {
+      "path": ".claude/comment-guard.json",
+      "class": "project",
+      "note": "runtime config; readers keep explicit paths"
     },
     {
       "path": ".claude/hooks/audit-append.sh",
@@ -1727,8 +2194,43 @@
     },
     {
       "path": ".claude/lib/qa-probe.sh",
+      "class": "retired",
+      "replaced_by": "qa-probe"
+    },
+    {
+      "path": ".claude/memory-domains.json",
+      "class": "project",
+      "note": "runtime config"
+    },
+    {
+      "path": ".claude/nudge-rules.json",
+      "class": "project",
+      "note": "runtime config"
+    },
+    {
+      "path": ".claude/output-styles/simply.md",
+      "class": "deferred",
+      "note": "peripheral"
+    },
+    {
+      "path": ".claude/project-profile.json.example",
       "class": "retained",
-      "note": "permission-pinned QA helper; stays put"
+      "note": "schema 1 documentation; schema 2 lives in harness-source/schemas"
+    },
+    {
+      "path": ".claude/qa-env.json",
+      "class": "project",
+      "note": "runtime config"
+    },
+    {
+      "path": ".claude/settings.json",
+      "class": "project",
+      "note": "host-specific permissions and hook wiring; config-entry identities recorded on migration"
+    },
+    {
+      "path": ".claude/settings.local.json.example",
+      "class": "project",
+      "note": "seed"
     },
     {
       "path": ".claude/skills/architecture-review/",
@@ -1737,8 +2239,8 @@
     },
     {
       "path": ".claude/skills/confluence/",
-      "class": "deferred",
-      "note": "integration"
+      "class": "retired",
+      "replaced_by": "confluence"
     },
     {
       "path": ".claude/skills/design/",
@@ -1747,13 +2249,18 @@
     },
     {
       "path": ".claude/skills/jira/",
-      "class": "deferred",
-      "note": "integration"
+      "class": "retired",
+      "replaced_by": "jira"
     },
     {
       "path": ".claude/skills/pr-comments/",
       "class": "retained",
       "note": "permission-pinned pr-api.sh; stays put"
+    },
+    {
+      "path": ".claude/starter-sync-playbook.md",
+      "class": "retained",
+      "note": "extended with migrated-record semantics"
     },
     {
       "path": ".claude/templates/CLAUDE-template.md",
@@ -1784,56 +2291,6 @@
       "path": ".claude/workflows/map-codebase.js",
       "class": "deferred",
       "note": "bootstrap workflow"
-    },
-    {
-      "path": ".claude/output-styles/simply.md",
-      "class": "deferred",
-      "note": "peripheral"
-    },
-    {
-      "path": ".claude/settings.json",
-      "class": "project",
-      "note": "host-specific permissions and hook wiring; config-entry identities recorded on migration"
-    },
-    {
-      "path": ".claude/settings.local.json.example",
-      "class": "project",
-      "note": "seed"
-    },
-    {
-      "path": ".claude/project-profile.json.example",
-      "class": "retained",
-      "note": "schema 1 documentation; schema 2 lives in harness-source/schemas"
-    },
-    {
-      "path": ".claude/.starter-sync.json",
-      "class": "project",
-      "note": "sync provenance; gains migrated records"
-    },
-    {
-      "path": ".claude/starter-sync-playbook.md",
-      "class": "retained",
-      "note": "extended with migrated-record semantics"
-    },
-    {
-      "path": ".claude/comment-guard.json",
-      "class": "project",
-      "note": "runtime config; readers keep explicit paths"
-    },
-    {
-      "path": ".claude/memory-domains.json",
-      "class": "project",
-      "note": "runtime config"
-    },
-    {
-      "path": ".claude/nudge-rules.json",
-      "class": "project",
-      "note": "runtime config"
-    },
-    {
-      "path": ".claude/qa-env.json",
-      "class": "project",
-      "note": "runtime config"
     }
   ]
 }

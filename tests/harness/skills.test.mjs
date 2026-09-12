@@ -24,16 +24,54 @@ test('every inventory skill exists with a flat kebab-case name matching its dire
   }
 });
 
+// `phase` is packaging provenance; `groups` is the capability gate, and 0.4.0 is the first release
+// where the two diverge — `retro`/`simply` are phase `product` with no group at all, `jira` is phase
+// `integration` gated on `tracker`. So the expectation is an explicit map covering every skill; a
+// phase-derived one would fail on exactly those and get "fixed" by weakening the test.
+const SKILL_GROUP = {
+  prime: null, handoff: null, 'setup-start': null, retro: null, simply: null,
+  brainstorm: 'planning', 'plan-feature': 'planning',
+  commit: 'git', push: 'git', pull: 'git', release: 'git', 'pr-create': 'git', 'start-task': 'git',
+  'create-prd': 'product', 'refresh-brief': 'product', 'create-backlog': 'product', 'stack-research': 'product', 'prime-ba': 'product',
+  'prime-qa': 'qa', 'qa-verify': 'qa',
+  jira: 'tracker', confluence: 'confluence',
+  'gates-check-quality': 'execution', 'gates-verify-implementation': 'execution', 'gates-design-quality-check': 'execution',
+  'deep-review': 'execution', analysis: 'execution', recon: 'execution', design: 'execution', 'test-e2e': 'execution',
+  'architecture-review': 'execution', 'quick-change': 'execution', execute: 'execution', 'check-implementation': 'execution', orchestrate: 'execution',
+};
+
+// Skills that spell out their own Codex invocation. Not derived from `phase`: naming the Codex
+// form is an editorial property of the skill body, not of where it was packaged from.
+const CODEX_FORM_DECLARED = ['analysis', 'architecture-review', 'check-implementation', 'commit', 'deep-review', 'design',
+  'execute', 'gates-check-quality', 'gates-design-quality-check', 'gates-verify-implementation', 'orchestrate',
+  'pr-create', 'pull', 'push', 'quick-change', 'recon', 'release', 'start-task', 'test-e2e'];
+
+test('every skill is covered by the group map', () => {
+  assert.deepEqual(SKILLS.slice().sort(), Object.keys(SKILL_GROUP).sort(), 'a new skill must declare its group (or null) in SKILL_GROUP');
+});
+
 test('group-gated skills check their own group first and name nested skills for both hosts', () => {
-  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'git' || x.phase === 'execution')) {
+  for (const [id, group] of Object.entries(SKILL_GROUP)) {
+    const body = parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`)).body;
+    const gate = /profile\.mjs groups[^\n]*`(?:groups\.)?([a-z]+)` must be `true`/.exec(body);
+    if (group === null) {
+      // An ungrouped session tool must assert the ABSENCE of a gate: an accidental one silently
+      // takes the skill away from every project that never set that flag.
+      assert.equal(gate, null, `${id}: ungrouped, yet it checks the \`${gate?.[1]}\` group`);
+      continue;
+    }
+    assert.ok(gate, `${id}: no group check at all — expected \`${group}\``);
+    assert.equal(gate[1], group, `${id}: gates on \`${gate[1]}\`, expected \`${group}\``);
+  }
+  // Every skill, whatever its phase: a nested call named for one host only is a call that silently
+  // does not resolve on the other.
+  for (const e of SKILL_ENTRIES) {
     const { body } = parseFrontmatter(read(e.source));
-    assert.match(body, new RegExp(`profile\\.mjs groups[^\\n]*\`${e.phase}\` must be \`true\``), `${e.id}: ${e.phase} group check`);
-    assert.match(body, /On Codex this skill is `\$/, `${e.id}: names its Codex form`);
     for (const m of body.matchAll(/`\/harness:([a-z-]+)`/g)) assert.ok(body.includes(`\`$${m[1]}\` (Codex)`), `${e.id}: /harness:${m[1]} without its Codex twin`);
   }
-  for (const e of SKILL_ENTRIES.filter((x) => x.phase === 'execution')) {
-    const { body } = parseFrontmatter(read(e.source));
-    assert.ok(body.includes(`On Codex this skill is \`$${e.id}\``), `${e.id}: names its Codex form`);
+  for (const id of CODEX_FORM_DECLARED) {
+    const { body } = parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`));
+    assert.ok(body.includes(`On Codex this skill is \`$${id}\``), `${id}: names its Codex form`);
   }
   for (const id of ['orchestrate', 'check-implementation', 'quick-change', 'architecture-review']) {
     assert.match(parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`)).body, /On Codex this skill refuses/, `${id}: Codex refusal`);
@@ -187,4 +225,45 @@ test('no migrated skill body reaches back into the starter checkout', () => {
       assert.ok(!body.includes(banned), `${e.id} still names ${banned}`);
     }
   }
+});
+
+// File presence proves a port happened; it cannot prove the port kept what made the command safe.
+// Each assertion below stands in for one behaviour whose loss is silent at runtime.
+test('the QA skills preserve the guards their verdicts rest on', () => {
+  const qa = parseFrontmatter(read('harness-source/skills/qa-verify/SKILL.md')).body;
+  assert.match(qa, /registry §2/, 'the roster is consulted, not assumed');
+  assert.match(qa, /no §2 row/, 'a family with no roster row routes to NEEDS-HUMAN naming the missing row');
+  assert.match(qa, /registry §5/, 'the not-observable list still overrides any verifier conclusion');
+  assert.match(qa, /§5 as \*\*unknown\*\*, never as empty|§5 as \*\*unknown\*\*/, 'an absent overlay is missing information, not an empty exclusion list');
+  assert.match(qa, /browser_mcp_server|the named server is one the verifier can actually reach/i, 'the UI lane checks browser reachability before dispatch');
+  // The two-altitude guard: does the verifier exist, and can it observe. Collapsing them produces
+  // confident rows from unobserved evidence — the failure this skill exists to remove.
+  assert.match(qa, /Guard an unavailable verifier/);
+  assert.match(qa, /Guard unreachable tooling/);
+  assert.match(qa, /two guards, not one/);
+
+  for (const [id, procedure] of [['qa-verify', 'contract'], ['qa-verify', 'runtime-ui'], ['prime-qa', null]]) {
+    if (!procedure) continue;
+    assert.ok(parseFrontmatter(read(`harness-source/skills/${id}/SKILL.md`)).body.includes(`references/qa/${procedure}-procedure.md`), `${id} cites the ${procedure} procedure`);
+  }
+  const primeQa = parseFrontmatter(read('harness-source/skills/prime-qa/SKILL.md')).body;
+  assert.match(primeQa, /references\/qa-evidence-families\.md/, 'prime-qa loads the framework half');
+  assert.match(primeQa, /\.agents\/reference\/qa-evidence-families\.md/, 'prime-qa loads the project overlay, and warns when it is absent');
+  assert.match(primeQa, /scripts\/qa-probe\.mjs/);
+  assert.ok(!primeQa.includes('qa-probe.sh'), 'the retired shell probe is gone');
+
+  // The verifier bodies are shared by both hosts; a Claude-only procedure would let the two drift.
+  for (const rel of ['harness-source/references/qa/contract-procedure.md', 'harness-source/references/qa/runtime-ui-procedure.md']) {
+    const text = read(rel);
+    assert.match(text, /Both hosts read this file/, rel);
+    assert.match(text, /registry §6/, `${rel}: the output contract`);
+  }
+});
+
+test('confluence keeps its per-publish confirmation gate, not merely the word publish', () => {
+  const body = parseFrontmatter(read('harness-source/skills/confluence/SKILL.md')).body;
+  assert.match(body, /Publish is explicit and gated/);
+  assert.match(body, /No draft mode — publish = live/, 'a publish goes live immediately; the dry-run must say so');
+  assert.match(body, /Never publish because the user approved the \*content\*/, 'approving the draft is not approval to publish');
+  assert.match(body, /Re-ask every time/);
 });

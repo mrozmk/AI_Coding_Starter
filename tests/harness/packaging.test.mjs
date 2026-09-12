@@ -7,6 +7,8 @@ import { buildAll, renderAll } from '../../scripts/build-harness.mjs';
 import { exportBundle, validateBundle } from '../../scripts/lib/bundle.mjs';
 import { MARKER, diffPackage, readMarker, renderMarketplaces, renderWrappers, writePackage } from '../../scripts/lib/package-build.mjs';
 import { WRAPPER_NOTE, wrapperCommandFor } from '../../harness-source/scripts/lib/wrapper.mjs';
+import { loadInventory, validateInventory } from '../../scripts/lib/inventory.mjs';
+import { syncWrappers } from '../../harness-source/scripts/bootstrap.mjs';
 import { verifyPackageRoot } from '../../harness-source/scripts/lib/locator.mjs';
 import { parseFrontmatter } from '../../harness-source/scripts/lib/frontmatter.mjs';
 import { addAssertion, addReceipt, newEvidence } from '../../harness-source/scripts/lib/evidence.mjs';
@@ -192,13 +194,14 @@ test('wrappers: one per skill with a top-level legacy command, claude-only, writ
   const REPO = path.resolve(import.meta.dirname, '../..');
   const { inventory, harness, rendered, wrappers } = renderAll(REPO);
   const expected = inventory.entries.map(wrapperCommandFor).filter(Boolean).sort();
-  assert.deepEqual(expected, ['analysis', 'architecture-review', 'brainstorm', 'check-implementation', 'commit', 'deep-review', 'design', 'execute', 'handoff', 'orchestrate', 'plan-feature', 'pr-create', 'prime', 'pull', 'push', 'quick-change', 'recon', 'release', 'start-task', 'test-e2e'], 'namespaced setup/ and gates/ commands get no wrapper');
+  assert.deepEqual(expected, ['analysis', 'architecture-review', 'brainstorm', 'check-implementation', 'commit', 'deep-review', 'design', 'execute', 'handoff', 'maintain/refresh-brief', 'orchestrate', 'plan-feature', 'pr-create', 'prime', 'prime-ba', 'prime-qa', 'pull', 'push', 'qa-verify', 'quick-change', 'recon', 'release', 'retro', 'setup/create-PRD', 'setup/create-backlog', 'setup/stack-research', 'simply', 'start-task', 'test-e2e'], 'the exact wrapper set: eligibility is the entry\'s explicit `wrapper` field, so setup/start and the retired gates/ commands get none');
   assert.deepEqual([...wrappers.keys()].sort(), expected);
   for (const [command, text] of wrappers) {
     const skill = inventory.entries.find((e) => wrapperCommandFor(e) === command).id;
     assert.ok(text.includes(WRAPPER_NOTE), `${command}: generated note`);
     assert.ok(text.includes(`Skill tool with skill \`harness:${skill}\` and args \`$ARGUMENTS\` verbatim`), `${command}: routes to the skill`);
     assert.ok(text.includes('mrozmk/AI_Coding_Starter@release'), `${command}: names the release channel`);
+    assert.ok(text.includes(`# /${command.replace('/', ':')} → harness:${skill}`), `${command}: the heading carries the colon invocation token, not the slash path`);
     assert.ok(rendered.claude.files.has(`templates/wrappers/${command}.md`), `${command}: packaged for claude`);
     assert.ok(!rendered.codex.files.has(`templates/wrappers/${command}.md`), `${command}: not packaged for codex`);
   }
@@ -210,7 +213,7 @@ test('wrappers: one per skill with a top-level legacy command, claude-only, writ
   assert.ok(rendered.claude.files.has('agents/documentation-manager.md'), 'agent packaged for claude');
   assert.ok(!rendered.codex.files.has('agents/documentation-manager.md'), 'codex carries no agents');
   assert.equal(rendered.claude.marker.agents['agent-documentation-manager'], 'agents/documentation-manager.md');
-  assert.equal(Object.keys(rendered.claude.marker.agents).length, 7, 'documentation-manager plus the six orchestrator agents');
+  assert.equal(Object.keys(rendered.claude.marker.agents).length, 9, 'documentation-manager, the six orchestrator agents and the two QA verifiers');
   for (const host of ['claude', 'codex']) {
     assert.ok(Array.isArray(rendered[host].marker.retired), `${host}: the marker records what the release retired`);
     for (const p of ['.claude/lib/git-baseline.sh', '.claude/commands/codex-review.md']) assert.ok(rendered[host].marker.retired.includes(p), `${host}: ${p} tombstoned in the marker`);
@@ -230,4 +233,53 @@ test('installed-root check verifies every declared agent entry', () => {
   fs.rmSync(path.join(root, 'agents/documentation-manager.md'));
   const broken = verifyPackageRoot(root, { host: 'claude' });
   assert.ok(broken.errors.some((e) => /agent entry missing: agent-documentation-manager/.test(e)), broken.errors.join('; '));
+});
+
+// Wrapper eligibility is permission-isolation: a wrapper writes a command file back into a
+// downstream project, where no build gate runs to catch a bad target.
+test('validateInventory rejects a wrapper that is retired, duplicated, or on a non-skill entry', () => {
+  const { inventory } = loadInventory(FIXTURE);
+  const ok = structuredClone(inventory);
+  ok.entries[0].wrapper = 'setup/create-PRD';
+  assert.deepEqual(validateInventory(ok, FIXTURE), [], 'a namespaced wrapper on a skill entry validates');
+
+  const retired = structuredClone(inventory);
+  retired.entries[0].wrapper = 'gone';
+  retired.legacy.push({ path: '.claude/commands/gone.md', class: 'retired', replaced_by: 'demo' });
+  assert.ok(validateInventory(retired, FIXTURE).some((e) => /wrapper gone resolves to retired/.test(e)), 'a wrapper pointing at a tombstone is refused');
+
+  const duplicate = structuredClone(inventory);
+  duplicate.entries[0].wrapper = 'demo';
+  duplicate.entries.push({ ...structuredClone(duplicate.entries[0]), id: 'demo2' });
+  assert.ok(validateInventory(duplicate, FIXTURE).some((e) => /wrapper demo already declared by demo/.test(e)));
+
+  const nonSkill = structuredClone(inventory);
+  nonSkill.entries[1].wrapper = 'ref-demo';
+  assert.ok(validateInventory(nonSkill, FIXTURE).some((e) => /wrapper is only valid on a skill entry/.test(e)));
+
+  const badShape = structuredClone(inventory);
+  badShape.entries[0].wrapper = 'setup/create/PRD';
+  assert.ok(validateInventory(badShape, FIXTURE).length > 0, 'at most one namespace segment');
+});
+
+test('syncWrappers creates a nested wrapper destination', () => {
+  const plugin = tmp();
+  const project = tmp();
+  const nested = 'setup/create-PRD.md';
+  fs.mkdirSync(path.join(plugin, 'templates/wrappers/setup'), { recursive: true });
+  const text = `<!-- ${WRAPPER_NOTE} -->\nnested\n`;
+  fs.writeFileSync(path.join(plugin, 'templates/wrappers', nested), text);
+  fs.writeFileSync(path.join(plugin, 'templates/wrappers/flat.md'), 'flat\n');
+
+  const preview = syncWrappers({ projectRoot: project, pluginRoot: plugin });
+  assert.deepEqual(preview.files.map((f) => f.path), ['.claude/commands/flat.md', `.claude/commands/${nested}`]);
+  assert.equal(fs.existsSync(path.join(project, '.claude/commands/setup')), false, 'preview writes nothing');
+
+  const applied = syncWrappers({ projectRoot: project, pluginRoot: plugin, consent: true });
+  assert.equal(applied.files.every((f) => f.status === 'created'), true);
+  assert.equal(fs.readFileSync(path.join(project, '.claude/commands', nested), 'utf8'), text);
+
+  fs.writeFileSync(path.join(project, '.claude/commands', nested), 'hand-edited\n');
+  const edited = syncWrappers({ projectRoot: project, pluginRoot: plugin });
+  assert.equal(edited.files.find((f) => f.path.endsWith(nested)).replaces_local_edit, true, 'the generated-by marker check still works nested');
 });

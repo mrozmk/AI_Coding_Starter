@@ -1,0 +1,5 @@
+interface:
+  display_name: confluence
+  short_description: Read Confluence Cloud pages AND author new ones via the mcp-atlassian MCP server.
+policy:
+  allow_implicit_invocation: false

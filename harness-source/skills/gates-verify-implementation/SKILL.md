@@ -97,7 +97,7 @@ If any command fails, STOP (fail fast) and report which gate failed.
 
 **A gate finding describes the target state, not the delta contract.** When a finding is applied as a fix, re-check the fixed code against the plan's acceptance criteria — a fix that satisfies the linter can still remove behaviour the task required.
 
-**Conditional runtime smoke.** If the Validation section carries the *Runtime smoke* paragraph and its conditions hold (change touches the named UI paths, an app is running), perform `.agents/reference/runtime-smoke.md` after the shell gates and add its line to the report. Conditions not met → `Runtime smoke: SKIPPED — <reason>`; a skipped smoke never turns the gate red and never counts as a pass.
+**Conditional runtime smoke.** If the Validation section carries the *Runtime smoke* paragraph and its conditions hold (change touches the named UI paths, an app is running), perform `references/runtime-smoke.md` after the shell gates and add its line to the report. Conditions not met → `Runtime smoke: SKIPPED — <reason>`; a skipped smoke never turns the gate red and never counts as a pass.
 
 Report:
 ```

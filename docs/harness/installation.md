@@ -50,9 +50,43 @@ Follow `packages/<host>/references/installation.md → Install from a release bu
 
 See the packaged `references/installation.md`: **Activation** (one owner per command and hook, `sync-filter.mjs activation` preview, `recordMigration` only after the installed-host scenario for that hook passed and the legacy entry was removed), **Portable version vs local binding**, **Update** (finish running sessions, re-bind after any version change), **Rollback** (restores ownership via the migration record; never a cache purge; project artifacts untouched), **Legacy-only downstream sync** (works without a plugin).
 
+## Migrate 0.3.0 → 0.4.0 (downstream, by hand)
+
+0.4.0 moves the product, QA, session-peripheral and Atlassian slice into the plugin. Nothing below happens automatically: a plugin release never edits a project's files, profile or migration record.
+
+**1. Delete the seven files the plugin now owns**, and record each in `.claude/.starter-sync.json → migrated` with `deleted: true` (schema: packaged `references/installation.md → Migration record`), so sync never re-offers them:
+
+| Delete | Replaced by |
+|---|---|
+| `.claude/lib/qa-probe.sh` | `scripts/qa-probe.mjs` in the plugin |
+| `.claude/agents/qa-contract.md` | the registered `harness:qa-contract` |
+| `.claude/agents/qa-runtime-ui.md` | the registered `harness:qa-runtime-ui` |
+| `.claude/agents/qa-runtime-app.md.example` | the `templates/agents/qa-runtime-app.md` template |
+| `.claude/agents/qa-runtime-device.md.example` | the `templates/agents/qa-runtime-device.md` template |
+| `.claude/skills/jira/` (with its `references/`) | `harness:jira` + `references/jira/` |
+| `.claude/skills/confluence/` | `harness:confluence` |
+
+Also drop `"Bash(bash .claude/lib/qa-probe.sh)"` from `.claude/settings.json → permissions.allow` and record it in `migrated_config` as `permissions.allow|Bash(bash .claude/lib/qa-probe.sh)`. The plugin's scripts already run under the machine-local plugin-script allowance. **Keep `.claude/skills/pr-comments/` and its `pr-api.sh` allowance** — they are unchanged.
+
+**2. Adopt the nine new wrappers** — `node <installed root>/scripts/bootstrap.mjs wrappers --project-root <dir> --plugin-root <installed root>` previews, `--consent yes` writes. Four are nested (`.claude/commands/setup/{create-PRD,create-backlog,stack-research}.md`, `.claude/commands/maintain/refresh-brief.md`); the rest are flat (`prime-ba`, `prime-qa`, `qa-verify`, `retro`, `simply`). Each replaces the legacy command body with a wrapper, so record those nine paths in `migrated` too (`deleted: false` — the file stays, its content is now generated). `.claude/commands/setup/start.md` and `.claude/commands/gates/` are deliberately **not** wrapper-eligible and must stay untouched. `jira` and `confluence` get no wrapper: invoke them as `/harness:jira` / `/harness:confluence`.
+
+**3. Set the two new group flags** in `.agents/project-profile.json → groups`: `product` (`true` unless you keep the legacy PRD/brief/backlog commands) and `qa` (`true` only if this project verifies acceptance criteria). Both default to `false` for a profile written before 0.4.0, so an un-edited profile keeps the legacy behaviour and every new entrypoint reports the disabled group rather than silently doing nothing.
+
+**4. Replace the three citations in your own rules file** — `CLAUDE.md`, or `.agents/project-rules.md` on a greenfield project. These are human-owned; the harness does not rewrite them, and left alone they become dead links:
+
+| Replace | With |
+|---|---|
+| `.agents/reference/runtime-smoke.md` | the harness reference `runtime-smoke.md` |
+| `.agents/reference/parallel-orchestration.md` | the harness reference `parallel-orchestration.md` |
+| `.agents/reference/qa-to-regression-test.md` | the harness reference `qa-to-regression-test.md` |
+
+`.agents/reference/jira-mcp-atlassian.md` moved into the plugin as well — delete your copy or leave it; nothing reads it any more.
+
+**5. Split your QA evidence registry.** `.agents/reference/qa-evidence-families.md` becomes the **project overlay only**: keep §1a, §2 and §5, delete §1, §3, §4 and §6 (they now ship as the plugin's `references/qa-evidence-families.md` and are replaced on upgrade). A project that has no such file gets a seeded overlay from `bootstrap.mjs seed` — absent-only, never overwriting yours. **The roster-completeness rule no longer has a sync step behind it:** `qa-verify` routes any family with no §2 row to `NEEDS-HUMAN` naming the missing row, so an overlay you never fill in degrades loudly instead of silently.
+
 ## Remaining gaps (recorded, not hidden)
 
 - Codex: no permission tiers (`.claude/settings.json` denies have no equivalent — reported as unsupported); subagents share the parent session id (memory guard blocks until an executor id or a session-scope decision); no structured Read/Grep/WebFetch events (read telemetry covers shell reads only; no fetch audit; LSP hint legacy-only); plugin hooks run only after the operator trusts them (`/hooks`).
 - Codex: `workspace-write` refuses writes under `.agents/` unless `sandbox_workspace_write.writable_roots` lists the project's `.agents` (user config, or a trusted project `.codex/config.toml`); Codex plugin hooks load only after the operator's interactive `/hooks` trust — the live smoke proves firing with the documented automation bypass and records trust separately (`--codex-hooks-trusted yes` after `/hooks`).
 - Both hosts: the shell-target parser understands `git -C` and a leading `cd` only; a chained `git add && git commit` is blocked by design; a cooperative reviewer that never attempts the canary yields "no leak observed", not an observed denial.
-- The whole execution/Git/QA command fleet stays legacy-only and unchanged.
+- Legacy-only after 0.4.0: `setup/start` (its bootstrap-only steps), `setup/create-CLAUDE_MD`, `setup/map-codebase`, `setup/createwikillm`, `maintain/cleanup-workflow`, `maintain/sync-from-starter`, and the `pr-comments` skill. Every other command in this repository's `.claude/` is now a generated wrapper over a plugin skill.

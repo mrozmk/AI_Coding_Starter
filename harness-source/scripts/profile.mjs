@@ -31,7 +31,7 @@ export const DEFAULT_ROLES = {
     codex: { model: 'gpt-6-astra', effort: 'high' },
   },
 };
-export const DEFAULT_GROUPS = { planning: true, review: true, execution: false, git: true, tracker: false, confluence: false };
+export const DEFAULT_GROUPS = { planning: true, review: true, execution: false, git: true, tracker: false, confluence: false, product: false, qa: false };
 const NO_GROUPS = Object.fromEntries(Object.keys(DEFAULT_GROUPS).map((g) => [g, false]));
 
 // Every fact that changes behavior on either host. Two physical profiles disagreeing on any of

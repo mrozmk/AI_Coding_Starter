@@ -1,4 +1,4 @@
-# Harness plugin — capability matrix (0.1.0, planning/review + guard portability)
+# Harness plugin — capability matrix (0.4.0)
 
 > Honest per-host state of the harness plugin (remediation tasks T01–T17 completed 2026-09-06). Vocabulary: **implemented** — code + offline tests exist; **verified** — an installed-host run observed it in `release-readiness.json`; **conditional / dormant** — applies only under the named precondition or configuration; **legacy-only** — still served by the project's `.claude/` files, not by the plugin; **blocked** — waiting on an operator step; **retired** — dropped with a recorded decision.
 >
@@ -17,6 +17,14 @@ Ledgers (authoritative, rendered from JSON): [instruction-parity.md](instruction
 | `brainstorm` — spec Draft → closed-context review → single approval stamped into the spec → optional continuation | plugin | plugin | verified (run 5; continuation/opt-out on Codex verified by receipt replay after assertion fix) | `approval.test.mjs`; live `*:brainstorm-no-approval-no-plan`, `*:approval-roundtrip`, `*:continuation-gated-by-approval`, `*:review-opt-out-visible`, `*:review-required-missing-cli-blocks` |
 | `plan-feature` — approval-stamp verification, backlog WIP/Ref write-back, architecture/UI contracts, EXPECT/VALIDATE, explicit `medium` | plugin | plugin | verified (run 5 plans on both hosts; mutation refused; assertion replay for the keyword format) | `planning-flow.test.mjs`, `skills.test.mjs`; live `*:plan-feature-writes-plan-no-execute`, `*:post-approval-mutation-refused` |
 | `handoff` — project-local handoff document | plugin | plugin | implemented | `skills.test.mjs` |
+| `create-prd` · `refresh-brief` · `create-backlog` · `stack-research` · `prime-ba` — the product slice, gated on `groups.product` | plugin | plugin | implemented (0.4.0; no installed-host run yet) | `skills.test.mjs`, `packaging.test.mjs` |
+| `retro` · `simply` — ungrouped session peripherals | plugin | plugin | implemented; `retro` **degrades on Codex** — the transcript source is documented on Claude Code only, so it refuses unless `--transcript <path>` is given | `skills.test.mjs` |
+| `qa-verify` — AC router: classification gate, roster/availability/tooling guards, self-audit, signed matrix. Gated on `groups.qa` | plugin, dispatching the two registered verifiers | plugin, running the same procedures **inline** (Codex has no agents) | implemented (0.4.0; no installed-host run yet) | `skills.test.mjs` |
+| `prime-qa` — QA context + deterministic environment preflight. Gated on `groups.qa` | plugin | plugin | implemented; the probe needs a host session root — `CLAUDE_PROJECT_DIR` on Claude Code, `HARNESS_PROJECT_ROOT` on Codex, which **the operator must export** (Codex documents no project-root variable) | `probe.test.mjs` |
+| `qa-contract` / `qa-runtime-ui` verifiers | registered agents | **no agents on this host** — the router reads `references/qa/*-procedure.md` and runs the lane inline | implemented; one procedure body per lane, shared by both hosts so verdicts cannot drift | `packaging.test.mjs`, `skills.test.mjs` |
+| QA evidence registry | framework half in the plugin, project overlay in `.agents/reference/` (seeded absent-only) | same | implemented; roster completeness is enforced **at runtime** by `qa-verify` — no sync step adds a missing row any more | `bootstrap.test.mjs` |
+| `jira` (`groups.tracker`) · `confluence` (`groups.confluence`) — Atlassian flows and the six-file Jira reference bundle | plugin | plugin | implemented; **conditional** on the Atlassian MCP server being in the session roster — the server, its permission tiers and the `JIRA_*` / `CONFLUENCE_*` variables stay project-side | `skills.test.mjs`, `packaging.test.mjs` |
+| `setup/start` bootstrap steps · `setup/create-CLAUDE_MD` · `setup/map-codebase` · `setup/createwikillm` · `maintain/cleanup-workflow` · `maintain/sync-from-starter` · the `pr-comments` skill | legacy-only | legacy-only | legacy-only — routed by the plugin skills, never reproduced | — |
 
 ## Rules and memory
 

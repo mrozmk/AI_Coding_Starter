@@ -15,13 +15,15 @@ description: Turn an approved spec into an implementation plan with EXPECT/VALID
 This skill writes a plan file. It never runs the plan, never edits application code, never commits. Naming the execution stage in the report is a pointer for the user, not an instruction to yourself.
 </HARD-GATE>
 
-Contracts: `references/planning-contract.md` (the plan file contract the verification gate parses; effort semantics; approval identity), `references/review-contract.md`, and — only when the user chose to split — `references/plan-split-contract.md`. Template: `templates/plan-feature-plan.template.md`. Scripts: `scripts/approval.mjs`, `scripts/backlog.mjs`, `scripts/rules.mjs`.
+Contracts: `references/planning-contract.md` (the plan file contract the verification gate parses; effort semantics; approval identity), `references/review-contract.md`, and — only when the user chose to split — `references/plan-split-contract.md`. Template: `templates/plan-feature-plan.template.md`. Scripts: `scripts/profile.mjs`, `scripts/approval.mjs`, `scripts/backlog.mjs`, `scripts/rules.mjs`.
 
 ## Phases
 
-### 0. Spec identity
+### 0. Groups and spec identity
 
-Run `node <plugin_root>/scripts/approval.mjs verify --project-root <project_root> --spec <spec path>`. It requires `**Status:** Approved` and a `**Approval:** … body-sha256 \`<hash>\`` line whose hash equals the file's canonical form (the approval line removed, status pinned) — so never compare a plain `shasum -a 256 <spec>` against it; the helper is the only thing that computes this. `ok: false` (Draft, a missing or hand-edited approval line, bytes changed after approval, or no usable `**External docs required:** yes | no` line — the verifier refuses that spec too) → stop with the printed errors; return to `brainstorm` Step 9 or have the user add the field by hand, then re-approve. Never pick a spec by modification time. Record the verified `sha256` in the plan header (`**Spec SHA-256:**`). Note `External docs required`, `Appetite & Cut Lines`, `Out of Scope`.
+`node <plugin_root>/scripts/profile.mjs groups --project-root <project_root>` → `planning` must be `true`; otherwise stop: `planning group disabled in the project profile`. A `blocked` result (profile missing, invalid or conflicting) stops here with the reason — a missing profile is never an implicit yes. Note `review`.
+
+Then run `node <plugin_root>/scripts/approval.mjs verify --project-root <project_root> --spec <spec path>`. It requires `**Status:** Approved` and a `**Approval:** … body-sha256 \`<hash>\`` line whose hash equals the file's canonical form (the approval line removed, status pinned) — so never compare a plain `shasum -a 256 <spec>` against it; the helper is the only thing that computes this. `ok: false` (Draft, a missing or hand-edited approval line, bytes changed after approval, or no usable `**External docs required:** yes | no` line — the verifier refuses that spec too) → stop with the printed errors; return to `brainstorm` Step 9 or have the user add the field by hand, then re-approve. Never pick a spec by modification time. Record the verified `sha256` in the plan header (`**Spec SHA-256:**`). Note `External docs required`, `Appetite & Cut Lines`, `Out of Scope`.
 
 ### 0.5 Backlog write-back — opt-in, only when unambiguous
 
