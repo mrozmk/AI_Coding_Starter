@@ -29,7 +29,7 @@ test('every inventory skill exists with a flat kebab-case name matching its dire
 // `integration` gated on `tracker`. So the expectation is an explicit map covering every skill; a
 // phase-derived one would fail on exactly those and get "fixed" by weakening the test.
 const SKILL_GROUP = {
-  prime: null, handoff: null, 'setup-start': null, retro: null, simply: null,
+  prime: null, handoff: null, 'setup-start': null, 'create-rules': null, retro: null, simply: null,
   brainstorm: 'planning', 'plan-feature': 'planning',
   commit: 'git', push: 'git', pull: 'git', release: 'git', 'pr-create': 'git', 'start-task': 'git',
   'create-prd': 'product', 'refresh-brief': 'product', 'create-backlog': 'product', 'stack-research': 'product', 'prime-ba': 'product',

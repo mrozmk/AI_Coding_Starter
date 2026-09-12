@@ -1,0 +1,5 @@
+interface:
+  display_name: create-rules
+  short_description: "Derive a project's rules from its own code — detect the stack, layout, conventions and validation commands, confirm t..."
+policy:
+  allow_implicit_invocation: false

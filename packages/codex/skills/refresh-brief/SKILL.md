@@ -21,7 +21,7 @@ description: Distil a PRD into .agents/memory/project-brief.md so prime loads fa
 
 Generate or refresh `.agents/memory/project-brief.md` from a PRD so that `/harness:prime` (Claude Code) · `$prime` (Codex) can load fast project context without reading the entire PRD. When the PRD contains pricing / monetization / billing content, also seed or refresh `.agents/memory/domain/business-model.md` with code-relevant operational facts.
 
-**When it runs:** `/setup:create-CLAUDE_MD` invokes this automatically at **first bootstrap** (when `project-brief.md` is still empty), so you don't call it by hand in the bootstrap chain. Beyond that it is an **on-demand `maintain/` command** — invoke it yourself after the PRD changes substantially to re-distill the brief.
+**When it runs:** `/harness:create-rules` (Claude Code) · `$create-rules` (Codex) invokes this automatically at **first bootstrap** (when `project-brief.md` is still empty), so you don't call it by hand in the bootstrap chain. Beyond that it is on demand — invoke it yourself after the PRD changes substantially to re-distill the brief.
 
 ## Inputs
 

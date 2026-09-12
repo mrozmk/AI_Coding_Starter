@@ -107,6 +107,26 @@
       "description": "Guided bootstrap of a project profile: interview, consent-gated writes, plugin capability groups, legacy-only dependency routing."
     },
     {
+      "id": "create-rules",
+      "kind": "skill",
+      "source": "harness-source/skills/create-rules/SKILL.md",
+      "owner": "core",
+      "phase": "planning",
+      "dependencies": [
+        "ref-setup-contract",
+        "tpl-claude-md",
+        "tpl-project-rules",
+        "rules",
+        "profile",
+        "bootstrap"
+      ],
+      "legacy": [
+        ".claude/commands/setup/create-CLAUDE_MD.md",
+        "/setup:create-CLAUDE_MD"
+      ],
+      "description": "Derive project rules and the architecture map from the codebase: detect stack and layout, condense to the always-loaded budget, confirm the facts, then delegate every rules write to scripts/rules.mjs (render for an absent body, brownfield fill for unresolved fields)."
+    },
+    {
       "id": "handoff",
       "kind": "skill",
       "source": "harness-source/skills/handoff/SKILL.md",

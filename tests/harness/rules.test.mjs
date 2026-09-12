@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AGENTS_FILE, CLAUDE_FILE, RULES_FILE, applyRules, branchModel, compatDrift, derivePublish, fieldsFrom, legacyContractCheck, renderTemplate, resolveRulesAuthority, syncCompat, unresolved } from '../../harness-source/scripts/rules.mjs';
+import { AGENTS_FILE, CLAUDE_FILE, RULES_FILE, applyRules, branchModel, compatDrift, derivePublish, fieldsFrom, fillRules, legacyContractCheck, renderTemplate, resolveRulesAuthority, syncCompat, unresolved } from '../../harness-source/scripts/rules.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 
@@ -267,4 +267,226 @@ test('test policy and runtime smoke are mirrored too: a rules edit to either is 
   const c2 = fs.readFileSync(path.join(noUi, CLAUDE_FILE), 'utf8');
   assert.match(c2, /```\n\n\*\*Runtime smoke — optional conditional step\.\*\* When a change touches `web\/\*\*`/);
   assert.equal(resolveRulesAuthority(noUi).ready, true);
+});
+
+// ── fill (T05) ────────────────────────────────────────────────────────────────────────────────
+// A minimal hand-written brownfield CLAUDE.md that satisfies legacyContractCheck, so a fill test
+// can vary one thing at a time. Branch-model values are parameters; `bm: null` omits the
+// assignments entirely, which is the real starter's shape.
+function brownfield(dir, { bm = { preset: 'trunk', trunk: 'main', integration: 'main', names: '`<type>/<slug>` — types: feat, fix', dest: 'main', protectedList: 'none' }, publish = 'push', validation = 'npm test', extra = '' } = {}) {
+  const model = bm === null ? '' : [
+    `**Preset:** ${bm.preset} · **Trunk:** \`${bm.trunk}\` · **Integration:** \`${bm.integration}\``,
+    `**Branch names:** ${bm.names}`,
+    `**Base → PR dest:** ${bm.dest}`,
+    `**Protected:** ${bm.protectedList}`,
+  ].join('\n');
+  const text = `# CLAUDE.md
+
+Hand-written rules for this project.
+
+## Language Rules
+
+| Context | Language |
+|---|---|
+| Claude ↔ developer communication | **Polish** |
+
+## Validation
+
+\`\`\`bash
+# Run in order
+${validation}
+\`\`\`
+${extra}
+## Commands
+
+\`\`\`bash
+npm run dev
+\`\`\`
+
+## Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| Node | runtime |
+
+## Code Structure & Modularity
+
+Files max 500 lines.
+
+## Style & Conventions
+
+ESLint.
+
+## Error Handling
+
+Specific exceptions only.
+
+## Security
+
+Never commit secrets.
+
+## Git Workflow
+
+- **\`git worktree remove --force\` can discard uncommitted work.** Its only guard is the pipeline's clean check.
+
+**Orchestrate publish:** ${publish}
+
+### Branch model
+
+> _The single source of branch facts._
+
+${model}
+
+## Project Knowledge Layers
+
+See \`.agents/memory/index.md\`.
+
+## Automatic Behaviors
+
+Read memory first.
+
+## Search Commands
+
+Use \`rg\`.
+`;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, CLAUDE_FILE), text);
+  return text;
+}
+
+const TRUNK_FACTS = { language: 'pl', tracker: 'none', validation: 'npm run verify', workflow: { preset: 'trunk', trunk: 'main', integration: 'main', pr_dest: 'main', protected: [], merge: 'ff', branch_types: ['feat', 'fix'], orchestrate_publish: 'push' } };
+
+test('fill 1: the real starter CLAUDE.md — absent branch fields are inserted in the template layout and the fence placeholders are replaced', () => {
+  const root = project();
+  const starter = fs.readFileSync(path.join(REPO, CLAUDE_FILE), 'utf8');
+  fs.writeFileSync(path.join(root, CLAUDE_FILE), starter);
+  // The shape this test exists for: the fields are ABSENT, not placeholder-valued, and the fence
+  // placeholders ({typecheck-command} …) are not in PLACEHOLDERS so unresolved() cannot see them.
+  assert.equal(/^\*\*Preset:\*\*/m.test(starter), false, 'starter must have no branch-model assignments');
+  assert.match(starter, /\{typecheck-command\}/);
+  assert.deepEqual(unresolved(starter).includes('typecheck-command'), false);
+  assert.equal(resolveRulesAuthority(root).ready, false);
+
+  const res = fillRules({ projectRoot: root, facts: { ...TRUNK_FACTS, validation: 'node scripts/check-harness.mjs --all' }, consent: true });
+  assert.equal(res.ok, true);
+  assert.equal(res.mode, 'brownfield');
+  const after = fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8');
+  // inserted, one combined line for Preset/Trunk/Integration — MIRRORED reads it whole
+  assert.match(after, /^\*\*Preset:\*\* trunk · \*\*Trunk:\*\* `main` · \*\*Integration:\*\* `main`$/m);
+  assert.match(after, /^\*\*Base → PR dest:\*\* main$/m);
+  assert.match(after, /^\*\*Protected:\*\* none$/m);
+  assert.match(after, /^node scripts\/check-harness\.mjs --all$/m);
+  assert.doesNotMatch(after, /\{typecheck-command\}/);
+  // the blockquote and the comment inside the fence survive byte-identically
+  assert.ok(after.includes('> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap._'));
+  assert.match(after, /# Run in order, stop on first failure/);
+  const done = resolveRulesAuthority(root);
+  assert.equal(done.ready, true);
+  assert.deepEqual(done.unresolved_required, []);
+});
+
+test('fill 2: greenfield is refused with a reason, not half-served — both rule files stay byte-identical', () => {
+  const root = project();
+  applyRules({ projectRoot: root, facts: FACTS, consent: true });
+  const rulesBefore = fs.readFileSync(path.join(root, RULES_FILE), 'utf8');
+  const claudeBefore = fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8');
+  const res = fillRules({ projectRoot: root, facts: FACTS, consent: true });
+  assert.equal(res.ok, false);
+  assert.equal(res.mode, 'greenfield');
+  assert.match(res.reason, /generated/);
+  assert.equal(fs.readFileSync(path.join(root, RULES_FILE), 'utf8'), rulesBefore);
+  assert.equal(fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8'), claudeBefore);
+});
+
+test('fill 3: a resolved publish plus an empty branch model against a PR-gated fact set is a workflow contradiction', () => {
+  const root = project();
+  const before = brownfield(root, { bm: null, publish: 'push' });
+  const res = fillRules({ projectRoot: root, facts: { ...TRUNK_FACTS, workflow: { preset: 'gitflow' } }, consent: true });
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'workflow contradiction');
+  assert.ok(res.drift.some((d) => d.fact === 'publish'));
+  assert.equal(fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8'), before, 'nothing is written on a contradiction');
+});
+
+test('fill 4: omitted workflow facts are not a contradiction — a partial fill against a resolved workflow succeeds', () => {
+  const root = project();
+  brownfield(root, { extra: '\nArchitecture: {architecture}\n' });
+  // fieldsFrom returns null for preset/trunk/integration here and still supplies a default
+  // branch-pattern; comparing those against the resolved file would refuse every partial fill.
+  const res = fillRules({ projectRoot: root, facts: { architecture: 'Layered.' }, consent: true });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.drift, []);
+  const after = fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8');
+  assert.match(after, /Architecture: Layered\./);
+  assert.match(after, /^\*\*Preset:\*\* trunk · \*\*Trunk:\*\* `main`/m, 'the resolved workflow lines are untouched');
+});
+
+test('fill 5: a Jira rerun on unchanged facts reports no phantom contradiction', () => {
+  const root = project();
+  const facts = { ...TRUNK_FACTS, tracker: 'jira' };
+  const f = fieldsFrom(facts);
+  brownfield(root, { bm: { preset: f.preset, trunk: f.trunk, integration: f.integration, names: `\`${f['branch-pattern']}\` — types: ${f['branch-types']}`, dest: f['pr-dest'], protectedList: f.protected } });
+  // fieldsFrom expands branchModel({ ...workflow, tracker }); dropping tracker would yield
+  // `<type>/<slug>` instead of `<type>/<KEY>-<slug>` and fake a disagreement.
+  assert.equal(f['branch-pattern'], '<type>/<KEY>-<slug>');
+  const res = fillRules({ projectRoot: root, facts, consent: true });
+  assert.equal(res.ok, true, `expected no contradiction, got ${JSON.stringify(res.drift)}`);
+  assert.deepEqual(res.drift, []);
+});
+
+test('fill 6: --set cannot launder a workflow contradiction', () => {
+  const root = project();
+  const before = brownfield(root, { publish: 'push' });
+  const res = fillRules({ projectRoot: root, facts: { ...TRUNK_FACTS, workflow: { preset: 'gitflow' } }, set: ['publish=push'], consent: true });
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'workflow contradiction');
+  assert.equal(fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8'), before);
+});
+
+test('fill 7: --set updates a resolved branch-model field and leaves every other section identical', () => {
+  const root = project();
+  const before = brownfield(root);
+  const facts = { ...TRUNK_FACTS, workflow: { ...TRUNK_FACTS.workflow, trunk: 'develop' } };
+  const res = fillRules({ projectRoot: root, facts, set: ['trunk=develop'], consent: true });
+  assert.equal(res.ok, true, `unexpected refusal: ${res.reason} ${JSON.stringify(res.drift)}`);
+  const after = fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8');
+  assert.match(after, /\*\*Preset:\*\* trunk · \*\*Trunk:\*\* `develop` · \*\*Integration:\*\* `main`/, 'the combined line keeps its separators and backticks');
+  assert.equal(after.replace('**Trunk:** `develop`', '**Trunk:** `main`'), before, 'only the overridden span changed');
+});
+
+test('fill 8: a resolved value is never changed without an explicit --set', () => {
+  const root = project();
+  const before = brownfield(root);
+  const res = fillRules({ projectRoot: root, facts: { ...TRUNK_FACTS, workflow: { ...TRUNK_FACTS.workflow, trunk: 'main' } }, consent: true });
+  assert.equal(res.ok, true);
+  assert.equal(fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8'), before, 'resolved values stay put');
+});
+
+test('fill 9: a fill that would break the legacy contract writes nothing', () => {
+  const root = project();
+  const before = brownfield(root, { bm: null, validation: '{typecheck-command}' });
+  // An empty validation value would gut the fence; the pre-write contract check must refuse.
+  const res = fillRules({ projectRoot: root, facts: { ...TRUNK_FACTS, validation: '   ' }, consent: true });
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /contract/);
+  assert.equal(fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8'), before);
+});
+
+test('fill 10: two hand-written authorities are a conflict and fill refuses before any write', () => {
+  const root = project();
+  const before = brownfield(root);
+  fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
+  fs.writeFileSync(path.join(root, RULES_FILE), '# Shared rules\n\nHand-written too.\n');
+  const res = fillRules({ projectRoot: root, facts: TRUNK_FACTS, consent: true });
+  assert.equal(res.ok, false);
+  assert.equal(res.mode, 'conflict');
+  assert.equal(fs.readFileSync(path.join(root, CLAUDE_FILE), 'utf8'), before);
+});
+
+test('fill 11: the shipped CLAUDE.md template renders inside the always-loaded cap on its own', () => {
+  // The cap applies to the rendered file, and rendering substitutes arbitrary-length project text —
+  // so this pins the template's own contribution, not the whole budget.
+  const rendered = renderTemplate('CLAUDE.md', fieldsFrom({}));
+  assert.ok(rendered.split('\n').length <= 165, `template is ${rendered.split('\n').length} lines`);
+  assert.ok(Buffer.byteLength(rendered) <= 9500, `template is ${Buffer.byteLength(rendered)} B`);
 });

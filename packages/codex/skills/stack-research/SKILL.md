@@ -311,7 +311,7 @@ After PRD + decisions.md are updated, the project state has changed — explicit
 
 > **Recommended next steps:**
 > 1. **`/harness:refresh-brief` (Claude Code) · `$refresh-brief` (Codex)** — `project-brief.md` is now stale (PRD's Tech Stack section just changed). Regenerate it so future `/harness:prime` (Claude Code) · `$prime` (Codex) calls load the up-to-date brief instead of the old placeholder.
-> 2. **the legacy `/setup:create-CLAUDE_MD`** (route, do not perform: if that command is not installed in this project, print `legacy bootstrap not installed — skipped: create-CLAUDE_MD` and move on) — only if you've already initialized scaffolding (npm init / uv init / etc.). It picks up the chosen stack and fills in `CLAUDE.md` + `.agents/memory/architecture.md`.
+> 2. **`/harness:create-rules` (Claude Code) · `$create-rules` (Codex)** — only once scaffolding exists (npm init / uv init / etc.), because it derives the rules from real code. It picks up the chosen stack and fills `CLAUDE.md` (or the shared rules) plus `.agents/memory/architecture.md`.
 > 3. **`/harness:brainstorm <first feature>` (Claude Code) · `$brainstorm <first feature>` (Codex)** — start designing features with the chosen stack.
 
 If the user is in feature-level mode (named an area in the input) and chose to skip PRD update, suggest `/harness:brainstorm` (Claude Code) · `$brainstorm` (Codex) directly.

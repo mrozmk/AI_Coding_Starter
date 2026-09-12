@@ -45,7 +45,7 @@ If `status: empty` (or missing):
 If `architecture.md` is `status: populated` or `seeded` → **Read it.**
 
 If `status: empty` (or missing):
-- Emit warning: `⚠️ architecture.md is empty — run /setup:create-CLAUDE_MD.`
+- Emit warning: `⚠️ architecture.md is empty — run create-rules.`
 - Minimal fallback (no full tree dump). Prefer `rg --files` — it respects `.gitignore`, so generated/vendored dirs drop out for free without an ever-growing `-not -path` list:
   !`rg --files --max-depth 3 -g '!node_modules' -g '!dist' -g '!build' 2>/dev/null | awk -F/ 'NF>1{NF--; print}' OFS=/ | sort -u | head -40 || find . -maxdepth 2 -type d -not -path '*/node_modules*' -not -path '*/.git*' 2>/dev/null | head -30`
 
@@ -171,7 +171,7 @@ Say `*.md` documents, not `files` — the probes count only top-level Markdown, 
 
 ### Warnings (omit section if no warnings)
 - ⚠️ `project-brief.md` empty — run `/maintain:refresh-brief`
-- ⚠️ `architecture.md` empty — run `/setup:create-CLAUDE_MD`
+- ⚠️ `architecture.md` empty — run `create-rules`
 - ⚠️ memory layer is <N> KB (over `MEMORY_WARN` 200 KB) — run `/maintain:cleanup-workflow`
 - ⚠️ <N> reference file(s) skipped — `REFERENCE_BUDGET` exhausted; raise `REFERENCE_BUDGET` or read on demand
 - ⚠️ <N> reference file(s) skipped — larger than `PER_FILE_CAP`; raise `PER_FILE_CAP` or read on demand
@@ -188,4 +188,4 @@ One warning **per skip reason**, with its own count and bytes — never collapse
 - Quick mode is the default because it covers ~90% of sessions cheaply. Full mode pulls in 4-7 extra memory files plus whatever of `reference/` fits `REFERENCE_BUDGET` — only worth it when context budget is generous.
 - Full mode pre-loads the **memory layer in full** and `reference/` **up to `REFERENCE_BUDGET`** — so a large reference dir will leave documents unloaded, by design, and the report names them. They come back on demand via the `When to Read` table in `index.md`, which is the **runtime routing** (what to load after `/prime`, mid-conversation) that quick mode trusts entirely.
 - **Why the cap exists:** unbudgeted full mode was measured consuming 950k of a 1M window in one project and ~400k in another, leaving nothing to work with after priming. Raising `REFERENCE_BUDGET` is the supported response; deleting the selector reinstates the incident.
-- If both `architecture.md` and `project-brief.md` are empty, `/prime` is operating in *bootstrap mode* — show both warnings and minimal fallbacks. Recommend running `/setup:create-CLAUDE_MD` then `/maintain:refresh-brief` (in that order) before further work.
+- If both `architecture.md` and `project-brief.md` are empty, `/prime` is operating in *bootstrap mode* — show both warnings and minimal fallbacks. Recommend running `create-rules` then `refresh-brief` (in that order) before further work.

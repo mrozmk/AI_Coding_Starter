@@ -8,6 +8,7 @@
 //   node scripts/rules.mjs authority --project-root <dir>
 //   node scripts/rules.mjs render    --project-root <dir> --facts <facts.json> [--consent yes]
 //   node scripts/rules.mjs check     --project-root <dir>
+//   node scripts/rules.mjs fill      --project-root <dir> --facts <facts.json> [--set f=v]... [--consent yes]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -320,6 +321,225 @@ export function applyRules({ projectRoot, facts = {}, consent = false }) {
   return { ok: true, mode: consent ? after.mode : auth.mode, authority: consent ? after.authority : (auth.mode === 'brownfield' ? CLAUDE_FILE : RULES_FILE), ready: authorityUnresolved.length === 0 && drift.length === 0, unresolved_required: authorityUnresolved, drift, actions, warnings: consent ? after.warnings : auth.warnings };
 }
 
+// ── fill: resolve unresolved fields in an existing rules body (T05) ───────────────────────────
+// Brownfield only. Greenfield rules are generated from facts, and carrying a fill into the compat
+// CLAUDE.md needs field→span locators MIRRORED does not have (no Trunk/Integration entries of its
+// own, five template fields absent), so a greenfield fill would leave the compat copy stale while
+// `ready` still reported true. Refused with a reason rather than half-served.
+
+// Which fieldsFrom key supplies each branch-model assignment.
+const BRANCH_FIELD_KEYS = { '**Preset:**': 'preset', '**Trunk:**': 'trunk', '**Integration:**': 'integration', '**Branch names:**': 'branch-pattern', '**Base → PR dest:**': 'pr-dest', '**Protected:**': 'protected' };
+
+// Template line shapes (templates/project-rules.md → ### Branch model). Preset/Trunk/Integration
+// share ONE line: the MIRRORED `Preset` regex swallows the whole line, and that is the only reason
+// Trunk and Integration survive a sync at all. Splitting them onto their own lines breaks both
+// syncCompat and legacyContractCheck (whose field regex stops at `·`).
+function branchModelLines(fields) {
+  const q = (v) => `\`${v}\``;
+  const out = [
+    `**Preset:** ${fields.preset} · **Trunk:** ${q(fields.trunk)} · **Integration:** ${q(fields.integration)}`,
+    `**Branch names:** ${q(fields['branch-pattern'])}${fields['branch-types'] ? ` — types: ${fields['branch-types']}` : ''}`,
+    `**Base → PR dest:** ${fields['pr-dest']}`,
+    `**Protected:** ${fields.protected}`,
+  ];
+  if (fields.merge) out.push(`**Merge:** ${fields.merge}`);
+  return out;
+}
+
+// Absolute offsets of the `### Branch model` block inside the Git Workflow section. sectionSpan only
+// locates `##` headings, so the sub-heading needs its own walk.
+function branchModelRegion(text) {
+  const span = sectionSpan(text, 'Git Workflow');
+  if (!span) return null;
+  const body = text.slice(span.start, span.end);
+  const rel = body.search(/^### Branch model\s*$/m);
+  if (rel === -1) return null;
+  const headerEnd = body.indexOf('\n', rel) + 1;
+  const nextRel = body.slice(headerEnd).search(/^###\s+/m);
+  return { start: span.start + rel, headerEnd: span.start + headerEnd, end: span.start + (nextRel === -1 ? body.length : headerEnd + nextRel) };
+}
+
+// Insertion point: after the section's trailing blockquote, before whatever follows it.
+function afterBlockquote(text, region) {
+  const lines = text.slice(region.headerEnd, region.end).split('\n');
+  let last = -1;
+  for (let i = 0; i < lines.length; i++) if (lines[i].startsWith('>')) last = i;
+  const upto = lines.slice(0, last + 1).join('\n');
+  return region.headerEnd + (last === -1 ? 0 : upto.length + 1);
+}
+
+const norm = (v) => String(v ?? '').replace(/`/g, '').replace(/\s+/g, ' ').trim();
+
+// Resolved workflow facts as the file currently states them.
+function workflowInFile(text) {
+  const out = {};
+  const git = sectionBody(text, 'Git Workflow') ?? '';
+  const pub = git.match(/^\*\*Orchestrate publish:\*\*\s*(\S+)/m);
+  if (pub) out.publish = pub[1];
+  const region = branchModelRegion(text);
+  if (region) {
+    const body = text.slice(region.headerEnd, region.end).split('\n').filter((l) => !l.startsWith('>')).join('\n');
+    for (const [label, key] of Object.entries(BRANCH_FIELD_KEYS)) {
+      const m = body.match(new RegExp(`${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*([^·\\n]*)`));
+      if (!m || /\{[a-z-]+\}|\{…\}/.test(m[1]) || !norm(m[1])) continue;
+      // `**Branch names:**` composes two fields — `{branch-pattern}` and `{branch-types}` — on one
+      // template line. Comparing the whole value against branch-pattern alone makes the `— types:`
+      // tail read as a permanent disagreement, so take the backticked pattern when there is one.
+      const raw = key === 'branch-pattern' ? (m[1].match(/`([^`]+)`/)?.[1] ?? m[1]) : m[1];
+      out[key] = norm(raw);
+    }
+  }
+  return out;
+}
+
+export function parseSet(set) {
+  const out = {};
+  for (const raw of [].concat(set ?? []).filter((x) => typeof x === 'string')) {
+    const eq = raw.indexOf('=');
+    if (eq === -1) throw new Error(`--set expects field=value, got ${raw}`);
+    out[raw.slice(0, eq)] = raw.slice(eq + 1);
+  }
+  return out;
+}
+
+export function fillRules({ projectRoot, facts = {}, set = [], consent = false }) {
+  const root = path.resolve(projectRoot);
+  const auth = resolveRulesAuthority(root);
+  if (auth.mode !== 'brownfield') {
+    const reason = auth.mode === 'greenfield'
+      ? 'greenfield rules are generated — fix the facts and re-create, do not fill'
+      : (auth.warnings[0] ?? `no rules authority (mode ${auth.mode})`);
+    return { ok: false, mode: auth.mode, authority: auth.authority, ready: false, unresolved_required: auth.unresolved_required, drift: auth.drift, actions: [], warnings: auth.warnings, reason };
+  }
+
+  const file = auth.authority;
+  const abs = path.join(root, file);
+  const before = fs.readFileSync(abs, 'utf8');
+  const fields = fieldsFrom(facts);
+  const overrides = parseSet(set);
+  const edits = [];
+  const problems = [];
+
+  // Effective workflow = what the file states, with approved overrides on top. Overrides never
+  // exempt a field from the check: `--set publish=push` over gitflow facts must still be refused.
+  const inFile = workflowInFile(before);
+  const effective = { ...inFile, ...overrides };
+  const wfSupplied = facts.workflow && Object.keys(facts.workflow).length > 0;
+  const drift = [];
+  if (wfSupplied) {
+    for (const key of ['publish', 'preset', 'trunk', 'integration', 'branch-pattern', 'pr-dest', 'protected']) {
+      const want = fields[key];
+      const have = effective[key];
+      // An omitted input preserves the existing value; only a supplied, differing one disagrees.
+      if (want === null || want === undefined || have === undefined) continue;
+      if (norm(have) !== norm(want)) drift.push({ fact: key, rules: have, facts: want });
+    }
+  }
+  if (drift.length) return { ok: false, mode: auth.mode, authority: file, ready: false, unresolved_required: auth.unresolved_required, drift, actions: [], warnings: auth.warnings, reason: 'workflow contradiction' };
+
+  let next = before;
+
+  // (a) named placeholders, plus any override naming one.
+  for (const key of [...new Set([...unresolved(next), ...Object.keys(overrides)])]) {
+    if (!PLACEHOLDERS.includes(key)) continue;
+    const value = overrides[key] ?? fields[key];
+    if (value === null || value === undefined) { problems.push({ kind: 'missing-facts', field: key }); continue; }
+    if (!next.includes(`{${key}}`)) continue;
+    next = next.split(`{${key}}`).join(String(value));
+    edits.push({ kind: 'placeholder', field: key, to: String(value) });
+  }
+
+  // (b) a Validation fence whose command is a legacy placeholder command. Those spellings
+  // ({typecheck-command} …) are NOT in PLACEHOLDERS, so unresolved() never reports them —
+  // legacyContractCheck catches them by its own regex and legacyUnresolved names the field.
+  if (legacyUnresolved(next).includes('validation-command')) {
+    const value = overrides['validation-command'] ?? fields['validation-command'];
+    if (value === null || value === undefined) problems.push({ kind: 'missing-facts', field: 'validation-command' });
+    else {
+      const span = sectionSpan(next, 'Validation');
+      const body = span ? next.slice(span.start, span.end) : '';
+      const fence = body.match(/```[a-z]*\n([\s\S]*?)```/);
+      if (fence) {
+        const kept = fence[1].split('\n').filter((l) => l.trim().startsWith('#'));
+        const replaced = `${[...kept, String(value)].join('\n')}\n`;
+        const updated = body.replace(fence[1], replaced);
+        next = next.slice(0, span.start) + updated + next.slice(span.end);
+        edits.push({ kind: 'validation-fence', field: 'validation-command', to: String(value) });
+      }
+    }
+  }
+
+  // (c)/(d) branch-model assignments: placeholder-valued, or absent from an existing section.
+  const region = branchModelRegion(next);
+  if (region === null) {
+    if (legacyUnresolved(next).some((f) => ['preset', 'trunk', 'integration', 'protected'].includes(f))) problems.push({ kind: 'section-missing', section: '### Branch model' });
+  } else {
+    const body = next.slice(region.headerEnd, region.end);
+    const dup = Object.keys(BRANCH_FIELD_KEYS).filter((label) => body.split(label).length - 1 > 1);
+    if (dup.length) problems.push({ kind: 'duplicate-field', fields: dup });
+    else {
+      const stated = workflowInFile(next);
+      const need = Object.entries(BRANCH_FIELD_KEYS).filter(([, key]) => overrides[key] !== undefined || stated[key] === undefined);
+      if (need.length) {
+        const values = { ...fields, ...overrides };
+        const missing = ['preset', 'trunk', 'integration', 'pr-dest', 'protected'].filter((k) => values[k] === null || values[k] === undefined);
+        if (missing.length) for (const f of missing) problems.push({ kind: 'missing-facts', field: f });
+        else if (Object.keys(BRANCH_FIELD_KEYS).every((label) => !body.includes(label))) {
+          // Whole block absent: insert it in the template's own layout.
+          const at = afterBlockquote(next, region);
+          const block = `\n${branchModelLines(values).join('\n')}\n`;
+          next = next.slice(0, at) + block + next.slice(at);
+          edits.push({ kind: 'branch-model-insert', fields: Object.values(BRANCH_FIELD_KEYS) });
+        } else {
+          // Some assignments exist: replace only the placeholder-valued ones, line by line.
+          let updated = next.slice(region.headerEnd, region.end);
+          for (const [label, key] of Object.entries(BRANCH_FIELD_KEYS)) {
+            if (stated[key] !== undefined && overrides[key] === undefined) continue;
+            // Trailing whitespace is captured separately and re-emitted: `[^·\n]*` alone eats the
+            // space before a `·` separator and welds the next label onto the new value. Backticks
+            // are preserved because the template wraps trunk/integration in them.
+            const re = new RegExp(`(${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*)([^·\\n]*?)(\\s*)(?=·|\\n|$)`);
+            const m = updated.match(re);
+            if (!m) continue;
+            const quoted = /^`.*`$/.test(m[2].trim());
+            const value = quoted ? `\`${values[key]}\`` : String(values[key]);
+            updated = updated.replace(re, (_x, a, _b, trail) => `${a}${value}${trail}`);
+            edits.push({ kind: 'branch-model-field', field: key, to: String(values[key]) });
+          }
+          next = next.slice(0, region.headerEnd) + updated + next.slice(region.end);
+        }
+      }
+    }
+  }
+
+  // Build every candidate before writing anything, and contract-check each. One candidate today;
+  // the loop shape is kept because the deferred greenfield follow-up adds a second.
+  const candidates = [{ file, abs, before, next }];
+  for (const c of candidates) {
+    const was = legacyContractCheck(c.before);
+    const now = legacyContractCheck(c.next);
+    const introduced = now.filter((e) => !was.includes(e));
+    if (now.length > was.length || introduced.length) {
+      return { ok: false, mode: auth.mode, authority: file, ready: false, unresolved_required: auth.unresolved_required, drift: [], actions: [{ file: c.file, action: 'refused', contract_errors: introduced.length ? introduced : now }], warnings: auth.warnings, reason: 'fill would break the legacy contract' };
+    }
+  }
+
+  const diff = edits.length
+    ? edits.map((e) => `~ ${e.kind}${e.field ? ` ${e.field}` : ''}${e.to ? `: ${e.to}` : ''}`).join('\n')
+    : '(no change)';
+  const actions = candidates.map((c) => ({ file: c.file, action: consent ? (c.next === c.before ? 'kept' : 'filled') : (c.next === c.before ? 'kept' : 'would-fill'), fields: edits.map((e) => e.field).filter(Boolean), diff, problems }));
+  if (consent) for (const c of candidates) if (c.next !== c.before) fs.writeFileSync(c.abs, c.next);
+
+  const after = consent ? resolveRulesAuthority(root) : null;
+  return {
+    ok: true, mode: auth.mode, authority: file,
+    ready: consent ? after.ready : false,
+    unresolved_required: consent ? after.unresolved_required : auth.unresolved_required,
+    drift: consent ? after.drift : [], actions, problems,
+    warnings: consent ? after.warnings : auth.warnings,
+  };
+}
+
 function main() {
   const { opts, positionals } = parseArgv(process.argv.slice(2));
   const cmd = positionals[0];
@@ -333,6 +553,14 @@ function main() {
     if (opts.consent !== 'yes') console.error('preview only — re-run with --consent yes after the user approved the summary');
     return;
   }
+  if (cmd === 'fill') {
+    const facts = readJson(String(requireOpt(opts, 'facts')));
+    const res = fillRules({ projectRoot, facts, set: opts.set, consent: opts.consent === 'yes' });
+    console.log(JSON.stringify(res, null, 2));
+    if (!res.ok) process.exit(2);
+    if (opts.consent !== 'yes') console.error('preview only — re-run with --consent yes after the user approved the diff');
+    return;
+  }
   if (cmd === 'check') {
     const auth = resolveRulesAuthority(projectRoot);
     const claude = path.join(path.resolve(projectRoot), CLAUDE_FILE);
@@ -340,7 +568,7 @@ function main() {
     console.log(JSON.stringify({ ...auth, legacy_contract: legacy }, null, 2));
     process.exit(auth.ready && legacy.length === 0 ? 0 : 3);
   }
-  throw new Error(`unknown command ${cmd}; use authority | render | check`);
+  throw new Error(`unknown command ${cmd}; use authority | render | check | fill`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathOrSelf(process.argv[1])) {

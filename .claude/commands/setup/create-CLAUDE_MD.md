@@ -4,6 +4,8 @@ description: Create global rules (CLAUDE.md + architecture.md + project README) 
 
 # Create Global Rules
 
+> **Superseded in part by the plugin skill `create-rules`.** It owns the rules half of this command — codebase discovery, the facts review, `CLAUDE.md` / `.agents/project-rules.md` via `rules.mjs`, and `.agents/memory/architecture.md`. This file is retained **only** for what the plugin does not carry: the README swap (Phase 3.3) and the LICENSE swap (Phase 3.4), both of which only make sense in a clone of the starter. Everything here still works; prefer `create-rules` for the rules and the map.
+
 Generate a CLAUDE.md file by analyzing the codebase and extracting patterns.
 
 ---
