@@ -1,5 +1,0 @@
-interface:
-  display_name: qa-verify
-  short_description: "Verify a task's acceptance criteria one by one — assign stable ids, classify each into an evidence family, dispatch t..."
-policy:
-  allow_implicit_invocation: false

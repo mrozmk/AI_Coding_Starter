@@ -1,5 +1,0 @@
-interface:
-  display_name: handoff
-  short_description: Compact the current session into a handoff document under .agents/handoffs/ so a fresh session on either host can con...
-policy:
-  allow_implicit_invocation: false

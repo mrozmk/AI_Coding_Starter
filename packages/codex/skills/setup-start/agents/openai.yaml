@@ -1,5 +1,0 @@
-interface:
-  display_name: setup-start
-  short_description: Guided bootstrap of a project for the harness — interview, consent-gated profile writes (schema 2, or the legacy file...
-policy:
-  allow_implicit_invocation: false

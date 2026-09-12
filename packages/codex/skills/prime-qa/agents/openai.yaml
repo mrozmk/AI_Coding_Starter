@@ -1,5 +1,0 @@
-interface:
-  display_name: prime-qa
-  short_description: Load QA context and verify the QA environment before any acceptance-criteria verification — memory routing, the defec...
-policy:
-  allow_implicit_invocation: false

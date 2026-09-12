@@ -1,5 +1,0 @@
-interface:
-  display_name: stack-research
-  short_description: Technical project analysis at the PRD stage — technology selection, feasibility assessment and the risks each option ...
-policy:
-  allow_implicit_invocation: false

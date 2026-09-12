@@ -1,5 +1,0 @@
-interface:
-  display_name: brainstorm
-  short_description: Design before building — resolve the topic, understand the why, write a Draft spec, get one independent cross-model r...
-policy:
-  allow_implicit_invocation: false

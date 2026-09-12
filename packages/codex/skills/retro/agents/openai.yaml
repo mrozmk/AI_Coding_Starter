@@ -1,5 +1,0 @@
-interface:
-  display_name: retro
-  short_description: Generate an evidence-based session retrospective from the host transcript — paths, counts, tool-call references, time...
-policy:
-  allow_implicit_invocation: false

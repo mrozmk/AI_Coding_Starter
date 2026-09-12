@@ -1,5 +1,0 @@
-interface:
-  display_name: gates-design-quality-check
-  short_description: Pixel-perfect audit of an implemented UI section against its reference design — visual, structural, semantic, behavio...
-policy:
-  allow_implicit_invocation: false

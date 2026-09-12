@@ -1,5 +1,0 @@
-interface:
-  display_name: simply
-  short_description: Re-explain what just happened in plain language — short, concrete and decision-ready, for a reader who did not follow...
-policy:
-  allow_implicit_invocation: false

@@ -1,5 +1,0 @@
-interface:
-  display_name: execute
-  short_description: Execute an implementation plan end-to-end — read it, implement every task in order, add the tests it names, run its v...
-policy:
-  allow_implicit_invocation: false

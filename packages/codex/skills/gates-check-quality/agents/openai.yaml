@@ -1,5 +1,0 @@
-interface:
-  display_name: gates-check-quality
-  short_description: "Run the project's declared quality gates — format, lint, type-check and the code-structure size limits — and report f..."
-policy:
-  allow_implicit_invocation: false

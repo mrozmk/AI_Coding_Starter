@@ -1,5 +1,0 @@
-interface:
-  display_name: prime-ba
-  short_description: Load product context for the Business Analyst role — PRD, brief, business model and backlog — so requirement work sta...
-policy:
-  allow_implicit_invocation: false

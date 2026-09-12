@@ -1,5 +1,0 @@
-interface:
-  display_name: plan-feature
-  short_description: Turn an approved spec into an implementation plan with EXPECT/VALIDATE tasks and an explicit execution effort (medium...
-policy:
-  allow_implicit_invocation: false

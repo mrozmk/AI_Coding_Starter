@@ -1,5 +1,0 @@
-interface:
-  display_name: create-prd
-  short_description: Create a Product Requirements Document from the conversation — executive summary, mission, users, MVP scope, function...
-policy:
-  allow_implicit_invocation: false

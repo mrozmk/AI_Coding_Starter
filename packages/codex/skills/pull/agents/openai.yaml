@@ -1,5 +1,0 @@
-interface:
-  display_name: pull
-  short_description: Pull the latest changes on the current branch from origin — detects the branch, auto-stashes and restores local chang...
-policy:
-  allow_implicit_invocation: false

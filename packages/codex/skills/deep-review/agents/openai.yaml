@@ -1,5 +1,0 @@
-interface:
-  display_name: deep-review
-  short_description: Deep structural / maintainability audit — abstraction quality, giant files, spaghetti-condition growth, code-judo sim...
-policy:
-  allow_implicit_invocation: false

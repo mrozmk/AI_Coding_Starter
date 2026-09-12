@@ -117,7 +117,7 @@ Apply the **A / B / C classification from [.claude/starter-sync-playbook.md → 
 
 > Without a `base` (2-way), collapse to the playbook's original new/changed/identical/custom buckets plus the `git log` local-edit flag from Step 0. The `migrated` verdict applies in both modes — it needs no base.
 >
-> These verdicts are implemented by `sync-filter.mjs` (`threeWayVerdict`, `filterTasks`, `unionSettings`, `unionMcp`, `rollbackPlan`) shipped in the installed `harness` plugin under `scripts/`; in the starter checkout it is `harness-source/scripts/sync-filter.mjs`. Run it for the decision tables instead of re-deriving them by hand: `node <plugin_root>/scripts/sync-filter.mjs tasks --manifest .claude/.starter-sync.json --candidates <json>`.
+> These verdicts are implemented by `sync-filter.mjs` (`threeWayVerdict`, `filterTasks`, `unionSettings`, `unionMcp`, `rollbackPlan`) shipped in the installed `harness` plugin under `scripts/`; without an installed plugin, clone the template's `release` branch and use `packages/claude/scripts/sync-filter.mjs` from that clone (`main` no longer carries it). Run it for the decision tables instead of re-deriving them by hand: `node <plugin_root>/scripts/sync-filter.mjs tasks --manifest .claude/.starter-sync.json --candidates <json>`.
 
 **Compute the raw diff up front** so the task list has hard data, not guesses:
 

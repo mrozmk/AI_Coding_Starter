@@ -1,5 +1,0 @@
-interface:
-  display_name: recon
-  short_description: Assemble broad context BEFORE brainstorm — fan out research over memory, prior specs/tests, the integration surface, ...
-policy:
-  allow_implicit_invocation: false

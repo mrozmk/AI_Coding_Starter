@@ -1,5 +1,0 @@
-interface:
-  display_name: orchestrate
-  short_description: Run a multi-step plan end-to-end — execute → refine → verify → design-check → commit → push, looping fixes until they...
-policy:
-  allow_implicit_invocation: false

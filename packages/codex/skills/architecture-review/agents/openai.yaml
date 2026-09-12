@@ -1,5 +1,0 @@
-interface:
-  display_name: architecture-review
-  short_description: Codebase-wide architecture audit that hunts for deepening opportunities — shallow modules, pass-through layers, spagh...
-policy:
-  allow_implicit_invocation: false

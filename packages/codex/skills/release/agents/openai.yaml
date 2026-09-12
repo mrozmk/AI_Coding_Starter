@@ -1,5 +1,0 @@
-interface:
-  display_name: release
-  short_description: Create a version release — update CHANGELOG only if the project keeps one, bump the detected manifest, offer a docume...
-policy:
-  allow_implicit_invocation: false
