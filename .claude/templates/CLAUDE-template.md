@@ -10,11 +10,11 @@ A flexible template for creating global rules. Adapt the **project-specific sect
 >
 > `CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps.
 
-> **DO NOT remove or soften** the baseline sections — they are the shared contract for every project generated from this starter kit. The mandatory items — headings, `Git Workflow` content lines, and the LSP-conditional section — are listed in the contract block below; `/maintain:cleanup-workflow` 1.6 reads it. Their exact heading text is an API — slash commands and hooks address them by name, so a rename or a deletion breaks a consumer silently.
+> **DO NOT remove or soften** the baseline sections — they are the shared contract for every project generated from this starter kit. The mandatory items — headings, `Git Workflow` content lines, and the LSP-conditional section — are listed in the contract block below; reference sweeps read it. Their exact heading text is an API — slash commands and hooks address them by name, so a rename or a deletion breaks a consumer silently.
 >
 > Placeholder-style sections (marked with `{placeholder}` or `<!-- comment -->`) are the ones you fill in per project.
 
-<!-- CLAUDE-CONTRACT:BEGIN — machine-readable; parsed by /maintain:cleanup-workflow 1.6.
+<!-- CLAUDE-CONTRACT:BEGIN — machine-readable; parsed by reference sweeps.
      PREAMBLE ONLY: never copy this block into a generated CLAUDE.md. -->
 
 | Item | Kind | Tier |
@@ -165,7 +165,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Orchestrate publish:** {push | branch-local}
 
-> _Filled in by `/setup:create-CLAUDE_MD`._ Filled from `.claude/project-profile.json` when `/setup:start` ran; otherwise by `/setup:create-CLAUDE_MD`. The publish mode `/orchestrate` uses with no `--publish` flag. `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Choose `branch-local` for a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side, not merely unwelcome. Omitting the line means `push`.
+> _Filled in by `/harness:create-rules`._ Derived from the project profile when `/harness:setup-start` ran; otherwise by `/harness:create-rules`. The publish mode `/orchestrate` uses with no `--publish` flag. `push` — the pipeline pushes each step commit to the run branch. `branch-local` — it commits but **never** pushes; publishing is a separate human act (open a PR, review, merge). Choose `branch-local` for a PR-gated project (GitFlow, protected `main`/`develop`, mandatory review), where a pipeline push is rejected server-side, not merely unwelcome. Omitting the line means `push`.
 
 ### Branch model
 
@@ -175,7 +175,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 **Protected:** {branches that are never a PR source and never a pipeline push target, or `none`}
 **Merge:** {per-type strategy — emit ONLY when the project deviates from its preset; otherwise delete this line}
 
-> _Filled in by `/setup:create-CLAUDE_MD`._ Filled from `.claude/project-profile.json` when `/setup:start` ran; otherwise by `/setup:create-CLAUDE_MD`. The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
+> _Filled in by `/harness:create-rules`._ Derived from the project profile when `/harness:setup-start` ran; otherwise by `/harness:create-rules`. The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ---
 
@@ -183,7 +183,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 | Context | Language |
 |---------|----------|
-| Claude ↔ developer communication | **{communication-language}** — always (set at bootstrap by `/setup:create-CLAUDE_MD`; default Polish) |
+| Claude ↔ developer communication | **{communication-language}** — always (set at bootstrap by `/harness:setup-start`; default Polish) |
 | Code, comments, docstrings, commit messages, technical docs | **English** — always |
 | App UI, user-facing messages, error messages in the app | **As defined in PRD** (default: {communication-language}) — check `docs/PRD.md` or ask if unclear |
 
@@ -196,7 +196,7 @@ Knowledge layers under `.agents/`. **Before any task read [.agents/memory/index.
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input — briefs, transcripts, sketches, PDFs | Immutable, pruned manually | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/harness:refresh-brief`, `/harness:create-rules` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
 | `backlog.md` *(optional)* | Delivery map — epics, task DAG, work packages | `Status`/`Ref` written back by the pipeline | `/setup:create-backlog` · `/plan-feature` · `/orchestrate` |
 | [specs/](.agents/specs/) | Design docs — what to build and why | Lives with the feature | `/brainstorm` |

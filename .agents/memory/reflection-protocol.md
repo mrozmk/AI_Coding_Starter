@@ -71,7 +71,7 @@ Append-mode files put the **newest entry at the END**. Never rewrite or re-order
 ## YYYY-MM-DD — {Short title}
 ```
 
-Body fields follow the `## Format` block at the top of each target file (errors: *What failed / Root cause / Fix* · decisions: *Decision / Why / Alternatives considered / Impact* · domain: free-form, ending in a **Rule:** takeaway). The dated em-dash heading is load-bearing: `/maintain:cleanup-workflow` Phase 2A parses `## <date> — <title>` blocks to find stale entries — a differently-shaped heading is invisible to pruning.
+Body fields follow the `## Format` block at the top of each target file (errors: *What failed / Root cause / Fix* · decisions: *Decision / Why / Alternatives considered / Impact* · domain: free-form, ending in a **Rule:** takeaway). The dated em-dash heading is load-bearing: anything that looks for stale entries parses `## <date> — <title>` blocks — a differently-shaped heading is invisible to pruning.
 
 **patterns.md / api.md — topical, not dated:** their seed `## Format` blocks group by pattern name / service name. Append under the matching topic heading (or add a new one); don't force a date into the heading.
 
@@ -83,7 +83,7 @@ If a discovery is one of the project's most important "always check this" lesson
 
 - **"Never reformat existing entries" is load-bearing, not stylistic.** Union emits **no conflict markers**. If two branches change the *same existing line* differently, both versions survive into the merged file and nothing flags it — a silent duplicate that only a reader will ever catch. Appending is always safe; editing what is already there is not.
 - **After a merge, entries appear ours-then-theirs, not in date order.** Union concatenates by merge side, not by timestamp, so two entries written on concurrent branches can sit a few days out of order at the top. Expected and cosmetic — reorder by hand if it bothers you, or leave it.
-- **First population of a placeholder is an in-place rewrite, not an append.** A `domain/` file shipped or created with `status: empty` frontmatter flips that line and replaces its placeholder description when it gets its first real content — and it sits in the union set. Two parallel branches populating the same placeholder merge with exit 0 into corrupt frontmatter (duplicated `---` delimiters, two `description:` lines), and a mangled `status:` line can make the Skip rule treat the file as an empty placeholder forever. Populate a placeholder only on an up-to-date branch and merge that commit on its own — the same discipline `/maintain:cleanup-workflow` requires for pruning.
+- **First population of a placeholder is an in-place rewrite, not an append.** A `domain/` file shipped or created with `status: empty` frontmatter flips that line and replaces its placeholder description when it gets its first real content — and it sits in the union set. Two parallel branches populating the same placeholder merge with exit 0 into corrupt frontmatter (duplicated `---` delimiters, two `description:` lines), and a mangled `status:` line can make the Skip rule treat the file as an empty placeholder forever. Populate a placeholder only on an up-to-date branch and merge that commit on its own — the same discipline pruning requires.
 
 Files that are *edited or regenerated in place* — including this one — are deliberately excluded from `union` and keep git's normal 3-way merge. The exclusion block in `.gitattributes` says which and why.
 
@@ -97,7 +97,7 @@ When creating a file in `domain/` for a specific module or subsystem:
 ---
 status: populated
 description: {one-line — what this module does and why this memory exists}
-created: YYYY-MM-DD   # cleanup-workflow 2B measures idle time from this
+created: YYYY-MM-DD   # idle-time measurements start here
 pinned: false         # true = never proposed for archival
 ---
 

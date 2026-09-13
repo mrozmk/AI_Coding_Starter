@@ -1,6 +1,6 @@
-<!-- STARTER-KIT-README: this is the framework guide. On bootstrap, /setup:create-CLAUDE_MD moves
-     this file to .claude/README.md and generates a project README in its place. See the
-     "About this README" callout below. -->
+<!-- STARTER-KIT-README: this is the framework guide. On bootstrap, the harness plugin's
+     setup-start moves this file to .claude/README.md and seeds a project README in its
+     place. See the "About this README" callout below. -->
 
 # AI-Assisted Development Starter Kit
 
@@ -17,9 +17,9 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 - `.gitignore`, sensible defaults
 
 > **About this README.** While you read it in the *starter repo*, it documents the **framework**.
-> The first time you run `/setup:create-CLAUDE_MD` in a real project, this guide is moved to
-> `.claude/README.md` and a fresh, project-specific `README.md` is generated in its place (from
-> `.claude/templates/README-template.md`). That keeps the root README describing *your* project
+> The first time you run `/harness:setup-start` in a real project, this guide is moved to
+> `.claude/README.md` and a fresh, project-specific `README.md` is seeded in its place (from
+> the plugin's `templates/README.md`). That keeps the root README describing *your* project
 > while the framework guide stays available at `.claude/README.md`. See
 > [The root README is yours — the framework guide moves aside](#the-root-readme-is-yours--the-framework-guide-moves-aside).
 
@@ -31,13 +31,12 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Project-owned slash commands: `/setup:start` (the guided bootstrap — run it first), `/setup:create-PRD`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/setup:createwikillm`, `/maintain:refresh-brief`, `/maintain:sync-from-starter`, `/maintain:cleanup-workflow`. The workflow commands (`/harness:prime`, `/harness:brainstorm`, `/harness:plan-feature`, `/harness:execute`, `/harness:check-implementation`, `/harness:commit`, …) are plugin skills — see *Harness plugin* below; `/harness:setup-start` can write optional short aliases here. |
+| `commands/` | Project-owned slash commands: `/maintain:sync-from-starter`. Bootstrap, product and maintenance commands are plugin skills now (`/harness:setup-start`, `/harness:create-rules`, `/harness:create-prd`, `/harness:create-backlog`, `/harness:stack-research`, `/harness:refresh-brief`). The workflow commands (`/harness:prime`, `/harness:brainstorm`, `/harness:plan-feature`, `/harness:execute`, `/harness:check-implementation`, `/harness:commit`, …) are plugin skills — see *Harness plugin* below; `/harness:setup-start` can write optional short aliases here. |
 | *(no `agents/`)* | Every sub-agent now ships in the `harness` plugin: the `/harness:orchestrate` pipeline agents (`harness:orchestrator-executor`, `-executor-hard`, `-refiner`, `-verifier`, `-committer`, `-designer`) and `harness:documentation-manager` since 0.3.0, the `/harness:qa-verify` verifiers (`qa-contract`, `qa-runtime-ui`) since 0.4.0. The starter keeps no agent files of its own. |
 | `skills/` | One skill remains: `pr-comments` (its `pr-api.sh` is permission-pinned in `settings.json`, a recorded exception documented in `CLAUDE.md → Security`, so it cannot move). `/jira` and `/confluence` ship in the plugin since 0.4.0 — invoked as `/harness:jira` / `/harness:confluence`, gated on the `tracker` / `confluence` capability groups — as do the `design/` and `architecture-review/` resource bundles. |
-| `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs placed by `/setup:start` step 8) |
+| `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (a fuller project README you can copy by hand), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs — copy and fill them yourself) |
 | `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `guard-comments` (comment-noise nudge — dormant until `comment-guard.json` names your source dirs), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `check-deps` (SessionStart dep preflight). Need `jq`. |
 | `output-styles/` | Output styles — `Simply` (three-block answers: done / did it work / now what, ≤120 words, no walls of text). Activate per session with `/output-style simply`. |
-| `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
 ### `.agents/`
@@ -46,16 +45,16 @@ Layers of persistent project knowledge:
 
 | Layer | Contents | Lifecycle |
 |-------|----------|-----------|
-| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/setup:create-PRD` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
+| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/harness:create-prd`. Never modified by Claude. | Immutable input, pruned manually |
 | `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
 | `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — epics + task DAG + **work packages** (each feeds one `/harness:brainstorm → spec → /harness:plan-feature` cycle), MVP first. Operationalizes the PRD's "Implementation Phases". | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
 | `specs/` | Design docs from `/harness:brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 
-Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/setup:create-CLAUDE_MD`) and points to memory files instead of duplicating their content.
+Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/harness:create-rules`) and points to memory files instead of duplicating their content.
 
-**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/harness:prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/setup:create-CLAUDE_MD` or `/maintain:refresh-brief`) to populate them.
+**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/harness:prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning skill (`/harness:create-rules` or `/harness:refresh-brief`) to populate them.
 
 ---
 
@@ -138,7 +137,7 @@ claude plugin marketplace add mrozmk/AI_Coding_Starter@release && claude plugin 
 codex  plugin marketplace add mrozmk/AI_Coding_Starter --ref release && codex plugin add harness@ai-coding-starter --json
 ```
 
-Then `/harness:setup-start` binds the installed plugin to the project and, on request, writes the optional short aliases (`/harness:prime`, `/harness:brainstorm`, …) into `.claude/commands/`. What stays in the project as ordinary starter files: the bootstrap and maintenance commands (`setup/*`, `maintain/*`), the `pr-comments` skill (permission-pinned), the convention templates, the `Simply` output style, the `map-codebase` workflow, `settings.json`, `.mcp.json` and the Bash hooks. The packaged runbook (`references/installation.md` inside the installed plugin) carries install, binding, activation, update, rollback and the per-version migration notes, including the `migrated` record that keeps `/maintain:sync-from-starter` from re-offering replaced legacy files.
+Then `/harness:setup-start` binds the installed plugin to the project and, on request, writes the optional short aliases (`/harness:prime`, `/harness:brainstorm`, …) into `.claude/commands/`. What stays in the project as ordinary starter files: `/maintain:sync-from-starter`, the `pr-comments` skill (permission-pinned), the convention templates, the `Simply` output style, `settings.json`, `.mcp.json` and the Bash hooks. The packaged runbook (`references/installation.md` inside the installed plugin) carries install, binding, activation, update, rollback and the per-version migration notes, including the `migrated` record that keeps `/maintain:sync-from-starter` from re-offering replaced legacy files.
 
 ## Requirements
 
@@ -154,7 +153,7 @@ Then `/harness:setup-start` binds the installed plugin to the project and, on re
 - **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
 - **MCP Playwright** — only needed if you plan to use `/harness:test-e2e` for browser-driven E2E test generation. See [MCP Playwright setup](#mcp-playwright-optional) below.
 
-That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/setup:create-CLAUDE_MD` adapts to whatever you initialize).
+That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/harness:create-rules` adapts to whatever you initialize).
 
 ### Recommended MCP servers
 
@@ -187,7 +186,7 @@ For canonical install commands, env-var configuration, and version pinning, foll
 
 The committed `.mcp.json` declares the `atlassian` server and reads its credentials from `.env` (`--env-file .env`). To activate Jira:
 
-1. Answer **Jira: yes** in `/setup:start` — it activates the Jira block in `.env.example` (or uncomment it by hand). Then copy the template: `cp .env.example .env && chmod 600 .env`
+1. Answer **Jira: yes** in `/harness:setup-start`, then uncomment the Jira block in `.env.example` by hand (the plugin never touches `.env*`). Then copy the template: `cp .env.example .env && chmod 600 .env`
 2. Fill in your Atlassian credentials in `.env` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
 3. Restart Claude Code — the MCP server loads `.env` at startup, not per call. Repeat after every edit of `.env`.
 4. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/harness:prime-ba` skip the project prompt.
@@ -208,13 +207,13 @@ Once installed, `/harness:test-e2e` can drive a real browser to explore your UI 
 
 ## Quick start
 
-> **Bootstrap chain:** `/setup:start` → it prints the rest, in order, for your kind of project.
+> **Bootstrap chain:** `/harness:setup-start` → it prints the rest, in order, for your kind of project.
 >
 > Each command produces a concrete artifact and feeds the next one. Running them in the printed order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
 
-### 0. Run `/setup:start`
+### 0. Run `/harness:setup-start`
 
-Open `claude` in the fresh clone and run `/setup:start`. It asks seven plain-language questions (language, new or existing code, where the repo is hosted, how code reaches `main`, Jira, Confluence, Codex), writes `.claude/project-profile.json`, prepares `.env.example` / `.mcp.json` / the `CLAUDE.md` branch model, offers to remove the command groups you will never use, and prints the numbered list of what to run next. The detailed steps below are that list, explained.
+Open `claude` in the fresh clone and run `/harness:setup-start`. It asks a short set of plain-language questions (language, new or existing code, where the repo is hosted, how code reaches `main`, Jira, Confluence, Codex, independent review, QA), writes `.agents/project-profile.json`, renders the rules and the `CLAUDE.md` branch model, seeds the memory layer, binds the installed plugin, swaps this framework guide aside for a project README, and prints the numbered list of what to run next. The detailed steps below are that list, explained.
 
 ### 1. Create a new project from this template
 
@@ -249,7 +248,7 @@ All three give you the same result: a fresh project with starter scaffolding and
 
 ### 2. Drop raw materials (optional)
 
-If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/setup:create-PRD` and `/setup:createwikillm` will pick them up automatically as input context.
+If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). `/harness:create-prd` picks them up automatically as input context.
 
 > **Next step:** once the materials are in place, run `/setup:create-PRD` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation to draft the PRD.
 
@@ -280,7 +279,7 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
 ```
 
-> `/setup:start` prints when to run it (after `/setup:stack-research`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty.
+> `/harness:setup-start` prints when to run it (after `/harness:stack-research`, before `/harness:create-backlog`); `/harness:create-rules` also refreshes it when the brief is still empty.
 >
 > Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/harness:prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
 
@@ -296,19 +295,19 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 >
 > It's the input to `/harness:brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
 >
-> **Brownfield:** run `/setup:map-codebase` first (it reconstructs the PRD), then this. **Maintenance:** when the backlog exists, `/harness:plan-feature` ticks a work package to `WIP` + records the spec/plan `Ref`, and `/harness:orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
+> **Brownfield:** map the codebase first with `/harness:create-rules --map`, then run this. **Maintenance:** when the backlog exists, `/harness:plan-feature` ticks a work package to `WIP` + records the spec/plan `Ref`, and `/harness:orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
 
 ### 6. Initialize project rules (after first scaffolding)
 
 ```
-/setup:create-CLAUDE_MD
+/harness:create-rules
 ```
 
-> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. Then run `/setup:start --rerun` once (it fills the toolchain preflight in `check-project-deps.sh` now that a manifest exists) and this command. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
+> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 >
-> It reads the branch model and language from `.claude/project-profile.json` (written by `/setup:start`) instead of asking again, and refuses to silently overwrite a `CLAUDE.md` value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it runs the PRD→brief step itself first (skipped when the brief is current).
+> It reads the branch model and language from the project profile instead of asking again, presents every derived fact with the file it came from, and refuses to silently overwrite a value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it cascades into the PRD→brief step first (skipped when the brief is current).
 >
-> **Adopting into a large existing codebase (brownfield)?** Don't run this alone — run [`/setup:map-codebase`](.claude/commands/setup/map-codebase.md) instead. It fans out parallel analysis sub-agents (distilled summaries, no context flooding), produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD` — the whole Phase-1 AI layer in one guided run with two review checkpoints.
+> **Adopting into a large existing codebase (brownfield)?** Add `--map`: `/harness:create-rules --map` partitions the repository, summarises each partition in an isolated context, reduces those summaries through a bounded tree, and presents the resulting map for confirmation before anything is written.
 
 It generates **three files** in tandem:
 - `CLAUDE.md` — slim rules file (hard cap ≤165 lines / ≤9 500 chars), filled with project overview, tech stack, commands, conventions
@@ -360,7 +359,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 | Command | When to run |
 |---------|-------------|
-| `/setup:start [--rerun]` | Once, right after cloning (or adopting the harness into an existing repo): interview → `.claude/project-profile.json` → day-one config → optional command pruning → the ordered list of next commands. `--rerun` to change answers. |
+| `/harness:setup-start [--rerun]` | Once, right after cloning (or adopting the harness into an existing repo): interview → the project profile → rules, memory seed, plugin binding, the starter README/LICENSE swap → the ordered list of next commands. `--rerun` to change answers. |
 | `/confluence <url \| id \| search \| new "Title" \| publish <draft>>` | Reading or authoring Confluence pages — same MCP server and token as `/jira` (`CONFLUENCE_*` in `.env`). Authoring is local-first: draft in `.agents/handoffs/confluence-drafts/`, publish only on explicit `y`. |
 | `/harness:pr-create [KEY]` | Work is committed and ready for review — pushes via `/harness:push`, derives title/dest/merge strategy from the tracker + Branch model, fills the repo's PR template honestly, prints the create-PR URL. Never opens or merges the PR. |
 | `/pr-comments [KEY]` | Reviewers left comments on your PR (GitHub / Bitbucket / GitLab, detected from `origin`) — pulls the threads, triages which still need you, proposes a reply + optional fix per thread, posts only on a per-thread `y`. Never resolves threads, never commits. |
@@ -372,11 +371,9 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/harness:qa-verify [key\|spec\|task-id]` | After `/harness:prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/harness:check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one verifier**: the browser-free static `qa-contract`; every other family's verifier (including the rest of lane P, e.g. `qa-config`, plus the browser `S` and design `I` lanes) is declared in the registry and **guarded** — its ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
 | `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/harness:prime` calls stay fast and current. |
 | `/setup:stack-research` | Once after `/setup:create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/setup:stack-research realtime`, `/setup:stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
-| `/setup:map-codebase` | **Brownfield bootstrap** — adopting the workflow into a large existing codebase that never had AI. One run: parallel fan-out comprehension (distilled summaries, no context flooding) → `architecture.md` + reconstructed `docs/PRD.md` → cascades into `/maintain:refresh-brief` + `/setup:create-CLAUDE_MD`. Two review checkpoints (scope; PRD validation). See [.claude/commands/setup/map-codebase.md](.claude/commands/setup/map-codebase.md). |
 | `/harness:test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
 | `/maintain:sync-from-starter [--check\|<ref>]` | Pull newer workflow definitions from the upstream starter (commands, agents, skills, hooks, config) without touching project knowledge. 3-way aware via a committed `.claude/.starter-sync.json` provenance manifest; recommends but asks on `settings.json`/hook conflicts. `--check` = dry-run only; `<ref>` = pin to a tag. See [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md). |
-| `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Four sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files; (4) workflow optimization audit — systemic drift in the workflow itself (stale auto-loads, internal contradictions, unbounded automation, config gaps). No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phases 3–4. |
-| `/harness:retro` | At the end of a long or frictional session, before `/clear` — generates an **evidence-based** session retrospective from the session's `.jsonl` transcript (paths, counts, tool-call refs, timestamps; no opinions or self-assessment). Refuses to write when the session was trivial or friction-free (`<15` tool calls, `<5` min, or zero friction signals) — `--force` overrides loudly. Saves one `.md` under `.agents/retros/` (or `.claude/retros/`); never touches code or repo state. Output feeds `/maintain:cleanup-workflow`. Flags: `--dry-run`, `--force`, `--transcript <path>`, `--slug <kebab>`. |
+| `/harness:retro` | At the end of a long or frictional session, before `/clear` — generates an **evidence-based** session retrospective from the session's `.jsonl` transcript (paths, counts, tool-call refs, timestamps; no opinions or self-assessment). Refuses to write when the session was trivial or friction-free (`<15` tool calls, `<5` min, or zero friction signals) — `--force` overrides loudly. Saves one `.md` under `.agents/retros/` (or `.claude/retros/`); never touches code or repo state. Its signals are for a human comparing several retros; nothing consumes them automatically. Flags: `--dry-run`, `--force`, `--transcript <path>`, `--slug <kebab>`. |
 | `/harness:analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
 | `/harness:simply [topic]` | Re-explains what just happened in plain language — what I did / did it work / what now, in the project's communication language. No new work, no file edits, no memory writes; empty argument defaults to the immediately preceding work. |
 | `/harness:gates-check-quality` | Before committing — format, lint, type-check, file-size gates. |
@@ -384,7 +381,7 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/harness:check-implementation [plan-name]` | The **full** quality loop after `/harness:execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `harness:gates-verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/harness:commit`. Unlike `/harness:gates-verify-implementation` it **applies** fixes; unlike `/harness:orchestrate` it does not commit/push. The same loop `/harness:orchestrate` runs per-step (Step 5.1b). |
 | `/harness:quick-change <what to change>` | **The fast lane for small changes** — when `/harness:brainstorm → /harness:plan-feature → /harness:execute` is too heavy but "just do it" is too risky. Short plan in chat (no spec, no plan file) → **`codex` reviews the plan before any code exists** (idea mode) → implement → `/code-review` at low effort → `/harness:deep-review` → the `CLAUDE.md → Validation` gates. The review is **mandatory — there is no opt-out flag**; it is skipped only when `codex` is not installed, and the report says so on its own line. A Phase 0 guard always fires when the change touches a sensitive path, spans >~5 files, adds a dependency, changes a schema/contract, or needs a design reference — it names the criterion and recommends the real route, and you may override it. Writes nothing to `.agents/`, never commits. |
 
-Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLAUDE.md` to a tech lead in CODEOWNERS, so a change to the rules gets a rules-owner review (`/setup:start` prints the stanza).
+Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLAUDE.md` to a tech lead in CODEOWNERS, so a change to the rules gets a rules-owner review (`/harness:setup-start` prints the stanza).
 
 ---
 
@@ -456,47 +453,21 @@ The only command that takes a plan all the way to **pushed**. Your main session 
 
 > `/harness:check-implementation` ≈ the 5.1b→5.2 slice of `/harness:orchestrate`, run inline in your session without the commit/push. Use `/harness:check-implementation` when you want to drive + review; `/harness:orchestrate` when you trust the pipeline to ship.
 
-### `/setup:map-codebase` — Workflow fan-out (a different primitive)
+### `/harness:create-rules --map` — bounded fan-out for a large codebase
 
-Brownfield comprehension uses the **`Workflow` engine**, not the Agent-tool fleet above — a deterministic script with a hard concurrency cap and token budget. Your session drives the **interaction + sequencing** (the two checkpoints, the cascade); the Workflow runs the **parallel compute**.
+Brownfield comprehension is a branch of `create-rules`, not a separate engine. Every context boundary is explicit, so the map costs a predictable amount on either host.
 
 ```
-Phase 0  Scan & filter        (deterministic bash, NO LLM — git ls-files -z, categorize, import-graph in-degree)
-   🛑 Checkpoint 1 — confirm scope (what's analyzed / skipped)
-Phase 1  Fan-out (parallel, concurrency-capped at min(16, cores−2)):
-            N × module-analyzer   (one per module — schema-validated summary, NEVER raw source)
-            docs-analyzer         (README/docs/ADRs → decisions, patterns, the "why")
-            infra-analyzer        (IaC/CI → hosting, deployables, external services)
-Phase 2  Synthesis (from summaries only — never re-reads code):
-            architecture-synthesizer  → architecture.md (+ topology + Mermaid map)
-            reverse-prd-writer         → docs/PRD.md
-            data-model-synthesizer     → domain/data-model.md (if persistence)
-   write artifacts
-   🛑 Checkpoint 2 — validate the reconstructed PRD
-Phase 4  Cascade → /maintain:refresh-brief → /setup:create-CLAUDE_MD
+1  Partition        git ls-files, noise dropped, grouped by top-level dir
+                    ≤ 25 files / 200 KB per partition → harness-state/map/manifest.json
+   🛑 Checkpoint — confirm scope, the skipped noise and the budget
+2  Summarise        one ≤ 40-line summary per partition, persisted and keyed by content hash
+3  Reduce           bounded tree: ≤ 16 children / 60 KB per node, ≤ 60 lines out, until one root
+4  Propose          the root summaries go to the facts-review screen; Phase 7 writes architecture.md
 ```
 
-**Anti-flooding contract:** analyzers return distilled summaries, never file contents — so codebase size scales the *number of agents*, not the aggregator's context. Workflow agents inherit your **session model**; the script never holds source code.
+**Anti-flooding contract:** summaries are distilled, never file contents, and the aggregator never re-reads source. On Claude Code each partition and each node runs in an isolated read-only subagent; on Codex the session is the boundary — one invocation takes at most 10 partitions or 8 reduction nodes and leaves a cursor in the manifest, so a rerun continues where it stopped.
 
----
-
-## When to run `/setup:createwikillm`
-
-`/setup:createwikillm` bootstraps a persistent, synthesized knowledge base (Karpathy's LLM Wiki pattern). It is **not** part of the minimal flow — run it only when the signals below match your project.
-
-**Run it when:**
-- You have **≥ 3-5 matured specs in `.agents/specs/`** or completed plans in `.agents/plans/done/`, and the same knowledge keeps resurfacing across features.
-- You are building a **product-facing LLM** (chatbot, runtime assistant, agent) that needs synthesized domain knowledge injected into its context at query time.
-- **`.agents/sources/` is a large corpus** (many transcripts, patch-notes, documentation files) that will not fit into a single prompt and benefits from pre-synthesis.
-- `.agents/memory/` entries are **drifting into long narratives** instead of short, actionable lessons — that is a signal you need a wiki layer.
-
-**Skip it (and stay with `memory/` + `reference/`) when:**
-- The repo is **fresh**, with no specs or completed plans yet.
-- The project is **small / single-feature** — memory files are enough.
-- There is **no product-LLM** consuming the wiki at runtime, and `.agents/sources/` is empty or ephemeral.
-- You would be maintaining it "just in case" — an unused wiki rots faster than it helps.
-
-If in doubt: do **not** run it. You can always add `/setup:createwikillm` later; removing an unused wiki after the fact is more work than adding one when you actually need it.
 
 ---
 
@@ -529,7 +500,7 @@ User-local overrides live in `.claude/settings.local.json` (gitignored) — Clau
 
 ## Customizing the starter
 
-- Edit `CLAUDE.md` placeholders after `/setup:create-CLAUDE_MD` runs — add project-specific rules, naming conventions, key files.
+- Edit `CLAUDE.md` placeholders after `/harness:create-rules` runs — add project-specific rules, naming conventions, key files.
 - Add reference docs to `.agents/reference/` as you integrate new APIs/libraries.
 - Drop in new slash commands under `.claude/commands/` — they appear automatically.
 - Tighten or loosen `.claude/settings.json` permissions to match your risk profile.
@@ -553,23 +524,23 @@ The starter resolves this with a one-time **swap on bootstrap**, not a delete:
 
 1. **In the starter repo**, the root `README.md` is this framework guide (so the GitHub template
    page documents the workflow).
-2. **On your first `/setup:create-CLAUDE_MD`**, the command:
+2. **On your first `/harness:setup-start`**, step 3d shows you the plan and, once you approve it:
    - moves this guide to `.claude/README.md` (preserved, framework-owned), and
-   - generates a fresh project `README.md` at the root from `.claude/templates/README-template.md`,
-     filled with your project name, description, tech stack, commands, and structure.
-3. **On later `/setup:create-CLAUDE_MD` runs**, your project README is left alone — it only offers to
-   fill leftover `{placeholder}` markers, never clobbering a customized README.
+   - seeds a short project `README.md` at the root with your project name and description.
+3. **On later runs** your project README is left alone. The step is idempotent: with the starter
+   marker gone it reports `kept` and touches nothing. It is also journaled, so a run interrupted
+   halfway resumes instead of guessing — and it refuses outright if a file changed underneath it.
 
 After bootstrap:
 
 | File | Owner | Updated by |
 |------|-------|------------|
-| `README.md` (root) | **your project** | you / `/setup:create-CLAUDE_MD` placeholder fill |
+| `README.md` (root) | **your project** | you (seeded once by `/harness:setup-start`) |
 | `.claude/README.md` | **the framework** | `.claude/starter-sync-playbook.md` (pulls the starter's newest guide) |
-| `LICENSE` (root) | **your project** | `/setup:create-CLAUDE_MD` bootstrap — you pick the license type + copyright holder |
+| `LICENSE` (root) | **your project** | you — the swap never generates one; add your own |
 | `.claude/STARTER-LICENSE` | **the starter** (MIT attribution, preserved) | `.claude/starter-sync-playbook.md` |
 
-> **`LICENSE` gets the same treatment as the README.** On first `/setup:create-CLAUDE_MD`, the starter's MIT license moves to `.claude/STARTER-LICENSE` (preserving the starter author's copyright notice — MIT requires it to survive in copies of the scaffolding) and a fresh root `LICENSE` is generated for *your* project from the type + copyright holder you choose. Later runs leave your `LICENSE` untouched.
+> **`LICENSE` moves aside, it is not replaced.** The starter's MIT notice moves to `.claude/STARTER-LICENSE` (MIT requires it to survive in copies of the scaffolding) — and only when its bytes really are the starter's; a licence you put there yourself stays at the root untouched. **No root `LICENSE` is generated:** picking a licence is yours to do, and the step prints it as a manual follow-up.
 
 When you sync workflow updates from upstream (see below), the framework guide is refreshed at
 `.claude/README.md` — your project's root README is never touched.

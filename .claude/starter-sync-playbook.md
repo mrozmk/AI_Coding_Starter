@@ -27,10 +27,10 @@ Save the starter's commit hash (`git -C /tmp/ai-coding-starter-sync rev-parse --
 - `.claude/lib/*.sh` — helper scripts commands invoke directly (`qa-probe.sh`). **Coupled with `settings.json`** the same way hooks are: `qa-probe.sh` is reached through an exact `permissions.allow` entry, so a renamed script silently starts prompting. Sync them together and `chmod +x .claude/lib/*.sh` afterwards.
 - `.agents/memory/reflection-protocol.md` — the memory write-time protocol + entry/domain templates. Pure framework content (no project entries live in it — those go to `errors.md` / `decisions.md` / …), so overwrite wholesale.
 - `*.example` seed files — `.agents/memory/user-profile.md.example`, `.claude/settings.local.json.example`. Overwrite the `.example`; **never** touch the developer's real `user-profile.md` / `settings.local.json` (both gitignored, category C by nature).
-- `.claude/README.md` — **the framework guide**. Mind the path mapping: in the starter this guide lives as the **root `README.md`** (the GitHub template page); in a bootstrapped project it lives at `.claude/README.md` (moved there by `/setup:create-CLAUDE_MD`). Strategy: overwrite the project's `.claude/README.md` with the content of the starter's **root `README.md`**. Do **not** copy the starter's root README into the project root — that would destroy the project's README (see category C).
+- `.claude/README.md` — **the framework guide**. Mind the path mapping: in the starter this guide lives as the **root `README.md`** (the GitHub template page); in a bootstrapped project it lives at `.claude/README.md` (moved there by `/harness:setup-start`). Strategy: overwrite the project's `.claude/README.md` with the content of the starter's **root `README.md`**. Do **not** copy the starter's root README into the project root — that would destroy the project's README (see category C).
 - `.claude/starter-sync-playbook.md` — **this playbook itself**. It is framework content, so it lives under `.claude/` (not `docs/`, which is project-owned / category C) precisely so it can self-update: each sync pulls the newest playbook from upstream. Overwrite wholesale.
-- `.claude/workflows/*.js` — `Workflow` orchestration scripts (e.g. `map-codebase.js`). Framework content — overwrite wholesale.
-- `.claude/STARTER-LICENSE` — the starter's own license, preserved here at bootstrap (the starter's root `LICENSE` is moved here by `/setup:create-CLAUDE_MD` so the project root `LICENSE` is the cloner's own). Path mapping mirrors `.claude/README.md`: overwrite the project's `.claude/STARTER-LICENSE` with the starter's **root `LICENSE`**. Do **not** touch the project's root `LICENSE` (category C).
+- `.claude/workflows/*.js` — `Workflow` orchestration scripts, if a project has any. Framework content — overwrite wholesale.
+- `.claude/STARTER-LICENSE` — the starter's own license, preserved here at bootstrap (the starter's root `LICENSE` is moved here by `/harness:setup-start` so the project root `LICENSE` is the cloner's own). Path mapping mirrors `.claude/README.md`: overwrite the project's `.claude/STARTER-LICENSE` with the starter's **root `LICENSE`**. Do **not** touch the project's root `LICENSE` (category C).
 
 ### Bootstrap-only — **do not check or add in an existing project** (overrides the above)
 
@@ -46,10 +46,10 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 - **`.claude/README.md`** (framework guide) and **`.claude/STARTER-LICENSE`** — listed as category A
   above only for the case where they already exist. In a project that omitted them at bootstrap, leave
   them out. A one-off manual copy covers the rare case where they're wanted later — it is not a sync job.
-- **`.claude/commands/setup/create-CLAUDE_MD.md`** — sync it as an ordinary category-A command (apply a
-  genuine improvement to how it *runs*), but **never** apply/ask "to keep bootstrap in sync". The
-  bootstrap chain (`create-CLAUDE_MD` → generates `CLAUDE.md` + root `README.md`) already ran once and
-  will not run again in this project, so its starter changes carry no bootstrap obligation here.
+- **The retired bootstrap and maintenance commands** — the starter no longer ships the `setup/`
+  command family or the workflow-housekeeping command; they are harness plugin skills now, and the
+  plugin's migration record names each path. A stale local copy is category C — never re-added,
+  never tasked. The bootstrap chain already ran once and will not run again here.
 - root `CLAUDE.md`, root `README.md`, root `LICENSE` are category C regardless — never touched.
 
 > Rationale: the sync keeps the **working** toolchain (commands/agents/skills/hooks) current. Effort
@@ -59,8 +59,8 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 ### Category B — **merge carefully**, show the diff and ask first
 
 - `.claude/settings.json` — the project may have its own permissions. Strategy: take the **union** of the `permissions.allow` / `permissions.ask` / `permissions.deny` entries from the starter and the project (all three tiers — `ask` is a first-class tier, not an afterthought). Do not remove project entries that the starter lacks. **Skip every identity listed in `.starter-sync.json → migrated_config`** (permissions and hooks the plugin replaced) — `sync-filter.mjs union` does exactly this and lists what it added and skipped. Show me the diff before writing.
-- `.agents/memory/index.md` — take `Quick Reference` and `Loader Convention` from the starter, but `When to Read` may have project-specific rows appended by `/setup:create-CLAUDE_MD`. Strategy: overwrite with the starter's structure, then restore the project rows (the ones the starter lacks).
-- `.agents/memory/*.md` headers (append-mode logs) — the starter's convention is **newest at the END**. Syncing the header changes the instruction only; existing entries are never reordered. A downstream that still has newest-at-TOP files either reverses them once by hand or accepts mixed order — both are fine, `cleanup-workflow` parses dated `##` blocks in any order.
+- `.agents/memory/index.md` — take `Quick Reference` and `Loader Convention` from the starter, but `When to Read` may have project-specific rows appended by `/harness:create-rules`. Strategy: overwrite with the starter's structure, then restore the project rows (the ones the starter lacks).
+- `.agents/memory/*.md` headers (append-mode logs) — the starter's convention is **newest at the END**. Syncing the header changes the instruction only; existing entries are never reordered. A downstream that still has newest-at-TOP files either reverses them once by hand or accepts mixed order — both are fine — dated `##` blocks read in any order.
 - `.gitignore` — append the entries missing from the starter (e.g. `.claude/audit.log`, `.env`, `.agents/memory/archive/`); **do not remove** project ones.
 - `.mcp.json` — **union** of `mcpServers`: add starter servers the project lacks, never remove or rewrite project ones. It must stay secret-free (credentials live in `.env` via `--env-file`).
 - `.env.example` — append the starter's variables the project lacks; never remove project ones.
@@ -75,10 +75,10 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 - `.claude/hooks/check-project-deps.sh` — the project-owned SessionStart preflight (toolchain + `.env` shape + MCP commands). The starter ships only the skeleton; never overwrite a project's filled copy.
 
 - `CLAUDE.md` — project rules. If the starter has a new section structure, report it and propose a patch — but do not overwrite automatically.
-- `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerated from the project (`/setup:create-CLAUDE_MD`, `/maintain:refresh-brief`).
+- `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerated from the project (`/harness:create-rules`, `/harness:refresh-brief`).
 - `.agents/memory/errors.md`, `decisions.md`, `api.md`, `patterns.md` — append-only, project history.
 - `.agents/sources/`, `.agents/specs/`, `.agents/plans/`, `.agents/reference/`, `.agents/wiki/`, `.agents/memory/archive/` — project content.
-- `README.md` (root) — the **project** README (generated by `/setup:create-CLAUDE_MD` at bootstrap). Never overwrite with starter content. You update the framework guide in `.claude/README.md` (category A).
+- `README.md` (root) — the **project** README (seeded by `/harness:setup-start` at bootstrap). Never overwrite with starter content. You update the framework guide in `.claude/README.md` (category A).
 - `LICENSE` — the project may have relicensed; never overwrite.
 - `CHANGELOG.md`, `docs/`, any source files — project documentation and code.
 
@@ -126,7 +126,7 @@ Show:
 - **Updated files:** list
 - **Merged files:** list (settings.json, index.md, .gitignore)
 - **Skipped (category C):** count
-- **Suggested actions:** e.g. "regenerate `architecture.md` via `/setup:create-CLAUDE_MD` if the format changed", "run `/prime` to validate the new context"
+- **Suggested actions:** e.g. "regenerate `architecture.md` via `/harness:create-rules` if the format changed", "run `/prime` to validate the new context"
 
 Propose a commit message:
 
@@ -138,8 +138,8 @@ chore(workflow): sync .claude commands and skills from AI_Coding_Starter@<short-
 
 - NEVER remove entries from `.claude/settings.json` that the starter lacks — those are project permissions
 - NEVER overwrite category C files
-- NEVER delete project slash commands from `.claude/commands/` — report and ask. **Exception:** paths in `.claude/.starter-sync.json → excluded` were pruned by `/setup:start` after explicit confirmation, and paths in `→ migrated` were replaced by the `harness` plugin (intentional deletion) — never re-add either and never create a task for them; never re-add a `→ migrated_config` identity through a union
+- NEVER delete project slash commands from `.claude/commands/` — report and ask. **Exception:** paths in `.claude/.starter-sync.json → excluded` were pruned at bootstrap after explicit confirmation, and paths in `→ migrated` were replaced by the `harness` plugin (intentional deletion) — never re-add either and never create a task for them; never re-add a `→ migrated_config` identity through a union
 - NEVER commit automatically — show the message and wait for `/commit`
 - Always dry-run before apply
-- NEVER check or add bootstrap-only artifacts (`.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, `create-CLAUDE_MD` as a bootstrap driver) in an existing project — see the "Bootstrap-only" subsection in Step 2
+- NEVER check or add bootstrap-only artifacts (`.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, the retired bootstrap commands) in an existing project — see the "Bootstrap-only" subsection in Step 2
 - Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (`rm -rf` is `ask`-tier in settings, not denied); a leftover clone is harmless and must never block the run
