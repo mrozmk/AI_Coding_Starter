@@ -24,6 +24,90 @@ export const HARD_EXCLUDE_RE = /(^|\/)\.env(\.(?!example$)|$)|\.pem$|\.key$|\.p1
 // Keyword exclusions: conservative filename classes. An explicit, per-file, vetted exception may lift one.
 export const KEYWORD_EXCLUDE_RE = /credential|secret/i;
 export const EXCLUDE_RE = new RegExp(`${HARD_EXCLUDE_RE.source}|${KEYWORD_EXCLUDE_RE.source}`, 'i');
+// Directories refused as a whole — the directory itself and every descendant (the regexes above
+// match descendants only). Shared with the read broker (reader-mcp.mjs); never overridable.
+export const EXCLUDED_DIRS = ['.agents/sources', '.agents/handoffs', '.agents/memory/archive', '.agents/harness-state', '.git', 'node_modules', 'dist', '.playwright-mcp'];
+// Sections of an artifact whose backtick-quoted paths are packed automatically in hybrid mode.
+const CITED_HEADINGS = ['Files', 'Relevant Codebase Files', 'New Files to Create', 'Patterns to Follow'];
+const CITED_LINE_SECTION = 'Architecture and contracts';
+const CITED_LINE_MARKER = /reuse targets/i;
+
+// Basename rule: every `.env*` spelling except exactly `.env.example` (`.envrc`, `.env-production`, …).
+export function isEnvFile(basename) {
+  return basename.startsWith('.env') && basename !== '.env.example';
+}
+
+// Hard exclusion of a project-relative POSIX path: no caller option can lift it.
+export function isHardExcludedRel(rel) {
+  const r = toPosix(String(rel));
+  if (isEnvFile(path.posix.basename(r))) return true;
+  if (HARD_EXCLUDE_RE.test(r)) return true;
+  // A single-name directory (node_modules, dist, .git, .playwright-mcp) is excluded at every depth —
+  // a nested workspace's node_modules is no less a dependency tree; a path-qualified one is root-anchored.
+  return EXCLUDED_DIRS.some((dir) => (dir.includes('/')
+    ? r === dir || r.startsWith(`${dir}/`)
+    : r === dir || r.startsWith(`${dir}/`) || r.endsWith(`/${dir}`) || r.includes(`/${dir}/`)));
+}
+
+// Keyword exclusion: name-based, liftable per file by a vetted `allowExceptions` entry when packing.
+export function isKeywordExcludedRel(rel) {
+  return KEYWORD_EXCLUDE_RE.test(toPosix(String(rel)));
+}
+
+// Strict union for the broker: no exceptions, ever.
+export function isExcludedRel(rel) {
+  return isHardExcludedRel(rel) || isKeywordExcludedRel(rel);
+}
+
+// Component-aware containment of an already-resolved path: `/w/project-other` is not inside `/w/project`.
+export function isInsideRoot(root, resolved) {
+  const rel = path.relative(root, resolved);
+  if (rel === '') return true;
+  if (path.isAbsolute(rel)) return false;
+  return rel.split(path.sep)[0] !== '..';
+}
+
+function headingOf(line) {
+  const m = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+  return m ? { level: m[1].length, text: m[2] } : null;
+}
+
+// Repo-relative paths an artifact cites in its file-listing sections: backtick tokens that resolve to
+// an existing regular file under the project root, `:line` / `(lines …)` suffixes stripped, deduped.
+export function citedPaths(text, projectRoot) {
+  const root = realpathOrSelf(projectRoot);
+  const found = [];
+  const seen = new Set();
+  let active = null; // { level, lineOnly }
+  for (const line of String(text).split('\n')) {
+    const h = headingOf(line);
+    if (h) {
+      if (active && h.level <= active.level) active = null;
+      if (!active) {
+        if (CITED_HEADINGS.some((name) => h.text === name || h.text.startsWith(`${name} `) || h.text.startsWith(`${name}:`) || h.text.startsWith(`${name} —`))) active = { level: h.level, lineOnly: false };
+        else if (h.text === CITED_LINE_SECTION || h.text.startsWith(`${CITED_LINE_SECTION} `)) active = { level: h.level, lineOnly: true };
+      }
+      continue;
+    }
+    if (!active) continue;
+    if (active.lineOnly && !CITED_LINE_MARKER.test(line)) continue;
+    for (const m of line.matchAll(/`([^`\n]+)`/g)) {
+      let token = m[1].trim();
+      token = token.replace(/\s*\(lines?[^)]*\)\s*$/i, '');
+      token = token.replace(/:\d+(-\d+)?$/, '');
+      token = token.replace(/:$/, '');
+      if (!token || /\s/.test(token) || token.startsWith('plugin:') || token.startsWith('-')) continue;
+      const req = normalizeRequest(root, token);
+      if (!req.inside || seen.has(req.rel)) continue;
+      let isFile = false;
+      try { isFile = fs.statSync(req.abs).isFile(); } catch { isFile = false; }
+      if (!isFile) continue;
+      seen.add(req.rel);
+      found.push(req.rel);
+    }
+  }
+  return found;
+}
 
 const RULE_FILES = ['CLAUDE.md', 'AGENTS.md', '.agents/project-rules.md'];
 const MEMORY_ALWAYS = ['.agents/memory/index.md'];
@@ -63,7 +147,8 @@ export function normalizeRequest(root, requested) {
   return { requested: String(requested), abs, rel, inside };
 }
 
-export function buildContextPack({ projectRoot, pluginRoot, artifacts = [], deps = [], optionalDeps = [], readSet = { required: [], optional: [] }, allowExceptions = [], maxBytes = DEFAULT_MAX_BYTES }) {
+export function buildContextPack({ projectRoot, pluginRoot, artifacts = [], deps = [], optionalDeps = [], readSet = { required: [], optional: [] }, allowExceptions = [], maxBytes = DEFAULT_MAX_BYTES, mode = 'closed', cited = mode === 'hybrid' }) {
+  if (!['closed', 'hybrid'].includes(mode)) throw new Error(`pack mode must be closed or hybrid, got ${mode}`);
   const root = realpathOrSelf(projectRoot);
   const files = [];
   const omissions = [];
@@ -77,8 +162,8 @@ export function buildContextPack({ projectRoot, pluginRoot, artifacts = [], deps
     const { rel, abs, inside } = req;
     if (byRel.has(rel)) { const f = byRel.get(rel); if (!f.roles.includes(role)) f.roles.push(role); return f; }
     if (role !== 'prime' && !inside) { omit(rel, 'outside project root', 'outside-root', !optional); return null; }
-    if (HARD_EXCLUDE_RE.test(rel)) { omit(rel, 'excluded (secret, private or raw input) — no exception applies', 'excluded', false); return null; }
-    if (KEYWORD_EXCLUDE_RE.test(rel) && !exceptions.has(rel)) { omit(rel, 'excluded (secret-looking name) — list it in allowExceptions after review to include it', 'excluded', !optional); return null; }
+    if (isHardExcludedRel(rel)) { omit(rel, 'excluded (secret, private or raw input) — no exception applies', 'excluded', false); return null; }
+    if (isKeywordExcludedRel(rel) && !exceptions.has(rel)) { omit(rel, 'excluded (secret-looking name) — list it in allowExceptions after review to include it', 'excluded', !optional); return null; }
     const resolved = realpathOrSelf(abs);
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) { omit(rel, 'missing', 'missing-file', !optional); return null; }
     const bytes = fs.readFileSync(resolved);
@@ -117,6 +202,15 @@ export function buildContextPack({ projectRoot, pluginRoot, artifacts = [], deps
     consider(r, 'read-set', { optional: true, gate: (t) => (statusOf(t) === 'empty' ? 'status empty' : null) });
   }
 
+  // Hybrid: the paths the artifact cites ride along as `cited` — optional, exclusion-checked, and the
+  // first to go when the pack is over budget (below). A cited file never becomes an artifact.
+  if (cited) {
+    for (const { entry } of artifactEntries) {
+      if (!entry) continue;
+      for (const rel of citedPaths(entry.text, root)) consider(rel, 'cited', { optional: true });
+    }
+  }
+
   const missingArtifacts = artifactEntries.filter((x) => !x.entry || !x.entry.roles.includes('artifact'));
   if (missingArtifacts.length) {
     const detail = missingArtifacts.map((x) => { const rel = normalizeRequest(root, x.a).rel; const o = omissions.find((om) => om.path === rel); return `${rel} (${o?.reason ?? 'not packed'})`; }).join(', ');
@@ -126,7 +220,19 @@ export function buildContextPack({ projectRoot, pluginRoot, artifacts = [], deps
   if (missingRequired.length) {
     return { ok: false, reason: 'needs-context', kind: missingRequired[0].kind, detail: `required context not packable: ${missingRequired.map((o) => `${o.path} (${o.reason})`).join(', ')}`, omissions };
   }
-  const total = files.reduce((n, f) => n + f.bytes, 0);
+  let total = files.reduce((n, f) => n + f.bytes, 0);
+  // Over budget: drop purely-cited files largest-first. Mandatory roles are never dropped, so an
+  // oversized mandatory set still fails below exactly as in closed mode.
+  if (total > maxBytes && cited) {
+    const droppable = files.filter((f) => f.roles.length === 1 && f.roles[0] === 'cited').sort((a, b) => b.bytes - a.bytes);
+    for (const f of droppable) {
+      if (total <= maxBytes) break;
+      files.splice(files.indexOf(f), 1);
+      byRel.delete(f.path);
+      omit(f.path, 'budget', 'budget', false);
+      total -= f.bytes;
+    }
+  }
   if (total > maxBytes) {
     const largest = [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 5).map((f) => `${f.path} (${f.bytes} B)`);
     return { ok: false, reason: 'context-too-large', detail: `pack is ${total} B, limit ${maxBytes} B; largest: ${largest.join(', ')}. Split the artifact or raise --max-bytes deliberately; nothing was truncated.`, total, maxBytes, omissions };
@@ -135,6 +241,7 @@ export function buildContextPack({ projectRoot, pluginRoot, artifacts = [], deps
     schema_version: 1,
     pack_id: randomUUID(),
     created_utc: new Date().toISOString(),
+    mode,
     total_bytes: total,
     files: files.map(({ text, ...rest }) => rest),
     artifacts: artifactEntries.map((x) => ({ path: x.entry.path, sha256: x.entry.sha256 })),
@@ -158,8 +265,10 @@ export function verifyPackUnchanged(projectRoot, meta) {
 }
 
 // What leaves the machine, for the consent boundary: provider, exact files, bytes, and what stayed.
-export function outboundManifest(meta, { provider, host = null } = {}) {
-  return {
+// Closed output is byte-identical to before hybrid existed; hybrid adds the surface the reviewer may
+// still read on its own, and labels the file list as the initial payload rather than the whole story.
+export function outboundManifest(meta, { provider, host = null, mode = 'closed', roots = null, exclusions = null, budgets = null } = {}) {
+  const manifest = {
     provider,
     reviewer_host: host,
     pack_id: meta.pack_id,
@@ -168,6 +277,16 @@ export function outboundManifest(meta, { provider, host = null } = {}) {
     files: meta.files.map((f) => ({ path: f.path, roles: f.roles, sha256: f.sha256, bytes: f.bytes, exception: f.exception ?? false })),
     omitted: meta.omissions.map((o) => ({ path: o.path, reason: o.reason })),
     note: 'Only the files listed are transmitted, byte-exact. Anything under `omitted` stays local. Hard exclusions (.env*, keys, user-profile, sources, handoffs, archive, harness-state) can never be listed.',
+  };
+  if (mode !== 'hybrid') return manifest;
+  return {
+    ...manifest,
+    mode: 'hybrid',
+    roots: roots ?? {},
+    exclusions: exclusions ?? { env_basename: '.env* except .env.example', hard: HARD_EXCLUDE_RE.source, keyword: KEYWORD_EXCLUDE_RE.source, directories: [...EXCLUDED_DIRS] },
+    budgets: budgets ?? {},
+    initial_payload: true,
+    note: 'The files listed are the initial payload, transmitted byte-exact. Files under `omitted` are not in the initial payload; in hybrid mode the reviewer may still read any file under the roots that the exclusions allow, up to the budgets, through the read broker — every such read is logged and hashed into the final audit (pack.outbound.final.json). Hard exclusions (.env*, keys, user-profile, sources, handoffs, archive, harness-state, node_modules, dist) can never be listed, packed or read.',
   };
 }
 

@@ -41,6 +41,8 @@ export const evidenceSchema = {
     receipts: { type: 'object', required: ['files'], properties: { files: { type: 'array', items: { type: 'object', required: ['name', 'sha256'] } } } },
     inputs: { type: 'object' },
     notes: { type: 'array', items: { type: 'string' } },
+    // Context modes the probe ran (absent on evidence written before hybrid existed = closed only).
+    modes: { type: 'array', minItems: 1, items: { enum: ['closed', 'hybrid'] } },
   },
 };
 

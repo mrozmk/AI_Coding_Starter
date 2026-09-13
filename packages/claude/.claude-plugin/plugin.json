@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Planning and review procedures (prime, brainstorm, plan-feature, setup-start, handoff) with fail-closed cross-model review, packaged for Claude Code and Codex CLI from one source; the execution and quality stage (execute, check-implementation, quick-change, deep-review, orchestrate, gates, recon, analysis, design, test-e2e, architecture-review) with a supervised Codex executor; the product slice (create-prd, refresh-brief, create-backlog, stack-research, prime-ba); acceptance-criteria verification (qa-verify, prime-qa and two shipped verifiers that run as agents on Claude Code and inline on Codex); the session peripherals retro and simply; and the Atlassian integrations jira and confluence; and the rules-bootstrap skill create-rules, which derives project rules and the architecture map from the codebase and fills unresolved fields in an existing brownfield rules body.",
   "displayName": "AI Coding Starter harness",
   "author": {

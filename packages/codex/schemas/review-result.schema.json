@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Independent review result (schema 2; schema-1 records still readable)",
-  "description": "Written by scripts/review-orchestrator.mjs after a reviewer child exits. `reviewer_output` is what the model returned (validated separately by `$defs/reviewer_output`). A result whose status is not `completed` never advances an artifact. Schema 2 types `missing_context` items ({kind, detail}); schema-1 records carry strings and are normalized by review-result.mjs readReviewResult.",
+  "description": "Written by scripts/review-orchestrator.mjs after a reviewer child exits. `reviewer_output` is what the model returned (validated separately by `$defs/reviewer_output`). A result whose status is not `completed` never advances an artifact. Schema 2 types `missing_context` items ({kind, detail}); schema-1 records carry strings and are normalized by review-result.mjs readReviewResult. Schema 2 records written by a hybrid run add `context`, `reads` and `reads_digest`; their `missing_context` items of kind missing-file may carry a `reason`.",
   "type": "object",
   "required": [
     "schema_version",
@@ -169,6 +169,9 @@
           },
           {
             "$ref": "#/$defs/missing_context_item"
+          },
+          {
+            "$ref": "#/$defs/missing_context_item_hybrid"
           }
         ]
       }
@@ -216,6 +219,44 @@
     "summary_line": {
       "type": "string",
       "description": "One line the calling skill prints verbatim: Review: NOT EXECUTED | EXECUTED, OPINION REJECTED | EXECUTED, OPINION INCOMPLETE | EXECUTED, COMPLETED — <verdict>."
+    },
+    "context": {
+      "enum": [
+        "closed",
+        "hybrid"
+      ],
+      "description": "Reviewer context mode of this run (absent on records written before hybrid existed = closed)."
+    },
+    "reads": {
+      "type": "array",
+      "description": "Hybrid only: the typed read-broker transcript summary (per record: seq, tool, root, path|pattern, hashes, range, truncated, denied|error + reason).",
+      "items": {
+        "type": "object",
+        "required": [
+          "seq",
+          "tool"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer"
+          },
+          "tool": {
+            "enum": [
+              "read_file",
+              "list_dir",
+              "search"
+            ]
+          }
+        }
+      }
+    },
+    "reads_digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Hybrid only: SHA-256 over the canonical reads.jsonl transcript."
     }
   },
   "$defs": {
@@ -304,6 +345,36 @@
         "detail": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "missing_context_item_hybrid": {
+      "type": "object",
+      "required": [
+        "kind",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "missing-file",
+            "required-decision",
+            "external-fact",
+            "unspecified"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "enum": [
+            "absent",
+            "excluded",
+            "budget"
+          ],
+          "description": "Hybrid only, kind missing-file: absent (no such file), excluded (the broker refused it; the author cannot supply it either), budget (exists, allowed, unread because the budget ran out)."
         }
       }
     },

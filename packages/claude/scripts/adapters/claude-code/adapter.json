@@ -37,7 +37,29 @@
       "dontAsk"
     ],
     "stdin": "context-pack",
-    "timeout_minutes": 50
+    "timeout_minutes": 50,
+    "context": {
+      "hybrid": {
+        "_doc": "Hybrid context (recorded 2026-09-13, tests/harness/fixtures/reviewer-hybrid/events-README.md): the read broker is the only MCP server and its three tools the only allowed tools. --safe-mode is dropped because it disables every MCP server, --mcp-config included; every other closed flag stays.",
+        "server_name": "reader",
+        "mcp_config_file": "reader.json",
+        "allowed_tools": [
+          "mcp__reader__read_file",
+          "mcp__reader__list_dir",
+          "mcp__reader__search"
+        ],
+        "broker_tools": [
+          "mcp__reader__read_file",
+          "mcp__reader__list_dir",
+          "mcp__reader__search"
+        ],
+        "output_format": "stream-json",
+        "drop_isolation": [
+          "--safe-mode"
+        ],
+        "timeout_minutes": 10
+      }
+    }
   },
   "_hooks_doc": "Claude Code plugin hooks manifest (packaged as hooks/hooks.json). Every entry runs the shared hook-runner with the hook id; the policy lives in hooks/core/*.mjs and is identical for both hosts. Plugin hooks MERGE with the project's .claude/settings.json hooks — a project that still registers the legacy Bash hooks runs both until it records the replacement (installation.md → Activation). Nothing here is active in any project until the operator installs and trusts the plugin. Native manifests carry only `description` and `hooks`: Codex rejects any other top-level field (observed 2026-09-06: \"unknown field `_doc`\")."
 }

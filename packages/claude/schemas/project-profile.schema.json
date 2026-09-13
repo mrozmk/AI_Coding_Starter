@@ -49,6 +49,13 @@
         "after_brainstorm": { "enum": ["stop", "plan-feature"] }
       }
     },
+    "review": {
+      "type": "object",
+      "description": "Independent-review context. closed (default): the reviewer sees only the pack. hybrid: the pack plus bounded own reads through the plugin's read broker (see references/review-contract.md → Context modes). setup-start does not ask; switch with profile.mjs apply.",
+      "properties": {
+        "context": { "enum": ["closed", "hybrid"] }
+      }
+    },
     "groups": {
       "type": "object",
       "description": "Plugin capability groups. false disables every entrypoint of the group; the plugin cache is never pruned.",

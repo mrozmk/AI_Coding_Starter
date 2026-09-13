@@ -1,5 +1,5 @@
 {
-  "_doc": "Codex CLI host adapter. Packaged skills get agents/openai.yaml with allow_implicit_invocation=false (contract 5). `reviewer` describes the closed-context Codex reviewer child spawned by review.mjs when the author host is Claude (contract 7): read-only sandbox, no native output schema, every execution/delegation surface disabled by feature flag on the command line (adapter JSON \u2192 argv is the single effective configuration; there is no config file) and verified by a live negative probe. `project_doc_max_bytes=0` disables AGENTS.md project-doc loading from the reviewer cwd \u2014 the live probe (2026-09-05) showed `--ignore-rules` alone does not stop it. `executor` describes the supervised worker child spawned by scripts/executor-orchestrator.mjs for a Claude author: unlike the reviewer it keeps its shell so it can read files, run git and (in write mode) apply patches, so it is never closed-context; what both modes drop is delegation and every side channel.",
+  "_doc": "Codex CLI host adapter. Packaged skills get agents/openai.yaml with allow_implicit_invocation=false (contract 5). `reviewer` describes the closed-context Codex reviewer child spawned by review.mjs when the author host is Claude (contract 7): read-only sandbox, no native output schema, every execution/delegation surface disabled by feature flag on the command line (adapter JSON → argv is the single effective configuration; there is no config file) and verified by a live negative probe. `project_doc_max_bytes=0` disables AGENTS.md project-doc loading from the reviewer cwd — the live probe (2026-09-05) showed `--ignore-rules` alone does not stop it. `executor` describes the supervised worker child spawned by scripts/executor-orchestrator.mjs for a Claude author: unlike the reviewer it keeps its shell so it can read files, run git and (in write mode) apply patches, so it is never closed-context; what both modes drop is delegation and every side channel.",
   "schema_version": 1,
   "host": "codex",
   "cli": "codex",
@@ -49,7 +49,25 @@
       "project_doc_max_bytes=0"
     ],
     "stdin": "context-pack",
-    "timeout_minutes": 50
+    "timeout_minutes": 50,
+    "context": {
+      "hybrid": {
+        "_doc": "Hybrid context (recorded 2026-09-13, tests/harness/fixtures/reviewer-hybrid/events-README.md): the read broker is registered as mcp_servers.reader on the command line. code_mode_host must stay enabled (disabling it breaks MCP tool routing on 0.154); code_mode itself stays disabled. default_tools_approval_mode=approve pre-approves the broker's tools under approval_policy=never. No --json: its events carry no model name; the text stream keeps the header and prints `mcp: reader/<tool> started|(completed)|(failed)` lines.",
+        "mcp_server_name": "reader",
+        "broker_tools": [
+          "reader.read_file",
+          "reader.list_dir",
+          "reader.search"
+        ],
+        "json_events": false,
+        "keep_features": [
+          "code_mode_host"
+        ],
+        "startup_timeout_sec": 20,
+        "default_tools_approval_mode": "approve",
+        "timeout_minutes": 10
+      }
+    }
   },
   "executor": {
     "model": "gpt-6-astra",
@@ -104,5 +122,5 @@
     "timeout_minutes_default": 60,
     "stdin": "prompt-only"
   },
-  "_hooks_doc": "Codex CLI plugin hooks manifest (packaged as hooks/hooks.json). Same runner, same core policies as Claude Code; matchers use the tool names Codex documents (Bash, apply_patch). Codex has no Read/Grep/WebFetch hook events, so read telemetry covers shell reads only, fetches are not audited and the LSP hint has no event (legacy-only). Codex loads plugin hooks only after the operator trusts them; a hooks.json next to inline [hooks] in one layer is loaded twice with a warning \u2014 this plugin ships only hooks.json. Commands reference `${PLUGIN_ROOT}`, the environment variable Codex documents for plugin hook commands (`CLAUDE_PLUGIN_ROOT` is set too, for compatibility); the shell expands it, and hook-adapters.test.mjs executes every command of this manifest against the built package to prove the path resolves. verified offline: command expansion against the built package, payload parsing, responses; installed-host trust and firing are live-run assertions (hooks-trusted, hooks-fired) Native manifests carry only `description` and `hooks`: Codex rejects any other top-level field (observed 2026-09-06: \"unknown field `_doc`\")."
+  "_hooks_doc": "Codex CLI plugin hooks manifest (packaged as hooks/hooks.json). Same runner, same core policies as Claude Code; matchers use the tool names Codex documents (Bash, apply_patch). Codex has no Read/Grep/WebFetch hook events, so read telemetry covers shell reads only, fetches are not audited and the LSP hint has no event (legacy-only). Codex loads plugin hooks only after the operator trusts them; a hooks.json next to inline [hooks] in one layer is loaded twice with a warning — this plugin ships only hooks.json. Commands reference `${PLUGIN_ROOT}`, the environment variable Codex documents for plugin hook commands (`CLAUDE_PLUGIN_ROOT` is set too, for compatibility); the shell expands it, and hook-adapters.test.mjs executes every command of this manifest against the built package to prove the path resolves. verified offline: command expansion against the built package, payload parsing, responses; installed-host trust and firing are live-run assertions (hooks-trusted, hooks-fired) Native manifests carry only `description` and `hooks`: Codex rejects any other top-level field (observed 2026-09-06: \"unknown field `_doc`\")."
 }

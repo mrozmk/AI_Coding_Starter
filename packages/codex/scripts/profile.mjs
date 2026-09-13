@@ -22,7 +22,7 @@ import { validate } from './lib/schema.mjs';
 
 export const CANONICAL = '.agents/project-profile.json';
 export const LEGACY = '.claude/project-profile.json';
-export const HARNESS_KEYS = ['author_host', 'roles', 'planning', 'groups'];
+export const HARNESS_KEYS = ['author_host', 'roles', 'planning', 'review', 'groups'];
 
 export const DEFAULT_ROLES = {
   executor: { model: 'opus', effort: 'medium' },
@@ -39,7 +39,7 @@ const NO_GROUPS = Object.fromEntries(Object.keys(DEFAULT_GROUPS).map((g) => [g, 
 export const SHARED_KEYS = [
   'language', 'mode', 'git_host', 'tracker', 'confluence', 'codex', 'app_surface', 'author_host',
   'workflow.preset', 'workflow.pr_required', 'workflow.protected', 'workflow.orchestrate_publish', 'workflow.merge', 'workflow.trunk', 'workflow.integration', 'workflow.branch_pattern', 'workflow.branch_types', 'workflow.pr_dest',
-  'planning.after_brainstorm', 'groups', 'roles',
+  'planning.after_brainstorm', 'review.context', 'groups', 'roles',
 ];
 
 // Legacy schema-1 `commands.*` answers mirrored from the shared facts when writing that file.
@@ -133,7 +133,7 @@ export function readProfile(projectRoot) {
     const legacy = viewOf(l.raw);
     // Behavioral facts with defaults are compared as EFFECTIVE values: a `groups.review=false`
     // recorded in one file and simply absent from the other is a lost decision, not agreement.
-    const effectiveOf = (v) => ({ groups: { ...DEFAULT_GROUPS, ...(v.groups ?? {}) }, roles: { executor: v.roles?.executor ?? DEFAULT_ROLES.executor, reviewer: { claude: v.roles?.reviewer?.claude ?? DEFAULT_ROLES.reviewer.claude, codex: v.roles?.reviewer?.codex ?? DEFAULT_ROLES.reviewer.codex } }, 'planning.after_brainstorm': v.planning?.after_brainstorm ?? 'stop' });
+    const effectiveOf = (v) => ({ groups: { ...DEFAULT_GROUPS, ...(v.groups ?? {}) }, roles: { executor: v.roles?.executor ?? DEFAULT_ROLES.executor, reviewer: { claude: v.roles?.reviewer?.claude ?? DEFAULT_ROLES.reviewer.claude, codex: v.roles?.reviewer?.codex ?? DEFAULT_ROLES.reviewer.codex } }, 'planning.after_brainstorm': v.planning?.after_brainstorm ?? 'stop', 'review.context': v.review?.context ?? 'closed' });
     const effC = effectiveOf(canonical);
     const effL = effectiveOf(legacy);
     const differences = SHARED_KEYS.filter((k) => {
@@ -169,6 +169,7 @@ export function effective(profile) {
     language: view.language ?? 'en',
     author_host: view.author_host ?? null,
     after_brainstorm: view.planning?.after_brainstorm ?? 'stop',
+    review: { context: view.review?.context ?? 'closed' },
     roles: {
       executor: view.roles?.executor ?? DEFAULT_ROLES.executor,
       reviewer: {

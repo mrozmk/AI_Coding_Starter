@@ -23,6 +23,7 @@ Canonical file `.agents/project-profile.json`, schema 2 (`schemas/project-profil
 | `roles.reviewer.claude` | `{model: fable, effort: high}` | fixed default |
 | `roles.reviewer.codex` | `{model: <explicit>, effort: <explicit>}` | default `gpt-6-astra` / `high`; a project override wins |
 | `planning.after_brainstorm` | `stop` \| `plan-feature` | absent → `stop` |
+| `review.context` | `closed` \| `hybrid` | absent → `closed`; **`setup-start` does not ask** — a project opts in with `profile.mjs apply --changes '{"review.context":"hybrid"}' --consent yes` (see `review-contract.md → Context modes`) |
 | `groups` | `planning`, `review`, `execution`, `git`, `tracker`, `confluence` → bool | plugin capability groups; `review` is the team's explicit choice (default `true`), never inferred from installed CLIs |
 
 Preset expansion (`scripts/rules.mjs branchModel` / `derivePublish`): `trunk` → trunk `main`, integration `main`, pattern `<type>/<slug>` (`<type>/<KEY>-<slug>` with Jira), protected `[]`, merge `ff`, publish `push`. `feature-branch` → same trunk/integration, `pr_required=true`, protected `[main]`, merge `squash`, PR to `main`, publish **`branch-local`** (PR-gated: the pipeline commits, a human publishes). `gitflow` → trunk `main`, integration `develop`, protected `[main, develop]`, merge `squash` (merge-commit for release/hotfix), publish `branch-local`. An explicit `orchestrate_publish: push` on a PR-gated preset is rejected by the profile validator; a stricter explicit `branch-local` always wins.
@@ -30,7 +31,7 @@ Preset expansion (`scripts/rules.mjs branchModel` / `derivePublish`): `trunk` �
 ### Legacy compatibility
 
 - Only `.claude/project-profile.json` (schema 1) exists → it is read through the schema-2 view and **written in place**: `schema: 1`, every old and unknown key preserved, the schema-2-only fields stored under `harness`. No second authoritative file is created during the pilot.
-- Both files exist → resolve symlinks; the same physical file is one authority. Different files with different shared behavioral values (`language`, `mode`, `git_host`, `tracker`, `confluence`, `codex`, `app_surface`, `author_host`, `workflow.preset|pr_required|protected|orchestrate_publish|merge`, `planning.after_brainstorm`, `groups`, `roles`) → `conflict`: every write is refused until a human resolves it.
+- Both files exist → resolve symlinks; the same physical file is one authority. Different files with different shared behavioral values (`language`, `mode`, `git_host`, `tracker`, `confluence`, `codex`, `app_surface`, `author_host`, `workflow.preset|pr_required|protected|orchestrate_publish|merge`, `planning.after_brainstorm`, `review.context` (absent = `closed`), `groups`, `roles`) → `conflict`: every write is refused until a human resolves it.
 - Missing profile → interview. Nothing is inferred from installed tools.
 
 ### Consent
