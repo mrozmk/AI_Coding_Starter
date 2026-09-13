@@ -53,7 +53,7 @@ Generic defaults — tune per project: files max **500 lines** · functions max 
 
 {style-conventions}
 
-**Comments: why, not what — cap 1-2 lines.** A comment that restates the adjacent statement, echoes a variable / constant / function name, or repeats what the signature already says is **noise, and gets deleted**. Keep only a *why* the code cannot express. Enforced at write time by the comments hook where configured; `/deep-review` and `/harness:gates-verify-implementation` point back at this section by name.
+**Comments: why, not what — cap 1-2 lines.** A comment that restates the adjacent statement, echoes a variable / constant / function name, or repeats what the signature already says is **noise, and gets deleted**. Keep only a *why* the code cannot express. Enforced at write time by the comments hook where configured; `/harness:deep-review` and `/harness:gates-verify-implementation` point back at this section by name.
 
 ## Error Handling
 
@@ -69,7 +69,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 ## Git Workflow
 
-- **Commits · sync · releases:** `/commit` (conventional commits), `/push` / `/pull`, `/release` — legacy commands, still project-local.
+- **Commits · sync · releases:** `/commit` (conventional commits), `/push` / `/pull` — project wrappers routing to the plugin skills; `/harness:release` is namespaced-only.
 - **AI git policy — three permission tiers** in `.claude/settings.json`: `deny` > `ask` > `allow`; `deny` is absolute.
 - **`git worktree remove --force` can discard uncommitted work.** Its only guard is `/orchestrate`'s `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged. `/orchestrate` pushes the current branch, not a hardcoded `main`.
 - **AI attribution in commits is switched off in `settings.json`** (`"attribution": { "commit": "", "pr": "", "sessionUrl": false }`), not forbidden by prose: by default the host injects a session-level instruction to append `Co-Authored-By` and `Claude-Session` trailers that outranks any rule file, and a prose rule the model can be overruled on is worse than none. The older `includeCoAuthoredBy` is deprecated and silences only the first trailer. Keep the key; do not re-add the prohibition to `/commit`.

@@ -1,8 +1,8 @@
 {
-  "_doc": "Instruction-parity ledger (T01). One row per baseline instruction that the legacy .claude/ harness enforced or documented. A row records who owns the rule now, where each host reads it, how strongly it is enforced and which test demonstrates it. `status` is honest: `migrated` (one owner, both hosts), `compat-rendered` (owner is the shared rules; a legacy-heading copy is rendered from the same facts for old readers), `legacy-only` (still served only by the project's .claude/ files), `conditional` (applies only when the named precondition holds), `gap` (known loss, not yet fixed — cannot certify the capability), `retired` (dropped on purpose; needs rationale + decision). Validated by scripts/lib/parity.mjs; rendered to docs/harness/instruction-parity.md.",
+  "_doc": "Instruction-parity ledger (T01). One row per baseline instruction that the legacy .claude/ harness enforced or documented. A row records who owns the rule now, where each host reads it, how strongly it is enforced and which test demonstrates it. `status` is honest: `migrated` (one owner, both hosts), `compat-rendered` (owner is the shared rules; a legacy-heading copy is rendered from the same facts for old readers), `legacy-only` (still served only by the project's .claude/ files), `conditional` (applies only when the named precondition holds), `gap` (known loss, not yet fixed — cannot certify the capability), `retired` (dropped on purpose; needs rationale + decision). Validated by scripts/lib/parity.mjs; rendered to docs/harness/instruction-parity.md. A `legacy.file` value is historical provenance — the file that carried the instruction before the migration — and may name a path the template no longer ships; it is never resolved as a live path, and 23 such paths already sit in this ledger.",
   "schema_version": 1,
   "legacy_contract": {
-    "_doc": "The tier-1/tier-2 rows of the old CLAUDE-template contract block (parsed by /maintain:cleanup-workflow 1.6). Every item must be claimed by exactly one entry below; an unclaimed item is an unclassified removal and fails the check.",
+    "_doc": "The tier-1/tier-2 rows of the old CLAUDE-template contract block (parsed by /maintain:cleanup-workflow 1.6). Every item must be claimed by exactly one entry below; an unclaimed item is an unclassified removal and fails the check. `source` here, like every `legacy.file` below, is historical provenance — the file that carried the instruction before the migration — and may name a path the template no longer ships; it is never resolved as a live path.",
     "source": ".claude/templates/CLAUDE-template.md",
     "items": [
       {
@@ -1304,7 +1304,7 @@
       "strength": "hard",
       "owner": "harness-source/skills/recon/SKILL.md#Recon: Assemble Context Before You Design",
       "destinations": {
-        "claude": "/recon (wrapper) → harness:recon, research waves as parallel agents",
+        "claude": "/harness:recon — research waves as parallel agents",
         "codex": "$recon — the same waves run sequentially in-session (no agents)"
       },
       "check": {
@@ -1323,7 +1323,7 @@
       "strength": "hard",
       "owner": "harness-source/skills/design/SKILL.md#`/harness:design` (Claude Code) · `$design` (Codex) — Guided UI Design with Variants + Self-Check Gate",
       "destinations": {
-        "claude": "/design (wrapper) → harness:design, 3 variants as parallel agents",
+        "claude": "/harness:design — 3 variants as parallel agents",
         "codex": "$design — the three variants run sequentially in-session (no agents)"
       },
       "check": {
@@ -1405,7 +1405,7 @@
       "strength": "hard",
       "owner": "harness-source/skills/architecture-review/SKILL.md#/architecture-review — Codebase-Wide Architecture Audit",
       "destinations": {
-        "claude": "/architecture-review (wrapper) → harness:architecture-review",
+        "claude": "/harness:architecture-review",
         "codex": null
       },
       "check": {

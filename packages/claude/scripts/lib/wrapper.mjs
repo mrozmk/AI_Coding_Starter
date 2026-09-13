@@ -38,3 +38,26 @@ export function renderWrapper({ command, skill, description, argumentHint = null
   const token = wrapperToken(command);
   return `---\n${fm.join('\n')}\n---\n<!-- ${WRAPPER_NOTE} -->\n\n# /${token} → ${plugin}:${skill}\n\nInvoke the Skill tool with skill \`${plugin}:${skill}\` and args \`$ARGUMENTS\` verbatim, then follow that skill — the same as the user typing \`/${plugin}:${skill}\`. Do nothing else first — no context loading, no work of your own.${where}\n\nIf the Skill tool reports the skill unknown, the \`${plugin}\` plugin is not enabled in this project. Say so and stop; do not fall back to an improvised version.${enable}\n`;
 }
+
+// The command paths the generator can produce: one namespace segment deep, no colon — `wrapperToken`
+// is what introduces the colon, so a colon in `command` means the caller derived it from a flat
+// filename that merely *looks* like a nested wrapper's token (`setup:create-PRD.md`). Comparing
+// tokens alone would map that file onto `setup/create-PRD` and delete a copy the project owns.
+const WRAPPER_SEGMENT = '[A-Za-z0-9][A-Za-z0-9-]*';
+const WRAPPER_COMMAND = new RegExp(`^${WRAPPER_SEGMENT}(?:/${WRAPPER_SEGMENT})?$`);
+
+// The heading must name the file's *own* command path, and both the note and the heading must sit
+// where `renderWrapper` puts them — frontmatter, note, blank line, heading. A free search would
+// accept a hand-written command that quotes a retired wrapper inside a fenced example, and deleting
+// that file (like deleting a wrapper copied or renamed elsewhere) would destroy project content.
+export function isGeneratedWrapperFor(command, text, plugin = 'harness') {
+  if (!WRAPPER_COMMAND.test(command)) return false;
+  const lines = text.split('\n');
+  if (lines[0] !== '---') return false;
+  const close = lines.indexOf('---', 1);
+  if (close < 1) return false;
+  if (lines[close + 1] !== `<!-- ${WRAPPER_NOTE} -->` || lines[close + 2] !== '') return false;
+  const prefix = `# /${wrapperToken(command)} → ${plugin}:`;
+  const heading = lines[close + 3] ?? '';
+  return heading.startsWith(prefix) && /^[a-z0-9][a-z0-9-]*$/.test(heading.slice(prefix.length));
+}
