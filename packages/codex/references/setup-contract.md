@@ -54,17 +54,18 @@ Schema 2 is **portable**: identity only (`name`, per-host `version`, `source_dig
 
 ## Codex sandbox and `.agents/`
 
-Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its own marketplace config there), and the harness stores specs, plans, memory and the version receipt exactly there. A Codex author session needs `sandbox_workspace_write.writable_roots` to include the project's `.agents` directory — in `~/.codex/config.toml` (absolute path) or in a **trusted** project `.codex/config.toml` (a project-level file is ignored until the project is trusted; observed 2026-09-06 on Codex 0.153.4). Without it every planning skill reports the write as blocked; nothing is written elsewhere.
+Codex's `workspace-write` sandbox refuses writes under `.agents/` (it keeps its own marketplace config there), and the harness stores specs, plans, memory and the version receipt exactly there. A Codex author session needs `sandbox_workspace_write.writable_roots` to include the project's `.agents` directory — in `~/.codex/config.toml` (absolute path) or in a **trusted** project `.codex/config.toml` (a project-level file is ignored until the project is trusted; observed 2026-09-06 on Codex 0.153.4). Without it every planning skill reports the write as blocked; nothing is written elsewhere. The starter swap's journal (`.agents/harness-state/swap.json`) is an `.agents/` write too — which is why `setup-start` runs the swap after this note and preflights the directory, reporting `blocked` instead of moving a file it cannot journal.
 
-## Legacy-only dependencies (routed, never reproduced)
+## Dependencies by owner
 
 | Need | Legacy owner | Behaviour when absent |
 |---|---|---|
-| `.env.example` toggles, `.mcp.json` pruning, toolchain block, command-group pruning, TESTING/DoD/PR templates | `.claude/commands/setup/start.md` | report `legacy bootstrap not installed — skipped` and stop that step |
 | PRD, brief, backlog, stack research, BA priming | plugin skills (`groups.product`, default `true` for profiles written by 0.4.0 `setup-start`; older profiles keep `false` until set) | `product group disabled in the project profile` |
 | acceptance-criteria verification, QA priming, the two shipped verifiers and their procedures | plugin skills (`groups.qa`, default `false` — an explicit Screen 3 answer) | `qa group disabled in the project profile` |
 | Jira and Confluence flows, the Atlassian reference bundle | plugin skills (`groups.tracker` / `groups.confluence`); the MCP server, its permission tiers and the `JIRA_*` / `CONFLUENCE_*` variables stay project-side | `tracker` / `confluence group disabled in the project profile`; server absent from the session roster → say so and stop |
-| `CLAUDE.md` generation, codebase map, LLM wiki, workflow housekeeping | `.claude/commands/setup/{create-CLAUDE_MD,map-codebase,createwikillm}.md`, `maintain/cleanup-workflow.md` | report `legacy bootstrap not installed — skipped` and stop that step |
 | execute, check-implementation, orchestrate, gates, quick-change, deep-review, analysis, recon, design, test-e2e, architecture-review | plugin skills (`groups.execution`, default `true` for profiles written by 0.3.0 `setup-start`; 0.2.0 profiles keep `false` until set) | `execution group disabled in the project profile` |
 | supervised Codex executor (`execute codex`, the `check-implementation` fixer, cross-model code reviews) | `scripts/executor-orchestrator.mjs` — Claude authors only; needs `groups.execution` (write) and `groups.execution` + `groups.review` (read) | refuses a Codex author; with a group on and the `codex` CLI absent it is blocked, not skipped |
 | commit, push, pull, release, pr-create, start-task | plugin skills (`groups.git`, `true` by default since 0.2.0; each skill checks it first) | `git group disabled in the project profile` |
+| README/LICENSE swap on a starter clone | `scripts/bootstrap.mjs swap` (`setup-start` 3d) | preview verdict; `conflict` / `blocked` / `refused` stop that step with the script's reason |
+| codebase map for a large repository | `create-rules --map` | inline discovery under the threshold |
+| `.env.example` toggles, `.mcp.json` pruning, TESTING/DoD/PR templates, LLM wiki, workflow housekeeping | not owned by the plugin (project files; the legacy commands are retired) | `setup-start` prints the present template files as copy-and-fill; nothing routed |

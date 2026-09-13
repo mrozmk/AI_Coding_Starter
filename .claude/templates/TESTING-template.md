@@ -1,6 +1,6 @@
 # Testing
 
-> Placed by `/setup:start` step 8. `{slots}` it could not resolve from the manifest stay literal; `/setup:create-CLAUDE_MD` fills them later. Everything below the slots is binding as written.
+> Copy this into the project by hand. `{slots}` you cannot resolve from the manifest stay literal; `/harness:create-rules` fills them later. Everything below the slots is binding as written.
 
 ## Stack
 

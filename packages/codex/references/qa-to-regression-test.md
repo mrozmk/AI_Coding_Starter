@@ -66,7 +66,7 @@ condition waits (`expect(...).toBeVisible()`) over fixed sleeps, exactly as the 
 
 ## 4. Write it the way this repo writes them
 
-`{Project slot — filled by /setup:create-CLAUDE_MD or the first promotion: test directory,
+`{Project slot — filled by create-rules or the first promotion: test directory,
 file naming, fixture/bootstrap helper, how a case is registered, language of test names.}`
 Match the existing tests; do not invent a house style. Rules that hold everywhere:
 

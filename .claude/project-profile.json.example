@@ -1,5 +1,5 @@
 {
-  "_doc": "Project profile — written by /setup:start after the bootstrap interview, committed. Machine-readable mirror of the answers; `CLAUDE.md → ### Branch model` and `Language Rules` are the human-readable mirror and are filled from the same values. Consumers: /setup:create-CLAUDE_MD (workflow, language), /pr-create (git_host), /maintain:sync-from-starter (excluded paths + which .mcp.json / settings.json entries to skip). Copy to project-profile.json only via /setup:start — never by hand.",
+  "_doc": "Legacy project profile (schema 1) — the shape a pre-plugin bootstrap wrote, kept so an existing copy is still read in place. New projects get .agents/project-profile.json from /harness:setup-start. Machine-readable mirror of the interview answers; `CLAUDE.md → ### Branch model` and `Language Rules` are the human-readable mirror. Consumers: /harness:create-rules (workflow, language), /harness:pr-create (git_host), /maintain:sync-from-starter (excluded paths + which .mcp.json / settings.json entries to skip). Never edit by hand — let /harness:setup-start write it.",
 
   "schema": 1,
 
@@ -9,7 +9,7 @@
   "_git_host_doc": "github | bitbucket | gitlab | none. Detected from `origin`, confirmed. `none` = no remote yet; PR credentials are deferred until one exists.",
   "git_host": "github",
 
-  "_workflow_doc": "Asked: preset + pr_required (Screen 1, Q3). Everything else is DERIVED once from the preset table in create-CLAUDE_MD → Identify Git Workflow and never asked. preset is one of trunk | feature-branch | gitflow — `custom` is not a profile value; a custom workflow goes through /setup:create-CLAUDE_MD instead. pr_required=false (\"I push straight to main\") overrides pr_dest / protected / merge / orchestrate_publish as shown here.",
+  "_workflow_doc": "Asked: preset + pr_required (Screen 1, Q3). Everything else is DERIVED once from the preset table in references/setup-contract.md and never asked. preset is one of trunk | feature-branch | gitflow — `custom` is not a profile value; pick the nearest preset and correct single fields afterwards with /harness:create-rules. pr_required=false (\"I push straight to main\") overrides pr_dest / protected / merge / orchestrate_publish as shown here.",
   "workflow": {
     "_preset_doc": "trunk | feature-branch | gitflow",
     "preset": "trunk",
@@ -36,13 +36,13 @@
   "_codex_doc": "Asked (Screen 2, Q6) as a TEAM question. `command -v codex` on the bootstrap machine is informational only and never sets this field — the file is shared.",
   "codex": false,
 
-  "_app_surface_doc": "unknown | none | web | mobile | desktop | tui. NOT asked by /setup:start — always written as `unknown`, which keeps all QA tooling. /setup:create-CLAUDE_MD detects it from the stack once code exists.",
+  "_app_surface_doc": "unknown | none | web | mobile | desktop | tui. Written as `unknown` at bootstrap, which keeps all QA tooling. /harness:create-rules detects it from the stack once code exists.",
   "app_surface": "unknown",
 
   "_language_doc": "pl | en. Asked first (Screen 0). Governs Claude <-> developer communication only; code, comments and commits stay English.",
   "language": "pl",
 
-  "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web.",
+  "_commands_doc": "The legacy command-group manifest, DERIVED from the answers above. In the plugin it is a capability flag (groups.*), never a deletion — a disabled group simply blocks its entrypoints. qa_runtime_ui is true whenever app_surface is unknown or web.",
   "commands": {
     "pr": true,
     "jira": false,

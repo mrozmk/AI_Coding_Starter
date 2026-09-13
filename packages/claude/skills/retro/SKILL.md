@@ -32,7 +32,7 @@ argument-hint: "[--force] [--transcript <path>]"
 
 5. **Never edit code, never run tests, never modify the repo state.** The retro lives in exactly one new `.md` file. Nothing else changes.
 
-6. **Output language is English** regardless of conversation language. This is for portability across projects and stable aggregation by the legacy `/maintain:cleanup-workflow` (route, do not perform: when that command is not installed in this project, print `legacy bootstrap not installed — skipped: cleanup-workflow` and leave the signals in the report for a human to read).
+6. **Output language is English** regardless of conversation language. This is for portability across projects and for stable aggregation across retro files by whoever reads them; no command consumes them — the signals stay in the report for a human.
 
 ---
 
@@ -540,7 +540,7 @@ Transcripts capture tool calls. They do NOT capture:
 
 These are blind spots of evidence-based retro. They are out of scope for this report — do not paper over them with guesses.
 
-## Signals for the workflow-housekeeping command
+## Signals for maintenance
 
 List 1–3 specific, actionable signals. Each must reference a count or path from the JSON. If no signal is concrete enough, write `N/A`.
 
@@ -550,7 +550,7 @@ List 1–3 specific, actionable signals. Each must reference a count or path fro
 - Skill `<name>` invoked but only <N> follow-up tool calls — possible skill cost-vs-value gap.
 
 <If no signals:>
-N/A — no actionable cleanup-workflow signals this session.
+N/A — no actionable maintenance signals this session.
 ```
 
 ### Step 8: Quality gates — run ALL FOUR
@@ -710,9 +710,9 @@ Then print the same "saved" message as the happy path, plus the warning list.
 | A spec or PRD                         | `/brainstorm`            |
 | A code review                         | `/review`                |
 | A casual "how did it go" post         | A normal chat message    |
-| A workflow change proposal            | the legacy `/maintain:cleanup-workflow` |
+| A workflow change proposal            | a human reading several retros |
 
-This skill produces *raw signal*. The legacy `/maintain:cleanup-workflow` acts on aggregated signal across multiple retros.
+This skill produces *raw signal*. Nothing consumes it automatically: acting on it means a human comparing the `Signals for maintenance` sections of several retros.
 
 ---
 

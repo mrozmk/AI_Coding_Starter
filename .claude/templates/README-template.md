@@ -3,7 +3,7 @@
 A skeleton for a **project** README — the one that lives at the repository root and describes
 *your application*, not the AI workflow framework.
 
-> **How this is used.** On bootstrap, `/setup:create-CLAUDE_MD` swaps the starter-kit's framework
+> **How this is used.** On bootstrap, `/harness:setup-start` swaps the starter-kit's framework
 > README out of the root (it is preserved at `.claude/README.md`) and generates a fresh root
 > `README.md` from this template, filled with project facts pulled from `docs/PRD.md`,
 > `.agents/memory/project-brief.md`, and the detected tech stack.
@@ -24,7 +24,7 @@ A skeleton for a **project** README — the one that lives at the repository roo
 
 ## Tech Stack
 
-<!-- Pulled from the detected manifests during /setup:create-CLAUDE_MD. Add/remove rows as needed. -->
+<!-- Pulled from the detected manifests during /harness:create-rules. Add/remove rows as needed. -->
 
 | Technology | Purpose |
 |------------|---------|

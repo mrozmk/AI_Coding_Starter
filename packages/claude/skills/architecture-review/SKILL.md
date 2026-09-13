@@ -26,7 +26,7 @@ This command is deliberately distinct from three neighbours. Pick the right tool
 
 - **`/harness:deep-review` (Claude Code) · `$deep-review` (Codex)** — per-diff structural audit of a *change*, runs *inside* the quality pipeline, and **mutates** code (it applies fixes). `/architecture-review` is **codebase-wide**, **on-demand** (outside any feature cycle), and **analyze-only**. The two are **composed, not merged**: this review hands `/harness:deep-review` a target list via the Hotspots section (Phase 2b) and never applies its standards itself.
 - **`/harness:analysis` (Claude Code) · `$analysis` (Codex)** — a scope-boxed thinking tool for one decision or question; writes **no files**. `/architecture-review` sweeps the whole base and **emits an HTML report** of multiple ranked candidates.
-- **`/setup:map-codebase`** — brownfield bootstrap that **documents** an unfamiliar codebase into the knowledge layer; it describes what exists, it does not hunt for debt. `/architecture-review` assumes the map exists and goes looking for **shallow modules worth deepening**.
+- **The `create-rules` map branch (`--map`)** — brownfield bootstrap that **documents** an unfamiliar codebase into the knowledge layer; it describes what exists, it does not hunt for debt. `/architecture-review` assumes the map exists and goes looking for **shallow modules worth deepening**.
 
 > In one line: **codebase-wide, on-demand, analyze-only.** It finds refactor candidates; it does not document, decide-in-isolation, or change code.
 

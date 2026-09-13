@@ -48,7 +48,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 | Architectural decision / refactor | `decisions.md`, `architecture.md` |
 | Touching API integration / external protocol | `api.md` |
 | Working on a specific module | `domain/{module}.md` |
-| Bootstrapping a fresh clone / choosing which command groups to keep | `.claude/project-profile.json` (written by `/setup:start`; `.example` documents the schema) |
+| Bootstrapping a fresh clone / choosing which capability groups to keep | `.agents/project-profile.json` (written by `/harness:setup-start`; the plugin's `references/setup-contract.md` documents the schema) |
 | Working on payments / billing / pricing | `domain/business-model.md` |
 | Architectural decisions live outside the repo (wiki, Confluence) | `.agents/reference/adr-index.md` — copy from [adr-index.md.example](../reference/adr-index.md.example) on first need |
 | Verifying acceptance criteria against a running system | `.agents/reference/qa-evidence-families.md` (or run `/prime-qa`, which loads it) |
@@ -103,7 +103,7 @@ A rule that constrains the **shape** of output — a length cap, an item limit, 
 
 Never import a terminal-report rule ("cap the list", "lead with the action") into an artifact template — a truncated plan is a broken plan.
 
-**Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content from `/maintain:cleanup-workflow` Phase 2: **entries** cut by Section 2A (`archive/<file>-YYYY-MM-DD.md`) and whole **files** archived by Section 2B (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
+**Archive folder — never auto-loaded.** `.agents/memory/archive/` holds two kinds of pruned content, both written by hand: **entries** cut out of a file (`archive/<file>-YYYY-MM-DD.md`) and whole **files** retired (`archive/YYYY-Q<N>/<file>`). It is **historical record only**. `/prime` (quick + full), `/prime-ba`, and any other reader **MUST skip it**. Read on demand only when investigating past decisions ("did we ever try X?" → `rg "X" .agents/memory/archive/`).
 
 ---
 

@@ -77,7 +77,7 @@ If any mandatory task fails, STOP and report as **BLOCK**.
 
 ## 3. Quality Gates
 
-**Source of truth: `CLAUDE.md` → `Validation` section.** That section is filled per-project by `/setup:create-CLAUDE_MD` with the actual commands the project uses. Read it and run those commands in sequence.
+**Source of truth: `CLAUDE.md` → `Validation` section.** That section is filled per-project by `/harness:create-rules` (Claude Code) · `$create-rules` (Codex) with the actual commands the project uses. Read it and run those commands in sequence.
 
 If `CLAUDE.md` has no `Validation` section, or the section still contains placeholders, fall back to a stack-detected default:
 

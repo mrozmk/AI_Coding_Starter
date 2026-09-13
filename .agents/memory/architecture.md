@@ -1,12 +1,12 @@
 ---
 status: empty
-populated_by: /setup:create-CLAUDE_MD
+populated_by: create-rules (Phase 7) or by hand
 description: Cross-cutting map of the repository — directory structure, file roles, naming rules
 ---
 
 # Memory: Directory Structure & File Map
 
-> Regeneratable file. `/setup:create-CLAUDE_MD` rewrites this on every run — do **not** edit by hand for permanent knowledge (use `decisions.md` / `patterns.md` / `domain/{module}.md` for that).
+> Regeneratable file. `create-rules` rewrites this on every run — do **not** edit by hand for permanent knowledge (use `decisions.md` / `patterns.md` / `domain/{module}.md` for that).
 >
 > While `status: empty`, skip loading this file — it carries no project knowledge yet.
 

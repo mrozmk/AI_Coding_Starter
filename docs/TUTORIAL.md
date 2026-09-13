@@ -87,7 +87,7 @@ This gives you a fresh, local Git history — but **without** a remote repo. The
 
 > Open a Claude Code session in this folder (run `claude` in the terminal).
 
-> **First run `/setup:start`.** It asks seven short questions, prepares the config files, and prints the exact order of the steps below for your project — this tutorial explains each of them.
+> **First run `/harness:setup-start`.** It asks a short set of questions, prepares the project profile and rules, and prints the exact order of the steps below for your project — this tutorial explains each of them.
 
 ---
 
@@ -217,20 +217,19 @@ Each of them has a full description in the README: [Two daily flows](../README.m
 
 📋 **Type** (one after another):
 ```
-/setup:start --rerun
-/setup:create-CLAUDE_MD
+/harness:create-rules
 ```
 
-💬 **What happens:** `/setup:start --rerun` shows your earlier answers (keep them) and fills the one thing it skipped at the start — the toolchain check in `.claude/hooks/check-project-deps.sh`, now that a manifest (`package.json`, `pyproject.toml`, …) exists. Then Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
+💬 **What happens:** Claude analyzes your fresh scaffold and generates two things: a refined `CLAUDE.md` (project rules) and `.agents/memory/architecture.md` (the project map). Your project `README.md` was already seeded at bootstrap, when `/harness:setup-start` moved the framework guide to `.claude/README.md`.
 
-✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root has a README about your TODO app.
+✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root README describes your TODO app.
 
 ⏭️ **Next:** Step 6 — the first real feature.
 
 <details>
 <summary>💡 TIP — what happened to the original README</summary>
 
-On the first run of `/setup:create-CLAUDE_MD` the template performs a "swap": it moves its framework guide to `.claude/README.md` (it stays available), and creates your project's README at the root. This way your repo's page describes your app, not the template. This tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [README → "The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
+On the first run of `/harness:setup-start` the template performs a "swap": it moves its framework guide to `.claude/README.md` (it stays available), and seeds your project's README at the root. Your `LICENSE` is yours to add — the swap moves the starter's notice to `.claude/STARTER-LICENSE` and never generates one for you. This way your repo's page describes your app, not the template. This tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [README → "The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
 </details>
 
 ---
@@ -377,7 +376,7 @@ It does it all itself: write code → clean up → check → commit → push, lo
 
 ## Before you start (one-time)
 
-Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`) and run `/setup:start` first.
+Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`) and run `/harness:setup-start` first.
 
 ---
 
@@ -398,7 +397,7 @@ Go through [Step 1](#step-1-describe-what-you-want-to-build-prd), [Step 2](#step
 
 ### Steps 4–5: Scaffold + project rules — like in S1
 
-Do [Step 4](#step-4-build-the-project-scaffold-first-pass-through-the-pipeline) (`/harness:prime` → `/harness:brainstorm` → `/harness:plan-feature` → `/harness:execute` on task `E0-1`) and [Step 5](#step-5-create-the-project-rules-claudemd) (`/setup:create-CLAUDE_MD`) **unchanged**. The scaffold will now also contain the frontend part (Claude will list the created files).
+Do [Step 4](#step-4-build-the-project-scaffold-first-pass-through-the-pipeline) (`/harness:prime` → `/harness:brainstorm` → `/harness:plan-feature` → `/harness:execute` on task `E0-1`) and [Step 5](#step-5-create-the-project-rules-claudemd) (`/harness:create-rules`) **unchanged**. The scaffold will now also contain the frontend part (Claude will list the created files).
 
 ⏭️ **Next:** Step 6 — the first feature, where the new part begins.
 
@@ -511,7 +510,7 @@ The cycle is the same as in S1, enriched with two visual steps:
 
 ## Before you start (one-time)
 
-Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`) and run `/setup:start` first.
+Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`) and run `/harness:setup-start` first.
 
 **Prepare your design** — pick ONE of the ways:
 
@@ -617,7 +616,7 @@ The cycle is like in S2, but the look comes from you, and the code is verified a
 
 **What we'll do:** take **a project that already has code** (created without this template) and **bring this whole workflow into it** — project memory, an architecture map, rules, a backlog. The goal: from tomorrow, work on that code with the same rhythm as in S1–S3.
 
-**What you'll learn:** how Claude **understands someone else's/legacy code** with the **`/setup:map-codebase`** command and how that understanding becomes project memory you hook further work into.
+**What you'll learn:** how Claude **understands someone else's/legacy code** with **`/harness:create-rules --map`** and how that understanding becomes project memory you hook further work into.
 
 > 📌 **This is a different start than S1–S3.** There you started from an empty idea (PRD → stack → scaffold). Here **the code already exists** — so first the template has to be *brought* into the repo, and Claude has to *understand* what it found. Only then do you return to the familiar rhythm `brainstorm → plan → execute → check → commit`. 🔴 Harder, because it deals with real, existing code.
 
@@ -644,7 +643,7 @@ cp -R /tmp/ai-starter/.claude /tmp/ai-starter/.agents /tmp/ai-starter/CLAUDE.md 
 [ -f .mcp.json ]    || cp /tmp/ai-starter/.mcp.json .
 ```
 
-If your repo already has an `.env.example` or `.mcp.json`, do **not** overwrite them — merge by hand (add the starter's integration blocks / MCP servers, keep yours), as `.claude/starter-sync-playbook.md` → Category B describes. Then run `/setup:start` before anything else.
+If your repo already has an `.env.example` or `.mcp.json`, do **not** overwrite them — merge by hand (add the starter's integration blocks / MCP servers, keep yours), as `.claude/starter-sync-playbook.md` → Category B describes. Then run `/harness:setup-start` before anything else.
 
 💬 **What happens:** your project gets the `.claude/` layer (commands, hooks, settings) and `.agents/` (memory, reference, specs, plans) plus `CLAUDE.md` with rules. **Your code stays untouched** — we only add the scaffolding.
 
@@ -660,28 +659,28 @@ These are the only parts of the template that are the "engine" of the workflow �
 
 ---
 
-### Step 1: Let Claude understand your code (map-codebase)
+### Step 1: Let Claude understand your code (the map)
 
 > This is the **heart** of this scenario and at the same time its biggest difference from S1–S3. Instead of writing a PRD from scratch, Claude **reads the existing code** and reconstructs knowledge about the project from it.
 
 📋 **Type:**
 ```
 /harness:prime
-/setup:map-codebase
+/harness:create-rules --map
 ```
 
-💬 **What happens:** `/setup:map-codebase` scans the repo, splits it into modules and understands the code **in parallel** (many agents), then produces: `.agents/memory/architecture.md` (the project map) **and a reconstructed `docs/PRD.md`** (what this application actually does). Along the way it **asks for your approval twice** — first what to analyze (scope, list of skipped files), then at the summary. At the end it carries on itself: refreshes the brief and generates `CLAUDE.md`.
+💬 **What happens:** `--map` splits the repo into partitions, summarises each one in a separate, bounded context, and reduces those summaries through a tree until one map remains — then it produces `.agents/memory/architecture.md` (the project map) together with the rules. It **asks for your approval twice** — first what to analyze (scope, the list of skipped files), then at the facts review before anything is written.
 
-✅ **How you know it's OK:** `.agents/memory/architecture.md` and `docs/PRD.md` were created, and `CLAUDE.md` has filled-in sections about your project (not `{...}` placeholders).
+✅ **How you know it's OK:** `.agents/memory/architecture.md` was created and `CLAUDE.md` has filled-in sections about your project (not `{...}` placeholders).
 
 ⏭️ **Next:** Step 2.
 
-> ⚠️ **Small project (< ~50 files)?** `/setup:map-codebase` will tell you itself that fan-out is unnecessary and ask you to just run **`/setup:create-CLAUDE_MD`** instead (it analyzes the code directly). Then you skip map-codebase and do that one command.
+> ⚠️ **Small project (< ~50 files)?** Drop the `--map` and just run `/harness:create-rules` — it reads the code directly.
 
 <details>
 <summary>💡 TIP — why this is a separate, "heavy" command</summary>
 
-A large, existing codebase won't fit in a single context. `/setup:map-codebase` distributes the work across many agents, each of which **returns only a concise summary (~1–2k)** — so the repo's size affects the *number* of agents, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`, PRD, brief), which all subsequent commands use. Full description: [.claude/commands/setup/map-codebase.md](../.claude/commands/setup/map-codebase.md).
+A large, existing codebase won't fit in a single context. The map branch distributes the work across bounded contexts, each of which **returns only a concise summary** — so the repo's size affects the *number* of partitions, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`), which all subsequent commands use.
 </details>
 
 ---
@@ -732,7 +731,7 @@ A large, existing codebase won't fit in a single context. `/setup:map-codebase` 
 ## 🎉 Congratulations — your existing project now speaks the same language!
 
 Instead of starting from an idea, we started from **code that was already there**:
-**bring in the template → 🆕 understand the code (`map-codebase`) → memory + map + rules → backlog → and from now on the usual rhythm `brainstorm → plan → execute → check → commit`.**
+**bring in the template → 🆕 understand the code (`create-rules --map`) → memory + map + rules → backlog → and from now on the usual rhythm `brainstorm → plan → execute → check → commit`.**
 
 The hardest part (understanding the existing code) you do **once**. After that brownfield is no different from greenfield — the same loop, the same commands, the same quality gates.
 
@@ -754,7 +753,7 @@ The hardest part (understanding the existing code) you do **once**. After that b
 
 [Create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it) (or join the team's existing repo). Open a Claude Code session (`claude`).
 
-Run `/setup:start` first and answer **Jira: yes** — it activates the Jira block in `.env.example` and keeps the `/jira` commands.
+Run `/harness:setup-start` first and answer **Jira: yes** — then uncomment the Jira block in `.env.example` by hand.
 
 **Want to export to Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` in `.env`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (PRD + backlog) and add the export later.
 

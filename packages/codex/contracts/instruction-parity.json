@@ -1088,16 +1088,18 @@
       },
       "applicability": "all",
       "strength": "advisory",
-      "owner": "harness-source/references/setup-contract.md#Legacy-only dependencies",
+      "owner": "harness-source/references/setup-contract.md#Dependencies by owner",
       "destinations": {
-        "claude": "routed to /setup:start when present",
-        "codex": "reported as skipped"
+        "claude": null,
+        "codex": null
       },
       "check": {
         "test": "tests/harness/skills.test.mjs",
-        "name": "setup-start: consent-gated writes, no cache pruning, legacy-only routing, canonical vs legacy file"
+        "name": "setup-start: consent-gated writes, no cache pruning, the starter swap, canonical vs legacy file"
       },
-      "status": "legacy-only"
+      "status": "retired",
+      "rationale": ".env/.mcp pruning dropped (the plugin never reads .env*; MCP wiring is host configuration), command-group pruning obsolete (groups.* profile flags), the toolchain block stays project-owned in check-project-deps.sh; the README/LICENSE swap moved to bootstrap.mjs swap (setup-start 3d) and /setup:start is tombstoned",
+      "decision": "spec 2026-09-13-bootstrap-ownership.md, approved 2026-09-13"
     },
     {
       "id": "perm.git-tiers",

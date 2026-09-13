@@ -49,7 +49,7 @@ This command produces a backlog — never code, never a spec, never a plan. Do N
 ```
 
 - **Greenfield:** run after the PRD exists. The backlog records architectural **assumptions** and open questions itself (it sets the *order of discovery*, it does not wait for full architecture to be designed).
-- **Brownfield (existing codebase):** run the legacy `/setup:map-codebase` **first** (it reconstructs `architecture.md` + a PRD). A DAG over an un-mapped codebase would be guesswork. Route, do not perform: if that command is not installed in this project, print `legacy bootstrap not installed — skipped: map-codebase` and say the DAG will rest on an unmapped codebase.
+- **Brownfield (existing codebase):** run `/harness:create-rules --map` (Claude Code) · `$create-rules --map` (Codex) **first** — it regenerates `.agents/memory/architecture.md` from the code. A DAG over an un-mapped codebase would be guesswork; when the map has not been run, say so and state that the DAG rests on an unmapped codebase.
 
 Run it **before** full architecture is designed but **after** the PRD: the backlog's job is to sequence discovery and planning, not to close the design.
 
@@ -63,7 +63,7 @@ Run it **before** full architecture is designed but **after** the PRD: the backl
 
 1. **Resolve the PRD path:** the input if it points to an existing `.md`, otherwise `docs/PRD.md`.
 2. **PRD missing** → STOP, do not write anything:
-   > "PRD not found at `<path>`. Run `/harness:create-prd` (Claude Code) · `$create-prd` (Codex) first (greenfield), or the legacy `/setup:map-codebase` when it is installed (existing codebase — it reconstructs a PRD), then rerun `/harness:create-backlog` (Claude Code) · `$create-backlog` (Codex)."
+   > "PRD not found at `<path>`. Run `/harness:create-prd` (Claude Code) · `$create-prd` (Codex) first; on an existing codebase map it first with `/harness:create-rules --map` (Claude Code) · `$create-rules --map` (Codex), then rerun `/harness:create-backlog` (Claude Code) · `$create-backlog` (Codex)."
 3. **Backlog already exists** (`.agents/backlog.md` present and non-empty) → STOP and ask, do not silently overwrite:
    > "`.agents/backlog.md` already exists. It is a living artifact with Status/Ref filled in by the pipeline — regenerating wholesale would discard that progress. To change the structure (new epic, re-shaped DAG), edit it directly. Re-run me only to rebuild from scratch — confirm you want that."
    Only regenerate if the user explicitly confirms.

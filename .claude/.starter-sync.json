@@ -4,6 +4,6 @@
   "last_sync_commit": null,
   "last_sync_ref": "main",
   "last_sync_date": null,
-  "_excluded_doc": "Repo-relative paths pruned by /setup:start (directories end with `/`). /maintain:sync-from-starter never creates a task for them and skips the matching .mcp.json / settings.json entries per .claude/project-profile.json; remove a path here to have sync re-offer it.",
+  "_excluded_doc": "Repo-relative paths pruned at bootstrap (directories end with `/`). /maintain:sync-from-starter never creates a task for them and skips the matching .mcp.json / settings.json entries per .claude/project-profile.json; remove a path here to have sync re-offer it.",
   "excluded": []
 }

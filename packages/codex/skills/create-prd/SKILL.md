@@ -166,7 +166,7 @@ After creating the PRD:
 4. **Recommend the concrete next steps, in order:**
    1. Review the PRD and correct anything you disagree with.
    2. Run `/harness:brainstorm <feature idea>` (Claude Code) · `$brainstorm <feature idea>` (Codex) to design the first feature. `/harness:brainstorm` (Claude Code) · `$brainstorm` (Codex) writes the approved design to `.agents/specs/` (including the `External docs required: yes/no` flag), then hands off to `/harness:plan-feature` (Claude Code) · `$plan-feature` (Codex) — which automatically decides whether to run a web-research phase based on that flag.
-   3. Run the legacy `/setup:create-CLAUDE_MD` once the first feature has produced scaffolding (e.g. `npm init`, `uv init`, initial config files). It analyzes the codebase and fills in the project-specific sections of `CLAUDE.md`. Skipping it early is fine — the seed `CLAUDE.md` already provides baseline rules.
+   3. Run `/harness:create-rules` (Claude Code) · `$create-rules` (Codex) once the first feature has produced scaffolding (e.g. `npm init`, `uv init`, initial config files). It derives the stack, layout and conventions from the code and fills in the project-specific sections of the rules file. Skipping it early is fine — the seed rules already provide the baseline.
 
 ## Notes
 

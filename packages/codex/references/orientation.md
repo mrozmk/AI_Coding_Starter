@@ -69,7 +69,7 @@ Measurement (runs in both modes; only full mode reads the files):
 
 !`find . -maxdepth 4 -path './.agents/memory/*.md' -not -path '*/archive/*' -not -name 'reflection-protocol.md' -exec wc -c {} + 2>/dev/null | awk '$NF != "total" { t+=$1; n++ } END { print "MEMORY_TOTAL\t"n+0" files / "t+0" bytes ≈ "int((t+0)/4000)"k tokens (on-disk upper bound)" }'`
 
-`MEMORY_WARN = 200 KB`. The memory layer is **never gated** — every file above is read regardless of this number. When `MEMORY_TOTAL` exceeds `MEMORY_WARN`, add a warning to the report naming `/maintain:cleanup-workflow`. Skipping a memory file to save context is worse than the context it saves: the agent then repeats a bug the project already recorded, and nothing tells it the file was missing.
+`MEMORY_WARN = 200 KB`. The memory layer is **never gated** — every file above is read regardless of this number. When `MEMORY_TOTAL` exceeds `MEMORY_WARN`, add a warning to the report saying the layer should be pruned by hand into `.agents/memory/archive/`. Skipping a memory file to save context is worse than the context it saves: the agent then repeats a bug the project already recorded, and nothing tells it the file was missing.
 
 Report the figure as an **on-disk upper bound**, not as "context loaded". It counts every non-archive memory `.md`, including `status: empty` placeholders the loader skips (`index.md` → File Status Convention). `reflection-protocol.md` is excluded by name because it is the one *large* file `/prime` never loads; the remaining placeholders are ~500 B each and cannot move a 200 KB threshold, so filtering them by frontmatter is not worth the pipeline.
 
@@ -123,7 +123,7 @@ Branch sync (ahead/behind origin):
 ### 8. Skipped deliberately
 
 - `.agents/sources/` — raw inputs for `/setup:create-PRD` and `/prime-ba`, never loaded by engineering `/prime`.
-- `.agents/memory/archive/` — historical pruned entries (created by `/maintain:cleanup-workflow` Phase 2). **Never auto-loaded.** Read on demand only when investigating past decisions.
+- `.agents/memory/archive/` — historical pruned entries; a directory convention, nothing in the plugin writes it. **Never auto-loaded.** Read on demand only when investigating past decisions.
 - `.agents/memory/reflection-protocol.md` — write-time material (the save-or-not bar, entry formats, domain template). Loaded by the reflection callers at the end of a run, **never** by `/prime` in either mode.
 - `README.md` — typically duplicates brief; load on demand if needed.
 - Subdirectory `README.md` files — on-demand only.
@@ -172,7 +172,7 @@ Say `*.md` documents, not `files` — the probes count only top-level Markdown, 
 ### Warnings (omit section if no warnings)
 - ⚠️ `project-brief.md` empty — run `/maintain:refresh-brief`
 - ⚠️ `architecture.md` empty — run `create-rules`
-- ⚠️ memory layer is <N> KB (over `MEMORY_WARN` 200 KB) — run `/maintain:cleanup-workflow`
+- ⚠️ memory layer is <N> KB (over `MEMORY_WARN` 200 KB) — prune by hand into `.agents/memory/archive/`; the legacy housekeeping command is retired
 - ⚠️ <N> reference file(s) skipped — `REFERENCE_BUDGET` exhausted; raise `REFERENCE_BUDGET` or read on demand
 - ⚠️ <N> reference file(s) skipped — larger than `PER_FILE_CAP`; raise `PER_FILE_CAP` or read on demand
 - ⚠️ <N> reference file(s) skipped — `MAXLOAD` reached; the residue is a file-count limit, not a byte limit
