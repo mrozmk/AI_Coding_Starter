@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hook activation record (schema 1)",
+  "description": "Per-project, per-host record of who owns each hook and what was observed before the decision was made. Deliberately NOT `.claude/.starter-sync.json → migrated_config`: that ledger records a concrete configuration identity that was removed and replaced, and `recordMigration` writes nothing when there is none — which is precisely the first rollout project's case (the plugin already owns the hook and no legacy entry ever existed). `evidence` names an observation file that must exist; `previous` carries whole registration objects and a byte copy of the legacy script, because a checksum can verify a restored file but cannot supply one after the original is deleted.",
+  "type": "object",
+  "required": ["schema_version", "project", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project": { "type": "string", "minLength": 1 },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": ["host", "hook", "release", "decision", "evidence", "previous", "date"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "enum": ["claude", "codex"] },
+        "hook": { "type": "string", "minLength": 1 },
+        "release": { "type": "string", "minLength": 1 },
+        "decision": { "enum": ["activated", "conditional", "unsupported", "legacy-kept"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repo-relative path to the observation file. A free-text label is not evidence; the gate checks the path exists."
+        },
+        "previous": { "$ref": "#/$defs/previous" },
+        "date": { "type": "string", "minLength": 8 }
+      }
+    },
+    "previous": {
+      "description": "null when no legacy entry existed to replace — a valid state, not an error.",
+      "type": ["object", "null"],
+      "required": ["registrations", "script"],
+      "additionalProperties": false,
+      "properties": {
+        "registrations": {
+          "type": "array",
+          "description": "Whole settings.json hook entries, never identity strings: a rollback restores these verbatim.",
+          "items": {
+            "type": "object",
+            "required": ["event", "matcher", "hook"],
+            "additionalProperties": false,
+            "properties": {
+              "event": { "type": "string" },
+              "matcher": { "type": "string" },
+              "hook": { "type": "object" }
+            }
+          }
+        },
+        "script": {
+          "type": ["object", "null"],
+          "required": ["path", "sha256", "snapshot_path"],
+          "additionalProperties": false,
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "minLength": 64 },
+            "snapshot_path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Byte-for-byte copy kept under .agents/hooks/snapshots/. The hash proves a restoration is exact; only this copy can supply a downstream's customized bytes once the original is deleted."
+            }
+          }
+        }
+      }
+    }
+  }
+}

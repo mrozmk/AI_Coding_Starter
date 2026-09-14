@@ -15,7 +15,24 @@ export const DEFAULTS = {
   project_preflight: '.claude/hooks/check-project-deps.sh',
   state_dir: '.agents/harness-state',
   legacy_sidecars: true,
+  disabled: [],
 };
+
+// The single normalization contract for `hooks.disabled`, exported because the activation preview
+// (scripts/sync-filter.mjs) must read the list exactly as the runner does: a runtime that trims
+// " guard-push " while the preview compares it raw would report a protection the runner has
+// switched off. Unknown ids are kept — a project may disable a hook before the release ships it.
+export function normalizeDisabled(value) {
+  if (value === undefined || value === null) return { ids: [], error: null };
+  if (!Array.isArray(value)) return { ids: [], error: 'hooks.disabled must be an array of hook ids' };
+  const ids = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') return { ids: [], error: `hooks.disabled entries must be strings, got ${typeof entry}` };
+    const id = entry.trim();
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return { ids, error: null };
+}
 
 function readJsonOrError(abs) {
   try { return { value: JSON.parse(fs.readFileSync(abs, 'utf8')) }; } catch (e) { return { error: e.message }; }
@@ -50,5 +67,8 @@ export function resolveHookConfig(projectRoot) {
     sources[key] = file; values[key] = r.value;
   }
   const hooks = { ...DEFAULTS, ...stripDocs(values.hooks ?? {}) };
+  const disabled = normalizeDisabled(hooks.disabled);
+  if (disabled.error) errors.push(`hooks: ${disabled.error}`);
+  hooks.disabled = disabled.ids;
   return { ok: errors.length === 0, errors, sources, values: { ...values, ...hooks } };
 }

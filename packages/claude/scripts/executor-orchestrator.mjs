@@ -22,6 +22,11 @@ import { BaselineError, compare, snapshot } from './git-baseline.mjs';
 import { DEPTH_ENV, findOnPath, loginState, runChild } from './review-orchestrator.mjs';
 
 export const RUN_ENV = 'HARNESS_EXECUTOR_RUN';
+// The memory guard keys its acknowledgement on the author context, and a Codex child shares its
+// parent's session id — so without a name of its own the child reuses the parent's acknowledgement
+// or blocks. Naming it here keeps `codex_child_identity: required` workable instead of forcing a
+// project down to session-level scope (hooks/core/memory-guard.mjs → contextKey).
+export const EXECUTOR_ID_ENV = 'HARNESS_EXECUTOR_ID';
 export const LOCK_NAME = 'harness-executor.lock';
 // A worker never writes the harness itself; those paths are the supervisor's, and a secret is
 // nobody's. Refused before the spawn, so the sandbox is never the only thing standing in the way.
@@ -267,7 +272,7 @@ export async function runExecutor(options) {
     try {
       proc = await runChild({
         command: cli, args: spec.args, cwd: root,
-        env: { ...env, ...spec.env, [DEPTH_ENV]: '1', [RUN_ENV]: runId },
+        env: { ...env, ...spec.env, [DEPTH_ENV]: '1', [RUN_ENV]: runId, [EXECUTOR_ID_ENV]: runId },
         stdin: promptText, timeoutMs: ceiling, signal, runDir, onSpawn,
       });
     } finally {

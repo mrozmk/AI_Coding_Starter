@@ -82,6 +82,15 @@ export async function runHook({ host, hook, payload, env = process.env, cwd = pr
     if (core.strength !== 'hard') outcome.context = undefined;
     return finish(adapter, event, outcome, hook);
   }
+  // A project switches a hook off in .agents/hooks/config.json → disabled. The exit code stays 0
+  // even for a required guard: the list exists so a project can rescue itself from a misbehaving
+  // hook without disabling the whole plugin, and a blocking "off" switch could not do that. The
+  // loudness lives in stderr instead — an unprotected guard must never look like a passing one.
+  if (ctx.config.values.disabled.includes(hook)) {
+    const reason = 'disabled in .agents/hooks/config.json';
+    const res = finish(adapter, event, { decision: 'none', reason, state: 'disabled' }, hook);
+    return hard ? { ...res, stderr: `UNPROTECTED: ${hook} is ${reason} — this guard is not running\n${res.stderr}` } : res;
+  }
   let outcome;
   try {
     outcome = await core.run(event, ctx);

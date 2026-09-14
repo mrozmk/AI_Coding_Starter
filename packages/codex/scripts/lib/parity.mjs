@@ -7,7 +7,10 @@ import path from 'node:path';
 import { validate } from './schema.mjs';
 
 export const INSTRUCTION_STATUSES = ['migrated', 'compat-rendered', 'legacy-only', 'conditional', 'gap', 'retired'];
-export const HOOK_STATES = ['ported', 'conditional', 'legacy-only', 'project-owned', 'retired'];
+// `unsupported`: the host offers no surface this hook could attach to, so nothing fires there and
+// no legacy script is kept alive to pretend otherwise. Distinct from `legacy-only` (the Bash script
+// still runs) and from `retired` (the capability was dropped on both hosts).
+export const HOOK_STATES = ['ported', 'conditional', 'legacy-only', 'project-owned', 'retired', 'unsupported'];
 export const CERTIFIABLE = new Set(['migrated', 'compat-rendered', 'conditional']);
 
 const destination = { type: ['string', 'null'] };

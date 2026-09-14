@@ -50,14 +50,92 @@ node scripts/smoke-harness.mjs --verify-evidence docs/harness/release-readiness.
 
 ## Activation — one owner per command and hook
 
-Installing the plugin activates nothing in a project. Legacy `.claude/commands/*.md` and the Bash hooks in `.claude/settings.json` keep running until the operator records their replacement. The exception is a **wrapper**: `setup-start` copies `templates/wrappers/*.md` over the legacy top-level command files so the bare command routes to the plugin skill — those stay ordinary starter files (sync category A), never `migrated` records. The preview is computed, never applied:
+Installing the plugin activates no **command** in a project: legacy `.claude/commands/*.md` keep running until the operator records their replacement. The exception is a **wrapper**: `setup-start` copies `templates/wrappers/*.md` over the legacy top-level command files so the bare command routes to the plugin skill — those stay ordinary starter files (sync category A), never `migrated` records.
+
+**Hooks are different, and the difference decides the whole procedure.** A plugin's `hooks/hooks.json` is live the moment the plugin is enabled — on Claude Code there is no per-hook opt-in, and on Codex the operator's `/hooks` trust covers the manifest, not one entry of it. So enabling the plugin *is* the hook activation. Nothing can be staged on the plugin side; staging happens on the **legacy** side, by removing entries, and the only thing that must never exist is a moment when a host event sees two owners.
+
+The preview is computed, never applied:
 
 ```bash
 node <installed root>/scripts/sync-filter.mjs activation --manifest .claude/.starter-sync.json \
-  --settings .claude/settings.json --plugin-hooks <installed root>/hooks/hooks.json --release <version>
+  --settings .claude/settings.json --plugin-hooks <installed root>/hooks/hooks.json \
+  --hook-config .agents/hooks/config.json --release <version>
 ```
 
-It lists every hook id with its owner after activation (`legacy`, `plugin`, or `duplicate` — two owners, a decision required), the exact `settings.json` identities the plugin would replace, the project-owned entries that never migrate (`check-project-deps`), and the rollback data. Activation of a hook id means: the plugin's hooks are trusted on this host (`/hooks` in Codex; plugin enable in Claude Code — recorded locally by `acknowledgeHooks`), the installed-host scenario for that hook passed, the legacy entry is removed from `settings.json`, and only then `recordMigration` adds the `migrated_config` record with the evidence name. A duplicate owner is a mistake, not a transition state. Codex advisory nudges and Claude-only events (Grep, WebFetch) stay legacy-only where the ledger says so (`contracts/hook-parity.json`).
+It lists every hook id with its owner after activation — `legacy`, `plugin`, `duplicate` (two owners, a decision required) or **`none`** (the plugin hook is switched off in the project's hook config and no legacy entry took over: *nothing is enforcing it*) — plus `enforced` / `disabled` per row, the exact `settings.json` identities the plugin would replace, the project-owned entries that never migrate (`check-project-deps`), any `delegation_conflicts`, and the rollback data. **Pass `--hook-config`**: without it the preview runs on an empty disable list and will report `duplicate` after a successful rollback and `plugin` where nothing runs at all.
+
+### Phase 0 — readiness only
+
+No file changes, and deliberately no trust recording: on Claude Code acknowledging trust means the plugin is enabled, and enabling it is the activation, so demanding it here would open the duplicate window Phase 1 forbids.
+
+1. `profile.mjs check-version` returns `ok` for this host.
+2. Print the preview above and keep it with the evidence.
+3. **Take the rollback snapshot now** — the later phases delete the legacy scripts, and neither the template nor a hash can supply a downstream's customized bytes afterwards:
+
+```bash
+node <installed root>/scripts/sync-filter.mjs snapshot --settings .claude/settings.json \
+  --hooks-dir .claude/hooks --hooks guard-commit,guard-push,guard-memory --write yes
+```
+
+It emits the `previous` object — **whole** registration entries, never identity strings — and with `--write yes` copies each script byte-for-byte to `.agents/hooks/snapshots/<hook>.sh`.
+
+### Phase 1 — the quiesced switch for the hard guards
+
+With no session running on the project, **one commit** enables the plugin (`enabledPlugins`) and removes the legacy `guard-commit`, `guard-push` and `guard-memory` entries from `settings.json`. Two owners for a blocking guard is not a transition state: it means two denials for one action, and two full per-commit secret scans for `guard-push`.
+
+| Starting state | Phase 1 is |
+|---|---|
+| legacy-only | enable + remove, one commit, between sessions |
+| plugin enabled, legacy still registered | remove the three entries, one commit, between sessions |
+| plugin enabled, no legacy at all | a no-op on `settings.json` — only the record and the observation remain |
+
+**Phase 1b, in the first session on the new state:** record trust (`acknowledgeHooks` — on Codex this captures the interactive `/hooks` trust), observe each guard firing from the plugin, and write the activation record. `hookState()` still reporting `installed-untrusted` here is a **failed** activation, not a pending one.
+
+### Phase 2 — advisory and preflight
+
+`guard-comments`, `nudge-files`, `guard-memory-scope`, `check-deps`. A duplicate window costs a repeated advisory line, so these may lag Phase 1 by a session.
+
+`check-deps` carries a decision the hook ids cannot show: the plugin's `check-deps` **delegates** to the project's `check-project-deps.sh`, which `settings.json` also registers directly at `SessionStart`. Activating one without removing the other runs the project preflight **twice** per session while the preview still reports one owner per hook — that is what `delegation_conflicts` names. Ownership of the script's *bytes* and of its *invocation* are separate: the bytes stay project-owned and untouched, the direct registration goes, the plugin delegate becomes the single caller.
+
+### Phase 3 — telemetry and conditionals
+
+Per-host decisions, not a blanket activation. `audit-append` and `track-memory-read` activate on both hosts with their documented conditionals (no hook on Codex's hosted web tools; shell reads only). `nudge-lsp` is conditional on a declared LSP on Claude Code and `unsupported` on Codex, which has no structured Grep surface — the legacy script is retired rather than kept alive to honour a word. `guard-memory` keeps `codex_child_identity: required`: the supervised executor exports `HARNESS_EXECUTOR_ID`, so a child is named and per-child scope survives; `session` remains a documented project-level fallback for a hand-run Codex.
+
+### Switching one hook off, and rolling one back
+
+`.agents/hooks/config.json → disabled: ["<hook id>", …]` stops a plugin hook without disabling the plugin. The runner reports the `disabled` state on stderr, and for a required guard prefixes it `UNPROTECTED:` — a guard that is off is loud, never absent. The exit code stays 0: a blocking off-switch could not rescue a project from a misbehaving guard, which is the switch's only purpose.
+
+`sync-filter.mjs rollback` is a **preview** — it returns `restore_paths` / `restore_config`, says so itself, and filters by *release*, not by hook. The executable recovery for one hook is:
+
+1. Add the hook id to `disabled` — the plugin side stops enforcing, loudly.
+2. Restore that hook's registration from the Phase 0 snapshot (the whole entry) and its script from `.agents/hooks/snapshots/<hook>.sh`, verifying the recorded `sha256`.
+3. Drop **only that hook's** records — not the whole release's.
+4. Re-run the preview with `--hook-config` and require `owner: "legacy"` before any session resumes.
+
+Steps 2–4 are what the helper does not do. Stopping after step 1 leaves a hard guard enforced by neither implementation.
+
+### Recording: activation evidence is not a migration record
+
+`recordMigration` writes a `migrated_config` entry only when a configuration identity was actually removed — so a project where the plugin already owns the hook and no legacy entry ever existed cannot be recorded that way at all. The two are separate:
+
+- **`migrated_config`** (in `.claude/.starter-sync.json`) keeps its meaning exactly: an identity removed and replaced.
+- **`.agents/hooks/activation.json`** carries the decision — `{ host, hook, release, decision, rationale, evidence, previous, date }`, `decision` one of `activated | conditional | unsupported | legacy-kept`. `evidence` is a **path to the observation file**, not a label: the gate checks it exists. Where an identity was removed, the `migrated_config` entry and the activation record describe the same event from two sides; where none existed, the activation record stands alone.
+
+What an observation may be recorded as is fixed, not a judgement call: `active` → `activated`; `dormant` → `conditional` with the precondition named; `error`, `untrusted`, `unsupported` or `disabled` → **no record**, because the activation failed. `recordActivation` enforces this when it is given the observed state, and `check-harness` audits it afterwards.
+
+```bash
+node <installed root>/scripts/sync-filter.mjs activation-record --record .agents/hooks/activation.json \
+  --host claude --hook guard-commit --release <version> --decision activated \
+  --evidence docs/harness/history/<version>-<date>/hook-activation.json --observed active --write yes
+```
+
+### Sync never enables a plugin
+
+`unionSettings` deliberately does **not** copy `enabledPlugins` down from upstream. Without that exclusion, syncing an activated template into a legacy-only downstream would hand it the plugin *and* leave its legacy hard guards registered — the duplicate this whole procedure forbids, produced by the ordinary sync path with no operator involved. A downstream that already has the key keeps it; the rule is "never inherited", not "never present". Plugin enablement is an activation decision each project makes for itself.
+
+### The ledger
+
+`contracts/hook-parity.json → activation` moves `none → pilot → verified`, and anything past `none` requires `activation_evidence`. The bar: one project running a full day on plugin hooks earns `pilot`; `verified` needs the template **and** one real downstream.
 
 ## Publish (starter maintainer)
 
