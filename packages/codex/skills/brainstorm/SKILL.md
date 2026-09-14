@@ -12,7 +12,7 @@ description: "Design before building — resolve the topic, understand the why, 
 **Prerequisite:** `prime` ran in this session and reported `harness <version> bound`. Not primed → ask the user to run `prime` and stop. Unbound → stop with the binding error; never improvise from a checkout.
 
 <HARD-GATE>
-This skill produces a DESIGN and a SPEC — never code, never scaffolding, never an implementation step, however small the feature. It advances on its own recommendation and stops for the user at exactly two kinds of point: a directional fork (Step 2) and the single approval point (Step 9). It never runs execution, commit, push or deploy, and it never starts a plan without the approval in Step 9.
+This skill produces a DESIGN and a SPEC — never code, never scaffolding, never an implementation step, however small the feature. It advances on its own recommendation and stops for the user only where a stop changes the outcome: a directional fork (Step 2); the approval point (Step 9) **when the profile carries no continuation**; and always when a 🔶 rethink signal survived scoring or the review is blocked. A profile that already says `after_brainstorm: plan-feature` has made the continuation decision, and re-asking only re-confirms it. It never runs execution, commit, push or deploy, and it never starts a plan without a recorded decision stamped into the spec in Step 9.
 </HARD-GATE>
 
 **Roots and helpers:** `project_root` / `plugin_root` as defined by `prime`. Scripts: `scripts/profile.mjs`, `scripts/review-orchestrator.mjs`, `scripts/approval.mjs` under `plugin_root`. Contracts: `references/planning-contract.md` (spec/plan/approval identity), `references/review-contract.md` (review lifecycle, scoring, recording).
@@ -77,18 +77,28 @@ A blocked opinion **stops advancement**. Only the user may waive it, explicitly,
 
 `review` group disabled (an explicit team opt-out recorded in the profile) → write `## Independent Review: skipped — review group disabled in profile` and say so in Step 9; it is a visible choice, not an opinion. Reviewer CLI absent while the group is enabled → **blocked**, not skipped: the profile says the team reviews, the machine cannot; report `reviewer CLI not on PATH`. The orchestrator prints an outbound manifest (`pack.outbound.json`: provider, exact files, bytes, omissions) — that is the consent boundary for what leaves the machine; in hybrid context the manifest is the *initial payload* (the reviewer may read more under the roots minus exclusions, within budgets) and the final audit `pack.outbound.final.json` (every read, hashed, `reads_digest`) is printed after the run.
 
-### 9. Approval — the one stop
+### 9. Approval — a stop only when nothing has decided yet
 
-Finish the spec first — including `## Independent Review` — because approval binds to final bytes. Present in one message: assumptions, bounds, what the review changed, rethink signals, and the review's `summary_line` verbatim (execution first, then verdict or blocked). Ask once: **Approve** · **Correct something** · **Revise the design** (only with rethink signals).
+Finish the spec first — including `## Independent Review` — because approval binds to final bytes. Then decide whether this is a question or a report:
 
-On approve, stamp the identity into the spec's own `**Approval:**` line:
+| Condition (first match wins) | Action |
+|---|---|
+| a 🔶 rethink signal survived scoring — a `fundamental` finding that reopens the **approach** — or the review is blocked | **stop.** A profile never consents in advance to a design the reviewer rejected |
+| the input said `stop`, `only spec` or `no plan`, or `planning.after_brainstorm` is `stop` or absent | **stop.** Ask once: **Approve** · **Correct something** · **Revise the design** (the third only with rethink signals) |
+| `planning.after_brainstorm: plan-feature` and neither row above applies | **do not stop.** The profile field *is* the decision; stamp it and continue to Step 10 |
+
+Judge a `fundamental` finding by what it asks for, not by its label: one that names a specific defect with a specific fix **inside** the chosen approach is patchable — apply it, record it, carry on. Only a finding that makes the chosen approach the wrong one is a rethink signal.
+
+Present the same message on every path: assumptions, bounds, what the review changed, rethink signals, and the review's `summary_line` verbatim (execution first, then verdict or blocked). On the no-stop path it is a report, not a question — the user reads the finished spec (and plan) afterwards.
+
+Then stamp the identity into the spec's own `**Approval:**` line — on the no-stop path too, because the stamp is what binds a decision to bytes, and `plan-feature` refuses a spec without one:
 
 ```
 node <plugin_root>/scripts/approval.mjs stamp --project-root <project_root> --spec <spec path> \
-  --expected $(shasum -a 256 <spec path> | cut -d' ' -f1) --decision "<where the user said approve>" --consent yes
+  --expected $(shasum -a 256 <spec path> | cut -d' ' -f1) --decision "<where the decision was made>" --consent yes
 ```
 
-The helper applies exactly two metadata edits (`**Status:** Approved`, `**Approval:** approved … · body-sha256 …`) and writes nothing else — the hash covers the file with the approval line excluded, so the stamp cannot invalidate itself. `--expected` must be the hash of the bytes the user just saw; a mismatch means the file moved under them — re-present. Never edit the spec after stamping: `plan-feature` runs `approval.mjs verify` and refuses a changed file. An editorial fix after approval needs a new stamp (the user re-approves the bytes); it does not by itself need another independent review (`references/review-contract.md → Repeat policy`).
+`--decision` records **where** the decision was made, never a bare "approved": the user's own words when they answered, or `profile:after_brainstorm=plan-feature` plus the rule that set it (and any standing instruction in the project rules) when the profile decided. A reader of the spec must be able to tell which of the two happened without leaving the file. The helper applies exactly two metadata edits (`**Status:** Approved`, `**Approval:** approved … · body-sha256 …`) and writes nothing else — the hash covers the file with the approval line excluded, so the stamp cannot invalidate itself. `--expected` must be the hash of the bytes the user just saw; a mismatch means the file moved under them — re-present. Never edit the spec after stamping: `plan-feature` runs `approval.mjs verify` and refuses a changed file. An editorial fix after approval needs a new stamp (the user re-approves the bytes); it does not by itself need another independent review (`references/review-contract.md → Repeat policy`).
 
 ### 10. Continuation — exactly once, never execute
 

@@ -5,7 +5,7 @@
 // only file this process ever opens for writing. No network, no subprocesses, no other writes.
 //
 // Environment (all required, set by review-orchestrator.mjs in the MCP config):
-//   HARNESS_READER_ROOTS   <projectRoot>:<pluginRoot>  absolute paths, path.delimiter-separated
+//   HARNESS_READER_ROOTS   <projectRoot><path.delimiter><pluginRoot>  two absolute paths, path.delimiter-separated (':' POSIX, ';' Windows)
 //   HARNESS_READER_LOG     <run>/reads.jsonl            created exclusively; exists → exit 3
 //   HARNESS_READER_BUDGET  files,bytes,calls            e.g. 30,409600,200
 //   HARNESS_REVIEW_ID      the run's review id           echoed in the log header
@@ -353,7 +353,7 @@ export class ReaderBroker {
 export function configFromEnv(env = process.env) {
   const errors = [];
   const rootsRaw = String(env.HARNESS_READER_ROOTS ?? '').split(path.delimiter).filter(Boolean);
-  if (rootsRaw.length !== 2 || !rootsRaw.every((p) => path.isAbsolute(p))) errors.push('HARNESS_READER_ROOTS must be <projectRoot>:<pluginRoot>, both absolute');
+  if (rootsRaw.length !== 2 || !rootsRaw.every((p) => path.isAbsolute(p))) errors.push(`HARNESS_READER_ROOTS must be <projectRoot>${path.delimiter}<pluginRoot> (path.delimiter-separated: ':' on POSIX, ';' on Windows), both absolute`);
   if (!env.HARNESS_READER_LOG || !path.isAbsolute(env.HARNESS_READER_LOG)) errors.push('HARNESS_READER_LOG must be an absolute file path');
   const budgets = env.HARNESS_READER_BUDGET === undefined ? DEFAULT_BUDGETS : parseBudgetEnv(env.HARNESS_READER_BUDGET);
   if (!budgets) errors.push('HARNESS_READER_BUDGET must be files,bytes,calls (positive integers)');

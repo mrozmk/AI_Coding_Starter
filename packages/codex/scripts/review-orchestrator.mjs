@@ -7,7 +7,9 @@
 //   node scripts/review-orchestrator.mjs --project-root <dir> --plugin-root <dir> --author-host claude|codex \
 //        --artifact <file> [--dep <file>]... --scratch <dir> [--kind spec|plan] [--change scope]... [--repeat-reason "..."] \
 //        [--technical-retry yes] [--read <file>]... [--optional-read <file>]... [--allow-exception <file>]... [--dry-run yes]
-//        [--context closed|hybrid] [--priority-read <path[:offset-limit]>]...
+//        [--context closed|hybrid] [--consent hybrid] [--priority-read <path[:offset-limit]>]...
+// --context hybrid on a project whose profile says closed needs consent: profile review.context: hybrid,
+// or --consent hybrid for this one run. --dry-run is never gated — the boundary can always be inspected.
 // --dry-run builds the pack and writes <run>/pack.outbound.json (the consent boundary) without spawning.
 // --context hybrid (or profile review.context) adds the cited files to the pack and gives the reviewer the
 // read broker (scripts/reader-mcp.mjs) as its only tool; the CLI spawns the broker from a per-run MCP config,
@@ -193,7 +195,7 @@ export async function runReview(options) {
     projectRoot, pluginRoot, authorHost, artifacts, deps = [], scratchDir, kind = 'generic', round = 1, repeatReason = null,
     profile = null, env = process.env, signal = null, adaptersRoot = null, timeoutMs = null, maxBytes = undefined,
     changes = [], technicalRetry = false, readSet = undefined, allowExceptions = [], onRunDir = null, dryRun = false,
-    context: contextOption = null, priorityReads = [], probeTask = null, brokerScript = null, brokerCommand = null,
+    context: contextOption = null, consent = null, priorityReads = [], probeTask = null, brokerScript = null, brokerCommand = null,
   } = options;
   if (!artifacts?.length) throw new Error('at least one artifact is required');
   const reviewerHost = reviewerFor(authorHost);
@@ -298,6 +300,11 @@ export async function runReview(options) {
     // A preview is not a run: it leaves no result in the ledger.
     const result = { ...base, status: 'skipped', error: `dry run — nothing was sent; review the outbound manifest ${path.join(runDir, 'pack.outbound.json')} and run again without --dry-run`, missing_context: [] };
     return result;
+  }
+  // Consent boundary, not a narrowing one: a CLI upgrade to hybrid widens what leaves the machine,
+  // so it needs the profile's standing consent or an explicit per-run flag.
+  if (contextOption === 'hybrid' && (eff.review?.context ?? 'closed') !== 'hybrid' && consent !== 'hybrid') {
+    return finish({ status: 'failed', error: "--context hybrid overrides a profile whose review.context is 'closed' — hybrid widens what leaves this machine, so it needs consent: set review.context: hybrid in the project profile, or pass --consent hybrid for this run", requires_user_decision: true });
   }
   if (onRunDir) onRunDir(runDir);
   const prompt = reviewerPrompt({ kind, artifacts, round: base.round, repeatReason: base.repeat_reason, mode: context, roots, budgets: HYBRID_BUDGETS, priorityReads, probeTask });
@@ -418,7 +425,7 @@ async function main() {
     changes: [].concat(opts.change ?? []), technicalRetry: opts['technical-retry'] === 'yes', dryRun: opts['dry-run'] === 'yes',
     readSet: { required: [].concat(opts.read ?? []), optional: [].concat(opts['optional-read'] ?? []) }, allowExceptions: [].concat(opts['allow-exception'] ?? []),
     timeoutMs: opts['timeout-minutes'] ? Number(opts['timeout-minutes']) * 60_000 : null,
-    context: opts.context ?? null,
+    context: opts.context ?? null, consent: opts.consent ?? null,
     priorityReads: [].concat(opts['priority-read'] ?? []).map((p) => { const m = String(p).match(/^(.*):(\d+)-(\d+)$/); return m ? { path: m[1], range: [Number(m[2]), Number(m[3])] } : { path: String(p) }; }),
   });
   console.log(JSON.stringify(result, null, 2));
