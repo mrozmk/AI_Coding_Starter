@@ -3,11 +3,7 @@
     "harness@ai-coding-starter": true
   },
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "attribution": {
-    "commit": "",
-    "pr": "",
-    "sessionUrl": false
-  },
+  "attribution": { "commit": "", "pr": "", "sessionUrl": false },
   "permissions": {
     "allow": [
       "Write",
