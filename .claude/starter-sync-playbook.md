@@ -74,6 +74,8 @@ but **if it doesn't, do not add them, and never make them a task or a question:*
 
 - `.claude/hooks/check-project-deps.sh` — the project-owned SessionStart preflight (toolchain + `.env` shape + MCP commands). The starter ships only the skeleton; never overwrite a project's filled copy.
 
+- `.agents/hooks/config.json` — the project's hook **ownership** decision, never a file to refresh. Its `disabled` list says which plugin hooks this project switched off and who serves them instead; copying the starter's list into a project that already runs plugin-only would switch off working protections that have no legacy substitute there. Report a difference if you like; never merge, never overwrite.
+
 - `CLAUDE.md` — project rules. If the starter has a new section structure, report it and propose a patch — but do not overwrite automatically.
 - `.agents/memory/architecture.md`, `project-brief.md`, `domain/*.md` — regenerated from the project (`/harness:create-rules`, `/harness:refresh-brief`).
 - `.agents/memory/errors.md`, `decisions.md`, `api.md`, `patterns.md` — append-only, project history.
