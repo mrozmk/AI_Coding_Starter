@@ -8,7 +8,6 @@
     "allow": [
       "Write",
       "Edit",
-      "MultiEdit",
       "Bash(ls:*)",
       "Bash(pwd)",
       "Bash(echo:*)",
@@ -108,9 +107,7 @@
       "Bash(git switch*--force*)",
       "Bash(git switch*--discard-changes*)",
       "Bash(sudo:*)",
-      "Write(~/.claude/plugins/**)",
       "Edit(~/.claude/plugins/**)",
-      "MultiEdit(~/.claude/plugins/**)",
       "Edit(**/.env)",
       "Edit(**/id_rsa*)",
       "Edit(**/id_ed25519*)",
