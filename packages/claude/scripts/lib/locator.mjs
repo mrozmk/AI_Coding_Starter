@@ -16,6 +16,8 @@ export const MARKER = 'harness-build.json';
 export const RECEIPT = '.agents/harness-version.json';
 export const STATE_DIR = '.agents/harness-state';
 export const STATE_FILE = `${STATE_DIR}/binding.json`;
+export const REGISTRY_FILE = '.claude/plugins/installed_plugins.json';
+export const MARKETPLACES_FILE = '.claude/plugins/known_marketplaces.json';
 
 // Files a host writes into an installed root that are not part of the payload; a trailing slash
 // names a directory the host owns. Claude Code keeps session lockfiles in `.in_use/<pid>` and stamps
@@ -79,7 +81,7 @@ export function verifyPackageRoot(root, { host, expectedName, expectedVersion, e
 
 // Claude Code keeps a registry file; the root is read from it, never guessed from the cache layout.
 export function discoverClaudeRoot({ pluginKey, homeDir = os.homedir(), projectRoot = null, registryFile = null } = {}) {
-  const file = registryFile ?? path.join(homeDir, '.claude/plugins/installed_plugins.json');
+  const file = registryFile ?? path.join(homeDir, REGISTRY_FILE);
   if (!fs.existsSync(file)) return { found: false, reason: `registry not found: ${file}` };
   const registry = readJson(file);
   const entries = registry.plugins?.[pluginKey] ?? [];
@@ -106,6 +108,69 @@ export function discoverCodexRootFromJson(json) {
   if (roots.length === 0) return { found: false, reason: 'no candidate path in the CLI output carries a build marker', candidates };
   if (new Set(roots.map(realpathOrSelf)).size > 1) return { found: false, reason: `ambiguous roots: ${roots.join(', ')}` };
   return { found: true, root: roots[0] };
+}
+
+// --- channel advisory (Claude Code only) --------------------------------------------------------
+// Which release the LOCAL marketplace copy lists, and which installation entry an update would have
+// to name. Both are advisory: they never gate and never bind. An absent file or an unexpected shape
+// is `found: false` with a reason; corrupt JSON still throws from `readJson`, and the caller
+// (`profile.mjs → channelAdvisory`) is what turns that into a reason too. Codex has no equivalent —
+// its adapter records that the host exposes no documented installed-root or channel file.
+
+// The install entry to update is the one registered FOR THIS PROJECT — never a user-scope entry and
+// never `entries[0]`: `discoverClaudeRoot` accepts both and returns the first when several share an
+// installPath, so its `scope` cannot name an update target. The entry key (`<name>@<marketplace>`)
+// also carries the marketplace name, which the installed root itself does not record.
+export function resolveClaudeInstallTarget({ pluginName, projectRoot, homeDir = os.homedir() } = {}) {
+  const file = path.join(homeDir, REGISTRY_FILE);
+  if (!fs.existsSync(file)) return { found: false, reason: `registry not found: ${file}` };
+  const registry = readJson(file);
+  const plugins = registry?.plugins;
+  if (!plugins || typeof plugins !== 'object') return { found: false, reason: `no plugins map in ${file}`, registry: file };
+  const here = realpathOrSelf(projectRoot);
+  const matches = [];
+  for (const [key, entries] of Object.entries(plugins)) {
+    if (!Array.isArray(entries)) continue;
+    const [name, marketplace] = String(key).split('@');
+    if (name !== pluginName || !marketplace) continue;
+    for (const e of entries) {
+      if (!e?.projectPath || realpathOrSelf(e.projectPath) !== here) continue;
+      matches.push({ key, marketplace, scope: e.scope ?? null, version: e.version ?? null, root: e.installPath ?? null });
+    }
+  }
+  if (matches.length === 0) return { found: false, reason: `no ${pluginName} install entry registered for this project`, registry: file };
+  if (matches.length > 1) return { found: false, reason: `ambiguous install entries for this project: ${matches.map((m) => `${m.key} (${m.scope}, ${m.version})`).join(', ')}`, registry: file };
+  return { found: true, ...matches[0], registry: file };
+}
+
+// The version a marketplace's LOCAL copy lists. `lastUpdated` travels with it on purpose: equality
+// with the pin proves the local listing is not ahead, never that it matches the remote channel.
+export function discoverClaudeChannel({ pluginName, marketplace, homeDir = os.homedir() } = {}) {
+  const file = path.join(homeDir, MARKETPLACES_FILE);
+  if (!fs.existsSync(file)) return { found: false, reason: `marketplace registry not found: ${file}` };
+  const known = readJson(file);
+  const entry = known?.[marketplace];
+  if (!entry?.installLocation) return { found: false, reason: `marketplace ${marketplace} not known locally`, registry: file };
+  const manifest = path.join(entry.installLocation, '.claude-plugin/marketplace.json');
+  if (!fs.existsSync(manifest)) return { found: false, reason: `marketplace manifest not found: ${manifest}` };
+  const listed = readJson(manifest)?.plugins;
+  const plugin = Array.isArray(listed) ? listed.find((p) => p?.name === pluginName) : null;
+  if (!plugin?.version) return { found: false, reason: `${pluginName} not listed in ${manifest}` };
+  return { found: true, listing_version: String(plugin.version), listing_updated_utc: entry.lastUpdated ?? null, marketplace, manifest, auto_update: entry.autoUpdate === true };
+}
+
+// Dotted numeric comparison, and nothing else: a part that is not a plain integer makes the pair
+// incomparable (`null`) rather than guessing an ordering a release channel never promised.
+export function compareVersions(a, b) {
+  const parse = (v) => String(v).split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : null));
+  const left = parse(a);
+  const right = parse(b);
+  if (left.includes(null) || right.includes(null)) return null;
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const d = (left[i] ?? 0) - (right[i] ?? 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
 }
 
 // --- receipts -----------------------------------------------------------------------------------

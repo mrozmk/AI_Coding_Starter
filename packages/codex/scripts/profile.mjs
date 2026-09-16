@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgv, requireOpt } from './lib/argv.mjs';
 import { readJson, realpathOrSelf } from './lib/fsx.mjs';
-import { verifyPackageRoot, resolveBoundRoot, writeReceipt, migrateReceipt, RECEIPT } from './lib/locator.mjs';
+import { verifyPackageRoot, resolveBoundRoot, writeReceipt, migrateReceipt, readReceipt, resolveClaudeInstallTarget, discoverClaudeChannel, compareVersions, RECEIPT } from './lib/locator.mjs';
 import { validate } from './lib/schema.mjs';
 
 export const CANONICAL = '.agents/project-profile.json';
@@ -231,12 +231,54 @@ export function updateProfile(projectRoot, changes, { consent = false, create = 
   return { written: true, preview };
 }
 
-export function checkVersion({ projectRoot, host, pluginRoot }) {
+// Advisory only, never a gate: it reads two host-owned files under $HOME that on many machines are
+// absent, partial or stale (fresh clone, CI, a project that never installed from a git marketplace).
+// Anything unexpected — missing file, corrupt JSON, a shape that changed under us — degrades to a
+// reason, so `checkVersion` answers exactly what it answered before. Claude Code only: Codex
+// publishes no channel or installed-root file to read.
+export function channelAdvisory({ projectRoot, host, homeDir } = {}) {
+  if (host !== 'claude') return null;
+  try {
+    const receipt = readReceipt(projectRoot);
+    const pluginName = receipt?.name;
+    const expectedVersion = receipt?.hosts?.[host]?.version ?? null;
+    if (!pluginName || !expectedVersion) return null;
+    const target = resolveClaudeInstallTarget({ pluginName, projectRoot, homeDir });
+    if (!target.found) return { probe: 'install-entry', reason: target.reason };
+    const channel = discoverClaudeChannel({ pluginName, marketplace: target.marketplace, homeDir });
+    if (!channel.found) return { probe: 'marketplace', reason: channel.reason, scope: target.scope };
+    const order = compareVersions(channel.listing_version, expectedVersion);
+    const behind = order === 1;
+    return {
+      listing_version: channel.listing_version,
+      listing_updated_utc: channel.listing_updated_utc,
+      auto_update: channel.auto_update,
+      expected_version: expectedVersion,
+      installed_version: target.version,
+      marketplace: target.marketplace,
+      scope: target.scope,
+      behind,
+      ...(order === null && { comparable: false }),
+      ...(behind && target.scope && {
+        update: [
+          `claude plugin marketplace update ${target.marketplace}`,
+          `claude plugin update ${target.key} --scope ${target.scope} -y`,
+        ],
+      }),
+    };
+  } catch (err) {
+    return { probe: 'failed', reason: String(err?.message ?? err) };
+  }
+}
+
+export function checkVersion({ projectRoot, host, pluginRoot, homeDir } = {}) {
+  const channel = channelAdvisory({ projectRoot, host, homeDir });
+  const withChannel = (res) => (channel ? { ...res, channel } : res);
   const bound = resolveBoundRoot(projectRoot, host);
-  if (!bound.ok) return { ok: false, errors: bound.errors };
+  if (!bound.ok) return withChannel({ ok: false, errors: bound.errors });
   if (pluginRoot) {
     const here = verifyPackageRoot(pluginRoot, { host });
-    if (!here.ok) return { ok: false, errors: here.errors };
+    if (!here.ok) return withChannel({ ok: false, errors: here.errors });
     if (here.marker.payload_digest !== bound.marker.payload_digest) {
       const error = `running from ${here.root} (payload ${here.marker.payload_digest.slice(0, 12)}…) but the project is bound to ${bound.root} (payload ${bound.marker.payload_digest.slice(0, 12)}…) — re-bind or use the bound installation`;
       // A different VERSION of the same plugin is an update the host adopted (auto-update); the
@@ -245,15 +287,15 @@ export function checkVersion({ projectRoot, host, pluginRoot }) {
       const upgrade = here.marker.name === bound.marker.name && here.marker.version !== bound.marker.version
         ? { from: bound.marker.version, to: here.marker.version, root: here.root, adopt: `node ${here.root}/scripts/profile.mjs bind --project-root ${projectRoot} --host ${host} --plugin-root ${here.root}` }
         : null;
-      return { ok: false, errors: [error], ...(upgrade && { upgrade }) };
+      return withChannel({ ok: false, errors: [error], ...(upgrade && { upgrade }) });
     }
     // Same release bytes from another directory (a host may run a local-marketplace plugin from its
     // source path while the registry names the cache copy): the binding is to the release, so it holds.
     if (realpathOrSelf(here.root) !== realpathOrSelf(bound.root)) {
-      return { ok: true, root: bound.root, alternate_root: here.root, version: bound.marker.version, source_digest: bound.marker.source_digest, migration_needed: bound.migration_needed === true, note: `loaded from ${here.root}; identical payload to the bound ${bound.root}` };
+      return withChannel({ ok: true, root: bound.root, alternate_root: here.root, version: bound.marker.version, source_digest: bound.marker.source_digest, migration_needed: bound.migration_needed === true, note: `loaded from ${here.root}; identical payload to the bound ${bound.root}` });
     }
   }
-  return { ok: true, root: bound.root, version: bound.marker.version, source_digest: bound.marker.source_digest, migration_needed: bound.migration_needed === true, note: bound.note };
+  return withChannel({ ok: true, root: bound.root, version: bound.marker.version, source_digest: bound.marker.source_digest, migration_needed: bound.migration_needed === true, note: bound.note });
 }
 
 export function bindInstalledRoot({ projectRoot, host, pluginRoot, consent = true }) {
