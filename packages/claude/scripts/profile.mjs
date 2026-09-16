@@ -247,7 +247,11 @@ export function channelAdvisory({ projectRoot, host, homeDir } = {}) {
     if (!target.found) return { probe: 'install-entry', reason: target.reason };
     const channel = discoverClaudeChannel({ pluginName, marketplace: target.marketplace, homeDir });
     if (!channel.found) return { probe: 'marketplace', reason: channel.reason, scope: target.scope };
-    const order = compareVersions(channel.listing_version, expectedVersion);
+    // Compared against the INSTALLATION, never the pin: the update commands change the registry
+    // entry, so the entry is the only baseline that makes `behind` mean one thing. The pin rides
+    // along as context — an installation that already matches the listing while the pin trails is
+    // a bind (or a restart first), and prime says so from these two fields.
+    const order = compareVersions(channel.listing_version, target.version);
     const behind = order === 1;
     return {
       listing_version: channel.listing_version,
@@ -258,6 +262,8 @@ export function channelAdvisory({ projectRoot, host, homeDir } = {}) {
       marketplace: target.marketplace,
       scope: target.scope,
       behind,
+      // Undecidable stays undecidable: falling back to the pin here is what printed an update
+      // that had already run.
       ...(order === null && { comparable: false }),
       ...(behind && target.scope && {
         update: [
