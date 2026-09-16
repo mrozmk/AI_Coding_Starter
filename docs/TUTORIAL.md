@@ -219,7 +219,7 @@ Each of them has a full description in the README: [Two daily flows](../README.m
 /setup:create-CLAUDE_MD
 ```
 
-💬 **What happens:** `/setup:start --rerun` shows your earlier answers (keep them) and fills the one thing it skipped at the start — the toolchain check in `.claude/hooks/check-project-deps.sh`, now that a manifest (`package.json`, `pyproject.toml`, …) exists. Then Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
+💬 **What happens:** `/setup:start --rerun` shows your earlier answers (keep them) and fills the two things it skipped at the start — the toolchain check in `.claude/hooks/check-project-deps.sh` and the LSP plugin declaration for your stack — now that a manifest (`package.json`, `pyproject.toml`, …) exists. It prints two install commands (the plugin and its language server) — run them, then `/reload-plugins`, so the next step can use symbol navigation. Then Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
 
 ✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root has a README about your TODO app.
 

@@ -299,7 +299,7 @@ After PRD + decisions.md are updated, the project state has changed — explicit
 
 > **Recommended next steps:**
 > 1. **`/maintain:refresh-brief`** — `project-brief.md` is now stale (PRD's Tech Stack section just changed). Regenerate it so future `/prime` calls load the up-to-date brief instead of the old placeholder.
-> 2. **`/setup:create-CLAUDE_MD`** — only if you've already initialized scaffolding (npm init / uv init / etc.). It picks up the chosen stack and fills in `CLAUDE.md` + `.agents/memory/architecture.md`.
+> 2. **`/setup:create-CLAUDE_MD`** — only if you've already initialized scaffolding (npm init / uv init / etc.). It picks up the chosen stack and fills in `CLAUDE.md` + `.agents/memory/architecture.md`. Before it, once the scaffold exists, `/setup:start --rerun` declares the Claude Code LSP plugin for the chosen stack (step 6b) and prints its install commands — nothing to do now, the stack has to exist on disk first.
 > 3. **`/brainstorm <first feature>`** — start designing features with the chosen stack.
 
 If the user is in feature-level mode (had `$ARGUMENTS` originally) and chose to skip PRD update, suggest `/brainstorm` directly.

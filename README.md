@@ -292,7 +292,7 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /setup:create-CLAUDE_MD
 ```
 
-> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. Then run `/setup:start --rerun` once (it fills the toolchain preflight in `check-project-deps.sh` now that a manifest exists) and this command. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
+> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. Then run `/setup:start --rerun` once (it fills the toolchain preflight in `check-project-deps.sh` and declares the LSP plugin for the stack now that a manifest exists — run the install commands it prints and `/reload-plugins`) and this command. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 >
 > It reads the branch model and language from `.claude/project-profile.json` (written by `/setup:start`) instead of asking again, and refuses to silently overwrite a `CLAUDE.md` value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it runs the PRD→brief step itself first (skipped when the brief is current).
 >

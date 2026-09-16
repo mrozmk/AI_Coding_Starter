@@ -91,7 +91,7 @@ Shaping rule: 3 screens, ≤4 questions each — yields only when a detected val
    Tak · Nie / Yes · No
    *Codex to drugie AI, które sprawdza plany i kod. Pytam o zespół, bo ta odpowiedź trafia do wspólnego pliku. Jeśli nie: usuwam `/codex-review`, reszta pomija Codex sama.* / *Codex is a second AI that checks plans and code. I ask about the team because this answer goes into a shared file. If no: `/codex-review` is removed; everything else skips Codex on its own.* → `codex`, `commands.codex`
 
-**Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
+**Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart; the LSP activation gate from step 6b, when a manifest is present). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
 
 ### A.3 Derive the profile
 
@@ -134,7 +134,31 @@ Eight ordered steps. Each reports one line `created | kept | skipped(<why>)`. Ne
 
 **5. `qa-env.json`.** Only when `app_surface=web` and the user gives a URL. From this command `app_surface` is always `unknown` → `skipped(app_surface unknown — /prime-qa will ask)`.
 
-**6. Toolchain block in `.claude/hooks/check-project-deps.sh`.** Detect a manifest at the root: `package.json` → `node` (+ `[ -d node_modules ]`), `pyproject.toml`/`requirements.txt` → `python3` (+ `uv` if `uv.lock`), `go.mod` → `go`, `Cargo.toml` → `cargo`, `pubspec.yaml` → `flutter`. Insert one `command -v X >/dev/null 2>&1 || add "X not on PATH — Validation gates will fail."` line per detected tool **between** the `# --- toolchain ---` marker and the `# --- .env ----` marker, below the existing example comments. No manifest (greenfield) → `skipped(no manifest yet — rerun /setup:start --rerun after the scaffold; listed in Phase C)`. Validate with `bash -n`.
+**6. Toolchain block in `.claude/hooks/check-project-deps.sh`.** Detect a manifest at the root: `package.json` → `node` (+ `[ -d node_modules ]`), `pyproject.toml`/`requirements.txt` → `python3` (+ `uv` if `uv.lock`), `composer.json` → `php`, `go.mod` → `go`, `Cargo.toml` → `cargo`, `pubspec.yaml` → `flutter`. Insert one `command -v X >/dev/null 2>&1 || add "X not on PATH — Validation gates will fail."` line per detected tool **between** the `# --- toolchain ---` marker and the `# --- .env ----` marker, below the existing example comments. No manifest (greenfield) → `skipped(no manifest yet — rerun /setup:start --rerun after the scaffold; listed in Phase C)`. Validate with `bash -n`.
+
+**6b. LSP declaration — same manifest, second table.** Claude Code's built-in `LSP` tool (`goToDefinition`, `findReferences`, `incomingCalls`, `hover`, …) works only when a language-server plugin is loaded, and the plugin does not ship the server binary. This sub-step **declares** the plugin in the repo and **watches** the binary; it downloads nothing (this command installs no packages — see *Suggestions* below). Map the detected manifest:
+
+  | Manifest | Plugin (`claude-plugins-official`) | Binary the preflight watches | Human install |
+  |---|---|---|---|
+  | `package.json` (JS or TS — the plugin covers both) | `typescript-lsp` | `typescript-language-server` | `npm install -g typescript-language-server typescript` |
+  | `pyproject.toml` / `requirements*.txt` | `pyright-lsp` | `pyright-langserver` | `npm install -g pyright` |
+  | `composer.json` | `php-lsp` | `intelephense` | `npm install -g intelephense` |
+  | `go.mod` | `gopls-lsp` | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+  | `Cargo.toml` | `rust-analyzer-lsp` | `rust-analyzer` | `rustup component add rust-analyzer` |
+  | anything else (`pubspec.yaml`, …) | — | — | `skipped(no mapped official LSP plugin for this stack — see the Code intelligence table in the Claude Code plugin docs)` |
+
+  For a mapped manifest, in order:
+  1. **Declare.** Requires `jq`; absent → `skipped(jq not on PATH — add "<plugin>@claude-plugins-official": true under enabledPlugins in .claude/settings.json by hand)`. Merge `{"enabledPlugins": {"<plugin>@claude-plugins-official": true}}` into `.claude/settings.json` (deep merge, nothing else touched). Already `true` → `kept`. This committed entry is what makes every clone see the plugin: Claude Code reports an enabled-but-uninstalled plugin at startup and prints the install command.
+  2. **Watch the binary.** Insert `command -v <binary> >/dev/null 2>&1 || add "<binary> not on PATH — the <plugin> plugin is declared but its language server cannot start; the LSP tool falls back to rg. Install: <human install>"` into the toolchain block, same markers as step 6. Already present → `kept`.
+  3. **Print the activation gate** — three human steps, network included, never run from this command:
+     ```
+     claude plugin install <plugin>@claude-plugins-official --scope project
+     <human install>
+     /reload-plugins        # or restart Claude Code — plugins and their LSP servers load at startup
+     ```
+     Every later route that needs a loaded LSP (`/setup:create-CLAUDE_MD`, `/setup:map-codebase`) refers to this as **the activation gate**. No manifest → `skipped(no manifest yet)`, as in step 6.
+
+  `/setup:create-CLAUDE_MD` reads this declaration (the `enabledPlugins` key with value `true`) to emit the `## Code Navigation (LSP)` section, and `/maintain:cleanup-workflow` 1.6 uses the same predicate — so the section appears only in a repo that declared the plugin, never off machine state.
 
 **7. Command pruning — validate before deleting; there is no rollback** (`git checkout -- *` is denied in `settings.json`). For each **disabled** group, in this order:
 
@@ -193,15 +217,15 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 5. `/setup:create-backlog` — `.agents/backlog.md` from the PRD (skip if `tracker=jira` and the backlog lives there)
 6. `/brainstorm` — designs the next free task (`E0-1`, the scaffold)
 7. `/plan-feature` → 8. `/execute`
-9. `/setup:start --rerun` — fills the toolchain block now that a manifest exists
+9. `/setup:start --rerun` — fills the toolchain block and declares the LSP plugin now that a manifest exists; pass its activation gate (step 6b) **before step 10**
 10. `/setup:create-CLAUDE_MD` — generates `CLAUDE.md`, `architecture.md`, README from the scaffold; detects `app_surface`
 
-**Brownfield:**
+**Brownfield** (the manifest exists, so step 6b already ran — pass its activation gate first; `map-codebase` cascades into `/setup:create-CLAUDE_MD` in the same session):
 1. `/prime`
 2. `/setup:map-codebase` — architecture map + reconstructed PRD, then its own cascade
 3. `/setup:create-backlog` — optional
 
-**Suggestions — printed, never executed.** `/setup:start` installs no packages and adds no MCP servers; these are for the human to copy if wanted:
+**Suggestions — printed, never executed.** `/setup:start` installs no packages and adds no MCP servers (the LSP plugin in step 6b is *declared*, its install stays a printed human step); these are for the human to copy if wanted:
 
 - **(a) Commit-message enforcement (JS projects).** A commitlint `parserPreset.headerPattern` accepting an optional `[<KEY>-NN] ` prefix — derive the `<KEY>` regex from the tracker key pattern (default `[A-Z]+-\d+`), e.g. `^(?:\[[A-Z]+-\d+\] )?(\w+)(?:\(([^)]+)\))?!?: (.+)$` with `headerCorrespondence: ['type', 'scope', 'subject']` — plus a husky `commit-msg` hook running `commitlint --edit "$1"`. Install only if you want local enforcement of `/commit`'s format.
 - **(b) Harness ownership.** A CODEOWNERS stanza routing the AI-workflow files to a tech-lead owner, so a change to the rules gets a rules-owner review:
@@ -221,7 +245,7 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 - Show the current profile as a table; for each screen ask **keep / change**. Changed answers re-derive the profile (A.3) and re-run Phase B — steps report `kept` for anything already in place.
 - Enabled → disabled for a group: the normal pruning path (step 7).
 - **Disabled → enabled for a pruned group is refused.** Print exactly: `Group <x> was pruned. To restore: remove its paths from .claude/.starter-sync.json → excluded, then run /maintain:sync-from-starter — it re-offers them.` Restoring is not built into this command.
-- Never re-create a file reported `kept`; never re-delete. Unresolved `{slot}` tokens in `TESTING.md` are filled by `/setup:create-CLAUDE_MD`, not by a re-run.
+- Never re-create a file reported `kept`; never re-delete. Step 6b is idempotent: an `enabledPlugins` entry already `true` and a preflight line already present both report `kept`. Unresolved `{slot}` tokens in `TESTING.md` are filled by `/setup:create-CLAUDE_MD`, not by a re-run.
 
 ---
 
@@ -232,7 +256,7 @@ Terminal report, in the chosen language:
 1. Profile summary (one line per top-level field).
 2. Phase B table — step · status · detail. **The table never truncates.**
 3. Pruned groups and the paths recorded in `excluded`; groups kept because of unclassifiable hits, with the hits.
-4. Human TODOs: the `! cp .env.example .env && chmod 600 .env` line, keys to fill, restart.
+4. Human TODOs: the `! cp .env.example .env && chmod 600 .env` line, keys to fill, restart; the step 6b activation gate, when a manifest was present.
 5. The Phase C list.
 
 Do not repeat the interview transcript. Reference-sweep leftovers, if any, go under item 3 verbatim — never summarised away.
