@@ -367,7 +367,7 @@ It does it all itself: write code → clean up → check → commit → push, lo
 
 **What we'll build:** the same TODO, but **with a screen** — backend (API) + frontend (the interface you click). The user adds tasks in the browser, not just through the API.
 
-**What you'll learn:** the same rhythm as in Scenario 1 **plus** two new commands for the visual layer: **`/design`** (UI design) and **`/test-e2e`** (browser tests).
+**What you'll learn:** the same rhythm as in Scenario 1 **plus** two new commands for the visual layer: **`/design-ui`** (UI design) and **`/test-e2e`** (browser tests).
 
 > 📌 **This is an extension of Scenario 1, not a new scheme.** The rhythm `PRD → stack → backlog → prime → brainstorm → plan → execute → check → commit` is identical. Below I describe **only what's added or changes** — take the rest straight from Scenario 1. If you haven't done S1 — start there, this will be easier.
 
@@ -424,7 +424,7 @@ Fresh chat → `/prime`, then design the feature — [just like in Step 6 of S1]
 
 📋 **Type:**
 ```
-/design TODO task list screen
+/design-ui TODO task list screen
 ```
 
 💬 **What happens:** Claude loads the design knowledge and the project's design tokens, asks whether you want **1 variant** (refinement) or **3** (different approaches), generates the mockup(s), and **checks each one itself** against quality rules before showing it to you. It saves the approved design into `.agents/specs/design/Ready/`.
@@ -491,19 +491,19 @@ Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the sa
 The cycle is the same as in S1, enriched with two visual steps:
 **idea → PRD → stack → backlog → scaffold → brainstorm → 🆕 design → plan → code → quality → 🆕 E2E tests → commit.**
 
-**Another feature with a screen?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → `/design <screen>` → `/plan-feature` → `/execute` → `/check-implementation` → `/test-e2e <flow>` → `/commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/design` and `/test-e2e`.
+**Another feature with a screen?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → `/design-ui <screen>` → `/plan-feature` → `/execute` → `/check-implementation` → `/test-e2e <flow>` → `/commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/design-ui` and `/test-e2e`.
 
-> Already have mockups (HTML/Figma) instead of generating them with `/design`? → **Scenario 3**.
+> Already have mockups (HTML/Figma) instead of generating them with `/design-ui`? → **Scenario 3**.
 
 ---
 
 # Scenario 3: I already have designs (HTML/Figma)
 
-**What we'll build:** the same TODO with a screen as in Scenario 2 — but **we don't generate** the look with the `/design` command. You already have the look: HTML mockups or a Figma file. Claude's job is to **implement them faithfully** and check that the code matches the design pixel for pixel.
+**What we'll build:** the same TODO with a screen as in Scenario 2 — but **we don't generate** the look with the `/design-ui` command. You already have the look: HTML mockups or a Figma file. Claude's job is to **implement them faithfully** and check that the code matches the design pixel for pixel.
 
 **What you'll learn:** how to **bring an external design** into the template and how the **parity gate** `/gates:design-quality-check` (code vs. design) works.
 
-> 📌 **This is a variant of Scenario 2.** There's one simple difference: instead of *generating* a mockup (`/design`), you **supply your own** — and a consistency-check step is added. The whole rhythm `PRD → stack → backlog → scaffold → brainstorm → plan → execute → check → commit` is identical. If you haven't done S2 — review it first, this will be clearer.
+> 📌 **This is a variant of Scenario 2.** There's one simple difference: instead of *generating* a mockup (`/design-ui`), you **supply your own** — and a consistency-check step is added. The whole rhythm `PRD → stack → backlog → scaffold → brainstorm → plan → execute → check → commit` is identical. If you haven't done S2 — review it first, this will be clearer.
 
 ---
 
@@ -530,7 +530,7 @@ Go through [Steps 1–3](#steps-13-prd-stack-backlog--like-in-s1-with-one-differ
 
 ### 🔀 Step 6.5: Bring in your design (instead of generating it)
 
-> In Scenario 2 this step *generated* a mockup via `/design`. **Here you skip it** — because you already have the design. Instead, you **make** your design available to Claude.
+> In Scenario 2 this step *generated* a mockup via `/design-ui`. **Here you skip it** — because you already have the design. Instead, you **make** your design available to Claude.
 
 **Variant A — you have HTML/CSS mockups:**
 
@@ -554,7 +554,7 @@ You don't copy anything. Keep the **link to the Figma node/screen** handy — yo
 <details>
 <summary>💡 TIP — why "Ready/" specifically and what that frontmatter is</summary>
 
-`.agents/specs/design/Ready/` is the same place `/design` saves *generated* mockups — so the rest of the tooling (the parity gate, `/orchestrate`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
+`.agents/specs/design/Ready/` is the same place `/design-ui` saves *generated* mockups — so the rest of the tooling (the parity gate, `/orchestrate`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
 </details>
 
 ---
@@ -607,7 +607,7 @@ The cycle is like in S2, but the look comes from you, and the code is verified a
 
 **Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <section>` → `/test-e2e <flow>` → `/commit`.
 
-> Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/design` step).
+> Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/design-ui` step).
 
 ---
 
@@ -723,7 +723,7 @@ A large, existing codebase won't fit in a single context. `/setup:map-codebase` 
 
 ⏭️ **Next:** you repeat Step 3 for each subsequent change; `/push` when you want to push (like [Step 11 of S1](#step-11-push-to-github-optional)).
 
-> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design` (or your own mockup in `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
+> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design-ui` (or your own mockup in `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
 
 ---
 
@@ -866,4 +866,4 @@ You went through the analyst path without writing code:
 
 **What's next?** Developers take your backlog and enter the S1–S4 paths: fresh chat → `/prime` → empty `/brainstorm` (which takes the **next free task from the backlog** itself) → `/plan-feature` → `/execute` → … Your structure drives their work without retyping.
 
-> Want to also **design screens** for the team (not just tasks)? Check **Scenario 2/3** — the `/design` step.
+> Want to also **design screens** for the team (not just tasks)? Check **Scenario 2/3** — the `/design-ui` step.

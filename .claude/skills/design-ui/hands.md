@@ -7,7 +7,7 @@ Adapted from `leonxlnx/taste-skill` (MIT, © 2026 Leonxlnx).
 > A "hand" is a complete aesthetic identity for greenfield work (no existing DS).
 > Available hands: **minimalist** and **soft** (brutalist intentionally omitted — see below).
 > In DS mode (FIX / NEW-to-DS) discard this file entirely — dials drive layout only,
-> tokens come from the project's detected token source (`/design` Phase 0).
+> tokens come from the project's detected token source (`/design-ui` Phase 0).
 
 ---
 

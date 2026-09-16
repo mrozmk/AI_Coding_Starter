@@ -20,7 +20,7 @@ Show this to the user, then proceed straight to Step 2. The user reads and think
 
 ### 2. Produce 2–3 radically different variants
 
-Generate the variants in parallel (spawn sub-agents via the Agent tool with separate calls in a single message — see how `/design` fans out three variants). Each variant must be a **genuinely different** interface for the same deepened module, driven by a different design constraint:
+Generate the variants in parallel (spawn sub-agents via the Agent tool with separate calls in a single message — see how `/design-ui` fans out three variants). Each variant must be a **genuinely different** interface for the same deepened module, driven by a different design constraint:
 
 - **Variant A — Minimize the interface.** Aim for **1–3 entry points max**. Maximize leverage per entry point. The default reaching tool when in doubt.
 - **Variant B — Maximize flexibility.** Support many use cases and future extension; accept a larger surface in exchange.

@@ -3,8 +3,8 @@
 The gate the `design` skill runs against EVERY mockup (every variant) **before** the user
 sees it. This is the GATE, not the full audit — for the exhaustive property diff see
 `.claude/commands/gates/design-quality-check.md`. Deep rule references:
-`.claude/skills/design/emil-design.md` (motion), `.claude/skills/design/redesign.md` (anti-AI),
-`.claude/skills/design/dials.md` (variance/density). The token set is the **project's detected
+`.claude/skills/design-ui/emil-design.md` (motion), `.claude/skills/design-ui/redesign.md` (anti-AI),
+`.claude/skills/design-ui/dials.md` (variance/density). The token set is the **project's detected
 design system** (resolved in `design.md` Phase 0 — CSS custom properties / Tailwind theme /
 `tokens.css` / `theme.ts`), not a fixed list.
 
@@ -66,7 +66,7 @@ from the project's detected token source — substitute the project's actual var
 ## Mode B — greenfield / BOOTSTRAP (no DS)
 
 No tokens exist yet, so DROP all token rules above. The variant must instead be
-internally consistent against the "hand" it chose (`.claude/skills/design/hands.md`).
+internally consistent against the "hand" it chose (`.claude/skills/design-ui/hands.md`).
 
 | CHECK                | PASS criterion                                                                          |
 | -------------------- | --------------------------------------------------------------------------------------- |

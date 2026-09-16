@@ -1,19 +1,19 @@
 ---
-name: design
+name: design-ui
 description: Guided UI design with forced knowledge load, optional multi-variant generation, and a self-check quality gate before handing back. Use when the user wants to design or redesign UI — triggers "zaprojektuj", "zrób design", "popraw design", "nowy komponent", "redesign sekcji", "design X", EN "design", "redesign", "make a mockup". Force-loads emil-design + redesign + the dials method + the detected design-system tokens, can produce 1 or 3 variants (parallel sub-agents), and self-checks every output against tokens + motion + anti-AI rules before you see it.
 ---
 
-# /design — Guided UI Design with Variants + Self-Check Gate
+# /design-ui — Guided UI Design with Variants + Self-Check Gate
 
 A disciplined design pipeline. It force-loads the design knowledge that otherwise sits unused,
 optionally generates genuinely-different variants, and self-checks every mockup before the user
-sees it. Resources live next to this file under `.claude/skills/design/` — reference them by
+sees it. Resources live next to this file under `.claude/skills/design-ui/` — reference them by
 FULL repo-relative path so every phase and sub-agent resolves them the same way.
 
-**Knowledge it force-loads** (Phase 1): `.claude/skills/design/emil-design.md` (motion/polish),
-`.claude/skills/design/redesign.md` (anti-AI audit), `.claude/skills/design/dials.md`
-(variant differentiation), `.claude/skills/design/hands.md` (greenfield aesthetics),
-`.claude/skills/design/self-check.md` (the gate), **plus the project's design-system tokens**
+**Knowledge it force-loads** (Phase 1): `.claude/skills/design-ui/emil-design.md` (motion/polish),
+`.claude/skills/design-ui/redesign.md` (anti-AI audit), `.claude/skills/design-ui/dials.md`
+(variant differentiation), `.claude/skills/design-ui/hands.md` (greenfield aesthetics),
+`.claude/skills/design-ui/self-check.md` (the gate), **plus the project's design-system tokens**
 (detected in Phase 0 — not a hardcoded file).
 
 > **Stack-neutral.** This command makes no assumption about framework, styling system, or build
@@ -63,15 +63,15 @@ Pick the mode:
 - **3** → fan-out. Pick 3 genuinely-distinct approaches:
   - **DS mode (A)** — same tokens, different composition: e.g. A = conservative (`DESIGN_VARIANCE`
     3, bento), B = balanced (variance 6, split-screen), C = bold (variance 8,
-    editorial/asymmetric-hero). Read `.claude/skills/design/dials.md` for the dial→layout mapping.
+    editorial/asymmetric-hero). Read `.claude/skills/design-ui/dials.md` for the dial→layout mapping.
   - **greenfield (B)** — different aesthetic per variant: A = minimalist hand, B = soft hand,
-    C = a third hand or a WebFetched brand ref. Read `.claude/skills/design/hands.md`.
+    C = a third hand or a WebFetched brand ref. Read `.claude/skills/design-ui/hands.md`.
 
 ## Phase 1 — Design (forced knowledge, per variant)
 
 **Always read first** (this is the point of the skill — the knowledge is force-loaded, not optional):
-`.claude/skills/design/emil-design.md` + `.claude/skills/design/redesign.md` +
-`.claude/skills/design/dials.md` (+ `.claude/skills/design/hands.md` in greenfield) +
+`.claude/skills/design-ui/emil-design.md` + `.claude/skills/design-ui/redesign.md` +
+`.claude/skills/design-ui/dials.md` (+ `.claude/skills/design-ui/hands.md` in greenfield) +
 **the token source detected in Phase 0**. Then, in DS mode, read 1–2 neighbour specs in the
 reference dir for the same `area` and consume the actual token values.
 
@@ -96,7 +96,7 @@ reference dir for the same `area` and consume the actual token values.
 
 ## Phase 2 — Self-check gate (per variant)
 
-Run `.claude/skills/design/self-check.md` in the Phase-0 mode against EACH mockup.
+Run `.claude/skills/design-ui/self-check.md` in the Phase-0 mode against EACH mockup.
 APPROVE / WARN / BLOCK + fix loop **cap 2 iterations** (per the gate). Only
 APPROVE-or-user-accepted variants are presented. Each variant is gated independently.
 
@@ -126,9 +126,9 @@ Report the final path + self-check verdict. **Commit stays the user's decision**
 
 ## GOTCHAS
 
-- Reference all materials by FULL `.claude/skills/design/...` path — sub-agents get no relative base.
+- Reference all materials by FULL `.claude/skills/design-ui/...` path — sub-agents get no relative base.
 - Sub-agents go samey unless forced: in the spawn prompt give each a DIFFERENT dial-set/hand AND a DIFFERENT layout pattern. This is the #1 risk.
 - Pass `MODE=A|B` explicitly and a DISTINCT `/tmp/design-variants/{Name}.variant-{a,b,c}.html` path per agent — never an in-tree reference-dir path.
 - BOOTSTRAP proposes, never auto-scaffolds.
-- Do NOT add worktree/branch/merge machinery — that is `/orchestrate`'s job for committed code; `/design` produces HTML artifacts.
+- Do NOT add worktree/branch/merge machinery — that is `/orchestrate`'s job for committed code; `/design-ui` produces HTML artifacts.
 - Index / token-check scripts are **optional**: probe `package.json` (and `scripts/`) for them and run only what exists. Never hard-fail because a project has no mockup indexer.

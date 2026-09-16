@@ -55,7 +55,7 @@ When the project **has a design system** (DS mode / FIX / NEW-to-DS), the dials 
 They do NOT change:
 
 - **Color palette** — always the project's themeable tokens (CSS custom properties / Tailwind
-  theme / `theme.ts` — whatever `/design` Phase 0 detected). No ad-hoc hex, no new accents.
+  theme / `theme.ts` — whatever `/design-ui` Phase 0 detected). No ad-hoc hex, no new accents.
 - **Typography** — always the project's configured UI/body and numeric typefaces.
 - **Token set** — always pulled from the project's detected token source; no pastel substitution,
   no font swap, no light-bg in a dark DS (or vice versa).

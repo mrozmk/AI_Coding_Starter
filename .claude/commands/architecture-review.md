@@ -160,7 +160,7 @@ Do not repeat the full cards in chat.
 
 ## Phase 3 — Grilling loop (interactive)
 
-Once the user picks a candidate, design its interface deliberately using **Design It Twice**: see [`.claude/skills/architecture-review/INTERFACE-DESIGN.md`](../skills/architecture-review/INTERFACE-DESIGN.md). Frame the problem space, generate 2–3 radically different interface variants (in parallel via the Agent tool, the way `/design` fans out variants), then compare them by depth / locality / seam-placement and give an **opinionated** recommendation (or a hybrid).
+Once the user picks a candidate, design its interface deliberately using **Design It Twice**: see [`.claude/skills/architecture-review/INTERFACE-DESIGN.md`](../skills/architecture-review/INTERFACE-DESIGN.md). Frame the problem space, generate 2–3 radically different interface variants (in parallel via the Agent tool, the way `/design-ui` fans out variants), then compare them by depth / locality / seam-placement and give an **opinionated** recommendation (or a hybrid).
 
 Walk the design tree with the user — constraints, dependency category (per [`DEEPENING.md`](../skills/architecture-review/DEEPENING.md)), the shape of the deepened module, what sits behind the seam, which tests survive.
 
