@@ -7,8 +7,8 @@ description: Guided UI design with forced knowledge load, optional multi-variant
 
 A disciplined design pipeline. It force-loads the design knowledge that otherwise sits unused,
 optionally generates genuinely-different variants, and self-checks every mockup before the user
-sees it. Resources live under `.claude/skills/design/` — reference them by FULL path (this file
-is in `commands/`, so bare relative links won't resolve).
+sees it. Resources live next to this file under `.claude/skills/design/` — reference them by
+FULL repo-relative path so every phase and sub-agent resolves them the same way.
 
 **Knowledge it force-loads** (Phase 1): `.claude/skills/design/emil-design.md` (motion/polish),
 `.claude/skills/design/redesign.md` (anti-AI audit), `.claude/skills/design/dials.md`
@@ -126,7 +126,7 @@ Report the final path + self-check verdict. **Commit stays the user's decision**
 
 ## GOTCHAS
 
-- Reference all materials by FULL `.claude/skills/design/...` path — this file is in `commands/`.
+- Reference all materials by FULL `.claude/skills/design/...` path — sub-agents get no relative base.
 - Sub-agents go samey unless forced: in the spawn prompt give each a DIFFERENT dial-set/hand AND a DIFFERENT layout pattern. This is the #1 risk.
 - Pass `MODE=A|B` explicitly and a DISTINCT `/tmp/design-variants/{Name}.variant-{a,b,c}.html` path per agent — never an in-tree reference-dir path.
 - BOOTSTRAP proposes, never auto-scaffolds.
