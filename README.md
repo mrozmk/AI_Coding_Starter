@@ -1,6 +1,6 @@
-<!-- STARTER-KIT-README: this is the framework guide. On bootstrap, the harness plugin's
-     setup-start moves this file to .claude/README.md and seeds a project README in its
-     place. See the "About this README" callout below. -->
+<!-- STARTER-KIT-README: this is the framework guide. On bootstrap, /setup:create-CLAUDE_MD moves
+     this file to .claude/README.md and generates a project README in its place. See the
+     "About this README" callout below. -->
 
 # AI-Assisted Development Starter Kit
 
@@ -17,9 +17,9 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 - `.gitignore`, sensible defaults
 
 > **About this README.** While you read it in the *starter repo*, it documents the **framework**.
-> The first time you run `/harness:setup-start` in a real project, this guide is moved to
-> `.claude/README.md` and a fresh, project-specific `README.md` is seeded in its place (from
-> the plugin's `templates/README.md`). That keeps the root README describing *your* project
+> The first time you run `/setup:create-CLAUDE_MD` in a real project, this guide is moved to
+> `.claude/README.md` and a fresh, project-specific `README.md` is generated in its place (from
+> `.claude/templates/README-template.md`). That keeps the root README describing *your* project
 > while the framework guide stays available at `.claude/README.md`. See
 > [The root README is yours — the framework guide moves aside](#the-root-readme-is-yours--the-framework-guide-moves-aside).
 
@@ -31,12 +31,13 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Project-owned slash commands: `/maintain:sync-from-starter`. Bootstrap, product and maintenance commands are plugin skills now (`/harness:setup-start`, `/harness:create-rules`, `/harness:create-prd`, `/harness:create-backlog`, `/harness:stack-research`, `/harness:refresh-brief`). The workflow commands (`/harness:prime`, `/harness:brainstorm`, `/harness:plan-feature`, `/harness:execute`, `/harness:check-implementation`, `/harness:commit`, …) are plugin skills — see *Harness plugin* below; `/harness:setup-start` can write optional short aliases here. |
-| *(no `agents/`)* | Every sub-agent now ships in the `harness` plugin: the `/harness:orchestrate` pipeline agents (`harness:orchestrator-executor`, `-executor-hard`, `-refiner`, `-verifier`, `-committer`, `-designer`) and `harness:documentation-manager` since 0.3.0, the `/harness:qa-verify` verifiers (`qa-contract`, `qa-runtime-ui`) since 0.4.0. The starter keeps no agent files of its own. |
-| `skills/` | One skill remains: `pr-comments` (its `pr-api.sh` is permission-pinned in `settings.json`, a recorded exception documented in `CLAUDE.md → Security`, so it cannot move). `/jira` and `/confluence` ship in the plugin since 0.4.0 — invoked as `/harness:jira` / `/harness:confluence`, gated on the `tracker` / `confluence` capability groups — as do the `design/` and `architecture-review/` resource bundles. |
-| `templates/` | Starting templates — `README-template.md` (a fuller project README you can copy by hand), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs — copy and fill them yourself) |
+| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/design`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
+| `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
+| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs). Plus two command-bound resource bundles loaded by path (no `SKILL.md`): `design/` (UI-design knowledge for `/design`) and `architecture-review/` (depth/locality method for `/architecture-review`). |
+| `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs placed by `/setup:start` step 8) |
 | `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `guard-comments` (comment-noise nudge — dormant until `comment-guard.json` names your source dirs), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `check-deps` (SessionStart dep preflight). Need `jq`. |
 | `output-styles/` | Output styles — `Simply` (three-block answers: done / did it work / now what, ≤120 words, no walls of text). Activate per session with `/output-style simply`. |
+| `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
 
 ### `.agents/`
@@ -45,16 +46,16 @@ Layers of persistent project knowledge:
 
 | Layer | Contents | Lifecycle |
 |-------|----------|-----------|
-| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/harness:create-prd`. Never modified by Claude. | Immutable input, pruned manually |
+| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/setup:create-PRD` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
 | `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
-| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — epics + task DAG + **work packages** (each feeds one `/harness:brainstorm → spec → /harness:plan-feature` cycle), MVP first. Operationalizes the PRD's "Implementation Phases". | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
-| `specs/` | Design docs from `/harness:brainstorm` | Lives with the feature |
+| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — epics + task DAG + **work packages** (each feeds one `/brainstorm → spec → /plan-feature` cycle), MVP first. Operationalizes the PRD's "Implementation Phases". | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
+| `specs/` | Design docs from `/brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 
-Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/harness:create-rules`) and points to memory files instead of duplicating their content.
+Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/setup:create-CLAUDE_MD`) and points to memory files instead of duplicating their content.
 
-**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/harness:prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning skill (`/harness:create-rules` or `/harness:refresh-brief`) to populate them.
+**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/setup:create-CLAUDE_MD` or `/maintain:refresh-brief`) to populate them.
 
 ---
 
@@ -62,22 +63,20 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/m
 
 This starter supports two distinct roles. Both share the same knowledge layers (`.agents/`, `CLAUDE.md`) — they differ only in the command chain.
 
-> **Why every flow starts with a new chat + prime?** A fresh chat means no leftover context from a previous task that could bias Claude. Priming (`/harness:prime` or `/harness:prime-ba`) is the *first message* in that fresh chat — it loads the project's knowledge layers (PRD brief, architecture map, memory) so Claude reasons over the actual project state instead of guessing. Skipping either step is the most common cause of off-target answers.
-
-> **Command names.** Every workflow command is a plugin skill, written here as `/harness:<skill>`. The short aliases (`/prime`, `/brainstorm`, …) are optional project wrappers that `/harness:setup-start` writes on request; both spellings run the same skill.
+> **Why every flow starts with a new chat + prime?** A fresh chat means no leftover context from a previous task that could bias Claude. Priming (`/prime` or `/prime-ba`) is the *first message* in that fresh chat — it loads the project's knowledge layers (PRD brief, architecture map, memory) so Claude reasons over the actual project state instead of guessing. Skipping either step is the most common cause of off-target answers.
 
 ### Business Analyst flow
 
 ```
-New chat → /harness:prime-ba → Source files → /harness:brainstorm → Jira draft → Jira sent
+New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira sent
 ```
 
 | Step | What it means |
 |------|---------------|
 | **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
-| **`/harness:prime-ba`** | Loads the BA-specific context: `docs/PRD.md`, `.agents/specs/`, and the Jira backlog (via `mcp-atlassian`). Implementation details (`patterns.md`, `errors.md`, code) are intentionally skipped — a BA reasons over product, not internals. |
-| **Source files** | Drop briefs, transcripts, sketches, PDFs into [.agents/sources/](.agents/sources/). Raw input — never modified by Claude. The BA references these files manually when writing the `/harness:brainstorm` prompt; they are not auto-loaded. |
-| **`/harness:brainstorm <feature>`** | Explores the requirement, proposes 2-3 approaches, writes a design spec to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code, no Jira — design gate before anything ships. |
+| **`/prime-ba`** | Loads the BA-specific context: `docs/PRD.md`, `.agents/specs/`, and the Jira backlog (via `mcp-atlassian`). Implementation details (`patterns.md`, `errors.md`, code) are intentionally skipped — a BA reasons over product, not internals. |
+| **Source files** | Drop briefs, transcripts, sketches, PDFs into [.agents/sources/](.agents/sources/). Raw input — never modified by Claude. The BA references these files manually when writing the `/brainstorm` prompt; they are not auto-loaded. |
+| **`/brainstorm <feature>`** | Explores the requirement, proposes 2-3 approaches, writes a design spec to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code, no Jira — design gate before anything ships. |
 | **Jira draft** | `/jira create` (single issue) or `/jira bulk` (Epic + Tasks) drafts Epic/Task/Bug from the approved spec. Drafts stay local — nothing leaves your machine until you confirm. |
 | **Jira sent** | Confirm the draft to send it to Jira Cloud via `mcp-atlassian`. Issues are now visible to the team and ready for the Developer flow. |
 
@@ -85,75 +84,64 @@ New chat → /harness:prime-ba → Source files → /harness:brainstorm → Jira
 
 The first half is always the same — **prime → brainstorm → plan-feature** turns an idea (a free-text request, or one you lift from a Jira issue) into an approved, codebase-aware plan. How you take that plan to *shipped* is your call — pick by how much you want to drive:
 
-> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into epics, a dependency DAG, and **work packages**. Each work package row then tells you exactly which `/harness:brainstorm <topic>` to run next, and in what order. It's optional: when the backlog exists, `/harness:plan-feature` and `/harness:orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
+> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into epics, a dependency DAG, and **work packages**. Each work package row then tells you exactly which `/brainstorm <topic>` to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
 
 **A — Manual (more human-in-the-loop):**
 
 ```
-New chat → /harness:prime → /harness:brainstorm <feature> → /harness:plan-feature → /harness:execute → /harness:check-implementation → /harness:commit → /harness:push
+New chat → /prime → /brainstorm <feature> → /plan-feature → /execute → /check-implementation → /commit → /push
 ```
 
-Tracker-driven variant — `/harness:start-task <KEY>` replaces the first three steps (branch + prime + brainstorm from the issue); in a PR-gated repo `/harness:pr-create` replaces `/harness:push`.
+Tracker-driven variant — `/start-task <KEY>` replaces the first three steps (branch + prime + brainstorm from the issue); in a PR-gated repo `/pr-create` replaces `/push`.
 
-> You run and review each step. `/harness:check-implementation` **applies** fixes (`code-review --fix` → `deep-review`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/harness:commit` and `/harness:push`. Best for high-stakes changes, or when you want eyes on every gate.
+> You run and review each step. `/check-implementation` **applies** fixes (`code-review --fix` → `deep-review`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/commit` and `/push`. Best for high-stakes changes, or when you want eyes on every gate.
 
 **B — Orchestrated (hands-off):**
 
 ```
-New chat → /harness:prime → /harness:brainstorm <feature> → /harness:plan-feature → /harness:orchestrate
+New chat → /prime → /brainstorm <feature> → /plan-feature → /orchestrate
 ```
 
-> `/harness:orchestrate` drives the whole back half end-to-end — execute → refine → verify → [design-check] → commit → push — looping fixes itself and escalating to you only on a real blocker. Best for well-scoped plans you trust the pipeline to ship.
+> `/orchestrate` drives the whole back half end-to-end — execute → refine → verify → [design-check] → commit → push — looping fixes itself and escalating to you only on a real blocker. Best for well-scoped plans you trust the pipeline to ship.
 
 **C — Fast lane (small changes):**
 
 ```
-New chat → /harness:prime → /harness:quick-change <what to change> → /harness:commit
+New chat → /prime → /quick-change <what to change> → /commit
 ```
 
-> For work where the full first half is ceremony: a short plan in chat (no spec, no plan file), a **mandatory** independent `codex` review of that plan **before any code exists** (no opt-out flag — it is skipped only when `codex` isn't installed, and the report says so), then implement → `/code-review` (low effort) → `/harness:deep-review` → the `CLAUDE.md → Validation` gates. A guard fires — and says so — when the change turns out not to be small (sensitive path, >~5 files, new dependency, schema/contract change, design reference needed), recommending flow A or B instead; you can override it. Not a replacement for A/B — it is the honest middle between them and "just do it".
+> For work where the full first half is ceremony: a short plan in chat (no spec, no plan file), a **mandatory** independent `codex` review of that plan **before any code exists** (no opt-out flag — it is skipped only when `codex` isn't installed, and the report says so), then implement → `/code-review` (low effort) → `/deep-review` → the `CLAUDE.md → Validation` gates. A guard fires — and says so — when the change turns out not to be small (sensitive path, >~5 files, new dependency, schema/contract change, design reference needed), recommending flow A or B instead; you can override it. Not a replacement for A/B — it is the honest middle between them and "just do it".
 
 | Step | What it means |
 |------|---------------|
 | **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
-| **`/harness:prime`** | Quick mode by default — loads `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, `architecture.md`, plus listings of plans/specs/reference and git state. Use `/harness:prime full` after a long break or for deep multi-area work (also pulls `patterns.md`, `decisions.md`, `api.md`, `errors.md`, populated `domain/*`). |
-| **`/harness:brainstorm <feature>`** | Explores a free-text feature request — references any Jira issue's description / acceptance criteria you paste into the prompt, but does not fetch Jira itself. Output: a design spec in `.agents/specs/`. If `codex` is installed, a cross-model pass reviews the spec before it advances (auto-skips otherwise). |
-| **`/harness:plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`, then **grills** it (self-critique) and — if `codex` is installed — runs an independent cross-model review loop (Phase 7) before handing the plan over. |
-| **`/harness:execute`** *(flow A)* | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. Add `codex` (`/harness:execute codex`) to have Codex write the code at effort `medium` while Claude supervises and re-validates. |
-| **`/harness:check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves; a one-shot codex cross-review of the approved diff follows (if `codex` is installed). **Applies** fixes; leaves a commit-ready tree — does **not** commit. `/harness:check-implementation codex` makes Codex the fixer (effort `high`); Claude stays the judge, and the cross-review step is skipped whenever Codex actually applied fixes (Claude's gate is then the second model). |
-| **`/harness:commit` → `/harness:push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
-| **`/harness:orchestrate`** *(flow B)* | Runs the whole back half as one pipeline — execute → refine → verify → [design] → commit → push — via sub-agents, looping fixes and escalating only on blockers. Replaces the `/harness:execute … /harness:push` tail of flow A. |
+| **`/prime`** | Quick mode by default — loads `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, `architecture.md`, plus listings of plans/specs/reference and git state. Use `/prime full` after a long break or for deep multi-area work (also pulls `patterns.md`, `decisions.md`, `api.md`, `errors.md`, populated `domain/*`). |
+| **`/brainstorm <feature>`** | Explores a free-text feature request — references any Jira issue's description / acceptance criteria you paste into the prompt, but does not fetch Jira itself. Output: a design spec in `.agents/specs/`. If `codex` is installed, a cross-model pass reviews the spec before it advances (auto-skips otherwise). |
+| **`/plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`, then **grills** it (self-critique) and — if `codex` is installed — runs an independent cross-model review loop (Phase 7) before handing the plan over. |
+| **`/execute`** *(flow A)* | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. Add `codex` (`/execute codex`) to have Codex write the code at effort `medium` while Claude supervises and re-validates. |
+| **`/check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves; a one-shot codex cross-review of the approved diff follows (if `codex` is installed). **Applies** fixes; leaves a commit-ready tree — does **not** commit. `/check-implementation codex` makes Codex the fixer (effort `high`); Claude stays the judge, and the cross-review step is skipped whenever Codex actually applied fixes (Claude's gate is then the second model). |
+| **`/commit` → `/push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
+| **`/orchestrate`** *(flow B)* | Runs the whole back half as one pipeline — execute → refine → verify → [design] → commit → push — via sub-agents, looping fixes and escalating only on blockers. Replaces the `/execute … /push` tail of flow A. |
 
-> Both flows share the same gates and memory-reflection — `/harness:orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/harness:gates-verify-implementation` is also available standalone when you only want the verdict without applying fixes.
+> Both flows share the same gates and memory-reflection — `/orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/gates:verify-implementation` is also available standalone when you only want the verdict without applying fixes.
 
 ---
-
-## Harness plugin — where the workflow lives
-
-Every workflow command in this template is a skill of the `harness` plugin, invoked as `/harness:<skill>` on Claude Code and `$<skill>` on Codex CLI. The plugin is **developed in a separate private repository** and **published to this repository's `release` branch** — `main` is the template only: no plugin source, no build, no packages. Install from the channel (operator actions):
-
-```bash
-claude plugin marketplace add mrozmk/AI_Coding_Starter@release && claude plugin install harness@ai-coding-starter --scope project
-codex  plugin marketplace add mrozmk/AI_Coding_Starter --ref release && codex plugin add harness@ai-coding-starter --json
-```
-
-Then `/harness:setup-start` binds the installed plugin to the project and, on request, writes the optional short aliases (`/harness:prime`, `/harness:brainstorm`, …) into `.claude/commands/`. What stays in the project as ordinary starter files: `/maintain:sync-from-starter`, the `pr-comments` skill (permission-pinned), the convention templates, the `Simply` output style, `settings.json`, `.mcp.json` and the Bash hooks. The packaged runbook (`references/installation.md` inside the installed plugin) carries install, binding, activation, update, rollback and the per-version migration notes, including the `migrated` record that keeps `/maintain:sync-from-starter` from re-offering replaced legacy files.
 
 ## Requirements
 
 **Required:**
 - [Claude Code](https://claude.com/claude-code) — the CLI tool that drives all slash commands and skills shipped here.
-- Git — for the `/harness:commit`, `/harness:push`, `/harness:pull`, `/harness:release` workflow.
+- Git — for the `/commit`, `/push`, `/pull`, `/release` workflow.
 - [`jq`](https://jqlang.github.io/jq/) — required by the workflow hooks (`guard-memory`, `track-memory-read`, `audit-append`, `guard-push`). Most **fail open silently** without it: the memory-distillation guard never fires, the audit log stays empty, and read telemetry is not recorded — with no error shown. `guard-push` fails open **loudly** (it prints a "secret scan SKIPPED" warning) so the security gap is visible. Install via `brew install jq` / `apt install jq` before relying on those safeguards.
 - [`gitleaks`](https://github.com/gitleaks/gitleaks) *(optional)* — if on `PATH`, `guard-push` runs it as a broader entropy/ruleset pass on top of its built-in baseline scan. Without it the baseline (known-format tokens, private keys, credential files, hardcoded assignments) still applies.
-- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review and delegation**: a second, independent model (GPT-class) reviews or implements work the primary thread supervises. Every call goes through the plugin's supervised scripts — `review-orchestrator.mjs` for specs and plans (`/harness:brainstorm` Step 8, `/harness:plan-feature` Phase 7) and `executor-orchestrator.mjs` for code: read mode in `/harness:quick-change` (Phase 2, on the plan before any code exists), `/harness:check-implementation` (Step 1.5, on the gate-approved diff), `/harness:architecture-review --codex` (Phase 0, a second independent sweep) and `/harness:orchestrate` (Phase 7 step 0, on the whole run's diff); write mode in `/harness:execute codex` and the `/harness:check-implementation codex` fixer. Whether the team reviews is a profile choice (`groups.review`), never inferred from installed CLIs: with the group on and `codex` absent, the step is **blocked, not skipped**; with the group off, every skill reports the opt-out on its own line. Install + `codex login` to activate.
+- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review**: a second, independent model (GPT-class) reviews work the primary thread produced. Used by `/codex-review` (standalone diff/proposal review), by `/quick-change` (Phase 2, on the plan before any code exists), and as a conditional gate inside `/plan-feature` (Phase 7), `/brainstorm` (Step 8), `/check-implementation` (Step 1.5, on the gate-approved diff), `/architecture-review --codex` (Phase 0, a second independent sweep) and `/orchestrate` (Phase 7 step 0, on the whole run's diff). The conditional gates **skip cleanly** when `codex` is not on `PATH` (each logs one "skipped — codex not on PATH" line, no error), keeping the harness portable; the standalone `/codex-review` instead **hard-stops** with a clear install/login message, since running it without `codex` has no fallback. **`/quick-change` sits between the two:** its review is mandatory in the sense that nothing you can type disables it, but an absent `codex` degrades the run rather than blocking it — the missing opinion is reported on its own line instead of being silently dropped. Install + `codex login` to activate.
 
 **Optional (per integration):**
-- **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill, or to feed Jira issues into `/harness:test-e2e CS-1`. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
+- **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill, or to feed Jira issues into `/test-e2e CS-1`. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
 - **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
-- **MCP Playwright** — only needed if you plan to use `/harness:test-e2e` for browser-driven E2E test generation. See [MCP Playwright setup](#mcp-playwright-optional) below.
+- **MCP Playwright** — only needed if you plan to use `/test-e2e` for browser-driven E2E test generation. See [MCP Playwright setup](#mcp-playwright-optional) below.
 
-That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/harness:create-rules` adapts to whatever you initialize).
+That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/setup:create-CLAUDE_MD` adapts to whatever you initialize).
 
 ### Recommended MCP servers
 
@@ -161,9 +149,9 @@ These three MCP servers extend the shipped commands. Install only what you actua
 
 | MCP | What it does | Repo | Used by |
 |-----|--------------|------|---------|
-| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/harness:plan-feature` Phase 2, `/setup:stack-research`, `/harness:brainstorm` for new deps) |
-| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/harness:test-e2e`, UI checks in `/harness:gates-verify-implementation` |
-| **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/harness:prime-ba`, `/harness:test-e2e CS-1` |
+| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/setup:stack-research`, `/brainstorm` for new deps) |
+| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/gates:verify-implementation` |
+| **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
 
 **Quick install (Claude Code CLI):**
 
@@ -186,34 +174,34 @@ For canonical install commands, env-var configuration, and version pinning, foll
 
 The committed `.mcp.json` declares the `atlassian` server and reads its credentials from `.env` (`--env-file .env`). To activate Jira:
 
-1. Answer **Jira: yes** in `/harness:setup-start`, then uncomment the Jira block in `.env.example` by hand (the plugin never touches `.env*`). Then copy the template: `cp .env.example .env && chmod 600 .env`
+1. Answer **Jira: yes** in `/setup:start` — it activates the Jira block in `.env.example` (or uncomment it by hand). Then copy the template: `cp .env.example .env && chmod 600 .env`
 2. Fill in your Atlassian credentials in `.env` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
 3. Restart Claude Code — the MCP server loads `.env` at startup, not per call. Repeat after every edit of `.env`.
-4. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/harness:prime-ba` skip the project prompt.
+4. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/prime-ba` skip the project prompt.
 
 `.env` is gitignored — credentials never leave your machine; `.mcp.json` holds no secrets, so the server list stays shared and synced via `/maintain:sync-from-starter`. If you skip this, the `/jira` skill simply hard-stops with a clear error message; nothing else breaks.
 
 ### MCP Playwright (optional)
 
-Required only if you use the `/harness:test-e2e` command. The starter uses Microsoft's [playwright-mcp](https://github.com/microsoft/playwright-mcp):
+Required only if you use the `/test-e2e` command. The starter uses Microsoft's [playwright-mcp](https://github.com/microsoft/playwright-mcp):
 
 ```bash
 claude mcp add playwright -- npx -y @playwright/mcp@latest
 ```
 
-Once installed, `/harness:test-e2e` can drive a real browser to explore your UI and generate Playwright test files. If you skip this, `/harness:test-e2e` falls back to a degraded mode (plan derived from code/spec inspection) instead of failing.
+Once installed, `/test-e2e` can drive a real browser to explore your UI and generate Playwright test files. If you skip this, `/test-e2e` falls back to a degraded mode (plan derived from code/spec inspection) instead of failing.
 
 ---
 
 ## Quick start
 
-> **Bootstrap chain:** `/harness:setup-start` → it prints the rest, in order, for your kind of project.
+> **Bootstrap chain:** `/setup:start` → it prints the rest, in order, for your kind of project.
 >
 > Each command produces a concrete artifact and feeds the next one. Running them in the printed order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
 
-### 0. Run `/harness:setup-start`
+### 0. Run `/setup:start`
 
-Open `claude` in the fresh clone and run `/harness:setup-start`. It asks a short set of plain-language questions (language, new or existing code, where the repo is hosted, how code reaches `main`, Jira, Confluence, Codex, independent review, QA), writes `.agents/project-profile.json`, renders the rules and the `CLAUDE.md` branch model, seeds the memory layer, binds the installed plugin, swaps this framework guide aside for a project README, and prints the numbered list of what to run next. The detailed steps below are that list, explained.
+Open `claude` in the fresh clone and run `/setup:start`. It asks seven plain-language questions (language, new or existing code, where the repo is hosted, how code reaches `main`, Jira, Confluence, Codex), writes `.claude/project-profile.json`, prepares `.env.example` / `.mcp.json` / the `CLAUDE.md` branch model, offers to remove the command groups you will never use, and prints the numbered list of what to run next. The detailed steps below are that list, explained.
 
 ### 1. Create a new project from this template
 
@@ -248,7 +236,7 @@ All three give you the same result: a fresh project with starter scaffolding and
 
 ### 2. Drop raw materials (optional)
 
-If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). `/harness:create-prd` picks them up automatically as input context.
+If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/setup:create-PRD` and `/setup:createwikillm` will pick them up automatically as input context.
 
 > **Next step:** once the materials are in place, run `/setup:create-PRD` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation to draft the PRD.
 
@@ -279,9 +267,9 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
 ```
 
-> `/harness:setup-start` prints when to run it (after `/harness:stack-research`, before `/harness:create-backlog`); `/harness:create-rules` also refreshes it when the brief is still empty.
+> `/setup:start` prints when to run it (after `/setup:stack-research`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty.
 >
-> Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/harness:prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
+> Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
 
 ### Optional: Map the delivery before brainstorming feature by feature
 
@@ -289,25 +277,25 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /setup:create-backlog
 ```
 
-> Run `/harness:prime` first — this command (and `/harness:brainstorm`) stops without primed context. **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/harness:brainstorm → spec → /harness:plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
+> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/brainstorm → spec → /plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
 >
-> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira derives its issues *from* the backlog via `/jira bulk` (a manual/assisted export — there is no automatic sync), one-way: backlog → Jira, never a second parallel list maintained in reverse. A bare `/harness:brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* task (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
+> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira derives its issues *from* the backlog via `/jira bulk` (a manual/assisted export — there is no automatic sync), one-way: backlog → Jira, never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* task (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
 >
-> It's the input to `/harness:brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
+> It's the input to `/brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
 >
-> **Brownfield:** map the codebase first with `/harness:create-rules --map`, then run this. **Maintenance:** when the backlog exists, `/harness:plan-feature` ticks a work package to `WIP` + records the spec/plan `Ref`, and `/harness:orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
+> **Brownfield:** run `/setup:map-codebase` first (it reconstructs the PRD), then this. **Maintenance:** when the backlog exists, `/plan-feature` ticks a work package to `WIP` + records the spec/plan `Ref`, and `/orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
 
 ### 6. Initialize project rules (after first scaffolding)
 
 ```
-/harness:create-rules
+/setup:create-CLAUDE_MD
 ```
 
-> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
+> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. Then run `/setup:start --rerun` once (it fills the toolchain preflight in `check-project-deps.sh` now that a manifest exists) and this command. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
 >
-> It reads the branch model and language from the project profile instead of asking again, presents every derived fact with the file it came from, and refuses to silently overwrite a value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it cascades into the PRD→brief step first (skipped when the brief is current).
+> It reads the branch model and language from `.claude/project-profile.json` (written by `/setup:start`) instead of asking again, and refuses to silently overwrite a `CLAUDE.md` value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it runs the PRD→brief step itself first (skipped when the brief is current).
 >
-> **Adopting into a large existing codebase (brownfield)?** Add `--map`: `/harness:create-rules --map` partitions the repository, summarises each partition in an isolated context, reduces those summaries through a bounded tree, and presents the resulting map for confirmation before anything is written.
+> **Adopting into a large existing codebase (brownfield)?** Don't run this alone — run [`/setup:map-codebase`](.claude/commands/setup/map-codebase.md) instead. It fans out parallel analysis sub-agents (distilled summaries, no context flooding), produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD` — the whole Phase-1 AI layer in one guided run with two review checkpoints.
 
 It generates **three files** in tandem:
 - `CLAUDE.md` — slim rules file (hard cap ≤165 lines / ≤9 500 chars), filled with project overview, tech stack, commands, conventions
@@ -319,7 +307,7 @@ The CLAUDE/architecture split keeps `CLAUDE.md` cheap to load every session whil
 ### 7. Design a feature
 
 ```
-/harness:brainstorm <feature idea>
+/brainstorm <feature idea>
 ```
 
 Explores requirements, proposes 2-3 approaches, and writes a design doc to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code is written until the design is approved.
@@ -327,8 +315,8 @@ Explores requirements, proposes 2-3 approaches, and writes a design doc to `.age
 ### 8. Plan the implementation
 
 ```
-/harness:plan-feature          # picks up the newest spec from .agents/specs/
-/harness:plan-feature .agents/specs/2026-04-19-my-feature.md   # or point at a specific spec
+/plan-feature          # picks up the newest spec from .agents/specs/
+/plan-feature .agents/specs/2026-04-19-my-feature.md   # or point at a specific spec
 ```
 
 Reads the approved spec, analyzes the codebase, and — **only if** the spec declares `External docs required: yes` — performs a web-research phase for the libs/APIs listed in the spec's `External dependencies`. Writes a step-by-step plan to `.agents/plans/active/`.
@@ -336,19 +324,19 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 ### 9. Execute
 
 ```
-/harness:execute
+/execute
 ```
 
 Runs the active plan. Moves it to `.agents/plans/done/` when complete.
 
-> If the feature includes UI, run `/harness:test-e2e <flow-name>` (or `/harness:test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
+> If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
 >
-> Run `/harness:gates-verify-implementation` after `/harness:execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
+> Run `/gates:verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
 
 ### 10. Commit
 
 ```
-/harness:commit
+/commit
 ```
 
 Conventional-commit message, plus a memory checkpoint — captures any lessons, decisions, or patterns worth keeping in `.agents/memory/`.
@@ -359,29 +347,32 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 
 | Command | When to run |
 |---------|-------------|
-| `/harness:setup-start [--rerun]` | Once, right after cloning (or adopting the harness into an existing repo): interview → the project profile → rules, memory seed, plugin binding, the starter README/LICENSE swap → the ordered list of next commands. `--rerun` to change answers. |
+| `/setup:start [--rerun]` | Once, right after cloning (or adopting the harness into an existing repo): interview → `.claude/project-profile.json` → day-one config → optional command pruning → the ordered list of next commands. `--rerun` to change answers. |
 | `/confluence <url \| id \| search \| new "Title" \| publish <draft>>` | Reading or authoring Confluence pages — same MCP server and token as `/jira` (`CONFLUENCE_*` in `.env`). Authoring is local-first: draft in `.agents/handoffs/confluence-drafts/`, publish only on explicit `y`. |
-| `/harness:pr-create [KEY]` | Work is committed and ready for review — pushes via `/harness:push`, derives title/dest/merge strategy from the tracker + Branch model, fills the repo's PR template honestly, prints the create-PR URL. Never opens or merges the PR. |
+| `/pr-create [KEY]` | Work is committed and ready for review — pushes via `/push`, derives title/dest/merge strategy from the tracker + Branch model, fills the repo's PR template honestly, prints the create-PR URL. Never opens or merges the PR. |
 | `/pr-comments [KEY]` | Reviewers left comments on your PR (GitHub / Bitbucket / GitLab, detected from `origin`) — pulls the threads, triages which still need you, proposes a reply + optional fix per thread, posts only on a per-thread `y`. Never resolves threads, never commits. |
-| `/harness:start-task <KEY>` | Starting a tracker issue — fetches it, proposes `<type>/<KEY>-<slug>` (confirmed), cuts the branch off the fresh base from the Branch model, then runs `/harness:prime` + `/harness:brainstorm <KEY>`. Soft-fails to a typed title when the tracker MCP is absent. |
-| `/harness:prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
-| `/harness:prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
-| `/harness:prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/harness:prime`. |
-| `/harness:prime-qa` | When verifying acceptance criteria against a running system — loads `errors.md` + `domain/*` + the QA evidence taxonomy, then runs an injected environment preflight (host reachability, build skew, credentials presence, parallel-session safety) that resolves `BASE_URL` deterministically. Deliberately **never** reads `specs/` or `plans/`: the author's intent biases the verdict toward what was meant rather than what shipped. Configure hosts in `.claude/qa-env.json`. Self-contained — do not run `/harness:prime` first. |
-| `/harness:qa-verify [key\|spec\|task-id]` | After `/harness:prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/harness:check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one verifier**: the browser-free static `qa-contract`; every other family's verifier (including the rest of lane P, e.g. `qa-config`, plus the browser `S` and design `I` lanes) is declared in the registry and **guarded** — its ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
-| `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/harness:prime` calls stay fast and current. |
+| `/start-task <KEY>` | Starting a tracker issue — fetches it, proposes `<type>/<KEY>-<slug>` (confirmed), cuts the branch off the fresh base from the Branch model, then runs `/prime` + `/brainstorm <KEY>`. Soft-fails to a typed title when the tracker MCP is absent. |
+| `/prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
+| `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
+| `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
+| `/prime-qa` | When verifying acceptance criteria against a running system — loads `errors.md` + `domain/*` + the QA evidence taxonomy, then runs an injected environment preflight (host reachability, build skew, credentials presence, parallel-session safety) that resolves `BASE_URL` deterministically. Deliberately **never** reads `specs/` or `plans/`: the author's intent biases the verdict toward what was meant rather than what shipped. Configure hosts in `.claude/qa-env.json`. Self-contained — do not run `/prime` first. |
+| `/qa-verify [key\|spec\|task-id]` | After `/prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one verifier**: the browser-free static `qa-contract`; every other family's verifier (including the rest of lane P, e.g. `qa-config`, plus the browser `S` and design `I` lanes) is declared in the registry and **guarded** — its ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
+| `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
 | `/setup:stack-research` | Once after `/setup:create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/setup:stack-research realtime`, `/setup:stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
-| `/harness:test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
+| `/setup:map-codebase` | **Brownfield bootstrap** — adopting the workflow into a large existing codebase that never had AI. One run: parallel fan-out comprehension (distilled summaries, no context flooding) → `architecture.md` + reconstructed `docs/PRD.md` → cascades into `/maintain:refresh-brief` + `/setup:create-CLAUDE_MD`. Two review checkpoints (scope; PRD validation). See [.claude/commands/setup/map-codebase.md](.claude/commands/setup/map-codebase.md). |
+| `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
 | `/maintain:sync-from-starter [--check\|<ref>]` | Pull newer workflow definitions from the upstream starter (commands, agents, skills, hooks, config) without touching project knowledge. 3-way aware via a committed `.claude/.starter-sync.json` provenance manifest; recommends but asks on `settings.json`/hook conflicts. `--check` = dry-run only; `<ref>` = pin to a tag. See [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md). |
-| `/harness:retro` | At the end of a long or frictional session, before `/clear` — generates an **evidence-based** session retrospective from the session's `.jsonl` transcript (paths, counts, tool-call refs, timestamps; no opinions or self-assessment). Refuses to write when the session was trivial or friction-free (`<15` tool calls, `<5` min, or zero friction signals) — `--force` overrides loudly. Saves one `.md` under `.agents/retros/` (or `.claude/retros/`); never touches code or repo state. Its signals are for a human comparing several retros; nothing consumes them automatically. Flags: `--dry-run`, `--force`, `--transcript <path>`, `--slug <kebab>`. |
-| `/harness:analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
-| `/harness:simply [topic]` | Re-explains what just happened in plain language — what I did / did it work / what now, in the project's communication language. No new work, no file edits, no memory writes; empty argument defaults to the immediately preceding work. |
-| `/harness:gates-check-quality` | Before committing — format, lint, type-check, file-size gates. |
-| `/harness:gates-verify-implementation [plan-name]` | After `/harness:execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
-| `/harness:check-implementation [plan-name]` | The **full** quality loop after `/harness:execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `harness:gates-verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/harness:commit`. Unlike `/harness:gates-verify-implementation` it **applies** fixes; unlike `/harness:orchestrate` it does not commit/push. The same loop `/harness:orchestrate` runs per-step (Step 5.1b). |
-| `/harness:quick-change <what to change>` | **The fast lane for small changes** — when `/harness:brainstorm → /harness:plan-feature → /harness:execute` is too heavy but "just do it" is too risky. Short plan in chat (no spec, no plan file) → **`codex` reviews the plan before any code exists** (idea mode) → implement → `/code-review` at low effort → `/harness:deep-review` → the `CLAUDE.md → Validation` gates. The review is **mandatory — there is no opt-out flag**; it is skipped only when `codex` is not installed, and the report says so on its own line. A Phase 0 guard always fires when the change touches a sensitive path, spans >~5 files, adds a dependency, changes a schema/contract, or needs a design reference — it names the criterion and recommends the real route, and you may override it. Writes nothing to `.agents/`, never commits. |
+| `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Four sequential phases: (1) reference integrity check across 5 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files; (4) workflow optimization audit — systemic drift in the workflow itself (stale auto-loads, internal contradictions, unbounded automation, config gaps). No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phases 3–4. |
+| `/retro` | At the end of a long or frictional session, before `/clear` — generates an **evidence-based** session retrospective from the session's `.jsonl` transcript (paths, counts, tool-call refs, timestamps; no opinions or self-assessment). Refuses to write when the session was trivial or friction-free (`<15` tool calls, `<5` min, or zero friction signals) — `--force` overrides loudly. Saves one `.md` under `.agents/retros/` (or `.claude/retros/`); never touches code or repo state. Output feeds `/maintain:cleanup-workflow`. Flags: `--dry-run`, `--force`, `--transcript <path>`, `--slug <kebab>`. |
+| `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
+| `/simply [topic]` | Re-explains what just happened in plain language — what I did / did it work / what now, in the project's communication language. No new work, no file edits, no memory writes; empty argument defaults to the immediately preceding work. |
+| `/gates:check-quality` | Before committing — format, lint, type-check, file-size gates. |
+| `/gates:verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
+| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/commit`. Unlike `/gates:verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
+| `/quick-change <what to change>` | **The fast lane for small changes** — when `/brainstorm → /plan-feature → /execute` is too heavy but "just do it" is too risky. Short plan in chat (no spec, no plan file) → **`codex` reviews the plan before any code exists** (idea mode) → implement → `/code-review` at low effort → `/deep-review` → the `CLAUDE.md → Validation` gates. The review is **mandatory — there is no opt-out flag**; it is skipped only when `codex` is not installed, and the report says so on its own line. A Phase 0 guard always fires when the change touches a sensitive path, spans >~5 files, adds a dependency, changes a schema/contract, or needs a design reference — it names the criterion and recommends the real route, and you may override it. Writes nothing to `.agents/`, never commits. |
+| `/codex-review [idea\|diff] [hint]` | **Independent cross-model review** — hands the current work to `codex` (a different model) for a review steered by zero opinions, then judges its findings honestly back in the main thread. Two modes, auto-detected: **`diff`** reviews CHANGES already made (uncommitted/unpushed work), **`idea`** reviews a PROPOSAL before any code is written. Codex orients itself by replaying `/prime`, runs detached with a heartbeat every ~3 min, and only advises — you decide what to apply. Requires `codex` on `PATH` (see Requirements); hard-stops with a clear message if absent. |
 
-Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLAUDE.md` to a tech lead in CODEOWNERS, so a change to the rules gets a rules-owner review (`/harness:setup-start` prints the stanza).
+Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLAUDE.md` to a tech lead in CODEOWNERS, so a change to the rules gets a rules-owner review (`/setup:start` prints the stanza).
 
 ---
 
@@ -395,22 +386,22 @@ Three commands do heavy multi-step work. They use **two different orchestration 
 
 | Role | Agent | Effort | Mutates? | Why |
 |------|-------|--------|----------|-----|
-| Orchestrator (your session) | — (the `/harness:orchestrate` driver) | your interactive session's setting | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
+| Orchestrator (your session) | — (the `/orchestrate` driver) | your interactive session's setting | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
 | Execute a plan | `orchestrator-executor` | `low` (`acceptEdits`) | ✅ code | implementation against a plan that already did the thinking |
 | Execute a hard step | `orchestrator-executor-hard` | `medium` (`acceptEdits`) | ✅ code | same contract, more reasoning — spawned when the plan marks the step `medium` |
 | Refine (bugs + cleanup) | `orchestrator-refiner` | `low` (`acceptEdits`) | ✅ code | runs `code-review --fix` + `deep-review` |
 | Verify (code gate) | `orchestrator-verifier` | **`high`** | ❌ read-only | the gate must be sharp; independence from the fixer |
 | Design parity | `orchestrator-designer` | **`high`** | ❌ read-only | pixel/structural audit vs reference design |
 | Commit | `orchestrator-committer` | `low` (`acceptEdits`) | ✅ git index | purely mechanical stage+commit |
-| Doc sync | `documentation-manager` | `low` | ✅ docs | only on `/harness:orchestrate --sync-docs` when docs would drift |
+| Doc sync | `documentation-manager` | `low` | ✅ docs | only on `/orchestrate --sync-docs` when docs would drift |
 
-> **Difficulty travels in the plan, not the terminal.** `/harness:plan-feature` writes `**Execution effort:** low | medium` into a single-file plan's header, or an `Effort` cell per row in an umbrella plan's `## Execution Plan` table. `/harness:orchestrate` reads that to choose between `orchestrator-executor` and `orchestrator-executor-hard`. Changing the pinned model means editing `model:` in `.claude/agents/*.md` — a deliberate sync point, so the pipeline never silently drifts onto a costlier tier.
+> **Difficulty travels in the plan, not the terminal.** `/plan-feature` writes `**Execution effort:** low | medium` into a single-file plan's header, or an `Effort` cell per row in an umbrella plan's `## Execution Plan` table. `/orchestrate` reads that to choose between `orchestrator-executor` and `orchestrator-executor-hard`. Changing the pinned model means editing `model:` in `.claude/agents/*.md` — a deliberate sync point, so the pipeline never silently drifts onto a costlier tier.
 
 > Keeping the **verifier/designer (judges) on a different, read-only setup from the executor/refiner (fixers)** is deliberate — no agent grades its own homework.
 
-> **One deliberate exception:** the `/harness:qa-verify` verifiers (today: `qa-contract`) pin a cheaper Sonnet tier instead of Opus 5 — they run many in parallel per QA run and do bounded static reads, so the per-agent model cost, not judgment depth, dominates.
+> **One deliberate exception:** the `/qa-verify` verifiers (today: `qa-contract`) pin a cheaper Sonnet tier instead of Opus 5 — they run many in parallel per QA run and do bounded static reads, so the per-agent model cost, not judgment depth, dominates.
 
-### `/harness:check-implementation` — in-context quality loop (no fleet)
+### `/check-implementation` — in-context quality loop (no fleet)
 
 Drives freshly-written code to **commit-ready**, then stops. Runs **in your own session** (you see every step) — it does *not* spawn an executor fleet; the only thing it spawns is the design gate (to isolate visual-tool output). It **applies fixes** but never commits.
 
@@ -418,56 +409,82 @@ Drives freshly-written code to **commit-ready**, then stops. Runs **in your own 
 resolve scope (plan | diff-only)
   └─ loop, max 3×:
        1a /code-review --fix   (correctness — find & fix logic bugs)
-       1b /harness:deep-review         (cleanliness — structural / maintainability cleanup)
-       1c /harness:gates-verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
-       1d harness:orchestrator-designer  ← spawned, Opus 5 high, ONLY if UI changed AND a reference design exists
+       1b /deep-review         (cleanliness — structural / maintainability cleanup)
+       1c /gates:verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
+       1d @orchestrator-designer  ← spawned, Opus 5 high, ONLY if UI changed AND a reference design exists
        1e decide: approve → done · gaps → feed into next 1a · blocker / 3× → escalate to you
   └─ 1.5 cross-model review ← codex (different model, read-only judge; only if installed) reads the
        gate-approved diff cold — surviving findings get ONE fixer pass + re-gate, never a new loop
-  └─ leaves a clean tree → you run /harness:commit
+  └─ leaves a clean tree → you run /commit
 ```
 
 **Why this order:** bugs first (don't polish code you're about to rewrite), cleanliness second, then the read-only gate (it can't invalidate itself), design last (slowest, UI-only). The design gate defaults to **skip** unless the change touches UI *and* a reference design exists.
 
-### `/harness:orchestrate` — full autonomous pipeline (spawns the fleet, commits, pushes)
+### `/orchestrate` — full autonomous pipeline (spawns the fleet, commits, pushes)
 
 The only command that takes a plan all the way to **pushed**. Your main session becomes the **orchestrator**: it decides / routes / loops / reports and performs the `git push` itself (push authorization lives in your session, not in sub-agents) — but it never implements, audits, or commits. Each of those is a sub-agent.
 
 **Per step** (sequential; flat = one plan, umbrella = a DAG of steps each in its own git worktree on a named branch, fast-forward-merged to `main`):
 
 ```
-5.1  Execute       → harness:orchestrator-executor   (Opus 5 low; the plan's Effort column routes `medium` steps to harness:orchestrator-executor-hard)
+5.1  Execute       → @orchestrator-executor   (Opus 5 low; the plan's Effort column routes `medium` steps to @orchestrator-executor-hard)
 5.1-recon          → orchestrator re-derives the facts itself (independent ground-truth, before trusting any report)
-5.1b Refine        → harness:orchestrator-refiner     (Opus 5 low — code-review --fix + deep-review)
-5.2  Verify   ≤3×  → harness:orchestrator-verifier    (Opus 5 high, read-only)          ┐ GAPS loop back
-5.3  Design   ≤2×  → harness:orchestrator-designer    (Opus 5 high, read-only)          ┘ into the next Refine/Execute
+5.1b Refine        → @orchestrator-refiner     (Opus 5 low — code-review --fix + deep-review)
+5.2  Verify   ≤3×  → @orchestrator-verifier    (Opus 5 high, read-only)          ┐ GAPS loop back
+5.3  Design   ≤2×  → @orchestrator-designer    (Opus 5 high, read-only)          ┘ into the next Refine/Execute
        (5.3 runs ONLY if .agents/specs/design/Ready/ exists)
-5.4  Commit        → harness:orchestrator-committer   (Opus 5 low) → clean-build gate
+5.4  Commit        → @orchestrator-committer   (Opus 5 low) → clean-build gate
 5.4b Push          → orchestrator (your session) — git push, ff-merge the step branch to main
 ─ once, end of run ─
 7.0  Cross-model   → codex (different model, read-only judge; only if installed) reviews the whole
      review          run's diff cold — surviving findings get ONE refine→verify→commit cycle
 ```
 
-**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) an independent codex pass cross-reviews the whole run's diff (step 0, when the profile's `review` group is on — surviving findings get one refine→verify→commit cycle), then it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `harness:documentation-manager` and commits a `docs:` follow-up.
+**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) an independent codex pass cross-reviews the whole run's diff (step 0, only if `codex` is installed — surviving findings get one refine→verify→commit cycle), then it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `@documentation-manager` and commits a `docs:` follow-up.
 
-> `/harness:check-implementation` ≈ the 5.1b→5.2 slice of `/harness:orchestrate`, run inline in your session without the commit/push. Use `/harness:check-implementation` when you want to drive + review; `/harness:orchestrate` when you trust the pipeline to ship.
+> `/check-implementation` ≈ the 5.1b→5.2 slice of `/orchestrate`, run inline in your session without the commit/push. Use `/check-implementation` when you want to drive + review; `/orchestrate` when you trust the pipeline to ship.
 
-### `/harness:create-rules --map` — bounded fan-out for a large codebase
+### `/setup:map-codebase` — Workflow fan-out (a different primitive)
 
-Brownfield comprehension is a branch of `create-rules`, not a separate engine. Every context boundary is explicit, so the map costs a predictable amount on either host.
+Brownfield comprehension uses the **`Workflow` engine**, not the Agent-tool fleet above — a deterministic script with a hard concurrency cap and token budget. Your session drives the **interaction + sequencing** (the two checkpoints, the cascade); the Workflow runs the **parallel compute**.
 
 ```
-1  Partition        git ls-files, noise dropped, grouped by top-level dir
-                    ≤ 25 files / 200 KB per partition → harness-state/map/manifest.json
-   🛑 Checkpoint — confirm scope, the skipped noise and the budget
-2  Summarise        one ≤ 40-line summary per partition, persisted and keyed by content hash
-3  Reduce           bounded tree: ≤ 16 children / 60 KB per node, ≤ 60 lines out, until one root
-4  Propose          the root summaries go to the facts-review screen; Phase 7 writes architecture.md
+Phase 0  Scan & filter        (deterministic bash, NO LLM — git ls-files -z, categorize, import-graph in-degree)
+   🛑 Checkpoint 1 — confirm scope (what's analyzed / skipped)
+Phase 1  Fan-out (parallel, concurrency-capped at min(16, cores−2)):
+            N × module-analyzer   (one per module — schema-validated summary, NEVER raw source)
+            docs-analyzer         (README/docs/ADRs → decisions, patterns, the "why")
+            infra-analyzer        (IaC/CI → hosting, deployables, external services)
+Phase 2  Synthesis (from summaries only — never re-reads code):
+            architecture-synthesizer  → architecture.md (+ topology + Mermaid map)
+            reverse-prd-writer         → docs/PRD.md
+            data-model-synthesizer     → domain/data-model.md (if persistence)
+   write artifacts
+   🛑 Checkpoint 2 — validate the reconstructed PRD
+Phase 4  Cascade → /maintain:refresh-brief → /setup:create-CLAUDE_MD
 ```
 
-**Anti-flooding contract:** summaries are distilled, never file contents, and the aggregator never re-reads source. On Claude Code each partition and each node runs in an isolated read-only subagent; on Codex the session is the boundary — one invocation takes at most 10 partitions or 8 reduction nodes and leaves a cursor in the manifest, so a rerun continues where it stopped.
+**Anti-flooding contract:** analyzers return distilled summaries, never file contents — so codebase size scales the *number of agents*, not the aggregator's context. Workflow agents inherit your **session model**; the script never holds source code.
 
+---
+
+## When to run `/setup:createwikillm`
+
+`/setup:createwikillm` bootstraps a persistent, synthesized knowledge base (Karpathy's LLM Wiki pattern). It is **not** part of the minimal flow — run it only when the signals below match your project.
+
+**Run it when:**
+- You have **≥ 3-5 matured specs in `.agents/specs/`** or completed plans in `.agents/plans/done/`, and the same knowledge keeps resurfacing across features.
+- You are building a **product-facing LLM** (chatbot, runtime assistant, agent) that needs synthesized domain knowledge injected into its context at query time.
+- **`.agents/sources/` is a large corpus** (many transcripts, patch-notes, documentation files) that will not fit into a single prompt and benefits from pre-synthesis.
+- `.agents/memory/` entries are **drifting into long narratives** instead of short, actionable lessons — that is a signal you need a wiki layer.
+
+**Skip it (and stay with `memory/` + `reference/`) when:**
+- The repo is **fresh**, with no specs or completed plans yet.
+- The project is **small / single-feature** — memory files are enough.
+- There is **no product-LLM** consuming the wiki at runtime, and `.agents/sources/` is empty or ephemeral.
+- You would be maintaining it "just in case" — an unused wiki rots faster than it helps.
+
+If in doubt: do **not** run it. You can always add `/setup:createwikillm` later; removing an unused wiki after the fact is more work than adding one when you actually need it.
 
 ---
 
@@ -476,8 +493,8 @@ Brownfield comprehension is a branch of `create-rules`, not a separate engine. E
 - **KISS, YAGNI, SOLID** — write the simplest thing that works
 - **Fail fast** on programmer errors; degrade gracefully on user/env errors
 - **Read memory before acting** — `.agents/memory/` is permanent project context
-- **Design before building** — `/harness:brainstorm` is a hard gate before implementation
-- **Commits tell a story** — conventional commits via `/harness:commit`, no AI attribution unless asked
+- **Design before building** — `/brainstorm` is a hard gate before implementation
+- **Commits tell a story** — conventional commits via `/commit`, no AI attribution unless asked
 
 Full rules live in [CLAUDE.md](CLAUDE.md).
 
@@ -487,10 +504,10 @@ Full rules live in [CLAUDE.md](CLAUDE.md).
 
 `.claude/settings.json` ships a security-first policy:
 
-- **Git:** AI may run non-destructive operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url`, plus `revert` (only ever adds a new commit) and `merge --ff-only` (no merge commit, no history rewrite) — via the shipped `/harness:push` / `/harness:pull` / `/harness:release` / `/harness:commit` skills. The rest sits in two guard tiers (full lists in `settings.json`): **denied** — no prompt can override — are `push --force`/`-f`/`--force-with-lease`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`/`--staged`, `rebase` (incl. `pull --rebase`), `cherry-pick`, `config`, `remote remove/set-url/rename`, `reflog expire`, `gc --prune=now`/`--aggressive`; **ask-tier** — always prompts, even in auto mode — are `git rm`, `branch -d`/`-D`, `merge --no-ff`/`--squash`, `remote add`, `rm -rf`. A bare `git merge` and `git reset` soft/mixed are in no list — they prompt interactively.
+- **Git:** AI may run non-destructive operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url`, plus `revert` (only ever adds a new commit) and `merge --ff-only` (no merge commit, no history rewrite) — via the shipped [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) / [/release](.claude/commands/release.md) / [/commit](.claude/commands/commit.md) skills. The rest sits in two guard tiers (full lists in `settings.json`): **denied** — no prompt can override — are `push --force`/`-f`/`--force-with-lease`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`/`--staged`, `rebase` (incl. `pull --rebase`), `cherry-pick`, `config`, `remote remove/set-url/rename`, `reflog expire`, `gc --prune=now`/`--aggressive`; **ask-tier** — always prompts, even in auto mode — are `git rm`, `branch -d`/`-D`, `merge --no-ff`/`--squash`, `remote add`, `rm -rf`. A bare `git merge` and `git reset` soft/mixed are in no list — they prompt interactively.
 - **Secrets:** `.env*`, `*.pem`, `*.key`, `*secret*`, `*credentials*` — write/edit denied.
 - **Inline tokens in shell:** `Bash` denies any command containing known secret prefixes (`ATATT`, `ghp_`, `github_pat_`, `gho_`, `ghs_`, `ghu_`, `xoxb-`, `xoxp-`, `xapp-`, `xoxa-`, `AKIA`, `ASIA`, `sk-ant-`) — defense-in-depth so a literal token never gets cached in `permissions.allow` after an "Always allow" click.
-- **Secrets in pushed content:** the `guard-push` hook scans every `git push` for secrets in the commits about to be published — closing the gap the deny-prefixes leave open (a token in file *content*, not in a shell command). It blocks (exit 2) on known-format tokens, private keys, credentialed connection strings, hardcoded credential assignments, and credential files (`.env`, `*.pem`, `*.key`, `.npmrc`, `*.tfstate`, …); uses `gitleaks` for a broader pass if installed. Escape hatches: inline `# guard-push:allow`, `*.example` files, or `GUARD_PUSH_SKIP=1 git push` (logged to `audit.log`). See `/harness:push`.
+- **Secrets in pushed content:** the `guard-push` hook scans every `git push` for secrets in the commits about to be published — closing the gap the deny-prefixes leave open (a token in file *content*, not in a shell command). It blocks (exit 2) on known-format tokens, private keys, credentialed connection strings, hardcoded credential assignments, and credential files (`.env`, `*.pem`, `*.key`, `.npmrc`, `*.tfstate`, …); uses `gitleaks` for a broader pass if installed. Escape hatches: inline `# guard-push:allow`, `*.example` files, or `GUARD_PUSH_SKIP=1 git push` (logged to `audit.log`). See [/push](.claude/commands/push.md).
 - **Dangerous shell:** `sudo` — denied; `rm -rf` — ask-tier (always prompts).
 - **Hooks:** PreToolUse hooks append a timestamped audit trail to `.claude/audit.log` (gitignored).
 
@@ -500,7 +517,7 @@ User-local overrides live in `.claude/settings.local.json` (gitignored) — Clau
 
 ## Customizing the starter
 
-- Edit `CLAUDE.md` placeholders after `/harness:create-rules` runs — add project-specific rules, naming conventions, key files.
+- Edit `CLAUDE.md` placeholders after `/setup:create-CLAUDE_MD` runs — add project-specific rules, naming conventions, key files.
 - Add reference docs to `.agents/reference/` as you integrate new APIs/libraries.
 - Drop in new slash commands under `.claude/commands/` — they appear automatically.
 - Tighten or loosen `.claude/settings.json` permissions to match your risk profile.
@@ -524,23 +541,23 @@ The starter resolves this with a one-time **swap on bootstrap**, not a delete:
 
 1. **In the starter repo**, the root `README.md` is this framework guide (so the GitHub template
    page documents the workflow).
-2. **On your first `/harness:setup-start`**, step 3d shows you the plan and, once you approve it:
+2. **On your first `/setup:create-CLAUDE_MD`**, the command:
    - moves this guide to `.claude/README.md` (preserved, framework-owned), and
-   - seeds a short project `README.md` at the root with your project name and description.
-3. **On later runs** your project README is left alone. The step is idempotent: with the starter
-   marker gone it reports `kept` and touches nothing. It is also journaled, so a run interrupted
-   halfway resumes instead of guessing — and it refuses outright if a file changed underneath it.
+   - generates a fresh project `README.md` at the root from `.claude/templates/README-template.md`,
+     filled with your project name, description, tech stack, commands, and structure.
+3. **On later `/setup:create-CLAUDE_MD` runs**, your project README is left alone — it only offers to
+   fill leftover `{placeholder}` markers, never clobbering a customized README.
 
 After bootstrap:
 
 | File | Owner | Updated by |
 |------|-------|------------|
-| `README.md` (root) | **your project** | you (seeded once by `/harness:setup-start`) |
+| `README.md` (root) | **your project** | you / `/setup:create-CLAUDE_MD` placeholder fill |
 | `.claude/README.md` | **the framework** | `.claude/starter-sync-playbook.md` (pulls the starter's newest guide) |
-| `LICENSE` (root) | **your project** | you — the swap never generates one; add your own |
+| `LICENSE` (root) | **your project** | `/setup:create-CLAUDE_MD` bootstrap — you pick the license type + copyright holder |
 | `.claude/STARTER-LICENSE` | **the starter** (MIT attribution, preserved) | `.claude/starter-sync-playbook.md` |
 
-> **`LICENSE` moves aside, it is not replaced.** The starter's MIT notice moves to `.claude/STARTER-LICENSE` (MIT requires it to survive in copies of the scaffolding) — and only when its bytes really are the starter's; a licence you put there yourself stays at the root untouched. **No root `LICENSE` is generated:** picking a licence is yours to do, and the step prints it as a manual follow-up.
+> **`LICENSE` gets the same treatment as the README.** On first `/setup:create-CLAUDE_MD`, the starter's MIT license moves to `.claude/STARTER-LICENSE` (preserving the starter author's copyright notice — MIT requires it to survive in copies of the scaffolding) and a fresh root `LICENSE` is generated for *your* project from the type + copyright holder you choose. Later runs leave your `LICENSE` untouched.
 
 When you sync workflow updates from upstream (see below), the framework guide is refreshed at
 `.claude/README.md` — your project's root README is never touched.

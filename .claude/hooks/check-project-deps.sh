@@ -28,7 +28,7 @@ add() { problems="${problems}  - $1"$'\n'; }
 note() { problems="${problems}      $1"$'\n'; }
 
 # ---------------------------------------------------------------- toolchain ---
-# {Filled by /harness:setup-start (stack-detected) or by hand.} Cheap `command -v` proxies only.
+# {Filled by /setup:start (stack-detected) or by hand.} Cheap `command -v` proxies only.
 # Examples:
 #   command -v node >/dev/null 2>&1 || add "node not on PATH — Validation gates will fail. Install: brew install node"
 #   [ -d node_modules ] || add "node_modules missing — run 'npm install' before the gates."

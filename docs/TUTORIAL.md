@@ -62,7 +62,7 @@ The easiest way — and right away with **your own repository on GitHub** (handy
    cd my-todo-app
    ```
 
-💬 **What happens:** **your own repo** is created (a copy of the template with clean history), and `git clone` downloads it locally. Important: the remote repository is **wired up right away** (`origin`) — so in Step 11 a simple `/harness:push` is enough, nothing to configure.
+💬 **What happens:** **your own repo** is created (a copy of the template with clean history), and `git clone` downloads it locally. Important: the remote repository is **wired up right away** (`origin`) — so in Step 11 a simple `/push` is enough, nothing to configure.
 
 ✅ **How you know it's OK:** in the `my-todo-app` folder you see the files `CLAUDE.md`, `README.md` and the folders `.claude/` and `.agents/`. The command `git remote get-url origin` shows your repo's URL.
 
@@ -78,7 +78,7 @@ cd my-todo-app
 rm -rf .git
 git init
 ```
-This gives you a fresh, local Git history — but **without** a remote repo. Then in Step 11, before your first `/harness:push`, you'll need to manually create a repo and wire it up (`git remote add origin <url>`). All methods are described in [README → Quick start](../README.md#quick-start).
+This gives you a fresh, local Git history — but **without** a remote repo. Then in Step 11, before your first `/push`, you'll need to manually create a repo and wire it up (`git remote add origin <url>`). All methods are described in [README → Quick start](../README.md#quick-start).
 </details>
 
 ---
@@ -87,7 +87,7 @@ This gives you a fresh, local Git history — but **without** a remote repo. The
 
 > Open a Claude Code session in this folder (run `claude` in the terminal).
 
-> **First run `/harness:setup-start`.** It asks a short set of questions, prepares the project profile and rules, and prints the exact order of the steps below for your project — this tutorial explains each of them.
+> **First run `/setup:start`.** It asks seven short questions, prepares the config files, and prints the exact order of the steps below for your project — this tutorial explains each of them.
 
 ---
 
@@ -171,29 +171,27 @@ The backlog is the **layer between the PRD and a single plan**: the PRD says *wh
 
 ### Step 4: Build the project scaffold (first pass through the pipeline)
 
-> 🆕 **Here you go through the full work cycle for the first time:** `/harness:prime` → `/harness:brainstorm` → `/harness:plan-feature` → `/harness:execute`. You'll do it first on the **scaffold task** (`E0-1` from the backlog) — a light warm-up. Then (Step 6) you'll repeat the same cycle on a real feature. This rhythm is the heart of the whole workflow.
-
-> ℹ️ **Command names.** The commands below are plugin skills, written as `/harness:<skill>`. Short aliases (`/prime`, `/brainstorm`, …) are optional — `/harness:setup-start` writes them on request — and run the same skill.
+> 🆕 **Here you go through the full work cycle for the first time:** `/prime` → `/brainstorm` → `/plan-feature` → `/execute`. You'll do it first on the **scaffold task** (`E0-1` from the backlog) — a light warm-up. Then (Step 6) you'll repeat the same cycle on a real feature. This rhythm is the heart of the whole workflow.
 
 📋 **Type** (one after another, waiting for each command to finish):
 ```
-/harness:prime
-/harness:brainstorm
-/harness:plan-feature
-/harness:execute
+/prime
+/brainstorm
+/plan-feature
+/execute
 ```
 
 💬 **What happens, in order:**
-- `/harness:prime` — Claude loads the project context (PRD, backlog, rules).
-- `/harness:brainstorm` — with no argument it **takes the first free task from the backlog itself** (i.e. `E0-1: project scaffold`), announces which one, and designs *how* it should look. It writes the spec into `.agents/specs/`.
-- `/harness:plan-feature` — lays out a step-by-step plan into `.agents/plans/active/`.
-- `/harness:execute` — **creates the actual scaffold files** (dependency manifest, server entry file, directory layout) and moves the plan to `.agents/plans/done/`.
+- `/prime` — Claude loads the project context (PRD, backlog, rules).
+- `/brainstorm` — with no argument it **takes the first free task from the backlog itself** (i.e. `E0-1: project scaffold`), announces which one, and designs *how* it should look. It writes the spec into `.agents/specs/`.
+- `/plan-feature` — lays out a step-by-step plan into `.agents/plans/active/`.
+- `/execute` — **creates the actual scaffold files** (dependency manifest, server entry file, directory layout) and moves the plan to `.agents/plans/done/`.
 
 ✅ **How you know it's OK:** starter files appropriate for your stack appeared in the project (Claude will list them), and the plan moved from `active/` to `done/`. You have an "empty house" you'll furnish with the TODO feature in a moment.
 
 ⏭️ **Next:** Step 5.
 
-> 💡 **Empty `/harness:brainstorm` = "take the next task from the backlog".** When you don't provide a topic (and don't point to a Jira task), `/harness:brainstorm` reaches into `backlog.md` itself, takes the first **free** task (status `TODO`, dependencies satisfied) and makes sure it really isn't already done. Thanks to this you don't have to retype task names — you just work "from the top of the backlog". Want a specific task? Provide a topic: `/harness:brainstorm mark a task as done`.
+> 💡 **Empty `/brainstorm` = "take the next task from the backlog".** When you don't provide a topic (and don't point to a Jira task), `/brainstorm` reaches into `backlog.md` itself, takes the first **free** task (status `TODO`, dependencies satisfied) and makes sure it really isn't already done. Thanks to this you don't have to retype task names — you just work "from the top of the backlog". Want a specific task? Provide a topic: `/brainstorm mark a task as done`.
 
 > 💡 **Why is the scaffold a separate pass and not a manual command?** Because this way even the project's foundation goes through the normal, controlled pipeline — and you practice the whole rhythm on something simple before doing it on a real feature.
 
@@ -201,10 +199,10 @@ The backlog is the **layer between the PRD and a single plan**: the PRD says *wh
 <summary>💡 TIP — what each of these four commands does</summary>
 
 These are the four pillars of daily work:
-- **`/harness:prime`** — loads the project context at the start of a session (rules, map, PRD summary). Always the first command in a fresh chat.
-- **`/harness:brainstorm`** — a hard design gate: first *what and how*, only then code. Prevents writing something you'd have to throw away in a moment.
-- **`/harness:plan-feature`** — turns a spec into a concrete plan and "interrogates" it itself (self-critique) before writing anything.
-- **`/harness:execute`** — only now is code produced, strictly following the plan.
+- **`/prime`** — loads the project context at the start of a session (rules, map, PRD summary). Always the first command in a fresh chat.
+- **`/brainstorm`** — a hard design gate: first *what and how*, only then code. Prevents writing something you'd have to throw away in a moment.
+- **`/plan-feature`** — turns a spec into a concrete plan and "interrogates" it itself (self-critique) before writing anything.
+- **`/execute`** — only now is code produced, strictly following the plan.
 
 Each of them has a full description in the README: [Two daily flows](../README.md#two-daily-flows).
 </details>
@@ -217,32 +215,33 @@ Each of them has a full description in the README: [Two daily flows](../README.m
 
 📋 **Type** (one after another):
 ```
-/harness:create-rules
+/setup:start --rerun
+/setup:create-CLAUDE_MD
 ```
 
-💬 **What happens:** Claude analyzes your fresh scaffold and generates two things: a refined `CLAUDE.md` (project rules) and `.agents/memory/architecture.md` (the project map). Your project `README.md` was already seeded at bootstrap, when `/harness:setup-start` moved the framework guide to `.claude/README.md`.
+💬 **What happens:** `/setup:start --rerun` shows your earlier answers (keep them) and fills the one thing it skipped at the start — the toolchain check in `.claude/hooks/check-project-deps.sh`, now that a manifest (`package.json`, `pyproject.toml`, …) exists. Then Claude analyzes your fresh scaffold and generates three things: a refined `CLAUDE.md` (project rules), `.agents/memory/architecture.md` (project map), and **a new `README.md` describing YOUR project** (the current framework guide moves to `.claude/README.md`).
 
-✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root README describes your TODO app.
+✅ **How you know it's OK:** `CLAUDE.md` now has filled-in sections about your project (not `{...}` placeholders), and the root has a README about your TODO app.
 
 ⏭️ **Next:** Step 6 — the first real feature.
 
 <details>
 <summary>💡 TIP — what happened to the original README</summary>
 
-On the first run of `/harness:setup-start` the template performs a "swap": it moves its framework guide to `.claude/README.md` (it stays available), and seeds your project's README at the root. Your `LICENSE` is yours to add — the swap moves the starter's notice to `.claude/STARTER-LICENSE` and never generates one for you. This way your repo's page describes your app, not the template. This tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [README → "The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
+On the first run of `/setup:create-CLAUDE_MD` the template performs a "swap": it moves its framework guide to `.claude/README.md` (it stays available), and creates your project's README at the root. This way your repo's page describes your app, not the template. This tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [README → "The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
 </details>
 
 ---
 
 ### Step 6: Design the first feature (brainstorm)
 
-> 🆕 **A second pass through the same cycle** — this time on the real TODO feature. Note: the steps are practically identical to Step 4. That's NOT a coincidence — `/harness:brainstorm` → `/harness:plan-feature` → `/harness:execute` → `/harness:check-implementation` → `/harness:commit` is the rhythm you repeat for **every** feature for the rest of the project's life.
+> 🆕 **A second pass through the same cycle** — this time on the real TODO feature. Note: the steps are practically identical to Step 4. That's NOT a coincidence — `/brainstorm` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit` is the rhythm you repeat for **every** feature for the rest of the project's life.
 
-First refresh the context (a new chat window, then `/harness:prime`):
+First refresh the context (a new chat window, then `/prime`):
 
 📋 **Type:**
 ```
-/harness:prime
+/prime
 ```
 💬 **What happens:** Claude loads the project rules, the architecture map and the PRD summary. Now it "knows" what you're building — including the freshly created scaffold.
 
@@ -252,7 +251,7 @@ Now design the feature:
 
 📋 **Type:**
 ```
-/harness:brainstorm adding and displaying TODO tasks
+/brainstorm adding and displaying TODO tasks
 ```
 
 💬 **What happens:** Claude analyzes the requirement, proposes 2–3 approaches, and writes a design document (spec) into `.agents/specs/`. **No code is produced yet at this stage** — it's a design gate before writing.
@@ -267,7 +266,7 @@ Now design the feature:
 
 📋 **Type:**
 ```
-/harness:plan-feature
+/plan-feature
 ```
 
 💬 **What happens:** Claude takes the latest spec, analyzes your code, and writes a **step-by-step plan** into `.agents/plans/active/`. Then it "interrogates" it itself (self-critique) to catch gaps before writing anything.
@@ -282,7 +281,7 @@ Now design the feature:
 
 📋 **Type:**
 ```
-/harness:execute
+/execute
 ```
 
 💬 **What happens:** Claude executes the plan top to bottom — it writes the real TODO API code. When it finishes, it moves the plan from `active/` to `done/`.
@@ -297,7 +296,7 @@ Now design the feature:
 
 📋 **Type:**
 ```
-/harness:check-implementation
+/check-implementation
 ```
 
 💬 **What happens:** Claude runs the full quality loop — it finds and **fixes** logic bugs, cleans up the code, and then runs everything through the gates (tests, lint, build). The loop repeats (up to 3 times) until everything passes. At the end it leaves a **clean, commit-ready** tree — but it **doesn't commit itself**.
@@ -309,7 +308,7 @@ Now design the feature:
 <details>
 <summary>💡 TIP — how this differs from a plain check</summary>
 
-There's also `/harness:gates-verify-implementation` — but it only **reports** problems, it doesn't fix them. `/harness:check-implementation` **fixes** (code-review --fix → deep-review → gate), in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
+There's also `/gates:verify-implementation` — but it only **reports** problems, it doesn't fix them. `/check-implementation` **fixes** (code-review --fix → deep-review → gate), in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
 </details>
 
 ---
@@ -318,7 +317,7 @@ There's also `/harness:gates-verify-implementation` — but it only **reports** 
 
 📋 **Type:**
 ```
-/harness:commit
+/commit
 ```
 
 💬 **What happens:** Claude creates a commit with a proper message (in conventional format, e.g. `feat: add TODO creation endpoint`) and, while at it, records any conclusions/decisions into the project's memory.
@@ -335,14 +334,14 @@ If you downloaded the project via **"Use this template"** (the recommended metho
 
 📋 **Type** (in Claude Code):
 ```
-/harness:push
+/push
 ```
 
-💬 **What happens:** Claude pushes your commits to the remote repo (it first scans them for secrets — a built-in safeguard). You repeat this command after each `/harness:commit` you want to publish.
+💬 **What happens:** Claude pushes your commits to the remote repo (it first scans them for secrets — a built-in safeguard). You repeat this command after each `/commit` you want to publish.
 
 ✅ **How you know it's OK:** the push went through without errors; you refresh the repo page on GitHub and see your code.
 
-> 🔌 **Did you download via plain `git clone` (the TIP variant)?** Then you don't have a remote repo yet. Once, before your first `/harness:push`: create an empty repo on GitHub/GitLab, copy its URL and in the **terminal** paste `git remote add origin <url>`. (`git remote add` is deliberately blocked for Claude — you do it deliberately yourself.)
+> 🔌 **Did you download via plain `git clone` (the TIP variant)?** Then you don't have a remote repo yet. Once, before your first `/push`: create an empty repo on GitHub/GitLab, copy its URL and in the **terminal** paste `git remote add origin <url>`. (`git remote add` is deliberately blocked for Claude — you do it deliberately yourself.)
 
 ---
 
@@ -352,11 +351,11 @@ You've just gone all the way: **idea → PRD → stack → design → plan → c
 
 ### What's next?
 
-**Another feature?** Repeat **steps 6–10** for a new thing (e.g. "mark a task as done"). Fresh chat → `/harness:prime` → `/harness:brainstorm <feature>` → `/harness:plan-feature` → `/harness:execute` → `/harness:check-implementation` → `/harness:commit`. That's your daily rhythm — the same one you practiced twice (on the scaffold and on the first feature).
+**Another feature?** Repeat **steps 6–10** for a new thing (e.g. "mark a task as done"). Fresh chat → `/prime` → `/brainstorm <feature>` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit`. That's your daily rhythm — the same one you practiced twice (on the scaffold and on the first feature).
 
 **Want it faster, without clicking through each step?** Once you're comfortable, you can replace steps 8–11 with **one** command:
 ```
-/harness:orchestrate
+/orchestrate
 ```
 It does it all itself: write code → clean up → check → commit → push, looping fixes and asking you only on a real problem. That's the "hands-off" path. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
 
@@ -368,7 +367,7 @@ It does it all itself: write code → clean up → check → commit → push, lo
 
 **What we'll build:** the same TODO, but **with a screen** — backend (API) + frontend (the interface you click). The user adds tasks in the browser, not just through the API.
 
-**What you'll learn:** the same rhythm as in Scenario 1 **plus** two new commands for the visual layer: **`/harness:design`** (UI design) and **`/harness:test-e2e`** (browser tests).
+**What you'll learn:** the same rhythm as in Scenario 1 **plus** two new commands for the visual layer: **`/design`** (UI design) and **`/test-e2e`** (browser tests).
 
 > 📌 **This is an extension of Scenario 1, not a new scheme.** The rhythm `PRD → stack → backlog → prime → brainstorm → plan → execute → check → commit` is identical. Below I describe **only what's added or changes** — take the rest straight from Scenario 1. If you haven't done S1 — start there, this will be easier.
 
@@ -376,7 +375,7 @@ It does it all itself: write code → clean up → check → commit → push, lo
 
 ## Before you start (one-time)
 
-Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`) and run `/harness:setup-start` first.
+Same as in Scenario 1 — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it). Open a Claude Code session in the project folder (`claude`) and run `/setup:start` first.
 
 ---
 
@@ -397,7 +396,7 @@ Go through [Step 1](#step-1-describe-what-you-want-to-build-prd), [Step 2](#step
 
 ### Steps 4–5: Scaffold + project rules — like in S1
 
-Do [Step 4](#step-4-build-the-project-scaffold-first-pass-through-the-pipeline) (`/harness:prime` → `/harness:brainstorm` → `/harness:plan-feature` → `/harness:execute` on task `E0-1`) and [Step 5](#step-5-create-the-project-rules-claudemd) (`/harness:create-rules`) **unchanged**. The scaffold will now also contain the frontend part (Claude will list the created files).
+Do [Step 4](#step-4-build-the-project-scaffold-first-pass-through-the-pipeline) (`/prime` → `/brainstorm` → `/plan-feature` → `/execute` on task `E0-1`) and [Step 5](#step-5-create-the-project-rules-claudemd) (`/setup:create-CLAUDE_MD`) **unchanged**. The scaffold will now also contain the frontend part (Claude will list the created files).
 
 ⏭️ **Next:** Step 6 — the first feature, where the new part begins.
 
@@ -405,12 +404,12 @@ Do [Step 4](#step-4-build-the-project-scaffold-first-pass-through-the-pipeline) 
 
 ### Step 6: Design the first feature (brainstorm) — like in S1
 
-Fresh chat → `/harness:prime`, then design the feature — [just like in Step 6 of S1](#step-6-design-the-first-feature-brainstorm):
+Fresh chat → `/prime`, then design the feature — [just like in Step 6 of S1](#step-6-design-the-first-feature-brainstorm):
 
 📋 **Type:**
 ```
-/harness:prime
-/harness:brainstorm adding and displaying TODO tasks (API + screen)
+/prime
+/brainstorm adding and displaying TODO tasks (API + screen)
 ```
 
 💬 **What happens:** a spec is created in `.agents/specs/` — a description of *what and how*, including that the feature has a visual layer. Still **no code**.
@@ -425,7 +424,7 @@ Fresh chat → `/harness:prime`, then design the feature — [just like in Step 
 
 📋 **Type:**
 ```
-/harness:design TODO task list screen
+/design TODO task list screen
 ```
 
 💬 **What happens:** Claude loads the design knowledge and the project's design tokens, asks whether you want **1 variant** (refinement) or **3** (different approaches), generates the mockup(s), and **checks each one itself** against quality rules before showing it to you. It saves the approved design into `.agents/specs/design/Ready/`.
@@ -437,14 +436,14 @@ Fresh chat → `/harness:prime`, then design the feature — [just like in Step 
 <details>
 <summary>💡 TIP — what "Ready/" is and why design is a separate step</summary>
 
-`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/harness:gates-design-quality-check` gate and the `/harness:orchestrate` pipeline reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/harness:execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
+`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/gates:design-quality-check` gate and the `/orchestrate` pipeline reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
 </details>
 
 ---
 
 ### Steps 7–8: Plan and code (plan-feature → execute) — like in S1
 
-Do [Step 7](#step-7-make-a-detailed-plan-plan-feature) and [Step 8](#step-8-write-the-code-execute) **unchanged**. The only difference is in the content: `/harness:plan-feature` will account for the mockup in `Ready/`, and `/harness:execute` will write **both backend and frontend** per the plan.
+Do [Step 7](#step-7-make-a-detailed-plan-plan-feature) and [Step 8](#step-8-write-the-code-execute) **unchanged**. The only difference is in the content: `/plan-feature` will account for the mockup in `Ready/`, and `/execute` will write **both backend and frontend** per the plan.
 
 ⏭️ **Next:** Step 9 — quality, where browser tests are added.
 
@@ -464,7 +463,7 @@ Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the sa
 
 📋 **Type:**
 ```
-/harness:test-e2e adding a task
+/test-e2e adding a task
 ```
 
 💬 **What happens:** Claude **first clicks through** your screen in a real browser (via Playwright), shows the test plan, and **waits for your approval** — only then does it generate the E2E tests and run them.
@@ -476,14 +475,14 @@ Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the sa
 <details>
 <summary>💡 TIP — what if I don't have Playwright configured yet</summary>
 
-`/harness:test-e2e` uses MCP Playwright (browser automation). If your frontend doesn't yet expose a dev server or you don't have Playwright, Claude will say so and suggest what to configure. On the first, simple screen you can skip this step and come back to it later — E2E tests aren't required to commit. The argument can also be empty (`/harness:test-e2e`) — then it takes the flow list from the `Testing Strategy` in the active plan.
+`/test-e2e` uses MCP Playwright (browser automation). If your frontend doesn't yet expose a dev server or you don't have Playwright, Claude will say so and suggest what to configure. On the first, simple screen you can skip this step and come back to it later — E2E tests aren't required to commit. The argument can also be empty (`/test-e2e`) — then it takes the flow list from the `Testing Strategy` in the active plan.
 </details>
 
 ---
 
 ### Steps 10–11: Commit and push — like in S1
 
-[Step 10 (`/harness:commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/harness:push`)](#step-11-push-to-github-optional) — **unchanged**.
+[Step 10 (`/commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/push`)](#step-11-push-to-github-optional) — **unchanged**.
 
 ---
 
@@ -492,25 +491,25 @@ Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the sa
 The cycle is the same as in S1, enriched with two visual steps:
 **idea → PRD → stack → backlog → scaffold → brainstorm → 🆕 design → plan → code → quality → 🆕 E2E tests → commit.**
 
-**Another feature with a screen?** You repeat: fresh chat → `/harness:prime` → `/harness:brainstorm <feature>` → `/harness:design <screen>` → `/harness:plan-feature` → `/harness:execute` → `/harness:check-implementation` → `/harness:test-e2e <flow>` → `/harness:commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/harness:design` and `/harness:test-e2e`.
+**Another feature with a screen?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → `/design <screen>` → `/plan-feature` → `/execute` → `/check-implementation` → `/test-e2e <flow>` → `/commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/design` and `/test-e2e`.
 
-> Already have mockups (HTML/Figma) instead of generating them with `/harness:design`? → **Scenario 3**.
+> Already have mockups (HTML/Figma) instead of generating them with `/design`? → **Scenario 3**.
 
 ---
 
 # Scenario 3: I already have designs (HTML/Figma)
 
-**What we'll build:** the same TODO with a screen as in Scenario 2 — but **we don't generate** the look with the `/harness:design` command. You already have the look: HTML mockups or a Figma file. Claude's job is to **implement them faithfully** and check that the code matches the design pixel for pixel.
+**What we'll build:** the same TODO with a screen as in Scenario 2 — but **we don't generate** the look with the `/design` command. You already have the look: HTML mockups or a Figma file. Claude's job is to **implement them faithfully** and check that the code matches the design pixel for pixel.
 
-**What you'll learn:** how to **bring an external design** into the template and how the **parity gate** `/harness:gates-design-quality-check` (code vs. design) works.
+**What you'll learn:** how to **bring an external design** into the template and how the **parity gate** `/gates:design-quality-check` (code vs. design) works.
 
-> 📌 **This is a variant of Scenario 2.** There's one simple difference: instead of *generating* a mockup (`/harness:design`), you **supply your own** — and a consistency-check step is added. The whole rhythm `PRD → stack → backlog → scaffold → brainstorm → plan → execute → check → commit` is identical. If you haven't done S2 — review it first, this will be clearer.
+> 📌 **This is a variant of Scenario 2.** There's one simple difference: instead of *generating* a mockup (`/design`), you **supply your own** — and a consistency-check step is added. The whole rhythm `PRD → stack → backlog → scaffold → brainstorm → plan → execute → check → commit` is identical. If you haven't done S2 — review it first, this will be clearer.
 
 ---
 
 ## Before you start (one-time)
 
-Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`) and run `/harness:setup-start` first.
+Same as before — [create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it), open a Claude Code session (`claude`) and run `/setup:start` first.
 
 **Prepare your design** — pick ONE of the ways:
 
@@ -531,7 +530,7 @@ Go through [Steps 1–3](#steps-13-prd-stack-backlog--like-in-s1-with-one-differ
 
 ### 🔀 Step 6.5: Bring in your design (instead of generating it)
 
-> In Scenario 2 this step *generated* a mockup via `/harness:design`. **Here you skip it** — because you already have the design. Instead, you **make** your design available to Claude.
+> In Scenario 2 this step *generated* a mockup via `/design`. **Here you skip it** — because you already have the design. Instead, you **make** your design available to Claude.
 
 **Variant A — you have HTML/CSS mockups:**
 
@@ -546,7 +545,7 @@ I have ready mockups in the ./my-designs folder. Move them into .agents/specs/de
 
 You don't copy anything. Keep the **link to the Figma node/screen** handy — you'll provide it in the parity-check step. The gate pulls the design live from Figma (Figma is the authoritative source).
 
-💬 **What happens:** you set the **source of truth for the look**. From now on `/harness:plan-feature`, `/harness:execute` and the parity gate have a concrete reference to reproduce — instead of guessing the layout.
+💬 **What happens:** you set the **source of truth for the look**. From now on `/plan-feature`, `/execute` and the parity gate have a concrete reference to reproduce — instead of guessing the layout.
 
 ✅ **How you know it's OK:** (A) your `.html` files with frontmatter are in `.agents/specs/design/Ready/.../`; (B) you have a working Figma MCP and a link to the screen.
 
@@ -555,14 +554,14 @@ You don't copy anything. Keep the **link to the Figma node/screen** handy — yo
 <details>
 <summary>💡 TIP — why "Ready/" specifically and what that frontmatter is</summary>
 
-`.agents/specs/design/Ready/` is the same place `/harness:design` saves *generated* mockups — so the rest of the tooling (the parity gate, `/harness:orchestrate`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
+`.agents/specs/design/Ready/` is the same place `/design` saves *generated* mockups — so the rest of the tooling (the parity gate, `/orchestrate`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
 </details>
 
 ---
 
 ### Steps 7–9: Plan, code, quality — like in S2
 
-Do [Steps 7–8 (`/harness:plan-feature` → `/harness:execute`)](#steps-78-plan-and-code-plan-feature--execute--like-in-s1) and [Step 9 (`/harness:check-implementation`)](#step-9-check-quality-check-implementation--like-in-s1) **unchanged**. `/harness:execute` will write code reproducing **your** mockup from `Ready/` (or from Figma).
+Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-feature--execute--like-in-s1) and [Step 9 (`/check-implementation`)](#step-9-check-quality-check-implementation--like-in-s1) **unchanged**. `/execute` will write code reproducing **your** mockup from `Ready/` (or from Figma).
 
 ⏭️ **Next:** Step 9.4 — **NEW in S3: checking consistency with the design.**
 
@@ -574,30 +573,30 @@ Do [Steps 7–8 (`/harness:plan-feature` → `/harness:execute`)](#steps-78-plan
 
 📋 **Type** (A — HTML; provide the section name):
 ```
-/harness:gates-design-quality-check task list
+/gates:design-quality-check task list
 ```
 📋 or (B — Figma; add the node link):
 ```
-/harness:gates-design-quality-check task list <figma-node-link>
+/gates:design-quality-check task list <figma-node-link>
 ```
 
 💬 **What happens:** Claude compares the finished screen with your reference and **lists every deviation** (visual, layout, accessibility, behavior). It **fixes nothing** — it only reports. You decide what to fix.
 
 ✅ **How you know it's OK:** you get a deviation report. No differences (or only "authorized" ones) = parity achieved.
 
-⏭️ **Next:** if there are deviations → fix them (`/harness:execute` or `/harness:check-implementation`) and run the gate again. When clean → Step 9.5.
+⏭️ **Next:** if there are deviations → fix them (`/execute` or `/check-implementation`) and run the gate again. When clean → Step 9.5.
 
 <details>
 <summary>💡 TIP — it's a reporting gate, not a fixing one</summary>
 
-`/harness:gates-design-quality-check` is the inverse of `/harness:gates-verify-implementation`: the latter checks code against the *plan*, this one — fidelity against the *design*. Philosophy: **in design there are no "minor" differences** — if the reference has a value and the code has a different one, that's a defect. The gate will list it; the decision to accept is yours. With Figma wired up, the audit takes values live from Figma; without it — from the static HTML in `Ready/`.
+`/gates:design-quality-check` is the inverse of `/gates:verify-implementation`: the latter checks code against the *plan*, this one — fidelity against the *design*. Philosophy: **in design there are no "minor" differences** — if the reference has a value and the code has a different one, that's a defect. The gate will list it; the decision to accept is yours. With Figma wired up, the audit takes values live from Figma; without it — from the static HTML in `Ready/`.
 </details>
 
 ---
 
 ### Steps 9.5–11: E2E tests, commit, push — like in S2
 
-[Step 9.5 (`/harness:test-e2e`)](#-step-95-test-by-clicking-test-e2e), [Step 10 (`/harness:commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/harness:push`)](#step-11-push-to-github-optional) — **unchanged**.
+[Step 9.5 (`/test-e2e`)](#-step-95-test-by-clicking-test-e2e), [Step 10 (`/commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/push`)](#step-11-push-to-github-optional) — **unchanged**.
 
 ---
 
@@ -606,9 +605,9 @@ Do [Steps 7–8 (`/harness:plan-feature` → `/harness:execute`)](#steps-78-plan
 The cycle is like in S2, but the look comes from you, and the code is verified against it pixel for pixel:
 **idea → PRD → stack → backlog → scaffold → brainstorm → 🔀 your design in `Ready/` → plan → code → quality → 🆕 design parity → E2E tests → commit.**
 
-**Another screen with a ready design?** You repeat: fresh chat → `/harness:prime` → `/harness:brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/harness:plan-feature` → `/harness:execute` → `/harness:check-implementation` → `/harness:gates-design-quality-check <section>` → `/harness:test-e2e <flow>` → `/harness:commit`.
+**Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <section>` → `/test-e2e <flow>` → `/commit`.
 
-> Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/harness:design` step).
+> Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/design` step).
 
 ---
 
@@ -616,7 +615,7 @@ The cycle is like in S2, but the look comes from you, and the code is verified a
 
 **What we'll do:** take **a project that already has code** (created without this template) and **bring this whole workflow into it** — project memory, an architecture map, rules, a backlog. The goal: from tomorrow, work on that code with the same rhythm as in S1–S3.
 
-**What you'll learn:** how Claude **understands someone else's/legacy code** with **`/harness:create-rules --map`** and how that understanding becomes project memory you hook further work into.
+**What you'll learn:** how Claude **understands someone else's/legacy code** with the **`/setup:map-codebase`** command and how that understanding becomes project memory you hook further work into.
 
 > 📌 **This is a different start than S1–S3.** There you started from an empty idea (PRD → stack → scaffold). Here **the code already exists** — so first the template has to be *brought* into the repo, and Claude has to *understand* what it found. Only then do you return to the familiar rhythm `brainstorm → plan → execute → check → commit`. 🔴 Harder, because it deals with real, existing code.
 
@@ -643,7 +642,7 @@ cp -R /tmp/ai-starter/.claude /tmp/ai-starter/.agents /tmp/ai-starter/CLAUDE.md 
 [ -f .mcp.json ]    || cp /tmp/ai-starter/.mcp.json .
 ```
 
-If your repo already has an `.env.example` or `.mcp.json`, do **not** overwrite them — merge by hand (add the starter's integration blocks / MCP servers, keep yours), as `.claude/starter-sync-playbook.md` → Category B describes. Then run `/harness:setup-start` before anything else.
+If your repo already has an `.env.example` or `.mcp.json`, do **not** overwrite them — merge by hand (add the starter's integration blocks / MCP servers, keep yours), as `.claude/starter-sync-playbook.md` → Category B describes. Then run `/setup:start` before anything else.
 
 💬 **What happens:** your project gets the `.claude/` layer (commands, hooks, settings) and `.agents/` (memory, reference, specs, plans) plus `CLAUDE.md` with rules. **Your code stays untouched** — we only add the scaffolding.
 
@@ -659,28 +658,28 @@ These are the only parts of the template that are the "engine" of the workflow �
 
 ---
 
-### Step 1: Let Claude understand your code (the map)
+### Step 1: Let Claude understand your code (map-codebase)
 
 > This is the **heart** of this scenario and at the same time its biggest difference from S1–S3. Instead of writing a PRD from scratch, Claude **reads the existing code** and reconstructs knowledge about the project from it.
 
 📋 **Type:**
 ```
-/harness:prime
-/harness:create-rules --map
+/prime
+/setup:map-codebase
 ```
 
-💬 **What happens:** `--map` splits the repo into partitions, summarises each one in a separate, bounded context, and reduces those summaries through a tree until one map remains — then it produces `.agents/memory/architecture.md` (the project map) together with the rules. It **asks for your approval twice** — first what to analyze (scope, the list of skipped files), then at the facts review before anything is written.
+💬 **What happens:** `/setup:map-codebase` scans the repo, splits it into modules and understands the code **in parallel** (many agents), then produces: `.agents/memory/architecture.md` (the project map) **and a reconstructed `docs/PRD.md`** (what this application actually does). Along the way it **asks for your approval twice** — first what to analyze (scope, list of skipped files), then at the summary. At the end it carries on itself: refreshes the brief and generates `CLAUDE.md`.
 
-✅ **How you know it's OK:** `.agents/memory/architecture.md` was created and `CLAUDE.md` has filled-in sections about your project (not `{...}` placeholders).
+✅ **How you know it's OK:** `.agents/memory/architecture.md` and `docs/PRD.md` were created, and `CLAUDE.md` has filled-in sections about your project (not `{...}` placeholders).
 
 ⏭️ **Next:** Step 2.
 
-> ⚠️ **Small project (< ~50 files)?** Drop the `--map` and just run `/harness:create-rules` — it reads the code directly.
+> ⚠️ **Small project (< ~50 files)?** `/setup:map-codebase` will tell you itself that fan-out is unnecessary and ask you to just run **`/setup:create-CLAUDE_MD`** instead (it analyzes the code directly). Then you skip map-codebase and do that one command.
 
 <details>
 <summary>💡 TIP — why this is a separate, "heavy" command</summary>
 
-A large, existing codebase won't fit in a single context. The map branch distributes the work across bounded contexts, each of which **returns only a concise summary** — so the repo's size affects the *number* of partitions, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`), which all subsequent commands use.
+A large, existing codebase won't fit in a single context. `/setup:map-codebase` distributes the work across many agents, each of which **returns only a concise summary (~1–2k)** — so the repo's size affects the *number* of agents, not context bloat. It's a one-time bootstrap: code understood once lands in the project memory (`architecture.md`, PRD, brief), which all subsequent commands use. Full description: [.claude/commands/setup/map-codebase.md](../.claude/commands/setup/map-codebase.md).
 </details>
 
 ---
@@ -700,7 +699,7 @@ A large, existing codebase won't fit in a single context. The map branch distrib
 
 ⏭️ **Next:** Step 3 — and from here on you're already in the familiar rhythm.
 
-> 💡 The backlog is optional. If you have a concrete change to make right away, you can skip it and go to Step 3, giving the topic directly to `/harness:brainstorm`.
+> 💡 The backlog is optional. If you have a concrete change to make right away, you can skip it and go to Step 3, giving the topic directly to `/brainstorm`.
 
 ---
 
@@ -710,28 +709,28 @@ A large, existing codebase won't fit in a single context. The map branch distrib
 
 📋 **Type** (fresh chat for each change):
 ```
-/harness:prime
-/harness:brainstorm <change description, e.g. add CSV export of tasks>
-/harness:plan-feature
-/harness:execute
-/harness:check-implementation
-/harness:commit
+/prime
+/brainstorm <change description, e.g. add CSV export of tasks>
+/plan-feature
+/execute
+/check-implementation
+/commit
 ```
 
-💬 **What happens:** exactly the same as in [Steps 6–10 of Scenario 1](#step-6-design-the-first-feature-brainstorm) — except that `/harness:brainstorm` and `/harness:plan-feature` account for the **existing architecture** (from `architecture.md`), so new code fits into what's already there instead of creating duplicates.
+💬 **What happens:** exactly the same as in [Steps 6–10 of Scenario 1](#step-6-design-the-first-feature-brainstorm) — except that `/brainstorm` and `/plan-feature` account for the **existing architecture** (from `architecture.md`), so new code fits into what's already there instead of creating duplicates.
 
 ✅ **How you know it's OK:** the change is implemented in line with the project's existing patterns, the quality gates passed, the commit was created.
 
-⏭️ **Next:** you repeat Step 3 for each subsequent change; `/harness:push` when you want to push (like [Step 11 of S1](#step-11-push-to-github-optional)).
+⏭️ **Next:** you repeat Step 3 for each subsequent change; `/push` when you want to push (like [Step 11 of S1](#step-11-push-to-github-optional)).
 
-> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/harness:design` (or your own mockup in `Ready/`), `/harness:gates-design-quality-check`, `/harness:test-e2e`. Brownfield combines with each of them.
+> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design` (or your own mockup in `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
 
 ---
 
 ## 🎉 Congratulations — your existing project now speaks the same language!
 
 Instead of starting from an idea, we started from **code that was already there**:
-**bring in the template → 🆕 understand the code (`create-rules --map`) → memory + map + rules → backlog → and from now on the usual rhythm `brainstorm → plan → execute → check → commit`.**
+**bring in the template → 🆕 understand the code (`map-codebase`) → memory + map + rules → backlog → and from now on the usual rhythm `brainstorm → plan → execute → check → commit`.**
 
 The hardest part (understanding the existing code) you do **once**. After that brownfield is no different from greenfield — the same loop, the same commands, the same quality gates.
 
@@ -753,7 +752,7 @@ The hardest part (understanding the existing code) you do **once**. After that b
 
 [Create your own repo from the template and download it](#create-your-own-repo-from-this-template-and-download-it) (or join the team's existing repo). Open a Claude Code session (`claude`).
 
-Run `/harness:setup-start` first and answer **Jira: yes** — then uncomment the Jira block in `.env.example` by hand.
+Run `/setup:start` first and answer **Jira: yes** — it activates the Jira block in `.env.example` and keeps the `/jira` commands.
 
 **Want to export to Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` in `.env`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (PRD + backlog) and add the export later.
 
@@ -788,11 +787,11 @@ The PRD is the common foundation of all scenarios. The difference on the BA path
 
 ### Step 2: Load the product context (prime-ba)
 
-> For analyst work there's a **dedicated** priming command — it loads the **product** context (PRD, specs, decisions, backlog), not the implementation context like the regular `/harness:prime`.
+> For analyst work there's a **dedicated** priming command — it loads the **product** context (PRD, specs, decisions, backlog), not the implementation context like the regular `/prime`.
 
 📋 **Type:**
 ```
-/harness:prime-ba
+/prime-ba
 ```
 
 💬 **What happens:** Claude loads `PRD.md`, the materials from `sources/`, the approved specs from `.agents/specs/`, the decisions and the live backlog — i.e. everything an analyst needs to lay out and organize work.
@@ -821,7 +820,7 @@ The PRD is the common foundation of all scenarios. The difference on the BA path
 <details>
 <summary>💡 TIP — why a backlog and not Jira right away</summary>
 
-The backlog (`.agents/backlog.md`) lives **in the repo, next to the code** — it's versioned, read by the rest of the pipeline (`/harness:brainstorm`, `/harness:plan-feature`) and doesn't require a connection to Jira. Jira is great for the team, but as a *consumer* of the structure, not its author. If you laid out the structure directly in Jira, the rest of the template's tooling would have nothing to work from. That's why the order is always: PRD → backlog → (optionally) Jira.
+The backlog (`.agents/backlog.md`) lives **in the repo, next to the code** — it's versioned, read by the rest of the pipeline (`/brainstorm`, `/plan-feature`) and doesn't require a connection to Jira. Jira is great for the team, but as a *consumer* of the structure, not its author. If you laid out the structure directly in Jira, the rest of the template's tooling would have nothing to work from. That's why the order is always: PRD → backlog → (optionally) Jira.
 </details>
 
 ---
@@ -865,6 +864,6 @@ The backlog (`.agents/backlog.md`) lives **in the repo, next to the code** — i
 You went through the analyst path without writing code:
 **materials (`sources/`) → PRD → product context (`prime-ba`) → backlog (source of truth) → 🔁 export to Jira (mirror).**
 
-**What's next?** Developers take your backlog and enter the S1–S4 paths: fresh chat → `/harness:prime` → empty `/harness:brainstorm` (which takes the **next free task from the backlog** itself) → `/harness:plan-feature` → `/harness:execute` → … Your structure drives their work without retyping.
+**What's next?** Developers take your backlog and enter the S1–S4 paths: fresh chat → `/prime` → empty `/brainstorm` (which takes the **next free task from the backlog** itself) → `/plan-feature` → `/execute` → … Your structure drives their work without retyping.
 
-> Want to also **design screens** for the team (not just tasks)? Check **Scenario 2/3** — the `/harness:design` step.
+> Want to also **design screens** for the team (not just tasks)? Check **Scenario 2/3** — the `/design` step.

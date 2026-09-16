@@ -70,7 +70,7 @@ down. So treat a findings handoff as a **first-class output of every sync**, exa
 
 ## Step 0: Read provenance (enables 3-way)
 
-Look for **`.claude/.starter-sync.json`** (committed — shared team state). Also read its `excluded` array (absent key → `[]`), its **`migrated` and `migrated_config` arrays** (absent → `[]`; the migration record written when a project replaced legacy files or config entries with the `harness` plugin — field schema in the plugin's `references/installation.md → Migration record`), and, if present, the project profile (`.agents/project-profile.json`, or the legacy `.claude/project-profile.json`) — consumed in Step 2.5 (1c/1d) and Step 3:
+Look for **`.claude/.starter-sync.json`** (committed — shared team state). Also read its `excluded` array (absent key → `[]`) and, if present, `.claude/project-profile.json` — both written by `/setup:start` and consumed in Step 2.5 (1c) and Step 3:
 
 ```json
 {
@@ -113,11 +113,8 @@ Apply the **A / B / C classification from [.claude/starter-sync-playbook.md → 
 | existed in base            | deleted in theirs, project copy != base     | **deleted upstream but locally edited** → keep + flag ("upstream removed this; you modified it — decide") |
 | absent in base             | new in theirs                               | **new file** → add                                                                                        |
 | absent in theirs           | present in project, absent in base          | **project-custom** → never touch, flag "check if needed"                                                  |
-| path listed in `migrated`  | any (present or changed upstream)           | **intentional deletion / migrated** → no task, no re-add, no question — the plugin replaced it. Still present locally → flag "migrated but present: finish the migration or drop the record" |
 
-> Without a `base` (2-way), collapse to the playbook's original new/changed/identical/custom buckets plus the `git log` local-edit flag from Step 0. The `migrated` verdict applies in both modes — it needs no base.
->
-> These verdicts are implemented by `sync-filter.mjs` (`threeWayVerdict`, `filterTasks`, `unionSettings`, `unionMcp`, `rollbackPlan`) shipped in the installed `harness` plugin under `scripts/`; without an installed plugin, clone the template's `release` branch and use `packages/claude/scripts/sync-filter.mjs` from that clone (`main` no longer carries it). Run it for the decision tables instead of re-deriving them by hand: `node <plugin_root>/scripts/sync-filter.mjs tasks --manifest .claude/.starter-sync.json --candidates <json>`.
+> Without a `base` (2-way), collapse to the playbook's original new/changed/identical/custom buckets plus the `git log` local-edit flag from Step 0.
 
 **Compute the raw diff up front** so the task list has hard data, not guesses:
 
@@ -131,23 +128,20 @@ This is what makes the run task-driven. **Do the diff FIRST (Step 2), then turn 
 
 1. **One task per differing file.** Use `TaskCreate`, one task per file that is new, changed (real content diff, not whitespace-only), a true conflict, a project-custom path-conflict, or a category-B merge candidate. Identical-modulo-whitespace files get **no task** (note them once in the report and move on).
 1b. **Skip bootstrap-only artifacts — NO task at all.** This command runs on an **already-bootstrapped, existing project**, not a fresh "Use this template" clone. The following exist only to seed a brand-new repo and are meaningless to re-check or re-add here — exclude them from the task list entirely and just note them in one line of the report:
-   - **`.claude/README.md`** (the framework guide) and **`.claude/STARTER-LICENSE`** — bootstrap-time artifacts placed by `/harness:setup-start`. A mature project either already has them or deliberately doesn't; the sync should not nag about adding them. (If a project genuinely wants them later, that's a one-off manual copy, not a sync concern.)
+   - **`.claude/README.md`** (the framework guide) and **`.claude/STARTER-LICENSE`** — bootstrap-time artifacts produced/placed by `/setup:create-CLAUDE_MD`. A mature project either already has them or deliberately doesn't; the sync should not nag about adding them. (If a project genuinely wants them later, that's a one-off manual copy, not a sync concern.)
    - **root `LICENSE`** and **root `README.md`** — category C, the project's own. Never a task.
-   - **The retired bootstrap and maintenance commands** — the whole `setup/` command family, the workflow-housekeeping command and the codebase-map workflow are no longer shipped upstream; they are harness plugin skills now, and each retired path is listed in the plugin's migration record. A stale local copy is never re-added and never tasked. We use this sync inside a live project; the bootstrap chain already ran once and won't run again.
+   - **`.claude/commands/setup/create-CLAUDE_MD.md`** as a *bootstrap driver* — do **not** treat its starter changes as something to apply for bootstrap reasons. It is a normal category-A command like any other: only task it if its content genuinely changed AND you'd take that change for the **running** workflow (e.g. a fix to how it generates files), never "to keep bootstrap in sync". We use this sync inside a live project; the bootstrap chain already ran once and won't run again.
    > Rationale: the user runs `/maintain:sync-from-starter` to keep the **working** toolchain current, not to re-bootstrap. Time spent diffing/asking about `CLAUDE.md` regeneration, the framework README, or the starter license is pure noise — these are not part of the day-to-day workflow surface.
-1c. **Skip profile-excluded paths — NO task.** Any path listed in `.starter-sync.json → excluded`, or any file under a listed directory (entries ending in `/` match by prefix), gets no task. These were pruned at bootstrap after an explicit per-group confirmation — re-offering them every sync is the noise that pruning exists to remove. Print one summary line: `N paths excluded by profile: …`. This is the only non-interactive skip in the run, and it is not an exception to 4.2: the interactive decision already happened at bootstrap.
-1d. **Skip migrated paths — NO task.** Any path listed in `.starter-sync.json → migrated` (directory entries ending in `/` match by prefix) gets no task, whatever upstream did to it — including a newer upstream version. In 3-way terms the local absence is an **intentional deletion**, never staleness. Print one summary line: `N paths migrated to harness <release>: …`. A migrated path that is still present locally is flagged once (`migrated but present`) and otherwise left alone.
+1c. **Skip profile-excluded paths — NO task.** Any path listed in `.starter-sync.json → excluded`, or any file under a listed directory (entries ending in `/` match by prefix), gets no task. These were pruned by `/setup:start` after an explicit per-group confirmation — re-offering them every sync is the noise that command exists to remove. Print one summary line: `N paths excluded by profile: …`. This is the only non-interactive skip in the run, and it is not an exception to 4.2: the interactive decision already happened in `/setup:start`.
 2. **Order the tasks** easiest-decision first: identical/new → clean upstream-update → small conflicts → large local-customization conflicts → path-conflicts. Decisions then compound logically.
-3. **Auto-cluster cross-referencing files.** Before locking the list, scan each differing file's content for references to **other files that are also in the diff** (a command that names another command; a hook referenced by `settings.json`; an agent referenced by a command). When file A references file B **and both are in the diff**, **merge them into a single task-cluster**. Reason: deciding A's edits in isolation can bake in assumptions that B's pending changes would invalidate — you must read both and decide together. Mark the cluster task subject with all member paths. Known hard couplings to always cluster: `settings.json` ⇄ every `hooks/*.sh` it references; a command ⇄ any other command/skill it cross-links that is also changed.
+3. **Auto-cluster cross-referencing files.** Before locking the list, scan each differing file's content for references to **other files that are also in the diff** (a command that names another command, e.g. `/retro` referencing `/maintain:cleanup-workflow`; a hook referenced by `settings.json`; an agent referenced by a command). When file A references file B **and both are in the diff**, **merge them into a single task-cluster**. Reason: deciding A's edits in isolation can bake in assumptions that B's pending changes would invalidate — you must read both and decide together. Mark the cluster task subject with all member paths. Known hard couplings to always cluster: `settings.json` ⇄ every `hooks/*.sh` it references; a command ⇄ any other command/skill it cross-links that is also changed.
 4. **The task list is the source of truth for the rest of the run.** Every subsequent step operates on tasks, marks them `in_progress` when starting, `completed` when the user has decided and (if approved) the subagent has applied the edit.
 
 > If resuming a partially-done sync (tasks already exist from a prior invocation in this session), call `TaskList` first and continue from the first `pending` task — do not rebuild the list or re-clone.
 
 ## Step 3: Conflict protocol — recommend, but ask (category B)
 
-> **Category-B unions respect the profile.** When a project profile exists, the `.mcp.json` and `settings.json` unions skip entries owned by a disabled group: the `atlassian` server and `mcp__atlassian__jira_*` entries when `tracker=none`; `mcp__atlassian__confluence_*` when `confluence=false`; the `playwright` server when `app_surface` is `none|mobile|desktop|tui`; the `pr-api.sh` allow entry when `commands.pr=false` / `groups.git=false`. `sync-filter.mjs union --profile-view <schema-2 view json>` implements exactly these rules (`disabledByProfile`) and reports what it skipped; existing project entries are never removed. No profile → union as the playbook describes.
->
-> **Category-B unions respect the migration record.** Every entry identity listed in `.starter-sync.json → migrated_config` (`permissions.<tier>|<entry>`, `<event>|<matcher>|<command>` for hooks, `<server name>` for `.mcp.json`) is skipped by the union even when the starter still ships it — a file-level `excluded` entry cannot stop a hook or permission from being re-added, this list can. `sync-filter.mjs union` performs the settings union with both rules and reports `added` and `skipped`. Unknown fields in the manifest are preserved verbatim.
+> **Category-B unions respect the profile.** When `.claude/project-profile.json` exists, the `.mcp.json` and `settings.json` unions skip entries owned by a disabled group: the `atlassian` server and `mcp__atlassian__jira_*` entries when `tracker=none`; `mcp__atlassian__confluence_*` when `confluence=false`; the `playwright` server when `app_surface` is `none|mobile|desktop|tui`; the `pr-api.sh` allow entry when `commands.pr=false`. No profile → union as the playbook describes.
 
 `settings.json`, the `hooks` block, and `memory-domains.json` can have **same-key / different-value** conflicts that a union cannot resolve. **Never guess.** These are themselves tasks (Step 2.5) and go through the same per-task gate (Step 4). Apply the recommendation heuristic and present each via **`AskUserQuestion`**:
 
@@ -186,7 +180,7 @@ If the decision is anything other than `keep project`/skip, **spawn one subagent
 
 - Exact source path(s) under `/tmp/ai-coding-starter-sync/...` and exact destination path(s) in the project.
 - The decision (`apply` verbatim copy / `adapt` with the specific adjustments you and the user agreed / `partial` with the precise hunks to take) — be explicit; the subagent has none of this conversation's context.
-- For `adapt`: spell out every ecosystem adjustment (path remaps, command-name remaps like `/sync-from-starter`→`/maintain:sync-from-starter`, frontmatter `name:` for slash-command+skill mounting, project language rules). The subagent must NOT invent adaptations beyond the list.
+- For `adapt`: spell out every ecosystem adjustment (path remaps, command-name remaps like `/cleanup-workflow`→`/maintain:cleanup-workflow`, frontmatter `name:` for slash-command+skill mounting, project language rules). The subagent must NOT invent adaptations beyond the list.
 - Post-edit obligations: restore exec bit for `*.sh` (`chmod +x`), keep within the single file/cluster scope, touch nothing else.
 - Tell the subagent its final message is a result, not user-facing — it should report back the paths it wrote and any deviation it had to make.
 
@@ -208,7 +202,7 @@ Once every task is `completed` (or skipped):
 
 ## Step 6: Write provenance manifest
 
-Write/overwrite **`.claude/.starter-sync.json`** (committed) with the `theirs` hash, ref, and **today's date passed in by the user** — and **preserve the `excluded` array, `_excluded_doc`, `migrated`, `migrated_config` and every unknown field verbatim** (they are the bootstrap's and the plugin migration's record, not sync state; a rollback of a plugin release drops its `migrated*` records deliberately via `sync-filter.mjs rollback`, never as a side effect of a sync) (do not invent a date — if unknown, ask or read from `git log -1 --format=%cd`):
+Write/overwrite **`.claude/.starter-sync.json`** (committed) with the `theirs` hash, ref, and **today's date passed in by the user** — and **preserve the `excluded` array and `_excluded_doc` verbatim** (they are `/setup:start`'s record, not sync state) (do not invent a date — if unknown, ask or read from `git log -1 --format=%cd`):
 
 ```json
 {
@@ -256,7 +250,6 @@ This is what makes the _next_ sync a true 3-way merge. Include it in the staged 
 - **NEVER commit automatically** — propose the message, let `/commit` run.
 - Hooks and `settings.json` move **together** (coupled by path reference — always one cluster).
 - `--check` never writes and never spawns edit subagents.
-- **NEVER re-offer a migrated path or resurrect a migrated config identity** (Step 2.5.1d, Step 3) — `migrated` / `migrated_config` in `.starter-sync.json` are intentional deletions. No plugin release edits a project's profile or these records automatically.
-- **NEVER task bootstrap-only artifacts** (Step 2.5.1b) — `.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, and the retired bootstrap commands. This sync runs on a live project; the bootstrap chain already ran. Note them in one line, never gate on them.
+- **NEVER task bootstrap-only artifacts** (Step 2.5.1b) — `.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, and `create-CLAUDE_MD` *as a bootstrap driver*. This sync runs on a live project; the bootstrap chain already ran. Note them in one line, never gate on them.
 - **ALWAYS keep a findings handoff** (Step 0a) — append upstream regressions / contribution candidates to `.agents/handoffs/starter-upstream-regressions.md` as you make keep-project decisions. It's a local scratchpad; never stage/commit it.
 - Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (`rm -rf` is `ask`-tier in settings, not denied). A leftover clone is harmless — never let cleanup block the run.

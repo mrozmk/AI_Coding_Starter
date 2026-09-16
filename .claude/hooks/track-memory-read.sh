@@ -7,7 +7,7 @@
 #
 # Design note: usage is LOCAL telemetry — your read patterns differ from a teammate's,
 # so it is gitignored and never committed (unlike the original which mutated each memory
-# file's frontmatter, churning git on every read). It feeds a by-hand memory-pruning
+# file's frontmatter, churning git on every read). It feeds /maintain:cleanup-workflow's
 # dead-memory pruning (Phase 2) and auto-load freshness (Phase 4.1).
 #
 # TWO INPUT SHAPES: Read/Edit carry `.tool_input.file_path`; Bash reads (`cat`, `sed -n`, `rg`)
@@ -37,7 +37,7 @@ else
   # not consultation, and counting it would keep a never-read file looking alive.
   # `tee` drops its options and every operand up to the next pipe/separator.
   # (grep -oE extracts from a bounded string, not a file search — the bounded-field-probe
-  # exemption a hook script gets by necessity; rg is also unavailable in hook scripts.)
+  # exemption cleanup-workflow.md Phase 4.2 grants; rg is also unavailable in hook scripts.)
   READS=$(printf '%s' "$CMD" | sed -E \
     's/>>?[[:space:]]*[^[:space:]]+//g; s/(^|[[:space:]]|\|)tee([[:space:]]+-[-a-zA-Z=]+)*([[:space:]]+[^[:space:]|;&]+)+//g')
   CANDIDATES=$(printf '%s' "$READS" \
@@ -53,7 +53,7 @@ DB="$CLAUDE_PROJECT_DIR/.claude/memory-usage.json"
 # Self-heal on missing OR unusable. Testing -f alone is not enough: a 0-byte or malformed
 # sidecar (an interrupted write, a `touch`) makes every jq below fail, so the `&& mv` never
 # fires and the file stays broken forever — telemetry dies silently while looking healthy,
-# and a pruning pass then works on age alone believing it has usage data.
+# and /maintain:cleanup-workflow then prunes on age alone believing it has usage data.
 { [ -s "$DB" ] && jq -e . "$DB" >/dev/null 2>&1; } || echo '{}' > "$DB" 2>/dev/null
 
 # --- Bump each distinct memory file ----------------------------------------

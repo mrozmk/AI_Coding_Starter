@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "harness@ai-coding-starter": true
-  },
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "attribution": { "commit": "", "pr": "", "sessionUrl": false },
   "permissions": {
@@ -41,6 +38,8 @@
       "Bash(git worktree list:*)",
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
+      "Bash(bash .claude/lib/qa-probe.sh)",
+      "Bash(bash .claude/lib/git-baseline.sh:*)",
       "Bash(bash .claude/skills/pr-comments/references/pr-api.sh:*)",
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:docs.anthropic.com)",
@@ -107,7 +106,6 @@
       "Bash(git switch*--force*)",
       "Bash(git switch*--discard-changes*)",
       "Bash(sudo:*)",
-      "Edit(~/.claude/plugins/**)",
       "Edit(**/.env)",
       "Edit(**/id_rsa*)",
       "Edit(**/id_ed25519*)",
@@ -151,6 +149,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-commit.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-push.sh\""
+          },
+          {
+            "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" BASH",
             "async": true
           }
@@ -167,7 +173,7 @@
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
@@ -194,19 +200,26 @@
             "async": true
           }
         ]
-      },
-      {
-        "matcher": "MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" MULTIEDIT",
-            "async": true
-          }
-        ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-comments.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/nudge-files.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory-scope.sh\""
+          }
+        ]
+      },
       {
         "matcher": "Read|Bash",
         "hooks": [
@@ -223,6 +236,20 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/nudge-lsp.sh\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-deps.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-project-deps.sh\""
           }
         ]
       }
