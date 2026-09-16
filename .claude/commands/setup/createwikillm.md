@@ -246,15 +246,17 @@ updated: {today}
 
 ### Scenario A — Developer Wiki
 
-**Update `CLAUDE.md` — insert a new row into the `## Project Knowledge Layers` table.** Do NOT add a separate "Developer Wiki" section. The wiki is a first-class knowledge layer, not an addendum.
+**Update `CLAUDE.md` — add the wiki to the layers line under `## Project Knowledge Layers`.** Do NOT add a separate "Developer Wiki" section. The wiki is a first-class knowledge layer, not an addendum.
 
-Insert the new row between the existing `plans/` row and the blank line that follows it, matching the existing table's column count (4: Layer | Contains | Lifecycle | Written by) and spacing:
+Append `` · `wiki/` (synthesized knowledge, `/wiki-ingest`) `` to the end of the `Layers under `.agents/`:` sentence. In a `CLAUDE.md` generated from an older template that still carries the layers **table** (4 columns: Layer | Contains | Lifecycle | Written by), insert a row after the `plans/` row instead:
 
 ```
 | [wiki/](.agents/wiki/) | Synthesized knowledge — concepts, references, meta | Append + periodic lint | `/wiki-ingest` |
 ```
 
-Leave the `**Flow:**` line directly below the table untouched — the wiki is orthogonal to `brainstorm → plan → execute` and should not appear in the core flow unless the user explicitly requests it.
+Then add the routing row to `.agents/memory/index.md → When to Read` — `| Looking up a concept, reference or meta page | `.agents/wiki/` (start at its index) |` — that table, not `CLAUDE.md`, is where project-specific loading lives.
+
+Leave the `**Flow:**` line untouched — the wiki is orthogonal to `brainstorm → plan → execute` and should not appear in the core flow unless the user explicitly requests it.
 
 ---
 

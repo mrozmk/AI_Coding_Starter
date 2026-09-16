@@ -219,21 +219,31 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 
 **Output path**: `CLAUDE.md` (project root)
 
-**Hard cap: ≤165 lines and ≤9 500 characters.** Both axes are hard — a 160-line file at 15 000 chars has not solved the problem. `CLAUDE.md` loads into every conversation, so its size is a tax on every session. If a section pushes you past either number, push the detail into the memory file named in the table below and leave a one-line pointer behind. **Per-section budget:** a section carries its rule plus a pointer, not the rule plus its explanation. Where an explanation is genuinely load-bearing, keep it as a one-line `>` blockquote.
+**Hard cap: ≤165 lines and ≤9 500 characters.** Both axes are hard — a 160-line file at 15 000 chars has not solved the problem. `CLAUDE.md` loads into every conversation and every subagent, so its size is a tax on every session. If a section pushes you past either number, push the detail into the file named in the table below and leave a one-line pointer behind. **Per-section budget:** a section carries its rule plus a pointer, not the rule plus its explanation. Where an explanation is genuinely load-bearing, keep it as a one-line `>` blockquote.
+
+**What earns a place in `CLAUDE.md` at all** — three kinds of line, nothing else:
+
+1. **Guardrails a pointer cannot replace** — rules that must hold in a session that reads nothing else (language, "never rewrite history of X", the worktree warning, when to ask).
+2. **Data blocks commands parse by name** — `Validation` commands and test policy, `Orchestrate publish`, `### Branch model`, the comments rule.
+3. **Pointers** — one line naming where the knowledge lives.
+
+Anything mechanically enforced by `settings.json` or a hook needs no prose beyond the pointer. Anything with a date, a "user decision", a case history or a rejected alternative is a memory entry, not a rule.
 
 **Where detail lives (NOT in `CLAUDE.md`):**
 
 | Detail type | Goes to |
 |---|---|
-| Directory tree, file map, naming rules | `.agents/memory/architecture.md` |
+| Directory tree, file map, naming rules, tech stack | `.agents/memory/architecture.md` |
 | Project-specific patterns (auth flow, error wrapping, query builders) | `.agents/memory/patterns.md` |
-| Architectural decisions and trade-offs | `.agents/memory/decisions.md` |
+| Architectural decisions and trade-offs; any paragraph carrying a date or a user decision | `.agents/memory/decisions.md` |
+| Incident history, false positives, "this tripped N times" | `.agents/memory/errors.md` (application defects) or `.agents/reference/` (process) |
+| Policy rationale — why a permission tier, an egress rule or a deploy chain is shaped the way it is | `.agents/reference/` (the starter ships `security-egress.md` and `git-policy.md`) |
 | Module-specific knowledge | `.agents/memory/domain/{module}.md` |
 
-`CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps.
+`CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps, not history.
 
 **Adapt to the project:**
-- Fill in project-specific sections: `Project Overview`, `Tech Stack`, `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Testing`, `Validation`, `Notes`.
+- Fill in project-specific sections: `Project Overview` (two or three sentences, the stack named in one breath — there is no `Tech Stack` section; the stack table goes to `architecture.md`), `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Validation`, `Notes`.
 - **Validation derivation.** Besides the manifest scripts, read `lint-staged` / husky hooks / `.pre-commit-config.yaml` so a check that runs only at pre-commit is still listed in `Validation` — the gates run it explicitly, the hook is not their substitute. If `TESTING.md` exists with unresolved `{test-runner}` / `{test-command}` / `{coverage-tool}` tokens, resolve them with **the TESTING slot table in `setup/start.md` step 8** (same rules, same outputs) and touch nothing else in that file — one table, two callers.
 - **LSP detection → `## Code Navigation` section (conditional).** If Phase 1 detected a symbol-level LSP wired into the toolchain (e.g. `typescript-language-server`, `gopls`, `rust-analyzer`, `intelephense`, `pyright` configured for this stack), add a `## Code Navigation (LSP)` section naming the available LSP tools (goToDefinition / findReferences / incomingCalls / hover) and when to prefer them over `rg`. The `nudge-lsp.sh` hook keys its CLAUDE.md pointer off the literal phrase `Code Navigation` — so a project **with** an LSP gets a live reference, and one **without** never gets a dead link. If no LSP is detected, omit the section entirely (do not stub it).
 - **Fill the `### Branch model` block** inside `Git Workflow` with the preset and all six field values derived in Phase 1. Leave no `{…}` placeholder in the output. Omit the optional `**Merge:**` line unless the project deviates from its preset.
@@ -247,16 +257,14 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
   - `Validation`
   - `Commands`
   - `Code Structure & Modularity`
-  - `Style & Conventions`
-  - `Tech Stack`
-  - `Error Handling`
+  - `Style & Conventions` (carries the comments rule and the one-line error-handling rule)
   - `Security`
   - `Git Workflow`
   - `Project Knowledge Layers`
   - `Automatic Behaviors`
   - `Search Commands`
 
-**Why those headings are mandatory — the reason, not just the list.** Their exact heading text is an **API**. Slash commands and hooks address them by name, in several syntaxes (`CLAUDE.md → Validation`, a markdown link plus the section name, a bare `` `## Git Workflow` `` literal), and one hook greps `CLAUDE.md` for a literal phrase. Renaming or deleting one of them **throws no error** — the consumer just silently stops finding what it was pointing at. `Error Handling` is retained on policy grounds rather than by a known consumer; keep it anyway. A thirteenth string is **conditional**: `Code Navigation`, emitted as `## Code Navigation (LSP)` only for LSP projects (see the LSP-detection rule above) — the contract there is the *substring*, not the full heading.
+**Why those headings are mandatory — the reason, not just the list.** Their exact heading text is an **API**. Slash commands and hooks address them by name, in several syntaxes (`CLAUDE.md → Validation`, a markdown link plus the section name, a bare `` `## Git Workflow` `` literal), and one hook greps `CLAUDE.md` for a literal phrase. Renaming or deleting one of them **throws no error** — the consumer just silently stops finding what it was pointing at. An eleventh string is **conditional**: `Code Navigation`, emitted as `## Code Navigation (LSP)` only for LSP projects (see the LSP-detection rule above) — the contract there is the *substring*, not the full heading.
 
 Deliberately no `file:line` list of consumers here: offsets decay within a handful of commits and this file ships to every project, read long after the lines have moved. Heading **names** are stable. Re-derive the consumers when you need them, searching **from the headings outward** (never from pointer syntaxes inward — a heading no known syntax matches is invisible, and a false positive only costs one kept line):
 
@@ -362,7 +370,7 @@ printf 'CLAUDE.md: %s lines / %s chars (cap 165 / 9500)\n' "$L" "$C"
 [ "$C" -gt 9500 ] && echo "OVER CHAR CAP — move detail into a memory file and re-measure"
 ```
 
-While either branch fires, push detail out of `CLAUDE.md` into the memory file named in the *Where detail lives* table above, leave a one-line pointer, and re-run the two commands. Cut prose, never a mandatory section, a mandatory content line, or a rule. If a mandatory rule genuinely makes compliance impossible, stop cutting and **say so explicitly in the Phase 4 report** with the final numbers — an over-cap file with every rule intact beats an on-cap file missing a contract, and the second failure is silent.
+While either branch fires, push detail out of `CLAUDE.md` into the file named in the *Where detail lives* table above, leave a one-line pointer, and re-run the two commands. Cut prose, never a mandatory section, a mandatory content line, or a rule. On a **refresh** run the same cut applies to what the project accumulated since bootstrap — paragraphs with dates, case histories and rationale are moved, not kept because they were already there; `/maintain:cleanup-workflow` Phase 5 does the same job between refreshes. If a mandatory rule genuinely makes compliance impossible, stop cutting and **say so explicitly in the Phase 4 report** with the final numbers — an over-cap file with every rule intact beats an on-cap file missing a contract, and the second failure is silent.
 
 ---
 

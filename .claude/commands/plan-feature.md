@@ -56,7 +56,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 **1. Project Structure Analysis**
 
 - Confirm directory structure and architectural patterns from `.agents/memory/architecture.md`. Only re-walk the tree if `architecture.md` has `status: empty` or commits since its last regeneration suggest it's stale.
-- Detect primary language(s), frameworks, and runtime versions if not already documented in `architecture.md` or `CLAUDE.md → Tech Stack`.
+- Detect primary language(s), frameworks, and runtime versions if not already documented in `architecture.md` or `project-brief.md → Stack`.
 - Locate stack-specific config files only when the spec's needs require it: `package.json` / `tsconfig.json` (Node/TS) · `pyproject.toml` / `requirements.txt` (Python) · `pom.xml` / `build.gradle(.kts)` (JVM) · `go.mod` (Go) · `Cargo.toml` (Rust) · `*.csproj` / `*.sln` (.NET) · `Package.swift` / `Podfile` / `*.xcodeproj` (iOS) · `AndroidManifest.xml` / `build.gradle.kts` (Android) · `pubspec.yaml` (Flutter) · `metro.config.*` (React Native).
 
 **2. Pattern Recognition**

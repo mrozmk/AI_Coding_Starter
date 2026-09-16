@@ -1,12 +1,12 @@
 ---
-description: All-in-one AI workflow housekeeping — broken-reference check, memory pruning to archive, workflow health warnings
+description: All-in-one AI workflow housekeeping — broken-reference check, memory pruning to archive, workflow health warnings, CLAUDE.md diet
 ---
 
 # /maintain:cleanup-workflow — AI Workflow Maintenance
 
-Four-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when the project's been moving fast and you want to make sure references aren't broken, memory hasn't bloated with stale entries, orphaned artifacts are surfaced, and the workflow tooling itself hasn't drifted.
+Five-phase housekeeping for the `.claude/` + `.agents/` workflow. Run this when the project's been moving fast and you want to make sure references aren't broken, memory hasn't bloated with stale entries, orphaned artifacts are surfaced, the workflow tooling itself hasn't drifted, and `CLAUDE.md` has not swallowed the history that belongs in memory.
 
-**Always runs all four phases sequentially. No skip arguments.** If you only want a fast pre-commit reference check, that's still cheap as Phase 1 — just stop the run after Phase 1 if you don't want to continue.
+**Always runs all five phases sequentially. No skip arguments.** If you only want a fast pre-commit reference check, that's still cheap as Phase 1 — just stop the run after Phase 1 if you don't want to continue.
 
 ---
 
@@ -123,7 +123,7 @@ Heading present but its body still `{placeholder}` → report `present but unfil
 
 Normalize each candidate to its **leading Title-Case run** before subtracting — the same bound the third 1.3 pattern applies, because the first one does not: it captures lowercase too, so `CLAUDE.md → Style & Conventions rather than guessing` arrives with its explanation attached and would be reported as an unknown section that nobody ever referenced.
 
-Report only — this category never edits `CLAUDE.md` (see the standing rule after 1.7).
+Report only — this category never edits `CLAUDE.md`; Phase 5 is the only phase that does (see Rules).
 
 ### 1.7 Phase 1 output
 
@@ -494,7 +494,37 @@ For each append-style memory file:
 
 > ⚠️ `<file>` is <N> lines. Consider running Phase 2 of `/maintain:cleanup-workflow` to prune stale entries (you may have skipped some on the previous run).
 
-### 3.6 Phase 3 output
+### 3.6 Signal: `CLAUDE.md` budget and narrative
+
+`CLAUDE.md` is injected into every session and every subagent, so its size is a tax on all of them, and the cap that `/setup:create-CLAUDE_MD` enforces at bootstrap is enforced nowhere afterwards. This signal is that enforcement. **Report only** — Phase 5 does the moving, with consent.
+
+```bash
+find . -maxdepth 1 -name 'CLAUDE.md'                 # target present? absent → skip the signal
+wc -l CLAUDE.md; wc -c CLAUDE.md                      # the two cap axes
+awk '/^## /{if(h)print s"\t"h; h=$0; s=0} {s+=length($0)+1} END{print s"\t"h}' CLAUDE.md | sort -rn   # bytes per section
+```
+
+Cap: **165 lines / 9 500 characters** (the numbers in `.claude/templates/CLAUDE-template.md`'s preamble — read them from there if they ever move). Over either axis → warning with both numbers and the three heaviest sections.
+
+Then scan each paragraph (a run of non-blank lines outside code fences and tables) for content that is memory, not a rule. One finding per paragraph, with its heading, first line and the reason; every heuristic names the file the paragraph belongs in:
+
+| Heuristic | Pattern | Belongs in |
+|---|---|---|
+| **Dated decision** | a `YYYY-MM-DD` date, or `decided`, `decision`, `user decision`, `since <date>` | `.agents/memory/decisions.md` |
+| **Incident history** | `tripped`, `false alarm`, `false positive`, `N of N`, `flagged`, `used to`, `before it was`, `the loophole was` | `.agents/memory/errors.md` (an application defect) or `.agents/reference/` (a process story) |
+| **Mechanics restated** | describes what a `settings.json` tier, a hook or a command *does* internally (`deny > ask > allow`, `--no-track`, a flag list, a script's refusals) | `.agents/reference/` — a pointer stays |
+| **Duplicate of memory** | the paragraph's first sentence, or a date it carries, appears in `.agents/memory/*.md` or `.agents/reference/*.md` (`rg -F` the sentence's first 60 characters) | delete, leave the pointer |
+| **Long paragraph** | more than 6 lines under any heading other than a code block | wherever the other heuristics point; if none fires, flag as "explain in memory, rule here" |
+| **Wrong language** | prose not in English (code, comments and rule files are English per `Language Rules`) | translate the rule, move the story |
+
+**Exempt:** the `### Branch model` block, the `**Orchestrate publish:**` line and its blockquote, the `Validation` command block and test policy, and the comments rule — these are data other commands parse, and their form is the contract. A heuristic firing on them is a false positive; do not report it.
+
+**False-positive philosophy, as in Phase 4:** a date inside a one-line rule (`per PRD v2, 2026-03`) is not a decision paragraph — the finding must be a *paragraph* that mostly explains. Prefer silence to a report the reader learns to skim.
+
+> ⚠️ `CLAUDE.md` is <L> lines / <C> chars (cap 165 / 9 500). Heaviest: <section> <bytes>, <section> <bytes>, <section> <bytes>.
+> ⚠️ `CLAUDE.md → <heading>`: "<first line…>" — <heuristic> → `<target file>`.
+
+### 3.7 Phase 3 output
 
 ```markdown
 🚦 Workflow Health — <N> signals detected
@@ -514,6 +544,12 @@ For each append-style memory file:
 
 ⚠️ LARGE MEMORY FILES (<count>):
    errors.md — 542 lines. Consider another /maintain:cleanup-workflow pass.
+
+⚠️ CLAUDE.md BUDGET (<count>):
+   225 lines / 20 295 chars (cap 165 / 9 500). Heaviest: Validation 6 157, Git Workflow 2 688, Style & Conventions 1 567.
+   Validation: "Styl v2 i wygasanie parity, od 2026-09-15…" — dated decision → decisions.md (already there: duplicate)
+   Git Workflow: "Never include AI attribution… 19 commits plus a whole release" — incident history → decisions.md
+   → Phase 5 offers the moves.
 
 ✅ Other signals: clean.
 ```
@@ -554,7 +590,7 @@ former 90-day flag here vs 2B's 180-day archive criterion.)
   **Exempt: bounded single-file field extraction.** A pipeline that reads one named file and pulls one field out of it — `head -10 "$f" | grep -m1 '^pinned:'`, `head -10 <file> | grep -q '^status: empty'`, `wc -l file | awk '{print $1}'` — is not a file search and must **not** be flagged. The rule this check enforces is about *finding files by content across a tree*, which is what `rg` replaces; it was never about parsing a line out of a known file, and `rg` is not the better tool for that.
 
   > This command itself uses exactly those forms (`grep -m1` twice in Phase 2B, `grep -q` in Phase 3, `awk` in Phase 4.1). Without this exemption Phase 4.2 reports **itself** as a contradiction on every single run — and a report that always contains a known-false line is one the reader learns to skim, which is the failure this whole phase exists to avoid.
-- **Duplication:** the same multi-line guidance copied across files drifts out of sync. Flag blocks substantially duplicated between `CLAUDE.md` and a command — the source of truth should live in one place and be linked.
+- **Duplication:** the same multi-line guidance copied across files drifts out of sync. Flag blocks substantially duplicated between `CLAUDE.md` and a command — the source of truth should live in one place and be linked. `CLAUDE.md` against `.agents/memory/` and `.agents/reference/` is **3.6's** job (its *duplicate of memory* heuristic feeds Phase 5); do not report the same paragraph twice.
 
 > ⚠️ `CLAUDE.md` mandates `rg` but `<command>.md:<line>` calls `find`/`grep`. Align the command or the rule.
 
@@ -598,9 +634,39 @@ If zero signals:
 
 ---
 
+## Phase 5: `CLAUDE.md` Diet
+
+**Goal:** act on 3.6's findings — move each flagged paragraph to the file it belongs in and leave a one-line pointer, so `CLAUDE.md` goes back to rules and pointers. This is the one phase that edits `CLAUDE.md`, and it does so **per paragraph, with consent**, mirroring Phase 2's per-entry decisions. Nothing to act on (3.6 reported clean) → print `✅ CLAUDE.md within cap, no narrative flagged.` and go to the final report.
+
+Read [.claude/templates/CLAUDE-template.md](../../templates/CLAUDE-template.md)'s preamble first — it states what earns a place in `CLAUDE.md` (guardrails a pointer cannot replace, data blocks commands parse, pointers) and is the bar every kept line must clear.
+
+For **each** 3.6 finding, in file order:
+
+1. **Show the paragraph and the proposed move.** Print the paragraph verbatim, the target file, the entry it would become (a `## YYYY-MM-DD — title` entry for `decisions.md` / `errors.md` using the date the paragraph carries or, failing that, its last-commit date from `git log -1 --format=%cs -S'<first 40 chars>' -- CLAUDE.md`; a titled section for a `reference/` file), and the **one-line rule plus pointer** that stays behind. The rule that stays must be the paragraph's *instruction* stripped of its story — never a summary of the story.
+2. **Ask:** `Move` (default) · `Keep` (the paragraph is a rule after all — say why in one line; the answer is recorded in the run report so the next run does not re-ask) · `Delete` (only for the *duplicate of memory* heuristic — the target already holds the entry; verify by reading it before offering this option).
+3. **On `Move`:** append the entry to the target in that file's own order (`decisions.md`, `errors.md` and `patterns.md` say at their top whether newest goes at the end or at the top — honor it; a `reference/` file gets a new `##` section at the end, or a new file `.agents/reference/<kebab-topic>.md` when no existing one fits, in which case add a `When to Read` row to `.agents/memory/index.md`). Then replace the paragraph in `CLAUDE.md` with the kept line. One edit per finding, never a batch — a batch that half-applies leaves a paragraph in two places.
+4. **Never touch** the exempt blocks 3.6 lists, a contract heading, or a mandatory `Git Workflow` content line. If a finding sits inside one, it was a false positive — record it as `Keep (contract)` and move on.
+
+After the last finding, **re-measure** with 3.6's two `wc` lines and print before → after. Still over the cap with nothing left to move → say so, with the numbers, and name the heaviest section; a project whose *rules alone* exceed the cap has a decision to make that this command does not make for it.
+
+**Output:**
+
+```markdown
+🍽 CLAUDE.md Diet — <N> findings
+
+   Validation ¶ "Styl v2 i wygasanie parity…"      → Delete (duplicate of decisions.md 2026-09-15); kept: "Styl v2 since 2026-09-15: … — decisions.md 2026-09-15"
+   Git Workflow ¶ "Never include AI attribution…"  → Move → decisions.md "2026-09-08 — AI attribution is never waived by a harness default"; kept: "Never include AI attribution in commits or PRs — switched off by the attribution key; only the owner can waive it, per commit."
+   Security ¶ "Egress policy — …"                  → Move → reference/security-egress.md § Deploy; kept: pointer line
+   Harness workflow preferences ¶ "Plan-feature…"  → Keep (standing user decision, one line, no story)
+
+   CLAUDE.md: 225 lines / 20 295 chars → 128 lines / 8 940 chars (cap 165 / 9 500) ✅
+```
+
+---
+
 ## Final Report
 
-After all 4 phases:
+After all 5 phases:
 
 ```markdown
 # /maintain:cleanup-workflow run summary — YYYY-MM-DD
@@ -624,9 +690,13 @@ After all 4 phases:
 ## Phase 4: Workflow optimization
    <N> drift signals (auto-load / contradictions / hooks / config).
 
+## Phase 5: CLAUDE.md diet
+   <M> moved, <D> deleted as duplicates, <K> kept (<K_contract> of them contract). <L> lines / <C> chars → <L'> / <C'> (cap 165 / 9 500).
+
 ## Next steps
    - Fix Phase 1 broken refs (manual).
    - Address Phase 3 warnings as time permits.
+   - Commit the Phase 5 moves on their own (memory files carry `merge=union`, see Phase 2).
    - Re-run /maintain:cleanup-workflow before next major milestone.
 ```
 
@@ -639,8 +709,9 @@ After all 4 phases:
 - **Phase 2: archive is the default.** Delete only on explicit user choice.
 - **Phase 2 runs 2A (entry-level) before 2B (file-level).** 2A cuts stale entries from living files (daily archive `archive/<file>-YYYY-MM-DD.md`); 2B archives whole cold files (quarterly archive `archive/YYYY-Q<N>/`). Both schemes coexist by design.
 - **Phase 2B: archive is the default for cold files.** `Pin` and `Keep, reset` are the only telemetry *writes* the command makes (frontmatter flip / sidecar bump); everything else only reads the sidecar.
-- **Phase 3: no actions.** Pure signal — let the user decide.
+- **Phase 3: no actions.** Pure signal — let the user decide. 3.6 measures `CLAUDE.md` and flags narrative; it moves nothing.
 - **Phase 4: no actions.** Discovery + flagging only; never hardcode project paths, and prefer a false-negative to a false-positive.
+- **Phase 5 is the only phase that edits `CLAUDE.md`,** one paragraph at a time, each on explicit consent, never a contract heading or a mandatory content line. Phase 1's 1.6 and Phase 3's 3.6 stay report-only.
 - **Skip `.agents/memory/archive/**`** in all phases (this command never re-processes its own archive).
 - **Skip `node_modules`, `.git`, `dist`, `build`** in all file scans.
-- **Run order is fixed:** Phase 1 → Phase 2 → Phase 3 → Phase 4. User can stop after any phase by interrupting; no resumption — re-run from start next time.
+- **Run order is fixed:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5. User can stop after any phase by interrupting; no resumption — re-run from start next time.

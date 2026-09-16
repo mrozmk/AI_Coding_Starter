@@ -39,7 +39,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 |-----------|---------------|
 | Before any non-trivial response | `user-profile.md` (skip if **absent** or `status: empty` — it is gitignored and per-developer, so on a fresh clone it does not exist at all; treat that as "skip", not as an error) |
 | New session / `/prime` | `project-brief.md` (or `docs/PRD.md` if brief is empty), `architecture.md` |
-| Before writing code | `patterns.md`, `architecture.md` — but once memory is large **and** `memory-domains.json` has path→domain rules (both required, else the hook stays dormant), `guard-memory.sh` forces this through a distillation subagent on the first edit per domain (see CLAUDE.md → Automatic Behaviors); load directly only when the hook is dormant |
+| Before writing code | `patterns.md`, `architecture.md` — but once memory is large **and** `memory-domains.json` has path→domain rules (both required, else the hook stays dormant), `guard-memory.sh` blocks the first code edit per domain once a session — delegate a `general-purpose` subagent to distill the relevant `errors.md` / `patterns.md` / `decisions.md` entries, then `touch` the marker the hook prints; load directly only when the hook is dormant |
 | Before debugging or investigating a bug | `errors.md` |
 | A slash command, hook, MCP server or shell/git invocation misbehaves — or a requirement was misread | `domain/harness.md` (skip while `status: empty`) |
 | Implementing a new feature | `plans/active/`, `specs/{feature}.md` (if exists) |
