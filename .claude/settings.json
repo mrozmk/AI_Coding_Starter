@@ -12,7 +12,6 @@
     "artifact-design": "off",
     "artifact-diagramming": "off",
     "artifact-capabilities": "off",
-    "claude-in-chrome": "off",
     "simplify": "off"
   },
   "permissions": {
