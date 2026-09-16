@@ -5,7 +5,6 @@
     "init": "off",
     "design": "off",
     "dataviz": "off",
-    "run": "off",
     "workflow-authoring": "off",
     "keybindings-help": "off",
     "fewer-permission-prompts": "off",
