@@ -2,8 +2,8 @@
 name: orchestrator-refiner
 description: Apply code-review (fix) + deep-review (structural cleanup) to a step's changed files before the verifier gate. Mutates code. Use inside /orchestrate pipeline.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill
-model: claude-opus-5
-effort: low
+model: claude-fable-5-1
+effort: medium
 permissionMode: acceptEdits
 skills:
   - code-review

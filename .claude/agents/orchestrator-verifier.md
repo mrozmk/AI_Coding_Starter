@@ -2,7 +2,7 @@
 name: orchestrator-verifier
 description: Verify implementation of a plan after the executor finishes. Read-only audit. Use inside /orchestrate pipeline.
 tools: Read, Glob, Grep, Bash, Skill
-model: claude-opus-5
+model: claude-fable-5-1
 effort: high
 permissionMode: default
 skills:
