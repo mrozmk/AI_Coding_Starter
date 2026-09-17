@@ -116,7 +116,7 @@ For each contract row, by `kind`:
   - ❌ never `command -v` — a language server on `PATH` says nothing about this repo, and a check whose verdict depends on whose laptop runs it is worse than no check.
   - ❌ never a plain text search for the indicator names, not even a narrowed one. They occur as prose throughout `.claude/` and `.agents/`, and `pyright` is a substring of `Copyright` — measured here, a bare name search self-detects an LSP off the `LICENSE` header of a repo that declares none. Read manifests, not text.
 
-  Declared + substring absent → **tier 2** (the `nudge-lsp.sh` pointer goes quiet — a lost hint, not a switched code path). Not declared → **silent**, never a finding.
+  Declared + substring absent → **tier 2** (the `nudge-lsp.sh` pointer goes quiet — a lost hint, not a switched code path). Declared + section present + a `tsconfig*.json` in the repo + no literal `warm-lsp` in `CLAUDE.md` → **tier 2** as well: `warm-lsp.sh` is registered but dormant, so cross-project LSP answers on a cold tsserver are silently partial. Not declared → **silent**, never a finding.
 
 Heading present but its body still `{placeholder}` → report `present but unfilled`, counted as absent for tier 1. A stub that satisfies a presence check is worse than an absent section, which is why this is a distinct outcome rather than a pass.
 
