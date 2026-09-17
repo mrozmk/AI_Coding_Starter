@@ -311,7 +311,7 @@ The prompt opens codex up to find **new** classes of problem in the *design*, wh
 > Project conventions live in `CLAUDE.md`, `.agents/memory/patterns.md`, `errors.md`, `decisions.md` — a finding that contradicts a documented decision there is INVALID; drop it yourself.
 >
 > **Look broadly — your value is seeing what a self-review on the same spec would miss.** Don't limit yourself to a checklist. Consider, among anything else you notice:
-> - **Approach & architecture** — is there a fundamentally simpler / safer / more idiomatic way to reach the spec's goal? Does the design fit the existing architecture or fight it?
+> - **Approach & architecture** — is there a fundamentally simpler / safer / more idiomatic way to reach the spec's goal? Does the design fit the existing architecture or fight it? Compare it explicitly against `.agents/memory/architecture.md` and `decisions.md`: name every divergence (a new layer, a new module boundary, a pattern used nowhere else, a dependency direction that breaks the documented one) and whether the document declares it as intentional. A declared divergence clears only the "undeclared" charge — its justification and consequences are still yours to judge, and a documented decision may be reopened when you can anchor concrete, material friction to it.
 > - **Scope & correctness of the goal** — is this solving the right problem? Over-built (YAGNI) or missing something the problem statement implies?
 > - **Collisions** — does this duplicate, conflict with, or break an existing module / pattern / contract in the repo?
 > - **Design holes** — internal contradictions in the spec, edge cases the spec ignores, files/components named that don't exist or are misdescribed.

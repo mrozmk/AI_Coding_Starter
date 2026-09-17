@@ -73,6 +73,7 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 - **Commands:** [/commit](.claude/commands/commit.md) · [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) · [/release](.claude/commands/release.md). Permission tiers (`deny` > `ask` > `allow`) live in [.claude/settings.json](.claude/settings.json); tiers, protected branches, `--no-track`, the pipeline's git: [.agents/reference/git-policy.md](.agents/reference/git-policy.md).
 - **`git worktree remove --force` can discard uncommitted work.** Its only guard is [/orchestrate](.claude/commands/orchestrate.md)'s `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged. `git worktree` and `git merge --ff-only` are reserved for the pipeline.
 - **Never include AI attribution** in commits or PRs. Switched off by the `attribution` key in `settings.json` — keep the key; a rule file alone cannot outrank the host's session instruction.
+- **Architecture cadence:** run [/architecture-review](.claude/commands/architecture-review.md) `--codex` (two independent sweeps, one report) on a cadence you choose — before a minor/major release, or after every few merged features — never on every patch: it is a whole-codebase sweep, slow and analyze-only. Candidates from its report go to `/brainstorm` as their own tasks; nothing is fixed inline during a release.
 
 **Orchestrate publish:** push
 
