@@ -1,0 +1,24 @@
+# /audit-security policy — gate mode (--gate). Same shape as report.yaml; the gate adds the exit
+# contract and the waiver rules.
+
+mode: gate
+
+required_classes:
+  always: [secrets]
+  by_stack:
+    sast: source
+    sca: manifest
+    iac: iac
+
+blocking:
+  verdicts: [confirmed]
+  severities: [critical, high]
+  kev_always_blocks: true
+
+# Exit 0 only on verdict PASS with execution COMPLETE. FAIL, UNKNOWN, INCOMPLETE and ERROR exit 2
+# unless a waiver file (--waiver-file) carries `reason` and `by`; the waiver is recorded in the run
+# manifest so the accepted risk is auditable.
+exit: gate
+waiver:
+  allowed: true
+  requires: [reason, by]

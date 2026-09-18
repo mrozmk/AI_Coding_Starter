@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Coverage matrix (schema 1)",
+  "description": "Per required scanner class and per model partition: covered or gap with a reason. `uncovered_units` lists every file the inventory could not classify or read — an uncovered unit is a gap, never a shrunk required set.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "required_classes", "classes", "partitions", "uncovered_units"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "required_classes": { "type": "array", "items": { "enum": ["secrets", "sast", "sca", "iac"] } },
+    "classes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["secrets", "sast", "sca", "iac"],
+      "properties": {
+        "secrets": { "$ref": "#/$defs/classRow" },
+        "sast": { "$ref": "#/$defs/classRow" },
+        "sca": { "$ref": "#/$defs/classRow" },
+        "iac": { "$ref": "#/$defs/classRow" }
+      }
+    },
+    "partitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["threat-model", "control-verifier", "attacker-path", "finding-validator"],
+      "properties": {
+        "threat-model": { "$ref": "#/$defs/partitionRow" },
+        "control-verifier": { "$ref": "#/$defs/partitionRow" },
+        "attacker-path": { "$ref": "#/$defs/partitionRow" },
+        "finding-validator": { "$ref": "#/$defs/partitionRow" }
+      }
+    },
+    "uncovered_units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": { "path": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "classRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`units_reported` is the wrapper's count; `units_basis` says what it counted: `analyzed` = read back from the tool's own output, `in-scope` = files the wrapper found (the tool exposes no scanned list — not evidence of analysis), `none` = no manifest. `findings_ingested` is how many of the tool's hits the runner turned into validator candidates; an OK_FINDINGS scan with zero is the gap `findings-not-ingested`.",
+      "required": ["status", "reason", "units_expected", "units_reported", "units_basis", "findings_ingested"],
+      "properties": {
+        "status": { "enum": ["covered", "gap", "not-required"] },
+        "reason": { "type": ["string", "null"] },
+        "units_expected": { "type": "integer", "minimum": 0 },
+        "units_reported": { "type": "integer", "minimum": 0 },
+        "units_basis": { "enum": ["analyzed", "in-scope", "none"] },
+        "findings_ingested": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "partitionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": { "enum": ["covered", "gap"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

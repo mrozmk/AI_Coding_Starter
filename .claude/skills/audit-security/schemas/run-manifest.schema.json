@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Audit run manifest (schema 1)",
+  "description": "Written by audit-runner.mjs at run start and updated at finalize. Records what was attempted (target, mode, required classes, tools, partitions) and indexes every artifact with its sha256.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "created_utc", "target", "mode", "required_classes", "not_required", "tools", "partitions", "waiver", "artifacts", "outcome"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "pattern": "^[0-9]{8}-[0-9a-f]{8}$" },
+    "created_utc": { "type": "string" },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "git_head"],
+      "properties": {
+        "root": { "type": "string" },
+        "git_head": { "type": ["string", "null"] }
+      }
+    },
+    "mode": { "enum": ["report", "gate"] },
+    "required_classes": { "type": "array", "items": { "enum": ["secrets", "sast", "sca", "iac"] } },
+    "not_required": { "type": "object", "additionalProperties": { "type": "string" } },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["class", "status", "tool", "version", "ruleset", "units", "basis", "reason", "artifact", "hardened", "residual", "findings_ingested"],
+        "properties": {
+          "class": { "enum": ["secrets", "sast", "sca", "iac"] },
+          "status": { "enum": ["OK_FINDINGS", "OK_CLEAN", "ERROR", "TIMEOUT", "UNAVAILABLE"] },
+          "tool": { "type": "string" },
+          "version": { "type": "string" },
+          "ruleset": { "type": "string" },
+          "units": { "type": "integer", "minimum": 0 },
+          "basis": { "enum": ["analyzed", "in-scope"] },
+          "reason": { "type": ["string", "null"] },
+          "artifact": { "type": ["string", "null"], "description": "Path of the tool's report, relative to the scan dir; the runner ingested findings from it." },
+          "hardened": { "type": ["string", "null"], "description": "Comma-separated repo-side suppression mechanisms the wrapper neutralised, as declared on its manifest line; null = the wrapper declared nothing." },
+          "residual": { "type": ["string", "null"], "description": "Comma-separated repo-side suppression mechanisms the wrapper could not neutralise (`none` when there are none); null = undeclared." },
+          "findings_ingested": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "partitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["partition", "claimed_model", "attested", "status", "stop_reason"],
+        "properties": {
+          "partition": { "enum": ["threat-model", "control-verifier", "attacker-path", "finding-validator"] },
+          "claimed_model": { "type": ["string", "null"] },
+          "attested": { "type": "boolean" },
+          "status": { "enum": ["COMPLETE", "INCOMPLETE", "ERROR"] },
+          "stop_reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "waiver": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "by", "recorded_utc"],
+          "properties": {
+            "reason": { "type": "string", "minLength": 1 },
+            "by": { "type": "string", "minLength": 1 },
+            "recorded_utc": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "outcome": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["execution", "verdict", "blocking", "gaps"],
+          "properties": {
+            "execution": { "enum": ["COMPLETE", "INCOMPLETE", "ERROR"] },
+            "verdict": { "enum": ["FAIL", "UNKNOWN", "PASS"] },
+            "blocking": { "type": "array", "items": { "type": "string" } },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["scope", "reason"],
+                "properties": { "scope": { "type": "string" }, "reason": { "type": "string" } }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

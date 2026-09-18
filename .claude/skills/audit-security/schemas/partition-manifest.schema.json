@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Partition manifest (schema 1)",
+  "description": "One per detector pass, written by the runner (never by the agent). `claimed_model` is what the pass reported about itself; `attestation.kind` says how that claim is backed and `attested` is true only for cli-provenance with evidence — see methodology.md → Host attestation. An unattested partition is INCOMPLETE with stop_reason model-identity-unattested; no switch detection is claimed. `result_hash` is the sha256 of the agent's returned bytes; `input_hash` is the sha256 of what the agent read (the Codex context pack), null when the input was the checkout itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "partition", "requested_model", "claimed_model", "attestation", "attested", "status", "stop_reason", "result_hash", "input_hash", "findings_count", "started_utc", "finished_utc"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "partition": { "enum": ["threat-model", "control-verifier", "attacker-path", "finding-validator"] },
+    "requested_model": { "type": "string", "minLength": 1 },
+    "claimed_model": { "type": ["string", "null"] },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "evidence"],
+      "properties": {
+        "kind": { "enum": ["none", "self-reported", "cli-provenance"] },
+        "evidence": { "type": ["string", "null"] }
+      }
+    },
+    "attested": { "type": "boolean" },
+    "status": { "enum": ["COMPLETE", "INCOMPLETE", "ERROR"] },
+    "stop_reason": { "type": ["string", "null"] },
+    "result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "input_hash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "findings_count": { "type": "integer", "minimum": 0 },
+    "started_utc": { "type": "string" },
+    "finished_utc": { "type": "string" }
+  }
+}

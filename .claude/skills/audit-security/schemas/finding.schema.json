@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Security finding (schema 1)",
+  "description": "One finding as returned by a detector (scanner ingest, Opus pass, Codex pass) or re-judged by the validator. `id` is a content hash of invariant+root_cause+sink+auth_context+cwe — a rename never hides a regression; the SEC-NNN label is a report-only decoration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "title", "detector", "taxonomy", "location", "invariant", "root_cause", "sink", "auth_context", "evidence", "preconditions", "exposure", "reachability", "severity", "confidence", "verdict", "verdict_reason", "cve", "kev"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^f-[0-9a-f]{16}$" },
+    "title": { "type": "string", "minLength": 1 },
+    "detector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "tool", "ruleset", "native_ids"],
+      "properties": {
+        "family": { "enum": ["scanner", "opus", "codex", "validator"] },
+        "tool": { "type": "string" },
+        "ruleset": { "type": "string" },
+        "native_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "taxonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cwe", "owasp", "asvs"],
+      "properties": {
+        "cwe": { "type": ["string", "null"], "pattern": "^CWE-[0-9]+$" },
+        "owasp": { "type": ["string", "null"] },
+        "asvs": { "type": ["string", "null"] }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "symbol"],
+      "properties": {
+        "path": { "type": "string" },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "symbol": { "type": ["string", "null"] }
+      }
+    },
+    "invariant": { "type": "string" },
+    "root_cause": { "type": "string" },
+    "sink": { "type": "string" },
+    "auth_context": { "type": "string" },
+    "evidence": { "type": "string" },
+    "preconditions": { "type": "array", "items": { "type": "string" } },
+    "exposure": { "enum": ["internet", "authenticated", "internal", "local"] },
+    "reachability": { "enum": ["reachable", "likely", "unknown", "unreachable"] },
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "verdict": { "enum": ["confirmed", "plausible", "disputed", "rejected"] },
+    "verdict_reason": { "type": ["string", "null"] },
+    "cve": { "type": ["string", "null"], "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$" },
+    "kev": { "type": "boolean" }
+  }
+}

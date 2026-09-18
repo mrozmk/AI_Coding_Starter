@@ -21,6 +21,9 @@ Thumbs.db
 *.key
 *secret*
 *credentials*
+# The secrets-class scanner wrapper is source, not a credential — the glob above would drop it
+# from every clone; the Edit deny rule in settings.json still guards it.
+!.claude/skills/audit-security/scripts/scan-secrets.sh
 
 # ============================================================
 # Claude Code — local-only state

@@ -1,0 +1,27 @@
+# /audit-security policy — report mode (default). Read by audit-runner.mjs via lib/yaml.mjs
+# (subset: maps, `- ` lists, [inline] lists, scalars). Keys mirror gate.yaml; only `exit` differs.
+
+mode: report
+
+# Which classes the run must cover. `always` is unconditional; `by_stack` maps a class to the
+# inventory kind whose presence makes it required. The inventory can add requirements, never
+# remove them — unknown files become uncovered units instead (methodology.md → Phase 1).
+required_classes:
+  always: [secrets]
+  by_stack:
+    sast: source
+    sca: manifest
+    iac: iac
+
+# A finding crosses the threshold (verdict axis = FAIL) when its verdict AND severity are listed,
+# or when it is a CVE on the KEV list and kev_always_blocks is true.
+blocking:
+  verdicts: [confirmed]
+  severities: [critical, high]
+  kev_always_blocks: true
+
+# Host attestation is NOT a policy knob: an unattested partition is always INCOMPLETE and a
+# coverage gap (fixed in audit-runner.mjs attestPartition, methodology.md → Host attestation).
+
+# Report mode always exits 0 — it is a report; all three axes stay in the artifact.
+exit: always-zero

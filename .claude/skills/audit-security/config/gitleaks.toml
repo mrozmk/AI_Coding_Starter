@@ -1,0 +1,6 @@
+# Pinned gitleaks config for /audit-security (scan-secrets.sh passes it as --config).
+# `--config` is gitleaks' precedence #1, so the audited repo's own .gitleaks.toml — and any allowlist
+# it carries — is never read. `useDefault` extends gitleaks' built-in ruleset of the installed
+# version instead of vendoring a copy that would go stale; the version is recorded in the manifest.
+[extend]
+useDefault = true
