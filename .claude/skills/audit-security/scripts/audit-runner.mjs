@@ -29,6 +29,11 @@ export const UNIT_BASES = ['analyzed', 'in-scope'];
 const SEVERITY_RANK = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 const CONFIDENCE_RANK = { high: 2, medium: 1, low: 0 };
 const VERDICT_RANK = { confirmed: 3, plausible: 2, disputed: 1, rejected: 0 };
+// A group carries the WIDEST exposure and the BEST reachability among its members: the report and
+// the chat summary split findings into "from outside" vs "from inside" on these two fields, and a
+// merge that kept the narrowest value would hide an internet-reachable member behind a local one.
+const EXPOSURE_RANK = { internet: 3, authenticated: 2, internal: 1, local: 0 };
+const REACHABILITY_RANK = { reachable: 3, likely: 2, unknown: 1, unreachable: 0 };
 
 // ---------------------------------------------------------------------------------------------
 // Inventory + required-class derivation
@@ -621,6 +626,8 @@ export function aggregateFindings(findings) {
       verdict: verdictSource.verdict,
       verdict_reason: verdictSource.verdict_reason ?? null,
       location: bySeverity.location,
+      exposure: best(EXPOSURE_RANK, 'exposure').exposure ?? null,
+      reachability: best(REACHABILITY_RANK, 'reachability').reachability ?? null,
       cwe: bySeverity.taxonomy?.cwe ?? null,
       cve: g.members.find((m) => m.cve)?.cve ?? null,
       kev: g.members.some((m) => m.kev === true),
@@ -953,7 +960,7 @@ export function renderReport({ runManifest, coverage, groups, outcome, template 
     not_required: Object.entries(runManifest.not_required).map(([k, v]) => `${k} (${v})`).join(', ') || '—',
     tools_table: rows(runManifest.tools, (t) => `| ${cell(t.class)} | ${cell(t.status)} | ${cell(t.tool)} | ${cell(t.version)} | ${cell(t.ruleset)} | ${t.units} | ${cell(t.basis)} | ${cell(t.reason)} |`),
     partitions_table: rows(runManifest.partitions, (p) => `| ${cell(p.partition)} | ${cell(p.claimed_model)} | ${p.attested ? 'yes' : 'no'} | ${cell(p.status)} | ${cell(p.stop_reason)} |`),
-    findings_table: rows(ranked, (g, i) => `| SEC-${String(i + 1).padStart(3, '0')} | \`${g.id}\` | ${g.severity} | ${g.confidence} | ${g.verdict} | ${g.independent_confirmations} | ${cell(g.title)} | ${cell(g.location?.path)}${g.location?.line ? `:${g.location.line}` : ''} | ${cell(g.cwe)} |`),
+    findings_table: rows(ranked, (g, i) => `| SEC-${String(i + 1).padStart(3, '0')} | \`${g.id}\` | ${g.severity} | ${g.confidence} | ${g.verdict} | ${g.independent_confirmations} | ${cell(g.exposure)} / ${cell(g.reachability)} | ${cell(g.title)} | ${cell(g.location?.path)}${g.location?.line ? `:${g.location.line}` : ''} | ${cell(g.cwe)} |`),
     disputed_table: rows(disputed, (g) => `| \`${g.id}\` | ${g.verdict} | ${cell(g.verdict_reason)} | ${cell(g.title)} |`),
     coverage_table: rows(Object.entries(coverage.classes), ([cls, r]) => `| ${cls} | ${r.status} | ${r.units_reported} / ${r.units_expected} | ${cell(r.units_basis)} | ${r.findings_ingested ?? 0} | ${cell(r.reason)} |`),
     uncovered_count: coverage.uncovered_units.length,

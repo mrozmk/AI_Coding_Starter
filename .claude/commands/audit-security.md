@@ -133,14 +133,31 @@ node .claude/skills/audit-security/scripts/audit-runner.mjs summary --out "$AUDI
 
 Refuse anything beyond this even if asked mid-run — active testing is a separate, future command.
 
-## Close
+## Close — the chat summary
 
-Reply in chat, short — the report carries the detail:
+Plain language, in this order, every line derived from `$AUDIT_DIR/outcome.json` and `report.md` — the runner
+already judged, ranked and merged; the summary **reads** those fields and never re-judges. Write it the way you
+would explain it to the person who owns the product, not to a security engineer: what an attacker can do, in
+one sentence, before any acronym. Keep the project's communication language (CLAUDE.md → Language Rules).
 
-- a **clickable link** to `$AUDIT_DIR/report.md`;
-- the three axes on one line: `execution · verdict · N blocking · M gaps`;
-- one line per gap scope (missing scanner, unattested partition, uncovered units) with the human action that would close it;
-- one line on the Codex pass: ran / did not return / hard-killed;
-- **the report is not committed** — it may contain sensitive findings; the user decides.
+1. **What was found** — only `confirmed` groups, one line each, grouped by the runner's `exposure` field:
+   - **Reachable from outside** (`internet`, `authenticated`) — `where` · *what someone can do* · `severity`.
+   - **Needs inside access** (`internal`, `local` — repo, workspace, CI, operator) — same shape.
+   - **Secrets** — file, kind of credential, whether it was ever committed, whether the validator could open
+     it; `disputed` ones are listed here explicitly as *not cleared*, never as findings and never as noise.
+   Say plainly which lines are blocking (`outcome.blocking`). If two groups share `location` and `cwe`, say
+   "the runner counted these separately" — do not merge them yourself; that is a fingerprint issue to report.
+2. **Classification** — one line per finding from step 1: `severity · CWE · verdict · found by
+   <scanner | opus | codex>`; `independent_confirmations ≥ 2` reads "both models agree", `1` reads "one model,
+   validator-confirmed". No P0–P3 label unless the runner emitted one.
+3. **What was NOT checked** — one line per `outcome.gaps` entry with the human action that closes it
+   (install `semgrep` / `trivy`, split the pack, …); one sentence on the unattested partitions (a claim, not
+   proof of which model ran — `methodology.md → Host attestation`); one line on the Codex pass: ran / no
+   result / hard-killed; the uncovered-unit count with the top reasons.
+4. **The report** — a **clickable link** to `$AUDIT_DIR/report.md`, the three axes on one line
+   (`execution · verdict · N blocking · M gaps`), and **the report is not committed** — it may contain
+   sensitive findings; the user decides.
+5. **Recommendations** — at most three, cheapest first, each one imperative sentence, each tied to a line
+   from step 1 or 3. Nothing here may introduce a finding the report does not carry.
 
-Never tick, move or rewrite any artifact under `$AUDIT_DIR` by hand — prose goes in through `audit-runner.mjs summary`. Never claim a class covered or a partition complete that the runner did not.
+Never tick, move or rewrite any artifact under `$AUDIT_DIR` by hand — prose goes in through `audit-runner.mjs summary`. Never claim a class covered or a partition complete that the runner did not. Never let the summary carry a judgment the runner did not make — the session routes and reads; the runner and the validator decide.

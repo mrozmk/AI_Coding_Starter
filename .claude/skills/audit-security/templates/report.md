@@ -39,8 +39,8 @@
 
 ## Ranked findings
 
-| # | Id | Severity | Confidence | Verdict | Confirmations | Title | Location | CWE |
-|---|---|---|---|---|---|---|---|---|
+| # | Id | Severity | Confidence | Verdict | Confirmations | Exposure / reach | Title | Location | CWE |
+|---|---|---|---|---|---|---|---|---|---|
 {{findings_table}}
 
 ## Disputed and rejected
