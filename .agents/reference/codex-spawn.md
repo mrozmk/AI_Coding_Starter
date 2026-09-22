@@ -118,6 +118,9 @@ the shape is identical:
 3. **On each wake-up / `<task-notification>`, decide state from the artifact (NOT a PID, NOT exit
    code), in order:**
    - `OUT` non-empty → **DONE-OK** → parse / read the review.
+   - `OUT` non-empty but not valid against `SCHEMA` (a schema caller only) → **parse failure** →
+     retry once, else fail-open skip. Read `OUT` before retrying: a schema rejection with real
+     findings inside is a prompt defect (`domain/harness.md` 2026-09-13), not a reviewer failure.
    - task exited but `OUT` empty/absent → **DONE-FAILED** → retry once, else fail-open skip. (Never
      read an empty file as a clean "no findings" result.)
    - task still running AND elapsed `< HARD_KILL` → confirm the **log is still growing** (bytes
@@ -212,6 +215,7 @@ out-of-scope change instead of reverting it.
 | `/quick-change` Phase 2 | 4 min | 3 min | 25 min — then proceed without the opinion, reported on its own line |
 | `/architecture-review --codex` Phase 0 | 8 min | 5 min | 60 min (whole-codebase sweep) — then render the report from one sweep |
 | `/execute codex` (executor) | 8 min | 3 min | 90 min — then STOP, tree left as-is, plan not moved |
+| `/check-implementation` Step 1.5 (cross-model review) | 6 min | 3 min | 50 min (single pass) — then fail-open skip |
 | `/check-implementation codex` (fixer) | 6 min | 3 min | 60 min — then STOP, "fixer failed" |
 
 > `/quick-change` is the one caller with a **short** ceiling, and deliberately so: it reviews a plan
