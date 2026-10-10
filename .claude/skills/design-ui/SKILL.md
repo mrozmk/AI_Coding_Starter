@@ -170,6 +170,10 @@ mechanically (a brief conflict, a DS limitation, a taste call that needs the hum
   remaining findings. **Sameness check:** compare the three fold shots yourself; if two share the
   same macro-shape (same section order, same hero composition), say so plainly — that is the #1
   failure of multi-variant design. The user picks 1, then Phase 4 runs on the pick only.
+- **Always open the mockups in the browser** before asking — every presented `$RUN/variant-*.html`
+  (`open` on macOS, `xdg-open` on Linux; no opener → print the `file://` paths). Shots are the
+  critic's evidence; the user judges motion, hover and the panels live. Re-open the pick when
+  Phase 4 changed it, before the Phase 5 question.
 
 ## Phase 4 — Cross-model review (Codex) — once, on the chosen design
 
