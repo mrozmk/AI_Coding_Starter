@@ -1,22 +1,23 @@
-# Self-Check — Design Quality Gate
+# Self-Check — the author's pre-flight (mechanical rows)
 
-The gate the `design` skill runs against EVERY mockup (every variant) **before** the user
-sees it. This is the GATE, not the full audit — for the exhaustive property diff see
-`.claude/commands/gates/design-quality-check.md`. Deep rule references:
-`.claude/skills/design-ui/emil-design.md` (motion), `.claude/skills/design-ui/redesign.md` (anti-AI),
-`.claude/skills/design-ui/dials.md` (variance/density). The token set is the **project's detected
-design system** (resolved in `design.md` Phase 0 — CSS custom properties / Tailwind theme /
-`tokens.css` / `theme.ts`), not a fixed list.
+The author runs this against EVERY mockup (every variant) **before** handing it to the critic,
+and fixes every miss. It is hygiene, not the verdict: the verdict belongs to `@design-critic`
+(`SKILL.md` → Phase 2), which sweeps these same rows again together with the judgement rubric in
+`.claude/skills/design-ui/principles.md`. For the exhaustive property diff of implemented UI
+against a reference see `.claude/commands/gates/design-quality-check.md`. Deep rule references:
+`.claude/skills/design-ui/emil-design.md` (motion), `.claude/skills/design-ui/redesign.md`
+(anti-AI), `.claude/skills/design-ui/dials.md` (variance/density). The token set is the
+**project's detected design system** (resolved in `SKILL.md` Phase 0 — CSS custom properties /
+Tailwind theme / `tokens.css` / `theme.ts`), not a fixed list.
 
-**Mode is chosen by `design.md` Phase 0 and passed in — do NOT re-detect here.**
-Run the gate independently per variant.
+**Mode is chosen by `SKILL.md` Phase 0 and passed in — do NOT re-detect here.**
 
 ---
 
 ## Mode A — DS present (NEW-to-DS / FIX)
 
 The design system exists; variants differ by layout/composition, NOT by palette/fonts.
-Every row must PASS or the finding counts toward the verdict. "Token" below means a value
+Every row must hold before the hand-off. "Token" below means a value
 from the project's detected token source — substitute the project's actual variable names.
 
 ### Tokens & color (detected DS)
@@ -60,6 +61,7 @@ from the project's detected token source — substitute the project's actual var
 | ----------- | --------------------------------------------------------------------------- |
 | Frontmatter | Top-of-file frontmatter with `name` + `priority` + `status` (if the project indexes mockups) |
 | Consistency | Coherent with ≥1 neighbour spec in the same area, when neighbours exist     |
+| Accessibility | Contrast meets WCAG AA (`principles.md` C4); ARIA roles/labels; 44px min touch target (M1) |
 
 ---
 
@@ -78,17 +80,9 @@ internally consistent against the "hand" it chose (`.claude/skills/design-ui/han
 
 ---
 
-## Verdict
+## Pre-flight outcome
 
-Count findings across the active mode's rows:
-
-| Findings | Verdict     | Action                          |
-| -------- | ----------- | ------------------------------- |
-| 0        | **APPROVE** | Present the variant to the user |
-| 1–10     | **WARN**    | Fix in place, re-audit          |
-| 11+      | **BLOCK**   | Fix in place, re-audit          |
-
-**Fix loop: cap 2 iterations.** On WARN/BLOCK, fix the findings in-place and re-run the
-gate. If still failing after 2 iterations, STOP grinding — present the remaining findings
-and let the user decide. Each variant runs this gate independently; a BLOCK on one variant
-does not block the others.
+Every row of the active mode either holds or is fixed before the mockup goes to the critic. A row
+you deliberately break (a brief-level decision) is written into `$RUN/brief.md` → `Constraints`,
+so the critic reads it as a decision, not a defect. There is no score and no cap here — the
+critique loop (`SKILL.md` → Phase 2) is where findings are counted, judged and capped.

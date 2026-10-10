@@ -45,6 +45,11 @@
 #                         reviewers never set it.
 #   CODEX_EFFORT (required) — model_reasoning_effort (low|medium|high|xhigh).
 #                         Pinned per caller; see codex-spawn.md → Effort matrix.
+#   IMAGES   (optional) — newline-separated image paths attached with `-i`
+#                         (visual reviews: /design-ui). `-i` is variadic in
+#                         codex-cli, so the wrapper closes the list with `--`;
+#                         without it the prompt is swallowed as one more image
+#                         path and codex exits "No prompt provided via stdin".
 #
 # Stdout of codex is empty by design (result goes to OUT); $OUT.stdout captures
 # it only so nothing leaks to the terminal.
@@ -78,6 +83,13 @@ else
 fi
 
 args+=(--output-last-message "$OUT")
+
+if [ -n "${IMAGES:-}" ]; then
+  while IFS= read -r img; do
+    [ -n "$img" ] && args+=(-i "$img")
+  done <<< "$IMAGES"
+  args+=(--)
+fi
 
 # Truncate OUT before spawning. Every caller treats "OUT non-empty" as the done
 # signal (exit 0 alone is not trustworthy — see the header), and codex writes it

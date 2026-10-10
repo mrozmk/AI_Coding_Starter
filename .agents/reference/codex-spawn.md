@@ -2,7 +2,7 @@
 
 The single source of truth for how any slash command launches Codex (`codex exec`) in the
 background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8.4),
-`/check-implementation` (Step 1.5), `/orchestrate` (Phase 7 step 0), and
+`/check-implementation` (Step 1.5), `/orchestrate` (Phase 7 step 0), `/design-ui` (Phase 4), and
 `/codex-review` all link here. The executable form is `.claude/lib/codex-bg.sh` — this file is the
 *why*; the wrapper is the *how*. If you add a new command that runs codex, reuse the wrapper and
 link here; do **not** copy a fresh `codex exec` invocation into the command (that drift is exactly
@@ -59,6 +59,7 @@ Call the wrapper, never raw `codex exec`. Pass via env vars:
 | `SCHEMA` | no | `--output-schema` path for structured JSON (plan-feature, brainstorm). Omit for prose (codex-review). |
 | `SANDBOX` | no (def `read-only`) | only applied when `SCHEMA` is **unset** (see below). `workspace-write` is reserved for the executor / fixer modes below. |
 | `CODEX_EFFORT` | **yes** | reasoning level (low/medium/high/xhigh). Pinned per caller — see the effort matrix below. The wrapper refuses to spawn without it. |
+| `IMAGES` | no | newline-separated image paths, each attached with `-i` (visual reviews — `/design-ui` Phase 4). `-i` is variadic in codex-cli, so the wrapper closes the list with `--`; a raw `codex exec -i a.png "<prompt>"` swallows the prompt as an image and exits "No prompt provided". |
 
 The wrapper bakes in, non-negotiably: `< /dev/null`, `-C "$REPO"`, `--skip-git-repo-check`,
 `--output-last-message "$OUT"`, `-c model_reasoning_effort=$CODEX_EFFORT`, stdout → `$OUT.stdout`,
@@ -86,6 +87,7 @@ re-validates everything).
 | `/architecture-review --codex` | `high` | `read-only` (default) |
 | `/execute codex` (executor) | `medium` | `workspace-write` |
 | `/check-implementation codex` (fixer) | `high` | `workspace-write` |
+| `/design-ui` Phase 4 (cross-model design review, `IMAGES` set) | `high` | (unset — `SCHEMA` run) |
 
 Never lower a level to make a run finish sooner — retune the caller's `HARD_KILL` instead.
 
@@ -217,6 +219,7 @@ out-of-scope change instead of reverting it.
 | `/execute codex` (executor) | 8 min | 3 min | 90 min — then STOP, tree left as-is, plan not moved |
 | `/check-implementation` Step 1.5 (cross-model review) | 6 min | 3 min | 50 min (single pass) — then fail-open skip |
 | `/check-implementation codex` (fixer) | 6 min | 3 min | 60 min — then STOP, "fixer failed" |
+| `/design-ui` Phase 4 (cross-model design review) | 4 min | 3 min | 30 min (single pass) — then fail-open skip |
 
 > `/quick-change` is the one caller with a **short** ceiling, and deliberately so: it reviews a plan
 > for a small change, so a run past 25 minutes is a hang, not depth. Its lane must stay fast — the

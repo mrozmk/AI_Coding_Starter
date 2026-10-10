@@ -16,6 +16,14 @@ from:
 - **What was NOT copied:** taste-skill's `SKILL.md` verbatim text, their color palettes
   (white/pastel), their typeface defaults (Inter/Helvetica), or any GSAP-specific guidance.
 
+## Distilled Principles: UX Peak
+
+`principles.md` restates, in our own words, design principles taught in UX Peak's
+*UI/UX Playbook — Tips and Tricks for Exceptional Design* and their product-page redesign
+video (uxpeak.com). Only ideas are used — no text, images or examples were copied — and the
+rules were reshaped into checkable form (IDs, thresholds) for this skill's critics. The
+playbook itself is a commercial work and is not part of this repository.
+
 ## Optional Inspiration Source: awesome-design-md
 
 [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md) — a collection
