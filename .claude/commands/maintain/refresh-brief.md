@@ -21,7 +21,7 @@ Generate or refresh `.agents/memory/project-brief.md` from a PRD so that `/prime
 
 - Resolve PRD path: `$ARGUMENTS` if provided, otherwise `docs/PRD.md`.
 - If the file does not exist → **stop** and tell the user:
-  > "PRD not found at `<path>`. Run `/setup:create-PRD` first to generate one, or pass an explicit path: `/maintain:refresh-brief path/to/prd.md`."
+  > "PRD not found at `<path>`. Run `/discover` first to generate one, or pass an explicit path: `/maintain:refresh-brief path/to/prd.md`."
 - Do not write anything when the PRD is missing.
 
 ### 2. Read PRD
@@ -31,6 +31,8 @@ Read the full PRD. Identify which sections are present:
 - Executive Summary / Mission / Target Users / MVP Scope → feed `project-brief.md`
 - Tech Stack / Architecture → feed `project-brief.md`
 - Pricing / Plans / Monetization / Billing / Subscription / Stripe → feed `business-model.md`
+
+When `docs/architecture.md` exists, the PRD's `Technology Stack` / `Core Architecture & Patterns` sections are its digest (written by `/architect`); take Stack/Architecture from them and add `docs/architecture.md` to the brief's Key Files.
 
 ### 3. Write `project-brief.md`
 

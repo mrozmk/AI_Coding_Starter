@@ -1,4 +1,4 @@
-# /audit-security policy — report mode (default). Read by audit-runner.mjs via lib/yaml.mjs
+# /audit-security policy — report mode (default). Read by audit-runner.mjs via .claude/lib/yaml-subset.mjs
 # (subset: maps, `- ` lists, [inline] lists, scalars). Keys mirror gate.yaml; only `exit` differs.
 
 mode: report

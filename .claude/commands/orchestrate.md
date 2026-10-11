@@ -143,7 +143,7 @@ Append to `RUN_LOG` as the run progresses (one entry per step is enough): step i
   MEMORY_CANDIDATE: <one line the reflection pass might keep — else omit the line>
 ```
 
-Also record, **once per run**, the backlog **work-package id + source `Ref`** this plan delivers (read from the plan header / `.agents/backlog.md`), so the central backlog write-back knows which WP to mark `DONE`. A clean iteration (passed first try) writes NO friction record — only the base step entry. Central reflection consumes THESE records, not the bare verdict lines.
+Also record, **once per run**, the backlog **Task ids** this plan delivers (the plan header's `**Tasks:**` line) + their source `Ref` (from `.agents/backlog.md`), so the central backlog write-back knows which Tasks to evaluate for `DONE`. A clean iteration (passed first try) writes NO friction record — only the base step entry. Central reflection consumes THESE records, not the bare verdict lines.
 
 ## Phase 5: Step loop
 
@@ -608,7 +608,7 @@ When the last step reaches `done`:
    **If the run-log shows none of these → skip entirely. Log `Memory: clean run, nothing to reflect on.` A smooth pipeline learns nothing.**
 
    If it does show friction, read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** against those run-log entries. Apply its bar strictly — **the default is to save nothing**; a recurring gap is only worth an `errors.md`/`decisions.md` entry if a fresh Claude would repeat the mistake without it. Append at most one or two entries; never pad. Memory writes are **not committed by the pipeline** — leave them in the working tree for the user to `/commit` (consistent with how memory is managed). Record the outcome for the summary's `Memory:` line.
-7. **Backlog write-back — opt-in, skip silently if no backlog.** **(Parallel run — `TARGET_BRANCH != main` — SKIP this step: the backlog write-back runs once, centrally, in Integration mode. This step runs only on a single run to `main`.)** If `.agents/backlog.md` exists, mark the work package this plan delivered as `Status: DONE` and confirm its `Ref` column carries both the spec and the (now moved to `done/`) plan path. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Touch only `Status`/`Ref` — never the DAG, epic map, or task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). This write is **not committed by the pipeline** — leave it in the working tree for the user to `/commit`, same as memory writes. Record the outcome for the summary's `Backlog:` line.
+7. **Backlog write-back — opt-in, skip silently if no backlog.** **(Parallel run — `TARGET_BRANCH != main` — SKIP this step: the backlog write-back runs once, centrally, in Integration mode. This step runs only on a single run to `main`.)** If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Otherwise **detect the format first**: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing, log once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". A header matching neither shape is malformed → write nothing, log it. Never mix the two rule sets. New format → **DONE rule (whole-Task completion)** for the Task ids recorded in Phase 4b (the plan header's `**Tasks:**` line): for each id, grep `.agents/plans/active/` for any other file whose `**Tasks:**` line lists it — none → set `Status: DONE`; one or more → keep `WIP`. In both cases update `Ref`: it must carry the spec path and this plan's **`done/`** path — `/plan-feature` wrote the `active/` path, replace it (append if missing). No `**Tasks:**` line → nothing to write, log it. Touch only `Status`/`Ref` — never the DAG, epic map, or Task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). A Task with a `Jira` cell keeps its local `Status` as a cache only — never transition the Jira issue from here. This write is **not committed by the pipeline** — leave it in the working tree for the user to `/commit`, same as memory writes. Record the outcome for the summary's `Backlog:` line.
 8. Emit final summary to the user:
 
 ```
@@ -626,7 +626,7 @@ Publish: <pushed to origin/<TARGET_BRANCH> / branch-local — <N> commit(s) on <
 Merged step branches you may delete: <the `! git branch -D …` line from step 4, or "none">
 Docs: <synced in commit <sha> / already in sync / skipped — no documented surface changed / not requested — pass --sync-docs (this run touched <documented surface>) >
 Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commit / clean run, nothing to reflect on>
-Backlog: <work package <WP> marked DONE, left uncommitted for you to /commit / no backlog — skipped>
+Backlog: <Task ids marked DONE / kept WIP (other plan active) — left uncommitted for you to /commit | legacy — skipped | no backlog — skipped>
 Deploy is your call.
 ```
 
@@ -715,7 +715,7 @@ Resolve `VALIDATION_CMD` in priority order (record the chosen source in the run-
 The run-log (Phase 4b) carries no memory/backlog patches, and each build clone's Phase 7 leaves memory/backlog **local + uncommitted** — so those deltas can never arrive via git. Therefore the memory/backlog step runs **centrally, once, here**, not in the build clones:
 
 - **Build clones SKIP the Phase-7 memory/backlog reflection** (Phase 7 steps 6–7) — they commit only the plan-move + run-log (`chore: workflow-state`). This is what makes deleting a clone after its build safe.
-- Each integrated branch carried its `chore: workflow-state` commit onto `main`, so every run-log now sits in the main checkout under `.agents/plans/done/`. Run the **Memory Reflection Protocol** ([.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md)) **over the merged run-logs** — consuming the Phase-4b friction records (`ROOT_CAUSE` / `APPLIED_CHANGE` / `OUTCOME` / `USER_GUIDANCE` / `MEMORY_CANDIDATE`), not bare verdict lines — applying its bar strictly (default: save nothing). Then do the **backlog write-back** for each delivered work package (`Status: DONE` + `Ref`), exactly as Phase 7 step 7 describes, for all integrated runs at once.
+- Each integrated branch carried its `chore: workflow-state` commit onto `main`, so every run-log now sits in the main checkout under `.agents/plans/done/`. Run the **Memory Reflection Protocol** ([.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md)) **over the merged run-logs** — consuming the Phase-4b friction records (`ROOT_CAUSE` / `APPLIED_CHANGE` / `OUTCOME` / `USER_GUIDANCE` / `MEMORY_CANDIDATE`), not bare verdict lines — applying its bar strictly (default: save nothing). Then do the **backlog write-back** for each delivered **Task** (whole-Task rule: `DONE` only when no active plan still lists the id, else `Ref` + keep `WIP`; format detection and the legacy skip included), exactly as Phase 7 step 7 describes, for all integrated runs at once.
 - Leave the central memory/backlog writes **uncommitted** in the working tree for the user to `/commit` (consistent with how memory is managed everywhere else).
 
 ### Integration summary
@@ -727,7 +727,7 @@ Gate source: <CLAUDE.md Validation | stack-detected <cmd> | skipped (none)>
 Escalated: <branch + reason, or "none">
 Temp branches to delete (your call): ! git branch -D integrate-a-<sha> integrate-b-<sha> …
 Memory: <appended N entr(y/ies), left uncommitted for you to /commit | nothing to reflect on>
-Backlog: <WP(s) marked DONE, left uncommitted | no backlog — skipped>
+Backlog: <Task ids marked DONE / kept WIP (other plan active), left uncommitted | legacy — skipped | no backlog — skipped>
 ```
 
 ## Failure modes you must handle

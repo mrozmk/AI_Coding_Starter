@@ -80,8 +80,8 @@ Focus on tools the `jira` skill uses. Parameter notation: `name: type [required|
 **`jira_update_issue`**(`issue_key: string [required]`, `fields: string [required — JSON string]`, `additional_fields: string [optional — JSON string]`, `components: string [optional]`, `attachments: string [optional]`)
 
 **`jira_batch_create_issues`**(`issues: string [required — JSON string, array of create payloads]`, `validate_only: boolean [optional — default false]`)
-- `validate_only: true` → server-side validation only, returns per-issue errors, NO issues created. This is our dry-run validator.
-- `validate_only: false` → executes. Per-issue atomicity (partial success possible).
+- `validate_only: true` → **client-side** shape check only, NO issues created and no call to Jira — it does not prove Jira will accept the payload (see Known transport limits below).
+- `validate_only: false` → executes. Per-issue atomicity (partial success possible). Drops `parent` and `additional_fields` — not usable where those matter.
 
 **`jira_delete_issue`**(`issue_key: string [required]`) — not used by the skill (out of scope).
 
@@ -94,6 +94,14 @@ Focus on tools the `jira` skill uses. Parameter notation: `name: type [required|
 **`jira_get_all_projects`**(`include_archived: boolean [optional]`)
 
 **`jira_get_project_issues`**(`project_key: string [required]`, `limit: integer [optional]`, `start_at: integer [optional]`)
+
+### Metadata (create-screen probing)
+
+**`jira_get_project_issue_types`**(`project_key: string [required]`) — returns the project's issue types with their ids; the id is what `jira_get_create_fields` needs.
+
+**`jira_get_create_fields`**(`project_key: string [required]`, `issue_type_id: string [required]`) — every field on the create screen for that type (id, name, required, schema).
+
+**`jira_search_fields`**(`keyword: string [optional — fuzzy; empty lists the first `limit` fields]`, `limit: integer [optional — default 10]`, `refresh: boolean [optional]`) — instance-wide field lookup; there is **no** `project_key` parameter.
 
 ### Comments
 
@@ -109,7 +117,43 @@ Focus on tools the `jira` skill uses. Parameter notation: `name: type [required|
 
 **`jira_get_link_types`**() — returns array of link types, e.g. `{id, name: "Blocks", inward: "is blocked by", outward: "blocks"}`. Names vary per instance — cache in-session.
 
-**`jira_create_issue_link`**(TBD — verify input schema at first use; expected something like `link_type: string`, `inward_issue: string`, `outward_issue: string`).
+**`jira_create_issue_link`**(`link_type: string [required — the type *name*, e.g. "Blocks"]`, `inward_issue_key: string [required]`, `outward_issue_key: string [required]`, `comment: string [optional]`, `comment_visibility: object [optional]`)
+
+Direction: *A blocks B* → `inward_issue_key` = A (the blocker), `outward_issue_key` = B (the
+blocked). mcp-atlassian 0.23.1 passes the two keys straight through as REST `inwardIssue` /
+`outwardIssue`, and Jira renders `inwardIssue=A, outwardIssue=B` with type Blocks as "A blocks B".
+Verify after the first link: `jira_get_issue(B, fields="issuelinks")` must list A under the type's
+`inward` phrase (`"is blocked by"`). A mismatch means the instance reads the direction the other
+way — stop and report, never auto-flip an existing link.
+
+### Estimates
+
+- **Original Estimate** — `additional_fields='{"timetracking": {"originalEstimate": "8h"}}'`. Accepted
+  only when time tracking is enabled on the instance **and** the field sits on the project's create
+  screen; otherwise the create returns 400.
+- **Story points** — a custom field whose id **differs per instance** (`customfield_10016`,
+  `customfield_10026`, …). Resolve it, never hardcode:
+  `jira_search_fields(keyword="story points")`, then pass
+  `additional_fields='{"customfield_10016": 8}'`.
+- **Prove before, verify after.** `jira_get_create_fields(project_key, issue_type_id)` confirms the
+  field is on the create screen *before* creating; `jira_get_issue(key, fields="timetracking,<field id>")`
+  confirms Jira actually stored the value *after*. A create that returns `success` is not evidence
+  the estimate landed.
+- Record the working field id per project in `.agents/memory/domain/jira.md` so later runs skip the probe.
+
+### Known transport limits (mcp-atlassian 0.23.1)
+
+- **`jira_batch_create_issues` drops `additional_fields` and `parent`.** Each issue dict goes straight
+  to `_process_additional_fields` (`jira/issues.py:1864-1929`, `:1001+`), which ignores a nested
+  `additional_fields` **string** and explicitly skips `parent`. A batch therefore creates Tasks with
+  no parent, no labels and no custom fields. Use sequential `jira_create_issue` whenever any of those
+  matter.
+- **`validate_only=true` validates locally only.** It logs on the client side and never asks Jira, so
+  a batch can "validate clean" and then fail — or succeed while silently dropping fields. It is not a
+  dry-run.
+- **`jira_search` simplifies `status`** to `{name, category, color}` — there is **no** raw
+  `statusCategory` key. Machine-readable mapping must go through `color` (`green` / `yellow` /
+  `blue-gray`) first, then the `category` name.
 
 ---
 

@@ -37,7 +37,7 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
    - **`External dependencies`** section (list of libs / APIs / services, if any)
    - **`Appetite & Cut Lines`** section, if present — the appetite is a **budget on the plan's size**, not a nice-to-have note. A "small appetite" spec that yields a 12-step plan means the plan overshot the design's own bound: cut back to the appetite, or say explicitly why the appetite was wrong. Carry the **Cut first** order verbatim into the plan (see the plan template) so the executor and `/orchestrate` inherit a standing answer to "what do we drop?" instead of improvising one under pressure. Specs written before this section existed simply won't have it — proceed without it, don't STOP.
 3. If the spec is missing the `External docs required` field, STOP and tell the user: "Spec does not declare `External docs required`. Update the spec via `/brainstorm` or add the field manually, then rerun `/plan-feature`."
-4. **Backlog write-back (opt-in — skip silently if no backlog).** If `.agents/backlog.md` exists, find the work package this spec belongs to (match the spec's feature against the WP whose "Entry" names this spec, or whose task scope this spec covers). If found, set that work package's `Status` to `WIP` and write the spec path into the `Ref` column of its tasks. If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Never create the backlog here; only update it when present.
+4. **Backlog write-back (opt-in — skip silently if no backlog).** If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline); never create the backlog here. If it exists, **detect the format first**: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing, say once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`", and continue. A header matching neither shape is malformed → write nothing, say so, and continue. Never mix the two rule sets. New format → **WIP rule:** for each id in the spec's `**Tasks:**` line, set that Task row's `Status` → `WIP` and add the spec path to its `Ref` cell. No `**Tasks:**` line in the spec → fall back to matching the spec topic against Task titles; one clear match → use it, say which, and carry that id into the plan's `**Tasks:**` line (otherwise the DONE write-back never finds it); ambiguous or none → skip the write-back and say so. Touch only `Status` / `Ref` cells — never the table structure. For a Task with a `Jira` cell the local `Status` is a cache (Jira owns the workflow) — do **not** transition the Jira issue from here.
 
 > The spec is the single source of truth for **what** to build and **why**. This command's job is to decide **how**.
 
@@ -156,6 +156,7 @@ While drafting, target the **soft cap**. Crossing the hard cap does not split th
 The following plan should be complete, but it's important that you validate codebase patterns and task sanity before you start implementing. Pay special attention to naming of existing utils, types, and models. Import from the right files.
 
 **Source spec:** `.agents/specs/<spec-file>.md`
+**Tasks:** <copied verbatim from the spec's `**Tasks:**` line, or the Task id Phase 0's title match resolved; omit this line when neither exists — without it `/execute` and `/orchestrate` never close the Task>
 **External docs required:** yes | no
 **Execution effort:** low | medium
 **Appetite:** <from the spec's Appetite & Cut Lines — omit this line and the next if the spec has none>
@@ -293,13 +294,13 @@ Execute every applicable command to ensure zero regressions and feature correctn
 
 ## ACCEPTANCE CRITERIA
 
-<The **semantic** done-criterion: these are **judged, never counted** — by a human or a reviewing agent. The counted list is `## STEP-BY-STEP TASKS`, which carries the `EXPECT` assertions a gate can mechanically verify. Derive the criteria from the spec's Summary, Edge Cases and Out of Scope — feature-specific, one bullet each; generic lines ("code follows conventions", "no regressions") are what the validation commands and the gate already check, so do not restate them here.>
+<Copy the spec's `## Acceptance Criteria` **verbatim, ids included** (`- **E1-2.AC1** — …`) — these are **judged, never counted** (by a human or a reviewing agent); the counted list is `## STEP-BY-STEP TASKS`, which carries the `EXPECT` assertions a gate can mechanically verify. You may add technical checks as **unnumbered** bullets under a `Technical checks` sub-list; never add, renumber or reword an id'd criterion — a criterion changes only in a spec, by marking the old one `(withdrawn)` after the bold id and adding a new id. Spec without the section (older specs): derive from Summary, Edge Cases and Out of Scope as before — feature-specific, one bullet each; generic lines ("code follows conventions", "no regressions") are what the validation commands and the gate already check, so do not restate them here.>
 
 ---
 
 ## NOTES
 
-<Additional context, design decisions, trade-offs — kept minimal; the spec carries the "why", the plan carries the "how".>
+<Additional context, design decisions, trade-offs — kept minimal; the spec carries the "why", the plan carries the "how". List the binding `AD-n` rules the spec cites (one line each) so the executor and verifier see them.>
 ```
 
 ---
@@ -382,6 +383,8 @@ Use `AskUserQuestion`. Present only the options that apply, recommend one, and *
 **Step 6.1 re-enters this same question** if grilling pushes a file back over the cap. It does not silently split then either.
 
 ### Step 4.5.4b — Split mechanics (only after the user chose b or c)
+
+**Both options:** every resulting plan file carries the `**Tasks:**` line of the backlog Tasks it serves — a Task shared by two files appears in each, which is what lets `/execute` and `/orchestrate` apply the whole-Task completion rule (a Task is `DONE` only when no active plan still lists it).
 
 **Option (b) — parallel top-level plans.** One plan per track from Gate A. These are peers, not a hierarchy:
 
@@ -1047,7 +1050,7 @@ After Phase 6 completes (plan finalized post-grilling), provide:
 - Complexity assessment
 - Key implementation risks or considerations (post-grilling — should be minimal if the user accepted critical fixes)
 - Estimated confidence score for one-pass success (POST-grilling — typically +1.5 to +2.5 vs pre-grilling)
-- **Backlog write-back (opt-in)** — if `.agents/backlog.md` exists, write the finalized plan path into the `Ref` column (alongside the spec path from Phase 0) for the tasks of this spec's work package, and confirm its `Status` is `WIP`. If no backlog exists, skip silently and omit this line. Do **not** touch the backlog's DAG/structure — only `Ref`/`Status`.
+- **Backlog write-back (opt-in)** — if `.agents/backlog.md` exists in the new format, write the finalized plan path(s) into the `Ref` cell (alongside the spec path from Phase 0) for the spec's Tasks (the ids on its `**Tasks:**` line), and confirm each `Status` is `WIP`. Legacy format → repeat the one-line "legacy WP backlog — write-back skipped" note from Phase 0. If no backlog exists, skip silently and omit this line. Do **not** touch the backlog's DAG/structure — only `Ref`/`Status`.
 - **Execution effort recommendation** (see below) — last section of the report
 
 ---

@@ -196,7 +196,9 @@ mv .agents/plans/active/<plan-file>.md .agents/plans/done/<plan-file>.md
 
 This marks the feature as fully implemented.
 
-**Exception — an explicitly-passed sub-step** (the third branch of the Phase 0 umbrella guard): do **not** `mv` it. Flip that row's `Status` to `done` in the umbrella's `## Execution Plan` table and leave the whole family in `active/`. The umbrella and its sub-steps move to `done/` together, only once every row is `done` — moving one slice would report a feature as shipped while the rest of it is still unwritten.
+**Backlog write-back (opt-in) — after the `mv`.** No `.agents/backlog.md` → silent no-op. Otherwise detect the format first: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing and say once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". A header matching neither shape is malformed → write nothing and report it. Never mix the two rule sets. New format → **DONE rule (whole-Task completion):** for each id on the moved plan's `**Tasks:**` line, grep `.agents/plans/active/` for any other file whose `**Tasks:**` line lists that id — none → set the Task's `Status` to `DONE`; one or more → keep `Status: WIP` (another plan still owns part of the Task). In both cases update `Ref`: `/plan-feature` wrote this plan's `active/` path there — replace it with the `done/` path (append if it is missing). A plan with no `**Tasks:**` line → nothing to write; say so. Touch only `Status` / `Ref` cells — never the table structure. The write is **not committed** here — leave it in the tree for `/commit`. A Task with a `Jira` cell keeps its local `Status` as a cache only: never transition the Jira issue from here.
+
+**Exception — an explicitly-passed sub-step** (the third branch of the Phase 0 umbrella guard): do **not** `mv` it. Flip that row's `Status` to `done` in the umbrella's `## Execution Plan` table and leave the whole family in `active/`. The umbrella and its sub-steps move to `done/` together, only once every row is `done` — moving one slice would report a feature as shipped while the rest of it is still unwritten. **No backlog write-back for a sub-step either** — the family's `**Tasks:**` are written back once, when the whole family moves.
 
 ### 7. Memory reflection
 
@@ -227,6 +229,7 @@ Provide summary. First line: `Executor: <claude | codex · effort medium · <ela
 - Confirm all changes are complete
 - Confirm all validations pass
 - Memory: <appended 1 entry to <file> / nothing worth remembering / skipped — running /check-implementation or /orchestrate next>
+- Backlog: <ids → DONE | ids kept WIP (other plan active: <path>) | no `**Tasks:**` line | legacy — skipped | no backlog | sub-step — deferred to the family move>
 - Ready for `/commit` command
 
 ## Notes

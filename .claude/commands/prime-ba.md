@@ -16,6 +16,8 @@ Read in this order — stop reading a category if the file doesn't exist:
 
 - `CLAUDE.md` — project rules, language conventions, workflow
 - `docs/PRD.md` — product requirements (primary source of truth for what the product is)
+- `docs/discovery.md` — when present: the coverage table, the open `Q-n`, and the flows (`FL-n`) with their critical flag
+- `docs/architecture.md` — when present: `## Subdomains` and `## Decisions` (titles only — the `AD-n` detail is for `/plan-feature`, not for BA work)
 - `README.md` — project root readme (context on audience and state)
 
 ### 2. Ingest Raw Sources
@@ -53,7 +55,21 @@ List plans — what's being implemented and what's already done:
 
 Filenames only — don't read the plans themselves unless the BA asks.
 
-### 6. Jira Environment + Live Backlog
+### 5b. Local backlog
+
+!`ls -la .agents/backlog.md 2>/dev/null || echo "no local backlog"`
+
+If `.agents/backlog.md` exists, read it and note: the Epic map, the Task count per `Status` (TODO / WIP / DONE), and points done vs total per Epic. Then run the checker and report its output — never fix the backlog from here (structural edits are a human act, `/setup:create-backlog` → Maintenance):
+
+```bash
+node .claude/lib/backlog-check.mjs
+```
+
+Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure.
+
+### 6. Jira (optional)
+
+Jira is optional: BA priming is complete without it — the local backlog of section 5b and the specs/plans views are the full picture when no tracker is connected. Skip this whole section when the probe fails and say so once in the report.
 
 Jira config lives in environment variables that the MCP server reads directly — **do not** echo them from the shell (printing a token would leak it into `audit.log`). Probe connectivity by attempting a read-only MCP call and reacting to the result.
 
@@ -95,9 +111,21 @@ From PRD:
 - **MVP scope** — 3-5 bullets of what's in scope
 - **Out of scope** — 2-3 bullets of what's explicitly deferred
 
-If no PRD exists, say so and recommend running `/setup:create-PRD` first.
+If no PRD exists, say so and recommend running `/discover` first.
 
-### Backlog State
+### Discovery & architecture state
+
+- **Discovery** — coverage table verdict per area, the open `Q-n` (id + question), the flows with `Critical: yes`. Absent → "no `docs/discovery.md` — run `/discover`".
+- **Architecture** — the subdomain classification (core / supporting / generic) and the `AD-n` titles with their `Status`. Absent → "no `docs/architecture.md` — run `/architect`".
+
+### Backlog state (local)
+
+From `.agents/backlog.md` (absent → "no local backlog"):
+- Epic map — one line per Epic: id, name, Tasks, points done/total
+- Task counts by `Status`: TODO / WIP / DONE
+- `backlog-check` output: errors and warnings verbatim, or "clean"
+
+### Pipeline State (specs · plans · Jira)
 
 Three parallel views — the BA needs all three to understand what's happening:
 
@@ -132,12 +160,16 @@ If empty, note that `memory/decisions.md` is empty — no decisions recorded yet
 ### Recommended Next Steps
 
 Given the gaps identified, recommend concrete next actions in priority order. Examples:
-- `/brainstorm <feature X>` — spec gap identified in PRD
-- `/jira create epic` — spec exists but no Jira epic
-- `/setup:create-PRD` — no PRD yet, product direction unclear
+- `/discover` — no PRD yet, product direction unclear
+- `/discover --import <file>` — requirements exist outside the repo (doc, CSV, spreadsheet) and carry no ids yet
+- `/architect` — PRD exists but no `docs/architecture.md` (no subdomains, no `AD-n`, no stack decision)
+- `/setup:create-backlog` — PRD + architecture exist but no `.agents/backlog.md`
+- `/jira sync` — local backlog exists, its `Jira` cells are empty and `tracker=jira`
+- `/brainstorm <Task>` — a sized H/XH Task with no spec yet
+- `/jira create epic` — spec exists but no Jira epic (only when no local backlog — with one, `/jira sync` owns Epic creation)
 - Refresh PRD — raw sources present but PRD seems outdated
 
-Limit to 3 recommendations max. If nothing obvious, say the backlog looks consistent and is ready for user-story work (in the user's communication language — CLAUDE.md → Language Rules).
+Limit to 3 recommendations max — when more apply, keep the 3 earliest in the route order above and name the rest in one trailing line. If nothing obvious, say the backlog looks consistent and is ready for user-story work (in the user's communication language — CLAUDE.md → Language Rules).
 
 ---
 
@@ -146,5 +178,6 @@ Limit to 3 recommendations max. If nothing obvious, say the backlog looks consis
 After the report, remind yourself (and the user) of the BA role posture:
 - Focus on **what** and **why**, not **how** (leave implementation detail to `/plan-feature` and developers)
 - Prefer user-story format: "As a [user], I want [action], so that [benefit]"
+- Tasks are stories or technical tasks, sized M/H/XH, with acceptance criteria carrying ids (`E<n>-<m>.AC<k>`)
 - When creating tasks in Jira, always under a parent Epic (no free-floating tasks — per `jira` skill hard-gate)
 - When in doubt about scope or product intent, ask — do not guess

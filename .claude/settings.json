@@ -60,6 +60,7 @@
       "Bash(bash .claude/skills/audit-security/scripts/scan-sca.sh:*)",
       "Bash(bash .claude/skills/audit-security/scripts/scan-iac.sh:*)",
       "Bash(node .claude/skills/audit-security/scripts/audit-runner.mjs:*)",
+      "Bash(node .claude/lib/backlog-check.mjs:*)",
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:github.com)",

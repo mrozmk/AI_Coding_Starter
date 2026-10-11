@@ -25,11 +25,14 @@ Run recon when the idea **leans on prior work** ("we tested a lot of variants", 
 
 ### Step 0: Resolve the topic
 
-Same resolution order as `/brainstorm` Step 0:
+Same resolution order as `/brainstorm` Step 0 — mirror it, do not re-derive. Recon stays **read-only**: it never writes `Status`/`Ref` cells.
 
+**Format detection first, when `.agents/backlog.md` exists:** a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format (eligibility reads `Dependencies`, completion evidence matches done-plans by task id / work-package name, no `Jira` column); a header matching neither shape is malformed → report it and treat the file as absent, exactly as `brainstorm.md` Step 0 does. Never mix the two rule sets in one run.
+
+0. **Task resolution.** `$ARGUMENTS` (trimmed) is a backlog Task id (`^E\d+-\d+$`), or a Jira key (`^[A-Z]+-\d+$`) equal to the leading `[A-Z]+-\d+` token of some Task row's `Jira` cell (a cell written by `/jira sync` may read `KEY (unverified)` — the key still counts) → the topic is that Task: title + its acceptance-criteria ids + `Traces`. Announce `KEY → <Task id>` for a key. Skip 1–3.
 1. **Explicit topic in `$ARGUMENTS`** → use verbatim.
-2. **A referenced Jira issue** (`[A-Z]+-\d+` key or pasted AC) → that issue is the topic.
-3. **Empty + no Jira** → resolve the **next free task** from `.agents/backlog.md` (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`; verify it isn't already done via `plans/done/` + recent commits). **No backlog file → detect a tracker exactly as `brainstorm.md` Step 0 does** (tracker skill present or `.mcp.json` declares one) and ask which issue to recon; no tracker either → STOP and ask what to recon.
+2. **A referenced Jira issue** (`[A-Z]+-\d+` key or pasted AC) → a matching `Jira` cell resolves to that local Task (as in 0); otherwise that issue is the topic.
+3. **Empty + no Jira** → resolve the **next free Task** from `.agents/backlog.md`: Status `TODO`, `Task` cell without `(withdrawn)` (a withdrawn row is never auto-selected, whatever its refreshed Status), exact id absent from the `**Tasks:**` header line of every file in `.agents/plans/active/` (header line only, not a prose mention — an active plan means the Task is already planned; skip it and name the owning plan), every id in `Depends on` is `DONE` (legacy: `Dependencies`), lowest `Wave`, table order on ties. **Completion guard:** a done-plan whose `**Tasks:**` line lists the id is completion evidence (the active-plan check above already excluded split Tasks); verify also via recent commits. New format with `Jira` cells and a tracker MCP → read the statuses with `jira_search(jql="key in (…)", fields="status")` for eligibility (keys = the leading `[A-Z]+-\d+` token of each cell), mapping as `brainstorm.md` Step 0 does, and say "statuses read from Jira, not written (recon is read-only)"; unreachable → use the local cells and say so. **Jira authority:** for a Task with a `Jira` cell, a refreshed status other than `DONE` overrides done-plan evidence (a reopened Task stays eligible), and a refreshed `WIP` keeps it ineligible. Recon writes nothing — the refreshed values are used in-session only. **No backlog file → detect a tracker exactly as `brainstorm.md` Step 0 does** (tracker skill present or `.mcp.json` declares one) and ask which issue to recon; no tracker either → STOP and ask what to recon.
 
 Announce the resolved topic before spawning anything.
 

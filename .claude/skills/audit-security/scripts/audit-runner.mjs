@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validate } from './lib/schema.mjs';
-import { parseYaml } from './lib/yaml.mjs';
+import { parseYaml } from '../../../lib/yaml-subset.mjs';
 import { runSmoke } from './lib/smoke.mjs';
 
 export const SKILL_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

@@ -57,7 +57,7 @@ The wiki lives at `.agents/wiki/`. This path is fixed to keep other commands (`/
 What existing files or data will serve as raw material for wiki creation?
 (Claude Code reads these to synthesize wiki pages — it never modifies them.)
 
-> **Default suggestion:** `.agents/sources/` — the starter's shared input layer for raw materials (also used by `/setup:create-PRD`). If that directory already holds relevant briefs/transcripts/data, propose it first, then ask whether additional locations should be added.
+> **Default suggestion:** `.agents/sources/` — the starter's shared input layer for raw materials (also used by `/discover`). If that directory already holds relevant briefs/transcripts/data, propose it first, then ask whether additional locations should be added.
 >
 > Other common examples: `data/knowledge/*.json`, `docs/*.md`, `src/`, API reference files, scraped data files
 

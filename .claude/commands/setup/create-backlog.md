@@ -1,5 +1,5 @@
 ---
-description: Generate .agents/backlog.md — the delivery map (epics + tasks + DAG + work packages) that operationalizes the PRD into pipeline inputs
+description: Generate .agents/backlog.md — Epics and Tasks (user stories + technical tasks) with sizes M/H/XH, dependency DAG, sequential foundation + parallel lanes for 2–4 developers, story map with walking skeleton, and acceptance criteria with ids — the delivery map the pipeline and /jira sync consume
 argument-hint: "[path-to-prd | optional — defaults to docs/PRD.md]"
 ---
 
@@ -9,22 +9,22 @@ argument-hint: "[path-to-prd | optional — defaults to docs/PRD.md]"
 
 ## What this produces — and why it is NOT the PRD
 
-This command writes **one** artifact: `.agents/backlog.md`. It is a **pipeline-steering meta-artifact**, not another planning document and not a spec.
+This command writes **one** artifact: `.agents/backlog.md`. It is the **planning source of truth** for delivery — a pipeline-steering meta-artifact, not another planning document and not a spec.
 
 There are three levels of "what to build" in this template, and the backlog fills the gap between the other two:
 
 | Level | Artifact | Scope | Read by |
 |-------|----------|-------|---------|
-| Product intent | `docs/PRD.md` → "Implementation Phases" | *what & why*, coarse phases, narrative | human, `/brainstorm` |
-| **Delivery map** | **`.agents/backlog.md` ← this command** | *in what dependency structure to ship it* — epics, task IDs, DAG, work packages, waves, DoD | human, `/brainstorm` (per-WP scope) |
-| Per-feature DAG | umbrella plan `## Execution Plan` | sub-steps of ONE work package | `/orchestrate` |
+| Product intent | `docs/PRD.md` (+ `docs/discovery.md`, `docs/architecture.md`) | *what & why*, ids `G-/R-/NFR-/BR-/FL-/AD-` | human, `/brainstorm` |
+| **Delivery map** | **`.agents/backlog.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, waves, lanes, slices, AC ids | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
+| Per-feature DAG | umbrella plan `## Execution Plan` | sub-steps of ONE Task (or a few) | `/orchestrate` |
 
-The PRD says *what & why* in prose. The backlog **operationalizes** the PRD's "Implementation Phases" into a dependency-structured inventory. It **does not** restate the PRD's narrative — it references it. The per-feature `## Execution Plan` (emitted later by `/plan-feature`) is a finer DAG *inside* one work package; the backlog is the DAG *across* work packages.
+The PRD says *what & why*. The backlog **operationalizes** it into Epics and Tasks with dependencies and sizes. It **does not** restate the PRD — it traces to its ids. Jira mirrors the backlog 1:1 via `/jira sync` (create-only) and, for synced Tasks, owns workflow status (umbrella D7: a Task with a `Jira` key takes its `Status` from Jira; without one the local cell is authoritative).
 
-> **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE work package; the backlog decides *which* work packages exist, in what order, with what dependencies. Each work package row literally tells you the `/brainstorm <topic> → spec → /plan-feature <spec>` invocation to run next.
+> **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE Task (or an explicitly listed few); the backlog decides *which* Tasks exist, how big they are, in what order, and who can work on them at the same time.
 
 <HARD-GATE>
-This command produces a backlog — never code, never a spec, never a plan. Do NOT scaffold files, write implementation, or call `/brainstorm`/`/plan-feature`. It stops at `.agents/backlog.md`. The backlog is **opt-in**: a project that never runs this command has an untouched pipeline.
+This command produces a backlog — never code, never a spec, never a plan. Do NOT scaffold files, write implementation, or call `/brainstorm`, `/plan-feature`, `/quick-change` or `/jira`. It stops at `.agents/backlog.md` (plus the `backlog-check.mjs --write` gate on that file). The backlog is **opt-in**: a project that never runs this command has an untouched pipeline.
 </HARD-GATE>
 
 ---
@@ -32,249 +32,166 @@ This command produces a backlog — never code, never a spec, never a plan. Do N
 ## Where it sits in the pipeline
 
 ```
-/setup:create-PRD → /maintain:refresh-brief → [/setup:create-backlog] → /brainstorm (per work package) → /plan-feature → /execute
+/discover → /architect → /maintain:refresh-brief → /prime → [/setup:create-backlog] → (/jira sync) → /brainstorm | /quick-change (per Task) → /plan-feature → /execute
 ```
 
-- **Greenfield:** run after the PRD exists. The backlog records architectural **assumptions** and open questions itself (it sets the *order of discovery*, it does not wait for full architecture to be designed).
+- **Greenfield:** run after `/discover` and `/architect`. The backlog traces every Task to the ids they produced; where architecture is still open it records the assumption and keeps going.
 - **Brownfield (existing codebase):** run `/setup:map-codebase` **first** (it reconstructs `architecture.md` + a PRD). A DAG over an un-mapped codebase would be guesswork.
-
-Run it **before** full architecture is designed but **after** the PRD: the backlog's job is to sequence discovery and planning, not to close the design.
 
 ---
 
 ## Process
 
-### Phase 0: Locate the PRD and guard the output
+### Phase 0: Locate the inputs and guard the output
 
-> **Loader Convention.** This command assumes `/prime` already loaded `CLAUDE.md`, `index.md`, `project-brief.md`, `architecture.md`. Do **not** re-read those "for context". The PRD is this command's **source-of-truth for transformation** — read it directly (like `/maintain:refresh-brief` does). If context isn't primed, ask the user to run `/prime` first.
+> **Loader Convention.** This command assumes `/prime` already loaded `CLAUDE.md`, `index.md`, `project-brief.md`, `architecture.md`. Do **not** re-read those "for context". The PRD, `docs/discovery.md`, `docs/architecture.md` and `docs/map/system.yaml` are this command's **sources of truth for transformation** — read them directly, in full, when present (like `/maintain:refresh-brief` does). If context isn't primed, ask the user to run `/prime` first.
 
-1. **Resolve the PRD path:** `$ARGUMENTS` if it points to an existing `.md`, otherwise `docs/PRD.md`.
+1. **Resolve the PRD path:** `$ARGUMENTS` if it points to an existing `.md`, otherwise `docs/PRD.md`. The resolved path is written into the backlog header (`**Source PRD:**`) — `backlog-check.mjs` reads it from there.
 2. **PRD missing** → STOP, do not write anything:
-   > "PRD not found at `<path>`. Run `/setup:create-PRD` first (greenfield), or `/setup:map-codebase` (existing codebase — it reconstructs a PRD), then rerun `/setup:create-backlog`."
+   > "PRD not found at `<path>`. Run `/discover` first (greenfield), or `/setup:map-codebase` (existing codebase — it reconstructs a PRD), then rerun `/setup:create-backlog`."
 3. **Backlog already exists** (`.agents/backlog.md` present and non-empty) → STOP and ask, do not silently overwrite:
-   > "`.agents/backlog.md` already exists. It is a living artifact with Status/Ref filled in by the pipeline — regenerating wholesale would discard that progress. To change the structure (new epic, re-shaped DAG), edit it directly. Re-run me only to rebuild from scratch — confirm you want that."
+   > "`.agents/backlog.md` already exists. It is a living artifact with Status/Ref/Jira filled in by the pipeline — regenerating wholesale would discard that progress. To change the structure (new Epic, re-shaped DAG), edit it directly and run `node .claude/lib/backlog-check.mjs --write`. Re-run me only to rebuild from scratch — confirm you want that."
    Only regenerate if the user explicitly confirms.
+4. Read `docs/discovery.md`, `docs/architecture.md` and `docs/map/system.yaml` when they exist. Missing ones are not an error: note each gap in "Open questions" (a missing discovery means no story map; a missing architecture means no `AD-n` traces and no `Node` cells).
+5. **Architecture still a draft** (`docs/architecture.md` header carries `**Status:** draft` — `/architect`'s publication gate has not released it) → STOP, do not import its `AD-n` or nodes:
+   > "`docs/architecture.md` is a draft — finish `/architect` first (or proceed without architecture by explicit user choice)."
+   Only on that explicit choice continue as if the architecture were missing (no `AD-n` traces, no `Node` cells, the gap noted in "Open questions"). `backlog-check.mjs` enforces the same rule: it loads no `AD-n` from a draft and warns `docs/architecture.md is draft — AD ids not loaded`.
 
-### Phase 1: Read the PRD and extract the raw material
+### Phase 1: Extract the raw material
 
-Read the PRD **in full**. Pull, in priority order:
+From the PRD: `G-n` goals, `R-n` requirements (EARS), `NFR-n`, MVP scope (In / Out), implementation phases (the seed for Epics). From `docs/discovery.md`: the flows `FL-n` with their backbone activities `FL-n.Ak` — the flow marked `**Critical:** yes` is the story-map backbone — and the `BR-n` rules. From `docs/architecture.md` + `system.yaml`: the active `AD-n` decisions and the node ids (`trunk`/`branch`/`twig`/`leaf`/`root`) that Tasks will target. Withdrawn ids (`(withdrawn)` on the line, `Status` `withdrawn` or `superseded by AD-m`) are never traced.
 
-- **MVP Scope** (In Scope / Out of Scope) → the MVP sub-graph and the "Consciously out of scope" section.
-- **Implementation Phases** → the seed for **epics** (each phase ≈ one or more epics; do not copy the prose, distill it into the epic map).
-- **User Stories** → candidate tasks and their natural grouping into work packages.
-- **Technology Stack / Architecture** → constraints that force ordering ("X must exist before Y").
-- **Success Criteria** → input to per-epic **Definition of Done**.
-
-Also load, on demand (per `index.md` → When to Read), only the domain memory the backlog will reference — do not load the whole memory layer. If `architecture.md` has `status: empty` (greenfield, not yet mapped), proceed on PRD alone and record the architectural unknowns in "Open questions".
+Also load, on demand (per `index.md` → When to Read), only the domain memory the backlog will reference — not the whole memory layer.
 
 ### Phase 2: Decide the structure yourself; ask only about directional forks
 
-**Default to deciding, not asking** (same contract as `/brainstorm`). Derive epics, work packages, the DAG, and the MVP boundary from the PRD and state your assumptions. Reserve questions for the few genuine forks:
+**Default to deciding, not asking** (same contract as `/brainstorm`). Derive Epics, Tasks, sizes, the DAG and the walking skeleton from the sources and state your assumptions. Reserve questions for the few genuine forks:
 
-**Ask the user only when ALL hold:** the answer is not discoverable from PRD/memory, AND it is a directional decision (changes *what* ships first or *how the work decomposes*), AND getting it wrong is expensive to reverse.
+**Ask the user only when ALL hold:** the answer is not discoverable from PRD/discovery/architecture/memory, AND it is a directional decision (changes *what* ships first or *how the work decomposes*), AND getting it wrong is expensive to reverse.
 
 Concretely, the forks worth a question here are usually:
-- **The MVP boundary** — which slice is the first milestone. (Lead with your recommendation: "I'd scope MVP to X because it's the thinnest end-to-end proof; Y and Z defer — agree?")
+- **The walking-skeleton boundary** — which Tasks form slice `WS`. (Lead with your recommendation: "I'd make `WS` the thinnest end-to-end path through `FL-1` — X, Y, Z; W defers to `R2` — agree?")
 - **Epic decomposition** when the PRD bundles independent subsystems and there's more than one reasonable cut.
 
-Everything else (task granularity, wave assignment, naming, difficulty sizing) — decide and write the assumption into the backlog. One question per message, multiple choice via `AskUserQuestion`, lead with your pick. Zero questions is the right count for a PRD with an obvious MVP and a clean phase breakdown.
+Everything else (Task granularity, sizes, wave assignment, naming, slices) — decide and write the assumption into the backlog. One question per message, multiple choice via `AskUserQuestion`, lead with your pick. Zero questions is the right count for a PRD with an obvious critical flow and a clean phase breakdown.
 
-### Phase 2.5: What a task IS — the abstraction level (read before building the DAG)
+### Phase 3: What a Task is
 
-A backlog task sits at **one specific altitude**: a **coherent unit of technical delivery, roughly the size of one work package** — not a business requirement, not a single function. This is the line that keeps the backlog distinct from the PRD above it and the spec below it:
+The hierarchy is **Epic → Task**, nothing in between. A Task is one of two things:
 
-| Artifact | Language | Example |
-|----------|----------|---------|
-| PRD | business / product | "As a user I want to log in" (a User Story) |
-| **Backlog task** | **technical, coarse-grained** | `E2-1 Auth: JWT login + refresh token` |
-| Spec (from `/brainstorm`) | technical, detailed | the *how*: endpoints, token schema, edge cases |
+| Type | What it is | Must carry |
+|------|-----------|------------|
+| `story` | one **user story** — "As a <role> I want <capability> so that <outcome>", traced to the `R-n` / `FL-n.Ak` / `G-n` it delivers | ≥1 happy-path AC **and** ≥1 unwanted-behaviour AC (the failure, the forbidden action, the empty state) |
+| `tech` | one **technical task** — scaffold, schema, contract, infrastructure, refactor, spike — traced to the `AD-n` / `NFR-n` that demands it | ≥1 AC stating the observable result; a spike's AC is the decision it produces |
 
-The backlog **translates** the PRD's "what & why" into "in what structure to deliver it". So:
+**Size every Task** `M` (4 pts) · `H` (8 pts) · `XH` (16 pts) — a currency for planning, not hours. Anything bigger than `XH` is **split**, in this order of preference (Humanizing Work's patterns): **workflow steps** (one step of the flow each) → **CRUD operations** → **business-rule variations** → **data variations** → **data-entry methods** → **major effort first, the rest later** → **simple core now, complex cases later** → **defer performance** (make it work, then make it fast as its own Task) → **spike** (last resort — a timeboxed `tech` Task whose output is a decision). Epic points are the sum of their Tasks' points; the checker enforces it.
 
-- ✅ A task is a **deliverable chunk of engineering work** — "Auth: JWT login + refresh", "Billing: Stripe webhook + idempotency", "Data layer: `.csv → DataFrame` adapter". `/brainstorm` later takes the whole work package and designs the *how*.
-- ❌ **Not a User Story** ("as a user I want X") — that lives in the PRD; copying it here makes the backlog a second, drifting copy of the PRD.
-- ❌ **Not an implementation detail** ("add `validateToken()` helper") — that's the spec/plan's job.
-- The right granularity test: *"Is this one coherent thing I'd hand to one `/brainstorm` cycle?"* If it's three unrelated things → split into three tasks (maybe three work packages). If it's half a function → it's too small; fold it into its parent task.
+**Every Task gets acceptance criteria with ids** `E<n>-<m>.AC<k>`, written as Gherkin (`Given … When … Then …`) or EARS (`WHEN … the system shall …`). These ids are stable: `/brainstorm` copies them into the spec, `/plan-feature` into the plan, `/qa-verify` keys its verdicts by them. Never renumber — a dropped criterion keeps its id with `(withdrawn)`.
 
 **Cross-cutting concerns — security, infrastructure, observability, performance — belong in the backlog, two distinct ways:**
 
-1. **As normal epics/tasks in the DAG** when they are *deliverable work* the pipeline will build:
-   - `E0 Infra` — CI/CD, deploy pipeline, project scaffold. **MUST be the first epic, and its scaffold task (`E0-1`) MUST be the first task with no dependencies** — on greenfield it is the literal entry point that creates the project skeleton (manifest, entry file, dir layout) the whole MVP stands on; every other MVP task depends on it (directly or transitively). The HARD-GATE still holds: the backlog *describes* `E0-1` as a task, it does not scaffold files itself — `E0-1` produces the skeleton later, when it runs through `/brainstorm → /plan-feature → /execute` like any other work package. (Brownfield exception: a mapped codebase already has a skeleton, so `E0-1` is instead "adopt/normalize existing scaffold" or omitted — record which.)
-   - `E2 Auth` — login, sessions, RBAC (security *is* a feature here; it goes through `/brainstorm` like any other WP).
-   - `E4 Observability` — logging, metrics, alerting.
-   - Performance work with a concrete deliverable (a caching layer, a query-optimization pass) — a normal task.
-2. **As gates / external blockers OUTSIDE the DAG** when they are a *condition*, not work you implement:
-   - Security audit of dependencies → *blocks release*. Pen-test → *blocks prod*. A legal/product decision → *blocks a phase*.
-   - These are not tasks (you don't "design and implement" an audit — you commission it and wait). Record them in an **"External blockers"** section with what each one gates (e.g. "Security audit → blocks E5+"), exactly as a reference build's port would.
+1. **As normal Epics/Tasks in the DAG** when they are *deliverable work* the pipeline will build:
+   - `E0 Foundation` — CI/CD, deploy pipeline, project scaffold. **MUST be the first Epic, and its scaffold Task (`E0-1`) MUST be the first Task with no dependencies** — on greenfield it is the literal entry point that creates the project skeleton the whole `WS` stands on. The HARD-GATE still holds: the backlog *describes* `E0-1`, it does not scaffold files — `E0-1` produces the skeleton later, when it runs through the pipeline like any other Task. (Brownfield exception: a mapped codebase already has a skeleton, so `E0-1` is "adopt/normalize existing scaffold" or omitted — record which.)
+   - Auth, sessions, RBAC — security *is* a feature here; it goes through `/brainstorm` like any other Task.
+   - Logging, metrics, alerting; performance work with a concrete deliverable (a caching layer, a query pass).
+2. **As gates / external blockers OUTSIDE the DAG** when they are a *condition*, not work you implement: a dependency security audit → *blocks release*; a pen-test → *blocks prod*; a legal/product decision → *blocks an Epic*. Record them in **External blockers** with what each one gates ("Security audit → blocks E5+"). You don't "design and implement" an audit — you commission it and wait.
 
-The split keeps the backlog honest: the DAG holds what you push through the pipeline; the blockers hold what conditions *when* an epic can close. A `/brainstorm` on any work package handles that feature's own security / perf / edge-case detail at the feature's altitude — the backlog only needs the cross-cutting concerns that have **project-wide ordering or gating** significance.
+> If the PRD has a "Security & Configuration" or "Deployment" section, mine it here: deliverable items become Tasks; sign-off-style items become external blockers.
 
-> If the PRD has a "Security & Configuration" or "Deployment" section, mine it here: deliverable items (auth model, config system, deploy target) become epics/tasks; sign-off-style items (audit, compliance review) become external blockers.
+### Phase 4: Parallel-first decomposition — the owner's rule, absolutely key
 
-### Phase 3: Build the DAG
+Tasks are cut so that **2, 3 or 4 developers can work at the same time**. Not always possible — but it is the planning default everywhere it is.
 
-- **Epics** = coarse milestones from the PRD phases. Order them by dependency, not by PRD listing order.
-- **Tasks** = concrete units under each epic, each with an ID (`E0-1`, `E1-2`, …) — at the altitude defined in Phase 2.5 (a deliverable chunk, not a User Story, not a one-liner).
-- **`Dependencies` is the source of truth for the DAG** — fill it precisely (which task IDs must complete first). Get this right; everything else is derived.
-- **`.agents/backlog.md` is the single source of truth for delivery order — Jira is an optional one-way mirror of it.** The backlog is created first, always, and holds the canonical "what to build, in what order" map. If a team uses Jira, its issues are derived *from* the backlog by exporting with `/jira bulk` (a manual/assisted export — there is no automatic sync), never maintained as a second, parallel list. The direction is one-way: backlog → Jira. Never reconstruct backlog ordering from Jira.
-- **`Wave` (a.k.a. order/priority) is NOT a total order** — it is a priority band. **Duplicate wave numbers are intentional**: tasks in the same wave with no mutual dependency can run in parallel. Never encode the DAG in the wave column; encode it in `Dependencies`.
-- **Work packages** group tasks into coherent themes. **One work package = one `/brainstorm` → one spec → one `/plan-feature`.** A task ID does **not** map 1:1 to a command invocation — a work package does. Each WP row carries the exact pipeline entry to run.
-- **MVP is a sub-graph, not a linear list.** Identify the thinnest set of tasks that proves the product end-to-end, draw their dependency graph, and define DoD as a **fan-in** of specific task IDs (e.g. "DoD = E1-1b AND E2-5"), not "all MVP tasks done".
-- **Each epic carries its *why* (Outcome + Key assumption).** A backlog generated once from a PRD easily keeps the *how* (tasks) but loses the *why* — and an AI agent picking up a work package weeks later will turn an unvalidated assumption into a confident-sounding task. So every epic gets two short fields: **Outcome** (the product effect / whose problem it solves, traced to the PRD) and **Key assumption** (the most load-bearing thing you're *not yet sure of*). The assumption field is an explicit "don't-know-yet" marker the agent can see. Adapted from Torres's opportunity→outcome→assumption mapping and Cagan's discovery/delivery split; it is also the backlog's backward-traceability (why does this exist?). One sentence each — not a discovery essay.
-- **Every work package must pass a readiness check (mini-INVEST) before it enters the pipeline.** Not the full six criteria — the three that actually save the AI flow:
-  - **Independent** — runnable without waiting on another WP (or the dependency is explicit in the DAG).
-  - **Small** — closeable in *one* `/brainstorm → spec → /plan-feature` cycle. If it's three unrelated things ("login + password reset + 2FA"), split into three WPs.
-  - **Testable** — there is a concrete "done" criterion, so the agent knows when to stop.
+1. **Wave 0 = only what must be sequential.** `E0-1` scaffold first; then the schema, the auth skeleton, the contracts other Tasks code against (an interface, an event schema, an API shape). Wave-0 Tasks form one sequential chain — a Wave-0 Task never depends on a later wave (checker error). Keep Wave 0 as small as honesty allows: every Task you put there is a Task nobody can parallelize.
+2. **After Wave 0, cut for parallel lanes.** One Task per `Node` (bounded context / leaf of `system.yaml`) where possible, so two developers never edit the same module in the same wave. **Contracts first:** when a producer and a consumer must both change, make the contract its own `tech` Task; it unblocks both sides to run in parallel. Prefer two `M` Tasks on different nodes over one `H` Task spanning both.
+3. **Avoid two same-wave Tasks on one `Node`.** The checker warns when two Tasks in the same wave share a `Node` and land in different lanes — sequence them (dependency) or split the node.
+4. **`Wave` is a priority band, not a total order.** Duplicate wave numbers are intentional: same-wave Tasks with no mutual dependency run in parallel. Never encode the DAG in the wave column; encode it in `Depends on` — the checker derives the lanes from the DAG and the points, not from the waves.
+5. **Each Epic carries its *why*** — **Outcome** (the product effect, traced to a `G-n` / PRD section) and **Key assumption** (the most load-bearing thing you're *not yet sure of*). One sentence each. Below the Epic map, each Epic also gets **appetite** (how much it is *worth* — the budget, not the estimate) and **cut first** (what drops first when the Epic grows). An AI agent has no "that's enough" instinct; the cut line is the hand-brake.
 
-  This guards **scope creep**, the concrete failure mode of AI agents — given "Auth", an agent will happily build login + reset + 2FA + OAuth + audit log in one pass because "it all fits Auth". The readiness check forces atomicity *before* the pipeline runs. This matters more than story points: points size the work, readiness checks whether it's *one coherent thing*. (Bill Wake's INVEST, used here as a per-WP gate, not a team Definition of Ready.)
-- **Every work package declares an appetite + cut-lines (bounded scope).** Three lines per WP:
-  - **Appetite** — how much this WP is *worth* (not "how long it takes" — that's an estimate; appetite is the budget you're willing to spend). Coarse: e.g. "small — it's a foundation, not a differentiator".
-  - **No-go (now)** — what you deliberately exclude from this WP for now.
-  - **Cut first** — what gets dropped *first* if the WP turns out too big, in priority order.
+### Phase 5: Story map and slices
 
-  Where the readiness check guards size *on entry*, appetite/cut-lines guard size *during the work*. An AI agent has no innate "that's enough — we shipped 80% of the value" instinct; it will polish forever or pile on edge cases nobody asked for. The cut-line is an explicit hand-brake: "if this grows, drop X first, then Y." (Basecamp's Shape Up — "fixed time, variable scope": work must be *bounded*, with explicit exclusions and a cut order.)
+- **Backbone** = the `FL-n.Ak` activities of the critical flow(s), left to right. Every `story` Task that realises an activity traces it (`Traces: FL-1.A2`).
+- **`WS` (walking skeleton)** = the thinnest set of Tasks that covers **every** backbone activity of every critical flow end-to-end — plus the Wave-0 foundation it needs. A critical activity with no `Slice: WS` Task is a checker error: the skeleton has a gap.
+- **Later slices** `R2`, `R3`, … are outcome-tied releases (each named by the `G-n` it moves), not leftovers.
+- **Slices ≠ waves.** A slice says *what ships together*; a wave says *who builds what when*. A `WS` Task can sit in Wave 2; an `R2` Task can sit in Wave 1 if it unblocks something.
 
-### Phase 4: Generic core vs domain adapters
+### Phase 6: Write `.agents/backlog.md`
 
-The backlog has a **universal core** that every project needs, and **optional domain adapters** that only some projects need. Emit the core always; add an adapter **only** when the project's nature calls for it — do not force a greenfield app to invent a taxonomy that only makes sense for a legacy port.
-
-**Universal core (always):** epic map (each epic with **Outcome + Key assumption**) · task inventory with IDs · dependency DAG · waves · work packages as pipeline inputs (each with a **readiness check** + **appetite / no-go / cut-first**) · MVP as a sub-graph · DoD per epic · critical path · open questions · consciously-out-of-scope · Status + Ref columns.
-
-**Optional domain adapters (add only when relevant):**
-
-| Adapter | Add when… | Shape |
-|---------|-----------|-------|
-| **Layer / type tag** (e.g. `[R]`/`[X]`/`[I]`, or `frontend`/`backend`/`infra`) | tasks split cleanly into layers that gate testability or ownership | extra `Type` column + a short "Layer classification" legend |
-| **Reference source / oracle** | porting or migrating from an existing build whose behavior is the ground truth | a "Reference build" line in the header + a per-task "validate against" note |
-| **Parity / fidelity gate** | correctness is defined as matching a reference (port, re-implementation, golden fixtures) | a fidelity epic + DoD phrased as measured error below a threshold |
-| **Index / cross-reference** | heavy domain detail lives in `.agents/memory/domain/*` and must not be duplicated in the backlog | a "Skorowidz / Index" table pointing to the domain files (backlog references, never copies) |
-
-When you add an adapter, say in one line *why* (so a reader knows it was deliberate). When you don't, the core stands alone — that is the common case.
-
-### Phase 5: Write `.agents/backlog.md`
-
-Create `.agents/` if needed (it exists in this template). Write the file with this structure. Keep it **short, tabular, referential — not narrative**. Tables over prose; reference the PRD/memory, do not restate them.
+Create `.agents/` if needed (it exists in this template). Write **exactly** this structure — tables over prose, references over restatement. The header's `**Source PRD:**` is the path resolved in Phase 0; the two marker-comment pairs are mandatory and their bodies are generated in Phase 7 — never hand-write them. Sections not applicable to the project stay as a one-line "none" rather than disappearing, so readers and tooling find the same headings everywhere.
 
 ```markdown
 # <Project> — Backlog (Epics + Tasks)
+**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
 
-**Date:** YYYY-MM-DD · **Status:** draft pending acceptance · **Source PRD:** `docs/PRD.md`
-<!-- optional adapter: **Reference build:** `path/to/legacy` -->
+## Epic map
+| Epic | Title | Outcome | Key assumption | Pts | Depends on | Jira |
+|------|-------|---------|----------------|-----|------------|------|
+| E0 | Foundation | … | … | 24 | — | — |
+(each Epic below the table: `**E1** — appetite: … · cut first: …`)
 
-> **What this is:** the delivery map — how the PRD ships as a dependency-structured set of work
-> packages, MVP first. It does NOT restate the PRD; it operationalizes its "Implementation Phases".
-> Scope for slash commands comes from "Work packages" below, NOT from individual task IDs.
+## Task table
+| ID | Epic | Task | Type | Size | Pts | Depends on | Wave | Slice | Node | Traces | Status | Jira | Ref |
+|----|------|------|------|------|-----|------------|------|-------|------|--------|--------|------|-----|
+| E0-1 | E0 | Project scaffold | tech | H | 8 | — | 0 | WS | platform-core | AD-1 | TODO | — | — |
 
-## Base assumptions (decided — see `.agents/memory/decisions.md`)
+## Acceptance criteria
+### E0-1 — Project scaffold
+- **E0-1.AC1** — Given … When … Then …
 
-- <architectural / stack assumptions the backlog rests on; the forks you resolved yourself>
+## Story map
+<!-- storymap:begin -->
+(generated by backlog-check --write)
+<!-- storymap:end -->
 
-<!-- optional adapter (port/migration only): ## Layer classification — [R]/[X]/[I] legend -->
+## Parallel plan
+<!-- lanes:begin -->
+(generated by backlog-check --write)
+<!-- lanes:end -->
 
-<!-- optional adapter: ## Index — where the source inventory lives (domain memory), referenced not copied -->
-
-## Epic map (delivery order)
-
-| Epic | Title | Outcome (why — traced to PRD) | Key assumption to validate | Depends on | Why in this order |
-|------|-------|-------------------------------|----------------------------|------------|-------------------|
-| **E0** | Foundation (project scaffold) | <product effect / whose problem> | <the most load-bearing unknown> | — | everything stands on the skeleton — MUST be first (greenfield) |
-| **E1** | … | … | … | E0 | … |
-
-> **Greenfield rule:** `E0-1` (project scaffold) is the mandatory first task — dependency-free, every MVP task fans in from it. See Phase 2.5. Brownfield: replace with "adopt existing scaffold" or omit (the codebase already has one).
-
-## Work packages — pipeline inputs
-
-> **Source of truth for command scope.** The Task table below is the inventory + DAG (what exists,
-> what depends on what) — NOT a "how to run it" map. One *work package* = one coherent theme = one
-> `/brainstorm` → one spec → one `/plan-feature`. Each WP carries a **readiness check** (is it ready to
-> enter the pipeline?) and an **appetite + cut-lines** (is its scope bounded?) directly below the table.
-
-| Package | Task scope | Depends on | Entry (how to run) | Status |
-|---------|-----------|-----------|--------------------|--------|
-| **MVP-CORE** | E0-1, E0-3, … | — | `/brainstorm <topic> → spec → /plan-feature <spec>` | TODO |
-
-**MVP-CORE** — readiness: ✓ Independent (DAG deps only) · ✓ Small (one cycle) · ✓ Testable (<concrete done criterion>)
-- Appetite: <small / medium — what it's worth, not how long it takes>
-- No-go (now): <what this WP deliberately excludes>
-- Cut first: <what gets dropped first if it grows too big, in order>
-
-<!-- repeat the readiness + appetite block for every work package -->
-
-## Task table (inventory + DAG — take command scope from "Work packages" above)
-
-> **`Wave` = priority band, NOT total order** — duplicates are intentional (same-wave tasks may run in
-> parallel). **The DAG's source of truth is the `Dependencies` column.** **Status:** `TODO` · `WIP` ·
-> `DONE` · `BLOCKED`. **Ref:** spec from `/brainstorm` + plan from `/plan-feature` — filled when the task
-> enters design/planning (the pipeline writes this back when a backlog exists).
-
-| ID | Epic | Task | Description | Dependencies | Difficulty | Type | Wave | Status | Ref |
-|----|------|------|-------------|--------------|------------|------|------|--------|-----|
-| E0-1 | Foundation | … | … | — | S | <core/—> | 1 | TODO | — |
-
-## ★ MVP (first milestone)
-
-**Goal:** <thinnest end-to-end proof>. **DoD = <fan-in of specific task IDs, e.g. E1-1b AND E2-5>.**
-
-    <dependency graph of the MVP tasks — NOT a linear chain; show parallel branches and the fan-in,
-     as an indented code block or a fenced block in the actual backlog file>
-
-> Which tasks are independent (parallel) vs which fan in to the DoD.
-
-## Definition of Done — per epic
-
-- **E0** — <observable completion criterion, from PRD Success Criteria>
-- **E1** — …
-
-## Critical path (TL;DR ordering)
-
-    E0 → E1 → E2 → …
-
-## External blockers (gates outside the DAG)
-
-> Conditions you don't *implement* but must *pass* — security audit, pen-test, a legal/product
-> sign-off, an external dependency. Each one names what it gates. Omit the section if there are none.
-
-- **<blocker>** — gates <epic/phase> (e.g. "Dependency security audit → blocks E5+ (anything that ships to prod)")
-
-## Open questions
-
-- <unresolved directional decisions, architectural unknowns deferred to their epic's threshold>
-
-## Consciously out of scope
-
-- <what the PRD's "Out of Scope" plus your own YAGNI calls exclude, and why>
+## External blockers · ## Open questions · ## Consciously out of scope
 ```
 
-### Phase 6: Report
+**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Wave` integer, `0` = sequential foundation; `Slice` `WS|R2|R3…`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. The last three headings are separate `##` sections in the real file (one line each when empty).
 
-Output a short summary:
+### Phase 7: Gate — `backlog-check.mjs --write`
+
+```bash
+node .claude/lib/backlog-check.mjs --write
+```
+
+Run from the project root. It reads the PRD path from the header written in Phase 6 and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, AC ids, trace coverage, `Node` cells and the system tree; then — only when there are **no errors** — fills the `storymap` and `lanes` marker regions (foundation chain, lanes for N = 2, 3, 4 with makespan and critical path). **Fix every error in the file and rerun until it exits 0.** Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker regions; `--write` owns them. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
+
+### Phase 8: Report
 
 ```markdown
 ## Backlog created
 
-**Source PRD:** `<path>`
-**Written:** `.agents/backlog.md` — <N> epics, <M> work packages, <K> tasks
-
-**MVP:** <one-line scope> · DoD = <fan-in>
-**Adapters used:** <none / layer tag / reference build / …>
+**Source PRD:** `<path>` · **Written:** `.agents/backlog.md`
+**Epics:** <N> · **Tasks:** <K> (<stories> story · <tech> tech) · **Points:** E0 <p> · E1 <p> · … · total <P>
+**Walking skeleton (WS):** <T> Tasks, <p> pts — <one line: the flow it proves>
+**Makespan after foundation:** N=2 → <p> pts · N=3 → <p> pts · N=4 → <p> pts (foundation <p> pts, sequential)
+**backlog-check warnings:** <each one verbatim, or "none">
 
 **Next steps:**
-1. Review the backlog — correct the MVP boundary or DAG if you disagree (edit the file directly).
-2. Start the first work package: `/brainstorm <topic from the first MVP work package row>`.
-   Brainstorm writes a spec to `.agents/specs/`; `/plan-feature` then writes a plan. **When a backlog
-   exists, those commands write `Ref`/`Status` back into it automatically** (no-op if you skip the backlog).
+1. Review the backlog — correct the WS boundary, sizes or DAG if you disagree (edit the file, then `node .claude/lib/backlog-check.mjs --write`).
+2. Jira project? `/jira sync` mirrors Epics and Tasks (create-only, writes keys back).
+3. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks.
+   When a backlog exists, the pipeline writes `Status`/`Ref` back into it automatically.
 ```
+
+Keep the report to this skeleton — add lines only for a blocker the user must act on (a missing source file, an unresolved fork), which is never compressed.
 
 ---
 
 ## Maintenance contract (how the backlog stays honest)
 
-- **`Ref` + `Status` are written back automatically** by `/plan-feature` (Status → `WIP`, Ref → spec) and `/orchestrate` (Status → `DONE`, Ref → spec + plan) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation; it is mechanical and safe.
-- **Structural change (new epic, re-shaped DAG, re-scoped work package) is a deliberate, manual edit** — edit `.agents/backlog.md` by hand. Do not let an automated step rewrite the DAG; that is how a backlog starts "pretending to be the truth". (A dedicated `/maintain:update-backlog` for guided structural edits is a possible future addition — out of scope here.)
+- **`Status`, `Ref` and `Jira` cells are written by the pipeline** — `/plan-feature` (Status → `WIP`, Ref → spec + plan), `/execute` and `/orchestrate` (Status → `DONE` per the whole-Task rule: only when no active plan still lists the Task), `/quick-change` (`DONE` on completion), `/brainstorm` Step 0 (read-only status refresh from Jira for Tasks with a key), `/jira sync` (keys) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation on the file's content; it is mechanical and safe.
+- **Structural change (new Epic, new or re-sized Task, re-shaped DAG) is a deliberate, human edit** — edit `.agents/backlog.md` by hand, then run `node .claude/lib/backlog-check.mjs --write` so the lanes and story map follow. Do not let an automated step rewrite the DAG; that is how a backlog starts "pretending to be the truth".
+- **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its AC ids stay. The checker still validates its ids but leaves it out of lanes, the story map and trace coverage. Jira issues are never deleted by the pipeline.
 - The backlog is **short, tabular, referential**. If it grows narrative, it has drifted from its job — prune it back to tables + references.
 
 ## Notes
 
 - Same language policy as the PRD (technical content in English per repo conventions).
-- Do not invent content with no PRD source. If a section has no basis, record the gap in "Open questions" rather than fabricate tasks.
-- This command does not call `/brainstorm` or `/plan-feature` — it only produces the map that feeds them.
+- Do not invent content with no source. If a Task has no `R-`/`FL-`/`AD-` to trace, either the sources have a gap (record it in "Open questions") or the Task should not exist.
+- This command does not call `/brainstorm`, `/quick-change`, `/plan-feature` or `/jira` — it only produces the map that feeds them.

@@ -167,7 +167,7 @@ Groups and their known coupled edits:
 | Group (`commands.*` = false) | Files removed | Coupled edits in the same confirmed step |
 |---|---|---|
 | `pr` | `.claude/commands/pr-create.md`, `.claude/skills/pr-comments/`, `.agents/reference/pr-host-api.md` | drop the `Bash(bash .claude/skills/pr-comments/references/pr-api.sh:*)` allow entry in `.claude/settings.json`; delete the **Recorded exception: `pr-api.sh`** paragraph in `CLAUDE.md → Security`; drop the `/pr-create` and `/pr-comments` rows in `README.md → Daily workflow` |
-| `jira` | `.claude/skills/jira/`, `.claude/commands/start-task.md`, `.claude/commands/prime-ba.md`, `.agents/reference/jira-mcp-atlassian.md`, `.agents/memory/domain/jira.md` **only while its frontmatter says `status: empty`** (otherwise keep — project knowledge) | drop only `mcp__atlassian__jira_*` entries in `.claude/settings.json` (keep `confluence_*` while Confluence is enabled; drop all Atlassian entries only when both are disabled); `/start-task`, `/prime-ba` rows in `README.md`; the `jira-mcp-atlassian.md` links in `.claude/commands/qa-verify.md` and `docs/TUTORIAL.md` |
+| `jira` | `.claude/skills/jira/`, `.claude/commands/start-task.md`, `.agents/reference/jira-mcp-atlassian.md`, `.agents/memory/domain/jira.md` **only while its frontmatter says `status: empty`** (otherwise keep — project knowledge) | drop only `mcp__atlassian__jira_*` entries in `.claude/settings.json` (keep `confluence_*` while Confluence is enabled; drop all Atlassian entries only when both are disabled); the `/start-task` row in `README.md`; the `jira-mcp-atlassian.md` links in `.claude/commands/qa-verify.md` and `docs/TUTORIAL.md` |
 | `confluence` | `.claude/skills/confluence/` | `mcp__atlassian__confluence_*` entries in `.claude/settings.json` (only if Jira is also disabled — otherwise they are harmless, keep); `/confluence` row in `README.md` |
 | `codex` | `.claude/commands/codex-review.md` (every other Codex hook fails open — keep them) | `/codex-review` mentions in `README.md`, `.claude/commands/check-implementation.md`, `.claude/commands/quick-change.md` |
 | `qa_runtime_ui` | `.claude/agents/qa-runtime-ui.md` (keep `qa-runtime-app.md.example` and `qa-runtime-device.md.example`) | `qa-runtime-ui` and `qa-runtime-device` mentions in `.agents/reference/qa-evidence-families.md`, `README.md` |
@@ -207,23 +207,28 @@ After all groups: run the six reference sweeps from `.claude/commands/maintain/c
 
 ## Phase C — Route
 
-Print one numbered list. Run nothing. State that the listed commands continue in this same primed conversation, or that `/prime` must be repeated after a fresh chat (`/setup:create-backlog` and `/brainstorm` stop without it).
+Print one numbered list. Run nothing. State that the listed commands continue in this same primed conversation, or that `/prime` must be repeated after a fresh chat (`/discover`, `/architect`, `/setup:create-backlog` and `/brainstorm` stop without it).
 
 **Greenfield:**
-1. `/setup:create-PRD` — describe the product; writes `docs/PRD.md`
-2. `/setup:stack-research` — pick the stack; edits the PRD
-3. `/maintain:refresh-brief` — distill the PRD into `project-brief.md`
-4. `/prime`
-5. `/setup:create-backlog` — `.agents/backlog.md` from the PRD (skip if `tracker=jira` and the backlog lives there)
-6. `/brainstorm` — designs the next free task (`E0-1`, the scaffold)
-7. `/plan-feature` → 8. `/execute`
-9. `/setup:start --rerun` — fills the toolchain block and declares the LSP plugin now that a manifest exists; pass its activation gate (step 6b) **before step 10**
-10. `/setup:create-CLAUDE_MD` — generates `CLAUDE.md`, `architecture.md`, README from the scaffold; detects `app_surface`
+1. `/prime` — this command ran unprimed; `/discover` and `/architect` need the Loader Convention context
+2. `/discover` — interview (or `--import` existing requirements); writes `docs/discovery.md` + `docs/PRD.md`
+3. `/architect` — subdomains, decisions (`AD-n`), stack; writes `docs/architecture.md` + `docs/map/system.yaml`
+4. `/maintain:refresh-brief` — distill the PRD into `project-brief.md`
+5. `/prime` — reload with the new brief
+6. `/setup:create-backlog` — Epics/Tasks, lanes, story map
+7. `/jira sync` — when `tracker=jira`
+8. `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M)
+9. `/plan-feature` → 10. `/execute`
+11. `/setup:start --rerun` — fills the toolchain block and declares the LSP plugin now that a manifest exists; pass its activation gate (step 6b) **before step 12**
+12. `/setup:create-CLAUDE_MD` — generates `CLAUDE.md`, `architecture.md`, README from the scaffold; detects `app_surface`
+
+UI-heavy product: `/design-ui` after `/architect` for the critical flow's key screens — optional, never a gate.
 
 **Brownfield** (the manifest exists, so step 6b already ran — pass its activation gate first; `map-codebase` cascades into `/setup:create-CLAUDE_MD` in the same session):
 1. `/prime`
 2. `/setup:map-codebase` — architecture map + reconstructed PRD, then its own cascade
-3. `/setup:create-backlog` — optional
+3. `/discover --import <your requirements>` — when discovery exists outside the repo
+4. `/setup:create-backlog` — optional
 
 **Suggestions — printed, never executed.** `/setup:start` installs no packages and adds no MCP servers (the LSP plugin in step 6b is *declared*, its install stays a printed human step); these are for the human to copy if wanted:
 

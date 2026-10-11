@@ -40,17 +40,18 @@ Read a task's acceptance criteria, assign each a stable id, classify each into a
 
 **Resolve the AC source** from `$ARGUMENTS`, in this precedence order:
 
-1. Matches `^[A-Z]+-\d+$` → a **tracker key**. Read the issue via the tracker MCP and take its acceptance criteria.
-2. Ends in `.md` and resolves under `.agents/specs/` → a **spec path**. Read its `## Acceptance Criteria` section.
-3. Present as a task id in `.agents/backlog.md` → that task's criteria.
-4. **No argument → list candidates and stop.** Show recent entries from `.agents/plans/done/` and recent specs, and ask which one. Never pick one: QA that verifies "something" is worse than QA that asks what.
+1. Matches `^[A-Z]+-\d+$` **and** equals the leading `[A-Z]+-\d+` token of some Task row's `Jira` cell in `.agents/backlog.md` (a cell written by `/jira sync` may read `KEY (unverified)` — the suffix is the sync's verification state, the key still counts) → resolve to that **local Task** and continue at item 4; announce `KEY → <Task id>`. The local Task is preferred because its criteria carry ids; the tracker copy does not.
+2. Matches `^[A-Z]+-\d+$` with no such `Jira` cell → a **tracker key**. Read the issue via the tracker MCP and take its acceptance criteria.
+3. Ends in `.md` and resolves under `.agents/specs/` → a **spec path**. Read its `## Acceptance Criteria` section, criteria marked `(withdrawn)` excluded. A spec covering several Tasks yields every Task's criteria here — pass the Task id (item 4) to scope to one.
+4. Present as a Task id in `.agents/backlog.md` (`E<n>-<m>`) → **if the Task's `Ref` lists an approved spec with a `## Acceptance Criteria` section, the newest such spec's section (by the `YYYY-MM-DD` prefix of its filename), filtered to criteria whose id starts with `<Task id>.AC`, is the source** (it already carries the backlog block plus the criteria earlier designs added; criteria marked `(withdrawn)` are excluded); otherwise the Task's block under `## Acceptance criteria` in the backlog. One current, Task-scoped source whether the Task came in as its id or its Jira key — a multi-Task spec never leaks another Task's criteria.
+5. **No argument → list candidates and stop.** Show recent entries from `.agents/plans/done/` and recent specs, and ask which one. Never pick one: QA that verifies "something" is worse than QA that asks what.
 
 **Stop conditions, each stated plainly rather than worked around:**
 
 | Situation | Response |
 |---|---|
 | Tracker key given, no tracker MCP configured this session | **Soft-fail:** name the missing configuration and the fix (`.mcp.json`, restart required), then stop. There is no useful degraded mode — the criteria live there |
-| Spec path given, no acceptance-criteria section in it | Stop and say which file and which heading was missing |
+| Spec path given, no acceptance-criteria section in it | Stop and say which file and which heading was missing. This fires only for specs written before the section became part of the `/brainstorm` template |
 | Zero ACs parsed from a source that resolved | Stop. An empty matrix is a bug in the run, never a pass |
 
 **Resolve `GATE_STATUS` here, as an explicit value** — one of:
@@ -90,7 +91,7 @@ Which verifiers actually exist on disk, injected at command load:
 
 !`ls .claude/agents/qa-*.md 2>/dev/null || echo "(no qa verifier agents)"`
 
-1. **Assign ids.** Walk the criteria in **document order** and assign `AC-1 … AC-n`. Tracker criteria arrive as unnumbered bullets, and `ac_id` is the join key for the entire run — ids are assigned once, here, and never renumbered afterwards.
+1. **Assign ids.** Criteria that already carry an id matching `E\d+-\d+\.AC\d+` keep it verbatim as `ac_id`; only unnumbered criteria get `AC-1 … AC-n` in **document order** (skipping numbers already used). Tracker criteria arrive as unnumbered bullets, and `ac_id` is the join key for the entire run — ids are assigned once, here, and never renumbered afterwards.
 2. **Classify semantically** per `registry §3`. Reason about what evidence would settle each criterion; never keyword-match. One AC may map to several families — emit **one row per (ac_id, family)** pair.
 3. **Guard unbuilt verifiers.** For each row, look up the family's canonical verifier in `registry §2`, then check the injected listing above. If that agent file is **not** in the listing → `verdict: NEEDS-HUMAN`, `agent: (none)`, and a note naming the missing verifier. **Never spawn an agent that is absent from the listing** — the listing, not the roster table, is the truth about what exists.
 

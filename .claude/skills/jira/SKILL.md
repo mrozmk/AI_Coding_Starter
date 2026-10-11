@@ -1,10 +1,10 @@
 ---
 name: jira
-description: Create, edit, search, comment, link, and transition Jira Cloud Epics, Tasks, and Bugs via mcp-atlassian. Use when the user mentions Jira, a PROJ-XXX issue key, or asks to create/update/search/comment/transition tasks, epics, or bugs. Supports bulk creation under a parent Epic.
+description: Create, edit, search, comment, link, and transition Jira Cloud Epics, Tasks, and Bugs via mcp-atlassian. Use when the user mentions Jira, a PROJ-XXX issue key, or asks to create/update/search/comment/transition tasks, epics, or bugs. Supports bulk creation under a parent Epic, and `/jira sync` to mirror .agents/backlog.md (Epics/Tasks) into Jira.
 when_to_use: |
-  Triggered by phrases in Polish or English like "stwórz task", "create epic", "edytuj bug", "zaktualizuj", "dodaj komentarz", "add comment", "pokaż moje bugi", "show my bugs", "zmień status", "transition", "zablokuj przez", "blocked by", "powiąż z", "link to", or any reference to a Jira issue key (regex [A-Z]+-\d+). Also via explicit /jira invocation with optional subcommand as first argument: /jira bulk, /jira search, /jira transition, /jira comment, /jira link, /jira create, /jira update. Handles Epic / Task / Bug only — no sub-tasks.
+  Triggered by phrases in Polish or English like "stwórz task", "create epic", "edytuj bug", "zaktualizuj", "dodaj komentarz", "add comment", "pokaż moje bugi", "show my bugs", "zmień status", "transition", "zablokuj przez", "blocked by", "powiąż z", "link to", or any reference to a Jira issue key (regex [A-Z]+-\d+). Also via explicit /jira invocation with optional subcommand as first argument: /jira bulk, /jira sync, /jira search, /jira transition, /jira comment, /jira link, /jira create, /jira update. Handles Epic / Task / Bug only — no sub-tasks.
 argument-hint: "[subcommand] [args...]"
-allowed-tools: mcp__atlassian__jira_get_issue mcp__atlassian__jira_search mcp__atlassian__jira_create_issue mcp__atlassian__jira_update_issue mcp__atlassian__jira_add_comment mcp__atlassian__jira_transition_issue mcp__atlassian__jira_get_transitions mcp__atlassian__jira_create_issue_link mcp__atlassian__jira_get_link_types mcp__atlassian__jira_get_all_projects mcp__atlassian__jira_batch_create_issues
+allowed-tools: mcp__atlassian__jira_get_issue mcp__atlassian__jira_search mcp__atlassian__jira_search_fields mcp__atlassian__jira_get_project_issue_types mcp__atlassian__jira_get_create_fields mcp__atlassian__jira_create_issue mcp__atlassian__jira_update_issue mcp__atlassian__jira_add_comment mcp__atlassian__jira_transition_issue mcp__atlassian__jira_get_transitions mcp__atlassian__jira_create_issue_link mcp__atlassian__jira_get_link_types mcp__atlassian__jira_get_all_projects mcp__atlassian__jira_batch_create_issues
 ---
 
 # Jira skill
@@ -13,7 +13,11 @@ Single entry point for all Jira Cloud operations on Epics, Tasks, and Bugs. All 
 
 For parameter shapes and deeper protocol detail, defer to `.agents/reference/jira-mcp-atlassian.md`.
 
-**Delivery order — when `.agents/backlog.md` exists.** In projects that have a backlog, it is the source of truth for delivery order, and Jira mirrors it **one-way**: backlog → Jira, exported with `/jira bulk` (manual/assisted — there is no automatic sync). Never reconstruct backlog ordering from Jira, and never treat Jira as a second, parallel delivery map. The backlog is optional: in a project without one this rule simply does not apply, and every flow below — create, update, search, comment, link, transition — works exactly as documented.
+**Delivery order — when `.agents/backlog.md` exists.** In projects that have a backlog, it is the **planning source of truth**: Epics, Tasks, sizes, the dependency DAG and the acceptance-criteria ids all live there. Jira **mirrors** it one-way via `/jira sync` — create-only, idempotent by the row's `Jira` cell, keys written back into the backlog (Flow H). Never reconstruct backlog ordering, structure or sizes from Jira, and never treat Jira as a second, parallel delivery map.
+
+The one thing Jira **does** own is the **workflow status of a synced Task** (umbrella decision D7): a Task row with a `Jira` key takes its `Status` from Jira, and `/brainstorm` Step 0 refreshes those cells **read-only**. A Task without a key keeps its local `Status` as authoritative. `/jira sync` itself never reads or writes `Status` and never transitions anything.
+
+`/jira bulk` stays for **ad-hoc batches outside the backlog** — issues that have no backlog row. The backlog is optional: in a project without one none of this applies, and every flow below — create, update, search, comment, link, transition — works exactly as documented.
 
 ---
 
@@ -64,6 +68,7 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
 | `create` | Single-issue create (see Flow A) |
 | `update` | Single-issue edit (Flow B) |
 | `bulk` | Bulk create under parent (Flow C → `references/bulk-pattern.md`) |
+| `sync` | Mirror the backlog's Epics/Tasks into Jira, create-only, keys written back (Flow H → `references/sync-pattern.md`) |
 | `search` | JQL search (Flow D) |
 | `comment` | Add comment (Flow E) |
 | `link` | Create issue link (Flow F) |
@@ -250,12 +255,16 @@ Two-phase:
    ```
    Each result has `name` (e.g. "Blocks"), `inward` (e.g. "is blocked by"), `outward` (e.g. "blocks").
 2. **Resolve the user's phrasing** to a link type + direction. Examples:
-   - `"PROJ-1 blocks PROJ-2"` → link-type=`Blocks`, inward=`PROJ-2`, outward=`PROJ-1`
-   - `"PROJ-1 is blocked by PROJ-2"` → link-type=`Blocks`, inward=`PROJ-1`, outward=`PROJ-2`
+   - `"PROJ-1 blocks PROJ-2"` → link-type=`Blocks`, inward=`PROJ-1`, outward=`PROJ-2`
+   - `"PROJ-1 is blocked by PROJ-2"` → link-type=`Blocks`, inward=`PROJ-2`, outward=`PROJ-1`
    - Ambiguous → ask.
+
+   The blocker is the **inward** issue: mcp-atlassian passes `inward_issue_key` / `outward_issue_key`
+   straight through as REST `inwardIssue` / `outwardIssue`, and Jira renders
+   `inwardIssue=A, outwardIssue=B` with type Blocks as "A blocks B".
 3. **Dry-run**:
    ```
-   Tworzę link: <outward-KEY> <outward-phrase> <inward-KEY>
+   Tworzę link: <inward-KEY> <outward-phrase> <outward-KEY>
 
    Kontynuować? [y/n]
    ```
@@ -263,12 +272,14 @@ Two-phase:
    ```
    jira_create_issue_link(
        link_type="<type-name>",
-       inward_issue="<KEY>",
-       outward_issue="<KEY>"
+       inward_issue_key="<blocker KEY>",
+       outward_issue_key="<blocked KEY>"
    )
    ```
-   (Exact parameter names TBD at first use — verify against MCP tool schema.)
-5. **Report**: `Utworzony link: ...`.
+5. **Verify** with `jira_get_issue(<blocked KEY>, fields="issuelinks")`: the blocker must appear
+   under the type's `inward` phrase (`"is blocked by"`). If it shows under `"blocks"` instead, report
+   the mismatch and stop — never auto-flip or delete the link.
+6. **Report**: `Utworzony link: ...`.
 
 ---
 
@@ -277,6 +288,16 @@ Two-phase:
 Delegate entirely to [`references/transition-pattern.md`](references/transition-pattern.md). Read that file when entering this flow.
 
 Summary of invariants carried through: `jira_get_transitions` first → pick id → fetch current status → confirm diff → execute with required fields if any.
+
+---
+
+## Flow H — Sync (backlog → Jira)
+
+Delegate entirely to [`references/sync-pattern.md`](references/sync-pattern.md). Read that file when entering this flow.
+
+Summary of invariants carried through: `node .claude/lib/backlog-check.mjs` must pass → recover orphans by the `<namespace>:<row id>` correlation label → `jira_get_project_issue_types` + `jira_get_create_fields` prove `parent` / `labels` / estimate are on the create screen (there is no Jira-side dry-run for this flow) → confirm table + every description verbatim per Epic group → **sequential** `jira_create_issue`, each key written back as `KEY (unverified)` immediately and promoted to `KEY` only after `jira_get_issue` verifies it → `Blocks` links reconciled against existing `issuelinks` → report with skipped / deferred / failed rows.
+
+**Create-only, and only `Jira` cells are written.** This flow never updates, transitions or deletes an issue, never touches `Status`, and never uses batch create (`sync-pattern.md` → Why sequential creates explains why that transport loses `parent`, labels and the estimate).
 
 ---
 

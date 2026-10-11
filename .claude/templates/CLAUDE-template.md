@@ -131,7 +131,7 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 
 **Before any task read [.agents/memory/index.md](.agents/memory/index.md)** — `When to Read` (what to load), `Quick Reference` (where to write a discovery). Layers under `.agents/`: `sources/` (raw input, human-only) · `memory/` (lessons, decisions, patterns, map, brief) · `reference/` (stable docs, policies) · `specs/` · `plans/{active,done}/` · optional `backlog.md`.
 
-**Flow:** `sources/` → `/setup:create-PRD` → `/maintain:refresh-brief` → `[/setup:create-backlog]` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
+**Flow:** `sources/` → `/discover` → `/architect` → `/maintain:refresh-brief` → `[/setup:create-backlog]` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
 
 ## Automatic Behaviors
 

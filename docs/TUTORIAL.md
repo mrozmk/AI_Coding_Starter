@@ -91,55 +91,70 @@ This gives you a fresh, local Git history — but **without** a remote repo. The
 
 ---
 
-### Step 1: Describe what you want to build (PRD)
+### Step 1: Describe what you want to build (discover)
 
-**(optional) Drop your materials into `.agents/sources/`.** Already have notes, a brief, a conversation dump, a sketch, a PDF, a requirements list, etc.? Copy those files into the **`.agents/sources/`** folder. Claude will read them **automatically** when creating the PRD — you don't need to do anything else, the mere fact that they're there is enough.
+**(optional) Drop your materials into `.agents/sources/`.** Already have notes, a brief, a conversation dump, a sketch, a PDF, a requirements list, etc.? Copy those files into the **`.agents/sources/`** folder. Claude will read them **automatically** during discovery — you don't need to do anything else, the mere fact that they're there is enough.
 
 📋 **Type** into Claude Code — you can give just the command and answer the questions, OR describe the idea right away:
 ```
-/setup:create-PRD
+/prime
+/discover
 ```
 or with a description right away — Claude has something to start from:
 ```
-/setup:create-PRD Build me a simple to-do list (TODO) API: add a task, list tasks, mark as done, delete. The user works through the API. No login and no UI. Include the materials from .agents/sources/.
+/prime
+/discover Build me a simple to-do list (TODO) API: add a task, list tasks, mark as done, delete. The user works through the API. No login and no UI.
 ```
 
-💬 **What happens:** Claude reads your description **and** everything you dropped into `.agents/sources/`, asks about gaps (who the user is, what's in the MVP, what we skip), and writes the document `docs/PRD.md`.
+💬 **What happens:** Claude first derives what it can from your description, everything in `.agents/sources/` and the repo, and shows a **coverage table** (what is clear, partial, missing). Then it asks **only about the gaps** — in short rounds of at most 5 questions, each with a **Recommended** answer first, so you can often just accept. For the TODO API the first round could look like this:
 
+| Question | Recommended answer |
+|---|---|
+| What kind of project is this? | Greenfield product (derived from your description) |
+| What number changes, from what to what, by when? | One person adds, lists, completes and deletes tasks through the API — working by the end of the week |
+| How much time is it worth, and what is dropped first when it runs over? | A few evenings; polish goes first, the four operations stay |
+| What will it deliberately **not** do? | No login, no UI, no sharing between users |
+| Which one scenario must work end-to-end? | Add a task → see it in the list → mark it done |
 
-✅ **How you know it's OK:** a `docs/PRD.md` file is created with sections including "Target Users" and "MVP Scope".
+Claude writes your answers back after every round, runs a short pre-mortem ("six months later this failed — why?"), and when the problem, the outcome, the appetite and the critical flow are clear it writes **two files**: `docs/discovery.md` (the questions and answers, flows, business rules, glossary, assumptions, open questions, risks) and `docs/PRD.md` (goals, requirements, non-functional requirements, scope). An independent critic then grades both, Claude fixes what it found, and — if `codex` is installed — a second model reviews them once.
+
+✅ **How you know it's OK:** `docs/discovery.md` and `docs/PRD.md` exist; the PRD has goals (`G-1`, …), requirements (`R-1`, …) and a scope section whose "out" list contains login and UI; the discovery has a flow `FL-1` marked `**Critical:** yes`.
 
 ⏭️ **Next:** Step 2.
 
 <details>
-<summary>💡 TIP — what a PRD is and why; what the sources folder is</summary>
+<summary>💡 TIP — what a PRD is and why the ids; what the sources folder is</summary>
 
-A PRD (Product Requirements Document) describes **what** you're building and **why** — not how. It's the foundation everything else flows from: stack, plan, code. We deliberately leave the technology (stack) empty for now — we'll choose it in the next step.
+A PRD (Product Requirements Document) describes **what** you're building and **why** — not how. It's the foundation everything else flows from: architecture, backlog, plan, code. Every statement carries a stable id (`G-1`, `R-3`, `NFR-1`, `FL-1`) that is never renumbered — the backlog tasks and the acceptance checks later point back to them, so you can always trace a task to the requirement it serves. We deliberately leave the architecture and the technology empty for now — `/architect` decides them in the next step.
 
-`.agents/sources/` is the project's **input layer** — you drop raw materials here (briefs, transcripts, sketches, PDFs), and commands like `/setup:create-PRD` treat them as input context. Claude **never** modifies them — they're your source material, read-only. Full description: [README → step 3](../README.md#3-define-the-product).
+Already have the requirements somewhere else (a spreadsheet, a list)? `/discover --import requirements.csv` turns every row into an id'd entry, quotes the original wording, and asks only about what the rows don't answer.
+
+`.agents/sources/` is the project's **input layer** — you drop raw materials here (briefs, transcripts, sketches, PDFs), and commands like `/discover` treat them as input context. Claude **never** modifies them — they're your source material, read-only. Full description: [README → step 3](../README.md#3-define-the-product).
 </details>
 
 ---
 
-### Step 2: Let Claude pick the technology (stack)
+### Step 2: Decide the architecture and the technology (architect)
 
 📋 **Type:**
 ```
-/setup:stack-research
+/architect
 ```
 
-💬 **What happens:** Claude searches the web, proposes 2–3 technology sets that fit your PRD (with pros and cons), asks you to approve the recommendation, and then **writes the chosen stack into the PRD**.
+💬 **What happens:** Claude reads `docs/PRD.md` + `docs/discovery.md`, sorts the parts of the product into **core / supporting / generic** (what makes it worth building, what it needs, what everyone has and you buy or reuse), decides each part on a fixed set of questions and records every decision as a row `AD-1`, `AD-2`, … Then it searches the web, proposes 2–3 technology sets that fit (with pros and cons) and asks you to approve the recommendation. It writes `docs/architecture.md` and `docs/map/system.yaml` (the same map in machine-readable form), and the PRD's architecture and stack sections become a short digest of it. The same independent critic (and Codex, if installed) checks the result.
 
-> 💡 **You don't need to know any technology.** At this stage it's enough to read Claude's recommendation and accept it. For a simple TODO API it will be something lightweight.
+> 💡 **You don't need to know any technology.** At this stage it's enough to read Claude's recommendation and accept it. For a simple TODO API expect one small part and something lightweight.
 
-✅ **How you know it's OK:** in `docs/PRD.md` the "Technology Stack" section is filled in, and Claude confirmed the decision was appended to `.agents/memory/decisions.md`.
+✅ **How you know it's OK:** `docs/architecture.md` exists with a `## Decisions` table (rows `AD-1`, …) and a chosen stack, `docs/map/system.yaml` exists, and Claude confirmed a pointer to each decision was appended to `.agents/memory/decisions.md`.
 
 ⏭️ **Next:** Step 3.
 
 <details>
-<summary>💡 TIP — why the stack is a separate step</summary>
+<summary>💡 TIP — why the architecture is a separate step</summary>
 
-Choosing the technology is a decision worth making deliberately and **recording**, so future Claude sessions don't second-guess it. That's why `/setup:stack-research` not only picks but also saves the rationale into the project's memory. Stack-agnosticism is a feature of this template — the commands work the same regardless of whether you choose Node, Python, or anything else.
+Choosing the structure and the technology is a decision worth making deliberately and **recording**, so future Claude sessions don't second-guess it. That's why `/architect` not only picks but also saves each decision with its rationale — the backlog tasks later point at the parts of `system.yaml` they touch. Need focused research on one area later? `/architect --stack realtime`. Stack-agnosticism is a feature of this template — the commands work the same regardless of whether you choose Node, Python, or anything else.
+
+**Product with a lot of UI?** You can run `/design-ui` after `/architect` for the key screens of the critical flow — optional, never required.
 </details>
 
 ---
@@ -148,21 +163,23 @@ Choosing the technology is a decision worth making deliberately and **recording*
 
 📋 **Type:**
 ```
+/maintain:refresh-brief
+/prime
 /setup:create-backlog
 ```
 
-💬 **What happens:** Claude reads the PRD and lays out a **delivery map** into `.agents/backlog.md` — a list of "epics" and tasks in dependency order. **The first task is always `E0-1: project scaffold`** — the foundation everything else stands on. (The backlog only *describes* this task — it does not create files; the scaffold is built in Step 4, when you execute it.)
+💬 **What happens:** `/maintain:refresh-brief` condenses the fresh PRD into the short brief that `/prime` loads, and `/prime` reloads the context. Then Claude reads the PRD, the discovery and the architecture and lays out a **delivery map** into `.agents/backlog.md` — "epics" and tasks (user stories or technical tasks), each with a size `M` / `H` / `XH` (4 / 8 / 16 points), in dependency order, with acceptance criteria that carry ids (`E1-2.AC1`). A small **Wave 0** foundation runs first, one task after another; after it the tasks are split into **parallel lanes for 2, 3 and 4 developers**, and a story map marks the **walking skeleton** — the thinnest set of tasks that makes the critical flow work end-to-end. **The first task is always `E0-1: project scaffold`** — the foundation everything else stands on. (The backlog only *describes* this task — it does not create files; the scaffold is built in Step 4, when you execute it.)
 
 ✅ **How you know it's OK:** a `.agents/backlog.md` file is created, and at the top of its table there's a task `E0-1` of type "project scaffold".
 
 ⏭️ **Next:** Step 4.
 
-> 👥 **Working with a team on Jira?** The backlog is created first anyway — it's the **source of truth**. You create the Jira tasks **based on it** (manually, with the `/jira` command), not instead of it. How to do that — see **Scenario 5 (the analyst/BA path)** below. In Scenario 1 (solo) Jira isn't needed.
+> 👥 **Working with a team on Jira?** The backlog is created first anyway — it's the **source of truth**. You mirror it into Jira **from it** (with `/jira sync`), not instead of it. How to do that — see **Scenario 5 (the analyst/BA path)** below. In Scenario 1 (solo) Jira isn't needed.
 
 <details>
 <summary>💡 TIP — why a backlog and why the scaffold is a task, not a manual step</summary>
 
-The backlog is the **layer between the PRD and a single plan**: the PRD says *what and why* (prose), the backlog says *in what dependency structure to deliver it* (tasks with IDs, a DAG, ordering). Thanks to this, the project scaffold isn't a "manual terminal hack" but the **first normal pipeline task** — it goes through the same quality gates as any other feature.
+The backlog is the **layer between the PRD and a single plan**: the PRD says *what and why* (prose), the backlog says *in what dependency structure to deliver it* (tasks with IDs, sizes, a DAG, ordering, parallel lanes). Thanks to this, the project scaffold isn't a "manual terminal hack" but the **first normal pipeline task** — it goes through the same quality gates as any other feature.
 
 `.agents/backlog.md` is the **single source of truth** for "what to build, in what order".
 </details>
@@ -381,14 +398,14 @@ Same as in Scenario 1 — [create your own repo from the template and download i
 
 ### Steps 1–3: PRD, stack, backlog — like in S1, with one difference
 
-Go through [Step 1](#step-1-describe-what-you-want-to-build-prd), [Step 2](#step-2-let-claude-pick-the-technology-stack) and [Step 3](#step-3-lay-out-the-delivery-plan-backlog) **exactly like in Scenario 1**. The only difference is in the PRD description — say explicitly that you want a **user interface**:
+Go through [Step 1](#step-1-describe-what-you-want-to-build-discover), [Step 2](#step-2-decide-the-architecture-and-the-technology-architect) and [Step 3](#step-3-lay-out-the-delivery-plan-backlog) **exactly like in Scenario 1**. The only difference is in the `/discover` description — say explicitly that you want a **user interface**:
 
 📋 **Type** (example):
 ```
-/setup:create-PRD Build a to-do list (TODO) application with a browser interface: add a task, list tasks, check off as done, delete. Backend (API) + frontend (web UI). No login. Include the materials from .agents/sources/.
+/discover Build a to-do list (TODO) application with a browser interface: add a task, list tasks, check off as done, delete. Backend (API) + frontend (web UI). No login.
 ```
 
-💬 **What changes from here on:** `/setup:stack-research` will now propose **two** layers (backend + frontend), and `/setup:create-backlog` will lay out a backlog where, besides `E0-1: project scaffold`, frontend tasks appear. The rest (how to read, how to verify) — identical.
+💬 **What changes from here on:** `/architect` will now propose **two** layers (backend + frontend), and `/setup:create-backlog` will lay out a backlog where, besides `E0-1: project scaffold`, frontend tasks appear. The rest (how to read, how to verify) — identical.
 
 ⏭️ **Next:** Step 4.
 
@@ -742,9 +759,9 @@ The hardest part (understanding the existing code) you do **once**. After that b
 
 **What we'll do:** turn an **idea** into organized work — a PRD, a **backlog** (delivery map), and finally **tasks in Jira** for the team. **Without writing code.** This is the path of a business analyst / Product Owner.
 
-**What you'll learn:** how to turn raw materials into a PRD and a backlog, and how to **export the backlog to Jira** (epics + tasks) with the `/jira` command — remembering that **the backlog is the source of truth, and Jira is its mirror**.
+**What you'll learn:** how to turn raw materials into a discovery, a PRD and a backlog, and how to **mirror the backlog into Jira** (epics + tasks) with `/jira sync` — remembering that **the backlog is the source of truth, and Jira is its mirror**.
 
-> 📌 **This is the "no code" path.** You finish where a developer starts coding: with a ready backlog and tasks in Jira. The first steps (PRD, backlog) are shared with S1 — the difference is in the priority (product context, not implementation) and in the finale (export to Jira).
+> 📌 **This is the "no code" path.** You finish where a developer starts coding: with a ready backlog and tasks in Jira. The first steps (discovery + PRD, backlog) are shared with S1 — the difference is in the priority (product context, not implementation) and in the finale (mirror into Jira).
 
 ---
 
@@ -754,33 +771,39 @@ The hardest part (understanding the existing code) you do **once**. After that b
 
 Run `/setup:start` first and answer **Jira: yes** — it activates the Jira block in `.env.example` and keeps the `/jira` commands.
 
-**Want to export to Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` in `.env`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (PRD + backlog) and add the export later.
+**Want to mirror into Jira (Step 4)?** You need a configured **MCP Atlassian** — the variables `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` in `.env`. How to set them: [.agents/reference/jira-mcp-atlassian.md](../.agents/reference/jira-mcp-atlassian.md). Without it you'll do Steps 1–3 (discovery + PRD + backlog) and add the mirror later.
 
 ⏭️ **Next:** Step 1.
 
 ---
 
-### Step 1: Gather materials and describe the product (sources + PRD)
+### Step 1: Gather materials and describe the product (sources + discover)
 
 > As an analyst you most often already have **input materials** — meeting notes, a brief, transcripts, requirement dumps. That's your starting point.
 
-**Drop the materials into `.agents/sources/`.** Copy all the files there (briefs, transcripts, PDFs, sketches). Claude will read them **automatically** when creating the PRD.
+**Drop the materials into `.agents/sources/`.** Copy all the files there (briefs, transcripts, PDFs, sketches). Claude will read them **automatically** during discovery.
 
 📋 **Type:**
 ```
-/setup:create-PRD Based on the materials in .agents/sources/, describe the product: <one sentence about what it is>. For whom, what problem it solves, what's in the MVP.
+/prime
+/discover Based on the materials in .agents/sources/: <one sentence about what it is>.
+```
+or, when the requirements already exist as a list or a spreadsheet (exported to CSV):
+```
+/prime
+/discover --import requirements.csv
 ```
 
-💬 **What happens:** Claude reads `.agents/sources/`, asks about gaps (users, MVP scope, what we skip) and writes `docs/PRD.md` — a formal description of *what and why*.
+💬 **What happens:** Claude reads `.agents/sources/` (and the imported file — every row becomes an entry with an id, its original wording quoted), shows what is already clear, and asks **only about the gaps** (users, measurable goals, scope, what we skip, the one flow that must work) — in short rounds, each question with a **Recommended** answer. It writes `docs/discovery.md` and `docs/PRD.md` — a formal description of *what and why*, every statement with a stable id.
 
-✅ **How you know it's OK:** a `docs/PRD.md` was created with sections "Target Users", "MVP Scope", "Implementation Phases".
+✅ **How you know it's OK:** `docs/discovery.md` and `docs/PRD.md` were created; the PRD has goals (`G-n`), requirements (`R-n`) and a scope section; contradictions between your materials show up as open questions (`Q-n`) with an owner, not silently resolved.
 
 ⏭️ **Next:** Step 2.
 
 <details>
-<summary>💡 TIP — it's the same PRD as in S1; here you just "polish" it more</summary>
+<summary>💡 TIP — it's the same discovery as in S1; here you just "polish" it more</summary>
 
-The PRD is the common foundation of all scenarios. The difference on the BA path: you usually spend more time here (it's your main work product), you rely heavily on `.agents/sources/`, and you don't move on to code afterward. You can leave the stack empty or run `/setup:stack-research` as a recommendation for the team — that's optional.
+The discovery and the PRD are the common foundation of all scenarios. The difference on the BA path: you usually spend more time here (it's your main work product), you rely heavily on `.agents/sources/`, and you don't move on to code afterward. You can leave the architecture to the team or run `/architect` as a recommendation for them — that's optional.
 </details>
 
 ---
@@ -809,13 +832,13 @@ The PRD is the common foundation of all scenarios. The difference on the BA path
 /setup:create-backlog
 ```
 
-💬 **What happens:** Claude turns the PRD into a **delivery map** in `.agents/backlog.md` — epics, tasks with IDs (`E0-1`, `E1-2`, …), dependencies (DAG) and ordering. This is the **canonical** list of "what to build, in what order".
+💬 **What happens:** Claude turns the PRD into a **delivery map** in `.agents/backlog.md` — epics, tasks with IDs (`E0-1`, `E1-2`, …) as user stories or technical tasks, sizes (`M` / `H` / `XH`, summed to the epic), dependencies (DAG), parallel lanes for 2–4 developers and a story map with the walking skeleton. This is the **canonical** list of "what to build, in what order".
 
 ✅ **How you know it's OK:** a `.agents/backlog.md` was created with a table of epics and tasks.
 
-⏭️ **Next:** Step 4 — export to Jira.
+⏭️ **Next:** Step 4 — mirror into Jira.
 
-> 🔑 **The backlog is the source of truth, Jira is its mirror.** You create the Jira tasks **based on** the backlog (one-way: backlog → Jira). You don't maintain two parallel lists — the backlog is first and authoritative, Jira is its export for the team.
+> 🔑 **The backlog is the source of truth, Jira is its mirror.** The Jira issues are created **from** the backlog (one-way: backlog → Jira). You don't maintain two parallel lists — the backlog is first and authoritative, Jira is its mirror for the team.
 
 <details>
 <summary>💡 TIP — why a backlog and not Jira right away</summary>
@@ -825,36 +848,27 @@ The backlog (`.agents/backlog.md`) lives **in the repo, next to the code** — i
 
 ---
 
-### Step 4: Export the backlog to Jira (optional)
+### Step 4: Mirror the backlog into Jira (optional)
 
-> A step for teams on Jira. You move the structure from the backlog to Jira — **you lead, Claude executes**, with confirmation before each write.
+> A step for teams on Jira. One command mirrors the backlog's epics and tasks into Jira — **you confirm, Claude executes**, and nothing is written before you see it.
 
-**Epics first.** For each epic from the backlog, create an Epic in Jira:
-
-📋 **Type** (example):
+📋 **Type:**
 ```
-/jira create Epic — create epics corresponding to the epics in .agents/backlog.md
+/jira sync
 ```
 
-**Then tasks under each epic** — with the `bulk` command (mass creation under one parent):
+💬 **What happens:** Claude first validates the backlog (`node .claude/lib/backlog-check.mjs`) — an invalid backlog is never mirrored. It takes the Jira project from `JIRA_DEFAULT_PROJECT` or asks you for it, then shows **a table of what will be created, with every description, and waits for your `y`** (Jira has no undo — that's a deliberate safeguard). After confirmation it creates the epics and tasks one by one (with parent, labels and estimate), writes each Jira key back into the task's `Jira` column in `.agents/backlog.md`, and links the dependencies as `Blocks`.
 
-📋 **Type** (example, replace the epic key):
-```
-/jira bulk PROJ-100 — create tasks from the tasks of epic E1 in .agents/backlog.md
-```
-
-💬 **What happens:** Claude shows **the plan as a table and waits for your `y`** before any write to Jira (Jira has no undo — that's a deliberate safeguard). After confirmation it creates the epics and tasks.
-
-✅ **How you know it's OK:** epics and tasks corresponding to the backlog appeared in Jira; Claude shows a report with the keys of the created tasks.
+✅ **How you know it's OK:** epics and tasks corresponding to the backlog appeared in Jira, the `Jira` column of the backlog holds their keys, and Claude shows a report of created and skipped rows.
 
 ⏭️ **Next:** done — the team has tasks, you have the backlog as the source of truth.
 
-> ⚠️ **This is a manually-driven export, not automatic synchronization.** There's no "sync button". You decide what to move and when; Claude generates the task content from the backlog and creates them after your confirmation. The direction is one-way — you make changes in the backlog, then optionally reproduce them in Jira.
+> ⚠️ **Create-only and one-way.** `/jira sync` never updates, transitions or deletes an issue. After you add tasks to the backlog, run it again — rows that already have a key are skipped, only the new ones are created. The one thing Jira owns afterwards is the **workflow status** of synced tasks: an empty `/brainstorm` reads it back into the backlog.
 
 <details>
-<summary>💡 TIP — what exactly `/jira bulk` does and why dry-run</summary>
+<summary>💡 TIP — why a second run never creates duplicates</summary>
 
-`/jira bulk <EPIC-KEY> <count> <topic>` creates multiple tasks under one Epic. The task content is **generated by the model** based on the topic and context (here: the tasks from the backlog) — that's why the step is "assisted" and not a 1:1 automatic import. Every writing operation (create, bulk, update, link) has a **hard dry-run rule**: a table for approval first, the actual write only after `y`. Full description and parameters: [.claude/skills/jira/SKILL.md](../.claude/skills/jira/SKILL.md).
+Every issue `/jira sync` creates carries a label `<namespace>:<task id>` (the namespace is in the backlog header), and every run starts by reconciling: it re-checks keys written as `KEY (unverified)` and adopts issues that were created but never written back (e.g. after a crash). For a single issue outside the backlog, `/jira create` and `/jira bulk` still work as before, with the same table-first confirmation. Full description: [.claude/skills/jira/SKILL.md](../.claude/skills/jira/SKILL.md).
 </details>
 
 ---
@@ -862,7 +876,7 @@ The backlog (`.agents/backlog.md`) lives **in the repo, next to the code** — i
 ## 🎉 Congratulations — you have a ready backlog and tasks for the team!
 
 You went through the analyst path without writing code:
-**materials (`sources/`) → PRD → product context (`prime-ba`) → backlog (source of truth) → 🔁 export to Jira (mirror).**
+**materials (`sources/`) → discovery + PRD (`/discover`) → product context (`prime-ba`) → backlog (source of truth) → 🔁 `/jira sync` (mirror).**
 
 **What's next?** Developers take your backlog and enter the S1–S4 paths: fresh chat → `/prime` → empty `/brainstorm` (which takes the **next free task from the backlog** itself) → `/plan-feature` → `/execute` → … Your structure drives their work without retyping.
 

@@ -8,7 +8,29 @@ Use these as **starting points** when generating descriptions during create/upda
 
 ## Epic
 
+`/jira sync` fills **Outcome · Key assumption · Appetite / cut first · Tasks** from the backlog's
+Epic map; a hand-made Epic uses **Vision / Success Criteria / Out of Scope** instead. Omit whichever
+set has no content — never leave both as placeholders.
+
 ```markdown
+## Outcome
+
+The product effect this Epic delivers, traced to the goal it moves — e.g. "Checkout completes
+without a support call (G-2)."
+
+## Key assumption
+
+The most load-bearing thing we are not yet sure of. One sentence.
+
+## Appetite
+
+How much this Epic is worth (the budget, not the estimate) · **Cut first:** what drops when it grows.
+
+## Tasks
+
+- E1-1 — <title> (tech, M)
+- E1-2 — <title> (story, H)
+
 ## Vision
 
 One or two sentences on the outcome this Epic achieves. User-value framing preferred over technical description.
@@ -48,6 +70,77 @@ One sentence stating what this Task accomplishes.
 ## Technical Notes
 
 Implementation guidance, constraints, dependencies. Keep short. Link to docs rather than duplicating.
+```
+
+---
+
+## Story
+
+Used by `/jira sync` for a backlog Task whose `Type` is `story` (`sync-pattern.md` → Step 3).
+
+**Acceptance-criteria ids are copied verbatim** — `E1-2.AC1`, never renumbered, never reworded.
+`/qa-verify` keys its verdicts on these ids and joins on the exact string; a rewritten id silently
+breaks the join. `Depends on` carries the **local** backlog ids; the Jira `Blocks` links are created
+separately (`sync-pattern.md` → Step 7).
+
+```markdown
+## User story
+
+As a <role> I want <capability> so that <outcome>.
+
+## Acceptance criteria
+
+- **E1-2.AC1** — Given <state> When <action> Then <result>
+- **E1-2.AC2** — WHEN <trigger> the system shall <response>
+
+## Traces
+
+R-3, FL-1.A2, G-2
+
+## Size
+
+H (8 pts)
+
+## Depends on
+
+E1-1, E0-2
+
+## Node
+
+checkout-core
+```
+
+---
+
+## Tech
+
+Used by `/jira sync` for a backlog Task whose `Type` is `tech`. Same id rule as **Story**: AC ids
+verbatim. A spike's acceptance criterion is the decision it produces.
+
+```markdown
+## Objective
+
+One sentence stating the technical result this Task produces.
+
+## Acceptance criteria
+
+- **E0-1.AC1** — Given <state> When <action> Then <observable result>
+
+## Traces
+
+AD-1, NFR-2
+
+## Size
+
+M (4 pts)
+
+## Depends on
+
+—
+
+## Node
+
+platform-core
 ```
 
 ---

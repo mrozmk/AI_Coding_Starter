@@ -31,9 +31,9 @@ This repo ships **no application code** — only the scaffolding that makes Clau
 
 | Path | Purpose |
 |------|---------|
-| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/setup:create-PRD`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:stack-research`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
-| `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, the `/design-ui` critic `design-critic`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
-| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs) and `/design-ui` (guided UI design as a quality loop — screen brief → design (1 or 3 variants) → rendered screenshots → the independent `design-critic` (Fable, high) judging against its UI/UX `principles.md` → author fixes, up to 3 rounds → one Codex cross-review of the chosen design; named so it never collides with Claude Code's bundled `design` canvas skill; its knowledge files sit next to `SKILL.md`). Plus one command-bound resource bundle loaded by path (no `SKILL.md`): `architecture-review/` (depth/locality method for `/architecture-review`). |
+| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/discover`, `/architect`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
+| `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, the `/design-ui` critic `design-critic`, the `/discover` + `/architect` critic `start-critic`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
+| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs; `/jira sync` mirrors `.agents/backlog.md` into Jira, create-only) and `/design-ui` (guided UI design as a quality loop — screen brief → design (1 or 3 variants) → rendered screenshots → the independent `design-critic` (Fable, high) judging against its UI/UX `principles.md` → author fixes, up to 3 rounds → one Codex cross-review of the chosen design; named so it never collides with Claude Code's bundled `design` canvas skill; its knowledge files sit next to `SKILL.md`). Plus command-bound resource bundles loaded by path (no `SKILL.md`): `architecture-review/` (depth/locality method for `/architecture-review`), `discover/` (question bank, coverage rules, discovery + PRD templates, rubric for `/discover`), `architect/` (subdomain tests, decision dimensions, stack method, architecture template, `system.yaml` schema, rubric for `/architect`). |
 | `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs placed by `/setup:start` step 8) |
 | `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `guard-comments` (comment-noise nudge — dormant until `comment-guard.json` names your source dirs), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `warm-lsp` (TS/JS only — gates cross-project LSP queries until tsserver has opened one file per tsconfig project; dormant until `CLAUDE.md` announces it), `check-deps` (SessionStart dep preflight). Need `jq`. |
 | `settings.json` → `skillOverrides` | Switches off the Claude Code bundled skills the starter replaces or does not want auto-triggered (`init`, `design`, `dataviz`, `simplify`, the `artifact-*` trio, …). Kept on: `code-review` and `security-review` (the quality pipeline calls them), `run`, `loop`, `schedule`, `claude-api`, `update-config`, `claude-in-chrome`. Undocumented key, verified on Claude Code 2.1.257 (2026-09-16); values `off` / `user-invocable-only` / `name-only`. |
@@ -47,10 +47,10 @@ Layers of persistent project knowledge:
 
 | Layer | Contents | Lifecycle |
 |-------|----------|-----------|
-| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/setup:create-PRD` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
+| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/discover` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
 | `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
-| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — epics + task DAG + **work packages** (each feeds one `/brainstorm → spec → /plan-feature` cycle), MVP first. Operationalizes the PRD's "Implementation Phases". | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
+| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — Epics → Tasks (user stories or technical tasks) sized M/H/XH, a dependency DAG, a sequential Wave 0 foundation, parallel lanes for 2–4 developers and a story map with a walking skeleton. Each Task feeds one `/brainstorm` (H/XH) or `/quick-change` (M) cycle; `/jira sync` mirrors it into Jira. | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
 | `specs/` | Design docs from `/brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 
@@ -85,7 +85,7 @@ New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira 
 
 The first half is always the same — **prime → brainstorm → plan-feature** turns an idea (a free-text request, or one you lift from a Jira issue) into an approved, codebase-aware plan. How you take that plan to *shipped* is your call — pick by how much you want to drive:
 
-> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into epics, a dependency DAG, and **work packages**. Each work package row then tells you exactly which `/brainstorm <topic>` to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
+> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into **Epics and Tasks** with sizes (M/H/XH), a dependency DAG and parallel lanes. Each Task row then tells you which `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
 
 **A — Manual (more human-in-the-loop):**
 
@@ -150,7 +150,7 @@ These three MCP servers extend the shipped commands. Install only what you actua
 
 | MCP | What it does | Repo | Used by |
 |-----|--------------|------|---------|
-| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/setup:stack-research`, `/brainstorm` for new deps) |
+| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/architect` stack research, `/brainstorm` for new deps) |
 | **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/gates:verify-implementation` |
 | **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
 
@@ -237,30 +237,29 @@ All three give you the same result: a fresh project with starter scaffolding and
 
 ### 2. Drop raw materials (optional)
 
-If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/setup:create-PRD` and `/setup:createwikillm` will pick them up automatically as input context.
+If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/discover` and `/setup:createwikillm` will pick them up automatically as input context.
 
-> **Next step:** once the materials are in place, run `/setup:create-PRD` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation to draft the PRD.
+> **Next step:** once the materials are in place, run `/discover` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation. Requirements that already exist elsewhere (a spreadsheet exported to CSV, a brief) go in with `/discover --import <path>`.
 
 ### 3. Define the product
 
 ```
-/setup:create-PRD
+/discover                          # BA interview — or start from a one-line idea: /discover <idea>
+/discover --import reqs.csv        # existing requirements become id'd entries; questions only for gaps
 ```
 
-Generates `docs/PRD.md` from your conversation **plus** any files in `.agents/sources/`. The PRD defines **what** you're building and **why** — target users, MVP scope, success criteria. Tech stack is left as a placeholder; you'll fill it in step 4.
+> Run `/prime` first. A business-analysis interview before any design: it derives what it can from `.agents/sources/` and the repo, then asks only the gaps — short rounds of ≤5 questions, each with a **Recommended** answer first — until problem, measurable outcome, appetite and the critical flow are clear. It writes two files: `docs/discovery.md` (coverage, clarifications log, flows, business rules, glossary, entities, assumptions, open questions, risks) and `docs/PRD.md` (goals, EARS requirements, NFRs, scope). Every statement gets a stable id (`G-n`, `R-n`, `NFR-n`, `BR-n`, `FL-n`, `A-n`, `Q-n`) that the backlog, specs and `/qa-verify` trace back to. An independent critic (`start-critic`) grades the result and Codex reviews it once. Architecture and stack are left to step 4.
 
-### 4. Research the technology stack
+### 4. Decide the architecture and the stack
 
 ```
-/setup:stack-research              # project-level — full stack from PRD (recommended after /setup:create-PRD)
-/setup:stack-research realtime     # feature-level — focused research on a specific area
+/architect                         # project-level — subdomains, decisions, stack
+/architect --stack realtime        # focused stack research on one area
 ```
 
-> Run this **after** `/setup:create-PRD`. Performs structured web research, proposes 2–3 candidate stacks with concrete pros/cons, asks you to approve the recommendation, then **updates the PRD's `Technology Stack` (and `Core Architecture & Patterns` where relevant) sections** — with diff preview and per-section approval before any edit.
+> Run this **after** `/discover`. Classifies the subdomains (core / supporting / generic) from the discovery evidence, decides each bounded context on fixed dimensions (one `AD-n` row per decision, deferred cells named honestly), and chooses the stack by structured web research over 2–3 candidates. Writes `docs/architecture.md` (subdomains, context map, `## Decisions`, stack + research, NFR map) and `docs/map/system.yaml` (the machine-readable map the backlog's `Node` cells point at); the PRD's architecture and stack sections become a digest of it, and `.agents/memory/decisions.md` gets one pointer per active decision. Judged by the same independent critic + one Codex review.
 >
-> Also auto-appends a one-line entry to `.agents/memory/decisions.md` (newest at end), so future Claude sessions discover the architectural choice without rereading the full brief.
-
-The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` for long-term reference.
+> **UI-heavy product?** `/design-ui` after `/architect` for the critical flow's key screens — optional, never a gate.
 
 ### 5. Distill the PRD into a fast-load brief
 
@@ -268,7 +267,7 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
 ```
 
-> `/setup:start` prints when to run it (after `/setup:stack-research`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty.
+> `/setup:start` prints when to run it (after `/architect`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty.
 >
 > Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
 
@@ -278,13 +277,13 @@ The full brief is saved to `.agents/specs/YYYY-MM-DD-stack-research-<topic>.md` 
 /setup:create-backlog
 ```
 
-> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. **For multi-phase projects only — skip it for a small one.** Reads the PRD and writes `.agents/backlog.md`: a **delivery map** that turns the PRD's "Implementation Phases" into epics, a dependency DAG, and **work packages**. Each work package = one coherent theme = one `/brainstorm → spec → /plan-feature` cycle, so the backlog tells you *which* features to design, *in what order*, and *what can run in parallel* (waves) — the layer between the PRD's prose phases and the per-feature plan's `## Execution Plan`.
+> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. **For multi-phase projects only — skip it for a small one.** Reads the PRD (plus `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present) and writes `.agents/backlog.md`: a **delivery map** of **Epics → Tasks** — user stories or technical tasks, each sized `M` (4 pts), `H` (8) or `XH` (16; anything bigger is split), points summed to the Epic, with acceptance criteria carrying ids (`E1-2.AC1`) and traces to the PRD/architecture ids. A small **sequential Wave 0** foundation (scaffold `E0-1`, schema, contracts) comes first; after it the Tasks are cut into **parallel lanes for 2, 3 and 4 developers**, and a **story map** marks the **walking skeleton** — the thinnest set of Tasks that covers the critical flow end-to-end. `node .claude/lib/backlog-check.mjs --write` validates ids, the DAG, sizes and trace coverage, then fills in the lanes and the story map. Each Task = one `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) cycle — the layer between the PRD and the per-feature plan's `## Execution Plan`.
 >
-> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira derives its issues *from* the backlog via `/jira bulk` (a manual/assisted export — there is no automatic sync), one-way: backlog → Jira, never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* task (Status `TODO`, all `Dependencies` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
+> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira mirrors it with `/jira sync` — one-way, create-only (Epics and Tasks, with parent, labels, estimate and `Blocks` links), each Jira key written back into the Task's `Jira` cell; it never updates, transitions or deletes an issue. Jira then owns only the workflow status of synced Tasks; structure, order and sizes stay in the backlog — never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* Task (Status `TODO`, all `Depends on` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
 >
 > It's the input to `/brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
 >
-> **Brownfield:** run `/setup:map-codebase` first (it reconstructs the PRD), then this. **Maintenance:** when the backlog exists, `/plan-feature` ticks a work package to `WIP` + records the spec/plan `Ref`, and `/orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
+> **Brownfield:** run `/setup:map-codebase` first (it reconstructs the PRD), then this. **Maintenance:** when the backlog exists, `/plan-feature` ticks a Task to `WIP` + records the spec/plan `Ref`, and `/orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
 
 ### 6. Initialize project rules (after first scaffolding)
 
@@ -359,7 +358,9 @@ Conventional-commit message, plus a memory checkpoint — captures any lessons, 
 | `/prime-qa` | When verifying acceptance criteria against a running system — loads `errors.md` + `domain/*` + the QA evidence taxonomy, then runs an injected environment preflight (host reachability, build skew, credentials presence, parallel-session safety) that resolves `BASE_URL` deterministically. Deliberately **never** reads `specs/` or `plans/`: the author's intent biases the verdict toward what was meant rather than what shipped. Configure hosts in `.claude/qa-env.json`. Self-contained — do not run `/prime` first. |
 | `/qa-verify [key\|spec\|task-id]` | After `/prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one verifier**: the browser-free static `qa-contract`; every other family's verifier (including the rest of lane P, e.g. `qa-config`, plus the browser `S` and design `I` lanes) is declared in the registry and **guarded** — its ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
 | `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
-| `/setup:stack-research` | Once after `/setup:create-PRD` for project-wide stack selection; ad-hoc later for focused research on a specific area (`/setup:stack-research realtime`, `/setup:stack-research auth`). Updates PRD `Technology Stack` section + logs decision. |
+| `/discover [idea] \| --import <path>` | Once at the start of a product (and again when scope shifts — every existing id is preserved) — BA interview or import of existing requirements → `docs/discovery.md` + `docs/PRD.md` with stable ids, judged by an independent critic. |
+| `/architect [--stack <area>]` | Once after `/discover` — subdomains, per-context decisions (`AD-n`), stack → `docs/architecture.md` + `docs/map/system.yaml`; ad-hoc later with `--stack <area>` for focused research (`--stack realtime`, `--stack auth`). |
+| `/jira sync` | After `/setup:create-backlog` (and after each structural backlog edit) on a Jira team — mirrors Epics/Tasks into Jira create-only, writes the keys back into the backlog's `Jira` cells. Never updates, transitions or deletes issues. |
 | `/setup:map-codebase` | **Brownfield bootstrap** — adopting the workflow into a large existing codebase that never had AI. One run: parallel fan-out comprehension (distilled summaries, no context flooding) → `architecture.md` + reconstructed `docs/PRD.md` → cascades into `/maintain:refresh-brief` + `/setup:create-CLAUDE_MD`. Two review checkpoints (scope; PRD validation). See [.claude/commands/setup/map-codebase.md](.claude/commands/setup/map-codebase.md). |
 | `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
 | `/maintain:sync-from-starter [--check\|<ref>]` | Pull newer workflow definitions from the upstream starter (commands, agents, skills, hooks, config) without touching project knowledge. 3-way aware via a committed `.claude/.starter-sync.json` provenance manifest; recommends but asks on `settings.json`/hook conflicts. `--check` = dry-run only; `<ref>` = pin to a tag. See [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md). |
@@ -394,6 +395,7 @@ Three commands do heavy multi-step work. They use **two different orchestration 
 | Verify (code gate) | `orchestrator-verifier` | **`high`** | ❌ read-only | the gate must be sharp; independence from the fixer |
 | Design parity | `orchestrator-designer` | **`high`** | ❌ read-only | pixel/structural audit vs reference design |
 | Design critique | `design-critic` (Fable) | **`high`** | ❌ read-only | judges `/design-ui` mockups from rendered screenshots — the author fixes, the critic never edits |
+| Start-phase critique | `start-critic` (Fable) | **`high`** | ❌ read-only | judges `/discover` and `/architect` artifacts against their rubric — the author fixes, the critic never edits |
 | Commit | `orchestrator-committer` | `low` (`acceptEdits`) | ✅ git index | purely mechanical stage+commit |
 | Doc sync | `documentation-manager` | `low` | ✅ docs | only on `/orchestrate --sync-docs` when docs would drift |
 

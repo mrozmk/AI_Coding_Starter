@@ -44,6 +44,8 @@ Use this table to decide which memory files to load. **Skip any file whose front
 | A slash command, hook, MCP server or shell/git invocation misbehaves — or a requirement was misread | `domain/harness.md` (skip while `status: empty`) |
 | Implementing a new feature | `plans/active/`, `specs/{feature}.md` (if exists) |
 | Architectural decision / refactor | `decisions.md`, `architecture.md` |
+| Product scope, requirement / goal / flow ids | `docs/discovery.md`, `docs/PRD.md` (skip if absent) |
+| Designing a backlog Task or touching a module boundary | `docs/architecture.md` → `## Decisions` rows for the touched nodes, `docs/map/system.yaml` (skip if absent) |
 | Touching API integration / external protocol | `api.md` |
 | Working on a specific module | `domain/{module}.md` |
 | Bootstrapping a fresh clone / choosing which command groups to keep | `.claude/project-profile.json` (written by `/setup:start`; `.example` documents the schema) |
@@ -66,7 +68,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 | `CLAUDE.md` | **The harness — injected every session.** Do **not** re-read it in `/prime` or in any command | Everything, always |
 | `index.md`, `project-brief.md`, `architecture.md` (always); `patterns.md`, `decisions.md`, `api.md`, `errors.md`, `domain/*` (full mode) | `/prime` (quick or `/prime full`) | Every subsequent command in the session |
 | Tool-specific configs the command operates on (e.g. `playwright.config.ts` for `/test-e2e`, `pyproject.toml` for a Python-aware command) | The command itself | That command only |
-| Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog`) | The transforming command | The transforming command only |
+| Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/discover`, `/architect`, `/setup:create-backlog`) | The transforming command | The transforming command only |
 
 **Why this matters:** PRD can be 2000+ lines. Re-reading it inside every command burns the token budget for context that should already be in the conversation as a 50-line `project-brief.md`. The `When to Read` table above tells the agent which memory files to *consult* on demand; `/prime` is what *loaded* them in the first place.
 
@@ -77,7 +79,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 - ✅ Add a one-line precondition: "If project context isn't primed, run `/prime` first"
 - ✅ Read only files that are **uniquely your command's job** (tool configs, the spec it's transforming, etc.)
 
-**Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/setup:stack-research`, `/setup:create-PRD`, `/setup:create-backlog` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
+**Exception (rare):** transforming commands like `/maintain:refresh-brief`, `/discover`, `/architect`, `/setup:create-backlog` are *producers* of primed content, not consumers. They legitimately read source-of-truth files (PRD, sources/) because that's their entire purpose.
 
 ---
 

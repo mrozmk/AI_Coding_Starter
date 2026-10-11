@@ -88,6 +88,8 @@ re-validates everything).
 | `/execute codex` (executor) | `medium` | `workspace-write` |
 | `/check-implementation codex` (fixer) | `high` | `workspace-write` |
 | `/design-ui` Phase 4 (cross-model design review, `IMAGES` set) | `high` | (unset — `SCHEMA` run) |
+| `/discover` Phase 7 (cross-model PRD review) | `high` | (unset — `SCHEMA` run) |
+| `/architect` Phase 6 (cross-model architecture review) | `high` | (unset — `SCHEMA` run) |
 
 Never lower a level to make a run finish sooner — retune the caller's `HARD_KILL` instead.
 
@@ -220,6 +222,8 @@ out-of-scope change instead of reverting it.
 | `/check-implementation` Step 1.5 (cross-model review) | 6 min | 3 min | 50 min (single pass) — then fail-open skip |
 | `/check-implementation codex` (fixer) | 6 min | 3 min | 60 min — then STOP, "fixer failed" |
 | `/design-ui` Phase 4 (cross-model design review) | 4 min | 3 min | 30 min (single pass) — then fail-open skip |
+| `/discover` Phase 7 | 4 min | 3 min | 30 min (single pass) — then fail-open skip |
+| `/architect` Phase 6 | 4 min | 3 min | 30 min (single pass) — then fail-open skip |
 
 > `/quick-change` is the one caller with a **short** ceiling, and deliberately so: it reviews a plan
 > for a small change, so a run past 25 minutes is a hang, not depth. Its lane must stay fast — the

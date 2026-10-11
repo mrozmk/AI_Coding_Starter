@@ -26,13 +26,15 @@ The load-bearing move is **where the review sits**: before the code, not after. 
 - **`/check-implementation`** — the full quality loop (code-review → deep-review → gates → design gate → cross-model, up to 3 iterations) over already-written code. `/quick-change` reviews **before** writing, then runs one low-effort correctness pass and one structural pass after — no loop, no design gate, no second model on the diff. If a change deserves that loop, it does not belong in this lane (Phase 0).
 - **`/plan-feature`** — produces a durable, grilled plan artifact. `/quick-change` produces a disposable one.
 
-> **Writes nothing to `.agents/`.** No spec, no plan, no handoff file. The Codex brief goes to the session scratchpad. The only thing this command changes in the repo is the code you asked for. (Memory reflection is deliberately omitted too — a change small enough for this lane rarely teaches a fresh Claude anything, and `/quick-change` should not develop a paperwork tail.)
+> **Writes nothing to `.agents/`** — except the invoked Task's `Status`/`Ref` cells in `.agents/backlog.md` after green gates (Phase 6). No spec, no plan, no handoff file. The Codex brief goes to the session scratchpad. Beyond those two cells, the only thing this command changes in the repo is the code you asked for. (Memory reflection is deliberately omitted too — a change small enough for this lane rarely teaches a fresh Claude anything, and `/quick-change` should not develop a paperwork tail.)
 
 ---
 
 ## Phase 0 — Is this actually small? (the guard)
 
 **Do this before planning anything.** A fast lane that swallows work it shouldn't is worse than no fast lane, because the skipped steps are invisible afterwards.
+
+**Task entry.** If the argument (trimmed) is a backlog Task id (`^E\d+-\d+$`) or a Jira key (`^[A-Z]+-\d+$`) equal to the leading `[A-Z]+-\d+` token of a `Jira` cell in `.agents/backlog.md` (a cell written by `/jira sync` may read `KEY (unverified)` — the key still counts), the task = that Task's title + its acceptance-criteria ids (verbatim, e.g. `E1-2.AC1`) + its `Traces`; announce `KEY → <Task id>` when it came from a Jira key. Remember the Task id — Phase 6 writes its status back. A Task id with no matching row → STOP: "`<id>` is not in `.agents/backlog.md`". A Jira key with no matching `Jira` cell → not a backlog Task: say "`KEY` is not synced to a backlog Task — no backlog write-back" and treat the argument as an ordinary request. The guard below **still applies**: an `M` Task can fail it (sensitive path, schema change, >5 files) — then say which criterion fired and recommend `/brainstorm <id>` instead. A legacy backlog (`## Work packages` heading or a `| Dependencies |` column instead of `| Size |` + `| Depends on |`) resolves the id read-only; Phase 6 will skip the write-back. A header matching neither shape is malformed → report it and treat the file as absent (no Task resolution, no write-back).
 
 Read the request, look at the code it would touch, then check these. **Any hit → this is not a `/quick-change` job:**
 
@@ -166,6 +168,7 @@ Codex (idea): <czysto | N uwag, M uwzględnionych — co dokładnie złapał | B
 Zmienione pliki: <list>
 /deep-review: <N poprawek zastosowanych | czysto>
 Gates: <✅ zielone — komendy | ❌ + output>
+Backlog: <id → DONE | id kept WIP (an active plan lists it: <path>) | no backlog | legacy — skipped | not a backlog Task>
 
 NEEDS_HUMAN: <z /deep-review, albo "brak">
 Poza zakresem, zauważone: <albo "brak">
@@ -173,6 +176,8 @@ Poza zakresem, zauważone: <albo "brak">
 
 Werdykt: <✅ gotowe do /commit | ❌ eskalacja: co blokuje>
 ```
+
+**Backlog write-back (only when Phase 0 resolved a backlog Task, and only when the gates are green).** `/quick-change` has no plan file, so `DONE` is written directly here — still subject to the **whole-Task rule**: grep `.agents/plans/active/` for any file whose `**Tasks:**` line lists the Task id; none → set its `Status` to `DONE`; one or more → keep `WIP` (another plan still owns part of it) and say which. Legacy backlog → write nothing: "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". Red gates → write nothing. Touch only that Task's `Status`/`Ref` cells, never the table structure; the write is left uncommitted for `/commit`. A Task with a `Jira` cell keeps its local `Status` as a cache only — never transition the Jira issue from here.
 
 Then stop. **`/quick-change` never commits** — the tree is left ready for `/commit`.
 
@@ -186,5 +191,5 @@ Then stop. **`/quick-change` never commits** — the tree is left ready for `/co
 - **Verify every Codex finding against real code before folding it into the plan.** A second model hallucinates too.
 - **A fundamental objection stops the lane** — it goes to the user with a route to `/brainstorm` / `/plan-feature`, and is never patched around inline.
 - **The Phase 0 guard always fires when a criterion is met**, and its result is always said out loud. The user may override it; the command may not skip it.
-- **Writes nothing to `.agents/`, commits nothing.** The scratchpad brief is the only file it creates outside your code.
+- **Writes nothing to `.agents/` — except the invoked Task's `Status`/`Ref` cells in `.agents/backlog.md` after green gates — and commits nothing.** The scratchpad brief is the only file it creates outside your code.
 - **Never fake a Codex review, and never round a red gate up to green.**

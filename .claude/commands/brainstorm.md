@@ -29,9 +29,12 @@ Every feature goes through this process. A single new command, a config change, 
 
 Decide where the topic comes from, in this priority order. Resolve it **before** anything else — the rest of the command operates on the resolved topic.
 
-1. **Explicit topic in `$ARGUMENTS`** → use it verbatim. (User typed `/brainstorm <something>`.) Skip the rest of Step 0.
-2. **User referenced a Jira issue** (the prompt names a `[A-Z]+-\d+` key, or pasted an issue's description / acceptance criteria) → the topic is that issue. Use its summary + AC as the topic. Skip backlog resolution.
-3. **`$ARGUMENTS` is empty AND no Jira reference** → **resolve the next free task from `.agents/backlog.md`** (the default path):
+**Format detection — first, whenever `.agents/backlog.md` exists.** Read the Task table header once. It contains `| Size |` and `| Depends on |` → **new-format backlog**; every rule below applies as written. It has a `## Work packages` heading or a `| Dependencies |` column → **legacy backlog**: eligibility reads `Dependencies` instead of `Depends on`, completion evidence matches done-plans by task id / work-package name as before, and there is **no write-back of any kind** — say once: "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". Never mix the two rule sets in one run. A header matching **neither** shape is malformed: report it ("`.agents/backlog.md` has neither a `Depends on` nor a `Dependencies` column — not a backlog this command can read") and treat the file as absent (path 3a) rather than guessing a column layout.
+
+0. **Task resolution — before path 1.** Trim `$ARGUMENTS`. If the whole argument is a backlog Task id (`^E\d+-\d+$`), or a key matching `^[A-Z]+-\d+$` that equals the leading `[A-Z]+-\d+` token of some Task row's `Jira` cell in `.agents/backlog.md` (a cell written by `/jira sync` may read `KEY (unverified)` — the suffix is the sync's verification state, the key still counts) → the topic **is that Task**: title + its **current** AC (ids verbatim, e.g. `E1-2.AC1` — resolved as the Step 5 `## Acceptance Criteria` template describes) + its `Traces` ids. When it came from a Jira key, announce `KEY → <Task id>`. Continue as a backlog Task (write-back works) and **skip paths 1–3**. This is how `/brainstorm E1-2`, `/brainstorm PROJ-123` and `/start-task KEY` (which invokes `/brainstorm KEY`) land on the local Task. A Task id with no matching row → STOP: "`<id>` is not in `.agents/backlog.md` — check the ID column." A Jira key with no matching `Jira` cell falls through to path 2. Legacy backlog: a Task id still resolves against the `ID` column (read-only, no write-back).
+1. **Explicit topic in `$ARGUMENTS`** → use it verbatim. (User typed `/brainstorm <something>` that is not a Task id or a synced Jira key.) Skip the rest of Step 0.
+2. **User referenced a Jira issue** (the prompt names a `[A-Z]+-\d+` key, or pasted an issue's description / acceptance criteria) → if `.agents/backlog.md` exists and the leading `[A-Z]+-\d+` token of a Task row's `Jira` cell equals the key, resolve to that **local Task** exactly as in 0 (announce `KEY → <Task id>`; write-back works). No match → the topic is the issue itself: use its summary + AC, and say so in one line: "`KEY` is not synced to a backlog Task — designing the Jira issue directly; no backlog write-back." Skip backlog resolution.
+3. **`$ARGUMENTS` is empty AND no Jira reference** → **resolve the next free Task from `.agents/backlog.md`** (the default path):
 
    **a. No backlog?** If `.agents/backlog.md` does not exist or is empty, the file backlog is not this project's backlog — check for an **issue tracker** before giving up. A tracker counts as configured when a tracker skill is present (e.g. `.claude/skills/jira/SKILL.md`) **or** `.mcp.json` declares a tracker MCP server.
 
@@ -40,22 +43,34 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 
    Never tell a tracker-driven project to run `/setup:create-backlog` — it already has a backlog, just not as a file.
 
-   **b. Find the next free task.** A task is **free** (eligible to start) when **all** hold:
+   **a′. Status refresh from Jira (new-format backlog only; before b).** If any Task row has a `Jira` cell **and** a tracker MCP is configured, refresh the local `Status` cells **read-only** from the tracker — Jira owns the workflow for those Tasks (umbrella D7), so the local cell is a cache that may be stale:
+   - `jira_search(jql="key in (<keys>)", fields="status", limit=50)`, paging with `start_at` by 50 until every key is covered. `<keys>` are the leading `[A-Z]+-\d+` tokens of the `Jira` cells — a `KEY (unverified)` cell contributes `KEY`.
+   - mcp-atlassian returns each issue's `status` simplified to `{name, category, color}`. Map by **`color` first** — `green → DONE`, `yellow → WIP`, `blue-gray → TODO` — then, when the color is missing or unknown, by the `category` name — `Done → DONE`, `In Progress → WIP`, `To Do → TODO`. Anything else, or a key the search did not return → keep the local value and list it as `unmapped status <name>` (`<key>: not returned`). The simplified response carries no raw status-category key — `color` and `category` are the only machine-readable fields.
+   - Write **only the `Status` cells that changed**; list the changes in one line (`Status refresh: E1-2 TODO→WIP, E1-4 WIP→DONE`). A Jira status that **reopens** a locally `DONE` Task wins — Jira is authoritative for a synced Task, even over done-plan evidence in (c).
+   - Tracker unreachable or the call errors → say "Jira unreachable — using local Status" and continue with the local cells. **Never transition a Jira issue and never create one from here** — this step reads.
+   - Legacy backlog → skip this sub-step (no `Jira` column exists).
+
+   **b. Find the next free Task.** A Task is **free** (eligible to start) when **all** hold:
    - its `Status` is `TODO` (not `WIP`, `DONE`, or `BLOCKED`), **and**
-   - **every** task ID in its `Dependencies` column has `Status: DONE` (the DAG's source of truth is `Dependencies`, not the `Wave` column — never pick a task whose dependencies are unmet).
+   - its `Task` cell does **not** contain `(withdrawn)` — a withdrawn row is never auto-selected, whatever its refreshed `Status` (its Jira issue may still read TODO), **and**
+   - its exact id does **not** appear in the `**Tasks:**` header line of any file in `.agents/plans/active/` (header line only, not a prose mention) — an active plan means the Task is already planned, even when Jira still says TODO (`/plan-feature` writes local `WIP` but never transitions Jira, so the refresh in (a′) can restore `TODO`). Skip it and name the owning plan: "`<id>` is already planned by `.agents/plans/active/<file>` — skipping", **and**
+   - **every** Task id in its `Depends on` column has `Status: DONE` (the DAG's source of truth is `Depends on`, not the `Wave` column — never pick a Task whose dependencies are unmet). Legacy backlog: the column is `Dependencies`.
 
-   Among all free tasks, pick the one with the **lowest `Wave`**; break ties by **table order (topmost first)**. On a fresh backlog this is `E0-1` (the scaffold), which is dependency-free by construction.
+   Among all free Tasks, pick the one with the **lowest `Wave`**; break ties by **table order (topmost first)**. On a fresh backlog this is `E0-1` (the scaffold), which is dependency-free by construction.
 
-   **c. Verify it is *genuinely* not already done** (guard against stale status — a prior `/orchestrate`/`/plan-feature` run may have completed work but left the `Status`/`Ref` write uncommitted or unwritten, so the table can lie). Before committing to the task, cross-check for completion evidence:
-   - Is there a plan for it in `.agents/plans/done/` (match by task ID, work-package name, or feature)? 
+   **c. Verify it is *genuinely* not already done** (guard against stale status — a prior `/orchestrate`/`/plan-feature` run may have completed work but left the `Status`/`Ref` write uncommitted or unwritten, so the table can lie). Before committing to the Task, cross-check for completion evidence:
+   - Is there a plan in `.agents/plans/done/` whose header `**Tasks:**` line lists this Task id? **Whole-Task rule (umbrella D8):** a Task split across two plans with one still active is **in progress**, not done — the active-plan check in (b) already excluded it, so any Task reaching (c) has no active plan and its done-plan counts as evidence. Legacy backlog: match done-plans by task id / work-package name as before — the legacy branch has no `**Tasks:**` convention.
+   - For a Task with a `Jira` cell: a status refreshed in (a′) to anything other than `DONE` **overrides** done-plan evidence — the Task was reopened in Jira, and Jira is authoritative.
    - Does its `Ref` column already point to a spec **and** a done-plan?
    - Do recent commits (`git log --oneline -15`) already implement it?
 
-     If the evidence says the task is effectively **done** despite a `TODO` status → treat it as done: note the discrepancy, **skip to the next free task**, and tell the user the backlog status looked stale (so they can correct it). If evidence is ambiguous (some signal but not conclusive) → **ask the user** whether to design it or move on, rather than silently redoing finished work.
+     If the evidence says the Task is effectively **done** despite a `TODO` status → treat it as done: note the discrepancy, **skip to the next free Task**, and tell the user the backlog status looked stale (so they can correct it). If evidence is ambiguous (some signal but not conclusive) → **ask the user** whether to design it or move on, rather than silently redoing finished work.
 
-   **d. Announce the resolved task** before designing: *"No topic given — taking the next free backlog task: `<ID> — <title>` (Wave `<n>`, deps all DONE). Designing this; say otherwise to pick a different one."* Then proceed with that task as the topic.
+   **d. Announce the resolved Task** before designing: *"No topic given — taking the next free backlog Task: `<ID> — <title>` (Wave `<n>`, Size `<M|H|XH>`, deps all DONE). Designing this; say otherwise to pick a different one."* (Legacy backlog: omit `Size`.) Then proceed with that Task as the topic.
 
-> This makes a bare `/brainstorm` mean "design the next thing the backlog says to build" — but only when the user gave no topic and named no Jira issue. An explicit topic or a Jira reference always wins. The verification in (c) is the safety net: a `TODO` row is a *hint*, not proof the work is unstarted.
+**M-size lane note (any path that resolved a backlog Task).** If the resolved Task has `Size: M`, add one line before continuing: "M Task — `/quick-change <id>` is the default lane; continuing with `/brainstorm` because you invoked it." Do not switch lanes on the user's behalf.
+
+> This makes a bare `/brainstorm` mean "design the next thing the backlog says to build" — but only when the user gave no topic and named no Jira issue. An explicit topic or a Jira reference always wins; a Task id or a synced Jira key resolves to the local Task so the backlog's `Status`/`Ref` write-back keeps working. The verification in (c) is the safety net: a `TODO` row is a *hint*, not proof the work is unstarted.
 
 ### Step 1: Read Memory and Explore Context
 
@@ -63,6 +78,7 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 
 - Consult the `When to Read` table in `.agents/memory/index.md` and load only the **domain files relevant to the topic** (not the whole memory layer)
 - Check recent commits: `git log --oneline -10`
+- If `docs/architecture.md` exists, read its `## Decisions` rows for the nodes/contexts this topic touches (and `docs/map/system.yaml` for the node ids) — topic-unique, on demand, not the whole file. The spec's `## Architecture` must cite each binding `AD-n` it builds on; a decision marked `withdrawn` or `superseded by AD-m` is not binding. If the file's header still reads `**Status:** draft`, none of its decisions are binding yet (`/architect`'s publication gate holds) — the spec may reference them as context but must not cite them as binding `AD-n`, and says so in `## Architecture`.
 - Explore files relevant to the topic — use **LSP `workspaceSymbol`** to find existing services/types in the topic area and **`documentSymbol`** to grasp a key file's shape without reading it whole (see CLAUDE.md → Code Navigation, if present)
 - When the ticket prose and the design file disagree on **layout/geometry**, the frame is the spec and the prose is a summary — record the contradiction under the spec's `## Open Questions` and flag it back to the ticket instead of implementing around it (behaviour stays with the ticket).
 
@@ -90,7 +106,7 @@ If the topic **fails Small** → say so and propose a split into 2–3 sequenced
 
 Where the readiness check guards size *on entry*, appetite/cut-lines guard size *during the work*. An AI agent has no innate "that's enough — we shipped 80% of the value" instinct; it will polish forever or pile on edge cases nobody asked for. The cut-line is an explicit hand-brake: "if this grows, drop X first, then Y." (Basecamp's Shape Up — "fixed time, variable scope": work must be *bounded*, with explicit exclusions and a cut order.)
 
-> **Already have a work package?** When the topic came from a `.agents/backlog.md` work package (Step 0 path 3), that WP already carries a readiness check and an appetite/cut-first block — **reuse them, do not re-derive**. Only re-run this step if the design work reveals the WP's framing was wrong, and say so if it does.
+> **Already have a backlog Task?** When the topic came from `.agents/backlog.md` (Step 0 path 0, 2 or 3), that Task's `Size`, acceptance criteria and `Traces` are the readiness input — **reuse them, do not re-derive**. `Size` is the appetite (`M`=4 · `H`=8 · `XH`=16 points), the AC ids are the done-criterion, `Traces` bound the scope to the PRD/architecture ids it serves. Only re-run this step if the design work reveals the Task's framing was wrong, and say so if it does.
 
 ### Step 2: Resolve What You Can; Ask Only About Directional Decisions
 
@@ -165,6 +181,7 @@ Create `.agents/specs/` if it doesn't exist.
 **Date:** YYYY-MM-DD
 **Status:** Draft
 **External docs required:** yes | no
+**Tasks:** <Task ids from the backlog, comma-separated (e.g. `E1-2, E1-3`) — omit the line when the topic is not a backlog Task>
 
 ## Summary
 
@@ -184,7 +201,7 @@ Create `.agents/specs/` if it doesn't exist.
 
 ## Architecture
 
-<How it fits into the existing codebase — components affected, data flow>
+<How it fits into the existing codebase — components affected, data flow. Cite every `AD-n` from `docs/architecture.md` that binds a touched node; a design that contradicts one says so here as a supersede proposal — it is raised as `fundamental` at Step 9, never applied silently.>
 
 ## Files
 
@@ -198,6 +215,10 @@ Create `.agents/specs/` if it doesn't exist.
 ## Edge Cases
 
 <Known edge cases and how they're handled>
+
+## Acceptance Criteria
+
+<When the topic is a backlog Task: copy its **current** AC verbatim, ids included (`- **E1-2.AC1** — …`) — current = the Task-filtered `## Acceptance Criteria` of the newest approved spec in the Task's `Ref`, if any, else its backlog block (the same resolver `/qa-verify` uses), so criteria added and withdrawals recorded by an earlier spec carry forward. Criteria this design adds take the next free number across **all** definitions the Task has ever had — backlog + every spec in `Ref`, withdrawn included (`E1-2.AC4`). A spec covering several Tasks gives **every** criterion a Task-prefixed id — no unnumbered criteria in a Task spec. Not a backlog Task (free topic / tracker issue without a backlog row): unnumbered bullets — `/qa-verify` numbers them. Never renumber or reword a sourced criterion; change one only by marking it `(withdrawn)` and adding a new id. The `(withdrawn)` marker goes **after** the bold id, in the text — `- **E1-2.AC2** — (withdrawn) superseded by E1-2.AC4`; inside the bold (`- **E1-2.AC2 (withdrawn)**`) it is a malformed id that `.claude/lib/backlog-check.mjs` rejects.>
 
 ## Out of Scope
 
@@ -215,7 +236,7 @@ Create `.agents/specs/` if it doesn't exist.
 <Anything unresolved — if none, delete this section>
 ```
 
-**`Status` starts at `Draft`** and is flipped to `Approved` in Step 9, after the user accepts. Write `Draft` even when the design feels obviously right — the field records whether a human accepted this spec, and a spec that hardcodes `Approved` at birth answers that question with a lie. Nothing reads the field: `/plan-feature` neither checks it nor refuses a `Draft`. It is a note for the human who opens `.agents/specs/` a month from now and asks whether the design was ever signed off — deliberately a marker, not an enforced invariant.
+**`Status` starts at `Draft`** and is flipped to `Approved` in Step 9, after the user accepts. Write `Draft` even when the design feels obviously right — the field records whether a human accepted this spec, and a spec that hardcodes `Approved` at birth answers that question with a lie. `/plan-feature` neither checks it nor refuses a `Draft`; its only reader is the AC resolver (the `## Acceptance Criteria` template below, `/qa-verify` source item 4), which takes the newest **Approved** spec in a Task's `Ref` so a `Draft` never redefines a Task's criteria. Beyond that it is a note for the human who opens `.agents/specs/` a month from now and asks whether the design was ever signed off — deliberately a marker, not an enforced invariant.
 
 **Setting `External docs required`:**
 - **yes** — the implementation needs documentation that is NOT already in `.agents/reference/`: a brand-new library, a new third-party API, an unfamiliar framework feature, or a version that introduces breaking changes.
@@ -231,6 +252,7 @@ After writing the doc, review it with fresh eyes:
 2. **Consistency** — do sections contradict each other? Does architecture match the feature description?
 3. **Scope** — is this focused enough, or does it need decomposition into smaller specs?
 4. **Ambiguity** — could any requirement be interpreted two ways? Pick one and make it explicit.
+5. **Traceability** — every sourced AC id present verbatim; every binding `AD-n` cited.
 
 Fix inline. No need to re-review after fixing.
 
