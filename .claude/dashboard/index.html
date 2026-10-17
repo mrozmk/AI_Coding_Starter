@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent tree</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #14181e; --fg: #d6dbe3; --dim: #7c8594; --line: #2a313b;
+    --sup: #b48ef0; --team: #6fd3e8; --sub: #7aa7f5; --codex: #7fd18b;
+    --run: #6fd3e8; --warn: #f0b45a; --bad: #ef6b6b; --ok: #7fd18b; --idle: #7c8594;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+    font: 13px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    align-items: baseline;
+    margin-bottom: 14px;
+  }
+  header h1 { margin: 0; font-size: 14px; letter-spacing: .08em; font-weight: 600; }
+  .legend { display: flex; gap: 14px; color: var(--dim); font-size: 12px; }
+  .legend span::before { content: "■ "; color: var(--c); }
+  main { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .col {
+    flex: 1 1 260px;
+    min-width: 240px;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+  }
+  .col > h2 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c);
+    letter-spacing: .06em;
+  }
+  .box {
+    border: 1px solid var(--c, var(--line));
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+  }
+  .box .t { font-weight: 600; color: var(--c); overflow-wrap: anywhere; }
+  .box .m { color: var(--dim); overflow-wrap: anywhere; }
+  .box .sk { color: var(--fg); overflow-wrap: anywhere; }
+  .roles .box { margin-bottom: 0; }
+  .roles .link { height: 14px; margin-left: 18px; border-left: 1px dashed var(--line); }
+  .st { font-weight: 600; }
+  .st.running { color: var(--run); animation: pulse 1.6s ease-in-out infinite; }
+  .st.attention { color: var(--warn); }
+  .st.blocked, .st.failed { color: var(--bad); }
+  .st.done { color: var(--ok); }
+  .st.stopped, .st.pending, .st.unknown, .st.idle { color: var(--idle); }
+  .box.attention { border-color: var(--warn); }
+  .box.blocked, .box.failed { border-color: var(--bad); }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .msg { margin: 6px 0; color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
+  pre {
+    margin: 6px 0; padding: 6px; background: #0e1116; border: 1px solid var(--line);
+    overflow-x: auto; font: inherit; font-size: 12px; white-space: pre;
+  }
+  code.cmd {
+    display: block; margin-top: 4px; padding: 3px 6px; background: #0e1116; cursor: pointer;
+    border: 1px solid var(--line); overflow-wrap: anywhere; font: inherit; font-size: 12px;
+  }
+  code.cmd:hover { border-color: var(--c, var(--team)); }
+  code.cmd.copied { border-color: var(--ok); }
+  .empty { color: var(--dim); font-style: italic; margin-bottom: 10px; }
+  .log { margin-top: 16px; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; }
+  .log h2 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--dim);
+    font-weight: 600;
+    letter-spacing: .06em;
+  }
+  .log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .log .at { color: var(--dim); }
+  .log .src { color: var(--team); }
+  footer {
+    margin-top: 12px;
+    color: var(--dim);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    align-items: baseline;
+  }
+  .stale {
+    color: #14181e;
+    background: var(--bad);
+    padding: 0 6px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+  details summary { cursor: pointer; }
+  footer details div { color: var(--warn); }
+  .bar {
+    border: 1px solid var(--warn); border-radius: 4px; padding: 8px 10px; margin-bottom: 14px;
+  }
+  .bar h2 { margin: 0 0 6px; font-size: 12px; color: var(--warn); letter-spacing: .06em; }
+  .bar .item { margin-bottom: 8px; overflow-wrap: anywhere; }
+  .fold > summary { color: var(--c); font-weight: 600; overflow-wrap: anywhere; }
+  .fold[open] > summary { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">TAKETASK AGENT TREE</h1>
+  <div class="legend">
+    <span style="--c: var(--sup)">supervisor</span>
+    <span style="--c: var(--team)">teams</span>
+    <span style="--c: var(--sub)">sub-agents</span>
+    <span style="--c: var(--codex)">codex</span>
+  </div>
+</header>
+<section id="bar" class="bar" hidden></section>
+<main id="main"></main>
+<section class="log"><h2>SESSION LOG</h2><div id="log"></div></section>
+<footer id="footer"></footer>
+<script>
+"use strict";
+// Snapshot strings (pane lines, messages, descriptions) are untrusted: DOM via textContent only.
+const EFFORT = { low: 1, medium: 2, high: 3, xhigh: 4, max: 4 };
+const GLYPH = { running: "●", attention: "▲", blocked: "■", failed: "✕", done: "✓",
+                stopped: "○", pending: "·", unknown: "?", idle: "○" };
+const BAR_GLYPH = { attention: "▲", blocked: "■", failed: "✕", merge: "⇡" };
+const FOLD_MS = 10 * 60 * 1000, OPEN_KEY = "tt-dash-open";
+let last = null, fetchFailed = false, errorsOpen = false, intervalMs = 3000, timer = null;
+let openState = {};
+// Expanded sections per browser only; storage may be blocked (private window), so never rely on it.
+try { openState = JSON.parse(localStorage.getItem(OPEN_KEY)) || {}; } catch (e) { openState = {}; }
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+function add(parent, ...kids) { kids.forEach(k => k && parent.appendChild(k)); return parent; }
+function bars(effort) {
+  const n = EFFORT[effort] || 0;
+  return "▮".repeat(n) + "▯".repeat(4 - n);
+}
+function line(...parts) {
+  return el("div", "m", parts.filter(p => p !== null && p !== undefined && p !== "").join(" · "));
+}
+function status(s) {
+  const st = s || "unknown";
+  return el("span", "st " + st, (GLYPH[st] || "?") + " " + st);
+}
+function elapsed(iso) {
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
+}
+function since(iso) { return iso ? elapsed(iso) + " ago" : ""; }
+function hhmmss(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "--:--:--" : d.toLocaleTimeString([], { hour12: false });
+}
+function copyable(cmd) {
+  const c = el("code", "cmd", cmd);
+  c.title = "click to copy";
+  c.addEventListener("click", () => {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(cmd).then(() => {
+      c.classList.add("copied");
+      setTimeout(() => c.classList.remove("copied"), 900);
+    }).catch(() => {});
+  });
+  return c;
+}
+// A <details> whose open state survives the 3-s re-render and a page reload.
+function remembered(key, summary) {
+  const d = el("details", "fold");
+  d.open = !!openState[key];
+  d.addEventListener("toggle", () => {
+    openState[key] = d.open;
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(openState)); } catch (e) { /* view only */ }
+  });
+  return add(d, el("summary", null, summary));
+}
+function column(title, color) {
+  const col = el("section", "col");
+  col.style.setProperty("--c", color);
+  return add(col, el("h2", null, title));
+}
+
+// undefined = an older snapshot without the field; null = the transcript could not be identified.
+function skillLines(skills) {
+  if (skills === undefined) return [];
+  if (skills === null) return [el("div", "m", "skills ?")];
+  if (!skills.length) return [];
+  const last = skills[skills.length - 1];
+  const out = [el("div", "sk", "▸ last " + last.skill)];
+  if (skills.length > 1) out.push(el("div", "m", skills.map(x => x.skill).join(" → ")));
+  return out;
+}
+
+function supervisorBox(s) {
+  const b = el("div", "box");
+  add(b, el("div", "t", "supervisor"),
+    line(s.model || "model ?", s.effort ? "effort " + s.effort + " " + bars(s.effort) : null),
+    add(el("div"), status(s.status)),
+    ...skillLines(s.skills),
+    line(s.session_id ? "session " + s.session_id.slice(0, 8) : "no session",
+         s.last_at ? "last " + since(s.last_at) : null));
+  return b;
+}
+
+function roleBox(r) {
+  const b = el("div", "box " + r.status);
+  add(b, el("div", "t", r.role),
+    line(r.model, r.effort ? bars(r.effort) + " " + r.effort : null,
+         r.attempt ? "attempt " + r.attempt : null),
+    add(el("div"), status(r.status)),
+    ...skillLines(r.skills));
+  const expand = ["attention", "blocked", "failed"].includes(r.status);
+  if (expand) {
+    // The message is the blocked question / failure reason; for attention the pane is the truth.
+    if (r.status !== "attention" && r.record && r.record.message) {
+      add(b, el("div", "msg", r.record.message));
+    }
+    if (r.screen && r.screen.length) add(b, el("pre", null, r.screen.join("\n")));
+    (r.actions || []).forEach(a => add(b, copyable(a)));
+  } else if (r.record) {
+    add(b, line("last record " + r.record.verdict,
+                r.record.written_at ? since(r.record.written_at) : null));
+  }
+  return b;
+}
+
+function teamSummary(t) {
+  const name = String(t.team || "?");
+  if (t.state === "free") {
+    return [name, "wolna", "ostatnio " + (t.ticket || "?") + " → PR " + t.pr_id + " "
+      + (t.pr_status === "abandoned" ? "abandoned" : "merged")].join(" · ");
+  }
+  if (t.state === "awaiting_merge") return name + " · czeka na merge · PR " + t.pr_id;
+  return name + " · PR " + t.pr_id + " · status ?";
+}
+
+function teamColumn(t) {
+  const col = column("TEAM " + String(t.team || "?").toUpperCase(), "var(--team)");
+  // A finished team folds into one card; expanding it shows the usual role column.
+  let into = col;
+  if (t.state) {
+    into = remembered("team:" + t.team + ":" + t.run, teamSummary(t));
+    add(col, add(el("div", "box" + (t.state === "awaiting_merge" ? " attention" : "")), into));
+  }
+  const head = el("div", "box");
+  add(head, el("div", "t", [t.ticket, t.mode && t.mode !== "brainstorm" ? "mode " + t.mode : null,
+    t.branch].filter(Boolean).join(" · ")),
+    line("runner " + t.runner, t.line ? "→ " + t.line : null, t.pr_id ? "PR " + t.pr_id : null),
+    line(t.run ? "run " + t.run : "no run"));
+  if (t.resume_hint) add(head, el("div", "msg", "runner down — after answering: " + t.resume_hint));
+  add(into, head);
+  const roles = el("div", "roles");
+  (t.roles || []).forEach((r, i) => {
+    if (i) add(roles, el("div", "link"));
+    add(roles, roleBox(r));
+  });
+  add(into, roles);
+  return col;
+}
+
+function subBox(a) {
+  const b = el("div", "box");
+  const runs = a.runs && a.runs.length ? "runs " + a.runs.map(r =>
+    r.skill + (r.how === "preloaded" ? " (preloaded)" : "")).join(", ") : null;
+  add(b, el("div", "t", a.type || "agent"),
+    a.description ? el("div", "m", a.description) : null,
+    line(a.model, a.effort ? bars(a.effort) + " " + a.effort : null),
+    add(el("div"), status(a.status)),
+    a.owner || runs ? line(a.owner, runs) : null,
+    line(a.started_at ? "started " + since(a.started_at) : null, a.id ? a.id.slice(0, 8) : null));
+  return b;
+}
+
+function folded(a) {
+  return a.status === "done" && Date.now() - Date.parse(a.finished_at || a.last_at) >= FOLD_MS;
+}
+function subColumn(col, subs) {
+  if (!subs.length) { add(col, el("div", "empty", "no sub-agents")); return; }
+  subs.filter(a => !folded(a)).forEach(a => add(col, subBox(a)));
+  const old = subs.filter(folded).sort((x, y) =>
+    Date.parse(y.finished_at || y.last_at) - Date.parse(x.finished_at || x.last_at));
+  if (!old.length) return;
+  const n = old[0];
+  const d = remembered("subdone", "✓ " + old.length + " zakończone · ostatni: "
+    + (n.description || n.type || "agent") + ", " + since(n.finished_at || n.last_at));
+  old.forEach(a => add(d, subBox(a)));
+  add(col, d);
+}
+
+function renderBar(items) {
+  const bar = document.getElementById("bar");
+  bar.replaceChildren();
+  bar.hidden = !items || !items.length;
+  if (bar.hidden) return;
+  add(bar, el("h2", null, "CZEKA NA CIEBIE"));
+  items.forEach(i => {
+    const who = i.role ? i.team + "/" + i.role : i.team;
+    const st = i.kind === "merge" ? "attention" : i.kind;
+    add(bar, add(el("div", "item"),
+      add(el("div"), el("span", "st " + st, (BAR_GLYPH[i.kind] || "?") + " " + who),
+        el("span", null, i.text ? " · " + i.text : "")),
+      i.tmux ? el("div", "m", "tmux " + i.tmux) : null,
+      ...(i.commands || []).map(copyable)));
+  });
+}
+
+function codexBox(c) {
+  const b = el("div", "box");
+  const ran = c.started_at ? elapsed(c.started_at) : "?";
+  const size = c.log === "unknown" ? "unknown" : Math.round((c.log_bytes || 0) / 1024) + " KB";
+  add(b, el("div", "t", "codex exec"),
+    line(c.effort ? bars(c.effort) + " " + c.effort : "effort default",
+         "elapsed " + ran, "pid " + c.pid),
+    line(c.repo ? c.repo.split("/").pop() : null),
+    el("div", "m", c.last_status || "log " + size));
+  return b;
+}
+
+function render(s) {
+  const sup = s.supervisor || {};
+  document.getElementById("title").textContent = ["TAKETASK AGENT TREE",
+    sup.session_id ? sup.session_id.slice(0, 8) : "no session", sup.model || "model ?",
+    "effort " + (sup.effort || "?")].join(" · ");
+  renderBar(s.attention);
+
+  const main = document.getElementById("main");
+  main.replaceChildren();
+  add(main, add(column("SUPERVISOR", "var(--sup)"), supervisorBox(sup)));
+  const teams = s.teams || [];
+  if (teams.length) teams.forEach(t => add(main, teamColumn(t)));
+  else {
+    add(main, add(column("TEAMS", "var(--team)"),
+      el("div", "empty", "no teams — /start-team <team> <ticket>")));
+  }
+
+  const right = column("SUB-AGENTS", "var(--sub)");
+  subColumn(right, s.subagents || []);
+  const ch = el("h2", null, "CODEX");
+  ch.style.color = "var(--codex)";
+  add(right, ch);
+  const cx = s.codex || [];
+  cx.forEach(c => {
+    const b = codexBox(c);
+    b.style.setProperty("--c", "var(--codex)");
+    add(right, b);
+  });
+  if (!cx.length) add(right, el("div", "empty", "no codex runs"));
+  add(main, right);
+
+  const log = document.getElementById("log");
+  log.replaceChildren();
+  const ev = (s.events || []).slice(-12);
+  if (!ev.length) add(log, el("div", "empty", "no events"));
+  ev.forEach(e => add(log, add(el("div"), el("span", "at", hhmmss(e.at) + "  "),
+    el("span", "src", String(e.source || "") + "  "), el("span", null, e.text))));
+}
+
+function renderFooter() {
+  const f = document.getElementById("footer");
+  f.replaceChildren();
+  const s = last || {};
+  const age = s.generated_at ? Math.round((Date.now() - Date.parse(s.generated_at)) / 1000) : null;
+  const running = (s.subagents || []).filter(a => a.status === "running").length;
+  add(f, el("span", null, "teams " + (s.teams || []).length),
+    el("span", null, "sub-agents running " + running),
+    el("span", null, "codex " + (s.codex || []).length),
+    el("span", null, "snapshot " + (age === null ? "never" : age + "s ago")));
+  const stale = fetchFailed || age === null || age * 1000 > 3 * intervalMs;
+  if (stale) add(f, el("span", "stale", "stale"));
+  const errs = s.errors || [];
+  if (errs.length) {
+    const d = el("details");
+    // The footer is rebuilt every poll; keep the list open while the reader is in it.
+    d.open = errorsOpen;
+    d.addEventListener("toggle", () => { errorsOpen = d.open; });
+    add(d, el("summary", null, "errors " + errs.length));
+    errs.forEach(e => add(d, el("div", null, e)));
+    add(f, d);
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch("snapshot.json", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const s = await r.json();
+    last = s; fetchFailed = false;
+    const ms = (Number(s.interval_secs) || 3) * 1000;
+    if (ms !== intervalMs) {
+      intervalMs = ms;
+      clearInterval(timer);
+      timer = setInterval(poll, intervalMs);
+    }
+    render(s);
+  } catch (e) {
+    fetchFailed = true;  // keep the last good render
+  }
+  renderFooter();
+}
+poll();
+timer = setInterval(poll, intervalMs);
+</script>
+</body>
+</html>

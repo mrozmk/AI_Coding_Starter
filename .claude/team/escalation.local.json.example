@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to <main checkout>/.agents/team/escalation.local.json (gitignored). send/wait run via bash -c with $1=payload file, $2=team, $3=role, $4=question id, $5=thread esc-<run>-<qid>, $6=seq (dedup key $5-$6). wait prints one FableTT reply: optional 'mail-id: <id>', 'status: answer|pending-operator|withdrawn', optional 'author: <names>', 'decided-by: analysts|operator', 'operator-ref: <note> sha256:<prefix>', 'eta: <text>', a blank line, then the body; it stages the reply to <dir of $1>/<qid>.reply-<mail-id>.md before acking. timeout_min bounds each send and the wait for a first reply (1-240). Missing file, error or timeout → NO-REPLY: the supervisor re-pings FableTT and tells the Operator in one line — it never forwards the question.",
+  "send": "echo \"escalate $4 ($2 $3) on $5: $1\" >&2",
+  "wait": "exit 1",
+  "timeout_min": 30
+}

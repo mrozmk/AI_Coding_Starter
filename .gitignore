@@ -175,3 +175,6 @@ htmlcov/
 #   echo '.agents/handoffs/*'      >> .git/info/exclude
 #   echo '!.agents/handoffs/.gitkeep' >> .git/info/exclude
 # .git/info/exclude is not committed, so each clone sets this once.
+
+# Team harness runtime state (/start-team) — never versioned; team-validate.sh requires a clean tree.
+.agents/team/

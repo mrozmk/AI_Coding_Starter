@@ -1,0 +1,6 @@
+{
+  "planner": { "model": "opus[1m]", "effort": "high" },
+  "coder": { "model": "opus[1m]", "effort": "medium" },
+  "qa": { "model": "opus[1m]", "effort": "high" },
+  "wrapup": { "model": "sonnet", "effort": "high" }
+}

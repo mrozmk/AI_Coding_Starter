@@ -1,0 +1,12 @@
+{
+  "_doc": "Synthetic secret-shaped and prose strings; none may reach SQLite (TT-813 privacy AC).",
+  "strings": [
+    "password=Hunter2-fixture-only",
+    "postgres://fixture_user:fixture_pass@db.example.invalid:5432/app",
+    "sk-fixture0123456789abcdefABCDEF0123456789",
+    "Bearer eyJhbGciOiJIUzI1NiJ9.fixture.signature",
+    "please refactor the billing module and email the customer list",
+    "TT-805isnotatoken",
+    "../../etc/passwd.md"
+  ]
+}

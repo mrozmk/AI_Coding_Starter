@@ -19,7 +19,7 @@
 #
 # WHAT IT DOES AND DOES NOT DO:
 #   - It REQUIRES CODEX_EFFORT and pins it on the command line — never inherited
-#     from ~/.codex/config.toml. Per-caller levels and the rationale:
+#     from $CODEX_HOME/config.toml. Per-caller levels and the rationale:
 #     .agents/reference/codex-spawn.md → Effort matrix.
 #   - It does NOT poll, heartbeat, or kill. Lifecycle (ScheduleWakeup cadence,
 #     HARD_KILL backstop, TaskStop) stays in the command instructions — the
@@ -50,14 +50,27 @@
 #                         codex-cli, so the wrapper closes the list with `--`;
 #                         without it the prompt is swallowed as one more image
 #                         path and codex exits "No prompt provided via stdin".
+#   CODEX_HOME (required when .claude/codex-profile has a value) — must resolve to the directory declared in
+#                         .claude/codex-profile; otherwise exit 2 with OUT empty.
+#                         LOG's first line names the profile used (TT-912).
 #
 # Stdout of codex is empty by design (result goes to OUT); $OUT.stdout captures
 # it only so nothing leaks to the terminal.
+#
+# It also registers the codex thread id (TT-821 token usage) as soon as the log
+# header names it; registration never affects the exit code.
 
 set -euo pipefail
 
-: "${PROMPT:?codex-bg.sh: PROMPT is required}"
 : "${OUT:?codex-bg.sh: OUT is required}"
+
+# Truncate OUT before validation and spawning. Every caller treats "OUT non-empty" as the done
+# signal (exit 0 alone is not trustworthy — see the header), and codex writes it
+# only at the very end. A second run reusing the same OUT path would otherwise
+# read the PREVIOUS run's review as this run's result and proceed without one.
+: > "$OUT"
+
+: "${PROMPT:?codex-bg.sh: PROMPT is required}"
 : "${LOG:?codex-bg.sh: LOG is required}"
 : "${CODEX_EFFORT:?codex-bg.sh: CODEX_EFFORT is required (low|medium|high|xhigh) — see .agents/reference/codex-spawn.md → Effort matrix}"
 case "$CODEX_EFFORT" in
@@ -91,11 +104,55 @@ if [ -n "${IMAGES:-}" ]; then
   args+=(--)
 fi
 
-# Truncate OUT before spawning. Every caller treats "OUT non-empty" as the done
-# signal (exit 0 alone is not trustworthy — see the header), and codex writes it
-# only at the very end. A second run reusing the same OUT path would otherwise
-# read the PREVIOUS run's review as this run's result and proceed without one.
-: > "$OUT"
+# Links the thread to its parent Claude session; a no-op unless $AGENT_COSTS_HOME exists.
+register_thread() {
+  local tid="" alive
+  # Liveness before the read: a codex that exits mid-iteration still gets its log read once more.
+  while :; do
+    alive=1
+    kill -0 "$1" 2>/dev/null || alive=0
+    tid="$(sed -n '/^session id: /{s///p;q;}' "$LOG" 2>/dev/null || true)"
+    [ -n "$tid" ] && break
+    [ "$alive" = 1 ] || break
+    sleep 1
+  done
+  [ -n "$tid" ] || return 0
+  bash "$(dirname "$0")/costs/runtime-mark.sh" session --provider codex --session "$tid" \
+    --source codex-bg --parent "${CLAUDE_CODE_SESSION_ID:-}" --cwd "$REPO" \
+    --team-json "$REPO/.agents/team/session.json" 2>/dev/null || true
+}
 
+refuse() {
+  printf 'codex-bg.sh: %s\n' "$1" | tee "$LOG" >&2
+  exit 2
+}
+
+# An inherited environment ran reviews on the private ~/.codex profile (TT-912).
+# Located from the wrapper itself: /audit-security passes a REPO outside the checkout.
+profile_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/codex-profile"
+[ -f "$profile_file" ] || refuse "cannot read the Codex profile from $profile_file"
+want="$(sed -n '/^[[:space:]]*$/d; /^#/d; p; q' "$profile_file" 2>/dev/null || true)"
+# A template profile (comments only — a project without teams) keeps the plain starter behaviour.
+if [ -n "$want" ]; then
+  case "$want" in "~/"*) want="$HOME/${want#\~/}" ;; esac
+  want_real="$(cd "$want" 2>/dev/null && pwd -P || true)"
+  [ -n "$want_real" ] || refuse "declared Codex profile $want does not exist"
+  [ -n "${CODEX_HOME:-}" ] \
+    || refuse "CODEX_HOME is not set — export CODEX_HOME=$want (declared in .claude/codex-profile)"
+  have_real="$(cd "$CODEX_HOME" 2>/dev/null && pwd -P || true)"
+  [ -n "$have_real" ] && [ "$have_real" = "$want_real" ] \
+    || refuse "CODEX_HOME=$CODEX_HOME is not the project profile $want"
+else
+  have_real="${CODEX_HOME:-default}"
+fi
+
+# Truncated before either process starts: a reused LOG must not expose an old thread header.
+printf 'codex-bg.sh: CODEX_HOME=%s\n' "$have_real" > "$LOG"
 # `< /dev/null` is the load-bearing stdin guard — never remove it.
-codex "${args[@]}" "$PROMPT" < /dev/null > "${OUT}.stdout" 2> "$LOG"
+codex "${args[@]}" "$PROMPT" < /dev/null > "${OUT}.stdout" 2>> "$LOG" &
+pid=$!
+# Killing the wrapper (HARD_KILL → TaskStop) must not orphan codex.
+trap 'kill "$pid" 2>/dev/null' TERM INT
+register_thread "$pid" >/dev/null 2>&1 &
+rc=0; wait "$pid" || rc=$?
+exit "$rc"

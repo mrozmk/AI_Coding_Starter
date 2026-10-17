@@ -1,0 +1,19 @@
+{
+  "_doc": "Copy to ~/.agent-costs/config.json (or $AGENT_COSTS_HOME/config.json). See .agents/reference/token-usage.md.",
+  "projects": {
+    "project": [
+      "/path/to/project",
+      "/path/to/project-alfa",
+      "/path/to/project-beta"
+    ]
+  },
+  "_doc_claude_projects_dir": "Optional, default ~/.claude/projects.",
+  "claude_projects_dir": "~/.claude/projects",
+  "_doc_codex_homes": "Optional, default [$CODEX_HOME or ~/.codex]; rollouts outside the project dirs are skipped.",
+  "codex_homes": ["~/.codex"],
+  "_doc_stage_skills": "Optional, top-level pipeline skills that open a --by-stage segment.",
+  "stage_skills": [
+    "prime", "brainstorm", "plan-feature", "execute", "check-implementation", "qa-verify",
+    "pr-create", "orchestrate", "quick-change", "pr-merge"
+  ]
+}

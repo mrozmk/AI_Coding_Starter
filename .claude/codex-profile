@@ -1,0 +1,3 @@
+# The CODEX_HOME every codex-bg.sh spawn must run on (TT-912); the team runner exports it per role.
+# One value line; a leading ~/ expands to $HOME. A path only — never secrets or account data.
+# Example (set by /setup:teams): ~/.codex-<project>
