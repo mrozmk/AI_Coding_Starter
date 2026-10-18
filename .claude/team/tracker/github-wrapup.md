@@ -20,9 +20,14 @@
      acceptance. Reuse saved accepted drafts and markers verbatim; never regenerate or renumber them
      on another attempt. Recommendation numbers are display labels only, never intent ids. Only
      new/unaccepted proposals go through steps 6–7.
-   - **markers are stable across attempts.** A marker is built from `{{RUN}}` and the intent id
-     only — never from `{{ATTEMPT}}`, a timestamp or a recommendation number. A second attempt that
-     minted a new marker would post a second comment / create a second issue.
+   - **markers are stable across attempts, and their format is exact.** A marker is
+     `[wrapup {{RUN}} <intent id>]` — `[wrapup {{RUN}} comment-1]` for the comment,
+     `[wrapup {{RUN}} create-<draft id>]` for a follow-up. It is built from `{{RUN}}` and the intent
+     id only — never from `{{ATTEMPT}}`, a timestamp or a recommendation number; a second attempt
+     that minted a new marker would post a second comment / create a second issue. Save it on the
+     intent verbatim: the runner refuses `done` for any comment/create intent whose stored `marker`
+     is missing, null, empty or not exactly that string — a foreign run id that merely *contains*
+     this one (`RUN-10` under `RUN-1`) is a rejection, not a match. `set-status` has no marker.
    - intents live in the object `intents` under fixed ids: `comment-1`
      `{op: "comment", marker, state, id}`, `set-status-delivered`
      `{op: "set-status", logical: "delivered", state}`, `create-<n>`

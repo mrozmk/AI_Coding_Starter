@@ -119,9 +119,11 @@ wrapup_target_identity() {  # → "<run>\t<ticket>\t<repo>\t<project_id>" on std
 # that in the issue #4 acceptance review (run=OLD-RUN, ticket=999, repo=other/repo → rc 0).
 # `target` is checked together with the markers of the `done` intents: a foreign state whose `target`
 # was merely rewritten to this run (codex, fix round 4b) is still refused, because its markers name
-# the old run.
+# the old run. The marker must match EXACTLY, not merely contain the run — Astra's second reproducer
+# (issue #4 fix review) got rc 0 from a `done` comment with no marker at all, and from the foreign
+# marker `[wrapup RUN-10 comment-1]` under RUN-1, which `contains` happily accepted as a substring.
 check_wrapup_tracker() {  # check_wrapup_tracker <state-file> <tracker>
-  local sf="$1" t="${2:-}" ident run key repo proj
+  local sf="$1" t="${2:-}" ident run key repo proj bad
   case "$t" in github) ;; *) return 0 ;; esac
   ident="$(wrapup_target_identity)" \
     || fail "tracker=github: cannot resolve this run's tracker target (run/ticket/repo/project)" \
@@ -137,14 +139,22 @@ check_wrapup_tracker() {  # check_wrapup_tracker <state-file> <tracker>
     || fail "tracker=github: wrapup-state.json target is not this run's (run $run, ticket $key, repo $repo, project $proj)" \
     || return 1
   # `target` alone is cheap to forge: rewriting it over a previous run's state would relabel that
-  # run's finished intents as this one's. Every marker-bearing `done` intent must therefore carry
-  # THIS run id — markers are minted from {{RUN}} + the intent id and never change across attempts,
-  # so a stale intent cannot be laundered by editing `target`.
-  jq -e --arg run "$run" \
-    'all((.intents // {})[] | select(.state == "done" and (.marker // null) != null);
-         .marker | tostring | contains($run))' \
-    "$sf" >/dev/null 2>&1 \
-    || fail "tracker=github: a done intent's marker does not carry run $run — foreign state relabelled, not re-done" \
+  # run's finished intents as this one's. So every `done` comment / create intent must carry the
+  # marker it was actually written with — a STRING exactly `[wrapup <RUN> <intent id>]`, the format
+  # github-wrapup.md emits (`comment-1`, `create-<draft id>`), keyed by the intent's own id.
+  # No `contains`: `RUN-1` is a substring of `RUN-10`. No skipping marker-less intents either —
+  # that was the hole, since the completeness check below would then accept them as done.
+  # `set-status` carries no marker and keeps its own rules.
+  bad="$(jq -r --arg run "$run" \
+    '[(.intents // {}) | to_entries[]
+      | select(.value.state == "done" and (.value.op == "comment" or .value.op == "create"))
+      | select((.value.marker | type) != "string"
+               or .value.marker != ("[wrapup " + $run + " " + .key + "]"))
+      | .key + " marker=" + ((.value.marker // "<none>") | tostring)] | join(", ")' \
+    "$sf" 2>/dev/null)" \
+    || fail "tracker=github: wrapup-state.json is not readable JSON" || return 1
+  [ -z "$bad" ] \
+    || fail "tracker=github: done intent(s) without the exact marker [wrapup $run <intent id>]: $bad" \
     || return 1
   jq -e '. as $s
     | (any(($s.intents // {})[]; .op == "comment" and .state == "done"))

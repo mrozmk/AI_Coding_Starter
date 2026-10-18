@@ -580,9 +580,11 @@ WREC="$RD/wrapup-1-1.json"
 # `started instead of delivered` case, TG_TARGET a missing/malformed `target` object.
 # TG_MARKER_RUN is the run the markers were MINTED from — deliberately separate from TG_RUN (the
 # stored `target.run`), so a fixture can relabel `target` while the markers stay foreign.
+# TG_MARKER deforms the comment marker itself: ok | none (key absent) | null | empty | wrongid |
+# substr (a foreign run that CONTAINS this one) | suffix (the right marker plus trailing text).
 tg_reset() {
   TG_RUN="$RUN_ID"; TG_TICKET='"7"'; TG_REPO='"owner/repo"'; TG_PROJ='"PVT_x"'
-  TG_LOGICAL=delivered; TG_TARGET=ok; TG_MARKER_RUN="$RUN_ID"
+  TG_LOGICAL=delivered; TG_TARGET=ok; TG_MARKER_RUN="$RUN_ID"; TG_MARKER=ok
 }
 tg_reset
 
@@ -590,9 +592,16 @@ ws() {  # ws <comment state> <set-status state> [accepted draft: 0|1] [create st
   jq -n --arg c "$1" --arg s "$2" --argjson d "${3:-0}" --arg cs "${4:-pending}" \
     --arg run "$TG_RUN" --argjson tk "$TG_TICKET" --argjson repo "$TG_REPO" \
     --argjson proj "$TG_PROJ" --arg lg "$TG_LOGICAL" --arg tgt "$TG_TARGET" \
-    --arg mr "$TG_MARKER_RUN" \
+    --arg mr "$TG_MARKER_RUN" --arg mm "$TG_MARKER" \
     '{drafts: (if $d == 1 then {"create-1": {accepted: true, title: "t", body: "b"}} else {} end),
-      intents: ({"comment-1": {op: "comment", marker: ("[wrapup " + $mr + " comment-1]"), state: $c},
+      intents: ({"comment-1": ({op: "comment", state: $c}
+        + (if $mm == "none" then {}
+           elif $mm == "null" then {marker: null}
+           elif $mm == "empty" then {marker: ""}
+           elif $mm == "wrongid" then {marker: ("[wrapup " + $mr + " comment-2]")}
+           elif $mm == "substr" then {marker: ("[wrapup " + $mr + "0 comment-1]")}
+           elif $mm == "suffix" then {marker: ("[wrapup " + $mr + " comment-1] and more")}
+           else {marker: ("[wrapup " + $mr + " comment-1]")} end)),
                  "set-status-delivered": {op: "set-status", logical: $lg, state: $s}}
         + (if $d == 1 then {"create-1": {op: "create", draft_id: "create-1",
              marker: ("[wrapup " + $mr + " create-1]"), state: $cs}} else {} end))}
@@ -672,9 +681,54 @@ tg_reset
 # {{RUN}}, so a relabelled foreign state is still refused.
 TG_MARKER_RUN=alfa-20261017-999999; ws done done
 ck 1 github "a foreign state with target rewritten to this run is still rejected"
-has "does not carry run $RUN_ID" "$WORK/out" || fail "the relabel refusal does not name the marker run"
+has "without the exact marker [wrapup $RUN_ID" "$WORK/out" \
+  || fail "the relabel refusal does not name the expected marker of this run"
 TG_MARKER_RUN=alfa-20261017-999999; ws done done 1 done
 ck 1 github "a relabelled foreign follow-up intent is rejected too"
+tg_reset
+
+# ---- the marker of a done comment/create must match EXACTLY ------------------------------------
+# Astra's second reproducer (issue #4 fix review): a `done` comment with NO marker scored rc 0,
+# because the marker rule skipped marker-less intents and `any(comment done)` then accepted them;
+# and `[wrapup RUN-10 comment-1]` passed under RUN-1, since `contains` matches a substring.
+TG_MARKER=none; ws done done
+ck 1 github "Astra's reproducer: a done comment with no marker at all is rejected"
+has "without the exact marker" "$WORK/out" || fail "the marker refusal is not explicit"
+has "comment-1 marker=<none>" "$WORK/out" || fail "the marker refusal does not name the intent"
+tg_reset
+TG_MARKER=null; ws done done;  ck 1 github "a done comment with a null marker is rejected"
+tg_reset
+TG_MARKER=empty; ws done done; ck 1 github "a done comment with an empty marker is rejected"
+tg_reset
+TG_MARKER=wrongid; ws done done
+ck 1 github "a done comment carrying another intent's marker id is rejected"
+tg_reset
+# RUN-1 is a substring of RUN-10: the whole point of an exact comparison.
+TG_MARKER=substr; ws done done
+ck 1 github "Astra's reproducer: a foreign run that contains this one as a substring is rejected"
+tg_reset
+TG_MARKER=suffix; ws done done
+ck 1 github "the exact marker plus trailing text is not the marker"
+tg_reset
+# A done follow-up intent is held to the same rule, by its own stable intent id.
+TG_MARKER_RUN="$RUN_ID"; ws done done 1 done
+ck 0 github "a correctly marked comment and follow-up still validate"
+jq '.intents["create-1"] |= del(.marker)' "$RD/wrapup-state.json" > "$RD/t" \
+  && mv "$RD/t" "$RD/wrapup-state.json"
+ck 1 github "a done follow-up with no marker is rejected"
+has "create-1 marker=<none>" "$WORK/out" || fail "the follow-up refusal does not name the intent"
+jq '.intents["create-1"].marker = "[wrapup other-run create-1]"' "$RD/wrapup-state.json" > "$RD/t" \
+  && mv "$RD/t" "$RD/wrapup-state.json"
+ck 1 github "a done follow-up marked with another run is rejected"
+# set-status keeps its own rules: it carries no marker and must not be asked for one.
+ws done done
+jq -e '.intents["set-status-delivered"] | has("marker") | not' "$RD/wrapup-state.json" >/dev/null \
+  || fail "the fixture gave set-status a marker"
+ck 0 github "a marker-less set-status intent is still fine"
+# A PENDING comment may legitimately have no marker yet — only `done` is held to the format.
+TG_MARKER=none; ws pending done
+ck 1 github "a pending comment with no marker is refused for being pending, not for the marker"
+! has "without the exact marker" "$WORK/out" || fail "a pending intent was judged on its marker"
 tg_reset
 # jira and none are unaffected by the identity gate — they have no intents at all.
 ws done done; ck 0 github "the matching target still validates"
