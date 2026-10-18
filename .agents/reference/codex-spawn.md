@@ -70,6 +70,20 @@ stderr → `$LOG`.
 unset*. Structured reviews (with `SCHEMA`) enforce read-only via the prompt instead; prose reviews
 (no `SCHEMA`) get the real `--sandbox read-only`. Don't try to set both.
 
+## Codex profile
+
+Starter contract: `.claude/codex-profile` names the Codex home. `codex-bg.sh` refuses (exit 2) unless `CODEX_HOME` points at that directory; the first LOG line is `codex-bg.sh: CODEX_HOME=<real>`; the team runner exports `CODEX_HOME` per role session (never `tmux set-environment -g`).
+
+### Project variant
+
+A project that forces its own home (for example DTS with `~/.codex-dts`) may keep `export CODEX_HOME=...` instead of the refusal, and an optional default `CODEX_EFFORT`. These stay identical to the starter wrapper: `< /dev/null`, `-C "$REPO"`, `--skip-git-repo-check`, truncating `OUT` before the spawn, the real home on the first LOG line, `register_thread` through `costs/runtime-mark.sh` (no-op without `$AGENT_COSTS_HOME`), a `trap` that kills codex on TERM, and passing the exit code through. The project's `.claude/codex-profile` must name the same home (the runner reads it).
+
+Conformance test for a variant (3 assertions):
+
+1. an explicit `CODEX_EFFORT` reaches codex as `-c model_reasoning_effort=<v>`;
+2. the chosen home is in codex's env and on the first LOG line;
+3. with `$AGENT_COSTS_HOME` set, a `provider codex` entry exists with the thread id taken from the LOG.
+
 ## Effort matrix (per caller — the single source of truth)
 
 Every caller quotes its level in its own spawn snippet; this table is where a change starts.

@@ -32,6 +32,7 @@ own .claude/agents/correctness-reviewer.md
 own .claude/agents/structure-reviewer.md
 own .claude/commands/dashboard.md
 own .claude/commands/monitor.md
+own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
 own .claude/dashboard/dashboard.sh
 own .claude/dashboard/index.html

@@ -77,6 +77,14 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 - Never `tmux set-environment -g CODEX_HOME` — the runner sets it per session
   ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile-tt-912)).
 
+- Clone directory: `teams.clone_name` is a template (default `<repo>-{team}`; `{Team}` is the capitalized team name). The placeholder must END the template, because the clone glob is a prefix. A team name that collides with an existing directory under that prefix is rejected (APFS ignores case).
+- Seed files: a tracked file whose content differs is rejected by the `team-new`/`team-next` preflight.
+- Installing into an existing project: run `/setup:teams` (manifest-driven), never copy files by hand.
+
+### One Mac, two projects with teams
+
+Give each project its own tmux server through `env.TMUX_TMPDIR` in the project's `.claude/settings.local.json` (seeded into clones). The runner passes `CLAUDE_CONFIG_DIR` and `CODEX_HOME` per session; `team-attach.sh` attaches through the session's socket. Verify with `ps eww -p <pid>`.
+
 ## 2. Choose tickets
 
 - Any ticket type — code, docs/harness, or operations (rollout, Azure DevOps admin). Operations run
