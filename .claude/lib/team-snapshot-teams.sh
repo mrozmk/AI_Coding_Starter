@@ -227,7 +227,7 @@ snap_teams() {
 
 # The "czeka na Ciebie" bar: open questions, blocked/failed records, PRs ready to merge.
 snap_attention() {
-  jq '
+  jq --arg prov "${TEAM_DASH_PR_PROVIDER:-azure-devops}" '
   [ .[] as $t
     | ($t.roles[]? | select(.status == "attention" or .status == "blocked" or .status == "failed")
        | {kind: .status, team: $t.team, role, tmux: "\($t.team)-\(.role)",
@@ -236,6 +236,8 @@ snap_attention() {
             + (if .status != "attention" and $t.resume_hint then [$t.resume_hint] else [] end))}),
       (select($t.state == "awaiting_merge")
        | {kind: "merge", team: $t.team, pr_id: $t.pr_id, text: "PR \($t.pr_id) gotowy do merge",
-          commands: ["bash .claude/lib/team-merge-check.sh \($t.team)", "/pr-merge \($t.pr_id)"]}) ]
+          commands: (if $prov == "github"
+            then ["bash .claude/lib/team-merge-check.sh \($t.team)", "bash .claude/lib/team-integrate.sh \($t.team)"]
+            else ["bash .claude/lib/team-merge-check.sh \($t.team)", "/pr-merge \($t.pr_id)"] end)}) ]
   ' "$W/teams.json"
 }

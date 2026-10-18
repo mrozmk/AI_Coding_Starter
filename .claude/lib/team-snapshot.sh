@@ -24,6 +24,9 @@ fi
 . "$(dirname "$0")/team-snapshot-teams.sh"
 
 root="$(team_root)"
+# The profile is not loaded in this shell and a dashboard must not die on it: read the one field.
+TEAM_DASH_PR_PROVIDER="$(jq -r '.teams.pr_provider // "azure-devops"' "$root/.claude/project-profile.json" 2>/dev/null || echo azure-devops)"
+export TEAM_DASH_PR_PROVIDER
 W="$(mktemp -d)"
 trap 'rm -rf "$W"' EXIT
 : > "$W/errors"; : > "$W/events"

@@ -204,6 +204,10 @@ script never resets, cleans or deletes branches.
 
 ## Stage 6 and merge
 
+1a. Before any `git merge --ff-only` onto the trunk, from the main checkout: `bash
+   .claude/lib/team-integrate-lock.sh acquire <trunk> --owner sol:<assignment-id>` (the lock
+   `team-integrate.sh` takes too; rc 3 → stop and ask the Operator). After confirming the SHA:
+   `release <trunk> --owner sol:<assignment-id>`.
 1. The supervisor runs and reads the mandatory final Validation result, confirms reviews and
    records Stage 6. Commit, push and `/pr-create` run with cwd = the worker clone under their
    separate authorization; this lifecycle guide does not grant it.

@@ -93,7 +93,8 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout (`TakeTask.DN`).
        - `github`/`none` with an empty `title:` → the branch slug (Jira keeps its MCP title);
      - **Co zakodowano:** 2–3 plain sentences, no file names;
      - **Co to daje:** 1–2 sentences for the Operator or customer;
-     - **QA:** `Verdict:` and its `Warnings:` in one sentence, plus `PR #<id>`; for cli
+     - **QA:** `Verdict:` and its `Warnings:` in one sentence, plus `PR #<id>` (with `pr_provider: github`, a link
+       `https://github.com/<repo>/pull/<id>`, `<repo>` from `bash .claude/lib/team-pr.sh coords` in the clone); for cli
        `bez QA (tryb cli), PR #<id>`;
      - decisions line, from the last line of `list`: `Decyzje nadzorcy: <n> (tier 1: a, tier 2:
        b, tier 3: c, cofnięte: d, niedoręczone: f)` with n = a+b+c+d+f — never `total=`, which

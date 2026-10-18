@@ -301,12 +301,37 @@ anything but `passed` means no publication. `Verdict: escalated` or any rethink 
 | `/quick-change` | quick planner: Phases 0–2, then the plan file, no code |
 | `/pr-create` | coder (draft) or cli (published); `DEST` = `team.json` `line`; no Step 7 question; notes sections in the body, including `## Supervised decisions` (cli adds `## Follow-ups`) |
 
+## 8a. PR provider
+
+`teams.pr_provider` (`azure-devops` | `github`; `none` is reserved and refused) selects the PR layer.
+ADO keeps `az` in `team-lib.sh`; github goes only through `.claude/lib/team-pr.sh` (needs `gh`,
+`teams.github.repo`, and `origin` matching it).
+
+- `team-pr.sh` ops: `coords`, `state`, `identity`, `readiness`, `create --draft|--ready`, `publish`,
+  `body-get`, `body-set`. Exit: 0 ok · 2 usage/profile/provider · 3 refusal · 4 recoverable (network,
+  merge ref not ready). It never merges and never forces.
+- Prompt blocks per provider: `.claude/team/pr/<provider>-<block>.md`; `/pr-create` stays ADO-only text.
+- Merge (github): the supervisor runs `team-merge-check.sh <TEAM>` (holds the team runner lock, writes
+  `.agents/team/merge-check.json`: target/merge/source SHAs, `records_digest`), asks the Operator, then
+  `team-integrate.sh <TEAM> [--base <line>]`. Merge (ADO): `/pr-merge <id>` as before.
+- `team-integrate.sh` steps: lock the base (`team-integrate-lock.sh`, shared with the solo worker) ->
+  recover an earlier intent read-only -> read `merge-check.json` -> base still the validated target ->
+  re-check eligibility -> write the intent (`<main root>/.agents/team/integrate/<team>-<run>.json`) ->
+  plain non-force push of the tested merge commit M -> verify base == M and PR `MERGED`.
+  Exit: 0 integrated · 2 usage/ADO · 3 refused, no effect · 4 partial/unknown effect (inspect the
+  intent, then rerun: recovery is state-dependent).
+- Integration contract: after a successful push the base equals the tested M. This is weaker than a
+  CAS T -> M (the window between the last `ls-remote` and the push), and consciously accepted.
+- Branch protection that rejects the push -> rc 4, stop. There is no `gh pr merge` fallback and no
+  admin override; the Operator decides.
+- The ticket status `Merged` is set by the supervisor by hand after the `integrated:` line.
+
 ## 9. Never in team mode
 
 - write `.agents/memory/` — except the `wrapup` role after the developer accepts (the hook
   `guard-team-memory.sh` enforces both);
 - start the app (`dotnet run`) — runtime smoke reports `SKIPPED`;
-- merge a PR (`/pr-merge` is the supervisor's);
+- merge a PR (`/pr-merge` or `team-integrate.sh` is the supervisor's);
 - push to a protected branch;
 - delete the clone or `.agents/team/`.
 

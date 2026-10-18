@@ -119,6 +119,9 @@ readiness and the assignment lifecycle are in `.agents/reference/worker-clone.md
   `.agents/`. The worker's Codex host runs with `CODEX_HOME=<codex-home>` and write access only to
   the clone, the artifacts directory and the coordination mailbox.
 - Integration (supervisor only, separately authorized): commit on the assignment branch, publish
-  it, fast-forward the trunk (`git merge --ff-only`) and confirm the same SHA everywhere; no
+  it, take the trunk's integration lock from the main checkout (`bash .claude/lib/team-integrate-lock.sh
+  acquire <trunk> --owner sol:<assignment-id>`; rc 3 → stop and ask the Operator, a team integration
+  is running; `team-integrate.sh` holds the same lock), fast-forward the trunk (`git merge --ff-only`),
+  confirm the same SHA everywhere, then `release <trunk> --owner sol:<assignment-id>`; no
   fast-forward → stop and ask the Operator. Then `bash .claude/lib/worker-next.sh release <id>`
   after confirming all reviewers, builds and gates finished. Never `git clean -fdx`.

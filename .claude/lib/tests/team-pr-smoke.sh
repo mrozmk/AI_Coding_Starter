@@ -1064,6 +1064,21 @@ has "intent done" "$WORK/out" || fail "the done-intent refusal does not say whic
 [ "$(jq -r .state "$KINT")" = done ] || fail "the refused done check rewrote the intent"
 
 # ================================================================================================
+# (D1) dashboard attention: a github team awaiting merge gets the integrate command, ADO keeps /pr-merge
+# ================================================================================================
+(
+  . "$SRC/.claude/lib/team-snapshot-teams.sh"
+  W="$WORK/snapw"; mkdir -p "$W"
+  printf '[{"team":"zeta","state":"awaiting_merge","pr_id":7,"roles":[]}]\n' > "$W/teams.json"
+  TEAM_DASH_PR_PROVIDER=github snap_attention | jq -e \
+    '.[0].commands == ["bash .claude/lib/team-merge-check.sh zeta", "bash .claude/lib/team-integrate.sh zeta"]' >/dev/null \
+    || { echo "FAIL: github attention commands"; exit 1; }
+  TEAM_DASH_PR_PROVIDER=azure-devops snap_attention | jq -e \
+    '.[0].commands == ["bash .claude/lib/team-merge-check.sh zeta", "/pr-merge 7"]' >/dev/null \
+    || { echo "FAIL: ado attention commands"; exit 1; }
+) || fail "snap_attention provider commands"
+
+# ================================================================================================
 # (C13) nothing in this suite ever merged or forced anything through gh or git
 # ================================================================================================
 ! grep -E 'pr merge|--admin|--force' "$GH_LOG" "$STUB_LOG" "$GIT_LOG" \

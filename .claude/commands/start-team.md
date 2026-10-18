@@ -140,6 +140,8 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
    macOS notification appears when a team needs approval, has a question, is ready for merge, or
    stopped. After QA a `wrapup` window opens with a plain summary of the run and, only if it has
    recommendations (memory, new tickets), one question. Resume after answering:
-   `/start-team <TEAM>`. Merge when ready: ask the supervisor ("merge <TEAM>"). With an active
+   `/start-team <TEAM>`. Merge when ready: ask the supervisor ("merge <TEAM>"). For `pr_provider: github` the supervisor runs
+   `team-merge-check.sh <TEAM>`, asks the Operator, then `team-integrate.sh <TEAM>`; for azure-devops it
+   is `/pr-merge` as before. With an active
    override, include the `roles override:` line from `team-run.sh <TEAM> status`. For `cli`: one
    session runs alone, with no window questions, and publishes the PR itself (no QA, no wrapup).
