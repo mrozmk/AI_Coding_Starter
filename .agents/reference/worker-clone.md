@@ -91,7 +91,7 @@ Messages below are verbatim prefixes; `…` marks where a long one continues.
 - `interrupted transition <id> pending — rerun: worker-next.sh start <ticket> <branch> …`
 - `base change for active assignment <id> returns to the supervisor`
 - `assignment <id> (<ticket>) is active — release it first`
-- `ticket key '<key>' must look like TT-123` · `branch '<b>' must be <type>/<key>-<slug> …`
+- `ticket key '<key>' must match <the profile's key regex>` · `branch '<b>' must be <type>/<key>-<slug> …`
 - `clone <dir> has uncommitted or untracked changes` (also release)
 - `git status failed in <dir>` (also release, resumed start)
 - `HEAD <sha> is not the last settled tip <sha> — a commit after release, or an …`

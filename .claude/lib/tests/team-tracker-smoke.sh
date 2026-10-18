@@ -339,4 +339,250 @@ run "$MAIN" $TRK bogus-op
 expect 2 "usage:" "an unknown op is a usage error"
 [ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "tracker=jira called gh"; }
 
+
+# ================================================================================================
+# (7) the ticket file end to end: read → team-new → clone, and every refusal around it
+# ================================================================================================
+# The base guard reads the COMMITTED profile, so each positive case needs its own published base —
+# overwriting $P in the working tree is not enough.
+publish_base() {  # publish_base <branch> <profile jq filter>
+  git -C "$SEED" switch --quiet -C "$1" develop-netcore7
+  smoke_profile "$2" > "$SEED/.claude/project-profile.json"
+  git -C "$SEED" add .claude/project-profile.json
+  git -C "$SEED" commit --quiet -m "base profile $1"
+  git -C "$SEED" push --quiet --force origin "$1"
+}
+publish_base base-github ".teams.tracker = \"github\" | $GH_BLOCK"
+publish_base base-none '.teams.tracker = "none"'
+publish_base base-ghother \
+  ".teams.tracker = \"github\" | $GH_BLOCK | .teams.github.project_id = \"PVT_other\""
+publish_base base-notracker ".teams.tracker = \"github\" | $GH_BLOCK"
+git -C "$SEED" rm --quiet .claude/lib/team-tracker.sh
+git -C "$SEED" commit --quiet -m "no tracker adapter"
+git -C "$SEED" push --quiet --force origin base-notracker
+git -C "$SEED" switch --quiet develop-netcore7
+
+no_clone() { [ ! -e "$WORK/main-$1" ] || fail "$2: a refused start left a clone behind"; }
+
+github_profile
+fx_reset
+chmod 600 "$MAIN/.env"
+rm -rf "$MAIN/.agents/team" "$WORK/main-alfa"
+INC="$MAIN/.agents/team/incoming/alfa"
+run "$MAIN" $TRK read 7 --out "$INC"
+expect 0 "key=7 type=bugfix" "read into the incoming dir"
+
+run "$MAIN" $NEW alfa 7 bugfix/7-fix-x origin/base-github --ticket-file "$INC/ticket.json"
+expect 0 "branch:" "team-new takes a github ticket file"
+has "bugfix/7-fix-x" "$WORK/out" || fail "team-new did not print the branch"
+CLONE="$WORK/main-alfa"; TD="$CLONE/.agents/team"
+jq -e '.branch == "bugfix/7-fix-x" and .tracker == "github" and .cost_key == "owner/repo#7"' \
+  "$TD/team.json" >/dev/null || fail "team.json lacks branch/tracker/cost_key"
+[ -f "$TD/ticket.json" ] && [ -f "$TD/ticket.md" ] || fail "the clone has no ticket files"
+jq -e '.key == "7"' "$TD/ticket.json" >/dev/null || fail "the copied ticket.json is not #7"
+
+setprofile '.'
+run "$MAIN" $NEW beta TT-795 feature/TT-795-x origin/develop-netcore7 --ticket-file "$INC/ticket.json"
+expect 1 "jira reads the ticket through MCP" "jira refuses a ticket file"
+no_clone beta "jira + ticket file"
+
+github_profile
+run "$MAIN" $NEW beta 11 bugfix/11-other origin/base-github --ticket-file "$INC/ticket.json"
+expect 1 "is not ticket 11" "a ticket file for another key is refused"
+no_clone beta "key mismatch"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github
+expect 1 "--ticket-file required for tracker=github" "github needs a ticket file"
+no_clone beta "missing ticket file"
+mkdir -p "$WORK/lonely" && cp "$INC/ticket.json" "$WORK/lonely/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github --ticket-file "$WORK/lonely/ticket.json"
+expect 1 "no ticket.md next to" "a ticket.json without its ticket.md is refused"
+no_clone beta "no ticket.md"
+run "$MAIN" $NEW beta abc bugfix/abc-x origin/base-github --ticket-file "$INC/ticket.json"
+expect 1 '^[0-9]+$' "a bad key is refused with the profile regex"
+no_clone beta "bad key"
+
+# The base must carry the adapter, the wrapup block and the SAME tracker/github block.
+: > "$GH_LOG"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-notracker --ticket-file "$INC/ticket.json"
+expect 1 "cannot run tracker=github" "a base without the adapter is refused"
+no_clone beta "base without the adapter"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/develop-netcore7 --ticket-file "$INC/ticket.json"
+expect 1 "cannot run tracker=github" "a base whose profile says jira is refused"
+no_clone beta "base profile tracker=jira"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghother --ticket-file "$INC/ticket.json"
+expect 1 "cannot run tracker=github" "a base pointing at another project is refused"
+no_clone beta "base github block differs"
+[ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "a refused start called gh" ; }
+
+# tracker=none: the adapter allocates the key, team-new takes it from the file.
+setprofile '.teams.tracker = "none"'
+run "$MAIN" $TRK read --brief '# Local work
+details' --out "$MAIN/.agents/team/incoming/gamma"
+expect 0 "key=L1" "the local ticket is allocated"
+run "$MAIN" $NEW gamma L1 feature/L1-local origin/base-none \
+  --ticket-file "$MAIN/.agents/team/incoming/gamma/ticket.json"
+expect 0 "branch:" "team-new takes a local ticket file"
+jq -e --arg ck "$(basename "$MAIN"):L1" '.tracker == "none" and .cost_key == $ck' \
+  "$WORK/main-gamma/.agents/team/team.json" >/dev/null || fail "none team.json tracker/cost_key"
+[ -f "$WORK/main-gamma/.agents/team/ticket.md" ] || fail "the none clone has no ticket.md"
+
+# ================================================================================================
+# (8) prompt rendering: a legacy clone is untouched, github/none render with no keys left
+# ================================================================================================
+# A clone on cfe9f9a has no {{TRACKER_*}} and no .claude/team/tracker/ — the helper from the main
+# checkout must leave its prompts byte for byte alone.
+mkdir -p "$WORK/legacy"
+git -C "$SRC" show cfe9f9a:.claude/team/prompts/wrapup.md > "$WORK/legacy/wrapup.md"
+set +e
+( . "$MAIN/.claude/lib/team-tracker-render.sh"
+  printf '%s\n' "$(team_tracker_render "" "$WORK/legacy/no-such-dir" \
+    "$(cat "$WORK/legacy/wrapup.md")")" ) > "$WORK/legacy/out" 2>&1
+RC=$?
+set -e
+[ "$RC" = 0 ] || { sed 's/^/  | /' "$WORK/legacy/out"; fail "legacy render exited $RC"; }
+cmp -s "$WORK/legacy/out" "$WORK/legacy/wrapup.md" || fail "legacy render changed the prompt"
+
+render_all() {  # render_all <tracker> <out file>
+  ( . "$MAIN/.claude/lib/team-tracker-render.sh"
+    for p in planner planner-quick cli coder qa wrapup; do
+      team_tracker_render "$1" "$MAIN/.claude/team/tracker" \
+        "$(cat "$MAIN/.claude/team/prompts/$p.md")" || exit 1
+      echo
+    done ) > "$2"
+}
+for t in github none jira; do
+  render_all "$t" "$WORK/r-$t" || fail "render for tracker=$t failed"
+  sed -E 's/\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE)\}\}/x/g' \
+    "$WORK/r-$t" > "$WORK/r-$t.x"
+  if [ "$t" != jira ]; then
+    ! grep -q '{{' "$WORK/r-$t.x" || { grep -o '{{[A-Z_]*}}' "$WORK/r-$t.x" | sort -u | sed 's/^/  | /'
+      fail "tracker=$t left unrendered keys"; }
+  fi
+done
+has '/brainstorm .agents/team/ticket.md' "$WORK/r-github" || fail "github planner lost the task path"
+has '/brainstorm .agents/team/ticket.md' "$WORK/r-none" || fail "none planner lost the task path"
+has '/brainstorm {{TICKET}}' "$WORK/r-jira" || fail "jira planner no longer reads the key"
+has 'mcp__atlassian__jira_get_issue' "$WORK/r-jira" || fail "jira render lost the MCP read"
+! grep -q 'mcp__atlassian__' "$WORK/r-github" || fail "github render still calls Jira over MCP"
+
+# ================================================================================================
+# (9) never Done: the runner refuses a wrapup record whose tracker intents are not finished
+# ================================================================================================
+github_profile
+fx_reset
+RUN_ID=alfa-20261018-000001
+RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"; printf '%s\n' "$RUN_ID" > "$TD/run"
+mkdir -p "$CLONE/.agents/plans/done"; printf 'plan\n' > "$CLONE/.agents/plans/done/accepted.md"
+git -C "$CLONE" add .agents/plans/done/accepted.md
+git -C "$CLONE" commit --quiet -m "accepted plan"
+REV="$(git -C "$CLONE" rev-parse HEAD)"
+for role in planner coder qa wrapup; do mkrec "$role" "$REV"; done
+session wrapup 1 ""      # mkrec writes an empty input_rev; check_common compares them
+printf 'target_rev: %s\n' "$REV" > "$RD/wrapup-1.md"
+WREC="$RD/wrapup-1-1.json"
+
+ws() {  # ws <comment state> <set-status state> [accepted draft: 0|1] [create state]
+  jq -n --arg c "$1" --arg s "$2" --argjson d "${3:-0}" --arg cs "${4:-pending}" \
+    '{drafts: (if $d == 1 then {"create-1": {accepted: true, title: "t", body: "b"}} else {} end),
+      intents: ({"comment-1": {op: "comment", marker: "m", state: $c},
+                 "set-status-delivered": {op: "set-status", logical: "delivered", state: $s}}
+        + (if $d == 1 then {"create-1": {op: "create", draft_id: "create-1", state: $cs}} else {} end))}' \
+    > "$RD/wrapup-state.json"
+}
+
+# The prompt posted its comment for real; the status write was denied, so its intent is pending.
+body_file "$WORK/tc.md" "[wrapup $RUN_ID comment-1]"
+run "$MAIN" $TRK comment 7 --marker "[wrapup $RUN_ID comment-1]" --body-file "$WORK/tc.md"
+expect 0 "created" "the wrapup comment is posted once"
+ws done pending
+run "$MAIN" $TR alfa check "$WREC"
+expect 4 "validation failed: tracker=github" "a pending set-status intent is never Done"
+
+# Recovery: the same marker finds the existing comment, the status write succeeds, and the record
+# gets past the tracker gate (it then stops at check_pushed, as in smoke-3).
+run "$MAIN" $TRK comment 7 --marker "[wrapup $RUN_ID comment-1]" --body-file "$WORK/tc.md"
+expect 0 "exists" "the retry reuses the posted comment"
+run "$MAIN" $TRK set-status 7 delivered
+expect 0 "set delivered" "the denied status write succeeds on recovery"
+[ "$(posts)" = 1 ] || fail "the wrapup posted $(posts) comments"
+ws done done
+run "$MAIN" $TR alfa check "$WREC"
+[ "$RC" = 4 ] || fail "the recovered record should still stop at check_pushed, got $RC"
+! has "tracker=github" "$WORK/out" || fail "the tracker gate still refuses a finished state"
+has "origin bugfix/7-fix-x" "$WORK/out" || fail "validation did not reach check_pushed"
+
+# check_wrapup_tracker on its own — in a SUBSHELL: team-validate.sh defines its own fail() and
+# would otherwise replace the suite's (exit) with a return, so later assertions would not stop.
+ck() {  # ck <expected rc> <tracker> <label>
+  set +e
+  ( . "$MAIN/.claude/lib/team-validate.sh"
+    check_wrapup_tracker "$RD/wrapup-state.json" "$2" ) > "$WORK/out" 2>&1
+  RC=$?; set -e
+  [ "$RC" = "$1" ] || fail "$3: rc $RC, expected $1"
+}
+ws done pending;      ck 1 github "a pending set-status"
+ws pending done;      ck 1 github "a pending comment"
+ws done done;         ck 0 github "both intents done"
+ws done done 1 pending; ck 1 github "an accepted follow-up still pending"
+ws done done 1 done;    ck 0 github "an accepted follow-up done"
+rm -f "$RD/wrapup-state.json"
+ck 1 github "a missing state file"
+ck 0 none "none needs no intents"
+ck 0 jira "jira needs no intents"
+ck 0 "" "a pre-2b team.json needs no intents"
+
+
+# ================================================================================================
+# (10) --ticket-file argument hygiene (codex review of Step 2)
+# ================================================================================================
+# A watchdog, not `timeout`: macOS has no coreutils timeout, and a regressed `shift 2 || true`
+# would spin forever instead of failing the suite.
+timed() {  # timed <secs> <dir> <cmd...> → RC ("timeout" when it had to be killed), $WORK/out
+  local t="$1" d="$2" pid w=0; shift 2
+  set +e
+  ( cd "$d" && "$@" ) > "$WORK/out" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null && [ "$w" -lt "$t" ]; do sleep 1; w=$((w + 1)); done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; RC=timeout
+  else
+    wait "$pid"; RC=$?
+  fi
+  set -e
+}
+
+github_profile
+fx_reset
+for sc in team-new team-next; do
+  timed 10 "$MAIN" bash ".claude/lib/$sc.sh" alfa 7 bugfix/7-fix-x origin/base-github --ticket-file
+  [ "$RC" != timeout ] || fail "$sc.sh hangs on a value-less --ticket-file"
+  expect 2 "--ticket-file needs a path" "$sc.sh refuses a value-less --ticket-file"
+done
+
+# A valid object followed by garbage must refuse the whole file, not pass on the first .key.
+mkdir -p "$WORK/badjson"
+printf '{"key": "7"}\nnot json at all\n' > "$WORK/badjson/ticket.json"
+cp "$INC/ticket.md" "$WORK/badjson/ticket.md"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-github --ticket-file "$WORK/badjson/ticket.json"
+expect 1 "is not readable JSON with a .key" "trailing garbage in the ticket file is refused"
+no_clone beta "garbage ticket file"
+
+# A ticket file inside the clone's own .agents/team/ would be archived by team-next before it is
+# copied — the preflight refuses it, and the clone stays on its old ticket untouched.
+rm -rf "$WORK/main-delta"
+run "$MAIN" $NEW delta 7 bugfix/7-next-a origin/base-github --ticket-file "$INC/ticket.json"
+expect 0 "branch:" "a clone for the team-next case"
+DTD="$WORK/main-delta/.agents/team"
+run "$MAIN" $TRK read 11 --out "$DTD/incoming-bad"
+expect 0 "key=11" "a ticket read into the clone's team dir"
+cp "$DTD/team.json" "$WORK/delta-team.json"
+run "$MAIN" bash .claude/lib/team-next.sh delta 11 bugfix/11-next-b origin/base-github \
+  --ticket-file "$DTD/incoming-bad/ticket.json"
+expect 1 "keep it outside the team dir" "a ticket file inside the team dir is refused"
+[ "$(git -C "$WORK/main-delta" rev-parse --abbrev-ref HEAD)" = bugfix/7-next-a ] \
+  || fail "the refused team-next switched the branch anyway"
+cmp -s "$WORK/delta-team.json" "$DTD/team.json" || fail "the refused team-next rewrote team.json"
+[ ! -d "$DTD/archive" ] || fail "the refused team-next archived the previous run"
+[ -f "$DTD/ticket.json" ] || fail "the refused team-next lost the original ticket"
+
 echo "team-tracker-smoke: OK"

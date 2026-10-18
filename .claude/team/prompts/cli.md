@@ -8,7 +8,7 @@ base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`, Azure DevOps
 There is no planner, no QA and no wrapup after you.
 
 1. Run `/prime`.
-2. Read the ticket: `mcp__atlassian__jira_get_issue {{TICKET}}`.
+2. {{TRACKER_READ}}
 3. **Eligibility guard — before any edit.** Run the checks of `/quick-change` Phase 0
    (`.claude/commands/quick-change.md` → Phase 0): a sensitive path per `CLAUDE.md → Validation`;
    a migration or schema change; a new dependency; a public contract; more than about 5 files or

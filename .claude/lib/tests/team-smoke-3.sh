@@ -367,9 +367,9 @@ unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 for f in "$SRC"/.claude/lib/team-snapshot-*.sh; do
   [ "$(wc -l < "$f")" -lt 500 ] || fail "$(basename "$f") reached 500 lines"
 done
-for p in planner-quick cli; do
+for p in planner planner-quick cli; do
   bad="$(grep -o '{{[A-Z_]*}}' "$SRC/.claude/team/prompts/$p.md" | sort -u \
-    | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE)\}\}' || true)"
+    | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|TRACKER_READ|TRACKER_WRAPUP|TRACKER_TASK)\}\}' || true)"
   [ -z "$bad" ] || fail "$p prompt has unrendered keys: $bad"
 done
 ! grep -n 'busy of' "$SRC/.claude/lib/team-attach.sh" || fail "team-attach.sh polls Terminal's busy flag"

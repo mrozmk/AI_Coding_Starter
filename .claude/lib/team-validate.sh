@@ -98,6 +98,24 @@ check_coder_pr() {  # check_coder_pr <role> <pr_id> — the role must report the
   [ -n "$coder" ] && [ "$2" = "$(rec "$coder" pr_id)" ] || fail "PR identity mismatch ($1 pr_id ${2:-none} is not the coder's)"
 }
 
+# "Never Done" for tracker=github: the runner, not the prompt, refuses a wrapup that did not post
+# its comment, deliver its status, or finish an accepted follow-up. jira/none (and a pre-2b
+# team.json) keep today's validation. `$s` binds the ROOT before `all` — without it `.intents`
+# inside the loop resolves against the draft entry and every accepted follow-up loses.
+check_wrapup_tracker() {  # check_wrapup_tracker <state-file> <tracker>
+  local sf="$1" t="${2:-}"
+  case "$t" in github) ;; *) return 0 ;; esac
+  jq -e '. as $s
+    | (any(($s.intents // {})[]; .op == "comment" and .state == "done"))
+      and (any(($s.intents // {})[]; .op == "set-status" and .logical == "delivered"
+               and .state == "done"))
+      and (all(($s.drafts // {}) | to_entries[] | select(.value.accepted == true);
+               .key as $k | any(($s.intents // {})[];
+                 .op == "create" and .draft_id == $k and .state == "done")))' \
+    "$sf" >/dev/null 2>&1 \
+    || fail "tracker=github: wrapup-state.json lacks done comment/set-status delivered or an accepted follow-up"
+}
+
 # Wrapup may only add memory on top of the QA revision, so QA's build/test result still holds.
 check_wrapup() {
   local r="$1" pr="$2" rev="$3" qa_rev bad f
@@ -109,6 +127,7 @@ check_wrapup() {
   f="$TD/runs/$RUN/wrapup-$(rec "$r" attempt).md"
   [ -s "$f" ] || fail "wrapup summary $f missing or empty" || return 1
   grep -Eq '^target_rev: [0-9a-f]{40}$' "$f" || fail "wrapup summary lacks 'target_rev: <sha>'" || return 1
+  check_wrapup_tracker "$TD/runs/$RUN/wrapup-state.json" "$(team_json tracker || true)" || return 1
   check_pushed "$rev" && check_ado "$pr" "$rev" false
 }
 

@@ -216,7 +216,7 @@ team_ticket_checks() {
     && command -v az >/dev/null 2>&1 && ! az account show >/dev/null 2>&1; then
     TEAM_PROBLEMS+=("az is not logged in — run: az login")
   fi
-  [[ "$key" =~ $TEAM_KEY_REGEX ]] || TEAM_PROBLEMS+=("ticket key '$key' must look like TT-123")
+  [[ "$key" =~ $TEAM_KEY_REGEX ]] || TEAM_PROBLEMS+=("ticket key '$key' must match $TEAM_KEY_REGEX")
   [[ "$branch" =~ $branch_re ]] \
     || TEAM_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: ${TEAM_BRANCH_TYPES[*]})")
   # The clone resolves base afresh and team.json `line` (the PR target) is base minus `origin/`.
@@ -245,7 +245,29 @@ team_ticket_checks() {
     TEAM_PROBLEMS+=("base-ref $base does not resolve")
   elif ! git -C "$root" cat-file -e "$base:.claude/lib/team-record.sh" 2>/dev/null; then
     TEAM_PROBLEMS+=("base has no team harness — only $TEAM_TRUNK and lines carrying .claude/ are supported")
+  elif [ "$TEAM_TRACKER" != jira ]; then
+    team_base_tracker_check "$root" "$base"
   fi
+}
+
+# The clone runs the harness of its BASE, so the base must carry the adapter, the wrapup block and
+# the same tracker in its COMMITTED profile — the supervisor's working tree does not travel. For
+# github the whole `teams.github` block must match too: a different project/repo would send
+# `started` and `delivered` to another board. jira keeps the legacy fallback (no block, no adapter).
+team_base_tracker_check() {
+  local root="$1" base="$2" t="$TEAM_TRACKER" bad="" p
+  for p in ".claude/lib/team-tracker.sh" ".claude/team/tracker/$t-wrapup.md"; do
+    git -C "$root" cat-file -e "$base:$p" 2>/dev/null || bad=1
+  done
+  [ "$(git -C "$root" show "$base:.claude/project-profile.json" 2>/dev/null \
+    | jq -r '.teams.tracker // empty' 2>/dev/null || true)" = "$t" ] || bad=1
+  if [ -z "$bad" ] && [ "$t" = github ]; then
+    [ "$(git -C "$root" show "$base:.claude/project-profile.json" 2>/dev/null \
+      | jq -S -c '.teams.github // {}' 2>/dev/null || true)" \
+      = "$(jq -S -c '.teams.github // {}' "$root/.claude/project-profile.json")" ] || bad=1
+  fi
+  [ -z "$bad" ] || TEAM_PROBLEMS+=("base $base cannot run tracker=$t \
+— tracker adapter/profile missing or different on the base")
 }
 
 # Copies, not symlinks: each team gets its own writable credential and permission files.
@@ -264,14 +286,27 @@ team_seed_files() {
   done
 }
 
+# Usage: team_write_json <dir> <team> <key> <branch> <base> [mode] [root]
+# `cost_key` is the qualified key cost records bind to; `ticket` stays the short one.
 team_write_json() {
-  local dir="$1" team="$2" key="$3" branch="$4" base="$5"
+  local dir="$1" team="$2" key="$3" branch="$4" base="$5" root="${7:-$(git rev-parse --show-toplevel)}"
   mkdir -p "$dir/.agents/team"
   jq -n --arg team "$team" --arg ticket "$key" --arg branch "$branch" --arg line "${base#origin/}" \
     --arg base_ref "$base" --arg base_sha "$(git -C "$dir" rev-parse HEAD)" \
     --arg origin_url "$(git -C "$dir" remote get-url origin)" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg mode "${6:-brainstorm}" \
+    --arg tracker "$TEAM_TRACKER" --arg cost_key "$(team_cost_key "$root" "$key")" \
     '{team: $team, ticket: $ticket, branch: $branch, line: $line, base_ref: $base_ref,
-      base_sha: $base_sha, mode: $mode, origin_url: $origin_url, created_at: $created_at}' \
+      base_sha: $base_sha, mode: $mode, tracker: $tracker, cost_key: $cost_key,
+      origin_url: $origin_url, created_at: $created_at}' \
     > "$dir/.agents/team/team.json"
+}
+
+# Usage: team_copy_ticket <ticket.json> <clone dir> — the ticket the supervisor read, into the clone.
+team_copy_ticket() {
+  local file="$1" dir="$2" src
+  src="$(dirname "$file")"
+  mkdir -p "$dir/.agents/team"
+  cp "$file" "$dir/.agents/team/ticket.json"
+  cp "$src/ticket.md" "$dir/.agents/team/ticket.md"
 }

@@ -180,6 +180,9 @@ smoke_repos() {
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SEED/.claude/lib/"
   cp "$SRC"/.claude/hooks/lib/* "$SEED/.claude/hooks/lib/"
   cp "$SRC"/.claude/team/prompts/*.md "$SEED/.claude/team/prompts/"
+  # Without the tracker blocks every wrapup/planner render in smoke 1-4 dies (return 1).
+  mkdir -p "$SEED/.claude/team/tracker"
+  cp "$SRC"/.claude/team/tracker/*.md "$SEED/.claude/team/tracker/"
   cp "$SRC/.claude/team/roles.json" "$SEED/.claude/team/"
   # Fixture fix (starter import): own profile, independent of the repo's (template) codex-profile.
   printf '# test fixture\n~/.codex-taketask\n' > "$SEED/.claude/codex-profile"

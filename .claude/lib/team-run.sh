@@ -33,6 +33,7 @@ cd "$CLONE"
 . "$root/.claude/lib/team-roles.sh"
 . "$root/.claude/lib/team-modes.sh"
 . "$root/.claude/lib/team-validate.sh"
+. "$root/.claude/lib/team-tracker-render.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -139,6 +140,10 @@ render_prompt() {
   team_ado_coords
   if [ "$MODE" = quick ] && [ -z "$spec" ]; then spec="none (quick mode)"; fi
   p="$(cat "$CLONE/.claude/team/prompts/$(team_prompt_name "$MODE" "$role")")"
+  # Before `put TEAM`: the tracker blocks carry {{TICKET}}/{{RUN}} of their own. An empty tracker
+  # field (a team.json written before 2b) renders as jira.
+  p="$(team_tracker_render "$(team_json tracker || true)" "$CLONE/.claude/team/tracker" "$p")" \
+    || die 4 "cannot render the tracker blocks of the $role prompt"
   put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"
@@ -173,7 +178,7 @@ codex_home() {
 }
 
 launch() {
-  local role="$1" attempt="$2" name pf sid ch extra=""
+  local role="$1" attempt="$2" name pf sid ch ck extra=""
   team_cancelled && cancel_exit
   name="$(sess_name "$role")"; pf="$TD/runs/$RUN/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
@@ -184,11 +189,14 @@ launch() {
   # A known session id makes token-usage bindings explicit (TT-821); transcripts are lower-case.
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
   [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
+  # A team.json written before 2b has no cost_key; jq's `//` would keep the empty string.
+  ck="$(team_json cost_key)"; [ -n "$ck" ] || ck="$(team_json ticket)"
   jq -n --arg team "$TEAM" --arg role "$role" --arg run "$RUN" --argjson attempt "$attempt" \
     --arg ticket "$(team_json ticket)" --arg input_rev "$(input_rev_for "$role")" \
     --arg launched_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg mode "$MODE" \
-    --arg session_id "$sid" \
+    --arg session_id "$sid" --arg cost_key "$ck" \
     '{team: $team, role: $role, run: $run, attempt: $attempt, ticket: $ticket, mode: $mode,
+      cost_key: $cost_key,
       input_rev: $input_rev, launched_at: $launched_at, session_id: $session_id}' \
     > "$TD/session.json"
   printf '%s\n' "$sid" > "$TD/runs/$RUN/$role-$attempt.session"

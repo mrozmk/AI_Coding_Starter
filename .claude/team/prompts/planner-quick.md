@@ -6,8 +6,8 @@ base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`, mode `quick`
 attends this session: ask questions normally.
 
 1. Run `/prime`.
-2. Read the ticket: `mcp__atlassian__jira_get_issue {{TICKET}}`.
-3. Run `/quick-change {{TICKET}}` in its team planner variant: the Phase 0 guard and codex check,
+2. {{TRACKER_READ}}
+3. Run `/quick-change {{TRACKER_TASK}}` in its team planner variant: the Phase 0 guard and codex check,
    the Phase 1 short plan, the mandatory Phase 2 Codex review. Then write the reviewed plan to
    `.agents/plans/active/<slug>.md` and stop before any code (see that command's
    "Team mode (quick planner)" section).

@@ -188,7 +188,7 @@ start_checks() {
   local key="$1" branch="$2" base="$3" live types_re
   types_re="$(printf '%s|' "${TEAM_BRANCH_TYPES[@]}")"; types_re="${types_re%|}"
   local branch_re="^(${types_re})/${key}-[a-z0-9-]+\$"
-  [[ "$key" =~ $TEAM_KEY_REGEX ]] || W_PROBLEMS+=("ticket key '$key' must look like TT-123")
+  [[ "$key" =~ $TEAM_KEY_REGEX ]] || W_PROBLEMS+=("ticket key '$key' must match $TEAM_KEY_REGEX")
   [[ "$branch" =~ $branch_re ]] \
     || W_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: ${TEAM_BRANCH_TYPES[*]})")
   [[ "$base" =~ ^origin/[A-Za-z0-9._/-]+$ ]] \

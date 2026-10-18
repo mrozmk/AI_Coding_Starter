@@ -6,7 +6,7 @@ base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`. The develope
 session: ask questions normally.
 
 1. Run `/prime`.
-2. Run `/brainstorm {{TICKET}}`. In team mode it approves the spec itself
+2. Run `/brainstorm {{TRACKER_TASK}}`. In team mode it approves the spec itself
    (`Approved (auto — team mode)`) and continues straight into step 3. It asks you only for a real
    directional fork (Step 2) or a 🔶 rethink signal from the cross-model review (Step 9).
 3. Run `/plan-feature` on the approved spec. The team handoff needs exactly **one standalone plan**
