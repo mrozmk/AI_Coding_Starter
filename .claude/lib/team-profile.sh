@@ -5,25 +5,29 @@
 #
 # The profile carries VALUES only (tracker, trunk, tools, gates, clone parent). Provider BEHAVIOUR
 # lives elsewhere: tracker behaviour is `team-tracker.sh` (github/none; jira stays on the session's
-# MCP), and `team_profile_require_supported` refuses anything this stage cannot run — it must be
-# called before the first side effect (clone, tmux, team.json).
+# MCP), PR behaviour is `team-pr.sh` (github) and the `team-lib.sh` helpers (azure-devops), and
+# `team_profile_require_supported` refuses what has no merge path at all — it must be called before
+# the first side effect (clone, tmux, team.json).
 #
 # Values are read with `jq -r` only: the profile is never `eval`ed or sourced.
 
 team_profile_die() { echo "error: $*" >&2; exit 2; }
 
-# Usage: team_profile_gh_req <file> <jq path> <field> [regex] → the value in $TEAM_PROFILE_GH_V.
+# Usage: team_profile_gh_req <file> <jq path> <field> [regex] [why] → value in $TEAM_PROFILE_GH_V.
 # A global, not stdout: `$(…)` would run team_profile_die in a subshell and the caller would sail
 # on with an empty value. Missing block, empty field and bad format are the same refusal.
+# `why` names the setting that made the field required: `repo` is also required by pr_provider=github
+# on its own (a live rig runs tracker=none + pr_provider=github), and pointing at the tracker there
+# would send the reader to a setting they never touched.
 team_profile_gh_req() {
-  local f="$1" path="$2" field="$3" re="${4:-}"
+  local f="$1" path="$2" field="$3" re="${4:-}" why="${5:-tracker=github}"
   TEAM_PROFILE_GH_V="$(jq -r "$path | if . == null then \"\" else tostring end" "$f" \
     2>/dev/null || true)"
   [ -n "$TEAM_PROFILE_GH_V" ] \
-    || team_profile_die "teams.github.$field is required for tracker=github"
+    || team_profile_die "teams.github.$field is required for $why"
   if [ -n "$re" ]; then
     [[ "$TEAM_PROFILE_GH_V" =~ $re ]] \
-      || team_profile_die "teams.github.$field is required for tracker=github"
+      || team_profile_die "teams.github.$field is required for $why"
   fi
 }
 
@@ -104,15 +108,24 @@ team_profile_load() {
   while IFS= read -r v; do [ -z "$v" ] || TEAM_SEED_FILES+=("$v"); done \
     < <(jq -r '.teams.seed_files[]? // empty' "$f" 2>/dev/null)
 
-  # The `teams.github` block: required for tracker=github, ignored for jira/none. Always
-  # initialized — the callers run under `set -u`.
+  # The `teams.github` block. `repo` is required by EITHER tracker=github (the issue/project board)
+  # or pr_provider=github (the PR layer) — the live rig combines tracker=none with pr_provider=github.
+  # The Project fields stay tracker-only: a PR provider never writes a board. Always initialized —
+  # the callers run under `set -u`.
   TEAM_GH_REPO=""; TEAM_GH_PROJECT_OWNER=""; TEAM_GH_PROJECT_NUMBER=""
   TEAM_GH_PROJECT_ID=""; TEAM_GH_STATUS_FIELD_ID=""
   TEAM_GH_STATUS_STARTED=""; TEAM_GH_STATUS_DELIVERED=""
   TEAM_PROFILE_GH_V=""
+  if [ "$TEAM_TRACKER" = github ] || [ "$TEAM_PR_PROVIDER" = github ]; then
+    if [ "$TEAM_TRACKER" = github ]; then
+      team_profile_gh_req "$f" '.teams.github.repo' repo '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+    else
+      team_profile_gh_req "$f" '.teams.github.repo' repo \
+        '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' 'pr_provider=github'
+    fi
+    TEAM_GH_REPO="$TEAM_PROFILE_GH_V"
+  fi
   if [ "$TEAM_TRACKER" = github ]; then
-    team_profile_gh_req "$f" '.teams.github.repo' repo \
-      '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; TEAM_GH_REPO="$TEAM_PROFILE_GH_V"
     team_profile_gh_req "$f" '.teams.github.project_owner' project_owner
     TEAM_GH_PROJECT_OWNER="$TEAM_PROFILE_GH_V"
     team_profile_gh_req "$f" '.teams.github.project_number' project_number '^[0-9]+$'
@@ -143,12 +156,43 @@ team_cost_key() {
   esac
 }
 
-# Refuses what this stage (2a) cannot run — before any side effect.
+# Usage: team_gh_origin_require [root] → the origin's owner/repo in $TEAM_GH_ORIGIN.
+# The ONE parser of the origin URL, shared with `team-pr.sh coords`: if these two disagree, a team
+# clones, runs, and only at PR time finds out its origin is not the repo the profile names. Globals,
+# not stdout: `$(…)` would run team_profile_die in a subshell and the caller would sail on.
+TEAM_GH_ORIGIN=""
+team_gh_origin_require() {
+  local root="${1:-}" url o
+  if [ -n "$root" ]; then url="$(git -C "$root" remote get-url origin 2>/dev/null || true)"
+  else url="$(git remote get-url origin 2>/dev/null || true)"; fi
+  url="${url%.git}"
+  case "$url" in
+    https://github.com/*)   o="${url#https://github.com/}" ;;
+    https://*@github.com/*) o="${url#*@github.com/}" ;;
+    git@github.com:*)       o="${url#git@github.com:}" ;;
+    ssh://git@github.com/*) o="${url#ssh://git@github.com/}" ;;
+    *) team_profile_die "origin is not a github.com repo" ;;
+  esac
+  [[ "$o" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+    || team_profile_die "origin is not a github.com repo"
+  [ "$o" = "$TEAM_GH_REPO" ] \
+    || team_profile_die "origin $o is not teams.github.repo $TEAM_GH_REPO"
+  TEAM_GH_ORIGIN="$o"
+}
+
+# Refuses a profile with no merge path at all — before any side effect.
 team_profile_require_supported() {
   [ -n "${TEAM_PROFILE_LOADED:-}" ] || team_profile_load
-  # Every tracker runs now (jira via MCP, github/none via team-tracker.sh); pr_provider does not.
-  [ "$TEAM_PR_PROVIDER" = azure-devops ] \
-    || team_profile_die "pr_provider=$TEAM_PR_PROVIDER unsupported in 2a"
+  # Every tracker runs (jira via MCP, github/none via team-tracker.sh) and both PR providers run
+  # (azure-devops via the team-lib.sh helpers, github via team-pr.sh). `none` is reserved: a team
+  # whose work can never be merged must be refused here, not halfway through a run.
+  case "$TEAM_PR_PROVIDER" in
+    azure-devops) ;;
+    # Checked HERE, before the clone: a profile pointing at another repo would open the team's PRs
+    # somewhere else, and finding that out after the clone/tmux/team.json is already a mess.
+    github) team_gh_origin_require ;;
+    none) team_profile_die "pr_provider=none is reserved (no merge path)" ;;
+  esac
 }
 
 # Usage: team_clone_glob [root] — the `<parent>/<repo>-` prefix every clone path starts with.

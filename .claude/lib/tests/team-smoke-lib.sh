@@ -69,7 +69,9 @@ smoke_init() {
   trap '[ -z "$SPID" ] || kill "$SPID" 2>/dev/null || true; rm -rf "$WORK"' EXIT
   REAL_GIT=$(command -v git)
   ADO_URL=https://dev.azure.com/fixture/_git/fixture
-  export STUB_LOG="$WORK/log" STUB_PR="$WORK/pr.json" REAL_GIT ADO_URL
+  GH_URL=https://github.com/acme/widgets
+  GH_BARE="$WORK/origin.git"
+  export STUB_LOG="$WORK/log" STUB_PR="$WORK/pr.json" REAL_GIT ADO_URL GH_URL GH_BARE
   export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_NOSYSTEM=1
   # The runner resolves .claude/codex-profile against HOME; keep it hermetic (TT-912).
   export HOME="$WORK/home"
@@ -100,6 +102,7 @@ smoke_gitconfig() {
   detachedHead = false
 [url "$WORK/origin.git"]
   insteadOf = $ADO_URL
+  insteadOf = $GH_URL
 EOF
 
 }
@@ -137,14 +140,185 @@ STUB
 }
 
 smoke_git_stub() {
-  # `git remote get-url` must show the ADO URL while transport uses the local bare repo.
+  # `git remote get-url` must show the hosted URL while transport uses the local bare repo.
+  # `SMOKE_ORIGIN=github` swaps it for the GitHub one; unset keeps smoke 1-4 on ADO, untouched.
   cat > "$WORK/bin/git" <<'STUB'
 #!/usr/bin/env bash
 a=("$@")
 [ "${1:-}" != -C ] || shift 2
-if [ "${1:-} ${2:-} ${3:-}" = "remote get-url origin" ]; then echo "$ADO_URL"; exit 0; fi
+if [ "${1:-} ${2:-} ${3:-}" = "remote get-url origin" ]; then
+  if [ "${SMOKE_ORIGIN:-ado}" = github ]; then echo "$GH_URL"; else echo "$ADO_URL"; fi
+  exit 0
+fi
 exec "$REAL_GIT" "${a[@]}"
 STUB
+}
+
+# The `gh` stub for the PR suites. NOT called by smoke_stubs: smoke 1-4 are ADO and must not gain a
+# `gh` on PATH. All PR state is a file per PR in $GH_DIR; `state` is DERIVED from the bare origin
+# (head reachable from base = MERGED) so the fixture cannot claim a lifecycle the refs contradict.
+# Env switches: STUB_GH_AUTH (rc of `auth status`), STUB_GH_MERGEABLE (overrides `mergeable`),
+# STUB_GH_CREATE_FAIL_AFTER=1 (the PR is really created, then the client gets an error),
+# STUB_GH_CREATE_RACE=draft|ready (the answer is lost AND the PR that lands has the opposite
+# draft state to the one asked for — a concurrent writer won the race).
+smoke_gh_stub() {
+  : "${GH_DIR:?smoke_gh_stub needs GH_DIR}" "${GH_LOG:?smoke_gh_stub needs GH_LOG}"
+  mkdir -p "$GH_DIR"
+  cat > "$WORK/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "gh $*" >> "$GH_LOG"
+G="$GH_DIR"
+# The head sha and lifecycle GitHub would report, derived from the refs in the bare origin.
+# Both print their answer: `$(pr_oid …)` runs in a subshell, so a global would never come back.
+pr_oid() {  # pr_oid <file> → the live head sha, or the one recorded when the branch is gone
+  local o
+  o="$("$REAL_GIT" --git-dir="$GH_BARE" rev-parse -q --verify \
+    "refs/heads/$(jq -r '.headRefName' "$1")" || true)"
+  [ -n "$o" ] || o="$(jq -r '.headRefOid // ""' "$1")"
+  printf '%s' "$o"
+}
+pr_state() {  # pr_state <file> <head sha> → OPEN|CLOSED|MERGED
+  if [ -n "$2" ] && "$REAL_GIT" --git-dir="$GH_BARE" merge-base --is-ancestor "$2" \
+    "refs/heads/$(jq -r '.baseRefName' "$1")" 2>/dev/null; then
+    echo MERGED
+  elif [ "$(jq -r '.closed // false' "$1")" = true ]; then
+    echo CLOSED
+  else
+    echo OPEN
+  fi
+}
+pr_obj() {  # pr_obj <file> → the PR object with state/headRefOid/mergeable resolved
+  local o st
+  o="$(pr_oid "$1")"; st="$(pr_state "$1" "$o")"
+  jq -c --arg o "$o" --arg s "$st" --arg m "${STUB_GH_MERGEABLE:-}" \
+    '.headRefOid = $o | .state = $s | (if $m == "" then . else .mergeable = $m end)' "$1"
+}
+case "${1:-} ${2:-}" in
+  "auth status") exit "${STUB_GH_AUTH:-0}" ;;
+esac
+case "${1:-}" in
+  pr)
+    case "${2:-}" in
+      view)
+        n="$3"; shift 3; q=""
+        while [ $# -gt 0 ]; do case "$1" in -q|--jq) q="$2"; shift 2 ;; *) shift ;; esac; done
+        [ -f "$G/pr-$n.json" ] || { echo "no pull requests found for #$n" >&2; exit 1; }
+        if [ -n "$q" ]; then pr_obj "$G/pr-$n.json" | jq -r "$q"
+        else pr_obj "$G/pr-$n.json"; fi ;;
+      list)
+        head=""; base=""; shift 2
+        while [ $# -gt 0 ]; do case "$1" in
+          --head) head="$2"; shift 2 ;; --base) base="$2"; shift 2 ;; *) shift ;; esac; done
+        # `--head` filters by BRANCH NAME only — a fork's PR on the same name comes back too.
+        out='[]'
+        for f in "$G"/pr-*.json; do
+          [ -f "$f" ] || continue
+          [ "$(pr_state "$f" "$(pr_oid "$f")")" = OPEN ] || continue
+          [ "$(jq -r '.headRefName' "$f")" = "$head" ] || continue
+          [ -z "$base" ] || [ "$(jq -r '.baseRefName' "$f")" = "$base" ] || continue
+          out="$(printf '%s' "$out" | jq -c --argjson p "$(pr_obj "$f")" '. + [$p]')"
+        done
+        printf '%s\n' "$out" ;;
+      create)
+        base=""; head=""; t=""; bf=""; draft=false; shift 2
+        while [ $# -gt 0 ]; do case "$1" in
+          --base) base="$2"; shift 2 ;; --head) head="$2"; shift 2 ;;
+          --title) t="$2"; shift 2 ;; --body-file) bf="$2"; shift 2 ;;
+          --draft) draft=true; shift ;; *) shift ;; esac; done
+        n="$(cat "$G/next" 2>/dev/null || echo 41)"; echo $((n + 1)) > "$G/next"
+        case "${STUB_GH_CREATE_RACE:-}" in
+          draft) draft=true ;; ready) draft=false ;;
+        esac
+        jq -n --argjson n "$n" --argjson d "$draft" --arg h "$head" --arg b "$base" \
+          --arg t "$t" --rawfile body "$bf" \
+          '{number: $n, isDraft: $d, headRefName: $h, baseRefName: $b, title: $t,
+            headRepositoryOwner: {login: "acme"}, headRepository: {name: "widgets"},
+            mergeable: "MERGEABLE", body: $body, closed: false, headRefOid: ""}' \
+          > "$G/pr-$n.json"
+        # The uncertain write: the PR exists, the client never learns its number.
+        [ -z "${STUB_GH_CREATE_RACE:-}" ] \
+          || { echo "gh: timeout awaiting response headers" >&2; exit 1; }
+        [ "${STUB_GH_CREATE_FAIL_AFTER:-0}" != 1 ] \
+          || { echo "gh: timeout awaiting response headers" >&2; exit 1; }
+        echo "https://github.com/acme/widgets/pull/$n" ;;
+      ready)
+        [ -f "$G/pr-$3.json" ] || { echo "no pull requests found for #$3" >&2; exit 1; }
+        [ "$(jq -r '.isDraft' "$G/pr-$3.json")" = true ] \
+          || { echo "Pull request #$3 is already marked as ready for review" >&2; exit 1; }
+        jq '.isDraft = false' "$G/pr-$3.json" > "$G/t" && mv "$G/t" "$G/pr-$3.json"
+        echo '{}' ;;
+      edit)
+        n="$3"; shift 3; bf=""
+        while [ $# -gt 0 ]; do case "$1" in --body-file) bf="$2"; shift 2 ;; *) shift ;; esac; done
+        [ -f "$G/pr-$n.json" ] || { echo "no pull requests found for #$n" >&2; exit 1; }
+        [ -r "$bf" ] || { echo "gh: cannot read $bf" >&2; exit 1; }
+        jq --rawfile b "$bf" '.body = $b' "$G/pr-$n.json" > "$G/t" && mv "$G/t" "$G/pr-$n.json"
+        echo '{}' ;;
+      *) echo "stub: gh pr ${2:-}" >&2; exit 1 ;;
+    esac ;;
+  *) echo "stub: gh $*" >&2; exit 1 ;;
+esac
+STUB
+  chmod +x "$WORK/bin/gh"
+}
+
+# Fixture-only ref surgery in the bare origin, through a throwaway clone (a bare repo takes
+# `refs/pull/*` without hooks, and no working tree is needed by the harness).
+smoke_gh_wc() {  # smoke_gh_wc <tag> → a fresh clone of the bare origin in $SGW
+  SGW="$WORK/wc-$1"
+  rm -rf "$SGW"
+  git clone --quiet "$WORK/origin.git" "$SGW"
+}
+
+smoke_gh_commit() {  # smoke_gh_commit <branch> <tag> — one new commit on <branch> in the origin
+  local b="$1" t="$2" start="origin/$1"
+  smoke_gh_wc "$t"
+  git -C "$SGW" rev-parse -q --verify "$start" >/dev/null 2>&1 \
+    || start="origin/${SMOKE_TRUNK:-develop-netcore7}"
+  git -C "$SGW" checkout --quiet -B "$b" "$start"
+  printf '%s\n' "$t" > "$SGW/$t.txt"
+  git -C "$SGW" add "$t.txt" && git -C "$SGW" commit --quiet -m "$t"
+  git -C "$SGW" push --quiet origin "$b"
+  rm -rf "$SGW"
+}
+
+smoke_gh_land() {  # smoke_gh_land <head> <base> — merge <head> into <base> in the origin
+  smoke_gh_wc "land"
+  git -C "$SGW" checkout --quiet -B "$2" "origin/$2"
+  git -C "$SGW" merge --no-ff --no-edit --quiet "origin/$1"
+  git -C "$SGW" push --quiet origin "$2"
+  rm -rf "$SGW"
+}
+
+# Builds `refs/pull/<n>/merge` exactly as GitHub does: a merge commit whose parent 1 is the current
+# base tip and parent 2 the PR head. The `+` force is FIXTURE-ONLY — a recomputed merge M2(T2,S) is
+# not a descendant of M1, so a plain push would be rejected. Production never forces.
+smoke_gh_pull() {  # smoke_gh_pull <pr> <head> <base>
+  local n="$1"
+  smoke_gh_wc "pull-$n"
+  git -C "$SGW" checkout --quiet -B "$3" "origin/$3"
+  if git -C "$SGW" merge --no-ff --no-edit --quiet "origin/$2" >/dev/null 2>&1; then
+    git -C "$SGW" push --quiet origin "+HEAD:refs/pull/$n/merge"
+  else
+    git -C "$SGW" merge --abort || true    # a conflict leaves NO merge ref, like GitHub
+  fi
+  rm -rf "$SGW"
+}
+
+# An OCTOPUS merge ref: parent 1 the base, parent 2 the head, parent 3 somebody else's branch.
+# `^1`/`^2` answer correctly here, so only the full parent list can reject it.
+smoke_gh_pull_octopus() {  # smoke_gh_pull_octopus <pr> <head> <base> <extra>
+  local n="$1"
+  smoke_gh_wc "octo-$n"
+  git -C "$SGW" checkout --quiet -B "$3" "origin/$3"
+  git -C "$SGW" merge --no-ff --no-edit --quiet "origin/$2" "origin/$4"
+  git -C "$SGW" push --quiet origin "+HEAD:refs/pull/$n/merge"
+  rm -rf "$SGW"
+}
+
+smoke_gh_pull_stale() {  # smoke_gh_pull_stale <pr> <head> <base> — ref built, then the base moves
+  smoke_gh_pull "$1" "$2" "$3"
+  smoke_gh_commit "$3" "stale-$1"
 }
 
 # Usage: smoke_profile ['<jq filter>'] → the TT `teams` profile on stdout, optionally edited.

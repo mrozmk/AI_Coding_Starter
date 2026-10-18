@@ -216,6 +216,15 @@ team_ticket_checks() {
     && command -v az >/dev/null 2>&1 && ! az account show >/dev/null 2>&1; then
     TEAM_PROBLEMS+=("az is not logged in — run: az login")
   fi
+  # `gh` is checked regardless of required_tools: with pr_provider=github the PR layer cannot run
+  # without it, and a profile that merely forgot to list the tool would fail inside the clone.
+  if [ "$TEAM_PR_PROVIDER" = github ]; then
+    if ! command -v gh >/dev/null 2>&1; then
+      TEAM_PROBLEMS+=("gh not on PATH — required for pr_provider=github")
+    elif ! gh auth status >/dev/null 2>&1; then
+      TEAM_PROBLEMS+=("gh is not logged in — run: gh auth login")
+    fi
+  fi
   [[ "$key" =~ $TEAM_KEY_REGEX ]] || TEAM_PROBLEMS+=("ticket key '$key' must match $TEAM_KEY_REGEX")
   [[ "$branch" =~ $branch_re ]] \
     || TEAM_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: ${TEAM_BRANCH_TYPES[*]})")

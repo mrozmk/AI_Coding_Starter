@@ -54,9 +54,9 @@ has 'feature bugfix chore|git jq tmux claude codex gh python3|.claude/settings.l
 has 'false|python3 -m pytest -q|none' "$WORK/out" || fail "DTS profile gates"
 has "$HOME/DTS teams/main-alfa|origin/main" "$WORK/out" || fail "clone_parent with ~ and a space"
 
-# ---- (3) require_supported refuses what 2a cannot run ------------------------------------------
+# ---- (3) require_supported refuses only what has no merge path ---------------------------------
 peek "$DTS" 'team_profile_require_supported; echo reached'
-expect 2 "error: pr_provider=none unsupported in 2a" "DTS still refused — on pr_provider, not the tracker"
+expect 2 "error: pr_provider=none is reserved (no merge path)" "DTS with pr_provider=none is refused — on pr_provider, not the tracker"
 ! has "tracker=github unsupported" "$WORK/out" || fail "tracker github is supported now (2b)"
 peek "$DTS | .teams.pr_provider = \"azure-devops\"" 'team_profile_require_supported; echo reached'
 expect 0 "reached" "tracker=github is supported in 2b"
@@ -72,11 +72,30 @@ expect 0 "main:L7" "cost key for none is <repo-dir>:L<n>"
 peek '.' 'team_cost_key "$PWD" TT-790'
 expect 0 "TT-790" "cost key for jira is the bare key"
 peek '.teams.pr_provider = "none"' 'team_profile_require_supported; echo reached'
-expect 2 "error: pr_provider=none unsupported in 2a" "pr_provider none refused in 2a"
+expect 2 "error: pr_provider=none is reserved (no merge path)" "pr_provider=none is reserved, not merely unimplemented"
+# pr_provider=github is a running provider now, but it still needs the repo it will open PRs on —
+# and the refusal must name pr_provider, not the tracker the reader never configured.
 peek '.teams.pr_provider = "github"' 'team_profile_require_supported; echo reached'
-expect 2 "error: pr_provider=github unsupported in 2a" "pr_provider github refused in 2a"
+expect 2 "teams.github.repo is required for pr_provider=github" \
+  "pr_provider=github without teams.github.repo"
+# pr_provider=github is only supported on an origin that IS the repo in the profile: otherwise the
+# team would clone, run, and open its PRs on somebody else's repo. Checked before any side effect.
+export SMOKE_ORIGIN=github
+peek '.teams.pr_provider = "github" | .teams.github = {repo: "acme/widgets"}' \
+  'team_profile_require_supported; printf "%s|%s|%s\n" "$TEAM_GH_REPO" "$TEAM_GH_ORIGIN" reached'
+expect 0 "acme/widgets|acme/widgets|reached" \
+  "pr_provider=github on the matching origin is supported, tracker untouched"
+peek '.teams.pr_provider = "github" | .teams.github = {repo: "acme/other"}' \
+  'team_profile_require_supported; echo reached'
+expect 2 "origin acme/widgets is not teams.github.repo acme/other" \
+  "pr_provider=github pointing at another repo is refused"
+! has reached "$WORK/out" || fail "a mismatched github repo still reached the side effect"
+unset SMOKE_ORIGIN
+peek '.teams.pr_provider = "github" | .teams.github = {repo: "acme/widgets"}' \
+  'team_profile_require_supported; echo reached'
+expect 2 "origin is not a github.com repo" "pr_provider=github on a non-github origin is refused"
 peek '.' 'team_profile_require_supported; echo reached'
-expect 0 "reached" "TT profile is supported in 2a"
+expect 0 "reached" "the TT profile (pr_provider=azure-devops) stays supported"
 
 # ---- (4) refusals: missing file, missing block, bad enums, empty lists --------------------------
 rm -f "$P"
@@ -109,10 +128,19 @@ expect 2 "teams.env_file_required=yes must be true|false" "bad env_file_required
 
 # ---- (5) team-new with an unsupported profile: no clone, no tmux --------------------------------
 chmod 600 "$MAIN/.env"
+# The github repo/origin mismatch is a pre-clone refusal too, not just a library-level one.
+export SMOKE_ORIGIN=github
+setprofile '.teams.pr_provider = "github" | .teams.github = {repo: "acme/other"}'
+: > "$STUB_LOG"
+run "$MAIN" $NEW delta TT-794 feature/TT-794-x origin/develop-netcore7
+expect 2 "is not teams.github.repo acme/other" "team-new refused a mismatched github repo"
+[ ! -e "$WORK/main-delta" ] || fail "a refused team-new created the clone"
+! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
+unset SMOKE_ORIGIN
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 run "$MAIN" $NEW alfa TT-790 feature/TT-790-x origin/develop-netcore7
-expect 2 "unsupported in 2a" "team-new refused before side effects"
+expect 2 "reserved (no merge path)" "team-new refused before side effects"
 [ ! -e "$WORK/main-alfa" ] || fail "a refused team-new created the clone"
 ! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
 
@@ -126,7 +154,7 @@ ARCH0="$(arch_count)"
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 run "$MAIN" $NEXT alfa TT-791 chore/TT-791-x origin/develop-netcore7
-expect 2 "unsupported in 2a" "team-next refused before side effects"
+expect 2 "reserved (no merge path)" "team-next refused before side effects"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR0" ] || fail "refused team-next switched the branch"
 [ "$(jq -r .base_sha "$TD/team.json")" = "$SHA0" ] || fail "refused team-next rewrote team.json"
 [ "$(arch_count)" = "$ARCH0" ] || fail "refused team-next archived the run"
@@ -179,7 +207,7 @@ expect 0 "monitor-ok: $GC" "/monitor preflight accepts a custom clone_parent"
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 run "$MAIN" $WORKER start TT-793 feature/TT-793-x origin/develop-netcore7 --thread th-1
-expect 2 "unsupported in 2a" "worker-next start refused before side effects"
+expect 2 "reserved (no merge path)" "worker-next start refused before side effects"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker start created the -sol clone"
 [ ! -e "$WORK/main-sol/.git/taketask-worker/active" ] || fail "a refused worker start published state"
 ! grep -q tmux "$STUB_LOG" || fail "a refused worker start reached tmux"
@@ -234,12 +262,12 @@ setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 BR1="$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
 run "$MAIN" $MERGE alfa
-expect 2 "unsupported in 2a" "merge-check refused before fetch/ADO/build"
+expect 2 "reserved (no merge path)" "merge-check refused before fetch/ADO/build"
 ! grep -q "^az " "$STUB_LOG" || fail "a refused merge-check called az"
 [ ! -e "$TD/merge-check-build.log" ] || fail "a refused merge-check ran the build"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR1" ] || fail "merge-check moved the clone"
 run "$MAIN" $WORKER init origin/develop-netcore7
-expect 2 "unsupported in 2a" "worker init refused before the first fetch"
+expect 2 "reserved (no merge path)" "worker init refused before the first fetch"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker init created the clone"
 
 echo "team-profile-smoke: OK"
