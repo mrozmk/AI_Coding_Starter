@@ -1,7 +1,7 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner in tmux (it opens a Terminal preview window per role)
 argument-hint: "<team> [TT-key] [branch] [--mode brainstorm|quick|cli] [--roles <role>=<model>[/<effort>] …]  (e.g. alfa TT-777 · alfa TT-801 --mode quick · alfa — resume · alfa TT-787 --roles planner=claude-fable-5-1/high)"
-allowed-tools: Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /start-team — run a team on a ticket
@@ -17,9 +17,16 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
 
 ## Steps
 
+0a. **Profile preflight** — before the clone and before `tmux`:
+   `bash -c 'source .claude/lib/team-profile.sh; team_profile_load; team_profile_require_supported;
+   echo "trunk: $TEAM_TRUNK"'`. Non-zero exit → print its `error:` line verbatim and stop
+   (no clone, no branch, no tmux session). `TEAM_TRUNK` is the trunk used in step 4.
+
 1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`), `KEY` = second (`[A-Z]+-[0-9]+`, optional),
    `BRANCH` = third (optional). `ROOT` = `git rev-parse --show-toplevel`;
-   `CLONE` = `<parent of ROOT>/<basename ROOT>-<TEAM>`.
+   `CLONE` = the single resolver's answer:
+   `bash -c 'source .claude/lib/team-profile.sh; team_profile_load; team_clone_dir <TEAM>'`
+   (it honours `teams.clone_parent`; never build the path by hand).
    Before the positional parse, remove `--roles` and only its consecutive `role=value` tokens
    into `ROLES`. The first token without `=` ends that list and remains a positional argument
    (including a trailing `BRANCH`); do not consume all words after `--roles`. Keep invalid role
@@ -58,8 +65,8 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
    Jira unreachable → stop and ask for the branch as the third argument.
 
 4. **Clone.** `CLONE` absent → `bash .claude/lib/team-new.sh <TEAM> <KEY> <BRANCH>
-   origin/develop-netcore7 <MODE>`; present → `bash .claude/lib/team-next.sh …` with the same
-   arguments.
+   origin/<TEAM_TRUNK> <MODE>` (the base-ref is `origin/` plus the trunk from step 0a); present →
+   `bash .claude/lib/team-next.sh …` with the same arguments.
    Non-zero exit → print its errors and stop.
 
 4a. **Roles override** (only with `ROLES`). `bash .claude/lib/team-run.sh <TEAM> roles <ROLES…>`.

@@ -17,7 +17,6 @@ WORKER_ARTIFACT_MAX_MB="${WORKER_ARTIFACT_MAX_MB:-50}"
 WORKER_LOCK_SECS="${WORKER_LOCK_SECS:-30}"
 W_PROBLEMS=()
 LOCKED=""
-W_TYPES="feature bugfix hotfix chore refactor"
 NO_CONTRACT="has no worker contract (AGENTS.md ### Worker clone, worker-next.sh,"
 NO_CONTRACT+=" worker-clone.md)"
 
@@ -112,6 +111,11 @@ cmd_init() {
   w_supervisor_only init
   [ ! -e "$DIR" ] || W_PROBLEMS+=("$DIR exists — the worker clone is provisioned once")
   jq --version >/dev/null 2>&1 || W_PROBLEMS+=("jq is required — install it before init")
+  # Flushed here so the profile gate (which needs jq) runs before the first `git fetch`, while
+  # the jq-missing refusal keeps its own message.
+  w_flush
+  team_profile_load "$ROOT"
+  team_profile_require_supported
   if [[ ! "$base" =~ ^origin/[A-Za-z0-9._/-]+$ ]]; then
     W_PROBLEMS+=("base-ref '$base' must be origin/<branch>")
   elif ! git -C "$ROOT" fetch --quiet origin; then
@@ -140,13 +144,16 @@ cmd_init() {
   echo "next:     Operator checklist (.agents/reference/worker-clone.md → Provisioning):"
   echo "  1. give SolTT's Codex host write access to $DIR and $WORKER_ARTIFACTS only"
   echo "     (a narrow writable root or the thread cwd, no global widening)"
-  echo "  2. SolTT runs worker-next.sh status and dotnet build TakeTask2.API.sln in the clone"
+  echo "  2. SolTT runs worker-next.sh status and the build check in the clone: $TEAM_BUILD_CHECK"
   echo "  3. only then the first worker-next.sh start"
 }
 
 cmd_start() {
   [ $# -eq 5 ] && [ "$4" = --thread ] || usage
   local key="$1" branch="$2" base="$3" thread="$5" a st id
+  # Before the lock, the branch switch and the published assignment.
+  team_profile_load "$ROOT"
+  team_profile_require_supported
   [[ "$thread" =~ ^[A-Za-z0-9._:-]+$ ]] || die "thread '$thread' must match [A-Za-z0-9._:-]+"
   w_supervisor_only start
   w_require_clone
@@ -178,11 +185,12 @@ cmd_start() {
 }
 
 start_checks() {
-  local key="$1" branch="$2" base="$3" live
-  local branch_re="^(feature|bugfix|hotfix|chore|refactor)/${key}-[a-z0-9-]+\$"
-  [[ "$key" =~ ^[A-Z]+-[0-9]+$ ]] || W_PROBLEMS+=("ticket key '$key' must look like TT-123")
+  local key="$1" branch="$2" base="$3" live types_re
+  types_re="$(printf '%s|' "${TEAM_BRANCH_TYPES[@]}")"; types_re="${types_re%|}"
+  local branch_re="^(${types_re})/${key}-[a-z0-9-]+\$"
+  [[ "$key" =~ $TEAM_KEY_REGEX ]] || W_PROBLEMS+=("ticket key '$key' must look like TT-123")
   [[ "$branch" =~ $branch_re ]] \
-    || W_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: $W_TYPES)")
+    || W_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: ${TEAM_BRANCH_TYPES[*]})")
   [[ "$base" =~ ^origin/[A-Za-z0-9._/-]+$ ]] \
     || W_PROBLEMS+=("base-ref '$base' must be origin/<branch>")
   w_tree_clean "clone $DIR has uncommitted or untracked changes"
@@ -325,8 +333,11 @@ cmd_check() {
 
 cmd_release() {
   [ $# -ge 1 ] || usage
-  local id="$1" a st h art
+  local id="$1" a st h art key_re
   shift
+  team_profile_load "$ROOT"
+  # The assignment id is "<ticket key>-<yyyymmdd>-<hhmmss>[-<n>]": the key regex without anchors.
+  key_re="${TEAM_KEY_REGEX#^}"; key_re="${key_re%$}"
   PR=""; ABANDONED=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -336,7 +347,7 @@ cmd_release() {
     esac
   done
   [ -z "$PR" ] || [[ "$PR" =~ ^[0-9]+$ ]] || die "PR id '$PR' must be digits"
-  [[ "$id" =~ ^[A-Z]+-[0-9]+-[0-9]{8}-[0-9]{6}(-[0-9]+)?$ ]] \
+  [[ "$id" =~ ^${key_re}-[0-9]{8}-[0-9]{6}(-[0-9]+)?$ ]] \
     || die "assignment id '$id' must be <key>-<yyyymmdd>-<hhmmss>[-<n>]"
   w_supervisor_only release
   w_require_clone

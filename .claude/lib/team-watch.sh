@@ -63,7 +63,8 @@ check() {
 
 while :; do
   for team in "$@"; do
-    td="$(dirname "$root")/$(basename "$root")-$team/.agents/team"
+    clone="$(team_clone_dir "$team" "$root")"
+    td="$clone/.agents/team"
     if [ -f "$td/team.json" ]; then check "$team" "$td"; else echo "WATCH $team: no clone"; fi
   done
   [ "$once" = 0 ] || exit 0

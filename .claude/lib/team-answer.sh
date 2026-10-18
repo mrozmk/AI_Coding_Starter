@@ -148,7 +148,13 @@ case "$action" in
     # Tier 1 only: a prompt that matches an ask/deny rule of the clone, or carries SQL writes, is the
     # Operator's to answer in the window (team-mode.md §10) — the supervisor's Enter is refused.
     root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    team_pane "$name" 40 | python3 -I "$(dirname "$0")/team_prompt_check.py" "$(dirname "$root")/$(basename "$root")-$1" \
+    # Checked, then proven to exist: a clone the checker cannot read has no ask/deny rules, so an
+    # unresolved path would silently turn every prompt into tier 1.
+    clone="$(team_clone_dir "$1" "$root")" \
+      || { echo "error: cannot resolve the clone of $1 — nothing approved" >&2; exit 1; }
+    [ -d "$clone" ] \
+      || { echo "error: no clone at $clone — nothing approved" >&2; exit 1; }
+    team_pane "$name" 40 | python3 -I "$(dirname "$0")/team_prompt_check.py" "$clone" \
       || { echo "error: ask/deny-tier prompt in $name — Operator answers in the window (tier 3)" >&2; exit 1; }
     tmux send-keys -t "=$name:" Enter ;;
   no)

@@ -3,7 +3,7 @@
 #
 # Usage: bash .claude/lib/team-next.sh <team> <TT-key> <new-branch> <base-ref> [mode]
 #   mode: brainstorm (default) | quick | cli — fixed for the ticket
-#   e.g. bash .claude/lib/team-next.sh alfa TT-778 chore/TT-778-rollout origin/develop-netcore7
+#   e.g. bash .claude/lib/team-next.sh alfa TT-778 chore/TT-778-rollout origin/<trunk>
 #
 # Refuses while the previous ticket is in flight (runner, session, dirty tree, open PR or unpushed work).
 # Next: bash .claude/lib/team-run.sh <team>   (from this checkout). Runbook: .agents/reference/team-pipeline.md
@@ -20,7 +20,10 @@ team="$1"; key="$2"; branch="$3"; base="$4"; mode="${5:-brainstorm}"
 . "$(dirname "$0")/team-modes.sh"
 
 root="$(git rev-parse --show-toplevel)"
-dir="$(dirname "$root")/$(basename "$root")-${team}"
+# Before the archive move, the branch switch and the team.json rewrite below.
+team_profile_load "$root"
+team_profile_require_supported
+dir="$(team_clone_dir "$team" "$root")"
 TD="$dir/.agents/team"
 [ -f "$TD/team.json" ] || { echo "error: no team clone at $dir — create it with team-new.sh" >&2; exit 1; }
 old_ticket="$(jq -r .ticket "$TD/team.json")"; old_branch="$(jq -r .branch "$TD/team.json")"

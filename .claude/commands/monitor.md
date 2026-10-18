@@ -43,8 +43,10 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout (`TakeTask.DN`).
 
 ## Steps
 
-1. Each team in `$ARGUMENTS` must have a clone (`../<repo>-<team>/.agents/team/team.json`); report
-   missing ones and drop them.
+1. Each team in `$ARGUMENTS` must have a clone — resolve its path with the one resolver,
+   `bash -c 'source .claude/lib/team-profile.sh; team_profile_load; team_clone_dir <team>'`, then
+   require `<clone>/.agents/team/team.json`; report missing ones and drop them. Never assume the
+   sibling `../<repo>-<team>` layout: `teams.clone_parent` can place clones elsewhere.
 2. Arm **one** Monitor: command `bash .claude/lib/team-watch.sh <teams>`, `timeout_ms: 1800000`,
    description `teams <teams>`.
 3. **On each event** reply in Polish, 1–3 lines:

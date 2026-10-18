@@ -18,7 +18,10 @@ case "${2:-}" in "") REVIEWED=0 ;; --memory-reviewed) REVIEWED=1 ;; *) usage ;; 
 TEAM="$1"
 
 root="$(git rev-parse --show-toplevel)"
-CLONE="$(dirname "$root")/$(basename "$root")-$TEAM"
+. "$root/.claude/lib/team-profile.sh"
+team_profile_load "$root"
+team_profile_require_supported
+CLONE="$(team_clone_dir "$TEAM" "$root")"
 [ -f "$CLONE/.agents/team/team.json" ] || { echo "error: no team clone at $CLONE" >&2; exit 1; }
 cd "$CLONE"
 . "$CLONE/.claude/lib/team-lib.sh"
@@ -115,15 +118,18 @@ orig="$(git rev-parse --abbrev-ref HEAD)"
 trap 'git switch --quiet "$orig" || echo "warning: clone left detached — git switch $orig" >&2' EXIT
 git switch --quiet --detach FETCH_HEAD
 
-echo "building TakeTask2.API.sln on the merge ref (minutes)"
+echo "running build check on the merge ref (minutes): $TEAM_BUILD_CHECK"
 set +e
-dotnet build TakeTask2.API.sln > "$TD/merge-check-build.log" 2>&1
+# bash -c, cwd = the clone root: the build check is a project value, never ticket content.
+bash -c "$TEAM_BUILD_CHECK" > "$TD/merge-check-build.log" 2>&1
 build_rc=$?
 # test-gate runs --no-build: after a failed build it would test the previous build's binaries.
 gate_out="test-gate: skipped — build failed"; gate_rc=1
-if [ "$build_rc" = 0 ]; then
+if [ "$TEAM_TEST_GATE" = none ]; then
+  gate_out="test-gate: none"; gate_rc=0
+elif [ "$build_rc" = 0 ]; then
   echo "running test-gate (minutes)"
-  gate_out="$(bash .claude/lib/test-gate.sh 2>&1)"
+  gate_out="$(bash "$TEAM_TEST_GATE" 2>&1)"
   gate_rc=$?
 fi
 set -e

@@ -43,7 +43,7 @@ case "$TIER" in 2|3) ;; *) bad "tier must be 2 or 3" ;; esac
 [ "$MODE" != default ] || [ -n "$BLOCKS" ] || bad "--blocks is required"
 [ "$MODE" != retier ] || [ "$TIER" = 3 ] || bad "--retier needs tier 3"
 root="$(git rev-parse --show-toplevel)"
-RUNS="$(cd "$(dirname "$root")/$(basename "$root")-$TEAM/.agents/team/runs" 2>/dev/null && pwd -P)" \
+RUNS="$(cd "$(team_clone_dir "$TEAM" "$root")/.agents/team/runs" 2>/dev/null && pwd -P)" \
   || bad "no team runs for $TEAM"
 [ -f "$QARG" ] || bad "no question file $QARG"
 QDIR="$(cd "$(dirname "$QARG")" && pwd -P)"; Q="$QDIR/$(basename "$QARG")"

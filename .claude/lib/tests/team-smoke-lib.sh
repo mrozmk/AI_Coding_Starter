@@ -147,6 +147,23 @@ exec "$REAL_GIT" "${a[@]}"
 STUB
 }
 
+# Usage: smoke_profile ['<jq filter>'] → the TT `teams` profile on stdout, optionally edited.
+# These are exactly the values team-lib.sh and worker-next.sh used to hardcode.
+smoke_profile() {
+  jq -n '{schema: 1, teams: {
+      tracker: "jira",
+      pr_provider: "azure-devops",
+      trunk: "develop-netcore7",
+      branch_types: ["feature", "bugfix", "hotfix", "chore", "refactor"],
+      required_tools: ["git", "jq", "tmux", "claude", "codex", "az", "dotnet"],
+      seed_files: [".env", ".claude/settings.local.json", ".agents/memory/user-profile.md"],
+      env_file_required: true,
+      build_check: "dotnet build TakeTask2.API.sln",
+      test_gate: ".claude/lib/test-gate.sh",
+      gates: "auto"
+    }}' | jq "${1:-.}"
+}
+
 smoke_repos() {
   git init --quiet --bare "$WORK/origin.git"
   SEED="$WORK/seed"
@@ -168,6 +185,8 @@ smoke_repos() {
   printf '# test fixture\n~/.codex-taketask\n' > "$SEED/.claude/codex-profile"
   printf '#!/usr/bin/env bash\necho "test-gate: total 3, passed 3, failed 0 (baseline 0, new 0, now passing 0)"\n' \
   > "$SEED/.claude/lib/test-gate.sh"
+  # Fixture fix (starter import): the TT values the harness used to hardcode are now a profile.
+  smoke_profile > "$SEED/.claude/project-profile.json"
   printf '.agents/team/\n.env\n' > "$SEED/.gitignore"
   echo seed > "$SEED/README"
   git -C "$SEED" init --quiet

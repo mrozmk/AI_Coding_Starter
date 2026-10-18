@@ -369,7 +369,7 @@ for f in "$SRC"/.claude/lib/team-snapshot-*.sh; do
 done
 for p in planner-quick cli; do
   bad="$(grep -o '{{[A-Z_]*}}' "$SRC/.claude/team/prompts/$p.md" | sort -u \
-    | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT)\}\}' || true)"
+    | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE)\}\}' || true)"
   [ -z "$bad" ] || fail "$p prompt has unrendered keys: $bad"
 done
 ! grep -n 'busy of' "$SRC/.claude/lib/team-attach.sh" || fail "team-attach.sh polls Terminal's busy flag"

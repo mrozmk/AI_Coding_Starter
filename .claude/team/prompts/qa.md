@@ -14,7 +14,7 @@ questions in this session: `AskUserQuestion` is not available.
      distillation subagent it asks for, touch the marker it prints, and continue.
 3. If it changed files: `/commit`, then `/push`.
 4. Confirm `git status --porcelain` is empty, then re-run on the clean tree, keeping the counts:
-   `dotnet build TakeTask2.API.sln && bash .claude/lib/test-gate.sh`
+   `{{BUILD_CHECK}}`, then {{TEST_GATE}}
 5. Write `.agents/team/runs/{{RUN}}/qa-report-{{ATTEMPT}}.md` exactly per team-mode.md §7
    (`run: {{RUN}}`, `attempt: {{ATTEMPT}}`, `output_rev:` = `git rev-parse HEAD`).
 6. Verdict `❌ Escalated` or any rethink signal →

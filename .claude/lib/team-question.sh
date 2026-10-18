@@ -24,7 +24,7 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
 team_check_name "$TEAM" || exit 2
 root="$(git rev-parse --show-toplevel)"
-CLONE="$(dirname "$root")/$(basename "$root")-$TEAM"
+CLONE="$(team_clone_dir "$TEAM" "$root")"
 [ -f "$CLONE/.agents/team/team.json" ] || die "no team clone at $CLONE"
 cd "$CLONE"
 TD="$CLONE/.agents/team"

@@ -3,6 +3,10 @@
 # Sourced, never executed; the caller sets `set -euo pipefail`. Contract: .agents/reference/team-mode.md
 # Bash 3.2 compatible (macOS /bin/bash): no mapfile, no associative arrays.
 
+# Project values (trunk, tools, clone parent, gates) live in the profile, not here.
+# BASH_SOURCE, not $0: the dashboard and the smoke suites source this file from another directory.
+. "$(dirname "${BASH_SOURCE[0]}")/team-profile.sh"
+
 TEAM_ROLES="planner coder qa wrapup"
 
 team_root() {
@@ -100,8 +104,9 @@ team_prompt_open() {
 
 # Usage: team_clone_dirs <main root> — prints each clone's .agents/team dir that has team.json.
 team_clone_dirs() {
-  local d
-  for d in "$(dirname "$1")/$(basename "$1")"-*/.agents/team; do
+  local d prefix
+  prefix="$(team_clone_glob "$1")" || return $?
+  for d in "$prefix"*/.agents/team; do
     [ ! -f "$d/team.json" ] || echo "$d"
   done
 }
@@ -200,25 +205,31 @@ team_q_state() {
 
 # Ticket preflight shared by team-new and team-next; appends to TEAM_PROBLEMS, never exits.
 team_ticket_checks() {
-  local root="$1" key="$2" branch="$3" base="$4" own="${5:-}" tool other rc
-  local branch_re="^(feature|bugfix|hotfix|chore|refactor)/${key}-[a-z0-9-]+\$"
-  for tool in git jq tmux claude codex az dotnet; do
+  local root="$1" key="$2" branch="$3" base="$4" own="${5:-}" tool other rc types_re clone_prefix
+  team_profile_load "$root"
+  types_re="$(printf '%s|' "${TEAM_BRANCH_TYPES[@]}")"; types_re="${types_re%|}"
+  local branch_re="^(${types_re})/${key}-[a-z0-9-]+\$"
+  for tool in "${TEAM_REQUIRED_TOOLS[@]}"; do
     command -v "$tool" >/dev/null 2>&1 || TEAM_PROBLEMS+=("$tool not on PATH (tmux/jq: brew install tmux jq)")
   done
-  if command -v az >/dev/null 2>&1 && ! az account show >/dev/null 2>&1; then
+  if [ "$TEAM_PR_PROVIDER" = azure-devops ] \
+    && command -v az >/dev/null 2>&1 && ! az account show >/dev/null 2>&1; then
     TEAM_PROBLEMS+=("az is not logged in — run: az login")
   fi
-  [[ "$key" =~ ^[A-Z]+-[0-9]+$ ]] || TEAM_PROBLEMS+=("ticket key '$key' must look like TT-123")
+  [[ "$key" =~ $TEAM_KEY_REGEX ]] || TEAM_PROBLEMS+=("ticket key '$key' must look like TT-123")
   [[ "$branch" =~ $branch_re ]] \
-    || TEAM_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: feature bugfix hotfix chore refactor)")
+    || TEAM_PROBLEMS+=("branch '$branch' must be <type>/$key-<slug> (types: ${TEAM_BRANCH_TYPES[*]})")
   # The clone resolves base afresh and team.json `line` (the PR target) is base minus `origin/`.
   [[ "$base" =~ ^origin/[A-Za-z0-9._/-]+$ ]] || TEAM_PROBLEMS+=("base-ref '$base' must be origin/<branch>")
-  if [ ! -f "$root/.env" ]; then
-    TEAM_PROBLEMS+=("$root/.env missing")
-  elif [ "$(stat -f %Lp "$root/.env")" != 600 ]; then
-    TEAM_PROBLEMS+=(".env is not mode 600 — run: chmod 600 .env")
+  if [ "$TEAM_ENV_REQUIRED" = true ]; then
+    if [ ! -f "$root/.env" ]; then
+      TEAM_PROBLEMS+=("$root/.env missing")
+    elif [ "$(stat -f %Lp "$root/.env")" != 600 ]; then
+      TEAM_PROBLEMS+=(".env is not mode 600 — run: chmod 600 .env")
+    fi
   fi
-  for other in "$(dirname "$root")/$(basename "$root")"-*/.agents/team/team.json; do
+  clone_prefix="$(team_clone_glob "$root")"
+  for other in "$clone_prefix"*/.agents/team/team.json; do
     [ -f "$other" ] && [ "$(jq -r .team "$other")" != "$own" ] || continue
     [ "$(jq -r .branch "$other")" != "$branch" ] \
       || TEAM_PROBLEMS+=("branch $branch is already used by team $(jq -r .team "$other")")
@@ -233,22 +244,24 @@ team_ticket_checks() {
   if ! git -C "$root" rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
     TEAM_PROBLEMS+=("base-ref $base does not resolve")
   elif ! git -C "$root" cat-file -e "$base:.claude/lib/team-record.sh" 2>/dev/null; then
-    TEAM_PROBLEMS+=("base has no team harness — only develop-netcore7 and lines carrying .claude/ are supported")
+    TEAM_PROBLEMS+=("base has no team harness — only $TEAM_TRUNK and lines carrying .claude/ are supported")
   fi
 }
 
 # Copies, not symlinks: each team gets its own writable credential and permission files.
 team_seed_files() {
   local root="$1" dir="$2" f
+  team_profile_load "$root"
   # Per-clone excludes (Claude runtime state, handoffs) would otherwise dirty the clone's tree.
   [ ! -f "$root/.git/info/exclude" ] || cp "$root/.git/info/exclude" "$dir/.git/info/exclude"
-  for f in .env .claude/settings.local.json .agents/memory/user-profile.md; do
+  for f in ${TEAM_SEED_FILES[@]+"${TEAM_SEED_FILES[@]}"}; do
     if [ -e "$root/$f" ]; then
       mkdir -p "$dir/$(dirname "$f")"
       cp "$root/$f" "$dir/$f"
     fi
+    # A seeded credential file stays private to the clone.
+    [ "$f" != .env ] || [ ! -f "$dir/.env" ] || chmod 600 "$dir/.env"
   done
-  [ ! -f "$dir/.env" ] || chmod 600 "$dir/.env"
 }
 
 team_write_json() {

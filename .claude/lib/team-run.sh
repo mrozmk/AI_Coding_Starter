@@ -20,7 +20,11 @@ fi
 TEAM="$1"; CMD="${2:-advance}"
 
 root="$(git rev-parse --show-toplevel)"; ORIG_PWD="$PWD"
-CLONE="$(dirname "$root")/$(basename "$root")-$TEAM"
+# Before the runner lock, session.json and any tmux session: the profile decides what 2a can run.
+. "$root/.claude/lib/team-profile.sh"
+team_profile_load "$root"
+team_profile_require_supported
+CLONE="$(team_clone_dir "$TEAM" "$root")"
 case "$CLONE" in *"'"*) echo "error: clone path contains a quote: $CLONE" >&2; exit 1 ;; esac
 [ -f "$CLONE/.agents/team/team.json" ] || { echo "error: no team clone at $CLONE" >&2; exit 1; }
 cd "$CLONE"
@@ -139,6 +143,8 @@ render_prompt() {
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"
   put PLAN "$plan"; put SPEC "$spec"; put PR "$pr"; put ORG_URL "$ADO_ORG_URL"; put QA_REPORT "$report"
+  # Project gates come from the profile; TEST_GATE is a ready sentence, never a raw path.
+  put BUILD_CHECK "$TEAM_BUILD_CHECK"; put TEST_GATE "$(team_gate_sentence)"
   printf '%s\n' "$p" > "$out"
 }
 

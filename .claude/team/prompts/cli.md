@@ -21,8 +21,8 @@ There is no planner, no QA and no wrapup after you.
    `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait for the
    answer in this session. Routine decisions: decide and log them under `## Unattended decisions`
    in `.agents/team/runs/{{RUN}}/notes.md` (`- <decision> — <reason> — <file>`).
-5. Run the gates from `CLAUDE.md → Validation`: `dotnet build TakeTask2.API.sln` and
-   `bash .claude/lib/test-gate.sh`, plus `bash .claude/lib/tests/team-smoke.sh` when
+5. Run the gates from `CLAUDE.md → Validation`: `{{BUILD_CHECK}}` and
+   {{TEST_GATE}}, plus `bash .claude/lib/tests/team-smoke.sh` when
    `.claude/lib/team-*.sh` changed. Fix until green.
 6. Write `.agents/team/runs/{{RUN}}/cli-{{ATTEMPT}}.md` in plain Polish: `## Co zmieniono`
    (2–3 sentences, no file names) and `## Co to daje` (1–2 sentences). `/monitor` reads this file.

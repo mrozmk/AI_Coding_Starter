@@ -3,7 +3,7 @@
 #
 # Usage: bash .claude/lib/team-new.sh <team> <TT-key> <new-branch> <base-ref> [mode]
 #   mode: brainstorm (default) | quick | cli — fixed for the ticket
-#   e.g. bash .claude/lib/team-new.sh alfa TT-790 feature/TT-790-slug origin/develop-netcore7
+#   e.g. bash .claude/lib/team-new.sh alfa TT-790 feature/TT-790-slug origin/<trunk>
 #
 # Result: ../<repo>-<team>/ on <new-branch>, per-developer files copied, .agents/team/team.json.
 # Next ticket in the same clone: team-next.sh. Runbook: .agents/reference/team-pipeline.md
@@ -20,7 +20,10 @@ team="$1"; key="$2"; branch="$3"; base="$4"; mode="${5:-brainstorm}"
 . "$(dirname "$0")/team-modes.sh"
 
 root="$(git rev-parse --show-toplevel)"
-dir="$(dirname "$root")/$(basename "$root")-${team}"
+# Before anything that creates a directory, switches a branch or writes team.json.
+team_profile_load "$root"
+team_profile_require_supported
+dir="$(team_clone_dir "$team" "$root")"
 TEAM_PROBLEMS=()
 team_check_name "$team" 2>/dev/null || TEAM_PROBLEMS+=("team name '$team' must match [a-z0-9-]+")
 [ ! -e "$dir" ] || TEAM_PROBLEMS+=("$dir already exists — to start the next ticket there: team-next.sh")
