@@ -204,6 +204,8 @@ This marks the feature as fully implemented.
 
 **Guard first — skip this step if you will run `/check-implementation` or `/orchestrate` next.** Those reflect with the same protocol and richer context, so reflecting here too would risk a duplicate entry. Run this step **only** when `/execute` is your final action before `/commit` (raw execute → commit, no quality loop).
 
+**Team mode** (`.agents/team/session.json` exists): this step is **skipped** — the lesson goes under `## Learnings` in `.agents/team/runs/<run>/notes.md` instead, because `guard-team-memory.sh` rejects a `.agents/memory/` write from every role but `wrapup`. A routine deviation from the plan goes to `## Unattended decisions` in the same notes file; a material one stops the run with `TEAM-BLOCKED: <question>` before `/commit`.
+
 If it applies, read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** over what you just implemented. Apply its bar strictly — **the default is to save nothing**; a plan that executed cleanly rarely teaches a fresh Claude anything. Save only a non-obvious bug root-cause you hit (`errors.md`), an undocumented quirk that bit you (`api.md`), or a deliberate fix-direction decision (`decisions.md`). Append at most one entry, at the END of the file, and **do not duplicate** anything already in the target file. This does not commit — the memory write is left in the tree for your `/commit`.
 
 ## Output Report

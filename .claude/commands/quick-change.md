@@ -1,6 +1,6 @@
 ---
 name: quick-change
-description: The fast lane for small changes — a short in-session plan (no spec, no plan file), a mandatory independent Codex review of that plan BEFORE any code is written, then implement, /code-review (low effort), /deep-review, and the project's Validation gates. The review cannot be opted out of; it is skipped only when codex is not installed. For work where /brainstorm → /plan-feature → /execute is too heavy, but "just do it" is too risky.
+description: The fast lane for small changes — a short in-session plan (no spec, no plan file), a mandatory independent Codex review of that plan BEFORE any code is written, then implement, /code-review (low effort), /deep-review, and the project's Validation gates. The review cannot be opted out of; it is skipped only when codex is not installed. For work where /brainstorm → /plan-feature → /execute is too heavy, but "just do it" is too risky. Supports a Claude supervisor with a delegated Codex worker.
 argument-hint: "<what to change>"
 ---
 
@@ -27,6 +27,47 @@ The load-bearing move is **where the review sits**: before the code, not after. 
 - **`/plan-feature`** — produces a durable, grilled plan artifact. `/quick-change` produces a disposable one.
 
 > **Writes nothing to `.agents/`** — except the invoked Task's `Status`/`Ref` cells in `.agents/backlog.md` after green gates (Phase 6). No spec, no plan, no handoff file. The Codex brief goes to the session scratchpad. Beyond those two cells, the only thing this command changes in the repo is the code you asked for. (Memory reflection is deliberately omitted too — a change small enough for this lane rarely teaches a fresh Claude anything, and `/quick-change` should not develop a paperwork tail.)
+
+---
+
+## Delegated execution
+
+A `<supervisor>` (Claude) may delegate Phase 3 to a `<worker>` (Codex, clone `<worker-clone>`)
+using the [AGENTS.md delegated execution contract](../../AGENTS.md#delegated-execution-supervisor--worker).
+The supervisor owns the scope guard, plan approval and the final control gate; reviews run
+in report-only mode on the clone and the worker applies their fixes. The pre-code review stays
+mandatory. A worker handoff alone never means this workflow is complete.
+
+**Two modes — the phases below say which applies:**
+
+- **Solo** — the supervisor implements in its own checkout: Phases 3.5/4 mutate (`--fix`, pipeline mode).
+- **Delegated** — the worker implements Phase 3 and the Phase 5 fixes in the clone. Phase 3.5 is
+  `/code-review low` **without** `--fix` on `git -C <worker-clone> diff <base SHA>`; Phase 4 is
+  a fresh Codex session running `/deep-review report-only <files>`, spawned through
+  `.claude/lib/codex-bg.sh` with `REPO=<worker-clone>` (never the default `$PWD` — the
+  supervisor's main checkout is dirty). Findings go to the worker as fixes to make. Fingerprint the
+  clone with `.claude/lib/tree-fingerprint.sh` (`capture` before Phase 3.5, `compare` after
+  Phase 4, run with the clone as the checkout) — the reviews are read-only, so it must match.
+- The worker never edits the paths the project cannot validate in the clone (AGENTS.md → Delegation boundary).
+
+---
+
+## Team mode (quick planner)
+
+**When it applies:** `.agents/team/session.json` exists and its `role` is `planner` — the team runs in `quick` mode. The supervisor's ticket is the request.
+
+- **Phases 0–2 run as written.** On a Phase 0 hit, ask the developer (the planner is attended). If they do not continue → `bash .claude/lib/team-record.sh --verdict failed --message "too big for quick: <reason>"`, then stop.
+- **After Phase 2, write the plan — do not implement.** The (revised) plan goes to `.agents/plans/active/<kebab-slug>.md`; this is the one exception to "Writes nothing to `.agents/`". Its minimal `/execute` shape:
+  - `# Feature: <title>`
+  - `**Source spec:** none (quick mode)`
+  - `**Execution effort:** low|medium`
+  - `## Feature Description` (Cel) and `## Solution Statement` (Podejście + odrzucona alternatywa + Ryzyko)
+  - `## STEP-BY-STEP TASKS` — one `### {ACTION} <path>` per file, each with `- [ ]`, `- **IMPLEMENT**:`, `- **EXPECT**:` (`present` / `contains` …) and `- **VALIDATE**:`
+  - `## VALIDATION COMMANDS` (Level 1 = `CLAUDE.md → Validation`)
+  - `## ACCEPTANCE CRITERIA` (the one-sentence "done")
+  - `## NOTES` with the Codex outcome line (`Codex: czysto` / the folded findings / `brak opinii — <reason>`)
+- **Never** add a `## Execution Plan` section — the runner refuses it. `/gates:verify-implementation` counts the `- [ ]` anchors and checks the `EXPECT` lines, so a plan without them fails QA's gate.
+- **Phases 3–6 belong to the coder and QA** — skip them here.
 
 ---
 
@@ -131,7 +172,29 @@ Tests per the plan's test line and `CLAUDE.md` → Validation test policy. **In 
 
 ## Phase 3.5 — Correctness (`/code-review`, low effort)
 
-Run `/code-review` at **`low` effort** over the files this run touched (Phase 0's snapshot), and apply what it confirms — the skill's `--fix` behaviour, same fixer channel `/check-implementation` uses.
+Run `/code-review` at **`low` effort** over the files this run touched (Phase 0's snapshot). **Solo:** apply what it confirms — the skill's `--fix` behaviour, same fixer channel `/check-implementation` uses. **Delegated:** run it **without** `--fix` on `git -C <worker-clone> diff <base SHA>` and relay the confirmed findings to the worker for Phase 5 (this replaces the `correctness-reviewer` agent on hosts that do not have it).
+
+### When `/code-review` returns no opinion — one fallback, then STOP
+
+**A valid opinion** (applies to the first review AND to the fallback) is either a findings list with
+`file:line` references, or an explicit `CLEAN` that names the reviewed scope (base SHA plus the diff hash or the
+reviewed file list). Anything else is **no opinion**: empty output, an error, "could not read the files", or text
+that does not address the handed-over scope. The trigger is the content, not a tool-call count — a CLEAN that
+names its scope is a success even with zero tool calls, and gets no fallback.
+
+On **no opinion**, run exactly **one** replacement review:
+
+- a fresh subagent/session with no author history, correctness-only, report-only, effort **low** (as the stage it
+  replaces); it must state its actual model and effort;
+- input = the brief/AC, the base SHA, `git diff <base SHA>` **and the full content (or explicit paths in the right
+  tree) of every new untracked file of the assignment** — the diff alone does not show untracked files;
+- artifacts (delegated: the assignment's artifacts directory `<artifacts-dir>/<id>`, outside every repository — never `.agents/`; solo: the session scratchpad): the reviewer's
+  **full opinion verbatim**, plus the reviewed-tree metadata — base/HEAD, sha256 of the diff, list + sha256 of the
+  untracked files — and the before/after tree snapshot. A summary alone is not an artifact.
+
+**STOP** if the replacement also gives no opinion (same validity rule), or no fresh reviewer can be started:
+record `Phase 3.5: BEZ OPINII → STOP` in the Phase 6 report with `Werdykt: ❌ eskalacja` and stop the lane (delegated: the supervisor reports it to the Operator). Unlike Phase 2, which fails **open** on a tool failure, a missing Phase 3.5 opinion fails **closed**. Never record it as CLEAN, never let the author
+review its own work, never retry a second time.
 
 **Why this exists, and why it is `low`.** Nothing else in this lane looks for a logic bug. Phase 2 reviewed a *plan*, so it cannot see a mistake made while executing it; Phase 4 states outright that it does not hunt bugs; Phase 5 only catches what the test suite already covers, and in this lane there is often no new test. That is a real hole, and one cheap pass closes most of it. `low` is the point, not a compromise — it returns few, high-confidence findings, which is exactly the trade a fast lane wants. **Never raise the effort here**: a change that needs `high` is a change that needed `/check-implementation`, and the honest response is to say so rather than to grow this phase.
 
@@ -141,7 +204,7 @@ Bugs before structure — the same ordering `/check-implementation` justifies: d
 
 ## Phase 4 — `/deep-review`
 
-Run [`/deep-review`](deep-review.md) over the files **this run touched** (Phase 0's snapshot, not everything dirty), **pipeline mode** — its own contract lists `/quick-change` Phase 4 as a pipeline caller, so it applies findings rather than only reporting them: it applies its high-conviction structural findings and records anything needing a human call under `NEEDS_HUMAN`. Structure only — file size, spaghetti growth, layering, comment noise, code-judo simplifications. It is not a bug hunt.
+**Delegated:** a fresh Codex session runs `/deep-review report-only <files>` on the clone (`codex-bg.sh` with `REPO=<worker-clone>`); it never edits, findings go to the worker. **Solo:** run [`/deep-review`](deep-review.md) over the files **this run touched** (Phase 0's snapshot, not everything dirty), **pipeline mode** — its own contract lists `/quick-change` Phase 4 (solo) as a pipeline caller, so it applies findings rather than only reporting them: it applies its high-conviction structural findings and records anything needing a human call under `NEEDS_HUMAN`. Structure only — file size, spaghetti growth, layering, comment noise, code-judo simplifications. It is not a bug hunt.
 
 Carry every `NEEDS_HUMAN` note into the final report. Never swallow one.
 
@@ -151,6 +214,7 @@ Carry every `NEEDS_HUMAN` note into the final report. Never swallow one.
 
 Run the **Validation** block from `CLAUDE.md` verbatim, in order, stopping at the first failure (typically `{typecheck} && {lint} && {test}`). If that section is still a `{placeholder}`, fall back to the stack-detected equivalents and say which you used.
 
+- **Delegated:** the worker runs the gate after its Phase 5 fixes; the supervisor re-runs it once on the final tree in Phase 6 — the worker's report alone never counts as green.
 - **Green** → done.
 - **Red** → fix and re-run, **at most twice**. Phases 3.5 and 4 both mutate code, so a red gate here is often their doing — check that first.
 - **Still red after two attempts** → stop and escalate with the actual output. Do not grind, and do not report a partial pass as a pass.
@@ -162,8 +226,10 @@ Run the **Validation** block from `CLAUDE.md` verbatim, in order, stopping at th
 ```markdown
 ## /quick-change: <one-line task>
 
+Tryb: <solo | delegated — worker, klon <worker-clone>, branch, base SHA>
+Fazy (owner · rc): <0–2 supervisor · 3 worker/supervisor · 3.5 supervisor · 4 codex · 5 worker/supervisor · 6 supervisor>
 Plan: <1 line — what was decided>
-/code-review (low): <N błędów poprawionych — jakie | czysto>
+/code-review (low): <N błędów poprawionych — jakie | czysto (zakres: base + hash diffu) | fallback: <model/effort> → <N uwag | czysto>, pełna opinia: <ścieżka> | BEZ OPINII → STOP>
 Codex (idea): <czysto | N uwag, M uwzględnionych — co dokładnie złapał | BEZ OPINII: codex nie jest zainstalowany / codex nie zwrócił wyniku mimo ponowienia>
 Zmienione pliki: <list>
 /deep-review: <N poprawek zastosowanych | czysto>
@@ -186,6 +252,7 @@ Then stop. **`/quick-change` never commits** — the tree is left ready for `/co
 ## CRITICAL rules
 
 - **The Codex review is mandatory and has no opt-out.** No flag disables it, and no judgement call skips it. The single exception is a `codex` that is not installed — a missing tool, never a decision, always stated on its own line in the report. A run that produced code without a review it could have had is a broken run.
+- **A missing Phase 3.5 opinion fails closed.** One fresh fallback at most; a second no-opinion is a STOP, never CLEAN and never an author self-review.
 - **The review happens before the code, or it is not this command.** Never reorder Phase 2 after Phase 3 to "save time" — a post-hoc review of a fast fix is what this lane exists to replace.
 - **Never seed Codex with your own conclusions.** Orientation + the proposal + open task. Nothing else.
 - **Verify every Codex finding against real code before folding it into the plan.** A second model hallucinates too.

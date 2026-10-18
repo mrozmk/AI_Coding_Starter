@@ -24,16 +24,19 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
 
 ## Provisioning (once, on the Operator's word)
 
-1. From the main checkout: `bash .claude/lib/worker-next.sh init origin/develop-netcore7`. The
-   clone is detached at the base; that commit is the first settled tip.
-2. Ensure SolTT's Codex host can write to the clone and the selected artifacts root
+1. From the main checkout: `bash .claude/lib/worker-next.sh init origin/<trunk>` (`<trunk>` = the
+   profile's `teams.trunk`, as in `AGENTS.md`). The clone is detached at the base; that commit is
+   the first settled tip.
+2. Ensure the worker's Codex host can write to the clone and the selected artifacts root
    (default `~/.agent-mail/taketask-dn/worker/`). Preserve existing approved mailbox and host
    temporary-directory access; these two task paths do not replace the host's whole permission
-   profile. SolTT uses `CODEX_HOME=~/.codex-taketask`. Use the thread cwd or narrow writable roots;
-   do not widen to `~` or full access. Do not copy authentication files or session databases.
-3. Smoke: from the clone root, SolTT runs `bash .claude/lib/worker-next.sh status` and
-   `dotnet build TakeTask2.API.sln`, and performs a reversible write probe in the selected
-   artifacts root. Report the resolved clone/base, actual status and command exit codes;
+   profile. The worker runs with `CODEX_HOME=<codex-home>` (the value of `.claude/codex-profile`,
+   as in `AGENTS.md`). Use the thread cwd or narrow writable roots; do not widen to `~` or full
+   access. Do not copy authentication files or session databases.
+3. Smoke: from the clone root, the worker runs `bash .claude/lib/worker-next.sh status` and
+   the project's build check `<build_check>` (profile `teams.build_check`), and performs a
+   reversible write probe in the selected artifacts root. Report the resolved clone/base, actual
+   status and command exit codes;
    `status` returning 0 alone is insufficient because it also returns 0 for a missing clone.
    A freshly provisioned clone must be idle at the expected base. Remove only the smoke probe.
 4. `init` copies only `info/exclude` — no `.env`, credentials, `settings.local.json`, sessions or

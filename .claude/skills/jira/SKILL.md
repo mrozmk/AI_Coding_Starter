@@ -28,6 +28,19 @@ Three invariants — they hold for every invocation, every turn, for the duratio
 
    **The printed draft is complete or it is not a draft.** Print the field table **and the entire rendered description body, verbatim** — never a summary, a list of section names, or "description as discussed above" — plus the list of files queued for upload. This binds hardest on Bugs, whose descriptions are long enough to tempt abbreviation. On `edit`, apply the user's corrections and re-print the whole draft again before asking.
 
+   **Narrow team-wrapup exception (Flow A only).** `.agents/team/session.json` must exist with
+   `role: "wrapup"`. The current run's `wrapup-state.json` holds the complete displayed draft
+   and its acceptance under a stable create intent id; `wrapup-<attempt>.md` is a report copy.
+   The developer or an authorized supervisor selected that recommendation in the wrapup step 7.
+   Resume reuses that saved draft, marker and intent id without regeneration or renumbering.
+   That selection replaces `y`: create exactly that accepted draft without a second dry-run or
+   `Tworzę? [y/n/edit]`. It also authorizes only its listed uploads and the project's
+   assignee / active-sprint defaults. Follow the wrapup prompt's separate intents/recovery for
+   each write; a completed creation is not repeated to finish those operations. A changed draft
+   returns to wrapup step 7 for acceptance. This exception does not waive preflight, required
+   fields or parent verification. All other contexts and mutations retain the full dry-run and
+   explicit `y`.
+
 2. **No default creation.** If any of these is missing, STOP and ask — do not guess or fabricate:
    - `project_key` (fall back to `$JIRA_DEFAULT_PROJECT` only if set; otherwise ask)
    - `parent_epic_key` for Task and Bug (always required — no Task / Bug is created "free-floating"). For **Bug** the skill resolves a candidate itself and proposes it — see Flow A step 2.

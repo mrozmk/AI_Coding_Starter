@@ -419,6 +419,8 @@ Then proceed to Step 9 either way. A clean cross-model pass is a good outcome, a
 
 If codex surfaced a **recurring** design mistake (a class of gap `/brainstorm` keeps producing in this project), save the RULE (not the finding) to `.agents/memory/patterns.md` — so the next spec avoids it before codex even runs. Do not save individual findings as memory.
 
+**Team mode** (`.agents/team/session.json` exists): the rule goes under `## Learnings` in `.agents/team/runs/<run>/notes.md`, never to `.agents/memory/` — the `guard-team-memory.sh` hook rejects a memory write from any role but `wrapup`.
+
 ### Step 9: Approval, then Transition to Planning
 
 This is the one place `/brainstorm` stops and waits. The spec is final here — Step 6 self-review and Step 8's auto-apply are both behind you — so what the user accepts is exactly what `/plan-feature` will read.
@@ -439,6 +441,8 @@ This is the one place `/brainstorm` stops and waits. The spec is final here — 
 > - **Revise the design** *(offer only when a rethink signal exists)* — the signal lands; return to Step 4 to reshape the design, then re-run Steps 6–8 and return here.
 
 **On approval:** flip the spec's `**Status:**` from `Draft` to `Approved`, then hand off.
+
+**Team mode** (`.agents/team/session.json` exists): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — team mode)`), and continue into planning in the same turn — the planner role runs `/plan-feature` right after `/brainstorm`, so a waiting gate would stall the run. The two exceptions still ask: a real directional fork from Step 2, and a 🔶 rethink signal from Step 8.7 (none → no question). The `<TERMINAL-GATE>` below does not apply in team mode: the planner's own prompt owns the handoff.
 
 > **This gate is a guardrail, not a shaping rule — it has no yield condition** (`.agents/memory/index.md` → Output-Discipline Convention). It is what makes `/brainstorm` a design gate rather than a design *suggestion*, and it is the reason every other step is allowed to move without asking. Nothing in `.claude/` invokes `/brainstorm` programmatically — it is a human-invoked command in every path the repo has — so there is no non-interactive caller for a yield to serve, and `/deep-review`'s two-mode split would be modelling a caller that does not exist. If one is ever added, that is the moment to design a second mode, with a real case in hand.
 
