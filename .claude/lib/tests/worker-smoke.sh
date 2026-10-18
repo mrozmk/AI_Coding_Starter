@@ -404,4 +404,40 @@ run "$SOL" $W status
 expect 0 "state: idle" "status from inside the clone"
 
 [ -d "$WD/staging-TT-999-x" ] || fail "the staging leftover was deleted"
+
+# ---- (16) a source repo with a split commit-graph still clones --------------------------------
+# Regression: `git clone --reference-if-able <src> --dissociate` reads <src>'s commit-graph while
+# the alternate is attached. An incremental chain (Apple git 2.54.0) made it die with
+# `fatal: unable to parse commit` and leave the checkout empty. Needs a NON-local transport
+# (file://) — the local-path shortcut copies the graph instead of reading it.
+CG="$WORK/cgraph"
+CG_URL=https://github.com/acme/cgraph
+mkdir -p "$CG"
+git init --quiet --bare "$CG/origin.git"
+printf '[url "file://%s"]\n  insteadOf = %s\n' "$CG/origin.git" "$CG_URL" >> "$GIT_CONFIG_GLOBAL"
+git init --quiet "$CG/src"
+git -C "$CG/src" remote add origin "$CG_URL"
+for i in 1 2 3; do
+  echo "$i" >> "$CG/src/f.txt"
+  git -C "$CG/src" add f.txt && git -C "$CG/src" commit --quiet -m "c$i"
+done
+git -C "$CG/src" push --quiet origin HEAD:refs/heads/develop-netcore7
+git -C "$CG/src" commit-graph write --reachable --split
+# A second layer over commits the clone never receives — the shape that broke the parse.
+for i in 4 5; do
+  echo "$i" >> "$CG/src/f.txt"
+  git -C "$CG/src" add f.txt && git -C "$CG/src" commit --quiet -m "c$i"
+done
+git -C "$CG/src" commit-graph write --reachable --split=no-merge
+[ "$(ls "$CG/src/.git/objects/info/commit-graphs"/*.graph | wc -l | tr -d ' ')" -ge 2 ] \
+  || fail "fixture: no incremental commit-graph chain in the source repo"
+# Real git only: the suite's stub answers every `remote get-url origin` with the ADO fixture URL.
+run "$WORK" env PATH="${PATH#"$WORK/bin:"}" \
+  bash -c ". '$SRC/.claude/lib/team-lib.sh' && team_clone_dissociated '$CG/src' '$CG/clone'"
+expect 0 "" "clone from a source with a split commit-graph"
+[ -f "$CG/clone/f.txt" ] || fail "the clone has no checkout"
+[ ! -e "$CG/clone/.git/objects/info/alternates" ] || fail "the clone kept an alternates file"
+run "$CG/clone" git fsck --connectivity-only
+expect 0 "" "fsck of the clone"
+
 echo "worker-smoke: OK"

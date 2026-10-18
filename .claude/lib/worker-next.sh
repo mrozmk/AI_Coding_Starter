@@ -126,10 +126,7 @@ cmd_init() {
     W_PROBLEMS+=("base $base $NO_CONTRACT")
   fi
   w_flush
-  # Real origin URL + --reference-if-able: a local-path clone would need `git remote set-url`
-  # (denied).
-  git clone --quiet --reference-if-able "$ROOT" --dissociate \
-    "$(git -C "$ROOT" remote get-url origin)" "$DIR"
+  team_clone_dissociated "$ROOT" "$DIR"
   # Detached: the fresh clone already has a local line branch, so `switch -c <line>` would fail.
   git -C "$DIR" switch --quiet --detach "$base"
   ex="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path info/exclude)"

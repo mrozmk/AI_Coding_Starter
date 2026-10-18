@@ -77,8 +77,7 @@ if [ ${#TEAM_PROBLEMS[@]} -gt 0 ]; then
   exit 1
 fi
 
-# Real origin URL + --reference-if-able: a local-path clone would need `git remote set-url` (denied).
-git clone --quiet --reference-if-able "$root" --dissociate "$(git -C "$root" remote get-url origin)" "$dir"
+team_clone_dissociated "$root" "$dir"
 git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 team_seed_files "$root" "$dir"
 team_write_json "$dir" "$team" "$key" "$branch" "$base" "$mode" "$root"

@@ -102,6 +102,21 @@ team_prompt_open() {
   team_pane "$1" 25 | grep -Eq 'Do you want to (proceed|make this edit|create|allow)|❯ *1\. Yes'
 }
 
+# Usage: team_clone_dissociated <root> <dir> — a self-contained clone of <root>'s origin that
+# still borrows <root>'s objects for the transfer (real origin URL: a local-path clone would need
+# `git remote set-url`, which is denied).
+#
+# `-c core.commitGraph=false` is load-bearing. With the alternate attached, git reads the SOURCE
+# repo's commit-graph; when that is an incremental chain (.git/objects/info/commit-graphs/, Apple
+# git 2.54.0) the clone dies with `fatal: unable to parse commit <sha>` and leaves the checkout
+# empty — reproducible on any repo after `git commit-graph write --reachable --split`. Disabling
+# the graph for this one process makes git parse the objects themselves; nothing is written to the
+# new repo's config, and --dissociate still leaves no objects/info/alternates behind.
+team_clone_dissociated() {
+  git -c core.commitGraph=false clone --quiet --reference-if-able "$1" --dissociate \
+    "$(git -C "$1" remote get-url origin)" "$2"
+}
+
 # Usage: team_clone_dirs <main root> — prints each clone's .agents/team dir that has team.json.
 team_clone_dirs() {
   local d prefix
