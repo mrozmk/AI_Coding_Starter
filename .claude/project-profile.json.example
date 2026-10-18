@@ -42,9 +42,17 @@
   "_language_doc": "pl | en. Asked first (Screen 0). Governs Claude <-> developer communication only; code, comments and commits stay English.",
   "language": "pl",
 
-  "_teams_doc": "Values the team harness (/start-team, /monitor, .claude/lib/team-*.sh) reads instead of hardcoding them. Written by /setup:teams; a project without this block refuses /start-team before any side effect. Read with `jq` only — never eval'd or sourced. tracker: jira | github (sets the ticket-key regex). pr_provider: azure-devops | none | github. trunk: the line team branches are cut from (base-ref = origin/<trunk>). branch_types: allowed <type>/<key>-<slug> prefixes. required_tools: must be on PATH before a team starts. clone_parent: OPTIONAL — where team clones live; omit it for the default (siblings of this repo). A leading ~ is expanded and spaces are allowed. seed_files: copied into every clone (.env is chmod 600 when listed). env_file_required: refuse to start without a mode-600 .env. build_check: the build command, run with `bash -c` in the clone root. test_gate: a script path, or `none` to skip the gate. gates: auto | manual-mql5 (manual-mql5 = the gates are run by hand and the QA report says so). Values below are neutral examples — not any project's real ones.",
+  "_teams_doc": "Values the team harness (/start-team, /monitor, .claude/lib/team-*.sh) reads instead of hardcoding them. Written by /setup:teams; a project without this block refuses /start-team before any side effect. Read with `jq` only — never eval'd or sourced. tracker: jira | github | none (sets the ticket-key regex; none = local `L<n>` keys allocated by team-tracker.sh, zero tracker calls). github: REQUIRED when tracker=github, ignored otherwise — repo (`owner/repo`), project_owner, project_number plus the Project v2 IDs project_id, status_field_id and status_options.started/.delivered (read the IDs once with `gh project field-list <number> --owner <owner> --format json`). pr_provider: azure-devops | none | github. trunk: the line team branches are cut from (base-ref = origin/<trunk>). branch_types: allowed <type>/<key>-<slug> prefixes. required_tools: must be on PATH before a team starts. clone_parent: OPTIONAL — where team clones live; omit it for the default (siblings of this repo). A leading ~ is expanded and spaces are allowed. seed_files: copied into every clone (.env is chmod 600 when listed). env_file_required: refuse to start without a mode-600 .env. build_check: the build command, run with `bash -c` in the clone root. test_gate: a script path, or `none` to skip the gate. gates: auto | manual-mql5 (manual-mql5 = the gates are run by hand and the QA report says so). Values below are neutral examples — not any project's real ones.",
   "teams": {
     "tracker": "github",
+    "github": {
+      "repo": "owner/repo",
+      "project_owner": "owner",
+      "project_number": 1,
+      "project_id": "PVT_example",
+      "status_field_id": "PVTSSF_example",
+      "status_options": {"started": "opt-started", "delivered": "opt-delivered"}
+    },
     "pr_provider": "none",
     "trunk": "main",
     "branch_types": ["feature", "bugfix", "chore"],

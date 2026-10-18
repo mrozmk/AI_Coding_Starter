@@ -4,12 +4,28 @@
 # Bash 3.2 compatible (macOS /bin/bash): no mapfile, no associative arrays.
 #
 # The profile carries VALUES only (tracker, trunk, tools, gates, clone parent). Provider BEHAVIOUR
-# (Azure DevOps, Jira) is unchanged — `team_profile_require_supported` refuses anything this stage
-# cannot run, and it must be called before the first side effect (clone, tmux, team.json).
+# lives elsewhere: tracker behaviour is `team-tracker.sh` (github/none; jira stays on the session's
+# MCP), and `team_profile_require_supported` refuses anything this stage cannot run — it must be
+# called before the first side effect (clone, tmux, team.json).
 #
 # Values are read with `jq -r` only: the profile is never `eval`ed or sourced.
 
 team_profile_die() { echo "error: $*" >&2; exit 2; }
+
+# Usage: team_profile_gh_req <file> <jq path> <field> [regex] → the value in $TEAM_PROFILE_GH_V.
+# A global, not stdout: `$(…)` would run team_profile_die in a subshell and the caller would sail
+# on with an empty value. Missing block, empty field and bad format are the same refusal.
+team_profile_gh_req() {
+  local f="$1" path="$2" field="$3" re="${4:-}"
+  TEAM_PROFILE_GH_V="$(jq -r "$path | if . == null then \"\" else tostring end" "$f" \
+    2>/dev/null || true)"
+  [ -n "$TEAM_PROFILE_GH_V" ] \
+    || team_profile_die "teams.github.$field is required for tracker=github"
+  if [ -n "$re" ]; then
+    [[ "$TEAM_PROFILE_GH_V" =~ $re ]] \
+      || team_profile_die "teams.github.$field is required for tracker=github"
+  fi
+}
 
 # `~` or `~/…` prefix → $HOME; every other value is verbatim (paths may contain spaces).
 team_profile_expand() { printf '%s' "${1/#\~/$HOME}"; }
@@ -28,7 +44,8 @@ team_profile_load() {
   case "$TEAM_TRACKER" in
     jira)   TEAM_KEY_REGEX='^[A-Z]+-[0-9]+$' ;;
     github) TEAM_KEY_REGEX='^[0-9]+$' ;;
-    *) team_profile_die "teams.tracker=${TEAM_TRACKER:-<missing>} must be jira|github" ;;
+    none)   TEAM_KEY_REGEX='^L[0-9]+$' ;;
+    *) team_profile_die "teams.tracker=${TEAM_TRACKER:-<missing>} must be jira|github|none" ;;
   esac
 
   TEAM_PR_PROVIDER="$(jq -r '.teams.pr_provider // empty' "$f" 2>/dev/null || true)"
@@ -87,14 +104,49 @@ team_profile_load() {
   while IFS= read -r v; do [ -z "$v" ] || TEAM_SEED_FILES+=("$v"); done \
     < <(jq -r '.teams.seed_files[]? // empty' "$f" 2>/dev/null)
 
+  # The `teams.github` block: required for tracker=github, ignored for jira/none. Always
+  # initialized — the callers run under `set -u`.
+  TEAM_GH_REPO=""; TEAM_GH_PROJECT_OWNER=""; TEAM_GH_PROJECT_NUMBER=""
+  TEAM_GH_PROJECT_ID=""; TEAM_GH_STATUS_FIELD_ID=""
+  TEAM_GH_STATUS_STARTED=""; TEAM_GH_STATUS_DELIVERED=""
+  TEAM_PROFILE_GH_V=""
+  if [ "$TEAM_TRACKER" = github ]; then
+    team_profile_gh_req "$f" '.teams.github.repo' repo \
+      '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; TEAM_GH_REPO="$TEAM_PROFILE_GH_V"
+    team_profile_gh_req "$f" '.teams.github.project_owner' project_owner
+    TEAM_GH_PROJECT_OWNER="$TEAM_PROFILE_GH_V"
+    team_profile_gh_req "$f" '.teams.github.project_number' project_number '^[0-9]+$'
+    TEAM_GH_PROJECT_NUMBER="$TEAM_PROFILE_GH_V"
+    team_profile_gh_req "$f" '.teams.github.project_id' project_id
+    TEAM_GH_PROJECT_ID="$TEAM_PROFILE_GH_V"
+    team_profile_gh_req "$f" '.teams.github.status_field_id' status_field_id
+    TEAM_GH_STATUS_FIELD_ID="$TEAM_PROFILE_GH_V"
+    team_profile_gh_req "$f" '.teams.github.status_options.started' status_options.started
+    TEAM_GH_STATUS_STARTED="$TEAM_PROFILE_GH_V"
+    team_profile_gh_req "$f" '.teams.github.status_options.delivered' status_options.delivered
+    TEAM_GH_STATUS_DELIVERED="$TEAM_PROFILE_GH_V"
+  fi
+
   TEAM_PROFILE_LOADED=1
+}
+
+# Usage: team_cost_key <root> <short key> — the key cost records are bound to. The short key stays
+# in the branch and team.json; costs need one that is unique across projects (same `#4` elsewhere).
+team_cost_key() {
+  local root="$1" key="$2"
+  [ -n "${TEAM_PROFILE_LOADED:-}" ] || team_profile_load "$root"
+  case "$TEAM_TRACKER" in
+    github) printf '%s#%s' "$TEAM_GH_REPO" "$key" ;;
+    none)   # `-` LAST in the tr set: `.-\n` would be a reversed range and tr would fail.
+            printf '%s:%s' "$(printf '%s' "$(basename "$root")" | tr -c 'A-Za-z0-9_.-' '-')" "$key" ;;
+    *)      printf '%s' "$key" ;;
+  esac
 }
 
 # Refuses what this stage (2a) cannot run — before any side effect.
 team_profile_require_supported() {
   [ -n "${TEAM_PROFILE_LOADED:-}" ] || team_profile_load
-  [ "$TEAM_TRACKER" = jira ] \
-    || team_profile_die "tracker=$TEAM_TRACKER unsupported in 2a"
+  # Every tracker runs now (jira via MCP, github/none via team-tracker.sh); pr_provider does not.
   [ "$TEAM_PR_PROVIDER" = azure-devops ] \
     || team_profile_die "pr_provider=$TEAM_PR_PROVIDER unsupported in 2a"
 }

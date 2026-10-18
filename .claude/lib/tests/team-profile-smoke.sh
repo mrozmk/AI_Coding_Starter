@@ -15,7 +15,10 @@ WORKER="bash .claude/lib/worker-next.sh"
 MERGE="bash .claude/lib/team-merge-check.sh"
 
 # Profile variants as jq filters over the TT fixture (team-smoke-lib.sh → smoke_profile).
-DTS='.teams.tracker = "github" | .teams.pr_provider = "none" | .teams.trunk = "main"
+GH_BLOCK='.teams.github = {repo: "owner/repo", project_owner: "owner", project_number: 2,
+  project_id: "PVT_x", status_field_id: "PVTSSF_x",
+  status_options: {started: "opt-started", delivered: "opt-delivered"}}'
+DTS=".teams.tracker = \"github\" | $GH_BLOCK"'| .teams.pr_provider = "none" | .teams.trunk = "main"
   | .teams.branch_types = ["feature", "bugfix", "chore"]
   | .teams.required_tools = ["git", "jq", "tmux", "claude", "codex", "gh", "python3"]
   | .teams.seed_files = [".claude/settings.local.json", ".agents/memory/user-profile.md"]
@@ -53,7 +56,21 @@ has "$HOME/DTS teams/main-alfa|origin/main" "$WORK/out" || fail "clone_parent wi
 
 # ---- (3) require_supported refuses what 2a cannot run ------------------------------------------
 peek "$DTS" 'team_profile_require_supported; echo reached'
-expect 2 "error: tracker=github unsupported in 2a" "tracker github refused in 2a"
+expect 2 "error: pr_provider=none unsupported in 2a" "DTS still refused — on pr_provider, not the tracker"
+! has "tracker=github unsupported" "$WORK/out" || fail "tracker github is supported now (2b)"
+peek "$DTS | .teams.pr_provider = \"azure-devops\"" 'team_profile_require_supported; echo reached'
+expect 0 "reached" "tracker=github is supported in 2b"
+peek '.teams.tracker = "none" | .teams.pr_provider = "azure-devops"' \
+  'team_profile_require_supported; printf "%s|%s\n" "$TEAM_TRACKER" "$TEAM_KEY_REGEX"'
+expect 0 'none|^L[0-9]+$' "tracker=none is supported and keys its own IDs"
+
+# The cost key is qualified per tracker — the same short key in two projects must not collide.
+peek "$DTS | .teams.pr_provider = \"azure-devops\"" 'team_cost_key "$PWD" 4'
+expect 0 "owner/repo#4" "cost key for github is <owner>/<repo>#<n>"
+peek '.teams.tracker = "none"' 'team_cost_key "$PWD" L7'
+expect 0 "main:L7" "cost key for none is <repo-dir>:L<n>"
+peek '.' 'team_cost_key "$PWD" TT-790'
+expect 0 "TT-790" "cost key for jira is the bare key"
 peek '.teams.pr_provider = "none"' 'team_profile_require_supported; echo reached'
 expect 2 "error: pr_provider=none unsupported in 2a" "pr_provider none refused in 2a"
 peek '.teams.pr_provider = "github"' 'team_profile_require_supported; echo reached'
@@ -68,7 +85,15 @@ expect 2 "no teams profile — run /setup:teams" "profile file missing"
 peek 'del(.teams)' 'echo reached'
 expect 2 "no teams profile — run /setup:teams" "teams block missing"
 peek '.teams.tracker = "svn"' 'echo reached'
-expect 2 "teams.tracker=svn must be jira|github" "bad tracker enum"
+expect 2 "teams.tracker=svn must be jira|github|none" "bad tracker enum"
+peek '.teams.tracker = "github"' 'echo reached'
+expect 2 "teams.github.repo is required for tracker=github" "tracker=github without the block"
+peek "$DTS | .teams.github.repo = \"not-a-slug\"" 'echo reached'
+expect 2 "teams.github.repo is required for tracker=github" "teams.github.repo must be owner/repo"
+peek "$DTS | del(.teams.github.status_options.delivered)" 'echo reached'
+expect 2 "teams.github.status_options.delivered is required" "a missing status option is refused"
+peek "$DTS | .teams.github.project_number = \"two\"" 'echo reached'
+expect 2 "teams.github.project_number is required" "project_number must be numeric"
 peek '.teams.pr_provider = "bitbucket"' 'echo reached'
 expect 2 "teams.pr_provider=bitbucket must be" "bad pr_provider enum"
 peek '.teams.gates = "sometimes"' 'echo reached'
