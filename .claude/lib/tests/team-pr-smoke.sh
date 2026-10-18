@@ -106,6 +106,7 @@ expect 3 "PR #12 is from a fork (evil/widgets)" "a fork is refused before the re
 # ================================================================================================
 run "$MAIN" $PR readiness 8
 expect 4 '"merge":"pending"' "no merge ref yet is pending, not a refusal"
+has '"reason":"recomputing"' "$WORK/out" || fail "a missing merge ref is not reason=recomputing"
 
 smoke_gh_pull 8 "feature/L1-x" "$TRUNK"
 run "$MAIN" $PR readiness 8
@@ -134,6 +135,7 @@ smoke_gh_pull_octopus 8 "feature/L1-x" "$TRUNK" "feature/LX-extra"
 run "$MAIN" $PR readiness 8
 expect 4 '"merge":"pending"' "an octopus merge ref is never ok, however right its first parents"
 has '"parents_ok":false' "$WORK/out" || fail "an octopus merge ref claimed parents_ok"
+has '"reason":"parents"' "$WORK/out" || fail "an octopus merge ref is not reason=parents"
 smoke_gh_pull 8 "feature/L1-x" "$TRUNK"
 run "$MAIN" $PR readiness 8
 expect 0 '"merge":"ok"' "a two-parent merge ref is ready again after the octopus"
@@ -151,6 +153,9 @@ smoke_gh_pull_stale 8 "feature/L1-x" "$TRUNK"
 run "$MAIN" $PR readiness 8
 expect 4 '"merge":"pending"' "a stale merge ref (parent 1 != base) is pending"
 has '"parents_ok":false' "$WORK/out" || fail "a stale merge ref claimed parents_ok"
+has '"reason":"stale-base"' "$WORK/out" || fail "a stale merge ref is not reason=stale-base"
+has "\"merge_base_sha\":\"$(bare rev-list --parents -n 1 refs/pull/8/merge | awk '{print $2}')\"" "$WORK/out" \
+  || fail "a stale merge ref did not name the base it was built on"
 
 # The second generation of the same ref: GitHub recomputes, the fixture force-pushes it.
 smoke_gh_pull 8 "feature/L1-x" "$TRUNK"
@@ -764,6 +769,9 @@ run "$MAIN" $IT beta
 expect 3 "target moved since merge-check" "beta's readiness from the old trunk is dead"
 [ ! -f "$MAIN/.agents/team/integrate/beta-$(cat "$CL_B/.agents/team/run").json" ] \
   || fail "a step-5 refusal wrote an intent"
+# GitHub has not rebuilt beta's merge ref yet: the check says so and names the way out.
+run "$MAIN" $MC beta
+expect 4 "close and reopen PR #42" "a stale merge ref after alfa's push is named, not a bare rerun"
 c_refresh 42 "$BR_B" "$TRUNK"
 [ "$Tx" = "$M_A" ] || fail "beta's new merge ref was not built against alfa's result"
 run "$MAIN" $MC beta

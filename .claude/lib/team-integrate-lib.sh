@@ -108,7 +108,13 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   if [ "$rc" != 0 ]; then
     case "$merge" in
       conflict) echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3 ;;
-      *) echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
+      *) if [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" = stale-base ]; then
+           echo "error: PR #$pr merge ref was built on $(jq -r .merge_base_sha <<<"$out"), but $line is" \
+             "at $(jq -r .target_sha <<<"$out") — GitHub has not rebuilt it since $line moved." \
+             "Wait and rerun merge-check, or close and reopen PR #$pr (Operator decision) to force it" >&2
+         else
+           echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
+         fi
          return 4 ;;
     esac
   fi

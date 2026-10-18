@@ -108,9 +108,14 @@ ls_remote() {  # ls_remote <ref> → the sha, empty when the ref is absent
 }
 
 # Printed on EVERY outcome, including the refusals: the caller logs what it saw.
-emit_readiness() {  # emit_readiness <merge> <target_sha> <merge_sha> <source_sha> <parents_ok>
-  jq -nc --arg m "$1" --arg t "$2" --arg g "$3" --arg s "$4" --argjson p "$5" \
-    '{merge: $m, target_sha: $t, merge_sha: $g, source_sha: $s, parents_ok: $p}'
+# `reason` is diagnostic only — callers branch on `merge` and the exit code. `stale-base`: the merge
+# ref we read and fetched is one commit, on the right head, but its parent 1 (`merge_base_sha`) is
+# not the target tip — GitHub has not rebuilt it since the target moved.
+emit_readiness() {  # emit_readiness <merge> <target_sha> <merge_sha> <source_sha> <parents_ok> <reason> [<p1>]
+  jq -nc --arg m "$1" --arg t "$2" --arg g "$3" --arg s "$4" --argjson p "$5" --arg r "$6" \
+    --arg b "${7:-}" \
+    '{merge: $m, target_sha: $t, merge_sha: $g, source_sha: $s, parents_ok: $p, reason: $r,
+      merge_base_sha: $b}'
 }
 
 op_readiness() {  # op_readiness <pr>
@@ -125,12 +130,12 @@ op_readiness() {  # op_readiness <pr>
   merge_sha="$(ls_remote "refs/pull/$n/merge")"
 
   if [ "$mergeable" = CONFLICTING ]; then
-    emit_readiness conflict "$target_sha" "$merge_sha" "$src" false
+    emit_readiness conflict "$target_sha" "$merge_sha" "$src" false conflict
     exit 3
   fi
   # Anything that is not a plain MERGEABLE (UNKNOWN included) means GitHub is still recomputing.
   if [ "$mergeable" != MERGEABLE ] || [ -z "$merge_sha" ] || [ -z "$target_sha" ]; then
-    emit_readiness pending "$target_sha" "$merge_sha" "$src" false
+    emit_readiness pending "$target_sha" "$merge_sha" "$src" false recomputing
     exit 4
   fi
   # Fetched into a ref WE own, not FETCH_HEAD: FETCH_HEAD is global, any concurrent fetch in this
@@ -138,7 +143,7 @@ op_readiness() {  # op_readiness <pr>
   # `--force`: a recomputed merge M2(T2,S) is no descendant of M1, and this only moves a local ref.
   if ! git fetch --quiet origin "+refs/pull/$n/merge:$TEAM_PR_MERGE_REF" 2>"$TMP/err"; then
     sed 's/^/  | /' "$TMP/err" >&2
-    emit_readiness pending "$target_sha" "$merge_sha" "$src" false
+    emit_readiness pending "$target_sha" "$merge_sha" "$src" false fetch-failed
     exit 4
   fi
   # Resolved ONCE. Everything below is checked against this one sha, so nothing we verify can be
@@ -150,12 +155,17 @@ op_readiness() {  # op_readiness <pr>
   np="$(printf '%s\n' "$parents" | awk 'NR == 1 { print NF - 1 }')"
   p1="$(printf '%s\n' "$parents" | awk 'NR == 1 { print $2 }')"
   p2="$(printf '%s\n' "$parents" | awk 'NR == 1 { print $3 }')"
-  if [ -n "$fh" ] && [ "$np" = 2 ] && [ "$fh" = "$merge_sha" ] \
-    && [ "$p1" = "$target_sha" ] && [ "$p2" = "$src" ]; then
-    emit_readiness ok "$target_sha" "$merge_sha" "$src" true
-    return 0
+  if [ -n "$fh" ] && [ "$np" = 2 ] && [ "$fh" = "$merge_sha" ] && [ "$p2" = "$src" ]; then
+    if [ "$p1" = "$target_sha" ]; then
+      emit_readiness ok "$target_sha" "$merge_sha" "$src" true ""
+      return 0
+    fi
+    # The fetched commit IS the one ls-remote named (a ref rebuilt between the two reads is GitHub
+    # catching up), on the right head — only its base is old.
+    emit_readiness pending "$target_sha" "$merge_sha" "$src" false stale-base "$p1"
+    exit 4
   fi
-  emit_readiness pending "$target_sha" "$merge_sha" "$src" false
+  emit_readiness pending "$target_sha" "$merge_sha" "$src" false parents
   exit 4
 }
 
