@@ -74,6 +74,12 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.norm_ts("2026-10-06T12:00:00+0200"),
                          "2026-10-06T10:00:00.000Z")
 
+    def test_ticket_key_forms(self):
+        for ok in ("TT-805", "owner/repo#4", "my-org/re.po_1#12", "repo:L4"):
+            self.assertTrue(config.TICKET_RE.match(ok), ok)
+        for bad in ("7", "L7", "owner/repo#", "a b:L1", "tt-1", "owner/repo#x"):
+            self.assertFalse(config.TICKET_RE.match(bad), bad)
+
 
 if __name__ == "__main__":
     unittest.main()

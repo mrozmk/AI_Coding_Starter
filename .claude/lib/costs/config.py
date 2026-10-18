@@ -14,7 +14,8 @@ DEFAULT_STAGE_SKILLS = [
     "pr-create", "orchestrate", "quick-change", "pr-merge",
 ]
 OPEN_END = "9999-12-31T00:00:00.000Z"
-TICKET_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
+TICKET_RE = re.compile(
+    r"^([A-Z][A-Z0-9]+-\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+|[A-Za-z0-9_.-]+:L\d+)$")
 TS_RE = re.compile(
     r"^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?"
     r"(Z|[+-]\d{2}:?\d{2})?)?$")

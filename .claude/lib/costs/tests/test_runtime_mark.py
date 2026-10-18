@@ -96,6 +96,23 @@ class RuntimeMarkTest(unittest.TestCase):
         self.assertEqual((line["ticket"], line["team"], line["role"], line["run"],
                           line["attempt"]), ("TT-821", "alfa", "qa", "alfa-20261006-190718", 1))
 
+    def _team_json_ticket(self, data):
+        path = os.path.join(self.home, "session.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        self.mark("session", "--provider", "codex", "--session", SID, "--source", "codex-bg",
+                  "--team-json", path)
+        return self.lines()[0].get("ticket")
+
+    def test_team_json_cost_key_wins_over_ticket(self):
+        self.assertEqual(self._team_json_ticket({"ticket": "7", "cost_key": "o/r#7"}), "o/r#7")
+
+    def test_team_json_empty_or_missing_cost_key_uses_ticket(self):
+        self.assertEqual(self._team_json_ticket({"ticket": "TT-821", "cost_key": ""}), "TT-821")
+
+    def test_team_json_without_cost_key_uses_ticket(self):
+        self.assertEqual(self._team_json_ticket({"ticket": "TT-821"}), "TT-821")
+
     def test_missing_home_is_noop(self):
         missing = os.path.join(self.home, "nope")
         self.run_sh(MARK, ("session", "--provider", "claude", "--session", SID, "--source",

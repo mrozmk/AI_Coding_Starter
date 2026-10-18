@@ -209,7 +209,7 @@ launch() {
     "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\""
   # Main checkout: a clone on an older base has no helper; a missing one only warns.
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
-    --source team-run --name "$name" --ticket "$(team_json ticket)" --team "$TEAM" \
+    --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
     --role "$role" --run "$RUN" --attempt "$attempt" --cwd "$CLONE" 2>/dev/null \
     || echo "warn: token-usage registration skipped"
   echo "launched: $role attempt $attempt"

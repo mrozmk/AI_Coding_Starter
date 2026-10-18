@@ -256,6 +256,25 @@ class BindingsTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bindings.team_run_window(clone, "alfa-20261006-999999")
 
+    def test_team_run_window_prefers_team_json_cost_key(self):
+        clone = os.path.join(self.env.root, "clone")
+        for where, run_id in (((), "alfa-20261006-093042"),
+                              (("archive", "x-1"), "alfa-20261006-120000")):
+            self._run(clone, where, run_id)
+            team_dir = os.path.join(clone, ".agents", "team", *where)
+            with open(os.path.join(team_dir, "team.json"), "w") as fh:
+                json.dump({"ticket": "4", "cost_key": "a/x#4"}, fh)
+            self.assertEqual(bindings.team_run_window(clone, run_id)[3], "a/x#4")
+
+    def test_same_short_number_in_two_projects_stays_separate(self):
+        usage_row(self.conn, "ra", session="sa")
+        usage_row(self.conn, "rb", session="sb")
+        self.bind("a/x#4", session="sa")
+        self.bind("b/y#4", session="sb")
+        self.assertEqual(self.alloc("ra")[0]["bindings"][0]["ticket"], "a/x#4")
+        self.assertEqual(self.alloc("rb")[0]["bindings"][0]["ticket"], "b/y#4")
+        self.assertEqual(report.build(self.conn, self.cfg, "a/x#4")["totals"]["total"], 10)
+
     def bind_run(self, ticket, clone, run_id):
         start, end, clone, _, _ = bindings.team_run_window(clone, run_id)
         return self.bind(ticket, window=(start, end), cwd=clone, team_run=run_id)

@@ -16,7 +16,7 @@ set -uo pipefail
 
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 NAME_RE='^[A-Za-z0-9._:-]{1,64}$'
-TICKET_RE='^[A-Z][A-Z0-9]+-[0-9]+$'
+TICKET_RE='^([A-Z][A-Z0-9]+-[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|[A-Za-z0-9_.-]+:L[0-9]+)$'
 RUN_RE='^[a-z0-9]+-[0-9]{8}-[0-9]{6}$'
 ATTEMPT_RE='^[0-9]{1,3}$'
 TOOL_USE_RE='^[A-Za-z0-9_]{1,128}$'
@@ -88,7 +88,7 @@ elif [ "$type" = session ]; then
   case "$source" in team-run|start-team|mail-tt|codex-bg) ;; *) skip "bad session source" ;; esac
   if [ -n "$team_json" ] && [ -f "$team_json" ]; then
     IFS=$'\x1f' read -r j_ticket j_team j_role j_run j_attempt < <(jq -r \
-      '[.ticket, .team, .role, .run, .attempt] | map(. // "" | tostring) | join("\u001f")' \
+      '[(if (.cost_key // "") == "" then .ticket else .cost_key end), .team, .role, .run, .attempt] | map(. // "" | tostring) | join("\u001f")' \
       "$team_json" 2>/dev/null)
     ticket="${ticket:-${j_ticket:-}}"; team="${team:-${j_team:-}}"; role="${role:-${j_role:-}}"
     run="${run:-${j_run:-}}"; attempt="${attempt:-${j_attempt:-}}"

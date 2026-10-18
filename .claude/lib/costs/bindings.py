@@ -131,7 +131,7 @@ def _close_open_run(conn, cwd, at):
 def add_binding(conn, cfg, ticket, *, session=None, turn=None, window=None, cwd=None,
                 share=1.0, provider=None, note=None, team_run=None, commit=True):
     if not config.TICKET_RE.match(ticket or ""):
-        config.fail(3, f"binding refused: {ticket!r} is not a ticket key like TT-805")
+        config.fail(3, f"binding refused: {ticket!r} is not a ticket key like TT-805, owner/repo#4 or repo:L4")
     if not 0 < share <= 1:
         config.fail(3, f"binding refused: share {share} must be in (0, 1]")
     target = _target(cfg, session, turn, window, cwd)
@@ -184,6 +184,14 @@ def team_run_window(clone_dir, run_id):
                 continue
     if not tickets:
         config.fail(2, f"{matches[0]} holds no run record — not a team run")
+    try:
+        with open(os.path.join(os.path.dirname(os.path.dirname(matches[0])), "team.json"),
+                  encoding="utf-8") as fh:
+            cost_key = json.load(fh).get("cost_key")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        cost_key = None
+    if isinstance(cost_key, str) and cost_key:
+        tickets[0] = cost_key
     later = [s for s in (_run_start(os.path.basename(d)) for d in run_dirs) if s and s > start]
     return start, min(later) if later else config.OPEN_END, clone, tickets[0], matches[0]
 
