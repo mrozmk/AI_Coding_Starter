@@ -142,6 +142,19 @@ STUB
 smoke_git_stub() {
   # `git remote get-url` must show the hosted URL while transport uses the local bare repo.
   # `SMOKE_ORIGIN=github` swaps it for the GitHub one; unset keeps smoke 1-4 on ADO, untouched.
+  #
+  # The integration switches below only fire on a push to an explicit `…:refs/heads/…` refspec —
+  # the shape the integrator uses — so the fixtures' own `git push origin <branch>` calls stay
+  # untouched. Pushes are logged to `$GIT_LOG` when that is set: a log SEPARATE from `$STUB_LOG`,
+  # so the assertions of smoke 1-4 keep counting exactly what they count today.
+  #   STUB_GIT_PRE_PUSH="<cmd>"    run just before the real push (a racing writer)
+  #   STUB_GIT_PUSH_FAIL_AFTER=1   the push really lands, then the client gets an error
+  #   STUB_GIT_PUSH_KILL=1         the push really lands, then the caller is SIGKILLed
+  #   STUB_GIT_POST_PUSH="<cmd>"   run right after the real push (a writer landing on top of us)
+  #   STUB_GIT_LSREMOTE_FAIL=1     every `ls-remote` fails (the network, mid-recovery)
+  #   STUB_GIT_STATUS_FAIL=1       `git status` fails with EMPTY stdout (an unreadable repository)
+  # `switch`/`checkout` are logged to `$GIT_LOG` as well, so a test can assert that a refused run
+  # moved nothing in the clone.
   cat > "$WORK/bin/git" <<'STUB'
 #!/usr/bin/env bash
 a=("$@")
@@ -149,6 +162,50 @@ a=("$@")
 if [ "${1:-} ${2:-} ${3:-}" = "remote get-url origin" ]; then
   if [ "${SMOKE_ORIGIN:-ado}" = github ]; then echo "$GH_URL"; else echo "$ADO_URL"; fi
   exit 0
+fi
+if [ "${1:-}" = ls-remote ] && [ "${STUB_GIT_LSREMOTE_FAIL:-0}" = 1 ]; then
+  echo "fatal: unable to access origin: Operation timed out" >&2
+  exit 128
+fi
+if [ "${1:-}" = status ] && [ "${STUB_GIT_STATUS_FAIL:-0}" = 1 ]; then
+  echo "fatal: not a git repository" >&2
+  exit 128
+fi
+case "${1:-}" in
+  switch|checkout) [ -z "${GIT_LOG:-}" ] || echo "git $*" >> "$GIT_LOG" ;;
+esac
+if [ "${1:-}" = push ]; then
+  [ -z "${GIT_LOG:-}" ] || echo "git $*" >> "$GIT_LOG"
+  case "$*" in
+    *:refs/heads/*)
+      [ -z "${STUB_GIT_PRE_PUSH:-}" ] || eval "$STUB_GIT_PRE_PUSH"
+      if [ "${STUB_GIT_PUSH_FAIL_AFTER:-0}" = 1 ]; then
+        "$REAL_GIT" "${a[@]}"
+        echo "fatal: the remote end hung up unexpectedly" >&2
+        exit 128
+      fi
+      if [ -n "${STUB_GIT_POST_PUSH:-}" ]; then
+        "$REAL_GIT" "${a[@]}"; prc=$?
+        eval "$STUB_GIT_POST_PUSH"
+        exit "$prc"
+      fi
+      if [ "${STUB_GIT_PUSH_KILL:-0}" = 1 ]; then
+        "$REAL_GIT" "${a[@]}"
+        # Walks OUR OWN ancestor chain and kills every process in it that is the integrator (the
+        # main one and the command-substitution fork). `pkill -f team-integrate.sh` was the first
+        # try and is wrong twice over: it did not match the harness's `bash <script> <arg>` form on
+        # macOS 15, and it would also kill any unrelated process whose command line merely MENTIONS
+        # the script — an editor, a grep, the session that launched the suite.
+        kp="$PPID"
+        while [ -n "$kp" ] && [ "$kp" != 0 ] && [ "$kp" != 1 ]; do
+          kc="$(ps -o command= -p "$kp" 2>/dev/null)"
+          knext="$(ps -o ppid= -p "$kp" 2>/dev/null | tr -d ' ')"
+          case "$kc" in *team-integrate.sh*) kill -KILL "$kp" 2>/dev/null || true ;; esac
+          kp="$knext"
+        done
+        exit 0
+      fi ;;
+  esac
 fi
 exec "$REAL_GIT" "${a[@]}"
 STUB
@@ -158,6 +215,10 @@ STUB
 # `gh` on PATH. All PR state is a file per PR in $GH_DIR; `state` is DERIVED from the bare origin
 # (head reachable from base = MERGED) so the fixture cannot claim a lifecycle the refs contradict.
 # Env switches: STUB_GH_AUTH (rc of `auth status`), STUB_GH_MERGEABLE (overrides `mergeable`),
+# STUB_GH_ON_MERGED="<cmd>" (run ONCE, right after a `pr view` answers MERGED — the window between
+# "the PR is closed" and the integrator's final look at the base),
+# STUB_GH_ON_VIEW="<cmd>" (run ONCE, right after any `pr view` — the window between a caller's
+# eligibility check and whatever it does next),
 # STUB_GH_CREATE_FAIL_AFTER=1 (the PR is really created, then the client gets an error),
 # STUB_GH_CREATE_RACE=draft|ready (the answer is lost AND the PR that lands has the opposite
 # draft state to the one asked for — a concurrent writer won the race).
@@ -204,7 +265,16 @@ case "${1:-}" in
         while [ $# -gt 0 ]; do case "$1" in -q|--jq) q="$2"; shift 2 ;; *) shift ;; esac; done
         [ -f "$G/pr-$n.json" ] || { echo "no pull requests found for #$n" >&2; exit 1; }
         if [ -n "$q" ]; then pr_obj "$G/pr-$n.json" | jq -r "$q"
-        else pr_obj "$G/pr-$n.json"; fi ;;
+        else pr_obj "$G/pr-$n.json"; fi
+        if [ -n "${STUB_GH_ON_VIEW:-}" ] && [ ! -f "$G/on-view" ]; then
+          : > "$G/on-view"
+          ( set +e; eval "$STUB_GH_ON_VIEW" ) >/dev/null 2>&1 || true
+        fi
+        if [ -n "${STUB_GH_ON_MERGED:-}" ] && [ ! -f "$G/on-merged-$n" ] \
+          && [ "$(pr_state "$G/pr-$n.json" "$(pr_oid "$G/pr-$n.json")")" = MERGED ]; then
+          : > "$G/on-merged-$n"
+          ( set +e; eval "$STUB_GH_ON_MERGED" ) >/dev/null 2>&1 || true
+        fi ;;
       list)
         head=""; base=""; shift 2
         while [ $# -gt 0 ]; do case "$1" in
