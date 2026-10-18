@@ -585,4 +585,24 @@ cmp -s "$WORK/delta-team.json" "$DTD/team.json" || fail "the refused team-next r
 [ ! -d "$DTD/archive" ] || fail "the refused team-next archived the previous run"
 [ -f "$DTD/ticket.json" ] || fail "the refused team-next lost the original ticket"
 
+# ================================================================================================
+# (11) team-run summary: /monitor's only source for the tracker, the ticket title and its link
+# ================================================================================================
+# /monitor must never read clone files, so whatever it prints about the ticket comes from here.
+github_profile
+run "$MAIN" $TR alfa summary
+expect 0 "tracker: github" "the summary of a github clone names its tracker"
+has "title: Fix the thing" "$WORK/out" || fail "the summary has no ticket title"
+has "url: https://github.com/owner/repo/issues/7" "$WORK/out" || fail "the summary has no ticket URL"
+
+setprofile '.'
+rm -rf "$WORK/main-beta"
+run "$MAIN" $NEW beta TT-795 feature/TT-795-x origin/develop-netcore7
+expect 0 "branch:" "a jira clone for the summary case"
+run "$MAIN" $TR beta summary
+expect 0 "tracker: jira" "a jira clone reports tracker: jira"
+has "title: " "$WORK/out" || fail "the jira summary has no title line"
+[ "$(grep -c '^title: .' "$WORK/out")" = 0 ] || fail "jira must leave the title to MCP, not fill it"
+[ "$(grep -c '^url: .' "$WORK/out")" = 0 ] || fail "jira must leave the url empty"
+
 echo "team-tracker-smoke: OK"

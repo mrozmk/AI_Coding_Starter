@@ -358,9 +358,19 @@ cmd_stop() {
 
 # Read-only sources for /monitor's post-run summary: clone files are outside the supervisor's dirs.
 cmd_summary() {
-  local r f
+  local r f trk tf title="" url=""
   RUN="$(cat "$TD/run" 2>/dev/null || true)"
-  echo "ticket: $(team_json ticket)"; echo "mode: $MODE"; echo "branch: $BRANCH"
+  trk="$(team_json tracker)"; [ -n "$trk" ] || trk=jira
+  # /monitor never reads clone files, so the ticket title and link travel through here. `jira` has no
+  # ticket.json — it keeps reading them over MCP, and both values stay empty.
+  tf="$TD/ticket.json"
+  if [ -f "$tf" ]; then
+    title="$(jq -r '.title // ""' "$tf" 2>/dev/null || true)"
+    url="$(jq -r '.url // ""' "$tf" 2>/dev/null || true)"
+  fi
+  echo "ticket: $(team_json ticket)"; echo "tracker: $trk"
+  echo "title: $title"; echo "url: $url"
+  echo "mode: $MODE"; echo "branch: $BRANCH"
   echo "run: ${RUN:-none}"
   r="$(accepted_record "$([ "$MODE" = cli ] && echo cli || echo coder)")"
   echo "pr: $([ -z "$r" ] || rec "$r" pr_id)"

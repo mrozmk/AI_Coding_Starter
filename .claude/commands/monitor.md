@@ -83,8 +83,14 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout (`TakeTask.DN`).
      `bash .claude/lib/team-run.sh <team> summary` (ticket, mode, PR, the QA lines, the wrapup or
      `cli-<n>.md` body) and `bash .claude/lib/team-question.sh <team> list`. **5 parts + one
      decisions line**, plain Polish:
-     - `**<team> / [<KEY>](https://taketask.atlassian.net/browse/<KEY>) — <title>**` — title from
-       `mcp__atlassian__jira_get_issue(KEY, fields="summary")`, the branch slug when Jira is unreachable;
+     - the heading, picked by the `tracker:` line of `summary` (which also carries `title:` and
+       `url:`, both empty for `jira`):
+       - `tracker: jira` → `**<team> / [<KEY>](https://taketask.atlassian.net/browse/<KEY>) —
+         <title>**`, title from `mcp__atlassian__jira_get_issue(KEY, fields="summary")`, the branch
+         slug when Jira is unreachable;
+       - `tracker: github` → `**<team> / [#<KEY>](<url>) — <title>**`;
+       - `tracker: none` → `**<team> / <KEY> — <title>**`, with no link;
+       - `github`/`none` with an empty `title:` → the branch slug (Jira keeps its MCP title);
      - **Co zakodowano:** 2–3 plain sentences, no file names;
      - **Co to daje:** 1–2 sentences for the Operator or customer;
      - **QA:** `Verdict:` and its `Warnings:` in one sentence, plus `PR #<id>`; for cli

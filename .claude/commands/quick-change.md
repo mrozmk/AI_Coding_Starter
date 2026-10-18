@@ -54,7 +54,7 @@ mandatory. A worker handoff alone never means this workflow is complete.
 
 ## Team mode (quick planner)
 
-**When it applies:** `.agents/team/session.json` exists and its `role` is `planner` — the team runs in `quick` mode. The supervisor's ticket is the request.
+**When it applies:** `.agents/team/session.json` exists and its `role` is `planner` — the team runs in `quick` mode. The supervisor's ticket is the request — the argument, or the contents of `.agents/team/ticket.md` when the argument is that path (the tracker wrote that file; there is no Jira key to resolve, and Phase 0's Task entry does not apply).
 
 - **Phases 0–2 run as written.** On a Phase 0 hit, ask the developer (the planner is attended). If they do not continue → `bash .claude/lib/team-record.sh --verdict failed --message "too big for quick: <reason>"`, then stop.
 - **After Phase 2, write the plan — do not implement.** The (revised) plan goes to `.agents/plans/active/<kebab-slug>.md`; this is the one exception to "Writes nothing to `.agents/`". Its minimal `/execute` shape:

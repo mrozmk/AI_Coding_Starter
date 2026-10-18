@@ -18,7 +18,8 @@ Team mode ⇔ `.agents/team/session.json` exists in the repo root. Read the role
 | `mode` | `brainstorm` \| `quick` \| `cli` — copied from `team.json` at launch |
 | `run` | run id (`<team>-<UTC timestamp>`) |
 | `attempt` | attempt number of this role in this run (1 or 2) |
-| `ticket` | Jira key |
+| `ticket` | tracker key — `TT-123` (jira) \| `7` (github) \| `L3` (none) |
+| `cost_key` | the same ticket, project-qualified, for costs (§2a) |
 | `input_rev` | revision the role starts from (previous accepted `output_rev`; planner: `base_sha`) |
 | `launched_at` | UTC launch time |
 | `session_id` | the role's Claude session UUID (`claude --session-id`, TT-821) |
@@ -35,14 +36,15 @@ All under `.agents/team/` (git-ignored, local to the clone):
 
 | Path | Written by | Content |
 |---|---|---|
-| `team.json` | `team-new.sh` (once) | `team, ticket, branch, line, base_ref, base_sha, mode, origin_url, created_at` (no `mode` before TT-790 = `brainstorm`) |
+| `team.json` | `team-new.sh` (once) | `team, ticket, branch, line, base_ref, base_sha, mode, tracker, cost_key, origin_url, created_at` (no `mode` before TT-790 = `brainstorm`; no `tracker`/`cost_key` before 2b = `jira` / `ticket`) |
+| `ticket.json`, `ticket.md` | `team-new.sh`/`team-next.sh`, from the supervisor's `--ticket-file` | the ticket the tracker read (§2a); `jira` has neither |
 | `session.json` | `team-run.sh` | §1 |
 | `run` | `team-run.sh` | current run id |
 | `acked` | `team-run.sh` | basename of the last acknowledged `blocked`/`failed` record |
 | `lock/` (`lock/pid`) | `team-run.sh` | runner mutex |
 | `cancel` | `team-run.sh stop` | stop request for a live runner |
 | `roles.override.json` | `team-run.sh roles` | per-ticket model/effort override, merged over `.claude/team/roles.json` at each launch |
-| `archive/<ticket>-<UTC>/` | `team-next.sh` | the previous ticket's `runs/`, `run`, `acked`, `team.json`, `roles.override.json` |
+| `archive/<ticket>-<UTC>/` | `team-next.sh` | the previous ticket's `runs/`, `run`, `acked`, `team.json`, `roles.override.json`, `ticket.json`, `ticket.md` |
 | `runs/<run>/<role>-<attempt>-<seq>.json` | `team-record.sh` | handoff record (§6) |
 | `runs/<run>/<record>.accepted` | `team-run.sh` | record passed validation |
 | `runs/<run>/<role>-<attempt>.prompt.md` | `team-run.sh` | rendered role prompt |
@@ -52,7 +54,7 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `runs/<run>/pr-description.md` | qa, wrapup | PR body before publication |
 | `runs/<run>/wrapup-<attempt>.md` | wrapup | `target_rev: <sha>` + the plain-Polish summary |
 | `runs/<run>/cli-<attempt>.md` | cli | plain summary for `/monitor` |
-| `runs/<run>/wrapup-state.json` | wrapup | Jira intents (`marker`, `state`, id/key) — makes retries safe |
+| `runs/<run>/wrapup-state.json` | wrapup | tracker intents (`op`, `marker`, `state`, id/key) — makes retries safe (§2a) |
 | `runs/<run>/attention` | `team-attention.sh` hook | one line per `Notification` |
 | `runs/<run>/questions/q-<n>.md` | `/monitor` via `team-question.sh` | one supervised question: binding, summary, screen, `## Answer` / `## Revoked` / `## Escalation` (§10) |
 | `runs/<run>/questions/q-<n>.payload.md` | `team-escalate.sh` | the self-contained escalation payload sent to FableTT (§10) |
@@ -61,6 +63,32 @@ All under `.agents/team/` (git-ignored, local to the clone):
 The escalation config is `<main checkout>/.agents/team/escalation.local.json` — the
 operator's local file, never committed, read only by `team-escalate.sh` (shape:
 `.claude/team/escalation.local.json.example`).
+
+## 2a. Tracker
+
+`teams.tracker` in `.claude/project-profile.json` picks who owns the ticket:
+
+| Tracker | Key | Ticket read by | Writes |
+|---|---|---|---|
+| `jira` | `TT-123` | the role's own MCP session (no `ticket.json`) | the wrapup prompt, over MCP |
+| `github` | `7` (`#7` normalized) | `team-tracker.sh read <key>` → `gh` | `team-tracker.sh` only |
+| `none` | `L3`, allocated by the adapter (`.agents/team/local-ids`, `mkdir` lock) | `read --brief <text>`/`--brief-file <path>` | nothing (every op is a no-op) |
+
+`.claude/lib/team-tracker.sh` is the **only** place the harness calls `gh`. Ops:
+`read … --out <dir>` (writes `<dir>/ticket.json` + `ticket.md`, prints `key=<k> type=<t>` and
+`title=<t>`), `comment <key> --marker --body-file`, `set-status <key> started|delivered`,
+`create-followup --marker --title --body-file`. Writes are idempotent by a marker on the body's
+**last** line, matched over a full enumeration. Exit codes: 0 ok · 1 ticket unusable · 2
+usage/profile · 3 `tracker=jira` · 4 recoverable (permissions, no project item, unknown logical
+status, failed or partial enumeration) — never the conclusion "not there".
+
+`/start-team` reads the ticket into `<main checkout>/.agents/team/incoming/<TEAM>/` and hands it to
+`team-new.sh`/`team-next.sh` as `--ticket-file`; those copy both files into the clone. "Never Done"
+is the runner's: `team-validate.sh` rejects a `done` wrapup record whose `github` intents
+(`comment`, `set-status delivered`, any accepted follow-up) are not all `done`. Costs bind to
+`cost_key` — `<owner>/<repo>#<n>` · `<repo-dir>:L<n>` · the key itself — so the same short key in
+two projects stays two bindings. At wrapup the adapter runs **inside the clone** and reads its
+**committed** profile: the `teams.github` block must be on the branch's base, or the start is refused.
 
 ## 3. Roles
 
