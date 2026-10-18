@@ -231,6 +231,14 @@ has "-n alfa-coder --model 'opus[1m]' --effort 'medium' --disallowedTools" "$STU
   || fail "coder launch lacks its model/effort from roles.json"
 CODEX_REAL="$(cd "$HOME/.codex-taketask" && pwd -P)"
 has "-e CODEX_HOME=$CODEX_REAL " "$STUB_LOG" || fail "coder launch lacks the per-session CODEX_HOME"
+# The tmux server may have been started from another project's shell; the licence must be passed
+# per session, and only when this process actually has one.
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+  has "-e CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR " "$STUB_LOG" \
+    || fail "coder launch lacks the per-session CLAUDE_CONFIG_DIR"
+else
+  ! has "-e CLAUDE_CONFIG_DIR=" "$STUB_LOG" || fail "coder launch invented a CLAUDE_CONFIG_DIR"
+fi
 has "set-environment" "$STUB_LOG" && fail "runner touched the server-wide tmux environment"
 [ "$(jq -r .attempt "$TD/session.json")" = 2 ] || fail "retry did not write attempt 2"
 grep -Eq 'claude --session-id [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} -n alfa-coder' \
@@ -456,11 +464,20 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ "$(http_status "127.0.0.1:$PORT" /)" = down 
 kill "$SPID" 2>/dev/null || true; wait "$SPID" 2>/dev/null || true; SPID=""
 rm -f "$TD/session.json"; unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 
-# ---- (13) team-attach quotes the session target for zsh ------------------------------------------
+# ---- (13) team-attach quotes the session target for zsh, on the session's OWN server ------------
 : > "$STUB_LOG"
 STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
 expect 0 "attached to alfa-planner" "attach to a live session"
-has "exec tmux attach -t '=alfa-planner'" "$STUB_LOG" || fail "attach does not exec tmux with a quoted =NAME"
+has "exec tmux -S '$STUB_TMUX_SOCK' attach -t '=alfa-planner'" "$STUB_LOG" \
+  || fail "attach does not exec tmux on the session's socket with a quoted =NAME"
+has "display-message -p -t =alfa-planner: #{socket_path}" "$STUB_LOG" \
+  || fail "attach did not resolve the session's socket from the pane target"
 has "warn: window opened but will not close by itself" "$WORK/out" || fail "attach: no tty must warn"
+# Fail closed: without a socket the window would reach the DEFAULT server and could attach to a
+# same-named session of another project. No window is opened at all.
+: > "$STUB_LOG"
+STUB_TMUX_SOCK="" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
+expect 1 "cannot resolve the tmux socket of alfa-planner" "attach refuses an unresolvable socket"
+! has osascript "$STUB_LOG" || fail "a refused attach still opened a Terminal window"
 
 echo "team-smoke-1: OK"

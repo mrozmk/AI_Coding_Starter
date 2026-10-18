@@ -1,0 +1,118 @@
+# Team-harness distribution manifest — the file list `/setup:teams` installs into a project.
+#
+# Format, one entry per line (blank lines and `#` comments ignored):
+#   own <path>     a harness-only file: copied when absent, `conflict` when it differs locally
+#   shared <path>  a file the project may already own (its own content wins): never overwritten
+#   !<glob>        a path that must NOT appear as own/shared (checked by team-setup.sh)
+#
+# Paths are relative to the starter root. Read only by `.claude/lib/team-setup.sh` and the
+# sync playbook (`.claude/starter-sync-playbook.md` → Category A); the harness tests are
+# deliberately out of the distribution — a project runs the harness, it does not re-test it.
+
+# --- not distributed ----------------------------------------------------------------------
+!.claude/lib/tests/**
+!.claude/lib/costs/tests/**
+
+# --- shared: the project's own copy wins; a difference is reported for a hand merge --------
+shared .claude/lib/codex-bg.sh
+shared .claude/lib/tree-fingerprint.sh
+shared AGENTS.md
+shared .claude/commands/quick-change.md
+shared .claude/commands/check-implementation.md
+shared .claude/commands/brainstorm.md
+shared .claude/commands/execute.md
+
+# --- own: harness-only files ---------------------------------------------------------------
+own .agents/memory/reflection-protocol.md
+own .agents/reference/security-egress.md
+own .agents/reference/team-mode.md
+own .agents/reference/team-pipeline.md
+own .agents/reference/worker-clone.md
+own .claude/agents/correctness-reviewer.md
+own .claude/agents/structure-reviewer.md
+own .claude/commands/dashboard.md
+own .claude/commands/monitor.md
+own .claude/commands/start-team.md
+own .claude/dashboard/dashboard.sh
+own .claude/dashboard/index.html
+own .claude/dashboard/serve.sh
+own .claude/dashboard/server.py
+own .claude/hooks/guard-team-memory.sh
+own .claude/hooks/guard-team-question.sh
+own .claude/hooks/lib/guard_destructive_sql.py
+own .claude/hooks/lib/leak-patterns.sh
+own .claude/hooks/team-attention.sh
+own .claude/lib/costs/bindings.py
+own .claude/lib/costs/claude_adapter.py
+own .claude/lib/costs/codex_adapter.py
+own .claude/lib/costs/config.example.json
+own .claude/lib/costs/config.py
+own .claude/lib/costs/cost.py
+own .claude/lib/costs/jira_comment.py
+own .claude/lib/costs/reader.py
+own .claude/lib/costs/report.py
+own .claude/lib/costs/runtime-mark.sh
+own .claude/lib/costs/runtime.py
+own .claude/lib/costs/stages.py
+own .claude/lib/costs/store.py
+own .claude/lib/costs/summary.py
+own .claude/lib/team-answer.sh
+own .claude/lib/team-attach.sh
+own .claude/lib/team-escalate-lib.sh
+own .claude/lib/team-escalate.sh
+own .claude/lib/team-integrate-lib.sh
+own .claude/lib/team-integrate-lock.sh
+own .claude/lib/team-integrate.sh
+own .claude/lib/team-lib.sh
+own .claude/lib/team-merge-check.sh
+own .claude/lib/team-modes.sh
+own .claude/lib/team-new.sh
+own .claude/lib/team-next.sh
+own .claude/lib/team-pr-render.sh
+own .claude/lib/team-pr-state.sh
+own .claude/lib/team-pr.sh
+own .claude/lib/team-profile.sh
+own .claude/lib/team-question.sh
+own .claude/lib/team-record.sh
+own .claude/lib/team-roles.sh
+own .claude/lib/team-run.sh
+own .claude/lib/team-setup.sh
+own .claude/lib/team-snapshot-agents.sh
+own .claude/lib/team-snapshot-teams.sh
+own .claude/lib/team-snapshot.sh
+own .claude/lib/team-tracker-render.sh
+own .claude/lib/team-tracker.sh
+own .claude/lib/team-validate.sh
+own .claude/lib/team-warn.sh
+own .claude/lib/team-watch.sh
+own .claude/lib/team_prompt_check.py
+own .claude/lib/worker-lib.sh
+own .claude/lib/worker-next.sh
+own .claude/project-profile.json.example
+own .claude/team/escalation.local.json.example
+own .claude/team/manifest.txt
+own .claude/team/pr/azure-devops-body-get.md
+own .claude/team/pr/azure-devops-body-set.md
+own .claude/team/pr/azure-devops-create-ready.md
+own .claude/team/pr/azure-devops-create.md
+own .claude/team/pr/azure-devops-publish.md
+own .claude/team/pr/azure-devops-tool.md
+own .claude/team/pr/github-body-get.md
+own .claude/team/pr/github-body-set.md
+own .claude/team/pr/github-create-ready.md
+own .claude/team/pr/github-create.md
+own .claude/team/pr/github-publish.md
+own .claude/team/pr/github-tool.md
+own .claude/team/prompts/cli.md
+own .claude/team/prompts/coder.md
+own .claude/team/prompts/planner-quick.md
+own .claude/team/prompts/planner.md
+own .claude/team/prompts/qa.md
+own .claude/team/prompts/wrapup.md
+own .claude/team/roles.json
+own .claude/team/tracker/github-read.md
+own .claude/team/tracker/github-wrapup.md
+own .claude/team/tracker/jira-read.md
+own .claude/team/tracker/jira-wrapup.md
+own .claude/team/tracker/none-read.md
+own .claude/team/tracker/none-wrapup.md

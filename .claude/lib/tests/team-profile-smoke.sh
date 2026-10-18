@@ -270,4 +270,44 @@ run "$MAIN" $WORKER init origin/develop-netcore7
 expect 2 "reserved (no merge path)" "worker init refused before the first fetch"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker init created the clone"
 
+# ---- (14) teams.clone_name: the clone directory template ----------------------------------------
+# No key → today's behaviour, `<repo dir>-<team>`. Physical $WORK: with no clone_parent the
+# parent comes from `git rev-parse --show-toplevel`, which resolves /var -> /private/var.
+WP="$(cd "$WORK" && pwd -P)"
+peek '.' 'printf "%s|%s\n" "$(team_clone_dir alfa)" "$(team_clone_glob)"'
+expect 0 "$WP/main-alfa|$WP/main-" "no clone_name keeps <repo>-<team>"
+# `{Team}` capitalizes the first letter only; the glob stays the prefix before the placeholder.
+PAR2="$WORK/dts teams"
+mkdir -p "$PAR2"
+CN=".teams.clone_parent = \"$PAR2\" | .teams.clone_name = \"DTS-{Team}\""
+peek "$CN" 'printf "%s|%s\n" "$(team_clone_dir alfa)" "$(team_clone_glob)"'
+expect 0 "$PAR2/DTS-Alfa|$PAR2/DTS-" "clone_name DTS-{Team} with a clone_parent"
+peek "$CN" 'team_clone_dir my-team'
+expect 0 "$PAR2/DTS-My-team" "{Team} capitalizes the first letter, not the whole name"
+peek '.teams.clone_name = "x-{team}"' 'team_clone_dir alfa'
+expect 0 "$WP/x-alfa" "{team} is substituted verbatim"
+# The placeholder must END the template and be the only one: the clone glob is a prefix.
+for bad in '{team}-x' 'a/{team}' 'nope' '{team}{team}'; do
+  peek ".teams.clone_name = \"$bad\"" 'echo reached'
+  expect 2 "teams.clone_name=$bad must end with {team} or {Team} (no '/')" \
+    "clone_name '$bad' is refused"
+  ! has reached "$WORK/out" || fail "clone_name '$bad' still loaded"
+done
+# Consumers: a clone created under the template is found by the resolver, team-watch and /monitor.
+setprofile "$CN"
+run "$MAIN" $NEW zeta TT-795 chore/TT-795-x origin/develop-netcore7
+expect 0 "next:" "team-new honours clone_name"
+ZC="$PAR2/DTS-Zeta"
+[ -f "$ZC/.agents/team/team.json" ] || fail "clone_name ignored: no clone at $ZC"
+mkdir -p "$ZC/.agents/team/runs/zeta-20261018-000001/questions"
+echo zeta-20261018-000001 > "$ZC/.agents/team/run"
+run "$MAIN" $WATCH --once zeta
+expect 0 "WATCH zeta" "team-watch finds a {Team} clone"
+! has "no clone" "$WORK/out" || fail "team-watch reports no clone for a {Team} template"
+run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
+  c="$(team_clone_dir zeta)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
+expect 0 "monitor-ok: $ZC" "/monitor preflight accepts a clone_name template"
+run "$MAIN" $NEXT zeta TT-796 chore/TT-796-x origin/develop-netcore7
+expect 0 "clone:    $ZC" "team-next switches the {Team} clone it resolved"
+
 echo "team-profile-smoke: OK"

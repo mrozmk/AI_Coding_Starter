@@ -92,6 +92,27 @@ team_profile_load() {
   v="$(jq -r '.teams.clone_parent // empty' "$f" 2>/dev/null || true)"
   TEAM_CLONE_PARENT="$(team_profile_expand "$v")"
 
+  # Optional clone-directory template; absent → `<repo dir>-{team}`, today's behaviour. The team
+  # placeholder must END the template and be the only one: the clone glob is a PREFIX
+  # (team_clone_dirs, the collision scan in team_ticket_checks), so anything after the team name
+  # would make every clone invisible to its own harness.
+  v="$(jq -r '.teams.clone_name // empty' "$f" 2>/dev/null || true)"
+  if [ -z "$v" ]; then
+    TEAM_CLONE_NAME="$(basename "$root")-{team}"
+  else
+    case "$v" in
+      *'{team}'|*'{Team}') ;;
+      *) team_profile_die "teams.clone_name=$v must end with {team} or {Team} (no '/')" ;;
+    esac
+    # The prefix left once the trailing placeholder is gone: non-empty, no second placeholder,
+    # no path separator.
+    case "${v%\{[tT]eam\}}" in
+      ''|*'{team}'*|*'{Team}'*|*/*)
+        team_profile_die "teams.clone_name=$v must end with {team} or {Team} (no '/')" ;;
+    esac
+    TEAM_CLONE_NAME="$v"
+  fi
+
   # Bash 3.2: no mapfile — read the jq lines into the array by hand.
   TEAM_BRANCH_TYPES=()
   while IFS= read -r v; do [ -z "$v" ] || TEAM_BRANCH_TYPES+=("$v"); done \
@@ -195,17 +216,21 @@ team_profile_require_supported() {
   esac
 }
 
-# Usage: team_clone_glob [root] — the `<parent>/<repo>-` prefix every clone path starts with.
+# Usage: team_clone_glob [root] — the `<parent>/<prefix>` every clone path starts with, where
+# <prefix> is `teams.clone_name` minus its trailing {team}/{Team} placeholder.
 # The caller appends the glob itself: `for d in "$(team_clone_glob "$root")"*/…`.
 team_clone_glob() {
-  local root
+  local root parent prefix
   root="${1:-$(git rev-parse --show-toplevel)}"
   team_profile_load "$root"
   if [ -n "${TEAM_CLONE_PARENT:-}" ]; then
-    printf '%s' "$TEAM_CLONE_PARENT/$(basename "$root")-"
+    parent="$TEAM_CLONE_PARENT"
   else
-    printf '%s' "$(dirname "$root")/$(basename "$root")-"
+    parent="$(dirname "$root")"
   fi
+  prefix="${TEAM_CLONE_NAME%\{team\}}"
+  prefix="${prefix%\{Team\}}"
+  printf '%s' "$parent/$prefix"
 }
 
 # Usage: team_clone_dir <team> [root] — the single source of truth for a clone's path.
@@ -214,8 +239,15 @@ team_clone_glob() {
 team_clone_dir() {
   local team="$1" root prefix
   root="${2:-$(git rev-parse --show-toplevel)}"
+  # In THIS shell, not only inside the `$(…)` below: the template is read here, and a load that
+  # happened in the subshell would leave TEAM_CLONE_NAME unset in the caller (`set -u`).
+  team_profile_load "$root"
   prefix="$(team_clone_glob "$root")" || return $?
   [ -n "$prefix" ] || { echo "error: clone path unresolved — no teams profile" >&2; return 2; }
+  # `{Team}` capitalizes the first letter — Bash 3.2 has no `${t^}`.
+  case "$TEAM_CLONE_NAME" in
+    *'{Team}') team="$(printf '%s' "${team%"${team#?}"}" | tr '[:lower:]' '[:upper:]')${team#?}" ;;
+  esac
   printf '%s\n' "$prefix$team"
 }
 

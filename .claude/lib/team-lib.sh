@@ -334,6 +334,24 @@ team_seed_files() {
   done
 }
 
+# Usage: team_seed_checks <root> <base> — refuse a seed that would overwrite a TRACKED file.
+# The seed copy lands on top of a fresh checkout of <base>, so seeding a file that <base> tracks
+# with different content leaves the clone dirty from its first second: every `git status` gate,
+# the merge-check and the integration then read a change nobody made. Untracked or ignored files
+# (credentials, settings.local.json) are exactly what seeding is for and never a problem.
+team_seed_checks() {
+  local root="$1" base="$2" f
+  team_profile_load "$root"
+  for f in ${TEAM_SEED_FILES[@]+"${TEAM_SEED_FILES[@]}"}; do
+    git -C "$root" cat-file -e "$base:$f" 2>/dev/null || continue
+    [ -e "$root/$f" ] || continue
+    # `if`, not `&& continue`: under `set -e` a failing trailing AND-list would end the caller.
+    if git -C "$root" show "$base:$f" 2>/dev/null | cmp -s - "$root/$f"; then continue; fi
+    TEAM_PROBLEMS+=("seed file $f is tracked on $base with different content \
+— drop it from teams.seed_files")
+  done
+}
+
 # Usage: team_write_json <dir> <team> <key> <branch> <base> [mode] [root]
 # `cost_key` is the qualified key cost records bind to; `ticket` stays the short one.
 team_write_json() {

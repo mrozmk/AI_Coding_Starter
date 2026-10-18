@@ -108,6 +108,8 @@ case "$TEAM_TRACKER" in
     [ -z "$tfile" ] || TEAM_PROBLEMS+=("jira reads the ticket through MCP — no --ticket-file") ;;
 esac
 
+team_seed_checks "$root" "$base"
+
 if [ ${#TEAM_PROBLEMS[@]} -gt 0 ]; then
   for p in "${TEAM_PROBLEMS[@]}"; do echo "error: $p" >&2; done
   exit 1

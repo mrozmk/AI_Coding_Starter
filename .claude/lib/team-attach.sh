@@ -37,9 +37,19 @@ until tmux has-session -t "=$name" 2>/dev/null; do
   [ "$waited" -lt "$wait" ] || { echo "error: tmux session $name not found" >&2; exit 1; }
   sleep 1; waited=$((waited + 1))
 done
+# The session's own server socket, resolved before the window opens. The Terminal window starts
+# from the user's login shell, without this project's TMUX_TMPDIR, so a bare `tmux attach` would
+# reach the DEFAULT server and could attach to a same-named session of another project entirely.
+# Pane form `=NAME:` — tmux finds no target for the session-only `=NAME` (team-lib.sh → team_pane).
+# Fail closed: the caller degrades a failure to `warn: no preview window` (team-run.sh → launch).
+sock="$(tmux display-message -p -t "=$name:" '#{socket_path}' 2>/dev/null || true)"
+if [ -z "$sock" ]; then
+  echo "error: cannot resolve the tmux socket of $name" >&2
+  exit 1
+fi
 # Quoted: the window's interactive zsh treats a bare =NAME as an EQUALS command lookup.
 out="$(osascript -e 'tell application "Terminal"' \
-  -e "set t to do script \"exec tmux attach -t '=$name'\"" \
+  -e "set t to do script \"exec tmux -S '$sock' attach -t '=$name'\"" \
   -e 'activate' \
   -e 'return tty of t' \
   -e 'end tell')"

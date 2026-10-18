@@ -43,6 +43,7 @@ team_check_name "$team" 2>/dev/null || TEAM_PROBLEMS+=("team name '$team' must m
 [ ! -e "$dir" ] || TEAM_PROBLEMS+=("$dir already exists — to start the next ticket there: team-next.sh")
 team_ticket_checks "$root" "$key" "$branch" "$base"
 team_mode_checks "$root" "$base" "$mode"
+team_seed_checks "$root" "$base"
 
 # The ticket file is how github/none hand the clone its brief; jira reads it through MCP.
 # `pwd -P` of an existing dir, not realpath: macOS 3.2 has no realpath and the clone may not exist.

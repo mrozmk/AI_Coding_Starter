@@ -217,8 +217,12 @@ launch() {
   attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
   # CODEX_HOME per session, never `-g`: that would move other projects onto this licence (TT-912).
+  # CLAUDE_CONFIG_DIR the same way, and only when this process has one: the tmux server may have
+  # been started from ANOTHER project's shell, and a new session inherits that server's global
+  # environment — which would run this project's roles on the other project's Claude licence.
   tmux new-session -d -s "$name" -c "$CLONE" -e "TT_TEAM=$TEAM" -e "TT_TEAM_ROLE=$role" \
     -e "TT_TEAM_RUN=$RUN" -e "TT_TEAM_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
+    ${CLAUDE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"} \
     "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\""
   # Main checkout: a clone on an older base has no helper; a missing one only warns.
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \

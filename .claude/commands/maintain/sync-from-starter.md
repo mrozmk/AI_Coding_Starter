@@ -118,7 +118,7 @@ Apply the **A / B / C classification from [.claude/starter-sync-playbook.md → 
 
 **Compute the raw diff up front** so the task list has hard data, not guesses:
 
-- `diff -rq` per category-A tree (commands, agents, skills, templates, hooks, workflows) → which files are new / changed / project-only.
+- `diff -rq` per category-A tree (commands, agents, skills, templates, hooks, workflows, `team`, `dashboard`, `lib/costs`, `hooks/lib`) → which files are new / changed / project-only. The last four are the team harness: scope them to the `own` paths of `.claude/team/manifest.txt` (tests excluded there), and treat its `shared` entries as category B.
 - For each "changed" file, compute a **content-only** diffstat that ignores whitespace (`diff -wB`) — a file that differs only by blank lines / trailing space is effectively identical and should be marked so, not treated as a real change. This prevents whitespace noise from inflating the task list.
 - Record `ours:N theirs:M` (lines each side has that the other lacks) per file — this is the signal that separates a tiny upstream tweak from a heavy local customization.
 

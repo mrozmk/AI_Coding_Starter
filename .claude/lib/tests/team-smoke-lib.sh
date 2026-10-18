@@ -78,6 +78,7 @@ smoke_init() {
   mkdir -p "$HOME/.codex-taketask"
   export TEAM_NOTIFY=0 TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1 TEAM_ATTACH_POLL=0
+  export STUB_TMUX_SOCK="$WORK/tmux-fixture.sock"
   unset CLAUDE_PROJECT_DIR
   smoke_gitconfig
   smoke_stubs
@@ -125,6 +126,13 @@ fi
 # Real tmux finds no pane for `-t =NAME` (session-only form); pane commands need `=NAME:`.
 case "$1 $*" in capture-pane*" -t ="*|send-keys*" -t ="*) case "$*" in *" -t ="*:*) ;;
   *) echo "can't find pane" >&2; exit 1 ;; esac ;; esac
+# team-attach resolves the session's server socket before it opens a Terminal window; an empty
+# STUB_TMUX_SOCK plays a server that cannot name its socket (the fail-closed path).
+if [ "$1" = display-message ]; then
+  case "$*" in *'#{socket_path}'*)
+    [ -z "${STUB_TMUX_SOCK:-}" ] || echo "$STUB_TMUX_SOCK" ;; esac
+  exit 0
+fi
 [ "$1" != capture-pane ] || [ -z "${STUB_PANE:-}" ] || cat "$STUB_PANE"
 STUB
   cat > "$WORK/bin/az" <<'STUB'
