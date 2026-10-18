@@ -142,7 +142,7 @@ run "$MAIN" bash .claude/lib/team-run.sh
 expect 2 "Exit:" "team-run usage prints exit codes"
 [ "$(wc -l < "$SRC/.claude/lib/team-snapshot.sh")" -lt 500 ] || fail "team-snapshot.sh reached 500 lines"
 bad="$(grep -o '{{[A-Z_]*}}' "$SRC/.claude/team/prompts/wrapup.md" | sort -u \
-  | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|TRACKER_READ|TRACKER_WRAPUP|TRACKER_TASK)\}\}' || true)"
+  | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|TRACKER_READ|TRACKER_WRAPUP|TRACKER_TASK|PR_HOST_KIND|PR_HOST|PR_CREATE|PR_CREATE_READY|PR_PUBLISH|PR_BODY_GET|PR_BODY_SET|PR_TOOL|GATES_NOTE)\}\}' || true)"
 [ -z "$bad" ] || fail "wrapup prompt has unrendered keys: $bad"
 ! grep -q innerHTML "$SRC/.claude/dashboard/index.html" || fail "dashboard uses innerHTML"
 ! grep -nE -- "-t =[a-z<]" "$SRC/.agents/reference/team-pipeline.md" "$SRC/.claude/commands/monitor.md" \

@@ -257,6 +257,12 @@ team_ticket_checks() {
   elif [ "$TEAM_TRACKER" != jira ]; then
     team_base_tracker_check "$root" "$base"
   fi
+  # A SEPARATE check, not another `elif`: the PR layer is orthogonal to the tracker, and the live
+  # github rig runs tracker=none (which never reaches the branch above).
+  if git -C "$root" cat-file -e "$base:.claude/lib/team-record.sh" 2>/dev/null \
+    && [ "$TEAM_PR_PROVIDER" = github ]; then
+    team_base_pr_check "$root" "$base"
+  fi
 }
 
 # The clone runs the harness of its BASE, so the base must carry the adapter, the wrapup block and
@@ -277,6 +283,24 @@ team_base_tracker_check() {
   fi
   [ -z "$bad" ] || TEAM_PROBLEMS+=("base $base cannot run tracker=$t \
 — tracker adapter/profile missing or different on the base")
+}
+
+# Same reasoning as the tracker check, for the PR layer: the clone runs the harness of its BASE, so
+# the base must carry the adapter, the github prompt blocks and the same `pr_provider`/repo in its
+# COMMITTED profile. `team-pr-render.sh` is deliberately NOT required — the runner loads it from
+# `$root` (the main checkout), like team-tracker-render.sh.
+team_base_pr_check() {
+  local root="$1" base="$2" bad="" p prof
+  for p in ".claude/lib/team-pr.sh" ".claude/team/pr/github-create.md"; do
+    git -C "$root" cat-file -e "$base:$p" 2>/dev/null || bad=1
+  done
+  prof="$(git -C "$root" show "$base:.claude/project-profile.json" 2>/dev/null || true)"
+  [ "$(printf '%s' "$prof" | jq -r '.teams.pr_provider // empty' 2>/dev/null || true)" = github ] \
+    || bad=1
+  [ "$(printf '%s' "$prof" | jq -r '.teams.github.repo // empty' 2>/dev/null || true)" \
+    = "$TEAM_GH_REPO" ] || bad=1
+  [ -z "$bad" ] || TEAM_PROBLEMS+=("base $base cannot run pr_provider=github \
+— PR layer/profile missing or different on the base")
 }
 
 # Copies, not symlinks: each team gets its own writable credential and permission files.

@@ -546,7 +546,7 @@ render_all() {  # render_all <tracker> <out file>
 }
 for t in github none jira; do
   render_all "$t" "$WORK/r-$t" || fail "render for tracker=$t failed"
-  sed -E 's/\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE)\}\}/x/g' \
+  sed -E 's/\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|PR_HOST_KIND|PR_HOST|PR_CREATE|PR_CREATE_READY|PR_PUBLISH|PR_BODY_GET|PR_BODY_SET|PR_TOOL|GATES_NOTE)\}\}/x/g' \
     "$WORK/r-$t" > "$WORK/r-$t.x"
   if [ "$t" != jira ]; then
     ! grep -q '{{' "$WORK/r-$t.x" || { grep -o '{{[A-Z_]*}}' "$WORK/r-$t.x" | sort -u | sed 's/^/  | /'

@@ -2,7 +2,7 @@ You are the wrapup of team {{TEAM}} working on {{TICKET}} in this clone. Team mo
 `.agents/reference/team-mode.md` first and follow it.
 
 Context: branch `{{BRANCH}}`, target line `{{LINE}}`, base revision `{{BASE_SHA}}`, run `{{RUN}}`,
-attempt `{{ATTEMPT}}`, plan `{{PLAN}}`, PR `{{PR}}`, Azure DevOps org `{{ORG_URL}}`, QA report
+attempt `{{ATTEMPT}}`, plan `{{PLAN}}`, PR `{{PR}}`, {{PR_HOST_KIND}} `{{PR_HOST}}`, QA report
 `{{QA_REPORT}}`. The developer attends this session: ask questions normally.
 
 Your job: tell the developer in plain words what this run did, and propose memory updates or new
@@ -11,7 +11,7 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
 1. Read `.agents/team/runs/{{RUN}}/notes.md` (including `## Supervised decisions`), every `*.json`
    record in that directory, every file under `.agents/team/runs/{{RUN}}/questions/` (when
    present), `{{QA_REPORT}}`, `{{PLAN}}` and the PR description
-   (`az repos pr show --org {{ORG_URL}} --id {{PR}} --query description -o tsv`). Do not run `/prime`.
+   ({{PR_BODY_GET}}). Do not run `/prime`.
 2. `git fetch --quiet origin {{LINE}}`, then `git rev-parse origin/{{LINE}}` → `T`.
 3. Write `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md`: first line `target_rev: <T>`, then
    plain Polish sections `## Planowanie` (what was decided, what was unforeseen), `## Coder` (what

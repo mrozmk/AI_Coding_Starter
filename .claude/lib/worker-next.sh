@@ -398,18 +398,30 @@ release_settle() {
     fi
     return 0
   fi
-  # team_ado_coords reads the cwd's origin and sets ADO_REPO, so no subshell here.
-  here="$PWD"; cd "$DIR"
-  if team_ado_coords && pr="$(team_pr_json "$PR")"; then :; else pr=""; fi
-  cd "$here"
-  [ -n "$pr" ] || { W_PROBLEMS+=("PR #$PR state unknown"); return 0; }
-  if ! jq -e --arg repo "$ADO_REPO" --arg src "refs/heads/$BRANCH" --arg tgt "refs/heads/$LINE" \
-    '.repository.name == $repo and .sourceRefName == $src and .targetRefName == $tgt' \
-    <<<"$pr" >/dev/null; then
-    W_PROBLEMS+=("PR #$PR is not $BRANCH → $LINE in $ADO_REPO"); return 0
+  if [ "$TEAM_PR_PROVIDER" = github ]; then
+    pr="$(cd "$DIR" && bash "$ROOT/.claude/lib/team-pr.sh" state "$PR")" || pr=""
+    [ -n "$pr" ] || { W_PROBLEMS+=("PR #$PR state unknown"); return 0; }
+    if ! jq -e --arg repo "$TEAM_GH_REPO" --arg src "refs/heads/$BRANCH" \
+      --arg tgt "refs/heads/$LINE" \
+      '.repo == $repo and .source_ref == $src and .target_ref == $tgt' <<<"$pr" >/dev/null; then
+      W_PROBLEMS+=("PR #$PR is not $BRANCH → $LINE in $TEAM_GH_REPO"); return 0
+    fi
+    SRC="$(jq -r '.source_sha // ""' <<<"$pr")"
+    PRSTATUS="$(jq -r '.status // ""' <<<"$pr")"
+  else
+    # team_ado_coords reads the cwd's origin and sets ADO_REPO, so no subshell here.
+    here="$PWD"; cd "$DIR"
+    if team_ado_coords && pr="$(team_pr_json "$PR")"; then :; else pr=""; fi
+    cd "$here"
+    [ -n "$pr" ] || { W_PROBLEMS+=("PR #$PR state unknown"); return 0; }
+    if ! jq -e --arg repo "$ADO_REPO" --arg src "refs/heads/$BRANCH" --arg tgt "refs/heads/$LINE" \
+      '.repository.name == $repo and .sourceRefName == $src and .targetRefName == $tgt' \
+      <<<"$pr" >/dev/null; then
+      W_PROBLEMS+=("PR #$PR is not $BRANCH → $LINE in $ADO_REPO"); return 0
+    fi
+    SRC="$(jq -r '.lastMergeSourceCommit.commitId // ""' <<<"$pr")"
+    PRSTATUS="$(jq -r '.status // ""' <<<"$pr")"
   fi
-  SRC="$(jq -r '.lastMergeSourceCommit.commitId // ""' <<<"$pr")"
-  PRSTATUS="$(jq -r '.status // ""' <<<"$pr")"
   after="commits after PR #$PR (tip $TIP, PR source ${SRC:-none}, remote $LIVE)"
   case "$PRSTATUS" in
     completed)

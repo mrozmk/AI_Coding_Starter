@@ -357,6 +357,9 @@ smoke_repos() {
   # Without the tracker blocks every wrapup/planner render in smoke 1-4 dies (return 1).
   mkdir -p "$SEED/.claude/team/tracker"
   cp "$SRC"/.claude/team/tracker/*.md "$SEED/.claude/team/tracker/"
+  # Same reason for the PR blocks: a prompt carrying {{PR_*}} with no block dir dies (return 1).
+  mkdir -p "$SEED/.claude/team/pr"
+  cp "$SRC"/.claude/team/pr/*.md "$SEED/.claude/team/pr/"
   cp "$SRC/.claude/team/roles.json" "$SEED/.claude/team/"
   # Fixture fix (starter import): own profile, independent of the repo's (template) codex-profile.
   printf '# test fixture\n~/.codex-taketask\n' > "$SEED/.claude/codex-profile"

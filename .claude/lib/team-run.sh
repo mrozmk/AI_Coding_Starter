@@ -34,6 +34,7 @@ cd "$CLONE"
 . "$root/.claude/lib/team-modes.sh"
 . "$root/.claude/lib/team-validate.sh"
 . "$root/.claude/lib/team-tracker-render.sh"
+. "$root/.claude/lib/team-pr-render.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -129,6 +130,7 @@ input_rev_for() {
 
 render_prompt() {
   local role="$1" attempt="$2" out="$3" p planner coder qa plan="" spec="" pr="" report=""
+  local kind host
   planner="$(accepted_record planner)"; coder="$(accepted_record coder)"; qa="$(accepted_record qa)"
   if [ -n "$planner" ]; then
     spec="$(artifact "$planner" .agents/specs/)"; plan="$(artifact "$planner" .agents/plans/active/)"
@@ -137,13 +139,24 @@ render_prompt() {
     plan="$(artifact "$coder" .agents/plans/done/)"; pr="$(rec "$coder" pr_id)"
   fi
   [ -z "$qa" ] || report=".agents/team/runs/$RUN/qa-report-$(rec "$qa" attempt).md"
-  team_ado_coords
+  # ADO keeps `team_ado_coords`; github resolves owner/repo through the PR layer (Amendment 4).
+  case "$TEAM_PR_PROVIDER" in
+    github)
+      ADO_ORG_URL=""; kind="GitHub repo"
+      host="https://github.com/$(bash "$root/.claude/lib/team-pr.sh" coords)" \
+        || die 4 "cannot resolve the github repo of $CLONE" ;;
+    *) team_ado_coords; kind="Azure DevOps org"; host="$ADO_ORG_URL" ;;
+  esac
   if [ "$MODE" = quick ] && [ -z "$spec" ]; then spec="none (quick mode)"; fi
   p="$(cat "$CLONE/.claude/team/prompts/$(team_prompt_name "$MODE" "$role")")"
   # Before `put TEAM`: the tracker blocks carry {{TICKET}}/{{RUN}} of their own. An empty tracker
   # field (a team.json written before 2b) renders as jira.
   p="$(team_tracker_render "$(team_json tracker || true)" "$CLONE/.claude/team/tracker" "$p")" \
     || die 4 "cannot render the tracker blocks of the $role prompt"
+  # After the tracker blocks and before `put`: a tracker wrapup block carries {{PR_BODY_SET}}, and
+  # the PR blocks themselves carry {{LINE}}/{{PR}}/{{RUN}}/{{BRANCH}}/{{ORG_URL}} of their own.
+  p="$(team_pr_render "$TEAM_PR_PROVIDER" "$CLONE/.claude/team/pr" "$kind" "$host" \
+    "$TEAM_GATES" "$p")" || die 4 "cannot render the PR blocks of the $role prompt"
   put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"

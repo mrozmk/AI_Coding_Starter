@@ -273,8 +273,204 @@ run "$MAIN" $PR create --draft --head h --base b --title T --body-file "$BF"
 expect 2 "azure-devops uses the team-lib.sh helpers" "team-pr.sh refuses ADO: create"
 setprofile
 
+
 # ================================================================================================
-# (A7) nothing in this suite ever merged or forced anything through gh
+# (B1) prompt render per provider — github leaves no {{key}} and no `az`, ADO keeps its text
+# ================================================================================================
+KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
+PROMPTS="planner planner-quick cli coder qa wrapup"
+b1_render() {  # b1_render <provider> <host kind> <host> <gates> <prompt> <out>
+  ( set -e
+    . "$MAIN/.claude/lib/team-tracker-render.sh"
+    . "$MAIN/.claude/lib/team-pr-render.sh"
+    t="$(team_tracker_render none "$MAIN/.claude/team/tracker" \
+      "$(cat "$MAIN/.claude/team/prompts/$5.md")")"
+    team_pr_render "$1" "$MAIN/.claude/team/pr" "$2" "$3" "$4" "$t" ) > "$6"
+}
+for p in $PROMPTS; do
+  b1_render github "GitHub repo" "https://github.com/acme/widgets" manual-mql5 "$p" "$WORK/b1-$p" \
+    || fail "github render of $p failed"
+  sed -E "s/\{\{($KEYS)\}\}/x/g" "$WORK/b1-$p" > "$WORK/b1x-$p"
+  ! grep -q '{{' "$WORK/b1x-$p" \
+    || { grep -o '{{[A-Z_]*}}' "$WORK/b1x-$p" | sort -u | sed 's/^/  | /'
+         fail "github render of $p left unrendered keys"; }
+  ! grep -q 'az ' "$WORK/b1x-$p" || fail "github render of $p still calls az"
+  ! grep -q 'Azure DevOps org' "$WORK/b1x-$p" || fail "github render of $p still names the ADO org"
+done
+has 'GitHub repo `https://github.com/acme/widgets`' "$WORK/b1-coder" \
+  || fail "the github coder prompt lost the PR host"
+has 'team-pr.sh create --draft' "$WORK/b1-coder" || fail "the github coder prompt lost create --draft"
+has 'team-pr.sh create --ready' "$WORK/b1-cli" || fail "the github cli prompt lost create --ready"
+# The blocks tell the role NOT to run it; what must be gone is the step that ran it (Amendment 6).
+! grep -q 'Run `/pr-create`' "$WORK/b1-cli" || fail "the github cli prompt still runs /pr-create"
+! grep -q 'Run `/pr-create`' "$WORK/b1-coder" || fail "the github coder prompt still runs /pr-create"
+has 'Do not run /pr-create' "$WORK/b1-coder" || fail "the github coder block lost its /pr-create ban"
+has 'team-pr.sh publish' "$WORK/b1-qa" || fail "the github qa prompt lost publish"
+has 'team-pr.sh body-set' "$WORK/b1-qa" || fail "the github qa prompt lost body-set"
+has 'team-pr.sh body-get' "$WORK/b1-wrapup" || fail "the github wrapup prompt lost body-get"
+has 'gates=manual-mql5: the MT5 compile and backtest are done by the Operator' "$WORK/b1-qa" \
+  || fail "gates=manual-mql5 did not add the gate note"
+# gates=auto renders that line exactly as it is today — the note is the only difference.
+b1_render github "GitHub repo" "https://github.com/acme/widgets" auto qa "$WORK/b1-qa-auto" \
+  || fail "github render of qa with gates=auto failed"
+! grep -q 'manual-mql5' "$WORK/b1-qa-auto" || fail "gates=auto still carries the gate note"
+[ "$(grep -c . "$WORK/b1-qa")" = "$(grep -c . "$WORK/b1-qa-auto")" ] \
+  || fail "the gate note changed the qa prompt's line count"
+# The ADO blocks keep the az commands (byte identity itself is proven by $S/i5/render-diff.sh).
+b1_render azure-devops "Azure DevOps org" "https://dev.azure.com/o" auto qa "$WORK/b1-qa-ado" \
+  || fail "ADO render of qa failed"
+has 'az repos pr update --org {{ORG_URL}} --id {{PR}} --draft false' "$WORK/b1-qa-ado" \
+  || fail "the ADO qa prompt lost its publish command"
+b1_render azure-devops "Azure DevOps org" "https://dev.azure.com/o" auto coder "$WORK/b1-coder-ado" \
+  || fail "ADO render of coder failed"
+has 'Run `/pr-create` — team mode creates an Azure DevOps draft' "$WORK/b1-coder-ado" \
+  || fail "the ADO coder prompt lost /pr-create"
+# A missing block file is a hard failure, never a prompt shipped with a live placeholder.
+run "$MAIN" /bin/bash -c '. .claude/lib/team-pr-render.sh
+  team_pr_render github "$PWD/nowhere" k h auto "x {{PR_CREATE}} y"'
+expect 1 "no PR block" "a present placeholder with no block file fails loudly"
+
+# ================================================================================================
+# (B2) the base must carry the PR layer: team-new.sh preflight for pr_provider=github
+# ================================================================================================
+# The guard reads the COMMITTED profile of the base, so each case needs its own published base.
+GH_NONE='.teams.pr_provider = "github" | .teams.tracker = "none"
+  | .teams.github = {repo: "acme/widgets"}
+  | .teams.required_tools = ["git", "jq", "gh"]'
+publish_base() {  # publish_base <branch> <profile jq filter>
+  git -C "$SEED" switch --quiet -C "$1" develop-netcore7
+  smoke_profile "$2" > "$SEED/.claude/project-profile.json"
+  git -C "$SEED" add .claude/project-profile.json
+  git -C "$SEED" commit --quiet -m "base profile $1"
+  git -C "$SEED" push --quiet --force origin "$1"
+}
+publish_base base-pr "$GH_NONE"
+publish_base base-prado '.teams.pr_provider = "azure-devops" | .teams.tracker = "none"'
+publish_base base-proth "$GH_NONE | .teams.github.repo = \"acme/elsewhere\""
+publish_base base-nopr "$GH_NONE"
+git -C "$SEED" rm --quiet .claude/lib/team-pr.sh
+git -C "$SEED" commit --quiet -m "no pr layer"
+git -C "$SEED" push --quiet --force origin base-nopr
+git -C "$SEED" switch --quiet develop-netcore7
+
+no_clone() { [ ! -e "$WORK/main-$1" ] || fail "$2: a refused start left a clone behind"; }
+setprofile "$GH_NONE"
+chmod 600 "$MAIN/.env"
+mkdir -p "$WORK/tkt"
+jq -n '{key: "L1", title: "local work", url: "", labels: []}' > "$WORK/tkt/ticket.json"
+printf '# L1\nlocal work\n' > "$WORK/tkt/ticket.md"
+TKT="--ticket-file $WORK/tkt/ticket.json"
+
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-nopr $TKT
+expect 1 "cannot run pr_provider=github" "a base without team-pr.sh is refused"
+no_clone beta "base without the PR layer"
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-prado $TKT
+expect 1 "cannot run pr_provider=github" "a base whose profile says azure-devops is refused"
+no_clone beta "base profile pr_provider=azure-devops"
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-proth $TKT
+expect 1 "cannot run pr_provider=github" "a base pointing at another repo is refused"
+no_clone beta "base github repo differs"
+
+export STUB_GH_AUTH=1
+run "$MAIN" $NEW beta L1 feature/L1-pr origin/base-pr $TKT
+unset STUB_GH_AUTH
+expect 1 "gh is not logged in" "a logged-out gh is refused before any clone"
+no_clone beta "gh not logged in"
+
+run "$MAIN" $NEW alfa L1 feature/L1-pr origin/base-pr $TKT
+expect 0 "branch:" "a base carrying the PR layer and the matching profile starts"
+CLONE="$WORK/main-alfa"; TD="$CLONE/.agents/team"
+[ -f "$CLONE/.claude/lib/team-pr.sh" ] || fail "the clone has no PR adapter"
+[ -f "$CLONE/.claude/team/pr/github-create.md" ] || fail "the clone has no PR blocks"
+
+# ================================================================================================
+# (B3) record validation through the runner — check_gh instead of check_ado
+# ================================================================================================
+BR=feature/L1-pr
+LINE0=base-pr
+RUN_ID=alfa-20261018-000001; echo "$RUN_ID" > "$TD/run"
+RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
+rm -f "$TD/session.json"; rm -rf "$TD/lock" "$TD/acked"
+mkdir -p "$CLONE/.agents/plans/active"
+printf '# plan\n' > "$CLONE/.agents/plans/active/p.md"
+git -C "$CLONE" add .agents/plans/active/p.md
+git -C "$CLONE" commit --quiet -m "plan"
+PREV="$(git -C "$CLONE" rev-parse HEAD)"
+mkdir -p "$CLONE/.agents/plans/done"
+git -C "$CLONE" mv .agents/plans/active/p.md .agents/plans/done/p.md
+git -C "$CLONE" commit --quiet -m "execute"
+REV="$(git -C "$CLONE" rev-parse HEAD)"
+git -C "$CLONE" push --quiet origin "$BR"
+
+# The planner record the coder's artifact is compared against.
+jq -n --arg run "$RUN_ID" --arg rev "$PREV" \
+  '{team: "alfa", ticket: "L1", run: $run, role: "planner", attempt: 1, seq: 1, branch: "x",
+    input_rev: "", output_rev: $rev, verdict: "done",
+    artifacts: [".agents/specs/s.md", ".agents/plans/active/p.md"], evidence: [], notes: "",
+    message: "", written_at: "2026-10-18T00:00:00Z"}' > "$RD/planner-1-1.json"
+touch "$RD/planner-1-1.json.accepted"
+
+mkpr() {  # mkpr <n> <isDraft> [head] [base]
+  pr_file "$1" "${3:-$BR}" "${4:-$LINE0}" "$2"
+}
+mkrecord() {  # mkrecord <role> <pr> → the record path
+  session "$1" 1 "$PREV"
+  (cd "$CLONE" && $REC --verdict done --pr "$2" \
+    --artifacts .agents/plans/done/p.md) | tail -n 1
+}
+mkpr 70 true
+R="$(mkrecord coder 70)"
+run "$MAIN" $TR alfa check "$R"
+expect 0 "valid:" "a coder record with a draft github PR validates"
+
+# Published while the coder still owes a draft: a refusal, not a pass.
+mkpr 70 false
+run "$MAIN" $TR alfa check "$R"
+expect 4 "PR #70 isDraft is not true" "a published PR fails the coder's draft check"
+
+# The identity refusal must survive the later checks (the `|| return 1` chain).
+mkpr 70 true "feature/L9-other" "$LINE0"
+run "$MAIN" $TR alfa check "$R"
+expect 4 "PR identity mismatch (#70)" "a PR on another head is refused"
+mkpr 70 true "$BR" develop-netcore7
+run "$MAIN" $TR alfa check "$R"
+expect 4 "PR identity mismatch (#70)" "a PR against another base is refused"
+
+# cli: the PR must be published, so a draft is a refusal.
+rm -f "$RD"/coder-1-1.json* "$RD"/planner-1-1.json*
+setmode() { jq --arg m "$1" '.mode = $m' "$TD/team.json" > "$WORK/tj"; mv "$WORK/tj" "$TD/team.json"; }
+setmode cli
+mkpr 70 true
+R="$(mkrecord cli 70)"
+run "$MAIN" $TR alfa check "$R"
+expect 4 "PR #70 isDraft is not false" "a draft PR fails the cli's published check"
+mkpr 70 false
+run "$MAIN" $TR alfa check "$R"
+expect 0 "valid:" "a cli record with a published github PR validates"
+rm -f "$RD"/cli-1-1.json* "$TD/session.json"
+
+# ================================================================================================
+# (B4) team-next.sh reads the previous PR through the adapter
+# ================================================================================================
+jq -n --arg run "$RUN_ID" --arg rev "$REV" \
+  '{team: "alfa", ticket: "L1", run: $run, role: "cli", attempt: 1, seq: 1, branch: "x",
+    input_rev: "", output_rev: $rev, verdict: "done", pr_id: 70, artifacts: [], evidence: [],
+    notes: "", message: "", written_at: "2026-10-18T00:00:00Z"}' > "$RD/cli-1-1.json"
+touch "$RD/cli-1-1.json.accepted"
+NEXT="bash .claude/lib/team-next.sh"
+run "$MAIN" $NEXT alfa L2 feature/L2-next origin/base-pr $TKT
+expect 1 "previous PR #70 of L1 is active" "an open github PR blocks the next ticket"
+
+# Merged: the head is an ancestor of the base, which is exactly what the fixture reports.
+smoke_gh_land "$BR" "$LINE0"
+mkdir -p "$WORK/tkt2"
+jq -n '{key: "L2", title: "next work", url: "", labels: []}' > "$WORK/tkt2/ticket.json"
+printf '# L2\nnext work\n' > "$WORK/tkt2/ticket.md"
+run "$MAIN" $NEXT alfa L2 feature/L2-next origin/base-pr --ticket-file "$WORK/tkt2/ticket.json"
+expect 0 "branch:" "a merged github PR releases the next-ticket guard"
+
+# ================================================================================================
+# (C) nothing in this suite ever merged or forced anything through gh
 # ================================================================================================
 ! grep -E 'pr merge|--admin|--force' "$GH_LOG" \
   || fail "the gh log contains a merge/admin/force call"

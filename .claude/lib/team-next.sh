@@ -61,7 +61,14 @@ done
 pr="$(jq -r '.pr_id // empty' "$TD"/runs/*/coder-*.json "$TD"/runs/*/cli-*.json 2>/dev/null \
   | tail -n 1)" || true
 if [ -n "$pr" ]; then
-  status="$(cd "$dir" && team_ado_coords && team_pr_json "$pr" | jq -r .status)" || status="unknown"
+  case "$TEAM_PR_PROVIDER" in
+    github)
+      status="$(cd "$dir" && bash "$root/.claude/lib/team-pr.sh" state "$pr" | jq -r .status)" \
+        || status="unknown" ;;
+    *)
+      status="$(cd "$dir" && team_ado_coords && team_pr_json "$pr" | jq -r .status)" \
+        || status="unknown" ;;
+  esac
   case "$status" in
     completed|abandoned) ;;
     *) TEAM_PROBLEMS+=("previous PR #$pr of $old_ticket is $status — merge or abandon it first") ;;

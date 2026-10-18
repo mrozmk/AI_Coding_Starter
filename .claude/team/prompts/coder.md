@@ -2,7 +2,7 @@ You are the coder of team {{TEAM}} working on {{TICKET}} in this clone. Team mod
 `.agents/reference/team-mode.md` first and follow it.
 
 Context: branch `{{BRANCH}}`, target line `{{LINE}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`, plan
-`{{PLAN}}`, spec `{{SPEC}}`, Azure DevOps org `{{ORG_URL}}`. Nobody answers questions in this
+`{{PLAN}}`, spec `{{SPEC}}`, {{PR_HOST_KIND}} `{{PR_HOST}}`. Nobody answers questions in this
 session: `AskUserQuestion` is not available.
 
 1. Run `/prime`.
@@ -15,8 +15,7 @@ session: `AskUserQuestion` is not available.
      `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait for the
      answer in this session.
 3. Run `/commit`, then `/push`.
-4. Run `/pr-create` — team mode creates an Azure DevOps draft against `{{LINE}}`. Every `az`
-   command you run yourself carries `--org {{ORG_URL}}`.
+4. {{PR_CREATE}}
 5. Write the record:
    `bash .claude/lib/team-record.sh --verdict done --pr <id> --artifacts <plan path under .agents/plans/done/>`
 

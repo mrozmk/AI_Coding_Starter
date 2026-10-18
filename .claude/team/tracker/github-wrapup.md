@@ -58,7 +58,7 @@
    Stay ≤ 4000 characters — trim `## Unattended decisions` prose first, never the template
    checklist or `## QA`. Write it to
    `.agents/team/runs/{{RUN}}/pr-description.md`, then
-   `az repos pr update --org {{ORG_URL}} --id {{PR}} --description @.agents/team/runs/{{RUN}}/pr-description.md`.
+   {{PR_BODY_SET}}.
 6. Recommendations — each one only if it passes its bar:
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
      go through `.agents/memory/reflection-protocol.md` (the default is to save nothing),

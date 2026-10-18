@@ -35,15 +35,31 @@ pr_state() {
     return 0
   fi
   if [ -z "$s" ]; then
-    org="$(cd "$dir" && team_ado_coords >/dev/null 2>&1 && echo "$ADO_ORG_URL")" || org=""
-    # team_pr_json inlined: perl execs, so it cannot run a bash function. Output to a file, not a
-    # pipe: a killed az must not keep the caller waiting on its stdout.
-    if [ -n "$org" ]; then
-      if pr_timebox "$secs" az repos pr show --org "$org" --id "$pr" -o json \
+    # `root` is a team-snapshot.sh global and is NOT set when pr_state runs standalone from a test,
+    # so `$dir` is the fallback for both the profile read and the adapter path (`set -u`).
+    local prov r="${root:-$dir}"
+    prov="${TEAM_DASH_PR_PROVIDER:-}"
+    [ -n "$prov" ] || prov="$(jq -r '.teams.pr_provider // "azure-devops"' \
+      "$r/.claude/project-profile.json" 2>/dev/null || echo azure-devops)"
+    if [ "$prov" = github ]; then
+      # The adapter already normalises the status; the timeout flag keeps its ADO-era file name.
+      if (cd "$dir" && pr_timebox "$secs" bash "$r/.claude/lib/team-pr.sh" state "$pr") \
         > "$W/pr-$team.json" 2>/dev/null; then
         s="$(jq -r '.status // empty' "$W/pr-$team.json" 2>/dev/null)" || s=""
       elif [ $? = 124 ]; then
         touch "$W/ado-timeout"
+      fi
+    else
+      org="$(cd "$dir" && team_ado_coords >/dev/null 2>&1 && echo "$ADO_ORG_URL")" || org=""
+      # team_pr_json inlined: perl execs, so it cannot run a bash function. Output to a file, not a
+      # pipe: a killed az must not keep the caller waiting on its stdout.
+      if [ -n "$org" ]; then
+        if pr_timebox "$secs" az repos pr show --org "$org" --id "$pr" -o json \
+          > "$W/pr-$team.json" 2>/dev/null; then
+          s="$(jq -r '.status // empty' "$W/pr-$team.json" 2>/dev/null)" || s=""
+        elif [ $? = 124 ]; then
+          touch "$W/ado-timeout"
+        fi
       fi
     fi
     case "$s" in completed|abandoned|active) ;; *) s=unknown ;; esac

@@ -54,6 +54,35 @@ check_ado() {
   [ "$src" = "$rev" ] || fail "PR #$pr lastMergeSourceCommit $src is not $rev (mergeStatus $ms)"
 }
 
+# GitHub lags a push the same way: `headRefOid` can show the old commit for a few seconds.
+# Every intermediate check ends in `|| fail … || return 1`: `fail` only returns 1, and
+# validate_record runs inside an AND/OR list (team-run.sh), so errexit is OFF here — without the
+# `return 1` a later passing check would turn this refusal back into a success.
+check_gh() {
+  local pr="$1" rev="$2" draft="$3" j src waited=0
+  while :; do
+    team_cancelled && cancel_exit
+    j="$(bash "$root/.claude/lib/team-pr.sh" state "$pr")" \
+      || fail "team-pr.sh state $pr failed" || return 1
+    src="$(jq -r '.source_sha // ""' <<<"$j")"
+    if [ "$src" != "$rev" ] && [ "$waited" -lt "$ADO_WAIT" ]; then
+      sleep "$ADO_POLL"; waited=$((waited + ADO_POLL)); continue
+    fi
+    break
+  done
+  bash "$root/.claude/lib/team-pr.sh" identity "$pr" "$BRANCH" "$LINE" \
+    || fail "PR identity mismatch (#$pr)" || return 1
+  [ "$(jq -r '.draft' <<<"$j")" = "$draft" ] || fail "PR #$pr isDraft is not $draft" || return 1
+  [ "$src" = "$rev" ] || fail "PR #$pr head $src is not $rev"
+}
+
+check_pr() {
+  case "$TEAM_PR_PROVIDER" in
+    github) check_gh "$@" ;;
+    *)      check_ado "$@" ;;
+  esac
+}
+
 check_pushed() {
   local tip
   tip="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
@@ -179,7 +208,7 @@ check_wrapup() {
   [ -s "$f" ] || fail "wrapup summary $f missing or empty" || return 1
   grep -Eq '^target_rev: [0-9a-f]{40}$' "$f" || fail "wrapup summary lacks 'target_rev: <sha>'" || return 1
   check_wrapup_tracker "$TD/runs/$RUN/wrapup-state.json" "$(team_json tracker || true)" || return 1
-  check_pushed "$rev" && check_ado "$pr" "$rev" false
+  check_pushed "$rev" && check_pr "$pr" "$rev" false
 }
 
 validate_record() {
@@ -195,17 +224,17 @@ validate_record() {
     coder)
       [ -n "$pr" ] || fail "coder record has no pr_id" || return 1
       check_coder_plan "$r" "$rev" || return 1
-      check_pushed "$rev" && check_ado "$pr" "$rev" true ;;
+      check_pushed "$rev" && check_pr "$pr" "$rev" true ;;
     qa)
       check_coder_pr qa "$pr" || return 1
       rec "$r" evidence | tr ',' '\n' | grep "qa-report-$(rec "$r" attempt)\.md\$" >/dev/null || fail "evidence lacks qa-report-$(rec "$r" attempt).md" || return 1
       check_qa_report "$TD/runs/$RUN/qa-report-$(rec "$r" attempt).md" "$r" || return 1
-      check_pushed "$rev" && check_ado "$pr" "$rev" false ;;
+      check_pushed "$rev" && check_pr "$pr" "$rev" false ;;
     wrapup) check_wrapup "$r" "$pr" "$rev" ;;
     cli)
       [ -n "$pr" ] || fail "cli record has no pr_id" || return 1
       # A cli PR skips QA, so the role publishes it itself (TT-790).
-      check_pushed "$rev" && check_ado "$pr" "$rev" false ;;
+      check_pushed "$rev" && check_pr "$pr" "$rev" false ;;
     *) fail "unknown role $role" ;;
   esac
 }

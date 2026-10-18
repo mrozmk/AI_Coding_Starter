@@ -2,7 +2,7 @@ You are the qa of team {{TEAM}} working on {{TICKET}} in this clone. Team mode i
 `.agents/reference/team-mode.md` first and follow it.
 
 Context: branch `{{BRANCH}}`, target line `{{LINE}}`, base revision `{{BASE_SHA}}`, run `{{RUN}}`,
-attempt `{{ATTEMPT}}`, plan `{{PLAN}}`, PR `{{PR}}`, Azure DevOps org `{{ORG_URL}}`. Nobody answers
+attempt `{{ATTEMPT}}`, plan `{{PLAN}}`, PR `{{PR}}`, {{PR_HOST_KIND}} `{{PR_HOST}}`. Nobody answers
 questions in this session: `AskUserQuestion` is not available.
 
 1. Run `/prime`.
@@ -14,19 +14,19 @@ questions in this session: `AskUserQuestion` is not available.
      distillation subagent it asks for, touch the marker it prints, and continue.
 3. If it changed files: `/commit`, then `/push`.
 4. Confirm `git status --porcelain` is empty, then re-run on the clean tree, keeping the counts:
-   `{{BUILD_CHECK}}`, then {{TEST_GATE}}
+   `{{BUILD_CHECK}}`, then {{TEST_GATE}}{{GATES_NOTE}}
 5. Write `.agents/team/runs/{{RUN}}/qa-report-{{ATTEMPT}}.md` exactly per team-mode.md §7
    (`run: {{RUN}}`, `attempt: {{ATTEMPT}}`, `output_rev:` = `git rev-parse HEAD`).
 6. Verdict `❌ Escalated` or any rethink signal →
    `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait.
 7. Otherwise publish:
    - Build `.agents/team/runs/{{RUN}}/pr-description.md`: the current body from
-     `az repos pr show --org {{ORG_URL}} --id {{PR}} --query description -o tsv`, with
+     {{PR_BODY_GET}}, with
      `## Unattended decisions` and `## Learnings` replaced from the notes and a `## QA` section from
      the report (gate outcomes, test counts, cross-model outcome). Keep the template checklist;
      stay ≤ 4000 characters by trimming prose.
-   - `az repos pr update --org {{ORG_URL}} --id {{PR}} --description @.agents/team/runs/{{RUN}}/pr-description.md`
-   - `az repos pr update --org {{ORG_URL}} --id {{PR}} --draft false`
+   - {{PR_BODY_SET}}
+   - {{PR_PUBLISH}}
 8. Write the record:
    `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --evidence .agents/team/runs/{{RUN}}/qa-report-{{ATTEMPT}}.md`
 

@@ -3,8 +3,8 @@ that makes a very simple change end to end. Team mode is on: read `.agents/refer
 first and follow it.
 
 Context: branch `{{BRANCH}}` (already created — do not run `/start-task`), target line `{{LINE}}`,
-base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`, Azure DevOps org
-`{{ORG_URL}}`. Nobody answers questions in this session: `AskUserQuestion` is not available.
+base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`, {{PR_HOST_KIND}}
+`{{PR_HOST}}`. Nobody answers questions in this session: `AskUserQuestion` is not available.
 There is no planner, no QA and no wrapup after you.
 
 1. Run `/prime`.
@@ -27,8 +27,7 @@ There is no planner, no QA and no wrapup after you.
 6. Write `.agents/team/runs/{{RUN}}/cli-{{ATTEMPT}}.md` in plain Polish: `## Co zmieniono`
    (2–3 sentences, no file names) and `## Co to daje` (1–2 sentences). `/monitor` reads this file.
 7. Run `/commit`, then `/push`.
-8. Run `/pr-create` — in team mode a cli PR is **published** against `{{LINE}}`, not a draft.
-   Every `az` command you run yourself carries `--org {{ORG_URL}}`.
+8. {{PR_CREATE_READY}}
 9. Write the record:
    `bash .claude/lib/team-record.sh --verdict done --pr <id>`
 
@@ -38,7 +37,7 @@ secret values: setting names only (`--query "[].name"`).
 
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`
-in the same notes file as `- [cli {{ATTEMPT}}] <item> — <where>`. `/pr-create` copies both
+in the same notes file as `- [cli {{ATTEMPT}}] <item> — <where>`. {{PR_TOOL}} copies both
 sections into the PR, because no wrapup follows.
 
 Do not exit the session yourself; the runner ends it.
