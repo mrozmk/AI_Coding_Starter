@@ -54,6 +54,10 @@ case "${1:-}" in
         jq --argjson n "$n" --arg t "$t" --rawfile b "$bf" \
           '. + [{number: $n, title: $t, body: $b}]' "$G/issues.json" > "$G/t" \
           && mv "$G/t" "$G/issues.json"
+        # The UNCERTAIN write: the issue really is created, then the client dies before it can read
+        # the answer. The adapter must not conclude "nothing happened".
+        [ "${STUB_GH_CREATE_THEN_FAIL:-0}" != 1 ] \
+          || { echo "gh: timeout awaiting response headers" >&2; exit 1; }
         echo "https://github.com/owner/repo/issues/$n" ;;
       *) echo "stub: gh issue $2" >&2; exit 1 ;;
     esac ;;
@@ -69,6 +73,9 @@ case "${1:-}" in
         id=$(( $(jq 'length' "$G/comments.json") + 900 ))
         jq --argjson i "$id" --slurpfile p "$input" '. + [{id: $i, body: $p[0].body}]' \
           "$G/comments.json" > "$G/t" && mv "$G/t" "$G/comments.json"
+        # Same uncertain write for comments: stored, then a non-zero exit (error/timeout).
+        [ "${STUB_GH_POST_THEN_FAIL:-0}" != 1 ] \
+          || { echo "gh: HTTP 502 after the write" >&2; exit 1; }
         printf '{"id": %s}\n' "$id" ;;
       "GET "*issues\?*)
         pages "$G/issues.json" ;;
@@ -210,6 +217,43 @@ unset STUB_GH_PAGE2_FAIL
 expect 4 "recoverable" "a failed second page is recoverable, not 'absent'"
 [ "$(posts)" = 0 ] || fail "an incomplete enumeration still posted a comment"
 
+# Two comments carrying the SAME marker: `.[0]` would call one arbitrary duplicate "the" comment and
+# let the intent go `done` over an unresolved mess. 0 → create · 1 → exists · >1 → exit 4, no write.
+fx_reset
+jq -n --arg m MARKER-DUP '[{id: 801, body: ("noise\n" + $m)}, {id: 802, body: ("noise\n" + $m)}]' \
+  > "$GH_DIR/comments.json"
+body_file "$WORK/c.md" MARKER-DUP
+run "$MAIN" $TRK comment 7 --marker MARKER-DUP --body-file "$WORK/c.md"
+expect 4 "matches 2 comments" "two comments with one marker is recoverable, not 'exists' of the first"
+[ "$(posts)" = 0 ] || fail "the ambiguous comment match still posted"
+[ "$(jq 'length' "$GH_DIR/comments.json")" = 2 ] || fail "the ambiguous match changed the comments"
+
+# The UNCERTAIN WRITE: the POST stores the comment, then the command exits non-zero (error/timeout).
+# The adapter must be recoverable (so the intent stays pending) and the retry must find exactly one
+# comment — `exists`, not a second POST. Total comments on the issue: 1.
+fx_reset
+body_file "$WORK/c.md" MARKER-U
+export STUB_GH_POST_THEN_FAIL=1
+run "$MAIN" $TRK comment 7 --marker MARKER-U --body-file "$WORK/c.md"
+unset STUB_GH_POST_THEN_FAIL
+expect 4 "recoverable" "a POST that stored the comment but failed is recoverable, not 'created'"
+[ "$(jq 'length' "$GH_DIR/comments.json")" = 1 ] || fail "the uncertain write stored no comment"
+
+# A second-page read failure on the RETRY may not become a POST — the object already exists.
+export STUB_GH_PAGE2_FAIL=1
+jq '. + ([range(40)] | map({id: (1000 + .), body: "x"}))' "$GH_DIR/comments.json" > "$GH_DIR/t" \
+  && mv "$GH_DIR/t" "$GH_DIR/comments.json"
+run "$MAIN" $TRK comment 7 --marker MARKER-U --body-file "$WORK/c.md"
+unset STUB_GH_PAGE2_FAIL
+expect 4 "recoverable" "a failed page 2 on the retry is recoverable"
+[ "$(posts)" = 1 ] || fail "the retry after an uncertain write posted again ($(posts) POSTs)"
+jq '[.[] | select(.id < 1000)]' "$GH_DIR/comments.json" > "$GH_DIR/t" \
+  && mv "$GH_DIR/t" "$GH_DIR/comments.json"
+run "$MAIN" $TRK comment 7 --marker MARKER-U --body-file "$WORK/c.md"
+expect 0 "exists" "the retry finds the comment the failed POST had stored"
+[ "$(posts)" = 1 ] || fail "the recovered retry posted a second comment ($(posts) POSTs)"
+[ "$(jq 'length' "$GH_DIR/comments.json")" = 1 ] || fail "the issue ended up with 2 comments"
+
 # ================================================================================================
 # (3) set-status: permissions, the full item list, idempotence, the refusals
 # ================================================================================================
@@ -238,6 +282,18 @@ run "$MAIN" $TRK set-status 7 delivered
 expect 0 "set delivered" "a foreign #7 with the target status does not make it 'unchanged'"
 [ "$(jq -r '[.[] | select(.id == "item-44")] | .[0].status' "$GH_DIR/items.json")" = Delivered ] \
   || fail "the target item was never edited"
+
+# Two items for the SAME repo + number (a duplicated add): editing one of them at random is
+# unrecoverable, so an ambiguous match is exit 4 with no item-edit at all.
+fx_reset
+jq '[{id: "item-dup", status: "Todo",
+      content: {type: "Issue", number: 7, repository: "owner/repo"}}] + .' \
+  "$GH_DIR/items.json" > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/items.json"
+run "$MAIN" $TRK set-status 7 delivered
+expect 4 "matches 2 items" "two project items for repo+number is recoverable, not an arbitrary edit"
+[ "$(grep -c -- 'item-edit' "$GH_LOG" | tr -d ' ')" = 0 ] || fail "the ambiguous item match still edited"
+[ "$(jq -r '[.[] | select(.status != "Todo")] | length' "$GH_DIR/items.json")" = 0 ] \
+  || fail "the ambiguous item match moved a status"
 
 fx_reset
 run "$MAIN" $TRK set-status 8 delivered
@@ -268,6 +324,41 @@ body_file "$WORK/f.md" MARKER-H
 run "$MAIN" $TRK create-followup --marker MARKER-H --title "Follow up" --body-file "$WORK/f.md"
 expect 0 "created" "a PR carrying the marker is not a follow-up"
 [ "$(creates)" = 1 ] || fail "the PR match suppressed the create"
+
+# Same ambiguity rule as comments: two issues carrying one marker is exit 4, not `exists` of the first.
+fx_reset
+jq -n --arg m MARKER-DUP '[{number: 301, body: ("noise\n" + $m)}, {number: 302, body: ("noise\n" + $m)}]' \
+  > "$GH_DIR/issues.json"
+body_file "$WORK/f.md" MARKER-DUP
+run "$MAIN" $TRK create-followup --marker MARKER-DUP --title "Follow up" --body-file "$WORK/f.md"
+expect 4 "matches 2 issues" "two follow-ups with one marker is recoverable, not 'exists' of the first"
+[ "$(creates)" = 0 ] || fail "the ambiguous follow-up match still created an issue"
+[ "$(jq 'length' "$GH_DIR/issues.json")" = 2 ] || fail "the ambiguous match changed the issue list"
+
+# The UNCERTAIN WRITE for create-followup: `gh issue create` stored the issue, then exited non-zero.
+# Recoverable (intent stays pending); the retry finds exactly one issue → `exists`, total = 1.
+fx_reset
+body_file "$WORK/f.md" MARKER-U
+export STUB_GH_CREATE_THEN_FAIL=1
+run "$MAIN" $TRK create-followup --marker MARKER-U --title "Follow up" --body-file "$WORK/f.md"
+unset STUB_GH_CREATE_THEN_FAIL
+expect 4 "recoverable" "a create that stored the issue but failed is recoverable, not 'created'"
+[ "$(jq 'length' "$GH_DIR/issues.json")" = 1 ] || fail "the uncertain create stored no issue"
+
+# A failed page 2 on the retry may not become a second create.
+export STUB_GH_PAGE2_FAIL=1
+jq '. + ([range(40)] | map({number: (400 + .), body: "x"}))' "$GH_DIR/issues.json" > "$GH_DIR/t" \
+  && mv "$GH_DIR/t" "$GH_DIR/issues.json"
+run "$MAIN" $TRK create-followup --marker MARKER-U --title "Follow up" --body-file "$WORK/f.md"
+unset STUB_GH_PAGE2_FAIL
+expect 4 "recoverable" "a failed page 2 on the follow-up retry is recoverable"
+[ "$(creates)" = 1 ] || fail "the follow-up retry created again ($(creates) creates)"
+jq '[.[] | select(.number < 400)]' "$GH_DIR/issues.json" > "$GH_DIR/t" \
+  && mv "$GH_DIR/t" "$GH_DIR/issues.json"
+run "$MAIN" $TRK create-followup --marker MARKER-U --title "Follow up" --body-file "$WORK/f.md"
+expect 0 "exists" "the retry finds the issue the failed create had stored"
+[ "$(creates)" = 1 ] || fail "the recovered retry created a second issue ($(creates) creates)"
+[ "$(jq 'length' "$GH_DIR/issues.json")" = 1 ] || fail "the repo ended up with 2 follow-ups"
 
 # ================================================================================================
 # (5) tracker=none: this adapter owns the L<n> counter, and `gh` is never called
@@ -320,7 +411,10 @@ run "$MAIN" $TRK set-status L1 delivered
 expect 0 "skipped (tracker=none)" "set-status is a no-op for none"
 run "$MAIN" $TRK create-followup --marker MARKER-A --title t --body-file "$WORK/c.md"
 expect 0 "skipped (tracker=none)" "create-followup is a no-op for none"
+# read/comment/status AND create-followup: not one gh call, and in particular no write of either kind.
 [ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "tracker=none called gh"; }
+[ "$(posts)" = 0 ] || fail "tracker=none posted a comment"
+[ "$(creates)" = 0 ] || fail "tracker=none create-followup called gh issue create"
 
 # ================================================================================================
 # (6) tracker=jira: every op refuses, nothing touches gh
@@ -481,12 +575,30 @@ session wrapup 1 ""      # mkrec writes an empty input_rev; check_common compare
 printf 'target_rev: %s\n' "$REV" > "$RD/wrapup-1.md"
 WREC="$RD/wrapup-1-1.json"
 
+# The intent identity the prompt must write BEFORE any external op. The four TG_* globals default to
+# this run's real target; a negative fixture overrides one of them. TG_LOGICAL covers the
+# `started instead of delivered` case, TG_TARGET a missing/malformed `target` object.
+# TG_MARKER_RUN is the run the markers were MINTED from — deliberately separate from TG_RUN (the
+# stored `target.run`), so a fixture can relabel `target` while the markers stay foreign.
+tg_reset() {
+  TG_RUN="$RUN_ID"; TG_TICKET='"7"'; TG_REPO='"owner/repo"'; TG_PROJ='"PVT_x"'
+  TG_LOGICAL=delivered; TG_TARGET=ok; TG_MARKER_RUN="$RUN_ID"
+}
+tg_reset
+
 ws() {  # ws <comment state> <set-status state> [accepted draft: 0|1] [create state]
   jq -n --arg c "$1" --arg s "$2" --argjson d "${3:-0}" --arg cs "${4:-pending}" \
+    --arg run "$TG_RUN" --argjson tk "$TG_TICKET" --argjson repo "$TG_REPO" \
+    --argjson proj "$TG_PROJ" --arg lg "$TG_LOGICAL" --arg tgt "$TG_TARGET" \
+    --arg mr "$TG_MARKER_RUN" \
     '{drafts: (if $d == 1 then {"create-1": {accepted: true, title: "t", body: "b"}} else {} end),
-      intents: ({"comment-1": {op: "comment", marker: "m", state: $c},
-                 "set-status-delivered": {op: "set-status", logical: "delivered", state: $s}}
-        + (if $d == 1 then {"create-1": {op: "create", draft_id: "create-1", state: $cs}} else {} end))}' \
+      intents: ({"comment-1": {op: "comment", marker: ("[wrapup " + $mr + " comment-1]"), state: $c},
+                 "set-status-delivered": {op: "set-status", logical: $lg, state: $s}}
+        + (if $d == 1 then {"create-1": {op: "create", draft_id: "create-1",
+             marker: ("[wrapup " + $mr + " create-1]"), state: $cs}} else {} end))}
+     + (if $tgt == "missing" then {}
+        elif $tgt == "malformed" then {target: "alfa-20261018-000001"}
+        else {target: {run: $run, ticket: $tk, repo: $repo, project_id: $proj}} end)' \
     > "$RD/wrapup-state.json"
 }
 
@@ -513,9 +625,15 @@ has "origin bugfix/7-fix-x" "$WORK/out" || fail "validation did not reach check_
 
 # check_wrapup_tracker on its own — in a SUBSHELL: team-validate.sh defines its own fail() and
 # would otherwise replace the suite's (exit) with a return, so later assertions would not stop.
+# The trusted context is exactly the runner's: the profile from the MAIN checkout, team.json from
+# the CLONE's cwd, RUN from the runner global — never from the file under judgement.
 ck() {  # ck <expected rc> <tracker> <label>
   set +e
-  ( . "$MAIN/.claude/lib/team-validate.sh"
+  ( cd "$CLONE"
+    . "$CLONE/.claude/lib/team-lib.sh"
+    . "$MAIN/.claude/lib/team-profile.sh"; team_profile_load "$MAIN"
+    . "$MAIN/.claude/lib/team-validate.sh"
+    RUN="$RUN_ID"
     check_wrapup_tracker "$RD/wrapup-state.json" "$2" ) > "$WORK/out" 2>&1
   RC=$?; set -e
   [ "$RC" = "$1" ] || fail "$3: rc $RC, expected $1"
@@ -525,11 +643,84 @@ ws pending done;      ck 1 github "a pending comment"
 ws done done;         ck 0 github "both intents done"
 ws done done 1 pending; ck 1 github "an accepted follow-up still pending"
 ws done done 1 done;    ck 0 github "an accepted follow-up done"
+
+# ---- intent identity: finished intents of ANOTHER target must never carry this run to Done ------
+TG_RUN=alfa-20261017-999999; ws done done
+ck 1 github "a previous run's finished state"
+has "is not this run's" "$WORK/out" || fail "the identity refusal does not name the mismatch"
+tg_reset
+TG_TICKET='"999"'; ws done done; ck 1 github "another ticket's finished state"
+tg_reset
+TG_REPO='"other/repo"'; ws done done; ck 1 github "another repo's finished state"
+tg_reset
+TG_PROJ='"PVT_other"'; ws done done; ck 1 github "another project's finished state"
+tg_reset
+TG_LOGICAL=started; ws done done; ck 1 github "set-status started instead of delivered"
+tg_reset
+TG_TARGET=missing; ws done done; ck 1 github "a state file with no target identity"
+tg_reset
+TG_TARGET=malformed; ws done done; ck 1 github "a target that is not an object"
+tg_reset
+# Astra's reproducer, issue #4 acceptance review: run=OLD-RUN, ticket=999, repo=other/repo with a
+# done comment and delivered/done status returned rc 0 before this gate existed.
+TG_RUN=OLD-RUN; TG_TICKET='"999"'; TG_REPO='"other/repo"'; ws done done
+ck 1 github "Astra's reproducer: OLD-RUN/999/other/repo is rejected"
+tg_reset
+# The ORDER matters (codex, fix round 4b): if the prompt wrote the current `target` first and only
+# then judged the file foreign, a previous run's finished intents would be relabelled as this run's
+# and validate. `target` alone is not identity — the markers of the `done` intents are minted from
+# {{RUN}}, so a relabelled foreign state is still refused.
+TG_MARKER_RUN=alfa-20261017-999999; ws done done
+ck 1 github "a foreign state with target rewritten to this run is still rejected"
+has "does not carry run $RUN_ID" "$WORK/out" || fail "the relabel refusal does not name the marker run"
+TG_MARKER_RUN=alfa-20261017-999999; ws done done 1 done
+ck 1 github "a relabelled foreign follow-up intent is rejected too"
+tg_reset
+# jira and none are unaffected by the identity gate — they have no intents at all.
+ws done done; ck 0 github "the matching target still validates"
+TG_RUN=OLD-RUN; TG_TICKET='"999"'; TG_REPO='"other/repo"'; ws pending pending
+ck 0 none "none ignores a foreign state file"
+ck 0 jira "jira ignores a foreign state file"
+ck 0 "" "a pre-2b team.json ignores a foreign state file"
+tg_reset
+
 rm -f "$RD/wrapup-state.json"
 ck 1 github "a missing state file"
 ck 0 none "none needs no intents"
 ck 0 jira "jira needs no intents"
 ck 0 "" "a pre-2b team.json needs no intents"
+
+# ---- the durable record of a failed `set-status started` (/start-team 4b) -----------------------
+run "$MAIN" bash .claude/lib/team-warn.sh alfa "status started not set — HTTP 403"
+expect 0 "warning recorded" "team-warn.sh records a started failure in the clone's team.json"
+jq -e '(.warnings | length) == 1 and (.warnings[0].text | test("status started not set"))
+  and (.warnings[0].at | test("^[0-9]{4}-"))' "$TD/team.json" >/dev/null \
+  || fail "team.json carries no warnings[] entry"
+jq -e '.ticket == "7" and .branch == "bugfix/7-fix-x"' "$TD/team.json" >/dev/null \
+  || fail "team-warn.sh damaged team.json"
+run "$MAIN" bash .claude/lib/team-warn.sh alfa "second one"
+expect 0 "warning recorded" "warnings[] is append-only"
+[ "$(jq '.warnings | length' "$TD/team.json")" = 2 ] || fail "the second warning replaced the first"
+run "$MAIN" $TR alfa status
+expect 0 "warn: status started not set" "team-run.sh status surfaces the durable warning"
+run "$MAIN" bash .claude/lib/team-warn.sh alfa
+expect 2 "usage:" "team-warn.sh needs a text"
+run "$MAIN" bash .claude/lib/team-warn.sh nosuchteam "x"
+expect 1 "no team clone" "team-warn.sh refuses a team without a clone"
+
+# The write itself failing is what /start-team step 4b must STOP on: a non-zero exit, and team.json
+# left exactly as it was (no truncation by a half-finished `>`). A read-only team dir is the cheapest
+# way to make both the temp file and the mv impossible.
+cp "$TD/team.json" "$WORK/warn-before.json"
+chmod 500 "$TD"
+run "$MAIN" bash .claude/lib/team-warn.sh alfa "this write must fail"
+chmod 700 "$TD"
+[ "$RC" != 0 ] || fail "team-warn.sh reported success on an unwritable team dir"
+cmp -s "$WORK/warn-before.json" "$TD/team.json" || fail "the failed warn write changed team.json"
+[ ! -e "$TD/team.json.new" ] || fail "the failed warn write left a temp file behind"
+[ "$(jq '.warnings | length' "$TD/team.json")" = 2 ] || fail "the failed warn write touched warnings[]"
+
+jq 'del(.warnings)' "$TD/team.json" > "$TD/t" && mv "$TD/t" "$TD/team.json"
 
 
 # ================================================================================================

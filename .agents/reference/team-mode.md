@@ -85,7 +85,21 @@ status, failed or partial enumeration) — never the conclusion "not there".
 `/start-team` reads the ticket into `<main checkout>/.agents/team/incoming/<TEAM>/` and hands it to
 `team-new.sh`/`team-next.sh` as `--ticket-file`; those copy both files into the clone. "Never Done"
 is the runner's: `team-validate.sh` rejects a `done` wrapup record whose `github` intents
-(`comment`, `set-status delivered`, any accepted follow-up) are not all `done`. Costs bind to
+(`comment`, `set-status delivered`, any accepted follow-up) are not all `done`, or whose
+`wrapup-state.json` `target` (`{run, ticket, repo, project_id}`, written before any external op) is
+not this run's — so a previous run's or another ticket's finished state cannot carry a run to Done.
+
+**Single writer of tracker intents: the wrapup role.** Every other role only reads the tracker. No
+new lock is needed, because the runner already serialises roles: `team-run.sh:296` takes the per-team
+runner lock (`$TD/lock`, `mkdir` + pid; removed only by its own pid at `team-run.sh:416`), so a
+second runner for the same team refuses to start; inside it `cmd_advance` launches exactly one role
+per iteration (`team-run.sh:312`) and `check_orphans` (defined `team-run.sh:286-291`, called at
+`team-run.sh:304` and `:306`) aborts with `die 7 "orphan session …"` when any other role's session
+is still alive. One runner × one live role = one wrapup = one writer, and that is what
+makes the adapter's read-then-create idempotent. The single exception is `/start-team` step 4b
+(`set-status started`), which writes no intent; its failure is appended to `warnings[]` in the
+clone's `team.json` by `team-warn.sh` — and if that record cannot be written, `/start-team` stops
+instead of launching the runner. Costs bind to
 `cost_key` — `<owner>/<repo>#<n>` · `<repo-dir>:L<n>` · the key itself — so the same short key in
 two projects stays two bindings. At wrapup the adapter runs **inside the clone** and reads its
 **committed** profile: the `teams.github` block must be on the branch's base, or the start is refused.

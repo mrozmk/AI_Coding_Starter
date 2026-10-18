@@ -98,13 +98,54 @@ check_coder_pr() {  # check_coder_pr <role> <pr_id> — the role must report the
   [ -n "$coder" ] && [ "$2" = "$(rec "$coder" pr_id)" ] || fail "PR identity mismatch ($1 pr_id ${2:-none} is not the coder's)"
 }
 
+# The trusted identity of THIS run's tracker target — never taken from wrapup-state.json, which is
+# the very file being judged. RUN is the runner's global, the key comes from the clone's team.json,
+# repo and project_id from the profile that team-profile.sh already validated.
+wrapup_target_identity() {  # → "<run>\t<ticket>\t<repo>\t<project_id>" on stdout, or rc 1
+  local key
+  key="$(team_json ticket)" || return 1
+  [ -n "${RUN:-}" ] && [ -n "$key" ] && [ -n "${TEAM_GH_REPO:-}" ] \
+    && [ -n "${TEAM_GH_PROJECT_ID:-}" ] || return 1
+  printf '%s\t%s\t%s\t%s' "$RUN" "$key" "$TEAM_GH_REPO" "$TEAM_GH_PROJECT_ID"
+}
+
 # "Never Done" for tracker=github: the runner, not the prompt, refuses a wrapup that did not post
 # its comment, deliver its status, or finish an accepted follow-up. jira/none (and a pre-2b
 # team.json) keep today's validation. `$s` binds the ROOT before `all` — without it `.intents`
 # inside the loop resolves against the draft entry and every accepted follow-up loses.
+#
+# Done also requires the state's own `target` to BE this run's target. Without it a wrapup-state.json
+# holding a PREVIOUS run's or another ticket's finished intents validates — Astra reproduced exactly
+# that in the issue #4 acceptance review (run=OLD-RUN, ticket=999, repo=other/repo → rc 0).
+# `target` is checked together with the markers of the `done` intents: a foreign state whose `target`
+# was merely rewritten to this run (codex, fix round 4b) is still refused, because its markers name
+# the old run.
 check_wrapup_tracker() {  # check_wrapup_tracker <state-file> <tracker>
-  local sf="$1" t="${2:-}"
+  local sf="$1" t="${2:-}" ident run key repo proj
   case "$t" in github) ;; *) return 0 ;; esac
+  ident="$(wrapup_target_identity)" \
+    || fail "tracker=github: cannot resolve this run's tracker target (run/ticket/repo/project)" \
+    || return 1
+  # `cut` on a tab-joined line: Bash 3.2 has no `read -a`, and a pipe into `read` loses the values.
+  run="$(printf '%s' "$ident" | cut -f1)"; key="$(printf '%s' "$ident" | cut -f2)"
+  repo="$(printf '%s' "$ident" | cut -f3)"; proj="$(printf '%s' "$ident" | cut -f4)"
+  jq -e --arg run "$run" --arg key "$key" --arg repo "$repo" --arg proj "$proj" \
+    '(.target // {}) as $tg
+     | ($tg.run == $run and (($tg.ticket // null) | tostring) == $key
+        and $tg.repo == $repo and $tg.project_id == $proj)' \
+    "$sf" >/dev/null 2>&1 \
+    || fail "tracker=github: wrapup-state.json target is not this run's (run $run, ticket $key, repo $repo, project $proj)" \
+    || return 1
+  # `target` alone is cheap to forge: rewriting it over a previous run's state would relabel that
+  # run's finished intents as this one's. Every marker-bearing `done` intent must therefore carry
+  # THIS run id — markers are minted from {{RUN}} + the intent id and never change across attempts,
+  # so a stale intent cannot be laundered by editing `target`.
+  jq -e --arg run "$run" \
+    'all((.intents // {})[] | select(.state == "done" and (.marker // null) != null);
+         .marker | tostring | contains($run))' \
+    "$sf" >/dev/null 2>&1 \
+    || fail "tracker=github: a done intent's marker does not carry run $run — foreign state relabelled, not re-done" \
+    || return 1
   jq -e '. as $s
     | (any(($s.intents // {})[]; .op == "comment" and .state == "done"))
       and (any(($s.intents // {})[]; .op == "set-status" and .logical == "delivered"

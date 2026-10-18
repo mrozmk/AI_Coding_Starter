@@ -327,8 +327,10 @@ cmd_status() {
   local role r pid
   jq -c '{team, ticket, branch, line, base_sha}' "$TD/team.json"
   echo "mode: $MODE"
+  # Durable non-fatal failures (team-warn.sh) — e.g. /start-team 4b `set-status started`.
+  jq -r '(.warnings // [])[] | "warn: " + .text + " (" + .at + ")"' "$TD/team.json"
   RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}"
-  [ ! -f "$TD/session.json" ] || echo "session: $(jq -c '{role, attempt, input_rev}' "$TD/session.json")"
+  [ ! -f "$TD/session.json" ] || echo "session:$(jq -c '{role, attempt, input_rev}' "$TD/session.json")"
   [ ! -f "$ROLES_OVERRIDE" ] || echo "roles override: $(team_roles_status "$ROLES_OVERRIDE")"
   for role in $(team_mode_roles "$MODE"); do
     r="$(ls -1t "$TD/runs/${RUN:-none}/$role"-*.json 2>/dev/null | head -n 1)" || true

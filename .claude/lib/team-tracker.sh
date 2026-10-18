@@ -14,7 +14,8 @@
 #
 # Exit codes: 0 ok · 1 ticket unusable (closed, missing, bad input) · 2 usage/profile ·
 #   3 tracker=jira (the session's MCP owns it) · 4 recoverable (permissions, no project item,
-#   unknown logical, failed/incomplete enumeration).
+#   unknown logical, failed/incomplete enumeration, an AMBIGUOUS match — more than one marker hit
+#   or more than one project item for repo+number — which is never resolved by picking the first).
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
@@ -124,16 +125,22 @@ op_read_none() {
 }
 
 op_comment() {
-  local marker="$1" file="$2" id
+  local marker="$1" file="$2" id hits
   marker_is_last_line "$file" "$marker"
   # `--paginate` into a FILE, not a pipe: on a later-page error gh prints page 1 and exits non-zero,
   # and `local x=$(…)` would swallow that status even under pipefail.
   gh_or4 gh api "repos/$TEAM_GH_REPO/issues/$KEY/comments" --paginate > "$TMP/raw.json"
   jq -s 'add // []' "$TMP/raw.json" > "$TMP/all.json" \
     || die 4 "comment list of issue #$KEY is not parseable"
-  id="$(jq -r --arg m "$MARKER_N" \
-    'map(select((.body // "") | gsub("\r"; "") | rtrimstr("\n") | split("\n") | last == $m))
-     | .[0].id // ""' "$TMP/all.json")"
+  jq --arg m "$MARKER_N" \
+    'map(select((.body // "") | gsub("\r"; "") | rtrimstr("\n") | split("\n") | last == $m))' \
+    "$TMP/all.json" > "$TMP/hits.json" || die 4 "comment list of issue #$KEY is not parseable"
+  # 0 → create · 1 → exists · >1 → recoverable. Picking `.[0]` of an ambiguous match would call one
+  # arbitrary duplicate "the" comment and let the intent go `done` over an unresolved mess.
+  hits="$(jq -r 'length' "$TMP/hits.json")"
+  [ "$hits" -le 1 ] \
+    || die 4 "marker '$MARKER_N' matches $hits comments of issue #$KEY — refusing to choose one"
+  id="$(jq -r '.[0].id // ""' "$TMP/hits.json")"
   if [ -n "$id" ]; then echo "exists $id"; return 0; fi
   jq -n --rawfile b "$file" '{body: $b}' > "$TMP/post.json"
   gh_or4 gh api -X POST "repos/$TEAM_GH_REPO/issues/$KEY/comments" \
@@ -142,7 +149,7 @@ op_comment() {
 }
 
 op_set_status() {
-  local logical="$1" opt item total name
+  local logical="$1" opt item total name hits
   case "$logical" in
     started)   opt="$TEAM_GH_STATUS_STARTED" ;;
     delivered) opt="$TEAM_GH_STATUS_DELIVERED" ;;
@@ -156,9 +163,16 @@ op_set_status() {
     --format json --limit "$total" > "$TMP/items.json"
   [ "$(jq -r '.items | length' "$TMP/items.json")" = "$total" ] \
     || die 4 "incomplete item list for project $TEAM_GH_PROJECT_NUMBER"
-  item="$(jq -r --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
+  # Identity is repo + number, never the number alone (owner/A#7 and owner/B#7 can share a project).
+  # An ambiguous match is recoverable, not a coin flip: editing the wrong item is unrecoverable.
+  jq --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
     '[.items[] | select(.content.type == "Issue" and .content.number == $n
-       and .content.repository == $repo)] | .[0] // {} | .id // ""' "$TMP/items.json")"
+       and .content.repository == $repo)]' "$TMP/items.json" > "$TMP/match.json" \
+    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
+  hits="$(jq -r 'length' "$TMP/match.json")"
+  [ "$hits" -le 1 ] || die 4 "issue #$KEY matches $hits items in project \
+$TEAM_GH_PROJECT_NUMBER — refusing to edit one of them"
+  item="$(jq -r '.[0].id // ""' "$TMP/match.json")"
   [ -n "$item" ] \
     || die 4 "issue #$KEY is not in project $TEAM_GH_PROJECT_NUMBER — not adding it"
   gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
@@ -179,15 +193,20 @@ op_set_status() {
 }
 
 op_create_followup() {
-  local marker="$1" title="$2" file="$3" n url
+  local marker="$1" title="$2" file="$3" n url hits
   marker_is_last_line "$file" "$marker"
   gh_or4 gh api "repos/$TEAM_GH_REPO/issues?state=all&per_page=100" --paginate > "$TMP/raw.json"
   jq -s 'add // []' "$TMP/raw.json" > "$TMP/all.json" \
     || die 4 "issue list of $TEAM_GH_REPO is not parseable"
-  n="$(jq -r --arg m "$MARKER_N" \
+  jq --arg m "$MARKER_N" \
     'map(select((.pull_request | not)
-       and ((.body // "") | gsub("\r"; "") | rtrimstr("\n") | split("\n") | last == $m)))
-     | .[0].number // ""' "$TMP/all.json")"
+       and ((.body // "") | gsub("\r"; "") | rtrimstr("\n") | split("\n") | last == $m)))' \
+    "$TMP/all.json" > "$TMP/hits.json" || die 4 "issue list of $TEAM_GH_REPO is not parseable"
+  # Same rule as op_comment: 0 → create · 1 → exists · >1 → recoverable, with nothing written.
+  hits="$(jq -r 'length' "$TMP/hits.json")"
+  [ "$hits" -le 1 ] \
+    || die 4 "marker '$MARKER_N' matches $hits issues of $TEAM_GH_REPO — refusing to choose one"
+  n="$(jq -r '.[0].number // ""' "$TMP/hits.json")"
   if [ -n "$n" ]; then echo "exists $n"; return 0; fi
   gh_or4 gh issue create --repo "$TEAM_GH_REPO" --title "$title" --body-file "$file" \
     > "$TMP/created"

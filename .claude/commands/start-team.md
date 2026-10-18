@@ -95,9 +95,16 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
    Non-zero exit → print its errors and stop.
 
 4b. **Ticket status** (`TRACKER=github` only, NEW runs only, after step 4 succeeded).
-   `bash .claude/lib/team-tracker.sh set-status <KEY> started`. Non-zero exit → one line
-   `warn: status started not set — <error>` in the report and continue; this is visibility only, the
-   run starts regardless.
+   `bash .claude/lib/team-tracker.sh set-status <KEY> started`. Non-zero exit → record it DURABLY
+   first: `bash .claude/lib/team-warn.sh <TEAM> "status started not set — <error>"` (appends to
+   `warnings[]` in the clone's `team.json`; `bash .claude/lib/team-run.sh <TEAM> status` prints every
+   entry). Continue **only after that command succeeded**, with one line
+   `warn: status started not set — <error>` in the report; the run then starts regardless, because
+   the failure is recoverable from the clone.
+   `team-warn.sh` itself exiting non-zero → **stop the start**: do not run step 4a and do not launch
+   the runner, print its error verbatim, and report that the ticket status was not set *and* the
+   warning could not be stored. This is the one failure that must not be walked past — it would
+   leave a run going with a ticket that silently never left its old status and no record of why.
 
 4a. **Roles override** (only with `ROLES`). `bash .claude/lib/team-run.sh <TEAM> roles <ROLES…>`.
    New ticket: after step 4, so `team-next.sh` has archived the previous ticket's override first.

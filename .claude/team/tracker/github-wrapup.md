@@ -1,10 +1,28 @@
 4. Tracker — the state file `.agents/team/runs/{{RUN}}/wrapup-state.json` (`{}` if absent) makes
    every write safe to retry:
-   - on start, load its run-scoped drafts and selections. Each accepted draft is attached to a
-     stable create intent id and contains the complete title, body, marker and acceptance. Reuse
-     saved accepted drafts and markers verbatim; never regenerate or renumber them on another
-     attempt. Recommendation numbers are display labels only, never intent ids. Only new/unaccepted
-     proposals go through steps 6–7.
+   - **compare the stored identity FIRST, before writing anything.** Read the existing `target` and
+     compare it with this run's: `{run: "{{RUN}}", ticket: "{{TICKET}}", repo: "<teams.github.repo>",
+     project_id: "<teams.github.project_id>"}` (`repo` and `project_id` verbatim from
+     `.claude/project-profile.json`). Never write `target` before that comparison — writing the
+     current identity over a foreign file and only then calling it FOREIGN would relabel another
+     run's finished intents as this run's.
+     - absent or empty file → write a fresh `{target, intents: {}}` with the identity above;
+     - `target` equal to this run's → adopt its intents and drafts;
+     - anything else (another run, ticket, repo or project, or a missing/malformed `target`) → the
+       file is FOREIGN. `mv` it aside to
+       `.agents/team/runs/{{RUN}}/wrapup-state.foreign-<UTC timestamp>.json` — discarding its intents
+       and drafts — then write a fresh `{target, intents: {}}`. Do not reuse its markers or issue
+       numbers, and never "fix" it in place.
+     The runner refuses `done` both on a `target` that is not this run's AND on any `done` intent
+     whose marker does not carry `{{RUN}}`, so relabelling is not a shortcut — it is a rejection.
+   - on start, load its run-scoped drafts and selections (only after `target` matched). Each accepted
+     draft is attached to a stable create intent id and contains the complete title, body, marker and
+     acceptance. Reuse saved accepted drafts and markers verbatim; never regenerate or renumber them
+     on another attempt. Recommendation numbers are display labels only, never intent ids. Only
+     new/unaccepted proposals go through steps 6–7.
+   - **markers are stable across attempts.** A marker is built from `{{RUN}}` and the intent id
+     only — never from `{{ATTEMPT}}`, a timestamp or a recommendation number. A second attempt that
+     minted a new marker would post a second comment / create a second issue.
    - intents live in the object `intents` under fixed ids: `comment-1`
      `{op: "comment", marker, state, id}`, `set-status-delivered`
      `{op: "set-status", logical: "delivered", state}`, `create-<n>`
@@ -20,7 +38,13 @@
      `done`;
    - exit 4 of any op → the intent stays `pending`,
      `bash .claude/lib/team-record.sh --verdict blocked --message "tracker <op> recoverable — <stderr line>"`
-     and wait; a retry uses the same marker and the adapter detects `exists` itself.
+     and wait; a retry uses the same marker and the adapter detects `exists` itself. A NON-ZERO exit
+     is never evidence that nothing was written: the object may exist. Leave the intent `pending`,
+     change nothing, and let the retry's enumeration decide (`exists` → `done`). Never a second
+     op "because the first one failed", and never `done` on an unconfirmed write.
+   - you are the ONLY writer of this run's intents. Do not run the adapter from another role, another
+     window or in parallel with yourself: the runner holds one role at a time (see
+     `.agents/reference/team-mode.md` §2a), and that is what makes read-then-create idempotent.
 5. PR description: replace the `## Learnings` section with `## Wrap-up` (at most 6 lines, English,
    ending "Full summary: GitHub issue #{{TICKET}}"; when there are supervised decisions, one of the
    lines is `Supervised decisions: <n> (tier 1: a, tier 2: b, revoked: c) — list in GitHub issue
