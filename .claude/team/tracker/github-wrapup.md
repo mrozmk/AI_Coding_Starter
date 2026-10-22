@@ -19,7 +19,8 @@
      draft is attached to a stable create intent id and contains the complete title, body, marker and
      acceptance. Reuse saved accepted drafts and markers verbatim; never regenerate or renumber them
      on another attempt. Recommendation numbers are display labels only, never intent ids. Only
-     new/unaccepted proposals go through steps 6–7.
+     new/unaccepted proposals go through steps 6–7. `drafts` and `create-<n>` intents are for
+     tracker tickets only — a memory recommendation is never a draft (step 7).
    - **markers are stable across attempts, and their format is exact.** A marker is
      `[wrapup {{RUN}} <intent id>]` — `[wrapup {{RUN}} comment-1]` for the comment,
      `[wrapup {{RUN}} create-<draft id>]` for a follow-up. It is built from `{{RUN}}` and the intent
@@ -68,7 +69,12 @@
      of the body. No parent Epic, no sprint, no assignee — the tracker has none.
 7. No new/unaccepted recommendations → step 8 for saved accepted work still unfinished,
    otherwise step 9. For new/unaccepted recommendations ask **one** `AskUserQuestion` (2–4 options):
-   - Allocate an unused run-scoped create intent id for each new draft; never recycle an id.
+   - Allocate an unused run-scoped create intent id for each new **ticket** draft; never recycle an
+     id. A memory recommendation gets no draft and no create intent: the runner requires a `done`
+     create intent for every accepted entry in `drafts`, so a `memory-<n>` draft there rejects the
+     record. Its acceptance is applied by the step 8 memory commit; on a resume, an accepted
+     memory change that is not yet on the PR branch is redone from the text shown in
+     `wrapup-<attempt>.md`, without asking again.
      Save each complete draft (title and entire body verbatim) under that id in
      `wrapup-state.json`, and copy it to `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md` for the
      report. Include the step 4 create marker in that saved/shown body.
