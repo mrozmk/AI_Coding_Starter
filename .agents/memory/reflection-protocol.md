@@ -59,9 +59,9 @@ If nothing clears the bar — the common case — write nothing and report one l
 
 ---
 
-## Format — append at the END, never reformat existing entries
+## Format — newest entry at the TOP, never reformat existing entries
 
-Append-mode files put the **newest entry at the END**. Never rewrite or re-order what is already there.
+Append-mode files put the **newest entry at the TOP**, directly below the file's intro / format block (in `patterns.md` / `api.md`: at the top of its topic section) — the rule each log's own header and [index.md](index.md) state. Never rewrite or re-order what is already there; the one exception is restoring date order after a merge (below).
 
 **Supersession.** When a later decision overturns an earlier one, do not edit or delete the old entry — prefix its title with `⚠️ SUPERSEDED <YYYY-MM-DD>` and append the new entry linking back. A memory entry outranks an archived plan or spec that says otherwise. Record the **rejected alternative** in the new entry as the trap to avoid re-proposing: an omission is invisible, a named rejection is not.
 
@@ -79,10 +79,10 @@ If a discovery is one of the project's most important "always check this" lesson
 
 ### These log files carry `merge=union`
 
-`.gitattributes` declares the built-in `union` merge driver for the append-mode logs (`errors.md`, `decisions.md`, `patterns.md`, `api.md`, `domain/*.md`, `archive/**`). That is why two branches whose reflection passes both appended an entry merge cleanly instead of conflicting. Two consequences you own:
+`.gitattributes` declares the built-in `union` merge driver for the append-mode logs (`errors.md`, `decisions.md`, `patterns.md`, `api.md`, `domain/*.md`, `archive/**`). So a **local** merge (a team clone's `git merge origin/main`, `/orchestrate --integrate`) of two branches whose reflection passes both added an entry finishes without conflict markers. The PR merge on the provider (GitHub) does not rely on the driver: a PR can still report a conflict in these logs — resolve it per [team-pipeline.md §6](../reference/team-pipeline.md) ("PR conflicting in memory files"). Consequences you own:
 
-- **"Never reformat existing entries" is load-bearing, not stylistic.** Union emits **no conflict markers**. If two branches change the *same existing line* differently, both versions survive into the merged file and nothing flags it — a silent duplicate that only a reader will ever catch. Appending is always safe; editing what is already there is not.
-- **After a merge, entries appear ours-then-theirs, not in date order.** Union concatenates by merge side, not by timestamp, so two entries written on concurrent branches can sit a few days out of order at the top. Expected and cosmetic — reorder by hand if it bothers you, or leave it.
+- **"Never reformat existing entries" is load-bearing, not stylistic.** Union emits **no conflict markers**. If two branches change the *same existing line* differently, both versions survive into the merged file and nothing flags it — a silent duplicate that only a reader will ever catch. A clean exit is not a clean result either: union can drop the blank line between two new entries, so review every locally merged log for order, blank lines and duplicated or spliced entries (§6 step 2). Editing what is already there multiplies the risk.
+- **After a merge, restore date order.** Union emits the current branch's lines first, not by date, so a newer entry from the other side can land below an older one. Move the newer entry (date in its heading; in topical files keep it inside its topic section) to the top by hand and restore the blank line between entries — required, not cosmetic (§6 step 2).
 - **First population of a placeholder is an in-place rewrite, not an append.** A `domain/` file shipped or created with `status: empty` frontmatter flips that line and replaces its placeholder description when it gets its first real content — and it sits in the union set. Two parallel branches populating the same placeholder merge with exit 0 into corrupt frontmatter (duplicated `---` delimiters, two `description:` lines), and a mangled `status:` line can make the Skip rule treat the file as an empty placeholder forever. Populate a placeholder only on an up-to-date branch and merge that commit on its own — the same discipline `/maintain:cleanup-workflow` requires for pruning.
 
 Files that are *edited or regenerated in place* — including this one — are deliberately excluded from `union` and keep git's normal 3-way merge. The exclusion block in `.gitattributes` says which and why.

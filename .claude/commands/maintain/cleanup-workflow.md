@@ -192,6 +192,11 @@ on purpose (entries vs whole files); both are historical-only and never auto-loa
 > carries it — union keeps both sides, and a deletion is not a side it can see. Pulling first and
 > merging the pruning commit alone, rather than inside a batch of feature work, is what keeps the
 > cut from being silently undone.
+> `union` applies to **local** merges only (a team clone's `git merge origin/main`); a PR merge on
+> the provider (GitHub) ignores it and can report a conflict in these logs — resolve that per
+> [team-pipeline.md §6](../../../.agents/reference/team-pipeline.md). Do not resolve a pruning
+> commit's conflict through a local `union` merge: it restores the cut entries with exit 0. Drop
+> the branch and redo Phase 2 on a current `main` instead.
 
 ---
 
@@ -697,7 +702,7 @@ After all 5 phases:
 ## Next steps
    - Fix Phase 1 broken refs (manual).
    - Address Phase 3 warnings as time permits.
-   - Commit the Phase 5 moves on their own (memory files carry `merge=union`, see Phase 2).
+   - Commit the Phase 5 moves on their own (memory files carry `merge=union` for local merges only, see Phase 2).
    - Re-run /maintain:cleanup-workflow before next major milestone.
 ```
 
