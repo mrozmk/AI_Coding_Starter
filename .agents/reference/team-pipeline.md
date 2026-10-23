@@ -185,6 +185,42 @@ there are no memory checks. After `/pr-merge` the Jira ticket moves to Done (Ste
 `--memory-reviewed`; a real conflict → fix the memory in the clone, commit and push on the team
 branch (memory files only), then rerun with `--memory-reviewed`.
 
+**PR conflicting in memory files** — the provider reports the PR as conflicting
+(`team-pr.sh readiness` → `conflict`, GitHub `CONFLICTING`) and every conflicted path is a
+union-merged memory log (`git check-attr merge -- <path>` → `union`). `merge=union`
+(`.gitattributes`) applies to local merges only; the PR merge on the provider does not rely on it.
+The procedure:
+1. in the team clone: `git fetch origin`, note the target sha (`git rev-parse origin/<line>`),
+   then `git merge --no-ff --no-commit origin/<line>` into the team branch — `--no-commit` because
+   with `merge=union` a clean merge would otherwise commit itself before the review in step 2;
+   never rebase, never force-push;
+2. keep both entries at the top of each conflicted file, the newer one (date in its heading)
+   above; same date → the team branch's entry above. `merge=union` always puts the team branch's
+   lines first and can drop the blank line between the two entries, so its output is right only
+   when the team branch's entry is the newer one. When `origin/<line>` added a newer entry (e.g. a
+   `[2026-10-23]` entry from the line must go above the branch's `[2026-10-22]` one), move it above by hand and
+   restore the blank line, then `git add -- <edited files>`. Review every touched memory file
+   (`rg -n '^## ' <file> | head -5` for the order, `git diff --cached -- .agents/memory/` for the
+   rest): date order, a blank line between entries, no entry duplicated or spliced; `git diff`
+   must be empty before the commit;
+3. commit as `chore(memory): merge <line> into #<ticket> branch, keep both <topic> entries` with
+   `Refs #<ticket>` in the body — the issue number, not the PR number; do not push yet;
+4. `team-merge-check.sh` refuses this tip **before** its build check (the merge brings files
+   outside `.agents/memory/` after wrapup — typically other teams' merged code and tests), so the merged tree is untested. Run the
+   profile's build check yourself from the clone root on that commit, with a clean tree
+   (`jq -r .teams.build_check .claude/project-profile.json`), then the test gate when
+   `jq -r .teams.test_gate .claude/project-profile.json` is not `none`; green = both exit 0. With
+   `origin/<line>` an ancestor of the commit, that tree is what the PR merge produces;
+5. green → plain push, check `git ls-remote origin refs/heads/<branch>` equals the tested sha;
+   the merge is then an Operator action (`team-mode.md` §10): the Operator merges the PR in the
+   provider's UI after checking `git ls-remote origin refs/heads/<line>`
+   still equals the target sha from step 1 (moved → repeat from step 1). Red → stop, nothing
+   pushed; bring the output to the Operator.
+
+A conflict in an excluded memory file (`git check-attr merge` → `unspecified`: `index.md`,
+`architecture.md`, …) or in any path outside `.agents/memory/` is not covered —
+`git merge --abort`, stop and bring it to the Operator.
+
 ## 7. Memory reconciliation
 
 The `wrapup` role does it, inside the team's PR: role hand-offs verbatim, other learnings through

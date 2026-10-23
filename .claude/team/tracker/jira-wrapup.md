@@ -63,8 +63,12 @@
 8. Apply only what the developer accepted:
    - memory: before editing a file, if `git diff --quiet {{BASE_SHA}} origin/{{LINE}} -- <file>`
      reports a change, start from the target version (`git show origin/{{LINE}}:<file> > <file>`)
-     and add on top — memory files merge with `merge=union`, so editing the stale branch copy
-     would splice two versions silently. Edit only `.agents/memory/**`, then `/commit`
+     and add the new entry at the top, above the newest one; never edit an existing entry (only
+     the `⚠️ SUPERSEDED <YYYY-MM-DD>` title prefix of `reflection-protocol.md` is allowed).
+     `merge=union` from `.gitattributes` applies only to local merges — the PR merge does not rely
+     on it, so the PR can still show a conflict in that file. Do not merge `origin/{{LINE}}` here
+     (after QA wrapup may change only `.agents/memory/**`); that conflict is resolved after wrapup
+     per `.agents/reference/team-pipeline.md` §6. Edit only `.agents/memory/**`, then `/commit`
      (`{{TICKET}} reconcile memory after <short topic>`) and `/push`;
    - tasks: `/jira create` with the saved run-scoped accepted draft and verified parent Epic.
      Follow the stable intent id → issue key mapping even when recommendation order changes.
