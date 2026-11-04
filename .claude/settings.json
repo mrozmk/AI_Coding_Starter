@@ -1,6 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "attribution": { "commit": "", "pr": "", "sessionUrl": false },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/skills/cache-handoff/statusline.cjs\"",
+    "refreshInterval": 30
+  },
   "skillOverrides": {
     "init": "off",
     "design": "off",

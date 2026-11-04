@@ -1,0 +1,36 @@
+{
+  "name": "cache-handoff",
+  "version": "0.1.0",
+  "description": "Status line with context size and prompt-cache warmth, plus /hc: /compact with state-keeping instructions, also fired by itself before the prompt cache goes cold",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cacheTtl": {
+      "type": "string",
+      "title": "Prompt cache TTL",
+      "description": "TTL used to estimate when the prompt cache expires (1h on a subscription, 5m in overage)",
+      "options": [
+        "1h",
+        "5m"
+      ],
+      "default": "1h"
+    },
+    "bandAtTokens": {
+      "type": "number",
+      "title": "Show the handoff band from",
+      "description": "Context size in tokens from which the compact band shows above the prompt and the auto /hc may fire",
+      "default": 500000
+    },
+    "autoHcMinutes": {
+      "type": "number",
+      "title": "Auto /hc before the cache expires",
+      "description": "Run /hc by itself this many minutes before the prompt cache expires, when the session is idle and the context is at least the band threshold; 0 turns it off",
+      "default": 5
+    },
+    "autoHcForceMinutes": {
+      "type": "number",
+      "title": "Auto /hc regardless of context size",
+      "description": "Run /hc by itself this many minutes before the prompt cache expires when the session is idle, whatever the context size (1h TTL only); 0 turns it off",
+      "default": 2
+    }
+  }
+}
