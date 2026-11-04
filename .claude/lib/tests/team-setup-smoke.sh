@@ -80,6 +80,16 @@ jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission
 [ "$(jq '.permissions.allow | length' "$S")" = 7 ] || fail "2: allow is not the 7 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
+egress() {  # egress <settings> <matcher> → how many blocking egress guards that exact matcher has
+  jq --arg m "$2" '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]
+    | select((.command | test("guard-team-egress")) and .onFailure == "block"
+      and (.async // false) == false)] | length' "$1"
+}
+[ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] \
+  || fail "2: the egress guard is not registered once under Bash and once under WebFetch"
+git -C "$T" check-ignore -q .agents/agent-mail/mail.sqlite || fail "2: .agents/agent-mail/ is not ignored"
+[ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("guard-team-egress"))] | length' \
+  "$ST/.claude/settings.json")" = 0 ] || fail "2: the starter's shared settings register the egress guard"
 
 # ---- (3) the second run changes nothing --------------------------------------------------------
 echo '{"teams":{}}' > "$T/.claude/project-profile.json"
@@ -119,7 +129,8 @@ jq -n --arg m 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory.sh"' \
 setup "$T"
 [ "$(field conflict)" = 0 ] || fail "6: a coverage-compatible matcher was reported as a conflict"
 S="$T/.claude/settings.json"
-[ "$(jq '.hooks.PreToolUse | length' "$S")" = 2 ] || fail "6: M added a PreToolUse entry of its own"
+[ "$(jq '[.hooks.PreToolUse[] | select(.matcher != "Bash" and .matcher != "WebFetch")] | length' \
+  "$S")" = 2 ] || fail "6: M added a PreToolUse entry of its own"
 jq -e '.hooks.PreToolUse[0] | (.matcher == "Edit|Write|MultiEdit")
   and ([.hooks[].command] | index("bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-memory.sh\""))
   and (.hooks[0].command | test("guard-memory"))' "$S" >/dev/null \
@@ -331,5 +342,30 @@ setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
 jq -e '.permissions.allow | length == 7' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
+
+# ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
+T=$(mktarget t18)
+mkdir -p "$T/.claude"
+printf '.agents/team/\n' > "$T/.gitignore"
+jq -n --arg g 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-push.sh"' \
+  --arg e 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-egress.sh"' \
+  '{hooks: {PreToolUse: [{matcher: "Bash|Edit", hooks: []}, {matcher: "Bash", hooks: [{type: "command", command: $g}]},
+     {matcher: "WebFetch", hooks: [{type: "command", command: $e}]}]}}' > "$T/.claude/settings.json"
+setup "$T"
+has 'conflict settings.json E: WebFetch registers guard-team-egress without "onFailure": "block"' \
+  || fail "18: a non-blocking egress registration is not a conflict"
+S="$T/.claude/settings.json"
+jq -e '.hooks.PreToolUse[1] | .matcher == "Bash" and (.hooks | length == 2)
+  and (.hooks[0].command | test("guard-push")) and (.hooks[1].onFailure == "block")' "$S" >/dev/null \
+  || fail "18: the guard did not join the exact Bash entry after the project's hook"
+[ "$(jq '.hooks.PreToolUse[0].hooks | length' "$S")" = 0 ] || fail "18: the guard joined Bash|Edit"
+[ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] || fail "18: registration counts"
+grep -qxF '.agents/agent-mail/' "$T/.gitignore" && [ "$(grep -c '^.agents/team/$' "$T/.gitignore")" = 1 ] \
+  || fail "18: only the missing ignore line is appended"
+cp "$S" "$WORK/s18"
+setup "$T"
+[ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] || fail "18: the rerun duplicated it"
+! has "conflict settings.json E" || fail "18: the rerun still reports the conflict"
+cmp -s "$S" "$WORK/s18" || fail "18: the rerun changed settings.json"
 
 echo "team-setup-smoke: OK"

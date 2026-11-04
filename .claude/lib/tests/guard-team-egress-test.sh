@@ -112,11 +112,12 @@ check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \
   | (cd /tmp && PATH="$D/bin" TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" /bin/bash "$H"))"
 check ask  "classifier crash" "$(fetch https://developer.mozilla.org/x \
   | (cd /tmp && TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" bash "$D/broken/guard-team-egress.sh"))"
-n=$(jq '[.hooks.PreToolUse[] | select(.matcher == "WebFetch" or .matcher == "Bash") | .hooks[]
-  | select(.command | contains("guard-team-egress.sh")) | select(.onFailure == "block")
-  | select(has("async") | not)] | length' .claude/settings.json)
-[ "$n" = 2 ] && { pass=$((pass + 1)); echo "PASS settings register the hook twice, onFailure"; } \
-  || { echo "FAIL settings register guard-team-egress.sh $n times with onFailure block"; fail=1; }
+# Opt-in: the template's shared settings never register the guard; team-setup.sh registers it in
+# the downstream (asserted by team-setup-smoke.sh).
+n=$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | contains("guard-team-egress.sh"))]
+  | length' .claude/settings.json)
+[ "$n" = 0 ] && { pass=$((pass + 1)); echo "PASS shared settings leave the hook to team-setup.sh"; } \
+  || { echo "FAIL shared settings register guard-team-egress.sh $n times"; fail=1; }
 [ -s "$ALL" ] || { echo "FAIL no outputs recorded"; fail=1; }
 if grep -qE '"permissionDecision": *"allow"' "$ALL"; then echo "FAIL an output allows"; fail=1
 else pass=$((pass + 1)); echo "PASS no output ever allows"; fi

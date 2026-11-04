@@ -152,7 +152,7 @@ role, the cli role is fixed `auto` (`TEAM_CLI_PERMISSION`) and its override may 
 `cli=//manual`) — mandatory for tickets editing `.claude/settings*.json` (the classifier
 refuses that as self-modification). `auto` is honoured only when the clone has the
 `guard-team-egress` hook (both files, registered under `WebFetch` and `Bash` with `"onFailure":
-"block"`) and `claude --version` ≥ 2.1.295; otherwise the runner launches `manual`, prints `warn:
+"block"` — `/setup:teams` (`team-setup.sh`) registers both; the template's shared settings do not) and `claude --version` ≥ 2.1.295; otherwise the runner launches `manual`, prints `warn:
 <role> launches in manual mode — <why>` and records `permission_mode: "manual"`.
 
 **Modes.** `team.json` `mode`, fixed per ticket by `team-new.sh` / `team-next.sh`

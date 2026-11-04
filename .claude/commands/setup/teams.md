@@ -16,7 +16,7 @@ Runs in the **target** repo root. `<starter-root>` defaults to `~/Desktop/AI_Cod
 - Never guess a profile value: ask, recommendation first, one question per message.
 - Never touch `.claude/settings.local.json`.
 - Never commit or push: the human (or supervisor) commits the result.
-- `team-setup.sh` adds `permissions.allow` for `team-*.sh` and `permissions.ask` for the supervisor-only trunk writers `team-integrate.sh`, `team-integrate-lock.sh`, `team-merge-check.sh` and the channel step `team-mail-setup.sh` (`ask` beats `allow`, so a role never integrates unattended). Mention this in the Report.
+- `team-setup.sh` adds `permissions.allow` for `team-*.sh` and `permissions.ask` for the supervisor-only trunk writers `team-integrate.sh`, `team-integrate-lock.sh`, `team-merge-check.sh` and the channel step `team-mail-setup.sh` (`ask` beats `allow`, so a role never integrates unattended). It also registers the egress guard `guard-team-egress.sh` under the `Bash` and `WebFetch` matchers with `"onFailure": "block"` (the template's shared settings do not carry it — the team layer opts in here) and ignores `.agents/team/` and `.agents/agent-mail/`. Mention this in the Report.
 
 ## Step 1 — Preflight
 

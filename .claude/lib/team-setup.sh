@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs the team harness into another project from `.claude/team/manifest.txt`: copies the
-# `own` files, reports `shared` files the project already owns, merges the three hook entries and
-# the role `permissions.allow` rules into `settings.json`, ignores `.agents/team/` and seeds
-# `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
+# `own` files, reports `shared` files the project already owns, merges the team hook entries (three
+# team hooks + the egress guard under `Bash` and `WebFetch` with `"onFailure": "block"`) and the
+# role `permissions.allow` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
+# box `.agents/agent-mail/`, and seeds `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge.
 #
 # Usage: bash .claude/lib/team-setup.sh <starter-root> <target-root> [--check]
@@ -165,7 +166,7 @@ while [ $i -lt ${#M_PATH[@]} ]; do
   fi
 done
 
-# ---- settings.json: the three hook entries + the role allow rules ------------------------------
+# ---- settings.json: the team hook entries + the role allow rules -------------------------------
 SET=".claude/settings.json"
 JQ_LIB='
 def tokens(m): if (m == null or m == "" or m == "*") then "ALL" else (m | split("|")) end;
@@ -221,6 +222,34 @@ hook_merge A Notification "$H/team-attention.sh\"" \
   '["permission_prompt","idle_prompt","elicitation_dialog","agent_needs_input"]' true \
   'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
 
+# The egress guard is the team layer's, so it is registered here rather than shipped in the
+# template's shared settings. The runner's auto-mode preflight (team-roles.sh auto_blocker) looks for
+# it under the exact matchers `Bash` and `WebFetch` with `"onFailure": "block"`, so it joins only an
+# entry with exactly that matcher (or adds one); without it the runner launches manual and warns.
+egress_merge() {  # egress_merge <matcher>
+  local m="$1" verdict
+  verdict="$(printf '%s' "$NEW" | jq -r --arg m "$m" --arg cmd "$EGRESS" '
+    [.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $cmd)] as $h
+    | if any($h[]; .onFailure == "block" and (.async // false) == false) then "ok"
+      elif ($h | length) > 0 then "conflict"
+      else "missing" end')"
+  [ "$verdict" != ok ] || return 0
+  if [ "$verdict" = conflict ]; then
+    S_CONFLICTS="${S_CONFLICTS}E"
+    CONFLICT=$((CONFLICT + 1))
+    echo "conflict settings.json E: $m registers guard-team-egress without \"onFailure\": \"block\""
+  fi
+  NEW="$(printf '%s' "$NEW" | jq --arg m "$m" --arg cmd "$EGRESS" '
+    .hooks = (.hooks // {}) | .hooks.PreToolUse = (.hooks.PreToolUse // [])
+    | {type: "command", command: $cmd, onFailure: "block"} as $item
+    | ([.hooks.PreToolUse | to_entries[] | select(.value.matcher == $m) | .key]) as $ix
+    | if ($ix | length) > 0 then .hooks.PreToolUse[$ix[0]].hooks += [$item]
+      else .hooks.PreToolUse += [{matcher: $m, hooks: [$item]}] end')"
+}
+EGRESS="$H/guard-team-egress.sh\""
+egress_merge Bash
+egress_merge WebFetch
+
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '
   ["Bash(bash .claude/lib/team-*.sh*)", "Bash(git switch *)", "Bash(git show *)",
@@ -252,12 +281,16 @@ else
   emit merged generated "$SET"
 fi
 
-# ---- .gitignore: the harness writes runtime state into .agents/team/ ---------------------------
-if git -C "$TARGET" check-ignore -q .agents/team/probe 2>/dev/null; then
+# ---- .gitignore: runtime state in .agents/team/, the tool's fallback mail box in .agents/agent-mail/
+IGN=""
+for d in .agents/team/ .agents/agent-mail/; do
+  git -C "$TARGET" check-ignore -q "${d}probe" 2>/dev/null || IGN="$IGN$d\n"
+done
+if [ -z "$IGN" ]; then
   emit kept generated .gitignore
 else
-  apply sh -c 'printf "\n# Team harness runtime state (team-setup.sh)\n.agents/team/\n" >> "$1"' _ \
-    "$TARGET/.gitignore"
+  apply sh -c 'printf "\n# Team harness runtime state (team-setup.sh)\n$2" >> "$1"' _ \
+    "$TARGET/.gitignore" "$IGN"
   emit merged generated .gitignore
 fi
 
