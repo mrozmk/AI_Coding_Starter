@@ -114,6 +114,6 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
    seq), then `NO-REPLY invalid adapter (no SENT receipt)`; a failed send or a `--reping` consumes
    a reply `peek` finds first; `--retier` takes max request seq + 1. A ledger with
    `started:` but no `sent:` is surfaced as `ESCALATION … started without sent | not sent — <reason>`.
-5. `team-question.sh <team> revoke q-<n> --why "…"` (the developer's "cofnij <team> q-<n>")
+5. `team-question.sh <team> revoke q-<n> --why "…"` (the developer's "revoke <team> q-<n>", alias "cofnij <team> q-<n>")
    records `## Revoked` and, when the role is idle on the same attempt with no prompt open, types
    the revoke text; the question becomes tier 3 (the Operator decides).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Teams + "czeka na Ciebie" section of the dashboard snapshot.
+# Teams + "waiting for you" section of the dashboard snapshot.
 # Sourced by team-snapshot.sh: relies on its globals (W, root, PROJ, TMUX_OK) and helpers (err,
 # event, mtime, jl_first_ts, skill_trail), on team_* from team-lib/roles/modes.sh and on pr_state
 # (team-pr-state.sh). Function definitions only.
@@ -360,13 +360,13 @@ snap_teams() {
   jq -s . "$W/teams"
 }
 
-# The "czeka na Ciebie" bar: open questions, blocked/failed records, PRs ready to merge.
+# The "waiting for you" bar: open questions, blocked/failed records, PRs ready to merge.
 snap_attention() {
   jq --arg prov "${TEAM_DASH_PR_PROVIDER:-azure-devops}" '
   [ .[] as $t
     | ($t.roles[]? | select(.status == "attention" or .status == "blocked" or .status == "failed")
        | {kind: .status, team: $t.team, role, tmux: "\($t.team)-\(.role)",
-          text: (if .status == "attention" then "czeka na odpowiedź" else (.record.message // "") end),
+          text: (if .status == "attention" then "waiting for an answer" else (.record.message // "") end),
           commands: (["bash .claude/lib/team-attach.sh \($t.team) \(.role)"]
             + (if .status != "attention" and $t.resume_hint then [$t.resume_hint] else [] end))}),
       (select($t.state == "awaiting_merge")

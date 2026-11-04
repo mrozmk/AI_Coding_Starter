@@ -5,6 +5,7 @@
 #
 # Usage: bash .claude/lib/tests/team-purity.sh [root]     (root defaults to the starter checkout)
 # Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/ docs/teams
+#        .claude/dashboard
 # Role names in code are Supervisor / TeamLead / Advisor / Reviewer; project names enter only
 # through configuration (teams.channel.mail_suffix), never as literals.
 set -euo pipefail
@@ -18,12 +19,12 @@ import re
 import sys
 
 root, self_path = sys.argv[1], os.path.realpath(sys.argv[2])
-DENY = re.compile(r"TakeTask|taketask|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMonitoring"
+DENY = re.compile(r"(?i:takeTask)|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMonitoring"
                   r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|\bTT-[0-9]+"
                   r"|SolTT|develop-netcore7|mail-tt|TT_TEAM")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
 SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".agents/reference",
-         "tools", "docs/teams")
+         "tools", "docs/teams", ".claude/dashboard")
 hits = 0
 for top in SCOPE:
     base = os.path.join(root, top)
@@ -69,5 +70,8 @@ done
 rm -f "$T/.claude/lib/x.sh"; mkdir -p "$T/docs/teams"
 printf 'the Advisor was FableTT\n' > "$T/docs/teams/x.md"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in docs/teams passed"; exit 1; }
+rm -f "$T/docs/teams/x.md"; mkdir -p "$T/.claude/dashboard"
+printf '<h1>TAKETASK AGENT TREE</h1>\n' > "$T/.claude/dashboard/index.html"
+! scan "$T" > "$T/out" || { echo "team-purity: FAIL — an upper-case leak in the dashboard passed"; exit 1; }
 
 scan "$ROOT"

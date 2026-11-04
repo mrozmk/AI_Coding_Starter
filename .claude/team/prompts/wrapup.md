@@ -15,24 +15,28 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
    present), `{{QA_REPORT}}`, `{{PLAN}}` and the PR description
    ({{PR_BODY_GET}}). Do not run `/prime`.
 2. `git fetch --quiet origin {{LINE}}`, then `git rev-parse origin/{{LINE}}` → `T`.
-3. Write `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md`: first line `target_rev: <T>`, then
-   plain Polish sections `## Planowanie` (what was decided, what was unforeseen), `## Coder` (what
-   was done, deviations from the plan and why, what blocked), `## QA` (findings, fixes, what is
-   left), `## Co ważne dla Ciebie` (external effects, PR state). Short and concrete; explain any
-   jargon in a few words. Add `## Decyzje nadzorcy`: one plain-Polish line per question file showing
-   its history — the tier 1/2 answer (tier, who, a few words) with `cofnięta` after a
-   `## Revoked`, `potwierdzona` when `delivery: sent` with `confirmed: yes`, `wysłana bez
-   potwierdzenia` when `delivery: sent` with `confirmed: no`, `niedoręczona` when its
-   `delivery: failed` or `not sent — …`, `doręczenie niepewne` when `delivery: pending` or
-   `unknown — …`; then the last tier-3 answer that replaced it,
-   `zastąpiona przez Operatora: <answer>`, with the same delivery words for that block; a q
-   answered only at tier 3 shows that answer and its delivery words (the q files are
-   authoritative; notes lines are not updated for these states); `brak` when there are none.
+3. Write `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md`: first line `target_rev: <T>`, then the
+   sections below. **The headings are fixed English** (other files read them); the text under
+   them is plain prose in the developer's language — `language` in `.claude/project-profile.json`
+   (`pl` | `en`; `en` when absent). Sections: `## Planning` (what was decided, what was
+   unforeseen), `## Coder` (what was done, deviations from the plan and why, what blocked), `## QA`
+   (findings, fixes, what is left), `## What matters for you` (external effects, PR state). Short
+   and concrete; explain any jargon in a few words. Add `## Supervisor decisions`: one plain line
+   per question file showing its history — the tier 1/2 answer (tier, who, a few words) with a
+   state word: *revoked* after a `## Revoked`, *confirmed* when `delivery: sent` with
+   `confirmed: yes`, *sent unconfirmed* when `delivery: sent` with `confirmed: no`, *undelivered*
+   when its `delivery: failed` or `not sent — …`, *delivery uncertain* when `delivery: pending` or
+   `unknown — …`; then the last tier-3 answer that replaced it, *replaced by the Operator:
+   <answer>*, with the same state words for that block; a q answered only at tier 3 shows that
+   answer and its state word (the q files are authoritative; notes lines are not updated for these
+   states); *none* when there are none. The state words follow the developer's language too
+   (`pl`: cofnięta · potwierdzona · wysłana bez potwierdzenia · niedoręczona · doręczenie niepewne
+   · zastąpiona przez Operatora · brak).
    This section is part of the summary posted in step 4. The summary posted in step 4
    stays ≤ ~15 lines. Each narrative section gets 1–3 lines, and a section with nothing to report
-   is omitted, except `## Co ważne dla Ciebie`. `## Decyzje nadzorcy` is the per-q ledger the PR's
-   `## Wrap-up` points to and is outside the count. The limit yields only for an open QA problem
-   or a required Operator action, which are never compressed. It never lowers the memory bar.
+   is omitted, except `## What matters for you`. `## Supervisor decisions` is the per-q ledger the
+   PR's `## Wrap-up` points to and is outside the count. The limit yields only for an open QA
+   problem or a required Operator action, which are never compressed. It never lowers the memory bar.
 {{TRACKER_WRAPUP}}
 9. Write the record (`--pr` is required — the runner compares it with the coder's PR):
    `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --artifacts .agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md`
@@ -67,7 +71,7 @@ Supervision rules for steps 5–8 (every tracker; `.agents/reference/team-decisi
 - **(B) is non-blocking.** The TeamLead answers a (B) question with skip when the Advisor does not
   reply (`/monitor`, wrapup (B) exception). After the (B) answer read the newest
   `questions/q-<n>.md` of this attempt bound to it; if the `why:` of its latest `## Answer` starts
-  with `Advisor no-reply`, append to `wrapup-{{ATTEMPT}}.md` a section `## Pamięć odłożona (B)`:
+  with `Advisor no-reply`, append to `wrapup-{{ATTEMPT}}.md` a section `## Deferred memory (B)`:
   one item per (B) recommendation, verbatim — target file, exact text, its `czytelnik:` line and
   the q id — and continue with (B) skipped. A later Advisor acceptance comes back as a hand-off
   (step 6), never applied in this run.

@@ -410,7 +410,7 @@ checks it against the role's profile.
 directly (`PushNotification` + the command or screen), never as a decision question and never
 via Advisor: permission prompts for `ask`-tier, egress (`WebFetch` to an unlisted host,
 `curl`/`wget`/network commands — `security-egress.md`) and production commands; merge only when
-the auto-merge gate refuses (`Mergować <team>?` with the gate's reason) — after QA ready the merge
+the auto-merge gate refuses (`Merge <team>?` with the gate's reason) — after QA ready the merge
 is Supervisor's automatic action within `team-automerge-check.sh` + `/pr-merge <id> --auto
 <team>`; deploy, release; Operator-only scripts in his Terminal; window recovery (multi-tab menu,
 `delivery failed` / `delivery unknown`, `pending`).

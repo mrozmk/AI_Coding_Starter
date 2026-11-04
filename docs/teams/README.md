@@ -31,6 +31,7 @@ in the starter.
 | [08 — Operator kit](08-operator-kit.md) | files outside the repo, notifier, health check, Operator actions | stub — waits for the operator kit |
 | [09 — Setup](09-setup.md) | requirements, bring-up order, smoke checklist, known limits | stub — waits for the acceptance phase |
 | [Follow-ups](follow-ups.md) | what the source had in flight and what was not ported | ✓ |
+| [Upgrade notes](upgrade-notes.md) | changes that need an action in a project already running the layer | ✓ |
 
 ## Principles
 

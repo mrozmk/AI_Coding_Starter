@@ -51,11 +51,12 @@ A class is the single deliberate exception to "an ask-tier prompt is never auto-
 
 Each class trusts the main checkout's `.git`, `CLAUDE.md` and the team's anchor file. A clone whose identity differs from its anchor gets no class.
 
-> **Current state (read before relying on a class).** In the current engine every class is
-> **on** unless the Operator switches it off (`team-watch.sh mode class <name> off`), and
-> `prod-diagnose` exists only when its directory is configured. Making every class **off until
-> the profile enables it** is the next change to this layer (`teams.policy.classes.<name>.enabled`
-> below). Until then, the `enabled` flags in the example are documentation, not behaviour.
+**Off until enabled.** A class is active only when the project's profile enables it
+(`teams.policy.classes.<name>.enabled: true`) **and** the Operator has not switched it off
+(`team-watch.sh mode class <name> off`, his words only). The switch can narrow an enabled class and
+can never widen one the profile does not enable. `team_prompt_classes.py switches <main>` shows
+each class as `on`, `off` or `disabled` (not enabled in the profile). `prod_diagnose` also needs its
+`dir` and `privileged`.
 
 ## `teams.policy`
 
@@ -64,7 +65,7 @@ Project policy for the supervision model, in the committed `.claude/project-prof
 | Key | Meaning | Absent |
 |---|---|---|
 | `sensitive_paths` | globs whose changes make a question tier 2 and a QA warning the Advisor's | `CLAUDE.md → Validation → Test policy` is the list. **Judgement input in v1**: the TeamLead and the Advisor classify by it; no script enforces it yet ([follow-ups](follow-ups.md) F18) |
-| `classes.<name>.enabled` (`merge_line`, `allow_offline`, `add_ask`, `prod_diagnose` + `dir`, `privileged`) | which deterministic classes may waive an ask-tier match | off — see the current-state note above |
+| `classes.<name>.enabled` (`merge_line`, `allow_offline`, `add_ask`, `prod_diagnose` + `dir`, `privileged`) | which deterministic classes may waive an ask-tier match | off — every class is disabled until enabled here |
 | `tickets` (`auto_label`, `path_labels`, `recommendation_line`, `new_epic_when_none_fits`) | labels and lines on tickets created from recommendations | no labels; the recommendation line is still written |
 | `closure` (`done_after_release_minutes_without_5xx`, `dry_run_max_days`, `on_hold_after_days`) | automatic ticket-closure rules | no automatic closure |
 

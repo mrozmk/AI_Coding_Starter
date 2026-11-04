@@ -64,14 +64,15 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
   screen**, questions, runner stops and ready-for-merge; a 30-minute summary on each re-arm. With
   tiers on (the default) it decides every team question outside the Advisor and Operator lists of
   team-decision-model.md §3 and prints one line each, sends only those lists to the Advisor and
-  brings you only Operator actions (§11). Answer there: "zatwierdź alfa", "odrzuć alfa —
-  powód", "odpowiedz alfa: …" (`team-answer.sh` / `team-question.sh`, allow-tier; they act only
-  when the role's screen still shows that question); "cofnij alfa q-3 — powód" revokes a
-  supervisor answer. `/monitor --tiers off alfa` = the old behaviour: nothing is answered without
+  brings you only Operator actions (§11). Answer there: "approve alfa", "reject alfa —
+  reason", "answer alfa: …" (accepted aliases: "zatwierdź alfa", "odrzuć alfa — powód",
+  "odpowiedz alfa: …"; `team-answer.sh` / `team-question.sh`, allow-tier; they act only when the
+  role's screen still shows that question); "revoke alfa q-3 — reason" (alias "cofnij alfa q-3 —
+  powód") revokes a supervisor answer. `/monitor --tiers off alfa` = the old behaviour: nothing is answered without
   your explicit words.
 - **On `ready`, `/monitor` prints a 5-line summary** (team · ticket · what was coded · what it
-  gives · QA + PR) plus a `Decyzje nadzorcy:` count line and a „Decyzje TeamLead” section, ending
-  `Mergować <team>?`.
+  gives · QA + PR) plus a `Supervisor decisions:` count line and a "TeamLead decisions" section,
+  ending `Merge <team>?`. The summary's prose is in the developer's language (profile `language`).
 - **Live dashboard in the browser:** `/dashboard` — teams, this session's sub-agents and Codex runs
   on one page (read-only), opened in the default browser. See §10.
 
@@ -325,7 +326,7 @@ with no transcript it pins none, so the supervisor stays `unknown` until you res
 the fetch failed (`serve.sh` stopped); the page keeps the last render. `stopped` — the current
 role's tmux session is gone. `runner stale` — `lock/` exists but its pid is dead.
 
-**Folding and the "czeka na Ciebie" bar.** The bar above the columns lists the snapshot's
+**Folding and the "waiting for you" bar.** The bar above the columns lists the snapshot's
 `attention[]`, hidden when empty: a role waiting on a permission prompt or a question (the pane
 shows a prompt, or the newest `attention` line other than `permission_prompt` is no older than the
 role transcript's last write; the pane check covers prompts. Its card's commands follow the pane:
@@ -333,15 +334,15 @@ role transcript's last write; the pane check covers prompts. Its card's commands
 a `blocked`/`failed` record (its message, `team-attach.sh` and the resume hint), and a PR ready to
 merge (`team-merge-check.sh`, `/pr-merge <id>`); each item names the tmux window. A team whose
 runner is `down` (not `stale`) and whose mode's last role is `done` folds into one card from
-`teams[].state`: `wolna` (PR `completed`/`abandoned`), `czeka na merge` (PR `active`, highlighted,
+`teams[].state`: `free` (PR `completed`/`abandoned`), `awaiting merge` (PR `active`, highlighted,
 also a bar item) or `PR status ?` (ADO unreachable — no bar item). Only for such teams the snapshot
 calls `az repos pr show`, time-boxed by `TEAM_DASH_PR_SECS` (4 s) and cached in the server's temp
 dir (`TEAM_DASH_CACHE`, exported by `serve.sh`; `completed` for good, other states for 60 s —
 `abandoned` included, ADO can reactivate it). After one `az` timeout the rest of that snapshot
 skips ADO (`PR status ?`), so a hung ADO costs one timeout per snapshot, not one per finished team.
 Finished sub-agents stay cards for 10 min after `finished_at`, then fold into one
-`✓ N zakończone` line; the snapshot never drops a finish younger than 10 min, older ones fill the
-history up to 12. Which folds are open is kept per browser in `localStorage` (`tt-dash-open`) —
+`✓ N finished` line; the snapshot never drops a finish younger than 10 min, older ones fill the
+history up to 12. Which folds are open is kept per browser in `localStorage` (`team-dash-open`) —
 view state only, nothing is written inside the repo.
 
 **Manual live smoke:** with one team on a ticket and a sub-agent spawned in this session, both
@@ -361,19 +362,20 @@ does:
   `decided-by: operator` + an `operator-ref`. The answer is re-checked against the matrix, then
   delivered; an analysts' answer that touches a tier-3 class goes back to Advisor with `--retier`.
 - **Operator actions** — `ask`-tier / egress / production prompts, merge, deploy, your
-  scripts, window recovery: `PushNotification` + the command or screen in Polish
-  + the offer, as before. Never a decision question.
-- **No reply** — `alfa q-3: Advisor bez odpowiedzi (<reason>) — <action>`, printed only when the
+  scripts, window recovery: `PushNotification` + the command or screen in the developer's
+  language + the offer, as before. Never a decision question.
+- **No reply** — `alfa q-3: Advisor no reply (<reason>) — <action>`, printed only when the
   reason changes. The supervisor re-pings Advisor (at most 2 delivered re-pings), then waits
   without a deadline; it never forwards the question to you. `status: pending-operator` from
   Advisor (you were asked) keeps the question in `waiting-operator` — the 30-minute summary lists
-  it as "czeka na Operatora u Advisora: q-<n>". You can still answer it yourself ("odpowiedz alfa: …").
+  it as "waiting for the Operator via the Advisor: q-<n>". You can still answer it yourself
+  ("answer alfa: …").
 
 **Where questions live:** `../<repo>-<team>/.agents/team/runs/<run>/questions/q-<n>.md` (binding,
 summary, screen, `## Answer` / `## Revoked` / `## Escalation`), next to `q-<n>.payload.md` (what
 Advisor received) and staged replies `q-<n>.reply-<id>.md`; tier 1/2 answers also go to the
 notes' `## Supervised decisions` and from there to the PR body, the wrapup's Jira summary
-(`## Decyzje nadzorcy`) and the `/monitor` ready line. `bash .claude/lib/team-question.sh alfa list`
+(`## Supervisor decisions`) and the `/monitor` ready line. `bash .claude/lib/team-question.sh alfa list`
 prints every question with its tier and state and a `total=` count line.
 
 **Escalation adapter setup:** `/setup:teams` → channel renders the **main checkout's**
@@ -399,7 +401,8 @@ No file, invalid JSON, a failing or hanging command or an unparseable reply → 
 re-ping behaviour above — never a question to you. No adapter yet → no file → `NO-REPLY no
 config`. The channel's machine paths never appear in the repo.
 
-**Revoke:** "cofnij alfa q-3 — powód" → `team-question.sh alfa revoke q-3 --why "<powód>"`. It
+**Revoke:** "revoke alfa q-3 — reason" (alias "cofnij alfa q-3 — powód") →
+`team-question.sh alfa revoke q-3 --why "<reason>"`. It
 records `## Revoked` and, when the role is idle on the same attempt with no prompt open, types the
 revoke text (undo, treat as material, wait); otherwise it says it was not delivered — tell the role
 yourself. The question is then tier 3 (you decide).

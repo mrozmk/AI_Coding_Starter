@@ -17,7 +17,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "hooks", "lib"))
 sys.path.insert(0, HERE)
-from team_prompt_classes import git, switch_on  # noqa: E402
+from team_prompt_classes import class_on, git  # noqa: E402
 from team_prompt_settings import allow_paths, path_ok, unique_pairs  # noqa: E402
 
 SETTINGS = ".claude/settings.json"
@@ -109,8 +109,8 @@ def rest_keys(old, new):
 
 
 def allow_problems(entries, changed, root):
-    if entries and not switch_on(root, "allow-offline"):
-        return ["class allow-offline is off"]
+    if entries and not class_on(root, "allow-offline"):
+        return ["class allow-offline is off or not enabled (teams.policy.classes.allow_offline)"]
     out = []
     for e in entries:
         found = allow_paths(e)
