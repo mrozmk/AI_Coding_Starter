@@ -77,6 +77,7 @@ Decide where the topic comes from, in this priority order. Resolve it **before**
 
 > **Loader Convention — trust primed context.** This step assumes `/prime` has already loaded `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, and `architecture.md` (plus `patterns.md` / `decisions.md` in full mode). Do **not** re-read those "for context" — if context isn't primed (no recent `/prime` in conversation), pause and ask the user to run `/prime` first. See [.agents/memory/index.md → Loader Convention](../../.agents/memory/index.md). Read only what is **unique to this topic**:
 
+- A backlog Task with a `Relates` cell → read the related Tasks' rows and their `Ref` specs as context (read only — `Relates` is shared context, not an order).
 - Consult the `When to Read` table in `.agents/memory/index.md` and load only the **domain files relevant to the topic** (not the whole memory layer)
 - Check recent commits: `git log --oneline -10`
 - If `docs/architecture.md` exists, read its `## Decisions` rows for the nodes/contexts this topic touches (and `docs/map/system.yaml` for the node ids) — topic-unique, on demand, not the whole file. The spec's `## Architecture` must cite each binding `AD-n` it builds on; a decision marked `withdrawn` or `superseded by AD-m` is not binding. If the file's header still reads `**Status:** draft`, none of its decisions are binding yet (`/architect`'s publication gate holds) — the spec may reference them as context but must not cite them as binding `AD-n`, and says so in `## Architecture`.

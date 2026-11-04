@@ -20,6 +20,9 @@ Thumbs.db
 
 # Jira draft workspace (/jira draft) — local grooming history with [internal] notes; back up with /jira export
 .agents/jira/
+
+# /update-backlog staged candidate pair + manifest — removed after a successful install
+.agents/.pending-update/
 *.pem
 *.key
 *secret*

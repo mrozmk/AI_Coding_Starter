@@ -63,13 +63,15 @@ Filenames only — don't read the plans themselves unless the BA asks.
 
 !`ls -la .agents/backlog.md 2>/dev/null || echo "no local backlog"`
 
-If `.agents/backlog.md` exists, read it and note: the Epic map, the Task count per `Status` (TODO / WIP / DONE), and points done vs total per Epic. Then run the checker and report its output — never fix the backlog from here (structural edits are a human act, `/setup:create-backlog` → Maintenance):
+If `.agents/backlog.md` exists, read it and note: the Epic map, the Task count per `Status` (TODO / WIP / DONE), and points done vs total per Epic. Then run the checker and report its output — never fix the backlog from here (structural edits go through `/update-backlog`, `/setup:create-backlog` → Maintenance contract):
 
 ```bash
 node .claude/lib/backlog-check.mjs
 ```
 
 Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure.
+
+Also report the scope register next to the backlog: the PRD's `**Baseline:**` / `**Current:**` and the backlog's `**Scope rev:**` (behind → "run `/update-backlog`"), the three newest `D-n` titles with their `**Approval:**`, and the **pending sources** — notes, specs and `docs/discovery.md` whose `shasum -a 256 | cut -c1-12` hash appears in no `D-n` `**Sources:**` line with a filled `**Tasks:**` line (names, count). Structural changes go through `/update-backlog`; never fix the backlog from here.
 
 ### 6. Jira (optional)
 

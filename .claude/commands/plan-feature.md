@@ -74,6 +74,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 **5. Integration Points**
 
+- A backlog Task with a `Relates` cell → read the related Tasks' rows and their `Ref` specs/plans before planning (shared context; never a dependency).
 - Identify existing files that need updates and new files to create (use the spec's "Files" section as the starting point; extend with what you discover in the codebase).
 - Map router / API registration patterns, database / model patterns, auth / authorization patterns — whatever applies. Check `.agents/memory/patterns.md` and any relevant `domain/*.md` first; supplement with codebase reading only when memory is thin or silent on the integration. **If the project exposes an LSP**, use `goToDefinition` + `incomingCalls` on an existing registration/integration point to read its real contract and who depends on it, instead of inferring from grep.
 
