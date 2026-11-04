@@ -218,6 +218,142 @@ section rather than speculating in it.
 
 ---
 
+## Draft Epic
+
+Rendered by `/jira draft` into `.agents/jira/inprogress/E<n>/_epic.md` (`draft-pattern.md`). The
+Epic row of the backlog pre-fills it; sections with no content are omitted, never stubbed.
+
+```markdown
+## Epic Description
+
+<the business need this Epic addresses, user-value framing — one or two paragraphs>
+
+## Vision
+
+<one or two sentences on the outcome, when it is not obvious from the description>
+
+## Success criteria
+
+- <from the Epic row's Outcome — measurable>
+
+## Assumptions
+
+- <from the Epic row's Key assumption>
+
+## Appetite
+
+appetite: <…> · cut first if over: <…>
+
+## Epic Scope
+
+| Feature | Description | Dependencies | Jira link |
+|---|---|---|---|
+| <Task title> | <one line> | <prerequisites and per-feature assumptions> | E1-2 |
+
+## Out of Scope
+
+- <explicit exclusions only — never the cut-first items, which are planned work>
+
+## Links
+
+- <design doc, related Epic>
+```
+
+The `Jira link` cell holds the Task id until `send` replaces it with the issue link.
+
+---
+
+## Draft Task
+
+Rendered by `/jira draft` into `.agents/jira/inprogress/E<n>/<Task id>--<slug>.md`. The Task row and
+the AC resolver pre-fill the machine-owned sections (`## Acceptance criteria`, `## Size`,
+`## Traces`, `## Node`, `## Chain`, `## Dependencies`); everything else is the BA's.
+
+```markdown
+## User story
+
+As a <role>, I want <capability>, so that <outcome>.
+
+(A `tech` row uses `## Description` instead: one paragraph on what the Task delivers and why.)
+
+## Requirements details
+
+<the primary content: context, the flow step by step, design links (paste the share URL), references>
+
+## Acceptance criteria
+
+- **E1-2.AC1** — Given <state> When <action> Then <observable result>
+- **E1-2.AC2** — IF <failure> THEN the system shall <response>
+
+## Size
+
+H (8 pts)
+
+## Traces
+
+R-3, FL-1.A2
+
+## Node
+
+checkout-core
+
+## Chain
+
+checkout-flow — 2 of 3
+
+## Out of scope
+
+- <explicit non-goal — name where the work lives instead>
+
+## Open questions
+
+- <question for the team — draft-only: posted as one comment after send>
+
+## Notes
+
+- <BA-only context — draft-only: never sent>
+
+## Initial Jira status
+
+<why the issue should start in a given status — draft-only; the frontmatter `initial_jira_status` is authoritative>
+
+## Dependencies
+
+- Blocked by: E1-1
+- Relates to: E1-5
+```
+
+`## Open questions`, `## Notes`, `## Initial Jira status` and `## Dependencies` are **draft-only**
+and never reach the description. A line may start with `[internal]` — stripped at send.
+
+---
+
+## Style rules
+
+### Transport rules (fixed — not edited per project)
+
+- Cross-references in Jira-bound text use Jira keys once they exist. Backlog Task ids appear only in
+  `## Dependencies`, `## Chain`, the Epic Scope `Jira link` cell before send, and AC ids — machine ids
+  `E<n>-<m>` and `E<n>-<m>.AC<k>` are exempt from "no row ids in Jira text".
+- Draft-only sections and `[internal]` spans never leave the repo.
+- The safe Markdown subset in **Notes on rendering in Jira Cloud** below.
+
+### Editorial defaults (project-editable — shipped from a previous BA engagement's grooming)
+
+- Acceptance criteria state the observable outcome, never how it is verified ("via DOM assertion",
+  "Test: …", "Validation gate …" are method, not outcome).
+- No bracket labels (`[Assumption]`, `[Note]`, `[Open question]`, …) in Task bodies — decision-pending
+  content goes to `## Open questions` or `## Notes`.
+- Placeholder-grade names carry `(naming to be decided)` or `(examples)`.
+- `and`, not `+`, joins words in prose (`+` stays in counts and type unions).
+- `## Requirements details` sits between the user story and the acceptance criteria.
+- A Task that produces a document names its file path in an acceptance criterion.
+
+Change the editorial defaults by a deliberate edit or an accepted `/jira resync` proposal; never
+change the transport rules per project.
+
+---
+
 ## Notes on rendering in Jira Cloud
 
 **Safe** (renders correctly after ADF conversion):

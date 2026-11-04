@@ -17,6 +17,9 @@ Thumbs.db
 !.env.example
 # Staged copies of files queued for Jira upload — see .claude/skills/jira/references/attachments.md
 .jira-attachments/
+
+# Jira draft workspace (/jira draft) — local grooming history with [internal] notes; back up with /jira export
+.agents/jira/
 *.pem
 *.key
 *secret*

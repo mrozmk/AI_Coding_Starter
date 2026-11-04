@@ -82,6 +82,11 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
 | `update` | Single-issue edit (Flow B) |
 | `bulk` | Bulk create under parent (Flow C → `references/bulk-pattern.md`) |
 | `sync` | Mirror the backlog's Epics/Tasks into Jira, create-only, keys written back (Flow H → `references/sync-pattern.md`) |
+| `draft [E<n>]` (alias `sync draft`) | Backlog rows without a key → local draft files under `.agents/jira/inprogress/` — no MCP call (Flow H1 → `references/draft-pattern.md`) |
+| `drafts` | List and validate draft files (AC vs the resolver, scope revision, duplicates) — local |
+| `edit <path>` | Edit a draft file under `inprogress/` — local |
+| `discard <E<n>>` | Delete an unsent draft folder after confirm — local |
+| `export <dir>` | Back up `.agents/jira/` outside the repo — local |
 | `search` | JQL search (Flow D) |
 | `comment` | Add comment (Flow E) |
 | `link` | Create issue link (Flow F) |
@@ -311,6 +316,14 @@ Delegate entirely to [`references/sync-pattern.md`](references/sync-pattern.md).
 Summary of invariants carried through: `node .claude/lib/backlog-check.mjs` must pass → recover orphans by the `<namespace>:<row id>` correlation label → `jira_get_project_issue_types` + `jira_get_create_fields` prove `parent` / `labels` / estimate are on the create screen (there is no Jira-side dry-run for this flow) → confirm table + every description verbatim per Epic group → **sequential** `jira_create_issue`, each key written back as `KEY (unverified)` immediately and promoted to `KEY` only after `jira_get_issue` verifies it → `Blocks` links reconciled against existing `issuelinks` → report with skipped / deferred / failed rows.
 
 **Create-only, and only `Jira` cells are written.** This flow never updates, transitions or deletes an issue, never touches `Status`, and never uses batch create (`sync-pattern.md` → Why sequential creates explains why that transport loses `parent`, labels and the estimate).
+
+## Flow H1 — Draft (backlog → local files)
+
+Delegate entirely to [`references/draft-pattern.md`](references/draft-pattern.md). Covers `draft`,
+`drafts`, `edit`, `discard`, `export`. **No MCP call in any of them** — they read the backlog, the
+specs and the files, and write only under `.agents/jira/`. Identity is the frontmatter
+`backlog_row`; AC come verbatim from the resolver and are read-only in the draft; re-drafting
+refreshes only machine-owned sections, so grooming survives.
 
 ---
 
