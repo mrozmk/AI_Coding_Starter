@@ -30,7 +30,11 @@ mkproj() {  # mkproj <name> → a repo with the vendored tool and the team ignor
   local p="$WORK/$1"
   mkdir -p "$p/tools"; git -C "$p" init --quiet
   cp -R "$ST/tools/agent_mail" "$p/tools/"
-  printf '.agents/team/\n' > "$p/.gitignore"
+  printf '.agents/team/\n__pycache__/\n' > "$p/.gitignore"
+  # Fixed dates: every fixture commits the same tree, so every fixture has the same tool sha.
+  git -C "$p" add -A
+  GIT_AUTHOR_DATE=2026-01-01T00:00:00Z GIT_COMMITTER_DATE=2026-01-01T00:00:00Z \
+    git -C "$p" commit --quiet -m fixture
   printf '%s' "$p"
 }
 treehash() { (cd "$1" && find . -type f -print | LC_ALL=C sort | while IFS= read -r f; do
@@ -44,6 +48,7 @@ setup "$P1" --dry-run --suffix XY
 has "mode	fresh	key p1" || fail "1: no fresh mode line"
 has "create	registry" || fail "1: the plan does not create the registry"
 [ "$(lines register)" = 3 ] || fail "1: expected 3 role registrations in the plan"
+has "create	tool-copy" || fail "1: the plan does not copy the tool"
 [ -z "$(ls -A "$HOME")" ] || fail "1: dry-run wrote into HOME"
 [ ! -e "$P1/.agents" ] || fail "1: dry-run wrote the channel file"
 
@@ -52,13 +57,20 @@ setup "$P1" --suffix XY
 [ "$RC" = 0 ] || fail "2: fresh exit $RC"
 BOX1="$HOME/.agent-mail/p1/mail.sqlite"
 [ -f "$BOX1" ] && [ -d "$HOME/.agent-mail/p1/decisions" ] || fail "2: no box or decisions dir"
-jq -e --arg t "$(cd "$P1/tools/agent_mail" && pwd -P)" --arg b "$BOX1" '.p1 | .tool == $t and .box == $b
+SHA=$(git -C "$P1" log -1 --format=%h -- tools/agent_mail)
+COPY="$HOME/.agent-mail/tools/agent_mail-$SHA"
+has "create	tool-copy	$COPY (sha $SHA)" || fail "2: no tool-copy line"
+[ "$(cd "$COPY" && ls -A | LC_ALL=C sort | tr '\n' ' ')" \
+  = "README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py " ] \
+  || fail "2: the copy is not exactly the runtime files"
+jq -e --arg t "$COPY" --arg b "$BOX1" '.p1 | .tool == $t and .box == $b
   and .suffix == "XY" and .claude_roles == ["Supervisor","TeamLead","Advisor"]
   and .codex_roles == ["Reviewer"] and has("rules") and has("codex_home") and has("repo")' "$REG" \
   >/dev/null || fail "2: registry entry has the wrong shape"
 jq -e 'keys == ["AdvisorXY","SupervisorXY","TeamLeadXY"] and all(.[]; .adapter == "monitor")' \
   "$HOME/.agent-mail/p1/recipients.json" >/dev/null || fail "2: roles not registered as monitor"
-jq -e --arg b "$BOX1" '.key == "p1" and .box == $b and (.kit_dir | type == "string")
+jq -e --arg b "$BOX1" --arg t "$COPY" --arg s "$SHA" '.key == "p1" and .box == $b
+  and .tool == $t and .tool_sha == $s and (.kit_dir | type == "string")
   and has("tool") and has("decisions_dir") and has("codex_home")' \
   "$P1/.agents/team/channel.local.json" >/dev/null || fail "2: channel.local.json shape"
 git -C "$P1" check-ignore -q .agents/team/channel.local.json || fail "2: channel file not ignored"
@@ -75,6 +87,7 @@ has "from=AdvisorXY kind=turn" || fail "2: inbox through the client"
 mail p1 state set --expect-version 0 --stage design; [ "$RC" = 0 ] || fail "2: state set"
 mail p1 state get --json
 has '"project": "p1"' && has '"stage": "design"' || fail "2: state get did not use the label"
+[ ! -e "$COPY/__pycache__" ] || fail "2: the client let python write bytecode into the tool copy"
 
 # ---- (3) re-run: reuse by repo, nothing new ---------------------------------------------------
 H0=$(treehash "$HOME")
@@ -90,6 +103,8 @@ setup "$P2" --suffix XY
 [ "$RC" = 0 ] && has "mode	extend	key p2" || fail "4: second project is not extend"
 has "create	registry" && fail "4: extend re-created the registry"
 [ "$(jq -cS .p1 "$REG")" = "$E1" ] || fail "4: extend changed the first entry"
+has "keep	tool-copy	$COPY (identical, sha $SHA)" || fail "4: the identical copy was not reused"
+[ "$(jq -r .p2.tool "$REG")" = "$COPY" ] || fail "4: the second entry does not share the copy"
 BOX2="$HOME/.agent-mail/p2/mail.sqlite"
 [ -f "$BOX2" ] || fail "4: no second box"
 
@@ -133,6 +148,13 @@ jq -e --arg t "$OTHER" '.SH.tool == $t and .SH.claude_roles == ["Owner","Supervi
 jq -e '.AdvisorQ == {"adapter": "codex-queue", "thread": "uuid-1"} and .SupervisorQ.adapter == "monitor"' \
   "$HOME/.agent-mail/shared/recipients.json" >/dev/null || fail "6: recipients overwritten or missing"
 [ -f "$HOME/.agent-mail/shared/mail.sqlite" ] || fail "6: the entry's tool did not open its box"
+jq -e --arg t "$OTHER" '.tool == $t and .tool_sha == null' "$P3/.agents/team/channel.local.json" \
+  >/dev/null || fail "6: a foreign tool got a tool_sha"
+cp "$REG" "$WORK/reg.before"
+setup "$P3" --resync-tool
+[ "$RC" = 1 ] && has "a foreign tool is never swapped" || fail "6: --resync-tool swapped a foreign tool"
+cmp -s "$REG" "$WORK/reg.before" || fail "6: the refused re-sync changed the registry"
+[ -z "$(ls -A "$OTHER/__pycache__" 2>/dev/null)" ] || fail "6: the tool run wrote bytecode into the tool"
 
 # ---- (7) refusals write nothing ---------------------------------------------------------------
 P4=$(mkproj p4)
@@ -168,6 +190,33 @@ setup "$P7"
 jq '.p1.tool = "/nonexistent"' "$REG" > "$WORK/reg" && mv "$WORK/reg" "$REG"
 mail p1 check; [ "$RC" = 1 ] && has "has no agent_mail.py" || fail "7: entry check misses the tool"
 cp "$WORK/reg.ok" "$REG"
+
+# ---- (7b) the tool copy: a different copy is refused; check reports a copy behind its checkout --
+echo "# local edit" >> "$COPY/README.md"
+P8=$(mkproj p8)
+H0=$(treehash "$HOME")
+setup "$P8" --dry-run
+[ "$RC" = 1 ] && has "exists with different content" || fail "7b: a different copy was not refused"
+setup "$P8"
+[ "$RC" = 1 ] && [ "$(treehash "$HOME")" = "$H0" ] || fail "7b: the copy refusal wrote"
+cp "$ST/tools/agent_mail/README.md" "$COPY/README.md"
+mail p1 check
+[ "$RC" = 0 ] && ! has "tool behind checkout" || fail "7b: check flags a current copy"
+OLD="$HOME/.agent-mail/tools/agent_mail-0000000"
+cp -R "$COPY" "$OLD"
+jq --arg t "$OLD" '.p1.tool = $t' "$REG" > "$WORK/reg" && mv "$WORK/reg" "$REG"
+R1=$(jq -r .p1.repo "$REG")
+WANT="tool behind checkout (0000000 → $SHA) — re-sync is an Operator action: bash \"$R1/.claude/lib/team-mail-setup.sh\" \"$R1\" --key p1 --resync-tool"
+mail p1 check
+[ "$RC" = 0 ] && grep -qxF -- "$WANT" "$WORK/out" || fail "7b: keyed check did not report the stale copy"
+[ "$(jq -r .p1.tool "$REG")" = "$OLD" ] || fail "7b: check swapped the tool"
+mail check; grep -qxF -- "$WANT" "$WORK/out" || fail "7b: registry check did not report it"
+setup "$P1" --key p1 --resync-tool
+[ "$RC" = 0 ] && has "repoint	tool	0000000 → $SHA" || fail "7b: --resync-tool did not repoint"
+[ "$(jq -r .p1.tool "$REG")" = "$COPY" ] || fail "7b: the entry does not name the current copy"
+[ "$(jq -r .tool_sha "$P1/.agents/team/channel.local.json")" = "$SHA" ] || fail "7b: tool_sha not updated"
+mail p1 check
+[ "$RC" = 0 ] && ! has "tool behind checkout" || fail "7b: still behind after the re-sync"
 
 # ---- (8) profile names and the solo policy ---------------------------------------------------
 P6=$(mkproj p6)

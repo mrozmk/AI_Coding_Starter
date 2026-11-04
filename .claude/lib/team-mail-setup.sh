@@ -3,14 +3,19 @@
 # registry `$HOME/.agent-mail/projects.json` and writes `.agents/team/channel.local.json`.
 #
 # Usage: bash .claude/lib/team-mail-setup.sh <repo-root> [--dry-run] [--key K] [--slug S]
-#          [--suffix X] [--label L] [--tool DIR] [--codex-home DIR] [--add-roles]
+#          [--suffix X] [--label L] [--tool DIR] [--codex-home DIR] [--add-roles] [--resync-tool]
 #   reuse   an entry whose `repo` is this checkout (or --key K names an existing entry): its box
 #           and its `tool` are used as they are — one tool per box, `tool` is never rewritten;
 #           missing role recipients are registered; --add-roles appends the canonical role names
-#           to the entry's claude_roles/codex_roles (otherwise only offered)
-#   extend  registry present, no entry: creates ~/.agent-mail/<slug>/{mail.sqlite,decisions/}
-#           and adds an entry whose tool is this checkout's vendored tools/agent_mail
+#           to the entry's claude_roles/codex_roles (otherwise only offered); --resync-tool
+#           (Operator action) repoints an entry whose tool is an agent_mail-<sha> copy to a copy
+#           of the current vendored tool — never a foreign tool
+#   extend  registry present, no entry: creates ~/.agent-mail/<slug>/{mail.sqlite,decisions/},
+#           copies the vendored tool (runtime files, committed state) to
+#           ~/.agent-mail/tools/agent_mail-<sha> (an identical copy is reused, a different one
+#           refused) and adds an entry whose tool is that copy
 #   fresh   no registry: creates it in the same schema, then extends
+#   --tool DIR: the vendored tool to copy (default <repo-root>/tools/agent_mail).
 #   --dry-run prints the plan and writes nothing (no box is opened, so none is created).
 # Defaults: key = teams.channel.project_code, else the slug; slug = the repo dir name, lowercased;
 #   suffix = teams.channel.mail_suffix, else ""; label = project_code, else the key;
@@ -19,17 +24,18 @@
 # Exit: 0 done · 1 refused (nothing written) · 2 usage. Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "team-mail-setup: $1" >&2; exit "${2:-1}"; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO=""; DRY=""; KEY=""; SLUG=""; SUFFIX=""; LABEL=""; TOOL=""; CODEX_HOME_V=""; ADD_ROLES=""
-SUFFIX_SET=""
+SUFFIX_SET=""; RESYNC=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1 ;;
     --add-roles) ADD_ROLES=1 ;;
+    --resync-tool) RESYNC=1 ;;
     --key|--slug|--suffix|--label|--tool|--codex-home)
       [ $# -ge 2 ] || usage
       case "$1" in
@@ -55,18 +61,65 @@ AM="$HOME/.agent-mail"
 REG="$AM/projects.json"
 PROFILE="$REPO/.claude/project-profile.json"
 CHANNEL_REL=".agents/team/channel.local.json"
+TOOLS_DIR="$AM/tools"
+RUNTIME="README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py"
+# Copies are compared byte for byte; a __pycache__ written into one would break that (`-I`
+# ignores PYTHON* variables, hence also `-B` on every call).
+export PYTHONDONTWRITEBYTECODE=1
 
 pf() { [ -f "$PROFILE" ] && jq -r --arg f "$1" '.teams.channel[$f] // empty' "$PROFILE" 2>/dev/null || true; }
 step() { printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"; }
 apply() { [ -n "$DRY" ] || "$@"; }
 is_ident() { printf '%s' "$1" | grep -Eq "$IDENT"; }
 
-TMPF=""
-trap '[ -z "$TMPF" ] || rm -f "$TMPF"' EXIT
+TMPF=""; TMPD=""
+trap '[ -z "$TMPF" ] || rm -f "$TMPF"; [ -z "$TMPD" ] || rm -rf "$TMPD"' EXIT
 write_json() {  # write_json <dest> <json> — atomic, next to the destination
   TMPF="$(mktemp "$(dirname "$1")/.team-mail-setup.XXXXXX")"
   printf '%s\n' "$2" > "$TMPF"
   mv "$TMPF" "$1"; TMPF=""
+}
+
+# ---- the tool copy: ~/.agent-mail/tools/agent_mail-<sha>, runtime files only -------------------
+src_sha() {  # src_sha <vendored dir> → the short sha of its last commit; refuses an uncommitted tool
+  local sha
+  sha="$(git -C "$1" log -1 --format=%h -- . 2>/dev/null || true)"
+  [ -n "$sha" ] || die "$1 is not committed in a git checkout; the copy is named after its commit"
+  [ -z "$(git -C "$1" status --porcelain -- . 2>/dev/null)" ] \
+    || die "$1 has uncommitted changes; a copy named agent_mail-$sha would not be that commit"
+  local f; for f in $RUNTIME; do [ -f "$1/$f" ] || die "$1 lacks $f"; done
+  printf '%s' "$sha"
+}
+copy_state() {  # copy_state <src> <dst> → absent | same | differs (__pycache__ ignored)
+  [ -e "$2" ] || { echo absent; return; }
+  [ -d "$2" ] && [ ! -L "$2" ] || { echo differs; return; }
+  local have want f
+  have="$(cd "$2" && ls -A | grep -vx __pycache__ | LC_ALL=C sort | tr '\n' ' ' || true)"
+  want="$(printf '%s\n' $RUNTIME | LC_ALL=C sort | tr '\n' ' ')"
+  [ "$have" = "$want" ] || { echo differs; return; }
+  for f in $RUNTIME; do cmp -s "$1/$f" "$2/$f" || { echo differs; return; }; done
+  echo same
+}
+plan_copy() {  # plan_copy <src> → sets NEW_SHA, NEW_TOOL, COPY_STATE; refuses a different copy
+  NEW_SHA="$(src_sha "$1")"
+  NEW_TOOL="$TOOLS_DIR/agent_mail-$NEW_SHA"
+  COPY_STATE="$(copy_state "$1" "$NEW_TOOL")"
+  [ "$COPY_STATE" != differs ] \
+    || die "$NEW_TOOL exists with different content; it is not commit $NEW_SHA — move it away first"
+}
+apply_copy() {  # apply_copy <src> — after plan_copy; atomic (temp dir + mv)
+  if [ "$COPY_STATE" = same ]; then step keep tool-copy "$NEW_TOOL (identical, sha $NEW_SHA)"; return; fi
+  step create tool-copy "$NEW_TOOL (sha $NEW_SHA)"
+  [ -z "$DRY" ] || return 0
+  mkdir -p "$TOOLS_DIR"
+  TMPD="$(mktemp -d "$TOOLS_DIR/.agent_mail.XXXXXX")"
+  local f; for f in $RUNTIME; do cp -p "$1/$f" "$TMPD/$f"; done
+  chmod 755 "$TMPD"; mv "$TMPD" "$NEW_TOOL"; TMPD=""
+}
+managed_sha() {  # managed_sha <tool path> → <sha> when it is one of our copies, else nothing
+  case "$1" in "$TOOLS_DIR"/agent_mail-*) ;; *) return 0 ;; esac
+  local s="${1#"$TOOLS_DIR"/agent_mail-}"
+  printf '%s' "$s" | grep -Eq '^[0-9a-f]{4,40}$' && printf '%s' "$s" || true
 }
 
 # ---- the plan: which mode, which key ------------------------------------------------------------
@@ -77,6 +130,7 @@ CODE="$(pf project_code)"
 is_ident "$SLUG" || die "slug '$SLUG' is not an identifier; pass --slug" 2
 [ -z "$SUFFIX" ] || is_ident "$SUFFIX" || die "suffix '$SUFFIX' is not an identifier" 2
 [ -n "$TOOL" ] || TOOL="$REPO/tools/agent_mail"
+TOOL_SRC="$TOOL"
 
 MODE=""
 if [ ! -e "$REG" ]; then
@@ -113,7 +167,9 @@ step mode "$MODE" "key $KEY"
 # ---- fresh / extend: registry, box dir, entry ---------------------------------------------------
 if [ "$MODE" != reuse ]; then
   [ -f "$TOOL/agent_mail.py" ] || die "no agent-mail tool at $TOOL (agent_mail.py missing); pass --tool"
-  TOOL="$(cd "$TOOL" && pwd -P)"
+  SRC="$(cd "$TOOL" && pwd -P)"
+  plan_copy "$SRC"
+  TOOL="$NEW_TOOL"
   if [ -z "$CODEX_HOME_V" ] && [ -f "$REPO/.claude/codex-profile" ]; then
     CODEX_HOME_V="$(grep -v '^[[:space:]]*#' "$REPO/.claude/codex-profile" | grep -m1 . || true)"
     case "$CODEX_HOME_V" in "~/"*) CODEX_HOME_V="$HOME/${CODEX_HOME_V#~/}" ;; esac
@@ -129,6 +185,7 @@ if [ "$MODE" != reuse ]; then
     [ -d "$AM" ] || apply mkdir -m 700 "$AM"
     [ -n "$DRY" ] || write_json "$REG" '{}'
   fi
+  apply_copy "$SRC"
   step create box-dir "$DIR (+ decisions/)"
   apply mkdir -p "$DEC"
   ENTRY="$(jq -n --arg box "$BOX" --arg tool "$TOOL" --arg label "${LABEL:-${CODE:-$KEY}}" \
@@ -140,7 +197,7 @@ if [ "$MODE" != reuse ]; then
   step add entry "$KEY (tool $TOOL)"
   [ -n "$DRY" ] || write_json "$REG" "$(jq --arg k "$KEY" --argjson e "$ENTRY" '. + {($k): $e}' "$REG")"
   step create box "$BOX"
-  [ -n "$DRY" ] || python3 -I "$TOOL/agent_mail.py" --box "$BOX" recipients >/dev/null
+  [ -n "$DRY" ] || python3 -I -B "$TOOL/agent_mail.py" --box "$BOX" recipients >/dev/null
 fi
 
 # From here on the registry entry is the only source of box/tool paths.
@@ -156,11 +213,36 @@ fi
 if [ "$MODE" = reuse ]; then
   [ -f "$TOOL/agent_mail.py" ] \
     || die "entry $KEY: tool $TOOL has no agent_mail.py — fix the entry; this step never rewrites tool"
-  step keep tool "$TOOL (one tool per box — the entry's own)"
+  OLD_SHA="$(managed_sha "$TOOL")"
+  if [ -n "$RESYNC" ]; then
+    [ -n "$OLD_SHA" ] \
+      || die "--resync-tool: $TOOL is not an agent_mail-<sha> copy; a foreign tool is never swapped"
+    others="$(jq -r --arg k "$KEY" --arg b "$BOX" \
+      'to_entries[] | select(.key != $k and .value.box == $b) | .key' "$REG")"
+    [ -z "$others" ] \
+      || die "--resync-tool: the box is shared with $(echo $others); repoint them together by hand"
+    [ -f "$TOOL_SRC/agent_mail.py" ] || die "no agent-mail tool at $TOOL_SRC; pass --tool"
+    SRC="$(cd "$TOOL_SRC" && pwd -P)"
+    plan_copy "$SRC"
+    case "$NEW_SHA" in "$OLD_SHA"*) NEW_SHA="$OLD_SHA" ;; esac
+    case "$OLD_SHA" in "$NEW_SHA"*) NEW_SHA="$OLD_SHA" ;; esac
+    if [ "$NEW_SHA" = "$OLD_SHA" ]; then
+      step keep tool "$TOOL (already at sha $OLD_SHA)"
+    else
+      apply_copy "$SRC"
+      step repoint tool "$OLD_SHA → $NEW_SHA ($NEW_TOOL; the old copy stays for other boxes)"
+      [ -n "$DRY" ] || write_json "$REG" "$(jq --arg k "$KEY" --arg t "$NEW_TOOL" '.[$k].tool = $t' "$REG")"
+      TOOL="$NEW_TOOL"; OLD_SHA="$NEW_SHA"
+    fi
+  else
+    step keep tool "$TOOL (one tool per box — the entry's own)"
+  fi
   if [ -e "$BOX" ]; then step keep box "$BOX"
   else step keep box "$BOX (absent; the entry's tool creates it on first use)"; fi
-  [ "$(cd "$TOOL" && pwd -P)" = "$(cd "$REPO/tools/agent_mail" 2>/dev/null && pwd -P || true)" ] \
-    || step note tool "the vendored $REPO/tools/agent_mail is not used for this box"
+  [ -n "$OLD_SHA" ] || step note tool "the vendored $REPO/tools/agent_mail is not used for this box"
+  TOOL_SHA="$OLD_SHA"
+else
+  TOOL_SHA="$NEW_SHA"
 fi
 
 # ---- role recipients: register the missing ones, never overwrite one -------------------------
@@ -172,7 +254,7 @@ for role in $CLAUDE_ROLES; do
   else
     step register recipient "$name (monitor)"
     [ -n "$DRY" ] \
-      || python3 -I "$TOOL/agent_mail.py" --box "$BOX" register --as "$name" --adapter monitor >/dev/null
+      || python3 -I -B "$TOOL/agent_mail.py" --box "$BOX" register --as "$name" --adapter monitor >/dev/null
   fi
 done
 
@@ -196,9 +278,9 @@ CH="$REPO/$CHANNEL_REL"
 git -C "$REPO" check-ignore -q "$CHANNEL_REL" 2>/dev/null \
   || step warn gitignore "$CHANNEL_REL is not ignored — add .agents/team/ to .gitignore"
 CJ="$(jq -n --arg key "$KEY" --arg box "$BOX" --arg tool "$TOOL" --arg dec "$DEC" \
-  --arg ch "$CODEX_HOME_V" --arg kit "$(dirname "$BOX")/kit" \
-  '{key: $key, box: $box, tool: $tool, decisions_dir: $dec,
-    codex_home: (if $ch == "" then null else $ch end), kit_dir: $kit}')"
+  --arg ch "$CODEX_HOME_V" --arg kit "$(dirname "$BOX")/kit" --arg sha "$TOOL_SHA" \
+  '{key: $key, box: $box, tool: $tool, tool_sha: (if $sha == "" then null else $sha end),
+    decisions_dir: $dec, codex_home: (if $ch == "" then null else $ch end), kit_dir: $kit}')"
 if [ -f "$CH" ] && [ "$(jq -S . "$CH" 2>/dev/null)" = "$(printf '%s' "$CJ" | jq -S .)" ]; then
   step keep channel "$CHANNEL_REL"
 else
@@ -212,7 +294,7 @@ if [ "$(pf advisor)" = solo ]; then
 else
   cat <<EOF
 reviewer: in this project's Codex window (CODEX_HOME=${CODEX_HOME_V:-<unset>}), first thing after start:
-  python3 -I "$TOOL/agent_mail.py" --box "$BOX" register --as Reviewer$SUFFIX --adapter codex-queue --thread <UUID from /status or \$CODEX_THREAD_ID>
+  python3 -I -B "$TOOL/agent_mail.py" --box "$BOX" register --as Reviewer$SUFFIX --adapter codex-queue --thread <UUID from /status or \$CODEX_THREAD_ID>
   (its sandbox needs write access to $(dirname "$BOX") and read access to $TOOL)
 then, in the Advisor's session, (re)start the push loop as a background task:
   bash .claude/lib/team-mail.sh $KEY deliver Reviewer$SUFFIX

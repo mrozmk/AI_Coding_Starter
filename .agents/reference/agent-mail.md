@@ -45,11 +45,20 @@ already has — reads the same file, so a second client never plants a second bo
 otherwise). `/setup:teams` never rewrites `tool` of an existing entry: schema migrations of a box
 belong to whichever copy of the tool owns it.
 
+**The tool runs from a copy, never from a checkout.** A new entry's `tool` is
+`~/.agent-mail/tools/agent_mail-<sha>`: the runtime files (no tests) of the checkout's vendored
+`tools/agent_mail`, where `<sha>` is `git log -1 --format=%h -- tools/agent_mail`. Moving or
+deleting the checkout, or switching its branch, never changes the code under a live box. An
+existing copy with identical content is reused; one with different content is refused (move it
+away first). The client and the setup step run Python with `-B` and
+`PYTHONDONTWRITEBYTECODE=1`, so no `__pycache__` lands in a copy (or in another client's tool).
+
 The project's committed names live in `.claude/project-profile.json → teams.channel`
 (`project_code`, `mail_suffix`, `tmux_prefix`, `advisor: pair|solo`, `notifier`); the machine
 paths live in the gitignored `.agents/team/channel.local.json`:
-`{ key, box, tool, decisions_dir, codex_home, kit_dir }` (written by the channel step; `kit_dir`
-is where the operator kit will be installed, not created by this step).
+`{ key, box, tool, tool_sha, decisions_dir, codex_home, kit_dir }` (written by the channel step;
+`tool_sha` is the copy's `<sha>`, `null` for a tool that is not an `agent_mail-<sha>` copy;
+`kit_dir` is where the operator kit will be installed, not created by this step).
 
 ## The client: `team-mail.sh`
 
@@ -64,7 +73,7 @@ whose `repo` is this checkout.
 | `ps` | agent-mail processes of **this** box (matched on the box path only) |
 | `pattern [deliver\|wait <RECIPIENT>]` | the `pgrep -f` regex for this box or one of its loops |
 | `deliver <RECIPIENT>` | the push loop for a Codex recipient, foreground (run it as a background task) |
-| `check` | `team-mail.sh check`: whole-registry schema + one tool per box; `<KEY> check`: plus the entry's tool, box dir and decisions dir exist |
+| `check` | `team-mail.sh check`: whole-registry schema + one tool per box; `<KEY> check`: plus the entry's tool, box dir and decisions dir exist. Both print a **warning** (exit stays 0) when an entry's `agent_mail-<sha>` copy is older than its repo's vendored tool: `tool behind checkout (<old> → <new>) — re-sync is an Operator action: bash "<repo>/.claude/lib/team-mail-setup.sh" "<repo>" --key <KEY> --resync-tool`. `check` never swaps a tool |
 | anything else | forwarded to `agent_mail.py --box <box>`; `send` and `state get\|set` also get `--project <label>` |
 
 Every `pgrep`/`pkill` goes through `pattern`: a bare `pgrep -f "--recipient Reviewer"` matches the
@@ -140,19 +149,26 @@ next message on it is not offered while a `received` claim is younger than 7200 
 
 ## Bring-up: the `channel` step of `/setup:teams`
 
-`bash .claude/lib/team-mail-setup.sh <repo-root> [--dry-run] [--key K] [--slug S] [--suffix X] [--label L] [--tool DIR] [--codex-home DIR] [--add-roles]`
+`bash .claude/lib/team-mail-setup.sh <repo-root> [--dry-run] [--key K] [--slug S] [--suffix X] [--label L] [--tool DIR] [--codex-home DIR] [--add-roles] [--resync-tool]`
 
 | Situation | Mode | Behaviour |
 |---|---|---|
 | registry has an entry whose `repo` is this checkout, or `--key` names one | **reuse** | box and `tool` taken from the entry as they are (never rewritten, the vendored copy is not used for that box); missing role recipients registered with `--adapter monitor`, an existing recipient never overwritten; the canonical role names are offered for `claude_roles`/`codex_roles` and written only with `--add-roles` |
-| registry exists, no entry | **extend** | creates `~/.agent-mail/<slug>/{mail.sqlite,decisions/}`, adds an entry with `tool` = this checkout's `tools/agent_mail`, registers the roles |
+| registry exists, no entry | **extend** | copies the vendored tool to `~/.agent-mail/tools/agent_mail-<sha>` (or reuses the identical copy), creates `~/.agent-mail/<slug>/{mail.sqlite,decisions/}`, adds an entry with `tool` = that copy, registers the roles |
 | no registry | **fresh** | creates `~/.agent-mail/projects.json` (`~/.agent-mail` mode 700) in the schema above, then extends |
 
 Refusals (exit 1, nothing written): a registry that fails `check`; several entries for this repo
 without `--key`; a key that already names another repo's entry; a `<slug>/mail.sqlite` that no
-entry names (someone owns it); an entry whose tool is missing. `--dry-run` prints the plan and
+entry names (someone owns it); an entry whose tool is missing; an `agent_mail-<sha>` copy with
+different content; a vendored tool that is uncommitted or has uncommitted changes (the copy is
+named after its commit).
+
+**Re-sync (Operator action).** `--resync-tool` in reuse mode copies the current vendored tool and
+repoints the entry — only when the entry's tool is an `agent_mail-<sha>` copy (a foreign tool is
+refused) and no other entry shares the box. The old copy stays (other boxes may still run it).
+Run it with `--dry-run` first; a newer tool may migrate the box schema on its next open. `--dry-run` prints the plan and
 writes nothing — it reads `recipients.json` directly instead of opening the box, so no box is
-created. Every run ends with `.agents/team/channel.local.json` and the Reviewer instructions.
+created; the tool copy shows as a `create tool-copy` (or `keep tool-copy`) line. Every run ends with `.agents/team/channel.local.json` and the Reviewer instructions.
 
 **Reviewer** (Codex window of the project, `CODEX_HOME` = the entry's `codex_home`): its sandbox
 needs write access to the box directory and read access to the tool. First thing after start:

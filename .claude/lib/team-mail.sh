@@ -10,7 +10,9 @@
 #   ps                   agent-mail processes bound to THIS box (matched on the box path only)
 #   pattern [deliver|wait <RECIPIENT>]   the pgrep -f regex for this box (or one of its loops)
 #   deliver <RECIPIENT>  the push loop for a codex recipient (foreground; exports codex_home)
-#   check                schema of the whole registry + this entry's tool, box dir, one tool per box
+#   check                schema of the whole registry + this entry's tool, box dir, one tool per box;
+#                        a `tool behind checkout` line (a warning, exit stays 0) when the entry's
+#                        ~/.agent-mail/tools/agent_mail-<sha> copy is older than its repo's vendored tool
 #   <agent_mail.py cmd>  forwarded with --box (send/state also get --project <project_label>)
 # --here resolves the key from .agents/team/channel.local.json (field `key`), else from the one
 # registry entry whose `repo` is this checkout. Schema: .agents/reference/agent-mail.md.
@@ -19,11 +21,15 @@
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "team-mail: $1" >&2; exit "${2:-1}"; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 REG="$HOME/.agent-mail/projects.json"
+# The tool runs from shared copies (~/.agent-mail/tools/agent_mail-<sha>, other clients' dirs):
+# a __pycache__ written there would make a byte-identical copy look different. `-I` ignores
+# PYTHON* variables, so every call also passes `-B`; the export covers the tool's children.
+export PYTHONDONTWRITEBYTECODE=1
 IDENT='^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'
 
 # Every schema rule in one jq program, shared by `check` and the entry loader. Prints one
@@ -103,16 +109,38 @@ check_entry() {  # check_entry → prints problems for the selected entry's file
   [ -d "$dd" ] || echo "$KEY: decisions_dir $dd does not exist"
 }
 
-report_check() {  # report_check <problems> <ok label>
+# A copy made by team-mail-setup.sh is named after the vendored tool's commit; when the entry's
+# repo has moved on, say so — swapping the tool under a live box is the Operator's call.
+tool_behind() {  # tool_behind <key> → the warning line, or nothing
+  local k="$1" tool repo old new
+  tool="$(jq -r --arg k "$k" '.[$k].tool // empty' "$REG")"
+  repo="$(jq -r --arg k "$k" '.[$k].repo // empty' "$REG")"
+  [ "$(dirname "$tool")" = "$HOME/.agent-mail/tools" ] || return 0
+  old="$(basename "$tool")"; old="${old#agent_mail-}"
+  printf '%s' "$old" | grep -Eq '^[0-9a-f]{4,40}$' || return 0
+  [ -d "$repo/tools/agent_mail" ] || return 0
+  new="$(git -C "$repo" log -1 --format=%h -- tools/agent_mail 2>/dev/null || true)"
+  [ -n "$new" ] || return 0
+  # Abbreviations grow with the repo: equal when one is a prefix of the other.
+  case "$new" in "$old"*) return 0 ;; esac
+  case "$old" in "$new"*) return 0 ;; esac
+  echo "tool behind checkout ($old → $new) — re-sync is an Operator action:" \
+    "bash \"$repo/.claude/lib/team-mail-setup.sh\" \"$repo\" --key $k --resync-tool"
+}
+
+report_check() {  # report_check <problems> <ok label> <keys to look for a stale tool copy>
   if [ -n "$1" ]; then printf '%s\n' "$1" | sed 's/^/FAIL /'; exit 1; fi
-  echo "OK $2"; exit 0
+  echo "OK $2"
+  local k; for k in $3; do tool_behind "$k"; done
+  exit 0
 }
 
 [ $# -ge 1 ] || usage
 load_registry
 
 if [ "$1" = check ] && [ $# -eq 1 ]; then
-  report_check "$(schema_problems)" "registry $REG ($(jq 'length' "$REG") entries)"
+  report_check "$(schema_problems)" "registry $REG ($(jq 'length' "$REG") entries)" \
+    "$(jq -r 'keys[]' "$REG")"
 fi
 
 KEY="$1"; shift
@@ -127,7 +155,7 @@ BOX="$(cfg box)"; TOOL="$(cfg tool)"; LABEL="$(cfg project_label)"; SUFFIX="$(cf
 if [ "$SUB" = check ]; then
   ALL="$(schema_problems)"
   report_check "$(printf '%s\n%s' "$ALL" "$( [ -n "$PROBLEMS" ] || check_entry)" | grep . || true)" \
-    "$KEY (box $BOX, tool $TOOL)"
+    "$KEY (box $BOX, tool $TOOL)" "$KEY"
 fi
 [ -z "$PROBLEMS" ] \
   || die "entry $KEY is invalid: $(printf '%s' "$PROBLEMS" | head -1) (team-mail.sh $KEY check)"
@@ -155,12 +183,12 @@ case "$SUB" in
   deliver)
     [ -n "${1:-}" ] || die "deliver needs a RECIPIENT" 2
     r="$1"; shift
-    exec python3 -I -u "$TOOL/agent_mail_deliver.py" --box "$BOX" --recipient "$r" "$@" ;;
-  send) exec python3 -I "$TOOL/agent_mail.py" --box "$BOX" send --project "$LABEL" "$@" ;;
+    exec python3 -I -B -u "$TOOL/agent_mail_deliver.py" --box "$BOX" --recipient "$r" "$@" ;;
+  send) exec python3 -I -B "$TOOL/agent_mail.py" --box "$BOX" send --project "$LABEL" "$@" ;;
   state)
     # --project belongs to the get/set sub-parser, so it goes after the verb.
     [ -n "${1:-}" ] || die "state needs get|set" 2
     v="$1"; shift
-    exec python3 -I "$TOOL/agent_mail.py" --box "$BOX" state "$v" --project "$LABEL" "$@" ;;
-  *) exec python3 -I "$TOOL/agent_mail.py" --box "$BOX" "$SUB" "$@" ;;
+    exec python3 -I -B "$TOOL/agent_mail.py" --box "$BOX" state "$v" --project "$LABEL" "$@" ;;
+  *) exec python3 -I -B "$TOOL/agent_mail.py" --box "$BOX" "$SUB" "$@" ;;
 esac
