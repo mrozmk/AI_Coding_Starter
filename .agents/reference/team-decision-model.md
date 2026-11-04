@@ -79,8 +79,9 @@ tightens that boundary is inside the AC and stays the TeamLead's. Unsure → the
 origin/<line>` into the team's working branch), `allow-offline` (a settings edit adding only
 offline single-file allow entries for files in the ticket diff), `add-ask` (a settings edit adding
 only ask entries) and `prod-diagnose` (a read-only diagnose script from a directory the project
-names in `teams.policy.classes.prod_diagnose`; absent → the class does not exist). Each class is
-switched by the Operator's word only (`team-watch.sh mode class <name> on|off`).
+names in `teams.policy.classes.prod_diagnose`). Every class is **off until the profile enables it**
+(`teams.policy.classes.<name>.enabled: true`); the Operator's word (`team-watch.sh mode class <name>
+on|off`) can then switch an enabled class off and on again, never enable a disabled one.
 
 **Advisor no-reply fallback.** A tier-2 escalation in an eligible class (`analysts-condition`,
 `plan-variant`, `borderline`, `policy-deviation`) closes without the Advisor when the wait times

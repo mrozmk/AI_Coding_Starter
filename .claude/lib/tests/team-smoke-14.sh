@@ -154,6 +154,9 @@ fresh c3; call Write "$(writei "$SET" "$NEWSET")"
  team_anchor_launch "$MAIN" alfa "$CLONE" "$RUN_ID" coder 1 "$SID")
 filep "Overwrite file" .claude/settings.json overwrite "${SETROWS[@]}"
 chk 1 "refuse (settings): settings.json" "(c) settings overwrite without classes"
+chk 0 "class allow-offline not enabled" "(c) a class the profile does not enable" --classes --report
+jq '.teams.policy.classes.allow_offline.enabled = true' "$MAIN/.claude/project-profile.json" > "$WORK/p" \
+  && mv "$WORK/p" "$MAIN/.claude/project-profile.json"
 chk 0 "class: allow-offline" "(c) overwrite takes the Write class" --classes --report
 ! has "no class for a Overwrite file prompt" "$WORK/out" || fail "(c) Overwrite file has no class"
 clipp "overwrite settings.json" "${SETROWS[@]}"

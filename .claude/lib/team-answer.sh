@@ -403,7 +403,7 @@ fi
 last_gate
 if [ -n "$CLASS" ]; then
   team_class_on "$ROOT" "$CLASS" \
-    || refuse 7 "class $CLASS off — Operator answers in the window (tier 3)"
+    || refuse 7 "class $CLASS off or not enabled — Operator answers in the window (tier 3)"
   # The classification widened the decision and took time: the prompt must be the one classified.
   fields "$(parse "$(capture)")"
   { [ "$COMPLETE:$KIND:$CURSOR:$OPT1" = true:permission:1:Yes ] && [ "$FP" = "$ORIG_FP" ] \

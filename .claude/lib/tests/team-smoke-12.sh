@@ -44,7 +44,8 @@ printf '%s\n' '**Integration:** `develop`' '**Maintenance:** `rc/rc` — old' '*
 SETTINGS='{"permissions": {"allow": ["Bash(bash -n:*)"], "ask": ["Bash(git merge --no-ff*)", '
 SETTINGS="$SETTINGS"'"Bash(bash scripts/azure/monitoring/x-diagnose.sh*)"], '
 SETTINGS="$SETTINGS"'"deny": ["Bash(git rebase*)"]}, "hooks": {}}'
-jq '.teams.policy.classes.prod_diagnose = {dir: "scripts/azure/monitoring/", privileged: "az-write\\.sh"}' \
+jq '.teams.policy.classes = {merge_line: {enabled: true}, allow_offline: {enabled: true}, add_ask:
+  {enabled: true}, prod_diagnose: {enabled: true, dir: "scripts/azure/monitoring/", privileged: "az-write\\.sh"}}' \
   "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"
 anchor() { (. "$MAIN/.claude/lib/team-anchor.sh"; "$@"); }
 publish() {  # publish <message> — commit the clone's changes and make them the line, both sides

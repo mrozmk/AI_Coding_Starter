@@ -163,9 +163,15 @@ team_mode_ok() {
 
 TEAM_CLASSES="merge-line allow-offline add-ask prod-diagnose"
 
-# Usage: team_class_on <main root> <class> — class switch; absent file/key = on, unreadable = off.
+# Usage: team_class_on <main root> <class> — the class is enabled in the committed profile
+# (teams.policy.classes.<class with _>.enabled == true; prod-diagnose also names dir + privileged)
+# AND its runtime switch is not off (absent state file/key = on, unreadable = off). Same predicate as
+# team_prompt_classes.py class_on.
 team_class_on() {
   local f="$1/.agents/team/watch/state.json" v
+  jq -e --arg k "${2//-/_}" '.teams.policy.classes[$k] | type == "object" and .enabled == true
+    and ($k != "prod_diagnose" or ((.dir | type) == "string" and (.privileged | type) == "string"))' \
+    "$1/.claude/project-profile.json" >/dev/null 2>&1 || return 1
   [ -e "$f" ] || return 0
   [ -f "$f" ] || return 1
   # Not `// "on"`: that reads an explicit false/null as missing.

@@ -1,16 +1,20 @@
 """Deterministic ask-tier classes the TeamLead may approve at tier 1.
 
 Usage: python3 -I team_prompt_classes.py names              → one class name per line
-       python3 -I team_prompt_classes.py switches <main>    → merge-line=on allow-offline=on …
+       python3 -I team_prompt_classes.py switches <main>    → merge-line=on|off|disabled …
+                                         (disabled = not enabled in the profile)
 Library: classify(clone, main, header, inp, cwd, matches, session) → (name, "") | (None, reason),
 called only by team_prompt_check.py --classes. Trusted inputs come from <main>: the runner anchor
 .agents/team/anchors/<team>.json, the CLAUDE.md Branch model, the committed profile
 (.claude/project-profile.json → teams.branch_types, teams.policy.classes) and the watch/state.json
 switches; clone files (team.json, records, refs) are only compared against them. Nothing is executed.
 
-prod-diagnose is project policy: it exists only when the profile names its script directory —
-teams.policy.classes.prod_diagnose = {"dir": "scripts/ops/", "privileged": "<regex>"} — where
-`privileged` names the write wrappers a diagnose script must not mention. No config → no class.
+Every class is project policy and OFF until the profile enables it:
+teams.policy.classes.<merge_line|allow_offline|add_ask|prod_diagnose>.enabled = true. A class
+waives an ask match only when it is enabled there AND its runtime switch (watch/state.json, the
+Operator's `team-watch.sh mode class <name> on|off`) is not off. prod_diagnose additionally names its
+script directory and the write wrappers a diagnose script must not mention:
+{"enabled": true, "dir": "scripts/ops/", "privileged": "<regex>"}.
 """
 import hashlib
 import json
@@ -63,6 +67,19 @@ def diagnose_config(main):
         return d, re.compile(priv)
     except re.error:
         return None
+
+
+def profile_enabled(main, name):
+    """teams.policy.classes.<name with _>.enabled is exactly true (prod-diagnose: and configured)."""
+    c = ((profile_teams(main).get("policy") or {}).get("classes") or {}).get(name.replace("-", "_"))
+    if not isinstance(c, dict) or c.get("enabled") is not True:
+        return False
+    return name != "prod-diagnose" or diagnose_config(main) is not None
+
+
+def class_on(main, name):
+    """The one predicate every class consumer uses: enabled in the profile and switched on."""
+    return profile_enabled(main, name) and switch_on(main, name)
 
 
 def switch_on(main, name):
@@ -397,6 +414,9 @@ def classify(clone, main, header, inp, cwd, matches, session):
     # An edit's screen text is JSON, not a command: its ask matches mean nothing (deny refused).
     if any(tuple(m) != ("ask", rule) if rule else m[0] != "ask" for m in matches):
         return None, "a rule other than %s matches" % (rule or "an ask rule")
+    if not profile_enabled(main, name):
+        return None, "class %s not enabled (teams.policy.classes.%s.enabled)" % (
+            name, name.replace("-", "_"))
     if not switch_on(main, name):
         return None, "class %s off" % name
     return name, ""
@@ -407,7 +427,9 @@ def main(argv):
         print("\n".join(CLASSES))
         return 0
     if len(argv) == 2 and argv[0] == "switches":
-        print(" ".join("%s=%s" % (n, "on" if switch_on(argv[1], n) else "off") for n in CLASSES))
+        print(" ".join("%s=%s" % (n, "on" if class_on(argv[1], n)
+                                   else "off" if profile_enabled(argv[1], n) else "disabled")
+                        for n in CLASSES))
         return 0
     print("usage: team_prompt_classes.py names | switches <main>", file=sys.stderr)
     return 2
