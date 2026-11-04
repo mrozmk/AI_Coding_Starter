@@ -216,6 +216,10 @@ there is no Reviewer and the step says so.
 vanish); a crashed Reviewer re-registers with its new UUID, then `deliver` is restarted;
 deliveries that went `failed` come back with `requeue <id> --for Reviewer<suffix> --by Operator`.
 
+## The operator kit
+
+The escalation adapter (`escalate.sh`, which `escalation.local.json` points at), the role Stop hook (`mail-guard.sh`), the notifier and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).
+
 ## What the channel does not guarantee
 
 Exactly-once delivery (it is at-least-once; duplicates are recognised by `id`); delivery to a

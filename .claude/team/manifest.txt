@@ -38,6 +38,7 @@ own .claude/commands/dashboard.md
 own .claude/commands/monitor.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
+own .claude/commands/mail-role.md
 own .claude/dashboard/dashboard.sh
 own .claude/dashboard/index.html
 own .claude/dashboard/serve.sh
@@ -47,6 +48,7 @@ own .claude/hooks/guard-team-question.sh
 own .claude/hooks/lib/guard_destructive_sql.py
 own .claude/hooks/lib/leak-patterns.sh
 own .claude/hooks/team-attention.sh
+own .claude/hooks/supervisor-notify.sh
 own .claude/lib/costs/bindings.py
 own .claude/lib/costs/claude_adapter.py
 own .claude/lib/costs/codex_adapter.py
@@ -95,6 +97,14 @@ own .claude/lib/worker-lib.sh
 own .claude/lib/worker-next.sh
 own .claude/project-profile.json.example
 own .claude/team/escalation.local.json.tmpl
+own .claude/team/sessions/operator-kit/README.md
+own .claude/team/sessions/operator-kit/install.sh
+own .claude/team/sessions/operator-kit/escalate.sh
+own .claude/team/sessions/operator-kit/notify.sh
+own .claude/team/sessions/operator-kit/sessions-health.sh
+own .claude/team/sessions/operator-kit/kit.conf.tmpl
+own .claude/team/sessions/operator-kit/hooks/mail-guard.sh
+own .claude/team/sessions/operator-kit/hooks/role-hooks.settings.json.tmpl
 own .claude/team/watch.local.json.tmpl
 own .claude/team/manifest.txt
 own .claude/team/pr/azure-devops-body-get.md

@@ -260,7 +260,9 @@ NEW="$(printf '%s' "$NEW" | jq '
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
      "Bash(bash .claude/lib/team-merge-check.sh*)",
      # The channel step writes the machine registry and boxes outside the repo.
-     "Bash(bash .claude/lib/team-mail-setup.sh*)"] as $ask
+     "Bash(bash .claude/lib/team-mail-setup.sh*)",
+     # The operator kit is installed outside the repo by the Operator only.
+     "Bash(bash .claude/team/sessions/operator-kit/install.sh*)"] as $ask
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"
