@@ -413,6 +413,13 @@ test('scope register: a malformed register Status is an error; an odd AD Status 
   assert.deepEqual(loadInventory(dir).problems, []);
 });
 
+test('scope register: a legacy trailing (withdrawn) after a quote still withdraws; inside the quote it does not', () => {
+  const discovery = DISCOVERY.replace('- **BR-1** — an order needs at least one line', '- **BR-1** — an order needs at least one line · Source: scope.csv:3 · Quote: "minimum one line" (withdrawn)\n- **BR-2** — keep · Quote: "this (withdrawn) word is quoted"');
+  const inv = loadInventory(project({ discovery }));
+  assert.equal(inv.ids.get('BR-1').state, 'withdrawn');
+  assert.equal(inv.ids.get('BR-2').state, 'active');
+});
+
 test('scope register: Scope rev mismatch warns only when both sides carry a version', () => {
   const base = '**Date:** 2026-10-10 · **Source PRD:** `docs/PRD.md` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `shop`';
   const rows = registerRows('FL-2.A1');

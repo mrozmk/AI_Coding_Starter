@@ -143,21 +143,24 @@ export function parseBacklog(md) {
 
 const readIfExists = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null);
 
-/** State of a definition line: the anchored marker, else the legacy bare `(withdrawn)` on a line without a `Quote:`. */
+// Verbatim provenance (`Quote: "…"`, a quoted `Source` cell) is content: markers inside it are not state.
+const unquoted = (text) => text.replace(/Quote:\s*"[^"]*"/g, '').replace(/·\s*"[^"]*"/g, '');
+
+/** State of a definition line: the anchored marker, else the legacy bare `(withdrawn)` outside quoted text. */
 function lineState(line) {
   const m = STATE_MARKER.exec(line);
   if (m) {
     if (m[2]) return { state: 'superseded', successor: m[2].toUpperCase(), ...(m[3] ? { decision: m[3] } : {}) };
     return { state: 'withdrawn', ...(m[3] ? { decision: m[3] } : {}) };
   }
-  if (/\(withdrawn\)/i.test(line) && !/\bQuote:/.test(line)) return { state: 'withdrawn' };
+  if (/\(withdrawn\)/i.test(unquoted(line))) return { state: 'withdrawn' };
   return { state: 'active' };
 }
 
 /** State of a table row. A `Status` column is authoritative; a malformed value on a register row is a problem. */
 function rowState(table, row, id, problems) {
   if (!table.header.includes('Status')) {
-    return /\(withdrawn\)/i.test(Object.values(row).join(' ')) ? { state: 'withdrawn' } : { state: 'active' };
+    return /\(withdrawn\)/i.test(unquoted(Object.values(row).join(' '))) ? { state: 'withdrawn' } : { state: 'active' };
   }
   const status = cleanId(row.Status ?? '');
   const sup = STATUS_SUPERSEDED.exec(status);

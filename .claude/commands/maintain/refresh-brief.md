@@ -81,7 +81,7 @@ description: Operational facts about pricing, plans, billing — what the code n
 ---
 ```
 
-**Scope rule — active ids only:** extract prices, quotas and feature gates from active requirements; a register id (`G` `R` `NFR`) is history when the text right after its `**ID** — ` prefix is `(withdrawn…)` or `(superseded by …)`, when its table row's `Status` cell is `withdrawn…` / `superseded by …`, or — legacy forms — when a list line without a `Quote:` carries a bare `(withdrawn)` anywhere, or a row of a table without a `Status` column carries `(withdrawn)`; the same words inside `Quote:` or a quoted `Source` cell are content, not state. A superseded value is history and must never become current memory.
+**Scope rule — active ids only:** extract prices, quotas and feature gates from active requirements; a register id (`G` `R` `NFR`) is history when the text right after its `**ID** — ` prefix is `(withdrawn…)` or `(superseded by …)`, when its table row's `Status` cell is `withdrawn…` / `superseded by …`, or — legacy forms — when a list line carries a bare `(withdrawn)` outside its quoted `Quote:` text, or a row of a table without a `Status` column carries `(withdrawn)` outside a quoted `Source` cell; the same words inside `Quote:` or a quoted `Source` cell are content, not state. A superseded value is history and must never become current memory.
 
 **Scope rule — code-relevant only:**
 - ✅ Plan IDs, prices, quotas, feature gates, Stripe event names, webhook handlers, rate limits

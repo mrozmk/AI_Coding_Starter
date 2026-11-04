@@ -39,11 +39,12 @@ The skeleton — copy from the first `---` to the end into `docs/PRD.md`:
 >
 > - **States**, placed **immediately after** the `**ID** — ` prefix; the sentence is never deleted:
 >   `- **R-37** — (superseded by R-52 per D-4) WHEN …` (meaning changed — `R-52` carries the current
->   text) · `- **R-41** — (withdrawn per D-4) WHEN …` (gone, no successor). The same words anywhere
->   else on the line — inside a `Quote:` in particular — are content, not state. NFR rows carry the
+>   text) · `- **R-41** — (withdrawn per D-4) WHEN …` (gone, no successor). The same words inside a
+>   `Quote:` are content, not state. NFR rows carry the
 >   state in their `Status` cell: `active` · `superseded by NFR-m per D-k` · `withdrawn per D-k`.
-> - **Current vs history:** superseded and withdrawn ids are history — existing Tasks may keep
->   tracing them; no new work is derived from them.
+> - **Current vs history:** superseded and withdrawn ids are history — no new work is derived from
+>   them. An existing Task may keep tracing a **superseded** id (the checker warns); a Task tracing
+>   a **withdrawn** id is an error — withdraw or re-trace it.
 > - **Immutability:** once `**Approved by:**` names an approver, a register sentence is frozen. A
 >   change of meaning = supersede + new id. A wording fix with no change of meaning = edit in place
 >   and record a `D-n` of kind `editorial` listing the ids.

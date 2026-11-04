@@ -11,7 +11,9 @@ register; B1–B5 are the Kiro / spec-kit requirement-bug classes; I1–I4 are i
 umbrella D5 scheme and the register's change log.
 
 **Current vs history.** A register id (`G` `R` `NFR`) marked `(superseded by …)` / `(withdrawn…)`
-right after its dash, or with that state in its `Status` cell, is **history**. P- and B-rules judge
+right after its dash, or with that state in its `Status` cell, is **history** — and so are the
+legacy forms the checker still reads: a bare `(withdrawn)` on a list line outside its quoted
+`Quote:` text, and `(withdrawn)` in a row of a table without a `Status` column. P- and B-rules judge
 the **active** scope only; history is checked by the I-rules (identity, provenance, change log). A
 superseded line differing from its successor is the recorded change, not a B3 inconsistency.
 **Register-specific checks** (`per D-k`, `Added:`, `Pre-register ids`, `Current` arithmetic, P8)
@@ -104,8 +106,9 @@ Does the register say truthfully who agreed to what?
 
 - **strong** — the header's `**Approved by:**` and every `D-n`'s `**Approval:**` match: an approver
   and a date wherever approval is claimed, `proposed` everywhere else.
-- **thin** — `Approved by: proposed` in the header while a `D-n` claims `approved by …`, or the
-  reverse.
+- **thin** — `Approved by: proposed` in the header while a `D-n` claims `approved by …`. (An
+  approved baseline followed by `proposed` decisions is the normal state after an update — not a
+  finding.)
 - **broken** — approval claimed with no approver named.
 
 Generation and a critic's `ship` are never approval. How long a `D-n` has stayed `proposed` is
@@ -115,7 +118,9 @@ reported, never graded.
 
 ## B — requirement-bug checks
 
-Sweep every **active** `G-n`, `R-n`, `NFR-n`, `BR-n` (history: see Current vs history).
+Sweep every **active** `G-n`, `R-n`, `NFR-n`, `BR-n` (history: see Current vs history). B1–B5 judge
+the normalised requirement sentence only — the verbatim `Quote:` / quoted `Source` text is the
+owner's original wording and is never a B-finding.
 
 - **B1 Wrong level of detail** — a requirement prescribes implementation ("store in Postgres",
   "use a modal") or is so abstract it cannot fail ("the system shall handle orders").
