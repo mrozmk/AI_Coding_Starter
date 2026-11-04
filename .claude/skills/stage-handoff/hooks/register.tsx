@@ -135,15 +135,52 @@ async function compactWithRetry($: EngineInterface, m: Marker): Promise<'done' |
   }
 }
 
+// A resume that starts with "/" is a slash command: prompt.submit refuses such a text (the
+// host check), so it runs through $.command.run. Anything else is submitted as a prompt.
+export const splitResume = (text: string): { command: string; args: string } | undefined => {
+  const m = /^\/(\S+)\s*([\s\S]*)$/.exec(text.trim())
+  return m && m[1] !== undefined ? { command: m[1], args: (m[2] ?? '').trim() } : undefined
+}
+
+// $.command.run resolves only when the command's whole turn is over (minutes for a pipeline
+// stage), so it is not awaited to the end: a run that has not rejected within RUN_ACCEPT_MS
+// counts as accepted, and inFlight clears for the next handoff.
+const RUN_ACCEPT_MS = 3_000
+
 async function submitWithRetry($: EngineInterface, text: string): Promise<boolean> {
+  const cmd = splitResume(text)
   for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
     try {
-      await $.prompt.submit({ text })
-      await log($, `submit: ok (attempt ${attempt + 1}): ${text}`)
+      if (cmd) {
+        let rejected: unknown
+        const run = $.command.run({ command: cmd.command, args: cmd.args }).then(
+          () => 'done' as const,
+          (err: unknown) => {
+            rejected = err
+            return 'rejected' as const
+          },
+        )
+        const outcome = await Promise.race([run, $.clock.sleep(RUN_ACCEPT_MS).then(() => 'pending' as const)])
+        if (outcome === 'rejected') throw rejected
+        await log($, `submit: command.run accepted (attempt ${attempt + 1}, ${outcome}): ${text}`)
+      } else {
+        await $.prompt.submit({ text })
+        await log($, `submit: prompt.submit ok (attempt ${attempt + 1}): ${text}`)
+      }
       return true
     } catch (err) {
       await log($, `submit: attempt ${attempt + 1} rejected: ${errText(err)}`)
       await $.clock.sleep(RETRY_MS)
+    }
+  }
+  if (cmd) {
+    // Last resort: a plain prompt (no leading slash) asking the model to run the command.
+    try {
+      await $.prompt.submit({ text: `Continue the pipeline: run the slash command ${text} now, via the Skill tool.` })
+      await log($, `submit: fallback prompt ok: ${text}`)
+      return true
+    } catch (err) {
+      await log($, `submit: fallback prompt rejected: ${errText(err)}`)
     }
   }
   return false

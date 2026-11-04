@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { compactInstructions, parseMarker } from '../hooks/register'
+import { compactInstructions, parseMarker, splitResume } from '../hooks/register'
 
 test('a marker needs stage and resume', async () => {
   expect(parseMarker('not json')).toBe('marker is not valid JSON')
@@ -18,4 +18,10 @@ test('instructions carry the stage, the resume command and the kept lines', asyn
   expect(text).toContain('"plan" just finished')
   expect(text).toContain('/orchestrate --resume')
   expect(text).toContain('- plan: p.md')
+})
+
+test('a slash resume splits into command and args; plain text does not', async () => {
+  expect(splitResume('/orchestrate --resume')).toEqual({ command: 'orchestrate', args: '--resume' })
+  expect(splitResume('  /compact  ')).toEqual({ command: 'compact', args: '' })
+  expect(splitResume('continue with the plan')).toBe(undefined)
 })
