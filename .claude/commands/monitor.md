@@ -114,7 +114,8 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
      `PushNotification` and a **post-run summary** in this session. Sources:
      `bash .claude/lib/team-run.sh <team> summary` (ticket, mode, PR, the QA lines, the wrapup or
      `cli-<n>.md` body) and `bash .claude/lib/team-question.sh <team> list`. **5 parts + one
-     decisions line + the „Decyzje TeamLead” section**, plain Polish:
+     decisions line + the "TeamLead decisions" section**, plain prose in the developer's language
+     (`language` in `.claude/project-profile.json`, `en` when absent; the labels below are the `pl` form):
      - the heading, picked by the `tracker:` line of `summary` (which also carries `title:` and
        `url:`, both empty for `jira`):
        - `tracker: jira` → `**<team> / [<KEY>](<jira site>/browse/<KEY>) — <title>**`, the site
@@ -202,13 +203,13 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
      - `WITHDRAWN` → one line, nothing delivered;
      - `FALLBACK` → `answer … --run <run> --tier 2 --author TeamLead-fallback --why
        "fallback: Advisor no-reply — Reviewer #<id>" --text "<the text: line, already one line>"
-       --send <the send: line>`. Print `<team> q-<n>: fallback (Advisor milczy, Reviewer #<id>) →
+       --send <the send: line>`. Print `<team> q-<n>: fallback (Advisor silent, Reviewer #<id>) →
        <answer>`, then (h). Policy class → also the policy-log line;
      - `LATE <STATUS>` → compare with the q's `## Answer`: the same → one line; different → a
-       `turn` to Supervisor (route: the rules above) („konflikt: spóźniona odpowiedź Advisor vs decyzja <author>”),
+       `turn` to Supervisor (route: the rules above) ("conflict: late Advisor reply vs the decision of <author>"),
        nothing delivered, never a revoke by itself. `LATE NONE` → nothing;
      - `NO-REPLY <reason> (repings: <n>, sent: <yes|no>)` → **NO-REPLY rule**: print `<team>
-       q-<n>: Advisor bez odpowiedzi (<reason>) — <action>` only when the reason differs from this
+       q-<n>: Advisor no reply (<reason>) — <action>` only when the reason differs from this
        q's previous one (the second-to-last `outcome: no-reply — …` line in `team-question.sh
        <team> show q-<n>`; none → print). Then: config missing/invalid or
        `invalid adapter (no SENT receipt)` → **no immediate relaunch** (the next
@@ -230,7 +231,8 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
        at tier 1 with skip: `--send picks:none` for a multiSelect, otherwise `pick:<n>` of the
        skip option. Use `--why "Advisor no-reply — wrapup (B) non-blocking, deferred"`. Send no
        reping. Add a `memory-deferred` policy-log line, and in the READY note a „Decyzje
-       TeamLead” line per deferred item, copied from the wrapup body's `## Pamięć odłożona (B)`.
+       TeamLead” line per deferred item, copied from the wrapup body's `## Deferred memory (B)` (a wrapup written before the
+       English headings: `## Pamięć odłożona (B)`).
        A later `LATE <status>` on that q, or an `ESCALATION … bez bieżącego q` reply on its
        thread, while its current answer is still that skip (not revoked, not replaced at tier 3)
        → one line and a late `memory-deferred` policy-log line with the mail id, no conflict

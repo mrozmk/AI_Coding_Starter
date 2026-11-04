@@ -42,10 +42,10 @@ timeout or silence is never consent.
 | Wrapup menu: `domain/*`, `errors.md`, `api.md` entries that do not alter a historical decision | TeamLead | n | immediate | — | notification |
 | QA `ready-with-warnings` disposition, non-sensitive path | TeamLead | n | immediate | — | READY note line `QA warnings: accepted by TeamLead — <ref>` |
 | Permission prompt matching the plan and no ask/deny rule | TeamLead | n | immediate | — | team-mode.md §10 rule |
-| Ask-tier permission prompt in an enabled deterministic class (`team-question.sh <team> policy <role>` prints `class: <name>`) | TeamLead | n | immediate | — | class in the ledger and the notes; one line in „Decyzje TeamLead” |
+| Ask-tier permission prompt in an enabled deterministic class (`team-question.sh <team> policy <role>` prints `class: <name>`) | TeamLead | n | immediate | — | class in the ledger and the notes; one line in "TeamLead decisions" |
 | Stale human draft in a role pane | TeamLead | n | immediate | — | notification (`draft saved: <path>`) |
-| Merge after READY (auto-merge gate) | Supervisor | n | on READY | gate refusal → Operator `Mergować <team>?` | one line to the Operator |
-| Team start/stop, queue order, clones, next ticket in the agreed order | Supervisor | n | immediate | — | one line „start <team> na <key> (ścieżka — dlaczego)” |
+| Merge after READY (auto-merge gate) | Supervisor | n | on READY | gate refusal → Operator `Merge <team>?` | one line to the Operator |
+| Team start/stop, queue order, clones, next ticket in the agreed order | Supervisor | n | immediate | — | one line "start <team> on <key> (path — why)" |
 | Contract / schema / AC change of the ticket (an AC change that keeps the ticket's goal) | Advisor | y | 30 min | re-ping (cap 2), then the team stays blocked — **never auto-proceed** | question in the TeamLead flow |
 | Sensitive path per `CLAUDE.md → Validation`, a production safety boundary, customer data | Advisor | y | 30 min | as above | as above |
 | QA `ready-with-warnings` on a sensitive path | Advisor | y | 30 min | as above; the PR stays unmerged | as above |
@@ -65,7 +65,7 @@ the rows above name for that file, or the developer in the window. A recommendat
 `czytelnik:` (a `When to Read` row) is skipped. In the wrapup, (A) is the TeamLead group and (B)
 the Advisor+Reviewer group (`prompts/wrapup.md`).
 
-**„Decyzje TeamLead”.** The TeamLead decides alone; at the end of a run its READY summary lists
+**"TeamLead decisions".** The TeamLead decides alone; at the end of a run its READY summary lists
 design decisions inside the AC, the QA-warnings disposition, a Phase 0 override, accepted and
 deferred memory entries, class approvals and a settings change of the PR. The Supervisor passes on
 to the Operator only what matters. This is a notification, not a question.

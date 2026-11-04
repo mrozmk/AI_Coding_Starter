@@ -237,7 +237,7 @@ cp "$WORK/attach.main" "$MAIN/.claude/lib/team-attach.sh"
 mv "$WORK/team-modes.sh" "$WORK/team-validate.sh" "$CLONE/.claude/lib/"
 rm -f "$TD/session.json"; setmode brainstorm
 
-# ---- (29) dashboard folding and the "czeka na Ciebie" bar ------------------------------
+# ---- (29) dashboard folding and the "waiting for you" bar ---- ------------------------------
 CL3="$WORK/claude3"; SUBS="$CL3/s9/subagents"; mkdir -p "$SUBS"
 echo '{"type":"assistant","message":{"model":"m"}}' > "$CL3/s9.jsonl"
 export TEAM_DASH_PROJECT_DIR="$CL3" TEAM_DASH_SESSION=s9
@@ -297,7 +297,8 @@ T0=$(( $(date +%s) - 100 ))
 touch -t "$(date -r "$T0" +%Y%m%d%H%M.%S)" "$CP3/c1.jsonl"
 echo "$(date -u -r "$T0" +%Y-%m-%dT%H:%M:%SZ) idle_prompt Claude is waiting" > "$RD/attention"
 STUB_TMUX_ALIVE=0 STUB_PANE= snap "question in the same second" 'coder.status == "attention"
-  and (.attention[] | select(.kind == "attention") | .tmux == "alfa-coder" and .role == "coder")'
+  and (.attention[] | select(.kind == "attention") | .tmux == "alfa-coder" and .role == "coder"
+    and .text == "waiting for an answer")'
 touch -t "$(date -r "$((T0 + 5))" +%Y%m%d%H%M.%S)" "$CP3/c1.jsonl"
 STUB_TMUX_ALIVE=0 STUB_PANE= snap "answered question" 'coder.status == "running" and .attention == []'
 mkrec coder "$BASE" blocked
