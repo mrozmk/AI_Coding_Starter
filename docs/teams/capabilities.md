@@ -34,8 +34,8 @@ yet: the acceptance run (P9 phases B and C) fills it.
 | Tiers off with a pending reply blocks delivery | P1 | to verify | to verify (E16) | — offline only |
 | An unavailable receiver raises an alarm outside the LLM | P4 | to verify | to verify | to verify (E18) |
 | Rollback hands control back to one owner | P4, P5, P7 | to verify | to verify | to verify (E19) |
-| Menu keystroke path | P1 | to verify | — | to verify (E20, attended) |
-| Prompt binding holds across a re-render | P1 | to verify | — | to verify (E21, attended) |
+| Menu keystroke path | P1 | to verify | — | to verify (E20, attended) — never run: no TTY, Operator-only |
+| Prompt binding holds across a re-render | P1 | to verify | — | to verify (E21, attended) — never run: no TTY, Operator-only |
 | Health check notices a stopped role once | P7 | to verify | to verify | to verify (E25) |
 | Permission classes stay off until the profile enables them | P8 | to verify | to verify | — offline only |
 

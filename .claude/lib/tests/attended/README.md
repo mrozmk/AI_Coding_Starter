@@ -3,6 +3,10 @@
 Starter repo only, not distributed. These files are for the Operator's attended session. **No
 agent runs them**: they need a human to see the screen, and the agent's Bash has no TTY.
 
+**Status: never run — no TTY, Operator-only.** The scripts are syntax-checked and their argv
+matches the usage headers of the scripts they call, nothing more. This line stays until the
+Operator's run produces the E20 and E21 evidence lines.
+
 ## 0. The scratch checkout and its environment
 
 Everything runs in a **scratch clone** of the starter at the P9 sha, never in the shared checkout
