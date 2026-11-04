@@ -1,4 +1,4 @@
-"""Summary: period, scope, tickets, Codex roles, supervisor context, low cache, CLI (TT-980)."""
+"""Summary: period, scope, tickets, Codex roles, supervisor context, low cache, CLI."""
 import contextlib
 import io
 import unittest
@@ -100,11 +100,11 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("| **Razem** | 275 | 156 |", md)
 
     def test_ticket_shares_clones_and_conflicts(self):
-        bindings.add_binding(self.conn, self.cfg, "TT-1", session=S, share=0.5)
-        bindings.add_binding(self.conn, self.cfg, "TT-2", session=S, share=0.5)
-        bindings.add_binding(self.conn, self.cfg, "TT-3", session=S2)
-        bindings.add_binding(self.conn, self.cfg, "TT-4", session=S3, share=0.6)
-        bindings.add_binding(self.conn, self.cfg, "TT-4", turn="r9", share=0.6)
+        bindings.add_binding(self.conn, self.cfg, "AB-1", session=S, share=0.5)
+        bindings.add_binding(self.conn, self.cfg, "AB-2", session=S, share=0.5)
+        bindings.add_binding(self.conn, self.cfg, "AB-3", session=S2)
+        bindings.add_binding(self.conn, self.cfg, "AB-4", session=S3, share=0.6)
+        bindings.add_binding(self.conn, self.cfg, "AB-4", turn="r9", share=0.6)
         helpers.write_jsonl(self.env.claude_file(S, cwd=helpers.ALFA), [_a(
             S, "2026-10-06T10:00:00Z", "r1", inp=100, cache_write=0, output=0, cwd=helpers.ALFA)])
         helpers.write_jsonl(self.env.claude_file(S2, cwd=helpers.ALFA), [
@@ -115,10 +115,10 @@ class SummaryTest(unittest.TestCase):
         self.env.collect()
         data = self.build()
         tickets = {t["ticket"]: t for t in data["tickets"]}
-        self.assertEqual(set(tickets), {"TT-1", "TT-2", "TT-3"})
-        self.assertEqual(summary.total(tickets["TT-1"]["claude"]), 50)
-        self.assertEqual(summary.total(tickets["TT-2"]["claude"]), 50)
-        self.assertEqual(tickets["TT-3"]["clones"], 2)
+        self.assertEqual(set(tickets), {"AB-1", "AB-2", "AB-3"})
+        self.assertEqual(summary.total(tickets["AB-1"]["claude"]), 50)
+        self.assertEqual(summary.total(tickets["AB-2"]["claude"]), 50)
+        self.assertEqual(tickets["AB-3"]["clones"], 2)
         self.assertIn("⚠ 2 klony", summary.render_md(data))
         self.assertAlmostEqual(data["coverage"]["unassigned_pct"], 1000 / (100 + 224 + 1000))
 

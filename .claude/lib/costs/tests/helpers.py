@@ -1,4 +1,4 @@
-"""Fixture builders for the token-usage tests: temp env + record shapes (spec TT-813)."""
+"""Fixture builders for the token-usage tests: temp env + record shapes."""
 import contextlib
 import io
 import json

@@ -14,9 +14,14 @@ questions in this session: `AskUserQuestion` is not available.
      distillation subagent it asks for, touch the marker it prints, and continue.
 3. If it changed files: `/commit`, then `/push`.
 4. Confirm `git status --porcelain` is empty, then re-run on the clean tree, keeping the counts:
-   `{{BUILD_CHECK}}`, then {{TEST_GATE}}{{GATES_NOTE}}
+   `{{BUILD_CHECK}}`, then {{TEST_GATE}}{{GATES_NOTE}}. Start the test gate once with Bash
+   `run_in_background: true` and wait on that same task — it may queue up to 30 min behind another
+   clone's gate (machine lock, `team-pipeline.md` → Machine gate lock); never restart it after a
+   tool timeout.
 5. Write `.agents/team/runs/{{RUN}}/qa-report-{{ATTEMPT}}.md` exactly per team-mode.md §7
    (`run: {{RUN}}`, `attempt: {{ATTEMPT}}`, `output_rev:` = `git rev-parse HEAD`).
+   After the keyed lines add one free-text line per gate run: `Load: start <1m> end <1m>
+   (waited <n>s)`, from the gate's "load avg" and "lock waited" lines.
 6. Verdict `❌ Escalated` or any rethink signal →
    `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait.
 7. Otherwise publish:
@@ -33,6 +38,10 @@ questions in this session: `AskUserQuestion` is not available.
 A permission prompt (deploy, Azure DevOps or App Service change) is answered by the developer in
 this session — wait for it; a rejected prompt is a material question → `blocked`. Never read
 secret values: setting names only (`--query "[].name"`).
+
+Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
+heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call
+short, one action. Never `rm -rf`: write to a new output directory instead.
 
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`

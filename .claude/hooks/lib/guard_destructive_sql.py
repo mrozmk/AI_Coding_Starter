@@ -1,10 +1,12 @@
-"""Logic of guard-destructive-sql.sh: classify the SQL a Bash command would run (TT-1020, TT-1041).
+"""Logic of guard-destructive-sql.sh: classify the SQL a Bash command would run.
 
 Verdicts: DROP/TRUNCATE of a table, database or schema -> deny (never by an agent); any other write
 (DELETE, UPDATE, INSERT, MERGE, ALTER, CREATE, EXEC, GRANT, SELECT INTO, DROP of smaller objects) -> ask.
 Covered inputs: sqlcmd -Q/-q, -i/--input-file, `< file`, `cat file |`, here-docs, scripts run by
 bash/sh/zsh/source/./x.sh, and the same forms nested in bash -c / tmux new-session / tmux send-keys.
-A command that mentions sqlcmd or a .sql file but cannot be parsed -> ask (fail-closed).
+A command that mentions sqlcmd or a .sql file but cannot be parsed -> ask (fail-closed); a script
+that cannot be parsed is retried once with the quotes of its documentation heredocs blanked, else
+ask.
 """
 import json
 import os
@@ -26,6 +28,7 @@ ASK = re.compile(
     + r"|\bmerge\s+(into\s+)?" + OBJ
     + r"|\b(alter|create)\s+(table|database|schema|index|view|proc|procedure|function|trigger|type"
     r"|synonym|user|login|role|sequence|column)\b"
+    + r"|\bcreate\s+(unique\s+)?((?:nonclustered|clustered)\s+)?index\b"
     + r"|\bdrop\s+(index|view|proc|procedure|function|trigger|type|synonym|user|login|role|sequence"
     r"|column|constraint)\b"
     + r"|\bexec(ute)?\s+" + OBJ
@@ -33,13 +36,14 @@ ASK = re.compile(
     + r"|\bselect\b[^;]*?\binto\s+" + OBJ,
     re.I | re.S)
 # Shell text outside a sqlcmd call: only the unmistakable forms, same-line whitespace, so test
-# fixtures that merely contain the word ("role assignment delete\n...") stay quiet (TT-1034).
+# fixtures that merely contain the word ("role assignment delete\n...") stay quiet.
 SHELL_DENY = re.compile(r"\b(drop|truncate)[ \t]+(table|database|schema)\b", re.I)
 SHELL_ASK = re.compile(r"\bdelete[ \t]+(top\s*\(\s*\d+\s*\)[ \t]+)?from[ \t]+" + OBJ, re.I)
 
 # String literals are kept so a `--` inside quotes does not hide the rest of the line.
 SQL_PARTS = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)
 MENTIONS_SQL = re.compile(r"sqlcmd|\.sql\b", re.I)
+DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
 
 
 def strip_shell_comments(cmd):
@@ -102,6 +106,28 @@ def heredocs(cmd):
     return bodies
 
 
+def doc_heredocs_removed(text):
+    """Blanks the quotes in the bodies of documentation heredocs: a quoted delimiter (the body is
+    never expanded), a bare `cat` before `<<` with nothing after the delimiter, and no SQL mention
+    in that line or the body. An apostrophe in such a body breaks shlex. The lines stay, so a body
+    that runs after all (`<(cat <<'X'`) is still scanned; every other heredoc is left as is."""
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        m = DOC_HEREDOC.search(line)
+        if (not m or line[m.end():].strip()
+                or re.split(r"[;&|(]", line[:m.start()])[-1].split() != ["cat"]):
+            continue
+        end = next((j for j in range(i, len(lines)) if lines[j].strip() == m.group(2)), None)
+        if end is None or any(MENTIONS_SQL.search(x) for x in lines[i - 1:end]):
+            continue
+        out.extend(re.sub(r"[\"'`]", " ", x) for x in lines[i:end])
+        i = end
+    return "\n".join(out)
+
+
 class Scan:
     def __init__(self, cwd, project):
         self.cwd, self.project = cwd, project
@@ -138,7 +164,10 @@ class Scan:
             try:
                 self.command(text, where, depth + 1)
             except ValueError:
-                self.ask.append(where + " (unparsable)")
+                try:
+                    self.command(doc_heredocs_removed(text), where, depth + 1)
+                except ValueError:
+                    self.ask.append(where + " (unparsable)")
         if "/tests/" in where:
             return
         for line in text.splitlines():
@@ -226,7 +255,7 @@ def classify(cmd, cwd, project):
         return None, ""
     if scan.deny:
         return "deny", ("DROP/TRUNCATE of a table, database or schema in: " + ", ".join(scan.deny)
-                        + " — never run by an agent; hand the statement to the Operator (TT-1041).")
+                        + " — never run by an agent; hand the statement to the Operator.")
     if scan.ask:
         return "ask", ("SQL write in: " + ", ".join(scan.ask)
                        + " — Operator must approve this run (ask).")

@@ -1,4 +1,4 @@
-"""Runtime log (`runtime.jsonl`) → registrations, stage marks; lookups (spec TT-821).
+"""Runtime log (`runtime.jsonl`) → registrations, stage marks; lookups.
 
 Python 3.9 stdlib only.
 """

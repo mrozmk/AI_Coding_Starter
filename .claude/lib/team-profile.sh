@@ -263,7 +263,9 @@ team_gate_sentence() {
   if [ "$TEAM_TEST_GATE" = none ]; then
     printf '%s' "test gate: none — skip"
   else
-    # %q, not "%s": double quotes still expand $(…), backticks and $VAR inside the path.
-    printf 'bash %q' "$TEAM_TEST_GATE"
+    # %q, not "%s": double quotes still expand $(…), backticks and $VAR inside the path. The
+    # wrapper queues the run behind the machine gate lock; the project gate follows as a comment.
+    printf 'bash .claude/lib/test-gate.sh  # runs bash %q under the machine gate lock' \
+      "$TEAM_TEST_GATE"
   fi
 }

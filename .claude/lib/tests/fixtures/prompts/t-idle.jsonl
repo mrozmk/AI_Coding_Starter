@@ -1,0 +1,8 @@
+{"type": "user", "uuid": "u0", "message": {"content": "start"}}
+{"type": "assistant", "uuid": "a0", "message": {"content": [{"type": "text", "text": "hi"}]}}
+{"type": "attachment", "uuid": "n1"}
+{"type": "api-request", "uuid": "n2"}
+{"type": "assistant", "uuid": "a-last", "message": {"content": [{"type": "text", "text": "Waiting for the supervisor."}]}}
+{"type": "attachment", "uuid": "n1"}
+{"type": "api-request", "uuid": "n2"}
+{"type": "user", "uuid": "u-after", "message": {"content": "Counter + backoff."}}

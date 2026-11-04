@@ -1,4 +1,4 @@
-"""Report: rollup, sub-agents, lineage, coverage, unknown, conflicts, reconciliation (TT-813)."""
+"""Report: rollup, sub-agents, lineage, coverage, unknown, conflicts, reconciliation."""
 import unittest
 
 import bindings
@@ -27,7 +27,7 @@ class ReportTest(unittest.TestCase):
     def bind(self, ticket, **kw):
         return bindings.add_binding(self.conn, self.cfg, ticket, **kw)[0]
 
-    def build(self, ticket="TT-1", children=()):
+    def build(self, ticket="AB-1", children=()):
         return report.build(self.conn, self.cfg, ticket, children)
 
     def main_session(self, records=None):
@@ -38,12 +38,12 @@ class ReportTest(unittest.TestCase):
     def test_epic_rollup_counts_split_row_once(self):
         self.main_session()
         self.env.collect()
-        self.bind("TT-1", session=S, share=0.5)
-        self.bind("TT-2", session=S, share=0.5)
-        data = self.build("TT-1", ["TT-2"])
+        self.bind("AB-1", session=S, share=0.5)
+        self.bind("AB-2", session=S, share=0.5)
+        data = self.build("AB-1", ["AB-2"])
         self.assertEqual(data["totals"]["total"], 11)
-        self.assertEqual({r["ticket"] for r in data["rows"]}, {"TT-1", "TT-2"})
-        self.assertEqual(self.build("TT-1")["totals"]["total"], 5.5)
+        self.assertEqual({r["ticket"] for r in data["rows"]}, {"AB-1", "AB-2"})
+        self.assertEqual(self.build("AB-1")["totals"]["total"], 5.5)
 
     def test_subagent_tokens_only_on_subagent_row(self):
         self.main_session()
@@ -52,7 +52,7 @@ class ReportTest(unittest.TestCase):
                                      cache_write=0, agent_id="a1")])
         helpers.write_meta(sub, "structure-reviewer", "toolu_1")
         self.env.collect()
-        self.bind("TT-1", session=S)
+        self.bind("AB-1", session=S)
         rows = {r["agent"]: r["total"] for r in self.build()["rows"]}
         self.assertEqual(rows, {"alfa-coder": 11, "alfa-coder/structure-reviewer": 100})
         roles = {(r["team"], r["role"]) for r in self.build()["rows"]}
@@ -69,11 +69,11 @@ class ReportTest(unittest.TestCase):
             _a("2026-10-06T10:01:00Z", "req_2", session=U, inp=1, cache_write=0)])
         self.env.collect()
         self._register(S, source="team-run", name="x", team="beta", role="qa")
-        self._register(U, source="mail-tt", name="OpusTT")
-        self.bind("TT-1", session=S)
-        self.bind("TT-1", session=U)
+        self._register(U, source="mail-tt", name="Supervisor")
+        self.bind("AB-1", session=S)
+        self.bind("AB-1", session=U)
         rows = {r["agent"]: (r["team"], r["role"]) for r in self.build()["rows"]}
-        self.assertEqual(rows, {"x": ("beta", "qa"), "OpusTT": (None, None)})
+        self.assertEqual(rows, {"x": ("beta", "qa"), "Supervisor": (None, None)})
 
     def test_codex_child_allocated_via_parent_and_separate_thread_rows(self):
         helpers.write_jsonl(self.env.codex_file("p"), [
@@ -85,7 +85,7 @@ class ReportTest(unittest.TestCase):
             helpers.codex_turn("t2", "2026-10-06T10:01:01Z"),
             helpers.codex_usage(C, "t2", "resp_2", "2026-10-06T10:01:02Z")])
         self.env.collect()
-        self.bind("TT-1", session=T, provider="codex")
+        self.bind("AB-1", session=T, provider="codex")
         rows = self.build()["rows"]
         self.assertEqual(sorted(r["agent"] for r in rows),
                          ["codex:exec:thread-c", "codex:exec:thread-p"])
@@ -95,18 +95,18 @@ class ReportTest(unittest.TestCase):
         self.main_session([_a("2026-10-06T10:00:00Z", "req_1"),
                            _a("2026-10-06T10:00:01Z", "req_2", usage=False)])
         self.env.collect()
-        self.bind("TT-1", session=S)
+        self.bind("AB-1", session=S)
         data = self.build()
         self.assertEqual([r["coverage"] for r in data["rows"]], ["partial"])
         self.assertEqual(data["header"]["coverage"], {"observed": 0, "partial": 1})
 
     def test_unknown_binding(self):
-        bid = self.bind("TT-1", session="never-collected")
+        bid = self.bind("AB-1", session="never-collected")
         self.assertEqual([u["id"] for u in self.build()["unknown"]], [bid])
 
     def test_fully_conflicted_session_listed_not_unknown(self):
-        turn_id = self.bind("TT-1", turn="req_1", share=0.6)
-        session_id = self.bind("TT-1", session=S, share=0.6)
+        turn_id = self.bind("AB-1", turn="req_1", share=0.6)
+        session_id = self.bind("AB-1", session=S, share=0.6)
         self.main_session()
         self.env.collect()
         data = self.build()
@@ -124,7 +124,7 @@ class ReportTest(unittest.TestCase):
                                     "input_tokens": 150, "cached_input_tokens": 0,
                                     "output_tokens": 10})])
         self.env.collect()
-        self.bind("TT-1", session=T)
+        self.bind("AB-1", session=T)
         data = self.build()
         self.assertEqual(data["reconciliation"], [{"session": T, "field": "input_tokens",
                                                    "provider": 150, "ingested": 100}])
@@ -134,7 +134,7 @@ class ReportTest(unittest.TestCase):
         self.main_session([_a("2026-10-06T10:00:00Z", "req_1"),
                            _a("2026-10-06T10:05:00Z", "req_2", model="claude-sonnet-5-5")])
         self.env.collect()
-        self.bind("TT-1", session=S)
+        self.bind("AB-1", session=S)
         data = self.build()
         self.assertEqual(sorted(r["model"] for r in data["rows"]),
                          ["claude-opus-5-5", "claude-sonnet-5-5"])
@@ -161,7 +161,7 @@ class ReportTest(unittest.TestCase):
             helpers.codex_token_count("2026-10-06T10:00:02Z", 150, cached=40, output=15,
                                       ordinal=2)])
         self.env.collect()
-        self.bind("TT-1", session=C)
+        self.bind("AB-1", session=C)
         data = self.build()
         self.assertEqual(data["reconciliation"], [])
         self.assertEqual(data["totals"]["total"], 55)

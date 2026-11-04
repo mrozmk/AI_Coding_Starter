@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hand the permanent SolTT worker clone from one assignment to the next (TT-849).
+# Hand the permanent SolTT worker clone from one assignment to the next.
 #
 # Usage: bash .claude/lib/worker-next.sh init <base-ref>
 #        bash .claude/lib/worker-next.sh start <TT-key> <branch> <base-ref> --thread <id>
@@ -12,7 +12,7 @@ set -euo pipefail
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/worker-lib.sh"
 
-WORKER_ARTIFACTS="${WORKER_ARTIFACTS:-$HOME/.agent-mail/taketask-dn/worker}"
+WORKER_ARTIFACTS="${WORKER_ARTIFACTS:-$HOME/.agent-mail/worker}"
 WORKER_ARTIFACT_MAX_MB="${WORKER_ARTIFACT_MAX_MB:-50}"
 WORKER_LOCK_SECS="${WORKER_LOCK_SECS:-30}"
 W_PROBLEMS=()
@@ -38,11 +38,11 @@ w_paths() {
   ROOT="$(git rev-parse --show-toplevel)"
   GD="$(git rev-parse --absolute-git-dir)"
   WD=""
-  if [ -d "$GD/taketask-worker" ]; then
-    INCLONE=1; DIR="$ROOT"; WD="$GD/taketask-worker"
+  if [ -d "$GD/team-worker" ]; then
+    INCLONE=1; DIR="$ROOT"; WD="$GD/team-worker"
   else
     INCLONE=0; DIR="$(dirname "$ROOT")/$(basename "$ROOT")-sol"
-    [ ! -e "$DIR/.git" ] || WD="$(git -C "$DIR" rev-parse --absolute-git-dir)/taketask-worker"
+    [ ! -e "$DIR/.git" ] || WD="$(git -C "$DIR" rev-parse --absolute-git-dir)/team-worker"
   fi
 }
 
@@ -131,7 +131,7 @@ cmd_init() {
   git -C "$DIR" switch --quiet --detach "$base"
   ex="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path info/exclude)"
   [ ! -f "$ex" ] || cp "$ex" "$DIR/.git/info/exclude"
-  WD="$(git -C "$DIR" rev-parse --absolute-git-dir)/taketask-worker"
+  WD="$(git -C "$DIR" rev-parse --absolute-git-dir)/team-worker"
   mkdir -p "$WD/history"
   w_lock
   w_write "$WD/provisioned.json" -n --arg b "$base" --arg t "$(git -C "$DIR" rev-parse HEAD)" \
@@ -352,7 +352,7 @@ cmd_release() {
   h="$WD/history/$id/release.json"
   if [ -f "$h" ]; then
     art="$(w_get "$WD/history/$id/assignment.json" artifacts)"
-    # Re-copies a deleted artifacts copy, or finishes a pre-TT-876 release cut between mv and cp.
+    # Re-copies a deleted artifacts copy, or finishes a old release cut between mv and cp.
     [ ! -d "$art" ] || cp "$h" "$art/"
     echo "already released: $(jq -r '"\(.outcome) \(.tip)"' "$h")"
     return 0

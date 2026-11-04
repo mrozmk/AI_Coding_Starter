@@ -1,4 +1,4 @@
-"""Codex rollouts → occurrences, turns, counters, sessions; token_count fallback (spec TT-813).
+"""Codex rollouts → occurrences, turns, counters, sessions; token_count fallback.
 
 Python 3.9 stdlib only. Reads `session_meta` fields by name — account ids and instructions in
 the same payload never reach the DB.

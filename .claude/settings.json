@@ -192,6 +192,11 @@
           },
           {
             "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-egress.sh\"",
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" BASH",
             "async": true
           }
@@ -200,6 +205,11 @@
       {
         "matcher": "WebFetch",
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-egress.sh\"",
+            "onFailure": "block"
+          },
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-append.sh\" FETCH",

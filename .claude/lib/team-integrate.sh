@@ -184,7 +184,7 @@ case "$erc" in
   4) die 4 "PR #$PR is not ready right now — rerun later" ;;
   *) die 3 "PR #$PR is no longer eligible — nothing was pushed" ;;
 esac
-# Astra 3: a record added after the verdict means the workflow resumed, and the gates ran on a
+# Reviewer 3: a record added after the verdict means the workflow resumed, and the gates ran on a
 # state that no longer exists. Name and sha256, never a timestamp.
 [ "$(team_records_digest "$TD" "$RUN")" = "$DIG" ] \
   || die 3 "workflow resumed after merge-check — rerun merge-check"

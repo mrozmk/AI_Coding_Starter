@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline smoke for worker-next.sh (TT-849): refusals, two assignments in one clone, resume.
+# Offline smoke for worker-next.sh: refusals, two assignments in one clone, resume.
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$HERE/team-smoke-lib.sh"
@@ -7,7 +7,7 @@ smoke_init
 
 W="bash .claude/lib/worker-next.sh"
 SOL="$WORK/main-sol"
-WD="$SOL/.git/taketask-worker"
+WD="$SOL/.git/team-worker"
 DEV=origin/develop-netcore7
 export WORKER_ARTIFACTS="$WORK/artifacts" WORKER_LOCK_SECS=1
 
@@ -95,25 +95,25 @@ git -C "$MAIN" switch --quiet -c no-contract
 grep -vx '### Worker clone' "$MAIN/AGENTS.md" > "$WORK/a.md" && mv "$WORK/a.md" "$MAIN/AGENTS.md"
 git -C "$MAIN" commit --quiet -am "drop contract" && git -C "$MAIN" push --quiet origin no-contract
 git -C "$MAIN" switch --quiet develop-netcore7
-start TT-900 chore/TT-900-a origin/no-contract --thread t1
+start AB-900 chore/AB-900-a origin/no-contract --thread t1
 expect 1 "no worker contract" "start on a base without the contract"
 [ ! -e "$WD/active" ] || fail "a refused start published an assignment"
 
 # ---- (3) happy start A ------------------------------------------------------------------------
-start TT-900 chore/TT-900-a $DEV --thread t1
+start AB-900 chore/AB-900-a $DEV --thread t1
 expect 0 "artifacts:" "start A"
 ID1=$(field id)
 B0=$(git -C "$SOL" rev-parse origin/develop-netcore7)
-head_on chore/TT-900-a "$B0"
+head_on chore/AB-900-a "$B0"
 [ -d "$WORKER_ARTIFACTS/$ID1" ] || fail "start A made no artifacts dir"
 run "$MAIN" $W status
 expect 0 "state: active" "status while A is active"
 has "id: $ID1" "$WORK/out" || fail "status lacks the assignment id"
 
 # ---- (4) refusals while active ----------------------------------------------------------------
-start TT-901 chore/TT-901-b $DEV --thread t2
+start AB-901 chore/AB-901-b $DEV --thread t2
 expect 1 "is active — release it first" "start while A is active"
-start TT-900 chore/TT-900-a origin/rc --thread t1
+start AB-900 chore/AB-900-a origin/rc --thread t1
 expect 1 "base change for active assignment" "base change of A"
 chmod 000 "$SOL/.git/index"
 release "$ID1"
@@ -124,7 +124,7 @@ chmod 644 "$SOL/.git/index"
 run "$SOL" $W check "$ID1"
 expect 0 "diff sha:" "check from the clone"
 D1=$(field "diff sha")
-run "$SOL" $W check TT-1-x
+run "$SOL" $W check AB-1-x
 expect 1 "stale: active assignment is $ID1" "check with a stale id"
 echo u > "$SOL/untracked.txt"
 run "$SOL" $W check "$ID1"
@@ -138,21 +138,21 @@ release "$ID1"
 expect 1 "uncommitted or untracked" "release over an untracked file"
 git -C "$SOL" add untracked.txt && git -C "$SOL" commit --quiet -m wip
 release "$ID1"
-expect 1 "1 commits on chore/TT-900-a but no PR" "release of work without a PR"
-git -C "$SOL" push --quiet origin chore/TT-900-a
+expect 1 "1 commits on chore/AB-900-a but no PR" "release of work without a PR"
+git -C "$SOL" push --quiet origin chore/AB-900-a
 T1=$(git -C "$SOL" rev-parse HEAD)
-pr_done active "$T1" chore/TT-900-a
+pr_done active "$T1" chore/AB-900-a
 release "$ID1" --pr 8371
 expect 1 "PR #8371 is active" "release with an open PR"
 export STUB_PR="$WORK/missing.json"
 release "$ID1" --pr 8371
 expect 1 "PR #8371 state unknown" "release when az fails"
 export STUB_PR="$WORK/pr.json"
-pr_done abandoned "$T1" chore/TT-900-a
+pr_done abandoned "$T1" chore/AB-900-a
 release "$ID1" --pr 8371
 expect 1 "is abandoned — not merged" "release of an abandoned PR without the flag"
 sol_commit late.txt
-pr_done completed "$T1" chore/TT-900-a
+pr_done completed "$T1" chore/AB-900-a
 release "$ID1" --pr 8371
 expect 1 "commits after PR #8371" "release with a local commit after the PR"
 release "$ID1" --pr x1
@@ -162,21 +162,21 @@ expect 1 "must be <key>-<yyyymmdd>-<hhmmss>" "release with a malformed id"
 [ -e "$WD/active" ] || fail "a malformed id moved the active assignment"
 
 # ---- (7) live remote ahead of the clone -------------------------------------------------------
-git -C "$SOL" push --quiet origin chore/TT-900-a
+git -C "$SOL" push --quiet origin chore/AB-900-a
 T2=$(git -C "$SOL" rev-parse HEAD)
-pr_done completed "$T2" chore/TT-900-a
-remote_commit chore/TT-900-a
+pr_done completed "$T2" chore/AB-900-a
+remote_commit chore/AB-900-a
 release "$ID1" --pr 8371
 expect 1 "commits after PR #8371" "release with a remote commit after the PR"
-git -C "$MAIN" push --quiet origin --delete chore/TT-900-a
+git -C "$MAIN" push --quiet origin --delete chore/AB-900-a
 
 # ---- (8) squash merge recognised by the exact tip ---------------------------------------------
-squash "squash TT-900"
+squash "squash AB-900"
 release "$ID1" --pr 8371
 expect 0 "outcome:     merged" "release A merged"
 [ -f "$WD/history/$ID1/release.json" ] && [ ! -e "$WD/active" ] || fail "A not moved to history"
 [ -f "$WORKER_ARTIFACTS/$ID1/release.json" ] || fail "release.json not copied to the artifacts"
-has_branch chore/TT-900-a
+has_branch chore/AB-900-a
 rm "$WORKER_ARTIFACTS/$ID1/release.json"
 release "$ID1" --pr 8371
 expect 0 "already released: merged $T2" "release A again"
@@ -184,60 +184,60 @@ expect 0 "already released: merged $T2" "release A again"
 
 # ---- (9) a commit after release blocks the next start -----------------------------------------
 sol_commit after.txt
-start TT-901 chore/TT-901-b $DEV --thread t2
+start AB-901 chore/AB-901-b $DEV --thread t2
 expect 1 "not the last settled tip" "start after a post-release commit"
 git -C "$SOL" switch --quiet --detach "$T2"
 chmod 000 "$SOL/.git/index"
-start TT-901 chore/TT-901-b $DEV --thread t2
+start AB-901 chore/AB-901-b $DEV --thread t2
 expect 1 "git status failed in" "start when git status fails"
 chmod 644 "$SOL/.git/index"
 [ ! -e "$WD/active" ] || fail "start with a failing git status published an assignment"
 
 # ---- (10) the second assignment in the same clone ---------------------------------------------
-start TT-901 chore/TT-901-b $DEV --thread t2
+start AB-901 chore/AB-901-b $DEV --thread t2
 expect 0 "artifacts:" "start B"
 ID2=$(field id)
 B1=$(git -C "$MAIN" rev-parse develop-netcore7)
-head_on chore/TT-901-b "$B1"
+head_on chore/AB-901-b "$B1"
 sol_commit b.txt
-git -C "$SOL" push --quiet origin chore/TT-901-b
+git -C "$SOL" push --quiet origin chore/AB-901-b
 T3=$(git -C "$SOL" rev-parse HEAD)
-pr_done completed "$T3" chore/TT-901-b
-git -C "$MAIN" push --quiet origin --delete chore/TT-901-b
-squash "squash TT-901"
+pr_done completed "$T3" chore/AB-901-b
+git -C "$MAIN" push --quiet origin --delete chore/AB-901-b
+squash "squash AB-901"
 release "$ID2" --pr 8371
 expect 0 "outcome:     merged" "release B merged"
 [ "$(count "$WORK"/*-sol*)" = 1 ] || fail "a second worker clone appeared"
 [ "$(count "$WD"/history/*/)" = 2 ] || fail "history does not hold both assignments"
-has_branch chore/TT-900-a; has_branch chore/TT-901-b
+has_branch chore/AB-900-a; has_branch chore/AB-901-b
 
 # ---- (11) empty and abandoned -----------------------------------------------------------------
-start TT-902 chore/TT-902-c $DEV --thread t3
+start AB-902 chore/AB-902-c $DEV --thread t3
 expect 0 "artifacts:" "start C"
 ID3=$(field id)
-remote_commit chore/TT-902-c develop-netcore7
+remote_commit chore/AB-902-c develop-netcore7
 release "$ID3"
 expect 1 "reconcile before release" "release C with a foreign remote branch"
-git -C "$MAIN" push --quiet origin --delete chore/TT-902-c
+git -C "$MAIN" push --quiet origin --delete chore/AB-902-c
 release "$ID3"
 expect 0 "outcome:     empty" "release C empty"
-start TT-902 chore/TT-902-g $DEV --thread t3
-expect 0 "artifacts:" "restart TT-902"
+start AB-902 chore/AB-902-g $DEV --thread t3
+expect 0 "artifacts:" "restart AB-902"
 ID4=$(field id)
 [ "$ID4" != "$ID3" ] || fail "restart reused the id $ID3"
 release "$ID4"
-expect 0 "outcome:     empty" "release the TT-902 restart"
-[ "$(count "$WD"/history/TT-902-*)" = 2 ] || fail "two TT-902 assignments not in history"
-start TT-903 chore/TT-903-d $DEV --thread t3
+expect 0 "outcome:     empty" "release the AB-902 restart"
+[ "$(count "$WD"/history/AB-902-*)" = 2 ] || fail "two AB-902 assignments not in history"
+start AB-903 chore/AB-903-d $DEV --thread t3
 expect 0 "artifacts:" "start D"
 ID5=$(field id)
 sol_commit d.txt
-git -C "$SOL" push --quiet origin chore/TT-903-d
+git -C "$SOL" push --quiet origin chore/AB-903-d
 T5=$(git -C "$SOL" rev-parse HEAD)
-pr_done abandoned "$T5" chore/TT-903-d
+pr_done abandoned "$T5" chore/AB-903-d
 release "$ID5" --pr 8371 --abandoned
 expect 0 "outcome:     abandoned" "release D abandoned"
-has_branch chore/TT-903-d
+has_branch chore/AB-903-d
 jq -e --arg t "$T5" '.remote == $t and .outcome == "abandoned"' \
   "$WD/history/$ID5/release.json" >/dev/null || fail "release.json of D lacks the remote tip"
 
@@ -245,101 +245,101 @@ jq -e --arg t "$T5" '.remote == $t and .outcome == "abandoned"' \
 # Fixture surgery (patterns.md exception): an interruption before `switch` needs fault injection.
 B3=$(git -C "$MAIN" rev-parse develop-netcore7)
 mkdir "$WD/active"
-jq -n --arg sha "$B3" --arg art "$WORKER_ARTIFACTS/TT-904-20261007-000000" \
-  '{id: "TT-904-20261007-000000", ticket: "TT-904", branch: "chore/TT-904-e",
+jq -n --arg sha "$B3" --arg art "$WORKER_ARTIFACTS/AB-904-20261007-000000" \
+  '{id: "AB-904-20261007-000000", ticket: "AB-904", branch: "chore/AB-904-e",
     line: "develop-netcore7", base_ref: "origin/develop-netcore7", base_sha: $sha, thread: "t4",
     state: "switching", artifacts: $art, started_at: "2026-10-07T00:00:00Z"}' \
   > "$WD/active/assignment.json"
 squash "squash moves the origin"
-start TT-904 chore/TT-904-e $DEV --thread t9
-expect 1 "interrupted transition TT-904-20261007-000000 pending" "resume with other arguments"
+start AB-904 chore/AB-904-e $DEV --thread t9
+expect 1 "interrupted transition AB-904-20261007-000000 pending" "resume with other arguments"
 sol_commit resume.txt
-start TT-904 chore/TT-904-e $DEV --thread t4
+start AB-904 chore/AB-904-e $DEV --thread t4
 expect 1 "not the last settled tip" "resume after a post-release commit"
-# sol_commit advanced chore/TT-903-d past its release tip; that branch is evidence only now.
+# sol_commit advanced chore/AB-903-d past its release tip; that branch is evidence only now.
 git -C "$SOL" switch --quiet --detach "$T5"
 fake_build "$WORK" "dotnet build $SOLP/x.sln"
-start TT-904 chore/TT-904-e $DEV --thread t4
+start AB-904 chore/AB-904-e $DEV --thread t4
 expect 1 "a build, gate or review is running against" "resume during a build"
 stop_build
 jq -e '.state == "switching"' "$WD/active/assignment.json" >/dev/null \
   || fail "a refused resume changed the record"
-start TT-904 chore/TT-904-e $DEV --thread t4
-expect 0 "id:        TT-904-20261007-000000" "resume before the switch"
-head_on chore/TT-904-e "$B3"
+start AB-904 chore/AB-904-e $DEV --thread t4
+expect 0 "id:        AB-904-20261007-000000" "resume before the switch"
+head_on chore/AB-904-e "$B3"
 [ "$B3" != "$(git -C "$MAIN" rev-parse develop-netcore7)" ] || fail "fixture: origin did not move"
-[ -d "$WORKER_ARTIFACTS/TT-904-20261007-000000" ] || fail "resume made no artifacts dir"
-release TT-904-20261007-000000
+[ -d "$WORKER_ARTIFACTS/AB-904-20261007-000000" ] || fail "resume made no artifacts dir"
+release AB-904-20261007-000000
 expect 0 "outcome:     empty" "release the resumed assignment"
 
 # ---- (11b) resume after the switch ------------------------------------------------------------
-start TT-905 chore/TT-905-f $DEV --thread t5
+start AB-905 chore/AB-905-f $DEV --thread t5
 expect 0 "artifacts:" "start F"
 ID6=$(field id)
 A="$WD/active/assignment.json"
 jq '.state = "switching"' "$A" > "$WORK/as.json" && mv "$WORK/as.json" "$A"
 echo stray > "$SOL/stray.txt"
-start TT-905 chore/TT-905-f $DEV --thread t5
+start AB-905 chore/AB-905-f $DEV --thread t5
 expect 1 "interrupted start $ID6 kept for the supervisor" "resume over an untracked file"
 jq -e '.state == "switching"' "$A" >/dev/null || fail "a refused resume changed the record"
 mv "$SOL/stray.txt" "$WORK/"
 chmod 000 "$SOL/.git/index"
-start TT-905 chore/TT-905-f $DEV --thread t5
+start AB-905 chore/AB-905-f $DEV --thread t5
 expect 1 "git status failed in" "resume when git status fails"
 chmod 644 "$SOL/.git/index"
 jq -e '.state == "switching"' "$A" >/dev/null || fail "a refused resume changed the record"
-start TT-905 chore/TT-905-f $DEV --thread t5
+start AB-905 chore/AB-905-f $DEV --thread t5
 expect 0 "id:        $ID6" "resume after the switch"
 jq -e '.state == "active"' "$A" >/dev/null || fail "resume did not activate"
-[ "$(git -C "$SOL" symbolic-ref --short HEAD)" = chore/TT-905-f ] || fail "resume left HEAD"
+[ "$(git -C "$SOL" symbolic-ref --short HEAD)" = chore/AB-905-f ] || fail "resume left HEAD"
 release "$ID6"
 expect 0 "outcome:     empty" "release F"
 
 # ---- (11c) a staging leftover is listed, never deleted ----------------------------------------
-mkdir "$WD/staging-TT-999-x"
+mkdir "$WD/staging-AB-999-x"
 run "$MAIN" $W status
-expect 0 "leftover: staging-TT-999-x" "status lists a staging leftover"
+expect 0 "leftover: staging-AB-999-x" "status lists a staging leftover"
 has "state: idle" "$WORK/out" || fail "status is not idle after F"
 
 # ---- (12) stale op.lock -----------------------------------------------------------------------
 mkdir "$WD/op.lock"; echo 99999 > "$WD/op.lock/pid"
-start TT-906 chore/TT-906-h $DEV --thread t6
+start AB-906 chore/AB-906-h $DEV --thread t6
 expect 1 "stale: check no worker-next.sh runs" "start under a stale lock"
 [ -d "$WD/op.lock" ] || fail "the script removed a foreign lock"
 rm -f "$WD/op.lock/pid"; rmdir "$WD/op.lock"
 
 # ---- (13) a running build blocks start --------------------------------------------------------
 fake_build "$WORK" "dotnet build $SOLP/x.sln"
-start TT-906 chore/TT-906-h $DEV --thread t6
+start AB-906 chore/AB-906-h $DEV --thread t6
 expect 1 "a build, gate or review is running against" "start during a build"
 stop_build
 [ ! -e "$WD/active" ] || fail "start during a build published an assignment"
-fake_build "$SOL" "dotnet build TakeTask2.API.sln"
-start TT-906 chore/TT-906-h $DEV --thread t6
+fake_build "$SOL" "dotnet build AcmeShop2.API.sln"
+start AB-906 chore/AB-906-h $DEV --thread t6
 expect 1 "a build, gate or review is running against" "start during a relative build in the clone"
 stop_build
 [ ! -e "$WD/active" ] || fail "start during a relative build published an assignment"
 fake_build "$SOL" "codex exec review then run bash .claude/lib/worker-next.sh check x"
-start TT-906 chore/TT-906-h $DEV --thread t6
+start AB-906 chore/AB-906-h $DEV --thread t6
 expect 1 "a build, gate or review is running against" \
   "start during a codex review quoting the script"
 stop_build
 [ ! -e "$WD/active" ] || fail "start during a codex review published an assignment"
 mkdir "$WORK/main-solo"
 fake_build "$WORK/main-solo" "dotnet build $SOLP-solo/x.sln"
-start TT-906 chore/TT-906-h $DEV --thread t6
+start AB-906 chore/AB-906-h $DEV --thread t6
 expect 0 "artifacts:" "start during a build in the sibling -solo checkout"
 stop_build
 ID7=$(field id); B7=$(field "base sha")
 
 # ---- (13a) a deleted assignment branch is refused with a recovery -----------------------------
 git -C "$SOL" switch --quiet --detach HEAD
-git -C "$SOL" branch -D --quiet chore/TT-906-h
+git -C "$SOL" branch -D --quiet chore/AB-906-h
 release "$ID7"
 expect 1 "is missing in" "release with a deleted assignment branch"
 has "HEAD of $SOLP is not on" "$WORK/out" || fail "missing-branch refusal hides the HEAD problem"
-git -C "$SOL" branch chore/TT-906-h "$B7"
-git -C "$SOL" switch --quiet chore/TT-906-h
+git -C "$SOL" branch chore/AB-906-h "$B7"
+git -C "$SOL" switch --quiet chore/AB-906-h
 
 # ---- (13b) the artifacts checks are best-effort -----------------------------------------------
 head -c 8192 /dev/zero > "$WORKER_ARTIFACTS/$ID7/blob"
@@ -363,7 +363,7 @@ chmod 755 "$WORKER_ARTIFACTS/$ID7/locked"
 
 # ---- (13c) a caller mentioning a review is not a hit ------------------------------------------
 # `&&`, not `;`: the rc is start's, and bash stays alive as the script's $PPID.
-run "$MAIN" bash -c "$W start TT-907 chore/TT-907-i $DEV --thread t7 && : codex exec $SOLP"
+run "$MAIN" bash -c "$W start AB-907 chore/AB-907-i $DEV --thread t7 && : codex exec $SOLP"
 expect 0 "artifacts:" "start from a caller whose argv mentions a review"
 ID8=$(field id)
 release "$ID8"
@@ -372,14 +372,14 @@ expect 0 "outcome:     empty" "release H"
 # ---- (13d) a deeper wrapper mentioning a review is not a hit ----------------------------------
 # The subshell is the script's $PPID, so the quoting shell sits at the grandparent.
 run "$MAIN" bash -c \
-  "( $W start TT-908 chore/TT-908-j $DEV --thread t8; exit \$? ) && : codex exec $SOLP"
+  "( $W start AB-908 chore/AB-908-j $DEV --thread t8; exit \$? ) && : codex exec $SOLP"
 expect 0 "artifacts:" "start from a subshell under a caller that mentions a review"
 ID9=$(field id)
 run "$MAIN" bash -c "( $W release $ID9; exit \$? ) && : codex exec $SOLP"
 expect 0 "outcome:     empty" "release from the same wrapper"
 
 # ---- (13e) an unwritable artifacts dir keeps the assignment active ----------------------------
-start TT-909 chore/TT-909-k $DEV --thread t9
+start AB-909 chore/AB-909-k $DEV --thread t9
 expect 0 "artifacts:" "start J"
 ID10=$(field id)
 chmod 555 "$WORKER_ARTIFACTS/$ID10"
@@ -398,12 +398,12 @@ expect 0 "outcome:     empty" "rerun after the artifacts dir is fixed"
   "$SRC/.claude/lib/worker-lib.sh" || fail "worker-next.sh or worker-lib.sh: destructive command"
 
 # ---- (15) supervisor-only commands ------------------------------------------------------------
-run "$SOL" $W start TT-906 chore/TT-906-h $DEV --thread t6
+run "$SOL" $W start AB-906 chore/AB-906-h $DEV --thread t6
 expect 1 "is a supervisor command" "start from inside the clone"
 run "$SOL" $W status
 expect 0 "state: idle" "status from inside the clone"
 
-[ -d "$WD/staging-TT-999-x" ] || fail "the staging leftover was deleted"
+[ -d "$WD/staging-AB-999-x" ] || fail "the staging leftover was deleted"
 
 # ---- (16) a source repo with a split commit-graph still clones --------------------------------
 # Regression: `git clone --reference-if-able <src> --dissociate` reads <src>'s commit-graph while

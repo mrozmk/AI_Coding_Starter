@@ -1,9 +1,9 @@
-# Reference: the permanent SolTT worker clone (TT-849)
+# Reference: the permanent SolTT worker clone
 
 The delegated Codex worker SolTT (`AGENTS.md` → **Delegated execution** → **Worker clone**) works
 in one permanent clone, handed from one assignment to the next by `.claude/lib/worker-next.sh`.
 It replaces a fresh 1.6–1.8 GB clone in `/private/tmp` per ticket once provisioned and verified.
-Merge of TT-849 alone is not operational readiness: resolve the TT-855 hardening findings before
+Merging the worker alone is not operational readiness: resolve its hardening findings before
 real assignments, then complete authorized provisioning, write-access checks and smoke. Record
 the planned two-assignment reuse check separately; do not report it as passed before execution.
 
@@ -11,9 +11,9 @@ the planned two-assignment reuse check separately; do not report it as passed be
 
 | What | Path |
 |---|---|
-| Clone | `$(dirname <main>)/$(basename <main>)-sol` — `~/Desktop/TakeTask/TakeTask.DN-sol` |
-| State | `<git dir>/taketask-worker/`: `provisioned.json`, `op.lock/`, `active/`, `history/` |
-| Artifacts | `$WORKER_ARTIFACTS/<id>` — default `~/.agent-mail/taketask-dn/worker/<id>` |
+| Clone | `$(dirname <main>)/$(basename <main>)-sol` — e.g. `~/code/acme-sol` |
+| State | `<git dir>/team-worker/`: `provisioned.json`, `op.lock/`, `active/`, `history/` |
+| Artifacts | `$WORKER_ARTIFACTS/<id>` — default `~/.agent-mail/worker/<id>` |
 
 State lives in the git dir: it never dirties the tree, needs no `.gitignore` entry and is invisible
 to `team_clone_dirs` and `team_ticket_checks`, which look only for `.agents/team/team.json`.
@@ -28,7 +28,7 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
    profile's `teams.trunk`, as in `AGENTS.md`). The clone is detached at the base; that commit is
    the first settled tip.
 2. Ensure the worker's Codex host can write to the clone and the selected artifacts root
-   (default `~/.agent-mail/taketask-dn/worker/`). Preserve existing approved mailbox and host
+   (default `~/.agent-mail/worker/`). Preserve existing approved mailbox and host
    temporary-directory access; these two task paths do not replace the host's whole permission
    profile. The worker runs with `CODEX_HOME=<codex-home>` (the value of `.claude/codex-profile`,
    as in `AGENTS.md`). Use the thread cwd or narrow writable roots; do not widen to `~` or full
@@ -53,7 +53,7 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
 
 | Command | Who | From | Lock |
 |---|---|---|---|
-| `init <base-ref>` | supervisor (OpusTT) | main checkout | `op.lock` |
+| `init <base-ref>` | supervisor (Supervisor) | main checkout | `op.lock` |
 | `start <key> <branch> <base-ref> --thread <id>` | supervisor | main checkout | `op.lock` |
 | `release <id> [--pr <n>] [--abandoned]` | supervisor | main checkout | `op.lock` |
 | `status` | either | clone or main checkout | none, exits 0 |

@@ -1,5 +1,5 @@
-"""codex-bg.sh: thread registration, exit-code passthrough, OUT/LOG truncation (TT-821),
-Codex profile check (TT-912)."""
+"""codex-bg.sh: thread registration, exit-code passthrough, OUT/LOG truncation,
+Codex profile check."""
 import json
 import os
 import shutil
@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out="$2"; shift; done
 sleep "${{FAKE_DELAY:-0}}"
 echo "session id: {THREAD}" >&2
 printf '{{}}' > "$out"
-sleep 1
+sleep "${{FAKE_TAIL:-1}}"
 exit "${{FAKE_RC:-0}}"
 """
 
@@ -38,7 +38,7 @@ class CodexBgTest(unittest.TestCase):
         shutil.copytree(REPO / ".claude" / "lib", os.path.join(tree, "lib"),
                         ignore=shutil.ignore_patterns("tests", "__pycache__"))
         with open(os.path.join(tree, "codex-profile"), "w", encoding="utf-8") as fh:
-            fh.write("# test fixture\n~/.codex-taketask\n")
+            fh.write("# test fixture\n~/.codex-acmeshop\n")
         self.wrapper = os.path.join(tree, "lib", "codex-bg.sh")
         self.home = os.path.join(self.tmp, "home")
         self.repo = os.path.join(self.tmp, "repo")
@@ -46,7 +46,7 @@ class CodexBgTest(unittest.TestCase):
         os.makedirs(self.repo)
         # The wrapper reads the committed .claude/codex-profile; its ~ expands against this HOME.
         self.user_home = os.path.join(self.tmp, "userhome")
-        self.profile = os.path.join(self.user_home, ".codex-taketask")
+        self.profile = os.path.join(self.user_home, ".codex-acmeshop")
         os.makedirs(self.profile)
         bin_dir = os.path.join(self.tmp, "bin")
         os.makedirs(bin_dir)
@@ -109,12 +109,12 @@ class CodexBgTest(unittest.TestCase):
         team = os.path.join(self.repo, ".agents", "team")
         os.makedirs(team)
         with open(os.path.join(team, "session.json"), "w", encoding="utf-8") as fh:
-            json.dump({"ticket": "TT-821", "team": "alfa", "role": "planner",
+            json.dump({"ticket": "AB-821", "team": "alfa", "role": "planner",
                        "run": "alfa-20261006-190718", "attempt": 1}, fh)
         self.run_wrapper()
         [line] = self.lines()
         self.assertEqual((line["ticket"], line["team"], line["role"], line["run"],
-                          line["attempt"]), ("TT-821", "alfa", "planner",
+                          line["attempt"]), ("AB-821", "alfa", "planner",
                                              "alfa-20261006-190718", 1))
 
     def test_stale_out_and_log_are_truncated(self):
@@ -182,6 +182,27 @@ class CodexBgTest(unittest.TestCase):
         Path(self.out).write_text("previous review", encoding="utf-8")
         proc = self.run_full(CODEX_HOME=os.path.join(self.tmp, "missing"))
         self.assert_refused(proc, "is not the project profile")
+
+    def test_out_published_after_registration(self):
+        env = dict(self.env, FAKE_TAIL="0")
+        proc = subprocess.Popen(["bash", self.wrapper], env=env, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.time() + 10
+            while time.time() < deadline and not (os.path.exists(self.out)
+                                                   and os.path.getsize(self.out)):
+                time.sleep(0.02)
+            self.assertTrue(os.path.getsize(self.out), "OUT never published")
+            path = os.path.join(self.home, "runtime.jsonl")
+            lines = [json.loads(ln) for ln in self.read(path).splitlines() if ln.strip()] \
+                if os.path.exists(path) else []
+            self.assertEqual([(ln["source"], ln["session"], ln["parent_session"])
+                              for ln in lines], [("codex-bg", THREAD, PARENT)])
+            self.assertEqual(proc.wait(timeout=30), 0)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+        self.assertFalse(os.path.exists(self.out + ".partial"))
 
     def test_logs_profile_first_line(self):
         self.assertEqual(self.run_wrapper(), 0)

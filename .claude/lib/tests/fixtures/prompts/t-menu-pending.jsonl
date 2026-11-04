@@ -1,0 +1,5 @@
+{"type": "user", "uuid": "u0", "message": {"content": "start"}}
+{"type": "assistant", "uuid": "a0", "message": {"content": [{"type": "text", "text": "hi"}]}}
+{"type": "attachment", "uuid": "n1"}
+{"type": "api-request", "uuid": "n2"}
+{"type": "assistant", "uuid": "a1", "message": {"content": [{"type": "tool_use", "id": "toolu_01menu", "name": "AskUserQuestion", "input": {"questions": [{"question": "To nie jest zadanie na /quick-change wg Phase 0: ~9 plików (limit ~5), choć wszystkie w jednym module `.claude/` (harness), bez ścieżek wrażliwych, zależności i schematu. Ticket sam wskazuje quick-change. Sugerowana droga przy odmowie: /brainstorm → /plan-feature (supervisor zrestartuje ticket w trybie brainstorm). Jechać mimo to przez /quick-change?", "header": "Phase 0", "multiSelect": false, "options": [{"label": "Tak, quick-change"}, {"label": "Nie, brainstorm"}]}]}}]}}

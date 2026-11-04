@@ -1,13 +1,13 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner in tmux (it opens a Terminal preview window per role)
-argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>] …]  (e.g. alfa TT-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa TT-787 --roles planner=claude-fable-5-1/high)"
+argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
 allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /start-team — run a team on a ticket
 
-Arguments: **$ARGUMENTS** — `<team> [key] [branch] [--mode <mode>] [--brief <text>|--brief-file <path>] [--roles <entries…>]`. Supervisor command: run it in the **main
-checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/team-pipeline.md`.
+Arguments: **$ARGUMENTS** — `<team> [key] [branch] [--mode <mode>] [--brief <text>|--brief-file <path>] [--roles <entries…>] [--permission-mode manual]`. Supervisor command: run it in the **main
+checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md`.
 
 ## Guardrails
 
@@ -36,11 +36,20 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
    (including a trailing `BRANCH`); do not consume all words after `--roles`. Keep invalid role
    names and values in `ROLES` for the existing `team-run.sh … roles` validation in step 4a.
    `--roles` with no entry → stop and ask. For example,
-   `/start-team alfa TT-791 --roles planner=claude-fable-5-1/high chore/TT-791-team-next-retry-guard`
-   keeps `chore/TT-791-team-next-retry-guard` as `BRANCH`. Map the user's wording to roles:
+   `/start-team alfa ABC-791 --roles planner=claude-fable-5-1/high chore/ABC-791-team-next-retry-guard`
+   keeps `chore/ABC-791-team-next-retry-guard` as `BRANCH`. Map the user's wording to roles:
    brainstorm/spec/plan = `planner`,
    implementation = `coder`, review/QA = `qa`, summary = `wrapup`. Entry forms:
-   `<role>=<model>/<effort>`, `<role>=<model>`, `<role>=/<effort>`.
+   `<role>=<model>/<effort>`, `<role>=<model>`, `<role>=/<effort>`, and a third segment
+   `<role>=[<model>][/<effort>]/<auto|manual>` for the permission mode (e.g. `coder=//manual`).
+   `--permission-mode manual` is taken out before the positional parse too (like `--mode`) and
+   expands to `coder=//manual qa=//manual` for modes `brainstorm`/`quick` (`cli=//manual` for mode
+   `cli`), merged into `ROLES` after the explicit entries; planner and wrapup stay auto (they write
+   only spec/plan and memory), a ticket whose planner must edit settings uses `--roles
+   planner=//manual`. Any other value, or no value →
+   stop and say "only `manual` (auto is the default)". Roles launch in auto mode by default
+   (`roles.json`); **`--permission-mode manual` is mandatory for tickets editing
+   `.claude/settings*.json`** — the auto-mode classifier refuses that as self-modification.
    `MODE` = the word after `--mode`, also taken out before the positional parse; default
    `brainstorm`. A value outside `brainstorm|quick|cli`, or `--mode` with no value → stop and say
    the allowed values. Which mode: brainstorm = typical tickets; quick = small clear changes (a
@@ -55,7 +64,8 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
    - `--mode` on a RESUME → "mode is fixed per ticket — `/start-team <team> <KEY> --mode …`
      (tracker=none: `--brief …`) starts a new one". `/start-team alfa --brief "Fix X" --mode quick`
      is NEW, so it is allowed;
-   - `--mode cli` with `--roles` → "cli always runs opus[1m]/medium; drop --roles".
+   - `--mode cli` with a `--roles` model/effort entry → "cli always runs opus[1m]/medium; drop
+     --roles" (`cli=//manual` from `--permission-mode manual` is allowed).
 
 2. **RESUME** (no `KEY`, and for `none` no `--brief*` either). `CLONE` must exist. Never call
    `team-tracker.sh read` here: a resume allocates nothing, and the ticket it continues is already in
@@ -118,16 +128,18 @@ checkout** (`TakeTask.DN`), from any Claude window. Runbook: `.agents/reference/
    The override lives until `team-next` (the next ticket); undo with
    `bash .claude/lib/team-run.sh <TEAM> roles --clear`. A role already running keeps its model.
 
-5. **Runner.** `tmux new-session -d -s <TEAM>-runner -c "<ROOT>" "bash .claude/lib/team-run.sh
-   <TEAM>; read"`. It survives this Claude session; it does not survive a Mac restart. The user
-   asked for the planner window only → run `TEAM_ATTACH=planner bash .claude/lib/team-run.sh <TEAM>`
-   in that command instead.
+5. **Runner.**
+   `tmux new-session -d -s <TEAM>-runner -c "<ROOT>" -e "AGENT_COSTS_HOME=${AGENT_COSTS_HOME:-}" "bash .claude/lib/team-run.sh <TEAM>; read"`.
+   It survives this Claude session; it does not survive a Mac restart. The `-e` carries the
+   token-usage home into the runner, which forwards it to every role; an empty value means the
+   default `~/.agent-costs`. The user asked for the planner window only → run
+   `TEAM_ATTACH=planner bash .claude/lib/team-run.sh <TEAM>` in that command instead (same `-e`).
 
 5a. **Token usage.** Run
    `bash .claude/lib/costs/runtime-mark.sh session --provider claude --source start-team --team <TEAM> --team-json <CLONE>/.agents/team/team.json`
    — the clone's `team.json` is the one source of the ticket identity for costs (`cost_key`, or
    `ticket` on a pre-2b clone), so it is right for a new ticket and for a resume alike.
-   It registers this supervisor session for labels only — never a ticket binding (spec TT-821); a
+   It registers this supervisor session for labels only — never a ticket binding; a
    non-zero exit is impossible, nothing to check.
 
 6. **Role windows.** Do not open one yourself: the runner opens a Terminal preview window for every

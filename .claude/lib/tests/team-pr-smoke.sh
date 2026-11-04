@@ -691,7 +691,7 @@ mkdir -p "$TDC/lock"; echo $$ > "$TDC/lock/pid"
 run "$MAIN" $IT delta
 expect 3 "the runner still holds" "integrate refuses while the runner holds the lock"
 rm -rf "$TDC/lock"
-# Astra 3: the resumed workflow is caught by name+sha256, not by a timestamp — same `written_at`.
+# Reviewer 3: the resumed workflow is caught by name+sha256, not by a timestamp — same `written_at`.
 cp "$RDC/cli-1-1.json" "$RDC/cli-1-2.json"
 run "$MAIN" $IT delta
 expect 3 "workflow resumed after merge-check" "a record added after the verdict invalidates it"

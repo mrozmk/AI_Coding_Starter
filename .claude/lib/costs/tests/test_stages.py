@@ -1,4 +1,4 @@
-"""Stage split: Σ check, sub-agent placement, turn exclusion, runtime markers (TT-813, TT-821)."""
+"""Stage split: Σ check, sub-agent placement, turn exclusion, runtime markers."""
 import unittest
 from unittest import mock
 
@@ -63,8 +63,8 @@ class StagesTest(unittest.TestCase):
         self.env.collect()
         runtime.ingest(self.conn)
         self.conn.commit()
-        bindings.add_binding(self.conn, self.cfg, "TT-1", session=S)
-        data = report.build(self.conn, self.cfg, "TT-1", by_stage=True)
+        bindings.add_binding(self.conn, self.cfg, "AB-1", session=S)
+        data = report.build(self.conn, self.cfg, "AB-1", by_stage=True)
         by_stage = {}
         for row in data["stages"]["rows"]:
             by_stage[row["stage"]] = by_stage.get(row["stage"], 0) + row["output"]
@@ -188,7 +188,7 @@ class StagesTest(unittest.TestCase):
     def test_mixed_header_counts_both_modes(self):
         helpers.write_jsonl(self.env.claude_file(S2), [helpers.claude_assistant(
             S2, _ts(2), request_id="req_s2", output=3, inp=0, cache_write=0)])
-        bindings.add_binding(self.conn, self.cfg, "TT-1", session=S2)
+        bindings.add_binding(self.conn, self.cfg, "AB-1", session=S2)
         data, got = self.run_report([_a(2, "req_2", output=5)],
                                     marks=[_mark("start", "execute", 1)])
         self.assertEqual(got, {"execute": 5, "outside-stage": 3})
@@ -214,7 +214,7 @@ class StagesTest(unittest.TestCase):
     def test_header_and_jira_body_scoped_to_report_sessions(self):
         helpers.write_jsonl(self.env.claude_file(S2), [helpers.claude_assistant(
             S2, _ts(2), request_id="req_s2", output=3, inp=0, cache_write=0)])
-        bindings.add_binding(self.conn, self.cfg, "TT-2", session=S2)
+        bindings.add_binding(self.conn, self.cfg, "AB-2", session=S2)
         data, _ = self.run_report([_a(2, "req_2", output=5)])
         self.assertIn("inferred ends 0, unmatched ends 0", self.header(data))
         before = jira_comment.body(data)
@@ -222,9 +222,9 @@ class StagesTest(unittest.TestCase):
             _mark("start", "execute", 1, session=S2),
             _mark("end", "qa-verify", 3, source="skill-end", session=S2)])
         runtime.ingest(self.conn)
-        after = report.build(self.conn, self.cfg, "TT-1", by_stage=True)
+        after = report.build(self.conn, self.cfg, "AB-1", by_stage=True)
         self.assertEqual(jira_comment.body(after), before)
-        other = report.build(self.conn, self.cfg, "TT-2", by_stage=True)
+        other = report.build(self.conn, self.cfg, "AB-2", by_stage=True)
         self.assertIn("inferred ends 1, unmatched ends 1", self.header(other))
 
     def test_stage_at(self):
@@ -252,8 +252,8 @@ class StagesTest(unittest.TestCase):
     def test_fractional_allocations_match_report_totals(self):
         helpers.write_jsonl(self.env.claude_file(S), [_a(1, "req_1", output=7)])
         self.env.collect()
-        bindings.add_binding(self.conn, self.cfg, "TT-1", session=S, share=0.25)
-        data = report.build(self.conn, self.cfg, "TT-1", by_stage=True)
+        bindings.add_binding(self.conn, self.cfg, "AB-1", session=S, share=0.25)
+        data = report.build(self.conn, self.cfg, "AB-1", by_stage=True)
         self.assertEqual(data["stages"]["check"]["allocated"], 1.75)
 
 

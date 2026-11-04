@@ -1,4 +1,4 @@
-"""Period summary of Claude + Codex token usage: build + render (TT-980).
+"""Period summary of Claude + Codex token usage: build + render.
 
 Python 3.9 stdlib only.
 """

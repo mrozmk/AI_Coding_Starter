@@ -2,6 +2,7 @@
 # Shared offline fixtures; each suite part owns its workspace and EXIT cleanup.
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SRC=$(cd "$HERE/../../.." && pwd)
+FIX="$SRC/.claude/lib/tests/fixtures/prompts"
 
 fail() { echo "team-smoke: FAIL — $*"; [ ! -f "$WORK/out" ] || sed 's/^/  | /' "$WORK/out"; exit 1; }
 has() { grep -qF -- "$1" "$2"; }
@@ -14,10 +15,26 @@ expect() {  # expect <rc> <text> <label>
   [ -z "$2" ] || has "$2" "$WORK/out" || fail "$3: output lacks '$2'"
 }
 
-session() {  # session <role> <attempt> <input_rev>
+session() {  # session <role> <attempt> <input_rev> [session_id]
   jq -n --arg role "$1" --argjson attempt "$2" --arg input "$3" --arg run "$RUN_ID" \
-    '{team: "alfa", role: $role, run: $run, attempt: $attempt, ticket: "TT-790",
-      input_rev: $input, launched_at: "2026-10-02T00:00:00Z"}' > "$TD/session.json"
+    --arg sid "${4:-sid-$1-$2}" \
+    '{team: "alfa", role: $role, run: $run, attempt: $attempt, ticket: "AB-790",
+      input_rev: $input, launched_at: "2026-10-02T00:00:00Z", session_id: $sid}' > "$TD/session.json"
+}
+# The role's Claude transcript in the hermetic HOME.
+# The scripts resolve the clone through git (/private/var/…), so the slug uses the physical path.
+transcript() {
+  echo "$HOME/.claude/projects/$(cd "$CLONE" && pwd -P | sed 's/[^A-Za-z0-9]/-/g')/$1.jsonl"
+}
+pending_tool() {  # pending_tool <sid> <tool_use id> <tool> <json input> [cwd]
+  mkdir -p "$(dirname "$(transcript "$1")")"
+  jq -cn --arg id "$2" --arg n "$3" --argjson in "$4" --arg cwd "${5:-}" '{type: "assistant",
+    uuid: ("a-" + $id), message: {content: [{type: "tool_use", id: $id, name: $n, input: $in}]}}
+    | if $cwd != "" then .cwd = $cwd else . end' >> "$(transcript "$1")"
+}
+tool_done() {  # tool_done <sid> <tool_use id>
+  jq -cn --arg id "$2" '{type: "user", uuid: ("u-" + $id),
+    message: {content: [{type: "tool_result", tool_use_id: $id}]}}' >> "$(transcript "$1")"
 }
 hook() { set +e; printf '%s' "$2" | CLAUDE_PROJECT_DIR="$1" bash "$HOOK" > "$WORK/out" 2>&1; RC=$?; set -e; }
 commit_file() {  # commit_file <path> <content>
@@ -28,16 +45,19 @@ pr_json() {  # pr_json <isDraft> <source sha> [mergeStatus] [target ref] [target
   jq -n --argjson d "$1" --arg s "$2" --arg ms "${3:-succeeded}" --arg t "${4:-refs/heads/develop-netcore7}" \
     --arg ts "${5:-$BASE}" \
     '{pullRequestId: 8371, status: "active", isDraft: $d, mergeStatus: $ms,
-      repository: {name: "fixture"}, sourceRefName: "refs/heads/feature/TT-790-x", targetRefName: $t,
+      repository: {name: "fixture"}, sourceRefName: "refs/heads/feature/AB-790-x", targetRefName: $t,
       lastMergeSourceCommit: {commitId: $s}, lastMergeTargetCommit: {commitId: $ts},
       lastMergeCommit: {commitId: (env.MERGE_SHA // "")}}' > "$STUB_PR"
+}
+pr_set() {  # pr_set <jq args...> — edit the stub PR in place
+  jq "$@" "$STUB_PR" > "$WORK/pr-set.json" && mv "$WORK/pr-set.json" "$STUB_PR"
 }
 record() { (cd "$CLONE" && $REC "$@") | tail -n 1; }
 
 # Run fixtures for parts 2 and 3; they use the part's BR, TGT0, RUN_ID and RD.
 pr_w() {  # pr_w <source sha> [target sha] — the PR of the clone's current branch
   pr_json false "$1" succeeded refs/heads/develop-netcore7 "${2:-$TGT0}"
-  jq --arg b "refs/heads/$BR" '.sourceRefName = $b' "$STUB_PR" > "$WORK/pw.json" && mv "$WORK/pw.json" "$STUB_PR"
+  pr_set --arg b "refs/heads/$BR" '.sourceRefName = $b'
 }
 mkrec() {  # mkrec <role> <output sha> [verdict] — an accepted record in this run
   jq -n --arg role "$1" --arg rev "$2" --arg run "$RUN_ID" --arg v "${3:-done}" \
@@ -73,13 +93,18 @@ smoke_init() {
   GH_BARE="$WORK/origin.git"
   export STUB_LOG="$WORK/log" STUB_PR="$WORK/pr.json" REAL_GIT ADO_URL GH_URL GH_BARE
   export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_NOSYSTEM=1
-  # The runner resolves .claude/codex-profile against HOME; keep it hermetic (TT-912).
+  # The runner resolves .claude/codex-profile against HOME; keep it hermetic.
   export HOME="$WORK/home"
-  mkdir -p "$HOME/.codex-taketask"
+  mkdir -p "$HOME/.codex-acmeshop"
   export TEAM_NOTIFY=0 TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1 TEAM_ATTACH_POLL=0
   export STUB_TMUX_SOCK="$WORK/tmux-fixture.sock"
-  unset CLAUDE_PROJECT_DIR
+  export TEAM_CONFIRM_SECS=0 TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
+  export TEAM_GATE_LOCK_POLL=0.1
+  # The marker team-escalate.sh requires before it honours TEAM_ESCALATE_UNIT_SECS.
+  export TEAM_SMOKE=1
+  unset TEAM_GATE_LOCK_DIR TEAM_GATE_LOCK_LOG TEAM_GATE_LOCK_TOKEN TEAM_GATE_LOCK_WAIT
+  unset CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR
   smoke_gitconfig
   smoke_stubs
   smoke_git_stub
@@ -113,12 +138,16 @@ smoke_stubs() {
   for t in claude codex dotnet; do
   printf '#!/usr/bin/env bash\necho "%s $*" >> "$STUB_LOG"\n' "$t" > "$WORK/bin/$t"
   done
+  # The runner's auto-mode preflight reads the version; not logged, it launches nothing.
+  printf '#!/usr/bin/env bash\n[ "$*" != --version ] || { echo "${STUB_CLAUDE_VERSION:-2.1.301} (Claude Code)"; exit 0; }\necho "claude $*" >> "$STUB_LOG"\n' \
+    > "$WORK/bin/claude"
   # STUB_OSA_OUT plays the tty `do script` returns; empty → team-attach takes its warn path.
   printf '#!/usr/bin/env bash\necho "osascript $*" >> "$STUB_LOG"\n[ -z "${STUB_OSA_OUT:-}" ] || echo "$STUB_OSA_OUT"\n' > "$WORK/bin/osascript"
   cat > "$WORK/bin/tmux" <<'STUB'
 #!/usr/bin/env bash
 echo "tmux $*" >> "$STUB_LOG"
 if [ "$1" = has-session ]; then
+  [ -z "${STUB_ON_HAS_SESSION:-}" ] || eval "$STUB_ON_HAS_SESSION"
   gone="can't find session: ${3#=}"
   [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || echo "${STUB_TMUX_ERR:-$gone}" >&2
   exit "${STUB_TMUX_ALIVE:-1}"
@@ -130,10 +159,40 @@ case "$1 $*" in capture-pane*" -t ="*|send-keys*" -t ="*) case "$*" in *" -t ="*
 # STUB_TMUX_SOCK plays a server that cannot name its socket (the fail-closed path).
 if [ "$1" = display-message ]; then
   case "$*" in *'#{socket_path}'*)
-    [ -z "${STUB_TMUX_SOCK:-}" ] || echo "$STUB_TMUX_SOCK" ;; esac
-  exit 0
+    [ -z "${STUB_TMUX_SOCK:-}" ] || echo "$STUB_TMUX_SOCK"; exit 0 ;; esac
+  [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || exit 1
+  echo "${STUB_PANE_ID:-%1}@${STUB_PANE_CREATED:-1700000000}"; exit 0
 fi
-[ "$1" != capture-pane ] || [ -z "${STUB_PANE:-}" ] || cat "$STUB_PANE"
+if [ "$1" = send-keys ]; then
+  [ -z "${STUB_ON_SENDKEYS:-}" ] || eval "$STUB_ON_SENDKEYS"
+  n=$(grep -c '^tmux send-keys ' "$STUB_LOG" || true)
+  [ "$n" != "${STUB_SENDKEYS_FAIL_AT:-0}" ] || { echo "can't find pane" >&2; exit 1; }
+  # The pane echoes typed text until Enter/Escape/C-u, as the sender waits for it.
+  case " $* " in
+    *" -l -- "*) a="$*"; printf '%s' "${a#* -l -- }" > "$STUB_LOG.typed" ;;
+    *" Enter "|*" Escape "|*" C-u ") rm -f "$STUB_LOG.typed" ;;
+  esac
+fi
+[ "$1" != capture-pane ] || [ -z "${STUB_ON_CAPTURE:-}" ] || eval "$STUB_ON_CAPTURE"
+if [ "$1" = capture-pane ] && [ -n "${STUB_PANE:-}" ]; then
+  if [ "${STUB_ECHO:-1}" = 1 ] && [ -f "$STUB_LOG.typed" ]; then
+    # Menu at the bottom → the Other row, cursor on it; otherwise the input line under the top rule.
+    T="$(cat "$STUB_LOG.typed")" awk '
+      { l[NR] = $0; s = $0; gsub(/\033\[[0-9;:?]*[a-zA-Z]/, "", s)
+        if (p ~ /────────────────────/ && s ~ /^ *❯( |$)/ && s !~ /^ *❯ *[0-9]+\./) inp = NR
+        if (index(s, "Type something")) oth = NR
+        p = s }
+      END { m = index(p, "Enter to select") && oth; at = m ? oth : inp
+        for (i = 1; i <= NR; i++) {
+          if (i != at) { s = l[i]; if (m) sub(/^❯ /, "  ", s); print s; continue }
+          s = l[i]; gsub(/\033\[[0-9;:?]*[a-zA-Z]/, "", s)
+          if (m) { s = substr(s, 1, index(s, "Type something") - 1); sub(/^  /, "❯ ", s)
+            print s ENVIRON["T"] }
+          else print "❯ " ENVIRON["T"] } }' "$STUB_PANE"
+  else
+    cat "$STUB_PANE"
+  fi
+fi
 STUB
   cat > "$WORK/bin/az" <<'STUB'
 #!/usr/bin/env bash
@@ -166,6 +225,11 @@ smoke_git_stub() {
   cat > "$WORK/bin/git" <<'STUB'
 #!/usr/bin/env bash
 a=("$@")
+# Opt-in forced failure of one subcommand in one directory (team-next ordering tests).
+if [ -n "${STUB_GIT_FAIL_DIR:-}" ] && [ "${1:-}" = -C ] && [ "${3:-}" = "${STUB_GIT_FAIL_CMD:-}" ] \
+  && [ "$(cd "$2" 2>/dev/null && pwd -P)" = "$(cd "$STUB_GIT_FAIL_DIR" && pwd -P)" ]; then
+  echo "stub: forced $3 failure" >&2; exit 128
+fi
 [ "${1:-}" != -C ] || shift 2
 if [ "${1:-} ${2:-} ${3:-}" = "remote get-url origin" ]; then
   if [ "${SMOKE_ORIGIN:-ado}" = github ]; then echo "$GH_URL"; else echo "$ADO_URL"; fi
@@ -410,7 +474,7 @@ smoke_profile() {
       required_tools: ["git", "jq", "tmux", "claude", "codex", "az", "dotnet"],
       seed_files: [".env", ".claude/settings.local.json", ".agents/memory/user-profile.md"],
       env_file_required: true,
-      build_check: "dotnet build TakeTask2.API.sln",
+      build_check: "dotnet build AcmeShop2.API.sln",
       test_gate: ".claude/lib/test-gate.sh",
       gates: "auto"
     }}' | jq "${1:-.}"
@@ -421,8 +485,17 @@ smoke_repos() {
   SEED="$WORK/seed"
   mkdir -p "$SEED/.claude/lib" "$SEED/.claude/hooks" "$SEED/.claude/team/prompts"
   cp "$SRC"/.claude/lib/team-*.sh "$SEED/.claude/lib/"
+  cp "$SRC/.claude/lib/team_prompt_check.py" "$SRC/.claude/lib/team_prompt.py" \
+    "$SRC/.claude/lib/team_prompt_classes.py" "$SRC/.claude/lib/team_prompt_settings.py" \
+    "$SRC/.claude/lib/team_transcript.py" "$SRC/.claude/lib/team_settings_diff.py" \
+    "$SRC/.claude/lib/team_audit.py" "$SEED/.claude/lib/"
+  mkdir -p "$SEED/.claude/hooks/lib"
+  cp "$SRC/.claude/hooks/lib/guard_destructive_sql.py" "$SRC/.claude/hooks/lib/guard_team_egress.py" \
+    "$SEED/.claude/hooks/lib/"
+  cp "$SRC/.claude/hooks/guard-team-egress.sh" "$SEED/.claude/hooks/"
   cp "$SRC/.claude/lib/worker-next.sh" "$SEED/.claude/lib/"
   cp "$SRC/.claude/lib/worker-lib.sh" "$SEED/.claude/lib/"
+  cp "$SRC/.claude/lib/gate-lock.sh" "$SRC/.claude/lib/gate_lock.py" "$SEED/.claude/lib/"
   mkdir -p "$SEED/.agents/reference"
   cp "$SRC/.agents/reference/worker-clone.md" "$SEED/.agents/reference/"
   cp "$SRC/AGENTS.md" "$SEED/"
@@ -438,14 +511,22 @@ smoke_repos() {
   # Same reason for the PR blocks: a prompt carrying {{PR_*}} with no block dir dies (return 1).
   mkdir -p "$SEED/.claude/team/pr"
   cp "$SRC"/.claude/team/pr/*.md "$SEED/.claude/team/pr/"
-  cp "$SRC/.claude/team/roles.json" "$SEED/.claude/team/"
+  cp "$SRC/.claude/team/roles.json" "$SRC/.claude/team/audit.json" "$SEED/.claude/team/"
   # Fixture fix (starter import): own profile, independent of the repo's (template) codex-profile.
-  printf '# test fixture\n~/.codex-taketask\n' > "$SEED/.claude/codex-profile"
+  printf '# test fixture\n~/.codex-acmeshop\n' > "$SEED/.claude/codex-profile"
   printf '#!/usr/bin/env bash\necho "test-gate: total 3, passed 3, failed 0 (baseline 0, new 0, now passing 0)"\n' \
   > "$SEED/.claude/lib/test-gate.sh"
   # Fixture fix (starter import): the TT values the harness used to hardcode are now a profile.
   smoke_profile > "$SEED/.claude/project-profile.json"
   printf '.agents/team/\n.env\n' > "$SEED/.gitignore"
+  # The prompt policy refuses a clone without settings; the real ask rules would refuse fixtures.
+  # The egress hook entries let the runner's auto-mode preflight pass.
+  jq -n '{permissions: {allow: [], ask: [], deny: []}, hooks: {PreToolUse: [
+    {matcher: "WebFetch", hooks: [{type: "command", onFailure: "block",
+      command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-egress.sh\""}]},
+    {matcher: "Bash", hooks: [{type: "command", onFailure: "block",
+      command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-egress.sh\""}]}]}}' \
+    > "$SEED/.claude/settings.json"
   echo seed > "$SEED/README"
   git -C "$SEED" init --quiet
   git -C "$SEED" add -A && git -C "$SEED" commit --quiet -m seed
@@ -453,7 +534,7 @@ smoke_repos() {
   git -C "$SEED" push --quiet origin develop-netcore7
   git -C "$SEED" switch --quiet -c rc && git -C "$SEED" rm --quiet .claude/lib/team-record.sh
   git -C "$SEED" commit --quiet -m "no harness" && git -C "$SEED" push --quiet origin rc
-  git -C "$SEED" push --quiet origin develop-netcore7:refs/heads/feature/TT-791-pushed
+  git -C "$SEED" push --quiet origin develop-netcore7:refs/heads/feature/AB-791-pushed
 
   git clone --quiet "$ADO_URL" "$WORK/main"
   MAIN="$WORK/main"

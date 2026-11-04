@@ -1,4 +1,4 @@
-"""Ticket bindings: validation, team-run windows, allocation, unassigned usage (spec TT-813).
+"""Ticket bindings: validation, team-run windows, allocation, unassigned usage.
 
 Python 3.9 stdlib only.
 """
@@ -131,7 +131,7 @@ def _close_open_run(conn, cwd, at):
 def add_binding(conn, cfg, ticket, *, session=None, turn=None, window=None, cwd=None,
                 share=1.0, provider=None, note=None, team_run=None, commit=True):
     if not config.TICKET_RE.match(ticket or ""):
-        config.fail(3, f"binding refused: {ticket!r} is not a ticket key like TT-805, owner/repo#4 or repo:L4")
+        config.fail(3, f"binding refused: {ticket!r} is not a ticket key like AB-805, owner/repo#4 or repo:L4")
     if not 0 < share <= 1:
         config.fail(3, f"binding refused: share {share} must be in (0, 1]")
     target = _target(cfg, session, turn, window, cwd)
