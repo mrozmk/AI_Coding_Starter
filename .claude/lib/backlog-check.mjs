@@ -89,6 +89,8 @@ const headerLine = (cols) => `| ${cols.join(' | ')} |`;
 // Backlog
 // ---------------------------------------------------------------------------------------------
 
+const acText = (line) => line.replace(AC_DEFINITION, '').replace(/^\s*[—-]\s*/, '').trim();
+
 /** Parse `.agents/backlog.md` into epics, tasks, acceptance criteria and header fields. */
 export function parseBacklog(md) {
   const tables = parseTables(md);
@@ -133,11 +135,11 @@ export function parseBacklog(md) {
     if (h) { block = h[1]; return; }
     if (/^##\s/.test(line)) { block = null; inSection = AC_SECTION_HEADING.test(line); return; }
     const d = AC_DEFINITION.exec(line);
-    if (d) acs.push({ id: d[1].trim(), task: d[1].split('.')[0], block, inSection, line: idx + 1 });
+    if (d) acs.push({ id: d[1].trim(), task: d[1].split('.')[0], block, inSection, line: idx + 1, text: acText(line) });
   });
 
   const prd = /\*\*Source PRD:\*\*\s*`([^`]+)`/.exec(md);
-  return { legacy: false, epics, tasks, acs, problems, sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null };
+  return { legacy: false, epics, tasks, acs, problems, sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null, raw: md };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -799,11 +801,100 @@ export function replaceRegion(md, name, body) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Helpers for the writers: next free ids + the AC resolver, impact, candidate validation
+// ---------------------------------------------------------------------------------------------
+
+const SPEC_DATE = /(\d{4}-\d{2}-\d{2})-[^/]*\.md$/;
+const maxNum = (ids, re) => Math.max(0, ...ids.map((id) => re.exec(id)).filter(Boolean).map((m) => Number(m[1])));
+
+/** AC definitions of `taskId` inside a spec's `## Acceptance Criteria` section only. */
+function specCriteria(md, taskId) {
+  const out = [];
+  let inSection = false;
+  for (const line of md.split(/\r?\n/)) {
+    if (/^##\s/.test(line)) { inSection = /^##\s+Acceptance criteria\b/i.test(line); continue; }
+    if (!inSection) continue;
+    const d = AC_DEFINITION.exec(line);
+    if (d && d[1].trim().split('.')[0] === taskId) out.push({ id: d[1].trim(), text: acText(line) });
+  }
+  return out;
+}
+
+/**
+ * The AC resolver `brainstorm.md` Step 5 and `qa-verify.md` define, made mechanical: `current` =
+ * the Task-filtered `## Acceptance Criteria` of the approved spec in `Ref` with the newest
+ * `YYYY-MM-DD` filename prefix, else the backlog block; `nextAc` = 1 + the highest AC number in
+ * **any** definition the Task ever had (backlog + every spec in `Ref`, withdrawn included).
+ */
+export function resolveTask(root, backlog, task) {
+  const specs = (task.ref ?? '').split(',').map((s) => cleanId(s)).filter((p) => p.endsWith('.md'))
+    .map((p) => ({ path: p, md: readIfExists(path.resolve(root, p)) })).filter((s) => s.md !== null);
+  const fromBacklog = backlog.acs.filter((a) => a.task === task.id && a.inSection).map((a) => ({ id: a.id, text: a.text }));
+  const approved = specs
+    .filter((s) => /^\*\*Status:\*\*\s*Approved/im.test(s.md) && /^##\s+Acceptance criteria\b/im.test(s.md) && SPEC_DATE.test(s.path))
+    .sort((a, b) => (SPEC_DATE.exec(a.path)[1] < SPEC_DATE.exec(b.path)[1] ? -1 : SPEC_DATE.exec(a.path)[1] > SPEC_DATE.exec(b.path)[1] ? 1 : 0));
+  const owner = approved.length ? approved[approved.length - 1] : null;
+  const fromSpec = owner ? specCriteria(owner.md, task.id) : [];
+  const currentList = owner && fromSpec.length ? fromSpec : fromBacklog;
+  const all = [...fromBacklog, ...specs.flatMap((s) => specCriteria(s.md, task.id))].map((a) => a.id);
+  const k = maxNum(all, /\.AC(\d+)$/);
+  return {
+    current: currentList.map((a) => ({ ...a, withdrawn: /^\(withdrawn\)/i.test(a.text) })),
+    source: owner && fromSpec.length ? owner.path : '.agents/backlog.md',
+    nextAc: `${task.id}.AC${k + 1}`,
+  };
+}
+
+/** Next free register / decision / Epic / Task ids, and every Task's resolved AC. */
+export function nextIds(root, backlog, inventory) {
+  const ids = [...inventory.ids.keys()];
+  const next = Object.fromEntries(['G', 'R', 'NFR', 'D'].map((p) => [p, `${p}-${maxNum(ids, new RegExp(`^${p}-(\\d+)$`)) + 1}`]));
+  next.epic = `E${maxNum(backlog.epics.map((e) => e.id), /^E(\d+)$/) + 1}`;
+  const taskNext = {};
+  for (const e of backlog.epics) taskNext[e.id] = `${e.id}-${maxNum(backlog.tasks.filter((t) => t.epic === e.id).map((t) => t.id), /^E\d+-(\d+)$/) + 1}`;
+  const tasks = Object.fromEntries(backlog.tasks.map((t) => [t.id, resolveTask(root, backlog, t)]));
+  return { next, taskNext, tasks };
+}
+
+/** Why a Task is protected from in-place edits (`/update-backlog`); empty = unprotected. Jira status is not read here. */
+const protection = (t) => [t.status !== 'TODO' && `status ${t.status}`, t.ref && 'ref', t.jira && 'jira key'].filter(Boolean);
+
+/** What a change to each id touches: tracing Tasks (+ protection), transitive dependents, slices, goals, Epic cut lines. */
+export function impactOf(ids, backlog, prdMd) {
+  const byId = new Map(backlog.tasks.map((t) => [t.id, t]));
+  const succ = new Map(backlog.tasks.map((t) => [t.id, []]));
+  for (const t of backlog.tasks) for (const d of t.deps) succ.get(d)?.push(t.id);
+  const dependents = (id) => {
+    const out = new Set();
+    const walk = (x) => { for (const s of succ.get(x) ?? []) if (!out.has(s)) { out.add(s); walk(s); } };
+    walk(id);
+    return [...out].sort(byIdAsc);
+  };
+  const cut = (epic) => new RegExp(`^\\*\\*${epic}\\*\\*\\s*[—-]\\s*(.*)$`, 'm').exec(backlog.raw ?? '')?.[1]?.trim() ?? null;
+  const goalsOf = (id) => {
+    const line = (prdMd ?? '').split(/\r?\n/).find((l) => new RegExp(`^\\s*[-*]\\s+\\*\\*${id}\\*\\*`).test(l));
+    const m = line && /Traces:\s*([^·]+)/.exec(line);
+    return m ? m[1].split(',').map((s) => s.trim()).filter((s) => /^G-\d+$/.test(s)) : [];
+  };
+  return ids.map((id) => {
+    const tasks = TASK_ID.test(id) ? [byId.get(id)].filter(Boolean) : backlog.tasks.filter((t) => t.traces.includes(id));
+    return {
+      id,
+      goals: goalsOf(id),
+      tasks: tasks.map((t) => ({ id: t.id, epic: t.epic, slice: t.slice, jira: t.jira, withdrawn: t.withdrawn, protected: protection(t) })),
+      dependents: [...new Set(tasks.flatMap((t) => dependents(t.id)))].sort(byIdAsc),
+      slices: [...new Set(tasks.map((t) => t.slice))].sort(),
+      epics: [...new Set(tasks.map((t) => t.epic))].sort(byIdAsc).map((e) => ({ id: e, cut: cut(e) })),
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------------------------
 
-const BOOL_FLAGS = new Set(['write', 'json', 'system-only', 'chains', 'help']);
-const VALUE_FLAGS = new Set(['root', 'prd']);
+const BOOL_FLAGS = new Set(['write', 'json', 'system-only', 'chains', 'next-ids', 'help']);
+const VALUE_FLAGS = new Set(['root', 'prd', 'impact', 'candidate']);
 
 /** `{ _: positionals, <flag>: true | value }`, or `null` on an unknown flag / value flag without a value. */
 function parseArgs(argv) {
@@ -820,13 +911,16 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains]
+const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains] [--next-ids] [--impact <ids>] [--candidate <dir>]
   --root         project root (default: cwd); reads .agents/backlog.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml
   --prd          PRD path override (default: the backlog header's **Source PRD:**, else docs/PRD.md)
   --write        regenerate the lanes / storymap marker regions in .agents/backlog.md (only when there are no errors)
   --json         print { errors, warnings, lanes } instead of text
   --system-only  validate docs/map/system.yaml alone (used by /architect)
   --chains       print { chains: { <token>: { ids, members, problems } } } as JSON — the Depends-on order /jira sync numbers "k of n" by (read-only)
+  --next-ids     print { next, taskNext, tasks: { <id>: { current, source, nextAc } } } as JSON — next free ids + the AC resolver (read-only)
+  --impact       print the impact of changing the comma-separated ids (R-/G-/NFR-/AD-/Task) as JSON (read-only)
+  --candidate    validate <dir>/PRD.md + <dir>/backlog.md instead of the repo's (also checks marker regions and renders them in memory); --write refused
 exit 0 = no errors · 1 = errors · 2 = usage / missing input`;
 
 function report(result, { json, lanes = null, notes = [] }) {
@@ -852,9 +946,11 @@ export function main(argv = process.argv.slice(2)) {
     return res.errors.length ? 1 : 0;
   }
 
-  const backlogPath = path.join(root, '.agents', 'backlog.md');
+  if (args.candidate && args.write) { console.error('backlog-check: --write is refused with --candidate (install the candidate first)'); return 2; }
+  const candidate = args.candidate ? path.resolve(root, args.candidate) : null;
+  const backlogPath = candidate ? path.join(candidate, 'backlog.md') : path.join(root, '.agents', 'backlog.md');
   const md = readIfExists(backlogPath);
-  if (md === null || md.trim() === '') { console.error(`backlog-check: .agents/backlog.md not found under ${root}\n${USAGE}`); return 2; }
+  if (md === null || md.trim() === '') { console.error(`backlog-check: ${candidate ? `${backlogPath}` : '.agents/backlog.md'} not found under ${root}\n${USAGE}`); return 2; }
   const parsed = parseBacklog(md);
   if (parsed.legacy) {
     const msg = 'legacy WP backlog — regenerate with /setup:create-backlog to use Task checks';
@@ -867,11 +963,17 @@ export function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  const prdNamed = args.prd ?? parsed.sourcePrd;
+  const prdNamed = candidate ? path.join(candidate, 'PRD.md') : args.prd ?? parsed.sourcePrd;
   const prdPath = prdNamed ?? 'docs/PRD.md';
   if (prdNamed && !fs.existsSync(path.resolve(root, prdNamed))) { console.error(`backlog-check: PRD not found at ${prdNamed} (named by ${args.prd ? '--prd' : 'the backlog header'})`); return 2; }
 
   const inventory = loadInventory(root, prdPath);
+  if (args['next-ids']) { console.log(JSON.stringify(nextIds(root, parsed, inventory))); return 0; }
+  if (args.impact) {
+    const ids = args.impact.split(',').map((s) => s.trim()).filter(Boolean);
+    console.log(JSON.stringify({ impact: impactOf(ids, parsed, readIfExists(path.resolve(root, prdPath))) }));
+    return 0;
+  }
   const warnings = [];
   if (!inventory.prdExists) warnings.push(`PRD not found at ${prdPath} — requirement coverage not checked`);
   if (inventory.architectureDraft) warnings.push('docs/architecture.md is draft — AD ids not loaded');
@@ -882,6 +984,14 @@ export function main(argv = process.argv.slice(2)) {
   const res = checkBacklog({ backlog: parsed, inventory, system });
   res.errors.unshift(...errors);
   res.warnings.unshift(...warnings);
+
+  if (candidate && !res.errors.length) {
+    // A candidate must be installable: --write would otherwise fail only after the swap.
+    try {
+      locateRegions(md, Object.keys(REGIONS));
+      replaceRegion(replaceRegion(md, 'lanes', renderLanes(parsed.tasks)), 'storymap', renderStoryMap(parsed.tasks, inventory.flows) || '_No flows in docs/discovery.md — no story map._');
+    } catch (err) { res.errors.push(`candidate: ${err.message}`); }
+  }
 
   let lanes = null;
   const notes = [];

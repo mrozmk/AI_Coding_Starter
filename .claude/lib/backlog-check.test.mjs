@@ -528,6 +528,66 @@ test('Chain: single member, long chains and withdrawn members warn; rendering ke
   assert.match(renderLanes(goneTasks), /\| line \| E3-1 → E3-2 → E3-3 → E3-4 → E3-5 \| 0 \|/);
 });
 
+// --- writer helpers (ws-05)
+
+const specFor = (status, acs) => `# Design: x\n\n**Date:** 2026-11-01\n**Status:** ${status}\n\n## Acceptance Criteria\n\n${acs}\n\n## Out of Scope\n- **E1-2.AC9** — not a criterion (outside the section)\n`;
+const withSpec = (status, file = '.agents/specs/2026-11-02-place-order.md', acs = '- **E1-2.AC1** — Given a cart, When placed, Then confirmed.\n- **E1-2.AC2** — (withdrawn) superseded by E1-2.AC4\n- **E1-2.AC4** — Given an empty cart, When placed, Then rejected with a reason.') => {
+  const rows = withRow('E1-2', `| E1-2 | E1 | Place order | story | H | 8 | E0-1 | 1 | WS | orders | R-2, FL-1.A2, AD-5 | WIP | — | ${file} |`);
+  const dir = project({ backlog: backlogMd({ rows }) });
+  fs.mkdirSync(path.join(dir, '.agents', 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(dir, file), specFor(status, acs));
+  return dir;
+};
+const runJson = (dir, ...flags) => { const r = run(dir, ...flags); assert.equal(r.code, 0, r.out); return JSON.parse(r.out); };
+
+test('--next-ids: an approved spec in Ref owns the current AC; nextAc spans every definition', () => {
+  const out = runJson(withSpec('Approved'), '--next-ids');
+  const t = out.tasks['E1-2'];
+  assert.equal(t.source, '.agents/specs/2026-11-02-place-order.md');
+  assert.deepEqual(t.current.map((a) => a.id), ['E1-2.AC1', 'E1-2.AC2', 'E1-2.AC4']);
+  assert.equal(t.current[1].withdrawn, true);
+  assert.equal(t.nextAc, 'E1-2.AC5', 'AC9 outside the section does not count');
+  assert.deepEqual(out.next, { G: 'G-3', R: 'R-4', NFR: 'NFR-2', D: 'D-1', epic: 'E3' });
+  assert.equal(out.taskNext.E1, 'E1-4');
+});
+
+test('--next-ids: a Draft spec does not own the current AC, but its ids still count for nextAc', () => {
+  const t = runJson(withSpec('Draft'), '--next-ids').tasks['E1-2'];
+  assert.equal(t.source, '.agents/backlog.md');
+  assert.deepEqual(t.current.map((a) => a.id), ['E1-2.AC1', 'E1-2.AC2']);
+  assert.equal(t.nextAc, 'E1-2.AC5');
+});
+
+test('--impact: tracing Tasks with protection reasons, transitive dependents, slices, goals and cut lines', () => {
+  const dir = withSpec('Approved');
+  const { impact } = runJson(dir, '--impact', 'R-2,E0-1');
+  const r2 = impact.find((x) => x.id === 'R-2');
+  assert.deepEqual(r2.goals, ['G-1']);
+  assert.deepEqual(r2.tasks.map((t) => [t.id, t.protected]), [['E1-2', ['status WIP', 'ref']]]);
+  assert.deepEqual(r2.dependents, ['E1-3', 'E2-1']);
+  assert.deepEqual(r2.slices, ['WS']);
+  assert.deepEqual(r2.epics, [{ id: 'E1', cut: 'appetite: medium · cut first: E1-3' }]);
+  const e01 = impact.find((x) => x.id === 'E0-1');
+  assert.ok(e01.dependents.includes('E2-2') && e01.dependents.includes('E1-3'));
+});
+
+test('--candidate: validates a pair outside the repo, refuses --write, and rejects missing markers', () => {
+  const dir = project();
+  const cand = path.join(dir, '.agents', '.pending-update');
+  fs.mkdirSync(cand, { recursive: true });
+  fs.writeFileSync(path.join(cand, 'PRD.md'), PRD);
+  fs.writeFileSync(path.join(cand, 'backlog.md'), backlogMd());
+  assert.equal(run(dir, '--candidate', cand).code, 0);
+  assert.equal(run(dir, '--candidate', cand, '--write').code, 2);
+  fs.writeFileSync(path.join(cand, 'backlog.md'), backlogMd({ markers: false }));
+  const r = run(dir, '--candidate', cand);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /candidate: .*markers? missing/);
+  fs.writeFileSync(path.join(cand, 'backlog.md'), backlogMd({ rows: withRow('E2-2', '| E2-2 | E2 | Report export | story | M | 4 | E7-7 | 2 | R2 | — | FL-2.A1 | TODO | — | — |') }));
+  assert.match(run(dir, '--candidate', cand).out, /unknown dependency E7-7/);
+  assert.equal(fs.readFileSync(path.join(dir, '.agents', 'backlog.md'), 'utf8'), backlogMd(), 'the repo backlog is never touched');
+});
+
 test('(4) dependency cycle E1-1 → E1-2 → E1-1 is named', () => {
   const rows = withRow('E1-1', '| E1-1 | E1 | Sign in | story | M | 4 | E0-2, E1-2 | 1 | WS | authn | R-1, FL-1.A1 | TODO | — | — |')
     .map((r) => (r.startsWith('| E1-2 |') ? '| E1-2 | E1 | Place order | story | H | 8 | E1-1 | 1 | WS | orders | R-2, FL-1.A2, AD-5 | TODO | — | — |' : r));
