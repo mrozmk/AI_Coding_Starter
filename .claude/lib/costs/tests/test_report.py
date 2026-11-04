@@ -69,7 +69,7 @@ class ReportTest(unittest.TestCase):
             _a("2026-10-06T10:01:00Z", "req_2", session=U, inp=1, cache_write=0)])
         self.env.collect()
         self._register(S, source="team-run", name="x", team="beta", role="qa")
-        self._register(U, source="mail-tt", name="Supervisor")
+        self._register(U, source="mail-role", name="Supervisor")
         self.bind("AB-1", session=S)
         self.bind("AB-1", session=U)
         rows = {r["agent"]: (r["team"], r["role"]) for r in self.build()["rows"]}

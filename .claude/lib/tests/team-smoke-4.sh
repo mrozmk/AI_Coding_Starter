@@ -589,7 +589,7 @@ sed 's/Apple, Cherry/Banana/' "$WORK/review" > "$WORK/review-wrong"
 sed 's/☐ Probe/☒ Probe/; s/2\. \[ \]/2. [✔]/' "$WORK/checkbox" > "$WORK/preselected"
 sed 's/❯ 1\./  1./; s/  2\./❯ 2./' "$WORK/checkbox" > "$WORK/cursor2"
 sed 's/☐ Probe/☒ Probe ☒ Another/' "$WORK/checkbox" > "$WORK/completed-multi"
-sed 's/☐ Retry/←  ☐ Nadzorca  ☐ \/mail-tt  ☐ Koniec etapu  ✔ Submit  →/' \
+sed 's/☐ Retry/←  ☐ Nadzorca  ☐ \/mail-role  ☐ Koniec etapu  ✔ Submit  →/' \
   "$WORK/menu" > "$WORK/multi-question"
 sed 's/4\. \[ \]/4. [✔]/' "$WORK/checkbox" > "$WORK/selected-other"
 sed 's/  2\. \[ \]/  8. [ ]/' "$WORK/checkbox" > "$WORK/gap"

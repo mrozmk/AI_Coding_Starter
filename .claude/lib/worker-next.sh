@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hand the permanent SolTT worker clone from one assignment to the next.
+# Hand the permanent Worker clone from one assignment to the next.
 #
 # Usage: bash .claude/lib/worker-next.sh init <base-ref>
 #        bash .claude/lib/worker-next.sh start <TT-key> <branch> <base-ref> --thread <id>
@@ -139,9 +139,9 @@ cmd_init() {
   echo "clone:    $DIR"
   echo "tip:      $(git -C "$DIR" rev-parse HEAD) (detached at $base)"
   echo "next:     Operator checklist (.agents/reference/worker-clone.md → Provisioning):"
-  echo "  1. give SolTT's Codex host write access to $DIR and $WORKER_ARTIFACTS only"
+  echo "  1. give Worker's Codex host write access to $DIR and $WORKER_ARTIFACTS only"
   echo "     (a narrow writable root or the thread cwd, no global widening)"
-  echo "  2. SolTT runs worker-next.sh status and the build check in the clone: $TEAM_BUILD_CHECK"
+  echo "  2. Worker runs worker-next.sh status and the build check in the clone: $TEAM_BUILD_CHECK"
   echo "  3. only then the first worker-next.sh start"
 }
 
@@ -260,7 +260,7 @@ w_activate() {
   echo "base sha:  $(w_get "$a" base_sha)"
   echo "thread:    $(w_get "$a" thread)"
   echo "artifacts: $art"
-  echo "next:      hand these to SolTT; SolTT runs worker-next.sh check $(w_get "$a" id)"
+  echo "next:      hand these to Worker; Worker runs worker-next.sh check $(w_get "$a" id)"
 }
 
 cmd_status() {

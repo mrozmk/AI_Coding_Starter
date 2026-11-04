@@ -1,6 +1,6 @@
-# Reference: the permanent SolTT worker clone
+# Reference: the permanent Worker clone
 
-The delegated Codex worker SolTT (`AGENTS.md` → **Delegated execution** → **Worker clone**) works
+The delegated Codex worker, Worker (`AGENTS.md` → **Delegated execution** → **Worker clone**) works
 in one permanent clone, handed from one assignment to the next by `.claude/lib/worker-next.sh`.
 It replaces a fresh 1.6–1.8 GB clone in `/private/tmp` per ticket once provisioned and verified.
 Merging the worker alone is not operational readiness: resolve its hardening findings before
@@ -57,7 +57,7 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
 | `start <key> <branch> <base-ref> --thread <id>` | supervisor | main checkout | `op.lock` |
 | `release <id> [--pr <n>] [--abandoned]` | supervisor | main checkout | `op.lock` |
 | `status` | either | clone or main checkout | none, exits 0 |
-| `check <id>` | either (SolTT before each stage) | clone or main checkout | none |
+| `check <id>` | either (Worker before each stage) | clone or main checkout | none |
 
 One assignment covers plan, implementation, both reviews and the gate. The next `start` comes only
 after the supervisor's `release`, after Stage 6 and a settled branch/PR. Before release, the
@@ -163,11 +163,11 @@ script never resets, cleans or deletes branches.
 ## Messages and the lock
 
 - Every assignment message carries the assignment id.
-- SolTT runs `bash .claude/lib/worker-next.sh check <id>` before each stage and before acting on
+- Worker runs `bash .claude/lib/worker-next.sh check <id>` before each stage and before acting on
   an assignment-specific message. A missing/mismatched id blocks that work and is reported to
   the supervisor. Do not apply a late response to the current tree. Unrelated coordination,
   Operator instructions and stop requests remain actionable under their existing authority.
-- SolTT never picks a ticket or a clone; an extra isolated clone needs an explicit supervisor order.
+- Worker never picks a ticket or a clone; an extra isolated clone needs an explicit supervisor order.
 
 ## Freezing base and tree for a phase
 
@@ -182,7 +182,7 @@ script never resets, cleans or deletes branches.
 - `check` verifies assignment identity, branch and base ancestry and prints hashes. It does not
   by itself prove that the reviewed tree stayed unchanged or that a review/gate completed.
 - A base or scope change after plan approval returns to the supervisor.
-- On a new assignment SolTT runs `/prime` in the clone first; `check` verifies the contract.
+- On a new assignment Worker runs `/prime` in the clone first; `check` verifies the contract.
 
 ## Artifacts
 

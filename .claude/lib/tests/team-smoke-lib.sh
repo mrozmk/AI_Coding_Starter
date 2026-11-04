@@ -42,7 +42,7 @@ commit_file() {  # commit_file <path> <content>
   git -C "$CLONE" add "$1" && git -C "$CLONE" commit --quiet -m "add $1"
 }
 pr_json() {  # pr_json <isDraft> <source sha> [mergeStatus] [target ref] [target sha]
-  jq -n --argjson d "$1" --arg s "$2" --arg ms "${3:-succeeded}" --arg t "${4:-refs/heads/develop-netcore7}" \
+  jq -n --argjson d "$1" --arg s "$2" --arg ms "${3:-succeeded}" --arg t "${4:-refs/heads/develop}" \
     --arg ts "${5:-$BASE}" \
     '{pullRequestId: 8371, status: "active", isDraft: $d, mergeStatus: $ms,
       repository: {name: "fixture"}, sourceRefName: "refs/heads/feature/AB-790-x", targetRefName: $t,
@@ -56,7 +56,7 @@ record() { (cd "$CLONE" && $REC "$@") | tail -n 1; }
 
 # Run fixtures for parts 2 and 3; they use the part's BR, TGT0, RUN_ID and RD.
 pr_w() {  # pr_w <source sha> [target sha] — the PR of the clone's current branch
-  pr_json false "$1" succeeded refs/heads/develop-netcore7 "${2:-$TGT0}"
+  pr_json false "$1" succeeded refs/heads/develop "${2:-$TGT0}"
   pr_set --arg b "refs/heads/$BR" '.sourceRefName = $b'
 }
 mkrec() {  # mkrec <role> <output sha> [verdict] — an accepted record in this run
@@ -123,7 +123,7 @@ smoke_gitconfig() {
   name = smoke
   email = smoke@example.invalid
 [init]
-  defaultBranch = develop-netcore7
+  defaultBranch = develop
 [advice]
   detachedHead = false
 [url "$WORK/origin.git"]
@@ -416,7 +416,7 @@ smoke_gh_commit() {  # smoke_gh_commit <branch> <tag> — one new commit on <bra
   local b="$1" t="$2" start="origin/$1"
   smoke_gh_wc "$t"
   git -C "$SGW" rev-parse -q --verify "$start" >/dev/null 2>&1 \
-    || start="origin/${SMOKE_TRUNK:-develop-netcore7}"
+    || start="origin/${SMOKE_TRUNK:-develop}"
   git -C "$SGW" checkout --quiet -B "$b" "$start"
   printf '%s\n' "$t" > "$SGW/$t.txt"
   git -C "$SGW" add "$t.txt" && git -C "$SGW" commit --quiet -m "$t"
@@ -469,7 +469,7 @@ smoke_profile() {
   jq -n '{schema: 1, teams: {
       tracker: "jira",
       pr_provider: "azure-devops",
-      trunk: "develop-netcore7",
+      trunk: "develop",
       branch_types: ["feature", "bugfix", "hotfix", "chore", "refactor"],
       required_tools: ["git", "jq", "tmux", "claude", "codex", "az", "dotnet"],
       seed_files: [".env", ".claude/settings.local.json", ".agents/memory/user-profile.md"],
@@ -531,10 +531,10 @@ smoke_repos() {
   git -C "$SEED" init --quiet
   git -C "$SEED" add -A && git -C "$SEED" commit --quiet -m seed
   git -C "$SEED" remote add origin "$ADO_URL"
-  git -C "$SEED" push --quiet origin develop-netcore7
+  git -C "$SEED" push --quiet origin develop
   git -C "$SEED" switch --quiet -c rc && git -C "$SEED" rm --quiet .claude/lib/team-record.sh
   git -C "$SEED" commit --quiet -m "no harness" && git -C "$SEED" push --quiet origin rc
-  git -C "$SEED" push --quiet origin develop-netcore7:refs/heads/feature/AB-791-pushed
+  git -C "$SEED" push --quiet origin develop:refs/heads/feature/AB-791-pushed
 
   git clone --quiet "$ADO_URL" "$WORK/main"
   MAIN="$WORK/main"
@@ -547,7 +547,7 @@ smoke_repos() {
 
 smoke_team() {  # smoke_team <ticket> <branch>; build a fresh team via the real producer.
   chmod 600 "$MAIN/.env"
-  run "$MAIN" $NEW alfa "$1" "$2" origin/develop-netcore7
+  run "$MAIN" $NEW alfa "$1" "$2" origin/develop
   [ "$RC" = 0 ] || fail "fixture team creation"
   CLONE="$WORK/main-alfa"
   TD="$CLONE/.agents/team"

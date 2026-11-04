@@ -31,7 +31,7 @@ echo "team-smoke-12: (190) static OK"
 
 # ---- fixture ----------------------------------------------------------------------------------
 smoke_team AB-1248 chore/AB-1248-x
-BR=chore/AB-1248-x; LINE=develop-netcore7
+BR=chore/AB-1248-x; LINE=develop
 RUN_ID=alfa-20261025-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 CREAL="$(cd "$CLONE" && pwd -P)"
 ANCHOR="$MAIN/.agents/team/anchors/alfa.json"
@@ -39,8 +39,8 @@ PC="python3 -I $SRC/.claude/lib/team_prompt_check.py"
 Q="bash .claude/lib/team-question.sh"
 RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"
 export STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane"
-printf '%s\n' '**Integration:** `develop-netcore7`' '**Maintenance:** `rc/rc` — old' '**Retired:** `feature/old`' \
-  '**Protected:** `develop-netcore7`, `feature/old`, `rc/rc`, `develop`, `master`' > "$MAIN/CLAUDE.md"
+printf '%s\n' '**Integration:** `develop`' '**Maintenance:** `rc/rc` — old' '**Retired:** `feature/old`' \
+  '**Protected:** `develop`, `feature/old`, `rc/rc`, `legacy`, `master`' > "$MAIN/CLAUDE.md"
 SETTINGS='{"permissions": {"allow": ["Bash(bash -n:*)"], "ask": ["Bash(git merge --no-ff*)", '
 SETTINGS="$SETTINGS"'"Bash(bash scripts/azure/monitoring/x-diagnose.sh*)"], '
 SETTINGS="$SETTINGS"'"deny": ["Bash(git rebase*)"]}, "hooks": {}}'
@@ -114,7 +114,7 @@ no_class() {  # no_class <label> [text] — refused, so the sender answers 7 (Op
 SET="$CREAL/.claude/settings.json"
 # ---- (191) runner anchor ----------------------------------------------------------------------
 jq -e --arg b "$BR" --arg s "$BASE" '.ticket == "AB-1248" and .branch == $b
-  and .line == "develop-netcore7" and .base_sha == $s and (has("run") | not)' "$ANCHOR" \
+  and .line == "develop" and .base_sha == $s and (has("run") | not)' "$ANCHOR" \
   >/dev/null || fail "team-new wrote no anchor"
 SID=sid-1248; session coder 1 "$BASE" "$SID"; T="$(transcript "$SID")"
 anchor team_anchor_launch "$MAIN" alfa "$CLONE" "$RUN_ID" coder 1 "$SID"
@@ -167,7 +167,7 @@ jq '.line = "rc/rc"' "$WORK/team.json.bak" > "$TD/team.json"
 bashp "$MERGE"; no_class "clone team.json line forged" "differs from the runner anchor"
 jq '.line = "rc/rc" | .ticket = "AB-1"' "$WORK/team.json.bak" > "$TD/team.json"
 anchor team_anchor_launch "$MAIN" alfa "$CLONE" "$RUN_ID" qa 1 "$SID"
-jq -e '.mismatch == true and .ticket == "AB-1248" and .line == "develop-netcore7"' "$ANCHOR" \
+jq -e '.mismatch == true and .ticket == "AB-1248" and .line == "develop"' "$ANCHOR" \
   >/dev/null || fail "a launch rewrote the anchor from a forged team.json"
 cp "$WORK/team.json.bak" "$TD/team.json"
 bashp "$MERGE"; no_class "anchor mismatch is sticky" "differs from the runner anchor"

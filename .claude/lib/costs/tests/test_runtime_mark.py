@@ -68,7 +68,7 @@ class RuntimeMarkTest(unittest.TestCase):
             "parent_session": ENV_SID, "cwd": "/work/clone"})
 
     def test_bad_optional_field_dropped(self):
-        self.mark("session", "--provider", "claude", "--session", SID, "--source", "mail-tt",
+        self.mark("session", "--provider", "claude", "--session", SID, "--source", "mail-role",
                   "--ticket", "tt-1", "--name", "a b")
         [line] = self.lines()
         self.assertNotIn("ticket", line)
@@ -76,7 +76,7 @@ class RuntimeMarkTest(unittest.TestCase):
 
     def test_bad_session_skips_line(self):
         proc = self.mark("session", "--provider", "claude", "--session", "not-a-uuid",
-                         "--source", "mail-tt")
+                         "--source", "mail-role")
         self.assertEqual(self.lines(), [])
         self.assertIn("runtime-mark:", proc.stderr)
 
@@ -116,7 +116,7 @@ class RuntimeMarkTest(unittest.TestCase):
     def test_missing_home_is_noop(self):
         missing = os.path.join(self.home, "nope")
         self.run_sh(MARK, ("session", "--provider", "claude", "--session", SID, "--source",
-                           "mail-tt"), AGENT_COSTS_HOME=missing)
+                           "mail-role"), AGENT_COSTS_HOME=missing)
         self.assertFalse(os.path.exists(missing))
 
     def test_bare_stage_end_is_noop(self):

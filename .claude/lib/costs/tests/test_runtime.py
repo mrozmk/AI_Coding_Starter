@@ -13,7 +13,7 @@ S2 = "0a1b2c3d-0000-4000-8000-000000000002"
 AT = "2026-10-06T10:00:00.123Z"
 
 
-def reg(session=S1, source="mail-tt", name="Supervisor", provider="claude", **extra):
+def reg(session=S1, source="mail-role", name="Supervisor", provider="claude", **extra):
     return dict({"v": 1, "type": "session", "provider": provider, "session": session,
                  "source": source, "name": name, "at": AT}, **extra)
 
@@ -70,7 +70,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual((self.count("registrations"), self.count("stage_marks")), (0, 1))
 
     def test_resolve_name(self):
-        self.ingest([reg(source="start-team"), reg(source="mail-tt"),
+        self.ingest([reg(source="start-team"), reg(source="mail-role"),
                      reg(session=S2, name="Reviewer"), reg(session=S2, name="Twin", source="x")])
         self.assertEqual(runtime.resolve_name(self.conn, "Supervisor"), S1)
         self.assertEqual(runtime.resolve_name(self.conn, S2), S2)

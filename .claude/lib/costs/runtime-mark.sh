@@ -3,7 +3,7 @@
 #
 # Usage:
 #   runtime-mark.sh session --provider claude|codex [--session ID]
-#                   --source team-run|start-team|mail-tt|codex-bg [--name N] [--ticket T]
+#                   --source team-run|start-team|mail-role|codex-bg [--name N] [--ticket T]
 #                   [--team T] [--role R] [--run R] [--attempt N] [--parent ID] [--cwd DIR]
 #                   [--team-json PATH]
 #   runtime-mark.sh stage start|end NAME --session ID --source hook-skill|hook-prompt|skill-end
@@ -85,7 +85,7 @@ elif [ "$type" = session ]; then
   session="$(lower "$session")"
   [[ "$session" =~ $UUID_RE ]] || skip "session needs a uuid (--session or CLAUDE_CODE_SESSION_ID)"
   case "$provider" in claude|codex) ;; *) skip "bad provider" ;; esac
-  case "$source" in team-run|start-team|mail-tt|codex-bg) ;; *) skip "bad session source" ;; esac
+  case "$source" in team-run|start-team|mail-role|codex-bg) ;; *) skip "bad session source" ;; esac
   if [ -n "$team_json" ] && [ -f "$team_json" ]; then
     IFS=$'\x1f' read -r j_ticket j_team j_role j_run j_attempt < <(jq -r \
       '[(if (.cost_key // "") == "" then .ticket else .cost_key end), .team, .role, .run, .attempt] | map(. // "" | tostring) | join("\u001f")' \

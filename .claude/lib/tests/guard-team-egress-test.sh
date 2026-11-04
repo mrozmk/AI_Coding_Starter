@@ -27,8 +27,8 @@ check() { # <expected: ask|none> <description> <hook output>
   if [ "$got" = "$1" ]; then pass=$((pass + 1)); echo "PASS $2"
   else echo "FAIL $2 (got $got, expected $1)"; fail=1; fi
 }
-hook() { # <payload> [project dir] — team mode via TT_TEAM
-  printf '%s' "$1" | (cd /tmp && TT_TEAM=t CLAUDE_PROJECT_DIR="${2:-$D/proj}" bash "$H")
+hook() { # <payload> [project dir] — team mode via TEAM_RUN_TEAM
+  printf '%s' "$1" | (cd /tmp && TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="${2:-$D/proj}" bash "$H")
 }
 fetch() { jq -nc --arg u "$1" '{tool_name:"WebFetch",tool_input:{url:$u,prompt:"x"}}'; }
 bash_cmd() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
@@ -101,17 +101,17 @@ jq -e '.permissions.deny | index("Bash(*curl*-X *)")' .claude/settings.json >/de
   || { echo "FAIL deny rule Bash(*curl*-X *) missing"; fail=1; }
 # --- scope and failure modes
 check none "outside team mode: no output" "$(fetch https://evil.example/x \
-  | (cd /tmp && env -u TT_TEAM CLAUDE_PROJECT_DIR="$D/noteam" bash "$H"))"
+  | (cd /tmp && env -u TEAM_RUN_TEAM CLAUDE_PROJECT_DIR="$D/noteam" bash "$H"))"
 check ask  "session.json alone activates" "$(mkdir -p "$D/noteam/.agents/team" \
   && echo '{}' > "$D/noteam/.agents/team/session.json" && fetch https://evil.example/x \
-  | (cd /tmp && env -u TT_TEAM CLAUDE_PROJECT_DIR="$D/noteam" bash "$H"))"
+  | (cd /tmp && env -u TEAM_RUN_TEAM CLAUDE_PROJECT_DIR="$D/noteam" bash "$H"))"
 check ask  "malformed payload" "$(hook 'not json')"
 check none "Read payload" "$(hook '{"tool_name":"Read","tool_input":{"file_path":"/x"}}')"
 check none "Edit payload" "$(hook '{"tool_name":"Edit","tool_input":{"file_path":"/x"}}')"
 check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \
-  | (cd /tmp && PATH="$D/bin" TT_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" /bin/bash "$H"))"
+  | (cd /tmp && PATH="$D/bin" TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" /bin/bash "$H"))"
 check ask  "classifier crash" "$(fetch https://developer.mozilla.org/x \
-  | (cd /tmp && TT_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" bash "$D/broken/guard-team-egress.sh"))"
+  | (cd /tmp && TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" bash "$D/broken/guard-team-egress.sh"))"
 n=$(jq '[.hooks.PreToolUse[] | select(.matcher == "WebFetch" or .matcher == "Bash") | .hooks[]
   | select(.command | contains("guard-team-egress.sh")) | select(.onFailure == "block")
   | select(has("async") | not)] | length' .claude/settings.json)

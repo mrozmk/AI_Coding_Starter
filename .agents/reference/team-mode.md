@@ -26,7 +26,7 @@ Team mode ⇔ `.agents/team/session.json` exists; role: `jq -r .role .agents/tea
 
 Written only by `team-run.sh` before a launch; removed by it when the role's record is accepted.
 `stop` keeps it (it is the recovery input of the next run). The runner also sets
-`TT_TEAM`, `TT_TEAM_ROLE`, `TT_TEAM_RUN`, `TT_TEAM_ATTEMPT` on the tmux session — informational;
+`TEAM_RUN_TEAM`, `TEAM_RUN_ROLE`, `TEAM_RUN_ID`, `TEAM_RUN_ATTEMPT` on the tmux session — informational;
 `session.json` is authoritative because hook processes are not documented to inherit the session
 environment.
 

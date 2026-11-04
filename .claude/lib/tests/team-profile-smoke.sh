@@ -37,12 +37,12 @@ peek '.' 'printf "%s\n" "$TEAM_TRACKER|$TEAM_KEY_REGEX|$TEAM_PR_PROVIDER|$TEAM_T
   "${TEAM_BRANCH_TYPES[*]}|${TEAM_REQUIRED_TOOLS[*]}|${TEAM_SEED_FILES[*]}" \
   "$TEAM_ENV_REQUIRED|$TEAM_BUILD_CHECK|$TEAM_TEST_GATE|$TEAM_GATES|[$TEAM_CLONE_PARENT]" \
   "$(team_clone_dir alfa)|$(team_base_ref)"'
-expect 0 'jira|^[A-Z]+-[0-9]+$|azure-devops|develop-netcore7' "TT profile scalars"
+expect 0 'jira|^[A-Z]+-[0-9]+$|azure-devops|develop' "TT profile scalars"
 has 'feature bugfix hotfix chore refactor|git jq tmux claude codex az dotnet|.env .claude/settings.local.json .agents/memory/user-profile.md' \
   "$WORK/out" || fail "TT profile lists"
 has 'true|dotnet build AcmeShop2.API.sln|.claude/lib/test-gate.sh|auto|[]' "$WORK/out" \
   || fail "TT profile gates (and no clone_parent)"
-has "$WORK/main-alfa|origin/develop-netcore7" "$WORK/out" || fail "TT clone dir is a repo sibling"
+has "$WORK/main-alfa|origin/develop" "$WORK/out" || fail "TT clone dir is a repo sibling"
 
 # ---- (2) a DTS-like profile: github keys, clone_parent with `~` and a space ---------------------
 peek "$DTS" 'printf "%s\n" "$TEAM_TRACKER|$TEAM_KEY_REGEX|$TEAM_PR_PROVIDER|$TEAM_TRUNK|$TEAM_GATES" \
@@ -132,14 +132,14 @@ chmod 600 "$MAIN/.env"
 export SMOKE_ORIGIN=github
 setprofile '.teams.pr_provider = "github" | .teams.github = {repo: "acme/other"}'
 : > "$STUB_LOG"
-run "$MAIN" $NEW delta AB-794 feature/AB-794-x origin/develop-netcore7
+run "$MAIN" $NEW delta AB-794 feature/AB-794-x origin/develop
 expect 2 "is not teams.github.repo acme/other" "team-new refused a mismatched github repo"
 [ ! -e "$WORK/main-delta" ] || fail "a refused team-new created the clone"
 ! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
 unset SMOKE_ORIGIN
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 2 "reserved (no merge path)" "team-new refused before side effects"
 [ ! -e "$WORK/main-alfa" ] || fail "a refused team-new created the clone"
 ! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
@@ -153,7 +153,7 @@ arch_count() { { ls -1 "$TD/archive" 2>/dev/null || true; } | wc -l | tr -d ' ';
 ARCH0="$(arch_count)"
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
-run "$MAIN" $NEXT alfa AB-791 chore/AB-791-x origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-791 chore/AB-791-x origin/develop
 expect 2 "reserved (no merge path)" "team-next refused before side effects"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR0" ] || fail "refused team-next switched the branch"
 [ "$(jq -r .base_sha "$TD/team.json")" = "$SHA0" ] || fail "refused team-next rewrote team.json"
@@ -165,7 +165,7 @@ PAR="$WORK/teams dir"
 CUSTOM=".teams.clone_parent = \"$PAR\""
 mkdir -p "$PAR"
 setprofile "$CUSTOM"
-run "$MAIN" $NEW gamma AB-792 chore/AB-792-x origin/develop-netcore7
+run "$MAIN" $NEW gamma AB-792 chore/AB-792-x origin/develop
 expect 0 "next:" "team-new into a clone_parent with a space"
 GC="$PAR/main-gamma"
 [ -f "$GC/.agents/team/team.json" ] || fail "clone_parent ignored: no clone at $GC"
@@ -206,7 +206,7 @@ expect 0 "monitor-ok: $GC" "/monitor preflight accepts a custom clone_parent"
 
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
-run "$MAIN" $WORKER start AB-793 feature/AB-793-x origin/develop-netcore7 --thread th-1
+run "$MAIN" $WORKER start AB-793 feature/AB-793-x origin/develop --thread th-1
 expect 2 "reserved (no merge path)" "worker-next start refused before side effects"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker start created the -sol clone"
 [ ! -e "$WORK/main-sol/.git/team-worker/active" ] || fail "a refused worker start published state"
@@ -215,9 +215,9 @@ expect 2 "reserved (no merge path)" "worker-next start refused before side effec
 # ---- (8) the /start-team base-ref follows the profile trunk -------------------------------------
 peek '.teams.trunk = "main"' 'team_profile_require_supported; team_base_ref'
 expect 0 "origin/main" "base-ref for trunk=main on a supported provider"
-! grep -q "develop-netcore7" "$SRC/.claude/commands/start-team.md" \
+! grep -qE "(origin/|refs/heads/)develop\b" "$SRC/.claude/commands/start-team.md" \
   || fail "start-team.md still hardcodes a trunk"
-! grep -rqE "develop-netcore7|AcmeShop2|codex-acmeshop" "$SRC"/.claude/lib/team-*.sh \
+! grep -rqE "(origin/|refs/heads/)develop\b|AcmeShop2|codex-acmeshop" "$SRC"/.claude/lib/team-*.sh \
   "$SRC"/.claude/lib/worker-*.sh || fail "lib still carries TT values"
 
 # ---- (9) QA/CLI prompts render the gates from the profile ---------------------------------------
@@ -266,7 +266,7 @@ expect 2 "reserved (no merge path)" "merge-check refused before fetch/ADO/build"
 ! grep -q "^az " "$STUB_LOG" || fail "a refused merge-check called az"
 [ ! -e "$TD/merge-check-build.log" ] || fail "a refused merge-check ran the build"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR1" ] || fail "merge-check moved the clone"
-run "$MAIN" $WORKER init origin/develop-netcore7
+run "$MAIN" $WORKER init origin/develop
 expect 2 "reserved (no merge path)" "worker init refused before the first fetch"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker init created the clone"
 
@@ -295,7 +295,7 @@ for bad in '{team}-x' 'a/{team}' 'nope' '{team}{team}'; do
 done
 # Consumers: a clone created under the template is found by the resolver, team-watch and /monitor.
 setprofile "$CN"
-run "$MAIN" $NEW zeta AB-795 chore/AB-795-x origin/develop-netcore7
+run "$MAIN" $NEW zeta AB-795 chore/AB-795-x origin/develop
 expect 0 "next:" "team-new honours clone_name"
 ZC="$PAR2/DTS-Zeta"
 [ -f "$ZC/.agents/team/team.json" ] || fail "clone_name ignored: no clone at $ZC"
@@ -307,7 +307,7 @@ expect 0 "WATCH zeta" "team-watch finds a {Team} clone"
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
   c="$(team_clone_dir zeta)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
 expect 0 "monitor-ok: $ZC" "/monitor preflight accepts a clone_name template"
-run "$MAIN" $NEXT zeta AB-796 chore/AB-796-x origin/develop-netcore7
+run "$MAIN" $NEXT zeta AB-796 chore/AB-796-x origin/develop
 expect 0 "clone:    $ZC" "team-next switches the {Team} clone it resolved"
 
 echo "team-profile-smoke: OK"

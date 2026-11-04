@@ -13,7 +13,7 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 NAME_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 RUN_RE = re.compile(r"^[a-z0-9]+-[0-9]{8}-[0-9]{6}$")
 TOOL_USE_RE = re.compile(r"^[A-Za-z0-9_]{1,128}$")
-SOURCES = ("team-run", "start-team", "mail-tt", "codex-bg")
+SOURCES = ("team-run", "start-team", "mail-role", "codex-bg")
 MARK_SOURCES = ("hook-skill", "hook-prompt", "skill-end")
 PROVIDERS = ("claude", "codex")
 

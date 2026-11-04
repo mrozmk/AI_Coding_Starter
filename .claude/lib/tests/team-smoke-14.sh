@@ -134,9 +134,9 @@ filep "Overwrite file" "$MREAL/x/notes.md" overwrite "  1  keep" "  2 -old line"
 chk 1 "refuse (outside clone)" "(c) overwrite outside the clone"
 # The class alias: an allow-only settings.json overwrite reaches the existing Write class.
 # A filled Branch model (the template's own CLAUDE.md leaves it to /setup:create-CLAUDE_MD).
-printf '%s\n' '**Integration:** `develop-netcore7`' '**Maintenance:** `rc/rc` — an old line' \
+printf '%s\n' '**Integration:** `develop`' '**Maintenance:** `rc/rc` — an old line' \
   '**Retired:** `feature/old` — locked' \
-  '**Protected:** `develop-netcore7`, `feature/old`, `rc/rc`, `develop`, `master`' > "$MAIN/CLAUDE.md"
+  '**Protected:** `develop`, `feature/old`, `rc/rc`, `legacy`, `master`' > "$MAIN/CLAUDE.md"
 printf 'echo hi\n' > "$CLONE/.claude/lib/x.sh"
 SET="$CREAL/.claude/settings.json"
 NEWSET="$(jq '.permissions.allow += ["Bash(bash -n .claude/lib/x.sh)"]' "$SET")"

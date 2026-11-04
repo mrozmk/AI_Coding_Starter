@@ -8,23 +8,23 @@ smoke_init
 run "$MAIN" $NEW alfa AB-790
 expect 2 "Usage:" "team-new argc"
 chmod 644 "$MAIN/.env"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 1 "chmod 600 .env" "team-new .env 644"
 chmod 600 "$MAIN/.env"
 run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/rc
 expect 1 "base has no team harness" "team-new base without harness"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 0 "next:" "team-new happy path"
 CLONE="$WORK/main-alfa"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-790-x ] || fail "clone branch"
-jq -e '.base_sha and .line == "develop-netcore7" and .ticket == "AB-790"' "$CLONE/.agents/team/team.json" >/dev/null \
+jq -e '.base_sha and .line == "develop" and .ticket == "AB-790"' "$CLONE/.agents/team/team.json" >/dev/null \
   || fail "team.json fields"
 [ -f "$CLONE/.env" ] && [ ! -L "$CLONE/.env" ] && [ "$(stat -f %Lp "$CLONE/.env")" = 600 ] || fail ".env copy"
-run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 1 "already exists" "team-new existing dir"
-run "$MAIN" $NEW beta AB-790 feature/AB-790-x origin/develop-netcore7
+run "$MAIN" $NEW beta AB-790 feature/AB-790-x origin/develop
 expect 1 "already used by team alfa" "team-new branch of another team"
-run "$MAIN" $NEW beta AB-791 feature/AB-791-pushed origin/develop-netcore7
+run "$MAIN" $NEW beta AB-791 feature/AB-791-pushed origin/develop
 expect 1 "already exists on origin" "team-new pushed branch"
 
 # ---- (4) team-record -------------------------------------------------------------------------------
@@ -187,7 +187,7 @@ jq '.role = "wrapup"' "$QA_REC" > "$WR_REC" && touch "$WR_REC.accepted"
 pr_json false "$C1" queued
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa
 expect 3 "ADO merge not recalculated yet" "merge-check queued"
-pr_json false "$C1" succeeded refs/heads/develop-netcore7 0000000000000000000000000000000000000000
+pr_json false "$C1" succeeded refs/heads/develop 0000000000000000000000000000000000000000
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa
 expect 3 "stale merge — target moved" "merge-check stale target"
 git -C "$CLONE" push --quiet origin "$C1:refs/pull/8371/merge"
@@ -350,14 +350,14 @@ has "new-session" "$STUB_LOG" && fail "cancelled run launched a session"
 # ---- (10) team-next: reuse the clone for the next ticket -------------------------------------------
 NEXT="bash .claude/lib/team-next.sh"
 reset_runner
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "still open (session.json)" "next while a stage is open"
 rm -f "$TD/session.json"; mkdir "$TD/lock"
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "runner lock present" "next while the runner holds the lock"
 rmdir "$TD/lock"; echo '{}' > "$TD/roles.override.json"
 pr_json false "$C1"
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "previous PR #8371 of AB-790 is active" "next with an open PR"
 next_state() {  # the clone's ticket state as one comparable text
   local f
@@ -372,28 +372,28 @@ next_untouched() {  # next_untouched <label> — state as at the last next_state
 }
 next_state > "$WORK/next.before"
 pr_set '.status = "completed" | .lastMergeSourceCommit.commitId = "0001"'
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "merged source" "next with commits after the merged PR source"
 next_untouched "tip mismatch"
 TIP=$(git -C "$CLONE" rev-parse refs/heads/feature/AB-790-x)
 pr_set ".status = \"completed\" | .lastMergeSourceCommit.commitId = \"$TIP\""
 STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=fetch \
-  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "git fetch origin failed in" "next with a failing clone fetch"
 next_untouched "fetch failure"
 STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=switch \
-  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 128 "forced switch failure" "next with a failing switch"
 next_untouched "switch failure"
 ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-next >/dev/null \
   || fail "switch failure left the new branch"
 git -C "$CLONE" branch feature/AB-792-next
 next_state > "$WORK/next.before"
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "already exists in" "next onto an existing local branch"
 next_untouched "existing local branch"
 git -C "$CLONE" branch --quiet -D feature/AB-792-next
-run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 0 "was AB-790" "next after the PR completed"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-792-next ] || fail "next did not switch branch"
 ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-790-x >/dev/null || fail "old branch kept"
@@ -402,17 +402,17 @@ jq -e '.ticket == "AB-792" and .branch == "feature/AB-792-next"' "$TD/team.json"
 ls -d "$TD"/archive/AB-790-*/runs "$TD"/archive/AB-790-*/roles.override.json >/dev/null 2>&1 || fail "archive lacks the previous runs or roles override"
 [ "$(stat -f %Lp "$CLONE/.env")" = 600 ] || fail "next did not re-seed .env"
 commit_file wip.txt wip
-run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop
 expect 1 "has commits on feature/AB-792-next but no PR" "next over unfinished work without a PR"
 NEXT_RUN=alfa-20261002-000001; mkdir -p "$TD/runs/$NEXT_RUN"; echo "$NEXT_RUN" > "$TD/run"
 jq -n --arg run "$NEXT_RUN" '{team: "alfa", ticket: "AB-792", run: $run, role: "coder",
   attempt: 1, seq: 1, verdict: "done", pr_id: 8371}' > "$TD/runs/$NEXT_RUN/coder-1-1.json"
 pr_set '.status = "abandoned"'
 next_state > "$WORK/next.before"
-run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop
 expect 1 "is abandoned" "next after an abandoned PR without --abandoned"
 next_untouched "abandoned refusal"
-run "$MAIN" $NEXT --abandoned alfa AB-793 feature/AB-793-other origin/develop-netcore7
+run "$MAIN" $NEXT --abandoned alfa AB-793 feature/AB-793-other origin/develop
 expect 0 "kept:" "next --abandoned"
 [ "$(git -C "$CLONE" branch --show-current)" = feature/AB-793-other ] \
   || fail "--abandoned did not switch"

@@ -45,7 +45,7 @@ qa_report() {  # qa_report <run dir> <attempt> [skip key]
 team_dir() {  # team_dir <dir> <run> <mode>
   mkdir -p "$1/runs/$2"
   jq -n --arg m "$3" '{team: "alfa", ticket: "AB-9", branch: "chore/AB-9-x",
-    line: "develop-netcore7", base_sha: "b", mode: $m}' > "$1/team.json"
+    line: "develop", base_sha: "b", mode: $m}' > "$1/team.json"
   echo "$2" > "$1/run"
 }
 clean_run() {  # clean_run <team dir> <run> [plan rev] — quick, four roles accepted

@@ -19,7 +19,8 @@ import sys
 
 root, self_path = sys.argv[1], os.path.realpath(sys.argv[2])
 DENY = re.compile(r"TakeTask|taketask|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMonitoring"
-                  r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|\bTT-[0-9]+")
+                  r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|\bTT-[0-9]+"
+                  r"|SolTT|develop-netcore7|mail-tt|TT_TEAM")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
 SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".agents/reference",
          "tools")
@@ -61,5 +62,9 @@ printf 'role=OpusTeam\n' > "$T/.claude/lib/x.sh"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a planted leak passed"; exit 1; }
 printf 'ticket AB-1 TT-12\n' > "$T/.claude/lib/x.sh"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a ticket key passed"; exit 1; }
+for leak in 'worker SolTT' 'git switch develop-netcore7' '/mail-tt' 'TT_TEAM_ROLE=coder'; do
+  printf '%s\n' "$leak" > "$T/.claude/lib/x.sh"
+  ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — '$leak' passed"; exit 1; }
+done
 
 scan "$ROOT"

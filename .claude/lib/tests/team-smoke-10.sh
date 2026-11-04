@@ -4,7 +4,7 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
 chmod 600 "$MAIN/.env"
-run "$MAIN" $NEW alfa AB-1260 chore/AB-1260-x origin/develop-netcore7 quick
+run "$MAIN" $NEW alfa AB-1260 chore/AB-1260-x origin/develop quick
 expect 0 "" "fixture quick team creation"
 CLONE="$WORK/main-alfa"; TD="$CLONE/.agents/team"; BASE=$(git -C "$CLONE" rev-parse HEAD)
 BR=chore/AB-1260-x
@@ -100,7 +100,7 @@ echo "team-smoke-10: (d) brainstorm launch OK"
 # ---- (e) team-next to another ticket works afterwards -------------------------------------------
 rm -f "$TD/session.json"
 run "$MAIN" perl -e 'alarm 30; exec @ARGV' \
-  bash .claude/lib/team-next.sh alfa AB-1261 chore/AB-1261-y origin/develop-netcore7
+  bash .claude/lib/team-next.sh alfa AB-1261 chore/AB-1261-y origin/develop
 expect 0 "was AB-1260" "team-next after remode"
 echo "team-smoke-10: (e) team-next OK"
 

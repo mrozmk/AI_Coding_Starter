@@ -5,7 +5,7 @@ set -euo pipefail
 smoke_init
 smoke_team AB-793 feature/AB-793-modes
 BR="$(jq -r .branch "$TD/team.json")"
-TGT0="$(git -C "$CLONE" ls-remote origin refs/heads/develop-netcore7 | cut -f1)"
+TGT0="$(git -C "$CLONE" ls-remote origin refs/heads/develop | cut -f1)"
 
 setmode() {  # setmode <mode> | setmode -  (- = a team.json written before AB-790)
   if [ "$1" = - ]; then jq 'del(.mode)' "$TD/team.json" > "$WORK/tj"
@@ -30,17 +30,17 @@ expect 1 "unknown mode" "status refuses an unknown mode"
 setmode brainstorm
 
 # ---- (20) team-new / team-next mode argument ----------------------------------------------------
-git -C "$SEED" switch --quiet -c noprompts develop-netcore7
+git -C "$SEED" switch --quiet -c noprompts develop
 git -C "$SEED" rm --quiet .claude/team/prompts/planner-quick.md .claude/team/prompts/cli.md
 git -C "$SEED" commit --quiet -m "no mode prompts" && git -C "$SEED" push --quiet origin noprompts
-run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/develop-netcore7 bogus
+run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/develop bogus
 expect 1 "mode 'bogus' must be one of" "team-new rejects a bad mode"
 run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/noprompts quick
 expect 1 "has no planner-quick.md" "team-new quick needs a base that has modes"
-run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/develop-netcore7 "brainstorm quick"
+run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/develop "brainstorm quick"
 expect 1 "must be one of" "team-new rejects a multi-token mode"
 [ ! -e "$WORK/main-beta" ] || fail "a rejected team-new created a clone"
-run "$MAIN" bash .claude/lib/team-next.sh alfa AB-794 feature/AB-794-x origin/develop-netcore7 bogus
+run "$MAIN" bash .claude/lib/team-next.sh alfa AB-794 feature/AB-794-x origin/develop bogus
 expect 1 "mode 'bogus' must be one of" "team-next rejects a bad mode"
 
 # A mode change for the same key must fail before archiving or cutting an existing branch.
@@ -48,7 +48,7 @@ printf 'same-key-run\n' > "$TD/run"
 printf '{"coder":{"model":"sonnet"}}\n' > "$TD/roles.override.json"
 shasum -a 256 "$TD/team.json" "$TD/run" "$TD/roles.override.json" > "$WORK/same-key.sha"
 for mode in quick cli; do
-  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-793 "$BR" origin/develop-netcore7 "$mode"
+  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-793 "$BR" origin/develop "$mode"
   expect 1 "resume with /start-team alfa" "same ticket in mode $mode"
   shasum -a 256 "$TD/team.json" "$TD/run" "$TD/roles.override.json" > "$WORK/after-key.sha"
   cmp -s "$WORK/same-key.sha" "$WORK/after-key.sha" || fail "same-key $mode changed team state"
@@ -194,7 +194,7 @@ has 'UNACCEPTED' "$WORK/out" && fail "summary shown without accepted records"
 
 # ---- (25) team-next sees the cli PR -------------------------------------------------------------
 setmode cli; rm -f "$RD"/coder-1-1.json*; pr_w "$C1"
-run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop-netcore7
+run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop
 expect 1 "previous PR #8371" "team-next refuses while the cli PR is active"
 
 # ---- (26) the closer ----------------------------------------------------------------------------

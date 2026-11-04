@@ -2,7 +2,7 @@
 #
 # test-gate.sh — unit-test gate with a known-failures baseline.
 #
-# WHY: Tests.UnitTests carried 174 stale failures on develop-netcore7 (CI had test steps removed),
+# WHY: Tests.UnitTests carried 174 stale failures on develop (CI had test steps removed),
 # so a plain `dotnet test` gate fails on every change. This gate fails only on NEW failures.
 # The baseline shrinks as tests are repaired; it must never grow except by an explicit owner decision.
 #

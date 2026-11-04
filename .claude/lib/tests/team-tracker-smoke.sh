@@ -440,7 +440,7 @@ expect 2 "usage:" "an unknown op is a usage error"
 # The base guard reads the COMMITTED profile, so each positive case needs its own published base —
 # overwriting $P in the working tree is not enough.
 publish_base() {  # publish_base <branch> <profile jq filter>
-  git -C "$SEED" switch --quiet -C "$1" develop-netcore7
+  git -C "$SEED" switch --quiet -C "$1" develop
   smoke_profile "$2" > "$SEED/.claude/project-profile.json"
   git -C "$SEED" add .claude/project-profile.json
   git -C "$SEED" commit --quiet -m "base profile $1"
@@ -454,7 +454,7 @@ publish_base base-notracker ".teams.tracker = \"github\" | $GH_BLOCK"
 git -C "$SEED" rm --quiet .claude/lib/team-tracker.sh
 git -C "$SEED" commit --quiet -m "no tracker adapter"
 git -C "$SEED" push --quiet --force origin base-notracker
-git -C "$SEED" switch --quiet develop-netcore7
+git -C "$SEED" switch --quiet develop
 
 no_clone() { [ ! -e "$WORK/main-$1" ] || fail "$2: a refused start left a clone behind"; }
 
@@ -476,7 +476,7 @@ jq -e '.branch == "bugfix/7-fix-x" and .tracker == "github" and .cost_key == "ow
 jq -e '.key == "7"' "$TD/ticket.json" >/dev/null || fail "the copied ticket.json is not #7"
 
 setprofile '.'
-run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop-netcore7 --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop --ticket-file "$INC/ticket.json"
 expect 1 "jira reads the ticket through MCP" "jira refuses a ticket file"
 no_clone beta "jira + ticket file"
 
@@ -500,7 +500,7 @@ no_clone beta "bad key"
 run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-notracker --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base without the adapter is refused"
 no_clone beta "base without the adapter"
-run "$MAIN" $NEW beta 7 bugfix/7-other origin/develop-netcore7 --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/develop --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base whose profile says jira is refused"
 no_clone beta "base profile tracker=jira"
 run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghother --ticket-file "$INC/ticket.json"
@@ -842,7 +842,7 @@ has "url: https://github.com/owner/repo/issues/7" "$WORK/out" || fail "the summa
 
 setprofile '.'
 rm -rf "$WORK/main-beta"
-run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop-netcore7
+run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop
 expect 0 "branch:" "a jira clone for the summary case"
 run "$MAIN" $TR beta summary
 expect 0 "tracker: jira" "a jira clone reports tracker: jira"

@@ -116,9 +116,9 @@ class CliTest(unittest.TestCase):
         with helpers.TempEnv():
             helpers.write_jsonl(config.runtime_path(), [
                 {"v": 1, "type": "session", "provider": "claude", "session": U,
-                 "source": "mail-tt", "name": "Supervisor", "at": "2026-10-06T10:00:00.000Z"},
+                 "source": "mail-role", "name": "Supervisor", "at": "2026-10-06T10:00:00.000Z"},
                 {"v": 1, "type": "session", "provider": "claude", "session": U2,
-                 "source": "mail-tt", "name": "Twin", "at": "2026-10-06T10:00:00.000Z"},
+                 "source": "mail-role", "name": "Twin", "at": "2026-10-06T10:00:00.000Z"},
                 {"v": 1, "type": "session", "provider": "claude", "session": U,
                  "source": "start-team", "name": "Twin", "at": "2026-10-06T10:00:00.000Z"}])
             run("collect")

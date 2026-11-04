@@ -234,8 +234,8 @@ launch() {
   # environment — which would run this project's roles on the other project's Claude licence.
   # AGENT_COSTS_HOME likewise: a tmux session gets the server's environment, not the caller's.
   [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(-e "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
-  tmux new-session -d -s "$name" -c "$CLONE" -e "TT_TEAM=$TEAM" -e "TT_TEAM_ROLE=$role" \
-    -e "TT_TEAM_RUN=$RUN" -e "TT_TEAM_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
+  tmux new-session -d -s "$name" -c "$CLONE" -e "TEAM_RUN_TEAM=$TEAM" -e "TEAM_RUN_ROLE=$role" \
+    -e "TEAM_RUN_ID=$RUN" -e "TEAM_RUN_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
     ${CLAUDE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"} \
     ${costs[@]+"${costs[@]}"} \
     "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\""

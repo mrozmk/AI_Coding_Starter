@@ -17,7 +17,7 @@ echo preserved > "$TD/runs/$RUN_ID/notes.md"
 run "$MAIN" $TR alfa roles 'planner=x;y'
 expect 1 "bad model" "start-team step 4a failure"
 for retry_branch in feature/AB-792-next feature/AB-792-retry; do
-  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-792 "$retry_branch" origin/develop-netcore7
+  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-792 "$retry_branch" origin/develop
   expect 1 "resume with /start-team alfa" "same-ticket retry $retry_branch"
   cmp -s "$TD/team.json" "$WORK/retry-team.json" || fail "retry changed team.json"
   cmp -s "$TD/roles.override.json" "$WORK/retry-roles.json" || fail "retry changed roles"
@@ -58,7 +58,7 @@ RD="$TD/runs/$RUN_ID"
 rm -f "$TD/session.json"; rm -rf "$TD/lock" "$TD/acked"
 git -C "$CLONE" push --quiet origin "$BR"
 Q="$(git -C "$CLONE" rev-parse HEAD)"
-TGT0="$(git -C "$CLONE" ls-remote origin refs/heads/develop-netcore7 | cut -f1)"
+TGT0="$(git -C "$CLONE" ls-remote origin refs/heads/develop | cut -f1)"
 summary() { printf 'target_rev: %s\n## Planowanie\nok\n' "$1" > "$RD/wrapup-1.md"; }
 mkrec coder "$Q"; mkrec qa "$Q"
 session wrapup 1 "$Q"
@@ -100,7 +100,7 @@ expect 0 "VERDICT: ok" "merge-check after wrapup"
 # The line gains the same memory file after the wrapup's target_rev.
 mkdir -p "$MAIN/.agents/memory" && echo "other team" > "$MAIN/.agents/memory/errors.md"
 git -C "$MAIN" add .agents/memory/errors.md && git -C "$MAIN" commit --quiet -m "other team memory"
-git -C "$MAIN" push --quiet origin HEAD:develop-netcore7
+git -C "$MAIN" push --quiet origin HEAD:develop
 TGT1="$(git -C "$MAIN" rev-parse HEAD)"
 merge_at "$W1" "$TGT1"
 run "$MAIN" $MC alfa

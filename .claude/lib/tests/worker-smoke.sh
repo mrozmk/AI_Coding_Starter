@@ -8,11 +8,11 @@ smoke_init
 W="bash .claude/lib/worker-next.sh"
 SOL="$WORK/main-sol"
 WD="$SOL/.git/team-worker"
-DEV=origin/develop-netcore7
+DEV=origin/develop
 export WORKER_ARTIFACTS="$WORK/artifacts" WORKER_LOCK_SECS=1
 
 pr_done() {  # pr_done <status> <source sha> <branch>
-  pr_json false "$2" succeeded refs/heads/develop-netcore7 "$2"
+  pr_json false "$2" succeeded refs/heads/develop "$2"
   jq --arg s "$1" --arg b "refs/heads/$3" \
     '.status = $s | .sourceRefName = $b | .repository.name = "fixture"' "$STUB_PR" \
     > "$WORK/pd.json" && mv "$WORK/pd.json" "$STUB_PR"
@@ -20,7 +20,7 @@ pr_done() {  # pr_done <status> <source sha> <branch>
 squash() {  # squash <msg> — ADO's squash commit: never an ancestor of a worker branch
   echo "$1" >> "$MAIN/squash.txt"
   git -C "$MAIN" add squash.txt && git -C "$MAIN" commit --quiet -m "$1"
-  git -C "$MAIN" push --quiet origin develop-netcore7
+  git -C "$MAIN" push --quiet origin develop
 }
 remote_commit() {  # remote_commit <branch> [start] — a push to origin/<branch> from elsewhere
   git -C "$MAIN" fetch --quiet origin
@@ -28,7 +28,7 @@ remote_commit() {  # remote_commit <branch> [start] — a push to origin/<branch
   echo x >> "$MAIN/other.txt"
   git -C "$MAIN" add other.txt && git -C "$MAIN" commit --quiet -m other
   git -C "$MAIN" push --quiet origin "HEAD:refs/heads/$1"
-  git -C "$MAIN" switch --quiet develop-netcore7
+  git -C "$MAIN" switch --quiet develop
 }
 sol_commit() {  # sol_commit <file>
   echo "$1" > "$SOL/$1"
@@ -69,7 +69,7 @@ stop_build() {  # waits until ps no longer lists it, so the next probe cannot se
 
 # ---- (1) init ---------------------------------------------------------------------------------
 echo worker-smoke-marker >> "$MAIN/.git/info/exclude"
-run "$MAIN" $W init develop-netcore7
+run "$MAIN" $W init develop
 expect 1 "must be origin/<branch>" "init with a bad base"
 [ ! -e "$SOL" ] || fail "a refused init created the clone"
 mkdir "$WORK/nojq"
@@ -94,7 +94,7 @@ expect 0 "last: none (provisioned at" "status after init"
 git -C "$MAIN" switch --quiet -c no-contract
 grep -vx '### Worker clone' "$MAIN/AGENTS.md" > "$WORK/a.md" && mv "$WORK/a.md" "$MAIN/AGENTS.md"
 git -C "$MAIN" commit --quiet -am "drop contract" && git -C "$MAIN" push --quiet origin no-contract
-git -C "$MAIN" switch --quiet develop-netcore7
+git -C "$MAIN" switch --quiet develop
 start AB-900 chore/AB-900-a origin/no-contract --thread t1
 expect 1 "no worker contract" "start on a base without the contract"
 [ ! -e "$WD/active" ] || fail "a refused start published an assignment"
@@ -103,7 +103,7 @@ expect 1 "no worker contract" "start on a base without the contract"
 start AB-900 chore/AB-900-a $DEV --thread t1
 expect 0 "artifacts:" "start A"
 ID1=$(field id)
-B0=$(git -C "$SOL" rev-parse origin/develop-netcore7)
+B0=$(git -C "$SOL" rev-parse origin/develop)
 head_on chore/AB-900-a "$B0"
 [ -d "$WORKER_ARTIFACTS/$ID1" ] || fail "start A made no artifacts dir"
 run "$MAIN" $W status
@@ -197,7 +197,7 @@ chmod 644 "$SOL/.git/index"
 start AB-901 chore/AB-901-b $DEV --thread t2
 expect 0 "artifacts:" "start B"
 ID2=$(field id)
-B1=$(git -C "$MAIN" rev-parse develop-netcore7)
+B1=$(git -C "$MAIN" rev-parse develop)
 head_on chore/AB-901-b "$B1"
 sol_commit b.txt
 git -C "$SOL" push --quiet origin chore/AB-901-b
@@ -215,7 +215,7 @@ has_branch chore/AB-900-a; has_branch chore/AB-901-b
 start AB-902 chore/AB-902-c $DEV --thread t3
 expect 0 "artifacts:" "start C"
 ID3=$(field id)
-remote_commit chore/AB-902-c develop-netcore7
+remote_commit chore/AB-902-c develop
 release "$ID3"
 expect 1 "reconcile before release" "release C with a foreign remote branch"
 git -C "$MAIN" push --quiet origin --delete chore/AB-902-c
@@ -243,11 +243,11 @@ jq -e --arg t "$T5" '.remote == $t and .outcome == "abandoned"' \
 
 # ---- (11a) resume before the switch -----------------------------------------------------------
 # Fixture surgery (patterns.md exception): an interruption before `switch` needs fault injection.
-B3=$(git -C "$MAIN" rev-parse develop-netcore7)
+B3=$(git -C "$MAIN" rev-parse develop)
 mkdir "$WD/active"
 jq -n --arg sha "$B3" --arg art "$WORKER_ARTIFACTS/AB-904-20261007-000000" \
   '{id: "AB-904-20261007-000000", ticket: "AB-904", branch: "chore/AB-904-e",
-    line: "develop-netcore7", base_ref: "origin/develop-netcore7", base_sha: $sha, thread: "t4",
+    line: "develop", base_ref: "origin/develop", base_sha: $sha, thread: "t4",
     state: "switching", artifacts: $art, started_at: "2026-10-07T00:00:00Z"}' \
   > "$WD/active/assignment.json"
 squash "squash moves the origin"
@@ -267,7 +267,7 @@ jq -e '.state == "switching"' "$WD/active/assignment.json" >/dev/null \
 start AB-904 chore/AB-904-e $DEV --thread t4
 expect 0 "id:        AB-904-20261007-000000" "resume before the switch"
 head_on chore/AB-904-e "$B3"
-[ "$B3" != "$(git -C "$MAIN" rev-parse develop-netcore7)" ] || fail "fixture: origin did not move"
+[ "$B3" != "$(git -C "$MAIN" rev-parse develop)" ] || fail "fixture: origin did not move"
 [ -d "$WORKER_ARTIFACTS/AB-904-20261007-000000" ] || fail "resume made no artifacts dir"
 release AB-904-20261007-000000
 expect 0 "outcome:     empty" "release the resumed assignment"
@@ -421,7 +421,7 @@ for i in 1 2 3; do
   echo "$i" >> "$CG/src/f.txt"
   git -C "$CG/src" add f.txt && git -C "$CG/src" commit --quiet -m "c$i"
 done
-git -C "$CG/src" push --quiet origin HEAD:refs/heads/develop-netcore7
+git -C "$CG/src" push --quiet origin HEAD:refs/heads/develop
 git -C "$CG/src" commit-graph write --reachable --split
 # A second layer over commits the clone never receives — the shape that broke the parse.
 for i in 4 5; do
