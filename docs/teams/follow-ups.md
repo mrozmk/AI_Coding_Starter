@@ -31,6 +31,7 @@ tests.
 | F12 | Linux hosts: `flock` semantics, `ps` formats, `SIGALRM`, the messaging socket, cron/systemd for the health check. The source never ran there | to verify |
 | F13 | The cross-session messaging socket is an observed, undocumented interface. Re-verify on every Claude Code upgrade | standing check |
 | F16 | The vendored agent-mail tool is re-synced from its upstream by a manual delta, with its tests as the oracle | standing procedure ([`agent-mail.md`](../../.agents/reference/agent-mail.md)) |
+| F19 | The memory-layer key `czytelnik:` (the reader of a recommended memory entry) is Polish in a public template. It is read by the reflection protocol and the memory guard outside the team layer, so renaming it needs every reader changed together plus a migration of existing entries | a separate starter item, not part of the team-layer port |
 
 ## Not ported by design
 
