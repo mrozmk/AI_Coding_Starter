@@ -4,6 +4,8 @@ The step-by-step mechanics behind [team-mode.md](team-mode.md) §10 (tiers, rule
 actions) and [team-decision-model.md](team-decision-model.md) (who decides). Scripts live in
 `.claude/lib/` and run from the main checkout; `/monitor` (the TeamLead) drives them.
 
+Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/05-escalation.md`.
+
 1. `team-question.sh <team> open <role> --kind blocked|menu|permission|idle [--anchor "<screen
    line>"] --summary "…"` records `questions/q-<n>.md` with its binding v2: role,
    attempt, run, kind, newest record or anchor, `fingerprint: v2:<sha256>` of the **active

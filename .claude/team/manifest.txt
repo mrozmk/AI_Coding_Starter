@@ -16,6 +16,8 @@
 # --- not distributed ----------------------------------------------------------------------
 !.claude/lib/tests/**
 !.claude/lib/costs/tests/**
+# the human overview of the team layer stays in the starter; projects get the .agents/reference contracts
+!docs/teams/**
 
 # --- shared: the project's own copy wins; a difference is reported for a hand merge --------
 shared .claude/lib/codex-bg.sh

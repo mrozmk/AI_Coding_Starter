@@ -7,6 +7,8 @@ the bootstrap resume. Code: `.claude/lib/team-escalate.sh`, `team-escalate-lib.s
 without it. Tiers and deciders: [team-decision-model.md](team-decision-model.md) §3; escalation
 mechanics: [team-questions.md](team-questions.md).
 
+Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/05-escalation.md`.
+
 ## 1. Purpose
 
 When the Advisor stops answering, the Reviewer may still answer within minutes, but nothing

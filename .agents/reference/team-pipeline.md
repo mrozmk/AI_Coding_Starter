@@ -6,6 +6,8 @@ tmux, driven by `team-run.sh`. You (the supervisor, in the main checkout) answer
 merge check and merge with `/pr-merge`; the wrapup role reconciles memory in the team's PR. Role contract: [team-mode.md](team-mode.md). Why clones
 and not worktrees: [parallel-orchestration.md](parallel-orchestration.md) → Step 1.
 
+Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/03-team-pipeline.md`.
+
 ---
 
 ## Quick start
