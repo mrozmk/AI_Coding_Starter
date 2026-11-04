@@ -64,3 +64,6 @@ HOME=<scratch>/home TMPDIR=<scratch>/tmp/ bash .claude/lib/tests/team-suite.sh
 
 Order, counts and the redacted log: [team-pipeline.md → Tests](../../.agents/reference/team-pipeline.md#13-tests).
 The tests are not installed by `/setup:teams`.
+
+What is proven, and on which host: [capabilities.md](capabilities.md). Acceptance evidence:
+[evidence/TEMPLATE.md](evidence/TEMPLATE.md).
