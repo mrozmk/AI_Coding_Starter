@@ -370,11 +370,11 @@ You've just gone all the way: **idea → PRD → stack → design → plan → c
 
 **Another feature?** Repeat **steps 6–10** for a new thing (e.g. "mark a task as done"). Fresh chat → `/prime` → `/brainstorm <feature>` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit`. That's your daily rhythm — the same one you practiced twice (on the scaffold and on the first feature).
 
-**Want it faster, without clicking through each step?** Once you're comfortable, you can replace steps 8–11 with **one** command:
+**Want it faster, without clicking through each step?** Once you're comfortable, you can replace steps 6–11 with **one** command:
 ```
-/orchestrate
+/orchestrate <feature>
 ```
-It does it all itself: write code → clean up → check → commit → push, looping fixes and asking you only on a real problem. That's the "hands-off" path. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
+It does it all itself: design → plan → write code → clean up → check → commit → push, compacting its own context between the stages and asking you only at a real fork or a real problem. Give it a plan path instead and it starts at the build. That's the "hands-off" path. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
 
 > A full comparison of both paths (manual A and automatic B) and a description of exactly what each command does: [README → Two daily flows](../README.md#two-daily-flows).
 

@@ -374,6 +374,8 @@ From the budget in Phase 4, using the class from Step 4.5.2:
 
 Use `AskUserQuestion`. Present only the options that apply, recommend one, and **STOP without an answer** — do not proceed to Phase 5 on an assumption.
 
+**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): do **not** ask. Choose **(a)** when the overflow is modest; **(c)** when the file is still over the hard cap after one honest densify pass; never **(b)** — parallel top-level plans are a multi-clone operator flow the pipeline cannot run. **(d)** is the one case that stays a question, and only when the spec's `Appetite & Cut Lines` say the scope itself is wrong. Report the choice in Step 4.5.5 as `decided by the pipeline` and continue.
+
 - **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow`, a per-task `PATTERN` / `GOTCHA` / `EXPECT` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
 - **(b) Split into parallel top-level plans** — *offered only when Gate A passed.* Produces N independent plans in `.agents/plans/active/`, each runnable in its own clone. This is the only option that buys wall-clock. Say so, and say what it costs (below).
 - **(c) Split into a sequential umbrella + sub-steps** — context hygiene only, **no speedup**. Appropriate when one file is genuinely unwieldy but the work is a dependency chain.
@@ -721,6 +723,8 @@ Show the user a summary of the findings that survived self-check, grouped by sev
 
 The user chooses. Without a choice — STOP, plan stays in Phase 4 draft state, report to the user.
 
+**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): no question — the scope is **All**. Print the findings block anyway (the grill's result is part of the record), add one line `Fix scope: All (pipeline mode)`, and go to Phase 6.
+
 ### Step 5.5 — (Optional, only if findings density is high)
 
 If after self-check there are **>15 findings** or **>5 🔴** — the plan is genuinely not ready. Propose to the user, in the project's communication language (CLAUDE.md → Language Rules):
@@ -732,6 +736,8 @@ If after self-check there are **>15 findings** or **>5 🔴** — the plan is ge
 > - Force the fixes and trust that the plan holds together."
 
 The user decides, default = the first option.
+
+**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): take the first option without asking and say so in the Report's grilling summary — the density reaches `/orchestrate` as a signal in its run file, not as a question.
 
 ---
 
@@ -958,6 +964,8 @@ codex questions the approach itself (not patchable as a plan edit):
 
 If there were **no** rethink signals, omit that block entirely — a clean cross-model pass is a good outcome.
 
+**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): this question **still asks** — a 🔶 rethink signal is one of the pipeline's three question cases. `/orchestrate` records the answer in its run file so no later stage re-asks it.
+
 ### Step 7.9 — Memory
 
 If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-feature` keeps producing), save the RULE (not the finding) to `.agents/memory/patterns.md`, exactly as Phase 6 Step 3 does — so the next plan avoids it before codex even runs.
@@ -1053,6 +1061,7 @@ After Phase 6 completes (plan finalized post-grilling), provide:
 - Estimated confidence score for one-pass success (POST-grilling — typically +1.5 to +2.5 vs pre-grilling)
 - **Backlog write-back (opt-in)** — if `.agents/backlog.md` exists in the new format, write the finalized plan path(s) into the `Ref` cell (alongside the spec path from Phase 0) for the spec's Tasks (the ids on its `**Tasks:**` line), and confirm each `Status` is `WIP`. Legacy format → repeat the one-line "legacy WP backlog — write-back skipped" note from Phase 0. If no backlog exists, skip silently and omit this line. Do **not** touch the backlog's DAG/structure — only `Ref`/`Status`.
 - **Execution effort recommendation** (see below) — last section of the report
+- **Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): the report is the handback. Put the plan path(s) on their own line — `Plan: <path>` (the umbrella first when a split happened) — then return to `/orchestrate` Stage 2. Run nothing after the report: the pipeline compacts the session before the build.
 
 ---
 

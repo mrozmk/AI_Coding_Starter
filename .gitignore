@@ -47,6 +47,9 @@ Thumbs.db
 # stage-handoff mod — per-run marker written by /orchestrate, consumed when the turn ends
 .claude/stage-handoff.json
 .claude/stage-handoff.last.json
+# /orchestrate pipeline state — one live run per clone, retired to .last.json on completion
+.claude/orchestrate-run.json
+.claude/orchestrate-run.last.json
 # Type stubs Claude Code writes next to a loaded mod (editor support only)
 .claude/skills/*/.claude-plugin/types/
 # Guard against accidental copy of ~/.claude/projects/ (transcripts + auto-memory) into repo

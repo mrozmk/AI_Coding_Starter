@@ -1,13 +1,174 @@
 ---
-description: Run a multi-step plan end-to-end — execute → refine → verify → design-check → codex-judge (hard steps) → commit → push, looping fixes until passed, escalating only on blockers
-argument-hint: "<path-to-plan> [--resume] [--from <step-id>] [--publish push|branch-local] | --integrate <orch-id>..."
+description: Idea-to-commit pipeline — brainstorm → plan-feature → build (execute → refine → verify → design-check → codex-judge → commit → push per step) → closing commit, compacting the session between stages through the stage-handoff mod; asks only at directional forks, 🔶 rethink signals and real blockers
+argument-hint: "<topic | Task id | Jira key | spec-path | plan-path> [--resume] [--abort] [--from <step-id>] [--publish push|branch-local] [--sync-docs] | --integrate <orch-id>..."
 ---
 
-# /orchestrate — Pipeline Runner
+# /orchestrate — Idea-to-Commit Pipeline
+
+You drive one feature from an idea to pushed commits through four stages. Each stage is a command this kit already has; you run it, keep the run's state in a small file, and **compact the session between stages** so no stage inherits the previous one's context. The user is asked nothing except what only they can decide.
+
+| # | Stage | Runs | Produces | Ends with |
+|---|-------|------|----------|-----------|
+| 1 | `brainstorm` | `/brainstorm <topic>` in **pipeline mode** | an approved spec in `.agents/specs/` | handoff |
+| 2 | `plan` | `/plan-feature <spec>` in **pipeline mode** | a grilled plan in `.agents/plans/active/` | handoff |
+| 3 | `build` | the **plan runner** (Phases 0–7 below): execute → refine → verify → [design] → [codex judge] → commit → push, per step | step commits on the run branch, plan + run-log in `done/` | handoff (umbrella: one per step) |
+| 4 | `commit` | `/commit <workflow-state paths>` + push | one closing `chore` commit | summary, run retired |
+
+Entry points: a **topic** (free text, a backlog Task id, a Jira key) starts at Stage 1; a **spec path** at Stage 2; a **plan path** at Stage 3 — so `/orchestrate <plan>` still does exactly what it did before this command became the whole pipeline, plus the closing commit.
+
+## Why the session is compacted between stages
+
+One session that brainstorms, plans, builds and reviews a feature crosses a million tokens and loses the thread: late stages reason over early-stage noise, and the facts that matter (the owner's decisions, the spec path, the next step) drown. A slash command cannot compact mid-turn, so the pipeline ends every stage by writing a **handoff marker** and ending its turn; the `stage-handoff` mod (`.claude/skills/stage-handoff/`, shipped with the kit) then compacts the session with stage-boundary instructions and submits `/orchestrate --resume` as the next prompt. The compaction keeps exactly what the marker says to keep. **The mod is a prerequisite:** Stage 0 refuses to start without it.
+
+## The run file — `.claude/orchestrate-run.json`
+
+The pipeline's state lives on disk, not in the conversation — the conversation is compacted away at every boundary. One run per repo at a time. Git-ignored.
+
+```json
+{
+  "id": "<slug of the topic / spec / plan>",
+  "started": "<ISO timestamp>",
+  "stage": "brainstorm | plan | build | commit",
+  "topic": "<the Stage 0 argument, verbatim>",
+  "spec": "<.agents/specs/… or null>",
+  "plan": "<.agents/plans/active/… or null>",
+  "branch": "<TARGET_BRANCH>",
+  "flags": { "publish": "push | branch-local | null", "sync_docs": false, "from": null },
+  "decisions": ["<owner decision, verbatim, with the stage it was taken in>"],
+  "signals": ["<🔶 rethink signal carried forward, or an open blocker>"],
+  "questions_asked": 0
+}
+```
+
+- `stage` is always **the stage to run next**. Set it at the end of a stage, before the marker — never at the start.
+- `decisions` collects every answer the user gave (directional forks, rethink signals, blocker options) **verbatim**, so a later stage never re-asks, and the final summary can list them.
+- On completion or `--abort` the file is renamed to `.claude/orchestrate-run.last.json` (`mv -f`), never deleted — the last run stays inspectable. A new run overwrites `.last.json`.
+- `/brainstorm` and `/plan-feature` read this file to detect **pipeline mode**: it exists **and** its `stage` names them (`brainstorm` / `plan`). A run file at another stage puts neither command into pipeline mode, so a manual `/brainstorm` during a paused build behaves normally.
+
+## The handoff contract (end of every stage)
+
+Every stage ends the same way. **Do all of it in the order given, then end your turn — do not call the next stage in the same turn, even though you know what it is.** Compaction only runs between turns; a next stage started in this turn runs on the uncompacted context the pipeline exists to shed.
+
+1. **Update the run file** — `stage` = the next stage, plus whatever the finished stage produced (`spec`, `plan`, `decisions`, `signals`).
+2. **Write the marker** `.claude/stage-handoff.json`:
+
+   ```json
+   {
+     "stage": "<finished stage>",
+     "resume": "/orchestrate --resume",
+     "keep": [
+       "orchestrate run <id> — next stage: <stage>",
+       "spec: <path>", "plan: <path or 'not yet'>",
+       "branch: <TARGET_BRANCH> · publish: <mode>",
+       "<each entry of decisions, verbatim>",
+       "<each entry of signals>"
+     ],
+     "focus": "<one sentence on what the next stage needs from this one — e.g. 'the plan's VALIDATION COMMANDS and the three grill fixes applied to step 2'>"
+   }
+   ```
+
+   `keep` lines survive compaction verbatim — they are the pipeline's memory. Put the owner's decisions there, not a paraphrase.
+3. **Print one status line** in the project's communication language: `⏭ <finished stage> done → compacting, then <next stage> (run <id>)`. Then the fallback sentence, once per run (first handoff only): *"If the session does not compact within a minute after this turn, the stage-handoff mod is not loaded in this session — run `/compact`, then `/orchestrate --resume`."*
+4. **End the turn.** Nothing after this line.
+
+**On `--resume`:** read the run file, re-read the artifacts it names (the spec for Stage 2, the plan for Stage 3 — the Read tool, in full), and continue at `stage`. Never reconstruct state from the compacted summary when the run file has it; the summary is a courtesy, the file is the truth.
+
+## Question policy — what may interrupt the user
+
+The pipeline is hands-off by contract. **Ask only in these cases**, each through `AskUserQuestion`, each recorded verbatim in `decisions`:
+
+| Ask | Where it arises |
+|-----|-----------------|
+| A **directional fork** — two incompatible approaches, a scope split, a decision only the owner can make (budget, external dependency) | `/brainstorm` Step 1.5 (topic fails *Small*) and Step 2 |
+| A **🔶 rethink signal** — the cross-model reviewer questions the approach or widens the scope | `/brainstorm` Step 8.7 · `/plan-feature` Step 7.8 · runner Phase 7 step 0 |
+| A **blocker the pipeline cannot resolve** — a failed Execution Plan validation, an executor/verifier/designer/committer block after its iteration budget, a push rejected for a reason other than branch protection, a dirty tree that is not yours | `/plan-feature` Phase 0 / Step 4.6.5 · runner Phase 2 / Phase 6 |
+| **A run already in progress** when a new one is requested | Stage 0 |
+
+**Everything else is decided, not asked**, and the decision is stated in the stage's own report:
+
+- `/brainstorm` Step 9 approval → auto-approved (`Approved (auto — pipeline)`), assumptions listed, not asked.
+- `/plan-feature` Step 5.4 grill scope → **All**. Step 5.5 (high finding density) → apply the fixes and continue (its first option); the density is reported, not asked. Step 4.5.4 split → **(a) keep one file, densify** when the overflow is modest, **(c) sequential umbrella** when still over the hard cap after one honest densify pass. Option (b) (parallel top-level plans, a multi-clone operator flow) and (d) (back to `/brainstorm`) are never chosen silently — (d) is the one case that becomes a question, and only when the spec's appetite says the scope is wrong.
+- Runner cadence (Phase 6) → statements, never "continue?".
+- Push rejected by branch protection → degrade to `branch-local` and say so (Phase 4 rule), not a question.
+
+A question answered once is answered for the run: before asking, check `decisions` — the user may have settled it at an earlier stage.
+
+## Stage 0 — Resolve input and preflight
+
+Parse `$ARGUMENTS` in this order; first match wins.
+
+1. **`--integrate <orch-id>…`** → not a pipeline run. Jump to the runner's **Integration mode** (below) exactly as before. No run file.
+2. **`--abort`** → `mv -f .claude/orchestrate-run.json .claude/orchestrate-run.last.json`, remove a pending `.claude/stage-handoff.json` if one exists, report what stage the run was at and which artifacts it left (spec, plan, step commits — none are undone), STOP.
+3. **`--resume`** (no path) → read `.claude/orchestrate-run.json`. Missing → STOP: "No run in progress — `.claude/orchestrate-run.last.json` holds the last one." Present → continue at its `stage` (Stage 1–4 below) with its `flags`.
+4. **A path under `.agents/plans/active/` ending `.md`** → start at **Stage 3** (the runner's own `--resume` / `--from <step-id>` keep their meaning and are stored in `flags`).
+5. **A path under `.agents/specs/` ending `.md`** → start at **Stage 2**.
+6. **Anything else non-empty** → the topic; start at **Stage 1**. `/brainstorm` resolves a Task id, a Jira key or free text itself (its Step 0).
+7. **Empty** → STOP with the usage line from `argument-hint`.
+
+Strip `--publish <mode>`, `--sync-docs` and `--from <id>` from the argument first and keep them for `flags`.
+
+**Preflight — before creating a run file (cases 4–6):**
+
+- `.claude/orchestrate-run.json` already exists → STOP and ask (the one Stage 0 question): *"A run is in progress — `<id>`, next stage `<stage>`, started `<when>`. Resume it (`/orchestrate --resume`), or abort it (`/orchestrate --abort`) and start `<new topic>`?"* Never overwrite a live run silently.
+- The mod is absent (`.claude/skills/stage-handoff/.claude-plugin/plugin.json` missing) → STOP: "The pipeline needs the `stage-handoff` mod — sync from the starter (`/maintain:sync-from-starter`), then start a new session." A mod added to a running session loads at the **next** session start — say so when the file exists but was committed in the last few minutes.
+- `git rev-parse --abbrev-ref HEAD` is literal `HEAD` → STOP (detached HEAD), same rule as the runner's Phase 4.
+
+Then write the run file (`stage` = the entry stage, `id` = a slug of the argument, 40 chars max, `questions_asked: 0`) and continue.
+
+## Stage 1 — Brainstorm
+
+1. Run `/brainstorm <topic>` (the Skill tool). Pipeline mode is detected from the run file (`stage: brainstorm`): it changes **only** Step 9 (no approval question — the spec is auto-approved with its assumptions listed) and the terminal gate (the pipeline owns the handoff). Step 1.5's split question, Step 2's directional forks and Step 8.7's 🔶 signals still ask — those are the policy's three cases.
+2. When it returns, the spec path is in its report. Verify the file exists and carries `**Status:** Approved (auto — pipeline)`; a `Draft` means the command stopped at a question it could not answer — relay that question to the user, record the answer in `decisions`, and re-enter `/brainstorm` on the same topic (its Step 0 resolves it again; the saved Draft is its input).
+3. Handoff: `spec` = the path, `stage` = `plan`, `decisions` += whatever was asked, `signals` += any 🔶 signal the user chose to *keep* (so the plan stage knows the design was questioned and why it stands).
+
+## Stage 2 — Plan
+
+1. Re-read the spec in full (after a compaction you have not seen it). Run `/plan-feature <spec path>` (the Skill tool), the spec path explicit — never let it pick "newest in `.agents/specs/`". Pipeline mode (`stage: plan`) changes Step 4.5.4 (default split answer, above), Step 5.4 (**All**), Step 5.5 (first option) and its terminal report (hand back to the pipeline). Step 7.8's 🔶 signals and Phase 0's spec problems still ask/stop.
+2. When it returns, read the report's plan path(s). Several files (a split happened) → the **umbrella** is the plan; verify it carries `## Execution Plan` with a `File` column, otherwise STOP and show the user (the runner would fail Phase 2 anyway, and that is a blocker, not a default). One file → it is the plan.
+3. Handoff: `plan` = the path, `stage` = `build`, `decisions` / `signals` as above. `focus` names the plan's `VALIDATION COMMANDS` and its `**Execution effort:**` line (or the `Effort` column).
+
+## Stage 3 — Build
+
+Run the **plan runner** below (Phases 0–7) on `plan` with `flags` (`--publish`, `--sync-docs`, `--from`; on a pipeline `--resume` the runner's own resume rule applies: first non-`done` step of an umbrella, or Phase 7 when the single step is already done). The runner is unchanged in substance — the places where pipeline mode (`stage: build`) alters it are marked **Pipeline mode** inline:
+
+- **Step 5.5** — an umbrella with steps remaining ends the turn with a **handoff after every step** (`keep` carries the step id just finished and the next one). One step per context window is the budget that keeps a 13-step umbrella honest.
+- **Phase 7 step 8** — the final summary is the Stage 3 report; it is followed by the handoff to Stage 4, not by the end of the command.
+- **Phase 6** blockers ask exactly as before — they are the policy's third case. Record the option chosen in `decisions`.
+
+Handoff after Phase 7: `stage` = `commit`, `keep` += the pushed commit SHAs and the Phase 7 lines for memory / backlog / docs (what was left uncommitted), `signals` += any 🔶 signal from Phase 7 step 0.
+
+## Stage 4 — Commit + summary
+
+The runner publishes code but deliberately leaves **workflow state** uncommitted (Phase 7: the plan family moved to `done/`, its `.run.md`, memory reflection entries, the backlog `Status`/`Ref` write-back). The pipeline closes that itself:
+
+1. `git status --porcelain`. Classify: **workflow state** = paths under `.agents/plans/done/`, the matching deletions under `.agents/plans/active/`, `.agents/memory/**`, `.agents/backlog.md`. Anything else is **foreign** (the user's, another window's) — list it, never stage it.
+2. Workflow state empty → say `Nothing to close — the runner left no workflow state.` and go to step 4.
+3. Run `/commit <the workflow-state paths, explicit>` (argument mode — it stages exactly those, no classification prompt). Suggested subject: `chore(plans): close <id> — plan to done/, run-log, memory, backlog` (drop the parts that are absent). Then push per the run's publish mode: `git push origin "<TARGET_BRANCH>"` (silent no-op under `branch-local`, same rule as the runner).
+4. `mv -f .claude/orchestrate-run.json .claude/orchestrate-run.last.json`. No marker — the pipeline is over; the user's next prompt is theirs.
+5. Final summary, in the project's communication language:
+
+```
+✓ /orchestrate complete: <id>
+
+Stages: brainstorm <ran / entered at> · plan <ran / entered at> · build <N steps> · commit <sha / nothing to close>
+Spec: <path>    Plan: <path>
+Commits: <step SHAs + subjects from the run-log> · closing: <sha>
+Questions asked: <n> — <one line each, verbatim answer>
+🔶 Rethink signals kept: <list or none>
+Handoffs (compactions): <n>
+Publish: <pushed to origin/<branch> / branch-local — publish it yourself (/pr-create or /push)>
+Left for you: <foreign files not staged / kept worktrees / none>
+```
+
+---
+
+# Plan runner — Stage 3 (also standalone: `/orchestrate <plan-path>`)
 
 You are the orchestrator. Your job is to take a plan (single or multi-step umbrella) and drive it end-to-end through a fixed pipeline, delegating to specialized sub-agents, looping on fixable gaps, escalating to the user only on real blockers.
 
 You are running as the user's interactive session (typically your most capable model — e.g. Opus). You do **not** implement code, audit code, or commit code — those are sub-agent jobs. You **decide**, **route**, **loop**, **report**. The one git action you DO perform yourself is `git push` (Step 5.4b) — because the push authorization lives in your main session and does not transfer to sub-agents. In `branch-local` publish mode (Phase 4) you perform no git action at all: the pipeline commits but never publishes.
+
+**Pipeline mode** = `.claude/orchestrate-run.json` exists with `"stage": "build"` (Stage 3 above). It changes the runner in exactly three marked places: Step 5.5 (a handoff between umbrella steps), Phase 7 step 8 (hand back to Stage 4 instead of ending) and the note that Stage 4 commits the workflow state the runner leaves uncommitted. Phase 6 blockers ask as before. A standalone `/orchestrate <plan-path>` with no pipeline run file behaves exactly as it always has.
 
 ## Input
 
@@ -15,7 +176,7 @@ You are running as the user's interactive session (typically your most capable m
 
 Flags:
 
-- `--resume` — continue an interrupted run by reading umbrella status; pick up at first non-`done` step
+- `--resume` — continue an interrupted run by reading umbrella status; pick up at first non-`done` step. Without a plan path it is the pipeline's `--resume` (Stage 0): the run file names the plan, and the same rule applies here.
 - `--from <step-id>` — start at a specific step id (e.g. `3b1`), treating earlier steps as already done
 - `--integrate <orch-id>...` — **not a build run.** Skip the whole pipeline and run the supervised **Integration mode** merge queue (below): bring the listed parallel run-branches onto `main`, one at a time, each merge prompting once. Run once from a clone on `main` after all parallel builds finish. Mutually exclusive with a plan path.
 - `--sync-docs` — after the pipeline completes, run `documentation-manager` to sync `README` / `docs/` for the whole feature and push a final `docs:` commit (Phase 7, step 5). Off by default; even when set it only acts if the changed files actually touched documented surface (public API, CLI, setup, architecture, a user-facing feature).
@@ -25,7 +186,7 @@ Flags:
 
 1. **Integration mode (`--integrate`)** — if `$ARGUMENTS` begins with `--integrate` followed by one or more branch ids (`orch-<id> …`, NOT a `.md` path), skip the whole build pipeline and jump to **Integration mode** (below). **Parse this before the "pass a plan path" error in step 3** — an `--integrate` invocation carries branch ids, not a plan path.
 2. Else if `$ARGUMENTS` is a path to an `.md` file under `.agents/plans/active/` → use it as the plan; continue to Phase 1.
-3. Else stop and tell user: `Pass a plan path: /orchestrate .agents/plans/active/<plan>.md` — or run the merge queue: `/orchestrate --integrate orch-a orch-b …`.
+3. Else stop and tell user: `Pass a plan path: /orchestrate .agents/plans/active/<plan>.md` — or run the merge queue: `/orchestrate --integrate orch-a orch-b …`. (A topic or a spec path never reaches this line — Stage 0 routes it to Stage 1 or 2 first; this message is for a standalone call whose path does not resolve.)
 4. Read the plan file fully.
 
 ## Phase 1: Detect plan type
@@ -471,6 +632,8 @@ A kept worktree is not an error for the step (its commit is already merged) — 
 
 The now-merged `step-<step_id>` branch is left in place (deleting branches is an `ask`-tier op the pipeline leaves to the human, and a fully-merged branch is harmless); `git worktree prune` in Phase 7 cleans up worktree metadata. Continue to next step in topological order.
 
+**Pipeline mode (`stage: build`) — steps remaining:** do **not** continue to the next step in this turn. Append the step's run-log entry, then run the **handoff contract**: run file `stage` stays `build` (the runner's `--resume` finds the first non-`done` row), marker `stage` = `build:<step_id>`, `keep` += `step <step_id> done (commit <sha>) — next: step <next_id>` and the kept-worktree warnings if any, `focus` = the next step's file. End the turn. The last step skips this and goes to Phase 7 as usual — Phase 7 has its own handoff.
+
 > **Status-table edit hygiene:** each step touches the umbrella table exactly twice (5.0 `→in_progress`, 5.5 `→done`). Always copy the Status cell text verbatim from your last read of the file before editing — a casing/whitespace mismatch in the path or cell makes the Edit fail silently and forces a retry. Re-read the umbrella only if a prior Edit reported a no-match.
 
 ## Phase 6: User escalation protocol
@@ -542,7 +705,7 @@ When the last step reaches `done`:
 2. Move just the plan file and its run-log to `done/`:
    - `mv .agents/plans/active/<plan>.md .agents/plans/done/`
    - `mv .agents/plans/active/<plan>.run.md .agents/plans/done/ 2>/dev/null || true`
-2b. **Workflow-state commit — parallel runs only (`TARGET_BRANCH != main`).** Skip on a single run (`TARGET_BRANCH == main`): the move stays a local, uncommitted working-tree change for the user to `/commit`, exactly as today. On an `orch-<id>` run, the moved files must be committed + pushed or the `--integrate` merge can't carry them onto `main`. Same mechanism as umbrella step 4b, but the rename list is just the single plan + its run-log:
+2b. **Workflow-state commit — parallel runs only (`TARGET_BRANCH != main`).** Skip on a single run (`TARGET_BRANCH == main`): the move stays a local, uncommitted working-tree change for the user to `/commit` (in the pipeline, Stage 4 commits it), exactly as today. On an `orch-<id>` run, the moved files must be committed + pushed or the `--integrate` merge can't carry them onto `main`. Same mechanism as umbrella step 4b, but the rename list is just the single plan + its run-log:
    - `mv` from step 2 leaves delete(old)+add(new) pairs in `git status`. Spawn `@orchestrator-committer` with `STEP_ID: workflow-state` and the two `<old> → <new>` rename pairs; it stages both sides of each (`git add -- <old> <new>`) via its bounded exception and commits `chore: move <plan> + run-log to done/`. Do NOT push from the committer.
    - Then push from the main session: `git push origin "<TARGET_BRANCH>"`. Memory/backlog are NOT committed here (central reconciliation in Integration mode).
 
@@ -607,8 +770,8 @@ When the last step reaches `done`:
 
    **If the run-log shows none of these → skip entirely. Log `Memory: clean run, nothing to reflect on.` A smooth pipeline learns nothing.**
 
-   If it does show friction, read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** against those run-log entries. Apply its bar strictly — **the default is to save nothing**; a recurring gap is only worth an `errors.md`/`decisions.md` entry if a fresh Claude would repeat the mistake without it. Append at most one or two entries; never pad. Memory writes are **not committed by the pipeline** — leave them in the working tree for the user to `/commit` (consistent with how memory is managed). Record the outcome for the summary's `Memory:` line.
-7. **Backlog write-back — opt-in, skip silently if no backlog.** **(Parallel run — `TARGET_BRANCH != main` — SKIP this step: the backlog write-back runs once, centrally, in Integration mode. This step runs only on a single run to `main`.)** If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Otherwise **detect the format first**: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing, log once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". A header matching neither shape is malformed → write nothing, log it. Never mix the two rule sets. New format → **DONE rule (whole-Task completion)** for the Task ids recorded in Phase 4b (the plan header's `**Tasks:**` line): for each id, grep `.agents/plans/active/` for any other file whose `**Tasks:**` line lists it — none → set `Status: DONE`; one or more → keep `WIP`. In both cases update `Ref`: it must carry the spec path and this plan's **`done/`** path — `/plan-feature` wrote the `active/` path, replace it (append if missing). No `**Tasks:**` line → nothing to write, log it. Touch only `Status`/`Ref` — never the DAG, epic map, or Task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). A Task with a `Jira` cell keeps its local `Status` as a cache only — never transition the Jira issue from here. This write is **not committed by the pipeline** — leave it in the working tree for the user to `/commit`, same as memory writes. Record the outcome for the summary's `Backlog:` line.
+   If it does show friction, read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** against those run-log entries. Apply its bar strictly — **the default is to save nothing**; a recurring gap is only worth an `errors.md`/`decisions.md` entry if a fresh Claude would repeat the mistake without it. Append at most one or two entries; never pad. Memory writes are **not committed by the runner** — leave them in the working tree for the user to `/commit` (consistent with how memory is managed; in the pipeline, Stage 4 commits them as workflow state). Record the outcome for the summary's `Memory:` line.
+7. **Backlog write-back — opt-in, skip silently if no backlog.** **(Parallel run — `TARGET_BRANCH != main` — SKIP this step: the backlog write-back runs once, centrally, in Integration mode. This step runs only on a single run to `main`.)** If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline). Otherwise **detect the format first**: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing, log once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". A header matching neither shape is malformed → write nothing, log it. Never mix the two rule sets. New format → **DONE rule (whole-Task completion)** for the Task ids recorded in Phase 4b (the plan header's `**Tasks:**` line): for each id, grep `.agents/plans/active/` for any other file whose `**Tasks:**` line lists it — none → set `Status: DONE`; one or more → keep `WIP`. In both cases update `Ref`: it must carry the spec path and this plan's **`done/`** path — `/plan-feature` wrote the `active/` path, replace it (append if missing). No `**Tasks:**` line → nothing to write, log it. Touch only `Status`/`Ref` — never the DAG, epic map, or Task scope (structural edits to the backlog are a deliberate manual act, not a pipeline side-effect). A Task with a `Jira` cell keeps its local `Status` as a cache only — never transition the Jira issue from here. This write is **not committed by the runner** — leave it in the working tree for the user to `/commit`, same as memory writes (in the pipeline, Stage 4 commits it). Record the outcome for the summary's `Backlog:` line.
 8. Emit final summary to the user:
 
 ```
@@ -629,6 +792,8 @@ Memory: <appended N entr(y/ies) to <file(s)>, left uncommitted for you to /commi
 Backlog: <Task ids marked DONE / kept WIP (other plan active) — left uncommitted for you to /commit | legacy — skipped | no backlog — skipped>
 Deploy is your call.
 ```
+
+**Pipeline mode (`stage: build`):** this summary is the Stage 3 report, not the end of the command. Continue at **Stage 3 → handoff after Phase 7** (run file `stage` = `commit`, marker, end the turn); Stage 4 then commits the workflow state listed under `Memory:` / `Backlog:` and the plan move. Standalone call: done.
 
 ## Integration mode (`--integrate`) — supervised merge queue
 
@@ -759,7 +924,7 @@ Backlog: <Task ids marked DONE / kept WIP (other plan active), left uncommitted 
 
 ## Reusability note
 
-This command and its sub-agents are project-scoped under `.claude/` for now. They are intentionally generic: they do not reference `wp-plugin`, `Audit AI`, `auditai.cc`, or any project-specific concept. The only project-specific assumption is the convention `.agents/plans/active/` ↔ `.agents/plans/done/` and the umbrella's `## Execution Plan` section format. To port to another project, copy `.claude/agents/orchestrator-*.md` and `.claude/commands/orchestrate.md`, ensure the target project has the `execute`, `gates:verify-implementation`, `commit` skills (and optionally `gates:design-quality-check`), the `code-review` and `deep-review` skills used by the refiner (Step 5.1b), and ensure umbrella plans follow the `## Execution Plan` table convention.
+This command and its sub-agents are project-scoped under `.claude/` for now. They are intentionally generic: they do not reference `wp-plugin`, `Audit AI`, `auditai.cc`, or any project-specific concept. The only project-specific assumption is the convention `.agents/plans/active/` ↔ `.agents/plans/done/` and the umbrella's `## Execution Plan` section format. To port to another project, copy `.claude/agents/orchestrator-*.md` and `.claude/commands/orchestrate.md`, ensure the target project has the `execute`, `gates:verify-implementation`, `commit` skills (and optionally `gates:design-quality-check`), the `code-review` and `deep-review` skills used by the refiner (Step 5.1b), and ensure umbrella plans follow the `## Execution Plan` table convention. The idea-to-commit pipeline above additionally needs the `stage-handoff` mod (`.claude/skills/stage-handoff/`) and the **pipeline mode** paragraphs in `brainstorm.md` (Step 9) and `plan-feature.md` (Steps 4.5.4, 5.4, 5.5, Report) — they read `.claude/orchestrate-run.json`.
 
 > **Push model:** the committer only commits; the orchestrator pushes from the main session (Step 5.4b). This is deliberate — a sub-agent does not inherit the user's push authorization, so delegating the push to a sub-agent gets blocked even on an authorized run. If a target project allows sub-agent pushes, this split is harmless; if it doesn't (most do not), this is required. The `push` skill is therefore NOT needed by the committer agent.
 >

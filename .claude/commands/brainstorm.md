@@ -10,7 +10,7 @@ argument-hint: "[topic or feature idea | empty → next free backlog task]"
 > **If `$ARGUMENTS` is empty, the topic is not given — it is *resolved* in Step 0 below** (default: the next free task from `.agents/backlog.md`). Do not treat an empty invocation as "ask the user what to build" unless Step 0 finds no resolvable task.
 
 <HARD-GATE>
-This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. You advance through design → spec → cross-model review on your own recommendation, stopping for the user only at the directional decisions defined in Step 2 — and then once, at the **single approval point in Step 9**, before handing off to planning.
+This command produces a DESIGN and a SPEC — never code. Do NOT write any code, scaffold files, or take any implementation action inside `/brainstorm`, regardless of how simple the feature seems. Implementation happens later, via `/plan-feature` → `/execute`. You advance through design → spec → cross-model review on your own recommendation, stopping for the user only at the directional decisions defined in Step 2 — and then once, at the **single approval point in Step 9**, before handing off to planning. (In **pipeline mode** — `/orchestrate` is driving, see Step 9 — that approval point is auto-approved and the pipeline owns the handoff.)
 </HARD-GATE>
 
 <WHY-GATE>
@@ -446,7 +446,9 @@ This is the one place `/brainstorm` stops and waits. The spec is final here — 
 
 **Team mode** (`.agents/team/session.json` exists): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — team mode)`), and continue into planning in the same turn — the planner role runs `/plan-feature` right after `/brainstorm`, so a waiting gate would stall the run. The two exceptions still ask: a real directional fork from Step 2, and a 🔶 rethink signal from Step 8.7 (none → no question). The `<TERMINAL-GATE>` below does not apply in team mode: the planner's own prompt owns the handoff.
 
-> **This gate is a guardrail, not a shaping rule — it has no yield condition** (`.agents/memory/index.md` → Output-Discipline Convention). It is what makes `/brainstorm` a design gate rather than a design *suggestion*, and it is the reason every other step is allowed to move without asking. Nothing in `.claude/` invokes `/brainstorm` programmatically — it is a human-invoked command in every path the repo has — so there is no non-interactive caller for a yield to serve, and `/deep-review`'s two-mode split would be modelling a caller that does not exist. If one is ever added, that is the moment to design a second mode, with a real case in hand.
+**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "brainstorm"` — `/orchestrate` Stage 1 is driving): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — pipeline)`) and return to `/orchestrate`, which compacts the session and runs `/plan-feature` in a fresh context — so, unlike team mode, do **not** continue into planning in this turn. The same two exceptions still ask (a directional fork from Step 2 or Step 1.5, a 🔶 rethink signal from Step 8.7); a question you could not get answered leaves the spec `Draft`, and the pipeline relays it. The `<TERMINAL-GATE>` below applies with one change: the pipeline, not you, ends the turn.
+
+> **This gate is a guardrail, not a shaping rule — it has no yield condition** (`.agents/memory/index.md` → Output-Discipline Convention). It is what makes `/brainstorm` a design gate rather than a design *suggestion*, and it is the reason every other step is allowed to move without asking. The two programmatic callers — the team planner and `/orchestrate`'s pipeline — are exactly the second mode this note once said to design "with a real case in hand": each is a yield to one named caller that leaves a state file (`.agents/team/session.json`, `.claude/orchestrate-run.json`), not a general `--yes` flag. A human-invoked `/brainstorm` still has no yield.
 
 Hand off to `/plan-feature`. There is a single planning command — whether it performs a web-research phase is decided automatically from the `External docs required` flag in the spec (set in Step 5).
 
@@ -457,7 +459,7 @@ Tell the user:
 <TERMINAL-GATE>
 **STOP. `/brainstorm` is complete.**
 
-Do **NOT** write code. Do **NOT** scaffold files. **Do NOT auto-run `/plan-feature`** — naming it above is a handoff pointer for the user, not an instruction to yourself.
+Do **NOT** write code. Do **NOT** scaffold files. **Do NOT auto-run `/plan-feature`** — naming it above is a handoff pointer for the user, not an instruction to yourself. In **pipeline mode** the same holds: report the spec path and return to `/orchestrate` Stage 1, which writes the handoff marker and ends the turn — `/plan-feature` runs after the compaction, never in this turn.
 
 Report the spec path and end your turn.
 </TERMINAL-GATE>

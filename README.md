@@ -100,10 +100,10 @@ Tracker-driven variant — `/start-task <KEY>` replaces the first three steps (b
 **B — Orchestrated (hands-off):**
 
 ```
-New chat → /prime → /brainstorm <feature> → /plan-feature → /orchestrate
+New chat → /prime → /orchestrate <feature>
 ```
 
-> `/orchestrate` drives the whole back half end-to-end — execute → refine → verify → [design-check] → commit → push — looping fixes itself and escalating to you only on a real blocker. Best for well-scoped plans you trust the pipeline to ship.
+> `/orchestrate` drives the whole thing end-to-end — brainstorm → plan-feature → build (execute → refine → verify → [design-check] → commit → push, per step) → closing commit — **compacting its own context between stages** (through the `stage-handoff` mod it ships with) so a 1M-token session never loses the thread. It asks you only at a real directional fork, a 🔶 rethink signal from the cross-model reviewer, or a blocker it cannot resolve; everything else (spec approval, grill scope, split decisions) it decides and reports. Give it a spec path to start at planning, or a plan path to start at the build — that last form is the previous `/orchestrate`, unchanged.
 
 **C — Fast lane (small changes):**
 
@@ -122,7 +122,7 @@ New chat → /prime → /quick-change <what to change> → /commit
 | **`/execute`** *(flow A)* | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. Add `codex` (`/execute codex`) to have Codex write the code at effort `medium` while Claude supervises and re-validates. |
 | **`/check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves; a one-shot codex cross-review of the approved diff follows (if `codex` is installed). **Applies** fixes; leaves a commit-ready tree — does **not** commit. `/check-implementation codex` makes Codex the fixer (effort `high`); Claude stays the judge, and the cross-review step is skipped whenever Codex actually applied fixes (Claude's gate is then the second model). |
 | **`/commit` → `/push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
-| **`/orchestrate`** *(flow B)* | Runs the whole back half as one pipeline — execute → refine → verify → [design] → commit → push — via sub-agents, looping fixes and escalating only on blockers. Replaces the `/execute … /push` tail of flow A. |
+| **`/orchestrate <feature>`** *(flow B)* | Runs flow A as one pipeline — `/brainstorm` → `/plan-feature` → the plan runner (execute → refine → verify → [design] → commit → push via sub-agents) → a closing `chore` commit — compacting the session between stages. Asks only at directional forks, 🔶 rethink signals and blockers. `/orchestrate <plan>` runs just the build. |
 
 > Both flows share the same gates and memory-reflection — `/orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/gates:verify-implementation` is also available standalone when you only want the verdict without applying fixes.
 
@@ -424,9 +424,11 @@ resolve scope (plan | diff-only)
 
 **Why this order:** bugs first (don't polish code you're about to rewrite), cleanliness second, then the read-only gate (it can't invalidate itself), design last (slowest, UI-only). The design gate defaults to **skip** unless the change touches UI *and* a reference design exists.
 
-### `/orchestrate` — full autonomous pipeline (spawns the fleet, commits, pushes)
+### `/orchestrate` — idea-to-commit pipeline (brainstorm → plan → build → commit, compacting between stages)
 
-The only command that takes a plan all the way to **pushed**. Your main session becomes the **orchestrator**: it decides / routes / loops / reports and performs the `git push` itself (push authorization lives in your session, not in sub-agents) — but it never implements, audits, or commits. Each of those is a sub-agent.
+`/orchestrate <feature>` runs `/brainstorm` and `/plan-feature` in **pipeline mode** (no approval or grill-scope questions — the spec is auto-approved with its assumptions listed, the grill applies **All**, a split defaults to densify-or-umbrella) and then the plan runner below, closing with one `chore` commit of the workflow state (plan moved to `done/`, run-log, memory, backlog). Between stages — and between the steps of an umbrella — it writes a handoff marker and ends its turn; the bundled **`stage-handoff` mod** (`.claude/skills/stage-handoff/`, loaded automatically in a trusted project) compacts the session with stage-boundary instructions and resumes it with `/orchestrate --resume`. State lives in `.claude/orchestrate-run.json`, so a resumed stage reads the spec and plan from disk, not from the summary. `--abort` retires a run. It interrupts you only for a directional fork, a 🔶 rethink signal, or a blocker; every answer is recorded so no stage re-asks.
+
+**The plan runner** (`/orchestrate <plan-path>`, also Stage 3 of the pipeline) is the only part that takes a plan all the way to **pushed**. Your main session becomes the **orchestrator**: it decides / routes / loops / reports and performs the `git push` itself (push authorization lives in your session, not in sub-agents) — but it never implements, audits, or commits. Each of those is a sub-agent.
 
 **Per step** (sequential; flat = one plan, umbrella = a DAG of steps each in its own git worktree on a named branch, fast-forward-merged to `main`):
 
