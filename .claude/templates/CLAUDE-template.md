@@ -129,7 +129,7 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 
 ## Project Knowledge Layers
 
-**Before any task read [.agents/memory/index.md](.agents/memory/index.md)** — `When to Read` (what to load), `Quick Reference` (where to write a discovery). Layers under `.agents/`: `sources/` (raw input, human-only) · `memory/` (lessons, decisions, patterns, map, brief) · `reference/` (stable docs, policies) · `specs/` · `plans/{active,done}/` · optional `backlog.md`.
+**Before any task read [.agents/memory/index.md](.agents/memory/index.md)** — `When to Read` (what to load), `Quick Reference` (where to write a discovery). Layers under `.agents/`: `sources/` (raw input, human-only) · `meeting-notes/` (synthesized meeting notes from `/meeting-notes` — append-only; corrections as new notes) · `memory/` (lessons, decisions, patterns, map, brief) · `reference/` (stable docs, policies) · `specs/` · `plans/{active,done}/` · optional `backlog.md`.
 
 **Flow:** `sources/` → `/discover` → `/architect` → `/maintain:refresh-brief` → `[/setup:create-backlog]` → `/brainstorm` → `specs/` → `/plan-feature` → `plans/active/` → `/execute` → `plans/done/`
 

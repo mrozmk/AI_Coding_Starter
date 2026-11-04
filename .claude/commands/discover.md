@@ -77,8 +77,8 @@ Sources on disk (listing only — read them in step 2):
 1. **Parse the argument.** `$ARGUMENTS` is either a one-line idea, empty (the idea comes from the
    sources or the conversation), or one or more `--import <path>` flags → Import mode (below)
    runs before Phase 1. A bare `--import` with no path → ask for the path in one line.
-2. **Ingest `.agents/sources/`** (rules carried from the retired `create-PRD`): absent or empty →
-   skip silently. Files present → read each as requirement context **on equal footing with the
+2. **Ingest the sources** (rules carried from the retired `create-PRD`) — the **effective source set**: every `.agents/meeting-notes/*.md` note with its correction chain applied (follow `**Corrects:**` links from the original), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). None → skip
+   silently. Files present → read each as requirement context **on equal footing with the
    conversation**; prefer source content over guesswork. Sources are **immutable** — never edit
    or delete them. A source that conflicts with the conversation or with another source is
    flagged as a `Q-n` with both quotes — never resolved silently.
@@ -232,7 +232,7 @@ Round `N = 1, 2`. Spawn `@start-critic` (read-only, Fable, high) with:
 ```
 ARTIFACT: docs/PRD.md docs/discovery.md
 RUBRIC: .claude/skills/discover/prd-rubric.md
-SOURCES: <every .agents/sources/* path, plus every --import path (or its $SCRATCH extract for a spreadsheet read through a tool), or "(none)">
+SOURCES: <the effective source set from Phase 0 step 2 (notes with their corrections, uncovered raw sources), plus every --import path (or its $SCRATCH extract for a spreadsheet read through a tool), or "(none)">
 ROUND: <N>
 PRIOR: <round 2: the findings the author was asked to fix — verbatim>
 Follow .claude/agents/start-critic.md. Output only its JSON.
@@ -288,7 +288,7 @@ bash .claude/lib/codex-bg.sh
 > You are a senior business analyst doing an independent, adversarial review of a PRD and its
 > discovery record that another analyst wrote; a first critic's loop ended `<approved | stopped at
 > round N with M open findings>`. The artifacts are `docs/PRD.md` and `docs/discovery.md`; the
-> sources they must trace to are `<.agents/sources/* paths, plus every --import path or its
+> sources they must trace to are `<the effective source set from Phase 0 step 2, plus every --import path or its
 > $SCRATCH extract for a spreadsheet read through a tool, or "none">`. Read
 > `.claude/agents/start-critic.md` and follow its method, its bar for a finding and its output
 > shape exactly — including the full sweep of **every** rule in

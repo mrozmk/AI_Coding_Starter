@@ -22,7 +22,11 @@ Read in this order — stop reading a category if the file doesn't exist:
 
 ### 2. Ingest Raw Sources
 
-List and read everything in `.agents/sources/` — briefs, transcripts, sketches, PDFs the user prepared. These are immutable inputs that feed product thinking.
+Read the **effective source set** — the **effective source set**: every `.agents/meeting-notes/*.md` note with its correction chain applied (follow `**Corrects:**` links from the original), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). These are immutable inputs that feed product thinking; a note supersedes the raw transcript it fully covers.
+
+!`find . -maxdepth 3 -path './.agents/meeting-notes/*.md' 2>/dev/null`
+
+List the notes: count, the three newest titles, and every correction chain (`<note> ← <correction>`).
 
 !`ls -la .agents/sources/ 2>/dev/null || echo "no sources/ directory"`
 

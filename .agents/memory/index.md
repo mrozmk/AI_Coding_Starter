@@ -45,6 +45,7 @@ Use this table to decide which memory files to load. **Skip any file whose front
 | Implementing a new feature | `plans/active/`, `specs/{feature}.md` (if exists) |
 | Architectural decision / refactor | `decisions.md`, `architecture.md` |
 | Product scope, requirement / goal / flow ids | `docs/discovery.md`, `docs/PRD.md` (skip if absent) |
+| A feature or scope question touches a topic discussed in a past meeting | `.agents/meeting-notes/` — the matching note plus any `-correction` note that `Corrects:` it |
 | Designing a backlog Task or touching a module boundary | `docs/architecture.md` → `## Decisions` rows for the touched nodes, `docs/map/system.yaml` (skip if absent) |
 | Touching API integration / external protocol | `api.md` |
 | Working on a specific module | `domain/{module}.md` |
