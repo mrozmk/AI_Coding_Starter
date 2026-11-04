@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   parseTables, parseBacklog, loadInventory, loadSystem, checkBacklog, checkSystem,
-  scheduleLanes, renderLanes, renderStoryMap, replaceRegion, locateRegions, main,
+  scheduleLanes, renderLanes, renderStoryMap, replaceRegion, locateRegions, main, chainPaths,
 } from './backlog-check.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url).replace(/\.test\.mjs$/, '.mjs');
@@ -169,7 +169,7 @@ const ACS = `### E0-1 — Project scaffold
 ### E2-2 — Report export
 - **E2-2.AC1** — Given a report, when export is clicked, then a CSV downloads.`;
 
-function backlogMd({ rows = TASK_ROWS, epics, acs = ACS, header, markers = true } = {}) {
+function backlogMd({ rows = TASK_ROWS, epics, acs = ACS, header, markers = true, taskHeader = TASK_HEADER } = {}) {
   const epicRows = epics ?? [
     '| E0 | Foundation | skeleton everything stands on | monolith is enough | 12 | — | — |',
     '| E1 | Ordering | first order placed (G-1) | users accept email confirmation | 16 | E0 | — |',
@@ -187,7 +187,7 @@ ${epicRows.join('\n')}
 **E1** — appetite: medium · cut first: E1-3
 
 ## Task table
-${TASK_HEADER}
+${taskHeader}
 ${rows.join('\n')}
 
 ## Acceptance criteria
@@ -427,6 +427,85 @@ test('scope register: Scope rev mismatch warns only when both sides carry a vers
   assert.deepEqual(scopeWarn(checkRegister(rows, { header: `${base} · **Scope rev:** v1.0` })), ['backlog generated at scope v1.0, register is v1.1 — reconcile the backlog (/update-backlog)']);
   assert.deepEqual(scopeWarn(checkRegister(rows, { header: base })), []);
   assert.deepEqual(scopeWarn(check(project({ backlog: backlogMd({ header: `${base} · **Scope rev:** v1.0` }) }))), []);
+});
+
+// --- Relates / Chain (ws-02)
+
+const WIDE_HEADER = TASK_HEADER.replace('| Depends on |', '| Depends on | Relates | Chain |').replace('|------------|', '|------------|---------|-------|');
+const widen = (rows, cells = {}) => rows.map((r) => {
+  const parts = r.split('|');
+  const [rel, ch] = cells[parts[1].trim()] ?? ['—', '—'];
+  parts.splice(8, 0, ` ${rel} `, ` ${ch} `);
+  return parts.join('|');
+});
+const wide = (cells, rows = TASK_ROWS, extra = {}) => check(project({ backlog: backlogMd({ rows: widen(rows, cells), taskHeader: WIDE_HEADER, ...extra }) }));
+const withdrawnE22 = withRow('E2-2', '| E2-2 | E2 | Report export (withdrawn) | story | M | 4 | E0-1 | 2 | R2 | — | FL-2.A1 | DONE | — | — |');
+
+test('Relates/Chain: a table without the columns and one with both all — behave identically', () => {
+  const narrow = backlogMd();
+  const widened = backlogMd({ rows: widen(TASK_ROWS), taskHeader: WIDE_HEADER });
+  const a = check(project({ backlog: narrow }));
+  const b = check(project({ backlog: widened }));
+  assert.deepEqual(b.errors, a.errors);
+  assert.deepEqual(b.warnings, a.warnings);
+  const flows = loadInventory(project()).flows;
+  assert.equal(renderLanes(parseBacklog(widened).tasks), renderLanes(parseBacklog(narrow).tasks));
+  assert.equal(renderStoryMap(parseBacklog(widened).tasks, flows), renderStoryMap(parseBacklog(narrow).tasks, flows));
+});
+
+test('Relates: valid on one or both sides; self, unknown and Depends-on overlap are errors', () => {
+  assert.deepEqual(wide({ 'E2-1': ['E2-2', '—'] }).errors, []);
+  const both = wide({ 'E2-1': ['E2-2', '—'], 'E2-2': ['E2-1', '—'] });
+  assert.deepEqual(both.errors, []);
+  assert.ok(hasError(wide({ 'E2-1': ['E2-1', '—'] }), /^Task E2-1: Relates itself$/));
+  assert.ok(hasError(wide({ 'E2-1': ['E9-9', '—'] }), /^Task E2-1: unknown Relates target E9-9$/));
+  assert.ok(hasError(wide({ 'E1-3': ['E1-2', '—'] }), /^Tasks E1-2 and E1-3: both Depends on and Relates — one relation per pair$/));
+  assert.ok(hasError(wide({ 'E1-2': ['E1-3', '—'] }), /^Tasks E1-2 and E1-3: both Depends on and Relates — one relation per pair$/));
+});
+
+test('Relates: a withdrawn endpoint warns exactly once however the pair is declared', () => {
+  for (const cells of [{ 'E2-1': ['E2-2', '—'] }, { 'E2-2': ['E2-1', '—'] }, { 'E2-1': ['E2-2', '—'], 'E2-2': ['E2-1', '—'] }]) {
+    const res = wide(cells, withdrawnE22);
+    assert.deepEqual(res.warnings.filter((w) => /^Relates /.test(w)), ['Relates E2-1 ↔ E2-2: E2-2 is withdrawn'], JSON.stringify(cells));
+  }
+});
+
+test('Chain: a linear chain is valid, ordered by Depends on, and printed in the lanes region', () => {
+  const rows = withRow('E1-3', '| E1-3 | E1 | Confirmation email | story | M | 4 | E1-2 | 2 | WS | orders | FL-1.A3, G-1 | TODO | — | — |');
+  const reordered = [rows[0], rows[1], rows[2], rows[4], rows[3], rows[5], rows[6]];
+  const res = wide({ 'E1-2': ['—', 'ord'], 'E1-3': ['—', 'ord'] }, reordered);
+  assert.deepEqual(res.errors, []);
+  const tasks = parseBacklog(backlogMd({ rows: widen(reordered, { 'E1-2': ['—', 'ord'], 'E1-3': ['—', 'ord'] }), taskHeader: WIDE_HEADER })).tasks;
+  assert.deepEqual(chainPaths(tasks).get('ord').ids, ['E1-2', 'E1-3']);
+  assert.match(renderLanes(tasks), /\| ord \| E1-2 → E1-3 \| 12 \|/);
+});
+
+test('Chain: spans of Epic or Node and non-linear paths are errors; malformed token is an error', () => {
+  assert.ok(hasError(wide({ 'E1-3': ['—', 'x'], 'E2-1': ['—', 'x'] }), /^chain x: members span Epics E1, E2/));
+  assert.ok(hasError(wide({ 'E1-2': ['—', 'x'], 'E1-3': ['—', 'x'] }), /^chain x: members span Nodes orders, email/));
+  const twoHeads = withRow('E1-3', '| E1-3 | E1 | Confirmation email | story | M | 4 | E0-1 | 2 | WS | orders | FL-1.A3, G-1 | TODO | — | — |');
+  assert.ok(hasError(wide({ 'E1-2': ['—', 'x'], 'E1-3': ['—', 'x'] }, twoHeads), /^chain x: not one linear Depends on path \(2 heads\)/));
+  assert.ok(hasError(wide({ 'E2-1': ['—', 'Ord_1'] }), /^Task E2-1: Chain Ord_1 must be a kebab token$/));
+});
+
+test('Chain: single member, long chains and withdrawn members warn; rendering keeps the path', () => {
+  assert.ok(wide({ 'E2-1': ['—', 'solo'] }).warnings.includes('chain solo: single member'));
+  const five = ['| E3-1 | E3 | S1 | tech | M | 4 | E0-1 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |', '| E3-2 | E3 | S2 | tech | M | 4 | E3-1 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |',
+    '| E3-3 | E3 | S3 | tech | M | 4 | E3-2 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |', '| E3-4 | E3 | S4 | tech | M | 4 | E3-3 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |',
+    '| E3-5 | E3 | S5 | tech | M | 4 | E3-4 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |'];
+  const epics = ['| E0 | Foundation | a | b | 12 | — | — |', '| E1 | Ordering | a | b | 16 | E0 | — |', '| E2 | Reporting | a | b | 12 | E1 | — |', '| E3 | Steps | a | b | 20 | E0 | — |'];
+  const cells = Object.fromEntries(['E3-1', 'E3-2', 'E3-3', 'E3-4', 'E3-5'].map((id) => [id, ['—', 'line']]));
+  const acs = `${ACS}\n\n${['E3-1', 'E3-2', 'E3-3', 'E3-4', 'E3-5'].map((id) => `### ${id} — step\n- **${id}.AC1** — Given x When y Then z`).join('\n\n')}`;
+  const res = wide(cells, [...TASK_ROWS, ...five], { epics, acs });
+  assert.deepEqual(res.errors, []);
+  assert.ok(res.warnings.includes('chain line: 5 members — consider one Task or a split'), res.warnings.join('\n'));
+  const mid = five.map((r) => (r.startsWith('| E3-3 |') ? r.replace('| S3 |', '| S3 (withdrawn) |').replace('| TODO |', '| DONE |') : r));
+  const tasks = parseBacklog(backlogMd({ rows: widen([...TASK_ROWS, ...mid], cells), taskHeader: WIDE_HEADER, epics, acs })).tasks;
+  assert.ok(wide(cells, [...TASK_ROWS, ...mid], { epics, acs }).warnings.includes('chain line: broken by withdrawal of E3-3'));
+  assert.match(renderLanes(tasks), /\| line \| E3-1 → E3-2 → E3-3 → E3-4 → E3-5 \| 16 \|/);
+  const allGone = five.map((r) => r.replace(/\| (S\d) \|/, '| $1 (withdrawn) |').replace('| TODO |', '| DONE |'));
+  const goneTasks = parseBacklog(backlogMd({ rows: widen([...TASK_ROWS, ...allGone], cells), taskHeader: WIDE_HEADER, epics, acs })).tasks;
+  assert.match(renderLanes(goneTasks), /\| line \| E3-1 → E3-2 → E3-3 → E3-4 → E3-5 \| 0 \|/);
 });
 
 test('(4) dependency cycle E1-1 → E1-2 → E1-1 is named', () => {

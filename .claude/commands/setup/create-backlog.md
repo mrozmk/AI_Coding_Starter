@@ -84,6 +84,8 @@ The hierarchy is **Epic → Task**, nothing in between. A Task is one of two thi
 | `story` | one **user story** — "As a <role> I want <capability> so that <outcome>", traced to the `R-n` / `FL-n.Ak` / `G-n` it delivers | ≥1 happy-path AC **and** ≥1 unwanted-behaviour AC (the failure, the forbidden action, the empty state) |
 | `tech` | one **technical task** — scaffold, schema, contract, infrastructure, refactor, spike — traced to the `AD-n` / `NFR-n` that demands it | ≥1 AC stating the observable result; a spike's AC is the decision it produces |
 
+**Three relations, one order.** `Depends on` is the hard order (Jira `Blocks`). `Relates` is shared context without order (Jira `Relates`) — one relation per pair: a pair is either a dependency or a relation, never both. `Chain` is an advisory name for "one developer, these Tasks, in this order": its members are already one line in `Depends on`, share the Epic and the `Node`, and the order is the `Depends on` path, never the table order. A chain of small Tasks on one file set is usually one Task.
+
 **Size every Task** `M` (4 pts) · `H` (8 pts) · `XH` (16 pts) — a currency for planning, not hours. Anything bigger than `XH` is **split**, in this order of preference (Humanizing Work's patterns): **workflow steps** (one step of the flow each) → **CRUD operations** → **business-rule variations** → **data variations** → **data-entry methods** → **major effort first, the rest later** → **simple core now, complex cases later** → **defer performance** (make it work, then make it fast as its own Task) → **spike** (last resort — a timeboxed `tech` Task whose output is a decision). Epic points are the sum of their Tasks' points; the checker enforces it.
 
 **Every Task gets acceptance criteria with ids** `E<n>-<m>.AC<k>`, written as Gherkin (`Given … When … Then …`) or EARS (`WHEN … the system shall …`). These ids are stable: `/brainstorm` copies them into the spec, `/plan-feature` into the plan, `/qa-verify` keys its verdicts by them. Never renumber — a dropped criterion keeps its id with `(withdrawn)`.
@@ -107,6 +109,7 @@ Tasks are cut so that **2, 3 or 4 developers can work at the same time**. Not al
 3. **Avoid two same-wave Tasks on one `Node`.** The checker warns when two Tasks in the same wave share a `Node` and land in different lanes — sequence them (dependency) or split the node.
 4. **`Wave` is a priority band, not a total order.** Duplicate wave numbers are intentional: same-wave Tasks with no mutual dependency run in parallel. Never encode the DAG in the wave column; encode it in `Depends on` — the checker derives the lanes from the DAG and the points, not from the waves.
 5. **Each Epic carries its *why*** — **Outcome** (the product effect, traced to a `G-n` / PRD section) and **Key assumption** (the most load-bearing thing you're *not yet sure of*). One sentence each. Below the Epic map, each Epic also gets **appetite** (how much it is *worth* — the budget, not the estimate) and **cut first** (what drops first when the Epic grows). An AI agent has no "that's enough" instinct; the cut line is the hand-brake.
+6. **The DAG is the only order.** `Chain` names a sequence for a human; the lanes do not honour it — the parallel plan prints each chain so you can see where the lanes split it. Encode a real ordering need in `Depends on`.
 
 ### Phase 5: Story map and slices
 
@@ -121,7 +124,7 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 
 ```markdown
 # <Project> — Backlog (Epics + Tasks)
-**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
+**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
 
 ## Epic map
 | Epic | Title | Outcome | Key assumption | Pts | Depends on | Jira |
@@ -130,9 +133,9 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 (each Epic below the table: `**E1** — appetite: … · cut first: …`)
 
 ## Task table
-| ID | Epic | Task | Type | Size | Pts | Depends on | Wave | Slice | Node | Traces | Status | Jira | Ref |
-|----|------|------|------|------|-----|------------|------|-------|------|--------|--------|------|-----|
-| E0-1 | E0 | Project scaffold | tech | H | 8 | — | 0 | WS | platform-core | AD-1 | TODO | — | — |
+| ID | Epic | Task | Type | Size | Pts | Depends on | Relates | Chain | Wave | Slice | Node | Traces | Status | Jira | Ref |
+|----|------|------|------|------|-----|------------|---------|-------|------|-------|------|--------|--------|------|-----|
+| E0-1 | E0 | Project scaffold | tech | H | 8 | — | — | — | 0 | WS | platform-core | AD-1 | TODO | — | — |
 
 ## Acceptance criteria
 ### E0-1 — Project scaffold
@@ -151,7 +154,7 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 ## External blockers · ## Open questions · ## Consciously out of scope
 ```
 
-**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Wave` integer, `0` = sequential foundation; `Slice` `WS|R2|R3…`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. The last three headings are separate `##` sections in the real file (one line each when empty).
+**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Wave` integer, `0` = sequential foundation; `Slice` `WS|R2|R3…`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. The last three headings are separate `##` sections in the real file (one line each when empty).
 
 ### Phase 7: Gate — `backlog-check.mjs --write`
 
@@ -170,12 +173,13 @@ Run from the project root. It reads the PRD path from the header written in Phas
 **Epics:** <N> · **Tasks:** <K> (<stories> story · <tech> tech) · **Points:** E0 <p> · E1 <p> · … · total <P>
 **Walking skeleton (WS):** <T> Tasks, <p> pts — <one line: the flow it proves>
 **Makespan after foundation:** N=2 → <p> pts · N=3 → <p> pts · N=4 → <p> pts (foundation <p> pts, sequential)
+**Chains:** <token: E1-2 → E1-3 (12 pts), … — or "none">
 **backlog-check warnings:** <each one verbatim, or "none">
 
 **Next steps:**
 1. Review the backlog — correct the WS boundary, sizes or DAG if you disagree (edit the file, then `node .claude/lib/backlog-check.mjs --write`).
 2. Jira project? `/jira sync` mirrors Epics and Tasks (create-only, writes keys back).
-3. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks.
+3. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks. Lanes are suggestions — the destination command's own guard decides (`/quick-change` Phase 0 may still send an `M` Task to `/brainstorm`).
    When a backlog exists, the pipeline writes `Status`/`Ref` back into it automatically.
 ```
 

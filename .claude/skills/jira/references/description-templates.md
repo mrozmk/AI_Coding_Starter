@@ -105,10 +105,20 @@ H (8 pts)
 
 E1-1, E0-2
 
+## Relates
+
+E1-5
+
+## Chain
+
+checkout-flow — 2 of 3
+
 ## Node
 
 checkout-core
 ```
+
+`## Size` stays in every description whatever `jira.estimates` says — sizes are a planning currency, not a time estimate. `## Relates` / `## Chain` appear only when the row has them.
 
 ---
 
@@ -142,6 +152,8 @@ M (4 pts)
 
 platform-core
 ```
+
+`## Size` stays in every description whatever `jira.estimates` says — sizes are a planning currency, not a time estimate. `## Relates` / `## Chain` appear only when the row has them.
 
 ---
 

@@ -65,12 +65,19 @@
     "gates": "auto"
   },
 
-  "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web.",
+  "_jira_doc": "Jira sync settings. estimates: none | timetracking | <custom field id> — none = no time estimate is sent (sizes stay in the description); absent = the field remembered in .agents/memory/domain/jira.md, else $JIRA_ESTIMATE_FIELD, else timetracking.",
+  "jira": { "estimates": "timetracking" },
+
+  "_ba_doc": "BA profile. enabled: a Business Analyst runs discovery and the backlog in this repo (written by /setup:start later; nothing reads it yet). meetings_dir: where raw transcripts are dropped for /meeting-notes. vendor / client: participant-group labels in meeting notes (defaults Vendor / Client). Absent block = BA profile off.",
+  "ba": { "enabled": false, "meetings_dir": ".agents/sources/meetings/", "vendor": "", "client": "" },
+
+  "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web. ba = the BA command group (meeting-notes, update-backlog, check-backlog, resync) — pruning arrives with the /setup:start interview.",
   "commands": {
     "pr": true,
     "jira": false,
     "confluence": false,
     "codex": false,
-    "qa_runtime_ui": true
+    "qa_runtime_ui": true,
+    "ba": false
   }
 }

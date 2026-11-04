@@ -36,6 +36,7 @@ const DECISION_HEADING = /^###\s+(D-\d+)\s+[—-]/;
 const STATE_MARKER = /^\s*[-*]\s+\*\*[A-Za-z]+-\d+(?:\.A\d+)?\*\*\s*[—-]\s*\((withdrawn|superseded by ([A-Z]+-\d+))(?:\s+per\s+(D-\d+))?\)/i;
 const STATUS_SUPERSEDED = /^superseded by\s+([A-Z]+-\d+)(?:\s+per\s+(D-\d+))?$/i;
 const STATUS_WITHDRAWN = /^withdrawn(?:\s+per\s+(D-\d+))?$/i;
+const CHAIN_TOKEN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SCOPE_REV = /\*\*Scope rev:\*\*\s*(v\d+\.\d+)/;
 const PRD_CURRENT = /\*\*Current:\*\*\s*(v\d+\.\d+)/;
 const AC_SECTION_HEADING = /^##\s+Acceptance criteria\b/i;
@@ -117,6 +118,8 @@ export function parseBacklog(md) {
     pts: Number(cleanId(r.Pts)), deps: listCell(r['Depends on']), wave: cleanId(r.Wave), slice: cleanId(r.Slice),
     node: isNone(r.Node) ? null : cleanId(r.Node), traces: listCell(r.Traces), status: cleanId(r.Status),
     jira: isNone(r.Jira) ? null : cleanId(r.Jira), ref: isNone(r.Ref) ? null : cleanId(r.Ref),
+    // Optional columns: a table without them reads as `—` everywhere.
+    relates: listCell(r.Relates), chain: isNone(r.Chain) ? null : cleanId(r.Chain),
     withdrawn: /\(withdrawn\)/i.test(r.Task ?? ''), line: r._line,
   })).filter((t) => t.id !== '');
 
@@ -434,6 +437,33 @@ export function checkBacklog({ backlog, inventory, system }) {
   const taskCycle = findCycle(taskIds, (id) => byId.get(id).deps);
   if (taskCycle) errors.push(`dependency cycle: ${taskCycle.join(' → ')}`);
 
+  // --- Relates: one canonical unordered pair however it is declared
+  const pairs = new Map();
+  for (const t of b.tasks) {
+    for (const x of t.relates) {
+      if (x === t.id) { errors.push(`Task ${t.id}: Relates itself`); continue; }
+      if (!taskIds.has(x)) { errors.push(`Task ${t.id}: unknown Relates target ${x}`); continue; }
+      const [a, c] = t.id < x ? [t.id, x] : [x, t.id];
+      pairs.set(`${a}|${c}`, [a, c]);
+    }
+  }
+  for (const [a, c] of pairs.values()) {
+    const A = byId.get(a);
+    const C = byId.get(c);
+    if (A.deps.includes(c) || C.deps.includes(a)) errors.push(`Tasks ${a} and ${c}: both Depends on and Relates — one relation per pair`);
+    const gone = [A, C].filter((t) => t.withdrawn).map((t) => t.id);
+    if (gone.length) warnings.push(`Relates ${a} ↔ ${c}: ${gone.join(' and ')} ${gone.length > 1 ? 'are' : 'is'} withdrawn`);
+  }
+
+  // --- Chain: advisory, validated, never scheduled
+  for (const t of b.tasks) if (t.chain && !CHAIN_TOKEN.test(t.chain)) errors.push(`Task ${t.id}: Chain ${t.chain} must be a kebab token`);
+  for (const [token, ch] of chainPaths(b.tasks.filter((t) => !t.chain || CHAIN_TOKEN.test(t.chain)))) {
+    for (const p of ch.problems) errors.push(`chain ${token}: ${p}`);
+    if (ch.members.length === 1) warnings.push(`chain ${token}: single member`);
+    if (ch.members.length > 4) warnings.push(`chain ${token}: ${ch.members.length} members — consider one Task or a split`);
+    for (const id of ch.members) if (byId.get(id)?.withdrawn) warnings.push(`chain ${token}: broken by withdrawal of ${id}`);
+  }
+
   // --- epic points = sum of tasks
   for (const e of b.epics) {
     const sum = b.tasks.filter((t) => t.epic === e.id && pointsOf(t.size) !== undefined).reduce((a, t) => a + pointsOf(t.size), 0);
@@ -511,6 +541,43 @@ export function checkBacklog({ backlog, inventory, system }) {
   }
   if (!errors.length && live.length) warnings.push(...scheduleWarnings(live));
   return { errors, warnings, legacy: false };
+}
+
+/**
+ * Chains by token: `members` (id order), `ids` (the walked `Depends on` path — order is the DAG's,
+ * never the table's) and `problems` (span / linearity). Withdrawn members stay in, so a withdrawal
+ * does not reshape the path.
+ */
+export function chainPaths(tasks) {
+  const groups = new Map();
+  for (const t of tasks) if (t.chain) groups.set(t.chain, [...(groups.get(t.chain) ?? []), t]);
+  const out = new Map();
+  for (const [token, members] of [...groups].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const ids = new Set(members.map((t) => t.id));
+    const sorted = members.map((t) => t.id).sort(byIdAsc);
+    const problems = [];
+    const epics = [...new Set(members.map((t) => t.epic))];
+    if (epics.length > 1) problems.push(`members span Epics ${epics.join(', ')}`);
+    const nodes = [...new Set(members.map((t) => t.node ?? '—'))];
+    if (nodes.length > 1) problems.push(`members span Nodes ${nodes.join(', ')}`);
+    const inner = new Map(members.map((t) => [t.id, t.deps.filter((d) => ids.has(d))]));
+    const heads = sorted.filter((id) => inner.get(id).length === 0);
+    const multiDep = sorted.filter((id) => inner.get(id).length > 1);
+    const fanOut = sorted.filter((id) => sorted.filter((o) => inner.get(o).includes(id)).length > 1);
+    const path = [];
+    if (heads.length === 1) {
+      const seen = new Set();
+      for (let cur = heads[0]; cur && !seen.has(cur); cur = sorted.find((o) => inner.get(o).includes(cur))) { seen.add(cur); path.push(cur); }
+    }
+    const detail = [];
+    if (heads.length !== 1) detail.push(`${heads.length} heads`);
+    if (multiDep.length) detail.push(`${multiDep.join(', ')} depends on more than one member`);
+    if (fanOut.length) detail.push(`${fanOut.join(', ')} is depended on by more than one member`);
+    if (!detail.length && path.length !== sorted.length) detail.push(`path reaches ${path.length} of ${sorted.length} members`);
+    if (detail.length && sorted.length > 1) problems.push(`not one linear Depends on path (${detail.join('; ')})`);
+    out.set(token, { members: sorted, ids: path.length ? path : sorted, problems });
+  }
+  return out;
 }
 
 /** Parallelism warnings over a valid DAG: a dominant critical path, and same-wave Tasks on one Node split across lanes. */
@@ -634,12 +701,24 @@ export function renderLanes(tasks) {
   out.push(base.foundation.length
     ? `**Foundation (Wave 0, sequential):** ${base.foundation.join(' → ')} · ${base.foundationPts} pts`
     : '**Foundation (Wave 0):** none');
-  if (base.lanes.every((l) => !l.ids.length)) { out.push('', 'No parallel work yet — foundation only.'); return out.join('\n'); }
-  schedules.forEach((s, k) => {
-    out.push('', `### N = ${LANE_COUNTS[k]} developers`, '', '| Lane | Tasks | Pts |', '|------|-------|-----|');
-    s.lanes.forEach((l, i) => out.push(`| ${i + 1} | ${l.ids.length ? l.ids.join(', ') : '—'} | ${l.pts} |`));
-    out.push('', `Makespan: ${s.makespan} pts after the foundation · critical path: ${s.criticalPath.ids.join(' → ')} (${s.criticalPath.pts} pts)`);
-  });
+  if (base.lanes.every((l) => !l.ids.length)) out.push('', 'No parallel work yet — foundation only.');
+  else {
+    schedules.forEach((s, k) => {
+      out.push('', `### N = ${LANE_COUNTS[k]} developers`, '', '| Lane | Tasks | Pts |', '|------|-------|-----|');
+      s.lanes.forEach((l, i) => out.push(`| ${i + 1} | ${l.ids.length ? l.ids.join(', ') : '—'} | ${l.pts} |`));
+      out.push('', `Makespan: ${s.makespan} pts after the foundation · critical path: ${s.criticalPath.ids.join(' → ')} (${s.criticalPath.pts} pts)`);
+    });
+  }
+  // Chains are advisory: printed so a human sees where the lanes split them, never scheduled.
+  const chains = chainPaths(tasks);
+  if (chains.size) {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    out.push('', '### Chains (advisory — one developer, in order)', '', '| Chain | Order | Pts |', '|-------|-------|-----|');
+    for (const [token, ch] of chains) {
+      const pts = ch.ids.filter((id) => !byId.get(id).withdrawn).reduce((a, id) => a + taskPts(byId.get(id)), 0);
+      out.push(`| ${token} | ${ch.ids.join(' → ')} | ${pts} |`);
+    }
+  }
   return out.join('\n');
 }
 

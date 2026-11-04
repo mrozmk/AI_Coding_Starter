@@ -51,9 +51,12 @@ and for post-create verification (Step 6).
 A previous run may have crashed between `jira_create_issue` returning and the cell being written.
 Reconcile before planning anything new, or the sync creates duplicates.
 
+**First resolve the estimate setting** (Step 2's resolver) — both a and b run the Step 6
+verification, and with estimates off neither may check an estimate field.
+
 a. **Re-verify flagged cells.** Every cell holding `KEY (unverified)` goes through the Step 6
-   verification again (a Task's estimate check needs the Step 2 target — resolve it first when any
-   cell is flagged). It becomes `KEY` on success, or stays `KEY (unverified)` with the missing
+   verification again (the estimate check uses the setting resolved above and is skipped when
+   estimates are off). It becomes `KEY` on success, or stays `KEY (unverified)` with the missing
    field reported. Never recreate and never delete — the issue exists.
 
 b. **Adopt orphans.** For each row whose `Jira` cell is `—`:
@@ -68,7 +71,8 @@ b. **Adopt orphans.** For each row whose `Jira` cell is `—`:
 
    - **0 hits** → nothing exists yet; the row goes into the Step 1 plan.
    - **exactly 1 hit** → an interrupted earlier create. Adopt the key into the cell as
-     `KEY (unverified)` and verify it per Step 6. The row is then **not** re-created.
+     `KEY (unverified)` and verify it per Step 6 (estimate check skipped when estimates are off).
+     The row is then **not** re-created.
    - **>1 hit** → **stop the whole sync** and list the keys. Two issues share one correlation label;
      only a human can decide which is the real one. Never pick.
 
@@ -93,6 +97,17 @@ run**, not created parentless — HARD-GATE invariant 2 forbids a free-floating 
 ### Step 2 — Resolve the estimate target
 
 Sizes are a currency: `M` = 4, `H` = 8, `XH` = 16 points (umbrella D6).
+
+Resolve the target **once per run** with this single resolver — Step 0 a/b recovery, Step 4 and
+Step 6 all use its result:
+
+1. `.claude/project-profile.json` → `jira.estimates` (Read the file). `none` → **estimates off**: no
+   estimate in any payload, no field probe, nothing captured to memory, and Steps 0 a/b, 4 and 6 skip
+   the estimate field; `timetracking` → `originalEstimate`; any other value is a custom field id →
+   that field with the points value.
+2. Key or file absent → the field remembered in `.agents/memory/domain/jira.md` by an earlier run.
+3. None remembered → the table below.
+4. The target is missing on the create screen (Step 4) → ask, as described after the table.
 
 | Condition | Target |
 |---|---|
@@ -130,8 +145,8 @@ the rest of the run; an unanswered question stops the sync. Capture the chosen f
 |---|---|
 | `issue_type` | `Task` |
 | `summary` | the `Task` cell verbatim |
-| `description` | **Story** template for `Type: story`, **Tech** for `Type: tech` (`description-templates.md`) — carrying the row's `## Acceptance criteria` ids **verbatim** (`E1-2.AC1`), `## Traces`, `## Size` (`H (8 pts)`), `## Node`, `## Depends on` with the **local** ids |
-| `additional_fields` | `'{"parent": "<EPIC-KEY>", "labels": ["story"\|"tech", "<namespace>:E<n>-<m>", …$JIRA_DEFAULT_LABELS], <estimate from Step 2>}'` |
+| `description` | **Story** template for `Type: story`, **Tech** for `Type: tech` (`description-templates.md`) — carrying the row's `## Acceptance criteria` ids **verbatim** (`E1-2.AC1`), `## Traces`, `## Size` (`H (8 pts)`), `## Node`, `## Depends on` with the **local** ids, and — only when the row has them — `## Relates` (local ids) and `## Chain` (`<token> — k of n`, k = the row's position in the chain's `Depends on` path as `backlog-check.mjs` → `chainPaths` computes it) |
+| `additional_fields` | `'{"parent": "<EPIC-KEY>", "labels": ["story"\|"tech", "<namespace>:E<n>-<m>", <"<namespace>:chain-<token>" when chained>, …$JIRA_DEFAULT_LABELS], <estimate from Step 2, omitted when off>}'` |
 
 Labels are **merged**, never replaced: the type label, the correlation label, and whatever
 `$JIRA_DEFAULT_LABELS` carries. AC ids are copied character-for-character — `/qa-verify` joins its
@@ -151,7 +166,7 @@ Prove the fields exist on the create screen **before** creating anything:
    ```
 
 3. Confirm the fields the payloads use are present: `parent` (Tasks), `labels`, and the Step 2
-   estimate target (`timetracking` or `$JIRA_ESTIMATE_FIELD`).
+   estimate target (skipped when estimates are off).
 
 A missing field is **named to the user** with its options — Step 2's "pick another field / bez
 estymaty" for the estimate, the `{"epic_link": …}` fallback for `parent`, dropping the labels is
@@ -184,6 +199,9 @@ Opisy:
 Tworzę? [y/n/edit]
 ```
 
+With estimates off the `Estimate` column shows `—` and the table is followed by one line
+`Estimates: off (project profile)`.
+
 `n` → abort, nothing created. `edit` → apply the corrections, **re-print the whole draft**, re-ask.
 `y` → Step 6 for that group only; the next group gets its own confirm.
 
@@ -214,7 +232,7 @@ For each confirmed row, in order (Epics before their Tasks):
 
    - **Epic** — `issuetype` is `Epic` and the correlation label is present.
    - **Task** — `parent` equals the Epic's key, the correlation label is present, the estimate holds
-     the expected value.
+     the expected value (not checked when estimates are off).
 
 4. All checks pass → the cell becomes the bare `KEY`. Any mismatch, or a failed read → the cell
    **stays** `KEY (unverified)` and the report names exactly which field is missing. The issue is
@@ -282,6 +300,18 @@ For every `Depends on` pair where **both** Tasks now have Jira keys:
 A pair where one side has no key yet is **reported as deferred**, not linked and not silently
 skipped.
 
+**Relates links** — the same reconciliation for the soft relation, after the `Blocks` block:
+
+1. Build the canonical **unordered** pairs from every Task's `Relates` cell (a pair declared on one
+   or both sides is one pair). Drop any pair with a withdrawn endpoint — reported `skipped
+   (withdrawn)`; an existing link is left alone.
+2. For pairs where both sides have keys: read both sides' `issuelinks`; drop pairs already linked
+   by the Relates type in either direction.
+3. Resolve the type name once via `jira_get_link_types` (usually "Relates"; no match → ask, never
+   invent). One confirm table `Tworzę <N> linków Relates`, then create one at a time — no direction
+   check, the type is symmetric.
+4. A side without a key → `deferred`. **Never a `Blocks` link for a `Relates` pair.**
+
 ### Step 8 — Report
 
 ```
@@ -294,6 +324,8 @@ skipped.
 **Zweryfikowane:** 7/8 · **Oflagowane `(unverified)`:** PROJ-245 (brak parent)
 **Adoptowane w Step 0:** E1-3 → PROJ-239 (label match)
 **Linki:** 1 utworzony · 2 już istniały · 1 odroczony (E2-1 bez klucza)
+**Linki Relates:** 1 utworzony · 0 już istniało · 0 odroczonych · 1 pominięty (withdrawn)
+**Estimates:** off (project profile) | timetracking | <field id>
 **Pominięte (miały już klucz):** E0-1, E0-2
 **Błędy:**
 - E2-4: 400 — "<raw error body>"
@@ -316,7 +348,8 @@ report exists to catch.
   — a previous run's approval is not reusable (HARD-GATE invariant 1).
 - **Key written back immediately** after each create, before the verification read.
 - **Never reads ordering, structure, sizes or dependencies back from Jira.** The backlog is the
-  source of truth for all of them.
+  source of truth for all of them. `Relates` links are reconciled like `Blocks` — never inferred
+  from Jira.
 - **Writes only `Jira` cells** in `.agents/backlog.md`. Never `Status`, never `Ref`, never the table
   structure, never the generated `storymap` / `lanes` regions.
 - **No auto-retry on 4xx; no rollback.**
