@@ -5,6 +5,8 @@ is canonical in [team-mode.md](team-mode.md) §10 (one copy; edit it there); thi
 rows. Mechanics: [team-questions.md](team-questions.md); the Advisor no-reply fallback:
 [escalation-fallback.md](escalation-fallback.md).
 
+Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/02-decision-model.md`.
+
 ## 1. Roles
 
 | Role | What it is | Decides |

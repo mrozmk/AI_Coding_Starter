@@ -4,6 +4,8 @@ The contract between the team scripts (`.claude/lib/team-*.sh`), the team hooks 
 commands. Every role reads this file first. Runbook for the supervisor:
 [team-pipeline.md](team-pipeline.md).
 
+Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/03-team-pipeline.md`.
+
 ---
 
 ## 1. Detection

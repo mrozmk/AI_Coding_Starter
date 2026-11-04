@@ -64,6 +64,26 @@
     "test_gate": "none",
     "gates": "auto",
     "_channel_doc": "OPTIONAL — names and policy of the agent-mail channel between the supervision roles (Supervisor, TeamLead, Advisor, Reviewer), shared by the whole team; machine paths never go here (they live in the gitignored .agents/team/channel.local.json written by /setup:teams → channel). project_code: the registry key and message label for this project. mail_suffix: appended to every role name to form the recipient name (Advisor + XY = AdvisorXY), so two projects on one machine never share a recipient; may be empty. tmux_prefix: prefix of the role sessions' tmux names (default: the repo dir slug). advisor: pair (a Reviewer on a second-vendor model co-signs tier-2 decisions) | solo (the Advisor decides alone, every note says reviewer: none). notifier: osascript | notify-send | none. Defaults when a key is absent: mail_suffix empty, tmux_prefix the repo dir slug, advisor pair when codex is true else solo, notifier none. Read by .claude/lib/team-channel.sh (team_channel_load), never parsed elsewhere. Schema and protocol: .agents/reference/agent-mail.md.",
+    "_policy_doc": "OPTIONAL — project policy of the supervision model; every key optional, an absent key = the conservative behaviour named here, never another project's values. The values below are one project's choices, shown as examples to adopt consciously. sensitive_paths: globs whose changes make a team question tier 2 (Advisor pair) and a QA ready-with-warnings the Advisor's disposition; absent = the list in CLAUDE.md → Validation → Test policy. A judgement input for the TeamLead and the Advisor (attested, not proven) — no script enforces it yet. classes: the deterministic tier-1 waivers of an ask-tier prompt (merge_line, allow_offline, add_ask, prod_diagnose — prod_diagnose also needs dir, a relative directory of read-only diagnose scripts, and privileged, a regex of the subcommands that are not); deny, egress, the SQL guard and unreadable prompts are never waived. Current engine: every class is on unless the Operator switches it off (team-watch.sh mode class <name> off), and prod_diagnose exists when dir and privileged are set; making each class off until enabled is true here is the next change of the team layer — until then enabled is documentation, not behaviour. tickets: labels and lines on tickets the Supervisor/Advisor create from recommendations; absent = no labels, the recommendation line is still written. closure: automatic ticket-closure rules the Supervisor applies; absent = no automatic closure. Human overview: docs/teams/06-permissions.md (starter repo).",
+    "policy": {
+      "sensitive_paths": ["src/payments/**", "src/auth/**", "src/webhooks/**", "src/licensing/**"],
+      "classes": {
+        "merge_line": {"enabled": false},
+        "allow_offline": {"enabled": false},
+        "add_ask": {"enabled": false}
+      },
+      "tickets": {
+        "auto_label": "auto-created",
+        "path_labels": {"brainstorm": "brainstorm", "quick": "quick-change", "team": "team", "analysis": "analysis"},
+        "recommendation_line": "Created from a recommendation — the Operator verifies it when the work starts",
+        "new_epic_when_none_fits": true
+      },
+      "closure": {
+        "done_after_release_minutes_without_5xx": 40,
+        "dry_run_max_days": 7,
+        "on_hold_after_days": 7
+      }
+    },
     "channel": {
       "project_code": "XY",
       "mail_suffix": "XY",
