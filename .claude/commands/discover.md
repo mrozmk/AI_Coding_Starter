@@ -77,7 +77,7 @@ Sources on disk (listing only — read them in step 2):
 1. **Parse the argument.** `$ARGUMENTS` is either a one-line idea, empty (the idea comes from the
    sources or the conversation), or one or more `--import <path>` flags → Import mode (below)
    runs before Phase 1. A bare `--import` with no path → ask for the path in one line.
-2. **Ingest the sources** (rules carried from the retired `create-PRD`) — the **effective source set**: every `.agents/meeting-notes/*.md` note with its correction chain applied (follow `**Corrects:**` links from the original), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). None → skip
+2. **Ingest the sources** (rules carried from the retired `create-PRD`) — the **effective source set**: every `.agents/meeting-notes/*.md` note with its corrections applied (every `-correction*` note whose `**Corrects:**` names it, in suffix order — metadata corrections first), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). None → skip
    silently. Files present → read each as requirement context **on equal footing with the
    conversation**; prefer source content over guesswork. Sources are **immutable** — never edit
    or delete them. A source that conflicts with the conversation or with another source is

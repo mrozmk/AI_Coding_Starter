@@ -22,15 +22,15 @@ Read in this order — stop reading a category if the file doesn't exist:
 
 ### 2. Ingest Raw Sources
 
-Read the **effective source set** — the **effective source set**: every `.agents/meeting-notes/*.md` note with its correction chain applied (follow `**Corrects:**` links from the original), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). These are immutable inputs that feed product thinking; a note supersedes the raw transcript it fully covers.
+Read the **effective source set**: every `.agents/meeting-notes/*.md` note with its corrections applied (every `-correction*` note whose `**Corrects:**` names it, in suffix order — metadata corrections first), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). These are immutable inputs that feed product thinking; a note supersedes the raw transcript it fully covers.
 
 !`find . -maxdepth 3 -path './.agents/meeting-notes/*.md' 2>/dev/null`
 
-List the notes: count, the three newest titles, and every correction chain (`<note> ← <correction>`).
+List the notes: count, the three newest titles, and each note's corrections (`<note> ← <correction>, <correction-2>`).
 
 !`ls -la .agents/sources/ 2>/dev/null || echo "no sources/ directory"`
 
-If files are present, read each one. If empty, note "no raw sources".
+Of the raw files listed, read **only** those no `**Coverage:** full` note names in its `**Source:**` line (a fully covered transcript is superseded by its note). None left → note "no uncovered raw sources".
 
 ### 3. Read Approved Specs
 

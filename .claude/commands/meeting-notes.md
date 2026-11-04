@@ -174,29 +174,43 @@ Approve → Phase 8. "Change X" / "add Y" → patch the draft and return to Phas
 
 Notes are immutable; a correction is a new file.
 
-1. Read the target note (an original, or an earlier correction). Ask which bullets are wrong
-   (multiple choice over its bullets, one question per call, same loop rules as Phase 4).
-2. Assemble `<same date>-<same slug>-correction.md` (`-correction-2.md`, … when one exists):
+1. Read the **original** note and apply its existing corrections (every `-correction*` file whose
+   `**Corrects:**` names it, in suffix order) — that **materialized** note is what is shown and
+   corrected. Passing a correction file resolves to its original. Ask which bullets or metadata
+   fields are wrong (multiple choice, one question per call, same loop rules as Phase 4).
+2. Assemble `<same date>-<same slug>-correction.md` (`-correction-2.md`, `-correction-3.md`, … when
+   one exists). `**Corrects:**` **always names the original note**, never an earlier correction:
 
    ```markdown
    # Correction — <original title>
    **Corrects:** .agents/meeting-notes/<target file>
    **Source:** <who or what established the correction — e.g. "client email 12.11.2026", "BA review">
 
+   ## Metadata
+   - Coverage: partial — cart ⟵ was: "full"
+
    ## Decisions
-   - <new text> ⟵ was: "<exact original bullet>"
+   - <new text> ⟵ was: "<exact current bullet>"
    - <new text> ⟵ added
-   - ⟵ removed: "<exact original bullet>"
+   - ⟵ removed: "<exact current bullet>"
    ```
 
-   Only the headings that change appear; every line is a replacement, an addition or a removal
-   against the **exact** original bullet text.
+   Only the headings that change appear. Every line is a replacement, an addition or a removal
+   against the **exact current text** — the bullet as it reads in the materialized note (after the
+   earlier corrections), without any `⟵` annotation. `## Metadata` corrects the fields outside the
+   sections — `Title`, `Source`, `Coverage`, `Date` — as `<Field>: <new value> ⟵ was: "<old>"`.
+
+   *Worked example.* The original says `- Use carrier X`. `-correction.md` has
+   `- Use carrier Y ⟵ was: "Use carrier X"`. A later fix writes `-correction-2.md` with
+   `- Use carrier Z ⟵ was: "Use carrier Y"` — both name the original; applied in suffix order the
+   final text is `Use carrier Z`.
 3. Phases 6–8 as above (preview, review gate, write).
 
-**How readers apply corrections:** start from the original, follow `**Corrects:**` links forward
-(never by date — corrections share the meeting's date); apply each file's lines in that order. Two
-corrections targeting the same file are both applied in file-name order; when both touch the same
-bullet, report it to the user as a conflict instead of choosing.
+**How readers apply corrections:** start from the original; take every `-correction*` file whose
+`**Corrects:**` names it, in suffix order (`-correction`, `-correction-2`, …) — never by date, they
+share the meeting's date; apply `## Metadata` lines first (they can change `**Coverage:**`, which
+decides whether the raw transcript is still read), then the section lines. A line whose `was:` text
+is not found in the materialized note is a conflict — report it to the user instead of choosing.
 
 ---
 
