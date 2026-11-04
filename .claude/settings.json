@@ -17,6 +17,7 @@
     "allow": [
       "Write",
       "Edit",
+      "Bash(unzip -p:*)",
       "Bash(ls:*)",
       "Bash(pwd)",
       "Bash(echo:*)",
