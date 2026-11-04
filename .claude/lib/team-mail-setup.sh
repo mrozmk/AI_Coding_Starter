@@ -20,7 +20,9 @@
 # Defaults: key = teams.channel.project_code, else the slug; slug = the repo dir name, lowercased;
 #   suffix = teams.channel.mail_suffix, else ""; label = project_code, else the key;
 #   codex_home = the value line of .claude/codex-profile, else null.
-# Output: one `<action>\t<what>\t<detail>` line per step, then the Reviewer instructions.
+# Output: one `<action>\t<what>\t<detail>` line per step (the last ones render the generated
+#   .agents/team/{watch,escalation}.local.json through team-channel.sh), then the Reviewer
+#   instructions.
 # Exit: 0 done · 1 refused (nothing written) · 2 usage. Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
@@ -60,7 +62,8 @@ CODEX_ROLES="Reviewer"
 AM="$HOME/.agent-mail"
 REG="$AM/projects.json"
 PROFILE="$REPO/.claude/project-profile.json"
-CHANNEL_REL=".agents/team/channel.local.json"
+. "$HERE/team-channel.sh"   # TEAM_CHANNEL_REL; the render step below runs it
+CHANNEL_REL="$TEAM_CHANNEL_REL"
 TOOLS_DIR="$AM/tools"
 RUNTIME="README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py"
 # Copies are compared byte for byte; a __pycache__ written into one would break that (`-I`
@@ -286,6 +289,21 @@ if [ -f "$CH" ] && [ "$(jq -S . "$CH" 2>/dev/null)" = "$(printf '%s' "$CJ" | jq 
 else
   step write channel "$CHANNEL_REL"
   if [ -z "$DRY" ]; then mkdir -p "$(dirname "$CH")"; write_json "$CH" "$CJ"; fi
+fi
+
+# ---- the generated local configs: .agents/team/{watch,escalation}.local.json --------------------
+# Rendered from .claude/team/*.tmpl by team-channel.sh, which reads the channel config just written;
+# a render problem is reported, never fatal — the channel itself is bound.
+if [ -n "$DRY" ]; then
+  if ! (cd "$REPO" && bash "$HERE/team-channel.sh" render --dry-run 2>/dev/null); then
+    step plan render ".agents/team/watch.local.json + escalation.local.json, after the channel file"
+  fi
+elif ! jq -e '.teams.channel | type == "object"' "$PROFILE" >/dev/null 2>&1; then
+  step skip render "no teams.channel in the profile — the generated configs need its names"
+elif out="$(cd "$REPO" && bash "$HERE/team-channel.sh" render 2>&1)"; then
+  printf '%s\n' "$out"
+else
+  step warn render "$(printf '%s' "$out" | tail -n 1)"
 fi
 
 # ---- the Reviewer registers itself: it needs its own Codex thread UUID ------------------------

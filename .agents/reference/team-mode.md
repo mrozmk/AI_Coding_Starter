@@ -66,9 +66,9 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `send-<role>.lock/` (`pid`, `owner`) | `team-answer.sh`, `team-run.sh end_session` | per-target send lock: one writer of keys into the role's pane; never reclaimed automatically (`team-question.sh <team> unlock-send <role>`) |
 | `send-<role>.log` | `team-answer.sh`, `team-run.sh` | append-only: `dispatch <utc> <instance sha1> q=<id> attempt=<k> pid=<p>` before the first key; `stop-during-send <utc> <owner>` when a stop found the lock held |
 
-The escalation config is `<main checkout>/.agents/team/escalation.local.json` — the
-operator's local file, never committed, read only by `team-escalate.sh` (shape:
-`.claude/team/escalation.local.json.example`).
+The escalation config is `<main checkout>/.agents/team/escalation.local.json` — a local file,
+never committed, read only by `team-escalate.sh`, rendered by `/setup:teams` from
+`.claude/team/escalation.local.json.tmpl` with the channel config (`team-channel.sh render`).
 
 **Run audit, outside the clone.** `<main checkout>/.agents/team/audit/` holds
 `<YYYYMMDD>-<team>-<ticket>-<run>.{md,json}`, `index.jsonl` (one line per run) and `*.retro.md/log`.

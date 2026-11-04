@@ -1,7 +1,7 @@
 ---
 description: Watch parallel AI teams from this session — progress, permission prompts with their command, questions, ready-for-merge — and route their questions by escalation tier (TeamLead / Advisor)
 argument-hint: "[--tiers on|off] <team> [team...]  (e.g. alfa gamma)"
-allowed-tools: Monitor, TaskStop, PushNotification, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), mcp__atlassian__jira_get_issue
+allowed-tools: Monitor, TaskStop, PushNotification, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), mcp__atlassian__jira_get_issue
 ---
 
 # /monitor — supervise running teams
@@ -47,6 +47,11 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
 - Never ask the Operator for a team decision — the Advisor list and the Operator list (§3) go to
   Advisor; only Operator actions
   (`team-mode.md` §10) go to the Operator.
+- A **`turn` to Supervisor** is one agent-mail wake-up through the channel config, never a literal
+  recipient or box: `bash .claude/lib/team-channel.sh turn TeamLead Supervisor --thread <the q's
+  esc- thread, if any> --body "<one line>"` (it resolves both names with `mail_suffix` and sends
+  through `team-mail.sh`). Exit 3 = no channel configured (`/setup:teams` → channel) → say the same
+  line to the Operator in this window instead.
 
 ## Steps
 
@@ -200,7 +205,7 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
        --send <the send: line>`. Print `<team> q-<n>: fallback (Advisor milczy, Reviewer #<id>) →
        <answer>`, then (h). Policy class → also the policy-log line;
      - `LATE <STATUS>` → compare with the q's `## Answer`: the same → one line; different → a
-       `turn` to Supervisor („konflikt: spóźniona odpowiedź Advisor vs decyzja <author>”),
+       `turn` to Supervisor (route: the rules above) („konflikt: spóźniona odpowiedź Advisor vs decyzja <author>”),
        nothing delivered, never a revoke by itself. `LATE NONE` → nothing;
      - `NO-REPLY <reason> (repings: <n>, sent: <yes|no>)` → **NO-REPLY rule**: print `<team>
        q-<n>: Advisor bez odpowiedzi (<reason>) — <action>` only when the reason differs from this
@@ -298,9 +303,9 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
 ## Policy log
 
 **Path:** `<decisions dir>/teamlead-policy-log.md` — one log for all teams, outside the clones and
-outside `.agents/team/watch/`. `<decisions dir>` is the team channel's decisions directory; with no
-channel configured it is the main checkout's `.agents/team/decisions/` (git-ignored with the rest
-of `.agents/team/`). TeamLead is the only writer of decision and
+outside `.agents/team/watch/`. `<decisions dir>` is the team channel's decisions directory
+(`bash .claude/lib/team-channel.sh get decisions_dir`); when that exits 3 (no channel configured)
+it is the main checkout's `.agents/team/decisions/` (git-ignored with the rest of `.agents/team/`). TeamLead is the only writer of decision and
 revocation lines; append-only.
 
 **Classes** (anything else is no policy class and gets no entry):

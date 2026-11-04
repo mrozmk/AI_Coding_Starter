@@ -26,6 +26,8 @@ die() { echo "team-mail: $1" >&2; exit "${2:-1}"; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 REG="$HOME/.agent-mail/projects.json"
+# The channel file's path (TEAM_CHANNEL_REL) is the channel config's, not a second spelling of it.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/team-channel.sh"
 # The tool runs from shared copies (~/.agent-mail/tools/agent_mail-<sha>, other clients' dirs):
 # a __pycache__ written there would make a byte-identical copy look different. `-I` ignores
 # PYTHON* variables, so every call also passes `-B`; the export covers the tool's children.
@@ -76,7 +78,7 @@ resolve_here() {
   local top ch k
   top="$(git rev-parse --show-toplevel 2>/dev/null)" || die "--here: not inside a git checkout"
   top="$(cd "$top" && pwd -P)"
-  ch="$top/.agents/team/channel.local.json"
+  ch="$top/$TEAM_CHANNEL_REL"
   if [ -f "$ch" ]; then
     k="$(jq -r '.key // empty' "$ch" 2>/dev/null || true)"
     [ -z "$k" ] || { printf '%s' "$k"; return; }

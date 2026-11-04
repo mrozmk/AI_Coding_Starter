@@ -374,8 +374,11 @@ notes' `## Supervised decisions` and from there to the PR body, the wrapup's Jir
 (`## Decyzje nadzorcy`) and the `/monitor` ready line. `bash .claude/lib/team-question.sh alfa list`
 prints every question with its tier and state and a `total=` count line.
 
-**Escalation adapter setup:** copy `.claude/team/escalation.local.json.example` to the **main
-checkout's** `.agents/team/escalation.local.json` (gitignored) and set:
+**Escalation adapter setup:** `/setup:teams` → channel renders the **main checkout's**
+`.agents/team/escalation.local.json` (gitignored) from `.claude/team/escalation.local.json.tmpl`
+with the channel config (`bash .claude/lib/team-channel.sh render`; written only once the operator
+kit's adapter `<kit_dir>/escalate.sh` exists, without `opinion` under `advisor: solo`; a file
+without the template's `_generated` marker is never replaced). Its operations:
 - `send` — a command that sends the payload to Advisor; it gets `$1` = payload file, `$2` = team,
   `$3` = role, `$4` = q id, `$5` = thread `esc-<run>-<qid>`, `$6` = seq as positional arguments
   (never interpolated; dedup key `$5-$6`); must exit 0;
@@ -391,8 +394,8 @@ checkout's** `.agents/team/escalation.local.json` (gitignored) and set:
   group is killed past it. After `pending-operator` the wait has no deadline.
 
 No file, invalid JSON, a failing or hanging command or an unparseable reply → `NO-REPLY` and the
-re-ping behaviour above — never a question to you. The example's `wait` exits 1 on purpose, so an
-unedited copy ends in `NO-REPLY`. The channel itself never appears in the repo.
+re-ping behaviour above — never a question to you. No adapter yet → no file → `NO-REPLY no
+config`. The channel's machine paths never appear in the repo.
 
 **Revoke:** "cofnij alfa q-3 — powód" → `team-question.sh alfa revoke q-3 --why "<powód>"`. It
 records `## Revoked` and, when the role is idle on the same attempt with no prompt open, types the

@@ -94,7 +94,8 @@ own .claude/lib/team_prompt_check.py
 own .claude/lib/worker-lib.sh
 own .claude/lib/worker-next.sh
 own .claude/project-profile.json.example
-own .claude/team/escalation.local.json.example
+own .claude/team/escalation.local.json.tmpl
+own .claude/team/watch.local.json.tmpl
 own .claude/team/manifest.txt
 own .claude/team/pr/azure-devops-body-get.md
 own .claude/team/pr/azure-devops-body-set.md
@@ -158,4 +159,5 @@ own tools/agent_mail/agent_mail_store.py
 own tools/agent_mail/mail_md.py
 own .claude/lib/team-mail.sh
 own .claude/lib/team-mail-setup.sh
+own .claude/lib/team-channel.sh
 own .agents/reference/agent-mail.md

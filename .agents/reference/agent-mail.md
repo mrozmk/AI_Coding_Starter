@@ -60,6 +60,39 @@ paths live in the gitignored `.agents/team/channel.local.json`:
 `tool_sha` is the copy's `<sha>`, `null` for a tool that is not an `agent_mail-<sha>` copy;
 `kit_dir` is where the operator kit will be installed, not created by this step).
 
+## The channel config: `team-channel.sh`
+
+Every script, hook and kit file that talks to the channel reads both halves through **one**
+loader, `.claude/lib/team-channel.sh` → `team_channel_load` (sourced; pattern of
+`team-profile.sh`), instead of spelling a box, tool or recipient out. It exports
+`TEAM_CHANNEL_{CODE,SUFFIX,TMUX_PREFIX,ADVISOR,NOTIFIER}` from the profile (defaults: `mail_suffix`
+`""`, `tmux_prefix` the repo dir slug, `advisor` `pair` when the profile's `codex` is `true` else
+`solo`, `notifier` `none`), `TEAM_CHANNEL_{KEY,BOX,TOOL,TOOL_SHA,DECISIONS,CODEX_HOME,KIT}` from
+`channel.local.json`, and the four recipient names
+`TEAM_CHANNEL_{SUPERVISOR,TEAMLEAD,ADVISOR_NAME,REVIEWER}` (role + suffix) — a mail filter uses
+these, never a literal name. It refuses with exit 3 and one `error: team channel:` line when the
+profile has no `teams.channel`, when `channel.local.json` is missing or malformed, when the local
+box/tool no longer match the registry entry of `key` (stale: rerun the channel step), or when
+`mail_suffix` differs from the entry's `suffix`. Executed, it is a small CLI:
+
+| Call | Does |
+|---|---|
+| `team-channel.sh show` / `get <field>` | the exported values / one of them |
+| `team-channel.sh name <Role>` | `<Role><suffix>` for `Supervisor\|TeamLead\|Advisor\|Reviewer` |
+| `team-channel.sh turn <From> <To> [send args]` | a wake-up `--kind turn --awaiting <To><suffix>` through `team-mail.sh <key> send` (`/monitor`'s `turn` to Supervisor) |
+| `team-channel.sh render [--dry-run]` | the generated local configs below |
+
+**Generated, never typed.** `render` (run by the channel step after it writes
+`channel.local.json`) fills `.claude/team/watch.local.json.tmpl` and
+`.claude/team/escalation.local.json.tmpl` into the gitignored `.agents/team/watch.local.json`
+(the team-watch probes — every probe calls `team-mail.sh <key>`, so the box and tool are resolved
+from the registry at run time and no path is written; the TeamLead's `esc_mail` keeps only
+`from=Advisor<suffix>`) and `.agents/team/escalation.local.json` (the four adapter lines
+`bash "<kit_dir>/escalate.sh" <op> "$1" … "$6"`, written only once the operator kit's adapter
+exists, without `opinion` under `advisor: solo`). A rendered file carries a `_generated` marker; a
+file without it is hand-written and is reported `keep … hand-written`, never replaced. A path the
+generated commands cannot carry (outside `[A-Za-z0-9_./~@%+=:, -]`) refuses the render.
+
 ## The client: `team-mail.sh`
 
 `bash .claude/lib/team-mail.sh <KEY|--here> <subcommand> [args…]` — always passes `--box`, never
@@ -168,7 +201,7 @@ repoints the entry — only when the entry's tool is an `agent_mail-<sha>` copy 
 refused) and no other entry shares the box. The old copy stays (other boxes may still run it).
 Run it with `--dry-run` first; a newer tool may migrate the box schema on its next open. `--dry-run` prints the plan and
 writes nothing — it reads `recipients.json` directly instead of opening the box, so no box is
-created; the tool copy shows as a `create tool-copy` (or `keep tool-copy`) line. Every run ends with `.agents/team/channel.local.json` and the Reviewer instructions.
+created; the tool copy shows as a `create tool-copy` (or `keep tool-copy`) line. Every run ends with `.agents/team/channel.local.json`, the `render` lines of `team-channel.sh` (a `skip render` without `teams.channel`, a `warn render` when the channel does not load — the binding itself still stands) and the Reviewer instructions.
 
 **Reviewer** (Codex window of the project, `CODEX_HOME` = the entry's `codex_home`): its sandbox
 needs write access to the box directory and read access to the tool. First thing after start:
@@ -196,6 +229,7 @@ Linux (`flock`, `ps` formats) is to verify.
 
 In the repository: the tool code, the client, the setup step, this document. Local and never
 committed: the box and its WAL files, `recipients.json` (session ids), `*.lock`, `deliver-*.log`,
-`decisions/`, `.agents/team/channel.local.json`. The tool's own fallback box (no `--box`, no
+`decisions/`, `.agents/team/channel.local.json` and the rendered
+`.agents/team/{watch,escalation}.local.json`. The tool's own fallback box (no `--box`, no
 `AGENT_MAIL_BOX`) is `<repo>/.agents/agent-mail/mail.sqlite` — ignored by `.gitignore`, and
 never used by the client.

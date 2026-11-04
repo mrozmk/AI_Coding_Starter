@@ -1,0 +1,16 @@
+{
+  "_generated": "by team-channel.sh render from .claude/team/watch.local.json.tmpl — edit the template or rerun /setup:teams, never this file",
+  "_comment": "Probes for the team-watch daemon (read from <main checkout>/.agents/team/watch.local.json). Each probe runs via bash -c on every cycle (concurrently, each within timeout_secs 1-60); each non-empty stdout line is one unread item, exit != 0 or a timeout is an error signal. Every probe goes through team-mail.sh with the channel key, so the box and the tool come from the machine registry at run time and no path is spelled out here. mail: one probe per routed role (routing split) — filtered to kind=turn so routine mail never wakes a role; the TeamLead probe drops esc- threads (team-escalate.sh waits on them itself). mail_unread: the single-window probe (routing single = the Supervisor runs /monitor). wake_mail: read only by the wake loop of a role without a team-watch receiver (the Advisor). esc_mail: the Advisor's unread replies on esc- threads; it raises an ESCALATION signal only when no team-escalate.sh waiter holds that question. Keep --limit 0: without it the CLI returns only the oldest 50 unread and the filter runs after that cut. The renderer fills the double-brace placeholders LIB (this checkout's .claude/lib), KEY (the channel key), SUPERVISOR, TEAMLEAD, ADVISOR, REVIEWER (role + mail_suffix) and KIT_DIR.",
+  "mail": {
+    "TeamLead": "out=$(bash \"{{LIB}}/team-mail.sh\" {{KEY}} inbox --for {{TEAMLEAD}} --unread --limit 0) || exit $?; printf '%s\\n' \"$out\" | grep '^\\[agent-mail\\]' | grep ' kind=turn ' | grep -v ' thread=esc-' || true",
+    "Supervisor": "out=$(bash \"{{LIB}}/team-mail.sh\" {{KEY}} inbox --for {{SUPERVISOR}} --unread --limit 0) || exit $?; printf '%s\\n' \"$out\" | grep '^\\[agent-mail\\]' | grep ' kind=turn ' || true"
+  },
+  "mail_unread": "out=$(bash \"{{LIB}}/team-mail.sh\" {{KEY}} inbox --for {{SUPERVISOR}} --unread --limit 0) || exit $?; printf '%s\\n' \"$out\" | grep '^\\[agent-mail\\]' | grep -v ' thread=esc-' || true",
+  "wake_mail": {
+    "Advisor": "out=$(bash \"{{LIB}}/team-mail.sh\" {{KEY}} inbox --for {{ADVISOR}} --unread --limit 0) || exit $?; printf '%s\\n' \"$out\" | grep '^\\[agent-mail\\]' | grep ' kind=turn ' || true"
+  },
+  "esc_mail": {
+    "TeamLead": "out=$(bash \"{{LIB}}/team-mail.sh\" {{KEY}} inbox --for {{TEAMLEAD}} --unread --limit 0) || exit $?; printf '%s\\n' \"$out\" | grep '^\\[agent-mail\\]' | grep ' from={{ADVISOR}} ' | grep ' thread=esc-' || true"
+  },
+  "timeout_secs": 10
+}

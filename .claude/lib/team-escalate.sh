@@ -11,8 +11,8 @@
 #   TeamLead would deliver; an eligible tier-2 class may close on Reviewer's "opinion: agree"
 #   after a Advisor timeout (.agents/reference/escalation-fallback.md). --resume on an answered
 #   q only late-reads a reply (LATE <status> / LATE NONE) and never delivers.
-# Config: <main checkout>/.agents/team/escalation.local.json (shape:
-#   .claude/team/escalation.local.json.example); send/wait/opinion/peek are each
+# Config: <main checkout>/.agents/team/escalation.local.json, rendered by /setup:teams from
+#   .claude/team/escalation.local.json.tmpl (team-channel.sh render); send/wait/opinion/peek are each
 #   `bash|sh <adapter> … "$1" … "$6"` ($1=payload file, $2=team, $3=role, $4=question id,
 #   $5=thread esc-<run>-<qid>, $6=seq), parsed without running anything before any adapter runs;
 #   a send counts only with a last stdout line `SENT id=<n>`; rc 0 without it is retried once at

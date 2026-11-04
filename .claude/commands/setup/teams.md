@@ -1,7 +1,7 @@
 ---
 description: Install or update the team harness from the starter (manifest-driven), then fill the teams profile
 argument-hint: "<starter-root> [--check]"
-allowed-tools: Bash(bash *team-setup.sh*), Bash(bash *team-mail-setup.sh*), Bash(bash *team-mail.sh*), Bash(command -v:*), Bash(jq:*), Bash(git rev-parse:*), Bash(git check-ignore:*), AskUserQuestion, Read
+allowed-tools: Bash(bash *team-setup.sh*), Bash(bash *team-mail-setup.sh*), Bash(bash *team-mail.sh*), Bash(bash *team-channel.sh*), Bash(command -v:*), Bash(jq:*), Bash(git rev-parse:*), Bash(git check-ignore:*), AskUserQuestion, Read
 ---
 
 # Setup: Teams — install the team harness into this project
@@ -51,8 +51,8 @@ Binds the project to its agent-mail box through the machine registry `~/.agent-m
 1. Plan: `bash .claude/lib/team-mail-setup.sh <repo-root> --dry-run`; print it verbatim. The `mode` line says **reuse** (an entry whose `repo` is this checkout), **extend** (registry without such an entry) or **fresh** (no registry). A refusal (exit 1): show it and skip the step — never edit the registry by hand to get past it.
 2. **extend** while the registry already has entries: `AskUserQuestion` — "New box for this project (recommended)" or one option per existing key ("reuse `<KEY>` — `<repo>`"). A picked key: rerun the dry-run with `--key <KEY>`; it becomes **reuse**.
 3. Consent: `AskUserQuestion` Apply / Skip. **reuse** never creates a tool or a box and never rewrites the entry's `tool` (one tool per box) — say so. **extend** / **fresh** copy the vendored tool to `~/.agent-mail/tools/agent_mail-<sha>` (`create tool-copy`; `keep tool-copy` when an identical copy exists) and the entry points at that copy, never at the checkout. When the plan has an `offer roles` line, add the option "Apply and add the role names to the entry" (`--add-roles`).
-4. Apply: the same command without `--dry-run` (plus the chosen `--key` / `--add-roles`); print it verbatim. It registers the missing Claude roles with `--adapter monitor`, never overwrites a recipient, and writes the gitignored `.agents/team/channel.local.json`.
-5. Verify: `bash .claude/lib/team-mail.sh --here check` must print `OK`; otherwise show it and STOP. A `tool behind checkout (<old> → <new>)` line is a warning, not a failure: show it with its command and say that the re-sync (`--resync-tool`) is the Operator's decision — never run it from this step.
+4. Apply: the same command without `--dry-run` (plus the chosen `--key` / `--add-roles`); print it verbatim. It registers the missing Claude roles with `--adapter monitor`, never overwrites a recipient, writes the gitignored `.agents/team/channel.local.json`, then renders `.agents/team/watch.local.json` and `.agents/team/escalation.local.json` from `.claude/team/*.tmpl` (`team-channel.sh render`; escalation is `skip`ped until the operator kit's adapter exists; a hand-written file is kept). A `warn render` line: show it — the channel is bound, the generated configs are not.
+5. Verify: `bash .claude/lib/team-mail.sh --here check` must print `OK` and `bash .claude/lib/team-channel.sh show` must exit 0; otherwise show it and STOP. A `tool behind checkout (<old> → <new>)` line is a warning, not a failure: show it with its command and say that the re-sync (`--resync-tool`) is the Operator's decision — never run it from this step.
 6. Hand the `reviewer:` block of the output to the user unchanged: the Reviewer registers itself from its Codex window (it needs its own thread UUID), then the Advisor restarts the `deliver` loop. With `advisor: solo` the block says there is no Reviewer.
 
 ## Step 6 — `shared` conflicts

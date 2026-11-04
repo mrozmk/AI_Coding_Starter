@@ -181,9 +181,9 @@ them. A fresh TeamLead session starts one background `team-escalate.sh <team> <r
 
 Nothing is active until the local adapter offers both read operations:
 
-1. Add the `opinion` and `peek` lines from `.claude/team/escalation.local.json.example` to the
-   live `.agents/team/escalation.local.json` (with the live adapter path); without either line
-   the fallback stays off.
+1. The rendered `.agents/team/escalation.local.json` carries the `opinion` and `peek` lines of
+   `.claude/team/escalation.local.json.tmpl` (`bash .claude/lib/team-channel.sh render`;
+   `advisor: solo` drops `opinion`); without either line the fallback stays off.
 2. The adapter's `send` must print `SENT id=<n>` as its last stdout line (the receipt).
 
 Check: `jq -e '.opinion and .peek and .send and .wait' .agents/team/escalation.local.json`.
