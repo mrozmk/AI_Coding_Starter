@@ -1,0 +1,19 @@
+{
+  "name": "stage-handoff",
+  "version": "0.1.0",
+  "description": "Compact-and-resume between pipeline stages: when a turn ends with a stage-handoff marker on disk, compact the session with state-keeping instructions and submit the marker's resume command",
+  "userConfig": {
+    "markerPath": {
+      "type": "string",
+      "title": "Marker path",
+      "description": "File a pipeline command writes when a stage is done, relative to the working directory",
+      "default": ".claude/stage-handoff.json"
+    },
+    "resumeDelayMs": {
+      "type": "number",
+      "title": "Resume delay (ms)",
+      "description": "Pause between the finished compaction and the submitted resume command",
+      "default": 1000
+    }
+  }
+}
