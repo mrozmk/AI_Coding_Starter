@@ -53,6 +53,7 @@ ROUND:    1
 PRIOR:    (the checker warnings, verbatim, as known context)
 SCOPE:    all | E<n> | <the --since Task set>
 RULES:    (see below)
+METHOD:   .claude/commands/setup/create-backlog.md   (Phase 3 split patterns and Phase 4 rules K2 / K3 / K9 cite)
 ```
 
 - ≤ ~25 live Tasks, or a narrow `--epic` / `--since`: **one call, all rules**.
@@ -79,15 +80,18 @@ answers become **intents** in `/update-backlog`'s model:
 | merge Tasks | `merge` — union of traces and prerequisites, dependents redirected |
 | move wave / slice / resize | `edit` of the structural cells |
 | a soft relation / a chain | `edit` adding `Relates` / `Chain` |
-| rewrite a criterion | withdraw the AC id + a new id |
+| rewrite a criterion — **backlog-owned** (the current view's `source` is `.agents/backlog.md`) | withdraw the AC id + a new id |
+| rewrite a criterion — **spec-owned** (`source` is an approved spec) | no backlog intent: report "revise `<spec>` — `/brainstorm <Task id>` (new AC id in the spec)"; a backlog rewrite would not change the criteria QA verifies |
 
 A split or merge whose dependent is protected, or whose redirect is ambiguous, becomes a question —
 never a silent rewire.
 
 ## 6. Apply
 
-When any intent exists: run `/update-backlog`'s apply phases (Phase 5 impact → Phase 6 candidate →
-Phase 7 preview → Phase 8 write) with these intents, the `D-n` titled `check-backlog <date>` and
+When any intent exists: run `/update-backlog` with these intents as its input — its **Phase 0**
+(pre-flight: interrupted write, revisions), **Phase 2** (load, record both targets' hashes,
+`--next-ids`) and the protection rules and questions of **Phase 4** apply to them unchanged, then
+Phase 5 impact → Phase 6 candidate → Phase 7 preview → Phase 8 write — the `D-n` titled `check-backlog <date>` and
 `Sources: BA direct decision (check-backlog findings #…)`. A candidate that fails the checker leaves
 the finding open; nothing is written.
 
@@ -110,7 +114,9 @@ the verdict `ship | revise | rethink`.
 
 ## 10. Record
 
-Write the backlog header line (create it under the header when absent; replace it when present):
+Write the backlog header line — **its own line**, directly under the `**Date:** …` line (create it
+when absent; replace it when present; an older inline `· **Last check:** …` field is moved onto its
+own line first):
 
 ```
 **Last check:** YYYY-MM-DD · scope: all | E2 | since D-4 · verdict: ship | revise | rethink · backlog sha256: <12 hex>

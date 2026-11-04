@@ -124,7 +124,8 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 
 ```markdown
 # <Project> — Backlog (Epics + Tasks)
-**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Last check:** — · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
+**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
+**Last check:** — (written by `/check-backlog`, always on its own line)
 
 ## Epic map
 | Epic | Title | Outcome | Key assumption | Pts | Depends on | Jira |
@@ -166,10 +167,11 @@ Run from the project root. It reads the PRD path from the header written in Phas
 
 ### Phase 7.5: Independent check — `/check-backlog` (recommended)
 
-Recommend running `/check-backlog` before the first `/jira draft`: an independent critic grades the
-judgement calls the checker cannot (Wave-0 minimality, size honesty, AC quality, skeleton
-thinness) and routes accepted fixes through `/update-backlog`. Name it in the Phase 8 next steps;
-this command does not run it.
+Offer `/check-backlog` now (`AskUserQuestion`: **run it now** (Recommended) / later): an independent
+critic grades the judgement calls the checker cannot (Wave-0 minimality, size honesty, AC quality,
+skeleton thinness) and routes accepted fixes through `/update-backlog`, with its own approval gates.
+Run → its verdict goes into the Phase 8 report as `**Check:** <verdict> (<D-n> if fixes were
+applied)`; later → `**Check:** not run — /check-backlog before the first /jira draft`.
 
 ### Phase 8: Report
 
@@ -181,6 +183,7 @@ this command does not run it.
 **Walking skeleton (WS):** <T> Tasks, <p> pts — <one line: the flow it proves>
 **Makespan after foundation:** N=2 → <p> pts · N=3 → <p> pts · N=4 → <p> pts (foundation <p> pts, sequential)
 **Chains:** <token: E1-2 → E1-3 (12 pts), … — or "none">
+**Check:** <verdict from Phase 7.5, or "not run — /check-backlog before the first /jira draft">
 **backlog-check warnings:** <each one verbatim, or "none">
 
 **Next steps:**
