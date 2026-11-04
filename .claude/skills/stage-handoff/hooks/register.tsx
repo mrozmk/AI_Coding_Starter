@@ -51,6 +51,29 @@ Prefer bullets; keep it under ~2k words.`
 let markerPath = '.claude/stage-handoff.json'
 let resumeDelayMs = 1_000
 let inFlight = false
+// Bumped by the session.compact hook whenever a main-loop compaction completes — whoever
+// triggered it. The handoff waits on this counter, not only on its own compact() promise:
+// a compaction of a very large context can outlive that promise (the first real run lost
+// its resume that way), and the counter still sees the compaction finish.
+let compactions = 0
+
+const COMPACT_WAIT_MS = 10 * 60_000
+const SUBMIT_RETRIES = 10
+const LOG_LINES = 300
+
+async function log($: EngineInterface, line: string): Promise<void> {
+  const path = markerPath.replace(/\.json$/, '') + '.log'
+  try {
+    const prev = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
+    const lines = prev.split('\n').filter((l) => l !== '')
+    lines.push(`${new Date(await $.clock.now()).toISOString()} ${line}`)
+    await $.fs.write(path, lines.slice(-LOG_LINES).join('\n') + '\n')
+  } catch {
+    // logging must never break the handoff
+  }
+}
+
+const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err)).slice(0, 300)
 
 async function consume($: EngineInterface): Promise<Marker | undefined> {
   if (!(await $.fs.exists(markerPath))) return undefined
@@ -60,28 +83,70 @@ async function consume($: EngineInterface): Promise<Marker | undefined> {
   const mv = await $.process.run(['mv', '-f', markerPath, last])
   if (mv.exitCode !== 0) {
     $.ui.toast(`stage-handoff: cannot consume ${markerPath} (${mv.stderr.trim()})`)
+    await log($, `consume: mv failed: ${mv.stderr.trim()}`)
     return undefined
   }
   const parsed = parseMarker(text)
   if (typeof parsed === 'string') {
     $.ui.toast(`stage-handoff: ${parsed} — nothing done, see ${last}`)
+    await log($, `consume: ${parsed}`)
     return undefined
   }
+  await log($, `consume: stage="${parsed.stage}" resume="${parsed.resume}"`)
   return parsed
 }
 
 // Compaction rejects while a turn runs; the turn that wrote the marker may still be
-// settling when the timer fires, so retry a few times before giving up.
+// settling when the timer fires, so retry a few times before giving up. Resolves as soon
+// as EITHER its own compact() call returns OR the session.compact hook saw a compaction
+// complete (the counter) — the promise alone proved unreliable on a large context.
 async function compactWithRetry($: EngineInterface, m: Marker): Promise<'done' | 'skipped' | 'failed'> {
-  for (let attempt = 0; attempt < RETRIES; attempt++) {
+  const before = compactions
+  let settled: 'done' | 'skipped' | 'failed' | undefined
+  const own = (async () => {
+    for (let attempt = 0; attempt < RETRIES; attempt++) {
+      try {
+        const { skip } = await $.session.compact({ instructions: compactInstructions(m) })
+        await log($, `compact: call resolved (attempt ${attempt + 1}, skip=${skip ?? 'no'})`)
+        settled = skip === undefined ? 'done' : 'skipped'
+        return
+      } catch (err) {
+        await log($, `compact: attempt ${attempt + 1} rejected: ${errText(err)}`)
+        if (compactions > before) return
+        await $.clock.sleep(RETRY_MS)
+      }
+    }
+    settled = 'failed'
+  })()
+  const startedAt = await $.clock.now()
+  for (;;) {
+    if (settled !== undefined && settled !== 'failed') return settled
+    if (compactions > before) {
+      await log($, `compact: observed via session.compact hook (${compactions - before} compaction(s))`)
+      return 'done'
+    }
+    if (settled === 'failed') return 'failed'
+    if ((await $.clock.now()) - startedAt > COMPACT_WAIT_MS) {
+      await log($, `compact: no compaction within ${COMPACT_WAIT_MS / 1000}s — giving up`)
+      void own
+      return 'failed'
+    }
+    await $.clock.sleep(RETRY_MS)
+  }
+}
+
+async function submitWithRetry($: EngineInterface, text: string): Promise<boolean> {
+  for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
     try {
-      const { skip } = await $.session.compact({ instructions: compactInstructions(m) })
-      return skip === undefined ? 'done' : 'skipped'
-    } catch {
+      await $.prompt.submit({ text })
+      await log($, `submit: ok (attempt ${attempt + 1}): ${text}`)
+      return true
+    } catch (err) {
+      await log($, `submit: attempt ${attempt + 1} rejected: ${errText(err)}`)
       await $.clock.sleep(RETRY_MS)
     }
   }
-  return 'failed'
+  return false
 }
 
 async function handoff($: EngineInterface, m: Marker): Promise<void> {
@@ -89,14 +154,20 @@ async function handoff($: EngineInterface, m: Marker): Promise<void> {
   inFlight = true
   try {
     $.ui.toast(`stage-handoff: "${m.stage}" done — compacting, then ${m.resume}`)
+    await log($, `handoff: start stage="${m.stage}"`)
     const outcome = await compactWithRetry($, m)
     if (outcome === 'failed') {
       $.ui.toast(`stage-handoff: compaction did not run (a turn kept running) — type ${m.resume} yourself`)
+      await log($, 'handoff: compaction failed — no resume submitted')
       return
     }
     if (outcome === 'skipped') $.ui.toast('stage-handoff: compaction vetoed by a hook — resuming uncompacted')
     await $.clock.sleep(resumeDelayMs)
-    await $.prompt.submit({ text: m.resume })
+    const ok = await submitWithRetry($, m.resume)
+    if (!ok) $.ui.toast(`stage-handoff: could not submit ${m.resume} — type it yourself (see .claude/stage-handoff.log)`)
+  } catch (err) {
+    await log($, `handoff: threw: ${errText(err)}`)
+    $.ui.toast(`stage-handoff: failed (${errText(err)}) — type ${m.resume} yourself`)
   } finally {
     inFlight = false
   }
@@ -112,6 +183,16 @@ export const register: Register = (on, options) => {
       description: 'Compact with stage-handoff instructions, then submit the given resume command; argument = resume command (default: the marker on disk)',
     })
     return next(e)
+  })
+
+  // Observe every main-loop compaction completing, whoever triggered it (see `compactions`).
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined) {
+      compactions++
+      await log($, `session.compact: completed (trigger=${e.trigger}, before=${result.tokensBefore ?? '?'}, after=${result.tokensAfter ?? '?'})`)
+    }
+    return result
   })
 
   // Main-loop answers only: a subagent's end or an aborted turn never triggers a handoff.

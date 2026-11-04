@@ -10,4 +10,7 @@ The pipeline continues in a fresh context instead of one million-token session l
 Marker: `{ "stage": "<name>", "resume": "<prompt>", "keep": ["<line>", ...], "focus": "<text>" }`.
 `/stage-handoff <prompt>` runs the same compact-then-submit by hand. Options: `markerPath`,
 `resumeDelayMs`. Compaction cannot run under a running turn, so the mod retries for ~30 s and
-otherwise asks you to type the resume command yourself.
+otherwise asks you to type the resume command yourself. The resume does not hang on the mod's
+own `compact()` promise: a `session.compact` hook also observes the compaction finishing (a
+large context can take minutes), and the submit itself is retried. Every step is appended to
+`.claude/stage-handoff.log` (git-ignored) — read it when a resume did not arrive.
