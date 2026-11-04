@@ -461,3 +461,19 @@ only — never a gate. A flagged or sampled final run gets one detached, report-
 **Team supervision layer.** The question ledger, the tiers and the escalation adapter work from
 one `/monitor` window. The durable signal daemon (team-watch), role sessions and the operator kit
 are separate layers; until they are installed, `/monitor`'s 15 s poll is the event source.
+
+## 13. Tests
+
+Starter repo only: the team layer's tests are not distributed, so a downstream has none of this.
+The one gate is `.claude/lib/tests/team-suite.sh`. It runs purity, every smoke part by name
+(serial parts last, alone), the standalone suites, the agent-mail unittest and the role-profile
+check, and prints `ok <step> <n> checks` per step (0 checks is a FAIL). It refuses to start with
+the real `HOME` or the system `TMPDIR`, and it resolves the starter root from its own path, so it
+runs from any directory:
+
+```bash
+HOME=<scratch>/home TMPDIR=<scratch>/tmp/ bash .claude/lib/tests/team-suite.sh [--parallel] [--keep-going] [--out <dir>]
+```
+
+The redacted log (`<out>/suite-<utc>.log`) passes the purity deny-list and can be pasted into
+evidence. Part 11 is load-sensitive, so run the suite while nothing else runs tests.
