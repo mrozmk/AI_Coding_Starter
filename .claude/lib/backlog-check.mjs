@@ -130,12 +130,16 @@ export function parseBacklog(md) {
   const acs = [];
   let block = null;
   let inSection = false;
+  let last = null;
   md.split(/\r?\n/).forEach((line, idx) => {
     const h = AC_BLOCK_HEADING.exec(line);
-    if (h) { block = h[1]; return; }
-    if (/^##\s/.test(line)) { block = null; inSection = AC_SECTION_HEADING.test(line); return; }
+    if (h) { block = h[1]; last = null; return; }
+    if (/^##\s/.test(line)) { block = null; inSection = AC_SECTION_HEADING.test(line); last = null; return; }
     const d = AC_DEFINITION.exec(line);
-    if (d) acs.push({ id: d[1].trim(), task: d[1].split('.')[0], block, inSection, line: idx + 1, text: acText(line) });
+    if (d) { last = { id: d[1].trim(), task: d[1].split('.')[0], block, inSection, line: idx + 1, text: acText(line) }; acs.push(last); return; }
+    // An indented continuation line belongs to the criterion above it.
+    if (last && /^\s+\S/.test(line) && !/^\s*[-*]\s+\*\*/.test(line)) last.text = `${last.text} ${line.trim()}`;
+    else last = null;
   });
 
   const prd = /\*\*Source PRD:\*\*\s*`([^`]+)`/.exec(md);
@@ -811,11 +815,18 @@ const maxNum = (ids, re) => Math.max(0, ...ids.map((id) => re.exec(id)).filter(B
 function specCriteria(md, taskId) {
   const out = [];
   let inSection = false;
+  let last = null;
   for (const line of md.split(/\r?\n/)) {
-    if (/^##\s/.test(line)) { inSection = /^##\s+Acceptance criteria\b/i.test(line); continue; }
+    if (/^##\s/.test(line)) { inSection = /^##\s+Acceptance criteria\b/i.test(line); last = null; continue; }
     if (!inSection) continue;
     const d = AC_DEFINITION.exec(line);
-    if (d && d[1].trim().split('.')[0] === taskId) out.push({ id: d[1].trim(), text: acText(line) });
+    if (d) {
+      last = d[1].trim().split('.')[0] === taskId ? { id: d[1].trim(), text: acText(line) } : null;
+      if (last) out.push(last);
+      continue;
+    }
+    if (last && /^\s+\S/.test(line) && !/^\s*[-*]\s+\*\*/.test(line)) last.text = `${last.text} ${line.trim()}`;
+    else last = null;
   }
   return out;
 }
@@ -876,15 +887,19 @@ export function impactOf(ids, backlog, prdMd) {
     const m = line && /Traces:\s*([^·]+)/.exec(line);
     return m ? m[1].split(',').map((s) => s.trim()).filter((s) => /^G-\d+$/.test(s)) : [];
   };
+  const detail = (t) => ({ id: t.id, epic: t.epic, slice: t.slice, jira: t.jira, withdrawn: t.withdrawn, protected: protection(t) });
   return ids.map((id) => {
     const tasks = TASK_ID.test(id) ? [byId.get(id)].filter(Boolean) : backlog.tasks.filter((t) => t.traces.includes(id));
+    const deps = [...new Set(tasks.flatMap((t) => dependents(t.id)))].sort(byIdAsc).map((d) => byId.get(d));
+    const all = [...tasks, ...deps];
     return {
       id,
       goals: goalsOf(id),
-      tasks: tasks.map((t) => ({ id: t.id, epic: t.epic, slice: t.slice, jira: t.jira, withdrawn: t.withdrawn, protected: protection(t) })),
-      dependents: [...new Set(tasks.flatMap((t) => dependents(t.id)))].sort(byIdAsc),
-      slices: [...new Set(tasks.map((t) => t.slice))].sort(),
-      epics: [...new Set(tasks.map((t) => t.epic))].sort(byIdAsc).map((e) => ({ id: e, cut: cut(e) })),
+      tasks: tasks.map(detail),
+      dependents: deps.map(detail),
+      slices: [...new Set(all.map((t) => t.slice))].sort(),
+      epics: [...new Set(all.map((t) => t.epic))].sort(byIdAsc).map((e) => ({ id: e, cut: cut(e) })),
+      jira: [...new Set(all.map((t) => t.jira).filter(Boolean))],
     };
   });
 }
@@ -918,7 +933,7 @@ const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] 
   --json         print { errors, warnings, lanes } instead of text
   --system-only  validate docs/map/system.yaml alone (used by /architect)
   --chains       print { chains: { <token>: { ids, members, problems } } } as JSON — the Depends-on order /jira sync numbers "k of n" by (read-only)
-  --next-ids     print { next, taskNext, tasks: { <id>: { current, source, nextAc } } } as JSON — next free ids + the AC resolver (read-only)
+  --next-ids     print { next, taskNext, tasks: { <id>: { current, source, nextAc } } } as JSON — next free ids + the AC resolver; optional Task ids as positionals filter tasks (read-only)
   --impact       print the impact of changing the comma-separated ids (R-/G-/NFR-/AD-/Task) as JSON (read-only)
   --candidate    validate <dir>/PRD.md + <dir>/backlog.md instead of the repo's (also checks marker regions and renders them in memory); --write refused
 exit 0 = no errors · 1 = errors · 2 = usage / missing input`;
@@ -933,7 +948,7 @@ function report(result, { json, lanes = null, notes = [] }) {
 
 export function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args || args.help || args._.length) { console.error(USAGE); return 2; }
+  if (!args || args.help || (args._.length && !args['next-ids'])) { console.error(USAGE); return 2; }
   const root = path.resolve(args.root ?? process.cwd());
   const json = args.json === true;
 
@@ -952,6 +967,7 @@ export function main(argv = process.argv.slice(2)) {
   const md = readIfExists(backlogPath);
   if (md === null || md.trim() === '') { console.error(`backlog-check: ${candidate ? `${backlogPath}` : '.agents/backlog.md'} not found under ${root}\n${USAGE}`); return 2; }
   const parsed = parseBacklog(md);
+  if (parsed.legacy && candidate) { console.error('backlog-check: --candidate: legacy WP backlog — a candidate must be a new-format backlog'); return 1; }
   if (parsed.legacy) {
     const msg = 'legacy WP backlog — regenerate with /setup:create-backlog to use Task checks';
     if (json) console.log(JSON.stringify({ errors: [], warnings: [msg], lanes: null, legacy: true })); else console.log(`backlog-check: ${msg}`);
@@ -968,7 +984,14 @@ export function main(argv = process.argv.slice(2)) {
   if (prdNamed && !fs.existsSync(path.resolve(root, prdNamed))) { console.error(`backlog-check: PRD not found at ${prdNamed} (named by ${args.prd ? '--prd' : 'the backlog header'})`); return 2; }
 
   const inventory = loadInventory(root, prdPath);
-  if (args['next-ids']) { console.log(JSON.stringify(nextIds(root, parsed, inventory))); return 0; }
+  if (args['next-ids']) {
+    const out = nextIds(root, parsed, inventory);
+    const unknown = args._.filter((id) => !out.tasks[id]);
+    if (unknown.length) { console.error(`backlog-check: --next-ids: unknown Task id(s) ${unknown.join(', ')}`); return 2; }
+    if (args._.length) out.tasks = Object.fromEntries(args._.map((id) => [id, out.tasks[id]]));
+    console.log(JSON.stringify(out));
+    return 0;
+  }
   if (args.impact) {
     const ids = args.impact.split(',').map((s) => s.trim()).filter(Boolean);
     console.log(JSON.stringify({ impact: impactOf(ids, parsed, readIfExists(path.resolve(root, prdPath))) }));

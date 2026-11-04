@@ -558,17 +558,36 @@ test('--next-ids: a Draft spec does not own the current AC, but its ids still co
   assert.equal(t.nextAc, 'E1-2.AC5');
 });
 
+test('--next-ids: Task ids filter the output, unknown ids exit 2, continuation lines stay in the text', () => {
+  const dir = withSpec('Approved', '.agents/specs/2026-11-02-place-order.md', '- **E1-2.AC1** — Given a cart,\n  When placed, Then confirmed.\n- **E1-2.AC4** — Given an empty cart, When placed, Then rejected.');
+  const out = runJson(dir, '--next-ids', 'E1-2');
+  assert.deepEqual(Object.keys(out.tasks), ['E1-2']);
+  assert.equal(out.tasks['E1-2'].current[0].text, 'Given a cart, When placed, Then confirmed.');
+  assert.equal(run(dir, '--next-ids', 'E9-9').code, 2);
+  assert.equal(run(dir, 'E1-2').code, 2, 'positionals without --next-ids stay a usage error');
+});
+
+test('--candidate rejects a legacy backlog', () => {
+  const dir = project();
+  const cand = path.join(dir, '.agents', '.pending-update');
+  fs.mkdirSync(cand, { recursive: true });
+  fs.writeFileSync(path.join(cand, 'PRD.md'), PRD);
+  fs.writeFileSync(path.join(cand, 'backlog.md'), LEGACY_BACKLOG);
+  assert.equal(run(dir, '--candidate', cand).code, 1);
+});
+
 test('--impact: tracing Tasks with protection reasons, transitive dependents, slices, goals and cut lines', () => {
   const dir = withSpec('Approved');
   const { impact } = runJson(dir, '--impact', 'R-2,E0-1');
   const r2 = impact.find((x) => x.id === 'R-2');
   assert.deepEqual(r2.goals, ['G-1']);
   assert.deepEqual(r2.tasks.map((t) => [t.id, t.protected]), [['E1-2', ['status WIP', 'ref']]]);
-  assert.deepEqual(r2.dependents, ['E1-3', 'E2-1']);
-  assert.deepEqual(r2.slices, ['WS']);
-  assert.deepEqual(r2.epics, [{ id: 'E1', cut: 'appetite: medium · cut first: E1-3' }]);
+  assert.deepEqual(r2.dependents.map((d) => d.id), ['E1-3', 'E2-1']);
+  assert.deepEqual(r2.epics.map((e) => e.id), ['E1', 'E2'], 'Epics over Tasks and dependents');
+  assert.deepEqual(r2.slices, ['R2', 'WS']);
+  assert.deepEqual(r2.epics[0], { id: 'E1', cut: 'appetite: medium · cut first: E1-3' });
   const e01 = impact.find((x) => x.id === 'E0-1');
-  assert.ok(e01.dependents.includes('E2-2') && e01.dependents.includes('E1-3'));
+  assert.ok(e01.dependents.some((d) => d.id === 'E2-2') && e01.dependents.some((d) => d.id === 'E1-3'));
 });
 
 test('--candidate: validates a pair outside the repo, refuses --write, and rejects missing markers', () => {

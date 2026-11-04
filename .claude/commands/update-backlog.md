@@ -31,10 +31,15 @@ Questions and the preview in the project's communication language; every artifac
 ## Phase 0 — Pre-flight
 
 1. **Interrupted write.** `.agents/.pending-update/manifest.json` exists → classify each target
-   against it: hash = `original` → untouched; = `candidate` → installed; anything else →
-   `unexpected`. Both `original` → offer *discard* or *redo*. PRD `installed` + backlog `original` →
-   **finish** (install the backlog candidate, `--write`, remove the dir) — never discard. Any
-   `unexpected` → stop with manual instructions and keep the dir.
+   against it: hash = `original` → untouched; = `candidate` → installed; for the backlog also =
+   `rendered` (the hash after `--write`, recorded in the manifest in Phase 8) → installed and
+   rendered; anything else → `unexpected`.
+   - both `original` → offer *discard* or *redo*;
+   - PRD `installed` + backlog `original` → **finish**: install the backlog candidate, `--write`,
+     record `rendered`, remove the dir — never discard;
+   - both installed (backlog `candidate` or `rendered`) → **finish**: `--write` (idempotent), record
+     `rendered`, remove the dir;
+   - any `unexpected` → stop with manual instructions and keep the dir.
 2. **Revisions.** Read the PRD header `**Current:**` and the backlog header `**Scope rev:**`. Register
    ahead → **reconcile mode** (below) runs first.
 3. **Pending Jira refreshes.** List every `**Jira refresh:** <key> pending` entry in the PRD
@@ -144,8 +149,9 @@ nothing else written.
    nothing ("the file changed during the run — re-run `/update-backlog`").
 2. Install the PRD: copy the candidate over `docs/PRD.md`, verify its hash = the candidate hash.
 3. Install the backlog the same way.
-4. `node .claude/lib/backlog-check.mjs --write` (lanes + story map).
-5. Remove `.agents/.pending-update/`.
+4. `node .claude/lib/backlog-check.mjs --write` (lanes + story map), then record the backlog's new
+   hash as `rendered` in `manifest.json`.
+5. Remove `.agents/.pending-update/` — only after step 4 succeeded.
 6. Only after the writes returned, report: counts per intent kind, the `D-n`, pending Jira refreshes,
    drafted-but-unsent Tasks that changed ("draft stale — `/jira draft E<n>` refreshes it").
    **Offer (never run):** `/check-backlog --since D-k` (when it exists), `/jira draft` when new rows
