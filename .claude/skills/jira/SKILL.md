@@ -48,6 +48,10 @@ Three invariants — they hold for every invocation, every turn, for the duratio
    - `issue_type` (Epic / Task / Bug only)
    - `components` when `$JIRA_DEFAULT_COMPONENTS` is empty AND user did not supply
 
+   The local draft flows (H1 — `draft`, `drafts`, `edit`, `discard`, `export`) create nothing in
+   Jira: there only `project_key` is required; `parent_epic_key` and `components` are enforced when
+   `send` creates the issue.
+
 3. **No sub-tasks.** Never emit `issue_type: "Sub-task"`. If the user asks for sub-tasks, explain the skill handles Epic / Task / Bug only, and offer to create Tasks under the same parent Epic instead.
 </HARD-GATE>
 
@@ -82,7 +86,7 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
 | `update` | Single-issue edit (Flow B) |
 | `bulk` | Bulk create under parent (Flow C → `references/bulk-pattern.md`) |
 | `sync` | Mirror the backlog's Epics/Tasks into Jira, create-only, keys written back (Flow H → `references/sync-pattern.md`) |
-| `draft [E<n>]` (alias `sync draft`) | Backlog rows without a key → local draft files under `.agents/jira/inprogress/` — no MCP call (Flow H1 → `references/draft-pattern.md`) |
+| `draft [E<n>]` — and `sync draft [E<n>]`, which is matched **before** plain `sync` | Backlog rows without a key → local draft files under `.agents/jira/inprogress/` — no MCP call (Flow H1 → `references/draft-pattern.md`) |
 | `drafts` | List and validate draft files (AC vs the resolver, scope revision, duplicates) — local |
 | `edit <path>` | Edit a draft file under `inprogress/` — local |
 | `discard <E<n>>` | Delete an unsent draft folder after confirm — local |
@@ -321,7 +325,8 @@ Summary of invariants carried through: `node .claude/lib/backlog-check.mjs` must
 
 Delegate entirely to [`references/draft-pattern.md`](references/draft-pattern.md). Covers `draft`,
 `drafts`, `edit`, `discard`, `export`. **No MCP call in any of them** — they read the backlog, the
-specs and the files, and write only under `.agents/jira/`. Identity is the frontmatter
+specs and the files, and write only under `.agents/jira/` (`export` also writes to the backup
+directory the user names, outside the repo). Identity is the frontmatter
 `backlog_row`; AC come verbatim from the resolver and are read-only in the draft; re-drafting
 refreshes only machine-owned sections, so grooming survives.
 

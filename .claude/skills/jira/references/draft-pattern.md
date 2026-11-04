@@ -113,8 +113,9 @@ criteria via `/update-backlog` (new id), then re-draft". Drafts never write AC b
 
 Per folder under `inprogress/`: the Epic (summary, status), the files, and per file:
 
-- AC validity — the `## Acceptance criteria` block vs the resolver: changed text under an id,
-  missing id, unnumbered criterion → flagged (ids in `ac_waivers` are exempt);
+- AC validity — the `## Acceptance criteria` block vs the resolver: a missing id or an unnumbered
+  criterion → always flagged; changed text under an id → flagged unless the id is in `ac_waivers`
+  (a waiver permits different **wording**, never a missing or extra criterion);
 - `scope_rev` lower than the register's `**Current:**` (or the backlog's `**Scope rev:**`) → "stale
   against scope vX.Y — run `/update-backlog` if needed, then `/jira draft E<n>`" (listed first);
 - duplicate `backlog_row`, orphan Task file without an Epic file in `inprogress/` or `sent/`,

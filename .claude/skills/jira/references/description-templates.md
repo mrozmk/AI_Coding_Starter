@@ -332,6 +332,11 @@ and never reach the description. A line may start with `[internal]` — stripped
 
 ### Transport rules (fixed — not edited per project)
 
+These apply to the **Draft Epic** / **Draft Task** templates (the draft → send path). The Story / Tech
+templates above keep their local-id sections (`## Depends on`, `## Relates`) for the one-shot `sync`
+until send replaces it.
+
+
 - Cross-references in Jira-bound text use Jira keys once they exist. Backlog Task ids appear only in
   `## Dependencies`, `## Chain`, the Epic Scope `Jira link` cell before send, and AC ids — machine ids
   `E<n>-<m>` and `E<n>-<m>.AC<k>` are exempt from "no row ids in Jira text".
