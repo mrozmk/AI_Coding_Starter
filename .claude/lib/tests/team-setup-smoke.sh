@@ -80,6 +80,8 @@ jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission
 [ "$(jq '.permissions.allow | length' "$S")" = 7 ] || fail "2: allow is not the 7 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
+jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
+  || fail "2: the operator kit installer is not behind ask"
 egress() {  # egress <settings> <matcher> → how many blocking egress guards that exact matcher has
   jq --arg m "$2" '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]
     | select((.command | test("guard-team-egress")) and .onFailure == "block"
