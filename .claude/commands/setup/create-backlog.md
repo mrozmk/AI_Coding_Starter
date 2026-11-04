@@ -124,7 +124,7 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 
 ```markdown
 # <Project> — Backlog (Epics + Tasks)
-**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
+**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Last check:** — · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
 
 ## Epic map
 | Epic | Title | Outcome | Key assumption | Pts | Depends on | Jira |
@@ -163,6 +163,13 @@ node .claude/lib/backlog-check.mjs --write
 ```
 
 Run from the project root. It reads the PRD path from the header written in Phase 6 and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, AC ids, trace coverage, `Node` cells and the system tree; then — only when there are **no errors** — fills the `storymap` and `lanes` marker regions (foundation chain, lanes for N = 2, 3, 4 with makespan and critical path). **Fix every error in the file and rerun until it exits 0.** Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker regions; `--write` owns them. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
+
+### Phase 7.5: Independent check — `/check-backlog` (recommended)
+
+Recommend running `/check-backlog` before the first `/jira draft`: an independent critic grades the
+judgement calls the checker cannot (Wave-0 minimality, size honesty, AC quality, skeleton
+thinness) and routes accepted fixes through `/update-backlog`. Name it in the Phase 8 next steps;
+this command does not run it.
 
 ### Phase 8: Report
 

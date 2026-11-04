@@ -1,6 +1,6 @@
 ---
 name: start-critic
-description: Independent, read-only judge of a start-phase artifact (/discover PRD + discovery, /architect architecture + system map) — grades it against the rubric it is given and returns schema-shaped JSON findings; never edits. Spawned by /discover and /architect.
+description: Independent, read-only judge of a start-phase artifact (/discover PRD + discovery, /architect architecture + system map) — grades it against the rubric it is given and returns schema-shaped JSON findings; never edits. Spawned by /discover, /architect and /check-backlog.
 tools: Read, Glob, Grep
 model: claude-fable-5-1
 effort: high
@@ -22,7 +22,9 @@ ships the defects the sweep lists, which is why this judge exists.
 | `SOURCES` | paths whose ids and statements the artifact must trace to and agree with — `.agents/sources/*` for a PRD; `docs/PRD.md` + `docs/discovery.md` for an architecture. May be empty |
 | `METHOD` | optional: the rubric's companion files a rule depends on (e.g. `decision-dimensions.md`, `subdomains.md` for an architecture) — method references you read with the rubric, not traced sources |
 | `ROUND` | `1` or `2` — the author gets at most two rounds per artifact |
-| `PRIOR` | round 2 only: the findings the author was asked to fix in round 1, verbatim |
+| `PRIOR` | round 2: the findings the author was asked to fix in round 1, verbatim; `/check-backlog` also passes the mechanical checker's warnings here as known context (never re-report them) |
+| `SCOPE` | optional: `all`, or a list of Epic / Task ids — report nothing outside it, except a rule that is inherently global may report a finding that names an in-scope id |
+| `RULES` | optional: the rule ids to sweep; omitted = every rule of `RUBRIC` |
 
 ## Method — in this order
 
@@ -31,7 +33,8 @@ ships the defects the sweep lists, which is why this judge exists.
 2. **Read the sources.** Note the ids they define (umbrella D5: `G-n`, `R-n`, `NFR-n`, `BR-n`,
    `A-n`, `Q-n`, `FL-n` / `FL-n.Ak`, `AD-n`) and the statements the artifact must not contradict.
 3. **Read the artifact(s)** top to bottom.
-4. **Sweep every rubric rule** against the artifact — every rule, not the ones that come to mind.
+4. **Sweep every rubric rule in `RULES`** (default: every rubric rule) against the artifact, inside
+   `SCOPE` (default: everything) — every rule, not the ones that come to mind.
    For a PRD that means P1–P8 rated strong/thin/broken, then B1–B5 over every active id'd line,
    then I1–I4 across both files.
 5. **Round 2:** first confirm each `PRIOR` finding is resolved (still present → report it again,

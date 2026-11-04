@@ -71,6 +71,10 @@ node .claude/lib/backlog-check.mjs
 
 Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure.
 
+Report the backlog's `**Last check:**` line and mark it **stale** when its hash differs from
+`grep -v '^\*\*Last check:\*\*' .agents/backlog.md | shasum -a 256 | cut -c1-12` (a partial scope
+never reads as a whole-backlog `ship`); none → "never checked — `/check-backlog`".
+
 Also report the scope register next to the backlog: the PRD's `**Baseline:**` / `**Current:**` and the backlog's `**Scope rev:**` (behind → "run `/update-backlog`"), the three newest `D-n` titles with their `**Approval:**`, and the **pending sources** — notes, specs and `docs/discovery.md` whose `shasum -a 256 | cut -c1-12` hash appears in no `D-n` `**Sources:**` line with a filled `**Tasks:**` line (names, count). Structural changes go through `/update-backlog`; never fix the backlog from here.
 
 ### 6. Jira (optional)
