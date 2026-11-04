@@ -53,6 +53,8 @@ Three invariants — they hold for every invocation, every turn, for the duratio
    `send` creates the issue.
 
 3. **No sub-tasks.** Never emit `issue_type: "Sub-task"`. If the user asks for sub-tasks, explain the skill handles Epic / Task / Bug only, and offer to create Tasks under the same parent Epic instead.
+
+4. **Backlog-driven creation goes through draft files.** Every Epic / Task that has a backlog row is created by `send` from its draft file (`draft` → groom → `send`); `bulk` is the only direct path and only for issues with **no** backlog row. For `send`, invariant 1's "printed draft is complete" is met by the confirm showing the field table, the file list (path, size, AC count, `[internal]` spans stripped) and the **exact outgoing text** of every section that will leave — the user may open any file; `edit` re-prints.
 </HARD-GATE>
 
 ---
@@ -85,7 +87,8 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
 | `create` | Single-issue create (see Flow A) |
 | `update` | Single-issue edit (Flow B) |
 | `bulk` | Bulk create under parent (Flow C → `references/bulk-pattern.md`) |
-| `sync` | Mirror the backlog's Epics/Tasks into Jira, create-only, keys written back (Flow H → `references/sync-pattern.md`) |
+| `sync [E<n>]` | `draft` (silent for already-drafted rows) then `send` — one confirm per Epic group (Flow H1 + Flow H2) |
+| `send [E<n> \| --all] [--ops-only]` | Publish draft files: validate, recover, confirm the exact outgoing text, create sequentially, then each recorded post-create operation (Flow H2 → `references/send-pattern.md`) |
 | `draft [E<n>]` — and `sync draft [E<n>]`, which is matched **before** plain `sync` | Backlog rows without a key → local draft files under `.agents/jira/inprogress/` — no MCP call (Flow H1 → `references/draft-pattern.md`) |
 | `drafts` | List and validate draft files (AC vs the resolver, scope revision, duplicates) — local |
 | `edit <path>` | Edit a draft file under `inprogress/` — local |
@@ -203,6 +206,10 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
    - **Labels are replaced wholesale.** If user said "add label X", merge with existing (from step 1) before passing.
    - **Components are replaced wholesale** — same merging rule.
 5. **Report**: `Zaktualizowane: $1`.
+6. **Refresh markers** — when the PRD `## Change log` has `**Jira refresh:** $1 pending` entries,
+   offer (previewed, per entry) to close those **whose decision this update realises** — the live
+   AC / description now carries the resolver's current text for the Tasks that `D-n` names (verified
+   by a read). An unrelated update (priority, labels) never closes an entry.
 
 **Status changes are NOT done via update.** Delegate to Flow G.
 
@@ -313,13 +320,27 @@ Summary of invariants carried through: `jira_get_transitions` first → pick id 
 
 ---
 
-## Flow H — Sync (backlog → Jira)
+## Flow H — Sync (backlog → Jira) = H1 draft + H2 send
 
-Delegate entirely to [`references/sync-pattern.md`](references/sync-pattern.md). Read that file when entering this flow.
+`sync` runs Flow H1 (draft, silent for rows already drafted) and then Flow H2 (send) for every
+folder. The shared primitives — correlation label, Step 0 recovery, the Step 2 estimate resolver,
+the Step 4 metadata check, the Step 6 create/verify primitive, Step 7 link reconciliation, the
+Step 8 report shape — live in [`references/sync-pattern.md`](references/sync-pattern.md).
+
+## Flow H2 — Send (draft files → Jira)
+
+Delegate entirely to [`references/send-pattern.md`](references/send-pattern.md): validate locally
+(revisions, row match, AC vs the resolver) → checker → recover (labels + pending `ops`) → strip
+draft-only sections and `[internal]` → metadata → confirm the exact outgoing text → create the Epic,
+then the Tasks sequentially (key written back before verification) → each post-create operation
+recorded in the draft's `ops` (pending → verify → done) → move each finished issue to `sent/` →
+close the `D-n` refresh markers the run realised → report.
+
+### Summary of the sync primitives
 
 Summary of invariants carried through: `node .claude/lib/backlog-check.mjs` must pass → recover orphans by the `<namespace>:<row id>` correlation label → `jira_get_project_issue_types` + `jira_get_create_fields` prove `parent` / `labels` / estimate are on the create screen (there is no Jira-side dry-run for this flow) → confirm table + every description verbatim per Epic group → **sequential** `jira_create_issue`, each key written back as `KEY (unverified)` immediately and promoted to `KEY` only after `jira_get_issue` verifies it → `Blocks` links reconciled against existing `issuelinks` → report with skipped / deferred / failed rows.
 
-**Create-only, and only `Jira` cells are written.** This flow never updates, transitions or deletes an issue, never touches `Status`, and never uses batch create (`sync-pattern.md` → Why sequential creates explains why that transport loses `parent`, labels and the estimate).
+**Creation is create-only, and only `Jira` cells are written.** Post-create operations (Epic Scope links, attachments, initial transition, open-questions comment, links, AC repair) are separate, recorded in the draft's `ops` before execution and marked `done` after verification; nothing else edits an issue. `Status` is never touched and batch create is never used (`sync-pattern.md` → Why sequential creates explains why that transport loses `parent`, labels and the estimate).
 
 ## Flow H1 — Draft (backlog → local files)
 

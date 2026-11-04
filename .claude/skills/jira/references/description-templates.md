@@ -74,86 +74,12 @@ Implementation guidance, constraints, dependencies. Keep short. Link to docs rat
 
 ---
 
-## Story
+## Story / Tech (retired)
 
-Used by `/jira sync` for a backlog Task whose `Type` is `story` (`sync-pattern.md` → Step 3).
-
-**Acceptance-criteria ids are copied verbatim** — `E1-2.AC1`, never renumbered, never reworded.
-`/qa-verify` keys its verdicts on these ids and joins on the exact string; a rewritten id silently
-breaks the join. `Depends on` carries the **local** backlog ids; the Jira `Blocks` links are created
-separately (`sync-pattern.md` → Step 7).
-
-```markdown
-## User story
-
-As a <role> I want <capability> so that <outcome>.
-
-## Acceptance criteria
-
-- **E1-2.AC1** — Given <state> When <action> Then <result>
-- **E1-2.AC2** — WHEN <trigger> the system shall <response>
-
-## Traces
-
-R-3, FL-1.A2, G-2
-
-## Size
-
-H (8 pts)
-
-## Depends on
-
-E1-1, E0-2
-
-## Relates
-
-E1-5
-
-## Chain
-
-checkout-flow — 2 of 3
-
-## Node
-
-checkout-core
-```
-
-`## Size` stays in every description whatever `jira.estimates` says — sizes are a planning currency, not a time estimate. `## Relates` / `## Chain` appear only when the row has them.
-
----
-
-## Tech
-
-Used by `/jira sync` for a backlog Task whose `Type` is `tech`. Same id rule as **Story**: AC ids
-verbatim. A spike's acceptance criterion is the decision it produces.
-
-```markdown
-## Objective
-
-One sentence stating the technical result this Task produces.
-
-## Acceptance criteria
-
-- **E0-1.AC1** — Given <state> When <action> Then <observable result>
-
-## Traces
-
-AD-1, NFR-2
-
-## Size
-
-M (4 pts)
-
-## Depends on
-
-—
-
-## Node
-
-platform-core
-```
-
-`## Size` stays in every description whatever `jira.estimates` says — sizes are a planning currency, not a time estimate. `## Relates` / `## Chain` appear only when the row has them.
+The one-shot `sync` renderers were replaced by **Draft Task** / **Draft Epic** below: every
+backlog-driven issue is published from its draft file by `send`. Their sections live on in Draft
+Task (`## Acceptance criteria` with ids verbatim, `## Size`, `## Traces`, `## Node`, `## Chain`,
+`## Dependencies`).
 
 ---
 
@@ -325,6 +251,7 @@ checkout-flow — 2 of 3
 
 `## Open questions`, `## Notes`, `## Initial Jira status` and `## Dependencies` are **draft-only**
 and never reach the description. A line may start with `[internal]` — stripped at send.
+`## Size` stays in every description whatever `jira.estimates` says — sizes are a planning currency, not a time estimate. `## Chain` appears only when the row has one.
 
 ---
 
@@ -332,9 +259,8 @@ and never reach the description. A line may start with `[internal]` — stripped
 
 ### Transport rules (fixed — not edited per project)
 
-These apply to the **Draft Epic** / **Draft Task** templates (the draft → send path). The Story / Tech
-templates above keep their local-id sections (`## Depends on`, `## Relates`) for the one-shot `sync`
-until send replaces it.
+These apply to every backlog-driven description — the **Draft Epic** / **Draft Task** templates
+(the draft → send path).
 
 
 - Cross-references in Jira-bound text use Jira keys once they exist. Backlog Task ids appear only in

@@ -127,3 +127,7 @@ jira_batch_create_issues(issues=<same-JSON-string>, validate_only=false)
 - **N > 20**: warn the user that batches larger than ~20 sometimes trigger per-issue rate limiting in the underlying REST API. Offer to split into groups of 10.
 - **Duplicate summary vs siblings**: before step 4, run `jira_search(jql='parent = $0 AND summary ~ "..."')` for each planned summary. In the confirm table, add a `⚠ duplikat?` column if any match is found. Don't block — let user decide.
 - **Missing env**: if `$JIRA_DEFAULT_COMPONENTS` and `$JIRA_DEFAULT_LABELS` are both empty and the user didn't provide them in the prompt, the skill must not silently omit — it asks once: `"Użyć pustych labels i components? [y / podaj wartości]"`. This satisfies hard invariant #2 (no default creation without explicit signal).
+
+> **Scope (since draft/send):** `bulk` is the direct path only for ad-hoc issues with **no backlog
+> row** (HARD-GATE invariant 4). Backlog-driven Epics / Tasks go through `draft` → `send`, which
+> never batch-creates. Rewriting `bulk` to sequential creates is an optional follow-up.

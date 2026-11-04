@@ -1,5 +1,13 @@
 # Sync pattern — `.agents/backlog.md` → Jira (create-only)
 
+> **`/jira sync` = `draft` + `send`.** Rows are published through draft files: `draft`
+> ([draft-pattern.md](draft-pattern.md)) writes them, `send` ([send-pattern.md](send-pattern.md))
+> publishes them. This file keeps the **shared primitives** send reuses — Input, the correlation
+> label, Step 0 recovery, the Step 2 estimate resolver, the Step 3 payload fields, the Step 4
+> metadata check, the Step 6 create → write back → verify primitive, Step 7 link reconciliation and
+> the Step 8 report shape. Where a step below says "the row's description", send uses the **draft
+> file's body after its preprocessing** (draft-only sections and `[internal]` spans stripped).
+
 Flow for `/jira sync`: mirror the backlog's Epics and Tasks into Jira, **create-only**, writing the
 returned keys back into the backlog's `Jira` cells. Invoked when the primary skill sees subcommand
 `sync` (Flow H).
@@ -136,7 +144,7 @@ the rest of the run; an unanswered question stops the sync. Capture the chosen f
 |---|---|
 | `issue_type` | `Epic` |
 | `summary` | `E<n> <Title>` — e.g. `E1 Checkout` |
-| `description` | Epic template (`description-templates.md`): `## Outcome`, `## Key assumption`, appetite / cut-first, the Task list |
+| `description` | the `_epic.md` body after send's preprocessing (**Draft Epic** template, `description-templates.md`) |
 | `additional_fields` | `'{"labels": ["<namespace>:E<n>", …$JIRA_DEFAULT_LABELS]}'` |
 
 **Task** (one per Task-table row):
@@ -145,7 +153,7 @@ the rest of the run; an unanswered question stops the sync. Capture the chosen f
 |---|---|
 | `issue_type` | `Task` |
 | `summary` | the `Task` cell verbatim |
-| `description` | **Story** template for `Type: story`, **Tech** for `Type: tech` (`description-templates.md`) — carrying the row's `## Acceptance criteria` ids **verbatim** (`E1-2.AC1`), `## Traces`, `## Size` (`H (8 pts)`), `## Node`, `## Depends on` with the **local** ids, and — only when the row has them — `## Relates` (local ids) and `## Chain` (`<token> — k of n`, k = the row's position in `node .claude/lib/backlog-check.mjs --chains` → `chains.<token>.ids` (the `Depends on` order, never the table order)) |
+| `description` | the draft file's body after send's preprocessing (**Draft Task** template, `description-templates.md`) — carrying the row's `## Acceptance criteria` ids **verbatim** (`E1-2.AC1`), `## Traces`, `## Size` (`H (8 pts)`), `## Node`, `## Depends on` with the **local** ids, and — only when the row has them — `## Relates` (local ids) and `## Chain` (`<token> — k of n`, k = the row's position in `node .claude/lib/backlog-check.mjs --chains` → `chains.<token>.ids` (the `Depends on` order, never the table order)) |
 | `additional_fields` | `'{"parent": "<EPIC-KEY>", "labels": ["story"\|"tech", "<namespace>:E<n>-<m>", <"<namespace>:chain-<token>" when chained>, …$JIRA_DEFAULT_LABELS], <estimate from Step 2, omitted when off>}'` |
 
 Labels are **merged**, never replaced: the type label, the correlation label, and whatever
@@ -339,9 +347,13 @@ report exists to catch.
 
 ## Invariants (enforced)
 
-- **Create-only.** This flow never updates, transitions, deletes or comments on an existing issue.
-  A row that already has a key is skipped, full stop — even when the backlog's text has since
-  changed (fix that by hand, or via `/jira update`).
+- **Creation is create-only, sequential and idempotent.** A row that already has a key is never
+  created again — even when the backlog's text has since changed (fix that via `/jira update`).
+  **Post-create operations** (Epic Scope link fill, attachments, initial transition, open-questions
+  comment, dependency links, AC repair) are separate, each previewed, each recorded as an intent in
+  the draft's `ops` map before execution and marked `done` after verification (`send-pattern.md`).
+  Send never edits an issue's summary or description outside those recorded operations, and never
+  deletes an issue.
 - **Idempotent** by the `Jira` cell (filled → skip) plus the Step 0 correlation-label recovery.
   A rerun after any failure is always safe.
 - **Never confirm-free.** Step 5's `y` per group and Step 7's `y` for links are mandatory, every run

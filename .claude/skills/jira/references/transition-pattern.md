@@ -123,3 +123,6 @@ On error (e.g. transition became invalid between steps 1 and 6 because someone e
 - **Unknown issue key** (404 at step 1): stop with "Klucz $0 nie istnieje w tej instancji". Don't retry.
 - **No transitions available** (weird workflow state): show `jira_get_transitions` raw response and stop.
 - **Target status name exists but as multiple transitions** (rare — some workflows have two paths to the same status): list them with their transition names, ask user to disambiguate by transition name.
+
+> Also used by `send` for the `transition` operation (`initial_jira_status` of a draft), with the
+> transitions resolved once per run.
