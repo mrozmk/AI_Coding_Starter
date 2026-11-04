@@ -145,7 +145,7 @@ Three parallel views — the BA needs all three to understand what's happening:
 ### Gaps (candidates for story work)
 
 Cross-reference PRD features vs specs/epics. Identify:
-- PRD features with **no spec** in `.agents/specs/` — candidates for `/brainstorm`
+- PRD features with **no spec** in `.agents/specs/` — candidates for `/brainstorm` (active ids only — a superseded or withdrawn requirement is history, never a gap)
 - Specs with **no matching Jira epic** — candidates for creating Epics in Jira
 - Raw sources in `.agents/sources/` that have **no derived spec** — candidates for PRD refresh or `/brainstorm`
 

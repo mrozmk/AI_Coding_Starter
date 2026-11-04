@@ -156,7 +156,7 @@ recommendation is the wrong call (the critic adds it as an A8 finding otherwise)
 
 ## NFR → decision map
 
-Every `NFR-n` from `docs/PRD.md` §6 maps to at least one `AD-n`, or says `N/A — <reason>` (A4).
+Every **active** `NFR-n` from `docs/PRD.md` §6 maps to at least one `AD-n`, or says `N/A — <reason>` (A4).
 
 | NFR | Decided by | Note |
 |---|---|---|

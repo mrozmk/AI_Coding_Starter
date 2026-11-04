@@ -140,7 +140,12 @@ Source of truth per entity:
 
 - **Q-1** — <question> · owner <role> · blocks slice 1: yes | no · <accepted as open by <owner>,
   when applicable>
+- **Q-2** — <question> · owner PO · blocks slice 1: no → D-3
 - …
+
+This file owns every `Q-n`'s text and state. Closing a question appends ` → D-n` (the scope
+decision in `docs/PRD.md` → `## Change log`) or ` → answered in session YYYY-MM-DD` to its line —
+the line is never deleted. PRD §13 mirrors the **open** ids only.
 
 ## Risks & pre-mortem
 

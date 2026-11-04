@@ -4,8 +4,12 @@
 (`.claude/skills/discover/coverage.md` §4) passes. Keep the section headings **verbatim** —
 `/maintain:refresh-brief` reads `## Technology Stack` and `## Core Architecture & Patterns`, and
 `backlog-check.mjs` parses the id syntax (umbrella D5: a list item `- **G-1** — …` or a table row
-whose first cell is `G-1` / `**G-1**`). Ids are never renumbered; a retired id keeps its line with
-`(withdrawn)` appended.
+whose first cell is `G-1` / `**G-1**`). Ids are never renumbered. A register id (`G-n` `R-n`
+`NFR-n`) leaving current scope keeps its line with `(superseded by X-m per D-k)` or
+`(withdrawn per D-k)` right after the id's dash (see **Register rules**); discovery ids keep the
+plain `(withdrawn)`. Scope decisions `D-n` are defined as `### D-n — …` headings under
+`## Change log`. The literal token `[internal]` marks a span (to the end of its line) that must not
+leave the repo — every outbound step (Jira send, wiki publish) strips it.
 
 Depth follows the product: a CLI tool gets a short PRD, a multi-tenant platform a long one. Every
 section is present; a section that does not apply says so in one line rather than disappearing.
@@ -21,6 +25,34 @@ The skeleton — copy from the first `---` to the end into `docs/PRD.md`:
 **Date:** YYYY-MM-DD · **Mode:** interview | import · **Discovery:** `docs/discovery.md` ·
 **Sources:** <`.agents/sources/…`, or "conversation only">
 **Status:** draft | reviewed (critic: ship | revise | rethink | not-reviewed — <reason> · codex: ship | revise | rethink | skipped — <reason>)
+**Baseline:** v1.0 (YYYY-MM-DD) · **Approved by:** proposed | <role/name> on <date>[; <role/name> on <date>] · **Current:** v1.0 (YYYY-MM-DD)
+
+> **Register rules** (the scope register lives inside this PRD — read before editing any id).
+>
+> | Field on a `G-n` / `R-n` line (NFR: table cells) | Interview mode | Import mode |
+> |---|---|---|
+> | id + sentence | required | required |
+> | `Traces: G-n` (`R-n` only) | required | required |
+> | `Source:` | optional — `conversation` or a `.agents/sources/` / `.agents/meeting-notes/` path | **required** — `<file>:<row\|line>` |
+> | `Quote:` | optional | **required** — original wording, original language |
+> | `Added: vX.Y` | required | required |
+>
+> - **States**, placed **immediately after** the `**ID** — ` prefix; the sentence is never deleted:
+>   `- **R-37** — (superseded by R-52 per D-4) WHEN …` (meaning changed — `R-52` carries the current
+>   text) · `- **R-41** — (withdrawn per D-4) WHEN …` (gone, no successor). The same words anywhere
+>   else on the line — inside a `Quote:` in particular — are content, not state. NFR rows carry the
+>   state in their `Status` cell: `active` · `superseded by NFR-m per D-k` · `withdrawn per D-k`.
+> - **Current vs history:** superseded and withdrawn ids are history — existing Tasks may keep
+>   tracing them; no new work is derived from them.
+> - **Immutability:** once `**Approved by:**` names an approver, a register sentence is frozen. A
+>   change of meaning = supersede + new id. A wording fix with no change of meaning = edit in place
+>   and record a `D-n` of kind `editorial` listing the ids.
+> - **Versions:** baseline `v1.0`; every `D-n` of kind `scope` bumps `Current` to the next
+>   `v1.N`; `editorial` and `confirmation` do not bump — `Current` is always `v1.<number of scope
+>   D-n>`.
+> - **Register adoption** (a PRD written before these rules): the first update adds this header as
+>   `v1.0`, lists the existing ids in `**Pre-register ids:** <ranges>` (exempt from `Added:`) and
+>   leaves their bare `(withdrawn)` markers as they are.
 
 ## 1. Executive Summary
 
@@ -32,7 +64,7 @@ what slice 1 must prove. Core value proposition in one line.
 Measurable outcomes only — a number, a target, a date, and who reads the number. A goal without a
 number is an aspiration and belongs in §1.
 
-- **G-1** — <outcome>: <metric> from <baseline> to <target> by <date> (read by <role>)
+- **G-1** — <outcome>: <metric> from <baseline> to <target> by <date> (read by <role>) · Added: v1.0
 - **G-2** — …
 
 ## 3. Users & stakeholders
@@ -74,8 +106,8 @@ EARS sentences, grouped by capability, each tracing at least one goal. Patterns:
 
 ### <Capability A>
 
-- **R-1** — WHEN <trigger>, the system shall <response>. Traces: G-1 · Flow: FL-1
-- **R-2** — IF <failure> THEN the system shall <response>. Traces: G-1 · Rule: BR-1
+- **R-1** — WHEN <trigger>, the system shall <response>. Traces: G-1 · Flow: FL-1 · Source: <file>:<row> · Quote: "<verbatim>" · Added: v1.0
+- **R-2** — IF <failure> THEN the system shall <response>. Traces: G-1 · Rule: BR-1 · Added: v1.0
 - …
 
 ### <Capability B>
@@ -91,11 +123,15 @@ the Requirement cell — spelled exactly `N/A` (capital N, slash, capital A) at 
 `backlog-check.mjs` keys on that prefix to keep the id but drop the row from mandatory Task
 coverage.
 
-| ID | ISO 25010 characteristic | Requirement | Target | Measured by |
-|---|---|---|---|---|
-| NFR-1 | Performance efficiency | <what> | <number, percentile> | <tool / method> |
-| NFR-2 | Reliability | … | … | … |
-| NFR-3 | Security | … | … | … |
+`Source` holds `<file>:<row|line> · "<verbatim quote>"` (interview mode: `conversation` or empty; a
+literal `|` inside the quote is written `\|`). `Status` is exactly `active`, `withdrawn per D-k` or
+`superseded by NFR-m per D-k` — anything else is a checker error.
+
+| ID | ISO 25010 characteristic | Requirement | Target | Measured by | Source | Added | Status |
+|---|---|---|---|---|---|---|---|
+| NFR-1 | Performance efficiency | <what> | <number, percentile> | <tool / method> | <file>:<row> · "<quote>" | v1.0 | active |
+| NFR-2 | Reliability | … | … | … | … | v1.0 | active |
+| NFR-3 | Security | … | … | … | … | v1.0 | active |
 
 ## 7. Core Architecture & Patterns
 
@@ -135,7 +171,8 @@ Slice 1 is a success when the goals below hit their targets; no new numbers here
 
 ## 13. Open questions
 
-Owned `Q-n` only — the text lives in `docs/discovery.md`.
+Open `Q-n` only — text and closing state live in `docs/discovery.md`; a closed question leaves this
+index.
 
 - `Q-1` — <one line> · owner <role> · blocks slice 1: yes | no
 - …
@@ -150,6 +187,28 @@ Ids only; definitions in `docs/discovery.md` → `## Assumptions`.
 
 One paragraph: what slice 1 must prove, for whom, through which critical flow (`FL-n`), and what
 evidence (`G-n`) would say it worked. Delivery order and waves live in `.agents/backlog.md`.
+
+## Change log
+
+_No decisions yet — baseline v1.0._
+
+<!-- Entry format (newest first; D-n ids are append-only, never renumbered). Kind `confirmation`
+records a processed source that changed nothing (`Affects: none`) or the baseline approval itself;
+generation and a critic's `ship` are never approval.
+
+### D-<n> — YYYY-MM-DD — <title>
+**Kind:** scope | editorial | confirmation
+**Sources:** <path> (sha256:<first 12 hex>) · <path> (sha256:…) · BA direct decision | conversation
+**Decision:** <one or two sentences, the decider's wording>
+**Approval:** proposed | approved by <role/name> on <date>
+**Affects:** <R-37 superseded by R-52 · R-41 withdrawn · R-60 added · Q-7 closed | none>
+**Impact:** <G-n moved · slice · protected Tasks · Jira issues — `—` until a backlog exists>
+**Tasks:** — <written by later commands>
+**Jira refresh:** — <written by later commands>
+-->
+
+The first real decision replaces the placeholder line; keep the comment block as the format
+reference.
 
 ## 15. Appendix
 

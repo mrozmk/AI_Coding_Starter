@@ -55,7 +55,7 @@ description: Distilled TL;DR of the PRD — loaded by /prime instead of full PRD
 2. **Who** — one or two lines per primary persona. Maximum 3 personas.
 3. **Stack** — single line summary (e.g. "Next.js 14 + Prisma + Postgres + BullMQ + Redis"). No deep detail — that lives in `architecture.md`.
 4. **Architecture** — 5-7 bullets. Top-level pattern, data flow, async/jobs, auth model, deployment shape.
-5. **Status** — one line. Phase: bootstrapping / MVP build / post-MVP / mature. Optionally with current focus.
+5. **Status** — one line. Phase: bootstrapping / MVP build / post-MVP / mature. Optionally with current focus. When the PRD header carries `**Baseline:**`, add one sub-line `Scope register: Baseline v1.0 (<date>, approved by <who> | proposed) · Current v1.N (<date>) · newest: D-k <title> (<approval>), …` with the three newest `D-n` from `## Change log`. No baseline header → no sub-line.
 6. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one.
 7. **Key Files** — table. Always include: `docs/PRD.md`, `CLAUDE.md`, `README.md`, `.agents/memory/index.md`, `.agents/memory/architecture.md`, `.agents/plans/active/`. Add 2-4 project-critical files if they exist.
 
@@ -80,6 +80,8 @@ populated_by: /maintain:refresh-brief
 description: Operational facts about pricing, plans, billing — what the code needs to know about the business model
 ---
 ```
+
+**Scope rule — active ids only:** extract prices, quotas and feature gates from active requirements; a register id (`G` `R` `NFR`) is history when the text right after its `**ID** — ` prefix is `(withdrawn…)` or `(superseded by …)`, when its table row's `Status` cell is `withdrawn…` / `superseded by …`, or — legacy forms — when a list line without a `Quote:` carries a bare `(withdrawn)` anywhere, or a row of a table without a `Status` column carries `(withdrawn)`; the same words inside `Quote:` or a quoted `Source` cell are content, not state. A superseded value is history and must never become current memory.
 
 **Scope rule — code-relevant only:**
 - ✅ Plan IDs, prices, quotas, feature gates, Stripe event names, webhook handlers, rate limits

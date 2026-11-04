@@ -6,8 +6,17 @@ usable downstream? It never re-litigates a product choice the user made — a ch
 bounds unless it contradicts another stated requirement (then the contradiction is the finding,
 cited as B3).
 
-Dimensions P1–P7 are the BMAD PRD rubric in our own words; B1–B5 are the Kiro / spec-kit
-requirement-bug classes; I1–I3 are id hygiene for the umbrella D5 scheme. Each dimension is rated
+Dimensions P1–P7 are the BMAD PRD rubric in our own words, P8 is approval honesty for the scope
+register; B1–B5 are the Kiro / spec-kit requirement-bug classes; I1–I4 are id hygiene for the
+umbrella D5 scheme and the register's change log.
+
+**Current vs history.** A register id (`G` `R` `NFR`) marked `(superseded by …)` / `(withdrawn…)`
+right after its dash, or with that state in its `Status` cell, is **history**. P- and B-rules judge
+the **active** scope only; history is checked by the I-rules (identity, provenance, change log). A
+superseded line differing from its successor is the recorded change, not a B3 inconsistency.
+**Register-specific checks** (`per D-k`, `Added:`, `Pre-register ids`, `Current` arithmetic, P8)
+apply only when the PRD carries a `**Baseline:**` header — a legacy PRD before adoption gets none
+of them. Each dimension is rated
 **strong / thin / broken**; only *thin* and *broken* produce findings.
 
 Sources: the BMAD PRD rubric, GitHub spec-kit `/clarify` and Kiro specs.
@@ -41,7 +50,7 @@ Does every section carry information that changes a decision, or is it there to 
 
 Do the goals, scope and requirements tell one story?
 
-- **strong** — every `R-n` traces a `G-n`; the non-goals follow from the appetite; the critical
+- **strong** — every active `R-n` traces a `G-n`; the non-goals follow from the appetite; the critical
   flow is the one the goals measure.
 - **thin** — a requirement or a goal is orphaned, or scope includes something no goal needs.
 - **broken** — "a backlog with headings": a flat list of features with goals bolted on afterwards;
@@ -65,13 +74,15 @@ Does the PRD admit what it does not know and will not do?
 - **thin** — non-goals present but unexplained, or assumptions hidden in requirement text ("users
   will have a stable connection").
 - **broken** — no NOT list, or a high-stakes product with no `A-n` / `Q-n` at all.
+- **provenance** — an import-mode register id missing `Source:` or `Quote:` (an NFR: its `Source`
+  cell `<file>:<row> · "<quote>"`) is a finding per id. No percentage thresholds.
 
 ### P6 Downstream usability
 
 Can `/architect`, `/setup:create-backlog` and `/qa-verify` consume it mechanically?
 
 - **strong** — stable ids on every goal, requirement, NFR and rule; the glossary's terms are the
-  ones the requirements use; every `R-n` has `Traces: G-n`; `FL-n.Ak` activities exist for the
+  ones the requirements use; every active `R-n` has `Traces: G-n`; `FL-n.Ak` activities exist for the
   critical flow.
 - **thin** — one id prefix missing or a trace absent; a glossary term unused or a used term
   undefined.
@@ -87,11 +98,24 @@ Is the PRD the right size and shape for the product?
 - **broken** — the template was filled mechanically (every section the same length regardless of
   relevance) or sections were dropped without a line saying why.
 
+### P8 Approval honesty
+
+Does the register say truthfully who agreed to what?
+
+- **strong** — the header's `**Approved by:**` and every `D-n`'s `**Approval:**` match: an approver
+  and a date wherever approval is claimed, `proposed` everywhere else.
+- **thin** — `Approved by: proposed` in the header while a `D-n` claims `approved by …`, or the
+  reverse.
+- **broken** — approval claimed with no approver named.
+
+Generation and a critic's `ship` are never approval. How long a `D-n` has stayed `proposed` is
+reported, never graded.
+
 ---
 
 ## B — requirement-bug checks
 
-Sweep every `G-n`, `R-n`, `NFR-n`, `BR-n`.
+Sweep every **active** `G-n`, `R-n`, `NFR-n`, `BR-n` (history: see Current vs history).
 
 - **B1 Wrong level of detail** — a requirement prescribes implementation ("store in Postgres",
   "use a modal") or is so abstract it cannot fail ("the system shall handle orders").
@@ -113,7 +137,14 @@ Sweep every `G-n`, `R-n`, `NFR-n`, `BR-n`.
   defines in the D5 syntax.
 - **I3 Renumbered or misused withdrawal** — ids out of sequence in a way that suggests
   renumbering, a `(withdrawn)` id still traced by a live requirement, or a withdrawn id's line
-  deleted instead of kept.
+  deleted instead of kept. Register states count only in their position (right after the
+  `**ID** — ` prefix, or the `Status` cell). Also: a register state marker without `per D-k` on an
+  id that is not in `**Pre-register ids:**`; a superseded id whose successor is undefined; an id
+  superseded by itself.
+- **I4 Change-log integrity** — an id with `Added:` later than the baseline and no `D-n` naming it
+  in `**Affects:**`; a register id with no `Added:` that is not listed in `**Pre-register ids:**` (a
+  new id added without a decision); a `D-n` whose `Affects` names an unknown id; `**Current:**` ≠
+  `v1.<number of D-n of kind scope>`.
 
 ---
 
@@ -126,6 +157,8 @@ Sweep every `G-n`, `R-n`, `NFR-n`, `BR-n`.
 | a B-finding on a `G-n` or on an `R-n` of the critical flow | `major` | `patchable` |
 | a P-dimension rated **thin** | `minor` (`major` if two or more dimensions are thin) | `patchable` |
 | a B-finding elsewhere, any I-finding | `minor` (I1/I2 `major` — they break `backlog-check`) | `patchable` |
+| I3 undefined or self successor, I4 `Affects` naming an unknown id | `major` | `patchable` |
+| P5 missing provenance on an import-mode id | `minor` (`major` on the critical flow) | `patchable` |
 
 Verdict: `ship` = no blocker and no major; `revise` = at least one patchable blocker/major;
 `rethink` = any `fundamental` finding — `rethink` wins over `revise`. A clean PRD gets `ship` with

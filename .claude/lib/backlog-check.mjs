@@ -26,9 +26,18 @@ const TASK_ID = /^E\d+-\d+$/;
 const EPIC_ID = /^E\d+$/;
 const AC_ID = /^E\d+-\d+\.AC\d+$/;
 const SLICE = /^(WS|R\d+)$/;
-const INVENTORY_ID = /^(G|R|NFR|BR|A|Q|AD|FL)-\d+(\.A\d+)?$/;
+const INVENTORY_ID = /^(G|R|NFR|BR|A|Q|AD|FL|D)-\d+(\.A\d+)?$/;
+const REGISTER_ID = /^(G|R|NFR)-\d+$/;
 const BOLD_LIST_ID = /^\s*[-*]\s+\*\*([A-Za-z]+-\d+(?:\.A\d+)?)\*\*/;
 const FLOW_HEADING = /^###\s+(FL-\d+)\b(.*)$/;
+const DECISION_HEADING = /^###\s+(D-\d+)\s+[—-]/;
+// A state marker counts only right after the `**ID** — ` prefix, so the same words inside a client
+// `Quote:` stay content.
+const STATE_MARKER = /^\s*[-*]\s+\*\*[A-Za-z]+-\d+(?:\.A\d+)?\*\*\s*[—-]\s*\((withdrawn|superseded by ([A-Z]+-\d+))(?:\s+per\s+(D-\d+))?\)/i;
+const STATUS_SUPERSEDED = /^superseded by\s+([A-Z]+-\d+)(?:\s+per\s+(D-\d+))?$/i;
+const STATUS_WITHDRAWN = /^withdrawn(?:\s+per\s+(D-\d+))?$/i;
+const SCOPE_REV = /\*\*Scope rev:\*\*\s*(v\d+\.\d+)/;
+const PRD_CURRENT = /\*\*Current:\*\*\s*(v\d+\.\d+)/;
 const AC_SECTION_HEADING = /^##\s+Acceptance criteria\b/i;
 const AC_BLOCK_HEADING = /^###\s+(E\d+-\d+)\b/;
 const AC_DEFINITION = /^\s*[-*]\s+\*\*(E\d+-\d+\.AC[^*]*)\*\*/;
@@ -125,7 +134,7 @@ export function parseBacklog(md) {
   });
 
   const prd = /\*\*Source PRD:\*\*\s*`([^`]+)`/.exec(md);
-  return { legacy: false, epics, tasks, acs, problems, sourcePrd: prd ? prd[1].trim() : null };
+  return { legacy: false, epics, tasks, acs, problems, sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -134,29 +143,55 @@ export function parseBacklog(md) {
 
 const readIfExists = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null);
 
-function collectIds(md, source, ids) {
-  const define = (id, line, extra = {}) => {
+/** State of a definition line: the anchored marker, else the legacy bare `(withdrawn)` on a line without a `Quote:`. */
+function lineState(line) {
+  const m = STATE_MARKER.exec(line);
+  if (m) {
+    if (m[2]) return { state: 'superseded', successor: m[2].toUpperCase(), ...(m[3] ? { decision: m[3] } : {}) };
+    return { state: 'withdrawn', ...(m[3] ? { decision: m[3] } : {}) };
+  }
+  if (/\(withdrawn\)/i.test(line) && !/\bQuote:/.test(line)) return { state: 'withdrawn' };
+  return { state: 'active' };
+}
+
+/** State of a table row. A `Status` column is authoritative; a malformed value on a register row is a problem. */
+function rowState(table, row, id, problems) {
+  if (!table.header.includes('Status')) {
+    return /\(withdrawn\)/i.test(Object.values(row).join(' ')) ? { state: 'withdrawn' } : { state: 'active' };
+  }
+  const status = cleanId(row.Status ?? '');
+  const sup = STATUS_SUPERSEDED.exec(status);
+  if (sup) return { state: 'superseded', successor: sup[1].toUpperCase(), ...(sup[2] ? { decision: sup[2] } : {}) };
+  const wd = STATUS_WITHDRAWN.exec(status);
+  if (wd) return { state: 'withdrawn', ...(wd[1] ? { decision: wd[1] } : {}) };
+  if (!/^active$/i.test(status) && REGISTER_ID.test(id)) {
+    problems.push(`${id}: malformed Status "${status}" (expected active | withdrawn [per D-n] | superseded by <id> [per D-n])`);
+  }
+  return { state: 'active' };
+}
+
+function collectIds(md, source, ids, problems) {
+  const define = (id, state) => {
     if (ids.has(id)) return;
-    const withdrawn = /\(withdrawn\)/i.test(line);
-    ids.set(id, { source, state: withdrawn ? 'withdrawn' : 'active', ...extra });
+    ids.set(id, { source, ...state });
   };
   for (const line of md.split(/\r?\n/)) {
     const h = FLOW_HEADING.exec(line);
-    if (h) define(h[1], line);
+    if (h) define(h[1], lineState(line));
+    const d = DECISION_HEADING.exec(line);
+    if (d) define(d[1], { state: 'active' });
     const m = BOLD_LIST_ID.exec(line);
-    if (m && INVENTORY_ID.test(m[1])) define(m[1], line);
+    if (m && INVENTORY_ID.test(m[1])) define(m[1], lineState(line));
   }
   for (const table of parseTables(md)) {
     for (const row of table.rows) {
       const first = cleanId(row[table.header[0]]);
       if (!INVENTORY_ID.test(first)) continue;
-      const rawLine = Object.values(row).join(' ');
-      const status = cleanId(row.Status ?? '');
-      const sup = /^superseded by\s+(AD-\d+)/i.exec(status);
-      if (sup) define(first, rawLine, { state: 'superseded', successor: sup[1] });
-      else if (/^withdrawn$/i.test(status)) define(first, `${rawLine} (withdrawn)`);
-      else if (/^NFR-/.test(first) && NFR_NOT_APPLICABLE.test(cleanId(row.Requirement ?? ''))) define(first, rawLine, { state: 'n/a' });
-      else define(first, rawLine);
+      const notApplicable = /^NFR-/.test(first) && NFR_NOT_APPLICABLE.test(cleanId(row.Requirement ?? ''));
+      // Without a Status column `N/A` wins over a row-wide `(withdrawn)`, as before the register.
+      if (notApplicable && !table.header.includes('Status')) { define(first, { state: 'n/a' }); continue; }
+      const state = rowState(table, row, first, problems);
+      define(first, state.state === 'active' && notApplicable ? { state: 'n/a' } : state);
     }
   }
 }
@@ -190,19 +225,25 @@ function collectFlows(md) {
  * Ids defined by the PRD, `docs/discovery.md` and `docs/architecture.md` (umbrella D5 syntax),
  * with `active` / `withdrawn` / `superseded` / `n/a` states, plus the discovery flows for the story
  * map. A draft architecture (`**Status:** draft`, i.e. /architect's publication gate still holds)
- * contributes no AD ids — `architectureDraft` tells the caller to warn.
+ * contributes no AD ids — `architectureDraft` tells the caller to warn. `D-n` change-log headings
+ * are ids too; `scopeRev` is the PRD's `**Current:**` version; `problems` lists malformed register
+ * Status cells (the caller reports them as errors).
  */
 export function loadInventory(root, prdPath = 'docs/PRD.md') {
   const ids = new Map();
+  const problems = [];
   const prdAbs = path.resolve(root, prdPath);
   const prd = readIfExists(prdAbs);
   const discovery = readIfExists(path.join(root, 'docs', 'discovery.md'));
   const architecture = readIfExists(path.join(root, 'docs', 'architecture.md'));
   const architectureDraft = architecture !== null && ARCHITECTURE_DRAFT.test(architecture);
-  if (prd) collectIds(prd, 'prd', ids);
-  if (discovery) collectIds(discovery, 'discovery', ids);
-  if (architecture && !architectureDraft) collectIds(architecture, 'architecture', ids);
-  return { ids, flows: discovery ? collectFlows(discovery) : [], prdPath, prdExists: prd !== null, architectureDraft };
+  if (prd) collectIds(prd, 'prd', ids, problems);
+  if (discovery) collectIds(discovery, 'discovery', ids, problems);
+  if (architecture && !architectureDraft) collectIds(architecture, 'architecture', ids, problems);
+  return {
+    ids, flows: discovery ? collectFlows(discovery) : [], prdPath, prdExists: prd !== null, architectureDraft,
+    scopeRev: prd ? (PRD_CURRENT.exec(prd)?.[1] ?? null) : null, problems,
+  };
 }
 
 /** `docs/map/system.yaml` parsed, or `null` when absent. A parse failure throws (`system.yaml: …`). */
@@ -425,10 +466,21 @@ export function checkBacklog({ backlog, inventory, system }) {
       if (!def) { errors.push(`Task ${t.id}: unknown trace ${id}`); continue; }
       if (t.withdrawn) continue;
       if (def.state === 'withdrawn') errors.push(`Task ${t.id}: traces withdrawn ${id}`);
+      // A superseded requirement is protected history for work already built on it; an AD is not.
+      else if (def.state === 'superseded' && REGISTER_ID.test(id)) warnings.push(`Task ${t.id} traces ${id} (superseded by ${def.successor}${def.decision ? ` per ${def.decision}` : ''}) — protected history or stale trace?`);
       else if (def.state === 'superseded') errors.push(`Task ${t.id}: traces ${id}, superseded by ${def.successor} — trace ${def.successor} instead`);
       traced.add(id);
     }
     if (!t.withdrawn && t.type === 'tech' && t.traces.length === 0) warnings.push(`Task ${t.id}: tech Task with no trace (AD-n / NFR-n)`);
+  }
+  errors.push(...(inv.problems ?? []));
+  for (const [id, def] of inv.ids) {
+    if (!REGISTER_ID.test(id) || def.state !== 'superseded') continue;
+    if (def.successor === id) errors.push(`${id}: superseded by itself`);
+    else if (!inv.ids.has(def.successor)) errors.push(`${id}: superseded by ${def.successor}, which is not defined`);
+  }
+  if (b.scopeRev && inv.scopeRev && b.scopeRev !== inv.scopeRev) {
+    warnings.push(`backlog generated at scope ${b.scopeRev}, register is ${inv.scopeRev} — reconcile the backlog (/update-backlog)`);
   }
   const hasRequirements = [...inv.ids.keys()].some((id) => id.startsWith('R-'));
   if (hasRequirements) {

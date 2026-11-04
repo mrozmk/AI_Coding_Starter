@@ -54,12 +54,13 @@ compliance-isolation requirement (`PRD §9`), a differing release cadence.
 
 ### A4 Every NFR maps to a decision
 
-Every `NFR-n` row of `docs/PRD.md` §6 appears in `## NFR → decision map` with at least one
+Every **active** `NFR-n` row of `docs/PRD.md` §6 appears in `## NFR → decision map` with at least one
 `active` `AD-n`, or with `N/A — <reason>`.
 
 - **finding when:** an `NFR-n` is absent from the map, maps only to a `withdrawn`/`superseded`
   `AD-n`, or maps to an `AD-n` whose `Decision`/`Rule` does not address the quality the NFR names
-  (quote both).
+  (quote both). A superseded or withdrawn `NFR-n` (its PRD `Status` cell) is history and needs no
+  mapping; an existing map row for one is not a finding.
 
 ### A5 Every `AD-n` has Binds, Prevents and a checkable Rule
 

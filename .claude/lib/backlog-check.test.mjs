@@ -339,6 +339,89 @@ test('(3) traces to a withdrawn id and to a superseded AD name the state / succe
   assert.ok(hasError(res, /Task E2-2: traces AD-3, superseded by AD-5 — trace AD-5 instead/), res.errors.join('\n'));
 });
 
+// --- scope register (ws-01)
+
+const REGISTER_PRD = PRD.replace('# PRD — Shop\n', `# PRD — Shop
+**Baseline:** v1.0 (2026-11-01) · **Approved by:** proposed · **Current:** v1.1 (2026-11-04)
+`).replace('- **R-3** — (withdrawn) old export requirement', `- **R-3** — (withdrawn) old export requirement
+- **R-4** — (superseded by R-5 per D-1) WHEN a user exports, the system shall send a PDF. Traces: G-1 · Added: v1.0
+- **R-5** — WHEN a user exports, the system shall download a CSV. Traces: G-1 · Added: v1.1
+- **R-6** — (withdrawn per D-1) WHEN a user filters, the system shall keep the filter. Traces: G-1 · Added: v1.0
+- **R-7** — WHEN a user searches, the system shall rank results. Traces: G-1 · Source: scope.csv:R7 · Quote: "keep (superseded by R-9 per D-1) and (withdrawn) wording" · Added: v1.0`) + `
+| ID | ISO 25010 characteristic | Requirement | Target | Measured by | Source | Added | Status |
+|---|---|---|---|---|---|---|---|
+| NFR-2 | Reliability | the audit view renders the literal label (withdrawn) | 99.9% | uptime probe | conversation | v1.1 | active |
+| NFR-3 | Reliability | old uptime | 99% | uptime probe | conversation | v1.0 | superseded by NFR-2 per D-1 |
+
+## Change log
+
+### D-1 — 2026-11-04 — Export reworded
+**Kind:** scope
+`;
+
+const registerRows = (e22Traces, { e21 = 'FL-2.A1, BR-1, R-5, R-7, NFR-2' } = {}) => withRow('E2-2', `| E2-2 | E2 | Report export | story | M | 4 | E0-1 | 2 | R2 | — | ${e22Traces} | TODO | — | — |`)
+  .map((r) => (r.startsWith('| E2-1 |') ? `| E2-1 | E2 | Report view | story | H | 8 | E1-2 | 2 | R2 | reporting | ${e21} | TODO | — | — |` : r));
+const checkRegister = (rows, { prd = REGISTER_PRD, header } = {}) => check(project({ prd, backlog: backlogMd({ rows, header }) }));
+
+test('scope register: states from anchored markers and Status cells, D-n ids, Current version', () => {
+  const inv = loadInventory(project({ prd: REGISTER_PRD }));
+  assert.deepEqual(inv.ids.get('R-4'), { source: 'prd', state: 'superseded', successor: 'R-5', decision: 'D-1' });
+  assert.equal(inv.ids.get('R-6').state, 'withdrawn');
+  assert.equal(inv.ids.get('R-7').state, 'active', 'marker text inside Quote: is content, not state');
+  assert.equal(inv.ids.get('NFR-2').state, 'active', 'an explicit Status wins over (withdrawn) in another cell');
+  assert.deepEqual(inv.ids.get('NFR-3'), { source: 'prd', state: 'superseded', successor: 'NFR-2', decision: 'D-1' });
+  assert.equal(inv.ids.get('D-1').state, 'active');
+  assert.equal(inv.ids.get('R-3').state, 'withdrawn', 'legacy bare (withdrawn) still works');
+  assert.equal(inv.scopeRev, 'v1.1');
+  assert.deepEqual(inv.problems, []);
+});
+
+test('scope register: a superseded requirement trace warns; withdrawn errors; superseded AD still errors', () => {
+  const res = checkRegister(registerRows('FL-2.A1, R-4, D-1'));
+  assert.ok(res.warnings.some((w) => /^Task E2-2 traces R-4 \(superseded by R-5 per D-1\) — protected history or stale trace\?$/.test(w)), res.warnings.join('\n'));
+  assert.ok(!hasError(res, /R-4/), res.errors.join('\n'));
+  assert.ok(!hasError(res, /unknown trace D-1/), res.errors.join('\n'));
+  assert.deepEqual(res.errors, []);
+  const wd = checkRegister(registerRows('FL-2.A1, R-6, AD-3'));
+  assert.ok(hasError(wd, /Task E2-2: traces withdrawn R-6/), wd.errors.join('\n'));
+  assert.ok(hasError(wd, /Task E2-2: traces AD-3, superseded by AD-5 — trace AD-5 instead/), wd.errors.join('\n'));
+});
+
+test('scope register: coverage asks only for active ids — a quoted marker does not exempt R-7', () => {
+  const res = checkRegister(registerRows('FL-2.A1', { e21: 'FL-2.A1, BR-1, R-5, NFR-2' }));
+  assert.ok(hasError(res, /^R-7: no Task traces it/), res.errors.join('\n'));
+  assert.ok(!hasError(res, /^R-4: no Task traces it/), res.errors.join('\n'));
+  assert.ok(!hasError(res, /^NFR-3: no Task traces it/), res.errors.join('\n'));
+});
+
+test('scope register: undefined and self successors are errors', () => {
+  const prd = REGISTER_PRD.replace('### D-1', `- **R-8** — (superseded by R-99 per D-1) WHEN … Added: v1.0
+- **R-9** — (superseded by R-9 per D-1) WHEN … Added: v1.0
+
+### D-1`);
+  const res = checkRegister(registerRows('FL-2.A1'), { prd });
+  assert.ok(hasError(res, /^R-8: superseded by R-99, which is not defined$/), res.errors.join('\n'));
+  assert.ok(hasError(res, /^R-9: superseded by itself$/), res.errors.join('\n'));
+});
+
+test('scope register: a malformed register Status is an error; an odd AD Status is not', () => {
+  const typo = REGISTER_PRD.replace('superseded by NFR-2 per D-1 |', 'withdawn per D-1 |');
+  assert.ok(hasError(checkRegister(registerRows('FL-2.A1'), { prd: typo }), /^NFR-3: malformed Status "withdawn per D-1"/));
+  const junk = REGISTER_PRD.replace('superseded by NFR-2 per D-1 |', 'superseded by NFR-2oops |');
+  assert.ok(hasError(checkRegister(registerRows('FL-2.A1'), { prd: junk }), /^NFR-3: malformed Status "superseded by NFR-2oops"/));
+  const dir = project({ architecture: ARCHITECTURE.replace('| superseded by AD-5 |', '| retired |') });
+  assert.deepEqual(loadInventory(dir).problems, []);
+});
+
+test('scope register: Scope rev mismatch warns only when both sides carry a version', () => {
+  const base = '**Date:** 2026-10-10 · **Source PRD:** `docs/PRD.md` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `shop`';
+  const rows = registerRows('FL-2.A1');
+  const scopeWarn = (res) => res.warnings.filter((w) => /^backlog generated at scope/.test(w));
+  assert.deepEqual(scopeWarn(checkRegister(rows, { header: `${base} · **Scope rev:** v1.0` })), ['backlog generated at scope v1.0, register is v1.1 — reconcile the backlog (/update-backlog)']);
+  assert.deepEqual(scopeWarn(checkRegister(rows, { header: base })), []);
+  assert.deepEqual(scopeWarn(check(project({ backlog: backlogMd({ header: `${base} · **Scope rev:** v1.0` }) }))), []);
+});
+
 test('(4) dependency cycle E1-1 → E1-2 → E1-1 is named', () => {
   const rows = withRow('E1-1', '| E1-1 | E1 | Sign in | story | M | 4 | E0-2, E1-2 | 1 | WS | authn | R-1, FL-1.A1 | TODO | — | — |')
     .map((r) => (r.startsWith('| E1-2 |') ? '| E1-2 | E1 | Place order | story | H | 8 | E1-1 | 1 | WS | orders | R-2, FL-1.A2, AD-5 | TODO | — | — |' : r));

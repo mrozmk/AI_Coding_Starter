@@ -32,8 +32,8 @@ ships the defects the sweep lists, which is why this judge exists.
    `A-n`, `Q-n`, `FL-n` / `FL-n.Ak`, `AD-n`) and the statements the artifact must not contradict.
 3. **Read the artifact(s)** top to bottom.
 4. **Sweep every rubric rule** against the artifact — every rule, not the ones that come to mind.
-   For a PRD that means P1–P7 rated strong/thin/broken, then B1–B5 over every id'd line, then
-   I1–I3 across both files.
+   For a PRD that means P1–P8 rated strong/thin/broken, then B1–B5 over every active id'd line,
+   then I1–I4 across both files.
 5. **Round 2:** first confirm each `PRIOR` finding is resolved (still present → report it again,
    same rule, `evidence` starting `unresolved:`), then look for regressions the fixes introduced.
    Do not re-litigate settled taste.

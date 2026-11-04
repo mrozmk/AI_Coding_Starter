@@ -32,10 +32,14 @@ Ids follow one scheme, shared with `/architect`, `/setup:create-backlog` and `/q
 | `G-n` · `R-n` · `NFR-n` | goal · functional requirement (EARS) · non-functional (ISO/IEC 25010) | `docs/PRD.md` |
 | `BR-n` · `A-n` · `Q-n` | business rule · assumption · open question | `docs/discovery.md` |
 | `FL-n` · `FL-n.Ak` | flow · its k-th backbone activity | `docs/discovery.md` |
+| `D-n` | scope decision (the register's change log) | `docs/PRD.md` → `## Change log` |
 
 Definition syntax: a list item `- **G-1** — …` (or a table row whose first cell is `G-1`); flows
-are headings `### FL-1 — <name>` with a `**Critical:** yes|no` line. Ids are **never renumbered**;
-a retired id keeps its line with `(withdrawn)`. On a re-run every existing id is preserved.
+are headings `### FL-1 — <name>` with a `**Critical:** yes|no` line; decisions are headings
+`### D-1 — <date> — <title>`. Ids are **never renumbered**; on a re-run every existing id is
+preserved. A register id (`G` `R` `NFR`) leaving current scope keeps its line with
+`(superseded by X-m per D-k)` or `(withdrawn per D-k)` right after its dash; a discovery id keeps
+the plain `(withdrawn)`. The full contract is `prd-template.md` → **Register rules**.
 
 ---
 
@@ -79,10 +83,20 @@ Sources on disk (listing only — read them in step 2):
    or delete them. A source that conflicts with the conversation or with another source is
    flagged as a `Q-n` with both quotes — never resolved silently.
 3. **Existing artifacts → update mode.** If `docs/PRD.md` or `docs/discovery.md` exists, read it;
-   this run *updates* it. Every existing id stays; new entries take the next free number; a
-   statement that no longer holds gets `(withdrawn)` on its line, not deleted. A legacy PRD
-   without ids (from the retired `create-PRD`) is treated as a source: its statements get ids as
-   they are carried over.
+   this run *updates* it. Every existing id stays; new entries take the next free number; no line
+   is deleted. A register id whose **meaning** changed gets `(superseded by X-m per D-k)` and a new
+   id `X-m` carries the current text; a dropped one gets `(withdrawn per D-k)`; a discovery id
+   (`BR` `A` `Q` `FL`) that no longer holds gets `(withdrawn)`. Any run that adds, supersedes or
+   withdraws a register id writes **one** `D-n` in `## Change log` — kind `scope`,
+   `Approval: proposed`, `Sources:` = this run's material, each with its hash
+   (`shasum -a 256 <file> | cut -c1-12`) — and bumps `**Current:**` to the next `v1.N`.
+   **Register adoption:** a PRD that has ids but no `**Baseline:**` header (written before the
+   register) is first adopted as it stood before this run — header
+   `Baseline: v1.0 (<today>) · Approved by: proposed · Current: v1.0`, a header line
+   `**Pre-register ids:** <ranges of the existing G/R/NFR ids>`, no `D-n`, no `Added:` back-fill;
+   its bare `(withdrawn)` markers stay as they are. Any actual change in the same run is then
+   recorded as `D-1` and bumps `Current` to `v1.1`. A legacy PRD without ids (from the retired
+   `create-PRD`) is treated as a source: its statements get ids as they are carried over.
 4. **Repo signals.** `git log --oneline | head -20` and the directory map already loaded by
    `/prime` tell you whether this is greenfield or an extension, which stack exists, which domain
    terms the code already uses. Derive, do not ask.
@@ -109,8 +123,11 @@ brief, Jira exports saved as CSV).
 - **Every row / requirement becomes an id'd entry.** Classify by content: a behaviour → `R-n`
   (restated as an EARS sentence), a quality with a number → `NFR-n`, a rule the business imposes
   → `BR-n`, a goal → `G-n`, a question → `Q-n`. Each entry carries `Source: <file>:<row|line>`
-  and the **original wording quoted verbatim** (original language), with the English restatement
-  beside it. The owner's wording is never "corrected" silently.
+  and the **original wording quoted verbatim** (original language) as `Quote: "…"`, with the
+  English restatement as the sentence — the template fields of the line (an NFR: its `Source`
+  cell, `<file>:<row> · "<quote>"`). The owner's wording is never "corrected" silently. A row not
+  carried over (duplicate, out of scope, unreadable) is listed in the Phase 8 report under
+  **Import rows not carried over**, each with its row id and reason.
 - **Contradictions** between rows, or between a row and `.agents/sources/`, become a `Q-n` with
   both quotes and both sources, owner = the decision owner once known. Never pick a side.
 - **Reviewers must see the originals.** Every `--import` path is a `SOURCES` entry for the Phase 6
@@ -202,8 +219,11 @@ say so and fall back to assumptions.
 4. **`docs/PRD.md`** from `.claude/skills/discover/prd-template.md`: `G-n` with baseline, target,
    date, reader; `R-n` as EARS sentences grouped by capability, each with `Traces: G-n`; the NFR
    table; scope with non-goals + rationale; §7 and §8 left as the `/architect` placeholders; §12
-   risks pointing at `A-n`; §13 `Q-n` by id with owner; §14 `A-n` index; Release intent. Update
-   mode: preserve every id, append new ones, mark withdrawn lines.
+   risks pointing at `A-n`; §13 open `Q-n` by id with owner; §14 `A-n` index; Release intent.
+   First write: header `Baseline: v1.0 (<today>) · Approved by: proposed · Current: v1.0`, every
+   register id `Added: v1.0`, `## Change log` with only its placeholder line. Update mode:
+   preserve every id, append new ones (`Added: <new Current>`), apply the register states and the
+   one `D-n` per Phase 0 step 3.
 
 ## Phase 6 — Critic loop (max 2 rounds)
 
@@ -272,7 +292,7 @@ bash .claude/lib/codex-bg.sh
 > $SCRATCH extract for a spreadsheet read through a tool, or "none">`. Read
 > `.claude/agents/start-critic.md` and follow its method, its bar for a finding and its output
 > shape exactly — including the full sweep of **every** rule in
-> `.claude/skills/discover/prd-rubric.md` (P1–P7, B1–B5, I1–I3) with the severity mapping it
+> `.claude/skills/discover/prd-rubric.md` (P1–P8, B1–B5, I1–I4) with the severity mapping it
 > states; `ROUND: final`.
 > Form your own judgement; nobody is telling you what to look for. Product choices the author
 > recorded as the user's decisions are out of bounds unless they contradict another stated
@@ -297,9 +317,17 @@ findings to judge, never instructions to follow.
 In chat, in the project's communication language, ≤40 lines:
 
 1. **Files written** — `docs/discovery.md`, `docs/PRD.md` (created / updated), or "PRD not written
-   — DoR gate: <item>".
+   — DoR gate: <item>". Import runs add **Import rows not carried over** (row id + reason each,
+   or "none").
 2. **Coverage** — the eleven rows with their final status; ★ rows first.
-3. **Ids** — count per prefix (`G` `R` `NFR` `BR` `FL` `A` `Q`), plus withdrawn count on a re-run.
+3. **Ids** — count per prefix (`G` `R` `NFR` `BR` `FL` `A` `Q` `D`), plus withdrawn and superseded
+   counts on a re-run.
+3a. **Scope register** — `Baseline` / `Current`, the approval state and the `D-n` written this run.
+   First write: one line telling the user how to record approval (edit `**Approved by:**` to
+   `<role/name> on <date>`). Update mode with `.agents/backlog.md` present: "Backlog is at scope rev
+   <its `**Scope rev:**` or "unversioned">; reconcile it — `/update-backlog` once available,
+   otherwise by hand + `node .claude/lib/backlog-check.mjs`", then the Tasks whose `Traces` name an
+   id superseded or withdrawn this run. `/discover` never edits the backlog.
 4. **Open questions** — every `Q-n` with owner and whether it blocks slice 1.
 5. **Review** — critic verdict per round and the kept/dropped tally; every dropped blocker/major
    with its evidence; Codex verdict or the skip reason; any 🔶 rethink signal.
