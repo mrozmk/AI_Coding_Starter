@@ -103,6 +103,16 @@ mcp__atlassian__jira_search(
 
 If no project key can be determined → skip the fetch and note that the default project is not configured (the BA can still query manually via `/jira search`).
 
+**Step 6c — Local Jira workspace (no MCP, runs even when Jira is offline):**
+
+!`find . -maxdepth 4 -path './.agents/jira/*' -name '*.md' 2>/dev/null`
+
+From that listing report: drafts in progress per Epic (`inprogress/E<n>/`, files with pending `ops`
+named), and per sent Epic the **last resync** (the newest `sync-reports/<run id>-E<n>*.md` by run id)
+with the unresolved structural / AC drift counts from that report, plus the titles of the two newest
+`Grooming patterns` blocks in `.agents/memory/domain/jira.md`. No overdue thresholds — just the
+dates.
+
 ### 7. Understand Current Activity
 
 !`git log -10 --oneline`

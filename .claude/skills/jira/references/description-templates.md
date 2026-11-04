@@ -280,8 +280,8 @@ These apply to every backlog-driven description — the **Draft Epic** / **Draft
 - `## Requirements details` sits between the user story and the acceptance criteria.
 - A Task that produces a document names its file path in an acceptance criterion.
 
-Change the editorial defaults by a deliberate edit or an accepted `/jira resync` proposal; never
-change the transport rules per project.
+Change the editorial defaults only by a deliberate edit or an accepted `/jira resync` proposal
+(a pattern confirmed in two resync runs); never change the transport rules per project.
 
 ---
 

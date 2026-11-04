@@ -94,6 +94,7 @@ Inspect `$0` (first word of `$ARGUMENTS`). Route to the matching flow below:
 | `edit <path>` | Edit a draft file under `inprogress/` — local |
 | `discard <E<n>>` | Delete an unsent draft folder after confirm — local |
 | `export <dir>` | Back up `.agents/jira/` outside the repo — local |
+| `resync <E<n> \| --all> [--dry-run] [--export <dir>]` | Read groomed Jira text back into `sent/` (approved sections only), report structural and AC drift, learn grooming patterns — read-only toward Jira (Flow I → `references/resync-pattern.md`) |
 | `search` | JQL search (Flow D) |
 | `comment` | Add comment (Flow E) |
 | `link` | Create issue link (Flow F) |
@@ -350,6 +351,15 @@ specs and the files, and write only under `.agents/jira/` (`export` also writes 
 directory the user names, outside the repo). Identity is the frontmatter
 `backlog_row`; AC come verbatim from the resolver and are read-only in the draft; re-drafting
 refreshes only machine-owned sections, so grooming survives.
+
+## Flow I — Resync (Jira → `sent/`, drift, patterns)
+
+Delegate entirely to [`references/resync-pattern.md`](references/resync-pattern.md). **Read-only
+toward Jira.** Content changes are applied to `sent/` only after a per-issue approval; remote
+structure (links, parent) and AC changes are reported as drift with a suggested `/update-backlog`
+intent or a queued `send --ops-only` operation — never adopted; grooming patterns go to memory
+(appended at the END) and, once confirmed in two runs, to a proposed diff of the editable style
+defaults.
 
 ---
 
