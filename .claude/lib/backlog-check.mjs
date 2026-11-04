@@ -802,7 +802,7 @@ export function replaceRegion(md, name, body) {
 // CLI
 // ---------------------------------------------------------------------------------------------
 
-const BOOL_FLAGS = new Set(['write', 'json', 'system-only', 'help']);
+const BOOL_FLAGS = new Set(['write', 'json', 'system-only', 'chains', 'help']);
 const VALUE_FLAGS = new Set(['root', 'prd']);
 
 /** `{ _: positionals, <flag>: true | value }`, or `null` on an unknown flag / value flag without a value. */
@@ -820,12 +820,13 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only]
+const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains]
   --root         project root (default: cwd); reads .agents/backlog.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml
   --prd          PRD path override (default: the backlog header's **Source PRD:**, else docs/PRD.md)
   --write        regenerate the lanes / storymap marker regions in .agents/backlog.md (only when there are no errors)
   --json         print { errors, warnings, lanes } instead of text
   --system-only  validate docs/map/system.yaml alone (used by /architect)
+  --chains       print { chains: { <token>: { ids, members, problems } } } as JSON — the Depends-on order /jira sync numbers "k of n" by (read-only)
 exit 0 = no errors · 1 = errors · 2 = usage / missing input`;
 
 function report(result, { json, lanes = null, notes = [] }) {
@@ -858,6 +859,11 @@ export function main(argv = process.argv.slice(2)) {
   if (parsed.legacy) {
     const msg = 'legacy WP backlog — regenerate with /setup:create-backlog to use Task checks';
     if (json) console.log(JSON.stringify({ errors: [], warnings: [msg], lanes: null, legacy: true })); else console.log(`backlog-check: ${msg}`);
+    return 0;
+  }
+
+  if (args.chains) {
+    console.log(JSON.stringify({ chains: Object.fromEntries(chainPaths(parsed.tasks)) }));
     return 0;
   }
 

@@ -488,6 +488,26 @@ test('Chain: spans of Epic or Node and non-linear paths are errors; malformed to
   assert.ok(hasError(wide({ 'E2-1': ['—', 'Ord_1'] }), /^Task E2-1: Chain Ord_1 must be a kebab token$/));
 });
 
+test('Chain: one head with a fork, a member with two inner deps and an unreachable member are each non-linear', () => {
+  const row = (id, deps) => ({ id, epic: 'E9', node: 'n', deps, chain: 'c', withdrawn: false });
+  const fork = chainPaths([row('E9-1', []), row('E9-2', ['E9-1']), row('E9-3', ['E9-1'])]).get('c');
+  assert.match(fork.problems.join(';'), /not one linear Depends on path \(.*E9-1 is depended on by more than one member/);
+  const join = chainPaths([row('E9-1', []), row('E9-2', ['E9-1']), row('E9-3', ['E9-1', 'E9-2'])]).get('c');
+  assert.match(join.problems.join(';'), /E9-3 depends on more than one member/);
+  const cut = chainPaths([row('E9-1', []), row('E9-2', ['E9-1']), row('E9-3', ['E9-4']), row('E9-4', ['E9-3'])]).get('c');
+  assert.match(cut.problems.join(';'), /not one linear Depends on path \(path reaches 2 of 4 members\)/);
+  assert.deepEqual(chainPaths([row('E9-1', []), row('E9-2', ['E9-1'])]).get('c').problems, []);
+});
+
+test('--chains prints the Depends-on order as JSON, whatever the table order', () => {
+  const rows = withRow('E1-3', '| E1-3 | E1 | Confirmation email | story | M | 4 | E1-2 | 2 | WS | orders | FL-1.A3, G-1 | TODO | — | — |');
+  const reordered = [rows[0], rows[1], rows[2], rows[4], rows[3], rows[5], rows[6]];
+  const dir = project({ backlog: backlogMd({ rows: widen(reordered, { 'E1-2': ['—', 'ord'], 'E1-3': ['—', 'ord'] }), taskHeader: WIDE_HEADER }) });
+  const r = run(dir, '--chains');
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(JSON.parse(r.out).chains.ord.ids, ['E1-2', 'E1-3']);
+});
+
 test('Chain: single member, long chains and withdrawn members warn; rendering keeps the path', () => {
   assert.ok(wide({ 'E2-1': ['—', 'solo'] }).warnings.includes('chain solo: single member'));
   const five = ['| E3-1 | E3 | S1 | tech | M | 4 | E0-1 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |', '| E3-2 | E3 | S2 | tech | M | 4 | E3-1 | 1 | R2 | reporting | FL-2.A1 | TODO | — | — |',

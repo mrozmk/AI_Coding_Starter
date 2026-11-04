@@ -145,7 +145,7 @@ the rest of the run; an unanswered question stops the sync. Capture the chosen f
 |---|---|
 | `issue_type` | `Task` |
 | `summary` | the `Task` cell verbatim |
-| `description` | **Story** template for `Type: story`, **Tech** for `Type: tech` (`description-templates.md`) — carrying the row's `## Acceptance criteria` ids **verbatim** (`E1-2.AC1`), `## Traces`, `## Size` (`H (8 pts)`), `## Node`, `## Depends on` with the **local** ids, and — only when the row has them — `## Relates` (local ids) and `## Chain` (`<token> — k of n`, k = the row's position in the chain's `Depends on` path as `backlog-check.mjs` → `chainPaths` computes it) |
+| `description` | **Story** template for `Type: story`, **Tech** for `Type: tech` (`description-templates.md`) — carrying the row's `## Acceptance criteria` ids **verbatim** (`E1-2.AC1`), `## Traces`, `## Size` (`H (8 pts)`), `## Node`, `## Depends on` with the **local** ids, and — only when the row has them — `## Relates` (local ids) and `## Chain` (`<token> — k of n`, k = the row's position in `node .claude/lib/backlog-check.mjs --chains` → `chains.<token>.ids` (the `Depends on` order, never the table order)) |
 | `additional_fields` | `'{"parent": "<EPIC-KEY>", "labels": ["story"\|"tech", "<namespace>:E<n>-<m>", <"<namespace>:chain-<token>" when chained>, …$JIRA_DEFAULT_LABELS], <estimate from Step 2, omitted when off>}'` |
 
 Labels are **merged**, never replaced: the type label, the correlation label, and whatever
