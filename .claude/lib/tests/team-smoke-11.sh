@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Advisor no-reply fallback, late-reply wake, orphans. Cases (170)-(186).
+# Its fallback and late-read windows are seconds wide: under load they miss, so the suite runner
+# keeps it out of a TEAM_SMOKE_PARALLEL batch.
+# team-smoke: serial
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
