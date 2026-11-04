@@ -78,6 +78,8 @@ jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
 [ "$(jq '.permissions.allow | length' "$S")" = 7 ] || fail "2: allow is not the 7 role rules"
+jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
+  || fail "2: the channel setup is not behind ask"
 
 # ---- (3) the second run changes nothing --------------------------------------------------------
 echo '{"teams":{}}' > "$T/.claude/project-profile.json"

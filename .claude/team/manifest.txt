@@ -117,3 +117,15 @@ own .claude/team/tracker/jira-read.md
 own .claude/team/tracker/jira-wrapup.md
 own .claude/team/tracker/none-read.md
 own .claude/team/tracker/none-wrapup.md
+
+# --- agent-mail channel — vendored tool, source: mrozmk/jarvis c9c407c (tools/agent_mail/) -------
+!tools/agent_mail/tests/**
+own tools/agent_mail/README.md
+own tools/agent_mail/__init__.py
+own tools/agent_mail/agent_mail.py
+own tools/agent_mail/agent_mail_deliver.py
+own tools/agent_mail/agent_mail_store.py
+own tools/agent_mail/mail_md.py
+own .claude/lib/team-mail.sh
+own .claude/lib/team-mail-setup.sh
+own .agents/reference/agent-mail.md

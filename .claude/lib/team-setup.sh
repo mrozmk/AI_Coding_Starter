@@ -229,7 +229,9 @@ NEW="$(printf '%s' "$NEW" | jq '
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
-     "Bash(bash .claude/lib/team-merge-check.sh*)"] as $ask
+     "Bash(bash .claude/lib/team-merge-check.sh*)",
+     # The channel step writes the machine registry and boxes outside the repo.
+     "Bash(bash .claude/lib/team-mail-setup.sh*)"] as $ask
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"

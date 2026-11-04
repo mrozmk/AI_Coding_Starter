@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# The `/setup:teams` channel step: binds this checkout to an agent-mail box through the machine
+# registry `$HOME/.agent-mail/projects.json` and writes `.agents/team/channel.local.json`.
+#
+# Usage: bash .claude/lib/team-mail-setup.sh <repo-root> [--dry-run] [--key K] [--slug S]
+#          [--suffix X] [--label L] [--tool DIR] [--codex-home DIR] [--add-roles]
+#   reuse   an entry whose `repo` is this checkout (or --key K names an existing entry): its box
+#           and its `tool` are used as they are — one tool per box, `tool` is never rewritten;
+#           missing role recipients are registered; --add-roles appends the canonical role names
+#           to the entry's claude_roles/codex_roles (otherwise only offered)
+#   extend  registry present, no entry: creates ~/.agent-mail/<slug>/{mail.sqlite,decisions/}
+#           and adds an entry whose tool is this checkout's vendored tools/agent_mail
+#   fresh   no registry: creates it in the same schema, then extends
+#   --dry-run prints the plan and writes nothing (no box is opened, so none is created).
+# Defaults: key = teams.channel.project_code, else the slug; slug = the repo dir name, lowercased;
+#   suffix = teams.channel.mail_suffix, else ""; label = project_code, else the key;
+#   codex_home = the value line of .claude/codex-profile, else null.
+# Output: one `<action>\t<what>\t<detail>` line per step, then the Reviewer instructions.
+# Exit: 0 done · 1 refused (nothing written) · 2 usage. Bash 3.2 compatible (macOS /bin/bash).
+set -euo pipefail
+
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+die() { echo "team-mail-setup: $1" >&2; exit "${2:-1}"; }
+command -v jq >/dev/null 2>&1 || die "jq is required"
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO=""; DRY=""; KEY=""; SLUG=""; SUFFIX=""; LABEL=""; TOOL=""; CODEX_HOME_V=""; ADD_ROLES=""
+SUFFIX_SET=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY=1 ;;
+    --add-roles) ADD_ROLES=1 ;;
+    --key|--slug|--suffix|--label|--tool|--codex-home)
+      [ $# -ge 2 ] || usage
+      case "$1" in
+        --key) KEY="$2" ;; --slug) SLUG="$2" ;; --suffix) SUFFIX="$2"; SUFFIX_SET=1 ;;
+        --label) LABEL="$2" ;; --tool) TOOL="$2" ;; --codex-home) CODEX_HOME_V="$2" ;;
+      esac
+      shift ;;
+    -*) usage ;;
+    *) [ -z "$REPO" ] || usage; REPO="$1" ;;
+  esac
+  shift
+done
+[ -n "$REPO" ] || usage
+[ -d "$REPO" ] || die "$REPO does not exist" 2
+REPO="$(cd "$REPO" && pwd -P)"
+top="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$top" ] && [ "$(cd "$top" && pwd -P)" = "$REPO" ] || die "$REPO is not a git repo root" 2
+
+IDENT='^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'
+CLAUDE_ROLES="Supervisor TeamLead Advisor"
+CODEX_ROLES="Reviewer"
+AM="$HOME/.agent-mail"
+REG="$AM/projects.json"
+PROFILE="$REPO/.claude/project-profile.json"
+CHANNEL_REL=".agents/team/channel.local.json"
+
+pf() { [ -f "$PROFILE" ] && jq -r --arg f "$1" '.teams.channel[$f] // empty' "$PROFILE" 2>/dev/null || true; }
+step() { printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"; }
+apply() { [ -n "$DRY" ] || "$@"; }
+is_ident() { printf '%s' "$1" | grep -Eq "$IDENT"; }
+
+TMPF=""
+trap '[ -z "$TMPF" ] || rm -f "$TMPF"' EXIT
+write_json() {  # write_json <dest> <json> — atomic, next to the destination
+  TMPF="$(mktemp "$(dirname "$1")/.team-mail-setup.XXXXXX")"
+  printf '%s\n' "$2" > "$TMPF"
+  mv "$TMPF" "$1"; TMPF=""
+}
+
+# ---- the plan: which mode, which key ------------------------------------------------------------
+CODE="$(pf project_code)"
+[ -n "$SUFFIX_SET" ] || SUFFIX="$(pf mail_suffix)"
+[ -n "$SLUG" ] || SLUG="$(basename "$REPO" | tr '[:upper:]' '[:lower:]' \
+  | sed 's/[^a-z0-9._-]/-/g; s/^[^a-z0-9]*//')"
+is_ident "$SLUG" || die "slug '$SLUG' is not an identifier; pass --slug" 2
+[ -z "$SUFFIX" ] || is_ident "$SUFFIX" || die "suffix '$SUFFIX' is not an identifier" 2
+[ -n "$TOOL" ] || TOOL="$REPO/tools/agent_mail"
+
+MODE=""
+if [ ! -e "$REG" ]; then
+  MODE=fresh
+else
+  # Never write into a registry that does not pass the schema — it is shared with other clients.
+  if ! out="$(bash "$HERE/team-mail.sh" check 2>&1)"; then
+    printf '%s\n' "$out" | sed 's/^/  /' >&2
+    die "the registry $REG fails the schema check; fix it first"
+  fi
+  if [ -n "$KEY" ] && jq -e --arg k "$KEY" 'has($k)' "$REG" >/dev/null; then
+    MODE=reuse
+  elif [ -z "$KEY" ]; then
+    matches="$(jq -r 'to_entries[] | "\(.key)\t\(.value.repo)"' "$REG" \
+      | while IFS="$(printf '\t')" read -r k r; do
+      [ -d "$r" ] && [ "$(cd "$r" && pwd -P)" = "$REPO" ] && echo "$k"; done || true)"
+    n="$(printf '%s' "$matches" | grep -c . || true)"
+    if [ "$n" = 1 ]; then MODE=reuse; KEY="$matches"
+    elif [ "$n" -gt 1 ]; then die "several registry entries have repo=$REPO ($(echo $matches)); pass --key"
+    else MODE=extend; fi
+  else
+    MODE=extend
+  fi
+fi
+[ -n "$KEY" ] || KEY="${CODE:-$SLUG}"
+is_ident "$KEY" || die "key '$KEY' is not an identifier; pass --key" 2
+if [ "$MODE" != reuse ] && [ -e "$REG" ] && jq -e --arg k "$KEY" 'has($k)' "$REG" >/dev/null; then
+  other="$(jq -r --arg k "$KEY" '.[$k].repo' "$REG")"
+  die "key $KEY already names the entry of $other; pass --key $KEY to reuse it, or another --key"
+fi
+[ -n "$DRY" ] && echo "dry-run: nothing is written" || true
+step mode "$MODE" "key $KEY"
+
+# ---- fresh / extend: registry, box dir, entry ---------------------------------------------------
+if [ "$MODE" != reuse ]; then
+  [ -f "$TOOL/agent_mail.py" ] || die "no agent-mail tool at $TOOL (agent_mail.py missing); pass --tool"
+  TOOL="$(cd "$TOOL" && pwd -P)"
+  if [ -z "$CODEX_HOME_V" ] && [ -f "$REPO/.claude/codex-profile" ]; then
+    CODEX_HOME_V="$(grep -v '^[[:space:]]*#' "$REPO/.claude/codex-profile" | grep -m1 . || true)"
+    case "$CODEX_HOME_V" in "~/"*) CODEX_HOME_V="$HOME/${CODEX_HOME_V#~/}" ;; esac
+  fi
+  DIR="$AM/$SLUG"; BOX="$DIR/mail.sqlite"; DEC="$DIR/decisions"
+  # A box nobody registered belongs to someone (another client, an old setup): never adopt it.
+  [ ! -e "$BOX" ] || die "$BOX exists but no registry entry names it; register it by hand or pass --slug"
+  if [ -e "$REG" ] && jq -e --arg b "$BOX" 'any(.[]; .box == $b)' "$REG" >/dev/null; then
+    die "$BOX is already registered under another key"
+  fi
+  if [ "$MODE" = fresh ]; then
+    step create registry "$REG"
+    [ -d "$AM" ] || apply mkdir -m 700 "$AM"
+    [ -n "$DRY" ] || write_json "$REG" '{}'
+  fi
+  step create box-dir "$DIR (+ decisions/)"
+  apply mkdir -p "$DEC"
+  ENTRY="$(jq -n --arg box "$BOX" --arg tool "$TOOL" --arg label "${LABEL:-${CODE:-$KEY}}" \
+    --arg suffix "$SUFFIX" --arg repo "$REPO" --arg dec "$DEC" --arg ch "$CODEX_HOME_V" \
+    --arg cr "$CLAUDE_ROLES" --arg xr "$CODEX_ROLES" \
+    '{box: $box, tool: $tool, project_label: $label, suffix: $suffix, repo: $repo,
+      decisions_dir: $dec, claude_roles: ($cr | split(" ")), codex_roles: ($xr | split(" ")),
+      rules: null, codex_home: (if $ch == "" then null else $ch end)}')"
+  step add entry "$KEY (tool $TOOL)"
+  [ -n "$DRY" ] || write_json "$REG" "$(jq --arg k "$KEY" --argjson e "$ENTRY" '. + {($k): $e}' "$REG")"
+  step create box "$BOX"
+  [ -n "$DRY" ] || python3 -I "$TOOL/agent_mail.py" --box "$BOX" recipients >/dev/null
+fi
+
+# From here on the registry entry is the only source of box/tool paths.
+if [ "$MODE" = reuse ] || [ -z "$DRY" ]; then
+  e() { jq -r --arg k "$KEY" --arg f "$1" '.[$k][$f] // empty' "$REG"; }
+  BOX="$(e box)"; TOOL="$(e tool)"; DEC="$(e decisions_dir)"; CODEX_HOME_V="$(e codex_home)"
+  SUFFIX="$(e suffix)"
+  HAVE_CR="$(jq -r --arg k "$KEY" '.[$k].claude_roles | join(" ")' "$REG")"
+  HAVE_XR="$(jq -r --arg k "$KEY" '.[$k].codex_roles | join(" ")' "$REG")"
+else
+  HAVE_CR="$CLAUDE_ROLES"; HAVE_XR="$CODEX_ROLES"
+fi
+if [ "$MODE" = reuse ]; then
+  [ -f "$TOOL/agent_mail.py" ] \
+    || die "entry $KEY: tool $TOOL has no agent_mail.py — fix the entry; this step never rewrites tool"
+  step keep tool "$TOOL (one tool per box — the entry's own)"
+  if [ -e "$BOX" ]; then step keep box "$BOX"
+  else step keep box "$BOX (absent; the entry's tool creates it on first use)"; fi
+  [ "$(cd "$TOOL" && pwd -P)" = "$(cd "$REPO/tools/agent_mail" 2>/dev/null && pwd -P || true)" ] \
+    || step note tool "the vendored $REPO/tools/agent_mail is not used for this box"
+fi
+
+# ---- role recipients: register the missing ones, never overwrite one -------------------------
+RJ="$(dirname "$BOX")/recipients.json"
+for role in $CLAUDE_ROLES; do
+  name="$role$SUFFIX"
+  if [ -f "$RJ" ] && jq -e --arg n "$name" 'has($n)' "$RJ" >/dev/null 2>&1; then
+    step keep recipient "$name ($(jq -r --arg n "$name" '.[$n].adapter' "$RJ"))"
+  else
+    step register recipient "$name (monitor)"
+    [ -n "$DRY" ] \
+      || python3 -I "$TOOL/agent_mail.py" --box "$BOX" register --as "$name" --adapter monitor >/dev/null
+  fi
+done
+
+# ---- canonical role names in the entry: offered, written only with --add-roles ----------------
+miss_cr=""; for r in $CLAUDE_ROLES; do case " $HAVE_CR " in *" $r "*) ;; *) miss_cr="$miss_cr $r" ;; esac; done
+miss_xr=""; for r in $CODEX_ROLES; do case " $HAVE_XR " in *" $r "*) ;; *) miss_xr="$miss_xr $r" ;; esac; done
+if [ -n "$miss_cr$miss_xr" ]; then
+  if [ -n "$ADD_ROLES" ]; then
+    step add roles "claude_roles +=${miss_cr:- none}; codex_roles +=${miss_xr:- none}"
+    [ -n "$DRY" ] || write_json "$REG" "$(jq --arg k "$KEY" --arg c "${miss_cr# }" --arg x "${miss_xr# }" '
+      .[$k].claude_roles += ($c | split(" ") | map(select(. != "")))
+      | .[$k].codex_roles += ($x | split(" ") | map(select(. != "")))' "$REG")"
+  else
+    step offer roles \
+      "claude_roles +=${miss_cr:- none}; codex_roles +=${miss_xr:- none} (rerun with --add-roles)"
+  fi
+fi
+
+# ---- the local channel file --------------------------------------------------------------------
+CH="$REPO/$CHANNEL_REL"
+git -C "$REPO" check-ignore -q "$CHANNEL_REL" 2>/dev/null \
+  || step warn gitignore "$CHANNEL_REL is not ignored — add .agents/team/ to .gitignore"
+CJ="$(jq -n --arg key "$KEY" --arg box "$BOX" --arg tool "$TOOL" --arg dec "$DEC" \
+  --arg ch "$CODEX_HOME_V" --arg kit "$(dirname "$BOX")/kit" \
+  '{key: $key, box: $box, tool: $tool, decisions_dir: $dec,
+    codex_home: (if $ch == "" then null else $ch end), kit_dir: $kit}')"
+if [ -f "$CH" ] && [ "$(jq -S . "$CH" 2>/dev/null)" = "$(printf '%s' "$CJ" | jq -S .)" ]; then
+  step keep channel "$CHANNEL_REL"
+else
+  step write channel "$CHANNEL_REL"
+  if [ -z "$DRY" ]; then mkdir -p "$(dirname "$CH")"; write_json "$CH" "$CJ"; fi
+fi
+
+# ---- the Reviewer registers itself: it needs its own Codex thread UUID ------------------------
+if [ "$(pf advisor)" = solo ]; then
+  echo "reviewer: none (teams.channel.advisor = solo)"
+else
+  cat <<EOF
+reviewer: in this project's Codex window (CODEX_HOME=${CODEX_HOME_V:-<unset>}), first thing after start:
+  python3 -I "$TOOL/agent_mail.py" --box "$BOX" register --as Reviewer$SUFFIX --adapter codex-queue --thread <UUID from /status or \$CODEX_THREAD_ID>
+  (its sandbox needs write access to $(dirname "$BOX") and read access to $TOOL)
+then, in the Advisor's session, (re)start the push loop as a background task:
+  bash .claude/lib/team-mail.sh $KEY deliver Reviewer$SUFFIX
+  liveness: pgrep -f "\$(bash .claude/lib/team-mail.sh $KEY pattern deliver Reviewer$SUFFIX)"
+EOF
+fi
