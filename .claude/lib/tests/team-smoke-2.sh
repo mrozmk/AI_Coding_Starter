@@ -3,7 +3,7 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
-smoke_team TT-792 feature/TT-792-next
+smoke_team AB-792 feature/AB-792-next
 
 # ---- retry after a failed /start-team roles override ---------------------------------------------
 cp "$TD/team.json" "$WORK/retry-team.json"
@@ -16,27 +16,35 @@ printf '%s\n' "$RUN_ID" > "$TD/run"; mkdir -p "$TD/runs/$RUN_ID"
 echo preserved > "$TD/runs/$RUN_ID/notes.md"
 run "$MAIN" $TR alfa roles 'planner=x;y'
 expect 1 "bad model" "start-team step 4a failure"
-for retry_branch in feature/TT-792-next feature/TT-792-retry; do
-  run "$MAIN" bash .claude/lib/team-next.sh alfa TT-792 "$retry_branch" origin/develop-netcore7
+for retry_branch in feature/AB-792-next feature/AB-792-retry; do
+  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-792 "$retry_branch" origin/develop-netcore7
   expect 1 "resume with /start-team alfa" "same-ticket retry $retry_branch"
   cmp -s "$TD/team.json" "$WORK/retry-team.json" || fail "retry changed team.json"
   cmp -s "$TD/roles.override.json" "$WORK/retry-roles.json" || fail "retry changed roles"
   has "$RUN_ID" "$TD/run" && has preserved "$TD/runs/$RUN_ID/notes.md" || fail "retry archived run state"
   [ ! -e "$TD/archive" ] || fail "retry created an archive"
   [ "$(git -C "$CLONE" rev-parse HEAD)" = "$RETRY_HEAD" ] || fail "retry changed HEAD"
-  [ "$(git -C "$CLONE" branch --show-current)" = feature/TT-792-next ] || fail "retry switched branch"
-  ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/TT-792-retry >/dev/null \
+  [ "$(git -C "$CLONE" branch --show-current)" = feature/AB-792-next ] || fail "retry switched branch"
+  ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-retry >/dev/null \
     || fail "retry created a branch"
 done
 run "$MAIN" $TR alfa roles planner=claude-fable-5-1/xhigh
 expect 0 "roles override:" "resume applies corrected roles"
 run "$MAIN" $TR alfa status
-expect 0 '"ticket":"TT-792"' "resume keeps ticket identity"
+expect 0 '"ticket":"AB-792"' "resume keeps ticket identity"
 : > "$STUB_LOG"
-run "$MAIN" $TR alfa
+run "$MAIN" env -u AGENT_COSTS_HOME $TR alfa
 expect 5 "dead attempt 1 of planner" "resume launches existing clone"
 has "new-session -d -s alfa-planner" "$STUB_LOG" || fail "resume did not launch planner"
 has "--effort 'xhigh'" "$STUB_LOG" || fail "resume ignored corrected roles"
+! has "AGENT_COSTS_HOME=" "$STUB_LOG" || fail "role launch forwarded an unset AGENT_COSTS_HOME"
+rm -f "$TD/session.json" "$TD/run"; rm -rf "$TD/runs/$RUN_ID"
+: > "$STUB_LOG"
+run "$MAIN" env AGENT_COSTS_HOME="$WORK/costs" $TR alfa
+expect 5 "dead attempt 1 of planner" "relaunch with AGENT_COSTS_HOME"
+has "-e AGENT_COSTS_HOME=$WORK/costs" "$STUB_LOG" || fail "role launch dropped AGENT_COSTS_HOME"
+RUN_ID="$(cat "$TD/run")"
+[ -n "$RUN_ID" ] || fail "relaunch wrote no run id"
 rm -f "$TD/session.json" "$TD/run"; rm -rf "$TD/runs/$RUN_ID"
 run "$MAIN" $TR alfa roles --clear
 expect 0 "roles override cleared" "retry fixture clears override"
@@ -221,7 +229,7 @@ for n in $(seq 1 14); do
   sub_tool "finished-$n" SubagentHandback "call-finished-$n"
   sub_stale "finished-$n" "$((180 + n))"
 done
-# Finishes < 10 min always stay (TT-823); only the two older ones fall beyond the cap.
+# Finishes < 10 min always stay; only the two older ones fall beyond the cap.
 snap "fresh finishes beat the cap" '
   (.subagents | map(select(.status == "done")) | length) == 14
   and (.subagents | map(select(.status != "done")) | length) == 7
@@ -238,7 +246,7 @@ role_t() {  # role_t <file> <first prompt>
 }
 # coder and qa are accepted in this run, so the live role is the wrapup.
 session wrapup 1 "$Q"
-role_t r1 "You are the wrapup of team alfa working on TT-792. Context: run \`$RUN_ID\`,
+role_t r1 "You are the wrapup of team alfa working on AB-792. Context: run \`$RUN_ID\`,
 attempt \`1\`, plan x."
 STUB_TMUX_ALIVE=0 STUB_PANE= snap "role transcript" "$WR"' | .skills | map(.skill)) == ["/execute"]'
 role_t r2 "You are the wrapup of team alfa. run \`$RUN_ID\`, attempt \`1\`"
@@ -261,7 +269,7 @@ expect 0 '"coder":{"effort":"xhigh"}' "roles merges"
 has '"model": "claude-fable-5-1"' "$OV" || fail "roles merge dropped planner"
 cp "$OV" "$WORK/ov.bak"
 for bad in "planner=x;y" planer=opus planner= planner "planner coder=opus" \
-  coder=/hihg coder=/HIGH; do
+  coder=/hihg coder=/HIGH coder=//bypassPermissions coder=//AUTO coder=/// cli=opus/high; do
   : > "$STUB_LOG"
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$bad"
   expect 1 "error:" "roles rejects $bad"
@@ -303,8 +311,8 @@ cmp -s "$OV" "$WORK/ov.bak" || fail "unknown clone role changed override"
 mv "$CLONE/.claude/lib/team-roles.sh" "$WORK/team-roles.sh"; : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 1 of planner" "planner launch with override"
-has "-n alfa-planner --model 'claude-fable-5-1' --effort 'high' -- " "$STUB_LOG" \
-  || fail "planner launch lacks the override model/effort"
+has "-n alfa-planner --model 'claude-fable-5-1' --effort 'high' --permission-mode 'auto' -- " \
+  "$STUB_LOG" || fail "planner launch lacks the override model/effort or roles.json permission"
 mv "$WORK/team-roles.sh" "$CLONE/.claude/lib/team-roles.sh"
 cp "$WORK/team-lib.bak" "$CLONE/.claude/lib/team-lib.sh"
 rm -f "$TD/session.json"; mkrec planner "$Q"; session coder 1 "$Q"; : > "$STUB_LOG"
@@ -319,17 +327,65 @@ cmp -s "$TD/session.json" "$WORK/session.bak" || fail "bad override model change
 cp "$WORK/ov.bak" "$OV"; : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of coder" "resume after fixing the override"
-has "-n alfa-coder --model 'opus[1m]' --effort 'xhigh' --disallowedTools" "$STUB_LOG" \
-  || fail "coder lacks roles.json model + override effort"
+has "-n alfa-coder --model 'opus[1m]' --effort 'xhigh' --permission-mode 'auto' --disallowedTools" \
+  "$STUB_LOG" || fail "coder lacks roles.json model/permission + override effort"
 for effort in low medium high xhigh max; do
   run "$MAIN" $TR alfa roles "coder=/$effort"
   expect 0 "roles override:" "write valid effort $effort"
   session coder 1 "$Q"; : > "$STUB_LOG"
   run "$MAIN" $TR alfa
   expect 5 "dead attempt 2 of coder" "launch valid effort $effort"
-  has "--effort '$effort'" "$STUB_LOG" || fail "launch dropped valid effort $effort"
+  has "--effort '$effort' --permission-mode 'auto'" "$STUB_LOG" \
+    || fail "launch dropped valid effort $effort"
 done
+# ---- (18b) permission mode: override grammar, launch line, auto preflight ------------
+cp "$OV" "$WORK/effort-ov.bak"; rm -f "$OV"
+run "$MAIN" $TR alfa roles coder=//manual
+expect 0 'roles override: {"coder":{"permission":"manual"}}' "roles writes a permission"
+run "$MAIN" $TR alfa roles coder=opus/high/auto
+expect 0 '"coder":{"permission":"auto","model":"opus","effort":"high"}' "roles merges a permission"
+echo '{"coder":{"permission":"dontAsk"}}' > "$OV"; cp "$OV" "$WORK/perm-ov.bak"
+run "$MAIN" $TR alfa roles coder=/high
+expect 1 'bad permission "dontAsk" for coder' "override file with a foreign permission"
+cmp -s "$OV" "$WORK/perm-ov.bak" || fail "refusal rewrote the dontAsk override"
+perm_launch() {  # perm_launch <permission> <label> [env assignment] — coder launch from a fresh attempt
+  session coder 1 "$Q"; : > "$STUB_LOG"
+  run "$MAIN" env "${3:-TT_SMOKE=1}" $TR alfa
+  expect 5 "dead attempt 2 of coder" "$2"
+  has "--permission-mode '$1' --disallowedTools" "$STUB_LOG" || fail "$2: launch lacks '$1'"
+  [ "$(jq -r .permission_mode "$TD/session.json")" = "$1" ] \
+    || fail "$2: session.json permission_mode $(jq -r .permission_mode "$TD/session.json")"
+}
+rm -f "$OV"
+perm_launch auto "roles.json default auto"
+! has "manual mode" "$WORK/out" || fail "auto preflight warned with the hook present"
+echo '{"coder":{"permission":"manual"}}' > "$OV"
+perm_launch manual "override manual"
+has "--effort 'medium' --permission-mode 'manual' --disallowedTools" "$STUB_LOG" \
+  || fail "override manual did not replace the roles.json auto"
+! has "manual mode" "$WORK/out" || fail "an explicit manual override warned"
+rm -f "$OV"
+# skip-worktree: a dirty clone would read as partial work instead of a dead attempt.
+git -C "$CLONE" update-index --skip-worktree .claude/hooks/guard-team-egress.sh .claude/settings.json
+H="$CLONE/.claude/hooks/guard-team-egress.sh"; mv "$H" "$WORK/egress.bak"
+perm_launch manual "preflight: clone without the egress hook"
+has "warn: coder launches in manual mode — the clone has no guard-team-egress hook" "$WORK/out" \
+  || fail "missing hook gave no manual-mode warning"
+mv "$WORK/egress.bak" "$H"
+S="$CLONE/.claude/settings.json"; cp "$S" "$WORK/settings.bak"
+jq 'del(.hooks.PreToolUse[1].hooks[0].onFailure)' "$WORK/settings.bak" > "$S"
+perm_launch manual "preflight: Bash hook without onFailure block"
+has 'warn: coder launches in manual mode — the clone settings.json lacks' "$WORK/out" \
+  || fail "missing onFailure gave no manual-mode warning"
+cp "$WORK/settings.bak" "$S"
+perm_launch manual "preflight: claude 2.1.200" STUB_CLAUDE_VERSION=2.1.200
+has "warn: coder launches in manual mode — claude is older than 2.1.295" "$WORK/out" \
+  || fail "old claude gave no manual-mode warning"
+perm_launch auto "preflight: claude 2.1.301" STUB_CLAUDE_VERSION=2.1.301
+git -C "$CLONE" update-index --no-skip-worktree .claude/hooks/guard-team-egress.sh .claude/settings.json
+cp "$WORK/effort-ov.bak" "$OV"
 for f in '{"planer":{"model":"opus"}}' '{' '{} {}' '{"qa":{"modle":"opus"}}' \
+  '{"coder":{"permission":"auto "}}' '{"cli":{"effort":"high"}}' \
   '{"coder":{"effort":"hihg"}}' '{"coder":{"effort":"high\n"}}' \
   '{"coder":{"model":"opus\n"}}' '{"coder":{"effort":7}}'; do
   printf '%s\n' "$f" > "$OV"; rm -f "$TD/session.json"; session coder 1 "$Q"

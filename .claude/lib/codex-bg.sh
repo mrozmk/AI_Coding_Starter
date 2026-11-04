@@ -28,8 +28,9 @@
 #
 # CONTRACT (env vars):
 #   PROMPT   (required) — the full review prompt string
-#   OUT      (required) — path for --output-last-message (the clean result;
-#                         non-empty == codex finished. Empty at exit == FAILED)
+#   OUT      (required) — the clean result: codex writes $OUT.partial and the
+#                         wrapper moves it to OUT after the thread registration
+#                         (non-empty == codex finished. Empty at exit == FAILED)
 #   LOG      (required) — path for the noisy run log (grows while codex thinks;
 #                         this growth is the liveness signal for heartbeats)
 #   REPO     (optional) — repo root for -C; defaults to PWD
@@ -52,13 +53,15 @@
 #                         path and codex exits "No prompt provided via stdin".
 #   CODEX_HOME (required when .claude/codex-profile has a value) — must resolve to the directory declared in
 #                         .claude/codex-profile; otherwise exit 2 with OUT empty.
-#                         LOG's first line names the profile used (TT-912).
+#                         LOG's first line names the profile used.
 #
 # Stdout of codex is empty by design (result goes to OUT); $OUT.stdout captures
 # it only so nothing leaks to the terminal.
 #
-# It also registers the codex thread id (TT-821 token usage) as soon as the log
-# header names it; registration never affects the exit code.
+# It also registers the codex thread id (token usage) as soon as the log
+# header names it; registration never affects the exit code. OUT appears only
+# after the registrar finished or was killed after ~10 s, so a caller polling
+# for a non-empty OUT never races the registration.
 
 set -euo pipefail
 
@@ -95,7 +98,7 @@ else
   args+=(--sandbox "${SANDBOX:-read-only}")
 fi
 
-args+=(--output-last-message "$OUT")
+args+=(--output-last-message "$OUT.partial")
 
 if [ -n "${IMAGES:-}" ]; then
   while IFS= read -r img; do
@@ -127,7 +130,7 @@ refuse() {
   exit 2
 }
 
-# An inherited environment ran reviews on the private ~/.codex profile (TT-912).
+# An inherited environment ran reviews on the private ~/.codex profile.
 # Located from the wrapper itself: /audit-security passes a REPO outside the checkout.
 profile_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/codex-profile"
 [ -f "$profile_file" ] || refuse "cannot read the Codex profile from $profile_file"
@@ -148,11 +151,22 @@ fi
 
 # Truncated before either process starts: a reused LOG must not expose an old thread header.
 printf 'codex-bg.sh: CODEX_HOME=%s\n' "$have_real" > "$LOG"
+: > "$OUT.partial"
 # `< /dev/null` is the load-bearing stdin guard — never remove it.
 codex "${args[@]}" "$PROMPT" < /dev/null > "${OUT}.stdout" 2>> "$LOG" &
 pid=$!
 # Killing the wrapper (HARD_KILL → TaskStop) must not orphan codex.
 trap 'kill "$pid" 2>/dev/null' TERM INT
 register_thread "$pid" >/dev/null 2>&1 &
+reg=$!
+trap 'kill "$pid" "$reg" 2>/dev/null' TERM INT
 rc=0; wait "$pid" || rc=$?
+for _ in $(seq 50); do
+  kill -0 "$reg" 2>/dev/null || break
+  sleep 0.2
+done
+kill "$reg" 2>/dev/null || true
+wait "$reg" 2>/dev/null || true
+# Callers treat a non-empty OUT as done, so it must appear only after the registrar read LOG.
+mv -f "$OUT.partial" "$OUT"
 exit "$rc"

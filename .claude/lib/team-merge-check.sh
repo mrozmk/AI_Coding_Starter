@@ -8,14 +8,16 @@
 #   on top of the wrapup) and accepts it.
 #   cli mode: the accepted cli record replaces qa + wrapup; no memory checks.
 #
-# Run from the main checkout; works in ../<repo>-<team>.
+# Run from the main checkout; works in the team clone (teams.clone_name).
 # Never merges — github: team-integrate.sh, ADO: /pr-merge.
+# Holds the machine gate lock (gate-lock.sh) from after the local refusals to the end of the test
+# gate; a lock timeout is exit 3.
 # Exit: 0 VERDICT ok · 1 VERDICT fail or dirty clone
-#   3 refused (identity, stale merge, moved tips, records changed during the check)
+#   3 refused (identity, stale merge, moved tips, records changed during the check, gate lock)
 #   4 recalculating (github merge ref pending)
 set -euo pipefail
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 case "${2:-}" in "") REVIEWED=0 ;; --memory-reviewed) REVIEWED=1 ;; *) usage ;; esac
 TEAM="$1"
@@ -27,7 +29,8 @@ team_profile_require_supported
 CLONE="$(team_clone_dir "$TEAM" "$root")"
 [ -f "$CLONE/.agents/team/team.json" ] || { echo "error: no team clone at $CLONE" >&2; exit 1; }
 cd "$CLONE"
-. "$CLONE/.claude/lib/team-lib.sh"
+# A role-writable library must not run in this shell.
+. "$root/.claude/lib/team-lib.sh"
 . "$root/.claude/lib/team-modes.sh"
 . "$root/.claude/lib/team-integrate-lib.sh"
 
@@ -58,8 +61,24 @@ else
   [ "$(jq -r .verdict "$wr")" = done ] || die 3 "accepted wrapup record is not done"
   want="$(jq -r .output_rev "$wr")"
 fi
+. "$root/.claude/lib/gate-lock.sh"
+orig=""
+# One EXIT trap for every path: restore the clone first, then drop the runner lock (github), then
+# the machine gate lock. mc_run_lock_free is defined further down; before that nothing holds it.
+finish() {
+  [ -z "$orig" ] || git switch --quiet "$orig" \
+    || echo "warning: clone left detached — git switch $orig" >&2
+  ! declare -F mc_run_lock_free >/dev/null || mc_run_lock_free
+  gate_lock_release
+}
+trap finish EXIT
+trap 'gate_lock_cancel; exit 130' INT TERM HUP
+gate_lock_acquire "team-merge-check $TEAM" || die 3 "machine gate lock not acquired — rerun later"
+echo "test-gate: lock waited ${GATE_LOCK_WAITED}s (merge check)"
+export TEAM_GATE_LOCK_TOKEN="$GATE_LOCK_TOKEN"
+[ ! -f "$TD/session.json" ] \
+  || die 3 "a role went live while waiting for the lock ($(jq -r .role "$TD/session.json"))"
 # memory_only <from> <to> → prints the changed files; dies on a failed diff or a non-memory file.
-# Self-contained on purpose: this sources the clone's team-lib.sh, which may predate any shared helper.
 memory_only() {
   local d bad
   # --no-renames: a move from code into memory must list the deleted source path too.
@@ -130,7 +149,7 @@ esac
   || die 3 "ADO merge not recalculated yet, rerun later (lastMergeSourceCommit is not $SRC)"
 # Target-push recompute is undocumented, so a stale merge is detected against the live target tip.
 [ "$(jq -r '.lastMergeTargetCommit.commitId // ""' <<<"$j")" = "$TGT" ] \
-  || die 3 "stale merge — target moved; in ADO click Restart merge or push nothing and rerun"
+  || die 3 "stale merge — target moved; team-automerge-check.sh restarts it once, else click Restart merge in ADO and rerun"
 merge_commit="$(jq -r '.lastMergeCommit.commitId // ""' <<<"$j")"
 fi
 
@@ -184,20 +203,11 @@ if [ "$TEAM_PR_PROVIDER" = github ]; then
   # Armed BEFORE the pid is written: a failed write must not leave the lock behind. Until our own
   # checkout succeeds this trap only drops the lock — there is nothing to restore yet.
   OWN_RUN_LOCK=1
-  trap 'mc_run_lock_free' EXIT
   echo $$ > "$TD/lock/pid" || die 3 "cannot write $TD/lock/pid"
 fi
 
 orig="$(git rev-parse --abbrev-ref HEAD)"
-if [ "$TEAM_PR_PROVIDER" = github ]; then
-  git switch --quiet --detach "$MERGE_OBJ" || die 3 "cannot check out $MERGE_OBJ"
-  # Armed only now: we hold the lock AND we are the process that moved the clone.
-  trap 'git switch --quiet "$orig" || echo "warning: clone left detached — git switch $orig" >&2
-        mc_run_lock_free' EXIT
-else
-  trap 'git switch --quiet "$orig" || echo "warning: clone left detached — git switch $orig" >&2' EXIT
-  git switch --quiet --detach "$MERGE_OBJ"
-fi
+git switch --quiet --detach "$MERGE_OBJ" || die 3 "cannot check out $MERGE_OBJ"
 # What the gates are about to run on, by sha. The verdict below reports THIS commit, so if the
 # checkout did not land where we think it did, there is no verdict to write. github only: on ADO
 # this would be a new refusal on a path that must stay byte-identical.
@@ -213,7 +223,7 @@ set +e
 # bash -c, cwd = the clone root: the build check is a project value, never ticket content.
 bash -c "$TEAM_BUILD_CHECK" > "$TD/merge-check-build.log" 2>&1
 build_rc=$?
-# test-gate runs --no-build: after a failed build it would test the previous build's binaries.
+# Build checked first so a compile error is reported as `build: exit`, not as a gate failure.
 gate_out="test-gate: skipped — build failed"; gate_rc=1
 if [ "$TEAM_TEST_GATE" = none ]; then
   gate_out="test-gate: none"; gate_rc=0
@@ -229,8 +239,9 @@ set -e
 [ "$TEAM_PR_PROVIDER" != github ] || [ "$(git rev-parse HEAD)" = "$tested" ] \
   || die 3 "void: the clone moved off $tested during the check — rerun"
 git switch --quiet "$orig"
+orig=""
 mc_run_lock_free
-trap - EXIT
+gate_lock_release
 
 old_src="$SRC"; old_tgt="$TGT"
 tips

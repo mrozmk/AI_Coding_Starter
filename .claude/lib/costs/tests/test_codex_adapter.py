@@ -1,4 +1,4 @@
-"""Codex adapter: normalization, turns, fallback, replay, two-pass, scope (spec TT-813)."""
+"""Codex adapter: normalization, turns, fallback, replay, two-pass, scope."""
 import unittest
 import json
 import os

@@ -1,4 +1,4 @@
-"""Serve the dashboard page and its snapshot on 127.0.0.1 only (spec TT-783).
+"""Serve the dashboard page and its snapshot on 127.0.0.1 only.
 
 Usage: python3 server.py <port> <index.html> <snapshot.json>
 Two fixed paths, no request-derived file access; foreign Host headers get 403 (DNS rebinding).

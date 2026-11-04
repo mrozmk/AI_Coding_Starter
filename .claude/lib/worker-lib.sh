@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clone-state checks for worker-next.sh, split out by the 500-line cap (TT-871, TT-876).
+# Clone-state checks for worker-next.sh, split out by the 500-line cap.
 # Sourced, never executed; expects DIR and W_PROBLEMS from the caller, which sets
 # `set -euo pipefail`.
 # Contract: .agents/reference/worker-clone.md

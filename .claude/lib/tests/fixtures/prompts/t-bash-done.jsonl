@@ -1,0 +1,6 @@
+{"type": "user", "uuid": "u0", "message": {"content": "start"}}
+{"type": "assistant", "uuid": "a0", "message": {"content": [{"type": "text", "text": "hi"}]}}
+{"type": "attachment", "uuid": "n1"}
+{"type": "api-request", "uuid": "n2"}
+{"type": "assistant", "uuid": "a1", "message": {"content": [{"type": "tool_use", "id": "toolu_018q18", "name": "Bash", "input": {"command": "az repos pr show --org https://dev.azure.com/acmeshop --id 8583 --query description -o tsv > /private/tmp/claude-501/-Users-mrozo-Desktop-AcmeShop-AcmeShop-DN-beta/5dea2f34-6cfb-4547-bdf3-399ba8202aae/scratchpad/pr-desc-current.md; echo rc=$?; wc -c /private/tmp/claude-501/-Users-mrozo-Desktop-AcmeShop-AcmeShop-DN-beta/5dea2f34-6cfb-4547-bdf3-399ba8202aae/scratchpad/pr-desc-current.md", "description": "Fetch current PR 8583 description"}}]}}
+{"type": "user", "uuid": "u1", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_018q18", "content": "ok"}]}}

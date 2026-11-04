@@ -1,0 +1,27 @@
+ │ Convention).
+ │
+ │ Do an independent review of this *proposal*, before any code is written. Form your own judgment — I am not telling
+ │ you what to look for, and I am not asking you to confirm it. The decision is still open, so the most valuable thing
+ │ you can do is challenge it: is this the right change to make at all? Is there a simpler or safer way to reach the
+ │ same goal? Does it fight the existing architecture, duplicate something, or break an assumption the project already
+ │ documents? What does it miss, and what would bite us *after* we implement it this way? If it isn't sound, say what
+ │ you'd do instead. Cite specifics by \`file:line\` or by the exact section of the proposal.
+ │
+ │ Calibrate to what is actually there. A clean result is a valid, valuable outcome — if the work is sound, say so
+ │ plainly and stop; do NOT manufacture findings, pad the list, or inflate severity to look thorough. Report only what
+ │ you can anchor to a concrete \`file:line\` or proposal section, with a real consequence. Each finding must earn its
+ │ place: would it actually change the decision or the code? If not, drop it. Three real findings beat fifteen padded
+ │ ones. State a clear bottom line — e.g. \`sound, ship\` / \`sound with minor notes\` / \`revise\` / \`blocked\` — and
+ │ let it honestly be the clean option when the work deserves it.
+ │
+ │ This may take a while. Every ~3 minutes of work, print one short status line prefixed \`STATUS:\` (e.g. \`STATUS:
+ │ reading backlog diff, 2 findings so far\`) so the caller knows you're still working and not hung. End with a clear
+ │ \`REVIEW COMPLETE\` marker." OUT="$S/quick-change-codex.final.md" LOG="$S/quick-change-codex.log" REPO="$(pwd)" bash
+ │ .claude/lib/codex-bg.sh
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Tilde in assignment value — bash may expand at assignment time
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and switch to auto mode · auto mode handles these prompts for you
+   3. No
+ Esc to cancel · Tab to amend

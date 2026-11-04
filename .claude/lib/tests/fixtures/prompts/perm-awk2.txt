@@ -1,0 +1,24 @@
+      85 +    "share": 90, "sdkBlind": 10, "sdkOk": true, "sdkReason": "",
+      86      "modFailedDays": [], "metricEmptyDays": [], "sdkEmptyDays": [], "notes": [],
+      87      "hcPath": "/health/live", "spanDays": 1}' --slurpfile pi /dev/null --slurpfile sdk /dev/null \
+      88      --slurpfile mod /dev/null -f "$MON/lib/worker-hang-recurrences.jq" \
+⏺ Stosuję S2 (usunięte martwe pole modOk). Uruchamiam walidacje z planu.
+⏺ C1 confirmed on real data; fixing grouped, dropping dead modOk
+  ⎿  $ awk 'length > 100 {print NR": "$0}' scripts/azure/monitoring/tests/offline-validate.sh; git diff -U0
+     scripts/azure/monitoring/tests/offline-validate.sh
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode" below
+ Show over-length line and offline-validate diff
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ awk 'length > 100 {print NR": "$0}' scripts/azure/monitoring/tests/offline-validate.sh; git diff -U0
+ │ scripts/azure/monitoring/tests/offline-validate.sh
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ This command requires approval
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don’t ask again for: awk 'length > 100 {print NR": "$0}'
+      scripts/azure/monitoring/tests/offline-validate.sh
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+ Esc to cancel · Tab to amend

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record validation for team-run.sh (moved out in TT-790 to keep the runner under 500 lines).
+# Record validation for team-run.sh (moved out to keep the runner under 500 lines).
 # Sourced from the main checkout; uses the runner's globals (TD, BRANCH, LINE, RUN, MODE) and
 # helpers (rec, artifact, accepted_record, cancel_exit). Contract: .agents/reference/team-mode.md
 # Bash 3.2 compatible (macOS /bin/bash): no mapfile, no associative arrays.
@@ -144,11 +144,11 @@ wrapup_target_identity() {  # → "<run>\t<ticket>\t<repo>\t<project_id>" on std
 # inside the loop resolves against the draft entry and every accepted follow-up loses.
 #
 # Done also requires the state's own `target` to BE this run's target. Without it a wrapup-state.json
-# holding a PREVIOUS run's or another ticket's finished intents validates — Astra reproduced exactly
+# holding a PREVIOUS run's or another ticket's finished intents validates — Reviewer reproduced exactly
 # that in the issue #4 acceptance review (run=OLD-RUN, ticket=999, repo=other/repo → rc 0).
 # `target` is checked together with the markers of the `done` intents: a foreign state whose `target`
 # was merely rewritten to this run (codex, fix round 4b) is still refused, because its markers name
-# the old run. The marker must match EXACTLY, not merely contain the run — Astra's second reproducer
+# the old run. The marker must match EXACTLY, not merely contain the run — Reviewer's second reproducer
 # (issue #4 fix review) got rc 0 from a `done` comment with no marker at all, and from the foreign
 # marker `[wrapup RUN-10 comment-1]` under RUN-1, which `contains` happily accepted as a substring.
 check_wrapup_tracker() {  # check_wrapup_tracker <state-file> <tracker>
@@ -233,7 +233,7 @@ validate_record() {
     wrapup) check_wrapup "$r" "$pr" "$rev" ;;
     cli)
       [ -n "$pr" ] || fail "cli record has no pr_id" || return 1
-      # A cli PR skips QA, so the role publishes it itself (TT-790).
+      # A cli PR skips QA, so the role publishes it itself.
       check_pushed "$rev" && check_pr "$pr" "$rev" false ;;
     *) fail "unknown role $role" ;;
   esac

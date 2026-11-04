@@ -476,7 +476,7 @@ jq -e '.branch == "bugfix/7-fix-x" and .tracker == "github" and .cost_key == "ow
 jq -e '.key == "7"' "$TD/ticket.json" >/dev/null || fail "the copied ticket.json is not #7"
 
 setprofile '.'
-run "$MAIN" $NEW beta TT-795 feature/TT-795-x origin/develop-netcore7 --ticket-file "$INC/ticket.json"
+run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop-netcore7 --ticket-file "$INC/ticket.json"
 expect 1 "jira reads the ticket through MCP" "jira refuses a ticket file"
 no_clone beta "jira + ticket file"
 
@@ -670,10 +670,10 @@ TG_TARGET=missing; ws done done; ck 1 github "a state file with no target identi
 tg_reset
 TG_TARGET=malformed; ws done done; ck 1 github "a target that is not an object"
 tg_reset
-# Astra's reproducer, issue #4 acceptance review: run=OLD-RUN, ticket=999, repo=other/repo with a
+# Reviewer's reproducer, issue #4 acceptance review: run=OLD-RUN, ticket=999, repo=other/repo with a
 # done comment and delivered/done status returned rc 0 before this gate existed.
 TG_RUN=OLD-RUN; TG_TICKET='"999"'; TG_REPO='"other/repo"'; ws done done
-ck 1 github "Astra's reproducer: OLD-RUN/999/other/repo is rejected"
+ck 1 github "Reviewer's reproducer: OLD-RUN/999/other/repo is rejected"
 tg_reset
 # The ORDER matters (codex, fix round 4b): if the prompt wrote the current `target` first and only
 # then judged the file foreign, a previous run's finished intents would be relabelled as this run's
@@ -688,11 +688,11 @@ ck 1 github "a relabelled foreign follow-up intent is rejected too"
 tg_reset
 
 # ---- the marker of a done comment/create must match EXACTLY ------------------------------------
-# Astra's second reproducer (issue #4 fix review): a `done` comment with NO marker scored rc 0,
+# Reviewer's second reproducer (issue #4 fix review): a `done` comment with NO marker scored rc 0,
 # because the marker rule skipped marker-less intents and `any(comment done)` then accepted them;
 # and `[wrapup RUN-10 comment-1]` passed under RUN-1, since `contains` matches a substring.
 TG_MARKER=none; ws done done
-ck 1 github "Astra's reproducer: a done comment with no marker at all is rejected"
+ck 1 github "Reviewer's reproducer: a done comment with no marker at all is rejected"
 has "without the exact marker" "$WORK/out" || fail "the marker refusal is not explicit"
 has "comment-1 marker=<none>" "$WORK/out" || fail "the marker refusal does not name the intent"
 tg_reset
@@ -705,7 +705,7 @@ ck 1 github "a done comment carrying another intent's marker id is rejected"
 tg_reset
 # RUN-1 is a substring of RUN-10: the whole point of an exact comparison.
 TG_MARKER=substr; ws done done
-ck 1 github "Astra's reproducer: a foreign run that contains this one as a substring is rejected"
+ck 1 github "Reviewer's reproducer: a foreign run that contains this one as a substring is rejected"
 tg_reset
 TG_MARKER=suffix; ws done done
 ck 1 github "the exact marker plus trailing text is not the marker"
@@ -842,7 +842,7 @@ has "url: https://github.com/owner/repo/issues/7" "$WORK/out" || fail "the summa
 
 setprofile '.'
 rm -rf "$WORK/main-beta"
-run "$MAIN" $NEW beta TT-795 feature/TT-795-x origin/develop-netcore7
+run "$MAIN" $NEW beta AB-795 feature/AB-795-x origin/develop-netcore7
 expect 0 "branch:" "a jira clone for the summary case"
 run "$MAIN" $TR beta summary
 expect 0 "tracker: jira" "a jira clone reports tracker: jira"

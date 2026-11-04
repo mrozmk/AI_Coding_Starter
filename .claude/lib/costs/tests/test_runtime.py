@@ -1,4 +1,4 @@
-"""Runtime log ingest: cursor, rewrite, validation, name resolution, v1→v2 upgrade (TT-821)."""
+"""Runtime log ingest: cursor, rewrite, validation, name resolution, v1→v2 upgrade."""
 import os
 import sqlite3
 import unittest
@@ -13,7 +13,7 @@ S2 = "0a1b2c3d-0000-4000-8000-000000000002"
 AT = "2026-10-06T10:00:00.123Z"
 
 
-def reg(session=S1, source="mail-tt", name="OpusTT", provider="claude", **extra):
+def reg(session=S1, source="mail-tt", name="Supervisor", provider="claude", **extra):
     return dict({"v": 1, "type": "session", "provider": provider, "session": session,
                  "source": source, "name": name, "at": AT}, **extra)
 
@@ -71,16 +71,16 @@ class RuntimeTest(unittest.TestCase):
 
     def test_resolve_name(self):
         self.ingest([reg(source="start-team"), reg(source="mail-tt"),
-                     reg(session=S2, name="AstraTT"), reg(session=S2, name="Twin", source="x")])
-        self.assertEqual(runtime.resolve_name(self.conn, "OpusTT"), S1)
+                     reg(session=S2, name="Reviewer"), reg(session=S2, name="Twin", source="x")])
+        self.assertEqual(runtime.resolve_name(self.conn, "Supervisor"), S1)
         self.assertEqual(runtime.resolve_name(self.conn, S2), S2)
         for value in ("missing", "Twin"):
             with self.assertRaises(SystemExit) as ctx:
                 runtime.resolve_name(self.conn, value)
             self.assertEqual(ctx.exception.code, 2)
-        self.ingest([reg(session=S2, name="OpusTT")], mode="a")
+        self.ingest([reg(session=S2, name="Supervisor")], mode="a")
         with self.assertRaises(SystemExit) as ctx:
-            runtime.resolve_name(self.conn, "OpusTT")
+            runtime.resolve_name(self.conn, "Supervisor")
         self.assertEqual(ctx.exception.code, 2)
 
     def test_v1_db_upgrades(self):

@@ -1,4 +1,4 @@
-"""Jira report comment: marker, stable body, add-or-edit decision (spec TT-821).
+"""Jira report comment: marker, stable body, add-or-edit decision.
 
 Python 3.9 stdlib only. Never posts — the caller runs the Jira MCP tool it recommends.
 """
@@ -31,6 +31,12 @@ def load_comments(path):
         payload = payload["comments"]
     if not isinstance(payload, list) or not all(isinstance(c, dict) for c in payload):
         config.fail(2, f"{path}: not a comments list or an issue with comments")
+    for i, c in enumerate(payload):
+        cid = c.get("id")
+        if isinstance(cid, bool) or not (isinstance(cid, int) or (isinstance(cid, str) and cid)):
+            config.fail(2, f"{path}: comment {i} has no valid id")
+        if not isinstance(c.get("body"), str):
+            config.fail(2, f"{path}: comment {i} has no body")
     return payload
 
 
@@ -50,13 +56,16 @@ def _newest(comments):
 
 def decide(comments, ticket, text):
     marker = MARKER.format(ticket=ticket)
-    # Whole-line match: "…: TT-1" is a prefix of "…: TT-10".
+    # Whole-line match: "…: AB-1" is a prefix of "…: AB-10".
     ours = [c for c in comments
-            if marker in {ln.strip() for ln in (c.get("body") or "").splitlines()}]
+            if marker in {ln.strip() for ln in c["body"].splitlines()}]
     if ours:
         newest = _newest(ours)
         return {"action": "edit", "comment_id": str(newest["id"]),
                 "duplicates": [str(c["id"]) for c in ours if c is not newest], "body": text}
+    if not comments:
+        config.fail(3, "no comments read — an empty list cannot be told from a swallowed"
+                       " comments-API error; check the ticket and add the report comment by hand")
     if len(comments) >= PAGE_LIMIT:
         config.fail(3, f"comment history may be incomplete (≥{PAGE_LIMIT} comments, no report"
                        " marker) — point at the report comment by hand")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runtime log writer for the token-usage tool (TT-821); never fails its caller.
+# Runtime log writer for the token-usage tool; never fails its caller.
 #
 # Usage:
 #   runtime-mark.sh session --provider claude|codex [--session ID]
@@ -11,7 +11,7 @@
 #   runtime-mark.sh stage end NAME   # no --session: no-op — the stage hook records this call
 #
 # Opt-in: writes $AGENT_COSTS_HOME/runtime.jsonl only when that dir exists. Contract:
-# .agents/reference/token-usage.md → Runtime log (TT-821).
+# .agents/reference/token-usage.md → Runtime log.
 set -uo pipefail
 
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'

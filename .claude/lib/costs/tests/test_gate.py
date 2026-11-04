@@ -17,7 +17,7 @@ class GateTest(unittest.TestCase):
         self.bin.mkdir()
         tests = self.root / ".claude/lib/tests"
         tests.mkdir(parents=True)
-        # The TakeTask gate is a project adapter, kept as a test fixture in the starter.
+        # The AcmeShop gate is a project adapter, kept as a test fixture in the starter.
         source = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "tt" / "test-gate.sh"
         self.gate = tests.parent / "test-gate.sh"
         shutil.copyfile(source, self.gate)

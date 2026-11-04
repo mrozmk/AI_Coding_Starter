@@ -7,7 +7,7 @@
 #
 # Waits up to wait-seconds (default 0) for the session to appear. Detach in the window with Ctrl-b d.
 # The window runs `exec tmux attach`, and a detached closer shuts it once no process is left on its
-# tty — after the role ends or after Ctrl-b d (TT-790).
+# tty — after the role ends or after Ctrl-b d.
 set -euo pipefail
 
 if [ "${1:-}" = --close ]; then

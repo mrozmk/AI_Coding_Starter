@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Run modes (brainstorm · quick · cli), the self-closing window and old-clone compatibility (TT-790).
+# Run modes (brainstorm · quick · cli), the self-closing window and old-clone compatibility.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
-smoke_team TT-793 feature/TT-793-modes
+smoke_team AB-793 feature/AB-793-modes
 BR="$(jq -r .branch "$TD/team.json")"
 TGT0="$(git -C "$CLONE" ls-remote origin refs/heads/develop-netcore7 | cut -f1)"
 
-setmode() {  # setmode <mode> | setmode -  (- = a team.json written before TT-790)
+setmode() {  # setmode <mode> | setmode -  (- = a team.json written before AB-790)
   if [ "$1" = - ]; then jq 'del(.mode)' "$TD/team.json" > "$WORK/tj"
   else jq --arg m "$1" '.mode = $m' "$TD/team.json" > "$WORK/tj"; fi
   mv "$WORK/tj" "$TD/team.json"
@@ -33,14 +33,14 @@ setmode brainstorm
 git -C "$SEED" switch --quiet -c noprompts develop-netcore7
 git -C "$SEED" rm --quiet .claude/team/prompts/planner-quick.md .claude/team/prompts/cli.md
 git -C "$SEED" commit --quiet -m "no mode prompts" && git -C "$SEED" push --quiet origin noprompts
-run "$MAIN" $NEW beta TT-794 feature/TT-794-x origin/develop-netcore7 bogus
+run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/develop-netcore7 bogus
 expect 1 "mode 'bogus' must be one of" "team-new rejects a bad mode"
-run "$MAIN" $NEW beta TT-794 feature/TT-794-x origin/noprompts quick
-expect 1 "has no planner-quick.md" "team-new quick needs a TT-790 base"
-run "$MAIN" $NEW beta TT-794 feature/TT-794-x origin/develop-netcore7 "brainstorm quick"
+run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/noprompts quick
+expect 1 "has no planner-quick.md" "team-new quick needs a base that has modes"
+run "$MAIN" $NEW beta AB-794 feature/AB-794-x origin/develop-netcore7 "brainstorm quick"
 expect 1 "must be one of" "team-new rejects a multi-token mode"
 [ ! -e "$WORK/main-beta" ] || fail "a rejected team-new created a clone"
-run "$MAIN" bash .claude/lib/team-next.sh alfa TT-794 feature/TT-794-x origin/develop-netcore7 bogus
+run "$MAIN" bash .claude/lib/team-next.sh alfa AB-794 feature/AB-794-x origin/develop-netcore7 bogus
 expect 1 "mode 'bogus' must be one of" "team-next rejects a bad mode"
 
 # A mode change for the same key must fail before archiving or cutting an existing branch.
@@ -48,7 +48,7 @@ printf 'same-key-run\n' > "$TD/run"
 printf '{"coder":{"model":"sonnet"}}\n' > "$TD/roles.override.json"
 shasum -a 256 "$TD/team.json" "$TD/run" "$TD/roles.override.json" > "$WORK/same-key.sha"
 for mode in quick cli; do
-  run "$MAIN" bash .claude/lib/team-next.sh alfa TT-793 "$BR" origin/develop-netcore7 "$mode"
+  run "$MAIN" bash .claude/lib/team-next.sh alfa AB-793 "$BR" origin/develop-netcore7 "$mode"
   expect 1 "resume with /start-team alfa" "same ticket in mode $mode"
   shasum -a 256 "$TD/team.json" "$TD/run" "$TD/roles.override.json" > "$WORK/after-key.sha"
   cmp -s "$WORK/same-key.sha" "$WORK/after-key.sha" || fail "same-key $mode changed team state"
@@ -61,7 +61,7 @@ done
 setmode cli; fresh_run alfa-20261006-000001
 echo '{"planner":{"model":"x"}}' > "$TD/roles.override.json"
 cp "$TD/roles.override.json" "$WORK/cli-override"
-for entry in cli=sonnet coder=sonnet; do
+for entry in cli=sonnet cli=opus/high coder=sonnet; do
   : > "$STUB_LOG"
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$entry"
   expect 1 "mode cli (fixed opus[1m]/medium)" "cli refuses $entry"
@@ -79,11 +79,24 @@ expect 1 "mode cli" "cli refuses creating an override"
 cp "$WORK/cli-override" "$TD/roles.override.json"; : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of cli" "cli launch retries then stops"
-has "-n alfa-cli --model 'opus[1m]' --effort 'medium' --disallowedTools AskUserQuestion -- " \
-  "$STUB_LOG" || fail "cli launch lacks the fixed model/effort or the AskUserQuestion block"
-jq -e --arg b "$BASE" '.role == "cli" and .mode == "cli" and .attempt == 2 and .input_rev == $b' \
+CLI_LINE="-n alfa-cli --model 'opus[1m]' --effort 'medium' --permission-mode"
+has "$CLI_LINE 'auto' --disallowedTools AskUserQuestion -- " "$STUB_LOG" \
+  || fail "cli launch lacks the fixed model/effort/permission or the AskUserQuestion block"
+jq -e --arg b "$BASE" '.role == "cli" and .mode == "cli" and .attempt == 2 and .input_rev == $b
+  and .permission_mode == "auto"' \
   "$TD/session.json" >/dev/null || fail "cli session.json: $(cat "$TD/session.json")"
 has "not a cli change" "$RD/cli-1.prompt.md" || fail "cli prompt not rendered from cli.md"
+# of the override the cli role takes only its permission.
+rm -f "$TD/session.json"
+run "$MAIN" $TR alfa roles cli=//manual
+expect 0 '"cli":{"permission":"manual"}' "cli accepts a permission override"
+: > "$STUB_LOG"
+run "$MAIN" $TR alfa
+expect 5 "dead attempt 2 of cli" "cli launch with a manual override"
+has "-n alfa-cli --model 'opus[1m]' --effort 'medium' --permission-mode 'manual' --disallowedTools" \
+  "$STUB_LOG" \
+  || fail "cli launch ignored cli.permission manual"
+[ "$(jq -r .permission_mode "$TD/session.json")" = manual ] || fail "cli session.json not manual"
 rm -f "$TD/session.json" "$TD/roles.override.json"; setmode brainstorm
 
 # ---- (22) quick planner validation --------------------------------------------------------------
@@ -181,7 +194,7 @@ has 'UNACCEPTED' "$WORK/out" && fail "summary shown without accepted records"
 
 # ---- (25) team-next sees the cli PR -------------------------------------------------------------
 setmode cli; rm -f "$RD"/coder-1-1.json*; pr_w "$C1"
-run "$MAIN" bash .claude/lib/team-next.sh alfa TT-795 feature/TT-795-x origin/develop-netcore7
+run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop-netcore7
 expect 1 "previous PR #8371" "team-next refuses while the cli PR is active"
 
 # ---- (26) the closer ----------------------------------------------------------------------------
@@ -224,7 +237,7 @@ cp "$WORK/attach.main" "$MAIN/.claude/lib/team-attach.sh"
 mv "$WORK/team-modes.sh" "$WORK/team-validate.sh" "$CLONE/.claude/lib/"
 rm -f "$TD/session.json"; setmode brainstorm
 
-# ---- (29) dashboard folding and the "czeka na Ciebie" bar (TT-823) ------------------------------
+# ---- (29) dashboard folding and the "czeka na Ciebie" bar ------------------------------
 CL3="$WORK/claude3"; SUBS="$CL3/s9/subagents"; mkdir -p "$SUBS"
 echo '{"type":"assistant","message":{"model":"m"}}' > "$CL3/s9.jsonl"
 export TEAM_DASH_PROJECT_DIR="$CL3" TEAM_DASH_SESSION=s9
@@ -300,7 +313,7 @@ snap "blocked record in the bar" '.attention | map(select(.kind == "blocked")) |
   | .text == "Which DTO field?" and .team == "alfa" and (.commands | index("/start-team alfa"))'
 rm -f "$RD/coder-1-1.json"
 
-# TT-826: ADO can reactivate an abandoned PR, so only `completed` is cached for good.
+# ADO can reactivate an abandoned PR, so only `completed` is cached for good.
 export TEAM_DASH_CACHE="$WORK/cache3"; mkdir -p "$TEAM_DASH_CACHE"
 mkrec wrapup "$BASE"; pr_json false "$BASE"
 echo abandoned > "$TEAM_DASH_CACHE/pr-alfa-8371"
@@ -373,8 +386,10 @@ for p in planner planner-quick cli; do
   [ -z "$bad" ] || fail "$p prompt has unrendered keys: $bad"
 done
 ! grep -n 'busy of' "$SRC/.claude/lib/team-attach.sh" || fail "team-attach.sh polls Terminal's busy flag"
+[ "$(wc -l < "$SRC/.agents/reference/team-mode.md")" -le 500 ] \
+  || fail "team-mode.md over 500 lines"
 
-# ---- (30) accepted QA launches the actual wrapup prompt (TT-827) ---------------------------------
+# ---- (30) accepted QA launches the actual wrapup prompt ---------------------------------
 setmode brainstorm; fresh_run alfa-20261006-000005
 WRAP_REV="$(git -C "$CLONE" rev-parse HEAD)"
 for role in planner coder qa; do mkrec "$role" "$WRAP_REV"; done
@@ -382,27 +397,27 @@ jq '.artifacts = [".agents/plans/done/accepted.md"]' "$RD/coder-1-1.json" > "$WO
 mv "$WORK/coder" "$RD/coder-1-1.json"
 # A prior attempt accepted B/create-1; attempt 2 must retain that mapping, even if A is now listed.
 jq -n --arg marker "[wrapup $RUN_ID create-1]" \
-  '{drafts: {"create-1": {accepted: true, summary: "B", parent: "TT-780", uploads: [],
+  '{drafts: {"create-1": {accepted: true, summary: "B", parent: "AB-780", uploads: [],
     marker: $marker, description: ("B draft\n" + $marker)}},
-    intents: {"create-1": {state: "done", draft_id: "create-1", issue_key: "TT-901"}}}' \
+    intents: {"create-1": {state: "done", draft_id: "create-1", issue_key: "AB-901"}}}' \
   > "$RD/wrapup-state.json"
 cp "$RD/wrapup-state.json" "$WORK/wrapup-state"
 : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of wrapup" "wrapup launch retries then stops with stubbed Claude"
 WP="$RD/wrapup-1.prompt.md"
-has "wrapup of team alfa working on TT-793" "$WP" || fail "wrapup lacks team/ticket context"
+has "wrapup of team alfa working on AB-793" "$WP" || fail "wrapup lacks team/ticket context"
 has "plan \`.agents/plans/done/accepted.md\`, PR \`8371\`" "$WP" || fail "wrong wrapup inputs"
 has ".agents/team/runs/$RUN_ID/qa-report-1.md" "$WP" || fail "wrapup lacks accepted QA context"
 ! grep -q '{{[A-Z_]*}}' "$WP" || fail "wrapup has unrendered placeholders"
-for rule in 'Fetch TT-793 with `fields="parent"`' 'issuetype.name == "Epic"' \
+for rule in 'Fetch AB-793 with `fields="parent"`' 'issuetype.name == "Epic"' \
   'Never use the run' 'parent Epic: <key> — <summary>' \
   'Show that full dry-run once before the question.' \
   ".agents/team/runs/$RUN_ID/wrapup-1.md" \
   'A choice accepts exactly the displayed, saved draft' \
   'no second dry-run and no "Tworzę? [y/n/edit]"' \
   'separate pending intent' 'read-only issue inspection' \
-  'a `done` creation is never repeated' 'Re-read the active TT sprint' \
+  'a `done` creation is never repeated' 'Re-read the active sprint' \
   '.agents/memory/domain/jira.md'; do
   has "$rule" "$WP" || fail "rendered wrapup lacks rule: $rule"
 done
@@ -418,7 +433,8 @@ for rule in ".agents/team/runs/$RUN_ID/wrapup-state.json" \
 done
 cmp -s "$WORK/wrapup-state" "$RD/wrapup-state.json" || fail "runner rewrote accepted B/create-1"
 for p in .claude/team/prompts/wrapup.md .claude/skills/jira/SKILL.md \
-  .agents/reference/team-mode.md .claude/lib/tests/team-smoke-3.sh; do
+  .agents/reference/team-mode.md \
+  .claude/lib/tests/team-smoke-3.sh; do
   [ "$(wc -l < "$SRC/$p")" -le 500 ] || fail "$p exceeds 500 lines"
 done
 

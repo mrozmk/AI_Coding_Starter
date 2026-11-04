@@ -8,6 +8,10 @@
 # Paths are relative to the starter root. Read only by `.claude/lib/team-setup.sh` and the
 # sync playbook (`.claude/starter-sync-playbook.md` → Category A); the harness tests are
 # deliberately out of the distribution — a project runs the harness, it does not re-test it.
+#
+# Provenance: the team layer is ported from a private project; `source:` pins the upstream revision
+# the last re-sync was taken from (a delta port starts from there; the smoke suite is the oracle).
+# source: taketask ea141a197
 
 # --- not distributed ----------------------------------------------------------------------
 !.claude/lib/tests/**
@@ -117,6 +121,32 @@ own .claude/team/tracker/jira-read.md
 own .claude/team/tracker/jira-wrapup.md
 own .claude/team/tracker/none-read.md
 own .claude/team/tracker/none-wrapup.md
+
+# --- own: question ledger, delivery, escalation, gate lock, audit (re-sync at the source pin) ---
+own .agents/reference/escalation-fallback.md
+own .agents/reference/team-decision-model.md
+own .agents/reference/team-questions.md
+own .claude/commands/pr-merge.md
+own .claude/hooks/guard-destructive-sql.sh
+own .claude/hooks/guard-team-egress.sh
+own .claude/hooks/lib/guard_team_egress.py
+own .claude/lib/gate-lock.sh
+own .claude/lib/gate_lock.py
+own .claude/lib/team-anchor.sh
+own .claude/lib/team-audit.sh
+own .claude/lib/team-automerge-check.sh
+own .claude/lib/team-question-lib.sh
+own .claude/lib/team-remode.sh
+own .claude/lib/team-send-lock.sh
+own .claude/lib/team_audit.py
+own .claude/lib/team_prompt.py
+own .claude/lib/team_prompt_classes.py
+own .claude/lib/team_prompt_settings.py
+own .claude/lib/team_settings_diff.py
+own .claude/lib/team_transcript.py
+own .claude/lib/test-gate.sh
+own .claude/team/audit.json
+own .claude/team/prompts/retro-run.md
 
 # --- agent-mail channel — vendored tool, source: mrozmk/jarvis c9c407c (tools/agent_mail/) -------
 !tools/agent_mail/tests/**
