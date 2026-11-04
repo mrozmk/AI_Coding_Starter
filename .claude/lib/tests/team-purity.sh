@@ -4,7 +4,7 @@
 # must not leak into the public template. A hit prints <file>:<line>: <text> and exits 1.
 #
 # Usage: bash .claude/lib/tests/team-purity.sh [root]     (root defaults to the starter checkout)
-# Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/
+# Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/ docs/teams
 # Role names in code are Supervisor / TeamLead / Advisor / Reviewer; project names enter only
 # through configuration (teams.channel.mail_suffix), never as literals.
 set -euo pipefail
@@ -22,7 +22,7 @@ DENY = re.compile(r"TakeTask|taketask|FableTT|AstraTT|OpusTeam|OpusSupervisor|Op
                   r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|\bTT-[0-9]+")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
 SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".agents/reference",
-         "tools")
+         "tools", "docs/teams")
 hits = 0
 for top in SCOPE:
     base = os.path.join(root, top)
@@ -61,5 +61,8 @@ printf 'role=OpusTeam\n' > "$T/.claude/lib/x.sh"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a planted leak passed"; exit 1; }
 printf 'ticket AB-1 TT-12\n' > "$T/.claude/lib/x.sh"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a ticket key passed"; exit 1; }
+rm -f "$T/.claude/lib/x.sh"; mkdir -p "$T/docs/teams"
+printf 'the Advisor was FableTT\n' > "$T/docs/teams/x.md"
+! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in docs/teams passed"; exit 1; }
 
 scan "$ROOT"
