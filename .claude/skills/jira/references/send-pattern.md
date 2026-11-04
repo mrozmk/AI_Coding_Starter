@@ -60,8 +60,14 @@ op) — an update with only `fields` wipes them.
 ### 3. Recover
 
 sync Step 0 (labels `<namespace>:<row id>`; adopt 1 hit, stop on >1; the estimate setting resolved
-first). Then, for every file with a `jira_key`, re-verify each `pending` op against Jira and set
-`done` or keep `pending`:
+first) — and reconcile every recovered or re-verified key with its draft by `backlog_row`: the
+backlog `Jira` cell and the file's `jira_key` must carry the same key and verification state. Then,
+for every file with a `jira_key`, re-verify each `pending` op against Jira and mark it `done` or
+keep it `pending`.
+
+**Recovery results are staged in memory**, shown in the Step 6 confirm, and written (backlog cells,
+frontmatter) only after `y` — `n` leaves every file unchanged; the next run recovers the same facts
+again.
 
 | Op | Verified when |
 |---|---|
@@ -71,7 +77,7 @@ first). Then, for every file with a `jira_key`, re-verify each `pending` op agai
 | `transition` | the issue's status is `initial_jira_status` |
 | `open_questions_comment` | a comment starting `<!-- ops:open_questions:<row id> -->` exists |
 | `links` | sync Step 7 finds no missing link |
-| `ac_repair` | the live AC section equals the resolver's `current` |
+| `ac_repair` | the live AC section equals the resolver's `current` **and** the `sent/` snapshot's `## Acceptance criteria` section equals it too (rewrite the snapshot first when only Jira is repaired) |
 
 ### 4. Preprocess (in memory)
 
@@ -134,7 +140,8 @@ continue. **Never `jira_batch_create_issues`.**
 ### 11. Move per issue
 
 `inprogress/E<n>/<file>` → `sent/E<n>/<file>` when `jira_key` is set and every op is `done` or
-`waived`. Files with a `pending` op stay (listed "pending ops"). When `_epic.md` moves while Tasks
+`waived`. A `status: reference` `_epic.md` is **never** moved (the `sent/` snapshot it points at
+stays as it is); it is removed once no draft of the Epic remains in `inprogress/E<n>/`. Files with a `pending` op stay (listed "pending ops"). When `_epic.md` moves while Tasks
 of the Epic remain in `inprogress/E<n>/`, write a `reference` `_epic.md` in its place (same
 `backlog_row`, same `jira_key`) so `--ops-only` finds the parent.
 
@@ -157,7 +164,10 @@ printed, `0` included.
 
 ## `--ops-only`
 
-Steps 1–3 and 10–13 only: nothing is created; pending ops are verified, retried and the files moved.
+Steps 1–3, the **capture and sanitising half of Step 4** (open-question bullets re-captured from
+the draft, `[internal]` spans stripped from anything that will be sent), and Steps 10–13: nothing is
+created; each pending op is previewed (an open-questions comment shows its reconstructed text) before
+it runs; the files are moved when their ops finish.
 
 ## Invariants
 
