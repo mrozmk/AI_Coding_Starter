@@ -334,7 +334,7 @@ role transcript's last write; the pane check covers prompts. Its card's commands
 a `blocked`/`failed` record (its message, `team-attach.sh` and the resume hint), and a PR ready to
 merge (`team-merge-check.sh`, `/pr-merge <id>`); each item names the tmux window. A team whose
 runner is `down` (not `stale`) and whose mode's last role is `done` folds into one card from
-`teams[].state`: `wolna` (PR `completed`/`abandoned`), `czeka na merge` (PR `active`, highlighted,
+`teams[].state`: `free` (PR `completed`/`abandoned`), `awaiting merge` (PR `active`, highlighted,
 also a bar item) or `PR status ?` (ADO unreachable — no bar item). Only for such teams the snapshot
 calls `az repos pr show`, time-boxed by `TEAM_DASH_PR_SECS` (4 s) and cached in the server's temp
 dir (`TEAM_DASH_CACHE`, exported by `serve.sh`; `completed` for good, other states for 60 s —
@@ -342,7 +342,7 @@ dir (`TEAM_DASH_CACHE`, exported by `serve.sh`; `completed` for good, other stat
 skips ADO (`PR status ?`), so a hung ADO costs one timeout per snapshot, not one per finished team.
 Finished sub-agents stay cards for 10 min after `finished_at`, then fold into one
 `✓ N finished` line; the snapshot never drops a finish younger than 10 min, older ones fill the
-history up to 12. Which folds are open is kept per browser in `localStorage` (`tt-dash-open`) —
+history up to 12. Which folds are open is kept per browser in `localStorage` (`team-dash-open`) —
 view state only, nothing is written inside the repo.
 
 **Manual live smoke:** with one team on a ticket and a sub-agent spawned in this session, both

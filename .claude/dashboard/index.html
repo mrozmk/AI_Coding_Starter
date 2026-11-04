@@ -112,7 +112,7 @@
 </head>
 <body>
 <header>
-  <h1 id="title">TAKETASK AGENT TREE</h1>
+  <h1 id="title">TEAM AGENT TREE</h1>
   <div class="legend">
     <span style="--c: var(--sup)">supervisor</span>
     <span style="--c: var(--team)">teams</span>
@@ -131,7 +131,7 @@ const EFFORT = { low: 1, medium: 2, high: 3, xhigh: 4, max: 4 };
 const GLYPH = { running: "●", attention: "▲", blocked: "■", failed: "✕", done: "✓",
                 stopped: "○", pending: "·", unknown: "?", idle: "○" };
 const BAR_GLYPH = { attention: "▲", blocked: "■", failed: "✕", merge: "⇡" };
-const FOLD_MS = 10 * 60 * 1000, OPEN_KEY = "tt-dash-open";
+const FOLD_MS = 10 * 60 * 1000, OPEN_KEY = "team-dash-open";
 let last = null, fetchFailed = false, errorsOpen = false, intervalMs = 3000, timer = null;
 let openState = {};
 // Expanded sections per browser only; storage may be blocked (private window), so never rely on it.
@@ -241,10 +241,10 @@ function roleBox(r) {
 function teamSummary(t) {
   const name = String(t.team || "?");
   if (t.state === "free") {
-    return [name, "wolna", "ostatnio " + (t.ticket || "?") + " → PR " + t.pr_id + " "
+    return [name, "free", "last " + (t.ticket || "?") + " → PR " + t.pr_id + " "
       + (t.pr_status === "abandoned" ? "abandoned" : "merged")].join(" · ");
   }
-  if (t.state === "awaiting_merge") return name + " · czeka na merge · PR " + t.pr_id;
+  if (t.state === "awaiting_merge") return name + " · awaiting merge · PR " + t.pr_id;
   return name + " · PR " + t.pr_id + " · status ?";
 }
 
@@ -295,7 +295,7 @@ function subColumn(col, subs) {
     Date.parse(y.finished_at || y.last_at) - Date.parse(x.finished_at || x.last_at));
   if (!old.length) return;
   const n = old[0];
-  const d = remembered("subdone", "✓ " + old.length + " zakończone · ostatni: "
+  const d = remembered("subdone", "✓ " + old.length + " finished · last: "
     + (n.description || n.type || "agent") + ", " + since(n.finished_at || n.last_at));
   old.forEach(a => add(d, subBox(a)));
   add(col, d);
@@ -332,7 +332,7 @@ function codexBox(c) {
 
 function render(s) {
   const sup = s.supervisor || {};
-  document.getElementById("title").textContent = ["TAKETASK AGENT TREE",
+  document.getElementById("title").textContent = ["TEAM AGENT TREE",
     sup.session_id ? sup.session_id.slice(0, 8) : "no session", sup.model || "model ?",
     "effort " + (sup.effort || "?")].join(" · ");
   renderBar(s.attention);
