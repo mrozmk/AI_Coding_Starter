@@ -50,8 +50,8 @@ op) — an update with only `fields` wipes them.
   a missing id or an unnumbered criterion → stop; changed text under an id → stop unless the id is
   in `ac_waivers` — "add criteria via `/update-backlog` (new id), then re-draft". **Exception —
   `ops.ac_repair: pending`** (set by resync after the change went through `/update-backlog`): the
-  snapshot's AC is expected to be stale; the check becomes "the resolver's `current` is what will be
-  sent"; every other guard still runs.
+  snapshot's AC — and its `scope_rev` — are expected to trail; the check becomes "the resolver's
+  `current` is what will be sent"; every other guard still runs.
 
 ### 2. Checker
 
@@ -132,10 +132,13 @@ continue. **Never `jira_batch_create_issues`.**
   `<!-- ops:open_questions:<row id> -->`, then the captured bullets.
 - **`links`** — sync Step 7: `Depends on` → Blocks (direction verified after the first link),
   `Relates` → Relates.
-- **`ac_repair`** (only when `pending`) — `jira_update_issue` rewriting the AC section with the
-  resolver's `current` (components re-asserted); after verification rewrite **that** `sent/` file's
-  `## Acceptance criteria` section to the same text — the one sanctioned refresh of a `sent/` file —
-  and set `done`.
+- **`ac_repair`** (only when `pending`) — **branch on the resolver**: when the row's `current`
+  differs from the issue's live AC (the original Task was changed by `/update-backlog`):
+  `jira_update_issue` rewriting the AC section with `current` (components re-asserted); after
+  verification rewrite **that** `sent/` file's `## Acceptance criteria` section and `scope_rev` —
+  the one sanctioned refresh of a `sent/` file — and set `done`. When `current` still equals the old
+  criteria because the Task was protected and `/update-backlog` created a `delta-linked` Task: change
+  nothing, set `done — delivered as delta <id>` (the delta ships through `draft` → `send`).
 
 ### 11. Move per issue
 

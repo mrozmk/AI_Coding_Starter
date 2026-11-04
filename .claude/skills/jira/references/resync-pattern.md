@@ -35,8 +35,12 @@ code are compared byte for byte; `+` vs `and` is always a content change.
 1. **Fetch** — `jira_get_issue` for the Epic and each keyed file: `description`, `issuelinks`,
    `labels`, `status`, `components`, `parent`. Not found → "not found in Jira" in the report; the file
    is untouched.
-2. **Section diff** — split both sides by `##` headings, normalise, compare the in-scope sections;
-   record changed / added / removed sections per issue.
+2. **Section diff** — compare Jira with the snapshot's **outgoing representation**, not the raw file:
+   render the snapshot in memory exactly as send would (Step 4 preprocessing — draft-only sections and
+   `[internal]` spans stripped, ids replaced by keys — plus the completed `epic_scope_links` and
+   `attachments` rewrites), split both sides by `##` headings, normalise, compare the in-scope
+   sections; record changed / added / removed sections per issue. Applying an approved remote edit
+   writes the new text into the snapshot section while **keeping its `[internal]` lines** in place.
 3. **Structural drift** (`## Structural drift`) — never written into the backlog:
    - **links:** rebuild each issue's remote Blocks / Relates set (direction as in sync Step 7) and
      compare with the backlog's `Depends on` / `Relates`; a remote link missing locally → suggested
@@ -48,9 +52,13 @@ code are compared byte for byte; `+` vs `and` is always a content change.
    `node .claude/lib/backlog-check.mjs --next-ids` → `tasks.<row>.current`. Changed text under an id,
    a new or a removed criterion → an entry. Per Task with drift, one `AskUserQuestion`:
    - **(a) adopt** — prepare the `/update-backlog` intent (withdraw the id + a new one, through a
-     `D-n`) and set `ops.ac_repair: pending` in the `sent/` file; after `/update-backlog` has run,
-     `/jira send E<n> --ops-only` rewrites the Jira AC with the new ids, refreshes that snapshot's AC
-     section and marks the op `done` (send-pattern Step 1 exception + Step 10);
+     `D-n`) and set `ops.ac_repair: pending` in the `sent/` file. Run `/update-backlog`, then
+     `/jira send E<n> --ops-only`, which **branches on what `/update-backlog` did** (send-pattern
+     Step 1 exception + Step 10): the original Task's resolved criteria changed → the Jira AC is
+     rewritten with the new ids, the snapshot's AC section and `scope_rev` are refreshed, `done`;
+     the Task was protected and `/update-backlog` created a `delta-linked` Task instead → nothing is
+     rewritten on the original issue, the op closes `done — delivered as delta <id>`, and the delta
+     ships through `/jira draft` → `send` like any new row;
    - **(b) Jira wording only** — add the ids to the file's `ac_waivers` (send honours them for
      wording, never for a missing or extra criterion);
    - **(c) defer** — stays in the report.
