@@ -30,6 +30,9 @@ opt-in step and both with `"onFailure": "block"`: the egress guard (`guard-team-
 `Bash` and `WebFetch`) and the destructive-SQL guard (`guard-destructive-sql.sh`, under `Bash`:
 `DROP`/`TRUNCATE` of a table, database or schema is denied, any other SQL write asks). The
 template's own shared settings carry neither; a project gets them only through `/setup:teams`.
+The egress guard is a **best-effort guard over `Bash` and `WebFetch`, not an allowlist**:
+`WebSearch` and MCP tools are out of its scope. What it catches and what it does not:
+[`security-egress.md`](../../.agents/reference/security-egress.md).
 
 ## The tier-1 prompt check
 

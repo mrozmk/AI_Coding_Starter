@@ -1,7 +1,9 @@
 """Logic of guard-team-egress.sh: keep the egress prompt for team roles in auto mode.
 
-WebFetch to a host outside the project's WebFetch(domain:...) allowlist -> ask; a Bash command whose
-command-position word is an egress tool (curl wget ssh scp rsync nc ftp sftp) -> ask, also inside
+A best-effort guard over Bash and WebFetch, not an allowlist (MCP tools and WebSearch are out of
+scope). WebFetch to a host outside the project's WebFetch(domain:...) allowlist -> ask; a Bash command
+whose command-position word is an egress-capable tool (curl wget ssh scp rsync nc ftp sftp gh npm pip
+pip3 osascript; python/python3 with -c, node with -e/-p/--eval) -> ask, also inside
 bash -c, tmux arguments, eval, $(...) and here-doc lines. Never emits allow: no output leaves the
 decision to Claude Code's own rules, so deny still wins. Unreadable input -> ask (fail-closed).
 A loopback port probe (`nc -z [-v] [-w n] [-G n] localhost|127.0.0.1|::1 <ports>`) is not egress.
@@ -21,7 +23,12 @@ sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 from guard_destructive_sql import (  # noqa: E402
     SHELL_C, commands, doc_heredocs_removed, strip_wrappers, tokenize)
 
-EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp"}
+EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
+          "gh", "npm", "pip", "pip3", "osascript", "python", "python3", "node"}
+# Interpreters are egress-capable only with inline code; a script file is the project's own code.
+INLINE = {"python": {"-c"}, "python3": {"-c"}, "node": {"-e", "-p", "--eval", "--print"}}
+# The read-only gh forms /setup:teams puts on the roles' allow list.
+GH_READS = (["pr", "view"], ["issue", "view"])
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
@@ -59,6 +66,18 @@ def loopback_probe(words):
     ports = words[i + 1:]
     return ("z" in flags and i < len(words) and words[i] in LOOPBACK and bool(ports)
             and all(re.fullmatch(r"[0-9]+(-[0-9]+)?", w) for w in ports))
+
+
+def egress_capable(verb, words):
+    """False for the forms of an egress verb that are not egress: an interpreter running a file,
+    the read-only gh views the roles are allowed."""
+    if verb in INLINE:
+        return any(w in INLINE[verb] or (w.startswith("-") and not w.startswith("--")
+                                          and "c" in w[1:] and verb != "node")
+                   for w in words[1:])
+    if verb == "gh":
+        return words[1:3] not in GH_READS
+    return True
 
 
 def git_repo_arg(words):
@@ -113,7 +132,8 @@ def verb_in(cmd, names, depth=0):
     for raw in commands(tokenize(cmd)):
         words = strip_wrappers(raw)
         verb = os.path.basename(words[0].lstrip("`")) if words else ""
-        if verb in names and not (verb == "nc" and loopback_probe(words)):
+        if verb in names and not (verb == "nc" and loopback_probe(words)) and not (
+                names is EGRESS and not egress_capable(verb, words)):
             return verb
         if verb == "git" and names is EGRESS:
             host = repo_host(git_repo_arg(words) or "")

@@ -136,6 +136,21 @@ sh_ none 'git fetch origin'
 sh_ none 'git clone ../local'
 sh_ none 'git pull file:///tmp/r'
 sh_ none 'git push https://developer.mozilla.org/x'
+
+# --- egress-capable verbs ask (S7); interpreters only with inline code, the role gh reads pass
+sh_ ask  'gh api -X POST /repos/o/r/issues'
+sh_ ask  'gh gist create .env'
+sh_ ask  'python3 -c "import urllib.request"'
+sh_ ask  'python -Ic "x"'
+sh_ ask  'node -e "fetch(1)"'
+sh_ ask  'npm install left-pad'
+sh_ ask  'pip install requests'
+sh_ ask  'osascript -e "do shell script \"x\""'
+sh_ none 'gh pr view 3'
+sh_ none 'gh issue view 4'
+sh_ none 'python3 -I -B -m pytest -q'
+sh_ none 'python3 scripts/check.py'
+sh_ none 'node build.js'
 check none "Read payload" "$(hook '{"tool_name":"Read","tool_input":{"file_path":"/x"}}')"
 check none "Edit payload" "$(hook '{"tool_name":"Edit","tool_input":{"file_path":"/x"}}')"
 check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \
