@@ -3,6 +3,18 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The fallback conditions text is English
+
+**Before:** a Reviewer-conditioned fallback typed `<text> — Warunki Reviewer (#<id>): …`.
+
+**Now:** `<text> — Reviewer conditions (#<id>): …`. The payload's `## Reviewer` section names
+generic critical grounds (a public contract, a schema or data migration, a sensitive path from
+the profile) instead of one project's examples.
+
+**Action:** none. A ledger with the old text stays valid: the `TeamLead-fallback` guard compares
+the delivered text with the recorded one, never with a fixed wording, so an undelivered old
+fallback is still delivered as recorded.
+
 ## The agent-mail tool copy is named by its content
 
 **Before:** the channel step named the copy under `~/.agent-mail/tools/` after the vendored

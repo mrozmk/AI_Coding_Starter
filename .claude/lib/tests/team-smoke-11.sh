@@ -146,7 +146,7 @@ mkq menu; opinion 9 "opinion: agree" "Warunek: tylko izolowana baza" "" "  i lim
 esc 2 "$QF" --blocks x --class plan-variant --recommend "pick:1 Test integracyjny"
 expect 0 "FALLBACK" "fallback with conditions"
 grep -qx "send: other" "$WORK/out" || fail "conditions on a pick did not become other"
-grep -qx "text: Test integracyjny — Warunki Reviewer (#9): Warunek: tylko izolowana baza / i limit 3" \
+grep -qx "text: Test integracyjny — Reviewer conditions (#9): Warunek: tylko izolowana baza / i limit 3" \
   "$WORK/out" || fail "conditions text: $(grep '^text: ' "$WORK/out")"
 mkq blocked
 esc 2 "$QF" --blocks x --class plan-variant --recommend "pick:1 x"
@@ -183,7 +183,7 @@ expect 1 "answered with --author TeamLead-fallback" "another author on a recorde
 run "$MAIN" $Q alfa answer "$QN" --run "$RUN_ID" --tier 2 --author TeamLead-fallback \
   --why "fallback: Advisor no-reply — Reviewer #9" --text "$T" --send say
 expect 0 "sent say" "deliver the fallback"
-grep -F -- "send-keys -t %1 -l -- " "$STUB_LOG" | grep -qF "Warunki Reviewer (#9): Warunek: limit 3" \
+grep -F -- "send-keys -t %1 -l -- " "$STUB_LOG" | grep -qF "Reviewer conditions (#9): Warunek: limit 3" \
   || fail "the conditions were not typed on one line"
 has "[tier 2, TeamLead-fallback]" "$RD/notes.md" && has "fallback: Advisor no-reply" "$RD/notes.md" \
   || fail "notes lack the fallback marker"

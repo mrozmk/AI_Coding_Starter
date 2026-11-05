@@ -34,9 +34,9 @@ that critical class. A missing `--class` is `unclassified`, which is critical.
 | `borderline` | eligible | an „unsure → higher” escalation touching no critical ground |
 | `policy-deviation` | eligible | TeamLead would answer against a live policy-log precedent |
 | `ac` | critical | an AC change, even one that keeps the ticket's goal |
-| `contract` | critical | route, DTO, byte enum, SignalR method, AF queue message |
-| `schema` | critical | a schema or EF migration |
-| `sensitive` | critical | a CLAUDE.md sensitive path, a prod safety boundary, customer data |
+| `contract` | critical | a public contract (route, DTO, enum, message schema) |
+| `schema` | critical | a schema or data migration |
+| `sensitive` | critical | a sensitive path from the profile, a prod safety boundary, customer data |
 | `harness-rule` | critical | `decisions.md` / `patterns.md` / `index.md`, a harness rule |
 | `conflict` | critical | an analyst disagreement or an TeamLead–analyst conflict |
 
@@ -114,7 +114,7 @@ text: <one line>
 
 - Empty Reviewer body (after the marker) → the recommended action and text as is.
 - Conditions + `pick:<n>`/`other` → `send: other`; conditions + `say` → `say`. The text becomes
-  `<recommendation text> — Warunki Reviewer (#<id>): <body lines joined with " / ">`, whitespace
+  `<recommendation text> — Reviewer conditions (#<id>): <body lines joined with " / ">`, whitespace
   collapsed: every condition reaches the role on one line (`--text` refuses newlines).
 - Conditions on `picks:…` (a checkbox multiSelect has no `other`) → no fallback.
 

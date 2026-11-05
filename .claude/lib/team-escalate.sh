@@ -445,7 +445,7 @@ try_fallback() {
     esac
     conds="$(awk 'NF { gsub(/^[ \t]+|[ \t\r]+$/, ""); printf "%s%s", (n++ ? " / " : ""), $0 }' \
       <<<"$R_OBODY")"
-    text="$text — Warunki Reviewer (#$R_OID): $conds"
+    text="$text — Reviewer conditions (#$R_OID): $conds"
     body=("$(sed 's/^./    &/' <<<"$R_OBODY")")
   fi
   text="$(esc_one_line "$text")"; oid="$R_OID"
