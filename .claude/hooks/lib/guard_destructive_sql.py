@@ -130,6 +130,78 @@ def strip_shell_comments(cmd):
     return "".join(out)
 
 
+def _close_paren(text, j):
+    """Index of the `)` closing a `$(` whose body starts at j, or -1. The body is a fresh quoting
+    context: `"$(sqlcmd -Q "x")"` — the inner quotes do not close the outer string."""
+    depth, n = 1, len(text)
+    while j < n:
+        c = text[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "'":
+            k = text.find("'", j + 1)
+            if k < 0:
+                return -1
+            j = k + 1
+            continue
+        if c == '"':
+            k = j + 1
+            while k < n and text[k] != '"':
+                if text[k] == "\\":
+                    k += 2
+                    continue
+                if text.startswith("$(", k):
+                    e = _close_paren(text, k + 2)
+                    if e < 0:
+                        return -1
+                    k = e + 1
+                    continue
+                k += 1
+            if k >= n:
+                return -1
+            j = k + 1
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return j
+        j += 1
+    return -1
+
+
+def substitutions(text):
+    """Bodies of the top-level `$(…)` in shell text, quoting-aware (outside single quotes, also
+    inside double quotes). ValueError when one that mentions SQL never closes (caller: ask)."""
+    out, i, n, dq = [], 0, len(text), False
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "'" and not dq:
+            k = text.find("'", i + 1)
+            if k < 0:
+                break
+            i = k + 1
+            continue
+        if c == '"':
+            dq = not dq
+        elif text.startswith("$(", i) and not text.startswith("$((", i):
+            end = _close_paren(text, i + 2)
+            if end < 0:
+                if MENTIONS_SQL.search(text[i:]):
+                    raise ValueError("unterminated $( around sqlcmd/.sql")
+                break
+            out.append(text[i + 2:end])
+            i = end + 1
+            continue
+        i += 1
+    return out
+
+
 def strip_sql_comments(text):
     return SQL_PARTS.sub(lambda m: m.group(0) if m.group(0).startswith("'") else " ", text)
 
@@ -269,6 +341,11 @@ class Scan:
             self.sql(body, where + " <<heredoc")
 
     def command(self, cmd, where, depth):
+        if depth < 3:
+            # Before tokenizing: shlex reads `"$(sqlcmd -Q "x")"` as two strings and splits x.
+            for body in substitutions(strip_shell_comments(cmd)):
+                if MENTIONS_SQL.search(body):
+                    self.command(body, where + " subst", depth + 1)
         tokens = tokenize(cmd)
         piped_file = None
         for raw in commands(tokens):
@@ -276,7 +353,8 @@ class Scan:
             if depth < 3:
                 # `$(…)`/backticks inside a quoted word or glued to it: scan the substituted text.
                 for k, w in enumerate(raw):
-                    if ("$(" in w or "`" in w) and MENTIONS_SQL.search(w):
+                    # `$(…)` is read from the raw text above; backticks only here.
+                    if "`" in w and MENTIONS_SQL.search(w):
                         self.command(SUBST.sub(" ; ", w), where + " subst", depth + 1)
                     if "`" in w:
                         # An unquoted backtick spans words: `echo `sqlcmd -Q "…"`` runs the tail.

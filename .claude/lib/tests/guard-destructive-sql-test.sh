@@ -156,6 +156,14 @@ run deny "backtick as the first word"       '`sqlcmd -S h -Q "DROP TABLE t"`'
 run deny "backtick in an assignment"        'x=`sqlcmd -Q "DROP TABLE t"`'
 run deny "backtick inside double quotes"    "echo \"\`sqlcmd -Q 'DROP TABLE t'\`\""
 run deny "\$() inside double quotes"         "echo \"\$(sqlcmd -Q 'DROP TABLE t')\""
+run deny "\$() in double quotes, inner double quotes" 'x="$(sqlcmd -S h -Q "DROP TABLE t")"'
+run deny "nested \$() in double quotes"      'echo "$(echo "$(sqlcmd -Q "DROP TABLE t")")"'
+run ask  "\$() in double quotes with a write" 'x="$(sqlcmd -Q "DELETE FROM dbo.X")"'
+run none "\$() in double quotes with a read"  'x="$(sqlcmd -Q "SELECT 1")"'
+run none "\$() in single quotes is text"      "echo '\$(sqlcmd -Q \"DROP TABLE t\")'"
+run ask  "unterminated \$() around sqlcmd"    'x="$(sqlcmd -Q "DROP TABLE t"'
+run ask  "unterminated \$() inside one string" "echo \"\$(sqlcmd -Q 'DROP TABLE t'\""
+run deny "a ) inside the inner quotes"        'x="$(sqlcmd -Q "DROP TABLE t /* ) */")"'
 run ask  "backtick with a write"            'echo `sqlcmd -Q "DELETE FROM dbo.X"`'
 run none "backtick with a read"             'echo `sqlcmd -Q "SELECT 1"`'
 run none "backtick without sqlcmd"          'echo `date`'
