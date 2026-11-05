@@ -41,8 +41,14 @@ transcript_args() {
   shopt -u nullglob
 }
 
+# Retro is opt-in per project: `teams.audit.retro: true` in the profile, else off.
+retro_switch() {
+  [ "$(jq -r '.teams.audit.retro // false' "$root/.claude/project-profile.json" 2>/dev/null)" = true ] \
+    && echo on || echo off
+}
+
 auditor() {  # auditor [--title T] → the auditor's stdout
-  python3 -I "$AUDITOR" audit --team-dir "$TD" --clone "$CLONE" --run "$RUN" --out "$OUT" \
+  python3 -I "$AUDITOR" audit --retro "$(retro_switch)" --team-dir "$TD" --clone "$CLONE" --run "$RUN" --out "$OUT" \
     --config "$CONFIG" --roles "$ROLES" ${EXTRA[@]+"${EXTRA[@]}"} \
     ${TRANSCRIPTS[@]+"${TRANSCRIPTS[@]}"} "$@"
 }

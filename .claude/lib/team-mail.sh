@@ -13,7 +13,10 @@
 #   check                schema of the whole registry + this entry's tool, box dir, one tool per box;
 #                        a `tool behind checkout` line (a warning, exit stays 0) when the entry's
 #                        ~/.agent-mail/tools/agent_mail-<sha> copy is older than its repo's vendored tool
-#   <agent_mail.py cmd>  forwarded with --box (send/state also get --project <project_label>)
+#   send inbox ack wait recipients `state get`   forwarded with --box (send/state get --project)
+#   Role use only: this client sits on every role's allow list, so register, requeue, pause,
+#   resume, import-md, export-md, `state set` and any --adapter/--cmd are refused here — the
+#   Operator runs those on the tool directly (the refusal prints the command).
 # --here resolves the key from .agents/team/channel.local.json (field `key`), else from the one
 # registry entry whose `repo` is this checkout. Schema: .agents/reference/agent-mail.md.
 #
@@ -21,7 +24,7 @@
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "team-mail: $1" >&2; exit "${2:-1}"; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
@@ -161,9 +164,26 @@ fi
 [ -z "$PROBLEMS" ] \
   || die "entry $KEY is invalid: $(printf '%s' "$PROBLEMS" | head -1) (team-mail.sh $KEY check)"
 
+# Every forwarded call files under this project's label (the tool's --project default).
+export AGENT_MAIL_PROJECT="$LABEL"
 # codex keeps one thread store per CODEX_HOME; `codex queue` must look in the recipient's own.
 CH="$(cfg codex_home)"
 [ -z "$CH" ] || export CODEX_HOME="$CH"
+
+# Role use only (see the header): what changes recipients, adapters or shared state is the
+# Operator's, run on the tool directly so it is never covered by the roles' team-*.sh allow rule.
+operator_only() {
+  local run="python3 -I -B \"$TOOL/agent_mail.py\" --box \"$BOX\" $1 …"
+  die "'$1' is an Operator action, not a role's: run it yourself on the tool — $run" 2
+}
+for a in "$@"; do
+  case "$a" in --adapter|--adapter=*|--cmd|--cmd=*) operator_only "$SUB $a" ;; esac
+done
+case "$SUB" in
+  show|name|pattern|ps|deliver|send|inbox|ack|wait|recipients) ;;
+  state) [ "${1:-}" = get ] || operator_only "state ${1:-}" ;;
+  *) operator_only "$SUB" ;;
+esac
 
 case "$SUB" in
   show) jq --arg k "$KEY" '.[$k]' "$REG" ;;

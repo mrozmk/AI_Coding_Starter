@@ -5,8 +5,10 @@
 # Loaded from the main checkout (like roles.json), so a clone on an older base still works.
 # Requires team-lib.sh (TEAM_ROLES).
 
-# Base schema travels with main; overrides must belong to the clone's runnable roles, plus cli,
-# whose fixed model/effort leave it only `permission`.
+# Three layers, later wins: roles.json (the shipped default, travels with main), the project
+# profile's optional `teams.roles` (the project's own choice, committed), and the per-ticket
+# override. Overrides and the profile may name the clone's runnable roles plus cli, whose shipped
+# default is TEAM_CLI_MODEL/TEAM_CLI_EFFORT (team-modes.sh).
 TEAM_CONFIG_ROLES='planner coder qa wrapup'
 TEAM_ROLE_VALUE_RE='^[A-Za-z0-9._:-]+(\[[a-z0-9]+\])?$'
 
@@ -23,8 +25,6 @@ team_roles_config_check() {  # <file> (or - for stdin) [known roles] → first p
          else .value | to_entries[] | .value as $v | .key as $k
            | if (["model", "effort", "permission"] | index($k)) == null then
                "unknown field \($r).\(.key)"
-             elif $r == "cli" and .key != "permission" then
-               "cli takes only permission (fixed opus[1m]/medium)"
              elif (.value | type) != "string" then "bad \(.key) for \($r): not a string"
              elif .key == "permission" and (["auto", "manual"] | index($v)) == null then
                "bad permission \(.value | tojson) for \($r)"
@@ -41,11 +41,21 @@ team_roles_config_check() {  # <file> (or - for stdin) [known roles] → first p
 
 team_roles_override_check() { team_roles_config_check "$1"; }
 
-team_role_cfg() {  # team_role_cfg <roles.json> <override> <role> → merged JSON; files optional
-  local base='{}' ov='{}'
+team_role_cfg() {  # team_role_cfg <roles.json> <override> <role> [profile] → merged JSON
+  local base='{}' ov='{}' pr='{}'
   [ ! -f "$1" ] || base="$(jq -c --arg r "$3" '.[$r] // {}' "$1")" || return 1
   [ ! -f "$2" ] || ov="$(jq -c --arg r "$3" '.[$r] // {}' "$2")" || return 1
-  jq -cn --argjson b "$base" --argjson o "$ov" '$b + $o'
+  [ -z "${4:-}" ] || [ ! -f "$4" ] \
+    || pr="$(jq -c --arg r "$3" '.teams.roles[$r] // {}' "$4")" || return 1
+  [ "$3" != cli ] || base="$(jq -cn --arg m "$TEAM_CLI_MODEL" --arg e "$TEAM_CLI_EFFORT" \
+    '{model: $m, effort: $e}')"
+  jq -cn --argjson b "$base" --argjson p "$pr" --argjson o "$ov" '$b + $p + $o'
+}
+
+team_roles_profile_check() {  # <profile> → first problem in its teams.roles, rc 1; absent = ok
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 0
+  jq -e '.teams.roles // empty' "$1" >/dev/null 2>&1 || return 0
+  jq '.teams.roles' "$1" | team_roles_config_check - "$TEAM_CONFIG_ROLES cli"
 }
 
 team_roles_add_entry() {  # <override JSON> <role>=[<model>][/<effort>][/<permission>]
@@ -67,7 +77,7 @@ team_roles_add_entry() {  # <override JSON> <role>=[<model>][/<effort>][/<permis
     <<<"$1"
 }
 
-team_roles_flags() {  # <roles.json> <override> <role> → --model/--effort flags
+team_roles_flags() {  # <roles.json> <override> <role> [profile] → --model/--effort flags
   local file known cfg msg k v
   for file in "$1" "$2"; do
     [ -f "$file" ] || continue
@@ -75,7 +85,8 @@ team_roles_flags() {  # <roles.json> <override> <role> → --model/--effort flag
     msg="$(team_roles_config_check "$file" "$known")" \
       || { echo "error: $msg in $file"; return 1; }
   done
-  cfg="$(team_role_cfg "$1" "$2" "$3")" \
+  msg="$(team_roles_profile_check "${4:-}")" || { echo "error: $msg in ${4:-} (teams.roles)"; return 1; }
+  cfg="$(team_role_cfg "$1" "$2" "$3" "${4:-}")" \
     || { echo "error: cannot read $1 or $2"; return 1; }
   for k in model effort; do
     v="$(jq -r --arg k "$k" '.[$k] // empty' <<<"$cfg")" || return 1
@@ -84,9 +95,9 @@ team_roles_flags() {  # <roles.json> <override> <role> → --model/--effort flag
 }
 
 # Resolved apart from the flags: launch() may still downgrade auto, then renders --permission-mode.
-team_roles_permission() {  # <roles.json> <override> <role> → auto|manual or nothing; after _flags
+team_roles_permission() {  # <roles.json> <override> <role> [profile] → auto|manual or nothing
   local cfg
-  cfg="$(team_role_cfg "$1" "$2" "$3")" || { echo "error: cannot read $1 or $2"; return 1; }
+  cfg="$(team_role_cfg "$1" "$2" "$3" "${4:-}")" || { echo "error: cannot read $1 or $2"; return 1; }
   jq -r '.permission // empty' <<<"$cfg"
 }
 
@@ -142,10 +153,8 @@ team_roles_write() {  # <team> <override> <role>=[<model>][/<effort>][/<permissi
 
 role_flags() {
   local flags
-  if [ "$1" = cli ]; then
-    printf -- "--model '%s' --effort '%s' " "$TEAM_CLI_MODEL" "$TEAM_CLI_EFFORT"; return 0
-  fi
-  flags="$(team_roles_flags "$ROLES" "$ROLES_OVERRIDE" "$1")" || die 1 "$flags"
+  flags="$(team_roles_flags "$ROLES" "$ROLES_OVERRIDE" "$1" "$root/.claude/project-profile.json")" \
+    || die 1 "$flags"
   printf '%s' "$flags"
 }
 
@@ -155,7 +164,8 @@ role_permission() {  # after role_flags, which validated the config files
     perm="$(team_roles_cli_permission "$ROLES_OVERRIDE")" || die 1 "$perm"
     printf '%s' "${perm:-$TEAM_CLI_PERMISSION}"; return 0
   fi
-  perm="$(team_roles_permission "$ROLES" "$ROLES_OVERRIDE" "$1")" || die 1 "$perm"
+  perm="$(team_roles_permission "$ROLES" "$ROLES_OVERRIDE" "$1" "$root/.claude/project-profile.json")" \
+    || die 1 "$perm"
   printf '%s' "$perm"
 }
 

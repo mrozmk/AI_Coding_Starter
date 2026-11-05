@@ -88,7 +88,17 @@ mail p1 send --from AdvisorXY --to SupervisorXY --kind turn --thread t1 --body h
 [ "$RC" = 0 ] && has "SENT id=1" || fail "2: send through the client"
 mail p1 inbox --for SupervisorXY --unread
 has "from=AdvisorXY kind=turn" || fail "2: inbox through the client"
-mail p1 state set --expect-version 0 --stage design; [ "$RC" = 0 ] || fail "2: state set"
+mail p1 state set --expect-version 0 --stage design
+[ "$RC" = 2 ] && has "'state set' is an Operator action" || fail "2: a role's state set was not refused"
+python3 -I -B "$COPY/agent_mail.py" --box "$BOX1" state set --project p1 --expect-version 0 \
+  --stage design >/dev/null || fail "2: the Operator's state set on the tool failed"
+# The roles' allow rule covers this client, so nothing here may change recipients or adapters.
+for v in "register --as ReviewerXY --adapter exec --cmd touch" "requeue 1" "pause" "import-md x"; do
+  mail p1 $v
+  [ "$RC" = 2 ] && has "is an Operator action" || fail "2: '$v' was not refused"
+done
+mail p1 deliver ReviewerXY --adapter exec --cmd "touch $WORK/pwned" --once
+[ "$RC" = 2 ] && [ ! -e "$WORK/pwned" ] || fail "2: deliver with --adapter exec was not refused"
 mail p1 state get --json
 has '"project": "p1"' && has '"stage": "design"' || fail "2: state get did not use the label"
 [ ! -e "$COPY/__pycache__" ] || fail "2: the client let python write bytecode into the tool copy"
@@ -97,6 +107,9 @@ has '"project": "p1"' && has '"stage": "design"' || fail "2: state get did not u
 H0=$(treehash "$HOME")
 setup "$P1"
 [ "$RC" = 0 ] && has "mode	reuse	key p1" || fail "3: re-run is not reuse"
+# S4 by the tree, not only by the output: a reuse run changes nothing under HOME — no second tool
+# copy, box, registry entry or recipient.
+[ "$(treehash "$HOME")" = "$H0" ] || fail "3: the reuse run changed files under HOME"
 [ "$(lines create)$(lines register)$(lines write)$(lines add)" = 0000 ] || fail "3: re-run planned writes"
 [ "$(lines keep)" = 6 ] || fail "3: expected tool, box, 3 recipients and channel kept"
 
@@ -244,6 +257,12 @@ setup "$P10"
   || fail "7d: codex_home is $(jq -r .codex_home "$P10/.agents/team/channel.local.json")"
 [ "$(jq -r .p10.codex_home "$REG")" = "$HOME/.codex-p10" ] || fail "7d: the registry entry is wrong"
 
+# ---- (7f) a mail home created earlier with a wide mode is tightened to 0700 by the next creator ---
+chmod 755 "$HOME/.agent-mail"
+P12=$(mkproj p12)
+setup "$P12"
+[ "$RC" = 0 ] && [ "$(stat -f %Lp "$HOME/.agent-mail")" = 700 ] || fail "7f: the mail home is not 0700"
+
 # ---- (7e) --key reuse of an entry with another mail suffix is refused, nothing written --------
 P11=$(mkproj p11)
 H0=$(treehash "$HOME")
@@ -264,5 +283,14 @@ printf '{"schema":1,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz","
 setup "$P6" --dry-run
 [ "$RC" = 0 ] && has "mode	extend	key ZZ" && has "AdvisorZz (monitor)" || fail "8: profile names unused"
 has "reviewer: none" || fail "8: solo still prints the Reviewer bring-up"
+# D4: advisor unset follows the loader — solo without codex, pair with it.
+printf '{"schema":1,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz"}}}\n' \
+  > "$P6/.claude/project-profile.json"
+setup "$P6" --dry-run
+[ "$RC" = 0 ] && has "reviewer: none" || fail "8: advisor unset without codex still prints the Reviewer bring-up"
+printf '{"schema":1,"codex":true,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz"}}}\n' \
+  > "$P6/.claude/project-profile.json"
+setup "$P6" --dry-run
+[ "$RC" = 0 ] && has "register --as ReviewerZz" || fail "8: advisor unset with codex lacks the Reviewer bring-up"
 
 echo "team-smoke-mail: OK"

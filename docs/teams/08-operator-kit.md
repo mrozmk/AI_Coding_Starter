@@ -27,5 +27,9 @@ bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the ba
   nobody. Both are allowed; the role preflight prints them. `--print-scheduler launchd|cron`
   prints an entry for you to install.
 
+Recorded deviations from the brief: the kit installs six files, not four or five (`notify.sh`
+and `kit.conf` were added, and the hook settings file is `role-hooks.settings.json`), and the
+per-role mail command `/mail-role` is a repository command, not a kit file.
+
 The file table, backups and what the installer never touches:
 [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).

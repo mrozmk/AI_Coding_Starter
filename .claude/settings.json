@@ -108,6 +108,7 @@
       "mcp__atlassian__jira_delete_*",
       "mcp__atlassian__confluence_delete_*",
       "mcp__atlassian__confluence_set_page_restrictions",
+      "Bash(az repos pr * --bypass-policy*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git reset --hard*)",

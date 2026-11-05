@@ -9,7 +9,9 @@ W="bash .claude/lib/worker-next.sh"
 SOL="$WORK/main-sol"
 WD="$SOL/.git/team-worker"
 DEV=origin/develop
-export WORKER_ARTIFACTS="$WORK/artifacts" WORKER_LOCK_SECS=1
+# The default artifacts root lives in the mail home; a home made earlier at 0755 must come out 0700.
+mkdir -p "$HOME/.agent-mail"; chmod 755 "$HOME/.agent-mail"
+export WORKER_ARTIFACTS="$HOME/.agent-mail/worker" WORKER_LOCK_SECS=1
 
 pr_done() {  # pr_done <status> <source sha> <branch>
   pr_json false "$2" succeeded refs/heads/develop "$2"
@@ -106,6 +108,7 @@ ID1=$(field id)
 B0=$(git -C "$SOL" rev-parse origin/develop)
 head_on chore/AB-900-a "$B0"
 [ -d "$WORKER_ARTIFACTS/$ID1" ] || fail "start A made no artifacts dir"
+[ "$(stat -f %Lp "$HOME/.agent-mail")" = 700 ] || fail "start A left the mail home wider than 0700"
 run "$MAIN" $W status
 expect 0 "state: active" "status while A is active"
 has "id: $ID1" "$WORK/out" || fail "status lacks the assignment id"
@@ -325,6 +328,22 @@ expect 1 "a build, gate or review is running against" \
   "start during a codex review quoting the script"
 stop_build
 [ ! -e "$WD/active" ] || fail "start during a codex review published an assignment"
+# The workload comes from the profile, not from one stack: with build_check `make check` a
+# `make check` in the clone blocks, and the pattern names no other stack's tool.
+PW="$MAIN/.claude/project-profile.json"; cp "$PW" "$WORK/prof-wl"
+jq '.teams.build_check = "make check" | .teams.test_gate = "none"' "$WORK/prof-wl" > "$PW"
+fake_build "$SOL" "make check"
+start AB-906 chore/AB-906-h $DEV --thread t6
+expect 1 "a build, gate or review is running against" "start during the profile's build check"
+stop_build
+cp "$WORK/prof-wl" "$PW"
+RE=$(TEAM_BUILD_CHECK="make check" TEAM_TEST_GATE=none TEAM_GATE_LOCK_WORKLOAD="" \
+  bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
+case "$RE" in *dotnet*) fail "the workload pattern names a stack the profile does not use: $RE" ;; esac
+case "$RE" in *"make check"*) ;; *) fail "the workload pattern lacks the build check: $RE" ;; esac
+RE=$(TEAM_BUILD_CHECK="echo 'no build check configured'" TEAM_TEST_GATE=none \
+  bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
+[ "$RE" = 'test-gate\.sh|team-merge-check\.sh|codex exec' ] || fail "an echo build check widened the pattern: $RE"
 mkdir "$WORK/main-solo"
 fake_build "$WORK/main-solo" "dotnet build $SOLP-solo/x.sln"
 start AB-906 chore/AB-906-h $DEV --thread t6

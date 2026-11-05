@@ -456,8 +456,10 @@ crashed holder's surviving build keeps the lock. Smoke: `.claude/lib/tests/gate-
 
 **Run audit.** `team-audit.sh` writes `<main checkout>/.agents/team/audit/` from the runner's exit
 trap and from `team-next.sh` (team-mode.md §2); config `.claude/team/audit.json`. It is material
-only — never a gate. A flagged or sampled final run gets one detached, report-only `/retro` in tmux
-`retro-<run>` (prompt `.claude/team/prompts/retro-run.md`).
+only — never a gate. **Retro is off by default**: only with `teams.audit.retro: true` in the
+project profile does a flagged or sampled final run get one detached, report-only `/retro` in tmux
+`retro-<run>` (prompt `.claude/team/prompts/retro-run.md`) — a Claude session, so a cost the
+project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_clean`, model).
 
 **Team supervision layer.** The question ledger, the tiers and the escalation adapter work from
 one `/monitor` window. The durable signal daemon (team-watch), role sessions and the operator kit

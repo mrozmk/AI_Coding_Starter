@@ -33,7 +33,12 @@ are stubbed and never reach a live session.
   4. this README replaces the upstream one (project-specific, not distributed).
   Decision ids in comments (`D2`, `D4`, `D9`, …) are the upstream's design decisions, kept as is.
   The upstream default project label `Jarvis` (CLI `--project`, schema `DEFAULT`) is kept so a
-  box opened by either copy has the identical schema; the client always passes `--project`.
+  box opened by either copy has the identical schema. The CLI's `--project` default follows
+  `AGENT_MAIL_PROJECT`, which `team-mail.sh` sets to the registry entry's `project_label` (the
+  profile's `project_code`), so every call the team client forwards files under the project's code.
+- **Legacy `mail.md` boards:** a post whose sender starts with the source board's executor name
+  (`Wykonawca`, the default) is imported as a `report`; another board passes
+  `--report-sender-prefix <name>` to `import-md` / `export-md`.
 - **Re-sync** is a manual delta with the tests as the oracle: copy the upstream modules and tests
   at the new SHA over these files, re-apply the delta above (item 2 is
   `sed -i '' -e 's/Astra/Reviewer/g' -e 's/Fable/Advisor/g'` on every `.py`, plus `Kimi` →

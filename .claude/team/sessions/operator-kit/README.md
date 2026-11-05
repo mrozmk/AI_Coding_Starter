@@ -14,7 +14,7 @@ These are templates for the files that live **outside** the checkout, under `<ki
 ```bash
 ! bash .claude/team/sessions/operator-kit/install.sh --dry-run                # what would change
 ! bash .claude/team/sessions/operator-kit/install.sh --apply                  # backups, copy/render, render escalation.local.json
-! bash .claude/team/sessions/operator-kit/install.sh --verify                 # live == templates (the role preflight runs this)
+! bash .claude/team/sessions/operator-kit/install.sh --verify                 # live == templates (the role preflight runs this once P5 adds it)
 ! bash .claude/team/sessions/operator-kit/install.sh --rollback               # restore, delete backups, drop the generated escalation config
 ! bash .claude/team/sessions/operator-kit/install.sh --print-scheduler launchd   # or: cron — install the printed entry yourself
 ```
@@ -22,5 +22,5 @@ These are templates for the files that live **outside** the checkout, under `<ki
 - **Lifetimes.** A change to a template takes effect only after your `--apply`, and `--verify` shows the drift until then. `escalate.sh` and `mail-guard.sh` read the channel through the checkout's `team-channel.sh` and `team-mail.sh` at run time, so a change to those libraries is live at once, while the kit's own logic waits for `--apply`.
 - **Backups.** `--apply` keeps the first install's original (`*.bak-team-kit`, or a `.absent` marker). `--rollback` restores it and deletes the backup.
 - **Never touched:** `mail.sqlite*`, `recipients.json`, delivery logs, `*.lock` files, the decisions notes, any launchd job or crontab line.
-- **Two declared losses.** With `notifier: none`, alarms about the Supervisor itself and a dead tmux server reach nobody. Without a scheduled `sessions-health.sh`, a dead tmux server is noticed by nobody. Both are allowed, but they are losses, and the role preflight prints them.
+- **Two declared losses.** With `notifier: none`, alarms about the Supervisor itself and a dead tmux server reach nobody. Without a scheduled `sessions-health.sh`, a dead tmux server is noticed by nobody. Both are allowed, but they are losses; the role preflight prints them once the role-session layer (P5) adds it, until then `install.sh --verify` and `notify.sh --check` are the checks.
 - **Two projects on one machine:** set `teams.channel.mail_suffix`. The health check recognises a running Supervisor by its `--name`, which carries that suffix.

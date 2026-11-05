@@ -112,7 +112,7 @@ team_channel_loss_line() {
 # team_channel_load [root] — parse + validate both halves once per process.
 team_channel_load() {
   [ -z "${TEAM_CHANNEL_LOADED:-}" ] || return 0
-  local root p ch reg v e
+  local root p ch reg v e dc
   root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
   [ -n "$root" ] || { team_channel_err "not inside a git checkout"; return 3; }
   p="$root/.claude/project-profile.json"; ch="$root/$TEAM_CHANNEL_REL"
@@ -161,6 +161,15 @@ team_channel_load() {
       "(box or tool differ; rerun /setup:teams → channel)"
     return 3
   fi
+  # The decisions directory and the Codex home are read from the local half too (operator-ref
+  # checks, the Reviewer's CODEX_HOME): a moved entry must not leave them pointing at the old ones.
+  dc="$(jq -r --arg k "$TEAM_CHANNEL_KEY" \
+    '[.[$k].decisions_dir, .[$k].codex_home] | map(. // "") | join("\t")' "$reg" 2>/dev/null || true)"
+  if [ "$dc" != "$TEAM_CHANNEL_DECISIONS	$TEAM_CHANNEL_CODEX_HOME" ]; then
+    team_channel_err "$TEAM_CHANNEL_REL is stale against registry entry $TEAM_CHANNEL_KEY" \
+      "(decisions_dir or codex_home differ; rerun /setup:teams → channel)"
+    return 3
+  fi
   if [ "${e##*	}" != "$TEAM_CHANNEL_SUFFIX" ]; then
     team_channel_err "teams.channel.mail_suffix=$TEAM_CHANNEL_SUFFIX but registry entry" \
       "$TEAM_CHANNEL_KEY has suffix ${e##*	} — the recipient names would not match; align the two"
@@ -190,6 +199,15 @@ team_channel_role() {
 # names and bytes. Content, not a commit: an uncommitted install gets a stable name, and two
 # checkouts with the same tool share one copy. Used by team-mail-setup.sh (copy) and team-mail.sh
 # (check). Exit 1 when a runtime file is missing.
+# ensure_mail_home — the machine's mail home, mode 0700 whether it is created now or was created
+# earlier by something with a wider umask: boxes, decisions notes and worker artifacts live under
+# it. Every creator calls this (team-mail-setup.sh, worker-next.sh; agent_mail_store.py has the same
+# rule in Python). Prints the path.
+ensure_mail_home() {
+  local d="$HOME/.agent-mail"
+  mkdir -p "$d" && chmod 700 "$d" && printf '%s' "$d"
+}
+
 TEAM_TOOL_RUNTIME="README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py"
 team_tool_hash() {  # team_tool_hash <dir> → <12 hex>
   local f

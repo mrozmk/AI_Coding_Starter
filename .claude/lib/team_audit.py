@@ -20,7 +20,9 @@ import sys
 DEFAULTS = {
     "typical_minutes": {"planner": 60, "coder": 180, "qa": 120, "wrapup": 45, "cli": 180},
     "flags": {"questions_min": 3, "qa_rounds_min": 2},
-    "retro": {"enabled": True, "on_flag": True, "sample_every_clean": 5,
+    # Off unless the project opts in (profile teams.audit.retro: true, passed as --retro on): a
+    # retro starts a detached Claude session, a cost no project should get by default.
+    "retro": {"enabled": False, "on_flag": True, "sample_every_clean": 5,
               "model": "sonnet", "effort": "medium", "max_minutes": 60},
 }
 QA_KEYS = ("run", "attempt", "output_rev", "Verdict", "Gate code", "Gate design",
@@ -313,7 +315,7 @@ def retro_decision(cfg, data, prev, entries, run):
     if not data["final"]:
         return None, "no not-final"
     r = cfg["retro"]
-    if not r.get("enabled", True):
+    if not r.get("enabled", False):
         return "no disabled", "no disabled"
     if data["flags"]:
         d = "due flags" if r.get("on_flag", True) else "no on-flag-off"
@@ -388,6 +390,8 @@ def transcripts(specs):
 
 def cmd_audit(a):
     cfg = load_config(a.config)
+    # The project profile is the only switch (team-audit.sh reads teams.audit.retro).
+    cfg["retro"]["enabled"] = a.retro == "on"
     os.makedirs(a.out, exist_ok=True)
     index = os.path.join(a.out, "index.jsonl")
     with open(os.path.join(a.out, "index.lock"), "w") as lock:
@@ -446,6 +450,7 @@ def parser():
     au.add_argument("--runner-exit", type=int)
     au.add_argument("--final", choices=("ready", "archived"))
     au.add_argument("--title")
+    au.add_argument("--retro", choices=("on", "off"), default="off")
     au.add_argument("--transcript", action="append")
     mr = sub.add_parser("mark-retro")
     for k in ("--out", "--run", "--value"):

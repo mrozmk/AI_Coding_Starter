@@ -519,5 +519,10 @@ has "warn: window opened but will not close by itself" "$WORK/out" || fail "atta
 STUB_TMUX_SOCK="" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
 expect 1 "cannot resolve the tmux socket of alfa-planner" "attach refuses an unresolvable socket"
 ! has osascript "$STUB_LOG" || fail "a refused attach still opened a Terminal window"
+# A quote in the socket path (TMUX_TMPDIR) would break out of the AppleScript and shell strings.
+: > "$STUB_LOG"
+STUB_TMUX_SOCK="/tmp/x'; touch pwned; '" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
+expect 1 "contains a quote or backslash" "attach refuses a socket path with a quote"
+! has osascript "$STUB_LOG" || fail "a socket path with a quote still reached osascript"
 
 echo "team-smoke-1: OK"

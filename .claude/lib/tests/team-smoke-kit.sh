@@ -56,6 +56,8 @@ has 'display notification "line one line two" with title "Title" sound name "Sos
   || { nlog > "$WORK/out"; fail "(N) osascript argv / sanitising"; }
 : > "$WORK/notify.log"
 run "$MAIN" env PATH="$KP" TEAM_NOTIFY_SOUND_ALARM= $NOTIFY --backend osascript --alarm T M
+has 'display notification "M" with title "T"' "$WORK/notify.log" \
+  || { nlog > "$WORK/out"; fail "(N) set-but-empty alarm sound sent no notification"; }
 ! grep -q 'sound name' "$WORK/notify.log" || fail "(N) set-but-empty alarm sound still sounded"
 : > "$WORK/notify.log"
 run "$MAIN" env PATH="$KP" $NOTIFY --backend notify-send --alarm T M
@@ -202,7 +204,15 @@ run "$MAIN" $M send --from TeamLeadQx --to SupervisorQx --kind turn --thread inc
 guard Supervisor; expect 0 "thread=incident-1" "(G) a paused Supervisor holds its pass threads"
 ! has "thread=chat-1" "$WORK/out" || fail "(G) a paused role was held on a routine thread"
 grep -q '^pending Supervisor 2026-11-04T08:00:00Z$' "$WORK/tw.log" || fail "(G) the pause since was not passed"
-cp "$WORK/tw.real" "$LIB/team-watch.sh"; rm -f "$LIB/monitoring.sh" "$MAIN/.claude/team/sessions/monitoring.json"
+# An older team-watch.sh (no pending/status in its usage) takes any word as a team name and polls
+# forever: the guard must not call it at all. The stand-in logs every call, so a call is seen even
+# if a timeout would have ended it.
+rm -f "$LIB/monitoring.sh" "$MAIN/.claude/team/sessions/monitoring.json"
+printf '#!/bin/bash\n# Usage: bash .claude/lib/team-watch.sh <team>...\necho "$*" >> "%s/tw-old.log"\nexit 0\n' \
+  "$WORK" > "$LIB/team-watch.sh"
+guard Supervisor; expect 0 "thread=chat-1" "(G) an older team-watch.sh: the unread turn still blocks"
+[ ! -s "$WORK/tw-old.log" ] || fail "(G) the guard called an older team-watch.sh: $(cat "$WORK/tw-old.log")"
+cp "$WORK/tw.real" "$LIB/team-watch.sh"
 guard Supervisor; expect 0 "thread=chat-1" "(G) the real team-watch.sh, no batch pending: only the mail holds"
 echo "team-smoke-kit: (G) stop hook OK"
 

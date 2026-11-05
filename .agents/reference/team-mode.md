@@ -145,12 +145,14 @@ with no automatic retry. Ask the developer to have the role retry one question a
 its window. Clones retain their base harness until the next `team-next`.
 
 No role exits its session — the runner ends it after accepting the record. Each role runs with the
-`--model` / `--effort` / `--permission-mode` set for it in `.claude/team/roles.json`, overridden per
-ticket by `.agents/team/roles.override.json` (entry `<role>=[<model>][/<effort>][/<permission>]`).
+`--model` / `--effort` / `--permission-mode` set for it in `.claude/team/roles.json` (the shipped
+default), then by the project profile's optional `teams.roles.<role>` (same fields, committed), then
+per ticket by `.agents/team/roles.override.json` (entry `<role>=[<model>][/<effort>][/<permission>]`).
+The cli role has no `roles.json` entry: its default is `TEAM_CLI_MODEL`/`TEAM_CLI_EFFORT`
+(`team-modes.sh`), changed the same two ways; in mode cli the override takes only `cli=…` entries.
 
 **Permission mode.** `permission` ∈ `auto|manual` only; `roles.json` sets `auto` for every
-role, the cli role is fixed `auto` (`TEAM_CLI_PERMISSION`) and its override may carry only
-`cli.permission`. `/start-team … --permission-mode manual` writes `coder=//manual qa=//manual` (cli:
+role, the cli role defaults to `auto` (`TEAM_CLI_PERMISSION`). `/start-team … --permission-mode manual` writes `coder=//manual qa=//manual` (cli:
 `cli=//manual`) — mandatory for tickets editing `.claude/settings*.json` (the classifier
 refuses that as self-modification). `auto` is honoured only when the clone has the
 `guard-team-egress` hook (both files, registered under `WebFetch` and `Bash` with `"onFailure":
@@ -188,8 +190,9 @@ shows invalid overrides as `invalid — <message>`.
 
 **Auto mode: what still prompts.** In auto mode the classifier approves ordinary commands (reads,
 builds, tests) without a prompt. Only `ask`-tier rules, team egress (the PreToolUse hook
-`guard-team-egress`: a `WebFetch` host outside the allowlist, `curl wget ssh scp rsync nc ftp sftp`
-in command position; a loopback `nc -z` is not) and other forced prompts appear. A
+`guard-team-egress`, best-effort: a `WebFetch` host outside the allowlist, an egress-capable verb in
+command position, a network `git` command to an unlisted host — list in `security-egress.md`; a
+loopback `nc -z` is not) and other forced prompts appear. A
 **classifier denial** is a material question: coder/qa/cli write `blocked`, planner/wrapup ask,
 nobody works around it — never turn a denial into an alternative spelling of the same action.
 
@@ -250,8 +253,8 @@ TeamLead makes this wrapup selection by default (tier 1); the developer may make
 either counts as acceptance. A memory entry for `decisions.md`, `patterns.md` or `index.md` is the
 Advisor+Reviewer class and is asked as its own question (`prompts/wrapup.md` step 7), unless it
 comes as a hand-off with a ref the wrapup can check (step 6). Each created
-ticket carries the label `auto-created` and the line „Utworzony wg rekomendacji — weryfikacja
-Operatora przy starcie”. On another attempt reuse accepted drafts, markers and ids verbatim, never
+ticket carries the recommendation line and, only when the profile sets them, the labels of
+`teams.policy.tickets` (team-decision-model.md §3 → Tickets from recommendations). On another attempt reuse accepted drafts, markers and ids verbatim, never
 regenerate or renumber them. Only new/unaccepted recommendations return to selection; finish
 saved accepted operations even if there are no new recommendations.
 

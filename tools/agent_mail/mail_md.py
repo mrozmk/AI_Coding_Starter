@@ -160,7 +160,13 @@ def dedup_key_for(legacy_id, body: str) -> str:
     return "mailmd:%s:%s" % (legacy_id, digest)
 
 
-def _build(header, lines) -> ParsedMsg:
+# A legacy board's executor posted reports, everyone else posted turns. The sender prefix that
+# marks a report is the source board's ("Wykonawca", Polish for executor); a board with another
+# executor name passes --report-sender-prefix to import-md / export-md.
+REPORT_SENDER_PREFIX = "Wykonawca"
+
+
+def _build(header, lines, report_prefix=REPORT_SENDER_PREFIX) -> ParsedMsg:
     legacy_id = normalize_legacy_id(header.group(1))
     sender = header.group(2).strip()
     recipients = split_recipients(header.group(3))
@@ -176,7 +182,7 @@ def _build(header, lines) -> ParsedMsg:
         break
 
     body = "\n".join(lines).strip("\n")
-    kind = "report" if sender.startswith("Wykonawca") else "turn"
+    kind = "report" if sender.startswith(report_prefix) else "turn"
     if origin is None:
         awaiting, legacy_awaiting = _awaiting_from_body(body)
     else:
@@ -206,7 +212,7 @@ def _build(header, lines) -> ParsedMsg:
         note=None if ts_utc else "ts-unparsed")
 
 
-def parse_mail_md(text: str) -> List[ParsedMsg]:
+def parse_mail_md(text: str, report_prefix: str = REPORT_SENDER_PREFIX) -> List[ParsedMsg]:
     """Split the board into messages. Anything before the first header is dropped."""
     messages = []  # type: List[ParsedMsg]
     header = None
@@ -216,14 +222,14 @@ def parse_mail_md(text: str) -> List[ParsedMsg]:
         # previous body (it is then reported by `unparsed_headers`).
         if ANY_HEADER_RE.match(line):
             if header is not None:
-                messages.append(_build(header, buffer))
+                messages.append(_build(header, buffer, report_prefix))
             header = HEADER_RE.match(line)
             buffer = []
             continue
         if header is not None:
             buffer.append(line)
     if header is not None:
-        messages.append(_build(header, buffer))
+        messages.append(_build(header, buffer, report_prefix))
     return messages
 
 
@@ -242,9 +248,10 @@ def _get(row, key, default=None) -> Any:
     return default if value is None else value
 
 
-def _origin_line(legacy_id, kind, awaiting, legacy_awaiting, sender) -> str:
+def _origin_line(legacy_id, kind, awaiting, legacy_awaiting, sender,
+                 report_prefix=REPORT_SENDER_PREFIX) -> str:
     attrs = ["legacy_id=%s" % (legacy_id,)]
-    if kind != ("report" if str(sender).startswith("Wykonawca") else "turn"):
+    if kind != ("report" if str(sender).startswith(report_prefix) else "turn"):
         attrs.append("kind=%s" % (kind,))
     if awaiting:
         attrs.append("awaiting=%s" % (awaiting,))
@@ -253,7 +260,8 @@ def _origin_line(legacy_id, kind, awaiting, legacy_awaiting, sender) -> str:
     return "<!-- agent-mail %s -->" % (" ".join(attrs),)
 
 
-def render_md(rows, box: Optional[str] = None, since: int = 0) -> str:
+def render_md(rows, box: Optional[str] = None, since: int = 0,
+              report_prefix: str = REPORT_SENDER_PREFIX) -> str:
     """Render stored (or parsed) messages as the `mail.md` board.
 
     Imported rows keep their original number and time text; native rows use their
@@ -279,7 +287,7 @@ def render_md(rows, box: Optional[str] = None, since: int = 0) -> str:
                    % (label, sender, " i ".join(recipients), ts_field))
         if legacy_id is not None:
             out.append(_origin_line(normalize_legacy_id(legacy_id), _get(row, "kind", "turn"), _get(row, "awaiting"),
-                                    _get(row, "legacy_awaiting"), sender))
+                                    _get(row, "legacy_awaiting"), sender, report_prefix))
         out.append("")
         out.append(_get(row, "body", ""))
         out.append("")

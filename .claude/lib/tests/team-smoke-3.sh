@@ -61,10 +61,10 @@ done
 setmode cli; fresh_run alfa-20261006-000001
 echo '{"planner":{"model":"x"}}' > "$TD/roles.override.json"
 cp "$TD/roles.override.json" "$WORK/cli-override"
-for entry in cli=sonnet cli=opus/high coder=sonnet; do
+for entry in coder=sonnet planner=/high; do
   : > "$STUB_LOG"
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$entry"
-  expect 1 "mode cli (fixed opus[1m]/medium)" "cli refuses $entry"
+  expect 1 "in mode cli only cli=" "cli refuses $entry"
   cmp -s "$WORK/cli-override" "$TD/roles.override.json" || fail "cli roles changed the override"
   [ ! -s "$STUB_LOG" ] || fail "cli role refusal notified or launched a tool"
 done
@@ -97,6 +97,25 @@ has "-n alfa-cli --model 'opus[1m]' --effort 'medium' --permission-mode 'manual'
   "$STUB_LOG" \
   || fail "cli launch ignored cli.permission manual"
 [ "$(jq -r .permission_mode "$TD/session.json")" = manual ] || fail "cli session.json not manual"
+# The cli model is a default, not a fixed value: the profile's teams.roles and the ticket override
+# both reach it, the override last.
+rm -f "$TD/session.json" "$TD/roles.override.json"
+PROF="$MAIN/.claude/project-profile.json"; cp "$PROF" "$WORK/prof-cli"
+jq '.teams.roles = {cli: {model: "claude-fable-5-1", effort: "high"}}' "$WORK/prof-cli" > "$PROF"
+: > "$STUB_LOG"; run "$MAIN" $TR alfa
+has "-n alfa-cli --model 'claude-fable-5-1' --effort 'high' --permission-mode 'auto'" "$STUB_LOG" \
+  || fail "cli launch ignored the profile's teams.roles.cli"
+rm -f "$TD/session.json"
+run "$MAIN" $TR alfa roles cli=sonnet/medium
+expect 0 '"cli":{"model":"sonnet","effort":"medium"}' "cli accepts a model/effort override"
+: > "$STUB_LOG"; run "$MAIN" $TR alfa
+has "-n alfa-cli --model 'sonnet' --effort 'medium' --permission-mode 'auto'" "$STUB_LOG" \
+  || fail "the ticket override does not win over the profile for cli"
+jq '.teams.roles = {cli: {model: "x y"}}' "$WORK/prof-cli" > "$PROF"
+rm -f "$TD/session.json" "$TD/roles.override.json"
+: > "$STUB_LOG"; run "$MAIN" $TR alfa
+[ "$RC" != 0 ] && has "teams.roles" "$WORK/out" || fail "a bad teams.roles model was not refused"
+cp "$WORK/prof-cli" "$PROF"
 rm -f "$TD/session.json" "$TD/roles.override.json"; setmode brainstorm
 
 # ---- (22) quick planner validation --------------------------------------------------------------

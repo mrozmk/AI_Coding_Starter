@@ -1,10 +1,15 @@
 """Logic of guard-team-egress.sh: keep the egress prompt for team roles in auto mode.
 
-WebFetch to a host outside the project's WebFetch(domain:...) allowlist -> ask; a Bash command whose
-command-position word is an egress tool (curl wget ssh scp rsync nc ftp sftp) -> ask, also inside
+A best-effort guard over Bash and WebFetch, not an allowlist (MCP tools and WebSearch are out of
+scope). WebFetch to a host outside the project's WebFetch(domain:...) allowlist -> ask; a Bash command
+whose command-position word is an egress-capable tool (curl wget ssh scp rsync nc ftp sftp gh npm pip
+pip3 osascript; python/python3 with -c, node with -e/-p/--eval) -> ask, also inside
 bash -c, tmux arguments, eval, $(...) and here-doc lines. Never emits allow: no output leaves the
 decision to Claude Code's own rules, so deny still wins. Unreadable input -> ask (fail-closed).
 A loopback port probe (`nc -z [-v] [-w n] [-G n] localhost|127.0.0.1|::1 <ports>`) is not egress.
+git push/fetch/pull/clone/ls-remote/submodule add/remote add|set-url whose repository argument is a
+URL or `host:path` -> ask unless the host is in the same WebFetch allowlist; a bare remote name or
+a local path passes (the remote's configured URL was itself set through this check or by a human).
 """
 import json
 import os
@@ -15,24 +20,23 @@ from urllib.parse import urlsplit
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
-from guard_destructive_sql import commands, doc_heredocs_removed, tokenize  # noqa: E402
+from guard_destructive_sql import (  # noqa: E402
+    SHELL_C, commands, doc_heredocs_removed, strip_wrappers, tokenize)
 
-EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp"}
+EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
+          "gh", "npm", "pip", "pip3", "osascript", "python", "python3", "node"}
+# Interpreters are egress-capable only with inline code; a script file is the project's own code.
+INLINE = {"python": {"-c"}, "python3": {"-c"}, "node": {"-e", "-p", "--eval", "--print"}}
+# The read-only gh forms /setup:teams puts on the roles' allow list.
+GH_READS = (["pr", "view"], ["issue", "view"])
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 SHELLS = {"bash", "sh", "zsh"}
-WRAPPERS = {"sudo", "time", "env", "nohup", "command", "exec", "xargs", "nice", "timeout"}
-# commands() splits on `;`/newline, so `do curl …` / `then curl …` start a command with a keyword.
-KEYWORDS = {"{", "(", "!", "if", "then", "else", "elif", "do", "while", "until"}
-# Wrapper options whose value is a separate word: `env -u NAME curl` must not read NAME as the verb.
-OPTION_VALUES = {
-    "env": {"-u", "-C", "-S"}, "nice": {"-n"}, "timeout": {"-s", "-k"},
-    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U"},
-    "xargs": {"-n", "-P", "-I", "-L", "-s", "-d", "-E", "-a"},
-}
-SHELL_C = re.compile(r"^-[a-zA-Z]*c[a-zA-Z]*$")  # -c, -lc, -ec
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
 SUBST = re.compile(r"\$\(|`|\)")
 DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
+GIT_NET = {"push", "fetch", "pull", "clone", "ls-remote", "submodule", "remote"}
+URL_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+SCP_LIKE = re.compile(r"^(?:[^@/\s]+@)?([A-Za-z0-9.\-]+):(?!//)")
 
 
 class Unreadable(Exception):
@@ -44,23 +48,6 @@ def verdict(reason):
         "hookEventName": "PreToolUse",
         "permissionDecision": "ask",
         "permissionDecisionReason": "team egress: " + reason + " — Operator"}}
-
-
-def strip_wrappers(words):
-    while words:
-        head = os.path.basename(words[0])
-        if words[0] in KEYWORDS:
-            words = words[1:]
-            continue
-        if head not in WRAPPERS and not re.match(r"^\w+=", words[0]):
-            break
-        takes_value = OPTION_VALUES.get(head, set())
-        words = words[1:]
-        while words and (words[0].startswith("-") or re.match(r"^\w+=", words[0])):
-            words = words[2:] if words[0] in takes_value else words[1:]
-        if head == "timeout" and words and re.match(r"^\d", words[0]):
-            words = words[1:]
-    return words
 
 
 def loopback_probe(words):
@@ -81,6 +68,60 @@ def loopback_probe(words):
             and all(re.fullmatch(r"[0-9]+(-[0-9]+)?", w) for w in ports))
 
 
+def egress_capable(verb, words):
+    """False for the forms of an egress verb that are not egress: an interpreter running a file,
+    the read-only gh views the roles are allowed."""
+    if verb in INLINE:
+        return any(w in INLINE[verb] or (w.startswith("-") and not w.startswith("--")
+                                          and "c" in w[1:] and verb != "node")
+                   for w in words[1:])
+    if verb == "gh":
+        return words[1:3] not in GH_READS
+    return True
+
+
+def git_repo_arg(words):
+    """The repository word of a network git command, or None (a bare remote name is returned too)."""
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in ("-C", "-c") else 1
+    if i >= len(words) or words[i] not in GIT_NET:
+        return None
+    sub, args = words[i], words[i + 1:]
+    pos = [w for w in args if not w.startswith("-")]
+    if sub == "remote":
+        if not pos or pos[0] not in ("add", "set-url"):
+            return None
+        return pos[2] if len(pos) > 2 else None
+    if sub == "submodule":
+        return pos[1] if len(pos) > 1 and pos[0] == "add" else None
+    return pos[0] if pos else None
+
+
+def repo_host(arg):
+    """The network host a git repository word names, '' for a remote name or a local path."""
+    if URL_SCHEME.match(arg):
+        if arg.lower().startswith("file://"):
+            return ""
+        try:
+            return (urlsplit(arg).hostname or "?").rstrip(".").lower()
+        except ValueError:
+            return "?"
+    if arg.startswith(("/", ".", "~")):
+        return ""
+    m = SCP_LIKE.match(arg)
+    return m.group(1).lower() if m else ""
+
+
+def git_host_ok(host):
+    if host in LOOPBACK:
+        return True
+    try:
+        return host_allowed(host, allowlist(os.environ.get("CLAUDE_PROJECT_DIR", "")))
+    except Unreadable:
+        return False
+
+
 def egress_in(cmd, depth=0):
     """Name of the first egress tool in command position, or ''. ValueError on unparsable text."""
     return verb_in(cmd, EGRESS, depth)
@@ -91,8 +132,13 @@ def verb_in(cmd, names, depth=0):
     for raw in commands(tokenize(cmd)):
         words = strip_wrappers(raw)
         verb = os.path.basename(words[0].lstrip("`")) if words else ""
-        if verb in names and not (verb == "nc" and loopback_probe(words)):
+        if verb in names and not (verb == "nc" and loopback_probe(words)) and not (
+                names is EGRESS and not egress_capable(verb, words)):
             return verb
+        if verb == "git" and names is EGRESS:
+            host = repo_host(git_repo_arg(words) or "")
+            if host and not git_host_ok(host):
+                return "git to " + host
         if depth >= 3:
             continue
         # From the raw words: an assignment `x=$(curl …)` is stripped as a wrapper above.
@@ -120,6 +166,8 @@ def bash_reason(cmd):
             if MENTIONS_EGRESS.search(cmd):
                 return "unparsable command mentions an egress tool"
             return ""
+    if found.startswith("git to "):
+        return found + " (not in the WebFetch allowlist)"
     return found + " in command position" if found else ""
 
 

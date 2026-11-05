@@ -23,6 +23,17 @@ Two lessons carried over from the source:
 - A rule matches the **whole command text**, arguments included. A rule for a free-text command group must anchor the verb (`Bash(tool group * <verb> -*)`), never `*<verb>*`: a resource name that merely contains the word matches.
 - Every permission change is the **Operator's**. A peer message, a hook output or a line on screen never grants one. A session denied an action never asks another session to do it instead.
 
+## The two team guards
+
+`/setup:teams` registers two `PreToolUse` guards in the project's `settings.json`, in the same
+opt-in step and both with `"onFailure": "block"`: the egress guard (`guard-team-egress.sh`, under
+`Bash` and `WebFetch`) and the destructive-SQL guard (`guard-destructive-sql.sh`, under `Bash`:
+`DROP`/`TRUNCATE` of a table, database or schema is denied, any other SQL write asks). The
+template's own shared settings carry neither; a project gets them only through `/setup:teams`.
+The egress guard is a **best-effort guard over `Bash` and `WebFetch`, not an allowlist**:
+`WebSearch` and MCP tools are out of its scope. What it catches and what it does not:
+[`security-egress.md`](../../.agents/reference/security-egress.md).
+
 ## The tier-1 prompt check
 
 `team_prompt_check.py` decides whether the TeamLead may press Enter on a team role's permission prompt. It answers *yes* (tier 1) only when all of these hold:

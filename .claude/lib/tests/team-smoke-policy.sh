@@ -36,4 +36,16 @@ mkdir -p "$(dirname "$W")"; echo '{"classes": {"merge-line": "off", "add-ask": "
 both merge-line off off "enabled + switched off"
 both add-ask disabled off "switched on but not enabled"
 echo 'not json' > "$W"; both merge-line off off "enabled + unreadable state"
+# Ticket labels are policy too: the contracts the agents follow name no label of their own and no
+# fixed recommendation line in another language; they defer to teams.policy.tickets.
+for f in "$SRC/.agents/reference/team-decision-model.md" "$SRC/.agents/reference/team-mode.md"; do
+  ! grep -qE 'auto-created|Utworzony' "$f" || { echo "team-smoke-policy: FAIL — $f orders a fixed ticket label"; exit 1; }
+done
+grep -qF 'teams.policy.tickets.recommendation_line' "$SRC/.agents/reference/team-decision-model.md" \
+  || { echo "team-smoke-policy: FAIL — the ticket rule does not defer to teams.policy.tickets"; exit 1; }
+# PR-host policy: self-approval is opt-in, and the --bypass-policy the command forbids is denied.
+jq -e '.permissions.deny | any(. == "Bash(az repos pr * --bypass-policy*)")' "$SRC/.claude/settings.json" >/dev/null \
+  || { echo "team-smoke-policy: FAIL — settings.json does not deny --bypass-policy"; exit 1; }
+grep -qF 'teams.policy.pr.self_approve is off' "$SRC/.claude/commands/pr-merge.md" \
+  || { echo "team-smoke-policy: FAIL — /pr-merge self-approves without the profile switch"; exit 1; }
 echo "team-smoke-policy: OK"

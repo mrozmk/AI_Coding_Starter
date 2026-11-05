@@ -52,5 +52,8 @@ These are limits, not claims. They hold on every host.
   `cd`) and sends it to the Operator.
 - The sender cannot detect a human typing between its last capture and the clear of a draft.
 - The escalation class is attested by two agents, not proven by a parser.
-- The channel's sender name is declarative; there is no authentication between sessions.
+- The channel's sender name is declarative; there is no authentication between sessions. A role
+  can send mail under another role's name, including a reply that reads as the Advisor's answer to
+  its own escalation; the `operator-ref` check proves only that a matching note exists in the
+  decisions directory, which the same user can write. Known and accepted, not a guarantee.
 - Everything about the Reviewer assumes a CLI with a queue-style wake entry point.

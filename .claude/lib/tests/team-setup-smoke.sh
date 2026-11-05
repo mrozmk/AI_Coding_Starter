@@ -105,6 +105,9 @@ egress() {  # egress <settings> <matcher> → how many blocking egress guards th
 }
 [ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] \
   || fail "2: the egress guard is not registered once under Bash and once under WebFetch"
+[ "$(jq '[.hooks.PreToolUse[]? | select(.matcher == "Bash") | .hooks[]
+  | select((.command | test("guard-destructive-sql")) and .onFailure == "block")] | length' "$S")" = 1 ] \
+  || fail "2: the destructive-SQL guard is not registered once, blocking, under Bash"
 git -C "$T" check-ignore -q .agents/agent-mail/mail.sqlite || fail "2: .agents/agent-mail/ is not ignored"
 [ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("guard-team-egress"))] | length' \
   "$ST/.claude/settings.json")" = 0 ] || fail "2: the starter's shared settings register the egress guard"
@@ -373,8 +376,9 @@ setup "$T"
 has 'conflict settings.json E: WebFetch registers guard-team-egress without "onFailure": "block"' \
   || fail "18: a non-blocking egress registration is not a conflict"
 S="$T/.claude/settings.json"
-jq -e '.hooks.PreToolUse[1] | .matcher == "Bash" and (.hooks | length == 2)
-  and (.hooks[0].command | test("guard-push")) and (.hooks[1].onFailure == "block")' "$S" >/dev/null \
+jq -e '.hooks.PreToolUse[1] | .matcher == "Bash" and (.hooks | length == 3)
+  and (.hooks[0].command | test("guard-push")) and (.hooks[1].onFailure == "block")
+  and (.hooks[2].command | test("guard-destructive-sql")) and (.hooks[2].onFailure == "block")' "$S" >/dev/null \
   || fail "18: the guard did not join the exact Bash entry after the project's hook"
 [ "$(jq '.hooks.PreToolUse[0].hooks | length' "$S")" = 0 ] || fail "18: the guard joined Bash|Edit"
 [ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] || fail "18: registration counts"

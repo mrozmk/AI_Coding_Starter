@@ -2,8 +2,9 @@
 # Installs the team harness into another project from `.claude/team/manifest.txt`: copies the
 # `own` files, reports `shared` files the project already owns, merges the team hook entries (five
 # team hooks — the question and memory guards, the attention notifier, the team-watch SessionStart
-# re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` with
-# `"onFailure": "block"`) and the role `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
+# re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` and
+# the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
+# `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
 # box `.agents/agent-mail/`, and seeds `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge.
 #
@@ -233,24 +234,25 @@ hook_merge W SessionStart "$H/team-watch-session.sh\"" '["startup","resume","cle
   '{"timeout":5}'
 hook_merge R Stop "$H/monitoring-rearm.sh\"" '[]' false ''
 
-# The egress guard is the team layer's, so it is registered here rather than shipped in the
-# template's shared settings. The runner's auto-mode preflight (team-roles.sh auto_blocker) looks for
-# it under the exact matchers `Bash` and `WebFetch` with `"onFailure": "block"`, so it joins only an
-# entry with exactly that matcher (or adds one); without it the runner launches manual and warns.
-egress_merge() {  # egress_merge <matcher>
-  local m="$1" verdict
-  verdict="$(printf '%s' "$NEW" | jq -r --arg m "$m" --arg cmd "$EGRESS" '
+# The egress and destructive-SQL guards are the team layer's, so they are registered here (one
+# opt-in step) rather than shipped in the template's shared settings. The runner's auto-mode
+# preflight (team-roles.sh auto_blocker) looks for the egress guard under the exact matchers `Bash`
+# and `WebFetch` with `"onFailure": "block"`, so a guard joins only an entry with exactly that
+# matcher (or adds one); without the egress guard the runner launches manual and warns.
+egress_merge() {  # egress_merge <matcher> [<command> <conflict id>] — default: the egress guard
+  local m="$1" cmd="${2:-$EGRESS}" id="${3:-E}" verdict
+  verdict="$(printf '%s' "$NEW" | jq -r --arg m "$m" --arg cmd "$cmd" '
     [.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $cmd)] as $h
     | if any($h[]; .onFailure == "block" and (.async // false) == false) then "ok"
       elif ($h | length) > 0 then "conflict"
       else "missing" end')"
   [ "$verdict" != ok ] || return 0
   if [ "$verdict" = conflict ]; then
-    S_CONFLICTS="${S_CONFLICTS}E"
+    S_CONFLICTS="${S_CONFLICTS}$id"
     CONFLICT=$((CONFLICT + 1))
-    echo "conflict settings.json E: $m registers guard-team-egress without \"onFailure\": \"block\""
+    echo "conflict settings.json $id: $m registers $(basename "${cmd%\"}" .sh) without \"onFailure\": \"block\""
   fi
-  NEW="$(printf '%s' "$NEW" | jq --arg m "$m" --arg cmd "$EGRESS" '
+  NEW="$(printf '%s' "$NEW" | jq --arg m "$m" --arg cmd "$cmd" '
     .hooks = (.hooks // {}) | .hooks.PreToolUse = (.hooks.PreToolUse // [])
     | {type: "command", command: $cmd, onFailure: "block"} as $item
     | ([.hooks.PreToolUse | to_entries[] | select(.value.matcher == $m) | .key]) as $ix
@@ -260,6 +262,7 @@ egress_merge() {  # egress_merge <matcher>
 EGRESS="$H/guard-team-egress.sh\""
 egress_merge Bash
 egress_merge WebFetch
+egress_merge Bash "$H/guard-destructive-sql.sh\"" D
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '
