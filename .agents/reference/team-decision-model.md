@@ -89,7 +89,9 @@ out and the newest Reviewer message on the thread opens with `opinion: agree`, n
 request, over the TeamLead's recorded recommendation. The script decides, the TeamLead delivers,
 marked `fallback: Advisor no-reply` (`--author TeamLead-fallback`). Critical classes (`ac`,
 `contract`, `schema`, `sensitive`, `harness-rule`, `conflict`, unclassified) and every q with
-`waiting: operator` never fall back.
+`waiting: operator` never fall back. Under `teams.channel.advisor: solo` the fallback is off by
+design (reason `advisor solo`): there is no Reviewer, and every tier-2 question waits for the
+Advisor.
 
 **Tickets from recommendations.** The Supervisor and the Advisor create technical tickets without
 asking (wrapup follow-ups, QA findings, analysis). Each carries the recommendation line —
@@ -105,9 +107,11 @@ Policy-class answers (Phase 0 size, memory, deferred memory, QA warnings, rethin
 append-only in `teamlead-policy-log.md` in the team channel's decisions directory (no channel: the
 main checkout's `.agents/team/decisions/`), one line `- <UTC> [<class>] <decision> — <why> — <team>
 <q id>`. The TeamLead reads it before classifying, so two teams get the same answer to the same
-case; a deviation from a live precedent goes to the Advisor as blocking tier 2. The Advisor
-promotes a recurring entry to `decisions.md`, after which it is a rule. Format and procedure:
-`monitor.md` → Policy log.
+case; a deviation from a live precedent goes to the Advisor as blocking tier 2. Two writers,
+two scopes: the TeamLead is append-only and the only writer of decision and revocation lines; the
+Advisor's one exception is promotion — it moves a recurring entry to `decisions.md` through a PR
+and replaces exactly that entry's line with a `[promoted]` pointer, after which it is a rule
+([team-advisor.md](team-advisor.md) §3). Format and procedure: `monitor.md` → Policy log.
 
 ## 5. The route to the Operator
 
@@ -124,6 +128,6 @@ promotes a recurring entry to `decisions.md`, after which it is a rule. Format a
 - Per-class deadlines: a blocking Advisor-list question past 60 min goes to the Supervisor for the
   Operator's list; a non-blocking one past 30 min becomes a Follow-up. Until then the NO-REPLY rule
   of team-mode.md §10 applies (re-ping ≤ 2, then wait without a deadline), except the wrapup (B)
-  memory case.
+  memory case (monitor.md 4(e); Transitional supervision rules — the scripts do not enforce them.)
 - One `ADVISOR silent` signal per episode: a critical q that times out later in the same episode
   raises no new notification.

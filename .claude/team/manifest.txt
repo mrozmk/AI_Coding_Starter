@@ -137,6 +137,7 @@ own .claude/team/tracker/none-wrapup.md
 
 # --- own: question ledger, delivery, escalation, gate lock, audit (re-sync at the source pin) ---
 own .agents/reference/escalation-fallback.md
+own .agents/reference/team-advisor.md
 own .agents/reference/team-decision-model.md
 own .agents/reference/team-questions.md
 own .claude/commands/pr-merge.md

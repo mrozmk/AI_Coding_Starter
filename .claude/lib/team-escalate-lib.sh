@@ -80,6 +80,16 @@ esc_fallback_check() {
     || { echo "no delivered request"; return 1; }
 }
 
+# esc_advisor_mode <root> <config> → pair|solo: the channel's teams.channel.advisor; with no
+# configured channel (team_channel_load exits 3) the adapter config decides, the way the renderer
+# writes it: an `opinion` key = pair. Under solo nothing falls back (D4).
+esc_advisor_mode() {
+  declare -F team_channel_load >/dev/null || . "$(dirname "${BASH_SOURCE[0]}")/team-channel.sh"
+  if team_channel_load "$1" 2>/dev/null; then echo "$TEAM_CHANNEL_ADVISOR"
+  elif jq -e 'has("opinion")' "$2" >/dev/null 2>&1; then echo pair
+  else echo solo; fi
+}
+
 # esc_opinion_parse <file> — sets R_OID R_OPINION (agree|disagree|unmarked) R_OBODY; 1 = no body.
 esc_opinion_parse() {
   local body m
@@ -231,10 +241,10 @@ esc_payload_build() {
       printf 'Your newest message here counts. If Advisor does not answer within the timeout, '
       printf '"opinion: agree" lets TeamLead deliver the Recommendation with your conditions.\n'
       printf '"opinion: agree" also attests that you checked this Question and Recommendation and '
-      printf 'found no critical ground: an AC change, a contract (route, DTO, enum, SignalR, AF '
-      printf 'queue message), a schema or migration, a sensitive path or prod boundary, a harness '
-      printf 'rule, or an analyst conflict. The class above is TeamLead'"'"'s label; you vouch '
-      printf 'for it.\n'
+      printf 'found no critical ground: an AC change, a public contract (route, DTO, enum, message '
+      printf 'schema), a schema or data migration, a sensitive path from the profile or a prod '
+      printf 'boundary, a harness rule, or an analyst conflict. The class above is TeamLead'"'"'s '
+      printf 'label; you vouch for it.\n'
       printf 'If you find such a ground, reply "opinion: disagree" with the next line '
       printf '"class: <%s> — <why>". Unsure or a mixed scope counts as a ground.\n' \
         "$(tr ' ' '|' <<<"$ESC_CRITICAL")"
@@ -294,6 +304,7 @@ esc_parse() {
     case "$line" in
       "author: "*) R_AUTHOR="${line#author: }" ;;
       "decided-by: "*) R_DECIDED="${line#decided-by: }" ;;
+      "reviewer: none") ;;  # advisor solo: informational, like any other unknown header line
       "operator-ref: "*) R_REF="${line#operator-ref: }" ;;
       "eta: "*) R_ETA="${line#eta: }" ;;
     esac

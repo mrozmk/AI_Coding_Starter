@@ -437,7 +437,8 @@ is Supervisor's automatic action within `team-automerge-check.sh` + `/pr-merge <
   line to the Operator (only when the reason changed), a re-ping to Advisor (at most 2 delivered),
   then a wait without a deadline — except an eligible tier-2 class, which may close on Reviewer's
   agreement ([escalation-fallback.md](escalation-fallback.md)); per-class deadlines are a target;
-  a wrapup (B) memory q closes as skip (monitor.md 4(e)). A failure is never consent.
+  a wrapup (B) memory q closes as skip (monitor.md 4(e); Transitional supervision rules — the scripts do not enforce them.) A failure is never
+  consent.
 - `status: pending-operator` is non-terminal: Advisor sends it only once the Operator was really
   asked; it unblocks nothing and never re-escalates — the wait just loses its deadline.
 - Analyst disagreement → Advisor escalates both positions with a recommendation to the Operator

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Role sessions: the SessionStart directive hook, the launcher (names, env, models, profiles), the
 # role profiles and their check, the tier-1 `answer` into a role prompt (team-answer.sh --session),
-# preflight, the Reviewer deliver check, the SQL guard over the launcher verbs.
+# preflight, the Reviewer deliver check, the SQL guard over the launcher verbs, status, `up` after
+# a restart and the rollback.
 # Fixture HOME and channel (registry + box from the channel step), stub claude / tmux / launchctl /
 # crontab: nothing reads or writes the real ~/.agent-mail, ~/.agent-ops or a tmux server.
 # It waits on pickup windows (ping → ack), so the runner keeps it out of a parallel batch.
@@ -385,4 +386,52 @@ run "$MAIN" env TEAM_AUTOMERGE_MERGE_CHECK="$WORK/mc-stale.sh" TEAM_AUTOMERGE_RE
 expect 1 "(after one restart merge)" "(8) a project restart script runs once"
 [ "$(grep -c '^restart 8371$' "$STUB_LOG")" = 1 ] || fail "(8) the restart script did not run once"
 echo "team-smoke-sessions: (8) auto-merge restart OK"
+
+# ---- (9) status, up after a restart, rollback ----------------------------------------------------
+named() {  # named <claude argv> — a process that pgrep -f sees as that role's claude → NP
+  bash -c 'exec -a "$1" sleep 300' _ "$1" & NP=$!; PIDS="$PIDS $NP"; sleep 0.3
+}
+for r in Supervisor TeamLead Advisor; do run "$MAIN" $SS stop "$r"; done
+kill_roles
+run "$MAIN" $SS status; expect 0 "Supervisor: tmux smk-supervisor down" "(9) status: a stopped role"
+for l in "TeamLead: tmux smk-teamlead down" "Advisor: tmux smk-advisor down" "routing: split" \
+  "freeze: off" "teams: alfa"; do
+  has "$l" "$WORK/out" || fail "(9) status lacks '$l'"
+done
+for re in '^team-watch: (works|not working)$' '^tiers: ' '^answering: '; do
+  grep -qE "$re" "$WORK/out" || fail "(9) status lacks a line matching $re"
+done
+: > "$STUB_LOG"
+run "$MAIN" $SS up; expect 0 "Close this bootstrap session if it is not a role session." "(9) up"
+for l in "Supervisor: started" "TeamLead: started" "Advisor: started" "Reviewer: deliver missing" \
+  "  tmux attach -t smk-supervisor" "  tmux attach -t smk-teamlead" "  tmux attach -t smk-advisor"; do
+  has "$l" "$WORK/out" || fail "(9) up lacks '$l'"
+done
+grep -qE '^team-watch: (works|not working)' "$WORK/out" || fail "(9) up: no team-watch line"
+grep -qE '^interrupted run' "$WORK/out" || fail "(9) up: no interrupted-runs line"
+wait_claude 3
+! grep -q -- '--resume' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(9) up resumed a session"; }
+run "$MAIN" $SS status; expect 0 "TeamLead: tmux smk-teamlead alive" "(9) status after up"
+# The stub claude is `sleep`, never a `claude --name …` process: a live tmux session reads as the
+# dead `; read` pane of a crashed claude until a process carries the role's name.
+named "claude --name TeamLeadXY --session-id x"; TLP=$NP
+: > "$STUB_LOG"
+run "$MAIN" $SS up; expect 0 "TeamLead: already running" "(9) up keeps a running role"
+has "Advisor: restarted (dead pane)" "$WORK/out" || fail "(9) up did not replace a dead pane"
+grep -qx 'tmux kill-session -t =smk-advisor' "$STUB_LOG" || fail "(9) the dead pane was not killed"
+! grep -qx 'tmux kill-session -t =smk-teamlead' "$STUB_LOG" || fail "(9) up killed a running role"
+kill "$TLP" 2>/dev/null || true; wait "$TLP" 2>/dev/null || true
+# The Supervisor in a `here` window: no tmux session, its claude by name → not started again.
+run "$MAIN" $SS stop Supervisor
+named "claude --name SupervisorXY --model opus"; SPP=$NP
+run "$MAIN" $SS up; expect 0 "Supervisor: running (here)" "(9) up and a here Supervisor"
+kill "$SPP" 2>/dev/null || true; wait "$SPP" 2>/dev/null || true
+kill_roles
+run "$MAIN" $W mode answering off; expect 0 "" "(9) answering off"
+run "$MAIN" $SS rollback; expect 0 "Rollback: routing single Supervisor, answering on." "(9) rollback"
+has "install.sh --rollback" "$WORK/out" || fail "(9) rollback lacks the Operator's kit step"
+run "$MAIN" $SS status
+has "routing: single Supervisor" "$WORK/out" && has "answering: on" "$WORK/out" \
+  || fail "(9) rollback did not switch routing/answering"
+echo "team-smoke-sessions: (9) status, up, rollback OK"
 echo "team-smoke-sessions: OK"

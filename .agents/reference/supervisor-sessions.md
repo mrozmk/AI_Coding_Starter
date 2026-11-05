@@ -42,8 +42,12 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
 - the alarms: `UNPICKED` / `STALLED` / `RECEIVER … down` / `UNDELIVERED` / `MONITOR` → find out why
   (the role's window, `supervisor-sessions.sh status`), tell the Operator in one line when a role
   is down or stuck;
-- `ADVISOR silent` → one line to the Operator with the waiting critical qs; never answers them
-  ([escalation-fallback.md](escalation-fallback.md) → Signals);
+- `ADVISOR silent since <UTC>: <n> escalation(s) waiting` → one line to the Operator naming the
+  waiting qs from the screen (`<team> <q> tier <t> class <c>`). It never answers them, never
+  re-sends them, and is never reminded; the episode ends only on a new Advisor reply, not on an
+  Operator answer to one q. Same handling under `advisor: solo`, where nothing closes by fallback
+  and the screen lists every timed-out q ([escalation-fallback.md](escalation-fallback.md) →
+  Signals);
 - `ATTENTION TeamLead|Advisor (<permission|menu>) fp=<fp>: <anchor>` — a role session's own prompt
   or menu: classify per [team-mode.md](team-mode.md) §10; tier 1 only through
   `bash .claude/lib/supervisor-sessions.sh answer <role> --fp <fp> yes|no "<reason>"|pick <n>|other
@@ -113,7 +117,8 @@ unread `turn`s. Under `advisor: pair` it runs the Reviewer's deliver loop:
 `supervisor-sessions.sh reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's
 path only (another project's same-name loop never counts); a missing one is restored per
 [agent-mail.md](agent-mail.md) → Bring-up. Under `advisor: solo` the Reviewer does not exist
-(`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`.
+(`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`. What it answers on an
+escalation thread, and its one policy-log exception: [team-advisor.md](team-advisor.md).
 
 ## Monitoring
 
@@ -173,8 +178,12 @@ name, local infrastructure) go into the project's own copy of the profile, each 
 `_samples.reads` line — `check` enforces the pairing. Never a `* list*` / `* show*` wildcard: it
 also matches writes whose arguments contain the word. Arrays merge across `--settings`, local and
 project, and deny/ask beat allow, so a profile allow is additive and the deny floor holds. The
-committed ask floor is one rule (`cat .env*`); provider- and cloud-specific secret verbs belong to
-the project's copy or to `teams.policy` examples.
+committed ask floor is one rule: `Bash(cat .env*)` is the only engine-level `ask` entry, in both
+committed profiles. It is there so the `_samples.secrets` lines (`cat .env`, `cat .env.local`) do
+not depend on the project's settings: `check` requires every secrets sample to be ask or deny, and
+a project whose own `settings.json` carries no `.env` rule would otherwise fail `check` (and leave
+the secret read to a bare prompt). Provider- and cloud-specific secret verbs belong to the
+project's copy or to `teams.policy` examples.
 
 The launcher **materialises** each profile into `.agents/team/watch/profiles/<role>.settings.json`
 (mode 600 in a 700 directory): the union of the profile and the project + local `deny`/`ask` rules
@@ -320,6 +329,7 @@ Ownership is back only when a plain `claude` window has run `/mail-role Supervis
 | role prompt answered once, stale/foreign refused with zero keys | `sessions` (4), part 17 (78) | a prompt in the TeamLead window |
 | preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
 | Reviewer loop of this box only | `sessions` (6) | `reviewer` |
+| `status` lines, `up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` switches routing and answering | `sessions` (9) | `up` after a reboot |
 | tier-1 menu handled exactly once, duplicates counted | part 17 (68) | a menu in a test team |
 | `/clear`, a pid restart, alarms outside the LLM, rollback handover | the team-watch parts 15–19 | `/clear` in the TeamLead, kill a test receiver, rollback after the smoke |
 

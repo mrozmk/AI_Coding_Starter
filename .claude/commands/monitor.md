@@ -130,6 +130,9 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
    - `ESCALATION <team> <q>: Advisor reply #<id> without a waiter (<state>)` → background
      `bash .claude/lib/team-escalate.sh <team> <role> <tier> <q path> --resume`, `<role>`/`<tier>`
      from `… show q-<n>`; an answered q gives `LATE …` (4e).
+   - `ESCALATION <thread>: Advisor reply #<id> without a current q` → its thread matches a
+     `memory-deferred` policy-log line → the wrapup (B) late acceptance (4e); otherwise one line to
+     the Supervisor (a `turn` on that thread, route above), nothing delivered.
    - `RUNNER <team> stopped` → the reason from `bash .claude/lib/team-run.sh <team> status`
      (exit codes: runbook §5).
    - `READY <team>`, **split routing** (the header carries `role=TeamLead`) → no post-run summary
@@ -257,19 +260,43 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
        30 min → a Follow-up) is a target, not implemented (team-decision-model.md → Targets);
        until then the NO-REPLY rule above applies unchanged, except the wrapup (B) case below;
      - `NO-REPLY` on a wrapup group (B) memory question (role `wrapup`, `(Advisor+Reviewer)` in its
-       text; non-blocking, team-decision-model.md §3) with no `waiting:` line in its
-       `## Escalation` ledger → on a NO-REPLY of any reason while the q is unanswered, answer it
-       at tier 1 with skip: `--send picks:none` for a multiSelect, otherwise `pick:<n>` of the
-       skip option. Use `--why "Advisor no-reply — wrapup (B) non-blocking, deferred"`. Send no
-       reping. Add a `memory-deferred` policy-log line, and in the READY note a "TeamLead
-       decisions" line per deferred item, copied from the wrapup body's `## Deferred memory (B)` (a wrapup written before the
-       English headings: `## Pamięć odłożona (B)`).
-       A later `LATE <status>` on that q, or an `ESCALATION … without a current q` reply on its
-       thread, while its current answer is still that skip (not revoked, not replaced at tier 3)
-       → one line and a late `memory-deferred` policy-log line with the mail id, no conflict
-       `turn`; otherwise the `LATE` rule above. When that reply accepts items, the late line is
-       the acceptance note a later plan quotes for a `Memory hand-off <file> (supervisor)`
-       (wrapup step 6, check (1));
+       text; non-blocking, team-decision-model.md §3):
+       Transitional supervision rules — the scripts do not enforce them.
+       - **Scope:** only new, unaccepted, optional memory proposals. Never skip a blocking AC or
+         harness change, a mandatory Operator action, or earlier accepted work the wrapup must
+         finish. "role wrapup" and the `(Advisor+Reviewer)` marker are hints, not a
+         classification: a mixed question or any doubt → split the scope, or keep the higher tier.
+       - **Before the skip:** re-read the current q, run, attempt and ledger (`team-question.sh
+         <team> show q-<n>`). No skip when the ledger ever holds `waiting:`, `reply: <id>
+         disagree`, a revocation, `retier:` or an existing answer; a delivered or prepared answer
+         beats an old NO-REPLY; an unreadable ledger is no proof that a decision is absent. An
+         undelivered request (`sent: no`, no config) keeps its real reason in the `--why` tail;
+         the skip does not repair the adapter.
+       - **Skip:** on a NO-REPLY of any reason while the q is unanswered, answer it at tier 1 with
+         skip: `--send picks:none` for a multiSelect, otherwise `pick:<n>` of the skip option.
+         Use `--why "Advisor no-reply — wrapup (B) non-blocking, deferred"` (undelivered: `…
+         deferred; request not sent: <reason>`). Send no reping.
+       - **Deferred record:** in the READY note a "TeamLead decisions" line per deferred item,
+         copied from the wrapup body's `## Deferred memory (B)` (a wrapup written before the
+         English headings: `## Pamięć odłożona (B)`): target file, exact text, reader line,
+         ticket/team/run/attempt/q/thread, the reason. Then a `memory-deferred` policy-log line
+         with the READY note path as its durable ref. Each `memory-deferred` line is a separate
+         append-only event (the initial one, then any later disposition); a READY note is never
+         overwritten.
+       - **Hand-over:** one deduplicated `info` to the Advisor per run and set: `bash
+         .claude/lib/team-channel.sh turn TeamLead Advisor --thread <the q's thread> --kind info
+         --dedup-key memdefer-<team>-<run> --body "<READY note path> — <q ids>"`. Its mail id
+         goes on the `memory-deferred` line (`— info #<id>`); not sent → `— info: not sent
+         (<reason>)`, and the hand-over counts as pending delivery, never as received. A line in
+         the READY note does not reach the Advisor.
+       - **Late acceptance:** a later `LATE <status>` on that q, or an `ESCALATION … without a
+         current q` reply on its thread, is resolved on the full run/thread identity and the
+         last state, never on the q number alone. While the q's current answer is still that
+         skip (not revoked, not replaced at tier 3) → one line and a late `memory-deferred`
+         policy-log line with the mail id, no conflict `turn`; a revocation or a tier-3 answer
+         is never overridden — otherwise the `LATE` rule above. When that reply accepts items,
+         the late line is the acceptance note a later plan quotes for a `Memory hand-off <file>
+         (supervisor)` (wrapup step 6, check (1));
      - exit 4 (`ANSWER` + `warn: ledger busy`) → handle it as `ANSWER`; the q stays `escalating`
        in the ledger (item 2 of step 3 covers it);
      - exit 1 with `busy (waiter pid` → another session owns the wait: no relaunch, nothing
@@ -343,8 +370,20 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
 **Path:** `<decisions dir>/teamlead-policy-log.md` — one log for all teams, outside the clones and
 outside `.agents/team/watch/`. `<decisions dir>` is the team channel's decisions directory
 (`bash .claude/lib/team-channel.sh get decisions_dir`); when that exits 3 (no channel configured)
-it is the main checkout's `.agents/team/decisions/` (git-ignored with the rest of `.agents/team/`). TeamLead is the only writer of decision and
-revocation lines; append-only.
+it is the main checkout's `.agents/team/decisions/` (git-ignored with the rest of `.agents/team/`).
+
+**Ownership** — two writers, two scopes:
+- **TeamLead:** append-only. It is the only writer of decision and revocation lines. Each write is
+  a Read immediately followed by an Edit at the end of the file; the first write uses Write. It
+  never rewrites or deletes a line.
+- **Advisor:** exactly one exception, promotion. When a conclusion recurs (twice across runs or
+  teams, or once when it changes a rule in force), the Advisor puts the entry into
+  `decisions.md` through a PR, then replaces that entry's single line with `- <UTC> [promoted]
+  <entry UTC> → decisions.md "<title>"`, a Read immediately before the Edit. It writes no other
+  line, never appends decisions and never deletes (`.agents/reference/team-advisor.md` §3).
+
+This is the source's inherited tension ("never rewrite" vs "replace on promotion"), resolved by
+scope; no other promotion model exists.
 
 **Classes** (anything else is no policy class and gets no entry):
 - `phase0-size` — a `/quick-change` Phase 0 hit on size only;
@@ -352,7 +391,8 @@ revocation lines; append-only.
   historical decision; accept only what passes `.agents/memory/reflection-protocol.md` → The bar,
   default skip (team-decision-model.md §3 → Memory acceptance);
 - `memory-deferred` — a wrapup (B) memory entry skipped on Advisor's NO-REPLY (4(e)); the line
-  names the file, the q id and the READY note, later the late reply's mail id;
+  names the file, the q id and the READY note, the hand-over (`info #<id>` or `info: not sent
+  (<reason>)`), later the late reply's mail id;
 - `qa-warnings` — `ready-with-warnings` disposition on a non-sensitive path;
 - `rethink` — a 🔶 rethink signal that keeps the AC.
 

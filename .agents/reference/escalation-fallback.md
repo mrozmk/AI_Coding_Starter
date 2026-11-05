@@ -34,9 +34,9 @@ that critical class. A missing `--class` is `unclassified`, which is critical.
 | `borderline` | eligible | an „unsure → higher” escalation touching no critical ground |
 | `policy-deviation` | eligible | TeamLead would answer against a live policy-log precedent |
 | `ac` | critical | an AC change, even one that keeps the ticket's goal |
-| `contract` | critical | route, DTO, byte enum, SignalR method, AF queue message |
-| `schema` | critical | a schema or EF migration |
-| `sensitive` | critical | a CLAUDE.md sensitive path, a prod safety boundary, customer data |
+| `contract` | critical | a public contract (route, DTO, enum, message schema) |
+| `schema` | critical | a schema or data migration |
+| `sensitive` | critical | a sensitive path from the profile, a prod safety boundary, customer data |
 | `harness-rule` | critical | `decisions.md` / `patterns.md` / `index.md`, a harness rule |
 | `conflict` | critical | an analyst disagreement or an TeamLead–analyst conflict |
 
@@ -57,8 +57,8 @@ Reviewer's check), not a parser: a question both of them misclassify still falls
 A fallback is considered only after a Advisor wait timeout (`timeout_min`) and only when all hold:
 tier 2; no `retier:` line; no `waiting:` line ever (a q Advisor took to the Operator never
 auto-proceeds); no `reply: <id> disagree` ever (that is `conflict`); q `kind` ≠ `permission`;
-class eligible; a `recommend:` line; a delivered request (a first `sent: … id <n>`); and the
-config's `opinion` and `peek` keys. Then the newest Reviewer message on the thread must open with
+class eligible; a `recommend:` line; a delivered request (a first `sent: … id <n>`); the
+channel in `advisor: pair` mode; and the config's `opinion` and `peek` keys. Then the newest Reviewer message on the thread must open with
 `opinion: agree` and its mail id must be greater than the first sent id (the opinion floor).
 
 `--recommend "<send> <text>"` takes `pick:<n>|picks:…|other` on a menu q and `say` on a
@@ -75,7 +75,8 @@ Ledger lines (each under `## Escalation`, via the q lock):
 - `late: <UTC>`, `outcome: late-<status>`, `outcome: late-none`.
 
 Refusal reasons: `tier`, `retier`, `pending-operator`, `analyst-disagree`, `permission`, `class`,
-`no-recommendation`, `no delivered request`, `opinion adapter off`, `peek adapter off`,
+`no-recommendation`, `no delivered request`, `advisor solo`, `opinion adapter off`,
+`peek adapter off`,
 `opinion op failed (rc <n>)`,
 `no Reviewer opinion`, `Reviewer <disagree|unmarked>`, `Reviewer disagree (class <c>)`,
 `Reviewer agree names class <c>`,
@@ -113,7 +114,7 @@ text: <one line>
 
 - Empty Reviewer body (after the marker) → the recommended action and text as is.
 - Conditions + `pick:<n>`/`other` → `send: other`; conditions + `say` → `say`. The text becomes
-  `<recommendation text> — Warunki Reviewer (#<id>): <body lines joined with " / ">`, whitespace
+  `<recommendation text> — Reviewer conditions (#<id>): <body lines joined with " / ">`, whitespace
   collapsed: every condition reaches the role on one line (`--text` refuses newlines).
 - Conditions on `picks:…` (a checkbox multiSelect has no `other`) → no fallback.
 
@@ -190,6 +191,12 @@ Nothing is active until the local adapter offers both read operations:
 
 Check: `jq -e '.opinion and .peek and .send and .wait' .agents/team/escalation.local.json`.
 
+Under `teams.channel.advisor: solo` the fallback is off by design: there is no Reviewer, so the
+payload carries `fallback: no (advisor solo)` and no `## Reviewer` section, the refusal reason is
+`advisor solo` (`fallback: no — advisor solo`), and every tier-2 question waits for the Advisor
+(or the Operator). The mode is the channel's; with no configured channel the adapter config
+decides as the renderer writes it (an `opinion` key = pair).
+
 ## Limits
 
 - Current run only: the snapshot reads the current run's ledgers; an archived run's reply raises
@@ -203,3 +210,5 @@ Check: `jq -e '.opinion and .peek and .send and .wait' .agents/team/escalation.l
   opinion.
 - One `ADVISOR silent` signal per episode: a critical q that times out later in the same episode
   raises no new notification (team-decision-model.md → Targets).
+- `advisor: solo` closes nothing by fallback: every timed-out q stays waiting until the Advisor
+  or the Operator decides, and the `ADVISOR silent` screen lists them all.

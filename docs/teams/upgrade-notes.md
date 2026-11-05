@@ -3,6 +3,31 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The escalation adapter points at the Advisor's contract
+
+**Before:** the operator kit's `escalate.sh` sent the reply protocol without saying where the
+Advisor's rules live, and the starter had no Advisor-facing contract.
+
+**Now:** the protocol header carries one more line, `Contract: .agents/reference/team-advisor.md
+(main checkout).`, and `/setup:teams` installs that file (the reply format, tier 3 through the
+Operator, the policy-log promotion exception, the solo mode).
+
+**Action:** `bash .claude/team/sessions/operator-kit/install.sh --verify` reports
+`differs <kit_dir>/escalate.sh` until the Operator re-applies the kit (`install.sh --apply`).
+Until then escalations still work; the Advisor just does not see the pointer.
+
+## The fallback conditions text is English
+
+**Before:** a Reviewer-conditioned fallback typed `<text> — Warunki Reviewer (#<id>): …`.
+
+**Now:** `<text> — Reviewer conditions (#<id>): …`. The payload's `## Reviewer` section names
+generic critical grounds (a public contract, a schema or data migration, a sensitive path from
+the profile) instead of one project's examples.
+
+**Action:** none. A ledger with the old text stays valid: the `TeamLead-fallback` guard compares
+the delivered text with the recorded one, never with a fixed wording, so an undelivered old
+fallback is still delivered as recorded.
+
 ## The agent-mail tool copy is named by its content
 
 **Before:** the channel step named the copy under `~/.agent-mail/tools/` after the vendored

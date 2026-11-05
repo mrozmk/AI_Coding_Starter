@@ -17,7 +17,8 @@
 #   $5=thread esc-<run>-<qid>, $6=seq), parsed without running anything before any adapter runs;
 #   a send counts only with a last stdout line `SENT id=<n>`; rc 0 without it is retried once at
 #   once, then NO-REPLY invalid adapter (no SENT receipt); before a re-ping and after a failed
-#   send the thread is peeked (needs peek); no `opinion` or `peek` key = fallback off.
+#   send the thread is peeked (needs peek); no `opinion` or `peek` key = fallback off, and so is
+#   teams.channel.advisor solo (payload `fallback: no (advisor solo)`, no `## Reviewer` section).
 # Exit: 0 ANSWER / WITHDRAWN / FALLBACK / LATE <status> + the text · 1 busy (ledger or waiter lock)
 #       · 2 usage / refused state / reping limit / tier mismatch
 #       · 3 NO-REPLY <reason> (repings: <n>, sent: <yes|no>)
@@ -26,7 +27,7 @@ set -euo pipefail
 # Each background job gets its own process group, so the watchdog can kill an adapter's children.
 set -m
 
-usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 bad() { echo "error: $*" >&2; exit 2; }
 [ $# -ge 4 ] || usage
 LIB="$(cd "$(dirname "$0")" && pwd)"
@@ -82,6 +83,7 @@ check_recommend() {  # the pairs `team-question.sh answer` enforces, so a FALLBA
 check_recommend
 TICKET="$(jq -r .ticket "$CLONE/.agents/team/team.json")"
 CFG="$root/.agents/team/escalation.local.json"
+ADVISOR_MODE="$(esc_advisor_mode "$root" "$CFG")"
 CHILD=""; LOCKED=""; WAITER=""; STARTED=0; FINISHED=0; DRAINING=0; SEEN=" "; TMP="$(mktemp -d)"
 OPINION=""; PEEK=""; PENDING=0; FB_REPLY=""
 
@@ -290,8 +292,9 @@ prepare_payload() {
     [ -n "$blk" ] || blk="$(esc_section "$Q" Context | sed -n 's/^- last blocker: //p')"
     # Best-effort config read: a payload must exist even when the config is missing.
     elig=no; o="$(cfg_op opinion)"; p="$(cfg_op peek)"
-    [ -n "$o" ] && esc_config_ok "$o" && [ -n "$p" ] && esc_config_ok "$p" \
-      && esc_fallback_check "$Q" "$TIER" advertise >/dev/null && elig=eligible
+    [ "$ADVISOR_MODE" = pair ] || elig="no (advisor solo)"
+    [ "$ADVISOR_MODE" = pair ] && [ -n "$o" ] && esc_config_ok "$o" && [ -n "$p" ] \
+      && esc_config_ok "$p" && esc_fallback_check "$Q" "$TIER" advertise >/dev/null && elig=eligible
     esc_payload_build "$Q" "$PAYLOAD" "$TICKET" "$TEAM" "$TIER" "$THREAD" "$SEQ" \
       "${blk:-see Question}" "$OPTIONS" "$FILES" "$(esc_class "$Q")" "$(esc_recommend "$Q")" "$elig"
   fi
@@ -426,6 +429,7 @@ try_fallback() {
   local -a body=()
   FB_REPLY=""
   FB_REASON="$(esc_fallback_check "$Q" "$TIER")" || return 0
+  [ "$ADVISOR_MODE" = pair ] || { FB_REASON="advisor solo"; return 0; }
   [ -n "$OPINION" ] || { FB_REASON="opinion adapter off"; return 0; }
   [ -n "$PEEK" ] || { FB_REASON="peek adapter off"; return 0; }
   rec="$(esc_recommend "$Q")"; send="${rec%% *}"; text="${rec#* }"
@@ -441,7 +445,7 @@ try_fallback() {
     esac
     conds="$(awk 'NF { gsub(/^[ \t]+|[ \t\r]+$/, ""); printf "%s%s", (n++ ? " / " : ""), $0 }' \
       <<<"$R_OBODY")"
-    text="$text — Warunki Reviewer (#$R_OID): $conds"
+    text="$text — Reviewer conditions (#$R_OID): $conds"
     body=("$(sed 's/^./    &/' <<<"$R_OBODY")")
   fi
   text="$(esc_one_line "$text")"; oid="$R_OID"
@@ -470,7 +474,8 @@ wait_loop() {
     DEADLINE=$(( $(date +%s) + TMIN * UNIT ))
   fi
   # An eligible q's wait is bounded on every resume, so the Reviewer opinion is re-checked.
-  [ -z "$OPINION" ] || [ -z "$PEEK" ] || ! esc_fallback_check "$Q" "$TIER" >/dev/null \
+  [ "$ADVISOR_MODE" != pair ] || [ -z "$OPINION" ] || [ -z "$PEEK" ] \
+    || ! esc_fallback_check "$Q" "$TIER" >/dev/null \
     || DEADLINE=$(( $(date +%s) + TMIN * UNIT ))
   # Here consume returns only on pending-operator: the Operator's wait has no deadline.
   while :; do
