@@ -11,7 +11,7 @@
 #           (Operator action) repoints an entry whose tool is an agent_mail-<sha> copy to a copy
 #           of the current vendored tool — never a foreign tool
 #   extend  registry present, no entry: creates ~/.agent-mail/<slug>/{mail.sqlite,decisions/},
-#           copies the vendored tool (runtime files, committed state) to
+#           copies the vendored tool (runtime files, named by their content hash) to
 #           ~/.agent-mail/tools/agent_mail-<sha> (an identical copy is reused, a different one
 #           refused) and adds an entry whose tool is that copy
 #   fresh   no registry: creates it in the same schema, then extends
@@ -65,7 +65,7 @@ PROFILE="$REPO/.claude/project-profile.json"
 . "$HERE/team-channel.sh"   # TEAM_CHANNEL_REL; the render step below runs it
 CHANNEL_REL="$TEAM_CHANNEL_REL"
 TOOLS_DIR="$AM/tools"
-RUNTIME="README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py"
+RUNTIME="$TEAM_TOOL_RUNTIME"
 # Copies are compared byte for byte; a __pycache__ written into one would break that (`-I`
 # ignores PYTHON* variables, hence also `-B` on every call).
 export PYTHONDONTWRITEBYTECODE=1
@@ -83,15 +83,10 @@ write_json() {  # write_json <dest> <json> — atomic, next to the destination
   mv "$TMPF" "$1"; TMPF=""
 }
 
-# ---- the tool copy: ~/.agent-mail/tools/agent_mail-<sha>, runtime files only -------------------
-src_sha() {  # src_sha <vendored dir> → the short sha of its last commit; refuses an uncommitted tool
-  local sha
-  sha="$(git -C "$1" log -1 --format=%h -- . 2>/dev/null || true)"
-  [ -n "$sha" ] || die "$1 is not committed in a git checkout; the copy is named after its commit"
-  [ -z "$(git -C "$1" status --porcelain -- . 2>/dev/null)" ] \
-    || die "$1 has uncommitted changes; a copy named agent_mail-$sha would not be that commit"
+# ---- the tool copy: ~/.agent-mail/tools/agent_mail-<hash>, runtime files only ------------------
+src_sha() {  # src_sha <vendored dir> → the content hash its copy is named after (team_tool_hash)
   local f; for f in $RUNTIME; do [ -f "$1/$f" ] || die "$1 lacks $f"; done
-  printf '%s' "$sha"
+  team_tool_hash "$1"
 }
 copy_state() {  # copy_state <src> <dst> → absent | same | differs (__pycache__ ignored)
   [ -e "$2" ] || { echo absent; return; }
@@ -108,7 +103,7 @@ plan_copy() {  # plan_copy <src> → sets NEW_SHA, NEW_TOOL, COPY_STATE; refuses
   NEW_TOOL="$TOOLS_DIR/agent_mail-$NEW_SHA"
   COPY_STATE="$(copy_state "$1" "$NEW_TOOL")"
   [ "$COPY_STATE" != differs ] \
-    || die "$NEW_TOOL exists with different content; it is not commit $NEW_SHA — move it away first"
+    || die "$NEW_TOOL exists with different content; it is not the tool named $NEW_SHA — move it away first"
 }
 apply_copy() {  # apply_copy <src> — after plan_copy; atomic (temp dir + mv)
   if [ "$COPY_STATE" = same ]; then step keep tool-copy "$NEW_TOOL (identical, sha $NEW_SHA)"; return; fi
@@ -175,7 +170,8 @@ if [ "$MODE" != reuse ]; then
   TOOL="$NEW_TOOL"
   if [ -z "$CODEX_HOME_V" ] && [ -f "$REPO/.claude/codex-profile" ]; then
     CODEX_HOME_V="$(grep -v '^[[:space:]]*#' "$REPO/.claude/codex-profile" | grep -m1 . || true)"
-    case "$CODEX_HOME_V" in "~/"*) CODEX_HOME_V="$HOME/${CODEX_HOME_V#~/}" ;; esac
+    # Strip the literal "~/" by length: an unquoted ~ in ${V#~/} is itself tilde-expanded.
+    case "$CODEX_HOME_V" in "~/"*) CODEX_HOME_V="$HOME/${CODEX_HOME_V:2}" ;; esac
   fi
   DIR="$AM/$SLUG"; BOX="$DIR/mail.sqlite"; DEC="$DIR/decisions"
   # A box nobody registered belongs to someone (another client, an old setup): never adopt it.
@@ -207,6 +203,11 @@ fi
 if [ "$MODE" = reuse ] || [ -z "$DRY" ]; then
   e() { jq -r --arg k "$KEY" --arg f "$1" '.[$k][$f] // empty' "$REG"; }
   BOX="$(e box)"; TOOL="$(e tool)"; DEC="$(e decisions_dir)"; CODEX_HOME_V="$(e codex_home)"
+  # The entry's suffix names its recipients. A project that declares another one would silently
+  # take over that box's roles (another project's, under --key), so the mismatch is refused.
+  if [ "$MODE" = reuse ] && [ -n "$SUFFIX" ] && [ "$SUFFIX" != "$(e suffix)" ]; then
+    die "entry $KEY has mail suffix '$(e suffix)', this project declares '$SUFFIX' — reusing it would take over its recipients; pick this project's own key, or a new box"
+  fi
   SUFFIX="$(e suffix)"
   HAVE_CR="$(jq -r --arg k "$KEY" '.[$k].claude_roles | join(" ")' "$REG")"
   HAVE_XR="$(jq -r --arg k "$KEY" '.[$k].codex_roles | join(" ")' "$REG")"

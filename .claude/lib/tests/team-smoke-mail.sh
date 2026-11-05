@@ -40,6 +40,10 @@ mkproj() {  # mkproj <name> → a repo with the vendored tool and the team ignor
 treehash() { (cd "$1" && find . -type f -print | LC_ALL=C sort | while IFS= read -r f; do
   shasum -a 256 "$f"; done | shasum -a 256); }
 lines() { grep -c "^$1	" "$WORK/out" || true; }
+# The copy's name, computed here independently of team_tool_hash: sha256 over name\0bytes of the
+# runtime files in a fixed order, first 12 hex.
+toolhash() { (cd "$1" && for f in README.md __init__.py agent_mail.py agent_mail_deliver.py \
+  agent_mail_store.py mail_md.py; do printf '%s\0' "$f"; cat "$f"; done) | shasum -a 256 | cut -c1-12; }
 
 # ---- (1) fresh, dry-run: the plan, and not one byte written ------------------------------------
 P1=$(mkproj p1)
@@ -57,7 +61,7 @@ setup "$P1" --suffix XY
 [ "$RC" = 0 ] || fail "2: fresh exit $RC"
 BOX1="$HOME/.agent-mail/p1/mail.sqlite"
 [ -f "$BOX1" ] && [ -d "$HOME/.agent-mail/p1/decisions" ] || fail "2: no box or decisions dir"
-SHA=$(git -C "$P1" log -1 --format=%h -- tools/agent_mail)
+SHA=$(toolhash "$P1/tools/agent_mail")
 COPY="$HOME/.agent-mail/tools/agent_mail-$SHA"
 has "create	tool-copy	$COPY (sha $SHA)" || fail "2: no tool-copy line"
 [ "$(cd "$COPY" && ls -A | LC_ALL=C sort | tr '\n' ' ')" \
@@ -217,6 +221,40 @@ setup "$P1" --key p1 --resync-tool
 [ "$(jq -r .tool_sha "$P1/.agents/team/channel.local.json")" = "$SHA" ] || fail "7b: tool_sha not updated"
 mail p1 check
 [ "$RC" = 0 ] && ! has "tool behind checkout" || fail "7b: still behind after the re-sync"
+
+# ---- (7c) content-named copy: an uncommitted install and a second commit share one copy -------
+P9="$WORK/p9"; mkdir -p "$P9/tools"; git -C "$P9" init --quiet
+cp -R "$ST/tools/agent_mail" "$P9/tools/"
+setup "$P9" --dry-run
+[ "$RC" = 0 ] && has "keep	tool-copy	$COPY (identical, sha $SHA)" \
+  || fail "7c: an uncommitted install was refused or not matched to the identical copy"
+git -C "$P9" add -A
+GIT_AUTHOR_DATE=2026-02-02T00:00:00Z GIT_COMMITTER_DATE=2026-02-02T00:00:00Z \
+  git -C "$P9" commit --quiet -m other-commit
+setup "$P9" --dry-run
+[ "$RC" = 0 ] && has "keep	tool-copy	$COPY (identical, sha $SHA)" \
+  || fail "7c: the same tool content under another commit got a second copy"
+
+# ---- (7d) a ~/ Codex home is stored under HOME, never as HOME/~/… ------------------------------
+P10=$(mkproj p10)
+mkdir -p "$P10/.claude"; printf '# comment\n~/.codex-p10\n' > "$P10/.claude/codex-profile"
+setup "$P10"
+[ "$RC" = 0 ] || fail "7d: setup exit $RC"
+[ "$(jq -r .codex_home "$P10/.agents/team/channel.local.json")" = "$HOME/.codex-p10" ] \
+  || fail "7d: codex_home is $(jq -r .codex_home "$P10/.agents/team/channel.local.json")"
+[ "$(jq -r .p10.codex_home "$REG")" = "$HOME/.codex-p10" ] || fail "7d: the registry entry is wrong"
+
+# ---- (7e) --key reuse of an entry with another mail suffix is refused, nothing written --------
+P11=$(mkproj p11)
+H0=$(treehash "$HOME")
+setup "$P11" --dry-run --key p1 --suffix ZQ
+[ "$RC" = 1 ] && has "entry p1 has mail suffix 'XY', this project declares 'ZQ'" \
+  || fail "7e: a keyed reuse with another suffix was not refused"
+setup "$P11" --key p1 --suffix ZQ
+[ "$RC" = 1 ] && [ "$(treehash "$HOME")" = "$H0" ] && [ ! -e "$P11/.agents" ] \
+  || fail "7e: the refused keyed reuse wrote"
+setup "$P11" --dry-run --key p1 --suffix XY
+[ "$RC" = 0 ] && has "mode	reuse	key p1" || fail "7e: a keyed reuse with the same suffix was refused"
 
 # ---- (8) profile names and the solo policy ---------------------------------------------------
 P6=$(mkproj p6)

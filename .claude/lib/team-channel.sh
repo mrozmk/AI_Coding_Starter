@@ -186,6 +186,18 @@ team_channel_role() {
   esac
 }
 
+# The agent-mail runtime files a tool copy holds, and the name of a copy: a 12-hex hash of their
+# names and bytes. Content, not a commit: an uncommitted install gets a stable name, and two
+# checkouts with the same tool share one copy. Used by team-mail-setup.sh (copy) and team-mail.sh
+# (check). Exit 1 when a runtime file is missing.
+TEAM_TOOL_RUNTIME="README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py"
+team_tool_hash() {  # team_tool_hash <dir> → <12 hex>
+  local f
+  for f in $TEAM_TOOL_RUNTIME; do [ -f "$1/$f" ] || return 1; done
+  (cd "$1" && for f in $TEAM_TOOL_RUNTIME; do printf '%s\0' "$f"; cat "$f"; done) \
+    | shasum -a 256 | cut -c1-12
+}
+
 # ---- render: the generated local configs ---------------------------------------------------------
 # A path spliced into a shell command inside JSON must survive both: the same character set the
 # escalation config parser accepts (team-escalate-lib.sh esc_config_ok), minus the quote.

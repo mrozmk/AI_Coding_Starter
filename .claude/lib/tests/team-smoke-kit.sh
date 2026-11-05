@@ -84,6 +84,8 @@ run "$MAIN" $INST --dry-run; expect 0 "copy escalate.sh → $KIT/escalate.sh (ne
 has "copy notify.sh → $KIT/notify.sh (backup $KIT/notify.sh.bak-team-kit)" "$WORK/out" || fail "(I) dry-run backup line"
 homesum > "$WORK/h1"; cmp -s "$WORK/h0" "$WORK/h1" || fail "(I) the dry-run changed a byte under HOME"
 [ ! -e "$ESCF" ] || fail "(I) the dry-run rendered escalation.local.json"
+has "plan	.agents/team/escalation.local.json	written by --apply, after it installs escalate.sh" "$WORK/out" \
+  && ! has "operator kit not installed" "$WORK/out" || fail "(I) the dry-run misreports escalation.local.json"
 run "$MAIN" $INST --apply; expect 0 "installed $KIT/hooks/role-hooks.settings.json" "(I) apply"
 has "write	.agents/team/escalation.local.json" "$WORK/out" || fail "(I) apply did not render the escalation config"
 [ "$(grep -c '^installed ' "$WORK/out")" = 6 ] || fail "(I) apply installed $(grep -c '^installed ' "$WORK/out") targets"

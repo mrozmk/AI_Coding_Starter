@@ -12,8 +12,10 @@ then, see [capabilities.md](capabilities.md) for what is proven.
 - `tmux`, `jq`, `git`, Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams`
   stops when any of them is missing.
 - A clone of this starter somewhere on the machine. You pass its path to `/setup:teams`.
-- A pull-request provider the profile can name. `pr_provider: none` is reserved and refused by
-  the profile check today, and `github` requires a `github.com` `origin`.
+- A pull-request provider (`github` or `azure-devops`) to run teams. `pr_provider: none` is
+  valid and turns the PR layer off: setup, the channel, the operator kit and the supervision roles
+  work, while team runs, PRs and merges refuse with a message naming the setting. Only `github`
+  requires a `github.com` `origin`.
 
 ## Fresh machine (no `~/.agent-mail/projects.json`)
 
@@ -30,24 +32,18 @@ All commands run in **your project's** root, not in the starter.
    `test_gate` is a script path or `none`, `env_file_required` is `true|false`, and
    `required_tools`, `branch_types` and `seed_files` are arrays (the first two non-empty). Add `teams.channel` (`project_code`,
    `mail_suffix`, optional `tmux_prefix`, `advisor: pair|solo`, `notifier`).
-3. **Codex home:** one value line in `.claude/codex-profile`. Write an **absolute path** for now:
-   the channel step stores a `~/…` value wrongly (it becomes `$HOME/~/…`; [follow-up F20](follow-ups.md)).
-4. **Commit the installed files** (and the profile) before the channel step. The channel step
-   names the agent-mail tool copy after its git commit and refuses an uncommitted tool, and
-   `/setup:teams` never commits for you. Then run `/setup:teams <starter-root>` again: the
-   install reports `kept`, and the channel step runs.
-5. **Channel:** the dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
-   copy under `~/.agent-mail/tools/`, the box and its `decisions/`, registers the three Claude
+3. **Codex home:** one value line in `.claude/codex-profile` (`~/.codex-<project>` is fine).
+4. **Channel:** the dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
+   copy under `~/.agent-mail/tools/` (named by its content: identical tools share one copy), the box and its `decisions/`, registers the three Claude
    roles and writes the gitignored `.agents/team/channel.local.json`, then renders
-   `watch.local.json`. `escalation.local.json` is `skip`ped until step 7.
-6. **Verify:** `bash .claude/lib/team-mail.sh --here check` prints `OK <KEY> (box …, tool …)` and
+   `watch.local.json`. `escalation.local.json` is `skip`ped until step 6.
+5. **Verify:** `bash .claude/lib/team-mail.sh --here check` prints `OK <KEY> (box …, tool …)` and
    `bash .claude/lib/team-channel.sh show` exits 0.
-7. **Operator kit** (an Operator action, run it yourself with `!`):
+6. **Operator kit** (an Operator action, run it yourself with `!`):
    `bash .claude/team/sessions/operator-kit/install.sh --dry-run`, then `--apply`, then
    `--verify` (every line `ok`). `--apply` also renders `.agents/team/escalation.local.json`.
-   The dry-run still prints `skip … escalation.local.json` because the adapter does not exist
-   yet; `--apply` writes it. See [08](08-operator-kit.md).
-8. **Reviewer** (`advisor: pair` only): the channel step's `reviewer:` block is for the
+   See [08](08-operator-kit.md).
+7. **Reviewer** (`advisor: pair` only): the channel step's `reviewer:` block is for the
    Reviewer's own Codex window, which registers itself with its thread id.
 
 Stop here. The role sessions are started by the role-session layer (01, not merged yet).
@@ -63,9 +59,8 @@ you are in:
   An `offer roles` line means the entry lacks role names: rerun with `--add-roles` to add them.
 - **`extend`**: entries exist, none for this checkout. `/setup:teams` asks: a new box for this
   project (recommended), or one existing key (`--key <KEY>`, which turns it into `reuse` of that
-  box). Reusing another project's key shares its box **and its recipient names**: the entry's
-  suffix wins over your profile's `mail_suffix`, and nothing warns you, so pick a key only for
-  the same project.
+  box). Reusing a key shares that box **and its recipient names**, so it is refused when the
+  entry's suffix differs from your profile's `mail_suffix`: pick a key only for the same project.
 - A second project on the same machine gets its own key, box and recipients from its own
   `project_code` / `mail_suffix` / `tmux_prefix`. Two projects never share a recipient name.
 

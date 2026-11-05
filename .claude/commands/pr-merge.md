@@ -7,7 +7,7 @@ allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git
 # /pr-merge — Complete an Azure DevOps Pull Request
 
 > **Azure DevOps only** (`teams.pr_provider: azure-devops`; GitHub team PRs merge through
-> `team-integrate.sh`). In Azure Repos "merge" is called **Complete**.
+> `team-integrate.sh`; `none` → STOP: "teams.pr_provider is none — the PR layer is off"). In Azure Repos "merge" is called **Complete**.
 > **Running `/pr-merge` is the user's decision to merge** — the command asks nothing. It resolves
 > every state it can on its own (draft → publish, missing approval → self-approve, policies running
 > → auto-complete + wait), cleans up the branches, and stops only on a blocker it must not work

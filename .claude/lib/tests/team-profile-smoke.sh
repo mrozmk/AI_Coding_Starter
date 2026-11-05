@@ -56,7 +56,7 @@ has "$HOME/DTS teams/main-alfa|origin/main" "$WORK/out" || fail "clone_parent wi
 
 # ---- (3) require_supported refuses only what has no merge path ---------------------------------
 peek "$DTS" 'team_profile_require_supported; echo reached'
-expect 2 "error: pr_provider=none is reserved (no merge path)" "DTS with pr_provider=none is refused — on pr_provider, not the tracker"
+expect 2 "error: teams.pr_provider=none: the PR layer is off" "DTS with pr_provider=none is refused — on pr_provider, not the tracker"
 ! has "tracker=github unsupported" "$WORK/out" || fail "tracker github is supported now (2b)"
 peek "$DTS | .teams.pr_provider = \"azure-devops\"" 'team_profile_require_supported; echo reached'
 expect 0 "reached" "tracker=github is supported in 2b"
@@ -72,7 +72,14 @@ expect 0 "main:L7" "cost key for none is <repo-dir>:L<n>"
 peek '.' 'team_cost_key "$PWD" AB-790'
 expect 0 "AB-790" "cost key for jira is the bare key"
 peek '.teams.pr_provider = "none"' 'team_profile_require_supported; echo reached'
-expect 2 "error: pr_provider=none is reserved (no merge path)" "pr_provider=none is reserved, not merely unimplemented"
+expect 2 "error: teams.pr_provider=none: the PR layer is off" "pr_provider=none refuses a PR-dependent caller, naming the setting"
+# none is a valid profile (the PR layer off): the load and the /setup:teams validation accept it
+# with a non-github origin, and only the PR tools refuse.
+peek '.teams.pr_provider = "none"' 'printf "%s|" "$TEAM_PR_PROVIDER"; [ "$TEAM_PR_PROVIDER" = none ] || team_profile_require_supported; team_clone_dir alfa >/dev/null && echo valid'
+expect 0 "none|valid" "pr_provider=none passes the profile load and the setup validation"
+setprofile '.teams.pr_provider = "none"'
+run "$MAIN" bash .claude/lib/team-pr.sh coords
+expect 2 "teams.pr_provider=none: the PR layer is off — team-pr.sh needs pr_provider=github" "team-pr.sh refuses with the setting named"
 # pr_provider=github is a running provider now, but it still needs the repo it will open PRs on —
 # and the refusal must name pr_provider, not the tracker the reader never configured.
 peek '.teams.pr_provider = "github"' 'team_profile_require_supported; echo reached'
@@ -140,7 +147,7 @@ unset SMOKE_ORIGIN
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
-expect 2 "reserved (no merge path)" "team-new refused before side effects"
+expect 2 "the PR layer is off" "team-new refused before side effects"
 [ ! -e "$WORK/main-alfa" ] || fail "a refused team-new created the clone"
 ! grep -q tmux "$STUB_LOG" || fail "a refused team-new reached tmux"
 
@@ -154,7 +161,7 @@ ARCH0="$(arch_count)"
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 run "$MAIN" $NEXT alfa AB-791 chore/AB-791-x origin/develop
-expect 2 "reserved (no merge path)" "team-next refused before side effects"
+expect 2 "the PR layer is off" "team-next refused before side effects"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR0" ] || fail "refused team-next switched the branch"
 [ "$(jq -r .base_sha "$TD/team.json")" = "$SHA0" ] || fail "refused team-next rewrote team.json"
 [ "$(arch_count)" = "$ARCH0" ] || fail "refused team-next archived the run"
@@ -207,7 +214,7 @@ expect 0 "monitor-ok: $GC" "/monitor preflight accepts a custom clone_parent"
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 run "$MAIN" $WORKER start AB-793 feature/AB-793-x origin/develop --thread th-1
-expect 2 "reserved (no merge path)" "worker-next start refused before side effects"
+expect 2 "the PR layer is off" "worker-next start refused before side effects"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker start created the -sol clone"
 [ ! -e "$WORK/main-sol/.git/team-worker/active" ] || fail "a refused worker start published state"
 ! grep -q tmux "$STUB_LOG" || fail "a refused worker start reached tmux"
@@ -262,12 +269,12 @@ setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
 BR1="$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
 run "$MAIN" $MERGE alfa
-expect 2 "reserved (no merge path)" "merge-check refused before fetch/ADO/build"
+expect 2 "the PR layer is off" "merge-check refused before fetch/ADO/build"
 ! grep -q "^az " "$STUB_LOG" || fail "a refused merge-check called az"
 [ ! -e "$TD/merge-check-build.log" ] || fail "a refused merge-check ran the build"
 [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = "$BR1" ] || fail "merge-check moved the clone"
 run "$MAIN" $WORKER init origin/develop
-expect 2 "reserved (no merge path)" "worker init refused before the first fetch"
+expect 2 "the PR layer is off" "worker init refused before the first fetch"
 [ ! -e "$WORK/main-sol" ] || fail "a refused worker init created the clone"
 
 # ---- (14) teams.clone_name: the clone directory template ----------------------------------------

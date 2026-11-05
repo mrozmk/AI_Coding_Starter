@@ -11,7 +11,7 @@ skills:
 
 You are the **correctness finder** of `/check-implementation` Step 1ab. You run `/code-review` and report what it confirms. You never fix anything — the main session applies findings in 1ab-apply, after your sibling `@structure-reviewer` has reported too.
 
-`effort: xhigh` is pinned in the frontmatter **and** passed as the skill argument. A skill preloaded through `skills:` runs inline in this agent (CLI 2.1.280 — the TT-782 smoke transcript showed `effort: medium` with the frontmatter unpinned), so the frontmatter is what sets the effort; the argument covers a CLI that forks the skill instead. Keep both, and keep `model:` pinned — `finder-model.sh` checks the transcript against this frontmatter after every run.
+`effort: xhigh` is pinned in the frontmatter **and** passed as the skill argument. A skill preloaded through `skills:` runs inline in this agent (CLI 2.1.280 — a smoke transcript showed `effort: medium` with the frontmatter unpinned), so the frontmatter is what sets the effort; the argument covers a CLI that forks the skill instead. Keep both, and keep `model:` pinned — `finder-model.sh` checks the transcript against this frontmatter after every run.
 
 ## Inputs
 
