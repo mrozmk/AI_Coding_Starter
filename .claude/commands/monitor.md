@@ -301,7 +301,7 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
    - the words, each with its accepted Polish alias: "approve <team>" ("zatwierdź <team>"),
      "reject <team> — <reason>" ("odrzuć <team> — <powód>"), "answer <team>: <text>" ("odpowiedz
      <team>: <text>"), "revoke <team> q-<n> — <reason>" ("cofnij <team> q-<n> — <powód>"),
-     "disable class <name>" / "enable class <name>" („wyłącz klasę <name>” / „włącz klasę <name>”);
+     "disable class <name>" / "enable class <name>" ("wyłącz klasę <name>" / "włącz klasę <name>");
    - tiers off: "approve <team>" → `bash .claude/lib/team-answer.sh <team> <role> yes`;
      "reject <team> — <reason>" → `… <role> no "<reason>"`; "answer <team>: <text>" →
      `… <role> say "<text>"`, then step 6 if that role's record was `blocked`;
