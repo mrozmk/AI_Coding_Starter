@@ -5,6 +5,9 @@ command-position word is an egress tool (curl wget ssh scp rsync nc ftp sftp) ->
 bash -c, tmux arguments, eval, $(...) and here-doc lines. Never emits allow: no output leaves the
 decision to Claude Code's own rules, so deny still wins. Unreadable input -> ask (fail-closed).
 A loopback port probe (`nc -z [-v] [-w n] [-G n] localhost|127.0.0.1|::1 <ports>`) is not egress.
+git push/fetch/pull/clone/ls-remote/submodule add/remote add|set-url whose repository argument is a
+URL or `host:path` -> ask unless the host is in the same WebFetch allowlist; a bare remote name or
+a local path passes (the remote's configured URL was itself set through this check or by a human).
 """
 import json
 import os
@@ -24,6 +27,9 @@ SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
 SUBST = re.compile(r"\$\(|`|\)")
 DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
+GIT_NET = {"push", "fetch", "pull", "clone", "ls-remote", "submodule", "remote"}
+URL_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+SCP_LIKE = re.compile(r"^(?:[^@/\s]+@)?([A-Za-z0-9.\-]+):(?!//)")
 
 
 class Unreadable(Exception):
@@ -55,6 +61,48 @@ def loopback_probe(words):
             and all(re.fullmatch(r"[0-9]+(-[0-9]+)?", w) for w in ports))
 
 
+def git_repo_arg(words):
+    """The repository word of a network git command, or None (a bare remote name is returned too)."""
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in ("-C", "-c") else 1
+    if i >= len(words) or words[i] not in GIT_NET:
+        return None
+    sub, args = words[i], words[i + 1:]
+    pos = [w for w in args if not w.startswith("-")]
+    if sub == "remote":
+        if not pos or pos[0] not in ("add", "set-url"):
+            return None
+        return pos[2] if len(pos) > 2 else None
+    if sub == "submodule":
+        return pos[1] if len(pos) > 1 and pos[0] == "add" else None
+    return pos[0] if pos else None
+
+
+def repo_host(arg):
+    """The network host a git repository word names, '' for a remote name or a local path."""
+    if URL_SCHEME.match(arg):
+        if arg.lower().startswith("file://"):
+            return ""
+        try:
+            return (urlsplit(arg).hostname or "?").rstrip(".").lower()
+        except ValueError:
+            return "?"
+    if arg.startswith(("/", ".", "~")):
+        return ""
+    m = SCP_LIKE.match(arg)
+    return m.group(1).lower() if m else ""
+
+
+def git_host_ok(host):
+    if host in LOOPBACK:
+        return True
+    try:
+        return host_allowed(host, allowlist(os.environ.get("CLAUDE_PROJECT_DIR", "")))
+    except Unreadable:
+        return False
+
+
 def egress_in(cmd, depth=0):
     """Name of the first egress tool in command position, or ''. ValueError on unparsable text."""
     return verb_in(cmd, EGRESS, depth)
@@ -67,6 +115,10 @@ def verb_in(cmd, names, depth=0):
         verb = os.path.basename(words[0].lstrip("`")) if words else ""
         if verb in names and not (verb == "nc" and loopback_probe(words)):
             return verb
+        if verb == "git" and names is EGRESS:
+            host = repo_host(git_repo_arg(words) or "")
+            if host and not git_host_ok(host):
+                return "git to " + host
         if depth >= 3:
             continue
         # From the raw words: an assignment `x=$(curl …)` is stripped as a wrapper above.
@@ -94,6 +146,8 @@ def bash_reason(cmd):
             if MENTIONS_EGRESS.search(cmd):
                 return "unparsable command mentions an egress tool"
             return ""
+    if found.startswith("git to "):
+        return found + " (not in the WebFetch allowlist)"
     return found + " in command position" if found else ""
 
 

