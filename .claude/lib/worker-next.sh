@@ -11,6 +11,7 @@
 set -euo pipefail
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/worker-lib.sh"
+. "$(dirname "$0")/team-channel.sh"   # ensure_mail_home
 
 WORKER_ARTIFACTS="${WORKER_ARTIFACTS:-$HOME/.agent-mail/worker}"
 WORKER_ARTIFACT_MAX_MB="${WORKER_ARTIFACT_MAX_MB:-50}"
@@ -251,6 +252,7 @@ start_resume() {
 w_activate() {
   local a="$WD/active/assignment.json" art
   art="$(w_get "$a" artifacts)"
+  case "$art/" in "$HOME/.agent-mail/"*) ensure_mail_home >/dev/null ;; esac
   mkdir -p "$art"
   w_write "$a" '.state = "active"' "$a"
   echo "id:        $(w_get "$a" id)"

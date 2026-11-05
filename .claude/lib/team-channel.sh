@@ -143,6 +143,15 @@ team_channel_role() {
 # names and bytes. Content, not a commit: an uncommitted install gets a stable name, and two
 # checkouts with the same tool share one copy. Used by team-mail-setup.sh (copy) and team-mail.sh
 # (check). Exit 1 when a runtime file is missing.
+# ensure_mail_home — the machine's mail home, mode 0700 whether it is created now or was created
+# earlier by something with a wider umask: boxes, decisions notes and worker artifacts live under
+# it. Every creator calls this (team-mail-setup.sh, worker-next.sh; agent_mail_store.py has the same
+# rule in Python). Prints the path.
+ensure_mail_home() {
+  local d="$HOME/.agent-mail"
+  mkdir -p "$d" && chmod 700 "$d" && printf '%s' "$d"
+}
+
 TEAM_TOOL_RUNTIME="README.md __init__.py agent_mail.py agent_mail_deliver.py agent_mail_store.py mail_md.py"
 team_tool_hash() {  # team_tool_hash <dir> → <12 hex>
   local f

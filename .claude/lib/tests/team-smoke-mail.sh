@@ -254,6 +254,12 @@ setup "$P10"
   || fail "7d: codex_home is $(jq -r .codex_home "$P10/.agents/team/channel.local.json")"
 [ "$(jq -r .p10.codex_home "$REG")" = "$HOME/.codex-p10" ] || fail "7d: the registry entry is wrong"
 
+# ---- (7f) a mail home created earlier with a wide mode is tightened to 0700 by the next creator ---
+chmod 755 "$HOME/.agent-mail"
+P12=$(mkproj p12)
+setup "$P12"
+[ "$RC" = 0 ] && [ "$(stat -f %Lp "$HOME/.agent-mail")" = 700 ] || fail "7f: the mail home is not 0700"
+
 # ---- (7e) --key reuse of an entry with another mail suffix is refused, nothing written --------
 P11=$(mkproj p11)
 H0=$(treehash "$HOME")

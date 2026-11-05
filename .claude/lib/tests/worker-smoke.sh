@@ -9,7 +9,9 @@ W="bash .claude/lib/worker-next.sh"
 SOL="$WORK/main-sol"
 WD="$SOL/.git/team-worker"
 DEV=origin/develop
-export WORKER_ARTIFACTS="$WORK/artifacts" WORKER_LOCK_SECS=1
+# The default artifacts root lives in the mail home; a home made earlier at 0755 must come out 0700.
+mkdir -p "$HOME/.agent-mail"; chmod 755 "$HOME/.agent-mail"
+export WORKER_ARTIFACTS="$HOME/.agent-mail/worker" WORKER_LOCK_SECS=1
 
 pr_done() {  # pr_done <status> <source sha> <branch>
   pr_json false "$2" succeeded refs/heads/develop "$2"
@@ -106,6 +108,7 @@ ID1=$(field id)
 B0=$(git -C "$SOL" rev-parse origin/develop)
 head_on chore/AB-900-a "$B0"
 [ -d "$WORKER_ARTIFACTS/$ID1" ] || fail "start A made no artifacts dir"
+[ "$(stat -f %Lp "$HOME/.agent-mail")" = 700 ] || fail "start A left the mail home wider than 0700"
 run "$MAIN" $W status
 expect 0 "state: active" "status while A is active"
 has "id: $ID1" "$WORK/out" || fail "status lacks the assignment id"

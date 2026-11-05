@@ -520,5 +520,25 @@ class TestRegister(MailboxTestCase):
                 self.assertFalse(needs_thread, "%s built a command without a thread" % (adapter,))
 
 
+class TestMailHome(unittest.TestCase):
+    def test_open_box_tightens_the_mail_home(self):
+        import stat as _stat
+        tmp = tempfile.mkdtemp(prefix="agent_mail_home_")
+        old = os.environ.get("HOME")
+        os.environ["HOME"] = tmp
+        try:
+            home = os.path.join(tmp, ".agent-mail")
+            os.makedirs(home, mode=0o755)
+            os.chmod(home, 0o755)
+            store.open_box(os.path.join(home, "p", "mail.sqlite")).close()
+            self.assertEqual(_stat.S_IMODE(os.stat(home).st_mode), 0o700)
+        finally:
+            if old is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = old
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

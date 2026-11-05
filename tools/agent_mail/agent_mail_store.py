@@ -198,11 +198,21 @@ def _enable_wal(conn: sqlite3.Connection, attempts: int = 20, pause: float = 0.0
     return False
 
 
+def ensure_mail_home(box_dir: str) -> None:
+    """A box under ~/.agent-mail keeps that home at mode 0700 (created now or earlier with a wider
+    umask): boxes and decisions notes live there. The same rule as team-channel.sh."""
+    home = os.path.join(os.path.expanduser("~"), ".agent-mail")
+    if os.path.abspath(box_dir).startswith(home + os.sep):
+        os.makedirs(home, mode=0o700, exist_ok=True)
+        os.chmod(home, 0o700)
+
+
 def open_box(path: Optional[str] = None) -> sqlite3.Connection:
     """Open (creating if needed) the mailbox and apply the schema idempotently."""
     path = default_box_path(path)
     parent = os.path.dirname(path)
     if parent:
+        ensure_mail_home(parent)
         os.makedirs(parent, exist_ok=True)
     # isolation_level=None -> autocommit; every multi-statement unit below opens an
     # explicit BEGIN IMMEDIATE. With the default mode sqlite3 opens a transaction

@@ -181,11 +181,12 @@ if [ "$MODE" != reuse ]; then
   fi
   if [ "$MODE" = fresh ]; then
     step create registry "$REG"
-    [ -d "$AM" ] || apply mkdir -m 700 "$AM"
+    apply ensure_mail_home >/dev/null
     [ -n "$DRY" ] || write_json "$REG" '{}'
   fi
   apply_copy "$SRC"
   step create box-dir "$DIR (+ decisions/)"
+  apply ensure_mail_home >/dev/null
   apply mkdir -p "$DEC"
   ENTRY="$(jq -n --arg box "$BOX" --arg tool "$TOOL" --arg label "${LABEL:-${CODE:-$KEY}}" \
     --arg suffix "$SUFFIX" --arg repo "$REPO" --arg dec "$DEC" --arg ch "$CODEX_HOME_V" \
