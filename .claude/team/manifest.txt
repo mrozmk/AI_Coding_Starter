@@ -190,3 +190,15 @@ own .claude/team/sessions/monitoring.json
 own .agents/reference/team-watch.md
 # the source's alert-intake outbox is not ported (decision): no file may ship under its name
 !.claude/lib/team-watch-outbox.sh
+
+# --- role sessions: profiles, launcher, bootstrap hook and commands ---------------------------------
+own .claude/team/sessions/Supervisor.settings.json
+own .claude/team/sessions/TeamLead.settings.json
+own .claude/lib/session_profile_check.py
+own .claude/lib/supervisor-sessions.sh
+own .claude/hooks/session-role.sh
+own .claude/commands/session-role.md
+own .claude/commands/monitoring.md
+own .claude/commands/sessions-up.md
+own .claude/commands/team-watch.md
+own .agents/reference/supervisor-sessions.md

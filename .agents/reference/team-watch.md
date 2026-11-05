@@ -6,8 +6,9 @@ registered role sessions over Claude Code's cross-session messaging socket. Acks
 computed outside every LLM. Code: `.claude/lib/team-watch.sh` (CLI) and `team-watch-{lib,route,
 deliver,inputs}.sh`, `team-watch-send.py`, `team-watch-signals.jq`, `session-wake.sh`,
 `monitoring.sh`; hooks `team-watch-session.sh` (SessionStart) and `monitoring-rearm.sh` (Stop);
-declaration `.claude/team/sessions/monitoring.json`. Without the daemon, `/monitor` polls with
-`team-watch-poll.sh` (`team-watch.sh <teams>` hands a team list to it).
+declaration `.claude/team/sessions/monitoring.json`. `/monitor` handles the pushed messages and
+arms no poller; `team-watch-poll.sh` (`team-watch.sh <teams>` hands a team list to it) stays only as
+a manual diagnostic. The role sessions that receive the pushes: [supervisor-sessions.md](supervisor-sessions.md).
 
 ## Start, stop, status
 

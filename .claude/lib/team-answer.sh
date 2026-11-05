@@ -10,6 +10,9 @@
 # picks answers one checkbox question; none sends explicit "none - skip all", not an empty answer.
 # finish <text> --send say|other — ledger-driven, see team-question.sh finish.
 # Options (team-question.sh passes them): --clone --root --q --attempt --journal --tier --send
+#   --session <Role>: a supervision role session (no clone; supervisor-sessions.sh answer passes
+#   it): <team> <role> must be its tmux name's halves, keys go to tw_tmux_name <Role>, the binding
+#   is <main>/.agents/team/watch/sessions/<Role>/session.json; pick|other only, never with --clone.
 #   (--tier 1 adds --classes to the yes policy check: a class prints policy-class: <name>)
 #   --expect-fp --expect-pane --expect-event --expect-session --expect-run --expect-attempt
 #   --expect-record --expect-anchor.
@@ -17,15 +20,15 @@
 #   unreadable · 6 not sent, changed · 7 not sent, policy · 8 not sent, mode (team-mode.md §10).
 set -euo pipefail
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 3 ] || usage
 TEAM="$1"; ROLE="$2"; action="$3"; shift 3; text=""; have_text=""
 if [ $(( $# % 2 )) = 1 ]; then text="$1"; have_text=1; shift; fi
-CLONE=""; ROOT=""; QID=""; ATTEMPT=""; JOURNAL=""; TIER=""; SEND=""
+CLONE=""; ROOT=""; SESSION=""; QID=""; ATTEMPT=""; JOURNAL=""; TIER=""; SEND=""
 E_FP=""; E_PANE=""; E_EVENT=""; E_SESSION=""; E_RUN=""; E_ATTEMPT=""; E_RECORD=""; E_ANCHOR=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --clone) CLONE="$2" ;; --root) ROOT="$2" ;; --q) QID="$2" ;; --attempt) ATTEMPT="$2" ;;
+    --clone) CLONE="$2" ;; --root) ROOT="$2" ;; --session) SESSION="$2" ;; --q) QID="$2" ;; --attempt) ATTEMPT="$2" ;;
     --journal) JOURNAL="$2" ;; --tier) TIER="$2" ;; --send) SEND="$2" ;;
     --expect-fp) E_FP="$2" ;; --expect-pane) E_PANE="$2" ;; --expect-event) E_EVENT="$2" ;;
     --expect-session) E_SESSION="$2" ;; --expect-run) E_RUN="$2" ;;
@@ -50,13 +53,29 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
 . "$LIB/team-send-lock.sh"
 name="$TEAM-$ROLE"
-[[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad session name $name" >&2; exit 2; }
 [ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-# team-question.sh always passes --clone: it runs inside the clone, where this derivation breaks.
-[ -n "$CLONE" ] || CLONE="$(team_clone_dir "$TEAM" "$ROOT")"
-TD="$CLONE/.agents/team"
-# A role session of the supervision layer has no clone: lock in this checkout.
-[ -d "$TD" ] || { TD="$ROOT/.agents/team"; mkdir -p "$TD"; }
+if [ -n "$SESSION" ]; then
+  # A supervision role session: no clone, its binding lives in the main checkout's watch dir.
+  [ -z "$CLONE" ] || { echo "error: --session and --clone exclude each other" >&2; exit 2; }
+  case "$action" in pick|other) ;;
+    *) echo "error: --session answers pick|other only (supervisor-sessions.sh answer)" >&2; exit 2 ;;
+  esac
+  . "$LIB/team-channel.sh"; . "$LIB/team-watch-route.sh"
+  tw_session_role_ok "$SESSION" || { echo "error: --session: unknown role $SESSION" >&2; exit 2; }
+  team_channel_names "$ROOT" || exit 2
+  [ "$name" = "$(tw_tmux_name "$SESSION")" ] \
+    || { echo "error: --session $SESSION is tmux $(tw_tmux_name "$SESSION"), not $name" >&2; exit 2; }
+  ROLE="$SESSION"; CLONE="$ROOT"; TD="$ROOT/.agents/team/watch/sessions/$SESSION"
+  [ -r "$TD/session.json" ] && [ -n "$(jq -r '.session_id // empty' "$TD/session.json" 2>/dev/null)" ] \
+    || { echo "error: Operator action: no readable session.json for $SESSION (start it with supervisor-sessions.sh) — nothing sent" >&2; exit 5; }
+else
+  [[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad session name $name" >&2; exit 2; }
+  # team-question.sh always passes --clone: it runs inside the clone, where this derivation breaks.
+  [ -n "$CLONE" ] || CLONE="$(team_clone_dir "$TEAM" "$ROOT")"
+  TD="$CLONE/.agents/team"
+  # A clone-less caller without --session: lock in this checkout.
+  [ -d "$TD" ] || { TD="$ROOT/.agents/team"; mkdir -p "$TD"; }
+fi
 KEYS=0; DRAFT0=""
 
 refuse() { local rc="$1"; shift; echo "error: $* — nothing sent" >&2; exit "$rc"; }

@@ -463,9 +463,10 @@ project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_c
 
 **Team supervision layer.** The question ledger, the tiers and the escalation adapter work from
 one `/monitor` window. The durable signal daemon is [team-watch.md](team-watch.md): with its loops
-running, it pushes `[team-watch #<n>]` batches into the registered role sessions; without them,
-`/monitor`'s 15 s poll (`team-watch-poll.sh`) is the event source. Role sessions and the operator
-kit are separate layers.
+running, it pushes `[team-watch #<n>]` batches into the registered role sessions, and `/monitor`
+is the handling contract of those messages (the single window starts the daemon itself). The role
+sessions — launcher, profiles, preflight — are [supervisor-sessions.md](supervisor-sessions.md);
+the operator kit is a separate layer.
 
 ## 13. Tests
 

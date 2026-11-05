@@ -7,8 +7,8 @@
 #   Full: exit 0 `AUTOMERGE: yes — PR <id> source=<s> target=<t>`, 1 `AUTOMERGE: no — <reason>`.
 #   Recheck: exit 0 `RECHECK: ok`, 1 `RECHECK: no — <freeze|moved tip|pr mismatch|no gate …>`.
 #   Full on `stale merge`: one restart through TEAM_AUTOMERGE_RESTART (a project script taking the
-#   PR id; default .claude/lib/ado-restart-merge.sh when present), then the merge check again;
-#   no restart script → `no` with the manual step.
+#   PR id), then the merge check again; no restart verb for the PR provider → `no — stale merge,
+#   restart not available for <provider>` with the manual step.
 #   Full refuses `settings: …` on a .claude/**/*settings*.json change past allow-offline.
 # Run from the main checkout. Never merges — /pr-merge <id> --auto <team> does, after --recheck.
 set -euo pipefail
@@ -21,13 +21,15 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-modes.sh"
 team_check_name "$TEAM" || exit 2
 root="$(git rev-parse --show-toplevel)"
+team_profile_load "$root"
 CLONE="$(team_clone_dir "$TEAM" "$root")"
 TD="$CLONE/.agents/team"
 FREEZE="$root/.agents/team/release-freeze"
 STORE="$root/.agents/team/watch/automerge/$TEAM.json"
 # Test seam (as TEAM_WATCH_SENDER): the merge check builds for minutes.
 MERGE_CHECK="${TEAM_AUTOMERGE_MERGE_CHECK:-$root/.claude/lib/team-merge-check.sh}"
-RESTART="${TEAM_AUTOMERGE_RESTART:-$LIB/ado-restart-merge.sh}"
+# No provider ships a restart verb yet (team-pr.sh has none): a project wires its own script here.
+RESTART="${TEAM_AUTOMERGE_RESTART:-}"
 SETTINGS_DIFF="$LIB/team_settings_diff.py"
 RECALC_TRIES="${TEAM_AUTOMERGE_RECALC_TRIES:-12}"
 RECALC_SLEEP="${TEAM_AUTOMERGE_RECALC_SLEEP:-10}"
@@ -85,7 +87,8 @@ merge_check() { rc=0; out="$(cd "$root" && bash "$MERGE_CHECK" "$TEAM" 2>&1)" ||
 
 restart_merge() {  # one PATCH per gate run; ADO may show the old merge for a while after it
   local i r
-  [ -f "$RESTART" ] || no "merge-check: stale merge — restart the merge on PR $1, then rerun"
+  [ -n "$RESTART" ] && [ -f "$RESTART" ] \
+    || no "stale merge, restart not available for $TEAM_PR_PROVIDER — restart the merge on PR $1, then rerun"
   r="$(bash "$RESTART" "$1" 2>&1)" \
     || no "merge-check: stale merge, restart merge refused: $(tail -n 1 <<<"$r")"
   for ((i = 0; i < RECALC_TRIES; i++)); do

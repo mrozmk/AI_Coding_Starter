@@ -16,6 +16,7 @@ TW_LEGACY=Supervisor
 # A version bump makes `team-watch.sh start` restart running loops.
 TW_VERSION=1
 TW_SESSION_ROLES="$TW_ROLES Advisor"
+TW_ROUTE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 tw_role_ok() {
   local r
@@ -91,19 +92,15 @@ tw_alarm_target() {
 }
 
 # tw_sock_state <socket path> → `ok 0600` | `missing` | `refused mode <mode>` | `refused owner
-# <uid>` | `refused not-a-socket`; rc 0 only for ok. The same verdict team-watch-send.py enforces
-# before every send (exit 3): the messaging token is not enforced by the CLI, so the socket file's
-# 0600 mode and owner are the only boundary.
+# <uid>` | `refused not-a-socket`; rc 0 only for ok. The verdict is team-watch-send.py --check, the
+# same predicate the send enforces (exit 3): the messaging token is not enforced by the CLI, so the
+# socket file's 0600 mode and owner are the only boundary.
 tw_sock_state() {
-  local m u
-  [ -e "$1" ] || [ -L "$1" ] || { echo missing; return 1; }
-  if [ -L "$1" ] || [ ! -S "$1" ]; then echo "refused not-a-socket"; return 1; fi
-  m="$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null)" || m="?"
-  u="$(stat -c %u "$1" 2>/dev/null || stat -f %u "$1" 2>/dev/null)" || u="?"
-  m="$(printf '%04d' "$m" 2>/dev/null || echo "$m")"
-  [ "$u" = "$(id -u)" ] || { echo "refused owner $u"; return 1; }
-  [ "$m" = 0600 ] || { echo "refused mode $m"; return 1; }
-  echo "ok $m"
+  local st
+  st="$(python3 -I "$TW_ROUTE_LIB/team-watch-send.py" --check "$1" 2>/dev/null)"
+  local rc=$?
+  echo "${st:-missing}"
+  return "$rc"
 }
 
 tw_live() {  # tw_live <role> — active registration, pid alive (when known), socket present
