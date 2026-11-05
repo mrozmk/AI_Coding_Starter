@@ -8,7 +8,7 @@ allowed-tools: Bash(bash *team-setup.sh*), Bash(bash *team-mail-setup.sh*), Bash
 
 ## Input: $ARGUMENTS
 
-Runs in the **target** repo root. `<starter-root>` defaults to `~/Desktop/AI_Coding_Starter`. The installer is always called **from the starter** (`bash <starter-root>/.claude/lib/team-setup.sh <starter-root> <repo-root>`), because the target may not have it yet. `--check` stops after Step 2 (plan only, nothing written).
+Runs in the **target** repo root. `<starter-root>` defaults to `~/Desktop/AI_Coding_Starter`; when that path does not exist, ask for the starter clone's path instead of failing. The installer is always called **from the starter** (`bash <starter-root>/.claude/lib/team-setup.sh <starter-root> <repo-root>`), because the target may not have it yet. `--check` stops after Step 2 (plan only, nothing written).
 
 ## Guardrails (absolute)
 
@@ -38,16 +38,19 @@ Run `team-setup.sh` without `--check`; print its output verbatim. Exit 3 means "
 
 Ask via `AskUserQuestion`: `tracker` (jira|github|none), `pr_provider`; `github.repo` when **tracker or pr_provider** is github; only for tracker=github `project_owner`, `project_number`, then `project_id` via `gh project view <n> --owner <o> --format json --jq .id` (required separately) and the status field/option IDs via `gh project field-list <n> --owner <o> --format json` (show them; the user picks `started` / `delivered`); then `trunk`, `branch_types`, `clone_parent` (optional), `clone_name` (optional; must end with `{team}`/`{Team}`), `build_check`, `test_gate`, `gates` (auto|manual-mql5), `seed_files` (warn: no tracked files, `team-new` preflight rejects them), `required_tools`, `env_file_required`.
 
+Shapes and examples: `.claude/project-profile.json.example` (installed with the layer). Easy to get wrong: `build_check` is one shell command (a string); `test_gate` is a script path or `none`; `env_file_required` is `true|false`; `branch_types` and `required_tools` are non-empty arrays. `pr_provider: none` is reserved — the Step 7 check refuses it — so offer `github` or `azure-devops`; `github` needs a `github.com` `origin`.
+
 Write only with `jq --arg/--argjson` into `.claude/project-profile.json`: merge into the existing object, keep `schema`; a new file is `{"schema":1,"teams":{...}}`.
 
 ### Step 5b — Codex home
 
-The runner refuses to start a role when `.claude/codex-profile` has no value line (the installer copies only the commented template). A value line already present: keep it. Otherwise ask for the directory (recommend `~/.codex-<project>`) and write one line under the comments. Validate exactly as the runner does: first non-comment line, `~/` becomes `$HOME`, `cd <dir> && pwd -P` must succeed; otherwise STOP with the message.
+The runner refuses to start a role when `.claude/codex-profile` has no value line (the installer copies only the commented template). A value line already present: keep it. Otherwise ask for the directory (recommend `~/.codex-<project>`) and write it as an **absolute path** (expand `~/` yourself) — the channel step stores a `~/` value wrongly (docs/teams follow-up F20). Validate exactly as the runner does: first non-comment line, `~/` becomes `$HOME`, `cd <dir> && pwd -P` must succeed; otherwise STOP with the message.
 
 ## Step 5c — Channel (agent-mail)
 
 Binds the project to its agent-mail box through the machine registry `~/.agent-mail/projects.json` (schema, protocol and modes: `.agents/reference/agent-mail.md`). Skipped under `--check` unless the target already has `.claude/lib/team-mail-setup.sh`; then only its `--dry-run` is shown. Names come from `teams.channel` in the profile (`project_code`, `mail_suffix`, `advisor`); when the block is missing, ask for `project_code` and `mail_suffix` (recommend a short upper-case code for both) and write them with `jq` like Step 5.
 
+0. On a fresh install the vendored tool (`tools/agent_mail/`) is not committed yet, and `fresh`/`extend` refuse an uncommitted tool (the copy is named after its commit). This command never commits: when the dry-run refuses with `… is not committed in a git checkout`, STOP the step, ask the human to commit the installed files and the profile, and tell them to re-run `/setup:teams` (the install then reports `kept` and this step runs).
 1. Plan: `bash .claude/lib/team-mail-setup.sh <repo-root> --dry-run`; print it verbatim. The `mode` line says **reuse** (an entry whose `repo` is this checkout), **extend** (registry without such an entry) or **fresh** (no registry). A refusal (exit 1): show it and skip the step — never edit the registry by hand to get past it.
 2. **extend** while the registry already has entries: `AskUserQuestion` — "New box for this project (recommended)" or one option per existing key ("reuse `<KEY>` — `<repo>`"). A picked key: rerun the dry-run with `--key <KEY>`; it becomes **reuse**.
 3. Consent: `AskUserQuestion` Apply / Skip. **reuse** never creates a tool or a box and never rewrites the entry's `tool` (one tool per box) — say so. **extend** / **fresh** copy the vendored tool to `~/.agent-mail/tools/agent_mail-<sha>` (`create tool-copy`; `keep tool-copy` when an identical copy exists) and the entry points at that copy, never at the checkout. When the plan has an `offer roles` line, add the option "Apply and add the role names to the entry" (`--add-roles`).
