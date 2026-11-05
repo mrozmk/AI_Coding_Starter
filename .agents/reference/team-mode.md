@@ -253,8 +253,8 @@ TeamLead makes this wrapup selection by default (tier 1); the developer may make
 either counts as acceptance. A memory entry for `decisions.md`, `patterns.md` or `index.md` is the
 Advisor+Reviewer class and is asked as its own question (`prompts/wrapup.md` step 7), unless it
 comes as a hand-off with a ref the wrapup can check (step 6). Each created
-ticket carries the label `auto-created` and the line „Utworzony wg rekomendacji — weryfikacja
-Operatora przy starcie”. On another attempt reuse accepted drafts, markers and ids verbatim, never
+ticket carries the recommendation line and, only when the profile sets them, the labels of
+`teams.policy.tickets` (team-decision-model.md §3 → Tickets from recommendations). On another attempt reuse accepted drafts, markers and ids verbatim, never
 regenerate or renumber them. Only new/unaccepted recommendations return to selection; finish
 saved accepted operations even if there are no new recommendations.
 

@@ -38,7 +38,7 @@ timeout or silence is never consent.
 | Choice between plan variants that keep the AC | TeamLead | n | immediate | — | as above |
 | 🔶 rethink signal that changes the approach but keeps the AC | TeamLead | n | immediate | — | as above + policy log |
 | `/quick-change` Phase 0 hit on **size only** (no sensitive path, contract, schema, dependency) | TeamLead | n | immediate | — | as above + policy log; every other Phase 0 hit is an Operator override |
-| Wrapup menu: follow-up ticket apply/skip | TeamLead | n | immediate | — | notification; the wrapup creates the ticket (`auto-created`) |
+| Wrapup menu: follow-up ticket apply/skip | TeamLead | n | immediate | — | notification; the wrapup creates the ticket (labels per `teams.policy.tickets`) |
 | Wrapup menu: `domain/*`, `errors.md`, `api.md` entries that do not alter a historical decision | TeamLead | n | immediate | — | notification |
 | QA `ready-with-warnings` disposition, non-sensitive path | TeamLead | n | immediate | — | READY note line `QA warnings: accepted by TeamLead — <ref>` |
 | Permission prompt matching the plan and no ask/deny rule | TeamLead | n | immediate | — | team-mode.md §10 rule |
@@ -92,9 +92,10 @@ marked `fallback: Advisor no-reply` (`--author TeamLead-fallback`). Critical cla
 `waiting: operator` never fall back.
 
 **Tickets from recommendations.** The Supervisor and the Advisor create technical tickets without
-asking (wrapup follow-ups, QA findings, analysis). Each carries the label `auto-created` and the
-line „Utworzony wg rekomendacji — weryfikacja Operatora przy starcie”; the Operator verifies it
-when the work starts. Search the tracker for a duplicate first; no ticket for cosmetics. In a
+asking (wrapup follow-ups, QA findings, analysis). Each carries the recommendation line —
+`teams.policy.tickets.recommendation_line` from the profile, else "Created from a recommendation —
+the Operator verifies it when the work starts" — and the Operator verifies it when the work
+starts. Labels (`auto_label`, `path_labels`) only when the profile sets them; absent → no label. Search the tracker for a duplicate first; no ticket for cosmetics. In a
 wrapup the wrapup role creates the ticket after the selection; outside a wrapup the TeamLead asks
 the Supervisor or the Advisor.
 
