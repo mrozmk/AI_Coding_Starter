@@ -223,7 +223,7 @@ created; the tool copy shows as a `create tool-copy` (or `keep tool-copy`) line.
 
 **Reviewer** (Codex window of the project, `CODEX_HOME` = the entry's `codex_home`): its sandbox
 needs write access to the box directory and read access to the tool. First thing after start:
-`python3 -I <tool>/agent_mail.py --box "<box>" register --as Reviewer<suffix> --adapter codex-queue --thread <UUID from /status or $CODEX_THREAD_ID>`;
+`python3 -I -B <tool>/agent_mail.py --box "<box>" register --as Reviewer<suffix> --adapter codex-queue --thread <UUID from /status or $CODEX_THREAD_ID>`;
 then the Advisor (re)starts `team-mail.sh <KEY> deliver Reviewer<suffix>`. The Reviewer's cycle:
 `inbox --unread --ack → work → send --kind turn --awaiting Advisor<suffix> → ack`. For team
 escalations its first line is exactly `opinion: agree` or `opinion: disagree` (a critical ground

@@ -28,7 +28,10 @@ bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the ba
 - **Declared losses.** With `notifier: none`, alarms about the Supervisor itself and a dead tmux
   server reach nobody. Without a scheduled `sessions-health.sh`, a dead tmux server is noticed by
   nobody. Both are allowed; the role preflight prints them. `--print-scheduler launchd|cron`
-  prints an entry for you to install.
+  prints an entry for you to install. A scheduler starts it with a minimal `PATH`:
+  `sessions-health.sh` appends only the Homebrew directories (`/opt/homebrew/bin`,
+  `/usr/local/bin`), so when `tmux` or `jq` live anywhere else, set `PATH` in the entry itself
+  (launchd `EnvironmentVariables`, or a `PATH=` line in the crontab).
 
 Recorded deviations from the brief: the kit installs six files, not four or five (`notify.sh`
 and `kit.conf` were added, and the hook settings file is `role-hooks.settings.json`), and the
