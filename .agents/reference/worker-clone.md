@@ -1,9 +1,9 @@
-# Reference: the permanent SolTT worker clone (TT-849)
+# Reference: the permanent Worker clone
 
-The delegated Codex worker SolTT (`AGENTS.md` → **Delegated execution** → **Worker clone**) works
+The delegated Codex worker, Worker (`AGENTS.md` → **Delegated execution** → **Worker clone**) works
 in one permanent clone, handed from one assignment to the next by `.claude/lib/worker-next.sh`.
 It replaces a fresh 1.6–1.8 GB clone in `/private/tmp` per ticket once provisioned and verified.
-Merge of TT-849 alone is not operational readiness: resolve the TT-855 hardening findings before
+Merging the worker alone is not operational readiness: resolve its hardening findings before
 real assignments, then complete authorized provisioning, write-access checks and smoke. Record
 the planned two-assignment reuse check separately; do not report it as passed before execution.
 
@@ -11,9 +11,9 @@ the planned two-assignment reuse check separately; do not report it as passed be
 
 | What | Path |
 |---|---|
-| Clone | `$(dirname <main>)/$(basename <main>)-sol` — `~/Desktop/TakeTask/TakeTask.DN-sol` |
-| State | `<git dir>/taketask-worker/`: `provisioned.json`, `op.lock/`, `active/`, `history/` |
-| Artifacts | `$WORKER_ARTIFACTS/<id>` — default `~/.agent-mail/taketask-dn/worker/<id>` |
+| Clone | `$(dirname <main>)/$(basename <main>)-sol` — e.g. `~/code/acme-sol` |
+| State | `<git dir>/team-worker/`: `provisioned.json`, `op.lock/`, `active/`, `history/` |
+| Artifacts | `$WORKER_ARTIFACTS/<id>` — default `~/.agent-mail/worker/<id>` |
 
 State lives in the git dir: it never dirties the tree, needs no `.gitignore` entry and is invisible
 to `team_clone_dirs` and `team_ticket_checks`, which look only for `.agents/team/team.json`.
@@ -28,7 +28,7 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
    profile's `teams.trunk`, as in `AGENTS.md`). The clone is detached at the base; that commit is
    the first settled tip.
 2. Ensure the worker's Codex host can write to the clone and the selected artifacts root
-   (default `~/.agent-mail/taketask-dn/worker/`). Preserve existing approved mailbox and host
+   (default `~/.agent-mail/worker/`). Preserve existing approved mailbox and host
    temporary-directory access; these two task paths do not replace the host's whole permission
    profile. The worker runs with `CODEX_HOME=<codex-home>` (the value of `.claude/codex-profile`,
    as in `AGENTS.md`). Use the thread cwd or narrow writable roots; do not widen to `~` or full
@@ -53,11 +53,11 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
 
 | Command | Who | From | Lock |
 |---|---|---|---|
-| `init <base-ref>` | supervisor (OpusTT) | main checkout | `op.lock` |
+| `init <base-ref>` | supervisor (Supervisor) | main checkout | `op.lock` |
 | `start <key> <branch> <base-ref> --thread <id>` | supervisor | main checkout | `op.lock` |
 | `release <id> [--pr <n>] [--abandoned]` | supervisor | main checkout | `op.lock` |
 | `status` | either | clone or main checkout | none, exits 0 |
-| `check <id>` | either (SolTT before each stage) | clone or main checkout | none |
+| `check <id>` | either (Worker before each stage) | clone or main checkout | none |
 
 One assignment covers plan, implementation, both reviews and the gate. The next `start` comes only
 after the supervisor's `release`, after Stage 6 and a settled branch/PR. Before release, the
@@ -163,11 +163,11 @@ script never resets, cleans or deletes branches.
 ## Messages and the lock
 
 - Every assignment message carries the assignment id.
-- SolTT runs `bash .claude/lib/worker-next.sh check <id>` before each stage and before acting on
+- Worker runs `bash .claude/lib/worker-next.sh check <id>` before each stage and before acting on
   an assignment-specific message. A missing/mismatched id blocks that work and is reported to
   the supervisor. Do not apply a late response to the current tree. Unrelated coordination,
   Operator instructions and stop requests remain actionable under their existing authority.
-- SolTT never picks a ticket or a clone; an extra isolated clone needs an explicit supervisor order.
+- Worker never picks a ticket or a clone; an extra isolated clone needs an explicit supervisor order.
 
 ## Freezing base and tree for a phase
 
@@ -182,7 +182,7 @@ script never resets, cleans or deletes branches.
 - `check` verifies assignment identity, branch and base ancestry and prints hashes. It does not
   by itself prove that the reviewed tree stayed unchanged or that a review/gate completed.
 - A base or scope change after plan approval returns to the supervisor.
-- On a new assignment SolTT runs `/prime` in the clone first; `check` verifies the contract.
+- On a new assignment Worker runs `/prime` in the clone first; `check` verifies the contract.
 
 ## Artifacts
 

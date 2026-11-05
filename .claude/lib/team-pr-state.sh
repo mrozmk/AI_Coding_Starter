@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
-# PR merge state for the dashboard snapshot (TT-823): asks Azure DevOps, time-boxed and cached.
+# PR merge state for the dashboard snapshot: asks Azure DevOps, time-boxed and cached.
 # Sourced by team-snapshot.sh: relies on its err/age helpers and $W scratch dir, and on
-# team_ado_coords from team-lib.sh. Bash 3.2 compatible. pr_state runs in $(…), so the
-# "ADO timed out" flag that spans teams is the file $W/ado-timeout, not a variable.
+# team_ado_coords and pr_timebox from team-lib.sh. Bash 3.2 compatible. pr_state runs in $(…),
+# so the "ADO timed out" flag that spans teams is the file $W/ado-timeout, not a variable.
 # Env: TEAM_DASH_CACHE (dir reused between snapshots, set by serve.sh), TEAM_DASH_PR_SECS (4).
-
-# Stock macOS has no `timeout`; the child gets its own process group so az and its children die too.
-pr_timebox() {  # pr_timebox <secs> <cmd...> → exit 124 on timeout
-  perl -e '$t = shift; $p = fork // exit 1;
-    if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
-    $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
-    alarm $t; waitpid $p, 0; exit($? >> 8)' "$@"
-}
 
 # pr_state <clone dir> <team> <pr> → completed | abandoned | active | unknown
 pr_state() {

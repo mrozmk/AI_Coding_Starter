@@ -1,4 +1,4 @@
-"""Smoke test: the temp env isolates AGENT_COSTS_HOME (spec TT-813)."""
+"""Smoke test: the temp env isolates AGENT_COSTS_HOME."""
 import os
 import unittest
 

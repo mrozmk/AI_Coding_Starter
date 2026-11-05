@@ -1,0 +1,20 @@
+{
+  "_generated": "by operator-kit/install.sh from hooks/role-hooks.settings.json.tmpl — edit the template and rerun install.sh --apply, never this file",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog",
+        "hooks": [
+          {"type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/supervisor-notify.sh\"", "async": true}
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {"type": "command", "command": "bash \"{{KIT_DIR}}/hooks/mail-guard.sh\""}
+        ]
+      }
+    ]
+  }
+}

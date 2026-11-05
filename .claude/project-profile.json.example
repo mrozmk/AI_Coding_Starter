@@ -42,7 +42,7 @@
   "_language_doc": "pl | en. Asked first (Screen 0). Governs Claude <-> developer communication only; code, comments and commits stay English.",
   "language": "pl",
 
-  "_teams_doc": "Values the team harness (/start-team, /monitor, .claude/lib/team-*.sh) reads instead of hardcoding them. Written by /setup:teams; a project without this block refuses /start-team before any side effect. Read with `jq` only — never eval'd or sourced. tracker: jira | github | none (sets the ticket-key regex; none = local `L<n>` keys allocated by team-tracker.sh, zero tracker calls). github: REQUIRED when tracker=github or pr_provider=github, ignored otherwise — repo (`owner/repo`), project_owner, project_number plus the Project v2 IDs project_id, status_field_id and status_options.started/.delivered (read the IDs once with `gh project field-list <number> --owner <owner> --format json`). pr_provider: azure-devops | github (none is reserved and refused); github.repo is required for pr_provider=github too. trunk: the line team branches are cut from (base-ref = origin/<trunk>). branch_types: allowed <type>/<key>-<slug> prefixes. required_tools: must be on PATH before a team starts. clone_parent: OPTIONAL — where team clones live; omit it for the default (siblings of this repo). A leading ~ is expanded and spaces are allowed. clone_name: OPTIONAL — the clone directory template; omit it for the default `<repo dir>-{team}`. `{team}` is the team name, `{Team}` its capitalized form, and the placeholder must END the template (exactly one, no `/`) because the clone glob is a prefix. seed_files: copied into every clone (.env is chmod 600 when listed). env_file_required: refuse to start without a mode-600 .env. build_check: the build command, run with `bash -c` in the clone root. test_gate: a script path, or `none` to skip the gate. gates: auto | manual-mql5 (manual-mql5 = the gates are run by hand and the QA report says so). Values below are neutral examples — not any project's real ones.",
+  "_teams_doc": "Values the team harness (/start-team, /monitor, .claude/lib/team-*.sh) reads instead of hardcoding them. Written by /setup:teams; a project without this block refuses /start-team before any side effect. Read with `jq` only — never eval'd or sourced. tracker: jira | github | none (sets the ticket-key regex; none = local `L<n>` keys allocated by team-tracker.sh, zero tracker calls). github: REQUIRED when tracker=github or pr_provider=github, ignored otherwise — repo (`owner/repo`), project_owner, project_number plus the Project v2 IDs project_id, status_field_id and status_options.started/.delivered (read the IDs once with `gh project field-list <number> --owner <owner> --format json`). pr_provider: azure-devops | github | none (none = the PR layer is off: setup, the channel, the operator kit and the supervision roles work, team runs, PRs and merges refuse naming the setting); github.repo is required for pr_provider=github too. trunk: the line team branches are cut from (base-ref = origin/<trunk>). branch_types: allowed <type>/<key>-<slug> prefixes. required_tools: must be on PATH before a team starts. clone_parent: OPTIONAL — where team clones live; omit it for the default (siblings of this repo). A leading ~ is expanded and spaces are allowed. clone_name: OPTIONAL — the clone directory template; omit it for the default `<repo dir>-{team}`. `{team}` is the team name, `{Team}` its capitalized form, and the placeholder must END the template (exactly one, no `/`) because the clone glob is a prefix. seed_files: copied into every clone (.env is chmod 600 when listed). env_file_required: refuse to start without a mode-600 .env. build_check: the build command, run with `bash -c` in the clone root. test_gate: a script path, or `none` to skip the gate. gates: auto | manual-mql5 (manual-mql5 = the gates are run by hand and the QA report says so). Values below are neutral examples — not any project's real ones.",
   "teams": {
     "tracker": "github",
     "github": {
@@ -62,7 +62,42 @@
     "env_file_required": false,
     "build_check": "echo 'no build check configured'",
     "test_gate": "none",
-    "gates": "auto"
+    "gates": "auto",
+    "_channel_doc": "OPTIONAL — names and policy of the agent-mail channel between the supervision roles (Supervisor, TeamLead, Advisor, Reviewer), shared by the whole team; machine paths never go here (they live in the gitignored .agents/team/channel.local.json written by /setup:teams → channel). project_code: the registry key and message label for this project. mail_suffix: appended to every role name to form the recipient name (Advisor + XY = AdvisorXY), so two projects on one machine never share a recipient; may be empty. tmux_prefix: prefix of the role sessions' tmux names (default: the repo dir slug). advisor: pair (a Reviewer on a second-vendor model co-signs tier-2 decisions) | solo (the Advisor decides alone, every note says reviewer: none). notifier: osascript | notify-send | none. Defaults when a key is absent: mail_suffix empty, tmux_prefix the repo dir slug, advisor pair when codex is true else solo, notifier none. Read by .claude/lib/team-channel.sh (team_channel_load), never parsed elsewhere. Schema and protocol: .agents/reference/agent-mail.md.",
+    "_policy_doc": "OPTIONAL — project policy of the supervision model; every key optional, an absent key = the conservative behaviour named here, never another project's values. The values below are one project's choices, shown as examples to adopt consciously. sensitive_paths: globs whose changes make a team question tier 2 (Advisor pair) and a QA ready-with-warnings the Advisor's disposition; absent = the list in CLAUDE.md → Validation → Test policy. A judgement input for the TeamLead and the Advisor (attested, not proven) — no script enforces it yet. classes: the deterministic tier-1 waivers of an ask-tier prompt (merge_line, allow_offline, add_ask, prod_diagnose — prod_diagnose also needs dir, a relative directory of read-only diagnose scripts, and privileged, a regex of the subcommands that are not); deny, egress, the SQL guard and unreadable prompts are never waived. Each class is OFF until its enabled is exactly true here; the Operator's runtime switch (team-watch.sh mode class <name> off) can then narrow it, never widen it. prod_diagnose also needs dir and privileged. pr: self_approve (default false) lets /pr-merge vote approve on the user's own PR and arm auto-complete; off = it stops and names the missing approval or the running policy. tickets: labels and lines on tickets the Supervisor/Advisor create from recommendations; absent = no labels, the recommendation line is still written. closure: automatic ticket-closure rules the Supervisor applies; absent = no automatic closure. Human overview: docs/teams/06-permissions.md (starter repo).",
+    "policy": {
+      "sensitive_paths": ["src/payments/**", "src/auth/**", "src/webhooks/**", "src/licensing/**"],
+      "classes": {
+        "merge_line": {"enabled": false},
+        "allow_offline": {"enabled": false},
+        "add_ask": {"enabled": false}
+      },
+      "pr": {"self_approve": false},
+      "tickets": {
+        "auto_label": "auto-created",
+        "path_labels": {"brainstorm": "brainstorm", "quick": "quick-change", "team": "team", "analysis": "analysis"},
+        "recommendation_line": "Created from a recommendation — the Operator verifies it when the work starts",
+        "new_epic_when_none_fits": true
+      },
+      "closure": {
+        "done_after_release_minutes_without_5xx": 40,
+        "dry_run_max_days": 7,
+        "on_hold_after_days": 7
+      }
+    },
+    "channel": {
+      "project_code": "XY",
+      "mail_suffix": "XY",
+      "tmux_prefix": "xy",
+      "advisor": "pair",
+      "notifier": "none"
+    },
+    "_sessions_doc": "OPTIONAL — model and effort of each supervision role session, read by supervisor-sessions.sh when it launches the role (start, up, here). Absent = every role runs opus, the Supervisor at effort medium, the TeamLead and the Advisor at high. model: a Claude Code model name or alias; effort: low | medium | high | xhigh | max. An invalid value stops the launch with an error naming the key. A running window picks up a change only after stop <role> + start <role>. The values below equal the defaults.",
+    "sessions": {
+      "Supervisor": {"model": "opus", "effort": "medium"},
+      "TeamLead": {"model": "opus", "effort": "high"},
+      "Advisor": {"model": "opus", "effort": "high"}
+    }
   },
 
   "_jira_doc": "Jira sync settings. estimates: none | timetracking | <custom field id> — none = no time estimate is sent (sizes stay in the description); absent = the field remembered in .agents/memory/domain/jira.md, else $JIRA_ESTIMATE_FIELD, else timetracking. commit_drafts: reserved — committing .agents/jira/ is unsupported in v1.",

@@ -1,4 +1,4 @@
-"""runtime-mark.sh + stage-mark.sh: validation, opt-in, sub-agent drop, anchored end (TT-821)."""
+"""runtime-mark.sh + stage-mark.sh: validation, opt-in, sub-agent drop, anchored end."""
 import json
 import os
 import shutil
@@ -55,7 +55,7 @@ class RuntimeMarkTest(unittest.TestCase):
 
     def test_session_with_all_fields(self):
         self.mark("session", "--provider", "claude", "--session", SID.upper(), "--source",
-                  "team-run", "--name", "alfa-coder", "--ticket", "TT-821", "--team", "alfa",
+                  "team-run", "--name", "alfa-coder", "--ticket", "AB-821", "--team", "alfa",
                   "--role", "coder", "--run", "alfa-20261006-190718", "--attempt", "2",
                   "--parent", ENV_SID, "--cwd", "/work/clone")
         [line] = self.lines()
@@ -63,12 +63,12 @@ class RuntimeMarkTest(unittest.TestCase):
         self.assertRegex(at, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
         self.assertEqual(line, {
             "v": 1, "type": "session", "provider": "claude", "session": SID,
-            "source": "team-run", "name": "alfa-coder", "ticket": "TT-821", "team": "alfa",
+            "source": "team-run", "name": "alfa-coder", "ticket": "AB-821", "team": "alfa",
             "role": "coder", "run": "alfa-20261006-190718", "attempt": 2,
             "parent_session": ENV_SID, "cwd": "/work/clone"})
 
     def test_bad_optional_field_dropped(self):
-        self.mark("session", "--provider", "claude", "--session", SID, "--source", "mail-tt",
+        self.mark("session", "--provider", "claude", "--session", SID, "--source", "mail-role",
                   "--ticket", "tt-1", "--name", "a b")
         [line] = self.lines()
         self.assertNotIn("ticket", line)
@@ -76,7 +76,7 @@ class RuntimeMarkTest(unittest.TestCase):
 
     def test_bad_session_skips_line(self):
         proc = self.mark("session", "--provider", "claude", "--session", "not-a-uuid",
-                         "--source", "mail-tt")
+                         "--source", "mail-role")
         self.assertEqual(self.lines(), [])
         self.assertIn("runtime-mark:", proc.stderr)
 
@@ -88,13 +88,13 @@ class RuntimeMarkTest(unittest.TestCase):
     def test_team_json_fills_fields(self):
         path = os.path.join(self.home, "session.json")
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump({"ticket": "TT-821", "team": "alfa", "role": "planner",
+            json.dump({"ticket": "AB-821", "team": "alfa", "role": "planner",
                        "run": "alfa-20261006-190718", "attempt": 1}, fh)
         self.mark("session", "--provider", "codex", "--session", SID, "--source", "codex-bg",
                   "--team-json", path, "--role", "qa")
         line = self.lines()[0]
         self.assertEqual((line["ticket"], line["team"], line["role"], line["run"],
-                          line["attempt"]), ("TT-821", "alfa", "qa", "alfa-20261006-190718", 1))
+                          line["attempt"]), ("AB-821", "alfa", "qa", "alfa-20261006-190718", 1))
 
     def _team_json_ticket(self, data):
         path = os.path.join(self.home, "session.json")
@@ -108,15 +108,15 @@ class RuntimeMarkTest(unittest.TestCase):
         self.assertEqual(self._team_json_ticket({"ticket": "7", "cost_key": "o/r#7"}), "o/r#7")
 
     def test_team_json_empty_or_missing_cost_key_uses_ticket(self):
-        self.assertEqual(self._team_json_ticket({"ticket": "TT-821", "cost_key": ""}), "TT-821")
+        self.assertEqual(self._team_json_ticket({"ticket": "AB-821", "cost_key": ""}), "AB-821")
 
     def test_team_json_without_cost_key_uses_ticket(self):
-        self.assertEqual(self._team_json_ticket({"ticket": "TT-821"}), "TT-821")
+        self.assertEqual(self._team_json_ticket({"ticket": "AB-821"}), "AB-821")
 
     def test_missing_home_is_noop(self):
         missing = os.path.join(self.home, "nope")
         self.run_sh(MARK, ("session", "--provider", "claude", "--session", SID, "--source",
-                           "mail-tt"), AGENT_COSTS_HOME=missing)
+                           "mail-role"), AGENT_COSTS_HOME=missing)
         self.assertFalse(os.path.exists(missing))
 
     def test_bare_stage_end_is_noop(self):

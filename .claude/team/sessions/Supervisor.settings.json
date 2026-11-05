@@ -1,0 +1,55 @@
+{
+  "_comment": "Role profile for the Supervisor: an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. The launcher materialises it ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned, the operator kit's Notification and Stop hooks added); _samples feed session_profile_check.py. Project-specific named reads (cloud CLIs, local infra) go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/supervisor-sessions.md#supervisor",
+  "env": {
+    "TEAM_SESSION_ROLE": "Supervisor"
+  },
+  "permissions": {
+    "allow": [
+      "Read({{CLONES}}/**)",
+      "Bash(bash .claude/lib/team-mail.sh * inbox *)",
+      "Bash(bash .claude/lib/team-mail.sh * recipients)",
+      "Bash(bash .claude/lib/team-mail.sh * recipients *)",
+      "Bash(bash .claude/lib/team-mail.sh * ack *)",
+      "Bash(bash .claude/lib/team-mail.sh * send *)"
+    ],
+    "deny": [
+      "Bash(bash .claude/lib/team-answer.sh*)",
+      "Bash(bash .claude/lib/team-question.sh * answer *)",
+      "Bash(bash .claude/lib/team-escalate.sh*)"
+    ],
+    "ask": [
+      "Bash(cat .env*)",
+      "Read(**/.env*)"
+    ]
+  },
+  "_samples": {
+    "forbidden": [
+      "bash .claude/lib/team-answer.sh alfa coder yes",
+      "bash .claude/lib/team-question.sh alfa answer q-1 --tier 1",
+      "bash .claude/lib/team-escalate.sh alfa coder 2 q-1.md"
+    ],
+    "skills": [],
+    "allowed": [
+      "bash .claude/lib/team-automerge-check.sh alfa",
+      "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0",
+      "bash .claude/lib/team-watch.sh register",
+      "bash .claude/lib/supervisor-sessions.sh answer TeamLead --fp x yes"
+    ],
+    "reads": [
+      "bash .claude/lib/team-mail.sh --here inbox --for Supervisor --unread",
+      "bash .claude/lib/team-mail.sh --here recipients",
+      "bash .claude/lib/team-mail.sh --here send --to Advisor --kind info --body x"
+    ],
+    "secrets": [
+      "cat .env",
+      "cat .env.local",
+      "Read(.env)",
+      "Read(services/api/.env.local)"
+    ],
+    "writes": [
+      "git push --force origin main",
+      "rm -rf /",
+      "bash .claude/team/sessions/operator-kit/install.sh --apply"
+    ]
+  }
+}

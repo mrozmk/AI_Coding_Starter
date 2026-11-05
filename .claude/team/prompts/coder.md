@@ -23,6 +23,10 @@ A permission prompt (deploy, Azure DevOps or App Service change) is answered by 
 this session — wait for it; a rejected prompt is a material question → `blocked`. Never read
 secret values: setting names only (`--query "[].name"`).
 
+Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
+heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call
+short, one action. Never `rm -rf`: write to a new output directory instead.
+
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`
 in the same notes file as `- [coder {{ATTEMPT}}] <item> — <where>`.

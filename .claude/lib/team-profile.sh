@@ -205,14 +205,15 @@ team_gh_origin_require() {
 team_profile_require_supported() {
   [ -n "${TEAM_PROFILE_LOADED:-}" ] || team_profile_load
   # Every tracker runs (jira via MCP, github/none via team-tracker.sh) and both PR providers run
-  # (azure-devops via the team-lib.sh helpers, github via team-pr.sh). `none` is reserved: a team
-  # whose work can never be merged must be refused here, not halfway through a run.
+  # (azure-devops via the team-lib.sh helpers, github via team-pr.sh). `none` is a valid profile —
+  # the PR layer is off (setup, channel, kit and supervision work) — but every caller of this
+  # check publishes or merges a PR, so it is refused here, not halfway through a run.
   case "$TEAM_PR_PROVIDER" in
     azure-devops) ;;
     # Checked HERE, before the clone: a profile pointing at another repo would open the team's PRs
     # somewhere else, and finding that out after the clone/tmux/team.json is already a mess.
     github) team_gh_origin_require ;;
-    none) team_profile_die "pr_provider=none is reserved (no merge path)" ;;
+    none) team_profile_die "teams.pr_provider=none: the PR layer is off — team runs, PRs and merges need github or azure-devops" ;;
   esac
 }
 
@@ -263,7 +264,9 @@ team_gate_sentence() {
   if [ "$TEAM_TEST_GATE" = none ]; then
     printf '%s' "test gate: none — skip"
   else
-    # %q, not "%s": double quotes still expand $(…), backticks and $VAR inside the path.
-    printf 'bash %q' "$TEAM_TEST_GATE"
+    # %q, not "%s": double quotes still expand $(…), backticks and $VAR inside the path. The
+    # wrapper queues the run behind the machine gate lock; the project gate follows as a comment.
+    printf 'bash .claude/lib/test-gate.sh  # runs bash %q under the machine gate lock' \
+      "$TEAM_TEST_GATE"
   fi
 }

@@ -2,7 +2,7 @@
 #
 # test-gate.sh — unit-test gate with a known-failures baseline.
 #
-# WHY: Tests.UnitTests carried 174 stale failures on develop-netcore7 (CI had test steps removed),
+# WHY: Tests.UnitTests carried 174 stale failures on develop (CI had test steps removed),
 # so a plain `dotnet test` gate fails on every change. This gate fails only on NEW failures.
 # The baseline shrinks as tests are repaired; it must never grow except by an explicit owner decision.
 #
@@ -18,13 +18,13 @@ BASELINE="$ROOT/.agents/reference/test-baseline.txt"
 OUT="$(mktemp -d)"
 PROJECTS=(
   Tests/Tests.UnitTests
-  Tests/TakeTask.AF.RecalculateTodoTasks.UnitTests
-  Tests/TakeTask.AF.Reporting.UnitTests
-  Tests/TakeTask.AF.Users.UnitTests
-  Tests/TakeTask2.NoSQL.UnitTests
-  Tests/TakeTask.Workers.DenormalizeNoSQL.UnitTests
-  Tests/TakeTask.AF.Monitoring.UnitTests
-  Tests/TakeTask.AF.JobsRestarter.UnitTests
+  Tests/AcmeShop.AF.RecalculateTodoTasks.UnitTests
+  Tests/AcmeShop.AF.Reporting.UnitTests
+  Tests/AcmeShop.AF.Users.UnitTests
+  Tests/AcmeShop2.NoSQL.UnitTests
+  Tests/AcmeShop.Workers.DenormalizeNoSQL.UnitTests
+  Tests/AcmeShop.AF.Monitoring.UnitTests
+  Tests/AcmeShop.AF.JobsRestarter.UnitTests
 )
 
 for p in "${PROJECTS[@]}"; do

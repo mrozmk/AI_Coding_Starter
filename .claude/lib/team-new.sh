@@ -3,7 +3,7 @@
 #
 # Usage: bash .claude/lib/team-new.sh <team> <TT-key> <new-branch> <base-ref> [mode] [--ticket-file <f>]
 #   mode: brainstorm (default) | quick | cli — fixed for the ticket
-#   e.g. bash .claude/lib/team-new.sh alfa TT-790 feature/TT-790-slug origin/<trunk>
+#   e.g. bash .claude/lib/team-new.sh alfa AB-790 feature/AB-790-slug origin/<trunk>
 #
 # Result: ../<repo>-<team>/ on <new-branch>, per-developer files copied, .agents/team/team.json.
 # Next ticket in the same clone: team-next.sh. Runbook: .agents/reference/team-pipeline.md
@@ -32,6 +32,7 @@ team="$1"; key="$2"; branch="$3"; base="$4"; mode="${5:-brainstorm}"
 
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-modes.sh"
+. "$(dirname "$0")/team-anchor.sh"
 
 root="$(git rev-parse --show-toplevel)"
 # Before anything that creates a directory, switches a branch or writes team.json.
@@ -83,6 +84,7 @@ git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 team_seed_files "$root" "$dir"
 team_write_json "$dir" "$team" "$key" "$branch" "$base" "$mode" "$root"
 [ -z "$tfile" ] || team_copy_ticket "$tfile" "$dir"
+team_anchor_init "$root" "$team" "$dir" || echo "warn: anchor not written" >&2
 
 echo "clone:    $dir"
 echo "branch:   $branch (from $base)"

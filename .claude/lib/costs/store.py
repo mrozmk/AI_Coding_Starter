@@ -1,4 +1,4 @@
-"""SQLite store for the token-usage tool: schema, cursors, canonical usage (spec TT-813).
+"""SQLite store for the token-usage tool: schema, cursors, canonical usage.
 
 Python 3.9 stdlib only.
 """

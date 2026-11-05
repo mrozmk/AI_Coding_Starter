@@ -36,6 +36,8 @@ team_profile_load "$root"
 
 die() { echo "error: $2" >&2; exit "$1"; }
 
+[ "$TEAM_PR_PROVIDER" != none ] \
+  || die 2 "teams.pr_provider=none: the PR layer is off — team-pr.sh needs pr_provider=github"
 [ "$TEAM_PR_PROVIDER" = github ] \
   || die 2 "azure-devops uses the team-lib.sh helpers (team-pr.sh is github-only)"
 

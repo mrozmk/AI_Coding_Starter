@@ -1,0 +1,8 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Probe  ✔ Submit  →
+Review your answers
+ ● Pick fruits
+   → Apple, Cherry
+Ready to submit your answers?
+❯ 1. Submit answers
+  2. Cancel

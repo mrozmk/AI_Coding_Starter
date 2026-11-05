@@ -1,4 +1,4 @@
-"""Per-ticket token report: allocation, rollup, coverage, reconciliation, render (spec TT-813).
+"""Per-ticket token report: allocation, rollup, coverage, reconciliation, render.
 
 Python 3.9 stdlib only.
 """

@@ -39,8 +39,8 @@
      attachments). Fetch {{TICKET}} with `fields="parent"`, then fetch that parent's
      `summary,issuetype`; use it only when `issuetype.name == "Epic"`. Never use the run's ordinary
      Task as parent, or substitute a guessed/catch-all epic. An absent/non-Epic parent needs the
-     clarification in step 7. Apply `.agents/memory/domain/jira.md`: Marek as assignee and the
-     currently active TT sprint (read it from board 1; never hardcode a sprint).
+     clarification in step 7. Apply `.agents/memory/domain/jira.md`: its assignee and the
+     currently active sprint of its board (read it; never hardcode a sprint).
 7. No new/unaccepted recommendations → step 8 for saved accepted work still unfinished,
    otherwise step 9. For new/unaccepted recommendations ask **one** `AskUserQuestion` (2–4 options):
    - Before the selection question, resolve missing required fields. If there is no verified
@@ -77,7 +77,7 @@
      team wrapup flow (`.agents/team/session.json` has `role: "wrapup"`) has the HARD-GATE 1
      exception. Changed fields, description, parent or uploads return to step 7 for acceptance.
    - Follow step 4 for every create/comment; a `done` creation is never repeated. Use its saved
-     issue key for the accepted assign/sprint/upload operations. Re-read the active TT sprint
+     issue key for the accepted assign/sprint/upload operations. Re-read the active sprint
      before adding the issue, following the accepted active-sprint policy; no active sprint →
      report it, do not pick a future one.
    - Before **each** assign/sprint/upload write, save a separate pending intent with the issue

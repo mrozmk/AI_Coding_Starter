@@ -22,8 +22,8 @@ There is no planner, no QA and no wrapup after you.
    answer in this session. Routine decisions: decide and log them under `## Unattended decisions`
    in `.agents/team/runs/{{RUN}}/notes.md` (`- <decision> — <reason> — <file>`).
 5. Run the gates from `CLAUDE.md → Validation`: `{{BUILD_CHECK}}` and
-   {{TEST_GATE}}, plus `bash .claude/lib/tests/team-smoke.sh` when
-   `.claude/lib/team-*.sh` changed. Fix until green.
+   {{TEST_GATE}} (Bash `run_in_background: true` — it may queue behind another clone's gate),
+   plus `bash .claude/lib/tests/team-smoke.sh` when `.claude/lib/team-*.sh` changed. Fix until green.
 6. Write `.agents/team/runs/{{RUN}}/cli-{{ATTEMPT}}.md` in plain Polish: `## Co zmieniono`
    (2–3 sentences, no file names) and `## Co to daje` (1–2 sentences). `/monitor` reads this file.
 7. Run `/commit`, then `/push`.
@@ -34,6 +34,10 @@ There is no planner, no QA and no wrapup after you.
 A permission prompt (deploy, Azure DevOps or App Service change) is answered by the developer in
 this session — wait for it; a rejected prompt is a material question → `blocked`. Never read
 secret values: setting names only (`--query "[].name"`).
+
+Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
+heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call
+short, one action. Never `rm -rf`: write to a new output directory instead.
 
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`

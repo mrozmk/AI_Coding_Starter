@@ -1,4 +1,4 @@
-"""Incremental JSONL reader with a prefix-hash cursor (spec TT-813).
+"""Incremental JSONL reader with a prefix-hash cursor.
 
 Python 3.9 stdlib only.
 """

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Supervisor + sub-agents section of the dashboard snapshot (TT-783, split out by TT-826).
+# Supervisor + sub-agents section of the dashboard snapshot.
 # Sourced by team-snapshot.sh: relies on its globals (W, root, PROJ, SID, NOW, SUP_UNKNOWN) and
 # helpers (err, age, mtime, iso, jl_tail, jl_first_ts, skill_trail). Function definitions only.
 

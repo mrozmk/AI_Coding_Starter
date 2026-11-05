@@ -1,0 +1,24 @@
+{
+  "_comment": "Per-role listening of the supervision sessions (read by monitoring.sh, session-wake.sh, team-watch-deliver.sh, the monitoring-rearm Stop hook and the operator kit's mail-guard): team_watch = the role is a team-watch receiver; wake = the wake-loop sources with their grace seconds (team-prompts, mail, pending), empty = no loop; pause.pass = what still reaches a paused role (alarms: true, mail_threads: thread-name prefixes); start = steps of monitoring.sh start from a fixed allow-list; remind_secs = a source item already present at arm time wakes only after this long. The values below are example policy: the Operator may change them per project (a broken pass falls back to alarms plus incident- threads, never to nothing).",
+  "remind_secs": 1800,
+  "roles": {
+    "Supervisor": {
+      "team_watch": true,
+      "wake": {},
+      "pause": {"pass": {"alarms": true, "mail_threads": ["incident-"]}},
+      "start": []
+    },
+    "TeamLead": {
+      "team_watch": true,
+      "wake": {"team-prompts": 60, "mail": 90, "pending": 120},
+      "pause": {"pass": {}},
+      "start": ["mode tiers on"]
+    },
+    "Advisor": {
+      "team_watch": false,
+      "wake": {"mail": 20},
+      "pause": {"pass": {}},
+      "start": []
+    }
+  }
+}

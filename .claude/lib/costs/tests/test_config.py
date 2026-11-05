@@ -1,4 +1,4 @@
-"""Config load, slug, cwd matching and timestamp normalization (spec TT-813)."""
+"""Config load, slug, cwd matching and timestamp normalization."""
 import os
 import unittest
 
@@ -32,16 +32,16 @@ class ConfigTest(unittest.TestCase):
         self.assertFalse(cfg["projects"]["p"][0].startswith("~"))
 
     def test_slug_of_alfa_clone(self):
-        self.assertEqual(config.slug("/Users/mrozo/Desktop/TakeTask/TakeTask.DN-alfa"),
-                         "-Users-mrozo-Desktop-TakeTask-TakeTask-DN-alfa")
+        self.assertEqual(config.slug("/Users/alice/Desktop/AcmeShop/AcmeShop.DN-alfa"),
+                         "-Users-alice-Desktop-AcmeShop-AcmeShop-DN-alfa")
 
     def test_project_for_cwd_boundary_and_longest(self):
-        cfg = {"projects": {"main": ["/w/TakeTask.DN"], "alfa": ["/w/TakeTask.DN-alfa"],
-                            "deep": ["/w/TakeTask.DN/sub"]}}
-        self.assertEqual(config.project_for_cwd(cfg, "/w/TakeTask.DN-alfa/x"), "alfa")
-        self.assertEqual(config.project_for_cwd(cfg, "/w/TakeTask.DN"), "main")
-        self.assertEqual(config.project_for_cwd(cfg, "/w/TakeTask.DN/sub/y"), "deep")
-        self.assertIsNone(config.project_for_cwd(cfg, "/w/TakeTask.DNX"))
+        cfg = {"projects": {"main": ["/w/AcmeShop.DN"], "alfa": ["/w/AcmeShop.DN-alfa"],
+                            "deep": ["/w/AcmeShop.DN/sub"]}}
+        self.assertEqual(config.project_for_cwd(cfg, "/w/AcmeShop.DN-alfa/x"), "alfa")
+        self.assertEqual(config.project_for_cwd(cfg, "/w/AcmeShop.DN"), "main")
+        self.assertEqual(config.project_for_cwd(cfg, "/w/AcmeShop.DN/sub/y"), "deep")
+        self.assertIsNone(config.project_for_cwd(cfg, "/w/AcmeShop.DNX"))
         self.assertIsNone(config.project_for_cwd(cfg, "/private/tmp"))
 
     def test_norm_ts(self):
@@ -75,7 +75,7 @@ class ConfigTest(unittest.TestCase):
                          "2026-10-06T10:00:00.000Z")
 
     def test_ticket_key_forms(self):
-        for ok in ("TT-805", "owner/repo#4", "my-org/re.po_1#12", "repo:L4"):
+        for ok in ("AB-805", "owner/repo#4", "my-org/re.po_1#12", "repo:L4"):
             self.assertTrue(config.TICKET_RE.match(ok), ok)
         for bad in ("7", "L7", "owner/repo#", "a b:L1", "tt-1", "owner/repo#x"):
             self.assertFalse(config.TICKET_RE.match(bad), bad)

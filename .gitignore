@@ -193,3 +193,6 @@ htmlcov/
 
 # Team harness runtime state (/start-team) — never versioned; team-validate.sh requires a clean tree.
 .agents/team/
+# agent-mail: the tool's fallback box when called without --box (the client never uses it; real
+# boxes live in ~/.agent-mail/<slug>/). channel.local.json is covered by .agents/team/ above.
+.agents/agent-mail/

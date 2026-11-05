@@ -1,4 +1,4 @@
-"""Token usage per ticket — collect, bind, unassigned, report, summary (TT-813, TT-821, TT-980).
+"""Token usage per ticket — collect, bind, unassigned, report, summary.
 
 Usage:
   python3 cost.py collect [--project NAME]

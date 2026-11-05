@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print one JSON snapshot of the harness for the live dashboard (schema 1, spec TT-783).
+# Print one JSON snapshot of the harness for the live dashboard (schema 1).
 #
 # Usage: bash .claude/lib/team-snapshot.sh [--out <file>]
 #   e.g. bash .claude/lib/team-snapshot.sh | jq .teams
@@ -17,6 +17,7 @@ if [ $# -gt 0 ]; then
 fi
 
 . "$(dirname "$0")/team-lib.sh"
+. "$(dirname "$0")/team-escalate-lib.sh"
 . "$(dirname "$0")/team-roles.sh"
 . "$(dirname "$0")/team-modes.sh"
 . "$(dirname "$0")/team-pr-state.sh"

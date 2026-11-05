@@ -1,4 +1,4 @@
-"""Paths, config and timestamp normalization for the token-usage tool (spec TT-813).
+"""Paths, config and timestamp normalization for the token-usage tool.
 
 Python 3.9 stdlib only.
 """

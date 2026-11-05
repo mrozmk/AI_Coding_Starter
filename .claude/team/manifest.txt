@@ -8,10 +8,16 @@
 # Paths are relative to the starter root. Read only by `.claude/lib/team-setup.sh` and the
 # sync playbook (`.claude/starter-sync-playbook.md` → Category A); the harness tests are
 # deliberately out of the distribution — a project runs the harness, it does not re-test it.
+#
+# Provenance: the team layer is ported from a private project; `source:` pins the upstream revision
+# the last re-sync was taken from (a delta port starts from there; the smoke suite is the oracle).
+# source: taketask ea141a197
 
 # --- not distributed ----------------------------------------------------------------------
 !.claude/lib/tests/**
 !.claude/lib/costs/tests/**
+# the human overview of the team layer stays in the starter; projects get the .agents/reference contracts
+!docs/teams/**
 
 # --- shared: the project's own copy wins; a difference is reported for a hand merge --------
 shared .claude/lib/codex-bg.sh
@@ -34,6 +40,7 @@ own .claude/commands/dashboard.md
 own .claude/commands/monitor.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
+own .claude/commands/mail-role.md
 own .claude/dashboard/dashboard.sh
 own .claude/dashboard/index.html
 own .claude/dashboard/serve.sh
@@ -43,6 +50,7 @@ own .claude/hooks/guard-team-question.sh
 own .claude/hooks/lib/guard_destructive_sql.py
 own .claude/hooks/lib/leak-patterns.sh
 own .claude/hooks/team-attention.sh
+own .claude/hooks/supervisor-notify.sh
 own .claude/lib/costs/bindings.py
 own .claude/lib/costs/claude_adapter.py
 own .claude/lib/costs/codex_adapter.py
@@ -90,7 +98,16 @@ own .claude/lib/team_prompt_check.py
 own .claude/lib/worker-lib.sh
 own .claude/lib/worker-next.sh
 own .claude/project-profile.json.example
-own .claude/team/escalation.local.json.example
+own .claude/team/escalation.local.json.tmpl
+own .claude/team/sessions/operator-kit/README.md
+own .claude/team/sessions/operator-kit/install.sh
+own .claude/team/sessions/operator-kit/escalate.sh
+own .claude/team/sessions/operator-kit/notify.sh
+own .claude/team/sessions/operator-kit/sessions-health.sh
+own .claude/team/sessions/operator-kit/kit.conf.tmpl
+own .claude/team/sessions/operator-kit/hooks/mail-guard.sh
+own .claude/team/sessions/operator-kit/hooks/role-hooks.settings.json.tmpl
+own .claude/team/watch.local.json.tmpl
 own .claude/team/manifest.txt
 own .claude/team/pr/azure-devops-body-get.md
 own .claude/team/pr/azure-devops-body-set.md
@@ -117,3 +134,72 @@ own .claude/team/tracker/jira-read.md
 own .claude/team/tracker/jira-wrapup.md
 own .claude/team/tracker/none-read.md
 own .claude/team/tracker/none-wrapup.md
+
+# --- own: question ledger, delivery, escalation, gate lock, audit (re-sync at the source pin) ---
+own .agents/reference/escalation-fallback.md
+own .agents/reference/team-advisor.md
+own .agents/reference/team-decision-model.md
+own .agents/reference/team-questions.md
+own .claude/commands/pr-merge.md
+own .claude/hooks/guard-destructive-sql.sh
+own .claude/hooks/guard-team-egress.sh
+own .claude/hooks/lib/guard_team_egress.py
+own .claude/lib/gate-lock.sh
+own .claude/lib/gate_lock.py
+own .claude/lib/team-anchor.sh
+own .claude/lib/team-audit.sh
+own .claude/lib/team-automerge-check.sh
+own .claude/lib/team-question-lib.sh
+own .claude/lib/team-remode.sh
+own .claude/lib/team-send-lock.sh
+own .claude/lib/team_audit.py
+own .claude/lib/team_prompt.py
+own .claude/lib/team_prompt_classes.py
+own .claude/lib/team_prompt_settings.py
+own .claude/lib/team_settings_diff.py
+own .claude/lib/team_transcript.py
+own .claude/lib/test-gate.sh
+own .claude/team/audit.json
+own .claude/team/prompts/retro-run.md
+
+# --- agent-mail channel — vendored tool, source: mrozmk/jarvis c9c407c (tools/agent_mail/) -------
+!tools/agent_mail/tests/**
+own tools/agent_mail/README.md
+own tools/agent_mail/__init__.py
+own tools/agent_mail/agent_mail.py
+own tools/agent_mail/agent_mail_deliver.py
+own tools/agent_mail/agent_mail_store.py
+own tools/agent_mail/mail_md.py
+own .claude/lib/team-mail.sh
+own .claude/lib/team-mail-setup.sh
+own .claude/lib/team-channel.sh
+own .agents/reference/agent-mail.md
+
+# --- team-watch daemon, routing, wake loops, pause (re-sync at the source pin) -----------------------
+own .claude/lib/team-watch-lib.sh
+own .claude/lib/team-watch-route.sh
+own .claude/lib/team-watch-deliver.sh
+own .claude/lib/team-watch-inputs.sh
+own .claude/lib/team-watch-send.py
+own .claude/lib/team-watch-signals.jq
+own .claude/lib/team-watch-poll.sh
+own .claude/lib/session-wake.sh
+own .claude/lib/monitoring.sh
+own .claude/hooks/team-watch-session.sh
+own .claude/hooks/monitoring-rearm.sh
+own .claude/team/sessions/monitoring.json
+own .agents/reference/team-watch.md
+# the source's alert-intake outbox is not ported (decision): no file may ship under its name
+!.claude/lib/team-watch-outbox.sh
+
+# --- role sessions: profiles, launcher, bootstrap hook and commands ---------------------------------
+own .claude/team/sessions/Supervisor.settings.json
+own .claude/team/sessions/TeamLead.settings.json
+own .claude/lib/session_profile_check.py
+own .claude/lib/supervisor-sessions.sh
+own .claude/hooks/session-role.sh
+own .claude/commands/session-role.md
+own .claude/commands/monitoring.md
+own .claude/commands/sessions-up.md
+own .claude/commands/team-watch.md
+own .agents/reference/supervisor-sessions.md

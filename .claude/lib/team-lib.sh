@@ -97,6 +97,92 @@ team_pane() {
   tmux capture-pane -p -t "=$1:" 2>/dev/null | sed '/^[[:space:]]*$/d' | tail -n "${2:-15}" || true
 }
 
+# Pane plus scrollback, wrapped lines joined: a long command's start scrolls off the visible pane.
+team_pane_history() {
+  tmux capture-pane -p -J -S -"${2:-200}" -t "=$1:" 2>/dev/null || true
+}
+
+# stdin → stdout with labelled secret values masked. Pattern-based: the floor for signals, not a
+# guarantee — an unlabelled bare token passes.
+team_redact() {
+  perl -pe '
+    s/\b(password|passwd|pwd|secret|token|apikey|api_key|accountkey|sharedaccesskey|sig
+        |connectionstring|client_secret)(\s*[=:]\s*)("[^"]*"|\x27[^\x27]*\x27|[^\s;&"\x27]+)
+      /$1$2***/gix;
+    s/(--(?:password|secret|token|sas-token|connection-string|account-key))([ =])
+      ("[^"]*"|\x27[^\x27]*\x27|\S+)/$1$2***/gix;
+    s/\b(Bearer\s+)\S+/$1***/gi;'
+}
+
+# team_pane_anchor <session> → the line naming the open question: the last one ending in `?`, else
+# the line after `Bash command`, else the last non-empty line; trimmed, redacted, ≤ 160 chars.
+team_pane_anchor() {
+  local pane a
+  pane="$(team_pane "$1" 25)"
+  a="$(grep -E '\?[[:space:]]*$' <<<"$pane" | tail -n 1)" || true
+  [ -n "$a" ] || a="$(awk 'f {print; exit} /Bash command/ {f = 1}' <<<"$pane")" || true
+  [ -n "$a" ] || a="$(tail -n 1 <<<"$pane")"
+  a="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<<"$a" | team_redact)"
+  printf '%s' "${a:0:160}"
+}
+
+# Usage: team_pane_scroll <pane id> [lines] — the pane plus scrollback (a long command's
+# start scrolls off the visible pane), empty lines dropped. The parser reads this capture.
+team_pane_scroll() {
+  tmux capture-pane -p -J -S -"${2:-200}" -t "$1" 2>/dev/null | sed '/^[[:space:]]*$/d' || true
+}
+
+# Usage: team_pane_gen <session> → "<pane_id>@<session_created>"; a replaced session is a new value.
+team_pane_gen() {
+  local g
+  g="$(tmux display-message -p -t "=$1:" '#{pane_id}@#{session_created}' 2>/dev/null)" || return 1
+  [ -n "$g" ] || return 1
+  echo "$g"
+}
+
+# Usage: team_role_transcript <clone> <session_id> → the role's Claude transcript path, or "-".
+team_role_transcript() {
+  case "${2:--}" in -) echo - ;;
+    *) echo "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(team_project_slug "$1")/$2.jsonl" ;;
+  esac
+}
+
+# Usage: team_mode_ok <main root> <tier> <send> — the shared tiers/answering state of the main
+# checkout (team-watch.sh mode); absent or unreadable = both on. Prints the refusal, rc 1.
+team_mode_ok() {
+  local mode
+  mode="$(jq -r '"\(.tiers // "on") \(.answering // "on")"' \
+    "$1/.agents/team/watch/state.json" 2>/dev/null)" || mode="on on"
+  case "$mode" in
+    *" off") [ "$2" = 3 ] && [ "$3" = none ] || { echo "answering off"; return 1; } ;;
+  esac
+  case "$mode" in
+    "off "*) [ "$2" = 3 ] || { echo "tiers off"; return 1; } ;;
+  esac
+}
+
+TEAM_CLASSES="merge-line allow-offline add-ask prod-diagnose"
+
+# Usage: team_class_on <main root> <class> — the class is enabled in the committed profile
+# (teams.policy.classes.<class with _>.enabled == true; prod-diagnose also names dir + privileged)
+# AND its runtime switch is not off (absent state file/key = on, unreadable = off). Same predicate as
+# team_prompt_classes.py class_on.
+team_class_on() {
+  local f="$1/.agents/team/watch/state.json" v
+  jq -e --arg k "${2//-/_}" '.teams.policy.classes[$k] | type == "object" and .enabled == true
+    and ($k != "prod_diagnose" or ((.dir | type) == "string" and (.privileged | type) == "string"))' \
+    "$1/.claude/project-profile.json" >/dev/null 2>&1 || return 1
+  [ -e "$f" ] || return 0
+  [ -f "$f" ] || return 1
+  # Not `// "on"`: that reads an explicit false/null as missing.
+  v="$(jq -r --arg n "$2" 'if type != "object" then "off"
+    elif has("classes") | not then "on"
+    elif (.classes | type) != "object" then "off"
+    elif (.classes | has($n)) | not then "on"
+    elif .classes[$n] == "on" then "on" else "off" end' "$f" 2>/dev/null)" || return 1
+  [ "$v" = on ]
+}
+
 # One regex for team-answer and the dashboard: they must agree on "prompt open".
 team_prompt_open() {
   team_pane "$1" 25 | grep -Eq 'Do you want to (proceed|make this edit|create|allow)|❯ *1\. Yes'
@@ -117,6 +203,11 @@ team_clone_dissociated() {
     "$(git -C "$1" remote get-url origin)" "$2"
 }
 
+# An AskUserQuestion menu (also a Yes/No one, which team_prompt_open matches too).
+team_menu_open() {
+  team_pane "$1" 40 | grep -qF 'Enter to select'
+}
+
 # Usage: team_clone_dirs <main root> — prints each clone's .agents/team dir that has team.json.
 team_clone_dirs() {
   local d prefix
@@ -129,7 +220,8 @@ team_clone_dirs() {
 # Claude Code keeps transcripts under the repo path with every non-alphanumeric char → '-'.
 team_project_slug() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
 team_claude_project_dir() {
-  echo "${TEAM_DASH_PROJECT_DIR:-$HOME/.claude/projects/$(team_project_slug "$1")}"
+  local cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  echo "${TEAM_DASH_PROJECT_DIR:-$cfg/projects/$(team_project_slug "$1")}"
 }
 
 # team_non_memory_files <from> <to> → changed paths outside .agents/memory/; rc 1 if the diff failed.
@@ -158,6 +250,14 @@ team_records() {
   ( cd "$d" && ls -1 -- "$2-$3-"*.json 2>/dev/null | sort -t- -k3 -n | sed "s|^|$d/|" ) || true
 }
 
+# team_newest_record <team dir> <run> <role> <attempt> → basename of the newest record, or empty.
+# The sender runs outside the clone, so the team dir is explicit, not team_dir().
+team_newest_record() {
+  local d="$1/runs/$2"
+  ( cd "$d" 2>/dev/null && ls -1 -- "$3-$4-"*.json 2>/dev/null | sort -t- -k3 -n | tail -n 1 ) \
+    || true
+}
+
 team_next_seq() {
   local last
   last="$(team_records "$1" "$2" "$3" | tail -n 1)"
@@ -182,7 +282,7 @@ team_q_lock() {
   max=$(( ${TEAM_QUESTION_LOCK_SECS:-30} * 5 ))
   until mkdir "$q.lock" 2>/dev/null; do
     if [ "$tries" -ge "$max" ]; then
-      p="$(cat "$q.lock/pid" 2>/dev/null || echo none)"; id="$(basename "$q" .md)"
+      p="$(cat "$q.lock/pid" 2>/dev/null || echo none)"; id="$(basename "$q" .md)"; id="${id#.}"
       kill -0 "$p" 2>/dev/null || hint=" — stale: team-question.sh $2 unlock $id"
       echo "error: $id busy (lock held by pid $p)$hint" >&2
       return 1
@@ -193,16 +293,19 @@ team_q_lock() {
 }
 
 # Usage: team_q_state <q file> → "<state>\t<tier>\t<author>"
-# Reads the last ## Answer / ## Revoked plus any ## Escalation; once FableTT reported the Operator
-# asked (`waiting:`), only a final outcome leaves waiting-operator.
+# Reads the last ## Answer / ## Revoked plus any ## Escalation; once Advisor reported the Operator
+# asked (`waiting:`), only a final outcome leaves waiting-operator. Answer states:
+# consumed|sent|not-sent-stale|not-sent|unknown|failed|pending|recorded — an unknown
+# `delivery:` value reads `unknown`, never `sent`.
 team_q_state() {
   awk '
     /^## /     { sec = substr($0, 4)
-                 if (sec == "Answer") { h = "answer"; tier = ""; author = ""; dl = "" }
+                 if (sec == "Answer") { h = "answer"; tier = ""; author = ""; dl = ""; cf = 0 }
                  if (sec == "Revoked") { h = "revoked"; dl = "" }
                  next }
     sec == "Answer" && /^tier: /   { tier = substr($0, 7) }
     sec == "Answer" && /^author: / { author = substr($0, 9) }
+    sec == "Answer" && /^confirmed: yes/ { cf = 1 }
     (sec == "Answer" || sec == "Revoked") && /^delivery: / { dl = substr($0, 11) }
     sec == "Escalation" && /^(started|reping|retier|resumed): / {
       esc = asked ? "waiting-operator" : "escalating"; next }
@@ -211,8 +314,10 @@ team_q_state() {
     sec == "Escalation" && /^outcome: / { esc = asked ? "waiting-operator" : "escalated" }
     END {
       if (h == "revoked") st = "revoked"
-      else if (h == "answer") st = (dl == "pending") ? "pending" : (dl ~ /^failed/) ? "failed" \
-        : (dl == "recorded only") ? "recorded" : "sent"
+      else if (h == "answer") st = (dl == "pending") ? "pending" : (dl == "sent") \
+        ? (cf ? "consumed" : "sent") : (dl ~ /^not sent — stale/) ? "not-sent-stale" \
+        : (dl ~ /^not sent — /) ? "not-sent" : (dl ~ /^unknown — /) ? "unknown" \
+        : (dl ~ /^failed/) ? "failed" : (dl == "recorded only") ? "recorded" : "unknown"
       else st = (esc != "") ? esc : "open"
       printf "%s\t%s\t%s\n", st, (tier == "" ? "-" : tier), (author == "" ? "-" : author)
     }' "$1"
@@ -375,4 +480,14 @@ team_copy_ticket() {
   mkdir -p "$dir/.agents/team"
   cp "$file" "$dir/.agents/team/ticket.json"
   cp "$src/ticket.md" "$dir/.agents/team/ticket.md"
+}
+
+# Stock macOS has no `timeout`; the child gets its own process group so az and its children die too.
+# A child killed by a signal exits 128+signal like a shell would, never 0: `$? >> 8` alone made a
+# killed `claude -p` read as a finished retro. The one copy: tw_timebox (team-watch-lib) calls it.
+pr_timebox() {  # pr_timebox <secs> <cmd...> → exit 124 on timeout, 128+n when killed by signal n
+  perl -e '$t = shift; $p = fork // exit 1;
+    if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
+    alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
 }

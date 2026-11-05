@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage hook for the token-usage tool (TT-821): a Skill call or a typed /command starts a stage,
+# Stage hook for the token-usage tool: a Skill call or a typed /command starts a stage,
 # the exact end-step Bash call ends it. Only a hook payload carries agent_id, so sub-agents are
 # filtered here. Synchronous (async hooks can reorder marks); prints nothing; always exits 0.
 set -uo pipefail

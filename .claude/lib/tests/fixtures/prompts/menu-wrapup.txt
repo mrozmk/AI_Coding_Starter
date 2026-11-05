@@ -1,0 +1,25 @@
+  linii 172. Raz padł w pełnym test-gate na czystym drzewie QA AB-1033 (zmiana tylko w plikach md), 5 z 5 zielony w
+  izolacji i zielony w kolejnym pełnym przebiegu. Test oparty na czasie.
+  [wrapup gamma-20261019-213055 create-3]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☐ Wrapup  ✔ Submit  →
+│ Które rekomendacje zastosować? Zaznaczony wybór przyjmuje dokładnie szkice pokazane wyżej (bez drugiego dry-runu) wraz
+│ z domyślnymi: parent Epic AB-780 — AI-harness, assignee Alice Ames, aktywny sprint tablicy 1. Nic nie zaznaczone =
+│ pomiń wszystko.
+❯ 1. [ ] mem-1: pamięć (3 pliki)
+         harness.md (poprawka AB-1033 + fakty), decisions.md (stała decyzja Fable 429 → Opus high), index.md (wiersz
+         When to Read); commit + push do PR 8587
+  2. [ ] create-1: finder-model.sh .finished
+         Task, parent AB-780 — AI-harness: nie zatrzymywać poprawnego runu (brak finished, podkatalog sesji, sprawdzenie
+         powtórzeń)
+  3. [ ] create-2: porównanie odcisku po fallbacku
+         Task, parent AB-780 — AI-harness: fingerprint compare po ponownym finderze/fallbacku 429 + linia FALLBACK w
+         qa.md i team-mode.md
+  4. [ ] create-3: flaky test ReloadLock
+         Task (Backend), parent AB-780 — AI-harness: ustabilizować test czasowy ApplicationConfigStorageTests.ReloadLock
+  5. [ ] Type something
+     Submit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  6. Chat about this
+Enter to select · ↑/↓ to navigate · Esc to cancel
+───────────────────────────────────────────────────────────────────────────────────────────────────────── gamma-wrapup ─

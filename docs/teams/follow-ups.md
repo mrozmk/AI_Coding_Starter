@@ -1,0 +1,74 @@
+# Follow-ups from the source
+
+The team layer was ported from a private project at one pinned revision (the `source:` line in
+`.claude/team/manifest.txt`). This page lists what that project had **in flight** at the pin, what
+is an agreed **target** rather than running code, and what was **not ported by design**. Nothing
+here is assumed to exist. An item is implemented only when a page or contract says so with its
+tests.
+
+## In flight or target at the pin
+
+| # | Item | State | Where it would land |
+|---|---|---|---|
+| F1 | **Gate-lock process groups.** Every workload starts through a launcher that becomes the leader of a recorded process group. Owned identities (pid + UTC start time) are recorded at spawn. Release and reclaim require every recorded group to have ended. Every wait is bounded. A descendant that detaches itself is **outside** the guarantee, and that is written as a boundary | in progress upstream | a delta port of `gate-lock.sh` / `gate_lock.py` |
+| F2 | **tmux as an execution hand-over on tier 1.** No tier-1 auto-answer for any tmux level that can send keys, run commands or start processes. The exception is exact, proven read-only argv (`list-sessions`, `has-session`, `capture-pane -p`, `display-message -p`, each in one shape) | in progress upstream | the tier-1 prompt check |
+| F3 | **Dynamic words on tier 1.** Any active `$VAR`, `${…}`, `$(…)` or backtick refuses tier 1, nothing is executed or guessed, and nested levels are scanned again | unmerged upstream, waits on F2 | with F2 |
+| F4 | **Wake-loop hardening.** The wake text is redacted and marked as data. The loop re-arms on a socket-token change, a hung loop with a live pid is replaced, pane probes reuse the prompt parser, and the silence threshold is at least one slow round | in progress upstream (target AC) | the wake loop |
+| F5 | **Delivery finish re-check.** `finish` re-derives the event for a free-text answer and requires the visible menu to belong to the bound event; the ledger shape of `finish` is documented | in progress upstream (target AC) | the question ledger |
+| F6 | **Per-class escalation deadlines.** A blocking Advisor-list question past 60 min goes to the Supervisor for the Operator's list; a non-blocking one past 30 min becomes a follow-up | **target**, never implemented | the escalation layer; documented as a target in [02](02-decision-model.md) |
+| F7 | **Pilot evidence.** Pickup p50/max per role, wake-up counts, and routing READY straight to the Supervisor when the TeamLead is unpicked | runbook | acceptance |
+| F8 | **Policy-log ownership.** The TeamLead is append-only and the Advisor may replace one promoted line with a pointer. Both scopes are now stated in [02](02-decision-model.md#the-policy-log) | resolved in the docs | — |
+| F17 | **Role-session prompts answered by key.** The Supervisor answers a role session's own menu through the sender, with a session-bound ledger, not by pretending the role is a team | planned with the role-session layer | the role-session layer |
+| F18 | **Script enforcement of `teams.policy.sensitive_paths`** (merge gate, classifier). v1 uses the list as a judgement input only | open | later |
+
+## Operational and platform follow-ups
+
+| # | Item | State |
+|---|---|---|
+| F9 | The source project becomes a downstream of this starter for the team layer, so fixes are made once | decided in principle; its own plan |
+| F10 | Detecting a PR whose host auto-complete was armed outside the gate (Azure DevOps) | not ported; belongs behind the azure-devops PR provider |
+| F11 | `gate_lock_scope: machine|project`. Today one build gate runs at a time per machine, by design, and the wait is visible | later |
+| F12 | Linux hosts: unsupported today. BSD-only calls break the layer there: `stat -f %m` in `team-watch-lib.sh` (`tw_mtime`, the daemon), `team-question.sh` (the ledger's age check), `team-run.sh` (the runner lock age) and `team-snapshot.sh` (`mtime`), and `stat -f %Lp` in `team-lib.sh` (the `.env` mode check). Still to verify after the port: `flock` semantics, `ps` formats, `SIGALRM`, the messaging socket, cron/systemd for the health check. The source never ran there | open: port the stat sites (GNU `stat -c` fallback), then verify |
+| F13 | The cross-session messaging socket is an observed, undocumented interface. Re-verify on every Claude Code upgrade | standing check |
+| F16 | The vendored agent-mail tool is re-synced from its upstream by a manual delta, with its tests as the oracle | standing procedure ([`agent-mail.md`](../../.agents/reference/agent-mail.md)) |
+| F19 | The memory-layer key `czytelnik:` (the reader of a recommended memory entry) is Polish in a public template. It is read by the reflection protocol and the memory guard outside the team layer, so renaming it needs every reader changed together plus a migration of existing entries | a separate starter item, not part of the team-layer port |
+| F20 | The channel step stores a `~/…` Codex home as `$HOME/~/…` (`team-mail-setup.sh`: the `~` in the prefix strip is itself expanded), so the registry entry and `channel.local.json` carry a wrong `codex_home`. Workaround: an absolute path in `.claude/codex-profile` | done: the literal `~/` is stripped by length; mail smoke 7d |
+| F21 | On a fresh install the channel step refuses an uncommitted vendored tool (the copy is named after its commit), while `/setup:teams` never commits, so one run cannot finish setup. Naming the copy after the content removes both this stop and F22 | done: copies are named by a content hash; mail smoke 7c |
+| F22 | The tool copy was named after the checkout's commit, so a second project with identical tool content got a second copy | done with F21 |
+| F23 | `pr_provider: none` was reserved and refused by the profile check | done: `none` is valid and means the PR layer is off; team runs, PRs and merges refuse naming the setting |
+| F24 | `--key <KEY>` reuse of another entry takes that entry's suffix and recipients without a warning when the profile's `mail_suffix` differs | done: refused with a message naming both suffixes; mail smoke 7e |
+| F25 | The operator kit's `--dry-run` prints `skip … escalation.local.json (operator kit not installed)` although `--apply` writes it | done: the dry-run prints `plan … written by --apply`; kit smoke (I) |
+| F26 | The purity test does not scan the root seed files the installer generates (`.claude/codex-profile` carried a ticket key until 2026-11-05) | done: the scope covers the seeded single files; a reviewer agent's ticket key was removed with it |
+| F28 | The `gates` enum carries one toolchain's value (`manual-mql5`, MT5 compile and backtest) in the engine schema (`team-profile.sh`, `team-pr-render.sh`); it predates the port | later: move toolchain gates behind a generic project command |
+| F29 | Under `advisor: solo` the channel step still writes `codex_roles: ["Reviewer"]` into a new registry entry and offers it with `--add-roles` (`team-mail-setup.sh`: `CODEX_ROLES` ignores the advisor mode). Nothing reads it to start a Reviewer, so it is a misleading entry, not a behaviour defect | done: under solo a new entry gets `codex_roles: []` and `--add-roles` offers no Reviewer; pair unchanged; mail smoke (2), (6), (8) |
+| F30 | `team-channel.sh turn <From> <To> --kind <k>` honours only `info`. Any other `--kind` is passed through after its own `--kind turn --awaiting <To>`, and the last flag wins, so `--kind report` sends `kind=report` with `awaiting` set | done: `turn` accepts `--kind turn` (the default, with `--awaiting`) or `--kind info`; any other kind exits 2 naming both; channel smoke (8) |
+| F31 | The egress hook runs `python3 -I` without `-B`, and `guard_team_egress.py` imports `guard_destructive_sql`. Outside Apple's Python, which keeps its cache in `~/Library/Caches`, every guarded call writes `.claude/hooks/lib/__pycache__` into the project and each clone (gitignored), and `team-smoke-lib.sh` (`cp "$SRC"/.claude/hooks/lib/*`) then fails on that directory. Seen on Linux (Ubuntu 24.04, Python 3.12) in the p9a walkthrough | done: both guard hooks run `python3 -I -B`, every module that imports local modules sets `sys.dont_write_bytecode`, and the fixture copies `hooks/lib/*.py` only; egress test (bytecode cases) |
+| F32 | The Codex CLI is required even under `advisor: solo`: `/setup:teams` Step 1 checks `codex`, the profile example lists it in `required_tools`, and `team-roles.sh` `codex_home()` refuses every team-role launch without a resolvable `.claude/codex-profile` | open: check `codex` and resolve the Codex home only when a Codex role launches |
+| F33 | The secrets ask floor covers `cat .env*` (Bash) and the Read tool, not other readers: `head`, `tail`, `less`, `cat -n .env`, `./.env` and the like still run on allow-tier rules | open: widen the Bash floor or classify `.env` reads in the prompt check |
+| F34 | `test-gate.sh`'s trap orphans the gate's child processes and frees the machine gate lock, so a build can outlive its lock (final review of `f3d7996`) | open: stop the gate's process group before the release |
+| F35 | `tw_commit` re-sends a batch when it misses the lock (final review of `f3d7996`) | open: record the delivery before a retry |
+| F36 | The kit `escalate.sh` poll ignores replies that are already acked (final review of `f3d7996`) | open: match a reply by thread and id, not by its unread state |
+| F37 | `gate_lock` acquire spins on a lock directory that is not empty but has no holder file | open: treat a holder-less directory older than the claim window as stale |
+| F38 | `TEAM_WATCH_LOCK_SECS` is not forwarded to the daemon by `team-watch.sh start` | open: add it to the forwarded set |
+| F39 | `claude_version_ok` (preflight row 10) misreads a four-part Claude Code version | open: compare by numeric fields, any count |
+| F40 | Mail identity is not bound to the session: `team-mail.sh --from/--for/--by` take any role name, not only the caller's `TEAM_SESSION_ROLE` | open: refuse a name other than the session's own role in role sessions |
+| F41 | `TEAM_GATE_LOCK_DIR` is taken from the environment and the lock code removes trees under it, so a wrong value steers an rmtree | open: require the directory to carry the lock's own marker before removing |
+| F42 | The egress guard reads a `-m` that follows the script name (`python3 <script> -m x`) as the interpreter's module flag. It errs toward ask, not toward a hole | open: stop option parsing at the script argument |
+| F43 | `tw_claim`: an orphaned `.reclaim` younger than 5 s delays waiters until it ages out | open: bound by the claimant's pid, not only the age |
+| F44 | smoke-mail case 6 copies the vendored tool with `cp -R`, so a gitignored `__pycache__` in the checkout (left by a python run without `-B`) fails its no-bytecode check | open: copy the tool without `__pycache__` (or remove it in the copy) so a dirty checkout cannot fail the case |
+
+## Not ported by design
+
+| # | Item | Why |
+|---|---|---|
+| F14 | A monitoring role (alert intake, incident triage, production restarts), an attention shadow and an Operator dispatcher with a second notification channel | project-specific. If ever ported, the contract is "journal only, never answer an agent, never touch a session" |
+| F15 | Observer hooks for the second-vendor CLI | only the attention shadow used them |
+| — | Chat/messaging plumbing, tracker and PR-host specifics beyond the starter's providers, local container repair steps, token accounting beyond the starter's own costs layer | project-specific |
+
+## Standing conditions on harness changes (kept as rules)
+
+- A harness-rule change gets a plan, AC and test-mapping update, plus an independent review **before** code. A post-code opinion is never relabelled as a pre-code review.
+- QA `ready-with-warnings` on a harness safety boundary is the Advisor pair's disposition. A behaviour defect against the change's own AC is a hold, not "accepted + follow-up".
+- Accepted limits are written as **boundaries** in the AC and tested as documentation, never as a positive test of the guarantee.
+- A rollout step that replaces running loops or installed hooks is an Operator action with recorded evidence: a new pid, a heartbeat, the main checkout at the merge commit. It is never inferred from a merge time.
+- Name the integration topology explicitly: a PR into a feature branch delivers nothing to the line. Two branches that create the same new test part collide, so test parts are named, not numbered.

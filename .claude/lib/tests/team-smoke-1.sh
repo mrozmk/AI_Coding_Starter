@@ -5,26 +5,26 @@ set -euo pipefail
 smoke_init
 
 # ---- (3) team-new ----------------------------------------------------------------------------------
-run "$MAIN" $NEW alfa TT-790
+run "$MAIN" $NEW alfa AB-790
 expect 2 "Usage:" "team-new argc"
 chmod 644 "$MAIN/.env"
-run "$MAIN" $NEW alfa TT-790 feature/TT-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 1 "chmod 600 .env" "team-new .env 644"
 chmod 600 "$MAIN/.env"
-run "$MAIN" $NEW alfa TT-790 feature/TT-790-x origin/rc
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/rc
 expect 1 "base has no team harness" "team-new base without harness"
-run "$MAIN" $NEW alfa TT-790 feature/TT-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 0 "next:" "team-new happy path"
 CLONE="$WORK/main-alfa"
-[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/TT-790-x ] || fail "clone branch"
-jq -e '.base_sha and .line == "develop-netcore7" and .ticket == "TT-790"' "$CLONE/.agents/team/team.json" >/dev/null \
+[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-790-x ] || fail "clone branch"
+jq -e '.base_sha and .line == "develop" and .ticket == "AB-790"' "$CLONE/.agents/team/team.json" >/dev/null \
   || fail "team.json fields"
 [ -f "$CLONE/.env" ] && [ ! -L "$CLONE/.env" ] && [ "$(stat -f %Lp "$CLONE/.env")" = 600 ] || fail ".env copy"
-run "$MAIN" $NEW alfa TT-790 feature/TT-790-x origin/develop-netcore7
+run "$MAIN" $NEW alfa AB-790 feature/AB-790-x origin/develop
 expect 1 "already exists" "team-new existing dir"
-run "$MAIN" $NEW beta TT-790 feature/TT-790-x origin/develop-netcore7
+run "$MAIN" $NEW beta AB-790 feature/AB-790-x origin/develop
 expect 1 "already used by team alfa" "team-new branch of another team"
-run "$MAIN" $NEW beta TT-791 feature/TT-791-pushed origin/develop-netcore7
+run "$MAIN" $NEW beta AB-791 feature/AB-791-pushed origin/develop
 expect 1 "already exists on origin" "team-new pushed branch"
 
 # ---- (4) team-record -------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ mkdir -p "$CLONE/.agents/plans/done"
 git -C "$CLONE" mv .agents/plans/active/p.md .agents/plans/done/p.md
 commit_file src.txt code
 C1="$(git -C "$CLONE" rev-parse HEAD)"
-git -C "$CLONE" push --quiet origin feature/TT-790-x
+git -C "$CLONE" push --quiet origin feature/AB-790-x
 session coder 1 "$PLANNER_OUT"
 R=$(record --verdict done --pr 8371 --artifacts .agents/plans/done/other.md)
 pr_json true "$C1"
@@ -187,7 +187,7 @@ jq '.role = "wrapup"' "$QA_REC" > "$WR_REC" && touch "$WR_REC.accepted"
 pr_json false "$C1" queued
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa
 expect 3 "ADO merge not recalculated yet" "merge-check queued"
-pr_json false "$C1" succeeded refs/heads/develop-netcore7 0000000000000000000000000000000000000000
+pr_json false "$C1" succeeded refs/heads/develop 0000000000000000000000000000000000000000
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa
 expect 3 "stale merge — target moved" "merge-check stale target"
 git -C "$CLONE" push --quiet origin "$C1:refs/pull/8371/merge"
@@ -196,14 +196,14 @@ pr_json false "$C1"
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa
 expect 0 "VERDICT: ok" "merge-check ok"
 has "validated source=$C1 target=$BASE" "$WORK/out" || fail "merge-check validated pair"
-[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/TT-790-x ] || fail "merge-check left clone detached"
+[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-790-x ] || fail "merge-check left clone detached"
 rm -f "$QA_REC.accepted" "$WR_REC" "$WR_REC.accepted"
 
 # ---- (8) runner recovery -----------------------------------------------------------------------------
 reset_runner() { rm -rf "$TD/lock" "$TD/cancel" "$TD/acked"; : > "$STUB_LOG"; }
 set_branch() {  # point the clone branch and its origin tip at <sha> (fixture-only ref surgery)
-  git -C "$CLONE" switch --quiet -C feature/TT-790-x "$1"
-  git --git-dir="$WORK/origin.git" update-ref refs/heads/feature/TT-790-x "$1"
+  git -C "$CLONE" switch --quiet -C feature/AB-790-x "$1"
+  git --git-dir="$WORK/origin.git" update-ref refs/heads/feature/AB-790-x "$1"
 }
 reset_runner
 session qa 1 "$C1"
@@ -227,9 +227,9 @@ expect 5 "dead attempt 2 of coder" "no-trace retry then stop"
 has "--disallowedTools AskUserQuestion -- \"\$(cat '" "$STUB_LOG" || fail "coder launch line lacks -- or --disallowedTools"
 has "new-session -d -s alfa-coder" "$STUB_LOG" || fail "coder retry not launched"
 has "warn: no preview window for alfa-coder" "$WORK/out" || fail "TEAM_ATTACH=all did not try a coder window"
-has "-n alfa-coder --model 'opus[1m]' --effort 'medium' --disallowedTools" "$STUB_LOG" \
-  || fail "coder launch lacks its model/effort from roles.json"
-CODEX_REAL="$(cd "$HOME/.codex-taketask" && pwd -P)"
+has "-n alfa-coder --model 'opus[1m]' --effort 'medium' --permission-mode 'auto' --disallowedTools" \
+  "$STUB_LOG" || fail "coder launch lacks its model/effort/permission from roles.json"
+CODEX_REAL="$(cd "$HOME/.codex-acmeshop" && pwd -P)"
 has "-e CODEX_HOME=$CODEX_REAL " "$STUB_LOG" || fail "coder launch lacks the per-session CODEX_HOME"
 # The tmux server may have been started from another project's shell; the licence must be passed
 # per session, and only when this process actually has one.
@@ -264,16 +264,17 @@ for bad in '{"planer":{"model":"opus"}}' '{"qa":{"modle":"opus"}}' \
   expect 1 "roles.json" "invalid base config $bad"
   cmp -s "$TD/session.json" "$WORK/session.bak" || fail "bad base config changed session.json"
   has "new-session" "$STUB_LOG" && fail "bad base config launched a session"
-  has "stopped (1)" "$STUB_LOG" || fail "runtime failure stopped notification suppressed"
+  grep -q '^notify --backend none --alarm team alfa: stopped (1)' "$STUB_LOG" \
+    || fail "runtime failure stopped notification suppressed"
 done
 cp "$WORK/roles.bak" "$MAIN/.claude/team/roles.json"
-rmdir "$HOME/.codex-taketask"
+rmdir "$HOME/.codex-acmeshop"
 reset_runner; session coder 1 "$PLANNER_OUT"; cp "$TD/session.json" "$WORK/session.bak"
 run "$MAIN" $TR alfa
 expect 1 "Codex profile" "unresolvable Codex profile is refused"
 cmp -s "$TD/session.json" "$WORK/session.bak" || fail "missing Codex profile changed session.json"
 has "new-session" "$STUB_LOG" && fail "missing Codex profile launched a session"
-mkdir "$HOME/.codex-taketask"
+mkdir "$HOME/.codex-acmeshop"
 
 
 cp "$MAIN/.claude/codex-profile" "$WORK/main-profile.bak"
@@ -294,13 +295,13 @@ expect 5 "dead attempt 1 of coder" "absent clone declaration falls back to main"
 has "-e CODEX_HOME=$MAIN_CODEX_REAL " "$STUB_LOG" || fail "missing clone profile did not use main"
 mv "$WORK/clone-profile.bak" "$CLONE/.claude/codex-profile"
 
-rmdir "$HOME/.codex-taketask"
+rmdir "$HOME/.codex-acmeshop"
 reset_runner; session coder 1 "$PLANNER_OUT"; cp "$TD/session.json" "$WORK/session.bak"
 run "$MAIN" $TR alfa
 expect 1 "Codex profile" "invalid clone profile refuses despite valid main"
 cmp -s "$TD/session.json" "$WORK/session.bak" || fail "invalid clone profile changed session.json"
 has "new-session" "$STUB_LOG" && fail "invalid clone profile fell back or launched a session"
-mkdir "$HOME/.codex-taketask"
+mkdir "$HOME/.codex-acmeshop"
 cp "$WORK/main-profile.bak" "$MAIN/.claude/codex-profile"
 
 # stop with a live owner keeps the lock until the owner exits
@@ -350,61 +351,100 @@ has "new-session" "$STUB_LOG" && fail "cancelled run launched a session"
 # ---- (10) team-next: reuse the clone for the next ticket -------------------------------------------
 NEXT="bash .claude/lib/team-next.sh"
 reset_runner
-run "$MAIN" $NEXT alfa TT-792 feature/TT-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "still open (session.json)" "next while a stage is open"
 rm -f "$TD/session.json"; mkdir "$TD/lock"
-run "$MAIN" $NEXT alfa TT-792 feature/TT-792-next origin/develop-netcore7
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
 expect 1 "runner lock present" "next while the runner holds the lock"
 rmdir "$TD/lock"; echo '{}' > "$TD/roles.override.json"
 pr_json false "$C1"
-run "$MAIN" $NEXT alfa TT-792 feature/TT-792-next origin/develop-netcore7
-expect 1 "previous PR #8371 of TT-790 is active" "next with an open PR"
-jq '.status = "completed"' "$STUB_PR" > "$WORK/pr2.json" && mv "$WORK/pr2.json" "$STUB_PR"
-run "$MAIN" $NEXT alfa TT-792 feature/TT-792-next origin/develop-netcore7
-expect 0 "was TT-790" "next after the PR completed"
-[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/TT-792-next ] || fail "next did not switch branch"
-! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/TT-790-x >/dev/null || fail "old branch kept"
-jq -e '.ticket == "TT-792" and .branch == "feature/TT-792-next"' "$TD/team.json" >/dev/null || fail "team.json not rewritten"
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+expect 1 "previous PR #8371 of AB-790 is active" "next with an open PR"
+next_state() {  # the clone's ticket state as one comparable text
+  local f
+  for f in team.json run roles.override.json; do [ ! -f "$TD/$f" ] || shasum -a 256 "$TD/$f"; done
+  [ ! -d "$TD/runs" ] || echo "runs present"
+  git -C "$CLONE" rev-parse HEAD; git -C "$CLONE" branch --show-current
+  ls "$TD/archive" 2>/dev/null || true
+}
+next_untouched() {  # next_untouched <label> — state as at the last next_state snapshot
+  next_state > "$WORK/next.after"
+  cmp -s "$WORK/next.before" "$WORK/next.after" || fail "$1 changed the clone state"
+}
+next_state > "$WORK/next.before"
+pr_set '.status = "completed" | .lastMergeSourceCommit.commitId = "0001"'
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+expect 1 "merged source" "next with commits after the merged PR source"
+next_untouched "tip mismatch"
+TIP=$(git -C "$CLONE" rev-parse refs/heads/feature/AB-790-x)
+pr_set ".status = \"completed\" | .lastMergeSourceCommit.commitId = \"$TIP\""
+STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=fetch \
+  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+expect 1 "git fetch origin failed in" "next with a failing clone fetch"
+next_untouched "fetch failure"
+STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=switch \
+  run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+expect 128 "forced switch failure" "next with a failing switch"
+next_untouched "switch failure"
+! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-next >/dev/null \
+  || fail "switch failure left the new branch"
+git -C "$CLONE" branch feature/AB-792-next
+next_state > "$WORK/next.before"
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+expect 1 "already exists in" "next onto an existing local branch"
+next_untouched "existing local branch"
+git -C "$CLONE" branch --quiet -D feature/AB-792-next
+run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
+expect 0 "was AB-790" "next after the PR completed"
+[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" = feature/AB-792-next ] || fail "next did not switch branch"
+! git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-790-x >/dev/null || fail "old branch kept"
+jq -e '.ticket == "AB-792" and .branch == "feature/AB-792-next"' "$TD/team.json" >/dev/null || fail "team.json not rewritten"
 [ ! -e "$TD/runs" ] && [ ! -e "$TD/run" ] && [ ! -e "$TD/roles.override.json" ] || fail "previous run state not archived"
-ls -d "$TD"/archive/TT-790-*/runs "$TD"/archive/TT-790-*/roles.override.json >/dev/null 2>&1 || fail "archive lacks the previous runs or roles override"
+ls -d "$TD"/archive/AB-790-*/runs "$TD"/archive/AB-790-*/roles.override.json >/dev/null 2>&1 || fail "archive lacks the previous runs or roles override"
 [ "$(stat -f %Lp "$CLONE/.env")" = 600 ] || fail "next did not re-seed .env"
 commit_file wip.txt wip
-run "$MAIN" $NEXT alfa TT-793 feature/TT-793-other origin/develop-netcore7
-expect 1 "has commits on feature/TT-792-next but no PR" "next over unfinished work without a PR"
+run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop
+expect 1 "has commits on feature/AB-792-next but no PR" "next over unfinished work without a PR"
+NEXT_RUN=alfa-20261002-000001; mkdir -p "$TD/runs/$NEXT_RUN"; echo "$NEXT_RUN" > "$TD/run"
+jq -n --arg run "$NEXT_RUN" '{team: "alfa", ticket: "AB-792", run: $run, role: "coder",
+  attempt: 1, seq: 1, verdict: "done", pr_id: 8371}' > "$TD/runs/$NEXT_RUN/coder-1-1.json"
+pr_set '.status = "abandoned"'
+next_state > "$WORK/next.before"
+run "$MAIN" $NEXT alfa AB-793 feature/AB-793-other origin/develop
+expect 1 "is abandoned" "next after an abandoned PR without --abandoned"
+next_untouched "abandoned refusal"
+run "$MAIN" $NEXT --abandoned alfa AB-793 feature/AB-793-other origin/develop
+expect 0 "kept:" "next --abandoned"
+[ "$(git -C "$CLONE" branch --show-current)" = feature/AB-793-other ] \
+  || fail "--abandoned did not switch"
+git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-next >/dev/null \
+  || fail "--abandoned deleted the abandoned branch"
+ls -d "$TD"/archive/AB-792-*/runs/"$NEXT_RUN" >/dev/null 2>&1 \
+  || fail "--abandoned did not archive AB-792"
 
-# ---- (11) team-watch and team-answer ---------------------------------------------------------------
-WATCH="bash .claude/lib/team-watch.sh"
-run "$MAIN" $WATCH --once alfa nobody
-expect 0 "WATCH alfa: stage idle" "watch initial state"
-has "WATCH nobody: no clone" "$WORK/out" || fail "watch did not report a missing clone"
-printf 'Bash command\n  az webapp deploy --name shell-sk\nDo you want to proceed?\n❯ 1. Yes\n' > "$WORK/pane"
+# ---- (11) team-answer ------------------------------------------------------------------------------
+cp "$FIX/perm-awk.txt" "$WORK/pane"
 export STUB_PANE="$WORK/pane"
 echo "$RUN_ID" > "$TD/run"; mkdir -p "$TD/runs/$RUN_ID"
-(cd "$MAIN" && TEAM_WATCH_SECS=1 $WATCH alfa) > "$WORK/watch" 2>&1 & WPID=$!
-sleep 2
 session coder 1 "$BASE"; echo "2026-10-02T10:00:00Z permission_prompt Claude needs your permission" >> "$TD/runs/$RUN_ID/attention"
-sleep 3; kill "$WPID"; wait "$WPID" 2>/dev/null || true
-has "STAGE alfa: idle → coder attempt 1" "$WORK/watch" || { cat "$WORK/watch"; fail "watch missed the stage change"; }
-has "ATTENTION alfa coder: permission_prompt" "$WORK/watch" || fail "watch missed the permission prompt"
-has "|   az webapp deploy --name shell-sk" "$WORK/watch" || fail "watch did not show the role's screen"
 
 ANSWER="bash .claude/lib/team-answer.sh"
 : > "$STUB_LOG"
-STUB_TMUX_ALIVE=0 STUB_PANE= run "$MAIN" $ANSWER alfa coder yes
-expect 1 "no pending permission prompt" "answer yes without a prompt"
+STUB_TMUX_ALIVE=0 STUB_PANE="$FIX/idle.txt" run "$MAIN" $ANSWER alfa coder yes
+expect 6 "no permission prompt on screen" "answer yes without a prompt"
 has "send-keys" "$STUB_LOG" && fail "answer sent keys without a prompt"
 STUB_TMUX_ALIVE=0 run "$MAIN" $ANSWER alfa coder yes
 expect 0 "sent yes to alfa-coder" "answer yes with a prompt"
-has "send-keys -t =alfa-coder: Enter" "$STUB_LOG" || fail "answer yes did not press Enter"
+has "send-keys -t %1 Enter" "$STUB_LOG" || fail "answer yes did not press Enter"
 : > "$STUB_LOG"
 STUB_TMUX_ALIVE=0 run "$MAIN" $ANSWER alfa coder say "use the existing endpoint"
-expect 1 "a menu or permission prompt is open" "answer say over a prompt"
+expect 6 "a menu or permission prompt is open" "answer say over a prompt"
 has "send-keys" "$STUB_LOG" && fail "say typed over a permission prompt"
-STUB_TMUX_ALIVE=0 STUB_PANE= run "$MAIN" $ANSWER alfa coder say "use the existing endpoint"
+STUB_TMUX_ALIVE=0 STUB_PANE="$FIX/idle.txt" run "$MAIN" $ANSWER alfa coder say "use the existing endpoint"
 expect 0 "sent say" "answer say"
-has "send-keys -t =alfa-coder: -l -- use the existing endpoint" "$STUB_LOG" || fail "answer say did not type the text"
+has "send-keys -t %1 -l -- use the existing endpoint" "$STUB_LOG" || fail "answer say did not type the text"
 run "$MAIN" $ANSWER alfa coder yes
-expect 1 "not found" "answer to a dead session"
+expect 6 "session gone" "answer to a dead session"
 rm -f "$TD/session.json"; unset STUB_PANE
 
 # ---- (12) team-snapshot and the dashboard server ---------------------------------------------------
@@ -479,5 +519,10 @@ has "warn: window opened but will not close by itself" "$WORK/out" || fail "atta
 STUB_TMUX_SOCK="" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
 expect 1 "cannot resolve the tmux socket of alfa-planner" "attach refuses an unresolvable socket"
 ! has osascript "$STUB_LOG" || fail "a refused attach still opened a Terminal window"
+# A quote in the socket path (TMUX_TMPDIR) would break out of the AppleScript and shell strings.
+: > "$STUB_LOG"
+STUB_TMUX_SOCK="/tmp/x'; touch pwned; '" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
+expect 1 "contains a quote or backslash" "attach refuses a socket path with a quote"
+! has osascript "$STUB_LOG" || fail "a socket path with a quote still reached osascript"
 
 echo "team-smoke-1: OK"

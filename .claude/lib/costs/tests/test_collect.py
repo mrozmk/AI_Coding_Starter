@@ -1,4 +1,4 @@
-"""End-to-end collect: idempotence, order-independent owner, partial line (spec TT-813)."""
+"""End-to-end collect: idempotence, order-independent owner, partial line."""
 import json
 import unittest
 import store

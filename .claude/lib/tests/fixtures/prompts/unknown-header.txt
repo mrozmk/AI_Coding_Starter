@@ -1,0 +1,22 @@
+  Ran 2 shell commands
+⏺ W czasie gate'u pobieram obecny opis PR 8583 (odczyt).
+  Running 1 shell command…
+  ⎿  $ az repos pr show --org https://dev.azure.com/acmeshop --id 8583 --query description -o tsv >
+     /private/tmp/claude-501/-Users-alice-Desktop-AcmeShop-AcmeShop-DN-beta/5dea2f34-6cfb-4547-bdf3-399ba8202aae/scratch
+     pad/pr-desc-current.md; echo rc=$?; wc -c /private/tmp/claude-501/-Users-alice-Desktop-Ac…
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Mystery tool
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode" below
+ Fetch current PR 8583 description
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ az repos pr show --org https://dev.azure.com/acmeshop --id 8583 --query description -o tsv > /private/tmp/claude-501
+ │ /-Users-alice-Desktop-AcmeShop-AcmeShop-DN-beta/5dea2f34-6cfb-4547-bdf3-399ba8202aae/scratchpad/pr-desc-current.md;
+ │ echo rc=$?; wc -c /private/tmp/claude-501/-Users-alice-Desktop-AcmeShop-AcmeShop-DN-beta/5dea2f34-6cfb-4547-bdf3-399
+ │ ba8202aae/scratchpad/pr-desc-current.md
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ A variable in this command can't be checked before it runs
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and switch to auto mode · auto mode handles these prompts for you
+   3. No
+ Esc to cancel · Tab to amend

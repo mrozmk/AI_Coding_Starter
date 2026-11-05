@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Runtime log writer for the token-usage tool (TT-821); never fails its caller.
+# Runtime log writer for the token-usage tool; never fails its caller.
 #
 # Usage:
 #   runtime-mark.sh session --provider claude|codex [--session ID]
-#                   --source team-run|start-team|mail-tt|codex-bg [--name N] [--ticket T]
+#                   --source team-run|start-team|mail-role|codex-bg [--name N] [--ticket T]
 #                   [--team T] [--role R] [--run R] [--attempt N] [--parent ID] [--cwd DIR]
 #                   [--team-json PATH]
 #   runtime-mark.sh stage start|end NAME --session ID --source hook-skill|hook-prompt|skill-end
@@ -11,7 +11,7 @@
 #   runtime-mark.sh stage end NAME   # no --session: no-op — the stage hook records this call
 #
 # Opt-in: writes $AGENT_COSTS_HOME/runtime.jsonl only when that dir exists. Contract:
-# .agents/reference/token-usage.md → Runtime log (TT-821).
+# .agents/reference/token-usage.md → Runtime log.
 set -uo pipefail
 
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -85,7 +85,7 @@ elif [ "$type" = session ]; then
   session="$(lower "$session")"
   [[ "$session" =~ $UUID_RE ]] || skip "session needs a uuid (--session or CLAUDE_CODE_SESSION_ID)"
   case "$provider" in claude|codex) ;; *) skip "bad provider" ;; esac
-  case "$source" in team-run|start-team|mail-tt|codex-bg) ;; *) skip "bad session source" ;; esac
+  case "$source" in team-run|start-team|mail-role|codex-bg) ;; *) skip "bad session source" ;; esac
   if [ -n "$team_json" ] && [ -f "$team_json" ]; then
     IFS=$'\x1f' read -r j_ticket j_team j_role j_run j_attempt < <(jq -r \
       '[(if (.cost_key // "") == "" then .ticket else .cost_key end), .team, .role, .run, .attempt] | map(. // "" | tostring) | join("\u001f")' \

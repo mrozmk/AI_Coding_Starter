@@ -1,4 +1,4 @@
-"""Claude adapter: dedupe, coverage flags, sub-agents, events, privacy (spec TT-813)."""
+"""Claude adapter: dedupe, coverage flags, sub-agents, events, privacy."""
 import json
 import os
 import unittest
@@ -87,7 +87,7 @@ class ClaudeAdapterTest(unittest.TestCase):
             helpers.claude_user_command(S, "2026-10-06T10:00:01Z", "execute",
                                         ".agents/plans/active/x.md", as_blocks=True),
             _a("2026-10-06T10:00:02Z", "req_a", content=[
-                helpers.skill_block("plan-feature", "TT-805 extra words"),
+                helpers.skill_block("plan-feature", "AB-805 extra words"),
                 helpers.agent_block("structure-reviewer", "toolu_1"),
                 helpers.agent_block("structure-reviewer", "toolu_2")])])
         self.env.collect()
@@ -96,7 +96,7 @@ class ClaudeAdapterTest(unittest.TestCase):
         self.assertEqual(events, [
             ("command", "prime", None, None, None),
             ("command", "execute", ".agents/plans/active/x.md", None, None),
-            ("skill", "plan-feature", "TT-805", "req_a", "toolu_s"),
+            ("skill", "plan-feature", "AB-805", "req_a", "toolu_s"),
             ("agent_spawn", "structure-reviewer", None, "req_a", "toolu_1"),
             ("agent_spawn", "structure-reviewer", None, "req_a", "toolu_2")])
 
@@ -125,7 +125,7 @@ class ClaudeAdapterTest(unittest.TestCase):
                 helpers.skill_block("execute", s, tool_id=f"toolu_s{n}"),
                 helpers.agent_block("general-purpose", f"toolu_a{n}", description=s, prompt=s)]))
         records.append(_a("2026-10-06T11:00:00Z", "req_keep", content=[
-            helpers.skill_block("execute", "TT-805"),
+            helpers.skill_block("execute", "AB-805"),
             helpers.skill_block("execute", ".agents/plans/active/x.md", tool_id="toolu_k")]))
         helpers.write_jsonl(self.env.claude_file(S), records)
         self.env.collect()
@@ -133,7 +133,7 @@ class ClaudeAdapterTest(unittest.TestCase):
         for s in strings:
             self.assertNotIn(s, dump)
         self.assertNotIn("fixture", dump.replace("cost-tests-", ""))
-        self.assertIn("TT-805", dump)
+        self.assertIn("AB-805", dump)
         self.assertIn(".agents/plans/active/x.md", dump)
 
 

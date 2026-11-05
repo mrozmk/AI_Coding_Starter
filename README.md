@@ -379,6 +379,25 @@ Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLA
 
 ---
 
+## Team supervision (opt-in)
+
+For projects that run several AI **teams** in parallel on one machine. A team is a permanent git clone that runs a ticket through a fixed pipeline of fresh role sessions (planner → coder → qa → wrapup, or one `cli` role), driven by a shell runner in tmux. **Supervision roles** watch the teams:
+
+- a **Supervisor** that talks to you, merges within the gate and starts teams;
+- a **TeamLead** that decides every team question except two short lists;
+- an **Advisor**, with an optional second-vendor **Reviewer**, for contract, schema, AC, sensitive-path and harness-rule questions.
+
+You are asked only for a short critical list and for actions only a human may click.
+
+Scripts, not prompts, enforce the routing, the binding of each answer to the exact prompt, tier refusals, the merge gate and the alarms.
+
+It is off until you opt in. `/setup:teams` installs the team layer and the agent-mail channel into a project. `/start-team` provisions and starts a team, and `/monitor` supervises it. Everything project-specific is configuration in `.claude/project-profile.json` → `teams` (`teams.channel` for names, `teams.policy` for policy) and never a default.
+
+- Setting it up: run `/setup:teams <path to this starter clone>` in **your project's** root, then follow [`docs/teams/09-setup.md`](docs/teams/09-setup.md) (fresh machine or one that already runs the channel, the profile from `.claude/project-profile.json.example`, the operator kit).
+- Human overview: [`docs/teams/`](docs/teams/README.md): decision model, pipeline, escalation, permissions, operator kit, follow-ups.
+- The contracts the agents follow: `.agents/reference/team-*.md`, `escalation-fallback.md`, `agent-mail.md`.
+- What is implemented vs verified on which host: `docs/teams/capabilities.md`, written by the acceptance run.
+
 ## Orchestration internals — how the agent-spawning commands work
 
 Three commands do heavy multi-step work. They use **two different orchestration mechanisms** and spawn different agents per role. This section spells out exactly what runs, when, why, and at which effort.

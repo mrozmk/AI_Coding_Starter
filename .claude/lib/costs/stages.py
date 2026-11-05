@@ -1,4 +1,4 @@
-"""Per-pipeline-stage split of allocated usage (spec TT-813, runtime markers TT-821).
+"""Per-pipeline-stage split of allocated usage.
 
 Python 3.9 stdlib only.
 """

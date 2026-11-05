@@ -4,7 +4,7 @@
 # Usage: bash .claude/lib/team-run.sh <team> [status|stop|unlock]
 #   e.g. tmux new-session -d -s alfa-runner "bash .claude/lib/team-run.sh alfa; read"
 #   internal: bash .claude/lib/team-run.sh <team> check <record>   (validate one record)
-#   bash .claude/lib/team-run.sh <team> roles <role>=[<model>][/<effort>]… | --clear
+#   bash .claude/lib/team-run.sh <team> roles <role>=[<model>][/<effort>][/<perm>]… | --clear
 #   bash .claude/lib/team-run.sh <team> summary   (post-run summary sources for /monitor)
 #   modes (team.json .mode, set by team-new/next): brainstorm · quick · cli
 #
@@ -28,13 +28,20 @@ CLONE="$(team_clone_dir "$TEAM" "$root")"
 case "$CLONE" in *"'"*) echo "error: clone path contains a quote: $CLONE" >&2; exit 1 ;; esac
 [ -f "$CLONE/.agents/team/team.json" ] || { echo "error: no team clone at $CLONE" >&2; exit 1; }
 cd "$CLONE"
-. "$CLONE/.claude/lib/team-lib.sh"
+# The anchor writer runs in this shell; a role-writable library must not.
+. "$root/.claude/lib/team-lib.sh"
+# Override keys still follow the clone's runnable roles (team-mode.md §3), read as data only.
+TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/team-lib.sh" \
+  2>/dev/null | head -n 1)" || true; TEAM_ROLES="${TEAM_ROLES:-planner coder qa wrapup}"
 # From the main checkout, like roles.json: a clone on an older base lacks this file.
 . "$root/.claude/lib/team-roles.sh"
+. "$root/.claude/lib/team-send-lock.sh"
 . "$root/.claude/lib/team-modes.sh"
 . "$root/.claude/lib/team-validate.sh"
 . "$root/.claude/lib/team-tracker-render.sh"
 . "$root/.claude/lib/team-pr-render.sh"
+. "$root/.claude/lib/team-anchor.sh"
+. "$root/.claude/lib/team-channel.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -51,25 +58,43 @@ BRANCH="$(team_json branch)"; LINE="$(team_json line)"
 RUN=""; ROLE=""; OWN_LOCK=0
 MODE="$(team_mode "$TD/team.json")" || { echo "error: cannot read the mode of $TD/team.json" >&2; exit 1; }
 
-# The runner lives in a hidden tmux session, so every stop and every wait is also a macOS notification.
+# Runner notifications are off by default: its stops and waits reach TeamLead as
+# team-watch signals; TEAM_NOTIFY=1 enables them, stopped/blocked/failed as alarms. They go through
+# the operator kit's notifier with the channel's backend (team_channel_notify), never a platform
+# binary directly; an invalid channel block means no backend.
 notify() {
-  [ "${TEAM_NOTIFY:-1}" = 1 ] && command -v osascript >/dev/null 2>&1 || return 0
-  osascript -e "display notification \"${2//\"/}\" with title \"team $TEAM: $1\"" >/dev/null 2>&1 || true
+  [ "${TEAM_NOTIFY:-0}" = 1 ] || return 0
+  team_channel_names "$root" 2>/dev/null || TEAM_CHANNEL_NOTIFIER=none
+  team_channel_notify ${3:+--alarm} "team $TEAM: $1" "$2"
 }
-die() { echo "$2" >&2; [ "$1" = 6 ] || notify "stopped ($1)" "$2"; exit "$1"; }
+die() { echo "$2" >&2; [ "$1" = 6 ] || notify "stopped ($1)" "$2" alarm; exit "$1"; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
 sess_name() { team_tmux_name "$TEAM" "$1"; }
 # The planner and the wrapup are attended: the developer answers them in their window.
 attended() { case "$1" in planner|wrapup) ;; *) return 1 ;; esac; }
 artifact() { jq -r --arg p "$2" '[.artifacts[] | select(startswith($p))][0] // empty' "$1"; }
 
+# /exit + Enter only on a recognised empty idle input: on an open prompt Enter would approve the
+# focused option. Keys go only under the send lock, so they never interleave an answer.
 end_session() {
-  local name waited=0
+  local name waited=0 h idle=""
   name="$(sess_name "$1")"
   team_tmux_alive "$name" || return 0
-  tmux send-keys -t "=$name:" "/exit" Enter || true
-  while team_tmux_alive "$name" && [ "$waited" -lt "$EXIT_WAIT" ]; do sleep 1; waited=$((waited + 1)); done
-  team_tmux_alive "$name" && tmux kill-session -t "=$name" || true
+  if team_send_lock "$TD" "$1" "${TEAM_SEND_LOCK_WAIT:-30}" "runner pid=$$" >/dev/null; then
+    team_pane "$name" 40 | python3 -I "$root/.claude/lib/team_prompt.py" parse \
+      | jq -e '.complete and .kind == "none" and .input_empty == true' >/dev/null 2>&1 && idle=1
+    if [ -n "$idle" ]; then
+      tmux send-keys -t "=$name:" "/exit" Enter || true
+      while team_tmux_alive "$name" && [ "$waited" -lt "$EXIT_WAIT" ]; do sleep 1; waited=$((waited + 1)); done
+    fi
+    team_tmux_alive "$name" && tmux kill-session -t "=$name" || true
+    team_send_unlock "$TD" "$1"
+  else
+    h="$(team_send_holder "$TD" "$1")"
+    echo "stop-during-send $(team_utc) $h" >> "$TD/send-$1.log"
+    echo "warn: stop while sender lock held by $h — session killed without /exit" >&2
+    tmux kill-session -t "=$name" || true
+  fi
   ! team_tmux_alive "$name" || die 1 "error: session $name did not end"
 }
 
@@ -100,6 +125,7 @@ accept() {
   end_session "$ROLE"
   team_cancelled && cancel_exit
   touch "$r.accepted"
+  team_anchor_planner "$root" "$TEAM" "$r" || echo "warn: anchor not written" >&2
   rm -f "$TD/session.json"
   echo "accepted: $(basename "$r")"
 }
@@ -113,7 +139,7 @@ handle_record() {
       basename "$r" > "$TD/acked"
       echo "$(rec "$r" verdict): $(last_blocker)"
       echo "answer in: tmux attach -t $(sess_name "$ROLE")"
-      notify "$(rec "$r" verdict)" "$(last_blocker) — /start-team $TEAM after answering"
+      notify "$(rec "$r" verdict)" "$(last_blocker) — /start-team $TEAM after answering" alarm
       [ "$(rec "$r" verdict)" = blocked ] && exit 2 || exit 1 ;;
     *) die 4 "record $(basename "$r") has an unknown verdict" ;;
   esac
@@ -166,40 +192,21 @@ render_prompt() {
   printf '%s\n' "$p" > "$out"
 }
 
-role_flags() {
-  local flags
-  if [ "$1" = cli ]; then
-    printf -- "--model '%s' --effort '%s' " "$TEAM_CLI_MODEL" "$TEAM_CLI_EFFORT"; return 0
-  fi
-  flags="$(team_roles_flags "$ROLES" "$ROLES_OVERRIDE" "$1")" || die 1 "$flags"
-  printf '%s' "$flags"
-}
-
-# Same parse as codex-bg.sh; an unresolvable profile refuses the launch before session.json.
-codex_home() {
-  local f="$CLONE/.claude/codex-profile" want real=""
-  if [ ! -e "$f" ] && [ ! -L "$f" ]; then f="$root/.claude/codex-profile"; fi
-  want="$(sed -n '/^[[:space:]]*$/d; /^#/d; p; q' "$f" 2>/dev/null || true)"
-  case "$want" in "~/"*) want="$HOME/${want#\~/}" ;; esac
-  [ -z "$want" ] || real="$(cd "$want" 2>/dev/null && pwd -P || true)"
-  if [ -z "$real" ]; then
-    echo "error: Codex profile ${want:-<none>} from .claude/codex-profile does not resolve" \
-      "— no session launched"
-    return 1
-  fi
-  printf '%s' "$real"
-}
-
 launch() {
-  local role="$1" attempt="$2" name pf sid ch ck extra=""
+  local role="$1" attempt="$2" name pf sid ch ck extra="" perm why costs=()
   team_cancelled && cancel_exit
   name="$(sess_name "$role")"; pf="$TD/runs/$RUN/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
   # Before session.json: a rejected config must not record an attempt (dead_attempt stops at 2).
   extra="$(role_flags "$role")"
+  perm="$(role_permission "$role")"
+  if [ "$perm" = auto ] && why="$(auto_blocker)"; then
+    echo "warn: $role launches in manual mode — $why"; perm=manual
+  fi
+  [ -z "$perm" ] || extra="$extra--permission-mode '$perm' "
   ch="$(codex_home)" || die 1 "$ch"
   mkdir -p "$TD/runs/$RUN"
-  # A known session id makes token-usage bindings explicit (TT-821); transcripts are lower-case.
+  # A known session id makes token-usage bindings explicit; transcripts are lower-case.
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
   [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
   # A team.json written before 2b has no cost_key; jq's `//` would keep the empty string.
@@ -207,22 +214,28 @@ launch() {
   jq -n --arg team "$TEAM" --arg role "$role" --arg run "$RUN" --argjson attempt "$attempt" \
     --arg ticket "$(team_json ticket)" --arg input_rev "$(input_rev_for "$role")" \
     --arg launched_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg mode "$MODE" \
-    --arg session_id "$sid" --arg cost_key "$ck" \
+    --arg session_id "$sid" --arg cost_key "$ck" --arg permission_mode "${perm:-default}" \
     '{team: $team, role: $role, run: $run, attempt: $attempt, ticket: $ticket, mode: $mode,
       cost_key: $cost_key,
-      input_rev: $input_rev, launched_at: $launched_at, session_id: $session_id}' \
+      input_rev: $input_rev, launched_at: $launched_at, session_id: $session_id,
+      permission_mode: $permission_mode}' \
     > "$TD/session.json"
+  team_anchor_launch "$root" "$TEAM" "$CLONE" "$RUN" "$role" "$attempt" "$sid" \
+    || echo "warn: anchor not written" >&2
   printf '%s\n' "$sid" > "$TD/runs/$RUN/$role-$attempt.session"
   render_prompt "$role" "$attempt" "$pf"
   attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
-  # CODEX_HOME per session, never `-g`: that would move other projects onto this licence (TT-912).
+  # CODEX_HOME per session, never `-g`: that would move other projects onto this licence.
   # CLAUDE_CONFIG_DIR the same way, and only when this process has one: the tmux server may have
   # been started from ANOTHER project's shell, and a new session inherits that server's global
   # environment — which would run this project's roles on the other project's Claude licence.
-  tmux new-session -d -s "$name" -c "$CLONE" -e "TT_TEAM=$TEAM" -e "TT_TEAM_ROLE=$role" \
-    -e "TT_TEAM_RUN=$RUN" -e "TT_TEAM_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
+  # AGENT_COSTS_HOME likewise: a tmux session gets the server's environment, not the caller's.
+  [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(-e "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
+  tmux new-session -d -s "$name" -c "$CLONE" -e "TEAM_RUN_TEAM=$TEAM" -e "TEAM_RUN_ROLE=$role" \
+    -e "TEAM_RUN_ID=$RUN" -e "TEAM_RUN_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
     ${CLAUDE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"} \
+    ${costs[@]+"${costs[@]}"} \
     "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\""
   # Main checkout: a clone on an older base has no helper; a missing one only warns.
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
@@ -232,7 +245,7 @@ launch() {
   echo "launched: $role attempt $attempt"
   ! attended "$role" || echo "attach: tmux attach -t $name"
   if [ "$ATTACH" = all ] || attended "$role"; then
-    # Main checkout: an in-flight clone's attach predates the self-closing window (TT-790).
+    # Main checkout: an in-flight clone's attach predates the self-closing window.
     bash "$root/.claude/lib/team-attach.sh" "$TEAM" "$role" >/dev/null 2>&1 \
       || echo "warn: no preview window for $name"
   fi
@@ -332,10 +345,15 @@ cmd_advance() {
 
 # Per-ticket override, merged over roles.json at each launch; team-next.sh archives it.
 cmd_roles() {
+  local e
   if [ "$MODE" = cli ] && [ "${1:-}" != --clear ]; then
-    echo 'error: roles overrides are not supported in mode cli (fixed opus[1m]/medium);' \
-      'use roles --clear to remove a stale override' >&2
-    exit 1
+    for e in "$@"; do
+      case "$e" in cli=*) ;; *)
+        echo 'error: in mode cli only cli=… entries apply (the other roles do not run);' \
+          'use roles --clear to remove a stale override' >&2
+        exit 1 ;;
+      esac
+    done
   fi
   team_roles_write "$TEAM" "$ROLES_OVERRIDE" "$@" || exit "$?"
 }
@@ -429,8 +447,23 @@ cmd_unlock() {
   echo "removed stale lock (pid $pid dead)"
 }
 
+# Material for later review; main checkout script, like team-roles.sh: a clone may lack it.
+audit_run() {
+  local final=()
+  [ "$1" != 0 ] || final=(--final ready)
+  bash "$root/.claude/lib/team-audit.sh" "$TEAM" --runner-exit "$1" ${final[@]+"${final[@]}"} \
+    || echo "warn: team audit failed (rc $?) — run outcome unchanged" >&2
+}
+
 # Only the runner whose pid is in the lock removes it — never a replacement lock of another runner.
-trap '[ "$OWN_LOCK" = 1 ] && [ "$(cat "$TD/lock/pid" 2>/dev/null)" = "$$" ] && rm -rf "$TD/lock"' EXIT
+# The lock goes first, so a slow audit never holds it.
+on_exit() {
+  local rc=$?
+  [ "$OWN_LOCK" = 1 ] && [ "$(cat "$TD/lock/pid" 2>/dev/null)" = "$$" ] && rm -rf "$TD/lock"
+  [ "$CMD" != advance ] || [ -z "$RUN" ] || audit_run "$rc" || true
+  exit "$rc"
+}
+trap on_exit EXIT
 
 case "$CMD" in
   advance) [ $# -le 1 ] || die 2 "error: unknown arguments"; cmd_advance ;;

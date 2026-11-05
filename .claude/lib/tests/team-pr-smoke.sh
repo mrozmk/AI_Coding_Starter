@@ -19,7 +19,7 @@ chmod +x "$WORK/bin/gh"
 
 PR="bash .claude/lib/team-pr.sh"
 P="$MAIN/.claude/project-profile.json"
-TRUNK=develop-netcore7
+TRUNK=develop
 GH_PROFILE='.teams.pr_provider = "github" | .teams.tracker = "none"
   | .teams.github = {repo: "acme/widgets"}
   | .teams.required_tools = ["git", "jq", "gh"]'
@@ -64,7 +64,7 @@ run "$MAIN" $PR state 8
 expect 0 '"status":"active"' "state of an open PR is active"
 has '"draft":true' "$WORK/out" || fail "state lost the draft flag"
 has '"source_ref":"refs/heads/feature/L1-x"' "$WORK/out" || fail "state lost the source ref"
-has '"target_ref":"refs/heads/develop-netcore7"' "$WORK/out" || fail "state lost the target ref"
+has '"target_ref":"refs/heads/develop"' "$WORK/out" || fail "state lost the target ref"
 has "\"source_sha\":\"$(bare rev-parse refs/heads/feature/L1-x)\"" "$WORK/out" \
   || fail "state lost the head sha"
 
@@ -119,7 +119,7 @@ has "\"merge_sha\":\"$(bare rev-parse refs/pull/8/merge)\"" "$WORK/out" \
   || fail "readiness ok but the merge commit is not under refs/team-pr/8/merge"
 
 # FETCH_HEAD is global: a concurrent fetch rewriting it must not move the verdict either way.
-printf '%s\t\t\n' "$(bare rev-parse refs/heads/develop-netcore7)" > "$MAIN/.git/FETCH_HEAD"
+printf '%s\t\t\n' "$(bare rev-parse refs/heads/develop)" > "$MAIN/.git/FETCH_HEAD"
 run "$MAIN" $PR readiness 8
 expect 0 '"merge":"ok"' "a swapped FETCH_HEAD does not change the verdict"
 has '"parents_ok":true' "$WORK/out" || fail "a swapped FETCH_HEAD broke parents_ok"
@@ -201,7 +201,7 @@ expect 0 "pr=41" "create --ready on a published PR returns it"
 pr_file 42 "feature/L3-new" "$TRUNK" true
 C0="$(creates)"
 run "$MAIN" $PR create --draft --head "feature/L3-new" --base "$TRUNK" --title T --body-file "$BF"
-expect 3 "ambiguous: 41,42 open for feature/L3-new → develop-netcore7" "two open PRs are ambiguous"
+expect 3 "ambiguous: 41,42 open for feature/L3-new → develop" "two open PRs are ambiguous"
 [ "$(creates)" = "$C0" ] || fail "an ambiguous create still called gh pr create"
 rm -f "$GH_DIR/pr-42.json"
 
@@ -343,7 +343,7 @@ GH_NONE='.teams.pr_provider = "github" | .teams.tracker = "none"
   | .teams.github = {repo: "acme/widgets"}
   | .teams.required_tools = ["git", "jq", "gh"]'
 publish_base() {  # publish_base <branch> <profile jq filter>
-  git -C "$SEED" switch --quiet -C "$1" develop-netcore7
+  git -C "$SEED" switch --quiet -C "$1" develop
   smoke_profile "$2" > "$SEED/.claude/project-profile.json"
   git -C "$SEED" add .claude/project-profile.json
   git -C "$SEED" commit --quiet -m "base profile $1"
@@ -356,7 +356,7 @@ publish_base base-nopr "$GH_NONE"
 git -C "$SEED" rm --quiet .claude/lib/team-pr.sh
 git -C "$SEED" commit --quiet -m "no pr layer"
 git -C "$SEED" push --quiet --force origin base-nopr
-git -C "$SEED" switch --quiet develop-netcore7
+git -C "$SEED" switch --quiet develop
 
 no_clone() { [ ! -e "$WORK/main-$1" ] || fail "$2: a refused start left a clone behind"; }
 setprofile "$GH_NONE"
@@ -437,7 +437,7 @@ expect 4 "PR #70 isDraft is not true" "a published PR fails the coder's draft ch
 mkpr 70 true "feature/L9-other" "$LINE0"
 run "$MAIN" $TR alfa check "$R"
 expect 4 "PR identity mismatch (#70)" "a PR on another head is refused"
-mkpr 70 true "$BR" develop-netcore7
+mkpr 70 true "$BR" develop
 run "$MAIN" $TR alfa check "$R"
 expect 4 "PR identity mismatch (#70)" "a PR against another base is refused"
 
@@ -691,7 +691,7 @@ mkdir -p "$TDC/lock"; echo $$ > "$TDC/lock/pid"
 run "$MAIN" $IT delta
 expect 3 "the runner still holds" "integrate refuses while the runner holds the lock"
 rm -rf "$TDC/lock"
-# Astra 3: the resumed workflow is caught by name+sha256, not by a timestamp — same `written_at`.
+# Reviewer 3: the resumed workflow is caught by name+sha256, not by a timestamp — same `written_at`.
 cp "$RDC/cli-1-1.json" "$RDC/cli-1-2.json"
 run "$MAIN" $IT delta
 expect 3 "workflow resumed after merge-check" "a record added after the verdict invalidates it"

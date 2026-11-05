@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Installs the team harness into another project from `.claude/team/manifest.txt`: copies the
-# `own` files, reports `shared` files the project already owns, merges the three hook entries and
-# the role `permissions.allow` rules into `settings.json`, ignores `.agents/team/` and seeds
-# `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
+# `own` files, reports `shared` files the project already owns, merges the team hook entries (five
+# team hooks — the question and memory guards, the attention notifier, the team-watch SessionStart
+# re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` and
+# the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
+# `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
+# box `.agents/agent-mail/`, and seeds `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge.
 #
 # Usage: bash .claude/lib/team-setup.sh <starter-root> <target-root> [--check]
-#   e.g. bash .claude/lib/team-setup.sh ~/Desktop/AI_Coding_Starter "$PWD"
+#   e.g. bash <starter-root>/.claude/lib/team-setup.sh <starter-root> "$PWD"
 #   --check: report the plan and write NOTHING (statuses read create|keep|conflict|merge).
 #
 # Output: one `<status>\t<class>\t<path>` line per path (`created|kept|conflict|merged`, class
@@ -165,7 +168,7 @@ while [ $i -lt ${#M_PATH[@]} ]; do
   fi
 done
 
-# ---- settings.json: the three hook entries + the role allow rules ------------------------------
+# ---- settings.json: the team hook entries + the role allow rules -------------------------------
 SET=".claude/settings.json"
 JQ_LIB='
 def tokens(m): if (m == null or m == "" or m == "*") then "ALL" else (m | split("|")) end;
@@ -177,8 +180,11 @@ def covers(m; req): tokens(m) as $t
 NEW="$CUR"
 S_CONFLICTS=""
 
-hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|false> <new matcher>
-  local id="$1" ev="$2" cmd="$3" req="$4" as="$5" mnew="$6" verdict attach=new
+# An empty <new matcher> writes no matcher (events without one: SessionStart, Stop); [extra json]
+# is merged into the new hook item (e.g. {"timeout":5}).
+hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|false> <new matcher> [extra json]
+  local id="$1" ev="$2" cmd="$3" req="$4" as="$5" mnew="$6" extra="${7:-}" verdict attach=new
+  [ -n "$extra" ] || extra='{}'
   [ "$id" != M ] || attach=first
   verdict="$(printf '%s' "$NEW" | jq -r "$JQ_LIB"'
     def asyncok(h): if $as == "true" then (h.async == true) else (h.async == null or h.async == false) end;
@@ -204,14 +210,16 @@ hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|
   fi
   NEW="$(printf '%s' "$NEW" | jq "$JQ_LIB"'
     .hooks = (.hooks // {}) | .hooks[$ev] = (.hooks[$ev] // [])
-    | ({type: "command", command: $cmd} + (if $as == "true" then {async: true} else {} end)) as $item
+    | ({type: "command", command: $cmd} + (if $as == "true" then {async: true} else {} end)
+       + $extra) as $item
+    | (if $mnew == "" then {hooks: [$item]} else {matcher: $mnew, hooks: [$item]} end) as $entry
     | if $attach == "first"
       then ([.hooks[$ev] | to_entries[] | select(.value.matcher | covers(.; $req)) | .key]) as $ix
         | if ($ix | length) > 0 then .hooks[$ev][$ix[0]].hooks += [$item]
-          else .hooks[$ev] += [{matcher: $mnew, hooks: [$item]}] end
-      else .hooks[$ev] += [{matcher: $mnew, hooks: [$item]}] end' \
+          else .hooks[$ev] += [$entry] end
+      else .hooks[$ev] += [$entry] end' \
     --arg ev "$ev" --arg cmd "$cmd" --argjson req "$req" --arg as "$as" \
-    --arg mnew "$mnew" --arg attach "$attach")"
+    --arg mnew "$mnew" --arg attach "$attach" --argjson extra "$extra")"
 }
 
 H='bash "$CLAUDE_PROJECT_DIR/.claude/hooks'
@@ -220,16 +228,78 @@ hook_merge M PreToolUse "$H/guard-team-memory.sh\"" '["Edit","Write"]' false 'Ed
 hook_merge A Notification "$H/team-attention.sh\"" \
   '["permission_prompt","idle_prompt","elicitation_dialog","agent_needs_input"]' true \
   'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
+# team-watch: re-point a role's receiver after /clear or resume (inside the 5 s timeout), and keep
+# a role's wake loop armed. Both exit at once outside a role session or a main checkout.
+hook_merge W SessionStart "$H/team-watch-session.sh\"" '["startup","resume","clear","compact"]' false '' \
+  '{"timeout":5}'
+hook_merge R Stop "$H/monitoring-rearm.sh\"" '[]' false ''
+
+# The egress and destructive-SQL guards are the team layer's, so they are registered here (one
+# opt-in step) rather than shipped in the template's shared settings. The runner's auto-mode
+# preflight (team-roles.sh auto_blocker) looks for the egress guard under the exact matchers `Bash`
+# and `WebFetch` with `"onFailure": "block"`, so a guard joins only an entry with exactly that
+# matcher (or adds one); without the egress guard the runner launches manual and warns.
+egress_merge() {  # egress_merge <matcher> [<command> <conflict id>] — default: the egress guard
+  local m="$1" cmd="${2:-$EGRESS}" id="${3:-E}" verdict
+  verdict="$(printf '%s' "$NEW" | jq -r --arg m "$m" --arg cmd "$cmd" '
+    [.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $cmd)] as $h
+    | if any($h[]; .onFailure == "block" and (.async // false) == false) then "ok"
+      elif ($h | length) > 0 then "conflict"
+      else "missing" end')"
+  [ "$verdict" != ok ] || return 0
+  if [ "$verdict" = conflict ]; then
+    S_CONFLICTS="${S_CONFLICTS}$id"
+    CONFLICT=$((CONFLICT + 1))
+    echo "conflict settings.json $id: $m registers $(basename "${cmd%\"}" .sh) without \"onFailure\": \"block\""
+  fi
+  NEW="$(printf '%s' "$NEW" | jq --arg m "$m" --arg cmd "$cmd" '
+    .hooks = (.hooks // {}) | .hooks.PreToolUse = (.hooks.PreToolUse // [])
+    | {type: "command", command: $cmd, onFailure: "block"} as $item
+    | ([.hooks.PreToolUse | to_entries[] | select(.value.matcher == $m) | .key]) as $ix
+    | if ($ix | length) > 0 then .hooks.PreToolUse[$ix[0]].hooks += [$item]
+      else .hooks.PreToolUse += [{matcher: $m, hooks: [$item]}] end')"
+}
+EGRESS="$H/guard-team-egress.sh\""
+egress_merge Bash
+egress_merge WebFetch
+egress_merge Bash "$H/guard-destructive-sql.sh\"" D
+# The role sessions' bootstrap directive; silent outside a role session and in a team clone.
+hook_merge S SessionStart "$H/session-role.sh\"" '["startup","resume","clear","compact"]' false '' \
+  '{"timeout":5}'
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '
   ["Bash(bash .claude/lib/team-*.sh*)", "Bash(git switch *)", "Bash(git show *)",
    "Bash(gh pr view*)", "Bash(gh issue view*)", "Bash(bash .claude/lib/codex-bg.sh*)",
-   "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)"] as $want
+   "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
+   "Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/monitoring.sh*)",
+   # The role-session launcher verbs; its Operator actions are on the ask list below.
+   "Bash(bash .claude/lib/supervisor-sessions.sh status*)", "Bash(bash .claude/lib/supervisor-sessions.sh check*)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh preflight*)", "Bash(bash .claude/lib/supervisor-sessions.sh materialize*)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh reviewer*)", "Bash(bash .claude/lib/supervisor-sessions.sh freeze on *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh freeze status*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh start *)", "Bash(bash .claude/lib/supervisor-sessions.sh stop *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh up*)", "Bash(printenv TEAM_SESSION_ROLE)",
+   # test-gate.sh is not matched by team-*.sh.
+   "Bash(bash .claude/lib/test-gate.sh*)"] as $want
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
-     "Bash(bash .claude/lib/team-merge-check.sh*)"] as $ask
+     "Bash(bash .claude/lib/team-merge-check.sh*)",
+     # The channel step writes the machine registry and boxes outside the repo.
+     "Bash(bash .claude/lib/team-mail-setup.sh*)",
+     # The operator kit is installed outside the repo by the Operator only.
+     "Bash(bash .claude/team/sessions/operator-kit/install.sh*)",
+     # team-watch verbs only the Operator may trigger: routing, stop, a takeover, the
+     # answering and class switches.
+     "Bash(bash .claude/lib/team-watch.sh routing*)", "Bash(bash .claude/lib/team-watch.sh stop*)",
+     "Bash(bash .claude/lib/team-watch.sh register --takeover*)",
+     "Bash(bash .claude/lib/team-watch.sh mode answering*)",
+     "Bash(bash .claude/lib/team-watch.sh mode class*)",
+     # the role-session launcher Operator actions: clearing a freeze, the rollback, here.
+     "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
+     "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
+     "Bash(bash .claude/lib/supervisor-sessions.sh here *)"] as $ask
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"
@@ -250,12 +320,16 @@ else
   emit merged generated "$SET"
 fi
 
-# ---- .gitignore: the harness writes runtime state into .agents/team/ ---------------------------
-if git -C "$TARGET" check-ignore -q .agents/team/probe 2>/dev/null; then
+# ---- .gitignore: runtime state in .agents/team/, the tool's fallback mail box in .agents/agent-mail/
+IGN=""
+for d in .agents/team/ .agents/agent-mail/; do
+  git -C "$TARGET" check-ignore -q "${d}probe" 2>/dev/null || IGN="$IGN$d\n"
+done
+if [ -z "$IGN" ]; then
   emit kept generated .gitignore
 else
-  apply sh -c 'printf "\n# Team harness runtime state (team-setup.sh)\n.agents/team/\n" >> "$1"' _ \
-    "$TARGET/.gitignore"
+  apply sh -c 'printf "\n# Team harness runtime state (team-setup.sh)\n$2" >> "$1"' _ \
+    "$TARGET/.gitignore" "$IGN"
   emit merged generated .gitignore
 fi
 

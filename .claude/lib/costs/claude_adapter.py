@@ -1,4 +1,4 @@
-"""Claude Code transcripts → occurrences, events, sessions, subagents (spec TT-813).
+"""Claude Code transcripts → occurrences, events, sessions, subagents.
 
 Python 3.9 stdlib only. Stores usage metadata and whitelisted identifiers only — never prompts,
 message text or free-text arguments.
