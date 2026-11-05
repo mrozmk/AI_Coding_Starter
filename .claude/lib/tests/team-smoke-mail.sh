@@ -280,5 +280,14 @@ printf '{"schema":1,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz","
 setup "$P6" --dry-run
 [ "$RC" = 0 ] && has "mode	extend	key ZZ" && has "AdvisorZz (monitor)" || fail "8: profile names unused"
 has "reviewer: none" || fail "8: solo still prints the Reviewer bring-up"
+# D4: advisor unset follows the loader — solo without codex, pair with it.
+printf '{"schema":1,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz"}}}\n' \
+  > "$P6/.claude/project-profile.json"
+setup "$P6" --dry-run
+[ "$RC" = 0 ] && has "reviewer: none" || fail "8: advisor unset without codex still prints the Reviewer bring-up"
+printf '{"schema":1,"codex":true,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz"}}}\n' \
+  > "$P6/.claude/project-profile.json"
+setup "$P6" --dry-run
+[ "$RC" = 0 ] && has "register --as ReviewerZz" || fail "8: advisor unset with codex lacks the Reviewer bring-up"
 
 echo "team-smoke-mail: OK"

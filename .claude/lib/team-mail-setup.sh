@@ -309,8 +309,14 @@ else
 fi
 
 # ---- the Reviewer registers itself: it needs its own Codex thread UUID ------------------------
-if [ "$(pf advisor)" = solo ]; then
-  echo "reviewer: none (teams.channel.advisor = solo)"
+# The loader's D4 default (team-channel.sh): advisor unset → pair only when the profile has codex.
+ADVISOR_MODE="$(pf advisor)"
+if [ -z "$ADVISOR_MODE" ]; then
+  [ "$(jq -r '.codex // false | tostring' "$PROFILE" 2>/dev/null || true)" = true ] \
+    && ADVISOR_MODE=pair || ADVISOR_MODE=solo
+fi
+if [ "$ADVISOR_MODE" = solo ]; then
+  echo "reviewer: none (advisor solo: teams.channel.advisor, or no codex in the profile)"
 else
   cat <<EOF
 reviewer: in this project's Codex window (CODEX_HOME=${CODEX_HOME_V:-<unset>}), first thing after start:
