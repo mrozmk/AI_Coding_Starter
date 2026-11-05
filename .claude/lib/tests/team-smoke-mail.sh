@@ -107,6 +107,9 @@ has '"project": "p1"' && has '"stage": "design"' || fail "2: state get did not u
 H0=$(treehash "$HOME")
 setup "$P1"
 [ "$RC" = 0 ] && has "mode	reuse	key p1" || fail "3: re-run is not reuse"
+# S4 by the tree, not only by the output: a reuse run changes nothing under HOME — no second tool
+# copy, box, registry entry or recipient.
+[ "$(treehash "$HOME")" = "$H0" ] || fail "3: the reuse run changed files under HOME"
 [ "$(lines create)$(lines register)$(lines write)$(lines add)" = 0000 ] || fail "3: re-run planned writes"
 [ "$(lines keep)" = 6 ] || fail "3: expected tool, box, 3 recipients and channel kept"
 
