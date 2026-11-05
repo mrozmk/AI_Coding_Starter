@@ -180,8 +180,8 @@ shows invalid overrides as `invalid — <message>`.
 **Material — never guessed.** The coder/qa writes a `blocked` record with the question and waits:
 
 - changing scope or acceptance criteria;
-- changing a public contract (route, DTO, byte enum, SignalR method, AF queue message);
-- a schema or EF migration the plan does not name;
+- changing a public contract (route, DTO, byte enum, a transport endpoint, a queue message);
+- a schema migration the plan does not name;
 - a deviation from the plan beyond file-level placement;
 - a `fundamental` review finding;
 - a gate escalation;
