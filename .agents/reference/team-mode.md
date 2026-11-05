@@ -180,8 +180,8 @@ shows invalid overrides as `invalid — <message>`.
 **Material — never guessed.** The coder/qa writes a `blocked` record with the question and waits:
 
 - changing scope or acceptance criteria;
-- changing a public contract (route, DTO, byte enum, SignalR method, AF queue message);
-- a schema or EF migration the plan does not name;
+- changing a public contract (route, DTO, byte enum, a transport endpoint, a queue message);
+- a schema migration the plan does not name;
 - a deviation from the plan beyond file-level placement;
 - a `fundamental` review finding;
 - a gate escalation;
@@ -349,7 +349,8 @@ The QA report's free text records `Load: start … end … (waited …s)` for ea
 
 ## 8a. PR provider
 
-`teams.pr_provider` (`azure-devops` | `github`; `none` is reserved and refused) selects the PR layer.
+`teams.pr_provider` (`azure-devops` | `github` | `none`) selects the PR layer; `none` turns it off,
+and team runs, PRs and merges refuse with a message naming the setting.
 ADO keeps `az` in `team-lib.sh`; github goes only through `.claude/lib/team-pr.sh` (needs `gh`,
 `teams.github.repo`, and `origin` matching it).
 
