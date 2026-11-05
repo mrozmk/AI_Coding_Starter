@@ -218,8 +218,10 @@ mkq blocked; opinion 999 "" "I think yes"
 nofb unmarked "Reviewer unmarked" --class plan-variant --recommend "say x"
 mkq blocked; opinion 0 "opinion: agree"
 nofb stale "opinion older than the request" --class plan-variant --recommend "say x"
+# No channel and no opinion key reads as advisor solo (the renderer's signal); a configured pair
+# channel without the key is `opinion adapter off` (part escalation, E6b).
 mkq blocked; opinion 999 "opinion: agree"; cfg_nofb
-nofb "no opinion key" "opinion adapter off" --class plan-variant --recommend "say x"
+nofb "no opinion key" "advisor solo" --class plan-variant --recommend "say x"
 cfg_fb; mkq blocked; opinion 999 "opinion: agree"; touch "$WORK/mail.opinion-fail"
 nofb "failing opinion op" "opinion op failed (rc 1)" --class plan-variant --recommend "say x"
 rm -f "$WORK/mail.opinion-fail"

@@ -89,7 +89,9 @@ out and the newest Reviewer message on the thread opens with `opinion: agree`, n
 request, over the TeamLead's recorded recommendation. The script decides, the TeamLead delivers,
 marked `fallback: Advisor no-reply` (`--author TeamLead-fallback`). Critical classes (`ac`,
 `contract`, `schema`, `sensitive`, `harness-rule`, `conflict`, unclassified) and every q with
-`waiting: operator` never fall back.
+`waiting: operator` never fall back. Under `teams.channel.advisor: solo` the fallback is off by
+design (reason `advisor solo`): there is no Reviewer, and every tier-2 question waits for the
+Advisor.
 
 **Tickets from recommendations.** The Supervisor and the Advisor create technical tickets without
 asking (wrapup follow-ups, QA findings, analysis). Each carries the recommendation line —

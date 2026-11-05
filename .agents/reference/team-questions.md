@@ -101,7 +101,8 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
    busy · 2 usage / refused state / reping limit / tier mismatch · 3 `NO-REPLY <reason> (repings:
    <n>, sent: <yes|no>)` · 4 final reply printed, outcome not recorded (ledger lock timeout) ·
    130/143 cancelled. A tier-3 `answer` counts only with `decided-by: operator` + an
-   `operator-ref` the adapter verified. The supervisor writes the answer.
+   `operator-ref` the adapter verified. Under `advisor: solo` no question closes by fallback
+   (`fallback: no — advisor solo`); every tier-2 question waits for the Advisor. The supervisor writes the answer.
    **Config contract.** `send` and `wait` are each one simple command: first word `bash`
    or `sh` (on PATH, no absolute path), then the adapter (no option word `-…`/`+…`) and fixed
    words, ending with `"$1" "$2" "$3" "$4" "$5" "$6"`; besides those tokens only
