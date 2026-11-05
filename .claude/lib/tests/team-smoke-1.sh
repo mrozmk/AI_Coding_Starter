@@ -264,7 +264,8 @@ for bad in '{"planer":{"model":"opus"}}' '{"qa":{"modle":"opus"}}' \
   expect 1 "roles.json" "invalid base config $bad"
   cmp -s "$TD/session.json" "$WORK/session.bak" || fail "bad base config changed session.json"
   has "new-session" "$STUB_LOG" && fail "bad base config launched a session"
-  has "stopped (1)" "$STUB_LOG" || fail "runtime failure stopped notification suppressed"
+  grep -q '^notify --backend none --alarm team alfa: stopped (1)' "$STUB_LOG" \
+    || fail "runtime failure stopped notification suppressed"
 done
 cp "$WORK/roles.bak" "$MAIN/.claude/team/roles.json"
 rmdir "$HOME/.codex-acmeshop"
