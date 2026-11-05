@@ -42,8 +42,7 @@ All commands run in **your project's** root, not in the starter.
 6. **Operator kit** (an Operator action, run it yourself with `!`):
    `bash .claude/team/sessions/operator-kit/install.sh --dry-run`, then `--apply`, then
    `--verify` (every line `ok`). `--apply` also renders `.agents/team/escalation.local.json`.
-   The dry-run still prints `skip … escalation.local.json` because the adapter does not exist
-   yet; `--apply` writes it. See [08](08-operator-kit.md).
+   See [08](08-operator-kit.md).
 7. **Reviewer** (`advisor: pair` only): the channel step's `reviewer:` block is for the
    Reviewer's own Codex window, which registers itself with its thread id.
 

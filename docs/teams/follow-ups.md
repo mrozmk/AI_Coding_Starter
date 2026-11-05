@@ -37,7 +37,7 @@ tests.
 | F22 | The tool copy was named after the checkout's commit, so a second project with identical tool content got a second copy | done with F21 |
 | F23 | `pr_provider: none` was reserved and refused by the profile check | done: `none` is valid and means the PR layer is off; team runs, PRs and merges refuse naming the setting |
 | F24 | `--key <KEY>` reuse of another entry takes that entry's suffix and recipients without a warning when the profile's `mail_suffix` differs | done: refused with a message naming both suffixes; mail smoke 7e |
-| F25 | The operator kit's `--dry-run` prints `skip … escalation.local.json (operator kit not installed)` although `--apply` writes it | code: say "written by --apply" |
+| F25 | The operator kit's `--dry-run` prints `skip … escalation.local.json (operator kit not installed)` although `--apply` writes it | done: the dry-run prints `plan … written by --apply`; kit smoke (I) |
 | F26 | The purity test does not scan the root seed files the installer generates (`.claude/codex-profile` carried a ticket key until 2026-11-05) | code: extend the purity scope |
 
 ## Not ported by design

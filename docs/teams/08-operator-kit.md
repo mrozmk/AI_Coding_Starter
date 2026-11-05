@@ -19,7 +19,7 @@ bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the ba
 - Run it after the channel step of `/setup:teams` ([09 → Fresh machine](09-setup.md#fresh-machine-no-agent-mailprojectsjson)):
   the installer reads `kit_dir`, the box and the notifier from the channel config.
 - `--apply` is what makes escalation work: it writes `.agents/team/escalation.local.json`, which
-  the channel step skips while no adapter exists. The dry-run still says `skip` for that file.
+  the channel step skips while no adapter exists.
 - **Lifetimes.** A template change reaches the live copy only on your next `--apply`;
   `--verify` reports the drift until then.
 - **Declared losses.** With `notifier: none`, alarms about the Supervisor itself and a dead tmux

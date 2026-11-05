@@ -143,7 +143,11 @@ EOF
 case "$1" in
   --dry-run)
     each dry
-    (cd "$root" && bash .claude/lib/team-channel.sh render --dry-run) || true ;;
+    # The render sees no adapter yet and says skip; --apply installs it first and then writes the
+    # file, so the dry-run reports what --apply will do.
+    (cd "$root" && bash .claude/lib/team-channel.sh render --dry-run) \
+      | sed 's|^skip	\.agents/team/escalation\.local\.json	no adapter at .*|plan	.agents/team/escalation.local.json	written by --apply, after it installs escalate.sh|' \
+      || true ;;
   --apply)
     mkdir -p "$KIT"; chmod 700 "$KIT"
     each apply_one
