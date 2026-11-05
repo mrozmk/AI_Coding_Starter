@@ -101,6 +101,17 @@ for v in "register --as ReviewerXY --adapter exec --cmd touch" "requeue 1" "paus
 done
 mail p1 deliver ReviewerXY --adapter exec --cmd "touch $WORK/pwned" --once
 [ "$RC" = 2 ] && [ ! -e "$WORK/pwned" ] || fail "2: deliver with --adapter exec was not refused"
+# deliver may not be pointed at another session, registry or box, not even by an argparse prefix;
+# its tuning options still pass the gate. send keeps --thread (the mail thread).
+for v in "--thread 0000" "--thread=0000" "--thr 0000" "--recipients $WORK/r.json" "--allow-experimental" \
+    "--allow" "--recipient Other" "--box $WORK/b" "--adapt exec"; do
+  mail p1 deliver ReviewerXY $v --once
+  [ "$RC" = 2 ] && has "is an Operator action" || fail "2: 'deliver $v' was not refused"
+done
+mail p1 recipients --recipients "$WORK/r.json"
+[ "$RC" = 2 ] && has "is an Operator action" || fail "2: 'recipients --recipients' was not refused"
+mail p1 deliver ReviewerXY --poll 0.1 --max-per-hour=5 --bogus-after-gate
+[ "$RC" = 2 ] && has "deliver --bogus-after-gate" || fail "2: deliver's tuning options did not pass the gate"
 mail p1 state get --json
 has '"project": "p1"' && has '"stage": "design"' || fail "2: state get did not use the label"
 [ ! -e "$COPY/__pycache__" ] || fail "2: the client let python write bytecode into the tool copy"

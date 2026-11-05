@@ -177,8 +177,23 @@ operator_only() {
   die "'$1' is an Operator action, not a role's: run it yourself on the tool — $run" 2
 }
 for a in "$@"; do
-  case "$a" in --adapter|--adapter=*|--cmd|--cmd=*) operator_only "$SUB $a" ;; esac
+  case "$a" in
+    --adapter|--adapter=*|--cmd|--cmd=*|--box|--box=*|--recipients|--recipients=*)
+      operator_only "$SUB $a" ;;
+  esac
 done
+# deliver's parser also takes --thread/--recipient/--recipients/--allow-experimental, and argparse
+# accepts any unambiguous prefix (`--thr`): only the loop's tuning options pass, all else refuses.
+# (send keeps --thread: there it names the mail thread, not a session to wake.)
+if [ "$SUB" = deliver ]; then
+  for a in "$@"; do
+    case "$a" in
+      --poll|--poll=*|--retry-backoff|--retry-backoff=*|--redeliver-after|--redeliver-after=*\
+        |--claim-timeout|--claim-timeout=*|--max-per-hour|--max-per-hour=*|--once) ;;
+      -*) operator_only "deliver $a" ;;
+    esac
+  done
+fi
 case "$SUB" in
   show|name|pattern|ps|deliver|send|inbox|ack|wait|recipients) ;;
   state) [ "${1:-}" = get ] || operator_only "state ${1:-}" ;;
