@@ -85,7 +85,12 @@ probe .mail.Supervisor; expect 0 "" "(4) empty probe"; [ ! -s "$WORK/out" ] || f
 cp "$REG" "$WORK/reg.bak"
 jq '.QX.tool = "/nowhere/agent_mail"' "$WORK/reg.bak" > "$REG"
 run "$MAIN" $CH show; expect 3 "stale against registry entry QX" "(5) a re-pointed tool"
+jq '.QX.decisions_dir = "/moved/decisions"' "$WORK/reg.bak" > "$REG"
+run "$MAIN" $CH show; expect 3 "decisions_dir or codex_home differ" "(5) a moved decisions dir"
+jq '.QX.codex_home = "/moved/codex"' "$WORK/reg.bak" > "$REG"
+run "$MAIN" $CH show; expect 3 "decisions_dir or codex_home differ" "(5) a moved codex home"
 cp "$WORK/reg.bak" "$REG"
+run "$MAIN" $CH show; expect 0 "" "(5) the matching local half still loads"
 prof '.teams.channel.mail_suffix = "Zz"'
 run "$MAIN" $CH show; expect 3 "would not match" "(5) suffix drift"
 prof '.teams.channel.mail_suffix = "Qx" | .teams.channel.notifier = "bell"'

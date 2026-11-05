@@ -42,7 +42,7 @@ team_channel_err() { echo "error: team channel: $*" >&2; return 3; }
 # team_channel_load [root] — parse + validate both halves once per process.
 team_channel_load() {
   [ -z "${TEAM_CHANNEL_LOADED:-}" ] || return 0
-  local root p ch reg v e codex
+  local root p ch reg v e codex dc
   root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
   [ -n "$root" ] || { team_channel_err "not inside a git checkout"; return 3; }
   p="$root/.claude/project-profile.json"; ch="$root/$TEAM_CHANNEL_REL"
@@ -112,6 +112,15 @@ team_channel_load() {
   if [ "${e%	*}" != "$TEAM_CHANNEL_BOX	$TEAM_CHANNEL_TOOL" ]; then
     team_channel_err "$TEAM_CHANNEL_REL is stale against registry entry $TEAM_CHANNEL_KEY" \
       "(box or tool differ; rerun /setup:teams → channel)"
+    return 3
+  fi
+  # The decisions directory and the Codex home are read from the local half too (operator-ref
+  # checks, the Reviewer's CODEX_HOME): a moved entry must not leave them pointing at the old ones.
+  dc="$(jq -r --arg k "$TEAM_CHANNEL_KEY" \
+    '[.[$k].decisions_dir, .[$k].codex_home] | map(. // "") | join("\t")' "$reg" 2>/dev/null || true)"
+  if [ "$dc" != "$TEAM_CHANNEL_DECISIONS	$TEAM_CHANNEL_CODEX_HOME" ]; then
+    team_channel_err "$TEAM_CHANNEL_REL is stale against registry entry $TEAM_CHANNEL_KEY" \
+      "(decisions_dir or codex_home differ; rerun /setup:teams → channel)"
     return 3
   fi
   if [ "${e##*	}" != "$TEAM_CHANNEL_SUFFIX" ]; then
