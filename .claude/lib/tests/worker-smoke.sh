@@ -328,6 +328,22 @@ expect 1 "a build, gate or review is running against" \
   "start during a codex review quoting the script"
 stop_build
 [ ! -e "$WD/active" ] || fail "start during a codex review published an assignment"
+# The workload comes from the profile, not from one stack: with build_check `make check` a
+# `make check` in the clone blocks, and the pattern names no other stack's tool.
+PW="$MAIN/.claude/project-profile.json"; cp "$PW" "$WORK/prof-wl"
+jq '.teams.build_check = "make check" | .teams.test_gate = "none"' "$WORK/prof-wl" > "$PW"
+fake_build "$SOL" "make check"
+start AB-906 chore/AB-906-h $DEV --thread t6
+expect 1 "a build, gate or review is running against" "start during the profile's build check"
+stop_build
+cp "$WORK/prof-wl" "$PW"
+RE=$(TEAM_BUILD_CHECK="make check" TEAM_TEST_GATE=none TEAM_GATE_LOCK_WORKLOAD="" \
+  bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
+case "$RE" in *dotnet*) fail "the workload pattern names a stack the profile does not use: $RE" ;; esac
+case "$RE" in *"make check"*) ;; *) fail "the workload pattern lacks the build check: $RE" ;; esac
+RE=$(TEAM_BUILD_CHECK="echo 'no build check configured'" TEAM_TEST_GATE=none \
+  bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
+[ "$RE" = 'test-gate\.sh|team-merge-check\.sh|codex exec' ] || fail "an echo build check widened the pattern: $RE"
 mkdir "$WORK/main-solo"
 fake_build "$WORK/main-solo" "dotnet build $SOLP-solo/x.sln"
 start AB-906 chore/AB-906-h $DEV --thread t6
