@@ -150,6 +150,20 @@ run deny "env with an option"               "env -i sqlcmd -Q \"DROP TABLE t\""
 run deny "env -S splits its string"         "env -S \"sqlcmd -Q 'DROP TABLE t'\""
 run ask  "stdbuf wrapper"                   "stdbuf -o0 sqlcmd -Q \"DELETE FROM dbo.X WHERE Id=1\""
 run none "a wrapped read"                   "timeout 5 sqlcmd -Q \"SELECT 1\""
+# Command substitution and sqlcmd long options (R1)
+run deny "backtick glued to the verb"       'echo `sqlcmd -S h -Q "DROP TABLE t"`'
+run deny "backtick as the first word"       '`sqlcmd -S h -Q "DROP TABLE t"`'
+run deny "backtick in an assignment"        'x=`sqlcmd -Q "DROP TABLE t"`'
+run deny "backtick inside double quotes"    "echo \"\`sqlcmd -Q 'DROP TABLE t'\`\""
+run deny "\$() inside double quotes"         "echo \"\$(sqlcmd -Q 'DROP TABLE t')\""
+run ask  "backtick with a write"            'echo `sqlcmd -Q "DELETE FROM dbo.X"`'
+run none "backtick with a read"             'echo `sqlcmd -Q "SELECT 1"`'
+run none "backtick without sqlcmd"          'echo `date`'
+run deny "--query value"                    'sqlcmd -S h --query "DROP TABLE t"'
+run deny "--query=value"                    'sqlcmd -S h --query="DROP TABLE t"'
+run ask  "--query=value with a write"       'sqlcmd --query="DELETE FROM dbo.X"'
+run deny "--input-file=file"                "sqlcmd --input-file=drop.sql"
+run ask  "unparsed long option asks"        'sqlcmd -S h --format vert -Q "SELECT 1"'
 # An unreadable payload fails closed (S9): ask, never silence.
 for bad in 'not json' '[1,2]'; do
   out=$(printf '%s' "$bad" | (cd /tmp && CLAUDE_PROJECT_DIR=/nonexistent bash "$H"))
