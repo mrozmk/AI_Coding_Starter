@@ -21,11 +21,16 @@ and the acceptance run. [capabilities.md](capabilities.md) says what is proven.
 
 ## Fresh machine (no `~/.agent-mail/projects.json`)
 
-All commands run in **your project's** root, not in the starter.
+All commands run in **your project's** root, not in the starter. Each step names the slash command
+and the script it runs, so the steps also work from a plain terminal. A command marked as an
+Operator action is typed with Claude Code's `!` prefix (the shell prefix: the command runs in your
+own shell, not the agent's); in a terminal, run the same `bash …` line without it.
 
-1. **Install the layer:** `/setup:teams <starter-root>` (pass the path; the built-in default is one
-   machine's layout). It plans first (`--check`), asks, then copies the manifest's files. Nothing
-   existing is overwritten: a difference is reported as a conflict.
+1. **Install the layer:** `/setup:teams <starter-root>` (pass the path). It plans first, asks, then
+   copies the manifest's files. Nothing existing is overwritten: a difference is reported as a
+   conflict. In a terminal: `bash <starter-root>/.claude/lib/team-setup.sh <starter-root> "$PWD"
+   --check` for the plan, then the same without `--check`; exit 3 means the profile has no `teams`
+   block yet (step 2), exit 1 lists conflicts.
 2. **Fill the profile** (`.claude/project-profile.json` → `teams`), when the installer exits 3.
    Start from [`.claude/project-profile.json.example`](../../.claude/project-profile.json.example):
    The profile check requires `tracker`, `pr_provider`, `trunk`, `branch_types`, `required_tools`,
@@ -34,8 +39,12 @@ All commands run in **your project's** root, not in the starter.
    `test_gate` is a script path or `none`, `env_file_required` is `true|false`, and
    `required_tools`, `branch_types` and `seed_files` are arrays (the first two non-empty). Add `teams.channel` (`project_code`,
    `mail_suffix`, optional `tmux_prefix`, `advisor: pair|solo`, `notifier`).
-3. **Codex home:** one value line in `.claude/codex-profile` (`~/.codex-<project>` is fine).
-4. **Channel:** the dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
+3. **Codex home:** `mkdir -p ~/.codex-<project>` first, then one value line in
+   `.claude/codex-profile` (`~/.codex-<project>` is fine). The directory must exist: `/setup:teams`
+   (Step 5b) and the runner resolve it and refuse a missing one.
+4. **Channel:** `bash .claude/lib/team-mail-setup.sh "$PWD" --dry-run`, then the same without
+   `--dry-run` (variants: `--key <KEY>` to reuse an existing box, `--add-roles` to add the role
+   names an existing entry lacks). The dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
    copy under `~/.agent-mail/tools/` (named by its content: identical tools share one copy), the box and its `decisions/`, registers the three Claude
    roles and writes the gitignored `.agents/team/channel.local.json`, then renders
    `watch.local.json`. `escalation.local.json` is `skip`ped until step 6.
