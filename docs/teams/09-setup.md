@@ -55,10 +55,16 @@ All commands run in **your project's** root, not in the starter.
    `WARN receivers live — … not started` and two FAILs that only running sessions clear:
    `team-watch loops beating` (until `team-watch.sh start` or `/sessions-up`) and `mail probe and
    picked ping per role` (until each role window acks a `team-watch.sh ping <role>`). Every other
-   row should be `ok`.
-
-Stop here. Starting the role sessions is [01 → The launcher](01-roles-and-sessions.md#the-launcher)
-and the migration in [`supervisor-sessions.md`](../../.agents/reference/supervisor-sessions.md#migration).
+   row should be `ok`. Row 10 prints `unverified: run team-watch.sh ping <role>` on any Claude Code
+   other than the version the socket wire format was verified on.
+9. **First bring-up:** `bash .claude/lib/supervisor-sessions.sh up` (or `/sessions-up`): the daemon
+   with `--no-register`, then the role windows, then `monitoring.sh start all`. The explicit form is
+   `bash .claude/lib/team-watch.sh start --no-register`, `bash .claude/lib/supervisor-sessions.sh
+   start all`, `bash .claude/lib/monitoring.sh start all`. `start all` alone starts no daemon, and a
+   plain `team-watch.sh start` from a terminal stops at the receiver registration. Details and the
+   switch to split routing: [01 → The launcher](01-roles-and-sessions.md#the-launcher). The
+   [migration](../../.agents/reference/supervisor-sessions.md#migration) applies only when a single
+   `/monitor` window already runs the daemon.
 
 ## A machine that already runs the channel
 
