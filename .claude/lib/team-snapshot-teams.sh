@@ -211,14 +211,11 @@ team_role() {  # team_role <td> <team> <run> <role> <cur role> <runner> <overrid
   case "$status" in
     attention|blocked|failed) actions="$(team_actions "$team" "$role" "$status" "$pk")" ;;
   esac
-  if [ "$role" = cli ]; then
-    cfg="$(jq -cn --arg m "$TEAM_CLI_MODEL" --arg e "$TEAM_CLI_EFFORT" '{model: $m, effort: $e}')"
-  else
-    if [ -n "$base" ]; then
-      cfg="$(team_role_cfg "$base" "$ov" "$role" 2>/dev/null)" || cfg='{}'
-    fi
-    [ -n "$cfg" ] || cfg='{}'
+  if [ -n "$base" ] || [ "$role" = cli ]; then
+    cfg="$(team_role_cfg "$base" "$ov" "$role" "$root/.claude/project-profile.json" 2>/dev/null)" \
+      || cfg='{}'
   fi
+  [ -n "$cfg" ] || cfg='{}'
   jq -cn --arg role "$role" --argjson cfg "$cfg" --argjson attempt "$attempt" \
     --arg status "$status" --argjson rec "$rec" --argjson screen "$screen" \
     --argjson actions "$actions" --argjson skills "$skills" --arg cur "$cur" \

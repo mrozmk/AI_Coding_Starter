@@ -350,9 +350,8 @@ cmd_roles() {
   local e
   if [ "$MODE" = cli ] && [ "${1:-}" != --clear ]; then
     for e in "$@"; do
-      case "$e" in cli=//*) ;; *)
-        echo 'error: roles overrides other than cli=//<auto|manual> are not supported in' \
-          'mode cli (fixed opus[1m]/medium);' \
+      case "$e" in cli=*) ;; *)
+        echo 'error: in mode cli only cli=… entries apply (the other roles do not run);' \
           'use roles --clear to remove a stale override' >&2
         exit 1 ;;
       esac

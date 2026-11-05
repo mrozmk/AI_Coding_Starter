@@ -269,7 +269,7 @@ expect 0 '"coder":{"effort":"xhigh"}' "roles merges"
 has '"model": "claude-fable-5-1"' "$OV" || fail "roles merge dropped planner"
 cp "$OV" "$WORK/ov.bak"
 for bad in "planner=x;y" planer=opus planner= planner "planner coder=opus" \
-  coder=/hihg coder=/HIGH coder=//bypassPermissions coder=//AUTO coder=/// cli=opus/high; do
+  coder=/hihg coder=/HIGH coder=//bypassPermissions coder=//AUTO coder=/// cli=/HIGH; do
   : > "$STUB_LOG"
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$bad"
   expect 1 "error:" "roles rejects $bad"
@@ -385,7 +385,7 @@ perm_launch auto "preflight: claude 2.1.301" STUB_CLAUDE_VERSION=2.1.301
 git -C "$CLONE" update-index --no-skip-worktree .claude/hooks/guard-team-egress.sh .claude/settings.json
 cp "$WORK/effort-ov.bak" "$OV"
 for f in '{"planer":{"model":"opus"}}' '{' '{} {}' '{"qa":{"modle":"opus"}}' \
-  '{"coder":{"permission":"auto "}}' '{"cli":{"effort":"high"}}' \
+  '{"coder":{"permission":"auto "}}' '{"cli":{"effort":"HIGH"}}' \
   '{"coder":{"effort":"hihg"}}' '{"coder":{"effort":"high\n"}}' \
   '{"coder":{"model":"opus\n"}}' '{"coder":{"effort":7}}'; do
   printf '%s\n' "$f" > "$OV"; rm -f "$TD/session.json"; session coder 1 "$Q"

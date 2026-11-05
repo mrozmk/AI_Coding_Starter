@@ -145,12 +145,14 @@ with no automatic retry. Ask the developer to have the role retry one question a
 its window. Clones retain their base harness until the next `team-next`.
 
 No role exits its session — the runner ends it after accepting the record. Each role runs with the
-`--model` / `--effort` / `--permission-mode` set for it in `.claude/team/roles.json`, overridden per
-ticket by `.agents/team/roles.override.json` (entry `<role>=[<model>][/<effort>][/<permission>]`).
+`--model` / `--effort` / `--permission-mode` set for it in `.claude/team/roles.json` (the shipped
+default), then by the project profile's optional `teams.roles.<role>` (same fields, committed), then
+per ticket by `.agents/team/roles.override.json` (entry `<role>=[<model>][/<effort>][/<permission>]`).
+The cli role has no `roles.json` entry: its default is `TEAM_CLI_MODEL`/`TEAM_CLI_EFFORT`
+(`team-modes.sh`), changed the same two ways; in mode cli the override takes only `cli=…` entries.
 
 **Permission mode.** `permission` ∈ `auto|manual` only; `roles.json` sets `auto` for every
-role, the cli role is fixed `auto` (`TEAM_CLI_PERMISSION`) and its override may carry only
-`cli.permission`. `/start-team … --permission-mode manual` writes `coder=//manual qa=//manual` (cli:
+role, the cli role defaults to `auto` (`TEAM_CLI_PERMISSION`). `/start-team … --permission-mode manual` writes `coder=//manual qa=//manual` (cli:
 `cli=//manual`) — mandatory for tickets editing `.claude/settings*.json` (the classifier
 refuses that as self-modification). `auto` is honoured only when the clone has the
 `guard-team-egress` hook (both files, registered under `WebFetch` and `Bash` with `"onFailure":

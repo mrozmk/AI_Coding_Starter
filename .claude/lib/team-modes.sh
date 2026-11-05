@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Run modes of a team ticket: which stages run, which planner prompt, the fixed cli model.
+# Run modes of a team ticket: which stages run, which planner prompt, the default cli model.
 # Sourced, never executed; the caller sets `set -euo pipefail`. Contract: .agents/reference/team-mode.md
 # Bash 3.2 compatible (macOS /bin/bash): no mapfile, no associative arrays.
 # Loaded from the main checkout (like roles.json), so a clone on an older base still works.
 
 TEAM_MODES="brainstorm quick cli"
-# The cli role ignores roles.json; of the override only cli.permission applies.
+# The cli role's shipped default (it has no roles.json entry); the profile's teams.roles.cli and
+# the per-ticket override may change model, effort and permission (team-roles.sh).
 TEAM_CLI_MODEL='opus[1m]'
 TEAM_CLI_EFFORT=medium
 TEAM_CLI_PERMISSION=auto
