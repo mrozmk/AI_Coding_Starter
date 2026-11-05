@@ -219,6 +219,28 @@ cp "$WORK/events.bak" "$TWD/events.jsonl"; rm -f "$TWD/undelivered.TeamLead.sinc
 lib 'tw_lock; tw_append_to TeamLead "" "AFTER repair"; tw_unlock'
 [ "$(seq_of "AFTER repair")" = "$((LS + 1))" ] || fail "C10: the repaired log did not resume at $((LS + 1))"
 lib tw_deliver; ack_all TeamLead
+# C11 (R1): four claimant processes against one dead holder — exactly one holds, every round, and
+# no reclaim leftovers stay behind. A .reclaim dir whose holder died is cleared after 5 s.
+cat > "$WORK/claimant.sh" <<'CLAIM'
+cd "$1" && . .claude/lib/team-watch-lib.sh && tw_init "$PWD" \
+  && tw_claim "$2/c.d" 0 && { echo "$$" >> "$2/c.won"; sleep 0.3; tw_release "$2/c.d"; }
+CLAIM
+multi=0
+for i in $(seq 20); do
+  rm -rf "$WORK"/c.d* "$WORK/c.won"; mkdir "$WORK/c.d"
+  sh -c 'exit 0' & dead=$!; wait "$dead"; echo "$dead" > "$WORK/c.d/pid"
+  # Wait on these four only: a bare wait would also wait on the holders' long sleeps.
+  cl=""; for k in 1 2 3 4; do bash "$WORK/claimant.sh" "$MAIN" "$WORK" 2>/dev/null & cl="$cl $!"; done
+  for k in $cl; do wait "$k" || true; done
+  [ "$(wc -l < "$WORK/c.won" 2>/dev/null | tr -d ' ')" = 1 ] || multi=$((multi + 1))
+  ls -d "$WORK"/c.d.* >/dev/null 2>&1 && fail "C11: round $i left $(ls -d "$WORK"/c.d.*)"
+done
+[ "$multi" = 0 ] || fail "C11: $multi of 20 rounds did not end with exactly one holder"
+rm -rf "$WORK"/c.d*; mkdir "$WORK/c.d" "$WORK/c.d.reclaim"; ago "$WORK/c.d.reclaim" 10
+sh -c 'exit 0' & dead=$!; wait "$dead"; echo "$dead" > "$WORK/c.d/pid"
+lib "tw_claim '$WORK/c.d' 2"
+[ "$RC" = 0 ] && [ "$(cat "$WORK/c.d/pid")" != "$dead" ] || fail "C11: an orphaned .reclaim blocked the claim"
+rm -rf "$WORK"/c.d*
 # Rotation: an undelivered event and an open batch survive; seq stays monotonic.
 now="$(date -u +%s)"
 for i in 1 2 3 4 5; do

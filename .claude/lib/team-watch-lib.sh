@@ -60,18 +60,36 @@ tw_timebox() { pr_timebox "$@"; }  # tw_timebox <secs> <cmd...> → exit 124 on 
 # tw_claim <dir> <wait secs> [max age secs] — mkdir claim with our pid. A claim whose pid is dead,
 # or older than max age, is reclaimed: its holder died mid-section and would block us forever.
 tw_claim() {
-  local d="$1" tries=0 max=$(( $2 * 5 )) p age
+  local d="$1" tries=0 max=$(( $2 * 5 ))
   until mkdir "$d" 2>/dev/null; do
-    p="$(cat "$d/pid" 2>/dev/null || true)"
-    age=$(( $(tw_now) - $(tw_mtime "$d") ))
-    if { [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; } || { [ -z "$p" ] && [ "$age" -gt 2 ]; } \
-      || { [ -n "${3:-}" ] && [ "$age" -gt "$3" ]; }; then
-      rm -rf "$d"; continue
-    fi
+    # A reclaim busy elsewhere counts against the wait like a live holder does.
+    if tw_stale "$d" "${3:-}" && tw_reclaim "$d" "${3:-}"; then continue; fi
     [ "$tries" -lt "$max" ] || return 1
     sleep 0.2; tries=$((tries + 1))
   done
   echo $$ > "$d/pid"
+}
+
+tw_stale() {  # tw_stale <claim dir> [max age] — dead pid, no pid after 2 s, or past max age
+  local p age
+  p="$(cat "$1/pid" 2>/dev/null || true)"
+  age=$(( $(tw_now) - $(tw_mtime "$1") ))
+  { [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; } || { [ -z "$p" ] && [ "$age" -gt 2 ]; } \
+    || { [ -n "${2:-}" ] && [ "$age" -gt "$2" ]; }
+}
+
+# tw_reclaim <claim dir> [max age] — removal under <dir>.reclaim, staleness checked again inside.
+# Two waiters that judged the same dead holder would otherwise each rm and mkdir, the second
+# removing the first one's fresh claim (and a rename-first reclaim races the same way). A
+# .reclaim older than 5 s lost its holder inside this function and is cleared. rc 1: busy.
+tw_reclaim() {
+  local r="$1.reclaim"
+  if ! mkdir "$r" 2>/dev/null; then
+    [ $(( $(tw_now) - $(tw_mtime "$r") )) -le 5 ] || rm -rf "$r"
+    return 1
+  fi
+  ! tw_stale "$1" "${2:-}" || rm -rf "$1"
+  rmdir "$r" 2>/dev/null || true
 }
 
 tw_release() {  # only our own claim: a reclaimed one belongs to someone else now
