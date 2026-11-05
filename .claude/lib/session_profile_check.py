@@ -8,8 +8,9 @@ written by `supervisor-sessions.sh materialize`) when it exists, else from the r
 the project settings. Each `_samples` command is classified deny > ask > allow > prompt with the
 same fnmatch matcher team_prompt_check.py uses for tier 1 — an approximation of Claude Code's
 matcher, so the live `/permissions` check stays a runbook step. `reads` must be allow, `secrets`
-ask or deny, `writes` anything but allow. A `secrets`/`writes` sample allowed only once the local
-settings are added is a LEAK. Exit 0 OK, 1 FAIL, 2 usage, 3 local leak (and no FAIL).
+ask or deny, `writes` anything but allow. A sample written `Read(<path>)` is checked against the
+Read(...) rules instead (`**/` also matches no directory). A `secrets`/`writes` sample allowed only
+once the local settings are added is a LEAK. Exit 0 OK, 1 FAIL, 2 usage, 3 local leak (and no FAIL).
 """
 import fnmatch
 import json
@@ -30,16 +31,31 @@ def load(path):
         return None
 
 
-def bash_rules(perms):
+def bash_rules(perms, tool="Bash"):
     out = []
     for tier in ("deny", "ask", "allow"):
         for rule in perms.get(tier, []):
-            m = re.match(r"^Bash\((.*)\)$", rule)
+            m = re.match(r"^%s\((.*)\)$" % tool, rule)
             if m:
                 pat = m.group(1)
                 pat = pat[:-2] + "*" if pat.endswith(":*") else pat
-                out.append((tier, pat))
+                out.append((tier, ("Read:" if tool == "Read" else "") + pat))
     return out
+
+
+def tool_rules(perms):
+    return bash_rules(perms) + bash_rules(perms, "Read")
+
+
+def fits(text, pat):
+    m = re.match(r"^Read\((.*)\)$", text)
+    if pat.startswith("Read:") != bool(m):
+        return False
+    if not m:
+        return fnmatch.fnmatchcase(text, pat) or fnmatch.fnmatchcase(text, pat + "*")
+    path, pat = m.group(1), pat[len("Read:"):]
+    return fnmatch.fnmatchcase(path, pat) or (pat.startswith("**/")
+                                               and fnmatch.fnmatchcase(path, pat[3:]))
 
 
 def match(text, rules):
@@ -48,7 +64,7 @@ def match(text, rules):
         for t, pat in rules:
             if t != tier:
                 continue
-            if fnmatch.fnmatchcase(text, pat) or fnmatch.fnmatchcase(text, pat + "*"):
+            if fits(text, pat):
                 return tier, pat
     return "prompt", None
 
@@ -86,7 +102,7 @@ def check_role(main, pdir, role, out):
     lost = floor - set(own_deny)
     if materialised and lost:
         fails.append("materialised profile lost %d deny rules" % len(lost))
-    rules = bash_rules(perms)
+    rules = tool_rules(perms)
     samples = profile.get("_samples", {})
     for cmd in samples.get("forbidden", []):
         got = classify(cmd, rules)
@@ -104,7 +120,7 @@ def check_role(main, pdir, role, out):
         got = classify(cmd, rules)
         if got != "allow":
             fails.append("%s → %s, expected allow" % (cmd, got))
-    with_local = rules + bash_rules(local)
+    with_local = rules + tool_rules(local)
     for kind, bad in (("secrets", ("allow", "prompt")), ("writes", ("allow",))):
         for cmd in samples.get(kind, []):
             got = classify(cmd, rules)

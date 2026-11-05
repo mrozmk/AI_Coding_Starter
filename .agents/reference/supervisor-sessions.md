@@ -178,8 +178,10 @@ name, local infrastructure) go into the project's own copy of the profile, each 
 `_samples.reads` line — `check` enforces the pairing. Never a `* list*` / `* show*` wildcard: it
 also matches writes whose arguments contain the word. Arrays merge across `--settings`, local and
 project, and deny/ask beat allow, so a profile allow is additive and the deny floor holds. The
-committed ask floor is one rule: `Bash(cat .env*)` is the only engine-level `ask` entry, in both
-committed profiles. It is there so the `_samples.secrets` lines (`cat .env`, `cat .env.local`) do
+committed ask floor is two rules, in both committed profiles: `Bash(cat .env*)` and
+`Read(**/.env*)` (the Read tool would otherwise open a `.env` the Bash rule never sees). They are
+there so the `_samples.secrets` lines (`cat .env`, `cat .env.local`, `Read(.env)`,
+`Read(services/api/.env.local)`; a `Read(<path>)` sample is matched against Read rules) do
 not depend on the project's settings: `check` requires every secrets sample to be ask or deny, and
 a project whose own `settings.json` carries no `.env` rule would otherwise fail `check` (and leave
 the secret read to a bare prompt). Provider- and cloud-specific secret verbs belong to the
