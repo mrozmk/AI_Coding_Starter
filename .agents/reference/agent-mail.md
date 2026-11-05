@@ -47,7 +47,9 @@ belong to whichever copy of the tool owns it.
 
 **The tool runs from a copy, never from a checkout.** A new entry's `tool` is
 `~/.agent-mail/tools/agent_mail-<sha>`: the runtime files (no tests) of the checkout's vendored
-`tools/agent_mail`, where `<sha>` is `git log -1 --format=%h -- tools/agent_mail`. Moving or
+`tools/agent_mail`, where `<sha>` is the first 12 hex digits of a SHA-256 over those files' names
+and content (`team_tool_hash` in `team-channel.sh`), so an uncommitted checkout gets a stable
+name and two checkouts with the same tool share one copy. Moving or
 deleting the checkout, or switching its branch, never changes the code under a live box. An
 existing copy with identical content is reused; one with different content is refused (move it
 away first). The client and the setup step run Python with `-B` and

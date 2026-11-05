@@ -1,10 +1,10 @@
 # 09 — Setup
 
 How a developer brings the team layer into a project, from a clean machine to the point where the
-role sessions would start. Written from a walkthrough of the real scripts in a fixture `HOME`
-([evidence](evidence/p9-docs-walkthrough-2026-11-05.md)). Starting the role sessions, the signal
-daemon and the live checks belong to the role-session layer and to the acceptance run; until
-then, see [capabilities.md](capabilities.md) for what is proven.
+role sessions would start. Written from walkthroughs of the real scripts in a fixture `HOME`
+([first](evidence/p9-docs-walkthrough-2026-11-05.md), [with the role layer](evidence/p9a-walkthrough-2026-11-05.md)).
+Starting the role sessions needs a live Claude session: [01 — Roles and sessions](01-roles-and-sessions.md)
+and the acceptance run. [capabilities.md](capabilities.md) says what is proven.
 
 ## Requirements
 
@@ -46,7 +46,17 @@ All commands run in **your project's** root, not in the starter.
 7. **Reviewer** (`advisor: pair` only): the channel step's `reviewer:` block is for the
    Reviewer's own Codex window, which registers itself with its thread id.
 
-Stop here. The role sessions are started by the role-session layer (01, not merged yet).
+8. **Before the first start:** `bash .claude/lib/supervisor-sessions.sh check` prints `<role> OK`
+   for the Supervisor and the TeamLead. A `<role> LEAK: …` line (exit 3) means `settings.local.json`
+   allows something the role profile must not; remove it, or `start` and `here` launch nothing.
+   `bash .claude/lib/supervisor-sessions.sh preflight` on a machine where nothing runs yet prints
+   `WARN receivers live — … not started` and two FAILs that only running sessions clear:
+   `team-watch loops beating` (until `team-watch.sh start` or `/sessions-up`) and `mail probe and
+   picked ping per role` (until each role window acks a `team-watch.sh ping <role>`). Every other
+   row should be `ok`.
+
+Stop here. Starting the role sessions is [01 → The launcher](01-roles-and-sessions.md#the-launcher)
+and the migration in [`supervisor-sessions.md`](../../.agents/reference/supervisor-sessions.md#migration).
 
 ## A machine that already runs the channel
 

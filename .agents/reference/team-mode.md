@@ -349,7 +349,8 @@ The QA report's free text records `Load: start … end … (waited …s)` for ea
 
 ## 8a. PR provider
 
-`teams.pr_provider` (`azure-devops` | `github`; `none` is reserved and refused) selects the PR layer.
+`teams.pr_provider` (`azure-devops` | `github` | `none`) selects the PR layer; `none` turns it off,
+and team runs, PRs and merges refuse with a message naming the setting.
 ADO keeps `az` in `team-lib.sh`; github goes only through `.claude/lib/team-pr.sh` (needs `gh`,
 `teams.github.repo`, and `origin` matching it).
 
