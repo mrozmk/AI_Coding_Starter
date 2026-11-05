@@ -52,3 +52,18 @@ machine are kept apart by configuration (`teams.channel.mail_suffix`, `tmux_pref
 **Project policy is configuration.** Sensitive paths, permission classes, ticket labels and
 closure rules are examples to adopt consciously, never engine defaults. See
 [06 → `teams.policy`](06-permissions.md#teamspolicy).
+
+## Tests (starter repo only)
+
+The whole team layer is checked by one command. Run it from any directory, with a scratch
+`HOME` and `TMPDIR` (it refuses the real ones):
+
+```bash
+HOME=<scratch>/home TMPDIR=<scratch>/tmp/ bash .claude/lib/tests/team-suite.sh
+```
+
+Order, counts and the redacted log: [team-pipeline.md → Tests](../../.agents/reference/team-pipeline.md#13-tests).
+The tests are not installed by `/setup:teams`.
+
+What is proven, and on which host: [capabilities.md](capabilities.md). Acceptance evidence:
+[evidence/TEMPLATE.md](evidence/TEMPLATE.md).
