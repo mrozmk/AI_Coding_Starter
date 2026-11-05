@@ -89,11 +89,16 @@ echo "team-smoke-17: (69) tiers/answering enforcement OK"
 
 # ---- (P1) the state-file readers ignore .paused; the writer refuses a non-object -----------------
 L="$MAIN/.claude/lib"
+# Classes are off unless the profile enables them, so enable one: otherwise both class checks below
+# would pass or fail on the profile alone and say nothing about the state file.
+PF="$MAIN/.claude/project-profile.json"; cp "$PF" "$WORK/prof.before"
+jq '.teams.policy.classes.merge_line = {enabled: true}' "$WORK/prof.before" > "$PF"
 (. "$L/team-lib.sh"; echo '{"paused": {"TeamLead": {"since": "2026-11-04T08:00:00Z", "by": "x"}}}' > "$TWD/state.json"
   team_mode_ok "$MAIN" 1 yes && team_class_on "$MAIN" merge-line) || fail "a pause changed tiers or classes"
 jq '. + {tiers: "off", classes: {"merge-line": "off"}}' "$TWD/state.json" > "$WORK/st" && mv "$WORK/st" "$TWD/state.json"
 (. "$L/team-lib.sh"; [ "$(team_mode_ok "$MAIN" 1 yes)" = "tiers off" ] && ! team_class_on "$MAIN" merge-line) \
   || fail "tiers/class off next to a pause not honoured"
+cp "$WORK/prof.before" "$PF"
 echo '[]' > "$TWD/state.json"; cp "$TWD/state.json" "$WORK/st.before"
 run "$MAIN" $W mode tiers on; expect 1 "state.json unreadable" "the writer refuses a non-object"
 cmp -s "$TWD/state.json" "$WORK/st.before" || fail "a non-object state.json was rewritten"
