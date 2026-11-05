@@ -320,9 +320,11 @@ def classify(cmd, cwd, project):
 def main():
     try:
         payload = json.load(sys.stdin)
-    except ValueError:
-        return
-    cmd = (payload.get("tool_input") or {}).get("command") or ""
+        cmd = (payload.get("tool_input") or {}).get("command") or ""
+    except (ValueError, AttributeError):
+        # Fail closed: rc 2 tells the hook wrapper the payload itself was unreadable.
+        print("guard-destructive-sql: unreadable hook payload", file=sys.stderr)
+        sys.exit(2)
     cwd = payload.get("cwd") or os.getcwd()
     project = os.environ.get("CLAUDE_PROJECT_DIR", "")
     decision, reason = classify(cmd, cwd, project)

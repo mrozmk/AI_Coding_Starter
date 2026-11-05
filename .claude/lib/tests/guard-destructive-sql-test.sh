@@ -150,4 +150,11 @@ run deny "env with an option"               "env -i sqlcmd -Q \"DROP TABLE t\""
 run deny "env -S splits its string"         "env -S \"sqlcmd -Q 'DROP TABLE t'\""
 run ask  "stdbuf wrapper"                   "stdbuf -o0 sqlcmd -Q \"DELETE FROM dbo.X WHERE Id=1\""
 run none "a wrapped read"                   "timeout 5 sqlcmd -Q \"SELECT 1\""
+# An unreadable payload fails closed (S9): ask, never silence.
+for bad in 'not json' '[1,2]'; do
+  out=$(printf '%s' "$bad" | (cd /tmp && CLAUDE_PROJECT_DIR=/nonexistent bash "$H"))
+  got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "none"' 2>/dev/null || echo none)
+  if [ "$got" = ask ]; then echo "PASS unreadable payload $bad asks"
+  else echo "FAIL unreadable payload $bad (got $got, expected ask)"; fail=1; fi
+done
 exit $fail

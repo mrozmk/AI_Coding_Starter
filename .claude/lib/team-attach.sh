@@ -47,6 +47,13 @@ if [ -z "$sock" ]; then
   echo "error: cannot resolve the tmux socket of $name" >&2
   exit 1
 fi
+# The socket path (from TMUX_TMPDIR) and the name go into an AppleScript string that holds a
+# single-quoted shell word: a quote or backslash in either would break out of both. Refused, not
+# escaped — two quoting layers are easy to get wrong, and the caller degrades to a warning.
+case "$sock$name" in *[\'\"\\]*)
+  echo "error: the tmux socket path or session name of $name contains a quote or backslash" >&2
+  exit 1 ;;
+esac
 # Quoted: the window's interactive zsh treats a bare =NAME as an EQUALS command lookup.
 out="$(osascript -e 'tell application "Terminal"' \
   -e "set t to do script \"exec tmux -S '$sock' attach -t '=$name'\"" \
