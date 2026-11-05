@@ -217,6 +217,10 @@ named after its commit).
 **Re-sync (Operator action).** `--resync-tool` in reuse mode copies the current vendored tool and
 repoints the entry — only when the entry's tool is an `agent_mail-<sha>` copy (a foreign tool is
 refused) and no other entry shares the box. The old copy stays (other boxes may still run it).
+The vendored tool itself differs from its upstream by a recorded local delta
+(`tools/agent_mail/README.md` → Vendored copy), among it the default project label `default`
+instead of the upstream's own project name: a box created by an older copy keeps its schema
+default, which the team client never uses (every forwarded call passes the entry's label).
 Run it with `--dry-run` first; a newer tool may migrate the box schema on its next open. `--dry-run` prints the plan and
 writes nothing — it reads `recipients.json` directly instead of opening the box, so no box is
 created; the tool copy shows as a `create tool-copy` (or `keep tool-copy`) line. Every run ends with `.agents/team/channel.local.json`, the `render` lines of `team-channel.sh` (a `skip render` without `teams.channel`, a `warn render` when the channel does not load — the binding itself still stands) and the Reviewer instructions.

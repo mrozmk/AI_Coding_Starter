@@ -3,6 +3,37 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The agent-mail tool's default project label is `default`
+
+**Before:** the vendored tool kept the upstream's own project name as its default label (the
+CLI's `--project` default, the `messages.project` schema default, the store's `project=`
+defaults).
+
+**Now:** the default is `default`. The tool's content changed, so `check` reports `tool behind
+checkout` for an entry whose `agent_mail-<sha>` copy predates it.
+
+**Action:** none required. The team client passes the entry's `project_label` on every forwarded
+call, so no row depends on the default. A box keeps the schema default it was created with.
+Re-sync the copy when convenient (`team-mail-setup.sh <repo> --key <KEY> --resync-tool`, an
+Operator action).
+
+## The egress guard arms in role sessions and covers more forms
+
+**Before:** `guard-team-egress.sh` armed only inside a team run (`.agents/team/session.json` or
+`TEAM_RUN_TEAM`), so the Supervisor, TeamLead and Advisor sessions, which are launched with only
+`TEAM_SESSION_ROLE`, ran without it.
+
+**Now:** a set `TEAM_SESSION_ROLE` also arms it. The classifier also asks on `python -m <module>`
+(the local test modules pytest/unittest/doctest/py_compile/compileall/json.tool pass), `python -`,
+`node -`, a bare `python3 <<EOF`, `npx`/`pipx`/`uvx`, and on git config that points a remote at a
+host outside the WebFetch allowlist (`git config remote.<n>.url|pushurl`, `git -c …url=…`,
+`url.<base>.insteadOf`, `git push --repo=`). It stays a best-effort guard, not an allowlist.
+
+**Action:** none beyond the starter sync. The settings entry calls `bash
+.claude/hooks/guard-team-egress.sh` by path, so the updated file takes effect without re-running
+`/setup:teams`. Role sessions now see an egress prompt where they did not before; a host the
+roles need goes on the WebFetch allowlist as usual.
+
 ## The escalation adapter points at the Advisor's contract
 
 **Before:** the operator kit's `escalate.sh` sent the reply protocol without saying where the

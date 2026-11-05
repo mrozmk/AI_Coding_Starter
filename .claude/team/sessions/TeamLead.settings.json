@@ -30,7 +30,8 @@
       "Skill(release *)"
     ],
     "ask": [
-      "Bash(cat .env*)"
+      "Bash(cat .env*)",
+      "Read(**/.env*)"
     ]
   },
   "_samples": {
@@ -66,7 +67,9 @@
     ],
     "secrets": [
       "cat .env",
-      "cat .env.local"
+      "cat .env.local",
+      "Read(.env)",
+      "Read(services/api/.env.local)"
     ],
     "writes": [
       "git push --force origin main",

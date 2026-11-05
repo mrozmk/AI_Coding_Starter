@@ -205,4 +205,17 @@ expect 0 "audit: " "H second run"
 grep -qF "/retro-$R2." "$WORK/claude-argv-1" || fail "H: second run temp dir"
 grep -qF "/retro-$RUN_ID." "$WORK/claude-argv-1" && fail "H: runs share a temp dir"
 
+# ---- I: a retro killed by a signal is failed, never done (pr_timebox keeps 128+n) ---------------
+rc=0; ( . "$SRC/.claude/lib/team-lib.sh"; pr_timebox 5 bash -c 'kill -TERM $$' ) || rc=$?
+[ "$rc" = 143 ] || fail "I: pr_timebox over a TERM-killed child exited $rc, expected 143"
+rc=0; ( . "$SRC/.claude/lib/team-lib.sh"; pr_timebox 5 bash -c 'exit 3' ) || rc=$?
+[ "$rc" = 3 ] || fail "I: pr_timebox lost a plain exit status ($rc)"
+printf '#!/usr/bin/env bash\necho "## planner attempt 1"\nkill -TERM $$\n' > "$WORK/bin/claude"
+R3=alfa-20261024-090000; cp -R "$RD" "$TD/runs/$R3"; echo "$R3" > "$TD/run"
+for f in "$TD/runs/$R3"/*.json; do jq --arg r "$R3" '.run = $r' "$f" > "$f.t" && mv "$f.t" "$f"; done
+run "$CLONE" bash "$MAIN/.claude/lib/team-audit.sh" alfa --runner-exit 0 --final ready
+expect 0 "audit: " "I killed retro"
+B3="$MAIN/.agents/team/audit/20261024-alfa-AB-790-$R3"
+[ "$(jq -r .retro "$B3.json")" = "failed: rc 143" ] || fail "I: killed retro marked $(jq -r .retro "$B3.json")"
+
 echo "team-audit-test: OK"

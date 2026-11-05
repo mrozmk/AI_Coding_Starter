@@ -187,6 +187,12 @@ FLOOR="$(jq '.permissions.deny | length' "$MAIN/.claude/settings.json")"
 jq '.permissions.deny |= .[1:]' "$PF" > "$WORK/p" && mv "$WORK/p" "$PF"
 run "$MAIN" $CHK "$MAIN" TeamLead; expect 1 "lost 1 deny rules" "(3) materialised profile lost the floor"
 run "$MAIN" $SS materialize TeamLead; expect 0 "profile TeamLead:" "(3) re-materialise"
+# The .env floor covers the Read tool too (R1): the materialised profile keeps the rule, and the
+# check fails a profile without it through the Read(...) secrets samples.
+jq -e '.permissions.ask | index("Read(**/.env*)")' "$PF" >/dev/null || fail "(3) materialised profile lacks Read(**/.env*)"
+jq '.permissions.ask -= ["Read(**/.env*)"]' "$PF" > "$WORK/p" && mv "$WORK/p" "$PF"
+run "$MAIN" $CHK "$MAIN" TeamLead; expect 1 "TeamLead FAIL: Read(services/api/.env.local) → prompt, expected ask or deny" "(3) the Read .env floor is checked"
+run "$MAIN" $SS materialize TeamLead; expect 0 "profile TeamLead:" "(3) re-materialise after the Read probe"
 echo '{"permissions": {"deny": ["Bash(local-only-deny *)"]}}' > "$MAIN/.claude/settings.local.json"
 run "$MAIN" $SS materialize TeamLead
 jq -e '.permissions.deny | index("Bash(local-only-deny *)")' "$PF" >/dev/null || fail "(3) local deny not unioned"

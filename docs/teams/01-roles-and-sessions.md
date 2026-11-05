@@ -56,7 +56,7 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 | TeamLead | `git push`, the PR host's update verbs (per `teams.pr_provider`), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|answer\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `/pr-merge`, `/release` |
 | Supervisor | `team-answer.sh`, `team-question.sh * answer *`, `team-escalate.sh` |
 
-**The one committed ask entry, `Bash(cat .env*)`.** Both profiles carry this single ask rule. It gives the profile's `secrets` samples something to prove in a project whose own settings ask nothing. Provider- and cloud-specific secret verbs belong in the project's copy of the profile or in `teams.policy` examples, not in the template.
+**The committed ask entries, `Bash(cat .env*)` and `Read(**/.env*)`.** Both profiles carry these two ask rules; the second keeps the Read tool from opening a `.env` the Bash rule never sees. They give the profile's `secrets` samples something to prove in a project whose own settings ask nothing. Provider- and cloud-specific secret verbs belong in the project's copy of the profile or in `teams.policy` examples, not in the template.
 
 **Materialisation.** On `start` and `here`, the launcher writes `.agents/team/watch/profiles/<role>.settings.json` (mode 600 in a 700 directory). That file contains:
 

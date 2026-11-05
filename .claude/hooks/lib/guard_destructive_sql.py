@@ -2,8 +2,9 @@
 
 Verdicts: DROP/TRUNCATE of a table, database or schema -> deny (never by an agent); any other write
 (DELETE, UPDATE, INSERT, MERGE, ALTER, CREATE, EXEC, GRANT, SELECT INTO, DROP of smaller objects) -> ask.
-Covered inputs: sqlcmd -Q/-q, -i/--input-file, `< file`, `cat file |`, here-docs, scripts run by
-bash/sh/zsh/source/./x.sh, and the same forms nested in bash -c / tmux new-session / tmux send-keys.
+Covered inputs: sqlcmd -Q/-q/--query, -i/--input-file, `< file`, `cat file |`, here-docs, scripts run by
+bash/sh/zsh/source/./x.sh, and the same forms nested in bash -c / tmux new-session / tmux send-keys
+/ `$(…)` / backticks. A sqlcmd long option this file does not parse -> ask.
 A command that mentions sqlcmd or a .sql file but cannot be parsed -> ask (fail-closed); a script
 that cannot be parsed is retried once with the quotes of its documentation heredocs blanked, else
 ask.
@@ -98,6 +99,7 @@ SHELL_ASK = re.compile(r"\bdelete[ \t]+(top\s*\(\s*\d+\s*\)[ \t]+)?from[ \t]+" +
 # String literals are kept so a `--` inside quotes does not hide the rest of the line.
 SQL_PARTS = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)
 MENTIONS_SQL = re.compile(r"sqlcmd|\.sql\b", re.I)
+SUBST = re.compile(r"\$\(|`|\)")  # same as guard_team_egress.SUBST
 DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
 
 
@@ -126,6 +128,78 @@ def strip_shell_comments(cmd):
         out.append(c)
         i += 1
     return "".join(out)
+
+
+def _close_paren(text, j):
+    """Index of the `)` closing a `$(` whose body starts at j, or -1. The body is a fresh quoting
+    context: `"$(sqlcmd -Q "x")"` — the inner quotes do not close the outer string."""
+    depth, n = 1, len(text)
+    while j < n:
+        c = text[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "'":
+            k = text.find("'", j + 1)
+            if k < 0:
+                return -1
+            j = k + 1
+            continue
+        if c == '"':
+            k = j + 1
+            while k < n and text[k] != '"':
+                if text[k] == "\\":
+                    k += 2
+                    continue
+                if text.startswith("$(", k):
+                    e = _close_paren(text, k + 2)
+                    if e < 0:
+                        return -1
+                    k = e + 1
+                    continue
+                k += 1
+            if k >= n:
+                return -1
+            j = k + 1
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return j
+        j += 1
+    return -1
+
+
+def substitutions(text):
+    """Bodies of the top-level `$(…)` in shell text, quoting-aware (outside single quotes, also
+    inside double quotes). ValueError when one that mentions SQL never closes (caller: ask)."""
+    out, i, n, dq = [], 0, len(text), False
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "'" and not dq:
+            k = text.find("'", i + 1)
+            if k < 0:
+                break
+            i = k + 1
+            continue
+        if c == '"':
+            dq = not dq
+        elif text.startswith("$(", i) and not text.startswith("$((", i):
+            end = _close_paren(text, i + 2)
+            if end < 0:
+                if MENTIONS_SQL.search(text[i:]):
+                    raise ValueError("unterminated $( around sqlcmd/.sql")
+                break
+            out.append(text[i + 2:end])
+            i = end + 1
+            continue
+        i += 1
+    return out
 
 
 def strip_sql_comments(text):
@@ -238,9 +312,15 @@ class Scan:
         i = 1
         while i < len(words):
             w = words[i]
-            if w in ("-Q", "-q") and i + 1 < len(words):
+            if w in ("-Q", "-q", "--query") and i + 1 < len(words):
                 self.sql(words[i + 1], where + " -Q")
                 i += 1
+            elif w.startswith("--query="):
+                self.sql(w[len("--query="):], where + " -Q")
+            elif w.startswith("--input-file="):
+                f = w[len("--input-file="):]
+                body = self.read(f)
+                self.sql(body, f) if body is not None else self.ask.append(where + " (unreadable " + f + ")")
             elif w in ("-i", "--input-file", "<") and i + 1 < len(words):
                 body = self.read(words[i + 1])
                 if body is None:
@@ -253,18 +333,37 @@ class Scan:
             elif w.startswith("-i") and len(w) > 2:
                 body = self.read(w[2:])
                 self.sql(body, w[2:]) if body is not None else self.ask.append(where)
+            elif w.startswith("--"):
+                # A long option this parser does not know may carry the statement: ask, never allow.
+                self.ask.append(where + " (unparsed option " + w.split("=", 1)[0] + ")")
             i += 1
         for body in heredocs(cmd):
             self.sql(body, where + " <<heredoc")
 
     def command(self, cmd, where, depth):
+        if depth < 3:
+            # Before tokenizing: shlex reads `"$(sqlcmd -Q "x")"` as two strings and splits x.
+            for body in substitutions(strip_shell_comments(cmd)):
+                if MENTIONS_SQL.search(body):
+                    self.command(body, where + " subst", depth + 1)
         tokens = tokenize(cmd)
         piped_file = None
-        for words in commands(tokens):
-            words = strip_wrappers(words)
+        for raw in commands(tokens):
+            words = strip_wrappers(raw)
+            if depth < 3:
+                # `$(…)`/backticks inside a quoted word or glued to it: scan the substituted text.
+                for k, w in enumerate(raw):
+                    # `$(…)` is read from the raw text above; backticks only here.
+                    if "`" in w and MENTIONS_SQL.search(w):
+                        self.command(SUBST.sub(" ; ", w), where + " subst", depth + 1)
+                    if "`" in w:
+                        # An unquoted backtick spans words: `echo `sqlcmd -Q "…"`` runs the tail.
+                        tail = shlex.join([w.split("`", 1)[1]] + raw[k + 1:])
+                        if MENTIONS_SQL.search(tail):
+                            self.command(tail, where + " subst", depth + 1)
             if not words:
                 continue
-            verb = os.path.basename(words[0])
+            verb = os.path.basename(words[0].lstrip("`"))
             if verb == "cd" and len(words) > 1:
                 self.cwd = os.path.join(self.cwd, os.path.expanduser(words[1]))
             elif verb == "sqlcmd":

@@ -483,9 +483,11 @@ team_copy_ticket() {
 }
 
 # Stock macOS has no `timeout`; the child gets its own process group so az and its children die too.
-pr_timebox() {  # pr_timebox <secs> <cmd...> → exit 124 on timeout
+# A child killed by a signal exits 128+signal like a shell would, never 0: `$? >> 8` alone made a
+# killed `claude -p` read as a finished retro. The one copy: tw_timebox (team-watch-lib) calls it.
+pr_timebox() {  # pr_timebox <secs> <cmd...> → exit 124 on timeout, 128+n when killed by signal n
   perl -e '$t = shift; $p = fork // exit 1;
     if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
     $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
-    alarm $t; waitpid $p, 0; exit($? >> 8)' "$@"
+    alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
 }

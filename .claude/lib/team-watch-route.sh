@@ -220,9 +220,11 @@ tw_pending() {
 tw_ping() {  # tw_ping <role> — the end-to-end channel check of one receiver
   local s
   tw_lock || { echo "error: team-watch state lock busy" >&2; return 1; }
-  s=$(( $(tw_last_seq) + 1 ))
   # No seq in the text: a batched ping's header names the batch to ack, not this event.
-  tw_append_to "$1" "" "PING $1 — confirm: ack the number in this message's header"
+  if ! s=$(( $(tw_last_seq) + 1 )) || ! tw_append_to "$1" "" \
+      "PING $1 — confirm: ack the number in this message's header"; then
+    tw_unlock; echo "error: team-watch events.jsonl unreadable — ping not queued" >&2; return 1
+  fi
   tw_unlock
   tw_deliver || true
   echo "team-watch: ping $1 queued (seq $s) · socket $(tw_sock_state \
@@ -238,7 +240,7 @@ tw_alarm() {
   if tw_lock; then
     target="$(tw_alarm_target)"
     if [ "$1" = "$target" ] || ! tw_live "$target"; then tw_unlock; return 0; fi
-    tw_append_to "$target" "" "$2" alarm; tw_unlock
+    tw_append_to "$target" "" "$2" alarm || tw_log "alarm not queued: $2"; tw_unlock
     tw_deliver || true
   elif tw_claim "$TW_DIR/send.d" 1 "$(tw_send_max)"; then
     # A hung holder of the state lock must not silence the alarm; send.d excludes a handover.
@@ -348,6 +350,11 @@ tw_handover() {
     || { echo "error: a delivery is in flight — retry" >&2; return 1; }
   if ! tw_lock; then
     tw_release "$TW_DIR/send.d"; echo "error: team-watch state lock busy" >&2; return 1
+  fi
+  # Every cursor is reset to the last seq below: an unreadable log aborts before anything changes.
+  if ! tw_last_seq >/dev/null; then
+    tw_unlock; tw_release "$TW_DIR/send.d"
+    echo "error: team-watch events.jsonl unreadable — routing unchanged" >&2; return 1
   fi
   jq -n --arg m "$mode" --arg r "$r" --argjson g "$(( $(tw_gen) + 1 ))" \
     'if $m == "split" then {mode: $m, gen: $g} else {mode: $m, receiver: $r, gen: $g} end' \

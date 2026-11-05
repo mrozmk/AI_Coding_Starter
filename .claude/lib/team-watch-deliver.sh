@@ -95,7 +95,7 @@ tw_send_max() {  # a live multi-receiver sender must never be reclaimed mid-loop
 tw_rebase() {
   local r="$1" base t="$TW_DIR/rebase.$$.json"
   touch "$TW_DIR/events.jsonl"
-  base="$(tw_last_seq)"
+  base="$(tw_last_seq)" || return 1
   touch "$TW_DIR/deliveries.jsonl"
   jq -s --arg r "$r" --argjson c "$(tw_cursor "$r")" --argjson max "$TW_BATCH_MAX" \
     --slurpfile d "$TW_DIR/deliveries.jsonl" "$TW_DELIVER_DEFS"'
@@ -152,7 +152,11 @@ tw_deliver_one() {
   tw_lock || { tw_undelivered "$r"; return 1; }
   touch "$TW_DIR/deliveries.jsonl"
   jq -s --arg r "$r" --argjson c "$(tw_cursor "$r")" --slurpfile d "$TW_DIR/deliveries.jsonl" \
-    "$TW_DELIVER_DEFS unsent(\$r; \$c; \$d)" "$TW_DIR/events.jsonl" > "$p" || echo '[]' > "$p"
+    "$TW_DELIVER_DEFS unsent(\$r; \$c; \$d)" "$TW_DIR/events.jsonl" > "$p" || {
+    # An unreadable log is an outage, not an empty queue: never "delivered".
+    tw_unlock; rm -f "$p"; tw_log "$r: events.jsonl unreadable — nothing delivered"
+    tw_undelivered "$r"; return 1
+  }
   id="$(jq -r 'select(.active == true) | .id // empty' "$(tw_receiver_file "$r")" 2>/dev/null)" \
     || id=""
   # Empty fast path: `[] | .[-1].seq` is null, a cursor derived from it would resend history.

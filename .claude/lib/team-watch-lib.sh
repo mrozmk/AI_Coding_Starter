@@ -53,30 +53,43 @@ tw_notify() {
   team_channel_notify ${3:+--alarm} "team-watch: $1" "$2"
 }
 
-# Copy of pr_timebox (team-lib.sh) that keeps a signal death non-zero: `exit($? >> 8)` there
-# turns a killed child into exit 0, and a killed mail probe must not read as "no mail".
-tw_timebox() {  # tw_timebox <secs> <cmd...> → exit 124 on timeout
-  perl -e '$t = shift; $p = fork // exit 1;
-    if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
-    $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
-    alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
-}
+# pr_timebox (team-lib.sh) keeps a signal death non-zero: a killed mail probe must not read as
+# "no mail". The name stays for the watch's callers.
+tw_timebox() { pr_timebox "$@"; }  # tw_timebox <secs> <cmd...> → exit 124 on timeout
 
 # tw_claim <dir> <wait secs> [max age secs] — mkdir claim with our pid. A claim whose pid is dead,
 # or older than max age, is reclaimed: its holder died mid-section and would block us forever.
 tw_claim() {
-  local d="$1" tries=0 max=$(( $2 * 5 )) p age
+  local d="$1" tries=0 max=$(( $2 * 5 ))
   until mkdir "$d" 2>/dev/null; do
-    p="$(cat "$d/pid" 2>/dev/null || true)"
-    age=$(( $(tw_now) - $(tw_mtime "$d") ))
-    if { [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; } || { [ -z "$p" ] && [ "$age" -gt 2 ]; } \
-      || { [ -n "${3:-}" ] && [ "$age" -gt "$3" ]; }; then
-      rm -rf "$d"; continue
-    fi
+    # A reclaim busy elsewhere counts against the wait like a live holder does.
+    if tw_stale "$d" "${3:-}" && tw_reclaim "$d" "${3:-}"; then continue; fi
     [ "$tries" -lt "$max" ] || return 1
     sleep 0.2; tries=$((tries + 1))
   done
   echo $$ > "$d/pid"
+}
+
+tw_stale() {  # tw_stale <claim dir> [max age] — dead pid, no pid after 2 s, or past max age
+  local p age
+  p="$(cat "$1/pid" 2>/dev/null || true)"
+  age=$(( $(tw_now) - $(tw_mtime "$1") ))
+  { [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; } || { [ -z "$p" ] && [ "$age" -gt 2 ]; } \
+    || { [ -n "${2:-}" ] && [ "$age" -gt "$2" ]; }
+}
+
+# tw_reclaim <claim dir> [max age] — removal under <dir>.reclaim, staleness checked again inside.
+# Two waiters that judged the same dead holder would otherwise each rm and mkdir, the second
+# removing the first one's fresh claim (and a rename-first reclaim races the same way). A
+# .reclaim older than 5 s lost its holder inside this function and is cleared. rc 1: busy.
+tw_reclaim() {
+  local r="$1.reclaim"
+  if ! mkdir "$r" 2>/dev/null; then
+    [ $(( $(tw_now) - $(tw_mtime "$r") )) -le 5 ] || rm -rf "$r"
+    return 1
+  fi
+  ! tw_stale "$1" "${2:-}" || rm -rf "$1"
+  rmdir "$r" 2>/dev/null || true
 }
 
 tw_release() {  # only our own claim: a reclaimed one belongs to someone else now
@@ -160,10 +173,20 @@ tw_signals() {  # tw_signals <work dir> → <work dir>/sig.json
   tw_inputs "$1" && jq -f "$root/.claude/lib/team-watch-signals.jq" "$1/in.json" > "$1/sig.json"
 }
 
+# tw_last_seq → the last event's seq, 0 without events. A last line with no integer seq (a write
+# cut short) is rc 1 and a log line, never 0: new seqs restarting at 1 would sit below every cursor
+# and never be delivered. Callers append nothing until it is repaired.
 tw_last_seq() {
-  local l
+  local l s
   l="$(tail -n 1 "$TW_DIR/events.jsonl" 2>/dev/null)" || l=""
-  [ -n "$l" ] && jq -r '.seq' <<<"$l" 2>/dev/null || echo 0
+  [ -n "$l" ] || { echo 0; return 0; }
+  s="$(jq -r '.seq' <<<"$l" 2>/dev/null)" || s=""
+  case "$s" in
+    ''|*[!0-9]*)
+      tw_log "events.jsonl: last line has no seq (truncated?) — nothing is appended until it is repaired" >&2
+      return 1 ;;
+  esac
+  echo "$s"
 }
 
 tw_cursor() {  # tw_cursor <role>
@@ -185,7 +208,9 @@ tw_answering() {
 }
 
 tw_append_to() {  # tw_append_to <role> <label> <text> [class] — caller holds tw_lock
-  jq -cn --argjson seq "$(( $(tw_last_seq) + 1 ))" --arg at "$(team_utc)" --arg to "$1" \
+  local last
+  last="$(tw_last_seq)" || return 1
+  jq -cn --argjson seq "$(( last + 1 ))" --arg at "$(team_utc)" --arg to "$1" \
     --arg l "$2" --arg t "$3" --arg c "${4:-}" \
     '{seq: $seq, at: $at, to: $to, label: $l, text: $t}
      + (if $c == "" then {} else {class: $c} end)' >> "$TW_DIR/events.jsonl"
@@ -217,7 +242,7 @@ tw_cursors() {  # → {<role>: <cursor>} for every receiver an event can be addr
 # lists new role-attention heads: a role session's prompt also gets a platform notification.
 # Events carry the signal key.
 tw_update() {
-  local res w
+  local res w base
   w="$(dirname "$1")"; res="$w/update.json"
   if [ -f "$w/gen" ] && [ "$(cat "$w/gen")" != "$(tw_gen)" ]; then
     tw_log "tick: routing changed while collecting — result discarded"; return 0
@@ -247,7 +272,8 @@ tw_update() {
        notify: [ $rows[] | select(.g.kind == "role-attention"
                    and (.label == "" or .label == "(current state)")) | .g.head ]}' > "$res" \
     || return 1
-  jq -c --argjson base "$(tw_last_seq)" --arg at "$(team_utc)" '
+  base="$(tw_last_seq)" || return 1
+  jq -c --argjson base "$base" --arg at "$(team_utc)" '
     .events | to_entries[]
     | {seq: ($base + .key + 1), at: $at, to: .value.to, key: .value.key, label: .value.label,
        text: .value.text}' \
@@ -286,7 +312,7 @@ tw_undelivered() {  # tw_undelivered <role> — one notification (and alarm) per
     # Queued, not sent: we hold send.d, so the target gets it on this or the next loop.
     if [ "$1" != "$(tw_alarm_target)" ] && tw_live "$(tw_alarm_target)" && tw_lock; then
       tw_append_to "$(tw_alarm_target)" "" "UNDELIVERED $1 ($(( $(tw_now) - $(cat "$s") ))s)" \
-        alarm
+        alarm || tw_log "UNDELIVERED $1: alarm not queued"
       tw_unlock
     fi
   fi

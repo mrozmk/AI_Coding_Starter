@@ -182,6 +182,14 @@ if [ "$MODE" != reuse ]; then
     # Strip the literal "~/" by length: an unquoted ~ in ${V#~/} is itself tilde-expanded.
     case "$CODEX_HOME_V" in "~/"*) CODEX_HOME_V="$HOME/${CODEX_HOME_V:2}" ;; esac
   fi
+  # The registry schema (team-mail.sh) holds for the entry before anything is written: one bad
+  # field makes every client report the entry invalid.
+  LABEL="${LABEL:-${CODE:-$KEY}}"
+  is_ident "$LABEL" || die "project label '$LABEL' is not an identifier; pass --label" 2
+  case "$CODEX_HOME_V" in
+    ''|/*) ;;
+    *) die "codex home '$CODEX_HOME_V' is not an absolute path (--codex-home, .claude/codex-profile)" 2 ;;
+  esac
   DIR="$AM/$SLUG"; BOX="$DIR/mail.sqlite"; DEC="$DIR/decisions"
   # A box nobody registered belongs to someone (another client, an old setup): never adopt it.
   [ ! -e "$BOX" ] || die "$BOX exists but no registry entry names it; register it by hand or pass --slug"
@@ -197,7 +205,7 @@ if [ "$MODE" != reuse ]; then
   step create box-dir "$DIR (+ decisions/)"
   apply ensure_mail_home >/dev/null
   apply mkdir -p "$DEC"
-  ENTRY="$(jq -n --arg box "$BOX" --arg tool "$TOOL" --arg label "${LABEL:-${CODE:-$KEY}}" \
+  ENTRY="$(jq -n --arg box "$BOX" --arg tool "$TOOL" --arg label "$LABEL" \
     --arg suffix "$SUFFIX" --arg repo "$REPO" --arg dec "$DEC" --arg ch "$CODEX_HOME_V" \
     --arg cr "$CLAUDE_ROLES" --arg xr "$CODEX_ROLES" \
     '{box: $box, tool: $tool, project_label: $label, suffix: $suffix, repo: $repo,

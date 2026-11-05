@@ -113,7 +113,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts_utc TEXT NOT NULL,
-  project TEXT NOT NULL DEFAULT 'Jarvis',
+  project TEXT NOT NULL DEFAULT 'default',
   thread TEXT,
   sender TEXT NOT NULL,
   recipients TEXT NOT NULL,
@@ -247,7 +247,7 @@ def check_ident(value, field="identifier") -> None:
 
 
 def validate_message(sender, recipients, kind, body, *, awaiting=None, thread=None,
-                     project="Jarvis", relaxed=False) -> None:
+                     project="default", relaxed=False) -> None:
     """Raise ValueError unless the message is safe to store and to signal."""
     if kind not in KINDS:
         raise ValueError("invalid kind %r: expected one of %s" % (kind, ",".join(KINDS)))
@@ -277,7 +277,7 @@ def validate_message(sender, recipients, kind, body, *, awaiting=None, thread=No
 # ---------------------------------------------------------------------------
 
 def send(conn, sender, recipients, kind, body, *, thread=None, awaiting=None,
-         reply_to=None, refs=(), project="Jarvis", dedup_key=None,
+         reply_to=None, refs=(), project="default", dedup_key=None,
          initial_state="pending", legacy_id=None, legacy_ts=None, legacy_awaiting=None,
          ts_utc=None, conn_in_tx=False) -> int:
     """Insert one message plus a delivery row per recipient. Returns the message id.
@@ -657,7 +657,7 @@ def _nap(poll, deadline) -> float:
 _STATE_FIELDS = ("stage", "waiting_on", "signed_docs", "open_questions")
 
 
-def state_get(conn, project="Jarvis") -> Optional[sqlite3.Row]:
+def state_get(conn, project="default") -> Optional[sqlite3.Row]:
     return conn.execute("SELECT * FROM state WHERE project=?", (project,)).fetchone()
 
 
