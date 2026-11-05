@@ -132,7 +132,8 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
      `bash .claude/lib/team-run.sh <team> summary` (ticket, mode, PR, the QA lines, the wrapup or
      `cli-<n>.md` body) and `bash .claude/lib/team-question.sh <team> list`. **5 parts + one
      decisions line + the "TeamLead decisions" section**, plain prose in the developer's language
-     (`language` in `.claude/project-profile.json`, `en` when absent; the labels below are the `pl` form):
+     (`language` in `.claude/project-profile.json`, `en` when absent; the labels below are the canonical
+     `en` form — translate them for another `language`):
      - the heading, picked by the `tracker:` line of `summary` (which also carries `title:` and
        `url:`, both empty for `jira`):
        - `tracker: jira` → `**<team> / [<KEY>](<jira site>/browse/<KEY>) — <title>**`, the site
@@ -141,28 +142,28 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
        - `tracker: github` → `**<team> / [#<KEY>](<url>) — <title>**`;
        - `tracker: none` → `**<team> / <KEY> — <title>**`, with no link;
        - `github`/`none` with an empty `title:` → the branch slug (Jira keeps its MCP title);
-     - **Co zakodowano:** 2–3 plain sentences, no file names;
-     - **Co to daje:** 1–2 sentences for the Operator or customer;
+     - **What was coded:** 2–3 plain sentences, no file names;
+     - **What it gives:** 1–2 sentences for the Operator or customer;
      - **QA:** `Verdict:` and its `Warnings:` in one sentence, plus `PR #<id>` (with `pr_provider: github`, a link
        `https://github.com/<repo>/pull/<id>`, `<repo>` from `bash .claude/lib/team-pr.sh coords` in the clone); for cli
-       `bez QA (tryb cli), PR #<id>`;
-     - decisions line, from the last line of `list`: `Decyzje nadzorcy: <n> (tier 1: a, tier 2:
-       b, fallback: e, tier 3: c, cofnięte: d, niedoręczone: f)` with n = a+b+e+c+d+f (e from
+       `no QA (cli mode), PR #<id>`;
+     - decisions line, from the last line of `list`: `Supervisor decisions: <n> (tier 1: a, tier 2:
+       b, fallback: e, tier 3: c, revoked: d, undelivered: f)` with n = a+b+e+c+d+f (e from
        `fallback=`) — never `total=`, which
-       also counts open, pending and escalation states; or `Decyzje nadzorcy: brak` at n = 0;
-     - **Decyzje TeamLead:** one line each — design decisions inside the AC; the QA-warnings
+       also counts open, pending and escalation states; or `Supervisor decisions: none` at n = 0;
+     - **TeamLead decisions:** one line each — design decisions inside the AC; the QA-warnings
        disposition, `QA warnings: accepted by <TeamLead|Advisor+Reviewer> — <ref>`; a Phase 0
-       override; accepted memory entries; deferred (B) memory entries (`pamięć (B) odłożona:
+       override; accepted memory entries; deferred (B) memory entries (`memory (B) deferred:
        <file> — q-<n>` plus the verbatim text from the wrapup body); class approvals,
-       `klasa <name>: q-<n> <command, shortened>` (from `list`, `class=`); a settings change of
+       `class <name>: q-<n> <command, shortened>` (from `list`, `class=`); a settings change of
        the PR — the line printed by
        `python3 -I .claude/lib/team_settings_diff.py <clone> <main> <target-sha> <source-sha>` (run
        from the main checkout; SHAs from it, never the clone's refs: `git rev-parse
        origin/<line>`, `git ls-remote origin refs/heads/<branch>`), on exit 1 the line plus
-       „auto-merge odmówi”, on exit 2 `settings: nieczytelne — sprawdź PR`, never `brak`. Sources:
+       "auto-merge will refuse", on exit 2 `settings: unreadable — check the PR`, never `none`. Sources:
        `team-question.sh <team> list` and the wrapup body from `team-run.sh <team> summary`.
-       `brak` when there is nothing;
-     - last line: `Mergować <team>?`
+       `none` when there is nothing;
+     - last line: `Merge <team>?`
      A `missing:` line (an old run without the summary files) → name the file and fall back to the PR title.
      The reader juggles several teams: never relay long tables.
 4. **Route (tiers on):**
@@ -247,8 +248,8 @@ Teams: **$ARGUMENTS**. Supervisor command for the main checkout. The session tha
        `## Escalation` ledger → on a NO-REPLY of any reason while the q is unanswered, answer it
        at tier 1 with skip: `--send picks:none` for a multiSelect, otherwise `pick:<n>` of the
        skip option. Use `--why "Advisor no-reply — wrapup (B) non-blocking, deferred"`. Send no
-       reping. Add a `memory-deferred` policy-log line, and in the READY note a „Decyzje
-       TeamLead” line per deferred item, copied from the wrapup body's `## Deferred memory (B)` (a wrapup written before the
+       reping. Add a `memory-deferred` policy-log line, and in the READY note a "TeamLead
+       decisions" line per deferred item, copied from the wrapup body's `## Deferred memory (B)` (a wrapup written before the
        English headings: `## Pamięć odłożona (B)`).
        A later `LATE <status>` on that q, or an `ESCALATION … without a current q` reply on its
        thread, while its current answer is still that skip (not revoked, not replaced at tier 3)
