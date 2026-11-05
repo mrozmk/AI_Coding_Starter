@@ -15,21 +15,12 @@ from urllib.parse import urlsplit
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
-from guard_destructive_sql import commands, doc_heredocs_removed, tokenize  # noqa: E402
+from guard_destructive_sql import (  # noqa: E402
+    SHELL_C, commands, doc_heredocs_removed, strip_wrappers, tokenize)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp"}
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 SHELLS = {"bash", "sh", "zsh"}
-WRAPPERS = {"sudo", "time", "env", "nohup", "command", "exec", "xargs", "nice", "timeout"}
-# commands() splits on `;`/newline, so `do curl …` / `then curl …` start a command with a keyword.
-KEYWORDS = {"{", "(", "!", "if", "then", "else", "elif", "do", "while", "until"}
-# Wrapper options whose value is a separate word: `env -u NAME curl` must not read NAME as the verb.
-OPTION_VALUES = {
-    "env": {"-u", "-C", "-S"}, "nice": {"-n"}, "timeout": {"-s", "-k"},
-    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U"},
-    "xargs": {"-n", "-P", "-I", "-L", "-s", "-d", "-E", "-a"},
-}
-SHELL_C = re.compile(r"^-[a-zA-Z]*c[a-zA-Z]*$")  # -c, -lc, -ec
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
 SUBST = re.compile(r"\$\(|`|\)")
 DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
@@ -44,23 +35,6 @@ def verdict(reason):
         "hookEventName": "PreToolUse",
         "permissionDecision": "ask",
         "permissionDecisionReason": "team egress: " + reason + " — Operator"}}
-
-
-def strip_wrappers(words):
-    while words:
-        head = os.path.basename(words[0])
-        if words[0] in KEYWORDS:
-            words = words[1:]
-            continue
-        if head not in WRAPPERS and not re.match(r"^\w+=", words[0]):
-            break
-        takes_value = OPTION_VALUES.get(head, set())
-        words = words[1:]
-        while words and (words[0].startswith("-") or re.match(r"^\w+=", words[0])):
-            words = words[2:] if words[0] in takes_value else words[1:]
-        if head == "timeout" and words and re.match(r"^\d", words[0]):
-            words = words[1:]
-    return words
 
 
 def loopback_probe(words):

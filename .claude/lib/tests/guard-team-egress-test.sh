@@ -106,6 +106,21 @@ check ask  "session.json alone activates" "$(mkdir -p "$D/noteam/.agents/team" \
   && echo '{}' > "$D/noteam/.agents/team/session.json" && fetch https://evil.example/x \
   | (cd /tmp && env -u TEAM_RUN_TEAM CLAUDE_PROJECT_DIR="$D/noteam" bash "$H"))"
 check ask  "malformed payload" "$(hook 'not json')"
+
+# --- the shared wrapper table (S2, S5): the wrapped command is what is classified
+sh_ ask  'env -S "curl https://x"'
+sh_ ask  'env -Scurl\ https://x'
+sh_ ask  'stdbuf -o0 curl https://x'
+sh_ ask  'flock /tmp/l curl https://x'
+sh_ ask  'flock /tmp/l -c "curl https://x"'
+sh_ ask  'watch -n 2 curl https://x'
+sh_ ask  'find . -name x -exec curl {} \;'
+sh_ ask  'chrt -f 10 wget https://x'
+sh_ ask  'ionice -c 2 -n 7 ssh host'
+sh_ ask  'caffeinate -t 5 curl https://x'
+sh_ none 'env -u HOME ls'
+sh_ none 'find . -name x -print'
+sh_ none 'flock /tmp/l make test'
 check none "Read payload" "$(hook '{"tool_name":"Read","tool_input":{"file_path":"/x"}}')"
 check none "Edit payload" "$(hook '{"tool_name":"Edit","tool_input":{"file_path":"/x"}}')"
 check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \

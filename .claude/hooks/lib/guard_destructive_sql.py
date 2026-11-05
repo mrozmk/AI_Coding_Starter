@@ -15,9 +15,64 @@ import shlex
 import sys
 
 RUNNERS = {"bash", "sh", "zsh", "source", "."}
-NESTED = {"bash", "sh", "zsh", "tmux", "env", "nohup", "sudo", "time", "command", "exec"}
 SEPARATORS = set(";&|()!\n")
-WRAPPERS = {"sudo", "time", "env", "nohup", "command", "exec"}
+# ---- the one wrapper table both classifiers share (this file and guard_team_egress.py) ----------
+# A wrapper runs the command that follows its own options (and, for some, one positional word).
+WRAPPERS = {"sudo", "time", "env", "nohup", "command", "exec", "xargs", "nice", "timeout",
+            "stdbuf", "flock", "watch", "chrt", "ionice", "caffeinate"}
+# commands() splits on `;`/newline, so `do curl …` / `then curl …` start a command with a keyword.
+KEYWORDS = {"{", "(", "!", "if", "then", "else", "elif", "do", "while", "until"}
+# Wrapper options whose value is a separate word: `env -u NAME curl` must not read NAME as the verb.
+# `env -S <string>` is not here: its value IS the command, split and classified like `sh -c`.
+OPTION_VALUES = {
+    "env": {"-u", "-C"}, "nice": {"-n"}, "timeout": {"-s", "-k"},
+    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U"},
+    "xargs": {"-n", "-P", "-I", "-L", "-s", "-d", "-E", "-a"},
+    "stdbuf": {"-i", "-o", "-e"}, "flock": {"-w", "-E"}, "watch": {"-n", "-d"},
+    "ionice": {"-c", "-n", "-p"}, "caffeinate": {"-t", "-w"},
+}
+# Wrappers with one positional word before the command: `flock <file> cmd`, `chrt <prio> cmd`.
+POSITIONAL = {"flock", "chrt"}
+FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir"}
+SHELL_C = re.compile(r"^-[a-zA-Z]*c[a-zA-Z]*$")  # -c, -lc, -ec
+
+
+def strip_wrappers(words):
+    """The words from the command a wrapper chain runs: `sudo -u x timeout 5 env A=1 curl …` →
+    `curl …`; `env -S "<string>"` and `flock <file> -c "<string>"` split their string; `find …
+    -exec <cmd> …` yields <cmd>. ValueError when a string to split is unparsable."""
+    while words:
+        head = os.path.basename(words[0])
+        if words[0] in KEYWORDS:
+            words = words[1:]
+            continue
+        if head == "find":
+            ix = next((i for i, w in enumerate(words) if w in FIND_EXEC), None)
+            if ix is None:
+                break
+            words = [w for w in words[ix + 1:] if w not in (";", "+", "{}")]
+            continue
+        if head not in WRAPPERS and not re.match(r"^\w+=", words[0]):
+            break
+        takes_value = OPTION_VALUES.get(head, set())
+        words = words[1:]
+        split = False
+        while words and (words[0].startswith("-") or re.match(r"^\w+=", words[0])):
+            if head == "env" and words[0].startswith("-S"):
+                text = words[0][2:] or " ".join(words[1:2])
+                rest = words[1:] if words[0][2:] else words[2:]
+                words, split = shlex.split(text) + rest, True
+                break
+            words = words[2:] if words[0] in takes_value else words[1:]
+        if split:
+            continue
+        if head in POSITIONAL and words:
+            words = words[1:]
+        if head == "flock" and len(words) > 1 and words[0] in ("-c", "--command"):
+            words = shlex.split(words[1]) + words[2:]
+        if head == "timeout" and words and re.match(r"^\d", words[0]):
+            words = words[1:]
+    return words
 OBJ = r"[\w\[#@]"
 
 DENY = re.compile(r"\b(drop|truncate)\s+(table|database|schema)\b", re.I)
@@ -206,8 +261,7 @@ class Scan:
         tokens = tokenize(cmd)
         piped_file = None
         for words in commands(tokens):
-            while words and (words[0] in WRAPPERS or re.match(r"^\w+=", words[0])):
-                words = words[1:]
+            words = strip_wrappers(words)
             if not words:
                 continue
             verb = os.path.basename(words[0])
@@ -226,8 +280,9 @@ class Scan:
                 nested = [w for w in words[1:] if w.endswith((".sh", ".sql"))][:1]
                 for f in nested:
                     self.script(f, depth)
-                if "-c" in words and words.index("-c") + 1 < len(words) and depth < 3:
-                    self.command(words[words.index("-c") + 1], where + " " + verb + " -c", depth + 1)
+                flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
+                if flag and depth < 3:
+                    self.command(words[flag + 1], where + " " + verb + " " + words[flag], depth + 1)
             elif verb == "tmux" and depth < 3:
                 for w in words[1:]:
                     if MENTIONS_SQL.search(w):
