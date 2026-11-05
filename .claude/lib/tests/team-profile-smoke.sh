@@ -206,7 +206,8 @@ expect 7 "refuse (ask-tier)" "team-answer reads the custom clone's ask rules"
 ! grep -q "send-keys -t %1 Enter" "$STUB_LOG" || fail "a refused team-answer sent Enter"
 unset STUB_PANE STUB_TMUX_ALIVE
 
-# /monitor step 1 preflight (monitor.md) through the one resolver — it must not drop this team.
+# The role-session preflight (supervisor-sessions.sh preflight) resolves clones through the one
+# resolver — it must not drop this team.
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
   c="$(team_clone_dir gamma)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
 expect 0 "monitor-ok: $GC" "/monitor preflight accepts a custom clone_parent"
