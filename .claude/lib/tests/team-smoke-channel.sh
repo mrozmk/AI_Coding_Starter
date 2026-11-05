@@ -75,6 +75,10 @@ expect 0 "SENT id=" "(4) an esc- reply"
 run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to TeamLeadQx --kind report \
   --thread esc-r1-q-1 --body "opinion: agree"
 expect 0 "SENT id=" "(4) a Reviewer note on the thread"
+# A turn on an esc- thread: only the TeamLead probe's thread filter can drop it (kind=turn passes).
+run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to TeamLeadQx --kind turn \
+  --thread esc-r1-q-1 --body "your turn on the escalation"
+expect 0 "SENT id=" "(4) a turn on an esc- thread"
 probe .mail.TeamLead; expect 0 "from=SupervisorQx kind=turn" "(4) mail probe"
 [ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 1 ] || fail "(4) the mail probe passed an esc- line"
 probe '.esc_mail.TeamLead'; expect 0 "from=AdvisorQx" "(4) esc_mail probe"
