@@ -195,3 +195,5 @@ own .agents/reference/team-watch.md
 own .claude/team/sessions/Supervisor.settings.json
 own .claude/team/sessions/TeamLead.settings.json
 own .claude/lib/session_profile_check.py
+own .claude/lib/supervisor-sessions.sh
+own .claude/hooks/session-role.sh

@@ -1,12 +1,17 @@
 """Push one message into a Claude Code session over its cross-session messaging socket.
 
 Usage: python3 -I .claude/lib/team-watch-send.py <registration.json>   (message text on stdin)
+       python3 -I .claude/lib/team-watch-send.py --check <socket path>
 
 Wire format (Claude Code binary, `[uds-messaging] Inject messages`): an auth line, then one user
 line. No ack exists: exit 0 means written. No session id field is ever sent — the receiver drops
 a message whose session id does not match. Exit 1 on socket error/deadline, 2 on usage, 3 when the
 socket is not a socket file of mode 0600 owned by this uid: on the verified CLI the token is not
 enforced, so that file mode is the only boundary and a wider one is refused, never used.
+--check sends nothing: it prints the socket state (`ok 0600` · `missing` · `refused mode <mode>` ·
+`refused owner <uid>` · `refused not-a-socket`) and, for a refusal, the send's refusal line on
+stderr; exit 0 ok, 1 missing, 3 refused. tw_sock_state and the role preflight call it, so the
+status line, the preflight and the send share one predicate.
 Verified per CLI version: .agents/reference/team-watch.md → Wire format.
 """
 import json
@@ -39,11 +44,27 @@ def socket_state(path):
     return "ok " + mode
 
 
+def refusal(path, state):
+    return "socket %s %s — want mode 0600 owned by uid %d" % (path, state, os.getuid())
+
+
+def check(path):
+    state = socket_state(path)
+    print(state)
+    if state == "missing":
+        sys.exit(1)
+    if not state.startswith("ok "):
+        fail(3, refusal(path, state))
+    sys.exit(0)
+
+
 def on_alarm(_sig, _frame):
     fail(1, "deadline exceeded")
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--check":
+        check(sys.argv[2])
     if len(sys.argv) != 2:
         fail(2, "usage: team-watch-send.py <registration.json>")
     try:
@@ -56,7 +77,7 @@ def main():
     if state == "missing":
         fail(1, "socket %s missing" % path)
     if not state.startswith("ok "):
-        fail(3, "socket %s %s — want mode 0600 owned by uid %d" % (path, state, os.getuid()))
+        fail(3, refusal(path, state))
     try:
         deadline = float(os.environ.get("TEAM_WATCH_SEND_SECS", "5"))
     except ValueError:
