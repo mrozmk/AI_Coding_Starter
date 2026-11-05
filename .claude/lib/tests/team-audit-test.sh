@@ -55,10 +55,10 @@ clean_run() {  # clean_run <team dir> <run> [plan rev] — quick, four roles acc
   rec "$rd" coder 1 1 done 120 8371; rec "$rd" qa 1 1 done 180; qa_report "$rd" 1
   rec "$rd" wrapup 1 1 done 240; echo "target_rev: y" > "$rd/wrapup-1.md"
 }
-audit() {  # audit <team dir> <run> <out> [extra...]
+audit() {  # audit <team dir> <run> <out> [extra...] — the retro decision cases run opted in
   local td="$1" r="$2" o="$3"; shift 3
   run "$WORK" python3 -I "$AUD" audit --team-dir "$td" --clone "$PLANREPO" --run "$r" --out "$o" \
-    --config "$CFG" --roles "planner coder qa wrapup" "$@"
+    --config "$CFG" --roles "planner coder qa wrapup" --retro on "$@"
 }
 idx() { jq -s -r --arg r "$2" "map(select(.run == \$r)) | $3" "$1/index.jsonl"; }
 
@@ -80,6 +80,12 @@ O="$WORK/out-b"; clean_run "$WORK/td-b" alfa-20261020-110000 "$NOCODEX_REV"
 qa_report "$WORK/td-b/runs/alfa-20261020-110000" 1 final-build
 audit "$WORK/td-b" alfa-20261020-110000 "$O" --final ready
 expect 0 "retro: due flags" "B flagged run"
+# Off by default: the same flagged run without the project's opt-in never becomes due, even with
+# an audit.json that says enabled.
+O0="$WORK/out-b0"
+run "$WORK" python3 -I "$AUD" audit --team-dir "$WORK/td-b" --clone "$PLANREPO" \
+  --run alfa-20261020-110000 --out "$O0" --config "$CFG" --roles "planner coder qa wrapup" --final ready
+expect 0 "retro: no disabled" "B flagged run without the opt-in"
 F=$(idx "$O" alfa-20261020-110000 '.[0].flags | join(",")')
 case ",$F," in *,missing-step:codex-plan-review,*missing-step:qa-report-keys,*) ;;
   *) fail "B: flags $F" ;; esac
@@ -168,6 +174,9 @@ echo sid-planner > "$RD/planner-1.session"
 pending_tool sid-planner t1 Read '{"file_path": "/x"}'
 for r in qa wrapup; do mkrec "$r" "$BASE"; done
 printf 'run: x\nattempt: 1\n' > "$RD/qa-report-1.md"
+# The wrapper launches a retro only when the project opted in (profile teams.audit.retro: true).
+cp "$MAIN/.claude/project-profile.json" "$WORK/prof-audit"
+jq '.teams.audit = {retro: true}' "$WORK/prof-audit" > "$MAIN/.claude/project-profile.json"
 run "$CLONE" bash "$MAIN/.claude/lib/team-audit.sh" alfa --runner-exit 0 --final ready
 expect 0 "audit: " "H final flagged run"
 B="$MAIN/.agents/team/audit/20261024-alfa-AB-790-$RUN_ID"

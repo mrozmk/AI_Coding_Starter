@@ -1,6 +1,6 @@
 {
   "typical_minutes": {"planner": 60, "coder": 180, "qa": 120, "wrapup": 45, "cli": 180},
   "flags": {"questions_min": 3, "qa_rounds_min": 2},
-  "retro": {"enabled": true, "on_flag": true, "sample_every_clean": 5,
+  "retro": {"enabled": false, "on_flag": true, "sample_every_clean": 5,
             "model": "sonnet", "effort": "medium", "max_minutes": 60}
 }
