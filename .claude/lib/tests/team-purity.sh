@@ -20,7 +20,8 @@ import sys
 root, self_path = sys.argv[1], os.path.realpath(sys.argv[2])
 DENY = re.compile(r"TakeTask|taketask|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMonitoring"
                   r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|\bTT-[0-9]+"
-                  r"|SolTT|develop-netcore7|mail-tt|TT_TEAM")
+                  r"|SolTT|develop-netcore7|mail-tt|TT_TEAM"
+                  r"|fable-tt|opus-(team|supervisor|monitoring)|\bTT_(WAKE|MONITORING|SESSIONS|GUARD|MAIL)")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
 SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".agents/reference",
          "tools", "docs/teams")
@@ -62,7 +63,9 @@ printf 'role=OpusTeam\n' > "$T/.claude/lib/x.sh"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a planted leak passed"; exit 1; }
 printf 'ticket AB-1 TT-12\n' > "$T/.claude/lib/x.sh"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a ticket key passed"; exit 1; }
-for leak in 'worker SolTT' 'git switch develop-netcore7' '/mail-tt' 'TT_TEAM_ROLE=coder'; do
+for leak in 'worker SolTT' 'git switch develop-netcore7' '/mail-tt' 'TT_TEAM_ROLE=coder' \
+  'tmux attach -t fable-tt' 'tmux attach -t opus-team' 'opus-supervisor' 'opus-monitoring' \
+  'TT_WAKE_SECS=3' 'TT_MONITORING_JSON=x' 'TT_SESSIONS_CLAUDE_FLAGS=' 'TT_GUARD_X=1' 'TT_MAIL_BOX=y'; do
   printf '%s\n' "$leak" > "$T/.claude/lib/x.sh"
   ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — '$leak' passed"; exit 1; }
 done

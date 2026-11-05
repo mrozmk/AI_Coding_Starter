@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# Watch one or more teams and print one line per state change (the event stream for /monitor).
+# Watch one or more teams and print one line per state change: the event stream /monitor arms as
+# a Monitor when no team-watch daemon pushes into this session (the single-window flow and the
+# rollback target). team-watch.sh hands any non-subcommand argument list to this script.
 #
-# Usage: bash .claude/lib/team-watch.sh [--once] <team> [team...]
-#        bash .claude/lib/team-watch.sh mode tiers|answering on|off
-#        bash .claude/lib/team-watch.sh mode class <class> on|off
-#   e.g. bash .claude/lib/team-watch.sh alfa gamma
+# Usage: bash .claude/lib/team-watch-poll.sh [--once] <team> [team...]
+#   e.g. bash .claude/lib/team-watch-poll.sh alfa gamma
 #
 # Events: WATCH (initial state) · STAGE · RECORD · ATTENTION (+ the role's screen) · RUNNER stopped.
 # Polls local files and tmux every TEAM_WATCH_SECS (default 15); never exits on its own unless --once.
-# `mode` writes the shared switches in <main>/.agents/team/watch/state.json that team-question.sh
-# answer and the tier-1 classes enforce (team-mode.md §10); only the Operator's words set them.
 set -euo pipefail
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 once=0
 [ "${1:-}" != --once ] || { once=1; shift; }
 [ $# -ge 1 ] || usage
@@ -20,37 +18,6 @@ once=0
 
 root="$(git rev-parse --show-toplevel)"
 
-# set_switch <jq filter> <label> — one writer at a time (mkdir lock), atomic replace; a state file
-# that is not a JSON object is refused, never overwritten (its readers treat it as all off).
-set_switch() {
-  local d="$root/.agents/team/watch" s tries=0
-  mkdir -p "$d"
-  until mkdir "$d/lock.d" 2>/dev/null; do
-    tries=$((tries + 1)); [ "$tries" -lt 50 ] || { echo "error: team-watch state lock busy" >&2; exit 1; }
-    sleep 0.1
-  done
-  TW_LOCKD="$d/lock.d"; trap 'rmdir "$TW_LOCKD" 2>/dev/null || true' EXIT
-  if [ -e "$d/state.json" ]; then
-    s="$(jq -ce 'objects' "$d/state.json" 2>/dev/null)" \
-      || { echo "error: $d/state.json is not a JSON object — fix or remove it" >&2; exit 1; }
-  else s='{}'; fi
-  jq "$@" <<<"$s" > "$d/state.json.tmp.$$" && mv "$d/state.json.tmp.$$" "$d/state.json"
-}
-
-if [ "$1" = mode ]; then
-  if [ "${2:-}" = class ]; then
-    case " $TEAM_CLASSES " in *" ${3:-x} "*) ;; *) usage ;; esac
-    [[ "${4:-}" =~ ^(on|off)$ ]] || usage
-    set_switch --arg n "$3" --arg v "$4" \
-      '.classes = ((.classes | if type == "object" then . else {} end) + {($n): $v})'
-    echo "team-watch: class $3 $4"
-  else
-    [[ "${2:-}" =~ ^(tiers|answering)$ ]] && [[ "${3:-}" =~ ^(on|off)$ ]] || usage
-    set_switch --arg k "$2" --arg v "$3" '.[$k] = $v'
-    echo "team-watch: $2 $3"
-  fi
-  exit 0
-fi
 STATE="$(mktemp -d)"
 trap 'rm -rf "$STATE"' EXIT
 POLL="${TEAM_WATCH_SECS:-15}"
