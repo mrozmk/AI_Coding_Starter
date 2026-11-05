@@ -42,8 +42,12 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
 - the alarms: `UNPICKED` / `STALLED` / `RECEIVER … down` / `UNDELIVERED` / `MONITOR` → find out why
   (the role's window, `supervisor-sessions.sh status`), tell the Operator in one line when a role
   is down or stuck;
-- `ADVISOR silent` → one line to the Operator with the waiting critical qs; never answers them
-  ([escalation-fallback.md](escalation-fallback.md) → Signals);
+- `ADVISOR silent since <UTC>: <n> escalation(s) waiting` → one line to the Operator naming the
+  waiting qs from the screen (`<team> <q> tier <t> class <c>`). It never answers them, never
+  re-sends them, and is never reminded; the episode ends only on a new Advisor reply, not on an
+  Operator answer to one q. Same handling under `advisor: solo`, where nothing closes by fallback
+  and the screen lists every timed-out q ([escalation-fallback.md](escalation-fallback.md) →
+  Signals);
 - `ATTENTION TeamLead|Advisor (<permission|menu>) fp=<fp>: <anchor>` — a role session's own prompt
   or menu: classify per [team-mode.md](team-mode.md) §10; tier 1 only through
   `bash .claude/lib/supervisor-sessions.sh answer <role> --fp <fp> yes|no "<reason>"|pick <n>|other
@@ -113,7 +117,8 @@ unread `turn`s. Under `advisor: pair` it runs the Reviewer's deliver loop:
 `supervisor-sessions.sh reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's
 path only (another project's same-name loop never counts); a missing one is restored per
 [agent-mail.md](agent-mail.md) → Bring-up. Under `advisor: solo` the Reviewer does not exist
-(`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`.
+(`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`. What it answers on an
+escalation thread, and its one policy-log exception: [team-advisor.md](team-advisor.md).
 
 ## Monitoring
 

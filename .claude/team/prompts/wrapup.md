@@ -69,11 +69,12 @@ Supervision rules for steps 5–8 (every tracker; `.agents/reference/team-decisi
   question text, so the supervisor escalates only (B). Unsure → (B). Ask (A) first. Each memory
   option names its target file and `czytelnik:`.
 - **(B) is non-blocking.** The TeamLead answers a (B) question with skip when the Advisor does not
-  reply (`/monitor`, wrapup (B) exception). After the (B) answer read the newest
+  reply (`/monitor`, wrapup (B) exception; Transitional supervision rules — the scripts do not enforce them.). After the (B) answer read the newest
   `questions/q-<n>.md` of this attempt bound to it; if the `why:` of its latest `## Answer` starts
   with `Advisor no-reply`, append to `wrapup-{{ATTEMPT}}.md` a section `## Deferred memory (B)`:
   one item per (B) recommendation, verbatim — target file, exact text, its `czytelnik:` line and
-  the q id — and continue with (B) skipped. A later Advisor acceptance comes back as a hand-off
+  the q id — plus one line `ticket: {{TICKET}} · team: {{TEAM}} · run: {{RUN}} · attempt:
+  {{ATTEMPT}} · thread: esc-{{RUN}}-<q id>`, and continue with (B) skipped. A later Advisor acceptance comes back as a hand-off
   (step 6), never applied in this run.
 - Step 8 applies the accepted hand-off lines (step 6) and what was accepted in step 7 (TeamLead,
   Advisor+Reviewer or the developer).

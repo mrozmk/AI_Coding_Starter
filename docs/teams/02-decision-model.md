@@ -74,7 +74,9 @@ Some tier-1 answers set a precedent: a size-only Phase 0 override, a memory entr
 - a live precedent gets the same answer;
 - a deviation from a precedent becomes a blocking tier-2 question.
 
-**Who may write the log.** The TeamLead appends decision and revocation lines and never rewrites one. The Advisor may replace exactly one promoted entry with a `[promoted]` pointer when it moves that conclusion into `decisions.md` through a PR. These are the only two writers, and their scopes are the ones just stated.
+**Deferred memory.** A wrapup (B) memory proposal the Advisor did not answer closes as skip, is recorded as `memory-deferred` and handed to the Advisor as one deduplicated `info`. Transitional supervision rules — the scripts do not enforce them. The guards live in `/monitor` 4(e).
+
+**Who may write the log.** The TeamLead appends decision and revocation lines and never rewrites one. The Advisor may replace exactly one promoted entry with a `[promoted]` pointer when it moves that conclusion into `decisions.md` through a PR. These are the only two writers, and their scopes are the ones just stated ([`team-advisor.md`](../../.agents/reference/team-advisor.md) §3 is the Advisor's side).
 
 ## What is a target, not behaviour
 

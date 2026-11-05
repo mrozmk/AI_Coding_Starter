@@ -19,7 +19,8 @@
 #                           tool tool_sha decisions_dir codex_home kit_dir
 #   name <ROLE>             the recipient name: ROLE + mail_suffix
 #   turn <FROM> <TO> [args] a wake-up (`--kind turn --awaiting <TO>`) from one role to another
-#                           through team-mail.sh; args go to `send` (--body/--body-file, --thread…)
+#                           through team-mail.sh; args go to `send` (--body/--body-file, --thread…);
+#                           `--kind info` makes it an info mail instead: no --awaiting, wakes nobody
 #   render [--dry-run]      .agents/team/{watch,escalation}.local.json from .claude/team/*.tmpl
 # Exports (team_channel_load):
 #   TEAM_CHANNEL_ROOT        the checkout the config was read from
@@ -287,7 +288,7 @@ TEAM_CHANNEL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
-  usage() { sed -n '9,23p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+  usage() { sed -n '9,24p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
   [ $# -ge 1 ] || usage
   sub="$1"; shift
   case "$sub" in show|get|name|turn|render) ;; *) usage ;; esac
@@ -313,8 +314,13 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     turn)
       [ $# -ge 2 ] || usage
       from="$(team_channel_role "$1")"; to="$(team_channel_role "$2")"; shift 2
+      kind=(--kind turn --awaiting "$to"); rest=()
+      while [ $# -gt 0 ]; do
+        if [ "$1" = --kind ] && [ "${2:-}" = info ]; then kind=(--kind info); shift 2; continue; fi
+        rest+=("$1"); shift
+      done
       exec bash "$TEAM_CHANNEL_LIB/team-mail.sh" "$TEAM_CHANNEL_KEY" send --from "$from" --to "$to" \
-        --kind turn --awaiting "$to" "$@" ;;
+        "${kind[@]}" ${rest[@]+"${rest[@]}"} ;;
     render) [ $# -le 1 ] || usage; team_channel_render "$@" ;;
   esac
 fi

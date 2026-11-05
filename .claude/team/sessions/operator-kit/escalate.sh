@@ -52,6 +52,7 @@ Reply format — the first lines, then a blank line, then the text for the team:
 - "status: withdrawn" — the question is no longer relevant.
 Analyst disagreement: both positions + a recommendation go to the Operator. No reply and no error is ever consent.
 "reping-kind: transport" in a request header = a repeated delivery, not a new decision request.
+Contract: .agents/reference/team-advisor.md (main checkout).
 EOF
 }
 

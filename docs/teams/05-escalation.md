@@ -4,6 +4,7 @@
 - [`team-questions.md`](../../.agents/reference/team-questions.md): the ledger, the binding, delivery, the delivery-state table and the adapter contract.
 - [`team-mode.md` §10](../../.agents/reference/team-mode.md#10-escalation-tiers): the rules.
 - [`escalation-fallback.md`](../../.agents/reference/escalation-fallback.md): the Advisor no-reply fallback.
+- [`team-advisor.md`](../../.agents/reference/team-advisor.md): the Advisor's side — the reply format, tier 3, the policy-log promotion exception, the solo mode.
 
 ## Why a ledger
 
@@ -55,7 +56,7 @@ A missing config, a timeout, a send or wait failure, an unparseable reply, or a 
 It never forwards the question to the Operator and never treats silence as consent. There are two narrow exceptions:
 
 - **The no-reply fallback**, only for the eligible classes (`analysts-condition`, `plan-variant`, `borderline`, `policy-deviation`). After a wait timeout, the question closes on the Reviewer's `opinion: agree` over the TeamLead's recorded recommendation. The Advisor's silence must be proven by one empty poll. It is delivered as `TeamLead-fallback`. Critical classes and anything that has ever waited on the Operator never fall back. Under `advisor: solo` there is no Reviewer, so there is no fallback.
-- **The wrapup (B) memory exception.** New, unaccepted, optional memory proposals close as *skip* on no-reply. They are deferred, never accepted, and handed to the Advisor as one deduplicated `info`.
+- **The wrapup (B) memory exception.** Transitional supervision rules — the scripts do not enforce them. New, unaccepted, optional memory proposals close as *skip* on no-reply. They are deferred, never accepted, and handed to the Advisor as one deduplicated `info`.
 
 Late replies, orphaned waiters after a restart and staged replies are replayed once by mail id, never twice. [`team-questions.md`](../../.agents/reference/team-questions.md) describes the ledger lines.
 
