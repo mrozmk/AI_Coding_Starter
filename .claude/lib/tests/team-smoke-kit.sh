@@ -56,6 +56,8 @@ has 'display notification "line one line two" with title "Title" sound name "Sos
   || { nlog > "$WORK/out"; fail "(N) osascript argv / sanitising"; }
 : > "$WORK/notify.log"
 run "$MAIN" env PATH="$KP" TEAM_NOTIFY_SOUND_ALARM= $NOTIFY --backend osascript --alarm T M
+has 'display notification "M" with title "T"' "$WORK/notify.log" \
+  || { nlog > "$WORK/out"; fail "(N) set-but-empty alarm sound sent no notification"; }
 ! grep -q 'sound name' "$WORK/notify.log" || fail "(N) set-but-empty alarm sound still sounded"
 : > "$WORK/notify.log"
 run "$MAIN" env PATH="$KP" $NOTIFY --backend notify-send --alarm T M
