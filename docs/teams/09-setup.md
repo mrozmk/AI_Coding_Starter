@@ -60,9 +60,8 @@ you are in:
   An `offer roles` line means the entry lacks role names: rerun with `--add-roles` to add them.
 - **`extend`**: entries exist, none for this checkout. `/setup:teams` asks: a new box for this
   project (recommended), or one existing key (`--key <KEY>`, which turns it into `reuse` of that
-  box). Reusing another project's key shares its box **and its recipient names**: the entry's
-  suffix wins over your profile's `mail_suffix`, and nothing warns you, so pick a key only for
-  the same project.
+  box). Reusing a key shares that box **and its recipient names**, so it is refused when the
+  entry's suffix differs from your profile's `mail_suffix`: pick a key only for the same project.
 - A second project on the same machine gets its own key, box and recipients from its own
   `project_code` / `mail_suffix` / `tmux_prefix`. Two projects never share a recipient name.
 

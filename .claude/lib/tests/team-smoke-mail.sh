@@ -244,6 +244,18 @@ setup "$P10"
   || fail "7d: codex_home is $(jq -r .codex_home "$P10/.agents/team/channel.local.json")"
 [ "$(jq -r .p10.codex_home "$REG")" = "$HOME/.codex-p10" ] || fail "7d: the registry entry is wrong"
 
+# ---- (7e) --key reuse of an entry with another mail suffix is refused, nothing written --------
+P11=$(mkproj p11)
+H0=$(treehash "$HOME")
+setup "$P11" --dry-run --key p1 --suffix ZQ
+[ "$RC" = 1 ] && has "entry p1 has mail suffix 'XY', this project declares 'ZQ'" \
+  || fail "7e: a keyed reuse with another suffix was not refused"
+setup "$P11" --key p1 --suffix ZQ
+[ "$RC" = 1 ] && [ "$(treehash "$HOME")" = "$H0" ] && [ ! -e "$P11/.agents" ] \
+  || fail "7e: the refused keyed reuse wrote"
+setup "$P11" --dry-run --key p1 --suffix XY
+[ "$RC" = 0 ] && has "mode	reuse	key p1" || fail "7e: a keyed reuse with the same suffix was refused"
+
 # ---- (8) profile names and the solo policy ---------------------------------------------------
 P6=$(mkproj p6)
 mkdir -p "$P6/.claude"

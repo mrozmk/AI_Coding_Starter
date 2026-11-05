@@ -203,6 +203,11 @@ fi
 if [ "$MODE" = reuse ] || [ -z "$DRY" ]; then
   e() { jq -r --arg k "$KEY" --arg f "$1" '.[$k][$f] // empty' "$REG"; }
   BOX="$(e box)"; TOOL="$(e tool)"; DEC="$(e decisions_dir)"; CODEX_HOME_V="$(e codex_home)"
+  # The entry's suffix names its recipients. A project that declares another one would silently
+  # take over that box's roles (another project's, under --key), so the mismatch is refused.
+  if [ "$MODE" = reuse ] && [ -n "$SUFFIX" ] && [ "$SUFFIX" != "$(e suffix)" ]; then
+    die "entry $KEY has mail suffix '$(e suffix)', this project declares '$SUFFIX' — reusing it would take over its recipients; pick this project's own key, or a new box"
+  fi
   SUFFIX="$(e suffix)"
   HAVE_CR="$(jq -r --arg k "$KEY" '.[$k].claude_roles | join(" ")' "$REG")"
   HAVE_XR="$(jq -r --arg k "$KEY" '.[$k].codex_roles | join(" ")' "$REG")"
