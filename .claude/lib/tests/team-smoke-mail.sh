@@ -271,6 +271,21 @@ setup "$P10"
   || fail "7d: codex_home is $(jq -r .codex_home "$P10/.agents/team/channel.local.json")"
 [ "$(jq -r .p10.codex_home "$REG")" = "$HOME/.codex-p10" ] || fail "7d: the registry entry is wrong"
 
+# ---- (7g) an entry that would fail the registry schema is refused before any write (R1) -------
+P13=$(mkproj p13)
+H0=$(treehash "$HOME")
+setup "$P13" --label "bad label"
+[ "$RC" = 2 ] && has "project label 'bad label' is not an identifier" \
+  || fail "7g: a label with a space was not refused"
+mkdir -p "$P13/.claude"; printf '$HOME/.codex-p13\n' > "$P13/.claude/codex-profile"
+setup "$P13"
+[ "$RC" = 2 ] && has "codex home '\$HOME/.codex-p13' is not an absolute path" \
+  || fail "7g: a relative codex home was not refused"
+[ "$(treehash "$HOME")" = "$H0" ] || fail "7g: a refused setup changed files under HOME"
+mail p1 check
+[ "$RC" = 0 ] || fail "7g: the registry fails the schema after the refused setups"
+rm "$P13/.claude/codex-profile"
+
 # ---- (7f) a mail home created earlier with a wide mode is tightened to 0700 by the next creator ---
 chmod 755 "$HOME/.agent-mail"
 P12=$(mkproj p12)
