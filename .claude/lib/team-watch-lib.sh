@@ -53,14 +53,9 @@ tw_notify() {
   team_channel_notify ${3:+--alarm} "team-watch: $1" "$2"
 }
 
-# Copy of pr_timebox (team-lib.sh) that keeps a signal death non-zero: `exit($? >> 8)` there
-# turns a killed child into exit 0, and a killed mail probe must not read as "no mail".
-tw_timebox() {  # tw_timebox <secs> <cmd...> → exit 124 on timeout
-  perl -e '$t = shift; $p = fork // exit 1;
-    if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
-    $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
-    alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
-}
+# pr_timebox (team-lib.sh) keeps a signal death non-zero: a killed mail probe must not read as
+# "no mail". The name stays for the watch's callers.
+tw_timebox() { pr_timebox "$@"; }  # tw_timebox <secs> <cmd...> → exit 124 on timeout
 
 # tw_claim <dir> <wait secs> [max age secs] — mkdir claim with our pid. A claim whose pid is dead,
 # or older than max age, is reclaimed: its holder died mid-section and would block us forever.
