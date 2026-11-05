@@ -15,7 +15,7 @@
 
 Acks, alarms and the routing are computed outside every LLM, from ledgers in `<main>/.agents/team/watch/`.
 
-Without the daemon, `/monitor` still works. It polls with `team-watch-poll.sh` every 15 s, as it did before this layer.
+`/monitor` handles the pushed messages and no longer polls: a single window starts the daemon itself with `team-watch.sh start`, and role sessions get it from `/monitoring start` (see `01-roles-and-sessions.md`).
 
 | Command | Use |
 |---|---|
