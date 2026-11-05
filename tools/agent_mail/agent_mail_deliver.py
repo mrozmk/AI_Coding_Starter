@@ -32,6 +32,7 @@ import logging
 import os
 import shlex
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -371,6 +372,25 @@ def load_recipients(path):
     return data
 
 
+ALLOW_FILE = "adapters.allow"
+
+
+def exec_allowed(box_path, cmd):
+    """True when <box dir>/adapters.allow — a regular file the Operator owns, mode 0600 or
+    stricter — lists the exact exec command template on a line of its own. Anyone who can write
+    recipients.json (or pass --cmd) can otherwise make this loop run any command."""
+    path = os.path.join(os.path.dirname(os.path.abspath(box_path)), ALLOW_FILE)
+    try:
+        st = os.lstat(path)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+            return False
+        with open(path, encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh]
+    except (OSError, UnicodeDecodeError):
+        return False
+    return cmd.strip() in [ln for ln in lines if ln and not ln.startswith("#")]
+
+
 def resolve_config(args, box_path):
     """Merge `recipients.json` with the CLI overrides into one adapter config."""
     recipients_path = args.recipients or os.path.join(os.path.dirname(box_path),
@@ -402,6 +422,10 @@ def resolve_config(args, box_path):
                           % (adapter,))
     if adapter == "exec" and not cmd:
         raise ConfigError("adapter exec requires a command template (--cmd)")
+    if adapter == "exec" and not exec_allowed(box_path, cmd):
+        raise ConfigError("adapter exec for %s not run: its command template is not listed in %s "
+                          "(Operator-written, mode 0600, next to the box) — skipped"
+                          % (args.recipient, os.path.join(os.path.dirname(box_path), ALLOW_FILE)))
 
     return {"box": box_path, "adapter": adapter, "thread": thread, "cmd": cmd,
             "timeout": ADAPTER_TIMEOUT[adapter], "redeliver_after": args.redeliver_after,

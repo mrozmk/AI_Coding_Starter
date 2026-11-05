@@ -88,7 +88,17 @@ mail p1 send --from AdvisorXY --to SupervisorXY --kind turn --thread t1 --body h
 [ "$RC" = 0 ] && has "SENT id=1" || fail "2: send through the client"
 mail p1 inbox --for SupervisorXY --unread
 has "from=AdvisorXY kind=turn" || fail "2: inbox through the client"
-mail p1 state set --expect-version 0 --stage design; [ "$RC" = 0 ] || fail "2: state set"
+mail p1 state set --expect-version 0 --stage design
+[ "$RC" = 2 ] && has "'state set' is an Operator action" || fail "2: a role's state set was not refused"
+python3 -I -B "$COPY/agent_mail.py" --box "$BOX1" state set --project p1 --expect-version 0 \
+  --stage design >/dev/null || fail "2: the Operator's state set on the tool failed"
+# The roles' allow rule covers this client, so nothing here may change recipients or adapters.
+for v in "register --as ReviewerXY --adapter exec --cmd touch" "requeue 1" "pause" "import-md x"; do
+  mail p1 $v
+  [ "$RC" = 2 ] && has "is an Operator action" || fail "2: '$v' was not refused"
+done
+mail p1 deliver ReviewerXY --adapter exec --cmd "touch $WORK/pwned" --once
+[ "$RC" = 2 ] && [ ! -e "$WORK/pwned" ] || fail "2: deliver with --adapter exec was not refused"
 mail p1 state get --json
 has '"project": "p1"' && has '"stage": "design"' || fail "2: state get did not use the label"
 [ ! -e "$COPY/__pycache__" ] || fail "2: the client let python write bytecode into the tool copy"

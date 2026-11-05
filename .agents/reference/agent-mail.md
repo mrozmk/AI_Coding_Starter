@@ -107,7 +107,15 @@ whose `repo` is this checkout.
 | `pattern [deliver\|wait <RECIPIENT>]` | the `pgrep -f` regex for this box or one of its loops |
 | `deliver <RECIPIENT>` | the push loop for a Codex recipient, foreground (run it as a background task) |
 | `check` | `team-mail.sh check`: whole-registry schema + one tool per box; `<KEY> check`: plus the entry's tool, box dir and decisions dir exist. Both print a **warning** (exit stays 0) when an entry's `agent_mail-<sha>` copy is older than its repo's vendored tool: `tool behind checkout (<old> → <new>) — re-sync is an Operator action: bash "<repo>/.claude/lib/team-mail-setup.sh" "<repo>" --key <KEY> --resync-tool`. `check` never swaps a tool |
-| anything else | forwarded to `agent_mail.py --box <box>`; `send` and `state get\|set` also get `--project <label>` |
+| `send`, `inbox`, `ack`, `wait`, `recipients`, `state get` | forwarded to `agent_mail.py --box <box>`; `send` and `state get` also get `--project <label>` |
+| anything else | **refused** (exit 2) with the command to run instead — see below |
+
+**Role use only.** `team-mail.sh` sits on every role's allow list (`/setup:teams` allows
+`bash .claude/lib/team-*.sh*`), so it forwards only what a role needs. `register`, `requeue`,
+`pause`, `resume`, `import-md`, `export-md`, `state set` and any `--adapter`/`--cmd` argument
+(also on `deliver`) are Operator actions: the refusal prints `python3 -I -B "<tool>/agent_mail.py"
+--box "<box>" <verb> …`, which the Operator runs himself and which no role allow rule covers. The
+Reviewer's own `register` runs that way already (the channel step's `reviewer:` block).
 
 Every `pgrep`/`pkill` goes through `pattern`: a bare `pgrep -f "--recipient Reviewer"` matches the
 other project's loop on the same machine and kills it.
@@ -147,13 +155,21 @@ schema alone does not carry it.
 |---|---|---|
 | `monitor` | nobody — the recipient wakes itself (`wait --follow` or its wake loop); `deliver` refuses it | Supervisor, TeamLead, Advisor |
 | `codex-queue` | `codex queue --thread <UUID> --message <signal>` | Reviewer; the window must be open and the UUID changes every session |
-| `exec` | a shell template | tests, other tools |
+| `exec` | a command template, **only when the Operator listed it** in `<box dir>/adapters.allow` | tests, other tools |
 | `claude-resume` | `claude -p --resume <id>` | experimental, never proven; needs `--allow-experimental` |
 
 The push loop runs in the Advisor's session: `team-mail.sh <KEY> deliver Reviewer<suffix>`. The
 signal carries **metadata only**, never the body; the adapter runs before the delivery is marked
 (at-least-once, de-duplicated by `id`); it reads `recipients.json` once, so restart it after the
 Reviewer re-registers.
+
+**`exec` needs the Operator's allow file.** Whoever can write `recipients.json` or pass `--cmd`
+could otherwise make the loop run any command outside every session. The loop runs an `exec`
+adapter only when `<box dir>/adapters.allow` — a regular file owned by the user, mode `0600` or
+stricter, outside the repo, written by the Operator — lists the exact command template on a line
+of its own (`#` comments and blank lines ignored; a template with a newline cannot be listed).
+Otherwise it refuses to start for that recipient (exit 1, the reason on stderr). Nothing creates
+the file; `monitor` and `codex-queue` recipients do not need it.
 
 ## Protocol: receive-on-read, ack-on-done
 

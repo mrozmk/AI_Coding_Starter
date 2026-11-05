@@ -62,11 +62,23 @@ class DeliverTestCase(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     # -- helpers ---------------------------------------------------------
+    def allow(self, cmd, box=None):
+        """The Operator's adapters.allow next to the box, mode 0600, listing <cmd>."""
+        path = os.path.join(os.path.dirname(box or self.box), deliver.ALLOW_FILE)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(cmd + "\n")
+        os.chmod(path, 0o600)
+        return path
+
     def run_deliver(self, *argv, **kwargs):
         run = kwargs.pop("run", subprocess.run)
         recipient = kwargs.pop("recipient", "Reviewer")
         box = kwargs.pop("box", self.box)
-        args = ["--box", box, "--recipient", recipient] + [str(a) for a in argv]
+        argv = [str(a) for a in argv]
+        # An exec template under test is the Operator's: allow-list it unless the test says not to.
+        if kwargs.pop("allow", True) and "--cmd" in argv:
+            self.allow(argv[argv.index("--cmd") + 1], box)
+        args = ["--box", box, "--recipient", recipient] + argv
         return deliver.main(args, run=run)
 
     def state_of(self, message_id, recipient="Reviewer"):
@@ -89,8 +101,9 @@ class DeliverTestCase(unittest.TestCase):
 
     def writer_cmd(self, out_path):
         """exec template that appends just the signal argument to `out_path`."""
-        script = ("import sys\n"
-                  "open(%r, 'a', encoding='utf-8').write(sys.argv[1] + '\\n')\n" % (out_path,))
+        # One line: an adapters.allow entry is a line, so a listed template has no newline.
+        script = ("import sys; "
+                  "open(%r, 'a', encoding='utf-8').write(sys.argv[1] + '\\n')" % (out_path,))
         return "%s -c %s {signal}" % (shlex.quote(sys.executable), shlex.quote(script))
 
 
@@ -156,6 +169,30 @@ class TestDeliverBasics(DeliverTestCase):
 # ---------------------------------------------------------------------------
 # retry / attempt budget
 # ---------------------------------------------------------------------------
+
+class TestExecAllowList(DeliverTestCase):
+
+    def test_exec_not_in_allow_file_is_not_run(self):
+        out = os.path.join(self.tmp, "ran")
+        store.send(self.conn, "Advisor", ["Reviewer"], "turn", "b")
+        rc = self.run_deliver("--adapter", "exec", "--cmd", "touch " + out, "--once", allow=False)
+        self.assertNotEqual(rc, 0)
+        self.assertFalse(os.path.exists(out))
+
+    def test_exec_allow_file_must_be_private(self):
+        out = os.path.join(self.tmp, "ran")
+        store.send(self.conn, "Advisor", ["Reviewer"], "turn", "b")
+        os.chmod(self.allow("touch " + out), 0o644)
+        rc = self.run_deliver("--adapter", "exec", "--cmd", "touch " + out, "--once", allow=False)
+        self.assertNotEqual(rc, 0)
+        self.assertFalse(os.path.exists(out))
+
+    def test_exec_allow_file_lists_exact_template(self):
+        out = os.path.join(self.tmp, "ran")
+        self.allow("touch " + out)
+        self.assertTrue(deliver.exec_allowed(self.box, "touch " + out))
+        self.assertFalse(deliver.exec_allowed(self.box, "touch " + out + "; rm -rf x"))
+
 
 class TestAttempts(DeliverTestCase):
 
