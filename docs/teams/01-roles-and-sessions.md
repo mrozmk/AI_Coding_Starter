@@ -31,7 +31,7 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 ## Models
 
-Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. `/setup:teams` prints the effective table. A running window picks up a change only after `stop <role>` and `start <role>`.
+Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `stop <role>` and `start <role>`.
 
 ## `/monitor` belongs to the TeamLead
 

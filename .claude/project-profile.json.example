@@ -91,6 +91,12 @@
       "tmux_prefix": "xy",
       "advisor": "pair",
       "notifier": "none"
+    },
+    "_sessions_doc": "OPTIONAL — model and effort of each supervision role session, read by supervisor-sessions.sh when it launches the role (start, up, here). Absent = every role runs opus, the Supervisor at effort medium, the TeamLead and the Advisor at high. model: a Claude Code model name or alias; effort: low | medium | high | xhigh | max. An invalid value stops the launch with an error naming the key. A running window picks up a change only after stop <role> + start <role>. The values below equal the defaults.",
+    "sessions": {
+      "Supervisor": {"model": "opus", "effort": "medium"},
+      "TeamLead": {"model": "opus", "effort": "high"},
+      "Advisor": {"model": "opus", "effort": "high"}
     }
   },
 
