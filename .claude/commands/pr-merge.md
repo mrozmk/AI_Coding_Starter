@@ -21,8 +21,12 @@ Arguments: **$ARGUMENTS** — `[PR-ID] [--auto <team>]` (both optional; `--auto`
 
 - **Never `--bypass-policy`** (denied in `settings.json`) and **never abandon** a PR. A failing or
   pending required policy is reported, not worked around.
-- **No questions.** Invocation is consent to publish, self-approve, complete **this one PR** and
-  delete its source branch. Nothing else: never touch another PR, never change policies.
+- **No questions.** Invocation is consent to publish, complete **this one PR** and delete its source
+  branch. Nothing else: never touch another PR, never change policies.
+- **Self-approval and auto-complete are project policy, off by default.** Only when
+  `.claude/project-profile.json` has `teams.policy.pr.self_approve: true` does this command vote
+  `approve` on the user's own PR or arm auto-complete. Without it: a missing required approval or
+  a running blocking policy is a **STOP** naming what is missing (`self_approve` is off).
 - **Stop, don't work around:** conflicts, a rejected policy, a rejecting reviewer vote (`-10`/`-5`),
   or an `az` error → report verbatim and stop.
 - **Branch deletion only after `completed`.** Remote `git push origin --delete <source>` and local
@@ -91,8 +95,8 @@ Apply the first matching row; after any *resolve* action re-read Step 3 (at most
 | `status: completed` | → **Step 6a** (Jira), then Step 6 (cleanup) and Step 7 |
 | `status: abandoned`, `mergeStatus: conflicts`, a vote `-10`/`-5`, or a blocking policy `rejected` | **STOP** — name the blocker and the fix (conflicts: merge `<TARGET>` into the branch, push, re-run) |
 | `isDraft: true` | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --draft false -o none` |
-| a *Minimum number of reviewers* policy exists, is not `approved`, and the current user has no vote ≥ 5 | *resolve:* `az repos pr set-vote --id <PR_ID> --org "$ORG_URL" --vote approve -o none` — report it as a **self-approval**. No such policy → never vote. |
-| a blocking policy `queued` / `running` (e.g. the build, a required reviewer) | **5b** set auto-complete, then **5c** wait. With `--auto` → **STOP** `deferred: policies running — Supervisor retries on the next READY reminder` (no 5b) |
+| a *Minimum number of reviewers* policy exists, is not `approved`, and the current user has no vote ≥ 5 | `self_approve` off → **STOP** `needs an approval — teams.policy.pr.self_approve is off`. On → *resolve:* `az repos pr set-vote --id <PR_ID> --org "$ORG_URL" --vote approve -o none` — report it as a **self-approval**. No such policy → never vote. |
+| a blocking policy `queued` / `running` (e.g. the build, a required reviewer) | `self_approve` off → **STOP** `policies running — re-run when they pass (auto-complete needs teams.policy.pr.self_approve)`. On → **5b** set auto-complete, then **5c** wait. With `--auto` → **STOP** `deferred: policies running — Supervisor retries on the next READY reminder` (no 5b) |
 | all blocking policies `approved` / `notApplicable` (or none exist) | **5a** complete now (with `--auto`: the `--recheck` first) |
 
 ### Step 5 — Execute
