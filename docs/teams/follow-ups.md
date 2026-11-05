@@ -44,6 +44,17 @@ tests.
 | F30 | `team-channel.sh turn <From> <To> --kind <k>` honours only `info`. Any other `--kind` is passed through after its own `--kind turn --awaiting <To>`, and the last flag wins, so `--kind report` sends `kind=report` with `awaiting` set | done: `turn` accepts `--kind turn` (the default, with `--awaiting`) or `--kind info`; any other kind exits 2 naming both; channel smoke (8) |
 | F31 | The egress hook runs `python3 -I` without `-B`, and `guard_team_egress.py` imports `guard_destructive_sql`. Outside Apple's Python, which keeps its cache in `~/Library/Caches`, every guarded call writes `.claude/hooks/lib/__pycache__` into the project and each clone (gitignored), and `team-smoke-lib.sh` (`cp "$SRC"/.claude/hooks/lib/*`) then fails on that directory. Seen on Linux (Ubuntu 24.04, Python 3.12) in the p9a walkthrough | done: both guard hooks run `python3 -I -B`, every module that imports local modules sets `sys.dont_write_bytecode`, and the fixture copies `hooks/lib/*.py` only; egress test (bytecode cases) |
 | F32 | The Codex CLI is required even under `advisor: solo`: `/setup:teams` Step 1 checks `codex`, the profile example lists it in `required_tools`, and `team-roles.sh` `codex_home()` refuses every team-role launch without a resolvable `.claude/codex-profile` | open: check `codex` and resolve the Codex home only when a Codex role launches |
+| F33 | The secrets ask floor covers `cat .env*` (Bash) and the Read tool, not other readers: `head`, `tail`, `less`, `cat -n .env`, `./.env` and the like still run on allow-tier rules | open: widen the Bash floor or classify `.env` reads in the prompt check |
+| F34 | `test-gate.sh`'s trap orphans the gate's child processes and frees the machine gate lock, so a build can outlive its lock (final review of `f3d7996`) | open: stop the gate's process group before the release |
+| F35 | `tw_commit` re-sends a batch when it misses the lock (final review of `f3d7996`) | open: record the delivery before a retry |
+| F36 | The kit `escalate.sh` poll ignores replies that are already acked (final review of `f3d7996`) | open: match a reply by thread and id, not by its unread state |
+| F37 | `gate_lock` acquire spins on a lock directory that is not empty but has no holder file | open: treat a holder-less directory older than the claim window as stale |
+| F38 | `TEAM_WATCH_LOCK_SECS` is not forwarded to the daemon by `team-watch.sh start` | open: add it to the forwarded set |
+| F39 | `claude_version_ok` (preflight row 10) misreads a four-part Claude Code version | open: compare by numeric fields, any count |
+| F40 | Mail identity is not bound to the session: `team-mail.sh --from/--for/--by` take any role name, not only the caller's `TEAM_SESSION_ROLE` | open: refuse a name other than the session's own role in role sessions |
+| F41 | `TEAM_GATE_LOCK_DIR` is taken from the environment and the lock code removes trees under it, so a wrong value steers an rmtree | open: require the directory to carry the lock's own marker before removing |
+| F42 | The egress guard reads a `-m` that follows the script name (`python3 <script> -m x`) as the interpreter's module flag. It errs toward ask, not toward a hole | open: stop option parsing at the script argument |
+| F43 | `tw_claim`: an orphaned `.reclaim` younger than 5 s delays waiters until it ages out | open: bound by the claimant's pid, not only the age |
 
 ## Not ported by design
 
