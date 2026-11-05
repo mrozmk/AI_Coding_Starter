@@ -7,7 +7,7 @@
 # a .sql file, the run asks instead of slipping through.
 
 payload="$(cat)"
-out="$(printf '%s' "$payload" | python3 -I "$(dirname "$0")/lib/guard_destructive_sql.py" 2>/dev/null)"
+out="$(printf '%s' "$payload" | python3 -I -B "$(dirname "$0")/lib/guard_destructive_sql.py" 2>/dev/null)"
 rc=$?
 if [ "$rc" -eq 2 ]; then
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Destructive-SQL guard could not read the hook payload — Operator must approve (fail-closed)."}}'

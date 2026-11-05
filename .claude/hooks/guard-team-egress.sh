@@ -6,7 +6,7 @@
 
 [ -f "${CLAUDE_PROJECT_DIR:-.}/.agents/team/session.json" ] || [ -n "${TEAM_RUN_TEAM:-}" ] || exit 0
 payload="$(cat)"
-out="$(printf '%s' "$payload" | python3 -I "$(dirname "$0")/lib/guard_team_egress.py" 2>/dev/null)"
+out="$(printf '%s' "$payload" | python3 -I -B "$(dirname "$0")/lib/guard_team_egress.py" 2>/dev/null)"
 rc=$?
 if [ "$rc" -ne 0 ]; then
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"team egress: guard failed to run (rc '"$rc"') — Operator must approve (fail-closed)."}}'

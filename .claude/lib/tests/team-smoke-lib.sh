@@ -503,7 +503,7 @@ smoke_repos() {
   # Fixture fix (starter import): team-answer.sh runs team_prompt_check.py, which imports hooks/lib.
   mkdir -p "$SEED/.claude/hooks/lib"
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SEED/.claude/lib/"
-  cp "$SRC"/.claude/hooks/lib/* "$SEED/.claude/hooks/lib/"
+  cp "$SRC"/.claude/hooks/lib/*.py "$SEED/.claude/hooks/lib/"  # never a stray __pycache__/
   cp "$SRC"/.claude/team/prompts/*.md "$SEED/.claude/team/prompts/"
   # Without the tracker blocks every wrapup/planner render in smoke 1-4 dies (return 1).
   mkdir -p "$SEED/.claude/team/tracker"

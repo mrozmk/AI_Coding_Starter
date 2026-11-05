@@ -18,6 +18,8 @@ import json
 import os
 import re
 import sys
+# Local imports below: never write __pycache__ into the project (callers run python3 -I, not -B).
+sys.dont_write_bytecode = True
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Re-exported: callers keep reading the transcript through team_prompt.
