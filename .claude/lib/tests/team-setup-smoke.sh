@@ -77,7 +77,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") as $t | ($t | index("
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 9 ] || fail "2: allow is not the 9 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 22 ] || fail "2: allow is not the 22 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
@@ -98,6 +98,26 @@ for a in routing stop "register --takeover" "mode answering" "mode class"; do
   [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
     || fail "2: ask $a not present once"
 done
+# Role sessions: S (SessionStart, no matcher, sync, timeout 5), the launcher's own verbs allowed,
+# its Operator actions (freeze off, rollback, here) behind ask — each exactly once; a write verb
+# of the launcher is never on allow.
+jq -e '[.hooks.SessionStart[] | select(has("matcher") | not) | .hooks[]
+  | select((.command | test("session-role.sh")) and .timeout == 5 and (.async // false) == false)]
+  | length == 1' "$S" >/dev/null || fail "2: no SessionStart hook S with timeout 5"
+SSA="Bash(bash .claude/lib/supervisor-sessions.sh"
+for a in "$SSA status*)" "$SSA check*)" "$SSA preflight*)" "$SSA materialize*)" "$SSA reviewer*)" \
+  "$SSA freeze on *)" "$SSA freeze status*)" "$SSA answer *)" "$SSA start *)" "$SSA stop *)" \
+  "$SSA up*)" "Bash(printenv TEAM_SESSION_ROLE)" "Bash(bash .claude/lib/test-gate.sh*)"; do
+  [ "$(jq --arg a "$a" '[.permissions.allow[] | select(. == $a)] | length' "$S")" = 1 ] \
+    || fail "2: allow $a not present once"
+done
+for a in "$SSA freeze off*)" "$SSA rollback*)" "$SSA here *)"; do
+  [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
+    || fail "2: ask $a not present once"
+done
+jq -e --arg p "$SSA" '[.permissions.allow[] | select(startswith($p)
+  and test("freeze off|rollback|here"))] | length == 0' "$S" >/dev/null \
+  || fail "2: a launcher Operator action is on allow"
 egress() {  # egress <settings> <matcher> → how many blocking egress guards that exact matcher has
   jq --arg m "$2" '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]
     | select((.command | test("guard-team-egress")) and .onFailure == "block"
@@ -218,7 +238,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 11 ] || fail "10: allow is not 2 project + 9 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 24 ] || fail "10: allow is not 2 project + 22 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -285,7 +305,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 9' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -361,7 +381,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 9' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -399,6 +419,8 @@ setup "$T"; S="$T/.claude/settings.json"; cp "$S" "$WORK/s19"
 setup "$T"
 has "kept	generated	.claude/settings.json" || fail "19: the rerun did not keep settings.json"
 cmp -s "$S" "$WORK/s19" || fail "19: the rerun changed settings.json"
+[ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("session-role.sh"))] | length' "$S")" = 1 ] \
+  || fail "19: the rerun did not keep exactly one S hook"
 for bad in '{type: "command", command: $w, async: true}' 'startup'; do
   if [ "$bad" = startup ]; then
     jq -n --arg w "$W" '{hooks: {SessionStart: [{matcher: "startup",

@@ -371,4 +371,18 @@ run "$MAIN" $SS freeze on 1.4.0; expect 0 "freeze: on — 1.4.0 (operator," "(7)
 run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $SS freeze status; expect 0 "freeze: on — 1.4.0" "(7) freeze status"
 run "$MAIN" $SS freeze off; expect 0 "freeze: off" "(7) freeze off"
 echo "team-smoke-sessions: (7) SQL guard and freeze OK"
+# ---- (8) auto-merge on a stale merge: provider-driven restart, never a missing-file exec ----------
+mkrec qa "$BASE"
+printf 'Verdict: ready\nGate final-build: passed (0 failed)\n' > "$RD/qa-report-1.md"
+printf '#!/usr/bin/env bash\necho "stale merge — target moved"; exit 3\n' > "$WORK/mc-stale.sh"
+AM="bash .claude/lib/team-automerge-check.sh"
+run "$MAIN" env TEAM_AUTOMERGE_MERGE_CHECK="$WORK/mc-stale.sh" $AM alfa
+expect 1 "AUTOMERGE: no — stale merge, restart not available for azure-devops — restart the merge on PR 8371" "(8) no restart verb"
+printf '#!/usr/bin/env bash\necho "restart $1" >> "$STUB_LOG"\n' > "$WORK/restart.sh"
+: > "$STUB_LOG"
+run "$MAIN" env TEAM_AUTOMERGE_MERGE_CHECK="$WORK/mc-stale.sh" TEAM_AUTOMERGE_RESTART="$WORK/restart.sh" \
+  TEAM_AUTOMERGE_RECALC_TRIES=1 TEAM_AUTOMERGE_RECALC_SLEEP=0 $AM alfa
+expect 1 "(after one restart merge)" "(8) a project restart script runs once"
+[ "$(grep -c '^restart 8371$' "$STUB_LOG")" = 1 ] || fail "(8) the restart script did not run once"
+echo "team-smoke-sessions: (8) auto-merge restart OK"
 echo "team-smoke-sessions: OK"

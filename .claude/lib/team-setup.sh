@@ -263,13 +263,25 @@ EGRESS="$H/guard-team-egress.sh\""
 egress_merge Bash
 egress_merge WebFetch
 egress_merge Bash "$H/guard-destructive-sql.sh\"" D
+# The role sessions' bootstrap directive; silent outside a role session and in a team clone.
+hook_merge S SessionStart "$H/session-role.sh\"" '["startup","resume","clear","compact"]' false '' \
+  '{"timeout":5}'
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '
   ["Bash(bash .claude/lib/team-*.sh*)", "Bash(git switch *)", "Bash(git show *)",
    "Bash(gh pr view*)", "Bash(gh issue view*)", "Bash(bash .claude/lib/codex-bg.sh*)",
    "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
-   "Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/monitoring.sh*)"] as $want
+   "Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/monitoring.sh*)",
+   # The role-session launcher verbs; its Operator actions are on the ask list below.
+   "Bash(bash .claude/lib/supervisor-sessions.sh status*)", "Bash(bash .claude/lib/supervisor-sessions.sh check*)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh preflight*)", "Bash(bash .claude/lib/supervisor-sessions.sh materialize*)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh reviewer*)", "Bash(bash .claude/lib/supervisor-sessions.sh freeze on *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh freeze status*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh start *)", "Bash(bash .claude/lib/supervisor-sessions.sh stop *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh up*)", "Bash(printenv TEAM_SESSION_ROLE)",
+   # test-gate.sh is not matched by team-*.sh.
+   "Bash(bash .claude/lib/test-gate.sh*)"] as $want
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
@@ -283,7 +295,11 @@ NEW="$(printf '%s' "$NEW" | jq '
      "Bash(bash .claude/lib/team-watch.sh routing*)", "Bash(bash .claude/lib/team-watch.sh stop*)",
      "Bash(bash .claude/lib/team-watch.sh register --takeover*)",
      "Bash(bash .claude/lib/team-watch.sh mode answering*)",
-     "Bash(bash .claude/lib/team-watch.sh mode class*)"] as $ask
+     "Bash(bash .claude/lib/team-watch.sh mode class*)",
+     # the role-session launcher Operator actions: clearing a freeze, the rollback, here.
+     "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
+     "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
+     "Bash(bash .claude/lib/supervisor-sessions.sh here *)"] as $ask
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"
