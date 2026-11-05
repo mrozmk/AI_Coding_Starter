@@ -75,6 +75,15 @@ step() { printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"; }
 apply() { [ -n "$DRY" ] || "$@"; }
 is_ident() { printf '%s' "$1" | grep -Eq "$IDENT"; }
 
+# The loader's D4 default (team-channel.sh): advisor unset → pair only when the profile has codex.
+# Under solo there is no Reviewer, so the entry gets no codex role and --add-roles offers none.
+ADVISOR_MODE="$(pf advisor)"
+if [ -z "$ADVISOR_MODE" ]; then
+  [ "$(jq -r '.codex // false | tostring' "$PROFILE" 2>/dev/null || true)" = true ] \
+    && ADVISOR_MODE=pair || ADVISOR_MODE=solo
+fi
+[ "$ADVISOR_MODE" != solo ] || CODEX_ROLES=""
+
 TMPF=""; TMPD=""
 trap '[ -z "$TMPF" ] || rm -f "$TMPF"; [ -z "$TMPD" ] || rm -rf "$TMPD"' EXIT
 write_json() {  # write_json <dest> <json> — atomic, next to the destination
@@ -309,12 +318,6 @@ else
 fi
 
 # ---- the Reviewer registers itself: it needs its own Codex thread UUID ------------------------
-# The loader's D4 default (team-channel.sh): advisor unset → pair only when the profile has codex.
-ADVISOR_MODE="$(pf advisor)"
-if [ -z "$ADVISOR_MODE" ]; then
-  [ "$(jq -r '.codex // false | tostring' "$PROFILE" 2>/dev/null || true)" = true ] \
-    && ADVISOR_MODE=pair || ADVISOR_MODE=solo
-fi
 if [ "$ADVISOR_MODE" = solo ]; then
   echo "reviewer: none (advisor solo: teams.channel.advisor, or no codex in the profile)"
 else

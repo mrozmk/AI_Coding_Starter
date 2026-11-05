@@ -57,6 +57,8 @@ has "create	tool-copy" || fail "1: the plan does not copy the tool"
 [ ! -e "$P1/.agents" ] || fail "1: dry-run wrote the channel file"
 
 # ---- (2) fresh: registry in the shared schema, box, roles, channel file -----------------------
+# advisor pair (codex in the profile): the entry carries the Reviewer; solo is case (8).
+mkdir -p "$P1/.claude"; printf '{"schema":1,"codex":true}\n' > "$P1/.claude/project-profile.json"
 setup "$P1" --suffix XY
 [ "$RC" = 0 ] || fail "2: fresh exit $RC"
 BOX1="$HOME/.agent-mail/p1/mail.sqlite"
@@ -148,6 +150,7 @@ jq --arg b "$HOME/.agent-mail/shared/mail.sqlite" --arg t "$OTHER" --arg r "$P3"
   --arg d "$HOME/.agent-mail/shared/decisions" '. + {SH: {box: $b, tool: $t, project_label: "SH",
   suffix: "Q", repo: $r, decisions_dir: $d, claude_roles: ["Owner"], codex_roles: [],
   rules: null, codex_home: null}}' "$REG" > "$WORK/reg" && mv "$WORK/reg" "$REG"
+mkdir -p "$P3/.claude"; printf '{"schema":1,"codex":true}\n' > "$P3/.claude/project-profile.json"
 H0=$(treehash "$HOME")
 setup "$P3" --dry-run
 [ "$RC" = 0 ] && has "mode	reuse	key SH" || fail "6: foreign entry not reused by repo"
@@ -283,6 +286,12 @@ printf '{"schema":1,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz","
 setup "$P6" --dry-run
 [ "$RC" = 0 ] && has "mode	extend	key ZZ" && has "AdvisorZz (monitor)" || fail "8: profile names unused"
 has "reviewer: none" || fail "8: solo still prints the Reviewer bring-up"
+has "codex_roles" && fail "8: solo dry-run offers a codex role"
+setup "$P6"
+jq -e '.ZZ.codex_roles == [] and .ZZ.claude_roles == ["Supervisor","TeamLead","Advisor"]' "$REG" \
+  >/dev/null || fail "8: solo entry carries a Reviewer"
+setup "$P6" --add-roles --dry-run
+[ "$RC" = 0 ] && ! has "Reviewer" || fail "8: solo --add-roles offers the Reviewer"
 # D4: advisor unset follows the loader — solo without codex, pair with it.
 printf '{"schema":1,"teams":{"channel":{"project_code":"ZZ","mail_suffix":"Zz"}}}\n' \
   > "$P6/.claude/project-profile.json"
@@ -292,5 +301,6 @@ printf '{"schema":1,"codex":true,"teams":{"channel":{"project_code":"ZZ","mail_s
   > "$P6/.claude/project-profile.json"
 setup "$P6" --dry-run
 [ "$RC" = 0 ] && has "register --as ReviewerZz" || fail "8: advisor unset with codex lacks the Reviewer bring-up"
+has "offer	roles	claude_roles += none; codex_roles += Reviewer" || fail "8: pair does not offer the Reviewer"
 
 echo "team-smoke-mail: OK"
