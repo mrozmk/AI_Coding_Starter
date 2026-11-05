@@ -157,6 +157,29 @@ check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \
   | (cd /tmp && PATH="$D/bin" TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" /bin/bash "$H"))"
 check ask  "classifier crash" "$(fetch https://developer.mozilla.org/x \
   | (cd /tmp && TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" bash "$D/broken/guard-team-egress.sh"))"
+# --- bytecode (F31): both guard hooks run python3 -I -B, and every module that imports local
+# modules sets dont_write_bytecode itself, so no caller writes __pycache__ into the project. Apple's
+# python3 -I never writes bytecode, so the hooks are checked by argv and the modules with the flag
+# forced off, not by looking for a cache.
+SQLH="$PWD/.claude/hooks/guard-destructive-sql.sh"; REALPY="$(command -v python3)"; mkdir -p "$D/shim"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexec "%s" "$@"\n' "$D/pyargs" "$REALPY" > "$D/shim/python3"
+chmod +x "$D/shim/python3"; : > "$D/pyargs"
+fetch https://developer.mozilla.org/x \
+  | (cd /tmp && PATH="$D/shim:$PATH" TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" bash "$H") >/dev/null
+bash_cmd 'sqlcmd -Q "select 1"' | (cd /tmp && PATH="$D/shim:$PATH" bash "$SQLH") >/dev/null
+n=$(grep -c . "$D/pyargs"); b=$(grep -c '^-I -B ' "$D/pyargs")
+[ "$n" = 2 ] && [ "$b" = 2 ] && { pass=$((pass + 1)); echo "PASS both guard hooks run python3 -I -B"; } \
+  || { echo "FAIL guard hooks python3 args: $(tr '\n' ';' < "$D/pyargs")"; fail=1; }
+mkdir -p "$D/tree/.claude/lib" "$D/tree/.claude/hooks/lib"
+cp .claude/lib/*.py "$D/tree/.claude/lib/"; cp .claude/hooks/lib/*.py "$D/tree/.claude/hooks/lib/"
+for m in lib/team_prompt_check lib/team_prompt_classes lib/team_prompt lib/team_settings_diff \
+         hooks/lib/guard_team_egress; do
+  "$REALPY" -I -c 'import runpy, sys; sys.dont_write_bytecode = False
+runpy.run_path(sys.argv[1], run_name="bytecode_probe")' "$D/tree/.claude/$m.py" >/dev/null 2>&1
+  c=$(find "$D/tree" -name __pycache__ | head -1)
+  [ -z "$c" ] && { pass=$((pass + 1)); echo "PASS $m imports write no bytecode"; } \
+    || { echo "FAIL $m wrote ${c#$D/tree/}"; fail=1; find "$D/tree" -name __pycache__ -exec rm -rf {} +; }
+done
 # Opt-in: the template's shared settings never register the guard; team-setup.sh registers it in
 # the downstream (asserted by team-setup-smoke.sh).
 n=$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | contains("guard-team-egress.sh"))]

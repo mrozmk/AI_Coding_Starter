@@ -179,4 +179,14 @@ expect 0 "ANSWER" "(7) the escalation closes on the reply"
 has "Use the queue." "$WORK/out" || fail "(7) the answer text"
 grep -q '^reply: [0-9]* answer' "$QF" || fail "(7) the reply is not in the ledger"
 
+# ---- (8) turn takes --kind turn (the default, with --awaiting) or --kind info only --------------
+run "$MAIN" $CH turn Supervisor TeamLead --kind turn --thread k8 --body "explicit turn"
+expect 0 "kind=turn awaiting=TeamLeadQx" "(8) --kind turn keeps the wake-up"
+run "$MAIN" $CH turn Supervisor TeamLead --kind info --thread k8 --body "fyi"
+expect 0 "kind=info awaiting=-" "(8) --kind info wakes nobody"
+run "$MAIN" $CH turn Supervisor TeamLead --kind report --thread k8 --body "x"
+expect 2 "--kind must be turn or info (got 'report')" "(8) another kind is refused"
+run "$MAIN" $CH turn Supervisor TeamLead --thread k8 --body "x" --kind
+expect 2 "--kind must be turn or info (got '')" "(8) a bare --kind is refused"
+
 echo "team-smoke-channel: OK"

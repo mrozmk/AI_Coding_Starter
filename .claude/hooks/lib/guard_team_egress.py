@@ -15,6 +15,8 @@ import json
 import os
 import re
 import sys
+# Local imports below: never write __pycache__ into the project (callers run python3 -I, not -B).
+sys.dont_write_bytecode = True
 from urllib.parse import urlsplit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
