@@ -22,7 +22,7 @@ import sys
 
 root, self_path = sys.argv[1], os.path.realpath(sys.argv[2])
 DENY = re.compile(r"(?i:takeTask)|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMonitoring"
-                  r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|\bTT-[0-9]+"
+                  r"|OpusTT|TT_SESSION_ROLE|/Users/mrozo|-Users-mrozo|(?i:\bmr[oó]z\b)|\bTT-[0-9]+"
                   r"|SolTT|develop-netcore7|mail-tt|TT_TEAM"
                   r"|fable-tt|opus-(team|supervisor|monitoring)|\bTT_(WAKE|MONITORING|SESSIONS|GUARD|MAIL)")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
@@ -91,5 +91,13 @@ rm -f "$T/.claude/codex-profile"; mkdir -p "$T/.claude/agents"
 printf 'the TT-782 smoke transcript\n' > "$T/.claude/agents/correctness-reviewer.md"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in a seeded agent passed"; exit 1; }
 rm -f "$T/.claude/agents/correctness-reviewer.md"
+# A pane capture under tests/fixtures carries the session dir (`-Users-<name>-…`), not `/Users/…`.
+mkdir -p "$T/.claude/lib/tests/fixtures/prompts"
+for leak in 'wc -c /private/tmp/claude-501/-Users-mrozo-Desktop-x/y.md' 'assignee Jan Mroz' \
+  'assignee J. Mróz'; do
+  printf '%s\n' "$leak" > "$T/.claude/lib/tests/fixtures/prompts/x.txt"
+  ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — '$leak' in a fixture passed"; exit 1; }
+done
+rm -f "$T/.claude/lib/tests/fixtures/prompts/x.txt"
 
 scan "$ROOT"

@@ -4,7 +4,7 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ←  ☐ Wrapup  ✔ Submit  →
 │ Które rekomendacje zastosować? Zaznaczony wybór przyjmuje dokładnie szkice pokazane wyżej (bez drugiego dry-runu) wraz
-│ z domyślnymi: parent Epic AB-780 — AI-harness, assignee Marek Mróz, aktywny sprint tablicy 1. Nic nie zaznaczone =
+│ z domyślnymi: parent Epic AB-780 — AI-harness, assignee Alice Ames, aktywny sprint tablicy 1. Nic nie zaznaczone =
 │ pomiń wszystko.
 ❯ 1. [ ] mem-1: pamięć (3 pliki)
          harness.md (poprawka AB-1033 + fakty), decisions.md (stała decyzja Fable 429 → Opus high), index.md (wiersz
