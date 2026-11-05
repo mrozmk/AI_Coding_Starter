@@ -5,7 +5,9 @@
 #
 # Usage: bash .claude/lib/tests/team-purity.sh [root]     (root defaults to the starter checkout)
 # Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/ docs/teams
-#        .claude/dashboard
+#        .claude/dashboard, plus the single files the installer seeds outside those directories
+#        (.claude/codex-profile, the profile example, the two reviewer agents, AGENTS.md,
+#        the reflection protocol)
 # Role names in code are Supervisor / TeamLead / Advisor / Reviewer; project names enter only
 # through configuration (teams.channel.mail_suffix), never as literals.
 set -euo pipefail
@@ -24,11 +26,17 @@ DENY = re.compile(r"(?i:takeTask)|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMo
                   r"|SolTT|develop-netcore7|mail-tt|TT_TEAM")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
 SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".agents/reference",
-         "tools", "docs/teams", ".claude/dashboard")
+         "tools", "docs/teams", ".claude/dashboard",
+         ".claude/codex-profile", ".claude/project-profile.json.example",
+         ".claude/agents/correctness-reviewer.md", ".claude/agents/structure-reviewer.md",
+         "AGENTS.md", ".agents/memory/reflection-protocol.md")
 hits = 0
 for top in SCOPE:
     base = os.path.join(root, top)
-    for d, dirs, files in os.walk(base):
+    # A single seeded file walks as a directory holding only that file.
+    tree = ([(os.path.dirname(base), [], [os.path.basename(base)])] if os.path.isfile(base)
+            else os.walk(base))
+    for d, dirs, files in tree:
         dirs[:] = sorted(x for x in dirs if x not in ("__pycache__", ".pytest_cache"))
         for name in sorted(files):
             path = os.path.join(d, name)
@@ -73,5 +81,12 @@ printf 'the Advisor was FableTT\n' > "$T/docs/teams/x.md"
 rm -f "$T/docs/teams/x.md"; mkdir -p "$T/.claude/dashboard"
 printf '<h1>TAKETASK AGENT TREE</h1>\n' > "$T/.claude/dashboard/index.html"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — an upper-case leak in the dashboard passed"; exit 1; }
+rm -f "$T/.claude/dashboard/index.html"
+printf '# the CODEX_HOME (TT-912)\n' > "$T/.claude/codex-profile"
+! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in the seeded codex-profile passed"; exit 1; }
+rm -f "$T/.claude/codex-profile"; mkdir -p "$T/.claude/agents"
+printf 'the TT-782 smoke transcript\n' > "$T/.claude/agents/correctness-reviewer.md"
+! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in a seeded agent passed"; exit 1; }
+rm -f "$T/.claude/agents/correctness-reviewer.md"
 
 scan "$ROOT"
