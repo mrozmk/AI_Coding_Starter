@@ -20,7 +20,8 @@
 #   name <ROLE>             the recipient name: ROLE + mail_suffix
 #   turn <FROM> <TO> [args] a wake-up (`--kind turn --awaiting <TO>`) from one role to another
 #                           through team-mail.sh; args go to `send` (--body/--body-file, --thread…);
-#                           `--kind info` makes it an info mail instead: no --awaiting, wakes nobody
+#                           `--kind info` makes it an info mail instead: no --awaiting, wakes nobody;
+#                           any other --kind exits 2
 #   render [--dry-run]      .agents/team/{watch,escalation}.local.json from .claude/team/*.tmpl
 # Exports (team_channel_load):
 #   TEAM_CHANNEL_ROOT        the checkout the config was read from
@@ -288,7 +289,7 @@ TEAM_CHANNEL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
-  usage() { sed -n '9,24p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+  usage() { sed -n '9,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
   [ $# -ge 1 ] || usage
   sub="$1"; shift
   case "$sub" in show|get|name|turn|render) ;; *) usage ;; esac
@@ -316,7 +317,15 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
       from="$(team_channel_role "$1")"; to="$(team_channel_role "$2")"; shift 2
       kind=(--kind turn --awaiting "$to"); rest=()
       while [ $# -gt 0 ]; do
-        if [ "$1" = --kind ] && [ "${2:-}" = info ]; then kind=(--kind info); shift 2; continue; fi
+        if [ "$1" = --kind ]; then
+          # Only these two: any other kind would pass through after --awaiting and win (last flag).
+          case "${2:-}" in
+            turn) kind=(--kind turn --awaiting "$to") ;;
+            info) kind=(--kind info) ;;
+            *) echo "error: turn: --kind must be turn or info (got '${2:-}')" >&2; exit 2 ;;
+          esac
+          shift 2; continue
+        fi
         rest+=("$1"); shift
       done
       exec bash "$TEAM_CHANNEL_LIB/team-mail.sh" "$TEAM_CHANNEL_KEY" send --from "$from" --to "$to" \
