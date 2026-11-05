@@ -111,8 +111,9 @@ check_entry() {  # check_entry → prints problems for the selected entry's file
   [ -d "$dd" ] || echo "$KEY: decisions_dir $dd does not exist"
 }
 
-# A copy made by team-mail-setup.sh is named after the vendored tool's commit; when the entry's
-# repo has moved on, say so — swapping the tool under a live box is the Operator's call.
+# A copy made by team-mail-setup.sh is named after the vendored tool's content (team_tool_hash; a
+# copy from before that change carries a commit sha); when the entry's repo now holds a different
+# tool, say so — swapping the tool under a live box is the Operator's call.
 tool_behind() {  # tool_behind <key> → the warning line, or nothing
   local k="$1" tool repo old new
   tool="$(jq -r --arg k "$k" '.[$k].tool // empty' "$REG")"
@@ -121,11 +122,9 @@ tool_behind() {  # tool_behind <key> → the warning line, or nothing
   old="$(basename "$tool")"; old="${old#agent_mail-}"
   printf '%s' "$old" | grep -Eq '^[0-9a-f]{4,40}$' || return 0
   [ -d "$repo/tools/agent_mail" ] || return 0
-  new="$(git -C "$repo" log -1 --format=%h -- tools/agent_mail 2>/dev/null || true)"
+  new="$(team_tool_hash "$repo/tools/agent_mail" 2>/dev/null || true)"
   [ -n "$new" ] || return 0
-  # Abbreviations grow with the repo: equal when one is a prefix of the other.
-  case "$new" in "$old"*) return 0 ;; esac
-  case "$old" in "$new"*) return 0 ;; esac
+  [ "$new" != "$old" ] || return 0
   echo "tool behind checkout ($old → $new) — re-sync is an Operator action:" \
     "bash \"$repo/.claude/lib/team-mail-setup.sh\" \"$repo\" --key $k --resync-tool"
 }

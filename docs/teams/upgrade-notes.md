@@ -3,6 +3,25 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The agent-mail tool copy is named by its content
+
+**Before:** the channel step named the copy under `~/.agent-mail/tools/` after the vendored
+tool's commit (`agent_mail-<7 hex>`), refused an uncommitted tool, and gave a second project a
+second copy of identical content. A `~/…` value in `.claude/codex-profile` was stored as
+`$HOME/~/…`.
+
+**Now:** the copy is `agent_mail-<12 hex>`, a hash of the runtime files' names and bytes. A fresh
+install finishes in one run, and identical tools share one copy. `~/…` is stored under `$HOME`.
+
+**Action:**
+
+- `bash .claude/lib/team-mail.sh --here check` reports `tool behind checkout (<old> → <new>)` once
+  for an entry that still points at a commit-named copy, even when the content is the same. The
+  re-sync is an Operator action, as before: run the command the line prints (`--resync-tool`).
+  It repoints the entry to the content-named copy; the old directory stays until you remove it.
+- An entry or `channel.local.json` whose `codex_home` contains `/~/`: re-run the channel step
+  (`/setup:teams`) or correct the path by hand to the real directory.
+
 ## Permission classes are off until the profile enables them
 
 **Before:** every deterministic class (`merge-line`, `allow-offline`, `add-ask`, `prod-diagnose`)
