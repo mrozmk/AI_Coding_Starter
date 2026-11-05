@@ -61,14 +61,15 @@ RC=0
 
 want() { [ -z "${TEAM_SUITE_ONLY:-}" ] || [[ " $TEAM_SUITE_ONLY " == *" $1 "* ]]; }
 
-# count <file> — the checks a step reported: an explicit "(N checks|tests)", "Ran N tests" or
-# "passed: N" wins; otherwise the number of per-check OK/PASS lines (the "team-smoke: OK" summary
-# line is not a check).
+# count <file> — the checks a step reported: the largest explicit "(N checks|tests)", "Ran N tests"
+# or "passed: N" wins (a summary may repeat the runner's count, so never a sum); otherwise the
+# number of per-check OK/PASS lines (the "team-smoke: OK" summary line is not a check).
 count() {
   awk '
-    match($0, /\(([0-9]+) (checks|tests)\)/) { s = substr($0, RSTART + 1); n += s + 0; e = 1; next }
-    /^Ran [0-9]+ tests?/ { n += $2; e = 1; next }
-    /^passed: [0-9]+/ { n += $2; e = 1; next }
+    function x(v) { if (v + 0 > n) n = v + 0; e = 1 }
+    match($0, /\(([0-9]+) (checks|tests)\)/) { x(substr($0, RSTART + 1)); next }
+    /^Ran [0-9]+ tests?/ { x($2); next }
+    /^passed: [0-9]+/ { x($2); next }
     /^team-smoke: OK$/ { next }
     /(^|[: ])OK( |$)|^PASS / { k++ }
     END { print (e ? n : k + 0) }' "$1"
