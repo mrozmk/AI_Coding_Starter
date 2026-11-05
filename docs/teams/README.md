@@ -8,7 +8,7 @@ prompts. Each **team** is a permanent git clone running a fixed pipeline of fres
 - **Supervisor** talks to the Operator, merges within the gate and starts teams.
 - **TeamLead** receives every team signal and decides every team question except two short lists.
 - **Advisor** handles the narrow list: contract, schema, AC, sensitive path and harness rule.
-- **Reviewer** is a second-vendor model that co-signs the Advisor's tier-2 decisions. It is optional: `advisor: solo` runs without it.
+- **Reviewer** is a second-vendor model that co-signs the Advisor's tier-2 decisions. It is optional: `advisor: solo` runs without it. The Codex CLI itself is still required today: the team pipeline launches every role with a Codex home (see [09 → Requirements](09-setup.md#requirements)).
 
 The human **Operator** is asked only for a critical list and for actions only a human may click.
 

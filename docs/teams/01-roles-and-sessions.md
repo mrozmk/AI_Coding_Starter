@@ -110,6 +110,8 @@ Other verbs:
 - **`pair`.** The Advisor answers tier 2 together with the Reviewer (Codex): it runs the Reviewer's deliver loop, and the escalation adapter's `opinion` is available.
 - **`solo`.** The Reviewer does not exist: `/setup:teams` prints `reviewer: none`, `supervisor-sessions.sh reviewer` prints `Reviewer: none (advisor solo)`, and every note carries `reviewer: none`.
 
+`solo` removes the Reviewer from the channel and nothing else. **The Codex CLI is still required by the team pipeline today:** `/setup:teams` stops without `codex` on `PATH`, the profile example lists it in `required_tools`, and the runner refuses to launch any team role while `.claude/codex-profile` does not resolve to an existing directory. Making it conditional is follow-up F32.
+
 ## Preflight
 
 `supervisor-sessions.sh preflight` prints one `ok|WARN|FAIL <row>[ — <detail>]` line per row and exits 1 on any FAIL.

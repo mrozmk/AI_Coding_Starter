@@ -10,7 +10,9 @@ and the acceptance run. [capabilities.md](capabilities.md) says what is proven.
 
 - macOS (Linux: to verify), `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`, `sqlite3`.
 - `tmux`, `jq`, `git`, Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams`
-  stops when any of them is missing.
+  stops when any of them is missing. **Codex is required even with `advisor: solo`**: `solo` only
+  removes the Reviewer from the channel, while the team pipeline launches every role with the Codex
+  home from `.claude/codex-profile` (making it conditional is follow-up F32).
 - A clone of this starter somewhere on the machine. You pass its path to `/setup:teams`.
 - A pull-request provider (`github` or `azure-devops`) to run teams. `pr_provider: none` is
   valid and turns the PR layer off: setup, the channel, the operator kit and the supervision roles
