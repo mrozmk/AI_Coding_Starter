@@ -119,6 +119,19 @@ class MailMdTestCase(unittest.TestCase):
         self.assertEqual(plus.recipients, ["Reviewer", "Advisor"])
         self.assertEqual(plus.legacy_ts, "2026-09-16 12:00")
 
+    def test_report_sender_prefix_is_a_parameter(self):
+        # The source board's executor name is only the default; another board names its own.
+        board = ("## MSG-001 | Executor A → Reviewer | 2026-09-16 11:00\n\nreport body\n"
+                 "## MSG-002 | Wykonawca K5 → Reviewer | 2026-09-16 11:05\n\nother\n")
+        default = mail_md.parse_mail_md(board)
+        self.assertEqual([m.kind for m in default], ["turn", "report"])
+        custom = mail_md.parse_mail_md(board, report_prefix="Executor")
+        self.assertEqual([m.kind for m in custom], ["report", "turn"])
+        res = self.cli("import-md", self.write(board), "--report-sender-prefix", "Executor")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        kinds = [r[0] for r in self.conn.execute("SELECT kind FROM messages ORDER BY id")]
+        self.assertEqual(kinds, ["report", "turn"])
+
     def test_unparsed_header_blocks_import(self):
         path = self.write(FIXTURE + BROKEN_HEADER)
         self.assertEqual(mail_md.count_headers(FIXTURE + BROKEN_HEADER), 8)

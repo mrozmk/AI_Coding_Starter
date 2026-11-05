@@ -164,6 +164,8 @@ fi
 [ -z "$PROBLEMS" ] \
   || die "entry $KEY is invalid: $(printf '%s' "$PROBLEMS" | head -1) (team-mail.sh $KEY check)"
 
+# Every forwarded call files under this project's label (the tool's --project default).
+export AGENT_MAIL_PROJECT="$LABEL"
 # codex keeps one thread store per CODEX_HOME; `codex queue` must look in the recipient's own.
 CH="$(cfg codex_home)"
 [ -z "$CH" ] || export CODEX_HOME="$CH"

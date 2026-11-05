@@ -520,6 +520,27 @@ class TestRegister(MailboxTestCase):
                 self.assertFalse(needs_thread, "%s built a command without a thread" % (adapter,))
 
 
+class TestProjectLabel(unittest.TestCase):
+    def test_cli_project_default_follows_agent_mail_project(self):
+        tmp = tempfile.mkdtemp(prefix="agent_mail_label_")
+        try:
+            box = os.path.join(tmp, "mail.sqlite")
+            cli = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "agent_mail.py")
+            env = dict(os.environ, AGENT_MAIL_PROJECT="ZQ")
+            r = subprocess.run([sys.executable, cli, "--box", box, "send", "--from", "A",
+                                "--to", "B", "--kind", "info", "--body", "x"],
+                               capture_output=True, text=True, env=env, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            conn = store.open_box(box)
+            try:
+                self.assertEqual(conn.execute("SELECT project FROM messages").fetchone()[0], "ZQ")
+            finally:
+                conn.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestMailHome(unittest.TestCase):
     def test_open_box_tightens_the_mail_home(self):
         import stat as _stat
