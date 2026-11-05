@@ -21,7 +21,7 @@ in the starter.
 
 | Page | What it covers | Status |
 |---|---|---|
-| [01 — Roles and sessions](01-roles-and-sessions.md) | the role sessions, identity, launcher, bootstrap | stub — waits for the role-session layer |
+| [01 — Roles and sessions](01-roles-and-sessions.md) | the role sessions, identity, profiles and their check, launcher, preflight, `advisor: pair\|solo` | ✓ |
 | [02 — Decision model](02-decision-model.md) | who decides what: tiers, the two lists, Operator actions, policy log | ✓ |
 | [03 — Team pipeline](03-team-pipeline.md) | clones, runner, modes, records, merge, auto-merge, freeze | ✓ |
 | [04 — Signals and monitoring](04-team-watch.md) | the signal daemon, routing, alarms, wake loops, pause, the wire format | ✓ |
