@@ -124,7 +124,7 @@ Other verbs:
 | 6 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
 | 7 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
 | 8 | notifier | `notify.sh --check`; `none` is an ok row that prints the declared loss |
-| 9 | health check scheduled | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
+| 9 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
 | 10 | Claude Code version | compared with the version the socket wire format was verified on; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
 
 **The socket row (1).** Each registered receiver's socket is judged by `team-watch-send.py --check`, the send's own predicate and wording:
