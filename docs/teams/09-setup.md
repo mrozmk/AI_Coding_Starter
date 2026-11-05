@@ -8,7 +8,8 @@ and the acceptance run. [capabilities.md](capabilities.md) says what is proven.
 
 ## Requirements
 
-- macOS (Linux: to verify), `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`, `sqlite3`.
+- **macOS only today.** Linux is unsupported until the BSD `stat -f` / `date -r` sites are ported
+  (follow-up F12): they break the daemon, the runner and the question ledger there. `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`, `sqlite3`.
 - `tmux`, `jq`, `git`, Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams`
   stops when any of them is missing. **Codex is required even with `advisor: solo`**: `solo` only
   removes the Reviewer from the channel, while the team pipeline launches every role with the Codex
