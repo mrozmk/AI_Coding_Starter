@@ -462,8 +462,10 @@ project profile does a flagged or sampled final run get one detached, report-onl
 project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_clean`, model).
 
 **Team supervision layer.** The question ledger, the tiers and the escalation adapter work from
-one `/monitor` window. The durable signal daemon (team-watch), role sessions and the operator kit
-are separate layers; until they are installed, `/monitor`'s 15 s poll is the event source.
+one `/monitor` window. The durable signal daemon is [team-watch.md](team-watch.md): with its loops
+running, it pushes `[team-watch #<n>]` batches into the registered role sessions; without them,
+`/monitor`'s 15 s poll (`team-watch-poll.sh`) is the event source. Role sessions and the operator
+kit are separate layers.
 
 ## 13. Tests
 

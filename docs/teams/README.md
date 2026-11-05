@@ -24,7 +24,7 @@ in the starter.
 | [01 — Roles and sessions](01-roles-and-sessions.md) | the role sessions, identity, launcher, bootstrap | stub — waits for the role-session layer |
 | [02 — Decision model](02-decision-model.md) | who decides what: tiers, the two lists, Operator actions, policy log | ✓ |
 | [03 — Team pipeline](03-team-pipeline.md) | clones, runner, modes, records, merge, auto-merge, freeze | ✓ |
-| [04 — Signals and monitoring](04-team-watch.md) | the signal daemon, routing, alarms, wake loops, pause | stub — waits for the team-watch layer |
+| [04 — Signals and monitoring](04-team-watch.md) | the signal daemon, routing, alarms, wake loops, pause, the wire format | ✓ |
 | [05 — Questions and escalation](05-escalation.md) | question ledger, prompt binding, delivery, tier 2/3 escalation, fallback | ✓ |
 | [06 — Permissions and classes](06-permissions.md) | deny/ask/allow tiers, the tier-1 prompt check, deterministic classes, `teams.policy` | ✓ |
 | agent-mail | the SQLite channel between the roles | contract only: [`agent-mail.md`](../../.agents/reference/agent-mail.md) |
