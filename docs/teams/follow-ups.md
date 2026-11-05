@@ -40,6 +40,9 @@ tests.
 | F25 | The operator kit's `--dry-run` prints `skip … escalation.local.json (operator kit not installed)` although `--apply` writes it | done: the dry-run prints `plan … written by --apply`; kit smoke (I) |
 | F26 | The purity test does not scan the root seed files the installer generates (`.claude/codex-profile` carried a ticket key until 2026-11-05) | done: the scope covers the seeded single files; a reviewer agent's ticket key was removed with it |
 | F28 | The `gates` enum carries one toolchain's value (`manual-mql5`, MT5 compile and backtest) in the engine schema (`team-profile.sh`, `team-pr-render.sh`); it predates the port | later: move toolchain gates behind a generic project command |
+| F29 | Under `advisor: solo` the channel step still writes `codex_roles: ["Reviewer"]` into a new registry entry and offers it with `--add-roles` (`team-mail-setup.sh`: `CODEX_ROLES` ignores the advisor mode). Nothing reads it to start a Reviewer, so it is a misleading entry, not a behaviour defect | open: write `codex_roles: []` under solo |
+| F30 | `team-channel.sh turn <From> <To> --kind <k>` honours only `info`. Any other `--kind` is passed through after its own `--kind turn --awaiting <To>`, and the last flag wins, so `--kind report` sends `kind=report` with `awaiting` set | open: refuse a `--kind` other than `info` |
+| F31 | The egress hook runs `python3 -I` without `-B`, and `guard_team_egress.py` imports `guard_destructive_sql`. Outside Apple's Python, which keeps its cache in `~/Library/Caches`, every guarded call writes `.claude/hooks/lib/__pycache__` into the project and each clone (gitignored), and `team-smoke-lib.sh` (`cp "$SRC"/.claude/hooks/lib/*`) then fails on that directory. Seen on Linux (Ubuntu 24.04, Python 3.12) in the p9a walkthrough | open: `-B` in the hooks and the `team_prompt_check.py` callers; copy only the named files |
 
 ## Not ported by design
 
