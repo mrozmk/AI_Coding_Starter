@@ -39,6 +39,7 @@ tests.
 | F24 | `--key <KEY>` reuse of another entry takes that entry's suffix and recipients without a warning when the profile's `mail_suffix` differs | done: refused with a message naming both suffixes; mail smoke 7e |
 | F25 | The operator kit's `--dry-run` prints `skip … escalation.local.json (operator kit not installed)` although `--apply` writes it | done: the dry-run prints `plan … written by --apply`; kit smoke (I) |
 | F26 | The purity test does not scan the root seed files the installer generates (`.claude/codex-profile` carried a ticket key until 2026-11-05) | done: the scope covers the seeded single files; a reviewer agent's ticket key was removed with it |
+| F28 | The `gates` enum carries one toolchain's value (`manual-mql5`, MT5 compile and backtest) in the engine schema (`team-profile.sh`, `team-pr-render.sh`); it predates the port | later: move toolchain gates behind a generic project command |
 
 ## Not ported by design
 
