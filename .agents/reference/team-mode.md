@@ -188,8 +188,9 @@ shows invalid overrides as `invalid — <message>`.
 
 **Auto mode: what still prompts.** In auto mode the classifier approves ordinary commands (reads,
 builds, tests) without a prompt. Only `ask`-tier rules, team egress (the PreToolUse hook
-`guard-team-egress`: a `WebFetch` host outside the allowlist, `curl wget ssh scp rsync nc ftp sftp`
-in command position; a loopback `nc -z` is not) and other forced prompts appear. A
+`guard-team-egress`, best-effort: a `WebFetch` host outside the allowlist, an egress-capable verb in
+command position, a network `git` command to an unlisted host — list in `security-egress.md`; a
+loopback `nc -z` is not) and other forced prompts appear. A
 **classifier denial** is a material question: coder/qa/cli write `blocked`, planner/wrapup ask,
 nobody works around it — never turn a denial into an alternative spelling of the same action.
 
