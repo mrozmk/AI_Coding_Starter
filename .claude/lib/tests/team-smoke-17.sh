@@ -200,6 +200,25 @@ grep '^PING TeamLead' <<<"$M" | grep -Eq 'ack [0-9]' && fail "C9: the ping text 
 grep -q "ack: bash .claude/lib/team-watch.sh ack $B " <<<"$M" || fail "C9: header ack is not #$B"
 [ "$B" = "$(seq_of "LATER event")" ] || fail "C9: batch is not the later event"
 ack_all TeamLead; ack_all Supervisor
+# C10 (R1): a truncated last events.jsonl line fails loudly — no append restarting at seq 1, no
+# "delivered" over an unreadable log (the outage flag stays), no ping queued; repaired, it resumes.
+cp "$TWD/events.jsonl" "$WORK/events.bak"; LS="$(tail -n 1 "$WORK/events.bak" | jq -r .seq)"
+printf '{"seq": %s, "at": "x", "to": "TeamL' "$((LS + 1))" >> "$TWD/events.jsonl"
+lib tw_last_seq
+[ "$RC" = 1 ] && has "events.jsonl: last line has no seq" "$WORK/out" || fail "C10: tw_last_seq rc $RC"
+lib 'tw_lock; tw_append_to TeamLead "" "AFTER truncation"; r=$?; tw_unlock; exit $r'
+[ "$RC" = 1 ] || fail "C10: an append over a truncated log returned $RC"
+grep -q 'AFTER truncation' "$TWD/events.jsonl" && fail "C10: an event was appended after the cut line"
+date -u +%s > "$TWD/undelivered.TeamLead.since"
+lib 'tw_claim "$TW_DIR/send.d" 5 30 && { tw_deliver_one TeamLead; r=$?; tw_release "$TW_DIR/send.d"; exit $r; }'
+[ "$RC" = 1 ] && has "TeamLead: events.jsonl unreadable" "$WORK/out" || fail "C10: deliver over an unreadable log rc $RC"
+[ -f "$TWD/undelivered.TeamLead.since" ] || fail "C10: the outage flag was cleared as delivered"
+run "$MAIN" $W ping TeamLead
+[ "$RC" = 1 ] && has "ping not queued" "$WORK/out" || fail "C10: ping over a truncated log rc $RC"
+cp "$WORK/events.bak" "$TWD/events.jsonl"; rm -f "$TWD/undelivered.TeamLead.since"
+lib 'tw_lock; tw_append_to TeamLead "" "AFTER repair"; tw_unlock'
+[ "$(seq_of "AFTER repair")" = "$((LS + 1))" ] || fail "C10: the repaired log did not resume at $((LS + 1))"
+lib tw_deliver; ack_all TeamLead
 # Rotation: an undelivered event and an open batch survive; seq stays monotonic.
 now="$(date -u +%s)"
 for i in 1 2 3 4 5; do

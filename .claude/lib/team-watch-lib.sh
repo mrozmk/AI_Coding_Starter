@@ -155,10 +155,20 @@ tw_signals() {  # tw_signals <work dir> → <work dir>/sig.json
   tw_inputs "$1" && jq -f "$root/.claude/lib/team-watch-signals.jq" "$1/in.json" > "$1/sig.json"
 }
 
+# tw_last_seq → the last event's seq, 0 without events. A last line with no integer seq (a write
+# cut short) is rc 1 and a log line, never 0: new seqs restarting at 1 would sit below every cursor
+# and never be delivered. Callers append nothing until it is repaired.
 tw_last_seq() {
-  local l
+  local l s
   l="$(tail -n 1 "$TW_DIR/events.jsonl" 2>/dev/null)" || l=""
-  [ -n "$l" ] && jq -r '.seq' <<<"$l" 2>/dev/null || echo 0
+  [ -n "$l" ] || { echo 0; return 0; }
+  s="$(jq -r '.seq' <<<"$l" 2>/dev/null)" || s=""
+  case "$s" in
+    ''|*[!0-9]*)
+      tw_log "events.jsonl: last line has no seq (truncated?) — nothing is appended until it is repaired" >&2
+      return 1 ;;
+  esac
+  echo "$s"
 }
 
 tw_cursor() {  # tw_cursor <role>
@@ -180,7 +190,9 @@ tw_answering() {
 }
 
 tw_append_to() {  # tw_append_to <role> <label> <text> [class] — caller holds tw_lock
-  jq -cn --argjson seq "$(( $(tw_last_seq) + 1 ))" --arg at "$(team_utc)" --arg to "$1" \
+  local last
+  last="$(tw_last_seq)" || return 1
+  jq -cn --argjson seq "$(( last + 1 ))" --arg at "$(team_utc)" --arg to "$1" \
     --arg l "$2" --arg t "$3" --arg c "${4:-}" \
     '{seq: $seq, at: $at, to: $to, label: $l, text: $t}
      + (if $c == "" then {} else {class: $c} end)' >> "$TW_DIR/events.jsonl"
@@ -212,7 +224,7 @@ tw_cursors() {  # → {<role>: <cursor>} for every receiver an event can be addr
 # lists new role-attention heads: a role session's prompt also gets a platform notification.
 # Events carry the signal key.
 tw_update() {
-  local res w
+  local res w base
   w="$(dirname "$1")"; res="$w/update.json"
   if [ -f "$w/gen" ] && [ "$(cat "$w/gen")" != "$(tw_gen)" ]; then
     tw_log "tick: routing changed while collecting — result discarded"; return 0
@@ -242,7 +254,8 @@ tw_update() {
        notify: [ $rows[] | select(.g.kind == "role-attention"
                    and (.label == "" or .label == "(current state)")) | .g.head ]}' > "$res" \
     || return 1
-  jq -c --argjson base "$(tw_last_seq)" --arg at "$(team_utc)" '
+  base="$(tw_last_seq)" || return 1
+  jq -c --argjson base "$base" --arg at "$(team_utc)" '
     .events | to_entries[]
     | {seq: ($base + .key + 1), at: $at, to: .value.to, key: .value.key, label: .value.label,
        text: .value.text}' \
@@ -281,7 +294,7 @@ tw_undelivered() {  # tw_undelivered <role> — one notification (and alarm) per
     # Queued, not sent: we hold send.d, so the target gets it on this or the next loop.
     if [ "$1" != "$(tw_alarm_target)" ] && tw_live "$(tw_alarm_target)" && tw_lock; then
       tw_append_to "$(tw_alarm_target)" "" "UNDELIVERED $1 ($(( $(tw_now) - $(cat "$s") ))s)" \
-        alarm
+        alarm || tw_log "UNDELIVERED $1: alarm not queued"
       tw_unlock
     fi
   fi
