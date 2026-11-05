@@ -55,6 +55,7 @@ tests.
 | F41 | `TEAM_GATE_LOCK_DIR` is taken from the environment and the lock code removes trees under it, so a wrong value steers an rmtree | open: require the directory to carry the lock's own marker before removing |
 | F42 | The egress guard reads a `-m` that follows the script name (`python3 <script> -m x`) as the interpreter's module flag. It errs toward ask, not toward a hole | open: stop option parsing at the script argument |
 | F43 | `tw_claim`: an orphaned `.reclaim` younger than 5 s delays waiters until it ages out | open: bound by the claimant's pid, not only the age |
+| F44 | smoke-mail case 6 copies the vendored tool with `cp -R`, so a gitignored `__pycache__` in the checkout (left by a python run without `-B`) fails its no-bytecode check | open: copy the tool without `__pycache__` (or remove it in the copy) so a dirty checkout cannot fail the case |
 
 ## Not ported by design
 
