@@ -211,11 +211,13 @@ pid <pid> · socket <state> · active|inactive · since <UTC>`, in `ping` the su
 Verified vs implemented: socket push, the pid-from-basename lookup and the hook environment are
 **verified on 2.1.318 / macOS**; token rejection is **not verified / not enforced on 2.1.318**; the
 `--permission-mode bypassPermissions` behaviour (`crossSessionInbound`) is **not verified**; Linux
-and any other CLI version are **to verify** — run `team-watch.sh ping <role>` and check the pickup.
+is **unsupported** (below); any other CLI version is **to verify** — run `team-watch.sh ping <role>`
+and check the pickup.
 
 ## Known limits
 
 - A message the CLI discards after the write is undetectable except as `UNPICKED`.
 - A dead tmux server stops both loops at once: nobody alarms (the kit's `sessions-health.sh`,
   when scheduled, is the outside check).
-- macOS only so far (BSD `stat`/`date -r`/`shasum`); Linux is unverified.
+- macOS only today: `tw_mtime` uses BSD `stat -f %m`, so the daemon does not run on Linux until the
+  BSD sites are ported (`docs/teams/follow-ups.md` F12 in the starter).

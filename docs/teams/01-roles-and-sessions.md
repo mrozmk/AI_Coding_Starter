@@ -31,7 +31,7 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 ## Models
 
-Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. `/setup:teams` prints the effective table. A running window picks up a change only after `stop <role>` and `start <role>`.
+Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `stop <role>` and `start <role>`.
 
 ## `/monitor` belongs to the TeamLead
 
@@ -88,6 +88,18 @@ bash .claude/lib/supervisor-sessions.sh up                 # after a restart; /s
 bash .claude/lib/supervisor-sessions.sh preflight          # one verdict line per row, exit 1 on any FAIL
 ```
 
+**First bring-up on a fresh machine** (no single `/monitor` window running the daemon yet):
+
+```bash
+bash .claude/lib/supervisor-sessions.sh up      # or /sessions-up: the three steps below, in order
+# explicit equivalent:
+bash .claude/lib/team-watch.sh start --no-register   # daemon + watchdog only; from a terminal
+bash .claude/lib/supervisor-sessions.sh start all     # the role windows
+bash .claude/lib/monitoring.sh start all              # end any pause, replay the open state
+```
+
+`start all` launches the role windows only, not the daemon. A plain `team-watch.sh start` from a terminal stops in the receiver registration (`CLAUDE_CODE_MESSAGING_SOCKET/TOKEN unset — run in a Claude session`), so the terminal form needs `--no-register`; each role window registers itself in `/session-role`. Then ping each role (`team-watch.sh ping <role>`, acked in its window), run `preflight` until green, and switch with `team-watch.sh routing split` (an Operator action). The [Migration](../../.agents/reference/supervisor-sessions.md#migration) in the contract applies only when a single `/monitor` window already runs the daemon.
+
 Each role is launched like this:
 
 - `tmux new-session -d -s <prefix>-<role> -e TEAM_SESSION_ROLE=<role>`, under `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN`, so a launching session's identity never leaks into it;
@@ -110,6 +122,8 @@ Other verbs:
 - **`pair`.** The Advisor answers tier 2 together with the Reviewer (Codex): it runs the Reviewer's deliver loop, and the escalation adapter's `opinion` is available.
 - **`solo`.** The Reviewer does not exist: `/setup:teams` prints `reviewer: none`, `supervisor-sessions.sh reviewer` prints `Reviewer: none (advisor solo)`, and every note carries `reviewer: none`.
 
+`solo` removes the Reviewer from the channel and nothing else. **The Codex CLI is still required by the team pipeline today:** `/setup:teams` stops without `codex` on `PATH`, the profile example lists it in `required_tools`, and the runner refuses to launch any team role while `.claude/codex-profile` does not resolve to an existing directory. Making it conditional is follow-up F32.
+
 ## Preflight
 
 `supervisor-sessions.sh preflight` prints one `ok|WARN|FAIL <row>[ — <detail>]` line per row and exits 1 on any FAIL.
@@ -125,7 +139,7 @@ Other verbs:
 | 7 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
 | 8 | notifier | `notify.sh --check`; `none` is an ok row that prints the declared loss |
 | 9 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
-| 10 | Claude Code version | compared with the version the socket wire format was verified on; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
+| 10 | Claude Code version | compared with the version the socket wire format was verified on (2.1.318); any other version prints `unverified: run team-watch.sh ping <role>`; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
 
 **The socket row (1).** Each registered receiver's socket is judged by `team-watch-send.py --check`, the send's own predicate and wording:
 
@@ -144,7 +158,7 @@ On the verified CLI the messaging token is not enforced. The 0600 mode and the o
 - **After a machine restart:** run `/sessions-up` (or `supervisor-sessions.sh up`). It starts the team-watch loops and every missing role, fresh, never with `--resume`, then runs `monitoring.sh start all`. Interrupted team runs are listed for `/start-team <team>`, never resumed.
 - **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `/mail-role Supervisor` and `/monitor`, and `team-watch.sh status` shows the Supervisor receiver active.
 
-The migration steps and the smoke checklist are in the contract.
+The migration steps (for a machine that already runs a single `/monitor` window) and the smoke checklist are in the contract.
 
 ## Language
 

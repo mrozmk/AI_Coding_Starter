@@ -8,7 +8,7 @@ allowed-tools: Bash(bash *team-setup.sh*), Bash(bash *team-mail-setup.sh*), Bash
 
 ## Input: $ARGUMENTS
 
-Runs in the **target** repo root. `<starter-root>` defaults to `~/Desktop/AI_Coding_Starter`; when that path does not exist, ask for the starter clone's path instead of failing. The installer is always called **from the starter** (`bash <starter-root>/.claude/lib/team-setup.sh <starter-root> <repo-root>`), because the target may not have it yet. `--check` stops after Step 2 (plan only, nothing written).
+Runs in the **target** repo root. `<starter-root>` is required: when it is missing, ask for the starter clone's path (never assume a layout). The installer is always called **from the starter** (`bash <starter-root>/.claude/lib/team-setup.sh <starter-root> <repo-root>`), because the target may not have it yet. `--check` stops after Step 2 (plan only, nothing written).
 
 ## Guardrails (absolute)
 
@@ -20,7 +20,7 @@ Runs in the **target** repo root. `<starter-root>` defaults to `~/Desktop/AI_Cod
 
 ## Step 1 — Preflight
 
-`command -v tmux jq claude codex git` plus `teams.required_tools` when a profile exists. Anything missing: list it and STOP. If the profile has `build_check`, print the absolute paths it names and `test -e` each; a missing one is a **warning** (venv, `.hcc`), not a STOP.
+`command -v tmux jq claude codex git python3 perl sqlite3` plus `teams.required_tools` when a profile exists (the hooks, the agent-mail tool and the runner need the last three). Anything missing: list it and STOP. If the profile has `build_check`, print the absolute paths it names and `test -e` each; a missing one is a **warning** (venv, `.hcc`), not a STOP.
 
 ## Step 2 — Plan
 

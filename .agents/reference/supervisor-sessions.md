@@ -21,7 +21,7 @@ two projects on one machine never share a tmux session, a recipient or a process
 Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`;
 without it every role runs `opus`, the Supervisor at effort `medium`, the TeamLead and the Advisor
 at `high` (the TeamLead decides design questions inside the AC). A project that wants a stronger
-Advisor model names it there; `/setup:teams` prints the effective table. A running window changes
+Advisor model names it there (the profile example carries the block with the defaults). A running window changes
 model or effort only after `stop <role>` + `start <role>`.
 
 Every `[team-watch #<n>]` message: `bash .claude/lib/team-watch.sh ack <n>` first, `… done <n>`

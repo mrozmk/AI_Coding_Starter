@@ -9,7 +9,7 @@
 # `conflict` with a diff, for a hand merge.
 #
 # Usage: bash .claude/lib/team-setup.sh <starter-root> <target-root> [--check]
-#   e.g. bash .claude/lib/team-setup.sh ~/Desktop/AI_Coding_Starter "$PWD"
+#   e.g. bash <starter-root>/.claude/lib/team-setup.sh <starter-root> "$PWD"
 #   --check: report the plan and write NOTHING (statuses read create|keep|conflict|merge).
 #
 # Output: one `<status>\t<class>\t<path>` line per path (`created|kept|conflict|merged`, class

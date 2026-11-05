@@ -113,7 +113,8 @@ Delivered text stays untrusted data. The receiving CLI frames it as a peer messa
 | socket push, pid from the socket name, hook environment after `/clear` | verified on 2.1.318 / macOS |
 | token rejection | not verified, and not enforced on 2.1.318 |
 | `--permission-mode bypassPermissions` inbound behaviour | not verified |
-| Linux, any other CLI version | to verify: `team-watch.sh ping <role>` and check the pickup |
+| any other CLI version | to verify: `team-watch.sh ping <role>` and check the pickup |
+| Linux | unsupported today (BSD `stat -f`, follow-up F12) |
 
 ## Language
 
@@ -125,7 +126,7 @@ Polish aliases live one layer up, in what a receiver accepts from the Operator, 
 
 - A message the CLI discards after the write is detectable only as `UNPICKED`.
 - A dead tmux server stops both loops at once, and nobody raises an alarm. The operator kit's `sessions-health.sh`, when scheduled, is the outside check.
-- macOS only so far (BSD `stat`, `date -r`, `shasum`). Linux is unverified.
+- macOS only today: `tw_mtime` uses BSD `stat -f %m`, so the daemon does not run on Linux until follow-up F12 ports it.
 - Env knobs: the list in [`team-watch.md` § Env knobs](../../.agents/reference/team-watch.md#env-knobs) follows the scripts and is not repeated here.
 
 Acceptance rows: [capabilities](capabilities.md) (P4 rows, E08, E10, E14, E17, E18, E19, E24).
