@@ -1,12 +1,12 @@
 ---
-description: Connect this Claude Code session to the project's agent-mail channel as one supervision role (Supervisor, TeamLead or Advisor) — register, set up listening, read the backlog; sends nothing
+description: Connect this Claude Code session to the project's agent-mail channel as one supervision role (Supervisor, TeamLead or Advisor) — check the registration, set up listening, read the backlog; sends nothing
 argument-hint: "Supervisor|TeamLead|Advisor"
 allowed-tools: Monitor, Bash(bash .claude/lib/team-mail.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/session-wake.sh:*), Bash(printenv TEAM_SESSION_ROLE), Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /mail-role — this session's side of the agent-mail channel
 
-Argument: **$ARGUMENTS**, this session's role on the channel: `Supervisor`, `TeamLead` or `Advisor`. Run it from the main checkout. It is **idempotent**: it registers this role if missing, sets up listening and reads the backlog. **It never sends anything.** It never touches the Reviewer: the Advisor runs the Reviewer's delivery loop.
+Argument: **$ARGUMENTS**, this session's role on the channel: `Supervisor`, `TeamLead` or `Advisor`. Run it from the main checkout. It is **idempotent**: it checks this role's registration, sets up listening and reads the backlog. **It never sends anything.** It never touches the Reviewer: the Advisor runs the Reviewer's delivery loop.
 
 Every path and name comes from the channel config. Never type a box or tool path. Every mail call is `bash .claude/lib/team-mail.sh <KEY> …`, which always passes the project's box, so two projects on one machine never read each other's mail. Protocol, schema and limits: `.agents/reference/agent-mail.md`.
 
@@ -18,7 +18,7 @@ Every path and name comes from the channel config. Never type a box or tool path
 
 ## Step 1 — registration
 
-`bash .claude/lib/team-mail.sh <KEY> recipients`. If `<NAME> adapter=monitor` is present, skip this step. If it is missing, run `bash .claude/lib/team-mail.sh <KEY> register --as <NAME> --adapter monitor`. The registration lives next to the box and survives `/clear` and restarts.
+`bash .claude/lib/team-mail.sh <KEY> recipients`. If `<NAME> adapter=monitor` is present, go on. If it is missing, stop and tell the Operator in one line to run `bash .claude/lib/team-mail-setup.sh` (with `--add-roles` when the role is not yet in the registry entry): that script registers the role recipients. This session never registers one itself: `team-mail.sh` does not forward `register`. The registration lives next to the box and survives `/clear` and restarts.
 
 ## Step 2 — listening
 
