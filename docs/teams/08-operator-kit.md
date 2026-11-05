@@ -22,6 +22,9 @@ bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the ba
   the channel step skips while no adapter exists.
 - **Lifetimes.** A template change reaches the live copy only on your next `--apply`;
   `--verify` reports the drift until then.
+  The same holds for a notifier change (`teams.channel.notifier`): the installed `kit.conf`
+  carries the notifier, so the preflight's `operator kit installed` row FAILs until the next
+  `--apply`. This drift is intended: the live kit changes only by your hand.
 - **Declared losses.** With `notifier: none`, alarms about the Supervisor itself and a dead tmux
   server reach nobody. Without a scheduled `sessions-health.sh`, a dead tmux server is noticed by
   nobody. Both are allowed; the role preflight prints them. `--print-scheduler launchd|cron`
