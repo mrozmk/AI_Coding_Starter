@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs the team harness into another project from `.claude/team/manifest.txt`: copies the
-# `own` files, reports `shared` files the project already owns, merges the team hook entries (three
-# team hooks + the egress guard under `Bash` and `WebFetch` with `"onFailure": "block"`) and the
-# role `permissions.allow` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
+# `own` files, reports `shared` files the project already owns, merges the team hook entries (five
+# team hooks — the question and memory guards, the attention notifier, the team-watch SessionStart
+# re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` with
+# `"onFailure": "block"`) and the role `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
 # box `.agents/agent-mail/`, and seeds `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge.
 #
@@ -178,8 +179,11 @@ def covers(m; req): tokens(m) as $t
 NEW="$CUR"
 S_CONFLICTS=""
 
-hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|false> <new matcher>
-  local id="$1" ev="$2" cmd="$3" req="$4" as="$5" mnew="$6" verdict attach=new
+# An empty <new matcher> writes no matcher (events without one: SessionStart, Stop); [extra json]
+# is merged into the new hook item (e.g. {"timeout":5}).
+hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|false> <new matcher> [extra json]
+  local id="$1" ev="$2" cmd="$3" req="$4" as="$5" mnew="$6" extra="${7:-}" verdict attach=new
+  [ -n "$extra" ] || extra='{}'
   [ "$id" != M ] || attach=first
   verdict="$(printf '%s' "$NEW" | jq -r "$JQ_LIB"'
     def asyncok(h): if $as == "true" then (h.async == true) else (h.async == null or h.async == false) end;
@@ -205,14 +209,16 @@ hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|
   fi
   NEW="$(printf '%s' "$NEW" | jq "$JQ_LIB"'
     .hooks = (.hooks // {}) | .hooks[$ev] = (.hooks[$ev] // [])
-    | ({type: "command", command: $cmd} + (if $as == "true" then {async: true} else {} end)) as $item
+    | ({type: "command", command: $cmd} + (if $as == "true" then {async: true} else {} end)
+       + $extra) as $item
+    | (if $mnew == "" then {hooks: [$item]} else {matcher: $mnew, hooks: [$item]} end) as $entry
     | if $attach == "first"
       then ([.hooks[$ev] | to_entries[] | select(.value.matcher | covers(.; $req)) | .key]) as $ix
         | if ($ix | length) > 0 then .hooks[$ev][$ix[0]].hooks += [$item]
-          else .hooks[$ev] += [{matcher: $mnew, hooks: [$item]}] end
-      else .hooks[$ev] += [{matcher: $mnew, hooks: [$item]}] end' \
+          else .hooks[$ev] += [$entry] end
+      else .hooks[$ev] += [$entry] end' \
     --arg ev "$ev" --arg cmd "$cmd" --argjson req "$req" --arg as "$as" \
-    --arg mnew "$mnew" --arg attach "$attach")"
+    --arg mnew "$mnew" --arg attach "$attach" --argjson extra "$extra")"
 }
 
 H='bash "$CLAUDE_PROJECT_DIR/.claude/hooks'
@@ -221,6 +227,11 @@ hook_merge M PreToolUse "$H/guard-team-memory.sh\"" '["Edit","Write"]' false 'Ed
 hook_merge A Notification "$H/team-attention.sh\"" \
   '["permission_prompt","idle_prompt","elicitation_dialog","agent_needs_input"]' true \
   'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
+# team-watch: re-point a role's receiver after /clear or resume (inside the 5 s timeout), and keep
+# a role's wake loop armed. Both exit at once outside a role session or a main checkout.
+hook_merge W SessionStart "$H/team-watch-session.sh\"" '["startup","resume","clear","compact"]' false '' \
+  '{"timeout":5}'
+hook_merge R Stop "$H/monitoring-rearm.sh\"" '[]' false ''
 
 # The egress guard is the team layer's, so it is registered here rather than shipped in the
 # template's shared settings. The runner's auto-mode preflight (team-roles.sh auto_blocker) looks for
@@ -254,7 +265,8 @@ egress_merge WebFetch
 NEW="$(printf '%s' "$NEW" | jq '
   ["Bash(bash .claude/lib/team-*.sh*)", "Bash(git switch *)", "Bash(git show *)",
    "Bash(gh pr view*)", "Bash(gh issue view*)", "Bash(bash .claude/lib/codex-bg.sh*)",
-   "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)"] as $want
+   "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
+   "Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/monitoring.sh*)"] as $want
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
@@ -262,7 +274,13 @@ NEW="$(printf '%s' "$NEW" | jq '
      # The channel step writes the machine registry and boxes outside the repo.
      "Bash(bash .claude/lib/team-mail-setup.sh*)",
      # The operator kit is installed outside the repo by the Operator only.
-     "Bash(bash .claude/team/sessions/operator-kit/install.sh*)"] as $ask
+     "Bash(bash .claude/team/sessions/operator-kit/install.sh*)",
+     # team-watch verbs only the Operator may trigger: routing, stop, a takeover, the
+     # answering and class switches.
+     "Bash(bash .claude/lib/team-watch.sh routing*)", "Bash(bash .claude/lib/team-watch.sh stop*)",
+     "Bash(bash .claude/lib/team-watch.sh register --takeover*)",
+     "Bash(bash .claude/lib/team-watch.sh mode answering*)",
+     "Bash(bash .claude/lib/team-watch.sh mode class*)"] as $ask
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"
