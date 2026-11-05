@@ -100,6 +100,19 @@ The acceptance checks, their ids (E00–E25) and the line format:
 [evidence/TEMPLATE.md](evidence/TEMPLATE.md). The offline gate in the starter:
 `team-suite.sh` (README → Tests).
 
+## Verified so far
+
+- **Offline:** `team-suite.sh`, 39 steps, OK on `f3d7996` (macOS), including the offline-only
+  checks E15 (an old run or a stale fingerprint is refused) and E16 (tiers off blocks delivery).
+  Per capability: [capabilities.md](capabilities.md).
+- **Live dry-run, not acceptance:** E01–E06 (host tools, channel fresh and reuse, channel loads, kit,
+  profiles, cold preflight) on macOS with Claude Code 2.1.318:
+  [evidence/p9a-walkthrough-2026-11-05.md](evidence/p9a-walkthrough-2026-11-05.md).
+- **Still open (live):** E07 onward — the role windows, pings, routing, alarms, rollback.
+- **Attended only:** E00, E20 and E21 (a TTY and the Operator).
+- **Linux:** none (unsupported today, F12).
+
 ## Known limits
 
-Written as boundaries in [capabilities.md → Boundaries](capabilities.md#boundaries).
+Written as boundaries in [capabilities.md → Boundaries](capabilities.md#boundaries), among them
+the same-uid window between the socket check and the connect.
