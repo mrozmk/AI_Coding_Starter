@@ -35,7 +35,7 @@ tests.
 | F20 | The channel step stores a `~/…` Codex home as `$HOME/~/…` (`team-mail-setup.sh`: the `~` in the prefix strip is itself expanded), so the registry entry and `channel.local.json` carry a wrong `codex_home`. Workaround: an absolute path in `.claude/codex-profile` | code fix needed (found by the 2026-11-05 setup walkthrough) |
 | F21 | On a fresh install the channel step refuses an uncommitted vendored tool (the copy is named after its commit), while `/setup:teams` never commits, so one run cannot finish setup. Naming the copy after the content (a tree hash) would remove both this stop and F22 | code fix needed |
 | F22 | The tool copy is named after the checkout's commit, so a second project with identical tool content gets a second copy | code fix needed (with F21) |
-| F23 | `pr_provider: none` is reserved and refused by the profile check, so a project without a PR host cannot run teams, and a scratch acceptance checkout needs a `github.com` origin | decide: lift the reservation or document the requirement |
+| F23 | `pr_provider: none` was reserved and refused by the profile check | done: `none` is valid and means the PR layer is off; team runs, PRs and merges refuse naming the setting |
 | F24 | `--key <KEY>` reuse of another entry takes that entry's suffix and recipients without a warning when the profile's `mail_suffix` differs | code: warn on the mismatch |
 | F25 | The operator kit's `--dry-run` prints `skip … escalation.local.json (operator kit not installed)` although `--apply` writes it | code: say "written by --apply" |
 | F26 | The purity test does not scan the root seed files the installer generates (`.claude/codex-profile` carried a ticket key until 2026-11-05) | code: extend the purity scope |

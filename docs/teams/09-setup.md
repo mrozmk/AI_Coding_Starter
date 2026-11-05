@@ -12,8 +12,10 @@ then, see [capabilities.md](capabilities.md) for what is proven.
 - `tmux`, `jq`, `git`, Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams`
   stops when any of them is missing.
 - A clone of this starter somewhere on the machine. You pass its path to `/setup:teams`.
-- A pull-request provider the profile can name. `pr_provider: none` is reserved and refused by
-  the profile check today, and `github` requires a `github.com` `origin`.
+- A pull-request provider (`github` or `azure-devops`) to run teams. `pr_provider: none` is
+  valid and turns the PR layer off: setup, the channel, the operator kit and the supervision roles
+  work, while team runs, PRs and merges refuse with a message naming the setting. Only `github`
+  requires a `github.com` `origin`.
 
 ## Fresh machine (no `~/.agent-mail/projects.json`)
 

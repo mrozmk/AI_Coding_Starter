@@ -38,7 +38,7 @@ Run `team-setup.sh` without `--check`; print its output verbatim. Exit 3 means "
 
 Ask via `AskUserQuestion`: `tracker` (jira|github|none), `pr_provider`; `github.repo` when **tracker or pr_provider** is github; only for tracker=github `project_owner`, `project_number`, then `project_id` via `gh project view <n> --owner <o> --format json --jq .id` (required separately) and the status field/option IDs via `gh project field-list <n> --owner <o> --format json` (show them; the user picks `started` / `delivered`); then `trunk`, `branch_types`, `clone_parent` (optional), `clone_name` (optional; must end with `{team}`/`{Team}`), `build_check`, `test_gate`, `gates` (auto|manual-mql5), `seed_files` (warn: no tracked files, `team-new` preflight rejects them), `required_tools`, `env_file_required`.
 
-Shapes and examples: `.claude/project-profile.json.example` (installed with the layer). Easy to get wrong: `build_check` is one shell command (a string); `test_gate` is a script path or `none`; `env_file_required` is `true|false`; `branch_types` and `required_tools` are non-empty arrays. `pr_provider: none` is reserved — the Step 7 check refuses it — so offer `github` or `azure-devops`; `github` needs a `github.com` `origin`.
+Shapes and examples: `.claude/project-profile.json.example` (installed with the layer). Easy to get wrong: `build_check` is one shell command (a string); `test_gate` is a script path or `none`; `env_file_required` is `true|false`; `branch_types` and `required_tools` are non-empty arrays. `pr_provider: none` turns the PR layer off: setup, the channel, the operator kit and the supervision roles work, but team runs, PRs and merges refuse with a message naming the setting; only `github` needs a `github.com` `origin`.
 
 Write only with `jq --arg/--argjson` into `.claude/project-profile.json`: merge into the existing object, keep `schema`; a new file is `{"schema":1,"teams":{...}}`.
 
@@ -74,7 +74,7 @@ For every `conflict (shared — merge by hand)` line give one instruction: which
 
 ## Step 7 — Validate
 
-`bash -c 'source .claude/lib/team-profile.sh; team_profile_load; team_profile_require_supported; team_clone_dir alfa'` and print the resolved Codex home (Step 5b). On error show it verbatim and STOP.
+`bash -c 'source .claude/lib/team-profile.sh; team_profile_load; [ "$TEAM_PR_PROVIDER" = none ] || team_profile_require_supported; team_clone_dir alfa'` and print the resolved Codex home (Step 5b). On error show it verbatim and STOP.
 
 ## Report (Polish)
 

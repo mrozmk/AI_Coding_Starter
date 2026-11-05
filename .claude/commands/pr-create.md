@@ -23,6 +23,9 @@ Issue key argument: **$ARGUMENTS** (optional)
 - **Protected-branch refuse.** Current branch listed under **Protected** in `CLAUDE.md → ### Branch
   model` (fallback when the block is absent: `main`, `master`, `trunk`, `develop`) → STOP: "You are on
   protected branch `<b>` — PRs are opened from a working branch."
+- **PR layer off.** `.claude/project-profile.json` has `teams.pr_provider: none` → STOP:
+  "teams.pr_provider is none — the PR layer is off for this project; set it to github or
+  azure-devops to open PRs."
 - **The only outward action is the push**, delegated to `/push` (own branch, never `--force*`).
 - **Faithful checklist.** Fill the template from the actual diff. Check `[x]` only what is genuinely
   true; otherwise mark **N/A** with a one-line reason. Never tick "tests pass" without having run
