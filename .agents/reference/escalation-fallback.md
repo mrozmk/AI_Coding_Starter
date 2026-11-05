@@ -3,8 +3,8 @@
 The contract of the tier-2 escalation fallback and its two companions: the late-reply wake and
 the bootstrap resume. Code: `.claude/lib/team-escalate.sh`, `team-escalate-lib.sh`,
 `team-question.sh` (`orphans`, author guard); the escalation adapter (`escalation.local.json` →
-`opinion`, `peek`). The team-watch signals of §6 belong to the team-watch layer and are inert
-without it. Tiers and deciders: [team-decision-model.md](team-decision-model.md) §3; escalation
+`opinion`, `peek`). The team-watch signals of §6 belong to the team-watch layer
+(`.agents/reference/team-watch.md`) and are inert without it. Tiers and deciders: [team-decision-model.md](team-decision-model.md) §3; escalation
 mechanics: [team-questions.md](team-questions.md).
 
 Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/05-escalation.md`.
@@ -151,12 +151,12 @@ thread is staged, acked and printed exactly as `wait` does; none → exactly one
 
 ## 6. Signals (team-watch layer)
 
-- `escreply:<mail id>` → TeamLead: `ESCALATION <team> <q>: odpowiedź Advisor #<id> bez waitera
+- `escreply:<mail id>` → TeamLead: `ESCALATION <team> <q>: Advisor reply #<id> without a waiter
   (<state>)` for an unread Advisor reply on an `esc-*` thread whose q has no live waiter;
-  `ESCALATION <thread>: odpowiedź Advisor #<id> bez bieżącego q` when no current q matches. Input:
+  `ESCALATION <thread>: Advisor reply #<id> without a current q` when no current q matches. Input:
   the `esc_mail.TeamLead` probe; a live waiter suppresses it.
 - `advisor-silent:<last Advisor reply UTC | none>` → Supervisor (single routing: the receiver),
-  **never reminded**. The episode is defined by ledger facts only: it is open while some escalation
+  head `ADVISOR silent since <UTC>: <n> escalation(s) waiting`, **never reminded**. The episode is defined by ledger facts only: it is open while some escalation
   of any team, in any state, has a timeout after the newest recorded Advisor reply (`answer`,
   `withdrawn`, `pending-operator`, their `late-*` forms — never `late-none`). An Operator answer
   does not end it; only a new Advisor reply does. The screen lists the waiting qs (not answered,
@@ -193,7 +193,7 @@ Check: `jq -e '.opinion and .peek and .send and .wait' .agents/team/escalation.l
 ## Limits
 
 - Current run only: the snapshot reads the current run's ledgers; an archived run's reply raises
-  `bez bieżącego q`, and its silence facts drop out of the episode (the key may shift).
+  `without a current q`, and its silence facts drop out of the episode (the key may shift).
 - Reviewer must follow the payload's marker instruction (`opinion: agree|disagree` as the first
   line). Without it no fallback fires — safe, but useless.
 - The class is attested, not proven (§2): the script cannot tell a mislabelled critical question

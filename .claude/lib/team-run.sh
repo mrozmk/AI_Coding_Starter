@@ -41,6 +41,7 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-tracker-render.sh"
 . "$root/.claude/lib/team-pr-render.sh"
 . "$root/.claude/lib/team-anchor.sh"
+. "$root/.claude/lib/team-channel.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -58,16 +59,13 @@ RUN=""; ROLE=""; OWN_LOCK=0
 MODE="$(team_mode "$TD/team.json")" || { echo "error: cannot read the mode of $TD/team.json" >&2; exit 1; }
 
 # Runner notifications are off by default: its stops and waits reach TeamLead as
-# team-watch signals; TEAM_NOTIFY=1 enables them, stopped/blocked/failed loud, else soft.
+# team-watch signals; TEAM_NOTIFY=1 enables them, stopped/blocked/failed as alarms. They go through
+# the operator kit's notifier with the channel's backend (team_channel_notify), never a platform
+# binary directly; an invalid channel block means no backend.
 notify() {
-  local s snd=""
-  [ "${TEAM_NOTIFY:-0}" = 1 ] && command -v osascript >/dev/null 2>&1 || return 0
-  s="${TEAM_NOTIFY_SOUND-Glass}"
-  [ "${3:-}" != alarm ] || s="${TEAM_NOTIFY_SOUND_ALARM-Sosumi}"
-  s="${s//[^A-Za-z0-9 ]/}"
-  [ -z "$s" ] || snd=" sound name \"$s\""
-  osascript -e "display notification \"${2//\"/}\" with title \"team $TEAM: $1\"$snd" \
-    >/dev/null 2>&1 || true
+  [ "${TEAM_NOTIFY:-0}" = 1 ] || return 0
+  team_channel_names "$root" 2>/dev/null || TEAM_CHANNEL_NOTIFIER=none
+  team_channel_notify ${3:+--alarm} "team $TEAM: $1" "$2"
 }
 die() { echo "$2" >&2; [ "$1" = 6 ] || notify "stopped ($1)" "$2" alarm; exit "$1"; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }

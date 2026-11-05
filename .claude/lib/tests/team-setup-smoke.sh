@@ -77,11 +77,27 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") as $t | ($t | index("
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 7 ] || fail "2: allow is not the 7 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 9 ] || fail "2: allow is not the 9 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
   || fail "2: the operator kit installer is not behind ask"
+# team-watch: W (SessionStart, no matcher, sync, timeout 5) and R (Stop), the wake/pause scripts
+# allowed, the Operator verbs behind ask — each exactly once.
+jq -e '[.hooks.SessionStart[] | select(has("matcher") | not) | .hooks[]
+  | select((.command | test("team-watch-session")) and .timeout == 5 and (.async // false) == false)]
+  | length == 1' "$S" >/dev/null || fail "2: no SessionStart hook W with timeout 5"
+jq -e '[.hooks.Stop[] | .hooks[] | select(.command | test("monitoring-rearm"))] | length == 1' \
+  "$S" >/dev/null || fail "2: no Stop hook R"
+for a in "Bash(bash .claude/lib/session-wake.sh*)" "Bash(bash .claude/lib/monitoring.sh*)"; do
+  [ "$(jq --arg a "$a" '[.permissions.allow[] | select(. == $a)] | length' "$S")" = 1 ] \
+    || fail "2: allow $a not present once"
+done
+for a in routing stop "register --takeover" "mode answering" "mode class"; do
+  a="Bash(bash .claude/lib/team-watch.sh $a*)"
+  [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
+    || fail "2: ask $a not present once"
+done
 egress() {  # egress <settings> <matcher> → how many blocking egress guards that exact matcher has
   jq --arg m "$2" '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]
     | select((.command | test("guard-team-egress")) and .onFailure == "block"
@@ -199,7 +215,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 9 ] || fail "10: allow is not 2 project + 7 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 11 ] || fail "10: allow is not 2 project + 9 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -266,7 +282,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 7' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 9' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -342,7 +358,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 7' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 9' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -369,5 +385,30 @@ setup "$T"
 [ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] || fail "18: the rerun duplicated it"
 ! has "conflict settings.json E" || fail "18: the rerun still reports the conflict"
 cmp -s "$S" "$WORK/s18" || fail "18: the rerun changed settings.json"
+
+# ---- (19) team-watch hooks: idempotent; an async W or a startup-only W is a conflict -------------
+T=$(mktarget t19)
+mkdir -p "$T/.claude"
+echo '{"teams":{}}' > "$T/.claude/project-profile.json"
+W='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/team-watch-session.sh"'
+setup "$T"; S="$T/.claude/settings.json"; cp "$S" "$WORK/s19"
+setup "$T"
+has "kept	generated	.claude/settings.json" || fail "19: the rerun did not keep settings.json"
+cmp -s "$S" "$WORK/s19" || fail "19: the rerun changed settings.json"
+for bad in '{type: "command", command: $w, async: true}' 'startup'; do
+  if [ "$bad" = startup ]; then
+    jq -n --arg w "$W" '{hooks: {SessionStart: [{matcher: "startup",
+      hooks: [{type: "command", command: $w, timeout: 5}]}]}}' > "$S"
+    want='conflict settings.json W: matcher "startup" does not cover startup, resume, clear, compact'
+  else
+    jq -n --arg w "$W" "{hooks: {SessionStart: [{hooks: [$bad]}]}}" > "$S"
+    want="conflict settings.json W: registered with async: true"
+  fi
+  setup "$T"
+  [ "$RC" = 1 ] && has "$want" || fail "19: a mis-registered W ($bad) is not a conflict"
+  [ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("team-watch-session"))
+    | select(.timeout == 5 and (.async // false) == false)] | length' "$S")" -ge 1 ] \
+    || fail "19: the correct W was not added next to the conflict ($bad)"
+done
 
 echo "team-setup-smoke: OK"

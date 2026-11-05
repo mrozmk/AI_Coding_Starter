@@ -76,6 +76,11 @@ For every `conflict (shared — merge by hand)` line give one instruction: which
 ## Report (Polish)
 
 Status table, conflicts with instructions, the `alfa` clone path, the allow/ask permission note, the channel mode (reuse/extend/fresh, key, box) and the Reviewer step, and the reminder: **the profile must be committed and pushed to the trunk before the first `/start-team`** (clones read `origin/<trunk>`).
+Then the team-watch next step: in the supervising window run `bash .claude/lib/team-watch.sh start`
+(one daemon + watchdog in tmux `<tmux_prefix>-team-watch[-dog]`, this session registered as the
+receiver); routing stays `single Supervisor` (the single window runs `/monitor` in pushed mode)
+until separate role sessions exist. The installer registered its SessionStart and Stop hooks (W, R);
+runbook: `.agents/reference/team-watch.md`.
 
 ## Re-run
 

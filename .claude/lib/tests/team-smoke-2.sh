@@ -273,7 +273,7 @@ for bad in "planner=x;y" planer=opus planner= planner "planner coder=opus" \
   : > "$STUB_LOG"
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$bad"
   expect 1 "error:" "roles rejects $bad"
-  has "osascript" "$STUB_LOG" && fail "roles refusal sent a stopped notification"
+  has "notify " "$STUB_LOG" && fail "roles refusal sent a stopped notification"
   cmp -s "$OV" "$WORK/ov.bak" || fail "rejected roles entry $bad changed the file"
 done
 run "$MAIN" $TR alfa status
@@ -282,7 +282,7 @@ for args in '' '--clear coder=/high'; do
   : > "$STUB_LOG"
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles $args
   expect 2 "usage:" "roles refuses usage $args"
-  has "osascript" "$STUB_LOG" && fail "roles usage refusal notified stopped"
+  has "notify " "$STUB_LOG" && fail "roles usage refusal notified stopped"
   cmp -s "$OV" "$WORK/ov.bak" || fail "usage refusal changed override"
 done
 run "$MAIN" $TR alfa roles coder=/hihg coder=/high
@@ -296,7 +296,7 @@ for bad in '{"planer":{"model":"opus"}}' '{"qa":{"modle":"opus"}}' '{' '{} {}' \
   TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles coder=/high
   expect 1 "roles --clear" "existing invalid override $bad"
   cmp -s "$OV" "$WORK/invalid-ov.bak" || fail "refusal rewrote old invalid override"
-  has "osascript" "$STUB_LOG" && fail "old override refusal notified stopped"
+  has "notify " "$STUB_LOG" && fail "old override refusal notified stopped"
 done
 echo '{"coder":"opus"}' > "$OV"
 run "$MAIN" $TR alfa roles coder=/high

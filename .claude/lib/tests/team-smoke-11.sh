@@ -134,7 +134,12 @@ jq -e --arg q "$Q1" '.teams[] | select(.team == "alfa") | .escalations[]
     and .last_outcome == "reviewer-fallback" and .class == "analysts-condition" and .waiter == "none")' \
   "$WORK/snap.json" >/dev/null \
   || fail "snapshot escalations: $(jq -c '.teams[].escalations' "$WORK/snap.json")"
-# The advisor-silent signal over this snapshot is a team-watch filter case (not in this layer).
+FILTER="$SRC/.claude/lib/team-watch-signals.jq"
+jq -n --slurpfile s "$WORK/snap.json" '{snapshot: $s[0], routing: {mode: "split", live: {}}}' \
+  | jq -f "$FILTER" > "$WORK/sig.json"
+jq -e '[.[] | select(.key == "advisor-silent:none" and .to == "Supervisor")] | length == 1' \
+  "$WORK/sig.json" >/dev/null \
+  || fail "no advisor-silent:none from the producer: $(cat "$WORK/sig.json")"
 
 # ---- (173) conditions on a menu → other; send/kind validation; multiSelect --------------------
 mkq menu; opinion 9 "opinion: agree" "Warunek: tylko izolowana baza" "" "  i limit 3  "
@@ -291,7 +296,64 @@ grep -q "^$Q3 .* reason=staged-reply " "$WORK/out" || fail "staged reply not lis
 ! grep -q "^$QL " "$WORK/out" || fail "a live waiter was listed"
 ! grep -q "^$Q1 " "$WORK/out" || fail "an reviewer-fallback q was listed"
 
-# (181) signals over in.json (escreply, silence reminders) belong to the team-watch layer.
+# ---- (181) escreply and silence signals over a hand-written in.json; silence never reminded -----
+E='{"q": "q-1", "role": "coder", "tier": 2, "class": "ac", "thread": "esc-r-q-1",
+  "state": "escalated", "last_outcome": "no-reply — x", "waiter": "dead",
+  "timeouts": ["2026-10-25T10:00:00Z"], "replies": ["2026-10-25T09:00:00Z"]}'
+sigs() {  # sigs <escalations json> [esc_mail json] → $WORK/sig.json
+  jq -n --argjson e "$1" --argjson m "${2:-[]}" '{routing: {mode: "split", live: {}},
+    snapshot: {teams: [{team: "alfa", run: "r", runner: "up", roles: [], escalations: $e}]},
+    esc_mail: $m}' | jq -f "$FILTER" > "$WORK/sig.json"
+}
+cnt() { jq "[.[] | select($1)] | length" "$WORK/sig.json"; }
+L='"[agent-mail] #55 2026-10-25 from=Advisor kind=turn awaiting=- thread=esc-r-q-1 state=x refs="'
+sigs "[$E]" "[$L]"
+[ "$(cnt '.key == "escreply:55" and .to == "TeamLead"
+  and .head == "ESCALATION alfa q-1: Advisor reply #55 without a waiter (escalated)"')" = 1 ] \
+  || fail "escreply for a dead waiter: $(cat "$WORK/sig.json")"
+sigs "[$(jq -c '.waiter = "live"' <<<"$E")]" "[$L]"
+[ "$(cnt '.kind == "escreply"')" = 0 ] || fail "escreply despite a live waiter"
+sigs "[$E]" "[$(jq -c 'sub("esc-r-q-1"; "esc-old-q-9")' <<<"$L")]"
+[ "$(cnt '.kind == "escreply" and .head == "ESCALATION esc-old-q-9: Advisor reply #55 without a current q"')" = 1 ] \
+  || fail "escreply for an unknown thread"
+E2="$(jq -c '.q = "q-2" | .thread = "esc-r-q-2" | .timeouts = ["2026-10-25T10:30:00Z"]' <<<"$E")"
+sigs "[$E, $E2]"
+[ "$(cnt '.key == "advisor-silent:2026-10-25T09:00:00Z" and .to == "Supervisor"
+  and .head == "ADVISOR silent since 2026-10-25T10:00:00Z: 2 escalation(s) waiting"
+  and (.screen | length) == 2')" = 1 ] || fail "silence of two: $(cat "$WORK/sig.json")"
+sigs "[$(jq -c '.state = "consumed"' <<<"$E")]"
+[ "$(cnt '.key == "advisor-silent:2026-10-25T09:00:00Z" and (.head | test(": 0 escalation\\(s\\) waiting$"))')" = 1 ] \
+  || fail "an Operator answer ended the episode"
+sigs "[$(jq -c '.last_outcome = "reviewer-fallback"' <<<"$E")]"
+[ "$(cnt '.kind == "silence" and (.screen | length) == 0')" = 1 ] || fail "a reviewer fallback still listed as waiting"
+sigs "[$E, $(jq -c '.replies = ["2026-10-25T11:00:00Z"]' <<<"$E2")]"
+[ "$(cnt '.kind == "silence"')" = 0 ] || fail "a reply after the timeouts kept the silence"
+mkq blocked
+printf '%s\n' "" "## Escalation" "started: 2026-10-25T00:00:00Z tier 2" \
+  "sent: seq 1 2026-10-25T00:00:01Z id 5 thread t" "waited: 2026-10-25T10:00:00Z timeout after 1 min" \
+  "late: 2026-10-25T11:00:00Z" "outcome: late-none" "ended: 2026-10-25T11:00:02Z" >> "$QF"
+run "$MAIN" bash .claude/lib/team-snapshot.sh --out "$WORK/snap.json"
+jq -e --arg q "$QN" '.teams[].escalations[] | select(.q == $q) | .replies == []
+  and .timeouts == ["2026-10-25T10:00:00Z"]' "$WORK/snap.json" >/dev/null \
+  || fail "late-none counted as an Advisor reply"
+for f in team-watch-lib.sh team-watch-route.sh team-watch-inputs.sh team-watch-deliver.sh team-channel.sh; do
+  cp "$SRC/.claude/lib/$f" "$MAIN/.claude/lib/"
+done
+lib() { run "$MAIN" bash -c ". .claude/lib/team-watch-lib.sh && tw_init \"\$PWD\" && $1"; }
+sg() { jq -cn --arg k "$1" --arg kind "$2" '{key: $k, kind: $kind, team: null, role: null,
+  head: $k, screen: [], to: "Supervisor"}'; }
+mkdir -p "$WORK/sigd"
+echo "[$(sg advisor-silent:none silence), $(sg ready:x ready)]" > "$WORK/sigd/sig.json"
+export TEAM_WATCH_REMIND_SECS=1
+lib 'tw_lock && tw_update "'"$WORK"'/sigd/sig.json"; tw_unlock'; expect 0 "" "tw_update 1"
+sleep 2
+lib 'tw_lock && tw_update "'"$WORK"'/sigd/sig.json"; tw_unlock'; expect 0 "" "tw_update 2"
+unset TEAM_WATCH_REMIND_SECS
+EV="$MAIN/.agents/team/watch/events.jsonl"
+[ "$(jq -s '[.[] | select(.key == "ready:x" and .label == "(reminder)")] | length' "$EV")" = 1 ] \
+  || fail "the control signal was not reminded: $(cat "$EV")"
+[ "$(jq -s '[.[] | select(.key == "advisor-silent:none")] | length' "$EV")" = 1 ] \
+  || fail "the silence signal was reminded: $(cat "$EV")"
 
 # ---- (182) a delivery must be the recorded fallback, field for field -------------------------
 mkq menu; QA="$QN"; QAF="$QF"; opinion 500 "opinion: agree"

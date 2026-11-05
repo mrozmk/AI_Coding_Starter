@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Offline team smoke suite. Select one independent part with TEAM_SMOKE_PART=1 … 14, mail, channel,
+# Offline team smoke suite. Select one independent part with TEAM_SMOKE_PART=1 … 19, mail, channel,
 # kit, policy or purity. Parts run one after another by default; TEAM_SMOKE_PARALLEL=1 runs them concurrently,
 # except the parts whose header carries the line `# team-smoke: serial` (timing assertions that
 # assume an idle machine): those run afterwards, alone, so load never shows up as their failure.
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 case "${TEAM_SMOKE_PART:-all}" in
-  all) parts=(purity 1 2 3 4 5 6 7 8 9 10 11 12 13 14 mail channel kit policy) ;;
-  [1-9]|1[0-4]|mail|channel|kit|policy) parts=("$TEAM_SMOKE_PART") ;;
+  all) parts=(purity 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 mail channel kit policy) ;;
+  [1-9]|1[0-9]|mail|channel|kit|policy) parts=("$TEAM_SMOKE_PART") ;;
   purity) parts=(purity) ;;
-  *) echo "team-smoke: TEAM_SMOKE_PART must be all, purity, mail, channel, kit, policy or 1 … 14" >&2; exit 2 ;;
+  *) echo "team-smoke: TEAM_SMOKE_PART must be all, purity, mail, channel, kit, policy or 1 … 19" >&2; exit 2 ;;
 esac
 run_part() {
   if [ "$1" = purity ]; then bash "$HERE/team-purity.sh"; else bash "$HERE/team-smoke-$1.sh"; fi

@@ -10,6 +10,9 @@
 #   root defaults to the checkout's toplevel. Returns 3 with one `error:` line on stderr when the
 #   channel is not configured or does not validate (under `set -e` the caller exits 3). Values are
 #   read with `jq -r` only; neither file is ever `eval`ed.
+#   team_channel_names [root] reads only the committed half (CODE may be empty, the rest as below)
+#   and never needs a channel: team-watch takes its tmux names from it. team_channel_notify
+#   [--alarm] <title> <msg> is the one platform notification (operator-kit/notify.sh), rc 0 always.
 # Executed: bash .claude/lib/team-channel.sh <sub> [args]   (from inside the checkout)
 #   show                    every exported variable, one NAME=value per line
 #   get <field>             one value: project_code mail_suffix tmux_prefix advisor notifier key box
@@ -39,22 +42,23 @@ TEAM_CHANNEL_IDENT='^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'
 
 team_channel_err() { echo "error: team channel: $*" >&2; return 3; }
 
-# team_channel_load [root] — parse + validate both halves once per process.
-team_channel_load() {
-  [ -z "${TEAM_CHANNEL_LOADED:-}" ] || return 0
-  local root p ch reg v e codex
+# team_channel_names [root] — the committed half only (names and policy), once per process. No
+# teams.channel block is not an error here: every value takes its default (project_code empty,
+# prefix = the repo dir slug, advisor by codex, notifier none), so a single-window checkout without
+# an agent-mail channel still gets its tmux names. An invalid value returns 3, as the full load.
+team_channel_names() {
+  [ -z "${TEAM_CHANNEL_NAMES_LOADED:-}" ] || return 0
+  local root p codex
   root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
   [ -n "$root" ] || { team_channel_err "not inside a git checkout"; return 3; }
-  p="$root/.claude/project-profile.json"; ch="$root/$TEAM_CHANNEL_REL"
-  reg="$HOME/.agent-mail/projects.json"
-
-  jq -e '.teams.channel | type == "object"' "$p" >/dev/null 2>&1 || {
-    team_channel_err "not configured — no teams.channel in .claude/project-profile.json" \
-      "(run /setup:teams → channel)"; return 3; }
+  p="$root/.claude/project-profile.json"
+  if [ -f "$p" ] && ! jq -e '(.teams.channel // {}) | type == "object"' "$p" >/dev/null 2>&1; then
+    team_channel_err "teams.channel in .claude/project-profile.json is not an object"; return 3
+  fi
   _tc_pc() { jq -r --arg f "$1" '.teams.channel[$f] // empty | tostring' "$p" 2>/dev/null || true; }
   TEAM_CHANNEL_CODE="$(_tc_pc project_code)"
-  [[ "$TEAM_CHANNEL_CODE" =~ $TEAM_CHANNEL_IDENT ]] || {
-    team_channel_err "teams.channel.project_code=${TEAM_CHANNEL_CODE:-<missing>} is not an identifier"
+  [ -z "$TEAM_CHANNEL_CODE" ] || [[ "$TEAM_CHANNEL_CODE" =~ $TEAM_CHANNEL_IDENT ]] || {
+    team_channel_err "teams.channel.project_code=$TEAM_CHANNEL_CODE is not an identifier"
     return 3; }
   TEAM_CHANNEL_SUFFIX="$(_tc_pc mail_suffix)"
   [ -z "$TEAM_CHANNEL_SUFFIX" ] || [[ "$TEAM_CHANNEL_SUFFIX" =~ $TEAM_CHANNEL_IDENT ]] || {
@@ -79,6 +83,49 @@ team_channel_load() {
   case "$TEAM_CHANNEL_NOTIFIER" in osascript|notify-send|none) ;; *)
     team_channel_err "teams.channel.notifier=$TEAM_CHANNEL_NOTIFIER must be osascript|notify-send|none"
     return 3 ;; esac
+  TEAM_CHANNEL_NAMES_ROOT="$root"
+  export TEAM_CHANNEL_CODE TEAM_CHANNEL_SUFFIX TEAM_CHANNEL_TMUX_PREFIX TEAM_CHANNEL_ADVISOR \
+    TEAM_CHANNEL_NOTIFIER TEAM_CHANNEL_NAMES_ROOT
+  TEAM_CHANNEL_NAMES_LOADED=1
+}
+
+# team_channel_notify [--alarm] <title> <msg> — the one platform-notification call of the team
+# layer: the operator kit's notify.sh with the configured backend (always exit 0). Without the kit
+# file nothing is sent and one declared-loss line per process goes to stderr. Always returns 0.
+team_channel_notify() {
+  local a="" k
+  [ "${1:-}" != --alarm ] || { a=--alarm; shift; }
+  k="${TEAM_CHANNEL_NAMES_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+  k="$k/.claude/team/sessions/operator-kit/notify.sh"
+  if [ -f "$k" ]; then
+    bash "$k" --backend "${TEAM_CHANNEL_NOTIFIER:-none}" $a "${1:-}" "${2:-}" >/dev/null 2>&1 || true
+  elif [ -z "${TEAM_CHANNEL_NOTIFY_LOSS:-}" ]; then
+    TEAM_CHANNEL_NOTIFY_LOSS=1
+    echo "$(team_channel_loss_line)" >&2
+  fi
+  return 0
+}
+team_channel_loss_line() {
+  echo "notifier: ${TEAM_CHANNEL_NOTIFIER:-none} — declared loss: operator-kit/notify.sh not installed, platform notifications reach nobody"
+}
+
+# team_channel_load [root] — parse + validate both halves once per process.
+team_channel_load() {
+  [ -z "${TEAM_CHANNEL_LOADED:-}" ] || return 0
+  local root p ch reg v e
+  root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
+  [ -n "$root" ] || { team_channel_err "not inside a git checkout"; return 3; }
+  p="$root/.claude/project-profile.json"; ch="$root/$TEAM_CHANNEL_REL"
+  reg="$HOME/.agent-mail/projects.json"
+
+  jq -e '.teams.channel | type == "object"' "$p" >/dev/null 2>&1 || {
+    team_channel_err "not configured — no teams.channel in .claude/project-profile.json" \
+      "(run /setup:teams → channel)"; return 3; }
+  # A names read of another root (or none yet) is redone for this one.
+  [ "${TEAM_CHANNEL_NAMES_ROOT:-}" = "$root" ] || TEAM_CHANNEL_NAMES_LOADED=""
+  team_channel_names "$root" || return 3
+  [ -n "$TEAM_CHANNEL_CODE" ] || {
+    team_channel_err "teams.channel.project_code=<missing> is not an identifier"; return 3; }
 
   [ -f "$ch" ] || { team_channel_err "not configured — no $TEAM_CHANNEL_REL (run /setup:teams → channel)"
     return 3; }
@@ -210,7 +257,7 @@ TEAM_CHANNEL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
-  usage() { sed -n '9,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+  usage() { sed -n '9,23p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
   [ $# -ge 1 ] || usage
   sub="$1"; shift
   case "$sub" in show|get|name|turn|render) ;; *) usage ;; esac

@@ -173,3 +173,20 @@ own .claude/lib/team-mail.sh
 own .claude/lib/team-mail-setup.sh
 own .claude/lib/team-channel.sh
 own .agents/reference/agent-mail.md
+
+# --- team-watch daemon, routing, wake loops, pause (re-sync at the source pin) -----------------------
+own .claude/lib/team-watch-lib.sh
+own .claude/lib/team-watch-route.sh
+own .claude/lib/team-watch-deliver.sh
+own .claude/lib/team-watch-inputs.sh
+own .claude/lib/team-watch-send.py
+own .claude/lib/team-watch-signals.jq
+own .claude/lib/team-watch-poll.sh
+own .claude/lib/session-wake.sh
+own .claude/lib/monitoring.sh
+own .claude/hooks/team-watch-session.sh
+own .claude/hooks/monitoring-rearm.sh
+own .claude/team/sessions/monitoring.json
+own .agents/reference/team-watch.md
+# the source's alert-intake outbox is not ported (decision): no file may ship under its name
+!.claude/lib/team-watch-outbox.sh

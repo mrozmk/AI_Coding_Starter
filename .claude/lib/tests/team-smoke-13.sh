@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # a send without a SENT receipt checks the thread first and fails fast. Cases (a)-(f).
+# (b) asserts elapsed time against the backoff, so the suite runner keeps it out of a
+# TEAM_SMOKE_PARALLEL batch.
+# team-smoke: serial
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -55,8 +58,11 @@ jq -n --arg s "$FM send $A6" --arg w "$FM wait $A6" --arg p "$FM peek $A6" \
   '{send: $s, wait: $w, peek: $p, timeout_min: 1}' > "$CFG"
 
 # ---- (a) AC1: a reply on the thread, an adapter without the SENT line → ANSWER ---------------
+# The peek after the first failed send must find the staged reply: under load a 1 s peek bound can
+# expire first (the child is killed, rc 124) and a second send runs. The reply is already on the
+# thread, so a wide bound costs nothing here; (b) keeps the 1 s bound for the fail-fast path.
 mkq; touch "$WORK/mail.noreceipt"; reply 'mail-id: 31\nstatus: answer\n\nA.\n'
-esc 2 "$QF" --blocks x
+run "$MAIN" env TEAM_ESCALATE_PEEK_SECS=15 $ESC alfa coder 2 "$QF" --blocks x
 expect 0 "ANSWER" "reply on the thread without a receipt"
 has "A." "$WORK/out" || fail "(a) answer text"
 has "reply: 31 answer" "$QF" || fail "(a) reply not recorded"

@@ -201,7 +201,7 @@ guard Supervisor; expect 0 "thread=incident-1" "(G) a paused Supervisor holds it
 ! has "thread=chat-1" "$WORK/out" || fail "(G) a paused role was held on a routine thread"
 grep -q '^pending Supervisor 2026-11-04T08:00:00Z$' "$WORK/tw.log" || fail "(G) the pause since was not passed"
 cp "$WORK/tw.real" "$LIB/team-watch.sh"; rm -f "$LIB/monitoring.sh" "$MAIN/.claude/team/sessions/monitoring.json"
-guard Supervisor; expect 0 "thread=chat-1" "(G) the real (older) team-watch.sh is never called with a subcommand"
+guard Supervisor; expect 0 "thread=chat-1" "(G) the real team-watch.sh, no batch pending: only the mail holds"
 echo "team-smoke-kit: (G) stop hook OK"
 
 # ---- (E) the escalation adapter ---------------------------------------------------------------
