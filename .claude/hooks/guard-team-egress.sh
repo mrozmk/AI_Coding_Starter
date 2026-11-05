@@ -4,7 +4,10 @@
 # (lib/guard_team_egress.py). Never allows. Fail-closed: no python3 / a crash asks.
 # Contract: .agents/reference/security-egress.md, .agents/reference/team-mode.md
 
-[ -f "${CLAUDE_PROJECT_DIR:-.}/.agents/team/session.json" ] || [ -n "${TEAM_RUN_TEAM:-}" ] || exit 0
+# Armed in a team run (session.json / TEAM_RUN_TEAM) and in every role session (TEAM_SESSION_ROLE:
+# Supervisor, TeamLead, Advisor are launched with only that).
+[ -f "${CLAUDE_PROJECT_DIR:-.}/.agents/team/session.json" ] || [ -n "${TEAM_RUN_TEAM:-}" ] \
+  || [ -n "${TEAM_SESSION_ROLE:-}" ] || exit 0
 payload="$(cat)"
 out="$(printf '%s' "$payload" | python3 -I -B "$(dirname "$0")/lib/guard_team_egress.py" 2>/dev/null)"
 rc=$?
