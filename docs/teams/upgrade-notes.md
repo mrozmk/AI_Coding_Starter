@@ -3,6 +3,20 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The agent-mail tool's default project label is `default`
+
+**Before:** the vendored tool kept the upstream's own project name as its default label (the
+CLI's `--project` default, the `messages.project` schema default, the store's `project=`
+defaults).
+
+**Now:** the default is `default`. The tool's content changed, so `check` reports `tool behind
+checkout` for an entry whose `agent_mail-<sha>` copy predates it.
+
+**Action:** none required. The team client passes the entry's `project_label` on every forwarded
+call, so no row depends on the default. A box keeps the schema default it was created with.
+Re-sync the copy when convenient (`team-mail-setup.sh <repo> --key <KEY> --resync-tool`, an
+Operator action).
+
 ## The egress guard arms in role sessions and covers more forms
 
 **Before:** `guard-team-egress.sh` armed only inside a team run (`.agents/team/session.json` or

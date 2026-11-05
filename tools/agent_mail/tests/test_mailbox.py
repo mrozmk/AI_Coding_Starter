@@ -368,13 +368,26 @@ class TestRequeue(MailboxTestCase):
 
 class TestState(MailboxTestCase):
 
+    def test_default_project_label(self):
+        # Local delta 5 (README): the neutral default label, in the store, schema and CLI.
+        message_id = store.send(self.conn, "Advisor", ["Reviewer"], "info", "x")
+        row = self.conn.execute("SELECT project FROM messages WHERE id=?", (message_id,)).fetchone()
+        self.assertEqual(row["project"], "default")
+        default = self.conn.execute(
+            "SELECT dflt_value FROM pragma_table_info('messages') WHERE name='project'").fetchone()
+        self.assertEqual(default[0], "'default'")
+        store.state_set(self.conn, "default", 0, stage="design")
+        self.assertEqual(store.state_get(self.conn)["stage"], "design")
+        self.assertEqual(agent_mail.build_parser().parse_args(["state", "get"]).project,
+                         os.environ.get("AGENT_MAIL_PROJECT") or "default")
+
     def test_state_optimistic_lock(self):
-        self.assertEqual(store.state_set(self.conn, "Jarvis", 0, stage="design"), 1)
+        self.assertEqual(store.state_set(self.conn, "default", 0, stage="design"), 1)
         with self.assertRaises(store.ConflictError) as ctx:
-            store.state_set(self.conn, "Jarvis", 0, stage="build")
+            store.state_set(self.conn, "default", 0, stage="build")
         self.assertEqual(ctx.exception.current_version, 1)
-        self.assertEqual(store.state_get(self.conn, "Jarvis")["stage"], "design")
-        self.assertEqual(store.state_set(self.conn, "Jarvis", 1, stage="build",
+        self.assertEqual(store.state_get(self.conn, "default")["stage"], "design")
+        self.assertEqual(store.state_set(self.conn, "default", 1, stage="build",
                                          waiting_on="Reviewer"), 2)
 
         result = self.cli("state", "set", "--expect-version", "0", "--stage", "x")
