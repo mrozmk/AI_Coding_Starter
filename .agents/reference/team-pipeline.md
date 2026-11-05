@@ -36,7 +36,7 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
   `/brainstorm`, `/plan-feature` and `/check-implementation` run on the project profile, which the
   runner exports per role session (`CODEX_HOME`) from `.claude/codex-profile`; their config is
   `$CODEX_HOME/config.toml`. A role launched before that change keeps the environment it started
-  with ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile-tt-912)).
+  with ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile)).
   Per ticket, without a commit: `/start-team alfa ABC-787 --roles planner=claude-fable-5-1/high`
   (or `bash .claude/lib/team-run.sh alfa roles …` on a running team) writes the clone's
   `.agents/team/roles.override.json`, merged per role and key over `roles.json`; validated at write
@@ -80,14 +80,15 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 
 - `brew install tmux jq`
 - `chmod 600 .env` — `team-new.sh` refuses to copy a `.env` with any other mode.
-- `az login` (the account with Contribute to pull requests on the repo).
-- Disk: one clone ≈ the repo plus its `bin/obj` after the first build.
+- The PR provider's login for `teams.pr_provider` (`gh auth login` for `github`, `az login` for `azure-devops`), with the right to open pull requests on the repo.
+- Disk: one clone ≈ the repo plus its build output after the first build.
+- Install and channel order for a new machine: `docs/teams/09-setup.md` in the starter (not installed).
 - The runner resolves `.claude/codex-profile` from the role clone first, matching the wrapper
   inside that clone. It falls back to the main checkout only if the clone has no declaration.
   An existing invalid/unresolvable clone declaration refuses before changing `session.json`
   or launching a session; it never falls back to a different profile.
 - Never `tmux set-environment -g CODEX_HOME` — the runner sets it per session
-  ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile-tt-912)).
+  ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile)).
 
 - Clone directory: `teams.clone_name` is a template (default `<repo>-{team}`; `{Team}` is the capitalized team name). The placeholder must END the template, because the clone glob is a prefix. A team name that collides with an existing directory under that prefix is rejected (APFS ignores case).
 - Seed files: a tracked file whose content differs is rejected by the `team-new`/`team-next` preflight.

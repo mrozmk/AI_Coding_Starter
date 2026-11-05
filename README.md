@@ -393,7 +393,8 @@ Scripts, not prompts, enforce the routing, the binding of each answer to the exa
 
 It is off until you opt in. `/setup:teams` installs the team layer and the agent-mail channel into a project. `/start-team` provisions and starts a team, and `/monitor` supervises it. Everything project-specific is configuration in `.claude/project-profile.json` → `teams` (`teams.channel` for names, `teams.policy` for policy) and never a default.
 
-- Human overview: [`docs/teams/`](docs/teams/README.md): decision model, pipeline, escalation, permissions, follow-ups.
+- Setting it up: run `/setup:teams <path to this starter clone>` in **your project's** root, then follow [`docs/teams/09-setup.md`](docs/teams/09-setup.md) (fresh machine or one that already runs the channel, the profile from `.claude/project-profile.json.example`, the operator kit).
+- Human overview: [`docs/teams/`](docs/teams/README.md): decision model, pipeline, escalation, permissions, operator kit, follow-ups.
 - The contracts the agents follow: `.agents/reference/team-*.md`, `escalation-fallback.md`, `agent-mail.md`.
 - What is implemented vs verified on which host: `docs/teams/capabilities.md`, written by the acceptance run.
 
