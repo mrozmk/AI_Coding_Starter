@@ -211,7 +211,7 @@ If `docs/PRD.md` exists **and** `.agents/memory/project-brief.md` is `status: em
 
 ## Phase 3: GENERATE
 
-This phase produces **three files** — `CLAUDE.md` (rules), `.agents/memory/architecture.md` (map), and the root `README.md` (project description). `CLAUDE.md` is loaded into every conversation, so heavy structural detail belongs in `architecture.md` (loaded only when relevant); the `README.md` is the human-facing front door and replaces the starter-kit's framework README at the project root.
+This phase produces **three files** — `CLAUDE.md` (rules), `.agents/memory/architecture.md` (map), and the root `README.md` (project description). `CLAUDE.md` is loaded into every conversation, so heavy structural detail belongs in `architecture.md` (loaded only when relevant); the `README.md` is the human-facing front door and replaces the starter-kit's landing page at the project root.
 
 ### 3.1 Create `CLAUDE.md`
 
@@ -328,21 +328,20 @@ Aim for completeness over brevity — this file replaces what would otherwise bl
 
 ### 3.3 Generate the project `README.md`
 
-The starter ships its **framework guide** as the root `README.md` (so the template repo's GitHub page documents the workflow). That guide is wrong for an actual project — bootstrap must replace it with a project README, while preserving the framework guide for reference.
+The starter ships a short **landing page** as the root `README.md` (the template repo's GitHub page), marked by a `<!-- STARTER-KIT-README` comment on its first line. That page is wrong for an actual project, so bootstrap replaces it. Nothing is preserved or moved: the framework guide already lives in `.claude/docs/`, where `/maintain:sync-from-starter` keeps it current.
 
 **Output path**: `README.md` (project root). **Template**: `.claude/templates/README-template.md`.
 
-**Idempotent bootstrap-vs-refresh logic** — branch on whether `.claude/README.md` already exists:
+**Idempotent three-way logic** — branch on the root `README.md`:
 
-1. **Bootstrap (`.claude/README.md` does NOT exist):** this is the first run, so the root `README.md` is still the starter's framework guide.
-   - Move it to preserve it: `git mv README.md .claude/README.md` (fall back to `mv` if the file is untracked). This keeps the framework guide available at `.claude/README.md` and is where `/maintain:sync-from-starter` will update it.
-   - Generate a fresh root `README.md` from `.claude/templates/README-template.md`, filled with project facts: project name + description from `docs/PRD.md` / `.agents/memory/project-brief.md` (if present, else ask), the tech stack and commands from Phase 2, the top-level structure from `architecture.md`, and setup steps inferred from the detected manifest. Drop the template's own instructional header comment.
-
-2. **Refresh (`.claude/README.md` already exists):** the project is already bootstrapped and the root `README.md` is project-owned — possibly hand-edited. **Do NOT overwrite it wholesale.**
-   - If the root `README.md` still contains unfilled `{placeholder}` markers from the template, offer to fill just those (show a diff, ask first).
+1. **Absent:** generate it (step 4).
+2. **Starter landing page** (its first line contains `STARTER-KIT-README`): this is the first run. Replace the file with the generated README (step 4) — overwrite in place, no `git mv`.
+3. **Present without the marker:** the README is project-owned — possibly hand-edited, or an existing project's own README. **Do NOT overwrite it wholesale.**
+   - If it still contains unfilled `{placeholder}` markers from the template, offer to fill just those (show a diff, ask first).
    - Otherwise leave it untouched and report `README.md` already customized — skipped.
+4. **Generate** from `.claude/templates/README-template.md`, filled with project facts: project name + description from `docs/PRD.md` / `.agents/memory/project-brief.md` (if present, else ask), the tech stack and commands from Phase 2, the top-level structure from `architecture.md`, and setup steps inferred from the detected manifest. Drop the template's own instructional header comment.
 
-Never clobber a customized project README, and never move `.claude/README.md` back to the root.
+Never clobber a customized project README. A legacy `.claude/README.md` (the old framework guide, from projects bootstrapped before `.claude/docs/`) is left alone.
 
 ### 3.4 Bootstrap the project LICENSE (swap — mirrors the README swap)
 
@@ -403,7 +402,7 @@ While either branch fires, push detail out of `CLAUDE.md` into the file named in
 ### README
 
 {One of:
-- "Bootstrap — framework guide moved to `.claude/README.md`; generated a project `README.md` from the template."
+- "Bootstrap — replaced the starter landing page with a project `README.md` generated from the template." (or "generated — there was no `README.md`")
 - "Refresh — filled remaining `{placeholder}` markers in the existing `README.md`."
 - "Refresh — `README.md` already customized; left untouched."}
 

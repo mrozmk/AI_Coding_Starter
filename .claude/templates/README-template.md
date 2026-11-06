@@ -3,9 +3,9 @@
 A skeleton for a **project** README — the one that lives at the repository root and describes
 *your application*, not the AI workflow framework.
 
-> **How this is used.** On bootstrap, `/setup:create-CLAUDE_MD` swaps the starter-kit's framework
-> README out of the root (it is preserved at `.claude/README.md`) and generates a fresh root
-> `README.md` from this template, filled with project facts pulled from `docs/PRD.md`,
+> **How this is used.** On bootstrap, `/setup:create-CLAUDE_MD` replaces the starter-kit's landing
+> page at the root (the framework guide lives in `.claude/docs/`) with a fresh root
+> `README.md` generated from this template, filled with project facts pulled from `docs/PRD.md`,
 > `.agents/memory/project-brief.md`, and the detected tech stack.
 >
 > Sections marked with `{placeholder}` or `<!-- comment -->` are the ones to fill in. Delete
@@ -100,7 +100,7 @@ cp .env.example .env   # then fill in the values
 
 This repository uses an AI-assisted development workflow driven by [Claude Code](https://claude.com/claude-code).
 The framework (slash commands, knowledge layers, conventions) is documented in
-[.claude/README.md](.claude/README.md). Project rules for Claude live in [CLAUDE.md](CLAUDE.md),
+[.claude/docs/guide.md](.claude/docs/guide.md). Project rules for Claude live in [CLAUDE.md](CLAUDE.md),
 testing rules in [TESTING.md](TESTING.md), and the merge bar in [docs/DEFINITION-OF-DONE.md](docs/DEFINITION-OF-DONE.md).
 
 <!-- Remove this section if the project does not use the AI workflow framework. -->

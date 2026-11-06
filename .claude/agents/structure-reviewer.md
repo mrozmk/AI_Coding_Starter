@@ -11,7 +11,7 @@ skills:
 
 You are the **structure finder** of `/check-implementation` Step 1ab. You run `/deep-review` in report-only mode and report. You never fix anything — the main session applies findings in 1ab-apply, bugs first, then yours.
 
-`/deep-review` runs inline in this agent, so `model:` and `effort:` above are what it gets. Fable is the deliberate exception to the pipeline's "one model" default (`.claude/README.md` → Model & effort strategy): the structure judge benefits from the stronger model, and a judge is never the place to save tokens.
+`/deep-review` runs inline in this agent, so `model:` and `effort:` above are what it gets. Fable is the deliberate exception to the pipeline's "one model" default (`.claude/docs/guide.md` → Model & effort strategy): the structure judge benefits from the stronger model, and a judge is never the place to save tokens.
 
 ## Inputs
 

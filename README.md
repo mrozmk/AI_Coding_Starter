@@ -1,600 +1,176 @@
-<!-- STARTER-KIT-README: this is the framework guide. On bootstrap, /setup:create-CLAUDE_MD moves
-     this file to .claude/README.md and generates a project README in its place. See the
-     "About this README" callout below. -->
+<!-- STARTER-KIT-README: this is the starter's landing page. On bootstrap, /setup:create-CLAUDE_MD
+     replaces it with a README for your project. The framework guide lives in .claude/docs/. -->
 
-# AI-Assisted Development Starter Kit
+# AI Coding Starter
 
-> ### 👉 First time here? Start with the tutorial: **[docs/TUTORIAL.md](docs/TUTORIAL.md)**
-> It walks you step by step — from setup to your first committed code — on a concrete example. The README below is the **full framework reference** (dense, for people who already grasp the basics).
+A complete, battle-tested workflow for building real software with Claude Code: from the first
+requirement to reviewed, tested code. For one developer, or for several AI teams working for you.
+Built for three kinds of users:
 
-A minimal, opinionated starter for projects built with [Claude Code](https://claude.com/claude-code) as a first-class development partner.
+- **One-person army:** build any application from A to Z on your own, with the discipline of a full team.
+- **Software houses:** deliver client projects end to end, from requirements and architecture to a
+  Jira backlog and reviewed code.
+- **Product companies:** maintain and extend the systems you already run, even on a very large
+  existing codebase.
 
-This repo ships **no application code** — only the scaffolding that makes Claude a reliable collaborator:
-
-- `.claude/` — commands, agents, skills, and permission settings
-- `.agents/` — five persistent knowledge layers (sources, memory, reference, specs, plans)
-- `CLAUDE.md` — project rules seed, ready to be filled in per project
-- `.gitignore`, sensible defaults
-
-> **About this README.** While you read it in the *starter repo*, it documents the **framework**.
-> The first time you run `/setup:create-CLAUDE_MD` in a real project, this guide is moved to
-> `.claude/README.md` and a fresh, project-specific `README.md` is generated in its place (from
-> `.claude/templates/README-template.md`). That keeps the root README describing *your* project
-> while the framework guide stays available at `.claude/README.md`. See
-> [The root README is yours — the framework guide moves aside](#the-root-readme-is-yours--the-framework-guide-moves-aside).
+Works with GitHub, GitLab, Bitbucket and Azure DevOps, syncs with Jira and Confluence, and includes
+a cross-model security audit of your code.
 
 ---
 
-## What's in the box
+## This is not a vibe coding tool
 
-### `.claude/`
+Vibe coding means you open a chat, describe what you want, and the AI writes it. You ask for a fix, it writes more.
+For a script or a weekend prototype, that is perfect.
 
-| Path | Purpose |
-|------|---------|
-| `commands/` | Slash commands — `/setup:start` (the guided bootstrap — run it first), `/brainstorm`, `/plan-feature`, `/execute`, `/codex-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/gates:check-quality`, `/check-implementation`, `/quick-change`, `/deep-review`, `/architecture-review`, `/orchestrate`, `/commit`, `/push`, `/pull`, `/release`, `/analysis`, `/simply`, `/handoff`, `/prime`, `/prime-ba`, `/prime-qa`, `/qa-verify`, `/recon`, `/discover`, `/architect`, `/maintain:refresh-brief`, `/setup:create-backlog`, `/setup:create-CLAUDE_MD`, `/setup:map-codebase`, `/maintain:sync-from-starter`, `/test-e2e`, `/maintain:cleanup-workflow`, `/retro`, `/setup:createwikillm` |
-| `agents/` | Sub-agents — `documentation-manager`, the `/qa-verify` verifier `qa-contract`, the `/design-ui` critic `design-critic`, the `/discover` + `/architect` critic `start-critic`, + the `/orchestrate` pipeline agents (`orchestrator-executor`, `orchestrator-executor-hard`, `orchestrator-refiner`, `orchestrator-verifier`, `orchestrator-committer`, `orchestrator-designer`) |
-| `skills/` | Skills — `/jira` (Jira Cloud via `mcp-atlassian` — create / edit / search / transition / comment / link Epics, Tasks, Bugs; `/jira sync` mirrors `.agents/backlog.md` into Jira, create-only) and `/design-ui` (guided UI design as a quality loop — screen brief → design (1 or 3 variants) → rendered screenshots → the independent `design-critic` (Fable, high) judging against its UI/UX `principles.md` → author fixes, up to 3 rounds → one Codex cross-review of the chosen design; named so it never collides with Claude Code's bundled `design` canvas skill; its knowledge files sit next to `SKILL.md`). Plus command-bound resource bundles loaded by path (no `SKILL.md`): `architecture-review/` (depth/locality method for `/architecture-review`), `discover/` (question bank, coverage rules, discovery + PRD templates, rubric for `/discover`), `architect/` (subdomain tests, decision dimensions, stack method, architecture template, `system.yaml` schema, rubric for `/architect`). |
-| `templates/` | Starting templates — `CLAUDE-template.md` (project rules), `README-template.md` (project README, used by `/setup:create-CLAUDE_MD` on bootstrap), `TESTING-template.md`, `DEFINITION-OF-DONE-template.md`, `PULL_REQUEST_TEMPLATE.md` (convention docs placed by `/setup:start` step 8) |
-| `hooks/` | Workflow hooks — `guard-commit` (empty-commit guard), `guard-push` (pre-publication secret scan), `guard-memory` (memory-distillation gate), `guard-comments` (comment-noise nudge — dormant until `comment-guard.json` names your source dirs), `audit-append` (audit log), `track-memory-read` (read telemetry), `nudge-lsp` (nudges toward LSP when a Grep looks like a symbol search), `warm-lsp` (TS/JS only — gates cross-project LSP queries until tsserver has opened one file per tsconfig project; dormant until `CLAUDE.md` announces it), `check-deps` (SessionStart dep preflight). Need `jq`. |
-| `settings.json` → `skillOverrides` | Switches off the Claude Code bundled skills the starter replaces or does not want auto-triggered (`init`, `design`, `dataviz`, `simplify`, the `artifact-*` trio, …). Kept on: `code-review` and `security-review` (the quality pipeline calls them), `run`, `loop`, `schedule`, `claude-api`, `update-config`, `claude-in-chrome`. Undocumented key, verified on Claude Code 2.1.257 (2026-09-16); values `off` / `user-invocable-only` / `name-only`. |
-| `output-styles/` | Output styles — `Simply` (three-block answers: done / did it work / now what, ≤120 words, no walls of text). Activate per session with `/output-style simply`. |
-| `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
-| `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
+For a real application it falls apart. Nobody wrote down what the product should do. There is no
+architecture, so every feature invents its own. The AI forgets last week's decisions, grades its
+own work, and commits whatever compiles. Three months in, nobody, human or AI, understands the
+codebase.
 
-### `.agents/`
+## This starter builds software the way it should be built
 
-Layers of persistent project knowledge:
+Requirements first, then architecture, then a backlog of tasks, then each task through the same
+proven path: design, plan, code, independent review, tests, commit. Every role on the project gets
+its own commands:
 
-| Layer | Contents | Lifecycle |
-|-------|----------|-----------|
-| `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/discover` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
-| `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
-| `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
-| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — Epics → Tasks (user stories or technical tasks) sized M/H/XH, a dependency DAG, a sequential Wave 0 foundation, parallel lanes for 2–4 developers and a story map with a walking skeleton. Each Task feeds one `/brainstorm` (H/XH) or `/quick-change` (M) cycle; `/jira sync` mirrors it into Jira. | Generated once; `Status`/`Ref` written back by the pipeline; structure edited by hand |
-| `specs/` | Design docs from `/brainstorm` | Lives with the feature |
-| `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
+| Role | What they do with it |
+|---|---|
+| Business analyst | Turn an idea or existing documents into a PRD, an architecture, and a backlog of tasks synced to Jira |
+| Developer | Take one task and run it through the core flow, with a second model reviewing every step |
+| QA | Verify each acceptance criterion with evidence, write end-to-end tests, run a security audit |
+| Lead / operator | Scale up: run several AI teams on tickets in parallel and supervise them |
 
-Full routing of "what to read when" lives in [.agents/memory/index.md](.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/setup:create-CLAUDE_MD`) and points to memory files instead of duplicating their content.
-
-**Status frontmatter convention.** Regenerated files (`architecture.md`, `project-brief.md`, `domain/business-model.md`) carry a `status: empty | seeded | populated` flag. Files with `status: empty` are unfilled placeholders — `/prime` and other commands skip them, falling back to the source (e.g. PRD instead of empty brief). Run the owning command (`/setup:create-CLAUDE_MD` or `/maintain:refresh-brief`) to populate them.
+It works for any stack (backend, frontend, mobile, or all of them in one repo) and for any starting
+point: an empty folder or an existing codebase of any size. It ships no application code, only
+the `.claude/` and `.agents/` folders that shape how the AI works.
 
 ---
 
-## Two daily flows
+## Step 1 · Before any code: product, architecture, backlog
 
-This starter supports two distinct roles. Both share the same knowledge layers (`.agents/`, `CLAUDE.md`) — they differ only in the command chain.
-
-> **Why every flow starts with a new chat + prime?** A fresh chat means no leftover context from a previous task that could bias Claude. Priming (`/prime` or `/prime-ba`) is the *first message* in that fresh chat — it loads the project's knowledge layers (PRD brief, architecture map, memory) so Claude reasons over the actual project state instead of guessing. Skipping either step is the most common cause of off-target answers.
-
-### Business Analyst flow
-
-```
-New chat → /prime-ba → Source files → /brainstorm → Jira draft → Jira sent
+```text
+/discover              interview or import your sources
+/architect             bounded contexts, stack choice, decision records
+/setup:create-backlog  epics and tasks with sizes, dependencies and acceptance criteria
+/check-backlog         an independent critic grades the backlog before anyone builds from it
+/jira sync             mirror the backlog into Jira epics and tasks
 ```
 
-| Step | What it means |
-|------|---------------|
-| **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
-| **`/prime-ba`** | Loads the BA-specific context: `docs/PRD.md`, `.agents/specs/`, and the Jira backlog (via `mcp-atlassian`). Implementation details (`patterns.md`, `errors.md`, code) are intentionally skipped — a BA reasons over product, not internals. |
-| **Source files** | Drop briefs, transcripts, sketches, PDFs into [.agents/sources/](.agents/sources/). Raw input — never modified by Claude. The BA references these files manually when writing the `/brainstorm` prompt; they are not auto-loaded. |
-| **`/brainstorm <feature>`** | Explores the requirement, proposes 2-3 approaches, writes a design spec to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code, no Jira — design gate before anything ships. |
-| **Jira draft** | `/jira create` (single issue) or `/jira bulk` (Epic + Tasks) drafts Epic/Task/Bug from the approved spec. Drafts stay local — nothing leaves your machine until you confirm. |
-| **Jira sent** | Confirm the draft to send it to Jira Cloud via `mcp-atlassian`. Issues are now visible to the team and ready for the Developer flow. |
+Each document is judged by an independent critic, not by the agent that wrote it. When scope
+changes later, `/meeting-notes` and `/update-backlog` bring the PRD and the backlog up to date
+without breaking work in progress.
 
-### Developer flow
+Existing codebase? `/setup:map-codebase` reads it in parallel and writes an architecture map and
+a reconstructed PRD, so the agent understands a large project before it changes a line.
 
-The first half is always the same — **prime → brainstorm → plan-feature** turns an idea (a free-text request, or one you lift from a Jira issue) into an approved, codebase-aware plan. How you take that plan to *shipped* is your call — pick by how much you want to drive:
+## Step 2 · One developer, one task: the core flow
 
-> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into **Epics and Tasks** with sizes (M/H/XH), a dependency DAG and parallel lanes. Each Task row then tells you which `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
+This is the heart of the starter, battle-tested on real projects. Pick a task from the backlog:
 
-**A — Manual (more human-in-the-loop):**
+| Step | What it does for you |
+|---|---|
+| `/start-task PROJ-142` | **START** from the ticket: a fresh branch, the project context loaded, straight into `/brainstorm` |
+| `/brainstorm` | **WHAT** to build. It takes the task from Jira, or from the in-repo backlog when there is no Jira, asks until the requirement is unambiguous, proposes approaches, and writes a spec that Codex then challenges |
+| `/plan-feature` | **HOW** to build it. The approved spec becomes small steps, each with the files to touch, a test and a check, and then the plan is grilled for gaps |
+| `/execute` | **BUILD** the plan step by step, checking each step against its expected result. No improvising |
+| `/check-implementation` | **CHECK** it, and never by its own author: a bug hunt, a structural cleanup, your tests and linters, then an independent verifier compares the code with the plan. It loops until clean |
+| `/commit` | **COMMIT** exactly the files that changed, with a clean conventional message |
+| `/qa-verify PROJ-142` | **VERIFY** every acceptance criterion of the task with evidence, and get a signed verdict table |
 
+Why a spec *and* a plan? The spec is the decision: what and why. It is reviewed while changing
+it still costs a paragraph, not a rewrite. The plan is the execution: how, in what order, and how we
+prove each step works. Merged into one document, the plan quietly rewrites the requirement.
+
+What makes it different from "just ask the AI":
+
+- A defined flow, not a conversation. You do not write prompts and hope. Every task runs through
+  the same steps, with quality and security gates between them: your tests and linters before
+  every commit, a secret scan before every push. A step that fails does not move on.
+- Small tasks follow a flow too. A bug fix or a change in a few files is never "hey, fix this".
+  `/quick-change` writes a short plan, has Codex review it before any code is written, then
+  implements, reviews and runs your tests. If the change turns out bigger than it looked
+  (sensitive code, a schema change, more than about five files), it sends you to the full flow.
+- A second opinion from a different model. With the [Codex CLI](https://github.com/openai/codex)
+  installed, OpenAI's model reviews the spec, the plan and the code. The one who fixes is never the
+  one who judges.
+- Memory that lives in the repo. Decisions, lessons and the project map are plain Markdown in
+  `.agents/`. Every new session starts informed, not from zero.
+- Safe by default. Guardrails are enforced by hooks and permission rules, not by asking the
+  model nicely. Rewriting history and destructive git commands are blocked. Deleting files and
+  branches, and every write to Jira or Confluence, waits for your approval. Secret files and keys
+  cannot be edited, and tokens cannot appear in a command. Data cannot be uploaded anywhere with
+  `curl` or `wget`. Every push is scanned for secrets, and every tool call lands in an audit log.
+- A loop that keeps learning. After each task the agent records what it learned, and `/retro`
+  turns a session into an evidence-based retrospective. The workflow is meant to be tailored:
+  adjust the rules, the gates and the commands to your project, and it gets better with every
+  task.
+
+## Step 3 · QA: proof, not "looks good"
+
+```text
+/qa-verify PROJ-142    checks every acceptance criterion one by one, returns a signed verdict table
+/test-e2e              writes end-to-end tests by driving a real browser
+/audit-security        scanners plus two models hunting for attack paths, merged into one report
 ```
-New chat → /prime → /brainstorm <feature> → /plan-feature → /execute → /check-implementation → /commit → /push
+
+## Step 4 · Scale up: from developer to operator
+
+Once the flow works for you, stop coding one task at a time. Each AI team is its own clone of
+the repository, running the same proven pipeline on a ticket: planner → coder → QA → wrap-up. Run
+two, three or more teams at once.
+
+You no longer write the code. Supervision roles watch the teams for you: they answer routine
+questions, merge work that passes the gates, and bring you only the decisions a human must make.
+The rules are enforced by scripts, not by prompts.
+
+```text
+/setup:teams           install the team layer into your project
+/start-team alfa PROJ-142   start team "alfa" on a ticket
+/monitor               watch all teams: progress, questions, work ready to merge
 ```
 
-Tracker-driven variant — `/start-task <KEY>` replaces the first three steps (branch + prime + brainstorm from the issue); in a PR-gated repo `/pr-create` replaces `/push`.
-
-> You run and review each step. `/check-implementation` **applies** fixes (`code-review --fix` → `deep-review`) and loops the read-only gate until it passes, then stops at a clean tree for **you** to `/commit` and `/push`. Best for high-stakes changes, or when you want eyes on every gate.
-
-**B — Orchestrated (hands-off):**
-
-```
-New chat → /prime → /orchestrate <feature>
-```
-
-> `/orchestrate` drives the whole thing end-to-end — brainstorm → plan-feature → build (execute → refine → verify → [design-check] → commit → push, per step) → closing commit — **compacting its own context between stages** (through the `stage-handoff` mod it ships with) so a 1M-token session never loses the thread. It asks you only at a real directional fork, a 🔶 rethink signal from the cross-model reviewer, or a blocker it cannot resolve; everything else (spec approval, grill scope, split decisions) it decides and reports. Give it a spec path to start at planning, or a plan path to start at the build — that last form is the previous `/orchestrate`, unchanged.
-
-**C — Fast lane (small changes):**
-
-```
-New chat → /prime → /quick-change <what to change> → /commit
-```
-
-> For work where the full first half is ceremony: a short plan in chat (no spec, no plan file), a **mandatory** independent `codex` review of that plan **before any code exists** (no opt-out flag — it is skipped only when `codex` isn't installed, and the report says so), then implement → `/code-review` (low effort) → `/deep-review` → the `CLAUDE.md → Validation` gates. A guard fires — and says so — when the change turns out not to be small (sensitive path, >~5 files, new dependency, schema/contract change, design reference needed), recommending flow A or B instead; you can override it. Not a replacement for A/B — it is the honest middle between them and "just do it".
-
-| Step | What it means |
-|------|---------------|
-| **New chat** | Open a fresh Claude Code session — no history, no leftover context from previous tasks. |
-| **`/prime`** | Quick mode by default — loads `CLAUDE.md`, `.agents/memory/index.md`, `project-brief.md`, `architecture.md`, plus listings of plans/specs/reference and git state. Use `/prime full` after a long break or for deep multi-area work (also pulls `patterns.md`, `decisions.md`, `api.md`, `errors.md`, populated `domain/*`). |
-| **`/brainstorm <feature>`** | Explores a free-text feature request — references any Jira issue's description / acceptance criteria you paste into the prompt, but does not fetch Jira itself. Output: a design spec in `.agents/specs/`. If `codex` is installed, a cross-model pass reviews the spec before it advances (auto-skips otherwise). |
-| **`/plan-feature`** | Reads the approved spec, analyzes the codebase, optionally runs web research for declared external dependencies, writes a step-by-step plan to `.agents/plans/active/`, then **grills** it (self-critique) and — if `codex` is installed — runs an independent cross-model review loop (Phase 7) before handing the plan over. |
-| **`/execute`** *(flow A)* | Runs the active plan top to bottom. Moves it to `.agents/plans/done/` when complete. Add `codex` (`/execute codex`) to have Codex write the code at effort `medium` while Claude supervises and re-validates. |
-| **`/check-implementation`** *(flow A)* | Full quality loop: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate, incl. conditional design-parity), looping up to 3× until the gate approves; a one-shot codex cross-review of the approved diff follows (if `codex` is installed). **Applies** fixes; leaves a commit-ready tree — does **not** commit. `/check-implementation codex` makes Codex the fixer (effort `high`); Claude stays the judge, and the cross-review step is skipped whenever Codex actually applied fixes (Claude's gate is then the second model). |
-| **`/commit` → `/push`** *(flow A)* | Conventional-commit message + a memory-reflection checkpoint, then push to the current branch. |
-| **`/orchestrate <feature>`** *(flow B)* | Runs flow A as one pipeline — `/brainstorm` → `/plan-feature` → the plan runner (execute → refine → verify → [design] → commit → push via sub-agents) → a closing `chore` commit — compacting the session between stages. Asks only at directional forks, 🔶 rethink signals and blockers. `/orchestrate <plan>` runs just the build. |
-
-> Both flows share the same gates and memory-reflection — `/orchestrate` just drives them for you instead of you running each command. The read-only, report-only `/gates:verify-implementation` is also available standalone when you only want the verdict without applying fixes.
+Optional, and only when you need it. Details: [Parallel AI teams](docs/teams/README.md).
 
 ---
 
-## Requirements
+## What you need
 
-**Required:**
-- [Claude Code](https://claude.com/claude-code) — the CLI tool that drives all slash commands and skills shipped here.
-- Git — for the `/commit`, `/push`, `/pull`, `/release` workflow.
-- [`jq`](https://jqlang.github.io/jq/) — required by the workflow hooks (`guard-memory`, `track-memory-read`, `audit-append`, `guard-push`). Most **fail open silently** without it: the memory-distillation guard never fires, the audit log stays empty, and read telemetry is not recorded — with no error shown. `guard-push` fails open **loudly** (it prints a "secret scan SKIPPED" warning) so the security gap is visible. Install via `brew install jq` / `apt install jq` before relying on those safeguards.
-- [`gitleaks`](https://github.com/gitleaks/gitleaks) *(optional)* — if on `PATH`, `guard-push` runs it as a broader entropy/ruleset pass on top of its built-in baseline scan. Without it the baseline (known-format tokens, private keys, credential files, hardcoded assignments) still applies.
-- [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review**: a second, independent model (GPT-class) reviews work the primary thread produced. Used by `/codex-review` (standalone diff/proposal review), by `/quick-change` (Phase 2, on the plan before any code exists), and as a conditional gate inside `/plan-feature` (Phase 7), `/brainstorm` (Step 8), `/check-implementation` (Step 1.5, on the gate-approved diff), `/architecture-review --codex` (Phase 0, a second independent sweep) and `/orchestrate` (Phase 7 step 0, on the whole run's diff). The conditional gates **skip cleanly** when `codex` is not on `PATH` (each logs one "skipped — codex not on PATH" line, no error), keeping the harness portable; the standalone `/codex-review` instead **hard-stops** with a clear install/login message, since running it without `codex` has no fallback. **`/quick-change` sits between the two:** its review is mandatory in the sense that nothing you can type disables it, but an absent `codex` degrades the run rather than blocking it — the missing opinion is reported on its own line instead of being silently dropped. Install + `codex login` to activate.
+- [Claude Code](https://claude.com/claude-code) (tested on 2.1.257), Git and [`jq`](https://jqlang.github.io/jq/).
+- *Recommended:* the [Codex CLI](https://github.com/openai/codex) for cross-model review. Without it,
+  everything works, just without the second opinion.
+- *Optional:* Jira (through the Atlassian MCP server), Node.js for a few helper scripts.
+- *For AI teams:* the Codex CLI, Python 3.9+ and tmux.
 
-**Optional (per integration):**
-- **Jira Cloud + `mcp-atlassian`** — only needed if you plan to use the `/jira` skill, or to feed Jira issues into `/test-e2e CS-1`. The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
-- **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
-- **MCP Playwright** — only needed if you plan to use `/test-e2e` for browser-driven E2E test generation. See [MCP Playwright setup](#mcp-playwright-optional) below.
+## Get started in 5 minutes
 
-That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/setup:create-CLAUDE_MD` adapts to whatever you initialize).
-
-### Recommended MCP servers
-
-These three MCP servers extend the shipped commands. Install only what you actually use.
-
-| MCP | What it does | Repo | Used by |
-|-----|--------------|------|---------|
-| **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/architect` stack research, `/brainstorm` for new deps) |
-| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, UI checks in `/gates:verify-implementation` |
-| **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira` skill, `/prime-ba`, `/test-e2e CS-1` |
-
-**Quick install (Claude Code CLI):**
+New project. Click Use this template on GitHub, or:
 
 ```bash
-# context7 — no credentials required
-claude mcp add context7 -- npx -y @upstash/context7-mcp
-
-# playwright — no credentials required
-claude mcp add playwright -- npx -y @playwright/mcp@latest
-
-# mcp-atlassian — declared in the committed .mcp.json; needs credentials in .env
-#   (see "Jira integration (optional)" below)
+gh repo create my-app --template mrozmk/AI_Coding_Starter --private --clone
+cd my-app && claude
 ```
 
-After installing, restart your Claude Code session so the new MCP tools register. Verify with `claude mcp list`.
+Then, inside Claude Code:
 
-For canonical install commands, env-var configuration, and version pinning, follow the linked repos.
-
-### Jira integration (optional)
-
-The committed `.mcp.json` declares the `atlassian` server and reads its credentials from `.env` (`--env-file .env`). To activate Jira:
-
-1. Answer **Jira: yes** in `/setup:start` — it activates the Jira block in `.env.example` (or uncomment it by hand). Then copy the template: `cp .env.example .env && chmod 600 .env`
-2. Fill in your Atlassian credentials in `.env` — `JIRA_URL`, `JIRA_USERNAME` (your Atlassian email), `JIRA_API_TOKEN` (generate at <https://id.atlassian.com/manage-profile/security/api-tokens>).
-3. Restart Claude Code — the MCP server loads `.env` at startup, not per call. Repeat after every edit of `.env`.
-4. Optionally export `JIRA_DEFAULT_PROJECT=<KEY>` in your shell so commands like `/jira create` and `/prime-ba` skip the project prompt.
-
-`.env` is gitignored — credentials never leave your machine; `.mcp.json` holds no secrets, so the server list stays shared and synced via `/maintain:sync-from-starter`. If you skip this, the `/jira` skill simply hard-stops with a clear error message; nothing else breaks.
-
-### MCP Playwright (optional)
-
-Required only if you use the `/test-e2e` command. The starter uses Microsoft's [playwright-mcp](https://github.com/microsoft/playwright-mcp):
-
-```bash
-claude mcp add playwright -- npx -y @playwright/mcp@latest
+```text
+/setup:start
 ```
 
-Once installed, `/test-e2e` can drive a real browser to explore your UI and generate Playwright test files. If you skip this, `/test-e2e` falls back to a degraded mode (plan derived from code/spec inspection) instead of failing.
+> New to this? The [tutorial](docs/TUTORIAL.md) walks through a whole project, from an empty
+> folder to the first commit.
 
 ---
 
-## Quick start
+## Documentation
 
-> **Bootstrap chain:** `/setup:start` → it prints the rest, in order, for your kind of project.
->
-> Each command produces a concrete artifact and feeds the next one. Running them in the printed order keeps `docs/PRD.md`, `.agents/memory/project-brief.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, and `.agents/specs/` mutually consistent.
+| Read | When |
+|---|---|
+| [Tutorial](docs/TUTORIAL.md) | First time: a full project walkthrough |
+| [Framework guide](.claude/docs/guide.md) | How to use every command, the daily flows, configuration, permissions |
+| [Parallel AI teams](docs/teams/README.md) | Scaling up: several AI teams working on tickets at once |
+| [`CLAUDE.md`](CLAUDE.md) · [`AGENTS.md`](AGENTS.md) | The rules Claude and Codex follow in this repo |
 
-### 0. Run `/setup:start`
+## License
 
-Open `claude` in the fresh clone and run `/setup:start`. It asks seven plain-language questions (language, new or existing code, where the repo is hosted, how code reaches `main`, Jira, Confluence, Codex), writes `.claude/project-profile.json`, prepares `.env.example` / `.mcp.json` / the `CLAUDE.md` branch model, offers to remove the command groups you will never use, and prints the numbered list of what to run next. The detailed steps below are that list, explained.
-
-### 1. Create a new project from this template
-
-This repo is a **GitHub template** — pick whichever method you prefer:
-
-**Option A — GitHub UI (recommended):**
-
-1. Go to <https://github.com/mrozmk/AI_Coding_Starter>
-2. Click **"Use this template"** → **"Create a new repository"**
-3. Name it, choose visibility, create
-4. Clone it locally: `git clone <url-of-new-repo> my-new-project && cd my-new-project`
-
-**Option B — `gh` CLI (one-liner):**
-
-```bash
-gh repo create my-new-project --template mrozmk/AI_Coding_Starter --private --clone
-cd my-new-project
-```
-
-Use `--public` instead of `--private` if you want a public repo.
-
-**Option C — manual clone (no GitHub account needed):**
-
-```bash
-git clone https://github.com/mrozmk/AI_Coding_Starter my-new-project
-cd my-new-project
-rm -rf .git
-git init
-```
-
-All three give you the same result: a fresh project with starter scaffolding and clean git history.
-
-### 2. Drop raw materials (optional)
-
-If you already have briefs, transcripts, sketches, PDFs, or any written materials describing the product — drop them into [.agents/sources/](.agents/sources/). Both `/discover` and `/setup:createwikillm` will pick them up automatically as input context.
-
-> **Next step:** once the materials are in place, run `/discover` (step 3 below) — it reads `.agents/sources/` automatically and uses its contents alongside the conversation. Requirements that already exist elsewhere (a spreadsheet exported to CSV, a brief) go in with `/discover --import <path>`.
-
-### 3. Define the product
-
-```
-/discover                          # BA interview — or start from a one-line idea: /discover <idea>
-/discover --import reqs.csv        # existing requirements become id'd entries; questions only for gaps
-```
-
-> Run `/prime` first. A business-analysis interview before any design: it derives what it can from `.agents/sources/` and the repo, then asks only the gaps — short rounds of ≤5 questions, each with a **Recommended** answer first — until problem, measurable outcome, appetite and the critical flow are clear. It writes two files: `docs/discovery.md` (coverage, clarifications log, flows, business rules, glossary, entities, assumptions, open questions, risks) and `docs/PRD.md` (goals, EARS requirements, NFRs, scope). Every statement gets a stable id (`G-n`, `R-n`, `NFR-n`, `BR-n`, `FL-n`, `A-n`, `Q-n`) that the backlog, specs and `/qa-verify` trace back to. An independent critic (`start-critic`) grades the result and Codex reviews it once. Architecture and stack are left to step 4.
-
-### 4. Decide the architecture and the stack
-
-```
-/architect                         # project-level — subdomains, decisions, stack
-/architect --stack realtime        # focused stack research on one area
-```
-
-> Run this **after** `/discover`. Classifies the subdomains (core / supporting / generic) from the discovery evidence, decides each bounded context on fixed dimensions (one `AD-n` row per decision, deferred cells named honestly), and chooses the stack by structured web research over 2–3 candidates. Writes `docs/architecture.md` (subdomains, context map, `## Decisions`, stack + research, NFR map) and `docs/map/system.yaml` (the machine-readable map the backlog's `Node` cells point at); the PRD's architecture and stack sections become a digest of it, and `.agents/memory/decisions.md` gets one pointer per active decision. Judged by the same independent critic + one Codex review.
->
-> **UI-heavy product?** `/design-ui` after `/architect` for the critical flow's key screens — optional, never a gate.
-
-### 5. Distill the PRD into a fast-load brief
-
-```
-/maintain:refresh-brief   # only standalone LATER, after substantial PRD changes
-```
-
-> `/setup:start` prints when to run it (after `/architect`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty.
->
-> Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
-
-### Optional: Map the delivery before brainstorming feature by feature
-
-```
-/setup:create-backlog
-```
-
-> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. **For multi-phase projects only — skip it for a small one.** Reads the PRD (plus `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present) and writes `.agents/backlog.md`: a **delivery map** of **Epics → Tasks** — user stories or technical tasks, each sized `M` (4 pts), `H` (8) or `XH` (16; anything bigger is split), points summed to the Epic, with acceptance criteria carrying ids (`E1-2.AC1`) and traces to the PRD/architecture ids. A small **sequential Wave 0** foundation (scaffold `E0-1`, schema, contracts) comes first; after it the Tasks are cut into **parallel lanes for 2, 3 and 4 developers**, and a **story map** marks the **walking skeleton** — the thinnest set of Tasks that covers the critical flow end-to-end. `node .claude/lib/backlog-check.mjs --write` validates ids, the DAG, sizes and trace coverage, then fills in the lanes and the story map. Each Task = one `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) cycle — the layer between the PRD and the per-feature plan's `## Execution Plan`.
->
-> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira mirrors it with `/jira sync` — one-way, create-only (Epics and Tasks, with parent, labels, estimate and `Blocks` links), each Jira key written back into the Task's `Jira` cell; it never updates, transitions or deletes an issue. Jira then owns only the workflow status of synced Tasks; structure, order and sizes stay in the backlog — never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* Task (Status `TODO`, all `Depends on` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
->
-> It's the input to `/brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
->
-> **Brownfield:** run `/setup:map-codebase` first (it reconstructs the PRD), then this. **Maintenance:** when the backlog exists, `/plan-feature` ticks a Task to `WIP` + records the spec/plan `Ref`, and `/orchestrate` ticks it to `DONE` — automatically and only if the file is present. Re-shaping the DAG is a deliberate manual edit, never a pipeline side-effect.
-
-### 6. Initialize project rules (after first scaffolding)
-
-```
-/setup:create-CLAUDE_MD
-```
-
-> Run this **after** you have at least some scaffolding — in the routed sequence the scaffold is the first backlog task (`E0-1`), built through steps 7–9 below. Then run `/setup:start --rerun` once (it fills the toolchain preflight in `check-project-deps.sh` and declares the LSP plugin for the stack now that a manifest exists — run the install commands it prints and `/reload-plugins`) and this command. It analyzes the codebase to extract real patterns — on a truly empty repo it has nothing to read. The seed `CLAUDE.md` already ships with language rules, knowledge-layer routing, and security defaults, so you are not blocked without this step.
->
-> It reads the branch model and language from `.claude/project-profile.json` (written by `/setup:start`) instead of asking again, and refuses to silently overwrite a `CLAUDE.md` value that was edited by hand. **Safety net:** if `project-brief.md` is still empty and a `docs/PRD.md` exists, it runs the PRD→brief step itself first (skipped when the brief is current).
->
-> **Adopting into a large existing codebase (brownfield)?** Don't run this alone — run [`/setup:map-codebase`](.claude/commands/setup/map-codebase.md) instead. It fans out parallel analysis sub-agents (distilled summaries, no context flooding), produces `architecture.md` + a reconstructed `docs/PRD.md`, and cascades into `/maintain:refresh-brief` and `/setup:create-CLAUDE_MD` — the whole Phase-1 AI layer in one guided run with two review checkpoints.
-
-It generates **three files** in tandem:
-- `CLAUDE.md` — slim rules file (hard cap ≤165 lines / ≤9 500 chars), filled with project overview, tech stack, commands, conventions
-- `.agents/memory/architecture.md` — full directory map, module roles, naming rules (loaded on demand, not in every conversation)
-- `README.md` — the project's human-facing README. On the **first run** this also moves the starter's framework guide to `.claude/README.md` (see [below](#the-root-readme-is-yours--the-framework-guide-moves-aside)).
-
-The CLAUDE/architecture split keeps `CLAUDE.md` cheap to load every session while preserving the detailed map.
-
-### 7. Design a feature
-
-```
-/brainstorm <feature idea>
-```
-
-Explores requirements, proposes 2-3 approaches, and writes a design doc to `.agents/specs/YYYY-MM-DD-<topic>.md`. No code is written until the design is approved.
-
-### 8. Plan the implementation
-
-```
-/plan-feature          # picks up the newest spec from .agents/specs/
-/plan-feature .agents/specs/2026-04-19-my-feature.md   # or point at a specific spec
-```
-
-Reads the approved spec, analyzes the codebase, and — **only if** the spec declares `External docs required: yes` — performs a web-research phase for the libs/APIs listed in the spec's `External dependencies`. Writes a step-by-step plan to `.agents/plans/active/`.
-
-### 9. Execute
-
-```
-/execute
-```
-
-Runs the active plan. Moves it to `.agents/plans/done/` when complete.
-
-> If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
->
-> Run `/gates:verify-implementation` after `/execute` to validate the plan was satisfied — checklist coverage, quality gates, semantic review, and (for UI) design compliance. Reports only; no code changes.
-
-### 10. Commit
-
-```
-/commit
-```
-
-Conventional-commit message, plus a memory checkpoint — captures any lessons, decisions, or patterns worth keeping in `.agents/memory/`.
-
----
-
-## Daily workflow
-
-| Command | When to run |
-|---------|-------------|
-| `/setup:start [--rerun]` | Once, right after cloning (or adopting the harness into an existing repo): interview → `.claude/project-profile.json` → day-one config → optional command pruning → the ordered list of next commands. `--rerun` to change answers. |
-| `/confluence <url \| id \| search \| new "Title" \| publish <draft>>` | Reading or authoring Confluence pages — same MCP server and token as `/jira` (`CONFLUENCE_*` in `.env`). Authoring is local-first: draft in `.agents/handoffs/confluence-drafts/`, publish only on explicit `y`. |
-| `/pr-create [KEY]` | Work is committed and ready for review — pushes via `/push`, derives title/dest/merge strategy from the tracker + Branch model, fills the repo's PR template honestly, prints the create-PR URL. Never opens or merges the PR. |
-| `/pr-comments [KEY]` | Reviewers left comments on your PR (GitHub / Bitbucket / GitLab, detected from `origin`) — pulls the threads, triages which still need you, proposes a reply + optional fix per thread, posts only on a per-thread `y`. Never resolves threads, never commits. |
-| `/start-task <KEY>` | Starting a tracker issue — fetches it, proposes `<type>/<KEY>-<slug>` (confirmed), cuts the branch off the fresh base from the Branch model, then runs `/prime` + `/brainstorm <KEY>`. Soft-fails to a typed title when the tracker MCP is absent. |
-| `/hc [focus]` | A long session, before the prompt cache goes cold — `/compact` with state-keeping instructions (background work, decisions, tickets, production state, the next step). The bundled `cache-handoff` mod also shows the context size + cache warmth in the status line, offers a **Compact (/hc)** band from 500k tokens, and runs `/hc` by itself when the session is idle and the cache is about to expire. |
-| `/prime` | Start of every session — quick mode: loads `CLAUDE.md` + `index.md` + `project-brief.md` + `architecture.md` + listings only. Cheap and sufficient for most sessions. |
-| `/prime full` | When returning to a project after a long break or starting deep multi-area work — also loads `patterns.md`, `decisions.md`, `api.md`, `errors.md`, all `domain/*`, `reference/`, `specs/`. |
-| `/prime-ba` | When working as a Business Analyst on stories/backlog — loads PRD, specs, Jira backlog (no implementation context). Independent from `/prime`. |
-| `/prime-qa` | When verifying acceptance criteria against a running system — loads `errors.md` + `domain/*` + the QA evidence taxonomy, then runs an injected environment preflight (host reachability, build skew, credentials presence, parallel-session safety) that resolves `BASE_URL` deterministically. Deliberately **never** reads `specs/` or `plans/`: the author's intent biases the verdict toward what was meant rather than what shipped. Configure hosts in `.claude/qa-env.json`. Self-contained — do not run `/prime` first. |
-| `/qa-verify [key\|spec\|task-id]` | After `/prime-qa`, to verify what shipped against its **acceptance criteria** (not against the plan — that's `/check-implementation`). A router: it assigns each AC a stable id, classifies it into an *evidence family* ([.agents/reference/qa-evidence-families.md](.agents/reference/qa-evidence-families.md)), dispatches that family's verifier, grills every FAIL for a second independent method, and writes a per-AC verdict matrix to `.agents/handoffs/` that a human signs row by row. Stops for approval after classification — nothing runs before that. **Phase A ships one verifier**: the browser-free static `qa-contract`; every other family's verifier (including the rest of lane P, e.g. `qa-config`, plus the browser `S` and design `I` lanes) is declared in the registry and **guarded** — its ACs route to `NEEDS-HUMAN` with the missing verifier named, derived from a live `ls` of `.claude/agents/`, never from a hand-maintained column. Never mutates: on a defect it records a FAIL and keeps verifying. |
-| `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
-| `/discover [idea] \| --import <path>` | Once at the start of a product (and again when scope shifts — every existing id is preserved) — BA interview or import of existing requirements → `docs/discovery.md` + `docs/PRD.md` with stable ids, judged by an independent critic. |
-| `/architect [--stack <area>]` | Once after `/discover` — subdomains, per-context decisions (`AD-n`), stack → `docs/architecture.md` + `docs/map/system.yaml`; ad-hoc later with `--stack <area>` for focused research (`--stack realtime`, `--stack auth`). |
-| `/jira sync` | After `/setup:create-backlog` (and after each structural backlog edit) on a Jira team — mirrors Epics/Tasks into Jira create-only, writes the keys back into the backlog's `Jira` cells. Never updates, transitions or deletes issues. |
-| `/setup:map-codebase` | **Brownfield bootstrap** — adopting the workflow into a large existing codebase that never had AI. One run: parallel fan-out comprehension (distilled summaries, no context flooding) → `architecture.md` + reconstructed `docs/PRD.md` → cascades into `/maintain:refresh-brief` + `/setup:create-CLAUDE_MD`. Two review checkpoints (scope; PRD validation). See [.claude/commands/setup/map-codebase.md](.claude/commands/setup/map-codebase.md). |
-| `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
-| `/maintain:sync-from-starter [--check\|<ref>]` | Pull newer workflow definitions from the upstream starter (commands, agents, skills, hooks, config) without touching project knowledge. 3-way aware via a committed `.claude/.starter-sync.json` provenance manifest; recommends but asks on `settings.json`/hook conflicts. `--check` = dry-run only; `<ref>` = pin to a tag. See [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md). |
-| `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Five sequential phases: (1) reference integrity check across 6 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs, the `CLAUDE.md` section contract; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files, `CLAUDE.md` over its cap or carrying narrative that belongs in memory; (4) workflow optimization audit — systemic drift in the workflow itself (stale auto-loads, internal contradictions, unbounded automation, config gaps); (5) `CLAUDE.md` diet — opt-in, per-paragraph: moves history and rationale into `decisions.md` / `errors.md` / `reference/` and leaves a one-line pointer, measuring before and after. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phases 3–4, consent per move in Phase 5. |
-| `/retro` | At the end of a long or frictional session, before `/clear` — generates an **evidence-based** session retrospective from the session's `.jsonl` transcript (paths, counts, tool-call refs, timestamps; no opinions or self-assessment). Refuses to write when the session was trivial or friction-free (`<15` tool calls, `<5` min, or zero friction signals) — `--force` overrides loudly. Saves one `.md` under `.agents/retros/` (or `.claude/retros/`); never touches code or repo state. Output feeds `/maintain:cleanup-workflow`. Flags: `--dry-run`, `--force`, `--transcript <path>`, `--slug <kebab>`. |
-| `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
-| `/simply [topic]` | Re-explains what just happened in plain language — what I did / did it work / what now, in the project's communication language. No new work, no file edits, no memory writes; empty argument defaults to the immediately preceding work. |
-| `/gates:check-quality` | Before committing — format, lint, type-check, file-size gates. |
-| `/gates:verify-implementation [plan-name]` | After `/execute` finishes a plan — validates checklist completion, runs quality gates from `CLAUDE.md → Validation` (or stack-detected fallback), performs language-aware semantic review (TypeScript-first; sections gated on detected stack), and verifies design compliance for UI plans. Reports only — does not modify code. |
-| `/check-implementation [plan-name]` | The **full** quality loop after `/execute`: `code-review --fix` (correctness) → `deep-review` (structural cleanup) → `gates:verify-implementation` (read-only gate), looping up to 3× until the gate approves — then a one-shot **codex cross-model review** of the approved diff (Step 1.5, only if `codex` is installed; judge-only, findings go through the fixer) — then stopping for `/commit`. Unlike `/gates:verify-implementation` it **applies** fixes; unlike `/orchestrate` it does not commit/push. The same loop `/orchestrate` runs per-step (Step 5.1b). |
-| `/quick-change <what to change>` | **The fast lane for small changes** — when `/brainstorm → /plan-feature → /execute` is too heavy but "just do it" is too risky. Short plan in chat (no spec, no plan file) → **`codex` reviews the plan before any code exists** (idea mode) → implement → `/code-review` at low effort → `/deep-review` → the `CLAUDE.md → Validation` gates. The review is **mandatory — there is no opt-out flag**; it is skipped only when `codex` is not installed, and the report says so on its own line. A Phase 0 guard always fires when the change touches a sensitive path, spans >~5 files, adds a dependency, changes a schema/contract, or needs a design reference — it names the criterion and recommends the real route, and you may override it. Writes nothing to `.agents/`, never commits. |
-| `/codex-review [idea\|diff] [hint]` | **Independent cross-model review** — hands the current work to `codex` (a different model) for a review steered by zero opinions, then judges its findings honestly back in the main thread. Two modes, auto-detected: **`diff`** reviews CHANGES already made (uncommitted/unpushed work), **`idea`** reviews a PROPOSAL before any code is written. Codex orients itself by replaying `/prime`, runs detached with a heartbeat every ~3 min, and only advises — you decide what to apply. Requires `codex` on `PATH` (see Requirements); hard-stops with a clear message if absent. |
-
-Harness files should have an owner — route `.claude/**`, `.agents/**` and `CLAUDE.md` to a tech lead in CODEOWNERS, so a change to the rules gets a rules-owner review (`/setup:start` prints the stanza).
-
----
-
-## Team supervision (opt-in)
-
-For projects that run several AI **teams** in parallel on one machine. A team is a permanent git clone that runs a ticket through a fixed pipeline of fresh role sessions (planner → coder → qa → wrapup, or one `cli` role), driven by a shell runner in tmux. **Supervision roles** watch the teams:
-
-- a **Supervisor** that talks to you, merges within the gate and starts teams;
-- a **TeamLead** that decides every team question except two short lists;
-- an **Advisor**, with an optional second-vendor **Reviewer**, for contract, schema, AC, sensitive-path and harness-rule questions.
-
-You are asked only for a short critical list and for actions only a human may click.
-
-Scripts, not prompts, enforce the routing, the binding of each answer to the exact prompt, tier refusals, the merge gate and the alarms.
-
-It is off until you opt in. `/setup:teams` installs the team layer and the agent-mail channel into a project. `/start-team` provisions and starts a team, and `/monitor` supervises it. Everything project-specific is configuration in `.claude/project-profile.json` → `teams` (`teams.channel` for names, `teams.policy` for policy) and never a default.
-
-- Setting it up: run `/setup:teams <path to this starter clone>` in **your project's** root, then follow [`docs/teams/09-setup.md`](docs/teams/09-setup.md) (fresh machine or one that already runs the channel, the profile from `.claude/project-profile.json.example`, the operator kit).
-- Human overview: [`docs/teams/`](docs/teams/README.md): decision model, pipeline, escalation, permissions, operator kit, follow-ups.
-- The contracts the agents follow: `.agents/reference/team-*.md`, `escalation-fallback.md`, `agent-mail.md`.
-- What is implemented vs verified on which host: `docs/teams/capabilities.md`, written by the acceptance run.
-
-## Orchestration internals — how the agent-spawning commands work
-
-Three commands do heavy multi-step work. They use **two different orchestration mechanisms** and spawn different agents per role. This section spells out exactly what runs, when, why, and at which effort.
-
-### Model & effort strategy (shared across the pipeline)
-
-**One model everywhere — Opus 5 — and effort chosen per role.** Effort cannot be passed at spawn time (the `Agent` tool takes `model`, not `effort`), so it lives in each agent's frontmatter; that is also why the harder executor tier is a separate agent file rather than an argument. The rule is **lower the effort for doers, never for gates**: a false "pass" from a weakened audit lets a defect onto `main` and costs more than every token it saved.
-
-| Role | Agent | Effort | Mutates? | Why |
-|------|-------|--------|----------|-----|
-| Orchestrator (your session) | — (the `/orchestrate` driver) | your interactive session's setting | no (decides/routes) | needs the most judgment — it loops, gates, escalates |
-| Execute a plan | `orchestrator-executor` | `low` (`acceptEdits`) | ✅ code | implementation against a plan that already did the thinking |
-| Execute a hard step | `orchestrator-executor-hard` | `medium` (`acceptEdits`) | ✅ code | same contract, more reasoning — spawned when the plan marks the step `medium` |
-| Refine (bugs + cleanup) | `orchestrator-refiner` | `low` (`acceptEdits`) | ✅ code | runs `code-review --fix` + `deep-review` |
-| Verify (code gate) | `orchestrator-verifier` | **`high`** | ❌ read-only | the gate must be sharp; independence from the fixer |
-| Design parity | `orchestrator-designer` | **`high`** | ❌ read-only | pixel/structural audit vs reference design |
-| Design critique | `design-critic` (Fable) | **`high`** | ❌ read-only | judges `/design-ui` mockups from rendered screenshots — the author fixes, the critic never edits |
-| Start-phase critique | `start-critic` (Fable) | **`high`** | ❌ read-only | judges `/discover` and `/architect` artifacts against their rubric — the author fixes, the critic never edits |
-| Commit | `orchestrator-committer` | `low` (`acceptEdits`) | ✅ git index | purely mechanical stage+commit |
-| Doc sync | `documentation-manager` | `low` | ✅ docs | only on `/orchestrate --sync-docs` when docs would drift |
-
-> **Difficulty travels in the plan, not the terminal.** `/plan-feature` writes `**Execution effort:** low | medium` into a single-file plan's header, or an `Effort` cell per row in an umbrella plan's `## Execution Plan` table. `/orchestrate` reads that to choose between `orchestrator-executor` and `orchestrator-executor-hard`. Changing the pinned model means editing `model:` in `.claude/agents/*.md` — a deliberate sync point, so the pipeline never silently drifts onto a costlier tier.
-
-> Keeping the **verifier/designer (judges) on a different, read-only setup from the executor/refiner (fixers)** is deliberate — no agent grades its own homework.
-
-> **One deliberate exception:** the `/qa-verify` verifiers (today: `qa-contract`) pin a cheaper Sonnet tier instead of Opus 5 — they run many in parallel per QA run and do bounded static reads, so the per-agent model cost, not judgment depth, dominates.
-
-### `/check-implementation` — in-context quality loop (no fleet)
-
-Drives freshly-written code to **commit-ready**, then stops. Runs **in your own session** (you see every step) — it does *not* spawn an executor fleet; the only thing it spawns is the design gate (to isolate visual-tool output). It **applies fixes** but never commits.
-
-```
-resolve scope (plan | diff-only)
-  └─ loop, max 3×:
-       1a /code-review --fix   (correctness — find & fix logic bugs)
-       1b /deep-review         (cleanliness — structural / maintainability cleanup)
-       1c /gates:verify-implementation   (read-only CODE gate: tests/lint/build + semantic review)
-       1d @orchestrator-designer  ← spawned, Opus 5 high, ONLY if UI changed AND a reference design exists
-       1e decide: approve → done · gaps → feed into next 1a · blocker / 3× → escalate to you
-  └─ 1.5 cross-model review ← codex (different model, read-only judge; only if installed) reads the
-       gate-approved diff cold — surviving findings get ONE fixer pass + re-gate, never a new loop
-  └─ leaves a clean tree → you run /commit
-```
-
-**Why this order:** bugs first (don't polish code you're about to rewrite), cleanliness second, then the read-only gate (it can't invalidate itself), design last (slowest, UI-only). The design gate defaults to **skip** unless the change touches UI *and* a reference design exists.
-
-### `/orchestrate` — idea-to-commit pipeline (brainstorm → plan → build → commit, compacting between stages)
-
-`/orchestrate <feature>` runs `/brainstorm` and `/plan-feature` in **pipeline mode** (no approval or grill-scope questions — the spec is auto-approved with its assumptions listed, the grill applies **All**, a split defaults to densify-or-umbrella) and then the plan runner below, closing with one `chore` commit of the workflow state (plan moved to `done/`, run-log, memory, backlog). Between stages — and between the steps of an umbrella — it writes a handoff marker and ends its turn; the bundled **`stage-handoff` mod** (`.claude/skills/stage-handoff/`, loaded automatically in a trusted project) compacts the session with stage-boundary instructions and resumes it with `/orchestrate --resume`. State lives in `.claude/orchestrate-run.json`, so a resumed stage reads the spec and plan from disk, not from the summary. `--abort` retires a run. It interrupts you only for a directional fork, a 🔶 rethink signal, or a blocker; every answer is recorded so no stage re-asks.
-
-**The plan runner** (`/orchestrate <plan-path>`, also Stage 3 of the pipeline) is the only part that takes a plan all the way to **pushed**. Your main session becomes the **orchestrator**: it decides / routes / loops / reports and performs the `git push` itself (push authorization lives in your session, not in sub-agents) — but it never implements, audits, or commits. Each of those is a sub-agent.
-
-**Per step** (sequential; flat = one plan, umbrella = a DAG of steps each in its own git worktree on a named branch, fast-forward-merged to `main`):
-
-```
-5.1  Execute       → @orchestrator-executor   (Opus 5 low; the plan's Effort column routes `medium` steps to @orchestrator-executor-hard)
-5.1-recon          → orchestrator re-derives the facts itself (independent ground-truth, before trusting any report)
-5.1b Refine        → @orchestrator-refiner     (Opus 5 low — code-review --fix + deep-review)
-5.2  Verify   ≤3×  → @orchestrator-verifier    (Opus 5 high, read-only)          ┐ GAPS loop back
-5.3  Design   ≤2×  → @orchestrator-designer    (Opus 5 high, read-only)          ┘ into the next Refine/Execute
-       (5.3 runs ONLY if .agents/specs/design/Ready/ exists)
-5.4  Commit        → @orchestrator-committer   (Opus 5 low) → clean-build gate
-5.4b Push          → orchestrator (your session) — git push, ff-merge the step branch to main
-─ once, end of run ─
-7.0  Cross-model   → codex (different model, read-only judge; only if installed) reviews the whole
-     review          run's diff cold — surviving findings get ONE refine→verify→commit cycle
-```
-
-**Looping & escalation:** verifier/designer GAPS feed back into the next refine/execute pass; it loops fixes on its own and **escalates to you only on a real blocker** (Phase 6) — never asks "continue?" mid-loop. On completion (Phase 7) an independent codex pass cross-reviews the whole run's diff (step 0, only if `codex` is installed — surviving findings get one refine→verify→commit cycle), then it moves the plan + a durable run-log to `plans/done/`; with `--sync-docs` it spawns `@documentation-manager` and commits a `docs:` follow-up.
-
-> `/check-implementation` ≈ the 5.1b→5.2 slice of `/orchestrate`, run inline in your session without the commit/push. Use `/check-implementation` when you want to drive + review; `/orchestrate` when you trust the pipeline to ship.
-
-### `/setup:map-codebase` — Workflow fan-out (a different primitive)
-
-Brownfield comprehension uses the **`Workflow` engine**, not the Agent-tool fleet above — a deterministic script with a hard concurrency cap and token budget. Your session drives the **interaction + sequencing** (the two checkpoints, the cascade); the Workflow runs the **parallel compute**.
-
-```
-Phase 0  Scan & filter        (deterministic bash, NO LLM — git ls-files -z, categorize, import-graph in-degree)
-   🛑 Checkpoint 1 — confirm scope (what's analyzed / skipped)
-Phase 1  Fan-out (parallel, concurrency-capped at min(16, cores−2)):
-            N × module-analyzer   (one per module — schema-validated summary, NEVER raw source)
-            docs-analyzer         (README/docs/ADRs → decisions, patterns, the "why")
-            infra-analyzer        (IaC/CI → hosting, deployables, external services)
-Phase 2  Synthesis (from summaries only — never re-reads code):
-            architecture-synthesizer  → architecture.md (+ topology + Mermaid map)
-            reverse-prd-writer         → docs/PRD.md
-            data-model-synthesizer     → domain/data-model.md (if persistence)
-   write artifacts
-   🛑 Checkpoint 2 — validate the reconstructed PRD
-Phase 4  Cascade → /maintain:refresh-brief → /setup:create-CLAUDE_MD
-```
-
-**Anti-flooding contract:** analyzers return distilled summaries, never file contents — so codebase size scales the *number of agents*, not the aggregator's context. Workflow agents inherit your **session model**; the script never holds source code.
-
----
-
-## When to run `/setup:createwikillm`
-
-`/setup:createwikillm` bootstraps a persistent, synthesized knowledge base (Karpathy's LLM Wiki pattern). It is **not** part of the minimal flow — run it only when the signals below match your project.
-
-**Run it when:**
-- You have **≥ 3-5 matured specs in `.agents/specs/`** or completed plans in `.agents/plans/done/`, and the same knowledge keeps resurfacing across features.
-- You are building a **product-facing LLM** (chatbot, runtime assistant, agent) that needs synthesized domain knowledge injected into its context at query time.
-- **`.agents/sources/` is a large corpus** (many transcripts, patch-notes, documentation files) that will not fit into a single prompt and benefits from pre-synthesis.
-- `.agents/memory/` entries are **drifting into long narratives** instead of short, actionable lessons — that is a signal you need a wiki layer.
-
-**Skip it (and stay with `memory/` + `reference/`) when:**
-- The repo is **fresh**, with no specs or completed plans yet.
-- The project is **small / single-feature** — memory files are enough.
-- There is **no product-LLM** consuming the wiki at runtime, and `.agents/sources/` is empty or ephemeral.
-- You would be maintaining it "just in case" — an unused wiki rots faster than it helps.
-
-If in doubt: do **not** run it. You can always add `/setup:createwikillm` later; removing an unused wiki after the fact is more work than adding one when you actually need it.
-
----
-
-## Design principles
-
-- **KISS, YAGNI, SOLID** — write the simplest thing that works
-- **Fail fast** on programmer errors; degrade gracefully on user/env errors
-- **Read memory before acting** — `.agents/memory/` is permanent project context
-- **Design before building** — `/brainstorm` is a hard gate before implementation
-- **Commits tell a story** — conventional commits via `/commit`, no AI attribution unless asked
-
-Full rules live in [CLAUDE.md](CLAUDE.md).
-
----
-
-## Permissions & safety
-
-`.claude/settings.json` ships a security-first policy:
-
-- **Git:** AI may run non-destructive operations — `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `describe`, `rev-parse`, `ls-remote`, `remote get-url`, plus `revert` (only ever adds a new commit) and `merge --ff-only` (no merge commit, no history rewrite) — via the shipped [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) / [/release](.claude/commands/release.md) / [/commit](.claude/commands/commit.md) skills. The rest sits in two guard tiers (full lists in `settings.json`): **denied** — no prompt can override — are `push --force`/`-f`/`--force-with-lease`, `reset --hard`, `clean -f*`, `checkout -- *`, `restore .`/`--staged`, `rebase` (incl. `pull --rebase`), `cherry-pick`, `config`, `remote remove/set-url/rename`, `reflog expire`, `gc --prune=now`/`--aggressive`; **ask-tier** — always prompts, even in auto mode — are `git rm`, `branch -d`/`-D`, `merge --no-ff`/`--squash`, `remote add`, `rm -rf`. A bare `git merge` and `git reset` soft/mixed are in no list — they prompt interactively.
-- **Secrets:** `.env*`, `*.pem`, `*.key`, `*secret*`, `*credentials*` — write/edit denied.
-- **Inline tokens in shell:** `Bash` denies any command containing known secret prefixes (`ATATT`, `ghp_`, `github_pat_`, `gho_`, `ghs_`, `ghu_`, `xoxb-`, `xoxp-`, `xapp-`, `xoxa-`, `AKIA`, `ASIA`, `sk-ant-`) — defense-in-depth so a literal token never gets cached in `permissions.allow` after an "Always allow" click.
-- **Secrets in pushed content:** the `guard-push` hook scans every `git push` for secrets in the commits about to be published — closing the gap the deny-prefixes leave open (a token in file *content*, not in a shell command). It blocks (exit 2) on known-format tokens, private keys, credentialed connection strings, hardcoded credential assignments, and credential files (`.env`, `*.pem`, `*.key`, `.npmrc`, `*.tfstate`, …); uses `gitleaks` for a broader pass if installed. Escape hatches: inline `# guard-push:allow`, `*.example` files, or `GUARD_PUSH_SKIP=1 git push` (logged to `audit.log`). See [/push](.claude/commands/push.md).
-- **Dangerous shell:** `sudo` — denied; `rm -rf` — ask-tier (always prompts).
-- **Hooks:** PreToolUse hooks append a timestamped audit trail to `.claude/audit.log` (gitignored).
-
-User-local overrides live in `.claude/settings.local.json` (gitignored) — Claude Code writes new "Always allow" approvals there by default, keeping per-session permissions out of the committed `settings.json`.
-
----
-
-## Customizing the starter
-
-- Edit `CLAUDE.md` placeholders after `/setup:create-CLAUDE_MD` runs — add project-specific rules, naming conventions, key files.
-- Add reference docs to `.agents/reference/` as you integrate new APIs/libraries.
-- Drop in new slash commands under `.claude/commands/` — they appear automatically.
-- Tighten or loosen `.claude/settings.json` permissions to match your risk profile.
-- **Sync workflow with upstream** — when this starter ships new commands or updated skills, refresh `.claude/` and the `.agents/` framework in a downstream project without touching your project's memory, specs, plans, or `CLAUDE.md`. Run the command:
-
-  ```
-  /maintain:sync-from-starter            # full run: dry-run → approval → apply
-  /maintain:sync-from-starter --check    # report what would change, write nothing
-  /maintain:sync-from-starter v2.1.0     # pin to a specific starter ref
-  ```
-
-  It clones the upstream starter to `/tmp`, classifies every file into three buckets — **A** overwrite (commands, agents, skills, templates, **hooks**, `.claude/README.md`), **B** merge with a diff (`settings.json` permissions, `index.md`, `.gitignore`, `memory-domains.json`, `.editorconfig`, `.mcp.json`, `.env.example`), **C** never touch (your `CLAUDE.md`, `architecture.md`, append-only memory, specs, plans, root README, `LICENSE`, code) — then shows a **dry-run report and waits for your approval before writing anything**, and finally proposes a `chore(workflow): sync …` commit. It tracks provenance in a committed `.claude/.starter-sync.json` so repeated syncs become true **3-way merges** (telling intentional local edits from staleness, detecting upstream-deleted files), and on real `settings.json`/hook conflicts it **recommends but asks** rather than overwriting. Authoritative file classification and flow: [.claude/starter-sync-playbook.md](.claude/starter-sync-playbook.md); command: [.claude/commands/maintain/sync-from-starter.md](.claude/commands/maintain/sync-from-starter.md).
-
----
-
-## The root README is yours — the framework guide moves aside
-
-A single root `README.md` can't serve two audiences at once: visitors to the *starter repo* want
-to read about the framework, but your *project* needs its root README to describe the application.
-The starter resolves this with a one-time **swap on bootstrap**, not a delete:
-
-1. **In the starter repo**, the root `README.md` is this framework guide (so the GitHub template
-   page documents the workflow).
-2. **On your first `/setup:create-CLAUDE_MD`**, the command:
-   - moves this guide to `.claude/README.md` (preserved, framework-owned), and
-   - generates a fresh project `README.md` at the root from `.claude/templates/README-template.md`,
-     filled with your project name, description, tech stack, commands, and structure.
-3. **On later `/setup:create-CLAUDE_MD` runs**, your project README is left alone — it only offers to
-   fill leftover `{placeholder}` markers, never clobbering a customized README.
-
-After bootstrap:
-
-| File | Owner | Updated by |
-|------|-------|------------|
-| `README.md` (root) | **your project** | you / `/setup:create-CLAUDE_MD` placeholder fill |
-| `.claude/README.md` | **the framework** | `.claude/starter-sync-playbook.md` (pulls the starter's newest guide) |
-| `LICENSE` (root) | **your project** | `/setup:create-CLAUDE_MD` bootstrap — you pick the license type + copyright holder |
-| `.claude/STARTER-LICENSE` | **the starter** (MIT attribution, preserved) | `.claude/starter-sync-playbook.md` |
-
-> **`LICENSE` gets the same treatment as the README.** On first `/setup:create-CLAUDE_MD`, the starter's MIT license moves to `.claude/STARTER-LICENSE` (preserving the starter author's copyright notice — MIT requires it to survive in copies of the scaffolding) and a fresh root `LICENSE` is generated for *your* project from the type + copyright holder you choose. Later runs leave your `LICENSE` untouched.
-
-When you sync workflow updates from upstream (see below), the framework guide is refreshed at
-`.claude/README.md` — your project's root README is never touched.
-
----
-
-## Language convention (default)
-
-The starter assumes:
-- Claude ↔ developer: **Polish**
-- Code, comments, commits, technical docs: **English**
-- User-facing UI: **per PRD**
-
-Change this in `CLAUDE.md` → `Language Rules` if your team prefers a different split.
+[MIT](LICENSE)

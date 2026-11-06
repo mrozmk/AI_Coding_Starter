@@ -48,7 +48,7 @@ Every step always follows the same, repeatable rhythm. Look for these four icons
 
 ## Before you start (one-time)
 
-> This tutorial assumes you already have **Claude Code** and **Git** installed. If not — see [README → Requirements](../README.md#requirements).
+> This tutorial assumes you already have **Claude Code** and **Git** installed. If not — see [Framework guide → Requirements](../.claude/docs/guide.md#requirements).
 
 ### Create your own repo from this template and download it
 
@@ -78,7 +78,7 @@ cd my-todo-app
 rm -rf .git
 git init
 ```
-This gives you a fresh, local Git history — but **without** a remote repo. Then in Step 11, before your first `/push`, you'll need to manually create a repo and wire it up (`git remote add origin <url>`). All methods are described in [README → Quick start](../README.md#quick-start).
+This gives you a fresh, local Git history — but **without** a remote repo. Then in Step 11, before your first `/push`, you'll need to manually create a repo and wire it up (`git remote add origin <url>`). All methods are described in [Framework guide → Quick start](../.claude/docs/guide.md#quick-start).
 </details>
 
 ---
@@ -129,7 +129,7 @@ A PRD (Product Requirements Document) describes **what** you're building and **w
 
 Already have the requirements somewhere else (a spreadsheet, a list)? `/discover --import requirements.csv` turns every row into an id'd entry, quotes the original wording, and asks only about what the rows don't answer.
 
-`.agents/sources/` is the project's **input layer** — you drop raw materials here (briefs, transcripts, sketches, PDFs), and commands like `/discover` treat them as input context. Claude **never** modifies them — they're your source material, read-only. Full description: [README → step 3](../README.md#3-define-the-product).
+`.agents/sources/` is the project's **input layer** — you drop raw materials here (briefs, transcripts, sketches, PDFs), and commands like `/discover` treat them as input context. Claude **never** modifies them — they're your source material, read-only. Full description: [Framework guide → step 3](../.claude/docs/guide.md#3-define-the-product).
 </details>
 
 ---
@@ -221,7 +221,7 @@ These are the four pillars of daily work:
 - **`/plan-feature`** — turns a spec into a concrete plan and "interrogates" it itself (self-critique) before writing anything.
 - **`/execute`** — only now is code produced, strictly following the plan.
 
-Each of them has a full description in the README: [Two daily flows](../README.md#two-daily-flows).
+Each of them has a full description in the framework guide: [Two daily flows](../.claude/docs/guide.md#two-daily-flows).
 </details>
 
 ---
@@ -245,7 +245,7 @@ Each of them has a full description in the README: [Two daily flows](../README.m
 <details>
 <summary>💡 TIP — what happened to the original README</summary>
 
-On the first run of `/setup:create-CLAUDE_MD` the template performs a "swap": it moves its framework guide to `.claude/README.md` (it stays available), and creates your project's README at the root. This way your repo's page describes your app, not the template. This tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [README → "The root README is yours"](../README.md#the-root-readme-is-yours--the-framework-guide-moves-aside).
+On the first run of `/setup:create-CLAUDE_MD` the template replaces its landing page with your project's README at the root. This way your repo's page describes your app, not the template. The framework guide stays in `.claude/docs/` and this tutorial (`docs/TUTORIAL.md`) stays untouched. Details: [Framework guide → "The root README is yours"](../.claude/docs/guide.md#the-root-readme-is-yours).
 </details>
 
 ---
@@ -376,7 +376,7 @@ You've just gone all the way: **idea → PRD → stack → design → plan → c
 ```
 It does it all itself: design → plan → write code → clean up → check → commit → push, compacting its own context between the stages and asking you only at a real fork or a real problem. Give it a plan path instead and it starts at the build. That's the "hands-off" path. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
 
-> A full comparison of both paths (manual A and automatic B) and a description of exactly what each command does: [README → Two daily flows](../README.md#two-daily-flows).
+> A full comparison of both paths (manual A and automatic B) and a description of exactly what each command does: [Framework guide → Two daily flows](../.claude/docs/guide.md#two-daily-flows).
 
 ---
 

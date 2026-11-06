@@ -2,7 +2,7 @@
 name: qa-contract
 description: Verify acceptance criteria in the contract / type / boundary evidence family — exported surface, layer direction, external-payload leaks, typed contracts at the construction site. Spawned by /qa-verify in the parallel lane. Read-only — never edits, never fixes.
 tools: Read, Grep, Glob, Bash
-# Deliberate exception to the pipeline's "Opus 5 everywhere" pin (README → Model & effort
+# Deliberate exception to the pipeline's "Opus 5 everywhere" pin (.claude/docs/guide.md → Model & effort
 # strategy): QA verifiers run many in parallel per /qa-verify run and do bounded static
 # reads, so a cheaper tier is the point. No `effort:` — inherits the default.
 model: claude-sonnet-4-6

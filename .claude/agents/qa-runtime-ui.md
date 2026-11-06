@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash, mcp__playwright__*
 # this pattern, or step 3b passes while the spawned agent holds no browser tool at all:
 # exactly the present-agent-absent-tool state the router guards against.
 # Same deliberate exception as qa-contract to the pipeline's "Opus 5 everywhere" pin
-# (README → Model & effort strategy): QA verifiers do bounded observation against a running
+# (.claude/docs/guide.md → Model & effort strategy): QA verifiers do bounded observation against a running
 # app, not open-ended reasoning, so a cheaper tier is the point. No `effort:` — inherits the default.
 model: claude-sonnet-4-6
 permissionMode: default
