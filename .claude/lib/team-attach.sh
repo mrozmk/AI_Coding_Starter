@@ -74,27 +74,68 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
   space="$(herdr-app ls 2>/dev/null \
     | jq -r --arg f "$root" '[.spaces[]? | select(.folder == $f)][0].id // empty' 2>/dev/null || true)"
   if [ -n "$space" ]; then
-    # The Teams tab's terminals in creation order with their panes. Two sit side by side; from
-    # the third on, a pane splits DOWN under the pane two places before it, so four teams make a
-    # 2×2 and more go on down the columns — adoption by label would only halve the last column.
+    # The Teams tab keeps two columns: panes one and two side by side, every later pane split DOWN
+    # under the newest pane of the shorter column, so four teams make a 2×2. Which column a pane
+    # is in lives on the terminal as the hc label `teams.col` (and `teams.session`, its tmux
+    # session) — the window listing walks the layout column by column and says nothing about
+    # columns. Adoption by label alone would halve the last column every time.
     existing="$(herdr-app ls 2>/dev/null | jq -r --arg s "$space" --arg n "$tab_name" \
       '[.spaces[]? | select(.id == $s) | .tabs[]? | select(.name == $n)][0]
        | (.id // ""), (.terminals[]? | "\(.terminal)\t\(.pane)")' 2>/dev/null || true)"
     tab="$(printf '%s\n' "$existing" | sed -n 1p)"
-    count="$(printf '%s\n' "$existing" | sed -n '2,$p' | grep -c . || true)"
+    # created_ms · column · session · terminal · pane, oldest first; panes without our labels
+    # (someone's own shell in the tab) are listed but never counted or split.
+    meta="$(printf '%s\n' "$existing" | sed -n '2,$p' | while IFS=$'\t' read -r t p; do
+        [ -n "$t" ] || continue
+        hc get "$t" --json 2>/dev/null | jq -r --arg t "$t" --arg p "$p" \
+          '"\(.created_ms // 0)\t\(.labels["teams.col"] // "")\t\(.labels["teams.session"] // "")\t\($t)\t\($p)"' \
+          2>/dev/null || true
+      done | sort -n)"
+    c1="$(printf '%s\n' "$meta" | awk -F'\t' '$2 == "1"' | grep -c . || true)"
+    c2="$(printf '%s\n' "$meta" | awk -F'\t' '$2 == "2"' | grep -c . || true)"
+    # A whole column ended while the other holds two or more: Herdr folded the tab into one column
+    # and no split can bring the second back (there is no pane.move). Rebuild: close our previews
+    # (tmux attach clients only — the roles' sessions are untouched) and reopen them, oldest first,
+    # through this same script; then place the new one. Once per call, so a failed rebuild cannot loop.
+    if [ -z "${TEAM_ATTACH_REBUILT:-}" ] \
+      && { { [ "$c1" -eq 0 ] && [ "$c2" -ge 2 ]; } || { [ "$c2" -eq 0 ] && [ "$c1" -ge 2 ]; }; }; then
+      ours="$(printf '%s\n' "$meta" | awk -F'\t' '$2 != "" && $3 != "" { print $3 "\t" $4 }')"
+      printf '%s\n' "$ours" | cut -f2 | while read -r t; do
+        [ -z "$t" ] || { hc kill "$t" >/dev/null 2>&1 || true; hc rm "$t" >/dev/null 2>&1 || true; }
+      done
+      # The window lists a pane a moment after its terminal appears or ends; each step waits for
+      # the listing, or the next placement counts a pane that is gone or misses one that is coming.
+      listed() { herdr-app ls 2>/dev/null | jq -e --arg t "$1" \
+        '[.spaces[]?.tabs[]?.terminals[]? | select(.terminal == $t)] | length > 0' >/dev/null 2>&1; }
+      for t in $(printf '%s\n' "$ours" | cut -f2); do
+        for _ in 1 2 3 4 5; do listed "$t" || break; sleep 1; done
+      done
+      printf '%s\n' "$ours" | cut -f1 | while read -r s; do
+        [ -n "$s" ] && tmux has-session -t "=$s" 2>/dev/null || continue
+        a="$(TEAM_ATTACH_REBUILT=1 bash "$0" "${s%-*}" "${s##*-}" 2>/dev/null \
+          | sed -n 's/.*(\(t[0-9a-z]*\);.*/\1/p' || true)"
+        [ -z "$a" ] || for _ in 1 2 3 4 5; do listed "$a" && break; sleep 1; done
+      done
+      TEAM_ATTACH_REBUILT=1 exec bash "$0" "$@"
+    fi
     argv="$(jq -cn --arg s "$sock" --arg n "=$name" '["tmux", "-S", $s, "attach", "-t", $n]')"
-    addr=""
-    if [ -n "$tab" ] && [ "$count" -ge 2 ]; then
-      # By creation time (hc's created_ms), not the listing's tree order: the listing walks the
-      # layout column by column, so after the third pane it would pick the wrong column.
-      above="$(printf '%s\n' "$existing" | sed -n '2,$p' | while IFS=$'\t' read -r t p; do
-          printf '%s\t%s\n' "$(hc get "$t" --json 2>/dev/null | jq -r '.created_ms // 0' 2>/dev/null || echo 0)" "$p"
-        done | sort -n | sed -n "$((count - 1))p" | cut -f2)"
+    addr=""; col=1; above=""
+    if [ "$c1" -ge 1 ] && [ "$c2" -ge 1 ]; then
+      col=1; [ "$c1" -le "$c2" ] || col=2
+      above="$(printf '%s\n' "$meta" | awk -F'\t' -v c="$col" '$2 == c { p = $5 } END { print p }')"
+    elif [ "$c1" -eq 1 ] || [ "$c2" -eq 1 ]; then
+      # One pane left: it is column one whatever it was, the new one lands beside it as column two.
+      lone="$(printf '%s\n' "$meta" | awk -F'\t' '$2 != "" { t = $4 } END { print t }')"
+      [ -z "$lone" ] || hc label "$lone" teams.col=1 >/dev/null 2>&1 || true
+      col=2
+    fi
+    if [ -n "$above" ]; then
+      # pane.split runs the argv bare (no login-shell wrapper) and its pane closes with the program.
       addr="$(herdr-app do pane.split --direction down --pane "$above" --argv "$argv" 2>/dev/null \
         | jq -r '.terminal // empty' 2>/dev/null || true)"
     fi
     if [ -z "$addr" ]; then
-      # First or second role of the tab (or a failed split): a terminal adopted by its labels —
+      # First or second pane of the tab (or a failed split): a terminal adopted by its labels —
       # the first one creates the tab, the second lands beside it. Named `<project>-<team>-<role>`
       # (project = the main checkout's folder, lowercased); an hc name is 1–32 of a-z 0-9 - _ and
       # unique among live terminals, so a leftover pane with that name means a second, unnamed try.
@@ -107,6 +148,7 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
         -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
     fi
     if [ -n "$addr" ]; then
+      hc label "$addr" "teams.col=$col" "teams.session=$name" >/dev/null 2>&1 || true
       if [ -z "$tab" ]; then
         # The new tab is created by the window after the terminal appears: resolve it by the
         # terminal's address, then name it so the next role, of any team, finds it.
@@ -118,7 +160,7 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
         done
         [ -z "$tab" ] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null 2>&1 || true
       fi
-      echo "opened: Herdr tab $tab_name, pane $proj-$name ($addr; detach: Ctrl-b d)"
+      echo "opened: Herdr tab $tab_name, column $col, pane $proj-$name ($addr; detach: Ctrl-b d)"
       exit 0
     fi
     echo "warn: Herdr pane for $name failed; opening a Terminal window instead" >&2
