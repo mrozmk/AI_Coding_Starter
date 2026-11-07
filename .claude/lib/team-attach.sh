@@ -49,22 +49,23 @@ if [ -z "$sock" ]; then
   exit 1
 fi
 # Herdr first: when a running Herdr window shows the main checkout as a space, the preview is a pane
-# in that space's tab named after the team — one tab per team, its roles as the tab's terminals.
+# in that space's `Teams` tab — one tab for every team, one terminal per running role, each named
+# `<project>-<team>-<role>` so the tab says which pane is whose.
 # Detected through the window, not through HC_* variables: the runner's tmux session carries none.
-# The terminal is started by `hc run` with the space (and, when the team's tab exists, the tab)
+# The terminal is started by `hc run` with the space (and, when the Teams tab exists, the tab)
 # label, never by `tab.new`, which wraps the program in a login shell that stays after `attach`
 # ends; an hc terminal ends with its program, so the pane closes itself and no closer is needed.
 # argv is passed as arguments, no quoting layer. Any failure falls through to Terminal.app.
 if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
   && command -v jq >/dev/null 2>&1; then
-  team="$1"
+  tab_name="${TEAM_ATTACH_TAB:-Teams}"
   # The main checkout is where this script lives, never the caller's cwd: the runner launches roles
   # from the team's clone, whose folder is no Herdr space (that would send every role to Terminal).
   root="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd -P || true)"
   space="$(herdr-app ls 2>/dev/null \
     | jq -r --arg f "$root" '[.spaces[]? | select(.folder == $f)][0].id // empty' 2>/dev/null || true)"
   if [ -n "$space" ]; then
-    tab="$(herdr-app ls 2>/dev/null | jq -r --arg s "$space" --arg n "$team" \
+    tab="$(herdr-app ls 2>/dev/null | jq -r --arg s "$space" --arg n "$tab_name" \
       '[.spaces[]? | select(.id == $s) | .tabs[]? | select(.name == $n)][0].id // empty' 2>/dev/null || true)"
     labels=(--label "herdr.space=$space")
     [ -z "$tab" ] || labels+=(--label "herdr.tab=$tab")
@@ -80,16 +81,16 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
     if [ -n "$addr" ]; then
       if [ -z "$tab" ]; then
         # The new tab is created by the window after the terminal appears: resolve it by the
-        # terminal's address, then name it after the team so the next role finds it.
+        # terminal's address, then name it so the next role, of any team, finds it.
         for _ in 1 2 3 4 5; do
           tab="$(herdr-app ls 2>/dev/null | jq -r --arg t "$addr" \
             '[.spaces[]?.tabs[]? | select(any(.terminals[]?; .terminal == $t))][0].id // empty' 2>/dev/null || true)"
           [ -z "$tab" ] || break
           sleep 1
         done
-        [ -z "$tab" ] || herdr-app do tab.rename --id "$tab" --name "$team" >/dev/null 2>&1 || true
+        [ -z "$tab" ] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null 2>&1 || true
       fi
-      echo "opened: Herdr tab $team, pane $name (detach: Ctrl-b d)"
+      echo "opened: Herdr tab $tab_name, pane ${tname:0:32} (detach: Ctrl-b d)"
       exit 0
     fi
     echo "warn: Herdr pane for $name failed; opening a Terminal window instead" >&2

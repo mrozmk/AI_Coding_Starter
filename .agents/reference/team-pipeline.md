@@ -15,8 +15,8 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
 In any Claude window of the main checkout: `/start-team alfa ABC-777` (and `/start-team gamma ABC-778` in another).
 `/start-team` provisions or reuses the clone and launches the runner in tmux; the runner opens a preview
 on each role it launches (`TEAM_ATTACH=all`, default; `TEAM_ATTACH=planner` opens only the
-attended roles' — planner and wrapup): a pane in the team's tab of the main checkout's Herdr space when
-one is open, otherwise a Terminal window (`team-attach.sh`). Coder and QA run alone; a macOS notification tells you when a team needs approval, has
+attended roles' — planner and wrapup): a pane named `<project>-<team>-<role>` in the `Teams` tab of the
+main checkout's Herdr space when one is open, otherwise a Terminal window (`team-attach.sh`). Coder and QA run alone; a macOS notification tells you when a team needs approval, has
 a question, is ready for merge, or stopped. After answering: `/start-team alfa`. To look at a role:
 `bash .claude/lib/team-attach.sh alfa coder`. Merge: ask the supervisor ("merge alfa").
 
