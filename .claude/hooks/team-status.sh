@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hook (Notification | UserPromptSubmit | Stop | SessionEnd) — forwards this session's agent
+# Hook (Notification | UserPromptSubmit | PostToolUse | Stop | SessionEnd) — forwards this session's agent
 # state to the terminal that shows it, when the session runs inside tmux.
 #
 # Problem it solves: Claude Code reports its state with OSC 7501 (working / blocked / idle),
@@ -21,6 +21,7 @@ kind=$(printf '%s' "$payload" | sed -n 's/.*"notification_type" *: *"\([^"]*\)".
 
 case "$event" in
   UserPromptSubmit) state=working ;;
+  PostToolUse)      state=working ;;   # answered question / granted permission: the turn runs again
   Stop)             state=idle ;;
   SessionEnd)       state=clear ;;
   Notification)

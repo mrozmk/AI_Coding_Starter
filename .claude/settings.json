@@ -253,6 +253,15 @@
     ],
     "PostToolUse": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
+            "async": true
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {
