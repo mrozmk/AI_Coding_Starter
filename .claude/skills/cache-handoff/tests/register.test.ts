@@ -36,8 +36,13 @@ test('/hc compacts with the state-keeping instructions and no handoff file', asy
   await clock.advance(1)
 
   expect(compacts).toHaveLength(1)
+  // The ordered state list, next step first; an argument never changes the instructions.
+  expect(compacts[0]).toContain('1. The exact next step')
+  expect(compacts[0]).toContain('2. Standing instructions the user gave')
   expect(compacts[0]).toContain('Monitors, cron jobs')
-  expect(compacts[0]).toContain('focus on: release checklist')
+  expect(compacts[0]).toContain('8. Closed questions')
+  expect(compacts[0]).not.toContain('release checklist')
+  expect(compacts[0]).not.toContain('2k words')
   expect(wrote).toBe(false)
   expect(text).toContain('Compacting')
 })

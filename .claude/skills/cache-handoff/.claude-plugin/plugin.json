@@ -1,7 +1,7 @@
 {
   "name": "cache-handoff",
   "version": "0.1.0",
-  "description": "Status line with context size and prompt-cache warmth, plus /hc: /compact with state-keeping instructions, also fired by itself before the prompt cache goes cold",
+  "description": "Status line with context size and prompt-cache warmth, plus /hc: /compact with state-keeping instructions (next step, standing instructions, decisions, working set, background work), also fired by itself before the prompt cache goes cold",
   "types": "./types/index.d.ts",
   "userConfig": {
     "cacheTtl": {

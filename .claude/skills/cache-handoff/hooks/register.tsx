@@ -31,26 +31,35 @@ export const cacheState = (now: number, last: number | null, ttlMs: number): Cac
   return { icon: '☀', label: `cache warm · expires in ${minutesLeft} min`, isWarm: true, minutesLeft }
 }
 
-// Steers the engine's own summary; CLAUDE.md, rules/ and MEMORY.md reload from disk after it.
-export const COMPACT_INSTRUCTIONS = (focus: string) => `This summary replaces the conversation. \
-CLAUDE.md, rules/ and the auto-memory index MEMORY.md are reloaded from disk after compaction; do \
-not restate them.
+// Steers the engine's own summary. The engine keeps its fixed section skeleton (request, concepts,
+// files, errors, …) and takes this as added emphasis, so the text names what each section must
+// carry and what to leave out. After compaction the harness reloads CLAUDE.md, rules/ and
+// MEMORY.md, and the SessionStart `compact` hook (.claude/hooks/compact-context.sh) prints the
+// memory routing table — everything else /prime had loaded is gone and is named, not restated.
+export const COMPACT_INSTRUCTIONS = `This summary replaces the conversation. CLAUDE.md, rules/, \
+MEMORY.md and the memory routing table (index.md → When to Read) come back from disk after \
+compaction — do not restate them. project-brief.md and architecture.md are NOT reloaded: name \
+them in item 7 if they mattered, never summarize them.
 
-Preserve exactly, with IDs, paths and SHAs verbatim:
-1. Running or scheduled work: background tasks, Monitors, cron jobs (id + schedule), \
-wakeups/loops, background subagents, team sessions, Codex runs. What each one waits for, and \
-what to do when it reports.
-2. Owner decisions: the numbered list still waiting for the owner, and decisions already made \
-(quote them, do not paraphrase).
-3. Tickets in play: tracker keys and their status, branch, commits (SHA), PRs.
-4. Production state: release freeze, open ops windows, what was verified and what was not (say \
-"unverified" explicitly).
-5. Files that mattered this session and are NOT auto-loaded: paths only (.agents/memory/*, \
-specs, plans, reference docs, mod sources), one line each on why.
-6. The exact next step.${focus ? `\n\nThe next part of the session will focus on: ${focus}` : ''}
+Preserve exactly, with IDs, paths, SHAs and quotes verbatim, in this order of importance:
+1. The exact next step, and what it is waiting for.
+2. Standing instructions the user gave in this session, quoted, not paraphrased: how to work, \
+what not to ask again, what never to do.
+3. Owner decisions: taken (quoted) and still open (a numbered list).
+4. Working set, per repository: branch, last commits (SHA + subject), uncommitted changes \
+(as git status --short) and which of them this session made, files mid-edit with file:line.
+5. Running or scheduled work: background tasks, Monitors, cron jobs and wakeups (id + schedule), \
+subagents, team sessions and their roles, Codex runs — what each waits for and what to do when \
+it reports.
+6. Tickets, PRs and production state: keys and status, branch, release freeze or ops window, \
+"verified" vs "unverified" said explicitly.
+7. Files that mattered and are not auto-loaded: path plus one line on why (specs, plans, \
+reference docs, memory files, mod sources).
+8. Closed questions: what was checked and found not to work, with the reason, one line each, so \
+it is not investigated again.
 
-Drop: tool output, file contents that can be re-read, exploration that led nowhere, narration. \
-Prefer bullets; keep it under ~2k words.`
+Drop: tool output, file contents that can be re-read, narration, and dead-end exploration beyond \
+its one-line verdict. Bullets; the length follows the number of facts, not a word budget.`
 
 // The newest main-thread response with usage among transcript lines, as epoch ms.
 export const lastResponseIn = (lines: string): number | null => {
@@ -111,9 +120,9 @@ async function refresh($: EngineInterface): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
-async function runCompact($: EngineInterface, focus: string): Promise<void> {
+async function runCompact($: EngineInterface): Promise<void> {
   try {
-    const compacted = await $.session.compact({ instructions: COMPACT_INSTRUCTIONS(focus) })
+    const compacted = await $.session.compact({ instructions: COMPACT_INSTRUCTIONS })
     if (compacted.skip !== undefined) {
       $.ui.toast(`Compact vetoed: ${compacted.skip}`)
       return
@@ -129,12 +138,12 @@ async function runCompact($: EngineInterface, focus: string): Promise<void> {
 
 // Compaction cannot run under the command that asked for it, so it runs from a timer
 // once that command has returned.
-async function compactSoon($: EngineInterface, focus: string): Promise<string> {
+async function compactSoon($: EngineInterface): Promise<string> {
   if (await read($, isBusy)) return 'A compact is already running.'
   await update($, isBusy, () => true)
   await refresh($)
-  $.clock.after(0, () => void runCompact($, focus))
-  return 'Compacting with the /hc instructions (background work, decisions, tickets, production state, files).'
+  $.clock.after(0, () => void runCompact($))
+  return 'Compacting with the /hc instructions (next step, standing instructions, decisions, working set, background work, tickets, files).'
 }
 
 async function maybeAutoHc($: EngineInterface): Promise<void> {
@@ -156,7 +165,7 @@ async function maybeAutoHc($: EngineInterface): Promise<void> {
   if (!shouldAutoHc(cache, tokens, opts)) return
   autoFiredFor = last
   $.ui.toast(`Cache expires in ${cache.minutesLeft} min — automatic /hc (${formatTokens(tokens)})`)
-  await compactSoon($, '')
+  await compactSoon($)
 }
 
 export const register: Register = (on, options) => {
@@ -170,7 +179,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: '/compact with state-keeping instructions (background work, decisions, tickets, production); argument = focus',
+      description: '/compact with state-keeping instructions (next step, standing instructions, decisions, working set, background work, tickets); no arguments',
     })
     // The context/cache status line is the settings statusLine (statusline.cjs), not a pinned entry.
     $.ui.status(undefined)
@@ -199,8 +208,9 @@ export const register: Register = (on, options) => {
     return done
   })
 
-  on('command.run', { command: COMMAND }, async ($, e) => ({
-    text: await compactSoon($, e.args.trim()),
+  // One generic /hc: an argument is accepted and ignored, the instructions never vary.
+  on('command.run', { command: COMMAND }, async ($) => ({
+    text: await compactSoon($),
   })).catch(() => ({ text: 'Compact failed; context unchanged.' }))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -230,7 +240,7 @@ export const register: Register = (on, options) => {
           key="compact"
           label="Compact (/hc)"
           variant={isUrgent ? 'primary' : undefined}
-          onPress={() => void compactSoon($, '')}
+          onPress={() => void compactSoon($)}
         />
       </Box>
     )
