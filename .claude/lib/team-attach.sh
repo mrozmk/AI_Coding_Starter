@@ -58,7 +58,9 @@ fi
 if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
   && command -v jq >/dev/null 2>&1; then
   team="$1"
-  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  # The main checkout is where this script lives, never the caller's cwd: the runner launches roles
+  # from the team's clone, whose folder is no Herdr space (that would send every role to Terminal).
+  root="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd -P || true)"
   space="$(herdr-app ls 2>/dev/null \
     | jq -r --arg f "$root" '[.spaces[]? | select(.folder == $f)][0].id // empty' 2>/dev/null || true)"
   if [ -n "$space" ]; then
@@ -66,7 +68,14 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
       '[.spaces[]? | select(.id == $s) | .tabs[]? | select(.name == $n)][0].id // empty' 2>/dev/null || true)"
     labels=(--label "herdr.space=$space")
     [ -z "$tab" ] || labels+=(--label "herdr.tab=$tab")
-    addr="$(hc run --bg --outlive-parent --cwd "$root" "${labels[@]}" \
+    # Named `<project>-<team>-<role>` (project = the main checkout's folder, lowercased) so the pane
+    # says which project and team it belongs to even among several projects' teams; an hc name is
+    # 1–32 of a-z 0-9 - _ and unique among live terminals, so a leftover pane with that name means a
+    # second, unnamed try.
+    tname="$(printf '%s' "$(basename "$root")" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')-$name"
+    addr="$(hc run --bg --outlive-parent --cwd "$root" --name "${tname:0:32}" "${labels[@]}" \
+      -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
+    [ -n "$addr" ] || addr="$(hc run --bg --outlive-parent --cwd "$root" "${labels[@]}" \
       -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
     if [ -n "$addr" ]; then
       if [ -z "$tab" ]; then
