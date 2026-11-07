@@ -48,6 +48,18 @@ if [ -z "$sock" ]; then
   echo "error: cannot resolve the tmux socket of $name" >&2
   exit 1
 fi
+# The main checkout is where this script lives, never the caller's cwd: the runner launches roles
+# from the team's clone. Its folder names the project in titles and Herdr pane names, and is the
+# folder a Herdr space is matched by (the clone's folder is no space — that would send every role
+# to Terminal).
+root="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd -P || true)"
+proj="$(printf '%s' "$(basename "$root")" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')"
+# Every client of this session — a Herdr pane or a Terminal window — gets a title: project and team
+# fixed, then the pane title Claude Code keeps live (`✳ alfa-planner`; the glyph is its state).
+# tmux keeps titles to itself unless set-titles is on. Session options with the pane-form target
+# (`=NAME:`, see team-lib.sh), so other sessions and other projects are untouched. Best effort.
+tmux set-option -t "=$name:" set-titles on 2>/dev/null || true
+tmux set-option -t "=$name:" set-titles-string "$proj-$1 · #{pane_title}" 2>/dev/null || true
 # Herdr first: when a running Herdr window shows the main checkout as a space, the preview is a pane
 # in that space's `Teams` tab — one tab for every team, one terminal per running role, each named
 # `<project>-<team>-<role>` so the tab says which pane is whose.
@@ -59,9 +71,6 @@ fi
 if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
   && command -v jq >/dev/null 2>&1; then
   tab_name="${TEAM_ATTACH_TAB:-Teams}"
-  # The main checkout is where this script lives, never the caller's cwd: the runner launches roles
-  # from the team's clone, whose folder is no Herdr space (that would send every role to Terminal).
-  root="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd -P || true)"
   space="$(herdr-app ls 2>/dev/null \
     | jq -r --arg f "$root" '[.spaces[]? | select(.folder == $f)][0].id // empty' 2>/dev/null || true)"
   if [ -n "$space" ]; then
@@ -73,7 +82,7 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
     # says which project and team it belongs to even among several projects' teams; an hc name is
     # 1–32 of a-z 0-9 - _ and unique among live terminals, so a leftover pane with that name means a
     # second, unnamed try.
-    tname="$(printf '%s' "$(basename "$root")" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')-$name"
+    tname="$proj-$name"
     addr="$(hc run --bg --outlive-parent --cwd "$root" --name "${tname:0:32}" "${labels[@]}" \
       -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
     [ -n "$addr" ] || addr="$(hc run --bg --outlive-parent --cwd "$root" "${labels[@]}" \
