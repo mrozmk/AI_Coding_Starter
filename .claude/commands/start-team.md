@@ -144,7 +144,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 
 6. **Role windows.** Do not open one yourself: the runner opens a preview for every
    role it launches (`TEAM_ATTACH=all`, the default), or only for the attended roles, planner and wrapup (`TEAM_ATTACH=planner`) —
-   a pane `<project>-<team>-<role>` in the `Teams` tab when the main checkout is open as a Herdr space, otherwise a Terminal window.
+   a pane `<project>-<team>-<role>` in the `Teams` tab when the main checkout is open as a Herdr space (two side by side, then a 2×2), otherwise a Terminal window.
    A `warn: no preview window` line in the runner's output means the window failed; the role still runs.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),

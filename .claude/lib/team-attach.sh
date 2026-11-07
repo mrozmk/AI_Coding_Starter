@@ -74,19 +74,38 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
   space="$(herdr-app ls 2>/dev/null \
     | jq -r --arg f "$root" '[.spaces[]? | select(.folder == $f)][0].id // empty' 2>/dev/null || true)"
   if [ -n "$space" ]; then
-    tab="$(herdr-app ls 2>/dev/null | jq -r --arg s "$space" --arg n "$tab_name" \
-      '[.spaces[]? | select(.id == $s) | .tabs[]? | select(.name == $n)][0].id // empty' 2>/dev/null || true)"
-    labels=(--label "herdr.space=$space")
-    [ -z "$tab" ] || labels+=(--label "herdr.tab=$tab")
-    # Named `<project>-<team>-<role>` (project = the main checkout's folder, lowercased) so the pane
-    # says which project and team it belongs to even among several projects' teams; an hc name is
-    # 1–32 of a-z 0-9 - _ and unique among live terminals, so a leftover pane with that name means a
-    # second, unnamed try.
-    tname="$proj-$name"
-    addr="$(hc run --bg --outlive-parent --cwd "$root" --name "${tname:0:32}" "${labels[@]}" \
-      -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
-    [ -n "$addr" ] || addr="$(hc run --bg --outlive-parent --cwd "$root" "${labels[@]}" \
-      -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
+    # The Teams tab's terminals in creation order with their panes. Two sit side by side; from
+    # the third on, a pane splits DOWN under the pane two places before it, so four teams make a
+    # 2×2 and more go on down the columns — adoption by label would only halve the last column.
+    existing="$(herdr-app ls 2>/dev/null | jq -r --arg s "$space" --arg n "$tab_name" \
+      '[.spaces[]? | select(.id == $s) | .tabs[]? | select(.name == $n)][0]
+       | (.id // ""), (.terminals[]? | "\(.terminal)\t\(.pane)")' 2>/dev/null || true)"
+    tab="$(printf '%s\n' "$existing" | sed -n 1p)"
+    count="$(printf '%s\n' "$existing" | sed -n '2,$p' | grep -c . || true)"
+    argv="$(jq -cn --arg s "$sock" --arg n "=$name" '["tmux", "-S", $s, "attach", "-t", $n]')"
+    addr=""
+    if [ -n "$tab" ] && [ "$count" -ge 2 ]; then
+      # By creation time (hc's created_ms), not the listing's tree order: the listing walks the
+      # layout column by column, so after the third pane it would pick the wrong column.
+      above="$(printf '%s\n' "$existing" | sed -n '2,$p' | while IFS=$'\t' read -r t p; do
+          printf '%s\t%s\n' "$(hc get "$t" --json 2>/dev/null | jq -r '.created_ms // 0' 2>/dev/null || echo 0)" "$p"
+        done | sort -n | sed -n "$((count - 1))p" | cut -f2)"
+      addr="$(herdr-app do pane.split --direction down --pane "$above" --argv "$argv" 2>/dev/null \
+        | jq -r '.terminal // empty' 2>/dev/null || true)"
+    fi
+    if [ -z "$addr" ]; then
+      # First or second role of the tab (or a failed split): a terminal adopted by its labels —
+      # the first one creates the tab, the second lands beside it. Named `<project>-<team>-<role>`
+      # (project = the main checkout's folder, lowercased); an hc name is 1–32 of a-z 0-9 - _ and
+      # unique among live terminals, so a leftover pane with that name means a second, unnamed try.
+      labels=(--label "herdr.space=$space")
+      [ -z "$tab" ] || labels+=(--label "herdr.tab=$tab")
+      tname="$proj-$name"
+      addr="$(hc run --bg --outlive-parent --cwd "$root" --name "${tname:0:32}" "${labels[@]}" \
+        -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
+      [ -n "$addr" ] || addr="$(hc run --bg --outlive-parent --cwd "$root" "${labels[@]}" \
+        -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
+    fi
     if [ -n "$addr" ]; then
       if [ -z "$tab" ]; then
         # The new tab is created by the window after the terminal appears: resolve it by the
@@ -99,7 +118,7 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
         done
         [ -z "$tab" ] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null 2>&1 || true
       fi
-      echo "opened: Herdr tab $tab_name, pane ${tname:0:32} (detach: Ctrl-b d)"
+      echo "opened: Herdr tab $tab_name, pane $proj-$name ($addr; detach: Ctrl-b d)"
       exit 0
     fi
     echo "warn: Herdr pane for $name failed; opening a Terminal window instead" >&2
