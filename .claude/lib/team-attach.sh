@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Open a new Terminal window attached to a team's tmux session (the planner, or a role that waits).
+# Open a preview attached to a team's tmux session (the planner, or a role that waits): a tab in
+# Herdr when the main checkout is open there as a space, otherwise a new Terminal.app window.
 #
 # Usage: bash .claude/lib/team-attach.sh <team> [planner|coder|qa|wrapup|cli|runner] [wait-seconds]
 #   e.g. bash .claude/lib/team-attach.sh alfa planner 60
@@ -46,6 +47,44 @@ sock="$(tmux display-message -p -t "=$name:" '#{socket_path}' 2>/dev/null || tru
 if [ -z "$sock" ]; then
   echo "error: cannot resolve the tmux socket of $name" >&2
   exit 1
+fi
+# Herdr first: when a running Herdr window shows the main checkout as a space, the preview is a pane
+# in that space's tab named after the team — one tab per team, its roles as the tab's terminals.
+# Detected through the window, not through HC_* variables: the runner's tmux session carries none.
+# The terminal is started by `hc run` with the space (and, when the team's tab exists, the tab)
+# label, never by `tab.new`, which wraps the program in a login shell that stays after `attach`
+# ends; an hc terminal ends with its program, so the pane closes itself and no closer is needed.
+# argv is passed as arguments, no quoting layer. Any failure falls through to Terminal.app.
+if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
+  && command -v jq >/dev/null 2>&1; then
+  team="$1"
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  space="$(herdr-app ls 2>/dev/null \
+    | jq -r --arg f "$root" '[.spaces[]? | select(.folder == $f)][0].id // empty' 2>/dev/null || true)"
+  if [ -n "$space" ]; then
+    tab="$(herdr-app ls 2>/dev/null | jq -r --arg s "$space" --arg n "$team" \
+      '[.spaces[]? | select(.id == $s) | .tabs[]? | select(.name == $n)][0].id // empty' 2>/dev/null || true)"
+    labels=(--label "herdr.space=$space")
+    [ -z "$tab" ] || labels+=(--label "herdr.tab=$tab")
+    addr="$(hc run --bg --outlive-parent --cwd "$root" "${labels[@]}" \
+      -- tmux -S "$sock" attach -t "=$name" 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
+    if [ -n "$addr" ]; then
+      if [ -z "$tab" ]; then
+        # The new tab is created by the window after the terminal appears: resolve it by the
+        # terminal's address, then name it after the team so the next role finds it.
+        for _ in 1 2 3 4 5; do
+          tab="$(herdr-app ls 2>/dev/null | jq -r --arg t "$addr" \
+            '[.spaces[]?.tabs[]? | select(any(.terminals[]?; .terminal == $t))][0].id // empty' 2>/dev/null || true)"
+          [ -z "$tab" ] || break
+          sleep 1
+        done
+        [ -z "$tab" ] || herdr-app do tab.rename --id "$tab" --name "$team" >/dev/null 2>&1 || true
+      fi
+      echo "opened: Herdr tab $team, pane $name (detach: Ctrl-b d)"
+      exit 0
+    fi
+    echo "warn: Herdr pane for $name failed; opening a Terminal window instead" >&2
+  fi
 fi
 # The socket path (from TMUX_TMPDIR) and the name go into an AppleScript string that holds a
 # single-quoted shell word: a quote or backslash in either would break out of both. Refused, not

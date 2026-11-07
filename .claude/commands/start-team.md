@@ -142,12 +142,13 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    It registers this supervisor session for labels only — never a ticket binding; a
    non-zero exit is impossible, nothing to check.
 
-6. **Role windows.** Do not open one yourself: the runner opens a Terminal preview window for every
-   role it launches (`TEAM_ATTACH=all`, the default), or only for the attended roles, planner and wrapup (`TEAM_ATTACH=planner`).
+6. **Role windows.** Do not open one yourself: the runner opens a preview for every
+   role it launches (`TEAM_ATTACH=all`, the default), or only for the attended roles, planner and wrapup (`TEAM_ATTACH=planner`) —
+   a pane in the team's tab when the main checkout is open as a Herdr space, otherwise a Terminal window.
    A `warn: no preview window` line in the runner's output means the window failed; the role still runs.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
-   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "a Terminal window opens on each role
+   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "a preview (Herdr pane or Terminal window) opens on each role
    as it starts — talk to the planner there, detach with Ctrl-b d", and that coder/QA run alone and a
    macOS notification appears when a team needs approval, has a question, is ready for merge, or
    stopped. After QA a `wrapup` window opens with a plain summary of the run and, only if it has
