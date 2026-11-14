@@ -80,9 +80,12 @@ Shaping rule: 3 screens, ≤4 questions each — yields only when a detected val
 
 **Screen 2 — Narzędzia zespołu / Team tools**
 
-4. **Czy zadania śledzicie w Jira?** / **Do you track tasks in Jira?**
-   Tak · Nie / Yes · No
-   *Jeśli tak, będziesz potrzebować: adresu Jira (np. `https://firma.atlassian.net`), maila logowania i tokenu API (podam link). Jeśli nie: zadania prowadzimy w pliku `.agents/backlog.md`, który zbudujemy z PRD; komendy Jira usuwam.* / *If yes you will need: the Jira URL (e.g. `https://acme.atlassian.net`), your login email and an API token (I will give the link). If no: tasks live in `.agents/backlog.md`, built from the PRD; Jira commands are removed.* → `tracker`
+4. **Gdzie śledzicie zadania?** / **Where do you track tasks?**
+   Jira · GitHub issues · Lokalny backlog / Jira · GitHub issues · The local backlog
+   *Jira: będziesz potrzebować adresu Jira (np. `https://firma.atlassian.net`), maila logowania i tokenu API (podam link). GitHub issues: zadania to issues repozytorium, opcjonalnie z tablicą GitHub Project; potrzebny jest zalogowany `gh`. Lokalny backlog: zadania prowadzimy w pliku `.agents/backlog.md`, który zbudujemy z PRD. Poza Jira komendy Jira usuwam.* / *Jira: you will need the Jira URL (e.g. `https://acme.atlassian.net`), your login email and an API token (I will give the link). GitHub issues: tasks are the repo's issues, optionally on a GitHub Project board; needs a logged-in `gh`. Local backlog: tasks live in `.agents/backlog.md`, built from the PRD. Unless you pick Jira, the Jira commands are removed.* → `tracker` (`jira` | `github` | `none`)
+   **GitHub only — follow-ups, in this order:**
+   - **Repo:** `owner/repo`, default = `origin` when it is a github.com remote → `github.repo`.
+   - **Project:** "Czy issues są na tablicy GitHub Project? / Are the issues on a GitHub Project board?" — the owner and number (from the board URL `…/users|orgs/<owner>/projects/<n>`), or **Bez Projectu / No Project**, which is a valid answer: the status moves are then skipped, never an error. With a Project, read `project_id` via `gh project view <n> --owner <o> --format json --jq .id` and the Status field via `gh project field-list <n> --owner <o> --format json`; show its options and let the user pick the one for `started` and the one for `delivered` → `github.project_owner`, `.project_number`, `.project_id`, `.status_field_id`, `.status_options.started|delivered`. A `gh` call that fails → say which, and offer **No Project** or a stop; never write half a Project.
 5. **Czy dokumentację piszecie w Confluence?** / **Do you write docs in Confluence?**
    Tak · Nie / Yes · No
    *Ten sam token co do Jira. Jeśli nie: usuwam komendę `/confluence`.* / *Same token as Jira. If no: the `/confluence` command is removed.* → `confluence`
@@ -98,8 +101,9 @@ Shaping rule: 3 screens, ≤4 questions each — yields only when a detected val
 Expand the answers into `.claude/project-profile.json` (schema and field docs: `.claude/project-profile.json.example`).
 
 - `workflow.*` from the preset via the table in `.claude/commands/setup/create-CLAUDE_MD.md → Identify Git Workflow` (the six-field expansion; reference it, do not copy it), `orchestrate_publish` per the same section's derivation rule (`gitflow`/PR-gated → `branch-local`, else `push`).
-- **`branch_pattern` from the interview**: `tracker=jira` → `<type>/<KEY>-<slug>`, else `<type>/<slug>`. Never use the file-presence predicate in `create-CLAUDE_MD` — the Jira skill exists in every fresh clone, pruning comes later.
+- **`branch_pattern` from the interview**: `tracker=jira` → `<type>/<KEY>-<slug>`, `tracker=github` → `<type>/<n>-<slug>` (the issue number, the shape team branches use), `none` → `<type>/<slug>`. Never use the file-presence predicate in `create-CLAUDE_MD` — the Jira skill exists in every fresh clone, pruning comes later.
 - **Direct-push override** (`pr_required=false`): after expansion set `pr_dest` = `commit on <trunk> or short-lived branches merged locally — no PR`, `protected` = `[]`, `merge` = `ff`, `orchestrate_publish` = `push`. The `### Branch model` block gets the same values, so no consumer ever sees a PR destination the user did not choose.
+- `github` (only for `tracker=github`): the Q4 follow-ups — `repo`, plus the six Project fields or none of them (No Project). It is the one github block of the profile: the team layer reads it too when `teams.github` is absent.
 - `app_surface` = `unknown` (keeps all QA tooling; `/setup:create-CLAUDE_MD` detects it from the stack later).
 - `commands`: `pr` = `git_host != none || <user keeps PR tooling>` (with `git_host=none` recommend **keep**), `jira` = `tracker == jira`, `confluence`, `codex` = the Screen 2 answer, `qa_runtime_ui` = `true` (because `app_surface=unknown`).
 
@@ -124,7 +128,7 @@ Nine ordered steps (0–8). Each reports one line `created | kept | skipped(<why
   followed by the list of active keys to fill and `restart Claude Code — MCP servers read .env at startup`. If the user already has `.env`, say: "restart Claude Code — the SessionStart preflight reports any missing keys" (this command never looks).
 - Four states to verify by reading the result: Jira only · Confluence only · neither · both.
 
-**2. `.mcp.json`.** Requires `jq`; absent → `skipped(jq not on PATH — edit .mcp.json by hand: …)` with the exact servers to remove. Remove `atlassian` when `tracker=none && !confluence`. Remove `playwright` only when `app_surface` ∈ {`none`,`mobile`,`desktop`,`tui`} — with `unknown` (always, from this command) it stays. Never add servers; never touch `context7`.
+**2. `.mcp.json`.** Requires `jq`; absent → `skipped(jq not on PATH — edit .mcp.json by hand: …)` with the exact servers to remove. Remove `atlassian` when `tracker != jira && !confluence`. Remove `playwright` only when `app_surface` ∈ {`none`,`mobile`,`desktop`,`tui`} — with `unknown` (always, from this command) it stays. Never add servers; never touch `context7`.
 
 **3. `CLAUDE.md` blocks.** Edit in place, only inside these blocks:
 - `### Branch model`: fill the six labelled fields (`**Preset:**`, `**Trunk:**`, `**Integration:**`, `**Branch names:**`, `**Base → PR dest:**`, `**Protected:**`) from the profile; emit `**Merge:**` only for the direct-push override (`ff`) — otherwise omit the line, as the template says.

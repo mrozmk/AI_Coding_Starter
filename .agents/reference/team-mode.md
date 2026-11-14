@@ -117,7 +117,8 @@ clone's `team.json` by `team-warn.sh` — and if that record cannot be written, 
 instead of launching the runner. Costs bind to
 `cost_key` — `<owner>/<repo>#<n>` · `<repo-dir>:L<n>` · the key itself — so the same short key in
 two projects stays two bindings. At wrapup the adapter runs **inside the clone** and reads its
-**committed** profile: the `teams.github` block must be on the branch's base, or the start is refused.
+**committed** profile: the github block (`teams.github`, else the top-level `github`) must be on the
+branch's base and equal to the supervisor's, or the start is refused.
 
 ## 3. Roles
 
@@ -352,7 +353,8 @@ The QA report's free text records `Load: start … end … (waited …s)` for ea
 `teams.pr_provider` (`azure-devops` | `github` | `none`) selects the PR layer; `none` turns it off,
 and team runs, PRs and merges refuse with a message naming the setting.
 ADO keeps `az` in `team-lib.sh`; github goes only through `.claude/lib/team-pr.sh` (needs `gh`,
-`teams.github.repo`, and `origin` matching it).
+`teams.github.repo` — or the top-level `github.repo` when `teams.github` is absent — and `origin`
+matching it).
 
 - `team-pr.sh` ops: `coords`, `state`, `identity`, `readiness`, `create --draft|--ready`, `publish`,
   `body-get`, `body-set`. Exit: 0 ok · 2 usage/profile/provider · 3 refusal · 4 recoverable (network,

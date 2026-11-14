@@ -13,22 +13,45 @@
 
 team_profile_die() { echo "error: $*" >&2; exit 2; }
 
-# Usage: team_profile_gh_req <file> <jq path> <field> [regex] [why] → value in $TEAM_PROFILE_GH_V.
+# The effective github block, as one jq expression for every reader (profile, base checks, prompts):
+# `teams.github` when present, else the top-level `github` that the single-session path also uses.
+TEAM_GH_BLOCK='(.teams.github // .github // {})'
+
+# Usage: team_profile_gh_req <file> <jq path> <field> [regex] [why] [block] → value in
+# $TEAM_PROFILE_GH_V. `block` is the name the refusal shows (default `teams.github`).
 # A global, not stdout: `$(…)` would run team_profile_die in a subshell and the caller would sail
 # on with an empty value. Missing block, empty field and bad format are the same refusal.
 # `why` names the setting that made the field required: `repo` is also required by pr_provider=github
 # on its own (a live rig runs tracker=none + pr_provider=github), and pointing at the tracker there
 # would send the reader to a setting they never touched.
 team_profile_gh_req() {
-  local f="$1" path="$2" field="$3" re="${4:-}" why="${5:-tracker=github}"
+  local f="$1" path="$2" field="$3" re="${4:-}" why="${5:-tracker=github}" blk="${6:-teams.github}"
   TEAM_PROFILE_GH_V="$(jq -r "$path | if . == null then \"\" else tostring end" "$f" \
     2>/dev/null || true)"
   [ -n "$TEAM_PROFILE_GH_V" ] \
-    || team_profile_die "teams.github.$field is required for $why"
+    || team_profile_die "$blk.$field is required for $why"
   if [ -n "$re" ]; then
     [[ "$TEAM_PROFILE_GH_V" =~ $re ]] \
-      || team_profile_die "teams.github.$field is required for $why"
+      || team_profile_die "$blk.$field is required for $why"
   fi
+}
+
+# Usage: team_profile_gh_project <file> <block jq expr> <block name> <why> — the six Project fields,
+# in this order, into TEAM_GH_PROJECT_* / TEAM_GH_STATUS_*; the first missing one is the refusal.
+team_profile_gh_project() {
+  local f="$1" b="$2" n="$3" why="$4"
+  team_profile_gh_req "$f" "$b.project_owner" project_owner '' "$why" "$n"
+  TEAM_GH_PROJECT_OWNER="$TEAM_PROFILE_GH_V"
+  team_profile_gh_req "$f" "$b.project_number" project_number '^[0-9]+$' "$why" "$n"
+  TEAM_GH_PROJECT_NUMBER="$TEAM_PROFILE_GH_V"
+  team_profile_gh_req "$f" "$b.project_id" project_id '' "$why" "$n"
+  TEAM_GH_PROJECT_ID="$TEAM_PROFILE_GH_V"
+  team_profile_gh_req "$f" "$b.status_field_id" status_field_id '' "$why" "$n"
+  TEAM_GH_STATUS_FIELD_ID="$TEAM_PROFILE_GH_V"
+  team_profile_gh_req "$f" "$b.status_options.started" status_options.started '' "$why" "$n"
+  TEAM_GH_STATUS_STARTED="$TEAM_PROFILE_GH_V"
+  team_profile_gh_req "$f" "$b.status_options.delivered" status_options.delivered '' "$why" "$n"
+  TEAM_GH_STATUS_DELIVERED="$TEAM_PROFILE_GH_V"
 }
 
 # `~` or `~/…` prefix → $HOME; every other value is verbatim (paths may contain spaces).
@@ -129,7 +152,8 @@ team_profile_load() {
   while IFS= read -r v; do [ -z "$v" ] || TEAM_SEED_FILES+=("$v"); done \
     < <(jq -r '.teams.seed_files[]? // empty' "$f" 2>/dev/null)
 
-  # The `teams.github` block. `repo` is required by EITHER tracker=github (the issue/project board)
+  # The github block: `teams.github`, else the top-level `github` (TEAM_GH_BLOCK — the whole block
+  # wins, never a per-field merge). `repo` is required by EITHER tracker=github (the issue/project board)
   # or pr_provider=github (the PR layer) — the live rig combines tracker=none with pr_provider=github.
   # The Project fields stay tracker-only: a PR provider never writes a board. Always initialized —
   # the callers run under `set -u`.
@@ -139,29 +163,59 @@ team_profile_load() {
   TEAM_PROFILE_GH_V=""
   if [ "$TEAM_TRACKER" = github ] || [ "$TEAM_PR_PROVIDER" = github ]; then
     if [ "$TEAM_TRACKER" = github ]; then
-      team_profile_gh_req "$f" '.teams.github.repo' repo '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+      team_profile_gh_req "$f" "$TEAM_GH_BLOCK"'.repo' repo '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
     else
-      team_profile_gh_req "$f" '.teams.github.repo' repo \
+      team_profile_gh_req "$f" "$TEAM_GH_BLOCK"'.repo' repo \
         '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' 'pr_provider=github'
     fi
     TEAM_GH_REPO="$TEAM_PROFILE_GH_V"
   fi
-  if [ "$TEAM_TRACKER" = github ]; then
-    team_profile_gh_req "$f" '.teams.github.project_owner' project_owner
-    TEAM_GH_PROJECT_OWNER="$TEAM_PROFILE_GH_V"
-    team_profile_gh_req "$f" '.teams.github.project_number' project_number '^[0-9]+$'
-    TEAM_GH_PROJECT_NUMBER="$TEAM_PROFILE_GH_V"
-    team_profile_gh_req "$f" '.teams.github.project_id' project_id
-    TEAM_GH_PROJECT_ID="$TEAM_PROFILE_GH_V"
-    team_profile_gh_req "$f" '.teams.github.status_field_id' status_field_id
-    TEAM_GH_STATUS_FIELD_ID="$TEAM_PROFILE_GH_V"
-    team_profile_gh_req "$f" '.teams.github.status_options.started' status_options.started
-    TEAM_GH_STATUS_STARTED="$TEAM_PROFILE_GH_V"
-    team_profile_gh_req "$f" '.teams.github.status_options.delivered' status_options.delivered
-    TEAM_GH_STATUS_DELIVERED="$TEAM_PROFILE_GH_V"
-  fi
+  [ "$TEAM_TRACKER" != github ] || team_profile_gh_project "$f" "$TEAM_GH_BLOCK" teams.github tracker=github
 
   TEAM_PROFILE_LOADED=1
+}
+
+# Usage: team_tracker_profile_load [root] — what `team-tracker.sh` needs, for a project with OR
+# without teams. A `teams` block → team_profile_load, full validation, unchanged. None → only the
+# top-level `tracker` (jira|github|none, missing = none) and, for github, the top-level `github`
+# block: `repo` required; the Project fields all present (validated) or all absent (no Project).
+# Its own flag: TEAM_PROFILE_LOADED means "the whole teams block was validated", and setting it
+# here would let a later team_profile_load skip that.
+team_tracker_profile_load() {
+  [ -z "${TEAM_TRACKER_PROFILE_LOADED:-}" ] || return 0
+  local root f n
+  root="${1:-$(git rev-parse --show-toplevel)}"
+  f="$root/.claude/project-profile.json"
+  if [ -f "$f" ] && jq -e '.teams | type == "object"' "$f" >/dev/null 2>&1; then
+    team_profile_load "$root"
+    TEAM_TRACKER_TEAMS=1; TEAM_TRACKER_PROFILE_LOADED=1
+    return 0
+  fi
+  TEAM_TRACKER_TEAMS=""
+  TEAM_TRACKER="$( [ ! -f "$f" ] || jq -r '.tracker // empty' "$f" 2>/dev/null || true)"
+  case "${TEAM_TRACKER:=none}" in
+    jira)   TEAM_KEY_REGEX='^[A-Z]+-[0-9]+$' ;;
+    github) TEAM_KEY_REGEX='^[0-9]+$' ;;
+    none)   TEAM_KEY_REGEX='^L[0-9]+$' ;;
+    *) team_profile_die "tracker=$TEAM_TRACKER must be jira|github|none" ;;
+  esac
+  TEAM_GH_REPO=""; TEAM_GH_PROJECT_OWNER=""; TEAM_GH_PROJECT_NUMBER=""
+  TEAM_GH_PROJECT_ID=""; TEAM_GH_STATUS_FIELD_ID=""
+  TEAM_GH_STATUS_STARTED=""; TEAM_GH_STATUS_DELIVERED=""
+  if [ "$TEAM_TRACKER" = github ]; then
+    team_profile_gh_req "$f" '.github.repo' repo '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
+      tracker=github github
+    TEAM_GH_REPO="$TEAM_PROFILE_GH_V"
+    n="$(jq -r '[.github.project_owner, .github.project_number, .github.project_id,
+                 .github.status_field_id, .github.status_options.started,
+                 .github.status_options.delivered] | map(select(. != null and . != "")) | length' \
+      "$f" 2>/dev/null || echo 0)"
+    if [ "$n" != 0 ]; then
+      # A partial Project is a typo, not "no Project": refuse it, naming the first missing field.
+      team_profile_gh_project "$f" '.github' github 'a github Project'
+    fi
+  fi
+  TEAM_TRACKER_PROFILE_LOADED=1
 }
 
 # Usage: team_cost_key <root> <short key> — the key cost records are bound to. The short key stays

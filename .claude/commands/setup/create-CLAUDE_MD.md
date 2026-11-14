@@ -127,7 +127,7 @@ Ask the user which git workflow the project follows (use `AskUserQuestion` if av
 
 **Emit `**Merge:**` ONLY when the project's real strategy differs from the implied value** — otherwise omit the line entirely. The block's blockquote states the fallback, so a consumer never has to ask and never has to read this table at run time.
 
-**The `<KEY>` segment of the name pattern is derived, never asked.** A tracker is configured when a tracker skill is present (e.g. `.claude/skills/jira/SKILL.md`) **or** `.mcp.json` declares a tracker MCP server — the same predicate `/brainstorm` Step 0 uses. Tracker present → `<type>/<KEY>-<slug>`; absent → `<type>/<slug>`.
+**The `<KEY>` segment of the name pattern is derived, never asked.** `.claude/project-profile.json` → `tracker` = `github` → `<type>/<n>-<slug>` (the issue number). Otherwise a tracker is configured when a tracker skill is present (e.g. `.claude/skills/jira/SKILL.md`) **or** `.mcp.json` declares a tracker MCP server — the same predicate `/brainstorm` Step 0 uses. Tracker present → `<type>/<KEY>-<slug>`; absent → `<type>/<slug>`.
 
 **Repo with no commits yet** — the detection rule above says to default to `main` (trunk-based) and **skip the question entirely**. That path must still yield a complete block, so treat it as an implicit `trunk` preset — **Preset:** `trunk` · **Trunk:** `main` · **Integration:** `main` · **Branch names:** types `feat` `fix` `chore` `refactor` · **Base → PR dest:** everything off `main` → PR to `main` · **Protected:** `none`. Do not emit `**Merge:**`. Never leave a field unresolved because the question was skipped.
 

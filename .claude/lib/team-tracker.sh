@@ -10,6 +10,10 @@
 #   list --out <file>                                        (read-only; /tasks-status)
 #   show <key> --out <file>                                  (read-only; /tasks-status)
 #
+# Profile: the `teams` block when there is one (full validation), else the top-level `tracker` and
+# `github` block of a single-session project (`team_tracker_profile_load`). A github block without
+# its Project fields is valid there: set-status says `skipped (no project)`, list reports no board.
+#
 # Writes are idempotent by MARKER: the marker must be the body's last line, and a match is found by
 # enumerating EVERYTHING (paginate / totalCount) — a failed or partial enumeration is exit 4, never
 # the conclusion "not there" (which would double-post).
@@ -23,7 +27,7 @@ set -euo pipefail
 
 . "$(dirname "$0")/team-profile.sh"
 root="$(git rev-parse --show-toplevel)"
-team_profile_load "$root"
+team_tracker_profile_load "$root"
 
 TMP="$(mktemp -d)"
 LOCK=""
@@ -172,6 +176,7 @@ op_set_status() {
     delivered) opt="$TEAM_GH_STATUS_DELIVERED" ;;
     *) die 4 "unknown logical status '$logical' (started|delivered)" ;;
   esac
+  if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
   project_items
   # Identity is repo + number, never the number alone (owner/A#7 and owner/B#7 can share a project).
   # An ambiguous match is recoverable, not a coin flip: editing the wrong item is unrecoverable.
@@ -240,9 +245,13 @@ op_list() {
   gh_or4 gh api "repos/$TEAM_GH_REPO/issues?state=open&per_page=100" --paginate > "$TMP/raw.json"
   jq -s 'add // [] | map(select(.pull_request | not))' "$TMP/raw.json" > "$TMP/open.json" \
     || die 4 "issue list of $TEAM_GH_REPO is not parseable"
-  project_items
-  gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
-    --format json > "$TMP/fields.json"
+  if [ -n "$TEAM_GH_PROJECT_NUMBER" ]; then
+    project_items
+    gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
+      --format json > "$TMP/fields.json"
+  else  # no Project: no board to read — every issue is off the board
+    echo '{"items": []}' > "$TMP/items.json"; echo '{"fields": []}' > "$TMP/fields.json"
+  fi
   jq -n --slurpfile o "$TMP/open.json" --slurpfile i "$TMP/items.json" \
     --slurpfile f "$TMP/fields.json" --arg repo "$TEAM_GH_REPO" --arg fid "$TEAM_GH_STATUS_FIELD_ID" '
     [$i[0].items[] | select(.content.type == "Issue" and .content.repository == $repo)] as $b
@@ -298,6 +307,9 @@ if [ "$TEAM_TRACKER" = none ] && [ "$op" != read ]; then
   echo "skipped (tracker=none)"
   exit 0
 fi
+# The L<n> counter lives in the team layer's `.agents/team/`; a project without teams has none.
+[ "$TEAM_TRACKER" != none ] || [ -n "$TEAM_TRACKER_TEAMS" ] \
+  || die 2 "read: local L<n> tickets need the teams block — tracker=none without teams has no tickets"
 
 OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; POS=()
 while [ $# -gt 0 ]; do

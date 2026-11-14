@@ -143,7 +143,7 @@ This is what makes the run task-driven. **Do the diff FIRST (Step 2), then turn 
 
 ## Step 3: Conflict protocol — recommend, but ask (category B)
 
-> **Category-B unions respect the profile.** When `.claude/project-profile.json` exists, the `.mcp.json` and `settings.json` unions skip entries owned by a disabled group: the `atlassian` server and `mcp__atlassian__jira_*` entries when `tracker=none`; `mcp__atlassian__confluence_*` when `confluence=false`; the `playwright` server when `app_surface` is `none|mobile|desktop|tui`; the `pr-api.sh` allow entry when `commands.pr=false`. No profile → union as the playbook describes.
+> **Category-B unions respect the profile.** When `.claude/project-profile.json` exists, the `.mcp.json` and `settings.json` unions skip entries owned by a disabled group: the `mcp__atlassian__jira_*` entries when `tracker != jira`; the `atlassian` server when `tracker != jira && !confluence`; `mcp__atlassian__confluence_*` when `confluence=false`; the `playwright` server when `app_surface` is `none|mobile|desktop|tui`; the `pr-api.sh` allow entry when `commands.pr=false`. No profile → union as the playbook describes.
 
 `settings.json`, the `hooks` block, and `memory-domains.json` can have **same-key / different-value** conflicts that a union cannot resolve. **Never guess.** These are themselves tasks (Step 2.5) and go through the same per-task gate (Step 4). Apply the recommendation heuristic and present each via **`AskUserQuestion`**:
 

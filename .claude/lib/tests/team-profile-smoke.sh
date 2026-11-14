@@ -120,6 +120,14 @@ peek "$DTS | del(.teams.github.status_options.delivered)" 'echo reached'
 expect 2 "teams.github.status_options.delivered is required" "a missing status option is refused"
 peek "$DTS | .teams.github.project_number = \"two\"" 'echo reached'
 expect 2 "teams.github.project_number is required" "project_number must be numeric"
+# The top-level github block is the fallback for the WHOLE block; teams.github wins when both exist.
+TOPDTS="${DTS/.teams.github =/.github =}"
+peek "$TOPDTS" 'echo "$TEAM_GH_REPO|$TEAM_GH_PROJECT_ID|$TEAM_GH_STATUS_DELIVERED"'
+expect 0 "owner/repo|PVT_x|opt-delivered" "teams without github reads the top-level github block"
+peek "$TOPDTS | .github.repo = \"acme/top\" | $GH_BLOCK" 'echo "$TEAM_GH_REPO"'
+expect 0 "owner/repo" "teams.github wins over the top-level github block"
+peek "$TOPDTS | del(.github.project_id)" 'echo reached'
+expect 2 "teams.github.project_id is required" "teams still requires the Project, from either block"
 peek '.teams.pr_provider = "bitbucket"' 'echo reached'
 expect 2 "teams.pr_provider=bitbucket must be" "bad pr_provider enum"
 peek '.teams.gates = "sometimes"' 'echo reached'

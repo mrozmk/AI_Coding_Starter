@@ -450,6 +450,10 @@ publish_base base-github ".teams.tracker = \"github\" | $GH_BLOCK"
 publish_base base-none '.teams.tracker = "none"'
 publish_base base-ghother \
   ".teams.tracker = \"github\" | $GH_BLOCK | .teams.github.project_id = \"PVT_other\""
+# The same blocks at the TOP level (no teams.github): the guard must compare those, not {} with {}.
+TOP_BLOCK="${GH_BLOCK/.teams.github =/.github =}"
+publish_base base-ghtopother \
+  ".teams.tracker = \"github\" | $TOP_BLOCK | .github.project_id = \"PVT_other\""
 publish_base base-notracker ".teams.tracker = \"github\" | $GH_BLOCK"
 git -C "$SEED" rm --quiet .claude/lib/team-tracker.sh
 git -C "$SEED" commit --quiet -m "no tracker adapter"
@@ -506,6 +510,11 @@ no_clone beta "base profile tracker=jira"
 run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghother --ticket-file "$INC/ticket.json"
 expect 1 "cannot run tracker=github" "a base pointing at another project is refused"
 no_clone beta "base github block differs"
+setprofile ".teams.tracker = \"github\" | $TOP_BLOCK"
+run "$MAIN" $NEW beta 7 bugfix/7-other origin/base-ghtopother --ticket-file "$INC/ticket.json"
+expect 1 "cannot run tracker=github" "a base whose top-level github block differs is refused"
+no_clone beta "base top-level github block differs"
+github_profile
 [ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "a refused start called gh" ; }
 
 # tracker=none: the adapter allocates the key, team-new takes it from the file.
@@ -916,5 +925,65 @@ setprofile '.'
 run "$MAIN" $TRK list --out "$WORK/lj.json"
 expect 3 "no adapter op" "jira list refused"
 [ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "list/show under none/jira called gh"; }
+
+# ================================================================================================
+# (13) no teams block: the single-session path reads the top-level tracker and github block
+# ================================================================================================
+TOP_GH='{repo: "owner/repo", project_owner: "owner", project_number: 2, project_id: "PVT_x",
+  status_field_id: "PVTSSF_x", status_options: {started: "opt-started", delivered: "opt-delivered"}}'
+solo() { jq -n "{schema: 1, tracker: \"github\", github: $TOP_GH} | $1" > "$P"; }
+fx_reset
+echo '[{"number": 7, "title": "Fix the thing", "updated_at": "", "assignees": [], "labels": []}]' \
+  > "$GH_DIR/issues.json"
+solo '.'
+run "$MAIN" $TRK list --out "$WORK/solo-list.json"
+expect 0 "items=1" "list works without a teams block"
+jq -e '.items[0].status == "Todo" and .statuses == ["In Progress", "Delivered"]' \
+  "$WORK/solo-list.json" >/dev/null || fail "solo list lost the board status"
+run "$MAIN" $TRK read 7 --out "$WORK/solo-read"
+expect 0 "key=7 type=bugfix" "read works without a teams block"
+run "$MAIN" $TRK set-status 7 delivered
+expect 0 "set delivered" "set-status works without a teams block"
+
+# "No Project" is a valid answer: set-status skips, list has no board, no gh project call at all.
+solo '.github = {repo: "owner/repo"}'
+: > "$GH_LOG"
+run "$MAIN" $TRK set-status 7 delivered
+expect 0 "skipped (no project)" "set-status without a Project skips politely"
+run "$MAIN" $TRK list --out "$WORK/solo-noproj.json"
+expect 0 "items=1" "list without a Project still lists the issues"
+jq -e '.statuses == [] and .items[0].status == null and .items[0].on_board == 0' \
+  "$WORK/solo-noproj.json" >/dev/null || fail "list without a Project must report no board"
+[ "$(grep -c '^gh project' "$GH_LOG" | tr -d ' ')" = 0 ] || fail "no Project, yet gh project was called"
+
+solo 'del(.github.status_field_id)'
+run "$MAIN" $TRK list --out "$WORK/x.json"
+expect 2 "github.status_field_id is required for a github Project" "a partial Project is refused"
+solo 'del(.github.repo)'
+run "$MAIN" $TRK list --out "$WORK/x.json"
+expect 2 "github.repo is required for tracker=github" "github without a repo is refused"
+solo '.tracker = "svn"'
+run "$MAIN" $TRK list --out "$WORK/x.json"
+expect 2 "tracker=svn must be jira|github|none" "a bad top-level tracker is refused"
+
+: > "$GH_LOG"
+solo '.tracker = "none"'
+run "$MAIN" $TRK set-status L1 delivered
+expect 0 "skipped (tracker=none)" "none without teams: write ops skip"
+run "$MAIN" $TRK read --brief 'Fix X' --out "$WORK/solo-none"
+expect 2 "need the teams block" "none without teams: read refuses (no L<n> counter)"
+solo 'del(.tracker)'
+run "$MAIN" $TRK list --out "$WORK/x.json"
+expect 0 "skipped (tracker=none)" "a missing top-level tracker means none"
+solo '.tracker = "jira"'
+run "$MAIN" $TRK list --out "$WORK/x.json"
+expect 3 "no adapter op" "jira without teams: refused as with teams"
+[ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "none/jira without teams called gh"; }
+
+# The light loader has its own flag: a full team_profile_load after it still refuses a no-teams
+# profile instead of trusting a half-loaded state.
+solo '.'
+run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_tracker_profile_load; team_profile_load; echo reached'
+expect 2 "no teams profile — run /setup:teams" "team_profile_load after the light loader still validates"
 
 echo "team-tracker-smoke: OK"

@@ -1,9 +1,9 @@
 4. Tracker — the state file `.agents/team/runs/{{RUN}}/wrapup-state.json` (`{}` if absent) makes
    every write safe to retry:
    - **compare the stored identity FIRST, before writing anything.** Read the existing `target` and
-     compare it with this run's: `{run: "{{RUN}}", ticket: "{{TICKET}}", repo: "<teams.github.repo>",
-     project_id: "<teams.github.project_id>"}` (`repo` and `project_id` verbatim from
-     `.claude/project-profile.json`). Never write `target` before that comparison — writing the
+     compare it with this run's: `{run: "{{RUN}}", ticket: "{{TICKET}}", repo: "<github.repo>",
+     project_id: "<github.project_id>"}` (`repo` and `project_id` verbatim from the github block
+     of `.claude/project-profile.json` — `teams.github`, else the top-level `github`). Never write `target` before that comparison — writing the
      current identity over a foreign file and only then calling it FOREIGN would relabel another
      run's finished intents as this run's.
      - absent or empty file → write a fresh `{target, intents: {}}` with the identity above;

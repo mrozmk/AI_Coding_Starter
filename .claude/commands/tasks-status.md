@@ -15,14 +15,15 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
 ## Steps
 
 1. **Tracker.** From `.claude/project-profile.json`: `teams.tracker` when a `teams` block exists,
-   else the top-level `tracker`, else `none`. `github` exists only through the `teams` block
-   (`team-tracker.sh` needs the whole teams profile); a top-level value outside `jira|none`, or a
-   `teams` block the adapter refuses → say so in one line and continue as `none`.
+   else the top-level `tracker`, else `none` — the rule `team-tracker.sh` applies itself. `github`
+   works with or without teams (the github block: `teams.github`, else the top-level `github`). An
+   adapter refusal of the profile (exit 2) → say so in one line and continue as `none`.
 
 2. **Task list — the report's scope, named in its header.**
    - **github** — `bash .claude/lib/team-tracker.sh list --out <scratch>/tasks.json`: every open
-     issue of `teams.github.repo` with its Project status (`null` = not on the board; `on_board`
-     > 1 = ambiguous, flag it) and the Status options in board order. Exit 4 → say the list is
+     issue of the github block's `repo` with its Project status (`null` = not on the board;
+     `on_board` > 1 = ambiguous, flag it) and the Status options in board order (none when the
+     profile has no Project: one "no status" section). Exit 4 → say the list is
      incomplete and stop the tracker part; never report a partial list as the whole.
    - **jira** — Atlassian MCP `jira_search`, `fields: summary,status,assignee,updated`,
      `limit: 50`, paged with `start_at` until a page comes back short. JQL: `status_report.jira_jql`

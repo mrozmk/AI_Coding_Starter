@@ -390,7 +390,8 @@ team_ticket_checks() {
 
 # The clone runs the harness of its BASE, so the base must carry the adapter, the wrapup block and
 # the same tracker in its COMMITTED profile — the supervisor's working tree does not travel. For
-# github the whole `teams.github` block must match too: a different project/repo would send
+# github the whole effective github block (`TEAM_GH_BLOCK`: `teams.github`, else the top-level
+# `github`) must match too: a different project/repo would send
 # `started` and `delivered` to another board. jira keeps the legacy fallback (no block, no adapter).
 team_base_tracker_check() {
   local root="$1" base="$2" t="$TEAM_TRACKER" bad="" p
@@ -401,8 +402,8 @@ team_base_tracker_check() {
     | jq -r '.teams.tracker // empty' 2>/dev/null || true)" = "$t" ] || bad=1
   if [ -z "$bad" ] && [ "$t" = github ]; then
     [ "$(git -C "$root" show "$base:.claude/project-profile.json" 2>/dev/null \
-      | jq -S -c '.teams.github // {}' 2>/dev/null || true)" \
-      = "$(jq -S -c '.teams.github // {}' "$root/.claude/project-profile.json")" ] || bad=1
+      | jq -S -c "$TEAM_GH_BLOCK" 2>/dev/null || true)" \
+      = "$(jq -S -c "$TEAM_GH_BLOCK" "$root/.claude/project-profile.json")" ] || bad=1
   fi
   [ -z "$bad" ] || TEAM_PROBLEMS+=("base $base cannot run tracker=$t \
 — tracker adapter/profile missing or different on the base")
@@ -420,7 +421,7 @@ team_base_pr_check() {
   prof="$(git -C "$root" show "$base:.claude/project-profile.json" 2>/dev/null || true)"
   [ "$(printf '%s' "$prof" | jq -r '.teams.pr_provider // empty' 2>/dev/null || true)" = github ] \
     || bad=1
-  [ "$(printf '%s' "$prof" | jq -r '.teams.github.repo // empty' 2>/dev/null || true)" \
+  [ "$(printf '%s' "$prof" | jq -r "$TEAM_GH_BLOCK.repo // empty" 2>/dev/null || true)" \
     = "$TEAM_GH_REPO" ] || bad=1
   [ -z "$bad" ] || TEAM_PROBLEMS+=("base $base cannot run pr_provider=github \
 — PR layer/profile missing or different on the base")
