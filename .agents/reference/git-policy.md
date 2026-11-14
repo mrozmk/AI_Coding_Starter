@@ -7,7 +7,8 @@ Pointed at from `CLAUDE.md → Git Workflow`. `CLAUDE.md` keeps the three guardr
 Precedence `deny` > `ask` > `allow`:
 
 - **`deny`** is absolute — no prompt or classifier overrides it. Holds every history rewrite and every unrecoverable discard: `push --force`, `reset --hard`, `clean -f`, `checkout -- <path>`, `restore .`, `rebase`, `pull --rebase`, `cherry-pick`, `config`, `remote set-url` / `remove` / `rename`, `reflog expire`, `gc --prune`, forced `switch`.
-- **`ask`** always prompts, even in auto mode: `merge --no-ff`, `merge --squash`, `branch -d` / `-D`, `git rm`, `remote add`.
+- **`ask`** always prompts, even in auto mode: `merge --no-ff`, `merge --squash`, `branch -d` / `-D`, `git rm`, `remote add`, and bare `rm -rf` anywhere.
+- **Deleting without a prompt** goes through two allow-listed wrappers, because a glob cannot confine `rm -rf` to a directory (`*` also matches spaces and extra arguments): `bash .claude/lib/rm-in-project.sh <path>…` inside the repository and its worktrees (never a worktree root, the git dir, `.git`, `.env*`, or the guard layer — `.claude/settings*.json`, `.claude/hooks` — nor a directory holding one; compared case-insensitively, so `.GIT` / `.ENV` aliases on macOS are refused too), and `bash .claude/lib/rm-in-scratchpad.sh <absolute-path>…` from the repo root, inside the current Claude Code session scratchpad only. Both validate every path before deleting anything.
 - **`allow`** covers the read-only and the routine: `status`, `diff`, `log`, `add`, `commit`, `push`, `pull`, `fetch`, `stash`, `tag`, `switch`, `revert`, plus the pipeline's `worktree add` / `list` / `prune` / `remove` and `merge --ff-only`.
 - Anything in no list (bare `git merge`, soft/mixed `git reset`) prompts interactively.
 
