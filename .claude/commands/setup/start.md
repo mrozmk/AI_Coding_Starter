@@ -109,7 +109,9 @@ Show the full profile and the `commands.*` manifest on Screen 3. Write the file 
 
 ## Phase B — Configure
 
-Eight ordered steps. Each reports one line `created | kept | skipped(<why>)`. Never rewrite a whole file — replace only the named block or entry.
+Nine ordered steps (0–8). Each reports one line `created | kept | skipped(<why>)`. Never rewrite a whole file — replace only the named block or entry.
+
+**0. Fork commit.** Gives the first `/maintain:sync-from-starter` a 3-way base. `last_sync_commit` in `.claude/.starter-sync.json` already set → `kept`. Otherwise run `bash .claude/lib/starter-fork-commit.sh "$(jq -r .starter_repo .claude/.starter-sync.json)"` (needs the network; it reads committed history only, so earlier writes in this command do not affect it). It prints `<hash> <date> <method>` → set exactly `last_sync_commit` = the hash and `last_sync_date` = the date with `jq` (write to a temp file, then move it over), report `created (<method>)`. Exit 1 → write nothing, report `skipped(<its reason> — the first sync infers the base again, else runs 2-way)`. A brownfield copy has no exact evidence and is skipped by design — never type a commit in by hand. No `jq` → `skipped(jq not on PATH)`.
 
 **1. `.env.example` contract.** Toggle blocks by commenting/uncommenting whole lines (keep the explanatory comments):
 - Jira block (`JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`) active **iff** `tracker=jira`.

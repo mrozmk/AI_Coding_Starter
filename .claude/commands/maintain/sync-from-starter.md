@@ -82,7 +82,8 @@ Look for **`.claude/.starter-sync.json`** (committed — shared team state). Als
 ```
 
 - **Present** → you have a `base` (the starter revision the project last synced from). This unlocks true **3-way merge** in Step 2 — distinguishing _intentional local edits_ from _staleness_, and detecting _upstream deletions_.
-- **Absent** (first sync ever, or pre-manifest project) → **2-way fallback**: no `base`, so you cannot tell a local command edit from an old one. In that mode, before overwriting any category-A file that differs, run `git log --oneline -- <file>` and **flag** files the project committed after their initial add as "possible local edit — confirm overwrite". Note in the report that 3-way kicks in from the _next_ sync once the manifest is written.
+- **No base yet** (`last_sync_commit` null — `/setup:start` step 0 found no exact match or ran offline — or the file is absent) → Step 1 tries to infer it; only when that fails, the fallback below applies.
+- **Still no base** after Step 1's inference (a brownfield copy, the starter unreachable) → **2-way fallback**: no `base`, so you cannot tell a local command edit from an old one. In that mode, before overwriting any category-A file that differs, run `git log --oneline -- <file>` and **flag** files the project committed after their initial add as "possible local edit — confirm overwrite". Note in the report that 3-way kicks in from the _next_ sync once the manifest is written.
 
 ---
 
@@ -96,6 +97,7 @@ git clone https://github.com/mrozmk/AI_Coding_Starter /tmp/ai-coding-starter-syn
 - If `/tmp/ai-coding-starter-sync` already exists, remove it first (`rm -rf` is `ask`-tier so it prompts, and chaining it with `git clone` can fail — run the removal as its own step, or clone into a suffixed dir).
 - If a `<ref>` arg was given: `git -C /tmp/ai-coding-starter-sync checkout <ref>` (fail loudly if the ref doesn't exist — do not silently fall back to `main`).
 - Record `theirs` hash: `git -C /tmp/ai-coding-starter-sync rev-parse --short HEAD`.
+- **No base yet** (Step 0) → infer it with the clone's own copy of the detector, which a project synced before it existed does not have: `bash /tmp/ai-coding-starter-sync/.claude/lib/starter-fork-commit.sh <starter_repo>` from the project root. It answers only on exact evidence — the starter's history in this repo, or a root commit with a starter commit's tree — so a brownfield copy gets no answer. A hit is the `base` for this run (re-clone without `--depth 1` if needed); say `base inferred: <hash> (<method>)` in the report, and Step 6 records it. Exit 1 → 2-way fallback, with its reason in the report.
 - If `base` exists, also record the upstream delta for the report: `git -C /tmp/ai-coding-starter-sync log --oneline <base>..HEAD` → "N upstream commits since last sync".
 
 > A shallow `--depth 1` clone is fine for 2-way mode. For 3-way you need history back to `base`, so clone full (omit `--depth 1`) when a manifest exists.
