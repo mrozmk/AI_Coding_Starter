@@ -36,6 +36,9 @@ mktarget() {  # mktarget <name> → a fresh one-commit repo at $WORK/<name>
   local t="$WORK/$1"
   mkdir -p "$t"; git -C "$t" init --quiet
   echo README > "$t/README"; git -C "$t" add README; git -C "$t" commit --quiet -m README
+  # The core files a synced project already has (team-setup.sh refuses without them, see (20)).
+  mkdir -p "$t/.claude/lib"
+  cp "$ST/.claude/lib/team-profile.sh" "$ST/.claude/lib/team-tracker.sh" "$t/.claude/lib/"
   printf '%s' "$t"
 }
 # Entries the manifest distributes — counted from the file, never hardcoded.
@@ -316,6 +319,7 @@ jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null 
 
 # ---- (15) no write may pass through a symlinked target component -------------------------------
 T=$(mktarget t15a)
+rm -rf "$T/.claude"                                       # the symlink takes the directory's place
 mkdir -p "$T/outside"
 ln -s outside "$T/.claude"
 H0=$(treehash "$T")
@@ -340,6 +344,7 @@ setup "$T"
 [ -L "$T/.claude/lib/team-run.sh" ] || fail "15c: the dangling symlink was replaced"
 [ "$(treehash "$T")" = "$H0" ] || fail "15c: a refused run wrote something"
 T=$(mktarget t15d)
+rm -rf "$T/.claude"
 printf 'file\n' > "$T/.claude"                           # a regular file where a dir must go
 setup "$T"
 [ "$RC" = 2 ] || fail "15d: a .claude file exited $RC, expected 2"
@@ -439,6 +444,57 @@ for bad in '{type: "command", command: $w, async: true}' 'startup'; do
   [ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("team-watch-session"))
     | select(.timeout == 5 and (.async // false) == false)] | length' "$S")" -ge 1 ] \
     || fail "19: the correct W was not added next to the conflict ($bad)"
+done
+
+# ---- (20) core prerequisites: never a harness on top of a missing or stale adapter/profile -------
+for c in missing stale; do
+  T=$(mktarget "core-$c")
+  if [ "$c" = missing ]; then rm -f "$T/.claude/lib/team-profile.sh"
+  else echo '# an older copy' >> "$T/.claude/lib/team-tracker.sh"; fi
+  before=$(treehash "$T")
+  setup "$T"
+  [ "$RC" = 2 ] || fail "20: a $c core file: exit $RC, expected 2"
+  if [ "$c" = missing ]; then has "core file .claude/lib/team-profile.sh is missing" \
+    || fail "20: the refusal does not name the missing core file"
+  else has "core file .claude/lib/team-tracker.sh differs from the starter's" \
+    || fail "20: the refusal does not name the stale core file"; fi
+  has "sync-from-starter" || fail "20: the refusal does not say how to fix it"
+  [ "$(treehash "$T")" = "$before" ] || fail "20: a refused install ($c) wrote to the target"
+done
+T=$(mktarget core-current)
+setup "$T" --check
+[ "$RC" != 2 ] || fail "20: current core files are refused: $(cat "$WORK/out")"
+
+# ---- (21) a project without teams has every file the core tracker commands call -----------------
+# The tree a sync gives a project that never installed the harness: the starter's tracked files
+# minus every manifest own/shared path and the tests, and directly in .claude/lib/ only what the
+# playbook's category A routes there (*.sh, *.mjs, never *.test.mjs). The sync itself is prose this
+# cannot run; this checks that the routing rule carries the commands' whole closure.
+D="$WORK/solo"; mkdir -p "$D"
+while IFS= read -r p; do
+  case "$p" in */tests/*|*.test.mjs) continue ;; esac
+  grep -qxF "own $p" "$MANIFEST" && continue
+  grep -qxF "shared $p" "$MANIFEST" && continue
+  case "$p" in .claude/lib/*/*) ;; .claude/lib/*.sh|.claude/lib/*.mjs) ;; .claude/lib/*) continue ;; esac
+  mkdir -p "$D/$(dirname "$p")"; cp "$ST/$p" "$D/$p"
+done < <(git -C "$ST" ls-files)
+git -C "$D" init --quiet
+for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs; do
+  [ -f "$D/.claude/lib/$f" ] || fail "21: a project without teams lacks .claude/lib/$f"
+done
+jq -n '{schema: 1, tracker: "github", github: {repo: "owner/repo"}}' > "$D/.claude/project-profile.json"
+set +e; (cd "$D" && bash .claude/lib/team-tracker.sh set-status 7 started) > "$WORK/out" 2>&1; RC=$?; set -e
+[ "$RC" = 0 ] && has "skipped (no project)" || fail "21: the adapter does not load without teams (exit $RC)"
+set +e; (cd "$D" && node -e "import('./.claude/lib/github-sync.mjs').then(() => {}, (e) => { console.error(e.message); process.exit(1) })") \
+  > "$WORK/out" 2>&1; RC=$?; set -e
+[ "$RC" = 0 ] || fail "21: github-sync.mjs does not resolve its imports without teams"
+# Every .claude/lib file these commands name ships too — except the two /tasks-status reads only
+# with a `teams` block (team columns are dropped without one).
+for c in start-task pr-create github-sync tasks-status; do
+  for f in $(grep -oE '\.claude/lib/[A-Za-z0-9_.-]+\.(sh|mjs|py)' "$ST/.claude/commands/$c.md" | sort -u); do
+    case "$f" in .claude/lib/team-snapshot.sh|.claude/lib/team-pr.sh) continue ;; esac
+    [ -f "$D/$f" ] || fail "21: /$c names $f, which a project without teams does not get"
+  done
 done
 
 echo "team-setup-smoke: OK"

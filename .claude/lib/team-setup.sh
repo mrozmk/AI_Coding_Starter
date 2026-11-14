@@ -17,7 +17,8 @@
 # then `summary: created=N kept=N conflict=N merged=N` and `profile: ok|missing`.
 #
 # Exit: 0 installed, nothing to decide · 1 conflicts (everything else is installed)
-#   2 usage / no jq / target is not a repo root / manifest drift (nothing written)
+#   2 usage / no jq / target is not a repo root / manifest drift / a core file the harness sources
+#     (team-profile.sh, team-tracker.sh) missing or not the starter's — sync first (nothing written)
 #   3 the target profile has no `teams` block — it takes precedence over 1
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
@@ -140,6 +141,16 @@ if [ -e "$S_DST" ]; then
 else
   CUR='{}'
 fi
+
+# Core files the harness sources but this installer never copies: they are the starter's core and
+# reach a project with the starter itself and its syncs (the manifest's `!` core lines). Missing or
+# different from the starter's copy → the project has not synced, and the newer team scripts would
+# fail on its old adapter/profile. Refused here, before any write.
+for p in .claude/lib/team-profile.sh .claude/lib/team-tracker.sh; do
+  [ -f "$TARGET/$p" ] || die 2 "core file $p is missing — run /maintain:sync-from-starter first"
+  cmp -s "$STARTER/$p" "$TARGET/$p" \
+    || die 2 "core file $p differs from the starter's — run /maintain:sync-from-starter first"
+done
 
 # ---- the files ---------------------------------------------------------------------------------
 i=0
