@@ -5,9 +5,12 @@ Verdicts: DROP/TRUNCATE of a table, database or schema -> deny (never by an agen
 Covered inputs: sqlcmd -Q/-q/--query, -i/--input-file, `< file`, `cat file |`, here-docs, scripts run by
 bash/sh/zsh/source/./x.sh, and the same forms nested in bash -c / tmux new-session / tmux send-keys
 / `$(…)` / backticks. A sqlcmd long option this file does not parse -> ask.
-A command that mentions sqlcmd or a .sql file but cannot be parsed -> ask (fail-closed); a script
-that cannot be parsed is retried once with the quotes of its documentation heredocs blanked, else
-ask.
+A command that mentions sqlcmd or a .sql file but cannot be parsed -> ask (fail-closed). A script
+that cannot be parsed is retried once with the quotes of its documentation heredocs blanked, then
+classified line by line: it asks as unparsable when it mentions sqlcmd/.sql, when a line naming a
+script cannot be parsed, or when a script it names cannot be found. After an unparsable script the
+scan continues from the start dir with every dir a read `cd` may have left it in as a candidate,
+scanning all of them; an unreadable `cd` asks. A candidate file that exists but cannot be read asks.
 """
 import json
 import os
@@ -101,6 +104,14 @@ SQL_PARTS = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)
 MENTIONS_SQL = re.compile(r"sqlcmd|\.sql\b", re.I)
 SUBST = re.compile(r"\$\(|`|\)")  # same as guard_team_egress.SUBST
 DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
+SCRIPT_REF = re.compile(r"\.(sh|sql)\b")
+CD_WORD = re.compile(r"(^|[\s;&|(])cd\s")
+MAX_CWDS = 8
+
+
+def worth_scanning(text):
+    """Substituted text that may run SQL: it names sqlcmd, a .sql or a .sh file."""
+    return bool(MENTIONS_SQL.search(text) or SCRIPT_REF.search(text))
 
 
 def strip_shell_comments(cmd):
@@ -261,22 +272,45 @@ class Scan:
     def __init__(self, cwd, project):
         self.cwd, self.project = cwd, project
         self.deny, self.ask = [], []
+        # Other dirs an unparsable script may have left the shell in; `blind` names one whose cwd
+        # effect is unknown.
+        self.alt, self.blind = set(), ""
 
-    def resolve(self, f):
+    def state(self):
+        return self.cwd, set(self.alt), self.blind
+
+    def restore(self, state):
+        self.cwd, alt, self.blind = state
+        self.alt = set(alt)
+
+    def paths(self, f):
+        """Files `f` may name. With candidate dirs every hit is scanned, never only the first."""
         path = os.path.expanduser(f)
         if os.path.isabs(path):
-            return path
-        for root in (self.cwd, self.project):
-            if root and os.path.isfile(os.path.join(root, path)):
-                return os.path.join(root, path)
-        return ""
+            return [path] if os.path.exists(path) else []
+        roots = [self.cwd, *sorted(self.alt), self.project]
+        hits = [os.path.join(r, path) for r in roots if r and os.path.isfile(os.path.join(r, path))]
+        return list(dict.fromkeys(hits)) if self.alt else hits[:1]
 
     def read(self, f):
-        try:
-            with open(self.resolve(f), encoding="utf-8", errors="replace") as fh:
-                return fh.read()
-        except OSError:
-            return None
+        if self.blind and not os.path.isabs(os.path.expanduser(f)):
+            self.ask.append(f + " (cwd unknown after unparsable " + self.blind + ")")
+        bodies = []
+        for path in self.paths(f):
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    bodies.append(fh.read())
+            except OSError:
+                # One readable namesake must not hide an unreadable one.
+                self.ask.append(f + " (unreadable " + path + ")")
+        return bodies
+
+    def sql_file(self, f, where):
+        bodies = self.read(f)
+        if not bodies:
+            self.ask.append(where + " (unreadable " + f + ")")
+        for body in bodies:
+            self.sql(body, f)
 
     def sql(self, text, where):
         text = strip_sql_comments(text)
@@ -290,13 +324,17 @@ class Scan:
         unmistakable statement catch SQL assembled on the same line. Test fixtures under tests/ only
         get the first pass — they print SQL into files, they do not run it."""
         if depth < 3:
+            start = self.state()
             try:
                 self.command(text, where, depth + 1)
             except ValueError:
+                # A pass that failed midway has already applied its `cd` lines.
+                self.restore(start)
                 try:
                     self.command(doc_heredocs_removed(text), where, depth + 1)
                 except ValueError:
-                    self.ask.append(where + " (unparsable)")
+                    self.restore(start)
+                    self.unparsable(text, where, depth)
         if "/tests/" in where:
             return
         for line in text.splitlines():
@@ -308,6 +346,59 @@ class Scan:
             if SHELL_ASK.search(line):
                 self.ask.append(where)
 
+    def unparsable(self, text, where, depth):
+        """A body shlex cannot read as a whole is classified line by line; it asks when it names
+        SQL, when a line naming a script cannot be followed, or when a script it names is not found.
+        The caller always continues from the start dir, with every dir the lines may have reached
+        as a candidate."""
+        # Whole text, comments included: a `#` line inside an expanding heredoc still runs.
+        if MENTIONS_SQL.search(text):
+            self.ask.append(where + " (unparsable)")
+            return
+        start, joined = self.cwd, re.sub(r"\\\n", " ", text)
+        try:
+            for line in joined.splitlines():
+                before = {self.cwd} | self.alt
+                try:
+                    self.command(line, where, depth + 1)
+                except ValueError:
+                    if SCRIPT_REF.search(line):
+                        self.ask.append(where + " (unparsable)")
+                        return
+                    if CD_WORD.search(line):
+                        self.blind = self.blind or where
+                self.widen(before, where)
+            # Line reading can apply a heredoc's literal `cd` or skip `then bash x.sh`, so every
+            # named script is also scanned from the starting directory (fail-closed union). The
+            # name regex stops at a space, so a name it cannot resolve asks instead of passing.
+            self.rebase(start)
+            for f in dict.fromkeys(re.findall(r"[\w./~-]+\.sh\b", joined)):
+                if not self.paths(f):
+                    self.ask.append(where + " (unparsable, unresolved " + f + ")")
+                    continue
+                before = {self.cwd} | self.alt
+                self.script(f, depth + 1)
+                self.widen(before, where)
+        finally:
+            self.rebase(start)
+
+    def widen(self, before, where):
+        """A line read on its own may be a heredoc's literal text, so a `cd` it applied may never
+        run — the dirs before it stay candidates."""
+        if ({self.cwd} | self.alt) != before:
+            self.alt |= before
+            self.alt.discard(self.cwd)
+        if len(self.alt) > MAX_CWDS:
+            self.blind = self.blind or where
+            self.alt = set(sorted(self.alt)[:MAX_CWDS])
+
+    def rebase(self, start):
+        """The caller continues from the start dir; where the fallback ended stays a candidate."""
+        if self.cwd != start:
+            self.alt.add(self.cwd)
+            self.cwd = start
+        self.alt.discard(start)
+
     def sqlcmd(self, words, where, cmd):
         i = 1
         while i < len(words):
@@ -318,21 +409,14 @@ class Scan:
             elif w.startswith("--query="):
                 self.sql(w[len("--query="):], where + " -Q")
             elif w.startswith("--input-file="):
-                f = w[len("--input-file="):]
-                body = self.read(f)
-                self.sql(body, f) if body is not None else self.ask.append(where + " (unreadable " + f + ")")
+                self.sql_file(w[len("--input-file="):], where)
             elif w in ("-i", "--input-file", "<") and i + 1 < len(words):
-                body = self.read(words[i + 1])
-                if body is None:
-                    self.ask.append(where + " (unreadable " + words[i + 1] + ")")
-                else:
-                    self.sql(body, words[i + 1])
+                self.sql_file(words[i + 1], where)
                 i += 1
             elif w.startswith(("-Q", "-q")) and len(w) > 2:
                 self.sql(w[2:], where + " -Q")
             elif w.startswith("-i") and len(w) > 2:
-                body = self.read(w[2:])
-                self.sql(body, w[2:]) if body is not None else self.ask.append(where)
+                self.sql_file(w[2:], where)
             elif w.startswith("--"):
                 # A long option this parser does not know may carry the statement: ask, never allow.
                 self.ask.append(where + " (unparsed option " + w.split("=", 1)[0] + ")")
@@ -344,7 +428,7 @@ class Scan:
         if depth < 3:
             # Before tokenizing: shlex reads `"$(sqlcmd -Q "x")"` as two strings and splits x.
             for body in substitutions(strip_shell_comments(cmd)):
-                if MENTIONS_SQL.search(body):
+                if worth_scanning(body):
                     self.command(body, where + " subst", depth + 1)
         tokens = tokenize(cmd)
         piped_file = None
@@ -354,18 +438,20 @@ class Scan:
                 # `$(…)`/backticks inside a quoted word or glued to it: scan the substituted text.
                 for k, w in enumerate(raw):
                     # `$(…)` is read from the raw text above; backticks only here.
-                    if "`" in w and MENTIONS_SQL.search(w):
+                    if "`" in w and worth_scanning(w):
                         self.command(SUBST.sub(" ; ", w), where + " subst", depth + 1)
                     if "`" in w:
                         # An unquoted backtick spans words: `echo `sqlcmd -Q "…"`` runs the tail.
                         tail = shlex.join([w.split("`", 1)[1]] + raw[k + 1:])
-                        if MENTIONS_SQL.search(tail):
+                        if worth_scanning(tail):
                             self.command(tail, where + " subst", depth + 1)
             if not words:
                 continue
             verb = os.path.basename(words[0].lstrip("`"))
             if verb == "cd" and len(words) > 1:
-                self.cwd = os.path.join(self.cwd, os.path.expanduser(words[1]))
+                d = os.path.expanduser(words[1])
+                self.cwd = os.path.join(self.cwd, d)
+                self.alt = {os.path.join(c, d) for c in self.alt} - {self.cwd}
             elif verb == "sqlcmd":
                 if piped_file:
                     words = words + ["<", piped_file]
@@ -389,13 +475,18 @@ class Scan:
             piped_file = None
 
     def script(self, f, depth):
-        body = self.read(f)
-        if body is None:
-            return
-        if f.endswith(".sql"):
-            self.sql(body, f)
-        else:
-            self.shell_text(body, f, depth)
+        # Every namesake starts from the caller's dirs and any of their end dirs may be the real
+        # one, so all stay candidates.
+        start, ends = self.state(), set()
+        for body in self.read(f):
+            self.restore((start[0], start[1], self.blind))
+            if f.endswith(".sql"):
+                self.sql(body, f)
+            else:
+                self.shell_text(body, f, depth)
+            ends |= {self.cwd} | self.alt
+        if ends:
+            self.alt = ends - {self.cwd}
 
 
 def classify(cmd, cwd, project):
