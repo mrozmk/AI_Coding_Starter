@@ -25,7 +25,7 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 `bash .claude/lib/team-attach.sh alfa coder`. Merge: ask the supervisor ("merge alfa").
 
 - **Which mode** (`/start-team alfa ABC-801 --mode quick`, fixed per ticket, shown by `status` and
-  the dashboard):
+  the team snapshot):
   - `brainstorm` (default) — typical tickets: spec + plan, then coder → QA → wrapup;
   - `quick` — small, clear changes: a Codex-reviewed short plan instead of a spec, then the same
     coder → QA → wrapup;
@@ -81,8 +81,6 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 - **On `ready`, `/monitor` prints a 5-line summary** (team · ticket · what was coded · what it
   gives · QA + PR) plus a `Supervisor decisions:` count line and a "TeamLead decisions" section,
   ending `Merge <team>?`. The summary's prose is in the developer's language (profile `language`).
-- **Live dashboard in the browser:** `/dashboard` — teams, this session's sub-agents and Codex runs
-  on one page (read-only), opened in the default browser. See §10.
 
 ## 1. One-time setup
 
@@ -285,27 +283,23 @@ check reports (§6).
 Clones stay; `team-next.sh` reuses them. Remove one only to retire the team or to discard
 unfinished work — manually (`rm-in-project.sh` does not reach outside the repo), then `team-new.sh`.
 
-## 10. Dashboard
+## 10. Team snapshot
 
-A local, read-only web page of the whole harness: supervisor session, every team's roles, this
-session's sub-agents and live Codex runs, plus an event log. It shows prompts, questions and the
-commands to answer them; it cannot act.
-
-**Start:** `/dashboard` in the Claude window of the main checkout whose session the page should
-show. It pins that session, starts `serve.sh` in the detached tmux session `dashboard` (it survives
-the Claude session), waits until the page answers and opens it in the default browser. Run again →
-it only reopens the page; from another session → it restarts pinned to that one. `/dashboard stop`
-ends it. Without Claude: `bash .claude/dashboard/dashboard.sh [stop]`, or `bash
-.claude/dashboard/serve.sh` in the foreground (`Ctrl-C` stops it and removes its temp dir).
+`bash .claude/lib/team-snapshot.sh --out <file>` writes one read-only JSON picture of the whole
+harness (`schema: 1`): the supervisor session, every team's roles, this session's sub-agents, live
+Codex runs, an event log, and `attention[]` — what waits for a human. It never acts. Its readers
+today are the team-watch daemon (`team-watch-lib.sh`, which turns changes into signals) and
+`supervisor-sessions.sh` (interrupted runs after a restart). The snapshot lives where its caller
+puts it; nothing is written inside the repo.
 
 **Env knobs:**
-- `TEAM_DASH_PORT` — port (default 8787); a taken port exits with this hint.
-- `TEAM_DASH_SECS` — refresh interval (default 3 s).
-- `TEAM_DASH_SESSION` — pin the supervisor transcript. Without it `serve.sh` pins the newest one at
-  start; set it when several Claude windows run in the main checkout. The id is the transcript file
-  name (without `.jsonl`) under `~/.claude/projects/<slug>/`, printed by `serve.sh` at start.
+- `TEAM_DASH_SESSION` — pin the supervisor transcript; unset → the newest one in the main
+  checkout's project dir; set but empty → no supervisor (`unknown`). The id is the transcript file name (without `.jsonl`) under
+  `~/.claude/projects/<slug>/`. `TEAM_DASH_PROJECT_DIR` overrides that dir.
+- `TEAM_DASH_SECS` — the caller's refresh interval, recorded as `interval_secs` (default 3).
+- `TEAM_DASH_CACHE` / `TEAM_DASH_PR_SECS` — the PR-state cache dir and the `az` time-box (below).
 
-**What it reads** (`.claude/lib/team-snapshot.sh`, one JSON per cycle, `schema: 1`):
+**What it reads:**
 - the pinned supervisor transcript — model and effort of its last real reply (never `<synthetic>`),
   and its skill trail: the last 8 skill starts (`Skill` calls and typed slash commands) from a
   bounded 4 MB tail — "last invoked", never "running now" (a transcript has no skill-end event);
@@ -325,38 +319,25 @@ ends it. Without Claude: `bash .claude/dashboard/dashboard.sh [stop]`, or `bash
   (the same check `team-answer.sh` uses);
 - the process table — live `codex exec` runs (`ps`), their log (`lsof`) and its last `STATUS:` line.
 
-**Local and read-only:** `server.py` binds 127.0.0.1, serves only `/` and `/snapshot.json`, and
-answers 403 to any `Host` other than `127.0.0.1:<port>` / `localhost:<port>` (pane output must not
-leak through DNS rebinding). The snapshot lives in a temp dir; nothing is written inside the repo.
-
 **States:** `unknown` — the source could not be read (no transcript, tmux not on PATH, a tmux probe
-error other than "no such session"); the footer's `errors` list says why. When `serve.sh` started
-with no transcript it pins none, so the supervisor stays `unknown` until you restart it. `stale` (red badge) — the last snapshot is older than 3 × the interval or
-the fetch failed (`serve.sh` stopped); the page keeps the last render. `stopped` — the current
-role's tmux session is gone. `runner stale` — `lock/` exists but its pid is dead.
+error other than "no such session"); `errors[]` says why. `stopped` — the current role's tmux
+session is gone. `runner stale` — `lock/` exists but its pid is dead.
 
-**Folding and the "waiting for you" bar.** The bar above the columns lists the snapshot's
-`attention[]`, hidden when empty: a role waiting on a permission prompt or a question (the pane
-shows a prompt, or the newest `attention` line other than `permission_prompt` is no older than the
-role transcript's last write; the pane check covers prompts. Its card's commands follow the pane:
-`AskUserQuestion` menu → `pick`/`other`, prompt → `yes`/`no`, else `say`),
-a `blocked`/`failed` record (its message, `team-attach.sh` and the resume hint), and a PR ready to
+**`attention[]` and finished teams.** `attention[]` lists a role waiting on a permission prompt or
+a question (the pane shows a prompt, or the newest `attention` line other than `permission_prompt`
+is no older than the role transcript's last write; the pane check covers prompts — its commands
+follow the pane: `AskUserQuestion` menu → `pick`/`other`, prompt → `yes`/`no`, else `say`), a
+`blocked`/`failed` record (its message, `team-attach.sh` and the resume hint), and a PR ready to
 merge (`team-merge-check.sh`, `/pr-merge <id>`); each item names the tmux window. A team whose
-runner is `down` (not `stale`) and whose mode's last role is `done` folds into one card from
-`teams[].state`: `free` (PR `completed`/`abandoned`), `awaiting merge` (PR `active`, highlighted,
-also a bar item) or `PR status ?` (ADO unreachable — no bar item). Only for such teams the snapshot
-calls `az repos pr show`, time-boxed by `TEAM_DASH_PR_SECS` (4 s) and cached in the server's temp
-dir (`TEAM_DASH_CACHE`, exported by `serve.sh`; `completed` for good, other states for 60 s —
-`abandoned` included, ADO can reactivate it). After one `az` timeout the rest of that snapshot
-skips ADO (`PR status ?`), so a hung ADO costs one timeout per snapshot, not one per finished team.
-Finished sub-agents stay cards for 10 min after `finished_at`, then fold into one
-`✓ N finished` line; the snapshot never drops a finish younger than 10 min, older ones fill the
-history up to 12. Which folds are open is kept per browser in `localStorage` (`team-dash-open`) —
-view state only, nothing is written inside the repo.
-
-**Manual live smoke:** with one team on a ticket and a sub-agent spawned in this session, both
-appear within one refresh; `tmux kill-session -t '=<team>-coder'` turns that role `stopped` within one
-cycle.
+runner is `down` (not `stale`) and whose mode's last role is `done` gets `teams[].state`: `free`
+(PR `completed`/`abandoned`), `awaiting merge` (PR `active`, also an `attention[]` item) or
+`PR status ?` (ADO unreachable — no item). Only for such teams the snapshot calls
+`az repos pr show`, time-boxed by `TEAM_DASH_PR_SECS` (4 s) and cached in `TEAM_DASH_CACHE` when the
+caller sets one (`completed` for good, other states for 60 s — `abandoned` included, ADO can
+reactivate it). After one `az` timeout the rest of that snapshot skips ADO (`PR status ?`), so a
+hung ADO costs one timeout per snapshot, not one per finished team. Finished sub-agents stay listed
+for 10 min after `finished_at`; the snapshot never drops a finish younger than 10 min, older ones
+fill the history up to 12.
 
 ## 11. Question escalation tiers
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Team lifecycle, recovery and dashboard checks with an independent fixture.
+# Team lifecycle, recovery and team-snapshot checks with an independent fixture.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -473,7 +473,7 @@ run "$MAIN" $ANSWER alfa coder yes
 expect 6 "session gone" "answer to a dead session"
 rm -f "$TD/session.json"; unset STUB_PANE
 
-# ---- (12) team-snapshot and the dashboard server ---------------------------------------------------
+# ---- (12) team-snapshot -------------------------------------------------------------------------
 SNAP="bash .claude/lib/team-snapshot.sh"
 CL="$WORK/claude"; mkdir -p "$CL/sess-1/subagents"
 printf '%s\n' '{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5"}}' \
@@ -512,22 +512,6 @@ STUB_TMUX_ALIVE=1 snap "stale lock" '.teams[0].runner == "stale"'
 rm -rf "$TD/lock" "$TD/acked" "$R"
 TEAM_DASH_PROJECT_DIR="$WORK/none" snap "degraded" '.supervisor.status == "unknown" and (.errors | length > 0)'
 
-PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
-echo '{"schema":1}' > "$WORK/srv.json"
-python3 "$SRC/.claude/dashboard/server.py" "$PORT" "$SRC/.claude/dashboard/index.html" "$WORK/srv.json" \
-  > "$WORK/srv.log" 2>&1 & SPID=$!
-http_status() {  # http_status <Host header> <path> → status code, or "down"
-  python3 -c 'import sys, http.client as h
-c = h.HTTPConnection("127.0.0.1", int(sys.argv[1]), timeout=2)
-c.putrequest("GET", sys.argv[3], skip_host=True); c.putheader("Host", sys.argv[2]); c.endheaders()
-print(c.getresponse().status)' "$PORT" "$1" "$2" 2>/dev/null || echo down
-}
-for _ in 1 2 3 4 5 6 7 8 9 10; do [ "$(http_status "127.0.0.1:$PORT" /)" = down ] || break; sleep 0.5; done
-[ "$(http_status "127.0.0.1:$PORT" /)" = 200 ] || fail "server: / for 127.0.0.1 not 200"
-[ "$(http_status "localhost:$PORT" /snapshot.json)" = 200 ] || fail "server: snapshot for localhost not 200"
-[ "$(http_status evil.example /snapshot.json)" = 403 ] || fail "server: foreign Host not 403"
-[ "$(http_status "127.0.0.1:$PORT" /../.env)" = 404 ] || fail "server: path traversal not 404"
-kill "$SPID" 2>/dev/null || true; wait "$SPID" 2>/dev/null || true; SPID=""
 rm -f "$TD/session.json"; unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 
 # ---- (13) team-attach quotes the session target for zsh, on the session's OWN server ------------

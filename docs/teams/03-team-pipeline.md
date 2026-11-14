@@ -2,7 +2,7 @@
 
 **Contract:**
 - [`team-mode.md`](../../.agents/reference/team-mode.md): detection, state files, roles, decision policy, notes, records, the QA report.
-- [`team-pipeline.md`](../../.agents/reference/team-pipeline.md): the runbook — setup, provisioning, run, exit codes, merge, dashboard, gate lock.
+- [`team-pipeline.md`](../../.agents/reference/team-pipeline.md): the runbook — setup, provisioning, run, exit codes, merge, team snapshot, gate lock.
 
 ## The shape
 

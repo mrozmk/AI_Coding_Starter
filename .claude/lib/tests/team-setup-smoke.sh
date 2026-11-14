@@ -250,7 +250,7 @@ while IFS= read -r p; do
   grep -qxF "!$p" "$MANIFEST" && continue  # a core file that lives in a harness tree
   grep -qxF "own $p" "$MANIFEST" || grep -qxF "shared $p" "$MANIFEST" \
     || fail "11: $p is in the harness tree but not in the manifest"
-done < <(git -C "$ST" ls-files '.claude/lib/team-*.sh' .claude/team .claude/dashboard \
+done < <(git -C "$ST" ls-files '.claude/lib/team-*.sh' .claude/team \
   .claude/lib/costs .claude/hooks/lib)
 
 # ---- (12) seed preflight: a seed file tracked on the base with other content is refused ---------

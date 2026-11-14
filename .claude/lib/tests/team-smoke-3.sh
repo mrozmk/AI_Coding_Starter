@@ -396,7 +396,6 @@ unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 
 # ---- (28) static checks -------------------------------------------------------------------------
 [ "$(wc -l < "$SRC/.claude/lib/team-run.sh")" -lt 500 ] || fail "team-run.sh reached 500 lines"
-[ "$(wc -l < "$SRC/.claude/dashboard/index.html")" -lt 500 ] || fail "index.html reached 500 lines"
 for f in "$SRC"/.claude/lib/team-snapshot-*.sh; do
   [ "$(wc -l < "$f")" -lt 500 ] || fail "$(basename "$f") reached 500 lines"
 done

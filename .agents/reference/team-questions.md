@@ -20,7 +20,7 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
    anchor is a label, not the identity. On a busy role (`esc to interrupt`, or a `<glyph> <Verb>… (`
    spinner above the input), or a prompt still rendering (`incomplete:`), a `blocked` q is
    recorded with `fingerprint: -` and gets a fresh binding on the next `open` while it is
-   unanswered and the role idle; the other kinds are refused. The dashboard snapshot derives
+   unanswered and the role idle; the other kinds are refused. The team snapshot derives
    `prompt_open`/`menu_open` from the same parse and falls back to the screen regexes only when
    the parse is not complete (detection never under-reports).
 2. The supervisor classifies.

@@ -4,8 +4,8 @@
 # must not leak into the public template. A hit prints <file>:<line>: <text> and exits 1.
 #
 # Usage: bash .claude/lib/tests/team-purity.sh [root]     (root defaults to the starter checkout)
-# Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/ docs/teams
-#        .claude/dashboard, plus the single files the installer seeds outside those directories
+# Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/ docs/teams,
+#        plus the single files the installer seeds outside those directories
 #        (.claude/codex-profile, the profile example, the two reviewer agents, AGENTS.md,
 #        the reflection protocol)
 # Role names in code are Supervisor / TeamLead / Advisor / Reviewer; project names enter only
@@ -27,7 +27,7 @@ DENY = re.compile(r"(?i:takeTask)|FableTT|AstraTT|OpusTeam|OpusSupervisor|OpusMo
                   r"|fable-tt|opus-(team|supervisor|monitoring)|\bTT_(WAKE|MONITORING|SESSIONS|GUARD|MAIL)")
 PIN = re.compile(r"# source: taketask [0-9a-f]{7,40}")
 SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".agents/reference",
-         "tools", "docs/teams", ".claude/dashboard",
+         "tools", "docs/teams",
          ".claude/codex-profile", ".claude/project-profile.json.example",
          ".claude/agents/correctness-reviewer.md", ".claude/agents/structure-reviewer.md",
          "AGENTS.md", ".agents/memory/reflection-protocol.md")
@@ -81,10 +81,10 @@ done
 rm -f "$T/.claude/lib/x.sh"; mkdir -p "$T/docs/teams"
 printf 'the Advisor was FableTT\n' > "$T/docs/teams/x.md"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in docs/teams passed"; exit 1; }
-rm -f "$T/docs/teams/x.md"; mkdir -p "$T/.claude/dashboard"
-printf '<h1>TAKETASK AGENT TREE</h1>\n' > "$T/.claude/dashboard/index.html"
-! scan "$T" > "$T/out" || { echo "team-purity: FAIL — an upper-case leak in the dashboard passed"; exit 1; }
-rm -f "$T/.claude/dashboard/index.html"
+rm -f "$T/docs/teams/x.md"; mkdir -p "$T/.claude/team"
+printf '<h1>TAKETASK AGENT TREE</h1>\n' > "$T/.claude/team/x.html"
+! scan "$T" > "$T/out" || { echo "team-purity: FAIL — an upper-case leak in .claude/team passed"; exit 1; }
+rm -f "$T/.claude/team/x.html"
 printf '# the CODEX_HOME (TT-912)\n' > "$T/.claude/codex-profile"
 ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — a leak in the seeded codex-profile passed"; exit 1; }
 rm -f "$T/.claude/codex-profile"; mkdir -p "$T/.claude/agents"

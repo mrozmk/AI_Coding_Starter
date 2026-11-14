@@ -38,15 +38,10 @@ own .agents/reference/team-pipeline.md
 own .agents/reference/worker-clone.md
 own .claude/agents/correctness-reviewer.md
 own .claude/agents/structure-reviewer.md
-own .claude/commands/dashboard.md
 own .claude/commands/monitor.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
 own .claude/commands/mail-role.md
-own .claude/dashboard/dashboard.sh
-own .claude/dashboard/index.html
-own .claude/dashboard/serve.sh
-own .claude/dashboard/server.py
 own .claude/hooks/guard-team-memory.sh
 own .claude/hooks/guard-team-question.sh
 own .claude/hooks/lib/guard_destructive_sql.py
