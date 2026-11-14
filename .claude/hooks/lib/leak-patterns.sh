@@ -8,7 +8,8 @@
 #
 # A6 (connection-string credential fields): `Password=`, `Pwd=`, `AccountKey=`,
 # `SharedAccessKey=`, `AccessKey=` with a real value. Placeholders pass: empty, `<...>`,
-# `{...}`, `${...}`, `$(...)`, `%VAR%`, placeholder words, `xxx`/`***`, and an
+# `{...}`, `${...}`, `$(...)`, `%VAR%`, placeholder words, `xxx`/`***`, runtime env
+# references (`process.env.X`, `os.environ[...]`, `getenv(...)`), and an
 # `AccountKey=` inside the same literal as `AccountName=devstoreaccount1` (Azurite).
 
 LEAK_ALLOW_MARK='guard-push:allow|pragma: ?allowlist secret|gitleaks:allow'
@@ -72,6 +73,7 @@ leak_a6_paths() {
       if (v ~ /^%[A-Za-z0-9_]+%$/) return 1
       if (lv ~ /^(placeholder|changeme|change-me|example|dummy|fake|redacted|none|null)$/) return 1
       if (lv ~ /^xxx+$/ || v ~ /^\*\*\*+$/) return 1
+      if (lv ~ /^(process\.env[.[]|os\.environ|os\.getenv|getenv\(|system\.getenv|env\[)/) return 1
       return 0
     }
     # quoted value after its opening quote c: a doubled quote is a literal quote (ADO.NET escaping)
@@ -104,8 +106,12 @@ leak_a6_paths() {
         off += RSTART + RLENGTH - 1; rest = v
         if (at > 1 && pre ~ /[A-Za-z0-9_]/) continue
         sub(/^[ \t]+/, "", v); c = substr(v, 1, 1)
-        if (c == Q || c == "\"" || c == "\047") val = unquote(substr(v, 2), c)
-        else val = (match(v, /[;"]/) ? substr(v, 1, RSTART - 1) : v)
+        # a quote followed by `;`/`)`/`,`/space/end closes the literal around an empty value
+        quoted = (c == Q || c == "\"" || c == "\047"); nx = substr(v, 2, 1)
+        if (quoted && (nx == "" || nx ~ /[;),[:space:]]/)) val = ""
+        else if (quoted) val = unquote(substr(v, 2), c)
+        # unquoted: ends at `;` or at the closing quote of the literal it sits in
+        else val = (match(v, /[;"\047\001]/) ? substr(v, 1, RSTART - 1) : v)
         sub(/[ \t]+$/, "", val)
         if (is_placeholder(val)) continue
         if (key == "accountkey=" && tolower(around(line, pos)) ~ /(^|;)[ \t]*accountname[ \t]*=[ \t]*devstoreaccount1[ \t]*(;|$)/) continue

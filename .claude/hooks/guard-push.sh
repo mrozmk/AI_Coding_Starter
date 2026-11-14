@@ -18,8 +18,10 @@
 #       A3 connection strings with embedded credentials (proto://user:pass@host)
 #       A4 generic assignments (password/secret/api_key = "...") — conservative,
 #          placeholder-filtered, "rather pass than false-block"
-#       B1 credential FILES by name (.env, *.pem/*.key, id_rsa, .npmrc, *.tfstate, ...)
+#       A6 connection-string credential fields (Password=/AccountKey=/... with a real value)
+#       B1 credential FILES by name (.env, local.env, *.pem/*.key, id_rsa, .npmrc, *.tfstate, ...)
 #     A5 high-entropy / 150+ rules: delegated to gitleaks IF present (optional boost).
+#     Patterns live in hooks/lib/leak-patterns.sh (shared with guard-commit.sh).
 #   - Asymmetry: missing infra (no jq) → fail-OPEN-but-LOUD + exit 0 (matches house
 #     style; check-deps already screams about jq). Detected secret → fail-CLOSED exit 2.
 #   - Escape hatches: inline `guard-push:allow` / `pragma: allowlist secret` on the
@@ -43,6 +45,14 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "guard-push: jq not found — secret scan SKIPPED for this push. Install jq to re-enable the gate." >&2
   exit 0
 fi
+
+HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ ! -r "$HOOK_DIR/lib/leak-patterns.sh" ]; then
+  # Never run the scan with empty regexes: an empty ERE matches every line.
+  echo "guard-push: hooks/lib/leak-patterns.sh missing — secret scan SKIPPED. Sync it from the starter with the hooks." >&2
+  exit 0
+fi
+. "$HOOK_DIR/lib/leak-patterns.sh"
 
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""' 2>/dev/null)
@@ -117,63 +127,18 @@ else
 fi
 
 # --- collect ADDED, non-allowlisted lines (path<TAB>content) ----------------------
-# awk tracks the current file via the `+++ b/path` header and:
-#   - skips allowlisted paths (examples, lockfiles, docs, this repo's pattern-bearing
-#     files, fixture dirs) so the gate is USABLE and doesn't self-trigger;
-#   - emits only added content lines (single leading '+', not the '+++' header),
-#     stripping the '+'.
-# Binary diffs are emitted by `git log -p` as "Binary files differ" (no content),
-# so regexes never waste time on binaries; credential binaries are caught by B1.
-STREAM=$(git -C "$DIR" log -p --no-color $RANGE 2>/dev/null | awk '
-  /^\+\+\+ / {
-    p=$2; sub(/^b\//,"",p);
-    skip = (p=="/dev/null") ||
-      (p ~ /\.(example|sample|template|lock|md|snap|map)$/) ||
-      (p ~ /(^|\/)\.agents\/reference\//) ||
-      (p ~ /(^|\/)\.claude\/(settings\.json|memory-domains\.json)$/) ||
-      (p ~ /(^|\/)\.claude\/hooks\/guard-push\.sh$/) ||
-      (p ~ /(^|\/)(fixtures|__fixtures__|__mocks__|testdata)\//) ||
-      (p ~ /(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Cargo\.lock|poetry\.lock|go\.sum)$/);
-    next
-  }
-  /^--- / { next }
-  /^\+/ { if (!skip) print p "\t" substr($0,2) }
-')
+# Per-commit patches, not the net diff: a secret added then removed in the range still
+# ships in history. Allowlisted paths are skipped inside leak_added_lines.
+STREAM=$(git -C "$DIR" log -p --no-color $RANGE 2>/dev/null | leak_added_lines)
 
-# Inline allow-markers drop the matching line from every class.
-ALLOW_MARK='guard-push:allow|pragma: ?allowlist secret|gitleaks:allow'
-
-# --- A1+A2+A3: known-format secrets (zero-FP → hard block) -------------------------
-HIGH_RE='-----BEGIN[A-Z ]*PRIVATE KEY-----'
-HIGH_RE="$HIGH_RE"'|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}'
-HIGH_RE="$HIGH_RE"'|gh[pousr]_[0-9A-Za-z]{36}'
-HIGH_RE="$HIGH_RE"'|github_pat_[0-9A-Za-z_]{82}'
-HIGH_RE="$HIGH_RE"'|xox[baprs]-[0-9A-Za-z-]{10,}|xapp-[0-9A-Za-z-]{10,}'
-HIGH_RE="$HIGH_RE"'|glpat-[0-9A-Za-z_-]{20}'
-HIGH_RE="$HIGH_RE"'|AIza[0-9A-Za-z_-]{35}'
-HIGH_RE="$HIGH_RE"'|sk-ant-[0-9A-Za-z_-]{20,}|sk-proj-[0-9A-Za-z_-]{20,}'
-HIGH_RE="$HIGH_RE"'|(sk|rk)_live_[0-9A-Za-z]{20,}'
-HIGH_RE="$HIGH_RE"'|shp(at|ss)_[0-9a-fA-F]{32}'
-HIGH_RE="$HIGH_RE"'|SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}'
-HIGH_RE="$HIGH_RE"'|ATATT[0-9A-Za-z_=.-]{20,}'
-HIGH_RE="$HIGH_RE"'|npm_[0-9A-Za-z]{36}'
-HIGH_RE="$HIGH_RE"'|eyJ[0-9A-Za-z_-]{8,}\.eyJ[0-9A-Za-z_-]{8,}\.[0-9A-Za-z_-]{8,}'
-HIGH_RE="$HIGH_RE"'|(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqps?|ftp)://[^:@/[:space:]]+:[^@/[:space:]]+@'
-HIGH_RE="$HIGH_RE"'|SK[0-9a-f]{32}'
-
-HITS_HIGH=$(printf '%s\n' "$STREAM" | grep -E -- "$HIGH_RE" | grep -viE -- "$ALLOW_MARK")
-
-# --- A4: generic credential assignments (conservative → placeholder-filtered) ------
-A4_RE="(password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{8,}[\"']"
-# Drop anything that looks like an env reference, template var, or obvious placeholder.
-A4_PLACEHOLDER='process\.env|os\.environ|getenv|System\.getenv|ENV\[|secrets\.|vault|\$\{|\$\(|<[A-Za-z0-9_]+>|x{3,}|changeme|change-me|your[_-]|example|placeholder|dummy|sample|redacted|fake|mock|null|none|undefined|\*{3,}|\.\.\.|%s|\{\{|0{6,}|123456'
-
-HITS_A4=$(printf '%s\n' "$STREAM" | grep -iE -- "$A4_RE" | grep -viE -- "$A4_PLACEHOLDER" | grep -viE -- "$ALLOW_MARK")
+# --- A1-A4 + A6: content classes ---------------------------------------------------
+leak_scan "$STREAM"
 
 # --- B1: credential files by name (zero-FP, allowlisting *.example etc.) -----------
-NAMES=$(git -C "$DIR" log --name-only --pretty=format: $RANGE 2>/dev/null | sort -u)
-FILE_RE='(^|/)\.env($|\.)|(^|/)id_(rsa|dsa|ecdsa|ed25519)$|\.(pem|key|p12|pfx|keystore|jks|ppk)$|(^|/)\.(npmrc|pypirc|netrc|htpasswd)$|(^|/)\.aws/credentials$|(^|/)kubeconfig$|\.(tfstate|tfvars)$|service[_-]?account.*\.json$'
-HITS_FILE=$(printf '%s\n' "$NAMES" | grep -E -- "$FILE_RE" | grep -vE -- '\.(example|sample|template)$|\.dist$')
+# Deletions excluded per commit: removing a credential file must not block, while a file
+# added in one commit and deleted in a later one is still listed by the adding commit.
+NAMES=$(git -C "$DIR" log --name-only --diff-filter=d --pretty=format: $RANGE 2>/dev/null | sort -u)
+LEAK_HITS_FILE=$(printf '%s\n' "$NAMES" | leak_file_hits)
 
 # --- A5: gitleaks if available (optional breadth/entropy boost) --------------------
 HITS_GL=""
@@ -186,7 +151,7 @@ if command -v gitleaks >/dev/null 2>&1; then
 fi
 
 # --- verdict ----------------------------------------------------------------------
-if [ -z "$HITS_HIGH" ] && [ -z "$HITS_A4" ] && [ -z "$HITS_FILE" ] && [ -z "$HITS_GL" ]; then
+if [ -z "$LEAK_HITS_HIGH" ] && [ -z "$LEAK_HITS_A4" ] && [ -z "$LEAK_HITS_A6" ] && [ -z "$LEAK_HITS_FILE" ] && [ -z "$HITS_GL" ]; then
   exit 0
 fi
 
@@ -196,9 +161,7 @@ fi
   echo "BLOCKED: guard-push detected likely secrets/credentials in the commits about to be pushed ($RANGE)."
   echo "Push is the publication boundary — fix this BEFORE it leaves the machine."
   echo ""
-  [ -n "$HITS_HIGH" ] && { echo "• Known-format secret/token or private key in:";   printf '%s\n' "$HITS_HIGH" | cut -f1 | sort -u | sed 's/^/    - /'; }
-  [ -n "$HITS_A4" ]   && { echo "• Hardcoded credential assignment in:";              printf '%s\n' "$HITS_A4"   | cut -f1 | sort -u | sed 's/^/    - /'; }
-  [ -n "$HITS_FILE" ] && { echo "• Credential file staged for push:";                 printf '%s\n' "$HITS_FILE"               | sed 's/^/    - /'; }
+  leak_report "Credential file staged for push"
   [ -n "$HITS_GL" ]   && echo "• $HITS_GL"
   echo ""
   echo "How to resolve:"

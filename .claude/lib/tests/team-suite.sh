@@ -164,7 +164,8 @@ fi
 
 # ---- 3. standalone suites (cost-tests carries the costs unittest) -------------------------------
 for s in team-setup-smoke team-profile-smoke team-tracker-smoke team-pr-smoke worker-smoke \
-         cost-tests guard-team-egress-test guard-destructive-sql-test team-audit-test gate-lock-smoke; do
+         cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test \
+         gate-lock-smoke; do
   step "$s" bash "$TESTS/$s.sh"
 done
 
