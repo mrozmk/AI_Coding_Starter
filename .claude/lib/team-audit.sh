@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Process audit of a team run: material for later review, never a gate.
 #
-# Usage: bash .claude/lib/team-audit.sh <team> [--runner-exit N] [--final ready|archived]
+# Usage: bash .claude/lib/team-audit.sh <team> [--runner-exit N] [--final ready|archived|closed]
 #   writes <main>/.agents/team/audit/<YYYYMMDD>-<team>-<ticket>-<run>.{md,json} + index.jsonl,
 #   and launches a detached report-only retro (tmux retro-<run>) when the run turns final flagged
 #   or sampled (.claude/team/audit.json)
@@ -149,7 +149,7 @@ EXTRA=(); TRANSCRIPTS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --runner-exit) [[ "${2:-}" =~ ^[0-9]+$ ]] || usage; EXTRA+=(--runner-exit "$2"); shift 2 ;;
-    --final) case "${2:-}" in ready|archived) ;; *) usage ;; esac; EXTRA+=(--final "$2"); shift 2 ;;
+    --final) case "${2:-}" in ready|archived|closed) ;; *) usage ;; esac; EXTRA+=(--final "$2"); shift 2 ;;
     *) usage ;;
   esac
 done

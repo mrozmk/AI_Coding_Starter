@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # File inbox of the supervision layer: one directory per address in the main checkout.
 # Usage: bash .claude/lib/team-inbox.sh [--main <dir>] write <address> <event> --from <x>
-#          --ticket <k> --run <r> [--ref <path>]
+#          --ticket <k> --run <r> [--ref <path>] [--message <one line>]
 #        bash .claude/lib/team-inbox.sh [--main <dir>] list <address> | done <address> <file>
 #   <main>/.agents/team/inbox/<address>/{tmp,new,done}/; write builds
 #   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>.md in tmp/ and renames it into new/, then rings the
@@ -29,12 +29,13 @@ fi
 D="$MAIN/.agents/team/inbox/$addr"
 
 write() {
-  local event="$1" from="" ticket="" run="" ref="" stem f n=1
+  local event="$1" from="" ticket="" run="" ref="" msg="" stem f n=1
   shift
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
     case "$1" in
       --from) from="$2" ;; --ticket) ticket="$2" ;; --run) run="$2" ;; --ref) ref="$2" ;;
+      --message) msg="${2//$'\n'/ }" ;;
       *) usage ;;
     esac
     shift 2
@@ -54,7 +55,8 @@ write() {
   { printf -- '---\nid: %s\nfrom: %s\nto: %s\nevent: %s\nticket: %s\nrun: %s\nref: %s\n---\n' \
       "$f" "$from" "$addr" "$event" "$ticket" "$run" "$ref"
     printf '%s from %s: ticket %s, run %s%s\n' "$event" "$from" "${ticket:-?}" "${run:-?}" \
-      "${ref:+ — $ref}"; } > "$D/tmp/$f.md"
+      "${ref:+ — $ref}"
+    [ -z "$msg" ] || printf '%s\n' "$msg"; } > "$D/tmp/$f.md"
   mv "$D/tmp/$f.md" "$D/new/$f.md"
   echo "$D/new/$f.md"
   local reg="$MAIN/.agents/team/watch/receivers/Supervisor.json"

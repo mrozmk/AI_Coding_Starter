@@ -7,8 +7,11 @@ base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`. The session 
 the window): ask questions normally.
 
 1. Run `/prime`.
-2. Run `/brainstorm {{TRACKER_TASK}}`. In team mode it approves the spec itself
-   (`Approved (auto — team mode)`) and continues straight into step 3. It asks you only for a real
+2. Run `/brainstorm {{TRACKER_TASK}}`. With a TeamLead (`.agents/team/teamlead.json` names run
+   `{{RUN}}`) it commits the `Draft` spec, records `--verdict review` and ends the turn; continue only
+   on the runner's `[team-run]` line (approved → `Approved (TeamLead, <date>)`, step 3; revise →
+   fix, record `review` again). Without one it approves the spec itself
+   (`Approved (auto — team mode)`) and continues straight into step 3, asking only for a real
    directional fork (Step 2) or a 🔶 rethink signal from the cross-model review (Step 9).
 3. Run `/plan-feature` on the approved spec. The team handoff needs exactly **one standalone plan**
    (no umbrella, no parallel split): if Phase 4.5 offers a split, choose "keep one file" or narrow
@@ -16,6 +19,8 @@ the window): ask questions normally.
 4. When the plan is final, run `/commit` for the spec and plan files only.
 5. Write the record:
    `bash .claude/lib/team-record.sh --verdict done --artifacts <spec path>,<plan path>`
+   With a TeamLead the plan gate follows: on `[team-run] TeamLead: amend the plan …` apply the
+   findings, commit, and record `done` again.
 
 Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
 heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call

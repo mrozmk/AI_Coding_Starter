@@ -444,7 +444,13 @@ This is the one place `/brainstorm` stops and waits. The spec is final here — 
 
 **On approval:** flip the spec's `**Status:**` from `Draft` to `Approved`, then hand off.
 
-**Team mode** (`.agents/team/session.json` exists): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — team mode)`), and continue into planning in the same turn — the planner role runs `/plan-feature` right after `/brainstorm`, so a waiting gate would stall the run. The two exceptions still ask: a real directional fork from Step 2, and a 🔶 rethink signal from Step 8.7 (none → no question). The `<TERMINAL-GATE>` below does not apply in team mode: the planner's own prompt owns the handoff.
+**Team mode with a TeamLead** (`.agents/team/session.json` exists, and `.agents/team/teamlead.json` exists with the same `run`): do **not** ask and do **not** approve. The TeamLead's spec gate decides. Leave the spec `Draft`, put a 🔶 rethink signal from Step 8.7 (if any) under the spec's `## Open Questions` so the TeamLead sees it, commit the spec, run `bash .claude/lib/team-record.sh --verdict review --artifacts <spec path>`, present the summary and **end the turn**. The runner answers in this window with one `[team-run]` line:
+- `[team-run] TeamLead approved the spec …` → set `**Status:** Approved (TeamLead, <YYYY-MM-DD>)`, commit, and continue into planning;
+- `[team-run] TeamLead: revise the spec — findings in <file>` → apply the findings, re-run Step 6, commit, and record `review` again.
+
+A real directional fork from Step 2 still asks, before the spec is written. The `<TERMINAL-GATE>` below does not apply: the planner's own prompt owns the handoff.
+
+**Team mode without a TeamLead** (`.agents/team/session.json` exists, no `teamlead.json` of this run): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — team mode)`), and continue into planning in the same turn — the planner role runs `/plan-feature` right after `/brainstorm`, so a waiting gate would stall the run. The two exceptions still ask: a real directional fork from Step 2, and a 🔶 rethink signal from Step 8.7 (none → no question). The `<TERMINAL-GATE>` below does not apply in team mode: the planner's own prompt owns the handoff.
 
 **Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "brainstorm"` — `/orchestrate` Stage 1 is driving): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — pipeline)`) and return to `/orchestrate`, which compacts the session and runs `/plan-feature` in a fresh context — so, unlike team mode, do **not** continue into planning in this turn. The same two exceptions still ask (a directional fork from Step 2 or Step 1.5, a 🔶 rethink signal from Step 8.7); a question you could not get answered leaves the spec `Draft`, and the pipeline relays it. The `<TERMINAL-GATE>` below applies with one change: the pipeline, not you, ends the turn.
 

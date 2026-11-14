@@ -46,7 +46,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   - at merge: `team-integrate.sh` after `integrated:` / `already integrated:`, or `/pr-merge` step 6b,
     both through `team-lead.sh finalize <team> merged` (idempotent, marks `runs/<run>/finalized`);
   - at `team-next.sh` and `team-remode.sh`, through `team-lead.sh end <team>`;
-  - at close (a later step adds `closed`).
+  - at close: `close_run` (§4) runs `team-lead.sh end <team>`.
 
   A missing session is not an error.
 
@@ -61,7 +61,11 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `teamlead.reg.json` | `teamlead-register.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
 | `lead-dead`, `relaunch-lead`, `inbox-rung/<file>`, `send-lead.log` | runner | death reported once, relaunch request, inbox ring markers, skipped doorbells |
-| `acked` | runner, on a stop (`lead_stop`) | basename of the stage's last `blocked`/`failed` record the lead must resolve |
+| `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | basename of the stage record the lead must resolve: a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate) |
+| `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
+| `runs/<run>/gate-<gate>-<n>.md` | the lead | gate findings; a verdict's `ref` |
+| `verdict-acked` | runner | the verdict files already acted on, one per line |
+| `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` — a closed run; the runner and `/start-team` refuse to resume it |
 | `runs/<run>/<record>.answered` | `team-answer.sh`, after delivering the answer to that stop (step 6) | ends the wait: the stage time limit (coder 4 h, qa 3 h) is paused while `acked` names a stop without this marker, and counts again from the poll that sees it |
 
 The team-dir root files of a lead (`teamlead.*`, `round`, `verdict-acked`, `lead-dead`,
@@ -71,6 +75,8 @@ switches a later run to the lead branch.
 
 `team-lead.sh pending <team>` lists, oldest first:
 - `stop` — a role/attempt whose newest record is `blocked` or `failed`;
+- `gate` — a planner `review` (spec gate) or unaccepted `done` (plan gate) that no verdict other
+  than `escalate` names yet;
 - `attention` — attention lines after the active stage's newest record;
 - `inbox` — files in `<main>/.agents/team/inbox/<team>/new/`.
 
@@ -82,14 +88,56 @@ registered socket (`.agents/team/watch/receivers/Supervisor.json`) when one exis
 | Event | Sender | When |
 |---|---|---|
 | `accepted` | runner | a lead's acceptance and the wrapup are done (later step) |
-| `closed` | runner | a run is closed without merge (later step) |
-| `collision` | lead | another team's in-flight work collides with this run (later step) |
+| `closed` | runner | a run is closed without merge (`close_run`, §4); the body names the reason and what is left (`PR <id> to abandon before team-next` or `clone free`) |
+| `collision` | lead | another team's in-flight work collides with this run (`team-verdict.sh event collision`) |
 | `session_dead` | runner | the lead died, or a stage died with partial work (`ref` = its `.session`) |
 
 Layout (`team-inbox.sh`): `<main>/.agents/team/inbox/<address>/{tmp,new,done}/`, files
 `<UTC %Y%m%dT%H%M%SZ>-<from>-<event>.md`, written to `tmp/` and renamed into `new/`. Frontmatter
-`id` (the file stem), `from`, `to`, `event`, `ticket`, `run`, `ref`, then a one-line body. A team
+`id` (the file stem), `from`, `to`, `event`, `ticket`, `run`, `ref`, then a one-line body and an
+optional `--message` line. A team
 clone writes with `--main <teamlead.json main_root>`, never its own git root. A team address
 (`inbox/<team>/`) takes any event, e.g. the Supervisor's `collision-answer`. Team-watch drops every
 team signal of a run with its own lead (`lead: true` in the snapshot), so neither the global
 TeamLead nor single-routing delivery sees that run's stops.
+
+## 4. Gates
+
+The lead gates the planner's spec (brainstorm) and plan (both modes) with verdict records the
+runner acts on. Writer: `team-verdict.sh <gate> <verdict> --for <record> --message "<line>"
+[--ref <findings>] [--notify human_decision|abandon_decision] [--decision d-<n>]`, lead only
+(`team_lead_caller`), into `runs/<run>/teamlead-<gate>-<seq>.json` (`team, ticket, run, gate, seq,
+for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
+
+| Gate | Input (`--for`) | Verdicts | Runner |
+|---|---|---|---|
+| `spec` (brainstorm) | the planner's `review` record (`/brainstorm` Step 9) | `approve` · `revise` · `escalate` | approve → `[team-run] TeamLead approved the spec …`, the planner sets `Approved (TeamLead, <date>)` and plans; revise → `[team-run] TeamLead: revise the spec — findings in <ref>…`; escalate → keeps waiting |
+| `plan` | the planner's `done` record, before validation | `approve` · `revise` · `escalate` · `remode` (quick) | approve → validate + accept, the next stage launches; revise → `[team-run] TeamLead: amend the plan …`; remode → `close_run remode`; escalate → keeps waiting |
+
+- **Refusals** (exit): `3` not the lead; `4` an unknown gate (`acceptance`/`decision` come later),
+  a verdict outside the gate's set, `--for` that is not the planner's newest record or not in the
+  gate's verdict, `revise` without `--ref`; `5` revise limit; `6` spec changed after approval.
+- **Caller guard.** The script's own check (role env + `teamlead.json`) can be forged by a stage
+  that prefixes `TEAM_SESSION_ROLE=TeamLead`. `guard-team-verdict.sh` (PreToolUse `Bash`, project
+  settings, `/setup:teams` id `V`) refuses any command naming `team-verdict.sh` in a team clone
+  unless `team_lead_caller` holds for the hook payload's `session_id` (empty → refused). The guard
+  sees the command text only: a stage writing a `teamlead-*.json` file by other means is not
+  covered by it.
+- **Revise limit.** At most `teams.teamlead.revise_limit` (default 3) `revise` per gate per run.
+  Past it: `escalate` with a pending decision, `approve`, or (quick plan) `remode`. An answered
+  decision `runs/<run>/decisions/d-<n>.md` with frontmatter `outcome: more-revise` and
+  `gate: <gate>`, passed as `--decision d-<n>`, grants one more round and is marked `consumed`.
+- **Spec digest.** A spec `approve` stores the SHA-256 of the spec at the record's `output_rev`
+  without its `**Status:**` line. A brainstorm plan `approve` recomputes it at the `done` record's
+  `output_rev`; a body change refuses (exit 6) and the spec gate runs again (it counts against the
+  spec gate's limit), while setting `Approved (TeamLead, …)` passes.
+- **Planner messages** go through `team_session_doorbell <team dir> planner` (idle input, send
+  lock). A skipped message leaves its verdict unacted, and the next poll retries it.
+- **Close.** `close_run <reason> <ref>` writes `closed.json`, the `closed` event, ends the lead and
+  the stage session, removes `session.json` and exits **8** (closed without merge; audit
+  `--final closed`). `team-remode.sh <team> brainstorm` accepts a quick run closed by a plan-gate
+  `remode`: the new brainstorm run starts from the current `HEAD` (the committed quick plan stays in
+  history) and keeps the order brief.
+- **Collision.** `team-verdict.sh event collision --ref <file> --message "<line>"` writes the
+  Supervisor event; the lead then either sends the spec back (`revise`) or holds the gate until the
+  Supervisor answers through `inbox/<team>/`.

@@ -73,6 +73,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `team-tracker.sh read` here: a resume allocates nothing, and the ticket it continues is already in
    `<CLONE>/.agents/team/ticket.json` (`github`/`none`) or in Jira. With `ROLES` → step 4a first, then run
    `bash .claude/lib/team-run.sh <TEAM> status`:
+   - a line `closed: <reason>` → refuse "run closed (<reason>) — team-next for the next ticket,
+     team-remode for remode" and stop (the runner refuses it too, `runs/<run>/closed.json`);
    - a line `lock: runner <pid> alive` → if the status also shows `teamlead: dead` (switch on), run
      `bash .claude/lib/team-lead.sh relaunch <TEAM>` (it writes `<CLONE>/.agents/team/relaunch-lead`;
      the live runner relaunches the lead at its next poll), report "TeamLead relaunch requested"

@@ -11,10 +11,11 @@
 # Env: TEAM_ATTACH=all|planner (default all) — all roles, or only the attended planner and wrapup.
 # Exit: 0 ready/advanced · 1 failed record · 2 blocked · 3 stalled · 4 validation failed
 #       5 partial work after a dead session · 6 cancelled · 7 orphan role session
+#       8 closed without merge (a TeamLead remode; runs/<run>/closed.json)
 set -euo pipefail
 
 if [ $# -lt 1 ] || { [ $# -gt 3 ] && [ "${2:-}" != roles ]; }; then
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 TEAM="$1"; CMD="${2:-advance}"
@@ -117,8 +118,14 @@ accept() {
 handle_record() {
   local r="$1"
   case "$(rec "$r" verdict)" in
-    done) validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+    done) # With the lead on, the planner's done waits for the plan gate; validation follows approve.
+          if team_lead_on && [ "$ROLE" = planner ]; then lead_gate_ring plan "$r"; return 2; fi
+          validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
           accept "$r" ;;
+    review)
+      team_lead_on || die 4 "record $(basename "$r") is a review, but the run has no TeamLead"
+      validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+      lead_gate_ring spec "$r"; return 2 ;;
     blocked|failed)
       if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
       basename "$r" > "$TD/acked"
@@ -263,6 +270,7 @@ wait_loop() {
     waiting=0; ! team_lead_on || ! lead_waiting "$role" "$attempt" || waiting=1
     r="$(new_record "$role" "$attempt")"
     if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
+    ! team_lead_on || ! lead_gate "$role" "$attempt" || return 0
     n=0; [ ! -f "$TD/runs/$RUN/attention" ] || n="$(wc -l < "$TD/runs/$RUN/attention" | tr -d ' ')"
     if [ "$n" -gt "$seen" ]; then
       seen="$n"; echo "needs attention: tmux attach -t $name"
@@ -323,6 +331,7 @@ cmd_advance() {
   ! command -v caffeinate >/dev/null 2>&1 || caffeinate -i -w $$ >/dev/null 2>&1 &
   [ -s "$TD/run" ] || echo "$TEAM-$(date -u +%Y%m%d-%H%M%S)" > "$TD/run"
   RUN="$(cat "$TD/run")"
+  [ ! -f "$TD/runs/$RUN/closed.json" ] || die 1 "run closed ($(jq -r .reason "$TD/runs/$RUN/closed.json")) — team-next for the next ticket, team-remode for remode"
   lead_start
   while :; do
     if [ -f "$TD/session.json" ]; then
@@ -360,6 +369,7 @@ cmd_status() {
   # Durable non-fatal failures (team-warn.sh) — e.g. /start-team 4b `set-status started`.
   jq -r '(.warnings // [])[] | "warn: " + .text + " (" + .at + ")"' "$TD/team.json"
   RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}"
+  [ ! -f "$TD/runs/${RUN:-none}/closed.json" ] || echo "closed: $(jq -r .reason "$TD/runs/$RUN/closed.json")"
   [ ! -f "$TD/session.json" ] || echo "session:$(jq -c '{role, attempt, input_rev}' "$TD/session.json")"
   [ ! -f "$ROLES_OVERRIDE" ] || echo "roles override: $(team_roles_status "$ROLES_OVERRIDE")"
   for role in $(team_mode_roles "$MODE"); do
@@ -447,6 +457,7 @@ cmd_unlock() {
 audit_run() {
   local final=()
   [ "$1" != 0 ] || final=(--final ready)
+  [ "$1" != 8 ] || final=(--final closed)
   bash "$root/.claude/lib/team-audit.sh" "$TEAM" --runner-exit "$1" ${final[@]+"${final[@]}"} \
     || echo "warn: team audit failed (rc $?) — run outcome unchanged" >&2
 }

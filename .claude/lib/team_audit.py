@@ -1,7 +1,7 @@
 """Deterministic process audit of one team run: stages, contract steps, counts, flags.
 
 Usage: python3 -I team_audit.py audit --team-dir <dir> --clone <dir> --run <id> --out <dir>
-           --config <json> --roles "<space list>" [--runner-exit N] [--final ready|archived]
+           --config <json> --roles "<space list>" [--runner-exit N] [--final ready|archived|closed]
            [--title T] [--transcript <role>-<attempt>=<path>]...
        python3 -I team_audit.py mark-retro --out <dir> --run <id> --value <text>
 `--team-dir` is a clone's .agents/team or an archive dir (same layout). Material only: the
@@ -29,6 +29,7 @@ QA_KEYS = ("run", "attempt", "output_rev", "Verdict", "Gate code", "Gate design"
            "Gate cross-model", "Gate final-build", "Tests", "Warnings", "Rethink signals")
 RECORD = re.compile(r"^([a-z]+)-(\d+)-(\d+)\.json$")
 QUESTION = re.compile(r"^q-\d+\.md$")
+VERDICT = re.compile(r"^teamlead-([a-z]+)-(\d+)\.json$")
 ITERATIONS = re.compile(r"(\d+)(?: of \d+)? iterations?")
 TESTS = re.compile(r"passed=(\d+) failed=(\d+) skipped=(\d+) baseline=(\d+)")
 RUN_DATE = re.compile(r"-(\d{8})-\d{6}$")
@@ -233,6 +234,35 @@ def run_counts(run_dir, recs):
     return c
 
 
+def lead_artifacts(run_dir):
+    """The per-run TeamLead's files: gate verdicts, decisions, answers and the closure."""
+    verdicts = []
+    for name in os.listdir(run_dir):
+        m = VERDICT.match(name)
+        if not m:
+            continue
+        try:
+            with open(os.path.join(run_dir, name), encoding="utf-8") as f:
+                doc = json.load(f)
+        except (OSError, ValueError):
+            continue
+        verdicts.append({"file": name, "gate": m.group(1), "seq": int(m.group(2)),
+                         "verdict": doc.get("verdict"), "for": doc.get("for")})
+    verdicts.sort(key=lambda v: (v["gate"], v["seq"]))
+    ddir = os.path.join(run_dir, "decisions")
+    decisions = (len([n for n in os.listdir(ddir) if re.match(r"^d-\d+\.md$", n)])
+                 if os.path.isdir(ddir) else 0)
+    answers = read_text(os.path.join(run_dir, "answers.md")) or ""
+    try:
+        with open(os.path.join(run_dir, "closed.json"), encoding="utf-8") as f:
+            closed = json.load(f)
+    except (OSError, ValueError):
+        closed = None
+    return {"verdicts": verdicts, "decisions": decisions,
+            "answers": len([l for l in answers.splitlines() if l.startswith("- ")]),
+            "closed": closed}
+
+
 def flags_for(stages, steps, counts, cfg, final):
     flags = [f"missing-stage:{s['role']}" for s in stages if final and s["status"] == "missing"]
     flags += [f"missing-step:{k}" for k, v in steps.items() if v == "missing" and k != "final-build"]
@@ -282,7 +312,7 @@ def collect(a, cfg, h, prev_final):
     roles = a.roles.split()
     if not os.path.isdir(run_dir):
         return {"state": "no-run-dir", "info": [f"run dir missing: {run_dir}"], "stages": [],
-                "steps": {}, "counts": {}, "flags": [], "final": prev_final}
+                "steps": {}, "counts": {}, "flags": [], "final": prev_final, "lead": None}
     recs = load_records(run_dir, roles)
     stages = [stage(run_dir, r, recs, cfg["typical_minutes"]) for r in roles]
     state, info = run_state(stages, recs), []
@@ -291,8 +321,9 @@ def collect(a, cfg, h, prev_final):
         info.append(f"--final ready ignored: state {state}")
     elif not final and a.final:
         final = a.final
+    # A closed run ends before its later stages by design; they are not missing.
     for s in stages:
-        if final and s["status"] == "pending":
+        if final and final != "closed" and s["status"] == "pending":
             s["status"] = "missing"
     steps = contract_steps(run_dir, a.clone, h["mode"], stages)
     counts = run_counts(run_dir, recs)
@@ -304,7 +335,8 @@ def collect(a, cfg, h, prev_final):
     for s in stages:
         s.pop("_rec")
     return {"state": state, "info": info, "stages": stages, "steps": steps, "counts": counts,
-            "flags": flags_for(stages, steps, counts, cfg, final), "final": final}
+            "flags": flags_for(stages, steps, counts, cfg, final), "final": final,
+            "lead": lead_artifacts(run_dir)}
 
 
 def retro_decision(cfg, data, prev, entries, run):
@@ -371,6 +403,14 @@ def render_md(doc):
     out += ["", "## Steps", ""] + ([f"- {k}: {v}" for k, v in doc["steps"].items()] or ["- none"])
     out += ["", "## Counts", ""] + [f"- {k}: {json.dumps(v)}" for k, v in doc["counts"].items()]
     out += ["", "## Flags", ""] + ([f"- {f}" for f in doc["flags"]] or ["- none"])
+    lead = doc.get("lead")
+    if lead:
+        out += ["", "## TeamLead", ""]
+        out += ["- verdicts: " + (", ".join(f"{v['gate']} {v['verdict']} ({v['for']})"
+                                            for v in lead["verdicts"]) or "none")]
+        out += [f"- decisions: {lead['decisions']}", f"- answers: {lead['answers']}"]
+        c = lead["closed"]
+        out += [f"- closed: {c.get('reason')} ({c.get('ref')})" if c else "- closed: -"]
     out += ["", "## Transcripts", ""]
     out += [f"- {t['role']} attempt {t['attempt']}: {t['path']}" for t in doc["transcripts"]]
     out += ["", "## Info", ""] + ([f"- {i}" for i in doc["info"]] or ["- none"])
@@ -448,7 +488,7 @@ def parser():
     for k in ("--team-dir", "--clone", "--run", "--out", "--config", "--roles"):
         au.add_argument(k, required=True)
     au.add_argument("--runner-exit", type=int)
-    au.add_argument("--final", choices=("ready", "archived"))
+    au.add_argument("--final", choices=("ready", "archived", "closed"))
     au.add_argument("--title")
     au.add_argument("--retro", choices=("on", "off"), default="off")
     au.add_argument("--transcript", action="append")

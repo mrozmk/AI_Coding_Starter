@@ -17,9 +17,11 @@ team_now() {
 team_lead_base_ok() {
   local f
   for f in .claude/team/prompts/teamlead.md .claude/hooks/guard-teamlead-write.sh \
-    .claude/lib/team-lead.sh .claude/lib/team-lead-lib.sh; do
+    .claude/lib/team-lead.sh .claude/lib/team-lead-lib.sh .claude/lib/team-verdict.sh; do
     [ -f "$CLONE/$f" ] || { echo "no $f"; return 1; }
   done
+  grep -q 'review)' "$CLONE/.claude/lib/team-record.sh" || { echo "no review verdict in team-record.sh"; return 1; }
+  grep -q 'teamlead.json' "$CLONE/.claude/team/prompts/planner.md" || { echo "no TeamLead branch in planner.md"; return 1; }
 }
 
 # The prompt comes from the main checkout: a clone on an older base must not run an old lead.
@@ -88,9 +90,9 @@ lead_start() {
   launch_lead
 }
 
-lead_event() {  # lead_event <event> <ref> — one Supervisor event; the file is the truth
+lead_event() {  # lead_event <event> <ref> [<body line>] — one Supervisor event; the file is the truth
   bash "$root/.claude/lib/team-inbox.sh" --main "$root" write Supervisor "$1" --from "$TEAM" \
-    --ticket "$(team_json ticket)" --run "$RUN" --ref "$2" >/dev/null \
+    --ticket "$(team_json ticket)" --run "$RUN" --ref "$2" ${3:+--message "$3"} >/dev/null \
     || echo "warn: Supervisor event $1 not written" >&2
 }
 
@@ -140,4 +142,67 @@ lead_status() {  # → alive|dead|none — session <sid> — pending <n>
   fi
   n="$( (cd "$root" && bash .claude/lib/team-lead.sh pending "$TEAM") 2>/dev/null | grep -c . || true)"
   echo "$s — session $sid — pending ${n:-0}"
+}
+
+# ---- gates (spec, plan) -----------------------------------------------------------------------
+
+lead_gate_ring() {  # lead_gate_ring <gate> <record> — ack the gate's input record, ring the lead
+  basename "$2" > "$TD/acked"
+  team_session_doorbell "$TD" lead "gate $1: ${2#"$CLONE"/}"
+  echo "waiting for TeamLead: gate $1 $(basename "$2")"
+}
+
+# lead_say <one line> → 0 delivered to the planner, 1 skipped (the doorbell logged why). A skipped
+# message leaves its verdict unacted, so the next poll retries it.
+lead_say() {
+  local log="$TD/send-planner.log" n=0 m=0
+  [ ! -f "$log" ] || n="$(wc -l < "$log" | tr -d ' ')"
+  team_session_doorbell "$TD" planner "$1"
+  [ ! -f "$log" ] || m="$(wc -l < "$log" | tr -d ' ')"
+  [ "$m" = "$n" ]
+}
+
+# lead_gate <role> <attempt> — act once on each TeamLead verdict for the acked gate record, in seq
+# order; $TD/verdict-acked lists the verdicts already acted on. → 0 when a plan approve accepted
+# the planner record; 1 keep waiting (escalate, revise, a message to retry, no verdict yet).
+lead_gate() {
+  local a f v rel
+  a="$(cat "$TD/acked" 2>/dev/null)" || return 1
+  case "$a" in "$1-$2-"*) ;; *) return 1 ;; esac
+  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(spec|plan)-[0-9]+\.json$' | sort -t- -k3,3n || true); do
+    [ "$(rec "$TD/runs/$RUN/$f" for)" = "$a" ] || continue
+    ! grep -qxF "$f" "$TD/verdict-acked" 2>/dev/null || continue
+    rel=".agents/team/runs/$RUN/$f"; v="$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)"
+    case "$v" in
+      "spec approve") lead_say "[team-run] TeamLead approved the spec ($rel). Set **Status:** Approved (TeamLead, $(date +%Y-%m-%d)), commit, and continue with /plan-feature." || return 1 ;;
+      "spec revise") lead_say "[team-run] TeamLead: revise the spec — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record review again." || return 1 ;;
+      "plan revise") lead_say "[team-run] TeamLead: amend the plan — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record done again." || return 1 ;;
+      "plan remode") echo "$f" >> "$TD/verdict-acked"; close_run remode "$rel" ;;
+      # Acked only once accepted: a rejected record dies unacked, so a re-run validates it again.
+      "plan approve")
+        validate_record "$TD/runs/$RUN/$a" \
+          || die 4 "record $a rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+        accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
+    esac
+    echo "$f" >> "$TD/verdict-acked"
+  done
+  return 1
+}
+
+# close_run <reason> <ref> — end the run without a merge. closed.json goes first, so a resume
+# refuses the run even when a later step fails; then the Supervisor event, the lead, the stage.
+close_run() {
+  local r pr="" next
+  r="$(accepted_record coder)"; [ -z "$r" ] || pr="$(rec "$r" pr_id)"
+  jq -n --arg reason "$1" --arg ref "$2" --arg at "$(team_utc)" --arg pr "$pr" \
+    '{reason: $reason, ref: $ref, closed_at: $at,
+      pr_id: (if $pr == "" then null else ($pr | tonumber) end)}' > "$TD/runs/$RUN/closed.json"
+  if [ -n "$pr" ]; then next="PR $pr to abandon before team-next"; else next="clone free"; fi
+  lead_event closed "$2" "reason: $1 — $next"
+  (cd "$root" && bash .claude/lib/team-lead.sh end "$TEAM") >/dev/null \
+    || echo "warn: TeamLead of $TEAM did not end" >&2
+  end_session "$ROLE"
+  rm -f "$TD/session.json"
+  echo "closed: $1 — $next"
+  exit 8
 }

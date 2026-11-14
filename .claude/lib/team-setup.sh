@@ -225,6 +225,7 @@ hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|
 H='bash "$CLAUDE_PROJECT_DIR/.claude/hooks'
 hook_merge Q PreToolUse "$H/guard-team-question.sh\"" '["AskUserQuestion"]' false AskUserQuestion
 hook_merge M PreToolUse "$H/guard-team-memory.sh\"" '["Edit","Write"]' false 'Edit|Write'
+hook_merge V PreToolUse "$H/guard-team-verdict.sh\"" '["Bash"]' false Bash
 hook_merge A Notification "$H/team-attention.sh\"" \
   '["permission_prompt","idle_prompt","elicitation_dialog","agent_needs_input"]' true \
   'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'

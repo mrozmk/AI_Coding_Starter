@@ -74,6 +74,9 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") | index("AskUserQuest
 jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") as $t | ($t | index("Edit"))
   and ($t | index("Write"))) | .hooks[] | select(.command | test("guard-team-memory"))]
   | length == 1' "$S" >/dev/null || fail "2: no PreToolUse Edit+Write hook M"
+jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
+  | select(.command | test("guard-team-verdict"))] | length == 1' "$S" >/dev/null \
+  || fail "2: no PreToolUse/Bash verdict guard V"
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"

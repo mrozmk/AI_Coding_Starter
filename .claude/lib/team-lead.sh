@@ -4,9 +4,10 @@
 #        bash .claude/lib/team-lead.sh whoami                (exit 0 when the caller is the lead)
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
-#   pending lists the lead's open items, oldest first: `<kind> <ref> — <summary>`. end stops the
-#   lead session (0 when none runs); finalize ends it once per run and marks runs/<run>/finalized;
-#   relaunch asks the live runner to relaunch a dead lead.
+#   pending lists the lead's open items (stop, gate, attention, inbox), oldest first:
+#   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
+#   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
+#   lead.
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
 #   .claude/team/sessions/TeamLead-run.settings.json unioned with the project and local deny/ask
 #   rules, the PR host's update verbs denied for teams.pr_provider, guard-teamlead-write.sh
@@ -15,7 +16,7 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
@@ -36,21 +37,38 @@ resolve() {
   RUN="$(cat "$TD/run" 2>/dev/null || true)"
 }
 
+gate_decided() {  # gate_decided <record basename> — a non-escalate verdict names it
+  local v
+  for v in "$TD/runs/$RUN"/teamlead-*-*.json; do
+    [ -f "$v" ] || continue
+    jq -e --arg r "$1" '.for == $r and .verdict != "escalate"' "$v" >/dev/null && return 0
+  done
+  return 1
+}
+
 # One line per item, sorted by a 14-digit UTC key that is cut off before printing.
 pending() {
-  local f role attempt last ts since="" stage l
+  local f role attempt last ts since="" stage l gate
   resolve "$1"
   {
     if [ -n "$RUN" ]; then
       for f in "$TD/runs/$RUN"/*-*-*.json; do
         [ -f "$f" ] || continue
+        case "$(basename "$f")" in teamlead-*) continue ;; esac  # verdicts, not stage records
         role="$(jq -r .role "$f")"; attempt="$(jq -r .attempt "$f")"
         last="$(ls "$TD/runs/$RUN" | grep -E "^$role-$attempt-[0-9]+\.json\$" | sort -t- -k3,3n \
           | tail -n 1)"
         [ "$(basename "$f")" = "$last" ] || continue
-        case "$(jq -r .verdict "$f")" in blocked|failed) ;; *) continue ;; esac
         ts="$(jq -r .written_at "$f" | tr -dc 0-9)"
-        echo "$ts stop .agents/team/runs/$RUN/$(basename "$f") — $(jq -r '.message // ""' "$f")"
+        case "$role $(jq -r .verdict "$f")" in
+          *" blocked"|*" failed")
+            echo "$ts stop .agents/team/runs/$RUN/$(basename "$f") — $(jq -r '.message // ""' "$f")" ;;
+          # A gate stays open until a verdict other than escalate names its record.
+          "planner review"|"planner done")
+            [ ! -e "$f.accepted" ] && ! gate_decided "$(basename "$f")" || continue
+            gate=plan; [ "$(jq -r .verdict "$f")" = done ] || gate=spec
+            echo "$ts gate .agents/team/runs/$RUN/$(basename "$f") — $gate gate" ;;
+        esac
       done
       # Attention lines after the active stage's newest record are still unanswered.
       stage="$(jq -r '.role // empty' "$TD/session.json" 2>/dev/null || true)"

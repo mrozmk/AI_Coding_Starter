@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Write a team handoff record for the current role (called by planner/coder/qa in a team clone).
 #
-# Usage: bash .claude/lib/team-record.sh --verdict done|blocked|failed [--artifacts a,b]
+# Usage: bash .claude/lib/team-record.sh --verdict done|blocked|failed|review [--artifacts a,b]
 #          [--pr <id>] [--evidence a,b] [--message "<one line>"]
 #   e.g. bash .claude/lib/team-record.sh --verdict done --pr 8371 --artifacts .agents/plans/done/x.md
+#   review: the planner's committed spec for the TeamLead's spec gate (one .agents/specs/*.md).
 #
 # Identity comes from .agents/team/session.json; contract: .agents/reference/team-mode.md §6.
 set -euo pipefail
@@ -32,7 +33,11 @@ done
 [ -f "$(team_dir)/session.json" ] || { echo "error: not in team mode (no session.json)" >&2; exit 1; }
 case "$VERDICT" in
   done|blocked|failed) ;;
-  *) echo "error: --verdict must be done, blocked or failed" >&2; exit 2 ;;
+  review)
+    [ "$(session_json role)" = planner ] || { echo "error: only the planner records review" >&2; exit 2; }
+    case "$ARTIFACTS" in .agents/specs/*.md) ;; *) false ;; esac && [[ "$ARTIFACTS" != *,* ]] \
+      || { echo "error: --verdict review needs --artifacts <one .agents/specs/*.md>" >&2; exit 2; } ;;
+  *) echo "error: --verdict must be done, blocked, failed or review" >&2; exit 2 ;;
 esac
 if [ -n "$PR" ] && ! [[ "$PR" =~ ^[0-9]+$ ]]; then
   echo "error: --pr must be numeric" >&2; exit 2
@@ -45,7 +50,7 @@ branch="$(team_json branch)"
 output_rev="$(git rev-parse HEAD)"
 notes="$(team_notes_init "$run")"
 
-if [ "$VERDICT" != done ]; then
+if [ "$VERDICT" = blocked ] || [ "$VERDICT" = failed ]; then
   [ -n "$MESSAGE" ] || { echo "error: --verdict $VERDICT requires --message" >&2; exit 2; }
   echo "- [$role $attempt] $MESSAGE" >> "$notes"
 fi

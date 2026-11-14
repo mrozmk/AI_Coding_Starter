@@ -35,6 +35,13 @@ check_planner() {
   fi
 }
 
+# A review record is the spec gate's input, never accepted: its one spec must be committed.
+check_review() {
+  local a; a="$(rec "$1" artifacts)"
+  [[ "$a" == .agents/specs/*.md && "$a" != *,* ]] || { fail "review record needs exactly one spec artifact"; return 1; }
+  [ "$(git cat-file -t "$(rec "$1" output_rev):$a" 2>/dev/null)" = blob ] || fail "spec $a not in $(rec "$1" output_rev)"
+}
+
 # ADO computes the merge asynchronously: right after a push the PR can still show the old commit.
 check_ado() {
   local pr="$1" rev="$2" draft="$3" j ms src waited=0
@@ -220,7 +227,7 @@ validate_record() {
     *) fail "role $role does not run in mode $MODE"; return 1 ;;
   esac
   case "$role" in
-    planner) check_planner "$r" ;;
+    planner) if [ "$(rec "$r" verdict)" = review ]; then check_review "$r"; else check_planner "$r"; fi ;;
     coder)
       [ -n "$pr" ] || fail "coder record has no pr_id" || return 1
       check_coder_plan "$r" "$rev" || return 1

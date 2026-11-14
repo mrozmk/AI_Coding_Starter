@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# team-remode.sh restarts a quick ticket in brainstorm mode after a Phase 0 failure.
+# team-remode.sh restarts a quick ticket in brainstorm mode after a Phase 0 failure or a TeamLead
+# plan-gate remode.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -104,4 +105,37 @@ run "$MAIN" perl -e 'alarm 30; exec @ARGV' \
 expect 0 "was AB-1260" "team-next after remode"
 echo "team-smoke-10: (e) team-next OK"
 
-echo "team-smoke-10: (a)-(e) OK"
+# ---- (f) a quick run closed by a TeamLead plan-gate remode (close_run's tree) --------------------
+jq '.mode = "quick"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
+BR=chore/AB-1261-y; BASE="$(jq -r .base_sha "$TD/team.json")"
+RUN_ID=alfa-20261026-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
+commit_file .agents/plans/active/q.md "# Quick plan"
+TIP="$(git -C "$CLONE" rev-parse HEAD)"
+jq -n --arg run "$RUN_ID" --arg b "$BASE" --arg t "$TIP" \
+  '{team: "alfa", ticket: "AB-1261", run: $run, role: "planner", attempt: 1, seq: 1, branch: "x",
+    input_rev: $b, output_rev: $t, verdict: "done", pr_id: null,
+    artifacts: [".agents/plans/active/q.md"], evidence: [], notes: "", message: "",
+    written_at: "2026-10-26T00:00:00Z"}' > "$RD/planner-1-1.json"
+echo planner-1-1.json > "$TD/acked"; echo "ticket: AB-1261" > "$TD/order-brief.md"
+run "$MAIN" $REMODE alfa brainstorm
+expect 1 "not failed \"too big for quick" "a done record without a TeamLead remode"
+jq -n '{gate: "plan", seq: 1, for: "planner-1-0.json", verdict: "remode"}' > "$RD/teamlead-plan-1.json"
+run "$MAIN" $REMODE alfa brainstorm
+expect 1 "the planner committed work" "a remode naming another record"
+jq -n '{gate: "plan", seq: 2, for: "planner-1-1.json", verdict: "remode"}' > "$RD/teamlead-plan-2.json"
+jq -n --arg r ".agents/team/runs/$RUN_ID/teamlead-plan-2.json" '{reason: "remode", ref: $r, pr_id: null}' \
+  > "$RD/closed.json"
+echo '{}' > "$RD/coder-1-1.json"
+run "$MAIN" $REMODE alfa brainstorm
+expect 1 "has coder-1-1.json — another role ran" "a TeamLead remode after a coder record"
+rm -f "$RD/coder-1-1.json"
+run "$MAIN" $REMODE alfa brainstorm
+expect 0 "from HEAD" "remode after a TeamLead plan-gate remode"
+[ "$(jq -r .mode "$TD/team.json")" = brainstorm ] || fail "(f) mode not brainstorm"
+[ "$(git -C "$CLONE" rev-parse HEAD)" = "$TIP" ] || fail "(f) remode moved HEAD (history rewrite)"
+[ -f "$TD/order-brief.md" ] || fail "(f) the order brief was not kept"
+ls "$TD"/archive/AB-1261-remode-*/runs/"$RUN_ID"/teamlead-plan-2.json >/dev/null 2>&1 \
+  || fail "(f) the closed run was not archived"
+echo "team-smoke-10: (f) TeamLead remode OK"
+
+echo "team-smoke-10: (a)-(f) OK"

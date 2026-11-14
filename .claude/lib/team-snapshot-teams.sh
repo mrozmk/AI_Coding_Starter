@@ -310,6 +310,7 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
     team_escalations "$td" "$run" > "$W/escs" || err "$team: escalation ledgers unreadable"
     for f in "$td/runs/$run"/*-*-*.json; do
       [ -f "$f" ] || continue
+      case "$(basename "$f")" in teamlead-*) continue ;; esac  # TeamLead verdicts, not stage records
       jq -c . "$f" >> "$W/recs" 2>/dev/null || err "$team: unreadable $(basename "$f")"
     done
   fi

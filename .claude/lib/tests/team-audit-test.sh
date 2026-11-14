@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Offline test of the team run audit: auditor cases A–E, runner trap F, wrapper G–H.
+# Offline test of the team run audit: auditor cases A–E, runner trap F, wrapper G–H, retro I,
+# closed TeamLead run J.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -217,5 +218,23 @@ run "$CLONE" bash "$MAIN/.claude/lib/team-audit.sh" alfa --runner-exit 0 --final
 expect 0 "audit: " "I killed retro"
 B3="$MAIN/.agents/team/audit/20261024-alfa-AB-790-$R3"
 [ "$(jq -r .retro "$B3.json")" = "failed: rc 143" ] || fail "I: killed retro marked $(jq -r .retro "$B3.json")"
+
+# ---- J: a run closed by a TeamLead remode -------------------------------------------------------
+R="alfa-20261025-100000"; T="$WORK/td-j"; RD="$T/runs/$R"; O="$WORK/out-j"
+team_dir "$T" "$R" quick
+rec "$RD" planner 1 1 done 60 "" "$CODEX_REV"; rm -f "$RD/planner-1-1.json.accepted"
+jq -n '{gate: "plan", seq: 1, for: "planner-1-1.json", verdict: "remode"}' > "$RD/teamlead-plan-1.json"
+jq -n --arg r ".agents/team/runs/$R/teamlead-plan-1.json" '{reason: "remode", ref: $r, pr_id: null}' \
+  > "$RD/closed.json"
+mkdir -p "$RD/decisions"; printf -- '---\nid: d-1\nstatus: answered\n---\n' > "$RD/decisions/d-1.md"
+printf -- '- 2026-10-25T10:00:00Z [planner 1] scope? → split — too big\n' > "$RD/answers.md"
+audit "$T" "$R" "$O" --final closed --runner-exit 8
+expect 0 "audit: " "J closed run"
+J="$O/20261025-alfa-AB-9-$R.json"
+jq -e '.final == "closed" and (.flags | map(select(startswith("missing-stage"))) | length == 0)
+  and .lead.verdicts[0].verdict == "remode" and .lead.decisions == 1 and .lead.answers == 1
+  and .lead.closed.reason == "remode"' "$J" >/dev/null || fail "J: audit json $(jq -c '{final, flags, lead}' "$J")"
+has "- verdicts: plan remode (planner-1-1.json)" "${J%.json}.md" || fail "J: md lacks the TeamLead section"
+has "- closed: remode (" "${J%.json}.md" || fail "J: md lacks the closure"
 
 echo "team-audit-test: OK"
