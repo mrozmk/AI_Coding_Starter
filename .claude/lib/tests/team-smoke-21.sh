@@ -171,6 +171,16 @@ hook "$CLONE" "$(vp sid-planner-1 "git status")"; expect 0 "" "(o) other command
 hook "$MAIN" "$(vp sid-planner-1 "$FORGE")"; expect 0 "" "(o) no-op outside a team clone"
 echo "team-smoke-21: (o) verdict guard OK"
 
+# ---- (p) brainstorm spec approve needs the constraint digest ------------------------------------
+V spec approve --for planner-1-2.json --message "covers the order"
+expect 7 "constraint digest missing — see the Digest section of the TeamLead prompt" "(p) no digest.md"
+printf 'made_at: x\n\nnone\n' > "$RD/digest.md"
+V spec approve --for planner-1-2.json --message "covers the order"; expect 7 "constraint digest missing" "(p) no scope header"
+[ ! -e "$RD/teamlead-spec-1.json" ] || fail "(p) a refused approve wrote a verdict"
+# ---- (q) with the digest it passes --------------------------------------------------------------
+printf 'scope: %s\nmade_at: 2026-11-14T11:00:00Z\n\n- none\n' "$SPEC" > "$RD/digest.md"
+echo "team-smoke-21: (p) digest required + (q) digest present OK"
+
 # ---- (g) spec approve → digest stored, the runner messages the planner ---------------------------
 V spec approve --for planner-1-2.json --message "covers the order"; expect 0 "teamlead-spec-1.json" "(g) approve"
 [ -n "$(jq -r .spec_digest "$RD/teamlead-spec-1.json")" ] || fail "(g) no spec_digest"
@@ -246,10 +256,22 @@ cmd_reset_quick() {
 cmd_reset_quick; session planner 1 "$BASE"
 V spec approve --for planner-1-1.json --message x; expect 4 "quick mode has no spec gate" "(l) no spec gate in quick"
 prec --verdict done --artifacts "$PLAN"; expect 0 "planner-1-1.json" "(l) quick done"
-V plan remode --for planner-1-1.json --message "not quick: 3 services"; expect 0 "" "(l) remode"
+# ---- (r) quick, no routed domain: approve without a digest; (s) routed: exit 7 until it exists -----
+V plan approve --for planner-1-1.json --message ok; expect 0 "teamlead-plan-1.json" "(r) quick, no routed domain"
+jq -n '{rules: [{match: "^src/pay/", domain: "payments"}], fallback: "general"}' \
+  > "$CLONE/.claude/memory-domains.json"
+printf '# Plan\n\n### UPDATE `src/pay/charge.ts:12`\n' > "$CLONE/$PLAN"
+git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "routed plan"
+prec --verdict done --artifacts "$PLAN"; expect 0 "planner-1-2.json" "(s) routed done"
+V plan approve --for planner-1-2.json --message ok; expect 7 "constraint digest missing" "(s) routed, no digest"
+printf 'scope: src/pay/charge.ts\nmade_at: 2026-11-14T11:00:00Z\n\n- none\n' > "$RD/digest.md"
+V plan approve --for planner-1-2.json --message ok; expect 0 "teamlead-plan-2.json" "(s) routed, with digest"
+echo "team-smoke-21: (r) quick unrouted + (s) quick routed OK"
+prec --verdict done --artifacts "$PLAN"; expect 0 "planner-1-3.json" "(l) quick done again"
+V plan remode --for planner-1-3.json --message "not quick: 3 services"; expect 0 "" "(l) remode"
 greset alfa-lead alfa-planner
 run "$MAIN" $TR alfa; expect 8 "closed: remode — clone free" "(l) runner closes"
-jq -e --arg r ".agents/team/runs/$RUN_ID/teamlead-plan-1.json" '.reason == "remode" and .ref == $r' \
+jq -e --arg r ".agents/team/runs/$RUN_ID/teamlead-plan-3.json" '.reason == "remode" and .ref == $r' \
   "$RD/closed.json" >/dev/null || fail "(l) closed.json"
 [ "$(grep -l '^event: closed' "$SUP"/* 2>/dev/null | wc -l | tr -d ' ')" = 1 ] || fail "(l) not exactly one closed event"
 grep -q '^reason: remode — clone free' "$(grep -l '^event: closed' "$SUP"/*)" || fail "(l) closed event body"

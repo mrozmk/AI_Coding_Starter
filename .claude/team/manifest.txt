@@ -16,6 +16,8 @@
 # --- not distributed ----------------------------------------------------------------------
 !.claude/lib/tests/**
 !.claude/lib/costs/tests/**
+# core, not team: sourced by the core hook guard-memory.sh
+!.claude/hooks/lib/memory-domain.sh
 # the human overview of the team layer stays in the starter; projects get the .agents/reference contracts
 !docs/teams/**
 

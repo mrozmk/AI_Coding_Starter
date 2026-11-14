@@ -4,10 +4,12 @@
 #        bash .claude/lib/team-lead.sh whoami                (exit 0 when the caller is the lead)
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
+#        bash .claude/lib/team-lead.sh digest-check <team> <spec|plan path>
 #   pending lists the lead's open items (stop, gate, attention, inbox), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
-#   lead.
+#   lead. digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
+#   when no path the plan names maps to a routed domain (.claude/memory-domains.json); else 1.
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
 #   .claude/team/sessions/TeamLead-run.settings.json unioned with the project and local deny/ask
 #   rules, the PR host's update verbs denied for teams.pr_provider, guard-teamlead-write.sh
@@ -16,7 +18,7 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
@@ -91,6 +93,30 @@ pending() {
   } | sort -s -k1,1 | cut -d' ' -f2-
 }
 
+# The constraint digest is required at the brainstorm spec gate (decisions.md alone is input) and at
+# a quick plan gate only when the plan names a path of a routed memory domain.
+digest_check() {
+  local root t dom
+  resolve "$1"
+  grep -q '^scope:' "$TD/runs/$RUN/digest.md" 2>/dev/null && return 0
+  root="${TD%/.agents/team}"
+  if [ "$(jq -r '.mode // "brainstorm"' "$TD/team.json")" = quick ]; then
+    . "$(dirname "$0")/../hooks/lib/memory-domain.sh"
+    memory_domain_config "$root"
+    dom=""
+    # Paths are the plan's backticked tokens with a slash, without a :line or #anchor suffix.
+    while IFS= read -r t; do
+      t="${t#./}"; t="${t%%[:#]*}"
+      dom="$(memory_domain_for "$root" "$t")"
+      [ -z "$dom" ] || [ "$dom" = "$MEMORY_DOMAIN_FALLBACK" ] || break
+      dom=""
+    done < <(grep -oE '`[^` ]+/[^` ]*`' "$root/$2" 2>/dev/null | tr -d '`' || true)
+    [ -n "$dom" ] || return 0
+  fi
+  echo "constraint digest missing — see the Digest section of the TeamLead prompt" >&2
+  return 1
+}
+
 end_lead() {
   resolve "$1"
   team_end_session "$TD" "$(team_tmux_name "$1" lead)" lead "${TEAM_EXIT_WAIT_SECS:-60}" \
@@ -146,6 +172,7 @@ case "$1" in
   materialize) [ $# -eq 2 ] || usage; materialize "$2" ;;
   whoami) [ $# -eq 1 ] || usage; team_lead_caller ;;
   pending) [ $# -eq 2 ] || usage; pending "$2" ;;
+  digest-check) [ $# -eq 3 ] || usage; digest_check "$2" "$3" ;;
   end) [ $# -eq 2 ] || usage; end_lead "$2" ;;
   finalize) [ $# -eq 3 ] && [ "$3" = merged ] || usage; finalize "$2" "$3" ;;
   relaunch) [ $# -eq 2 ] || usage; resolve "$2"; touch "$TD/relaunch-lead"

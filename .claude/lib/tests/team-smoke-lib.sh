@@ -504,6 +504,7 @@ smoke_repos() {
   mkdir -p "$SEED/.claude/hooks/lib"
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SEED/.claude/lib/"
   cp "$SRC"/.claude/hooks/lib/*.py "$SEED/.claude/hooks/lib/"  # never a stray __pycache__/
+  cp "$SRC/.claude/hooks/lib/memory-domain.sh" "$SEED/.claude/hooks/lib/"  # team-lead.sh digest-check
   cp "$SRC"/.claude/team/prompts/*.md "$SEED/.claude/team/prompts/"
   # Without the tracker blocks every wrapup/planner render in smoke 1-4 dies (return 1).
   mkdir -p "$SEED/.claude/team/tracker"

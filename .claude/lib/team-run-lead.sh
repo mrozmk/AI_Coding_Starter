@@ -17,7 +17,8 @@ team_now() {
 team_lead_base_ok() {
   local f
   for f in .claude/team/prompts/teamlead.md .claude/hooks/guard-teamlead-write.sh \
-    .claude/lib/team-lead.sh .claude/lib/team-lead-lib.sh .claude/lib/team-verdict.sh; do
+    .claude/lib/team-lead.sh .claude/lib/team-lead-lib.sh .claude/lib/team-verdict.sh \
+    .claude/hooks/lib/memory-domain.sh; do
     [ -f "$CLONE/$f" ] || { echo "no $f"; return 1; }
   done
   grep -q 'review)' "$CLONE/.claude/lib/team-record.sh" || { echo "no review verdict in team-record.sh"; return 1; }

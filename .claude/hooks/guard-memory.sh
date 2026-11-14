@@ -66,35 +66,11 @@ case "$REL" in
 esac
 
 # --- Resolve the domain from .claude/memory-domains.json -----------------------
-CONFIG="$ROOT/.claude/memory-domains.json"
-FALLBACK="general"
-THRESHOLD=24000
-DOMAIN=""
-
-if [ -f "$CONFIG" ]; then
-  FB=$(jq -r '.fallback // "general"' "$CONFIG" 2>/dev/null)
-  [ -n "$FB" ] && [ "$FB" != "null" ] && FALLBACK="$FB"
-  TH=$(jq -r '.size_threshold_bytes // 24000' "$CONFIG" 2>/dev/null)
-  printf '%s' "$TH" | grep -Eq '^[0-9]+$' && THRESHOLD="$TH"
-
-  N=$(jq '.rules | length' "$CONFIG" 2>/dev/null)
-  printf '%s' "$N" | grep -Eq '^[0-9]+$' || N=0
-  i=0
-  while [ "$i" -lt "$N" ]; do
-    M=$(jq -r ".rules[$i].match // \"\"" "$CONFIG" 2>/dev/null)
-    D=$(jq -r ".rules[$i].domain // \"\"" "$CONFIG" 2>/dev/null)
-    if [ -n "$M" ] && [[ "$REL" =~ $M ]]; then
-      DOMAIN="$D"
-      # Substitute regex capture groups $1..$9 in the domain template.
-      for g in 1 2 3 4 5 6 7 8 9; do
-        cap="${BASH_REMATCH[$g]}"
-        DOMAIN="${DOMAIN//\$$g/$cap}"
-      done
-      break
-    fi
-    i=$((i + 1))
-  done
-fi
+# The lookup is shared with team-lead.sh digest-check; a missing library fails open.
+. "$(dirname "$0")/lib/memory-domain.sh" 2>/dev/null || exit 0
+memory_domain_config "$ROOT"
+FALLBACK="$MEMORY_DOMAIN_FALLBACK"; THRESHOLD="$MEMORY_DOMAIN_THRESHOLD"
+DOMAIN=$(memory_domain_for "$ROOT" "$REL")
 
 [ -z "$DOMAIN" ] && DOMAIN="$FALLBACK"
 

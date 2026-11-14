@@ -11,10 +11,11 @@
 #   e.g. bash .claude/lib/team-verdict.sh spec revise --for planner-1-2.json \
 #          --ref .agents/team/runs/alfa-20261114-100000/gate-spec-1.md --message "2 findings"
 # Exit: 0 written · 2 usage · 3 not the lead · 4 bad gate/verdict/for · 5 revise limit
-#       6 spec changed after approval. Contract: .agents/reference/team-lead.md §4
+#       6 spec changed after approval · 7 constraint digest missing (team-lead.sh digest-check).
+#   Contract: .agents/reference/team-lead.md §4, §5
 set -euo pipefail
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""
@@ -98,6 +99,14 @@ fi
 # excluded so setting Approved after the gate does not move the digest.
 digest() { git show "$1:$2" | grep -v '^\*\*Status:\*\*' | shasum -a 256 | cut -d' ' -f1; }
 spec_of() { jq -r '[.artifacts[] | select(startswith(".agents/specs/"))][0] // empty' "$1"; }
+# The approve that opens the run's work needs the constraint digest (brainstorm spec, quick plan).
+need=""
+case "$GATE $VERDICT $MODE" in
+  "spec approve "*) need="$(spec_of "$last")" ;;
+  "plan approve quick") need="$(jq -r '[.artifacts[] | select(startswith(".agents/plans/"))][0] // empty' "$last")" ;;
+esac
+if [ -n "$need" ] && ! bash "$LIB/team-lead.sh" digest-check "$TEAM" "$need"; then exit 7; fi
+
 DIGEST=""
 if [ "$GATE $VERDICT" = "spec approve" ]; then
   s="$(spec_of "$last")"; [ -n "$s" ] || bad "$FOR names no spec"

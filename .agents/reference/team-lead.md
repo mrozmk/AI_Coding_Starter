@@ -64,6 +64,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | basename of the stage record the lead must resolve: a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate) |
 | `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
 | `runs/<run>/gate-<gate>-<n>.md` | the lead | gate findings; a verdict's `ref` |
+| `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
 | `verdict-acked` | runner | the verdict files already acted on, one per line |
 | `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` — a closed run; the runner and `/start-team` refuse to resume it |
 | `runs/<run>/<record>.answered` | `team-answer.sh`, after delivering the answer to that stop (step 6) | ends the wait: the stage time limit (coder 4 h, qa 3 h) is paused while `acked` names a stop without this marker, and counts again from the poll that sees it |
@@ -116,7 +117,8 @@ for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
 
 - **Refusals** (exit): `3` not the lead; `4` an unknown gate (`acceptance`/`decision` come later),
   a verdict outside the gate's set, `--for` that is not the planner's newest record or not in the
-  gate's verdict, `revise` without `--ref`; `5` revise limit; `6` spec changed after approval.
+  gate's verdict, `revise` without `--ref`; `5` revise limit; `6` spec changed after approval;
+  `7` constraint digest missing (§5).
 - **Caller guard.** The script's own check (role env + `teamlead.json`) can be forged by a stage
   that prefixes `TEAM_SESSION_ROLE=TeamLead`. `guard-team-verdict.sh` (PreToolUse `Bash`, project
   settings, `/setup:teams` id `V`) refuses any command naming `team-verdict.sh` in a team clone
@@ -141,3 +143,24 @@ for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
 - **Collision.** `team-verdict.sh event collision --ref <file> --message "<line>"` writes the
   Supervisor event; the lead then either sends the spec back (`revise`) or holds the gate until the
   Supervisor answers through `inbox/<team>/`.
+
+## 5. Project context
+
+The lead loads project knowledge in three layers:
+
+1. **Always:** `/prime` quick at bootstrap — nothing wholesale beyond it.
+2. **Per task: the constraint digest.** At the first gate one distillation sub-agent reads
+   `.agents/memory/decisions.md` and the domain files `index.md` routes for the paths the spec or
+   plan touches (`.claude/memory-domains.json` rules, the same lookup as `guard-memory.sh`:
+   `.claude/hooks/lib/memory-domain.sh`). It returns only the constraints bearing on this task,
+   each cited (`- <constraint> — <file>#<heading or line>`), at most 60 lines, `none` when nothing
+   applies. The lead saves it verbatim as `runs/<run>/digest.md` (`scope:` and `made_at:` header)
+   and uses it for the rest of the run: gates, answers, acceptance. The brief is in the role prompt
+   (`teamlead.md` → Constraint digest).
+3. **Never:** `/prime full` or the whole `domain/*`.
+
+When it is required: always in brainstorm (decisions.md alone is input); in quick only when a path
+the plan names maps to a routed domain. A project without `memory-domains.json` has no routed
+domains, so quick never needs one. `team-lead.sh digest-check <team> <spec|plan path>` decides;
+`team-verdict.sh` runs it before a brainstorm spec `approve` or a quick plan `approve` and refuses
+with exit 7 (`constraint digest missing — see the Digest section of the TeamLead prompt`).
