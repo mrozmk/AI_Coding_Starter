@@ -293,6 +293,14 @@ Create (or append to, on `--resume`) a run-log next to the plan so the run's sta
 
 Append to `RUN_LOG` as the run progresses (one entry per step is enough): step id, the executor agent spawned, the parsed sub-agent reports (verdict/status lines + any blockers/gaps), the Step 5.1-recon result, and each pushed `COMMIT_SHA`. This is a log you write with the Write/Edit tool, not a sub-agent artifact. In Phase 7 it moves to `done/` alongside the plan.
 
+**Spawn throughput record (one line per spawn).** Every sub-agent result carries a usage block (`subagent_tokens`, `duration_ms`). After parsing each report — executor, refiner, verifier, designer, committer — append:
+
+```
+- SPAWN <agent> (step <id>, iter <n>[, verify <full|delta>]): <duration_ms/1000>s, <subagent_tokens> tok, <rate> tok/s
+```
+
+`rate` = `subagent_tokens / (duration_ms / 1000)`: a wall-clock rate over everything the usage block counts, tool time included, so a long build or test run lowers it without any slowdown of the model. No usage block → `throughput: n/a`, never a guess. Below 50 tok/s → append ` ⚠ LOW RATE` and say so in one sentence in the next progress statement; the run continues either way. This is measurement after the fact, not a watchdog — it accumulates the evidence to tell a one-off stall (a spawn running at a fraction of its siblings' rate, invisible while the `Agent` call blocks) from a pattern; do not build a kill/respawn mechanism on one data point.
+
 **Run-log contract — friction records (feeds central reflection).** The base entries above (verdicts/gaps/SHAs) are enough for `--resume`, but they are NOT enough for the **central** memory reflection that Integration mode runs from the merged run-logs — in a parallel run the build clones no longer reflect first-person (they skip Phase 7 steps 6–7). So on **every friction iteration** — a verifier/designer fix loop, a Phase 6 user-guided retry, or a designer mega-fix — also append a structured record:
 
 ```
@@ -433,7 +441,12 @@ PLAN_PATH: <file_path>
 WORKTREE_PATH: <STEP_WORKTREE>
 FILES_TOUCHED:
 <list>
-Work in WORKTREE_PATH (`cd` there first). Run /gates:verify-implementation per the preloaded skill. Report via the Verifier Output Contract, including the `WORKDIR_TOPLEVEL` line.
+VERIFY_MODE: <full | delta>
+PREVIOUS_GAPS:
+<delta only: the GAPS block of the failed pass, verbatim — omit this section on full>
+FIX_BASE: <delta only: snapshot before the fix>
+FIX_HEAD: <delta only: snapshot after the fix>
+Work in WORKTREE_PATH (`cd` there first). Run /gates:verify-implementation per the preloaded skill (on delta: its §1b). Report via the Verifier Output Contract, including the `WORKDIR_TOPLEVEL`, `MODE` and `AUDIT_COMPLETE` lines.
 ```
 
 **Gate could not load.** A `Shell command failed for pattern "!…"` or `permission check failed … simple_expansion` *at skill-load time* is an environment block, not a code failure: retry at most once, then run the gate's automated core directly — the `CLAUDE.md → Validation` commands, one per Bash call — and label the result `gate: substituted (skill failed to load: <reason>)`. Never write `PASS` for a gate that did not run, and never loop re-spawning.
@@ -445,11 +458,20 @@ Decision table:
 | Verdict  | Blockers  | Iteration count | Action                                                                                                                                                    |
 | -------- | --------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `passed` | (any)     | any             | Go to Step 5.3                                                                                                                                            |
-| `failed` | empty     | < 3             | Spawn executor again with `FIX_LIST = GAPS` from verifier. After executor completes, loop back to Step 5.2 (this same step). Increment iteration counter. |
+| `failed` | empty     | < 3             | Spawn executor again with `FIX_LIST = GAPS` from verifier. After executor completes, loop back to Step 5.2 (this same step) in the verify-mode chosen below. Increment iteration counter. |
 | `failed` | empty     | = 3             | Mark step `blocked`, escalate: "Verifier still reports gaps after 3 fix iterations. Gaps: [...]. Iterations tried: [...]." STOP pipeline.                 |
 | `failed` | non-empty | any             | Mark step `blocked`, escalate with `BLOCKERS:` list. STOP pipeline.                                                                                       |
 
 When looping with a fix iteration, give the executor the verifier's `GAPS:` block verbatim as `FIX_LIST` and add: `This is fix iteration <N> of 3 for step <step_id>. In your NOTES, include ROOT_CAUSE: (why the gap existed), APPLIED_CHANGE: (what you changed), OUTCOME: (resolved | still-failing).` Copy those three NOTES fields into a run-log friction record (Phase 4b) — they are the material the central memory reflection consumes.
+
+**Verify-mode of a re-verification.** The first verifier pass on a step is always `VERIFY_MODE: full`. A fix-loop re-verification may run `delta` — the gate's §1b: tasks and quality gates in full, semantic review and the spec axis over the fix's real diff — so it re-proves the fix instead of re-auditing the whole plan. The gate is never skipped, only its review scope narrows.
+
+1. **Before** spawning the fix executor, in the step's working directory: `FIX_BASE=$(bash .claude/lib/fix-snapshot.sh)`.
+2. **After** it returns and 5.1-recon passes: `FIX_HEAD=$(bash .claude/lib/fix-snapshot.sh)`; the fix's scope is `git diff --name-only $FIX_BASE $FIX_HEAD` — ground truth, not the executor's `FILES_MODIFIED`.
+3. **Run `full`** when any holds — log `verify-mode full: <reason>`: the failed pass reported `AUDIT_COMPLETE: no`; a gap names no file path; a changed path is not among the paths the gaps name; either snapshot failed. Otherwise run `delta` with `PREVIOUS_GAPS` = the failed pass's `GAPS` verbatim, `FIX_BASE` and `FIX_HEAD`.
+4. Record the mode on the spawn's throughput line (Phase 4b).
+
+Always `full`: the Phase 6 user-guided retry (guidance can change the design) and the verifier pass after a designer mega-fix (a structural rewrite).
 
 ### Step 5.3 — Design check (loop up to 2 iterations, conditional)
 
@@ -471,7 +493,7 @@ Parse the `=== DESIGNER REPORT ===` block.
 
 **Adaptive design budget (read before applying the table).** A backend step with no UI surface returns `skipped` and costs nothing; a UI step whose reference could not be resolved returns `not-verified` — carried forward as a warning, never treated as `passed`. A heavy-UI step often returns a structural rewrite (many gaps that are all symptoms of one "implementation diverged from the design DOM" root cause) — and two small fix iterations are the wrong tool for that: you want ONE comprehensive fix pass, not two partial ones. So branch on the FIRST designer report's shape:
 
-- **Mega-fix mode** — if the first `failed` report has **>20 GAPS** OR **≥1 structural/architectural GAP** (a gap about DOM hierarchy, missing sections, per-tier/per-state variants, or component structure — not pure token/spacing/copy deltas): treat the entire `GAPS` list as a SINGLE fix iteration. Spawn the executor once with the full `FIX_LIST`, then — because a structural rewrite is exactly the kind of mutation that CAN break code — re-run Step 5.1-recon and **one verifier pass (5.2)** before the confirming designer run. A mutation of this size must not reach commit on the strength of a design audit alone. If the single mega-fix still fails on structural gaps → escalate as blocker (don't grind).
+- **Mega-fix mode** — if the first `failed` report has **>20 GAPS** OR **≥1 structural/architectural GAP** (a gap about DOM hierarchy, missing sections, per-tier/per-state variants, or component structure — not pure token/spacing/copy deltas): treat the entire `GAPS` list as a SINGLE fix iteration. Spawn the executor once with the full `FIX_LIST`, then — because a structural rewrite is exactly the kind of mutation that CAN break code — re-run Step 5.1-recon and **one verifier pass (5.2, `VERIFY_MODE: full`)** before the confirming designer run. A mutation of this size must not reach commit on the strength of a design audit alone. If the single mega-fix still fails on structural gaps → escalate as blocker (don't grind).
 - **Incremental mode** — otherwise (≤20 gaps, all cosmetic): use the 2-small-iteration loop in the table below.
 
 Decision table (incremental mode):
@@ -679,7 +701,7 @@ USER_GUIDANCE:
 This is a user-guided retry after a blocker. Apply the guidance and execute the plan. In your NOTES, include ROOT_CAUSE / APPLIED_CHANGE / OUTCOME. Report via the Executor Output Contract.
 ```
 
-Write a run-log friction record (Phase 4b) for this retry: the `USER_GUIDANCE` verbatim plus the executor's ROOT_CAUSE / APPLIED_CHANGE / OUTCOME. Then resume the pipeline at Step 5.2 (re-verify after the guided fix).
+Write a run-log friction record (Phase 4b) for this retry: the `USER_GUIDANCE` verbatim plus the executor's ROOT_CAUSE / APPLIED_CHANGE / OUTCOME. Then resume the pipeline at Step 5.2 (re-verify after the guided fix) with `VERIFY_MODE: full` — delta is only for the mechanical gap-fix loop.
 
 ## Phase 7: Pipeline completion
 
@@ -910,7 +932,7 @@ Backlog: <Task ids marked DONE / kept WIP (other plan active), left uncommitted 
 ## Things you must NEVER do
 
 - Implement, audit, or commit code yourself. Spawn the right sub-agent.
-- Skip the verifier or designer because "executor seemed careful." Quality gates are non-negotiable.
+- Skip the verifier or designer because "executor seemed careful." Quality gates are non-negotiable. (`VERIFY_MODE: delta` narrows a re-verification's review scope; it never skips the gate.)
 - Skip Step 5.3b for a `medium` step because the verifier passed, run it for a `low` step, spawn codex twice within one step, or root the codex run at the repo root instead of `STEP_WORKTREE`. The second judge exists for the hard steps only, reads the step's own tree only, and speaks once.
 - Skip the refiner (Step 5.1b), or let it commit/push/verify. The refiner only edits the step's files (`code-review --fix` + `deep-review`); committing is the committer's job and the read-only gate is the verifier's. The refiner and the verifier must stay different agents — never collapse fixer and judge into one.
 - Carry the executor's `FILES_TOUCHED` straight to the committer after a refiner run without re-deriving from `git status`. `/deep-review` may have touched a shared file the executor never reported; staging the stale list silently drops it from the commit (Step 5.1b re-derive).

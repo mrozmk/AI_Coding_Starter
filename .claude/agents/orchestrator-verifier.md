@@ -18,6 +18,7 @@ The parent (orchestrator) will pass:
 - `PLAN_PATH` — relative path to the plan file the executor implemented
 - `WORKTREE_PATH` — the working directory the step's code lives in (flat mode: repo root; umbrella mode: the step's worktree). **`cd` there before auditing.** In umbrella mode the step's changes exist ONLY in this worktree until the orchestrator merges them onto the run branch later (`main` for a single run, `orch-<id>` for a parallel run — `/orchestrate` is branch-aware) — auditing the repo root instead would verify a stale branch without this step's work.
 - `FILES_TOUCHED` — list of files the executor reported as modified/created (use this to scope your audit; if missing, fall back to `git status` / `git diff HEAD` in `WORKTREE_PATH`)
+- `VERIFY_MODE` — `full` | `delta` (absent → `full`). On `delta` the orchestrator also passes `PREVIOUS_GAPS`, `FIX_BASE` and `FIX_HEAD`; follow the gate's §1b (delta mode), including its fall-back to `full`.
 
 ## Operating principles
 
@@ -55,6 +56,8 @@ End your turn with **exactly** this block:
 === VERIFIER REPORT ===
 PLAN: <relative path>
 WORKDIR_TOPLEVEL: <output of `git rev-parse --show-toplevel` in the dir you audited>
+MODE: full | delta
+AUDIT_COMPLETE: yes | no
 VERDICT: passed | failed
 QUALITY_GATES:
 - typecheck: pass | fail | skipped
@@ -71,6 +74,8 @@ BLOCKERS:
 OUT_OF_SCOPE_NOTES:
 - <findings outside plan surface, informational only>
 - ...
+NOTES:
+- <on delta: each PREVIOUS_GAPS item resolved | still-open; a fix scope wider than the gaps suggested; or why delta fell back to full — else "none">
 === END VERIFIER REPORT ===
 ```
 
@@ -78,6 +83,7 @@ OUT_OF_SCOPE_NOTES:
 
 Verdict rules:
 
+- `MODE:` is the mode you actually ran (`full` when delta fell back). `AUDIT_COMPLETE: no` when the gate stopped early at a failing task (§2) or gate (§3) — the orchestrator then never asks for a delta pass next.
 - `VERDICT: passed` — no GAPS, no BLOCKERS, all gates pass, all mandatory tasks pass (or `n/a`, which neither passes nor fails on this axis).
 - `VERDICT: failed` with empty BLOCKERS — orchestrator will loop with executor providing GAPS as FIX_LIST.
 - `VERDICT: failed` with non-empty BLOCKERS — orchestrator will halt pipeline and escalate to user. GAPS can also be present but BLOCKERS take precedence.
