@@ -25,6 +25,19 @@ case "$FILE" in
   */.agents/memory/*|.agents/memory/*) ;;
   *) exit 0 ;;
 esac
+# The per-run TeamLead never writes memory, even while the wrapup stage runs; a stale lead neither.
+if [ "${TEAM_SESSION_ROLE:-}" = TeamLead ]; then
+  SID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""' 2>/dev/null)
+  LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
+  # An empty sid would skip the session comparison in team_lead_caller: fail closed.
+  if [ -n "$SID" ] \
+    && (cd "$ROOT" && . "$LIB/team-lib.sh" && team_lead_caller "$SID") 2>/dev/null; then
+    echo "TeamLead decides memory proposals; the wrapup writes them" >&2
+  else
+    echo "TeamLead identity not current — restart the lead" >&2
+  fi
+  exit 2
+fi
 [ "$(jq -r '.role // ""' "$SESSION" 2>/dev/null)" = wrapup ] && exit 0
 
 RUN=$(jq -r '.run // "<run>"' "$SESSION" 2>/dev/null)

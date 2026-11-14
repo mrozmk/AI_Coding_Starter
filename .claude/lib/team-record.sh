@@ -26,6 +26,9 @@ done
 
 . "$(dirname "$0")/team-lib.sh"
 
+[ "${TEAM_SESSION_ROLE:-}" != TeamLead ] \
+  || { echo "error: TeamLead writes verdicts with team-verdict.sh, never stage records" >&2; exit 1; }
+
 [ -f "$(team_dir)/session.json" ] || { echo "error: not in team mode (no session.json)" >&2; exit 1; }
 case "$VERDICT" in
   done|blocked|failed) ;;

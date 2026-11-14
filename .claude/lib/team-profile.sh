@@ -31,6 +31,21 @@ team_profile_gh_req() {
   fi
 }
 
+# Usage: team_profile_int <file> <key under teams.teamlead> <default> <min> → $TEAM_PROFILE_INT_V.
+# A global for the same reason as team_profile_gh_req: a die inside `$(…)` would not stop the caller.
+team_profile_int() {
+  local f="$1" key="$2" def="$3" min="$4"
+  TEAM_PROFILE_INT_V="$(jq -r --arg k "$key" 'getpath(["teams", "teamlead"] + ($k | split(".")))
+    | if . == null then "" else tostring end' "$f" 2>/dev/null || echo '!')"
+  TEAM_PROFILE_INT_V="${TEAM_PROFILE_INT_V:-$def}"
+  if ! [[ "$TEAM_PROFILE_INT_V" =~ ^[0-9]+$ ]] || [ "$TEAM_PROFILE_INT_V" -lt "$min" ]; then
+    if [ "$min" -gt 0 ]; then
+      team_profile_die "teams.teamlead.$key=$TEAM_PROFILE_INT_V must be a positive integer"
+    fi
+    team_profile_die "teams.teamlead.$key=$TEAM_PROFILE_INT_V must be a non-negative integer"
+  fi
+}
+
 # `~` or `~/…` prefix → $HOME; every other value is verbatim (paths may contain spaces).
 team_profile_expand() { printf '%s' "${1/#\~/$HOME}"; }
 
@@ -112,6 +127,40 @@ team_profile_load() {
     esac
     TEAM_CLONE_NAME="$v"
   fi
+
+  # The per-run TeamLead. Off by default: the global TeamLead runs unchanged until it is retired.
+  v="$(jq -r '.teams.teamlead.enabled | if . == null then "false" else tostring end' "$f" \
+    2>/dev/null || true)"
+  case "$v" in
+    true|false) TEAM_LEAD_ENABLED="$v" ;;
+    *) team_profile_die "teams.teamlead.enabled=${v:-<invalid>} must be true|false" ;;
+  esac
+  team_profile_int "$f" revise_limit 3 1; TEAM_LEAD_REVISE_LIMIT="$TEAM_PROFILE_INT_V"
+  team_profile_int "$f" rework_budget.brainstorm 2 0
+  TEAM_LEAD_BUDGET_BRAINSTORM="$TEAM_PROFILE_INT_V"
+  team_profile_int "$f" rework_budget.quick 1 0; TEAM_LEAD_BUDGET_QUICK="$TEAM_PROFILE_INT_V"
+  # Rule-group tokens only the Operator decides; absent = the two default groups.
+  TEAM_LEAD_HUMAN_ONLY="$(jq -r '.teams.teamlead.human_only
+    | if . == null then "settings-profiles\nprod-ask"
+      elif type == "array" and length > 0 and all(.[]; type == "string" and length > 0)
+      then join("\n") else "!" end' "$f" 2>/dev/null || echo '!')"
+  [ "$TEAM_LEAD_HUMAN_ONLY" != '!' ] \
+    || team_profile_die "teams.teamlead.human_only must be a non-empty list of rule-group names"
+  # The per-run launcher's model/effort; the global role keeps its own default (opus) in
+  # supervisor-sessions.sh sess_cfg.
+  TEAM_LEAD_MODEL="$(jq -r '.teams.sessions.TeamLead.model // empty | strings' "$f" \
+    2>/dev/null || true)"
+  TEAM_LEAD_MODEL="${TEAM_LEAD_MODEL:-fable}"
+  [[ "$TEAM_LEAD_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$ ]] \
+    || team_profile_die "teams.sessions.TeamLead.model=$TEAM_LEAD_MODEL is not a model name"
+  TEAM_LEAD_EFFORT="$(jq -r '.teams.sessions.TeamLead.effort // empty | strings' "$f" \
+    2>/dev/null || true)"
+  TEAM_LEAD_EFFORT="${TEAM_LEAD_EFFORT:-high}"
+  case "$TEAM_LEAD_EFFORT" in
+    low|medium|high|xhigh|max) ;;
+    *) team_profile_die \
+      "teams.sessions.TeamLead.effort=$TEAM_LEAD_EFFORT must be low|medium|high|xhigh|max" ;;
+  esac
 
   # Bash 3.2: no mapfile — read the jq lines into the array by hand.
   TEAM_BRANCH_TYPES=()

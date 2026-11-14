@@ -1,11 +1,13 @@
 """Checks the supervision role profiles against the effective permission rules of the main checkout.
 
 Usage: python3 -I .claude/lib/session_profile_check.py <main checkout> [--hooks]
-         [--profiles <dir>] [role ...]
+         [--profiles <dir>] [--clone <dir>] [role ...]
 
 Rules come from the materialised profile (.agents/team/watch/profiles/<role>.settings.json,
 written by `supervisor-sessions.sh materialize`) when it exists, else from the role profile, plus
-the project settings. Each `_samples` command is classified deny > ask > allow > prompt with the
+the project settings. The per-run role TeamLead-run reads TeamLead-run.settings.json and, with
+--clone <dir>, the materialised <dir>/.agents/team/teamlead.settings.json (team-lead.sh
+materialize); its env role is TeamLead. Each `_samples` command is classified deny > ask > allow > prompt with the
 same fnmatch matcher team_prompt_check.py uses for tier 1 — an approximation of Claude Code's
 matcher, so the live `/permissions` check stays a runbook step. `reads` must be allow, `secrets`
 ask or deny, `writes` anything but allow. A sample written `Read(<path>)` is checked against the
@@ -20,6 +22,9 @@ import sys
 
 # Mirror of TW_ROLES in team-watch-route.sh; the smoke part `sessions` asserts they are equal.
 ROLES = ("Supervisor", "TeamLead")
+# Per-run roles: never in ROLES (not team-watch receivers); profile <role>.settings.json, env role
+# without the suffix.
+RUN_ROLES = ("TeamLead-run",)
 LAYERS = (("project", ".claude/settings.json"), ("local", ".claude/settings.local.json"))
 
 
@@ -73,7 +78,7 @@ def classify(text, rules):
     return match(text, rules)[0]
 
 
-def effective(main, profile, role, notes):
+def effective(main, profile, mat_path, notes):
     """→ (profile + project perms, the profile's own deny, local perms, project+local deny floor,
     materialised?)."""
     floor, layers = set(), {}
@@ -83,22 +88,32 @@ def effective(main, profile, role, notes):
             notes.append("%s settings absent — skipped" % name)
         layers[name] = (data or {}).get("permissions", {})
         floor.update(layers[name].get("deny", []))
-    mat = load(os.path.join(main, ".agents/team/watch/profiles/%s.settings.json" % role))
+    mat = load(mat_path) if mat_path else None
     own = (mat if mat is not None else profile).get("permissions", {})
     # Arrays merge across every layer: the project allow rules apply to the session too.
     perms = {t: own.get(t, []) + layers["project"].get(t, []) for t in ("deny", "ask", "allow")}
     return perms, own.get("deny", []), layers["local"], floor, mat is not None
 
 
-def check_role(main, pdir, role, out):
+def mat_path(main, role, clone):
+    if role in RUN_ROLES:
+        return os.path.join(clone, ".agents/team/teamlead.settings.json") if clone else None
+    return os.path.join(main, ".agents/team/watch/profiles/%s.settings.json" % role)
+
+
+def check_role(main, pdir, role, out, clone=None):
     profile = load(os.path.join(pdir, "%s.settings.json" % role))
     if profile is None:
         out.append("%s FAIL: profile %s missing" % (role, role))
         return 1
     fails, leaks, notes = [], [], []
-    if profile.get("env", {}).get("TEAM_SESSION_ROLE") != role:
-        fails.append("env.TEAM_SESSION_ROLE is not %s" % role)
-    perms, own_deny, local, floor, materialised = effective(main, profile, role, notes)
+    env_role = role.split("-")[0] if role in RUN_ROLES else role
+    if profile.get("env", {}).get("TEAM_SESSION_ROLE") != env_role:
+        fails.append("env.TEAM_SESSION_ROLE is not %s" % env_role)
+    perms, own_deny, local, floor, materialised = effective(
+        main, profile, mat_path(main, role, clone), notes)
+    if role in RUN_ROLES and clone and not materialised:
+        fails.append("materialised profile missing in %s" % clone)
     lost = floor - set(own_deny)
     if materialised and lost:
         fails.append("materialised profile lost %d deny rules" % len(lost))
@@ -154,7 +169,7 @@ def main(argv):
     if not argv or argv[0].startswith("-"):
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
         return 2
-    main_dir, rest, roles, show_hooks = argv[0], argv[1:], [], False
+    main_dir, rest, roles, show_hooks, clone = argv[0], argv[1:], [], False, None
     pdir = os.path.join(main_dir, ".claude/team/sessions")
     while rest:
         a = rest.pop(0)
@@ -162,14 +177,16 @@ def main(argv):
             show_hooks = True
         elif a == "--profiles" and rest:
             pdir = rest.pop(0)
-        elif a in ROLES:
+        elif a == "--clone" and rest:
+            clone = rest.pop(0)
+        elif a in ROLES or a in RUN_ROLES:
             roles.append(a)
         else:
             print("error: unknown argument %s" % a, file=sys.stderr)
             return 2
     roles = roles or list(ROLES)
     out = []
-    codes = [check_role(main_dir, pdir, r, out) for r in roles]
+    codes = [check_role(main_dir, pdir, r, out, clone) for r in roles]
     if show_hooks:
         hooks(main_dir, pdir, roles, out)
     print("\n".join(out))
