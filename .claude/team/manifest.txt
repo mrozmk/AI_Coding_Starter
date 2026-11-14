@@ -16,6 +16,8 @@
 # --- not distributed ----------------------------------------------------------------------
 !.claude/lib/tests/**
 !.claude/lib/costs/tests/**
+# core, not team: sourced by the core hooks guard-commit.sh / guard-push.sh
+!.claude/hooks/lib/leak-patterns.sh
 # the human overview of the team layer stays in the starter; projects get the .agents/reference contracts
 !docs/teams/**
 
@@ -48,7 +50,6 @@ own .claude/dashboard/server.py
 own .claude/hooks/guard-team-memory.sh
 own .claude/hooks/guard-team-question.sh
 own .claude/hooks/lib/guard_destructive_sql.py
-own .claude/hooks/lib/leak-patterns.sh
 own .claude/hooks/team-attention.sh
 own .claude/hooks/supervisor-notify.sh
 own .claude/lib/costs/bindings.py

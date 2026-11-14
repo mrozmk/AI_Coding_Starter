@@ -244,6 +244,7 @@ cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settin
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
 while IFS= read -r p; do
   case "$p" in */tests/*) continue ;; esac
+  grep -qxF "!$p" "$MANIFEST" && continue  # a core file that lives in a harness tree
   grep -qxF "own $p" "$MANIFEST" || grep -qxF "shared $p" "$MANIFEST" \
     || fail "11: $p is in the harness tree but not in the manifest"
 done < <(git -C "$ST" ls-files '.claude/lib/team-*.sh' .claude/team .claude/dashboard \
