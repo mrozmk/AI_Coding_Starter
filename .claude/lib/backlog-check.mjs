@@ -1,6 +1,7 @@
 // Validator + generator for `.agents/backlog.md` (Epics + Tasks) and `docs/map/system.yaml`.
 // Owns every check a model must not self-grade: ids, DAG, sizes, trace coverage, system-tree
 // integrity, and the derived lanes / story map it writes back into the two marker regions.
+// Also warns on a Task delivered by a done plan whose Status / Ref was never written back.
 // Node builtins only — ships to every downstream (umbrella D4).
 //
 //   node .claude/lib/backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only]
@@ -268,6 +269,26 @@ export function loadSystem(root) {
   } catch (err) {
     throw new Error(`docs/map/system.yaml: ${err.message}`);
   }
+}
+
+const PLAN_TASKS_LINE = /^\*\*Tasks:\*\*(.*)$/m;
+const PLAN_SPEC_LINE = /^\*\*Source spec:\*\*[ \t]*`([^`]+)`/m;
+const LEADING_TASK_ID = /^E\d+-\d+\b/;
+
+function readPlans(root, sub) {
+  const dir = path.join(root, '.agents', 'plans', sub);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => {
+    const md = fs.readFileSync(path.join(dir, f), 'utf8');
+    // An annotated entry (`E0-1 (umbrella)`) still counts: a dropped active id reads as delivered.
+    const ids = listCell(PLAN_TASKS_LINE.exec(md)?.[1] ?? '').map((e) => LEADING_TASK_ID.exec(e)?.[0]).filter(Boolean);
+    return { path: `.agents/plans/${sub}/${f}`, ids, spec: PLAN_SPEC_LINE.exec(md)?.[1] ?? null };
+  });
+}
+
+/** `**Tasks:**` ids and the backticked `**Source spec:**` of every done / active plan. */
+export function loadPlanTasks(root) {
+  return { done: readPlans(root, 'done'), active: readPlans(root, 'active') };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -584,6 +605,30 @@ export function chainPaths(tasks) {
     out.set(token, { members: sorted, ids: path.length ? path : sorted, problems });
   }
   return out;
+}
+
+/**
+ * A Task on a done plan's `**Tasks:**` line and on no active plan's is delivered: it must be
+ * `DONE` with one of those plans (and its spec, when named) in `Ref`. Advisory only. A Task with a
+ * `Jira` key skips the Status part — a reopen refreshed from Jira legitimately overrides the plan.
+ */
+export function staleTaskWarnings(tasks, plans) {
+  const activeIds = new Set(plans.active.flatMap((p) => p.ids));
+  const warnings = [];
+  for (const t of tasks) {
+    if (t.withdrawn || activeIds.has(t.id)) continue;
+    const delivered = plans.done.filter((p) => p.ids.includes(t.id));
+    if (!delivered.length) continue;
+    const ref = t.ref ?? '';
+    const paths = delivered.map((p) => p.path);
+    const specs = [...new Set(delivered.map((p) => p.spec).filter(Boolean))];
+    const problems = [];
+    if (t.status !== 'DONE' && !t.jira) problems.push(`Status ${t.status || '(empty)'}, not DONE`);
+    if (!paths.some((p) => ref.includes(p))) problems.push(`Ref lacks a done plan (${paths.join(', ')})`);
+    if (specs.length && !specs.some((s) => ref.includes(s))) problems.push(`Ref lacks its spec (${specs.join(', ')})`);
+    if (problems.length) warnings.push(`Task ${t.id}: delivered by ${paths[0]} but ${problems.join('; ')}`);
+  }
+  return warnings;
 }
 
 /** Parallelism warnings over a valid DAG: a dominant critical path, and same-wave Tasks on one Node split across lanes. */
@@ -1007,6 +1052,7 @@ export function main(argv = process.argv.slice(2)) {
   const res = checkBacklog({ backlog: parsed, inventory, system });
   res.errors.unshift(...errors);
   res.warnings.unshift(...warnings);
+  if (!candidate) res.warnings.push(...staleTaskWarnings(parsed.tasks, loadPlanTasks(root)));
 
   if (candidate && !res.errors.length) {
     // A candidate must be installable: --write would otherwise fail only after the swap.

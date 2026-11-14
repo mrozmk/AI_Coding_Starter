@@ -14,9 +14,19 @@ session: `AskUserQuestion` is not available.
    - Material decision (team-mode.md §4): stop, run
      `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait for the
      answer in this session.
-3. Run `/commit`, then `/push`.
-4. {{PR_CREATE}}
-5. Write the record:
+3. Backlog: confirm the `/execute` write-back before committing, under its own rules
+   (`.claude/commands/execute.md` → Backlog write-back): no `.agents/backlog.md`, a legacy or
+   malformed backlog, or a plan without a `**Tasks:**` line → nothing to do. Otherwise, for each
+   backlog Task id (`E<n>-<m>`) on the moved plan's `**Tasks:**` line (other entries, such as a
+   tracker issue number, are not backlog Tasks — skip them): `Status` is `DONE` (`WIP` when
+   another active plan lists the id), and `Ref` holds the plan's spec (when its
+   `**Source spec:**` names one) and the plan's `done/` path in place of its `active/` path —
+   keep every other entry in the cell. Then `node .claude/lib/backlog-check.mjs` (when present)
+   must print no `delivered by` warning for those ids; the backlog change goes into the same
+   `/commit`.
+4. Run `/commit`, then `/push`.
+5. {{PR_CREATE}}
+6. Write the record:
    `bash .claude/lib/team-record.sh --verdict done --pr <id> --artifacts <plan path under .agents/plans/done/>`
 
 A permission prompt (deploy, Azure DevOps or App Service change) is answered by the developer in

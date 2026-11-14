@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseTables, parseBacklog, loadInventory, loadSystem, checkBacklog, checkSystem,
   scheduleLanes, renderLanes, renderStoryMap, replaceRegion, locateRegions, main, chainPaths,
+  loadPlanTasks, staleTaskWarnings,
 } from './backlog-check.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url).replace(/\.test\.mjs$/, '.mjs');
@@ -970,4 +971,99 @@ test('main() is callable in-process with the same exit codes', () => {
 test('checkSystem accepts the schema worked example shape without warnings about structure', () => {
   const res = checkSystem(loadSystem(project()));
   assert.deepEqual(res.errors, []);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Delivered-Task write-back
+// ---------------------------------------------------------------------------------------------
+
+const SPEC = '.agents/specs/2026-01-01-e1-1-sign-in.md';
+const DONE_PLAN = '.agents/plans/done/e1-1-sign-in.md';
+
+function writePlan(dir, rel, { tasks, spec = `\`${SPEC}\`` }) {
+  const file = path.join(dir, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `# Feature\n\n**Source spec:** ${spec}\n**Tasks:** ${tasks}\n\n## Body\n`);
+}
+
+const task = (over = {}) => ({ id: 'E1-1', status: 'TODO', ref: null, jira: null, withdrawn: false, ...over });
+
+test('staleTaskWarnings: a TODO row on a done plan names the status, the plan and the spec', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1' });
+  const w = staleTaskWarnings([task()], loadPlanTasks(dir));
+  assert.equal(w.length, 1);
+  assert.match(w[0], /^Task E1-1: delivered by \.agents\/plans\/done\/e1-1-sign-in\.md but /);
+  assert.match(w[0], /Status TODO, not DONE; Ref lacks a done plan \(.*e1-1-sign-in\.md\); /);
+  assert.match(w[0], /; Ref lacks its spec \(/);
+});
+
+test('staleTaskWarnings: an id still on an active plan is not delivered yet', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1' });
+  writePlan(dir, '.agents/plans/active/e1-1-part-2.md', { tasks: 'E1-1, E1-2' });
+  assert.deepEqual(staleTaskWarnings([task()], loadPlanTasks(dir)), []);
+});
+
+test('staleTaskWarnings: DONE + plan + spec in Ref is clean; plan only → lacks its spec', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1' });
+  const plans = loadPlanTasks(dir);
+  assert.deepEqual(staleTaskWarnings([task({ status: 'DONE', ref: `${SPEC}, ${DONE_PLAN}` })], plans), []);
+  const w = staleTaskWarnings([task({ status: 'DONE', ref: DONE_PLAN })], plans);
+  assert.equal(w.length, 1);
+  assert.match(w[0], /but Ref lacks its spec \(\.agents\/specs\/2026-01-01-e1-1-sign-in\.md\)$/);
+});
+
+test('staleTaskWarnings: a Jira-keyed Task reopened in the tracker keeps only the Ref checks', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1' });
+  const plans = loadPlanTasks(dir);
+  assert.deepEqual(staleTaskWarnings([task({ jira: 'ABC-7', ref: `${SPEC}, ${DONE_PLAN}` })], plans), []);
+  const w = staleTaskWarnings([task({ jira: 'ABC-7' })], plans);
+  assert.equal(w.length, 1);
+  assert.doesNotMatch(w[0], /Status/);
+  assert.match(w[0], /Ref lacks a done plan/);
+});
+
+test('loadPlanTasks: quick-mode spec → null, non-Task id dropped; withdrawn Task skipped', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1', spec: 'none (quick mode)' });
+  writePlan(dir, '.agents/plans/done/139-filters.md', { tasks: '#139 (tracker issue, not a backlog Task)' });
+  const plans = loadPlanTasks(dir);
+  assert.deepEqual(plans.done.map((p) => [p.path, p.ids, p.spec]), [
+    ['.agents/plans/done/139-filters.md', [], SPEC],
+    [DONE_PLAN, ['E1-1'], null],
+  ]);
+  assert.deepEqual(staleTaskWarnings([task({ status: 'DONE', ref: DONE_PLAN })], plans), []);
+  assert.deepEqual(staleTaskWarnings([task({ withdrawn: true })], plans), []);
+});
+
+test('loadPlanTasks: annotated ids keep their leading id; a later backtick is not the spec', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1', spec: 'none (quick mode) — ticket `#158`' });
+  writePlan(dir, '.agents/plans/active/e1-1-part-2.md', { tasks: '`E1-1` (umbrella), E1-2.' });
+  const plans = loadPlanTasks(dir);
+  assert.equal(plans.done[0].spec, null);
+  assert.deepEqual(plans.active[0].ids, ['E1-1', 'E1-2']);
+  assert.deepEqual(staleTaskWarnings([task({ status: 'WIP' })], plans), []);
+});
+
+test('CLI: no plans dir → no delivered-by warning; a done plan warns (exit 0) but never under --candidate', () => {
+  const dir = project();
+  assert.deepEqual(loadPlanTasks(dir), { done: [], active: [] });
+  const clean = run(dir);
+  assert.equal(clean.code, 0);
+  assert.doesNotMatch(clean.out, /delivered by/);
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1' });
+  const stale = run(dir);
+  assert.equal(stale.code, 0);
+  assert.match(stale.out, /warning: Task E1-1: delivered by \.agents\/plans\/done\/e1-1-sign-in\.md but Status TODO/);
+  const cand = path.join(dir, '.agents', '.pending-update');
+  fs.mkdirSync(cand, { recursive: true });
+  fs.writeFileSync(path.join(cand, 'PRD.md'), PRD);
+  fs.writeFileSync(path.join(cand, 'backlog.md'), backlogMd());
+  const c = run(dir, '--candidate', cand);
+  assert.equal(c.code, 0);
+  assert.doesNotMatch(c.out, /delivered by/);
 });
