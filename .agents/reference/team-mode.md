@@ -46,12 +46,14 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `lock/` (`lock/pid`) | `team-run.sh` | runner mutex |
 | `cancel` | `team-run.sh stop` | stop request for a live runner |
 | `roles.override.json` | `team-run.sh roles` | per-ticket model/effort override, merged over `.claude/team/roles.json` at each launch |
-| `archive/<ticket>-<UTC>/` | `team-next.sh` | the previous ticket's `runs/`, `run`, `acked`, `team.json`, `roles.override.json`, `ticket.json`, `ticket.md` |
+| `order-brief.md` | `team-brief.sh write` (Supervisor, `/start-team` step 4c) | the order: `## Ticket`, `## Not ordered`, `## In-flight work`, under a `ticket:` / `written_at:` header; per-run TeamLead only, kept by a remode |
+| `archive/<ticket>-<UTC>/` | `team-next.sh` | the previous ticket's `runs/`, `run`, `acked`, `team.json`, `roles.override.json`, `ticket.json`, `ticket.md`, `order-brief.md` |
 | `runs/<run>/<role>-<attempt>-<seq>.json` | `team-record.sh` | handoff record (§6) |
 | `runs/<run>/<record>.accepted` | `team-run.sh` | record passed validation |
 | `runs/<run>/<role>-<attempt>.prompt.md` | `team-run.sh` | rendered role prompt |
 | `runs/<run>/<role>-<attempt>.session` | `team-run.sh` | role session UUID; read by `cost.py bind --team-run` |
 | `runs/<run>/notes.md` | roles, `team-record.sh` | §5 |
+| `runs/<run>/order-brief.md` | `team-run.sh` at TeamLead launch | the frozen copy of `order-brief.md` the per-run TeamLead reads |
 | `runs/<run>/qa-report-<attempt>.md` | qa | §7 |
 | `runs/<run>/pr-description.md` | qa, wrapup | PR body before publication |
 | `runs/<run>/wrapup-<attempt>.md` | wrapup | `target_rev: <sha>` + the plain-Polish summary |

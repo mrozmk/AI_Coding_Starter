@@ -150,7 +150,7 @@ git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 archive="$TD/archive/$old_ticket-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
 for f in runs run acked cancel team.json merge-check-build.log roles.override.json \
-  ticket.json ticket.md; do
+  ticket.json ticket.md order-brief.md; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
 done
 

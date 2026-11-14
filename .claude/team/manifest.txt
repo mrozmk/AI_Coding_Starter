@@ -197,6 +197,7 @@ own .claude/team/sessions/Supervisor.settings.json
 own .claude/team/sessions/TeamLead.settings.json
 own .claude/team/sessions/TeamLead-run.settings.json
 own .claude/lib/team-lead.sh
+own .claude/lib/team-brief.sh
 own .claude/hooks/guard-teamlead-write.sh
 own .claude/lib/session_profile_check.py
 own .claude/lib/supervisor-sessions.sh
