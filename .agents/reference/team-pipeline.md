@@ -67,6 +67,9 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
   Script Editor → Allow notifications.
 - **The supervisor session is not notified** unless it runs `/monitor`. `/start-team` returns after
   launching; ask it for "status alfa", "show alfa coder" or "merge alfa" when you want.
+- **`/tasks-status`** is the Supervisor's on-demand report: what waits for the Operator's decision
+  (`waiting-operator` escalations) first, then what waits on the team (`attention[]`, PRs awaiting
+  merge), then every open task with its team run and PR state. Nothing is pushed — you ask for it.
 - **`/monitor alfa gamma`** (a separate control session is handy — it is the **TeamLead**) streams
   progress every 15 s: stage changes, records, permission prompts **with the command on the role's
   screen**, questions, runner stops and ready-for-merge; a 30-minute summary on each re-arm. With

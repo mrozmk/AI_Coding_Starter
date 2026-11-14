@@ -850,4 +850,71 @@ has "title: " "$WORK/out" || fail "the jira summary has no title line"
 [ "$(grep -c '^title: .' "$WORK/out")" = 0 ] || fail "jira must leave the title to MCP, not fill it"
 [ "$(grep -c '^url: .' "$WORK/out")" = 0 ] || fail "jira must leave the url empty"
 
+# ================================================================================================
+# (12) list / show: the read-only views /tasks-status builds on — full enumeration, no writes
+# ================================================================================================
+github_profile
+fx_reset
+# 34 open issues + 1 PR over two pages; #7 sits on page 2, and on the board at position 45.
+jq -n '[range(33)] | map({number: (500 + .), title: ("Issue " + (. | tostring)),
+    updated_at: "2026-11-01T10:00:00Z", assignees: [], labels: [], html_url: "u"})
+  + [{number: 7, title: "Fix the thing", updated_at: "2026-11-02T10:00:00Z",
+      assignees: [{login: "dev"}], labels: [{name: "bug"}], html_url: "https://x/7"},
+     {number: 1001, title: "On the board twice", updated_at: "", assignees: [], labels: []},
+     {number: 600, title: "A pull request", pull_request: {url: "p"}}]' > "$GH_DIR/issues.json"
+jq '[{id: "item-dup", status: "Delivered",
+      content: {type: "Issue", number: 1001, repository: "owner/repo"}}] + .' \
+  "$GH_DIR/items.json" > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/items.json"
+run "$MAIN" $TRK list --out "$WORK/list.json"
+expect 0 "items=35" "list returns every open issue across pages, PRs dropped"
+jq -e '.tracker == "github" and .repo == "owner/repo" and .statuses == ["In Progress", "Delivered"]' \
+  "$WORK/list.json" >/dev/null || fail "list header / status order"
+jq -e '[.items[] | select(.key == "7")][0] | .status == "Todo" and .on_board == 1
+    and .assignees == ["dev"] and .labels == ["bug"] and .updated == "2026-11-02T10:00:00Z"' \
+  "$WORK/list.json" >/dev/null || fail "list: #7 from page 2 lost its board status or fields"
+jq -e '[.items[] | select(.key == "500")][0] | .status == null and .on_board == 0' \
+  "$WORK/list.json" >/dev/null || fail "list: an issue off the board must have status null"
+jq -e '[.items[] | select(.key == "1001")][0] | .status == null and .on_board == 2' \
+  "$WORK/list.json" >/dev/null || fail "list: an ambiguous board match must not pick one"
+jq -e '[.items[] | select(.key == "600")] == []' "$WORK/list.json" >/dev/null \
+  || fail "list: a pull request was listed as an issue"
+
+export STUB_GH_PAGE2_FAIL=1
+rm -f "$WORK/list2.json"
+run "$MAIN" $TRK list --out "$WORK/list2.json"
+unset STUB_GH_PAGE2_FAIL
+expect 4 "recoverable" "a failed page 2 is recoverable, never a short list"
+[ ! -e "$WORK/list2.json" ] || fail "a failed list still wrote its output"
+
+jq '[range(31)] | map({id: (900 + .), user: {login: "rev"}, created_at: "2026-11-03T09:00:00Z",
+    body: ("comment " + (. | tostring))})' -n > "$GH_DIR/comments.json"
+run "$MAIN" $TRK show '#7' --out "$WORK/show.json"
+expect 0 "key=7 comments=31" "show returns the issue with every comment across pages"
+jq -e '.title == "Fix the thing" and .state == "OPEN" and .labels == ["bug", "harness"]
+    and (.body | test("line two")) and .comments[30].body == "comment 30"
+    and .comments[0].author == "rev"' "$WORK/show.json" >/dev/null || fail "show output shape"
+run "$MAIN" $TRK show 9 --out "$WORK/show9.json"
+expect 0 "key=9" "show answers for a closed issue too"
+jq -e '.state == "CLOSED"' "$WORK/show9.json" >/dev/null || fail "show must report the closed state"
+run "$MAIN" $TRK show 8 --out "$WORK/show8.json"
+expect 1 "cannot be read" "show of a missing issue is refused"
+run "$MAIN" $TRK list 7 --out "$WORK/x.json"
+expect 2 "takes no ticket key" "list refuses a key"
+run "$MAIN" $TRK show 7
+expect 2 "needs --out" "show needs --out"
+[ "$(posts)" = 0 ] || fail "list/show posted a comment"
+[ "$(creates)" = 0 ] || fail "list/show created an issue"
+[ "$(grep -c -- 'item-edit' "$GH_LOG" | tr -d ' ')" = 0 ] || fail "list/show edited the board"
+
+setprofile '.teams.tracker = "none"'
+: > "$GH_LOG"
+run "$MAIN" $TRK list --out "$WORK/ln.json"
+expect 0 "skipped (tracker=none)" "list is a no-op for none"
+run "$MAIN" $TRK show L1 --out "$WORK/sn.json"
+expect 0 "skipped (tracker=none)" "show is a no-op for none"
+setprofile '.'
+run "$MAIN" $TRK list --out "$WORK/lj.json"
+expect 3 "no adapter op" "jira list refused"
+[ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "list/show under none/jira called gh"; }
+
 echo "team-tracker-smoke: OK"

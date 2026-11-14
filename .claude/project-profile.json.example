@@ -30,6 +30,11 @@
   "_tracker_doc": "jira | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md.",
   "tracker": "none",
 
+  "_status_report_doc": "OPTIONAL, NOT asked by /setup:start; add by hand. Read by /tasks-status only. jira_jql: the JQL that picks the tasks the report covers when the tracker is jira; omitted => `assignee = currentUser() AND statusCategory != Done ORDER BY status, key` (my open issues, across projects) and the report says it used that default.",
+  "status_report": {
+    "jira_jql": "project = PROJ AND statusCategory != Done ORDER BY status, key"
+  },
+
   "_confluence_doc": "Asked (Screen 2, Q5). Shares the Atlassian MCP server and token with Jira.",
   "confluence": false,
 

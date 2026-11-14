@@ -7,6 +7,8 @@
 #   comment <key> --marker <m> --body-file <f>
 #   set-status <key> started|delivered
 #   create-followup --marker <m> --title <t> --body-file <f>
+#   list --out <file>                                        (read-only; /tasks-status)
+#   show <key> --out <file>                                  (read-only; /tasks-status)
 #
 # Writes are idempotent by MARKER: the marker must be the body's last line, and a match is found by
 # enumerating EVERYTHING (paginate / totalCount) — a failed or partial enumeration is exit 4, never
@@ -148,13 +150,11 @@ op_comment() {
   echo "created $(jq -r '.id // ""' "$TMP/resp.json")"
 }
 
-op_set_status() {
-  local logical="$1" opt item total name hits
-  case "$logical" in
-    started)   opt="$TEAM_GH_STATUS_STARTED" ;;
-    delivered) opt="$TEAM_GH_STATUS_DELIVERED" ;;
-    *) die 4 "unknown logical status '$logical' (started|delivered)" ;;
-  esac
+# Usage: project_items → $TMP/items.json, the WHOLE item list of the project: totalCount first, then
+# exactly that many items. A short list is exit 4 — an item missing from it would read as "not on
+# the board".
+project_items() {
+  local total
   gh_or4 gh project item-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
     --format json --limit 1 > "$TMP/count.json"
   total="$(jq -r '.totalCount // empty' "$TMP/count.json")"
@@ -163,6 +163,16 @@ op_set_status() {
     --format json --limit "$total" > "$TMP/items.json"
   [ "$(jq -r '.items | length' "$TMP/items.json")" = "$total" ] \
     || die 4 "incomplete item list for project $TEAM_GH_PROJECT_NUMBER"
+}
+
+op_set_status() {
+  local logical="$1" opt item name hits
+  case "$logical" in
+    started)   opt="$TEAM_GH_STATUS_STARTED" ;;
+    delivered) opt="$TEAM_GH_STATUS_DELIVERED" ;;
+    *) die 4 "unknown logical status '$logical' (started|delivered)" ;;
+  esac
+  project_items
   # Identity is repo + number, never the number alone (owner/A#7 and owner/B#7 can share a project).
   # An ambiguous match is recoverable, not a coin flip: editing the wrong item is unrecoverable.
   jq --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
@@ -216,11 +226,67 @@ op_create_followup() {
   echo "created $n"
 }
 
+# Usage: write_atomic <src> <dest> — the reader never sees a half-written file.
+write_atomic() {
+  cp "$1" "$2.tmp.$$" 2>/dev/null || die 2 "cannot write '$2'"
+  mv "$2.tmp.$$" "$2" || die 2 "cannot write '$2'"
+}
+
+# list: every OPEN issue of the repo (PRs dropped) with its Project status, and the Status field's
+# options in board order. Read-only. `status` is null for an issue not on the board; `on_board` > 1
+# is an ambiguous repo+number match, reported, never resolved by picking one.
+op_list() {
+  local out="$1"
+  gh_or4 gh api "repos/$TEAM_GH_REPO/issues?state=open&per_page=100" --paginate > "$TMP/raw.json"
+  jq -s 'add // [] | map(select(.pull_request | not))' "$TMP/raw.json" > "$TMP/open.json" \
+    || die 4 "issue list of $TEAM_GH_REPO is not parseable"
+  project_items
+  gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
+    --format json > "$TMP/fields.json"
+  jq -n --slurpfile o "$TMP/open.json" --slurpfile i "$TMP/items.json" \
+    --slurpfile f "$TMP/fields.json" --arg repo "$TEAM_GH_REPO" --arg fid "$TEAM_GH_STATUS_FIELD_ID" '
+    [$i[0].items[] | select(.content.type == "Issue" and .content.repository == $repo)] as $b
+    | {tracker: "github", repo: $repo,
+       statuses: [$f[0].fields[]? | select(.id == $fid) | .options[]?.name],
+       items: [$o[0][] | . as $x | [$b[] | select(.content.number == $x.number)] as $m
+         | {key: ($x.number | tostring), title: ($x.title // ""),
+            status: (if ($m | length) == 1 then ($m[0].status // null) else null end),
+            on_board: ($m | length), updated: ($x.updated_at // ""),
+            assignees: [$x.assignees[]?.login], labels: [$x.labels[]?.name],
+            url: ($x.html_url // "")}]}' > "$TMP/list.json" \
+    || die 4 "issue list of $TEAM_GH_REPO cannot be joined with project $TEAM_GH_PROJECT_NUMBER"
+  write_atomic "$TMP/list.json" "$out"
+  jq -r '"items=" + (.items | length | tostring)' "$out"
+}
+
+# show: one issue with its body and EVERY comment — the evidence /tasks-status extractors judge.
+# A closed issue still answers (its state says so). Read-only.
+op_show() {
+  local out="$1"
+  gh issue view "$KEY" --repo "$TEAM_GH_REPO" \
+    --json number,title,state,labels,assignees,body,updatedAt,url > "$TMP/issue.json" 2>"$TMP/err" \
+    || { sed 's/^/  | /' "$TMP/err" >&2; die 1 "issue #$KEY cannot be read"; }
+  # Into a FILE, not a pipe — same reason as op_comment: a later-page failure must stay visible.
+  gh_or4 gh api "repos/$TEAM_GH_REPO/issues/$KEY/comments" --paginate > "$TMP/raw.json"
+  jq -s 'add // []' "$TMP/raw.json" > "$TMP/comments.json" \
+    || die 4 "comment list of issue #$KEY is not parseable"
+  jq -n --slurpfile x "$TMP/issue.json" --slurpfile c "$TMP/comments.json" --arg key "$KEY" '
+    $x[0] as $i
+    | {key: $key, title: ($i.title // ""), state: ($i.state // ""), labels: [$i.labels[]?.name],
+       assignees: [$i.assignees[]?.login], updated: ($i.updatedAt // ""), url: ($i.url // ""),
+       body: ($i.body // ""),
+       comments: [$c[0][] | {author: (.user.login // ""), created: (.created_at // ""),
+                             body: (.body // "")}]}' > "$TMP/show.json" \
+    || die 4 "issue #$KEY is not parseable"
+  write_atomic "$TMP/show.json" "$out"
+  jq -r '"key=" + .key + " comments=" + (.comments | length | tostring)' "$out"
+}
+
 # ---- dispatch -----------------------------------------------------------------------------------
 
 op="${1:-}"; [ $# -eq 0 ] || shift
-case "$op" in read|comment|set-status|create-followup) ;;
-  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup …" ;;
+case "$op" in read|comment|set-status|create-followup|list|show) ;;
+  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|list|show …" ;;
 esac
 
 if [ "$TEAM_TRACKER" = jira ]; then
@@ -276,4 +342,13 @@ case "$op" in
     [ -n "$TITLE" ] || die 2 "create-followup needs --title <t>"
     [ -n "$BODY_FILE" ] || die 2 "create-followup needs --body-file <f>"
     op_create_followup "$MARKER" "$TITLE" "$BODY_FILE" ;;
+  list)
+    [ $# -eq 0 ] || die 2 "list takes no ticket key"
+    [ -n "$OUT" ] || die 2 "list needs --out <file>"
+    op_list "$OUT" ;;
+  show)
+    [ $# -eq 1 ] || die 2 "show needs a ticket key"
+    [ -n "$OUT" ] || die 2 "show needs --out <file>"
+    norm_key "$1"
+    op_show "$OUT" ;;
 esac
