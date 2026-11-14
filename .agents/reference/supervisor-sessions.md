@@ -229,7 +229,10 @@ session would otherwise hand `CLAUDECODE=1` to every later session. `start` runs
 `tmux new-session -d -s <prefix>-<role> -e TEAM_SESSION_ROLE=<role>` with `claude --name
 <role><suffix> --session-id <uuid> --model <m> --effort <e> --settings <materialised profile>` (plus
 `TEAM_SESSIONS_CLAUDE_FLAGS`) and the launch prompt `/session-role <role>`; `CODEX_HOME` /
-`CLAUDE_CONFIG_DIR` are forwarded per session, never with `tmux set-environment -g`. The session id
+`CLAUDE_CONFIG_DIR` are forwarded per session, never with `tmux set-environment -g`.
+`CLAUDE_CONFIG_DIR` comes from `.claude/claude-profile` when it has a value line (`here` and the
+preflight's settings check use the same dir), else from the launcher's own environment; a declared
+dir that does not resolve refuses `start` / `here` before any session starts. The session id
 is written to `.agents/team/watch/sessions/<role>/session.json` and the `session-role.sh` hook
 rewrites it after `/clear` or resume, so `team-answer.sh --session <role>` binds its keys to the
 role's own transcript, as for a pipeline team. A changed `settings.local.json` needs `stop <role>` +

@@ -304,6 +304,32 @@ has "new-session" "$STUB_LOG" && fail "invalid clone profile fell back or launch
 mkdir "$HOME/.codex-acmeshop"
 cp "$WORK/main-profile.bak" "$MAIN/.claude/codex-profile"
 
+# A declared Claude profile beats the runner's inherited CLAUDE_CONFIG_DIR (the tmux server's), is
+# recorded in session.json, and the transcript reader follows the recorded dir. Fixture HOME only.
+CP_BAK=""; [ ! -e "$MAIN/.claude/claude-profile" ] || { cp -p "$MAIN/.claude/claude-profile" "$WORK/claude-profile.bak"; CP_BAK=1; }
+mkdir "$HOME/.claude-proj"
+printf '# test fixture\n~/.claude-proj\n' > "$MAIN/.claude/claude-profile"
+CLAUDE_REAL="$(cd "$HOME/.claude-proj" && pwd -P)"
+reset_runner; session coder 1 "$PLANNER_OUT"
+CLAUDE_CONFIG_DIR="$WORK/other-licence" run "$MAIN" $TR alfa
+expect 5 "dead attempt 2 of coder" "declared Claude profile"
+has "-e CLAUDE_CONFIG_DIR=$CLAUDE_REAL " "$STUB_LOG" || fail "runner did not pass the Claude profile"
+has "other-licence" "$STUB_LOG" && fail "inherited CLAUDE_CONFIG_DIR overrode the Claude profile"
+[ "$(jq -r '.claude_config_dir' "$TD/session.json")" = "$CLAUDE_REAL" ] \
+  || fail "session.json does not record the Claude profile"
+T_GOT="$( . "$MAIN/.claude/lib/team-lib.sh"
+  CLAUDE_CONFIG_DIR="$WORK/other-licence" team_role_transcript "$CLONE" abc "$(jq -r '.claude_config_dir' "$TD/session.json")")"
+case "$T_GOT" in "$CLAUDE_REAL/projects/"*/abc.jsonl) ;;
+  *) fail "transcript reader did not follow the recorded Claude profile: $T_GOT" ;; esac
+rmdir "$HOME/.claude-proj"
+reset_runner; session coder 1 "$PLANNER_OUT"; cp "$TD/session.json" "$WORK/session.bak"
+run "$MAIN" $TR alfa
+expect 1 "Claude profile" "unresolvable Claude profile is refused"
+cmp -s "$TD/session.json" "$WORK/session.bak" || fail "unresolvable Claude profile changed session.json"
+has "new-session" "$STUB_LOG" && fail "unresolvable Claude profile launched a session"
+if [ -n "$CP_BAK" ]; then cp -p "$WORK/claude-profile.bak" "$MAIN/.claude/claude-profile"
+else rm -f "$MAIN/.claude/claude-profile"; fi
+
 # stop with a live owner keeps the lock until the owner exits
 reset_runner
 mkdir "$TD/lock"; sleep 30 & OWNER=$!; echo "$OWNER" > "$TD/lock/pid"

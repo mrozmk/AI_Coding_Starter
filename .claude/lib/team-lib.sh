@@ -140,10 +140,11 @@ team_pane_gen() {
   echo "$g"
 }
 
-# Usage: team_role_transcript <clone> <session_id> → the role's Claude transcript path, or "-".
+# Usage: team_role_transcript <clone> <session_id> [config dir] → the role's Claude transcript path,
+# or "-". Pass the session's recorded `claude_config_dir`: the launcher chose it, not this process.
 team_role_transcript() {
   case "${2:--}" in -) echo - ;;
-    *) echo "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(team_project_slug "$1")/$2.jsonl" ;;
+    *) echo "${3:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/projects/$(team_project_slug "$1")/$2.jsonl" ;;
   esac
 }
 
@@ -220,7 +221,9 @@ team_clone_dirs() {
 # Claude Code keeps transcripts under the repo path with every non-alphanumeric char → '-'.
 team_project_slug() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
 team_claude_project_dir() {
-  local cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  local cfg
+  cfg="$(team_claude_home "$1")" || cfg="${CLAUDE_CONFIG_DIR:-}"
+  cfg="${cfg:-$HOME/.claude}"
   echo "${TEAM_DASH_PROJECT_DIR:-$cfg/projects/$(team_project_slug "$1")}"
 }
 

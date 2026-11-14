@@ -193,7 +193,7 @@ render_prompt() {
 }
 
 launch() {
-  local role="$1" attempt="$2" name pf sid ch ck extra="" perm why costs=()
+  local role="$1" attempt="$2" name pf sid ch cc ck extra="" perm why costs=()
   team_cancelled && cancel_exit
   name="$(sess_name "$role")"; pf="$TD/runs/$RUN/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
@@ -205,6 +205,7 @@ launch() {
   fi
   [ -z "$perm" ] || extra="$extra--permission-mode '$perm' "
   ch="$(codex_home)" || die 1 "$ch"
+  cc="$(team_claude_home "$root")" || die 1 "$cc"
   mkdir -p "$TD/runs/$RUN"
   # A known session id makes token-usage bindings explicit; transcripts are lower-case.
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
@@ -215,8 +216,9 @@ launch() {
     --arg ticket "$(team_json ticket)" --arg input_rev "$(input_rev_for "$role")" \
     --arg launched_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg mode "$MODE" \
     --arg session_id "$sid" --arg cost_key "$ck" --arg permission_mode "${perm:-default}" \
+    --arg claude_config_dir "$cc" \
     '{team: $team, role: $role, run: $run, attempt: $attempt, ticket: $ticket, mode: $mode,
-      cost_key: $cost_key,
+      cost_key: $cost_key, claude_config_dir: $claude_config_dir,
       input_rev: $input_rev, launched_at: $launched_at, session_id: $session_id,
       permission_mode: $permission_mode}' \
     > "$TD/session.json"
@@ -227,14 +229,14 @@ launch() {
   attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
   # CODEX_HOME per session, never `-g`: that would move other projects onto this licence.
-  # CLAUDE_CONFIG_DIR the same way, and only when this process has one: the tmux server may have
-  # been started from ANOTHER project's shell, and a new session inherits that server's global
-  # environment — which would run this project's roles on the other project's Claude licence.
+  # CLAUDE_CONFIG_DIR the same way (team_claude_home: .claude/claude-profile, else this process's
+  # own value): the tmux server may have been started from ANOTHER project's shell, and a new
+  # session inherits that server's global environment — another project's Claude licence.
   # AGENT_COSTS_HOME likewise: a tmux session gets the server's environment, not the caller's.
   [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(-e "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
   tmux new-session -d -s "$name" -c "$CLONE" -e "TEAM_RUN_TEAM=$TEAM" -e "TEAM_RUN_ROLE=$role" \
     -e "TEAM_RUN_ID=$RUN" -e "TEAM_RUN_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
-    ${CLAUDE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"} \
+    ${cc:+-e "CLAUDE_CONFIG_DIR=$cc"} \
     ${costs[@]+"${costs[@]}"} \
     "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\""
   # Main checkout: a clone on an older base has no helper; a missing one only warns.

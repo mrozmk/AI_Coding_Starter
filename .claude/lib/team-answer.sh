@@ -314,7 +314,7 @@ finish_main() {
   identity
   [ -z "$E_RECORD" ] || [ "$E_RECORD" = "$(newest_record)" ] || refuse 6 "a newer record exists"
   real_event "$E_EVENT" || refuse 5 "no prompt event"
-  T="$(team_role_transcript "$CLONE" "$(sj session_id)")"
+  T="$(team_role_transcript "$CLONE" "$(sj session_id)" "$(sj claude_config_dir)")"
   [ "$T" != - ] || refuse 3 "transcript unreadable"
   EVENT="$E_EVENT"; SAY_EVENT="$E_EVENT"; ORIG_KIND="$KIND"; ORIG_FP="$FP"
   finish_act
@@ -339,7 +339,7 @@ trap 'team_send_unlock "$TD" "$ROLE"' EXIT
 GEN="$(team_pane_gen "$name")" || refuse 6 "pane not found"
 PANE_ID="${GEN%@*}"
 [ -z "$E_PANE" ] || [ "$E_PANE" = "$GEN" ] || refuse 6 "pane generation changed"
-T="$(team_role_transcript "$CLONE" "$(sj session_id)")"
+T="$(team_role_transcript "$CLONE" "$(sj session_id)" "$(sj claude_config_dir)")"
 PANE="$(capture)"; [ -n "$PANE" ] || refuse 3 "capture empty"
 P="$(parse "$PANE")"; fields "$P"
 [ "$action" != finish ] || finish_main

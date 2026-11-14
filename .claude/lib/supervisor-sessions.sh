@@ -178,7 +178,7 @@ launch() {  # launch <role> — tmux session with the role env and a fresh sessi
   c="$CLEAN claude --name $name --session-id $sid --model $m --effort $e$set $flags $(boot "$r"); read"
   # Per-session -e only: `tmux set-environment -g` would leak into every session.
   $CLEAN tmux new-session -d -s "$s" -c "$root" -e "TEAM_SESSION_ROLE=$r" \
-    ${ch:+-e "CODEX_HOME=$ch"} ${CLAUDE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"} "$c"
+    ${ch:+-e "CODEX_HOME=$ch"} ${CC:+-e "CLAUDE_CONFIG_DIR=$CC"} "$c"
   echo "$s: started ($name, $m, effort $e)"
 }
 
@@ -191,6 +191,8 @@ start() {
   done
   # shellcheck disable=SC2086
   check_roles $prof
+  # One Claude config dir for every role, resolved before any session starts.
+  CC="$(team_claude_home "$root")" || refuse "$CC"
   for role in $(roles_of "${1:-}"); do
     s="$(tw_tmux_name "$role")"
     case " $todo " in *" $role "*) launch "$role" ;; *) echo "$s: already running" ;; esac
@@ -211,9 +213,10 @@ here() {
   e="$(sess_cfg Supervisor effort)" || exit 2
   materialize Supervisor
   check_roles Supervisor
+  CC="$(team_claude_home "$root")" || refuse "$CC"
   sid="$(new_sid)"; write_session Supervisor "$sid"
   # shellcheck disable=SC2086
-  exec $CLEAN TEAM_SESSION_ROLE=Supervisor \
+  exec $CLEAN TEAM_SESSION_ROLE=Supervisor ${CC:+CLAUDE_CONFIG_DIR="$CC"} \
     claude --name "$name" --session-id "$sid" --model "$m" --effort "$e" --settings "$p" $flags
 }
 
@@ -448,7 +451,10 @@ pf_health() {  # the installed copy knows the scheduler label (kit.conf); else t
 }
 
 pf_cli() {  # the messaging socket is an observed interface, verified per CLI version
-  local v cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" row
+  local v cfg row
+  # The settings the launched sessions will read: the project's Claude profile, else this process's.
+  cfg="$(team_claude_home "$root")" || cfg="${CLAUDE_CONFIG_DIR:-}"
+  cfg="${cfg:-$HOME/.claude}/settings.json"
   v="$(claude --version 2>/dev/null | awk 'NR == 1 {print $1}')" || v=""
   if [ "$v" = "$VERIFIED_CLI" ]; then
     row="Claude Code $v — socket wire format verified on $VERIFIED_CLI"

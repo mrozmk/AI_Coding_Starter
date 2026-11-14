@@ -177,6 +177,24 @@ team_cost_key() {
   esac
 }
 
+# Usage: team_claude_home <repo root> → the Claude config dir this project's sessions run on: the
+# first value line of <root>/.claude/claude-profile (`~/` → $HOME), else the caller's
+# CLAUDE_CONFIG_DIR (empty = Claude's default). A declared dir that does not resolve → message, rc 1.
+# Launchers pass it per session: a tmux session inherits the server's environment, which may be
+# another project's.
+team_claude_home() {
+  local want real
+  want="$(sed -n '/^[[:space:]]*$/d; /^#/d; p; q' "$1/.claude/claude-profile" 2>/dev/null || true)"
+  if [ -z "$want" ]; then printf '%s' "${CLAUDE_CONFIG_DIR:-}"; return 0; fi
+  case "$want" in "~/"*) want="$HOME/${want#\~/}" ;; esac
+  real="$(cd "$want" 2>/dev/null && pwd -P || true)"
+  if [ -z "$real" ]; then
+    echo "error: Claude profile $want from .claude/claude-profile does not resolve — no session launched"
+    return 1
+  fi
+  printf '%s' "$real"
+}
+
 # Usage: team_gh_origin_require [root] → the origin's owner/repo in $TEAM_GH_ORIGIN.
 # The ONE parser of the origin URL, shared with `team-pr.sh coords`: if these two disagree, a team
 # clones, runs, and only at PR time finds out its origin is not the repo the profile names. Globals,

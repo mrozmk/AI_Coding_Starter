@@ -56,7 +56,7 @@ MP="$(cd "$MAIN" && pwd -P)"
 cat > "$WORK/bin/claude" <<'STUB'
 #!/usr/bin/env bash
 [ "$*" != --version ] || { echo "${STUB_CLAUDE_VERSION:-2.1.301} (Claude Code)"; exit 0; }
-echo "claude $* | role=${TEAM_SESSION_ROLE-unset} cc=${CLAUDECODE-unset} sock=${CLAUDE_CODE_MESSAGING_SOCKET-unset} codex=${CODEX_HOME-unset}" >> "$STUB_LOG"
+echo "claude $* | role=${TEAM_SESSION_ROLE-unset} cc=${CLAUDECODE-unset} sock=${CLAUDE_CODE_MESSAGING_SOCKET-unset} codex=${CODEX_HOME-unset} ccd=${CLAUDE_CONFIG_DIR-unset}" >> "$STUB_LOG"
 [ -n "${STUB_CLAUDE_EXIT:-}" ] || exec sleep 60
 STUB
 printf '#!/bin/bash\nexit 1\n' > "$WORK/bin/launchctl"
@@ -289,6 +289,20 @@ echo dead > "$TMUXD/smk-supervisor.pid"
 run "$MAIN" env STUB_CLAUDE_EXIT=1 CLAUDECODE=1 $SS here Supervisor; expect 0 "" "(4) here"
 grep -q "^claude --name SupervisorXY --session-id [0-9a-f-]* --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json | role=Supervisor cc=unset" \
   "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not exec claude as the Supervisor"; }
+# A declared Claude profile: `here` execs on it; an unresolvable one refuses before session.json.
+mkdir -p "$WORK/claude-home"; CH_REAL="$(cd "$WORK/claude-home" && pwd -P)"
+printf '# fixture\n%s\n' "$WORK/claude-home" > "$MAIN/.claude/claude-profile"
+: > "$STUB_LOG"
+run "$MAIN" env STUB_CLAUDE_EXIT=1 CLAUDE_CONFIG_DIR="$WORK/other" $SS here Supervisor; expect 0 "" "(4) here with a Claude profile"
+grep -q "^claude --name SupervisorXY .* ccd=$CH_REAL\$" "$STUB_LOG" \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not run on the Claude profile"; }
+printf '%s\n' "$WORK/no-such-home" > "$MAIN/.claude/claude-profile"
+cp "$TWD/sessions/Supervisor/session.json" "$WORK/sup-session.bak"
+: > "$STUB_LOG"
+run "$MAIN" env STUB_CLAUDE_EXIT=1 $SS here Supervisor; expect 1 "Claude profile" "(4) here refuses an unresolvable Claude profile"
+grep -q '^claude ' "$STUB_LOG" && fail "(4) an unresolvable Claude profile still ran claude"
+cmp -s "$TWD/sessions/Supervisor/session.json" "$WORK/sup-session.bak" || fail "(4) refused here rewrote session.json"
+rm -f "$MAIN/.claude/claude-profile"
 rm -f "$STUB_PANE_DIR/smk-teamlead"; run "$MAIN" $SS stop TeamLead
 echo "team-smoke-sessions: (4) answer OK"
 
@@ -327,6 +341,16 @@ expect 1 "\"crossSessionInbound\": \"accept\" to $HOME/.claude/settings.json" "(
 mkdir -p "$HOME/.claude"; echo '{"crossSessionInbound": "accept"}' > "$HOME/.claude/settings.json"
 beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 0 "ok Claude Code" "(5) bypass with crossSessionInbound"
+# With a Claude profile the check reads the profile's settings, not the inherited dir's.
+mkdir -p "$WORK/claude-pf"; PF_REAL="$(cd "$WORK/claude-pf" && pwd -P)"
+printf '%s\n' "$WORK/claude-pf" > "$MAIN/.claude/claude-profile"
+beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
+expect 1 "\"crossSessionInbound\": \"accept\" to $PF_REAL/settings.json" "(5) bypass checks the Claude profile's settings"
+echo '{"crossSessionInbound": "accept"}' > "$WORK/claude-pf/settings.json"
+rm -f "$HOME/.claude/settings.json"
+beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
+expect 0 "ok Claude Code" "(5) bypass with crossSessionInbound in the Claude profile"
+rm -f "$MAIN/.claude/claude-profile"
 rm -f "$HOME/.claude/settings.json"
 # The socket check is team-watch-send.py's: same predicate, same wording; a refused socket fails.
 chmod 644 "$SUP_SOCK"

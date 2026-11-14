@@ -31,12 +31,14 @@ clone_paths() {
 }
 
 transcript_args() {
-  local f name sid phys
+  local f name sid phys cfg
   phys="$(cd "$CLONE" && pwd -P)"
+  # A past run's sessions: the project's declared Claude profile, else this process's.
+  cfg="$(team_claude_home "$root")" || cfg=""
   shopt -s nullglob
   for f in "$TD/runs/$RUN"/*.session; do
     name="$(basename "$f" .session)"; sid="$(head -n 1 "$f")"
-    TRANSCRIPTS+=(--transcript "$name=$(team_role_transcript "$phys" "$sid")")
+    TRANSCRIPTS+=(--transcript "$name=$(team_role_transcript "$phys" "$sid" "$cfg")")
   done
   shopt -u nullglob
 }

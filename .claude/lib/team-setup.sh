@@ -5,7 +5,7 @@
 # re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` and
 # the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
 # `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
-# box `.agents/agent-mail/`, and seeds `.claude/codex-profile`. It NEVER overwrites a file the target already has — a difference is a
+# box `.agents/agent-mail/`, and seeds `.claude/codex-profile` and `.claude/claude-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge.
 #
 # Usage: bash .claude/lib/team-setup.sh <starter-root> <target-root> [--check]
@@ -126,6 +126,7 @@ done
 # The destinations the installer writes outside the manifest.
 walk_guard .claude/settings.json
 walk_guard .claude/codex-profile
+walk_guard .claude/claude-profile
 walk_guard .gitignore
 
 # The merge rewrites settings.json wholesale, so it must be exactly ONE JSON object to begin with.
@@ -333,15 +334,16 @@ else
   emit merged generated .gitignore
 fi
 
-# ---- .claude/codex-profile: the template only, never a value ------------------------------------
-CP=".claude/codex-profile"
-if [ -e "$TARGET/$CP" ]; then
-  emit kept generated "$CP"
-else
-  apply mkdir -p "$TARGET/.claude"
-  apply cp -p "$STARTER/$CP" "$TARGET/$CP"
-  emit created generated "$CP"
-fi
+# ---- .claude/codex-profile, .claude/claude-profile: the templates only, never a value -----------
+for CP in .claude/codex-profile .claude/claude-profile; do
+  if [ -e "$TARGET/$CP" ]; then
+    emit kept generated "$CP"
+  else
+    apply mkdir -p "$TARGET/.claude"
+    apply cp -p "$STARTER/$CP" "$TARGET/$CP"
+    emit created generated "$CP"
+  fi
+done
 
 # ---- the profile: values are the command's job, never guessed here -----------------------------
 PROFILE_OK=""

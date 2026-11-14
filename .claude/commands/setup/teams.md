@@ -46,6 +46,8 @@ Write only with `jq --arg/--argjson` into `.claude/project-profile.json`: merge 
 
 The runner refuses to start a role when `.claude/codex-profile` has no value line (the installer copies only the commented template). A value line already present: keep it. Otherwise ask for the directory (recommend `~/.codex-<project>`) and write one line under the comments (a leading `~/` is fine: the runner and the channel step expand it to `$HOME`). Validate exactly as the runner does: first non-comment line, `~/` becomes `$HOME`, `cd <dir> && pwd -P` must succeed; otherwise STOP with the message.
 
+**Claude home (optional).** `.claude/claude-profile` names the `CLAUDE_CONFIG_DIR` the harness launches every Claude session on — team roles, supervision roles and `supervisor-sessions.sh here`. No value line (the installer copies only the commented template) keeps today's behaviour: the launcher forwards its own `CLAUDE_CONFIG_DIR`, when set. Ask only when the project runs on its own Claude config dir (recommend `~/.claude-<project>`); write one line, validated like the Codex home. A declared dir that does not resolve makes every launcher refuse before a session starts.
+
 ## Step 5c — Channel (agent-mail)
 
 Binds the project to its agent-mail box through the machine registry `~/.agent-mail/projects.json` (schema, protocol and modes: `.agents/reference/agent-mail.md`). Skipped under `--check` unless the target already has `.claude/lib/team-mail-setup.sh`; then only its `--dry-run` is shown. Names come from `teams.channel` in the profile (`project_code`, `mail_suffix`, `advisor`); when the block is missing, ask for `project_code` and `mail_suffix` (recommend a short upper-case code for both) and write them with `jq` like Step 5.

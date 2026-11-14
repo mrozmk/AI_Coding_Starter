@@ -20,7 +20,7 @@ qb_capture() {
     QB_TEXT="$(team_pane "$TEAM-$1" 40)"
   fi
   QB_SESSION="$(session_json session_id)"; QB_SESSION="${QB_SESSION:--}"
-  t="$(team_role_transcript "$CLONE" "$QB_SESSION")"
+  t="$(team_role_transcript "$CLONE" "$QB_SESSION" "$(session_json claude_config_dir)")"
   # Same transcript as the sender's parse, or a recovered prompt never matches its fingerprint.
   p="$(printf '%s\n' "$QB_TEXT" | python3 -I "$LIB/team_prompt.py" parse --transcript "$t")"
   IFS=$'\x1f' read -r kind complete reason fp busy <<<"$(jq -r '[.kind, .complete, .reason, .fp,

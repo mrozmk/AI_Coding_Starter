@@ -1,0 +1,4 @@
+# Optional: the CLAUDE_CONFIG_DIR every Claude session the harness launches runs on (team roles,
+# supervision roles, `supervisor-sessions.sh here`). No value line = the launcher's own
+# CLAUDE_CONFIG_DIR, as before. One value line; a leading ~/ expands to $HOME. A path only — never
+# secrets or account data. Example: ~/.claude-<project>

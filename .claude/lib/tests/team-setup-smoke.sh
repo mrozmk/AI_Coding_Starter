@@ -67,6 +67,9 @@ done < <(sed -n 's/^own //p;s/^shared //p' "$MANIFEST")
 git -C "$T" check-ignore -q .agents/team/x || fail "2: .agents/team/ is not ignored"
 cmp -s "$ST/.claude/codex-profile" "$T/.claude/codex-profile" \
   || fail "2: codex-profile is not the starter template"
+has "created	generated	.claude/claude-profile" || fail "2: no claude-profile from the template"
+cmp -s "$ST/.claude/claude-profile" "$T/.claude/claude-profile" \
+  || fail "2: claude-profile is not the starter template"
 S="$T/.claude/settings.json"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") | index("AskUserQuestion")) | .hooks[]
   | select(.command | test("guard-team-question"))] | length == 1' "$S" >/dev/null \

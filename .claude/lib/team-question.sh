@@ -507,7 +507,7 @@ cmd_policy() {  # cmd_policy [<role>] — with a role, the class of its open pro
   [ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
     || die "$role is not the live role session"
   gen="$(team_pane_gen "$TEAM-$role")" || die "no pane for $TEAM-$role"
-  t="$(team_role_transcript "$CLONE" "$(session_json session_id)")"
+  t="$(team_role_transcript "$CLONE" "$(session_json session_id)" "$(session_json claude_config_dir)")"
   # The main checkout's classifier, never the clone's (role-writable) copy.
   team_pane_scroll "${gen%@*}" | python3 -I "$LIB/team_prompt_check.py" "$CLONE" --strict \
     --transcript "$t" --classes --report --main "$root"

@@ -41,7 +41,10 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
   `/brainstorm`, `/plan-feature` and `/check-implementation` run on the project profile, which the
   runner exports per role session (`CODEX_HOME`) from `.claude/codex-profile`; their config is
   `$CODEX_HOME/config.toml`. A role launched before that change keeps the environment it started
-  with ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile)).
+  with ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile)). The same holds for
+  `CLAUDE_CONFIG_DIR`: an optional `.claude/claude-profile` in the main checkout names it, else the
+  runner forwards its own value; it is recorded as `claude_config_dir` in the role's `session.json`,
+  where the transcript readers (`team-answer`, `team-question`) take it from.
   Per ticket, without a commit: `/start-team alfa ABC-787 --roles planner=claude-fable-5-1/high`
   (or `bash .claude/lib/team-run.sh alfa roles …` on a running team) writes the clone's
   `.agents/team/roles.override.json`, merged per role and key over `roles.json`; validated at write
