@@ -408,10 +408,14 @@ Detail per question type and the sensitive-vs-inside-AC rule:
 **Auto mode.** Commands the classifier approves never reach `team-question.sh`. Remaining
 ask-tier and egress (`guard-team-egress`) prompts are an **Operator action**, except an ask-tier
 prompt in an enabled class (tier 1, see the rules). Tier 1 keeps its whole table row,
-plus its narrow permission rule below for a role launched in manual mode. **Delivery finish
-:** a tier-1/2 `say`/`other` answer left `sent` (unconfirmed) or `unknown` TeamLead
-completes once, without the Operator — `team-question.sh <team> finish q-<n> --run <run>` sends only
-the missing text or Enter, reserved before its first key; a second call is refused.
+plus its narrow permission rule below for a role launched in manual mode. **Delivery finish:** a
+tier-1/2 `say`/`other` answer left `sent` (unconfirmed) or `unknown` TeamLead completes once,
+without the Operator — `team-question.sh <team> finish q-<n> --run <run>` sends only the missing
+text or Enter, reserved before its first key; a second call is refused. Refused with zero keys and
+the question unchanged: an answer not at tier 1/2; a `say` with an assistant event newer than
+`event:` or an unreadable transcript (`new prompt event`); an `other` whose visible menu is not the
+question's event (`new prompt event`), matches two pending instances (`ambiguous event`) or is
+unreadable.
 
 **Role-session prompts.** A permission prompt or menu in a supervisor role's own window is never
 answered by the TeamLead; it is an Operator action unless a role-session layer is installed that

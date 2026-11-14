@@ -280,12 +280,16 @@ reserve_dispatch() {  # reserve_dispatch <instance key> — one dispatch per ins
 }
 
 finish_act() {  # finish_act — ACT/WHY from the screen, or exits: delivered, closed, refused
-  local py="$LIB/team_prompt.py" typed=""
+  local py="$LIB/team_prompt.py" typed="" ev
   ! is_typed "$text" "$PANE" || typed=1
   if [ "$SEND" = say ]; then
+    ev="$(python3 -I "$py" event "$T" blocked)"
+    [ "$ev" != - ] || refuse 6 "new prompt event (transcript unreadable)"
     if [ "$(python3 -I "$py" user-after "$T" "$E_EVENT" "$text")" = yes ]; then
       echo "finish: none — delivered (transcript)"; exit 0
     fi
+    # Only after the delivered check: a say the role already took has a newer assistant event.
+    [ "$ev" = "$E_EVENT" ] || refuse 6 "new prompt event"
     [ "$BUSY" = false ] || refuse 3 "role is busy"
     # A wrapped draft leaves no one-line input box, so the parse is unreadable only for that reason.
     if [ -n "$typed" ] \
@@ -303,8 +307,14 @@ finish_act() {  # finish_act — ACT/WHY from the screen, or exits: delivered, c
     yes) ;; unknown) refuse 3 "transcript unreadable" ;;
     *) echo "finish: none — question closed"; exit 0 ;;
   esac
-  if [ "$KIND" = menu ] && [ -n "$typed" ]; then ACT=enter; WHY="the text is in the Other field"
-  elif [ "$KIND" = menu ] && [ "$CURSOR" = 1 ] && [ "$OTHER" != - ]; then
+  [ "$KIND" = menu ] || refuse 6 "screen does not match the question"
+  ev="$(printf '%s' "$P" | python3 -I "$py" event "$T" menu)"
+  case "$ev" in
+    "$E_EVENT") ;; ambiguous) refuse 5 "ambiguous event" ;;
+    -) refuse 3 "transcript unreadable" ;; *) refuse 6 "new prompt event" ;;
+  esac
+  if [ -n "$typed" ]; then ACT=enter; WHY="the text is in the Other field"
+  elif [ "$CURSOR" = 1 ] && [ "$OTHER" != - ]; then
     ACT=text; WHY="the menu is open, Other is empty"
   else refuse 6 "screen does not match the question"; fi
 }

@@ -11,7 +11,7 @@
 #   recorded send/text/Reviewer id, or at tier 3.
 #        bash .claude/lib/team-question.sh <team> retry <q-id> --run <run>   (not-sent-stale only)
 #        bash .claude/lib/team-question.sh <team> finish <q-id> --run <run>   (sent unconfirmed /
-#          unknown say|other, once: sends the missing text or Enter)
+#          unknown tier-1/2 say|other, once: sends the missing text or Enter)
 #        bash .claude/lib/team-question.sh <team> revoke <q-id> --why "<one line>"
 #        bash .claude/lib/team-question.sh <team> show <q-id> | list | policy [<role>]
 #          | screen <role>
@@ -405,6 +405,8 @@ cmd_finish() {
   [ -z "$(qb_block_field "$q" "$n" finished)" ] \
     || die "refused: $id already finished once — Operator"
   TIER="$(qb_block_field "$q" "$n" tier)"; TEXT="$(qb_block_field "$q" "$n" text)"
+  case "$TIER" in 1|2) ;;
+    *) die "refused: $id was answered at tier ${TIER:--} — finish is tier 1/2 only" ;; esac
   mode_refuse
   reason="$(qb_identity "$q")" || die "stale: $reason — nothing sent"
   [ ! -e "$TD/cancel" ] || die "refused: team stopped"
