@@ -1,7 +1,7 @@
 ---
 description: Prepare a pull request — push the branch, derive title + dest from the Branch model and the tracker, fill the repo's PR template honestly, print the create-PR URL. Prepares only — never opens the PR, never merges.
-argument-hint: "[ISSUE-KEY (optional — derived from the branch name if omitted)]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git log:*), Bash(git diff:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(ls:*), Bash(cat:*), mcp__atlassian__jira_get_issue, Skill
+argument-hint: "[ISSUE-KEY | github: 42 or #42 (optional — derived from the branch name if omitted)]"
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git log:*), Bash(git diff:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(ls:*), Bash(cat:*), Bash(bash .claude/lib/team-tracker.sh show:*), mcp__atlassian__jira_get_issue, Skill
 ---
 
 # /pr-create — Prepare a Pull Request (host-agnostic)
@@ -19,7 +19,8 @@ Issue key argument: **$ARGUMENTS** (optional)
 ## Guardrails
 
 - **Never create the PR, never merge, never commit.** Dirty tree → tell the user to run `/commit`
-  first. Never call a host API (`gh`, `glab`, `curl`) to open the PR.
+  first. Never call a host API (`gh`, `glab`, `curl`) to **open** the PR. Reading the issue through
+  `team-tracker.sh show` is fine. No tracker status is moved here: delivery is the merge.
 - **Protected-branch refuse.** Current branch listed under **Protected** in `CLAUDE.md → ### Branch
   model` (fallback when the block is absent: `main`, `master`, `trunk`, `develop`) → STOP: "You are on
   protected branch `<b>` — PRs are opened from a working branch."
@@ -48,8 +49,12 @@ Run in parallel: `git rev-parse --abbrev-ref HEAD` (→ `BRANCH`), `git status -
 
 - `TYPE` = first path segment of `BRANCH`. Valid types and their **Base → PR dest** come from the
   Branch model. Unknown type → warn, continue with dest = **Integration** (else **Trunk**).
-- `KEY` = `$ARGUMENTS` if given, else the first `[A-Z]+-\d+` match in `BRANCH`, uppercased. May
-  be empty (keyless maintenance branch) — proceed with a warning, no prefix.
+- **Tracker** — the effective one: `.claude/project-profile.json` → `teams.tracker` when a `teams`
+  block exists, else the top-level `tracker`, else `none`.
+- `KEY` — **github:** `$ARGUMENTS` if given (`^#?\d+$`, `#` dropped), else the number in
+  `BRANCH` matching `^[^/]+/(\d+)-`. **Otherwise:** `$ARGUMENTS` if given, else the first
+  `[A-Z]+-\d+` match in `BRANCH`, uppercased. May be empty (keyless maintenance branch) — proceed
+  with a warning, no prefix.
 - `DEST` from the Branch model's **Base → PR dest** row for `TYPE`. Block absent → resolve
   `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume
   `develop`**.
@@ -76,14 +81,21 @@ params — so in every case the title and description are pasted from the blocks
 
 ### Step 4 — Title (tracker soft-fail)
 
-If `KEY` is set: `mcp__atlassian__jira_get_issue(issue_key="<KEY>", fields="summary,status")`.
+**github**, `KEY` set: `bash .claude/lib/team-tracker.sh show <KEY> --out <scratch>/issue.json`
+(`<scratch>` = one `mktemp -d`; it answers for a closed issue too).
+- Success → `TITLE = "<issue title verbatim> (#<KEY>)"`; keep its `url`. Note the state if it is
+  `CLOSED`.
+- Any failure → no hard stop. `TITLE = "<slug words, capitalised> (#<KEY>)"` and flag "⚠️ tracker
+  unreachable — replace the title with the real issue title."
 
+**jira**, `KEY` set: `mcp__atlassian__jira_get_issue(issue_key="<KEY>", fields="summary,status")`.
 - Success → `TITLE = "<KEY>: <summary verbatim>"` (the ticket summary, not the branch slug —
   readable in the PR list). Note the status if it is Done/Closed.
 - Any failure (MCP absent, 401/403/404, literal `${JIRA_URL}`) → no hard stop. `TITLE = "<KEY>:
   <slug words, capitalised>"` and flag "⚠️ tracker unreachable — replace the title with the real
   summary."
-- No `KEY` → concise human title from the slug, no prefix.
+
+No `KEY` → concise human title from the slug, no prefix.
 
 ### Step 5 — Push
 
@@ -96,7 +108,18 @@ verbatim and stop.
 - Template found (Step 3) → use its exact section structure. None → use: **Description** ·
   **Screenshots** (visual changes only) · **Checklist** · **Validation**.
 - **Description:** 4–10 lines of *what changed and why*, from `git diff origin/<DEST>..HEAD --stat`
-  plus the key hunks. End with `Closes <KEY>` (omit if keyless).
+  plus the key hunks. End with the issue link line (omit if keyless):
+  - **jira:** `Closes <KEY>`.
+  - **github tracker, PR on github.com, `DEST` = the default branch** (`git symbolic-ref
+    refs/remotes/origin/HEAD`): `Closes #<KEY>` when the effective github block's `repo`
+    (`teams.github`, else the top-level `github`) is `origin`'s `owner/repo`, else
+    `Closes <repo>#<KEY>` — a bare `#<KEY>` would name an issue of the code repo.
+  - **github tracker, PR on github.com, `DEST` is not the default branch:** GitHub ignores closing
+    keywords there and does not link the PR → `Refs <issue url>` and the warning "GitHub will not
+    close #<KEY> on this merge — close it by hand once `<DEST>` reaches `<default>`".
+  - **github tracker, PR on another host** (GitLab, Bitbucket): their own keyword syntax would
+    close *their* issue → `Refs <issue url>` and the warning "close #<KEY> on GitHub by hand after
+    the merge".
 - **Screenshots:** required when the diff touches user-facing visual surface
   (`*.html|*.tsx|*.jsx|*.vue|*.svelte|*.css|*.scss|*.less` or component templates). State that the
   author must attach desktop and mobile captures — you cannot. Otherwise "N/A — no visual change".
@@ -114,8 +137,12 @@ In the user's communication language:
 3. **Title** — copy block.
 4. **Description + checklist** — one copy-paste markdown block.
 5. **Post-approval reminder:** `MERGE` strategy for this type, delete source branch, merge message
-   `Closing <KEY>`; the second merge for `release`/`hotfix` if the preset needs it.
-6. Repeat any warning (tracker unreachable, unknown branch type, keyless) so it is not missed.
+   `Closing <KEY>`; the second merge for `release`/`hotfix` if the preset needs it. **github with a
+   Project:** the board moves only through the Project's own workflow — "item closed" must set the
+   option the profile calls `delivered` (GitHub's default sets `Done`); otherwise move the item by
+   hand after the merge.
+6. Repeat any warning (tracker unreachable, unknown branch type, keyless, the issue will not close
+   on this merge) so it is not missed.
 
 ---
 
