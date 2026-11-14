@@ -121,7 +121,8 @@ for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
   `7` constraint digest missing (§5).
 - **Caller guard.** The script's own check (role env + `teamlead.json`) can be forged by a stage
   that prefixes `TEAM_SESSION_ROLE=TeamLead`. `guard-team-verdict.sh` (PreToolUse `Bash`, project
-  settings, `/setup:teams` id `V`) refuses any command naming `team-verdict.sh` in a team clone
+  settings, `/setup:teams` id `V`) refuses an invocation of `team-verdict.sh` (and of
+  `team-answer.sh … --authority`, §6) in a team clone
   unless `team_lead_caller` holds for the hook payload's `session_id` (empty → refused). The guard
   sees the command text only: a stage writing a `teamlead-*.json` file by other means is not
   covered by it.
@@ -164,3 +165,34 @@ the plan names maps to a routed domain. A project without `memory-domains.json` 
 domains, so quick never needs one. `team-lead.sh digest-check <team> <spec|plan path>` decides;
 `team-verdict.sh` runs it before a brainstorm spec `approve` or a quick plan `approve` and refuses
 with exit 7 (`constraint digest missing — see the Digest section of the TeamLead prompt`).
+
+## 6. Answering on an authority
+
+`team-answer.sh <team> <role> <action> … --authority class|teamlead|operator --why "<line>"
+[--decision <answered runs/<run>/decisions/d-<n>.md>]` (`team-answer-lead.sh`). The checker
+(`team_prompt_check.py --authority`, rules in `team_prompt_authority.py`) runs the **human-only
+check first**, before any waiver.
+
+| | class | teamlead | operator |
+|---|---|---|---|
+| Caller | the runner, or the lead | the lead only (own team) | the lead, relaying an answered decision |
+| Prompt with no ask/deny match, no human-only cause | sent | sent | sent |
+| Baseline ask match (a `Bash(…)` rule meeting the command, or an `Edit(…)`/`Write(…)` rule meeting the edited path, that is in `.claude/team/baseline-ask.json`) | only in an enabled class | sent | sent |
+| **Human-only** → exit 9 below operator: an Edit/Write or Bash naming `.claude/settings*.json` or `.claude/team/sessions/*.settings.json`; a project-added ask rule, Bash or Edit/Write (not in the baseline; no readable baseline → every ask); egress (WebFetch, curl/wget/ssh/scp/rsync/nc, `git remote add`/`set-url`); a recursive `rm` (`-rf`, `-fr`, `-r -f`, `--recursive`, behind wrappers) with a target outside the clone and the temp roots (`/tmp`, `/private/tmp`, the system temp dir, `$TMPDIR` — the scratchpad is under `/tmp`), or one that cannot be resolved (`$VAR`, a glob with no match, a relative path after a `cd`) | refused (9) | refused (9) | sent |
+| **Never**: a deny match, the SQL guard, an unreadable or unbound prompt (no transcript, no unique pending tool_use, screen differs from it), an edit or path outside the clone; a recursive `rm` of the clone root or its `.git`; and, when anything needs a waiver, a recovered prompt (header off screen) or no live session | refused | refused | refused |
+
+- Waivable by the lead on its own, from the baseline: `git merge --no-ff`/`--squash`,
+  `git branch -d`/`-D`, `git rm`, `Edit(**/.env.*)`, and `rm -rf` whose every target is inside the
+  clone (not its root or `.git`) or a temp root.
+- The legacy path stays for runs without a lead: `--tier`/`--classes` behave as before (a class
+  may still waive a settings edit there). In a **lead-owned run** (`teamlead.json.run` = the
+  clone's run) `--tier` is refused with exit 8, so the human-only check cannot be bypassed.
+- Without a ledger the identity checks run on every authority call: the stage transcript from
+  `session.json`, a readable and unambiguous live event (equal to `--expect-event` when given), the
+  dispatch journalled in `send-<role>.log` as `q=authority:<a>`.
+- Every delivered authority answer appends `- <utc> [<role> <attempt>] <question> → <answer> —
+  <why> [authority <a>] [decision <id>]` to `runs/<run>/answers.md`. A delivered `say` (or yes/no
+  on an authority) to the role/attempt named by `acked` writes `runs/<run>/<record>.answered`, which
+  restarts the stage clock (§2).
+- Exit codes beyond the sender's usual ones: 7 caller or decision rule, 8 `--tier` in a lead-owned
+  run, 9 human-only (open a pending decision; the decision flow is the next step).

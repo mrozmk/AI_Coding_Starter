@@ -488,7 +488,7 @@ smoke_repos() {
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SRC/.claude/lib/team_prompt.py" \
     "$SRC/.claude/lib/team_prompt_classes.py" "$SRC/.claude/lib/team_prompt_settings.py" \
     "$SRC/.claude/lib/team_transcript.py" "$SRC/.claude/lib/team_settings_diff.py" \
-    "$SRC/.claude/lib/team_audit.py" "$SEED/.claude/lib/"
+    "$SRC/.claude/lib/team_audit.py" "$SRC/.claude/lib/team_prompt_authority.py" "$SEED/.claude/lib/"
   mkdir -p "$SEED/.claude/hooks/lib"
   cp "$SRC/.claude/hooks/lib/guard_destructive_sql.py" "$SRC/.claude/hooks/lib/guard_team_egress.py" \
     "$SEED/.claude/hooks/lib/"
@@ -506,6 +506,7 @@ smoke_repos() {
   cp "$SRC"/.claude/hooks/lib/*.py "$SEED/.claude/hooks/lib/"  # never a stray __pycache__/
   cp "$SRC/.claude/hooks/lib/memory-domain.sh" "$SEED/.claude/hooks/lib/"  # team-lead.sh digest-check
   cp "$SRC"/.claude/team/prompts/*.md "$SEED/.claude/team/prompts/"
+  cp "$SRC/.claude/team/baseline-ask.json" "$SEED/.claude/team/"  # the checker's production line
   # Without the tracker blocks every wrapup/planner render in smoke 1-4 dies (return 1).
   mkdir -p "$SEED/.claude/team/tracker"
   cp "$SRC"/.claude/team/tracker/*.md "$SEED/.claude/team/tracker/"

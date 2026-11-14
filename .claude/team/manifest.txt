@@ -157,6 +157,9 @@ own .claude/lib/team-send-lock.sh
 own .claude/lib/team_audit.py
 own .claude/lib/team_prompt.py
 own .claude/lib/team_prompt_classes.py
+own .claude/lib/team_prompt_authority.py
+own .claude/lib/team-answer-lead.sh
+own .claude/team/baseline-ask.json
 own .claude/lib/team_prompt_settings.py
 own .claude/lib/team_settings_diff.py
 own .claude/lib/team_transcript.py

@@ -1,5 +1,6 @@
 #!/bin/bash
-# PreToolUse(Bash) guard — in a team clone only this run's TeamLead session runs team-verdict.sh.
+# PreToolUse(Bash) guard — in a team clone only this run's TeamLead session runs team-verdict.sh
+# and team-answer.sh on an authority (--authority class|teamlead|operator).
 #
 # Problem it solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
@@ -13,14 +14,16 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 [ -f "$ROOT/.agents/team/team.json" ] || exit 0
 PAYLOAD=$(cat)
 # Cheap pre-filter: this hook runs on every Bash call in a clone.
-case "$PAYLOAD" in *team-verdict.sh*) ;; *) exit 0 ;; esac
+case "$PAYLOAD" in *team-verdict.sh*|*team-answer.sh*) ;; *) exit 0 ;; esac
 refuse() { echo "$*" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "verdict guard needs jq — refused"
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Only an invocation — the script name followed by a gate — is checked, so git add, bash -n, cat or
 # grep on the file pass (a team working on the starter itself touches it).
 INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event)([^a-z]|$)'
-[[ "$CMD" =~ $INVOKE ]] || exit 0
+# A sender call on an authority: the script name, later the option (plain stage use passes).
+ANSWER='team-answer\.sh.*--authority'
+[[ "$CMD" =~ $INVOKE ]] || [[ "$CMD" =~ $ANSWER ]] || exit 0
 
 LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
 cd "$ROOT" 2>/dev/null || refuse "verdict guard: cannot enter $ROOT — refused"
@@ -29,5 +32,5 @@ cd "$ROOT" 2>/dev/null || refuse "verdict guard: cannot enter $ROOT — refused"
 SID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""' 2>/dev/null)
 # An empty sid would skip the session comparison in team_lead_caller: fail closed.
 [ -n "$SID" ] && team_lead_caller "$SID" \
-  || refuse "team-verdict.sh is the per-run TeamLead's — this session is not it (refused)"
+  || refuse "team-verdict.sh and team-answer.sh --authority are the per-run TeamLead's — this session is not it (refused)"
 exit 0

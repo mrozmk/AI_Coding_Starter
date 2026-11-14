@@ -1,0 +1,19 @@
+[
+  "mcp__atlassian__jira_create_*",
+  "mcp__atlassian__jira_update_*",
+  "mcp__atlassian__jira_add_*",
+  "mcp__atlassian__jira_transition_issue",
+  "mcp__atlassian__jira_batch_create_*",
+  "mcp__atlassian__jira_link_to_epic",
+  "mcp__atlassian__confluence_create_*",
+  "mcp__atlassian__confluence_update_*",
+  "mcp__atlassian__confluence_add_*",
+  "Edit(**/.env.*)",
+  "Bash(git merge --no-ff*)",
+  "Bash(git merge --squash*)",
+  "Bash(git branch -d*)",
+  "Bash(git branch -D*)",
+  "Bash(git rm*)",
+  "Bash(rm -rf:*)",
+  "Bash(git remote add:*)"
+]

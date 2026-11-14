@@ -2,7 +2,8 @@
 # per-run TeamLead lifecycle in the runner: launch before the planner, reuse, wait in place on a
 # stop, doorbell (socket and logged skip), dead lead → session_dead once → relaunch, inbox rings,
 # execution-time limit paused while waiting, old base, cli, end/finalize, team-watch filter, and
-# the run-scoped root files archived by team-next. Step 6 adds its answering cases here.
+# the run-scoped root files archived by team-next; the TeamLead's answers on an authority
+# (human-only first, production asks, never-waived refusals, answers.md, the .answered marker).
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -264,5 +265,169 @@ prof '.teams.teamlead.enabled = false'
 run "$MAIN" $TR alfa
 has "-s alfa-planner" "$STUB_LOG" && ! has "-s alfa-lead" "$STUB_LOG" || fail "(k) next ticket not on the no-lead branch"
 echo "team-smoke-22: (k) team-next OK"
+
+# ==== authority: the per-run TeamLead's answers (checker, sender, hook) ===========================
+RUN_ID=alfa-20261114-120000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
+lead_json; rm -f "$WORK/hs.case"; unset STUB_ON_HAS_SESSION CANCEL_AT
+export STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane" TEAM_CONFIRM_SECS=1
+CREAL="$(cd "$CLONE" && pwd -P)"; SET="$CREAL/.claude/settings.json"
+SID=sid-auth-1; session coder 1 "$BASE" "$SID"; T="$(transcript "$SID")"; mkdir -p "$(dirname "$T")"
+(. "$MAIN/.claude/lib/team-anchor.sh"; team_anchor_launch "$MAIN" alfa "$CLONE" "$RUN_ID" coder 1 "$SID")
+jq -cn '{type: "assistant", uuid: "a-w", message: {content: [{type: "text", text: "wait"}]}}' > "$T"
+# Project settings: a baseline ask (git rm), a project-added ask (az webapp restart), a deny.
+jq -n '{permissions: {allow: ["Bash(bash -n:*)"], ask: ["Bash(git rm*)", "Bash(az webapp restart*)",
+  "Edit(**/.env.*)", "Edit(infra/**)", "Bash(rm -rf:*)", "Bash(git remote add:*)"],
+  deny: ["Bash(git rebase*)"]}, hooks: {}}' > "$SET"
+prof '.teams.policy.classes = {allow_offline: {enabled: true}}'
+printf '%s\n' '**Integration:** `develop`' '**Protected:** `develop`' > "$MAIN/CLAUDE.md"  # the classes' Branch model
+mkdir -p "$CLONE/.claude/lib"; printf 'echo hi\n' > "$CLONE/.claude/lib/x.sh"
+RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"; LAST=""; N=0
+PCM="python3 -I $MAIN/.claude/lib/team_prompt_check.py"
+pend() {  # pend <tool> <json input> — the role's single pending call
+  [ -z "$LAST" ] || tool_done "$SID" "$LAST"
+  N=$((N + 1)); LAST="t$N"; pending_tool "$SID" "$LAST" "$1" "$2" "$CREAL"
+}
+bashp() {  # bashp <one-line command> — pending Bash call + its permission prompt
+  pend Bash "$(jq -cn --arg c "$1" '{command: $c, description: "Run it"}')"
+  { echo "$RULE"; echo " Bash command"; echo " Run it"; echo "$DASH"; echo " │ $1"; echo "$DASH"
+    echo " This command requires approval"; echo " Do you want to proceed?"
+    echo " ❯ 1. Yes"; echo "   2. No"; echo " Esc to cancel · Tab to amend"; } > "$WORK/pane"
+}
+editp() {  # editp <file_path> <shown> <old> <new> — pending Edit + its prompt (one-line change)
+  local f="$1" o="$3" n="$4" t a
+  pend Edit "$(jq -cn --arg f "$f" --arg o "$o" --arg n "$n" '{file_path: $f, old_string: $o, new_string: $n}')"
+  t="$(cat "$f" 2>/dev/null || echo "$o")"; a="$(grep -F -- "$o" <<<"$t" | head -n 1)"
+  { echo "$RULE"; echo " Edit file"; echo " $2"; echo "$DASH"
+    echo "  1 -$a"; echo "  1 +${a/"$o"/$n}"; echo "$DASH"
+    echo " Do you want to make this edit to $(basename "$f")?"
+    echo " ❯ 1. Yes"; echo "   2. No"; echo " Esc to cancel"; } > "$WORK/pane"
+}
+chk() {  # chk <authority|--classes> → RC, $WORK/out
+  local a=(--authority "$1"); [ "$1" != --classes ] || a=(--classes)
+  set +e; $PCM "$CLONE" --strict --transcript "$T" "${a[@]}" --main "$MAIN" < "$WORK/pane" \
+    > "$WORK/out" 2>&1; RC=$?; set -e
+}
+A0='"Bash(bash -n:*)"'
+# ---- (j) a settings edit is human-only for class and teamlead, even with allow-offline on ---------
+editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""
+chk --classes; expect 0 "policy-class: allow-offline" "(j) legacy --classes keeps its class waiver"
+for a in class teamlead; do
+  chk "$a"; expect 1 "human-only: settings edit" "(j) settings edit, authority $a"
+done
+chk operator; expect 0 "policy-authority: operator" "(j) settings edit, operator"
+mkdir -p "$CLONE/.claude/team/sessions"; echo '{"permissions": {"allow": []}}' > "$CLONE/.claude/team/sessions/TeamLead.settings.json"
+editp "$CREAL/.claude/team/sessions/TeamLead.settings.json" .claude/team/sessions/TeamLead.settings.json \
+  '"allow": []' '"allow": ["Bash(*)"]'
+chk teamlead; expect 1 "human-only: settings edit" "(j) guard profile edit"
+bashp "cp /tmp/s .claude/settings.json"; chk teamlead; expect 1 "human-only: settings edit" "(j) settings via Bash"
+echo "team-smoke-22: (j) settings edit human-only OK"
+# ---- (k) a project-added ask is human-only; a baseline ask is the lead's --------------------------
+bashp "az webapp restart --name x"; chk teamlead
+expect 1 "human-only: production ask: Bash(az webapp restart*)" "(k) project-added ask, teamlead"
+chk operator; expect 0 "policy-authority: operator" "(k) project-added ask, operator"
+bashp "git rm old.txt"; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline ask, teamlead"
+chk class; expect 1 "class:" "(k) baseline ask, class without a matching class"
+mv "$MAIN/.claude/team/baseline-ask.json" "$WORK/baseline.json"
+chk teamlead; expect 1 "human-only: production ask: Bash(git rm*)" "(k) missing baseline: every ask"
+mv "$WORK/baseline.json" "$MAIN/.claude/team/baseline-ask.json"
+# Edit/Write ask rules match the edited path: a project rule is human-only, a baseline rule the lead's.
+mkdir -p "$CLONE/infra"; echo 'size = 1' > "$CLONE/infra/main.tf"; echo 'A=1' > "$CLONE/.env.local"
+editp "$CREAL/infra/main.tf" infra/main.tf 'size = 1' 'size = 2'; chk teamlead
+expect 1 "human-only: production ask: Edit(infra/**)" "(k) project-added Edit rule"
+editp "$CREAL/.env.local" .env.local 'A=1' 'A=2'; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline Edit rule"
+chk class; expect 1 "class:" "(k) baseline Edit rule, class"
+# A recursive rm is the lead's only inside the clone or a temp root; git remote add is egress.
+# The fixture lives under the system temp dir: a separate TMPDIR keeps the clone outside "temp".
+OLD_TMPDIR="$TMPDIR"; export TMPDIR="$WORK/tz"; mkdir -p "$TMPDIR" "$CLONE/sub"
+for c in "rm -rf build/" "rm -fr $TMPDIR/x" "rm -r -f sub/y"; do
+  bashp "$c"; chk teamlead; expect 0 "" "(k) rm inside: $c"
+done
+for c in "rm -rf ~/x" "rm -rf /usr/local/x" "rm -rf ../x" "rm -rf \$HOME/x" "sudo rm -r -f ~/x" \
+  "cd sub && rm -rf y" "rm -rf nothing-*"; do
+  bashp "$c"; chk teamlead; expect 1 "human-only: irreversible delete outside the clone" "(k) rm outside: $c"
+done
+bashp "rm -rf ~/x"; chk class; expect 1 "human-only: irreversible delete" "(k) rm outside, class"
+chk operator; expect 0 "policy-authority: operator" "(k) rm outside, operator"
+for c in "rm -rf .git/objects" "rm -rf .git/refs/heads/x"; do
+  bashp "$c"
+  for a in teamlead class; do chk "$a"; expect 1 "human-only: irreversible delete inside the git dir" "(k) $c, $a"; done
+  chk operator; expect 0 "policy-authority: operator" "(k) $c, operator"
+done
+for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/"; do
+  bashp "$c"; chk operator; expect 1 "clone root or its .git — never" "(k) rm of the clone root: $c"
+done
+bashp "git remote add x https://example.invalid/r.git"
+for a in teamlead class; do chk "$a"; expect 1 "human-only: egress: git remote add" "(k) git remote add, $a"; done
+chk operator; expect 0 "policy-authority: operator" "(k) git remote add, operator"
+bashp "rm -rf build/"; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline rm -rf inside, waived"
+export TMPDIR="$OLD_TMPDIR"
+bashp "git status"; chk teamlead; expect 0 "" "(k) no match, nothing to waive"
+has "policy-" "$WORK/out" && fail "(k) a waiver printed for a clean prompt"
+echo "team-smoke-22: (k) production asks OK"
+# ---- never waived: deny, SQL, unreadable, no transcript; egress needs the Operator -----------------
+for a in teamlead operator; do
+  bashp "git rebase -i HEAD~2"; chk "$a"; expect 1 "deny-tier" "(never) deny, $a"
+  bashp "sqlcmd -Q 'DROP TABLE x'"; chk "$a"; expect 1 "refuse (" "(never) SQL, $a"
+  has "human-only" "$WORK/out" && fail "(never) SQL offered to the Operator"
+  bashp 'echo "unbalanced'; chk "$a"; expect 1 "cannot be parsed" "(never) unreadable, $a"
+done
+set +e; $PCM "$CLONE" --strict --authority operator < "$WORK/pane" > "$WORK/out" 2>&1; RC=$?; set -e
+expect 1 "no transcript" "(never) no transcript"
+bashp "curl https://example.invalid/x"; chk teamlead; expect 1 "human-only: egress: curl" "(egress) teamlead"
+chk operator; expect 0 "policy-authority: operator" "(egress) operator"
+echo "team-smoke-22: authority never-waived + egress OK"
+
+# ---- sender: legacy refusal, caller rules, decision, answers.md, the .answered marker -------------
+ANS="bash .claude/lib/team-answer.sh"
+lead() { run "$MAIN" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM="${LT:-alfa}" $ANS "$@"; }
+bashp "git rm old.txt"
+run "$MAIN" $ANS alfa coder yes --tier 1; expect 8 "run is owned by its TeamLead — use --authority" "(legacy) --tier in a lead-owned run"
+run "$MAIN" $ANS alfa coder yes --authority teamlead --why w; expect 7 "is the run's TeamLead's" "(caller) not the lead"
+lead alfa coder yes --authority teamlead; expect 2 "needs --why" "(caller) no --why"
+LT=beta lead alfa coder yes --authority teamlead --why w; expect 7 "only its own team" "(caller) another team"
+lead alfa coder yes --authority operator --why w; expect 7 "needs --decision" "(l) operator without a decision"
+mkdir -p "$RD/decisions"; printf -- '---\nid: d-1\nstatus: pending\n---\nq\n' > "$RD/decisions/d-1.md"
+lead alfa coder yes --authority operator --why w --decision "$RD/decisions/d-1.md"
+expect 7 "needs --decision" "(l) operator with a pending decision"
+bashp "rm -rf ~/x"
+lead alfa coder yes --authority teamlead --why "clean up"
+expect 9 "irreversible delete outside the clone" "(k) sender: rm outside the clone is exit 9"
+[ "$(grep -c '^tmux send-keys' "$STUB_LOG")" = 0 ] || fail "(k) keys sent on an rm outside the clone"
+editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""
+lead alfa coder yes --authority teamlead --why "allow a syntax check"
+expect 9 "human-only: settings edit" "(j) sender maps human-only to exit 9"
+[ "$(grep -c '^tmux send-keys' "$STUB_LOG")" = 0 ] || fail "(j) keys sent on a human-only refusal"
+sed -i.bak 's/^status: pending/status: answered/' "$RD/decisions/d-1.md"
+: > "$STUB_LOG"
+lead alfa coder yes --authority operator --why "Operator approved" --decision "$RD/decisions/d-1.md"
+expect 0 "sent yes" "(l) operator with an answered decision"
+grep -q "\[coder 1\] .* → yes — Operator approved \[authority operator\] \[decision d-1\]$" "$RD/answers.md" \
+  || { cp "$RD/answers.md" "$WORK/out"; fail "(p) operator answer not in answers.md"; }
+# A blocked coder: a say on the lead's authority writes the stop's marker; a refused one does not.
+mkrec coder "$BASE" blocked; jq '.attempt = 1 | .message = "which endpoint?"' "$RD/coder-1-1.json" \
+  > "$WORK/r" && mv "$WORK/r" "$RD/coder-1-1.json"; echo coder-1-1.json > "$TD/acked"
+bashp "git status"
+lead alfa coder say "Use the existing endpoint." --authority teamlead --why "order line 2"
+expect 6 "a menu or permission prompt is open" "(marker) refused say"
+[ ! -e "$RD/coder-1-1.json.answered" ] || fail "(marker) a refused say wrote the marker"
+tool_done "$SID" "$LAST"; LAST=""; cp "$FIX/idle.txt" "$WORK/pane"
+lead alfa coder say "Use the existing endpoint." --authority teamlead --why "order line 2"
+expect 0 "sent say" "(marker) say on the lead's authority"
+[ -e "$RD/coder-1-1.json.answered" ] || fail "(marker) no .answered after the say"
+grep -q "\[coder 1\] which endpoint? → say: Use the existing endpoint. — order line 2 \[authority teamlead\]$" \
+  "$RD/answers.md" || { cp "$RD/answers.md" "$WORK/out"; fail "(p) say not in answers.md"; }
+[ "$(grep -c '^- ' "$RD/answers.md")" = 2 ] || fail "(p) answers.md is not one line per send"
+grep -q 'q=authority:teamlead' "$TD/send-coder.log" || fail "(p) dispatch not journalled on the authority"
+echo "team-smoke-22: sender authority + answers.md + marker OK"
+
+# ---- the hook binds team-answer.sh --authority to the lead's session id ---------------------------
+HOOK="$SRC/.claude/hooks/guard-team-verdict.sh"
+vp() { jq -cn --arg s "$1" --arg c "$2" '{session_id: $s, tool_name: "Bash", tool_input: {command: $c}}'; }
+FORGE="TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-answer.sh alfa coder yes --authority teamlead --why w"
+hook "$CLONE" "$(vp sid-coder-1 "$FORGE")"; expect 2 "not it (refused)" "(hook) forged authority call"
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-answer.sh alfa coder yes --authority teamlead --why w")"
+expect 0 "" "(hook) the lead's own session"
+hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-answer.sh alfa coder say hi")"; expect 0 "" "(hook) plain sender use"
+echo "team-smoke-22: authority hook OK"
 
 echo "team-smoke-22: OK"
