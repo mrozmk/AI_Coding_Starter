@@ -31,7 +31,8 @@ if [ "${TEAM_SESSION_ROLE:-}" = TeamLead ]; then
   LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
   # An empty sid would skip the session comparison in team_lead_caller: fail closed.
   if [ -n "$SID" ] \
-    && (cd "$ROOT" && . "$LIB/team-lib.sh" && team_lead_caller "$SID") 2>/dev/null; then
+    && (cd "$ROOT" && . "$LIB/team-lib.sh" && . "$LIB/team-lead-lib.sh" \
+      && team_lead_caller "$SID") 2>/dev/null; then
     echo "TeamLead decides memory proposals; the wrapup writes them" >&2
   else
     echo "TeamLead identity not current — restart the lead" >&2

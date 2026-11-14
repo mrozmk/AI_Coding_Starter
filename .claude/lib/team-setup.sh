@@ -266,6 +266,9 @@ egress_merge Bash "$H/guard-destructive-sql.sh\"" D
 # The role sessions' bootstrap directive; silent outside a role session and in a team clone.
 hook_merge S SessionStart "$H/session-role.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
+# The per-run TeamLead's identity refresh and socket registration; silent outside a run's lead.
+hook_merge L SessionStart "$H/teamlead-register.sh\"" '["startup","resume","clear","compact"]' false '' \
+  '{"timeout":5}'
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '

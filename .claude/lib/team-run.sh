@@ -42,6 +42,8 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-pr-render.sh"
 . "$root/.claude/lib/team-anchor.sh"
 . "$root/.claude/lib/team-channel.sh"
+. "$root/.claude/lib/team-lead-lib.sh"
+. "$root/.claude/lib/team-run-lead.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -74,28 +76,10 @@ sess_name() { team_tmux_name "$TEAM" "$1"; }
 attended() { case "$1" in planner|wrapup) ;; *) return 1 ;; esac; }
 artifact() { jq -r --arg p "$2" '[.artifacts[] | select(startswith($p))][0] // empty' "$1"; }
 
-# /exit + Enter only on a recognised empty idle input: on an open prompt Enter would approve the
-# focused option. Keys go only under the send lock, so they never interleave an answer.
+# /exit only on an idle input, under the send lock (team_end_session, team-lead-lib.sh).
 end_session() {
-  local name waited=0 h idle=""
-  name="$(sess_name "$1")"
-  team_tmux_alive "$name" || return 0
-  if team_send_lock "$TD" "$1" "${TEAM_SEND_LOCK_WAIT:-30}" "runner pid=$$" >/dev/null; then
-    team_pane "$name" 40 | python3 -I "$root/.claude/lib/team_prompt.py" parse \
-      | jq -e '.complete and .kind == "none" and .input_empty == true' >/dev/null 2>&1 && idle=1
-    if [ -n "$idle" ]; then
-      tmux send-keys -t "=$name:" "/exit" Enter || true
-      while team_tmux_alive "$name" && [ "$waited" -lt "$EXIT_WAIT" ]; do sleep 1; waited=$((waited + 1)); done
-    fi
-    team_tmux_alive "$name" && tmux kill-session -t "=$name" || true
-    team_send_unlock "$TD" "$1"
-  else
-    h="$(team_send_holder "$TD" "$1")"
-    echo "stop-during-send $(team_utc) $h" >> "$TD/send-$1.log"
-    echo "warn: stop while sender lock held by $h — session killed without /exit" >&2
-    tmux kill-session -t "=$name" || true
-  fi
-  ! team_tmux_alive "$name" || die 1 "error: session $name did not end"
+  team_end_session "$TD" "$(sess_name "$1")" "$1" "$EXIT_WAIT" \
+    || die 1 "error: session $(sess_name "$1") did not end"
 }
 
 cancel_exit() {
@@ -136,6 +120,7 @@ handle_record() {
     done) validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
           accept "$r" ;;
     blocked|failed)
+      if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
       basename "$r" > "$TD/acked"
       echo "$(rec "$r" verdict): $(last_blocker)"
       echo "answer in: tmux attach -t $(sess_name "$ROLE")"
@@ -261,29 +246,37 @@ dead_attempt() {
     launch "$role" $((attempt + 1))
     return 0
   fi
+  ! team_lead_on || lead_event session_dead "runs/$RUN/$role-$attempt.session"
   die 5 "dead attempt $attempt of $role: partial work or retry limit — supervisor"
 }
 
+# A record the lead must resolve (rc 2) keeps the loop waiting; time spent waiting on the lead is
+# not execution time, so the stage limit pauses (start moves with the clock while waiting=1) until
+# the stop's <record>.answered marker appears (lead_waiting, re-read every poll and on resume).
 wait_loop() {
-  local role="$1" attempt name r start limit seen=0 n
-  attempt="$(session_json attempt)"; name="$(sess_name "$role")"; start="$(date +%s)"
+  local role="$1" attempt name r start limit seen=0 n rc waiting=0 t last
+  attempt="$(session_json attempt)"; name="$(sess_name "$role")"; start="$(team_now)"; last="$start"
   case "$role" in coder|cli) limit=14400 ;; qa) limit=10800 ;; *) limit=0 ;; esac
   while :; do
     team_cancelled && cancel_exit
+    t="$(team_now)"; [ "$waiting" = 0 ] || start=$((start + t - last)); last="$t"
+    waiting=0; ! team_lead_on || ! lead_waiting "$role" "$attempt" || waiting=1
     r="$(new_record "$role" "$attempt")"
-    if [ -n "$r" ]; then handle_record "$r"; return 0; fi
+    if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
     n=0; [ ! -f "$TD/runs/$RUN/attention" ] || n="$(wc -l < "$TD/runs/$RUN/attention" | tr -d ' ')"
     if [ "$n" -gt "$seen" ]; then
       seen="$n"; echo "needs attention: tmux attach -t $name"
       notify "needs attention" "$role waits for you: bash .claude/lib/team-attach.sh $TEAM $role"
+      ! team_lead_on || team_session_doorbell "$TD" lead "prompt $role: needs a decision"
     fi
     if ! team_tmux_alive "$name"; then
       r="$(new_record "$role" "$attempt")"
-      if [ -n "$r" ]; then handle_record "$r"; return 0; fi
+      if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
       dead_attempt "$role" "$attempt"
-      attempt="$(session_json attempt)"; start="$(date +%s)"; continue
+      attempt="$(session_json attempt)"; start="$(team_now)"; last="$start"; continue
     fi
-    if [ "$limit" -gt 0 ] && [ $(( $(date +%s) - start )) -ge "$limit" ]; then
+    ! team_lead_on || lead_poll
+    if [ "$limit" -gt 0 ] && [ $(( $(team_now) - start )) -ge "$limit" ]; then
       die 3 "stalled — attach: tmux attach -t $name"
     fi
     sleep "$POLL"
@@ -292,7 +285,7 @@ wait_loop() {
 
 # Recovery: a session.json means its role is the current stage, whatever else is accepted.
 resume_stage() {
-  local role attempt r
+  local role attempt r rc=1
   role="$(session_json role)"; attempt="$(session_json attempt)"; ROLE="$role"
   [ "$(session_json run)" = "$RUN" ] || die 1 "error: session.json run differs from $TD/run"
   if ls "$TD/runs/$RUN/$role-$attempt-"*.json.accepted >/dev/null 2>&1; then
@@ -300,8 +293,9 @@ resume_stage() {
   fi
   if ! team_tmux_alive "$(sess_name "$role")"; then
     r="$(new_record "$role" "$attempt")"
-    if [ -n "$r" ]; then handle_record "$r"; return 0; fi
-    dead_attempt "$role" "$attempt"
+    [ -z "$r" ] || { rc=0; handle_record "$r" || rc=$?; }
+    [ "$rc" != 0 ] || return 0
+    [ "$rc" = 2 ] || dead_attempt "$role" "$attempt"
   fi
   wait_loop "$role"
 }
@@ -329,6 +323,7 @@ cmd_advance() {
   ! command -v caffeinate >/dev/null 2>&1 || caffeinate -i -w $$ >/dev/null 2>&1 &
   [ -s "$TD/run" ] || echo "$TEAM-$(date -u +%Y%m%d-%H%M%S)" > "$TD/run"
   RUN="$(cat "$TD/run")"
+  lead_start
   while :; do
     if [ -f "$TD/session.json" ]; then
       check_orphans "$(session_json role)"; resume_stage; continue
@@ -377,6 +372,7 @@ cmd_status() {
     kill -0 "$pid" 2>/dev/null && echo "lock: runner $pid alive" || echo "lock: stale (pid $pid dead) — bash .claude/lib/team-run.sh $TEAM unlock"
   fi
   [ ! -f "$TD/runs/${RUN:-none}/attention" ] || echo "attention: $(tail -n 1 "$TD/runs/$RUN/attention")"
+  ! team_lead_on || echo "teamlead: $(lead_status)"
 }
 
 cmd_stop() {

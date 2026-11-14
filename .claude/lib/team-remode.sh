@@ -107,10 +107,15 @@ check_state locked; report_or_die
 bash "$root/.claude/lib/team-audit.sh" "$team" --final archived \
   || echo "warn: team audit failed — archiving anyway" >&2
 
+# A remode starts a new run, and a run's TeamLead ends with its run.
+(cd "$root" && bash .claude/lib/team-lead.sh end "$team") >/dev/null 2>&1 \
+  || echo "warn: TeamLead of $team did not end — check: tmux has-session -t =$team-lead" >&2
+
 old_run="$run"
 archive="$TD/archive/$ticket-remode-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
-for f in runs run acked cancel session.json; do
+for f in runs run acked cancel session.json teamlead.json teamlead.settings.json teamlead.reg.json \
+  round verdict-acked lead-dead relaunch-lead inbox-rung; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
 done
 

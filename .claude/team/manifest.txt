@@ -198,6 +198,12 @@ own .claude/team/sessions/TeamLead.settings.json
 own .claude/team/sessions/TeamLead-run.settings.json
 own .claude/lib/team-lead.sh
 own .claude/lib/team-brief.sh
+own .claude/lib/team-lead-lib.sh
+own .claude/lib/team-run-lead.sh
+own .claude/lib/team-inbox.sh
+own .claude/hooks/teamlead-register.sh
+own .claude/team/prompts/teamlead.md
+own .agents/reference/team-lead.md
 own .claude/hooks/guard-teamlead-write.sh
 own .claude/lib/session_profile_check.py
 own .claude/lib/supervisor-sessions.sh

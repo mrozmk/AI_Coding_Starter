@@ -19,7 +19,8 @@ refuse() { echo "$*" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "TeamLead write guard needs jq — refused"
 LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
 cd "$ROOT" 2>/dev/null || refuse "TeamLead write guard: cannot enter $ROOT — refused"
-. "$LIB/team-lib.sh" 2>/dev/null || refuse "TeamLead write guard: team-lib.sh missing — refused"
+{ . "$LIB/team-lib.sh" && . "$LIB/team-lead-lib.sh"; } 2>/dev/null \
+  || refuse "TeamLead write guard: team-lib.sh or team-lead-lib.sh missing — refused"
 
 PAYLOAD=$(cat)
 case "$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // ""' 2>/dev/null)" in

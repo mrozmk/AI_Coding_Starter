@@ -60,6 +60,12 @@ B="${BASE_OPT:-$TEAM_TRUNK}"
 [ "$B" = "$LINE" ] \
   || die 3 "team line is $LINE, not $B — pass --base $LINE to integrate into it"
 
+# The run's TeamLead ends once the PR is in; never a reason to fail the integration (retryable).
+finalize_lead() {
+  (cd "$root" && bash .claude/lib/team-lead.sh finalize "$TEAM" merged) >/dev/null 2>&1 \
+    || echo "warn: TeamLead not finalized — retry: bash .claude/lib/team-lead.sh finalize $TEAM merged" >&2
+}
+
 ls_rem() {  # ls_rem <ref> → the sha on origin, empty when absent; rc 1 when the call itself failed
   local o
   o="$(git -C "$CLONE" ls-remote origin "$1" 2>&1)" || { printf '%s\n' "$o" >&2; return 1; }
@@ -111,6 +117,7 @@ if [ -f "$INTENT" ]; then
     [ "$dnow" = "$M" ] \
       || die 3 "base moved past M — manual check (base $dnow, recorded M $M, intent done)"
     echo "already integrated: PR #$PR M=$M"
+    finalize_lead
     exit 0
   fi
   # `stale` and `rejected` are not skipped: the base may have become readable or returned to T.
@@ -287,6 +294,7 @@ if [ "$status" = completed ]; then
     || die 4 "base moved past M while the PR was closing — manual check (base $final, tested M $M)"
   intent_write done "${NOTE:-}"
   echo "integrated: PR #$PR into $B T=$T S=$S M=$M"
+  finalize_lead
   exit 0
 fi
 # The code is published either way; what is left is a PR that GitHub did not close. The usual

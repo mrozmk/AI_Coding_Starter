@@ -13,7 +13,7 @@ lead_json() {  # lead_json <run> <session id>
   jq -n --arg r "$1" --arg s "$2" '{run: $r, session_id: $s}' > "$TD/teamlead.json"
 }
 caller() {  # caller <sid|""> → RC of team_lead_caller in the clone, as the lead
-  set +e; (cd "$CLONE" && . "$L/team-lib.sh" && TEAM_SESSION_ROLE=TeamLead team_lead_caller "$1") \
+  set +e; (cd "$CLONE" && . "$L/team-lib.sh" && . "$L/team-lead-lib.sh" && TEAM_SESSION_ROLE=TeamLead team_lead_caller "$1") \
     > "$WORK/out" 2>&1; RC=$?; set -e
 }
 # Here-strings, not pipes: a hook that exits before reading stdin would give printf EPIPE.
@@ -37,7 +37,7 @@ caller ""; [ "$RC" = 0 ] || fail "(a) caller false without a hook sid"
 caller sid-other; [ "$RC" = 1 ] || fail "(a) caller true with another sid"
 lead_json alfa-old sid-lead; caller sid-lead; [ "$RC" = 1 ] || fail "(a) caller true for another run"
 lead_json "$RUN_ID" sid-lead
-set +e; (cd "$CLONE" && . "$L/team-lib.sh" && TEAM_SESSION_ROLE=coder team_lead_caller sid-lead); RC=$?
+set +e; (cd "$CLONE" && . "$L/team-lib.sh" && . "$L/team-lead-lib.sh" && TEAM_SESSION_ROLE=coder team_lead_caller sid-lead); RC=$?
 set -e; [ "$RC" = 1 ] || fail "(a) caller true without the role env"
 echo "team-smoke-20: (a) team_lead_caller OK"
 

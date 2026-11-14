@@ -290,9 +290,13 @@ team_escalations() {
 
 snap_team() {  # snap_team <clone .agents/team dir> → team object
   local td="$1" team run runner=down pid cur="" role f ov base problem mode pr prs="" last fin
+  local lead=false
   team="$(jq -r .team "$td/team.json")"
   mode="$(team_mode "$td/team.json" 2>/dev/null)" || { err "$team: bad mode in team.json"; mode=brainstorm; }
   run="$(cat "$td/run" 2>/dev/null || true)"
+  # A run with its own per-run TeamLead (teamlead.json of THIS run); a stale file is no lead.
+  [ -z "$run" ] || [ "$(jq -r '.run // empty' "$td/teamlead.json" 2>/dev/null)" != "$run" ] \
+    || lead=true
   # The lock owner is authoritative: the runner may run via run_in_background, without tmux.
   if [ -d "$td/lock" ]; then
     pid="$(cat "$td/lock/pid" 2>/dev/null || true)"
@@ -336,9 +340,9 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   fi
   jq -c --arg run "$run" --arg runner "$runner" --arg mode "$mode" --arg prs "$prs" \
     --arg pr "$pr" --slurpfile roles "$W/roles" --argjson fin "$fin" --slurpfile esc "$W/esc" \
-    --slurpfile escs "$W/escs" '
+    --slurpfile escs "$W/escs" --argjson lead "$lead" '
     {team, ticket, branch, line, mode: $mode, run: (if $run == "" then null else $run end), runner: $runner,
-     finished: $fin,
+     finished: $fin, lead: $lead,
      pr_id: (if $pr == "" then null else ($pr | tonumber? // $pr) end),
      pr_status: (if $prs == "" then null else $prs end),
      state: ({completed: "free", abandoned: "free", active: "awaiting_merge",

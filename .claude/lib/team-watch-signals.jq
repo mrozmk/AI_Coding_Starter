@@ -77,6 +77,9 @@ def team_signals($R):
   .now as $now | (.esc_unsent_secs // 180) as $min
   | .snapshot.teams[]? as $t
   | select($t.run != null)
+  # A run with its own per-run TeamLead is handled by that lead: neither the global TeamLead nor
+  # single-routing delivery sees its stops. Legacy runs (no lead) are unchanged.
+  | select($t.lead != true)
   | attention($t; $R), record($t; $R), runner($t; $R), ready($t; $R),
     escalation($t; $R; $now; $min);
 

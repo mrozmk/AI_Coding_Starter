@@ -20,7 +20,8 @@ PAYLOAD=$(cat)
 # A per-run TeamLead's notification is not stage attention.
 SID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""' 2>/dev/null)
 LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
-(cd "$ROOT" && . "$LIB/team-lib.sh" && team_lead_caller "$SID") 2>/dev/null && exit 0
+(cd "$ROOT" && . "$LIB/team-lib.sh" && . "$LIB/team-lead-lib.sh" && team_lead_caller "$SID") \
+  2>/dev/null && exit 0
 KIND=$(printf '%s' "$PAYLOAD" | jq -r '.notification_type // .hook_event_name // ""' 2>/dev/null)
 MSG=$(printf '%s' "$PAYLOAD" | jq -r '.message // ""' 2>/dev/null | tr '\n' ' ')
 

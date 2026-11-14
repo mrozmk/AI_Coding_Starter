@@ -31,13 +31,6 @@ session_json() {
   jq -r --arg f "$1" '.[$f] // empty' "$f"
 }
 
-# Per-run TeamLead: role env + teamlead.json of the current run (+ the hook's session_id, if given).
-team_lead_json() { jq -r --arg f "$1" '.[$f] // empty' "$(team_dir)/teamlead.json" 2>/dev/null; }
-team_lead_caller() {
-  local d r; [ "${TEAM_SESSION_ROLE:-}" = TeamLead ] && d="$(team_dir 2>/dev/null)" || return 1
-  r="$(cat "$d/run" 2>/dev/null)"; [ -n "$r" ] && [ "$(team_lead_json run)" = "$r" ] || return 1
-  [ -z "${1:-}" ] || [ "$1" = "$(team_lead_json session_id)" ]
-}
 team_check_name() {
   [[ "$1" =~ ^[a-z0-9-]+$ ]] || { echo "error: name '$1' must match [a-z0-9-]+" >&2; return 1; }
 }

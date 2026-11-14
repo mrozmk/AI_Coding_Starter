@@ -2,6 +2,11 @@
 # The per-run TeamLead's identity and permission profile.
 # Usage: bash .claude/lib/team-lead.sh materialize <team>   (from the main checkout)
 #        bash .claude/lib/team-lead.sh whoami                (exit 0 when the caller is the lead)
+#        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
+#        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
+#   pending lists the lead's open items, oldest first: `<kind> <ref> — <summary>`. end stops the
+#   lead session (0 when none runs); finalize ends it once per run and marks runs/<run>/finalized;
+#   relaunch asks the live runner to relaunch a dead lead.
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
 #   .claude/team/sessions/TeamLead-run.settings.json unioned with the project and local deny/ask
 #   rules, the PR host's update verbs denied for teams.pr_provider, guard-teamlead-write.sh
@@ -10,9 +15,79 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
+. "$(dirname "$0")/team-lead-lib.sh"
+
+# resolve <team> → TD (the clone's team dir) and MAIN (the main checkout), from either side. In the
+# clone the main checkout is the one the runner recorded, never `git rev-parse` of the clone.
+resolve() {
+  local r
+  team_check_name "$1" || exit 2
+  r="$(team_root)"
+  if [ -f "$r/.agents/team/team.json" ]; then
+    TD="$r/.agents/team"; MAIN="$(team_lead_json main_root)"
+  else
+    team_profile_load "$r"; TD="$(team_clone_dir "$1" "$r")/.agents/team"; MAIN="$r"
+  fi
+  [ -f "$TD/team.json" ] || { echo "error: no team clone for $1" >&2; exit 1; }
+  [ "$(jq -r .team "$TD/team.json")" = "$1" ] || { echo "error: this clone is not team $1" >&2; exit 1; }
+  RUN="$(cat "$TD/run" 2>/dev/null || true)"
+}
+
+# One line per item, sorted by a 14-digit UTC key that is cut off before printing.
+pending() {
+  local f role attempt last ts since="" stage l
+  resolve "$1"
+  {
+    if [ -n "$RUN" ]; then
+      for f in "$TD/runs/$RUN"/*-*-*.json; do
+        [ -f "$f" ] || continue
+        role="$(jq -r .role "$f")"; attempt="$(jq -r .attempt "$f")"
+        last="$(ls "$TD/runs/$RUN" | grep -E "^$role-$attempt-[0-9]+\.json\$" | sort -t- -k3,3n \
+          | tail -n 1)"
+        [ "$(basename "$f")" = "$last" ] || continue
+        case "$(jq -r .verdict "$f")" in blocked|failed) ;; *) continue ;; esac
+        ts="$(jq -r .written_at "$f" | tr -dc 0-9)"
+        echo "$ts stop .agents/team/runs/$RUN/$(basename "$f") — $(jq -r '.message // ""' "$f")"
+      done
+      # Attention lines after the active stage's newest record are still unanswered.
+      stage="$(jq -r '.role // empty' "$TD/session.json" 2>/dev/null || true)"
+      if [ -n "$stage" ]; then
+        f="$(ls -1 "$TD/runs/$RUN/$stage"-*-*.json 2>/dev/null | tail -n 1 || true)"
+        [ -z "$f" ] || since="$(jq -r .written_at "$f" | tr -dc 0-9)"
+      fi
+      [ ! -f "$TD/runs/$RUN/attention" ] || while IFS= read -r l; do
+        ts="$(printf '%s' "${l%% *}" | tr -dc 0-9)"
+        [ -n "$ts" ] && [[ "$ts" > "$since" ]] || continue
+        echo "$ts attention .agents/team/runs/$RUN/attention — ${stage:-?}: ${l#* }"
+      done < "$TD/runs/$RUN/attention"
+    fi
+    if [ -n "$MAIN" ]; then
+      for f in "$MAIN/.agents/team/inbox/$1/new"/*; do
+        [ -f "$f" ] || continue
+        echo "$(basename "$f" | cut -c1-16 | tr -dc 0-9) inbox $f — $(sed -n 's/^event: //p' "$f" | head -n 1)"
+      done
+    fi
+  } | sort -s -k1,1 | cut -d' ' -f2-
+}
+
+end_lead() {
+  resolve "$1"
+  team_end_session "$TD" "$(team_tmux_name "$1" lead)" lead "${TEAM_EXIT_WAIT_SECS:-60}" \
+    || { echo "error: TeamLead session of $1 did not end" >&2; exit 1; }
+  rm -f "$TD/teamlead.reg.json"
+  echo "TeamLead ended: $1"
+}
+
+finalize() {
+  end_lead "$1" >/dev/null
+  if [ -n "$RUN" ] && [ -d "$TD/runs/$RUN" ] && [ ! -e "$TD/runs/$RUN/finalized" ]; then
+    printf '%s %s\n' "$2" "$(team_utc)" > "$TD/runs/$RUN/finalized"
+  fi
+  echo "finalized: $1 ${RUN:-none} $2"
+}
 
 # Same union as supervisor-sessions.sh materialize, written into the clone instead of the main
 # checkout's watch/profiles: the lead runs in the clone, the global roles do not.
@@ -52,5 +127,10 @@ materialize() {
 case "$1" in
   materialize) [ $# -eq 2 ] || usage; materialize "$2" ;;
   whoami) [ $# -eq 1 ] || usage; team_lead_caller ;;
+  pending) [ $# -eq 2 ] || usage; pending "$2" ;;
+  end) [ $# -eq 2 ] || usage; end_lead "$2" ;;
+  finalize) [ $# -eq 3 ] && [ "$3" = merged ] || usage; finalize "$2" "$3" ;;
+  relaunch) [ $# -eq 2 ] || usage; resolve "$2"; touch "$TD/relaunch-lead"
+    echo "TeamLead relaunch requested: $2 (the live runner relaunches it at its next poll)" ;;
   *) usage ;;
 esac
