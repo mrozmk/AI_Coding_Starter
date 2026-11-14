@@ -35,9 +35,9 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 - **Model and effort per role** come from `.claude/team/roles.json` (default: Opus [1M] for all; effort
   planner high, coder medium, qa high). The runner reads it from the main checkout, so a local edit
   applies at the next role launch; commit it to change the default. The qa role's
-  `/check-implementation` spawns its two finders on the model and effort pinned in
-  `.claude/agents/correctness-reviewer.md` and `.claude/agents/structure-reviewer.md` —
-  `roles.json` does not reach them, and a QA stage takes ≈15 min longer per iteration for it. Codex reviews inside
+  `/check-implementation` still reviews inline on the role's own model: the pinned finder agents
+  (`.claude/agents/correctness-reviewer.md`, `structure-reviewer.md`, checked by
+  `.claude/lib/finder-model.sh`) ship ready, but spawning them in parallel is a planned step. Codex reviews inside
   `/brainstorm`, `/plan-feature` and `/check-implementation` run on the project profile, which the
   runner exports per role session (`CODEX_HOME`) from `.claude/codex-profile`; their config is
   `$CODEX_HOME/config.toml`. A role launched before that change keeps the environment it started
