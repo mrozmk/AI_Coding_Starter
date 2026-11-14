@@ -91,7 +91,7 @@ The three `SKIPPED_*` totals are **uncapped by design** — `MAXSKIP` suppresses
 
 !`find -L . -maxdepth 3 -path './.agents/specs/*.md' -type f -ls 2>/dev/null | jq -R -n -r '([9] | implode) as $t | [inputs | match("^ *[0-9]+ +[0-9]+ +[^ ]+ +[0-9]+ +[^ ]+ +[^ ]+ +([0-9]+) +[^ ]+ +[^ ]+ +[^ ]+ (.*)$") | {size: (.captures[0].string | tonumber), path: (.captures[1].string | gsub("\\\\(?<c>[ \\\\\"])"; .c))}] | sort_by(.size, .path) | reverse | (.[:15][] | (.size | tostring) + $t + .path), ("SPECS_TOTAL" + $t + (length | tostring) + " files / " + (map(.size) | add // 0 | tostring) + " bytes (listing only — never auto-read)"), (if length > 15 then "…" + (length - 15 | tostring) + " more — rg --files .agents/specs" else empty end)'`
 
-**Non-Markdown reference artifacts** — discoverable, never loaded (`/architecture-review` writes HTML reports here):
+**Non-Markdown reference artifacts** — discoverable, never loaded (`/architecture-review` and `/architecture-doc` write HTML reports here):
 
 !`find . -maxdepth 3 -path './.agents/reference/*' -not -name '*.md' -type f 2>/dev/null | jq -R -n -r '([9] | implode) as $t | [inputs | select(length > 0)] | .[:10][] | "NOT_LOADED" + $t + .'`
 

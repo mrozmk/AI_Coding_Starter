@@ -39,6 +39,8 @@ command **defines** `AD-n` (decision-table row, first cell `AD-n`, `Status` `act
 
 - **Not `/architecture-review`** — that audits *existing code* for depth and coupling, after
   implementation. `/architect` decides structure *before* code, from requirements.
+- **Not `/architecture-doc`** — that draws the *built* system as flow diagrams for a human reader;
+  it reads these decisions as the plan and reports where the code drifted from them.
 - **Not `/brainstorm`** — that designs one feature inside these decisions and cites the `AD-n` it
   must obey. `/architect` sets the decisions.
 - **Replaces `/setup:stack-research`** — its method lives in `stack-research.md` as Phase 3; there
