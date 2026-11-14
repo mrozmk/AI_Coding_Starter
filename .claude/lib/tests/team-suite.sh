@@ -166,7 +166,7 @@ fi
 for s in team-setup-smoke team-profile-smoke team-tracker-smoke team-pr-smoke worker-smoke \
          cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test \
          gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke \
-         finder-model-test; do
+         finder-model-test prime-probes-test; do
   step "$s" bash "$TESTS/$s.sh"
 done
 

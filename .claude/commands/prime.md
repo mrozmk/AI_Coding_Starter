@@ -48,8 +48,8 @@ If `architecture.md` is `status: populated` or `seeded` → **Read it.**
 
 If `status: empty` (or missing):
 - Emit warning: `⚠️ architecture.md is empty — run /setup:create-CLAUDE_MD.`
-- Minimal fallback (no full tree dump). Prefer `rg --files` — it respects `.gitignore`, so generated/vendored dirs drop out for free without an ever-growing `-not -path` list:
-  !`rg --files --max-depth 3 -g '!node_modules' -g '!dist' -g '!build' 2>/dev/null | awk -F/ 'NF>1{NF--; print}' OFS=/ | sort -u | head -40 || find . -maxdepth 2 -type d -not -path '*/node_modules*' -not -path '*/.git*' 2>/dev/null | head -30`
+- Minimal fallback (no full tree dump). `rg --files` respects `.gitignore`, so generated/vendored dirs drop out for free without an ever-growing `-not -path` list; `jq` reduces the paths to their unique directories:
+  !`rg --files --max-depth 3 -g '!node_modules' -g '!dist' -g '!build' 2>/dev/null | jq -R -n -r '[inputs | split("/") | select(length > 1) | .[:-1] | join("/")] | unique | .[:40][]'`
 
 ### 4. Engineering memory — full mode only
 
@@ -69,7 +69,7 @@ For each listed file: read it. For `domain/business-model.md` specifically, hono
 
 Measurement (runs in both modes; only full mode reads the files):
 
-!`find . -maxdepth 4 -path './.agents/memory/*.md' -not -path '*/archive/*' -not -name 'reflection-protocol.md' -exec wc -c {} + 2>/dev/null | awk '$NF != "total" { t+=$1; n++ } END { print "MEMORY_TOTAL\t"n+0" files / "t+0" bytes ≈ "int((t+0)/4000)"k tokens (on-disk upper bound)" }'`
+!`find -L . -maxdepth 4 -path './.agents/memory/*.md' -not -path '*/archive/*' -not -name 'reflection-protocol.md' -type f -ls 2>/dev/null | jq -R -n -r '([9] | implode) as $t | [inputs | match("^ *[0-9]+ +[0-9]+ +[^ ]+ +[0-9]+ +[^ ]+ +[^ ]+ +([0-9]+) +[^ ]+ +[^ ]+ +[^ ]+ (.*)$") | {size: (.captures[0].string | tonumber), path: (.captures[1].string | gsub("\\\\(?<c>[ \\\\\"])"; .c))}] | (map(.size) | add // 0) as $b | "MEMORY_TOTAL" + $t + (length | tostring) + " files / " + ($b | tostring) + " bytes ≈ " + ($b / 4000 | floor | tostring) + "k tokens (on-disk upper bound)"'`
 
 `MEMORY_WARN = 200 KB`. The memory layer is **never gated** — every file above is read regardless of this number. When `MEMORY_TOTAL` exceeds `MEMORY_WARN`, add a warning to the report naming `/maintain:cleanup-workflow`. Skipping a memory file to save context is worse than the context it saves: the agent then repeats a bug the project already recorded, and nothing tells it the file was missing.
 
@@ -83,17 +83,17 @@ Report the figure as an **on-disk upper bound**, not as "context loaded". It cou
 
 **Reference selector** — loads ascending by size; each file is `LOAD`, or skipped with its reason (`CAP` → `MAXLOAD` → `BUDGET`, in that precedence):
 
-!`find . -maxdepth 3 -path './.agents/reference/*.md' -exec wc -c {} + 2>/dev/null | awk '$NF != "total" { match($0, /[0-9]+/); size=substr($0, RSTART, RLENGTH); path=substr($0, RSTART+RLENGTH+1); print size"\t"path }' | sort -n | awk -F'\t' -v CAP=40960 -v BUDGET=122880 -v MAXLOAD=25 -v MAXSKIP=10 '{ path = substr($0, index($0,"\t")+1); if ($1 > CAP) { r="CAP"; cn++; cb+=$1 } else if (n >= MAXLOAD) { r="MAXLOAD"; mn++; mb+=$1 } else if (used+$1 > BUDGET) { r="BUDGET"; bn++; bb+=$1 } else { used+=$1; n++; print "LOAD\t"$1"\t"path; next } s++; if (s<=MAXSKIP) print "SKIP_"r"\t"$1"\t"path } END { print "REFERENCE_LOADED\t"n+0" files / "used+0" bytes ≈ "int((used+0)/4000)"k tokens"; print "SKIPPED_CAP\t"cn+0" files / "cb+0" bytes"; print "SKIPPED_MAXLOAD\t"mn+0" files / "mb+0" bytes"; print "SKIPPED_BUDGET\t"bn+0" files / "bb+0" bytes"; if (s > MAXSKIP) print "…"s-MAXSKIP" more skipped (names only) — rg --files .agents/reference" }'`
+!`find -L . -maxdepth 3 -path './.agents/reference/*.md' -type f -ls 2>/dev/null | jq -R -n -r '([9] | implode) as $t | [inputs | match("^ *[0-9]+ +[0-9]+ +[^ ]+ +[0-9]+ +[^ ]+ +[^ ]+ +([0-9]+) +[^ ]+ +[^ ]+ +[^ ]+ (.*)$") | {size: (.captures[0].string | tonumber), path: (.captures[1].string | gsub("\\\\(?<c>[ \\\\\"])"; .c))}] | sort_by(.size, .path) | reduce .[] as $f ({used: 0, n: 0, s: 0, rows: [], c: {CAP: [0, 0], MAXLOAD: [0, 0], BUDGET: [0, 0]}}; (if $f.size > 40960 then "CAP" elif .n >= 25 then "MAXLOAD" elif .used + $f.size > 122880 then "BUDGET" else "LOAD" end) as $r | if $r == "LOAD" then .used += $f.size | .n += 1 | .rows += ["LOAD" + $t + ($f.size | tostring) + $t + $f.path] else .c[$r] = [.c[$r][0] + 1, .c[$r][1] + $f.size] | .s += 1 | if .s <= 10 then .rows += ["SKIP_" + $r + $t + ($f.size | tostring) + $t + $f.path] else . end end) | .rows[], ("REFERENCE_LOADED" + $t + (.n | tostring) + " files / " + (.used | tostring) + " bytes ≈ " + (.used / 4000 | floor | tostring) + "k tokens"), (.c | to_entries[] | "SKIPPED_" + .key + $t + (.value[0] | tostring) + " files / " + (.value[1] | tostring) + " bytes"), (if .s > 10 then "…" + (.s - 10 | tostring) + " more skipped (names only) — rg --files .agents/reference" else empty end)'`
 
 The three `SKIPPED_*` totals are **uncapped by design** — `MAXSKIP` suppresses pathname rows, never the per-reason counters. Otherwise a reason whose files all sort after the first ten skips would be invisible, and the report would recommend raising the wrong constant.
 
 **Specs listing** — never auto-read:
 
-!`find . -maxdepth 3 -path './.agents/specs/*.md' -exec wc -c {} + 2>/dev/null | awk '$NF != "total" { match($0, /[0-9]+/); size=substr($0, RSTART, RLENGTH); path=substr($0, RSTART+RLENGTH+1); print size"\t"path }' | sort -rn | awk -F'\t' -v MAXROWS=15 '{ n++; s+=$1; if (n<=MAXROWS) print } END { print "SPECS_TOTAL\t"n+0" files / "s+0" bytes (listing only — never auto-read)"; if (n > MAXROWS) print "…"n-MAXROWS" more — rg --files .agents/specs" }'`
+!`find -L . -maxdepth 3 -path './.agents/specs/*.md' -type f -ls 2>/dev/null | jq -R -n -r '([9] | implode) as $t | [inputs | match("^ *[0-9]+ +[0-9]+ +[^ ]+ +[0-9]+ +[^ ]+ +[^ ]+ +([0-9]+) +[^ ]+ +[^ ]+ +[^ ]+ (.*)$") | {size: (.captures[0].string | tonumber), path: (.captures[1].string | gsub("\\\\(?<c>[ \\\\\"])"; .c))}] | sort_by(.size, .path) | reverse | (.[:15][] | (.size | tostring) + $t + .path), ("SPECS_TOTAL" + $t + (length | tostring) + " files / " + (map(.size) | add // 0 | tostring) + " bytes (listing only — never auto-read)"), (if length > 15 then "…" + (length - 15 | tostring) + " more — rg --files .agents/specs" else empty end)'`
 
 **Non-Markdown reference artifacts** — discoverable, never loaded (`/architecture-review` writes HTML reports here):
 
-!`find . -maxdepth 3 -path './.agents/reference/*' -not -name '*.md' -type f 2>/dev/null | head -10 | sed 's/^/NOT_LOADED\t/'`
+!`find . -maxdepth 3 -path './.agents/reference/*' -not -name '*.md' -type f 2>/dev/null | jq -R -n -r '([9] | implode) as $t | [inputs | select(length > 0)] | .[:10][] | "NOT_LOADED" + $t + .'`
 
 **Rules:**
 
@@ -102,10 +102,12 @@ The three `SKIPPED_*` totals are **uncapped by design** — `MAXSKIP` suppresses
 - **Both modes:** `.agents/specs/` is never auto-read. When a task targets a spec, read that one file deliberately.
 - `NOT_LOADED` rows are non-Markdown artifacts in `reference/` (generated HTML reports and the like). Never auto-read; listed so an agent can find one and open it deliberately.
 - **`MAXLOAD` is an absolute guardrail, not a shaping cap — it never yields.** It bounds what gets *selected and read*, not how the report looks. Investigating the residue may print more names; it may never turn a `SKIP_MAXLOAD` into a `LOAD` or raise the Read-call count. Per the Output-Discipline Convention (`index.md` → Output-Discipline Convention), only shaping rules carry a yield; a guardrail that grows an escape hatch stops being one.
-- The **shaping** caps — `MAXSKIP`, `MAXROWS`, and the `head -10` on non-`.md` — bound the *inventory*, which is context too. **These yield when the residue is the subject of the question**: a session investigating why context is full prints the full list via the `rg --files` pointer.
+- The **shaping** caps — `MAXSKIP`, `MAXROWS`, and the 10-row cap (`.[:10]`) on non-`.md` — bound the *inventory*, which is context too. **These yield when the residue is the subject of the question**: a session investigating why context is full prints the full list via the `rg --files` pointer.
 - **Why `MAXLOAD` exists alongside the byte budget:** a byte budget alone bounds *content*, not *rows or Read calls*. 400 files of 300 bytes fit inside 120 KB and would produce 400 `LOAD` rows and 400 tool calls — the same failure in a different currency.
 
-> **Known limitation:** the pipeline is line-delimited, so a filename containing a **newline** splits into two rows and both the counts and the paths go wrong. Deliberately not fixed — a NUL-safe pipeline costs real complexity in a probe that must stay readable and exit `0` by construction, against a filename nobody creates accidentally in `.agents/reference/`. Repeated spaces and tabs in filenames **are** handled correctly.
+> **Probe form.** Every probe is `find … -ls` (or a single allow-listed command) piped into `jq` — the only forms a team clone's skill-load permission check accepts; `-exec`, `awk`, `sed`, `sort`, `xargs` and `$(…)` make the whole command fail to load (guarded by `.claude/lib/tests/prime-probes-test.sh`). A shell glob is no alternative: zsh aborts a command whose glob matches nothing. `-L … -type f` measures what a symlink points to (as `wc -c` did) and skips a directory named `*.md`. `jq` parses the size (7th column) and the path (everything after the three date columns) of each `-ls` line, undoes GNU find's `\ ` / `\\` / `\"` escapes, and exits `0` on empty input, so each probe exits `0` by construction.
+>
+> **Known limitations:** the pipeline is line-delimited, so a filename containing a **newline** splits into two rows and both the counts and the paths go wrong. Deliberately not fixed — a NUL-safe pipeline costs real complexity in a probe that must stay readable and exit `0` by construction, against a filename nobody creates accidentally in `.agents/reference/`. Repeated spaces in filenames **are** handled correctly. GNU find octal-escapes characters it deems unprintable in the current locale (non-ASCII names under `LC_ALL=C`): such a name is listed escaped, while counts and bytes stay right.
 
 ### 6. Plans — listing only (both modes)
 
@@ -119,8 +121,8 @@ Do not read plan files in `/prime` itself. Read them only when the user's concre
 !`git log -10 --oneline`
 !`git status`
 
-Branch sync (ahead/behind origin):
-!`up=$(git rev-parse --abbrev-ref --symbolic-full-name 'HEAD@{upstream}' 2>/dev/null) && git rev-list --left-right --count "$up"...HEAD 2>/dev/null | awk '{print "behind origin: "$1"  |  ahead of origin: "$2}' || echo 'no upstream tracking branch'`
+Branch sync — the `## <branch>...<upstream> [ahead N, behind M]` header (no `...<upstream>` part = no tracking branch):
+!`git status -sb 2>/dev/null | head -1`
 
 ### 8. Skipped deliberately
 
@@ -145,8 +147,8 @@ Use this exact structure:
 
 ### Memory — facts
 
-Run a cheap stat listing (filesystem size + mtime — no per-file shell loop, no command substitution):
-!`find . -maxdepth 4 -path './.agents/memory/*.md' -not -path '*/archive/*' -exec ls -la {} + 2>/dev/null`
+Run a cheap stat listing (`find -ls`: filesystem size + mtime — no per-file shell loop, no command substitution):
+!`find -L . -maxdepth 4 -path './.agents/memory/*.md' -not -path '*/archive/*' -type f -ls 2>/dev/null`
 
 Render the output as a bulleted list of `<file> — <size>, modified <date>`, one line per memory file the listing returned. (Filesystem size/mtime stand in for line count / commit date — a cheap orientation cue, not a precise metric.)
 
