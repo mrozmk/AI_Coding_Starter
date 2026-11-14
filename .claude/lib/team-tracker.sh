@@ -9,6 +9,11 @@
 #   create-followup --marker <m> --title <t> --body-file <f>
 #   list --out <file>                                        (read-only; /tasks-status)
 #   show <key> --out <file>                                  (read-only; /tasks-status)
+#   create-issue --marker <m> --title <t> --body-file <f>    (marker on ANY body line; /github-sync)
+#   markers --prefix <p> --out <file>                        (read-only; /github-sync)
+#   sub-issues <parent> --out <file>                         (read-only; /github-sync)
+#   add-sub-issue <parent> <child>                           (idempotent; /github-sync)
+#   project-add <key>                                        (idempotent; /github-sync)
 #
 # Profile: the `teams` block when there is one (full validation), else the top-level `tracker` and
 # `github` block of a single-session project (`team_tracker_profile_load`). A github block without
@@ -208,16 +213,38 @@ $TEAM_GH_PROJECT_NUMBER — refusing to edit one of them"
 }
 
 op_create_followup() {
-  local marker="$1" title="$2" file="$3" n url hits
-  marker_is_last_line "$file" "$marker"
+  marker_is_last_line "$3" "$1"
+  create_marked last "$2" "$3"
+}
+
+# create-issue: the backlog sync's create. The marker is a line ANYWHERE in the body — a note a
+# human appends under it must not turn the next run into a duplicate create.
+op_create_issue() {
+  [ -r "$3" ] || die 2 "body file '$3' is not readable"
+  MARKER_N="$(printf '%s' "$1" | tr -d '\r')"
+  [ -n "$MARKER_N" ] || die 2 "the marker is empty"
+  tr -d '\r' < "$3" | grep -Fxq -- "$MARKER_N" || die 2 "the marker must be a line of '$3'"
+  create_marked any "$2" "$3"
+}
+
+# Usage: all_issues → $TMP/all.json, EVERY issue of the repo (all states, every page, PRs dropped).
+# `--paginate` into a file: a later-page failure is a non-zero exit, never a short list.
+all_issues() {
   gh_or4 gh api "repos/$TEAM_GH_REPO/issues?state=all&per_page=100" --paginate > "$TMP/raw.json"
-  jq -s 'add // []' "$TMP/raw.json" > "$TMP/all.json" \
+  jq -s 'add // [] | map(select(.pull_request | not))' "$TMP/raw.json" > "$TMP/all.json" \
     || die 4 "issue list of $TEAM_GH_REPO is not parseable"
-  jq --arg m "$MARKER_N" \
-    'map(select((.pull_request | not)
-       and ((.body // "") | gsub("\r"; "") | rtrimstr("\n") | split("\n") | last == $m)))' \
+}
+
+# Usage: create_marked last|any <title> <body file> — $MARKER_N set by the caller. Looks the marker
+# up over the full list (as the last body line, or as any body line), then 0 → create · 1 → exists ·
+# >1 → recoverable, with nothing written.
+create_marked() {
+  local mode="$1" title="$2" file="$3" n url hits
+  all_issues
+  jq --arg m "$MARKER_N" --arg mode "$mode" \
+    'map(select((.body // "") | gsub("\r"; "") | rtrimstr("\n") | split("\n")
+       | if $mode == "last" then last == $m else any(. == $m) end))' \
     "$TMP/all.json" > "$TMP/hits.json" || die 4 "issue list of $TEAM_GH_REPO is not parseable"
-  # Same rule as op_comment: 0 → create · 1 → exists · >1 → recoverable, with nothing written.
   hits="$(jq -r 'length' "$TMP/hits.json")"
   [ "$hits" -le 1 ] \
     || die 4 "marker '$MARKER_N' matches $hits issues of $TEAM_GH_REPO — refusing to choose one"
@@ -291,11 +318,77 @@ op_show() {
   jq -r '"key=" + .key + " comments=" + (.comments | length | tostring)' "$out"
 }
 
+# markers: every issue line that starts with <prefix> and ends with ` -->`, over the full list →
+# {"<marker line>": [{number, hash}]}; `hash` is the issue's `<!-- backlog-hash:<h> -->` line, or
+# null. Read-only. More than one number under a marker is the caller's ambiguity to refuse.
+op_markers() {
+  local prefix="$1" out="$2"
+  all_issues
+  jq --arg p "$prefix" '
+    reduce (.[] | . as $i | ((.body // "") | gsub("\r"; "") | split("\n")) as $ls
+      | ([$ls[] | select(startswith("<!-- backlog-hash:") and endswith(" -->"))
+          | ltrimstr("<!-- backlog-hash:") | rtrimstr(" -->")] | .[0] // null) as $h
+      | $ls[] | select(startswith($p) and endswith(" -->")) | {m: ., n: $i.number, h: $h})
+    as $x ({}; .[$x.m] += [{number: $x.n, hash: $x.h}])' "$TMP/all.json" > "$TMP/markers.json" \
+    || die 4 "issue list of $TEAM_GH_REPO is not parseable"
+  write_atomic "$TMP/markers.json" "$out"
+  jq -r '"markers=" + (keys | length | tostring)' "$out"
+}
+
+# Usage: sub_issue_numbers <parent> → $TMP/subs.json, the parent's sub-issue numbers (every page).
+sub_issue_numbers() {
+  gh_or4 gh api "repos/$TEAM_GH_REPO/issues/$1/sub_issues?per_page=100" --paginate > "$TMP/raw.json"
+  jq -s 'add // [] | map(.number)' "$TMP/raw.json" > "$TMP/subs.json" \
+    || die 4 "sub-issue list of #$1 is not parseable"
+}
+
+op_sub_issues() {
+  sub_issue_numbers "$KEY"
+  write_atomic "$TMP/subs.json" "$1"
+  jq -r '"sub_issues=" + (length | tostring)' "$1"
+}
+
+# add-sub-issue: idempotent — the full list first; only a missing child is added, by its database id.
+op_add_sub_issue() {
+  local parent="$KEY" child="$1" id
+  sub_issue_numbers "$parent"
+  if jq -e --argjson c "$child" 'index($c) != null' "$TMP/subs.json" >/dev/null; then
+    echo "exists"; return 0
+  fi
+  gh_or4 gh api "repos/$TEAM_GH_REPO/issues/$child" > "$TMP/child.json"
+  id="$(jq -r '.id // empty' "$TMP/child.json")"
+  [[ "$id" =~ ^[0-9]+$ ]] || die 4 "issue #$child has no readable id"
+  gh_or4 gh api -X POST "repos/$TEAM_GH_REPO/issues/$parent/sub_issues" \
+    -F "sub_issue_id=$id" > /dev/null
+  echo "added"
+}
+
+# project-add: idempotent — the full board list first (repo + number identity); >1 match is exit 4.
+op_project_add() {
+  local hits url
+  if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
+  project_items
+  hits="$(jq -r --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
+    '[.items[] | select(.content.type == "Issue" and .content.number == $n
+       and .content.repository == $repo)] | length' "$TMP/items.json")" \
+    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
+  [ "$hits" -le 1 ] || die 4 "issue #$KEY matches $hits items in project \
+$TEAM_GH_PROJECT_NUMBER — refusing to guess"
+  if [ "$hits" = 1 ]; then echo "exists"; return 0; fi
+  gh_or4 gh issue view "$KEY" --repo "$TEAM_GH_REPO" --json url > "$TMP/url.json"
+  url="$(jq -r '.url // empty' "$TMP/url.json")"
+  [ -n "$url" ] || die 4 "issue #$KEY has no URL"
+  gh_or4 gh project item-add "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
+    --url "$url" > /dev/null
+  echo "added"
+}
+
 # ---- dispatch -----------------------------------------------------------------------------------
 
 op="${1:-}"; [ $# -eq 0 ] || shift
-case "$op" in read|comment|set-status|create-followup|list|show) ;;
-  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|list|show …" ;;
+case "$op" in
+  read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add) ;;
+  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add …" ;;
 esac
 
 if [ "$TEAM_TRACKER" = jira ]; then
@@ -311,13 +404,14 @@ fi
 [ "$TEAM_TRACKER" != none ] || [ -n "$TEAM_TRACKER_TEAMS" ] \
   || die 2 "read: local L<n> tickets need the teams block — tracker=none without teams has no tickets"
 
-OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; POS=()
+OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; PREFIX=""; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --out)        OUT="${2:-}"; shift 2 || die 2 "--out needs a directory" ;;
     --marker)     MARKER="${2:-}"; shift 2 || die 2 "--marker needs a value" ;;
     --body-file)  BODY_FILE="${2:-}"; shift 2 || die 2 "--body-file needs a path" ;;
     --title)      TITLE="${2:-}"; shift 2 || die 2 "--title needs a value" ;;
+    --prefix)     PREFIX="${2:-}"; shift 2 || die 2 "--prefix needs a value" ;;
     --brief)      BRIEF="${2:-}"; HAS_BRIEF=1; shift 2 || die 2 "--brief needs text" ;;
     --brief-file) [ -r "${2:-}" ] || die 1 "--brief-file '${2:-}' is not readable"
                   BRIEF="$(cat "$2")"; HAS_BRIEF=1; shift 2 ;;
@@ -354,6 +448,29 @@ case "$op" in
     [ -n "$TITLE" ] || die 2 "create-followup needs --title <t>"
     [ -n "$BODY_FILE" ] || die 2 "create-followup needs --body-file <f>"
     op_create_followup "$MARKER" "$TITLE" "$BODY_FILE" ;;
+  create-issue)
+    [ -n "$MARKER" ] || die 2 "create-issue needs --marker <m>"
+    [ -n "$TITLE" ] || die 2 "create-issue needs --title <t>"
+    [ -n "$BODY_FILE" ] || die 2 "create-issue needs --body-file <f>"
+    op_create_issue "$MARKER" "$TITLE" "$BODY_FILE" ;;
+  markers)
+    [ -n "$PREFIX" ] || die 2 "markers needs --prefix <p>"
+    [ -n "$OUT" ] || die 2 "markers needs --out <file>"
+    op_markers "$PREFIX" "$OUT" ;;
+  sub-issues)
+    [ $# -eq 1 ] || die 2 "sub-issues needs a parent key"
+    [ -n "$OUT" ] || die 2 "sub-issues needs --out <file>"
+    norm_key "$1"
+    op_sub_issues "$OUT" ;;
+  add-sub-issue)
+    [ $# -eq 2 ] || die 2 "usage: add-sub-issue <parent> <child>"
+    norm_key "$2"; child="$KEY"
+    norm_key "$1"
+    op_add_sub_issue "$child" ;;
+  project-add)
+    [ $# -eq 1 ] || die 2 "project-add needs a ticket key"
+    norm_key "$1"
+    op_project_add ;;
   list)
     [ $# -eq 0 ] || die 2 "list takes no ticket key"
     [ -n "$OUT" ] || die 2 "list needs --out <file>"

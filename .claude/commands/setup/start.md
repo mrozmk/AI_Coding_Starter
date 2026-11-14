@@ -222,7 +222,7 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 4. `/maintain:refresh-brief` — distill the PRD into `project-brief.md`
 5. `/prime` — reload with the new brief
 6. `/setup:create-backlog` — Epics/Tasks, lanes, story map
-7. `/jira sync` — when `tracker=jira`
+7. `/jira sync` — when `tracker=jira`; `/github-sync` — when `tracker=github`
 8. `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M)
 9. `/plan-feature` → 10. `/execute`
 11. `/setup:start --rerun` — fills the toolchain block and declares the LSP plugin now that a manifest exists; pass its activation gate (step 6b) **before step 12**

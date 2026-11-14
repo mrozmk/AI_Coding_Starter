@@ -1026,6 +1026,14 @@ test('staleTaskWarnings: a Jira-keyed Task reopened in the tracker keeps only th
   assert.match(w[0], /Ref lacks a done plan/);
 });
 
+test('staleTaskWarnings: a GitHub issue number in the Jira cell keeps the Status check', () => {
+  const dir = project();
+  writePlan(dir, DONE_PLAN, { tasks: 'E1-1' });
+  const w = staleTaskWarnings([task({ jira: '#42', ref: `${SPEC}, ${DONE_PLAN}` })], loadPlanTasks(dir));
+  assert.equal(w.length, 1);
+  assert.match(w[0], /Status TODO, not DONE/);
+});
+
 test('loadPlanTasks: quick-mode spec → null, non-Task id dropped; withdrawn Task skipped', () => {
   const dir = project();
   writePlan(dir, DONE_PLAN, { tasks: 'E1-1', spec: 'none (quick mode)' });

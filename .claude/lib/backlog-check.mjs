@@ -24,6 +24,7 @@ const LANE_COUNTS = [2, 3, 4];
 const CRITICAL_PATH_SHARE = 0.6;
 
 const TASK_ID = /^E\d+-\d+$/;
+const JIRA_KEY = /^[A-Z]+-\d+/;
 const EPIC_ID = /^E\d+$/;
 const AC_ID = /^E\d+-\d+\.AC\d+$/;
 const SLICE = /^(WS|R\d+)$/;
@@ -610,7 +611,8 @@ export function chainPaths(tasks) {
 /**
  * A Task on a done plan's `**Tasks:**` line and on no active plan's is delivered: it must be
  * `DONE` with one of those plans (and its spec, when named) in `Ref`. Advisory only. A Task with a
- * `Jira` key skips the Status part — a reopen refreshed from Jira legitimately overrides the plan.
+ * `Jira` key skips the Status part — a reopen refreshed from Jira legitimately overrides the plan. A
+ * GitHub issue number in that cell (`#42`, written by /github-sync) does not: nothing refreshes it.
  */
 export function staleTaskWarnings(tasks, plans) {
   const activeIds = new Set(plans.active.flatMap((p) => p.ids));
@@ -623,7 +625,7 @@ export function staleTaskWarnings(tasks, plans) {
     const paths = delivered.map((p) => p.path);
     const specs = [...new Set(delivered.map((p) => p.spec).filter(Boolean))];
     const problems = [];
-    if (t.status !== 'DONE' && !t.jira) problems.push(`Status ${t.status || '(empty)'}, not DONE`);
+    if (t.status !== 'DONE' && !JIRA_KEY.test(t.jira ?? '')) problems.push(`Status ${t.status || '(empty)'}, not DONE`);
     if (!paths.some((p) => ref.includes(p))) problems.push(`Ref lacks a done plan (${paths.join(', ')})`);
     if (specs.length && !specs.some((s) => ref.includes(s))) problems.push(`Ref lacks its spec (${specs.join(', ')})`);
     if (problems.length) warnings.push(`Task ${t.id}: delivered by ${paths[0]} but ${problems.join('; ')}`);

@@ -163,7 +163,7 @@ if [ -f "$TESTS/team-smoke.sh" ]; then
 fi
 
 # ---- 3. standalone suites (cost-tests carries the costs unittest) -------------------------------
-for s in team-setup-smoke team-profile-smoke team-tracker-smoke team-pr-smoke worker-smoke \
+for s in team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke \
          cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test \
          gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke \
          finder-model-test prime-probes-test starter-fork-commit-test fix-snapshot-test; do
