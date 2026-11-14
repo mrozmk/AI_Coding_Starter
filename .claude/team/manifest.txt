@@ -66,6 +66,8 @@ own .claude/lib/costs/runtime.py
 own .claude/lib/costs/stages.py
 own .claude/lib/costs/store.py
 own .claude/lib/costs/summary.py
+own .agents/reference/token-usage.md
+own .claude/commands/ai-costs.md
 own .claude/lib/team-answer.sh
 own .claude/lib/team-attach.sh
 own .claude/lib/team-escalate-lib.sh
