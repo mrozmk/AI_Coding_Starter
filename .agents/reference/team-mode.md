@@ -136,10 +136,10 @@ branch's base and equal to the supervisor's, or the start is refused.
 | Role | Questions | Memory | Material decision | End |
 |---|---|---|---|---|
 | planner | asked normally (attended); `/brainstorm` Step 9 waits for the per-run TeamLead's spec gate (and its `done` for the plan gate, team-lead.md §4), or without one auto-approves unless a 🔶 rethink signal | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
-| coder | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | `/pr-create` draft, `team-record --verdict done --pr <id>` |
+| coder | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
 | qa | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
 | wrapup | asked normally (attended), only when it has recommendations | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the lead decides both groups, team-lead.md §10; the developer may accept in the window) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
-| cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | `/pr-create` published PR, `team-record --verdict done --pr <id>` |
+| cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | published PR via `team-pr.sh create --ready`, `team-record --verdict done --pr <id>` |
 
 'Asked normally (attended)' means, with a per-run TeamLead, that the run's lead answers on an
 authority ([team-lead.md](team-lead.md) §6; the wrapup's menus §10) and only human-only items reach
@@ -373,7 +373,7 @@ The QA report's free text records `Load: start … end … (waited …s)` for ea
 | `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks |
 | `/commit` | Step 9 memory checkpoint skipped |
 | `/quick-change` | quick planner: Phases 0–2, then the plan file, no code |
-| `/pr-create` | coder (draft) or cli (published); `DEST` = `team.json` `line`; no Step 7 question; notes sections in the body, including `## Supervised decisions` (cli adds `## Follow-ups`) |
+| `/pr-create` | not used by the team roles — Step 7a stops in team mode; the coder (draft) and cli (published) create the PR with `team-pr.sh create` against `team.json` `line` on both providers (§8a) |
 
 ## 8a. PR provider
 
@@ -385,8 +385,10 @@ matching it).
 
 - `team-pr.sh` ops: `coords`, `state`, `identity`, `readiness`, `create --draft|--ready`, `publish`,
   `body-get`, `body-set`. Exit: 0 ok · 2 usage/profile/provider · 3 refusal · 4 recoverable (network,
-  merge ref not ready). It never merges and never forces.
-- Prompt blocks per provider: `.claude/team/pr/<provider>-<block>.md`; `/pr-create` stays ADO-only text.
+  merge ref not ready). It never merges and never forces. With `azure-devops` only `create` and
+  `publish` exist (`team-pr-ado.sh`: the same before/after lookup, draft rules, a body ≤ 4000
+  characters); state and validation stay on the `team-lib.sh` helpers.
+- Prompt blocks per provider: `.claude/team/pr/<provider>-<block>.md`.
 - Merge (github): the supervisor runs `team-merge-check.sh <TEAM>` (holds the team runner lock, writes
   `.agents/team/merge-check.json`: target/merge/source SHAs, `records_digest`), asks the Operator, then
   `team-integrate.sh <TEAM> [--base <line>]`. Merge (ADO): `/pr-merge <id>` as before.

@@ -20,7 +20,9 @@
 # `merge_sha` this prints, and resolve it through that ref.
 #
 # ADO is NOT handled here: `team_ado_coords`/`team_pr_json`/`team_pr_identity` in team-lib.sh keep
-# that path byte-for-byte. Callers branch on `$TEAM_PR_PROVIDER`.
+# that path byte-for-byte. Callers branch on `$TEAM_PR_PROVIDER`. The one exception is the team PR
+# itself: `create` and `publish` with pr_provider=azure-devops go to team-pr-ado.sh (same
+# arguments, the same before/after lookup and draft rules).
 #
 # This file never merges and never forces: no `gh pr merge`, no `--admin`, no `--force`, no writing
 # `gh api`. The smoke suite greps for those.
@@ -38,6 +40,9 @@ die() { echo "error: $2" >&2; exit "$1"; }
 
 [ "$TEAM_PR_PROVIDER" != none ] \
   || die 2 "teams.pr_provider=none: the PR layer is off — team-pr.sh needs pr_provider=github"
+if [ "$TEAM_PR_PROVIDER" = azure-devops ]; then
+  case "${1:-}" in create|publish) exec bash "$(dirname "${BASH_SOURCE[0]}")/team-pr-ado.sh" "$@" ;; esac
+fi
 [ "$TEAM_PR_PROVIDER" = github ] \
   || die 2 "azure-devops uses the team-lib.sh helpers (team-pr.sh is github-only)"
 

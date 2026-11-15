@@ -85,6 +85,7 @@ own .claude/lib/team-next.sh
 own .claude/lib/team-pr-render.sh
 own .claude/lib/team-pr-state.sh
 own .claude/lib/team-pr.sh
+own .claude/lib/team-pr-ado.sh
 own .claude/lib/team-question.sh
 own .claude/lib/team-record.sh
 own .claude/lib/team-roles.sh
