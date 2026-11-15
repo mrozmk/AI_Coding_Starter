@@ -21,7 +21,8 @@ per event into `~/.agent-comms/outbox/herdr/new/`, but only when the answering s
 ## What it does not do
 
 - It does not replace the `toast` mod, so Herdr's own alerts look and behave as before.
-- It changes no Herdr setting, layout or other mod, and it turns on no sound.
+- It changes no Herdr setting or other mod, and it turns on no sound. A layout changes only when
+  you dock the strip with `--dock <layout>` (below).
 - It reads and moves files only under `~/.agent-comms/outbox/herdr/`. File names are checked before
   any `mv`, and nothing from an entry's text reaches a path or a command.
 - It runs no other program and makes no network call.
@@ -38,10 +39,11 @@ Mods are trusted code in Herdr, and this one runs `mv` and `touch` through `exec
 ## Install, update, remove
 
 ```sh
-bash .claude/team/herdr-mod/install.sh --dry-run   # what it would do
-bash .claude/team/herdr-mod/install.sh             # install or update
+bash .claude/team/herdr-mod/install.sh --dry-run --dock my-layout   # what it would do
+bash .claude/team/herdr-mod/install.sh --dock my-layout             # install or update, dock the strip
 herdr-app check ~/.config/herdr-app/mods/harness-notify
-bash .claude/team/herdr-mod/install.sh --rollback  # remove (only the folder it installed)
+bash .claude/team/herdr-mod/install.sh --undock my-layout           # take the strip out of that layout
+bash .claude/team/herdr-mod/install.sh --rollback                   # undock everywhere it docked, remove the mod
 ```
 
 The installer writes only `~/.config/herdr-app/mods/harness-notify/` (`$HERDR_APP_HOME` picks
@@ -49,8 +51,26 @@ another app home). It never overwrites a folder of that name that it did not ins
 app home it creates only the spool, `~/.agent-comms/outbox/herdr/new/` and `done/` (mode 700), so
 the strip's heartbeat works before the first event; `--rollback` leaves the spool.
 
-**What Herdr does on its own.** The installer never writes a layout. When Herdr first loads the
-mod, it docks the strip by wrapping the shown layout's root in a new column (the old root's keys
-move into the inner node) and saves that layout file. It also writes editor files into the mod
-folder (`jsconfig.json`, `*.d.ts`). `--rollback` removes those with the mod, and still refuses on
-any other file it did not install.
+**Where the strip goes: only where you dock it.** `mod.json` says `"place": "none"`, so Herdr
+docks the strip nowhere by itself, and without `--dock` no layout file changes. Name the layout
+explicitly: `--dock <layout>` edits only `~/.config/herdr-app/layouts/<layout>.json`.
+- It refuses a missing or unparsable file, a JSON that is no layout, and Herdr's own layouts
+  (`main`, `terminals`, `win98`: Herdr restores them on its next start). Clone one first:
+  `herdr-app do layout.clone '{"name":"main","as":"my-layout"}'`.
+- It validates the file, backs it up as `<layout>.json.harness-bak-<UTC>`, writes the new one
+  atomically and validates it again. A second `--dock` changes nothing.
+- A root `column` gets the strip (`id: harness-notify-strip`, 26 px) as its last child. Any other
+  root is wrapped in a new root column (`id: harness-notify-dock`). The keys Herdr reads from the
+  root only — `titlebar`, `traffic_lights`, `preview`, the menu and toast mods, the look (`theme`,
+  `colors`, fonts, `background`, …) and `cloned_from` — stay on the new root. Herdr's own first-load
+  dock moved them into the inner node, which brought the system title bar back as a band over the
+  window; this one does not.
+
+`--undock <layout>` (and `--rollback`, for every layout `--dock` recorded) removes exactly that: the
+strip, and the wrapper with its keys put back on the old root. When you edited the layout in
+between, it removes only the strip and keeps your nodes (an emptied node of yours stays, with a
+note). It refuses, and writes nothing, when the strip appears more than once, or when you set a
+root key on both the wrapper and the inner node; `--rollback` then removes nothing at all.
+
+Herdr writes editor files into the mod folder on first load (`jsconfig.json`, `*.d.ts`).
+`--rollback` removes those with the mod, and still refuses on any other file it did not install.

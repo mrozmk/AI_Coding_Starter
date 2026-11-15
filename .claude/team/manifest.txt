@@ -232,6 +232,7 @@ own .claude/lib/team-tracker-gate.sh
 own .claude/lib/notify.sh
 own .claude/lib/operator-record.sh
 own .claude/team/herdr-mod/install.sh
+own .claude/team/herdr-mod/dock.py
 own .claude/team/herdr-mod/harness-notify/main.js
 own .claude/team/herdr-mod/harness-notify/spool.js
 own .claude/team/herdr-mod/harness-notify/mod.json

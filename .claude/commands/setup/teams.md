@@ -92,7 +92,8 @@ Then the next step, one of two:
   standing roles), `bash .claude/lib/supervisor-sessions.sh preflight` and the routing step in
   `.agents/reference/supervisor-sessions.md` → Migration.
 Optional, Herdr users only: print (never run) the Herdr notification mod's install line,
-`bash .claude/team/herdr-mod/install.sh --dry-run` then without `--dry-run`, and the switch
+`bash .claude/team/herdr-mod/install.sh --dry-run --dock <layout>` then without `--dry-run` (a
+layout of the user's, never Herdr's `main`; without `--dock` no strip is docked), and the switch
 `{"version": 1, "herdr": {"enabled": true}}` for `~/.agent-comms/notify.json` (mode 0600; the
 user writes it). README: `.claude/team/herdr-mod/harness-notify/README.md`.
 Optional, macOS: print (never run) the iMessage channel's steps — the user adds `imessage`
