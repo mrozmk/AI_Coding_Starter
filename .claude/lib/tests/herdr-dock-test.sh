@@ -145,5 +145,20 @@ inst --dock mine; inst --rollback
 ok '[ "$RC" = 0 ] && [ ! -e "$MODD" ] && cmp -s "$LD/term.json" "$T/pre.json" && same "$LD/mine.json" "$T/row.json"' \
   "--rollback leaves that layout byte-identical and undocks only its own"
 
+# ---- (9) --rollback removes the strip's list in Herdr's store (data/harness-notify/), only that ----
+ST="$APP/data/harness-notify"; mkdir -p "$ST" "$APP/data/other-mod" || die "data"
+echo '{"harness-notify.waiting":"[{\"id\":\"old\"}]"}' > "$ST/store.json"; echo keep > "$APP/data/other-mod/store.json"
+inst; inst --rollback
+ok '[ "$RC" = 0 ] && [ ! -e "$ST" ] && [[ "$OUT" == *"removed $ST"* ]] && [ "$(cat "$APP/data/other-mod/store.json")" = keep ]' \
+  "--rollback removes data/harness-notify/ and no other mod's store"
+mkdir -p "$ST" && echo x > "$ST/store.json" && echo mine > "$ST/notes.txt" || die "store"
+inst --rollback
+ok '[ "$RC" = 0 ] && [[ "$OUT" == *"left $ST"* ]] && [ ! -e "$ST/store.json" ] && [ "$(cat "$ST/notes.txt")" = mine ]' \
+  "with the mod already gone: the list still goes, a foreign file stays and is named"
+# The strip's "clear" drops every item and is a sibling of the item, so it never also opens one.
+MJ="$ROOT/.claude/team/herdr-mod/harness-notify/main.js"
+ok 'grep -q "on_click((_e, cx) => this.clear(cx))" "$MJ" && grep -A1 "^  clear(cx) {" "$MJ" | grep -q "this.list = \[\];" && grep -q "return strip.child(item).child(clear);" "$MJ"' \
+  "the strip has a clear control that empties the list"
+
 [ "$fail" -eq 0 ] || exit 1
 echo "herdr-dock-test: OK ($n checks)"

@@ -1,7 +1,8 @@
 // harness-notify: the Herdr channel of the harness's Operator notifications (notify.sh writes the
 // spool). It shows each new entry of ~/.agent-comms/outbox/herdr/new/ once as a toast through
 // Herdr's own `toast` mod, keeps the ones not yet clicked in this strip, and moves the entry to
-// done/. A click runs the entry's focus action (agent.focus on the answering session).
+// done/. A click runs the entry's focus action (agent.focus on the answering session); "clear"
+// drops every item (dealt with elsewhere); an item older than a day falls off by itself.
 // It touches nothing else: no setting, no sound, no other mod. Logic: spool.js. README.md.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -78,13 +79,25 @@ export default class HarnessNotify extends View {
     cx.notify();
   }
 
+  clear(cx) {
+    this.list = [];   // dealt with elsewhere: in the stage's window, by iMessage
+    this.save();
+    cx.notify();
+  }
+
   render(cx) {
     const t = theme();
     const strip = h_flex().id("harness-notify").size_full().px(10).gap(8).items_center().bg(t.panel ?? t.popover);
     if (!this.list.length) return strip.child(div().text_size(12).text_color(t.muted).child(spool.stripText([])));
     const first = this.list[0];
-    return strip.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.open(first, cx))
+    // Two siblings, not nested, so a click on "clear" never also opens the first item.
+    const item = h_flex().id("harness-notify-open").flex_1().gap(8).items_center().cursor_pointer()
+      .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.open(first, cx))
       .child(div().size(8).rounded(4).flex_none().bg(t.working ?? t.accent))
       .child(div().flex_1().truncate().text_size(12).text_color(t.foreground).child(spool.stripText(this.list)));
+    const clear = div().id("harness-notify-clear").flex_none().px(6).cursor_pointer().text_size(12)
+      .text_color(t.muted).hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => this.clear(cx))
+      .child("clear");
+    return strip.child(item).child(clear);
   }
 }
