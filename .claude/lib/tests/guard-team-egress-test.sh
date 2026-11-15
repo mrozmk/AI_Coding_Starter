@@ -210,11 +210,21 @@ runpy.run_path(sys.argv[1], run_name="bytecode_probe")' "$D/tree/.claude/$m.py" 
     || { echo "FAIL $m wrote ${c#$D/tree/}"; fail=1; find "$D/tree" -name __pycache__ -exec rm -rf {} +; }
 done
 # Opt-in: the template's shared settings never register the guard; team-setup.sh registers it in
-# the downstream (asserted by team-setup-smoke.sh).
-n=$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | contains("guard-team-egress.sh"))]
-  | length' .claude/settings.json)
-[ "$n" = 0 ] && { pass=$((pass + 1)); echo "PASS shared settings leave the hook to team-setup.sh"; } \
-  || { echo "FAIL shared settings register guard-team-egress.sh $n times"; fail=1; }
+# the downstream (asserted by team-setup-smoke.sh). A repo whose profile has the teams block (the
+# check team-setup.sh ends on) ran the installer, so there the guard must sit under both matchers
+# with onFailure block, as team-roles.sh auto_blocker reads it.
+if jq -e '.teams | type == "object"' .claude/project-profile.json >/dev/null 2>&1; then
+  if jq -e 'def reg($m): any(.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]?;
+      ((.command // "") | contains("guard-team-egress.sh")) and .onFailure == "block");
+      reg("Bash") and reg("WebFetch")' .claude/settings.json >/dev/null; then
+    pass=$((pass + 1)); echo "PASS installed layer registers the hook under Bash and WebFetch, blocking"
+  else echo "FAIL teams profile present but the hook is not blocking under Bash and WebFetch"; fail=1; fi
+else
+  n=$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | contains("guard-team-egress.sh"))]
+    | length' .claude/settings.json)
+  [ "$n" = 0 ] && { pass=$((pass + 1)); echo "PASS shared settings leave the hook to team-setup.sh"; } \
+    || { echo "FAIL shared settings register guard-team-egress.sh $n times"; fail=1; }
+fi
 [ -s "$ALL" ] || { echo "FAIL no outputs recorded"; fail=1; }
 if grep -qE '"permissionDecision": *"allow"' "$ALL"; then echo "FAIL an output allows"; fail=1
 else pass=$((pass + 1)); echo "PASS no output ever allows"; fi

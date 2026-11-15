@@ -9,6 +9,10 @@ set -euo pipefail
 ST=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SETUP="$ST/.claude/lib/team-setup.sh"
 MANIFEST="$ST/.claude/team/manifest.txt"
+# The suite also runs in a project where /setup:teams already ran; there the starter-side checks of
+# this repo's own settings expect what the installer wrote. Same test as team-setup.sh's profile check.
+ST_INSTALLED=""
+! jq -e '.teams | type == "object"' "$ST/.claude/project-profile.json" >/dev/null 2>&1 || ST_INSTALLED=1
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_NOSYSTEM=1
@@ -164,8 +168,13 @@ stage() {  # stage <settings> <event> <matcher|''> <if|''> → how many correct 
   || fail "2: stage-mark.sh is registered more than 3 times"
 [ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/costs/runtime-mark.sh:*)")] | length' \
   "$S")" = 1 ] || fail "2: the runtime-mark allow is not present once"
-[ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("guard-team-egress"))] | length' \
-  "$ST/.claude/settings.json")" = 0 ] || fail "2: the starter's shared settings register the egress guard"
+if [ -n "$ST_INSTALLED" ]; then
+  [ "$(egress "$ST/.claude/settings.json" Bash)" = 1 ] && [ "$(egress "$ST/.claude/settings.json" WebFetch)" = 1 ] \
+    || fail "2: this installed project's settings lack the blocking egress guard under Bash and WebFetch"
+else
+  [ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("guard-team-egress"))] | length' \
+    "$ST/.claude/settings.json")" = 0 ] || fail "2: the starter's shared settings register the egress guard"
+fi
 
 # ---- (3) the second run changes nothing --------------------------------------------------------
 echo '{"teams":{}}' > "$T/.claude/project-profile.json"
@@ -555,12 +564,24 @@ for costs in absent present; do
 done
 # The core settings allow only that step: no stage hook (team-setup registers it), and the narrow
 # rule matches the end step but no other writer call. Claude Code's own matcher is not available
-# offline; a shell glob is the same `*` semantics (any characters, spaces included).
-[ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("stage-mark"))] | length' \
-  "$ST/.claude/settings.json")" = 0 ] || fail "21: the starter's core settings register the stage hook"
+# offline; a shell glob is the same `*` semantics (any characters, spaces included). In an installed
+# project team-setup.sh has added the stage hook 3x and the full writer allow next to the narrow rule.
 NARROW='Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
-[ "$(jq --arg r "$NARROW" '[.permissions.allow[] | select(test("runtime-mark"))] == [$r]' \
-  "$ST/.claude/settings.json")" = true ] || fail "21: the core runtime-mark allow is not exactly the narrow rule"
+if [ -n "$ST_INSTALLED" ]; then
+  SS="$ST/.claude/settings.json"
+  [ "$(stage "$SS" PreToolUse Skill '')" = 1 ] && [ "$(stage "$SS" PreToolUse Bash "$END_IF")" = 1 ] \
+    && [ "$(stage "$SS" UserPromptExpansion '' '')" = 1 ] \
+    && [ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("stage-mark"))] | length' "$SS")" = 3 ] \
+    || fail "21: this installed project's settings do not register the stage hook exactly 3x"
+  [ "$(jq --arg r "$NARROW" '[.permissions.allow[] | select(test("runtime-mark"))] | sort
+    == ([$r, "Bash(bash .claude/lib/costs/runtime-mark.sh:*)"] | sort)' "$SS")" = true ] \
+    || fail "21: this installed project's runtime-mark allows are not the narrow and the installer rule"
+else
+  [ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("stage-mark"))] | length' \
+    "$ST/.claude/settings.json")" = 0 ] || fail "21: the starter's core settings register the stage hook"
+  [ "$(jq --arg r "$NARROW" '[.permissions.allow[] | select(test("runtime-mark"))] == [$r]' \
+    "$ST/.claude/settings.json")" = true ] || fail "21: the core runtime-mark allow is not exactly the narrow rule"
+fi
 pat=${NARROW#Bash(}; pat=${pat%)}
 for cmd in "bash .claude/lib/costs/runtime-mark.sh stage start prime --session x --source hook-skill" \
   "bash .claude/lib/costs/runtime-mark.sh session --provider claude --source team-run" \

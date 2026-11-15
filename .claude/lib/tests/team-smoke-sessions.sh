@@ -43,6 +43,10 @@ cp "$SRC/.claude/hooks/session-registry.sh" "$MAIN/.claude/hooks/"
 mkdir -p "$MAIN/tools"
 cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tests"
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
+# MAIN carries this repo's own settings (watch-lib). Where /setup:teams already ran, its ask rule for
+# the kit installer outranks a local allow, and the leak cases (3) and (5) need the template's rules.
+jq '.permissions.ask -= ["Bash(bash .claude/team/sessions/operator-kit/install.sh*)"]' \
+  "$MAIN/.claude/settings.json" > "$WORK/main-settings.json" && mv "$WORK/main-settings.json" "$MAIN/.claude/settings.json"
 cp "$SRC"/.claude/team/*.tmpl "$MAIN/.claude/team/"
 cp -R "$SRC/.claude/team/sessions/operator-kit" "$MAIN/.claude/team/sessions/"
 printf '__pycache__/\n' >> "$MAIN/.gitignore"
