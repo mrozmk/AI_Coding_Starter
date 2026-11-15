@@ -1,0 +1,30 @@
+{
+  "_doc": "Opt-in local env runner (.agents/reference/local-env-runner.md). Copy to .claude/local-env.json, fill, commit, get it onto origin/<Trunk>; it counts only when tracked and identical there. Keys starting with _ are ignored.",
+  "v": 1,
+  "_dir": "the secret lives in ~/.config/<dir>/local.env (one name, no slash)",
+  "dir": "<project>",
+  "_key": "the one key name in local.env",
+  "key": "LOCAL_DB_PASSWORD",
+  "_docker": "optional: before the file is opened, the docker engine must be a local unix socket and this service must publish this port only on a local bind. Drop the block when the runners need no docker.",
+  "docker": {"compose_file": "docker/compose.yml", "service": "<db-service>", "port": 5432},
+  "_pass_env": "optional: extra caller variables the runners need (toolchain roots); never a secret",
+  "pass_env": [],
+  "runners": {
+    "<runner-id>": {
+      "script": "scripts/<integration-tests>.sh",
+      "_secret_env": "the child gets the secret as this one raw variable and must check its own connection target is local",
+      "secret_env": "DB_PASSWORD",
+      "env": {"DB_HOST": "localhost"},
+      "_args": "flags the runner accepts: null = no value, a string = the value's regex; each at most once",
+      "args": {"--no-build": null, "--filter": "[A-Za-z0-9_.,=~!&|()]{1,300}"},
+      "_results_line": "optional: a stdout line naming a results dir under $TMPDIR, scrubbed after the run",
+      "results_line": "integration-tests: results in (/[^\\r\\n]+)"
+    },
+    "<probe-id>": {
+      "script": "scripts/<probe>-test.sh",
+      "secret_env": "DB_PASSWORD",
+      "_pass_line": "optional: rc 0 counts only when stdout carried this exact line (a SKIPPED run exits 75)",
+      "pass_line": "<probe>-test: PASS"
+    }
+  }
+}
