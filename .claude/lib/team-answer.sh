@@ -149,7 +149,9 @@ herdr_type() {
   local i=$((KEYS + 1)) out size=0 n=0 max
   [ -z "$JOURNAL" ] || echo "$ATTEMPT try $i type (herdr)" >> "$JOURNAL"
   [ "$T" = - ] || [ ! -f "$T" ] || size="$(wc -c < "$T" | tr -d ' ')"
-  out="$(sh_herdr_type "$PANE_ID" "$1" 2>&1)" || true
+  # Refused (9) on an open prompt or an empty status (a startup dialog may be open): the driver's
+  # one-line reason lands in the refuse/stop message below.
+  out="$(sh_herdr_type "$PANE_ID" "$1" "$(sh_record_get "$(team_main)" "$name" cli 2>/dev/null)" "$name" 2>&1)" || true
   if [ "$out" != typed+submitted ]; then
     [ "$KEYS" -gt 0 ] || refuse 6 "type failed: ${out:-no answer}"
     echo "error: type failed at key $i (${out:-no answer}) — $KEYS keys sent" >&2; exit 4

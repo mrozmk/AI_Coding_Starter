@@ -930,6 +930,41 @@ expect 1 "hb-wrapup: cannot probe smk-hb-wrapup — not started" "(H15) failed p
 ! grep -qE '^hc (kill|rm|run) ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(H15) acted on a failed probe"; }
 echo "team-smoke-host: (H15) start probe on a failed probe OK"
 
+# (H16) a slash command goes without HC_TERMINAL_ID (else it arrives wrapped in <hc from=…> and is
+# read as text); the doorbell keeps it (step 6 live L1)
+rm -f "$REG/hb-coder.reg.json" "$WORK/gone" "$WORK/hcid"; jq 'del(.created_ms)' "$REG/hb-coder.json" > "$WORK/r" && mv "$WORK/r" "$REG/hb-coder.json"
+hclr; STUB_HC_IDLOG="$WORK/hcid" HC_TERMINAL_ID=t0me STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ring"
+expect 0 "" "(H16) doorbell"; grep -qxF "id-set hc send t7a ring" "$WORK/hcid" || { cp "$WORK/hcid" "$WORK/out"; fail "(H16) doorbell lost the sender id"; }
+STUB_HC_IDLOG="$WORK/hcid" HC_TERMINAL_ID=t0me STUB_HC_ADDR=t7a run "$MAIN" $SH type hb-coder "/clear"
+expect 0 "typed+submitted" "(H16) slash type"; grep -qxF "id-unset hc send t7a /clear" "$WORK/hcid" || { cp "$WORK/hcid" "$WORK/out"; fail "(H16) slash command wrapped"; }
+STUB_HC_IDLOG="$WORK/hcid" HC_TERMINAL_ID=t0me STUB_HC_ADDR=t7a run "$MAIN" $SH type hb-coder "plain text"
+grep -qxF "id-set hc send t7a plain text" "$WORK/hcid" || { cp "$WORK/hcid" "$WORK/out"; fail "(H16) plain type lost the sender id"; }
+STUB_HC_IDLOG="$WORK/hcid" HC_TERMINAL_ID=t0me STUB_HC_GONE_FILE="$WORK/gone" STUB_HC_ADDR=t7a run "$MAIN" $SH kill hb-coder --graceful 2
+expect 0 "" "(H16) graceful"; grep -qxF "id-unset hc send t7a /exit" "$WORK/hcid" || { cp "$WORK/hcid" "$WORK/out"; fail "(H16) /exit wrapped"; }
+rm -f "$WORK/gone" "$WORK/hcid"
+echo "team-smoke-host: (H16) unwrapped slash commands OK"
+
+# (H17) an agent with no status yet (a startup dialog may be open) is never typed into or rung; a
+# script session keeps today's rule; the MCP servers dialog is reported, never answered (live L2)
+hclr; STUB_HC_STATUS=null STUB_HC_ADDR=t7a run "$MAIN" $SH type hb-coder "x"
+expect 9 "hb-coder: still starting (a startup dialog may be open) — answer it in hc attach t7a" "(H17) type"
+noline "hc send" "(H17) typed while starting"
+rm -f "$TDX/send-coder.log"
+hclr; STUB_HC_STATUS=null STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ring 2"; expect 9 "" "(H17) doorbell"
+noline "hc send" "(H17) rung while starting"
+grep -q '^doorbell-skipped .* starting — ring 2$' "$TDX/send-coder.log" || { cp "$TDX/send-coder.log" "$WORK/out"; fail "(H17) doorbell log"; }
+hclr; STUB_HC_STATUS=null STUB_HC_GONE_FILE="$WORK/gone" STUB_HC_ADDR=t7a run "$MAIN" $SH kill hb-coder --graceful 1
+expect 0 "" "(H17) kill while starting"; noline "hc send" "(H17) /exit while starting"; line "hc kill t7a" "(H17) killed"
+rm -f "$WORK/gone"
+hclr; STUB_HC_STATUS=null STUB_HC_ADDR=t7a run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_herdr_type t7a x script hb-s"
+expect 0 "typed+submitted" "(H17) script session"
+printf '%s\n' " 3 new MCP servers found in this project" " ❯ [ ] alpha" "   [ ] beta" > "$WORK/mcp"
+hclr; STUB_HC_ADDR=t7t STUB_HC_STATUS=null STUB_HC_SCREEN="$WORK/mcp" TEAM_HOST_READY_SECS=2 TEAM_HOST_READY_POLL=0 \
+  run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_wait_ready Htrust t7t claude herdr"
+expect 0 "waiting at the MCP servers dialog — answer it in hc attach t7t" "(H17) mcp"
+noline "hc keys" "(H17) mcp answered"; noline "hc send" "(H17) mcp typed"
+echo "team-smoke-host: (H17) startup dialogs under herdr OK"
+
 # (H2) no hc call of the part ever carried the force, keep or parent flag
 hclr; [ -s "$WORK/hc-all" ] || fail "(H2) no hc line recorded"
 ! grep -nE -- '--force|--keep|--parent |--outlive-parent' "$WORK/hc-all" || { cp "$WORK/hc-all" "$WORK/out"; fail "(H2) forbidden hc flag"; }

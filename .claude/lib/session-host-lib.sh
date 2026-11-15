@@ -211,6 +211,12 @@ sh_hc() {
   local p; p="$(sh_hc_path)" || return 1
   "$p" "$@"
 }
+# sh_hc_bare <args…> — sh_hc without HC_TERMINAL_ID: a send from inside an hc terminal arrives
+# wrapped in <hc from=…>, so a slash command (/exit) would be read as text, not run (step 6 live L1).
+sh_hc_bare() {
+  local p; p="$(sh_hc_path)" || return 1
+  env -u HC_TERMINAL_ID "$p" "$@"
+}
 # sh_hc_rc <hc exit code> → the driver's: 0 · 3 gone (3 not_found, 11 finished) · 9 blocked · 1 other.
 sh_hc_rc() { case "$1" in 0) return 0 ;; 3|11) return 3 ;; 9) return 9 ;; *) return 1 ;; esac; }
 
@@ -609,13 +615,22 @@ sh_herdr_keys() {
   sh_hc_rc "$rc"
 }
 
-# sh_herdr_type <handle> <text> — `hc send`: pasted and submitted in one step, so Enter is implied;
-# prints `typed+submitted`. An open prompt is refused (9): typing would answer it. Never forced.
+# sh_herdr_type <handle> <text> [cli] [address] — `hc send`: pasted and submitted in one step, so
+# Enter is implied; prints `typed+submitted`. Refused with 9, never forced: an open prompt (typing
+# would answer it), and for an agent (any cli but script) an empty status — a startup dialog (trust,
+# MCP servers) may be open and the text would land in it. A slash command goes without the
+# <hc from=…> wrap, so it runs as a command.
 sh_herdr_type() {
-  local rc
-  [ "$(sh_herdr_state "$1")" != blocked ] \
+  local rc st
+  st="$(sh_herdr_state "$1")"
+  [ "$st" != blocked ] \
     || { sh_err "type into an open prompt is not supported under herdr"; return 9; }
-  sh_hc send "$1" "$2" >/dev/null; rc=$?
+  [ -n "$st" ] || [ "${3:-}" = script ] \
+    || { sh_err "${4:-$1}: still starting (a startup dialog may be open) — answer it in hc attach $1"; return 9; }
+  case "$2" in
+    /*) sh_hc_bare send "$1" "$2" >/dev/null ;;
+    *) sh_hc send "$1" "$2" >/dev/null ;;
+  esac; rc=$?
   sh_hc_rc "$rc" || return $?
   echo "typed+submitted"
 }
@@ -748,7 +763,7 @@ sh_type() {
   [ -n "$t" ] || { t="=$n:"; [ "$b" != herdr ] || t="$n"; }
   sh_target_lock "$a" "${SH_OWNER:-type pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}" \
     || { sh_err "$a: skipped — target lock held by $(sh_holder "$SH_MAIN" "$a" "$SH_TD")"; return 10; }
-  if [ "$b" = herdr ]; then sh_herdr_type "$t" "$text"; else sh_tmux_type "$t" "$text" $enter; fi; rc=$?
+  if [ "$b" = herdr ]; then sh_herdr_type "$t" "$text" "$(sh_record_get "$SH_MAIN" "$a" cli)" "$a"; else sh_tmux_type "$t" "$text" $enter; fi; rc=$?
   sh_target_unlock "$a"
   case $rc in 0) ;; 3|9) return $rc ;; *) return 1 ;; esac
 }
@@ -806,11 +821,14 @@ sh_send() {
 # sh_herdr_send <address> <handle> <line> — the doorbell's fallback under herdr (no registration):
 # `hc send` under the target lock, never forced. Herdr cannot see a person's draft: send holds for it
 # (draft_wait) and then submits it merged with the line — accepted by the owner (2026-11-15) and
-# logged once per session as doorbell-draft-unsafe. 0 delivered, 3 gone, 9 blocked, 10 lock held.
+# logged once per session as doorbell-draft-unsafe. An agent with no status yet is not rung: a
+# startup dialog may be open (step 6 live L2). 0 delivered, 3 gone, 9 blocked or starting, 10 lock held.
 sh_herdr_send() {
   local a="$1" h="$2" text="$3" why="" rc=0 id m
   if ! sh_herdr_alive "$h" 2>/dev/null; then
     why="session $h not alive"; rc=3
+  elif [ -z "$(sh_herdr_state "$h")" ] && [ "$(sh_record_get "$SH_MAIN" "$a" cli)" != script ]; then
+    why="starting"; rc=9
   elif sh_target_lock "$a" "${SH_OWNER:-doorbell pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}"; then
     id="$(sh_record_get "$SH_MAIN" "$a" session_id)"; id="${id:-$h}"
     m="$(sh_reg_dir "$SH_MAIN")/$a.draft-logged"
@@ -843,7 +861,7 @@ sh_herdr_kill() {
     if sh_target_lock "$a" "${SH_OWNER:-session-host pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}"; then
       st="$(sh_herdr_state "$h")"
       if [ "$st" = idle ] || [ "$st" = done ]; then
-        sh_hc send "$h" "/exit" >/dev/null 2>&1 || true
+        sh_hc_bare send "$h" "/exit" >/dev/null 2>&1 || true   # unwrapped, so it runs
         while sh_herdr_alive "$h" 2>/dev/null && [ "$waited" -lt "$wait" ]; do
           sleep 1; waited=$((waited + 1))
         done
@@ -964,15 +982,17 @@ sh_status() {
 # sh_quote <word> → the word in POSIX single quotes ('…'\''…'), never printf %q.
 sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
-# sh_screen_state <screen> <cli> → update | trust | ready | "" (still starting).
+# sh_screen_state <screen> <cli> → update | trust | mcp | ready | "" (still starting).
 # Matched texts: Claude's trust dialog line "Do you trust the files in this folder?" or its option
 # "Yes, I trust this folder"; Codex's trust prompt carries "trust" and "folder" on one line, or the
 # option "Trust and continue"; Codex's update prompt "Update available", or "Update now" with "Skip"
-# (the spike's Codex screens under Herdr).
+# (the spike's Codex screens under Herdr); Claude's project MCP servers dialog "new MCP servers found
+# in this project" (step 6 live L2).
 sh_screen_state() {
   if printf '%s\n' "$1" | grep -qE 'Do you trust the files in this folder\?|Yes, I trust this folder'; then
     echo trust; return 0
   fi
+  if printf '%s\n' "$1" | grep -q 'new MCP servers found in this project'; then echo mcp; return 0; fi
   if [ "$2" = codex ]; then
     if printf '%s\n' "$1" | grep -qi 'update available' \
       || { printf '%s\n' "$1" | grep -q 'Update now' && printf '%s\n' "$1" | grep -qi 'skip'; }; then
@@ -1149,10 +1169,10 @@ sh_start() {
 }
 
 # sh_wait_ready <address> <name|handle> <cli> [backend] — up to TEAM_HOST_READY_SECS (20) for a first
-# sign of life. A trust dialog is reported, never answered (trusting a folder is the Operator's
-# decision); a Codex update prompt is skipped once with esc (non-destructive). Herdr: ready once the
-# program reports a status (it reports none while a startup dialog is open); the screen decides
-# meanwhile.
+# sign of life. A trust dialog or the MCP servers dialog is reported, never answered (both are the
+# Operator's decision); a Codex update prompt is skipped once with esc (non-destructive). Herdr:
+# ready once the program reports a status (it reports none while a startup dialog is open); the
+# screen decides meanwhile.
 sh_wait_ready() {
   local i=0 max="${TEAM_HOST_READY_SECS:-20}" poll="${TEAM_HOST_READY_POLL:-1}" esc="" scr st hint
   hint="tmux attach -t $2"; [ "${4:-tmux}" != herdr ] || hint="hc attach $2"
@@ -1168,6 +1188,8 @@ sh_wait_ready() {
       ready) return 0 ;;
       trust) echo "warn: $1: waiting at the folder trust dialog — accept it once in $hint" >&2
              return 0 ;;
+      mcp) echo "warn: $1: waiting at the MCP servers dialog — answer it in $hint" >&2
+           return 0 ;;
       update) if [ -z "$esc" ]; then
                 if [ "${4:-tmux}" = herdr ]; then sh_herdr_keys "$2" esc || true
                 else sh_tmux send-keys -t "=$2:" Escape || true; fi

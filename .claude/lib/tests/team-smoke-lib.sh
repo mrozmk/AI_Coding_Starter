@@ -224,10 +224,14 @@ STUB
   # working|blocked|done; STATUS_FILE wins and `keys … esc` writes idle into it), KIND, MSG, LABELS
   # (JSON), CREATED, PID, SCREEN (a file `read` prints), ON_SEND (shell text `send` evals). Gone:
   # STUB_HC_GONE=1 or $STUB_HC_GONE_FILE exists (kill and a `send … /exit` create it) — get, keys,
-  # send and read exit 3, or 11 when finished.
+  # send and read exit 3, or 11 when finished. STUB_HC_IDLOG: each call also logged there as
+  # `id-set|id-unset hc $*` — whether HC_TERMINAL_ID reached it (a send with it set arrives wrapped).
   cat > "$WORK/bin/hc" <<'STUB'
 #!/usr/bin/env bash
 echo "hc $*" >> "$STUB_LOG"
+if [ -n "${STUB_HC_IDLOG:-}" ]; then
+  if [ -n "${HC_TERMINAL_ID+x}" ]; then echo "id-set hc $*"; else echo "id-unset hc $*"; fi >> "$STUB_HC_IDLOG"
+fi
 gone() { [ "${STUB_HC_GONE:-}" = 1 ] || { [ -n "${STUB_HC_GONE_FILE:-}" ] && [ -f "$STUB_HC_GONE_FILE" ]; }; }
 st() { if [ -n "${STUB_HC_STATUS_FILE:-}" ] && [ -f "$STUB_HC_STATUS_FILE" ]; then cat "$STUB_HC_STATUS_FILE"
   else echo "${STUB_HC_STATUS:-idle}"; fi; }
