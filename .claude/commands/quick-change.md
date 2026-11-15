@@ -260,3 +260,17 @@ Then stop. **`/quick-change` never commits** — the tree is left ready for `/co
 - **The Phase 0 guard always fires when a criterion is met**, and its result is always said out loud. The user may override it; the command may not skip it.
 - **Writes nothing to `.agents/` — except the invoked Task's `Status`/`Ref` cells in `.agents/backlog.md` after green gates — and commits nothing.** The scratchpad brief is the only file it creates outside your code.
 - **Never fake a Codex review, and never round a red gate up to green.**
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end quick-change`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

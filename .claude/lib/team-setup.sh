@@ -17,8 +17,9 @@
 # then `summary: created=N kept=N conflict=N merged=N` and `profile: ok|missing`.
 #
 # Exit: 0 installed, nothing to decide · 1 conflicts (everything else is installed)
-#   2 usage / no jq / target is not a repo root / manifest drift / a core file the harness sources
-#     (team-profile.sh, team-tracker.sh) missing or not the starter's — sync first (nothing written)
+#   2 usage / no jq / target is not a repo root / manifest drift / a core file the harness uses
+#     (team-profile.sh, team-tracker.sh, costs/runtime-mark.sh) missing or not the starter's — sync
+#     first (nothing written)
 #   3 the target profile has no `teams` block — it takes precedence over 1
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
@@ -142,11 +143,11 @@ else
   CUR='{}'
 fi
 
-# Core files the harness sources but this installer never copies: they are the starter's core and
+# Core files the harness sources or calls but this installer never copies: they are the starter's core and
 # reach a project with the starter itself and its syncs (the manifest's `!` core lines). Missing or
 # different from the starter's copy → the project has not synced, and the newer team scripts would
 # fail on its old adapter/profile. Refused here, before any write.
-for p in .claude/lib/team-profile.sh .claude/lib/team-tracker.sh; do
+for p in .claude/lib/team-profile.sh .claude/lib/team-tracker.sh .claude/lib/costs/runtime-mark.sh; do
   [ -f "$TARGET/$p" ] || die 2 "core file $p is missing — run /maintain:sync-from-starter first"
   cmp -s "$STARTER/$p" "$TARGET/$p" \
     || die 2 "core file $p differs from the starter's — run /maintain:sync-from-starter first"
@@ -278,6 +279,32 @@ egress_merge Bash "$H/guard-destructive-sql.sh\"" D
 # The role sessions' bootstrap directive; silent outside a role session and in a team clone.
 hook_merge S SessionStart "$H/session-role.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
+# The token-usage stage hook (`.agents/reference/token-usage.md` → Runtime log): one command under
+# three entries, which hook_merge (one registration per command) cannot express. Identified per
+# event and exact matcher; it must run synchronously (async marks can reorder) and the Bash entry
+# must carry the end step's exact `if` filter — otherwise a conflict, and a correct entry is added.
+STAGE="$H/stage-mark.sh\""
+stage_merge() {  # stage_merge <id> <event> <matcher|''> [<if rule>]
+  local id="$1" ev="$2" m="$3" cond="${4:-}" verdict
+  verdict="$(printf '%s' "$NEW" | jq -r --arg ev "$ev" --arg m "$m" --arg cmd "$STAGE" --arg cond "$cond" '
+    [.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]? | select(.command == $cmd)] as $h
+    | if any($h[]; (.async // false) == false and (.if // "") == $cond) then "ok"
+      elif ($h | length) > 0 then "conflict"
+      else "missing" end')"
+  [ "$verdict" != ok ] || return 0
+  if [ "$verdict" = conflict ]; then
+    S_CONFLICTS="${S_CONFLICTS}$id"
+    CONFLICT=$((CONFLICT + 1))
+    echo "conflict settings.json $id: $ev${m:+ $m} registers stage-mark async or without the filter ${cond:-(none)}"
+  fi
+  NEW="$(printf '%s' "$NEW" | jq --arg ev "$ev" --arg m "$m" --arg cmd "$STAGE" --arg cond "$cond" '
+    .hooks = (.hooks // {}) | .hooks[$ev] = (.hooks[$ev] // [])
+    | ({type: "command", command: $cmd, timeout: 5} + (if $cond == "" then {} else {if: $cond} end)) as $item
+    | .hooks[$ev] += [(if $m == "" then {} else {matcher: $m} end) + {hooks: [$item]}]')"
+}
+stage_merge K PreToolUse Skill
+stage_merge B PreToolUse Bash 'Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
+stage_merge U UserPromptExpansion ''
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '
@@ -293,7 +320,9 @@ NEW="$(printf '%s' "$NEW" | jq '
    "Bash(bash .claude/lib/supervisor-sessions.sh start *)", "Bash(bash .claude/lib/supervisor-sessions.sh stop *)",
    "Bash(bash .claude/lib/supervisor-sessions.sh up*)", "Bash(printenv TEAM_SESSION_ROLE)",
    # test-gate.sh is not matched by team-*.sh.
-   "Bash(bash .claude/lib/test-gate.sh*)"] as $want
+   "Bash(bash .claude/lib/test-gate.sh*)",
+   # The cost writer; the core settings allow only its no-op stage end step.
+   "Bash(bash .claude/lib/costs/runtime-mark.sh:*)"] as $want
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",

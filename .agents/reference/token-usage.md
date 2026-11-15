@@ -67,9 +67,13 @@ prompts or free text. `at` is UTC with milliseconds, like usage timestamps.
 | `mail-role` source | reserved for a role session's mail registration with `--name <NAME>` (labels and `bind --session NAME`); no shipped command writes it yet |
 | `.claude/hooks/stage-mark.sh` | `stage`: `hook-skill` (PreToolUse `Skill`), `hook-prompt` (UserPromptExpansion of a typed `/command`), `skill-end` (PreToolUse of the exact end-step Bash call). Ignores every payload with `agent_id`, i.e. sub-agents |
 
-**`stage-mark.sh` ships but is not registered** in `.claude/settings.json` (nor merged by
-`/setup:teams`). Until it is, no `stage` records are written and every session uses the transcript
-approximation under Stages below.
+**`stage-mark.sh` is registered by `/setup:teams`** (`team-setup.sh`: PreToolUse `Skill`, PreToolUse
+`Bash` filtered by `"if": "Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)"`, and
+UserPromptExpansion — synchronous, timeout 5), together with the writer's allow. `runtime-mark.sh`
+itself is core: the core pipeline commands (the default stage list minus `pr-merge`, which is team)
+end with its `stage end` step, which the core `settings.json` allows by that narrow rule and which
+exits 0 silently before any dependency check. A project without the team harness has no hook, so it
+writes no `stage` records and uses the transcript approximation under Stages below.
 
 `collect` and `bind` ingest new lines into `registrations` (latest wins per provider × session ×
 source) and `stage_marks` through the same incremental cursor as transcripts. A registered Codex
@@ -297,4 +301,4 @@ the marker line is overwritten by the next `edit`.
 ## Not implemented
 
 USD pricing; a dashboard view; Codex rows in their parent's stage; a report comment for trackers
-other than Jira; registering `stage-mark.sh` by default.
+other than Jira; stage marks in a project without the team harness (no hook there).

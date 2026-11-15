@@ -37,8 +37,9 @@ mktarget() {  # mktarget <name> → a fresh one-commit repo at $WORK/<name>
   mkdir -p "$t"; git -C "$t" init --quiet
   echo README > "$t/README"; git -C "$t" add README; git -C "$t" commit --quiet -m README
   # The core files a synced project already has (team-setup.sh refuses without them, see (20)).
-  mkdir -p "$t/.claude/lib"
+  mkdir -p "$t/.claude/lib/costs"
   cp "$ST/.claude/lib/team-profile.sh" "$ST/.claude/lib/team-tracker.sh" "$t/.claude/lib/"
+  cp "$ST/.claude/lib/costs/runtime-mark.sh" "$t/.claude/lib/costs/"
   printf '%s' "$t"
 }
 # Entries the manifest distributes — counted from the file, never hardcoded.
@@ -83,7 +84,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") as $t | ($t | index("
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 22 ] || fail "2: allow is not the 22 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 23 ] || fail "2: allow is not the 23 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
@@ -135,6 +136,20 @@ egress() {  # egress <settings> <matcher> → how many blocking egress guards th
   | select((.command | test("guard-destructive-sql")) and .onFailure == "block")] | length' "$S")" = 1 ] \
   || fail "2: the destructive-SQL guard is not registered once, blocking, under Bash"
 git -C "$T" check-ignore -q .agents/agent-mail/mail.sqlite || fail "2: .agents/agent-mail/ is not ignored"
+# The token-usage stage hook: PreToolUse Skill, PreToolUse Bash filtered to the end step, and
+# UserPromptExpansion — each once, synchronous, timeout 5; the full writer allow once.
+END_IF='Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
+stage() {  # stage <settings> <event> <matcher|''> <if|''> → how many correct stage-mark entries
+  jq --arg ev "$2" --arg m "$3" --arg c "$4" '[.hooks[$ev][]? | select((.matcher // "") == $m)
+    | .hooks[] | select((.command | test("stage-mark.sh")) and .timeout == 5
+      and (.async // false) == false and (.if // "") == $c)] | length' "$1"
+}
+[ "$(stage "$S" PreToolUse Skill '')" = 1 ] && [ "$(stage "$S" PreToolUse Bash "$END_IF")" = 1 ] \
+  && [ "$(stage "$S" UserPromptExpansion '' '')" = 1 ] || fail "2: the stage hook is not registered 3x"
+[ "$(jq '[.hooks[]?[]?.hooks[]? | select(.command | test("stage-mark.sh"))] | length' "$S")" = 3 ] \
+  || fail "2: stage-mark.sh is registered more than 3 times"
+[ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/costs/runtime-mark.sh:*)")] | length' \
+  "$S")" = 1 ] || fail "2: the runtime-mark allow is not present once"
 [ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("guard-team-egress"))] | length' \
   "$ST/.claude/settings.json")" = 0 ] || fail "2: the starter's shared settings register the egress guard"
 
@@ -177,7 +192,7 @@ setup "$T"
 [ "$(field conflict)" = 0 ] || fail "6: a coverage-compatible matcher was reported as a conflict"
 S="$T/.claude/settings.json"
 [ "$(jq '[.hooks.PreToolUse[] | select(.matcher != "Bash" and .matcher != "WebFetch")] | length' \
-  "$S")" = 2 ] || fail "6: M added a PreToolUse entry of its own"
+  "$S")" = 3 ] || fail "6: M added a PreToolUse entry of its own (the third is the stage hook's Skill)"
 jq -e '.hooks.PreToolUse[0] | (.matcher == "Edit|Write|MultiEdit")
   and ([.hooks[].command] | index("bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-memory.sh\""))
   and (.hooks[0].command | test("guard-memory"))' "$S" >/dev/null \
@@ -244,7 +259,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 24 ] || fail "10: allow is not 2 project + 22 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 25 ] || fail "10: allow is not 2 project + 23 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -312,7 +327,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -390,7 +405,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -496,5 +511,63 @@ for c in start-task pr-create github-sync tasks-status; do
     [ -f "$D/$f" ] || fail "21: /$c names $f, which a project without teams does not get"
   done
 done
+
+# The stage-end step every core pipeline command runs is silent there: exit 0, nothing on stdout or
+# stderr, no file — without $AGENT_COSTS_HOME, and with it but without jq on PATH.
+for c in prime brainstorm plan-feature execute check-implementation qa-verify pr-create orchestrate quick-change; do
+  grep -qxF "\`bash .claude/lib/costs/runtime-mark.sh stage end $c\`" "$ST/.claude/commands/$c.md" \
+    || fail "21: /$c has no exact stage end step"
+done
+NOJQ="$WORK/nojq-bin"; mkdir -p "$NOJQ"; ln -s /bin/bash "$NOJQ/bash"
+for costs in absent present; do
+  CH="$WORK/costs-home-$costs"; rm -rf "$CH"; [ "$costs" = absent ] || mkdir -p "$CH"
+  before=$(treehash "$D"); before_ch=$([ -d "$CH" ] && ls -A "$CH" || echo none)
+  set +e; (cd "$D" && env -i HOME="$WORK/solo-home" PATH="$NOJQ" AGENT_COSTS_HOME="$CH" \
+    bash .claude/lib/costs/runtime-mark.sh stage end prime) > "$WORK/out" 2> "$WORK/err"; RC=$?; set -e
+  [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] && [ ! -s "$WORK/err" ] \
+    || fail "21: stage end with costs home $costs is not silent (exit $RC): $(cat "$WORK/err")"
+  [ "$(treehash "$D")" = "$before" ] && [ ! -e "$WORK/solo-home" ] \
+    && [ "$(ls -A "$CH" 2>/dev/null || echo none)" = "$before_ch" ] \
+    || fail "21: stage end with costs home $costs created a file"
+done
+# The core settings allow only that step: no stage hook (team-setup registers it), and the narrow
+# rule matches the end step but no other writer call. Claude Code's own matcher is not available
+# offline; a shell glob is the same `*` semantics (any characters, spaces included).
+[ "$(jq '[.hooks[]?[]?.hooks[]? | select((.command // "") | test("stage-mark"))] | length' \
+  "$ST/.claude/settings.json")" = 0 ] || fail "21: the starter's core settings register the stage hook"
+NARROW='Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
+[ "$(jq --arg r "$NARROW" '[.permissions.allow[] | select(test("runtime-mark"))] == [$r]' \
+  "$ST/.claude/settings.json")" = true ] || fail "21: the core runtime-mark allow is not exactly the narrow rule"
+pat=${NARROW#Bash(}; pat=${pat%)}
+for cmd in "bash .claude/lib/costs/runtime-mark.sh stage start prime --session x --source hook-skill" \
+  "bash .claude/lib/costs/runtime-mark.sh session --provider claude --source team-run" \
+  "bash .claude/lib/costs/runtime-mark.sh stage endx"; do
+  # shellcheck disable=SC2053
+  [[ "$cmd" != $pat ]] || fail "21: the narrow allow covers '$cmd'"
+done
+# shellcheck disable=SC2053
+[[ "bash .claude/lib/costs/runtime-mark.sh stage end prime" == $pat ]] \
+  || fail "21: the narrow allow does not cover the end step"
+
+# ---- (22) stage hook: an async or unfiltered existing registration is a conflict, kept, fixed ----
+T=$(mktarget t22)
+mkdir -p "$T/.claude"
+SM='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/stage-mark.sh"'
+jq -n --arg s "$SM" '{hooks: {PreToolUse: [
+   {matcher: "Skill", hooks: [{type: "command", command: $s, async: true}]},
+   {matcher: "Bash", hooks: [{type: "command", command: $s}]}]}}' > "$T/.claude/settings.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "conflict settings.json K: PreToolUse Skill registers stage-mark async" \
+  || fail "22: an async stage hook is not a conflict"
+has "conflict settings.json B: PreToolUse Bash registers stage-mark async or without the filter" \
+  || fail "22: a stage hook without the end-step filter is not a conflict"
+[ "$(stage "$S" PreToolUse Skill '')" = 1 ] && [ "$(stage "$S" PreToolUse Bash "$END_IF")" = 1 ] \
+  || fail "22: the correct entries were not added next to the conflicts"
+jq -e '.hooks.PreToolUse[0].hooks[0].async == true and (.hooks.PreToolUse[1].hooks[0] | has("if") | not)' \
+  "$S" >/dev/null || fail "22: the project's entries were rewritten"
+cp "$S" "$WORK/s22"
+setup "$T"
+cmp -s "$S" "$WORK/s22" || fail "22: the rerun changed settings.json"
 
 echo "team-setup-smoke: OK"

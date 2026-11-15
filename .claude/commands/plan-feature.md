@@ -1125,3 +1125,17 @@ Written to the plan: `{the exact line or cell you wrote}`
 4. Don't hedge. **One recommendation** per task (or per step in a staged plan). If a task tolerates both — pick `low`.
 5. Don't use words like "consider", "it's worth", "maybe". Write: "effort low — because X and Y."
 6. **The recommendation is binding, not advisory.** Write it into the plan file before you report it, and quote the line you wrote. A recommendation that exists only in this report and not in the plan file is a defect: `/orchestrate` reads the plan, not the terminal.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end plan-feature`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

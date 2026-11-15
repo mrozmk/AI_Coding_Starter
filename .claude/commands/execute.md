@@ -240,3 +240,17 @@ Provide summary. First line: `Executor: <claude | codex · effort medium · <ela
 - If you need to deviate from the plan, explain why
 - If tests fail, fix implementation until they pass
 - Don't skip validation steps
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end execute`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

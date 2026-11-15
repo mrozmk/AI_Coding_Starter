@@ -957,3 +957,19 @@ This command and its sub-agents are project-scoped under `.claude/` for now. The
 > **Worktree model:** applies to **umbrella plans only**. One persistent worktree per step (`.claude/worktrees/step-<id>`) on a named branch `step-<id>`, reused across all fix iterations of that step, fast-forward-merged onto `main` in Step 5.4b, retired on step completion (Step 5.5) and swept in Phase 7. This replaces per-spawn isolated worktrees, which silently dropped completed work when a step ran multiple fix iterations in different worktrees. The named branch (vs the old detached-HEAD `worktree add <path> HEAD`) makes 5.4b a deterministic `merge --ff-only step-<id>` — no fetch-by-SHA, no cherry-pick fallback.
 >
 > **Flat model (atomic plans):** a single-step plan with no `## Execution Plan` table runs with **no worktree, no branch, no merge**. Executor and committer work in the main checkout, the committer commits straight onto the current branch, and the orchestrator just `git push origin "<TARGET_BRANCH>"` (`main` for a single run) — identical to `/commit` + `/push`. With only one step there is nothing to isolate (no competing steps, no main-advance race), so the worktree/branch/merge round-trip would be pure overhead and a needless fast-forward failure surface. The Phase 7 `git worktree remove` / `prune` sweep is a harmless no-op in flat mode.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end orchestrate`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.
+
+The handoff at the end of a stage is not this command's end — the run resumes with `/orchestrate --resume`. Mark the end only when the run completes or is aborted; the commands it runs (`/brainstorm`, `/plan-feature`, …) mark their own.

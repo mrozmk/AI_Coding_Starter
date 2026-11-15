@@ -309,3 +309,17 @@ Verdict: <✅ Ready for /commit | ⚠️ Ready with warnings | ❌ Escalated —
 - **A mutation must be followed by the gate(s).** Never end on a `/deep-review` or `/code-review --fix` without re-running the code gate (and the design gate if `RUN_DESIGN`) — a refactor can break tests or shift a token.
 - **Never commit or push.** This command produces a commit-ready tree; committing is `/commit`, the full pipeline is `/orchestrate`.
 - **Non-mechanical blockers go to the human.** If a gate blocks on architecture, a product decision, a structural design gap, or an ambiguous design interpretation, stop and ask — fixers can't resolve those.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end check-implementation`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

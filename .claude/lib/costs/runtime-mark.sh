@@ -21,6 +21,10 @@ RUN_RE='^[a-z0-9]+-[0-9]{8}-[0-9]{6}$'
 ATTEMPT_RE='^[0-9]{1,3}$'
 TOOL_USE_RE='^[A-Za-z0-9_]{1,128}$'
 
+# The end step a command runs (no --session) is a no-op before any dependency check: silent even
+# without $AGENT_COSTS_HOME or jq. The stage hook records that call with --session itself.
+[ "${1:-}" = stage ] && [ "${2:-}" = end ] && [[ " $* " != *" --session "* ]] && exit 0
+
 home="${AGENT_COSTS_HOME:-$HOME/.agent-costs}"
 [ -d "$home" ] || exit 0
 command -v jq >/dev/null 2>&1 || { echo "runtime-mark: jq not found — mark skipped" >&2; exit 0; }
@@ -70,7 +74,6 @@ drop_empty='with_entries(select(.value != null and .value != ""))'
 
 if [ "$type" = stage ]; then
   case "$event" in start|end) ;; *) skip "stage event must be start or end" ;; esac
-  [ "$event" = end ] && [ "$session_set" = 0 ] && exit 0
   session="$(lower "$session")"
   [[ "$session" =~ $UUID_RE ]] || skip "stage needs a session uuid"
   [[ "$stage" =~ $NAME_RE ]] || skip "bad stage name"

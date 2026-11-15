@@ -465,3 +465,17 @@ Report the spec path and end your turn.
 </TERMINAL-GATE>
 
 > The gate is repeated here, at the end, rather than only at the top of the file. Step 8 can put a background review and many turns of polling between the opening `<HARD-GATE>` and this point, and "hand off to `/plan-feature`" is the kind of line a long session reads as a command. A gate that is only stated where it is easy to forget is not a gate.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end brainstorm`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

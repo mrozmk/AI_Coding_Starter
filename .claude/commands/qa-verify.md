@@ -284,3 +284,17 @@ One bullet per AC: `AC-n — <verdict>[ / <severity>] — <one-line evidence>`, 
 - **Why build status is derived, not declared.** A hand-maintained "is it built?" column can lie at exactly the moment the guard exists to fire, and the run then errors out spawning an agent whose file does not exist. Reading `.claude/agents/` removes the failure mode instead of documenting it.
 - **Why every sub-agent re-reads the registry.** A spawned agent starts with fresh context and does not inherit this session's copy. One shared file read independently is what keeps the router and its verifiers speaking the same protocol.
 - **Why the browser lane is dormant by default rather than absent.** Lane S needs the project to describe how a component is mounted for observation (`qa-env.json → component_mount_url_template`), and many projects have no answer. Shipping it dormant is what makes a partial roster *honest*: an unconfigured or untooled lane degrades its criteria to `NEEDS-HUMAN` with the reason stated, instead of quietly not appearing. The two Phase-0 guards are the same idea at two altitudes — step 3 asks whether the verifier **exists**, step 3b asks whether it can **observe**. A row that passes both is the only kind that may claim evidence.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end qa-verify`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.

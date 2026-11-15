@@ -193,3 +193,17 @@ One warning **per skip reason**, with its own count and bytes — never collapse
 - Full mode pre-loads the **memory layer in full** and `reference/` **up to `REFERENCE_BUDGET`** — so a large reference dir will leave documents unloaded, by design, and the report names them. They come back on demand via the `When to Read` table in `index.md`, which is the **runtime routing** (what to load after `/prime`, mid-conversation) that quick mode trusts entirely.
 - **Why the cap exists:** unbudgeted full mode was measured consuming 950k of a 1M window in one project and ~400k in another, leaving nothing to work with after priming. Raising `REFERENCE_BUDGET` is the supported response; deleting the selector reinstates the incident.
 - If both `architecture.md` and `project-brief.md` are empty, `/prime` is operating in *bootstrap mode* — show both warnings and minimal fallbacks. Recommend running `/setup:create-CLAUDE_MD` then `/maintain:refresh-brief` (in that order) before further work.
+
+## Stage end marker (token usage)
+
+At this command's definitive end — its work is done, or it stops for good (STOP, refusal, blocker) —
+run exactly this once, as its own Bash call from the repo root with nothing chained before or after
+it, as the last step **before** the final report (or handback):
+
+`bash .claude/lib/costs/runtime-mark.sh stage end prime`
+
+Never at a pause that waits for the user (a question, an approval): the stage goes on after the
+answer, and a plain reply records no new start. The call writes nothing itself; when the team
+harness has registered the stage hook, the hook records it as this stage's end for
+`cost.py report --by-stage` (`.agents/reference/token-usage.md` → Stages). Without the hook, and
+inside a sub-agent, it does nothing.
