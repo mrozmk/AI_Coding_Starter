@@ -361,6 +361,30 @@ SQL_FLAGS = {"-W"}
 SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
 # A line sqlcmd reads as a command, not SQL: `:` directives, `!!`, and the colon-less `ED`.
 SQL_DIRECTIVE = re.compile(r"(:|!!|ed\s*$)", re.I)
+# Strings, quoted identifiers and comments, in sqlcmd's reading order; only identifiers survive.
+SQL_TOKEN = re.compile(r"'(?:[^']|'')*'|\[(?:[^\]]|\]\])*\]|\"(?:[^\"]|\"\")*\"|/\*.*?\*/|--[^\n]*", re.S)
+NAME_PART = r"(?:\[(?:[^\]]|\]\])*\]|\"(?:[^\"]|\"\")*\"|[A-Za-z_#][\w@#$]*)"
+DOTTED = re.compile(r"(?<![\w@#$.\]\"])%s?(?:\s*\.\s*%s?){2,}" % (NAME_PART, NAME_PART))
+
+
+def other_database(text, db):
+    """A `USE` or a 3+-part name aiming past -d (a partial pin: dynamic SQL is not seen)."""
+    code = SQL_TOKEN.sub(lambda m: m.group(0) if m.group(0)[0] in '["' else " ", text)
+    if re.search(r"\buse\b", SQL_TOKEN.sub(" ", text), re.I):
+        return "USE is not allowed — the statement must stay in -d %s" % db
+    for m in DOTTED.finditer(code):
+        names = [""]
+        for tok in re.findall(NAME_PART + r"|\.", m.group(0)):
+            if tok == ".":
+                names.append("")
+            else:
+                names[-1] = tok
+        first = names[0]
+        if first[:1] in '["':
+            first = first[1:-1].replace(first[0] * 2, first[0])
+        if len(names) > 3 or first.lower() != db.lower():
+            return "a multi-part name reaches past -d %s: %s" % (db, m.group(0).strip())
+    return None
 
 
 def run_sql(home, root, config, trusted, argv):
@@ -400,6 +424,9 @@ def run_sql(home, root, config, trusted, argv):
         text = text[1:]
     if "$(" in text or any(SQL_DIRECTIVE.match(l.lstrip()) for l in text.splitlines()):
         raise Refused("sqlcmd directives (:r, :setvar, :connect, !!) and $(variables) are not allowed")
+    reason = other_database(text, opts["-d"])
+    if reason:
+        raise Refused(reason)
     tmpdir = tempfile.mkdtemp(prefix="sqlcmd-write-")
     try:
         # Classify and run the same bytes: a private copy, not the caller's file.

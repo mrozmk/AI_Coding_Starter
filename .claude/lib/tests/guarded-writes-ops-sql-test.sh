@@ -101,6 +101,13 @@ run 2 "sql: unpinned database" sqlcmd-write -S srv.example.invalid -d master -Q 
 run 2 "sql: no -d" sqlcmd-write -S srv.example.invalid -Q "SELECT 1"
 run 2 "sql: both -i and -Q" sqlcmd-write -S srv.example.invalid -d appdb -i upd.sql -Q "SELECT 1"
 run 2 "sql: neither -i nor -Q" sqlcmd-write -S srv.example.invalid -d appdb
+run 2 "sql: USE" sqlcmd-write -S srv.example.invalid -d appdb -Q $'USE other\nDELETE FROM dbo.T WHERE Id = 1'
+case "$OUT" in *"USE is not allowed"*) ;; *) fail "USE message: $OUT" ;; esac
+run 2 "sql: three-part name, other db" sqlcmd-write -S srv.example.invalid -d appdb -Q "DELETE FROM [other].dbo.T WHERE Id = 1"
+case "$OUT" in *"reaches past -d appdb"*) ;; *) fail "three-part message: $OUT" ;; esac
+run 2 "sql: four-part name" sqlcmd-write -S srv.example.invalid -d appdb -Q "DELETE FROM srv.appdb.dbo.T"
+run 2 "sql: name after a [--] identifier" sqlcmd-write -S srv.example.invalid -d appdb -Q "SELECT 1 AS [x--]; DELETE FROM other.dbo.T"
+run 0 "sql: three-part name, pinned db" sqlcmd-write -S srv.example.invalid -d appdb -Q "UPDATE [AppDB]..T SET Name = N'use other.dbo.T' WHERE Id = 3 -- USE x"
 for o in -U -P -G -V -o -v; do
   run 2 "sql: $o refused" sqlcmd-write -S srv.example.invalid -d appdb -Q "SELECT 1" "$o" x
 done

@@ -22,7 +22,7 @@ sets `workflow.guarded_writes: true` **and** the Operator completes §3. Engine:
 |---|---|---|
 | `az-write.sh <az args>` | an `az` operation listed in `az.ops`, or `az rest` within `az.rest` | an unlisted operation or option, an abbreviation, a duplicate, a missing `required` option, a value outside its `pin`, `--ids`, `@file` values, profile overrides; for `rest`: `--headers`, `--output-file`, dot segments, a URL outside every `url_prefix` or a method not listed |
 | `ops-write.sh [--confirm WORD] <script> [args]` | a deployment script listed in `ops.scripts`, with `WORD` (one of `ops.confirm_words`) fed to its typed confirmation on stdin | an unlisted script, a script whose working copy differs from trunk, `@file` values, `ops.deny_args` (e.g. a flag that reads a secret — the Operator runs those) |
-| `sqlcmd-write.sh -S <server> -d <db> (-i <file> \| -Q "<sql>")` | plain SQL on a server in `sql.servers` (and a database in `sql.databases` when set), via `sqlcmd --authentication-method ActiveDirectoryAzCli -b` | sqlcmd directives (`:r`, `:setvar`, `:connect`, `!!`, `ED`, also behind a BOM) and `$(variables)`; any option beyond `-S -d -i -Q -h -s -w -W` (so no `-U`/`-P`/`-G`, no output file, no `-V`); whatever the destructive-SQL classifier (`.claude/hooks/lib/guard_destructive_sql.py`) denies; a classifier failure (fail closed) |
+| `sqlcmd-write.sh -S <server> -d <db> (-i <file> \| -Q "<sql>")` | plain SQL on a server in `sql.servers` (and a database in `sql.databases` when set), via `sqlcmd --authentication-method ActiveDirectoryAzCli -b` | sqlcmd directives (`:r`, `:setvar`, `:connect`, `!!`, `ED`, also behind a BOM) and `$(variables)`; `USE`, and a name of four parts or of three whose database is not `-d`; any option beyond `-S -d -i -Q -h -s -w -W` (so no `-U`/`-P`/`-G`, no output file, no `-V`); whatever the destructive-SQL classifier (`.claude/hooks/lib/guard_destructive_sql.py`) denies; a classifier failure (fail closed) |
 
 Every wrapper:
 - runs the tool with a **clean environment** — `PATH HOME USER LOGNAME LANG LC_ALL LC_CTYPE TMPDIR
@@ -111,11 +111,13 @@ only route even where the identity would allow more.
   A field in the trunk-approved config is a possible future extension.
 - **`AZURE_EXTENSION_DIR` is forced** to `$HOME/.azure/cliextensions` (extension code runs with the
   write profile); a custom extension dir is not honoured.
-- **The SQL classifier is a regex:** dynamic SQL (`EXEC('DR'+'OP …')`) passes it, and so does a
-  `--` or `/*` inside a quoted identifier (`SELECT 1 AS [x--]; DROP TABLE t`) — §3.2's permissions
-  carry the DROP/TRUNCATE ban. The classifier itself is checked against trunk like the config.
-- **The database pin is the `-d` login database only:** a `USE other` or a three-part name
-  (`other.dbo.T`) in the statement reaches another database — scope the write identity's grants to
-  the pinned databases.
+- **The SQL classifier is a regex:** dynamic SQL (`EXEC('DR'+'OP …')`) passes it — §3.2's
+  permissions carry the DROP/TRUNCATE ban. The classifier itself is checked against trunk like the
+  config.
+- **The database pin is partial:** `sqlcmd-write` refuses a literal `USE` and a three- or four-part
+  name that leaves `-d`, but dynamic SQL (`EXEC('USE other …')`), `OPENROWSET`/`OPENQUERY`, a
+  synonym or a cross-database view still reach another database — scope the write identity's grants
+  to the pinned databases. The name check also refuses a harmless dotted chain such as
+  `t.col.method()`; the Operator runs that one.
 - **Project-specific rules** (a release pipeline's stage limits, a pull-request patch, an
   application list) are not part of the kit; a project keeps them in its own config or wrapper.
