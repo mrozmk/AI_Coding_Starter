@@ -74,8 +74,12 @@ echo "recorded $ID"
 
 P="$(bash "$LIB/team-channel.sh" get tmux_prefix 2>/dev/null || true)"
 [ -n "$P" ] || P="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')"
-S="$(bash "$LIB/team-channel.sh" name Supervisor 2>/dev/null || true)"; S="${S:-$P-supervisor}"
-args=(--project "$P" --summary "$SUMMARY" --answer Supervisor --hint "tmux attach -t $S" --key "$ID"
+# The driver's hint names the live (prefixed) Supervisor session; the old text only without a host.
+H="$(bash "$LIB/session-host.sh" hint Supervisor --main "$ROOT" 2>/dev/null)" || H=""
+if [ -z "$H" ]; then
+  S="$(bash "$LIB/team-channel.sh" name Supervisor 2>/dev/null || true)"; H="tmux attach -t ${S:-$P-supervisor}"
+fi
+args=(--project "$P" --summary "$SUMMARY" --answer Supervisor --hint "$H" --key "$ID"
   --source operator-record)
 [ -z "$TEAM" ] || args+=(--team "$TEAM")
 [ -z "$REF" ] || args+=(--ref "$REF")
