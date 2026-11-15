@@ -25,11 +25,13 @@ sid="$(printf '%s' "$IN" | jq -r '.session_id // empty' 2>/dev/null)"
 [[ "$sid" =~ ^[A-Za-z0-9-]{8,64}$ ]] || exit 0
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# put <file> <jq filter> [jq args…] — read ({} when absent), filter, write 0600 atomically.
+# put <file> <jq filter> [jq args…] — read ({} when absent), filter, write 0600 atomically. A
+# here-string, not a pipe, as in sh_record_put: no writer that SIGPIPE can kill.
 put() {
-  local f="$1" filter="$2"; shift 2
-  { cat "$f" 2>/dev/null || echo '{}'; } \
-    | jq "$@" "(if type == \"object\" then . else {} end) | $filter" > "$f.tmp.$$" 2>/dev/null \
+  local f="$1" filter="$2" cur; shift 2
+  cur="$(cat "$f" 2>/dev/null)" || cur=""
+  [ -n "$cur" ] || cur='{}'
+  jq "$@" "(if type == \"object\" then . else {} end) | $filter" <<<"$cur" > "$f.tmp.$$" 2>/dev/null \
     && mv "$f.tmp.$$" "$f" || rm -f "$f.tmp.$$"
 }
 claude_pid() {  # the nearest claude ancestor of this hook process

@@ -522,4 +522,22 @@ wait
 [ ! -e "$LD" ] && [ ! -e "$LD.reclaim" ] || fail "(31) a lock or reclaim dir left behind"
 echo "team-smoke-host: (31) roles.lock OK"
 
+# ---- (32) records reach jq without a pipe: a large existing record under pipefail ---------------------------
+# The CLI runs with pipefail: a `cat record | jq -n` writer killed by SIGPIPE used to drop the write.
+big="$(head -c 300000 /dev/zero | tr '\0' x)"
+jq -n --arg p "$big" '{address: "gamma-coder", pad: $p}' > "$REG/gamma-coder.json"
+clr; run "$MAIN" $SH start gamma-coder --kind team --cwd "$CL" --cli claude --session-id s7 -- claude
+expect 0 "gamma-coder" "(32) start over a large record"
+! has "could not be written" "$WORK/out" || fail "(32) the record write failed"
+jq -e '.address == "gamma-coder" and .session_id == "s7" and (has("pad") | not)' "$REG/gamma-coder.json" >/dev/null \
+  || fail "(32) the fresh record did not replace the large one"
+jq --arg p "$big" '.pad = $p' "$REG/Supervisor.json" > "$WORK/r.json" && cat "$WORK/r.json" > "$REG/Supervisor.json"
+hr "$SR" "$MAIN" sess-0032-zzzz $NOV HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG"
+jq -e '.session_id == "sess-0032-zzzz" and (.pad | length) == 300000' "$REG/Supervisor.json" >/dev/null \
+  || fail "(32) session-registry lost a large record"
+jq --arg p "$big" '.teams.sessions = {"Supervisor": {"_pad": $p}}' "$WORK/prof.bak" > "$RR/.claude/project-profile.json"
+run "$RR" env ROLES_ROOT="$RR" bash -c "set -o pipefail; . '$RL'; roles_list"
+expect 0 "Supervisor" "(32) roles_list over a large profile under pipefail"
+echo "team-smoke-host: (32) records without a pipe OK"
+
 echo "team-smoke-host: OK"

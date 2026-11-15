@@ -79,13 +79,16 @@ sh_record_get() {
 
 # sh_record_put <main> <address> <jq filter> [jq args…] — read ({} when absent), filter, write.
 # Registry files are 0600 and the directory 0700: records hold no secret, but registrations hold
-# the messaging-socket token, and both live side by side.
+# the messaging-socket token, and both live side by side. The record reaches jq as a here-string,
+# not through a pipe: under the CLI's pipefail a writer killed by SIGPIPE (jq done before it
+# finished) would fail the write while jq itself succeeded.
 sh_record_put() {
-  local f filter="$3"; f="$(sh_record_file "$1" "$2")"; shift 3
+  local f filter="$3" cur; f="$(sh_record_file "$1" "$2")"; shift 3
+  cur="$(cat "$f" 2>/dev/null)" || cur=""
+  [ -n "$cur" ] || cur='{}'
   ( umask 077
     mkdir -p "$(dirname "$f")" || exit 1
-    { cat "$f" 2>/dev/null || echo '{}'; } \
-      | jq "$@" "(if type == \"object\" then . else {} end) | $filter" > "$f.tmp.$$" \
+    jq "$@" "(if type == \"object\" then . else {} end) | $filter" <<<"$cur" > "$f.tmp.$$" \
       && mv "$f.tmp.$$" "$f" || { rm -f "$f.tmp.$$"; exit 1; } )
 }
 
@@ -613,7 +616,7 @@ sh_start() {
     + (if $prog != "" then {program: $prog} else {} end)
     + (if $sid != "" then {session_id: $sid} else {} end)
     + (if $td != "" then {team_dir: $td} else {} end)' \
-    -n --arg a "$a" --arg k "$k" --arg b "$be" --arg n "$n" --arg cwd "$cwd" --arg cli "$cli" \
+    --arg a "$a" --arg k "$k" --arg b "$be" --arg n "$n" --arg cwd "$cwd" --arg cli "$cli" \
     --arg at "$(sh_utc)" --arg prog "$prog" --arg sid "$sid" --arg td "$s" \
     || sh_err "$a: started, but the registry record could not be written"
   echo "$n"

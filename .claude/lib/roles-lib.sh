@@ -57,8 +57,10 @@ roles_profile() { echo "${ROLES_ROOT:-$PWD}/.claude/project-profile.json"; }
 # roles_jq <program> [jq args…] — runs <program> over the normalised list (as $roles; the profile
 # as input). rc 3 + one error line when the profile is unreadable or teams.sessions is no object.
 roles_jq() {
-  local prog="$1" err; shift
-  { cat "$(roles_profile)" 2>/dev/null || echo '{}'; } | jq -r \
+  local prog="$1" err cur; shift
+  cur="$(cat "$(roles_profile)" 2>/dev/null)" || cur=""
+  [ -n "$cur" ] || cur='{}'
+  jq -r <<<"$cur" \
     --argjson shipped "$ROLES_SHIPPED" --argjson generic "$ROLES_GENERIC" \
     --argjson defaults "$ROLES_DEFAULTS" "$@" "($ROLES_JQ_NORM) as \$roles | $prog" 2>"${TMPDIR:-/tmp}/roles-jq.$$" \
     && { rm -f "${TMPDIR:-/tmp}/roles-jq.$$"; return 0; }
