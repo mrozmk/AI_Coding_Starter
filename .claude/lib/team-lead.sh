@@ -5,7 +5,7 @@
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
 #        bash .claude/lib/team-lead.sh digest-check <team> <spec|plan path>
-#        bash .claude/lib/team-lead.sh diff <team>   (runs/<run>/acceptance-diff.patch + .stat)
+#        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #   pending lists the lead's open items — pending decisions first, then stop, gate, attention,
 #   inbox, oldest first:
@@ -55,26 +55,28 @@ gate_decided() {  # gate_decided <record basename> — a non-escalate verdict na
 
 # One line per item, sorted by a 14-digit UTC key that is cut off before printing.
 pending() {
-  local f role attempt last ts since="" stage l gate
+  local f role attempt last ts since="" stage l gate rr
   resolve "$1"
   {
     if [ -n "$RUN" ]; then
+      # Stage records of the current rework round (team-lead.md §9); round 1's stay behind.
+      rr="$(team_run_ref "$TD" "$RUN")"
       # Open human decisions sort before everything: the Operator's answers wait on them.
       for f in "$TD/runs/$RUN"/decisions/d-*.md; do
         [ -f "$f" ] && [ "$(dfm "$f" status)" = pending ] || continue
         echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
       done
-      for f in "$TD/runs/$RUN"/*-*-*.json; do
+      for f in "$TD/runs/$rr"/*-*-*.json; do
         [ -f "$f" ] || continue
         case "$(basename "$f")" in teamlead-*) continue ;; esac  # verdicts, not stage records
         role="$(jq -r .role "$f")"; attempt="$(jq -r .attempt "$f")"
-        last="$(ls "$TD/runs/$RUN" | grep -E "^$role-$attempt-[0-9]+\.json\$" | sort -t- -k3,3n \
+        last="$(ls "$TD/runs/$rr" | grep -E "^$role-$attempt-[0-9]+\.json\$" | sort -t- -k3,3n \
           | tail -n 1)"
         [ "$(basename "$f")" = "$last" ] || continue
         ts="$(jq -r .written_at "$f" | tr -dc 0-9)"
         case "$role $(jq -r .verdict "$f")" in
           *" blocked"|*" failed")
-            echo "$ts stop .agents/team/runs/$RUN/$(basename "$f") — $(jq -r '.message // ""' "$f")" ;;
+            echo "$ts stop .agents/team/runs/$rr/$(basename "$f") — $(jq -r '.message // ""' "$f")" ;;
           # A gate stays open until a verdict other than escalate names its record.
           "planner review"|"planner done")
             [ ! -e "$f.accepted" ] && ! gate_decided "$(basename "$f")" || continue
@@ -85,7 +87,7 @@ pending() {
       # Attention lines after the active stage's newest record are still unanswered.
       stage="$(jq -r '.role // empty' "$TD/session.json" 2>/dev/null || true)"
       if [ -n "$stage" ]; then
-        f="$(ls -1 "$TD/runs/$RUN/$stage"-*-*.json 2>/dev/null | tail -n 1 || true)"
+        f="$(ls -1 "$TD/runs/$rr/$stage"-*-*.json 2>/dev/null | tail -n 1 || true)"
         [ -z "$f" ] || since="$(jq -r .written_at "$f" | tr -dc 0-9)"
       fi
       [ ! -f "$TD/runs/$RUN/attention" ] || while IFS= read -r l; do
@@ -127,17 +129,19 @@ digest_check() {
   return 1
 }
 
-# The acceptance diff: base_sha..the newest qa record's output_rev in the clone, without this run's
-# spec and plan (the blind check must not see them). Prints the two paths only.
+# The acceptance diff: base_sha..the current round's newest qa record's output_rev in the clone,
+# without this run's spec and plan (the blind check must not see them). Written into the round's dir
+# (runs/<run>/ or runs/<run>/r<n>/), where the blind check and the brief of that round go too.
+# Prints the two paths only.
 acceptance_diff() {
   local root qa rev base pl a ex=() d
   resolve "$1"
   [ -n "$RUN" ] || { echo "error: no current run" >&2; exit 4; }
-  root="${TD%/.agents/team}"; d="$TD/runs/$RUN"
+  root="${TD%/.agents/team}"; d="$TD/runs/$(team_run_ref "$TD" "$RUN")"
   qa="$(ls "$d" 2>/dev/null | grep -E '^qa-[0-9]+-[0-9]+\.json$' | sort -t- -k2,2n -k3,3n | tail -n 1 || true)"
   [ -n "$qa" ] || { echo "error: no qa record in run $RUN" >&2; exit 4; }
   rev="$(jq -r '.output_rev // empty' "$d/$qa")"; base="$(jq -r '.base_sha // empty' "$TD/team.json")"
-  pl="$(ls -1 "$d"/planner-*.json.accepted 2>/dev/null | tail -n 1 || true)"
+  pl="$(ls -1 "$TD/runs/$RUN"/planner-*.json.accepted 2>/dev/null | tail -n 1 || true)"
   if [ -n "$pl" ]; then
     for a in $(jq -r '.artifacts[]? | select(startswith(".agents/specs/") or startswith(".agents/plans/"))' "${pl%.accepted}"); do
       ex+=(":(exclude)$a")

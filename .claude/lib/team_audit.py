@@ -79,25 +79,31 @@ def load_config(path):
 
 
 def load_records(run_dir, roles):
+    """Records of round 1 (the run dir) and of every rework round (r<n>/, team-lead.md §9)."""
     recs = []
-    for name in sorted(os.listdir(run_dir)):
-        m = RECORD.match(name)
-        if not m or m.group(1) not in roles:
-            continue
-        try:
-            with open(os.path.join(run_dir, name), encoding="utf-8") as f:
-                doc = json.load(f)
-        except (OSError, ValueError):
-            continue
-        doc["_file"] = name
-        doc["_role"], doc["_attempt"], doc["_seq"] = m.group(1), int(m.group(2)), int(m.group(3))
-        doc["_accepted"] = os.path.exists(os.path.join(run_dir, name + ".accepted"))
-        recs.append(doc)
+    rounds = [(1, "")] + sorted((int(d[1:]), d) for d in os.listdir(run_dir)
+                                if re.match(r"^r\d+$", d) and os.path.isdir(os.path.join(run_dir, d)))
+    for rnd, sub in rounds:
+        for name in sorted(os.listdir(os.path.join(run_dir, sub))):
+            m = RECORD.match(name)
+            if not m or m.group(1) not in roles:
+                continue
+            path = os.path.join(run_dir, sub, name)
+            try:
+                with open(path, encoding="utf-8") as f:
+                    doc = json.load(f)
+            except (OSError, ValueError):
+                continue
+            doc["_file"], doc["_dir"], doc["_round"] = os.path.join(sub, name), sub, rnd
+            doc["_role"], doc["_attempt"], doc["_seq"] = m.group(1), int(m.group(2)), int(m.group(3))
+            doc["_accepted"] = os.path.exists(path + ".accepted")
+            recs.append(doc)
     return recs
 
 
 def stage(run_dir, role, recs, typical):
-    mine = sorted((r for r in recs if r["_role"] == role), key=lambda r: (r["_attempt"], r["_seq"]))
+    mine = sorted((r for r in recs if r["_role"] == role),
+                  key=lambda r: (r["_round"], r["_attempt"], r["_seq"]))
     accepted = [r for r in mine if r["_accepted"]]
     prompts = [os.path.join(run_dir, f) for f in os.listdir(run_dir)
                if re.match(rf"^{role}-\d+\.prompt\.md$", f)]
@@ -156,7 +162,7 @@ def planner_steps(clone, rec, mode):
 
 
 def qa_steps(run_dir, rec):
-    text = read_text(os.path.join(run_dir, f"qa-report-{rec['_attempt']}.md"))
+    text = read_text(os.path.join(run_dir, rec["_dir"], f"qa-report-{rec['_attempt']}.md"))
     if text is None:
         return {"qa-report": "missing"}
     lines = text.splitlines()
@@ -192,7 +198,7 @@ def contract_steps(run_dir, clone, mode, stages):
         elif role == "qa":
             steps.update(qa_steps(run_dir, rec))
         elif role == "wrapup":
-            text = read_text(os.path.join(run_dir, f"wrapup-{rec['_attempt']}.md")) or ""
+            text = read_text(os.path.join(run_dir, rec["_dir"], f"wrapup-{rec['_attempt']}.md")) or ""
             ok = re.search(r"^target_rev: \S+", text, re.M)
             steps["wrapup-target-rev"] = "present" if ok else "missing"
         elif role == "cli":

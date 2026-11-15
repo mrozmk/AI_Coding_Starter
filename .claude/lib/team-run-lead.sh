@@ -23,6 +23,7 @@ team_lead_base_ok() {
   done
   grep -q 'review)' "$CLONE/.claude/lib/team-record.sh" || { echo "no review verdict in team-record.sh"; return 1; }
   grep -q 'teamlead.json' "$CLONE/.claude/team/prompts/planner.md" || { echo "no TeamLead branch in planner.md"; return 1; }
+  grep -q '{{REWORK}}' "$CLONE/.claude/team/prompts/coder.md" || { echo "no rework round in coder.md"; return 1; }
 }
 
 # The prompt comes from the main checkout: a clone on an older base must not run an old lead.
@@ -98,7 +99,7 @@ lead_event() {  # lead_event <event> <ref> [<body line>] — one Supervisor even
 }
 
 lead_stop() {  # lead_stop <record> — a stage's blocked/failed record: ack it once, ring the lead
-  basename "$1" > "$TD/acked"
+  ack_name "$1" > "$TD/acked"
   team_session_doorbell "$TD" lead "stop $(rec "$1" role) $(rec "$1" attempt): ${1#"$CLONE"/} — $(rec "$1" message)"
 }
 
@@ -108,7 +109,7 @@ lead_stop() {  # lead_stop <record> — a stage's blocked/failed record: ack it 
 lead_waiting() {
   local a r
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
-  case "$a" in "$1-$2-"*) ;; *) return 1 ;; esac
+  case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
   r="$TD/runs/$RUN/$a"
   [ -f "$r" ] && [ ! -e "$r.answered" ] || return 1
   # A gate input (review, done) waits on the lead as a stop does; the gate ends with the record accepted.
@@ -211,7 +212,7 @@ lead_status() {  # → alive|dead|none — session <sid> — pending <n>
 # ---- gates (spec, plan) -----------------------------------------------------------------------
 
 lead_gate_ring() {  # lead_gate_ring <gate> <record> — ack the gate's input record, ring the lead
-  basename "$2" > "$TD/acked"
+  ack_name "$2" > "$TD/acked"
   team_session_doorbell "$TD" lead "gate $1: ${2#"$CLONE"/}"
   echo "waiting for TeamLead: gate $1 $(basename "$2")"
 }
@@ -227,12 +228,12 @@ lead_say() {
 }
 
 # lead_gate <role> <attempt> — act once on each TeamLead verdict for the acked gate record, in seq
-# order; $TD/verdict-acked lists the verdicts already acted on. → 0 when a plan approve accepted
-# the planner record; 1 keep waiting (escalate, revise, a message to retry, no verdict yet).
+# order; $TD/verdict-acked lists the verdicts already acted on. → 0 when a verdict accepted the
+# record or opened a rework round; 1 keep waiting (escalate, revise, a message to retry, no verdict).
 lead_gate() {
   local a f v rel
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
-  case "$a" in "$1-$2-"*) ;; *) return 1 ;; esac
+  case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
   for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(spec|plan|acceptance|decision)-[0-9]+\.json$' \
       | sort -t- -k3,3n || true); do
     [ "$(rec "$TD/runs/$RUN/$f" for)" = "$a" ] || continue
@@ -250,10 +251,13 @@ lead_gate() {
         accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
       # The qa done was validated when the gate was rung; accept it, the wrapup follows.
       "acceptance accept") accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
-      "acceptance rework") echo "rework not yet supported — waiting ($rel)" ;;
+      # The transition clears verdict-acked; round n+1's acked names never match round n's verdicts.
+      "acceptance rework") round_next "$f" || return 1; return 0 ;;
       # abandon-recommended waits for the Operator's decision: close or continue on the same record.
+      # close ends the run at whichever gate record it names (team-lead.md §7), not only acceptance.
       "decision close") echo "$f" >> "$TD/verdict-acked"; close_run abandon "$rel" ;;
-      "decision continue") echo "continue granted ($rel) — the next round is not yet supported" ;;
+      # continue opens a round only at the qa's records (§9); elsewhere it changes nothing here.
+      "decision continue") [ "$1" != qa ] || team_session_doorbell "$TD" lead "continue granted ($rel) — order the rework: team-verdict.sh acceptance rework --for $a --ref .agents/team/runs/$RUN/rework-$(( $(cur_round) + 1 )).md" ;;
     esac
     echo "$f" >> "$TD/verdict-acked"
   done
@@ -261,10 +265,19 @@ lead_gate() {
 }
 
 # lead_accepted — the run is ready after the lead's accept and a done wrapup: one `accepted` event
-# to the Supervisor, guarded by runs/<run>/accepted.sent (a resume re-enters cmd_advance).
+# to the Supervisor, guarded by runs/<run>/accepted.sent (a resume re-enters cmd_advance). Only when
+# an `acceptance accept` verdict names the accepted qa record: a lead switched on after the qa was
+# accepted wrote no brief, and the event must not point at one.
 lead_accepted() {
+  local qa f v=""
   [ ! -e "$TD/runs/$RUN/accepted.sent" ] || return 0
-  lead_event accepted "runs/$RUN/acceptance-brief.md"
+  qa="$(accepted_record qa)"
+  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-acceptance-[0-9]+\.json$' || true); do
+    if [ -n "$qa" ] && [ "$(rec "$TD/runs/$RUN/$f" verdict)" = accept ] \
+      && [ "$(rec "$TD/runs/$RUN/$f" for)" = "$(ack_name "$qa")" ]; then v="$f"; fi
+  done
+  [ -n "$v" ] || { echo "accepted event skipped: no acceptance accept verdict names the accepted qa record"; return 0; }
+  lead_event accepted "runs/$(run_ref)/acceptance-brief.md"
   team_utc > "$TD/runs/$RUN/accepted.sent"
 }
 
@@ -272,7 +285,7 @@ lead_accepted() {
 # refuses the run even when a later step fails; then the Supervisor event, the lead, the stage.
 close_run() {
   local r pr="" next
-  r="$(accepted_record coder)"; [ -z "$r" ] || pr="$(rec "$r" pr_id)"
+  r="$(team_accepted_record "$RUN" coder)"; [ -z "$r" ] || pr="$(rec "$r" pr_id)"
   jq -n --arg reason "$1" --arg ref "$2" --arg at "$(team_utc)" --arg pr "$pr" \
     '{reason: $reason, ref: $ref, closed_at: $at,
       pr_id: (if $pr == "" then null else ($pr | tonumber) end)}' > "$TD/runs/$RUN/closed.json"
@@ -284,4 +297,69 @@ close_run() {
   rm -f "$TD/session.json"
   echo "closed: $1 — $next"
   exit 8
+}
+
+# ---- rework rounds (team-lead.md §9) ----------------------------------------------------------
+# $TD/round = {run, round, verdict, pr_published}: the durable round and the acceptance rework verdict
+# that opened it. A round whose run differs from $RUN reads as round 1 (team_run_ref).
+
+cur_round() { local r; r="$(run_ref)"; case "$r" in */r*) echo "${r##*/r}" ;; *) echo 1 ;; esac; }
+rp() { [ "$(cur_round)" = 1 ] || echo "r$(cur_round)/"; }      # the acked-name prefix of this round
+ack_name() { echo "${1#"$TD/runs/$RUN/"}"; }                    # a record relative to runs/<run>/
+round_field() { jq -r --arg r "$RUN" --arg k "$1" 'select(.run == $r) | .[$k] // empty | tostring' "$TD/round" 2>/dev/null || true; }
+# The coder of round n starts from the qa revision the rework verdict of round n-1 was written for.
+round_input_rev() { rec "$TD/runs/$RUN/$(rec "$TD/runs/$RUN/$(round_field verdict)" for)" output_rev; }
+round_rework() { if [ "$(cur_round)" = 1 ]; then echo none; else rec "$TD/runs/$RUN/$(round_field verdict)" ref; fi; }
+
+# true|false on stdout — whether round 1's PR is published, read live from the provider.
+round_pr_published() {
+  local pr j
+  pr="$(rec "$(team_accepted_record "$RUN" coder)" pr_id)"; [ -n "$pr" ] || return 1
+  case "$TEAM_PR_PROVIDER" in
+    github) j="$(bash "$root/.claude/lib/team-pr.sh" state "$pr")" || return 1; jq -r '.draft | not' <<<"$j" ;;
+    *) team_ado_coords || return 1; j="$(team_pr_json "$pr")" || return 1; jq -r '.isDraft | not' <<<"$j" ;;
+  esac
+}
+
+# A fixture crash point (smoke only): the runner dies as if killed, leaving the files as they are.
+round_crash() { [ "${TEAM_SMOKE:-}" != 1 ] || [ "${TEAM_ROUND_CRASH:-}" != "$1" ] || kill -9 $$; }
+
+# round_next <verdict> — an acceptance rework of round n: the durable intent round-transition first,
+# then round_finish. → 1 (keep waiting, retried next poll) when the rework file or the PR state is
+# missing.
+round_next() {
+  local v="$1" n ref pub
+  n="$(cur_round)"; ref="$(rec "$TD/runs/$RUN/$v" ref)"
+  [ -f "$CLONE/$ref" ] || { echo "rework $v: $ref missing — waiting"; return 1; }
+  pub="$(round_pr_published)" || { echo "rework $v: PR state unreadable — retrying"; return 1; }
+  jq -n --arg run "$RUN" --argjson from "$n" --argjson to $((n + 1)) --arg v "$v" --argjson pub "$pub" \
+    '{run: $run, from: $from, to: $to, verdict: $v, pr_published: $pub}' > "$TD/round-transition.tmp"
+  mv "$TD/round-transition.tmp" "$TD/round-transition"
+  round_crash 3
+  round_finish
+}
+
+# Completes a round-transition from its first undone step; every step is idempotent, so a crash at
+# any point is finished by round_reconcile on the next start.
+round_finish() {
+  local t="$TD/round-transition" to
+  to="$(jq -r .to "$t")"
+  [ ! -f "$TD/session.json" ] || end_session "$(session_json role)"
+  mkdir -p "$TD/runs/$RUN/r$to"; rm -f "$TD/session.json" "$TD/acked" "$TD/verdict-acked"
+  round_crash 4
+  jq '{run, round: .to, verdict, pr_published}' "$t" > "$TD/round.tmp"; mv "$TD/round.tmp" "$TD/round"
+  round_crash 4a
+  rm -f "$t"
+  team_session_doorbell "$TD" lead "round $to started — the coder reworks $(round_rework)"
+  echo "round $to started: rework $(round_rework)"
+}
+
+# cmd_advance, before the first stage: finish a pending transition of this run; a session.json of an
+# earlier round than the durable one is ended and removed.
+round_reconcile() {
+  local t="$TD/round-transition"
+  [ ! -f "$t" ] || [ "$(jq -r .run "$t" 2>/dev/null)" != "$RUN" ] || round_finish
+  [ -f "$TD/session.json" ] || return 0
+  [ "$(jq -r '.round // 1' "$TD/session.json")" -lt "$(cur_round)" ] || return 0
+  end_session "$(session_json role)"; rm -f "$TD/session.json"
 }

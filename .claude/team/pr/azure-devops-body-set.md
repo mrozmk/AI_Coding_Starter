@@ -1,1 +1,1 @@
-`az repos pr update --org {{ORG_URL}} --id {{PR}} --description @.agents/team/runs/{{RUN}}/pr-description.md`
+`az repos pr update --org {{ORG_URL}} --id {{PR}} --description @{{RUN_DIR}}/pr-description.md`

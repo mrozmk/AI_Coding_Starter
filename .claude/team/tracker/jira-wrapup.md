@@ -1,4 +1,4 @@
-4. Jira — the state file `.agents/team/runs/{{RUN}}/wrapup-state.json` (`{}` if absent) makes every
+4. Jira — the state file `{{RUN_DIR}}/wrapup-state.json` (`{}` if absent) makes every
    write safe to retry:
    - on start, load its run-scoped drafts and selections. Each accepted draft is attached to a
      stable create intent id and contains the complete fields, description, parent Epic,
@@ -28,7 +28,7 @@
    tier 3, c the revoked ones).
    Stay ≤ 4000 characters — trim `## Unattended decisions` prose first, never the template
    checklist or `## QA`. Write it to
-   `.agents/team/runs/{{RUN}}/pr-description.md`, then
+   `{{RUN_DIR}}/pr-description.md`, then
    {{PR_BODY_SET}}.
 6. Recommendations — each one only if it passes its bar:
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
@@ -49,7 +49,7 @@
    - Allocate an unused run-scoped create intent id for each new draft; never recycle an id.
      Save each complete draft (field table, entire description verbatim, queued file paths,
      assignee and active-sprint policy) under that id in `wrapup-state.json`, and copy it to
-     `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md` for the report.
+     `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md` for the report.
      Include the step 4 create marker in that saved/shown description.
      **Show that full dry-run once before the question.** Each ticket option names its title and
      `parent Epic: <key> — <summary>`; for 1 or >4 recommendations put those details in the question

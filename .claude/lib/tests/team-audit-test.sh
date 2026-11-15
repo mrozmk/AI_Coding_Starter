@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Offline test of the team run audit: auditor cases A–E, runner trap F, wrapper G–H, retro I,
-# closed TeamLead run J.
+# closed TeamLead run J, completed rework round K.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -236,5 +236,20 @@ jq -e '.final == "closed" and (.flags | map(select(startswith("missing-stage")))
   and .lead.closed.reason == "remode"' "$J" >/dev/null || fail "J: audit json $(jq -c '{final, flags, lead}' "$J")"
 has "- verdicts: plan remode (planner-1-1.json)" "${J%.json}.md" || fail "J: md lacks the TeamLead section"
 has "- closed: remode (" "${J%.json}.md" || fail "J: md lacks the closure"
+
+# ---- K: a run completed in rework round 2 (records and reports of r2/ count) ---------------------
+R="alfa-20261026-100000"; T="$WORK/td-k"; RD="$T/runs/$R"; O="$WORK/out-k"
+team_dir "$T" "$R" quick
+rec "$RD" planner 1 1 done 60 "" "$CODEX_REV"; rec "$RD" coder 1 1 done 120 8371; rec "$RD" qa 1 1 done 180
+rm -f "$RD/qa-1-1.json.accepted"   # the round-1 qa was reworked, never accepted
+mkdir -p "$RD/r2"; rec "$RD/r2" coder 1 1 done 300 8371; rec "$RD/r2" qa 1 1 done 360; qa_report "$RD/r2" 1
+rec "$RD/r2" wrapup 1 1 done 420; echo "target_rev: y" > "$RD/r2/wrapup-1.md"
+audit "$T" "$R" "$O" --final ready --runner-exit 0
+expect 0 "audit: " "K round-2 run"
+J="$O/20261026-alfa-AB-9-$R.json"
+jq -e '.state == "done" and .final == "ready" and .steps."final-build" == "passed"
+  and .steps."wrapup-target-rev" == "present" and .counts.qa_rounds == 2
+  and ([.stages[] | select(.role == "qa") | .accepted][0] == "r2/qa-1-1.json")' "$J" >/dev/null \
+  || fail "K: audit json $(jq -c '{state, final, steps, counts, stages}' "$J")"
 
 echo "team-audit-test: OK"

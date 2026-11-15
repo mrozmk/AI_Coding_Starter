@@ -157,10 +157,10 @@ mcv="$(mcf verdict)"
 
 # The PR comes from the RECORDS, never from the merge-check file: the file is what we are checking.
 if [ "$MODE" = cli ]; then
-  erec="$(team_accepted_record "$RUN" cli)"
+  erec="$(team_accepted_record "$(team_ie_run_ref "$TD" "$RUN")" cli)"
   [ -n "$erec" ] || die 3 "no accepted cli record in run ${RUN:-none}"
 else
-  erec="$(team_accepted_record "$RUN" qa)"
+  erec="$(team_accepted_record "$(team_ie_run_ref "$TD" "$RUN")" qa)"
   [ -n "$erec" ] || die 3 "no accepted qa record in run ${RUN:-none}"
 fi
 PR="$(jq -r '.pr_id // ""' "$erec")"

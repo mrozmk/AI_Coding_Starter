@@ -47,16 +47,17 @@ digest0=""
 
 [ ! -f "$TD/session.json" ] || die 3 "a role is still live ($(jq -r .role "$TD/session.json")) — wait for it to finish"
 if [ "$MODE" = cli ]; then
-  cl="$(team_accepted_record "$RUN" cli)"
+  cl="$(team_accepted_record "$(team_run_ref "$TD" "$RUN")" cli)"
   [ -n "$cl" ] || die 3 "no accepted cli record in run '${RUN:-none}' — run team-run.sh first"
   [ "$(jq -r .verdict "$cl")" = done ] || die 3 "accepted cli record is not done"
   want="$(jq -r .output_rev "$cl")"; pr="$(jq -r .pr_id "$cl")"
 else
-  qa="$(team_accepted_record "$RUN" qa)"
+  # The final rework round's records (team-lead.md §9); merge-check.json stays at the run root.
+  qa="$(team_accepted_record "$(team_run_ref "$TD" "$RUN")" qa)"
   [ -n "$qa" ] || die 3 "no accepted qa record in run '${RUN:-none}' — run team-run.sh first"
   [ "$(jq -r .verdict "$qa")" = done ] || die 3 "accepted qa record is not done"
   qa_rev="$(jq -r .output_rev "$qa")"; pr="$(jq -r .pr_id "$qa")"
-  wr="$(team_accepted_record "$RUN" wrapup)"
+  wr="$(team_accepted_record "$(team_run_ref "$TD" "$RUN")" wrapup)"
   [ -n "$wr" ] || die 3 "wrapup not done — run /start-team $TEAM"
   [ "$(jq -r .verdict "$wr")" = done ] || die 3 "accepted wrapup record is not done"
   want="$(jq -r .output_rev "$wr")"
@@ -109,7 +110,7 @@ fi
 delta=""
 [ "$MODE" = cli ] || delta="$(memory_only "$qa_rev" "$SRC")"
 if [ -n "$delta" ]; then
-  tr_rev="$(sed -n 's/^target_rev: //p' "$TD/runs/$RUN/wrapup-$(jq -r .attempt "$wr").md" 2>/dev/null)"
+  tr_rev="$(sed -n 's/^target_rev: //p' "$TD/runs/$(team_run_ref "$TD" "$RUN")/wrapup-$(jq -r .attempt "$wr").md" 2>/dev/null)"
   [ -n "$tr_rev" ] || die 3 "wrapup summary has no target_rev"
   tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory)" \
     || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"

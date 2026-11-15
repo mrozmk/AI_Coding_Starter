@@ -61,7 +61,9 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `teamlead.reg.json` | `teamlead-register.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
 | `lead-dead`, `relaunch-lead`, `inbox-rung/<file>`, `send-lead.log` | runner | death reported once, relaunch request, inbox ring markers, skipped doorbells |
-| `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | basename of the stage record the lead must resolve: a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate) |
+| `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | the stage record the lead must resolve, relative to `runs/<run>/` (`r<n>/<record>` in a rework round): a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate), a qa `done` (acceptance gate) |
+| `round`, `round-transition` | runner (§9) | the durable rework round `{run, round, verdict, pr_published}`; the transition intent `{run, from, to, verdict, pr_published}` |
+| `runs/<run>/rework-<n>.md`, `runs/<run>/r<n>/` | the lead; runner + stages | the round's rework order; round n's records, prompts, sessions, reports and acceptance files |
 | `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
 | `runs/<run>/gate-<gate>-<n>.md` | the lead | gate findings; a verdict's `ref` |
 | `runs/<run>/answers.md` | `team-answer.sh` (every authority answer) | `- <utc> [<role> <attempt>] <question> → <answer> — <why> [authority <a>] [decision <id>]` |
@@ -239,7 +241,12 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   `escalate` (needs `--ref`), `continue` / `close` (need `--decision d-<n>` answered with that
   `answer_outcome`; the decision becomes `status: consumed`, once), `resolved` (closes a pending or
   answered decision without changing the run). The revise allowance of §4 counts consumed
-  `more-revise` grants. The runner acting on `continue` / `close` is a later step.
+  `more-revise` grants; the rework budget of §9 counts consumed `continue` grants of abandon
+  decisions.
+- **Close is not limited to acceptance.** The runner acts on `decision close` whose `--for` is the
+  acked record at **any** gate or stop — a spec, plan or acceptance gate, a coder or qa `blocked`
+  stop: the Operator said close, so the run closes there (`close_run abandon`, exit 8). A `continue`
+  only means something at the acceptance gate (§9); elsewhere it changes nothing in the runner.
 - **Withdraw / list:** `decision withdraw <team> d-<n> --why "<line>"` (`status: withdrawn`, lead
   only), `decision list <team> [--pending]`; `team-lead.sh pending` lists pending decisions first.
 - **Guard:** `guard-team-verdict.sh` refuses `team-lead.sh decision open|answer|withdraw` from any
@@ -269,15 +276,62 @@ stage clock is paused while the gate waits (`lead_waiting`).
     <why>` line under `## Warnings` per comma-separated item of the report's `Warnings:` line;
     otherwise exit 8 naming the missing piece. The runner accepts the qa record and launches the
     wrapup.
-  - `rework` — written, acted on by the rework step; until then the runner prints
-    `rework not yet supported` and keeps waiting.
+  - `rework` — opens the next round (§9).
   - `abandon-recommended` — needs `--decision d-<n>`, a pending decision opened with
     `--notify abandon_decision` (its escalate verdict is the one notification); the runner waits.
-- **Decision verdicts the runner acts on now:** on the acked gate record, `decision close` →
-  `close_run abandon` (exit 8, event `closed`); `decision continue` → prints
-  `continue granted` and keeps waiting (the next round is the rework step). Decisions about prompts
-  (`attention:<n>`) and `escalate` / `resolved` change nothing in the runner.
+- **Decision verdicts the runner acts on:** on the acked record, `decision close` →
+  `close_run abandon` (exit 8, event `closed`); `decision continue` → rings the lead
+  `continue granted — order the rework` (§9). Decisions about prompts (`attention:<n>`) and
+  `escalate` / `resolved` change nothing in the runner.
 - **Ready:** `ready:` is printed only when every stage is accepted — so after `accept` **and** a done
   wrapup. With the lead on, the runner first writes the Supervisor event `accepted`
-  (`ref: runs/<run>/acceptance-brief.md`) once, guarded by `runs/<run>/accepted.sent`; a resume
-  after `ready` sends no second one. Without the lead nothing changes.
+  (`ref: runs/<run>[/r<n>]/acceptance-brief.md`) once, guarded by `runs/<run>/accepted.sent`; a
+  resume after `ready` sends no second one. The event needs an `acceptance accept` verdict naming
+  the accepted qa record: a lead switched on after the qa was accepted wrote no brief, so the
+  runner skips the event and says so. Without the lead nothing changes.
+- **Per round:** the patch, `blind-check.md`, `acceptance-brief.md` and the qa report of round n
+  live in the round's directory (`runs/<run>/` for round 1, `runs/<run>/r<n>/` after); the gate
+  reads only those, so a round-2 accept never passes on round 1's files.
+
+## 9. Rework rounds
+
+The lead may order rework after an acceptance gate or a qa `blocked` stop. Each rework is a new
+round: the coder continues on the **same branch and the same PR**, then qa (and later the wrapup)
+runs again.
+
+- **Order:** the lead writes `runs/<run>/rework-<n>.md` (n = the next round; each item tied to an
+  order line or a QA defect), then `team-verdict.sh acceptance rework --for <qa record> --ref
+  runs/<run>/rework-<n>.md`. `--for` is the qa's newest record of the current round, `done` or
+  `blocked`.
+- **Budget:** rounds the lead may order alone = `teams.teamlead.rework_budget.<mode>` (defaults
+  brainstorm 2, quick 1) + the consumed Operator `continue` grants of decisions opened with
+  `--notify abandon_decision` — one grant, one round. The count is derived from files (rework
+  verdicts, consumed decisions), so a restarted runner or lead cannot reset it. Past it the verdict
+  script exits 9: the lead opens an abandon decision (`--notify abandon_decision`, the one
+  notification), writes `acceptance abandon-recommended --decision d-<n>`, and the Operator answers
+  `continue` (→ `decision continue`, then the round is ordered) or `close` (→ `decision close`, the
+  run closes). In quick mode the first rework needs `--quick-call continue`; the alternative is
+  `abandon-recommended` — a remode once code exists is not offered.
+- **Storage:** round 1 stays in `runs/<run>/`; round n ≥ 2 lives in `runs/<run>/r<n>/` (records,
+  prompts, `.session` files, `notes.md`, `qa-report-<a>.md`, `pr-description.md`, `wrapup-<a>.md`,
+  `wrapup-state.json`, acceptance files). No round-1 path changes. The run root keeps `attention`,
+  `answers.md`, `decisions/`, `questions/`, verdicts, the rework orders and the lead's files.
+  Records and `session.json` carry `round`; `run` stays the logical run id everywhere (records, QA
+  report header, tracker markers). Prompts get `{{RUN_DIR}}` (the round's dir), `{{ROUND}}` and
+  `{{REWORK}}` (the order, or `none`). Readers resolve the dir through `team_run_ref` (merge-check,
+  integrate, automerge, validation, `pending`, `diff`); the records digest and the audit include
+  every round. The `r<n>` directory never matches a record glob (`*-*-*.json`); team-watch and the
+  snapshot also read `r*/` and take the newest record by time, so a round-2 stop is seen.
+- **Transition** (runner, on the rework verdict): the order file must exist and the PR state is read
+  live (`pr_published`); the intent `round-transition` is written first, then the qa session is
+  ended, `runs/<run>/r<n+1>/` created, `session.json`, `acked` and `verdict-acked` cleared, `round`
+  written atomically and the intent removed; the lead is rung `round <n+1> started`, and the coder
+  launches with `input_rev` = the qa `output_rev` the rework was ordered for. A start with an intent
+  present completes it from its first undone step; a `session.json` of an earlier round is ended and
+  removed.
+- **Validation of a rework coder:** its `pr_id` is round 1's, its `output_rev` descends from the
+  previous qa `output_rev` (`git merge-base --is-ancestor`), and the PR is in the state it had at
+  the rework order — a draft after a qa `blocked` before publishing, else published (both providers
+  through `check_pr`). The plan check of round 1 does not apply. The coder prompt in round ≥ 2 fixes
+  exactly the order's items, pushes to the same branch and records `done --pr <round 1's PR>`; the
+  qa's publish step is a no-op on a published PR.

@@ -170,7 +170,7 @@ cmd_open() {
     # A summary line that looks like a heading would be read as a ledger section.
     printf '%s\n' "$summary" | sed 's/^## / ## /'
     printf '\n## Context\n- last blocker: %s\n' "$(awk '/^## Blockers/{b=1; next} /^## /{b=0}
-      b && /^- /{l=$0} END{print (l == "" ? "-" : l)}' "$TD/runs/$RUN/notes.md" 2>/dev/null || echo -)"
+      b && /^- /{l=$0} END{print (l == "" ? "-" : l)}' "$TD/runs/$(team_run_ref "$TD" "$RUN")/notes.md" 2>/dev/null || echo -)"
     printf -- '- spec: %s\n' "$([ -z "$planner" ] || artifact "$planner" .agents/specs/)"
     printf -- '- plan: %s\n\n## Screen\n' "$([ -z "$planner" ] || artifact "$planner" .agents/plans/)"
     printf '%s\n' "$QB_TEXT" | tail -n 40 | sed 's/^/    /'
@@ -262,7 +262,7 @@ deliver() {
   set_delivery "$q" "$QB_DELIVERY" "$QB_CONFIRMED"
   st="$(team_q_state "$q" | cut -f1)"
   cls="$(sed -n 's/^policy-class: //p' <<<"$out" | tail -n 1)"
-  notes="$TD/runs/$RUN/notes.md"
+  notes="$TD/runs/$(team_run_ref "$TD" "$RUN")/notes.md"
   case "$st" in
     sent|consumed|unknown)
       [ -z "$cls" ] || printf 'class: %s\n' "$cls" >> "$q"

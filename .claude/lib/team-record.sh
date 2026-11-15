@@ -48,26 +48,28 @@ team="$(session_json team)"; role="$(session_json role)"; run="$(session_json ru
 attempt="$(session_json attempt)"; ticket="$(session_json ticket)"; input_rev="$(session_json input_rev)"
 branch="$(team_json branch)"
 output_rev="$(git rev-parse HEAD)"
-notes="$(team_notes_init "$run")"
+# A rework round n ≥ 2 writes into runs/<run>/r<n>/ (team-lead.md §9); `run` stays the logical id.
+round="$(jq -r '.round // 1' "$(team_dir)/session.json")"; ref="$run"; [ "$round" = 1 ] || ref="$run/r$round"
+notes="$(team_notes_init "$ref")"
 
 if [ "$VERDICT" = blocked ] || [ "$VERDICT" = failed ]; then
   [ -n "$MESSAGE" ] || { echo "error: --verdict $VERDICT requires --message" >&2; exit 2; }
   echo "- [$role $attempt] $MESSAGE" >> "$notes"
 fi
 
-seq="$(team_next_seq "$run" "$role" "$attempt")"
-dir="$(team_dir)/runs/$run"
+seq="$(team_next_seq "$ref" "$role" "$attempt")"
+dir="$(team_dir)/runs/$ref"
 target="$dir/$role-$attempt-$seq.json"
 tmp="$dir/.$role-$attempt-$seq.json.tmp"
 [ ! -e "$target" ] || { echo "error: $target already exists" >&2; exit 1; }
 
-jq -n --arg team "$team" --arg ticket "$ticket" --arg run "$run" --arg role "$role" \
+jq -n --arg team "$team" --arg ticket "$ticket" --arg run "$run" --argjson round "$round" --arg role "$role" \
   --argjson attempt "$attempt" --argjson seq "$seq" --arg branch "$branch" \
   --arg input_rev "$input_rev" --arg output_rev "$output_rev" --arg verdict "$VERDICT" \
   --argjson pr_id "${PR:-null}" --arg artifacts "$ARTIFACTS" --arg evidence "$EVIDENCE" \
   --arg notes "${notes#"$(team_root)"/}" --arg message "$MESSAGE" \
   --arg written_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{team: $team, ticket: $ticket, run: $run, role: $role, attempt: $attempt, seq: $seq,
+  '{team: $team, ticket: $ticket, run: $run, round: $round, role: $role, attempt: $attempt, seq: $seq,
     branch: $branch, input_rev: $input_rev, output_rev: $output_rev, verdict: $verdict,
     pr_id: $pr_id,
     artifacts: ($artifacts | if . == "" then [] else split(",") end),

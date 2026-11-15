@@ -197,9 +197,11 @@ def team_run_window(clone_dir, run_id):
 
 
 def team_run_sessions(run_dir):
-    """(sorted role session uuids, None) for a complete run, else ([], why not)."""
-    keys = sorted(os.path.basename(p)[:-len(".prompt.md")]
-                  for p in glob.glob(os.path.join(run_dir, "*.prompt.md")))
+    """(sorted role session uuids, None) for a complete run, else ([], why not). Rework rounds
+    keep their session pairs in r<n>/ (team-lead.md §9)."""
+    keys = sorted(os.path.relpath(p, run_dir)[:-len(".prompt.md")]
+                  for p in glob.glob(os.path.join(run_dir, "*.prompt.md"))
+                  + glob.glob(os.path.join(run_dir, "r[0-9]*", "*.prompt.md")))
     if not keys:
         return [], "no session files"
     sessions = set()

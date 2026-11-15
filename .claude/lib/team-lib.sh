@@ -82,6 +82,12 @@ team_accepted_record() {
   [ -z "$f" ] || echo "${f%.accepted}"
 }
 
+# team_run_ref <team dir> <run> → <run>, or <run>/r<n> in rework round n ≥ 2 (<team dir>/round).
+team_run_ref() {
+  local n; n="$(jq -r --arg r "$2" 'select(.run == $r) | .round' "$1/round" 2>/dev/null)" || n=""
+  if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 1 ]; then echo "$2/r$n"; else echo "$2"; fi
+}
+
 team_tmux_name() {
   echo "$1-$2"
 }

@@ -34,8 +34,8 @@ transcript_args() {
   local f name sid phys
   phys="$(cd "$CLONE" && pwd -P)"
   shopt -s nullglob
-  for f in "$TD/runs/$RUN"/*.session; do
-    name="$(basename "$f" .session)"; sid="$(head -n 1 "$f")"
+  for f in "$TD/runs/$RUN"/*.session "$TD/runs/$RUN"/r*/*.session; do
+    name="${f#"$TD/runs/$RUN"/}"; name="${name%.session}"; sid="$(head -n 1 "$f")"
     TRANSCRIPTS+=(--transcript "$name=$(team_role_transcript "$phys" "$sid")")
   done
   shopt -u nullglob

@@ -10,12 +10,13 @@ questions normally.
 Your job: tell the developer in plain words what this run did, and propose memory updates or new
 tickets **only when they are worth it**. "Nothing to save, no new tasks" is a good result.
 
-1. Read `.agents/team/runs/{{RUN}}/notes.md` (including `## Supervised decisions`), every `*.json`
-   record in that directory, every file under `.agents/team/runs/{{RUN}}/questions/` (when
+1. Read `.agents/team/runs/{{RUN}}/notes.md` (including `## Supervised decisions`) and, in a rework
+   round, `{{RUN_DIR}}/notes.md` and the `rework-*.md` orders in `.agents/team/runs/{{RUN}}/`; every
+   `*.json` record in those directories, every file under `.agents/team/runs/{{RUN}}/questions/` (when
    present), `{{QA_REPORT}}`, `{{PLAN}}` and the PR description
    ({{PR_BODY_GET}}). Do not run `/prime`.
 2. `git fetch --quiet origin {{LINE}}`, then `git rev-parse origin/{{LINE}}` → `T`.
-3. Write `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md`: first line `target_rev: <T>`, then the
+3. Write `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`: first line `target_rev: <T>`, then the
    sections below. **The headings are fixed English** (other files read them); the text under
    them is plain prose in the developer's language — `language` in `.claude/project-profile.json`
    (`pl` | `en`; `en` when absent). Sections: `## Planning` (what was decided, what was
@@ -39,7 +40,7 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
    problem or a required Operator action, which are never compressed. It never lowers the memory bar.
 {{TRACKER_WRAPUP}}
 9. Write the record (`--pr` is required — the runner compares it with the coder's PR):
-   `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --artifacts .agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md`
+   `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --artifacts {{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`
 
 Supervision rules for steps 5–8 (every tracker; `.agents/reference/team-decision-model.md` §3):
 

@@ -282,7 +282,7 @@ setprofile
 # ================================================================================================
 # (B1) prompt render per provider — github leaves no {{key}} and no `az`, ADO keeps its text
 # ================================================================================================
-KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
+KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|RUN_DIR|ROUND|REWORK|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
 PROMPTS="planner planner-quick cli coder qa wrapup"
 b1_render() {  # b1_render <provider> <host kind> <host> <gates> <prompt> <out>
   ( set -e

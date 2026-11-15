@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Record validation for team-run.sh (moved out to keep the runner under 500 lines).
 # Sourced from the main checkout; uses the runner's globals (TD, BRANCH, LINE, RUN, MODE) and
-# helpers (rec, artifact, accepted_record, cancel_exit). Contract: .agents/reference/team-mode.md
+# helpers (rec, artifact, accepted_record, run_ref, round_field, cancel_exit). Contract: .agents/reference/team-mode.md
 # Bash 3.2 compatible (macOS /bin/bash): no mapfile, no associative arrays.
 
 fail() { echo "validation failed: $*" >&2; return 1; }
@@ -11,7 +11,8 @@ check_common() {
   [ -f "$TD/session.json" ] || fail "no session.json — record has no launched attempt" || return 1
   [ "$(rec "$r" run)" = "$(session_json run)" ] && [ "$(rec "$r" role)" = "$(session_json role)" ] \
     && [ "$(rec "$r" attempt)" = "$(session_json attempt)" ] \
-    || fail "record is not for the launched run/role/attempt" || return 1
+    && [ "$(jq -r '.round // 1' "$r")" = "$(jq -r '.round // 1' "$TD/session.json")" ] \
+    || fail "record is not for the launched run/round/role/attempt" || return 1
   [ "$(rec "$r" input_rev)" = "$(session_json input_rev)" ] || fail "input_rev differs from session.json" || return 1
   [ "$(git rev-parse --abbrev-ref HEAD)" = "$BRANCH" ] || fail "clone is not on $BRANCH" || return 1
   [ "$(rec "$r" output_rev)" = "$(git rev-parse HEAD)" ] || fail "output_rev is not the clone HEAD" || return 1
@@ -128,6 +129,20 @@ check_coder_plan() {
   [ "$(git cat-file -t "$rev:$want" 2>/dev/null)" = blob ] || fail "$want not in $rev"
 }
 
+# A rework coder (round ≥ 2) continues round 1's PR on the same branch, on top of the qa revision the
+# rework was ordered for; the PR keeps the draft state it had then (round_field pr_published). The
+# plan already sits in plans/done/, so check_coder_plan does not apply.
+check_rework_coder() {  # check_rework_coder <pr> <rev>
+  local c1 prev draft=true
+  c1="$(team_accepted_record "$RUN" coder)"
+  [ -n "$c1" ] && [ "$1" = "$(rec "$c1" pr_id)" ] || fail "rework coder PR ${1:-none} is not round 1's PR" || return 1
+  prev="$(round_input_rev)"
+  [ -n "$prev" ] && git merge-base --is-ancestor "$prev" "$2" 2>/dev/null \
+    || fail "rework coder output_rev $2 does not descend from the previous qa revision ${prev:-none}" || return 1
+  [ "$(round_field pr_published)" != true ] || draft=false
+  check_pushed "$2" && check_pr "$1" "$2" "$draft"
+}
+
 check_coder_pr() {  # check_coder_pr <role> <pr_id> — the role must report the coder's PR
   local coder
   coder="$(accepted_record coder)"
@@ -211,10 +226,10 @@ check_wrapup() {
   [ -n "$qa_rev" ] || fail "no accepted qa record" || return 1
   bad="$(team_non_memory_files "$qa_rev" "$rev")" || fail "cannot diff $qa_rev..$rev" || return 1
   [ -z "$bad" ] || fail "wrapup changed files outside .agents/memory/: $(echo $bad)" || return 1
-  f="$TD/runs/$RUN/wrapup-$(rec "$r" attempt).md"
+  f="$TD/runs/$(run_ref)/wrapup-$(rec "$r" attempt).md"
   [ -s "$f" ] || fail "wrapup summary $f missing or empty" || return 1
   grep -Eq '^target_rev: [0-9a-f]{40}$' "$f" || fail "wrapup summary lacks 'target_rev: <sha>'" || return 1
-  check_wrapup_tracker "$TD/runs/$RUN/wrapup-state.json" "$(team_json tracker || true)" || return 1
+  check_wrapup_tracker "$TD/runs/$(run_ref)/wrapup-state.json" "$(team_json tracker || true)" || return 1
   check_pushed "$rev" && check_pr "$pr" "$rev" false
 }
 
@@ -230,12 +245,13 @@ validate_record() {
     planner) if [ "$(rec "$r" verdict)" = review ]; then check_review "$r"; else check_planner "$r"; fi ;;
     coder)
       [ -n "$pr" ] || fail "coder record has no pr_id" || return 1
+      if [ "$(jq -r '.round // 1' "$r")" != 1 ]; then check_rework_coder "$pr" "$rev"; return; fi
       check_coder_plan "$r" "$rev" || return 1
       check_pushed "$rev" && check_pr "$pr" "$rev" true ;;
     qa)
       check_coder_pr qa "$pr" || return 1
       rec "$r" evidence | tr ',' '\n' | grep "qa-report-$(rec "$r" attempt)\.md\$" >/dev/null || fail "evidence lacks qa-report-$(rec "$r" attempt).md" || return 1
-      check_qa_report "$TD/runs/$RUN/qa-report-$(rec "$r" attempt).md" "$r" || return 1
+      check_qa_report "$TD/runs/$(run_ref)/qa-report-$(rec "$r" attempt).md" "$r" || return 1
       check_pushed "$rev" && check_pr "$pr" "$rev" false ;;
     wrapup) check_wrapup "$r" "$pr" "$rev" ;;
     cli)

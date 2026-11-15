@@ -110,7 +110,7 @@ draft_why() {  # draft_why <input> → why a human draft is not recoverable, or 
     *"[Image #"*) echo "image chip" ;;
   esac
 }
-newest_record() { team_newest_record "$TD" "$(cat "$TD/run" 2>/dev/null)" "$ROLE" "$(sj attempt)"; }
+newest_record() { team_newest_record "$TD" "$(team_run_ref "$TD" "$(cat "$TD/run" 2>/dev/null)")" "$ROLE" "$(sj attempt)"; }
 identity() {
   local s; s="$(sj session_id)"
   [ -z "$E_SESSION" ] || [ "$E_SESSION" = "${s:--}" ] || refuse 6 "session changed"

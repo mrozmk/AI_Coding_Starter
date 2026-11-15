@@ -88,10 +88,12 @@ cancel_exit() {
   die 6 "cancelled by stop — session.json kept for the next run"
 }
 
-accepted_record() { team_accepted_record "$RUN" "$1"; }
+# Rework round n ≥ 2 keeps its records in runs/<run>/r<n>/ (team-lead.md §9); the planner's stay in round 1.
+run_ref() { team_run_ref "$TD" "$RUN"; }
+accepted_record() { if [ "$1" = planner ]; then team_accepted_record "$RUN" planner; else team_accepted_record "$(run_ref)" "$1"; fi; }
 
 last_blocker() {
-  awk '/^## Blockers/{b=1; next} /^## /{b=0} b && /^- /{l=$0} END{print l}' "$TD/runs/$RUN/notes.md" 2>/dev/null || true
+  awk '/^## Blockers/{b=1; next} /^## /{b=0} b && /^- /{l=$0} END{print l}' "$TD/runs/$(run_ref)/notes.md" 2>/dev/null || true
 }
 
 # ---- stages -----------------------------------------------------------------------------------
@@ -99,8 +101,8 @@ last_blocker() {
 new_record() {
   local role="$1" attempt="$2" last ackseq=0 acked=""
   [ -f "$TD/acked" ] && acked="$(cat "$TD/acked")"
-  case "$acked" in "$role-$attempt-"*) ackseq="${acked#"$role-$attempt-"}"; ackseq="${ackseq%.json}" ;; esac
-  last="$(team_records "$RUN" "$role" "$attempt" | tail -n 1)"
+  case "$acked" in "$(rp)$role-$attempt-"*) ackseq="${acked#"$(rp)$role-$attempt-"}"; ackseq="${ackseq%.json}" ;; esac
+  last="$(team_records "$(run_ref)" "$role" "$attempt" | tail -n 1)"
   [ -n "$last" ] || return 0
   [ "$(rec "$last" seq)" -gt "$ackseq" ] && echo "$last" || true
 }
@@ -133,7 +135,7 @@ handle_record() {
       lead_gate_ring spec "$r"; return 2 ;;
     blocked|failed)
       if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
-      basename "$r" > "$TD/acked"
+      ack_name "$r" > "$TD/acked"
       echo "$(rec "$r" verdict): $(last_blocker)"
       echo "answer in: tmux attach -t $(sess_name "$ROLE")"
       notify "$(rec "$r" verdict)" "$(last_blocker) — /start-team $TEAM after answering" alarm
@@ -145,23 +147,23 @@ handle_record() {
 input_rev_for() {
   case "$1" in
     planner|cli) team_json base_sha ;;
-    coder) rec "$(accepted_record planner)" output_rev ;;
+    coder) if [ "$(cur_round)" = 1 ]; then rec "$(accepted_record planner)" output_rev; else round_input_rev; fi ;;
     qa) rec "$(accepted_record coder)" output_rev ;;
     wrapup) rec "$(accepted_record qa)" output_rev ;;
   esac
 }
 
 render_prompt() {
-  local role="$1" attempt="$2" out="$3" p planner coder qa plan="" spec="" pr="" report=""
+  local role="$1" attempt="$2" out="$3" p planner c1 qa plan="" spec="" pr="" report=""
   local kind host
-  planner="$(accepted_record planner)"; coder="$(accepted_record coder)"; qa="$(accepted_record qa)"
+  planner="$(accepted_record planner)"; qa="$(accepted_record qa)"
   if [ -n "$planner" ]; then
     spec="$(artifact "$planner" .agents/specs/)"; plan="$(artifact "$planner" .agents/plans/active/)"
   fi
-  if { [ "$role" = qa ] || [ "$role" = wrapup ]; } && [ -n "$coder" ]; then
-    plan="$(artifact "$coder" .agents/plans/done/)"; pr="$(rec "$coder" pr_id)"
-  fi
-  [ -z "$qa" ] || report=".agents/team/runs/$RUN/qa-report-$(rec "$qa" attempt).md"
+  # Round 1's coder holds the PR and the done plan of every round (a rework coder pushes to that PR).
+  c1="$(team_accepted_record "$RUN" coder)"
+  if [ "$role" != planner ] && [ -n "$c1" ]; then plan="$(artifact "$c1" .agents/plans/done/)"; pr="$(rec "$c1" pr_id)"; fi
+  [ -z "$qa" ] || report=".agents/team/runs/$(run_ref)/qa-report-$(rec "$qa" attempt).md"
   # ADO keeps `team_ado_coords`; github resolves owner/repo through the PR layer (Amendment 4).
   case "$TEAM_PR_PROVIDER" in
     github)
@@ -183,6 +185,7 @@ render_prompt() {
   put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"
+  put RUN_DIR ".agents/team/runs/$(run_ref)"; put ROUND "$(cur_round)"; put REWORK "$(round_rework)"
   put PLAN "$plan"; put SPEC "$spec"; put PR "$pr"; put ORG_URL "$ADO_ORG_URL"; put QA_REPORT "$report"
   # Project gates come from the profile; TEST_GATE is a ready sentence, never a raw path.
   put BUILD_CHECK "$TEAM_BUILD_CHECK"; put TEST_GATE "$(team_gate_sentence)"
@@ -192,7 +195,7 @@ render_prompt() {
 launch() {
   local role="$1" attempt="$2" name pf sid ch ck extra="" perm why costs=()
   team_cancelled && cancel_exit
-  name="$(sess_name "$role")"; pf="$TD/runs/$RUN/$role-$attempt.prompt.md"
+  name="$(sess_name "$role")"; pf="$TD/runs/$(run_ref)/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
   # Before session.json: a rejected config must not record an attempt (dead_attempt stops at 2).
   extra="$(role_flags "$role")"
@@ -202,7 +205,7 @@ launch() {
   fi
   [ -z "$perm" ] || extra="$extra--permission-mode '$perm' "
   ch="$(codex_home)" || die 1 "$ch"
-  mkdir -p "$TD/runs/$RUN"
+  mkdir -p "$TD/runs/$(run_ref)"
   # A known session id makes token-usage bindings explicit; transcripts are lower-case.
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
   [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
@@ -212,14 +215,15 @@ launch() {
     --arg ticket "$(team_json ticket)" --arg input_rev "$(input_rev_for "$role")" \
     --arg launched_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg mode "$MODE" \
     --arg session_id "$sid" --arg cost_key "$ck" --arg permission_mode "${perm:-default}" \
-    '{team: $team, role: $role, run: $run, attempt: $attempt, ticket: $ticket, mode: $mode,
+    --argjson round "$(cur_round)" \
+    '{team: $team, role: $role, run: $run, round: $round, attempt: $attempt, ticket: $ticket, mode: $mode,
       cost_key: $cost_key,
       input_rev: $input_rev, launched_at: $launched_at, session_id: $session_id,
       permission_mode: $permission_mode}' \
     > "$TD/session.json"
   team_anchor_launch "$root" "$TEAM" "$CLONE" "$RUN" "$role" "$attempt" "$sid" \
     || echo "warn: anchor not written" >&2
-  printf '%s\n' "$sid" > "$TD/runs/$RUN/$role-$attempt.session"
+  printf '%s\n' "$sid" > "$TD/runs/$(run_ref)/$role-$attempt.session"
   render_prompt "$role" "$attempt" "$pf"
   attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
@@ -258,7 +262,7 @@ dead_attempt() {
     launch "$role" $((attempt + 1))
     return 0
   fi
-  ! team_lead_on || lead_event session_dead "runs/$RUN/$role-$attempt.session"
+  ! team_lead_on || lead_event session_dead "runs/$(run_ref)/$role-$attempt.session"
   die 5 "dead attempt $attempt of $role: partial work or retry limit — supervisor"
 }
 
@@ -301,7 +305,7 @@ resume_stage() {
   local role attempt r rc=1
   role="$(session_json role)"; attempt="$(session_json attempt)"; ROLE="$role"
   [ "$(session_json run)" = "$RUN" ] || die 1 "error: session.json run differs from $TD/run"
-  if ls "$TD/runs/$RUN/$role-$attempt-"*.json.accepted >/dev/null 2>&1; then
+  if ls "$TD/runs/$(run_ref)/$role-$attempt-"*.json.accepted >/dev/null 2>&1; then
     end_session "$role"; rm -f "$TD/session.json"; return 0
   fi
   if ! team_tmux_alive "$(sess_name "$role")"; then
@@ -337,7 +341,7 @@ cmd_advance() {
   [ -s "$TD/run" ] || echo "$TEAM-$(date -u +%Y%m%d-%H%M%S)" > "$TD/run"
   RUN="$(cat "$TD/run")"
   [ ! -f "$TD/runs/$RUN/closed.json" ] || die 1 "run closed ($(jq -r .reason "$TD/runs/$RUN/closed.json")) — team-next for the next ticket, team-remode for remode"
-  lead_start
+  lead_start; round_reconcile
   while :; do
     if [ -f "$TD/session.json" ]; then
       check_orphans "$(session_json role)"; resume_stage; continue
@@ -374,12 +378,12 @@ cmd_status() {
   echo "mode: $MODE"
   # Durable non-fatal failures (team-warn.sh) — e.g. /start-team 4b `set-status started`.
   jq -r '(.warnings // [])[] | "warn: " + .text + " (" + .at + ")"' "$TD/team.json"
-  RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}"
+  RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}$([ "$(run_ref)" = "$RUN" ] || echo " round $(cur_round)")"
   [ ! -f "$TD/runs/${RUN:-none}/closed.json" ] || echo "closed: $(jq -r .reason "$TD/runs/$RUN/closed.json")"
   [ ! -f "$TD/session.json" ] || echo "session:$(jq -c '{role, attempt, input_rev}' "$TD/session.json")"
   [ ! -f "$ROLES_OVERRIDE" ] || echo "roles override: $(team_roles_status "$ROLES_OVERRIDE")"
   for role in $(team_mode_roles "$MODE"); do
-    r="$(ls -1t "$TD/runs/${RUN:-none}/$role"-*.json 2>/dev/null | head -n 1)" || true
+    r="$(ls -1t "$TD/runs/$(run_ref)/$role"-*.json 2>/dev/null | head -n 1)" || true
     [ -z "$r" ] || echo "$role: $(basename "$r") $(rec "$r" verdict)$([ -e "$r.accepted" ] && echo ' accepted')"
     ! team_tmux_alive "$(sess_name "$role")" || echo "tmux: $(sess_name "$role") alive"
   done
@@ -437,7 +441,7 @@ cmd_summary() {
 accepted_summary_file() {  # <role> <filename stem>
   local r
   r="$(accepted_record "$1")"
-  [ -z "$r" ] || echo "$TD/runs/${RUN:-none}/$2-$(rec "$r" attempt).md"
+  [ -z "$r" ] || echo "$TD/runs/$(run_ref)/$2-$(rec "$r" attempt).md"
 }
 
 summary_file() {  # summary_file <label> <file> — the body without the machine target_rev line

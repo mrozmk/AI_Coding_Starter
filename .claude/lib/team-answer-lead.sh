@@ -80,7 +80,7 @@ auth_after() {
   rd="$TD/runs/$run"; a="$(sj attempt)"
   if [ -n "$AUTH" ] && [ -d "$rd" ]; then
     case "$action" in
-      say) q="$(jq -r '.message // "blocked"' "$rd/$(newest_record)" 2>/dev/null || echo blocked)" ;;
+      say) q="$(jq -r '.message // "blocked"' "$TD/runs/$(team_run_ref "$TD" "$run")/$(newest_record)" 2>/dev/null || echo blocked)" ;;
       *) q="$(jq -r '(.question // []) | join(" ")' <<<"$P" 2>/dev/null || true)"
          [ -n "$q" ] || q="$(jq -r '.command // .title // .header // "prompt"' <<<"$P" 2>/dev/null || true)" ;;
     esac
@@ -91,5 +91,6 @@ auth_after() {
   fi
   case "$action" in say) ;; yes|no) [ -n "$AUTH" ] || return 0 ;; *) return 0 ;; esac
   acked="$(cat "$TD/acked" 2>/dev/null || true)"
-  case "$acked" in "$ROLE-$a-"*) [ ! -f "$rd/$acked" ] || touch "$rd/$acked.answered" ;; esac
+  # acked is relative to runs/<run>/ (r<n>/<record> in a rework round).
+  case "${acked##*/}" in "$ROLE-$a-"*) [ ! -f "$rd/$acked" ] || touch "$rd/$acked.answered" ;; esac
 }

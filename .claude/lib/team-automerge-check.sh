@@ -66,12 +66,12 @@ qa_ready() {  # → the PR id of the accepted QA (or cli) record; exits `no` oth
   local mode rec rep
   mode="$(team_mode "$TD/team.json")" || no "cannot read the mode of $TD/team.json"
   if [ "$mode" = cli ]; then
-    rec="$(cd "$CLONE" && team_accepted_record "$RUN" cli)"
+    rec="$(cd "$CLONE" && team_accepted_record "$(team_run_ref "$TD" "$RUN")" cli)"
     [ -n "$rec" ] && [ "$(jq -r .verdict "$rec")" = done ] || no "no accepted cli record done"
   else
-    rec="$(cd "$CLONE" && team_accepted_record "$RUN" qa)"
+    rec="$(cd "$CLONE" && team_accepted_record "$(team_run_ref "$TD" "$RUN")" qa)"
     [ -n "$rec" ] && [ "$(jq -r .verdict "$rec")" = done ] || no "no accepted qa record done"
-    rep="$TD/runs/$RUN/qa-report-$(jq -r .attempt "$rec").md"
+    rep="$TD/runs/$(team_run_ref "$TD" "$RUN")/qa-report-$(jq -r .attempt "$rec").md"
     [ -f "$rep" ] || no "qa report $(basename "$rep") missing"
     grep -Eqx 'Verdict: (ready|ready-with-warnings)' "$rep" \
       || no "QA $(grep -m1 '^Verdict: ' "$rep" || echo 'Verdict missing')"

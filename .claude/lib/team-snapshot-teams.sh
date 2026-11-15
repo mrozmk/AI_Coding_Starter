@@ -72,7 +72,7 @@ record_open() {
   [ -n "$2" ] || return 1
   v="$(jq -r '.verdict // empty' "$2" 2>/dev/null)" || return 1
   case "$v" in blocked|failed) ;; *) return 1 ;; esac
-  [ "$(basename "$2")" != "$(cat "$1/acked" 2>/dev/null || true)" ] || [ "$3" != up ]
+  [ "$(basename "$2")" != "$(basename "$(cat "$1/acked" 2>/dev/null || true)")" ] || [ "$3" != up ]
 }
 
 # attended_pending <td> <run> → 0 when an attended role's question may still be open although
@@ -131,7 +131,7 @@ live_status() {
     *) echo unknown; return 0 ;;
   esac
   if [ "$8" = true ] || [ "$9" = true ]; then echo attention; return 0; fi
-  ra="$(ls -1t "$td/runs/$run/$role-$attempt"-*.json 2>/dev/null | head -n 1)" || true
+  ra="$(ls -1t "$td/runs/$run/$role-$attempt"-*.json "$td/runs/$run"/r*/"$role-$attempt"-*.json 2>/dev/null | head -n 1)" || true
   if record_open "$td" "$ra" "$runner"; then jq -r .verdict "$ra"; return 0; fi
   # After the record check (a role idling on a blocked record fires idle_prompt too).
   if [ -n "$tf" ] && [ -s "$att" ] && attention_pending "$att" "$tf"; then
@@ -171,7 +171,7 @@ team_role() {  # team_role <td> <team> <run> <role> <cur role> <runner> <overrid
   local td="$1" team="$2" run="$3" role="$4" cur="$5" runner="$6" ov="$7" base="$8"
   local r="" rec='null' verdict="" status=pending attempt=null cfg='{}' screen='[]' actions='[]'
   local skills=null tf rop=false live='{}' sess="" po=false mo=false pk=unreadable
-  [ -z "$run" ] || r="$(ls -1t "$td/runs/$run/$role"-*.json 2>/dev/null | head -n 1)" || true
+  [ -z "$run" ] || r="$(ls -1t "$td/runs/$run/$role"-*.json "$td/runs/$run"/r*/"$role"-*.json 2>/dev/null | head -n 1)" || true
   [ -z "$r" ] || rec="$(jq -c --arg f "$(basename "$r")" \
     '{file: $f, verdict, message, written_at, attempt}' "$r" 2>/dev/null)" || rec='null'
   [ -n "$rec" ] || rec='null'
@@ -308,7 +308,7 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   if [ -n "$run" ]; then
     team_esc_unsent "$td" "$run" > "$W/esc" || err "$team: escalation ledgers unreadable"
     team_escalations "$td" "$run" > "$W/escs" || err "$team: escalation ledgers unreadable"
-    for f in "$td/runs/$run"/*-*-*.json; do
+    for f in "$td/runs/$run"/*-*-*.json "$td/runs/$run"/r*/*-*-*.json; do  # every rework round too
       [ -f "$f" ] || continue
       case "$(basename "$f")" in teamlead-*) continue ;; esac  # TeamLead verdicts, not stage records
       jq -c . "$f" >> "$W/recs" 2>/dev/null || err "$team: unreadable $(basename "$f")"

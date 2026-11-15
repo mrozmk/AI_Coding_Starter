@@ -2,15 +2,20 @@
 # The per-run TeamLead's gate verdicts, written into the team clone for the runner to act on.
 # Usage: bash .claude/lib/team-verdict.sh <gate> <verdict> --for <record> --message "<line>"
 #          [--ref <file>] [--notify human_decision|abandon_decision] [--decision d-<n>]
+#          [--quick-call continue]
 #        bash .claude/lib/team-verdict.sh event collision --ref <file> --message "<line>"
 #   gates: spec → approve|revise|escalate (brainstorm); plan → approve|revise|escalate|remode
 #   (remode in quick only). --for names the planner's newest record (a review for spec, a done for
 #   plan). revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
 #   --decision names an answered decision with answer_outcome more-revise that grants one more round.
-#   acceptance → accept|rework|abandon-recommended on the qa's newest done record: accept needs
-#   runs/<run>/blind-check.md, then acceptance-brief.md (six headings; for a QA verdict
+#   acceptance → accept|rework|abandon-recommended on the qa's newest done record (rework: done or
+#   blocked) of the current round; round files live in runs/<run>/ (round 1) or runs/<run>/r<n>/.
+#   accept needs the round's blind-check.md, then acceptance-brief.md (six headings; for a QA verdict
 #   ready-with-warnings one `- <warning> → keep|fix|follow-up — <why>` line per warning);
-#   abandon-recommended needs --decision d-<n>, pending, opened with --notify abandon_decision.
+#   rework needs --ref runs/<run>/rework-<next round>.md and is capped by
+#   teams.teamlead.rework_budget.<mode> plus consumed Operator continue grants (quick: the first
+#   rework needs --quick-call continue); abandon-recommended needs --decision d-<n>, pending, opened
+#   with --notify abandon_decision.
 #   decision → escalate|continue|close|resolved: --for is any file under runs/<run>/ (a record, a
 #   verdict, decisions/req-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
 #   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
@@ -20,19 +25,19 @@
 #          --ref .agents/team/runs/alfa-20261114-100000/gate-spec-1.md --message "2 findings"
 # Exit: 0 written · 2 usage · 3 not the lead · 4 bad gate/verdict/for · 5 revise limit
 #       6 spec changed after approval · 7 constraint digest missing (team-lead.sh digest-check)
-#       8 acceptance brief incomplete.
-#   Contract: .agents/reference/team-lead.md §4, §5
+#       8 acceptance brief incomplete · 9 rework budget reached.
+#   Contract: .agents/reference/team-lead.md §4, §5, §8, §9
 set -euo pipefail
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
-FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""
+FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
     --for) FOR="$(basename "$2")"; FOR_RAW="$2" ;; --ref) REF="$2" ;; --notify) NOTIFY="$2" ;;
-    --message) MESSAGE="$2" ;; --decision) DECISION="$2" ;;
+    --message) MESSAGE="$2" ;; --decision) DECISION="$2" ;; --quick-call) QUICK_CALL="$2" ;;
     *) usage ;;
   esac
   shift 2
@@ -48,6 +53,8 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 
 team_lead_caller || { echo "error: only this run's TeamLead writes verdicts" >&2; exit 3; }
 TD="$(team_dir)"; RUN="$(cat "$TD/run")"; RD="$TD/runs/$RUN"; MAIN="$(team_lead_json main_root)"
+# The current rework round's record dir (team-lead.md §9): runs/<run> in round 1, runs/<run>/r<n> after.
+RREF="$(team_run_ref "$TD" "$RUN")"; RRD="$TD/runs/$RREF"
 TEAM="$(team_json team)"; TICKET="$(team_json ticket)"; MODE="$(jq -r '.mode // "brainstorm"' "$TD/team.json")"
 bad() { echo "error: $1" >&2; exit 4; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
@@ -69,10 +76,11 @@ write_verdict() {  # → prints the written file
     --argjson seq "$seq" --arg for "$FOR" --arg verdict "$VERDICT" --arg ref "$REF" \
     --arg notify "$NOTIFY" --arg message "$MESSAGE" --arg spec_digest "$DIGEST" \
     --arg decision "$DECISION" --arg written_at "$(team_utc)" \
-    --arg session_id "$(team_lead_json session_id)" \
+    --arg session_id "$(team_lead_json session_id)" --arg quick_call "$QUICK_CALL" \
     '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
       ref: $ref, notify: $notify, message: $message, spec_digest: $spec_digest,
-      decision: $decision, written_at: $written_at, session_id: $session_id}' > "$tmp"
+      decision: $decision, written_at: $written_at, session_id: $session_id}
+     + (if $quick_call == "" then {} else {quick_call: $quick_call} end)' > "$tmp"
   [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
   mv "$tmp" "$target"
   echo "$target"
@@ -98,6 +106,8 @@ if [ "$GATE" = decision ]; then
       FOR="$FOR_RAW" ;;
     *) FOR="${FOR_RAW#"$RD"/}"; FOR="${FOR#.agents/team/runs/"$RUN"/}"
        case "$FOR" in ""|/*|*..*) bad "--for must be a file under runs/$RUN/ or attention:<n>" ;; esac
+       # In a rework round a bare record name is the current round's record.
+       case "$FOR" in */*) ;; *) [ "$RREF" = "$RUN" ] || [ ! -f "$RRD/$FOR" ] || FOR="${RREF#"$RUN"/}/$FOR" ;; esac
        [ -f "$RD/$FOR" ] || bad "--for $FOR is not a file under runs/$RUN/" ;;
   esac
   if [ "$VERDICT" = escalate ]; then
@@ -131,10 +141,14 @@ case "$GATE" in
 esac
 [ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
   || bad "no $role session — the $GATE gate is the $role's"
-last="$(team_records "$RUN" "$role" "$(session_json attempt)" | tail -n 1)"
+last="$(team_records "$RREF" "$role" "$(session_json attempt)" | tail -n 1)"
 [ -n "$FOR" ] && [ -n "$last" ] && [ "$FOR" = "$(basename "$last")" ] \
   || bad "--for ${FOR:-<none>} is not the newest $role record (${last:+$(basename "$last")})"
-[ "$(rec "$last" verdict)" = "$want" ] || bad "$FOR is $(rec "$last" verdict), the $GATE gate needs $want"
+[ "$(rec "$last" verdict)" = "$want" ] || [ "$GATE $VERDICT $(rec "$last" verdict)" = "acceptance rework blocked" ] \
+  || bad "$FOR is $(rec "$last" verdict), the $GATE gate needs $want"
+# The verdict names the record relative to runs/<run>/ (r<n>/qa-1-1.json in a rework round), as the
+# runner's acked file does.
+FOR="${last#"$RD"/}"
 
 case "$GATE $VERDICT" in
   "spec approve"|"spec revise"|"spec escalate"|"plan approve"|"plan revise"|"plan escalate") ;;
@@ -143,20 +157,21 @@ case "$GATE $VERDICT" in
   *) bad "verdict $VERDICT is not allowed at the $GATE gate" ;;
 esac
 [ "$VERDICT" != revise ] || [ -n "$REF" ] || bad "revise needs --ref <findings file>"
+[ -z "$QUICK_CALL" ] || [ "$GATE $VERDICT" = "acceptance rework" ] || bad "--quick-call is for acceptance rework only"
 
 # Acceptance: the blind order-vs-diff check comes first, the brief is written from it.
 acc_fail() { echo "error: acceptance: $1" >&2; exit 8; }
 if [ "$GATE $VERDICT" = "acceptance accept" ]; then
-  blind="$RD/blind-check.md"; brief="$RD/acceptance-brief.md"
-  [ -s "$blind" ] || acc_fail "runs/$RUN/blind-check.md missing — the blind order-vs-diff check comes first"
-  [ -s "$brief" ] || acc_fail "runs/$RUN/acceptance-brief.md missing"
+  blind="$RRD/blind-check.md"; brief="$RRD/acceptance-brief.md"
+  [ -s "$blind" ] || acc_fail "runs/$RREF/blind-check.md missing — the blind order-vs-diff check comes first"
+  [ -s "$brief" ] || acc_fail "runs/$RREF/acceptance-brief.md missing"
   ! [ "$brief" -ot "$blind" ] || acc_fail "acceptance-brief.md is older than blind-check.md — write the brief from the blind check"
   for h in "## Ordered vs delivered" "## Scope delta" "## Fit risks" "## Open defects" "## Warnings" \
     "## Recommendation"; do
     grep -qxF "$h" "$brief" || acc_fail "acceptance-brief.md lacks the heading '$h'"
   done
-  qr="$RD/qa-report-$(rec "$last" attempt).md"
-  [ -f "$qr" ] || acc_fail "no runs/$RUN/$(basename "$qr")"
+  qr="$RRD/qa-report-$(rec "$last" attempt).md"
+  [ -f "$qr" ] || acc_fail "no runs/$RREF/$(basename "$qr")"
   if [ "$(sed -n 's/^Verdict: //p' "$qr" | head -n 1)" = ready-with-warnings ]; then
     sect="$(awk '/^## Warnings$/ { f = 1; next } /^## / { f = 0 } f' "$brief")"
     IFS=',' read -ra ws <<<"$(sed -n 's/^Warnings: //p' "$qr" | head -n 1)"
@@ -168,6 +183,30 @@ if [ "$GATE $VERDICT" = "acceptance accept" ]; then
       done <<<"$sect"
       [ -n "$ok" ] || acc_fail "## Warnings has no '- $w → keep|fix|follow-up — <why>' line"
     done
+  fi
+elif [ "$GATE $VERDICT" = "acceptance rework" ]; then
+  round="$(jq -r --arg r "$RUN" 'select(.run == $r) | .round' "$TD/round" 2>/dev/null || true)"
+  [[ "$round" =~ ^[0-9]+$ ]] || round=1
+  want_ref="runs/$RUN/rework-$((round + 1)).md"
+  r="${REF#"$TD"/}"; r="${r#.agents/team/}"
+  [ "$r" = "$want_ref" ] && [ -s "$TD/$want_ref" ] \
+    || bad "rework needs --ref $want_ref (the round's items, one per order line or QA defect)"
+  REF=".agents/team/$want_ref"
+  team_profile_load "$MAIN"
+  ordered=0; grants=0; budget="$TEAM_LEAD_BUDGET_BRAINSTORM"; [ "$MODE" != quick ] || budget="$TEAM_LEAD_BUDGET_QUICK"
+  for f in $(verdicts); do [ "$(rec "$RD/$f" verdict)" != rework ] || ordered=$((ordered + 1)); done
+  # Derived from files, so a restarted runner or lead cannot reset it: one consumed Operator
+  # continue on an abandon decision = one more round.
+  for f in "$RD"/decisions/d-*.md; do
+    [ -f "$f" ] && [ "$(fm "$f" answer_outcome)" = continue ] && [ "$(fm "$f" notify)" = abandon_decision ] \
+      && [ "$(fm "$f" status)" = consumed ] && grants=$((grants + 1)) || true
+  done
+  if [ "$MODE" = quick ] && [ "$ordered" = 0 ] && [ "$QUICK_CALL" != continue ]; then
+    bad "quick: --quick-call continue, or abandon-recommended to stop"
+  fi
+  if [ "$ordered" -ge $((budget + grants)) ]; then
+    echo "error: rework budget $budget reached (teams.teamlead.rework_budget.$MODE) — write abandon-recommended with --notify abandon_decision" >&2
+    exit 9
   fi
 elif [ "$GATE $VERDICT" = "acceptance abandon-recommended" ]; then
   [ -n "$DECISION" ] || bad "abandon-recommended needs --decision d-<n> (a pending decision opened with --notify abandon_decision)"
