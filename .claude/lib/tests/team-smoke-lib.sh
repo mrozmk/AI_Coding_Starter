@@ -138,6 +138,8 @@ smoke_stubs() {
   for t in claude codex dotnet; do
   printf '#!/usr/bin/env bash\necho "%s $*" >> "$STUB_LOG"\n' "$t" > "$WORK/bin/$t"
   done
+  # The build check's view of the main checkout (team-merge-check exports HARNESS_MAIN).
+  echo 'echo "HARNESS_MAIN=${HARNESS_MAIN-unset}"' >> "$WORK/bin/dotnet"
   # The runner's auto-mode preflight reads the version; not logged, it launches nothing.
   printf '#!/usr/bin/env bash\n[ "$*" != --version ] || { echo "${STUB_CLAUDE_VERSION:-2.1.301} (Claude Code)"; exit 0; }\necho "claude $*" >> "$STUB_LOG"\n' \
     > "$WORK/bin/claude"

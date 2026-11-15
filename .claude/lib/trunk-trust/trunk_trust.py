@@ -39,7 +39,20 @@ def git(*args):
 
 
 def ls_remote(root, *args):
-    """`git ls-remote origin <args>` output, or None when origin does not answer in time.
+    """`git ls-remote origin <args>` output, or None when origin does not answer in time."""
+    return _bounded(root, "ls-remote", *args)
+
+
+def fetch_branch(root, branch):
+    """Bring the local origin/<branch> up to date — that remote-tracking ref only, fast-forward only
+    (a rewritten local ref stays rewritten and the check refuses it). A failure is not an error: the
+    online/offline rule decides afterwards. For callers that run unattended."""
+    _bounded(root, "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "origin",
+             "refs/heads/%s:refs/remotes/origin/%s" % (branch, branch))
+
+
+def _bounded(root, *args):
+    """`git <args>` output, or None when it fails or does not finish in time.
 
     No prompts and a bounded wait (TRUNK_TRUST_LS_REMOTE_TIMEOUT, default 20 s): an unreachable host
     or a credential prompt falls back to the offline rule instead of hanging the caller."""
@@ -51,7 +64,7 @@ def ls_remote(root, *args):
     if not timeout >= 1:
         timeout = 1.0 if timeout > 0 else 20.0
     env = dict(git_env(), GIT_TERMINAL_PROMPT="0")
-    p = subprocess.Popen(["git", "-C", root, "ls-remote", *args],
+    p = subprocess.Popen(["git", "-C", root, *args],
                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                          env=env, start_new_session=True)
     try:
@@ -87,9 +100,10 @@ def _local_sha(root, branch):
     return out.decode().strip() if rc == 0 else None
 
 
-def default_branch(root):
+def default_branch(root, refresh=False):
     """(sha, name, online) of origin's default branch: origin's answer when it gives one, else the
-    local origin/HEAD symref (the offline rule — local refs are trusted)."""
+    local origin/HEAD symref (the offline rule — local refs are trusted). `refresh` fetches a stale
+    local origin/<default> once before comparing."""
     remote = ls_remote(root, "--symref", "origin", "HEAD")
     if remote is not None:
         name = re.search(rb"^ref: refs/heads/(\S+)\tHEAD$", remote, re.M)
@@ -98,6 +112,9 @@ def default_branch(root):
             raise Refused("origin does not report a default branch (HEAD)")
         d = name.group(1).decode()
         local = _local_sha(root, d)
+        if refresh and local != sha.group(1).decode():
+            fetch_branch(root, d)
+            local = _local_sha(root, d)
         if local is None:
             raise Refused("no origin/%s ref (origin's default branch) — run: git fetch origin %s" % (d, d))
         if local != sha.group(1).decode():
@@ -159,10 +176,10 @@ def trunk(root, sha, d):
     raise Refused("CLAUDE.md on origin/%s (origin's default branch) has no Trunk in its Branch model" % d)
 
 
-def verified_trunk(root):
+def verified_trunk(root, refresh=False):
     """(sha, label) of origin/<Trunk>, the Trunk name taken from origin's default branch; `label`
     names the ref used in every message. Online, each ref is checked against what origin has."""
-    dsha, d, online = default_branch(root)
+    dsha, d, online = default_branch(root, refresh)
     t = trunk(root, dsha, d)
     if t == d:
         return dsha, "origin/%s" % t
@@ -171,6 +188,9 @@ def verified_trunk(root):
     if sha is None:
         raise Refused("no %s ref — fetch it first" % label)
     remote = ls_remote(root, "--heads", "origin", "refs/heads/%s" % t) if online else None
+    if refresh and remote and remote.split()[:1] != [sha.encode()]:
+        fetch_branch(root, t)
+        sha = _local_sha(root, t) or sha
     if online and remote is None:
         # Origin answered for its default branch; a second query that fails is not "offline".
         raise Refused("origin did not answer for %s — retry when it does" % label)
@@ -201,9 +221,10 @@ def at_trunk(root, trusted, path):
     return blob
 
 
-def config_at_trunk(root, path, validate):
-    """(validate(parsed trunk blob of `path`), trusted) — the config is read from trunk, not the tree."""
-    trusted = verified_trunk(root)
+def config_at_trunk(root, path, validate, refresh=False):
+    """(validate(parsed trunk blob of `path`), trusted) — the config is read from trunk, not the tree.
+    `refresh`: fetch stale origin/<default> and origin/<Trunk> first (unattended callers)."""
+    trusted = verified_trunk(root, refresh)
     blob = at_trunk(root, trusted, path)
     try:
         return validate(json.loads(blob.decode("utf-8"))), trusted

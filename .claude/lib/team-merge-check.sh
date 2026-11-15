@@ -25,6 +25,7 @@ TEAM="$1"
 root="$(git rev-parse --show-toplevel)"
 . "$root/.claude/lib/team-profile.sh"
 team_profile_load "$root"
+export HARNESS_MAIN="$root"  # build_check may name a kit here; never an inherited value
 team_profile_require_supported
 CLONE="$(team_clone_dir "$TEAM" "$root")"
 [ -f "$CLONE/.agents/team/team.json" ] || { echo "error: no team clone at $CLONE" >&2; exit 1; }
