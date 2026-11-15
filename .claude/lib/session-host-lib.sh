@@ -332,7 +332,8 @@ sh_team_dir() {  # sh_team_dir <main> <address> [--team-dir value] → the team 
 # sh_lock <main> <address> <team dir> <owner> <wait secs> → rc 0 holding; rc 1 prints the holder.
 sh_lock() {
   local d tries=0 max p o
-  if [ "$(sh_kind "$2")" = team ]; then
+  # sh_kind quiet: a lock that names no address (`layout`) is simply not a team lock.
+  if [ "$(sh_kind "$2" 2>/dev/null)" = team ]; then
     [ -n "$3" ] || { echo "no team dir for $2 (no record, no --team-dir)"; return 1; }
     team_send_lock "$3" "${2##*-}" "$5" "$4"; return $?
   fi
@@ -353,14 +354,14 @@ sh_lock() {
 
 sh_unlock() {  # sh_unlock <main> <address> <team dir>
   local d
-  if [ "$(sh_kind "$2")" = team ]; then team_send_unlock "$3" "${2##*-}"; return 0; fi
+  if [ "$(sh_kind "$2" 2>/dev/null)" = team ]; then team_send_unlock "$3" "${2##*-}"; return 0; fi
   d="$(sh_reg_dir "$1")/$2.lock"
   [ "$(cat "$d/pid" 2>/dev/null)" = "$$" ] || return 0
   rm -rf "$d"
 }
 
 sh_holder() {  # sh_holder <main> <address> <team dir> → the owner text of the current holder
-  if [ "$(sh_kind "$2")" = team ]; then team_send_holder "$3" "${2##*-}"; return 0; fi
+  if [ "$(sh_kind "$2" 2>/dev/null)" = team ]; then team_send_holder "$3" "${2##*-}"; return 0; fi
   cat "$(sh_reg_dir "$1")/$2.lock/owner" 2>/dev/null || echo unknown
 }
 
@@ -852,7 +853,10 @@ sh_herdr_send() {
 # `hc rm`. A person's unfinished draft would be submitted with /exit appended (hc send holds for it,
 # then merges): the plan's rule, kept (step 6 report). 0 ended or never ran, 1 still alive.
 sh_herdr_kill() {
-  local a="$1" h="$2" wait="$3" waited=0 st o
+  local a="$1" h="$2" wait="$3" waited=0 st o prog
+  # The wait and the verdict ask for the record's program: a role runs as `sh -c 'claude; read'`, so
+  # its terminal stays live after the program exits. Whether to kill asks for the terminal itself.
+  prog="$(sh_record_get "$SH_MAIN" "$a" program)"
   if ! sh_herdr_alive "$h" 2>/dev/null; then
     sh_hc rm "$h" >/dev/null 2>&1 || true   # a finished terminal of ours: remove it
     return 0
@@ -862,7 +866,7 @@ sh_herdr_kill() {
       st="$(sh_herdr_state "$h")"
       if [ "$st" = idle ] || [ "$st" = done ]; then
         sh_hc_bare send "$h" "/exit" >/dev/null 2>&1 || true   # unwrapped, so it runs
-        while sh_herdr_alive "$h" 2>/dev/null && [ "$waited" -lt "$wait" ]; do
+        while sh_herdr_alive "$h" "$prog" 2>/dev/null && [ "$waited" -lt "$wait" ]; do
           sleep 1; waited=$((waited + 1))
         done
       fi
@@ -875,7 +879,7 @@ sh_herdr_kill() {
   fi
   ! sh_herdr_alive "$h" 2>/dev/null || sh_hc kill "$h" >/dev/null 2>&1 || true
   sh_hc rm "$h" >/dev/null 2>&1 || true
-  ! sh_herdr_alive "$h" 2>/dev/null
+  ! sh_herdr_alive "$h" "$prog" 2>/dev/null
 }
 
 # kill <address> [--graceful <secs>] → 0 ended (or never ran), 1 still alive. Graceful: /exit +

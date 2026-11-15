@@ -892,6 +892,12 @@ hclr; STUB_HC_GONE_FILE="$WORK/gone" run "$MAIN" $SH kill hb-coder --graceful 2;
 noline "hc send" "(H8) /exit under a held lock"; grep -q '^stop-during-send ' "$TDX/send-coder.log" || fail "(H8) stop-during-send"
 rm -rf "$TDX/send-coder.lock" "$WORK/gone"
 STUB_HC_GONE=1 run "$MAIN" $SH kill hb-coder; expect 0 "" "(H8) never ran"
+# The program leaves, its `sh -c '…; read'` terminal stays live: the wait ends at once (the record's
+# program is gone from the foreground group), and the terminal is still killed and removed.
+t0="$(date +%s)"
+hclr; STUB_HC_ADDR=t7r STUB_HC_FG=sh STUB_HC_FG_PID=999999 run "$MAIN" $SH kill Hrole --graceful 5; expect 0 "" "(H8) program gone"
+[ $(( $(date +%s) - t0 )) -lt 4 ] || fail "(H8) the wait ran the whole grace time after the program left"
+line "hc send t7r /exit" "(H8) program gone: /exit"; line "hc kill t7r" "(H8) program gone: kill"; line "hc rm t7r" "(H8) program gone: rm"
 echo "team-smoke-host: (H8) herdr kill OK"
 
 # (H9) startup: the trust dialog is reported, never answered; the Codex update prompt gets one esc

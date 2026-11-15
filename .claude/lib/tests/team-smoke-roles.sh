@@ -408,6 +408,8 @@ jq -e '[.spaces[] | select(.id == "s2") | .tabs[] | select(.name == "Lead") | .t
 win '{spaces: ['"$OTHER"', '"$SPACE"'], focus: "t9"}'
 clr; run "$MAIN" $RS; expect 0 "placed: Supervisor in Lead" "(L2) up"; keep_log
 for r in Fable Astra; do line "placed: $r in Lead" "$WORK/out" "(L2) $r"; done
+# A placed role needs no hint, and the layout lock is no address (step-7 live fixes).
+noline "once placed" "$WORK/out" "(L2) hint for a placed role"; noline "session-host:" "$WORK/out" "(L2) lock noise"
 seq_of
 printf '%s\n' "hc label t1 herdr.space=s1" "tab.rename --id tbt1 --name Lead" "hc label t2 herdr.space=s1 herdr.tab=tbt1" \
   "hc label t3 herdr.space=s1 herdr.tab=tbt1" "terminal.park --terminal t3" "pane.focus --terminal t2" \
@@ -432,12 +434,13 @@ win '{spaces: ['"$OTHER"', {id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL"
 # (L3) all placed: a second up issues no placement command (and moves no focus)
 clr; run "$MAIN" $RS; expect 0 "Supervisor: already running" "(L3) up"; keep_log
 seq_of; [ ! -s "$WORK/seq" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L3) placement commands on a second up"; }
+noline "once placed" "$WORK/out" "(L3) hint for a placed role"
 
 # (L4) team sessions into Teams by label only, never a focus; a runner never creates the space
 hrec alfa-lead t5 claude team; hrec beta-lead t7 claude team; hrec gamma-lead t8 claude team
 win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbT", name: "Teams", terminals: [{terminal: "t6"}]}]}], focus: "t1"}'
 clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in Teams" "(L4) into Teams"; keep_log
-line "hc label t5 herdr.space=s1 herdr.tab=tbT" "$STUB_LOG" "(L4) label"
+line "hc label t5 herdr.space=s1 herdr.tab=tbT" "$STUB_LOG" "(L4) label"; noline "session-host:" "$WORK/out" "(L4) lock noise"
 noline "tab.rename" "$STUB_LOG" "(L4) renamed"; noline "focus" "$STUB_LOG" "(L4) focus moved"
 clr; run "$MAIN" $RS place alfa-lead; expect 0 "already placed: alfa-lead in Teams" "(L4) again"; keep_log
 noline "hc label" "$STUB_LOG" "(L4) relabelled"
@@ -453,6 +456,7 @@ noline "space.new" "$STUB_LOG" "(L4) a runner created a space"; line "  alfa-lea
 clr; STUB_HERDR_RC=1 run "$MAIN" $RS place alfa-lead
 expect 0 "warn: placement alfa-lead: Herdr window not open or not answering" "(L5) place"; keep_log
 clr; STUB_HERDR_RC=1 run "$MAIN" $RS; expect 0 "warn: placement Supervisor: Herdr window not open" "(L5) up"; keep_log
+line "  Supervisor: hc attach t1" "$WORK/out" "(L5) an unplaced role keeps its hint"
 STUB_HERDR_RC=1 run "$MAIN" $RS status; grep -E '^Fable .* pane: \?$' "$WORK/out" >/dev/null || fail "(L5) pane: ?"
 win '{spaces: ['"$SPACE"'], focus: "t9"}'
 clr; STUB_HERDR_DO_RC=1 run "$MAIN" $RS; expect 0 "warn: placement Supervisor: herdr-app do tab.rename failed" "(L5) do fails"; keep_log

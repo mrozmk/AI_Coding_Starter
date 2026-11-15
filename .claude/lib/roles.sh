@@ -141,6 +141,8 @@ needs_trust() {  # needs_trust "<role>:<name>:<cli> …"
     [ "$(sh_record_get "$MAIN" "$r" backend)" != herdr ] || echo "$r:nostatus"
   done
 }
+# placed <role> <layout_panes output> → rc 0 when the role's pane is listed in a tab (Herdr only).
+placed() { printf '%s\n' "$2" | awk -F'\t' -v r="$1" '$1 == r && $2 != "none" && $2 != "?" { f = 1 } END { exit !f }'; }
 # held_word <role> <needs_trust output> → the words after "started" / "resumed …", or nothing.
 held_word() {
   case " $(echo $2) " in
@@ -268,7 +270,7 @@ adhoc_lines() {  # one paste-ready resume line per gone ad-hoc conversation
 }
 
 up() {
-  local only="${1:-}" list r rc=0 st todo="" res="" out err cli sid ch cmd name trust="" wait=""
+  local only="${1:-}" list r rc=0 st todo="" res="" out err cli sid ch cmd name trust="" wait="" panes
   sh_pick_host "$MAIN" >/dev/null || exit $?
   roles_validate || exit 2
   roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
@@ -311,7 +313,9 @@ up() {
   done <<<"$res"
   # Step 3: the running roles into their Herdr tabs (a failure only warns; tmux: nothing).
   layout_place_roles "$MAIN"
+  panes="$(layout_panes "$MAIN")"
   for r in $list; do
+    placed "$r" "$panes" && continue   # its pane is in a tab: no hint to read
     case "$res" in *"$r: started"*|*"$r: already running"*)
       out="$(sh_hint "$r" --main "$MAIN" 2>/dev/null)" && echo "  $r: $out" ;; esac
   done
@@ -461,7 +465,7 @@ resume() {
        -- "$cmd" 2>"$err")"; then
     echo "$r: resumed $sid$(held_word "$r" "$(needs_trust "$r:$name:claude")")"
     layout_place_roles "$MAIN"
-    echo "  $r: $(sh_hint "$r" --main "$MAIN" 2>/dev/null)"
+    placed "$r" "$(layout_panes "$MAIN")" || echo "  $r: $(sh_hint "$r" --main "$MAIN" 2>/dev/null)"
   else
     echo "$r: failed: $(sed 's/^session-host: //' "$err" | tail -n 1)"; rc=1
   fi
