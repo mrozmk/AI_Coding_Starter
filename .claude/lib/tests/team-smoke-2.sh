@@ -2,6 +2,7 @@
 # Wrapup, transcript and role-override checks with an independent fixture.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
+unset HARNESS_MAIN  # a role session running this suite has one; the merge check must supply it
 smoke_init
 smoke_team AB-792 feature/AB-792-next
 
@@ -97,6 +98,8 @@ rm -f "$TD/session.json"
 point "$W1"; mkrec wrapup "$W1"; summary "$TGT0"; merge_at "$W1"
 run "$MAIN" $MC alfa
 expect 0 "VERDICT: ok" "merge-check after wrapup"
+grep -qxF "HARNESS_MAIN=$(git -C "$MAIN" rev-parse --show-toplevel)" "$TD/merge-check-build.log" \
+  || fail "build_check did not see HARNESS_MAIN = the main checkout: $(cat "$TD/merge-check-build.log")"
 # The line gains the same memory file after the wrapup's target_rev.
 mkdir -p "$MAIN/.agents/memory" && echo "other team" > "$MAIN/.agents/memory/errors.md"
 git -C "$MAIN" add .agents/memory/errors.md && git -C "$MAIN" commit --quiet -m "other team memory"

@@ -35,7 +35,9 @@
     "_guarded_writes_doc": "Opt-in: true → .claude/lib/guarded-writes/{az-write,ops-write,sqlcmd-write}.sh run allow-listed writes under the write profile ~/.azure-write, from .claude/guarded-writes.json once that file is on origin/<Trunk>. The Operator also sets read-only default identities and pastes the settings block (.agents/reference/guarded-writes.md). Default: off — the wrappers refuse.",
     "guarded_writes": false,
     "_local_env_doc": "Opt-in: true → .claude/lib/local-env/with-local-env.sh runs a runner registered in .claude/local-env.json (once that file is on origin/<Trunk>) with one local dev secret from ~/.config/<dir>/local.env, given only to that child's env and masked in its output. The Operator writes the file with local-env-init.sh and pastes the settings block (.agents/reference/local-env-runner.md). Default: off — the runner refuses.",
-    "local_env": false
+    "local_env": false,
+    "_remote_build_doc": "Opt-in: true → teams.build_check can be \"bash \\\"$HARNESS_MAIN/.claude/lib/remote-build/remote-build-check.sh\\\"\": the build/test command runs on a remote node over ssh (never locally), from .claude/remote-build.json once that file is on origin/<Trunk> — the node is chosen only through trunk. The node must be a machine for untrusted code (.agents/reference/remote-build.md). Default: off — the check refuses.",
+    "remote_build": false
   },
 
   "_tracker_doc": "jira | github | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md. github => the tasks are the issues of github.repo; .claude/lib/team-tracker.sh reads them without a teams block.",

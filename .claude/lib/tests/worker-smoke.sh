@@ -344,6 +344,25 @@ case "$RE" in *"make check"*) ;; *) fail "the workload pattern lacks the build c
 RE=$(TEAM_BUILD_CHECK="echo 'no build check configured'" TEAM_TEST_GATE=none \
   bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
 [ "$RE" = 'test-gate\.sh|team-merge-check\.sh|codex exec' ] || fail "an echo build check widened the pattern: $RE"
+RE=$(TEAM_BUILD_CHECK="dotnet build AcmeShop2.API.sln" TEAM_TEST_GATE=none TEAM_GATE_LOCK_WORKLOAD="" \
+  bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
+[ "$RE" = 'test-gate\.sh|team-merge-check\.sh|codex exec|dotnet build' ] || fail "a word build check changed its pattern: $RE"
+# A build check run as a script by path: the pattern is the script's name, never the interpreter —
+# `bash` alone would read every shell in the clone as a running build.
+KIT='bash "$HARNESS_MAIN/.claude/lib/remote-build/remote-build-check.sh"'
+RE=$(TEAM_BUILD_CHECK="$KIT" TEAM_TEST_GATE=none TEAM_GATE_LOCK_WORKLOAD="" \
+  bash -c '. "$1/.claude/lib/worker-lib.sh"; w_workload_re' _ "$SRC")
+for c in "bash" "-bash" "bash -c true" "/bin/bash $SOLP/other.sh"; do
+  [[ "$c" =~ $RE ]] && fail "a script build check matches a foreign shell '$c': $RE"
+done
+[[ "bash $MAIN/.claude/lib/remote-build/remote-build-check.sh" =~ $RE ]] \
+  || fail "a script build check does not match its own process: $RE"
+jq --arg k "$KIT" '.teams.build_check = $k | .teams.test_gate = "none"' "$WORK/prof-wl" > "$PW"
+fake_build "$SOL" "bash $MAIN/.claude/lib/remote-build/remote-build-check.sh"
+start AB-906 chore/AB-906-h $DEV --thread t6
+expect 1 "a build, gate or review is running against" "start during a script-path build check"
+stop_build
+cp "$WORK/prof-wl" "$PW"
 mkdir "$WORK/main-solo"
 fake_build "$WORK/main-solo" "dotnet build $SOLP-solo/x.sln"
 start AB-906 chore/AB-906-h $DEV --thread t6

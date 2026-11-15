@@ -16,8 +16,12 @@
 # The log is redacted (real home → ~, scratch HOME/TMPDIR → <scratch-home>/<scratch-tmp>) and must
 # pass the purity deny-list, so it can be pasted into evidence. Exit: 0 all ok · 1 a step failed ·
 # 2 usage / refused.
-# Test hooks: TEAM_SUITE_TESTS (tests dir), TEAM_SUITE_ONLY (space-separated step names),
-# TEAM_SUITE_SELFTEST=0 (skip the self-test step).
+# Step selection: TEAM_SUITE_ONLY (space-separated step names: run only these) and TEAM_SUITE_SKIP
+# (space-separated step names: never run these, one `skip <step> (TEAM_SUITE_SKIP)` line each);
+# ONLY picks, SKIP subtracts. Names are the ones the log prints: self-test, purity, smoke-<part>
+# (smoke-parallel with --parallel), each standalone suite, agent-mail-unittest, session-profiles.
+# An unknown SKIP name is a usage error (exit 2) — a typo must not silently skip nothing.
+# Test hooks: TEAM_SUITE_TESTS (tests dir), TEAM_SUITE_SELFTEST=0 (skip the self-test step).
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
@@ -31,6 +35,23 @@ while [ $# -gt 0 ]; do
     *) echo "usage: team-suite.sh [--parallel] [--keep-going] [--out <dir>]" >&2; exit 2 ;;
   esac
   shift
+done
+
+STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke
+  cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test
+  gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
+  finder-model-test prime-probes-test starter-fork-commit-test fix-snapshot-test branch-model-test
+  guard-push-protected-test guard-jira-transition-test tracker-snapshot-test tracker-pointers-test
+  pr-create-open-test guarded-writes-az-test guarded-writes-ops-sql-test local-env-test
+  trunk-trust-test remote-build-test)
+ALL=()
+[ ! -f "$TESTS/team-smoke.sh" ] \
+  || read -r -a ALL <<<"$(sed -n 's/^ *all) parts=(\(.*\)) ;;$/\1/p' "$TESTS/team-smoke.sh")"
+KNOWN=" self-test purity agent-mail-unittest session-profiles ${STANDALONE[*]} "
+if [ -n "$PARALLEL" ]; then KNOWN="$KNOWN smoke-parallel "
+else for p in ${ALL[@]+"${ALL[@]}"}; do [ "$p" = purity ] || KNOWN="$KNOWN smoke-$p "; done; fi
+for n in ${TEAM_SUITE_SKIP:-}; do
+  [[ "$KNOWN" == *" $n "* ]] || { echo "team-suite: TEAM_SUITE_SKIP names an unknown step: $n" >&2; exit 2; }
 done
 
 real_home() {
@@ -60,6 +81,7 @@ say() { printf '%s\n' "$*" | tee -a "$LOG"; }
 RC=0
 
 want() { [ -z "${TEAM_SUITE_ONLY:-}" ] || [[ " $TEAM_SUITE_ONLY " == *" $1 "* ]]; }
+skipped() { [[ " ${TEAM_SUITE_SKIP:-} " == *" $1 "* ]]; }
 
 # count <file> — the checks a step reported: the largest explicit "(N checks|tests)", "Ran N tests"
 # or "passed: N" wins (a summary may repeat the runner's count, so never a sum); otherwise the
@@ -79,6 +101,7 @@ count() {
 step() {
   local name="$1" t0 rc n out; shift
   want "$name" || return 0
+  if skipped "$name"; then say "skip $name (TEAM_SUITE_SKIP)"; return 0; fi
   out="$OUT/$name.out"; t0=$(date +%s)
   ( cd "$ROOT" && "$@" ) > "$out" 2>&1; rc=$?
   n="$(count "$out")"
@@ -120,23 +143,33 @@ finish() {
   exit "$RC"
 }
 
-# ---- 0. self-test: a failing step, a 0-check step and a real-HOME run must all fail -------------
+# ---- 0. self-test: a failing step, a 0-check step and a real-HOME run must all fail; SKIP skips a
+# selected step and refuses an unknown name (inner runs never inherit the caller's SKIP) ----------
 self_test() {
   local t rc; t=$(mktemp -d)
   printf 'echo "team-purity: FAIL"; exit 1\n' > "$t/team-purity.sh"
-  TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SELFTEST=0 \
+  TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 \
     bash "$HERE/team-suite.sh" --out "$t/o1" > "$t/r1" 2>&1; rc=$?
   [ "$rc" = 1 ] && grep -q '^FAIL purity rc 1' "$t/r1" || { echo "FAIL: a failing step passed"; rm -rf "$t"; return 1; }
   printf 'exit 0\n' > "$t/team-purity.sh"
-  TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SELFTEST=0 \
+  TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 \
     bash "$HERE/team-suite.sh" --out "$t/o2" > "$t/r2" 2>&1; rc=$?
   [ "$rc" = 1 ] && grep -q '^FAIL purity 0 checks' "$t/r2" || { echo "FAIL: a 0-check step passed"; rm -rf "$t"; return 1; }
-  HOME="$REAL" TEAM_SUITE_TESTS="$t" TEAM_SUITE_SELFTEST=0 \
+  HOME="$REAL" TEAM_SUITE_TESTS="$t" TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 \
     bash "$HERE/team-suite.sh" --out "$t/o3" > "$t/r3" 2>&1; rc=$?
   [ "$rc" = 2 ] && grep -q 'refused: run with a scratch HOME' "$t/r3" && [ ! -e "$t/o3" ] \
     || { echo "FAIL: the real HOME was not refused before any test"; rm -rf "$t"; return 1; }
+  TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SKIP=purity TEAM_SUITE_SELFTEST=0 \
+    bash "$HERE/team-suite.sh" --out "$t/o4" > "$t/r4" 2>&1; rc=$?
+  [ "$rc" = 0 ] && grep -qx 'skip purity (TEAM_SUITE_SKIP)' "$t/r4" && [ ! -e "$t/o4/purity.out" ] \
+    || { echo "FAIL: TEAM_SUITE_SKIP did not skip a selected step"; rm -rf "$t"; return 1; }
+  TEAM_SUITE_TESTS="$t" TEAM_SUITE_SKIP="purity smoke-nosuch" TEAM_SUITE_SELFTEST=0 \
+    bash "$HERE/team-suite.sh" --out "$t/o5" > "$t/r5" 2>&1; rc=$?
+  [ "$rc" = 2 ] && grep -q 'unknown step: smoke-nosuch' "$t/r5" && [ ! -e "$t/o5" ] \
+    || { echo "FAIL: an unknown TEAM_SUITE_SKIP name was not a usage error"; rm -rf "$t"; return 1; }
   rm -rf "$t"
   echo "self-test: failing step OK"; echo "self-test: 0-check step OK"; echo "self-test: real HOME OK"
+  echo "self-test: skip OK"; echo "self-test: unknown skip OK"
 }
 if [ "${TEAM_SUITE_SELFTEST:-1}" != 0 ]; then step self-test self_test; fi
 
@@ -145,7 +178,6 @@ step purity bash "$TESTS/team-purity.sh"
 
 # ---- 2. smoke parts, by name, serial parts last -------------------------------------------------
 if [ -f "$TESTS/team-smoke.sh" ]; then
-  read -r -a ALL <<<"$(sed -n 's/^ *all) parts=(\(.*\)) ;;$/\1/p' "$TESTS/team-smoke.sh")"
   [ "${#ALL[@]}" -gt 0 ] || { say "FAIL smoke — no parts list in team-smoke.sh"; RC=1; [ -n "$KEEP" ] || finish; }
   serial() { grep -qx '# team-smoke: serial' "$TESTS/team-smoke-$1.sh" 2>/dev/null; }
   if [ -n "$PARALLEL" ]; then
@@ -163,10 +195,7 @@ if [ -f "$TESTS/team-smoke.sh" ]; then
 fi
 
 # ---- 3. standalone suites (cost-tests carries the costs unittest) -------------------------------
-for s in team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke \
-         cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test \
-         gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke \
-         finder-model-test prime-probes-test starter-fork-commit-test fix-snapshot-test branch-model-test guard-push-protected-test guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test; do
+for s in "${STANDALONE[@]}"; do
   step "$s" bash "$TESTS/$s.sh"
 done
 
@@ -176,7 +205,7 @@ step agent-mail-unittest python3 -I -B -m unittest discover -s tools/agent_mail/
 # ---- 5. the shipped role profiles (P5; absent before it lands) ----------------------------------
 if [ -f "$ROOT/.claude/lib/session_profile_check.py" ]; then
   step session-profiles python3 -I "$ROOT/.claude/lib/session_profile_check.py" "$ROOT"
-elif want session-profiles; then
+elif want session-profiles && ! skipped session-profiles; then
   say "skip session-profiles — .claude/lib/session_profile_check.py not present at this sha"
 fi
 

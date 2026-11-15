@@ -1,0 +1,18 @@
+{
+  "_doc": "Opt-in remote build check (.agents/reference/remote-build.md). Copy to .claude/remote-build.json, fill, commit, get it onto origin/<Trunk>: it counts only when tracked and identical there, so a branch cannot pick another node. Keys starting with _ are ignored.",
+  "v": 1,
+  "_host": "one ssh alias; user, port, key and jump hosts live in the Operator's ~/.ssh/config. The node must be a machine for untrusted code.",
+  "host": "<ssh-alias>",
+  "_repo": "a git repository under the node account's home (the Operator runs `git init <repo>` there once)",
+  "repo": "build/<project>",
+  "_runs": "where throwaway worktrees and bundles live during a run, under the node account's home",
+  "runs": "build/runs",
+  "_cwd": "optional: the repo-relative directory the command runs in (default .)",
+  "cwd": ".",
+  "_command": "the build/test argv — a list, never a shell line; each element reaches the node as one argument",
+  "command": ["make", "test"],
+  "_env": "optional: plain values for the command's environment",
+  "env": {},
+  "nice": true,
+  "timeout_s": 3600
+}

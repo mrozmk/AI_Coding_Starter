@@ -29,6 +29,8 @@
 # core, not team: the opt-in local env runner (inert until workflow.local_env) and the trunk-trust
 # code both opt-in kits load
 !.claude/lib/local-env/**
+# core, not team: the opt-in remote build check (inert until workflow.remote_build)
+!.claude/lib/remote-build/**
 !.claude/lib/trunk-trust/**
 # core, not team: the destructive-SQL classifier sqlcmd-write.sh imports (the hook script stays team)
 !.claude/hooks/lib/guard_destructive_sql.py
