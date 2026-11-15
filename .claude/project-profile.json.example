@@ -31,7 +31,9 @@
     "_tracker_comments_doc": "Opt-in: true → ticket comments are requirements (.agents/reference/tracker-comments.md) — /brainstorm and /quick-change snapshot them, /execute, /check-implementation and /pr-merge check for new ones. Default: off, no extra tracker reads.",
     "tracker_comments": false,
     "_pr_open_doc": "Opt-in: true → /pr-create opens the PR (github: gh, azure-devops: az) after showing the full draft and an explicit Create answer, with your local CLI identity. Default: off — the command only prepares the PR for you to open.",
-    "pr_open": false
+    "pr_open": false,
+    "_guarded_writes_doc": "Opt-in: true → .claude/lib/guarded-writes/az-write.sh runs allow-listed az writes under the write profile ~/.azure-write, from .claude/guarded-writes.json once that file is on origin/<Trunk>. The Operator also sets a read-only default az identity and pastes the settings ask/deny block. Default: off — the wrapper refuses.",
+    "guarded_writes": false
   },
 
   "_tracker_doc": "jira | github | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md. github => the tasks are the issues of github.repo; .claude/lib/team-tracker.sh reads them without a teams block.",
