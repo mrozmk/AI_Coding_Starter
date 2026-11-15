@@ -13,7 +13,7 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
 **Now:**
 - **One driver.** Every session goes through `.claude/lib/session-host.sh`, on tmux or Herdr
   (`teams.session_host: auto | tmux | herdr`). **`auto` is tmux today**: Herdr runs only when
-  chosen explicitly, until its backend has passed a live check. A running session stays on the
+  chosen explicitly, until the owner switches `auto` to it. A running session stays on the
   backend it started on. Contract: `.agents/reference/session-host.md`.
 - **Prefixed names.** Every session name carries the project prefix (`teams.session_prefix`, else
   `teams.channel.tmux_prefix`, else the repo slug, cut to 12): `<prefix>-<team>-<role>`,
@@ -46,7 +46,9 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
   `started (needs trust — pick Yes; Enter alone exits)`: under Herdr the dialog's first option is
   `No, exit`. The MCP servers dialog prints `started (startup dialog open)`.
 - **Herdr:** roles go to the `Lead` tab, team TeamLeads and the running stages to one `Teams` tab
-  of the checkout's space. A role's pane title is set to its address when it starts.
+  of the checkout's space. A role's pane title is set to its address before the CLI starts;
+  Claude Code then shows its own title (`Claude Code`), so the address is visible only at a startup
+  dialog or after the program exits.
 - **agent-mail is an optional kit.** `/setup:teams` installs it only when the profile has
   `teams.channel`, the kit is already installed (`.agents/team/channel.local.json`) or you pick it;
   `sqlite3` is required only then. A project that uses the kit today sees no change. The warning

@@ -58,8 +58,10 @@ still describes live code until the release that retires it.
   terminal. After start, a Herdr session is addressed by its record's `handle` (`t7`): names are
   unique only among live terminals.
 - **Pane title (Herdr):** Herdr's pane header shows the terminal title the program set. A shell
-  launch line first sets that title to the address (OSC 2), so the header does not read `sh` while
-  the CLI starts. A CLI may set its own title once it runs.
+  launch line first sets that title to the address (OSC 2). Claude Code replaces it at once with its
+  own title `Claude Code` (checked live, 2026-11-15), so the header shows the role's address only
+  while a startup dialog is open or after the program exits, never while Claude runs. Codex was not
+  checked. To tell roles apart, use the tab and the slot (§13) or `hc ls` (the terminal name).
 
 ## 3. Backend selection
 
@@ -67,7 +69,7 @@ still describes live code until the release that retires it.
 |---|---|
 | `teams.session_host: "tmux"` | tmux; rc 6 "no session host: install tmux or Herdr" without it |
 | `teams.session_host: "herdr"` | Herdr; rc 6 "herdr core not answering" when `hc server status` does not answer within 3 s |
-| `teams.session_host: "auto"` (default) | **tmux today.** `auto` probes Herdr first only once the switch `SH_AUTO_HERDR` in `session-host-lib.sh` is `1`; it stays `0` until the Herdr backend has passed a live check |
+| `teams.session_host: "auto"` (default) | **tmux today.** `auto` probes Herdr first only once the switch `SH_AUTO_HERDR` in `session-host-lib.sh` is `1`; it stays `0` until the owner switches it (§14) |
 | `TEAM_SESSION_HOST=auto\|herdr\|tmux` | overrides the profile key for this process |
 
 - **Each session keeps the backend recorded at its start** for its whole life. A verb on an address
@@ -292,9 +294,14 @@ follows those answers:
 
 Still open, so these may change:
 
-- **`auto` → Herdr:** `SH_AUTO_HERDR` stays `0` (so `auto` = tmux) until the Herdr backend passes a
-  live re-check. Flipping it is a separate change.
+- **`auto` → Herdr:** `SH_AUTO_HERDR` stays `0` (so `auto` = tmux) until the owner switches it. The
+  live re-check of the graceful kill (L1) passed on 2026-11-15: `kill --graceful 20` on an idle
+  role returned in 2 s. Flipping the switch is a separate change.
 - **A tab per team** instead of the single `Teams` tab is under the owner's decision. That decision
   also has to settle a team named `Lead`, which would collide with the `Lead` tab.
-- **Pane title:** whether Claude Code and Codex keep the OSC 2 title the launch line sets, or
-  replace it with their own, is still to be checked live (§2).
+
+Closed by the live check of 2026-11-15:
+
+- **Pane title:** Claude Code replaces the OSC 2 title with its own `Claude Code` at once; the
+  address shows only at a startup dialog or after the exit (§2). The OSC 2 line stays: it is
+  harmless.
