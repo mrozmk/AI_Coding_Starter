@@ -13,8 +13,13 @@ sets `workflow.guarded_writes: true` **and** the Operator completes §3. Engine:
   SDK) gets a 403. The wrappers switch to a separate **write profile** (`$HOME/.azure-write`), and
   the settings `ask` rule makes every wrapper call an Operator click.
 - The allow-lists live in `.claude/guarded-writes.json`, and a wrapper accepts it only when it is
-  **tracked and byte-identical to its version on `origin/<Trunk>`** (Trunk from the `CLAUDE.md`
-  Branch model): widening what an agent may write needs a change that reached trunk. The rule lives
+  **tracked and byte-identical to its version on `origin/<Trunk>`**: widening what an agent may
+  write needs a change that reached trunk. The Trunk name is read from the `CLAUDE.md` Branch model
+  **on origin's default branch** (origin's `HEAD`, checked with `git ls-remote --symref` when origin
+  answers), parsed by that commit's own `branch-model.sh` in a private temp dir — never from the
+  working tree, so declaring another Trunk needs a push to the default branch. Messages name the ref
+  used, e.g. `origin/main (Trunk per CLAUDE.md on origin/develop)`. No local `origin/HEAD` and no
+  answer from origin → refused with the fix (`git remote set-head origin --auto`). The rule lives
   in `.claude/lib/trunk-trust/trunk_trust.py`, shared with the local env runner; `git ls-remote` is
   bounded (`TRUNK_TRUST_LS_REMOTE_TIMEOUT`, default 20 s, no prompts) and falls back to the offline
   rule.
@@ -104,9 +109,14 @@ only route even where the identity would allow more.
 
 ## 5. Limits (honest)
 
-- **Same OS user, not isolation.** Offline, the local `origin/<Trunk>` ref is trusted (online it is
-  checked against `git ls-remote`); an agent can rewrite local refs, edit `CLAUDE.md`, or push trunk
-  where the project lets it — then the trunk rule is a hurdle, not a wall. The write profile itself
+- **Same OS user, not isolation.** Offline, local refs are trusted — `origin/<Trunk>` and the
+  `origin/HEAD` symref included (online both are checked against `git ls-remote`); an agent can
+  rewrite local refs, or push the default branch or trunk where the project lets it — then the trunk
+  rule is a hurdle, not a wall. The Trunk declaration is only as strong as the default branch's
+  protection: in a fork, or where the default branch is an integration branch agents push, it is a
+  hurdle only. A Trunk rename counts once it reaches the default branch; until then the old name is
+  used. The caller's git transport (`GIT_SSH`, `GIT_SSH_COMMAND`) and `PATH` are trusted like the
+  rest of that user's environment. The write profile itself
   is readable by any process of that user, and the wrappers run `az`, `sqlcmd` and `bash` from the
   caller's `PATH` — a planted binary would hold the write profile, but so could anything that reads
   `$HOME/.azure-write` directly. The read-only identity and the Operator's click are the barriers.

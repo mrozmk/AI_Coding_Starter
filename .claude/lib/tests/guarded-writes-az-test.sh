@@ -93,8 +93,17 @@ no "untracked config" webapp restart -g rg -n app --slot staging
 case "$OUT" in *"not tracked"*) ;; *) fail "untracked message: $OUT" ;; esac
 (cd "$W" && g reset -q --hard "$OLD")
 
+# The Trunk name comes from CLAUDE.md on origin's default branch, never the working tree: a pushed
+# branch the working tree declares Trunk, carrying a widened config, is not trunk.
+(cd "$W" && g checkout -q -b feat/x \
+  && sed -i.x 's/\*\*Trunk:\*\* `main`/**Trunk:** `feat\/x`/' CLAUDE.md && rm -f CLAUDE.md.x \
+  && sed -i.x 's/"staging"/"staging", "production"/' .claude/guarded-writes.json && rm -f .claude/guarded-writes.json.x \
+  && g commit -qam declare && g push -q origin feat/x 2>/dev/null)
+no "working-tree CLAUDE.md declares a pushed branch Trunk" webapp restart -g rg -n app --slot production
+case "$OUT" in *"differs from origin/main"*) ;; *) fail "declared-Trunk message: $OUT" ;; esac
+(cd "$W" && g checkout -q main)
 mv "$W/CLAUDE.md" "$T/claude.bak"
-no "no Branch model" webapp restart -g rg -n app --slot staging
+ok "a missing working-tree CLAUDE.md does not matter" webapp restart -g rg -n app --slot staging
 mv "$T/claude.bak" "$W/CLAUDE.md"
 
 # a config that exists only locally (never on origin) in a fresh project

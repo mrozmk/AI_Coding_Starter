@@ -13,7 +13,7 @@ masked. It refuses unless all of these hold:
 
 - `.claude/project-profile.json` has `workflow.guarded_writes: true`;
 - `.claude/guarded-writes.json` is tracked by git and byte-identical to its version on
-  `origin/<Trunk>` (Trunk from the CLAUDE.md Branch model); when origin answers, the local
+  `origin/<Trunk>` (Trunk from CLAUDE.md on origin's default branch); when origin answers, the local
   `origin/<Trunk>` must also equal what origin has — widening the allow-list needs a change that
   reached trunk. The config is parsed from that trunk blob, not from the working tree;
 - the operation and every option match the config's schema (ops-write: the script is listed and

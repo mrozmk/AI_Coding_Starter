@@ -27,8 +27,9 @@ and masks it in the child's output.
 ## 3. The registry (`.claude/local-env.json`)
 
 Accepted only when **tracked and byte-identical to `origin/<Trunk>`** (the shared trust rule in
-`.claude/lib/trunk-trust/trunk_trust.py`, the same as `guarded-writes.json`); each runner's
-`script` must match trunk too. Template: `.claude/local-env.json.example`.
+`.claude/lib/trunk-trust/trunk_trust.py`, the same as `guarded-writes.json`; the Trunk name is read
+from `CLAUDE.md` on origin's default branch, never the working tree — `guarded-writes.md` §1); each
+runner's `script` must match trunk too. Template: `.claude/local-env.json.example`.
 
 ```json
 {"v": 1, "dir": "<project>", "key": "LOCAL_DB_PASSWORD",
@@ -142,9 +143,12 @@ or docker missing · 75 pass-line runner without its line · 77 file/dir owner, 
   must stop what it starts.
 - The script is checked against trunk before the docker preflight; a same-user process swapping it
   in between runs the swapped content (the same class as the first point).
-- Offline, the local `origin/<Trunk>` ref is trusted; `git ls-remote` is bounded
-  (`TRUNK_TRUST_LS_REMOTE_TIMEOUT`, default 20 s, no prompts) and falls back to that rule — the
-  same limits as guarded writes (`guarded-writes.md` §5, first point).
+- Offline, local refs are trusted (`origin/<Trunk>` and the `origin/HEAD` symref); `git ls-remote`
+  is bounded (`TRUNK_TRUST_LS_REMOTE_TIMEOUT`, default 20 s, no prompts) and falls back to that rule;
+  no local `origin/HEAD` and no answer → exit 78 with `git remote set-head origin --auto`. The Trunk
+  declaration is as strong as the default branch's protection, and a Trunk rename counts once it
+  reaches the default branch; the caller's git transport and `PATH` are trusted — the same limits as
+  guarded writes (`guarded-writes.md` §5, first point).
 - Claude deny rules are declarative, not isolation; registered scripts stay under code review.
 - Codex is not configured by `.claude/settings.json`: its sandbox reads the whole disk unless the
   Operator denies `~/.config/<dir>` in their own Codex permissions.

@@ -155,6 +155,13 @@ cp "$T/cfg.bak" "$W/.claude/local-env.json"
 echo 'echo widened' >> "$W/scripts/it.sh"
 run 78 "runner script edited" -- it; has "differs from origin/main" "script message"
 (cd "$W" && g checkout -q -- scripts/it.sh)
+# The Trunk name comes from CLAUDE.md on origin's default branch, not the working tree.
+(cd "$W" && g checkout -q -b feat/x \
+  && sed -i.x 's/\*\*Trunk:\*\* `main`/**Trunk:** `feat\/x`/' CLAUDE.md && rm -f CLAUDE.md.x \
+  && sed -i.x 's/"--no-build": null/"--no-build": null, "--update": null/' .claude/local-env.json \
+  && rm -f .claude/local-env.json.x && g commit -qam declare && g push -q origin feat/x 2>/dev/null)
+run 78 "working-tree CLAUDE.md declares a pushed branch Trunk" -- it --update; has "differs from origin/main" "declared-Trunk message"
+(cd "$W" && g checkout -q main)
 
 # ---- docker preflight comes before the file -------------------------------------------------------
 rm -rf "$CFG"
@@ -199,7 +206,11 @@ cat "$T/sig.out" >> "$T/all"
 : > "$T/mode"
 
 # ---- a hung origin falls back to the offline rule, bounded ----------------------------------------
-: > "$T/hang"; s=$(date +%s)
+(cd "$W" && g symbolic-ref -d refs/remotes/origin/HEAD 2>/dev/null || true)
+: > "$T/hang"
+run 78 "hung origin, no local origin/HEAD" TRUNK_TRUST_LS_REMOTE_TIMEOUT=2 -- probe; has "git remote set-head origin" "set-head fix"
+(cd "$W" && g remote set-head origin main)
+s=$(date +%s)
 run 0 "hung ls-remote" TRUNK_TRUST_LS_REMOTE_TIMEOUT=2 -- probe
 [ $(( $(date +%s) - s )) -lt 20 ] || fail "hung ls-remote was not bounded"
 rm -f "$T/hang"
