@@ -24,8 +24,6 @@
 #       · 3 NO-REPLY <reason> (repings: <n>, sent: <yes|no>)
 #       · 4 final reply printed, outcome not recorded (ledger lock timeout) · 130/143 cancelled
 set -euo pipefail
-# Each background job gets its own process group, so the watchdog can kill an adapter's children.
-set -m
 
 usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 bad() { echo "error: $*" >&2; exit 2; }
@@ -134,9 +132,14 @@ no_reply() {  # no_reply <reason> [ledger lines recorded with the outcome]
 
 run_bounded() {  # run_bounded <cmd> <out> → the command's rc, 124 past $DEADLINE (0 = none)
   local rc=0
-  bash -c "$1" team-escalate "$PAYLOAD" "$TEAM" "$ROLE" "$QID" "$THREAD" "$SEQ" \
-    > "$2" 2> "$2.err" < /dev/null &
+  # Job control for this one launch only: the adapter gets its own process group, so stop_child can
+  # kill its children. Left on, every pipeline of this script races bash's setpgid (EPERM warnings on
+  # stderr); the group's 2> catches the one the fork itself may print before the child's own redirect.
+  set -m
+  { bash -c "$1" team-escalate "$PAYLOAD" "$TEAM" "$ROLE" "$QID" "$THREAD" "$SEQ" \
+      > "$2" < /dev/null & } 2> "$2.err"
   CHILD=$!
+  set +m
   while kill -0 "$CHILD" 2>/dev/null; do
     if [ "$DEADLINE" != 0 ] && [ "$(date +%s)" -ge "$DEADLINE" ]; then stop_child; return 124; fi
     sleep "${TEAM_ESCALATE_POLL:-1}"
