@@ -48,4 +48,29 @@ jq -e '.permissions.deny | any(. == "Bash(az repos pr * --bypass-policy*)")' "$S
   || { echo "team-smoke-policy: FAIL — settings.json does not deny --bypass-policy"; exit 1; }
 grep -qF 'teams.policy.pr.self_approve is off' "$SRC/.claude/commands/pr-merge.md" \
   || { echo "team-smoke-policy: FAIL — /pr-merge self-approves without the profile switch"; exit 1; }
+# The Branch model the merge-line class reads (team_prompt_classes.branch_model) is parsed from a
+# block filled from the real CLAUDE-template.md, whose first line combines Preset · Trunk ·
+# Integration, and from the one-field-per-line layout; a blockquote naming a field is ignored.
+BM="$WORK/bm"; mkdir -p "$BM"
+bm() {  # bm → the parsed model as compact JSON
+  python3 -I -c 'import json, sys; sys.path.insert(0, sys.argv[1]); import team_prompt_classes as t
+print(json.dumps(t.branch_model(sys.argv[2]), sort_keys=True, separators=(",", ":")))' "$L" "$BM"
+}
+WANT='{"Integration":["develop"],"Maintenance":["rc/1"],"Protected":["main","develop","old/x"],"Retired":["old/x"]}'
+{ echo '> A note that names **Integration:** `wrong` is not the field.'
+  sed -n '/^### Branch model$/,/^## /p' "$SRC/.claude/templates/CLAUDE-template.md" \
+    | sed -e '1,/{branch}/s/`{branch}`/`main`/' -e 's/`{branch}`/`develop`/' \
+      -e 's/^\*\*Protected:\*\* .*/**Protected:** `main`, `develop`, `old\/x`/'
+  echo '**Maintenance:** `rc/1` — the 1.x line'; echo '**Retired:** `old/x` — merged, locked'
+} > "$BM/CLAUDE.md"
+grep -qF '· **Integration:** `develop`' "$BM/CLAUDE.md" \
+  || { echo "team-smoke-policy: FAIL — the template's combined Integration line was not filled"; exit 1; }
+[ "$(bm)" = "$WANT" ] || { echo "team-smoke-policy: FAIL — template layout parsed as $(bm)"; exit 1; }
+printf '%s\n' '**Trunk:** `main`' '**Integration:** `develop`' '**Maintenance:** `rc/1` — the 1.x line' \
+  '**Retired:** `old/x` — merged' '**Protected:** `main`, `develop`, `old/x`' > "$BM/CLAUDE.md"
+[ "$(bm)" = "$WANT" ] || { echo "team-smoke-policy: FAIL — one-field layout parsed as $(bm)"; exit 1; }
+printf '%s\n' '**Preset:** gitflow · **Trunk:** `main` · **Integration:** `develop`' \
+  '**Protected:** `main`, `develop`' > "$BM/CLAUDE.md"
+[ "$(bm)" = '{"Integration":["develop"],"Maintenance":[],"Protected":["main","develop"],"Retired":[]}' ] \
+  || { echo "team-smoke-policy: FAIL — no Maintenance/Retired lines parsed as $(bm)"; exit 1; }
 echo "team-smoke-policy: OK"

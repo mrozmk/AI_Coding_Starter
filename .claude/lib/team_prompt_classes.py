@@ -111,9 +111,14 @@ def branch_model(main):
             text = fh.read().splitlines()
     except OSError:
         return None
+    # A field is `**Name:**` at the start of a non-blockquote line or right after ` · ` (the
+    # template's combined `Preset · Trunk · Integration` line); its value runs to the next ` · **`.
+    fields = [seg for l in text if not l.lstrip().startswith(">")
+              for seg in re.split(r" · (?=\*\*)", l)]
     out = {}
     for key in ("Integration", "Maintenance", "Retired", "Protected"):
-        line = next((l for l in text if l.startswith("**%s:**" % key)), "")
+        head = "**%s:**" % key
+        line = next((f[len(head):] for f in fields if f.startswith(head)), "")
         if key != "Protected":
             line = line.split(" — ")[0]
         out[key] = CODE_SPAN.findall(line)
