@@ -40,6 +40,7 @@ argument-hint: [path-to-plan] [codex]
    - exit `0` → one line, continue;
    - exit `3` → **STOP before any code**: list each id with its created time and first sentence; the user decides — update the spec/plan first (re-reconcile, new snapshot) or continue with the dispositions recorded in the ledger (§6 → Solo decisions);
    - exit `4` or a failed read → ask whether to continue without the check; the baseline stays as it is.
+   - no baseline (`-`) and no ledger in the plan or its source spec → offer the one-time **Adopt** first (tracker-comments.md §6 → Adopt).
 
    The decision is the supervisor's in `MODE=codex` too — Codex is never spawned before it. Carry the line into the report.
 
@@ -49,7 +50,7 @@ Read the resolved plan file.
 
 Claude stays the **supervisor**: it resolves the plan, guards the tree, spawns one write-enabled Codex, then re-validates everything Codex claims. Codex performs sections `### 1.` to `### 4.` of `## Execution Instructions`; Claude performs the rest. Full rationale and the guardrail text live in [.agents/reference/codex-spawn.md → Executor mode](../../.agents/reference/codex-spawn.md).
 
-1. **Clean-tree precondition.** `git status --porcelain` must be empty. Otherwise STOP: "`codex` mode needs a clean tree — run `/commit` first, then `/execute codex <plan>`." A write-enabled Codex never runs on uncommitted work.
+1. **Clean-tree precondition.** `git status --porcelain` must be empty. Otherwise STOP: "`codex` mode needs a clean tree — run `/commit` first, then `/execute codex <plan>`." A write-enabled Codex never runs on uncommitted work. A ledger or snapshot update from the tracker check (Phase 0 step 6) leaves the tree dirty by design — commit it first; `/execute` never commits it itself.
 
 2. **Baseline capture** (into the session scratchpad `$SCRATCH`, never `/tmp`):
 

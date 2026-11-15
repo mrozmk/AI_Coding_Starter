@@ -14,7 +14,7 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
 
 2. If `git status --porcelain` output is empty — inform the user: "Nothing to commit, working tree clean." and stop.
 
-   **Protected-branch refuse.** Read **Protected** from `CLAUDE.md → ### Branch model`. If the current branch (`git rev-parse --abbrev-ref HEAD`) is listed there, stop: "Branch `<branch>` is protected — cut a working branch first (see Branch model)." Continue only on an explicit user override in this turn. Block absent or field empty → nothing is protected, proceed.
+   **Protected-branch refuse.** Run `bash .claude/lib/branch-model.sh fields` (exit 3 = no Branch model block → nothing is protected, proceed). If the current branch (`git rev-parse --abbrev-ref HEAD`) is in `protected=`, stop: "Branch `<branch>` is protected — cut a working branch first: `/start-task <KEY>` or `git switch -c <type>/<slug> --no-track`." With `protected_push=pr-only` there is **no override** — protected branches change only through a PR (`/pr-create`, then the merge). Otherwise continue only on an explicit user override in this turn. `protected=` empty → nothing is protected, proceed.
 
 3. **Determine "your" files** — the set you actually touched in this session:
    - Reconstruct from your transcript: every successful `Edit`, `Write`, `NotebookEdit`, `MultiEdit`, plus any `mv`/`rm`/file-creating `Bash` you ran. Track absolute paths; normalize to repo-relative.

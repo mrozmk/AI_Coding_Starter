@@ -280,6 +280,7 @@ Append at most one or two entries, at the END of the file. This step does **not*
 - exit `0` → the `Tracker comments: none new …` line goes into the report;
 - exit `3` → the line names the ids; the verdict is **at best `⚠️ Ready with warnings`** — never `✅`, and nothing here edits code from a comment;
 - exit `4` or a failed read → the same line as a warning the user acknowledges.
+- no baseline (`-`) and no ledger in the plan or its source spec → offer the one-time **Adopt** first (tracker-comments.md §6 → Adopt).
 
 Never print the read or the snapshot; the report carries ids only.
 

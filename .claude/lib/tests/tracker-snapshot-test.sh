@@ -5,13 +5,13 @@
 set -euo pipefail
 
 ST=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
-TS="node $ST/.claude/lib/tracker-snapshot.mjs"
+ts() { node "$ST/.claude/lib/tracker-snapshot.mjs" "$@"; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 fail() { echo "tracker-snapshot-test: FAIL — $*"; exit 1; }
 N=0
 run() {  # run <args…> → RC, OUT (stdout+stderr); fails the test if a fixture secret word leaks
-  set +e; OUT=$($TS "$@" 2>&1); RC=$?; set -e; N=$((N + 1))
+  set +e; OUT=$(ts "$@" 2>&1); RC=$?; set -e; N=$((N + 1))
   case "$OUT" in *SECRETWORD*) fail "output echoed ticket text: $OUT" ;; esac
 }
 mode() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"; }

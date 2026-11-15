@@ -73,7 +73,8 @@ If the chosen transition has `fields` with `required: true` entries (common for 
 - `.claude/project-profile.json` → `workflow.jira_transition_comment` is `true` → a comment is
   **required** (the `guard-jira-transition.sh` hook refuses a transition without one): ask for it —
   what changed, the PR, the verification. If `workflow.jira_transition_evidence` has an entry for
-  `<PROJECT>:<selected-id>`, say which evidence it expects (its pattern).
+  `<PROJECT>:<selected-id>` (else `*:<selected-id>`; an exact `""` means none), say which
+  evidence it expects (its pattern).
 - Otherwise the comment is optional; offer it once.
 - The comment is part of the mutation: it goes into the step 5 preview verbatim and into the step 6
   call, never added after a refusal.
