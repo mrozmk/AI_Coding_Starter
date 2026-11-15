@@ -16,7 +16,10 @@
 #
 # Fields (CLAUDE-template.md → Branch model): `**Name:**` at the start of a non-blockquote line or
 # right after ` · `; the value runs to the next ` · **`; names are the code spans before the first
-# ` — ` (Protected: the whole value). Maintenance/Retired absent → empty, nothing else changes.
+# ` — `. Protected is the exception, kept conservative because guard-push reads it: every code span in
+# the whole value is a protected branch (a span in its description counts too), except a value whose
+# first word is `none` (bare or in backticks), which is empty. Maintenance/Retired absent → empty,
+# nothing else changes.
 #
 # Exit: 0 ok · 1 `line`: nothing recorded · 2 usage · 3 no Branch model block (the caller uses its
 #   own fallback) · 4 L is retired · 5 L is not a live line · 6 L is on neither the local repo nor origin
@@ -41,7 +44,11 @@ field() {
 }
 names() {  # names <Name> → its code-span names, space-separated
   local v; v="$(field "$1")"
-  [ "$1" = Protected ] || v="${v%% — *}"
+  if [ "$1" = Protected ]; then
+    case "$(printf '%s' "$v" | sed 's/^[[:space:]`]*//' | awk '{ print tolower($1) }' | tr -d '`')" in
+      none) return 0 ;;
+    esac
+  else v="${v%% — *}"; fi
   printf '%s' "$v" | grep -o '`[^`]*`' | tr -d '`' | tr '\n' ' ' | sed 's/ $//'
 }
 has() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }  # has <word> <list>

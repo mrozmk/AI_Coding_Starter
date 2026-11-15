@@ -52,6 +52,19 @@ call 'done'; expect 2 "3 not matching"; case "$ERR" in *Release-*) ;; *) fail "3
 call 'done' mcp__atlassian__jira_transition_issue 21; expect 0 "3 another transition id"
 call 'done' mcp__atlassian__jira_transition_issue 31 OTHER-3; expect 0 "3 the same id in another project"
 
+# (3b) project wildcard "*:<id>": every project without its own string key; the exact key wins,
+# an exact "" opts that project out, and the wildcard is per transition id
+profile '{"workflow": {"jira_transition_comment": true, "jira_transition_evidence":
+  {"*:31": "Release-[0-9]+", "PROJ:31": "no deploy", "FREE:31": ""}}}'
+call 'done' mcp__atlassian__jira_transition_issue 31 OTHER-3; expect 2 "3b wildcard applies to another project"
+case "$ERR" in *'["*:31"]'*) ;; *) fail "3b: the wildcard key is not named ($ERR)" ;; esac
+call 'Release-7' mcp__atlassian__jira_transition_issue 31 OTHER-3; expect 0 "3b wildcard matching"
+call 'no deploy' mcp__atlassian__jira_transition_issue 31 PROJ-7; expect 0 "3b exact key wins (its rule)"
+call 'Release-7' mcp__atlassian__jira_transition_issue 31 PROJ-7; expect 2 "3b exact key wins (not the wildcard)"
+case "$ERR" in *'["PROJ:31"]'*) ;; *) fail "3b: the exact key is not named ($ERR)" ;; esac
+call 'done' mcp__atlassian__jira_transition_issue 31 FREE-1; expect 0 "3b exact empty string opts out"
+call 'done' mcp__atlassian__jira_transition_issue 21 OTHER-3; expect 0 "3b wildcard is per transition id"
+
 # (4) an invalid rule allows, and says so through a systemMessage
 profile '{"workflow": {"jira_transition_comment": true, "jira_transition_evidence": {"PROJ:31": "(["}}}'
 call 'done'; expect 0 "4 invalid regex"

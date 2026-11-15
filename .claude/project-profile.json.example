@@ -25,7 +25,7 @@
     "merge": "ff",
     "_orchestrate_publish_doc": "push | branch-local. gitflow and any PR-gated flow => branch-local; direct push and feature-branch => push.",
     "orchestrate_publish": "push",
-    "_jira_transition_doc": "Opt-in Jira transition guard (.claude/hooks/guard-jira-transition.sh). jira_transition_comment: true → a jira_transition_issue call without a comment is refused. jira_transition_evidence: {\"<PROJECT>:<transition id>\": \"<case-insensitive ERE>\"} — that transition's comment must match, e.g. {\"PROJ:31\": \"Release-[0-9]+|no deploy\"}; ids are workflow-scoped, hence the project prefix. Default: off, no rules.",
+    "_jira_transition_doc": "Opt-in Jira transition guard (.claude/hooks/guard-jira-transition.sh). jira_transition_comment: true → a jira_transition_issue call without a comment is refused. jira_transition_evidence: {\"<PROJECT>:<transition id>\": \"<case-insensitive ERE>\"} — that transition's comment must match, e.g. {\"PROJ:31\": \"Release-[0-9]+|no deploy\"}; ids are workflow-scoped, hence the project prefix. \"*:<transition id>\" applies to every project without its own string key (the exact key wins; an exact \"\" opts a project out). Default: off, no rules.",
     "jira_transition_comment": false,
     "jira_transition_evidence": {},
     "_tracker_comments_doc": "Opt-in: true → ticket comments are requirements (.agents/reference/tracker-comments.md) — /brainstorm and /quick-change snapshot them, /execute, /check-implementation and /pr-merge check for new ones. Default: off, no extra tracker reads.",

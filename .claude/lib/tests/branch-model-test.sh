@@ -95,6 +95,21 @@ printf '%s\n' '### Branch model' '**Preset:** trunk · **Trunk:** `main` · **In
   '**Protected:** none' > "$R/CLAUDE.md"
 run default-base --type hotfix; [ "$OUT" = main ] || fail "5: trunk preset hotfix → $OUT"
 
+# (5c) Protected: a value starting with `none` is empty; otherwise every code span counts (conservative)
+prot() { run fields; printf '%s\n' "$OUT" | sed -n 's/^protected=//p'; }
+printf '%s\n' '### Branch model' '**Preset:** trunk · **Trunk:** `main` · **Integration:** `main`' \
+  '**Protected:** none — trunk workflow: commits land on `main` after the gate; the public `release` is protected by `release-tool.mjs`, not by this field' \
+  > "$R/CLAUDE.md"
+[ -z "$(prot)" ] || fail "5c: 'none — …' → '$(prot)'"
+printf '%s\n' '### Branch model' '**Preset:** gitflow · **Trunk:** `main` · **Integration:** `develop`' \
+  '**Protected:** `main`, `develop` — `release` is guarded by a script' > "$R/CLAUDE.md"
+[ "$(prot)" = "main develop release" ] || fail "5c: list + description → '$(prot)'"
+for v in 'none' '`none`' 'None — nothing yet'; do
+  printf '%s\n' '### Branch model' '**Preset:** trunk · **Trunk:** `main` · **Integration:** `main`' \
+    "**Protected:** $v" > "$R/CLAUDE.md"
+  [ -z "$(prot)" ] || fail "5c: '$v' → '$(prot)'"
+done
+
 # (5b) Protected push: pr-only / confirm, case and backticks tolerated; anything else → empty
 for v in 'pr-only' '`pr-only` — PRs only' 'PR-ONLY' 'confirm' 'yes please' ''; do
   printf '%s\n' '### Branch model' '**Preset:** gitflow · **Trunk:** `main` · **Integration:** `develop`' \

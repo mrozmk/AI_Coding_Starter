@@ -122,7 +122,7 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 **Preset:** {trunk | feature-branch | gitflow | custom} · **Trunk:** `{branch}` · **Integration:** `{branch}`
 **Branch names:** `{<type>/<KEY>-<slug> | <type>/<slug>}` — types: {closed list}
 **Base → PR dest:** {base and PR-destination rule, per-type exceptions}
-**Protected:** {never a PR source nor a pipeline push target, or `none`}
+**Protected:** {the branches that are never a PR source nor a pipeline push target, each name in backticks (every backticked word in this value counts as a protected branch, a description too), or `none` when there are none}
 **Merge:** {emit ONLY when the project deviates from its preset; otherwise delete this line}
 **Maintenance:** {emit ONLY when the project still serves older lines: each line's name in backticks, comma-separated, then ` — ` and what it serves; otherwise delete this line}
 **Protected push:** {emit `pr-only` ONLY when the project requires PRs and Protected is not empty; otherwise delete this line}
