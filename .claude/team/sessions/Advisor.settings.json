@@ -29,7 +29,9 @@
       "Skill(pr-merge)",
       "Skill(pr-merge *)",
       "Skill(release)",
-      "Skill(release *)"
+      "Skill(release *)",
+      "Bash(*notify.sh*)",
+      "Bash(*operator-record.sh*)"
     ],
     "ask": [
       "Bash(cat .env*)",

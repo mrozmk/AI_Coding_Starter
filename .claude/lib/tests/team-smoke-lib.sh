@@ -501,6 +501,7 @@ smoke_repos() {
   cp "$SRC/.claude/hooks/lib/guard_destructive_sql.py" "$SRC/.claude/hooks/lib/guard_team_egress.py" \
     "$SEED/.claude/hooks/lib/"
   cp "$SRC/.claude/hooks/guard-team-egress.sh" "$SEED/.claude/hooks/"
+  cp "$SRC/.claude/lib/notify.sh" "$SEED/.claude/lib/"  # lead_notify's sender (fixture HOME outbox)
   cp "$SRC/.claude/lib/worker-next.sh" "$SEED/.claude/lib/"
   cp "$SRC/.claude/lib/worker-lib.sh" "$SEED/.claude/lib/"
   cp "$SRC/.claude/lib/gate-lock.sh" "$SRC/.claude/lib/gate_lock.py" "$SEED/.claude/lib/"

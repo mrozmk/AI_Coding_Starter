@@ -471,9 +471,26 @@ printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "" "(m) runner polls"
 [ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2: Allow the coder" "$WORK/notify.log" \
   || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) not exactly one human_decision notification"; }
+# A failing notify.sh (exit 1) never silences the Operator: one legacy alarm per runner process.
+cp "$WORK/notify.log" "$WORK/notify.log.keep"; cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.keep"
+cp "$STUB_LOG" "$WORK/stub.keep"; : > "$STUB_LOG"  # the first runner ended the coder on cancel
+printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"
+printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
+STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) a failing notify.sh warns"
+cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
+[ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2:" "$WORK/notify.log" \
+  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) a failing notify.sh: not exactly one legacy notification"; }
+cp "$WORK/notify.log.keep" "$WORK/notify.log"; cp "$WORK/stub.keep" "$STUB_LOG"
 rm -f "$WORK/hs.n" "$TD/cancel"
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 TEAM_NOTIFY=0 run "$MAIN" $TR alfa
 [ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] || fail "(m) a restarted runner notified again"
+# notify.sh (#38): one write-once event in the fixture HOME's outbox, no .notified; channels off.
+OB="$HOME/.agent-comms/outbox"
+[ "$(ls "$OB/events" | grep -c "_alfa_${RUN_ID}_d-2\.json$")" = 1 ] || { ls -la "$OB/events" > "$WORK/out" 2>&1 || true; fail "(m) not exactly one event file"; }
+jq -e '.event == "human_decision" and .team == "alfa" and .decision == "d-2" and .summary == null
+  and (.answer.hint | test("tmux attach -t .*alfa-lead$"))' "$OB/events/"*"_alfa_${RUN_ID}_d-2.json" >/dev/null \
+  || fail "(m) event file"
+[ ! -e "$TD/runs/$RUN_ID/.notified" ] || fail "(m) .notified still written"
 run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
 head -n 1 "$WORK/out" | grep -q "^decision .agents/team/runs/$RUN_ID/decisions/d-2.md — Allow the coder" \
   || fail "(m) pending does not list the open decision first"

@@ -69,7 +69,6 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `runs/<run>/answers.md` | `team-answer.sh` (every authority answer) | `- <utc> [<role> <attempt>] <question> → <answer> — <why> [authority <a>] [decision <id>]` |
 | `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision` | a human decision, §7 |
 | `runs/<run>/decisions/req-<n>.json` | runner (`lead_attention`) | a human-only prompt the lead opens a decision from: source, tool, command, binding |
-| `runs/<run>/.notified` | runner (`lead_notify`) | verdict files already notified to the Operator |
 | `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
 | `verdict-acked` | runner | the verdict files already acted on, one per line |
 | `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` — a closed run; the runner and `/start-team` refuse to resume it |
@@ -221,9 +220,13 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
   notify`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
   `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
-- **Notify:** the runner sends each verdict with `notify` set once (`.notified`) through
-  `team_channel_notify --alarm` — `<ticket> <id>: <question> — answer in tmux attach -t <team>-lead` —
-  whatever `TEAM_NOTIFY` says.
+- **Notify:** the runner sends each verdict with `notify` set through `.claude/lib/notify.sh
+  <event>` (the one sender), whatever `TEAM_NOTIFY` says. The event id
+  `<project>:<team>:<run>:<d-n>` is written once into `~/.agent-comms/outbox/events/` — that file
+  is the dedup across ticks and runner restarts. The hint is `tmux attach -t <team>-lead`. Until
+  #41 the legacy `team_channel_notify --alarm` (`<ticket> <id>: <question> — answer in …`) also
+  fires when `notify.sh` printed `written`, and also when `notify.sh` failed (exit ≠ 0: a `warn:`
+  line, then the legacy alarm once per runner process — a broken sender never silences the Operator).
 - **Answer:** `team-lead.sh decision answer <team> d-<n> --text "<Operator's words>"
   [--outcome continue|close|more-revise|approve]` → `status: answered`, `answered_at`,
   `answered_via`, `## Answer`. It asks for a human: from a **terminal** (stdin is a TTY and the id
