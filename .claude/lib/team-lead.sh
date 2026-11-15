@@ -170,6 +170,8 @@ end_lead() {
 
 finalize() {
   end_lead "$1" >/dev/null
+  # The run is over: its inbox messages go to done/ (team-inbox.sh close-run); never blocks.
+  [ -z "$RUN" ] || bash "$LIB/team-inbox.sh" --main "$MAIN" close-run "$1" "$RUN" >/dev/null 2>&1 || true
   if [ -n "$RUN" ] && [ -d "$TD/runs/$RUN" ] && [ ! -e "$TD/runs/$RUN/finalized" ]; then
     printf '%s %s\n' "$2" "$(team_utc)" > "$TD/runs/$RUN/finalized"
   fi

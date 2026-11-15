@@ -3,6 +3,9 @@
 # Usage: bash .claude/lib/team-inbox.sh [--main <dir>] write <address> <event> --from <x>
 #          --ticket <k> --run <r> [--ref <path>] [--message <one line>]
 #        bash .claude/lib/team-inbox.sh [--main <dir>] list <address> | done <address> <file>
+#        bash .claude/lib/team-inbox.sh [--main <dir>] close-run <address> <run>
+#   close-run: a run ended (finalize, the runner's close_run) — its messages (frontmatter `run:`)
+#   move from new/ to done/, so the prompt hook and the team's next lead stop counting them.
 #   <main>/.agents/team/inbox/<address>/{tmp,new,done}/; write builds
 #   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md in tmp/, links it into new/, then rings the address's
 #   session through session-host.sh send (rc on stderr `ring: <rc>`, never the exit: the file is
@@ -97,5 +100,13 @@ case "$cmd" in
     [ $# -eq 1 ] || usage
     f="$(basename "$1")"; [ -f "$D/new/$f" ] || { echo "error: $f is not in $D/new" >&2; exit 1; }
     mkdir -p "$D/done"; mv "$D/new/$f" "$D/done/$f"; echo "$D/done/$f" ;;
+  close-run)
+    [ $# -eq 1 ] && [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || usage
+    n=0; mkdir -p "$D/done"
+    for f in "$D/new"/*.md; do
+      [ -f "$f" ] && [ "$(sed -n '/^---$/,/^---$/s/^run: //p' "$f" | head -n 1)" = "$1" ] || continue
+      mv "$f" "$D/done/$(basename "$f")" && n=$((n + 1))
+    done
+    echo "closed: $n message(s) of run $1 → $D/done" ;;
   *) usage ;;
 esac

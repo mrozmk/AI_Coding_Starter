@@ -376,6 +376,7 @@ close_run() {
     || echo "warn: teamlead log not appended — bash .claude/lib/team-lead.sh log-append $TEAM closed" >&2
   (cd "$root" && bash .claude/lib/team-lead.sh end "$TEAM") >/dev/null \
     || echo "warn: TeamLead of $TEAM did not end" >&2
+  bash "$root/.claude/lib/team-inbox.sh" --main "$root" close-run "$TEAM" "$RUN" >/dev/null 2>&1 || true  # its inbox → done/
   end_session "$ROLE"
   rm -f "$TD/session.json"
   echo "closed: $1 — $next"

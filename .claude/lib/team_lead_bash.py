@@ -7,7 +7,8 @@ Refused:
   - a key or text sent into a session: tmux's send-keys/send/paste-buffer, hc keys/send/interrupt,
     session-host.sh keys/type/send to a stage address (<team>-planner|coder|qa|wrapup|cli) — the
     lead never presses a key in a stage window (a human-only prompt is the Operator's there);
-  - team-inbox.sh done for any address but the lead's own team (another inbox is not its to clear);
+  - team-inbox.sh done or close-run for any address but the lead's own team (another inbox is not its
+    to clear);
   - any command that names a protected path, unless it only reads it or is one of the scripts that
     own those files. Protected: everything under the clone's and the main checkout's
     .agents/team/ except the lead's own files under runs/<run>/ (and its round dirs r<n>/), the clone's
@@ -73,7 +74,7 @@ def inbox_refusal(w, clone):
         return None
     if rest[:1] == ["--main"]:
         rest = rest[2:]
-    if rest[:1] != ["done"]:
+    if rest[:1] not in (["done"], ["close-run"]):
         return None
     try:
         with open(os.path.join(clone, ".agents", "team", "team.json")) as f:
@@ -82,8 +83,8 @@ def inbox_refusal(w, clone):
         own = ""
     if own and rest[1:2] == [own]:
         return None
-    return "TeamLead marks only its own team's inbox done (team-inbox.sh done %s <file>)" % (
-        own or "<team>")
+    return "TeamLead marks only its own team's inbox done (team-inbox.sh %s %s …)" % (
+        rest[0], own or "<team>")
 
 
 class Paths:

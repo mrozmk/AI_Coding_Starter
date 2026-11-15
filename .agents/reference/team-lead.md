@@ -124,7 +124,10 @@ result goes to stderr (`ring: <rc>`), never to the exit code: a blocked (9), gon
 Every handler moves a file to `done/` only after acting, and acting twice is harmless. The
 per-run lead sees its team's messages in `pending` (this run's and run-less ones only, so an old
 run's leftover never reaches the next lead) and clears each with
-`team-inbox.sh --main <main> done <team> <file>`; its Bash guard refuses `done` for any other address.
+`team-inbox.sh --main <main> done <team> <file>`; its Bash guard refuses `done` and `close-run` for
+any other address. When the run ends (`team-lead.sh finalize`, the runner's `close_run`), its
+remaining messages move to `done/` (`team-inbox.sh close-run <team> <run>`), so the prompt hook and
+the next lead no longer count them.
 
 ## 4. Gates
 

@@ -239,7 +239,21 @@ echo "team-smoke-22: (f) cli OK"
 
 # ---- (h) end / finalize; team-integrate calls finalize on both success exits ----------------------
 reset; lead_json; echo alfa-lead > "$WORK/alive"; mkdir -p "$(dirname "$LREG")"; echo '{}' > "$LREG"
+# The run's own inbox messages leave new/ when it ends; another run's stay (team-inbox.sh close-run).
+IBA="$MAIN/.agents/team/inbox/alfa"; mkdir -p "$IBA/new"
+for m in "1:$RUN_ID" "2:$RUN_ID" "3:alfa-20990101-000000"; do
+  printf -- '---\nid: m%s\nrun: %s\n---\nx\n' "${m%%:*}" "${m#*:}" > "$IBA/new/20261115T00000${m%%:*}Z-Supervisor-message.md"
+done
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized: alfa $RUN_ID merged" "(h) finalize"
+[ -f "$IBA/done/20261115T000001Z-Supervisor-message.md" ] && [ -f "$IBA/done/20261115T000002Z-Supervisor-message.md" ] \
+  && [ -f "$IBA/new/20261115T000003Z-Supervisor-message.md" ] && [ ! -e "$IBA/new/20261115T000001Z-Supervisor-message.md" ] \
+  || { ls -R "$IBA" > "$WORK/out"; fail "(h) finalize did not move exactly the run's inbox messages to done/"; }
+run "$MAIN" bash .claude/lib/team-inbox.sh close-run alfa "$RUN_ID"; expect 0 "closed: 0 message(s) of run $RUN_ID" "(h) close-run again"
+run "$MAIN" bash .claude/lib/team-inbox.sh close-run alfa 'x y'; expect 2 "" "(h) close-run with a bad run id"
+rm -f "$IBA/new/20261115T000003Z-Supervisor-message.md" "$IBA/done/20261115T00000"[12]"Z-Supervisor-message.md"
+# The runner's other exit (close_run: abandon, remode) closes the run's inbox too.
+awk '/^close_run\(\) \{/,/^}/' "$SRC/.claude/lib/team-run-lead.sh" | grep -q 'team-inbox.sh" --main "$root" close-run "$TEAM" "$RUN"' \
+  || fail "(h) close_run does not close the run's inbox"
 has "kill-session -t =smk-alfa-lead" "$STUB_LOG" || fail "(h) the lead was not ended"
 [ -f "$RD/finalized" ] && [ ! -e "$LREG" ] || fail "(h) finalized marker / registration"
 cp "$RD/finalized" "$WORK/fin1"

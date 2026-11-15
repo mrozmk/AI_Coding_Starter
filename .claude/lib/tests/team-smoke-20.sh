@@ -174,6 +174,7 @@ bash .claude/lib/team-inbox.sh --main $MAIN done Supervisor $MAIN/.agents/team/i
 bash .claude/lib/team-inbox.sh done Supervisor x.md
 bash .claude/lib/team-inbox.sh --main $MAIN done beta x.md
 bash -x $MAIN/.claude/lib/team-inbox.sh --main $MAIN done Supervisor x.md
+bash .claude/lib/team-inbox.sh --main $MAIN close-run Supervisor alfa-20261115-120000
 EOF2
 lhook $G "$(bash_p 'cd "$X" && echo > answers.md')"; expect 2 "cannot be resolved" "(e2) a cd behind a variable"
 lhook $G "$(bash_p "git status" sid-stale)"; expect 2 "identity not current" "(e2) stale identity fails closed"
