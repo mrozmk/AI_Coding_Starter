@@ -61,17 +61,17 @@ tw_pause_pass() {
 }
 tw_alarms_pass() { jq -e '.alarms == true' <<<"$(tw_pause_pass "$1")" >/dev/null 2>&1; }
 
-# tw_tmux_name <role|daemon|dog> — the one source of this checkout's tmux session names, from
-# teams.channel.tmux_prefix (team_channel_names, run by tw_init): two checkouts on one machine
-# never share a name.
+# tw_tmux_name <role|daemon|dog> → the session's ADDRESS (<Role>, helper:team-watch[-dog]); the
+# driver maps it to the prefixed name (sh_name), so two checkouts on one machine never share one.
 tw_tmux_name() {
-  local p="$TEAM_CHANNEL_TMUX_PREFIX"
   case "$1" in
-    daemon) echo "$p-team-watch" ;;
-    dog) echo "$p-team-watch-dog" ;;
-    *) echo "$p-$(echo "$1" | tr '[:upper:]' '[:lower:]')" ;;
+    daemon) echo helper:team-watch ;;
+    dog) echo helper:team-watch-dog ;;
+    *) echo "$1" ;;
   esac
 }
+# tw_session_name <role|daemon|dog> → the live tmux name, for messages and pane targets only.
+tw_session_name() { team_sess "$(tw_tmux_name "$1")"; }
 
 tw_receiver_file() { echo "$TW_DIR/receivers/$1.json"; }
 

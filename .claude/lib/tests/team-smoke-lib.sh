@@ -106,6 +106,9 @@ smoke_init() {
   # The session-host driver runs only fixture binaries under TEAM_SMOKE=1, and never picks a host
   # by itself: a fake `hc` on PATH must not move an old part off tmux.
   export TEAM_SMOKE_BIN_DIR="$WORK/bin" TEAM_SESSION_HOST=tmux
+  # Session names carry the fixture prefix (teams.session_prefix = smk). The old-name fallback is
+  # off, so every part's tmux call sequence stays exact; part host turns it on where it tests it.
+  export TEAM_HOST_LEGACY_NAMES=0
   unset TEAM_GATE_LOCK_DIR TEAM_GATE_LOCK_LOG TEAM_GATE_LOCK_TOKEN TEAM_GATE_LOCK_WAIT
   unset CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR
   smoke_gitconfig
@@ -168,6 +171,7 @@ if [ "$1" = display-message ]; then
   case "$*" in
     *'#{pane_pid}'*) echo "${STUB_PANE_PID:-4242}"; exit 0 ;;
     *'#{pane_current_command}'*) echo "${STUB_PANE_CMD:-claude}"; exit 0 ;;
+    *'#{session_path}'*) echo "${STUB_SESSION_PATH:-/elsewhere}"; exit 0 ;;
   esac
   echo "${STUB_PANE_ID:-%1}@${STUB_PANE_CREATED:-1700000000}"; exit 0
 fi
@@ -484,7 +488,8 @@ smoke_profile() {
       env_file_required: true,
       build_check: "dotnet build AcmeShop2.API.sln",
       test_gate: ".claude/lib/test-gate.sh",
-      gates: "auto"
+      gates: "auto",
+      session_prefix: "smk"
     }}' | jq "${1:-.}"
 }
 

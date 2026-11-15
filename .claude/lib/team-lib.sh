@@ -90,24 +90,31 @@ team_run_ref() {
   if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 1 ]; then echo "$2/r$n"; else echo "$2"; fi
 }
 
-team_tmux_name() {
-  echo "$1-$2"
+# team_tmux_name <team> <role> → the ADDRESS <team>-<role>; only the driver knows tmux names (sh_name).
+team_tmux_name() { echo "$1-$2"; }
+# team_sess <address> → the live session name (sh_target): the main checkout from HARNESS_MAIN, else
+# this checkout — a clone shares the committed teams profile, so the same prefix.
+team_sess() {
+  local m; m="$(sh_main_root 2>/dev/null)" || m="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+  sh_target "$m" "$1"
 }
 
-# Session wrappers by tmux name, over the driver (session-host-lib.sh sh_tmux_*: exact `=NAME`
-# targets, `=NAME:` for pane commands). Non-zero = gone or the probe failed, as before.
+# Session wrappers by address, over the driver. Non-zero = gone or the probe failed, as before.
 team_tmux_alive() {
-  sh_tmux has-session -t "=$1" 2>/dev/null   # in this shell, not a $(…): the caller stays tmux's parent
+  local n; n="$(team_sess "$1")" || return 1
+  sh_tmux has-session -t "=$n" 2>/dev/null   # in this shell, not a $(…): the caller stays tmux's parent
 }
 
 # Last non-empty lines of a session's pane; empty when the session is gone.
 team_pane() {
-  sh_tmux_read "$1" "${2:-15}" 2>/dev/null || true
+  local n; n="$(team_sess "$1")" || return 0
+  sh_tmux_read "$n" "${2:-15}" 2>/dev/null || true
 }
 
 # Pane plus scrollback, wrapped lines joined: a long command's start scrolls off the visible pane.
 team_pane_history() {
-  sh_tmux_history "$1" "${2:-200}" 2>/dev/null || true
+  local n; n="$(team_sess "$1")" || return 0
+  sh_tmux_history "$n" "${2:-200}" 2>/dev/null || true
 }
 
 # stdin → stdout with labelled secret values masked. Pattern-based: the floor for signals, not a
@@ -140,9 +147,10 @@ team_pane_scroll() {
   sh_read_target "$1" --history "${2:-200}" --squeeze 2>/dev/null || true
 }
 
-# Usage: team_pane_gen <session> → "<pane_id>@<session_created>"; a replaced session is a new value.
+# Usage: team_pane_gen <address> → "<pane_id>@<session_created>"; a replaced session is a new value.
 team_pane_gen() {
-  sh_gen "$1" 2>/dev/null
+  local n; n="$(team_sess "$1")" || return 1
+  sh_gen "$n" 2>/dev/null
 }
 
 # Usage: team_role_transcript <clone> <session_id> [config dir] → the role's Claude transcript path,

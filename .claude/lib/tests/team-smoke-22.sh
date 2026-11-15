@@ -26,10 +26,10 @@ run "$MAIN" bash .claude/lib/team-brief.sh write alfa "$WORK/brief.md"; expect 0
 # $WORK/hs.case adds per-case behaviour, CANCEL_AT stops the runner after that many calls.
 cat > "$WORK/hs.sh" <<'HS'
 n=$(( $(cat "$WORK/hs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$WORK/hs.n"
-s="${3#=}"
+s="${3#=}"; s="${s#smk-}"   # alive lists and cases name addresses; tmux names carry smk-
 [ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
 [ ! -f "$WORK/hs.case" ] || . "$WORK/hs.case"
-! grep -q -- "kill-session -t =$s\$" "$STUB_LOG" || exit 1
+! grep -q -- "kill-session -t =smk-$s\$" "$STUB_LOG" || exit 1
 grep -qx -- "$s" "$WORK/alive" 2>/dev/null && exit 0
 exit 1
 HS
@@ -49,8 +49,8 @@ TR="bash .claude/lib/team-run.sh"
 # ---- (a) switch off: no lead, unchanged launch order ---------------------------------------------
 reset
 run "$MAIN" $TR alfa; expect 5 "dead attempt" "(a) runner, switch off"
-has "-s alfa-lead" "$STUB_LOG" && fail "(a) a lead launched with the switch off"
-has "-s alfa-planner" "$STUB_LOG" || fail "(a) the planner did not launch"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(a) a lead launched with the switch off"
+has "-s smk-alfa-planner" "$STUB_LOG" || fail "(a) the planner did not launch"
 [ ! -e "$TD/teamlead.json" ] && [ ! -d "$SUP" ] || fail "(a) lead state or events with the switch off"
 echo "team-smoke-22: (a) switch off OK"
 
@@ -74,11 +74,11 @@ echo "team-smoke-22: (g) old base OK"
 # ---- (b) switch on, brainstorm: the lead launches first, with its profile ------------------------
 reset
 run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/high)" "(b) runner, switch on"
-[ -n "$(line_of '-s alfa-lead')" ] && [ -n "$(line_of '-s alfa-planner')" ] \
-  && [ "$(line_of '-s alfa-lead')" -lt "$(line_of '-s alfa-planner')" ] || fail "(b) lead not before the planner"
+[ -n "$(line_of '-s smk-alfa-lead')" ] && [ -n "$(line_of '-s smk-alfa-planner')" ] \
+  && [ "$(line_of '-s smk-alfa-lead')" -lt "$(line_of '-s smk-alfa-planner')" ] || fail "(b) lead not before the planner"
 for x in "/main-alfa/.agents/team/teamlead.settings.json' " "--model 'fable' --effort 'high'" \
   "--disallowedTools AskUserQuestion -- " "-e TEAM_SESSION_ROLE=TeamLead"; do
-  grep -- "-s alfa-lead" "$STUB_LOG" | grep -qF -- "$x" || fail "(b) lead launch lacks: $x"
+  grep -- "-s smk-alfa-lead" "$STUB_LOG" | grep -qF -- "$x" || fail "(b) lead launch lacks: $x"
 done
 jq -e --arg r "$RUN_ID" '.run == $r and .model == "fable" and (.main_root | length > 0)' \
   "$TD/teamlead.json" >/dev/null || fail "(b) teamlead.json"
@@ -123,7 +123,7 @@ mkdir -p "$MAIN/.agents/team/inbox/alfa/new"; echo x > "$MAIN/.agents/team/inbox
 export CANCEL_AT=15
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: planner-1-1.json" "(d) runner on a stop"
 has "TeamLead reused: alfa-lead" "$WORK/out" || fail "(d) the live lead of this run was not reused"
-has "-s alfa-lead" "$STUB_LOG" && fail "(d) a live lead was launched again"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(d) a live lead was launched again"
 [ "$(cat "$TD/acked")" = planner-1-1.json ] || fail "(d) record not acked"
 for _ in $(seq 1 30); do grep -q 'collision-answer' "$WORK/recv" 2>/dev/null && break; sleep 0.1; done
 touch "$WORK/recv"
@@ -159,7 +159,7 @@ HS
 run "$MAIN" $TR alfa; expect 6 "TeamLead died — /start-team alfa relaunches it" "(e) dead lead"
 [ "$(grep -l '^event: session_dead' "$SUP"/* | wc -l | tr -d ' ')" = 1 ] || fail "(e) not exactly one session_dead"
 grep -q '^ref: .agents/team/teamlead.json' "$SUP"/* || fail "(e) session_dead ref"
-[ "$(grep -c -- '-s alfa-lead' "$STUB_LOG")" = 1 ] && [ -s "$RD/lead-1.session" ] || fail "(e) not relaunched once"
+[ "$(grep -c -- '-s smk-alfa-lead' "$STUB_LOG")" = 1 ] && [ -s "$RD/lead-1.session" ] || fail "(e) not relaunched once"
 [ ! -e "$TD/lead-dead" ] && [ ! -e "$TD/relaunch-lead" ] || fail "(e) relaunch markers left"
 run "$MAIN" bash .claude/lib/team-lead.sh relaunch alfa; expect 0 "relaunch requested" "(e) relaunch command"
 [ -e "$TD/relaunch-lead" ] || fail "(e) relaunch command wrote no request"
@@ -192,15 +192,15 @@ echo "team-smoke-22: execution-time limit OK"
 # ---- (f) mode cli → no lead -----------------------------------------------------------------------
 reset; jq '.mode = "cli"' "$TD/team.json" > "$WORK/t" && cp "$WORK/t" "$TD/team.json"
 run "$MAIN" $TR alfa
-has "-s alfa-lead" "$STUB_LOG" && fail "(f) a lead launched in mode cli"
-has "-s alfa-cli" "$STUB_LOG" || fail "(f) the cli session did not launch"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(f) a lead launched in mode cli"
+has "-s smk-alfa-cli" "$STUB_LOG" || fail "(f) the cli session did not launch"
 jq '.mode = "brainstorm"' "$TD/team.json" > "$WORK/t" && cp "$WORK/t" "$TD/team.json"
 echo "team-smoke-22: (f) cli OK"
 
 # ---- (h) end / finalize; team-integrate calls finalize on both success exits ----------------------
 reset; lead_json; echo alfa-lead > "$WORK/alive"; echo '{}' > "$TD/teamlead.reg.json"
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized: alfa $RUN_ID merged" "(h) finalize"
-has "kill-session -t =alfa-lead" "$STUB_LOG" || fail "(h) the lead was not ended"
+has "kill-session -t =smk-alfa-lead" "$STUB_LOG" || fail "(h) the lead was not ended"
 [ -f "$RD/finalized" ] && [ ! -e "$TD/teamlead.reg.json" ] || fail "(h) finalized marker / registration"
 cp "$RD/finalized" "$WORK/fin1"
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized:" "(h) finalize again"
@@ -263,7 +263,7 @@ ls "$TD"/archive/AB-1500-*/teamlead.json >/dev/null 2>&1 || fail "(k) teamlead.j
 prof '.teams.teamlead.enabled = false'
 : > "$STUB_LOG"; rm -f "$WORK/hs.case"; : > "$WORK/alive"
 run "$MAIN" $TR alfa
-has "-s alfa-planner" "$STUB_LOG" && ! has "-s alfa-lead" "$STUB_LOG" || fail "(k) next ticket not on the no-lead branch"
+has "-s smk-alfa-planner" "$STUB_LOG" && ! has "-s smk-alfa-lead" "$STUB_LOG" || fail "(k) next ticket not on the no-lead branch"
 echo "team-smoke-22: (k) team-next OK"
 
 # ==== authority: the per-run TeamLead's answers (checker, sender, hook) ===========================
@@ -536,7 +536,7 @@ runner_attention() {  # runner_attention <label> — one attention line, a runne
 bashp "git status"; runner_attention "(i) clean prompt"
 has "answered at authority class: coder prompt" "$WORK/runner.out" || { cp "$WORK/runner.out" "$WORK/out"; fail "(i) the runner did not answer at class"; }
 grep -q 'send-keys -t %1 Enter' "$STUB_LOG" || fail "(i) no Enter sent to the stage"
-! grep -q 'prompt coder' "$TD/send-lead.log" 2>/dev/null && ! grep -q 'send-keys -t =alfa-lead: -l -- prompt' "$STUB_LOG" \
+! grep -q 'prompt coder' "$TD/send-lead.log" 2>/dev/null && ! grep -q 'send-keys -t =smk-alfa-lead: -l -- prompt' "$STUB_LOG" \
   || fail "(i) the lead was rung for a class-answered prompt"
 grep -q "\[authority class\]" "$RD/answers.md" || fail "(i) class answer not in answers.md"
 editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""; runner_attention "(i) human-only"

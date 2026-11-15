@@ -37,9 +37,9 @@ pr_json false "$C1"; pr_set --arg b "refs/heads/$BR" '.sourceRefName = $b'
 
 cat > "$WORK/hs.sh" <<'HS'
 n=$(( $(cat "$WORK/hs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$WORK/hs.n"
-s="${3#=}"
+s="${3#=}"; s="${s#smk-}"   # alive lists and cases name addresses; tmux names carry smk-
 [ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
-! grep -q -- "kill-session -t =$s\$" "$STUB_LOG" || exit 1
+! grep -q -- "kill-session -t =smk-$s\$" "$STUB_LOG" || exit 1
 grep -qx -- "$s" "$WORK/alive" 2>/dev/null && exit 0
 exit 1
 HS
@@ -88,7 +88,7 @@ setup_run alfa-20261115-100000
 # ---- (a) qa done with the lead on: validated, the acceptance gate rung, no wrapup yet -------------
 greset alfa-lead alfa-qa
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate acceptance qa-1-1.json" "(a) runner"
-! has "-s alfa-wrapup" "$STUB_LOG" || fail "(a) the wrapup launched before a verdict"
+! has "-s smk-alfa-wrapup" "$STUB_LOG" || fail "(a) the wrapup launched before a verdict"
 grep -qsF "gate acceptance: .agents/team/runs/$RUN_ID/qa-1-1.json" "$STUB_LOG" "$TD/send-lead.log" \
   || fail "(a) the lead was not rung for the acceptance gate"
 [ "$(cat "$TD/acked")" = qa-1-1.json ] || fail "(a) qa record not acked"
@@ -208,7 +208,7 @@ s="${3#=}"
 [ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
 l="$(grep -E -- "new-session -d -s $s |kill-session -t =$s\$" "$STUB_LOG" | tail -n 1)"
 case "$l" in *new-session*) exit 0 ;; *kill-session*) exit 1 ;; esac
-grep -qx -- "$s" "$WORK/alive" 2>/dev/null && exit 0
+grep -qx -- "${s#smk-}" "$WORK/alive" 2>/dev/null && exit 0
 exit 1
 HS
 export STUB_ON_HAS_SESSION=". '$WORK/hs2.sh'"
@@ -243,7 +243,7 @@ expect 0 "teamlead-acceptance-1.json" "(k) rework"
 jq -e --arg r ".agents/team/runs/$RUN_ID/rework-2.md" '.for == "qa-1-1.json" and .ref == $r' "$RD/teamlead-acceptance-1.json" >/dev/null || fail "(k) verdict for/ref"
 greset alfa-lead alfa-qa; export CANCEL_AT=40
 run "$MAIN" $TR alfa; expect 6 "round 2 started" "(k) runner"
-has "kill-session -t =alfa-qa" "$STUB_LOG" || fail "(k) the qa session was not ended"
+has "kill-session -t =smk-alfa-qa" "$STUB_LOG" || fail "(k) the qa session was not ended"
 has "launched: coder attempt 1" "$WORK/out" || fail "(k) the coder did not relaunch"
 jq -e --arg r "$RUN_ID" '.run == $r and .round == 2 and .pr_published == true' "$TD/round" >/dev/null || fail "(k) round file"
 [ ! -e "$TD/round-transition" ] && [ -d "$RD/r2" ] || fail "(k) transition left or no r2/"
@@ -362,7 +362,7 @@ done
 rework_ready alfa-20261115-190000
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message x; expect 0 "" "(p) rework"
 # The runner dies at its first look at the coder session after round 2 is durable.
-printf '%s\n' "if [ \"\$3\" = =alfa-coder ] && jq -e '.run == \"$RUN_ID\" and .round == 2' \"$TD/round\" >/dev/null 2>&1; then kill -9 \$PPID; fi" \
+printf '%s\n' "if [ \"\$3\" = =smk-alfa-coder ] && jq -e '.run == \"$RUN_ID\" and .round == 2' \"$TD/round\" >/dev/null 2>&1; then kill -9 \$PPID; fi" \
   ". '$WORK/hs2.sh'" > "$WORK/hs3.sh"
 greset alfa-lead alfa-qa; export CANCEL_AT=40
 STUB_ON_HAS_SESSION=". '$WORK/hs3.sh'" run "$MAIN" $TR alfa

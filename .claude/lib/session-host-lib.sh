@@ -4,10 +4,11 @@
 # but refused with exit 6 "not yet supported". Bash 3.2; sourced, never executed — the lib sets no
 # shell options, callers run under their own.
 #
-# Addresses (the harness's names) → tmux session names, today's names exactly:
-#   <Role> (leading capital)  → <tmux_prefix>-<role lowercase>   (tw_tmux_name)
-#   <team>-<role>             → the same string                 (team_tmux_name)
-#   helper:<name>             → <name>                          (team-watch daemon, retro-<run>)
+# Addresses (the harness's names) → session names, all carrying the project prefix (sh_prefix), so
+# two checkouts on one machine never collide. Callers hold addresses; names exist only in here.
+#   <Role> (leading capital)  → <prefix>-<role lowercase>
+#   <team>-<role>             → <prefix>-<team>-<role>
+#   helper:<name>             → <prefix>-<name> (a name already starting <prefix>- is taken as is)
 #   adhoc-<handle>            → registry only, never started
 # Exit codes: 0 ok · 2 usage · 3 gone · 6 no host · 9 blocked · 10 skipped (lock held, input not
 # safe) · 1 other.
@@ -56,17 +57,88 @@ sh_kind() {
   esac
 }
 
-# sh_name <main> <address> → the session name (step 2 replaces this builder with the prefixed one).
+# sh_prefix <main> → the session-name prefix: teams.session_prefix (refused unless it matches
+# ^[a-z0-9][a-z0-9_-]{0,11}$; empty = not set), else teams.channel.tmux_prefix, else the
+# repo-directory slug — both through team_channel_names, lowercased, and cut to 12 with one warning
+# per process (refusing a derived prefix would break a fresh install). Cached per main checkout.
+SH_PREFIX_ROOT="" SH_PREFIX="" SH_PREFIX_WARNED=""
+sh_prefix() {
+  local v full
+  if [ -n "$SH_PREFIX" ] && [ "$SH_PREFIX_ROOT" = "$1" ]; then printf '%s\n' "$SH_PREFIX"; return 0; fi
+  v="$(jq -r '.teams.session_prefix // empty | strings' "$1/.claude/project-profile.json" 2>/dev/null || true)"
+  if [ -n "$v" ]; then
+    [[ "$v" =~ ^[a-z0-9][a-z0-9_-]{0,11}$ ]] \
+      || { sh_err "teams.session_prefix=$v must match ^[a-z0-9][a-z0-9_-]{0,11}$ (lowercase, ≤ 12)"; return 2; }
+  else
+    full="$(sh_legacy_prefix "$1")" || return 2
+    v="$(printf '%s' "$full" | tr '[:upper:]' '[:lower:]')"
+    if [ "${#v}" -gt 12 ]; then
+      v="${v:0:12}"
+      while case "$v" in *-|*_) true ;; *) false ;; esac; do v="${v%?}"; done
+      [ -n "$SH_PREFIX_WARNED" ] \
+        || { echo "warn: session prefix $full cut to $v — set teams.session_prefix" >&2; SH_PREFIX_WARNED=1; }
+    fi
+  fi
+  SH_PREFIX_ROOT="$1" SH_PREFIX="$v"
+  printf '%s\n' "$v"
+}
+
+# sh_legacy_prefix <main> → the uncut tmux_prefix / slug of team_channel_names (the role prefix
+# before step 2); a malformed channel block falls back to the slug alone.
+sh_legacy_prefix() {
+  . "$SH_LIB/team-channel.sh"
+  if TEAM_CHANNEL_NAMES_LOADED="" team_channel_names "$1" 2>/dev/null; then
+    printf '%s\n' "$TEAM_CHANNEL_TMUX_PREFIX"; return 0
+  fi
+  basename "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/-/g; s/^[^a-z0-9]*//' | grep . \
+    || { sh_err "no session prefix: set teams.session_prefix"; return 2; }
+}
+
+# sh_name <main> <address> → the name a fresh start uses: prefixed, lowercase, [a-z0-9_-]{1,32}.
 sh_name() {
-  local k; k="$(sh_kind "$2")" || return 2
+  local k p n; k="$(sh_kind "$2")" || return 2
+  p="$(sh_prefix "$1")" || return 2
   case "$k" in
-    helper) printf '%s\n' "${2#helper:}" ;;
-    role)
-      . "$SH_LIB/team-channel.sh"
-      team_channel_names "$1" || return 2
-      printf '%s-%s\n' "$TEAM_CHANNEL_TMUX_PREFIX" "$(echo "$2" | tr '[:upper:]' '[:lower:]')" ;;
-    *) printf '%s\n' "$2" ;;
+    helper) n="${2#helper:}"; case "$n" in "$p"-*) ;; *) n="$p-$n" ;; esac ;;
+    *) n="$p-$2" ;;
   esac
+  n="$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]')"
+  if [ "${#n}" -gt 32 ]; then
+    sh_err "session name $n is over 32 characters — shorten teams.session_prefix or the team name"
+    return 2
+  fi
+  [[ "$n" =~ ^[a-z0-9_-]+$ ]] || { sh_err "session name $n must match [a-z0-9_-]"; return 2; }
+  printf '%s\n' "$n"
+}
+
+# one release: remove in step 9a — the name a session had before step 2, so a run started before the
+# upgrade is not orphaned: team <team>-<role>; role <uncut tmux_prefix|slug>-<role lc>; helper none.
+sh_legacy_name() {
+  case "$(sh_kind "$2")" in
+    team) printf '%s\n' "$2" ;;
+    role) printf '%s-%s\n' "$(sh_legacy_prefix "$1")" "$(echo "$2" | tr '[:upper:]' '[:lower:]')" ;;
+    *) return 1 ;;
+  esac
+}
+
+# sh_target <main> <address> → the live session's name: the record's name, else the prefixed name,
+# else — no record, the new name absent, TEAM_HOST_LEGACY_NAMES not 0 — the old name when that one
+# is alive (noted once per process). Every verb on an existing session resolves through here; only
+# start uses sh_name alone.
+SH_LEGACY_NOTED=""
+sh_target() {
+  local n old r
+  r="$(sh_record_get "$1" "$2" name)"
+  if [ -n "$r" ]; then printf '%s\n' "$r"; return 0; fi
+  n="$(sh_name "$1" "$2")" || return 2
+  if [ "${TEAM_HOST_LEGACY_NAMES:-1}" != 0 ] && old="$(sh_legacy_name "$1" "$2" 2>/dev/null)" \
+    && [ -n "$old" ] && [ "$old" != "$n" ] && ! sh_tmux has-session -t "=$n" 2>/dev/null \
+    && sh_tmux has-session -t "=$old" 2>/dev/null; then
+    case " $SH_LEGACY_NOTED " in *" $2 "*) ;; *)
+      echo "note: $2 reached under its old name $old" >&2; SH_LEGACY_NOTED="$SH_LEGACY_NOTED $2" ;; esac
+    printf '%s\n' "$old"; return 0
+  fi
+  printf '%s\n' "$n"
 }
 
 sh_reg_dir() { printf '%s/.agents/team/registry\n' "$1"; }
@@ -358,7 +430,7 @@ sh_alive() {
   local a="$1" n
   shift; sh_opts "$a" "$@" || return 2
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)"
 }
 
@@ -374,7 +446,7 @@ sh_read() {
     esac
   done
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   if [ -n "$hist" ]; then sh_tmux_history "$n" "$hist"; else sh_tmux_read "$n" "$lines"; fi
 }
 
@@ -387,7 +459,7 @@ sh_keys() {
   [ $# -gt 0 ] || { sh_err "keys: no key given"; return 2; }
   for k in "$@"; do sh_key_name "$k" >/dev/null || return 2; done
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   [ -n "$t" ] || t="=$n:"
   sh_target_lock "$a" "${SH_OWNER:-keys pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}" \
     || { sh_err "$a: skipped — target lock held by $(sh_holder "$SH_MAIN" "$a" "$SH_TD")"; return 10; }
@@ -405,7 +477,7 @@ sh_type() {
   [ $# -ge 1 ] || { sh_err "type: no text given"; return 2; }
   text="$1"; [ "${2:-}" != --enter ] || enter=--enter
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   [ -n "$t" ] || t="=$n:"
   sh_target_lock "$a" "${SH_OWNER:-type pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}" \
     || { sh_err "$a: skipped — target lock held by $(sh_holder "$SH_MAIN" "$a" "$SH_TD")"; return 10; }
@@ -442,7 +514,7 @@ sh_send() {
     | python3 -I "$SH_LIB/team-watch-send.py" "$reg" >/dev/null 2>&1; then
     return 0
   fi
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   if ! sh_tmux_alive "$n" 2>/dev/null; then
     why="session $n not alive"; rc=3
   elif sh_target_lock "$a" "${SH_OWNER:-doorbell pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}"; then
@@ -466,7 +538,7 @@ sh_kill() {
   if [ "${1:-}" = --graceful ]; then wait="${2:-}"; [[ "$wait" =~ ^[0-9]+$ ]] \
     || { sh_err "--graceful needs whole seconds"; return 2; }; fi
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   sh_tmux_alive "$n" 2>/dev/null || return 0
   if [ -z "$wait" ]; then
     sh_tmux kill-session -t "=$n" || true
@@ -492,7 +564,7 @@ sh_hint() {
   local a="$1" n
   shift; sh_opts "$a" "$@" || return 2
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   echo "tmux attach -t $n"
 }
 
@@ -515,7 +587,7 @@ sh_status() {
   local a="$1" n rc cli st j t msg
   shift; sh_opts "$a" "$@" || return 2
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  n="$(sh_target "$SH_MAIN" "$a")" || return 2
   sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)"; rc=$?
   case $rc in 0) ;; 3) jq -cn '{state: "gone", kind: null, msg: null, source: "tmux"}'; return 0 ;;
     *) return 1 ;; esac
@@ -594,6 +666,15 @@ sh_start() {
   else be="$(sh_pick_host "$SH_MAIN")" || return $?; fi
   n="$(sh_name "$SH_MAIN" "$a")" || return 2
   if [ -n "$probe" ] && sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)" 2>/dev/null; then
+    if [ ! -f "$(sh_record_file "$SH_MAIN" "$a")" ]; then
+      # The name is alive and no record of ours names it: our own session with a lost record when it
+      # runs in this start's cwd, else (or unreadable) another checkout with the same prefix.
+      w="$(sh_tmux display-message -p -t "=$n:" '#{session_path}' 2>/dev/null || true)"
+      if [ -z "$w" ] || [ "$(cd "$w" 2>/dev/null && pwd -P)" != "$(cd "$cwd" && pwd -P)" ]; then
+        sh_err "$n belongs to another checkout (${w:-unknown path}); this one is $cwd — set a different teams.session_prefix"
+        return 1
+      fi
+    fi
     sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1
   fi
   # A recorded program that no longer runs leaves its shell behind (a `; read` pane): end it. Only
@@ -610,6 +691,10 @@ sh_start() {
   fi
   if [ ${#argv[@]} -eq 1 ]; then cmd="${argv[0]}"
   else cmd=""; for w in "${argv[@]}"; do cmd="${cmd:+$cmd }$(sh_quote "$w")"; done; fi
+  # No Claude config dir passed: the tmux server may carry another project's value in its global
+  # environment, so the session must not inherit it (spec §1 Environment).
+  case " ${envs[*]} " in *" CLAUDE_CONFIG_DIR="*) ;; *)
+    [ "$cli" != claude ] || cmd="env -u CLAUDE_CONFIG_DIR $cmd" ;; esac
   w="$(sh_tmux_path)" || return 1
   env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET \
     -u CLAUDE_CODE_MESSAGING_TOKEN "$w" \

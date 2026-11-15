@@ -87,7 +87,7 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
          return 3; }
   if command -v tmux >/dev/null 2>&1; then
     for role in ${TEAM_ROLES:-planner coder qa wrapup} cli; do
-      ! sh_tmux has-session -t "=$team-$role" 2>/dev/null \
+      ! sh_tmux has-session -t "=$(sh_target "$(sh_main_root 2>/dev/null)" "$team-$role" 2>/dev/null)" 2>/dev/null \
         || { ie_no "the $role session of $team is still alive"; return 3; }
     done
   fi

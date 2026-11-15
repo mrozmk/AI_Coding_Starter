@@ -46,7 +46,7 @@ ago() {  # ago <beat file> → "<UTC> (<age>s)" or "none"
 launch() {
   local e=() v
   if team_tmux_alive "$1" && tw_current "$3"; then return 0; fi
-  ! team_tmux_alive "$1" || sh_tmux kill-session -t "=$1"
+  ! team_tmux_alive "$1" || sh_tmux kill-session -t "=$(team_sess "$1")"
   rm -f "$TW_DIR/$3" "$TW_DIR/$4"
   for v in TEAM_WATCH_SECS TEAM_WATCH_REMIND_SECS TEAM_WATCH_UNDELIVERED_SECS \
     TEAM_WATCH_SEND_SECS TEAM_WATCH_PICKUP_SECS TEAM_WATCH_ESC_UNSENT_SECS \
@@ -58,16 +58,16 @@ launch() {
   done
   # `; read` keeps the pane after a crash, so its error can be shown. The loop runs outside any
   # Claude session: a launching session's identity and socket must not leak into it.
-  sh_start "helper:$1" --main "$root" --kind helper --cwd "$root" --cli script --no-probe ${e[@]+"${e[@]}"} \
+  sh_start "$1" --main "$root" --kind helper --cwd "$root" --cli script --no-probe ${e[@]+"${e[@]}"} \
     -- "env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN bash .claude/lib/team-watch.sh $2; read" >/dev/null
 }
 
 # Loops of another version stop before the new ones start.
 upgrade() {
   local s b
-  for s in "$DAEMON:beat" "$DOG:dog.beat"; do
-    b="${s#*:}"; s="${s%%:*}"
-    ! team_tmux_alive "$s" || tw_current "$b" || sh_tmux kill-session -t "=$s"
+  for s in "$DAEMON|beat" "$DOG|dog.beat"; do
+    b="${s#*|}"; s="${s%%|*}"
+    ! team_tmux_alive "$s" || tw_current "$b" || sh_tmux kill-session -t "=$(team_sess "$s")"
   done
 }
 
@@ -179,8 +179,8 @@ status() {
 
 stop() {
   local f
-  ! team_tmux_alive "$DOG" || sh_tmux kill-session -t "=$DOG"
-  ! team_tmux_alive "$DAEMON" || sh_tmux kill-session -t "=$DAEMON"
+  ! team_tmux_alive "$DOG" || sh_tmux kill-session -t "=$(team_sess "$DOG")"
+  ! team_tmux_alive "$DAEMON" || sh_tmux kill-session -t "=$(team_sess "$DAEMON")"
   if tw_lock; then
     for f in "$TW_DIR"/receivers/*.json; do
       [ -f "$f" ] || continue

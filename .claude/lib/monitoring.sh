@@ -226,7 +226,7 @@ mon_state() {
     tw_live "$r" || why="$why, receiver not live"
     { tw_current beat && tw_current dog.beat; } || why="$why, team-watch loops not current"
   elif ! mon_armed "$r" >/dev/null && ! team_tmux_alive "$(tw_tmux_name "$r")"; then
-    echo "missing (no tmux $(tw_tmux_name "$r"), no wake loop)"; return 0
+    echo "missing (no tmux $(tw_session_name "$r"), no wake loop)"; return 0
   fi
   [ "$(mon_decl "$r" '.wake // {} | length')" = 0 ] || mon_armed "$r" >/dev/null \
     || why="$why, wake loop not armed or silent"

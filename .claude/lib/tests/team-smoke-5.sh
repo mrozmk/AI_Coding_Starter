@@ -356,22 +356,22 @@ echo "team-smoke-5: (89) policy OK"
 cp "$WORK/bin/tmux" "$WORK/bin/tmux-base"
 printf '%s\n' '#!/usr/bin/env bash' \
   'if [ "$1" = has-session ]; then echo "tmux $*" >> "$STUB_LOG"' \
-  '  [ "$3" = =alfa-coder ] && ! grep -q "^tmux kill-session -t =alfa-coder$" "$STUB_LOG"; exit $?; fi' \
+  '  [ "$3" = =smk-alfa-coder ] && ! grep -q "^tmux kill-session -t =smk-alfa-coder$" "$STUB_LOG"; exit $?; fi' \
   'exec "$(dirname "$0")/tmux-base" "$@"' > "$WORK/bin/tmux"
 chmod +x "$WORK/bin/tmux"
 stop() { : > "$STUB_LOG"; run "$MAIN" $TR alfa stop; rm -f "$TD/cancel"; }
 setpane "$FIX/idle.txt"; stop
 expect 0 "stopped" "stop on idle input"
-[ "$(grep -c 'send-keys -t =alfa-coder: /exit Enter' "$STUB_LOG")" = 1 ] || fail "idle stop: no /exit"
+[ "$(grep -c 'send-keys -t =smk-alfa-coder: /exit Enter' "$STUB_LOG")" = 1 ] || fail "idle stop: no /exit"
 for f in "$FIX/perm-awk.txt" "$FIX/menu-phase0.txt" "$WORK/draft"; do
   setpane "$f"; stop; expect 0 "stopped" "stop on $f"
   ! has "send-keys" "$STUB_LOG" || fail "stop typed into $f"
-  has "kill-session -t =alfa-coder" "$STUB_LOG" || fail "stop did not kill on $f"
+  has "kill-session -t =smk-alfa-coder" "$STUB_LOG" || fail "stop did not kill on $f"
 done
 setpane "$FIX/idle.txt"; holdlock q-55
 stop; expect 0 "stop while sender lock held by q=q-55" "stop during a send"
 ! has "send-keys" "$STUB_LOG" || fail "stop typed while a sender held the lock"
-has "kill-session -t =alfa-coder" "$STUB_LOG" || fail "stop did not kill during a send"
+has "kill-session -t =smk-alfa-coder" "$STUB_LOG" || fail "stop did not kill during a send"
 grep -q "^stop-during-send .* q=q-55 attempt=1 pid=$HP$" "$TD/send-coder.log" || fail "no stop marker"
 ( TD="$TD"; . "$SRC/.claude/lib/team-lib.sh"; . "$SRC/.claude/lib/team-question-lib.sh"
   qb_outcome 0 "confirmed: yes (x)" "$WORK/hq.md" q-55 1 coder; echo "$QB_DELIVERY" ) > "$WORK/out"

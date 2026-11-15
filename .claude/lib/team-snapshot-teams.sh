@@ -46,7 +46,7 @@ team_actions() {
 # (socket or protocol errors after a tmux upgrade): only these two messages are.
 role_session() {
   local out
-  out="$(sh_tmux has-session -t "=$1" 2>&1)" && { echo alive; return 0; }
+  out="$(sh_tmux has-session -t "=$(team_sess "$1")" 2>&1)" && { echo alive; return 0; }
   case "$out" in
     *"can't find session"*|*"no server running"*) echo absent ;;
     *"error connecting to"*"No such file"*) echo absent ;;

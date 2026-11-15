@@ -34,7 +34,7 @@ count() { grep -cxF -- "$1" "$STUB_LOG" || true; }
 
 # ---- (1) alive: 0 / 3 / 1 -------------------------------------------------------------------------
 clr; STUB_TMUX_ALIVE=0 run "$MAIN" $SH alive alfa-coder; expect 0 "" "(1) alive"
-line "tmux has-session -t =alfa-coder" "(1) alive argv"
+line "tmux has-session -t =smk-alfa-coder" "(1) alive argv"
 run "$MAIN" $SH alive alfa-coder; expect 3 "" "(1) gone"
 STUB_TMUX_ERR="protocol version mismatch" run "$MAIN" $SH alive alfa-coder
 expect 1 "protocol version mismatch" "(1) probe failed"
@@ -43,10 +43,10 @@ echo "team-smoke-host: (1) alive: 0 / 3 / 1 OK"
 
 # ---- (2) read / history / read by target -----------------------------------------------------------
 clr; STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH read alfa-coder; expect 0 "" "(2) read"
-line "tmux capture-pane -p -t =alfa-coder:" "(2) read argv"
+line "tmux capture-pane -p -t =smk-alfa-coder:" "(2) read argv"
 grep -q '^[[:space:]]*$' "$WORK/out" && fail "(2) read kept a blank line"
 clr; run "$MAIN" $SH read alfa-coder --history 200; expect 0 "" "(2) history"
-line "tmux capture-pane -p -J -S -200 -t =alfa-coder:" "(2) history argv"
+line "tmux capture-pane -p -J -S -200 -t =smk-alfa-coder:" "(2) history argv"
 clr; run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_read_target %1 --escapes"
 expect 0 "" "(2) read target"; line "tmux capture-pane -p -e -J -S -200 -t %1" "(2) target argv"
 clr; run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_read_target %1 --history 50 --squeeze"
@@ -56,7 +56,7 @@ echo "team-smoke-host: (2) read / history / read by target OK"
 
 # ---- (3) keys ----------------------------------------------------------------------------------------
 clr; run "$MAIN" $SH keys alfa-coder --team-dir "$TDX" enter esc up down tab ctrl-c ctrl-e ctrl-u
-expect 0 "" "(3) keys"; line "tmux send-keys -t =alfa-coder: Enter Escape Up Down Tab C-c C-e C-u" "(3) keys argv"
+expect 0 "" "(3) keys"; line "tmux send-keys -t =smk-alfa-coder: Enter Escape Up Down Tab C-c C-e C-u" "(3) keys argv"
 [ ! -d "$TDX/send-coder.lock" ] || fail "(3) keys left the lock behind"
 clr; run "$MAIN" $SH keys alfa-coder --team-dir "$TDX" enter bogus; expect 2 "unknown key" "(3) unknown key"
 noline "send-keys" "(3) unknown key typed something"
@@ -68,9 +68,9 @@ echo "team-smoke-host: (3) keys OK"
 
 # ---- (4) type ----------------------------------------------------------------------------------------
 clr; run "$MAIN" $SH type alfa-coder --team-dir "$TDX" "hello world"; expect 0 "" "(4) type"
-line "tmux send-keys -t =alfa-coder: -l -- hello world" "(4) type argv"; noline "Enter" "(4) type pressed Enter"
+line "tmux send-keys -t =smk-alfa-coder: -l -- hello world" "(4) type argv"; noline "Enter" "(4) type pressed Enter"
 clr; run "$MAIN" $SH type alfa-coder --team-dir "$TDX" "hi" --enter; expect 0 "" "(4) type --enter"
-line "tmux send-keys -t =alfa-coder: -l -- hi" "(4) type text"; line "tmux send-keys -t =alfa-coder: Enter" "(4) enter"
+line "tmux send-keys -t =smk-alfa-coder: -l -- hi" "(4) type text"; line "tmux send-keys -t =smk-alfa-coder: Enter" "(4) enter"
 clr; run "$MAIN" $SH type alfa-coder --target %1 --team-dir "$TDX" "x"; line "tmux send-keys -t %1 -l -- x" "(4) type target"
 
 echo "team-smoke-host: (4) type OK"
@@ -80,8 +80,8 @@ echo '{}' > "$WORK/reg.json"
 clr; STUB_SOCK_RC=0 STUB_TMUX_ALIVE=0 run "$MAIN" $SH send alfa-coder "ping" --team-dir "$TDX" --reg "$WORK/reg.json"
 expect 0 "" "(5) socket"; line "socket $WORK/reg.json" "(5) socket used"; noline "send-keys" "(5) socket typed too"
 clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-coder $'two\nlines' --team-dir "$TDX"
-expect 0 "" "(5) idle fallback"; line "tmux send-keys -t =alfa-coder: -l -- two lines" "(5) idle text"
-line "tmux send-keys -t =alfa-coder: Enter" "(5) idle enter"
+expect 0 "" "(5) idle fallback"; line "tmux send-keys -t =smk-alfa-coder: -l -- two lines" "(5) idle text"
+line "tmux send-keys -t =smk-alfa-coder: Enter" "(5) idle enter"
 clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/perm-az.txt" run "$MAIN" $SH send alfa-coder "ping" --team-dir "$TDX"
 expect 10 "" "(5) not idle"; noline "send-keys" "(5) typed into a prompt"
 grep -q '^doorbell-skipped .* input not idle — ping$' "$TDX/send-coder.log" || fail "(5) not-idle log line"
@@ -90,7 +90,7 @@ clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-cod
 expect 10 "" "(5) lock held"; noline "send-keys" "(5) typed under a held lock"
 grep -q '^doorbell-skipped .* send lock held by q=1 pid=7 — ping2$' "$TDX/send-coder.log" || fail "(5) lock log line"
 clr; run "$MAIN" $SH send alfa-coder "ping3" --team-dir "$TDX"; expect 3 "" "(5) gone"
-grep -q 'session alfa-coder not alive — ping3$' "$TDX/send-coder.log" || fail "(5) gone log line"
+grep -q 'session smk-alfa-coder not alive — ping3$' "$TDX/send-coder.log" || fail "(5) gone log line"
 rm -rf "$TDX/send-coder.lock"
 mkdir -p "$REG"; echo '{"address":"alfa-runner","cli":"script","backend":"tmux"}' > "$REG/alfa-runner.json"
 run "$MAIN" $SH send alfa-runner "x"; expect 2 "script session" "(5) script refused"
@@ -100,11 +100,11 @@ echo "team-smoke-host: (5) send: socket → idle input → skip OK"
 # ---- (6) kill ----------------------------------------------------------------------------------------
 clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH kill alfa-coder --graceful 1 --team-dir "$TDX"
 expect 1 "" "(6) graceful (the stub never dies)"
-line "tmux send-keys -t =alfa-coder: /exit Enter" "(6) /exit"; line "tmux kill-session -t =alfa-coder" "(6) kill"
+line "tmux send-keys -t =smk-alfa-coder: /exit Enter" "(6) /exit"; line "tmux kill-session -t =smk-alfa-coder" "(6) kill"
 mkdir "$TDX/send-coder.lock"; echo $$ > "$TDX/send-coder.lock/pid"; echo "q=2 pid=8" > "$TDX/send-coder.lock/owner"
 clr; STUB_TMUX_ALIVE=0 run "$MAIN" $SH kill alfa-coder --graceful 1 --team-dir "$TDX"
 has "session killed without /exit" "$WORK/out" || fail "(6) stop-during-send warning"
-noline "/exit" "(6) /exit under a held lock"; line "tmux kill-session -t =alfa-coder" "(6) kill under lock"
+noline "/exit" "(6) /exit under a held lock"; line "tmux kill-session -t =smk-alfa-coder" "(6) kill under lock"
 grep -q '^stop-during-send .* q=2 pid=8$' "$TDX/send-coder.log" || fail "(6) stop-during-send line"
 rm -rf "$TDX/send-coder.lock"
 clr; run "$MAIN" $SH kill alfa-coder; expect 0 "" "(6) gone = ended"; noline "kill-session" "(6) killed a gone session"
@@ -115,10 +115,10 @@ echo "team-smoke-host: (6) kill OK"
 clr; run "$MAIN" $SH start alfa-coder --kind team --cwd "$CL" --cli claude --session-id s1 \
   --env "AGENT_COSTS_HOME=" --env "TEAM_RUN_TEAM=alfa" -- 'claude --session-id s1 -- "$(cat p)"'
 expect 0 "alfa-coder" "(7) start"
-line "tmux new-session -d -s alfa-coder -c $CL -e AGENT_COSTS_HOME= -e TEAM_RUN_TEAM=alfa -e HARNESS_ADDRESS=alfa-coder -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG -e HARNESS_BACKEND=tmux claude --session-id s1 -- \"\$(cat p)\"" "(7) start argv"
+line "tmux new-session -d -s smk-alfa-coder -c $CL -e AGENT_COSTS_HOME= -e TEAM_RUN_TEAM=alfa -e HARNESS_ADDRESS=alfa-coder -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG -e HARNESS_BACKEND=tmux env -u CLAUDE_CONFIG_DIR claude --session-id s1 -- \"\$(cat p)\"" "(7) start argv"
 clr; run "$MAIN" $SH start helper:quote --kind helper --cwd "$CL" --cli script -- printf "it's"
 expect 0 "" "(7) two-element start"
-line "tmux new-session -d -s quote -c $CL -e HARNESS_ADDRESS=helper:quote -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG -e HARNESS_BACKEND=tmux 'printf' 'it'\\''s'" "(7) quoted join"
+line "tmux new-session -d -s smk-quote -c $CL -e HARNESS_ADDRESS=helper:quote -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG -e HARNESS_BACKEND=tmux 'printf' 'it'\\''s'" "(7) quoted join"
 mkdir -p "$WORK/cc"; CC="$(cd "$WORK/cc" && pwd -P)"
 printf '# fixture\n%s\n' "$WORK/cc" > "$MAIN/.claude/claude-profile"
 clr; run "$MAIN" $SH start helper:cc --kind helper --cwd "$CL" --cli claude --claude-home auto -- claude
@@ -134,7 +134,7 @@ echo "team-smoke-host: (7) start: env order, argv, CLAUDE_CONFIG_DIR OK"
 
 # ---- (8) the record, backend per record ------------------------------------------------------------------
 jq -e --arg cl "$CL" '.address == "alfa-coder" and .kind == "team" and .backend == "tmux"
-  and .handle == "alfa-coder" and .name == "alfa-coder" and .cwd == $cl and .cli == "claude"
+  and .handle == "smk-alfa-coder" and .name == "smk-alfa-coder" and .cwd == $cl and .cli == "claude"
   and .session_id == "s1" and .team_dir == ($cl + "/.agents/team") and (.started_at | length > 0)' \
   "$REG/alfa-coder.json" >/dev/null || { cp "$REG/alfa-coder.json" "$WORK/out"; fail "(8) record fields"; }
 prof '.teams.session_host = "herdr"'
@@ -166,7 +166,7 @@ echo "team-smoke-host: (9) host selection OK"
 # ---- (10) --lock-held -------------------------------------------------------------------------------------
 mkdir "$TDX/send-coder.lock"; echo $$ > "$TDX/send-coder.lock/pid"; echo "q=3 attempt=1 pid=9" > "$TDX/send-coder.lock/owner"
 clr; run "$MAIN" $SH keys alfa-coder --team-dir "$TDX" --lock-held "q=3 attempt=1 pid=9" enter
-expect 0 "" "(10) right owner"; line "tmux send-keys -t =alfa-coder: Enter" "(10) keys sent"
+expect 0 "" "(10) right owner"; line "tmux send-keys -t =smk-alfa-coder: Enter" "(10) keys sent"
 [ -d "$TDX/send-coder.lock" ] || fail "(10) a held lock was released by the driver"
 clr; run "$MAIN" $SH type alfa-coder --team-dir "$TDX" --lock-held "someone else" "x"
 expect 10 "" "(10) wrong owner"; noline "send-keys" "(10) typed with a wrong owner"
@@ -190,7 +190,7 @@ printf '  ✨ Update available! 0.1.0 -> 0.2.0\n\n› 1. Update now\n  2. Skip\n
 clr; STUB_PANE="$WORK/update.txt" TEAM_HOST_READY_POLL=0 TEAM_HOST_READY_SECS=3 \
   run "$MAIN" $SH start helper:c1 --kind helper --cwd "$CL" --cli codex --wait-ready -- codex
 expect 0 "no sign of life" "(12) codex update"
-[ "$(count "tmux send-keys -t =c1: Escape")" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(12) one esc"; }
+[ "$(count "tmux send-keys -t =smk-c1: Escape")" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(12) one esc"; }
 clr; STUB_PANE="$PANES/idle.txt" TEAM_HOST_READY_POLL=0 run "$MAIN" $SH start helper:r1 --kind helper --cwd "$CL" --cli claude --wait-ready -- claude
 expect 0 "" "(12) ready"; has "warn:" "$WORK/out" && fail "(12) a ready session warned"
 clr; run "$MAIN" $SH start helper:n1 --kind helper --cwd "$CL" --cli claude -- claude
@@ -207,8 +207,8 @@ line "tmux display-message -p -t =alfa-coder: #{pane_pid}" "(13) pid argv"
 echo "team-smoke-host: (13) sh_gen / sh_pid OK"
 
 # ---- (14) hint, (15) main root, (16) program check, (17) status, (18) refusals -------------------------------
-run "$MAIN" $SH hint alfa-coder; expect 0 "tmux attach -t alfa-coder" "(14) hint"
-run "$MAIN" $SH hint Supervisor; expect 0 "-supervisor" "(14) role hint"
+run "$MAIN" $SH hint alfa-coder; expect 0 "tmux attach -t smk-alfa-coder" "(14) hint"
+run "$MAIN" $SH hint Supervisor; expect 0 "tmux attach -t smk-supervisor" "(14) role hint"
 git -C "$CL" init --quiet; echo '{"team":"alfa"}' > "$TDX/team.json"
 run "$CL" $SH alive alfa-coder; expect 2 "team clone" "(15) git root of a clone refused"
 run "$CL" env HARNESS_MAIN="$MAIN" $SH alive alfa-coder; expect 3 "" "(15) HARNESS_MAIN from a clone"
@@ -631,5 +631,99 @@ run "$CL" $SH alive alfa-qa; expect 2 "team clone — pass --main or set HARNESS
 clr; STUB_TMUX_ALIVE=0 run "$CL" env HARNESS_MAIN="$MP" $SH alive alfa-qa; expect 0 "" "(36) alive reads the main record"
 rm -f "$CL/.agents/team/team.json"
 echo "team-smoke-host: (36) clone + HARNESS_MAIN OK"
+
+# ---- (37) session-name prefix: session_prefix, else tmux_prefix, else the repo slug (step 2) -----------------
+pfx() {  # pfx <dir name> <profile json> → a fixture main checkout under $WORK/pfx
+  local d="$WORK/pfx/$1"; mkdir -p "$d/.claude" "$d/.agents"; printf '%s' "$2" > "$d/.claude/project-profile.json"; echo "$d"
+}
+SL=". '$L/session-host-lib.sh'"
+A="$(pfx alpha '{"teams":{"session_prefix":"pa","channel":{"tmux_prefix":"zz"}}}')"
+run "$MAIN" bash -c "$SL; sh_prefix '$A'"; expect 0 "pa" "(37) session_prefix wins"
+B="$(pfx beta '{"teams":{"session_prefix":"","channel":{"tmux_prefix":"Mixed_X"}}}')"
+run "$MAIN" bash -c "$SL; sh_prefix '$B'"; expect 0 "mixed_x" "(37) empty session_prefix → tmux_prefix, lowercased"
+C="$(pfx Gamma-Repo '{"teams":{}}')"
+run "$MAIN" bash -c "$SL; sh_prefix '$C'"; expect 0 "gamma-repo" "(37) neither → the repo slug"
+echo "team-smoke-host: (37) prefix chain OK"
+
+# ---- (38) a derived prefix over 12 is cut, with one warning; an explicit one over 12 is refused -----------
+D="$(pfx ai_coding_starter_x '{"teams":{}}')"
+run "$MAIN" bash -c "$SL; sh_prefix '$D'; sh_name '$D' alfa-coder"
+expect 0 "warn: session prefix ai_coding_starter_x cut to ai_coding_st — set teams.session_prefix" "(38) cut + warning"
+[ "$(grep -c '^warn: session prefix' "$WORK/out")" = 1 ] && grep -qx 'ai_coding_st-alfa-coder' "$WORK/out" || fail "(38) one warning, the cut prefix used"
+E="$(pfx toolong '{"teams":{"session_prefix":"abcdefghijklm"}}')"
+run "$MAIN" bash -c "$SL; sh_prefix '$E'"; expect 2 "teams.session_prefix=abcdefghijklm must match" "(38) 13 characters refused"
+F="$(pfx badcase '{"teams":{"session_prefix":"Pa"}}')"
+run "$MAIN" bash -c "$SL; sh_prefix '$F'"; expect 2 "teams.session_prefix=Pa must match" "(38) uppercase refused"
+echo "team-smoke-host: (38) cut and refusal OK"
+
+# ---- (39) names: role, team, helper, a helper that already carries the prefix --------------------------------
+run "$MAIN" bash -c "$SL; for a in Supervisor alfa-coder helper:retro-r1 helper:pa-team-watch; do sh_name '$A' \$a; done"
+[ "$(tr '\n' ' ' < "$WORK/out")" = "pa-supervisor pa-alfa-coder pa-retro-r1 pa-team-watch " ] || fail "(39) names"
+echo "team-smoke-host: (39) names OK"
+
+# ---- (40) a name over 32 characters is refused with the computed name ----------------------------------------
+run "$MAIN" bash -c "$SL; sh_name '$A' abcdefghijklmnopqrstuvwxyz-wrapup"
+expect 2 "session name pa-abcdefghijklmnopqrstuvwxyz-wrapup is over 32 characters" "(40) 33+ characters"
+echo "team-smoke-host: (40) length OK"
+
+# ---- (41) the old-name fallback (one release): no record, new name absent, old name alive ------------------
+rm -f "$REG/alfa-qa.json"
+OLD_HS='[ "$3" != =alfa-qa ] || exit 0'   # only the old name is alive; the stub answers "gone" for the rest
+clr; STUB_ON_HAS_SESSION="$OLD_HS" STUB_PANE="$PANES/idle.txt" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=1 $SH read alfa-qa
+expect 0 "note: alfa-qa reached under its old name alfa-qa" "(41) note"
+line "tmux capture-pane -p -t =alfa-qa:" "(41) the verb acts on the old name"
+[ "$(grep -c '^note:' "$WORK/out")" = 1 ] || fail "(41) the note is printed once"
+clr; STUB_ON_HAS_SESSION="$OLD_HS" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=0 $SH alive alfa-qa; expect 3 "" "(41) off → the new name only"
+noline "=alfa-qa" "(41) off probed the old name"
+clr; STUB_ON_HAS_SESSION="$OLD_HS" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=1 $SH start alfa-qa --kind team --cwd "$CL" --cli script -- true
+expect 0 "smk-alfa-qa" "(41) start uses the new name"; noline "-s alfa-qa " "(41) start used the old name"
+# A wrapper (team_pane_gen, the answer path's pane lookup) reaches an unrecorded old-named stage too.
+rm -f "$REG/alfa-qa.json"
+OLD_HS2='[ "$3" != =smk-alfa-qa ] || { echo "can'"'"'t find session: smk-alfa-qa" >&2; exit 1; }'   # display-message needs ALIVE=0
+clr; STUB_TMUX_ALIVE=0 STUB_ON_HAS_SESSION="$OLD_HS2" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=1 bash -c ". '$SRC/.claude/lib/team-lib.sh'; team_pane_gen alfa-qa"
+expect 0 "%1@" "(41) team_pane_gen on the old name"; line "tmux display-message -p -t =alfa-qa: #{pane_id}@#{session_created}" "(41) gen argv"
+echo "team-smoke-host: (41) old-name fallback OK"
+
+# ---- (42) two fixture projects on one stub server ---------------------------------------------------------------
+for x in pa pb; do
+  mkdir -p "$WORK/proj-$x/.claude" "$WORK/proj-$x/.agents"
+  echo "{\"teams\":{\"session_prefix\":\"$x\"}}" > "$WORK/proj-$x/.claude/project-profile.json"
+done
+clr
+for x in pa pb; do
+  run "$WORK/proj-$x" env HARNESS_MAIN="$WORK/proj-$x" $SH start alfa-coder --kind team --cwd "$CL" --cli script -- true
+  expect 0 "$x-alfa-coder" "(42) project $x starts"
+done
+line "tmux new-session -d -s pa-alfa-coder -c $CL -e HARNESS_ADDRESS=alfa-coder -e HARNESS_MAIN=$(cd "$WORK/proj-pa" && pwd) -e HARNESS_REGISTRY=$(cd "$WORK/proj-pa" && pwd)/.agents/team/registry -e HARNESS_BACKEND=tmux true" "(42) project A's name"
+has "new-session -d -s pb-alfa-coder " "$STUB_LOG" || fail "(42) project B's name"
+# The same prefix: B finds the name alive with no record of its own and refuses, naming both paths.
+sed -i '' 's/"pb"/"pa"/' "$WORK/proj-pb/.claude/project-profile.json"
+clr; STUB_TMUX_ALIVE=0 STUB_SESSION_PATH="$WORK/proj-pa" run "$WORK/proj-pb" env HARNESS_MAIN="$WORK/proj-pb" \
+  $SH start alfa-qa --kind team --cwd "$CL" --cli script -- true
+expect 1 "pa-alfa-qa belongs to another checkout ($WORK/proj-pa); this one is $CL — set a different teams.session_prefix" "(42) same prefix refused"
+noline "new-session" "(42) a colliding start launched"
+# Alive, no record, but its session_path is this start's cwd: our own session with a lost record.
+clr; STUB_TMUX_ALIVE=0 STUB_SESSION_PATH="$CL" run "$WORK/proj-pb" env HARNESS_MAIN="$WORK/proj-pb" \
+  $SH start alfa-qa --kind team --cwd "$CL" --cli script -- true
+expect 1 "alfa-qa is already running" "(42) own session without a record"
+has "belongs to another checkout" "$WORK/out" && fail "(42) own session reported as another checkout"
+noline "new-session" "(42) an own-session start launched"
+# A path that does not resolve (the stub's default /elsewhere) is another checkout.
+clr; STUB_TMUX_ALIVE=0 run "$WORK/proj-pb" env HARNESS_MAIN="$WORK/proj-pb" \
+  $SH start alfa-qa --kind team --cwd "$CL" --cli script -- true
+expect 1 "pa-alfa-qa belongs to another checkout (/elsewhere); this one is $CL" "(42) unresolvable path refused"
+echo "team-smoke-host: (42) two fixture projects OK"
+
+# ---- (43) team-new.sh: a team named like a role, ad-hoc or too long is refused before any clone ---------------
+for t in supervisor fable adhoc-x team-watch abcdefghijklmnopqrstuvwxy; do
+  run "$MAIN" bash .claude/lib/team-new.sh "$t" AB-1 feature/AB-1-x origin/develop
+  [ "$RC" != 0 ] || fail "(43) team $t accepted"
+done
+run "$MAIN" bash .claude/lib/team-new.sh supervisor AB-1 feature/AB-1-x origin/develop; has "team name supervisor is a declared role" "$WORK/out" || fail "(43) role message"
+run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/develop; has "is reserved (adhoc-*, team-watch, retro)" "$WORK/out" || fail "(43) reserved message"
+run "$MAIN" bash .claude/lib/team-new.sh abcdefghijklmnopqrstuvwxy AB-1 feature/AB-1-x origin/develop
+has "session name smk-abcdefghijklmnopqrstuvwxy-wrapup is over 32 characters" "$WORK/out" || fail "(43) length message"
+[ ! -d "$WORK/main-supervisor" ] && [ ! -d "$WORK/main-adhoc-x" ] || fail "(43) a refused team got a clone"
+echo "team-smoke-host: (43) team names OK"
 
 echo "team-smoke-host: OK"

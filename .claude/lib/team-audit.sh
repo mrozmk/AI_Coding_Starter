@@ -70,7 +70,7 @@ pr_title() {  # pr_title <pr> → title or nothing
 
 launch_retro() {
   local s="retro-$RUN"
-  if team_tmux_alive "$s"; then mark_retro "skipped: running"; return 0; fi
+  if team_tmux_alive "helper:$s"; then mark_retro "skipped: running"; return 0; fi
   # Marked before the launch, so a fast retro's own `done` is never overwritten.
   mark_retro "launched $(utc)"
   sh_start "helper:$s" --main "$root" --kind helper --cwd "$root" --cli script --no-probe \

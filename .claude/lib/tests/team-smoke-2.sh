@@ -35,7 +35,7 @@ expect 0 '"ticket":"AB-792"' "resume keeps ticket identity"
 : > "$STUB_LOG"
 run "$MAIN" env -u AGENT_COSTS_HOME $TR alfa
 expect 5 "dead attempt 1 of planner" "resume launches existing clone"
-has "new-session -d -s alfa-planner" "$STUB_LOG" || fail "resume did not launch planner"
+has "new-session -d -s smk-alfa-planner" "$STUB_LOG" || fail "resume did not launch planner"
 has "--effort 'xhigh'" "$STUB_LOG" || fail "resume ignored corrected roles"
 ! has "AGENT_COSTS_HOME=" "$STUB_LOG" || fail "role launch forwarded an unset AGENT_COSTS_HOME"
 rm -f "$TD/session.json" "$TD/run"; rm -rf "$TD/runs/$RUN_ID"

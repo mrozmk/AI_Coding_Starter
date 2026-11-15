@@ -69,9 +69,9 @@ if [ -n "$SESSION" ]; then
   . "$LIB/team-channel.sh"; . "$LIB/team-watch-route.sh"
   tw_session_role_ok "$SESSION" || { echo "error: --session: unknown role $SESSION" >&2; exit 2; }
   team_channel_names "$ROOT" || exit 2
-  [ "$name" = "$(tw_tmux_name "$SESSION")" ] \
-    || { echo "error: --session $SESSION is tmux $(tw_tmux_name "$SESSION"), not $name" >&2; exit 2; }
-  ROLE="$SESSION"; CLONE="$ROOT"; TD="$ROOT/.agents/team/watch/sessions/$SESSION"
+  [ "$name" = "$(tw_session_name "$SESSION")" ] \
+    || { echo "error: --session $SESSION is tmux $(tw_session_name "$SESSION"), not $name" >&2; exit 2; }
+  ROLE="$SESSION"; CLONE="$ROOT"; name="$SESSION"; TD="$ROOT/.agents/team/watch/sessions/$SESSION"
   [ -r "$TD/session.json" ] && [ -n "$(jq -r '.session_id // empty' "$TD/session.json" 2>/dev/null)" ] \
     || { echo "error: Operator action: no readable session.json for $SESSION (start it with supervisor-sessions.sh) — nothing sent" >&2; exit 5; }
 else

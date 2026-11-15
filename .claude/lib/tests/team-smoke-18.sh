@@ -270,8 +270,8 @@ sleep 5
 kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "a zeta prompt woke the loop"; }
 [ "$(nmsg TM)" = "$N3" ] || fail "a zeta prompt pushed into the session"
 tail -n +"$((L3 + 1))" "$STUB_LOG" > "$WORK/slice3"
-! grep -q 'capture-pane.*=zeta-' "$WORK/slice3" || fail "zeta was scanned"
-grep -q 'capture-pane.*=epsilon-coder:' "$WORK/slice3" || fail "the loop did not scan epsilon"
+! grep -q 'capture-pane.*=smk-zeta-' "$WORK/slice3" || fail "zeta was scanned"
+grep -q 'capture-pane.*=smk-epsilon-coder:' "$WORK/slice3" || fail "the loop did not scan epsilon"
 printf 'Question epsilon?\n❯ 1. Yes\nEnter to select\n' > "$WORK/panes/epsilon-coder"
 gone "$WPID" 8 || fail "an epsilon prompt did not wake within 8s"
 has "epsilon-coder" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "epsilon wake text"; }
