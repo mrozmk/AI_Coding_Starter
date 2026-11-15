@@ -72,11 +72,11 @@ unset*. Structured reviews (with `SCHEMA`) enforce read-only via the prompt inst
 
 ## Codex profile
 
-Starter contract: `.claude/codex-profile` names the Codex home. `codex-bg.sh` refuses (exit 2) unless `CODEX_HOME` points at that directory; the first LOG line is `codex-bg.sh: CODEX_HOME=<real>`; the team runner exports `CODEX_HOME` per role session (never `tmux set-environment -g`).
+Starter contract: `.claude/codex-profile` names the Codex home. `codex-bg.sh` exports that directory as `CODEX_HOME` when the variable is unset (an interactive session) and refuses (exit 2) when it points anywhere else; the first LOG line is `codex-bg.sh: CODEX_HOME=<real>`; the team runner exports `CODEX_HOME` per role session (never `tmux set-environment -g`). The cost collector does not see a home exported inside the wrapper: list the declared home in the cost config's `codex_homes` (`.agents/reference/token-usage.md`).
 
 ### Project variant
 
-A project that forces its own home (for example DTS with `~/.codex-dts`) may keep `export CODEX_HOME=...` instead of the refusal, and an optional default `CODEX_EFFORT`. These stay identical to the starter wrapper: `< /dev/null`, `-C "$REPO"`, `--skip-git-repo-check`, truncating `OUT` before the spawn, the real home on the first LOG line, `register_thread` through `costs/runtime-mark.sh` (no-op without `$AGENT_COSTS_HOME`), a `trap` that kills codex on TERM, and passing the exit code through. The project's `.claude/codex-profile` must name the same home (the runner reads it).
+A project that forces its own home (for example a fixed `~/.codex-<project>`) may keep `export CODEX_HOME=...` instead of the refusal, and an optional default `CODEX_EFFORT`. These stay identical to the starter wrapper: `< /dev/null`, `-C "$REPO"`, `--skip-git-repo-check`, truncating `OUT` before the spawn, the real home on the first LOG line, `register_thread` through `costs/runtime-mark.sh` (no-op without `$AGENT_COSTS_HOME`), a `trap` that kills codex on TERM, and passing the exit code through. The project's `.claude/codex-profile` must name the same home (the runner reads it).
 
 Conformance test for a variant (3 assertions):
 

@@ -40,7 +40,7 @@ cp .claude/lib/costs/config.example.json ~/.agent-costs/config.json   # then edi
 |---|---|
 | `projects` | `{name: [abs dir…]}` — required. Claude slug = dir with every non-ASCII-alphanumeric character → `-`. The **first** dir is the main checkout, every later one a team clone |
 | `claude_projects_dir` | default `~/.claude/projects` |
-| `codex_homes` | default `[$CODEX_HOME or ~/.codex]`; a rollout whose `session_meta.cwd` is not under a project dir is skipped, never stored (`codex_skipped=` in the summary) |
+| `codex_homes` | default `[$CODEX_HOME or ~/.codex]` — a project with a declared `.claude/codex-profile` lists that home here, since `codex-bg.sh` and the team runner run Codex there; a rollout whose `session_meta.cwd` is not under a project dir is skipped, never stored (`codex_skipped=` in the summary) |
 | `stage_skills` | top-level skills that open a `--by-stage` segment; default `prime`, `brainstorm`, `plan-feature`, `execute`, `check-implementation`, `qa-verify`, `pr-create`, `orchestrate`, `quick-change`, `pr-merge` |
 
 A missing config exits 2 and names `config.example.json`.

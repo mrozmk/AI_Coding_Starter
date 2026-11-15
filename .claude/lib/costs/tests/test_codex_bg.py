@@ -17,6 +17,7 @@ PARENT = "0a1b2c3d-0000-4000-8000-0000000000dd"
 FAKE = f"""#!/usr/bin/env bash
 out=""
 while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out="$2"; shift; done
+printf '%s' "${{CODEX_HOME:-}}" > "${{FAKE_SEEN:-/dev/null}}"
 sleep "${{FAKE_DELAY:-0}}"
 echo "session id: {THREAD}" >&2
 printf '{{}}' > "$out"
@@ -56,11 +57,12 @@ class CodexBgTest(unittest.TestCase):
         os.chmod(fake, 0o755)
         self.out = os.path.join(self.tmp, "out.md")
         self.log = os.path.join(self.tmp, "run.log")
+        self.seen = os.path.join(self.tmp, "codex-home-seen")
         self.env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_SESSION_ID"}
         self.env.update(PATH=f"{bin_dir}:{os.environ['PATH']}", PROMPT="review", OUT=self.out,
                         LOG=self.log, CODEX_EFFORT="high", REPO=self.repo,
                         AGENT_COSTS_HOME=self.home, CLAUDE_CODE_SESSION_ID=PARENT,
-                        HOME=self.user_home, CODEX_HOME=self.profile)
+                        HOME=self.user_home, CODEX_HOME=self.profile, FAKE_SEEN=self.seen)
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -161,12 +163,22 @@ class CodexBgTest(unittest.TestCase):
         self.assertEqual(self.lines(wait=1.5), [])
         self.assertFalse(os.path.exists(self.home))
 
-    def test_refuses_without_codex_home(self):
-        with open(self.out, "w", encoding="utf-8") as fh:
-            fh.write("previous review")
-        proc = self.run_full(drop=("CODEX_HOME",))
-        self.assert_refused(proc, "CODEX_HOME is not set")
-        self.assertEqual(self.lines(wait=1.5), [])
+    def test_exports_declared_home_when_unset(self):
+        self.assertEqual(self.run_full(drop=("CODEX_HOME",)).returncode, 0)
+        real = os.path.realpath(self.profile)
+        self.assertEqual(self.read(self.log).splitlines()[0], f"codex-bg.sh: CODEX_HOME={real}")
+        self.assertEqual(os.path.realpath(self.read(self.seen).strip()), real)
+
+    def test_unset_with_missing_declared_home_refuses(self):
+        shutil.rmtree(self.profile)
+        self.assert_refused(self.run_full(drop=("CODEX_HOME",)), "does not exist")
+
+    def test_unset_with_template_profile_keeps_default(self):
+        Path(self.wrapper).parent.parent.joinpath("codex-profile").write_text(
+            "# template: no value\n", encoding="utf-8")
+        self.assertEqual(self.run_full(drop=("CODEX_HOME",)).returncode, 0)
+        self.assertEqual(self.read(self.log).splitlines()[0], "codex-bg.sh: CODEX_HOME=default")
+        self.assertEqual(self.read(self.seen).strip(), "")
 
     def test_refuses_other_profile(self):
         other = os.path.join(self.user_home, ".codex")

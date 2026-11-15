@@ -51,8 +51,8 @@
 #                         codex-cli, so the wrapper closes the list with `--`;
 #                         without it the prompt is swallowed as one more image
 #                         path and codex exits "No prompt provided via stdin".
-#   CODEX_HOME (required when .claude/codex-profile has a value) — must resolve to the directory declared in
-#                         .claude/codex-profile; otherwise exit 2 with OUT empty.
+#   CODEX_HOME (when .claude/codex-profile has a value) — unset → the declared directory is
+#                         exported; set → must resolve to it, otherwise exit 2 with OUT empty.
 #                         LOG's first line names the profile used.
 #
 # Stdout of codex is empty by design (result goes to OUT); $OUT.stdout captures
@@ -140,8 +140,9 @@ if [ -n "$want" ]; then
   case "$want" in "~/"*) want="$HOME/${want#\~/}" ;; esac
   want_real="$(cd "$want" 2>/dev/null && pwd -P || true)"
   [ -n "$want_real" ] || refuse "declared Codex profile $want does not exist"
-  [ -n "${CODEX_HOME:-}" ] \
-    || refuse "CODEX_HOME is not set — export CODEX_HOME=$want (declared in .claude/codex-profile)"
+  # Unset → the declared home (an interactive session has no CODEX_HOME; the team runner exports
+  # it). Set to another directory → refused: that session deliberately points elsewhere.
+  [ -n "${CODEX_HOME:-}" ] || export CODEX_HOME="$want"
   have_real="$(cd "$CODEX_HOME" 2>/dev/null && pwd -P || true)"
   [ -n "$have_real" ] && [ "$have_real" = "$want_real" ] \
     || refuse "CODEX_HOME=$CODEX_HOME is not the project profile $want"
