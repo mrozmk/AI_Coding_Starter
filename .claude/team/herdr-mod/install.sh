@@ -3,7 +3,8 @@
 # Usage: bash .claude/team/herdr-mod/install.sh [--dry-run | --rollback]
 #   install / update: copies harness-notify/ to <app home>/mods/harness-notify/ with an ownership
 #     marker; a folder of that name without the marker is someone else's and is never touched.
-#   --rollback: removes that folder, only when it carries the marker.
+#   --rollback: removes that folder (with the editor files Herdr adds), only when it carries the
+#     marker and holds nothing else.
 #   --dry-run: prints what it would do and writes nothing.
 # <app home> = $HERDR_APP_HOME, else ~/.config/herdr-app. Nothing else there is read or written: no
 # setting, no layout, no other mod. Outside it, install / update creates only the mod's spool,
@@ -16,15 +17,16 @@ SRC="$(cd "$(dirname "$0")/harness-notify" && pwd)"
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 DST="$APP/mods/harness-notify"
 MARK=".installed-by-harness"   # hidden: Herdr does not reload on it
+APPFILES='jsconfig\.json|tsconfig\.json|[A-Za-z0-9._-]+\.d\.ts'   # written by Herdr itself
 FILES="main.js spool.js mod.json README.md"
 SPOOL="$HOME/.agent-comms/outbox/herdr"   # the mod watches new/ from its first start
 
 mode=install
 case "${1:-}" in
   "") ;; --dry-run) mode=dry ;; --rollback) mode=rollback ;;
-  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
-[ $# -le 1 ] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+[ $# -le 1 ] || { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ -d "$APP" ] || { echo "error: no Herdr app home at $APP — is Herdr installed?" >&2; exit 3; }
 if [ -e "$DST" ] && [ ! -f "$DST/$MARK" ]; then
   echo "error: $DST exists and was not installed by the harness — left as it is" >&2; exit 3
@@ -47,10 +49,12 @@ case "$mode" in
     echo "check: herdr-app check $DST   ·   switch on: herdr.enabled in ~/.agent-comms/notify.json" ;;
   rollback)
     [ -e "$DST" ] || { echo "nothing to remove: $DST is absent"; exit 0; }
-    # Anything beyond the installed files is someone's: refuse before removing a thing.
-    extra="$(cd "$DST" && ls -A | grep -vxF -e "$MARK" $(for f in $FILES; do printf -- '-e %s ' "$f"; done) || true)"
+    # Herdr writes its own editor files into a mod folder on first load (jsconfig.json, *.d.ts);
+    # those go too. Anything else is someone's: refuse before removing a thing.
+    app="$(cd "$DST" && ls -A | grep -xE "$APPFILES" || true)"
+    extra="$(cd "$DST" && ls -A | grep -vxE "$APPFILES" | grep -vxF -e "$MARK" $(for f in $FILES; do printf -- '-e %s ' "$f"; done) || true)"
     [ -z "$extra" ] || { echo "error: $DST holds files the harness did not install — left in place" >&2; exit 3; }
-    for f in $FILES $MARK; do rm -f "$DST/$f"; done
+    for f in $FILES $MARK $app; do rm -f "$DST/$f"; done
     rmdir "$DST"
     echo "removed $DST" ;;
 esac

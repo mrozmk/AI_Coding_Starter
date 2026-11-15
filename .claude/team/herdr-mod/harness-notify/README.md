@@ -11,7 +11,7 @@ per event into `~/.agent-comms/outbox/herdr/new/`, but only when the answering s
   fallback. The timer also restarts the watch when it stopped (the folder was missing).
 - For each entry younger than 24 hours it posts **one** toast with Herdr's `notify()`. Clicking the
   toast runs `agent.focus` on the answering session's terminal.
-- The strip at the bottom keeps the toasts not yet clicked (`● 2 waiting — …`). A click runs the
+- The strip at the bottom keeps the toasts not yet clicked (a dot, then `2 waiting — …`). A click runs the
   same jump and drops the item. Items older than 24 hours fall off.
 - It moves each entry to `~/.agent-comms/outbox/herdr/done/` with `mv`, so an entry is shown once.
   Entries older than 24 hours, and entries it cannot read, are moved without a toast.
@@ -48,3 +48,9 @@ The installer writes only `~/.config/herdr-app/mods/harness-notify/` (`$HERDR_AP
 another app home). It never overwrites a folder of that name that it did not install. Outside the
 app home it creates only the spool, `~/.agent-comms/outbox/herdr/new/` and `done/` (mode 700), so
 the strip's heartbeat works before the first event; `--rollback` leaves the spool.
+
+**What Herdr does on its own.** The installer never writes a layout. When Herdr first loads the
+mod, it docks the strip by wrapping the shown layout's root in a new column (the old root's keys
+move into the inner node) and saves that layout file. It also writes editor files into the mod
+folder (`jsconfig.json`, `*.d.ts`). `--rollback` removes those with the mod, and still refuses on
+any other file it did not install.

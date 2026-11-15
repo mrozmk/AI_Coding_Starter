@@ -255,7 +255,7 @@ if command -v node >/dev/null 2>&1; then
     const b = s.parse("bad", readFileSync("badact.json", "utf8"), Date.parse("2026-01-01T00:00:01Z"));
     ok(!b.error && b.item.action === null && !("action" in s.toast(b.item)), "a malformed terminal drops the action");
     let l = s.add([], r.item); l = s.add(l, r.item); ok(l.length === 1, "add dedups");
-    ok(s.stripText(l).startsWith("● 1 waiting — [acme] decision — alfa AB-1"), "strip text");
+    ok(s.stripText(l).startsWith("1 waiting — [acme] decision — alfa AB-1"), "strip text");
     ok(s.stripText(s.ack(l, r.item.id)) === "harness: watching", "ack");
     ok(s.expire(l, now + 25 * 3600e3).length === 0 && s.expire(l, now).length === 1, "expire");
     ok(s.load("garbage").length === 0 && s.load(JSON.stringify([{ id: "../x" }, r.item])).length === 1, "load");
@@ -294,11 +294,12 @@ for f in main.js spool.js mod.json README.md; do cmp -s "$MOD/$f" "$APPH/mods/ha
 [ -f "$APPH/mods/harness-notify/.installed-by-harness" ] || fail "(k) no ownership marker"
 HERDR_APP_HOME="$APPH" run "$WORK" $INST; expect 0 "updated $APPH/mods/harness-notify" "(k) update"
 snap > "$WORK/apph.after"; cmp -s "$WORK/apph.before" "$WORK/apph.after" || fail "(k) the installer touched another file of the app home"
-touch "$APPH/mods/harness-notify/notes.txt"
+touch "$APPH/mods/harness-notify/notes.txt" "$APPH/mods/harness-notify/jsconfig.json" "$APPH/mods/harness-notify/gpui-kit.d.ts"
 HERDR_APP_HOME="$APPH" run "$WORK" $INST --rollback; expect 3 "holds files the harness did not install" "(k) rollback keeps a foreign file"
+[ -f "$APPH/mods/harness-notify/jsconfig.json" ] && [ -f "$APPH/mods/harness-notify/main.js" ] || fail "(k) a refused rollback removed something"
 rm "$APPH/mods/harness-notify/notes.txt"
 HOME="$IH" HERDR_APP_HOME="$APPH" run "$WORK" $INST --rollback; expect 0 "removed $APPH/mods/harness-notify" "(k) rollback"
-[ ! -e "$APPH/mods/harness-notify" ] || fail "(k) rollback left the folder"
+[ ! -e "$APPH/mods/harness-notify" ] || fail "(k) rollback left the folder (or Herdr's own jsconfig.json / .d.ts)"
 [ -d "$IH/.agent-comms/outbox/herdr/new" ] && [ -d "$IH/.agent-comms/outbox/herdr/done" ] || fail "(k) rollback removed the spool"
 mkdir "$APPH/mods/harness-notify"; echo mine > "$APPH/mods/harness-notify/main.js"
 HERDR_APP_HOME="$APPH" run "$WORK" $INST; expect 3 "was not installed by the harness" "(k) a foreign folder"

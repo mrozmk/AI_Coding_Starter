@@ -62,5 +62,5 @@ export function load(text) {
 export function stripText(list) {
   if (!list.length) return "harness: watching";
   const first = `${list[0].title}${list[0].body ? " — " + list[0].body : ""}`;
-  return `● ${list.length} waiting — ${first}`;
+  return `${list.length} waiting — ${first}`;   // the strip draws its own dot
 }
