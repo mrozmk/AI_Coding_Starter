@@ -440,6 +440,22 @@ here() {
     ${s:+--settings ".agents/team/watch/profiles/$r.settings.json"} $flags -- "$(boot "$r")"
 }
 
+# resume_ring <role> → ", inbox N rung" (or why not) when the role's inbox holds messages, else
+# nothing. A resumed conversation gets no bootstrap line, so no turn starts by itself: one doorbell
+# makes it reconcile. Its result never changes resume's exit code. Herdr refuses a terminal with no
+# status yet (still starting): the ring is then deferred to the inbox hook on the next prompt.
+resume_ring() {
+  local n rc
+  n="$(find "$MAIN/.agents/team/inbox/$1/new" -type f ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "${n:-0}" -gt 0 ] || return 0
+  sh_send "$1" "inbox: $n waiting — reconcile .agents/team/inbox/$1/new" --main "$MAIN" >/dev/null 2>&1; rc=$?
+  if [ "$rc" = 0 ]; then echo ", inbox $n rung"
+  elif [ "$rc" = 9 ] && [ "$(sh_record_get "$MAIN" "$1" backend)" = herdr ] \
+    && [ -z "$(sh_herdr_state "$(sh_target "$MAIN" "$1" 2>/dev/null)" 2>/dev/null)" ]; then
+    echo ", inbox $n waiting — ring deferred (still starting)"
+  else echo ", inbox $n waiting — ring $rc"; fi
+}
+
 # resume <Role> — a gone Claude role on its previous conversation, started like `up` otherwise.
 resume() {
   local r="${1:-}" sid name cmd ch err rc=0
@@ -463,7 +479,7 @@ resume() {
   if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli claude \
        --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} --program claude --claude-home auto \
        -- "$cmd" 2>"$err")"; then
-    echo "$r: resumed $sid$(held_word "$r" "$(needs_trust "$r:$name:claude")")"
+    echo "$r: resumed $sid$(held_word "$r" "$(needs_trust "$r:$name:claude")")$(resume_ring "$r")"
     layout_place_roles "$MAIN"
     placed "$r" "$(layout_panes "$MAIN")" || echo "  $r: $(sh_hint "$r" --main "$MAIN" 2>/dev/null)"
   else

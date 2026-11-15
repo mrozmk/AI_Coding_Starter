@@ -359,6 +359,25 @@ rm -f "$REG/Fable.json"; run "$MAIN" $RS resume Fable; expect 1 "no previous ses
 run "$MAIN" $RS stop all; expect 0 "" "(13) stop all"
 echo "team-smoke-roles: (13) resume, stopped OK"
 
+# ---- (13b) resume rings a role whose inbox holds messages, once; an empty inbox → no ring ------------
+# A resume rewrites the record without session_id; the live session's SessionStart hook writes it back.
+sid_back() { jq --arg s "$S1" '.session_id = $s' "$REG/Supervisor.json" > "$WORK/sup.json" && mv "$WORK/sup.json" "$REG/Supervisor.json"; }
+IB="$MAIN/.agents/team/inbox/Supervisor/new"; mkdir -p "$IB"; rm -f "$IB"/*; echo a > "$IB/m1.md"; echo b > "$IB/m2.md"
+sid_back
+RING="inbox: 2 waiting — reconcile .agents/team/inbox/Supervisor/new"
+clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13b) resume"
+grep -q "^Supervisor: resumed $S1.*, inbox 2 \(rung\|waiting — ring [0-9]*\)$" "$WORK/out" || fail "(13b) the ring word"
+n="$( { grep -F -- "$RING" "$STUB_LOG"; grep -F -- "$RING" "$REG/send-Supervisor.log" 2>/dev/null; } | wc -l | tr -d ' ')"
+[ "$n" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(13b) $n doorbells with the inbox line, want 1"; }
+noline "You are Supervisor" "$STUB_LOG" "(13b) bootstrap line"
+run "$MAIN" $RS stop Supervisor; expect 0 "" "(13b) stop"
+rm -f "$IB"/* "$REG/send-Supervisor.log"; sid_back
+clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13b) empty inbox"
+! has "inbox" "$WORK/out" || fail "(13b) an empty inbox printed a ring"
+! grep -q "reconcile .agents/team/inbox" "$STUB_LOG" || fail "(13b) an empty inbox was rung"
+run "$MAIN" $RS stop all; expect 0 "" "(13b) stop all"
+echo "team-smoke-roles: (13b) resume rings a waiting inbox OK"
+
 # ---- (14) restart simulation: roles, one interrupted run, two ad-hoc sessions, nothing resumed ------
 run "$MAIN" $RS; expect 0 "" "(14) roles up"
 mkteam alfa alfa-20261115-100000; echo '{"role": "coder", "attempt": 1}' > "$CL/session.json"
@@ -497,6 +516,15 @@ for c in "mcp.scr|startup dialog open" "trust.scr|needs trust — pick Yes; Ente
     run "$MAIN" $RS up Supervisor
   expect 0 "Supervisor: started (${c#*|})" "(L11) ${c#*|}"; noline "hc keys" "$STUB_LOG" "(L11) a key sent"
 done
+
+# (L12) resume under Herdr with mail waiting: the new terminal has no status yet, so the ring is
+# deferred, never forced (the left `; read` shell makes the old one gone)
+IB="$MAIN/.agents/team/inbox/Supervisor/new"; mkdir -p "$IB"; rm -f "$IB"/*; echo a > "$IB/m1.md"
+clr; STUB_HERDR_RC=1 STUB_HC_NONAME=1 STUB_HC_ADDR=t1 STUB_HC_STATUS=null STUB_HC_SCREEN="$WORK/blank.scr" \
+  STUB_HC_FG=/bin/sh STUB_HC_FG_NAME=sh STUB_HC_FG_PID=999999 TEAM_ROLES_TRUST_SECS=1 run "$MAIN" $RS resume Supervisor
+expect 0 ", inbox 1 waiting — ring deferred (still starting)" "(L12) deferred ring"
+noline "hc send" "$STUB_LOG" "(L12) a send into a starting terminal"
+rm -f "$IB"/*
 
 # (L7) no placement ever ended a terminal or touched a layout; (L8) tmux: no herdr-app at all
 ! grep -E 'terminal\.kill|pane\.close|tab\.close|space\.close|layout\.set|layout\.reset|^hc (kill|rm) ' "$WORK/layout-all" \

@@ -253,7 +253,10 @@ the inbox file; the line only wakes the session.
   - lists the interrupted team runs (`/start-team <team>` resumes one, and resuming is optional);
   - prints a resume line for each gone ad-hoc conversation
     (`<tab or tmux name> — cd <cwd> && claude --resume <session_id>`).
-- **`resume <Role>`** starts a gone Claude role on its previous conversation (`--resume <id>`). A
+- **`resume <Role>`** starts a gone Claude role on its previous conversation (`--resume <id>`), with
+  no bootstrap line; when `inbox/<Role>/new` holds messages it rings the role once
+  (`inbox: N waiting — reconcile …`) and prints `inbox N rung`, `inbox N waiting — ring <rc>`, or
+  `ring deferred (still starting)` under Herdr. The ring never changes the exit code. A
   Codex role restores fresh only; to continue its last conversation, run `codex resume --last` by
   hand in the main checkout.
 - **`place <address>`** (Herdr) puts a running terminal into its tab:

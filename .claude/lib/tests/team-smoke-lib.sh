@@ -95,6 +95,9 @@ smoke_init() {
   export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_NOSYSTEM=1
   # The runner resolves .claude/codex-profile against HOME; keep it hermetic.
   export HOME="$WORK/home"
+  # A fixture hook must never register the calling Claude session's own messaging socket: a
+  # doorbell would then reach that real session. A case that needs a socket sets its own.
+  unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
   mkdir -p "$HOME/.codex-acmeshop"
   export TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1
