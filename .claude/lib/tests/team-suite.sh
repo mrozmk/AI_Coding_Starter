@@ -73,6 +73,11 @@ if [ -z "${TMPDIR:-}" ] || { [ -n "$SYS_TMP" ] && [ "$(canon "$TMPDIR")" = "$(ca
   echo "team-suite: refused: run with a scratch TMPDIR (unset or the system default)" >&2; exit 2
 fi
 
+# No step may reach the calling Claude session: a fixture that inherits its messaging socket writes it
+# into a fixture registration, and a fixture doorbell then rings that real session. A case that needs
+# a socket sets its own; `step` checks the variables are empty before every step.
+unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
+
 OUT="${OUT:-${TMPDIR%/}/team-suite}"
 mkdir -p "$OUT" || { echo "team-suite: cannot create $OUT" >&2; exit 2; }
 LOG="$OUT/suite-$(date -u +%Y%m%dT%H%M%SZ).log"
@@ -103,6 +108,10 @@ step() {
   want "$name" || return 0
   if skipped "$name"; then say "skip $name (TEAM_SUITE_SKIP)"; return 0; fi
   out="$OUT/$name.out"; t0=$(date +%s)
+  if [ -n "${CLAUDE_CODE_MESSAGING_SOCKET:-}${CLAUDE_CODE_MESSAGING_TOKEN:-}" ]; then
+    say "FAIL $name — a Claude messaging socket is set in the step environment"; RC=1; [ -n "$KEEP" ] || finish
+    return 1
+  fi
   ( cd "$ROOT" && "$@" ) > "$out" 2>&1; rc=$?
   n="$(count "$out")"
   if [ "$rc" = 0 ] && [ "$n" -gt 0 ]; then

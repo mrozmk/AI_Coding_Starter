@@ -354,16 +354,14 @@ clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13)
 grep '^tmux new-session.* -s smk-supervisor ' "$STUB_LOG" > "$WORK/res"
 line "claude --name 'Supervisor' --resume $S1 --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json; read" "$WORK/res" "(13) argv"
 noline "--session-id" "$WORK/res" "(13) a new session id"; noline "You are Supervisor" "$WORK/res" "(13) bootstrap line"
+[ "$(jq -r '.session_id // empty' "$REG/Supervisor.json")" = "$S1" ] || fail "(13) the resumed record lost its session id"
 run "$MAIN" $RS resume Astra; expect 2 "Codex roles restore fresh" "(13) Codex"
 rm -f "$REG/Fable.json"; run "$MAIN" $RS resume Fable; expect 1 "no previous session for Fable" "(13) no record"
 run "$MAIN" $RS stop all; expect 0 "" "(13) stop all"
 echo "team-smoke-roles: (13) resume, stopped OK"
 
 # ---- (13b) resume rings a role whose inbox holds messages, once; an empty inbox → no ring ------------
-# A resume rewrites the record without session_id; the live session's SessionStart hook writes it back.
-sid_back() { jq --arg s "$S1" '.session_id = $s' "$REG/Supervisor.json" > "$WORK/sup.json" && mv "$WORK/sup.json" "$REG/Supervisor.json"; }
 IB="$MAIN/.agents/team/inbox/Supervisor/new"; mkdir -p "$IB"; rm -f "$IB"/*; echo a > "$IB/m1.md"; echo b > "$IB/m2.md"
-sid_back
 RING="inbox: 2 waiting — reconcile .agents/team/inbox/Supervisor/new"
 clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13b) resume"
 grep -q "^Supervisor: resumed $S1.*, inbox 2 \(rung\|waiting — ring [0-9]*\)$" "$WORK/out" || fail "(13b) the ring word"
@@ -371,7 +369,7 @@ n="$( { grep -F -- "$RING" "$STUB_LOG"; grep -F -- "$RING" "$REG/send-Supervisor
 [ "$n" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(13b) $n doorbells with the inbox line, want 1"; }
 noline "You are Supervisor" "$STUB_LOG" "(13b) bootstrap line"
 run "$MAIN" $RS stop Supervisor; expect 0 "" "(13b) stop"
-rm -f "$IB"/* "$REG/send-Supervisor.log"; sid_back
+rm -f "$IB"/* "$REG/send-Supervisor.log"
 clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13b) empty inbox"
 ! has "inbox" "$WORK/out" || fail "(13b) an empty inbox printed a ring"
 ! grep -q "reconcile .agents/team/inbox" "$STUB_LOG" || fail "(13b) an empty inbox was rung"

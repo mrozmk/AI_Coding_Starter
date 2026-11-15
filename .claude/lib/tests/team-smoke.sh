@@ -5,6 +5,8 @@
 # assume an idle machine): those run afterwards, alone, so load never shows up as their failure.
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A fixture must never reach the calling Claude session's messaging socket (team-suite.sh says why).
+unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
 case "${TEAM_SMOKE_PART:-all}" in
   all) parts=(purity 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 mail channel kit policy sessions escalation host notify roles) ;;
   [1-9]|1[0-9]|2[0-9]|mail|channel|kit|policy|sessions|escalation|host|notify|roles) parts=("$TEAM_SMOKE_PART") ;;

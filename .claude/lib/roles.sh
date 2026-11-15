@@ -476,9 +476,10 @@ resume() {
   materialize "$r" || exit 1
   cmd="$(launch_cmd "$r" "$sid" resume)" || exit 2
   ch="$(codex_home)"; err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
+  # --session-id: the record keeps the conversation's id until the live session's hook confirms it.
   if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli claude \
        --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} --program claude --claude-home auto \
-       -- "$cmd" 2>"$err")"; then
+       --session-id "$sid" -- "$cmd" 2>"$err")"; then
     echo "$r: resumed $sid$(held_word "$r" "$(needs_trust "$r:$name:claude")")$(resume_ring "$r")"
     layout_place_roles "$MAIN"
     placed "$r" "$(layout_panes "$MAIN")" || echo "  $r: $(sh_hint "$r" --main "$MAIN" 2>/dev/null)"
