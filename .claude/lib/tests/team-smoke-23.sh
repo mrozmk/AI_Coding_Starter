@@ -157,7 +157,15 @@ jq -cn --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
   '{type: "user", uuid: "u-op", timestamp: $ts, message: {role: "user", content: "d-1 close it"}}' >> "$LTX"
 ldec answer alfa d-1 --text "close it" --outcome close; expect 0 "answered: d-1 (close)" "(f) Operator answer"
 V decision close --for qa-1-1.json --decision d-1 --message "Operator: close it"; expect 0 "" "(f) decision close"
+# The run's inbox messages leave new/ when close_run ends it; another run's stay.
+IBA="$MAIN/.agents/team/inbox/alfa"; mkdir -p "$IBA/new"
+printf -- '---\nid: m1\nrun: %s\n---\nx\n' "$RUN_ID" > "$IBA/new/20261115T110001Z-Supervisor-message.md"
+printf -- '---\nid: m2\nrun: alfa-20990101-000000\n---\nx\n' > "$IBA/new/20261115T110002Z-Supervisor-message.md"
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 8 "closed: abandon — PR 8371 to abandon before team-next" "(f) the run closes"
+[ -f "$IBA/done/20261115T110001Z-Supervisor-message.md" ] && [ ! -e "$IBA/new/20261115T110001Z-Supervisor-message.md" ] \
+  && [ -f "$IBA/new/20261115T110002Z-Supervisor-message.md" ] \
+  || { ls -R "$IBA" > "$WORK/out"; fail "(f) close_run did not move exactly the run's inbox message to done/"; }
+rm -f "$IBA/new/20261115T110002Z-Supervisor-message.md" "$IBA/done/20261115T110001Z-Supervisor-message.md"
 jq -e '.reason == "abandon"' "$RD/closed.json" >/dev/null || fail "(f) closed.json"
 grep -l '^event: closed' "$SUP"/* | xargs grep -l "run: $RUN_ID" >/dev/null || fail "(f) no closed event"
 [ "$(nab)" = 1 ] || fail "(f) a second abandon event"
