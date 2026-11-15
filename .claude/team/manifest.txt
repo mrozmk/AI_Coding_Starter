@@ -240,6 +240,7 @@ own .agents/reference/supervisor-sessions.md
 # reader/validator, the Advisor settings template and the role contracts (session-host.sh above) ---
 own .claude/hooks/session-registry.sh
 own .claude/hooks/inbox-count.sh
+own .claude/hooks/team-status.sh
 own .claude/lib/roles-lib.sh
 own .claude/lib/team-lineage.sh
 own .claude/team/sessions/Advisor.settings.json

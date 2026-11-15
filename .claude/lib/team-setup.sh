@@ -281,14 +281,14 @@ egress_merge Bash "$H/guard-destructive-sql.sh\"" D
 # The role sessions' bootstrap directive; silent outside a role session and in a team clone.
 hook_merge S SessionStart "$H/session-role.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
-# The token-usage stage hook (`.agents/reference/token-usage.md` → Runtime log): one command under
-# three entries, which hook_merge (one registration per command) cannot express. Identified per
-# event and exact matcher; it must run synchronously (async marks can reorder) and the Bash entry
-# must carry the end step's exact `if` filter — otherwise a conflict, and a correct entry is added.
-STAGE="$H/stage-mark.sh\""
-stage_merge() {  # stage_merge <id> <event> <matcher|''> [<if rule>]
-  local id="$1" ev="$2" m="$3" cond="${4:-}" verdict
-  verdict="$(printf '%s' "$NEW" | jq -r --arg ev "$ev" --arg m "$m" --arg cmd "$STAGE" --arg cond "$cond" '
+# A synchronous hook registered under several entries (one command, many events), which hook_merge
+# (one registration per command) cannot express. Identified per event and exact matcher; it must run
+# synchronously (async events can land out of order) and carry its exact `if` filter when it has one —
+# otherwise a conflict, and a correct entry is added next to it.
+sync_merge() {  # sync_merge <id> <command> <timeout> <event> <matcher|''> [<if rule>]
+  local id="$1" cmd="$2" to="$3" ev="$4" m="$5" cond="${6:-}" verdict n
+  n="${cmd%\"}"; n="${n##*/}"; n="${n%.sh}"
+  verdict="$(printf '%s' "$NEW" | jq -r --arg ev "$ev" --arg m "$m" --arg cmd "$cmd" --arg cond "$cond" '
     [.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]? | select(.command == $cmd)] as $h
     | if any($h[]; (.async // false) == false and (.if // "") == $cond) then "ok"
       elif ($h | length) > 0 then "conflict"
@@ -297,16 +297,32 @@ stage_merge() {  # stage_merge <id> <event> <matcher|''> [<if rule>]
   if [ "$verdict" = conflict ]; then
     S_CONFLICTS="${S_CONFLICTS}$id"
     CONFLICT=$((CONFLICT + 1))
-    echo "conflict settings.json $id: $ev${m:+ $m} registers stage-mark async or without the filter ${cond:-(none)}"
+    if [ -n "$cond" ]; then
+      echo "conflict settings.json $id: $ev${m:+ $m} registers $n async or without the filter $cond"
+    else
+      echo "conflict settings.json $id: $ev${m:+ $m} registers $n async"
+    fi
   fi
-  NEW="$(printf '%s' "$NEW" | jq --arg ev "$ev" --arg m "$m" --arg cmd "$STAGE" --arg cond "$cond" '
+  NEW="$(printf '%s' "$NEW" | jq --arg ev "$ev" --arg m "$m" --arg cmd "$cmd" --arg cond "$cond" --argjson to "$to" '
     .hooks = (.hooks // {}) | .hooks[$ev] = (.hooks[$ev] // [])
-    | ({type: "command", command: $cmd, timeout: 5} + (if $cond == "" then {} else {if: $cond} end)) as $item
+    | ({type: "command", command: $cmd, timeout: $to} + (if $cond == "" then {} else {if: $cond} end)) as $item
     | .hooks[$ev] += [(if $m == "" then {} else {matcher: $m} end) + {hooks: [$item]}]')"
 }
-stage_merge K PreToolUse Skill
-stage_merge B PreToolUse Bash 'Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
-stage_merge U UserPromptExpansion ''
+# The token-usage stage hook (`.agents/reference/token-usage.md` → Runtime log): three entries; the
+# Bash entry carries the end step's exact `if` filter.
+STAGE="$H/stage-mark.sh\""
+sync_merge K "$STAGE" 5 PreToolUse Skill
+sync_merge B "$STAGE" 5 PreToolUse Bash 'Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
+sync_merge U "$STAGE" 5 UserPromptExpansion ''
+# The session-host state hook (team-status.sh): a role or stage session's state file for the
+# driver's `status`/`send`, plus the OSC write until step 8. Synchronous, so events land in order;
+# silent unless the driver started the session (HARNESS_REGISTRY/HARNESS_ADDRESS).
+TSTAT="$H/team-status.sh\""
+sync_merge T "$TSTAT" 3 PostToolUse ''
+sync_merge N "$TSTAT" 3 Notification 'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
+sync_merge P "$TSTAT" 3 UserPromptSubmit ''
+sync_merge O "$TSTAT" 3 Stop ''
+sync_merge X "$TSTAT" 3 SessionEnd ''
 
 # The per-run TeamLead's identity refresh and socket registration; silent outside a run's lead.
 hook_merge L SessionStart "$H/teamlead-register.sh\"" '["startup","resume","clear","compact"]' false '' \

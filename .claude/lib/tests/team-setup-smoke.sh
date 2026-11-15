@@ -215,7 +215,8 @@ setup "$T"
 has "conflict settings.json Q: registered under PostToolUse, not PreToolUse" \
   || fail "7: a hook under the wrong event is not a conflict"
 S="$T/.claude/settings.json"
-[ "$(jq '[.hooks.PostToolUse[].hooks[]] | length' "$S")" = 1 ] || fail "7: the foreign entry was touched"
+[ "$(jq '[.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[]] | length' "$S")" = 1 ] \
+  || fail "7: the foreign entry was touched"
 jq -e '[.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[]
   | select(.command | test("guard-team-question"))] | length == 1' "$S" >/dev/null \
   || fail "7: no correct PreToolUse entry was added"
@@ -581,5 +582,58 @@ jq -e '.hooks.PreToolUse[0].hooks[0].async == true and (.hooks.PreToolUse[1].hoo
 cp "$S" "$WORK/s22"
 setup "$T"
 cmp -s "$S" "$WORK/s22" || fail "22: the rerun changed settings.json"
+
+# ---- (23) session-host state hook: once per event, synchronous; a fresh target writes state ------
+NT='permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
+tstat() {  # tstat <settings> <event> <matcher|''> → how many correct team-status entries
+  jq --arg ev "$2" --arg m "$3" '[.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]
+    | select((.command | test("team-status.sh")) and .timeout == 3 and (.async // false) == false)] | length' "$1"
+}
+T=$(mktarget t23)
+setup "$T"
+S="$T/.claude/settings.json"
+[ -f "$T/.claude/hooks/team-status.sh" ] || fail "23: team-status.sh was not installed"
+for e in "PostToolUse:" "Notification:$NT" "UserPromptSubmit:" "Stop:" "SessionEnd:"; do
+  [ "$(tstat "$S" "${e%%:*}" "${e#*:}")" = 1 ] || fail "23: team-status is not registered once, synchronous, under ${e%%:*}"
+  [ "$(tstat "$ST/.claude/settings.json" "${e%%:*}" "${e#*:}")" = 1 ] \
+    || fail "23: the starter's own settings do not register team-status synchronously under ${e%%:*}"
+done
+[ "$(jq '[.hooks[]?[]?.hooks[]? | select(.command | test("team-status.sh"))] | length' "$S")" = 5 ] \
+  || fail "23: team-status.sh is registered more than 5 times"
+# State transitions through the target's own registrations only (TMUX unset: no OSC job).
+REG="$WORK/reg23"; mkdir -p "$REG"
+echo '{"address": "alfa-coder", "session_id": "s-new"}' > "$REG/alfa-coder.json"
+fire() {  # fire <event> <session id> [notification type]
+  local m='' cmd p
+  [ "$1" != Notification ] || m="$NT"
+  cmd="$(jq -r --arg ev "$1" --arg m "$m" '[.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]
+    | select(.command | test("team-status.sh")) | .command][0] // empty' "$S")"
+  [ -n "$cmd" ] || fail "23: no team-status registration for $1"
+  p="{\"hook_event_name\": \"$1\", \"session_id\": \"$2\", \"transcript_path\": \"/t/$2.jsonl\"${3:+, \"notification_type\": \"$3\"}}"
+  printf '%s' "$p" | (cd "$T" && env -u TMUX -u TMUX_PANE CLAUDE_PROJECT_DIR="$T" HARNESS_REGISTRY="$REG" \
+    HARNESS_ADDRESS=alfa-coder HARNESS_BACKEND=tmux bash -c "$cmd") || fail "23: the hook failed on $1"
+}
+st() { jq -r '.state + "/" + (.kind // "-") + "/" + .session_id' "$REG/state/alfa-coder.json" 2>/dev/null || echo none; }
+fire UserPromptSubmit s-new; [ "$(st)" = working/-/s-new ] || fail "23: UserPromptSubmit gave $(st)"
+fire Notification s-new permission_prompt; [ "$(st)" = blocked/permission/s-new ] || fail "23: permission_prompt gave $(st)"
+fire PostToolUse s-new; [ "$(st)" = working/-/s-new ] || fail "23: PostToolUse gave $(st)"
+fire Stop s-new; [ "$(st)" = done/-/s-new ] || fail "23: Stop gave $(st)"
+fire UserPromptSubmit s-old; [ "$(st)" = done/-/s-new ] || fail "23: a stale session's write was not ignored: $(st)"
+fire SessionEnd s-old; [ "$(st)" = done/-/s-new ] || fail "23: an old SessionEnd after a relaunch removed the state"
+fire SessionEnd s-new; [ "$(st)" = none ] || fail "23: SessionEnd left the state file"
+# An existing async registration is a conflict: kept, and a synchronous entry is added; the rerun is a no-op.
+T=$(mktarget t23b)
+mkdir -p "$T/.claude"
+TS='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh"'
+jq -n --arg s "$TS" '{hooks: {PostToolUse: [{hooks: [{type: "command", command: $s, async: true}]}]}}' \
+  > "$T/.claude/settings.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "conflict settings.json T: PostToolUse registers team-status async" || fail "23: an async state hook is not a conflict"
+[ "$(tstat "$S" PostToolUse '')" = 1 ] || fail "23: no synchronous entry next to the conflict"
+jq -e '.hooks.PostToolUse[0].hooks[0].async == true' "$S" >/dev/null || fail "23: the project's entry was rewritten"
+cp "$S" "$WORK/s23"
+setup "$T"
+cmp -s "$S" "$WORK/s23" || fail "23: the rerun changed settings.json"
 
 echo "team-setup-smoke: OK"

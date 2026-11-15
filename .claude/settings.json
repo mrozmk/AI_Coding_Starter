@@ -273,7 +273,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
-            "async": true
+            "timeout": 3
           }
         ]
       },
@@ -368,7 +368,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
-            "async": true
+            "timeout": 3
           }
         ]
       }
@@ -379,7 +379,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
-            "async": true
+            "timeout": 3
           }
         ]
       }
@@ -390,7 +390,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
-            "async": true
+            "timeout": 3
           }
         ]
       }
@@ -400,7 +400,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
+            "timeout": 3
           }
         ]
       }
