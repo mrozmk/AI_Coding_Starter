@@ -6,7 +6,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 case "${TEAM_SMOKE_PART:-all}" in
-  all) parts=(purity 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 mail channel kit policy sessions escalation) ;;
+  all) parts=(purity 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 mail channel kit policy sessions escalation) ;;
   [1-9]|1[0-9]|2[0-9]|mail|channel|kit|policy|sessions|escalation) parts=("$TEAM_SMOKE_PART") ;;
   purity) parts=(purity) ;;
   *) echo "team-smoke: TEAM_SMOKE_PART must be all, purity, mail, channel, kit, policy, sessions, escalation or 1 … 22" >&2; exit 2 ;;

@@ -224,11 +224,13 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   whatever `TEAM_NOTIFY` says.
 - **Answer:** `team-lead.sh decision answer <team> d-<n> --text "<Operator's words>"
   [--outcome continue|close|more-revise|approve]` → `status: answered`, `answered_at`,
-  `answered_via`, `## Answer`. It is bound to a human: from a **terminal** (stdin is a TTY and the id
+  `answered_via`, `## Answer`. It asks for a human: from a **terminal** (stdin is a TTY and the id
   is typed to confirm — `answered_via: terminal`), or from the **lead window**, where the lead's own
   transcript must hold a typed user message after `created_at`, not a doorbell or `[team-run]` line,
-  that contains the answer text (`answered_via: teamlead-window <message uuid>`); else exit 7. A
-  non-pending decision refuses with exit 4 (a late answer to a withdrawn decision is never applied).
+  that contains the answer text (`answered_via: teamlead-window <message uuid>`); else exit 7. One
+  message is evidence for one decision, unless it names the other decision's id too
+  (`d-8 yes, d-9 no`). A non-pending decision refuses with exit 4 (a late answer to a withdrawn
+  decision is never applied).
 - **Relay:** `team-answer.sh … --authority operator --decision <d-n.md>` requires `status: answered`,
   checks the bound prompt instance (`--expect-*` from `bind_*`: a successor prompt refuses with 6) and,
   under the send lock before the first key, sets `status: dispatched` + `dispatched_at` — one relay
@@ -242,7 +244,40 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   only), `decision list <team> [--pending]`; `team-lead.sh pending` lists pending decisions first.
 - **Guard:** `guard-team-verdict.sh` refuses `team-lead.sh decision open|answer|withdraw` from any
   session but the lead's (payload session id), like the verdict and authority calls.
-- **Known limit:** the lead can append to its own transcript with Bash, so the window binding raises
-  the bar (a deliberate, visible forgery) without making it impossible; the terminal path is the
-  strong one. Making the window path strong needs a write deny on the lead's transcript directory
-  or answers only from a terminal (an owner decision).
+- **Limit of the human binding.** Both paths raise the bar; neither is proof that a human answered.
+  A lead in auto mode can still create a pty (`script`, a tmux window it types into) to satisfy the
+  terminal path, or append a user line to its own transcript for the window path. Both are
+  deliberate acts, visible in the lead's tool log, not something it does by accident. A hard
+  guarantee is an owner decision, outside these files.
+
+## 8. Acceptance
+
+After qa `done`, before the runner accepts it: the runner validates the record (published PR,
+report — a rejection is `die 4` as before), acks it and rings `gate acceptance: <record>`. The qa
+stage clock is paused while the gate waits (`lead_waiting`).
+
+- **Blind check:** `team-lead.sh diff <team>` writes `runs/<run>/acceptance-diff.patch` and
+  `.stat` — `git diff <base_sha>..<qa output_rev>` in the clone, excluding the spec and plan named in
+  the accepted planner record (and the plan's `plans/done/` counterpart). One sub-agent gets only
+  the order brief and the patch path; the lead saves its answer as `blind-check.md` and never opens
+  the patch.
+- **Brief:** `acceptance-brief.md` with `## Ordered vs delivered`, `## Scope delta`, `## Fit risks`,
+  `## Open defects`, `## Warnings`, `## Recommendation`.
+- **Verdict** (`team-verdict.sh acceptance <v> --for <qa record>`):
+  - `accept` — needs `blind-check.md`, then the brief (not older than the blind check) with the six
+    headings, and for a QA `Verdict: ready-with-warnings` one `- <warning> → keep|fix|follow-up —
+    <why>` line under `## Warnings` per comma-separated item of the report's `Warnings:` line;
+    otherwise exit 8 naming the missing piece. The runner accepts the qa record and launches the
+    wrapup.
+  - `rework` — written, acted on by the rework step; until then the runner prints
+    `rework not yet supported` and keeps waiting.
+  - `abandon-recommended` — needs `--decision d-<n>`, a pending decision opened with
+    `--notify abandon_decision` (its escalate verdict is the one notification); the runner waits.
+- **Decision verdicts the runner acts on now:** on the acked gate record, `decision close` →
+  `close_run abandon` (exit 8, event `closed`); `decision continue` → prints
+  `continue granted` and keeps waiting (the next round is the rework step). Decisions about prompts
+  (`attention:<n>`) and `escalate` / `resolved` change nothing in the runner.
+- **Ready:** `ready:` is printed only when every stage is accepted — so after `accept` **and** a done
+  wrapup. With the lead on, the runner first writes the Supervisor event `accepted`
+  (`ref: runs/<run>/acceptance-brief.md`) once, guarded by `runs/<run>/accepted.sent`; a resume
+  after `ready` sends no second one. Without the lead nothing changes.

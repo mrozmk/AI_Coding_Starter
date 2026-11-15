@@ -102,15 +102,17 @@ lead_stop() {  # lead_stop <record> — a stage's blocked/failed record: ack it 
   team_session_doorbell "$TD" lead "stop $(rec "$1" role) $(rec "$1" attempt): ${1#"$CLONE"/} — $(rec "$1" message)"
 }
 
-# lead_waiting <role> <attempt> — true while this attempt's acked stop has no <record>.answered
-# marker (team-answer.sh writes it). Derived from files, so a resumed runner sees it too.
+# lead_waiting <role> <attempt> — true while this attempt's acked stop or gate input has no
+# <record>.answered marker (team-answer.sh writes it for a stop). Derived from files, so a resumed
+# runner sees it too.
 lead_waiting() {
   local a r
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
   case "$a" in "$1-$2-"*) ;; *) return 1 ;; esac
   r="$TD/runs/$RUN/$a"
   [ -f "$r" ] && [ ! -e "$r.answered" ] || return 1
-  case "$(rec "$r" verdict)" in blocked|failed) return 0 ;; *) return 1 ;; esac
+  # A gate input (review, done) waits on the lead as a stop does; the gate ends with the record accepted.
+  case "$(rec "$r" verdict)" in blocked|failed|review|done) return 0 ;; *) return 1 ;; esac
 }
 
 # Every wait_loop poll with the lead on: a dead lead is reported once, a requested relaunch
@@ -231,7 +233,8 @@ lead_gate() {
   local a f v rel
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
   case "$a" in "$1-$2-"*) ;; *) return 1 ;; esac
-  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(spec|plan)-[0-9]+\.json$' | sort -t- -k3,3n || true); do
+  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(spec|plan|acceptance|decision)-[0-9]+\.json$' \
+      | sort -t- -k3,3n || true); do
     [ "$(rec "$TD/runs/$RUN/$f" for)" = "$a" ] || continue
     ! grep -qxF "$f" "$TD/verdict-acked" 2>/dev/null || continue
     rel=".agents/team/runs/$RUN/$f"; v="$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)"
@@ -245,10 +248,24 @@ lead_gate() {
         validate_record "$TD/runs/$RUN/$a" \
           || die 4 "record $a rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
         accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
+      # The qa done was validated when the gate was rung; accept it, the wrapup follows.
+      "acceptance accept") accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
+      "acceptance rework") echo "rework not yet supported — waiting ($rel)" ;;
+      # abandon-recommended waits for the Operator's decision: close or continue on the same record.
+      "decision close") echo "$f" >> "$TD/verdict-acked"; close_run abandon "$rel" ;;
+      "decision continue") echo "continue granted ($rel) — the next round is not yet supported" ;;
     esac
     echo "$f" >> "$TD/verdict-acked"
   done
   return 1
+}
+
+# lead_accepted — the run is ready after the lead's accept and a done wrapup: one `accepted` event
+# to the Supervisor, guarded by runs/<run>/accepted.sent (a resume re-enters cmd_advance).
+lead_accepted() {
+  [ ! -e "$TD/runs/$RUN/accepted.sent" ] || return 0
+  lead_event accepted "runs/$RUN/acceptance-brief.md"
+  team_utc > "$TD/runs/$RUN/accepted.sent"
 }
 
 # close_run <reason> <ref> — end the run without a merge. closed.json goes first, so a resume

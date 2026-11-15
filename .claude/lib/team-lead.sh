@@ -5,6 +5,7 @@
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
 #        bash .claude/lib/team-lead.sh digest-check <team> <spec|plan path>
+#        bash .claude/lib/team-lead.sh diff <team>   (runs/<run>/acceptance-diff.patch + .stat)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #   pending lists the lead's open items — pending decisions first, then stop, gate, attention,
 #   inbox, oldest first:
@@ -20,7 +21,7 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
@@ -126,6 +127,29 @@ digest_check() {
   return 1
 }
 
+# The acceptance diff: base_sha..the newest qa record's output_rev in the clone, without this run's
+# spec and plan (the blind check must not see them). Prints the two paths only.
+acceptance_diff() {
+  local root qa rev base pl a ex=() d
+  resolve "$1"
+  [ -n "$RUN" ] || { echo "error: no current run" >&2; exit 4; }
+  root="${TD%/.agents/team}"; d="$TD/runs/$RUN"
+  qa="$(ls "$d" 2>/dev/null | grep -E '^qa-[0-9]+-[0-9]+\.json$' | sort -t- -k2,2n -k3,3n | tail -n 1 || true)"
+  [ -n "$qa" ] || { echo "error: no qa record in run $RUN" >&2; exit 4; }
+  rev="$(jq -r '.output_rev // empty' "$d/$qa")"; base="$(jq -r '.base_sha // empty' "$TD/team.json")"
+  pl="$(ls -1 "$d"/planner-*.json.accepted 2>/dev/null | tail -n 1 || true)"
+  if [ -n "$pl" ]; then
+    for a in $(jq -r '.artifacts[]? | select(startswith(".agents/specs/") or startswith(".agents/plans/"))' "${pl%.accepted}"); do
+      ex+=(":(exclude)$a")
+      case "$a" in .agents/plans/active/*) ex+=(":(exclude).agents/plans/done/${a#.agents/plans/active/}") ;; esac
+    done
+  fi
+  git -C "$root" diff "$base..$rev" -- . ${ex[@]+"${ex[@]}"} > "$d/acceptance-diff.patch" \
+    || { echo "error: git diff $base..$rev failed in the clone" >&2; exit 1; }
+  git -C "$root" diff --stat "$base..$rev" -- . ${ex[@]+"${ex[@]}"} > "$d/acceptance-diff.stat"
+  echo "$d/acceptance-diff.patch"; echo "$d/acceptance-diff.stat"
+}
+
 end_lead() {
   resolve "$1"
   team_end_session "$TD" "$(team_tmux_name "$1" lead)" lead "${TEAM_EXIT_WAIT_SECS:-60}" \
@@ -183,6 +207,7 @@ case "$1" in
   pending) [ $# -eq 2 ] || usage; pending "$2" ;;
   digest-check) [ $# -eq 3 ] || usage; digest_check "$2" "$3" ;;
   decision) shift; decision_main "$@" ;;
+  diff) [ $# -eq 2 ] || usage; acceptance_diff "$2" ;;
   end) [ $# -eq 2 ] || usage; end_lead "$2" ;;
   finalize) [ $# -eq 3 ] && [ "$3" = merged ] || usage; finalize "$2" "$3" ;;
   relaunch) [ $# -eq 2 ] || usage; resolve "$2"; touch "$TD/relaunch-lead"

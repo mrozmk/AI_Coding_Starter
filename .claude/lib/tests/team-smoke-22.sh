@@ -354,7 +354,7 @@ for c in "rm -rf .git/objects" "rm -rf .git/refs/heads/x"; do
   chk operator; expect 0 "policy-authority: operator" "(k) $c, operator"
 done
 bashp "rm -rf .GIT/objects"; chk teamlead; expect 1 "inside the git dir" "(k) case-folded git dir path"
-for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/" "rm -rf .Git" "rm -rf .GIT/"; do
+for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/" "rm -rf .Git" "rm -rf .GIT/" "rm -rf /"; do
   bashp "$c"; chk operator; expect 1 "clone root or its .git — never" "(k) rm of the clone root: $c"
 done
 # With the clone under a temp root its ancestors are strictly "inside temp": still never.
@@ -443,9 +443,11 @@ DLD="$RD/decisions"; LTX="$(transcript sid-lead)"; mkdir -p "$(dirname "$LTX")";
 prof '.teams.teamlead.enabled = true'  # (k) above switched it off for the next ticket
 DEC="bash .claude/lib/team-lead.sh decision"
 ldec() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
+SAID=0
 said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead window, now
-  jq -cn --arg t "$1" --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
-    '{type: "user", uuid: ("u-" + ($t | length | tostring)), timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"
+  SAID=$((SAID + 1))
+  jq -cn --arg t "$1" --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" --arg u "u-$SAID" \
+    '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"
 }
 mkdir -p "$MAIN/.claude/team/sessions/operator-kit"
 printf '#!/usr/bin/env bash\necho "$*" >> "%s/notify.log"\n' "$WORK" > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
@@ -548,5 +550,17 @@ bashp "git rm old.txt"; prof '.teams.policy.classes = {}'; runner_attention "(i)
 grep -q 'prompt coder: Bash command git rm old.txt — team-answer.sh alfa coder yes|no --authority teamlead' \
   "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || { { cat "$TD/send-lead.log"; grep alfa-lead "$STUB_LOG"; } > "$WORK/out" 2>&1; fail "(i) the lead was not rung with the command"; }
 echo "team-smoke-22: (i) runner class-first OK"
+
+# ---- one typed message answers one decision, unless it names the others' ids -----------------------
+ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?"; expect 0 "[d-7]" "(once-ev) open d-7"
+ldec open alfa --source coder-1-1.json --question "Keep the old table?"; expect 0 "[d-8]" "(once-ev) open d-8"
+said_in_lead "yes"
+ldec answer alfa d-7 --text yes; expect 0 "answered: d-7" "(once-ev) the first answer"
+ldec answer alfa d-8 --text yes; expect 7 "no Operator message" "(once-ev) the same message twice"
+ldec open alfa --source coder-1-1.json --question "Ship today?"; expect 0 "[d-9]" "(once-ev) open d-9"
+said_in_lead "d-8 yes, d-9 no"
+ldec answer alfa d-8 --text yes; expect 0 "answered: d-8" "(once-ev) a message naming d-8"
+ldec answer alfa d-9 --text no; expect 0 "answered: d-9" "(once-ev) the same message names d-9"
+echo "team-smoke-22: single-use evidence OK"
 
 echo "team-smoke-22: OK"

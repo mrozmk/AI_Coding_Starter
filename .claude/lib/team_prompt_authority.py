@@ -114,7 +114,8 @@ def delete_causes(c, root, cmd):
                 gits = git_dirs(clone) if gits is None else gits
                 # The root, a git dir, or an ancestor of either (`..`, a temp parent) — case-folded
                 # like c.under, the volume being case-insensitive.
-                if any(c.under(x, [h]) for x in [clone] + sorted(gits)):
+                # c.under compares against "<dir>/", which misses the filesystem root itself.
+                if h == os.sep or any(c.under(x, [h]) for x in [clone] + sorted(gits)):
                     raise c.Refuse("refuse: rm -r of the clone root or its .git — never")
                 if any(c.under(h, [g]) for g in gits):
                     out.append("irreversible delete inside the git dir: %s" % t)

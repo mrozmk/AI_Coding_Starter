@@ -7,9 +7,10 @@
 #   decision answer <team> d-<n> --text "<Operator answer>" [--outcome continue|close|more-revise|approve]
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
 # open writes the file (status pending), then the escalate verdict with --notify, so the runner
-# notifies the Operator once. answer is bound to a human: from a terminal (a TTY, the id typed to
+# notifies the Operator once. answer asks for a human: from a terminal (a TTY, the id typed to
 # confirm), or from the TeamLead window, where the lead's own transcript must hold a typed Operator
-# message (not a doorbell, after created_at) containing the answer text. Contract: team-lead.md §7
+# message (not a doorbell, after created_at) containing the answer text. Both raise the bar; neither
+# is proof (team-lead.md §7, "Limit of the human binding").
 
 dfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
@@ -69,19 +70,28 @@ decision_open() {
 }
 
 # The Operator's message in the lead's own transcript: a typed user entry after created_at that is
-# not a doorbell or a runner line, containing the answer text → its uuid.
+# not a doorbell or a runner line, containing the answer text → its uuid. A message already used as
+# another decision's evidence counts again only when it names this decision's id.
 d_evidence() {
-  local sid t
+  local sid t f used=""
   sid="$(jq -r '.session_id // empty' "$TD/teamlead.json" 2>/dev/null)"
   t="$(team_role_transcript "${TD%/.agents/team}" "${sid:--}")"
   [ "$t" != - ] && [ -f "$t" ] || return 1
-  jq -r --arg x "$2" --arg since "$(dfm "$1" created_at)" '
-    select(.type == "user" and ((.isMeta // false) | not) and ((.timestamp // "") >= $since))
+  for f in "$DD"/d-*.md; do
+    [ -f "$f" ] && [ "$f" != "$1" ] || continue
+    used="$used $(dfm "$f" answered_via | sed -n 's/^teamlead-window //p')"
+  done
+  jq -r --arg x "$2" --arg since "$(dfm "$1" created_at)" --arg id "$(basename "$1" .md)" \
+    --arg used "$used" '
+    ($used | split(" ") | map(select(. != ""))) as $u
+    | select(.type == "user" and ((.isMeta // false) | not) and ((.timestamp // "") >= $since))
+    | (.uuid // "?") as $uid
     | (.message.content | if type == "string" then .
         elif type == "array" then (map(select(.type == "text") | .text) | join(" ")) else "" end) as $m
     | select($m != "" and ($m | contains($x))
         and ($m | test("^(stop |gate |prompt |inbox: |relaunched: |human-only |\\[team-run\\])") | not))
-    | .uuid // "?"' "$t" 2>/dev/null | tail -n 1
+    | select((($u | index($uid)) == null) or ($m | test("(^|[^A-Za-z0-9-])" + $id + "([^0-9]|$)")))
+    | $uid' "$t" 2>/dev/null | tail -n 1
 }
 
 decision_answer() {

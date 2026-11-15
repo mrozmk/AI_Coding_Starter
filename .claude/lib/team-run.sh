@@ -120,6 +120,11 @@ handle_record() {
   case "$(rec "$r" verdict)" in
     done) # With the lead on, the planner's done waits for the plan gate; validation follows approve.
           if team_lead_on && [ "$ROLE" = planner ]; then lead_gate_ring plan "$r"; return 2; fi
+          # The qa done is checked first (published PR, report), then the lead's acceptance gate.
+          if team_lead_on && [ "$ROLE" = qa ]; then
+            validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+            lead_gate_ring acceptance "$r"; return 2
+          fi
           validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
           accept "$r" ;;
     review)
@@ -340,6 +345,7 @@ cmd_advance() {
     check_orphans
     stage="$(next_stage)"
     if [ -z "$stage" ]; then
+      ! team_lead_on || lead_accepted
       echo "ready: bash .claude/lib/team-merge-check.sh $TEAM"
       notify "ready" "PR published — ask the supervisor to merge $TEAM"; exit 0
     fi

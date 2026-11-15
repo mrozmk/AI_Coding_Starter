@@ -147,7 +147,7 @@ expect 3 "only this run's TeamLead" "(j) non-lead caller"
 prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-2.json" "(n) second review"
 V spec approve --for planner-1-1.json --message ok; expect 4 "not the newest planner record" "(n) older --for"
 V spec remode --for planner-1-2.json --message x; expect 4 "not allowed at the spec gate" "(n) bad verdict"
-V acceptance accept --for planner-1-2.json --message x; expect 4 "not yet supported" "(n) reserved gate"
+V acceptance accept --for planner-1-2.json --message x; expect 4 "the acceptance gate is the qa's" "(n) acceptance on a planner record"
 echo "team-smoke-21: (j) caller + (n) --for OK"
 
 # ---- (o) the verdict guard binds the call to the hook payload's session id -----------------------

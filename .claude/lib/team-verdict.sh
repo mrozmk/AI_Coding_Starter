@@ -7,6 +7,10 @@
 #   (remode in quick only). --for names the planner's newest record (a review for spec, a done for
 #   plan). revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
 #   --decision names an answered decision with answer_outcome more-revise that grants one more round.
+#   acceptance → accept|rework|abandon-recommended on the qa's newest done record: accept needs
+#   runs/<run>/blind-check.md, then acceptance-brief.md (six headings; for a QA verdict
+#   ready-with-warnings one `- <warning> → keep|fix|follow-up — <why>` line per warning);
+#   abandon-recommended needs --decision d-<n>, pending, opened with --notify abandon_decision.
 #   decision → escalate|continue|close|resolved: --for is any file under runs/<run>/ (a record, a
 #   verdict, decisions/req-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
 #   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
@@ -15,11 +19,12 @@
 #   e.g. bash .claude/lib/team-verdict.sh spec revise --for planner-1-2.json \
 #          --ref .agents/team/runs/alfa-20261114-100000/gate-spec-1.md --message "2 findings"
 # Exit: 0 written · 2 usage · 3 not the lead · 4 bad gate/verdict/for · 5 revise limit
-#       6 spec changed after approval · 7 constraint digest missing (team-lead.sh digest-check).
+#       6 spec changed after approval · 7 constraint digest missing (team-lead.sh digest-check)
+#       8 acceptance brief incomplete.
 #   Contract: .agents/reference/team-lead.md §4, §5
 set -euo pipefail
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""
@@ -117,26 +122,59 @@ if [ "$GATE" = decision ]; then
   echo "$t"; exit 0
 fi
 
-# The gated record: the planner's newest record of the launched attempt, in the gate's verdict.
+# The gated record: the gated role's newest record of the launched attempt, in the gate's verdict.
 case "$GATE" in
-  spec) [ "$MODE" != quick ] || bad "quick mode has no spec gate"; want=review ;;
-  plan) want=done ;;
-  acceptance) bad "gate $GATE is not yet supported" ;;
-  *) bad "unknown gate $GATE (spec|plan)" ;;
+  spec) [ "$MODE" != quick ] || bad "quick mode has no spec gate"; role=planner; want=review ;;
+  plan) role=planner; want=done ;;
+  acceptance) role=qa; want=done ;;
+  *) bad "unknown gate $GATE (spec|plan|acceptance|decision)" ;;
 esac
-[ -f "$TD/session.json" ] && [ "$(session_json role)" = planner ] \
-  || bad "no planner session — the $GATE gate is the planner's"
-last="$(team_records "$RUN" planner "$(session_json attempt)" | tail -n 1)"
+[ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
+  || bad "no $role session — the $GATE gate is the $role's"
+last="$(team_records "$RUN" "$role" "$(session_json attempt)" | tail -n 1)"
 [ -n "$FOR" ] && [ -n "$last" ] && [ "$FOR" = "$(basename "$last")" ] \
-  || bad "--for ${FOR:-<none>} is not the newest planner record (${last:+$(basename "$last")})"
+  || bad "--for ${FOR:-<none>} is not the newest $role record (${last:+$(basename "$last")})"
 [ "$(rec "$last" verdict)" = "$want" ] || bad "$FOR is $(rec "$last" verdict), the $GATE gate needs $want"
 
 case "$GATE $VERDICT" in
   "spec approve"|"spec revise"|"spec escalate"|"plan approve"|"plan revise"|"plan escalate") ;;
   "plan remode") [ "$MODE" = quick ] || bad "remode is for quick mode only" ;;
+  "acceptance accept"|"acceptance rework"|"acceptance abandon-recommended") ;;
   *) bad "verdict $VERDICT is not allowed at the $GATE gate" ;;
 esac
 [ "$VERDICT" != revise ] || [ -n "$REF" ] || bad "revise needs --ref <findings file>"
+
+# Acceptance: the blind order-vs-diff check comes first, the brief is written from it.
+acc_fail() { echo "error: acceptance: $1" >&2; exit 8; }
+if [ "$GATE $VERDICT" = "acceptance accept" ]; then
+  blind="$RD/blind-check.md"; brief="$RD/acceptance-brief.md"
+  [ -s "$blind" ] || acc_fail "runs/$RUN/blind-check.md missing — the blind order-vs-diff check comes first"
+  [ -s "$brief" ] || acc_fail "runs/$RUN/acceptance-brief.md missing"
+  ! [ "$brief" -ot "$blind" ] || acc_fail "acceptance-brief.md is older than blind-check.md — write the brief from the blind check"
+  for h in "## Ordered vs delivered" "## Scope delta" "## Fit risks" "## Open defects" "## Warnings" \
+    "## Recommendation"; do
+    grep -qxF "$h" "$brief" || acc_fail "acceptance-brief.md lacks the heading '$h'"
+  done
+  qr="$RD/qa-report-$(rec "$last" attempt).md"
+  [ -f "$qr" ] || acc_fail "no runs/$RUN/$(basename "$qr")"
+  if [ "$(sed -n 's/^Verdict: //p' "$qr" | head -n 1)" = ready-with-warnings ]; then
+    sect="$(awk '/^## Warnings$/ { f = 1; next } /^## / { f = 0 } f' "$brief")"
+    IFS=',' read -ra ws <<<"$(sed -n 's/^Warnings: //p' "$qr" | head -n 1)"
+    for w in ${ws[@]+"${ws[@]}"}; do
+      w="$(printf '%s' "$w" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; [ -n "$w" ] || continue
+      ok=""
+      while IFS= read -r l; do
+        case "$l" in "- $w → keep — "?*|"- $w → fix — "?*|"- $w → follow-up — "?*) ok=1 ;; esac
+      done <<<"$sect"
+      [ -n "$ok" ] || acc_fail "## Warnings has no '- $w → keep|fix|follow-up — <why>' line"
+    done
+  fi
+elif [ "$GATE $VERDICT" = "acceptance abandon-recommended" ]; then
+  [ -n "$DECISION" ] || bad "abandon-recommended needs --decision d-<n> (a pending decision opened with --notify abandon_decision)"
+  df="$(decision_file "$DECISION")"
+  [ "$(fm "$df" status)" = pending ] && [ "$(fm "$df" notify)" = abandon_decision ] \
+    || bad "$DECISION is not a pending decision opened with --notify abandon_decision"
+fi
 
 if [ "$VERDICT" = revise ]; then
   team_profile_load "$MAIN"
