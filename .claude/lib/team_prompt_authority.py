@@ -15,7 +15,10 @@ clone root or its .git.
 
   class    — no human-only cause, then today's --classes flow (a class waives baseline asks only)
   teamlead — no human-only cause; baseline ask matches are waived
-  operator — human-only causes are waived; the never-waived refusals still hold
+  operator — as teamlead (the lead relaying an Operator decision on a baseline ask); a human-only
+             cause is refused at every authority: the Operator answers it in the stage's window
+`Edit(**/.env.*)` is a baseline ask, so the TeamLead may approve it (owner's decision, 2026-11-15);
+`Edit(**/.env)` is a deny rule, never waived.
 Contract: .agents/reference/team-lead.md §6
 """
 import fnmatch
@@ -232,11 +235,9 @@ def flow(c, root, main, pane, transcript, extra, authority):
     session = c.session_id(root)
     if session is None:
         raise c.Refuse("refuse: no live session")
-    if authority == "operator":
-        return authority
     if human:
         raise c.Refuse("human-only: %s — pending decision" % human[0])
-    if authority == "teamlead":
+    if authority in ("teamlead", "operator"):
         return authority
     name, why = team_prompt_classes.classify(
         root, main, header, inp, team_prompt.tool_cwd(transcript, tid),

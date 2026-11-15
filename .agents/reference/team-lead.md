@@ -60,7 +60,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `order-brief.md` | `team-brief.sh write` | the order (team-mode.md §2) |
 | `runs/<run>/order-brief.md` | runner at launch | the frozen copy the lead reads |
 | `teamlead.json` | runner at launch; `session-registry.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root` |
-| `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer and its write guard |
+| `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer, its write guard (`guard-teamlead-write.sh`: the file tools reach only the lead's own files under `runs/<run>/` — notes, gate findings, rework orders, digest, opinions, blind check, acceptance brief — and the scratchpad) and its Bash guard (`guard-teamlead-bash.sh`, rules in `team_lead_bash.py`: no command that writes a script-owned file, the clone's `.claude/` or a transcript, and no key or text into a session) |
 | `<main>/.agents/team/registry/<team>-lead.reg.json` | `session-registry.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target; removed on relaunch, at `end` and by `team-next.sh` / `team-remode.sh` |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
 | `lead-dead`, `relaunch-lead`, `send-lead.log` | runner | death reported once, relaunch request, skipped doorbells |
@@ -69,8 +69,8 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `runs/<run>/rework-<n>.md`, `runs/<run>/r<n>/` | the lead; runner + stages | the round's rework order; round n's records, prompts, sessions, reports and acceptance files |
 | `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
 | `runs/<run>/gate-<gate>-<n>.md` | the lead | gate findings; a verdict's `ref` |
-| `runs/<run>/answers.md` | `team-answer.sh` (every authority answer) | `- <utc> [<role> <attempt>] <question> → <answer> — <why> [authority <a>] [decision <id>]` |
-| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision` | a human decision, §7 |
+| `runs/<run>/answers.md` | `team-answer.sh` (every authority answer); the runner (a human-only prompt answered in the stage window, §7) | `- <utc> [<role> <attempt>] <question> → <answer> — <why> [authority <a>] [decision <id>]` |
+| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision`; the runner closes an `answer_in` decision (§7) | a human decision, §7 |
 | `runs/<run>/decisions/req-<n>.json` | runner (`lead_attention`) | a human-only prompt the lead opens a decision from: source, tool, command, binding |
 | `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
 | `verdict-acked` | runner | the verdict files already acted on, one per line |
@@ -196,15 +196,16 @@ check first**, before any waiver.
 
 | | class | teamlead | operator |
 |---|---|---|---|
-| Caller | the runner, or the lead | the lead only (own team) | the lead, relaying an answered decision |
+| Caller | the runner, or the lead | the lead only (own team) | the lead, relaying an answered decision (a baseline ask it escalated, or a `say` to a stop) |
 | Prompt with no ask/deny match, no human-only cause | sent | sent | sent |
 | Baseline ask match (a `Bash(…)` rule meeting the command, or an `Edit(…)`/`Write(…)` rule meeting the edited path, that is in `.claude/team/baseline-ask.json`) | only in an enabled class | sent | sent |
-| **Human-only** → exit 9 below operator: an Edit/Write or Bash naming `.claude/settings*.json` or `.claude/team/sessions/*.settings.json`; a project-added ask rule, Bash or Edit/Write (not in the baseline; no readable baseline → every ask); egress (WebFetch, curl/wget/ssh/scp/rsync/nc, `git remote add`/`set-url`); a recursive `rm` (`-rf`, `-fr`, `-r -f`, `--recursive`, behind wrappers) with a target outside the clone and the temp roots (`/tmp`, `/private/tmp`, the system temp dir, `$TMPDIR` — the scratchpad is under `/tmp`), or one that cannot be resolved (`$VAR`, a glob with no match, a relative path after a `cd`) | refused (9) | refused (9) | sent |
+| **Human-only** → exit 9 below operator: an Edit/Write or Bash naming `.claude/settings*.json` or `.claude/team/sessions/*.settings.json`; a project-added ask rule, Bash or Edit/Write (not in the baseline; no readable baseline → every ask); egress (WebFetch, curl/wget/ssh/scp/rsync/nc, `git remote add`/`set-url`); a recursive `rm` (`-rf`, `-fr`, `-r -f`, `--recursive`, behind wrappers) with a target outside the clone and the temp roots (`/tmp`, `/private/tmp`, the system temp dir, `$TMPDIR` — the scratchpad is under `/tmp`), or one that cannot be resolved (`$VAR`, a glob with no match, a relative path after a `cd`) | refused (9) | refused (9) | refused (9) — the Operator answers it in the stage window, §7 |
 | **Never**: a deny match, the SQL guard, an unreadable or unbound prompt (no transcript, no unique pending tool_use, screen differs from it), an edit or path outside the clone; a recursive `rm` of the clone root or its `.git`; and, when anything needs a waiver, a recovered prompt (header off screen) or no live session | refused | refused | refused |
 
 - Waivable by the lead on its own, from the baseline: `git merge --no-ff`/`--squash`,
-  `git branch -d`/`-D`, `git rm`, `Edit(**/.env.*)`, and `rm -rf` whose every target is inside the
-  clone (not its root or `.git`) or a temp root.
+  `git branch -d`/`-D`, `git rm`, `Edit(**/.env.*)` (owner's decision, 2026-11-15; `.env` itself
+  is a deny rule, so no prompt exists for it), and `rm -rf` whose every target is inside the clone
+  (not its root or `.git`) or a temp root.
 - The legacy path stays for runs without a lead: `--tier`/`--classes` behave as before (a class
   may still waive a settings edit there). In a **lead-owned run** (`teamlead.json.run` = the
   clone's run) `--tier` is refused with exit 8, so the human-only check cannot be bypassed.
@@ -243,6 +244,21 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   #41 the legacy `team_channel_notify --alarm` (`<ticket> <id>: <question> — answer in …`) also
   fires when `notify.sh` printed `written`, and also when `notify.sh` failed (exit ≠ 0: a `warn:`
   line, then the legacy alarm once per runner process — a broken sender never silences the Operator).
+- **Human-only prompt (owner, 2026-11-15).** A decision opened `--request req-<n>` carries
+  `answer_in: <role>`. Only the Operator answers it, alone, in that stage's own window; the notify
+  hint names the stage session, not the lead's. The lead opens it and waits: `decision answer`,
+  `decision withdraw` and an `--authority operator` relay of it refuse with exit 7, and the checker
+  refuses a human-only cause at every authority (9). Only the runner closes it (`lead_window`,
+  each poll), from the stage's own transcript (`team_prompt.py outcome <transcript> <bind_event>`):
+  - a `tool_result` for the bound call → `status: resolved`, `answered_via: stage-window
+    <tool_use id>`, `answer_outcome: approved` / `approved (rule added)` (the Operator chose
+    "don't ask again": `permissionDecision.source` `user_permanent`) / `rejected`, an `answers.md`
+    line `[authority operator-window]`, and the doorbell `human-only <role>: d-<n> answered in the
+    stage window — <outcome>`;
+  - the call no longer open, or the stage's session or attempt replaced → `status: withdrawn`
+    (`prompt gone (the runner)`) and `human-only <role>: d-<n> withdrawn — prompt gone`.
+
+  While it is pending the stage clock stops (`lead_waiting`), as for a stop.
 - **Answer:** `team-lead.sh decision answer <team> d-<n> --text "<Operator's words>"
   [--outcome continue|close|more-revise|approve]` → `status: answered`, `answered_at`,
   `answered_via`, `## Answer`. It asks for a human: from a **terminal** (stdin is a TTY and the id
@@ -275,6 +291,13 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   terminal path, or append a user line to its own transcript for the window path. Both are
   deliberate acts, visible in the lead's tool log, not something it does by accident. A hard
   guarantee is an owner decision, outside these files.
+- **Limit of the window answer and the write lock.** A stage-window answer is evidence of a keypress
+  in that pane, not proof of a human. The lead's profile denies `tmux send-keys|send|paste-buffer`,
+  `hc keys|send|interrupt`, `session-host.sh keys|type` and `session-host.sh send` to a stage
+  address, and `guard-teamlead-bash.sh` refuses the same and any command writing a script-owned
+  file; both read command text, so a path or command built at run time can pass. Hard enforcement
+  (the Claude Code sandbox, a separate OS user for the lead) comes after the first live runs, which
+  are held in the harness's own development repository, not in a production project.
 
 ## 8. Acceptance
 

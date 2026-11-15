@@ -16,7 +16,7 @@ export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions" "$CLONE/.claude/hooks"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
-cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/"
+cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 # The doorbell's socket sender, from the main checkout (the seed carries only team-*.sh).
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
 printf '## Ticket\nExport.\n\n## Not ordered\nnone stated\n\n## In-flight work\n- none\n' > "$WORK/brief.md"
@@ -279,7 +279,7 @@ echo "team-smoke-22: (i) team-watch filter OK"
 # ---- (k) team-next archives the run-scoped root files; the next ticket takes the no-lead branch ---
 reset; lead_json
 for f in teamlead.settings.json round verdict-acked lead-dead relaunch-lead; do echo x > "$TD/$f"; done
-rm -f "$CLONE/.claude/hooks/guard-teamlead-write.sh"
+rm -f "$CLONE/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/guard-teamlead-bash.sh"
 mkdir -p "$MAIN/.agents/team/registry"; echo '{}' > "$MAIN/.agents/team/registry/alfa-coder.json"; echo '{}' > "$LREG"
 run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop
 expect 0 "was AB-1500" "(k) team-next"
@@ -342,7 +342,7 @@ chk --classes; expect 0 "policy-class: allow-offline" "(j) legacy --classes keep
 for a in class teamlead; do
   chk "$a"; expect 1 "human-only: settings edit" "(j) settings edit, authority $a"
 done
-chk operator; expect 0 "policy-authority: operator" "(j) settings edit, operator"
+chk operator; expect 1 "human-only: settings edit" "(j) settings edit, operator (the Operator answers in the window)"
 mkdir -p "$CLONE/.claude/team/sessions"; echo '{"permissions": {"allow": []}}' > "$CLONE/.claude/team/sessions/TeamLead.settings.json"
 editp "$CREAL/.claude/team/sessions/TeamLead.settings.json" .claude/team/sessions/TeamLead.settings.json \
   '"allow": []' '"allow": ["Bash(*)"]'
@@ -352,7 +352,7 @@ echo "team-smoke-22: (j) settings edit human-only OK"
 # ---- (k) a project-added ask is human-only; a baseline ask is the lead's --------------------------
 bashp "az webapp restart --name x"; chk teamlead
 expect 1 "human-only: production ask: Bash(az webapp restart*)" "(k) project-added ask, teamlead"
-chk operator; expect 0 "policy-authority: operator" "(k) project-added ask, operator"
+chk operator; expect 1 "human-only: production ask: Bash(az webapp restart*)" "(k) project-added ask, operator"
 bashp "git rm old.txt"; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline ask, teamlead"
 chk class; expect 1 "class:" "(k) baseline ask, class without a matching class"
 mv "$MAIN/.claude/team/baseline-ask.json" "$WORK/baseline.json"
@@ -364,6 +364,12 @@ editp "$CREAL/infra/main.tf" infra/main.tf 'size = 1' 'size = 2'; chk teamlead
 expect 1 "human-only: production ask: Edit(infra/**)" "(k) project-added Edit rule"
 editp "$CREAL/.env.local" .env.local 'A=1' 'A=2'; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline Edit rule"
 chk class; expect 1 "class:" "(k) baseline Edit rule, class"
+chk operator; expect 0 "policy-authority: operator" "(k) baseline Edit rule, operator relay"
+jq -e 'index("Edit(**/.env.*)")' "$MAIN/.claude/team/baseline-ask.json" >/dev/null \
+  || fail "(k) Edit(**/.env.*) left the baseline: it would become human-only (owner: the lead approves it)"
+# .env itself is a deny rule of the starter: Claude Code shows no prompt for it, so no authority can.
+jq -e '.permissions.deny | index("Edit(**/.env)")' "$SRC/.claude/settings.json" >/dev/null \
+  || fail "(k) the starter no longer denies Edit(**/.env)"
 # A recursive rm is the lead's only inside the clone or a temp root; git remote add is egress.
 # The fixture lives under the system temp dir: a separate TMPDIR keeps the clone outside "temp".
 OLD_TMPDIR="$TMPDIR"; export TMPDIR="$WORK/tz"; mkdir -p "$TMPDIR" "$CLONE/sub"
@@ -375,11 +381,11 @@ for c in "rm -rf ~/x" "rm -rf /usr/local/x" "rm -rf ../x" "rm -rf \$HOME/x" "sud
   bashp "$c"; chk teamlead; expect 1 "human-only: irreversible delete outside the clone" "(k) rm outside: $c"
 done
 bashp "rm -rf ~/x"; chk class; expect 1 "human-only: irreversible delete" "(k) rm outside, class"
-chk operator; expect 0 "policy-authority: operator" "(k) rm outside, operator"
+chk operator; expect 1 "human-only: irreversible delete" "(k) rm outside, operator"
 for c in "rm -rf .git/objects" "rm -rf .git/refs/heads/x"; do
   bashp "$c"
   for a in teamlead class; do chk "$a"; expect 1 "human-only: irreversible delete inside the git dir" "(k) $c, $a"; done
-  chk operator; expect 0 "policy-authority: operator" "(k) $c, operator"
+  chk operator; expect 1 "human-only: irreversible delete inside the git dir" "(k) $c, operator"
 done
 bashp "rm -rf .GIT/objects"; chk teamlead; expect 1 "inside the git dir" "(k) case-folded git dir path"
 for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/" "rm -rf .Git" "rm -rf .GIT/" "rm -rf /"; do
@@ -394,7 +400,7 @@ done
 export TMPDIR="$WORK/tz"
 bashp "git remote add x https://example.invalid/r.git"
 for a in teamlead class; do chk "$a"; expect 1 "human-only: egress: git remote add" "(k) git remote add, $a"; done
-chk operator; expect 0 "policy-authority: operator" "(k) git remote add, operator"
+chk operator; expect 1 "human-only: egress: git remote add" "(k) git remote add, operator"
 bashp "rm -rf build/"; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline rm -rf inside, waived"
 export TMPDIR="$OLD_TMPDIR"
 bashp "git status"; chk teamlead; expect 0 "" "(k) no match, nothing to waive"
@@ -410,7 +416,7 @@ done
 set +e; $PCM "$CLONE" --strict --authority operator < "$WORK/pane" > "$WORK/out" 2>&1; RC=$?; set -e
 expect 1 "no transcript" "(never) no transcript"
 bashp "curl https://example.invalid/x"; chk teamlead; expect 1 "human-only: egress: curl" "(egress) teamlead"
-chk operator; expect 0 "policy-authority: operator" "(egress) operator"
+chk operator; expect 1 "human-only: egress: curl" "(egress) operator"
 echo "team-smoke-22: authority never-waived + egress OK"
 
 # ---- sender: legacy refusal, caller rules, decision, answers.md, the .answered marker -------------
@@ -436,7 +442,12 @@ expect 9 "human-only: settings edit" "(j) sender maps human-only to exit 9"
 sed -i.bak 's/^status: pending/status: answered/' "$RD/decisions/d-1.md"
 : > "$STUB_LOG"
 lead alfa coder yes --authority operator --why "Operator approved" --decision "$RD/decisions/d-1.md"
-expect 0 "sent yes" "(l) operator with an answered decision"
+expect 9 "human-only: settings edit" "(l) an operator relay never answers a human-only prompt"
+[ "$(grep -c '^tmux send-keys' "$STUB_LOG")" = 0 ] || fail "(l) keys sent on a human-only relay"
+grep -q '^status: answered' "$RD/decisions/d-1.md" || fail "(l) a refused relay spent the decision"
+bashp "git rm old.txt"
+lead alfa coder yes --authority operator --why "Operator approved" --decision "$RD/decisions/d-1.md"
+expect 0 "sent yes" "(l) operator relay of a baseline ask"
 grep -q "\[coder 1\] .* → yes — Operator approved \[authority operator\] \[decision d-1\]$" "$RD/answers.md" \
   || { cp "$RD/answers.md" "$WORK/out"; fail "(p) operator answer not in answers.md"; }
 # A blocked coder: a say on the lead's authority writes the stop's marker; a refused one does not.
@@ -494,7 +505,7 @@ jq -e '.gate == "decision" and .verdict == "escalate" and .notify == "human_deci
   and (.ref | endswith("/decisions/d-2.md")) and .for == "coder-1-1.json"' "$V1" >/dev/null || fail "(m) escalate verdict"
 ldec open alfa --source nothere.json --question q; expect 1 "verdict was refused" "(m) a source outside the run"
 rm -f "$DLD/d-3.md"
-cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/"
+cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "" "(m) runner polls"
 [ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2: Allow the coder" "$WORK/notify.log" \
@@ -621,5 +632,67 @@ said_in_lead "d-8 yes, d-9 no"
 ldec answer alfa d-8 --text yes; expect 0 "answered: d-8" "(once-ev) a message naming d-8"
 ldec answer alfa d-9 --text no; expect 0 "answered: d-9" "(once-ev) the same message names d-9"
 echo "team-smoke-22: single-use evidence OK"
+
+# ---- (w) a human-only prompt is the Operator's, in the stage window; only the runner closes it -----
+# d-6 (opened from req-1 in (i)) was already resolved by the runner of a later section: the stage's
+# own transcript got the result of that call. The cases below use fresh copies of it.
+grep -q '^answer_in: coder$' "$DLD/d-6.md" || fail "(w) answer_in not written from the request"
+grep -q '^answered_via: stage-window ' "$DLD/d-6.md" || fail "(w) the live runner did not resolve d-6"
+win() {  # win <fn> [args…] → one runner function in the runner's shell; doorbells to $WORK/bells
+  set +e; (cd "$CREAL" && TEAM=alfa RUN="$RUN_ID" CLONE="$CREAL" root="$MAIN" MODE=normal
+    . "$MAIN/.claude/lib/team-lib.sh"; TD="$(team_dir)"; . "$MAIN/.claude/lib/team-run-lead.sh"
+    team_session_doorbell() { echo "$3" >> "$WORK/bells"; }
+    "$@") > "$WORK/out" 2>&1; RC=$?; set -e
+}
+st() { sed -n 's/^status: //p' "$DLD/$1.md"; }
+res() {  # res <tool_use id> <entry fields> — the stage's own answer to its prompt, in its transcript
+  jq -cn --arg id "$1" --argjson x "$2" '{type: "user", uuid: ("u-" + $id),
+    message: {content: [{type: "tool_result", tool_use_id: $id, content: "ok"}]}} * $x' >> "$T"
+}
+mkd() {  # mkd <n> <tool_use id> [no-call] → d-<n>: a pending copy of d-6 bound to another call
+  sed -e "s/^id: d-6$/id: d-$1/" -e "s/^bind_event: .*/bind_event: $2/" -e '/^## Answer/,$d' \
+    -e "s/^status: .*/status: pending/" -e '/^answered_at: /d' -e '/^answered_via: /d' -e '/^answer_outcome: /d' "$DLD/d-6.md" > "$DLD/d-$1.md"
+  [ -n "${3:-}" ] || jq -cn --arg id "$2" '{type: "assistant", uuid: ("a-" + $id),
+    message: {content: [{type: "tool_use", id: $id, name: "Bash", input: {command: "curl x"}}]}}' >> "$T"
+}
+mkd 30 tu-30; : > "$WORK/bells"
+said_in_lead "d-30 yes"
+ldec answer alfa d-30 --text yes; expect 7 "answers it in the coder window" "(w) decision answer refused"
+[ "$(st d-30)" = pending ] && ! grep -q '^## Answer' "$DLD/d-30.md" || fail "(w) a refused answer changed d-30"
+ldec withdraw alfa d-30 --why "not needed"; expect 7 "answers it in the coder window" "(w) withdraw refused"
+lead alfa coder yes --authority operator --why w --decision "$DLD/d-30.md"; expect 7 "answers it in the coder window" "(w) relay refused"
+win lead_window; [ "$(st d-30)" = pending ] || fail "(w) resolved with no answer in the window"
+win lead_waiting coder 1; [ "$RC" = 0 ] || fail "(w) the stage clock runs while the Operator is asked"
+mkd 20 tu-20; mkd 21 tu-21; mkd 22 tu-22; mkd 23 tu-23 no-call
+res tu-30 '{"permissionDecision": {"decision": "accept", "source": "user_temporary"}}'
+res tu-20 '{"permissionDecision": {"decision": "accept", "source": "user_permanent"}}'
+res tu-21 '{"toolDenialKind": "user-rejected", "message": {"content": [{"type": "tool_result", "tool_use_id": "tu-21", "is_error": true, "content": "The user doesn'"'"'t want to proceed with this tool use. The tool use was rejected"}]}}'
+win lead_window
+for x in "d-30 approved" "d-20 approved (rule added)" "d-21 rejected"; do
+  d="${x%% *}"; o="${x#* }"
+  [ "$(st "$d")" = resolved ] && grep -qxF "answer_outcome: $o" "$DLD/$d.md" \
+    && grep -q '^answered_via: stage-window tu-' "$DLD/$d.md" || fail "(w) $d not resolved as $o: $(cat "$DLD/$d.md")"
+  grep -qF "→ $o — Operator in the stage window [authority operator-window] [decision $d]" "$RD/answers.md" \
+    || fail "(w) $d: no answers.md line"
+  grep -qxF "human-only coder: $d answered in the stage window — $o" "$WORK/bells" || fail "(w) $d: the lead was not rung"
+done
+[ "$(st d-22)" = pending ] || fail "(w) an open prompt was closed"
+[ "$(st d-23)" = withdrawn ] && grep -q '^prompt gone (the runner)$' "$DLD/d-23.md" || fail "(w) a call never made was not withdrawn"
+cp "$TD/session.json" "$WORK/sj1"; jq '.attempt = 2' "$WORK/sj1" > "$TD/session.json"
+win lead_window; cp "$WORK/sj1" "$TD/session.json"
+[ "$(st d-22)" = withdrawn ] || fail "(w) a prompt of a replaced attempt was not withdrawn"
+grep -qxF "human-only coder: d-22 withdrawn — prompt gone" "$WORK/bells" || fail "(w) no doorbell for prompt gone"
+win lead_waiting coder 1; [ "$RC" = 1 ] || fail "(w) the stage clock still stopped after the runner closed the decisions"
+[ "$(python3 -I "$MAIN/.claude/lib/team_prompt.py" outcome "$WORK/none.jsonl" tu-1)" = unknown ] || fail "(w) outcome of an unreadable transcript"
+# The Operator is pointed at the stage window, not the lead's.
+mkd 31 tu-31; rm -f "$WORK/notify.log"
+jq -n --arg r "$DLD/d-31.md" '{gate: "decision", verdict: "escalate", notify: "human_decision", ref: $r,
+  message: "d-31: coder: Bash curl x"}' > "$RD/teamlead-decision-99.json"
+win eval ". '$MAIN/.claude/lib/team-channel.sh'; sess_name() { team_tmux_name alfa \"\$1\"; }
+  rec() { jq -r --arg f \"\$2\" '.[\$f] // empty' \"\$1\"; }; lead_notify"
+grep -q -- "human_decision .*d-31.* — answer in .*alfa-coder" "$WORK/notify.log" 2>/dev/null \
+  || fail "(w) the notification does not name the stage window: $(cat "$WORK/notify.log" 2>/dev/null) $(cat "$WORK/out")"
+rm -f "$RD/teamlead-decision-99.json"
+echo "team-smoke-22: (w) human-only prompts answered in the stage window OK"
 
 echo "team-smoke-22: OK"

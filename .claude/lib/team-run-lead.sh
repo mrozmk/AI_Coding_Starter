@@ -20,7 +20,8 @@ team_lead_base_ok() {
   local f
   for f in .claude/team/prompts/teamlead.md .claude/hooks/guard-teamlead-write.sh \
     .claude/lib/team-lead.sh .claude/lib/team-lead-lib.sh .claude/lib/team-verdict.sh \
-    .claude/hooks/lib/memory-domain.sh .claude/lib/team-lead-decision.sh; do
+    .claude/hooks/lib/memory-domain.sh .claude/lib/team-lead-decision.sh \
+    .claude/hooks/guard-teamlead-bash.sh; do
     [ -f "$CLONE/$f" ] || { echo "no $f"; return 1; }
   done
   grep -q 'review)' "$CLONE/.claude/lib/team-record.sh" || { echo "no review verdict in team-record.sh"; return 1; }
@@ -114,6 +115,9 @@ lead_stop() {  # lead_stop <record> — a stage's blocked/failed record: ack it 
 # runner sees it too.
 lead_waiting() {
   local a r
+  # A human-only prompt waits on the Operator in the stage window: the clock stops until the runner
+  # closes its decision (lead_window).
+  ! lead_window_pending "$1" "$2" || return 0
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
   case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
   r="$TD/runs/$RUN/$a"
@@ -134,6 +138,7 @@ lead_poll() {
     touch "$TD/lead-dead"
     echo "TeamLead died — /start-team $TEAM relaunches it"
   fi
+  lead_window
   lead_notify
 }
 
@@ -143,7 +148,7 @@ lead_poll() {
 # written event or a failed notify.sh, until #41 removes it. LEAD_NOTIFIED keeps one call per verdict per runner process.
 LEAD_NOTIFIED=" "
 lead_notify() {
-  local f d ev id q out rc p h
+  local f d ev id q out rc p h w
   for f in "$TD/runs/$RUN"/teamlead-*-*.json; do
     [ -f "$f" ] || continue
     ev="$(rec "$f" notify)"; [ -n "$ev" ] || continue
@@ -151,11 +156,12 @@ lead_notify() {
     d="$(rec "$f" ref)"; id=""; q=""
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
     team_channel_names "$root" 2>/dev/null || { TEAM_CHANNEL_NOTIFIER=none; TEAM_CHANNEL_NAMES_ROOT="$root"; }
-    h="$(sh_hint "$(sess_name lead)" 2>/dev/null)" || h="tmux attach -t $(sess_name lead)"  # no host: never kill the runner
+    w="lead"; [ ! -f "$d" ] || w="$(lfm "$d" answer_in)"; w="${w:-lead}"  # human-only: the stage window
+    h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" || h="tmux attach -t $(sess_name "$w")"  # no host: never kill the runner
     p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
     rc=0; out="$(bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
       --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \
-      --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name lead)" \
+      --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name "$w")" \
       --hint "$h" --ref "$d" --source runner 2>/dev/null)" || rc=$?
     LEAD_NOTIFIED="$LEAD_NOTIFIED$RUN/$(basename "$f") "
     # A failed sender must not silence the Operator: the legacy sink is the only channel that reaches a person yet.
@@ -208,6 +214,65 @@ lead_attention() {
     > "$d/.req-$n.json.tmp"
   mv "$d/.req-$n.json.tmp" "$d/req-$n.json"
   team_session_doorbell "$TD" lead "human-only $role: $tool $cmd — open a decision for req-$n"
+}
+
+lfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
+lfm_set() {  # lfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
+  awk -v k="$2" -v v="$3" '/^---$/ { n++; if (n == 2 && !done) print k ": " v; print; next }
+    n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
+  mv "$1.tmp" "$1"
+}
+
+# lead_window_pending <role> <attempt> — a pending human-only decision (answer_in) of that attempt.
+lead_window_pending() {
+  local f
+  for f in "$TD/runs/$RUN"/decisions/d-*.md; do
+    [ -f "$f" ] && [ "$(lfm "$f" status)" = pending ] && [ "$(lfm "$f" answer_in)" = "$1" ] \
+      && [ "$(lfm "$f" bind_attempt)" = "$2" ] && return 0
+  done
+  return 1
+}
+
+# lead_window — every poll: only the runner closes a human-only prompt's decision (answer_in), from
+# the stage's own transcript. The Operator's answer in the stage window resolves it (approved,
+# approved (rule added), rejected); a prompt that is no longer open, or whose stage session or
+# attempt was replaced, withdraws it (prompt gone). The lead can neither answer nor withdraw it.
+lead_window() {
+  local f role id sid att t out q did
+  for f in "$TD/runs/$RUN"/decisions/d-*.md; do
+    [ -f "$f" ] && [ "$(lfm "$f" status)" = pending ] || continue
+    role="$(lfm "$f" answer_in)"; [ -n "$role" ] || continue
+    id="$(lfm "$f" bind_event)"; sid="$(lfm "$f" bind_session_id)"; att="$(lfm "$f" bind_attempt)"
+    did="$(lfm "$f" id)"; out=pending
+    if [ -n "$id" ] && [ "$id" != - ] && [ "$id" != ambiguous ]; then
+      t="$(team_role_transcript "$CLONE" "${sid:--}" "$(session_json claude_config_dir)")"
+      out="$(python3 -I "$root/.claude/lib/team_prompt.py" outcome "${t:--}" "$id" 2>/dev/null)" || out=unknown
+    else
+      # Unbound prompt: no outcome to read; once the stage has no open call, the prompt is gone
+      # (otherwise this decision, which nobody else may close, would stop the clock for the attempt).
+      t="$(team_role_transcript "$CLONE" "${sid:--}" "$(session_json claude_config_dir)")"
+      [ "$(python3 -I "$root/.claude/lib/team_prompt.py" pending-tool "${t:--}" 2>/dev/null)" != "{}" ] \
+        || out=gone
+    fi
+    # An open prompt whose session or attempt is no longer the stage's can never be answered.
+    if [ "$out" = pending ] || [ "$out" = unknown ]; then
+      [ "$sid" = "$(session_json session_id)" ] && [ "$att" = "$(session_json attempt)" ] || out=gone
+    fi
+    case "$out" in pending|unknown|"") continue ;; esac
+    if [ "$out" = gone ]; then
+      lfm_set "$f" status withdrawn; lfm_set "$f" withdrawn_at "$(team_utc)"
+      printf '\n## Withdrawn\nprompt gone (the runner)\n' >> "$f"
+      team_session_doorbell "$TD" lead "human-only $role: $did withdrawn — prompt gone"
+      continue
+    fi
+    lfm_set "$f" status resolved; lfm_set "$f" answered_at "$(team_utc)"
+    lfm_set "$f" answered_via "stage-window $id"; lfm_set "$f" answer_outcome "$out"
+    printf '\n## Answer\n%s — by the Operator in the %s window\n' "$out" "$role" >> "$f"
+    q="$(sed -n '/^## Question$/{n;p;q;}' "$f")"
+    printf -- '- %s [%s %s] %s → %s — Operator in the stage window [authority operator-window] [decision %s]\n' \
+      "$(team_utc)" "$role" "$att" "$q" "$out" "$did" >> "$TD/runs/$RUN/answers.md"
+    team_session_doorbell "$TD" lead "human-only $role: $did answered in the stage window — $out"
+  done
 }
 
 lead_status() {  # → alive|dead|none — session <sid> — pending <n>
