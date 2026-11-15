@@ -13,7 +13,13 @@ set -euo pipefail
 . "$(dirname "$0")/worker-lib.sh"
 . "$(dirname "$0")/team-channel.sh"   # ensure_mail_home
 
-WORKER_ARTIFACTS="${WORKER_ARTIFACTS:-$HOME/.agent-mail/worker}"
+# The artifacts root: ~/.agent-ops/worker (the team layer's machine state, never the agent-mail
+# home); an older install's ~/.agent-mail/worker is kept while it exists — no migration and no new
+# write root for a Worker whose Codex host was granted that one.
+if [ -z "${WORKER_ARTIFACTS:-}" ]; then
+  if [ -d "$HOME/.agent-mail/worker" ]; then WORKER_ARTIFACTS="$HOME/.agent-mail/worker"
+  else WORKER_ARTIFACTS="$HOME/.agent-ops/worker"; fi
+fi
 WORKER_ARTIFACT_MAX_MB="${WORKER_ARTIFACT_MAX_MB:-50}"
 WORKER_LOCK_SECS="${WORKER_LOCK_SECS:-30}"
 W_PROBLEMS=()
@@ -252,7 +258,10 @@ start_resume() {
 w_activate() {
   local a="$WD/active/assignment.json" art
   art="$(w_get "$a" artifacts)"
-  case "$art/" in "$HOME/.agent-mail/"*) ensure_mail_home >/dev/null ;; esac
+  case "$art/" in
+    "$HOME/.agent-mail/"*) ensure_mail_home >/dev/null ;;
+    "$HOME/.agent-ops/"*) (umask 077; mkdir -p "$art") ;;   # new dirs 0700, as the mail home is
+  esac
   mkdir -p "$art"
   w_write "$a" '.state = "active"' "$a"
   echo "id:        $(w_get "$a" id)"

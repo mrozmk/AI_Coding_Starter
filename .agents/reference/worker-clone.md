@@ -13,7 +13,7 @@ the planned two-assignment reuse check separately; do not report it as passed be
 |---|---|
 | Clone | `$(dirname <main>)/$(basename <main>)-sol` — e.g. `~/code/acme-sol` |
 | State | `<git dir>/team-worker/`: `provisioned.json`, `op.lock/`, `active/`, `history/` |
-| Artifacts | `$WORKER_ARTIFACTS/<id>` — default `~/.agent-mail/worker/<id>` |
+| Artifacts | `$WORKER_ARTIFACTS/<id>` — default `~/.agent-ops/worker/<id>` (an existing `~/.agent-mail/worker/` is kept) |
 
 State lives in the git dir: it never dirties the tree, needs no `.gitignore` entry and is invisible
 to `team_clone_dirs` and `team_ticket_checks`, which look only for `.agents/team/team.json`.
@@ -28,7 +28,8 @@ Env overrides: `WORKER_ARTIFACTS`, `WORKER_ARTIFACT_MAX_MB` (50), `WORKER_LOCK_S
    profile's `teams.trunk`, as in `AGENTS.md`). The clone is detached at the base; that commit is
    the first settled tip.
 2. Ensure the worker's Codex host can write to the clone and the selected artifacts root
-   (default `~/.agent-mail/worker/`). Preserve existing approved mailbox and host
+   (`worker-next.sh init` prints the resolved one: `~/.agent-ops/worker/`, or an existing
+   `~/.agent-mail/worker/`). Preserve existing approved mailbox and host
    temporary-directory access; these two task paths do not replace the host's whole permission
    profile. The worker runs with `CODEX_HOME=<codex-home>` (the value of `.claude/codex-profile`,
    as in `AGENTS.md`). Use the thread cwd or narrow writable roots; do not widen to `~` or full

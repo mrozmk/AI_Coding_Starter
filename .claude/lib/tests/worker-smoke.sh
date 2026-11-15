@@ -9,9 +9,9 @@ W="bash .claude/lib/worker-next.sh"
 SOL="$WORK/main-sol"
 WD="$SOL/.git/team-worker"
 DEV=origin/develop
-# The default artifacts root lives in the mail home; a home made earlier at 0755 must come out 0700.
-mkdir -p "$HOME/.agent-mail"; chmod 755 "$HOME/.agent-mail"
-export WORKER_ARTIFACTS="$HOME/.agent-mail/worker" WORKER_LOCK_SECS=1
+# WORKER_ARTIFACTS stays unset: the default root ~/.agent-ops/worker, never the agent-mail home
+# (#52). The variable below only names that root for the checks; worker-next.sh resolves it itself.
+unset WORKER_ARTIFACTS; WORKER_ARTIFACTS="$HOME/.agent-ops/worker"; export WORKER_LOCK_SECS=1
 
 pr_done() {  # pr_done <status> <source sha> <branch>
   pr_json false "$2" succeeded refs/heads/develop "$2"
@@ -81,6 +81,7 @@ expect 1 "jq is required" "init without jq"
 [ ! -e "$SOL" ] || fail "init without jq created the clone"
 run "$MAIN/.claude" bash lib/worker-next.sh init $DEV
 expect 0 "clone:" "init from a subdirectory"
+has "and $WORKER_ARTIFACTS only" "$WORK/out" || fail "init does not name the resolved artifacts root"
 grep -qx worker-smoke-marker "$SOL/.git/info/exclude" || fail "init did not copy info/exclude"
 SOLP=$(cd "$SOL" && pwd -P)
 [ -f "$WD/provisioned.json" ] || fail "init wrote no provisioned.json"
@@ -108,7 +109,8 @@ ID1=$(field id)
 B0=$(git -C "$SOL" rev-parse origin/develop)
 head_on chore/AB-900-a "$B0"
 [ -d "$WORKER_ARTIFACTS/$ID1" ] || fail "start A made no artifacts dir"
-[ "$(stat -f %Lp "$HOME/.agent-mail")" = 700 ] || fail "start A left the mail home wider than 0700"
+[ "$(stat -f %Lp "$WORKER_ARTIFACTS")" = 700 ] || fail "start A made the artifacts root wider than 0700"
+[ ! -e "$HOME/.agent-mail" ] || fail "start A created ~/.agent-mail"
 run "$MAIN" $W status
 expect 0 "state: active" "status while A is active"
 has "id: $ID1" "$WORK/out" || fail "status lacks the assignment id"
@@ -224,12 +226,17 @@ expect 1 "reconcile before release" "release C with a foreign remote branch"
 git -C "$MAIN" push --quiet origin --delete chore/AB-902-c
 release "$ID3"
 expect 0 "outcome:     empty" "release C empty"
+# An older install's ~/.agent-mail/worker is kept while it exists; its home still comes out 0700.
+mkdir -p "$HOME/.agent-mail/worker"; chmod 755 "$HOME/.agent-mail"
 start AB-902 chore/AB-902-g $DEV --thread t3
 expect 0 "artifacts:" "restart AB-902"
 ID4=$(field id)
 [ "$ID4" != "$ID3" ] || fail "restart reused the id $ID3"
+[ -d "$HOME/.agent-mail/worker/$ID4" ] || fail "an existing ~/.agent-mail/worker was not kept"
+[ "$(stat -f %Lp "$HOME/.agent-mail")" = 700 ] || fail "the kept mail home is wider than 0700"
 release "$ID4"
 expect 0 "outcome:     empty" "release the AB-902 restart"
+rm -r "$HOME/.agent-mail"
 [ "$(count "$WD"/history/AB-902-*)" = 2 ] || fail "two AB-902 assignments not in history"
 start AB-903 chore/AB-903-d $DEV --thread t3
 expect 0 "artifacts:" "start D"
