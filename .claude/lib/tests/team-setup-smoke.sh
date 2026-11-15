@@ -700,6 +700,8 @@ for f in .claude/lib/roles.sh .claude/lib/roles-lib.sh .claude/commands/roles.md
   [ -f "$T/$f" ] || fail "25: $f not installed"
 done
 [ ! -e "$T/.claude/hooks/session-role.sh" ] || fail "25: session-role.sh installed"
+# agent-mail is an optional kit (#52): installing the team layer writes nothing under ~/.agent-mail.
+[ ! -e "$HOME/.agent-mail" ] || fail "25: the install created ~/.agent-mail"
 # Without teams.sessions the shipped roles apply: their contracts and templates are all there.
 (cd "$T" && ROLES_ROOT="$T" bash -c '. .claude/lib/roles-lib.sh && roles_validate && roles_list --standing') \
   > "$WORK/out" 2>&1 || fail "25: the shipped roles do not validate in a fresh target"

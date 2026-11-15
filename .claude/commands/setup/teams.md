@@ -20,7 +20,7 @@ Runs in the **target** repo root. `<starter-root>` is required: when it is missi
 
 ## Step 1 — Preflight
 
-`command -v tmux jq claude codex git python3 perl sqlite3` plus `teams.required_tools` when a profile exists (the hooks, the agent-mail tool and the runner need the last three). Anything missing: list it and STOP. If the profile has `build_check`, print the absolute paths it names and `test -e` each; a missing one is a **warning** (venv, `.hcc`), not a STOP.
+`command -v tmux jq claude codex git python3 perl` plus `teams.required_tools` when a profile exists (the hooks and the runner need the last two); `sqlite3` only when Step 5c installs the agent-mail kit. Anything missing: list it and STOP. If the profile has `build_check`, print the absolute paths it names and `test -e` each; a missing one is a **warning** (venv, `.hcc`), not a STOP.
 
 ## Step 2 — Plan
 
@@ -50,7 +50,9 @@ The runner refuses to start a role when `.claude/codex-profile` has no value lin
 
 **Claude home (optional).** `.claude/claude-profile` names the `CLAUDE_CONFIG_DIR` the harness launches every Claude session on — team roles, supervision roles and `supervisor-sessions.sh here`. No value line (the installer copies only the commented template) keeps today's behaviour: the launcher forwards its own `CLAUDE_CONFIG_DIR`, when set. Ask only when the project runs on its own Claude config dir (recommend `~/.claude-<project>`); write one line, validated like the Codex home. A declared dir that does not resolve makes every launcher refuse before a session starts.
 
-## Step 5c — Channel (agent-mail)
+## Step 5c — Optional — agent-mail kit (cross-machine mail)
+
+The team layer does not need agent-mail: role messages are inbox files with the session host's doorbell. This step is the opt-in kit for mail between machines, and it is the only path through `/setup:teams` that writes under `~/.agent-mail`. Run it when the profile has `teams.channel` or the target already has `.agents/team/channel.local.json` (an installed kit: everything below behaves as before); otherwise ask once via `AskUserQuestion` — "Skip (recommended)" first, then "Install the agent-mail kit" — and on Skip go to Step 6 and say "agent-mail kit: not installed (optional)" in the Report.
 
 Binds the project to its agent-mail box through the machine registry `~/.agent-mail/projects.json` (schema, protocol and modes: `.agents/reference/agent-mail.md`). Skipped under `--check` unless the target already has `.claude/lib/team-mail-setup.sh`; then only its `--dry-run` is shown. Names come from `teams.channel` in the profile (`project_code`, `mail_suffix`, `advisor`); when the block is missing, ask for `project_code` and `mail_suffix` (recommend a short upper-case code for both) and write them with `jq` like Step 5.
 
@@ -81,7 +83,7 @@ For every `conflict (shared — merge by hand)` line give one instruction: which
 
 ## Report (Polish)
 
-Status table, conflicts with instructions, the `alfa` clone path, the allow/ask permission note, the channel mode (reuse/extend/fresh, key, box) and the Reviewer step, and the reminder: **the profile must be committed and pushed to the trunk before the first `/start-team`** (clones read `origin/<trunk>`).
+Status table, conflicts with instructions, the `alfa` clone path, the allow/ask permission note, the agent-mail kit (not installed, or the channel mode reuse/extend/fresh, key, box and the Reviewer step), and the reminder: **the profile must be committed and pushed to the trunk before the first `/start-team`** (clones read `origin/<trunk>`).
 Then the next step, one of two:
 - **single window:** in the supervising window run `bash .claude/lib/team-watch.sh start` (one
   daemon + watchdog in tmux `<tmux_prefix>-team-watch[-dog]`, this session registered as the

@@ -88,6 +88,7 @@ done
 [ "$(jq -r '.program + " " + (.session_id | length | tostring)' "$REG/Fable.json")" = "claude 36" ] \
   || fail "(1) Fable record lacks program/session_id: $(cat "$REG/Fable.json")"
 [ "$(jq -r '.program // "none"' "$REG/Astra.json")" = none ] || fail "(1) Astra record names a program"
+[ ! -e "$HOME/.agent-mail" ] || fail "(1) up created ~/.agent-mail — agent-mail is an optional kit (#52)"
 clr; run "$MAIN" $RS up; expect 0 "Supervisor: already running" "(1) second up"
 for r in Fable Astra; do line "$r: already running" "$WORK/out" "(1) second up"; done
 [ "$(starts)" = 0 ] || fail "(1) the second up started something"

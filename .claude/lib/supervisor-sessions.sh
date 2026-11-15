@@ -84,12 +84,9 @@ materialize() {
     esac
   fi
   kf="$(kit_hooks_file)"
-  if [ -n "$kf" ]; then
+  if [ -n "$kf" ]; then   # the operator kit is optional: without it nothing is merged, silently
     kh="$(jq -ce '.hooks // {} | {Stop} | with_entries(select(.value | arrays))
       | select(length > 0)' "$kf" 2>/dev/null)" || kh=null
-  else
-    echo "warning: operator kit role-hooks.settings.json not installed —" \
-      "$r without the mail Stop guard" >&2
   fi
   mkdir -p "$d" && chmod 700 "$d"
   [ -f "$loc" ] || loc=/dev/null
