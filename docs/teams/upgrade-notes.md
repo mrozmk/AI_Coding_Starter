@@ -3,6 +3,26 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The Herdr strip is docked only by `install.sh --dock <layout>`
+
+**Before:** the mod's `mod.json` said `"place": "bottom"`, so Herdr docked the strip itself the first
+time it saw the mod: it wrapped the shown layout's root in a new column and moved the root's keys
+(`titlebar`, `traffic_lights`, the look) into the inner node, which brought back the system title
+bar as a band over the window.
+
+**Now:** `mod.json` says `"place": "none"`, so Herdr docks nothing by itself and a plain install
+changes no layout. `install.sh --dock <layout>` docks the strip into exactly that layout file
+(validated, backed up, rewritten atomically, the root keys kept on the root); `--undock <layout>`
+and `--rollback` remove exactly what it added. Herdr's own layouts (`main`, `terminals`, `win98`)
+are refused: clone one first.
+
+**Action:**
+- Re-run `bash .claude/team/herdr-mod/install.sh --dock <your layout>` (an Operator action).
+- A layout Herdr auto-docked before keeps that strip and its title band: restore it from its own
+  backup, or delete Herdr's wrapper by hand (the node whose children are the old root and a
+  `harness-notify` block, with the root keys moved back up). For Herdr's own `main`, Herdr restores
+  it on its next start.
+
 ## `/check-implementation` spawns two parallel finders
 
 **Before:** Step 1 ran `/code-review high --fix` and `/deep-review` inline, one after the other,
