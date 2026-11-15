@@ -330,6 +330,15 @@ expect 0 "ok Claude Code 2.1.318 — socket wire format verified on 2.1.318" "(5
 cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.keep"; printf '#!/usr/bin/env bash\necho broken; exit 1\n' > "$MAIN/.claude/lib/notify.sh"
 beat; run "$MAIN" $SS preflight; expect 1 "FAIL notifications — notify.sh --check exit 1: broken" "(5) a failing notify.sh --check"
 cp "$WORK/notify.keep" "$MAIN/.claude/lib/notify.sh"
+# A flush or a send holding the outbox lock never stalls or fails the row (the holder dies with the part).
+OBX="$HOME/.agent-comms/outbox"; mkdir -p "$OBX/events"; chmod 700 "$HOME/.agent-comms" "$OBX"
+KEEP_TRAP="$(trap -p EXIT | sed "s/^trap -- '//; s/' EXIT\$//")"; sleep 300 & LHOLD=$!
+trap "kill $LHOLD 2>/dev/null || true; $KEEP_TRAP" EXIT
+mkdir "$OBX/.flush.lock"; echo "$LHOLD" > "$OBX/.flush.lock/pid"
+t0=$SECONDS; beat; run "$MAIN" $SS preflight; expect 0 "ok notifications: config: missing" "(5) preflight with the outbox lock held"
+[ $((SECONDS - t0)) -lt 10 ] || fail "(5) preflight waited $((SECONDS - t0)) s for the outbox lock"
+has "outbox: 0 events (prune skipped: outbox busy)" "$WORK/out" || fail "(5) the notifications row on a busy outbox"
+kill "$LHOLD"; wait "$LHOLD" 2>/dev/null || true; trap "$KEEP_TRAP" EXIT; rm -rf "$OBX/.flush.lock"
 beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 1 "\"crossSessionInbound\": \"accept\" to $HOME/.claude/settings.json" "(5) bypass without crossSessionInbound"
 [ ! -e "$HOME/.claude/settings.json" ] || fail "(5) preflight wrote the user settings"

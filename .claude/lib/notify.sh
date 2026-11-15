@@ -7,7 +7,8 @@
 #   notify.sh flush [--now <epoch>]   resume pending deliveries (an interrupted send becomes
 #                          outcome_unknown, never re-sent); send held iMessage events after quiet hours
 #   notify.sh list [--since <days>]   one line per event: id, event, each channel's state
-#   notify.sh --check      one line per channel and one for the switch file
+#   notify.sh --check      one line per channel and one for the switch file; never waits for the
+#                          outbox lock (prune is skipped while a flush or send holds it)
 #   events: human_decision · abandon_decision (need --team --run --decision) ·
 #           unrepaired_failure · release (need --key, the operator record id). Nothing else.
 #
@@ -40,7 +41,7 @@ JOB="$HOME/Library/LaunchAgents/harness.notify-flush.plist"   # written by the n
 LABELS='{human_decision: "decision", abandon_decision: "abandon?", unrepaired_failure: "failure", release: "release"}'
 NOW=""   # --now, else NOTIFY_NOW, else the clock
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 crash() { [ "${NOTIFY_CRASH_AT:-}" != "$1" ] || exit 137; }   # tests: kill the process at a boundary
@@ -307,8 +308,10 @@ case "$CMD" in
           || echo "imessage warning: quiet.tz $QTZ is not the system zone $stz — the flush job fires at ${QEND} system time"
       else echo "$c off${w:+ — $w}"; fi
     done
-    [ ! -d "$OUT/events" ] || { outbox; lock; prune
-      echo "outbox: $(find "$OUT/events" -name '*.json' | wc -l | tr -d ' ') events"; }
+    # Read-only on a busy outbox: the switches and states are read without the lock, and prune runs
+    # only when the lock is free at once — a flush or a send in progress never stalls or fails --check.
+    [ ! -d "$OUT/events" ] || { outbox; pr=""; if lock_try 0; then prune; else pr=" (prune skipped: outbox busy)"; fi
+      echo "outbox: $(find "$OUT/events" -name '*.json' | wc -l | tr -d ' ') events$pr"; }
     exit 0 ;;
   flush)
     [ $# -eq 0 ] || { [ $# -eq 2 ] && [ "$1" = --now ] && [[ "$2" =~ ^[0-9]+$ ]] || usage; NOW="$2"; }
