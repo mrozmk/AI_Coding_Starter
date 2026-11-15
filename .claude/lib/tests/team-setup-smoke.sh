@@ -665,6 +665,11 @@ jq -e '[.hooks.SessionStart[] | .hooks[] | select((.command | test("session-regi
   || fail "24: session-registry.sh is not registered once"
 jq -e '[.hooks.UserPromptSubmit[] | .hooks[] | select((.command | test("inbox-count.sh")) and .timeout == 3
     and (.async // false) == false)] | length == 1' "$S" >/dev/null || fail "24: inbox-count.sh is not registered once"
+jq -e '[.hooks.SessionEnd[] | select(has("matcher") | not) | .hooks[]
+    | select((.command | test("session-registry.sh")) and .timeout == 5 and (.async // false) == false)]
+    | length == 1' "$S" >/dev/null || fail "24: session-registry.sh is not registered once on SessionEnd"
+jq -e '[.hooks.SessionEnd[] | .hooks[] | select(.command | test("session-registry.sh"))] | length == 1' \
+  "$ST/.claude/settings.json" >/dev/null || fail "24: the starter's own settings lack the SessionEnd registry hook"
 [ -f "$T/.claude/hooks/session-registry.sh" ] && [ -f "$T/.claude/hooks/inbox-count.sh" ] \
   && [ ! -e "$T/.claude/hooks/teamlead-register.sh" ] || fail "24: hook files"
 setup "$T"

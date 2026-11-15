@@ -31,6 +31,7 @@ cat > "$WORK/bin/tmux" <<'STUB'
 #!/usr/bin/env bash
 echo "tmux $*" >> "$STUB_LOG"
 D="$STUB_TMUX_DIR"
+[ "$1" != -S ] || shift 2   # the hook names the server socket
 nm() { local a; for a in "$@"; do case "$a" in =*) a="${a#=}"; echo "${a%%:*}"; return ;; esac; done; }
 case "$1" in
   has-session) [ -f "$D/$(nm "$@")" ] && exit 0; echo "can't find session: $(nm "$@")" >&2; exit 1 ;;
@@ -107,7 +108,7 @@ run "$MAIN" $RS stop Fable; expect 0 "Fable: stopped" "(3) stop"
 run "$MAIN" $RS stop Fable; expect 0 "Fable: not running" "(3) stop again"
 run "$MAIN" $RS status; expect 0 "ROLE" "(3) status"
 grep -E '^Supervisor +tmux +alive +starting +1 ' "$WORK/out" >/dev/null || fail "(3) Supervisor status row"
-grep -E '^Fable +tmux +gone +gone +0 ' "$WORK/out" >/dev/null || fail "(3) Fable status row"
+grep -E '^Fable +tmux +stopped +gone +0 ' "$WORK/out" >/dev/null || fail "(3) Fable status row"
 grep -E '^Astra +tmux +alive +unknown ' "$WORK/out" >/dev/null || fail "(3) Astra status row"
 run "$MAIN" $RS place Supervisor; expect 0 "tmux attach -t smk-supervisor" "(3) place"
 run "$MAIN" $RS up TeamLead; expect 2 "not a standing, enabled role" "(3) up TeamLead"
@@ -237,5 +238,135 @@ jq -n --arg p "$$" '{address: "Fable", kind: "role", backend: "none", pid: ($p |
 hook dddddddd-0001 resume TEAM_SESSION_ROLE=Fable HARNESS_ADDRESS=Fable HARNESS_REGISTRY="$REG"
 line "Session role: Fable. Contract: .agents/reference/roles/advisor.md." "$WORK/out" "(9) here claim"
 echo "team-smoke-roles: (9) contract line OK"
+
+# ---- (10) runs: interrupted team runs from anchors + clone files, read-only --------------------------
+mkdir -p "$MP/.agents/team/anchors"
+T0=0
+mkteam() {  # mkteam <team> <run> [mode] → CL (the clone's .agents/team)
+  local c="$WORK/cl-$1"; mkdir -p "$c/.agents/team/runs/$2"
+  jq -n --arg t "$1" --arg m "${3:-brainstorm}" '{team: $t, mode: $m}' > "$c/.agents/team/team.json"
+  printf '%s\n' "$2" > "$c/.agents/team/run"
+  jq -n --arg t "$1" --arg c "$(cd "$c" && pwd -P)" '{team: $t, clone: $c}' > "$MP/.agents/team/anchors/$1.json"
+  CL="$c/.agents/team"
+}
+rec() {  # rec <dir> <role> <attempt> <verdict> [accepted] — each newer than the last
+  T0=$((T0 + 1)); local f="$1/$2-$3-2026111510$(printf '%04d' "$T0").json"
+  mkdir -p "$1"; jq -n --arg r "$2" --arg v "$4" '{role: $r, verdict: $v}' > "$f"
+  touch -t "2026111510$(printf '%02d' $((T0 / 60))).$(printf '%02d' $((T0 % 60)))" "$f"
+  [ -z "${5:-}" ] || touch "$f.accepted"
+}
+mkteam alfa alfa-20261115-100000; echo '{"role": "planner", "attempt": 1}' > "$CL/session.json"
+mkteam beta beta-20261115-090000; rec "$CL/runs/beta-20261115-090000" planner 1 done y
+  rec "$CL/runs/beta-20261115-090000" wrapup 1 done y
+mkteam gamma gamma-20261115-080000; echo '{}' > "$CL/runs/gamma-20261115-080000/closed.json"
+mkteam delta delta-20261115-070000; mkdir -p "$CL/lock"; echo $$ > "$CL/lock/pid"
+mkteam epsi epsi-20261115-060000; mkdir -p "$CL/lock"; echo 99999 > "$CL/lock/pid"
+  rec "$CL/runs/epsi-20261115-060000" planner 1 done y; rec "$CL/runs/epsi-20261115-060000" coder 1 blocked
+jq -n --arg c "$WORK/cl-zeta-gone" '{team: "zeta", clone: $c}' > "$MP/.agents/team/anchors/zeta.json"
+mkteam eta eta-x; printf 'eta/../x\n' > "$CL/run"
+mkteam theta theta-20261115-050000; jq -n '{run: "theta-20261115-050000", round: 2}' > "$CL/round"
+  rec "$CL/runs/theta-20261115-050000/r2" wrapup 1 done y
+mkteam iota iota-20261115-040000; jq -n '{run: "iota-20261115-040000", round: 2}' > "$CL/round"
+  rec "$CL/runs/iota-20261115-040000" wrapup 1 done y; rec "$CL/runs/iota-20261115-040000/r2" coder 1 failed
+mkteam kappa kappa-20261115-030000 cli
+clr; run "$MAIN" $RS runs; expect 0 "" "(10) runs"
+for l in "interrupted run alfa (alfa-20261115-100000, stage planner) — resume: /start-team alfa" \
+  "interrupted run epsi (epsi-20261115-060000, stage coder, blocked) — resume: /start-team epsi" \
+  "interrupted run iota (iota-20261115-040000, stage coder, failed) — resume: /start-team iota" \
+  "interrupted run kappa (kappa-20261115-030000, stage cli) — resume: /start-team kappa" \
+  "zeta: clone missing ($WORK/cl-zeta-gone)"; do line "$l" "$WORK/out" "(10) runs"; done
+for t in beta gamma delta eta theta; do noline "run $t " "$WORK/out" "(10) $t listed"; done
+[ "$(grep '^interrupted run' "$WORK/out" | head -n 1 | cut -d' ' -f3)" = kappa ] || fail "(10) not oldest first"
+[ ! -s "$STUB_LOG" ] || fail "(10) runs called the host: $(cat "$STUB_LOG")"
+[ -d "$WORK/cl-epsi/.agents/team/lock" ] || fail "(10) runs removed a stale lock"
+run "$MAIN" $RS runs --json; expect 0 "" "(10) --json"
+jq -e 'length == 4 and (map(.team) == ["kappa", "iota", "epsi", "alfa"])
+  and (.[2] | .state == "blocked" and .stage == "coder" and .resume == "/start-team epsi" and (.clone | length) > 0 and .run == "epsi-20261115-060000")' \
+  "$WORK/out" >/dev/null || fail "(10) --json shape: $(cat "$WORK/out")"
+rm -f "$MP"/.agents/team/anchors/*.json
+run "$MAIN" $RS runs; expect 0 "interrupted runs: none" "(10) none"
+echo "team-smoke-roles: (10) runs OK"
+
+# ---- (11) ad-hoc resume lines; status shows both lists ----------------------------------------------
+mkdir -p "$WORK/hcd"; export HC_BIN="$WORK/bin/hc"
+cat > "$WORK/bin/hc" <<'STUB'
+#!/usr/bin/env bash
+echo "hc $*" >> "$STUB_LOG"
+[ "$1" = get ] && [ -f "$STUB_HC_DIR/$2" ] || exit 1
+cat "$STUB_HC_DIR/$2"
+STUB
+chmod +x "$WORK/bin/hc"; export STUB_HC_DIR="$WORK/hcd"
+ad() {  # ad <address> <backend> <handle> <sid|""> [jq extra]
+  jq -n --arg a "$1" --arg b "$2" --arg h "$3" --arg s "$4" --arg cwd "$WORK/a b'c" --arg p "$$" \
+    "{address: \$a, kind: \"adhoc\", backend: \$b, handle: \$h, name: \$h, tab: null, cwd: \$cwd,
+      claude_pid: (\$p | tonumber)} + (if \$s == \"\" then {} else {session_id: \$s} end) ${5:-}" > "$REG/$1.json"
+}
+ad adhoc-smk-gone tmux smk-gone aaaaaaaa-0001
+echo claude > "$D/smk-live"; ad adhoc-smk-live tmux smk-live aaaaaaaa-0002
+echo bash > "$D/smk-shell"; ad adhoc-smk-shell tmux smk-shell aaaaaaaa-0003
+ad adhoc-smk-nosid tmux smk-nosid ""
+ad adhoc-smk-ended tmux smk-ended aaaaaaaa-0004 '+ {ended_at: "2026-11-15T10:00:00Z", end_reason: "prompt_input_exit"}'
+ad adhoc-t1 herdr t1 aaaaaaaa-0005 '+ {tab: "Work"}'
+echo '{"foreground": {"argv": ["/opt/bin/claude", "--x"]}}' > "$WORK/hcd/t2"; ad adhoc-t2 herdr t2 aaaaaaaa-0006
+echo '{"foreground": {"argv": ["zsh"]}}' > "$WORK/hcd/t3"; ad adhoc-t3 herdr t3 aaaaaaaa-0007
+clr; run "$MAIN" $RS status; expect 0 "ad-hoc sessions (gone):" "(11) status"
+line "interrupted runs:" "$WORK/out" "(11) status runs header"
+Q="cd '$WORK/a b'\''c' && claude --resume"
+for l in "  smk-gone — $Q aaaaaaaa-0001" "  smk-shell — $Q aaaaaaaa-0003" "  Work — $Q aaaaaaaa-0005" \
+  "  t3 — $Q aaaaaaaa-0007"; do line "$l" "$WORK/out" "(11) resume line"; done
+for x in aaaaaaaa-0002 aaaaaaaa-0004 aaaaaaaa-0006 smk-nosid; do noline "$x" "$WORK/out" "(11) $x"; done
+line "hc get t1 --json" "$STUB_LOG" "(11) the Herdr probe"
+noline "kill-session" "$STUB_LOG" "(11) a kept terminal was touched"
+rm -f "$D/smk-live" "$D/smk-shell" "$REG"/adhoc-*.json
+echo "team-smoke-roles: (11) ad-hoc lines OK"
+
+# ---- (12) SessionEnd marks the conversation's own ad-hoc record; the next start clears it -----------
+hk() {  # hk <sid> <event|""> [reason]
+  printf '{"session_id":"%s","hook_event_name":"%s","reason":"%s"}' "$1" "$2" "${3:-}" \
+    | (cd "$MAIN" && env CLAUDE_PROJECT_DIR="$MP" TMUX=/tmp/fake,1,0 TMUX_PANE=%1 STUB_SELF=smk-adh bash "$HOOKR") \
+    > "$WORK/out" 2>&1
+}
+hk bbbbbbbb-0001 SessionStart; [ -f "$REG/adhoc-smk-adh.json" ] || fail "(12) no ad-hoc record"
+hk bbbbbbbb-0099 SessionEnd other
+[ -z "$(jq -r '.ended_at // empty' "$REG/adhoc-smk-adh.json")" ] || fail "(12) another session id marked the record"
+hk bbbbbbbb-0001 SessionEnd prompt_input_exit
+[ "$(jq -r '.end_reason' "$REG/adhoc-smk-adh.json")" = prompt_input_exit ] \
+  && [ -n "$(jq -r '.ended_at // empty' "$REG/adhoc-smk-adh.json")" ] || fail "(12) SessionEnd did not mark it"
+run "$MAIN" $RS status; noline "claude --resume bbbbbbbb-0001" "$WORK/out" "(12) an ended conversation got a resume line"
+hk bbbbbbbb-0002 SessionStart
+[ -z "$(jq -r '.ended_at // empty' "$REG/adhoc-smk-adh.json")" ] \
+  && [ "$(jq -r .session_id "$REG/adhoc-smk-adh.json")" = bbbbbbbb-0002 ] || fail "(12) the next start kept ended_at"
+run "$MAIN" $RS status; line "smk-adh — cd '$MP' && claude --resume bbbbbbbb-0002" "$WORK/out" "(12) a crashed one"
+rm -f "$REG"/adhoc-*.json
+echo "team-smoke-roles: (12) SessionEnd OK"
+
+# ---- (13) resume <Role>; status `stopped` ----------------------------------------------------------
+run "$MAIN" $RS up Supervisor; expect 0 "Supervisor: started" "(13) start"
+S1="$(jq -r .session_id "$REG/Supervisor.json")"
+run "$MAIN" $RS resume Supervisor; expect 1 "Supervisor is running" "(13) alive"
+run "$MAIN" $RS stop Supervisor; expect 0 "" "(13) stop"
+run "$MAIN" $RS status; grep -E '^Supervisor +tmux +stopped +gone ' "$WORK/out" >/dev/null || fail "(13) stopped row"
+clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13) resume"
+grep '^tmux new-session.* -s smk-supervisor ' "$STUB_LOG" > "$WORK/res"
+line "claude --name 'Supervisor' --resume $S1 --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json; read" "$WORK/res" "(13) argv"
+noline "--session-id" "$WORK/res" "(13) a new session id"; noline "You are Supervisor" "$WORK/res" "(13) bootstrap line"
+run "$MAIN" $RS resume Astra; expect 2 "Codex roles restore fresh" "(13) Codex"
+rm -f "$REG/Fable.json"; run "$MAIN" $RS resume Fable; expect 1 "no previous session for Fable" "(13) no record"
+run "$MAIN" $RS stop all; expect 0 "" "(13) stop all"
+echo "team-smoke-roles: (13) resume, stopped OK"
+
+# ---- (14) restart simulation: roles, one interrupted run, two ad-hoc sessions, nothing resumed ------
+run "$MAIN" $RS; expect 0 "" "(14) roles up"
+mkteam alfa alfa-20261115-100000; echo '{"role": "coder", "attempt": 1}' > "$CL/session.json"
+ad adhoc-smk-a tmux smk-a cccccccc-0001; ad adhoc-smk-b tmux smk-b cccccccc-0002
+echo claude > "$D/smk-a"; echo claude > "$D/smk-b"
+rm -f "$D"/*   # the machine restarted: every session is gone
+clr; run "$MAIN" $RS; expect 0 "interrupted run alfa (alfa-20261115-100000, stage coder) — resume: /start-team alfa" "(14) up"
+for r in Supervisor Fable Astra; do line "$r: started" "$WORK/out" "(14) $r"; done
+[ "$(grep -c '^interrupted run ' "$WORK/out")" = 1 ] || fail "(14) interrupted-run lines"
+[ "$(grep -c ' && claude --resume cccccccc-000' "$WORK/out")" = 2 ] || fail "(14) ad-hoc lines"
+noline "team-run.sh" "$STUB_LOG" "(14) a runner was started"; noline "start-team" "$STUB_LOG" "(14) /start-team ran"
+[ "$(starts)" = 3 ] || fail "(14) $(starts) sessions started, expected 3"
+echo "team-smoke-roles: (14) restart simulation OK"
 
 echo "team-smoke-roles: OK"

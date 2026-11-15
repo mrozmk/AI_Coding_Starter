@@ -342,6 +342,9 @@ hook_retire "$H/session-role.sh\""
 hook_merge L SessionStart "$H/session-registry.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
 hook_merge I UserPromptSubmit "$H/inbox-count.sh\"" '[]' false '' '{"timeout":3}'
+# The same registry hook on SessionEnd marks an ad-hoc conversation that ended normally (after L, so
+# L's own check sees its SessionStart entry first).
+sync_merge E "$H/session-registry.sh\"" 5 SessionEnd ''
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '

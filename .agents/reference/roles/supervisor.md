@@ -78,3 +78,11 @@ Reconcile from files, never from memory:
 `bash .claude/lib/roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` request, then `/start-team <team>`).
+
+## Not restored
+
+After a crash or reboot `/roles` restores the standing roles, lists the interrupted team runs and
+prints the ad-hoc resume lines. It does **not** restore: the conversation context of any role by
+default (`roles.sh resume <Role>` on request); open dialogs and half-delivered answers (the runner and
+the TeamLead re-derive them from the records); tmux scrollback; Codex conversations; sessions of other
+checkouts; Herdr placement of ad-hoc tabs; the retired wake loops, team-watch daemon and dashboard.

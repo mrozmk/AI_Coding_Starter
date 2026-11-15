@@ -413,6 +413,15 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-registry.sh\"",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }

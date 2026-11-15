@@ -166,13 +166,23 @@ missing (<why>)`.
 
 ## Morning / after a restart
 
-**After a machine restart:** `/roles` in any session in the main checkout (or
-`bash .claude/lib/roles.sh` in a terminal) → every missing standing role fresh (a dead `; read`
-pane is replaced, running roles — also one taken with `roles.sh here` — are left alone), one line
-per role, the `tmux attach -t <session>` lines, and `This window is not a role — close it.` when the
-launching tmux window is no role's. It starts no team-watch: while that still runs, start it with
-`bash .claude/lib/team-watch.sh start` (`/sessions-up` and `supervisor-sessions.sh up` are
-deprecated pointers to `/roles`).
+**After a crash or a machine restart:** run `/roles` in any session in the main checkout (or
+`bash .claude/lib/roles.sh` in a terminal):
+- every missing standing role starts fresh (a dead `; read` pane is replaced; a running role, also
+  one taken with `roles.sh here`, is left alone), one line per role, then the `tmux attach -t …`
+  lines;
+- every interrupted team run is listed (`interrupted run <team> (<run>, stage <s>[, blocked|failed])
+  — resume: /start-team <team>`). The command form asks which to resume and runs `/start-team` only
+  for the chosen ones; with no answer it resumes nothing. `roles.sh runs` lists them on their own;
+- every ad-hoc Claude session whose conversation is gone gets a paste-ready line
+  (`<tab or tmux name> — cd '<cwd>' && claude --resume <session id>`); one that ended normally does
+  not;
+- `bash .claude/lib/roles.sh resume <Role>` continues a gone Claude role's previous conversation
+  instead of a fresh one; plain `/roles` never resumes.
+
+It starts no team-watch: while that still runs, start it with `bash .claude/lib/team-watch.sh start`
+(`/sessions-up` and `supervisor-sessions.sh up` are deprecated pointers to `/roles`). What is not
+restored: [roles/supervisor.md](roles/supervisor.md#not-restored).
 
 **Overnight:** `/monitoring stop all` in the Supervisor at night, `/monitoring start all` in the
 morning; each role then gets its `(current state)`.

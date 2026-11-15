@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # The project's role sessions (teams.sessions): start what is missing, report, stop, take a window.
-# Usage: bash .claude/lib/roles.sh [up [<Role>]] | status | stop [<Role>|all] | here <Role> | place <address>
-#   up      start every standing, enabled role that is not running (idempotent, one at a time)
-#   status  per role: backend, alive|gone, state, inbox count, session id, last seen
+# Usage: bash .claude/lib/roles.sh [up [<Role>]] | status | stop [<Role>|all] | here <Role>
+#          | resume <Role> | runs [--json] | place <address>
+#   up      start every standing, enabled role that is not running (idempotent, one at a time),
+#           then list the interrupted team runs and the resume lines of gone ad-hoc sessions
+#   status  per role: backend, alive|gone|stopped, state, inbox, session id, last seen; the same lists
 #   stop    end a role (/exit, then a kill after 15 s); its record stays, marked stopped_at
 #   here    this plain terminal becomes <Role> (not from inside Claude Code)
+#   resume  start a gone Claude role on its previous conversation (claude --resume <session id>)
+#   runs    the interrupted team runs (read-only; resume one with /start-team <team>)
 #   place   put a window in its tab slot (tmux: prints how to look at it)
-# Each role's cli, model, effort, settings profile, contract and place: teams.sessions in
-# .claude/project-profile.json (roles-lib.sh). Exit: 0 ok · 1 a role failed or another /roles is
-# running · 2 usage or validation · 6 no session host.
+# Roles: teams.sessions in .claude/project-profile.json (roles-lib.sh). Exit: 0 ok · 1 a role failed
+# or another /roles is running · 2 usage or validation · 6 no session host.
 #   e.g. bash .claude/lib/roles.sh        then: bash .claude/lib/roles.sh status
 set -uo pipefail
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 LIB="$(cd "$(dirname "$0")" && pwd)"
 command -v jq >/dev/null 2>&1 || { echo "roles: jq is required" >&2; exit 1; }
 . "$LIB/session-host-lib.sh"
@@ -20,7 +23,7 @@ command -v jq >/dev/null 2>&1 || { echo "roles: jq is required" >&2; exit 1; }
 
 cmd="${1:-up}"; [ $# -eq 0 ] || shift
 case "$cmd" in
-  up|status|stop|here|place) ;;
+  up|status|stop|here|resume|runs|place) ;;
   -h|--help|help) usage ;;
   *) echo "roles: unknown verb '$cmd'" >&2; usage ;;
 esac
@@ -77,8 +80,10 @@ materialize() {
   return 1
 }
 
-# launch_cmd <role> <session id> → the one shell line the session runs. A Claude role keeps its
-# pane after an exit (`; read`, so an error stays readable; start replaces that pane next time).
+# launch_cmd <role> <session id> [resume] → the one shell line the session runs. A Claude role keeps
+# its pane after an exit (`; read`, so an error stays readable; start replaces that pane next time).
+# resume: `--resume <id>` and no bootstrap line (the conversation holds its role; the hook re-adds
+# the contract on source resume).
 launch_cmd() {
   local r="$1" m e s c
   m="$(roles_cfg "$r" model)" && e="$(roles_cfg "$r" effort)" || return 2
@@ -88,6 +93,10 @@ launch_cmd() {
     return 0
   fi
   s="$(roles_cfg "$r" settings)"
+  if [ "${3:-}" = resume ]; then
+    echo "claude --name $(sh_quote "$(claude_name "$r")") --resume $2 --model $m --effort $e${s:+ --settings .agents/team/watch/profiles/$r.settings.json}${TEAM_SESSIONS_CLAUDE_FLAGS:+ $TEAM_SESSIONS_CLAUDE_FLAGS}; read"
+    return 0
+  fi
   echo "claude --name $(sh_quote "$(claude_name "$r")") --session-id $2 --model $m --effort $e${s:+ --settings .agents/team/watch/profiles/$r.settings.json} ${TEAM_SESSIONS_CLAUDE_FLAGS:+$TEAM_SESSIONS_CLAUDE_FLAGS }-- $(sh_quote "$(boot "$r")"); read"
 }
 
@@ -124,6 +133,110 @@ window_line() {  # the window this ran in, when it is no role's terminal
     jq -e --arg h "$me" '.kind == "role" and (.handle == $h or .name == $h)' "$f" >/dev/null 2>&1 && return 0
   done
   echo "This window is not a role — close it."
+}
+
+# ---- restore: interrupted team runs ----------------------------------------------------------------
+# roles_runs → one JSON object per line: {team, run, stage, state, clone, resume} for every run that is
+# not finished and whose runner is dead, or {team, clone, missing: true}. Teams come from the main
+# checkout's anchors (trusted, with the clone's physical path); the clone's files are only read, and
+# its run id is checked before it names a path. The runner lock's owner decides liveness, never its
+# session (the runner frees its lock on every exit and its `; read` pane outlives it). Finished: the
+# run's closed.json, or the mode's last role done and accepted (snap_team / team_role).
+roles_runs() (
+  . "$LIB/team-lib.sh" && . "$LIB/team-modes.sh" || exit 1
+  for a in "$MAIN"/.agents/team/anchors/*.json; do
+    [ -f "$a" ] || continue
+    t="$(jq -r '.team // empty | strings' "$a" 2>/dev/null)"; c="$(jq -r '.clone // empty | strings' "$a" 2>/dev/null)"
+    [[ "$t" =~ ^[a-z0-9][a-z0-9-]*$ ]] && [ -n "$c" ] || continue
+    td="$c/.agents/team"
+    if [ ! -f "$td/team.json" ]; then jq -cn --arg t "$t" --arg c "$c" '{team: $t, clone: $c, missing: true}'; continue; fi
+    run="$(head -n 1 "$td/run" 2>/dev/null)"
+    [[ "$run" =~ ^[A-Za-z0-9-]+$ ]] || continue
+    [ ! -e "$td/runs/$run/closed.json" ] || continue
+    if [ -d "$td/lock" ]; then
+      p="$(cat "$td/lock/pid" 2>/dev/null || true)"
+      [[ "$p" =~ ^[0-9]+$ ]] && kill -0 "$p" 2>/dev/null && continue
+    fi
+    mode="$(team_mode "$td/team.json" 2>/dev/null)" || mode=""
+    roles="$(team_mode_roles "$mode" 2>/dev/null)" || roles=""
+    [ -n "$roles" ] || continue
+    last="$(echo $roles | awk '{print $NF}')"; first="$(echo $roles | awk '{print $1}')"
+    d="$td/runs/$(team_run_ref "$td" "$run")"
+    f="$(ls -1t "$d/$last"-*.json 2>/dev/null | head -n 1)"
+    if [ -n "$f" ] && [ "$(jq -r '.verdict // empty' "$f" 2>/dev/null)" = done ] && [ -e "$f.accepted" ]; then continue; fi
+    # The newest stage record (never a TeamLead verdict) gives the stage and its state.
+    nr="$(for x in $roles; do ls -1 "$d/$x"-*.json 2>/dev/null; done | while IFS= read -r x; do
+      printf '%s\t%s\n' "$(stat -f %m "$x" 2>/dev/null || stat -c %Y "$x")" "$x"; done | sort -rn | head -n 1 | cut -f2)"
+    stage="$(jq -r '.role // empty | strings' "$td/session.json" 2>/dev/null)"
+    case " $(echo $roles) " in *" $stage "*) ;; *) stage="" ;; esac
+    state=open
+    if [ -z "$stage" ] && [ -n "$nr" ]; then
+      stage="$(basename "$nr")"; stage="${stage%%-*}"
+      case "$(jq -r '.verdict // empty' "$nr" 2>/dev/null)" in blocked) state=blocked ;; failed) state=failed ;; esac
+    fi
+    [ -n "$stage" ] || stage="$first"
+    jq -cn --arg t "$t" --arg r "$run" --arg s "$stage" --arg st "$state" --arg c "$c" \
+      '{team: $t, run: $r, stage: $s, state: $st, clone: $c, resume: "/start-team \($t)"}'
+  done
+)
+
+# runs_report [--json] — oldest run first (the id ends in YYYYMMDD-HHMMSS; a team name may hold `-`).
+runs_report() {
+  local all
+  all="$(roles_runs | jq -s 'map(select(.missing | not)) as $r | map(select(.missing)) as $m
+    | {runs: ($r | sort_by(.run[-15:])), missing: $m}')" || all='{"runs": [], "missing": []}'
+  if [ "${1:-}" = --json ]; then jq -c '.runs' <<<"$all"; return 0; fi
+  jq -r '.missing[] | "\(.team): clone missing (\(.clone))"' <<<"$all"
+  jq -r 'if (.runs | length) == 0 then "interrupted runs: none" else .runs[]
+    | "interrupted run \(.team) (\(.run), stage \(.stage)\(if .state == "open" then "" else ", \(.state)" end)) — resume: \(.resume)" end' <<<"$all"
+}
+
+# ---- restore: ad-hoc sessions -------------------------------------------------------------------
+# A recorded ad-hoc conversation is gone when its terminal is gone, when the terminal lives on with
+# another foreground program (a kept Herdr terminal can come back as a shell under the same id), or
+# when its claude pid is dead. A conversation that ended normally (ended_at, written by the
+# SessionEnd hook) gets no line; the terminal is never touched.
+hc_bin() {  # the Herdr CLI, or nothing; under TEAM_SMOKE=1 only a fixture binary
+  local p; p="$(command -v "${HC_BIN:-hc}" 2>/dev/null)" || return 1
+  if [ "${TEAM_SMOKE:-}" = 1 ] && [ "$(cd "$(dirname "$p")" && pwd -P)" != "$(cd "${TEAM_SMOKE_BIN_DIR:-/nonexistent}" 2>/dev/null && pwd -P)" ]; then
+    return 1
+  fi
+  echo "$p"
+}
+timebox() {  # timebox <secs> <cmd…> → exit 124 on timeout (as session-registry.sh)
+  perl -e '$t = shift; $p = fork // exit 1;
+    if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
+    alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+}
+adhoc_gone() {  # adhoc_gone <record> → 0 when its conversation is gone
+  local f="$1" b h p fg j hc
+  b="$(jq -r '.backend // empty' "$f")"; h="$(jq -r '.handle // empty' "$f")"
+  p="$(jq -r '.claude_pid // empty' "$f")"
+  [ -n "$h" ] || return 0
+  case "$b" in
+    tmux) sh_tmux has-session -t "=$h" 2>/dev/null || return 0
+          fg="$(sh_tmux display-message -p -t "=$h:" '#{pane_current_command}' 2>/dev/null || true)" ;;
+    herdr) hc="$(hc_bin)" || return 0
+           j="$(timebox 2 "$hc" get "$h" --json 2>/dev/null)" || return 0
+           fg="$(jq -r '.foreground.argv[0] // empty | strings' <<<"$j" 2>/dev/null)"; fg="${fg##*/}" ;;
+    *) return 0 ;;
+  esac
+  case "$fg" in claude*) ;; *) return 0 ;; esac
+  [ -z "$p" ] || kill -0 "$p" 2>/dev/null || return 0
+  return 1
+}
+adhoc_lines() {  # one paste-ready resume line per gone ad-hoc conversation
+  local f sid cwd
+  for f in "$REG"/adhoc-*.json; do
+    [ -f "$f" ] || continue
+    [ -z "$(jq -r '.ended_at // empty' "$f" 2>/dev/null)" ] || continue
+    sid="$(jq -r '.session_id // empty | strings' "$f" 2>/dev/null)"
+    [[ "$sid" =~ ^[A-Za-z0-9-]{8,64}$ ]] || continue
+    adhoc_gone "$f" || continue
+    cwd="$(jq -r '.cwd // empty | strings' "$f")"
+    echo "$(jq -r '[.tab, .name, .handle] | map(select(. != null and . != "")) | first // "?"' "$f") — cd $(sh_quote "$cwd") && claude --resume $sid"
+  done
 }
 
 up() {
@@ -170,6 +283,9 @@ up() {
     case "$res" in *"$r: started"*|*"$r: already running"*)
       out="$(sh_hint "$r" --main "$MAIN" 2>/dev/null)" && echo "  $r: $out" ;; esac
   done
+  runs_report
+  out="$(adhoc_lines)"
+  [ -z "$out" ] || printf 'ad-hoc sessions (gone):\n%s\n' "$out" | sed '2,$s/^/  /'
   window_line
   return "$rc"
 }
@@ -182,7 +298,10 @@ status() {
     b="$(sh_record_get "$MAIN" "$r" backend)"
     if j="$(sh_status "$r" --main "$MAIN" 2>/dev/null)"; then
       state="$(jq -r '.state // "-"' <<<"$j")"
-      if [ "$state" = gone ]; then alive=gone; else alive=alive; fi
+      if [ "$state" = gone ]; then
+        alive=gone
+        [ "$(sh_record_get "$MAIN" "$r" stopped_at)" \> "$(sh_record_get "$MAIN" "$r" started_at)" ] && alive=stopped
+      else alive=alive; fi
     elif [ "$b" = herdr ]; then alive=unknown state=-
     else alive=unknown state=-; rc=1
     fi
@@ -190,6 +309,10 @@ status() {
     sid="$(sh_record_get "$MAIN" "$r" session_id)"; seen="$(sh_record_get "$MAIN" "$r" last_seen)"
     printf '%-12s %-7s %-7s %-9s %-5s %-36s %s\n' "$r" "${b:-tmux}" "$alive" "$state" "$n" "${sid:--}" "${seen:--}"
   done
+  echo "interrupted runs:"
+  runs_report | sed 's/^interrupted runs: none$/none/; s/^/  /'
+  echo "ad-hoc sessions (gone):"
+  n="$(adhoc_lines)"; printf '%s\n' "${n:-none}" | sed 's/^/  /'
   return "$rc"
 }
 
@@ -272,8 +395,43 @@ here() {
     ${s:+--settings ".agents/team/watch/profiles/$r.settings.json"} $flags -- "$(boot "$r")"
 }
 
+# resume <Role> — a gone Claude role on its previous conversation, started like `up` otherwise.
+resume() {
+  local r="${1:-}" sid name cmd ch err rc=0
+  [ -n "$r" ] || usage
+  roles_validate || exit 2
+  standing "$r" || { echo "error: $r is not a standing, enabled role of teams.sessions" >&2; exit 2; }
+  [ "$(roles_cfg "$r" cli)" = claude ] || { echo "refused: Codex roles restore fresh — bash .claude/lib/roles.sh up $r" >&2; exit 2; }
+  sh_alive "$r" --main "$MAIN" 2>/dev/null
+  case $? in
+    3) ;;
+    0) echo "refused: $r is running" >&2; exit 1 ;;
+    6) echo "refused: $r is recorded on herdr — stop it there first" >&2; exit 1 ;;
+    *) echo "refused: $r: liveness probe failed" >&2; exit 1 ;;
+  esac
+  sid="$(sh_record_get "$MAIN" "$r" session_id)"
+  [[ "$sid" =~ ^[A-Za-z0-9-]{8,64}$ ]] || { echo "refused: no previous session for $r" >&2; exit 1; }
+  roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
+  trap 'roles_unlock "$REG"' EXIT
+  materialize "$r" || exit 1
+  cmd="$(launch_cmd "$r" "$sid" resume)" || exit 2
+  ch="$(codex_home)"; err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
+  if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli claude \
+       --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} --program claude --claude-home auto \
+       -- "$cmd" 2>"$err")"; then
+    if [ -n "$(needs_trust "$r:$name:claude")" ]; then echo "$r: resumed $sid (needs trust)"; else echo "$r: resumed $sid"; fi
+    echo "  $r: $(sh_hint "$r" --main "$MAIN" 2>/dev/null)"
+  else
+    echo "$r: failed: $(sed 's/^session-host: //' "$err" | tail -n 1)"; rc=1
+  fi
+  rm -f "$err"
+  return "$rc"
+}
+
 case "$cmd" in
   up) up "$@" ;;
+  resume) resume "$@" ;;
+  runs) runs_report "$@" ;;
   status) status ;;
   stop) stop "$@" ;;
   here) here "$@" ;;
