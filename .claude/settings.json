@@ -252,6 +252,15 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "mcp__atlassian__jira_transition_issue",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-jira-transition.sh\""
+          }
+        ]
       }
     ],
     "PostToolUse": [

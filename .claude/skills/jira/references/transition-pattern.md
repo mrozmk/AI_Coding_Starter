@@ -68,6 +68,16 @@ If the chosen transition has `fields` with `required: true` entries (common for 
 - Build the `fields` JSON string: `'{"resolution": {"name": "Fixed"}}'`.
 - Allow the user to cancel (answer `n`) at this point.
 
+### Step 4b — Comment
+
+- `.claude/project-profile.json` → `workflow.jira_transition_comment` is `true` → a comment is
+  **required** (the `guard-jira-transition.sh` hook refuses a transition without one): ask for it —
+  what changed, the PR, the verification. If `workflow.jira_transition_evidence` has an entry for
+  `<PROJECT>:<selected-id>`, say which evidence it expects (its pattern).
+- Otherwise the comment is optional; offer it once.
+- The comment is part of the mutation: it goes into the step 5 preview verbatim and into the step 6
+  call, never added after a refusal.
+
 ### Step 5 — Dry-run confirm
 
 Render a diff-style prompt in Polish:
@@ -78,6 +88,8 @@ Zmieniam $0 ("<summary>")
   na: "<TARGET_STATUS>"
 <if required fields:>
   pola: resolution=Fixed
+<if comment:>
+  komentarz: "<the exact comment>"
 
 Kontynuować? [y/n]
 ```
@@ -91,7 +103,8 @@ Kontynuować? [y/n]
 jira_transition_issue(
     issue_key="$0",
     transition_id="<selected-id>",
-    fields='<JSON-string-if-required-fields-else-omit>'
+    fields='<JSON-string-if-required-fields-else-omit>',
+    comment="<the comment from step 4b, else omit>"
 )
 ```
 

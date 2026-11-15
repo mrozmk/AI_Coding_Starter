@@ -24,7 +24,10 @@
     "_merge_doc": "squash | merge-commit | ff. `ff` only for the direct-push override; otherwise the preset's implied value.",
     "merge": "ff",
     "_orchestrate_publish_doc": "push | branch-local. gitflow and any PR-gated flow => branch-local; direct push and feature-branch => push.",
-    "orchestrate_publish": "push"
+    "orchestrate_publish": "push",
+    "_jira_transition_doc": "Opt-in Jira transition guard (.claude/hooks/guard-jira-transition.sh). jira_transition_comment: true → a jira_transition_issue call without a comment is refused. jira_transition_evidence: {\"<PROJECT>:<transition id>\": \"<case-insensitive ERE>\"} — that transition's comment must match, e.g. {\"PROJ:31\": \"Release-[0-9]+|no deploy\"}; ids are workflow-scoped, hence the project prefix. Default: off, no rules.",
+    "jira_transition_comment": false,
+    "jira_transition_evidence": {}
   },
 
   "_tracker_doc": "jira | github | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md. github => the tasks are the issues of github.repo; .claude/lib/team-tracker.sh reads them without a teams block.",
