@@ -212,6 +212,7 @@ own .claude/lib/team-lead-lib.sh
 own .claude/lib/team-run-lead.sh
 own .claude/lib/team-inbox.sh
 own .claude/lib/team-verdict.sh
+own .claude/lib/team-tracker-gate.sh
 own .claude/hooks/teamlead-register.sh
 own .claude/team/prompts/teamlead.md
 own .agents/reference/team-lead.md

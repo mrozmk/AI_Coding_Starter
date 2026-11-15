@@ -21,15 +21,18 @@
 #   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
 #   decision without changing the run. A used decision becomes status: consumed (once).
 #   Writes .agents/team/runs/<run>/teamlead-<gate>-<seq>.json.
+#   Tracker comments (opt-in workflow.tracker_comments, tracker not none): spec/plan approve and
+#   acceptance accept need the planner's ledger + snapshot and the lead's fresh read
+#   runs/<run>/tracker-<gate>-<n>.json (acceptance: in the round's dir) — team-tracker-gate.sh.
 #   e.g. bash .claude/lib/team-verdict.sh spec revise --for planner-1-2.json \
 #          --ref .agents/team/runs/alfa-20261114-100000/gate-spec-1.md --message "2 findings"
 # Exit: 0 written · 2 usage · 3 not the lead · 4 bad gate/verdict/for · 5 revise limit
 #       6 spec changed after approval · 7 constraint digest missing (team-lead.sh digest-check)
-#       8 acceptance brief incomplete · 9 rework budget reached.
-#   Contract: .agents/reference/team-lead.md §4, §5, §8, §9
+#       8 acceptance brief incomplete · 9 rework budget reached · 10 tracker comments not current.
+#   Contract: .agents/reference/team-lead.md §4, §5, §8, §9, §11
 set -euo pipefail
 
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""
@@ -65,6 +68,7 @@ fm_set() {  # fm_set <file> <key> <value> — replace or add one frontmatter key
     n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
   mv "$1.tmp" "$1"
 }
+TRACKER_LINE=""
 verdicts() { ls "$RD" 2>/dev/null | grep -E "^teamlead-$GATE-[0-9]+\.json\$" | sort -t- -k3,3n || true; }
 DIGEST=""
 write_verdict() {  # → prints the written file
@@ -77,10 +81,12 @@ write_verdict() {  # → prints the written file
     --arg notify "$NOTIFY" --arg message "$MESSAGE" --arg spec_digest "$DIGEST" \
     --arg decision "$DECISION" --arg written_at "$(team_utc)" \
     --arg session_id "$(team_lead_json session_id)" --arg quick_call "$QUICK_CALL" \
+    --arg tracker "$TRACKER_LINE" \
     '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
       ref: $ref, notify: $notify, message: $message, spec_digest: $spec_digest,
       decision: $decision, written_at: $written_at, session_id: $session_id}
-     + (if $quick_call == "" then {} else {quick_call: $quick_call} end)' > "$tmp"
+     + (if $quick_call == "" then {} else {quick_call: $quick_call} end)
+     + (if $tracker == "" then {} else {tracker: $tracker} end)' > "$tmp"
   [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
   mv "$tmp" "$target"
   echo "$target"
@@ -262,6 +268,12 @@ elif [ "$GATE $VERDICT" = "plan approve" ] && [ "$MODE" != quick ]; then
     echo "error: spec changed after approval — re-run the spec gate" >&2; exit 6
   fi
 fi
+
+# Tracker comments as requirements (opt-in): an approve or an accept needs a current read.
+case "$GATE $VERDICT" in
+  "spec approve"|"plan approve"|"acceptance accept")
+    . "$LIB/team-tracker-gate.sh"; if trk_on; then trk_gate; fi ;;
+esac
 
 target="$(write_verdict)"
 # The grant is spent by this verdict.

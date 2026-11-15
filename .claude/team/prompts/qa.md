@@ -6,7 +6,13 @@ round `{{ROUND}}`, attempt `{{ATTEMPT}}`, plan `{{PLAN}}`, PR `{{PR}}`, {{PR_HOS
 Nobody answers questions in this session: `AskUserQuestion` is not available.
 
 1. Run `/prime`.
-2. Run `/check-implementation {{PLAN}} --base {{BASE_SHA}}`.
+2. **Tracker comments (opt-in)** — only when `.claude/project-profile.json` has
+   `workflow.tracker_comments: true` and the tracker is not `none`; otherwise skip. Before the
+   gates, run the freshness check of `.agents/reference/tracker-comments.md` §5 for {{TICKET}}
+   (fresh read into the scratchpad; baseline by §5.3 — the snapshot the plan's ledger names, else
+   its source spec's). Exit 3 → `bash .claude/lib/team-record.sh --verdict blocked
+   --message "new tracker input after plan: <ids>"`; exit 4 or a failed read → `blocked` with
+   "tracker read uncertain"; wait. Then run `/check-implementation {{PLAN}} --base {{BASE_SHA}}`.
    - It stops with "nothing to check — empty delta" →
      `bash .claude/lib/team-record.sh --verdict failed --message "empty delta from {{BASE_SHA}}"`
      and wait.

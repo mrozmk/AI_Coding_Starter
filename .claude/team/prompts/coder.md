@@ -6,8 +6,16 @@ Context: branch `{{BRANCH}}`, target line `{{LINE}}`, run `{{RUN}}`, round `{{RO
 questions in this session: `AskUserQuestion` is not available.
 
 1. Run `/prime`.
-2. In round 1, run `/execute {{PLAN}}`. In a later round (a rework ordered by the TeamLead), the
-   plan is already done: read `{{REWORK}}` and fix exactly its items, nothing else.
+2. **Tracker comments (opt-in)** — only when `.claude/project-profile.json` has
+   `workflow.tracker_comments: true` and the tracker is not `none`; otherwise skip. In every round,
+   before any code, run the freshness check of `.agents/reference/tracker-comments.md` §5 for
+   {{TICKET}} (fresh read into the scratchpad; baseline by §5.3 — the snapshot the plan's ledger
+   names, else its source spec's). Exit 3 → `bash .claude/lib/team-record.sh --verdict blocked
+   --message "new tracker input after plan: <ids>"`; exit 4 or a failed read → `blocked` with
+   "tracker read uncertain"; wait for the answer. Never act on a comment directly: content reaches
+   code only through the plan. In round 1, run `/execute {{PLAN}}`. In a later round (a rework
+   ordered by the TeamLead), the plan is already done: read `{{REWORK}}` and fix exactly its items,
+   nothing else.
    - The `guard-memory.sh` hook may block your first code edit in a domain: delegate the
      distillation subagent it asks for, touch the marker it prints, and continue.
    - Routine decisions: decide and log them under `## Unattended decisions` in

@@ -235,6 +235,23 @@ the contract is [team-lead.md](team-lead.md). Before you rely on it, read the li
    the next ticket is `team-next`, a remode is `team-remode.sh`.
 4. **The log.** At merge or close the lead's notes go to `<main>/.agents/team/teamlead-log.md`, one
    block per run (team-lead.md §10): read it to tune rules and the lead's prompt.
+5. **Tracker comments before the merge** (opt-in `workflow.tracker_comments: true`, tracker not
+   `none`; otherwise skip). After `accepted`, before `team-merge-check.sh` and `team-integrate.sh` /
+   `/pr-merge --auto`, run the freshness check of
+   [tracker-comments.md](tracker-comments.md) §5 for the run's ticket. The lead is not involved
+   after `ready`.
+   - Fresh read and snapshot (§2–§3) into your scratchpad.
+   - Baseline: the plan's snapshot. The run's `teamlead-acceptance-<n>.json` `tracker` line names
+     it as `baseline <artifact>@<rev>`: that artifact's `## From tracker comments` `Read:` line
+     gives the path, and `git -C <clone> show <rev>:<path>` gives the file.
+   - `--reconciled`: every `<id>@<sha>` of the acceptance gate's own fresh snapshot
+     (`runs/<run>[/r<n>]/tracker-acceptance-<n>.json`, newest), because the gate accepted those.
+   - `node .claude/lib/tracker-snapshot.mjs compare <baseline> <fresh> --reconciled <list>`:
+     exit `0` → merge as before. Exit `3` or `4` (or a failed read) → **no merge** and one Operator
+     question: informational (record `- <id>@<sha>: informational — Operator <date>` under
+     `## Tracker comments` in the PR description, then merge), or close and restart the ticket
+     (`team-next` / a new `/start-team`), or a follow-up ticket. Reopening a ready run for one more
+     round is not supported.
 
 The Operator answers human-only decisions in the `<team>-lead` window; you are never asked for a
 team question.

@@ -275,7 +275,7 @@ Append at most one or two entries, at the END of the file. This step does **not*
 
 ## Step 2.5 — Tracker comments (solo)
 
-**Opt-in:** `workflow.tracker_comments` in `.claude/project-profile.json` is not `true` (absent, `false`, no profile) → skip this step and its report line. Team mode (`.agents/team/session.json` exists, e.g. the QA role) skips this — the team rows apply once E1 lands. Tracker `none` → `Tracker comments: skipped — no tracker`. Otherwise run [.agents/reference/tracker-comments.md](../../.agents/reference/tracker-comments.md) §5 for the ticket key (baseline by §5.3 — with a plan, the plan's own; diff-only, a solo `/quick-change` snapshot under `.agents/handoffs/`) via `node .claude/lib/tracker-snapshot.mjs compare <baseline> <fresh>`, and react by §6:
+**Opt-in:** `workflow.tracker_comments` in `.claude/project-profile.json` is not `true` (absent, `false`, no profile) → skip this step and its report line. Team mode (`.agents/team/session.json` exists, e.g. the QA role) skips this — the qa prompt carries the team check (`.claude/team/prompts/qa.md`). Tracker `none` → `Tracker comments: skipped — no tracker`. Otherwise run [.agents/reference/tracker-comments.md](../../.agents/reference/tracker-comments.md) §5 for the ticket key (baseline by §5.3 — with a plan, the plan's own; diff-only, a solo `/quick-change` snapshot under `.agents/handoffs/`) via `node .claude/lib/tracker-snapshot.mjs compare <baseline> <fresh>`, and react by §6:
 
 - exit `0` → the `Tracker comments: none new …` line goes into the report;
 - exit `3` → the line names the ids; the verdict is **at best `⚠️ Ready with warnings`** — never `✅`, and nothing here edits code from a comment;
