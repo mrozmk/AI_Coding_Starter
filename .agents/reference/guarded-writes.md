@@ -14,7 +14,10 @@ sets `workflow.guarded_writes: true` **and** the Operator completes §3. Engine:
   the settings `ask` rule makes every wrapper call an Operator click.
 - The allow-lists live in `.claude/guarded-writes.json`, and a wrapper accepts it only when it is
   **tracked and byte-identical to its version on `origin/<Trunk>`** (Trunk from the `CLAUDE.md`
-  Branch model): widening what an agent may write needs a change that reached trunk.
+  Branch model): widening what an agent may write needs a change that reached trunk. The rule lives
+  in `.claude/lib/trunk-trust/trunk_trust.py`, shared with the local env runner; `git ls-remote` is
+  bounded (`TRUNK_TRUST_LS_REMOTE_TIMEOUT`, default 20 s, no prompts) and falls back to the offline
+  rule.
 
 ## 2. The wrappers
 
@@ -65,13 +68,17 @@ classified, and that copy is what sqlcmd executes. `-b` makes a SQL error a non-
       "Edit(.claude/guarded-writes.json)",
       "Write(.claude/guarded-writes.json)",
       "Edit(.claude/lib/guarded-writes/**)",
-      "Write(.claude/lib/guarded-writes/**)"
+      "Write(.claude/lib/guarded-writes/**)",
+      "Edit(.claude/lib/trunk-trust/**)",
+      "Write(.claude/lib/trunk-trust/**)"
     ]
   }
 }
 ```
 
-Merge the entries into the existing arrays; do not replace them. A project may add deny rules for
+Merge the entries into the existing arrays; do not replace them. A block pasted before the trunk-trust
+code moved to `.claude/lib/trunk-trust/` lacks its two deny lines — add them; the wrappers load that
+code before any check. A project may add deny rules for
 the direct write verbs it cares about (e.g. `Bash(az webapp deploy *)`), so the wrapper stays the
 only route even where the identity would allow more.
 

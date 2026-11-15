@@ -29,6 +29,7 @@ g clone -q "$T/origin.git" "$T/w" 2>/dev/null
 W="$T/w"
 mkdir -p "$W/.claude/lib/guarded-writes"
 cp "$ST/.claude/lib/branch-model.sh" "$W/.claude/lib/"
+mkdir -p "$W/.claude/lib/trunk-trust"; cp "$ST/.claude/lib/trunk-trust/trunk_trust.py" "$W/.claude/lib/trunk-trust/"
 cp "$ST/.claude/lib/guarded-writes/"{az-write.sh,guarded_write.py} "$W/.claude/lib/guarded-writes/"
 printf '# P\n\n### Branch model\n\n**Preset:** trunk · **Trunk:** `main` · **Integration:** `main`\n' > "$W/CLAUDE.md"
 printf '{"workflow": {"guarded_writes": true}}\n' > "$W/.claude/project-profile.json"

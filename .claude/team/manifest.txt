@@ -24,6 +24,10 @@
 !.claude/lib/team-profile.sh
 # core, not team: the opt-in guarded-write kit (inert until workflow.guarded_writes; solo uses it too)
 !.claude/lib/guarded-writes/**
+# core, not team: the opt-in local env runner (inert until workflow.local_env) and the trunk-trust
+# code both opt-in kits load
+!.claude/lib/local-env/**
+!.claude/lib/trunk-trust/**
 # core, not team: the destructive-SQL classifier sqlcmd-write.sh imports (the hook script stays team)
 !.claude/hooks/lib/guard_destructive_sql.py
 # core, not team: the stage-end marker the core pipeline commands run (a no-op without the stage hook)

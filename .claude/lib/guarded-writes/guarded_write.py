@@ -24,7 +24,6 @@ Honest limits: this is a hurdle, not isolation. The same OS user can rewrite loc
 CLAUDE.md, or push trunk where the project lets it. The real barriers are the read-only default
 identity and the Operator's click on the ask rule. Exit codes: 2 refused · otherwise the tool's own.
 """
-import json
 import os
 import re
 import shlex
@@ -36,8 +35,22 @@ import time
 import types
 from urllib.parse import unquote, urlsplit
 
+
+def _trust():
+    """The shared trust code, compiled from its source: an import could pick up a planted .pyc."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trunk-trust", "trunk_trust.py")
+    mod = types.ModuleType("trunk_trust")
+    mod.__file__ = path
+    with open(path, "rb") as f:
+        exec(compile(f.read(), path, "exec"), mod.__dict__)
+    return mod
+
+
+_t = _trust()
+Refused, at_trunk, config_at_trunk, repo_root, switch_on = (
+    _t.Refused, _t.at_trunk, _t.config_at_trunk, _t.repo_root, _t.switch_on)
+
 CONFIG = ".claude/guarded-writes.json"
-PROFILE_FILE = ".claude/project-profile.json"
 CLASSIFIER = ".claude/hooks/lib/guard_destructive_sql.py"
 COMMON = {"--subscription", "--query", "--output", "--only-show-errors"}
 ALIASES = {"-n": "--name", "-g": "--resource-group", "-p": "--project", "-m": "--method",
@@ -53,76 +66,8 @@ SECRET_NAME = re.compile(r"pass(word)?|pwd|secret|token|connection[-_]?string|ke
 BEARER = re.compile(r"(bearer\s+)\S+", re.I)
 
 
-class Refused(Exception):
-    pass
-
-
-def git(*args):
-    r = subprocess.run(["git", *args], capture_output=True)
-    return r.returncode, r.stdout
-
-
-def repo_root():
-    rc, out = git("rev-parse", "--show-toplevel")
-    if rc != 0:
-        raise Refused("not inside a git repository")
-    return out.decode().strip()
-
-
-def switch_on(root):
-    try:
-        with open(os.path.join(root, PROFILE_FILE), encoding="utf-8") as f:
-            on = (json.load(f).get("workflow") or {}).get("guarded_writes") is True
-    except (OSError, ValueError, AttributeError):
-        on = False
-    if not on:
-        raise Refused("guarded writes are off — set workflow.guarded_writes: true in %s" % PROFILE_FILE)
-
-
-def trunk(root):
-    r = subprocess.run(["bash", os.path.join(root, ".claude", "lib", "branch-model.sh"), "fields"],
-                       capture_output=True, text=True, cwd=root)
-    if r.returncode == 0:
-        for line in r.stdout.splitlines():
-            if line.startswith("trunk=") and line[6:].strip():
-                return line[6:].strip()
-    raise Refused("no Trunk in the CLAUDE.md Branch model — the config is approved against origin/<Trunk>")
-
-
 def load_config(root):
-    t = trunk(root)
-    rc, local_sha = git("-C", root, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/%s^{commit}" % t)
-    if rc != 0:
-        raise Refused("no origin/%s ref — fetch it first" % t)
-    rc, remote = git("-C", root, "ls-remote", "--heads", "origin", "refs/heads/%s" % t)
-    if rc == 0 and remote.split()[:1] != [local_sha.strip()]:
-        raise Refused("origin/%s does not match what origin has — fetch it, do not rewrite it" % t)
-    trusted = (local_sha.decode().strip(), t)
-    blob = at_trunk(root, trusted, CONFIG)
-    try:
-        return validate(json.loads(blob.decode("utf-8"))), trusted
-    except (ValueError, UnicodeDecodeError) as e:
-        raise Refused("%s on origin/%s is invalid: %s" % (CONFIG, t, e))
-
-
-def at_trunk(root, trusted, path):
-    """The bytes of a tracked `path` when the working tree equals its blob at the verified trunk sha."""
-    sha, t = trusted
-    if git("-C", root, "ls-files", "--error-unmatch", "--", path)[0] != 0:
-        raise Refused("%s is not tracked by git — it must be committed and reach origin/%s" % (path, t))
-    # Read the blob from the verified sha, not "origin/<t>": a local branch or tag of that name wins
-    # git's ref lookup over refs/remotes/origin/<t>.
-    rc, blob = git("-C", root, "show", "%s:%s" % (sha, path))
-    if rc != 0:
-        raise Refused("%s is not on origin/%s — a change must reach trunk first" % (path, t))
-    try:
-        with open(os.path.join(root, path), "rb") as f:
-            work = f.read()
-    except OSError:
-        raise Refused("%s cannot be read" % path)
-    if work != blob:
-        raise Refused("%s differs from origin/%s — a change must reach trunk first" % (path, t))
-    return blob
+    return config_at_trunk(root, CONFIG, validate)
 
 
 def _strings(v, what):
@@ -472,7 +417,7 @@ def main(argv):
     try:
         home = os.path.expanduser("~")
         root = repo_root()
-        switch_on(root)
+        switch_on(root, "guarded_writes", "guarded writes")
         config, trusted = load_config(root)
         return run(home, root, config, trusted, argv[1:])
     except Refused as e:
