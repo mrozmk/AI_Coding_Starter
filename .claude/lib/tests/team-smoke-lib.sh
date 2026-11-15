@@ -103,6 +103,9 @@ smoke_init() {
   export TEAM_GATE_LOCK_POLL=0.1
   # The marker team-escalate.sh requires before it honours TEAM_ESCALATE_UNIT_SECS.
   export TEAM_SMOKE=1
+  # The session-host driver runs only fixture binaries under TEAM_SMOKE=1, and never picks a host
+  # by itself: a fake `hc` on PATH must not move an old part off tmux.
+  export TEAM_SMOKE_BIN_DIR="$WORK/bin" TEAM_SESSION_HOST=tmux
   unset TEAM_GATE_LOCK_DIR TEAM_GATE_LOCK_LOG TEAM_GATE_LOCK_TOKEN TEAM_GATE_LOCK_WAIT
   unset CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR
   smoke_gitconfig
@@ -161,6 +164,11 @@ if [ "$1" = display-message ]; then
   case "$*" in *'#{socket_path}'*)
     [ -z "${STUB_TMUX_SOCK:-}" ] || echo "$STUB_TMUX_SOCK"; exit 0 ;; esac
   [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || exit 1
+  # The driver's pane-pid and foreground probes; every other format keeps its old answer.
+  case "$*" in
+    *'#{pane_pid}'*) echo "${STUB_PANE_PID:-4242}"; exit 0 ;;
+    *'#{pane_current_command}'*) echo "${STUB_PANE_CMD:-claude}"; exit 0 ;;
+  esac
   echo "${STUB_PANE_ID:-%1}@${STUB_PANE_CREATED:-1700000000}"; exit 0
 fi
 if [ "$1" = send-keys ]; then
