@@ -843,6 +843,7 @@ git fetch origin main
 - Dirty tree → STOP: "Integration needs a clean `main` checkout; commit/stash/revert first."
 - Mid-merge (`MERGE_HEAD` present) → STOP: "Finish or abort the in-progress merge first."
 - `HEAD != origin/main` → STOP: "Local `main` diverged from origin/main; reconcile first (`/pull`)."
+- `CLAUDE.md → ### Branch model` says `**Protected push:** pr-only` and lists `main` under **Protected** → STOP before any merge: "`main` changes only through a PR here (Protected push: pr-only) — publish each run branch with /pr-create instead of --integrate." (`guard-push.sh` would refuse the final push only after `main` moved locally.)
 
 ### Per branch, sequentially — validate on a TEMP BRANCH, advance `main` only on success
 

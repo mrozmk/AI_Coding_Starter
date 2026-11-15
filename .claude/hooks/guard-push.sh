@@ -63,22 +63,6 @@ CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""' 2>/dev/null)
 # those forms bypass the scan entirely.
 printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || exit 0
 
-# Forms with nothing to scan → allow.
-#   --dry-run            : not publishing
-#   --delete / `:branch` : deleting a remote ref, no content
-printf '%s' "$CMD" | grep -Eq -- '--dry-run' && exit 0
-printf '%s' "$CMD" | grep -Eq -- '--delete([[:space:]]|=)|[[:space:]]:[^[:space:]]' && exit 0
-
-# --- whole-push override (explicit, loud, audited) --------------------------------
-if printf '%s' "$CMD" | grep -Eq 'GUARD_PUSH_SKIP=(1|true|yes)'; then
-  echo "guard-push: OVERRIDE — GUARD_PUSH_SKIP set, secret scan bypassed for this push." >&2
-  if [ -n "$CLAUDE_PROJECT_DIR" ] && [ -d "$CLAUDE_PROJECT_DIR/.claude" ]; then
-    TS=$(date '+%Y-%m-%d %H:%M:%S')
-    printf '[%s] GUARD-PUSH OVERRIDE: %s\n' "$TS" "$CMD" >> "$CLAUDE_PROJECT_DIR/.claude/audit.log" 2>/dev/null
-  fi
-  exit 0
-fi
-
 # --- resolve the repo the push publishes from -------------------------------------
 # Mirrors guard-commit.sh: a directory named IN the command is where the push actually
 # runs, so it beats the caller's cwd. Without this, `cd <worktree> && git push` or
@@ -95,6 +79,112 @@ case "$DIR" in
   *)  DIR="${CWD:-$PWD}/$DIR" ;;
 esac
 git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1 || DIR="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+
+# --- protected branches change only through a PR (Branch model `**Protected push:** pr-only`) -------
+# Reads the Branch model of the repo being pushed (DIR's top level), through the core reader. Any
+# doubt about the MODE — no reader, no block, an unknown value — keeps today's behaviour: no block.
+# A destination the guard cannot know (remote.<r>.push, push.default=matching) is refused under
+# pr-only, with a request to name it. Scripts' own pushes (team-integrate.sh) are not seen here.
+protected_check() {  # protected_check <one git push segment> <its repo dir>
+  local seg="$1" top bm fields prot mode args remote="" a dst cur up del="" amb="" hits="" nref=0 all="" skip=""
+  printf '%s' "$seg" | grep -Eq -- '--dry-run' && return 0
+  top=$(git -C "$2" rev-parse --show-toplevel 2>/dev/null) || return 0
+  bm="$HOOK_DIR/../lib/branch-model.sh"
+  [ -r "$bm" ] || return 0
+  fields=$(cd "$top" && bash "$bm" fields 2>/dev/null) || return 0
+  mode=$(printf '%s\n' "$fields" | sed -n 's/^protected_push=//p')
+  prot=$(printf '%s\n' "$fields" | sed -n 's/^protected=//p')
+  [ "$mode" = pr-only ] && [ -n "$prot" ] || return 0
+  args=$(printf '%s' "$seg" | sed -nE 's/.*git[[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+[[:space:]]+)*push([[:space:]]+([^;&|]*))?.*/\3/p' | head -1)
+  cur=$(git -C "$top" symbolic-ref --quiet --short HEAD 2>/dev/null)
+  set -f
+  for a in $args; do
+    a="${a#[\"\']}"; a="${a%[\"\']}"
+    [ -z "$skip" ] || { skip=""; continue; }   # the value of an option given as its own word
+    case "$a" in
+      -o|--push-option|--repo|--receive-pack|--exec) skip=1; continue ;;
+      --all|--mirror) all=1; continue ;;
+      --delete|-d) del=1; continue ;;
+      -*) continue ;;
+    esac
+    if [ -z "$remote" ]; then remote="$a"; continue; fi
+    nref=$((nref + 1)); a="${a#+}"
+    case "$a" in
+      *:*) dst="${a#*:}" ;;
+      *)   dst="$a"   # <src> alone goes where remote.<r>.push maps it, when that is set
+           [ -n "$del" ] || [ -z "$(git -C "$top" config --get-all "remote.$remote.push" 2>/dev/null)" ] || amb=1 ;;
+    esac
+    [ "$dst" = HEAD ] && dst="$cur"
+    dst="${dst#refs/heads/}"
+    case "$dst" in refs/*) continue ;; esac
+    hits="$hits $dst"
+  done
+  set +f
+  [ -z "$all" ] || hits="$prot"
+  if [ -z "$all" ] && [ "$nref" = 0 ]; then
+    # No refspec: what git pushes depends on remote.<r>.push and push.default.
+    if [ -n "$(git -C "$top" config --get-all "remote.${remote:-origin}.push" 2>/dev/null)" ] \
+       || [ "$(git -C "$top" config --get push.default 2>/dev/null)" = matching ]; then
+      amb=1
+    else
+      up=$(git -C "$top" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)
+      hits="$cur ${up#*/}"
+    fi
+  fi
+  for a in $hits; do
+    case " $prot " in *" $a "*)
+      { echo "BLOCKED: guard-push — \`$a\` is protected; it changes only through a PR (/pr-create, then merge)."
+        echo "Push a working branch instead. To allow direct pushes again, set \`**Protected push:** confirm\`"
+        echo "(or remove that line) in CLAUDE.md → Branch model."; } >&2
+      exit 2 ;;
+    esac
+  done
+  if [ -n "$amb" ]; then
+    { echo "BLOCKED: guard-push — this push's destination comes from remote.<name>.push or push.default=matching,"
+      echo "and the Branch model protects $prot (Protected push: pr-only). Name the destination explicitly,"
+      echo "e.g. git push origin <branch>:<branch>. To allow direct pushes again, set \`**Protected push:** confirm\`"
+      echo "(or remove that line) in CLAUDE.md → Branch model."; } >&2
+    exit 2
+  fi
+  return 0
+}
+
+# Every `git push` segment of a compound command (&&, ||, ;, |, newline) is checked, each against
+# its own repo: its `-C <dir>`, else the last `cd <dir>` segment before it, else the session's.
+protected_scan() {
+  local segs seg d cdir="" base="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+  segs="${CMD//&&/$'\n'}"; segs="${segs//||/$'\n'}"; segs="${segs//;/$'\n'}"; segs="${segs//|/$'\n'}"
+  while IFS= read -r seg; do
+    d=$(printf '%s' "$seg" | sed -nE "s/^[[:space:]]*cd[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p")
+    if [ -n "$d" ]; then cdir="$d"; continue; fi
+    printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || continue
+    d=$(printf '%s' "$seg" | sed -nE "s/.*git[[:space:]]+-C[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p")
+    [ -n "$d" ] || d="${cdir:-$base}"
+    case "$d" in /*) ;; *) d="$base/$d" ;; esac
+    git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || d="$base"
+    protected_check "$seg" "$d"
+  done <<EOF_SEGS
+$segs
+EOF_SEGS
+}
+protected_scan
+
+
+# Forms with nothing to scan → allow.
+#   --dry-run            : not publishing
+#   --delete / `:branch` : deleting a remote ref, no content
+printf '%s' "$CMD" | grep -Eq -- '--dry-run' && exit 0
+printf '%s' "$CMD" | grep -Eq -- '--delete([[:space:]]|=)|[[:space:]]:[^[:space:]]' && exit 0
+
+# --- whole-push override (explicit, loud, audited) --------------------------------
+if printf '%s' "$CMD" | grep -Eq 'GUARD_PUSH_SKIP=(1|true|yes)'; then
+  echo "guard-push: OVERRIDE — GUARD_PUSH_SKIP set, secret scan bypassed for this push." >&2
+  if [ -n "$CLAUDE_PROJECT_DIR" ] && [ -d "$CLAUDE_PROJECT_DIR/.claude" ]; then
+    TS=$(date '+%Y-%m-%d %H:%M:%S')
+    printf '[%s] GUARD-PUSH OVERRIDE: %s\n' "$TS" "$CMD" >> "$CLAUDE_PROJECT_DIR/.claude/audit.log" 2>/dev/null
+  fi
+  exit 0
+fi
 
 # --- resolve the tip about to be published ----------------------------------------
 # `git push origin <ref>` publishes <ref>, not the checked-out branch. Take the first

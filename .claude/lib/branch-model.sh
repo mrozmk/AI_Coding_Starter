@@ -5,8 +5,8 @@
 # choice, made once by /start-task and read back here.
 #
 # Usage (run from the repo root):
-#   branch-model.sh fields                 trunk=, integration=, maintenance=, retired=, protected=
-#                                          (lists space-separated; absent fields are empty)
+#   branch-model.sh fields                 trunk=, integration=, maintenance=, retired=, protected=,
+#                                          protected_push= (lists space-separated; absent → empty)
 #   branch-model.sh check-line <L>         `live` when L is Trunk, Integration or a Maintenance line
 #                                          that exists locally or on origin
 #   branch-model.sh default-base --type T  hotfix/release → Trunk; every other type → Integration
@@ -52,7 +52,11 @@ case "$cmd" in
     load
     for f in Trunk Integration Maintenance Retired Protected; do
       printf '%s=%s\n' "$(printf '%s' "$f" | tr 'A-Z' 'a-z')" "$(names "$f")"
-    done ;;
+    done
+    # `pr-only` | `confirm`, its first word; anything else (or absent) prints empty = confirm.
+    pp="$(field "Protected push" | sed 's/^[[:space:]`]*//' | awk '{ print tolower($1) }' | tr -d '`')"
+    case "$pp" in pr-only|confirm) ;; *) pp="" ;; esac
+    printf 'protected_push=%s\n' "$pp" ;;
   check-line)
     [ $# -eq 1 ] && [ -n "$1" ] || die 2 "usage: check-line <branch>"
     git check-ref-format --branch "$1" >/dev/null 2>&1 || die 5 "\`$1\` is not a branch name"

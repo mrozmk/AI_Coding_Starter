@@ -42,7 +42,8 @@ WANT='trunk=main
 integration=develop
 maintenance=rc/1 rc/2
 retired=old/x
-protected=main develop old/x'
+protected=main develop old/x
+protected_push='
 run fields; want 0 "fields (template)"; [ "$OUT" = "$WANT" ] || fail "fields (template): $OUT"
 
 # (1) one field per line gives the same fields
@@ -93,6 +94,16 @@ run check-line rc/1; want 5 "5: rc/1 is not live without a Maintenance field"
 printf '%s\n' '### Branch model' '**Preset:** trunk · **Trunk:** `main` · **Integration:** `main`' \
   '**Protected:** none' > "$R/CLAUDE.md"
 run default-base --type hotfix; [ "$OUT" = main ] || fail "5: trunk preset hotfix → $OUT"
+
+# (5b) Protected push: pr-only / confirm, case and backticks tolerated; anything else → empty
+for v in 'pr-only' '`pr-only` — PRs only' 'PR-ONLY' 'confirm' 'yes please' ''; do
+  printf '%s\n' '### Branch model' '**Preset:** gitflow · **Trunk:** `main` · **Integration:** `develop`' \
+    '**Protected:** `main`' > "$R/CLAUDE.md"
+  [ -z "$v" ] || echo "**Protected push:** $v" >> "$R/CLAUDE.md"
+  run fields; got=$(printf '%s\n' "$OUT" | sed -n 's/^protected_push=//p')
+  case "$v" in confirm) w=confirm ;; ''|'yes please') w= ;; *) w=pr-only ;; esac
+  [ "$got" = "$w" ] || fail "5b: Protected push '$v' → '$got', expected '$w'"
+done
 
 # (6) no block → exit 3 (the command uses its origin/HEAD → main → master fallback)
 echo '# CLAUDE.md' > "$R/CLAUDE.md"
