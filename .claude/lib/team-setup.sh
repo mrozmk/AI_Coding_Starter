@@ -324,9 +324,25 @@ sync_merge P "$TSTAT" 3 UserPromptSubmit ''
 sync_merge O "$TSTAT" 3 Stop ''
 sync_merge X "$TSTAT" 3 SessionEnd ''
 
-# The per-run TeamLead's identity refresh and socket registration; silent outside a run's lead.
-hook_merge L SessionStart "$H/teamlead-register.sh\"" '["startup","resume","clear","compact"]' false '' \
+# hook_retire <command> — drop every hook item whose command is exactly <command> (a hook this
+# installer used to register; hook_merge matches by command, so a renamed hook would stay behind).
+# An entry left without hooks goes too; a foreign command that only contains the name stays.
+hook_retire() {
+  local cmd="$1" n
+  n="$(printf '%s' "$NEW" | jq --arg c "$cmd" '[.hooks[]?[]?.hooks[]? | select(.command == $c)] | length')"
+  [ "$n" != 0 ] || return 0
+  NEW="$(printf '%s' "$NEW" | jq --arg c "$cmd" '
+    .hooks |= with_entries(.value |= (map(if has("hooks") then .hooks |= map(select(.command != $c)) else . end)
+      | map(select((.hooks // [0]) | length > 0))))')"
+  n="${cmd%\"}"; echo "retired settings.json: ${n##*/}"
+}
+
+# The session registry (roles, stages, ad-hoc sessions, and the per-run TeamLead's identity refresh
+# and socket registration, which teamlead-register.sh did before) and the prompt-time inbox count.
+hook_retire "$H/teamlead-register.sh\""
+hook_merge L SessionStart "$H/session-registry.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
+hook_merge I UserPromptSubmit "$H/inbox-count.sh\"" '[]' false '' '{"timeout":3}'
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '

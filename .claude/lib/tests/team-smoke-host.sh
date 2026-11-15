@@ -10,7 +10,7 @@ smoke_init
 # The driver runs from a copy, so the messaging-socket sender can be a stub.
 L="$WORK/drv"; mkdir -p "$L"
 cp "$SRC/.claude/lib/session-host.sh" "$SRC/.claude/lib/session-host-lib.sh" \
-  "$SRC/.claude/lib/team-send-lock.sh" "$SRC/.claude/lib/team-channel.sh" \
+  "$SRC/.claude/lib/team-send-lock.sh" "$SRC/.claude/lib/team-channel.sh" "$SRC/.claude/lib/roles-lib.sh" \
   "$SRC/.claude/lib/team-profile.sh" "$SRC/.claude/lib/team_prompt.py" \
   "$SRC/.claude/lib/team_transcript.py" "$L/"
 cat > "$L/team-watch-send.py" <<'PY'
@@ -725,5 +725,19 @@ run "$MAIN" bash .claude/lib/team-new.sh abcdefghijklmnopqrstuvwxy AB-1 feature/
 has "session name smk-abcdefghijklmnopqrstuvwxy-wrapup is over 32 characters" "$WORK/out" || fail "(43) length message"
 [ ! -d "$WORK/main-supervisor" ] && [ ! -d "$WORK/main-adhoc-x" ] || fail "(43) a refused team got a clone"
 echo "team-smoke-host: (43) team names OK"
+
+# ---- (44) the inbox's session per address; send reads <registry>/<address>.reg.json; ad-hoc never rung ----
+cp "$WORK/prof.bak" "$P"
+mkdir -p "$MP/.agents/team/anchors"; echo '{}' > "$MP/.agents/team/anchors/alfa.json"
+run "$MAIN" bash -c "$SL; for a in Supervisor Fable alfa adhoc-dev-1; do sh_inbox_session '$MP' \$a; done"
+[ "$RC" = 0 ] && [ "$(tr '\n' ' ' < "$WORK/out")" = "Supervisor Fable alfa-lead adhoc-dev-1 " ] || fail "(44) inbox sessions"
+run "$MAIN" bash -c "$SL; sh_inbox_session '$MP' nobody"; expect 3 "" "(44) an unknown address"
+rm -f "$REG/alfa-planner.json"; echo '{}' > "$REG/alfa-planner.reg.json"
+clr; STUB_SOCK_RC=0 STUB_TMUX_ALIVE=0 run "$MAIN" $SH send alfa-planner "ping" --team-dir "$TDX"
+expect 0 "" "(44) send without a record"; line "socket $REG/alfa-planner.reg.json" "(44) the registry registration"
+rm -f "$REG/alfa-planner.reg.json"
+clr; run "$MAIN" $SH send adhoc-dev-1 "ping"; expect 3 "ad-hoc session — never rung" "(44) ad-hoc"
+noline "send-keys" "(44) an ad-hoc session was typed into"
+echo "team-smoke-host: (44) inbox sessions and the registry registration OK"
 
 echo "team-smoke-host: OK"

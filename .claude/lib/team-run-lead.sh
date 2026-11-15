@@ -62,7 +62,7 @@ launch_lead() {
   pf="$TD/runs/$RUN/lead-$n.prompt.md"
   ck="$(team_json cost_key)"; [ -n "$ck" ] || ck="$(team_json ticket)"
   # A relaunch must not ring the dead session's socket.
-  rm -f "$TD/teamlead.reg.json"
+  rm -f "$(sh_reg_dir "$root")/$(sess_name lead).reg.json"
   jq -n --arg team "$TEAM" --arg run "$RUN" --arg sid "$sid" --arg at "$(team_utc)" \
     --arg model "$TEAM_LEAD_MODEL" --arg effort "$TEAM_LEAD_EFFORT" --arg perm "$perm" \
     --arg main "$root" --argjson n "$n" --arg cc "$cc" \
@@ -123,9 +123,8 @@ lead_waiting() {
 }
 
 # Every wait_loop poll with the lead on: a dead lead is reported once, a requested relaunch
-# happens, a new file in the team's inbox rings the lead once.
+# happens. An inbox file rings the lead from team-inbox.sh write itself (the driver's send).
 lead_poll() {
-  local f m
   if [ -f "$TD/relaunch-lead" ]; then
     rm -f "$TD/relaunch-lead" "$TD/lead-dead"
     launch_lead
@@ -135,13 +134,6 @@ lead_poll() {
     touch "$TD/lead-dead"
     echo "TeamLead died — /start-team $TEAM relaunches it"
   fi
-  for f in "$root/.agents/team/inbox/$TEAM/new"/*; do
-    [ -f "$f" ] || continue
-    m="$TD/inbox-rung/$(basename "$f")"
-    [ ! -e "$m" ] || continue
-    mkdir -p "$TD/inbox-rung" && touch "$m"
-    team_session_doorbell "$TD" lead "inbox: $(basename "$f")"
-  done
   lead_notify
 }
 

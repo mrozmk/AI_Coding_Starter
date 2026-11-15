@@ -341,12 +341,31 @@ sh_gen() {
   echo "$g"
 }
 
-# sh_pid <name> → the pane's process id (teamlead-register.sh's ownership probe).
+# sh_pid <name> → the pane's process id.
 sh_pid() {
   local p
   p="$(sh_tmux display-message -p -t "=$1:" '#{pane_pid}' 2>/dev/null)" || return 1
   [ -n "$p" ] || return 1
   echo "$p"
+}
+
+# sh_pane_pid <main> <address> → the foreground pane's process id of the live session
+# (session-registry.sh's TeamLead ownership probe). Herdr: exit 1 until step 6.
+sh_pane_pid() {
+  [ "$(sh_record_get "$1" "$2" backend)" != herdr ] || return 1
+  sh_pid "$(sh_target "$1" "$2")"
+}
+
+# sh_inbox_session <main> <inbox address> → the session address an inbox write rings: a declared
+# role → itself; a team (an anchor in the main checkout) → <team>-lead; adhoc-* → itself (send
+# refuses it); anything else → exit 3. Teams may not take a role's name (team-new.sh).
+sh_inbox_session() {
+  case "$2" in adhoc-*) echo "$2"; return 0 ;; esac
+  if (ROLES_ROOT="$1"; . "$SH_LIB/roles-lib.sh" && roles_is_declared "$2") 2>/dev/null; then
+    echo "$2"; return 0
+  fi
+  [ ! -f "$1/.agents/team/anchors/$2.json" ] || { echo "$2-lead"; return 0; }
+  return 3
 }
 
 # sh_key_name <name> → the tmux key. The driver's names, plus tmux's own (team-answer.sh passes
@@ -493,6 +512,7 @@ sh_type() {
 sh_send() {
   local a="$1" n text reg="" why="" rc=0
   shift; sh_opts "$a" "$@" || return 2
+  [ "$(sh_kind "$a")" != adhoc ] || { sh_err "$a is an ad-hoc session — never rung"; return 3; }
   set -- ${SH_ARGS[@]+"${SH_ARGS[@]}"}
   [ $# -ge 1 ] || { sh_err "send: no line given"; return 2; }
   text="${1//$'\n'/ }"; shift
@@ -505,11 +525,10 @@ sh_send() {
   if [ "$(sh_state "$SH_MAIN" "$a" | jq -r '.state // ""' 2>/dev/null)" = blocked ]; then
     sh_log "$SH_MAIN" "$a" "$SH_TD" "doorbell-blocked $(sh_utc) — $text"; return 9
   fi
+  # The registration lives in the registry for every address (session-registry.sh writes it).
   [ -n "$reg" ] || reg="$(sh_record_get "$SH_MAIN" "$a" reg)"
-  [ -z "$reg" ] || case "$reg" in /*) ;; *) reg="$(sh_reg_dir "$SH_MAIN")/$reg" ;; esac
-  if [ -z "$reg" ] && [ "$(sh_kind "$a")" = team ] && [ "${a##*-}" = lead ] && [ -n "$SH_TD" ]; then
-    reg="$SH_TD/teamlead.reg.json"
-  fi
+  [ -n "$reg" ] || reg="$a.reg.json"
+  case "$reg" in /*) ;; *) reg="$(sh_reg_dir "$SH_MAIN")/$reg" ;; esac
   if [ -n "$reg" ] && [ -f "$reg" ] && printf '%s\n' "$text" \
     | python3 -I "$SH_LIB/team-watch-send.py" "$reg" >/dev/null 2>&1; then
     return 0

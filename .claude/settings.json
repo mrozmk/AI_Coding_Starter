@@ -350,7 +350,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/teamlead-register.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-registry.sh\"",
             "timeout": 5
           }
         ]
@@ -379,6 +379,15 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/inbox-count.sh\"",
             "timeout": 3
           }
         ]

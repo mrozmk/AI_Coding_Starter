@@ -497,7 +497,7 @@ smoke_repos() {
   git init --quiet --bare "$WORK/origin.git"
   SEED="$WORK/seed"
   mkdir -p "$SEED/.claude/lib" "$SEED/.claude/hooks" "$SEED/.claude/team/prompts"
-  cp "$SRC"/.claude/lib/team-*.sh "$SRC"/.claude/lib/session-host*.sh "$SEED/.claude/lib/"
+  cp "$SRC"/.claude/lib/team-*.sh "$SRC"/.claude/lib/session-host*.sh "$SRC"/.claude/lib/roles-lib.sh "$SEED/.claude/lib/"
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SRC/.claude/lib/team_prompt.py" \
     "$SRC/.claude/lib/team_prompt_classes.py" "$SRC/.claude/lib/team_prompt_settings.py" \
     "$SRC/.claude/lib/team_transcript.py" "$SRC/.claude/lib/team_settings_diff.py" \

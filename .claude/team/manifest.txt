@@ -222,7 +222,6 @@ own .claude/lib/team-verdict.sh
 own .claude/lib/team-tracker-gate.sh
 own .claude/lib/notify.sh
 own .claude/lib/operator-record.sh
-own .claude/hooks/teamlead-register.sh
 own .claude/team/prompts/teamlead.md
 own .agents/reference/team-lead.md
 own .claude/hooks/guard-teamlead-write.sh
@@ -236,7 +235,7 @@ own .claude/commands/sessions-up.md
 own .claude/commands/team-watch.md
 own .agents/reference/supervisor-sessions.md
 
-# --- session registry and roles: hooks (registered after the per-run TeamLead merge), the roles
+# --- session registry and roles: hooks (registered by team-setup.sh), the roles
 # reader/validator, the Advisor settings template and the role contracts (session-host.sh above) ---
 own .claude/hooks/session-registry.sh
 own .claude/hooks/inbox-count.sh

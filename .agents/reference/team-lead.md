@@ -28,16 +28,19 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   acks it, rings the lead (`stop <role> <attempt>: <record> — <message>`), prints
   `waiting for TeamLead: <record>` and keeps waiting for the stage's next record. Time spent waiting
   does not count toward the stage limit.
-- **Doorbell.** `team_session_doorbell` (`team-lead-lib.sh`) is the one transport. First Claude's
-  messaging socket from the lead's own `teamlead.reg.json` (draft- and dialog-safe). Otherwise
-  `send-keys` on a recognised empty idle input under the send lock. Otherwise skip and log
-  `doorbell-skipped` to `send-lead.log`. Pending work is derived from files, so a lost doorbell
-  only delays. The runner rings on a stop, a new attention line (`prompt <role>: needs a
-  decision`) and once per new file in the team's inbox (`inbox: <file>`).
+- **Doorbell.** The driver's `session-host.sh send` is the one transport (`team_session_doorbell`
+  in `team-lead-lib.sh` wraps it). First Claude's messaging socket from the session's registration
+  in the main checkout's registry, `registry/<team>-lead.reg.json` for the lead (draft- and
+  dialog-safe). Otherwise `send-keys` on a recognised empty idle input under the send lock.
+  Otherwise skip and log `doorbell-skipped` to `send-lead.log`. Pending work is derived from files,
+  so a lost doorbell only delays. The runner rings on a stop and a new attention line (`prompt
+  <role>: needs a decision`); a new file in the team's inbox rings the lead from `team-inbox.sh
+  write` itself (§3).
 - **Identity.** `team_lead_caller` (`team-lead-lib.sh`): role env `TeamLead` + `teamlead.json` of the
-  current run (+ the hook's session id). The SessionStart hook `teamlead-register.sh` moves
-  `teamlead.json.session_id` to the live id after `/clear`, but only for the lead's own process, then
-  writes the registration and prints `team-lead.sh pending`.
+  current run (+ the hook's session id). The SessionStart hook `session-registry.sh` moves
+  `teamlead.json.session_id` (and the registry record `<team>-lead`) to the live id after `/clear`,
+  but only for the lead's own process, then writes the registration and prints `team-lead.sh
+  pending`.
 - **Death and relaunch.** A dead lead is reported once (`session_dead`, marker `lead-dead`) and the
   runner prints `TeamLead died — /start-team <team> relaunches it`. `/start-team <team>` on a live
   runner with `teamlead: dead` runs `team-lead.sh relaunch <team>` (writes `relaunch-lead`), and
@@ -56,11 +59,11 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 |---|---|---|
 | `order-brief.md` | `team-brief.sh write` | the order (team-mode.md §2) |
 | `runs/<run>/order-brief.md` | runner at launch | the frozen copy the lead reads |
-| `teamlead.json` | runner at launch; `teamlead-register.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root` |
+| `teamlead.json` | runner at launch; `session-registry.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root` |
 | `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer and its write guard |
-| `teamlead.reg.json` | `teamlead-register.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target |
+| `<main>/.agents/team/registry/<team>-lead.reg.json` | `session-registry.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target; removed on relaunch, at `end` and by `team-next.sh` / `team-remode.sh` |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
-| `lead-dead`, `relaunch-lead`, `inbox-rung/<file>`, `send-lead.log` | runner | death reported once, relaunch request, inbox ring markers, skipped doorbells |
+| `lead-dead`, `relaunch-lead`, `send-lead.log` | runner | death reported once, relaunch request, skipped doorbells |
 | `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | the stage record the lead must resolve, relative to `runs/<run>/` (`r<n>/<record>` in a rework round): a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate), a qa `done` (acceptance gate) |
 | `round`, `round-transition` | runner (§9) | the durable rework round `{run, round, verdict, pr_published}`; the transition intent `{run, from, to, verdict, pr_published}` |
 | `runs/<run>/rework-<n>.md`, `runs/<run>/r<n>/` | the lead; runner + stages | the round's rework order; round n's records, prompts, sessions, reports and acceptance files |
@@ -75,7 +78,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `runs/<run>/<record>.answered` | `team-answer.sh`, after delivering the answer to that stop (step 6) | ends the wait: the stage time limit (coder 4 h, qa 3 h) is paused while `acked` names a stop without this marker, and counts again from the poll that sees it |
 
 The team-dir root files of a lead (`teamlead.*`, `round`, `verdict-acked`, `lead-dead`,
-`relaunch-lead`, `inbox-rung/`) are run-scoped: `team-next.sh` and `team-remode.sh` archive them.
+`relaunch-lead`) are run-scoped: `team-next.sh` and `team-remode.sh` archive them.
 Every ownership check requires `teamlead.json.run` = the current `run`, so a stale file never
 switches a later run to the lead branch.
 
@@ -88,8 +91,8 @@ switches a later run to the lead branch.
 
 ## 3. Events to the Supervisor
 
-Exactly four events reach the Supervisor, each an atomic file, then a doorbell to the Supervisor's
-registered socket (`.agents/team/watch/receivers/Supervisor.json`) when one exists:
+Exactly four events reach the Supervisor from a team, each an atomic file, then a doorbell through
+`session-host.sh send` (§1):
 
 | Event | Sender | When |
 |---|---|---|
@@ -106,6 +109,19 @@ clone writes with `--main <teamlead.json main_root>`, never its own git root. A 
 (`inbox/<team>/`) takes any event, e.g. the Supervisor's `collision-answer`. Team-watch drops every
 team signal of a run with its own lead (`lead: true` in the snapshot), so neither the global
 TeamLead nor single-routing delivery sees that run's stops.
+
+**Sender rules.** To the Supervisor: a team sender (an anchor exists for `--from`) only the four
+events above; a declared role or an `adhoc-*` session also `message` and `advice`; any other
+`--from` is refused (exit 2). A role or team address takes any event.
+
+**Ring.** After the rename, `write` rings the address's session through `session-host.sh send`: a
+role rings itself, a team rings `<team>-lead`, an `adhoc-*` address is never rung. The ring's
+result goes to stderr (`ring: <rc>`), never to the exit code: a blocked (9), gone (3) or skipped
+(10) doorbell loses nothing, because the file is in `new/` and the UserPromptSubmit hook
+`inbox-count.sh` prints `inbox: N waiting — …` at the recipient's next prompt.
+
+**A message may arrive twice after a crash** (a handler that dies after acting but before `done`).
+Every handler moves a file to `done/` only after acting, and acting twice is harmless.
 
 ## 4. Gates
 

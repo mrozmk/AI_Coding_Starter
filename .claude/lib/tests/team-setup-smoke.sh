@@ -636,4 +636,35 @@ cp "$S" "$WORK/s23"
 setup "$T"
 cmp -s "$S" "$WORK/s23" || fail "23: the rerun changed settings.json"
 
+# ---- (24) session registry: the old TeamLead hook is retired, a foreign look-alike stays ----------
+T=$(mktarget t24)
+mkdir -p "$T/.claude"
+OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/teamlead-register.sh"'
+FOREIGN='bash "$CLAUDE_PROJECT_DIR/tools/teamlead-register.sh"'
+jq -n --arg o "$OLD" --arg f "$FOREIGN" '{hooks: {SessionStart: [
+   {matcher: "startup|resume|clear|compact", hooks: [{type: "command", command: $o, timeout: 5}]},
+   {matcher: "startup", hooks: [{type: "command", command: $f}, {type: "command", command: $o}]}]}}' \
+  > "$T/.claude/settings.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "retired settings.json: teamlead-register.sh" || fail "24: the old hook was not retired"
+[ "$(jq --arg o "$OLD" '[.hooks[]?[]?.hooks[]? | select(.command == $o)] | length' "$S")" = 0 ] \
+  || fail "24: the old hook is still registered"
+[ "$(jq --arg f "$FOREIGN" '[.hooks[]?[]?.hooks[]? | select(.command == $f)] | length' "$S")" = 1 ] \
+  || fail "24: a foreign hook whose path contains teamlead-register was dropped"
+[ "$(jq '[.hooks.SessionStart[] | select((.hooks | length) == 0)] | length' "$S")" = 0 ] \
+  || fail "24: an emptied entry was left behind"
+jq -e '[.hooks.SessionStart[] | .hooks[] | select((.command | test("session-registry.sh")) and .timeout == 5)]
+    | length == 1' "$S" >/dev/null \
+  || fail "24: session-registry.sh is not registered once"
+jq -e '[.hooks.UserPromptSubmit[] | .hooks[] | select((.command | test("inbox-count.sh")) and .timeout == 3
+    and (.async // false) == false)] | length == 1' "$S" >/dev/null || fail "24: inbox-count.sh is not registered once"
+[ -f "$T/.claude/hooks/session-registry.sh" ] && [ -f "$T/.claude/hooks/inbox-count.sh" ] \
+  && [ ! -e "$T/.claude/hooks/teamlead-register.sh" ] || fail "24: hook files"
+setup "$T"
+! has "retired settings.json" || fail "24: the rerun retired again"
+jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("teamlead-register"))] | length == 1' \
+  "$ST/.claude/settings.json" >/dev/null && fail "24: the starter's own settings still register teamlead-register"
+true
+
 echo "team-setup-smoke: OK"

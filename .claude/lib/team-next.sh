@@ -154,9 +154,13 @@ git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 archive="$TD/archive/$old_ticket-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
 for f in runs run acked cancel team.json merge-check-build.log roles.override.json \
-  ticket.json ticket.md order-brief.md teamlead.json teamlead.settings.json teamlead.reg.json \
-  round verdict-acked lead-dead relaunch-lead inbox-rung; do
+  ticket.json ticket.md order-brief.md teamlead.json teamlead.settings.json \
+  round verdict-acked lead-dead relaunch-lead; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
+done
+# The ended run's session records and doorbell registrations (the next run's start writes new ones).
+for r in planner coder qa wrapup cli lead; do
+  rm -f "$root/.agents/team/registry/$team-$r.json" "$root/.agents/team/registry/$team-$r.reg.json"
 done
 
 # Squash merges are never ancestors, so -D; the guard above proved the tip is the merged source.

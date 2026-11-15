@@ -161,7 +161,7 @@ end_lead() {
   resolve "$1"
   team_end_session "$TD" "$(team_tmux_name "$1" lead)" lead "${TEAM_EXIT_WAIT_SECS:-60}" \
     || { echo "error: TeamLead session of $1 did not end" >&2; exit 1; }
-  rm -f "$TD/teamlead.reg.json"
+  rm -f "$MAIN/.agents/team/registry/$(team_tmux_name "$1" lead).reg.json"
   echo "TeamLead ended: $1"
 }
 
