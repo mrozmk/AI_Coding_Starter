@@ -3,6 +3,67 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## Session host, `/roles` and restore (#27–#36)
+
+**Before:** role sessions and team stages ran in tmux only. `supervisor-sessions.sh` (and
+`/sessions-up`, `/session-role`, `/mail-role`, `/monitoring`, `/team-watch`) started the roles, the
+runner opened a Terminal.app window per role through `team-attach.sh`, and role messages were
+pushed by the team-watch daemon and woken by wake loops. agent-mail was part of every install.
+
+**Now:**
+- **One driver.** Every session goes through `.claude/lib/session-host.sh`, on tmux or Herdr
+  (`teams.session_host: auto | tmux | herdr`). **`auto` is tmux today**: Herdr runs only when
+  chosen explicitly, until its backend has passed a live check. A running session stays on the
+  backend it started on. Contract: `.agents/reference/session-host.md`.
+- **Prefixed names.** Every session name carries the project prefix (`teams.session_prefix`, else
+  `teams.channel.tmux_prefix`, else the repo slug, cut to 12): `<prefix>-<team>-<role>`,
+  `<prefix>-<role>`. A run started before the update keeps its old name for one release.
+- **`/roles` replaces five commands.** `/roles` (`roles.sh up|status|stop|here|resume|runs`)
+  starts, restores, stops and lists the role sessions; after a crash or reboot it also asks which
+  interrupted team runs to resume and prints resume lines for gone ad-hoc conversations. Roles are
+  `teams.sessions` (one key per role: `cli`, `model`, `effort`, `settings`, `contract`, `standing`,
+  `enabled`, `place`); the shipped defaults are Supervisor, Fable (Claude) and Astra (Codex). The
+  old key `Advisor` is read as Fable. `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring`,
+  `/team-watch` and `supervisor-sessions.sh start|stop|status|up|here` are deprecated pointers to
+  `/roles` and go in the next release.
+- **Role messages** are inbox files rung by the doorbell (`session-host.sh send`); `/roles` starts
+  no team-watch daemon and no wake loop. `/monitor` users start the daemon by hand:
+  `bash .claude/lib/team-watch.sh start`.
+- **tmux: no role windows open any more.** The runner no longer opens a Terminal.app window per
+  role, and `team-attach.sh` is gone. Nothing replaces the window under tmux: run the command
+  `bash .claude/lib/session-host.sh hint <team>-<role>` prints, and detach with `Ctrl-b d`. The
+  planner and the wrapup print `attach: <hint>`; a role that waits on you prints
+  `needs attention: <hint>`. `TEAM_ATTACH` does nothing under tmux (under Herdr it decides which
+  stages get a pane in the `Teams` tab). `team-status.sh` no longer writes the OSC 7501 status to
+  attached tmux clients. A runner running during the update prints
+  `warn: no preview window for <name>` and goes on.
+- **Hints.** A tmux hint carries `TMUX_TMPDIR=<dir>` when the process that prints it has the
+  variable (a per-project tmux server). With no session found, the Operator notification's hint
+  says so (`no Supervisor session found — bash .claude/lib/roles.sh status`, and for a decision
+  `no <team>-lead session found — bash .claude/lib/session-host.sh status <team>-lead`) instead of
+  a guessed tmux name.
+- **Startup dialogs are reported, never answered.** A role at the folder trust dialog prints
+  `started (needs trust — pick Yes; Enter alone exits)`: under Herdr the dialog's first option is
+  `No, exit`. The MCP servers dialog prints `started (startup dialog open)`.
+- **Herdr:** roles go to the `Lead` tab, team TeamLeads and the running stages to one `Teams` tab
+  of the checkout's space. A role's pane title is set to its address when it starts.
+- **agent-mail is an optional kit.** `/setup:teams` installs it only when the profile has
+  `teams.channel`, the kit is already installed (`.agents/team/channel.local.json`) or you pick it;
+  `sqlite3` is required only then. A project that uses the kit today sees no change. The warning
+  "operator kit role-hooks.settings.json not installed — <role> without the mail Stop guard" is gone.
+- **Worker artifacts** of a new install live in `~/.agent-ops/worker/<id>` (mode 0700). An existing
+  `~/.agent-mail/worker` stays the artifacts root.
+
+**Action:**
+- Run `/setup:teams` to update the layer, then start the roles with `/roles` (stop the old windows
+  first, or let `/roles` find them under their old names).
+- Optional: set `teams.session_host` and `teams.session_prefix`; give each project its own tmux
+  server through `env.TMUX_TMPDIR` in `.claude/settings.local.json`.
+- A Worker to move out of the mail home: release its active assignment, move the directory to
+  `~/.agent-ops/worker`, give the Worker's Codex host write access to the new path and drop the old
+  one — or set `WORKER_ARTIFACTS` to a path you choose.
+- Replace `/sessions-up` and the other four commands in your own notes and scripts with `/roles`.
+
 ## `notify.sh` is the only path to the Operator
 
 **Before:** the Operator was reached by several sinks: the operator kit's platform notifier

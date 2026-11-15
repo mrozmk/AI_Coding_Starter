@@ -4,7 +4,7 @@
 - [`supervisor-sessions.md`](../../.agents/reference/supervisor-sessions.md): the roles, profiles, launcher, preflight, auto-merge, migration and rollback.
 - [`roles.md`](../../.claude/commands/roles.md) (`/roles`, script `roles.sh`): starts, stops, lists and takes the role sessions declared in `teams.sessions`; the role contracts are in [`.agents/reference/roles/`](../../.agents/reference/roles/).
 
-> **`/roles` replaces the launcher described below.** `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are deprecated pointers to it for one release. The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
+> **`/roles` replaces the old launcher.** `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are deprecated pointers to it for one release. The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
 - [`monitor.md`](../../.claude/commands/monitor.md): the TeamLead's handling contract.
 
 ## Per-run TeamLead (pilot)
@@ -17,7 +17,7 @@ The single-window `/monitor` splits into long-lived **role sessions**, each with
 
 The layer is opt-in on top of the single-window flow. As long as there is no `routing.json`, routing is `single Supervisor` and one plain window runs `/monitor` as before.
 
-| Role | Host | tmux session | Does | Never |
+| Role | Host | Session (tmux name / Herdr terminal) | Does | Never |
 |---|---|---|---|---|
 | **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze, alarms, a role session's own prompts (tier 1 through `answer`) | answers or escalates a team question; switches routing on its own; clears a freeze without the Operator |
 | **TeamLead** | Claude | `<prefix>-teamlead` | runs `/monitor`: team signals, tier 1, decides team questions, sends the Advisor and Operator lists through `team-escalate.sh`, writes the READY note | merges, releases, pushes; creates, advances or remodes teams; switches routing or answering |
@@ -30,14 +30,14 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 ## Identity
 
-- **`TEAM_SESSION_ROLE`** (`Supervisor` | `TeamLead` | `Advisor`) is the identity. The launcher sets it per tmux session, and each role profile sets it again under `env`. A session's memory never decides its role.
-- `<prefix>` is `teams.channel.tmux_prefix`, which defaults to the repo directory slug. The mail recipient and the session's `--name` are both the role plus `teams.channel.mail_suffix`. Two projects on one machine therefore never share a tmux session, a recipient or a process name.
+- **`TEAM_SESSION_ROLE`** (`Supervisor` | `TeamLead` | `Advisor`) is the identity. `/roles` sets it in each role session's launch environment, and each role profile sets it again under `env`. A session's memory never decides its role.
+- `<prefix>` is `teams.session_prefix`, else `teams.channel.tmux_prefix`, else the repo directory slug, cut to 12 characters ([session-host.md](../../.agents/reference/session-host.md) §2). The session's `--name` is the role plus `teams.channel.mail_suffix`. Two projects on one machine therefore never share a session or a process name.
 - The **`SessionStart` hook `session-registry.sh`** (id `L`, registered by `team-setup.sh`; it absorbed `session-role.sh`, which `team-setup.sh` now retires) runs after startup, resume, `/clear` and compact. It names the role's contract (`teams.sessions.<Role>.contract`) and keeps `.agents/team/watch/sessions/<role>/session.json` on the live session id, so `team-answer.sh --session <role>` binds to the role's own transcript. It stays silent in a team clone and without a known role.
-- **`/session-role <role>`** refuses when the argument differs from `TEAM_SESSION_ROLE`. Otherwise it primes, reads the role's section of the contract, registers the team-watch receiver (Supervisor and TeamLead), arms the wake loop and reconciles.
+- The bootstrap line is on the launch line itself (`You are <Role>. Follow the role contract …`): a hook adds context but starts no turn. `/session-role` is a deprecated pointer to `/roles`.
 
 ## Models
 
-Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `stop <role>` and `start <role>`.
+Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `roles.sh stop <Role>` and `roles.sh up <Role>`.
 
 ## `/monitor` belongs to the TeamLead
 
@@ -86,39 +86,34 @@ A materialised profile that has lost a project or local deny rule is also a FAIL
 
 The check approximates Claude Code's matcher. The live `/permissions` check in each window is a migration step.
 
-## The launcher
+## Starting, restoring and stopping roles
+
+Roles are started by `/roles`, on tmux or Herdr through the session-host driver
+([session-host.md](../../.agents/reference/session-host.md)):
 
 ```bash
-bash .claude/lib/supervisor-sessions.sh start all|<role>   # materialise + check, then launch in tmux
-bash .claude/lib/supervisor-sessions.sh status             # tmux, receivers (socket state), routing, freeze
-bash .claude/lib/supervisor-sessions.sh stop <role>        # never `all`
-bash .claude/lib/supervisor-sessions.sh up                 # after a restart; /sessions-up
-bash .claude/lib/supervisor-sessions.sh preflight          # one verdict line per row, exit 1 on any FAIL
+bash .claude/lib/roles.sh                 # = up: start every standing role that is not running (idempotent)
+bash .claude/lib/roles.sh status          # backend, alive|gone|stopped, state, inbox, session id, last seen
+bash .claude/lib/roles.sh stop <Role>|all # /exit, then a kill after 15 s; the record stays, marked stopped
+bash .claude/lib/roles.sh resume <Role>   # a gone Claude role on its previous conversation
+bash .claude/lib/roles.sh here <Role>     # this plain terminal becomes <Role> (an Operator action)
+bash .claude/lib/supervisor-sessions.sh preflight   # one verdict line per row, exit 1 on any FAIL
 ```
 
-**First bring-up on a fresh machine** (no single `/monitor` window running the daemon yet):
+After a crash or reboot, `/roles` also lists the interrupted team runs (resuming one is optional,
+`/start-team <team>`) and prints a resume line for each gone ad-hoc conversation. Under Herdr the
+roles land in the `Lead` tab of the checkout's space. A role that waits at the folder trust dialog
+is reported as `started (needs trust — pick Yes; Enter alone exits)`: accept it in that window. No
+wake loop and no team-watch daemon start; role messages are inbox files rung by the doorbell.
 
-```bash
-bash .claude/lib/supervisor-sessions.sh up      # or /sessions-up: the three steps below, in order
-# explicit equivalent:
-bash .claude/lib/team-watch.sh start --no-register   # daemon + watchdog only; from a terminal
-bash .claude/lib/supervisor-sessions.sh start all     # the role windows
-bash .claude/lib/monitoring.sh start all              # end any pause, replay the open state
-```
-
-`start all` launches the role windows only, not the daemon. A plain `team-watch.sh start` from a terminal stops in the receiver registration (`CLAUDE_CODE_MESSAGING_SOCKET/TOKEN unset — run in a Claude session`), so the terminal form needs `--no-register`; each role window registers itself in `/session-role`. Then ping each role (`team-watch.sh ping <role>`, acked in its window), run `preflight` until green, and switch with `team-watch.sh routing split` (an Operator action). The [Migration](../../.agents/reference/supervisor-sessions.md#migration) in the contract applies only when a single `/monitor` window already runs the daemon.
-
-Each role is launched like this:
-
-- `tmux new-session -d -s <prefix>-<role> -e TEAM_SESSION_ROLE=<role>`, under `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN`, so a launching session's identity never leaks into it;
-- `claude --name <role><suffix> --session-id <uuid> --model <m> --effort <e> --settings <materialised profile>`;
-- the launch prompt `/session-role <role>`.
-
-`CODEX_HOME` and `CLAUDE_CONFIG_DIR` are forwarded per session. A changed `settings.local.json` needs `stop <role>` and `start <role>`.
+Each Claude role runs as `claude --name <role><suffix> --session-id <uuid> --model <m> --effort <e>
+--settings <materialised profile> -- <bootstrap line>; read`, with the caller's `CLAUDECODE*` and
+messaging variables dropped. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are set per session. A changed
+`settings.local.json` needs `roles.sh stop <Role>` and `roles.sh up <Role>`. The old
+`supervisor-sessions.sh start|stop|status|up|here` verbs are deprecated pointers to `roles.sh`.
 
 Other verbs:
 
-- `here Supervisor` runs the Supervisor in the Operator's own terminal. It refuses while `<prefix>-supervisor` runs, and it is an Operator action.
 - `answer <role> --fp <fp> yes|no|pick|other` is the only tier-1 path into a role session's own prompt. It is bound to the fingerprint and refused with zero keys on any mismatch.
 - `freeze on|off|status` and `rollback` are covered in the contract.
 - `reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's path only, or `Reviewer: none (advisor solo)`.
@@ -153,7 +148,7 @@ Other verbs:
 
 | State | Verdict |
 |---|---|
-| a role not started yet (no tmux session or `here` window) | **WARN** `<role> not started` |
+| a role not started yet (no session or `here` window) | **WARN** `<role> not started` |
 | a running role with no active registration | **FAIL** `<role> not registered` |
 | a running role whose socket is missing | **FAIL** `<role> socket <path> missing` |
 | a socket that is not a 0600 socket owned by the current uid | **FAIL** `socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>` |
@@ -163,7 +158,7 @@ On the verified CLI the messaging token is not enforced. The 0600 mode and the o
 
 ## After a restart, and rollback
 
-- **After a machine restart:** run `/sessions-up` (or `supervisor-sessions.sh up`). It starts the team-watch loops and every missing role, fresh, never with `--resume`, then runs `monitoring.sh start all`. Interrupted team runs are listed for `/start-team <team>`, never resumed.
+- **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations. It starts no team-watch loop; `/monitor` users start it by hand (`bash .claude/lib/team-watch.sh start`).
 - **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `/mail-role Supervisor` and `/monitor`, and `team-watch.sh status` shows the Supervisor receiver active.
 
 The migration steps (for a machine that already runs a single `/monitor` window) and the smoke checklist are in the contract.

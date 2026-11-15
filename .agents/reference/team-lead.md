@@ -11,8 +11,8 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 
 ## 1. Lifecycle
 
-- **Launch.** `team-run.sh` launches the lead once per run, before the first stage, in tmux session
-  `<team>-lead` in the clone. Preconditions, each a refusal (exit 4) when missing:
+- **Launch.** `team-run.sh` launches the lead once per run, before the first stage, as the session
+  `<team>-lead` in the clone, through the session host (tmux or Herdr, [session-host.md](session-host.md)). Preconditions, each a refusal (exit 4) when missing:
   - the clone base has the lead's files (`team_lead_base_ok` in `team-run-lead.sh`; an older base
     → `team-next` onto a current line);
   - a valid `order-brief.md` (`team-brief.sh check`; `/start-team` step 4c writes it).
@@ -241,7 +241,8 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   <event>` (the one sender, the only path to the Operator). The event id
   `<project>:<team>:<run>:<d-n>` is written once into `~/.agent-comms/outbox/events/` — that file
   is the dedup across ticks and runner restarts. The hint is the driver's for the answering session
-  (`tmux attach -t <team>-lead` on tmux). A failed call (exit ≠ 0) is retried on the next tick, three
+  (`session-host.sh hint <team>-lead`); with no session found it reads
+  `no <team>-lead session found — bash .claude/lib/session-host.sh status <team>-lead`. A failed call (exit ≠ 0) is retried on the next tick, three
   tries per verdict, then one `warn: notify.sh failed 3× for <verdict> — the decision waits in
   <window>`; the decision stays pending and shows in `/tasks-status` either way.
 - **Human-only prompt (owner, 2026-11-15).** A decision opened `--request req-<n>` carries

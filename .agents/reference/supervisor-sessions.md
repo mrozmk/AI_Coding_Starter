@@ -1,5 +1,13 @@
 # Reference: supervision role sessions
 
+> **Superseded for launching.** Role sessions are started, restored, stopped and taken over by
+> `/roles` (`roles.sh up|status|stop|here|resume`) through the session-host driver:
+> [session-host.md](session-host.md) and the role contracts in [roles/](roles/supervisor.md). The
+> `supervisor-sessions.sh` launch verbs (`start`, `up`, `here`, `stop`, `status`) are deprecated
+> pointers to `roles.sh` and go in the next release. `materialize`, `check`, `preflight`, `freeze`,
+> `rollback` and `answer` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The tmux tables below describe the
+> old launcher.
+
 The single-window `/monitor` (one session receives every team signal, talks to the Operator, runs
 the teams) is split into long-lived role sessions with fixed roles. Identity is
 `TEAM_SESSION_ROLE`, set by the launcher; **scripts, not models**, enforce the routing, the pickup

@@ -13,7 +13,9 @@ allowed-tools: Bash(bash .claude/lib/roles.sh:*), AskUserQuestion
    ```
 
    Print its output verbatim. Do not retry, do not start or stop anything else, and do not answer a
-   dialog in a role's window (a folder trust dialog is the Operator's to accept).
+   dialog in a role's window (a folder trust dialog is the Operator's to accept). For a role printed
+   `started (needs trust — pick Yes; Enter alone exits)`, tell the Operator to pick `Yes, I trust
+   this folder` explicitly in that window: under Herdr the dialog's first option is `No, exit`.
 
 2. **Only when `$ARGUMENTS` is empty or `up`:** run `bash .claude/lib/roles.sh runs --json`. It
    prints a JSON array of interrupted team runs, oldest first, each `{team, run, stage, state,

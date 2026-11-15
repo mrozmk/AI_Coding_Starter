@@ -140,7 +140,7 @@ Optional, and only when you need it. Details: [Parallel AI teams](docs/teams/REA
 - *Recommended:* the [Codex CLI](https://github.com/openai/codex) for cross-model review. Without it,
   everything works, just without the second opinion.
 - *Optional:* Jira (through the Atlassian MCP server), Node.js for a few helper scripts.
-- *For AI teams:* the Codex CLI, Python 3.9+ and tmux.
+- *For AI teams:* the Codex CLI, Python 3.9+ and tmux or Herdr.
 
 ## Get started in 5 minutes
 

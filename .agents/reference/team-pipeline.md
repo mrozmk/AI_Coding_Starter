@@ -1,8 +1,8 @@
 # Reference: parallel team pipeline — supervisor runbook
 
 Two AI teams on two tickets at once on one Mac. Each team is a git clone (`teams.clone_name`,
-default `../<repo>-<team>`); planner → coder → qa → wrapup run there as fresh Claude sessions in
-tmux, driven by `team-run.sh`. You (the supervisor, in the main checkout) answer blockers, run the
+default `../<repo>-<team>`); planner → coder → qa → wrapup run there as fresh Claude sessions on
+the session host (tmux or Herdr, [session-host.md](session-host.md)), driven by `team-run.sh`. You (the supervisor, in the main checkout) answer blockers, run the
 merge check and merge with `/pr-merge`; the wrapup role reconciles memory in the team's PR. Role contract: [team-mode.md](team-mode.md). Why clones
 and not worktrees: [parallel-orchestration.md](parallel-orchestration.md) → Step 1.
 
@@ -59,8 +59,9 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   prompt, detach with `Ctrl-b d`. In auto mode reads no longer prompt: what remains are ask-tier
   commands, egress (`guard-team-egress`), menus and questions. A Herdr pane closes by itself when the role
   ends; a tmux attach ends when you detach (Ctrl-b d).
-- **One window for all teams:** `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter
-  switch. `tmux ls` / `bash .claude/lib/team-run.sh alfa status` peek without attaching.
+- **One window for all teams:** Herdr: the `Teams` tab shows every team's TeamLead and the stage
+  running now. tmux: `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter switch.
+  `bash .claude/lib/team-run.sh alfa status` peeks without attaching.
 - **Notifications** reach you for four events only (a human decision, an abandon decision, an
   unrepaired failure, a release step), through `.claude/lib/notify.sh`, on the channels you switch
   on in `~/.agent-comms/notify.json` (Herdr, iMessage; both off by default). With both off, what
@@ -90,7 +91,7 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
 
 ## 1. One-time setup
 
-- `brew install tmux jq`
+- `brew install jq`, plus a session host: `brew install tmux`, or Herdr (`teams.session_host`, session-host.md §3)
 - `chmod 600 .env` — `team-new.sh` refuses to copy a `.env` with any other mode.
 - The PR provider's login for `teams.pr_provider` (`gh auth login` for `github`, `az login` for `azure-devops`), with the right to open pull requests on the repo.
 - Disk: one clone ≈ the repo plus its build output after the first build.
@@ -114,7 +115,7 @@ Give each project its own tmux server through `env.TMUX_TMPDIR` in the project's
 
 - Any ticket type — code, docs/harness, or operations (rollout, Azure DevOps admin). Operations run
   inside the coder's `/execute` as plan tasks; production/ADO changes are `ask`-tier, so the run
-  pauses on a permission prompt until you approve it in tmux (`needs attention: tmux attach …`) —
+  pauses on a permission prompt until you approve it in the role's window (`needs attention: <hint>`) —
   in auto mode too; the classifier skips only the prompts for ordinary reads and builds.
   This includes deploys: read the target instance in the prompt before approving. Merging stays the
   supervisor's (`/pr-merge` on Azure DevOps, `team-integrate.sh` on GitHub).
@@ -169,22 +170,23 @@ run starts with the notes carried over, and `team.json` mode becomes `brainstorm
 
 ## 4. Run
 
-The runner blocks for hours — longer than a Claude Bash call (10 min max) — so start it in its own
-tmux session from the main checkout:
+The runner blocks for hours — longer than a Claude Bash call (10 min max) — so `/start-team` starts it
+in its own session through the driver, from the main checkout:
 
 ```bash
-tmux new-session -d -s alfa-runner "bash .claude/lib/team-run.sh alfa; read"
-tmux attach -t alfa-runner        # watch; detach with Ctrl-b d
+bash .claude/lib/session-host.sh start alfa-runner --kind team --cwd "$PWD" --cli script \
+  -- "bash .claude/lib/team-run.sh alfa; read"
+bash .claude/lib/session-host.sh hint alfa-runner   # how to watch it
 ```
 
-or from the supervisor session with `run_in_background`. Attach to the planner
-(`tmux attach -t alfa-planner`), answer `/brainstorm` and `/plan-feature`, detach; the runner moves
+or from the supervisor session with `run_in_background`. Open the planner
+(`bash .claude/lib/session-host.sh hint alfa-planner`), answer `/brainstorm` and `/plan-feature`, detach; the runner moves
 on to coder, qa and wrapup by itself. With `/monitor` running (tiers on), the planner's questions
 can also be answered by the supervisor (tier 1) or the analysts (tier 2), who answer or ask the
 Operator themselves; attaching still works. Wrapup opens its window with a plain summary of the run (also
 posted as a Jira comment) and asks one question only when it recommends memory or new tickets.
 
-`bash .claude/lib/team-run.sh alfa status` prints team, run, newest record per role, live tmux
+`bash .claude/lib/team-run.sh alfa status` prints team, run, newest record per role, live
 sessions, lock holder and the last attention line. All `team-*.sh` scripts are `allow` in
 `settings.json`; deploy and Azure DevOps commands inside roles stay `ask`.
 
@@ -194,7 +196,7 @@ sessions, lock holder and the last attention line. All `team-*.sh` scripts are `
 |---|---|---|
 | 0 | stage(s) advanced; after qa: ready | run the merge check |
 | 1 | `failed` record | read the printed reason; fix in the session or relaunch the stage |
-| 2 | `blocked` record | attach, answer the question in the session, then `/start-team <team>` (it checks the runner pid, not the tmux session — that outlives the runner on `; read`) |
+| 2 | `blocked` record | attach, answer the question in the session, then `/start-team <team>` (it checks the runner pid, not the runner's session — that outlives the runner on `; read`) |
 | 3 | stalled (coder 4 h, cli 4 h, qa 3 h) | attach and look; rerun to keep waiting |
 | 4 | `done` record failed validation | read the printed check; fix in the session, rerun |
 | 5 | dead session left partial work, or retry limit hit | inspect the clone; decide by hand |
@@ -327,7 +329,7 @@ check reports (§6).
 
 - [ ] two disjoint tickets reach published PRs
 - [ ] a blocked question answered and resumed
-- [ ] a killed session (`tmux kill-session -t '=beta-coder'`) recovered or stopped as designed
+- [ ] a killed session (`bash .claude/lib/session-host.sh kill beta-coder`) recovered or stopped as designed
 - [ ] a failed gate stops publication
 - [ ] recorded: tokens, wall time, interventions, rejected work → `.agents/memory/domain/harness.md`
       via the reconciliation PR
@@ -369,12 +371,12 @@ puts it; nothing is written inside the repo.
   merged with the clone's `roles.override.json` — configured values for the next launch; a role
   started before an override change still runs on the old one;
   a blocked/failed role with the runner not `up` adds `resume_hint: /start-team <team>`;
-- tmux — whether the current role's session lives and whether its pane shows a permission prompt
-  (the same check `team-answer.sh` uses);
+- the session host (through the driver, tmux or Herdr) — whether the current role's session lives
+  and whether its screen shows a permission prompt (the same check `team-answer.sh` uses);
 - the process table — live `codex exec` runs (`ps`), their log (`lsof`) and its last `STATUS:` line.
 
-**States:** `unknown` — the source could not be read (no transcript, tmux not on PATH, a tmux probe
-error other than "no such session"); `errors[]` says why. `stopped` — the current role's tmux
+**States:** `unknown` — the source could not be read (no transcript, no session host, a probe
+error other than "gone"); `errors[]` says why. `stopped` — the current role's
 session is gone. `runner stale` — `lock/` exists but its pid is dead.
 
 **`attention[]` and finished teams.** `attention[]` lists a role waiting on a permission prompt or
@@ -382,7 +384,7 @@ a question (the pane shows a prompt, or the newest `attention` line other than `
 is no older than the role transcript's last write; the pane check covers prompts — its commands
 follow the pane: `AskUserQuestion` menu → `pick`/`other`, prompt → `yes`/`no`, else `say`), a
 `blocked`/`failed` record (its message, the `session-host.sh hint` line and the resume hint), and a PR ready to
-merge (`team-merge-check.sh`, `/pr-merge <id>`); each item names the tmux window. A team whose
+merge (`team-merge-check.sh`, `/pr-merge <id>`); each item names the role's window (its hint). A team whose
 runner is `down` (not `stale`) and whose mode's last role is `done` gets `teams[].state`: `free`
 (PR `completed`/`abandoned`), `awaiting merge` (PR `active`, also an `attention[]` item) or
 `PR status ?` (ADO unreachable — no item). Only for such teams the snapshot calls
@@ -502,8 +504,8 @@ crashed holder's surviving build keeps the lock. Smoke: `.claude/lib/tests/gate-
 **Run audit.** `team-audit.sh` writes `<main checkout>/.agents/team/audit/` from the runner's exit
 trap and from `team-next.sh` (team-mode.md §2); config `.claude/team/audit.json`. It is material
 only — never a gate. **Retro is off by default**: only with `teams.audit.retro: true` in the
-project profile does a flagged or sampled final run get one detached, report-only `/retro` in tmux
-`retro-<run>` (prompt `.claude/team/prompts/retro-run.md`) — a Claude session, so a cost the
+project profile does a flagged or sampled final run get one detached, report-only `/retro` in its own
+session `helper:retro-<run>` (prompt `.claude/team/prompts/retro-run.md`) — a Claude session, so a cost the
 project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_clean`, model).
 
 **Team supervision layer.** The question ledger, the tiers and the escalation adapter work from

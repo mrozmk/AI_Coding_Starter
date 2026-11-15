@@ -2,7 +2,7 @@
 
 Several AI sessions working on one machine at once, under rules that scripts enforce rather than
 prompts. Each **team** is a permanent git clone running a fixed pipeline of fresh role sessions
-(planner → coder → qa → wrapup, or one `cli` role) driven by a shell runner in tmux. Long-lived
+(planner → coder → qa → wrapup, or one `cli` role) driven by a shell runner on tmux or Herdr. Long-lived
 **supervision roles** watch them:
 
 - **Supervisor** talks to the Operator, merges within the gate and starts teams.

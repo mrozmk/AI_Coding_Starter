@@ -9,9 +9,10 @@ and the acceptance run. [capabilities.md](capabilities.md) says what is proven.
 ## Requirements
 
 - **macOS only today.** Linux is unsupported until the BSD `stat -f` / `date -r` sites are ported
-  (follow-up F12): they break the daemon, the runner and the question ledger there. `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`, `sqlite3`.
-- `tmux`, `jq`, `git`, Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams`
-  stops when any of them is missing. **Codex is required even with `advisor: solo`**: `solo` only
+  (follow-up F12): they break the daemon, the runner and the question ledger there. `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`.
+- A session host — `tmux`, or Herdr (`hc`) with `teams.session_host: "herdr"` — plus `jq`, `git`,
+  Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams` stops when any of them
+  is missing (`sqlite3` only for the optional agent-mail kit). **Codex is required even with `advisor: solo`**: `solo` only
   removes the Reviewer from the channel, while the team pipeline launches every role with the Codex
   home from `.claude/codex-profile` (making it conditional is follow-up F32).
 - A clone of this starter somewhere on the machine. You pass its path to `/setup:teams`.
@@ -60,10 +61,10 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
 
 8. **Before the first start:** `bash .claude/lib/supervisor-sessions.sh check` prints `<role> OK`
    for the Supervisor and the TeamLead. A `<role> LEAK: …` line (exit 3) means `settings.local.json`
-   allows something the role profile must not; remove it, or `start` and `here` launch nothing.
+   allows something the role profile must not; remove it, or `/roles` (`up`, `here`) launches nothing.
    `bash .claude/lib/supervisor-sessions.sh preflight` on a machine where nothing runs yet prints
    `WARN receivers live — … not started` and two FAILs that only running sessions clear:
-   `team-watch loops beating` (until `team-watch.sh start` or `/sessions-up`) and `mail probe and
+   `team-watch loops beating` (until `team-watch.sh start`; `/roles` starts no loop) and `mail probe and
    picked ping per role` (until each role window acks a `team-watch.sh ping <role>`). Every other
    row should be `ok`. Row 10 prints `unverified: run team-watch.sh ping <role>` on any Claude Code
    other than the version the socket wire format was verified on.

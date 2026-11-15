@@ -1,5 +1,11 @@
 # Reference: team-watch (daemon, routing, alarms, pause, wake loops)
 
+> **No longer the delivery path for role messages.** A role message is an inbox file rung by the
+> session-host doorbell (`session-host.sh send`; [session-host.md](session-host.md) §12), and
+> `/roles` starts no wake loop or daemon. The daemon below runs only when started by hand
+> (`bash .claude/lib/team-watch.sh start`, for `/monitor`) and is retired in a later release; the
+> socket sender `team-watch-send.py` stays, as the doorbell's first step.
+
 The durable monitor of the supervision roles. One detached daemon and one watchdog per checkout
 snapshot the teams, run the mail probes, evaluate the signal filter and **push** batches into the
 registered role sessions over Claude Code's cross-session messaging socket. Acks and alarms are

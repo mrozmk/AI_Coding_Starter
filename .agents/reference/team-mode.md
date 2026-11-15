@@ -5,6 +5,8 @@ commands. Every role reads this file first. Runbook for the supervisor:
 [team-pipeline.md](team-pipeline.md).
 
 Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/03-team-pipeline.md`.
+Sessions (start, liveness, screen, keys, doorbell, stop, attach hints) go through the session-host
+driver, on tmux or Herdr: [session-host.md](session-host.md).
 
 ---
 
@@ -28,14 +30,14 @@ Team mode ⇔ `.agents/team/session.json` exists; role: `jq -r .role .agents/tea
 
 Written only by `team-run.sh` before a launch; removed by it when the role's record is accepted.
 `stop` keeps it (it is the recovery input of the next run). The runner also sets
-`TEAM_RUN_TEAM`, `TEAM_RUN_ROLE`, `TEAM_RUN_ID`, `TEAM_RUN_ATTEMPT` on the tmux session — informational;
+`TEAM_RUN_TEAM`, `TEAM_RUN_ROLE`, `TEAM_RUN_ID`, `TEAM_RUN_ATTEMPT` on its session (set by the runner at launch) — informational;
 `session.json` is authoritative because hook processes are not documented to inherit the session
 environment. `session.json` also carries `round` (1, or n in a rework round — team-lead.md §9).
 
 **Second identity — the per-run TeamLead** (`teams.teamlead.enabled=true`, never in mode cli): one
 lead session per run, launched by the runner before the first stage. Its identity is
 `.agents/team/teamlead.json` (`run`, `session_id`, `main_root`, …) plus `TEAM_SESSION_ROLE=TeamLead`
-on its tmux session; it never has a `session.json` and never writes a stage record. Contract:
+in its session's environment; it never has a `session.json` and never writes a stage record. Contract:
 [team-lead.md](team-lead.md).
 
 ## 2. State files
@@ -88,7 +90,7 @@ never committed, read only by `team-escalate.sh`, rendered by `/setup:teams` fro
 `team-audit.sh` writes it from the runner's EXIT trap (snapshot; `ready` makes it final) and from
 `team-next.sh` (final `archived`); config `.claude/team/audit.json`. Material only: it never changes
 a verdict or blocks merge/next. A flagged or sampled final run gets one detached, report-only
-`/retro` over all role transcripts in tmux `retro-<run>`.
+`/retro` over all role transcripts in its own session `helper:retro-<run>`.
 
 ## 2a. Tracker
 
@@ -215,7 +217,7 @@ DevOps (deploy, release creation, App Service config, branch lock, policy change
 nothing a ticket legitimately needs is `deny`, and every such command waits for approval. Merging
 to the line triggers no deploy and stays the supervisor's `/pr-merge`. The
 session shows a permission prompt, the `Notification` hook flags it, the runner prints
-`needs attention`, and the developer approves or rejects in tmux. Keep waiting; never write a
+`needs attention`, and the developer approves or rejects in that session's window (`session-host.sh hint <team>-<role>`). Keep waiting; never write a
 `blocked` record for a prompt and never work around a rejected one — a rejection is a material
 question (`blocked`). Secrets stay `deny` for every role: read setting **names** only
 (`--query "[].name"`), never values, keys or connection strings.

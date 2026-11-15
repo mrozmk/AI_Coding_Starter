@@ -53,6 +53,7 @@ own .agents/memory/reflection-protocol.md
 own .agents/reference/security-egress.md
 own .agents/reference/team-mode.md
 own .agents/reference/team-pipeline.md
+own .agents/reference/session-host.md
 own .agents/reference/worker-clone.md
 own .claude/agents/correctness-reviewer.md
 own .claude/agents/structure-reviewer.md

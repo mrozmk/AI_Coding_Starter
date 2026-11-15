@@ -1,5 +1,10 @@
 # agent-mail — the SQLite channel between role sessions
 
+> **Optional kit — cross-machine mail.** The team layer does not need agent-mail: role messages are
+> inbox files rung through the session host ([session-host.md](session-host.md) §12). `/setup:teams`
+> installs this kit only when the profile has `teams.channel`, the kit is already installed
+> (`.agents/team/channel.local.json`) or you pick it.
+
 The supervision roles (`Supervisor`, `TeamLead`, `Advisor`, `Reviewer`) exchange numbered,
 immutable messages through one SQLite mailbox per project and **wake each other**, so the
 Operator never types "read your mail". The tool is vendored as [`tools/agent_mail/`](../../tools/agent_mail/README.md)

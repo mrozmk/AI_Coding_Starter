@@ -22,7 +22,7 @@ A quick ticket whose planner finds it too big is restarted in `brainstorm` mode 
 
 ## The runner
 
-`team-run.sh <team>` runs in its own tmux session because it blocks for hours. It:
+`team-run.sh <team>` runs in its own session (tmux or Herdr, through the session-host driver) because it blocks for hours. It:
 
 - launches each role as a fresh Claude session;
 - watches the role's **record**;

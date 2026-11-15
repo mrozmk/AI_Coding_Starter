@@ -1,5 +1,10 @@
 # 04 — Signals and monitoring
 
+> **Not the delivery path for role messages any more.** A role message is an inbox file rung by the
+> session-host doorbell ([session-host.md](../../.agents/reference/session-host.md) §12); `/roles`
+> starts no daemon. The daemon below runs only when started by hand for `/monitor`
+> (`bash .claude/lib/team-watch.sh start`) and is retired in a later release.
+
 **Contract:**
 - [`team-watch.md`](../../.agents/reference/team-watch.md): the daemon, signals, batches, routing, alarms, ledgers, pause, wake loops, hooks, env knobs, wire format.
 - [`monitor.md`](../../.claude/commands/monitor.md): what a receiver does with a batch (single routing and the split TeamLead).
