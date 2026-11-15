@@ -540,4 +540,56 @@ run "$RR" env ROLES_ROOT="$RR" bash -c "set -o pipefail; . '$RL'; roles_list"
 expect 0 "Supervisor" "(32) roles_list over a large profile under pipefail"
 echo "team-smoke-host: (32) records without a pipe OK"
 
+# ---- (33) follow-up chains: lineage, the count, the ledger --------------------------------------------------
+LN="bash $SRC/.claude/lib/team-lineage.sh"
+LM="$WORK/lin"; mkdir -p "$LM"; git -C "$LM" init -q; LD="$LM/.agents/team/lineage"
+lin() { run "$LM" $LN "$@"; }
+printf 'Body.\nFollow-up of #7 · origin #7\n[wrapup r1 create-a]\n' > "$WORK/f8.md"
+lin parse "$WORK/f8.md"; expect 0 "parent=7 origin=7" "(33) parse a github follow-up line"
+printf 'x\n' > "$WORK/plain.md"; lin parse "$WORK/plain.md"; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(33) a plain ticket parsed as a follow-up"
+printf 'Follow-up of 7 · origin 7\nFollow-up of 8 · origin 7\n' > "$WORK/two.md"
+lin parse "$WORK/two.md"; expect 2 "names two origins" "(33) two different lines"
+lin check ABC-2 --follow-up-of abc; expect 2 "is not a jira, github or none key" "(33) a bad key"
+lin record 7 alfa; expect 0 "recorded 7" "(33) an origin is recorded"
+lin check 8 --ticket-file "$WORK/f8.md"; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(33) the first follow-up is free"
+lin record 8 beta --ticket-file "$WORK/f8.md"; expect 0 "recorded 8 (origin 7)" "(33) follow-up 1"
+lin record 9 gamma --follow-up-of 8; expect 0 "recorded 9 (origin 7)" "(33) follow-up 2, a generation deeper"
+lin record 9 gamma --follow-up-of 8; expect 0 "9 already recorded" "(33) a re-start is no new link"
+[ "$(grep -c '"ticket":"9"' "$LD/starts.jsonl")" = 1 ] || fail "(33) the ledger holds a ticket twice"
+lin check 10 --follow-up-of 7
+expect 9 "follow-up 3 of origin 7 (8, 9 started) — needs the Operator's consent" "(33) the third (a sibling) is refused"
+lin record 10 delta --follow-up-of 9; expect 9 "follow-up 3 of origin 7" "(33) record refuses the third too"
+! grep -q '"ticket":"10"' "$LD/starts.jsonl" || fail "(33) a refused start was recorded"
+lin check 10 --follow-up-of 9 --ticket-file "$WORK/f8.md"; expect 2 "ask the Operator which" "(33) flag and body disagree"
+printf 'Follow-up of 9 · origin 3\n' > "$WORK/f10.md"
+lin check 10 --ticket-file "$WORK/f10.md"; expect 2 "the ledger has 9 under origin 7" "(33) the body's origin contradicts the ledger"
+lin check 11; [ "$RC" = 0 ] || fail "(33) a ticket with no lineage was refused"
+[ "$(mode "$LD")" = 700 ] && [ "$(mode "$LD/starts.jsonl")" = 600 ] && [ "$(mode "$LD/consents")" = 700 ] \
+  || fail "(33) lineage modes $(mode "$LD") / $(mode "$LD/starts.jsonl")"
+! grep -q 'Body\|wrapup r1' "$LD/starts.jsonl" || fail "(33) ticket text in the ledger"
+lin list; expect 0 "7: 8 (beta, " "(33) list"
+(cd "$LM" && mkdir -p .agents/team && echo '{}' > .agents/team/team.json)
+lin check 12; expect 2 "team clone" "(33) refused in a clone"; rm "$LM/.agents/team/team.json"
+echo "team-smoke-host: (33) follow-up chains OK"
+
+# ---- (34) consent: terminal only, key typed back, consumed once --------------------------------------------
+lin consent 10 --text "go ahead" </dev/null; expect 7 "stdin is not a TTY" "(34) no terminal, no consent"
+tty_consent() {  # tty_consent <typed key> <ticket> — a real pty through script(1)
+  set +e; (sleep 1; printf '%s\n' "$1"; sleep 1) | (cd "$LM" && script -q /dev/null $LN consent "$2" --text "go ahead, Operator") \
+    | tr -d '\r' > "$WORK/out" 2>&1; set -e
+}
+tty_consent 11 10; has "is not 10 — no consent written" "$WORK/out" || fail "(34) a wrong key wrote a consent"
+[ ! -e "$LD/consents/10.md" ] || fail "(34) consent file after a wrong key"
+tty_consent 10 10; has "consent written" "$WORK/out" || fail "(34) the terminal consent"
+grep -qx 'status: answered' "$LD/consents/10.md" && grep -qx 'answered_via: terminal' "$LD/consents/10.md" \
+  && [ "$(mode "$LD/consents/10.md")" = 600 ] || { cp "$LD/consents/10.md" "$WORK/out"; fail "(34) consent fields or mode"; }
+lin check 10 --follow-up-of 7; expect 0 "Operator consent .agents/team/lineage/consents/10.md" "(34) check accepts the consent"
+lin check 13 --follow-up-of 7; expect 9 "" "(34) a consent for 10 does not open the chain for 13"
+lin record 10 delta --follow-up-of 7; expect 0 "consent consumed" "(34) record consumes it"
+grep -qx 'status: consumed' "$LD/consents/10.md" || fail "(34) the consent was not consumed"
+grep -q '"ticket":"10".*"consent":"consents/10.md"' "$LD/starts.jsonl" || fail "(34) the ledger names no consent"
+lin check 13 --follow-up-of 10; expect 9 "follow-up 4 of origin 7 (8, 9, 10 started)" "(34) the fourth needs its own consent"
+tty_consent 10 10; has "already started on a consent" "$WORK/out" || fail "(34) a consumed consent was rewritten"
+echo "team-smoke-host: (34) consent OK"
+
 echo "team-smoke-host: OK"

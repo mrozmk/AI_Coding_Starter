@@ -35,6 +35,29 @@ Operator's consent.
 - Relay the Operator's decision to a team other than through that team's TeamLead.
 - Clear a release freeze without the Operator.
 
+## Follow-up chains
+
+A run's wrapup may turn noticed work into follow-up tickets, and a follow-up's run may do the same.
+The TeamLead's rework budget stops inside one run; this rule stops the chain across tickets: **the
+third follow-up of one origin needs the Operator's consent before it starts**, and so does every
+one after it, each with its own consent.
+
+- **Origin** is the chain's first ticket. A follow-up names its parent and origin in its body
+  (`Follow-up of <parent> · origin <origin>`). When the Operator says a ticket continues another
+  one ("this is a continuation of X"), start it with `--follow-up-of X`. A follow-up without the
+  line or the flag is not counted.
+- **The check is a script's, not yours:** `team-lineage.sh check` refuses with exit 9 and names the
+  origin and the follow-ups already started. Tell the Operator that in one line and wait.
+- **Consent** is the Operator's, typed in a terminal:
+  `bash .claude/lib/team-lineage.sh consent <ticket> --text "<their words>"`. It needs a real
+  terminal and the ticket key typed back. One consent starts one ticket, once.
+- **The consent raises the bar; it is not proof that a human answered.** As with the TeamLead's
+  decisions (`team-lead.md` §7), a session that fakes a terminal could still write one. That would
+  be a deliberate act, visible in your tool log, and it is never yours to do.
+- **Never work around it.** Never rewrite a ticket to drop its follow-up line. Never start the work
+  under another key, a new ticket or a different team to reset the count. Never split a follow-up
+  to stay under the cap.
+
 ## Inbox
 
 `.agents/team/inbox/Supervisor/new` holds the messages addressed to it. Handling is
