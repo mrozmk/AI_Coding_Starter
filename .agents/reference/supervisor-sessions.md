@@ -320,9 +320,11 @@ an Operator action (`install.sh --apply`); a running session picks the hook up o
 The single sender `.claude/lib/notify.sh` (notification model, epic E2) writes every Operator event
 — `human_decision`, `abandon_decision` (runner, from TeamLead verdicts), `unrepaired_failure`,
 `release` (`operator-record.sh`) — once into `~/.agent-comms/outbox/` and fans it out to the
-channels switched on in `~/.agent-comms/notify.json`. No channel is built yet (Herdr #39, iMessage
-#40), so every channel records `off`; `notify.sh --check` shows the switches and `notify.sh list`
-the events. The sinks above stay until #41.
+channels switched on in `~/.agent-comms/notify.json`. The Herdr channel (#39) writes a spool entry
+for the opt-in `harness-notify` mod (`.claude/team/herdr-mod/`) when the answering session's registry
+record says `herdr`; the mod shows it once as a toast that jumps to that session, and keeps it in a
+strip until clicked. iMessage (#40) is not built yet and records `off`. `notify.sh --check` shows the
+switches and whether the mod was seen; `notify.sh list` shows the events. The sinks above stay until #41.
 
 ## Migration
 

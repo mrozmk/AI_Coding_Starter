@@ -3,7 +3,7 @@
 # Usage:
 #   notify.sh <event> --project <p> --summary "<line>" --answer <address> [--hint "<line>"]
 #             [--team <t>] [--ticket <k>] [--run <r>] [--decision <d-n>] [--ref <abs path>]
-#             [--key <k>] [--source <who>]                         → written <id> | duplicate <id>
+#             [--key <k>] [--source <who>] [--main <root>]        → written <id> | duplicate <id>
 #   notify.sh flush        resume pending deliveries (recovery: an interrupted send becomes
 #                          outcome_unknown and is never re-sent)
 #   notify.sh list [--since <days>]   one line per event: id, event, each channel's state
@@ -13,8 +13,10 @@
 #
 # One event file per id, published write-once (`ln`) into ~/.agent-comms/outbox/events/ — that is
 # the dedup. Delivery state per channel in state/<id>.<channel>: pending → dispatching → outcome
-# (submitted | failed | outcome_unknown), plus off / held / spooled / skipped-tmux. No channel is
-# built yet (Herdr #39, iMessage #40): every channel records `off`. Every call prunes files past
+# (submitted | failed | outcome_unknown), plus off / held / spooled / skipped-tmux. Herdr (#39):
+# herdr/new/<id>.json for the harness-notify mod, only when the answering session's registry record
+# (<main>/.agents/team/registry/<address>.json, read as JSON only) says herdr. iMessage (#40) is not
+# built yet and records `off`. Every call prunes files past
 # NOTIFY_KEEP_DAYS (default 7; herdr/done 24 h), never one still pending, held or dispatching.
 # The summary is one line, control characters stripped, cut to 200 characters, and stored only
 # when a channel's switch is on. The recipient is never read into any output.
@@ -93,15 +95,39 @@ st_set() {  # st_set <file id> <channel> <state> [code] — replaced atomically
   mv "$OUT/state/.$1.$2.tmp" "$OUT/state/$1.$2"
 }
 
-# send_<channel> <event file> → prints the outcome state and code. Not built in this step.
-send_herdr() { echo "off not-built"; }
+# send_<channel> <event file> → prints the outcome state and code.
+# Herdr: one spool entry for the mod (.claude/team/herdr-mod), published write-once with `ln`, so a
+# repeat is harmless; the entry's action jumps to the answering session's terminal.
+send_herdr() {
+  local f="$1" id e
+  id="$(basename "$f" .json)"
+  [ "$(jq -r '.answer.backend // ""' "$f" 2>/dev/null)" = herdr ] || { echo "skipped-tmux -"; return 0; }
+  # The mod takes only ids its ID_RE (spool.js) accepts; any other would sit in new/ unseen.
+  [[ "$id" =~ ^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$ ]] || { echo "failed spool-id"; return 0; }
+  e="$(jq -c --arg id "$id" '
+    ({human_decision: "decision", abandon_decision: "abandon?", unrepaired_failure: "failure",
+      release: "release"}[.event]) as $label
+    | ([.team, .ticket, .decision] | map(select(. != null)) | join(" ")) as $who
+    | {id: $id, title: "[\(.project)] \($label)",
+       body: ((if $who == "" then "" else $who + " — " end) + (.summary // "") + " — answer: " + .answer.hint),
+       action: {name: "agent.focus", args: {terminal: .answer.handle}}, created_at: .created_at}' "$f" 2>/dev/null)" \
+    || { echo "failed spool-entry"; return 0; }
+  if [ ! -e "$OUT/herdr/new/$id.json" ] && [ ! -e "$OUT/herdr/done/$id.json" ]; then
+    printf '%s\n' "$e" > "$OUT/herdr/new/.tmp.$$" && ln "$OUT/herdr/new/.tmp.$$" "$OUT/herdr/new/$id.json" 2>/dev/null || true
+    rm -f "$OUT/herdr/new/.tmp.$$"
+  fi
+  if [ -e "$OUT/herdr/new/$id.json" ] || [ -e "$OUT/herdr/done/$id.json" ]; then echo "spooled -"; else echo "failed spool-write"; fi
+}
 send_imessage() { echo "off not-built"; }
 
 deliver() {  # deliver <file id> <channel> — one step of the channel's state machine
   local s r
   s="$(st_get "$1" "$2")"
   case "$s" in
-    dispatching) st_set "$1" "$2" outcome_unknown interrupted ;;
+    dispatching)
+      # A spool write is idempotent, so an interrupted Herdr delivery is simply done again.
+      if [ "$2" = herdr ]; then st_set "$1" "$2" pending; deliver "$1" "$2"; return; fi
+      st_set "$1" "$2" outcome_unknown interrupted ;;
     pending)
       if [ "$(sw "$2")" = on ]; then
         st_set "$1" "$2" dispatching; crash dispatching
@@ -149,8 +175,14 @@ case "$CMD" in
     echo "config: $CONF_STATE (~/.agent-comms/notify.json)"
     for c in herdr imessage; do
       eval "w=\$WHY_$c"
-      if [ "$(sw "$c")" = on ]; then
-        echo "$c on$([ "$c" != imessage ] || echo ', recipient set') — not built yet ($([ "$c" = herdr ] && echo '#39' || echo '#40')), records off"
+      if [ "$c" = herdr ] && [ "$(sw herdr)" = on ]; then
+        # The mod touches .mod-alive every 60 s; fan-out does not depend on it.
+        # GNU first: GNU `stat -f %m` prints file-system lines to stdout before failing.
+        a="$(stat -c %Y "$OUT/herdr/.mod-alive" 2>/dev/null || stat -f %m "$OUT/herdr/.mod-alive" 2>/dev/null || true)"
+        if [ -n "$a" ] && [ $(( $(date +%s) - a )) -le 180 ]; then echo "herdr on — mod seen $(( $(date +%s) - a )) s ago"
+        else echo "herdr on — mod not seen${a:+ for $(( $(date +%s) - a )) s} (no layout shows the harness-notify strip?)"; fi
+      elif [ "$(sw "$c")" = on ]; then
+        echo "$c on, recipient set — not built yet (#40), records off"
       else echo "$c off${w:+ — $w}"; fi
     done
     [ ! -d "$OUT/events" ] || { outbox; lock; prune
@@ -173,13 +205,13 @@ case "$CMD" in
 esac
 
 # ---- an event --------------------------------------------------------------------------------------
-P=""; SUMMARY=""; ANSWER=""; HINT=""; TEAM=""; TICKET=""; RUNID=""; DEC=""; REF=""; KEY=""; SRC=""
+P=""; SUMMARY=""; ANSWER=""; HINT=""; TEAM=""; TICKET=""; RUNID=""; DEC=""; REF=""; KEY=""; SRC=""; MAIN=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
     --project) P="$2" ;; --summary) SUMMARY="$2" ;; --answer) ANSWER="$2" ;; --hint) HINT="$2" ;;
     --team) TEAM="$2" ;; --ticket) TICKET="$2" ;; --run) RUNID="$2" ;; --decision) DEC="$2" ;;
-    --ref) REF="$2" ;; --key) KEY="$2" ;; --source) SRC="$2" ;;
+    --ref) REF="$2" ;; --key) KEY="$2" ;; --source) SRC="$2" ;; --main) MAIN="$2" ;;
     *) usage ;;
   esac
   shift 2
@@ -194,6 +226,23 @@ case "$CMD" in
   release) part --key "$KEY"; ID="$P:release:$KEY" ;;
 esac
 FID="$(printf '%s' "$ID" | tr ':/' '__')"
+
+# The answering session's backend and handle: its registry record's JSON only, never the driver.
+# No record, another backend or a malformed handle → tmux (the Herdr channel then skips it).
+MAIN="${MAIN:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
+BACKEND=tmux; HANDLE="$ANSWER"; RNAME=""
+rec="$MAIN/.agents/team/registry/$ANSWER.json"
+if [ -n "$MAIN" ] && [[ "$ANSWER" =~ ^[A-Za-z0-9:_-]+$ ]] && [ -f "$rec" ] \
+  && [ "$(jq -r '.backend // "" | strings' "$rec" 2>/dev/null)" = herdr ]; then
+  h="$(jq -r '.handle // "" | strings' "$rec" 2>/dev/null)"
+  if [[ "$h" =~ ^[A-Za-z0-9._-]{1,64}(/[A-Za-z0-9._-]{1,64})?$ ]]; then
+    BACKEND=herdr; HANDLE="$h"; RNAME="$(jq -r '.name // "" | strings' "$rec" 2>/dev/null | tr -d '[:cntrl:]')"
+  fi
+fi
+# A herdr session's hint is always ours: a caller's hint comes from the tmux driver (sh_hint refuses
+# a herdr record), so it would name a tmux session that does not exist.
+if [ "$BACKEND" = herdr ]; then HINT="herdr: ${RNAME:-$ANSWER} (click in the agent list) · hc attach $HANDLE"
+elif [ -z "$HINT" ]; then HINT="tmux attach -t $ANSWER"; fi
 sw_warn; outbox; lock; prune
 
 # No channel on → no question text on disk for nobody.
@@ -202,13 +251,13 @@ for c in $CHANNELS; do [ "$(sw "$c")" = off ] || store=true; done
 tmp="$OUT/events/.tmp.$$"
 jq -n --arg id "$ID" --arg event "$CMD" --arg project "$P" --arg team "$TEAM" --arg ticket "$TICKET" \
   --arg run "$RUNID" --arg decision "$DEC" --arg summary "$SUMMARY" --arg address "$ANSWER" \
-  --arg hint "${HINT:-tmux attach -t $ANSWER}" --arg ref "$REF" --arg source "${SRC:-runner}" \
+  --arg hint "$HINT" --arg backend "$BACKEND" --arg handle "$HANDLE" --arg ref "$REF" --arg source "${SRC:-runner}" \
   --arg created_at "$(utc)" --argjson store "$store" \
   'def nz: if . == "" then null else . end;
    {id: $id, event: $event, project: $project, team: ($team | nz), ticket: ($ticket | nz),
     run: ($run | nz), decision: ($decision | nz),
     summary: (if $store then ($summary | gsub("[\u0000-\u001f\u007f]+"; " ") | .[0:200]) else null end),
-    answer: {address: $address, backend: "tmux", handle: $address, hint: $hint},
+    answer: {address: $address, backend: $backend, handle: $handle, hint: $hint},
     ref: (if $store then ($ref | nz) else null end), source: $source, created_at: $created_at}' \
   > "$tmp" 2>/dev/null || { rm -f "$tmp"; die 1 "cannot write the event file"; }
 if ln "$tmp" "$OUT/events/$FID.json" 2>/dev/null; then

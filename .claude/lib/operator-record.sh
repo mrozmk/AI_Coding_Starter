@@ -80,7 +80,7 @@ if [ -z "$H" ]; then
   S="$(bash "$LIB/team-channel.sh" name Supervisor 2>/dev/null || true)"; H="tmux attach -t ${S:-$P-supervisor}"
 fi
 args=(--project "$P" --summary "$SUMMARY" --answer Supervisor --hint "$H" --key "$ID"
-  --source operator-record)
+  --source operator-record --main "$ROOT")
 [ -z "$TEAM" ] || args+=(--team "$TEAM")
 [ -z "$REF" ] || args+=(--ref "$REF")
 bash "$LIB/notify.sh" "$EVENT" "${args[@]}" >/dev/null || echo "warn: notify.sh failed for $ID — the record stands" >&2
