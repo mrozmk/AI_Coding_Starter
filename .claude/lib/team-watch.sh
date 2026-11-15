@@ -58,7 +58,8 @@ launch() {
   done
   # `; read` keeps the pane after a crash, so its error can be shown. The loop runs outside any
   # Claude session: a launching session's identity and socket must not leak into it.
-  sh_start "$1" --main "$root" --kind helper --cwd "$root" --cli script --no-probe ${e[@]+"${e[@]}"} \
+  # --host tmux: team-watch stays on tmux (its stop path is tmux) until it is retired in step 9a.
+  sh_start "$1" --main "$root" --kind helper --cwd "$root" --cli script --no-probe --host tmux ${e[@]+"${e[@]}"} \
     -- "env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN bash .claude/lib/team-watch.sh $2; read" >/dev/null
 }
 

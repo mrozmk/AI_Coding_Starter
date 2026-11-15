@@ -1,23 +1,37 @@
 #!/usr/bin/env bash
-# Role sessions of the supervision layer: launcher, status, profiles, preflight, freeze, rollback,
-# tier-1 answers to a role session's own prompt, the after-restart launcher `up`.
-# Usage: bash .claude/lib/supervisor-sessions.sh start <role>|all | stop <role> | status | up
-#        bash .claude/lib/supervisor-sessions.sh materialize <role> | check | preflight | reviewer
+# Role-session support of the supervision layer: role profiles, preflight, freeze, rollback, the
+# tier-1 answer to a role session's own prompt. Starting, stopping and listing roles is roles.sh.
+# Usage: bash .claude/lib/supervisor-sessions.sh materialize <role> | check | preflight | reviewer
 #        bash .claude/lib/supervisor-sessions.sh freeze on <release> | freeze off | freeze status
 #        bash .claude/lib/supervisor-sessions.sh answer TeamLead|Advisor --fp <fp> \
 #          yes | no "<reason>" | pick <n> | other "<text>"
-#        bash .claude/lib/supervisor-sessions.sh rollback | here Supervisor   (Operator actions)
-#   roles: Supervisor TeamLead Advisor · tmux: <tmux_prefix>-supervisor|-teamlead|-advisor
-#   model/effort: teams.sessions.<Role>.{model,effort}, else opus · medium (Supervisor) / high;
-#   TEAM_SESSIONS_CLAUDE_FLAGS adds claude flags to every launch.
-#   e.g. bash .claude/lib/supervisor-sessions.sh start all   (then: tmux attach -t <prefix>-teamlead)
+#        bash .claude/lib/supervisor-sessions.sh rollback   (Operator action)
+#   materialize: .agents/team/watch/profiles/<Role>.settings.json from the role's template
+#   (teams.sessions.<Role>.settings, a .claude/team/sessions/<name>.settings.json), env role = <Role>.
+#   Deprecated, delegated to roles.sh: start <role>|all → up [<role>] · stop <role> · status · up ·
+#   here <Role>.
+#   e.g. bash .claude/lib/supervisor-sessions.sh preflight
 # Contract and runbook: .agents/reference/supervisor-sessions.md
 set -euo pipefail
 
 usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 LIB="$(cd "$(dirname "$0")" && pwd)"
+# The five launcher verbs moved to roles.sh (one deprecation release, then they go).
+case "$1" in
+  start|stop|status|up|here)
+    v="$1"; shift; a="${1:-}"; [ "$a" != Advisor ] || a=Fable
+    case "$v" in
+      start) n=up; [ "$a" = all ] && a="" ;;
+      up) n=up; a="" ;;
+      *) n="$v" ;;
+    esac
+    echo "supervisor-sessions.sh $v is deprecated — roles.sh $n" >&2
+    [ "$v" != up ] || echo "note: roles.sh up starts no team-watch — if you still rely on it: bash .claude/lib/team-watch.sh start" >&2
+    exec bash "$LIB/roles.sh" "$n" ${a:+"$a"} ;;
+esac
 . "$LIB/team-watch-lib.sh"
+. "$LIB/roles-lib.sh"
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
 tw_init "$top" || exit 3
 cmd="$1"; shift
@@ -27,24 +41,9 @@ cd "$root"
 FREEZE="$root/.agents/team/release-freeze"
 KIT_SRC="$root/.claude/team/sessions/operator-kit"
 VERIFIED_CLI=2.1.318
-# A tmux server started from a Claude session would give every later session CLAUDECODE=1.
-CLEAN="env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET"
-CLEAN="$CLEAN -u CLAUDE_CODE_MESSAGING_TOKEN"
-# The launch prompt: the SessionStart directive only adds context and starts no turn.
-boot() { printf '%q' "/session-role $1"; }
+export ROLES_ROOT="$root"
 refuse() { echo "refused: $*" >&2; exit 1; }
 lc() { echo "$1" | tr '[:upper:]' '[:lower:]'; }
-
-need_tw_role() {  # the team-watch receivers: profiles, here
-  tw_role_ok "${1:-}" || { echo "error: role must be one of: $TW_ROLES" >&2; exit 2; }
-}
-need_role() {
-  tw_session_role_ok "${1:-}" \
-    || { echo "error: role must be one of: $TW_SESSION_ROLES" >&2; exit 2; }
-}
-roles_of() {
-  if [ "${1:-}" = all ]; then echo "$TW_SESSION_ROLES"; else need_role "${1:-}"; echo "$1"; fi
-}
 
 # The machine half of the channel (kit dir, codex home, mail key) loads once, on demand; a
 # checkout without a configured channel still launches, without the kit's hooks.
@@ -59,50 +58,22 @@ kit_hooks_file() {  # → the installed kit's role-hooks.settings.json, or nothi
     || echo "$TEAM_CHANNEL_KIT/hooks/role-hooks.settings.json"
 }
 
-MODEL_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$'
-sess_cfg() {  # sess_cfg <role> model|effort → teams.sessions value or the code default
-  local v d
-  case "$2" in model) d=opus ;; *) d=high; [ "$1" != Supervisor ] || d=medium ;; esac
-  v="$(jq -r --arg r "$1" --arg f "$2" '.teams.sessions[$r][$f] // empty | strings' \
-    "$root/.claude/project-profile.json" 2>/dev/null || true)"
-  v="${v:-$d}"
-  case "$2" in
-    model) [[ "$v" =~ $MODEL_RE ]] \
-      || { echo "error: teams.sessions.$1.model=$v is not a model name" >&2; return 2; } ;;
-    effort) case "$v" in low|medium|high|xhigh|max) ;;
-      *) echo "error: teams.sessions.$1.effort=$v must be low|medium|high|xhigh|max" >&2
-         return 2 ;; esac ;;
-  esac
-  echo "$v"
-}
-
-new_sid() {
-  local s
-  s="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]')" || s=""
-  [ -n "$s" ] || s="$(python3 -I -c 'import uuid; print(uuid.uuid4())')"
-  echo "$s"
-}
-# session.json of a role session — team-answer.sh --session binds its keys to this transcript; the
-# session-role hook rewrites session_id after /clear or resume.
-write_session() {  # write_session <role> <session id>
-  local d="$TW_DIR/sessions/$1"
-  mkdir -p "$d"
-  jq -n --arg r "$1" --arg s "$2" --arg at "$(team_utc)" \
-    '{team: "-", role: $r, run: "-", attempt: 1, session_id: $s, launched_at: $at}' \
-    | tw_put "$d/session.json"
-}
-
 # Union of the role profile and the project + local deny/ask rules: whether `--settings` overrides
 # or merges those keys is not documented, and the deny floor must survive both. The profile's
 # named-read allow goes along with {{CLONES}} expanded: a `/path` rule in a --settings file anchors
 # at that file's directory, so the clones need an absolute `//` path, from the one clone resolver.
-# The TeamLead also gets the PR host's update verbs denied for the configured provider. The kit
+# The TeamLead also gets the PR host's update verbs denied for the configured provider. One profile
+# per role: the template is teams.sessions.<Role>.settings (a team-watch receiver without one uses its
+# own name), and env.TEAM_SESSION_ROLE is the role, never the template's value. The kit
 # file gives only `.hooks.Notification` and `.hooks.Stop`: a PreToolUse or PermissionRequest hook
 # could approve a tool call, so no other event — and none of its permissions — is ever taken.
 materialize() {
   local r="$1" d="$TW_DIR/profiles" loc="$root/.claude/settings.local.json" out kh=null c
-  local prov pr='[]' kf
-  need_tw_role "$r"
+  local prov pr='[]' kf t=""
+  [[ "$r" =~ ^[A-Z][A-Za-z0-9]{1,23}$ ]] || { echo "error: materialize: '$r' is not a role name" >&2; exit 2; }
+  if roles_is_declared "$r"; then t="$(roles_cfg "$r" settings)" || exit 2; fi
+  [ -n "$t" ] || ! tw_role_ok "$r" || t="$r"
+  [ -n "$t" ] || { echo "error: materialize: $r has no settings profile (teams.sessions.$r.settings)" >&2; exit 2; }
   c="$(team_clone_glob "$root")" || { echo "error: materialize $r needs the teams profile" >&2
     exit 2; }
   prov="$(team_profile_load "$root"; printf '%s' "$TEAM_PR_PROVIDER")"
@@ -124,100 +95,23 @@ materialize() {
   [ -f "$loc" ] || loc=/dev/null
   out="$d/$r.settings.json"
   ( umask 077
-    jq -s --arg c "/$c*" --argjson kh "$kh" --argjson pr "$pr" '
+    jq -s --arg c "/$c*" --argjson kh "$kh" --argjson pr "$pr" --arg r "$r" '
       (.[2] // {}) as $l | [.[0], .[1], $l] as $all
-      | {env: .[0].env,
+      | {env: ((.[0].env // {}) + {TEAM_SESSION_ROLE: $r}),
          permissions: {allow: [.[0].permissions.allow // [] | .[] | gsub("\\{\\{CLONES\\}\\}"; $c)],
                        deny: ([$all[] | .permissions.deny // [] | .[]] + $pr | unique),
                        ask: ([$all[] | .permissions.ask // [] | .[]] | unique)}}
       + (if .[0].hooks then {hooks: .[0].hooks} else {} end)
       + (if $kh then {hooks: $kh} else {} end)' \
-      "$root/.claude/team/sessions/$r.settings.json" "$root/.claude/settings.json" "$loc" \
+      "$root/.claude/team/sessions/$t.settings.json" "$root/.claude/settings.json" "$loc" \
       | tw_put "$out" )
   jq -r --arg r "$r" '"profile \($r): \(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
 }
 
-# check_roles <role...> — the profile check of freshly materialised profiles; a leak or a failure
-# launches nothing.
-check_roles() {
-  local out rc=0
-  [ $# -gt 0 ] || return 0
-  out="$(python3 -I "$LIB/session_profile_check.py" "$root" "$@" 2>&1)" || rc=$?
-  case "$rc" in
-    0) return 0 ;;
-    3) printf '%s\n' "$out" | grep ' LEAK: ' >&2
-       echo "refused: local allow leak in settings.local.json — nothing launched" >&2; exit 3 ;;
-    *) printf '%s\n' "$out" | grep -v ' note: ' >&2
-       echo "refused: role profile check failed (exit $rc) — nothing launched" >&2; exit 1 ;;
-  esac
-}
-
 ss_running() { pgrep -f -- "^claude --name $1( |\$)" >/dev/null 2>&1; }
 role_running() {  # tmux session, or the Supervisor's `here` window
   team_tmux_alive "$(tw_tmux_name "$1")" || ss_running "$1$TEAM_CHANNEL_SUFFIX"
-}
-
-launch() {  # launch <role> — tmux session with the role env and a fresh session id
-  local r="$1" s m e set="" flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}" sid name kf ch c
-  s="$(tw_session_name "$r")"
-  m="$(sess_cfg "$r" model)" || exit 2
-  e="$(sess_cfg "$r" effort)" || exit 2
-  if [ "$r" = Advisor ]; then
-    # The Advisor has no repo profile: agent-mail is its channel, the kit's hooks its settings.
-    kf="$(kit_hooks_file)"
-    if [ -n "$kf" ]; then set=" --settings $(printf '%q' "$kf")"
-    else echo "warning: Advisor without platform notifications (operator kit not installed)" >&2; fi
-  else
-    set=" --settings .agents/team/watch/profiles/$r.settings.json"
-  fi
-  ch=""; ! chan || ch="$TEAM_CHANNEL_CODEX_HOME"
-  ch="${ch:-${CODEX_HOME:-}}"
-  sid="$(new_sid)"; write_session "$r" "$sid"
-  name="$r$TEAM_CHANNEL_SUFFIX"
-  c="$CLEAN claude --name $name --session-id $sid --model $m --effort $e$set $flags $(boot "$r"); read"
-  # Per-session -e only: `tmux set-environment -g` would leak into every session.
-  sh_start "$r" --main "$root" --kind role --cwd "$root" --cli claude --no-probe --env "TEAM_SESSION_ROLE=$r" \
-    ${ch:+--env "CODEX_HOME=$ch"} ${CC:+--env "CLAUDE_CONFIG_DIR=$CC"} -- "$c" >/dev/null
-  echo "$s: started ($name, $m, effort $e)"
-}
-
-start() {
-  local role s todo="" prof=""
-  for role in $(roles_of "${1:-}"); do
-    team_tmux_alive "$(tw_tmux_name "$role")" && continue
-    todo="$todo $role"
-    [ "$role" = Advisor ] || { materialize "$role"; prof="$prof $role"; }
-  done
-  # shellcheck disable=SC2086
-  check_roles $prof
-  # One Claude config dir for every role, resolved before any session starts.
-  CC="$(team_claude_home "$root")" || refuse "$CC"
-  for role in $(roles_of "${1:-}"); do
-    s="$(tw_session_name "$role")"
-    case " $todo " in *" $role "*) launch "$role" ;; *) echo "$s: already running" ;; esac
-    echo "  $(sh_hint "$role" --main "$root")"
-  done
-}
-
-# here Supervisor — the Operator's own terminal instead of tmux: identity and the SessionStart
-# hooks (register, ack, /clear bootstrap) come from this env, as tmux -e gives the other windows.
-here() {
-  local p=".agents/team/watch/profiles/Supervisor.settings.json" m e sid
-  local flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}" name="Supervisor$TEAM_CHANNEL_SUFFIX"
-  [ "${1:-}" = Supervisor ] || usage
-  ! team_tmux_alive "$(tw_tmux_name Supervisor)" \
-    || refuse "$(tw_session_name Supervisor) runs in tmux — stop Supervisor first"
-  ! ss_running "$name" || refuse "a claude --name $name already runs"
-  m="$(sess_cfg Supervisor model)" || exit 2
-  e="$(sess_cfg Supervisor effort)" || exit 2
-  materialize Supervisor
-  check_roles Supervisor
-  CC="$(team_claude_home "$root")" || refuse "$CC"
-  sid="$(new_sid)"; write_session Supervisor "$sid"
-  # shellcheck disable=SC2086
-  exec $CLEAN TEAM_SESSION_ROLE=Supervisor ${CC:+CLAUDE_CONFIG_DIR="$CC"} \
-    claude --name "$name" --session-id "$sid" --model "$m" --effort "$e" --settings "$p" $flags
 }
 
 # answer <TeamLead|Advisor> --fp <fp> <action> [text] — the only tier-1 path into a role session's
@@ -250,11 +144,11 @@ answer() {
       --settings "$pf" 2>&1 >/dev/null)" || refuse "Operator action: $why"
   fi
   case "$act" in
-    yes) sh_tmux send-keys -t "=$s:" Enter ;;
-    no) sh_tmux send-keys -t "=$s:" Escape; sleep 1
-      sh_tmux send-keys -t "=$s:" -l -- \
-        "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window."
-      sh_tmux send-keys -t "=$s:" Enter ;;
+    yes) sh_keys "$r" --main "$root" enter ;;
+    no) sh_keys "$r" --main "$root" esc; sleep 1
+      sh_type "$r" --main "$root" \
+        "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window." --enter \
+        >/dev/null ;;
     pick|other)
       bash "$LIB/team-answer.sh" "$(sh_prefix "$root")" "$(lc "$r")" "$act" "$text" \
         --session "$r" || rc=$?
@@ -294,28 +188,6 @@ reviewer() {
     2>/dev/null)" || pat=""
   if [ -n "$pat" ] && pgrep -f -- "$pat" >/dev/null 2>&1; then echo "Reviewer: deliver ok"
   else echo "Reviewer: deliver missing — restore per .agents/reference/agent-mail.md → Bring-up"; fi
-}
-
-status() {
-  local r s l
-  for r in $TW_SESSION_ROLES; do
-    s="$(tw_session_name "$r")"
-    echo "$r: tmux $s $(team_tmux_alive "$r" && echo alive || echo down)"
-    if [ "$r" = Advisor ]; then
-      echo "  receiver: n/a (agent-mail)"
-      echo "  $(reviewer)"
-      continue
-    fi
-    l="$(tw_receiver_line "$r")" || l="receiver $r: none registered"
-    echo "  $l"
-  done
-  echo "team-watch: $(tw_loops_ok && echo works || echo "not working")"
-  echo "routing: $(tw_routing)"
-  echo "tiers: $(tw_tiers)"
-  echo "answering: $(tw_answering)"
-  freeze_line
-  echo "teams: $(for d in $(team_clone_dirs "$root"); do jq -r .team "$d/team.json"; done \
-    | tr '\n' ' ')"
 }
 
 rollback() {
@@ -487,74 +359,13 @@ preflight() {
   return "$PF_RC"
 }
 
-# ---- up: after a machine restart — fresh sessions only, never a resume ----
-up_loops() {
-  if $CLEAN bash "$LIB/team-watch.sh" start --no-register >/dev/null 2>&1; then
-    echo "team-watch: works"
-  else
-    echo "team-watch: not working — bash .claude/lib/team-watch.sh start"
-  fi
-}
-
-# up_role <role> — a tmux session without its claude is the `; read` pane of a dead session.
-up_role() {
-  local r="$1" s
-  s="$(tw_session_name "$r")"
-  if team_tmux_alive "$r"; then
-    if ss_running "$r$TEAM_CHANNEL_SUFFIX"; then echo "$r: already running"; return 0; fi
-    sh_tmux kill-session -t "=$s"
-    start "$r" >/dev/null; echo "$r: restarted (dead pane)"
-  elif [ "$r" = Supervisor ] && ss_running "$r$TEAM_CHANNEL_SUFFIX"; then
-    echo "$r: running (here)"
-  else
-    start "$r" >/dev/null; echo "$r: started"
-  fi
-}
-
-up_runs() {  # interrupted team runs are only listed: resuming one is the Operator's /start-team
-  local t="$TW_DIR/up-snap.$$.json" out
-  mkdir -p "$TW_DIR/cache"
-  if ! TEAM_DASH_CACHE="$TW_DIR/cache" bash "$LIB/team-snapshot.sh" --out "$t" >/dev/null 2>&1; then
-    rm -f "$t"; echo "interrupted runs: unknown (team-snapshot.sh failed)"; return 0
-  fi
-  out="$(jq -r '.teams[]? | select(.run != null and .runner != "up" and .finished != true)
-    | "interrupted run \(.team) (\(.run)) — resume: /start-team \(.team)"' "$t" 2>/dev/null)" \
-    || out=""
-  rm -f "$t"
-  if [ -n "$out" ]; then echo "$out"; else echo "interrupted runs: none"; fi
-}
-
-up() {
-  local r
-  up_loops
-  for r in $TW_SESSION_ROLES; do up_role "$r"; done
-  reviewer
-  up_runs
-  # The launcher is the authorised all-role path from any session.
-  env -u TEAM_SESSION_ROLE bash "$LIB/monitoring.sh" start all \
-    || echo "monitoring: start all failed — /monitoring start all in the Supervisor"
-  for r in $TW_SESSION_ROLES; do
-    if team_tmux_alive "$(tw_tmux_name "$r")"; then echo "  $(sh_hint "$r" --main "$root")"; fi
-  done
-  echo "Close this bootstrap session if it is not a role session."
-}
-
 case "$cmd" in
   materialize) materialize "${1:-}" ;;
-  up) up ;;
   reviewer) reviewer ;;
-  start) start "${1:-}" ;;
-  stop)
-    need_role "${1:-}"
-    s="$(tw_session_name "$1")"
-    if team_tmux_alive "$1"; then sh_tmux kill-session -t "=$s"; echo "$s: stopped"
-    else echo "$s: not running"; fi ;;
-  status) status ;;
   check) python3 -I "$LIB/session_profile_check.py" "$root" --hooks ;;
   preflight) preflight ;;
   freeze) freeze "$@" ;;
   rollback) rollback ;;
   answer) answer "$@" ;;
-  here) here "${1:-}" ;;
   *) usage ;;
 esac

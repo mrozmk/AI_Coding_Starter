@@ -88,7 +88,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 23 ] || fail "2: allow is not the 23 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 28 ] || fail "2: allow is not the 28 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
@@ -109,12 +109,18 @@ for a in routing stop "register --takeover" "mode answering" "mode class"; do
   [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
     || fail "2: ask $a not present once"
 done
-# Role sessions: S (SessionStart, no matcher, sync, timeout 5), the launcher's own verbs allowed,
-# its Operator actions (freeze off, rollback, here) behind ask — each exactly once; a write verb
-# of the launcher is never on allow.
-jq -e '[.hooks.SessionStart[] | select(has("matcher") | not) | .hooks[]
-  | select((.command | test("session-role.sh")) and .timeout == 5 and (.async // false) == false)]
-  | length == 1' "$S" >/dev/null || fail "2: no SessionStart hook S with timeout 5"
+# Role sessions: no session-role.sh hook any more (session-registry.sh prints the contract), the
+# launcher's own verbs and /roles allowed, the Operator actions (freeze off, rollback, here) behind
+# ask — each exactly once; a write verb of the launcher is never on allow.
+jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role.sh"))] | length == 0' "$S" >/dev/null \
+  || fail "2: session-role.sh is still registered"
+RA="Bash(bash .claude/lib/roles.sh"
+for a in "$RA)" "$RA up*)" "$RA status*)" "$RA stop *)" "$RA place *)"; do
+  [ "$(jq --arg a "$a" '[.permissions.allow[] | select(. == $a)] | length' "$S")" = 1 ] \
+    || fail "2: allow $a not present once"
+done
+[ "$(jq --arg a "$RA here *)" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
+  || fail "2: ask roles.sh here not present once"
 SSA="Bash(bash .claude/lib/supervisor-sessions.sh"
 for a in "$SSA status*)" "$SSA check*)" "$SSA preflight*)" "$SSA materialize*)" "$SSA reviewer*)" \
   "$SSA freeze on *)" "$SSA freeze status*)" "$SSA answer *)" "$SSA start *)" "$SSA stop *)" \
@@ -264,7 +270,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 25 ] || fail "10: allow is not 2 project + 23 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 30 ] || fail "10: allow is not 2 project + 28 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -332,7 +338,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 28' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -410,7 +416,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 28' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -448,8 +454,8 @@ setup "$T"; S="$T/.claude/settings.json"; cp "$S" "$WORK/s19"
 setup "$T"
 has "kept	generated	.claude/settings.json" || fail "19: the rerun did not keep settings.json"
 cmp -s "$S" "$WORK/s19" || fail "19: the rerun changed settings.json"
-[ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("session-role.sh"))] | length' "$S")" = 1 ] \
-  || fail "19: the rerun did not keep exactly one S hook"
+[ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("session-registry.sh"))] | length' "$S")" = 1 ] \
+  || fail "19: the rerun did not keep exactly one L hook"
 for bad in '{type: "command", command: $w, async: true}' 'startup'; do
   if [ "$bad" = startup ]; then
     jq -n --arg w "$W" '{hooks: {SessionStart: [{matcher: "startup",
@@ -659,6 +665,11 @@ jq -e '[.hooks.SessionStart[] | .hooks[] | select((.command | test("session-regi
   || fail "24: session-registry.sh is not registered once"
 jq -e '[.hooks.UserPromptSubmit[] | .hooks[] | select((.command | test("inbox-count.sh")) and .timeout == 3
     and (.async // false) == false)] | length == 1' "$S" >/dev/null || fail "24: inbox-count.sh is not registered once"
+jq -e '[.hooks.SessionEnd[] | select(has("matcher") | not) | .hooks[]
+    | select((.command | test("session-registry.sh")) and .timeout == 5 and (.async // false) == false)]
+    | length == 1' "$S" >/dev/null || fail "24: session-registry.sh is not registered once on SessionEnd"
+jq -e '[.hooks.SessionEnd[] | .hooks[] | select(.command | test("session-registry.sh"))] | length == 1' \
+  "$ST/.claude/settings.json" >/dev/null || fail "24: the starter's own settings lack the SessionEnd registry hook"
 [ -f "$T/.claude/hooks/session-registry.sh" ] && [ -f "$T/.claude/hooks/inbox-count.sh" ] \
   && [ ! -e "$T/.claude/hooks/teamlead-register.sh" ] || fail "24: hook files"
 setup "$T"
@@ -666,5 +677,36 @@ setup "$T"
 jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("teamlead-register"))] | length == 1' \
   "$ST/.claude/settings.json" >/dev/null && fail "24: the starter's own settings still register teamlead-register"
 true
+
+# ---- (25) roles: the old session-role.sh hook is retired; a fresh target has what /roles needs ---
+T=$(mktarget t25)
+mkdir -p "$T/.claude"
+OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/session-role.sh"'
+FOREIGN='bash "$CLAUDE_PROJECT_DIR/tools/my-session-role.sh"'
+jq -n --arg o "$OLD" --arg f "$FOREIGN" '{hooks: {SessionStart: [
+   {hooks: [{type: "command", command: $o, timeout: 5}]},
+   {matcher: "startup", hooks: [{type: "command", command: $f}]}]}}' > "$T/.claude/settings.json"
+echo '{"teams":{}}' > "$T/.claude/project-profile.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "retired settings.json: session-role.sh" || fail "25: the old hook was not retired"
+[ "$(jq --arg o "$OLD" '[.hooks[]?[]?.hooks[]? | select(.command == $o)] | length' "$S")" = 0 ] \
+  || fail "25: the old hook is still registered"
+[ "$(jq --arg f "$FOREIGN" '[.hooks[]?[]?.hooks[]? | select(.command == $f)] | length' "$S")" = 1 ] \
+  || fail "25: a foreign hook whose path contains session-role was dropped"
+for f in .claude/lib/roles.sh .claude/lib/roles-lib.sh .claude/commands/roles.md \
+  .claude/team/sessions/Advisor.settings.json .agents/reference/roles/supervisor.md \
+  .agents/reference/roles/advisor.md; do
+  [ -f "$T/$f" ] || fail "25: $f not installed"
+done
+[ ! -e "$T/.claude/hooks/session-role.sh" ] || fail "25: session-role.sh installed"
+# Without teams.sessions the shipped roles apply: their contracts and templates are all there.
+(cd "$T" && ROLES_ROOT="$T" bash -c '. .claude/lib/roles-lib.sh && roles_validate && roles_list --standing') \
+  > "$WORK/out" 2>&1 || fail "25: the shipped roles do not validate in a fresh target"
+[ "$(tr '\n' ' ' < "$WORK/out")" = "Supervisor Fable Astra " ] || fail "25: standing roles: $(cat "$WORK/out")"
+setup "$T"
+! has "retired settings.json" || fail "25: the rerun retired again"
+jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role"))] | length == 0' \
+  "$ST/.claude/settings.json" >/dev/null || fail "25: the starter's own settings still name session-role"
 
 echo "team-setup-smoke: OK"

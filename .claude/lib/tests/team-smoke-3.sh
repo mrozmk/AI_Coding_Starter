@@ -256,6 +256,24 @@ cp "$WORK/attach.main" "$MAIN/.claude/lib/team-attach.sh"
 mv "$WORK/team-modes.sh" "$WORK/team-validate.sh" "$CLONE/.claude/lib/"
 rm -f "$TD/session.json"; setmode brainstorm
 
+# ---- (27b) Herdr: a stage's pane comes from the main checkout's roles.sh place, never team-attach --
+fresh_run alfa-20261006-000005
+for f in roles.sh team-attach.sh; do
+  rm -f "$WORK/$f.clone"; [ ! -f "$CLONE/.claude/lib/$f" ] || cp "$CLONE/.claude/lib/$f" "$WORK/$f.clone"
+  rm -f "$WORK/$f.main"; [ ! -f "$MAIN/.claude/lib/$f" ] || cp "$MAIN/.claude/lib/$f" "$WORK/$f.main"
+  printf '#!/usr/bin/env bash\necho "OLD-%s $*" >> "$STUB_LOG"\n' "$f" > "$CLONE/.claude/lib/$f"
+  printf '#!/usr/bin/env bash\necho "NEW-%s $*" >> "$STUB_LOG"\n' "$f" > "$MAIN/.claude/lib/$f"
+done
+: > "$STUB_LOG"
+TEAM_SESSION_HOST=herdr STUB_HC_NONAME=1 STUB_HC_STATE=finished run "$MAIN" $TR alfa
+grep -qx 'NEW-roles.sh place alfa-planner' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the runner did not place the stage with the main checkout's roles.sh"; }
+! grep -q 'OLD-roles.sh\|team-attach.sh' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the clone's roles.sh or team-attach.sh ran under Herdr"; }
+for f in roles.sh team-attach.sh; do
+  if [ -f "$WORK/$f.clone" ]; then cp "$WORK/$f.clone" "$CLONE/.claude/lib/$f"; else rm -f "$CLONE/.claude/lib/$f"; fi
+  if [ -f "$WORK/$f.main" ]; then cp "$WORK/$f.main" "$MAIN/.claude/lib/$f"; else rm -f "$MAIN/.claude/lib/$f"; fi
+done
+rm -f "$TD/session.json" "$(cd "$MAIN" && pwd -P)/.agents/team/registry/alfa-planner.json"; rm -rf "$TD/lock"
+
 # ---- (29) dashboard folding and the "waiting for you" bar ---- ------------------------------
 CL3="$WORK/claude3"; SUBS="$CL3/s9/subagents"; mkdir -p "$SUBS"
 echo '{"type":"assistant","message":{"model":"m"}}' > "$CL3/s9.jsonl"

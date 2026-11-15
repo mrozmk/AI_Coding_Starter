@@ -1,5 +1,5 @@
 {
-  "_comment": "Role profile for the Supervisor: an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. The launcher materialises it ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned, the operator kit's Notification and Stop hooks added); _samples feed session_profile_check.py. Project-specific named reads (cloud CLIs, local infra) go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/supervisor-sessions.md#supervisor",
+  "_comment": "Role profile for the Supervisor: an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. The launcher materialises it ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned, the operator kit's Notification and Stop hooks added); _samples feed session_profile_check.py. Project-specific named reads (cloud CLIs, local infra) go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/supervisor.md",
   "env": {
     "TEAM_SESSION_ROLE": "Supervisor"
   },

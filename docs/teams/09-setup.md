@@ -67,7 +67,9 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
    picked ping per role` (until each role window acks a `team-watch.sh ping <role>`). Every other
    row should be `ok`. Row 10 prints `unverified: run team-watch.sh ping <role>` on any Claude Code
    other than the version the socket wire format was verified on.
-9. **First bring-up:** `bash .claude/lib/supervisor-sessions.sh up` (or `/sessions-up`): the daemon
+9. **First bring-up:** `/roles` (`bash .claude/lib/roles.sh`) starts the role sessions of
+   `teams.sessions`; while team-watch still runs, start it as below. The older form,
+   `bash .claude/lib/supervisor-sessions.sh up` (or `/sessions-up`, both deprecated): the daemon
    with `--no-register`, then the role windows, then `monitoring.sh start all`. The explicit form is
    `bash .claude/lib/team-watch.sh start --no-register`, `bash .claude/lib/supervisor-sessions.sh
    start all`, `bash .claude/lib/monitoring.sh start all`. `start all` alone starts no daemon, and a

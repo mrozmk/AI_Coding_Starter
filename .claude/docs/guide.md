@@ -70,7 +70,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release`, `/orchestrate` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
 | **QA and security** | `/prime-qa`, `/qa-verify`, `/test-e2e`, `/audit-security`, `/seo-geo-audit` |
-| **Teams (opt-in)** | `/start-team`, `/monitor`, `/team-watch`, `/monitoring`, `/session-role`, `/sessions-up`, `/mail-role` |
+| **Teams (opt-in)** | `/start-team`, `/monitor`, `/roles` (deprecated pointers to it: `/team-watch`, `/monitoring`, `/session-role`, `/sessions-up`, `/mail-role`) |
 | **Session and upkeep** | `/handoff`, `/hc`, `/analysis`, `/simply`, `/retro`, `/maintain:refresh-brief`, `/maintain:cleanup-workflow`, `/maintain:sync-from-starter` |
 
 ### Agents by role

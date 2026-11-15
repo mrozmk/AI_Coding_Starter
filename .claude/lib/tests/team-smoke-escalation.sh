@@ -244,8 +244,8 @@ grep -qx "own .agents/reference/team-advisor.md" "$SRC/.claude/team/manifest.txt
 grep -qF "Contract: .agents/reference/team-advisor.md" "$SRC/$OK_DIR/escalate.sh" || fail "E9: kit pointer"
 grep -qF "ADVISOR silent since <UTC>: <n> escalation(s) waiting" \
   "$SRC/.agents/reference/supervisor-sessions.md" || fail "E9: Supervisor's ADVISOR silent handling"
-grep -qF "orphans" "$SRC/.claude/commands/session-role.md" && grep -qF -- "--resume" \
-  "$SRC/.claude/commands/session-role.md" || fail "E9: bootstrap orphans → --resume"
+grep -qF "team-question.sh <team> orphans\` → one background \`team-escalate.sh … --resume\`" \
+  "$SRC/.agents/reference/supervisor-sessions.md" || fail "E9: bootstrap orphans → --resume"
 # Every summary of the (B) exception carries the header verbatim.
 for f in $(grep -rlE 'wrapup \(B\)|\(B\) memory' "$SRC/.claude" "$SRC/.agents/reference" "$SRC/docs/teams" \
   | grep -v '/\.claude/lib/tests/'); do

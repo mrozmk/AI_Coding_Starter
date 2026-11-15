@@ -2,7 +2,9 @@
 
 **Contract:**
 - [`supervisor-sessions.md`](../../.agents/reference/supervisor-sessions.md): the roles, profiles, launcher, preflight, auto-merge, migration and rollback.
-- [`session-role.md`](../../.claude/commands/session-role.md): the bootstrap of a role window.
+- [`roles.md`](../../.claude/commands/roles.md) (`/roles`, script `roles.sh`): starts, stops, lists and takes the role sessions declared in `teams.sessions`; the role contracts are in [`.agents/reference/roles/`](../../.agents/reference/roles/).
+
+> **`/roles` replaces the launcher described below.** `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are deprecated pointers to it for one release. The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
 - [`monitor.md`](../../.claude/commands/monitor.md): the TeamLead's handling contract.
 
 ## Per-run TeamLead (pilot)
@@ -30,7 +32,7 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 - **`TEAM_SESSION_ROLE`** (`Supervisor` | `TeamLead` | `Advisor`) is the identity. The launcher sets it per tmux session, and each role profile sets it again under `env`. A session's memory never decides its role.
 - `<prefix>` is `teams.channel.tmux_prefix`, which defaults to the repo directory slug. The mail recipient and the session's `--name` are both the role plus `teams.channel.mail_suffix`. Two projects on one machine therefore never share a tmux session, a recipient or a process name.
-- The **`SessionStart` hook `session-role.sh`** (id `S`, registered by `team-setup.sh`) runs after startup, resume, `/clear` and compact. It tells the window to run `/session-role <role>` first and keeps `.agents/team/watch/sessions/<role>/session.json` on the live session id, so `team-answer.sh --session <role>` binds to the role's own transcript. It stays silent in a team clone and without a known role.
+- The **`SessionStart` hook `session-registry.sh`** (id `L`, registered by `team-setup.sh`; it absorbed `session-role.sh`, which `team-setup.sh` now retires) runs after startup, resume, `/clear` and compact. It names the role's contract (`teams.sessions.<Role>.contract`) and keeps `.agents/team/watch/sessions/<role>/session.json` on the live session id, so `team-answer.sh --session <role>` binds to the role's own transcript. It stays silent in a team clone and without a known role.
 - **`/session-role <role>`** refuses when the argument differs from `TEAM_SESSION_ROLE`. Otherwise it primes, reads the role's section of the contract, registers the team-watch receiver (Supervisor and TeamLead), arms the wake loop and reconciles.
 
 ## Models

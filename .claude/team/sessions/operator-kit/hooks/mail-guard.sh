@@ -47,7 +47,7 @@ watch_unhealthy() {
   live="$(live_teams)"
   [ -n "$live" ] && grep -qE 'team-watch\.sh .*\bstatus\b' "$W" 2>/dev/null \
     && ! tw status >/dev/null 2>&1 \
-    && problems+=("Team runner(s) alive ($live) but team-watch is not healthy — run /team-watch.")
+    && problems+=("Team runner(s) alive ($live) but team-watch is not healthy — run: bash .claude/lib/team-watch.sh start")
 }
 
 paused_pass() {  # the lines of an unread list a paused role must still handle

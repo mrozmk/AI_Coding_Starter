@@ -167,6 +167,7 @@ own .claude/lib/team-remode.sh
 own .claude/lib/team-send-lock.sh
 own .claude/lib/session-host.sh
 own .claude/lib/session-host-lib.sh
+own .claude/lib/session-host-layout.sh
 own .claude/lib/team_audit.py
 own .claude/lib/team_prompt.py
 own .claude/lib/team_prompt_classes.py
@@ -241,7 +242,6 @@ own .claude/lib/team_lead_bash.py
 own .claude/hooks/guard-team-verdict.sh
 own .claude/lib/session_profile_check.py
 own .claude/lib/supervisor-sessions.sh
-own .claude/hooks/session-role.sh
 own .claude/commands/session-role.md
 own .claude/commands/monitoring.md
 own .claude/commands/sessions-up.md
@@ -249,11 +249,14 @@ own .claude/commands/team-watch.md
 own .agents/reference/supervisor-sessions.md
 
 # --- session registry and roles: hooks (registered by team-setup.sh), the roles
-# reader/validator, the Advisor settings template and the role contracts (session-host.sh above) ---
+# reader/validator, /roles and its CLI, the Advisor settings template and the role contracts
+# (session-host.sh above) ---
 own .claude/hooks/session-registry.sh
 own .claude/hooks/inbox-count.sh
 own .claude/hooks/team-status.sh
 own .claude/lib/roles-lib.sh
+own .claude/lib/roles.sh
+own .claude/commands/roles.md
 own .claude/lib/team-lineage.sh
 own .claude/team/sessions/Advisor.settings.json
 own .agents/reference/roles/supervisor.md

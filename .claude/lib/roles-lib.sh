@@ -16,7 +16,7 @@
 # legacy key Advisor is read as Fable. Without teams.sessions the shipped default list applies.
 # The profile is <ROLES_ROOT, default $PWD>/.claude/project-profile.json.
 
-ROLES_MODEL_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$'   # = sess_cfg's MODEL_RE
+ROLES_MODEL_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$'   # = team-profile.sh's TeamLead model check
 ROLES_NAME_RE='^[A-Z][A-Za-z0-9]{1,23}$'   # checked in jq (Oniguruma): ASCII, not locale collation
 ROLES_SHIPPED='{
   "Supervisor": {"cli": "claude", "model": "opus", "effort": "medium", "settings": "Supervisor",

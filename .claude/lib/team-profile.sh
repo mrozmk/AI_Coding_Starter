@@ -175,8 +175,8 @@ team_profile_load() {
       || team_profile_die "teams.teamlead.human_only must be a non-empty list of rule-group names"
     TEAM_LEAD_HUMAN_ONLY="$(printf 'settings-profiles\nprod-ask')"
   fi
-  # The per-run launcher's model/effort; the global role keeps its own default (opus) in
-  # supervisor-sessions.sh sess_cfg.
+  # The per-run launcher's model/effort (teams.sessions.TeamLead, a standing:false role in
+  # roles-lib.sh; its defaults here are the per-run ones).
   TEAM_LEAD_MODEL="$(jq -r '.teams.sessions.TeamLead.model // empty | strings' "$f" \
     2>/dev/null || true)"
   TEAM_LEAD_MODEL="${TEAM_LEAD_MODEL:-fable}"

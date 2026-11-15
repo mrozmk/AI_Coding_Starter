@@ -218,6 +218,119 @@ case "$*" in
   *) exit 1 ;;
 esac
 STUB
+  # Fake herdr-core CLI (session-host driver, Herdr backend). Logs `hc $*`; `run` also writes its argv,
+  # one word per line, to $STUB_HC_RUN_ARGV. Behaviour from STUB_HC_*: SERVER (server status rc),
+  # ADDR (the handle), STATE (live|finished), FG / FG_NAME / FG_PID (foreground), STATUS (null|idle|
+  # working|blocked|done; STATUS_FILE wins and `keys … esc` writes idle into it), KIND, MSG, LABELS
+  # (JSON), CREATED, PID, SCREEN (a file `read` prints), ON_SEND (shell text `send` evals). Gone:
+  # STUB_HC_GONE=1 or $STUB_HC_GONE_FILE exists (kill and a `send … /exit` create it) — get, keys,
+  # send and read exit 3, or 11 when finished. STUB_HC_IDLOG: each call also logged there as
+  # `id-set|id-unset hc $*` — whether HC_TERMINAL_ID reached it (a send with it set arrives wrapped).
+  cat > "$WORK/bin/hc" <<'STUB'
+#!/usr/bin/env bash
+echo "hc $*" >> "$STUB_LOG"
+if [ -n "${STUB_HC_IDLOG:-}" ]; then
+  if [ -n "${HC_TERMINAL_ID+x}" ]; then echo "id-set hc $*"; else echo "id-unset hc $*"; fi >> "$STUB_HC_IDLOG"
+fi
+gone() { [ "${STUB_HC_GONE:-}" = 1 ] || { [ -n "${STUB_HC_GONE_FILE:-}" ] && [ -f "$STUB_HC_GONE_FILE" ]; }; }
+st() { if [ -n "${STUB_HC_STATUS_FILE:-}" ] && [ -f "$STUB_HC_STATUS_FILE" ]; then cat "$STUB_HC_STATUS_FILE"
+  else echo "${STUB_HC_STATUS:-idle}"; fi; }
+nf() { echo '{"error":{"kind":"not_found","message":"no such terminal"}}' >&2; exit 3; }
+fin() { [ "${STUB_HC_STATE:-live}" != finished ] || { echo '{"error":{"kind":"finished"}}' >&2; exit 11; }; }
+case "$1" in
+  server) [ "${2:-}" = status ] || exit 2
+          [ "${STUB_HC_SERVER:-0}" = 0 ] || exit "${STUB_HC_SERVER}"
+          echo '{"version":"0.1.20","live":1,"pid":4242}' ;;
+  run) [ -z "${STUB_HC_RUN_ARGV:-}" ] || printf '%s\n' "$@" > "$STUB_HC_RUN_ARGV"
+       [ "${STUB_HC_RUN_RC:-0}" = 0 ] || { echo '{"error":{"kind":"spawn_failed"}}' >&2; exit "$STUB_HC_RUN_RC"; }
+       rm -f "${STUB_HC_GONE_FILE:-/nonexistent}"
+       echo "{\"address\":\"${STUB_HC_ADDR:-t1a}\",\"state\":\"live\",\"created_ms\":${STUB_HC_CREATED:-1700000000000}}" ;;
+  get) gone && nf
+       # NONAME=1: no terminal under a name (only handles t… resolve); GET_RC_HANDLE: a handle probe fails.
+       case "${2:-}" in t[0-9]*) [ -z "${STUB_HC_GET_RC_HANDLE:-}" ] || exit "$STUB_HC_GET_RC_HANDLE" ;;
+         *) [ "${STUB_HC_NONAME:-}" != 1 ] || nf ;; esac
+       s="$(st)"; l="${STUB_HC_LABELS:-}"; [ -n "$l" ] || l='{}'
+       jq -cn --arg a "${STUB_HC_ADDR:-t1a}" --arg state "${STUB_HC_STATE:-live}" --arg fg "${STUB_HC_FG:-claude}" \
+         --arg fn "${STUB_HC_FG_NAME:-${STUB_HC_FG:-claude}}" --argjson fp "${STUB_HC_FG_PID:-999999}" \
+         --arg s "$s" --arg k "${STUB_HC_KIND:-}" --arg m "${STUB_HC_MSG:-}" \
+         --argjson l "$l" --argjson c "${STUB_HC_CREATED:-1700000000000}" \
+         --argjson p "${STUB_HC_PID:-4243}" --arg cwd "${STUB_HC_CWD:-/fixture}" \
+         '{address: $a, state: $state, labels: $l, created_ms: $c, pid: $p, cwd: $cwd, argv: ["sh"],
+           foreground: (if $state == "live" then {argv: [$fg], name: $fn, pid: $fp, cwd: $cwd} else null end),
+           status: (if $s == "null" or $state != "live" then null
+             else {state: $s} + (if $k != "" then {kind: $k} else {} end) + (if $m != "" then {msg: $m} else {} end) end)}' ;;
+  send) gone && nf; fin
+        [ "$(st)" != blocked ] || { echo '{"error":{"kind":"blocked","message":"blocked (permission)"}}' >&2; exit 9; }
+        [ "${3:-}" != /exit ] || [ -z "${STUB_HC_GONE_FILE:-}" ] || touch "$STUB_HC_GONE_FILE"
+        [ -z "${STUB_HC_ON_SEND:-}" ] || eval "$STUB_HC_ON_SEND"
+        echo '{"turn":1,"status":"idle","started":true}' ;;
+  keys) gone && nf; fin
+        case " $* " in *" esc "*) [ -z "${STUB_HC_STATUS_FILE:-}" ] || echo idle > "$STUB_HC_STATUS_FILE" ;; esac
+        echo '{"turn":1}' ;;
+  read) gone && nf; [ -z "${STUB_HC_SCREEN:-}" ] || cat "$STUB_HC_SCREEN" ;;
+  kill) [ -z "${STUB_HC_GONE_FILE:-}" ] || touch "$STUB_HC_GONE_FILE"; echo '{}' ;;
+  label) # With a window model (fake herdr-app): herdr.space=<s> [herdr.tab=<t>] adopts the terminal there;
+         # an unknown tab id, or none, makes a new tab "tb<terminal>". STUB_HERDR_NOADOPT=1: no effect.
+         t="$2"; shift 2; sp=""; tb=""
+         for kv in "$@"; do case "$kv" in herdr.space=*) sp="${kv#*=}" ;; herdr.tab=*) tb="${kv#*=}" ;; esac; done
+         L="${STUB_HERDR_LS:-}"
+         if [ -n "$sp" ] && [ -n "$L" ] && [ -f "$L" ] && [ "${STUB_HERDR_NOADOPT:-}" != 1 ]; then
+           jq --arg t "$t" --arg s "$sp" --arg b "$tb" '(.spaces[].tabs[].terminals) |= map(select(.terminal != $t))
+             | .parked = ((.parked // []) - [$t])
+             | (.spaces[] | select(.id == $s) | .tabs) |= (if $b != "" and any(.[]; .id == $b)
+                 then map(if .id == $b then .terminals += [{terminal: $t, pane: ("p" + $t)}] else . end)
+                 else . + [{id: ("tb" + $t), name: "", terminals: [{terminal: $t, pane: ("p" + $t)}]}] end)' "$L" > "$L.$$" && mv "$L.$$" "$L"
+         fi
+         echo '{}' ;;
+  rm) echo '{}' ;;
+  *) exit 2 ;;
+esac
+STUB
+  # Fake herdr-app, as the live window behaves (step 7 live): a model in the JSON file $STUB_HERDR_LS
+  # ({spaces, focus, parked}); terminals carry their pane ("p<terminal>"). `ls` prints {spaces};
+  # `status` prints {focused_pane, agent} (agent is NOT the focus); `do`: space.new (a new space with
+  # a shell tab; shows it, answers {space, tab, terminal}), tab.rename, pane.focus (a listed terminal),
+  # terminal.park (out of its tab, still known), terminal.keep (only a listed or parked terminal —
+  # the window knows no other; into the focused terminal's tab). STUB_HERDR_RC: every call exits with
+  # it; STUB_HERDR_DO_RC: every `do`; STUB_HERDR_KEEP_RC: only terminal.keep.
+  cat > "$WORK/bin/herdr-app" <<'STUB'
+#!/usr/bin/env bash
+echo "herdr-app $*" >> "$STUB_LOG"
+[ "${STUB_HERDR_RC:-0}" = 0 ] || exit "$STUB_HERDR_RC"
+L="${STUB_HERDR_LS:-}"
+upd() { [ -n "$L" ] && [ -f "$L" ] || return 0; jq "$@" "$L" > "$L.$$" && mv "$L.$$" "$L"; }
+q() { [ -n "$L" ] && [ -f "$L" ] && jq -e "$@" "$L" >/dev/null 2>&1; }
+no() { echo "{\"error\":\"no running terminal \\\"$1\\\"\"}"; exit 1; }
+case "$1" in
+  ls) if [ -n "$L" ] && [ -f "$L" ]; then jq '{spaces}' "$L"; else echo '{"spaces":[]}'; fi ;;
+  status) f=""; [ -z "$L" ] || [ ! -f "$L" ] || f="$(jq -r '.focus // ""' "$L")"
+          jq -cn --arg f "$f" '{focused_pane: (if $f == "" then null else "p" + $f end), agent: "t-some-other-agent"}' ;;
+  do) [ "${STUB_HERDR_DO_RC:-0}" = 0 ] || exit "$STUB_HERDR_DO_RC"
+      c="$2"; shift 2; A=("$@")
+      arg() { local i=0; while [ $i -lt ${#A[@]} ]; do [ "${A[$i]}" != "--$1" ] || { echo "${A[$((i + 1))]}"; return; }; i=$((i + 2)); done; }
+      t="$(arg terminal)"; listed='any(.spaces[]?.tabs[]?.terminals[]?; .terminal == $t)'
+      case "$c" in
+        space.new) n="$(jq '.spaces | length + 1' "$L")"
+          upd --arg n "$(arg name)" --arg f "$(arg folder)" --arg i "s$n" \
+            '.spaces += [{id: $i, name: $n, folder: $f, tabs: [{id: ($i + "-1"), name: "1",
+               terminals: [{terminal: ($i + "-sh"), pane: ("p" + $i + "-sh")}]}]}] | .focus = ($i + "-sh")'
+          echo "{\"space\":\"s$n\",\"tab\":\"s$n-1\",\"terminal\":\"s$n-sh\"}"; exit 0 ;;
+        tab.rename) upd --arg i "$(arg id)" --arg n "$(arg name)" '(.spaces[].tabs[] | select(.id == $i) | .name) = $n' ;;
+        pane.focus) q --arg t "$t" "$listed" || no "$t"; upd --arg t "$t" '.focus = $t' ;;
+        terminal.park) q --arg t "$t" "$listed" || no "$t"
+          upd --arg t "$t" '(.spaces[].tabs[].terminals) |= map(select(.terminal != $t)) | .parked = ((.parked // []) + [$t])'
+          echo '{"pending":true}'; exit 0 ;;
+        terminal.keep) [ "${STUB_HERDR_KEEP_RC:-0}" = 0 ] || exit "$STUB_HERDR_KEEP_RC"
+          q --arg t "$t" "$listed or any((.parked // [])[]; . == \$t)" || no "$t"
+          upd --arg t "$t" '.focus as $f | .parked = ((.parked // []) - [$t])
+            | (.spaces[].tabs[] | select(any(.terminals[]; .terminal == $f)) | .terminals) += [{terminal: $t, pane: ("p" + $t)}]'
+          echo "{\"pending\":true,\"pane\":\"p$t\"}"; exit 0 ;;
+      esac
+      echo '{"ok":true}' ;;
+  *) exit 2 ;;
+esac
+STUB
+  export HC_BIN="$WORK/bin/hc" HERDR_APP_BIN="$WORK/bin/herdr-app"
 }
 
 smoke_git_stub() {
