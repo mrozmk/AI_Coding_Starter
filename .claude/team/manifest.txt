@@ -79,12 +79,14 @@ own .claude/lib/costs/summary.py
 own .agents/reference/token-usage.md
 own .claude/commands/ai-costs.md
 own .claude/lib/team-answer.sh
+own .claude/lib/team-answer-herdr.sh
 own .claude/lib/team-escalate-lib.sh
 own .claude/lib/team-escalate.sh
 own .claude/lib/team-integrate-lib.sh
 own .claude/lib/team-integrate-lock.sh
 own .claude/lib/team-integrate.sh
 own .claude/lib/team-lib.sh
+own .claude/lib/team-seed-lib.sh
 own .claude/lib/team-merge-check.sh
 own .claude/lib/team-modes.sh
 own .claude/lib/team-new.sh
