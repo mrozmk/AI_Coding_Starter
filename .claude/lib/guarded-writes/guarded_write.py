@@ -1,6 +1,10 @@
 """Guarded cloud writes (opt-in kit): run an allow-listed write under a separate write profile.
 
     bash .claude/lib/guarded-writes/az-write.sh <az arguments...>
+    bash .claude/lib/guarded-writes/ops-write.sh [--confirm WORD] <script> [script args...]
+    bash .claude/lib/guarded-writes/sqlcmd-write.sh -S <server> -d <db> (-i <file.sql> | -Q "<sql>")
+
+Contract and Operator setup: .agents/reference/guarded-writes.md.
 
 The model: the default `az` login is a read-only identity, so a write that slips past a rule gets a
 403; the only write path is this wrapper, which sits in the settings `ask` tier (every call is an
@@ -12,22 +16,29 @@ masked. It refuses unless all of these hold:
   `origin/<Trunk>` (Trunk from the CLAUDE.md Branch model); when origin answers, the local
   `origin/<Trunk>` must also equal what origin has — widening the allow-list needs a change that
   reached trunk. The config is parsed from that trunk blob, not from the working tree;
-- the operation and every option match the config's schema.
+- the operation and every option match the config's schema (ops-write: the script is listed and
+  itself byte-identical to trunk; sqlcmd-write: server/database pinned, plain SQL only, the
+  destructive-SQL classifier does not deny it).
 
 Honest limits: this is a hurdle, not isolation. The same OS user can rewrite local refs offline, edit
 CLAUDE.md, or push trunk where the project lets it. The real barriers are the read-only default
-identity and the Operator's click on the ask rule. Exit codes: 2 refused · otherwise az's own.
+identity and the Operator's click on the ask rule. Exit codes: 2 refused · otherwise the tool's own.
 """
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import types
 from urllib.parse import unquote, urlsplit
 
 CONFIG = ".claude/guarded-writes.json"
 PROFILE_FILE = ".claude/project-profile.json"
+CLASSIFIER = ".claude/hooks/lib/guard_destructive_sql.py"
 COMMON = {"--subscription", "--query", "--output", "--only-show-errors"}
 ALIASES = {"-n": "--name", "-g": "--resource-group", "-p": "--project", "-m": "--method",
            "-u": "--url", "-r": "--resource", "-b": "--body", "-s": "--slot", "-o": "--output",
@@ -80,31 +91,38 @@ def trunk(root):
 
 def load_config(root):
     t = trunk(root)
-    if git("-C", root, "ls-files", "--error-unmatch", "--", CONFIG)[0] != 0:
-        raise Refused("%s is not tracked by git — an allow-list must be committed and reach origin/%s"
-                      % (CONFIG, t))
     rc, local_sha = git("-C", root, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/%s^{commit}" % t)
     if rc != 0:
         raise Refused("no origin/%s ref — fetch it first" % t)
     rc, remote = git("-C", root, "ls-remote", "--heads", "origin", "refs/heads/%s" % t)
     if rc == 0 and remote.split()[:1] != [local_sha.strip()]:
         raise Refused("origin/%s does not match what origin has — fetch it, do not rewrite it" % t)
-    # Read the blob from the verified sha, not "origin/<t>": a local branch or tag of that name wins
-    # git's ref lookup over refs/remotes/origin/<t>.
-    rc, blob = git("-C", root, "show", "%s:%s" % (local_sha.decode().strip(), CONFIG))
-    if rc != 0:
-        raise Refused("%s is not on origin/%s — an allow-list change must reach trunk first" % (CONFIG, t))
+    trusted = (local_sha.decode().strip(), t)
+    blob = at_trunk(root, trusted, CONFIG)
     try:
-        with open(os.path.join(root, CONFIG), "rb") as f:
-            work = f.read()
-    except OSError:
-        raise Refused("%s cannot be read" % CONFIG)
-    if work != blob:
-        raise Refused("%s differs from origin/%s — an allow-list change must reach trunk first" % (CONFIG, t))
-    try:
-        return validate(json.loads(blob.decode("utf-8")))
+        return validate(json.loads(blob.decode("utf-8"))), trusted
     except (ValueError, UnicodeDecodeError) as e:
         raise Refused("%s on origin/%s is invalid: %s" % (CONFIG, t, e))
+
+
+def at_trunk(root, trusted, path):
+    """The bytes of a tracked `path` when the working tree equals its blob at the verified trunk sha."""
+    sha, t = trusted
+    if git("-C", root, "ls-files", "--error-unmatch", "--", path)[0] != 0:
+        raise Refused("%s is not tracked by git — it must be committed and reach origin/%s" % (path, t))
+    # Read the blob from the verified sha, not "origin/<t>": a local branch or tag of that name wins
+    # git's ref lookup over refs/remotes/origin/<t>.
+    rc, blob = git("-C", root, "show", "%s:%s" % (sha, path))
+    if rc != 0:
+        raise Refused("%s is not on origin/%s — a change must reach trunk first" % (path, t))
+    try:
+        with open(os.path.join(root, path), "rb") as f:
+            work = f.read()
+    except OSError:
+        raise Refused("%s cannot be read" % path)
+    if work != blob:
+        raise Refused("%s differs from origin/%s — a change must reach trunk first" % (path, t))
+    return blob
 
 
 def _strings(v, what):
@@ -114,8 +132,22 @@ def _strings(v, what):
 
 
 def validate(c):
-    if not isinstance(c, dict) or c.get("v") != 1 or {k for k in c if not k.startswith("_")} - {"v", "az"}:
-        raise ValueError('top level must be {"v": 1, "az": {...}}')
+    if not isinstance(c, dict) or c.get("v") != 1 \
+            or {k for k in c if not k.startswith("_")} - {"v", "az", "ops", "sql"}:
+        raise ValueError('top level must be {"v": 1, "az": {...}, "ops": {...}, "sql": {...}}')
+    ops_cfg = c.get("ops") or {}
+    if not isinstance(ops_cfg, dict) or set(ops_cfg) - {"scripts", "confirm_words", "deny_args"}:
+        raise ValueError("ops takes scripts, confirm_words and deny_args")
+    for k in ("scripts", "confirm_words", "deny_args"):
+        _strings(ops_cfg.get(k, []), "ops %s" % k)
+    if any(x.startswith("/") or ".." in x.split("/") for x in ops_cfg.get("scripts", [])):
+        raise ValueError("ops scripts are repo-relative paths")
+    sql = c.get("sql") or {}
+    if not isinstance(sql, dict) or set(sql) - {"servers", "databases"}:
+        raise ValueError("sql takes servers and databases")
+    if sql and not _strings(sql.get("servers", []), "sql servers"):
+        raise ValueError("sql needs at least one server")
+    _strings(sql.get("databases", []), "sql databases")
     az = c.get("az") or {}
     if not isinstance(az, dict) or set(az) - {"ops", "rest"}:
         raise ValueError("az takes ops and rest only")
@@ -178,8 +210,7 @@ def parse(argv, ops):
         seen[key] = [] if val is None else [val]
         last_multi = key if key in multi else None
 
-    if any("AZURE_CONFIG_DIR" in a or "AZURE_EXTENSION_DIR" in a for a in argv):
-        raise Refused("profile overrides are not allowed")
+    no_overrides(argv)
     while i < len(argv):
         a = argv[i]
         if a == "--ids" or a.startswith("--ids="):
@@ -260,40 +291,165 @@ def log(path, line):
         f.write("%s\t%s\n" % (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), line))
 
 
-def run_az(argv):
-    home = os.path.expanduser("~")
-    root = repo_root()
-    switch_on(root)
-    config = load_config(root)
-    az = config.get("az") or {}
-    op_name, seen, aliases = parse(argv, az.get("ops") or {})
-    if op_name == "rest":
-        check_rest(seen, az.get("rest") or [])
+def write_env(home):
+    """The clean environment for a write: the allow-list plus the write profile."""
     profile = os.path.join(home, ".azure-write")
     if not os.path.isfile(os.path.join(profile, "azureProfile.json")):
         raise Refused("no write profile at %s — Operator: AZURE_CONFIG_DIR=%s az login" % (profile, profile))
     env = {k: os.environ[k] for k in ENV_KEEP if k in os.environ}
     env["AZURE_EXTENSION_DIR"] = os.path.join(home, ".azure", "cliextensions")
     env["AZURE_CONFIG_DIR"] = profile
-    path = os.path.join(home, ".agent-ops", "az-write.log")
-    log(path, "cwd=%s\taz %s" % (os.getcwd(), masked(argv, aliases)))
+    return env
+
+
+def execute(tool, cmd, env, log_path, record, cwd=None, stdin=None):
+    log(log_path, "cwd=%s\t%s" % (os.getcwd(), record))
     try:
-        rc = subprocess.run(["az", *argv], env=env).returncode
+        rc = subprocess.run(cmd, env=env, cwd=cwd, input=stdin).returncode
     except OSError as e:
         rc = 127
-        print("az-write: cannot run az: %s" % e, file=sys.stderr)
-    log(path, "rc=%s" % rc)
+        print("%s: cannot run %s: %s" % (tool, cmd[0], e), file=sys.stderr)
+    log(log_path, "rc=%s" % rc)
     return rc
 
 
-def main(argv):
-    if len(argv) < 2 or argv[0] != "az":
-        print("usage: guarded_write.py az <az arguments...>", file=sys.stderr)
-        return 2
+def no_overrides(args):
+    if any("AZURE_CONFIG_DIR" in a or "AZURE_EXTENSION_DIR" in a for a in args):
+        raise Refused("profile overrides are not allowed")
+
+
+def run_az(home, root, config, trusted, argv):
+    az = config.get("az") or {}
+    op_name, seen, aliases = parse(argv, az.get("ops") or {})
+    if op_name == "rest":
+        check_rest(seen, az.get("rest") or [])
+    env = write_env(home)
+    return execute("az-write", ["az", *argv], env, os.path.join(home, ".agent-ops", "az-write.log"),
+                   "az %s" % masked(argv, aliases))
+
+
+def run_ops(home, root, config, trusted, argv):
+    ops = config.get("ops") or {}
+    word = ""
+    if argv[:1] == ["--confirm"]:
+        if len(argv) < 2 or argv[1] not in ops.get("confirm_words", []):
+            raise Refused("--confirm takes one of: %s" % (" ".join(ops.get("confirm_words", [])) or "(none configured)"))
+        word, argv = argv[1], argv[2:]
+    if not argv:
+        raise Refused("usage: ops-write.sh [--confirm WORD] <script> [args...]")
+    script, args = argv[0], argv[1:]
+    if script not in ops.get("scripts", []):
+        raise Refused("script not on the allow-list: %s" % script)
+    # The script runs with the write profile, so it must be the reviewed trunk version too.
+    at_trunk(root, trusted, script)
+    no_overrides(args)
+    for a in args:
+        if a.startswith("@") or "=@" in a:
+            raise Refused("file-prefixed values (@file) are not allowed")
+        if any(a == d or a.startswith(d + "=") for d in ops.get("deny_args", [])):
+            raise Refused("%s is not allowed here — the Operator runs it in their own terminal" % a.split("=")[0])
+    env = write_env(home)
+    return execute("ops-write", ["bash", script, *args], env, os.path.join(home, ".agent-ops", "ops-write.log"),
+                   "%s %s confirm=%s" % (script, masked(args, ALIASES), word or "-"), cwd=root,
+                   stdin=(word + "\n").encode() if word else b"")
+
+
+# sqlcmd: plain SQL only. Directives (`:r`, `:setvar`, `:connect`, `!!`) and `$(var)` would run
+# something the classifier never saw, so they are refused; -b makes a SQL error a non-zero exit.
+SQL_VALUED = {"-S", "-d", "-i", "-Q", "-h", "-s", "-w"}
+SQL_FLAGS = {"-W"}
+SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
+# A line sqlcmd reads as a command, not SQL: `:` directives, `!!`, and the colon-less `ED`.
+SQL_DIRECTIVE = re.compile(r"(:|!!|ed\s*$)", re.I)
+
+
+def run_sql(home, root, config, trusted, argv):
+    sql = config.get("sql") or {}
+    if not sql.get("servers"):
+        raise Refused("sql is not configured — add sql.servers to %s" % CONFIG)
+    no_overrides(argv)
+    opts, i = {}, 0
+    while i < len(argv):
+        a = argv[i]
+        if a in SQL_FLAGS:
+            val = None
+        elif a in SQL_VALUED and i + 1 < len(argv):
+            val, i = argv[i + 1], i + 1
+        else:
+            raise Refused("sqlcmd option not accepted: %s (allowed: %s)" % (a, " ".join(sorted(SQL_VALUED | SQL_FLAGS))))
+        if a in opts:
+            raise Refused("option %s given twice" % a)
+        opts[a] = val
+        i += 1
+    if opts.get("-S") not in sql["servers"]:
+        raise Refused("-S must be one of: %s" % " ".join(sql["servers"]))
+    if not opts.get("-d") or (sql.get("databases") and opts["-d"] not in sql["databases"]):
+        raise Refused("-d is required%s" % (" and must be one of: " + " ".join(sql["databases"]) if sql.get("databases") else ""))
+    if ("-i" in opts) == ("-Q" in opts):
+        raise Refused("give the statement with exactly one of -i <file.sql> or -Q \"<sql>\"")
+    if "-i" in opts:
+        try:
+            with open(os.path.abspath(opts["-i"]), "rb") as f:
+                text = f.read().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            raise Refused("cannot read %s as UTF-8" % opts["-i"])
+    else:
+        text = opts["-Q"]
+    # sqlcmd drops a leading BOM, so `<BOM>:r file` must read as the directive it is.
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    if "$(" in text or any(SQL_DIRECTIVE.match(l.lstrip()) for l in text.splitlines()):
+        raise Refused("sqlcmd directives (:r, :setvar, :connect, !!) and $(variables) are not allowed")
+    tmpdir = tempfile.mkdtemp(prefix="sqlcmd-write-")
     try:
-        return run_az(argv[1:])
+        # Classify and run the same bytes: a private copy, not the caller's file.
+        stmt = os.path.join(tmpdir, "statement.sql")
+        with open(os.open(stmt, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as f:
+            f.write(text)
+        try:
+            # The classifier gates a write-profile run, so it must be the trunk version too: compiled
+            # from that blob, never from the working tree or a cached .pyc beside it.
+            cls = types.ModuleType("guard_destructive_sql")
+            cls.__file__ = os.path.join(root, CLASSIFIER)
+            exec(compile(at_trunk(root, trusted, CLASSIFIER), cls.__file__, "exec"), cls.__dict__)
+            decision, reason = cls.classify(
+                "sqlcmd -S %s -d %s -i %s" % (shlex.quote(opts["-S"]), shlex.quote(opts["-d"]), shlex.quote(stmt)),
+                root, root)
+        except Exception as e:  # fail closed: no verdict, no run
+            raise Refused("the destructive-SQL classifier failed (%s) — refusing to run" % e)
+        if decision == "deny":
+            raise Refused("refused: %s" % reason)
+        args = []
+        for k, v in opts.items():
+            if k == "-Q":
+                continue
+            args += [k, stmt if k == "-i" else v] if v is not None else [k]
+        if "-Q" in opts:
+            args += ["-i", stmt]
+        env = write_env(home)
+        record = "sqlcmd -S %s -d %s %s" % (opts["-S"], opts["-d"], SQL_LITERAL.sub("'<masked>'", text))
+        return execute("sqlcmd-write", ["sqlcmd", "--authentication-method", "ActiveDirectoryAzCli", "-b", *args],
+                       env, os.path.join(home, ".agent-ops", "sqlcmd-write.log"), record)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+TOOLS = {"az": ("az-write", run_az), "ops": ("ops-write", run_ops), "sql": ("sqlcmd-write", run_sql)}
+
+
+def main(argv):
+    if len(argv) < 2 or argv[0] not in TOOLS:
+        print("usage: guarded_write.py az|ops|sql <arguments...>", file=sys.stderr)
+        return 2
+    name, run = TOOLS[argv[0]]
+    try:
+        home = os.path.expanduser("~")
+        root = repo_root()
+        switch_on(root)
+        config, trusted = load_config(root)
+        return run(home, root, config, trusted, argv[1:])
     except Refused as e:
-        print("az-write: %s" % e, file=sys.stderr)
+        print("%s: %s" % (name, e), file=sys.stderr)
         return 2
 
 

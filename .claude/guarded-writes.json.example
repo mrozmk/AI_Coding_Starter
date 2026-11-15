@@ -1,21 +1,69 @@
 {
-  "_doc": "Allow-list for .claude/lib/guarded-writes/az-write.sh (opt-in: workflow.guarded_writes). Copy to .claude/guarded-writes.json, commit it and get it onto origin/<Trunk> — the wrapper accepts only a tracked config byte-identical to that trunk version. ops: command words → options (the only ones accepted besides --subscription --query --output --only-show-errors), multi (options taking several values), required (must be given), pin (allowed values), aliases (e.g. {\"-s\": \"--server\"}). rest: url_prefix + methods for `az rest`. The names below are neutral examples.",
+  "_doc": "Allow-list for .claude/lib/guarded-writes/ (az-write, ops-write, sqlcmd-write; contract: .agents/reference/guarded-writes.md) (opt-in: workflow.guarded_writes). Copy to .claude/guarded-writes.json, commit it and get it onto origin/<Trunk> — the wrapper accepts only a tracked config byte-identical to that trunk version. ops: command words → options (the only ones accepted besides --subscription --query --output --only-show-errors), multi (options taking several values), required (must be given), pin (allowed values), aliases (e.g. {\"-s\": \"--server\"}). rest: url_prefix + methods for `az rest`. The names below are neutral examples.",
   "v": 1,
   "az": {
     "ops": {
       "webapp restart": {
-        "options": ["--resource-group", "--name", "--slot"],
-        "required": ["--resource-group", "--name", "--slot"],
-        "pin": {"--name": ["example-app"], "--slot": ["staging"]}
+        "options": [
+          "--resource-group",
+          "--name",
+          "--slot"
+        ],
+        "required": [
+          "--resource-group",
+          "--name",
+          "--slot"
+        ],
+        "pin": {
+          "--name": [
+            "example-app"
+          ],
+          "--slot": [
+            "staging"
+          ]
+        }
       },
       "webapp config appsettings set": {
-        "options": ["--resource-group", "--name", "--settings"],
-        "multi": ["--settings"],
-        "required": ["--resource-group", "--name"]
+        "options": [
+          "--resource-group",
+          "--name",
+          "--settings"
+        ],
+        "multi": [
+          "--settings"
+        ],
+        "required": [
+          "--resource-group",
+          "--name"
+        ]
       }
     },
     "rest": [
-      {"url_prefix": "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/", "methods": ["patch"]}
+      {
+        "url_prefix": "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/",
+        "methods": [
+          "patch"
+        ]
+      }
+    ]
+  },
+  "ops": {
+    "scripts": [
+      "scripts/deploy/example-rollout.sh"
+    ],
+    "confirm_words": [
+      "APPLY"
+    ],
+    "deny_args": [
+      "--set-secret"
+    ]
+  },
+  "sql": {
+    "servers": [
+      "example-server.database.windows.net"
+    ],
+    "databases": [
+      "example-db"
     ]
   }
 }

@@ -147,7 +147,8 @@ fi
 # reach a project with the starter itself and its syncs (the manifest's `!` core lines). Missing or
 # different from the starter's copy → the project has not synced, and the newer team scripts would
 # fail on its old adapter/profile. Refused here, before any write.
-for p in .claude/lib/team-profile.sh .claude/lib/team-tracker.sh .claude/lib/costs/runtime-mark.sh; do
+for p in .claude/lib/team-profile.sh .claude/lib/team-tracker.sh .claude/lib/costs/runtime-mark.sh \
+         .claude/hooks/lib/guard_destructive_sql.py; do
   [ -f "$TARGET/$p" ] || die 2 "core file $p is missing — run /maintain:sync-from-starter first"
   cmp -s "$STARTER/$p" "$TARGET/$p" \
     || die 2 "core file $p differs from the starter's — run /maintain:sync-from-starter first"

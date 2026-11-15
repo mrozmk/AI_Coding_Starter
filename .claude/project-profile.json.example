@@ -32,7 +32,7 @@
     "tracker_comments": false,
     "_pr_open_doc": "Opt-in: true → /pr-create opens the PR (github: gh, azure-devops: az) after showing the full draft and an explicit Create answer, with your local CLI identity. Default: off — the command only prepares the PR for you to open.",
     "pr_open": false,
-    "_guarded_writes_doc": "Opt-in: true → .claude/lib/guarded-writes/az-write.sh runs allow-listed az writes under the write profile ~/.azure-write, from .claude/guarded-writes.json once that file is on origin/<Trunk>. The Operator also sets a read-only default az identity and pastes the settings ask/deny block. Default: off — the wrapper refuses.",
+    "_guarded_writes_doc": "Opt-in: true → .claude/lib/guarded-writes/{az-write,ops-write,sqlcmd-write}.sh run allow-listed writes under the write profile ~/.azure-write, from .claude/guarded-writes.json once that file is on origin/<Trunk>. The Operator also sets read-only default identities and pastes the settings block (.agents/reference/guarded-writes.md). Default: off — the wrappers refuse.",
     "guarded_writes": false
   },
 

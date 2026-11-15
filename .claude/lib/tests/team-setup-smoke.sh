@@ -37,9 +37,10 @@ mktarget() {  # mktarget <name> → a fresh one-commit repo at $WORK/<name>
   mkdir -p "$t"; git -C "$t" init --quiet
   echo README > "$t/README"; git -C "$t" add README; git -C "$t" commit --quiet -m README
   # The core files a synced project already has (team-setup.sh refuses without them, see (20)).
-  mkdir -p "$t/.claude/lib/costs"
+  mkdir -p "$t/.claude/lib/costs" "$t/.claude/hooks/lib"
   cp "$ST/.claude/lib/team-profile.sh" "$ST/.claude/lib/team-tracker.sh" "$t/.claude/lib/"
   cp "$ST/.claude/lib/costs/runtime-mark.sh" "$t/.claude/lib/costs/"
+  cp "$ST/.claude/hooks/lib/guard_destructive_sql.py" "$t/.claude/hooks/lib/"
   printf '%s' "$t"
 }
 # Entries the manifest distributes — counted from the file, never hardcoded.
@@ -476,6 +477,14 @@ for c in missing stale; do
   has "sync-from-starter" || fail "20: the refusal does not say how to fix it"
   [ "$(treehash "$T")" = "$before" ] || fail "20: a refused install ($c) wrote to the target"
 done
+# … the destructive-SQL classifier is core too (sqlcmd-write.sh and the team guards import it)
+T=$(mktarget core-classifier)
+rm -f "$T/.claude/hooks/lib/guard_destructive_sql.py"
+before=$(treehash "$T")
+setup "$T"
+[ "$RC" = 2 ] && has "core file .claude/hooks/lib/guard_destructive_sql.py is missing" \
+  || fail "20: a missing classifier is not refused: $RC"
+[ "$(treehash "$T")" = "$before" ] || fail "20: a refused install (classifier) wrote to the target"
 T=$(mktarget core-current)
 setup "$T" --check
 [ "$RC" != 2 ] || fail "20: current core files are refused: $(cat "$WORK/out")"
