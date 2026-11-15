@@ -124,8 +124,10 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 **Base → PR dest:** {base and PR-destination rule, per-type exceptions}
 **Protected:** {never a PR source nor a pipeline push target, or `none`}
 **Merge:** {emit ONLY when the project deviates from its preset; otherwise delete this line}
+**Maintenance:** {emit ONLY when the project still serves older lines: each line's name in backticks, comma-separated, then ` — ` and what it serves; otherwise delete this line}
+**Retired:** {emit ONLY for former lines that must never be a base or a PR target again: names in backticks, then ` — ` and why; list them under Protected too; otherwise delete this line}
 
-> The single source of branch facts — commands read them here, never guess. Block absent → `origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
+> The single source of branch facts — commands read them here, never guess. Block absent → `origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`. `**Maintenance:**`/`**Retired:**` absent → no maintenance lines, and every rule behaves exactly as without them; `/start-task --line` starts work on a maintenance line and `.claude/lib/branch-model.sh` reads these fields.
 
 ## Project Knowledge Layers
 

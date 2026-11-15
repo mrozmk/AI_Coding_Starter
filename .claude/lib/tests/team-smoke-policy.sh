@@ -60,8 +60,9 @@ WANT='{"Integration":["develop"],"Maintenance":["rc/1"],"Protected":["main","dev
 { echo '> A note that names **Integration:** `wrong` is not the field.'
   sed -n '/^### Branch model$/,/^## /p' "$SRC/.claude/templates/CLAUDE-template.md" \
     | sed -e '1,/{branch}/s/`{branch}`/`main`/' -e 's/`{branch}`/`develop`/' \
-      -e 's/^\*\*Protected:\*\* .*/**Protected:** `main`, `develop`, `old\/x`/'
-  echo '**Maintenance:** `rc/1` — the 1.x line'; echo '**Retired:** `old/x` — merged, locked'
+      -e 's/^\*\*Protected:\*\* .*/**Protected:** `main`, `develop`, `old\/x`/' \
+      -e 's/^\*\*Maintenance:\*\* .*/**Maintenance:** `rc\/1` — the 1.x line/' \
+      -e 's/^\*\*Retired:\*\* .*/**Retired:** `old\/x` — merged, locked/'
 } > "$BM/CLAUDE.md"
 grep -qF '· **Integration:** `develop`' "$BM/CLAUDE.md" \
   || { echo "team-smoke-policy: FAIL — the template's combined Integration line was not filled"; exit 1; }

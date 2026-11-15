@@ -1,7 +1,7 @@
 ---
 description: Prepare a pull request — push the branch, derive title + dest from the Branch model and the tracker, fill the repo's PR template honestly, print the create-PR URL. Prepares only — never opens the PR, never merges.
 argument-hint: "[ISSUE-KEY | github: 42 or #42 (optional — derived from the branch name if omitted)]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git log:*), Bash(git diff:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(ls:*), Bash(cat:*), Bash(bash .claude/lib/team-tracker.sh show:*), mcp__atlassian__jira_get_issue, Skill
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git log:*), Bash(git diff:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(ls:*), Bash(cat:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(bash .claude/lib/branch-model.sh:*), mcp__atlassian__jira_get_issue, Skill, AskUserQuestion
 ---
 
 # /pr-create — Prepare a Pull Request (host-agnostic)
@@ -58,6 +58,21 @@ Run in parallel: `git rev-parse --abbrev-ref HEAD` (→ `BRANCH`), `git status -
 - `DEST` from the Branch model's **Base → PR dest** row for `TYPE`. Block absent → resolve
   `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`; **never assume
   `develop`**.
+- **Recorded line** — `bash .claude/lib/branch-model.sh line <BRANCH>` (written by `/start-task`):
+  - recorded `L` = `bash .claude/lib/branch-model.sh default-base --type <TYPE>` → keep the row's
+    `DEST` (gitflow's `release`/`hotfix` back-merge note stays);
+  - any other recorded `L` (a Maintenance line, or Trunk/Integration chosen with `--line`) →
+    `DEST = L`. A Maintenance `DEST` gets one informational line in the output: "Fix on a
+    maintenance line — port it to <Integration> if it applies there too.";
+  - nothing recorded (exit 1: a branch made by hand or before `/start-task` recorded lines) → the
+    row's `DEST` as above. When `branch-model.sh fields` lists Maintenance lines, `git fetch origin
+    <L>` and count `git log --oneline origin/<L>..HEAD` for the row's `DEST` and each of them, then ask once with
+    `AskUserQuestion` which line the work belongs to — the row's `DEST` first, the closest one marked
+    "looks cut from here" (a **suggestion**: history cannot tell which line the work was started
+    on, so it is never applied silently). Answer `L` → `DEST = L` as above and `branch-model.sh
+    record <BRANCH> <L>`, so the question is not asked again.
+- **Retired check:** a `DEST` listed under `retired=` (`branch-model.sh fields`) → STOP:
+  "`<DEST>` is retired — target the Integration or a Maintenance line."
 - `MERGE` from the Branch model's **Merge** field; absent → squash for working types, merge commit
   for `release` / `hotfix` (CLAUDE.md rule). If the preset routes `release`/`hotfix` into a second
   branch as well, surface that second merge in the output.

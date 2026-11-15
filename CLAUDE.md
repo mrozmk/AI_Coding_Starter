@@ -81,7 +81,7 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 
 ### Branch model
 
-> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap._ The single source of branch facts — commands read them here, never guess. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset. Block absent → `origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
+> _Filled in by `/setup:create-CLAUDE_MD` at project bootstrap._ The single source of branch facts — commands read them here, never guess. Fields: **Preset** · **Trunk** · **Integration** · **Branch names** · **Base → PR dest** · **Protected**, plus **Merge** only when the project deviates from its preset, and **Maintenance** / **Retired** only when the project serves older lines (absent → no maintenance lines; `/start-task --line` and `.claude/lib/branch-model.sh` read them). Block absent → `origin/HEAD`, then `main`, then `master`; **never assume `develop`**. `**Merge:**` absent → squash for working types, merge commit for `release`/`hotfix`.
 
 ## Project Knowledge Layers
 

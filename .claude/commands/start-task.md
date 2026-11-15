@@ -1,7 +1,7 @@
 ---
 description: Bootstrap a tracker task end-to-end — derive branch type from the issue, cut a working branch off the fresh base branch, prime, then brainstorm
-argument-hint: "<ISSUE-KEY> (e.g. PROJ-42; with tracker github: 42 or #42)"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git switch:*), Bash(git rev-parse:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(bash .claude/lib/team-tracker.sh read:*), Bash(bash .claude/lib/team-tracker.sh set-status:*), mcp__atlassian__jira_get_issue, Skill, AskUserQuestion
+argument-hint: "<ISSUE-KEY> [--line <branch>] (e.g. PROJ-42 · PROJ-42 --line release/1.x; with tracker github: 42 or #42)"
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git switch:*), Bash(git rev-parse:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(bash .claude/lib/team-tracker.sh read:*), Bash(bash .claude/lib/team-tracker.sh set-status:*), Bash(bash .claude/lib/branch-model.sh:*), mcp__atlassian__jira_get_issue, Skill, AskUserQuestion
 ---
 
 # /start-task — from issue key to brainstorm in one go
@@ -9,7 +9,7 @@ allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git switch:*), Bash(
 Given a tracker issue key (Jira, or a GitHub issue number when the tracker is `github`), derive the branch type from the issue, cut a working branch off a
 freshly pulled base branch, prime the session, and launch `/brainstorm`.
 
-The issue key for this run is: **$ARGUMENTS**
+Arguments for this run (`<ISSUE-KEY> [--line <branch>]`): **$ARGUMENTS**
 
 ---
 
@@ -21,6 +21,7 @@ The issue key for this run is: **$ARGUMENTS**
 - Do not push the branch. Creating it locally is enough; `/push` is a later, explicit step.
 - Branch names and slugs are **English**, kebab-case — translate the summary first if needed.
 - Branch facts come from `CLAUDE.md → ### Branch model`, never from a hardcoded name.
+- The base line is the user's choice (`--line`) or the type's default — never guessed from history.
 
 ---
 
@@ -28,19 +29,24 @@ The issue key for this run is: **$ARGUMENTS**
 
 ### 1. Parse and validate the key
 
+- Strip `--line <branch>` from `$ARGUMENTS` first → `LINE_ARG` (may be empty).
 - **Tracker** — the effective one, as `team-tracker.sh` resolves it: `.claude/project-profile.json`
   → `teams.tracker` when a `teams` block exists, else the top-level `tracker`, else `none`.
-- **github** → trim `$ARGUMENTS`; it must match `^#?\d+$`. `KEY` = the number without `#`.
-- **Otherwise** → trim and uppercase `$ARGUMENTS`. It must match `^[A-Z]+-\d+$`.
+- **github** → trim the rest; it must match `^#?\d+$`. `KEY` = the number without `#`.
+- **Otherwise** → trim and uppercase the rest. It must match `^[A-Z]+-\d+$`.
 - Empty or malformed → stop and ask for a valid key. Call the value `KEY`.
 
 ### 2. Resolve the base branch
 
 - `git rev-parse --is-inside-work-tree` — not a repo → stop.
-- Read `CLAUDE.md → ### Branch model`. `BASE` = **Integration** if set, else **Trunk**. Block
-  absent → `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`. **Never
-  assume `develop`.** Also note **Branch names** (the `<type>/<KEY>-<slug>` pattern) and
-  **Protected**.
+- `bash .claude/lib/branch-model.sh fields` (the Branch model's Trunk, Integration, Maintenance,
+  Retired, Protected). `BASE` = **Integration** if set, else **Trunk**. Exit 3 (no block) →
+  `git symbolic-ref refs/remotes/origin/HEAD`, then `main`, then `master`. **Never assume
+  `develop`.** Also note **Branch names** (the `<type>/<KEY>-<slug>` pattern) from `CLAUDE.md`.
+- `LINE_ARG` set → `bash .claude/lib/branch-model.sh check-line <LINE_ARG>`. Any non-zero exit →
+  stop with its message (retired, not a live line, not found; exit 3: "`--line` needs a Branch
+  model in CLAUDE.md"). Then `BASE = LINE_ARG` for every type. No question here, and none later:
+  without `--line` there is no automatic maintenance-line question.
 - Verify: `git rev-parse --verify --quiet refs/heads/<BASE> || git ls-remote --heads origin <BASE>`.
   Neither → stop: "Base branch `<BASE>` not found — check the Branch model in CLAUDE.md."
 
@@ -63,7 +69,7 @@ The issue key for this run is: **$ARGUMENTS**
   - `Bug` → `bugfix`
   - `Story` / `Task` / `Improvement` → `feature` (default); `chore` when the summary reads as
     tooling / deps / CI / repo maintenance; `refactor` for a no-behaviour-change structural change
-  - A critical production fix → `hotfix`, based on **Trunk** instead of `BASE` (say so)
+  - A critical production fix → `hotfix`
 - `SLUG`: English, lowercase, kebab-case, meaningful words only, ~5 words max.
   "Route brainstorm through plan feature" → `route-brainstorm-through-plan`.
 - `BRANCH` = the Branch model's name pattern with `<type>`, `KEY`, `SLUG` filled in
@@ -72,14 +78,24 @@ The issue key for this run is: **$ARGUMENTS**
 - **Confirm via `AskUserQuestion`**: show `<type>` and the full `BRANCH`; let the user accept or
   override the type (`feature` · `bugfix` · `refactor` · `chore` · `hotfix`). Use the confirmed
   values from here on.
+- **Default base of the type** (no `LINE_ARG`, Branch model present): `bash .claude/lib/branch-model.sh
+  default-base --type <type>` → `BASE` (`hotfix`/`release` → Trunk, every other type → Integration).
+  When it differs from step 2's `BASE`, say so and verify it the same way.
 
 ### 5. Clean working tree
 
 - `git status --porcelain` non-empty → stop: "Working tree has uncommitted changes. Commit, stash
-  or discard them first, then re-run `/start-task KEY`." No auto-stash.
+  or discard them first, then re-run `/start-task KEY` (with the same `--line`, if you gave one)."
+  No auto-stash.
 
 ### 6. Switch to the base and update it
 
+- **A resumed branch keeps its line.** `BRANCH` already exists locally and `bash .claude/lib/branch-model.sh
+  line <BRANCH>` prints a recorded line `R`: `LINE_ARG` set and different from `R` → stop:
+  "`<BRANCH>` was started on `<R>` — re-run without `--line`, or with `--line <R>`." Otherwise
+  `BASE = R` (say so when it differs from the base computed above).
+- `BASE` only on origin (step 2 found it there, not locally) → `git fetch origin <BASE>` first, so
+  `git switch` can create the local tracking branch.
 - `git switch <BASE>` — on failure show the error and stop.
 - Invoke `/pull`. It may stash on its own; step 5 guarantees there is nothing to stash. Conflict
   or failure → stop and surface it.
@@ -93,6 +109,9 @@ The issue key for this run is: **$ARGUMENTS**
   - **New** → `git switch -c "<BRANCH>" --no-track` — `--no-track` so a bare `git push` can never
     target the protected base (CLAUDE.md → Git Workflow); `/push` sets the upstream on first push.
 - Confirm with `git rev-parse --abbrev-ref HEAD`.
+- **Record the line** (Branch model present, new branch only): `bash .claude/lib/branch-model.sh
+  record <BRANCH> <BASE>` — `/pr-create` and `/check-implementation` read it back instead of
+  guessing. A resumed branch keeps its recorded line. Non-zero exit → a warning, continue.
 
 ### 7b. Move the Project status (github only)
 
