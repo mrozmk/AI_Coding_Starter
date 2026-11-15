@@ -333,6 +333,16 @@ b1_render azure-devops "Azure DevOps org" "https://dev.azure.com/o" auto coder "
   || fail "ADO render of coder failed"
 has 'team-pr.sh create --draft --head {{BRANCH}}' "$WORK/b1-coder-ado" \
   || fail "the ADO coder prompt does not create its draft with team-pr.sh"
+# No rendered team prompt sends a role to /pr-create (the team PR path is the blocks); only the bans
+# may name it.
+for prov in github azure-devops; do
+  for p in $PROMPTS; do
+    b1_render "$prov" "host" "https://example.invalid" auto "$p" "$WORK/b1n-$prov-$p" \
+      || fail "$prov render of $p failed"
+    ! grep '/pr-create' "$WORK/b1n-$prov-$p" | grep -v 'Do not run /pr-create' \
+      | grep -vq 'do not run `/pr-create`' || fail "the $prov $p prompt names /pr-create outside a ban"
+  done
+done
 # A missing block file is a hard failure, never a prompt shipped with a live placeholder.
 run "$MAIN" /bin/bash -c '. .claude/lib/team-pr-render.sh
   team_pr_render github "$PWD/nowhere" k h auto "x {{PR_CREATE}} y"'

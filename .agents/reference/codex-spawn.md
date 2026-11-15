@@ -78,6 +78,8 @@ Starter contract: `.claude/codex-profile` names the Codex home. `codex-bg.sh` ex
 
 A project that forces its own home (for example a fixed `~/.codex-<project>`) may keep `export CODEX_HOME=...` instead of the refusal, and an optional default `CODEX_EFFORT`. These stay identical to the starter wrapper: `< /dev/null`, `-C "$REPO"`, `--skip-git-repo-check`, truncating `OUT` before the spawn, the real home on the first LOG line, `register_thread` through `costs/runtime-mark.sh` (no-op without `$AGENT_COSTS_HOME`), a `trap` that kills codex on TERM, and passing the exit code through. The project's `.claude/codex-profile` must name the same home (the runner reads it).
 
+A project may also pin the **stricter** rule — refuse when `CODEX_HOME` is unset, so an interactive session must be started in the right home. It then keeps its wrapper local, names it in `.starter-sync.json` → `_local_divergences_doc`, and its own test asserts the refusal; every conformance point above still applies. The starter's default stays the fallback (export the declared home).
+
 Conformance test for a variant (3 assertions):
 
 1. an explicit `CODEX_EFFORT` reaches codex as `-c model_reasoning_effort=<v>`;

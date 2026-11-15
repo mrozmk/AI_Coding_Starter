@@ -88,7 +88,8 @@ Description: sha <body_sha> — reconciled
      that spec's ledger names — never a newer spec's;
    - no plan (solo `/quick-change` work, a merge) → `.agents/handoffs/<KEY>.ticket.json`, else the
      one spec or plan whose ledger `Read:` line names the key; several → uncertain (the user picks);
-   - none → no baseline (`-`).
+   - none → no baseline (`-`). A solo plan or spec written before the switch lands here: offer
+     **Adopt** (§6) before treating every comment as new.
 4. `node .claude/lib/tracker-snapshot.mjs compare <baseline snapshot> <fresh snapshot>
    [--reconciled <id@sha>,…]` (`-` or a missing file = no baseline). It prints one line and exits:
    - `0` — `Tracker comments: none new (<read UTC>, <n>)`;
@@ -121,6 +122,19 @@ read**, the fresh snapshot replaces the baseline (`install -m 600 <fresh> <basel
 yet → `.agents/handoffs/<KEY>.ticket.json`), so the next boundary compares against what was decided. After an uncertain read the baseline is **kept**: the
 user's "continue without the check" holds for that one boundary, and a later complete read still
 reports a comment that went missing.
+
+**Adopt (solo, a document from before the switch).** When the baseline is `-` and neither the plan
+nor its source spec has a `## From tracker comments` ledger, the solo boundary (`/execute` step 6,
+`/check-implementation` Step 2.5) asks once: "No baseline — this document predates
+`tracker_comments`. Adopt the current ticket as its baseline? (adopt / review all)". It is a human
+decision, never a default:
+- `adopt` — only after a **complete** read: the fresh snapshot becomes the plan's
+  `<plan>.ticket.json` (`install -m 600`), and the plan gains the §4 ledger with its `Read:` line
+  followed by `Adopted: <UTC> — comments up to this read were not reconciled one by one (user
+  decision)`. That boundary reports `none new`; later boundaries compare against the adopted read.
+- `review all` — today's path: every non-own comment and the description are new (exit 3, §6 table).
+- An uncertain read (exit 4) cannot be adopted. Team runs never adopt — their plans always carry a
+  snapshot.
 
 **Team runs** (the per-run TeamLead, [team-lead.md](team-lead.md) §11). A run has no in-run path
 back to planning, so the reactions use its existing transitions only. The TeamLead's spec, plan and

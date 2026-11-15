@@ -170,7 +170,8 @@ In the user's communication language:
 
 **Opt-in:** `workflow.pr_open` in `.claude/project-profile.json` is not `true` (absent, `false`, no
 profile) → the command ends with Step 7: no host API call, no question. Team mode
-(`.agents/team/session.json` exists) also ends there — the team PR path is not this step.
+(`.agents/team/session.json` exists) also ends there — the team PR path is not this step: team
+runs follow the provider-specific `.claude/team/pr/` blocks, and this command never opens a team PR.
 
 Otherwise:
 
