@@ -323,8 +323,10 @@ The single sender `.claude/lib/notify.sh` (notification model, epic E2) writes e
 channels switched on in `~/.agent-comms/notify.json`. The Herdr channel (#39) writes a spool entry
 for the opt-in `harness-notify` mod (`.claude/team/herdr-mod/`) when the answering session's registry
 record says `herdr`; the mod shows it once as a toast that jumps to that session, and keeps it in a
-strip until clicked. iMessage (#40) is not built yet and records `off`. `notify.sh --check` shows the
-switches and whether the mod was seen; `notify.sh list` shows the events. The sinks above stay until #41.
+strip until clicked. The iMessage channel (#40, any backend, macOS) sends one message per event,
+holds events during quiet hours and sends them as one message after `quiet.end`; the opt-in
+`.claude/team/notify-kit/` installs the launchd job that runs that flush. `notify.sh --check` shows
+the switches, whether the mod was seen and the flush job's state; `notify.sh list` shows the events. The sinks above stay until #41.
 
 ## Migration
 
