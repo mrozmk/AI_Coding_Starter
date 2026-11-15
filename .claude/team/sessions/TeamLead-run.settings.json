@@ -36,7 +36,22 @@
       "Skill(release)",
       "Skill(release *)",
       "Bash(*notify.sh*)",
-      "Bash(*operator-record.sh*)"
+      "Bash(*operator-record.sh*)",
+      "Bash(tmux send-keys*)",
+      "Bash(tmux send *)",
+      "Bash(tmux paste-buffer*)",
+      "Bash(*tmux*send-keys*)",
+      "Bash(*tmux*paste-buffer*)",
+      "Bash(hc keys*)",
+      "Bash(hc send*)",
+      "Bash(hc interrupt*)",
+      "Bash(*session-host.sh keys*)",
+      "Bash(*session-host.sh type*)",
+      "Bash(*session-host.sh send *-planner*)",
+      "Bash(*session-host.sh send *-coder*)",
+      "Bash(*session-host.sh send *-qa*)",
+      "Bash(*session-host.sh send *-wrapup*)",
+      "Bash(*session-host.sh send *-cli*)"
     ],
     "ask": [
       "Bash(cat .env*)",

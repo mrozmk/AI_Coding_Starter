@@ -102,7 +102,7 @@ jq '.teams.teamlead.enabled = true' "$MAIN/.claude/project-profile.json" > "$WOR
   && mv "$WORK/p" "$MAIN/.claude/project-profile.json"
 mkdir -p "$MAIN/.claude/team/sessions" "$CLONE/.claude/hooks"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
-cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/"
+cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
 # The gate records are validated against a clean tree: the copied guard is committed.
 git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "fixture guard" || true

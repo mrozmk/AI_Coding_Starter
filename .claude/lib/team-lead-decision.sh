@@ -11,7 +11,9 @@
 # notifies the Operator once. answer asks for a human: from a terminal (a TTY, the id typed to
 # confirm), or from the TeamLead window, where the lead's own transcript must hold a typed Operator
 # message (not a doorbell, after created_at) containing the answer text. Both raise the bar; neither
-# is proof (team-lead.md §7, "Limit of the human binding").
+# is proof (team-lead.md §7, "Limit of the human binding"). A decision opened from a request (a
+# human-only prompt) carries `answer_in: <role>`: the Operator answers it in that stage's window and
+# only the runner closes it (resolved / withdrawn) — answer and withdraw refuse it with exit 7.
 
 dfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
@@ -20,6 +22,10 @@ dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter k
   mv "$1.tmp" "$1"
 }
 d_bad() { echo "error: $2" >&2; exit "$1"; }
+d_window() {  # d_window <file> — exit 7 for a human-only prompt's decision (answer_in)
+  local r; r="$(dfm "$1" answer_in)"; [ -z "$r" ] || d_bad 7 \
+    "human-only prompt: the Operator answers it in the $r window; the runner records it — nothing applied"
+}
 d_file() {  # d_file <d-n> → path, or exit 2/4
   [[ "$1" =~ ^d-[0-9]+$ ]] || d_bad 2 "decision id must be d-<n>"
   [ -f "$DD/$1.md" ] || d_bad 4 "no decision $1 in runs/$RUN/decisions/"
@@ -56,7 +62,7 @@ notes_tune() {
 }
 
 decision_open() {
-  local src="" q="" opts="" rec="" notify=human_decision gate="" req="" n f tmp v rel bind=""
+  local src="" q="" opts="" rec="" notify=human_decision gate="" req="" n f tmp v rel bind="" win=""
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
     case "$1" in
@@ -73,6 +79,8 @@ decision_open() {
     src="decisions/$req.json"
     [ -n "$q" ] || q="$(jq -r '"\(.role): \(.tool) \(.command)"' "$DD/$req.json")"
     bind="$(jq -r '.binding // {} | to_entries[] | "bind_\(.key): \(.value)"' "$DD/$req.json")"
+    win="$(jq -r '.role // empty' "$DD/$req.json")"
+    [ -n "$win" ] || d_bad 4 "request $req names no role"
   fi
   [ -n "$src" ] && one_line "$q" || d_bad 2 "decision open needs --source and a one-line --question"
   mkdir -p "$DD"
@@ -83,6 +91,7 @@ decision_open() {
     echo "attempt: $(jq -r '.attempt // "-"' "$TD/session.json" 2>/dev/null || echo -)"
     echo "source: $src"; echo "created_at: $(team_utc)"; echo "notify: $notify"
     [ -z "$gate" ] || echo "gate: $gate"
+    [ -z "$win" ] || echo "answer_in: $win"
     [ -z "$bind" ] || printf '%s\n' "$bind"
     echo "---"; echo "## Question"; echo "$q"
     [ -z "$opts" ] || { echo; echo "## Options"; tr '|' '\n' <<<"$opts" | sed 's/^/- /'; }
@@ -145,6 +154,7 @@ decision_answer() {
   fi
   [ -z "$tuning" ] || one_line "$why" || d_bad 2 "--tuning needs a one-line --why"
   f="$(d_file "$id")"
+  d_window "$f"
   if [ "$(dfm "$f" status)" = withdrawn ]; then
     notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"
   fi
@@ -172,6 +182,7 @@ decision_withdraw() {
   [ $# -eq 2 ] && [ "$1" = --why ] && one_line "$2" || usage; why="$2"
   team_lead_caller || d_bad 3 "only this run's TeamLead withdraws decisions"
   f="$(d_file "$id")"
+  d_window "$f"
   [ "$(dfm "$f" status)" = pending ] || d_bad 4 "$id is $(dfm "$f" status), not pending"
   dfm_set "$f" status withdrawn; dfm_set "$f" withdrawn_at "$(team_utc)"
   printf '\n## Withdrawn\n%s\n' "$why" >> "$f"

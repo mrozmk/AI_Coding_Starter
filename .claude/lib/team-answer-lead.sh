@@ -40,6 +40,9 @@ auth_preflight() {
   [ "$AUTH" = operator ] || return 0
   run="$(cat "$TD/run" 2>/dev/null || true)"
   d="$(cd "$(dirname "$DECISION")" 2>/dev/null && pwd -P)/$(basename "$DECISION")" || d=""
+  # A human-only prompt's decision is answered by the Operator in the stage window, never relayed.
+  [ ! -f "$d" ] || [ -z "$(auth_fm "$d" answer_in)" ] || refuse 7 \
+    "human-only prompt: the Operator answers it in the $(auth_fm "$d" answer_in) window; the runner records it"
   [ -n "$DECISION" ] && [ -f "$d" ] \
     && [ "$(dirname "$d")" = "$(cd "$TD/runs/$run/decisions" 2>/dev/null && pwd -P)" ] \
     && [ "$(auth_fm "$d" status)" = answered ] \
@@ -69,6 +72,15 @@ auth_event() {
   [ -n "$AUTH" ] && [ "$action" != say ] || return 0
   case "$EVENT" in ambiguous) refuse 5 "ambiguous event" ;; -) refuse 3 "transcript unreadable" ;; esac
   [ -z "$E_EVENT" ] || [ "$EVENT" = "$E_EVENT" ] || refuse 6 "new prompt event"
+  # A human-only prompt (a runner request bound to this event) is the Operator's in the stage
+  # window: `no` skips the checker, so refuse it here for every action.
+  local r run
+  run="$(cat "$TD/run" 2>/dev/null || true)"
+  for r in "$TD/runs/$run"/decisions/req-*.json; do
+    [ -f "$r" ] && [ "$(jq -r '.binding.event // empty' "$r" 2>/dev/null)" = "$EVENT" ] \
+      && refuse 9 "human-only prompt ($(basename "$r" .json)): the Operator answers it in the $ROLE window"
+  done
+  return 0
 }
 
 # auth_after — after a delivered answer: the answers.md line (authority calls) and the stop's

@@ -13,8 +13,10 @@ trap 'for p in $BG; do kill "$p" 2>/dev/null || true; done
 RUN_ID=alfa-20261104-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"
 mkdir -p "$RD/questions"
 ESC="bash .claude/lib/team-escalate.sh"
-# A backoff of 5 s would show as elapsed time; the fail-fast path must not sleep.
-export TEAM_ESCALATE_UNIT_SECS=1 TEAM_ESCALATE_POLL=0.2 TEAM_ESCALATE_BACKOFF_SECS=5
+# A backoff of 5 s would show as elapsed time; the fail-fast path must not sleep. A send is bounded
+# by timeout_min x UNIT: 1 s killed the fake send under load, so only (e), whose negative checks
+# need a 1 s wait bound, runs with UNIT=1.
+export TEAM_ESCALATE_UNIT_SECS=10 TEAM_ESCALATE_POLL=0.2 TEAM_ESCALATE_BACKOFF_SECS=5
 export TEAM_ESCALATE_PEEK_SECS=1
 mkdir -p "$MAIN/.agents/team"
 CFG="$MAIN/.agents/team/escalation.local.json"
@@ -37,7 +39,14 @@ bg_esc() {  # bg_esc <args…> → BGP: team-escalate.sh in the background, stop
   (cd "$MAIN" && exec $ESC alfa coder "$@") > "$WORK/bg.out" 2>&1 &
   BGP=$!; BG="$BG $BGP"
 }
-bg_stop() { sleep 3; kill "$BGP" 2>/dev/null || true; wait "$BGP" 2>/dev/null || true; }
+# bg_stop <ERE> [max ticks] — stop it once $QF has a line matching <ERE> (at most 150 ticks of
+# 0.2 s), never before 3 s: a fixed 3 s missed the send under load, and the negative checks keep
+# their full 3 s window.
+bg_stop() {
+  local i=0
+  while [ "$i" -lt "${2:-150}" ] && { [ "$i" -lt 15 ] || ! grep -Eq "$1" "$QF"; }; do sleep 0.2; i=$((i + 1)); done
+  kill "$BGP" 2>/dev/null || true; wait "$BGP" 2>/dev/null || true
+}
 
 # fake-mail.sh send|wait|peek <payload> <team> <role> <qid> <thread> <seq> — agent_mail's dedup
 cat > "$WORK/fake-mail.sh" <<'EOF'
@@ -94,27 +103,31 @@ has "reply: 32 answer" "$QF" || fail "(c) reply not recorded"
 
 # ---- (d) --retier after a receipt-less answer takes a fresh seq ------------------------------
 QF="$QA"; QN="$QNA"; rm -f "$WORK/mail.noreceipt"
-bg_esc 3 "$QF" --retier "operator"; bg_stop
+bg_esc 3 "$QF" --retier "operator"; bg_stop '^sent: seq 2 '
 grep -q '^retier: .* tier 3 seq 2 — operator$' "$QF" || fail "(d) retier seq: $(cat "$QF")"
 grep -q "^sent: seq 2 .* thread $(thread)$" "$QF" || fail "(d) retier not sent"
 grep -q " $(thread)-2$" "$WORK/mail.store" || fail "(d) no new key: $(cat "$WORK/mail.store")"
 [ "$(stored)" = 2 ] || fail "(d) store: $(cat "$WORK/mail.store")"
 
 # ---- (e) a recovered pending-operator keeps an unbounded wait across --resume -----------------
+export TEAM_ESCALATE_UNIT_SECS=1
 mkq; touch "$WORK/mail.noreceipt"; reply 'mail-id: 33\nstatus: pending-operator\neta: x\n\nAsked.\n'
-bg_esc 2 "$QF" --blocks x; bg_stop
+bg_esc 2 "$QF" --blocks x; bg_stop '^waiting: operator '
 has "reply: 33 pending-operator" "$QF" && grep -q '^waiting: operator ' "$QF" \
   || fail "(e) pending-operator not recorded: $(cat "$QF")"
 ! grep -q '^outcome: no-reply' "$QF" || fail "(e) the first wait was bounded"
-bg_esc 2 "$QF" --resume; bg_stop
+bg_esc 2 "$QF" --resume; bg_stop '^resumed: '
 grep -q '^resumed: ' "$QF" || fail "(e) resume did not start: $(cat "$WORK/bg.out")"
 ! grep -q '^outcome: no-reply' "$QF" || fail "(e) --resume re-armed the deadline: $(cat "$QF")"
 
+export TEAM_ESCALATE_UNIT_SECS=10
+
 # ---- (f) one lost receipt is recovered by the immediate retry (dedup), no backoff ------------
 mkq; rm -f "$WORK/mail.noreceipt"; touch "$WORK/mail.noreceipt-once"
-bg_esc 2 "$QF" --blocks x; bg_stop
+# 22 ticks (4.4 s) < the 5 s backoff: a send that waited for the backoff misses the window.
+bg_esc 2 "$QF" --blocks x; bg_stop '^sent: seq 1 ' 22
 [ "$(grep -c '^failed: seq 1 .* — no receipt$' "$QF")" = 1 ] || fail "(f) failed: $(cat "$QF")"
-grep -q "^sent: seq 1 .* thread $(thread)$" "$QF" || fail "(f) not sent within the 3 s window"
+grep -q "^sent: seq 1 .* thread $(thread)$" "$QF" || fail "(f) not sent before the backoff"
 [ "$(stored)" = 1 ] || fail "(f) dedup: $(cat "$WORK/mail.store")"
 
 echo "team-smoke-13: OK"

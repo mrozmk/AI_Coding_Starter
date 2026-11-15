@@ -19,7 +19,7 @@
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
 #   .claude/team/sessions/TeamLead-run.settings.json unioned with the project and local deny/ask
 #   rules, the PR host's update verbs denied for teams.pr_provider, guard-teamlead-write.sh
-#   registered for Edit|Write|NotebookEdit.
+#   registered for Edit|Write|NotebookEdit and guard-teamlead-bash.sh for Bash.
 #   e.g. bash .claude/lib/team-lead.sh materialize alfa
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
@@ -247,7 +247,9 @@ materialize() {
                        ask: ([$all[] | .permissions.ask // [] | .[]] | unique)},
          hooks: {PreToolUse: [{matcher: "Edit|Write|NotebookEdit", hooks: [{type: "command",
            onFailure: "block",
-           command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-write.sh\""}]}]}}' \
+           command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-write.sh\""}]},
+           {matcher: "Bash", hooks: [{type: "command", onFailure: "block",
+           command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-bash.sh\""}]}]}}' \
       "$root/.claude/team/sessions/TeamLead-run.settings.json" "$root/.claude/settings.json" "$loc" \
       > "$out.tmp"
     mv "$out.tmp" "$out" )

@@ -75,16 +75,28 @@ echo "team-smoke-20: (d) record + question OK"
 
 # ---- (e) guard-teamlead-write.sh ---------------------------------------------------------------
 G=guard-teamlead-write.sh
-lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/x.md")"; expect 0 "" "(e) run dir"
-lhook $G "$(write_p Edit ".agents/team/runs/$RUN_ID/y.md")"; expect 0 "" "(e) relative run path"
+for f in gate-spec-1.md rework-2.md digest.md teamlead-notes.md opinion-1.md acceptance-brief.md \
+  blind-check.md r2/acceptance-brief.md r2/gate-acceptance-1.md; do
+  lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/$f")"; expect 0 "" "(e) own file $f"
+done
+lhook $G "$(write_p Edit ".agents/team/runs/$RUN_ID/digest.md")"; expect 0 "" "(e) relative run path"
 lhook $G "$(write_p Write "/private/tmp/claude-$(id -u)/s/notes.md")"; expect 0 "" "(e) scratchpad"
-lhook $G "$(write_p Write "$CLONE/src/x.ts")"; expect 2 "writes only under" "(e) src refused"
+# Verdicts, decisions, answers, markers and records belong to the scripts (owner, 2026-11-15).
+for f in answers.md decisions/d-1.md decisions/req-1.json teamlead-spec-1.json closed.json \
+  coder-1-1.json.answered coder-1-1.json order-brief.md r2/answers.md attention x.md; do
+  lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/$f")"
+  expect 2 "verdicts, decisions and answers are written by the scripts" "(e) script-owned $f"
+done
+: > "$RD/answers.md"; ln -sf "$RD/answers.md" "$RD/gate-plan-9.md"
+lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/gate-plan-9.md")"
+expect 2 "written by the scripts" "(e) an own name linked to answers.md"; rm -f "$RD/gate-plan-9.md"
+lhook $G "$(write_p Write "$CLONE/src/x.ts")"; expect 2 "writes only its own files" "(e) src refused"
 lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/../escape")"
-expect 2 "writes only under" "(e) .. escape refused"
-lhook $G "$(write_p Write "$CREAL/.agents/team/runs/alfa-old/x.md")"
-expect 2 "writes only under" "(e) another run refused"
+expect 2 "writes only its own files" "(e) .. escape refused"
+lhook $G "$(write_p Write "$CREAL/.agents/team/runs/alfa-old/gate-spec-1.md")"
+expect 2 "writes only its own files" "(e) another run refused"
 lhook $G "$(jq -cn '{session_id: "sid-lead", tool_name: "NotebookEdit",
-  tool_input: {notebook_path: "README.ipynb"}}')"; expect 2 "writes only under" "(e) notebook refused"
+  tool_input: {notebook_path: "README.ipynb"}}')"; expect 2 "writes only its own files" "(e) notebook refused"
 lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/x.md" sid-stale)"
 expect 2 "identity not current" "(e) stale identity fails closed"
 lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/x.md" "")"
@@ -99,6 +111,64 @@ set +e; CLAUDE_PROJECT_DIR="$MAIN" TEAM_SESSION_ROLE=TeamLead bash "$H/$G" \
   <<<"$(write_p Write "$MAIN/src/x.ts")" > "$WORK/out" 2>&1; RC=$?; set -e
 expect 0 "" "(e) the global TeamLead in the main checkout is not confined"
 echo "team-smoke-20: (e) write guard OK"
+
+# ---- (e2) guard-teamlead-bash.sh: no script-owned file by Bash, no key into a session ------------
+G=guard-teamlead-bash.sh; R=".agents/team/runs/$RUN_ID"
+bash_p() { jq -cn --arg c "$1" --arg s "${2-sid-lead}" '{session_id: $s, tool_name: "Bash", tool_input: {command: $c}}'; }
+while IFS= read -r c; do
+  lhook $G "$(bash_p "$c")"; expect 2 "written by the scripts" "(e2) refused: $c"
+done <<EOF2
+echo x >> $R/answers.md
+sed -i s/a/b/ $R/decisions/d-1.md
+cp /tmp/v $R/teamlead-plan-2.json
+env sh -c 'echo > $R/closed.json'
+cat x | tee -a $R/answers.md
+python3 -c "open('$R/answers.md','w')"
+cd .agents && echo > team/runs/$RUN_ID/answers.md
+cd .agents && cd reference && cd ../team/runs/$RUN_ID && echo x > answers.md
+echo x > "\$CLAUDE_PROJECT_DIR/$R/answers.md"
+sed -i s/x/y/ .claude/hooks/guard-teamlead-bash.sh
+bash /tmp/team-answer.sh x > $R/answers.md
+bash .claude/lib/team-answer.sh alfa coder yes > $R/answers.md
+EOF2
+while IFS= read -r c; do
+  lhook $G "$(bash_p "$c")"; expect 2 "never" "(e2) key refused: $c"
+done <<'EOF2'
+tmux send-keys -t alfa-coder Enter
+tmux -L x send -t alfa-coder y
+tmux paste-buffer -t alfa-coder
+tmux send-k -t alfa-coder Enter
+tmux paste -t alfa-coder
+hc keys t1 enter
+hc send t1 yes
+hc interrupt t1
+bash .claude/lib/session-host.sh keys alfa-coder enter
+bash .claude/lib/session-host.sh type alfa-planner yes --enter
+bash .claude/lib/session-host.sh send alfa-qa hi
+bash .claude/lib/session-host.sh send alfa-wrapup hi
+bash .claude/lib/session-host.sh keys alfa-cli enter
+EOF2
+while IFS= read -r c; do
+  lhook $G "$(bash_p "$c")"; expect 0 "" "(e2) allowed: $c"
+done <<EOF2
+bash .claude/lib/team-answer.sh alfa coder yes --authority teamlead --why w --decision $R/decisions/d-1.md
+bash .claude/lib/team-verdict.sh plan approve --for $R/planner-1-1.json --ref $R/gate-plan-1.md
+cat $R/answers.md
+jq . $R/decisions/d-1.md
+cd $R && cat digest.md
+echo hi > $R/gate-spec-1.md
+echo hi > $R/r2/acceptance-brief.md
+bash .claude/lib/session-host.sh status alfa-coder
+bash .claude/lib/session-host.sh read alfa-coder --lines 40
+bash .claude/lib/session-host.sh alive alfa-coder
+bash .claude/lib/team-inbox.sh write Supervisor gate --from alfa
+hc read t1
+git status
+EOF2
+lhook $G "$(bash_p 'cd "$X" && echo > answers.md')"; expect 2 "cannot be resolved" "(e2) a cd behind a variable"
+lhook $G "$(bash_p "git status" sid-stale)"; expect 2 "identity not current" "(e2) stale identity fails closed"
+shook $G "$(bash_p "echo x >> $R/answers.md" sid-coder-1)"; expect 0 "" "(e2) a stage passes"
+echo "team-smoke-20: (e2) Bash guard OK"
 
 # ---- (f) the global-role hooks stay silent in a clone ------------------------------------------
 for f in monitoring-rearm.sh; do   # session-role.sh is gone (session-registry.sh: part roles)
@@ -119,7 +189,13 @@ P="$TD/teamlead.settings.json"
 jq -e '(.permissions.deny | index("Bash(az repos pr update*)")) and
   (.permissions.deny | index("Bash(git push*)")) and (.permissions.ask | index("Bash(git tag*)"))
   and .env.TEAM_SESSION_ROLE == "TeamLead"
-  and (.hooks.PreToolUse[0].hooks[0].command | contains("guard-teamlead-write.sh"))' "$P" \
+  and (.hooks.PreToolUse[0].hooks[0].command | contains("guard-teamlead-write.sh"))
+  and .hooks.PreToolUse[1].matcher == "Bash"
+  and (.hooks.PreToolUse[1].hooks[0].command | contains("guard-teamlead-bash.sh"))
+  and ([.permissions.deny[] | select(. == "Bash(tmux send-keys*)" or . == "Bash(tmux paste-buffer*)"
+    or . == "Bash(hc keys*)" or . == "Bash(hc send*)" or . == "Bash(hc interrupt*)"
+    or . == "Bash(*session-host.sh keys*)" or . == "Bash(*session-host.sh type*)"
+    or . == "Bash(*session-host.sh send *-coder*)")] | length == 8)' "$P" \
   >/dev/null || fail "(g) materialised profile content"
 run "$MAIN" python3 -I "$L/session_profile_check.py" "$MAIN" --profiles "$MAIN/.claude/team/sessions" \
   --clone "$CLONE" TeamLead-run

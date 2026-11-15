@@ -202,3 +202,31 @@ def user_after(path, uid, text):
                 return True
         seen = seen or e.get("uuid") == uid
     return False
+
+
+# Both the reject ("…to proceed with this tool use") and the cancel ("…to take this action right
+# now") texts, plus an interrupt at the prompt.
+REJECTED = ("The user doesn't want to", "[Request interrupted by user for tool use]")
+
+
+def outcome(path, tid):
+    """How the prompt of tool_use <tid> was answered in the role's own window: approved, approved
+    (rule added) — "don't ask again" (permissionDecision.source user_permanent) —, rejected, pending
+    (open), gone (neither open nor answered), or None for an unreadable transcript."""
+    es = entries(path)
+    if es is None:
+        return None
+    for e in (e for e in es if e["type"] == "user"):
+        for item in content(e):
+            if not (isinstance(item, dict) and item.get("type") == "tool_result"
+                    and item.get("tool_use_id") == tid):
+                continue
+            pd = e.get("permissionDecision")
+            pd = pd if isinstance(pd, dict) else {}
+            text = item.get("content")
+            text = text if isinstance(text, str) else json.dumps(text)
+            if (e.get("toolDenialKind") == "user-rejected" or pd.get("decision") == "reject"
+                    or (item.get("is_error") and any(r in text for r in REJECTED))):
+                return "rejected"
+            return "approved (rule added)" if pd.get("source") == "user_permanent" else "approved"
+    return "pending" if tid in pending(es) else "gone"

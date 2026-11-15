@@ -38,7 +38,7 @@ export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions/operator-kit" "$CLONE/.claude/hooks"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
-cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/"
+cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
 printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "$NLOG" > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
 # A project-added ask rule (human-only for the lead) for beta's coder prompt; committed, so every
@@ -185,7 +185,7 @@ has "ready: bash .claude/lib/team-merge-check.sh alfa" "$WORK/runner.out" || fai
 [ "$(notified)" = 0 ] || fail "alfa: $(notified) notifications"
 echo "team-smoke-24: alfa (brainstorm, clean) OK"
 
-# ==== beta: quick, a human-only prompt → decision → operator relay ======================================
+# ==== beta: quick, a human-only prompt → decision → the Operator answers in the stage window ===========
 fresh alfa-20261116-110000 quick
 start_runner
 launched planner 1; on_stage planner
@@ -207,17 +207,21 @@ wait_for "beta human-only ring" "rung 'human-only coder: Bash command az webapp 
 ! grep -q '\[authority class\]' "$RD/answers.md" 2>/dev/null || fail "beta: the class answered a human-only prompt"
 ldec open alfa --request req-1; expect 0 "[d-1] coder: Bash command" "beta decision"
 wait_for "beta notification" "[ \"\$(notified)\" -ge 1 ]"
+grep -q '^answer_in: coder$' "$RD/decisions/d-1.md" || fail "beta: the decision does not name the coder window"
+grep -q -- 'answer in .*alfa-coder' "$NLOG" || fail "beta: the notification does not name the stage window: $(cat "$NLOG")"
+# The lead neither records nor relays it (owner, 2026-11-15): the Operator answers in the coder window.
 lead_said "d-1 yes, restart it" u-op-beta
 ldec answer alfa d-1 --text "yes, restart it" --tuning rule --why "a restart in the order's scope could be a rule"
-expect 0 "answered: d-1" "beta Operator answer"
+expect 7 "answers it in the coder window" "beta: the lead cannot record a human-only answer"
 TEAM_CONFIRM_SECS=1 run "$MAIN" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh \
   alfa coder yes --authority operator --why "Operator: yes, restart it" --decision "$RD/decisions/d-1.md"
-expect 0 "sent yes" "beta operator relay"
-grep -q '\[coder 1\] .* → yes — Operator: yes, restart it \[authority operator\] \[decision d-1\]$' "$RD/answers.md" \
-  || fail "beta: the relay is not in answers.md"
-grep -qF -- "- d-1 coder: Bash command" "$RD/teamlead-notes.md" && grep -q -- "— tuning: rule — " "$RD/teamlead-notes.md" \
-  || fail "beta: no Operator case in the notes"
+expect 7 "answers it in the coder window" "beta: the lead cannot relay it"
 tool_done "$CSID" t1; rm -f "$WORK/pane-coder"
+wait_for "beta window answer" "grep -q '^status: resolved' '$RD/decisions/d-1.md'"
+wait_for "beta window ring" "rung 'human-only coder: d-1 answered in the stage window — approved'"
+grep -q '\[coder 1\] coder: Bash command az webapp restart --name x → approved — Operator in the stage window \[authority operator-window\] \[decision d-1\]$' "$RD/answers.md" \
+  || fail "beta: the window answer is not in answers.md"
+grep -qF -- "- d-1 coder: Bash command" "$RD/teamlead-notes.md" || fail "beta: no Operator case in the notes"
 coder_round1
 launched qa 1; on_stage qa; qa_done "$RD"
 wait_for "beta acceptance gate" "rung 'gate acceptance: .agents/team/runs/$RUN_ID/qa-1-1.json'"

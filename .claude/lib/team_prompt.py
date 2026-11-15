@@ -4,6 +4,8 @@ Usage: python3 -I team_prompt.py parse [--transcript <file>|-]  < pane   → one
        python3 -I team_prompt.py event <transcript> <kind>      [< parse JSON] → id|ambiguous|-
        python3 -I team_prompt.py result <transcript> <tool_use_id>           → yes|no
        python3 -I team_prompt.py pending <transcript> <tool_use_id>          → yes|no|unknown
+       python3 -I team_prompt.py outcome <transcript> <tool_use_id>
+                                     → approved|approved (rule added)|rejected|pending|gone|unknown
        python3 -I team_prompt.py pending-tool <transcript>       → {"tool", "detail"}|{}|unknown
        python3 -I team_prompt.py user-after <transcript> <uuid> <text>       → yes|no
        python3 -I team_prompt.py typed <text>                   < pane   → yes|no
@@ -26,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Re-exported: callers keep reading the transcript through team_prompt.
 from team_transcript import (  # noqa: E402,F401
     CONT_ROW, CONTEXT_ROW, EDIT_ROW, associated, diff_rows, entries, has_result, last_assistant,
-    pending, pending_tool, squash, tool_cwd, user_after)
+    outcome, pending, pending_tool, squash, tool_cwd, user_after)
 
 RULE = re.compile(r"^\s*─{20,}\s*$")
 NAMED_RULE = re.compile(r"^\s*─{20,}(\s+[A-Za-z0-9._-]+\s+─)?\s*$")
@@ -473,6 +475,9 @@ def main():
     if len(a) == 3 and a[0] == "pending":
         es = entries(a[1])
         print("unknown" if es is None else "yes" if a[2] in pending(es) else "no")
+        return 0
+    if len(a) == 3 and a[0] == "outcome":
+        print(outcome(a[1], a[2]) or "unknown")
         return 0
     if len(a) == 2 and a[0] == "pending-tool":
         es = entries(a[1])
