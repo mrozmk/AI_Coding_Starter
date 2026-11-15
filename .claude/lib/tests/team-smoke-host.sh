@@ -592,4 +592,44 @@ lin check 13 --follow-up-of 10; expect 9 "follow-up 4 of origin 7 (8, 9, 10 star
 tty_consent 10 10; has "already started on a consent" "$WORK/out" || fail "(34) a consumed consent was rewritten"
 echo "team-smoke-host: (34) consent OK"
 
+# ---- (35) no direct tmux call outside the driver (step 1b) -------------------------------------------------
+# Every tmux call of the team layer goes through session-host-lib.sh. The exceptions are calls the
+# driver does not model yet, each with the step that removes it: path, the subcommands allowed there,
+# the step. A new direct call anywhere else — or another subcommand in an excepted file — fails.
+TMUX_RE='(^|[;&|(]|[[:space:]])tmux[[:space:]]+(-S[[:space:]]+[^[:space:]]+[[:space:]]+)?(new-session|has-session|kill-session|capture-pane|send-keys|display-message|list-clients|set-option|attach)'
+cat > "$WORK/tmux-exceptions" <<'EXC'
+.claude/lib/session-host-lib.sh	.*	— (the driver)
+.claude/lib/team-attach.sh	display-message|set-option|attach	8 (#29, the Herdr-over-tmux layering)
+.claude/hooks/team-status.sh	display-message|list-clients	8 (#29, OSC 7501 to attached clients)
+.claude/hooks/session-registry.sh	display-message|has-session	6 (this terminal's handle through $TMUX's socket)
+.claude/hooks/inbox-count.sh	display-message	6 (this terminal's handle through $TMUX's socket)
+EXC
+: > "$WORK/tmux-hits"
+for f in "$SRC"/.claude/lib/*.sh "$SRC"/.claude/lib/*.py "$SRC"/.claude/hooks/*.sh; do
+  rel="${f#"$SRC"/}"; allow="$(awk -F'\t' -v p="$rel" '$1 == p {print $2}' "$WORK/tmux-exceptions")"
+  grep -nE "$TMUX_RE" "$f" | grep -vE '^[0-9]+:[[:space:]]*(#|echo |printf |die |refuse |TEAM_PROBLEMS\+=|\|\|)' \
+    | while IFS= read -r hit; do
+        if [ -n "$allow" ] && printf '%s\n' "$hit" | grep -qE "tmux[[:space:]]+(-S[[:space:]]+[^[:space:]]+[[:space:]]+)?($allow)"; then continue; fi
+        echo "$rel:$hit" >> "$WORK/tmux-hits"
+      done || true
+done
+grep -rn 'Bash(tmux' "$SRC/.claude/commands" | sed "s|^$SRC/||" >> "$WORK/tmux-hits" || true
+[ ! -s "$WORK/tmux-hits" ] || { cp "$WORK/tmux-hits" "$WORK/out"; fail "(35) direct tmux calls outside the driver"; }
+# The guard itself catches a call: a fixture file with one.
+mkdir -p "$WORK/g/.claude/lib"; printf 'x() {\n  tmux kill-session -t "=a"\n}\n' > "$WORK/g/.claude/lib/team-x.sh"
+grep -nE "$TMUX_RE" "$WORK/g/.claude/lib/team-x.sh" | grep -vqE '^[0-9]+:[[:space:]]*(#|echo )' || fail "(35) the scan misses a call"
+echo "team-smoke-host: (35) no direct tmux outside the driver OK"
+
+# ---- (36) from a team clone: HARNESS_MAIN picks the main checkout's registry (team-run.sh exports it) ----
+mkdir -p "$CL/.agents/team"; echo '{"team":"alfa"}' > "$CL/.agents/team/team.json"
+clr; run "$CL" env HARNESS_MAIN="$MP" $SH start alfa-qa --kind team --cwd "$CL" --cli claude --no-probe -- claude
+expect 0 "alfa-qa" "(36) start from the clone"
+[ -f "$REG/alfa-qa.json" ] && [ ! -e "$CL/.agents/team/registry" ] || fail "(36) the record is not in the main registry"
+noline "tmux has-session" "(36) --no-probe probed"
+jq -e '.backend == "tmux"' "$REG/alfa-qa.json" >/dev/null || fail "(36) record backend"
+run "$CL" $SH alive alfa-qa; expect 2 "team clone — pass --main or set HARNESS_MAIN" "(36) no HARNESS_MAIN in a clone"
+clr; STUB_TMUX_ALIVE=0 run "$CL" env HARNESS_MAIN="$MP" $SH alive alfa-qa; expect 0 "" "(36) alive reads the main record"
+rm -f "$CL/.agents/team/team.json"
+echo "team-smoke-host: (36) clone + HARNESS_MAIN OK"
+
 echo "team-smoke-host: OK"

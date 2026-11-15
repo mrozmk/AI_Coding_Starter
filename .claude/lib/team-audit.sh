@@ -73,8 +73,8 @@ launch_retro() {
   if team_tmux_alive "$s"; then mark_retro "skipped: running"; return 0; fi
   # Marked before the launch, so a fast retro's own `done` is never overwritten.
   mark_retro "launched $(utc)"
-  tmux new-session -d -s "$s" -c "$root" \
-    "bash '$root/.claude/lib/team-audit.sh' retro-run '$TEAM' '$RUN'" 2>/dev/null \
+  sh_start "helper:$s" --main "$root" --kind helper --cwd "$root" --cli script --no-probe \
+    -- "bash '$root/.claude/lib/team-audit.sh' retro-run '$TEAM' '$RUN'" >/dev/null 2>&1 \
     || { mark_retro "failed: tmux"; echo "warn: retro not launched" >&2; }
 }
 

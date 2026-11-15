@@ -557,9 +557,12 @@ sh_screen_state() {
 }
 
 # start <address> --kind role|team|helper --cwd <dir> --cli claude|codex|script [--env K=V]…
-#   [--claude-home auto] [--program <exe>] [--session-id <id>] [--wait-ready] -- <argv…>
+#   [--claude-home auto] [--program <exe>] [--session-id <id>] [--wait-ready] [--no-probe] -- <argv…>
+# --no-probe: the caller has already decided the session is gone (the runner's own liveness
+# checks), so start issues no has-session before new-session — the call sequence stays the
+# caller's, and a live duplicate fails in new-session itself, as a direct call did.
 sh_start() {
-  local a="$1" kind="" cwd="" cli="" ch="" prog="" sid="" ready="" n k rc be cmd w s envs=() argv=()
+  local a="$1" kind="" cwd="" cli="" ch="" prog="" sid="" ready="" probe=1 n k rc be cmd w s envs=() argv=()
   shift; sh_opts "$a" "$@" || return 2
   set -- ${SH_ARGS[@]+"${SH_ARGS[@]}"}
   while [ $# -gt 0 ]; do
@@ -574,6 +577,7 @@ sh_start() {
       --program) prog="${2:-}"; shift 2 ;;
       --session-id) sid="${2:-}"; shift 2 ;;
       --wait-ready) ready=1; shift ;;
+      --no-probe) probe=""; shift ;;
       --) shift; argv=("$@"); break ;;
       *) sh_err "start: unknown option $1"; return 2 ;;
     esac
@@ -586,14 +590,15 @@ sh_start() {
   [ -n "$cwd" ] && [ -d "$cwd" ] || { sh_err "start: --cwd must be an existing directory"; return 2; }
   [ ${#argv[@]} -gt 0 ] || { sh_err "start: nothing to run after --"; return 2; }
   case "$ch" in ""|auto) ;; *) sh_err "start: --claude-home takes only auto"; return 2 ;; esac
-  be="$(sh_backend "$SH_MAIN" "$a" --for-start)" || return $?
+  if [ -n "$probe" ]; then be="$(sh_backend "$SH_MAIN" "$a" --for-start)" || return $?
+  else be="$(sh_pick_host "$SH_MAIN")" || return $?; fi
   n="$(sh_name "$SH_MAIN" "$a")" || return 2
-  if sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)" 2>/dev/null; then
+  if [ -n "$probe" ] && sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)" 2>/dev/null; then
     sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1
   fi
   # A recorded program that no longer runs leaves its shell behind (a `; read` pane): end it. Only
   # records that carry `program` (roles.sh) — the runner's own `; read` cleanup stays its caller's.
-  if [ -n "$(sh_record_get "$SH_MAIN" "$a" program)" ] && sh_tmux has-session -t "=$n" 2>/dev/null; then
+  if [ -n "$probe" ] && [ -n "$(sh_record_get "$SH_MAIN" "$a" program)" ] && sh_tmux has-session -t "=$n" 2>/dev/null; then
     sh_tmux kill-session -t "=$n" || true
   fi
   envs+=(-e "HARNESS_ADDRESS=$a" -e "HARNESS_MAIN=$SH_MAIN" -e "HARNESS_REGISTRY=$(sh_reg_dir "$SH_MAIN")"

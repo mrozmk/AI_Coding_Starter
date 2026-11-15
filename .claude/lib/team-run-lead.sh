@@ -72,18 +72,18 @@ launch_lead() {
   # The .session/.prompt.md pair is how cost.py bind --team-run finds every lead session.
   printf '%s\n' "$sid" > "$TD/runs/$RUN/lead-$n.session"
   render_lead_prompt "$pf"
-  [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(-e "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
+  [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(--env "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
   # Per-session env as in launch(); TEAM_SESSION_ROLE also reaches the hooks before settings load.
-  tmux new-session -d -s "$name" -c "$CLONE" -e "TEAM_RUN_TEAM=$TEAM" -e "TEAM_RUN_ROLE=lead" \
-    -e "TEAM_RUN_ID=$RUN" -e "TEAM_SESSION_ROLE=TeamLead" -e "CODEX_HOME=$ch" \
-    ${cc:+-e "CLAUDE_CONFIG_DIR=$cc"} ${costs[@]+"${costs[@]}"} \
-    "claude --session-id $sid -n $name --settings '$TD/teamlead.settings.json' --model '$TEAM_LEAD_MODEL' --effort '$TEAM_LEAD_EFFORT' --permission-mode '$perm' --disallowedTools AskUserQuestion -- \"\$(cat '$pf')\""
+  sh_start "$name" --kind team --cwd "$CLONE" --cli claude --no-probe --env "TEAM_RUN_TEAM=$TEAM" --env "TEAM_RUN_ROLE=lead" \
+    --env "TEAM_RUN_ID=$RUN" --env "TEAM_SESSION_ROLE=TeamLead" --env "CODEX_HOME=$ch" \
+    ${cc:+--env "CLAUDE_CONFIG_DIR=$cc"} ${costs[@]+"${costs[@]}"} \
+    -- "claude --session-id $sid -n $name --settings '$TD/teamlead.settings.json' --model '$TEAM_LEAD_MODEL' --effort '$TEAM_LEAD_EFFORT' --permission-mode '$perm' --disallowedTools AskUserQuestion -- \"\$(cat '$pf')\"" >/dev/null
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
     --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
     --role lead --run "$RUN" --attempt "$n" --cwd "$CLONE" 2>/dev/null \
     || echo "warn: token-usage registration skipped"
   rm -f "$TD/lead-dead"
-  echo "launched: TeamLead ($TEAM_LEAD_MODEL/$TEAM_LEAD_EFFORT) — tmux attach -t $name"
+  echo "launched: TeamLead ($TEAM_LEAD_MODEL/$TEAM_LEAD_EFFORT) — $(sh_hint "$name")"
 }
 
 # Before the first stage of a run, and on every resume: reuse this run's live lead, else launch.
@@ -157,7 +157,7 @@ lead_notify() {
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
     team_channel_names "$root" 2>/dev/null || { TEAM_CHANNEL_NOTIFIER=none; TEAM_CHANNEL_NAMES_ROOT="$root"; }
     team_channel_notify --alarm "team $TEAM: $ev" \
-      "$(team_json ticket) ${id:-?}: ${q:-$(rec "$f" message)} — answer in tmux attach -t $(sess_name lead)"
+      "$(team_json ticket) ${id:-?}: ${q:-$(rec "$f" message)} — answer in $(sh_hint "$(sess_name lead)")"
     basename "$f" >> "$nf"
   done
 }
@@ -182,7 +182,7 @@ lead_attention() {
   p="$(team_pane_history "$name" 200 \
     | python3 -I "$root/.claude/lib/team_prompt.py" parse --transcript "${t:--}" 2>/dev/null)" || p='{}'
   if ! jq -e '.kind == "permission" and .complete' <<<"$p" >/dev/null 2>&1; then
-    team_session_doorbell "$TD" lead "prompt $role: unreadable — tmux attach -t $name"; return 0
+    team_session_doorbell "$TD" lead "prompt $role: unreadable — $(sh_hint "$name")"; return 0
   fi
   tool="$(jq -r '.header // "?"' <<<"$p")"
   cmd="$(jq -r '.command // ""' <<<"$p" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c1-200)"
@@ -253,7 +253,7 @@ lead_gate() {
       # Acked only once accepted: a rejected record dies unacked, so a re-run validates it again.
       "plan approve")
         validate_record "$TD/runs/$RUN/$a" \
-          || die 4 "record $a rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+          || die 4 "record $a rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
         accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
       # The qa done was validated when the gate was rung; accept it, the wrapup follows.
       "acceptance accept") accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;

@@ -1,7 +1,7 @@
 ---
 description: Watch parallel AI teams from this session — progress, permission prompts with their command, questions, ready-for-merge — and route their questions by escalation tier (TeamLead / Advisor)
 argument-hint: "[--tiers on|off]"
-allowed-tools: TaskStop, PushNotification, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/supervisor-sessions.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), mcp__atlassian__jira_get_issue
+allowed-tools: TaskStop, PushNotification, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/supervisor-sessions.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(bash .claude/lib/session-host.sh:*), mcp__atlassian__jira_get_issue
 ---
 
 # /monitor — supervise running teams
@@ -363,8 +363,8 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
    Show the screen lines the script prints back.
 6. **Resume a stopped runner** exactly as `/start-team <team>` step 2 does: runner pid alive →
    nothing; stale lock → `team-run.sh <team> unlock`; idle `<team>-runner` session →
-   `tmux kill-session -t '=<team>-runner'`; then `tmux new-session -d -s <team>-runner -c
-   "<repo root>" "bash .claude/lib/team-run.sh <team>; read"`.
+   `bash .claude/lib/session-host.sh kill <team>-runner`; then `bash .claude/lib/session-host.sh
+   start <team>-runner --kind team --cwd "<repo root>" --cli script -- "bash .claude/lib/team-run.sh <team>; read"`.
 ## Policy log
 
 **Path:** `<decisions dir>/teamlead-policy-log.md` — one log for all teams, outside the clones and

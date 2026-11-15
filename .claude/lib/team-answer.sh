@@ -94,7 +94,7 @@ multi_error() { stop 5 "$* — answer in the window (tier 3)"; }
 sj() { jq -r --arg f "$1" '.[$f] // empty | tostring' "$TD/session.json" 2>/dev/null || true; }
 real_event() { case "$1" in ""|-|ambiguous) return 1 ;; esac; }
 # With -e: a dim prompt suggestion on the input line is not a draft (team_prompt.py).
-capture() { tmux capture-pane -p -e -J -S -200 -t "$PANE_ID" 2>/dev/null || true; }
+capture() { sh_read_target "$PANE_ID" --history 200 --escapes 2>/dev/null || true; }
 parse() { printf '%s\n' "$1" | python3 -I "$LIB/team_prompt.py" parse --transcript "${T:--}"; }
 plain() { python3 -I "$LIB/team_prompt.py" strip; }
 is_typed() { [ "$(printf '%s\n' "$2" | python3 -I "$LIB/team_prompt.py" typed "$1")" = yes ]; }
@@ -122,7 +122,7 @@ identity() {
 send_key() {
   local i=$((KEYS + 1))
   [ -z "$JOURNAL" ] || echo "$ATTEMPT try $i $*" >> "$JOURNAL"
-  if tmux send-keys -t "$PANE_ID" "$@" 2>/dev/null; then
+  if sh_tmux send-keys -t "$PANE_ID" "$@" 2>/dev/null; then
     KEYS=$i; [ -z "$JOURNAL" ] || echo "$ATTEMPT ok $i" >> "$JOURNAL"
     return 0
   fi
@@ -348,7 +348,7 @@ finish_main() {
 }
 
 auth_preflight
-tmux has-session -t "=$name" 2>/dev/null || refuse 6 "session gone"
+team_tmux_alive "$name" || refuse 6 "session gone"
 OWNER="direct pid=$$"; [ -z "$QID" ] || OWNER="q=$QID attempt=$ATTEMPT pid=$$"
 HELD="$(team_send_lock "$TD" "$ROLE" "${TEAM_SEND_LOCK_WAIT_SENDER:-2}" "$OWNER")" \
   || refuse 3 "target busy ($HELD)"

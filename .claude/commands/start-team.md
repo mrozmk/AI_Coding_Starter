@@ -1,7 +1,7 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner in tmux (it opens a Terminal preview window per role)
 argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
-allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /start-team — run a team on a ticket
@@ -82,8 +82,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      `bash .claude/lib/team-attach.sh <TEAM> runner`" and stop;
    - a line `lock: stale (pid … dead)` → `bash .claude/lib/team-run.sh <TEAM> unlock` (deliberate;
      the runner never removes a lock by itself);
-   - then, if `tmux has-session -t "=<TEAM>-runner"` — only an idle shell on `; read`, since the
-     runner is dead — `tmux kill-session -t "=<TEAM>-runner"`. A live tmux session alone never
+   - then, if `bash .claude/lib/session-host.sh alive <TEAM>-runner` exits 0 — only an idle shell
+     on `; read`, since the runner is dead — `bash .claude/lib/session-host.sh kill <TEAM>-runner`.
+     A live session alone never
      means a live runner: it outlives the runner after a `blocked` record.
 
    With `TEAMLEAD` = `true` and the ticket's mode not `cli` (`mode` in
@@ -157,11 +158,11 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    Your judgement goes only into `## Not ordered` and the in-flight clauses.
 
 5. **Runner.**
-   `tmux new-session -d -s <TEAM>-runner -c "<ROOT>" -e "AGENT_COSTS_HOME=${AGENT_COSTS_HOME:-}" "bash .claude/lib/team-run.sh <TEAM>; read"`.
-   It survives this Claude session; it does not survive a Mac restart. The `-e` carries the
+   `bash .claude/lib/session-host.sh start <TEAM>-runner --kind team --cwd "<ROOT>" --cli script --env "AGENT_COSTS_HOME=${AGENT_COSTS_HOME:-}" -- "bash .claude/lib/team-run.sh <TEAM>; read"`.
+   It survives this Claude session; it does not survive a Mac restart. The `--env` carries the
    token-usage home into the runner, which forwards it to every role; an empty value means the
    default `~/.agent-costs`. The user asked for the planner window only → run
-   `TEAM_ATTACH=planner bash .claude/lib/team-run.sh <TEAM>` in that command instead (same `-e`).
+   `TEAM_ATTACH=planner bash .claude/lib/team-run.sh <TEAM>` in that command instead (same `--env`).
 
 5a. **Token usage.** Run
    `bash .claude/lib/costs/runtime-mark.sh session --provider claude --source start-team --team <TEAM> --team-json <CLONE>/.agents/team/team.json`

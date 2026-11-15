@@ -177,8 +177,8 @@ launch() {  # launch <role> — tmux session with the role env and a fresh sessi
   name="$r$TEAM_CHANNEL_SUFFIX"
   c="$CLEAN claude --name $name --session-id $sid --model $m --effort $e$set $flags $(boot "$r"); read"
   # Per-session -e only: `tmux set-environment -g` would leak into every session.
-  $CLEAN tmux new-session -d -s "$s" -c "$root" -e "TEAM_SESSION_ROLE=$r" \
-    ${ch:+-e "CODEX_HOME=$ch"} ${CC:+-e "CLAUDE_CONFIG_DIR=$CC"} "$c"
+  sh_start "$r" --main "$root" --kind role --cwd "$root" --cli claude --no-probe --env "TEAM_SESSION_ROLE=$r" \
+    ${ch:+--env "CODEX_HOME=$ch"} ${CC:+--env "CLAUDE_CONFIG_DIR=$CC"} -- "$c" >/dev/null
   echo "$s: started ($name, $m, effort $e)"
 }
 
@@ -196,7 +196,7 @@ start() {
   for role in $(roles_of "${1:-}"); do
     s="$(tw_tmux_name "$role")"
     case " $todo " in *" $role "*) launch "$role" ;; *) echo "$s: already running" ;; esac
-    echo "  tmux attach -t $s"
+    echo "  $(sh_hint "$role" --main "$root")"
   done
 }
 
@@ -250,11 +250,11 @@ answer() {
       --settings "$pf" 2>&1 >/dev/null)" || refuse "Operator action: $why"
   fi
   case "$act" in
-    yes) tmux send-keys -t "=$s:" Enter ;;
-    no) tmux send-keys -t "=$s:" Escape; sleep 1
-      tmux send-keys -t "=$s:" -l -- \
+    yes) sh_tmux send-keys -t "=$s:" Enter ;;
+    no) sh_tmux send-keys -t "=$s:" Escape; sleep 1
+      sh_tmux send-keys -t "=$s:" -l -- \
         "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window."
-      tmux send-keys -t "=$s:" Enter ;;
+      sh_tmux send-keys -t "=$s:" Enter ;;
     pick|other)
       bash "$LIB/team-answer.sh" "$TEAM_CHANNEL_TMUX_PREFIX" "$(lc "$r")" "$act" "$text" \
         --session "$r" || rc=$?
@@ -502,7 +502,7 @@ up_role() {
   s="$(tw_tmux_name "$r")"
   if team_tmux_alive "$s"; then
     if ss_running "$r$TEAM_CHANNEL_SUFFIX"; then echo "$r: already running"; return 0; fi
-    tmux kill-session -t "=$s"
+    sh_tmux kill-session -t "=$s"
     start "$r" >/dev/null; echo "$r: restarted (dead pane)"
   elif [ "$r" = Supervisor ] && ss_running "$r$TEAM_CHANNEL_SUFFIX"; then
     echo "$r: running (here)"
@@ -534,7 +534,7 @@ up() {
   env -u TEAM_SESSION_ROLE bash "$LIB/monitoring.sh" start all \
     || echo "monitoring: start all failed — /monitoring start all in the Supervisor"
   for r in $TW_SESSION_ROLES; do
-    if team_tmux_alive "$(tw_tmux_name "$r")"; then echo "  tmux attach -t $(tw_tmux_name "$r")"; fi
+    if team_tmux_alive "$(tw_tmux_name "$r")"; then echo "  $(sh_hint "$r" --main "$root")"; fi
   done
   echo "Close this bootstrap session if it is not a role session."
 }
@@ -547,7 +547,7 @@ case "$cmd" in
   stop)
     need_role "${1:-}"
     s="$(tw_tmux_name "$1")"
-    if team_tmux_alive "$s"; then tmux kill-session -t "=$s"; echo "$s: stopped"
+    if team_tmux_alive "$s"; then sh_tmux kill-session -t "=$s"; echo "$s: stopped"
     else echo "$s: not running"; fi ;;
   status) status ;;
   check) python3 -I "$LIB/session_profile_check.py" "$root" --hooks ;;

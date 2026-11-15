@@ -36,7 +36,7 @@ for p in $A; do
   case "$(basename "$(ps -o comm= -p "$p" 2>/dev/null)")" in claude*) claude_pid="$p"; break ;; esac
 done
 reg_pid="$(jq -r '.pid // empty' "$TD/teamlead.reg.json" 2>/dev/null)"
-pane_pid="$(tmux display-message -p -t "=$(team_tmux_name "$team" lead):" '#{pane_pid}' 2>/dev/null)"
+pane_pid="$(sh_pid "$(team_tmux_name "$team" lead)" 2>/dev/null)"
 if is_anc "$reg_pid" || { [[ "$pane_pid" =~ ^[0-9]+$ ]] && is_anc "$pane_pid"; }; then
   jq --arg s "$sid" '.session_id = $s' "$TD/teamlead.json" > "$TD/teamlead.json.tmp.$$" 2>/dev/null \
     && mv "$TD/teamlead.json.tmp.$$" "$TD/teamlead.json"

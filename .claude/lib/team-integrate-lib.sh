@@ -6,6 +6,8 @@
 # Self-contained on purpose: a team clone may sit on a base whose `team-lib.sh` predates any of
 # this, so nothing here depends on helpers from the clone.
 # Bash 3.2 compatible (macOS /bin/bash).
+# The session-host driver from this (main) checkout: its tmux calls go through sh_tmux.
+[ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"
 
 # The roles whose records make up a run. Hardcoded rather than taken from `$TEAM_ROLES`: the digest
 # must mean the same thing in the clone and in the main checkout, whatever either side's team-lib.
@@ -85,7 +87,7 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
          return 3; }
   if command -v tmux >/dev/null 2>&1; then
     for role in ${TEAM_ROLES:-planner coder qa wrapup} cli; do
-      ! tmux has-session -t "=$team-$role" 2>/dev/null \
+      ! sh_tmux has-session -t "=$team-$role" 2>/dev/null \
         || { ie_no "the $role session of $team is still alive"; return 3; }
     done
   fi

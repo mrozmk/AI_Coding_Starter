@@ -20,7 +20,7 @@ if [ $# -lt 1 ] || { [ $# -gt 3 ] && [ "${2:-}" != roles ]; }; then
 fi
 TEAM="$1"; CMD="${2:-advance}"
 
-root="$(git rev-parse --show-toplevel)"; ORIG_PWD="$PWD"
+root="$(git rev-parse --show-toplevel)"; ORIG_PWD="$PWD"; export HARNESS_MAIN="$root"
 # Before the runner lock, session.json and any tmux session: the profile decides what 2a can run.
 . "$root/.claude/lib/team-profile.sh"
 team_profile_load "$root"
@@ -111,20 +111,20 @@ handle_record() {
           if team_lead_on && [ "$ROLE" = planner ]; then lead_gate_ring plan "$r"; return 2; fi
           # The qa done is checked first (published PR, report), then the lead's acceptance gate.
           if team_lead_on && [ "$ROLE" = qa ]; then
-            validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+            validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
             lead_gate_ring acceptance "$r"; return 2
           fi
-          validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+          validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
           accept "$r" ;;
     review)
       team_lead_on || die 4 "record $(basename "$r") is a review, but the run has no TeamLead"
-      validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+      validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
       lead_gate_ring spec "$r"; return 2 ;;
     blocked|failed)
       if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
       ack_name "$r" > "$TD/acked"
       echo "$(rec "$r" verdict): $(last_blocker)"
-      echo "answer in: tmux attach -t $(sess_name "$ROLE")"
+      echo "answer in: $(sh_hint "$(sess_name "$ROLE")")"
       notify "$(rec "$r" verdict)" "$(last_blocker) — /start-team $TEAM after answering" alarm
       [ "$(rec "$r" verdict)" = blocked ] && exit 2 || exit 1 ;;
     *) die 4 "record $(basename "$r") has an unknown verdict" ;;
@@ -221,19 +221,19 @@ launch() {
   # own value): the tmux server may have been started from ANOTHER project's shell, and a new
   # session inherits that server's global environment — another project's Claude licence.
   # AGENT_COSTS_HOME likewise: a tmux session gets the server's environment, not the caller's.
-  [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(-e "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
-  tmux new-session -d -s "$name" -c "$CLONE" -e "TEAM_RUN_TEAM=$TEAM" -e "TEAM_RUN_ROLE=$role" \
-    -e "TEAM_RUN_ID=$RUN" -e "TEAM_RUN_ATTEMPT=$attempt" -e "CODEX_HOME=$ch" \
-    ${cc:+-e "CLAUDE_CONFIG_DIR=$cc"} \
+  [ -z "${AGENT_COSTS_HOME:-}" ] || costs=(--env "AGENT_COSTS_HOME=$AGENT_COSTS_HOME")
+  sh_start "$name" --kind team --cwd "$CLONE" --cli claude --no-probe --env "TEAM_RUN_TEAM=$TEAM" --env "TEAM_RUN_ROLE=$role" \
+    --env "TEAM_RUN_ID=$RUN" --env "TEAM_RUN_ATTEMPT=$attempt" --env "CODEX_HOME=$ch" \
+    ${cc:+--env "CLAUDE_CONFIG_DIR=$cc"} \
     ${costs[@]+"${costs[@]}"} \
-    "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\""
+    -- "claude --session-id $sid -n $name ${extra}-- \"\$(cat '$pf')\"" >/dev/null
   # Main checkout: a clone on an older base has no helper; a missing one only warns.
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
     --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
     --role "$role" --run "$RUN" --attempt "$attempt" --cwd "$CLONE" 2>/dev/null \
     || echo "warn: token-usage registration skipped"
   echo "launched: $role attempt $attempt"
-  ! attended "$role" || echo "attach: tmux attach -t $name"
+  ! attended "$role" || echo "attach: $(sh_hint "$name")"
   if [ "$ATTACH" = all ] || attended "$role"; then
     # Main checkout: an in-flight clone's attach predates the self-closing window.
     bash "$root/.claude/lib/team-attach.sh" "$TEAM" "$role" >/dev/null 2>&1 \
@@ -271,7 +271,7 @@ wait_loop() {
     ! team_lead_on || ! lead_gate "$role" "$attempt" || return 0
     n=0; [ ! -f "$TD/runs/$RUN/attention" ] || n="$(wc -l < "$TD/runs/$RUN/attention" | tr -d ' ')"
     if [ "$n" -gt "$seen" ]; then
-      seen="$n"; echo "needs attention: tmux attach -t $name"
+      seen="$n"; echo "needs attention: $(sh_hint "$name")"
       notify "needs attention" "$role waits for you: bash .claude/lib/team-attach.sh $TEAM $role"
       ! team_lead_on || lead_attention "$role" "$n"
     fi
@@ -283,7 +283,7 @@ wait_loop() {
     fi
     ! team_lead_on || lead_poll
     if [ "$limit" -gt 0 ] && [ $(( $(team_now) - start )) -ge "$limit" ]; then
-      die 3 "stalled — attach: tmux attach -t $name"
+      die 3 "stalled — attach: $(sh_hint "$name")"
     fi
     sleep "$POLL"
   done
@@ -390,7 +390,7 @@ cmd_stop() {
   pid="$(cat "$TD/lock/pid" 2>/dev/null || true)"
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$STOP_WAIT" ]; do sleep 1; waited=$((waited + 1)); done
-    ! kill -0 "$pid" 2>/dev/null || die 1 "runner $pid did not stop — check: tmux attach -t $TEAM-runner"
+    ! kill -0 "$pid" 2>/dev/null || die 1 "runner $pid did not stop — check: $(sh_hint "$TEAM-runner")"
   fi
   # cli too: a stop also ends a cli session left behind by a mode mix-up.
   for role in $TEAM_ROLES cli; do end_session "$role"; done
