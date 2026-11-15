@@ -295,8 +295,9 @@ op_list() {
   jq -r '"items=" + (.items | length | tostring)' "$out"
 }
 
-# show: one issue with its body and EVERY comment — the evidence /tasks-status extractors judge.
-# A closed issue still answers (its state says so). Read-only.
+# show: one issue with its body and EVERY comment (id, author, created, updated, body) — the
+# evidence /tasks-status extractors judge and the input of tracker-snapshot.mjs. A closed issue still
+# answers (its state says so). Read-only; the output file is mode 0600.
 op_show() {
   local out="$1"
   gh issue view "$KEY" --repo "$TEAM_GH_REPO" \
@@ -311,9 +312,12 @@ op_show() {
     | {key: $key, title: ($i.title // ""), state: ($i.state // ""), labels: [$i.labels[]?.name],
        assignees: [$i.assignees[]?.login], updated: ($i.updatedAt // ""), url: ($i.url // ""),
        body: ($i.body // ""),
-       comments: [$c[0][] | {author: (.user.login // ""), created: (.created_at // ""),
+       comments: [$c[0][] | {id: (.id // "" | tostring), author: (.user.login // ""),
+                             created: (.created_at // ""), updated: (.updated_at // .created_at // ""),
                              body: (.body // "")}]}' > "$TMP/show.json" \
     || die 4 "issue #$KEY is not parseable"
+  # Private tracker text: owner-only, like the snapshot built from it (tracker-snapshot.mjs).
+  chmod 600 "$TMP/show.json"
   write_atomic "$TMP/show.json" "$out"
   jq -r '"key=" + .key + " comments=" + (.comments | length | tostring)' "$out"
 }

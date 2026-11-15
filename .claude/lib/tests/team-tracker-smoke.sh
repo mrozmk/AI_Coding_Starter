@@ -814,12 +814,15 @@ expect 4 "recoverable" "a failed page 2 is recoverable, never a short list"
 [ ! -e "$WORK/list2.json" ] || fail "a failed list still wrote its output"
 
 jq '[range(31)] | map({id: (900 + .), user: {login: "rev"}, created_at: "2026-11-03T09:00:00Z",
-    body: ("comment " + (. | tostring))})' -n > "$GH_DIR/comments.json"
+    updated_at: "2026-11-03T09:00:00.123Z", body: ("comment " + (. | tostring))})' -n > "$GH_DIR/comments.json"
 run "$MAIN" $TRK show '#7' --out "$WORK/show.json"
 expect 0 "key=7 comments=31" "show returns the issue with every comment across pages"
 jq -e '.title == "Fix the thing" and .state == "OPEN" and .labels == ["bug", "harness"]
     and (.body | test("line two")) and .comments[30].body == "comment 30"
-    and .comments[0].author == "rev"' "$WORK/show.json" >/dev/null || fail "show output shape"
+    and .comments[0].author == "rev" and .comments[0].id == "900"
+    and .comments[0].updated == "2026-11-03T09:00:00.123Z"' "$WORK/show.json" >/dev/null || fail "show output shape"
+[ "$(stat -f %Lp "$WORK/show.json" 2>/dev/null || stat -c %a "$WORK/show.json")" = 600 ] \
+  || fail "show must write its output owner-only (0600)"
 run "$MAIN" $TRK show 9 --out "$WORK/show9.json"
 expect 0 "key=9" "show answers for a closed issue too"
 jq -e '.state == "CLOSED"' "$WORK/show9.json" >/dev/null || fail "show must report the closed state"
