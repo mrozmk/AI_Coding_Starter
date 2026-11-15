@@ -13,16 +13,14 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
 ## Quick start
 
 In any Claude window of the main checkout: `/start-team alfa ABC-777` (and `/start-team gamma ABC-778` in another).
-`/start-team` provisions or reuses the clone and launches the runner in tmux; the runner opens a preview
-on each role it launches (`TEAM_ATTACH=all`, default; `TEAM_ATTACH=planner` opens only the
-attended roles' — planner and wrapup): a pane named `<project>-<team>-<role>` in the `Teams` tab of the
-main checkout's Herdr space when one is open (two side by side, the third and fourth below them —
-a 2×2 — then on down the columns; the pane title follows the role's state, and the pane carries the
-role's agent status — working, blocked on a prompt, idle — because the `team-status.sh` hook writes
-it past tmux, straight to the pane's tty), otherwise a Terminal
-window (`team-attach.sh`). Coder and QA run alone; a macOS notification tells you when a team needs approval, has
+`/start-team` provisions or reuses the clone and launches the runner. Herdr: the runner places each
+role it launches (`TEAM_ATTACH=all`, default; `TEAM_ATTACH=planner` only the attended planner and
+wrapup) as a pane in the `Teams` tab of the main checkout's Herdr space, next to the team's
+TeamLead; the pane carries the role's own status and closes when the stage ends. tmux: no window
+opens; the runner prints `attach: tmux attach -t …` for the planner and the wrapup, and
+`bash .claude/lib/session-host.sh hint <team>-<role>` names how to look at any role. Coder and QA run alone; a macOS notification tells you when a team needs approval, has
 a question, is ready for merge, or stopped. After answering: `/start-team alfa`. To look at a role:
-`bash .claude/lib/team-attach.sh alfa coder`. Merge: ask the supervisor ("merge alfa").
+`bash .claude/lib/session-host.sh hint alfa-coder`. Merge: ask the supervisor ("merge alfa").
 
 - **Which mode** (`/start-team alfa ABC-801 --mode quick`, fixed per ticket, shown by `status` and
   the team snapshot):
@@ -57,7 +55,7 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
   `.claude/settings*.json`**, which the auto-mode classifier refuses as self-modification. A clone
   without the `guard-team-egress` hook (or an older `claude`) launches manual with a `warn:` line.
 - **No window needs to stay open.** On a notification, open the waiting role
-  (`bash .claude/lib/team-attach.sh alfa coder` or `tmux attach -t alfa-coder`), answer the
+  (the line `bash .claude/lib/session-host.sh hint alfa-coder` prints), answer the
   prompt, detach with `Ctrl-b d`. In auto mode reads no longer prompt: what remains are ask-tier
   commands, egress (`guard-team-egress`), menus and questions. Role windows close by themselves when the role ends
   or when you detach (Ctrl-b d).
@@ -108,7 +106,7 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 
 ### One Mac, two projects with teams
 
-Give each project its own tmux server through `env.TMUX_TMPDIR` in the project's `.claude/settings.local.json` (seeded into clones). The runner passes `CLAUDE_CONFIG_DIR` and `CODEX_HOME` per session; `team-attach.sh` attaches through the session's socket. Verify with `ps eww -p <pid>`.
+Give each project its own tmux server through `env.TMUX_TMPDIR` in the project's `.claude/settings.local.json` (seeded into clones). The runner passes `CLAUDE_CONFIG_DIR` and `CODEX_HOME` per session; `session-host.sh hint <team>-<role>` names the attach command. Verify with `ps eww -p <pid>`.
 
 ## 2. Choose tickets
 
@@ -381,7 +379,7 @@ session is gone. `runner stale` — `lock/` exists but its pid is dead.
 a question (the pane shows a prompt, or the newest `attention` line other than `permission_prompt`
 is no older than the role transcript's last write; the pane check covers prompts — its commands
 follow the pane: `AskUserQuestion` menu → `pick`/`other`, prompt → `yes`/`no`, else `say`), a
-`blocked`/`failed` record (its message, `team-attach.sh` and the resume hint), and a PR ready to
+`blocked`/`failed` record (its message, the `session-host.sh hint` line and the resume hint), and a PR ready to
 merge (`team-merge-check.sh`, `/pr-merge <id>`); each item names the tmux window. A team whose
 runner is `down` (not `stale`) and whose mode's last role is `done` gets `teams[].state`: `free`
 (PR `completed`/`abandoned`), `awaiting merge` (PR `active`, also an `attention[]` item) or

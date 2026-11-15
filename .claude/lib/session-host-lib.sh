@@ -925,7 +925,11 @@ sh_hint() {
   shift; sh_opts "$a" "$@" || return 2
   b="$(sh_backend "$SH_MAIN" "$a")" || return $?
   if [ "$b" = none ]; then echo "a plain terminal (tty $(sh_record_get "$SH_MAIN" "$a" tty))"; return 0; fi
-  n="$(sh_target "$SH_MAIN" "$a")" || return $?
+  if [ "$b" = herdr ] && ! n="$(sh_target "$SH_MAIN" "$a" 2>/dev/null)"; then
+    # A line to read, never an error: the snapshot and the runner print it as "how to look".
+    echo "$a: its herdr terminal was replaced — nothing to attach (session-host.sh status $a)"; return 0
+  fi
+  [ "$b" = herdr ] || n="$(sh_target "$SH_MAIN" "$a")" || return $?
   if [ "$b" = herdr ]; then
     # `hc attach` first: a terminal the layout has not placed yet is listed nowhere in the window.
     echo "hc attach $n · herdr: $(sh_record_get "$SH_MAIN" "$a" name | grep . || echo "$n") (in the agent list once placed)"

@@ -127,7 +127,7 @@ formats: `/monitor` → `## Policy log`.
 `team-question.sh <team> orphans` → one background `team-escalate.sh … --resume` per line, then
 `monitoring.sh ensure`.
 
-**Commands:** `/monitor`, `team-question.sh`, `team-escalate.sh`, `team-run.sh`, `team-attach.sh`,
+**Commands:** `/monitor`, `team-question.sh`, `team-escalate.sh`, `team-run.sh`, `session-host.sh hint`,
 `team-watch.sh ack|done|status|pending TeamLead`, `/mail-role TeamLead`.
 
 ## Advisor

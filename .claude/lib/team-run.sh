@@ -8,8 +8,9 @@
 #   bash .claude/lib/team-run.sh <team> summary   (post-run summary sources for /monitor)
 #   modes (team.json .mode, set by team-new/next): brainstorm · quick · cli
 #
-# Env: TEAM_ATTACH=all|planner (default all) — all roles, or only the attended planner and wrapup
-# (tmux: a Terminal preview window; Herdr: a pane in the Teams tab while the stage runs).
+# Env: TEAM_ATTACH=all|planner (default all) — Herdr: every stage, or only the attended planner and
+# wrapup, gets a pane in the Teams tab while it runs. tmux: no effect (no window is opened; planner
+# and wrapup print an `attach:` line).
 # Exit: 0 ready/advanced · 1 failed record · 2 blocked · 3 stalled · 4 validation failed
 #       5 partial work after a dead session · 6 cancelled · 7 orphan role session
 #       8 closed without merge (a TeamLead remode; runs/<run>/closed.json)
@@ -240,10 +241,6 @@ launch() {
     # Herdr: the stage's own terminal into the Teams tab (label adoption, no focus change); its pane
     # closes when the stage's program exits. The main checkout's roles.sh, never the clone's.
     (cd "$root" && bash .claude/lib/roles.sh place "$name") 2>&1 | grep '^warn: ' || true
-  elif [ "$ATTACH" = all ] || attended "$role"; then
-    # Main checkout: an in-flight clone's attach predates the self-closing window.
-    bash "$root/.claude/lib/team-attach.sh" "$TEAM" "$role" >/dev/null 2>&1 \
-      || echo "warn: no preview window for $name"
   fi
 }
 

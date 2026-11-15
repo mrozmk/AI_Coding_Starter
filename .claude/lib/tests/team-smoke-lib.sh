@@ -97,8 +97,7 @@ smoke_init() {
   export HOME="$WORK/home"
   mkdir -p "$HOME/.codex-acmeshop"
   export TEAM_NOTIFY=0 TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
-  export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1 TEAM_ATTACH_POLL=0
-  export STUB_TMUX_SOCK="$WORK/tmux-fixture.sock"
+  export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1
   export TEAM_CONFIRM_SECS=0 TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
   export TEAM_GATE_LOCK_POLL=0.1
   # The marker team-escalate.sh requires before it honours TEAM_ESCALATE_UNIT_SECS.
@@ -149,8 +148,8 @@ smoke_stubs() {
   # The runner's auto-mode preflight reads the version; not logged, it launches nothing.
   printf '#!/usr/bin/env bash\n[ "$*" != --version ] || { echo "${STUB_CLAUDE_VERSION:-2.1.301} (Claude Code)"; exit 0; }\necho "claude $*" >> "$STUB_LOG"\n' \
     > "$WORK/bin/claude"
-  # STUB_OSA_OUT plays the tty `do script` returns; empty → team-attach takes its warn path.
-  printf '#!/usr/bin/env bash\necho "osascript $*" >> "$STUB_LOG"\n[ -z "${STUB_OSA_OUT:-}" ] || echo "$STUB_OSA_OUT"\n' > "$WORK/bin/osascript"
+  # Logged only: a test asserts nothing calls osascript directly.
+  printf '#!/usr/bin/env bash\necho "osascript $*" >> "$STUB_LOG"\n' > "$WORK/bin/osascript"
   cat > "$WORK/bin/tmux" <<'STUB'
 #!/usr/bin/env bash
 echo "tmux $*" >> "$STUB_LOG"
@@ -163,11 +162,7 @@ fi
 # Real tmux finds no pane for `-t =NAME` (session-only form); pane commands need `=NAME:`.
 case "$1 $*" in capture-pane*" -t ="*|send-keys*" -t ="*) case "$*" in *" -t ="*:*) ;;
   *) echo "can't find pane" >&2; exit 1 ;; esac ;; esac
-# team-attach resolves the session's server socket before it opens a Terminal window; an empty
-# STUB_TMUX_SOCK plays a server that cannot name its socket (the fail-closed path).
 if [ "$1" = display-message ]; then
-  case "$*" in *'#{socket_path}'*)
-    [ -z "${STUB_TMUX_SOCK:-}" ] || echo "$STUB_TMUX_SOCK"; exit 0 ;; esac
   [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || exit 1
   # The driver's pane-pid and foreground probes; every other format keeps its old answer.
   case "$*" in

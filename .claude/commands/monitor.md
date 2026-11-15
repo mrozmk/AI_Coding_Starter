@@ -110,7 +110,7 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
    - `ATTENTION <team> <role>` / `RECORD … blocked` → tiers on: step 4. Tiers off: what it waits for
      and the exact command or question from the screen lines/notes; `PushNotification`; offer
      "approve <team>" / "reject <team> — reason" / "answer <team>: …" / open the window
-     (`bash .claude/lib/team-attach.sh <team> <role>`).
+     (`bash .claude/lib/session-host.sh hint <team>-<role>` says how).
    - `RECORD … failed` → the reason from the notes; `PushNotification` (not a question). A reason
      starting `too big for quick` is no Operator notification but a `turn` to Supervisor:
      `bash .claude/lib/team-channel.sh turn TeamLead Supervisor --thread remode-<team>-<run> --body

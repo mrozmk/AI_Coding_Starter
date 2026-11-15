@@ -35,7 +35,7 @@ team_actions() {
   fi
   jq -cn --arg t "$1" --arg r "$2" --arg s "$3" --arg k "$k" '
     "bash .claude/lib/team-answer.sh \($t) \($r)" as $a
-    | "bash .claude/lib/team-attach.sh \($t) \($r)" as $at
+    | "bash .claude/lib/session-host.sh hint \($t)-\($r)" as $at
     | if $s != "attention" then [$at, "\($a) say \"<answer>\"", "/start-team \($t)"]
       elif $k == "prompt" then ["\($a) yes", "\($a) no \"<reason>\"", $at]
       elif $k == "menu" then ["\($a) pick <n>", "\($a) other \"<answer>\"", $at]
@@ -376,7 +376,7 @@ snap_attention() {
     | ($t.roles[]? | select(.status == "attention" or .status == "blocked" or .status == "failed")
        | {kind: .status, team: $t.team, role, tmux: "\($t.team)-\(.role)",
           text: (if .status == "attention" then "waiting for an answer" else (.record.message // "") end),
-          commands: (["bash .claude/lib/team-attach.sh \($t.team) \(.role)"]
+          commands: (["bash .claude/lib/session-host.sh hint \($t.team)-\(.role)"]
             + (if .status != "attention" and $t.resume_hint then [$t.resume_hint] else [] end))}),
       (select($t.state == "awaiting_merge")
        | {kind: "merge", team: $t.team, pr_id: $t.pr_id, text: "PR \($t.pr_id) gotowy do merge",

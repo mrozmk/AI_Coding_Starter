@@ -1,7 +1,7 @@
 ---
-description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner in tmux (it opens a Terminal preview window per role)
+description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner (Herdr: a pane per stage in the Teams tab; tmux: an attach hint line)
 argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
-allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /start-team — run a team on a ticket
@@ -87,7 +87,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      `bash .claude/lib/team-lead.sh relaunch <TEAM>` (it writes `<CLONE>/.agents/team/relaunch-lead`;
      the live runner relaunches the lead at its next poll), report "TeamLead relaunch requested"
      and stop; otherwise say "runner already running — watch:
-     `bash .claude/lib/team-attach.sh <TEAM> runner`" and stop;
+     `bash .claude/lib/session-host.sh hint <TEAM>-runner`" and stop;
    - a line `lock: stale (pid … dead)` → `bash .claude/lib/team-run.sh <TEAM> unlock` (deliberate;
      the runner never removes a lock by itself);
    - then, if `bash .claude/lib/session-host.sh alive <TEAM>-runner` exits 0 — only an idle shell
@@ -202,10 +202,13 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    It registers this supervisor session for labels only — never a ticket binding; a
    non-zero exit is impossible, nothing to check.
 
-6. **Role windows.** Do not open one yourself: the runner opens a preview for every
-   role it launches (`TEAM_ATTACH=all`, the default), or only for the attended roles, planner and wrapup (`TEAM_ATTACH=planner`) —
-   a pane `<project>-<team>-<role>` in the `Teams` tab when the main checkout is open as a Herdr space (two side by side, then a 2×2; the pane shows the role's agent status, so a permission prompt marks it blocked), otherwise a Terminal window.
-   A `warn: no preview window` line in the runner's output means the window failed; the role still runs.
+6. **Role windows.** Do not open one yourself. Herdr: the runner places each stage it launches
+   (`TEAM_ATTACH=all`, the default), or only the attended planner and wrapup (`TEAM_ATTACH=planner`),
+   as a pane in the `Teams` tab of the main checkout's Herdr space, next to the team's TeamLead; the
+   pane shows the role's own status and closes when the stage ends. A `warn: placement …` line means
+   the pane failed; the role still runs. tmux: no window opens — the runner prints
+   `attach: tmux attach -t …` for the planner and the wrapup, and
+   `bash .claude/lib/session-host.sh hint <TEAM>-<role>` names how to look at any role.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
    `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "a preview (Herdr pane or Terminal window) opens on each role

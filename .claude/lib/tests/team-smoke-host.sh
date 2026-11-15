@@ -231,7 +231,7 @@ run "$MAIN" $SH; expect 2 "Usage" "(18) usage"
 run "$MAIN" $SH frob x; expect 2 "unknown verb" "(18) unknown verb"
 
 echo "team-smoke-host: (14) hint, (15) main root, (16) program check, (17) status, (18) refusals OK"
-# ---- (19) status hook without HARNESS_ADDRESS: no file, today's output and tmux calls -------------
+# ---- (19) status hook without HARNESS_ADDRESS: no file, no output, no tmux call (no OSC, #29) -----
 HK="$SRC/.claude/hooks/team-status.sh"
 hk() {  # hk <payload> [env…] → RC, $WORK/out
   local p="$1"; shift
@@ -245,11 +245,7 @@ for ev in '"hook_event_name":"UserPromptSubmit"' '"hook_event_name":"PostToolUse
   clr; hk "{\"session_id\":\"s1\",\"transcript_path\":\"/t\",$ev}" -u HARNESS_ADDRESS HARNESS_REGISTRY="$SD" TMUX="/tmp/x,1,0" TMUX_PANE=%3
   [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(19) $ev: rc $RC or output"
   [ ! -e "$SD" ] || fail "(19) $ev: a state file without HARNESS_ADDRESS"
-  case "$ev" in
-    *other*|*PreCompact*) [ ! -s "$STUB_LOG" ] || { cp "$STUB_LOG" "$WORK/out"; fail "(19) $ev: tmux called"; } ;;
-    *) [ "$(cat "$STUB_LOG")" = "tmux -S /tmp/x display-message -p -t %3 #S" ] \
-         || { cp "$STUB_LOG" "$WORK/out"; fail "(19) $ev: tmux calls changed"; } ;;
-  esac
+  [ ! -s "$STUB_LOG" ] || { cp "$STUB_LOG" "$WORK/out"; fail "(19) $ev: tmux called"; }
 done
 clr; hk '{"session_id":"s1","hook_event_name":"Stop"}' -u TMUX -u HARNESS_ADDRESS
 [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] && [ ! -s "$STUB_LOG" ] || fail "(19) outside tmux"
@@ -273,6 +269,9 @@ echo '{"address": "alfa-coder", "session_id": "s1"}' > "$SD/alfa-coder.json"
 st '"hook_event_name":"Stop"' s2; want '.state == "working"' "a foreign session id is fenced off"
 st '"hook_event_name":"SessionEnd"' s2; [ -f "$SF" ] || fail "(20) an old SessionEnd removed the live state"
 st '"hook_event_name":"SessionEnd"'; [ ! -f "$SF" ] || fail "(20) SessionEnd kept the state file"
+# Inside tmux the state file is still written, and no tmux client is written to (#29).
+clr; st '"hook_event_name":"Stop"' s1 'TMUX=/tmp/x,1,0 TMUX_PANE=%3'; want '.state == "done"' "inside tmux"
+[ "$RC" = 0 ] && [ ! -s "$STUB_LOG" ] || { cp "$STUB_LOG" "$WORK/out"; fail "(20) inside tmux: rc $RC or a tmux call"; }; rm -f "$SF"
 st '"hook_event_name":"Stop"' s1 HARNESS_BACKEND=herdr; [ ! -f "$SF" ] || fail "(20) wrote under HARNESS_BACKEND=herdr"
 hk '{"session_id":"s1","hook_event_name":"Stop"}' -u TMUX HARNESS_ADDRESS=../x HARNESS_REGISTRY="$SD"
 [ "$RC" = 0 ] && [ ! -e "$SD/x.json" ] && [ ! -e "$WORK/x.json" ] || fail "(20) a path in HARNESS_ADDRESS"
@@ -645,8 +644,6 @@ echo "team-smoke-host: (34) consent OK"
 TMUX_RE='(^|[;&|(]|[[:space:]])tmux[[:space:]]+(-S[[:space:]]+[^[:space:]]+[[:space:]]+)?(new-session|has-session|kill-session|capture-pane|send-keys|display-message|list-clients|set-option|attach)'
 cat > "$WORK/tmux-exceptions" <<'EXC'
 .claude/lib/session-host-lib.sh	.*	— (the driver)
-.claude/lib/team-attach.sh	display-message|set-option|attach	8 (#29, the Herdr-over-tmux layering)
-.claude/hooks/team-status.sh	display-message|list-clients	8 (#29, OSC 7501 to attached clients)
 .claude/hooks/session-registry.sh	display-message|has-session	6 (this terminal's handle through $TMUX's socket)
 .claude/hooks/inbox-count.sh	display-message	6 (this terminal's handle through $TMUX's socket)
 EXC
@@ -880,6 +877,10 @@ line "hc keys t7a enter esc up down tab ctrl+c ctrl+e ctrl+u" "(H7) argv"
 hclr; run "$MAIN" $SH keys hb-coder f13; expect 2 "unknown key" "(H7) unknown"; noline "hc keys" "(H7) unknown sent"
 echo "team-smoke-host: (H7) herdr keys OK"
 
+# (H7b) the snapshot's "how to look" for a team stage (#29): the hint line, also when it is gone
+run "$MAIN" $SH hint hb-coder; expect 0 "hc attach t7a · herdr: smk-hb-coder" "(H7b) team hint"
+STUB_HC_GONE=1 run "$MAIN" $SH hint hb-coder; expect 0 "hc attach t7a" "(H7b) team hint, gone"
+
 # (H8) kill: graceful /exit on idle, then rm; a held lock kills without /exit and logs it
 rm -f "$WORK/gone"
 hclr; STUB_HC_GONE_FILE="$WORK/gone" run "$MAIN" $SH kill hb-coder --graceful 2; expect 0 "" "(H8) graceful"
@@ -957,6 +958,7 @@ STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ping"; expect 3 "" "(H14) send"
 STUB_HC_ADDR=t7a run "$MAIN" $SH keys hb-coder enter; expect 3 "" "(H14) keys"
 STUB_HC_ADDR=t7a run "$MAIN" $SH type hb-coder "x"; expect 3 "" "(H14) type"
 STUB_HC_ADDR=t7a run "$MAIN" $SH status hb-coder; has '"state":"gone"' "$WORK/out" || fail "(H14) status"
+STUB_HC_ADDR=t7a run "$MAIN" $SH hint hb-coder; expect 0 "hb-coder: its herdr terminal was replaced — nothing to attach" "(H14) hint"
 ! grep -qE '^hc (kill|rm|send|keys) ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(H14) acted on the foreign terminal"; }
 hclr; STUB_HC_NONAME=1 STUB_HC_ADDR=t7a run "$MAIN" $HX $SH start hb-coder --kind team --cwd "$CL" --cli claude -- claude
 expect 0 "" "(H14) start over a replaced record"

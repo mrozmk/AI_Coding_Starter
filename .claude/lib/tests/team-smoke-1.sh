@@ -226,7 +226,9 @@ run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of coder" "no-trace retry then stop"
 has "--disallowedTools AskUserQuestion -- \"\$(cat '" "$STUB_LOG" || fail "coder launch line lacks -- or --disallowedTools"
 has "new-session -d -s smk-alfa-coder" "$STUB_LOG" || fail "coder retry not launched"
-has "warn: no preview window for alfa-coder" "$WORK/out" || fail "TEAM_ATTACH=all did not try a coder window"
+# tmux opens no window (#29): no Terminal window, no preview script, no preview warning.
+! has osascript "$STUB_LOG" || fail "a tmux team run called osascript"
+! has team-attach "$STUB_LOG" && ! has "preview window" "$WORK/out" || fail "a tmux team run tried a preview window"
 has "-n alfa-coder --model 'opus[1m]' --effort 'medium' --permission-mode 'auto' --disallowedTools" \
   "$STUB_LOG" || fail "coder launch lacks its model/effort/permission from roles.json"
 CODEX_REAL="$(cd "$HOME/.codex-acmeshop" && pwd -P)"
@@ -358,7 +360,7 @@ session coder 1 "$PLANNER_OUT"
 TEAM_ATTACH=planner run "$MAIN" $TR alfa
 has "dead attempt 1 of coder" "$WORK/out" && fail "accepted record treated as a dead attempt"
 has "new-session -d -s smk-alfa-qa" "$STUB_LOG" || fail "accepted-record session.json did not advance to qa"
-has "preview window for alfa-qa" "$WORK/out" && fail "TEAM_ATTACH=planner opened a qa window"
+! has osascript "$STUB_LOG" && ! has "preview window" "$WORK/out" || fail "TEAM_ATTACH=planner: a tmux run tried a window"
 TEAM_ATTACH=some run "$MAIN" $TR alfa status
 expect 2 "TEAM_ATTACH must be all or planner" "TEAM_ATTACH value is validated"
 
@@ -513,27 +515,6 @@ rm -rf "$TD/lock" "$TD/acked" "$R"
 TEAM_DASH_PROJECT_DIR="$WORK/none" snap "degraded" '.supervisor.status == "unknown" and (.errors | length > 0)'
 
 rm -f "$TD/session.json"; unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
-
-# ---- (13) team-attach quotes the session target for zsh, on the session's OWN server ------------
-: > "$STUB_LOG"
-STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
-expect 0 "attached to smk-alfa-planner" "attach to a live session"
-has "exec tmux -S '$STUB_TMUX_SOCK' attach -t '=smk-alfa-planner'" "$STUB_LOG" \
-  || fail "attach does not exec tmux on the session's socket with a quoted =NAME"
-has "display-message -p -t =smk-alfa-planner: #{socket_path}" "$STUB_LOG" \
-  || fail "attach did not resolve the session's socket from the pane target"
-has "warn: window opened but will not close by itself" "$WORK/out" || fail "attach: no tty must warn"
-# Fail closed: without a socket the window would reach the DEFAULT server and could attach to a
-# same-named session of another project. No window is opened at all.
-: > "$STUB_LOG"
-STUB_TMUX_SOCK="" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
-expect 1 "cannot resolve the tmux socket of smk-alfa-planner" "attach refuses an unresolvable socket"
-! has osascript "$STUB_LOG" || fail "a refused attach still opened a Terminal window"
-# A quote in the socket path (TMUX_TMPDIR) would break out of the AppleScript and shell strings.
-: > "$STUB_LOG"
-STUB_TMUX_SOCK="/tmp/x'; touch pwned; '" STUB_TMUX_ALIVE=0 run "$MAIN" bash .claude/lib/team-attach.sh alfa planner
-expect 1 "contains a quote or backslash" "attach refuses a socket path with a quote"
-! has osascript "$STUB_LOG" || fail "a socket path with a quote still reached osascript"
 
 # ---- (14) the follow-up cap at team-new / team-next (team-lineage.sh) ------------------------------
 LIN="bash .claude/lib/team-lineage.sh"; LD="$MAIN/.agents/team/lineage"

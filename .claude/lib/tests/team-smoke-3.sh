@@ -216,25 +216,6 @@ setmode cli; rm -f "$RD"/coder-1-1.json*; pr_w "$C1"
 run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop
 expect 1 "previous PR #8371" "team-next refuses while the cli PR is active"
 
-# ---- (26) the closer ----------------------------------------------------------------------------
-mkdir -p "$WORK/psbin"
-printf '#!/usr/bin/env bash\n[ -z "${STUB_PS_OUT:-}" ] || echo "$STUB_PS_OUT"\n' > "$WORK/psbin/ps"
-chmod +x "$WORK/psbin/ps"; : > "$STUB_LOG"
-PATH="$WORK/psbin:$PATH" run "$MAIN" bash .claude/lib/team-attach.sh --close /dev/ttys009
-expect 0 "" "closer after the attach already ended"
-grep -q '^osascript .*/dev/ttys009$' "$STUB_LOG" || fail "closer did not close the window by tty"
-for a in "--close /tmp/x" "--close" "--close /dev/ttys009 extra"; do
-  run "$MAIN" bash .claude/lib/team-attach.sh $a
-  expect 2 "" "closer rejects '$a'"
-done
-: > "$STUB_LOG"
-STUB_OSA_OUT=/dev/ttys010 STUB_TMUX_ALIVE=0 PATH="$WORK/psbin:$PATH" \
-  run "$MAIN" bash .claude/lib/team-attach.sh alfa coder
-expect 0 "opened:" "attach with a tty starts the closer"
-has "warn:" "$WORK/out" && fail "attach with a tty still warned"
-for _ in 1 2 3 4 5; do grep -q '^osascript .*/dev/ttys010$' "$STUB_LOG" && break; sleep 1; done
-grep -q '^osascript .*/dev/ttys010$' "$STUB_LOG" || fail "background closer never closed the window"
-
 # ---- (27) old clone without the new files -------------------------------------------------------
 setmode -; fresh_run alfa-20261006-000004
 mv "$CLONE/.claude/lib/team-modes.sh" "$CLONE/.claude/lib/team-validate.sh" "$WORK/"
@@ -242,23 +223,15 @@ run "$MAIN" $TR alfa status
 expect 0 "mode: brainstorm" "old clone status"
 run "$MAIN" $TR alfa stop
 expect 0 "stopped" "old clone stop"
-cp "$CLONE/.claude/lib/team-attach.sh" "$WORK/attach.clone"
-cp "$MAIN/.claude/lib/team-attach.sh" "$WORK/attach.main"
-printf '#!/usr/bin/env bash\necho OLD-ATTACH >> "$STUB_LOG"\n' > "$CLONE/.claude/lib/team-attach.sh"
-printf '#!/usr/bin/env bash\necho NEW-ATTACH >> "$STUB_LOG"\n' > "$MAIN/.claude/lib/team-attach.sh"
 : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 1 of planner" "old clone launch"
-has NEW-ATTACH "$STUB_LOG" || fail "runner did not use the main checkout's team-attach.sh"
-has OLD-ATTACH "$STUB_LOG" && fail "runner used the clone's team-attach.sh"
-cp "$WORK/attach.clone" "$CLONE/.claude/lib/team-attach.sh"
-cp "$WORK/attach.main" "$MAIN/.claude/lib/team-attach.sh"
 mv "$WORK/team-modes.sh" "$WORK/team-validate.sh" "$CLONE/.claude/lib/"
 rm -f "$TD/session.json"; setmode brainstorm
 
-# ---- (27b) Herdr: a stage's pane comes from the main checkout's roles.sh place, never team-attach --
+# ---- (27b) Herdr: a stage's pane comes from the main checkout's roles.sh place ------------------
 fresh_run alfa-20261006-000005
-for f in roles.sh team-attach.sh; do
+for f in roles.sh; do
   rm -f "$WORK/$f.clone"; [ ! -f "$CLONE/.claude/lib/$f" ] || cp "$CLONE/.claude/lib/$f" "$WORK/$f.clone"
   rm -f "$WORK/$f.main"; [ ! -f "$MAIN/.claude/lib/$f" ] || cp "$MAIN/.claude/lib/$f" "$WORK/$f.main"
   printf '#!/usr/bin/env bash\necho "OLD-%s $*" >> "$STUB_LOG"\n' "$f" > "$CLONE/.claude/lib/$f"
@@ -267,8 +240,8 @@ done
 : > "$STUB_LOG"
 TEAM_SESSION_HOST=herdr STUB_HC_NONAME=1 STUB_HC_STATE=finished run "$MAIN" $TR alfa
 grep -qx 'NEW-roles.sh place alfa-planner' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the runner did not place the stage with the main checkout's roles.sh"; }
-! grep -q 'OLD-roles.sh\|team-attach.sh' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the clone's roles.sh or team-attach.sh ran under Herdr"; }
-for f in roles.sh team-attach.sh; do
+! grep -q 'OLD-roles.sh\|team-attach' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the clone's roles.sh or a preview script ran under Herdr"; }
+for f in roles.sh; do
   if [ -f "$WORK/$f.clone" ]; then cp "$WORK/$f.clone" "$CLONE/.claude/lib/$f"; else rm -f "$CLONE/.claude/lib/$f"; fi
   if [ -f "$WORK/$f.main" ]; then cp "$WORK/$f.main" "$MAIN/.claude/lib/$f"; else rm -f "$MAIN/.claude/lib/$f"; fi
 done
@@ -422,7 +395,6 @@ for p in planner planner-quick cli; do
     | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|TRACKER_READ|TRACKER_WRAPUP|TRACKER_TASK|PR_HOST_KIND|PR_HOST|PR_CREATE|PR_CREATE_READY|PR_PUBLISH|PR_BODY_GET|PR_BODY_SET|PR_TOOL|GATES_NOTE|RUN_DIR|ROUND|REWORK|ORIGIN_TICKET)\}\}' || true)"
   [ -z "$bad" ] || fail "$p prompt has unrendered keys: $bad"
 done
-! grep -n 'busy of' "$SRC/.claude/lib/team-attach.sh" || fail "team-attach.sh polls Terminal's busy flag"
 [ "$(wc -l < "$SRC/.agents/reference/team-mode.md")" -le 500 ] \
   || fail "team-mode.md over 500 lines"
 
