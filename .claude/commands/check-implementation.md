@@ -1,7 +1,7 @@
 ---
 description: Full implementation quality loop — code-review (fix) → deep-review (structural cleanup) → gates:verify-implementation (+ conditional design-parity audit) → conditional cross-model codex review, looping until the gates approve
 argument-hint: [plan-name] [codex] [--base <rev>]
-allowed-tools: Bash(bash .claude/lib/branch-model.sh:*)
+allowed-tools: Bash(bash .claude/lib/branch-model.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*)
 ---
 
 # /check-implementation — Full Implementation Quality Loop
@@ -273,6 +273,18 @@ Append at most one or two entries, at the END of the file. This step does **not*
 
 ---
 
+## Step 2.5 — Tracker comments (solo)
+
+**Opt-in:** `workflow.tracker_comments` in `.claude/project-profile.json` is not `true` (absent, `false`, no profile) → skip this step and its report line. Team mode (`.agents/team/session.json` exists, e.g. the QA role) skips this — the team rows apply once E1 lands. Tracker `none` → `Tracker comments: skipped — no tracker`. Otherwise run [.agents/reference/tracker-comments.md](../../.agents/reference/tracker-comments.md) §5 for the ticket key (baseline by §5.3 — with a plan, the plan's own; diff-only, a solo `/quick-change` snapshot under `.agents/handoffs/`) via `node .claude/lib/tracker-snapshot.mjs compare <baseline> <fresh>`, and react by §6:
+
+- exit `0` → the `Tracker comments: none new …` line goes into the report;
+- exit `3` → the line names the ids; the verdict is **at best `⚠️ Ready with warnings`** — never `✅`, and nothing here edits code from a comment;
+- exit `4` or a failed read → the same line as a warning the user acknowledges.
+
+Never print the read or the snapshot; the report carries ids only.
+
+---
+
 ## Step 3 — Final report
 
 ```markdown
@@ -286,6 +298,7 @@ Fixer: <claude | codex · effort high · <iterations> · <N files changed by cod
 - Design gate (@orchestrator-designer): <passed | failed | skipped | not-verified — [reason] | not run — [no reference | backend change]>
 - Cross-model review (codex): <verdict ship/revise — N findings, M applied via fixer | clean | skipped — [not on PATH | loop escalated]>
 
+Tracker comments (opt-in only): <none new (<read UTC>, n) | new/edited/removed ids | uncertain — <status> | skipped — <reason>>
 Files modified this run: [list]
 Remaining warnings: [Medium issues, or "none"]
 🔶 Rethink signals (codex fundamental findings — your decision): [list, or "none"]

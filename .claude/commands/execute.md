@@ -36,6 +36,13 @@ argument-hint: [path-to-plan] [codex]
 
 5. **Eligibility check (`MODE=codex` only, before any spawn).** Collect every path the plan's tasks target — each `### {ACTION} <path>` heading plus every path named in an `EXPECT` line. If any is under `.claude/`, `.agents/`, `.git/` or matches `.env*` → STOP: "This plan edits harness/config paths that codex mode forbids — run `/execute <plan>` (Claude executor)." Supported scope for codex mode is **product code and tests**; nothing else.
 
+6. **Tracker comments — freshness check (solo start, both modes, before any code or spawn).** **Opt-in:** `workflow.tracker_comments` in `.claude/project-profile.json` is not `true` (absent, `false`, no profile) → skip this item and its report line. Team mode (`.agents/team/session.json` exists) skips this — the team rows apply once E1 lands. Tracker `none` → skipped. Otherwise run [.agents/reference/tracker-comments.md](../../.agents/reference/tracker-comments.md) §5 for the plan's ticket key (baseline by §5.3 — the plan's own, never a newer spec's) via `node .claude/lib/tracker-snapshot.mjs compare <baseline> <fresh>`, and react by §6 (solo `/execute` row):
+   - exit `0` → one line, continue;
+   - exit `3` → **STOP before any code**: list each id with its created time and first sentence; the user decides — update the spec/plan first (re-reconcile, new snapshot) or continue with the dispositions recorded in the ledger (§6 → Solo decisions);
+   - exit `4` or a failed read → ask whether to continue without the check; the baseline stays as it is.
+
+   The decision is the supervisor's in `MODE=codex` too — Codex is never spawned before it. Carry the line into the report.
+
 Read the resolved plan file.
 
 ## Codex executor mode (MODE=codex only)
@@ -230,6 +237,7 @@ Provide summary. First line: `Executor: <claude | codex · effort medium · <ela
 ### Ready for Commit
 - Confirm all changes are complete
 - Confirm all validations pass
+- Tracker comments (opt-in only): <none new (<read UTC>, n) | new/edited ids → <decision> | uncertain → continued without the check | skipped — <reason>>
 - Memory: <appended 1 entry to <file> / nothing worth remembering / skipped — running /check-implementation or /orchestrate next>
 - Backlog: <ids → DONE | ids kept WIP (other plan active: <path>) | no `**Tasks:**` line | legacy — skipped | no backlog | sub-step — deferred to the family move>
 - Ready for `/commit` command

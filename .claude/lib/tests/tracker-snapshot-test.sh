@@ -32,6 +32,7 @@ run snapshot --github "$WORK/show1.json" --out "$WORK/base.json"
 ! grep -q SECRETWORD "$WORK/base.json" || fail "the snapshot stores ticket text"
 jq -e '.comments[2].own == true and .comments[0].own == false and (.body_sha | length) == 64
   and .comments[0].updated == "2026-11-03T09:00:00.100Z"' "$WORK/base.json" >/dev/null || fail "snapshot fields"
+jq -e '[.comments[] | has("author")] | any | not' "$WORK/base.json" >/dev/null || fail "the snapshot stores comment authors"
 
 # (1) identical read → none new, exit 0
 run snapshot --github "$WORK/show1.json" --out "$WORK/same.json"
@@ -106,6 +107,15 @@ run snapshot --jira "$WORK/j-empty.json" --out "$WORK/j4.json"
 run compare "$WORK/j1.json" "$WORK/j4.json"
 [ "$RC" = 4 ] && case "$OUT" in "Tracker comments: uncertain — unknown, 0 read"*"missing 15101") ;; *) false ;; esac \
   || fail "uncertain: $RC $OUT"
+# … the contract keeps the baseline after an uncertain read: a later complete read still reports
+#     the missing comment as removed, which a baseline replaced by the incomplete read would hide
+jq -n --argjson a "$C1" '{key: "AB-1", fields: {description: "SECRETWORD d",
+  updated: "2026-10-07T08:00:00.000+0000", comment: {startAt: 0, maxResults: 1, total: 1, comments: [$a]}}}' > "$WORK/j-rest-del.json"
+run snapshot --jira "$WORK/j-rest-del.json" --out "$WORK/j5.json"
+run compare "$WORK/j1.json" "$WORK/j5.json"
+[ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: removed 15101" ] || fail "kept baseline → removed: $RC $OUT"
+run compare "$WORK/j4.json" "$WORK/j5.json"
+[ "$RC" = 0 ] || fail "an incomplete baseline hides the deletion (expected none new): $RC $OUT"
 ! grep -q SECRETWORD "$WORK"/j[0-9]*.json || fail "a jira snapshot stores ticket text"
 
 # Jira REST v3 bodies are ADF objects: a changed object is a changed hash

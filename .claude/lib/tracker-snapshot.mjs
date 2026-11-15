@@ -33,8 +33,9 @@ function ownMarker(body) {
   return /^\[wrapup \S+ [a-z]+-\S+\]$/.test(last) || /^token-usage-report: \S+$/.test(first);
 }
 
-const comment = (id, author, created, updated, body) => ({
-  id: String(id), author: String(author ?? ''), created: String(created ?? ''),
+// No author: the comparator does not need it, and a snapshot stored next to a spec is committed.
+const comment = (id, created, updated, body) => ({
+  id: String(id), created: String(created ?? ''),
   updated: String(updated ?? created ?? ''), sha: sha(body), own: ownMarker(body),
 });
 
@@ -42,7 +43,7 @@ function fromGithub(x) {
   if (!x || typeof x !== 'object' || !Array.isArray(x.comments)) die('the github input is not a show result');
   const comments = x.comments.map((c, i) => {
     if (c.id === undefined || c.id === null || c.id === '') die(`github comment ${i} has no id — re-read with the current team-tracker.sh show`);
-    return comment(c.id, c.author, c.created, c.updated, c.body);
+    return comment(c.id, c.created, c.updated, c.body);
   });
   return { key: String(x.key ?? ''), tracker: 'github', updated: String(x.updated ?? ''),
     body_sha: sha(x.body), status: 'complete', comments };
@@ -58,10 +59,9 @@ function fromJira(raw, limit) {
   const page = f.comment && typeof f.comment === 'object' ? f.comment : null;
   const list = page && Array.isArray(page.comments) ? page.comments : x.comments;
   if (!Array.isArray(list)) die('the jira input has no comments list — read it with include="comments"');
-  const author = (a) => (a && typeof a === 'object' ? a.displayName ?? a.display_name ?? a.name ?? '' : a);
   const comments = list.map((c, i) => {
     if (!c || (c.id === undefined || c.id === null || c.id === '')) die(`jira comment ${i} has no id`);
-    return comment(c.id, author(c.author), c.created, c.updated, c.body);
+    return comment(c.id, c.created, c.updated, c.body);
   });
   let status;
   if (page && Number.isInteger(page.total)) {

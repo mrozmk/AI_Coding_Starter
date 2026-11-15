@@ -1,7 +1,7 @@
 ---
 description: Merge (complete) an Azure DevOps pull request — invoking it IS the go-ahead: publishes a draft, self-approves, completes with the Branch-model strategy (or sets auto-complete and waits while policies run), then cleans up remote and local branches, then (tracker jira) moves the ticket to its merged status. Stops only on a real blocker; never bypasses policies.
 argument-hint: "[PR-ID] [--auto <team>]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /pr-merge — Complete an Azure DevOps Pull Request
@@ -32,6 +32,9 @@ Arguments: **$ARGUMENTS** — `[PR-ID] [--auto <team>]` (both optional; `--auto`
 - **Branch deletion only after `completed`.** Remote `git push origin --delete <source>` and local
   `git branch -D <source>` (ask-tier) run only once Azure DevOps reports the PR `completed`.
   Never force anything else locally.
+- **Tracker comments gate the completion** (Step 4a, opt-in `workflow.tracker_comments`): new, edited
+  or uncertain ticket input since the baseline → STOP, no merge. The decision is the user's, recorded
+  outside this command; then re-run.
 - **Jira is bookkeeping:** a Jira failure is reported, never a reason to stop the cleanup or undo
   the merge.
 - **`--auto <team>`** (the Supervisor's automatic merge after `team-automerge-check.sh <team>`
@@ -96,8 +99,26 @@ Apply the first matching row; after any *resolve* action re-read Step 3 (at most
 | `status: abandoned`, `mergeStatus: conflicts`, a vote `-10`/`-5`, or a blocking policy `rejected` | **STOP** — name the blocker and the fix (conflicts: merge `<TARGET>` into the branch, push, re-run) |
 | `isDraft: true` | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --draft false -o none` |
 | a *Minimum number of reviewers* policy exists, is not `approved`, and the current user has no vote ≥ 5 | `self_approve` off → **STOP** `needs an approval — teams.policy.pr.self_approve is off`. On → *resolve:* `az repos pr set-vote --id <PR_ID> --org "$ORG_URL" --vote approve -o none` — report it as a **self-approval**. No such policy → never vote. |
-| a blocking policy `queued` / `running` (e.g. the build, a required reviewer) | `self_approve` off → **STOP** `policies running — re-run when they pass (auto-complete needs teams.policy.pr.self_approve)`. On → **5b** set auto-complete, then **5c** wait. With `--auto` → **STOP** `deferred: policies running — Supervisor retries on the next READY reminder` (no 5b) |
-| all blocking policies `approved` / `notApplicable` (or none exist) | **5a** complete now (with `--auto`: the `--recheck` first) |
+| a blocking policy `queued` / `running` (e.g. the build, a required reviewer) | `self_approve` off → **STOP** `policies running — re-run when they pass (auto-complete needs teams.policy.pr.self_approve)`. On → **4a**, then **5b** set auto-complete, then **5c** wait. With `--auto` → **STOP** `deferred: policies running — Supervisor retries on the next READY reminder` (no 5b) |
+| all blocking policies `approved` / `notApplicable` (or none exist) | **4a**, then **5a** complete now (with `--auto`: the `--recheck` first) |
+
+### Step 4a — Tracker comments (immediately before 5a or 5b)
+
+**Opt-in:** `workflow.tracker_comments` in `.claude/project-profile.json` is not `true` (absent, `false`, no profile) → skip this step; 5a / 5b run as before. Otherwise the gate **applies** without `--auto`, when the effective tracker (as `team-tracker.sh` resolves it)
+is not `none` and a ticket key resolves from the PR: github → the `<n>` of `<type>/<n>-…` in `SOURCE`; jira → the first
+`[A-Z][A-Z0-9]+-[0-9]+` in `SOURCE`, else in the PR title. No key → `Tracker comments: skipped — no
+ticket key`, and 5a / 5b runs. Otherwise run [.agents/reference/tracker-comments.md](../../.agents/reference/tracker-comments.md)
+§5 (baseline by §5.3, the no-plan row) via
+`node .claude/lib/tracker-snapshot.mjs compare <baseline> <fresh>`:
+
+- exit `0` → one report line, then 5a or 5b;
+- exit `3` → **STOP, no merge**: list the ids (id, created, first sentence). The user decides — a
+  ledger line `informational` (§6 → Solo decisions) or a follow-up ticket — and re-runs;
+- exit `4` or a failed read → **STOP, no merge** until the user decides; the baseline stays.
+
+`--auto` (the Supervisor's team path) skips this step: the team's merge-time row of the contract
+waits for the per-run TeamLead (E1). Never print the read or the snapshot. Checked once: an armed
+auto-complete completes later without another read — the contract's §7 limit.
 
 ### Step 5 — Execute
 
@@ -178,6 +199,7 @@ reason to stop the cleanup.
 remote branch deleted (by Azure DevOps or by this command) · local state (`<TARGET>` up to date,
 local branch removed) · URL `<ORG_URL>/<project>/_git/<repo>/pullrequest/<id>`. Then one line on
 what happens next per `.agents/reference/git-policy.md` (the project's build/deploy after a merge).
+Add `Tracker comments: <none new … | the STOP line | skipped — <reason>>` when Step 4a ran.
 Add `Tracker: <KEY> → <status> | already <status> | not transitioned — <reason>` (tracker jira).
 If it stopped or timed out: what it waits for, and that auto-complete is still set (never with
 `--auto`, which never arms it). With `--auto` the report is the one-line note

@@ -2,6 +2,9 @@
 
 The one contract for reading a ticket's description and comments as requirements, for Jira and
 GitHub. Commands and team prompts carry only a pointer naming their stage; the procedure lives here.
+**Opt-in.** Every stage below runs only when `.claude/project-profile.json` has
+`workflow.tracker_comments: true`. Absent, `false` or no profile → the commands behave as before this
+contract: no extra tracker read, no snapshot, no STOP, no report line.
 Tracker `none` → the whole contract is a no-op (`Tracker comments: skipped — no tracker`).
 
 ## 1. Principle
@@ -35,8 +38,9 @@ Tracker `none` → the whole contract is a no-op (`Tracker comments: skipped —
 
 `node .claude/lib/tracker-snapshot.mjs snapshot --github <show.json> | --jira <result.json>
 [--limit 50] --out <file>` writes the read as **hashes and metadata only** — `key`, `tracker`,
-`read_at`, `updated`, `body_sha`, `status`, `fetched`, and per comment `id`, `author`, `created`,
-`updated`, `sha`, `own` — owner-only (0600). It never stores the ticket's text.
+`read_at`, `updated`, `body_sha`, `status`, `fetched`, and per comment `id`, `created`, `updated`,
+`sha`, `own` — owner-only (0600). It never stores the ticket's text, nor comment authors (a snapshot
+next to a spec is committed; the ledger line names the author where a human reads it).
 
 Read status:
 
@@ -48,8 +52,9 @@ Read status:
 
 The entry stage plans **from the same read** it snapshots: the description and comments it reconciles
 are the ones the snapshot hashes. The snapshot is stored with the spec or plan
-(`<spec-or-plan>.ticket.json`; solo `/quick-change`: `.agents/handoffs/`, its path in the final
-report).
+(`<spec-or-plan>.ticket.json`; solo `/quick-change`: `.agents/handoffs/<KEY>.ticket.json`, its
+path in the final report; `git check-ignore -q` on that path must succeed — the per-clone exclude
+`/handoff` describes keeps it out of git).
 
 ## 4. Ledger (entry stages)
 
@@ -74,11 +79,18 @@ Description: sha <body_sha> — reconciled
 ## 5. Freshness check (every later stage boundary)
 
 1. Ticket key: the spec/plan title, `.agents/team/session.json` `ticket`, or the branch
-   (`<type>/<KEY>-…`, github `<type>/<n>-…`). No key → `Tracker comments: skipped — no ticket key`.
-2. A fresh read (§2) and snapshot (§3).
-3. `node .claude/lib/tracker-snapshot.mjs compare <baseline snapshot> <fresh snapshot>
-   [--reconciled <id@sha>,…]` — baseline = the snapshot named in the ledger (`-` or a missing file =
-   no baseline). It prints one line and exits:
+   (`<type>/<KEY>-…`, github `<type>/<n>-…`; at merge, the PR's source branch, then for jira its
+   title). No key → `Tracker comments: skipped — no ticket key`.
+2. A fresh read (§2) and snapshot (§3), into the session scratchpad. A failed read counts as
+   uncertain (exit 4).
+3. **Baseline**, first match:
+   - a plan in hand → the snapshot its own ledger names, else its `**Source spec:**` → the snapshot
+     that spec's ledger names — never a newer spec's;
+   - no plan (solo `/quick-change` work, a merge) → `.agents/handoffs/<KEY>.ticket.json`, else the
+     one spec or plan whose ledger `Read:` line names the key; several → uncertain (the user picks);
+   - none → no baseline (`-`).
+4. `node .claude/lib/tracker-snapshot.mjs compare <baseline snapshot> <fresh snapshot>
+   [--reconciled <id@sha>,…]` (`-` or a missing file = no baseline). It prints one line and exits:
    - `0` — `Tracker comments: none new (<read UTC>, <n>)`;
    - `3` — `Tracker comments: new <ids>; edited <ids>; removed <ids>; description changed` (an edit
      is a different text hash, so two edits in one second are still two versions; removed = gone
@@ -86,7 +98,7 @@ Description: sha <body_sha> — reconciled
    - `4` — `Tracker comments: uncertain — <status>, <n> read…` — the read was not complete;
      comments missing from it are uncertain, not removed. **Uncertain is never "none new"**: it
      needs its own decision at the boundary that met it (§6), never an earlier stage's acceptance.
-4. A version reconciled later (an answer, a READY note) is passed back as `--reconciled <id@sha>`;
+5. A version reconciled later (an answer, a READY note) is passed back as `--reconciled <id@sha>`;
    a further edit of that comment is new input again.
 
 ## 6. Reactions
@@ -101,6 +113,14 @@ happen only at stage boundaries; an Operator who comments mid-run tells the Supe
 | solo `/execute` (start) | stop before any code; list (id, created, first sentence); the user decides: update the spec/plan first (re-reconcile, new snapshot) or continue with dispositions recorded | ask whether to continue without the check |
 | `/check-implementation` (solo, before Step 3) | a `Tracker comments:` report line naming the ids; the verdict is at best `⚠️ Ready with warnings` | the same line, as a warning the user acknowledges |
 | before `/pr-merge` | no merge until the change is reconciled (`informational` → a READY note `<id>@<sha>: informational — <ref>`) or answered by a follow-up ticket | no merge until the user decides |
+
+**Solo decisions.** The user's decision on a change is recorded where the baseline lives — a
+ledger line per id (`requirement` → the spec/plan changed first; `informational`), or for solo
+`/quick-change` work a `Tracker comments:` line in the report — and then, **only after a complete
+read**, the fresh snapshot replaces the baseline (`install -m 600 <fresh> <baseline>`; no baseline
+yet → `.agents/handoffs/<KEY>.ticket.json`), so the next boundary compares against what was decided. After an uncertain read the baseline is **kept**: the
+user's "continue without the check" holds for that one boundary, and a later complete read still
+reports a comment that went missing.
 
 **Team runs (applies once the per-run TeamLead, E1, is merged).** E1 has no in-run path back to
 planning, so the reactions use its existing transitions only:
@@ -119,4 +139,7 @@ planning, so the reactions use its existing transitions only:
 - Jira: the MCP helper has no `startAt`/`total`; at the limit a read is `possibly-truncated`, so the
   boundary decides (`uncertain`). A paginated reader is a separate task.
 - A deleted comment is reported only on a complete read.
+- `/pr-merge` checks once, right before it completes the PR or arms auto-complete. A comment added
+  while policies run under an armed auto-complete is not seen — an accepted gap (there is no
+  watcher).
 - The ledger records what was reconciled; it does not prove the plan honours it — the gates do.
