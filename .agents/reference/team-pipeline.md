@@ -18,8 +18,8 @@ role it launches (`TEAM_ATTACH=all`, default; `TEAM_ATTACH=planner` only the att
 wrapup) as a pane in the `Teams` tab of the main checkout's Herdr space, next to the team's
 TeamLead; the pane carries the role's own status and closes when the stage ends. tmux: no window
 opens; the runner prints `attach: tmux attach -t …` for the planner and the wrapup, and
-`bash .claude/lib/session-host.sh hint <team>-<role>` names how to look at any role. Coder and QA run alone; a macOS notification tells you when a team needs approval, has
-a question, is ready for merge, or stopped. After answering: `/start-team alfa`. To look at a role:
+`bash .claude/lib/session-host.sh hint <team>-<role>` names how to look at any role. Coder and QA run alone; the TeamLead answers what it may, and only a
+decision that needs you notifies you (`notify.sh`, opt-in channels — below). After answering: `/start-team alfa`. To look at a role:
 `bash .claude/lib/session-host.sh hint alfa-coder`. Merge: ask the supervisor ("merge alfa").
 
 - **Which mode** (`/start-team alfa ABC-801 --mode quick`, fixed per ticket, shown by `status` and
@@ -54,16 +54,18 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
   **mandatory for tickets editing
   `.claude/settings*.json`**, which the auto-mode classifier refuses as self-modification. A clone
   without the `guard-team-egress` hook (or an older `claude`) launches manual with a `warn:` line.
-- **No window needs to stay open.** On a notification, open the waiting role
+- **No window needs to stay open.** When a team waits for you, open the waiting role
   (the line `bash .claude/lib/session-host.sh hint alfa-coder` prints), answer the
   prompt, detach with `Ctrl-b d`. In auto mode reads no longer prompt: what remains are ask-tier
-  commands, egress (`guard-team-egress`), menus and questions. Role windows close by themselves when the role ends
-  or when you detach (Ctrl-b d).
+  commands, egress (`guard-team-egress`), menus and questions. A Herdr pane closes by itself when the role
+  ends; a tmux attach ends when you detach (Ctrl-b d).
 - **One window for all teams:** `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter
   switch. `tmux ls` / `bash .claude/lib/team-run.sh alfa status` peek without attaching.
-- **Notifications are sent by `osascript`.** If none appear: System Settings → Notifications →
-  Script Editor → Allow notifications.
-- **The supervisor session is not notified** unless it runs `/monitor`. `/start-team` returns after
+- **Notifications** reach you for four events only (a human decision, an abandon decision, an
+  unrepaired failure, a release step), through `.claude/lib/notify.sh`, on the channels you switch
+  on in `~/.agent-comms/notify.json` (Herdr, iMessage; both off by default). With both off, what
+  waits for you shows in `/tasks-status`. Prompts, waits, "ready" and stops never notify.
+- **The supervisor session is not notified.** `/start-team` returns after
   launching; ask it for "status alfa", "show alfa coder" or "merge alfa" when you want.
 - **`/tasks-status`** is the Supervisor's on-demand report: what waits for the Operator's decision
   (`waiting-operator` escalations) first, then what waits on the team (`attention[]`, PRs awaiting
@@ -406,8 +408,8 @@ does:
   `decided-by: operator` + an `operator-ref`. The answer is re-checked against the matrix, then
   delivered; an analysts' answer that touches a tier-3 class goes back to Advisor with `--retier`.
 - **Operator actions** — `ask`-tier / egress / production prompts, merge, deploy, your
-  scripts, window recovery: `PushNotification` + the command or screen in the developer's
-  language + the offer, as before. Never a decision question.
+  scripts, window recovery: one line in this session with the command or screen in the
+  developer's language + the offer, as before. Never a decision question.
 - **No reply** — `alfa q-3: Advisor no reply (<reason>) — <action>`, printed only when the
   reason changes. The supervisor re-pings Advisor (at most 2 delivered re-pings), then waits
   without a deadline; it never forwards the question to you. `status: pending-operator` from

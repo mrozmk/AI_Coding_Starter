@@ -39,7 +39,7 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
    tracker or the PR provider is `github`; the rest is optional. Formats that are easy to get wrong: `build_check` is one shell command (a string),
    `test_gate` is a script path or `none`, `env_file_required` is `true|false`, and
    `required_tools`, `branch_types` and `seed_files` are arrays (the first two non-empty). Add `teams.channel` (`project_code`,
-   `mail_suffix`, optional `tmux_prefix`, `advisor: pair|solo`, `notifier`).
+   `mail_suffix`, optional `tmux_prefix`, `advisor: pair|solo`). Notifications are configured per machine in `~/.agent-comms/notify.json`, not here.
 3. **Codex home:** `mkdir -p ~/.codex-<project>` first, then one value line in
    `.claude/codex-profile` (`~/.codex-<project>` is fine). The directory must exist: `/setup:teams`
    (Step 5b) and the runner resolve it and refuse a missing one.

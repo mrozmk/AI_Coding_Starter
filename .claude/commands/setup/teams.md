@@ -93,6 +93,10 @@ Optional, Herdr users only: print (never run) the Herdr notification mod's insta
 `bash .claude/team/herdr-mod/install.sh --dry-run` then without `--dry-run`, and the switch
 `{"version": 1, "herdr": {"enabled": true}}` for `~/.agent-comms/notify.json` (mode 0600; the
 user writes it). README: `.claude/team/herdr-mod/harness-notify/README.md`.
+Optional, macOS: print (never run) the iMessage channel's steps — the user adds `imessage`
+(`enabled`, `recipient`, `quiet`) to the same file, then runs `bash .claude/team/notify-kit/install.sh
+--dry-run` and without it from the main checkout (the quiet-end flush job). README:
+`.claude/team/notify-kit/README.md`.
 The installer registered its SessionStart and Stop hooks (W, S, R); runbooks:
 `.agents/reference/team-watch.md`, `.agents/reference/supervisor-sessions.md`.
 

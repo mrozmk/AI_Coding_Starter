@@ -11,11 +11,11 @@
 #   channel is not configured or does not validate (under `set -e` the caller exits 3). Values are
 #   read with `jq -r` only; neither file is ever `eval`ed.
 #   team_channel_names [root] reads only the committed half (CODE may be empty, the rest as below)
-#   and never needs a channel: team-watch takes its tmux names from it. team_channel_notify
-#   [--alarm] <title> <msg> is the one platform notification (operator-kit/notify.sh), rc 0 always.
+#   and never needs a channel: team-watch takes its tmux names from it. The channel notifies
+#   nobody (the Operator is reached only through notify.sh); a leftover `notifier` key is ignored.
 # Executed: bash .claude/lib/team-channel.sh <sub> [args]   (from inside the checkout)
 #   show                    every exported variable, one NAME=value per line
-#   get <field>             one value: project_code mail_suffix tmux_prefix advisor notifier key box
+#   get <field>             one value: project_code mail_suffix tmux_prefix advisor key box
 #                           tool tool_sha decisions_dir codex_home kit_dir
 #   name <ROLE>             the recipient name: ROLE + mail_suffix
 #   turn <FROM> <TO> [args] a wake-up (`--kind turn --awaiting <TO>`) from one role to another
@@ -29,7 +29,6 @@
 #   TEAM_CHANNEL_SUFFIX      teams.channel.mail_suffix (default "")
 #   TEAM_CHANNEL_TMUX_PREFIX teams.channel.tmux_prefix (default: the repo dir slug)
 #   TEAM_CHANNEL_ADVISOR     pair | solo (default: pair when the profile's codex is true, else solo)
-#   TEAM_CHANNEL_NOTIFIER    osascript | notify-send | none (default none)
 #   TEAM_CHANNEL_KEY TEAM_CHANNEL_BOX TEAM_CHANNEL_TOOL TEAM_CHANNEL_TOOL_SHA
 #   TEAM_CHANNEL_DECISIONS TEAM_CHANNEL_CODEX_HOME TEAM_CHANNEL_KIT   the local half (sha and
 #                            codex_home may be empty)
@@ -46,7 +45,7 @@ team_channel_err() { echo "error: team channel: $*" >&2; return 3; }
 
 # team_channel_names [root] — the committed half only (names and policy), once per process. No
 # teams.channel block is not an error here: every value takes its default (project_code empty,
-# prefix = the repo dir slug, advisor by codex, notifier none), so a single-window checkout without
+# prefix = the repo dir slug, advisor by codex), so a single-window checkout without
 # an agent-mail channel still gets its tmux names. An invalid value returns 3, as the full load.
 team_channel_names() {
   [ -z "${TEAM_CHANNEL_NAMES_LOADED:-}" ] || return 0
@@ -81,34 +80,14 @@ team_channel_names() {
   fi
   case "$TEAM_CHANNEL_ADVISOR" in pair|solo) ;; *)
     team_channel_err "teams.channel.advisor=$TEAM_CHANNEL_ADVISOR must be pair|solo"; return 3 ;; esac
-  TEAM_CHANNEL_NOTIFIER="$(_tc_pc notifier)"; TEAM_CHANNEL_NOTIFIER="${TEAM_CHANNEL_NOTIFIER:-none}"
-  case "$TEAM_CHANNEL_NOTIFIER" in osascript|notify-send|none) ;; *)
-    team_channel_err "teams.channel.notifier=$TEAM_CHANNEL_NOTIFIER must be osascript|notify-send|none"
-    return 3 ;; esac
+  if [ -n "$(_tc_pc notifier)" ] && [ -z "${TEAM_CHANNEL_NOTIFIER_WARNED:-}" ]; then
+    TEAM_CHANNEL_NOTIFIER_WARNED=1; export TEAM_CHANNEL_NOTIFIER_WARNED  # once, children included
+    echo "warn: teams.channel.notifier was removed and is ignored — notifications are ~/.agent-comms/notify.json" >&2
+  fi
   TEAM_CHANNEL_NAMES_ROOT="$root"
   export TEAM_CHANNEL_CODE TEAM_CHANNEL_SUFFIX TEAM_CHANNEL_TMUX_PREFIX TEAM_CHANNEL_ADVISOR \
-    TEAM_CHANNEL_NOTIFIER TEAM_CHANNEL_NAMES_ROOT
+    TEAM_CHANNEL_NAMES_ROOT
   TEAM_CHANNEL_NAMES_LOADED=1
-}
-
-# team_channel_notify [--alarm] <title> <msg> — the one platform-notification call of the team
-# layer: the operator kit's notify.sh with the configured backend (always exit 0). Without the kit
-# file nothing is sent and one declared-loss line per process goes to stderr. Always returns 0.
-team_channel_notify() {
-  local a="" k
-  [ "${1:-}" != --alarm ] || { a=--alarm; shift; }
-  k="${TEAM_CHANNEL_NAMES_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
-  k="$k/.claude/team/sessions/operator-kit/notify.sh"
-  if [ -f "$k" ]; then
-    bash "$k" --backend "${TEAM_CHANNEL_NOTIFIER:-none}" $a "${1:-}" "${2:-}" >/dev/null 2>&1 || true
-  elif [ -z "${TEAM_CHANNEL_NOTIFY_LOSS:-}" ]; then
-    TEAM_CHANNEL_NOTIFY_LOSS=1
-    echo "$(team_channel_loss_line)" >&2
-  fi
-  return 0
-}
-team_channel_loss_line() {
-  echo "notifier: ${TEAM_CHANNEL_NOTIFIER:-none} — declared loss: operator-kit/notify.sh not installed, platform notifications reach nobody"
 }
 
 # team_channel_load [root] — parse + validate both halves once per process.
@@ -184,7 +163,7 @@ team_channel_load() {
   TEAM_CHANNEL_ADVISOR_NAME="Advisor$TEAM_CHANNEL_SUFFIX"
   TEAM_CHANNEL_REVIEWER="Reviewer$TEAM_CHANNEL_SUFFIX"
   export TEAM_CHANNEL_ROOT TEAM_CHANNEL_CODE TEAM_CHANNEL_SUFFIX TEAM_CHANNEL_TMUX_PREFIX \
-    TEAM_CHANNEL_ADVISOR TEAM_CHANNEL_NOTIFIER TEAM_CHANNEL_KEY TEAM_CHANNEL_BOX TEAM_CHANNEL_TOOL \
+    TEAM_CHANNEL_ADVISOR TEAM_CHANNEL_KEY TEAM_CHANNEL_BOX TEAM_CHANNEL_TOOL \
     TEAM_CHANNEL_TOOL_SHA TEAM_CHANNEL_DECISIONS TEAM_CHANNEL_CODEX_HOME TEAM_CHANNEL_KIT \
     TEAM_CHANNEL_SUPERVISOR TEAM_CHANNEL_TEAMLEAD TEAM_CHANNEL_ADVISOR_NAME TEAM_CHANNEL_REVIEWER
   TEAM_CHANNEL_LOADED=1
@@ -296,7 +275,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   team_channel_load || exit 3
   case "$sub" in
     show)
-      for v in ROOT CODE SUFFIX TMUX_PREFIX ADVISOR NOTIFIER KEY BOX TOOL TOOL_SHA DECISIONS \
+      for v in ROOT CODE SUFFIX TMUX_PREFIX ADVISOR KEY BOX TOOL TOOL_SHA DECISIONS \
         CODEX_HOME KIT SUPERVISOR TEAMLEAD ADVISOR_NAME REVIEWER; do
         n="TEAM_CHANNEL_$v"; printf '%s=%s\n' "$n" "${!n}"
       done ;;
@@ -305,7 +284,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
       case "$1" in
         project_code) echo "$TEAM_CHANNEL_CODE" ;; mail_suffix) echo "$TEAM_CHANNEL_SUFFIX" ;;
         tmux_prefix) echo "$TEAM_CHANNEL_TMUX_PREFIX" ;; advisor) echo "$TEAM_CHANNEL_ADVISOR" ;;
-        notifier) echo "$TEAM_CHANNEL_NOTIFIER" ;; key) echo "$TEAM_CHANNEL_KEY" ;;
+        key) echo "$TEAM_CHANNEL_KEY" ;;
         box) echo "$TEAM_CHANNEL_BOX" ;; tool) echo "$TEAM_CHANNEL_TOOL" ;;
         tool_sha) echo "$TEAM_CHANNEL_TOOL_SHA" ;; decisions_dir) echo "$TEAM_CHANNEL_DECISIONS" ;;
         codex_home) echo "$TEAM_CHANNEL_CODEX_HOME" ;; kit_dir) echo "$TEAM_CHANNEL_KIT" ;;

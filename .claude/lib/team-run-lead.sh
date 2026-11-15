@@ -145,34 +145,34 @@ lead_poll() {
   lead_notify
 }
 
-# A verdict with notify (human_decision, abandon_decision) reaches the Operator once, whatever
-# TEAM_NOTIFY says: these are the Operator's own events. notify.sh's write-once event file (id
-# <project>:<team>:<run>:<d-n>) is the dedup; the legacy team_channel_notify fires only for a newly
-# written event or a failed notify.sh, until #41 removes it. LEAD_NOTIFIED keeps one call per verdict per runner process.
-LEAD_NOTIFIED=" "
+# A verdict with notify (human_decision, abandon_decision) reaches the Operator once, through
+# notify.sh, the only path to the Operator. Its write-once event file (id <project>:<team>:<run>:<d-n>)
+# is the dedup, so a retry is safe: a failed call is retried on the next tick, three tries per verdict
+# per runner process, then one warn:. LEAD_NOTIFIED holds the verdicts done; LEAD_NOTIFY_FAILS one
+# entry per failed try. The decision stays pending either way.
+LEAD_NOTIFIED=" " LEAD_NOTIFY_FAILS=" "
 lead_notify() {
-  local f d ev id q out rc p h w
+  local f d ev id q rc p h w k n
   for f in "$TD/runs/$RUN"/teamlead-*-*.json; do
     [ -f "$f" ] || continue
     ev="$(rec "$f" notify)"; [ -n "$ev" ] || continue
-    case "$LEAD_NOTIFIED" in *" $RUN/$(basename "$f") "*) continue ;; esac
+    k="$RUN/$(basename "$f")"; case "$LEAD_NOTIFIED" in *" $k "*) continue ;; esac
     d="$(rec "$f" ref)"; id=""; q=""
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
-    team_channel_names "$root" 2>/dev/null || { TEAM_CHANNEL_NOTIFIER=none; TEAM_CHANNEL_NAMES_ROOT="$root"; }
+    team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # only for the prefix; a broken channel block → the dir slug
     w="lead"; [ ! -f "$d" ] || w="$(lfm "$d" answer_in)"; w="${w:-lead}"  # human-only: the stage window
     h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" || h="tmux attach -t $(sess_name "$w")"  # no host: never kill the runner
     p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
-    rc=0; out="$(bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
+    rc=0; bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
       --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \
       --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name "$w")" \
-      --hint "$h" --ref "$d" --source runner --main "$root" 2>/dev/null)" || rc=$?
-    LEAD_NOTIFIED="$LEAD_NOTIFIED$RUN/$(basename "$f") "
-    # A failed sender must not silence the Operator: the legacy sink is the only channel that reaches a person yet.
-    [ "$rc" = 0 ] || { echo "warn: notify.sh exit $rc for $(basename "$f") — legacy sink only"; out=written; }
-    case "$out" in written*)
-      team_channel_notify --alarm "team $TEAM: $ev" \
-        "$(team_json ticket) ${id:-?}: ${q:-$(rec "$f" message)} — answer in $h" ;;
-    esac
+      --hint "$h" --ref "$d" --source runner --main "$root" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" = 0 ]; then LEAD_NOTIFIED="$LEAD_NOTIFIED$k "; continue; fi
+    LEAD_NOTIFY_FAILS="$LEAD_NOTIFY_FAILS$k "
+    n="$(printf '%s' "$LEAD_NOTIFY_FAILS" | tr ' ' '\n' | grep -cxF "$k")" || n=0
+    [ "$n" -ge 3 ] || continue
+    echo "warn: notify.sh failed 3× for $(basename "$f") (exit $rc) — the decision waits in $(sess_name "$w")"
+    LEAD_NOTIFIED="$LEAD_NOTIFIED$k "
   done
 }
 

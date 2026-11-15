@@ -296,8 +296,8 @@ this window.`; `pick|other` go through `team-answer.sh <prefix> <role> … --ses
 (`socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>`), a role not started yet a
 WARN; (2) team-watch loops beating; (3) escalations have live waiters; (4) a mail probe and a picked
 ping per role; (5) the team channel loads; (6) the operator kit installed (`install.sh --verify`);
-(7) role profiles; (8) the notifier (`notify.sh --check`; `none` is an ok row with the declared
-loss); (9) the health check scheduled (`sessions-health.sh --scheduled`; none is an ok row with the
+(7) role profiles; (8) notifications (the `.claude/lib/notify.sh --check` lines on one row; both
+channels off is an ok row); (9) the health check scheduled (`sessions-health.sh --scheduled`; none is an ok row with the
 declared loss); (10) the Claude Code version against the one the socket wire format was verified on
 — with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no
 `"crossSessionInbound": "accept"` in the user settings it is a FAIL naming that line (preflight only
@@ -327,19 +327,16 @@ off` (an Operator action — never cleared without the Operator). Denied to the 
 Computed by the daemon after each tick, outside every LLM; one alarm per receiver episode, a
 `… recovered` line when it ends. `RECEIVER <role> down`, `UNPICKED <role> #<n>`, `STALLED <role>
 #<n>`, `UNDELIVERED <role>`, `MONITOR <daemon|dog> dead` — conditions and knobs:
-[team-watch.md](team-watch.md) → Alarms. Target: the Supervisor (single routing: the receiver),
-with a platform notification first. **Terminal rule:** an episode about the target itself is a
-notification only — alarms never spawn alarms about alarms.
+[team-watch.md](team-watch.md) → Alarms. Target: the Supervisor (single routing: the receiver).
+An alarm notifies nobody. **Terminal rule:** an episode about the target itself is only logged —
+alarms never spawn alarms about alarms.
 
 ## Operator notifications
 
-A permission prompt or elicitation dialog in a role session raises one platform notification
-titled with the role's recipient name: the `Notification` hook `.claude/hooks/supervisor-notify.sh`
-through the kit's notifier (`teams.channel.notifier`). It is **not** gated by `TEAM_NOTIFY` (the
-Operator is needed) and is silent in team clones and for other notification types. All three roles
-take it from the installed kit file `<kit_dir>/hooks/role-hooks.settings.json` (Supervisor and
-TeamLead through the materialised profile, the Advisor as its `--settings`). Installing the kit is
-an Operator action (`install.sh --apply`); a running session picks the hook up only after a restart.
+A permission prompt or elicitation dialog in a role session notifies nobody: it waits in that
+role's window (and in the Herdr status). The roles take only the `Stop` hook from the installed kit
+file `<kit_dir>/hooks/role-hooks.settings.json` (Supervisor and TeamLead through the materialised
+profile, the Advisor as its `--settings`).
 
 The single sender `.claude/lib/notify.sh` (notification model, epic E2) writes every Operator event
 — `human_decision`, `abandon_decision` (runner, from TeamLead verdicts), `unrepaired_failure`,
@@ -347,8 +344,10 @@ The single sender `.claude/lib/notify.sh` (notification model, epic E2) writes e
 channels switched on in `~/.agent-comms/notify.json`. The Herdr channel (#39) writes a spool entry
 for the opt-in `harness-notify` mod (`.claude/team/herdr-mod/`) when the answering session's registry
 record says `herdr`; the mod shows it once as a toast that jumps to that session, and keeps it in a
-strip until clicked. iMessage (#40) is not built yet and records `off`. `notify.sh --check` shows the
-switches and whether the mod was seen; `notify.sh list` shows the events. The sinks above stay until #41.
+strip until clicked. The iMessage channel (#40, any backend, macOS) sends one message per event,
+holds events during quiet hours and sends them as one message after `quiet.end`; the opt-in
+`.claude/team/notify-kit/` installs the launchd job that runs that flush. `notify.sh --check` shows
+the switches, whether the mod was seen and the flush job's state; `notify.sh list` shows the events. It is the only path to the Operator.
 
 ## Migration
 

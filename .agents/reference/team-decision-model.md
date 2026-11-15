@@ -183,15 +183,15 @@ and replaces exactly that entry's line with a `[promoted]` pointer, after which 
 ## 5. The route to the Operator
 
 **Per-run TeamLead:** the Operator receives exactly four event types, all through
-`operator-kit/notify.sh`. E1 sends two — `human_decision` (a pending decision) and
+`.claude/lib/notify.sh`. The runner sends two — `human_decision` (a pending decision) and
 `abandon_decision` (the lead recommends abandoning a run past its rework budget), each once per
 verdict, answered in the `<team>-lead` window or with `team-lead.sh decision answer` from a terminal.
-The notification model adds `unrepaired_failure` and `release`. Everything else stays between the
+The Supervisor's `operator-record.sh` sends `unrepaired_failure` and `release`. Everything else stays between the
 stage, the lead and the Supervisor's inbox.
 
 > **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
-- Operator actions (team-mode.md §10) — directly in the TeamLead's window (`PushNotification` +
+- Operator actions (team-mode.md §10) — directly in the TeamLead's window (one line +
   the block), never as a decision question and never through the Supervisor.
 - Operator-list decisions — through the Advisor (`team-escalate.sh` tier 3); the Advisor relays
   `decided-by: operator` + a verified `operator-ref`.

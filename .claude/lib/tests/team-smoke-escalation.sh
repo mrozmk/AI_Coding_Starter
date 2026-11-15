@@ -25,7 +25,6 @@ cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tes
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
 cp "$SRC"/.claude/team/*.tmpl "$MAIN/.claude/team/"
 cp -R "$SRC/$OK_DIR" "$MAIN/.claude/team/sessions/"
-cp "$SRC/.claude/hooks/supervisor-notify.sh" "$MAIN/.claude/hooks/"
 printf '__pycache__/\n' >> "$MAIN/.gitignore"
 git -C "$MAIN" add -A && git -C "$MAIN" commit --quiet -m "escalation fixture"
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }

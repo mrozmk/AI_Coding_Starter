@@ -163,9 +163,10 @@ export CLAUDE_CODE_MESSAGING_SOCKET="$SD/sup.sock" CLAUDE_CODE_MESSAGING_TOKEN=t
 run "$MAIN" $W register; expect 0 "team-watch: Supervisor registered" "register (single default)"
 run "$MAIN" $W status; expect 1 "team-watch: not working" "status without beats"
 for x in "routing: single Supervisor" "receiver Supervisor: pid " "socket ok 0600" "mail: ok" \
-  "notifier: osascript" "paused: none" "open: 0"; do
+  "paused: none" "open: 0"; do
   has "$x" "$WORK/out" || fail "status lacks '$x'"
 done
+! has "notifier" "$WORK/out" || fail "status still prints a notifier line"
 run "$MAIN" $W mode tiers off; expect 0 "team-watch: tiers off" "mode tiers off"
 DPID=""; GPID=""
 daemon
@@ -206,8 +207,7 @@ dog; sleep 2
 : > "$STUB_LOG"
 kill "$DPID"; wait "$DPID" 2>/dev/null || true
 wait_r "MONITOR daemon dead" 10
-grep -q '^notify --backend osascript --alarm team-watch: daemon dead last beat .* — run bash .claude/lib/team-watch.sh start' \
-  "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "daemon outage raised no kit notification"; }
+! grep -q '^notify ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "a daemon outage notified someone"; }
 grep -q '^osascript' "$STUB_LOG" && fail "team-watch called osascript directly"
 daemon
 wait_r "MONITOR daemon recovered" 15
@@ -220,8 +220,8 @@ echo "2026-10-19T10:10:00Z permission_prompt Claude needs your permission" >> "$
 C0="$(cat "$TWD/cursor.Supervisor")"; : > "$STUB_LOG"
 TEAM_WATCH_UNDELIVERED_SECS=0 run "$MAIN" $W tick --once
 [ "$(cat "$TWD/cursor.Supervisor")" = "$C0" ] || fail "undelivered batch moved the cursor"
-[ "$(nnotify "Supervisor not receiving re-register in its window")" = 1 ] \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "no undelivered notification"; }
+[ -f "$TWD/undelivered.Supervisor.notified" ] || fail "the undelivered episode was not recorded"
+! grep -q '^notify ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "an undelivered batch notified someone"; }
 
 serve "$SD/stall.sock" stall
 jq -n --arg s "$SD/stall.sock" '{socket: $s, token: "t0k"}' > "$WORK/stall.json"

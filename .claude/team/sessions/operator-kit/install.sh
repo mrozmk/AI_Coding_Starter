@@ -41,7 +41,6 @@ esac
 
 # <kind> <template, relative to this dir> <live, relative to KIT>
 MAP="copy escalate.sh escalate.sh
-copy notify.sh notify.sh
 copy sessions-health.sh sessions-health.sh
 copy hooks/mail-guard.sh hooks/mail-guard.sh
 render hooks/role-hooks.settings.json.tmpl hooks/role-hooks.settings.json
@@ -64,7 +63,7 @@ render() {  # render <template> → the filled content on stdout
     *.json.tmpl) jq --arg kit "$KIT" 'walk(if type == "string" then gsub("\\{\\{KIT_DIR\\}\\}"; $kit) else . end)' "$t" ;;
     *) local s; s="$(cat "$t")"
        s="${s//\{\{PROJECT_CODE\}\}/$TEAM_CHANNEL_CODE}"; s="${s//\{\{SUPERVISOR_NAME\}\}/$TEAM_CHANNEL_SUPERVISOR}"
-       s="${s//\{\{NOTIFIER\}\}/$TEAM_CHANNEL_NOTIFIER}"; s="${s//\{\{SESSIONS\}\}/$SESSIONS}"
+       s="${s//\{\{SESSIONS\}\}/$SESSIONS}"
        s="${s//\{\{LABEL\}\}/$LABEL}"; s="${s//\{\{KIT_DIR\}\}/$KIT}"
        printf '%s\n' "$s" ;;
   esac

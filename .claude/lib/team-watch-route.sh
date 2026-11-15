@@ -231,25 +231,28 @@ tw_ping() {  # tw_ping <role> — the end-to-end channel check of one receiver
     "$(jq -r '.socket // ""' "$(tw_receiver_file "$1")" 2>/dev/null)")"
 }
 
-# tw_alarm <subject role|-> <text> — `-` means the caller already notified (tw_check_peer). The
-# target is resolved under the lock, so a handover cannot interleave; a subject never alarms
-# itself, so alarms never spawn alarms about alarms.
+# tw_alarm <subject role|-> <text> — `-` means no subject role (tw_check_peer). The target is
+# resolved under the lock, so a handover cannot interleave; a subject never alarms itself (that
+# episode is only logged), so alarms never spawn alarms about alarms. It notifies nobody.
 tw_alarm() {
   local target
-  [ "$1" = - ] || tw_notify "alarm" "$2" alarm
   if tw_lock; then
     target="$(tw_alarm_target)"
-    if [ "$1" = "$target" ] || ! tw_live "$target"; then tw_unlock; return 0; fi
+    if [ "$1" = "$target" ] || ! tw_live "$target"; then tw_log "alarm not sent: $2"; tw_unlock; return 0; fi
     tw_append_to "$target" "" "$2" alarm || tw_log "alarm not queued: $2"; tw_unlock
     tw_deliver || true
   elif tw_claim "$TW_DIR/send.d" 1 "$(tw_send_max)"; then
     # A hung holder of the state lock must not silence the alarm; send.d excludes a handover.
     target="$(tw_alarm_target)"
-    [ "$1" = "$target" ] || ! tw_live "$target" \
-      || { tw_paused "$target" >/dev/null && ! tw_alarms_pass "$target"; } \
-      || tw_send "$target" "[team-watch alarm] $2 · handle per $(tw_contract "$target")" \
-      || tw_undelivered "$target"
+    if [ "$1" = "$target" ] || ! tw_live "$target"; then tw_log "alarm not sent: $2"
+    else
+      { tw_paused "$target" >/dev/null && ! tw_alarms_pass "$target"; } \
+        || tw_send "$target" "[team-watch alarm] $2 · handle per $(tw_contract "$target")" \
+        || tw_undelivered "$target"
+    fi
     tw_release "$TW_DIR/send.d"
+  else
+    tw_log "alarm not sent (state lock and send.d busy): $2"
   fi
 }
 

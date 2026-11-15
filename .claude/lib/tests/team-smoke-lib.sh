@@ -96,7 +96,7 @@ smoke_init() {
   # The runner resolves .claude/codex-profile against HOME; keep it hermetic.
   export HOME="$WORK/home"
   mkdir -p "$HOME/.codex-acmeshop"
-  export TEAM_NOTIFY=0 TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
+  export TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1
   export TEAM_CONFIRM_SECS=0 TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
   export TEAM_GATE_LOCK_POLL=0.1
@@ -638,10 +638,6 @@ smoke_repos() {
   mkdir -p "$SEED/.claude/team/pr"
   cp "$SRC"/.claude/team/pr/*.md "$SEED/.claude/team/pr/"
   cp "$SRC/.claude/team/roles.json" "$SRC/.claude/team/audit.json" "$SEED/.claude/team/"
-  # The operator kit's notifier, stubbed: every runner/team-watch notification lands in STUB_LOG.
-  mkdir -p "$SEED/.claude/team/sessions/operator-kit"
-  printf '#!/usr/bin/env bash\necho "notify $*" >> "$STUB_LOG"\n[ "$1" != --check ] || echo "notifier: $3 ok (stub)"\nexit 0\n' \
-    > "$SEED/.claude/team/sessions/operator-kit/notify.sh"
   # Fixture fix (starter import): own profile, independent of the repo's (template) codex-profile.
   printf '# test fixture\n~/.codex-acmeshop\n' > "$SEED/.claude/codex-profile"
   printf '#!/usr/bin/env bash\necho "test-gate: total 3, passed 3, failed 0 (baseline 0, new 0, now passing 0)"\n' \

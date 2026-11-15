@@ -238,12 +238,12 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   notify`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
   `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
 - **Notify:** the runner sends each verdict with `notify` set through `.claude/lib/notify.sh
-  <event>` (the one sender), whatever `TEAM_NOTIFY` says. The event id
+  <event>` (the one sender, the only path to the Operator). The event id
   `<project>:<team>:<run>:<d-n>` is written once into `~/.agent-comms/outbox/events/` — that file
-  is the dedup across ticks and runner restarts. The hint is `tmux attach -t <team>-lead`. Until
-  #41 the legacy `team_channel_notify --alarm` (`<ticket> <id>: <question> — answer in …`) also
-  fires when `notify.sh` printed `written`, and also when `notify.sh` failed (exit ≠ 0: a `warn:`
-  line, then the legacy alarm once per runner process — a broken sender never silences the Operator).
+  is the dedup across ticks and runner restarts. The hint is the driver's for the answering session
+  (`tmux attach -t <team>-lead` on tmux). A failed call (exit ≠ 0) is retried on the next tick, three
+  tries per verdict, then one `warn: notify.sh failed 3× for <verdict> — the decision waits in
+  <window>`; the decision stays pending and shows in `/tasks-status` either way.
 - **Human-only prompt (owner, 2026-11-15).** A decision opened `--request req-<n>` carries
   `answer_in: <role>`. Only the Operator answers it, alone, in that stage's own window; the notify
   hint names the stage session, not the lead's. The lead opens it and waits: `decision answer`,

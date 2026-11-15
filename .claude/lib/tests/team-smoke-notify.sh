@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The Operator's single sender (notify.sh, #38) and the Supervisor's record script
 # (operator-record.sh): the closed event vocabulary, write-once dedup, delivery state with crash
-# recovery (published / dispatching), the switch file's validation (iMessage is not built yet and
-# records off), the Herdr channel (#39: the spool entry, the registry record, the mod's logic under
+# recovery (published / dispatching), the switch file's validation, the iMessage channel (#40: the
+# sender against an osascript stub, quiet hours, the held batch, retries, the flush-job kit with a
+# launchctl stub), the Herdr channel (#39: the spool entry, the registry record, the mod's logic under
 # node, the installer in a fixture app home), prune at every call (a held entry survives), the flush lock, the
 # record script's coalescing and 200-character cut, the role-profile deny. Fixture HOME only:
 # nothing reaches a person — no osascript / notify-send call, no file under the real
@@ -16,6 +17,22 @@ OB="$HOME/.agent-comms/outbox"; CONF="$HOME/.agent-comms/notify.json"; RCP="+48 
 for b in osascript notify-send terminal-notifier; do
   printf '#!/usr/bin/env bash\necho "%s $*" >> "%s/sinks.log"\n' "$b" "$WORK" > "$WORK/bin/$b"; chmod +x "$WORK/bin/$b"
 done
+# The iMessage sender's osascript: a stub that never logs the recipient (it checks it and writes a
+# token), with a scripted rc / stderr / delay. A real osascript or launchctl is never reached.
+OSL="$WORK/osa.log"
+cat > "$WORK/osa" <<EOF
+#!/usr/bin/env bash
+case "\$3" in "$RCP") r=RCPT ;; *) r=WRONG-RECIPIENT ;; esac
+printf '%s|%s|%s\n' "\$1" "\$(printf '%s' "\$2" | head -1)" "\$r" >> "$OSL"
+printf '%s' "\$4" > "$WORK/osa.last"; printf '%s\n' "\$4" >> "$WORK/osa.texts"
+[ ! -f "$WORK/osa.sleep" ] || sleep "\$(cat "$WORK/osa.sleep")"
+[ ! -f "$WORK/osa.err" ] || cat "$WORK/osa.err" >&2
+exit "\$(cat "$WORK/osa.rc" 2>/dev/null || echo 0)"
+EOF
+chmod +x "$WORK/osa"
+export NOTIFY_OSASCRIPT_BIN="$WORK/osa" NOTIFY_SYSTEM_TZ=Europe/Warsaw
+at() { TZ=Europe/Warsaw date -j -f '%Y-%m-%d %H:%M:%S' "$1:00" +%s 2>/dev/null || TZ=Europe/Warsaw date -d "$1" +%s; }
+NOON="$(at '2026-11-15 12:00')"; export NOTIFY_NOW="$NOON"   # outside quiet hours unless a case says so
 nt() { run "$WORK" $N "$@"; }
 dec() {  # dec <decision> [summary] — a human_decision of team alfa, run r1
   nt human_decision --project acme --team alfa --ticket AB-1 --run r1 --decision "$1" \
@@ -69,15 +86,15 @@ nt --check; expect 0 "imessage off — quiet.start '25:00' is not HH:MM" "(d) ba
 conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", \"quiet\": {\"start\": \"22:00\", \"end\": \"07:00\", \"tz\": \"Europe/DefinitelyMissing\"}}}"
 nt --check; expect 0 "imessage off — unknown tz Europe/DefinitelyMissing" "(d) unknown tz"
 conf "{\"version\": 1, \"herdr\": {\"enabled\": true}, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", $Q}}"
-nt --check; expect 0 "imessage on, recipient set — not built yet (#40), records off" "(d) both on"
+nt --check; expect 0 "imessage on, recipient set — quiet 22:00–07:00 Europe/Warsaw (not quiet), 0 held, flush job: missing" "(d) both on"
 has "herdr on — mod not seen (no layout shows the harness-notify strip?)" "$WORK/out" || fail "(d) herdr on"
 LONG="$(printf 'Line one\tand a tab\nline two '; printf 'x%.0s' $(seq 300))"
 dec d-2 "$LONG"; expect 0 "written acme:alfa:r1:d-2" "(d) event with the switches on"
 E2="$OB/events/acme_alfa_r1_d-2.json"
 jq -e --arg r "$WORK/d.md" '(.summary | length) == 200 and (.summary | test("[\\n\\t]") | not)
   and (.summary | startswith("Line one and a tab line two")) and .ref == $r' "$E2" >/dev/null || fail "(d) summary not one 200-char line"
-[ "$(st acme_alfa_r1_d-2 herdr)" = "skipped-tmux -" ] && [ "$(st acme_alfa_r1_d-2 imessage)" = "off not-built" ] \
-  || fail "(d) herdr skips a session with no herdr record; imessage records off (not built)"
+[ "$(st acme_alfa_r1_d-2 herdr)" = "skipped-tmux -" ] && [ "$(st acme_alfa_r1_d-2 imessage)" = "submitted -" ] \
+  || fail "(d) herdr skips a session with no herdr record; imessage is sent on any backend"
 echo "team-smoke-notify: (d) switch file OK"
 
 # ---- (e) crash after publishing: the next call delivers ----------------------------------------------
@@ -310,9 +327,196 @@ HERDR_APP_HOME="$WORK/no-app" run "$WORK" $INST; expect 3 "no Herdr app home" "(
 HERDR_APP_HOME="$APPH" run "$WORK" $INST --bogus; expect 2 "Usage:" "(k) usage"
 echo "team-smoke-notify: (k) installer OK"
 
+# ---- (l) iMessage (#40): the sender, quiet hours, the held batch, retries, the flush-job kit -----------
+conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", $Q}}"
+rm -f "$OSL" "$WORK/osa.texts" "$WORK/osa.rc" "$WORK/osa.err" "$WORK/osa.sleep"
+calls() { [ -f "$OSL" ] && wc -l < "$OSL" | tr -d ' ' || echo 0; }
+rel() { nt release --project acme --key "$1" --summary "${2:-step $1 waits}" --answer Supervisor ${3:+--now "$3"}; }
+NIGHT="$(at '2026-11-15 23:00')"; LATE="$(at '2026-11-16 03:00')"; END="$(at '2026-11-16 07:00')"
+# A send outside quiet hours: the fixed script, the recipient (checked by the stub), the text as argv.
+dec d-7 "Allow the coder to restart the app?"; expect 0 "written acme:alfa:r1:d-7" "(l) decision"
+[ "$(st acme_alfa_r1_d-7 imessage)" = "submitted -" ] || fail "(l) not submitted"
+[ "$(tail -1 "$OSL")" = "-e|on run argv|RCPT" ] || fail "(l) osascript argv: $(tail -1 "$OSL")"
+[ "$(cat "$WORK/osa.last")" = "[acme] decision: alfa AB-1 d-7 — Allow the coder to restart the app? — answer: tmux attach -t acme-alfa-lead" ] \
+  || fail "(l) message text: $(cat "$WORK/osa.last")"
+! grep -qF "$WORK/d.md" "$WORK/osa.texts" || fail "(l) the ref path left the machine"
+rel r1; [ "$(cat "$WORK/osa.last")" = "[acme] release — step r1 waits — answer: tmux attach -t Supervisor" ] \
+  || fail "(l) a Supervisor event's text: $(cat "$WORK/osa.last")"
+# A pre-send failure (its stderr echoes the recipient): failed, retried at the next calls, 3 attempts.
+echo "execution error: Messages got an error: Can't send to $RCP. (-1743)" > "$WORK/osa.err"; echo 1 > "$WORK/osa.rc"
+c0="$(calls)"; rel r2; expect 0 "written acme:release:r2" "(l) failed send"
+[ "$(cat "$OB/state/acme_release_r2.imessage" | cut -d' ' -f1,2,4)" = "failed -1743 1" ] || fail "(l) failed, attempt 1"
+nt flush; nt flush; nt flush
+[ "$(cut -d' ' -f1,2,4 "$OB/state/acme_release_r2.imessage")" = "failed -1743 3" ] && [ "$(calls)" = $((c0 + 3)) ] \
+  || fail "(l) failed: not exactly 3 attempts ($(calls) calls)"
+# Anything else is final: outcome_unknown, never retried; a hang is cut at the timeout.
+echo "execution error: something else (-1712)" > "$WORK/osa.err"
+c0="$(calls)"; rel r3; nt flush
+[ "$(st acme_release_r3 imessage)" = "outcome_unknown -1712" ] && [ "$(calls)" = $((c0 + 1)) ] || fail "(l) -1712 retried or not outcome_unknown"
+rm -f "$WORK/osa.err" "$WORK/osa.rc"; echo 5 > "$WORK/osa.sleep"
+NOTIFY_SEND_TIMEOUT=1 rel r4; [ "$(st acme_release_r4 imessage)" = "outcome_unknown timeout" ] || fail "(l) a hang is not outcome_unknown timeout"
+rm -f "$WORK/osa.sleep"
+echo "team-smoke-notify: (l) sender OK"
+
+# Quiet hours (22:00–07:00 Warsaw, across midnight): held, nothing sent; the first flush at quiet.end
+# (the end is exclusive) sends them as one message, oldest first.
+c0="$(calls)"
+rel q1 "first at night" "$NIGHT"; sleep 1; rel q2 "second after midnight" "$LATE"; sleep 1
+nt human_decision --project acme --team beta --ticket AB-2 --run r1 --decision d-1 --summary "third" \
+  --answer acme-beta-lead --hint "tmux attach -t acme-beta-lead" --now "$LATE"
+[ "$(st acme_release_q1 imessage)" = "held -" ] && [ "$(st acme_release_q2 imessage)" = "held -" ] \
+  && [ "$(st acme_beta_r1_d-1 imessage)" = "held -" ] && [ "$(calls)" = "$c0" ] || fail "(l) quiet hours: not held"
+NOTIFY_NOW="$LATE" nt --check; expect 0 "(quiet now), 3 held" "(l) --check in quiet hours"
+nt flush --now "$((END - 60))"; [ "$(calls)" = "$c0" ] || fail "(l) a flush at 06:59 sent"
+nt flush --now "$END"; [ "$(calls)" = $((c0 + 1)) ] || fail "(l) the flush at quiet.end did not send once"
+printf '%s\n' "[harness] 3 held overnight" "[acme] release — first at night — answer: tmux attach -t Supervisor" \
+  "[acme] release — second after midnight — answer: tmux attach -t Supervisor" \
+  "[acme] decision: beta AB-2 d-1 — third — answer: tmux attach -t acme-beta-lead" | cmp -s - <(cat "$WORK/osa.last"; echo) \
+  || fail "(l) the batch text: $(cat "$WORK/osa.last")"
+for i in q1 q2; do [ "$(st acme_release_$i imessage)" = "submitted -" ] || fail "(l) $i not submitted"; done
+nt flush --now "$END"; [ "$(calls)" = $((c0 + 1)) ] || fail "(l) the batch went twice"
+# One held event still gets the batch form; a long night is cut to 1,000 characters.
+rel q3 "alone" "$NIGHT"; nt flush --now "$END"
+head -1 "$WORK/osa.last" | grep -qx "\[harness\] 1 held overnight" || fail "(l) one held event without the batch header"
+# A held event without created_at is still batched and settled (not an empty "1 held" message every flush).
+printf '{"id":"acme:x:7","event":"release","project":"acme","summary":"no stamp","answer":{"hint":"h"}}\n' > "$OB/events/acme_x_7.json"
+echo "held - -" > "$OB/state/acme_x_7.imessage"; nt flush --now "$END"
+[ "$(st acme_x_7 imessage)" = "submitted -" ] && grep -qF "no stamp" "$WORK/osa.last" || fail "(l) a held event without created_at"
+for i in 1 2 3 4 5 6 7 8; do rel "w$i" "$(printf 'w%.0s' $(seq 190))" "$NIGHT"; done
+nt flush --now "$END"
+[ "$(wc -m < "$WORK/osa.last" | tr -d ' ')" -le 1000 ] && tail -1 "$WORK/osa.last" | grep -qE '^… and [0-9]+ more$' \
+  && head -1 "$WORK/osa.last" | grep -qx "\[harness\] 8 held overnight" || fail "(l) the long batch is not cut"
+echo "team-smoke-notify: (l) quiet hours and the batch OK"
+
+# A crash inside the batch: all of it outcome_unknown, nothing sent twice.
+rel x1 "" "$NIGHT"; rel x2 "" "$NIGHT"; c0="$(calls)"
+NOTIFY_CRASH_AT=batch nt flush --now "$END"; expect 137 "" "(l) crash in the batch"
+rm -rf "$OB/.flush.lock"
+[ "$(st acme_release_x1 imessage)" = "dispatching -" ] && [ "$(st acme_release_x2 imessage)" = "dispatching -" ] || fail "(l) batch not dispatching"
+nt flush --now "$END"
+[ "$(st acme_release_x1 imessage)" = "outcome_unknown interrupted" ] && [ "$(st acme_release_x2 imessage)" = "outcome_unknown interrupted" ] \
+  && [ "$(calls)" = "$c0" ] || fail "(l) a crashed batch was re-sent"
+# A failed batch goes back to held with its attempt count; the third failure is final.
+rel y1 "" "$NIGHT"; echo "x (-600)" > "$WORK/osa.err"; echo 1 > "$WORK/osa.rc"; c0="$(calls)"
+nt flush --now "$END"; [ "$(cut -d' ' -f1,2,4 "$OB/state/acme_release_y1.imessage")" = "held -600 1" ] || fail "(l) failed batch not held again"
+nt flush --now "$END"; nt flush --now "$END"; nt flush --now "$END"
+[ "$(cut -d' ' -f1,2,4 "$OB/state/acme_release_y1.imessage")" = "failed -600 3" ] && [ "$(calls)" = $((c0 + 3)) ] \
+  || fail "(l) failed batch: not 3 attempts"
+rm -f "$WORK/osa.err" "$WORK/osa.rc"
+# Switched off while held → off at the next flush; no osascript → the channel is off.
+rel z1 "" "$NIGHT"; conf '{"version": 1}'; nt flush --now "$END"
+[ "$(st acme_release_z1 imessage)" = "off switch-off" ] || fail "(l) a held event of a switched-off channel"
+conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", $Q}}"
+NOTIFY_OSASCRIPT_BIN="$WORK/no-osascript" nt --check; expect 0 "imessage off — no osascript (macOS only)" "(l) no osascript"
+# Prune keeps a failed event with attempts left, and drops a final one.
+for i in 5 6; do printf '{"id":"acme:x:%s","event":"release"}\n' "$i" > "$OB/events/acme_x_$i.json"; echo "off - -" > "$OB/state/acme_x_$i.herdr"; done
+echo "failed -600 - 1" > "$OB/state/acme_x_5.imessage"; echo "failed -600 - 3" > "$OB/state/acme_x_6.imessage"
+old "$OB"/events/acme_x_[56].json "$OB"/state/acme_x_[56].*
+nt list   # list prunes and never delivers, so the switch stays on here
+[ -f "$OB/events/acme_x_5.json" ] && [ ! -e "$OB/events/acme_x_6.json" ] || fail "(l) prune of failed events"
+# Switched off, a failed channel is never retried, so its attempts left do not hold the event.
+CONF_KEEP="$(cat "$CONF")"; rm -f "$CONF"; nt list; conf "$CONF_KEEP"
+[ ! -e "$OB/events/acme_x_5.json" ] || fail "(l) a failed event of a switched-off channel survived prune"
+rm -f "$OB"/events/acme_x_5.json "$OB"/state/acme_x_5.*
+echo "team-smoke-notify: (l) batch crash, retries, switch-off, prune OK"
+
+# A busy lock never loses an event: written without it, delivery deferred, sent once by the next flush.
+# The holder is killed on any exit; the fixture's own EXIT trap body is kept and restored after.
+KEEP_TRAP="$(trap -p EXIT | sed "s/^trap -- '//; s/' EXIT\$//")"; sleep 300 & HOLDER=$!
+trap "kill $HOLDER 2>/dev/null || true; $KEEP_TRAP" EXIT
+mkdir "$OB/.flush.lock"; echo "$HOLDER" > "$OB/.flush.lock/pid"; c0="$(calls)"
+NOTIFY_LOCK_WAIT=1 rel b1 "busy one"; expect 0 "written acme:release:b1 (delivery deferred: outbox busy)" "(l) event while the lock is held"
+[ -f "$OB/events/acme_release_b1.json" ] && [ "$(st acme_release_b1 imessage)" = "pending -" ] \
+  && [ "$(st acme_release_b1 herdr)" = "pending -" ] && [ "$(calls)" = "$c0" ] || fail "(l) a deferred event: file, pending states, no send"
+NOTIFY_LOCK_WAIT=1 rel b1 "busy one"; expect 0 "duplicate acme:release:b1 (delivery deferred: outbox busy)" "(l) a deferred duplicate"
+nt flush; expect 1 "the outbox lock is held by pid $HOLDER" "(l) flush without the lock"
+kill "$HOLDER"; wait "$HOLDER" 2>/dev/null || true; trap "$KEEP_TRAP" EXIT
+nt flush; [ "$(st acme_release_b1 imessage)" = "submitted -" ] && [ "$(calls)" = $((c0 + 1)) ] || fail "(l) the deferred event not sent once"
+nt flush; [ "$(calls)" = $((c0 + 1)) ] || fail "(l) the deferred event sent twice"
+# Two events racing a flush that is sending (the stub takes 2 s): each delivered exactly once.
+rel s0 "slow"; echo 2 > "$WORK/osa.sleep"; rel s1 "" "$NIGHT"; c0="$(calls)"
+(cd "$WORK" && $N flush --now "$END" > "$WORK/bg.out" 2>&1; echo $? > "$WORK/bg.rc") &
+BG=$!; sleep 0.5
+NOTIFY_LOCK_WAIT=0 rel race1 "race one"; NOTIFY_LOCK_WAIT=0 rel race2 "race two"
+wait "$BG"; rm -f "$WORK/osa.sleep"; nt flush
+[ "$(cat "$WORK/bg.rc")" = 0 ] || fail "(l) the racing flush failed"
+for k in "race one" "race two"; do
+  [ "$(grep -c -- "— $k —" "$WORK/osa.texts")" = 1 ] || fail "(l) '$k' not delivered exactly once"; done
+# One failed retry per flush, however many failed events wait.
+echo "x (-1743)" > "$WORK/osa.err"; echo 1 > "$WORK/osa.rc"
+rel f1; rel f2; c0="$(calls)"
+[ "$(st acme_release_f1 imessage)" = "failed -1743" ] && [ "$(st acme_release_f2 imessage)" = "failed -1743" ] || fail "(l) two failed events"
+nt flush; [ "$(calls)" = $((c0 + 1)) ] || fail "(l) a flush retried more than one failed event"
+rm -f "$WORK/osa.err" "$WORK/osa.rc"
+echo "team-smoke-notify: (l) busy lock, race, one retry per flush OK"
+
+# The flush-job kit, with a launchctl stub; the plist lands in the fixture HOME.
+printf '#!/usr/bin/env bash\necho "launchctl $*" >> "%s/lctl.log"\n' "$WORK" > "$WORK/lctl"; chmod +x "$WORK/lctl"
+export LAUNCHCTL_BIN="$WORK/lctl"
+KIT="bash $SRC/.claude/team/notify-kit/install.sh"; PL="$HOME/Library/LaunchAgents/harness.notify-flush.plist"
+DOM="gui/$(id -u)"; NS="$SRC/.claude/lib/notify.sh"
+HOME="$WORK/nohome" run "$WORK" $KIT; expect 3 "no $WORK/nohome/.agent-comms/notify.json" "(l) kit without a switch file"
+run "$WORK" $KIT --dry-run; expect 0 "would install $PL" "(l) kit dry run"
+has "<key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer>" "$WORK/out" && has "$LAUNCHCTL_BIN bootstrap $DOM $PL" "$WORK/out" \
+  || fail "(l) the dry run's plist or commands"
+[ ! -e "$PL" ] && [ ! -e "$WORK/lctl.log" ] || fail "(l) the dry run wrote or loaded"
+run "$WORK" $KIT; expect 0 "installed $PL — flush at 07:00 system time, runs $NS" "(l) kit install"
+! command -v plutil >/dev/null 2>&1 || plutil -lint "$PL" >/dev/null || fail "(l) the plist does not lint"
+has "<string>$NS</string><string>flush</string>" "$PL" && has "installed-by-harness" "$PL" || fail "(l) plist content"
+[ "$(cat "$WORK/lctl.log")" = "launchctl bootout $DOM/harness.notify-flush
+launchctl bootstrap $DOM $PL" ] || fail "(l) launchctl calls: $(cat "$WORK/lctl.log")"
+nt --check; expect 0 "flush job: installed" "(l) --check sees the job"
+! has "imessage warning" "$WORK/out" || fail "(l) a tz warning with matching zones"
+NOTIFY_SYSTEM_TZ=UTC nt --check; expect 0 "quiet.tz Europe/Warsaw is not the system zone UTC" "(l) --check tz warning"
+NOTIFY_SYSTEM_TZ=UTC run "$WORK" $KIT; expect 0 "warning: quiet.tz Europe/Warsaw is not the system zone UTC" "(l) kit tz warning"
+# A moved checkout, a changed quiet.end: --check says stale; a re-install replaces and says so.
+sed -i.bak "s|<string>$NS</string>|<string>/gone/.claude/lib/notify.sh</string>|" "$PL"; rm -f "$PL.bak"
+nt --check; expect 0 "flush job: stale path /gone/.claude/lib/notify.sh" "(l) stale path"
+run "$WORK" $KIT; expect 0 "updated $PL" "(l) kit update"; has "replaced the path /gone/.claude/lib/notify.sh" "$WORK/out" || fail "(l) replaced path not said"
+conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", \"quiet\": {\"start\": \"22:00\", \"end\": \"06:30\", \"tz\": \"Europe/Warsaw\"}}}"
+nt --check; expect 0 "flush job: stale time" "(l) stale time"
+run "$WORK" $KIT; expect 0 "flush at 06:30" "(l) kit re-install"; has "<key>Hour</key><integer>6</integer><key>Minute</key><integer>30</integer>" "$PL" || fail "(l) new hour"
+conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", \"quiet\": {\"start\": \"22:00\", \"end\": \"7am\", \"tz\": \"Europe/Warsaw\"}}}"
+run "$WORK" $KIT; expect 3 "imessage.quiet.end '7am' is not HH:MM" "(l) kit with a bad quiet.end"
+conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", $Q}}"
+: > "$WORK/lctl.log"; run "$WORK" $KIT --rollback; expect 0 "removed $PL" "(l) kit rollback"
+[ ! -e "$PL" ] && has "bootout $DOM/harness.notify-flush" "$WORK/lctl.log" || fail "(l) rollback left the plist or did not unload"
+echo '<plist>mine</plist>' > "$PL"
+run "$WORK" $KIT; expect 3 "was not installed by the harness" "(l) kit refuses a foreign plist"
+run "$WORK" $KIT --rollback; expect 3 "was not installed by the harness" "(l) rollback of a foreign plist"
+[ "$(cat "$PL")" = '<plist>mine</plist>' ] || fail "(l) a foreign plist was touched"; rm -f "$PL"
+# A bootstrap that fails once right after the bootout is retried.
+printf '#!/usr/bin/env bash\necho "launchctl $*" >> "%s/lctl.log"\n[ "$1" != bootstrap ] || [ -f "%s/lctl.once" ] || { touch "%s/lctl.once"; exit 5; }\n' \
+  "$WORK" "$WORK" "$WORK" > "$WORK/lctl"
+: > "$WORK/lctl.log"; run "$WORK" $KIT; expect 0 "installed $PL" "(l) kit retries a failed bootstrap"
+[ "$(grep -c ' bootstrap ' "$WORK/lctl.log")" = 2 ] || fail "(l) bootstrap not retried once"
+run "$WORK" $KIT --rollback; expect 0 "removed $PL" "(l) kit rollback after the retry"
+# The job's log is kept to its last 32-64 KB by every call's prune.
+head -c 70000 /dev/zero | tr '\0' x > "$OB/flush.log"; nt list
+[ "$(wc -c < "$OB/flush.log" | tr -d ' ')" -le 32768 ] || fail "(l) flush.log not trimmed"
+run "$WORK" $KIT --bogus; expect 2 "Usage:" "(l) kit usage"
+echo "team-smoke-notify: (l) flush-job kit OK"
+
+# ---- (m) one path to the Operator: no other sink is left in the checkout (AC9) ----------------------
+OK_RE='^(\.claude/hooks/lib/guard_team_egress\.py|\.agents/reference/security-egress\.md|\.claude/lib/notify\.sh|\.claude/team/notify-kit/.*|docs/teams/upgrade-notes\.md|\.claude/lib/tests/.*)$'
+left="$(cd "$SRC" && grep -rlE 'osascript|notify-send|terminal-notifier|PushNotification|TEAM_NOTIFY|team_channel_notify' \
+  .claude .agents/reference docs 2>/dev/null | grep -vE "$OK_RE" || true)"
+[ -z "$left" ] || fail "(m) a notification sink is left outside notify.sh: $left"
+[ ! -e "$SRC/.claude/team/sessions/operator-kit/notify.sh" ] && [ ! -e "$SRC/.claude/hooks/supervisor-notify.sh" ] \
+  || fail "(m) the platform notifier or the role Notification hook still ships"
+! grep -qE 'supervisor-notify\.sh|operator-kit/notify\.sh' "$SRC/.claude/team/manifest.txt" || fail "(m) the manifest still lists a removed sink"
+jq -e '.hooks | has("Notification") | not' "$SRC/.claude/team/sessions/operator-kit/hooks/role-hooks.settings.json.tmpl" >/dev/null \
+  || fail "(m) the kit's role hooks still wire a Notification hook"
+! grep -q '^notify()' "$SRC/.claude/lib/team-run.sh" || fail "(m) the runner still has notify()"
+! grep -qE 'tw_notify|notifier_line|team_channel_loss_line' "$SRC"/.claude/lib/team-watch*.sh "$SRC/.claude/lib/team-channel.sh" \
+  || fail "(m) team-watch or the channel still notifies"
+jq -e '.teams.channel | has("notifier") | not' "$SRC/.claude/project-profile.json.example" >/dev/null || fail "(m) the profile example still sets a notifier"
+echo "team-smoke-notify: (m) one path to the Operator OK"
+
 # ---- nothing reached a person; the recipient is nowhere ----------------------------------------------
 [ ! -s "$WORK/sinks.log" ] || { cp "$WORK/sinks.log" "$WORK/out"; fail "a platform notifier was called"; }
-! grep -rlF "RCPTOKEN" "$OB" "$MAIN/.agents/team" "$WORK/out" "$WORK"/f1 "$WORK"/f2 2>/dev/null | grep -q . \
+! grep -rlF "RCPTOKEN" "$OB" "$MAIN/.agents/team" "$WORK/out" "$WORK"/f1 "$WORK"/f2 "$OSL" "$WORK"/osa.texts \
+    "$WORK"/lctl.log "$HOME/Library" 2>/dev/null | grep -q . \
   || fail "the recipient appears outside the switch file"
 REAL="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
 [ -z "$REAL" ] || [ "$HOME" != "$REAL" ] || fail "the part ran with the real HOME"

@@ -63,7 +63,7 @@ echo '{"planner":{"model":"x"}}' > "$TD/roles.override.json"
 cp "$TD/roles.override.json" "$WORK/cli-override"
 for entry in coder=sonnet planner=/high; do
   : > "$STUB_LOG"
-  TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$entry"
+  run "$MAIN" $TR alfa roles "$entry"
   expect 1 "in mode cli only cli=" "cli refuses $entry"
   cmp -s "$WORK/cli-override" "$TD/roles.override.json" || fail "cli roles changed the override"
   [ ! -s "$STUB_LOG" ] || fail "cli role refusal notified or launched a tool"
@@ -72,7 +72,7 @@ run "$MAIN" $TR alfa roles --clear
 expect 0 "roles override cleared" "cli allows stale override cleanup"
 [ ! -e "$TD/roles.override.json" ] || fail "cli roles --clear kept the override"
 : > "$STUB_LOG"
-TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles coder=/high
+run "$MAIN" $TR alfa roles coder=/high
 expect 1 "mode cli" "cli refuses creating an override"
 [ ! -e "$TD/roles.override.json" ] || fail "cli roles created an override"
 [ ! -s "$STUB_LOG" ] || fail "cli role refusal notified or launched a tool"
@@ -240,7 +240,7 @@ done
 : > "$STUB_LOG"
 TEAM_SESSION_HOST=herdr STUB_HC_NONAME=1 STUB_HC_STATE=finished run "$MAIN" $TR alfa
 grep -qx 'NEW-roles.sh place alfa-planner' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the runner did not place the stage with the main checkout's roles.sh"; }
-! grep -q 'OLD-roles.sh\|team-attach' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the clone's roles.sh or a preview script ran under Herdr"; }
+! grep -q 'OLD-roles.sh' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(27b) the clone's roles.sh ran under Herdr"; }
 for f in roles.sh; do
   if [ -f "$WORK/$f.clone" ]; then cp "$WORK/$f.clone" "$CLONE/.claude/lib/$f"; else rm -f "$CLONE/.claude/lib/$f"; fi
   if [ -f "$WORK/$f.main" ]; then cp "$WORK/$f.main" "$MAIN/.claude/lib/$f"; else rm -f "$MAIN/.claude/lib/$f"; fi

@@ -228,7 +228,7 @@ has "--disallowedTools AskUserQuestion -- \"\$(cat '" "$STUB_LOG" || fail "coder
 has "new-session -d -s smk-alfa-coder" "$STUB_LOG" || fail "coder retry not launched"
 # tmux opens no window (#29): no Terminal window, no preview script, no preview warning.
 ! has osascript "$STUB_LOG" || fail "a tmux team run called osascript"
-! has team-attach "$STUB_LOG" && ! has "preview window" "$WORK/out" || fail "a tmux team run tried a preview window"
+! has "preview window" "$WORK/out" || fail "a tmux team run tried a preview window"
 has "-n alfa-coder --model 'opus[1m]' --effort 'medium' --permission-mode 'auto' --disallowedTools" \
   "$STUB_LOG" || fail "coder launch lacks its model/effort/permission from roles.json"
 CODEX_REAL="$(cd "$HOME/.codex-acmeshop" && pwd -P)"
@@ -262,12 +262,11 @@ for bad in '{"planer":{"model":"opus"}}' '{"qa":{"modle":"opus"}}' \
   '{"coder":{"effort":"hihg"}}' '{"qa":{"effort":7}}'; do
   printf '%s\n' "$bad" > "$MAIN/.claude/team/roles.json"
   reset_runner; session coder 1 "$PLANNER_OUT"; cp "$TD/session.json" "$WORK/session.bak"
-  TEAM_NOTIFY=1 run "$MAIN" $TR alfa
+  run "$MAIN" $TR alfa
   expect 1 "roles.json" "invalid base config $bad"
   cmp -s "$TD/session.json" "$WORK/session.bak" || fail "bad base config changed session.json"
   has "new-session" "$STUB_LOG" && fail "bad base config launched a session"
-  grep -q '^notify --backend none --alarm team alfa: stopped (1)' "$STUB_LOG" \
-    || fail "runtime failure stopped notification suppressed"
+  ! has "notify " "$STUB_LOG" || fail "a runner stop notified someone"
 done
 cp "$WORK/roles.bak" "$MAIN/.claude/team/roles.json"
 rmdir "$HOME/.codex-acmeshop"

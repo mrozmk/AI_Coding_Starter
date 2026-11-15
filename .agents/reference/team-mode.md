@@ -453,7 +453,7 @@ answered by the TeamLead; it is an Operator action unless a role-session layer i
 checks it against the role's profile.
 
 **Operator actions (never through the channel).** The supervisor brings these to the Operator
-directly (`PushNotification` + the command or screen), never as a decision question and never
+directly (one line + the command or screen), never as a decision question and never
 via Advisor: permission prompts for `ask`-tier, egress (`WebFetch` to an unlisted host,
 `curl`/`wget`/network commands — `security-egress.md`) and production commands; merge only when
 the auto-merge gate refuses (`Merge <team>?` with the gate's reason) — after QA ready the merge

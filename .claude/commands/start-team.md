@@ -211,10 +211,11 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `bash .claude/lib/session-host.sh hint <TEAM>-<role>` names how to look at any role.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
-   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "a preview (Herdr pane or Terminal window) opens on each role
-   as it starts — talk to the planner there, detach with Ctrl-b d", and that coder/QA run alone and a
-   macOS notification appears when a team needs approval, has a question, is ready for merge, or
-   stopped. After QA a `wrapup` window opens with a plain summary of the run and, only if it has
+   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "Herdr: each stage appears as a pane in the `Teams` tab — talk to the planner there; tmux: the
+   runner's `attach:` line says how to reach the planner (detach with Ctrl-b d)", and that coder/QA run alone, the
+   team's TeamLead answers what it may, and only a decision that needs the Operator notifies them
+   (`notify.sh`, when a channel is on in `~/.agent-comms/notify.json`; otherwise it waits in
+   `/tasks-status`). After QA a `wrapup` window opens with a plain summary of the run and, only if it has
    recommendations (memory, new tickets), one question. Resume after answering:
    `/start-team <TEAM>`. Merge when ready: ask the supervisor ("merge <TEAM>"). For `pr_provider: github` the supervisor runs
    `team-merge-check.sh <TEAM>`, asks the Operator, then `team-integrate.sh <TEAM>`; for azure-devops it

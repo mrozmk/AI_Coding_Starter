@@ -56,7 +56,7 @@ away first). The client and the setup step run Python with `-B` and
 `PYTHONDONTWRITEBYTECODE=1`, so no `__pycache__` lands in a copy (or in another client's tool).
 
 The project's committed names live in `.claude/project-profile.json → teams.channel`
-(`project_code`, `mail_suffix`, `tmux_prefix`, `advisor: pair|solo`, `notifier`); the machine
+(`project_code`, `mail_suffix`, `tmux_prefix`, `advisor: pair|solo`); the machine
 paths live in the gitignored `.agents/team/channel.local.json`:
 `{ key, box, tool, tool_sha, decisions_dir, codex_home, kit_dir }` (written by the channel step;
 `tool_sha` is the copy's `<sha>`, `null` for a tool that is not an `agent_mail-<sha>` copy;
@@ -67,9 +67,9 @@ paths live in the gitignored `.agents/team/channel.local.json`:
 Every script, hook and kit file that talks to the channel reads both halves through **one**
 loader, `.claude/lib/team-channel.sh` → `team_channel_load` (sourced; pattern of
 `team-profile.sh`), instead of spelling a box, tool or recipient out. It exports
-`TEAM_CHANNEL_{CODE,SUFFIX,TMUX_PREFIX,ADVISOR,NOTIFIER}` from the profile (defaults: `mail_suffix`
+`TEAM_CHANNEL_{CODE,SUFFIX,TMUX_PREFIX,ADVISOR}` from the profile (defaults: `mail_suffix`
 `""`, `tmux_prefix` the repo dir slug, `advisor` `pair` when the profile's `codex` is `true` else
-`solo`, `notifier` `none`), `TEAM_CHANNEL_{KEY,BOX,TOOL,TOOL_SHA,DECISIONS,CODEX_HOME,KIT}` from
+`solo`), `TEAM_CHANNEL_{KEY,BOX,TOOL,TOOL_SHA,DECISIONS,CODEX_HOME,KIT}` from
 `channel.local.json`, and the four recipient names
 `TEAM_CHANNEL_{SUPERVISOR,TEAMLEAD,ADVISOR_NAME,REVIEWER}` (role + suffix) — a mail filter uses
 these, never a literal name. It refuses with exit 3 and one `error: team channel:` line when the
@@ -240,7 +240,7 @@ deliveries that went `failed` come back with `requeue <id> --for Reviewer<suffix
 
 ## The operator kit
 
-The escalation adapter (`escalate.sh`, which `escalation.local.json` points at), the role Stop hook (`mail-guard.sh`), the notifier and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).
+The escalation adapter (`escalate.sh`, which `escalation.local.json` points at), the role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).
 
 ## What the channel does not guarantee
 

@@ -63,7 +63,7 @@ Some things only a human may do:
 - install the operator kit;
 - recover a stuck window.
 
-These go to the Operator **directly from the session that met them**, as a push notification plus one fixed block. They never travel as a decision question through a peer:
+These go to the Operator **directly from the session that met them**, as one line plus one fixed block in that session. They never travel as a decision question through a peer:
 
 ```
 <team / ticket / window>

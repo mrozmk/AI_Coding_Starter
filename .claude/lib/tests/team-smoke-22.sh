@@ -500,9 +500,9 @@ said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead 
   jq -cn --arg t "$1" --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" --arg u "u-$SAID" \
     '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"
 }
-mkdir -p "$MAIN/.claude/team/sessions/operator-kit"
-printf '#!/usr/bin/env bash\necho "$*" >> "%s/notify.log"\n' "$WORK" > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
 # ---- (m) open: a pending file, the escalate verdict with notify, one notification -----------------
+OB="$HOME/.agent-comms/outbox"
+nev() { ls "$OB/events" 2>/dev/null | grep -c "_alfa_${RUN_ID}_$1\.json$" || true; }
 run "$CLONE" $DEC open alfa --source coder-1-1.json --question "Edit the settings?"
 expect 3 "only this run's TeamLead opens decisions" "(m) open by a non-lead"
 ldec open alfa --source coder-1-1.json --question "Allow the coder to edit .claude/settings.json?" \
@@ -516,39 +516,41 @@ jq -e '.gate == "decision" and .verdict == "escalate" and .notify == "human_deci
 ldec open alfa --source nothere.json --question q; expect 1 "verdict was refused" "(m) a source outside the run"
 rm -f "$DLD/d-3.md"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
-printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
+printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock"
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "" "(m) runner polls"
-[ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2: Allow the coder" "$WORK/notify.log" \
-  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) not exactly one human_decision notification"; }
-# A failing notify.sh (exit 1) never silences the Operator: one legacy alarm per runner process.
-cp "$WORK/notify.log" "$WORK/notify.log.keep"; cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.keep"
+[ "$(nev d-2)" = 1 ] || { ls -la "$OB/events" > "$WORK/out" 2>&1 || true; fail "(m) not exactly one human_decision event"; }
+# A failing notify.sh (exit 1) is retried on the next ticks, three tries per verdict, then one warn:
+# naming the window. Nothing else reaches the Operator; the decision stays pending.
+cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.keep"
 cp "$STUB_LOG" "$WORK/stub.keep"; : > "$STUB_LOG"  # the first runner ended the coder on cancel
-printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"
-printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
-STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) a failing notify.sh warns"
+printf '#!/usr/bin/env bash\necho x >> "%s/nfail.log"; exit 1\n' "$WORK" > "$MAIN/.claude/lib/notify.sh"
+printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/nfail.log"
+STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa
+expect 6 "warn: notify.sh failed 3× for teamlead-decision-" "(m) a failing notify.sh warns after three tries"
+has "the decision waits in alfa-lead" "$WORK/out" || fail "(m) the warn does not name the window"
+[ "$(grep -c . "$WORK/nfail.log")" = 3 ] || fail "(m) notify.sh tried $(grep -c . "$WORK/nfail.log") times, want 3"
+[ "$(grep -c 'warn: notify.sh failed' "$WORK/out")" = 1 ] || fail "(m) more than one warn"
+[ "$(sed -n 's/^status: //p' "$DLD/d-2.md")" = pending ] || fail "(m) a failing sender changed the decision"
 cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
-[ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2:" "$WORK/notify.log" \
-  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) a failing notify.sh: not exactly one legacy notification"; }
-# The lead on herdr (step 6): its record's handle is probed through the fake hc and the hint names
-# the Herdr terminal; the runner lives on and the legacy alarm carries that hint. (A driver that cannot
-# give a hint at all now means a broken record, which also fails the lead's liveness probe.)
+# The lead on herdr (step 6): its record's handle is probed through the fake hc and the hint passed
+# to notify.sh names the Herdr terminal; the runner lives on. (A driver that cannot give a hint at
+# all now means a broken record, which also fails the lead's liveness probe.)
 LR="$MAIN/.agents/team/registry/alfa-lead.json"; mkdir -p "$(dirname "$LR")"; rm -f "$WORK/lr.keep"
 [ ! -f "$LR" ] || cp "$LR" "$WORK/lr.keep"
 jq -n --slurpfile r <(cat "$WORK/lr.keep" 2>/dev/null || echo '{}') '($r[0] // {}) + {address: "alfa-lead", backend: "herdr", handle: "t5l", name: "smk-alfa-lead"}' > "$LR"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"; : > "$STUB_LOG"  # the last runner ended the coder
-printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
-STUB_HC_ADDR=t5l STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) herdr hint: the runner lives"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "%s/nargs.log"\n' "$WORK" > "$MAIN/.claude/lib/notify.sh"; : > "$STUB_LOG"  # the last runner ended the coder
+printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/nargs.log"
+STUB_HC_ADDR=t5l STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "" "(m) herdr hint: the runner lives"
 cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
 if [ -f "$WORK/lr.keep" ]; then cp "$WORK/lr.keep" "$LR"; else rm -f "$LR"; fi
-grep -q -- "d-2: .* — answer in hc attach t5l · herdr: smk-alfa-lead (in the agent list once placed)$" "$WORK/notify.log" \
-  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) herdr hint: legacy alarm lacks the herdr hint"; }
-cp "$WORK/notify.log.keep" "$WORK/notify.log"; cp "$WORK/stub.keep" "$STUB_LOG"
+grep -A1 -x -- "--hint" "$WORK/nargs.log" 2>/dev/null | grep -q "^hc attach t5l · herdr: smk-alfa-lead" \
+  || { cp "$WORK/nargs.log" "$WORK/out" 2>/dev/null || true; fail "(m) herdr hint: notify.sh did not get the herdr hint"; }
+cp "$WORK/stub.keep" "$STUB_LOG"
 rm -f "$WORK/hs.n" "$TD/cancel"
-STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 TEAM_NOTIFY=0 run "$MAIN" $TR alfa
-[ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] || fail "(m) a restarted runner notified again"
+STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 run "$MAIN" $TR alfa
+! has "warn: notify.sh" "$WORK/out" || fail "(m) a restarted runner: the duplicate event warned"
 # notify.sh (#38): one write-once event in the fixture HOME's outbox, no .notified; channels off.
-OB="$HOME/.agent-comms/outbox"
-[ "$(ls "$OB/events" | grep -c "_alfa_${RUN_ID}_d-2\.json$")" = 1 ] || { ls -la "$OB/events" > "$WORK/out" 2>&1 || true; fail "(m) not exactly one event file"; }
+[ "$(nev d-2)" = 1 ] || { ls -la "$OB/events" > "$WORK/out" 2>&1 || true; fail "(m) a restarted runner wrote a second event"; }
 jq -e '.event == "human_decision" and .team == "alfa" and .decision == "d-2" and .summary == null
   and .answer.hint == "tmux attach -t smk-alfa-lead" and .answer.address == "alfa-lead"' "$OB/events/"*"_alfa_${RUN_ID}_d-2.json" >/dev/null \
   || fail "(m) event file"
@@ -696,13 +698,13 @@ grep -qxF "human-only coder: d-22 withdrawn — prompt gone" "$WORK/bells" || fa
 win lead_waiting coder 1; [ "$RC" = 1 ] || fail "(w) the stage clock still stopped after the runner closed the decisions"
 [ "$(python3 -I "$MAIN/.claude/lib/team_prompt.py" outcome "$WORK/none.jsonl" tu-1)" = unknown ] || fail "(w) outcome of an unreadable transcript"
 # The Operator is pointed at the stage window, not the lead's.
-mkd 31 tu-31; rm -f "$WORK/notify.log"
+mkd 31 tu-31
 jq -n --arg r "$DLD/d-31.md" '{gate: "decision", verdict: "escalate", notify: "human_decision", ref: $r,
   message: "d-31: coder: Bash curl x"}' > "$RD/teamlead-decision-99.json"
 win eval ". '$MAIN/.claude/lib/team-channel.sh'; sess_name() { team_tmux_name alfa \"\$1\"; }
   rec() { jq -r --arg f \"\$2\" '.[\$f] // empty' \"\$1\"; }; lead_notify"
-grep -q -- "human_decision .*d-31.* — answer in .*alfa-coder" "$WORK/notify.log" 2>/dev/null \
-  || fail "(w) the notification does not name the stage window: $(cat "$WORK/notify.log" 2>/dev/null) $(cat "$WORK/out")"
+jq -e '.event == "human_decision" and (.answer | tostring | test("alfa-coder"))' "$OB/events/"*"_alfa_${RUN_ID}_d-31.json" >/dev/null 2>&1 \
+  || fail "(w) the event does not name the stage window: $(cat "$OB/events/"*"_d-31.json" 2>/dev/null) $(cat "$WORK/out")"
 rm -f "$RD/teamlead-decision-99.json"
 echo "team-smoke-22: (w) human-only prompts answered in the stage window OK"
 

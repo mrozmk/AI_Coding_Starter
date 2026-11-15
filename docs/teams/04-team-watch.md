@@ -81,9 +81,9 @@ The daemon computes alarms from the ledgers, and the dog computes them for the d
 | `UNDELIVERED <role>` | sends failing for `TEAM_WATCH_UNDELIVERED_SECS` (120 s) |
 | `MONITOR daemon\|dog dead` | the peer's beat is older than 2 × `TEAM_WATCH_SECS` |
 
-An alarm goes to the alarm target as `[team-watch alarm] <text> · handle per <contract>`. In split routing the target is the Supervisor; in single routing it is the receiver. Every alarm also goes to the platform notifier, through the operator kit's `notify.sh`.
+An alarm goes to the alarm target as `[team-watch alarm] <text> · handle per <contract>`. In split routing the target is the Supervisor; in single routing it is the receiver. An alarm notifies nobody; the Operator is reached only through `.claude/lib/notify.sh`.
 
-**Terminal rule:** an episode about the alarm target itself is only a platform notification. Alarms never spawn alarms about alarms. With `notifier: none`, that notification reaches nobody, and `status` prints it as a declared loss.
+**Terminal rule:** an episode about the alarm target itself is only logged. Alarms never spawn alarms about alarms.
 
 ## Pause and wake loops
 

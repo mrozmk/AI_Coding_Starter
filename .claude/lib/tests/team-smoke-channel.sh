@@ -57,7 +57,7 @@ jq -e --arg l "$(cd "$LIB" && pwd)" '(._generated | startswith("by team-channel.
 run "$MAIN" $CH show
 expect 0 "TEAM_CHANNEL_KEY=QX" "(3) show"
 for want in TEAM_CHANNEL_SUFFIX=Qx TEAM_CHANNEL_TMUX_PREFIX=main TEAM_CHANNEL_ADVISOR=pair \
-  TEAM_CHANNEL_NOTIFIER=none TEAM_CHANNEL_TEAMLEAD=TeamLeadQx TEAM_CHANNEL_REVIEWER=ReviewerQx \
+  TEAM_CHANNEL_TEAMLEAD=TeamLeadQx TEAM_CHANNEL_REVIEWER=ReviewerQx \
   "TEAM_CHANNEL_BOX=$HOME/.agent-mail/main/mail.sqlite"; do
   grep -qxF "$want" "$WORK/out" || fail "(3) show lacks $want"
 done
@@ -98,7 +98,10 @@ run "$MAIN" $CH show; expect 0 "" "(5) the matching local half still loads"
 prof '.teams.channel.mail_suffix = "Zz"'
 run "$MAIN" $CH show; expect 3 "would not match" "(5) suffix drift"
 prof '.teams.channel.mail_suffix = "Qx" | .teams.channel.notifier = "bell"'
-run "$MAIN" $CH show; expect 3 "notifier=bell must be" "(5) bad notifier"
+run "$MAIN" $CH show; expect 0 "warn: teams.channel.notifier was removed and is ignored" "(5) a leftover notifier key warns"
+[ "$(grep -c 'notifier' "$WORK/out")" = 1 ] || fail "(5) the notifier key: not exactly one line"
+run "$MAIN" bash -c ". .claude/lib/team-channel.sh; team_channel_names; team_channel_names; bash .claude/lib/team-channel.sh get advisor"
+[ "$(grep -c 'notifier was removed' "$WORK/out")" = 1 ] || fail "(5) the notifier warning is not once per process tree"
 prof 'del(.teams.channel.notifier) | del(.teams.channel.advisor)'
 run "$MAIN" $CH get advisor; expect 0 "solo" "(5) advisor default without codex"
 prof '.codex = true'

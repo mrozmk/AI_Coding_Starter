@@ -3,6 +3,30 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## `notify.sh` is the only path to the Operator
+
+**Before:** the Operator was reached by several sinks: the operator kit's platform notifier
+(`osascript` / `notify-send`, `teams.channel.notifier`), the role sessions' `Notification` hook
+`supervisor-notify.sh`, team-watch alarms, the runner's `TEAM_NOTIFY=1` notices, the health
+check's alarm and `PushNotification` in `/monitor`.
+
+**Now:** only `.claude/lib/notify.sh` notifies, for four events (`human_decision`,
+`abandon_decision`, `unrepaired_failure`, `release`), on the channels switched on in
+`~/.agent-comms/notify.json` (Herdr, iMessage; both off by default). Prompts, waits, "ready",
+stops and team-watch alarms notify nobody; what waits for you shows in `/tasks-status`.
+`TEAM_NOTIFY` is ignored. `teams.channel.notifier` is ignored with one `warn:` line.
+
+**Action:**
+- Re-run `bash .claude/team/sessions/operator-kit/install.sh --apply` (an Operator action): the
+  installed `hooks/role-hooks.settings.json` still wires the removed hook, so `--verify` and the
+  preflight's `operator kit installed` row report it as `differs` until then. Restart the role
+  sessions afterwards.
+- Delete by hand, when convenient: `<kit_dir>/notify.sh` and `<kit_dir>/notify.sh.bak-team-kit`
+  (nothing calls them; the installer no longer manages them), `.claude/hooks/supervisor-notify.sh`
+  if your sync left it, the `notifier` key in `teams.channel`, and any `TEAM_NOTIFY` export.
+- To be notified, write `~/.agent-comms/notify.json` (`.claude/team/notify-kit/README.md`; the
+  Herdr mod: `.claude/team/herdr-mod/harness-notify/README.md`).
+
 ## The agent-mail tool's default project label is `default`
 
 **Before:** the vendored tool kept the upstream's own project name as its default label (the

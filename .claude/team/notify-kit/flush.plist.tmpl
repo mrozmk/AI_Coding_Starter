@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- installed-by-harness: .claude/team/notify-kit/install.sh -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>@LABEL@</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>@NOTIFY@</string><string>flush</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>@HOUR@</integer><key>Minute</key><integer>@MINUTE@</integer></dict>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>@PATH@</string></dict>
+  <key>StandardOutPath</key><string>@LOG@</string>
+  <key>StandardErrorPath</key><string>@LOG@</string>
+</dict></plist>

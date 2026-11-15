@@ -13,7 +13,7 @@ set -euo pipefail
 smoke_init
 smoke_team AB-1140 chore/AB-1140-sessions
 watch_init
-unset TEAM_SESSIONS_CLAUDE_FLAGS CODEX_HOME AGENT_MAIL_BOX TEAM_NOTIFIER TMUX TMUX_PANE HC_TERMINAL_ID \
+unset TEAM_SESSIONS_CLAUDE_FLAGS CODEX_HOME AGENT_MAIL_BOX TMUX TMUX_PANE HC_TERMINAL_ID \
   CLAUDECODE HARNESS_MAIN HARNESS_REGISTRY HARNESS_ADDRESS TEAM_SESSION_ROLE
 export TEAM_ROLES_TRUST_SECS=1
 ROLES_TMUX="smk-supervisor smk-teamlead smk-advisor smk-fable smk-astra"
@@ -38,7 +38,7 @@ cp "$SRC/.claude/lib/supervisor-sessions.sh" "$SRC/.claude/lib/session_profile_c
 cp "$SRC/.claude/team/sessions/Supervisor.settings.json" "$SRC/.claude/team/sessions/Advisor.settings.json" \
   "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 mkdir -p "$MAIN/.agents/reference/roles"; cp "$SRC"/.agents/reference/roles/*.md "$MAIN/.agents/reference/roles/"
-cp "$SRC/.claude/hooks/session-registry.sh" "$SRC/.claude/hooks/supervisor-notify.sh" "$MAIN/.claude/hooks/"
+cp "$SRC/.claude/hooks/session-registry.sh" "$MAIN/.claude/hooks/"
 mkdir -p "$MAIN/tools"
 cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tests"
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
@@ -210,18 +210,20 @@ jq -e '(.permissions.deny | index("Bash(gh pr merge*)")) and (.permissions.deny 
   and (.permissions.deny | index("Bash(az repos pr update*)") | not)' "$PF" >/dev/null \
   || { cp "$PF" "$WORK/out"; fail "(3) provider github PR deny"; }
 prof '.teams.pr_provider = "azure-devops" | del(.teams.github)'
-# The kit's role-hooks file gives Notification and Stop only — never PreToolUse, never permissions.
+# The kit's role-hooks file gives Stop only — never PreToolUse, never permissions, never an old
+# kit's Notification entry (it calls a removed hook).
 run "$MAIN" bash .claude/team/sessions/operator-kit/install.sh --apply; expect 0 "" "(3) kit --apply"
 RH="$KIT/hooks/role-hooks.settings.json"
 cp "$RH" "$WORK/rh.keep"
-jq '.hooks.PreToolUse = [{matcher: "Bash", hooks: [{type: "command", command: "approve-all"}]}]
+jq '.hooks.Notification = [{matcher: "permission_prompt", hooks: [{type: "command", command: "bash x/supervisor-notify.sh"}]}]
+  | .hooks.PreToolUse = [{matcher: "Bash", hooks: [{type: "command", command: "approve-all"}]}]
   | .hooks.PermissionRequest = [{hooks: [{type: "command", command: "approve-all"}]}]
   | .permissions = {allow: ["Bash(*)"]}' "$WORK/rh.keep" > "$RH"
 for r in Supervisor TeamLead; do
   run "$MAIN" $SS materialize "$r"; expect 0 "" "(3) materialize $r with the kit"
-  jq -e '(.hooks | keys) == ["Notification", "Stop"] and (.permissions.allow | index("Bash(*)") | not)
+  jq -e '(.hooks | keys) == ["Stop"] and (.permissions.allow | index("Bash(*)") | not)
     and (tostring | contains("approve-all") | not)' "$TWD/profiles/$r.settings.json" >/dev/null \
-    || { cp "$TWD/profiles/$r.settings.json" "$WORK/out"; fail "(3) $r took more than Notification/Stop from the kit"; }
+    || { cp "$TWD/profiles/$r.settings.json" "$WORK/out"; fail "(3) $r took more than Stop from the kit"; }
 done
 cp "$WORK/rh.keep" "$RH"
 echo "team-smoke-sessions: (3) profiles OK"
@@ -317,19 +319,17 @@ grep -q '^FAIL' "$WORK/out" && fail "(5) preflight green printed a FAIL"
 [ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 10 ] || fail "(5) preflight must print 10 rows"
 for row in "ok team-watch loops beating" "ok escalations have live waiters" \
   "ok mail probe and picked ping per role" "ok team channel loads" "ok operator kit installed" \
-  "ok role profiles" "ok notifier: osascript ok" \
+  "ok role profiles" "ok notifications: config: missing (~/.agent-comms/notify.json) · herdr off · imessage off" \
   "ok health check: none — declared loss: a dead tmux server is noticed by nobody" \
   "ok Claude Code 2.1.301 — unverified: run team-watch.sh ping <role>"; do
   has "$row" "$WORK/out" || fail "(5) row: $row"
 done
 beat; run "$MAIN" env STUB_CLAUDE_VERSION=2.1.318 $SS preflight
 expect 0 "ok Claude Code 2.1.318 — socket wire format verified on 2.1.318" "(5) verified CLI"
-prof '.teams.channel.notifier = "none"'
-# kit.conf carries the notifier, so the kit row shows the drift until the next --apply; the
-# notifier row itself stays ok, with the loss spelled out.
-beat; run "$MAIN" $SS preflight; expect 1 "ok notifier: none — declared loss" "(5) notifier none is an ok row"
-has "FAIL operator kit installed — install.sh --verify exit 1" "$WORK/out" || fail "(5) kit drift after a notifier change"
-prof '.teams.channel.notifier = "osascript"'
+# A sender that cannot report its state is a FAIL row, not a silent ok.
+cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.keep"; printf '#!/usr/bin/env bash\necho broken; exit 1\n' > "$MAIN/.claude/lib/notify.sh"
+beat; run "$MAIN" $SS preflight; expect 1 "FAIL notifications — notify.sh --check exit 1: broken" "(5) a failing notify.sh --check"
+cp "$WORK/notify.keep" "$MAIN/.claude/lib/notify.sh"
 beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 1 "\"crossSessionInbound\": \"accept\" to $HOME/.claude/settings.json" "(5) bypass without crossSessionInbound"
 [ ! -e "$HOME/.claude/settings.json" ] || fail "(5) preflight wrote the user settings"
