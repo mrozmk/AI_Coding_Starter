@@ -644,8 +644,8 @@ echo "team-smoke-host: (34) consent OK"
 TMUX_RE='(^|[;&|(]|[[:space:]])tmux[[:space:]]+(-S[[:space:]]+[^[:space:]]+[[:space:]]+)?(new-session|has-session|kill-session|capture-pane|send-keys|display-message|list-clients|set-option|attach)'
 cat > "$WORK/tmux-exceptions" <<'EXC'
 .claude/lib/session-host-lib.sh	.*	— (the driver)
-.claude/hooks/session-registry.sh	display-message|has-session	6 (this terminal's handle through $TMUX's socket)
-.claude/hooks/inbox-count.sh	display-message	6 (this terminal's handle through $TMUX's socket)
+.claude/hooks/session-registry.sh	display-message|has-session	10 (this terminal's handle through $TMUX's socket)
+.claude/hooks/inbox-count.sh	display-message	10 (this terminal's handle through $TMUX's socket)
 EXC
 : > "$WORK/tmux-hits"
 for f in "$SRC"/.claude/lib/*.sh "$SRC"/.claude/lib/*.py "$SRC"/.claude/hooks/*.sh; do
