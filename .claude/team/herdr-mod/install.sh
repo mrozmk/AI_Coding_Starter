@@ -10,10 +10,11 @@
 #     validated again; a second run changes nothing. Herdr's own layouts (main, terminals, win98)
 #     are refused: Herdr restores them on its next start — clone one first (layout.clone).
 #   --undock <layout>: removes exactly what --dock added (dock.py says when it cannot).
-#   --rollback: undocks every layout --dock recorded, then removes the folder (with the editor
-#     files Herdr adds), only when it carries the marker and holds nothing else.
+#   --rollback: undocks every layout --dock recorded, removes the folder (with Herdr's editor files;
+#     only when it carries the marker and holds nothing else) and the strip's list (data/ below).
 #   --dry-run: prints what it would do and writes nothing.
-# <app home> = $HERDR_APP_HOME, else ~/.config/herdr-app. Nothing else there is read or written: no
+# <app home> = $HERDR_APP_HOME, else ~/.config/herdr-app. Nothing else there is read or written but
+# data/harness-notify/store.json, the list Herdr keeps for the strip (--rollback removes it): no
 # setting, no other layout, no other mod. Outside it, install / update creates only the mod's spool,
 # ~/.agent-comms/outbox/herdr/{new,done} (mode 700, as notify.sh does); --rollback leaves it.
 # Switch the channel on in ~/.agent-comms/notify.json (herdr.enabled).
@@ -32,8 +33,9 @@ FILES="main.js spool.js mod.json README.md"
 SHIPPED=" main terminals win98 "   # Herdr replaces these whole on every start
 SPOOL="$HOME/.agent-comms/outbox/herdr"   # the mod watches new/ from its first start
 DOCK=(python3 -I "$HERE/dock.py")
+STORE="$APP/data/harness-notify"   # Herdr's store of the mod's localStorage: the strip's waiting list
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 mode=install dry="" layout=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -83,6 +85,15 @@ commit() {
   echo "  backup: $bak"
 }
 
+# drop_store — remove the strip's list, so a reinstall does not show items from before. Only the
+# file the mod's localStorage is kept in; anything else in that folder stays, and is named.
+drop_store() {
+  [ -d "$STORE" ] || return 0
+  rm -f "$STORE/store.json"
+  if rmdir "$STORE" 2>/dev/null; then echo "removed $STORE"
+  else echo "left $STORE: it holds files the mod did not write"; fi
+}
+
 record() {  # record add|del <layout>
   local f="$DST/$DOCKED" rest
   rest="$(grep -vxF -- "$2" "$f" 2>/dev/null || true)"
@@ -129,7 +140,7 @@ case "$mode" in
     else echo "nothing to undock in $lf"; fi
     [ ! -f "$DST/$MARK" ] || record del "$layout" ;;
   rollback)
-    [ -e "$DST" ] || { echo "nothing to remove: $DST is absent"; exit 0; }
+    [ -e "$DST" ] || { echo "nothing to remove: $DST is absent"; drop_store; exit 0; }
     # Herdr writes its own editor files into a mod folder on first load (jsconfig.json, *.d.ts);
     # those go too. Anything else is someone's: refuse before removing a thing.
     app="$(cd "$DST" && ls -A | grep -xE "$APPFILES" || true)"
@@ -148,5 +159,6 @@ case "$mode" in
     done
     for f in $FILES $MARK $DOCKED $app; do rm -f "$DST/$f"; done
     rmdir "$DST"
-    echo "removed $DST" ;;
+    echo "removed $DST"
+    drop_store ;;
 esac

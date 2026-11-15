@@ -3,6 +3,18 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The Herdr strip can be cleared, and `--rollback` removes its list (#39)
+
+**Before:** the strip's waiting list lived in Herdr's store, `~/.config/herdr-app/data/harness-notify/store.json`,
+outside the mod folder. `install.sh --rollback` left it, so a reinstall showed items from before
+(for up to 24 hours), and an item answered elsewhere could only be clicked away one by one.
+
+**Now:** **clear**, at the strip's right end, drops every item. `--rollback` removes
+`data/harness-notify/store.json` (and the folder when nothing else is in it), also when the mod
+folder is already gone. The 24-hour expiry is unchanged.
+
+**Action:** none. To drop a list left by an earlier rollback, run `install.sh --rollback` once more.
+
 ## The `/roles` pointers and the old-name bridge are gone (#33, after v3.2.0)
 
 **Before (v3.2.0):** `/session-role`, `/sessions-up`, `/mail-role`, `/monitoring` and `/team-watch`

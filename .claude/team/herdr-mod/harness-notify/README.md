@@ -12,7 +12,11 @@ per event into `~/.agent-comms/outbox/herdr/new/`, but only when the answering s
 - For each entry younger than 24 hours it posts **one** toast with Herdr's `notify()`. Clicking the
   toast runs `agent.focus` on the answering session's terminal.
 - The strip at the bottom keeps the toasts not yet clicked (a dot, then `2 waiting — …`). A click runs the
-  same jump and drops the item. Items older than 24 hours fall off.
+  same jump and drops the item. **clear**, at the strip's right end, drops every item: use it when
+  you answered elsewhere (in the stage's window, by iMessage), since nothing tells the strip that.
+  Items older than 24 hours fall off by themselves, also across a Herdr restart.
+- Herdr keeps that list for the mod in `~/.config/herdr-app/data/harness-notify/store.json`
+  (the mod's `localStorage`), outside the mod folder.
 - It moves each entry to `~/.agent-comms/outbox/herdr/done/` with `mv`, so an entry is shown once.
   Entries older than 24 hours, and entries it cannot read, are moved without a toast.
 - Every 60 seconds it touches `~/.agent-comms/outbox/herdr/.mod-alive`, so `notify.sh --check` can
@@ -49,7 +53,12 @@ bash .claude/team/herdr-mod/install.sh --rollback                   # undock eve
 The installer writes only `~/.config/herdr-app/mods/harness-notify/` (`$HERDR_APP_HOME` picks
 another app home). It never overwrites a folder of that name that it did not install. Outside the
 app home it creates only the spool, `~/.agent-comms/outbox/herdr/new/` and `done/` (mode 700), so
-the strip's heartbeat works before the first event; `--rollback` leaves the spool.
+the strip's heartbeat works before the first event.
+
+**What `--rollback` leaves:** the spool (`~/.agent-comms/outbox/herdr/`, which `notify.sh` owns
+and prunes) and every layout it did not dock. It removes the strip's list,
+`data/harness-notify/store.json`, so a reinstall starts with no item from before; another file in
+that folder stays, and it says so. It does this even when the mod folder is already gone.
 
 **Where the strip goes: only where you dock it.** `mod.json` says `"place": "none"`, so Herdr
 docks the strip nowhere by itself, and without `--dock` no layout file changes. Name the layout
