@@ -89,6 +89,9 @@ for name, skill in (("correctness-reviewer", "code-review"), ("structure-reviewe
     check(fm.get("skills") == [skill] == pm.get("skills"), f"{name}-fallback: skills differ")
     check(fm.get("tools") == pm.get("tools"), f"{name}-fallback: tools differ")
     check(f".claude/agents/{name}.md" in body, f"{name}-fallback: does not take {name}'s contract")
+    never = read(f".claude/agents/{name}.md").split("## Never", 1)[-1].split("\n## ", 1)[0]
+    check("`rm -rf`" in never and "mktemp -d" in never and "never cleaned up" in never,
+          f"{name}: Never list lacks the no-rm-rf / fresh-mktemp fixture rule")
 
 qa = read(".claude/team/prompts/qa.md")
 step5 = qa.split("\n5. ", 1)[-1].split("\n6. ", 1)[0]

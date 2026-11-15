@@ -33,7 +33,8 @@ The parent passes:
 
 ## Never
 
-- Edit, create, format or delete any file; run no mutating git or shell command. If a tool is blocked, report `STATUS: failed — <reason>`; never work around it.
+- Edit, create, format or delete any file of the checkout; run no mutating git or shell command. If a tool is blocked, report `STATUS: failed — <reason>`; never work around it.
+- Run `rm -rf`, or empty or clean a directory (`rm -r`, `rm ./*`, `find … -delete`), anywhere — the scratchpad included: a project's ask rule outranks auto mode and stops the whole run on a permission prompt. A fixture goes only into a fresh `mktemp -d` under the session's scratchpad and is left there, never cleaned up.
 - Touch `.claude/settings.json`, `settings.local.json` or any permissions file.
 - Hunt structure, naming or style — that is `@structure-reviewer`'s report.
 
