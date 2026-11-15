@@ -101,7 +101,7 @@ expect 0 "" "(e) the global TeamLead in the main checkout is not confined"
 echo "team-smoke-20: (e) write guard OK"
 
 # ---- (f) the global-role hooks stay silent in a clone ------------------------------------------
-for f in session-role.sh monitoring-rearm.sh; do
+for f in monitoring-rearm.sh; do   # session-role.sh is gone (session-registry.sh: part roles)
   lhook $f '{"session_id": "sid-lead"}'; expect 0 "" "(f) $f"
   [ ! -s "$WORK/out" ] || fail "(f) $f printed in the clone"
 done

@@ -278,9 +278,6 @@ EGRESS="$H/guard-team-egress.sh\""
 egress_merge Bash
 egress_merge WebFetch
 egress_merge Bash "$H/guard-destructive-sql.sh\"" D
-# The role sessions' bootstrap directive; silent outside a role session and in a team clone.
-hook_merge S SessionStart "$H/session-role.sh\"" '["startup","resume","clear","compact"]' false '' \
-  '{"timeout":5}'
 # A synchronous hook registered under several entries (one command, many events), which hook_merge
 # (one registration per command) cannot express. Identified per event and exact matcher; it must run
 # synchronously (async events can land out of order) and carry its exact `if` filter when it has one —
@@ -338,8 +335,10 @@ hook_retire() {
 }
 
 # The session registry (roles, stages, ad-hoc sessions, and the per-run TeamLead's identity refresh
-# and socket registration, which teamlead-register.sh did before) and the prompt-time inbox count.
+# and socket registration, which teamlead-register.sh did before; the role contract line, which
+# session-role.sh did before) and the prompt-time inbox count.
 hook_retire "$H/teamlead-register.sh\""
+hook_retire "$H/session-role.sh\""
 hook_merge L SessionStart "$H/session-registry.sh\"" '["startup","resume","clear","compact"]' false '' \
   '{"timeout":5}'
 hook_merge I UserPromptSubmit "$H/inbox-count.sh\"" '[]' false '' '{"timeout":3}'
@@ -357,6 +356,10 @@ NEW="$(printf '%s' "$NEW" | jq '
    "Bash(bash .claude/lib/supervisor-sessions.sh freeze status*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)",
    "Bash(bash .claude/lib/supervisor-sessions.sh start *)", "Bash(bash .claude/lib/supervisor-sessions.sh stop *)",
    "Bash(bash .claude/lib/supervisor-sessions.sh up*)", "Bash(printenv TEAM_SESSION_ROLE)",
+   # /roles: start, list, stop and place the role sessions; taking a window (here) is asked.
+   "Bash(bash .claude/lib/roles.sh)", "Bash(bash .claude/lib/roles.sh up*)",
+   "Bash(bash .claude/lib/roles.sh status*)", "Bash(bash .claude/lib/roles.sh stop *)",
+   "Bash(bash .claude/lib/roles.sh place *)",
    # test-gate.sh is not matched by team-*.sh.
    "Bash(bash .claude/lib/test-gate.sh*)",
    # The cost writer; the core settings allow only its no-op stage end step.
@@ -378,7 +381,8 @@ NEW="$(printf '%s' "$NEW" | jq '
      # the role-session launcher Operator actions: clearing a freeze, the rollback, here.
      "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
      "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
-     "Bash(bash .claude/lib/supervisor-sessions.sh here *)"] as $ask
+     "Bash(bash .claude/lib/supervisor-sessions.sh here *)",
+     "Bash(bash .claude/lib/roles.sh here *)"] as $ask
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"

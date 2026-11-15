@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+# The project's role sessions (teams.sessions): start what is missing, report, stop, take a window.
+# Usage: bash .claude/lib/roles.sh [up [<Role>]] | status | stop [<Role>|all] | here <Role> | place <address>
+#   up      start every standing, enabled role that is not running (idempotent, one at a time)
+#   status  per role: backend, alive|gone, state, inbox count, session id, last seen
+#   stop    end a role (/exit, then a kill after 15 s); its record stays, marked stopped_at
+#   here    this plain terminal becomes <Role> (not from inside Claude Code)
+#   place   put a window in its tab slot (tmux: prints how to look at it)
+# Each role's cli, model, effort, settings profile, contract and place: teams.sessions in
+# .claude/project-profile.json (roles-lib.sh). Exit: 0 ok · 1 a role failed or another /roles is
+# running · 2 usage or validation · 6 no session host.
+#   e.g. bash .claude/lib/roles.sh        then: bash .claude/lib/roles.sh status
+set -uo pipefail
+
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+LIB="$(cd "$(dirname "$0")" && pwd)"
+command -v jq >/dev/null 2>&1 || { echo "roles: jq is required" >&2; exit 1; }
+. "$LIB/session-host-lib.sh"
+. "$LIB/roles-lib.sh"
+
+cmd="${1:-up}"; [ $# -eq 0 ] || shift
+case "$cmd" in
+  up|status|stop|here|place) ;;
+  -h|--help|help) usage ;;
+  *) echo "roles: unknown verb '$cmd'" >&2; usage ;;
+esac
+MAIN="$(sh_main_root "")" || exit 2
+export ROLES_ROOT="$MAIN"
+REG="$(sh_reg_dir "$MAIN")"
+
+# The launch line's bootstrap (spec §3): a SessionStart hook only adds context and starts no turn.
+boot() {
+  echo "You are $1. Follow the role contract the session context names and reconcile now — inbox \`new/\`, open records, pending decisions."
+}
+new_sid() {
+  local s
+  s="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]')" || s=""
+  [ -n "$s" ] || s="$(python3 -I -c 'import uuid; print(uuid.uuid4())')"
+  echo "$s"
+}
+# The claude --name of a role: <Role><teams.channel.mail_suffix>, as the operator kit's health check
+# looks for it.
+claude_name() {
+  local x
+  x="$( . "$LIB/team-channel.sh" && team_channel_names "$MAIN" && printf '%s' "${TEAM_CHANNEL_SUFFIX:-}" )" 2>/dev/null || x=""
+  echo "$1$x"
+}
+# The channel's CODEX_HOME for a Claude role (its codex calls); else the caller's.
+codex_home() {
+  local h
+  h="$( . "$LIB/team-channel.sh" && team_channel_load "$MAIN" && printf '%s' "${TEAM_CHANNEL_CODEX_HOME:-}" )" 2>/dev/null || h=""
+  echo "${h:-${CODEX_HOME:-}}"
+}
+standing() { roles_list --standing | grep -qxF "$1"; }
+
+# materialize <role…> — each Claude role with a settings template gets its own profile
+# (.agents/team/watch/profiles/<Role>.settings.json, env role = the role), then one profile check;
+# a failure or a local allow leak launches nothing.
+materialize() {
+  local r out rc=0 done=""
+  for r in "$@"; do
+    [ -n "$(roles_cfg "$r" settings)" ] || continue
+    out="$(bash "$LIB/supervisor-sessions.sh" materialize "$r" 2>&1)" \
+      || { printf '%s\n' "$out" | tail -n 1 >&2; echo "refused: $r profile not materialised — nothing launched" >&2; return 1; }
+    done="$done $r"
+  done
+  [ -n "$done" ] || return 0
+  # shellcheck disable=SC2086
+  out="$(python3 -I "$LIB/session_profile_check.py" "$MAIN" $done 2>&1)" || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    3) printf '%s\n' "$out" | grep ' LEAK: ' >&2
+       echo "refused: local allow leak in settings.local.json — nothing launched" >&2 ;;
+    *) printf '%s\n' "$out" | grep -v ' note: ' >&2
+       echo "refused: role profile check failed (exit $rc) — nothing launched" >&2 ;;
+  esac
+  return 1
+}
+
+# launch_cmd <role> <session id> → the one shell line the session runs. A Claude role keeps its
+# pane after an exit (`; read`, so an error stays readable; start replaces that pane next time).
+launch_cmd() {
+  local r="$1" m e s c
+  m="$(roles_cfg "$r" model)" && e="$(roles_cfg "$r" effort)" || return 2
+  if [ "$(roles_cfg "$r" cli)" = codex ]; then
+    c="$(roles_cfg "$r" contract)"
+    echo "codex --no-daemon -m $m -c model_reasoning_effort=$e $(sh_quote "$(boot "$r") Contract: $c")"
+    return 0
+  fi
+  s="$(roles_cfg "$r" settings)"
+  echo "claude --name $(sh_quote "$(claude_name "$r")") --session-id $2 --model $m --effort $e${s:+ --settings .agents/team/watch/profiles/$r.settings.json} ${TEAM_SESSIONS_CLAUDE_FLAGS:+$TEAM_SESSIONS_CLAUDE_FLAGS }-- $(sh_quote "$(boot "$r")"); read"
+}
+
+# A folder trust dialog is reported, never answered. A Claude role is past it once its hooks write
+# the state file; a Codex role once its prompt shows. TEAM_ROLES_TRUST_SECS (8) bounds the look.
+needs_trust() {  # needs_trust "<role>:<name>:<cli> …" → the roles waiting at the dialog
+  local pend="$1" left i=0 max="${TEAM_ROLES_TRUST_SECS:-8}" t r n c st esc=""
+  while [ -n "$pend" ] && [ "$i" -lt "$max" ]; do
+    left=""
+    for t in $pend; do
+      r="${t%%:*}"; n="${t#*:}"; c="${n#*:}"; n="${n%%:*}"
+      if [ "$c" = claude ] && [ -n "$(sh_state "$MAIN" "$r")" ]; then continue; fi
+      st="$(sh_screen_state "$(sh_tmux_read "$n" 40 2>/dev/null || true)" "$c")"
+      case "$st" in
+        trust) echo "$r"; continue ;;
+        ready) continue ;;
+        update) case " $esc " in *" $r "*) ;; *) sh_tmux send-keys -t "=$n:" Escape || true; esc="$esc $r" ;; esac ;;
+      esac
+      left="$left $t"
+    done
+    pend="${left# }"
+    [ -z "$pend" ] || { sleep 1; i=$((i + 1)); }
+  done
+}
+
+window_line() {  # the window this ran in, when it is no role's terminal
+  local me="" f
+  if [ -n "${HC_TERMINAL_ID:-}" ]; then me="$HC_TERMINAL_ID"
+  elif [ -n "${TMUX:-}" ]; then me="$(sh_tmux display-message -p '#S' 2>/dev/null || true)"
+  fi
+  [ -n "$me" ] || return 0
+  for f in "$REG"/*.json; do
+    [ -f "$f" ] || continue
+    jq -e --arg h "$me" '.kind == "role" and (.handle == $h or .name == $h)' "$f" >/dev/null 2>&1 && return 0
+  done
+  echo "This window is not a role — close it."
+}
+
+up() {
+  local only="${1:-}" list r rc=0 st todo="" res="" out err cli sid ch cmd name trust="" wait=""
+  sh_pick_host "$MAIN" >/dev/null || exit $?
+  roles_validate || exit 2
+  roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
+  trap 'roles_unlock "$REG"' EXIT
+  list="$(roles_list --standing)" || exit 2
+  if [ -n "$only" ]; then
+    printf '%s\n' "$list" | grep -qxF "$only" \
+      || { echo "error: $only is not a standing, enabled role of teams.sessions" >&2; exit 2; }
+    list="$only"
+  fi
+  for r in $list; do
+    sh_alive "$r" --main "$MAIN" 2>/dev/null; st=$?
+    case "$st" in
+      0) res="$res$r: already running"$'\n' ;;
+      3) todo="$todo $r" ;;
+      6) res="$res$r: recorded on herdr — left as it is (no Herdr backend yet)"$'\n' ;;
+      *) res="$res$r: failed: liveness probe (exit $st)"$'\n'; rc=1 ;;
+    esac
+  done
+  # shellcheck disable=SC2086
+  [ -z "$todo" ] || materialize $todo || exit 1
+  err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
+  for r in $todo; do
+    cli="$(roles_cfg "$r" cli)"; sid=""; ch=""
+    if [ "$cli" = claude ]; then sid="$(new_sid)"; ch="$(codex_home)"; fi
+    cmd="$(launch_cmd "$r" "$sid")" || { res="$res$r: failed: bad model or effort"$'\n'; rc=1; continue; }
+    if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli "$cli" \
+         --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} \
+         ${sid:+--session-id "$sid" --program claude --claude-home auto} -- "$cmd" 2>"$err")"; then
+      res="$res$r: started"$'\n'; wait="$wait $r:$name:$cli"
+    else
+      res="$res$r: failed: $(sed 's/^session-host: //' "$err" | tail -n 1)"$'\n'; rc=1
+    fi
+  done
+  rm -f "$err"
+  [ -z "$wait" ] || trust="$(needs_trust "${wait# }")"
+  printf '%s' "$res" | awk -v t=" $(echo $trust) " '{ r = $0; sub(/:.*/, "", r)
+    if ($0 == r ": started" && index(t, " " r " ")) print r ": started (needs trust)"; else print }'
+  for r in $list; do
+    case "$res" in *"$r: started"*|*"$r: already running"*)
+      out="$(sh_hint "$r" --main "$MAIN" 2>/dev/null)" && echo "  $r: $out" ;; esac
+  done
+  window_line
+  return "$rc"
+}
+
+status() {
+  local r rc=0 j b alive state n sid seen
+  roles_validate || rc=2
+  printf '%-12s %-7s %-7s %-9s %-5s %-36s %s\n' ROLE BACKEND ALIVE STATE INBOX SESSION LAST_SEEN
+  for r in $(roles_list --standing); do
+    b="$(sh_record_get "$MAIN" "$r" backend)"
+    if j="$(sh_status "$r" --main "$MAIN" 2>/dev/null)"; then
+      state="$(jq -r '.state // "-"' <<<"$j")"
+      if [ "$state" = gone ]; then alive=gone; else alive=alive; fi
+    elif [ "$b" = herdr ]; then alive=unknown state=-
+    else alive=unknown state=-; rc=1
+    fi
+    n="$(ls "$MAIN/.agents/team/inbox/$r/new" 2>/dev/null | wc -l | tr -d ' ')"
+    sid="$(sh_record_get "$MAIN" "$r" session_id)"; seen="$(sh_record_get "$MAIN" "$r" last_seen)"
+    printf '%-12s %-7s %-7s %-9s %-5s %-36s %s\n' "$r" "${b:-tmux}" "$alive" "$state" "$n" "${sid:--}" "${seen:--}"
+  done
+  return "$rc"
+}
+
+stop() {
+  local t="${1:-all}" r list rc=0 st
+  if [ "$t" = all ]; then list="$(roles_list --standing)"
+  else
+    roles_is_declared "$t" || { echo "error: $t is not a role of teams.sessions" >&2; exit 2; }
+    list="$t"
+  fi
+  for r in $list; do
+    sh_alive "$r" --main "$MAIN" 2>/dev/null; st=$?
+    case "$st" in
+      0) if sh_kill "$r" --main "$MAIN" --graceful 15 >/dev/null; then
+           [ ! -f "$(sh_record_file "$MAIN" "$r")" ] \
+             || sh_record_put "$MAIN" "$r" '.stopped_at = $at' --arg at "$(sh_utc)"
+           echo "$r: stopped"
+         else echo "$r: still running"; rc=1; fi ;;
+      3) echo "$r: not running" ;;
+      6) echo "$r: recorded on herdr — stop it in Herdr"; rc=1 ;;
+      *) echo "$r: failed: liveness probe (exit $st)"; rc=1 ;;
+    esac
+  done
+  return "$rc"
+}
+
+# here <Role> — this terminal's own handle goes into the record: Herdr's terminal id, the tmux
+# session, or (a plain terminal) this shell's pid and start time, which `exec` keeps for the CLI.
+here() {
+  local r="${1:-}" be h="" name="" cli m e s c t sid="" ch="" w="" flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}"
+  [ -n "$r" ] || usage
+  if [ "${CLAUDECODE:-}" = 1 ]; then
+    echo "refused: a running Claude session cannot take a role — open a new terminal and run: bash .claude/lib/roles.sh here $r" >&2
+    exit 1
+  fi
+  roles_validate || exit 2
+  standing "$r" || { echo "error: $r is not a standing, enabled role of teams.sessions" >&2; exit 2; }
+  sh_alive "$r" --main "$MAIN" 2>/dev/null
+  case $? in
+    0) echo "refused: $r is already running ($(sh_hint "$r" --main "$MAIN" 2>/dev/null))" >&2; exit 1 ;;
+    6) echo "refused: $r is recorded on herdr — stop it there first" >&2; exit 1 ;;
+  esac
+  if [ -n "${HC_TERMINAL_ID:-}" ] && [[ "$HC_TERMINAL_ID" =~ ^[A-Za-z0-9_/-]+$ ]]; then
+    be=herdr h="$HC_TERMINAL_ID" name="$HC_TERMINAL_ID"
+  elif [ -n "${TMUX:-}" ] && name="$(sh_tmux display-message -p '#S' 2>/dev/null)" && [ -n "$name" ]; then
+    be=tmux h="$name"
+  else
+    be=none name=""
+  fi
+  cli="$(roles_cfg "$r" cli)"
+  m="$(roles_cfg "$r" model)" && e="$(roles_cfg "$r" effort)" || exit 2
+  if [ "$cli" = claude ]; then
+    materialize "$r" || exit 1
+    . "$LIB/team-profile.sh"
+    w="$(team_claude_home "$MAIN")" || { echo "refused: $w" >&2; exit 1; }
+    sid="$(new_sid)"; ch="$(codex_home)"
+  fi
+  t="$(tty 2>/dev/null)" || t=none
+  sh_record_put "$MAIN" "$r" '{address: $a, kind: "role", backend: $b, handle: $h, name: $n, cwd: $cwd,
+      cli: $cli, started_at: $at, pid: ($pid | tonumber), pid_start: $ps, tty: $tty}
+    + (if $cli == "claude" then {program: "claude", session_id: $sid} else {} end)' \
+    --arg a "$r" --arg b "$be" --arg h "$h" --arg n "$name" --arg cwd "$MAIN" --arg cli "$cli" \
+    --arg at "$(sh_utc)" --arg pid "$$" --arg ps "$(sh_lstart $$)" --arg tty "$t" \
+    --arg sid "$sid" || { echo "error: the registry record could not be written" >&2; exit 1; }
+  cd "$MAIN" || exit 1
+  # env options first, then the assignments: the role's identity, as the driver gives a started one.
+  set -- -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN
+  [ "$cli" != claude ] || [ -n "$w" ] || set -- "$@" -u CLAUDE_CONFIG_DIR
+  set -- "$@" TEAM_SESSION_ROLE="$r" HARNESS_ADDRESS="$r" HARNESS_MAIN="$MAIN" HARNESS_REGISTRY="$REG" \
+    HARNESS_BACKEND="$be"
+  [ -z "$w" ] || set -- "$@" CLAUDE_CONFIG_DIR="$w"
+  [ -z "$ch" ] || set -- "$@" CODEX_HOME="$ch"
+  if [ "$cli" = codex ]; then
+    c="$(roles_cfg "$r" contract)"
+    exec env "$@" codex --no-daemon -m "$m" -c "model_reasoning_effort=$e" "$(boot "$r") Contract: $c"
+  fi
+  s="$(roles_cfg "$r" settings)"
+  # shellcheck disable=SC2086
+  exec env "$@" claude --name "$(claude_name "$r")" --session-id "$sid" --model "$m" --effort "$e" \
+    ${s:+--settings ".agents/team/watch/profiles/$r.settings.json"} $flags -- "$(boot "$r")"
+}
+
+case "$cmd" in
+  up) up "$@" ;;
+  status) status ;;
+  stop) stop "$@" ;;
+  here) here "$@" ;;
+  place) [ $# -ge 1 ] || usage; sh_hint "$1" --main "$MAIN" ;;
+esac
+exit $?

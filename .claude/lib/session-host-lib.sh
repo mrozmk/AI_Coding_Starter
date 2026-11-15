@@ -216,8 +216,31 @@ sh_backend() {
   case "${b:-tmux}" in
     tmux) echo tmux ;;
     herdr) sh_err "$2: recorded on herdr — not yet supported"; return 6 ;;
+    none) echo none ;;
     *) sh_err "$2: unknown backend '$b' in its registry record"; return 1 ;;
   esac
+}
+
+# A plain terminal (`roles.sh here` outside tmux and Herdr) is recorded as backend none with the
+# shell's pid and its start time; `exec` keeps that pid for the CLI. It is alive while that pid runs
+# with the same start time (a reused pid is not it). It has no screen to read or type into.
+sh_lstart() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
+sh_none_alive() {  # sh_none_alive <main> <address> → 0 alive · 3 gone
+  local p s
+  p="$(sh_record_get "$1" "$2" pid)"; s="$(sh_record_get "$1" "$2" pid_start)"
+  [[ "$p" =~ ^[0-9]+$ ]] && kill -0 "$p" 2>/dev/null && [ -n "$s" ] && [ "$(sh_lstart "$p")" = "$s" ] \
+    && return 0
+  return 3
+}
+# sh_live <main> <address> <backend> → 0 alive · 3 gone · 1 the probe failed
+sh_live() {
+  if [ "$3" = none ]; then sh_none_alive "$1" "$2"; return; fi
+  sh_tmux_alive "$(sh_target "$1" "$2")" "$(sh_record_get "$1" "$2" program)"
+}
+# sh_screen_backend <main> <address> — sh_backend for the verbs that read or type into a screen.
+sh_screen_backend() {
+  local b; b="$(sh_backend "$1" "$2")" || return $?
+  [ "$b" != none ] || { sh_err "$2 runs in a plain terminal — no screen to read or type into"; return 1; }
 }
 
 # --- locks: one target lock per address --------------------------------------------------------
@@ -352,7 +375,10 @@ sh_pid() {
 # sh_pane_pid <main> <address> → the foreground pane's process id of the live session
 # (session-registry.sh's TeamLead ownership probe). Herdr: exit 1 until step 6.
 sh_pane_pid() {
-  [ "$(sh_record_get "$1" "$2" backend)" != herdr ] || return 1
+  case "$(sh_record_get "$1" "$2" backend)" in
+    herdr) return 1 ;;
+    none) sh_none_alive "$1" "$2" || return 1; sh_record_get "$1" "$2" pid; return 0 ;;
+  esac
   sh_pid "$(sh_target "$1" "$2")"
 }
 
@@ -446,11 +472,11 @@ sh_target_lock() {
 sh_target_unlock() { [ -z "$SH_TOOK" ] || sh_unlock "$SH_MAIN" "$1" "$SH_TD"; SH_TOOK=""; }
 
 sh_alive() {
-  local a="$1" n
+  local a="$1" b
   shift; sh_opts "$a" "$@" || return 2
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_target "$SH_MAIN" "$a")" || return 2
-  sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)"
+  b="$(sh_backend "$SH_MAIN" "$a")" || return $?
+  sh_target "$SH_MAIN" "$a" >/dev/null || return 2
+  sh_live "$SH_MAIN" "$a" "$b"
 }
 
 sh_read() {
@@ -464,7 +490,7 @@ sh_read() {
       *) sh_err "read: unknown option $1"; return 2 ;;
     esac
   done
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
+  sh_screen_backend "$SH_MAIN" "$a" || return $?
   n="$(sh_target "$SH_MAIN" "$a")" || return 2
   if [ -n "$hist" ]; then sh_tmux_history "$n" "$hist"; else sh_tmux_read "$n" "$lines"; fi
 }
@@ -477,7 +503,7 @@ sh_keys() {
   if [ "${1:-}" = --target ]; then t="${2:-}"; shift 2 || { sh_err "--target needs a value"; return 2; }; fi
   [ $# -gt 0 ] || { sh_err "keys: no key given"; return 2; }
   for k in "$@"; do sh_key_name "$k" >/dev/null || return 2; done
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
+  sh_screen_backend "$SH_MAIN" "$a" || return $?
   n="$(sh_target "$SH_MAIN" "$a")" || return 2
   [ -n "$t" ] || t="=$n:"
   sh_target_lock "$a" "${SH_OWNER:-keys pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}" \
@@ -495,7 +521,7 @@ sh_type() {
   if [ "${1:-}" = --target ]; then t="${2:-}"; shift 2 || { sh_err "--target needs a value"; return 2; }; fi
   [ $# -ge 1 ] || { sh_err "type: no text given"; return 2; }
   text="$1"; [ "${2:-}" != --enter ] || enter=--enter
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
+  sh_screen_backend "$SH_MAIN" "$a" || return $?
   n="$(sh_target "$SH_MAIN" "$a")" || return 2
   [ -n "$t" ] || t="=$n:"
   sh_target_lock "$a" "${SH_OWNER:-type pid=$$}" "${TEAM_SEND_LOCK_WAIT:-30}" \
@@ -533,6 +559,10 @@ sh_send() {
     | python3 -I "$SH_LIB/team-watch-send.py" "$reg" >/dev/null 2>&1; then
     return 0
   fi
+  if [ "$(sh_record_get "$SH_MAIN" "$a" backend)" = none ]; then
+    sh_log "$SH_MAIN" "$a" "$SH_TD" "doorbell-skipped $(sh_utc) plain terminal, no registration — $text"
+    return 10
+  fi
   n="$(sh_target "$SH_MAIN" "$a")" || return 2
   if ! sh_tmux_alive "$n" 2>/dev/null; then
     why="session $n not alive"; rc=3
@@ -556,7 +586,13 @@ sh_kill() {
   set -- ${SH_ARGS[@]+"${SH_ARGS[@]}"}
   if [ "${1:-}" = --graceful ]; then wait="${2:-}"; [[ "$wait" =~ ^[0-9]+$ ]] \
     || { sh_err "--graceful needs whole seconds"; return 2; }; fi
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
+  h="$(sh_backend "$SH_MAIN" "$a")" || return $?
+  if [ "$h" = none ]; then   # a plain terminal: SIGTERM to the recorded CLI, then wait for it
+    sh_none_alive "$SH_MAIN" "$a" || return 0
+    kill -TERM "$(sh_record_get "$SH_MAIN" "$a" pid)" 2>/dev/null || true
+    while sh_none_alive "$SH_MAIN" "$a" && [ "$waited" -lt "${wait:-5}" ]; do sleep 1; waited=$((waited + 1)); done
+    ! sh_none_alive "$SH_MAIN" "$a"; return
+  fi
   n="$(sh_target "$SH_MAIN" "$a")" || return 2
   sh_tmux_alive "$n" 2>/dev/null || return 0
   if [ -z "$wait" ]; then
@@ -580,9 +616,10 @@ sh_kill() {
 }
 
 sh_hint() {
-  local a="$1" n
+  local a="$1" n b
   shift; sh_opts "$a" "$@" || return 2
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
+  b="$(sh_backend "$SH_MAIN" "$a")" || return $?
+  if [ "$b" = none ]; then echo "a plain terminal (tty $(sh_record_get "$SH_MAIN" "$a" tty))"; return 0; fi
   n="$(sh_target "$SH_MAIN" "$a")" || return 2
   echo "tmux attach -t $n"
 }
@@ -603,12 +640,12 @@ sh_state() {
 # come from the transcript's open tool call, never from the screen. Codex and script sessions have
 # no hook: `unknown` while alive. No state file yet → `starting`.
 sh_status() {
-  local a="$1" n rc cli st j t msg
+  local a="$1" b rc cli st j t msg
   shift; sh_opts "$a" "$@" || return 2
-  sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
-  n="$(sh_target "$SH_MAIN" "$a")" || return 2
-  sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)"; rc=$?
-  case $rc in 0) ;; 3) jq -cn '{state: "gone", kind: null, msg: null, source: "tmux"}'; return 0 ;;
+  b="$(sh_backend "$SH_MAIN" "$a")" || return $?
+  sh_target "$SH_MAIN" "$a" >/dev/null || return 2
+  sh_live "$SH_MAIN" "$a" "$b"; rc=$?
+  case $rc in 0) ;; 3) jq -cn --arg s "$b" '{state: "gone", kind: null, msg: null, source: $s}'; return 0 ;;
     *) return 1 ;; esac
   cli="$(sh_record_get "$SH_MAIN" "$a" cli)"
   if [ -z "$cli" ] || [ "$cli" = codex ] || [ "$cli" = script ]; then
@@ -684,6 +721,9 @@ sh_start() {
   if [ -n "$probe" ]; then be="$(sh_backend "$SH_MAIN" "$a" --for-start)" || return $?
   else be="$(sh_pick_host "$SH_MAIN")" || return $?; fi
   n="$(sh_name "$SH_MAIN" "$a")" || return 2
+  if [ "$(sh_record_get "$SH_MAIN" "$a" backend)" = none ] && sh_none_alive "$SH_MAIN" "$a"; then
+    sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1
+  fi
   if [ -n "$probe" ] && sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)" 2>/dev/null; then
     if [ ! -f "$(sh_record_file "$SH_MAIN" "$a")" ]; then
       # The name is alive and no record of ours names it: our own session with a lost record when it

@@ -129,11 +129,15 @@
       "rework_budget": {"brainstorm": 2, "quick": 1},
       "revise_limit": 3
     },
-    "_sessions_doc": "OPTIONAL — model and effort of each supervision role session, read by supervisor-sessions.sh when it launches the role (start, up, here). Absent = every role runs opus, the Supervisor at effort medium, the TeamLead and the Advisor at high. model: a Claude Code model name or alias; effort: low | medium | high | xhigh | max. An invalid value stops the launch with an error naming the key. A running window picks up a change only after stop <role> + start <role>. TeamLead also sets the per-run TeamLead (default alias `fable`, effort `high`); a pilot pins an exact id. The values below equal the defaults.",
+    "_sessions_doc": "OPTIONAL — the project's role sessions, read by .claude/lib/roles-lib.sh (the one reader) for /roles (roles.sh), the SessionStart contract line and the per-run TeamLead. One key per role, name ^[A-Z][A-Za-z0-9]{1,23}$; a project adds or replaces a role by editing this block, never the code. Fields: cli claude (default) | codex; model (a model name or alias); effort low | medium | high | xhigh | max; settings (Claude only: a .claude/team/sessions/<name>.settings.json template, materialised per role with env TEAM_SESSION_ROLE = the role); contract (a repo-relative file: the hook names it to a Claude role, a Codex role gets it on its launch line); place {tab, slot main | side} (at most one main per tab; Herdr placement); standing (default true; false = per-run configuration nobody starts from /roles — the TeamLead, whose model and effort the runner reads, default fable · high); enabled (default true). Every rule is checked before /roles starts anything. Absent block = the four roles below. The old shape ({model, effort} only) still reads, with these values as defaults for the missing fields; a legacy Advisor key is read as Fable with a warning. A running window picks up a change only after /roles stop <Role> and /roles.",
     "sessions": {
-      "Supervisor": {"model": "opus", "effort": "medium"},
-      "TeamLead": {"model": "opus", "effort": "high"},
-      "Advisor": {"model": "opus", "effort": "high"}
+      "Supervisor": {"cli": "claude", "model": "opus", "effort": "medium", "settings": "Supervisor",
+                     "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Lead", "slot": "main"}},
+      "Fable": {"cli": "claude", "model": "fable", "effort": "high", "settings": "Advisor",
+                "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
+      "Astra": {"cli": "codex", "model": "astra", "effort": "high",
+                "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
+      "TeamLead": {"standing": false, "cli": "claude", "model": "fable", "effort": "high"}
     }
   },
 

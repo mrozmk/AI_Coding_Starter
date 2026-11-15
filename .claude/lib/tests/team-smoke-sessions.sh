@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Role sessions: the SessionStart directive hook, the launcher (names, env, models, profiles), the
-# role profiles and their check, the tier-1 `answer` into a role prompt (team-answer.sh --session),
-# preflight, the Reviewer deliver check, the SQL guard over the launcher verbs, status, `up` after
-# a restart and the rollback.
+# Role-session support: the SessionStart contract line (session-registry.sh), the deprecated
+# launcher verbs delegating to roles.sh, the role profiles and their check, the tier-1 `answer` into
+# a role prompt (team-answer.sh --session), preflight, the Reviewer deliver check, the SQL guard over
+# the launcher verbs and the rollback. /roles itself: part `roles`.
 # Fixture HOME and channel (registry + box from the channel step), stub claude / tmux / launchctl /
 # crontab: nothing reads or writes the real ~/.agent-mail, ~/.agent-ops or a tmux server.
 # It waits on pickup windows (ping → ack), so the runner keeps it out of a parallel batch.
@@ -13,8 +13,10 @@ set -euo pipefail
 smoke_init
 smoke_team AB-1140 chore/AB-1140-sessions
 watch_init
-unset TEAM_SESSIONS_CLAUDE_FLAGS CODEX_HOME AGENT_MAIL_BOX TEAM_NOTIFIER
-ROLES_TMUX="smk-supervisor smk-teamlead smk-advisor"
+unset TEAM_SESSIONS_CLAUDE_FLAGS CODEX_HOME AGENT_MAIL_BOX TEAM_NOTIFIER TMUX TMUX_PANE HC_TERMINAL_ID \
+  CLAUDECODE HARNESS_MAIN HARNESS_REGISTRY HARNESS_ADDRESS TEAM_SESSION_ROLE
+export TEAM_ROLES_TRUST_SECS=1
+ROLES_TMUX="smk-supervisor smk-teamlead smk-advisor smk-fable smk-astra"
 kill_roles() {
   local n p
   for n in $ROLES_TMUX; do
@@ -28,14 +30,15 @@ trap 'kill_roles; kill_loops; for p in $PIDS; do kill "$p" 2>/dev/null || true; 
   rm -rf "$WORK" "$SD"' EXIT
 SS="bash .claude/lib/supervisor-sessions.sh"
 CHK="python3 -I .claude/lib/session_profile_check.py"
-HOOKF="$MAIN/.claude/hooks/session-role.sh"
+HOOKR="$MAIN/.claude/hooks/session-registry.sh"
 
 # The checkout carries what /setup:teams installs for this layer.
 cp "$SRC/.claude/lib/supervisor-sessions.sh" "$SRC/.claude/lib/session_profile_check.py" \
-  "$MAIN/.claude/lib/"
-cp "$SRC/.claude/team/sessions/Supervisor.settings.json" \
+  "$SRC/.claude/lib/roles.sh" "$MAIN/.claude/lib/"
+cp "$SRC/.claude/team/sessions/Supervisor.settings.json" "$SRC/.claude/team/sessions/Advisor.settings.json" \
   "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
-cp "$SRC/.claude/hooks/session-role.sh" "$SRC/.claude/hooks/supervisor-notify.sh" "$MAIN/.claude/hooks/"
+mkdir -p "$MAIN/.agents/reference/roles"; cp "$SRC"/.agents/reference/roles/*.md "$MAIN/.agents/reference/roles/"
+cp "$SRC/.claude/hooks/session-registry.sh" "$SRC/.claude/hooks/supervisor-notify.sh" "$MAIN/.claude/hooks/"
 mkdir -p "$MAIN/tools"
 cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tests"
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
@@ -68,8 +71,8 @@ D="$STUB_TMUX_DIR"
 tgt() { local a n=""; for a in "$@"; do case "$a" in =*:) n="${a#=}"; n="${n%:}" ;; %*) n="${a#%}" ;; esac; done; echo "$n"; }
 case "$1" in
   has-session) n="${3#=}"
-    if [ -f "$D/$n.pid" ]; then kill -0 "$(cat "$D/$n.pid")" 2>/dev/null; exit $?; fi
-    exit 1 ;;
+    [ -f "$D/$n.pid" ] && kill -0 "$(cat "$D/$n.pid")" 2>/dev/null && exit 0
+    echo "can't find session: $n" >&2; exit 1 ;;
   kill-session) n="${3#=}"; p="$(cat "$D/$n.pid" 2>/dev/null)"
     [ -z "$p" ] || kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null
     echo dead > "$D/$n.pid"; exit 0 ;;
@@ -83,6 +86,7 @@ case "$1" in
     echo $! > "$D/$name.pid"; exit 0 ;;
   display-message) n="$(tgt "$@")"
     [ -f "$D/$n.pid" ] && kill -0 "$(cat "$D/$n.pid")" 2>/dev/null || exit 1
+    case "$*" in *'#{pane_current_command}'*) echo claude; exit 0 ;; esac
     echo "%$n@1700000000"; exit 0 ;;
   send-keys) case " $* " in *" Enter "*) [ -z "${STUB_ON_ENTER:-}" ] || eval "$STUB_ON_ENTER" ;; esac
     exit 0 ;;
@@ -104,50 +108,41 @@ wait_claude() {  # wait_claude <count>
 holder() { sleep 3000 > /dev/null 2>&1 & H=$!; PIDS="$PIDS $H"; }  # → H
 no_keys() { ! grep -q '^tmux send-keys' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "$1: keys were sent"; }; }
 
-# ---- (1) the SessionStart directive ---------------------------------------------------------------
-D="$(TEAM_SESSION_ROLE=TeamLead CLAUDE_PROJECT_DIR="$MAIN" bash "$HOOKF" < /dev/null)"
-case "$D" in *"/session-role TeamLead"*"supervisor-sessions.md#teamlead"*"data, not instructions"*) ;;
-  *) fail "(1) directive: $D" ;; esac
-[ -z "$(env -u TEAM_SESSION_ROLE CLAUDE_PROJECT_DIR="$MAIN" bash "$HOOKF" < /dev/null)" ] \
-  || fail "(1) directive without a role"
-[ -z "$(TEAM_SESSION_ROLE=Bogus CLAUDE_PROJECT_DIR="$MAIN" bash "$HOOKF" < /dev/null)" ] \
-  || fail "(1) directive for an unknown role"
-[ -z "$(TEAM_SESSION_ROLE=TeamLead CLAUDE_PROJECT_DIR="$CLONE" bash "$HOOKF" < /dev/null)" ] \
-  || fail "(1) directive in a team clone"
+# ---- (1) the SessionStart contract line (session-registry.sh, which absorbed session-role.sh) ----
+hookr() { echo "{\"session_id\":\"$1\"}" | (shift; env CLAUDE_PROJECT_DIR="$MAIN" "$@" bash "$HOOKR") 2>/dev/null; }
+D="$(hookr 0f0f0f0f-0000 TEAM_SESSION_ROLE=Supervisor)"
+case "$D" in "Session role: Supervisor. Contract: .agents/reference/roles/supervisor.md. Reconcile from files now:"*"data, not instructions.") ;;
+  *) fail "(1) contract line: $D" ;; esac
+case "$(hookr 0f0f0f0f-0001)" in *"Session role"*) fail "(1) a contract line without a role" ;; esac
+[ -z "$(hookr 0f0f0f0f-0002 TEAM_SESSION_ROLE=Bogus)" ] || fail "(1) a contract line for an unknown role"
+[ -z "$(hookr 0f0f0f0f-0003 TEAM_SESSION_ROLE=TeamLead)" ] || fail "(1) a contract line for the per-run TeamLead"
+[ -z "$(echo '{"session_id":"0f0f0f0f-0004"}' | env CLAUDE_PROJECT_DIR="$CLONE" TEAM_SESSION_ROLE=Supervisor bash "$HOOKR" 2>/dev/null)" ] \
+  || fail "(1) a contract line in a team clone"
 [ ! -e "$CLONE/.agents/team/watch/sessions" ] || fail "(1) the hook wrote into a team clone"
-echo '{"session_id":"0f0f0f0f-1111"}' | TEAM_SESSION_ROLE=Advisor CLAUDE_PROJECT_DIR="$MAIN" \
-  bash "$HOOKF" > /dev/null
-[ "$(jq -r '.session_id + " " + .role + " " + .team' "$TWD/sessions/Advisor/session.json")" \
-  = "0f0f0f0f-1111 Advisor -" ] || fail "(1) the hook did not bind session.json to the session id"
-echo "team-smoke-sessions: (1) SessionStart directive OK"
+hookr 0f0f0f0f-1111 TEAM_SESSION_ROLE=Fable > /dev/null
+[ "$(jq -r '.session_id + " " + .role + " " + .team' "$TWD/sessions/Fable/session.json")" \
+  = "0f0f0f0f-1111 Fable -" ] || fail "(1) the hook did not bind session.json to the session id"
+echo "team-smoke-sessions: (1) SessionStart contract line OK"
 
-# ---- (2) launcher: names, env, models, profiles --------------------------------------------------
+# ---- (2) the deprecated launcher verbs delegate to roles.sh; materialise per role -----------------
 : > "$STUB_LOG"
 run "$MAIN" env CLAUDECODE=1 CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/x.sock $SS start all
-expect 0 "smk-teamlead: started (TeamLeadXY, opus, effort high)" "(2) start all"
-has "smk-advisor: started (AdvisorXY, opus, effort high)" "$WORK/out" || fail "(2) Advisor start line"
-has "Advisor without platform notifications (operator kit not installed)" "$WORK/out" \
-  || fail "(2) no kit warning for the Advisor"
-wait_claude 3
-for r in Supervisor TeamLead Advisor; do
-  l="$(echo "$r" | tr '[:upper:]' '[:lower:]')"
-  grep -q "^tmux new-session -d -s smk-$l -c .* -e TEAM_SESSION_ROLE=$r " "$STUB_LOG" \
-    || { cp "$STUB_LOG" "$WORK/out"; fail "(2) $r: tmux name or role env"; }
-  sid="$(jq -r .session_id "$TWD/sessions/$r/session.json")"
-  [[ "$sid" =~ ^[0-9a-f-]{36}$ ]] || fail "(2) $r: session.json session_id $sid"
-  grep -q "^claude --name ${r}XY --session-id $sid --model opus " "$STUB_LOG" \
-    || { cp "$STUB_LOG" "$WORK/out"; fail "(2) $r: --name with the suffix and the bound session id"; }
-  grep "^claude --name ${r}XY " "$STUB_LOG" | grep -q " /session-role $r | role=$r cc=unset sock=unset " \
-    || { cp "$STUB_LOG" "$WORK/out"; fail "(2) $r: launch prompt, role env or a leaked CLAUDECODE/socket"; }
-done
-has "claude --name SupervisorXY --session-id " "$STUB_LOG" || fail "(2) Supervisor"
-grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q -- "--effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json " \
-  || fail "(2) Supervisor effort or profile"
-grep "^claude --name TeamLeadXY " "$STUB_LOG" | grep -q -- "--effort high --settings .agents/team/watch/profiles/TeamLead.settings.json " \
-  || fail "(2) TeamLead effort or profile"
-grep "^claude --name AdvisorXY " "$STUB_LOG" | grep -q -- "--effort high /session-role Advisor |" \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "(2) Advisor: effort, or --settings without a kit"; }
-run "$MAIN" $SS start TeamLead; expect 0 "smk-teamlead: already running" "(2) idempotent start"
+expect 0 "supervisor-sessions.sh start is deprecated — roles.sh up" "(2) start all delegates"
+for r in Supervisor Fable Astra; do has "$r: started" "$WORK/out" || fail "(2) $r start line"; done
+wait_claude 2
+grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q -- "--model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor." \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(2) Supervisor argv through roles.sh"; }
+grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q " | role=Supervisor cc=unset sock=unset " \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(2) role env, or a leaked CLAUDECODE/socket"; }
+grep "^claude --name FableXY " "$STUB_LOG" | grep -q -- "--settings .agents/team/watch/profiles/Fable.settings.json " \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(2) Fable profile"; }
+grep -q 'TeamLead' "$WORK/out" && fail "(2) the delegated start launched the TeamLead"
+run "$MAIN" $SS stop Fable; expect 0 "supervisor-sessions.sh stop is deprecated — roles.sh stop" "(2) stop delegates"
+has "Fable: stopped" "$WORK/out" || fail "(2) stop Fable"
+run "$MAIN" $SS status; expect 0 "supervisor-sessions.sh status is deprecated — roles.sh status" "(2) status delegates"
+run "$MAIN" $SS up; expect 0 "note: roles.sh up starts no team-watch" "(2) up delegates"
+run "$MAIN" bash .claude/lib/roles.sh stop all; kill_roles
+run "$MAIN" $SS materialize TeamLead; expect 0 "profile TeamLead:" "(2) materialize TeamLead"
 PF="$TWD/profiles/TeamLead.settings.json"
 [ "$(stat -f %Lp "$PF")" = 600 ] && [ "$(stat -f %Lp "$TWD/profiles")" = 700 ] \
   || fail "(2) materialised profile not 600 in a 700 dir"
@@ -157,23 +152,16 @@ jq -e --arg c "Read(//$(dirname "$MP" | sed 's|^/||')/main-*/**)" \
    and (.permissions.deny | index("Bash(az repos pr update*)"))
    and (.permissions.deny | index("Bash(gh pr merge*)") | not)' "$PF" >/dev/null \
   || { cp "$PF" "$WORK/out"; fail "(2) materialised TeamLead: clones, env or the azure-devops PR deny"; }
+run "$MAIN" $SS materialize Supervisor; expect 0 "" "(2) materialize Supervisor"
 jq -e '.permissions.deny | index("Bash(az repos pr update*)") | not' \
   "$TWD/profiles/Supervisor.settings.json" >/dev/null || fail "(2) the PR deny reached the Supervisor"
-for r in Supervisor TeamLead Advisor; do run "$MAIN" $SS stop "$r"; expect 0 "stopped" "(2) stop $r"; done
-run "$MAIN" $SS stop all; expect 2 "" "(2) stop all refused"
-run "$CLONE" bash "$MAIN/.claude/lib/supervisor-sessions.sh" status; expect 1 "team clone" "(2) launcher in a clone"
-# Per-role config; the TeamLead's high must not leak into the next role of the loop.
-prof '.teams.sessions = {Advisor: {model: "custom-model[1m]", effort: "low"}, Supervisor: {effort: "max"}}'
-: > "$STUB_LOG"
-run "$MAIN" $SS start all; expect 0 "smk-advisor: started (AdvisorXY, custom-model[1m], effort low)" "(2) teams.sessions"
-wait_claude 3
-grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q -- "--model opus --effort max " || fail "(2) Supervisor effort from config"
-grep "^claude --name TeamLeadXY " "$STUB_LOG" | grep -q -- "--model opus --effort high " || fail "(2) TeamLead default"
-for r in Supervisor TeamLead Advisor; do run "$MAIN" $SS stop "$r"; done
-prof '.teams.sessions = {TeamLead: {effort: "huge"}}'
-run "$MAIN" $SS start TeamLead; expect 2 "teams.sessions.TeamLead.effort=huge" "(2) bad effort refused"
-prof 'del(.teams.sessions)'
-echo "team-smoke-sessions: (2) launcher OK"
+run "$MAIN" $SS materialize Fable; expect 0 "profile Fable:" "(2) materialize Fable from the Advisor template"
+jq -e '.env.TEAM_SESSION_ROLE == "Fable"' "$TWD/profiles/Fable.settings.json" >/dev/null \
+  || fail "(2) the Fable profile carries the template's role"
+run "$MAIN" $SS materialize Astra; expect 2 "Astra has no settings profile" "(2) a Codex role has no profile"
+run "$MAIN" $SS materialize Advisor; expect 2 "Advisor has no settings profile" "(2) the legacy name is no role"
+run "$CLONE" bash "$MAIN/.claude/lib/supervisor-sessions.sh" check; expect 1 "team clone" "(2) in a clone"
+echo "team-smoke-sessions: (2) delegation, materialise OK"
 
 # ---- (3) profiles and their check ----------------------------------------------------------------
 run "$SRC" $CHK "$SRC"; expect 0 "TeamLead OK" "(3) shipped profiles"
@@ -203,8 +191,8 @@ run "$MAIN" $SS check
 expect 3 "TeamLead LEAK: bash .claude/team/sessions/operator-kit/install.sh --apply allowed by local Bash(bash .claude/team/*)" "(3) local leak"
 grep -q ' FAIL:' "$WORK/out" && fail "(3) a local leak reported as FAIL"
 : > "$STUB_LOG"
-run "$MAIN" $SS start TeamLead; expect 3 "nothing launched" "(3) start refuses a leak"
-grep -q '^tmux new-session' "$STUB_LOG" && fail "(3) a refused start launched a session"
+run "$MAIN" bash .claude/lib/roles.sh up Supervisor; expect 1 "nothing launched" "(3) up refuses a leak"
+grep -q '^tmux new-session' "$STUB_LOG" && fail "(3) a refused up launched a session"
 rm -f "$MAIN/.claude/settings.local.json"
 jq '.permissions.allow += ["Bash(rm *)"] | ._samples.writes += ["rm x"]' \
   "$MAIN/.claude/team/sessions/TeamLead.settings.json" > "$WORK/tl.json"
@@ -241,9 +229,13 @@ echo "team-smoke-sessions: (3) profiles OK"
 # ---- (4) answer: the tier-1 path into a role session's own prompt ---------------------------------
 export STUB_PANE_DIR="$WORK/panes"; mkdir -p "$STUB_PANE_DIR"
 : > "$STUB_LOG"
-run "$MAIN" $SS start TeamLead; expect 0 "smk-teamlead: started" "(4) start TeamLead"
-grep "^claude --name TeamLeadXY" "$STUB_LOG" >/dev/null || wait_claude 1
-SID="$(jq -r .session_id "$TWD/sessions/TeamLead/session.json")"
+# The old TeamLead role session (no longer a /roles role; E1 step 13 retires it): started directly.
+run "$MAIN" $SS materialize TeamLead; expect 0 "" "(4) materialize TeamLead"
+SID="0f0f0f0f-4444-4444-4444-444444444444"; mkdir -p "$TWD/sessions/TeamLead"
+jq -n --arg s "$SID" '{team: "-", role: "TeamLead", run: "-", attempt: 1, session_id: $s}' > "$TWD/sessions/TeamLead/session.json"
+(cd "$MAIN" && tmux new-session -d -s smk-teamlead -c "$MAIN" -e TEAM_SESSION_ROLE=TeamLead \
+  "claude --name TeamLeadXY --session-id $SID")
+wait_claude 1
 cp "$FIX/menu-phase0.txt" "$STUB_PANE_DIR/smk-teamlead"
 FP="$(role_prompt TeamLead | cut -f2)"
 [ "$(role_prompt TeamLead | cut -f1)" = menu ] && [[ "$FP" =~ ^[0-9a-f]{12}$ ]] \
@@ -283,13 +275,16 @@ has "tmux send-keys -t =smk-teamlead: Enter" "$STUB_LOG" || fail "(4) Enter not 
 run "$MAIN" $SS answer TeamLead --fp "$FP3" no "out of scope"; expect 0 "answered TeamLead no" "(4) no"
 has "Rejected by the Supervisor: out of scope. Do not work around it" "$STUB_LOG" || fail "(4) rejection text"
 holder; echo "$H" > "$TMUXD/smk-supervisor.pid"
-run "$MAIN" $SS here Supervisor; expect 1 "runs in tmux" "(4) here while tmux runs"
+run "$MAIN" $SS here Supervisor; expect 1 "Supervisor is already running" "(4) here while tmux runs"
+has "supervisor-sessions.sh here is deprecated — roles.sh here" "$WORK/out" || fail "(4) here delegation line"
 echo dead > "$TMUXD/smk-supervisor.pid"
+run "$MAIN" env CLAUDECODE=1 $SS here Supervisor
+expect 1 "open a new terminal and run: bash .claude/lib/roles.sh here Supervisor" "(4) here inside Claude"
 : > "$STUB_LOG"
-run "$MAIN" env STUB_CLAUDE_EXIT=1 CLAUDECODE=1 $SS here Supervisor; expect 0 "" "(4) here"
-grep -q "^claude --name SupervisorXY --session-id [0-9a-f-]* --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json | role=Supervisor cc=unset" \
+run "$MAIN" env STUB_CLAUDE_EXIT=1 $SS here Supervisor; expect 0 "" "(4) here"
+grep -q "^claude --name SupervisorXY --session-id [0-9a-f-]* --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor.* | role=Supervisor cc=unset" \
   "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not exec claude as the Supervisor"; }
-# A declared Claude profile: `here` execs on it; an unresolvable one refuses before session.json.
+# A declared Claude profile: `here` execs on it; an unresolvable one refuses before the record.
 mkdir -p "$WORK/claude-home"; CH_REAL="$(cd "$WORK/claude-home" && pwd -P)"
 printf '# fixture\n%s\n' "$WORK/claude-home" > "$MAIN/.claude/claude-profile"
 : > "$STUB_LOG"
@@ -297,13 +292,13 @@ run "$MAIN" env STUB_CLAUDE_EXIT=1 CLAUDE_CONFIG_DIR="$WORK/other" $SS here Supe
 grep -q "^claude --name SupervisorXY .* ccd=$CH_REAL\$" "$STUB_LOG" \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not run on the Claude profile"; }
 printf '%s\n' "$WORK/no-such-home" > "$MAIN/.claude/claude-profile"
-cp "$TWD/sessions/Supervisor/session.json" "$WORK/sup-session.bak"
+cp "$MP/.agents/team/registry/Supervisor.json" "$WORK/sup-rec.bak"
 : > "$STUB_LOG"
 run "$MAIN" env STUB_CLAUDE_EXIT=1 $SS here Supervisor; expect 1 "Claude profile" "(4) here refuses an unresolvable Claude profile"
 grep -q '^claude ' "$STUB_LOG" && fail "(4) an unresolvable Claude profile still ran claude"
-cmp -s "$TWD/sessions/Supervisor/session.json" "$WORK/sup-session.bak" || fail "(4) refused here rewrote session.json"
-rm -f "$MAIN/.claude/claude-profile"
-rm -f "$STUB_PANE_DIR/smk-teamlead"; run "$MAIN" $SS stop TeamLead
+cmp -s "$MP/.agents/team/registry/Supervisor.json" "$WORK/sup-rec.bak" || fail "(4) a refused here rewrote the record"
+rm -f "$MAIN/.claude/claude-profile" "$MP/.agents/team/registry/Supervisor.json"
+rm -f "$STUB_PANE_DIR/smk-teamlead"; run "$MAIN" tmux kill-session -t =smk-teamlead
 echo "team-smoke-sessions: (4) answer OK"
 
 # ---- (5) preflight -------------------------------------------------------------------------------
@@ -356,7 +351,6 @@ rm -f "$HOME/.claude/settings.json"
 chmod 644 "$SUP_SOCK"
 beat; run "$MAIN" $SS preflight
 expect 1 "FAIL receivers live — socket $SUP_SOCK refused mode 0644 — want mode 0600 owned by uid $(id -u)" "(5) refused socket"
-run "$MAIN" $SS status; expect 0 "receiver Supervisor: pid $SUP_PID · socket refused mode 0644 · active" "(5) status socket state"
 chmod 600 "$SUP_SOCK"
 mv "$TWD/receivers/TeamLead.json" "$WORK/tl-recv.keep"
 beat; run "$MAIN" $SS preflight; expect 0 "WARN receivers live — TeamLead not started" "(5) not-started role is a WARN"
@@ -381,8 +375,6 @@ fake "$WORK/projb/mail.sqlite"; FB=$F; sleep 0.3
 run "$MAIN" $SS reviewer; expect 0 "Reviewer: deliver missing" "(6) project B's same-name loop must not count"
 fake "$BOX"; FA=$F; sleep 0.3
 run "$MAIN" $SS reviewer; expect 0 "Reviewer: deliver ok" "(6) this box's loop"
-run "$MAIN" $SS status; expect 0 "receiver: n/a (agent-mail)" "(6) status Advisor line"
-has "  Reviewer: deliver ok" "$WORK/out" || fail "(6) status reviewer line"
 kill "$FA" "$FB" 2>/dev/null || true
 prof '.teams.channel.advisor = "solo"'
 run "$MAIN" $SS reviewer; expect 0 "Reviewer: none (advisor solo)" "(6) solo"
@@ -417,51 +409,12 @@ expect 1 "(after one restart merge)" "(8) a project restart script runs once"
 [ "$(grep -c '^restart 8371$' "$STUB_LOG")" = 1 ] || fail "(8) the restart script did not run once"
 echo "team-smoke-sessions: (8) auto-merge restart OK"
 
-# ---- (9) status, up after a restart, rollback ----------------------------------------------------
-named() {  # named <claude argv> — a process that pgrep -f sees as that role's claude → NP
-  bash -c 'exec -a "$1" sleep 300' _ "$1" & NP=$!; PIDS="$PIDS $NP"; sleep 0.3
-}
-for r in Supervisor TeamLead Advisor; do run "$MAIN" $SS stop "$r"; done
-kill_roles
-run "$MAIN" $SS status; expect 0 "Supervisor: tmux smk-supervisor down" "(9) status: a stopped role"
-for l in "TeamLead: tmux smk-teamlead down" "Advisor: tmux smk-advisor down" "routing: split" \
-  "freeze: off" "teams: alfa"; do
-  has "$l" "$WORK/out" || fail "(9) status lacks '$l'"
-done
-for re in '^team-watch: (works|not working)$' '^tiers: ' '^answering: '; do
-  grep -qE "$re" "$WORK/out" || fail "(9) status lacks a line matching $re"
-done
-: > "$STUB_LOG"
-run "$MAIN" $SS up; expect 0 "Close this bootstrap session if it is not a role session." "(9) up"
-for l in "Supervisor: started" "TeamLead: started" "Advisor: started" "Reviewer: deliver missing" \
-  "  tmux attach -t smk-supervisor" "  tmux attach -t smk-teamlead" "  tmux attach -t smk-advisor"; do
-  has "$l" "$WORK/out" || fail "(9) up lacks '$l'"
-done
-grep -qE '^team-watch: (works|not working)' "$WORK/out" || fail "(9) up: no team-watch line"
-grep -qE '^interrupted run' "$WORK/out" || fail "(9) up: no interrupted-runs line"
-wait_claude 3
-! grep -q -- '--resume' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(9) up resumed a session"; }
-run "$MAIN" $SS status; expect 0 "TeamLead: tmux smk-teamlead alive" "(9) status after up"
-# The stub claude is `sleep`, never a `claude --name …` process: a live tmux session reads as the
-# dead `; read` pane of a crashed claude until a process carries the role's name.
-named "claude --name TeamLeadXY --session-id x"; TLP=$NP
-: > "$STUB_LOG"
-run "$MAIN" $SS up; expect 0 "TeamLead: already running" "(9) up keeps a running role"
-has "Advisor: restarted (dead pane)" "$WORK/out" || fail "(9) up did not replace a dead pane"
-grep -qx 'tmux kill-session -t =smk-advisor' "$STUB_LOG" || fail "(9) the dead pane was not killed"
-! grep -qx 'tmux kill-session -t =smk-teamlead' "$STUB_LOG" || fail "(9) up killed a running role"
-kill "$TLP" 2>/dev/null || true; wait "$TLP" 2>/dev/null || true
-# The Supervisor in a `here` window: no tmux session, its claude by name → not started again.
-run "$MAIN" $SS stop Supervisor
-named "claude --name SupervisorXY --model opus"; SPP=$NP
-run "$MAIN" $SS up; expect 0 "Supervisor: running (here)" "(9) up and a here Supervisor"
-kill "$SPP" 2>/dev/null || true; wait "$SPP" 2>/dev/null || true
+# ---- (9) rollback ----------------------------------------------------------------------------------
 kill_roles
 run "$MAIN" $W mode answering off; expect 0 "" "(9) answering off"
 run "$MAIN" $SS rollback; expect 0 "Rollback: routing single Supervisor, answering on." "(9) rollback"
 has "install.sh --rollback" "$WORK/out" || fail "(9) rollback lacks the Operator's kit step"
-run "$MAIN" $SS status
-has "routing: single Supervisor" "$WORK/out" && has "answering: on" "$WORK/out" \
-  || fail "(9) rollback did not switch routing/answering"
-echo "team-smoke-sessions: (9) status, up, rollback OK"
+r9="$(cd "$MAIN" && bash -c '. .claude/lib/team-watch-lib.sh; tw_init "$PWD"; echo "$(tw_routing) / $(tw_answering)"')"
+case "$r9" in "single Supervisor / on"*) ;; *) fail "(9) rollback did not switch routing/answering: $r9" ;; esac
+echo "team-smoke-sessions: (9) rollback OK"
 echo "team-smoke-sessions: OK"
