@@ -85,7 +85,7 @@ launch_lead() {
     || echo "warn: token-usage registration skipped"
   rm -f "$TD/lead-dead"
   echo "launched: TeamLead ($TEAM_LEAD_MODEL/$TEAM_LEAD_EFFORT) — $(sh_hint "$name")"
-  # Herdr: the lead's terminal into the Teams tab (a failure only warns; tmux: nothing).
+  # Herdr: the lead's terminal into its team's tab, left (a failure only warns; tmux: nothing).
   [ "$(sh_record_get "$root" "$name" backend)" != herdr ] \
     || (cd "$root" && bash .claude/lib/roles.sh place "$name") 2>&1 | grep '^warn: ' || true
 }

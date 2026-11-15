@@ -61,7 +61,7 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
   `bash .claude/lib/session-host.sh hint <team>-<role>` prints, and detach with `Ctrl-b d`. The
   planner and the wrapup print `attach: <hint>`; a role that waits on you prints
   `needs attention: <hint>`. `TEAM_ATTACH` does nothing under tmux (under Herdr it decides which
-  stages get a pane in the `Teams` tab). `team-status.sh` no longer writes the OSC 7501 status to
+  stages get a pane in the team's tab). `team-status.sh` no longer writes the OSC 7501 status to
   attached tmux clients. A runner running during the update prints
   `warn: no preview window for <name>` and goes on.
 - **Hints.** A tmux hint carries `TMUX_TMPDIR=<dir>` when the process that prints it has the
@@ -72,8 +72,9 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
 - **Startup dialogs are reported, never answered.** A role at the folder trust dialog prints
   `started (needs trust — pick Yes; Enter alone exits)`: under Herdr the dialog's first option is
   `No, exit`. The MCP servers dialog prints `started (startup dialog open)`.
-- **Herdr:** roles go to the `Lead` tab, team TeamLeads and the running stages to one `Teams` tab
-  of the checkout's space. A role's pane title is set to its address before the CLI starts;
+- **Herdr:** roles go to the `Lead` tab; each team gets its own tab, named after the team, with its
+  TeamLead on the left and the running stage on the right. A team named like a roles tab (`lead`,
+  case-insensitive) is refused. A role's pane title is set to its address before the CLI starts;
   Claude Code then shows its own title (`Claude Code`), so the address is visible only at a startup
   dialog or after the program exits.
 - **agent-mail is an optional kit.** `/setup:teams` installs it only when the profile has
@@ -92,6 +93,7 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
   `~/.agent-ops/worker`, give the Worker's Codex host write access to the new path and drop the old
   one — or set `WORKER_ARTIFACTS` to a path you choose.
 - Replace `/sessions-up` and the other four commands in your own notes and scripts with `/roles`.
+- A team named `lead` (the roles' Herdr tab) no longer starts: provision it under another name.
 
 
 ## `notify.sh` is the only path to the Operator

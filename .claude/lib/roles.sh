@@ -10,7 +10,7 @@
 #   resume  start a gone Claude role on its previous conversation (claude --resume <session id>)
 #   runs    the interrupted team runs (read-only; resume one with /start-team <team>)
 #   place   put a running window into its Herdr tab: a role into its place.tab, a team session into
-#           Teams (tmux: prints how to look at it); never fails on the window
+#           its team's tab (tmux: prints how to look at it); never fails on the window
 # Roles: teams.sessions in .claude/project-profile.json (roles-lib.sh). Exit: 0 ok · 1 a role failed
 # or another /roles is running · 2 usage or validation · 6 no session host.
 #   e.g. bash .claude/lib/roles.sh        then: bash .claude/lib/roles.sh status

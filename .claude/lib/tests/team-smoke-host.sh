@@ -773,6 +773,15 @@ run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/deve
 run "$MAIN" bash .claude/lib/team-new.sh abcdefghijklmnopqrstuvwxy AB-1 feature/AB-1-x origin/develop
 has "session name smk-abcdefghijklmnopqrstuvwxy-wrapup is over 32 characters" "$WORK/out" || fail "(43) length message"
 [ ! -d "$WORK/main-supervisor" ] && [ ! -d "$WORK/main-adhoc-x" ] || fail "(43) a refused team got a clone"
+# A team's Herdr tab is named after it: the roles tab's name (Lead, case-insensitive) is refused.
+run "$MAIN" bash .claude/lib/team-new.sh lead AB-1 feature/AB-1-x origin/develop
+[ "$RC" != 0 ] && has "team name lead is the roles' Herdr tab Lead" "$WORK/out" && [ ! -d "$WORK/main-lead" ] \
+  || fail "(43) a team named lead was not refused"
+# A clone from before the rule: the runner refuses to start it, status still answers.
+mkdir -p "$WORK/main-lead/.agents/team"; echo '{"team":"lead","mode":"quick"}' > "$WORK/main-lead/.agents/team/team.json"
+run "$MAIN" bash .claude/lib/team-run.sh lead; expect 1 "team name lead is the roles' Herdr tab Lead — pick another team name" "(43) runner refuses lead"
+run "$MAIN" bash .claude/lib/team-run.sh lead status; ! has "roles' Herdr tab" "$WORK/out" || fail "(43) status refused for lead"
+rm -r "$WORK/main-lead"
 echo "team-smoke-host: (43) team names OK"
 
 # ---- (44) the inbox's session per address; send reads <registry>/<address>.reg.json; ad-hoc never rung ----

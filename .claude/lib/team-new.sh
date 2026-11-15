@@ -45,6 +45,8 @@ team_profile_require_supported
 dir="$(team_clone_dir "$team" "$root")"
 TEAM_PROBLEMS=()
 team_check_name "$team" 2>/dev/null || TEAM_PROBLEMS+=("team name '$team' must match [a-z0-9-]+")
+! tab="$(team_tab_clash "$team" "$root")" \
+  || TEAM_PROBLEMS+=("team name $team is the roles' Herdr tab $tab (each team gets a tab named after it) — pick another name")
 # Session names (session-host-lib.sh sh_name): not a role, an ad-hoc or a helper name, and the
 # longest one, <prefix>-<team>-wrapup (as long as -runner), fits 32 characters.
 lt="$(printf '%s' "$team" | tr '[:upper:]' '[:lower:]')"

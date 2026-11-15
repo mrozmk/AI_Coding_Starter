@@ -9,7 +9,7 @@
 #   modes (team.json .mode, set by team-new/next): brainstorm · quick · cli
 #
 # Env: TEAM_ATTACH=all|planner (default all) — Herdr: every stage, or only the attended planner and
-# wrapup, gets a pane in the Teams tab while it runs. tmux: no effect (no window is opened; planner
+# wrapup, gets a pane in its team's tab while it runs. tmux: no effect (no window is opened; planner
 # and wrapup print an `attach:` line).
 # Exit: 0 ready/advanced · 1 failed record · 2 blocked · 3 stalled · 4 validation failed
 #       5 partial work after a dead session · 6 cancelled · 7 orphan role session
@@ -33,6 +33,7 @@ case "$CLONE" in *"'"*) echo "error: clone path contains a quote: $CLONE" >&2; e
 cd "$CLONE"
 # The anchor writer runs in this shell; a role-writable library must not.
 . "$root/.claude/lib/team-lib.sh"
+[ "$CMD" != advance ] || ! t="$(team_tab_clash "$TEAM" "$root")" || { echo "error: team name $TEAM is the roles' Herdr tab $t — pick another team name" >&2; exit 1; }
 # Override keys still follow the clone's runnable roles (team-mode.md §3), read as data only.
 TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/team-lib.sh" \
   2>/dev/null | head -n 1)" || true; TEAM_ROLES="${TEAM_ROLES:-planner coder qa wrapup}"
@@ -230,7 +231,7 @@ launch() {
   echo "launched: $role attempt $attempt"
   ! attended "$role" || echo "attach: $(sh_hint "$name")"
   if { [ "$ATTACH" = all ] || attended "$role"; } && [ "$(sh_record_get "$root" "$name" backend)" = herdr ]; then
-    # Herdr: the stage's own terminal into the Teams tab (label adoption, no focus change); its pane
+    # Herdr: the stage's own terminal into its team's tab (label adoption, no focus change); its pane
     # closes when the stage's program exits. The main checkout's roles.sh, never the clone's.
     (cd "$root" && bash .claude/lib/roles.sh place "$name") 2>&1 | grep '^warn: ' || true
   fi

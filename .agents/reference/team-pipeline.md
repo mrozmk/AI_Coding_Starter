@@ -15,8 +15,8 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
 In any Claude window of the main checkout: `/start-team alfa ABC-777` (and `/start-team gamma ABC-778` in another).
 `/start-team` provisions or reuses the clone and launches the runner. Herdr: the runner places each
 role it launches (`TEAM_ATTACH=all`, default; `TEAM_ATTACH=planner` only the attended planner and
-wrapup) as a pane in the `Teams` tab of the main checkout's Herdr space, next to the team's
-TeamLead; the pane carries the role's own status and closes when the stage ends. tmux: no window
+wrapup) as a pane in the team's own tab of the main checkout's Herdr space (named after the team:
+its TeamLead left, the working stage right); the pane carries the role's own status and closes when the stage ends. tmux: no window
 opens; the runner prints `attach: tmux attach -t …` for the planner and the wrapup, and
 `bash .claude/lib/session-host.sh hint <team>-<role>` names how to look at any role. Coder and QA run alone; the TeamLead answers what it may, and only a
 decision that needs you notifies you (`notify.sh`, opt-in channels — below). After answering: `/start-team alfa`. To look at a role:
@@ -63,8 +63,8 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   prompt, detach with `Ctrl-b d`. In auto mode reads no longer prompt: what remains are ask-tier
   commands, egress (`guard-team-egress`), menus and questions. A Herdr pane closes by itself when the role
   ends; a tmux attach ends when you detach (Ctrl-b d).
-- **One window for all teams:** Herdr: the `Teams` tab shows every team's TeamLead and the stage
-  running now. tmux: `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter switch.
+- **One window for all teams:** Herdr: one tab per team (its name), each with the team's TeamLead
+  and the stage running now; a team may not be named like the roles tab `Lead`. tmux: `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter switch.
   `bash .claude/lib/team-run.sh alfa status` peeks without attaching.
 - **Notifications** reach you for four events only (a human decision, an abandon decision, an
   unrepaired failure, a release step), through `.claude/lib/notify.sh`, on the channels you switch

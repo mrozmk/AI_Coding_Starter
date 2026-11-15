@@ -1,5 +1,5 @@
 ---
-description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner (Herdr: a pane per stage in the Teams tab; tmux: an attach hint line)
+description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner (Herdr: a tab per team, its TeamLead and the working stage; tmux: an attach hint line)
 argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
 allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
@@ -29,7 +29,10 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `github`, `none`) decides steps 1, 3 and 4; `TEAMLEAD` (the `teamlead:` line, `true`|`false`)
    decides step 4c and the brief check in step 2.
 
-1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`), `KEY` = second (optional, shape per `TRACKER`:
+1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`). A `TEAM` equal to a roles tab (`lead`, or
+   any `teams.sessions` `place.tab`, case-insensitive) → STOP before any side effect: "team name
+   `<TEAM>` is the roles' Herdr tab — each team gets a tab named after it; pick another name"
+   (`team-new.sh` and the runner refuse it too). `KEY` = second (optional, shape per `TRACKER`:
    `jira` → `[A-Z]+-[0-9]+`; `github` → `[0-9]+`, a leading `#` dropped (`#7` = `7`); `none` → no
    `KEY` at all, the ticket comes from `--brief`),
    `BRANCH` = the next positional after `KEY` (optional): third for `jira`/`github`, second for
@@ -204,14 +207,14 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 
 6. **Role windows.** Do not open one yourself. Herdr: the runner places each stage it launches
    (`TEAM_ATTACH=all`, the default), or only the attended planner and wrapup (`TEAM_ATTACH=planner`),
-   as a pane in the `Teams` tab of the main checkout's Herdr space, next to the team's TeamLead; the
-   pane shows the role's own status and closes when the stage ends. A `warn: placement …` line means
+   as a pane in the team's own tab of the main checkout's Herdr space (the tab is named `<TEAM>`): the
+   TeamLead on the left, the working stage on the right; the pane shows the role's own status and closes when the stage ends. A `warn: placement …` line means
    the pane failed; the role still runs. tmux: no window opens — the runner prints
    `attach: tmux attach -t …` for the planner and the wrapup, and
    `bash .claude/lib/session-host.sh hint <TEAM>-<role>` names how to look at any role.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
-   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "Herdr: each stage appears as a pane in the `Teams` tab — talk to the planner there; tmux: the
+   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "Herdr: the team has its own tab `<TEAM>` (TeamLead left, the working stage right) — talk to the planner there; tmux: the
    runner's `attach:` line says how to reach the planner (detach with Ctrl-b d)", and that coder/QA run alone, the
    team's TeamLead answers what it may, and only a decision that needs the Operator notifies them
    (`notify.sh`, when a channel is on in `~/.agent-comms/notify.json`; otherwise it waits in

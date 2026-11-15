@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # session-host-layout.sh — puts running role and team terminals into the main checkout's Herdr space
 # (#35): tab Lead (the main-slot role left, side roles stacked right; any other place.tab the same
-# way) and tab Teams (per team its TeamLead and the stage running now). Sourced after
-# session-host-lib.sh; layout_place_roles also needs roles-lib.sh.
+# way) and one tab per team, named after the team (its TeamLead left, the stage running now on the
+# right: the lead is placed first, at launch, and each stage is adopted as a new column). A team
+# whose name is a roles tab (Lead, case-insensitive) is never placed: team-new.sh and the runner
+# refuse that name. Sourced after session-host-lib.sh; layout_place_roles also needs roles-lib.sh.
 #
 # Panes are views: placement never ends a terminal (no terminal.kill, pane.close, tab.close, hc kill,
 # hc rm) and never writes a layout file. The only window commands: `herdr-app ls`, `herdr-app status`
@@ -13,7 +15,7 @@
 # adopted by label first. Every call is time-boxed. A failure prints `warn: placement <address>: <why>` and the
 # address's hint, and returns 0: nothing depends on the window. Under tmux every function is a no-op.
 #
-# Teams: label adoption only — a runner never moves the focus. Lead (/roles up, typed by the
+# Team tabs: label adoption only — a runner never moves the focus. Lead (/roles up, typed by the
 # Operator): the first role and the first one beside the main role by label; every further side role
 # is adopted, parked, and kept again under the previous one (park → pane.focus → keep down). The
 # focus — moved by pane.focus or by a new space — goes back to the pane focused before. The space lookup and
@@ -112,18 +114,29 @@ ly_warn() {  # ly_warn <main> <address> — the failure line and the hint
 ly_lock() { sh_lock "$1" layout "" "layout pid=$$ $2" "${TEAM_LAYOUT_LOCK_WAIT:-30}"; }
 ly_unlock() { sh_unlock "$1" layout ""; }
 
-# layout_place_team <main> <address> — a team session (its TeamLead or a stage) into tab Teams, by
-# label adoption only. Never creates the space (warns instead). rc 0 always.
+# ly_roles_tab <name> → 0 when <name> equals a roles tab (Lead, or a role's place.tab), case-insensitive.
+ly_roles_tab() {
+  local t n; n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  for t in Lead $(roles_list --standing 2>/dev/null | while read -r r; do roles_cfg "$r" place.tab 2>/dev/null; done); do
+    [ "$n" != "$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')" ] || return 0
+  done
+  return 1
+}
+
+# layout_place_team <main> <address> — a team session (its TeamLead or a stage) into its team's tab
+# (the team name: the address without its last -<role>), by label adoption only. Never creates the
+# space (warns instead). rc 0 always.
 layout_place_team() {
-  local m="$1" a="$2" h held
+  local m="$1" a="$2" h held t="${2%-*}"
   [ "$(sh_record_get "$m" "$a" backend)" = herdr ] || { echo "$a: $(sh_hint "$a" --main "$m" 2>/dev/null)"; return 0; }
+  if ly_roles_tab "$t"; then LY_WHY="team $t has the name of a roles tab — not placed"; ly_warn "$m" "$a"; return 0; fi
   h="$(sh_target "$m" "$a" 2>/dev/null)" || { LY_WHY="$a: no live terminal of ours (replaced or gone)"; ly_warn "$m" "$a"; return 0; }
   ly_ls || { ly_warn "$m" "$a"; return 0; }
   if [ -n "$(ly_tab_of "$h")" ]; then echo "already placed: $a in $(ly_tab_name "$h")"; return 0; fi
   if ! held="$(ly_lock "$m" "$a")"; then LY_WHY="layout lock held by $held"; ly_warn "$m" "$a"; return 0; fi
   if ly_ls && ly_space "$m" no; then
     if [ -n "$(ly_tab_of "$h")" ]; then echo "already placed: $a in $(ly_tab_name "$h")"
-    elif ly_adopt "$h" Teams; then echo "placed: $a in Teams"
+    elif ly_adopt "$h" "$t"; then echo "placed: $a in $t"
     else ly_warn "$m" "$a"; fi
   else
     ly_warn "$m" "$a"

@@ -38,6 +38,18 @@ team_check_name() {
   [[ "$1" =~ ^[a-z0-9-]+$ ]] || { echo "error: name '$1' must match [a-z0-9-]+" >&2; return 1; }
 }
 
+# team_tab_clash <team> <main> → prints the roles tab and returns 0 when the team's Herdr tab (named
+# after the team) would be a roles tab: Lead, or any teams.sessions place.tab, case-insensitive.
+team_tab_clash() {
+  local n t
+  n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  for t in Lead $(jq -r '.teams.sessions // {} | .[]? | .place.tab? // empty | strings' \
+    "$2/.claude/project-profile.json" 2>/dev/null); do
+    [ "$n" != "$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')" ] || { echo "$t"; return 0; }
+  done
+  return 1
+}
+
 team_cancelled() {
   [ -e "$(team_dir)/cancel" ]
 }

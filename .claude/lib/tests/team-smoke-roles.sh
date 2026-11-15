@@ -390,7 +390,7 @@ noline "team-run.sh" "$STUB_LOG" "(14) a runner was started"; noline "start-team
 [ "$(starts)" = 3 ] || fail "(14) $(starts) sessions started, expected 3"
 echo "team-smoke-roles: (14) restart simulation OK"
 
-# ---- (L) the Herdr layout (#35): tabs Lead and Teams over a model window ---------------------------
+# ---- (L) the Herdr layout (#35): tab Lead and one tab per team over a model window ----------------
 # The fake herdr-app keeps a window model in $STUB_HERDR_LS; `hc label … herdr.space=` adopts into it.
 cp "$WORK/hc.lib" "$WORK/bin/hc"; chmod +x "$WORK/bin/hc"
 export TEAM_SESSION_HOST=herdr   # the smoke lib pins tmux; existing records keep their own backend
@@ -454,21 +454,42 @@ clr; run "$MAIN" $RS; expect 0 "Supervisor: already running" "(L3) up"; keep_log
 seq_of; [ ! -s "$WORK/seq" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L3) placement commands on a second up"; }
 noline "once placed" "$WORK/out" "(L3) hint for a placed role"
 
-# (L4) team sessions into Teams by label only, never a focus; a runner never creates the space
+# (L4) a team session into its own tab (named after the team) by label only, never a focus; a runner
+# never creates the space
 hrec alfa-lead t5 claude team; hrec beta-lead t7 claude team; hrec gamma-lead t8 claude team
-win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbT", name: "Teams", terminals: [{terminal: "t6"}]}]}], focus: "t1"}'
-clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in Teams" "(L4) into Teams"; keep_log
-line "hc label t5 herdr.space=s1 herdr.tab=tbT" "$STUB_LOG" "(L4) label"; noline "session-host:" "$WORK/out" "(L4) lock noise"
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbA", name: "alfa", terminals: [{terminal: "t6"}]}]}], focus: "t1"}'
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in alfa" "(L4) into its tab"; keep_log
+line "hc label t5 herdr.space=s1 herdr.tab=tbA" "$STUB_LOG" "(L4) label"; noline "session-host:" "$WORK/out" "(L4) lock noise"
 noline "tab.rename" "$STUB_LOG" "(L4) renamed"; noline "focus" "$STUB_LOG" "(L4) focus moved"
-clr; run "$MAIN" $RS place alfa-lead; expect 0 "already placed: alfa-lead in Teams" "(L4) again"; keep_log
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "already placed: alfa-lead in alfa" "(L4) again"; keep_log
 noline "hc label" "$STUB_LOG" "(L4) relabelled"
 win '{spaces: ['"$SPACE"'], focus: "t1"}'
-clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in Teams" "(L4) no Teams tab"; keep_log
-line "hc label t5 herdr.space=s1" "$STUB_LOG" "(L4) space label"; line "tab.rename --id tbt5 --name Teams" "$STUB_LOG" "(L4) rename"
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in alfa" "(L4) no team tab yet"; keep_log
+line "hc label t5 herdr.space=s1" "$STUB_LOG" "(L4) space label"; line "tab.rename --id tbt5 --name alfa" "$STUB_LOG" "(L4) rename"
 win '{spaces: [], focus: "t1"}'
 clr; run "$MAIN" $RS place alfa-lead
 expect 0 "warn: placement alfa-lead: open the project as a Herdr space (or run /roles)" "(L4) no space"; keep_log
 noline "space.new" "$STUB_LOG" "(L4) a runner created a space"; line "  alfa-lead: hc attach t5 · herdr: t5" "$WORK/out" "(L4) hint"
+# (L4b) the lead first, then its stage: the lead left, the stage right, in the team's tab
+hrec alfa-coder t11 claude team
+win '{spaces: ['"$SPACE"'], focus: "t1"}'
+clr; run "$MAIN" $RS place alfa-lead; run "$MAIN" $RS place alfa-coder; expect 0 "placed: alfa-coder in alfa" "(L4b) stage"; keep_log
+jq -e '[.spaces[0].tabs[] | select(.name == "alfa")] | length == 1 and .[0].terminals[0].terminal == "t5"
+  and .[0].terminals[1].terminal == "t11"' "$STUB_HERDR_LS" >/dev/null \
+  || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L4b) lead left, stage right in one tab"; }
+# (L4c) a team named like the roles tab (Lead, any case) is never placed
+hrec lead-lead t12 claude team
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Lead", terminals: [{terminal: "t1"}]}]}], focus: "t1"}'
+clr; run "$MAIN" $RS place lead-lead; expect 0 "warn: placement lead-lead: team lead has the name of a roles tab — not placed" "(L4c) refused"
+keep_log; noline "hc label" "$STUB_LOG" "(L4c) labelled into the roles tab"; rm -f "$REG/lead-lead.json"
+# (L4d) after a herdr-core restart: the window keeps the team's tab (its old terminal gone); the
+# relaunched lead is adopted into that tab, no second tab, no rename
+hrec alfa-lead t15 claude team
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbA", name: "alfa", terminals: []}]}], focus: "t1"}'
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in alfa" "(L4d) restored"; keep_log
+line "hc label t15 herdr.space=s1 herdr.tab=tbA" "$STUB_LOG" "(L4d) label into the kept tab"; noline "tab.rename" "$STUB_LOG" "(L4d) renamed"
+jq -e '[.spaces[0].tabs[] | select(.name == "alfa")] | length == 1' "$STUB_HERDR_LS" >/dev/null || fail "(L4d) a second alfa tab"
+hrec alfa-lead t5 claude team
 
 # (L5) the window does not answer: up and place exit 0 with a warning and the hint
 clr; STUB_HERDR_RC=1 run "$MAIN" $RS place alfa-lead
@@ -479,13 +500,23 @@ STUB_HERDR_RC=1 run "$MAIN" $RS status; grep -E '^Fable .* pane: \?$' "$WORK/out
 win '{spaces: ['"$SPACE"'], focus: "t9"}'
 clr; STUB_HERDR_DO_RC=1 run "$MAIN" $RS; expect 0 "warn: placement Supervisor: herdr-app do tab.rename failed" "(L5) do fails"; keep_log
 
-# (L6) two teams in the same second: one Teams tab (the layout lock, #35 / #77)
+# (L6) two teams in the same second: one tab each, none twice (the layout lock, #35 / #77); and a
+# team's lead and stage in the same second: one tab for the team
 win '{spaces: ['"$SPACE"'], focus: "t1"}'
 clr; ( TEAM_LAYOUT_LOCK_WAIT=10 bash -c "cd '$MAIN' && $RS place alfa-lead" > "$WORK/p1" 2>&1 & \
   TEAM_LAYOUT_LOCK_WAIT=10 bash -c "cd '$MAIN' && $RS place beta-lead" > "$WORK/p2" 2>&1 & wait ); keep_log
-[ "$(grep -c 'tab.rename .* --name Teams' "$STUB_LOG")" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(L6) Teams tab made twice"; }
-jq -e '[.spaces[0].tabs[] | select(.name == "Teams") | .terminals[].terminal] | sort == ["t5", "t7"]' "$STUB_HERDR_LS" >/dev/null \
-  || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L6) both leads in one Teams tab"; }
+[ "$(grep -c 'tab.rename .* --name alfa' "$STUB_LOG")" = 1 ] && [ "$(grep -c 'tab.rename .* --name beta' "$STUB_LOG")" = 1 ] \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(L6) a team tab made twice or not at all"; }
+jq -e '[.spaces[0].tabs[] | select(.name == "alfa") | .terminals[].terminal] == ["t5"]
+  and [.spaces[0].tabs[] | select(.name == "beta") | .terminals[].terminal] == ["t7"]' "$STUB_HERDR_LS" >/dev/null \
+  || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L6) each lead in its own tab"; }
+win '{spaces: ['"$SPACE"'], focus: "t1"}'
+clr; ( TEAM_LAYOUT_LOCK_WAIT=10 bash -c "cd '$MAIN' && $RS place alfa-lead" > "$WORK/p1" 2>&1 & \
+  TEAM_LAYOUT_LOCK_WAIT=10 bash -c "cd '$MAIN' && $RS place alfa-coder" > "$WORK/p2" 2>&1 & wait ); keep_log
+[ "$(grep -c 'tab.rename .* --name alfa' "$STUB_LOG")" = 1 ] \
+  && jq -e '[.spaces[0].tabs[] | select(.name == "alfa")] | length == 1 and (.[0].terminals | map(.terminal) | sort == ["t11", "t5"])' \
+    "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L6) one team, two tabs"; }
+rm -f "$REG/alfa-coder.json"
 
 # (L9) a project role with its own place.tab gets its own tab
 prof '.teams.sessions.Monitor = {cli: "claude", model: "opus", effort: "medium",

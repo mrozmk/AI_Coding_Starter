@@ -90,7 +90,7 @@ has "$RUN_ID" "$RD/lead-1.prompt.md" && ! grep -q '{{' "$RD/lead-1.prompt.md" ||
   && grep -q "^ref: runs/$RUN_ID/planner-" "$SUP"/* || fail "(b) dead planner: no single session_dead"
 echo "team-smoke-22: (b) launch OK"
 
-# ---- (b2) Herdr: the lead's terminal into Teams through the main checkout's roles.sh place --------
+# ---- (b2) Herdr: the lead's terminal into its team's tab through the main checkout's roles.sh place
 reset; RB="$MAIN/.claude/lib/roles.sh"; rm -f "$WORK/roles.main"; [ ! -f "$RB" ] || cp "$RB" "$WORK/roles.main"
 printf '#!/usr/bin/env bash\necho "PLACE $*" >> "$STUB_LOG"\n' > "$RB"
 RGD="$(cd "$MAIN" && pwd -P)/.agents/team/registry"; rm -rf "$WORK/reg.keep"; mkdir -p "$RGD"; cp -R "$RGD" "$WORK/reg.keep"

@@ -264,9 +264,15 @@ the inbox file; the line only wakes the session.
 - **`place <address>`** (Herdr) puts a running terminal into its tab:
   - a role into its `place.tab` (`Lead` for the shipped roles: the `main` slot left, `side` roles
     stacked right);
-  - a team session into the space's single **`Teams`** tab, by label adoption, as a new column on
-    the right. The runner places each team's TeamLead and the stage that runs now; a stage's pane
-    closes when its program exits.
+  - a team session into **its team's own tab**, named after the team (`<team>-<role>` → tab
+    `<team>`), by label adoption. The runner places the TeamLead at launch, so it is the tab's
+    first, left pane, and each stage it launches as a new column on the right; a stage's pane
+    closes when its program exits. A missing tab is made by the space label and renamed, under the
+    layout lock, so two teams placed in the same second get one tab each and a team never gets two.
+    After a herdr-core restart the relaunched sessions are adopted into the team's tab when the
+    window still has it, else into a new one. A team whose name equals a roles tab (`lead`, or any
+    `place.tab`, case-insensitive) is refused by `team-new.sh`, `/start-team` and the runner, and
+    never placed.
 
   Placement never ends a terminal, never moves the focus from a runner, and never creates a space
   from a runner. A failure warns and prints the hint. Under tmux it only prints the hint.
@@ -290,15 +296,13 @@ follows those answers:
 | Folder trust dialog | Never auto-accepted (§11) |
 | "Other" answers into an open prompt under Herdr | `deny` plus a message to the stage (§7) |
 | Ad-hoc sessions after a crash | Resume lines only, nothing reopened (§13) |
-| What the `Teams` tab shows | Per team, its TeamLead and the stage working now, in one `Teams` tab (§13) |
+| What a team's tab shows | One tab per team, named after it: its TeamLead left, the stage working now right; a team named like a roles tab (`lead`) is refused (owner, 2026-11-15; §13) |
 
 Still open, so these may change:
 
 - **`auto` → Herdr:** `SH_AUTO_HERDR` stays `0` (so `auto` = tmux) until the owner switches it. The
   live re-check of the graceful kill (L1) passed on 2026-11-15: `kill --graceful 20` on an idle
   role returned in 2 s. Flipping the switch is a separate change.
-- **A tab per team** instead of the single `Teams` tab is under the owner's decision. That decision
-  also has to settle a team named `Lead`, which would collide with the `Lead` tab.
 
 Closed by the live check of 2026-11-15:
 
