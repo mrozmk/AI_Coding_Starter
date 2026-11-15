@@ -29,7 +29,9 @@
     "jira_transition_comment": false,
     "jira_transition_evidence": {},
     "_tracker_comments_doc": "Opt-in: true → ticket comments are requirements (.agents/reference/tracker-comments.md) — /brainstorm and /quick-change snapshot them, /execute, /check-implementation and /pr-merge check for new ones. Default: off, no extra tracker reads.",
-    "tracker_comments": false
+    "tracker_comments": false,
+    "_pr_open_doc": "Opt-in: true → /pr-create opens the PR (github: gh, azure-devops: az) after showing the full draft and an explicit Create answer, with your local CLI identity. Default: off — the command only prepares the PR for you to open.",
+    "pr_open": false
   },
 
   "_tracker_doc": "jira | github | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md. github => the tasks are the issues of github.repo; .claude/lib/team-tracker.sh reads them without a teams block.",

@@ -1,7 +1,7 @@
 ---
-description: Prepare a pull request — push the branch, derive title + dest from the Branch model and the tracker, fill the repo's PR template honestly, print the create-PR URL. Prepares only — never opens the PR, never merges.
+description: Prepare a pull request — push the branch, derive title + dest from the Branch model and the tracker, fill the repo's PR template honestly, print the create-PR URL. Opens the PR only with the workflow.pr_open opt-in and an explicit Create answer; never merges.
 argument-hint: "[ISSUE-KEY | github: 42 or #42 (optional — derived from the branch name if omitted)]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git log:*), Bash(git diff:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(ls:*), Bash(cat:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(bash .claude/lib/branch-model.sh:*), mcp__atlassian__jira_get_issue, Skill, AskUserQuestion
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git log:*), Bash(git diff:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(git show:*), Bash(ls:*), Bash(cat:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(bash .claude/lib/branch-model.sh:*), Bash(gh api user:*), Bash(gh pr list:*), Bash(az repos show:*), Bash(az repos pr list:*), mcp__atlassian__jira_get_issue, Skill, AskUserQuestion
 ---
 
 # /pr-create — Prepare a Pull Request (host-agnostic)
@@ -10,7 +10,9 @@ Prepare everything needed to open a PR, then **stop and hand the user a ready-to
 command **never creates the PR and never merges** — the user opens it from the host UI so the PR
 is authored by **them**, not by a token or bot identity, and so the outward-facing act (reviewers
 get notified) stays a human one. Output: push confirmation · create-PR URL · title · filled
-description + checklist · post-merge reminder.
+description + checklist · post-merge reminder. A project may opt in to having the command open the
+PR (`workflow.pr_open`, Step 7a) — still only after the user has read the full draft and answered
+**Create**; the default stays off for the reason above.
 
 Issue key argument: **$ARGUMENTS** (optional)
 
@@ -18,8 +20,10 @@ Issue key argument: **$ARGUMENTS** (optional)
 
 ## Guardrails
 
-- **Never create the PR, never merge, never commit.** Dirty tree → tell the user to run `/commit`
-  first. Never call a host API (`gh`, `glab`, `curl`) to **open** the PR. Reading the issue through
+- **Never create the PR unless Step 7a's opt-in is on and the user answered Create; never merge,
+  never commit.** Dirty tree → tell the user to run `/commit` first. Outside Step 7a never call a
+  host API (`gh`, `glab`, `az`, `curl`). Never pass `--auto-complete` or `--bypass-policy`, never
+  retry a failed create with other flags; one PR per branch and destination. Reading the issue through
   `team-tracker.sh show` is fine. No tracker status is moved here: delivery is the merge.
 - **Protected-branch refuse.** Current branch listed under **Protected** in `CLAUDE.md → ### Branch
   model` (fallback when the block is absent: `main`, `master`, `trunk`, `develop`) → STOP: "You are on
@@ -27,7 +31,9 @@ Issue key argument: **$ARGUMENTS** (optional)
 - **PR layer off.** `.claude/project-profile.json` has `teams.pr_provider: none` → STOP:
   "teams.pr_provider is none — the PR layer is off for this project; set it to github or
   azure-devops to open PRs."
-- **The only outward action is the push**, delegated to `/push` (own branch, never `--force*`).
+- **The only outward actions are the push**, delegated to `/push` (own branch, never `--force*`),
+  **and, opt-in only, the PR the user approved in Step 7a.** The create call is deliberately not in
+  `allowed-tools`: the permission prompt is a second gate after the question.
 - **Faithful checklist.** Fill the template from the actual diff. Check `[x]` only what is genuinely
   true; otherwise mark **N/A** with a one-line reason. Never tick "tests pass" without having run
   the project's Validation commands in this session.
@@ -89,6 +95,7 @@ strip `.git`):
 | `github.com` | `https://github.com/<owner>/<repo>/compare/<DEST>...<BRANCH>?expand=1` | `.github/PULL_REQUEST_TEMPLATE.md`, `.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, `docs/PULL_REQUEST_TEMPLATE.md` |
 | `bitbucket.org` | `https://bitbucket.org/<owner>/<repo>/pull-requests/new?source=<BRANCH>&dest=<DEST>` | `.bitbucket/pull_request_template.md` |
 | `gitlab.*` | `https://<host>/<owner>/<repo>/-/merge_requests/new?merge_request[source_branch]=<BRANCH>&merge_request[target_branch]=<DEST>` | `.gitlab/merge_request_templates/Default.md` (else first file there) |
+| Azure DevOps (`dev.azure.com/<org>/<project>/_git/<repo>`, `dev.azure.com/<org>/_git/<repo>` → project = repo, `ssh.dev.azure.com:v3/<org>/<project>/<repo>`, `<org>.visualstudio.com/[DefaultCollection/]<project>/_git/<repo>`; URL-decode, `ORG_URL = https://dev.azure.com/<org>`) | `<ORG_URL>/<project>/_git/<repo>/pullrequestcreate?sourceRef=<BRANCH>&targetRef=<DEST>` | read from the default branch (`git show origin/<default>:<path>`; Azure Repos applies only those): `.azuredevops/`, `.vsts/`, `docs/`, root — `pull_request_template/branches/<DEST>.md` first, then `pull_request_template.md` |
 | other | none — print `BRANCH` and `DEST` and tell the user to open the PR manually | none |
 
 GitHub's compare URL prefills nothing beyond the branches; Bitbucket Cloud ignores title/body
@@ -158,6 +165,58 @@ In the user's communication language:
    hand after the merge.
 6. Repeat any warning (tracker unreachable, unknown branch type, keyless, the issue will not close
    on this merge) so it is not missed.
+
+### Step 7a — Open the PR (opt-in)
+
+**Opt-in:** `workflow.pr_open` in `.claude/project-profile.json` is not `true` (absent, `false`, no
+profile) → the command ends with Step 7: no host API call, no question. Team mode
+(`.agents/team/session.json` exists) also ends there — the team PR path is not this step.
+
+Otherwise:
+
+1. **Provider** — `teams.pr_provider` when a `teams` block exists, else the Step 3 host: github.com
+   → `github`, Azure DevOps → `azure-devops`. Anything else → one line "opening is supported for
+   github and azure-devops only — open it from the URL above", stop.
+2. **Identity** — github: `gh api user --jq .login` (the account `gh` will create with).
+   azure-devops: `az repos show --org "$ORG_URL" --project "<project>" --repository "<repo>" --query id -o tsv`
+   proves access only; `az repos` may use a PAT (`az devops login`) or the `az login` account, so the
+   author is shown as **"not verified — the identity behind your `az repos` credentials"**, never
+   as a confirmed name. A failed probe → STOP with the error and the fix (`gh auth login` · `az login`
+   / `az devops login --org <ORG_URL>`).
+3. **Preview, then ask.** Publication is immediate and notifies reviewers, so the user sees the
+   **full** description before Create — print one block: repo, `BRANCH → DEST`, title, `MERGE`,
+   template used, author (step 2), then the complete description exactly as it will be sent
+   (azure-devops caps it at 4000 characters: trim prose before this preview, never checklist items).
+   Then
+   `AskUserQuestion`: **Create PR** · **Create as draft** · **Edit** (apply the change, show the full
+   block again, ask again) · **Cancel** (the branch stays pushed; nothing else happens). Anything but
+   Create → no create call.
+4. After Edit, re-run the Retired check on `DEST`. Write the description with the Write tool to the
+   path `git rev-parse --git-path PR_DESCRIPTION.md` prints (inside the git dir, so it can never be
+   committed; works in a linked worktree) — the previewed text, unchanged.
+5. **Find the PR this branch already has** (before the create, and again after it):
+   - github: `gh pr list --repo <owner>/<repo> --head <BRANCH> --base <DEST> --state open --json number,url,isDraft,headRefName,baseRefName,headRepositoryOwner,headRepository`,
+     keep only entries with `headRepositoryOwner.login + "/" + headRepository.name` = `<owner>/<repo>`,
+     `headRefName` = `BRANCH` and `baseRefName` = `DEST` (`--head` also matches a fork's branch of the
+     same name — `team-pr.sh` `find_open` applies the same filter);
+   - azure-devops: `az repos pr list --org "$ORG_URL" --project "<project>" --repository "<repo>" --source-branch <BRANCH> --status active -o json`,
+     keep entries with `repository.name` = `<repo>` and `sourceRefName` = `refs/heads/<BRANCH>`;
+     one whose `targetRefName` is not `refs/heads/<DEST>` → STOP "an active PR of this branch targets
+     `<its target>` — not the previewed `DEST`".
+
+   Exactly one → report it (URL, draft state) and stop: no second PR. More than one → STOP, list
+   them, create nothing.
+6. **Create** (none found):
+   - github: `gh pr create --repo <owner>/<repo> --base <DEST> --head <BRANCH> --title "<TITLE>" --body-file <path from 4>`
+     plus `--draft` for Create as draft;
+   - azure-devops: `az repos pr create --org "$ORG_URL" --project "<project>" --repository "<repo>" --source-branch <BRANCH> --target-branch <DEST> --title "<TITLE>" --description @<path from 4> --query "{id:pullRequestId,isDraft:isDraft}" -o json`
+     plus `--draft true` for Create as draft.
+
+   Whatever the create printed, run step 5 again — a create that succeeded and lost its answer must
+   not lead to a second PR. Exactly one → the result. None → the create's error verbatim; stop (no
+   retry with other flags).
+7. **Report:** ✅ PR `#<n>` (draft or published) + URL, title, `DEST`, author line; next: review, then
+   `/pr-merge <id>` (azure-devops) or the host's merge; repeat every warning.
 
 ---
 
