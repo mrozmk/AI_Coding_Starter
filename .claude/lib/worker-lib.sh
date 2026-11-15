@@ -21,14 +21,21 @@ w_non_ancestors() {
 # not their arguments), and TEAM_GATE_LOCK_WORKLOAD (the gate lock's same knob). No toolchain is
 # assumed: a project whose build check is `make check` gets `make check`, not another stack's tool.
 w_workload_re() {
-  local re='test-gate\.sh|team-merge-check\.sh|codex exec' words w esc
+  local re='test-gate\.sh|team-merge-check\.sh|codex exec' words w esc script
   if [ -n "${TEAM_BUILD_CHECK:-}" ]; then
-    words=""
+    words="" script=""
     for w in $TEAM_BUILD_CHECK; do
+      case "$w" in */*) script="$w" ;; esac
       case "$w" in -*|*/*|*.*|*=*) break ;; esac
       words="${words:+$words }$w"
       [ "$(printf '%s' "$words" | wc -w | tr -d ' ')" -lt 2 ] || break
     done
+    # A script run by path (`bash "$X/…/build.sh"`, `./build.sh`): its file name is the build, never
+    # the interpreter alone — `bash` would match every shell in the clone.
+    case "$words" in ''|bash|sh|zsh|python|python3|node)
+      script="${script##*/}"; script="${script%[\"\']}"
+      [ -z "$script" ] || words="$script" ;;
+    esac
     case "$words" in ''|echo|echo\ *|true|:) ;; *)
       esc="$(printf '%s' "$words" | sed 's/[][\.*^$+?(){}|/]/\\&/g')"; re="$re|$esc" ;;
     esac
