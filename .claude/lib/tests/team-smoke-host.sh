@@ -715,23 +715,14 @@ run "$MAIN" bash -c "$SL; sh_name '$A' abcdefghijklmnopqrstuvwxyz-wrapup"
 expect 2 "session name pa-abcdefghijklmnopqrstuvwxyz-wrapup is over 32 characters" "(40) 33+ characters"
 echo "team-smoke-host: (40) length OK"
 
-# ---- (41) the old-name fallback (one release): no record, new name absent, old name alive ------------------
+# ---- (41) no old-name fallback (the step-2 bridge is gone): an alive pre-prefix name is never reached ----
 rm -f "$REG/alfa-qa.json"
 OLD_HS='[ "$3" != =alfa-qa ] || exit 0'   # only the old name is alive; the stub answers "gone" for the rest
-clr; STUB_ON_HAS_SESSION="$OLD_HS" STUB_PANE="$PANES/idle.txt" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=1 $SH read alfa-qa
-expect 0 "note: alfa-qa reached under its old name alfa-qa" "(41) note"
-line "tmux capture-pane -p -t =alfa-qa:" "(41) the verb acts on the old name"
-[ "$(grep -c '^note:' "$WORK/out")" = 1 ] || fail "(41) the note is printed once"
-clr; STUB_ON_HAS_SESSION="$OLD_HS" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=0 $SH alive alfa-qa; expect 3 "" "(41) off → the new name only"
-noline "=alfa-qa" "(41) off probed the old name"
-clr; STUB_ON_HAS_SESSION="$OLD_HS" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=1 $SH start alfa-qa --kind team --cwd "$CL" --cli script -- true
+clr; STUB_ON_HAS_SESSION="$OLD_HS" run "$MAIN" $SH alive alfa-qa; expect 3 "" "(41) the new name only"
+noline "=alfa-qa" "(41) probed the old name"; noline "old name" "(41) old-name note"
+clr; STUB_ON_HAS_SESSION="$OLD_HS" run "$MAIN" $SH start alfa-qa --kind team --cwd "$CL" --cli script -- true
 expect 0 "smk-alfa-qa" "(41) start uses the new name"; noline "-s alfa-qa " "(41) start used the old name"
-# A wrapper (team_pane_gen, the answer path's pane lookup) reaches an unrecorded old-named stage too.
-rm -f "$REG/alfa-qa.json"
-OLD_HS2='[ "$3" != =smk-alfa-qa ] || { echo "can'"'"'t find session: smk-alfa-qa" >&2; exit 1; }'   # display-message needs ALIVE=0
-clr; STUB_TMUX_ALIVE=0 STUB_ON_HAS_SESSION="$OLD_HS2" run "$MAIN" env TEAM_HOST_LEGACY_NAMES=1 bash -c ". '$SRC/.claude/lib/team-lib.sh'; team_pane_gen alfa-qa"
-expect 0 "%1@" "(41) team_pane_gen on the old name"; line "tmux display-message -p -t =alfa-qa: #{pane_id}@#{session_created}" "(41) gen argv"
-echo "team-smoke-host: (41) old-name fallback OK"
+echo "team-smoke-host: (41) no old-name fallback OK"
 
 # ---- (42) two fixture projects on one stub server ---------------------------------------------------------------
 for x in pa pb; do

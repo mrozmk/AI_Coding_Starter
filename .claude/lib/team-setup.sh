@@ -6,15 +6,17 @@
 # the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
 # `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
 # box `.agents/agent-mail/`, and seeds `.claude/codex-profile` and `.claude/claude-profile`. It NEVER overwrites a file the target already has — a difference is a
-# `conflict` with a diff, for a hand merge.
+# `conflict` with a diff, for a hand merge. A `retired` file is deleted only while it is byte for
+# byte a version the starter shipped; a changed one is a `conflict`, never deleted.
 #
 # Usage: bash .claude/lib/team-setup.sh <starter-root> <target-root> [--check]
 #   e.g. bash <starter-root>/.claude/lib/team-setup.sh <starter-root> "$PWD"
-#   --check: report the plan and write NOTHING (statuses read create|keep|conflict|merge).
+#   --check: report the plan and write NOTHING (statuses read create|keep|conflict|merge|remove).
 #
-# Output: one `<status>\t<class>\t<path>` line per path (`created|kept|conflict|merged`, class
-# `own|shared|generated`), each conflict followed by `--- conflict <path>` and a unified diff,
-# then `summary: created=N kept=N conflict=N merged=N` and `profile: ok|missing`.
+# Output: one `<status>\t<class>\t<path>` line per path (`created|kept|conflict|merged|removed`,
+# class `own|shared|retired|generated`; an absent retired file prints nothing), each own/shared
+# conflict followed by `--- conflict <path>` and a unified diff, then
+# `summary: created=N kept=N conflict=N merged=N removed=N` and `profile: ok|missing`.
 #
 # Exit: 0 installed, nothing to decide · 1 conflicts (everything else is installed)
 #   2 usage / no jq / target is not a repo root / manifest drift / a core file the harness uses
@@ -76,13 +78,14 @@ apply() { [ -n "$CHECK" ] || "$@"; }
 TMPF=""
 trap '[ -z "$TMPF" ] || rm -f "$TMPF"' EXIT
 
-CREATED=0; KEPT=0; CONFLICT=0; MERGED=0
-emit() {  # emit <created|kept|conflict|merged> <class> <path> [status suffix]
+CREATED=0; KEPT=0; CONFLICT=0; MERGED=0; REMOVED=0
+emit() {  # emit <created|kept|conflict|merged|removed> <class> <path> [status suffix]
   local s="$1"
   case "$1" in
     created) CREATED=$((CREATED + 1)); [ -z "$CHECK" ] || s=create ;;
     kept)    KEPT=$((KEPT + 1));       [ -z "$CHECK" ] || s=keep ;;
     merged)  MERGED=$((MERGED + 1));   [ -z "$CHECK" ] || s=merge ;;
+    removed) REMOVED=$((REMOVED + 1)); [ -z "$CHECK" ] || s=remove ;;
     conflict) CONFLICT=$((CONFLICT + 1)) ;;
   esac
   printf '%s%s\t%s\t%s\n' "$s" "${4:-}" "$2" "$3"
@@ -90,13 +93,17 @@ emit() {  # emit <created|kept|conflict|merged> <class> <path> [status suffix]
 
 # ---- the manifest ------------------------------------------------------------------------------
 # Bash 3.2: parallel arrays, no associative ones.
-M_CLASS=(); M_PATH=(); EXCL=()
+M_CLASS=(); M_PATH=(); EXCL=(); R_PATH=(); R_SUMS=()
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in ''|'#'*) continue ;; esac
   case "$line" in
     '!'*) EXCL+=("${line#!}") ;;
     'own '*)    M_CLASS+=(own);    M_PATH+=("${line#own }") ;;
     'shared '*) M_CLASS+=(shared); M_PATH+=("${line#shared }") ;;
+    'retired '*)
+      set -- ${line#retired }
+      [ $# -ge 2 ] || die 2 "manifest drift: retired line '$line' names no blob id"
+      R_PATH+=("$1"); shift; R_SUMS+=(" $* ") ;;
     *) die 2 "manifest drift: unparsable line '$line'" ;;
   esac
 done < "$MANIFEST"
@@ -120,6 +127,21 @@ while [ $i -lt ${#M_PATH[@]} ]; do
   for g in ${EXCL[@]+"${EXCL[@]}"}; do
     # The glob is intentionally unquoted on the right: it is a pattern, not a literal.
     case "$p" in $g) die 2 "manifest drift: $p is excluded by !$g" ;; esac
+  done
+  walk_guard "$p"
+  i=$((i + 1))
+done
+
+# A retired path: relative, gone from the starter (so never also own/shared), a 40-hex blob id each.
+i=0
+while [ $i -lt ${#R_PATH[@]} ]; do
+  p="${R_PATH[$i]}"
+  case "$p" in
+    /*|..|../*|*/../*|*/..) die 2 "manifest drift: retired $p leaves the manifest root" ;;
+  esac
+  [ ! -e "$STARTER/$p" ] || die 2 "manifest drift: retired $p still exists in the starter"
+  for h in ${R_SUMS[$i]}; do
+    [[ "$h" =~ ^[0-9a-f]{40}$ ]] || die 2 "manifest drift: retired $p: '$h' is not a blob id"
   done
   walk_guard "$p"
   i=$((i + 1))
@@ -179,6 +201,21 @@ while [ $i -lt ${#M_PATH[@]} ]; do
     fi
     echo "--- conflict $p"
     diff -u "$dst" "$src" || true
+  fi
+done
+
+# ---- retired files: deleted only while they are exactly a version the starter shipped -------------
+i=0
+while [ $i -lt ${#R_PATH[@]} ]; do
+  p="${R_PATH[$i]}"; sums="${R_SUMS[$i]}"; dst="$TARGET/$p"
+  i=$((i + 1))
+  [ -e "$dst" ] || continue   # walk_guard already refused a symlink or a directory here
+  h="$(git -C "$TARGET" hash-object -- "$dst" 2>/dev/null || true)"
+  if [ -n "$h" ] && case "$sums" in *" $h "*) true ;; *) false ;; esac; then
+    apply rm -f "$dst"
+    emit removed retired "$p"
+  else
+    emit conflict retired "$p" " (retired — changed locally; delete or keep it by hand)"
   fi
 done
 
@@ -352,13 +389,12 @@ NEW="$(printf '%s' "$NEW" | jq '
    "Bash(gh pr view*)", "Bash(gh issue view*)", "Bash(bash .claude/lib/codex-bg.sh*)",
    "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
    "Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/monitoring.sh*)",
-   # The role-session launcher verbs; its Operator actions are on the ask list below.
-   "Bash(bash .claude/lib/supervisor-sessions.sh status*)", "Bash(bash .claude/lib/supervisor-sessions.sh check*)",
+   # The role-session support verbs; its Operator actions are on the ask list below.
+   "Bash(bash .claude/lib/supervisor-sessions.sh check*)",
    "Bash(bash .claude/lib/supervisor-sessions.sh preflight*)", "Bash(bash .claude/lib/supervisor-sessions.sh materialize*)",
    "Bash(bash .claude/lib/supervisor-sessions.sh reviewer*)", "Bash(bash .claude/lib/supervisor-sessions.sh freeze on *)",
    "Bash(bash .claude/lib/supervisor-sessions.sh freeze status*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)",
-   "Bash(bash .claude/lib/supervisor-sessions.sh start *)", "Bash(bash .claude/lib/supervisor-sessions.sh stop *)",
-   "Bash(bash .claude/lib/supervisor-sessions.sh up*)", "Bash(printenv TEAM_SESSION_ROLE)",
+   "Bash(printenv TEAM_SESSION_ROLE)",
    # /roles: start, list, stop and place the role sessions; taking a window (here) is asked.
    "Bash(bash .claude/lib/roles.sh)", "Bash(bash .claude/lib/roles.sh up*)",
    "Bash(bash .claude/lib/roles.sh status*)", "Bash(bash .claude/lib/roles.sh stop *)",
@@ -381,12 +417,17 @@ NEW="$(printf '%s' "$NEW" | jq '
      "Bash(bash .claude/lib/team-watch.sh register --takeover*)",
      "Bash(bash .claude/lib/team-watch.sh mode answering*)",
      "Bash(bash .claude/lib/team-watch.sh mode class*)",
-     # the role-session launcher Operator actions: clearing a freeze, the rollback, here.
+     # the role-session Operator actions: clearing a freeze, the rollback, taking a window (here).
      "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
      "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
-     "Bash(bash .claude/lib/supervisor-sessions.sh here *)",
      "Bash(bash .claude/lib/roles.sh here *)"] as $ask
+  # Rules this installer added for the launcher verbs step 9a removed (exact strings only; a rule
+  # worded any other way stays).
+  | (["status*", "start *", "stop *", "up*", "here *"]
+     | map("Bash(bash .claude/lib/supervisor-sessions.sh " + . + ")")) as $gone
   | .permissions = (.permissions // {})
+  | .permissions.allow = ((.permissions.allow // []) - $gone)
+  | .permissions.ask = ((.permissions.ask // []) - $gone)
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"
 
@@ -435,7 +476,7 @@ PROFILE_OK=""
 ! jq -e '.teams | type == "object"' "$TARGET/.claude/project-profile.json" >/dev/null 2>&1 \
   || PROFILE_OK=1
 
-echo "summary: created=$CREATED kept=$KEPT conflict=$CONFLICT merged=$MERGED"
+echo "summary: created=$CREATED kept=$KEPT conflict=$CONFLICT merged=$MERGED removed=$REMOVED"
 if [ -z "$PROFILE_OK" ]; then
   echo "profile: missing"
   exit 3

@@ -4,7 +4,7 @@
 - [`supervisor-sessions.md`](../../.agents/reference/supervisor-sessions.md): the roles, profiles, launcher, preflight, auto-merge, migration and rollback.
 - [`roles.md`](../../.claude/commands/roles.md) (`/roles`, script `roles.sh`): starts, stops, lists and takes the role sessions declared in `teams.sessions`; the role contracts are in [`.agents/reference/roles/`](../../.agents/reference/roles/).
 
-> **`/roles` replaces the old launcher.** `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are deprecated pointers to it for one release. The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
+> **`/roles` replaces the old launcher.** The old `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are gone (they were pointers to it for one release, v3.2.0). The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
 - [`monitor.md`](../../.claude/commands/monitor.md): the TeamLead's handling contract.
 
 ## Per-run TeamLead (pilot)
@@ -33,7 +33,7 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 - **`TEAM_SESSION_ROLE`** (`Supervisor` | `TeamLead` | `Advisor`) is the identity. `/roles` sets it in each role session's launch environment, and each role profile sets it again under `env`. A session's memory never decides its role.
 - `<prefix>` is `teams.session_prefix`, else `teams.channel.tmux_prefix`, else the repo directory slug, cut to 12 characters ([session-host.md](../../.agents/reference/session-host.md) §2). The session's `--name` is the role plus `teams.channel.mail_suffix`. Two projects on one machine therefore never share a session or a process name.
 - The **`SessionStart` hook `session-registry.sh`** (id `L`, registered by `team-setup.sh`; it absorbed `session-role.sh`, which `team-setup.sh` now retires) runs after startup, resume, `/clear` and compact. It names the role's contract (`teams.sessions.<Role>.contract`) and keeps `.agents/team/watch/sessions/<role>/session.json` on the live session id, so `team-answer.sh --session <role>` binds to the role's own transcript. It stays silent in a team clone and without a known role.
-- The bootstrap line is on the launch line itself (`You are <Role>. Follow the role contract …`): a hook adds context but starts no turn. `/session-role` is a deprecated pointer to `/roles`.
+- The bootstrap line is on the launch line itself (`You are <Role>. Follow the role contract …`): a hook adds context but starts no turn.
 
 ## Models
 
@@ -109,8 +109,7 @@ wake loop and no team-watch daemon start; role messages are inbox files rung by 
 Each Claude role runs as `claude --name <role><suffix> --session-id <uuid> --model <m> --effort <e>
 --settings <materialised profile> -- <bootstrap line>; read`, with the caller's `CLAUDECODE*` and
 messaging variables dropped. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are set per session. A changed
-`settings.local.json` needs `roles.sh stop <Role>` and `roles.sh up <Role>`. The old
-`supervisor-sessions.sh start|stop|status|up|here` verbs are deprecated pointers to `roles.sh`.
+`settings.local.json` needs `roles.sh stop <Role>` and `roles.sh up <Role>`.
 
 Other verbs:
 
@@ -159,7 +158,7 @@ On the verified CLI the messaging token is not enforced. The 0600 mode and the o
 ## After a restart, and rollback
 
 - **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations. It starts no team-watch loop; `/monitor` users start it by hand (`bash .claude/lib/team-watch.sh start`).
-- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `/mail-role Supervisor` and `/monitor`, and `team-watch.sh status` shows the Supervisor receiver active.
+- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `/monitor`, and `team-watch.sh status` shows the Supervisor receiver active.
 
 The migration steps (for a machine that already runs a single `/monitor` window) and the smoke checklist are in the contract.
 

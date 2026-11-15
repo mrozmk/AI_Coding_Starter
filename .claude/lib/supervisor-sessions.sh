@@ -8,28 +8,13 @@
 #        bash .claude/lib/supervisor-sessions.sh rollback   (Operator action)
 #   materialize: .agents/team/watch/profiles/<Role>.settings.json from the role's template
 #   (teams.sessions.<Role>.settings, a .claude/team/sessions/<name>.settings.json), env role = <Role>.
-#   Deprecated, delegated to roles.sh: start <role>|all → up [<role>] · stop <role> · status · up ·
-#   here <Role>.
 #   e.g. bash .claude/lib/supervisor-sessions.sh preflight
 # Contract and runbook: .agents/reference/supervisor-sessions.md
 set -euo pipefail
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 LIB="$(cd "$(dirname "$0")" && pwd)"
-# The five launcher verbs moved to roles.sh (one deprecation release, then they go).
-case "$1" in
-  start|stop|status|up|here)
-    v="$1"; shift; a="${1:-}"; [ "$a" != Advisor ] || a=Fable
-    case "$v" in
-      start) n=up; [ "$a" = all ] && a="" ;;
-      up) n=up; a="" ;;
-      *) n="$v" ;;
-    esac
-    echo "supervisor-sessions.sh $v is deprecated — roles.sh $n" >&2
-    [ "$v" != up ] || echo "note: roles.sh up starts no team-watch — if you still rely on it: bash .claude/lib/team-watch.sh start" >&2
-    exec bash "$LIB/roles.sh" "$n" ${a:+"$a"} ;;
-esac
 . "$LIB/team-watch-lib.sh"
 . "$LIB/roles-lib.sh"
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
@@ -193,7 +178,7 @@ rollback() {
   cat <<'EOF'
 Rollback: routing single Supervisor, answering on. Operator steps, in this order:
   1. ! bash .claude/team/sessions/operator-kit/install.sh --rollback
-  2. start a plain `claude` in the main checkout (no TEAM_SESSION_ROLE), then /mail-role Supervisor
+  2. start a plain `claude` in the main checkout (no TEAM_SESSION_ROLE)
   3. /monitor in that window — it registers the Supervisor receiver
 Ownership is complete only when `team-watch.sh status` shows `receiver Supervisor: … active`;
 until then the backlog waits on the Supervisor's cursor.

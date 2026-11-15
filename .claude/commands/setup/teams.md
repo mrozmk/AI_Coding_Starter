@@ -32,7 +32,7 @@ Run `bash <starter-root>/.claude/lib/team-setup.sh <starter-root> <repo-root> --
 
 ## Step 4 — Install
 
-Run `team-setup.sh` without `--check`; print its output verbatim. Exit 3 means "no `teams` block in the profile": continue to Step 5. Exit 1 means conflicts (everything else is installed): continue, handle in Step 6.
+Run `team-setup.sh` without `--check`; print its output verbatim. A `removed retired <path>` line is a file the layer no longer ships, deleted because it was an unchanged starter copy; a `conflict (retired — …)` line is such a file the project changed: show it and let the user delete or keep it. Exit 3 means "no `teams` block in the profile": continue to Step 5. Exit 1 means conflicts (everything else is installed): continue, handle in Step 6.
 
 ## Step 5 — Profile interview (exit 3, or `--rerun`)
 
@@ -48,7 +48,7 @@ Write only with `jq --arg/--argjson` into `.claude/project-profile.json`: merge 
 
 The runner refuses to start a role when `.claude/codex-profile` has no value line (the installer copies only the commented template). A value line already present: keep it. Otherwise ask for the directory (recommend `~/.codex-<project>`) and write one line under the comments (a leading `~/` is fine: the runner and the channel step expand it to `$HOME`). Validate exactly as the runner does: first non-comment line, `~/` becomes `$HOME`, `cd <dir> && pwd -P` must succeed; otherwise STOP with the message.
 
-**Claude home (optional).** `.claude/claude-profile` names the `CLAUDE_CONFIG_DIR` the harness launches every Claude session on — team roles, supervision roles and `supervisor-sessions.sh here`. No value line (the installer copies only the commented template) keeps today's behaviour: the launcher forwards its own `CLAUDE_CONFIG_DIR`, when set. Ask only when the project runs on its own Claude config dir (recommend `~/.claude-<project>`); write one line, validated like the Codex home. A declared dir that does not resolve makes every launcher refuse before a session starts.
+**Claude home (optional).** `.claude/claude-profile` names the `CLAUDE_CONFIG_DIR` the harness launches every Claude session on — team roles, supervision roles and `roles.sh here`. No value line (the installer copies only the commented template) keeps today's behaviour: the launcher forwards its own `CLAUDE_CONFIG_DIR`, when set. Ask only when the project runs on its own Claude config dir (recommend `~/.claude-<project>`); write one line, validated like the Codex home. A declared dir that does not resolve makes every launcher refuse before a session starts.
 
 ## Step 5c — Optional — agent-mail kit (cross-machine mail)
 
@@ -88,9 +88,9 @@ Then the next step, one of two:
 - **single window:** in the supervising window run `bash .claude/lib/team-watch.sh start` (one
   daemon + watchdog in tmux `<tmux_prefix>-team-watch[-dog]`, this session registered as the
   receiver); routing stays `single Supervisor` and that window runs `/monitor` in pushed mode;
-- **role sessions:** `bash .claude/lib/supervisor-sessions.sh check`, then the migration in
-  `.agents/reference/supervisor-sessions.md` → Migration (`start all`, the channel check, `preflight`,
-  `routing split`).
+- **role sessions:** `bash .claude/lib/supervisor-sessions.sh check`, then `/roles` (starts the
+  standing roles), `bash .claude/lib/supervisor-sessions.sh preflight` and the routing step in
+  `.agents/reference/supervisor-sessions.md` → Migration.
 Optional, Herdr users only: print (never run) the Herdr notification mod's install line,
 `bash .claude/team/herdr-mod/install.sh --dry-run` then without `--dry-run`, and the switch
 `{"version": 1, "herdr": {"enabled": true}}` for `~/.agent-comms/notify.json` (mode 0600; the

@@ -61,7 +61,7 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
   the Operator's `freeze off` after the post-check;
 - its own tier 2/3 questions (not a team's) to the Advisor by plain agent-mail;
 - the alarms: `UNPICKED` / `STALLED` / `RECEIVER … down` / `UNDELIVERED` / `MONITOR` → find out why
-  (the role's window, `supervisor-sessions.sh status`), tell the Operator in one line when a role
+  (the role's window, `roles.sh status`), tell the Operator in one line when a role
   is down or stuck;
 - `ADVISOR silent since <UTC>: <n> escalation(s) waiting` → one line to the Operator naming the
   waiting qs from the screen (`<team> <q> tier <t> class <c>`). It never answers them, never
@@ -97,10 +97,10 @@ cannot fix), `… release --summary "<line>"` for a release step that waits for 
 `.agents/team/operator/<id>.md` and calls `notify.sh` itself; an open record with the same event,
 team and summary is reused, not sent again. `notify.sh` is denied to every role profile.
 
-**Commands:** `supervisor-sessions.sh status|freeze on …|freeze status|preflight|answer …|reviewer`,
+**Commands:** `roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight|answer …|reviewer`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` turn, then `/start-team <team>`),
-`team-watch.sh status|stats|pending|mode tiers …`, `/mail-role Supervisor`.
+`team-watch.sh status|stats|pending|mode tiers …`.
 
 ## TeamLead
 
@@ -130,13 +130,13 @@ decision and revocation lines and never rewrites them; the Advisor promotes a re
 `.agents/memory/decisions.md` and replaces it with one `[promoted]` pointer line. Procedure and
 formats: `/monitor` → `## Policy log`.
 
-**Bootstrap:** `/session-role TeamLead` — `team-question.sh <team> list` for every clone,
+**Bootstrap** (the SessionStart hook names the contract on start, `/clear` and compaction) — `team-question.sh <team> list` for every clone,
 `team-watch.sh status --open`, read the policy log, reconcile as `/monitor` step 3,
 `team-question.sh <team> orphans` → one background `team-escalate.sh … --resume` per line, then
 `monitoring.sh ensure`.
 
 **Commands:** `/monitor`, `team-question.sh`, `team-escalate.sh`, `team-run.sh`, `session-host.sh hint`,
-`team-watch.sh ack|done|status|pending TeamLead`, `/mail-role TeamLead`.
+`team-watch.sh ack|done|status|pending TeamLead`.
 
 ## Advisor
 
@@ -157,15 +157,16 @@ escalation thread, and its one policy-log exception: [team-advisor.md](team-advi
 
 **Declaration:** `.claude/team/sessions/monitoring.json` — per role `team_watch`, `wake` sources
 with grace seconds, `pause.pass`, `start` steps (allow-list: `mode tiers on`), `remind_secs`.
-**Commands:** `/monitoring start|stop|status [all]` (script `monitoring.sh`; `all` only from the
-Supervisor or a role-less caller such as `/sessions-up`); `/monitor` stays the handling contract of
+**Commands:** `bash .claude/lib/monitoring.sh start|stop|status [all]` (`all` only from the
+Supervisor or a role-less caller; the `/monitoring` command is gone, the script stays until the
+team-watch side is retired); `/monitor` stays the handling contract of
 `[team-watch #<n>]` messages and starts nothing.
 
 **Pause:** one durable flag per role in `.agents/team/watch/state.json` `.paused[<role>] = {since,
 by}`; an unreadable flag counts as a pause. A pause holds the team-watch push (routine not sent,
 `pause.pass` sent), the wake loops (dormant) and the kit's Stop hook; it **never** acks,
 supersedes, marks `done` or moves a cursor, and never silences alarms or incident threads. A
-bootstrap (`/session-role`, `/clear`, compact) keeps the pause. Details:
+bootstrap (start, `/clear`, compact) keeps the pause. Details:
 [team-watch.md](team-watch.md) → Pause.
 
 **Start:** idempotent — only a paused role is rebased (unsent routine retired, alarms re-queued,
@@ -189,11 +190,11 @@ missing (<why>)`.
   instead of a fresh one; plain `/roles` never resumes.
 
 It starts no team-watch: while that still runs, start it with `bash .claude/lib/team-watch.sh start`
-(`/sessions-up` and `supervisor-sessions.sh up` are deprecated pointers to `/roles`). What is not
+(`/sessions-up` and `supervisor-sessions.sh up` are gone). What is not
 restored: [roles/supervisor.md](roles/supervisor.md#not-restored).
 
-**Overnight:** `/monitoring stop all` in the Supervisor at night, `/monitoring start all` in the
-morning; each role then gets its `(current state)`.
+**Overnight:** `bash .claude/lib/monitoring.sh stop all` in the Supervisor at night, `… start all` in
+the morning; each role then gets its `(current state)`.
 
 ## Routing
 
@@ -267,9 +268,9 @@ bash .claude/lib/roles.sh here <Role>              # this plain terminal becomes
 bash .claude/lib/supervisor-sessions.sh preflight  # one verdict line per row, exit 1 on any FAIL
 ```
 
-`supervisor-sessions.sh start|stop|status|up|here` print a deprecation line and run `roles.sh`
-(`start all` → `up`, `start <Role>` → `up <Role>`). What follows describes `roles.sh` through the
-session-host driver (`session-host.sh start`).
+The old `supervisor-sessions.sh start|stop|status|up|here` are gone (`start all` is `roles.sh up`,
+`start <Role>` is `roles.sh up <Role>`). What follows describes `roles.sh` through the session-host
+driver (`session-host.sh start`).
 
 Every launch runs under `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u
 CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN`: a tmux server started from a Claude
@@ -364,14 +365,14 @@ Operator actions, in order; each step's rollback is `supervisor-sessions.sh roll
 
 1. `/setup:teams` with the channel step; `! bash .claude/team/sessions/operator-kit/install.sh
    --dry-run`, then `--apply`.
-2. `bash .claude/lib/supervisor-sessions.sh start all` (or `here Supervisor` + `start TeamLead` +
-   `start Advisor`); then `bash .claude/lib/team-watch.sh mode answering off` while the old
+2. `/roles` (or `bash .claude/lib/roles.sh up`; `roles.sh here Supervisor` for a plain terminal);
+   then `bash .claude/lib/team-watch.sh mode answering off` while the old
    single window still owns waiters.
-3. In each window: the `/session-role <role>` directive appears; check `/permissions` against
-   [Profiles](#profiles); `/mail-role <role>`. Each registers as `standby` while routing is single.
+3. In each window: the role's contract line appears (SessionStart hook); check `/permissions` against
+   [Profiles](#profiles). Each registers as `standby` while routing is single.
 4. Channel check: `team-watch.sh ping <role>` for each role; each window acks; `team-watch.sh stats`
    shows `picked` for the ping batches.
-5. Stop the old single window from handling team signals and close it. **Never** `/team-watch
+5. Stop the old single window from handling team signals and close it. **Never** `team-watch.sh
    stop` — it stops the shared daemon for every role.
 6. `supervisor-sessions.sh preflight` until green (no orphaned escalation — `team-escalate.sh …
    --resume` under the TeamLead where needed).
@@ -380,7 +381,7 @@ Operator actions, in order; each step's rollback is `supervisor-sessions.sh roll
 
 **Rollback:** `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on, the
 Operator steps printed) and `! bash .claude/team/sessions/operator-kit/install.sh --rollback`.
-Ownership is back only when a plain `claude` window has run `/mail-role Supervisor` + `/monitor` and
+Ownership is back only when a plain `claude` window has run `/monitor` and
 `team-watch.sh status` shows `receiver Supervisor: … active`.
 
 ## Smoke checklist

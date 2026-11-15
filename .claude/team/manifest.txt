@@ -4,6 +4,8 @@
 #   own <path>     a harness-only file: copied when absent, `conflict` when it differs locally
 #   shared <path>  a file the project may already own (its own content wins): never overwritten
 #   !<glob>        a path that must NOT appear as own/shared (checked by team-setup.sh)
+#   retired <path> <blob>…  a file the layer no longer ships: deleted from a project only while its
+#                  git blob id is one listed (a version the starter shipped), else a `conflict`
 #
 # Paths are relative to the starter root. Read only by `.claude/lib/team-setup.sh` and the
 # sync playbook (`.claude/starter-sync-playbook.md` → Category A); the harness tests are
@@ -64,7 +66,6 @@ own .agents/reference/worker-clone.md
 own .claude/commands/monitor.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
-own .claude/commands/mail-role.md
 own .claude/hooks/guard-team-memory.sh
 own .claude/hooks/guard-team-question.sh
 own .claude/hooks/team-attention.sh
@@ -217,7 +218,7 @@ own .agents/reference/team-watch.md
 # the source's alert-intake outbox is not ported (decision): no file may ship under its name
 !.claude/lib/team-watch-outbox.sh
 
-# --- role sessions: profiles, launcher, bootstrap hook and commands ---------------------------------
+# --- role sessions: profiles, their check and the support script ------------------------------------
 own .claude/team/sessions/Supervisor.settings.json
 own .claude/team/sessions/TeamLead.settings.json
 own .claude/team/sessions/TeamLead-run.settings.json
@@ -246,10 +247,6 @@ own .claude/lib/team_lead_bash.py
 own .claude/hooks/guard-team-verdict.sh
 own .claude/lib/session_profile_check.py
 own .claude/lib/supervisor-sessions.sh
-own .claude/commands/session-role.md
-own .claude/commands/monitoring.md
-own .claude/commands/sessions-up.md
-own .claude/commands/team-watch.md
 own .agents/reference/supervisor-sessions.md
 
 # --- session registry and roles: hooks (registered by team-setup.sh), the roles
@@ -265,3 +262,10 @@ own .claude/lib/team-lineage.sh
 own .claude/team/sessions/Advisor.settings.json
 own .agents/reference/roles/supervisor.md
 own .agents/reference/roles/advisor.md
+
+# --- retired: the deprecated pointers to /roles (step 9a-1); blob ids of v3.1.0 and v3.2.0 ---------
+retired .claude/commands/session-role.md 1ffcb3e894c4d0179a0e5aef41720be6d23bf1ef 29d45897f599b7d6809a07e26d99bd0636964d62
+retired .claude/commands/sessions-up.md 924f1a5543cf8b535d93e025ddf5b38bc5fa038e 5b74ac9a8b7e10812660f7988f83e356a4f87d78
+retired .claude/commands/mail-role.md 7e2ae80fc1e8debe7ca19f11ec84733921f29f34 a2301e05d34bee700cda3aa0357242f918711799
+retired .claude/commands/monitoring.md 6bcb27c4766d8ca802ca98dc03b5645f4b74a914 0bc93792146379600cfd2c28623db4dab131d552
+retired .claude/commands/team-watch.md 4bcf36bf0a0a43cff90f2a2c222d7a2fe6e54b0d 25587375e6f046b8073bfa44c4fac8d6dea7ccbd

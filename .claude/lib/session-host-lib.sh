@@ -113,35 +113,14 @@ sh_name() {
   printf '%s\n' "$n"
 }
 
-# one release: remove in step 9a — the name a session had before step 2, so a run started before the
-# upgrade is not orphaned: team <team>-<role>; role <uncut tmux_prefix|slug>-<role lc>; helper none.
-sh_legacy_name() {
-  case "$(sh_kind "$2")" in
-    team) printf '%s\n' "$2" ;;
-    role) printf '%s-%s\n' "$(sh_legacy_prefix "$1")" "$(echo "$2" | tr '[:upper:]' '[:lower:]')" ;;
-    *) return 1 ;;
-  esac
-}
-
-# sh_target <main> <address> → the live session's name: the record's name, else the prefixed name,
-# else — no record, the new name absent, TEAM_HOST_LEGACY_NAMES not 0 — the old name when that one
-# is alive (noted once per process). Every verb on an existing session resolves through here; only
-# start uses sh_name alone.
-SH_LEGACY_NOTED=""
+# sh_target <main> <address> → the live session's name: the record's name, else the prefixed name.
+# Every verb on an existing session resolves through here; only start uses sh_name alone.
 sh_target() {
-  local n old r
+  local r
   if [ "$(sh_record_get "$1" "$2" backend)" = herdr ]; then sh_herdr_handle "$1" "$2"; return; fi
   r="$(sh_record_get "$1" "$2" name)"
   if [ -n "$r" ]; then printf '%s\n' "$r"; return 0; fi
-  n="$(sh_name "$1" "$2")" || return 2
-  if [ "${TEAM_HOST_LEGACY_NAMES:-1}" != 0 ] && old="$(sh_legacy_name "$1" "$2" 2>/dev/null)" \
-    && [ -n "$old" ] && [ "$old" != "$n" ] && ! sh_tmux has-session -t "=$n" 2>/dev/null \
-    && sh_tmux has-session -t "=$old" 2>/dev/null; then
-    case " $SH_LEGACY_NOTED " in *" $2 "*) ;; *)
-      echo "note: $2 reached under its old name $old" >&2; SH_LEGACY_NOTED="$SH_LEGACY_NOTED $2" ;; esac
-    printf '%s\n' "$old"; return 0
-  fi
-  printf '%s\n' "$n"
+  sh_name "$1" "$2"
 }
 
 sh_reg_dir() { printf '%s/.agents/team/registry\n' "$1"; }

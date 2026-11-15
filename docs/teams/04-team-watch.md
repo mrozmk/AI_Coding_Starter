@@ -20,7 +20,7 @@
 
 Acks, alarms and the routing are computed outside every LLM, from ledgers in `<main>/.agents/team/watch/`.
 
-`/monitor` handles the pushed messages and no longer polls: a single window starts the daemon itself with `team-watch.sh start`, and role sessions get it from `/monitoring start` (see `01-roles-and-sessions.md`).
+`/monitor` handles the pushed messages and no longer polls: a single window starts the daemon itself with `team-watch.sh start`, and role sessions get it from `bash .claude/lib/monitoring.sh start` (the `/monitoring` command is gone; see `01-roles-and-sessions.md`).
 
 | Command | Use |
 |---|---|

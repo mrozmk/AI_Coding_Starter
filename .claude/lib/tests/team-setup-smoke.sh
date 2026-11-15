@@ -88,7 +88,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 28 ] || fail "2: allow is not the 28 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 24 ] || fail "2: allow is not the 24 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
@@ -110,8 +110,9 @@ for a in routing stop "register --takeover" "mode answering" "mode class"; do
     || fail "2: ask $a not present once"
 done
 # Role sessions: no session-role.sh hook any more (session-registry.sh prints the contract), the
-# launcher's own verbs and /roles allowed, the Operator actions (freeze off, rollback, here) behind
-# ask — each exactly once; a write verb of the launcher is never on allow.
+# support verbs and /roles allowed, the Operator actions (freeze off, rollback, roles.sh here)
+# behind ask — each exactly once; an Operator action is never on allow, and the launcher verbs
+# step 9a removed (start, stop, status, up, here) are on neither list.
 jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role.sh"))] | length == 0' "$S" >/dev/null \
   || fail "2: session-role.sh is still registered"
 RA="Bash(bash .claude/lib/roles.sh"
@@ -122,16 +123,19 @@ done
 [ "$(jq --arg a "$RA here *)" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
   || fail "2: ask roles.sh here not present once"
 SSA="Bash(bash .claude/lib/supervisor-sessions.sh"
-for a in "$SSA status*)" "$SSA check*)" "$SSA preflight*)" "$SSA materialize*)" "$SSA reviewer*)" \
-  "$SSA freeze on *)" "$SSA freeze status*)" "$SSA answer *)" "$SSA start *)" "$SSA stop *)" \
-  "$SSA up*)" "Bash(printenv TEAM_SESSION_ROLE)" "Bash(bash .claude/lib/test-gate.sh*)"; do
+for a in "$SSA check*)" "$SSA preflight*)" "$SSA materialize*)" "$SSA reviewer*)" \
+  "$SSA freeze on *)" "$SSA freeze status*)" "$SSA answer *)" \
+  "Bash(printenv TEAM_SESSION_ROLE)" "Bash(bash .claude/lib/test-gate.sh*)"; do
   [ "$(jq --arg a "$a" '[.permissions.allow[] | select(. == $a)] | length' "$S")" = 1 ] \
     || fail "2: allow $a not present once"
 done
-for a in "$SSA freeze off*)" "$SSA rollback*)" "$SSA here *)"; do
+for a in "$SSA freeze off*)" "$SSA rollback*)"; do
   [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
     || fail "2: ask $a not present once"
 done
+jq -e --arg p "$SSA" '[(.permissions.allow + .permissions.ask)[] | select(startswith($p)
+  and test("sh (start|stop|status|up|here)"))] | length == 0' "$S" >/dev/null \
+  || fail "2: a removed launcher verb is still allowed or asked"
 jq -e --arg p "$SSA" '[.permissions.allow[] | select(startswith($p)
   and test("freeze off|rollback|here"))] | length == 0' "$S" >/dev/null \
   || fail "2: a launcher Operator action is on allow"
@@ -270,7 +274,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 30 ] || fail "10: allow is not 2 project + 28 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 26 ] || fail "10: allow is not 2 project + 24 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -338,7 +342,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 28' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 24' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -416,7 +420,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 28' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 24' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -710,5 +714,55 @@ setup "$T"
 ! has "retired settings.json" || fail "25: the rerun retired again"
 jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role"))] | length == 0' \
   "$ST/.claude/settings.json" >/dev/null || fail "25: the starter's own settings still name session-role"
+
+# ---- (26) retired files: an unchanged shipped version is deleted, a changed one stays a conflict ---
+# The five deprecated /roles pointers (step 9a-1) are `retired` manifest lines with the blob ids of
+# the versions the starter shipped. So are the allow/ask rules for the launcher verbs 9a removed.
+T=$(mktarget t26)
+mkdir -p "$T/.claude/commands"
+RET=$(sed -n 's/^retired \([^ ]*\) .*/\1/p' "$MANIFEST")
+[ "$(printf '%s\n' "$RET" | grep -c .)" = 5 ] || fail "26: the manifest does not retire the five commands"
+for p in $RET; do
+  [ ! -e "$ST/$p" ] || fail "26: $p is retired but still in the starter"
+  grep -qxF "own $p" "$MANIFEST" && fail "26: $p is both retired and own"
+  b=$(sed -n "s|^retired $p ||p" "$MANIFEST"); b=${b##* }   # the last id listed: the newest shipped version
+  git -C "$ST" cat-file blob "$b" > "$T/$p" 2>/dev/null || fail "26: $p: blob $b is not in the starter's history"
+done
+printf 'my own notes\n' >> "$T/.claude/commands/mail-role.md"   # a project edit: never deleted
+SSA="Bash(bash .claude/lib/supervisor-sessions.sh"
+jq -n --arg a "$SSA up*)" --arg b "$SSA start *)" --arg h "$SSA here *)" --arg m "$SSA up --mine)" \
+  '{permissions: {allow: [$a, $b, $m], ask: [$h]}}' > "$T/.claude/settings.json"
+echo '{"teams":{}}' > "$T/.claude/project-profile.json"
+H0=$(treehash "$T")
+setup "$T" --check
+[ "$RC" = 1 ] || fail "26: --check exited $RC, expected 1 (the edited command is a conflict)"
+[ "$(field remove retired)" = 4 ] || fail "26: --check does not plan 4 removals"
+[ "$(treehash "$T")" = "$H0" ] || fail "26: --check wrote something"
+setup "$T"
+[ "$RC" = 1 ] || fail "26: install exited $RC, expected 1"
+[ "$(field removed retired)" = 4 ] || fail "26: not 4 retired files removed"
+has "conflict (retired — changed locally; delete or keep it by hand)	retired	.claude/commands/mail-role.md" \
+  || fail "26: the edited retired file is not a conflict"
+has "removed=4" || fail "26: the summary does not count the removals"
+for p in $RET; do
+  case "$p" in */mail-role.md) [ -f "$T/$p" ] || fail "26: the edited $p was deleted" ;;
+    *) [ ! -e "$T/$p" ] || fail "26: $p was not deleted" ;; esac
+done
+S="$T/.claude/settings.json"
+[ "$(jq -c --arg p "$SSA" '[.permissions.allow[], .permissions.ask[]]
+  | map(select(startswith($p) and test("sh (start|stop|status|up|here)")))' "$S")" \
+  = "[\"$SSA up --mine)\"]" ] || fail "26: the removed verbs' rules were not retired (or a project rule was)"
+setup "$T"
+[ "$(field removed)" = 0 ] && has "conflict (retired — changed locally; delete or keep it by hand)	retired	.claude/commands/mail-role.md" \
+  || fail "26: the rerun is not stable"
+# A retired path still in the starter, or one that is also shipped, is manifest drift.
+Z40=0000000000000000000000000000000000000000
+touch "$FS/.claude/team/ok" "$FS/.claude/team/x"
+printf 'own .claude/team/ok\nretired .claude/team/x %s\n' "$Z40" > "$FS/.claude/team/manifest.txt"
+fake_setup "$T"; [ "$RC" = 2 ] && has "still exists in the starter" || fail "26: a retired path in the starter is not drift"
+printf 'own .claude/team/ok\nretired .claude/team/ok %s\n' "$Z40" > "$FS/.claude/team/manifest.txt"
+fake_setup "$T"; [ "$RC" = 2 ] && has "still exists in the starter" || fail "26: a shipped and retired path is not drift"
+printf 'own .claude/team/ok\nretired .claude/commands/nope.md not-a-blob-id\n' > "$FS/.claude/team/manifest.txt"
+fake_setup "$T"; [ "$RC" = 2 ] && has "is not a blob id" || fail "26: a bad blob id is not drift"
 
 echo "team-setup-smoke: OK"

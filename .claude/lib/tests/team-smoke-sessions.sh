@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Role-session support: the SessionStart contract line (session-registry.sh), the deprecated
-# launcher verbs delegating to roles.sh, the role profiles and their check, the tier-1 `answer` into
+# Role-session support: the SessionStart contract line (session-registry.sh), the role launch
+# through roles.sh (the old launcher verbs are gone), the role profiles and their check, the tier-1 `answer` into
 # a role prompt (team-answer.sh --session), preflight, the Reviewer deliver check, the SQL guard over
 # the launcher verbs and the rollback. /roles itself: part `roles`.
 # Fixture HOME and channel (registry + box from the channel step), stub claude / tmux / launchctl /
@@ -29,6 +29,7 @@ kill_roles() {
 trap 'kill_roles; kill_loops; for p in $PIDS; do kill "$p" 2>/dev/null || true; done
   rm -rf "$WORK" "$SD"' EXIT
 SS="bash .claude/lib/supervisor-sessions.sh"
+RS="bash .claude/lib/roles.sh"
 CHK="python3 -I .claude/lib/session_profile_check.py"
 HOOKR="$MAIN/.claude/hooks/session-registry.sh"
 
@@ -124,10 +125,14 @@ hookr 0f0f0f0f-1111 TEAM_SESSION_ROLE=Fable > /dev/null
   = "0f0f0f0f-1111 Fable -" ] || fail "(1) the hook did not bind session.json to the session id"
 echo "team-smoke-sessions: (1) SessionStart contract line OK"
 
-# ---- (2) the deprecated launcher verbs delegate to roles.sh; materialise per role -----------------
+# ---- (2) roles.sh launches the roles; the old launcher verbs are gone; materialise per role ------
+for v in start stop status up here; do
+  run "$MAIN" $SS $v Supervisor; expect 2 "Starting, stopping and listing roles is roles.sh" "(2) $v is gone"
+  grep -q 'deprecated' "$WORK/out" && fail "(2) $v still delegates"
+done
 : > "$STUB_LOG"
-run "$MAIN" env CLAUDECODE=1 CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/x.sock $SS start all
-expect 0 "supervisor-sessions.sh start is deprecated — roles.sh up" "(2) start all delegates"
+run "$MAIN" env CLAUDECODE=1 CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/x.sock $RS up
+expect 0 "" "(2) roles.sh up"
 for r in Supervisor Fable Astra; do has "$r: started" "$WORK/out" || fail "(2) $r start line"; done
 wait_claude 2
 grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q -- "--model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor." \
@@ -136,12 +141,9 @@ grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q " | role=Supervisor cc
   || { cp "$STUB_LOG" "$WORK/out"; fail "(2) role env, or a leaked CLAUDECODE/socket"; }
 grep "^claude --name FableXY " "$STUB_LOG" | grep -q -- "--settings .agents/team/watch/profiles/Fable.settings.json " \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(2) Fable profile"; }
-grep -q 'TeamLead' "$WORK/out" && fail "(2) the delegated start launched the TeamLead"
-run "$MAIN" $SS stop Fable; expect 0 "supervisor-sessions.sh stop is deprecated — roles.sh stop" "(2) stop delegates"
-has "Fable: stopped" "$WORK/out" || fail "(2) stop Fable"
-run "$MAIN" $SS status; expect 0 "supervisor-sessions.sh status is deprecated — roles.sh status" "(2) status delegates"
-run "$MAIN" $SS up; expect 0 "note: roles.sh up starts no team-watch" "(2) up delegates"
-run "$MAIN" bash .claude/lib/roles.sh stop all; kill_roles
+grep -q 'TeamLead' "$WORK/out" && fail "(2) roles.sh up launched the TeamLead"
+run "$MAIN" $RS stop Fable; expect 0 "Fable: stopped" "(2) stop Fable"
+run "$MAIN" $RS stop all; kill_roles
 run "$MAIN" $SS materialize TeamLead; expect 0 "profile TeamLead:" "(2) materialize TeamLead"
 PF="$TWD/profiles/TeamLead.settings.json"
 [ "$(stat -f %Lp "$PF")" = 600 ] && [ "$(stat -f %Lp "$TWD/profiles")" = 700 ] \
@@ -161,7 +163,7 @@ jq -e '.env.TEAM_SESSION_ROLE == "Fable"' "$TWD/profiles/Fable.settings.json" >/
 run "$MAIN" $SS materialize Astra; expect 2 "Astra has no settings profile" "(2) a Codex role has no profile"
 run "$MAIN" $SS materialize Advisor; expect 2 "Advisor has no settings profile" "(2) the legacy name is no role"
 run "$CLONE" bash "$MAIN/.claude/lib/supervisor-sessions.sh" check; expect 1 "team clone" "(2) in a clone"
-echo "team-smoke-sessions: (2) delegation, materialise OK"
+echo "team-smoke-sessions: (2) launch, removed verbs, materialise OK"
 
 # ---- (3) profiles and their check ----------------------------------------------------------------
 run "$SRC" $CHK "$SRC"; expect 0 "TeamLead OK" "(3) shipped profiles"
@@ -277,26 +279,25 @@ has "tmux send-keys -t =smk-teamlead: Enter" "$STUB_LOG" || fail "(4) Enter not 
 run "$MAIN" $SS answer TeamLead --fp "$FP3" no "out of scope"; expect 0 "answered TeamLead no" "(4) no"
 has "Rejected by the Supervisor: out of scope. Do not work around it" "$STUB_LOG" || fail "(4) rejection text"
 holder; echo "$H" > "$TMUXD/smk-supervisor.pid"
-run "$MAIN" $SS here Supervisor; expect 1 "Supervisor is already running" "(4) here while tmux runs"
-has "supervisor-sessions.sh here is deprecated — roles.sh here" "$WORK/out" || fail "(4) here delegation line"
+run "$MAIN" $RS here Supervisor; expect 1 "Supervisor is already running" "(4) here while tmux runs"
 echo dead > "$TMUXD/smk-supervisor.pid"
-run "$MAIN" env CLAUDECODE=1 $SS here Supervisor
+run "$MAIN" env CLAUDECODE=1 $RS here Supervisor
 expect 1 "open a new terminal and run: bash .claude/lib/roles.sh here Supervisor" "(4) here inside Claude"
 : > "$STUB_LOG"
-run "$MAIN" env STUB_CLAUDE_EXIT=1 $SS here Supervisor; expect 0 "" "(4) here"
+run "$MAIN" env STUB_CLAUDE_EXIT=1 $RS here Supervisor; expect 0 "" "(4) here"
 grep -q "^claude --name SupervisorXY --session-id [0-9a-f-]* --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor.* | role=Supervisor cc=unset" \
   "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not exec claude as the Supervisor"; }
 # A declared Claude profile: `here` execs on it; an unresolvable one refuses before the record.
 mkdir -p "$WORK/claude-home"; CH_REAL="$(cd "$WORK/claude-home" && pwd -P)"
 printf '# fixture\n%s\n' "$WORK/claude-home" > "$MAIN/.claude/claude-profile"
 : > "$STUB_LOG"
-run "$MAIN" env STUB_CLAUDE_EXIT=1 CLAUDE_CONFIG_DIR="$WORK/other" $SS here Supervisor; expect 0 "" "(4) here with a Claude profile"
+run "$MAIN" env STUB_CLAUDE_EXIT=1 CLAUDE_CONFIG_DIR="$WORK/other" $RS here Supervisor; expect 0 "" "(4) here with a Claude profile"
 grep -q "^claude --name SupervisorXY .* ccd=$CH_REAL\$" "$STUB_LOG" \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not run on the Claude profile"; }
 printf '%s\n' "$WORK/no-such-home" > "$MAIN/.claude/claude-profile"
 cp "$MP/.agents/team/registry/Supervisor.json" "$WORK/sup-rec.bak"
 : > "$STUB_LOG"
-run "$MAIN" env STUB_CLAUDE_EXIT=1 $SS here Supervisor; expect 1 "Claude profile" "(4) here refuses an unresolvable Claude profile"
+run "$MAIN" env STUB_CLAUDE_EXIT=1 $RS here Supervisor; expect 1 "Claude profile" "(4) here refuses an unresolvable Claude profile"
 grep -q '^claude ' "$STUB_LOG" && fail "(4) an unresolvable Claude profile still ran claude"
 cmp -s "$MP/.agents/team/registry/Supervisor.json" "$WORK/sup-rec.bak" || fail "(4) a refused here rewrote the record"
 rm -f "$MAIN/.claude/claude-profile" "$MP/.agents/team/registry/Supervisor.json"

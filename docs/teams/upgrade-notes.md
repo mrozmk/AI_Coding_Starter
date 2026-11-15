@@ -3,6 +3,41 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The `/roles` pointers and the old-name bridge are gone (#33, after v3.2.0)
+
+**Before (v3.2.0):** `/session-role`, `/sessions-up`, `/mail-role`, `/monitoring` and `/team-watch`
+were one-release pointers to `/roles`; `supervisor-sessions.sh start|stop|status|up|here` printed a
+deprecation line and ran `roles.sh`; the session-host driver still reached a session under the name
+it had before session prefixes (`TEAM_HOST_LEGACY_NAMES`).
+
+**Now:**
+- The five command files are gone. The manifest lists them as `retired` with the blob ids of the
+  versions the starter shipped (v3.1.0, v3.2.0): `/setup:teams` deletes a project's copy only when
+  it is byte for byte one of those (`removed retired <path>`); a copy the project changed is a
+  `conflict (retired — …)` and stays for a hand decision. A project that syncs instead reads the
+  dropped `own` lines from the base manifest, as for any upstream deletion.
+- `supervisor-sessions.sh start|stop|status|up|here` print the usage and exit 2. The verbs are
+  `roles.sh up|stop|status|here`. `/setup:teams` drops the exact allow/ask rules it once added for
+  them; a rule worded any other way stays.
+- `sh_target` resolves a session by its record, else its prefixed name; `TEAM_HOST_LEGACY_NAMES` is
+  read by nothing.
+- The TeamLead profile denies `roles.sh here` (was `supervisor-sessions.sh here`).
+- Unchanged here: the team-watch daemon, `team-watch.sh mode`, `monitoring.sh`, `session-wake.sh`,
+  `/monitor` and `supervisor-sessions.sh answer` (later steps).
+
+**Action:**
+- Upgrade to v3.2.0 first if the project is older: its sessions get prefixed names there, and this
+  release no longer finds a session under an old name. A role or stage still running under its
+  pre-prefix tmux name: stop it by that name (`tmux kill-session -t <old name>`) and start it again
+  with `/roles` or `/start-team <team>`.
+- Run `/setup:teams` (it deletes the unchanged pointers); delete or keep any `conflict (retired — …)`
+  file by hand.
+- Replace `/session-role`, `/sessions-up`, `/mail-role`, `/monitoring`, `/team-watch` and
+  `supervisor-sessions.sh start|stop|status|up|here` in your own notes, scripts and `settings.local.json`
+  with `/roles` / `roles.sh` (the listening switch is `bash .claude/lib/monitoring.sh`, until it is
+  retired too).
+- Restart the TeamLead session so it loads the new deny rule.
+
 ## `/check-implementation` spawns two parallel finders
 
 **Before:** Step 1 ran `/code-review high --fix` and `/deep-review` inline, one after the other,

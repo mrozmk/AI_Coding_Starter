@@ -35,7 +35,8 @@ bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the ba
 Recorded deviations from the brief: the kit installs five files, not four (`kit.conf` was
 added, and the hook settings file is `role-hooks.settings.json`; the platform `notify.sh` it once
 installed is gone), and the
-per-role mail command `/mail-role` is a repository command, not a kit file.
+per-role mail command `/mail-role` was a repository command, not a kit file (it is gone; `/roles`
+replaced it).
 
 The file table, backups and what the installer never touches:
 [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).

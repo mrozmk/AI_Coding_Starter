@@ -46,13 +46,9 @@ still describes live code until the release that retires it.
   checkouts on one machine therefore never share a name. A name that collides with another
   checkout's live session is refused with "set a different teams.session_prefix".
 - **Names** are `[a-z0-9_-]`, at most 32 characters.
-- **Old names, for one release:** `sh_target` resolves a live session through, in order:
-  - its record's `name`;
-  - else the prefixed name;
-  - else the name it had before session prefixes, while that session is alive and
-    `TEAM_HOST_LEGACY_NAMES` is not `0`.
-
-  So a run started before the upgrade is not orphaned.
+- **Resolving a live session:** `sh_target` uses its record's `name`, else the prefixed name. The
+  one-release fallback to a name from before session prefixes is gone, so a session started under an
+  old name is not reached: stop it by its tmux name.
 - **Herdr labels** on every terminal the driver starts: `harness=<prefix>`, `kind=<kind>`,
   `address=<address>`, plus `team=<team>` for a team address. `hc run --name <name>` names the
   terminal. After start, a Herdr session is addressed by its record's `handle` (`t7`): names are
@@ -178,7 +174,6 @@ Sourced callers use these; they are not CLI verbs.
 | `HC_TERMINAL_ID` | Herdr, in every hc terminal | An `hc send` from inside an hc terminal arrives wrapped as `<hc from=…>`, so a slash command reads as text. The driver sends `/exit` with it unset (`sh_hc_bare`). A person or script typing a slash command into another Herdr terminal from inside one must unset it too, or use `session-host.sh type` |
 | `TEAM_HOST_READY_SECS` (20) | the caller | How long `--wait-ready` looks for a first sign of life |
 | `TEAM_ROLES_TRUST_SECS` (8) | the caller | How long `/roles` looks for a startup dialog |
-| `TEAM_HOST_LEGACY_NAMES=0` | the caller | Turns the pre-prefix name fallback off |
 
 ## 10. Registry record and hooks
 
