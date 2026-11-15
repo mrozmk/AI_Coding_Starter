@@ -171,6 +171,7 @@ render_prompt() {
     "$TEAM_GATES" "$p")" || die 4 "cannot render the PR blocks of the $role prompt"
   put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
+  local o; o="$(team_json origin_ticket)"; put ORIGIN_TICKET "${o:-$(team_json ticket)}"  # pre-#86 clone: own origin
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"
   put RUN_DIR ".agents/team/runs/$(run_ref)"; put ROUND "$(cur_round)"; put REWORK "$(round_rework)"
   put PLAN "$plan"; put SPEC "$spec"; put PR "$pr"; put ORG_URL "$ADO_ORG_URL"; put QA_REPORT "$report"

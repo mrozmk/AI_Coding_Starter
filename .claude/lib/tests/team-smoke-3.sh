@@ -401,7 +401,7 @@ for f in "$SRC"/.claude/lib/team-snapshot-*.sh; do
 done
 for p in planner planner-quick cli; do
   bad="$(grep -o '{{[A-Z_]*}}' "$SRC/.claude/team/prompts/$p.md" | sort -u \
-    | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|TRACKER_READ|TRACKER_WRAPUP|TRACKER_TASK|PR_HOST_KIND|PR_HOST|PR_CREATE|PR_CREATE_READY|PR_PUBLISH|PR_BODY_GET|PR_BODY_SET|PR_TOOL|GATES_NOTE|RUN_DIR|ROUND|REWORK)\}\}' || true)"
+    | grep -vxE '\{\{(TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE|TRACKER_READ|TRACKER_WRAPUP|TRACKER_TASK|PR_HOST_KIND|PR_HOST|PR_CREATE|PR_CREATE_READY|PR_PUBLISH|PR_BODY_GET|PR_BODY_SET|PR_TOOL|GATES_NOTE|RUN_DIR|ROUND|REWORK|ORIGIN_TICKET)\}\}' || true)"
   [ -z "$bad" ] || fail "$p prompt has unrendered keys: $bad"
 done
 ! grep -n 'busy of' "$SRC/.claude/lib/team-attach.sh" || fail "team-attach.sh polls Terminal's busy flag"
@@ -421,6 +421,8 @@ jq -n --arg marker "[wrapup $RUN_ID create-1]" \
     intents: {"create-1": {state: "done", draft_id: "create-1", issue_key: "AB-901"}}}' \
   > "$RD/wrapup-state.json"
 cp "$RD/wrapup-state.json" "$WORK/wrapup-state"
+# A follow-up clone: the wrapup is handed its chain line as a rendered constant (#86).
+jq '.parent_ticket = "AB-760" | .origin_ticket = "AB-700"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
 : > "$STUB_LOG"
 run "$MAIN" $TR alfa
 expect 5 "dead attempt 2 of wrapup" "wrapup launch retries then stops with stubbed Claude"
@@ -441,6 +443,7 @@ for rule in 'Fetch AB-793 with `fields="parent"`' 'issuetype.name == "Epic"' \
   has "$rule" "$WP" || fail "rendered wrapup lacks rule: $rule"
 done
 has "[wrapup $RUN_ID <op>-<n>]" "$WP" || fail "wrapup lost the recovery marker"
+has 'Follow-up of AB-793 · origin AB-700' "$WP" || fail "wrapup lacks the rendered follow-up line"
 WP2="$RD/wrapup-2.prompt.md"
 has 'attempt `2`' "$WP2" || fail "runner did not render retry attempt 2"
 for rule in ".agents/team/runs/$RUN_ID/wrapup-state.json" \

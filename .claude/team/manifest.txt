@@ -173,6 +173,7 @@ own .claude/lib/team_prompt_classes.py
 own .claude/lib/team_prompt_authority.py
 own .claude/lib/team-answer-lead.sh
 own .claude/lib/team-lead-decision.sh
+own .claude/lib/team-evidence.sh
 own .claude/team/baseline-ask.json
 own .claude/lib/team_prompt_settings.py
 own .claude/lib/team_settings_diff.py

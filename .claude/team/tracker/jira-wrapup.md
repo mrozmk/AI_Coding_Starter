@@ -40,7 +40,9 @@
      `summary,issuetype`; use it only when `issuetype.name == "Epic"`. Never use the run's ordinary
      Task as parent, or substitute a guessed/catch-all epic. An absent/non-Epic parent needs the
      clarification in step 7. Apply `.agents/memory/domain/jira.md`: its assignee and the
-     currently active sprint of its board (read it; never hardcode a sprint).
+     currently active sprint of its board (read it; never hardcode a sprint). The description ends
+     with the line `Follow-up of {{TICKET}} · origin {{ORIGIN_TICKET}}`, copied verbatim (the next
+     start counts the chain by it), before the step 4 create marker, which stays the last line.
 7. No new/unaccepted recommendations → step 8 for saved accepted work still unfinished,
    otherwise step 9. For new/unaccepted recommendations ask **one** `AskUserQuestion` (2–4 options):
    - Before the selection question, resolve missing required fields. If there is no verified

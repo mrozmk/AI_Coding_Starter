@@ -2,6 +2,7 @@
 # Point an existing team clone at its next ticket: archive the finished run, cut a fresh branch.
 #
 # Usage: bash .claude/lib/team-next.sh [--abandoned] <team> <key> <new-branch> <base-ref> [mode] [--ticket-file <f>]
+#        [--follow-up-of <key>]
 #   mode: brainstorm (default) | quick | cli — fixed for the ticket
 #   --abandoned: move on although the previous PR is abandoned; its local branch is kept
 #   e.g. bash .claude/lib/team-next.sh alfa AB-778 chore/AB-778-rollout origin/<trunk>
@@ -10,8 +11,8 @@
 # Next: bash .claude/lib/team-run.sh <team>   (from this checkout). Runbook: .agents/reference/team-pipeline.md
 set -euo pipefail
 
-# Bash 3.2: no `getopt --long`; pull --ticket-file and --abandoned out of the positionals by hand.
-tfile=""; abandoned=""; args=()
+# Bash 3.2: no `getopt --long`; pull --ticket-file, --follow-up-of and --abandoned out of the positionals by hand.
+tfile=""; fu=""; abandoned=""; args=()
 while [ $# -gt 0 ]; do
   case "$1" in
     # A missing value must exit, not `shift 2 || true`: a failed shift leaves $1 in place and
@@ -19,12 +20,15 @@ while [ $# -gt 0 ]; do
     --ticket-file)
       [ $# -ge 2 ] || { echo "error: --ticket-file needs a path" >&2; exit 2; }
       tfile="$2"; shift 2 ;;
+    --follow-up-of)
+      [ $# -ge 2 ] || { echo "error: --follow-up-of needs a ticket key" >&2; exit 2; }
+      fu="$2"; shift 2 ;;
     --abandoned) abandoned=1; shift ;;
     *) args+=("$1"); shift ;;
   esac
 done
 if [ ${#args[@]} -ne 4 ] && [ ${#args[@]} -ne 5 ]; then
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 
@@ -141,6 +145,14 @@ if [ ${#TEAM_PROBLEMS[@]} -gt 0 ]; then
   exit 1
 fi
 
+# The follow-up cap (team-lineage.sh): checked after the refusals above, before the first side
+# effect; its exit passes through (9 waits for the Operator's consent, 2 is a contradiction).
+lopt=()
+[ -z "$fu" ] || lopt+=(--follow-up-of "$fu")
+[ -z "$tfile" ] || lopt+=(--ticket-file "$(cd "$(dirname "$tfile")" && pwd -P)/ticket.md")
+lineage() { (cd "$root" && bash .claude/lib/team-lineage.sh "$@" ${lopt[@]+"${lopt[@]}"}); }
+lineage check "$key" || exit $?
+
 # Last chance to read the run in place; a run that never reached ready becomes final here.
 bash "$root/.claude/lib/team-audit.sh" "$team" --final archived \
   || echo "warn: team audit failed — archiving anyway" >&2
@@ -168,6 +180,16 @@ done
 team_seed_files "$root" "$dir"
 team_write_json "$dir" "$team" "$key" "$branch" "$base" "$mode" "$root"
 [ -z "$tfile" ] || team_copy_ticket "$tfile" "$dir"
+# The lineage into team.json, then the start into the ledger. A failed record is a hard stop: the
+# clone stays, the start is not counted, and /start-team's resume records it.
+lg="$(lineage lineage "$key")" || exit $?
+lp="${lg#parent=}"; lp="${lp%% *}"
+jq --arg p "$lp" --arg o "${lg##*origin=}" \
+  '. + {parent_ticket: (if $p == "" then null else $p end), origin_ticket: $o}' \
+  "$dir/.agents/team/team.json" > "$dir/.agents/team/team.json.tmp" \
+  && mv "$dir/.agents/team/team.json.tmp" "$dir/.agents/team/team.json" \
+  || { echo "error: cannot write the lineage into team.json" >&2; exit 1; }
+lineage record "$key" "$team" || exit $?
 team_anchor_init "$root" "$team" "$dir" || echo "warn: anchor not written" >&2
 
 echo "clone:    $dir (was $old_ticket, archived to ${archive#"$dir"/})"

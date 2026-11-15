@@ -5,15 +5,19 @@
 #        bash .claude/lib/team-lineage.sh record <ticket> <team> [--follow-up-of <key>] [--ticket-file <f>]
 #        bash .claude/lib/team-lineage.sh consent <ticket> --text "<the Operator's words>"
 #        bash .claude/lib/team-lineage.sh list [<origin>]
+#        bash .claude/lib/team-lineage.sh lineage <ticket> [--follow-up-of <key>] [--ticket-file <f>]
 #   A follow-up carries `Follow-up of <parent> · origin <origin>` in its body (or --follow-up-of
 #   <parent> names it); its origin is the chain's first ticket. check: exit 9 when the origin
 #   already has two started follow-ups and this ticket has no answered consent. record: appends
-#   the start to the ledger (once per ticket) and consumes the consent. consent: terminal only.
+#   the start to the ledger (once per ticket) and consumes the consent. consent: in a terminal (the
+#   key typed back), or the Operator's own message in the Supervisor window, typed after the
+#   refusal, that holds --text, and --text holds the phrase `consent <ticket>`.
+#   lineage: prints `parent=<k> origin=<k>` (origin = the ticket itself for a chain's first ticket).
 # Exit 0 ok · 2 usage or contradiction · 4 state · 7 not a terminal / key not confirmed · 9 consent needed
 # Contract: .agents/reference/roles/supervisor.md → Follow-up chains
 set -euo pipefail
 
-usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 [ $# -ge 1 ] || usage
 
@@ -104,6 +108,28 @@ resolve() {
 }
 
 consent_file() { printf '%s/%s.md' "$CONSENTS" "$1"; }
+
+# consent_window → the uuid of the Operator's typed message in the Supervisor window that holds
+# $TEXT, typed after this ticket's first refusal; nothing without a refusal, a Supervisor session
+# (its session-host record, sh_record_file) or a match. A uuid that answered another consent counts
+# only when the message names this ticket (team-evidence.sh).
+consent_window() {
+  local r lib rec used="" f sid cwd since
+  r="$(main_root)"; lib="$(cd "$(dirname "$0")" && pwd)"; rec="$r/.agents/team/registry/Supervisor.json"
+  [ -f "$D/refused/$TICKET" ] || return 0
+  since="$(cat "$D/refused/$TICKET")"
+  for f in "$CONSENTS"/*.md; do
+    [ -f "$f" ] && [ "$f" != "$(consent_file "$TICKET")" ] || continue
+    used="$used $(sed -n 's/^answered_via: supervisor-window //p' "$f")"
+  done
+  sid="$(jq -r '.session_id // empty' "$rec" 2>/dev/null)"; cwd="$(jq -r '.cwd // empty' "$rec" 2>/dev/null)"
+  [ -n "$sid" ] || return 0
+  # Sourced last: team-lib.sh brings its own helpers into this subshell.
+  . "$lib/team-lib.sh" && . "$lib/team-evidence.sh" || return 0
+  f="$(team_claude_project_dir "${cwd:-$r}")/$sid.jsonl"
+  [ -f "$f" ] || return 0
+  team_evidence_match "$f" "$TEXT" "$since" "$TICKET" "$used"
+}
 consent_status() { sed -n 's/^status: //p' "$(consent_file "$1")" 2>/dev/null | head -n 1; }
 
 # gate → 0 free (prints why when it matters), 9 consent needed
@@ -117,6 +143,10 @@ gate() {
     echo "follow-up $((n + 1)) of origin $ORIGIN — Operator consent $(consent_file "$TICKET" | sed "s|^$(main_root)/||")"
     return 0
   fi
+  # The first refusal's time: the Supervisor-window consent counts only messages typed after it
+  # (kept on a re-check, so an answer typed between two checks still counts).
+  [ -e "$D/refused/$TICKET" ] || ( umask 077; mkdir -p "$D/refused" \
+    && date -u +%Y-%m-%dT%H:%M:%SZ > "$D/refused/$TICKET" ) || true
   echo "follow-up $((n + 1)) of origin $ORIGIN ($(printf '%s' "$list" | paste -sd, - | sed 's/,/, /g') started) — needs the Operator's consent: bash .claude/lib/team-lineage.sh consent $TICKET --text \"<the Operator's words>\"" >&2
   return 9
 }
@@ -167,18 +197,36 @@ case "$cmd" in
     [ $# -ge 1 ] || usage
     TICKET="$(norm "$1")"; shift; opts "$@"
     [ -n "$TEXT" ] || die 2 "consent needs --text \"<the Operator's words>\""
-    [ -t 0 ] || die 7 "consent is the Operator's: run it in a terminal (stdin is not a TTY)"
     state
     case "$(consent_status "$TICKET")" in consumed) die 4 "$TICKET already started on a consent" ;; esac
-    printf 'Operator consent to start follow-up %s — type the ticket key to confirm: ' "$TICKET" >&2
-    IFS= read -r typed || typed=""
-    [ "${typed#\#}" = "$TICKET" ] || die 7 "the key typed ('$typed') is not $TICKET — no consent written"
+    if [ -t 0 ]; then
+      printf 'Operator consent to start follow-up %s — type the ticket key to confirm: ' "$TICKET" >&2
+      IFS= read -r typed || typed=""
+      [ "${typed#\#}" = "$TICKET" ] || die 7 "the key typed ('$typed') is not $TICKET — no consent written"
+      via=terminal
+    else
+      # The window's counterpart of typing the key back: the phrase `consent <key>` (any case,
+      # the key a whole word), so a mere mention of the ticket is never consent.
+      lt="$(printf '%s' "$TEXT" | tr '[:upper:]' '[:lower:]')"
+      re="(^|[^a-z0-9-])consent[[:space:]]+#?$(printf '%s' "$TICKET" | tr '[:upper:]' '[:lower:]')([^a-z0-9-]|$)"
+      [[ "$lt" =~ $re ]] || die 7 \
+        "consent is the Operator's: run it in a terminal (stdin is not a TTY), or quote their Supervisor-window words holding 'consent $TICKET'"
+      uuid="$(consent_window)"
+      [ -n "$uuid" ] || die 7 \
+        "consent is the Operator's: run it in a terminal (stdin is not a TTY) — no message typed in the Supervisor window after the refusal holds that text"
+      via="supervisor-window $uuid"
+    fi
     f="$(consent_file "$TICKET")"
     ( umask 077
-      { printf -- '---\nticket: %s\nstatus: answered\nanswered_at: %s\nanswered_via: terminal\n---\n\n## Answer\n\n' \
-          "$TICKET" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      { printf -- '---\nticket: %s\nstatus: answered\nanswered_at: %s\nanswered_via: %s\n---\n\n## Answer\n\n' \
+          "$TICKET" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$via"
         printf '%s\n' "$TEXT" | tr -d '\r' | cut -c1-500 | head -n 20; } > "$f.tmp.$$" && mv "$f.tmp.$$" "$f" )
     echo "consent written: .agents/team/lineage/consents/$TICKET.md" ;;
+  lineage)
+    [ $# -ge 1 ] || usage
+    TICKET="$(norm "$1")"; shift; opts "$@"
+    state; resolve
+    echo "parent=$PARENT origin=${ORIGIN:-$TICKET}" ;;
   list)
     [ $# -le 1 ] || usage
     o=""; [ $# -eq 0 ] || o="$(norm "$1")"

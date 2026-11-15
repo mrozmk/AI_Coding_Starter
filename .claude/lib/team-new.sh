@@ -2,6 +2,7 @@
 # Provision a team clone next to this checkout, on a fresh branch cut from a harness-carrying line.
 #
 # Usage: bash .claude/lib/team-new.sh <team> <TT-key> <new-branch> <base-ref> [mode] [--ticket-file <f>]
+#        [--follow-up-of <key>]
 #   mode: brainstorm (default) | quick | cli — fixed for the ticket
 #   e.g. bash .claude/lib/team-new.sh alfa AB-790 feature/AB-790-slug origin/<trunk>
 #
@@ -9,8 +10,8 @@
 # Next ticket in the same clone: team-next.sh. Runbook: .agents/reference/team-pipeline.md
 set -euo pipefail
 
-# Bash 3.2: no `getopt --long`; pull --ticket-file out of the positionals by hand.
-tfile=""; ARGS=()
+# Bash 3.2: no `getopt --long`; pull --ticket-file, --follow-up-of out of the positionals by hand.
+tfile=""; fu=""; ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     # A missing value must exit, not `shift 2 || true`: a failed shift leaves $1 in place and
@@ -18,13 +19,16 @@ while [ $# -gt 0 ]; do
     --ticket-file)
       [ $# -ge 2 ] || { echo "error: --ticket-file needs a path" >&2; exit 2; }
       tfile="$2"; shift 2 ;;
+    --follow-up-of)
+      [ $# -ge 2 ] || { echo "error: --follow-up-of needs a ticket key" >&2; exit 2; }
+      fu="$2"; shift 2 ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
 set -- ${ARGS[@]+"${ARGS[@]}"}
 
 if [ $# -ne 4 ] && [ $# -ne 5 ]; then
-  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 
@@ -89,11 +93,29 @@ if [ ${#TEAM_PROBLEMS[@]} -gt 0 ]; then
   exit 1
 fi
 
+# The follow-up cap (team-lineage.sh): checked after the refusals above, before the first side
+# effect; its exit passes through (9 waits for the Operator's consent, 2 is a contradiction).
+lopt=()
+[ -z "$fu" ] || lopt+=(--follow-up-of "$fu")
+[ -z "$tfile" ] || lopt+=(--ticket-file "$(cd "$(dirname "$tfile")" && pwd -P)/ticket.md")
+lineage() { (cd "$root" && bash .claude/lib/team-lineage.sh "$@" ${lopt[@]+"${lopt[@]}"}); }
+lineage check "$key" || exit $?
+
 team_clone_dissociated "$root" "$dir"
 git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 team_seed_files "$root" "$dir"
 team_write_json "$dir" "$team" "$key" "$branch" "$base" "$mode" "$root"
 [ -z "$tfile" ] || team_copy_ticket "$tfile" "$dir"
+# The lineage into team.json, then the start into the ledger. A failed record is a hard stop: the
+# clone stays, the start is not counted, and /start-team's resume records it.
+lg="$(lineage lineage "$key")" || exit $?
+lp="${lg#parent=}"; lp="${lp%% *}"
+jq --arg p "$lp" --arg o "${lg##*origin=}" \
+  '. + {parent_ticket: (if $p == "" then null else $p end), origin_ticket: $o}' \
+  "$dir/.agents/team/team.json" > "$dir/.agents/team/team.json.tmp" \
+  && mv "$dir/.agents/team/team.json.tmp" "$dir/.agents/team/team.json" \
+  || { echo "error: cannot write the lineage into team.json" >&2; exit 1; }
+lineage record "$key" "$team" || exit $?
 team_anchor_init "$root" "$team" "$dir" || echo "warn: anchor not written" >&2
 
 echo "clone:    $dir"

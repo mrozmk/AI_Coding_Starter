@@ -1,12 +1,12 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner in tmux (it opens a Terminal preview window per role)
-argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
-allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /start-team — run a team on a ticket
 
-Arguments: **$ARGUMENTS** — `<team> [key] [branch] [--mode <mode>] [--brief <text>|--brief-file <path>] [--roles <entries…>] [--permission-mode manual]`. Supervisor command: run it in the **main
+Arguments: **$ARGUMENTS** — `<team> [key] [branch] [--mode <mode>] [--brief <text>|--brief-file <path>] [--roles <entries…>] [--permission-mode manual] [--follow-up-of <key>]`. Supervisor command: run it in the **main
 checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md`.
 
 ## Guardrails
@@ -14,6 +14,10 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 - Refuse inside a team clone (`.agents/team/team.json` at the repo root) — teams never start teams.
 - Never delete a clone, never touch another team, never answer a team's questions for the user.
 - A refusal from `team-new.sh` / `team-next.sh` is printed verbatim — fix nothing on your own.
+  An exit 9 (the follow-up cap) is never retried under another key, another team or without
+  `--follow-up-of`. `team-lineage.sh` stays callable from this session: its `consent` needs a
+  terminal or the Operator's own typed message in this window, so it is not a deny-list entry.
+  Never run `consent` on your own words or on a message without the phrase `consent <KEY>`.
 
 ## Steps
 
@@ -59,6 +63,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    Opus/medium, no QA).
    `--brief "<text>"` / `--brief-file <path>` are taken out the same way, before the positional
    parse — for `TRACKER=none` they *are* the ticket (there is no key to name).
+   `FOLLOW` = the key after `--follow-up-of` (the ticket this one follows up; a leading `#`
+   dropped), taken out the same way; no value → stop and ask.
    **This run is NEW** when `KEY` is given, or (only `none`) when `--brief`/`--brief-file` is given;
    otherwise it is a **RESUME** (step 2). Refuse:
    - `--brief`/`--brief-file` with `TRACKER` = `jira` or `github` → "`--brief` is for tracker=none —
@@ -66,6 +72,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    - `--mode` on a RESUME → "mode is fixed per ticket — `/start-team <team> <KEY> --mode …`
      (tracker=none: `--brief …`) starts a new one". `/start-team alfa --brief "Fix X" --mode quick`
      is NEW, so it is allowed;
+   - `--follow-up-of` on a RESUME → "the lineage is fixed at the start — the clone's `team.json`
+     carries it";
    - `--mode cli` with a `--roles` model/effort entry → "cli always runs opus[1m]/medium; drop
      --roles" (`cli=//manual` from `--permission-mode manual` is allowed).
 
@@ -91,15 +99,27 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `<CLONE>/.agents/team/team.json`): `bash .claude/lib/team-brief.sh check <TEAM>` must pass;
    otherwise write the brief first as in step 4c (`write`, never `--replace`).
 
+   Record the start, before the runner: `bash .claude/lib/team-lineage.sh record <ticket> <TEAM>`
+   plus `--follow-up-of <parent_ticket>` when that field of `<CLONE>/.agents/team/team.json` is set
+   and `--ticket-file <CLONE>/.agents/team/ticket.md` when that file exists (its body line carries
+   the origin; without it the start is counted under the parent) (`<ticket>` = its `ticket`). It prints `already recorded` (exit 0) for a counted start and
+   records one whose record failed at step 4. Exit 9 → as in step 4; any other non-zero → print it
+   and stop.
+
    Then go to step 5 (launch the runner) and report which stage it resumed.
 
 3. **Ticket + branch name.**
 
    **`TRACKER=jira`** (only when `BRANCH` is not given). `mcp__atlassian__jira_get_issue(KEY,
-   fields="summary,issuetype,labels")`. Type: `Bug` → `bugfix`; labels `harness`, `deploy`,
+   fields="summary,issuetype,labels,description")`; read it this way on every NEW run, also with
+   `BRANCH` given, for the follow-up line below. Type: `Bug` → `bugfix`; labels `harness`, `deploy`,
    `consolidation` or a docs/config-only summary → `chore`; otherwise `feature`. Slug: the summary
    in **English**, kebab-case, 3–6 words, `[a-z0-9-]` only. `BRANCH` = `<type>/<KEY>-<slug>`.
    Jira unreachable → stop and ask for the branch as the third argument.
+   A description line `Follow-up of <parent> · origin <origin>` → `FOLLOW` = `<parent>`; a
+   `--follow-up-of` that names another key → stop and ask the Operator which. Jira has no
+   `ticket.md`, so the line's `origin` part is not checked against the ledger (the origin comes
+   from the ledger's record of the parent, or is the parent itself).
 
    **`TRACKER=github` / `none`** — read the ticket **unconditionally** on every NEW run, also when
    `BRANCH` was given (step 4 needs the file either way); only the slug is conditional:
@@ -113,8 +133,19 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 4. **Clone.** `CLONE` absent → `bash .claude/lib/team-new.sh <TEAM> <KEY> <BRANCH>
    origin/<TEAM_TRUNK> <MODE>` (the base-ref is `origin/` plus the trunk from step 0a); present →
    `bash .claude/lib/team-next.sh …` with the same arguments. For `github`/`none` append
-   `--ticket-file .agents/team/incoming/<TEAM>/ticket.json` (the file from step 3; `jira` passes none).
-   Non-zero exit → print its errors and stop.
+   `--ticket-file .agents/team/incoming/<TEAM>/ticket.json` (the file from step 3; `jira` passes none),
+   and `--follow-up-of <FOLLOW>` when set (for `github`/`none` the script also reads the follow-up
+   line of the `ticket.md` next to the ticket file). Non-zero exit → print its errors and stop.
+   Exit **9** is the follow-up cap: this ticket would be the third follow-up of one origin. Print the
+   refusal verbatim, add one Polish line for the Operator — the origin, the follow-ups already
+   started, and how to consent: in their own terminal
+   (`bash .claude/lib/team-lineage.sh consent <KEY> --text "<their words>"`) or by typing to you a
+   message with the exact phrase `consent <KEY>` (e.g. `consent AB-793`; a mention of the ticket is
+   not enough; the paths are in `.agents/reference/roles/supervisor.md` → Follow-up chains) — and
+   stop. After the consent the
+   same `/start-team` invocation passes. When the clone's `team.json` already names `KEY` (the
+   start lost a race in the ledger after provisioning), the clone stays: after the consent, resume
+   with `/start-team <TEAM>`, which records it.
 
 4b. **Ticket status** (`TRACKER=github` only, NEW runs only, after step 4 succeeded).
    `bash .claude/lib/team-tracker.sh set-status <KEY> started`. Non-zero exit → record it DURABLY
