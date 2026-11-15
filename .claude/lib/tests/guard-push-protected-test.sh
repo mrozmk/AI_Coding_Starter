@@ -103,6 +103,20 @@ blocked "$C" "git push origin feature/x && cd $R && git push origin main" "4b cd
 allowed "$R" "git push origin feature/x && git -C $C push origin main" "4b second push into a confirm repo"
 blocked "$C" "git push origin main && git -C $R push origin main" "4b second push into a pr-only repo"
 
+# (4c) wrapped pushes are seen; quoted text is not a push
+blocked "$R" "(git push origin main)" "4c subshell"
+blocked "$R" 'bash -c "git push origin main"' "4c bash -c"
+blocked "$C" "sh -c 'cd $R && git push origin main'" "4c sh -c with cd into a pr-only repo"
+blocked "$R" 'echo $(git push origin develop)' "4c substitution"
+blocked "$R" "sudo git push origin main" "4c after sudo"
+blocked "$R" "if git push origin main; then :; fi" "4c in an if"
+blocked "$R" "{ git push origin main; }" "4c brace group"
+blocked "$R" "function f() { git push origin main; }; f" "4c function body"
+blocked "$R" "f() { git push origin develop; }; f" "4c POSIX function body"
+allowed "$R" 'B=feature/x; git push origin ${B}' "4c braces inside a word"
+allowed "$R" "echo 'git push origin main'" "4c quoted text"
+allowed "$R" 'git log -1 --grep "release: git push origin main"' "4c a message naming a push"
+
 # (5) mode absent, confirm, unknown, no block, no CLAUDE.md, no reader → today's behaviour, silent
 for v in '' confirm 'sometimes'; do
   model "$R" "$v"; allowed "$R" "git push origin main" "5 Protected push '${v:-absent}'"

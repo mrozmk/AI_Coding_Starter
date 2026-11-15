@@ -30,7 +30,14 @@ CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""' 2>/dev/null)
 [ -z "$CMD" ] && exit 0
 
 # Only act on `git commit` (incl. `git -C <dir> commit`). Leave every other command untouched.
-printf '%s' "$CMD" | grep -Eq "(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:]]+))*[[:space:]]+commit([[:space:]]|\$)" || exit 0
+# A commit the plain match misses — in `( … )`, `$( … )`, backticks or `<shell> -c '…'` — is found by
+# the segmenter (hooks/lib/git-segments.sh) and checked as that segment; quoted text never matches.
+if ! printf '%s' "$CMD" | grep -Eq "(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:]]+))*[[:space:]]+commit([[:space:]]|\$)"; then
+  GS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/git-segments.sh"
+  [ -r "$GS" ] || exit 0
+  . "$GS"
+  CMD=$(git_first "$CMD" commit) || exit 0
+fi
 
 # Skip forms where the index is not what gets committed, or nothing is committed.
 # `-a`/`--all` (incl. combined `-am`) stages tracked modifications at commit time, so

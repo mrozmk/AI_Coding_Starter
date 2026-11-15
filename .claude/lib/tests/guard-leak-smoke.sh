@@ -133,6 +133,29 @@ rc=$(run_hook guard-commit.sh "git commit -m t" "$R")
 rc=$(run_hook guard-commit.sh "git commit --no-edit" "$R")
 [ "$rc" = 0 ] || fail "commit --no-edit empty index: expected 0, got $rc"; ok "commit --no-edit empty index"
 
+# --- wrapped invocations: subshell, substitution, <shell> -c; quoted text is not one ---------------
+wrap_case() {  # wrap_case <hook> <label> <expected rc> <command; @R@ = the repo>
+  new_repo "$F" "token = $GH"; [ "$1" = guard-commit.sh ] || gitc commit -qm t
+  local rc; rc=$(run_hook "$1" "${4//@R@/$R}" "$R")
+  [ "$rc" = "$3" ] || fail "$1 $2: expected $3, got $rc"
+  ok "$1 $2"
+}
+wrap_case guard-push.sh "subshell" 2 "(git push origin HEAD)"
+wrap_case guard-push.sh "bash -c" 2 'bash -c "git push origin HEAD"'
+wrap_case guard-push.sh "sh -lc with cd" 2 "sh -lc 'cd @R@ && git push origin HEAD'"
+wrap_case guard-push.sh "substitution" 2 'echo $(git push origin HEAD)'
+wrap_case guard-push.sh "backticks" 2 'echo `git push origin HEAD`'
+wrap_case guard-push.sh "brace group" 2 "{ git push origin HEAD; }"
+wrap_case guard-push.sh "function body" 2 "function f() { git push origin HEAD; }; f"
+wrap_case guard-push.sh "quoted text" 0 "echo 'git push origin HEAD'"
+wrap_case guard-push.sh "message naming a push" 0 'git log -1 --grep "(git push origin HEAD)"'
+wrap_case guard-commit.sh "subshell" 2 "(git commit -m t)"
+wrap_case guard-commit.sh "bash -c" 2 "bash -c 'git commit -m t'"
+wrap_case guard-commit.sh "zsh -c with cd" 2 "zsh -c 'cd @R@ && git commit -m t'"
+wrap_case guard-commit.sh "brace group" 2 "{ git commit -m t; }"
+wrap_case guard-commit.sh "function body" 2 "f() { git commit -m t; }; f"
+wrap_case guard-commit.sh "quoted text" 0 "echo 'git commit -m t'"
+
 # missing lib → both hooks fail open (loud), never scan with empty regexes
 mkdir -p "$WORK/nolib"; cp "$HOOKS/guard-commit.sh" "$HOOKS/guard-push.sh" "$WORK/nolib/"
 new_repo "$F" "token = $GH"

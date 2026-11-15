@@ -61,7 +61,14 @@ CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""' 2>/dev/null)
 # Only act on `git push`. Leave every other command untouched. Global flags may sit
 # between `git` and `push` (`git -C <dir> push`, `git -c k=v push`) — cover them, or
 # those forms bypass the scan entirely.
-printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || exit 0
+# A push the plain match misses — in `( … )`, `$( … )`, backticks or `<shell> -c '…'` — is found by
+# the segmenter (hooks/lib/git-segments.sh) and checked as that segment; quoted text never matches.
+ORIG_CMD="$CMD"
+GS_OK=""; [ -r "$HOOK_DIR/lib/git-segments.sh" ] && . "$HOOK_DIR/lib/git-segments.sh" && GS_OK=1
+if ! printf '%s' "$CMD" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)'; then
+  [ -n "$GS_OK" ] || exit 0
+  CMD=$(git_first "$CMD" push) || exit 0
+fi
 
 # --- resolve the repo the push publishes from -------------------------------------
 # Mirrors guard-commit.sh: a directory named IN the command is where the push actually
@@ -149,15 +156,18 @@ protected_check() {  # protected_check <one git push segment> <its repo dir>
   return 0
 }
 
-# Every `git push` segment of a compound command (&&, ||, ;, |, newline) is checked, each against
-# its own repo: its `-C <dir>`, else the last `cd <dir>` segment before it, else the session's.
+# Every `git push` segment of the command (separators, subshells, substitutions, `<shell> -c`) is
+# checked, each against its own repo: its `-C <dir>`, else the last `cd <dir>` segment before it,
+# else the session's. Without the segmenter: a plain split on && || ; | and newlines.
 protected_scan() {
   local segs seg d cdir="" base="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
-  segs="${CMD//&&/$'\n'}"; segs="${segs//||/$'\n'}"; segs="${segs//;/$'\n'}"; segs="${segs//|/$'\n'}"
+  if [ -n "$GS_OK" ]; then segs=$(git_segments "$ORIG_CMD")
+  else segs="${ORIG_CMD//&&/$'\n'}"; segs="${segs//||/$'\n'}"; segs="${segs//;/$'\n'}"; segs="${segs//|/$'\n'}"; fi
   while IFS= read -r seg; do
     d=$(printf '%s' "$seg" | sed -nE "s/^[[:space:]]*cd[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p")
     if [ -n "$d" ]; then cdir="$d"; continue; fi
-    printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || continue
+    if [ -n "$GS_OK" ]; then git_seg_is "$seg" push || continue
+    else printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || continue; fi
     d=$(printf '%s' "$seg" | sed -nE "s/.*git[[:space:]]+-C[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p")
     [ -n "$d" ] || d="${cdir:-$base}"
     case "$d" in /*) ;; *) d="$base/$d" ;; esac
