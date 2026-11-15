@@ -114,7 +114,14 @@
       "advisor": "pair",
       "notifier": "none"
     },
-    "_sessions_doc": "OPTIONAL — model and effort of each supervision role session, read by supervisor-sessions.sh when it launches the role (start, up, here). Absent = every role runs opus, the Supervisor at effort medium, the TeamLead and the Advisor at high. model: a Claude Code model name or alias; effort: low | medium | high | xhigh | max. An invalid value stops the launch with an error naming the key. A running window picks up a change only after stop <role> + start <role>. The values below equal the defaults.",
+    "_teamlead_doc": "OPTIONAL — the per-run TeamLead: one lead session per team run that gates the spec/plan, answers the team's questions, accepts the result against the order brief and escalates only human-only decisions to the Operator. enabled: true switches a project from the global TeamLead to the per-run one (default false — nothing changes). human_only: rule groups whose prompts only the Operator answers — settings-profiles (settings and permission-profile changes) and prod-ask (the project's production ask rules); default both. rework_budget.brainstorm / .quick: rework rounds after a rejected acceptance before the Operator decides (defaults 2 and 1). revise_limit: revise verdicts per gate before the lead must escalate (default 3, at least 1). The values below equal the defaults. Contract: .agents/reference/team-lead.md.",
+    "teamlead": {
+      "enabled": false,
+      "human_only": ["settings-profiles", "prod-ask"],
+      "rework_budget": {"brainstorm": 2, "quick": 1},
+      "revise_limit": 3
+    },
+    "_sessions_doc": "OPTIONAL — model and effort of each supervision role session, read by supervisor-sessions.sh when it launches the role (start, up, here). Absent = every role runs opus, the Supervisor at effort medium, the TeamLead and the Advisor at high. model: a Claude Code model name or alias; effort: low | medium | high | xhigh | max. An invalid value stops the launch with an error naming the key. A running window picks up a change only after stop <role> + start <role>. TeamLead also sets the per-run TeamLead (default alias `fable`, effort `high`); a pilot pins an exact id. The values below equal the defaults.",
     "sessions": {
       "Supervisor": {"model": "opus", "effort": "medium"},
       "TeamLead": {"model": "opus", "effort": "high"},

@@ -1,1 +1,1 @@
-`bash .claude/lib/team-pr.sh body-set {{PR}} .agents/team/runs/{{RUN}}/pr-description.md`
+`bash .claude/lib/team-pr.sh body-set {{PR}} {{RUN_DIR}}/pr-description.md`

@@ -16,15 +16,19 @@
 #   (--tier 1 adds --classes to the yes policy check: a class prints policy-class: <name>)
 #   --expect-fp --expect-pane --expect-event --expect-session --expect-run --expect-attempt
 #   --expect-record --expect-anchor.
+#   --authority class|teamlead|operator --why "<line>" [--decision <answered d-<n>.md>] — the
+#   per-run TeamLead path (team-answer-lead.sh, team-lead.md §6); excludes --tier.
 # Exit: 0 sent · 2 usage · 3 not sent, stale · 4 partial (keys sent, then a failure) · 5 not sent,
-#   unreadable · 6 not sent, changed · 7 not sent, policy · 8 not sent, mode (team-mode.md §10).
+#   unreadable · 6 not sent, changed · 7 not sent, policy · 8 not sent, mode (team-mode.md §10)
+#   or a lead-owned run given --tier · 9 not sent, human-only (a pending decision).
 set -euo pipefail
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 3 ] || usage
 TEAM="$1"; ROLE="$2"; action="$3"; shift 3; text=""; have_text=""
 if [ $(( $# % 2 )) = 1 ]; then text="$1"; have_text=1; shift; fi
 CLONE=""; ROOT=""; SESSION=""; QID=""; ATTEMPT=""; JOURNAL=""; TIER=""; SEND=""
+AUTH=""; WHY=""; DECISION=""; DEC_ID=""; DEC_FILE=""
 E_FP=""; E_PANE=""; E_EVENT=""; E_SESSION=""; E_RUN=""; E_ATTEMPT=""; E_RECORD=""; E_ANCHOR=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -34,6 +38,7 @@ while [ $# -gt 0 ]; do
     --expect-session) E_SESSION="$2" ;; --expect-run) E_RUN="$2" ;;
     --expect-attempt) E_ATTEMPT="$2" ;; --expect-record) E_RECORD="$2" ;;
     --expect-anchor) E_ANCHOR="$2" ;;
+    --authority) AUTH="$2" ;; --why) WHY="$2" ;; --decision) DECISION="$2" ;;
     *) usage ;;
   esac
   shift 2
@@ -52,6 +57,7 @@ esac
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
 . "$LIB/team-send-lock.sh"
+. "$LIB/team-answer-lead.sh"
 name="$TEAM-$ROLE"
 [ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ -n "$SESSION" ]; then
@@ -104,7 +110,7 @@ draft_why() {  # draft_why <input> → why a human draft is not recoverable, or 
     *"[Image #"*) echo "image chip" ;;
   esac
 }
-newest_record() { team_newest_record "$TD" "$(cat "$TD/run" 2>/dev/null)" "$ROLE" "$(sj attempt)"; }
+newest_record() { team_newest_record "$TD" "$(team_run_ref "$TD" "$(cat "$TD/run" 2>/dev/null)")" "$ROLE" "$(sj attempt)"; }
 identity() {
   local s; s="$(sj session_id)"
   [ -z "$E_SESSION" ] || [ "$E_SESSION" = "${s:--}" ] || refuse 6 "session changed"
@@ -276,16 +282,21 @@ reserve_dispatch() {  # reserve_dispatch <instance key> — one dispatch per ins
   if hit="$(grep -F " $h " "$log" 2>/dev/null | tail -n 1)"; then
     refuse 6 "instance already dispatched by $(sed -n 's/.* \(q=[^ ]*\) .*/\1/p' <<<"$hit")"
   fi
-  [ -z "$QID" ] || echo "dispatch $(team_utc) $h q=$QID attempt=$ATTEMPT pid=$$" >> "$log"
+  local who="$QID"; [ -n "$who" ] || [ -z "$AUTH" ] || who="authority:$AUTH"
+  [ -z "$who" ] || echo "dispatch $(team_utc) $h q=$who attempt=$ATTEMPT pid=$$" >> "$log"
 }
 
 finish_act() {  # finish_act — ACT/WHY from the screen, or exits: delivered, closed, refused
-  local py="$LIB/team_prompt.py" typed=""
+  local py="$LIB/team_prompt.py" typed="" ev
   ! is_typed "$text" "$PANE" || typed=1
   if [ "$SEND" = say ]; then
+    ev="$(python3 -I "$py" event "$T" blocked)"
+    [ "$ev" != - ] || refuse 6 "new prompt event (transcript unreadable)"
     if [ "$(python3 -I "$py" user-after "$T" "$E_EVENT" "$text")" = yes ]; then
       echo "finish: none — delivered (transcript)"; exit 0
     fi
+    # Only after the delivered check: a say the role already took has a newer assistant event.
+    [ "$ev" = "$E_EVENT" ] || refuse 6 "new prompt event"
     [ "$BUSY" = false ] || refuse 3 "role is busy"
     # A wrapped draft leaves no one-line input box, so the parse is unreadable only for that reason.
     if [ -n "$typed" ] \
@@ -303,8 +314,14 @@ finish_act() {  # finish_act — ACT/WHY from the screen, or exits: delivered, c
     yes) ;; unknown) refuse 3 "transcript unreadable" ;;
     *) echo "finish: none — question closed"; exit 0 ;;
   esac
-  if [ "$KIND" = menu ] && [ -n "$typed" ]; then ACT=enter; WHY="the text is in the Other field"
-  elif [ "$KIND" = menu ] && [ "$CURSOR" = 1 ] && [ "$OTHER" != - ]; then
+  [ "$KIND" = menu ] || refuse 6 "screen does not match the question"
+  ev="$(printf '%s' "$P" | python3 -I "$py" event "$T" menu)"
+  case "$ev" in
+    "$E_EVENT") ;; ambiguous) refuse 5 "ambiguous event" ;;
+    -) refuse 3 "transcript unreadable" ;; *) refuse 6 "new prompt event" ;;
+  esac
+  if [ -n "$typed" ]; then ACT=enter; WHY="the text is in the Other field"
+  elif [ "$CURSOR" = 1 ] && [ "$OTHER" != - ]; then
     ACT=text; WHY="the menu is open, Other is empty"
   else refuse 6 "screen does not match the question"; fi
 }
@@ -330,6 +347,7 @@ finish_main() {
   exit 0
 }
 
+auth_preflight
 tmux has-session -t "=$name" 2>/dev/null || refuse 6 "session gone"
 OWNER="direct pid=$$"; [ -z "$QID" ] || OWNER="q=$QID attempt=$ATTEMPT pid=$$"
 HELD="$(team_send_lock "$TD" "$ROLE" "${TEAM_SEND_LOCK_WAIT_SENDER:-2}" "$OWNER")" \
@@ -387,6 +405,7 @@ elif real_event "$E_EVENT"; then
   [ "$EVENT" != - ] || refuse 3 "transcript unreadable"
   [ "$EVENT" = "$E_EVENT" ] || refuse 6 "new prompt event"
 fi
+auth_event
 SAY_EVENT="$EVENT"
 
 CLASS=""
@@ -394,10 +413,12 @@ if [ "$action" = yes ]; then
   POL=("$CLONE" --strict --main "$ROOT"); [ -z "$QID" ] || POL+=(--transcript "$T")
   # Only TeamLead's tier-1 answer may take a class; tier 3 is the Operator's own click.
   [ "$TIER" != 1 ] || [ -z "$QID" ] || POL+=(--classes)
+  [ -z "$AUTH" ] || POL+=(--transcript "$T" --authority "$AUTH")
   # Tier 1 only: ask/deny, SQL writes and egress are the Operator's to answer in the window.
   if ! PERR="$(printf '%s\n' "$PANE" | python3 -I "$LIB/team_prompt_check.py" "${POL[@]}" 2>&1)"; then
     case "$PERR" in
       *"could not read"*) refuse 5 "$PERR" ;;
+      *"human-only:"*) refuse 9 "$PERR" ;;
       *) refuse 7 "$PERR — Operator answers in the window (tier 3)" ;;
     esac
   fi
@@ -420,8 +441,8 @@ if [ -n "$DRAFT0" ]; then
 fi
 
 last_gate
-if [ -n "$CLASS" ]; then
-  team_class_on "$ROOT" "$CLASS" \
+if [ -n "$CLASS" ] || { [ -n "$AUTH" ] && [ "$action" = yes ]; }; then
+  [ -z "$CLASS" ] || team_class_on "$ROOT" "$CLASS" \
     || refuse 7 "class $CLASS off or not enabled — Operator answers in the window (tier 3)"
   # The classification widened the decision and took time: the prompt must be the one classified.
   fields "$(parse "$(capture)")"
@@ -429,7 +450,7 @@ if [ -n "$CLASS" ]; then
     && [ "$(python3 -I "$LIB/team_prompt.py" pending "$T" "$EVENT")" = yes ]; } \
     || refuse 6 "prompt changed during classification"
 fi
-reserve_dispatch "$KEY"
+reserve_dispatch "$KEY"; auth_dispatch
 
 case "$action" in
   yes) send_key Enter ;;
@@ -456,3 +477,4 @@ case "$action" in
   picks) multi_send ;;
 esac
 report_sent "$action" "$action"
+auth_after

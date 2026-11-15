@@ -70,7 +70,10 @@ a question, is ready for merge, or stopped. After answering: `/start-team alfa`.
 - **`/tasks-status`** is the Supervisor's on-demand report: what waits for the Operator's decision
   (`waiting-operator` escalations) first, then what waits on the team (`attention[]`, PRs awaiting
   merge), then every open task with its team run and PR state. Nothing is pushed — you ask for it.
-- **`/monitor alfa gamma`** (a separate control session is handy — it is the **TeamLead**) streams
+- **With a per-run TeamLead** (`teams.teamlead.enabled=true`) the runner starts one lead per run and
+  you work from the Supervisor's inbox instead of `/monitor` — §5a.
+- **`/monitor alfa gamma`** (global TeamLead — applies only with `teams.teamlead.enabled=false`;
+  removed in the retirement step; a separate control session is handy — it is the **TeamLead**) streams
   progress every 15 s: stage changes, records, permission prompts **with the command on the role's
   screen**, questions, runner stops and ready-for-merge; a 30-minute summary on each re-arm. With
   tiers on (the default) it decides every team question outside the Advisor and Operator lists of
@@ -197,6 +200,7 @@ sessions, lock holder and the last attention line. All `team-*.sh` scripts are `
 | 5 | dead session left partial work, or retry limit hit | inspect the clone; decide by hand |
 | 6 | cancelled by `stop` | rerun when ready — the stopped session is gone: a stage with no trace relaunches as attempt 2; partial work or attempt 2 → exit 5 |
 | 7 | orphan role session without `session.json` | attach or `stop` |
+| 8 | closed without merge by the per-run TeamLead (`runs/<run>/closed.json`, event `closed`) | §5a — `closed` |
 
 Every exit also writes the run's audit (team-mode.md §2); `warn: team audit failed` never changes the code.
 
@@ -204,6 +208,36 @@ Every exit also writes the run's audit (team-mode.md §2); `warn: team audit fai
 sessions and removes the lock. A stale `lock/` (runner killed, `status` says `lock: stale`) →
 `bash .claude/lib/team-run.sh alfa unlock`: it removes the lock only when its pid is dead and the
 lock is older than 10 s; the runner never removes a lock by itself (that would race a start).
+
+## 5a. Per-run TeamLead — the Supervisor's runbook
+
+With `teams.teamlead.enabled=true` (not in mode cli) the runner launches one TeamLead per run before
+the first stage and keeps it until the run ends; `supervisor-sessions.sh` never starts it. It gates
+the spec and plan, answers the stages on an authority, accepts against the order and orders rework;
+the contract is [team-lead.md](team-lead.md). Before you rely on it, read the limits in
+[team-decision-model.md](team-decision-model.md) §3, "Where the trust ends". What you do:
+
+1. **Order brief.** A NEW run needs one: `/start-team` step 4c writes it with
+   `bash .claude/lib/team-brief.sh write <team> <file>` (`## Ticket`, `## Not ordered`,
+   `## In-flight work`). Without it the runner exits 4 before any session (team-lead.md §1).
+2. **Inbox.** Exactly four events arrive in `<main>/.agents/team/inbox/Supervisor/new/`, each with a
+   doorbell to your registered socket. List them with `bash .claude/lib/team-inbox.sh list Supervisor`;
+   after acting, `bash .claude/lib/team-inbox.sh done Supervisor <file>`.
+
+   | Event | Means | Run |
+   |---|---|---|
+   | `accepted` | the lead accepted the delivery and the wrapup is done; the runner printed `ready:` | `bash .claude/lib/team-merge-check.sh <team>`, then (github) `bash .claude/lib/team-integrate.sh <team>` or (ADO) `/pr-merge`; the brief is the event's `ref` |
+   | `closed` | the run ended without merge (exit 8); the body says `PR <id> to abandon before team-next` or `clone free` | reason `remode` → `bash .claude/lib/team-remode.sh <team> brainstorm`, then `/start-team <team>`; else abandon the named PR (if any) and free the clone with `team-next` |
+   | `collision` | the lead found another team's in-flight work touching this run | answer the lead: `bash .claude/lib/team-inbox.sh write <team> collision-answer --from Supervisor --ticket <k> --run <run> --message "<line>"` |
+   | `session_dead` | the lead died, or a stage died with partial work (`ref` = its `.session`) | `/start-team <team>` (it relaunches the lead, or resumes the stage) |
+
+3. **Exit 8.** `closed.json` is written first, so a resume is refused (`run closed (<reason>)`);
+   the next ticket is `team-next`, a remode is `team-remode.sh`.
+4. **The log.** At merge or close the lead's notes go to `<main>/.agents/team/teamlead-log.md`, one
+   block per run (team-lead.md §10): read it to tune rules and the lead's prompt.
+
+The Operator answers human-only decisions in the `<team>-lead` window; you are never asked for a
+team question.
 
 ## 6. Merge
 
@@ -343,6 +377,8 @@ for 10 min after `finished_at`; the snapshot never drops a finish younger than 1
 fill the history up to 12.
 
 ## 11. Question escalation tiers
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 Policy: [team-mode.md §10](team-mode.md) (matrix, rules, Operator actions). What the supervisor
 does:

@@ -1,7 +1,7 @@
 ---
 description: Merge (complete) an Azure DevOps pull request — invoking it IS the go-ahead: publishes a draft, self-approves, completes with the Branch-model strategy (or sets auto-complete and waits while policies run), then cleans up remote and local branches, then (tracker jira) moves the ticket to its merged status. Stops only on a real blocker; never bypasses policies.
 argument-hint: "[PR-ID] [--auto <team>]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /pr-merge — Complete an Azure DevOps Pull Request
@@ -95,7 +95,7 @@ Apply the first matching row; after any *resolve* action re-read Step 3 (at most
 
 | State | Action |
 |---|---|
-| `status: completed` | → **Step 6a** (Jira), then Step 6 (cleanup) and Step 7 |
+| `status: completed` | → **Step 6a** (Jira), Step 6b (team run), then Step 6 (cleanup) and Step 7 |
 | `status: abandoned`, `mergeStatus: conflicts`, a vote `-10`/`-5`, or a blocking policy `rejected` | **STOP** — name the blocker and the fix (conflicts: merge `<TARGET>` into the branch, push, re-run) |
 | `isDraft: true` | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --draft false -o none` |
 | a *Minimum number of reviewers* policy exists, is not `approved`, and the current user has no vote ≥ 5 | `self_approve` off → **STOP** `needs an approval — teams.policy.pr.self_approve is off`. On → *resolve:* `az repos pr set-vote --id <PR_ID> --org "$ORG_URL" --vote approve -o none` — report it as a **self-approval**. No such policy → never vote. |
@@ -180,7 +180,17 @@ reason to stop the cleanup.
    #<PR_ID>, merge commit <COMMIT>")`, one call, so there is no "moved without comment" state
    (`.agents/reference/jira-mcp-atlassian.md`). Any error → the error verbatim; go to Step 6.
 
+### Step 6b — Team run: end its TeamLead
+
+Runs on every path that reaches `completed`, when the PR belongs to a team run: the `--auto
+<team>` team, else the team whose clone `.agents/team/team.json` has `branch` = `SOURCE` without
+`refs/heads/`. None → skip silently. Run `bash .claude/lib/team-lead.sh finalize <team> merged`
+(idempotent: it ends the run's per-run TeamLead, if any, and marks the run finalized). A failure is
+reported with its retry command, never a reason to stop the cleanup.
+
 ### Step 6 — Cleanup (only after `completed`)
+
+Step 6b runs first on every path that reaches this step (the "go to Step 6" exits of Step 6a too).
 
 1. **Remote branch.** Azure DevOps does not always honour `deleteSourceBranch` — observed on an
    auto-completed PR. `git ls-remote --heads origin <SOURCE>` still lists it →

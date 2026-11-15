@@ -10,7 +10,8 @@
       "Bash(bash .claude/lib/team-mail.sh * recipients)",
       "Bash(bash .claude/lib/team-mail.sh * recipients *)",
       "Bash(bash .claude/lib/team-mail.sh * ack *)",
-      "Bash(bash .claude/lib/team-mail.sh * send *)"
+      "Bash(bash .claude/lib/team-mail.sh * send *)",
+      "Bash(bash .claude/lib/team-lead.sh owns *)"
     ],
     "deny": [
       "Bash(git push*)",
@@ -63,7 +64,8 @@
     "reads": [
       "bash .claude/lib/team-mail.sh --here inbox --for TeamLead --unread",
       "bash .claude/lib/team-mail.sh --here recipients",
-      "bash .claude/lib/team-mail.sh --here send --to Supervisor --kind turn --body x"
+      "bash .claude/lib/team-mail.sh --here send --to Supervisor --kind turn --body x",
+      "bash .claude/lib/team-lead.sh owns alfa"
     ],
     "secrets": [
       "cat .env",

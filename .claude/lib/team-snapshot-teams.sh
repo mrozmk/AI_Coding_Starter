@@ -72,7 +72,7 @@ record_open() {
   [ -n "$2" ] || return 1
   v="$(jq -r '.verdict // empty' "$2" 2>/dev/null)" || return 1
   case "$v" in blocked|failed) ;; *) return 1 ;; esac
-  [ "$(basename "$2")" != "$(cat "$1/acked" 2>/dev/null || true)" ] || [ "$3" != up ]
+  [ "$(basename "$2")" != "$(basename "$(cat "$1/acked" 2>/dev/null || true)")" ] || [ "$3" != up ]
 }
 
 # attended_pending <td> <run> → 0 when an attended role's question may still be open although
@@ -131,7 +131,7 @@ live_status() {
     *) echo unknown; return 0 ;;
   esac
   if [ "$8" = true ] || [ "$9" = true ]; then echo attention; return 0; fi
-  ra="$(ls -1t "$td/runs/$run/$role-$attempt"-*.json 2>/dev/null | head -n 1)" || true
+  ra="$(ls -1t "$td/runs/$run/$role-$attempt"-*.json "$td/runs/$run"/r*/"$role-$attempt"-*.json 2>/dev/null | head -n 1)" || true
   if record_open "$td" "$ra" "$runner"; then jq -r .verdict "$ra"; return 0; fi
   # After the record check (a role idling on a blocked record fires idle_prompt too).
   if [ -n "$tf" ] && [ -s "$att" ] && attention_pending "$att" "$tf"; then
@@ -171,7 +171,7 @@ team_role() {  # team_role <td> <team> <run> <role> <cur role> <runner> <overrid
   local td="$1" team="$2" run="$3" role="$4" cur="$5" runner="$6" ov="$7" base="$8"
   local r="" rec='null' verdict="" status=pending attempt=null cfg='{}' screen='[]' actions='[]'
   local skills=null tf rop=false live='{}' sess="" po=false mo=false pk=unreadable
-  [ -z "$run" ] || r="$(ls -1t "$td/runs/$run/$role"-*.json 2>/dev/null | head -n 1)" || true
+  [ -z "$run" ] || r="$(ls -1t "$td/runs/$run/$role"-*.json "$td/runs/$run"/r*/"$role"-*.json 2>/dev/null | head -n 1)" || true
   [ -z "$r" ] || rec="$(jq -c --arg f "$(basename "$r")" \
     '{file: $f, verdict, message, written_at, attempt}' "$r" 2>/dev/null)" || rec='null'
   [ -n "$rec" ] || rec='null'
@@ -290,9 +290,13 @@ team_escalations() {
 
 snap_team() {  # snap_team <clone .agents/team dir> → team object
   local td="$1" team run runner=down pid cur="" role f ov base problem mode pr prs="" last fin
+  local lead=false
   team="$(jq -r .team "$td/team.json")"
   mode="$(team_mode "$td/team.json" 2>/dev/null)" || { err "$team: bad mode in team.json"; mode=brainstorm; }
   run="$(cat "$td/run" 2>/dev/null || true)"
+  # A run with its own per-run TeamLead (teamlead.json of THIS run); a stale file is no lead.
+  [ -z "$run" ] || [ "$(jq -r '.run // empty' "$td/teamlead.json" 2>/dev/null)" != "$run" ] \
+    || lead=true
   # The lock owner is authoritative: the runner may run via run_in_background, without tmux.
   if [ -d "$td/lock" ]; then
     pid="$(cat "$td/lock/pid" 2>/dev/null || true)"
@@ -304,8 +308,9 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   if [ -n "$run" ]; then
     team_esc_unsent "$td" "$run" > "$W/esc" || err "$team: escalation ledgers unreadable"
     team_escalations "$td" "$run" > "$W/escs" || err "$team: escalation ledgers unreadable"
-    for f in "$td/runs/$run"/*-*-*.json; do
+    for f in "$td/runs/$run"/*-*-*.json "$td/runs/$run"/r*/*-*-*.json; do  # every rework round too
       [ -f "$f" ] || continue
+      case "$(basename "$f")" in teamlead-*) continue ;; esac  # TeamLead verdicts, not stage records
       jq -c . "$f" >> "$W/recs" 2>/dev/null || err "$team: unreadable $(basename "$f")"
     done
   fi
@@ -336,9 +341,9 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   fi
   jq -c --arg run "$run" --arg runner "$runner" --arg mode "$mode" --arg prs "$prs" \
     --arg pr "$pr" --slurpfile roles "$W/roles" --argjson fin "$fin" --slurpfile esc "$W/esc" \
-    --slurpfile escs "$W/escs" '
+    --slurpfile escs "$W/escs" --argjson lead "$lead" '
     {team, ticket, branch, line, mode: $mode, run: (if $run == "" then null else $run end), runner: $runner,
-     finished: $fin,
+     finished: $fin, lead: $lead,
      pr_id: (if $pr == "" then null else ($pr | tonumber? // $pr) end),
      pr_status: (if $prs == "" then null else $prs end),
      state: ({completed: "free", abandoned: "free", active: "awaiting_merge",

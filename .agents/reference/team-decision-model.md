@@ -7,7 +7,29 @@ rows. Mechanics: [team-questions.md](team-questions.md); the Advisor no-reply fa
 
 Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/02-decision-model.md`.
 
+Two models coexist while the global role exists. With `teams.teamlead.enabled=true` the **per-run
+TeamLead** model applies (the first subsection of §1, §3, §4 and §5); with the switch off, the
+global TeamLead model (the sections marked below). The per-run contract is
+[team-lead.md](team-lead.md); this file states who decides and links there.
+
 ## 1. Roles
+
+### Per-run TeamLead
+
+| Role | What it is | Decides |
+|---|---|---|
+| **Operator** | the human owner of the project | human-only items, as pending decisions (§3) |
+| **Supervisor** | the operations session (merges, team start/stop, releases) | operational actions; reads its four inbox events (team-lead.md §3) — never a team question |
+| **TeamLead** | one session per team run, launched by the runner, gone when the run ends | every team question of its run on an authority: gates, prompts, stops, menus, acceptance, rework |
+| **Codex** | a second-opinion call the lead makes (`codex-bg.sh`), not a session | nothing; its opinion is cited in the lead's `--why` |
+
+Stage → TeamLead → Operator: a stage's question reaches its run's lead (doorbell); the lead decides,
+or opens a pending decision for a human-only item, which notifies the Operator once. The Advisor and
+the Reviewer are not on this path.
+
+### Global TeamLead
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 | Role | What it is | Decides |
 |---|---|---|
@@ -24,12 +46,49 @@ session is Supervisor and TeamLead; the model still applies, only the hops disap
 
 ## 2. Principle
 
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+
 **The session that sees the question decides it, unless it is on a short list.** The TeamLead sees
 every team question, so it decides them; the Advisor gets a narrow list; the Operator gets only the
 critical list. Two rules always hold: unsure between two classes → the higher one; a failure, a
 timeout or silence is never consent.
 
 ## 3. Decision model
+
+### Authority (per-run TeamLead)
+
+Every answer the lead sends to a stage names an authority and lands in `runs/<run>/answers.md`
+([team-lead.md](team-lead.md) §6):
+
+| Authority | Who decides | When |
+|---|---|---|
+| `class` | the runner, before the lead is rung | a prompt in an enabled deterministic class (below) — no lead turn |
+| `teamlead` | the run's lead | everything that is not human-only: permission prompts, menus, stops, gates, acceptance, rework within the budget |
+| `operator` | the Operator, through a pending decision the lead relays | human-only items; the lead never approves one itself |
+
+**Human-only** (`teams.teamlead.human_only`, default `settings-profiles` + `prod-ask`): any edit of
+settings or permission profiles, an ask rule the project added beyond the starter's baseline
+(`.claude/team/baseline-ask.json` — the production group), egress (`git remote add|set-url`, a
+network verb), and an irreversible delete outside the clone or inside its git dir. Deny rules,
+destructive SQL and an unreadable prompt are refused for everyone, the Operator included. A
+human-only item becomes `runs/<run>/decisions/d-<n>.md` (pending), and the Operator's answer is
+recorded in their own words ([team-lead.md](team-lead.md) §7).
+
+**Where the trust ends.** These limits matter when you decide how far to rely on the lead; each is
+stated in full in one place:
+- an Operator answer is bound to a terminal or a typed message in the lead's window, but that
+  binding is not proof that a human answered — [team-lead.md](team-lead.md) §7, "Limit of the human
+  binding";
+- the verdict guard (`guard-team-verdict.sh`) sees the command text only — a write of a verdict file
+  by other means is not caught ([team-lead.md](team-lead.md) §4);
+- the rework budget counts verdict and decision files the lead itself can write
+  ([team-lead.md](team-lead.md) §9);
+- pushes made inside the team scripts (the runner, `team-integrate.sh`) are outside the push hook,
+  which guards a session's own `git push` only.
+
+### Tier table (global TeamLead)
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 | Question type | Decider | Reviewer | Time limit | Past the limit | Informs |
 |---|---|---|---|---|---|
@@ -103,6 +162,14 @@ the Supervisor or the Advisor.
 
 ## 4. Policy log
 
+**Per-run TeamLead:** no policy-log line. The lead keeps `runs/<run>/teamlead-notes.md` (order
+ambiguities, no-rule questions, gate misses, Operator cases with the tuning question, late answers),
+appended once per run to the main checkout's `.agents/team/teamlead-log.md` at merge or close
+([team-lead.md](team-lead.md) §10). `team-lead.sh owns <team>` tells the global TeamLead which runs
+to skip.
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+
 Policy-class answers (Phase 0 size, memory, deferred memory, QA warnings, rethink) are recorded
 append-only in `teamlead-policy-log.md` in the team channel's decisions directory (no channel: the
 main checkout's `.agents/team/decisions/`), one line `- <UTC> [<class>] <decision> — <why> — <team>
@@ -115,6 +182,15 @@ and replaces exactly that entry's line with a `[promoted]` pointer, after which 
 
 ## 5. The route to the Operator
 
+**Per-run TeamLead:** the Operator receives exactly four event types, all through
+`operator-kit/notify.sh`. E1 sends two — `human_decision` (a pending decision) and
+`abandon_decision` (the lead recommends abandoning a run past its rework budget), each once per
+verdict, answered in the `<team>-lead` window or with `team-lead.sh decision answer` from a terminal.
+The notification model adds `unrepaired_failure` and `release`. Everything else stays between the
+stage, the lead and the Supervisor's inbox.
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+
 - Operator actions (team-mode.md §10) — directly in the TeamLead's window (`PushNotification` +
   the block), never as a decision question and never through the Supervisor.
 - Operator-list decisions — through the Advisor (`team-escalate.sh` tier 3); the Advisor relays
@@ -124,6 +200,8 @@ and replaces exactly that entry's line with a `[promoted]` pointer, after which 
   `.agents/team/release-freeze` stops the auto-merge gate.
 
 ## Targets (not implemented)
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 - Per-class deadlines: a blocking Advisor-list question past 60 min goes to the Supervisor for the
   Operator's list; a non-blocking one past 30 min becomes a Follow-up. Until then the NO-REPLY rule

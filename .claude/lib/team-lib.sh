@@ -82,6 +82,12 @@ team_accepted_record() {
   [ -z "$f" ] || echo "${f%.accepted}"
 }
 
+# team_run_ref <team dir> <run> → <run>, or <run>/r<n> in rework round n ≥ 2 (<team dir>/round).
+team_run_ref() {
+  local n; n="$(jq -r --arg r "$2" 'select(.run == $r) | .round' "$1/round" 2>/dev/null)" || n=""
+  if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 1 ]; then echo "$2/r$n"; else echo "$2"; fi
+}
+
 team_tmux_name() {
   echo "$1-$2"
 }
@@ -233,17 +239,6 @@ team_non_memory_files() {
   local d
   d="$(git diff --no-renames --name-only "$1" "$2")" || return 1
   printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^$' || true
-}
-
-# Usage: team_dash_session <main root> — TEAM_DASH_SESSION, else the newest transcript id.
-# Set-but-empty is a pin too: serve.sh found no transcript, so the page must not follow a later one.
-team_dash_session() {
-  local s="${TEAM_DASH_SESSION-}"
-  if [ -z "${TEAM_DASH_SESSION+x}" ]; then
-    s="$(ls -1t "$(team_claude_project_dir "$1")"/*.jsonl 2>/dev/null | head -n 1)" || true
-    [ -z "$s" ] || s="$(basename "$s" .jsonl)"
-  fi
-  echo "$s"
 }
 
 team_records() {

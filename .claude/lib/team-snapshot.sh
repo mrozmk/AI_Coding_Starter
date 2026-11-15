@@ -25,6 +25,17 @@ fi
 . "$(dirname "$0")/team-snapshot-teams.sh"
 
 root="$(team_root)"
+# Usage: team_dash_session <main root> — TEAM_DASH_SESSION, else the newest transcript id.
+# Set-but-empty is a pin too: serve.sh found no transcript, so the page must not follow a later one.
+team_dash_session() {
+  local s="${TEAM_DASH_SESSION-}"
+  if [ -z "${TEAM_DASH_SESSION+x}" ]; then
+    s="$(ls -1t "$(team_claude_project_dir "$1")"/*.jsonl 2>/dev/null | head -n 1)" || true
+    [ -z "$s" ] || s="$(basename "$s" .jsonl)"
+  fi
+  echo "$s"
+}
+
 # The profile is not loaded in this shell and a dashboard must not die on it: read the one field.
 TEAM_DASH_PR_PROVIDER="$(jq -r '.teams.pr_provider // "azure-devops"' "$root/.claude/project-profile.json" 2>/dev/null || echo azure-devops)"
 export TEAM_DASH_PR_PROVIDER

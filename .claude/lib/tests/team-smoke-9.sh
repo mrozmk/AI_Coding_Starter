@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# a dim prompt suggestion is no draft, Enter only once the text is on screen, finish once.
+# a dim prompt suggestion is no draft, Enter only once the text is on screen, finish once;
+# finish re-checks the prompt event and the menu, tier 1/2 only.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -131,19 +132,81 @@ run "$MAIN" $Q alfa finish "$QM" --run "$RUN_ID"
 expect 1 "is consumed — nothing to finish" "finish after delivered"
 echo "team-smoke-9: (165) finish on a gone question OK"
 
+unchanged() {  # unchanged <q> <label> — a refused finish: no key, no ledger, still unknown
+  [ "$(keyc)" = 0 ] || fail "$2: keys $(keys)"
+  [ "$(state "$1")" = unknown ] || fail "$2: state $(state "$1")"
+  ! grep -q '^finished: ' "$(qf "$1")" || fail "$2: finished mark written"
+}
+say_unknown() {  # say_unknown <summary> <text> [tier] → QS, a blocked q whose say ended unknown
+  record --verdict blocked --message "$1" >/dev/null
+  setpane "$FIX/idle-ghost-cursor.txt"
+  run "$MAIN" $Q alfa open coder --kind blocked --summary "$1"; QS="$(qid)"
+  STUB_ECHO=0 TEAM_TYPED_SECS=1 \
+    run "$MAIN" $Q alfa answer "$QS" --tier "${3:-1}" --author s --why w --text "$2" --send say
+  expect 4 "" "$1: say whose text never shows"
+  rm -f "$STUB_LOG.typed"; : > "$STUB_LOG"
+}
+
 # ---- (166) finish of an untyped say on a suggestion types the text, then Enter ------------
-record --verdict blocked --message "say timeout" >/dev/null
-setpane "$FIX/idle-ghost-cursor.txt"
-run "$MAIN" $Q alfa open coder --kind blocked --summary "say timeout"; QS="$(qid)"; : > "$STUB_LOG"
-STUB_ECHO=0 TEAM_TYPED_SECS=1 \
-  run "$MAIN" $Q alfa answer "$QS" --tier 1 --author s --why w --text "Table." --send say
-expect 4 "" "say whose text never shows"
 # The role never took in the text: the stub pane forgets it, as the real field would be empty.
-rm -f "$STUB_LOG.typed"; : > "$STUB_LOG"; said "Table." > "$WORK/said"
+say_unknown "say timeout" "Table."; said "Table." > "$WORK/said"
 STUB_ON_SENDKEYS="case \"\$*\" in *' Enter') cat '$WORK/said' >> '$T' ;; esac" \
   run "$MAIN" $Q alfa finish "$QS" --run "$RUN_ID"
 expect 0 "$QS state=consumed — finish text" "finish of an untyped say"
 [ "$(keys)" = "-l -- Table.|Enter" ] || fail "finish say: keys $(keys)"
 echo "team-smoke-9: (166) finish types a missing say OK"
+
+# ---- (167) the role moved on after the say: a new prompt event --------------------------------
+say_unknown "moved on" "Moved."
+jq -cn '{type: "assistant", uuid: "a-167", message: {content: [{type: "text", text: "next"}]}}' \
+  >> "$T"
+run "$MAIN" $Q alfa finish "$QS" --run "$RUN_ID"
+expect 1 "changed (new prompt event)" "finish say after a new event"
+unchanged "$QS" "finish say after a new event"
+echo "team-smoke-9: (167) finish say refuses a new prompt event OK"
+
+# ---- (168) an unreadable transcript counts as a new prompt event ------------------------------
+say_unknown "unreadable" "Unreadable."
+cp "$T" "$WORK/t-saved"; echo "not json" >> "$T"
+run "$MAIN" $Q alfa finish "$QS" --run "$RUN_ID"
+expect 1 "changed (new prompt event (transcript unreadable))" "finish say, unreadable"
+unchanged "$QS" "finish say, unreadable"
+cp "$WORK/t-saved" "$T"
+echo "team-smoke-9: (168) finish say refuses an unreadable transcript OK"
+
+# ---- (169) another menu on screen is not the question's menu ----------------------------------
+menu_q toolu_m5
+STUB_ECHO=0 TEAM_TYPED_SECS=1 other; expect 4 "" "unknown before another menu"
+sed 's/Jechać mimo to/Inne pytanie/' "$FIX/menu-phase0.txt" > "$WORK/menu-other-q.txt"
+pj "$WORK/menu-other-q.txt" '.kind == "menu" and .cursor == 1 and .other != null'
+Q6="$(python3 -I "$PY" parse < "$WORK/menu-other-q.txt" | jq -r '.question | join(" ")')"
+[ "$Q6" != "$QTEXT" ] || fail "the second menu has the same question"
+pending_tool "$SID" toolu_m6 AskUserQuestion \
+  "$(jq -cn --arg q "$Q6" '{questions: [{question: $q}]}')"
+setpane "$WORK/menu-other-q.txt"; rm -f "$STUB_LOG.typed"; : > "$STUB_LOG"
+run "$MAIN" $Q alfa finish "$QM" --run "$RUN_ID"
+expect 1 "changed (new prompt event)" "finish other on another menu"
+unchanged "$QM" "finish other on another menu"
+tool_done "$SID" toolu_m5; tool_done "$SID" toolu_m6; LAST=""
+echo "team-smoke-9: (169) finish other refuses another menu OK"
+
+# ---- (170) a tier-3 answer is not finished ----------------------------------------------------
+say_unknown "tier three" "Operator." 3
+run "$MAIN" $Q alfa finish "$QS" --run "$RUN_ID"
+expect 1 "finish is tier 1/2 only" "finish of a tier-3 answer"
+unchanged "$QS" "finish of a tier-3 answer"
+echo "team-smoke-9: (170) finish refuses a tier-3 answer OK"
+
+# ---- (171) two pending instances of the same menu: the event is ambiguous ---------------------
+menu_q toolu_m7
+STUB_ECHO=0 TEAM_TYPED_SECS=1 other; expect 4 "" "unknown before a twin menu"
+pending_tool "$SID" toolu_m8 AskUserQuestion \
+  "$(jq -cn --arg q "$QTEXT" '{questions: [{question: $q}]}')"
+rm -f "$STUB_LOG.typed"; : > "$STUB_LOG"
+run "$MAIN" $Q alfa finish "$QM" --run "$RUN_ID"
+expect 1 "ambiguous event" "finish other with a twin menu"
+unchanged "$QM" "finish other with a twin menu"
+tool_done "$SID" toolu_m7; tool_done "$SID" toolu_m8; LAST=""
+echo "team-smoke-9: (171) finish other refuses an ambiguous event OK"
 
 echo "team-smoke-9: OK"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Process audit of a team run: material for later review, never a gate.
 #
-# Usage: bash .claude/lib/team-audit.sh <team> [--runner-exit N] [--final ready|archived]
+# Usage: bash .claude/lib/team-audit.sh <team> [--runner-exit N] [--final ready|archived|closed]
 #   writes <main>/.agents/team/audit/<YYYYMMDD>-<team>-<ticket>-<run>.{md,json} + index.jsonl,
 #   and launches a detached report-only retro (tmux retro-<run>) when the run turns final flagged
 #   or sampled (.claude/team/audit.json)
@@ -36,8 +36,8 @@ transcript_args() {
   # A past run's sessions: the project's declared Claude profile, else this process's.
   cfg="$(team_claude_home "$root")" || cfg=""
   shopt -s nullglob
-  for f in "$TD/runs/$RUN"/*.session; do
-    name="$(basename "$f" .session)"; sid="$(head -n 1 "$f")"
+  for f in "$TD/runs/$RUN"/*.session "$TD/runs/$RUN"/r*/*.session; do
+    name="${f#"$TD/runs/$RUN"/}"; name="${name%.session}"; sid="$(head -n 1 "$f")"
     TRANSCRIPTS+=(--transcript "$name=$(team_role_transcript "$phys" "$sid" "$cfg")")
   done
   shopt -u nullglob
@@ -151,7 +151,7 @@ EXTRA=(); TRANSCRIPTS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --runner-exit) [[ "${2:-}" =~ ^[0-9]+$ ]] || usage; EXTRA+=(--runner-exit "$2"); shift 2 ;;
-    --final) case "${2:-}" in ready|archived) ;; *) usage ;; esac; EXTRA+=(--final "$2"); shift 2 ;;
+    --final) case "${2:-}" in ready|archived|closed) ;; *) usage ;; esac; EXTRA+=(--final "$2"); shift 2 ;;
     *) usage ;;
   esac
 done

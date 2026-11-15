@@ -11,20 +11,28 @@
 # must mean the same thing in the clone and in the main checkout, whatever either side's team-lib.
 TEAM_RECORD_ROLES="planner coder qa wrapup cli"
 
+# Usage: team_ie_run_ref <team dir> <run> → <run>, or <run>/r<n> in rework round n ≥ 2 — the same
+# rule as team_run_ref (team-lib.sh), kept here because a clone's team-lib may predate it.
+team_ie_run_ref() {
+  local n; n="$(jq -r --arg r "$2" 'select(.run == $r) | .round' "$1/round" 2>/dev/null)" || n=""
+  if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 1 ]; then echo "$2/r$n"; else echo "$2"; fi
+}
+
 # Usage: team_records_digest <team dir> <run> → one sha256 over the run's role records.
 # The ONLY definition of `records_digest`. It covers the role records and their `.accepted` markers
 # — name plus content — so a NEW record (a resumed workflow) or an edited one changes the digest,
 # which is what binds a merge-check verdict to the work it was computed on. Deliberately NOT
 # included: merge-check.json / integrate.json / wrapup-state.json / the summary reports, all of
-# which the check itself writes or rewrites.
+# which the check itself writes or rewrites. Every rework round's records (r*/) count, named by their
+# path under the run dir, so a round-1 run digests exactly as before.
 team_records_digest() {  # <td> <run>
   local d="$1/runs/$2" r f s
   {
     for r in $TEAM_RECORD_ROLES; do
-      for f in "$d/$r-"*.json "$d/$r-"*.json.accepted; do
+      for f in "$d/$r-"*.json "$d/$r-"*.json.accepted "$d"/r*/"$r-"*.json "$d"/r*/"$r-"*.json.accepted; do
         [ -f "$f" ] || continue
         s="$(shasum -a 256 < "$f")" || return 1
-        printf '%s %s\n' "$(basename "$f")" "${s%% *}"
+        printf '%s %s\n' "${f#"$d"/}" "${s%% *}"
       done
     done
   } | LC_ALL=C sort | shasum -a 256 | awk '{print $1}'
@@ -45,7 +53,7 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   IE_SRC=""; IE_TGT=""; IE_MERGE=""
   ie_no() { echo "error: $1" >&2; return 3; }
   [ -n "$run" ] || { ie_no "no run id for team $team — nothing to integrate"; return 3; }
-  rd="$td/runs/$run"
+  rd="$td/runs/$(team_ie_run_ref "$td" "$run")"
   branch="$(jq -r '.branch // ""' "$td/team.json")" || { ie_no "cannot read $td/team.json"; return 3; }
   line="$(jq -r '.line // ""' "$td/team.json")"
 

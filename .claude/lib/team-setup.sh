@@ -238,6 +238,7 @@ hook_merge() {  # hook_merge <id> <event> <command> <required json> <async true|
 H='bash "$CLAUDE_PROJECT_DIR/.claude/hooks'
 hook_merge Q PreToolUse "$H/guard-team-question.sh\"" '["AskUserQuestion"]' false AskUserQuestion
 hook_merge M PreToolUse "$H/guard-team-memory.sh\"" '["Edit","Write"]' false 'Edit|Write'
+hook_merge V PreToolUse "$H/guard-team-verdict.sh\"" '["Bash"]' false Bash
 hook_merge A Notification "$H/team-attention.sh\"" \
   '["permission_prompt","idle_prompt","elicitation_dialog","agent_needs_input"]' true \
   'permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
@@ -305,6 +306,10 @@ stage_merge() {  # stage_merge <id> <event> <matcher|''> [<if rule>]
 stage_merge K PreToolUse Skill
 stage_merge B PreToolUse Bash 'Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
 stage_merge U UserPromptExpansion ''
+
+# The per-run TeamLead's identity refresh and socket registration; silent outside a run's lead.
+hook_merge L SessionStart "$H/teamlead-register.sh\"" '["startup","resume","clear","compact"]' false '' \
+  '{"timeout":5}'
 
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq '

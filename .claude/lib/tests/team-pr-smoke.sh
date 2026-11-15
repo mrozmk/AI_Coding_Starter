@@ -282,7 +282,7 @@ setprofile
 # ================================================================================================
 # (B1) prompt render per provider — github leaves no {{key}} and no `az`, ADO keeps its text
 # ================================================================================================
-KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
+KEYS='TEAM|TICKET|BRANCH|LINE|BASE_SHA|RUN|RUN_DIR|ROUND|REWORK|ATTEMPT|PLAN|SPEC|PR|ORG_URL|QA_REPORT|BUILD_CHECK|TEST_GATE'
 PROMPTS="planner planner-quick cli coder qa wrapup"
 b1_render() {  # b1_render <provider> <host kind> <host> <gates> <prompt> <out>
   ( set -e
@@ -859,6 +859,9 @@ mk_ready kappa 50
 run "$MAIN" $MC kappa
 expect 0 "VERDICT: ok" "merge check kappa"
 M_K="$Mx"; RUN_K="$RUNC"
+# kappa's run has its own lead (team-lead.md §10): both integrate success exits append its notes once.
+jq -n --arg r "$RUN_K" --arg m "$MAIN" '{team: "kappa", run: $r, session_id: "sid-lead", main_root: $m}' > "$TDC/teamlead.json"
+printf '## Gate misses\n- kappa-notes\n' > "$RDC/teamlead-notes.md"
 KINT="$MAIN/.agents/team/integrate/kappa-$RUN_K.json"
 : > "$GIT_LOG"
 export STUB_GIT_PUSH_KILL=1
@@ -884,10 +887,14 @@ expect 4 "cannot read origin $TRUNK" "a recovery that cannot read the base chang
 run "$MAIN" $IT kappa
 expect 0 "integrated: PR #50" "recovery finishes the integration without a second push"
 [ "$(jq -r .state "$KINT")" = done ] || fail "kappa's intent is not done"
+[ "$(grep -c "^### .* kappa .* $RUN_K — merged$" "$MAIN/.agents/team/teamlead-log.md")" = 1 ] \
+  && grep -qx -- '- kappa-notes' "$MAIN/.agents/team/teamlead-log.md" || fail "integrate did not append kappa's notes once"
 [ "$(grep -c ":refs/heads/$TRUNK" "$GIT_LOG")" = 1 ] \
   || fail "the killed-then-recovered run pushed $(grep -c ":refs/heads/$TRUNK" "$GIT_LOG") times"
 run "$MAIN" $IT kappa
 expect 0 "already integrated: PR #50" "a finished intent is reported, not redone"
+[ "$(grep -c "^### .* kappa .* $RUN_K — merged$" "$MAIN/.agents/team/teamlead-log.md")" = 1 ] \
+  || fail "a second integrate appended kappa's notes again"
 [ "$(grep -c ":refs/heads/$TRUNK" "$GIT_LOG")" = 1 ] || fail "the already-integrated run pushed again"
 
 # (C12b) two writers, one free lock: exactly one wins, and neither can release the other's

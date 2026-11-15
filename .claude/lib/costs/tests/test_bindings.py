@@ -131,6 +131,7 @@ class BindingsTest(unittest.TestCase):
 
     def _session_files(self, run_dir, sessions):
         for key, sid in sessions.items():
+            os.makedirs(os.path.dirname(os.path.join(run_dir, key)), exist_ok=True)
             with open(os.path.join(run_dir, f"{key}.prompt.md"), "w") as fh:
                 fh.write("prompt")
             if sid:
@@ -166,6 +167,14 @@ class BindingsTest(unittest.TestCase):
         self.assertEqual(rows, [("session", None, PLANNER, "explicit", note),
                                 ("session", None, CODER, "explicit", note),
                                 ("window", "codex", None, "inferred-window", note)])
+
+    def test_team_run_rework_round_sessions(self):
+        clone = self._clone_run(RUN1, {"planner-1": PLANNER, "coder-1": CODER, "r2/coder-1": CODER2})
+        created, err = self.bind_team("AB-1", clone, RUN1)
+        self.assertEqual(err, "")
+        sessions = {r[0] for r in self.conn.execute(
+            "SELECT session FROM bindings WHERE kind = 'session'")}
+        self.assertEqual(sessions, {PLANNER, CODER, CODER2})
 
     def test_team_run_codex_safety_net(self):
         clone = self._clone_run(RUN1, {"planner-1": PLANNER, "coder-1": CODER})

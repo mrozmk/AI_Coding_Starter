@@ -5,6 +5,10 @@
 - [`session-role.md`](../../.claude/commands/session-role.md): the bootstrap of a role window.
 - [`monitor.md`](../../.claude/commands/monitor.md): the TeamLead's handling contract.
 
+## Per-run TeamLead (pilot)
+
+With `teams.teamlead.enabled=true` the TeamLead is not a role session. The runner starts one lead per team run, as `<team>-lead` in the team clone, and ends it with the run. `supervisor-sessions.sh` never starts it, and team-watch drops the signals of a run that has its own lead. The Supervisor and the Advisor stay as below. Contract: [`team-lead.md`](../../.agents/reference/team-lead.md); the Supervisor's side: [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md).
+
 ## The shape
 
 The single-window `/monitor` splits into long-lived **role sessions**, each with one fixed role. Scripts, not models, enforce the routing, the pickup alarms, the modes, the permissions and the merge gate.
@@ -34,6 +38,8 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `stop <role>` and `start <role>`.
 
 ## `/monitor` belongs to the TeamLead
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 In split routing, `/monitor` is the TeamLead's handling contract for `[team-watch #<n>]` messages. It takes only `--tiers on|off` and no longer a team list, because the daemon pushes every team's signals.
 

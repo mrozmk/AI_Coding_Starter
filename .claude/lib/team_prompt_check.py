@@ -4,6 +4,8 @@ Usage: team_prompt_check.py [<root>] [--settings <file>]... [--block] < pane his
        team_prompt_check.py [<root>] [--settings <file>]... --strict [--transcript <file>] < pane
        team_prompt_check.py <clone> --strict --transcript <file> --classes [--report]
          [--main <main checkout>] < pane
+       team_prompt_check.py <clone> --strict --transcript <file> --authority class|teamlead|operator
+         [--main <main checkout>] < pane   (team_prompt_authority.py: human-only first)
 Exit 0 = tier 1 (no egress, nothing in the prompt matches an ask/deny rule of <root>'s settings or
 a --settings file and the SQL guard stays quiet), exit 1 = the Operator must answer in the window,
 with the reason on stderr. Default: the newest prompt in the history is the one checked.
@@ -36,6 +38,7 @@ import guard_destructive_sql  # noqa: E402
 from guard_destructive_sql import doc_heredocs_removed, strip_shell_comments  # noqa: E402
 import guard_team_egress  # noqa: E402
 import team_prompt  # noqa: E402
+import team_prompt_authority  # noqa: E402
 import team_prompt_classes  # noqa: E402
 import team_prompt_settings  # noqa: E402
 
@@ -229,21 +232,11 @@ def guarded_main(root, main):
 
 
 def path_words(cmd, root, main):
-    """Settings files and <main> paths among the canonical words, globs expanded from <root>;
-    a $VAR or a path relative to a `cd` target is not resolved."""
-    dirs, base = guarded_main(root, main), os.path.realpath(root)
-    for words in canonical(cmd):
-        for part in (p for w in words for p in w.split("=")):
-            full = os.path.join(base, os.path.expanduser(part))
-            hits = [part] + (glob.glob(full) if re.search(r"[*?[]", part) else [])
-            for hit in hits:
-                if os.path.basename(hit).lower() in SETTINGS_NAMES:
-                    raise Refuse("refuse (settings): %s via Bash — Operator"
-                                 % os.path.basename(hit))
-            paths = [full] + hits[1:]
-            if dirs and ("/" in part or part.startswith("~")) and any(
-                    under(os.path.realpath(os.path.join(base, h)), dirs) for h in paths):
-                raise Refuse("refuse (outside clone): %s — Operator" % part)
+    """The first settings file or <main> path among the canonical words, raised."""
+    for kind, word in team_prompt_authority.path_scan(sys.modules[__name__], cmd, root, main):
+        if kind == "settings":
+            raise Refuse("refuse (settings): %s via Bash — Operator" % word)
+        raise Refuse("refuse (outside clone): %s — Operator" % word)
 
 
 def unwaivable(cmd, bash, root, main):
@@ -449,7 +442,7 @@ def run_checks(root, main, extra, pane, strict, transcript, block_only):
 
 def args(argv):
     o = {"root": os.getcwd(), "extra": [], "block": False, "strict": False, "transcript": None,
-         "classes": False, "report": False, "main": None}
+         "classes": False, "report": False, "main": None, "authority": None}
     flags = {"--block": "block", "--strict": "strict", "--classes": "classes", "--report": "report"}
     while argv:
         a = argv.pop(0)
@@ -457,7 +450,7 @@ def args(argv):
             o[flags[a]] = True
         elif a == "--settings" and argv:
             o["extra"].append(argv.pop(0))
-        elif a in ("--transcript", "--main") and argv:
+        elif a in ("--transcript", "--main", "--authority") and argv:
             o[a[2:]] = argv.pop(0)
         elif a.startswith("-"):
             return None
@@ -470,13 +463,20 @@ def args(argv):
 
 def main(argv):
     o = args(argv)
-    if o is None or ((o["classes"] or o["report"]) and not o["strict"]):
+    if o is None or ((o["classes"] or o["report"] or o["authority"]) and not o["strict"]) \
+            or o["authority"] not in (None,) + team_prompt_authority.AUTHORITIES:
         print("usage: team_prompt_check.py [<root>] [--settings <file>]... [--block]"
               " [--strict [--transcript <file>] [--classes [--report] [--main <root>]]]",
               file=sys.stderr)
         return 2
     pane = sys.stdin.read()
     try:
+        if o["authority"]:
+            name = team_prompt_authority.flow(sys.modules[__name__], o["root"], o["main"] or o["root"],
+                                              pane, o["transcript"], o["extra"], o["authority"])
+            if name:
+                print("policy-%s: %s" % ("class" if o["authority"] == "class" else "authority", name))
+            return 0
         if o["classes"] or o["report"]:
             name = classes_flow(o["root"], o["main"] or o["root"], pane, o["transcript"],
                                 o["extra"])

@@ -372,6 +372,11 @@ outside `.agents/team/watch/`. `<decisions dir>` is the team channel's decisions
 (`bash .claude/lib/team-channel.sh get decisions_dir`); when that exits 3 (no channel configured)
 it is the main checkout's `.agents/team/decisions/` (git-ignored with the rest of `.agents/team/`).
 
+**Runs with their own TeamLead** write no policy line: when `bash .claude/lib/team-lead.sh owns
+<team>` exits 0, that run's lead keeps `runs/<run>/teamlead-notes.md`, appended to the main
+checkout's `.agents/team/teamlead-log.md` at merge or close (`.agents/reference/team-lead.md` §10).
+Runs without one keep this log as below.
+
 **Ownership** — two writers, two scopes:
 - **TeamLead:** append-only. It is the only writer of decision and revocation lines. Each write is
   a Read immediately followed by an Edit at the end of the file; the first write uses Write. It

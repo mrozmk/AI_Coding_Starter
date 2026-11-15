@@ -11,10 +11,11 @@
 # Env: TEAM_ATTACH=all|planner (default all) — all roles, or only the attended planner and wrapup.
 # Exit: 0 ready/advanced · 1 failed record · 2 blocked · 3 stalled · 4 validation failed
 #       5 partial work after a dead session · 6 cancelled · 7 orphan role session
+#       8 closed without merge (a TeamLead remode; runs/<run>/closed.json)
 set -euo pipefail
 
 if [ $# -lt 1 ] || { [ $# -gt 3 ] && [ "${2:-}" != roles ]; }; then
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 TEAM="$1"; CMD="${2:-advance}"
@@ -42,6 +43,8 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-pr-render.sh"
 . "$root/.claude/lib/team-anchor.sh"
 . "$root/.claude/lib/team-channel.sh"
+. "$root/.claude/lib/team-lead-lib.sh"
+. "$root/.claude/lib/team-run-lead.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -74,28 +77,10 @@ sess_name() { team_tmux_name "$TEAM" "$1"; }
 attended() { case "$1" in planner|wrapup) ;; *) return 1 ;; esac; }
 artifact() { jq -r --arg p "$2" '[.artifacts[] | select(startswith($p))][0] // empty' "$1"; }
 
-# /exit + Enter only on a recognised empty idle input: on an open prompt Enter would approve the
-# focused option. Keys go only under the send lock, so they never interleave an answer.
+# /exit only on an idle input, under the send lock (team_end_session, team-lead-lib.sh).
 end_session() {
-  local name waited=0 h idle=""
-  name="$(sess_name "$1")"
-  team_tmux_alive "$name" || return 0
-  if team_send_lock "$TD" "$1" "${TEAM_SEND_LOCK_WAIT:-30}" "runner pid=$$" >/dev/null; then
-    team_pane "$name" 40 | python3 -I "$root/.claude/lib/team_prompt.py" parse \
-      | jq -e '.complete and .kind == "none" and .input_empty == true' >/dev/null 2>&1 && idle=1
-    if [ -n "$idle" ]; then
-      tmux send-keys -t "=$name:" "/exit" Enter || true
-      while team_tmux_alive "$name" && [ "$waited" -lt "$EXIT_WAIT" ]; do sleep 1; waited=$((waited + 1)); done
-    fi
-    team_tmux_alive "$name" && tmux kill-session -t "=$name" || true
-    team_send_unlock "$TD" "$1"
-  else
-    h="$(team_send_holder "$TD" "$1")"
-    echo "stop-during-send $(team_utc) $h" >> "$TD/send-$1.log"
-    echo "warn: stop while sender lock held by $h — session killed without /exit" >&2
-    tmux kill-session -t "=$name" || true
-  fi
-  ! team_tmux_alive "$name" || die 1 "error: session $name did not end"
+  team_end_session "$TD" "$(sess_name "$1")" "$1" "$EXIT_WAIT" \
+    || die 1 "error: session $(sess_name "$1") did not end"
 }
 
 cancel_exit() {
@@ -103,22 +88,11 @@ cancel_exit() {
   die 6 "cancelled by stop — session.json kept for the next run"
 }
 
-accepted_record() { team_accepted_record "$RUN" "$1"; }
-
 last_blocker() {
-  awk '/^## Blockers/{b=1; next} /^## /{b=0} b && /^- /{l=$0} END{print l}' "$TD/runs/$RUN/notes.md" 2>/dev/null || true
+  awk '/^## Blockers/{b=1; next} /^## /{b=0} b && /^- /{l=$0} END{print l}' "$TD/runs/$(run_ref)/notes.md" 2>/dev/null || true
 }
 
 # ---- stages -----------------------------------------------------------------------------------
-
-new_record() {
-  local role="$1" attempt="$2" last ackseq=0 acked=""
-  [ -f "$TD/acked" ] && acked="$(cat "$TD/acked")"
-  case "$acked" in "$role-$attempt-"*) ackseq="${acked#"$role-$attempt-"}"; ackseq="${ackseq%.json}" ;; esac
-  last="$(team_records "$RUN" "$role" "$attempt" | tail -n 1)"
-  [ -n "$last" ] || return 0
-  [ "$(rec "$last" seq)" -gt "$ackseq" ] && echo "$last" || true
-}
 
 accept() {
   local r="$1"
@@ -133,10 +107,22 @@ accept() {
 handle_record() {
   local r="$1"
   case "$(rec "$r" verdict)" in
-    done) validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+    done) # With the lead on, the planner's done waits for the plan gate; validation follows approve.
+          if team_lead_on && [ "$ROLE" = planner ]; then lead_gate_ring plan "$r"; return 2; fi
+          # The qa done is checked first (published PR, report), then the lead's acceptance gate.
+          if team_lead_on && [ "$ROLE" = qa ]; then
+            validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+            lead_gate_ring acceptance "$r"; return 2
+          fi
+          validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
           accept "$r" ;;
+    review)
+      team_lead_on || die 4 "record $(basename "$r") is a review, but the run has no TeamLead"
+      validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: tmux attach -t $(sess_name "$ROLE")"
+      lead_gate_ring spec "$r"; return 2 ;;
     blocked|failed)
-      basename "$r" > "$TD/acked"
+      if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
+      ack_name "$r" > "$TD/acked"
       echo "$(rec "$r" verdict): $(last_blocker)"
       echo "answer in: tmux attach -t $(sess_name "$ROLE")"
       notify "$(rec "$r" verdict)" "$(last_blocker) — /start-team $TEAM after answering" alarm
@@ -148,23 +134,23 @@ handle_record() {
 input_rev_for() {
   case "$1" in
     planner|cli) team_json base_sha ;;
-    coder) rec "$(accepted_record planner)" output_rev ;;
+    coder) if [ "$(cur_round)" = 1 ]; then rec "$(accepted_record planner)" output_rev; else round_input_rev; fi ;;
     qa) rec "$(accepted_record coder)" output_rev ;;
     wrapup) rec "$(accepted_record qa)" output_rev ;;
   esac
 }
 
 render_prompt() {
-  local role="$1" attempt="$2" out="$3" p planner coder qa plan="" spec="" pr="" report=""
+  local role="$1" attempt="$2" out="$3" p planner c1 qa plan="" spec="" pr="" report=""
   local kind host
-  planner="$(accepted_record planner)"; coder="$(accepted_record coder)"; qa="$(accepted_record qa)"
+  planner="$(accepted_record planner)"; qa="$(accepted_record qa)"
   if [ -n "$planner" ]; then
     spec="$(artifact "$planner" .agents/specs/)"; plan="$(artifact "$planner" .agents/plans/active/)"
   fi
-  if { [ "$role" = qa ] || [ "$role" = wrapup ]; } && [ -n "$coder" ]; then
-    plan="$(artifact "$coder" .agents/plans/done/)"; pr="$(rec "$coder" pr_id)"
-  fi
-  [ -z "$qa" ] || report=".agents/team/runs/$RUN/qa-report-$(rec "$qa" attempt).md"
+  # Round 1's coder holds the PR and the done plan of every round (a rework coder pushes to that PR).
+  c1="$(team_accepted_record "$RUN" coder)"
+  if [ "$role" != planner ] && [ -n "$c1" ]; then plan="$(artifact "$c1" .agents/plans/done/)"; pr="$(rec "$c1" pr_id)"; fi
+  [ -z "$qa" ] || report=".agents/team/runs/$(run_ref)/qa-report-$(rec "$qa" attempt).md"
   # ADO keeps `team_ado_coords`; github resolves owner/repo through the PR layer (Amendment 4).
   case "$TEAM_PR_PROVIDER" in
     github)
@@ -186,6 +172,7 @@ render_prompt() {
   put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put ATTEMPT "$attempt"
+  put RUN_DIR ".agents/team/runs/$(run_ref)"; put ROUND "$(cur_round)"; put REWORK "$(round_rework)"
   put PLAN "$plan"; put SPEC "$spec"; put PR "$pr"; put ORG_URL "$ADO_ORG_URL"; put QA_REPORT "$report"
   # Project gates come from the profile; TEST_GATE is a ready sentence, never a raw path.
   put BUILD_CHECK "$TEAM_BUILD_CHECK"; put TEST_GATE "$(team_gate_sentence)"
@@ -195,7 +182,7 @@ render_prompt() {
 launch() {
   local role="$1" attempt="$2" name pf sid ch cc ck extra="" perm why costs=()
   team_cancelled && cancel_exit
-  name="$(sess_name "$role")"; pf="$TD/runs/$RUN/$role-$attempt.prompt.md"
+  name="$(sess_name "$role")"; pf="$TD/runs/$(run_ref)/$role-$attempt.prompt.md"
   [ -n "$(input_rev_for "$role")" ] || die 4 "no input revision for $role — previous stage not accepted"
   # Before session.json: a rejected config must not record an attempt (dead_attempt stops at 2).
   extra="$(role_flags "$role")"
@@ -206,7 +193,7 @@ launch() {
   [ -z "$perm" ] || extra="$extra--permission-mode '$perm' "
   ch="$(codex_home)" || die 1 "$ch"
   cc="$(team_claude_home "$root")" || die 1 "$cc"
-  mkdir -p "$TD/runs/$RUN"
+  mkdir -p "$TD/runs/$(run_ref)"
   # A known session id makes token-usage bindings explicit; transcripts are lower-case.
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
   [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
@@ -217,14 +204,15 @@ launch() {
     --arg launched_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg mode "$MODE" \
     --arg session_id "$sid" --arg cost_key "$ck" --arg permission_mode "${perm:-default}" \
     --arg claude_config_dir "$cc" \
-    '{team: $team, role: $role, run: $run, attempt: $attempt, ticket: $ticket, mode: $mode,
+    --argjson round "$(cur_round)" \
+    '{team: $team, role: $role, run: $run, round: $round, attempt: $attempt, ticket: $ticket, mode: $mode,
       cost_key: $cost_key, claude_config_dir: $claude_config_dir,
       input_rev: $input_rev, launched_at: $launched_at, session_id: $session_id,
       permission_mode: $permission_mode}' \
     > "$TD/session.json"
   team_anchor_launch "$root" "$TEAM" "$CLONE" "$RUN" "$role" "$attempt" "$sid" \
     || echo "warn: anchor not written" >&2
-  printf '%s\n' "$sid" > "$TD/runs/$RUN/$role-$attempt.session"
+  printf '%s\n' "$sid" > "$TD/runs/$(run_ref)/$role-$attempt.session"
   render_prompt "$role" "$attempt" "$pf"
   attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
@@ -263,29 +251,38 @@ dead_attempt() {
     launch "$role" $((attempt + 1))
     return 0
   fi
+  ! team_lead_on || lead_event session_dead "runs/$(run_ref)/$role-$attempt.session"
   die 5 "dead attempt $attempt of $role: partial work or retry limit — supervisor"
 }
 
+# A record the lead must resolve (rc 2) keeps the loop waiting; time spent waiting on the lead is
+# not execution time, so the stage limit pauses (start moves with the clock while waiting=1) until
+# the stop's <record>.answered marker appears (lead_waiting, re-read every poll and on resume).
 wait_loop() {
-  local role="$1" attempt name r start limit seen=0 n
-  attempt="$(session_json attempt)"; name="$(sess_name "$role")"; start="$(date +%s)"
+  local role="$1" attempt name r start limit seen=0 n rc waiting=0 t last
+  attempt="$(session_json attempt)"; name="$(sess_name "$role")"; start="$(team_now)"; last="$start"
   case "$role" in coder|cli) limit=14400 ;; qa) limit=10800 ;; *) limit=0 ;; esac
   while :; do
     team_cancelled && cancel_exit
+    t="$(team_now)"; [ "$waiting" = 0 ] || start=$((start + t - last)); last="$t"
+    waiting=0; ! team_lead_on || ! lead_waiting "$role" "$attempt" || waiting=1
     r="$(new_record "$role" "$attempt")"
-    if [ -n "$r" ]; then handle_record "$r"; return 0; fi
+    if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
+    ! team_lead_on || ! lead_gate "$role" "$attempt" || return 0
     n=0; [ ! -f "$TD/runs/$RUN/attention" ] || n="$(wc -l < "$TD/runs/$RUN/attention" | tr -d ' ')"
     if [ "$n" -gt "$seen" ]; then
       seen="$n"; echo "needs attention: tmux attach -t $name"
       notify "needs attention" "$role waits for you: bash .claude/lib/team-attach.sh $TEAM $role"
+      ! team_lead_on || lead_attention "$role" "$n"
     fi
     if ! team_tmux_alive "$name"; then
       r="$(new_record "$role" "$attempt")"
-      if [ -n "$r" ]; then handle_record "$r"; return 0; fi
+      if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
       dead_attempt "$role" "$attempt"
-      attempt="$(session_json attempt)"; start="$(date +%s)"; continue
+      attempt="$(session_json attempt)"; start="$(team_now)"; last="$start"; continue
     fi
-    if [ "$limit" -gt 0 ] && [ $(( $(date +%s) - start )) -ge "$limit" ]; then
+    ! team_lead_on || lead_poll
+    if [ "$limit" -gt 0 ] && [ $(( $(team_now) - start )) -ge "$limit" ]; then
       die 3 "stalled — attach: tmux attach -t $name"
     fi
     sleep "$POLL"
@@ -294,16 +291,17 @@ wait_loop() {
 
 # Recovery: a session.json means its role is the current stage, whatever else is accepted.
 resume_stage() {
-  local role attempt r
+  local role attempt r rc=1
   role="$(session_json role)"; attempt="$(session_json attempt)"; ROLE="$role"
   [ "$(session_json run)" = "$RUN" ] || die 1 "error: session.json run differs from $TD/run"
-  if ls "$TD/runs/$RUN/$role-$attempt-"*.json.accepted >/dev/null 2>&1; then
+  if ls "$TD/runs/$(run_ref)/$role-$attempt-"*.json.accepted >/dev/null 2>&1; then
     end_session "$role"; rm -f "$TD/session.json"; return 0
   fi
   if ! team_tmux_alive "$(sess_name "$role")"; then
     r="$(new_record "$role" "$attempt")"
-    if [ -n "$r" ]; then handle_record "$r"; return 0; fi
-    dead_attempt "$role" "$attempt"
+    [ -z "$r" ] || { rc=0; handle_record "$r" || rc=$?; }
+    [ "$rc" != 0 ] || return 0
+    [ "$rc" = 2 ] || dead_attempt "$role" "$attempt"
   fi
   wait_loop "$role"
 }
@@ -331,6 +329,8 @@ cmd_advance() {
   ! command -v caffeinate >/dev/null 2>&1 || caffeinate -i -w $$ >/dev/null 2>&1 &
   [ -s "$TD/run" ] || echo "$TEAM-$(date -u +%Y%m%d-%H%M%S)" > "$TD/run"
   RUN="$(cat "$TD/run")"
+  [ ! -f "$TD/runs/$RUN/closed.json" ] || die 1 "run closed ($(jq -r .reason "$TD/runs/$RUN/closed.json")) — team-next for the next ticket, team-remode for remode"
+  lead_start; round_reconcile
   while :; do
     if [ -f "$TD/session.json" ]; then
       check_orphans "$(session_json role)"; resume_stage; continue
@@ -338,6 +338,7 @@ cmd_advance() {
     check_orphans
     stage="$(next_stage)"
     if [ -z "$stage" ]; then
+      ! team_lead_on || lead_accepted
       echo "ready: bash .claude/lib/team-merge-check.sh $TEAM"
       notify "ready" "PR published — ask the supervisor to merge $TEAM"; exit 0
     fi
@@ -366,11 +367,12 @@ cmd_status() {
   echo "mode: $MODE"
   # Durable non-fatal failures (team-warn.sh) — e.g. /start-team 4b `set-status started`.
   jq -r '(.warnings // [])[] | "warn: " + .text + " (" + .at + ")"' "$TD/team.json"
-  RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}"
+  RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}$([ "$(run_ref)" = "$RUN" ] || echo " round $(cur_round)")"
+  [ ! -f "$TD/runs/${RUN:-none}/closed.json" ] || echo "closed: $(jq -r .reason "$TD/runs/$RUN/closed.json")"
   [ ! -f "$TD/session.json" ] || echo "session:$(jq -c '{role, attempt, input_rev}' "$TD/session.json")"
   [ ! -f "$ROLES_OVERRIDE" ] || echo "roles override: $(team_roles_status "$ROLES_OVERRIDE")"
   for role in $(team_mode_roles "$MODE"); do
-    r="$(ls -1t "$TD/runs/${RUN:-none}/$role"-*.json 2>/dev/null | head -n 1)" || true
+    r="$(ls -1t "$TD/runs/$(run_ref)/$role"-*.json 2>/dev/null | head -n 1)" || true
     [ -z "$r" ] || echo "$role: $(basename "$r") $(rec "$r" verdict)$([ -e "$r.accepted" ] && echo ' accepted')"
     ! team_tmux_alive "$(sess_name "$role")" || echo "tmux: $(sess_name "$role") alive"
   done
@@ -379,6 +381,7 @@ cmd_status() {
     kill -0 "$pid" 2>/dev/null && echo "lock: runner $pid alive" || echo "lock: stale (pid $pid dead) — bash .claude/lib/team-run.sh $TEAM unlock"
   fi
   [ ! -f "$TD/runs/${RUN:-none}/attention" ] || echo "attention: $(tail -n 1 "$TD/runs/$RUN/attention")"
+  ! team_lead_on || echo "teamlead: $(lead_status)"
 }
 
 cmd_stop() {
@@ -427,7 +430,7 @@ cmd_summary() {
 accepted_summary_file() {  # <role> <filename stem>
   local r
   r="$(accepted_record "$1")"
-  [ -z "$r" ] || echo "$TD/runs/${RUN:-none}/$2-$(rec "$r" attempt).md"
+  [ -z "$r" ] || echo "$TD/runs/$(run_ref)/$2-$(rec "$r" attempt).md"
 }
 
 summary_file() {  # summary_file <label> <file> — the body without the machine target_rev line
@@ -453,6 +456,7 @@ cmd_unlock() {
 audit_run() {
   local final=()
   [ "$1" != 0 ] || final=(--final ready)
+  [ "$1" != 8 ] || final=(--final closed)
   bash "$root/.claude/lib/team-audit.sh" "$TEAM" --runner-exit "$1" ${final[@]+"${final[@]}"} \
     || echo "warn: team audit failed (rc $?) — run outcome unchanged" >&2
 }

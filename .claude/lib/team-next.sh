@@ -145,12 +145,17 @@ fi
 bash "$root/.claude/lib/team-audit.sh" "$team" --final archived \
   || echo "warn: team audit failed — archiving anyway" >&2
 
+# The previous ticket's TeamLead ends with it; a missing session is fine.
+(cd "$root" && bash .claude/lib/team-lead.sh end "$team") >/dev/null 2>&1 \
+  || echo "warn: TeamLead of $team did not end — check: tmux has-session -t =$team-lead" >&2
+
 # The state files are git-ignored, so switching first leaves them in place for the archive.
 git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 archive="$TD/archive/$old_ticket-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
 for f in runs run acked cancel team.json merge-check-build.log roles.override.json \
-  ticket.json ticket.md; do
+  ticket.json ticket.md order-brief.md teamlead.json teamlead.settings.json teamlead.reg.json \
+  round verdict-acked lead-dead relaunch-lead inbox-rung; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
 done
 

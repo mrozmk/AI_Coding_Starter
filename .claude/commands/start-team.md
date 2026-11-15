@@ -1,7 +1,7 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner in tmux (it opens a Terminal preview window per role)
 argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
-allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(tmux has-session:*), Bash(tmux new-session:*), Bash(tmux kill-session:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
 ---
 
 # /start-team — run a team on a ticket
@@ -19,9 +19,11 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 
 0a. **Profile preflight** — before the clone and before `tmux`:
    `bash -c 'source .claude/lib/team-profile.sh; team_profile_load; team_profile_require_supported;
-   echo "trunk: $TEAM_TRUNK"; echo "tracker: $TEAM_TRACKER"'`. Non-zero exit → print its `error:`
-   line verbatim and stop (no clone, no branch, no tmux session). `TEAM_TRUNK` is the trunk used in
-   step 4; `TRACKER` (the `tracker:` line, one of `jira`, `github`, `none`) decides steps 1, 3 and 4.
+   echo "trunk: $TEAM_TRUNK"; echo "tracker: $TEAM_TRACKER"; echo "teamlead: $TEAM_LEAD_ENABLED"'`.
+   Non-zero exit → print its `error:` line verbatim and stop (no clone, no branch, no tmux session).
+   `TEAM_TRUNK` is the trunk used in step 4; `TRACKER` (the `tracker:` line, one of `jira`,
+   `github`, `none`) decides steps 1, 3 and 4; `TEAMLEAD` (the `teamlead:` line, `true`|`false`)
+   decides step 4c and the brief check in step 2.
 
 1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`), `KEY` = second (optional, shape per `TRACKER`:
    `jira` → `[A-Z]+-[0-9]+`; `github` → `[0-9]+`, a leading `#` dropped (`#7` = `7`); `none` → no
@@ -71,13 +73,22 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `team-tracker.sh read` here: a resume allocates nothing, and the ticket it continues is already in
    `<CLONE>/.agents/team/ticket.json` (`github`/`none`) or in Jira. With `ROLES` → step 4a first, then run
    `bash .claude/lib/team-run.sh <TEAM> status`:
-   - a line `lock: runner <pid> alive` → say "runner already running — watch:
+   - a line `closed: <reason>` → refuse "run closed (<reason>) — team-next for the next ticket,
+     team-remode for remode" and stop (the runner refuses it too, `runs/<run>/closed.json`);
+   - a line `lock: runner <pid> alive` → if the status also shows `teamlead: dead` (switch on), run
+     `bash .claude/lib/team-lead.sh relaunch <TEAM>` (it writes `<CLONE>/.agents/team/relaunch-lead`;
+     the live runner relaunches the lead at its next poll), report "TeamLead relaunch requested"
+     and stop; otherwise say "runner already running — watch:
      `bash .claude/lib/team-attach.sh <TEAM> runner`" and stop;
    - a line `lock: stale (pid … dead)` → `bash .claude/lib/team-run.sh <TEAM> unlock` (deliberate;
      the runner never removes a lock by itself);
    - then, if `tmux has-session -t "=<TEAM>-runner"` — only an idle shell on `; read`, since the
      runner is dead — `tmux kill-session -t "=<TEAM>-runner"`. A live tmux session alone never
      means a live runner: it outlives the runner after a `blocked` record.
+
+   With `TEAMLEAD` = `true` and the ticket's mode not `cli` (`mode` in
+   `<CLONE>/.agents/team/team.json`): `bash .claude/lib/team-brief.sh check <TEAM>` must pass;
+   otherwise write the brief first as in step 4c (`write`, never `--replace`).
 
    Then go to step 5 (launch the runner) and report which stage it resumed.
 
@@ -127,6 +138,23 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    Do not repeat the new-ticket invocation or run `team-next` for the same ticket.
    The override lives until `team-next` (the next ticket); undo with
    `bash .claude/lib/team-run.sh <TEAM> roles --clear`. A role already running keeps its model.
+
+4c. **Order brief** (NEW runs only, only when `TEAMLEAD` = `true` and `MODE` ≠ `cli`; after steps 4
+   and 4b). The per-run TeamLead judges every gate and the acceptance against this file.
+   - Run `bash .claude/lib/team-brief.sh inflight <TEAM>`.
+   - Write a draft in your scratchpad with exactly these three sections:
+     - `## Ticket` — the ticket body copied verbatim, never paraphrased: `ticket.md` from step 3
+       for `github`/`none`; for `jira` the summary, description and comment ledger read in step 3.
+       Headings inside the ticket text are fine (they stay part of the section), except the three
+       reserved ones named here;
+     - `## Not ordered` — what this ticket explicitly does not ask for, and adjacent work you know
+       is not wanted; `none stated` when nothing applies;
+     - `## In-flight work` — the `inflight` list, each line extended with one clause on what that
+       team touches (`- none` stays as is).
+   - Run `bash .claude/lib/team-brief.sh write <TEAM> <draft>`. Non-zero exit → print its error
+     and stop before step 5.
+
+   Your judgement goes only into `## Not ordered` and the in-flight clauses.
 
 5. **Runner.**
    `tmux new-session -d -s <TEAM>-runner -c "<ROOT>" -e "AGENT_COSTS_HOME=${AGENT_COSTS_HOME:-}" "bash .claude/lib/team-run.sh <TEAM>; read"`.

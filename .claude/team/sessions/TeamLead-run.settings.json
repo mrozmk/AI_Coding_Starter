@@ -1,0 +1,83 @@
+{
+  "_comment": "Role profile for the per-run TeamLead: one lead session per team run, launched in the team's clone with --settings. It may read the team's state, write verdicts and answers through the named scripts (team-lead.sh decision answer is deliberately not allowed: outside auto mode the Operator's approval of that prompt is itself a human act), and write files only under .agents/team/runs/<run>/ and the scratchpad (guard-teamlead-write.sh, registered at materialise time — a deny rule cannot say 'everything except one directory'). It never commits, pushes, merges, rewrites history or writes a stage record. The PR host's update verbs are denied at materialise time from teams.pr_provider; `team-lead.sh materialize <team>` unions this file with the project and local deny/ask rules into <clone>/.agents/team/teamlead.settings.json. _samples feed session_profile_check.py (role TeamLead-run). Contract: .agents/reference/team-lead.md",
+  "env": {
+    "TEAM_SESSION_ROLE": "TeamLead"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bash .claude/lib/team-verdict.sh *)",
+      "Bash(bash .claude/lib/team-answer.sh *)",
+      "Bash(bash .claude/lib/team-lead.sh whoami)",
+      "Bash(bash .claude/lib/team-lead.sh pending *)",
+      "Bash(bash .claude/lib/team-lead.sh diff *)",
+      "Bash(bash .claude/lib/team-lead.sh decision open *)",
+      "Bash(bash .claude/lib/team-lead.sh decision withdraw *)",
+      "Bash(bash .claude/lib/team-lead.sh decision list *)",
+      "Bash(*.claude/lib/codex-bg.sh)",
+      "Read(.agents/**)"
+    ],
+    "deny": [
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
+      "Bash(git reset*)",
+      "Bash(bash .claude/lib/team-record.sh*)",
+      "Bash(bash .claude/lib/team-new.sh*)",
+      "Bash(bash .claude/lib/team-next.sh*)",
+      "Bash(bash .claude/lib/team-remode.sh*)",
+      "Bash(bash .claude/lib/team-integrate.sh*)",
+      "Bash(bash .claude/lib/team-watch.sh routing*)",
+      "Bash(bash .claude/lib/team-watch.sh mode answering*)",
+      "Skill(pr-merge)",
+      "Skill(pr-merge *)",
+      "Skill(release)",
+      "Skill(release *)"
+    ],
+    "ask": [
+      "Bash(cat .env*)",
+      "Read(**/.env*)"
+    ]
+  },
+  "_samples": {
+    "forbidden": [
+      "git commit -m x",
+      "git push origin feat/x",
+      "git merge origin/main",
+      "git rebase origin/main",
+      "git reset --hard HEAD~1",
+      "bash .claude/lib/team-record.sh --verdict done",
+      "bash .claude/lib/team-new.sh alfa 12 feat/12-x origin/main",
+      "bash .claude/lib/team-next.sh alfa 13",
+      "bash .claude/lib/team-remode.sh alfa brainstorm",
+      "bash .claude/lib/team-integrate.sh alfa",
+      "bash .claude/lib/team-watch.sh routing split",
+      "bash .claude/lib/team-watch.sh mode answering on"
+    ],
+    "skills": [
+      "Skill(pr-merge)",
+      "Skill(pr-merge *)",
+      "Skill(release)",
+      "Skill(release *)"
+    ],
+    "reads": [
+      "bash .claude/lib/team-lead.sh whoami",
+      "bash .claude/lib/team-lead.sh pending alfa",
+      "bash .claude/lib/team-lead.sh diff alfa",
+      "bash .claude/lib/team-lead.sh decision open alfa --source qa-1-1.json --question q",
+      "bash .claude/lib/team-lead.sh decision withdraw alfa d-1 --why w",
+      "bash .claude/lib/team-lead.sh decision list alfa --pending"
+    ],
+    "secrets": [
+      "cat .env",
+      "cat .env.local",
+      "Read(.env)",
+      "Read(services/api/.env.local)"
+    ],
+    "writes": [
+      "git push --force origin main",
+      "git commit --amend --no-edit",
+      "rm -rf /"
+    ]
+  }
+}

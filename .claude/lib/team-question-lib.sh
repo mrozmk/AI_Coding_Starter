@@ -2,7 +2,7 @@
 # Binding v2 and delivery mapping of the question ledger. Sourced by team-question.sh
 # after team-lib.sh; reads its globals TEAM CLONE TD RUN QD LIB.
 
-newest_record() { team_newest_record "$TD" "$RUN" "$1" "$2"; }
+newest_record() { team_newest_record "$TD" "$(team_run_ref "$TD" "$RUN")" "$1" "$2"; }
 # Header fields sit above the first heading; the summary below may hold arbitrary text.
 field() {
   awk -v k="$2: " '/^## /{exit} index($0, k) == 1 {print substr($0, length(k) + 1); exit}' "$1"

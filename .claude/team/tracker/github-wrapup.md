@@ -1,4 +1,4 @@
-4. Tracker — the state file `.agents/team/runs/{{RUN}}/wrapup-state.json` (`{}` if absent) makes
+4. Tracker — the state file `{{RUN_DIR}}/wrapup-state.json` (`{}` if absent) makes
    every write safe to retry:
    - **compare the stored identity FIRST, before writing anything.** Read the existing `target` and
      compare it with this run's: `{run: "{{RUN}}", ticket: "{{TICKET}}", repo: "<github.repo>",
@@ -10,7 +10,7 @@
      - `target` equal to this run's → adopt its intents and drafts;
      - anything else (another run, ticket, repo or project, or a missing/malformed `target`) → the
        file is FOREIGN. `mv` it aside to
-       `.agents/team/runs/{{RUN}}/wrapup-state.foreign-<UTC timestamp>.json` — discarding its intents
+       `{{RUN_DIR}}/wrapup-state.foreign-<UTC timestamp>.json` — discarding its intents
        and drafts — then write a fresh `{target, intents: {}}`. Do not reuse its markers or issue
        numbers, and never "fix" it in place.
      The runner refuses `done` both on a `target` that is not this run's AND on any `done` intent
@@ -35,7 +35,7 @@
      `{op: "create", draft_id, marker, state, issue}` (`<n>` = the draft id, never a
      recommendation number). Before the write save `state: "pending"`; after it succeeds save
      `state: "done"` and the returned id.
-   - (a) write the summary to `.agents/team/runs/{{RUN}}/tracker-comment.md` with
+   - (a) write the summary to `{{RUN_DIR}}/tracker-comment.md` with
      `[wrapup {{RUN}} comment-1]` as its last line, then
      `bash .claude/lib/team-tracker.sh comment {{TICKET}} --marker "<m>" --body-file <file>`;
      `created` or `exists` → `done`;
@@ -58,7 +58,7 @@
    at tier 3, c the revoked ones).
    Stay ≤ 4000 characters — trim `## Unattended decisions` prose first, never the template
    checklist or `## QA`. Write it to
-   `.agents/team/runs/{{RUN}}/pr-description.md`, then
+   `{{RUN_DIR}}/pr-description.md`, then
    {{PR_BODY_SET}}.
 6. Recommendations — each one only if it passes its bar:
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
@@ -76,7 +76,7 @@
      memory change that is not yet on the PR branch is redone from the text shown in
      `wrapup-<attempt>.md`, without asking again.
      Save each complete draft (title and entire body verbatim) under that id in
-     `wrapup-state.json`, and copy it to `.agents/team/runs/{{RUN}}/wrapup-{{ATTEMPT}}.md` for the
+     `wrapup-state.json`, and copy it to `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md` for the
      report. Include the step 4 create marker in that saved/shown body.
      **Show that full dry-run once before the question.** Each ticket option names its title; for
      1 or more than 4 recommendations put those details in the question text. A choice accepts
