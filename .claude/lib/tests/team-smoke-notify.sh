@@ -196,11 +196,11 @@ HN="$OB/herdr/new"
 hdec h-1 acme-alfa-lead; expect 0 "written acme:alfa:r2:h-1" "(k) a herdr answer"
 [ "$(st acme_alfa_r2_h-1 herdr)" = "spooled -" ] || fail "(k) herdr not spooled"
 jq -e '.answer == {address: "acme-alfa-lead", backend: "herdr", handle: "t3k9",
-  hint: "herdr: acme-alfa-lead (click in the agent list) · hc attach t3k9"}' "$OB/events/acme_alfa_r2_h-1.json" >/dev/null \
+  hint: "hc attach t3k9 · herdr: acme-alfa-lead (in the agent list once placed)"}' "$OB/events/acme_alfa_r2_h-1.json" >/dev/null \
   || fail "(k) the event's answer is not the registry's"
 jq -e '(keys == ["action","body","created_at","id","title"]) and .id == "acme_alfa_r2_h-1"
   and .title == "[acme] decision"
-  and .body == "alfa AB-1 h-1 — Restart the app? — answer: herdr: acme-alfa-lead (click in the agent list) · hc attach t3k9"
+  and .body == "alfa AB-1 h-1 — Restart the app? — answer: hc attach t3k9 · herdr: acme-alfa-lead (in the agent list once placed)"
   and .action == {name: "agent.focus", args: {terminal: "t3k9"}}' "$HN/acme_alfa_r2_h-1.json" >/dev/null \
   || { cp "$HN/acme_alfa_r2_h-1.json" "$WORK/out"; fail "(k) the spool entry"; }
 [ "$(perm "$HN/acme_alfa_r2_h-1.json")" = 600 ] || fail "(k) spool entry mode"
@@ -218,11 +218,11 @@ jq -e '.answer.hint == "tmux attach -t acme-beta-lead" and .answer.backend == "t
 hdec h-4 acme-gamma-lead; [ "$(st acme_alfa_r2_h-4 herdr)" = "skipped-tmux -" ] || fail "(k) a malformed handle was spooled"
 nt human_decision --project acme --team alfa --run r2 --decision h-7 --summary "Q?" --answer acme-alfa-lead \
   --hint "tmux attach -t acme-alfa-lead" --main "$MH"   # the callers' tmux fallback hint
-jq -e '.answer.hint | startswith("herdr: acme-alfa-lead")' "$OB/events/acme_alfa_r2_h-7.json" >/dev/null \
+jq -e '.answer.hint | startswith("hc attach t3k9 · herdr: acme-alfa-lead")' "$OB/events/acme_alfa_r2_h-7.json" >/dev/null \
   || fail "(k) a caller's tmux hint replaced the herdr hint"
 hdec h-5 acme-delta-lead; [ "$(st acme_alfa_r2_h-5 herdr)" = "skipped-tmux -" ] || fail "(k) no record was spooled"
 nt release --project acme --summary "Approve the release?" --answer Supervisor --key rel-1 --main "$MH"
-jq -e '.title == "[acme] release" and (.body | startswith("Approve the release? — answer: herdr: Supervisor"))
+jq -e '.title == "[acme] release" and (.body | startswith("Approve the release? — answer: hc attach vps/t7 · herdr: Supervisor"))
   and .action.args.terminal == "vps/t7"' "$HN/acme_release_rel-1.json" >/dev/null || fail "(k) a Supervisor entry (no team words, a remote handle)"
 nt --check; expect 0 "herdr on — mod not seen (no layout" "(k) no heartbeat"
 touch "$OB/herdr/.mod-alive"; nt --check; expect 0 "herdr on — mod seen " "(k) a fresh heartbeat"

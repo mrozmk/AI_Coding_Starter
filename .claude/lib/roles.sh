@@ -9,17 +9,19 @@
 #   here    this plain terminal becomes <Role> (not from inside Claude Code)
 #   resume  start a gone Claude role on its previous conversation (claude --resume <session id>)
 #   runs    the interrupted team runs (read-only; resume one with /start-team <team>)
-#   place   put a window in its tab slot (tmux: prints how to look at it)
+#   place   put a running window into its Herdr tab: a role into its place.tab, a team session into
+#           Teams (tmux: prints how to look at it); never fails on the window
 # Roles: teams.sessions in .claude/project-profile.json (roles-lib.sh). Exit: 0 ok · 1 a role failed
 # or another /roles is running · 2 usage or validation · 6 no session host.
 #   e.g. bash .claude/lib/roles.sh        then: bash .claude/lib/roles.sh status
 set -uo pipefail
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 LIB="$(cd "$(dirname "$0")" && pwd)"
 command -v jq >/dev/null 2>&1 || { echo "roles: jq is required" >&2; exit 1; }
 . "$LIB/session-host-lib.sh"
 . "$LIB/roles-lib.sh"
+. "$LIB/session-host-layout.sh"
 
 cmd="${1:-up}"; [ $# -eq 0 ] || shift
 case "$cmd" in
@@ -100,9 +102,12 @@ launch_cmd() {
   echo "claude --name $(sh_quote "$(claude_name "$r")") --session-id $2 --model $m --effort $e${s:+ --settings .agents/team/watch/profiles/$r.settings.json} ${TEAM_SESSIONS_CLAUDE_FLAGS:+$TEAM_SESSIONS_CLAUDE_FLAGS }-- $(sh_quote "$(boot "$r")"); read"
 }
 
-# A folder trust dialog is reported, never answered. A Claude role is past it once its hooks write
-# the state file; a Codex role once its prompt shows. TEAM_ROLES_TRUST_SECS (8) bounds the look.
-needs_trust() {  # needs_trust "<role>:<name>:<cli> …" → the roles waiting at the dialog
+# A startup dialog is reported, never answered. A Claude role is past it once its hooks write the
+# state file; a Codex role once its prompt shows; a Herdr role once it reports a status.
+# TEAM_ROLES_TRUST_SECS (8) bounds the look. Prints one <role>:<word> per role still held:
+# trust (the folder trust dialog), dialog (another recognised startup dialog: MCP servers), nostatus
+# (Herdr: no status after the look and no recognised screen — no dialog is claimed).
+needs_trust() {  # needs_trust "<role>:<name>:<cli> …"
   local pend="$1" left i=0 max="${TEAM_ROLES_TRUST_SECS:-8}" t r n c st esc="" h scr
   while [ -n "$pend" ] && [ "$i" -lt "$max" ]; do
     left=""
@@ -119,7 +124,8 @@ needs_trust() {  # needs_trust "<role>:<name>:<cli> …" → the roles waiting a
       fi
       st="$(sh_screen_state "$scr" "$c")"
       case "$st" in
-        trust) echo "$r"; continue ;;
+        trust) echo "$r:trust"; continue ;;
+        mcp) echo "$r:dialog"; continue ;;
         ready) continue ;;
         update) case " $esc " in *" $r "*) ;; *)
                   if [ -n "$h" ]; then sh_herdr_keys "$h" esc || true; else sh_tmux send-keys -t "=$n:" Escape || true; fi
@@ -130,6 +136,18 @@ needs_trust() {  # needs_trust "<role>:<name>:<cli> …" → the roles waiting a
     pend="${left# }"
     [ -z "$pend" ] || { sleep 1; i=$((i + 1)); }
   done
+  for t in $pend; do
+    r="${t%%:*}"
+    [ "$(sh_record_get "$MAIN" "$r" backend)" != herdr ] || echo "$r:nostatus"
+  done
+}
+# held_word <role> <needs_trust output> → the words after "started" / "resumed …", or nothing.
+held_word() {
+  case " $(echo $2) " in
+    *" $1:trust "*) echo " (needs trust)" ;;
+    *" $1:dialog "*) echo " (startup dialog open)" ;;
+    *" $1:nostatus "*) echo " (no status yet)" ;;
+  esac
 }
 
 window_line() {  # the window this ran in, when it is no role's terminal
@@ -286,8 +304,13 @@ up() {
   done
   rm -f "$err"
   [ -z "$wait" ] || trust="$(needs_trust "${wait# }")"
-  printf '%s' "$res" | awk -v t=" $(echo $trust) " '{ r = $0; sub(/:.*/, "", r)
-    if ($0 == r ": started" && index(t, " " r " ")) print r ": started (needs trust)"; else print }'
+  while IFS= read -r out; do
+    [ -n "$out" ] || continue
+    r="${out%%:*}"
+    if [ "$out" = "$r: started" ]; then echo "$out$(held_word "$r" "$trust")"; else echo "$out"; fi
+  done <<<"$res"
+  # Step 3: the running roles into their Herdr tabs (a failure only warns; tmux: nothing).
+  layout_place_roles "$MAIN"
   for r in $list; do
     case "$res" in *"$r: started"*|*"$r: already running"*)
       out="$(sh_hint "$r" --main "$MAIN" 2>/dev/null)" && echo "  $r: $out" ;; esac
@@ -300,9 +323,14 @@ up() {
 }
 
 status() {
-  local r rc=0 j b alive state n sid seen
+  local r rc=0 j b alive state n sid seen panes="" pane
   roles_validate || rc=2
-  printf '%-12s %-7s %-7s %-9s %-5s %-36s %s\n' ROLE BACKEND ALIVE STATE INBOX SESSION LAST_SEEN
+  # Under Herdr a PANE column: the tab each role's terminal is in (one window listing per call).
+  for r in $(roles_list --standing); do
+    [ "$(sh_record_get "$MAIN" "$r" backend)" != herdr ] || { panes="$(layout_panes "$MAIN")"; break; }
+  done
+  printf '%-12s %-7s %-7s %-9s %-5s %-36s %s' ROLE BACKEND ALIVE STATE INBOX SESSION LAST_SEEN
+  if [ -n "$panes" ]; then printf ' PANE\n'; else printf '\n'; fi
   for r in $(roles_list --standing); do
     b="$(sh_record_get "$MAIN" "$r" backend)"
     if j="$(sh_status "$r" --main "$MAIN" 2>/dev/null)"; then
@@ -315,7 +343,11 @@ status() {
     fi
     n="$(ls "$MAIN/.agents/team/inbox/$r/new" 2>/dev/null | wc -l | tr -d ' ')"
     sid="$(sh_record_get "$MAIN" "$r" session_id)"; seen="$(sh_record_get "$MAIN" "$r" last_seen)"
-    printf '%-12s %-7s %-7s %-9s %-5s %-36s %s\n' "$r" "${b:-tmux}" "$alive" "$state" "$n" "${sid:--}" "${seen:--}"
+    printf '%-12s %-7s %-7s %-9s %-5s %-36s %s' "$r" "${b:-tmux}" "$alive" "$state" "$n" "${sid:--}" "${seen:--}"
+    if [ -n "$panes" ]; then
+      pane="$(printf '%s\n' "$panes" | awk -F'\t' -v r="$r" '$1 == r { print $2 }')"
+      printf ' pane: %s\n' "${pane:--}"
+    else printf '\n'; fi
   done
   echo "interrupted runs:"
   runs_report | sed 's/^interrupted runs: none$/none/; s/^/  /'
@@ -427,7 +459,8 @@ resume() {
   if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli claude \
        --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} --program claude --claude-home auto \
        -- "$cmd" 2>"$err")"; then
-    if [ -n "$(needs_trust "$r:$name:claude")" ]; then echo "$r: resumed $sid (needs trust)"; else echo "$r: resumed $sid"; fi
+    echo "$r: resumed $sid$(held_word "$r" "$(needs_trust "$r:$name:claude")")"
+    layout_place_roles "$MAIN"
     echo "  $r: $(sh_hint "$r" --main "$MAIN" 2>/dev/null)"
   else
     echo "$r: failed: $(sed 's/^session-host: //' "$err" | tail -n 1)"; rc=1
@@ -443,6 +476,12 @@ case "$cmd" in
   status) status ;;
   stop) stop "$@" ;;
   here) here "$@" ;;
-  place) [ $# -ge 1 ] || usage; sh_hint "$1" --main "$MAIN" ;;
+  place) [ $# -ge 1 ] || usage
+    if roles_is_declared "$1" && [ -n "$(roles_cfg "$1" place.tab 2>/dev/null)" ]; then
+      if [ "$(sh_record_get "$MAIN" "$1" backend)" = herdr ]; then layout_place_roles "$MAIN"
+      else echo "$1: $(sh_hint "$1" --main "$MAIN" 2>/dev/null)"; fi
+    else
+      layout_place_team "$MAIN" "$1"
+    fi ;;
 esac
 exit $?

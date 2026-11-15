@@ -923,7 +923,8 @@ sh_hint() {
   if [ "$b" = none ]; then echo "a plain terminal (tty $(sh_record_get "$SH_MAIN" "$a" tty))"; return 0; fi
   n="$(sh_target "$SH_MAIN" "$a")" || return $?
   if [ "$b" = herdr ]; then
-    echo "herdr: $(sh_record_get "$SH_MAIN" "$a" name | grep . || echo "$n") (click in the agent list) · hc attach $n"
+    # `hc attach` first: a terminal the layout has not placed yet is listed nowhere in the window.
+    echo "hc attach $n · herdr: $(sh_record_get "$SH_MAIN" "$a" name | grep . || echo "$n") (in the agent list once placed)"
     return 0
   fi
   echo "tmux attach -t $n"

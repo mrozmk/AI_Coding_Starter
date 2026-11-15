@@ -241,7 +241,7 @@ if [ -n "$MAIN" ] && [[ "$ANSWER" =~ ^[A-Za-z0-9:_-]+$ ]] && [ -f "$rec" ] \
 fi
 # A herdr session's hint is always built here, from the record alone, in sh_hint's herdr form: a
 # caller's hint may be a tmux fallback (lead_notify's `|| h="tmux attach …"`).
-if [ "$BACKEND" = herdr ]; then HINT="herdr: ${RNAME:-$ANSWER} (click in the agent list) · hc attach $HANDLE"
+if [ "$BACKEND" = herdr ]; then HINT="hc attach $HANDLE · herdr: ${RNAME:-$ANSWER} (in the agent list once placed)"
 elif [ -z "$HINT" ]; then HINT="tmux attach -t $ANSWER"; fi
 sw_warn; outbox; lock; prune
 

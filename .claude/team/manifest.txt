@@ -167,6 +167,7 @@ own .claude/lib/team-remode.sh
 own .claude/lib/team-send-lock.sh
 own .claude/lib/session-host.sh
 own .claude/lib/session-host-lib.sh
+own .claude/lib/session-host-layout.sh
 own .claude/lib/team_audit.py
 own .claude/lib/team_prompt.py
 own .claude/lib/team_prompt_classes.py

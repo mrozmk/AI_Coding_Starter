@@ -90,6 +90,16 @@ has "$RUN_ID" "$RD/lead-1.prompt.md" && ! grep -q '{{' "$RD/lead-1.prompt.md" ||
   && grep -q "^ref: runs/$RUN_ID/planner-" "$SUP"/* || fail "(b) dead planner: no single session_dead"
 echo "team-smoke-22: (b) launch OK"
 
+# ---- (b2) Herdr: the lead's terminal into Teams through the main checkout's roles.sh place --------
+reset; RB="$MAIN/.claude/lib/roles.sh"; rm -f "$WORK/roles.main"; [ ! -f "$RB" ] || cp "$RB" "$WORK/roles.main"
+printf '#!/usr/bin/env bash\necho "PLACE $*" >> "$STUB_LOG"\n' > "$RB"
+RGD="$(cd "$MAIN" && pwd -P)/.agents/team/registry"; rm -rf "$WORK/reg.keep"; mkdir -p "$RGD"; cp -R "$RGD" "$WORK/reg.keep"
+TEAM_SESSION_HOST=herdr STUB_HC_NONAME=1 STUB_HC_STATE=finished run "$MAIN" $TR alfa
+grep -qx 'PLACE place alfa-lead' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(b2) the lead was not placed"; }
+if [ -f "$WORK/roles.main" ]; then cp "$WORK/roles.main" "$RB"; else rm -f "$RB"; fi
+rm -rf "$RGD"; cp -R "$WORK/reg.keep" "$RGD"   # the herdr records of this case go
+echo "team-smoke-22: (b2) herdr lead placement OK"
+
 # ---- (d) a blocked record keeps the runner waiting; the lead is rung over its socket -------------
 cat > "$WORK/srv.py" <<'PY'
 import os, socket, sys
@@ -530,7 +540,7 @@ printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel
 STUB_HC_ADDR=t5l STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) herdr hint: the runner lives"
 cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
 if [ -f "$WORK/lr.keep" ]; then cp "$WORK/lr.keep" "$LR"; else rm -f "$LR"; fi
-grep -q -- "d-2: .* — answer in herdr: smk-alfa-lead (click in the agent list) · hc attach t5l$" "$WORK/notify.log" \
+grep -q -- "d-2: .* — answer in hc attach t5l · herdr: smk-alfa-lead (in the agent list once placed)$" "$WORK/notify.log" \
   || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) herdr hint: legacy alarm lacks the herdr hint"; }
 cp "$WORK/notify.log.keep" "$WORK/notify.log"; cp "$WORK/stub.keep" "$STUB_LOG"
 rm -f "$WORK/hs.n" "$TD/cancel"

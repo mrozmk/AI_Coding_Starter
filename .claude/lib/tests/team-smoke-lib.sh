@@ -269,16 +269,64 @@ case "$1" in
         echo '{"turn":1}' ;;
   read) gone && nf; [ -z "${STUB_HC_SCREEN:-}" ] || cat "$STUB_HC_SCREEN" ;;
   kill) [ -z "${STUB_HC_GONE_FILE:-}" ] || touch "$STUB_HC_GONE_FILE"; echo '{}' ;;
-  rm|label) echo '{}' ;;
+  label) # With a window model (fake herdr-app): herdr.space=<s> [herdr.tab=<t>] adopts the terminal there;
+         # an unknown tab id, or none, makes a new tab "tb<terminal>". STUB_HERDR_NOADOPT=1: no effect.
+         t="$2"; shift 2; sp=""; tb=""
+         for kv in "$@"; do case "$kv" in herdr.space=*) sp="${kv#*=}" ;; herdr.tab=*) tb="${kv#*=}" ;; esac; done
+         L="${STUB_HERDR_LS:-}"
+         if [ -n "$sp" ] && [ -n "$L" ] && [ -f "$L" ] && [ "${STUB_HERDR_NOADOPT:-}" != 1 ]; then
+           jq --arg t "$t" --arg s "$sp" --arg b "$tb" '(.spaces[].tabs[].terminals) |= map(select(.terminal != $t))
+             | .parked = ((.parked // []) - [$t])
+             | (.spaces[] | select(.id == $s) | .tabs) |= (if $b != "" and any(.[]; .id == $b)
+                 then map(if .id == $b then .terminals += [{terminal: $t, pane: ("p" + $t)}] else . end)
+                 else . + [{id: ("tb" + $t), name: "", terminals: [{terminal: $t, pane: ("p" + $t)}]}] end)' "$L" > "$L.$$" && mv "$L.$$" "$L"
+         fi
+         echo '{}' ;;
+  rm) echo '{}' ;;
   *) exit 2 ;;
 esac
 STUB
+  # Fake herdr-app, as the live window behaves (step 7 live): a model in the JSON file $STUB_HERDR_LS
+  # ({spaces, focus, parked}); terminals carry their pane ("p<terminal>"). `ls` prints {spaces};
+  # `status` prints {focused_pane, agent} (agent is NOT the focus); `do`: space.new (a new space with
+  # a shell tab; shows it, answers {space, tab, terminal}), tab.rename, pane.focus (a listed terminal),
+  # terminal.park (out of its tab, still known), terminal.keep (only a listed or parked terminal —
+  # the window knows no other; into the focused terminal's tab). STUB_HERDR_RC: every call exits with
+  # it; STUB_HERDR_DO_RC: every `do`; STUB_HERDR_KEEP_RC: only terminal.keep.
   cat > "$WORK/bin/herdr-app" <<'STUB'
 #!/usr/bin/env bash
 echo "herdr-app $*" >> "$STUB_LOG"
+[ "${STUB_HERDR_RC:-0}" = 0 ] || exit "$STUB_HERDR_RC"
+L="${STUB_HERDR_LS:-}"
+upd() { [ -n "$L" ] && [ -f "$L" ] || return 0; jq "$@" "$L" > "$L.$$" && mv "$L.$$" "$L"; }
+q() { [ -n "$L" ] && [ -f "$L" ] && jq -e "$@" "$L" >/dev/null 2>&1; }
+no() { echo "{\"error\":\"no running terminal \\\"$1\\\"\"}"; exit 1; }
 case "$1" in
-  ls) if [ -n "${STUB_HERDR_LS:-}" ]; then cat "$STUB_HERDR_LS"; else echo '{"spaces":[]}'; fi ;;
-  do) echo '{"ok":true}' ;;
+  ls) if [ -n "$L" ] && [ -f "$L" ]; then jq '{spaces}' "$L"; else echo '{"spaces":[]}'; fi ;;
+  status) f=""; [ -z "$L" ] || [ ! -f "$L" ] || f="$(jq -r '.focus // ""' "$L")"
+          jq -cn --arg f "$f" '{focused_pane: (if $f == "" then null else "p" + $f end), agent: "t-some-other-agent"}' ;;
+  do) [ "${STUB_HERDR_DO_RC:-0}" = 0 ] || exit "$STUB_HERDR_DO_RC"
+      c="$2"; shift 2; A=("$@")
+      arg() { local i=0; while [ $i -lt ${#A[@]} ]; do [ "${A[$i]}" != "--$1" ] || { echo "${A[$((i + 1))]}"; return; }; i=$((i + 2)); done; }
+      t="$(arg terminal)"; listed='any(.spaces[]?.tabs[]?.terminals[]?; .terminal == $t)'
+      case "$c" in
+        space.new) n="$(jq '.spaces | length + 1' "$L")"
+          upd --arg n "$(arg name)" --arg f "$(arg folder)" --arg i "s$n" \
+            '.spaces += [{id: $i, name: $n, folder: $f, tabs: [{id: ($i + "-1"), name: "1",
+               terminals: [{terminal: ($i + "-sh"), pane: ("p" + $i + "-sh")}]}]}] | .focus = ($i + "-sh")'
+          echo "{\"space\":\"s$n\",\"tab\":\"s$n-1\",\"terminal\":\"s$n-sh\"}"; exit 0 ;;
+        tab.rename) upd --arg i "$(arg id)" --arg n "$(arg name)" '(.spaces[].tabs[] | select(.id == $i) | .name) = $n' ;;
+        pane.focus) q --arg t "$t" "$listed" || no "$t"; upd --arg t "$t" '.focus = $t' ;;
+        terminal.park) q --arg t "$t" "$listed" || no "$t"
+          upd --arg t "$t" '(.spaces[].tabs[].terminals) |= map(select(.terminal != $t)) | .parked = ((.parked // []) + [$t])'
+          echo '{"pending":true}'; exit 0 ;;
+        terminal.keep) [ "${STUB_HERDR_KEEP_RC:-0}" = 0 ] || exit "$STUB_HERDR_KEEP_RC"
+          q --arg t "$t" "$listed or any((.parked // [])[]; . == \$t)" || no "$t"
+          upd --arg t "$t" '.focus as $f | .parked = ((.parked // []) - [$t])
+            | (.spaces[].tabs[] | select(any(.terminals[]; .terminal == $f)) | .terminals) += [{terminal: $t, pane: ("p" + $t)}]'
+          echo "{\"pending\":true,\"pane\":\"p$t\"}"; exit 0 ;;
+      esac
+      echo '{"ok":true}' ;;
   *) exit 2 ;;
 esac
 STUB

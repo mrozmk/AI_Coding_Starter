@@ -8,6 +8,7 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
+cp "$WORK/bin/hc" "$WORK/hc.lib"   # the driver's fake hc; (12) replaces it, (L) brings it back
 unset TMUX TMUX_PANE HC_TERMINAL_ID CLAUDECODE TEAM_SESSIONS_CLAUDE_FLAGS CODEX_HOME HARNESS_MAIN \
   HARNESS_REGISTRY HARNESS_ADDRESS TEAM_SESSION_ROLE
 export TEAM_ROLES_TRUST_SECS=1 TEAM_ROLES_LOCK_WAIT=1
@@ -370,5 +371,136 @@ for r in Supervisor Fable Astra; do line "$r: started" "$WORK/out" "(14) $r"; do
 noline "team-run.sh" "$STUB_LOG" "(14) a runner was started"; noline "start-team" "$STUB_LOG" "(14) /start-team ran"
 [ "$(starts)" = 3 ] || fail "(14) $(starts) sessions started, expected 3"
 echo "team-smoke-roles: (14) restart simulation OK"
+
+# ---- (L) the Herdr layout (#35): tabs Lead and Teams over a model window ---------------------------
+# The fake herdr-app keeps a window model in $STUB_HERDR_LS; `hc label … herdr.space=` adopts into it.
+cp "$WORK/hc.lib" "$WORK/bin/hc"; chmod +x "$WORK/bin/hc"
+export TEAM_SESSION_HOST=herdr   # the smoke lib pins tmux; existing records keep their own backend
+export TEAM_LAYOUT_POLL=0 TEAM_LAYOUT_LOCK_WAIT=1 STUB_HERDR_LS="$WORK/herdr-ls.json"
+rm -f "$REG"/*.json
+hrec() {  # hrec <address> <handle> <cli> [kind] [jq extra]
+  jq -n --arg a "$1" --arg h "$2" --arg c "$3" --arg k "${4:-role}" --arg cwd "$MP" \
+    '{address: $a, kind: $k, backend: "herdr", handle: $h, name: $h, cwd: $cwd, cli: $c,
+      started_at: "2026-11-15T00:00:00Z"} '"${5:-}" > "$REG/$1.json"
+}
+win() { jq -n --arg f "$MP" "$1" > "$STUB_HERDR_LS"; }   # win '<jq building the window>'
+SPACE='{id: "s1", name: "smk", folder: $f, tabs: []}'
+seq_of() { { grep -E '^(herdr-app do |hc label )' "$STUB_LOG" || true; } | sed 's/^herdr-app do //' > "$WORK/seq"; }
+keep_log() { cat "$STUB_LOG" >> "$WORK/layout-all"; }
+hrec Supervisor t1 claude; hrec Fable t2 claude; hrec Astra t3 codex
+
+# The /roles window: a pane of another space, focused before placement.
+OTHER='{id: "s0", name: "work", folder: "/elsewhere", tabs: [{id: "tb0", name: "1", terminals: [{terminal: "t9", pane: "pt9"}]}]}'
+
+# (L1) no space for the main checkout: /roles up creates it (the Operator asked) from space.new's
+# reply; the new space is shown, so the focus goes back to the /roles window at the end
+win '{spaces: ['"$OTHER"'], focus: "t9"}'
+clr; run "$MAIN" $RS; expect 0 "created: Herdr space smk for $MP" "(L1) up"; keep_log
+line "herdr-app do space.new --name smk --folder $MP" "$STUB_LOG" "(L1) space.new"
+line "placed: Supervisor in Lead" "$WORK/out" "(L1) placed into the new space"
+seq_of; [ "$(tail -n 1 "$WORK/seq")" = "pane.focus --terminal t9" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L1) focus not given back"; }
+jq -e '[.spaces[] | select(.id == "s2") | .tabs[] | select(.name == "Lead") | .terminals[].terminal] == ["t1", "t2", "t3"]' \
+  "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L1) Lead in the new space"; }
+
+# (L2) an empty space: Supervisor adopted (the tab named Lead), Fable by label beside it, Astra
+# adopted, parked and kept under Fable (terminal.keep knows no unadopted terminal), then the focus
+# back to the pane focused before (focused_pane, not status.agent)
+win '{spaces: ['"$OTHER"', '"$SPACE"'], focus: "t9"}'
+clr; run "$MAIN" $RS; expect 0 "placed: Supervisor in Lead" "(L2) up"; keep_log
+for r in Fable Astra; do line "placed: $r in Lead" "$WORK/out" "(L2) $r"; done
+seq_of
+printf '%s\n' "hc label t1 herdr.space=s1" "tab.rename --id tbt1 --name Lead" "hc label t2 herdr.space=s1 herdr.tab=tbt1" \
+  "hc label t3 herdr.space=s1 herdr.tab=tbt1" "terminal.park --terminal t3" "pane.focus --terminal t2" \
+  "terminal.keep --terminal t3 --place down" "pane.focus --terminal t9" > "$WORK/seq.want"
+cmp -s "$WORK/seq" "$WORK/seq.want" || { diff "$WORK/seq.want" "$WORK/seq" > "$WORK/out" || true; fail "(L2) placement sequence"; }
+noline "agent.focus" "$STUB_LOG" "(L2) agent.focus"
+jq -e '[.spaces[] | select(.id == "s1") | .tabs[] | select(.name == "Lead") | .terminals[].terminal] == ["t1", "t2", "t3"]
+  and .focus == "t9"' "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L2) Lead tab or focus"; }
+run "$MAIN" $RS status; grep -E '^Supervisor +herdr +alive .* pane: Lead$' "$WORK/out" >/dev/null || fail "(L2) status pane column"
+
+# (L2b) the keep after a park fails: the terminal is adopted back by label, never left paneless,
+# and the focus still goes back
+win '{spaces: ['"$OTHER"', '"$SPACE"'], focus: "t9"}'
+clr; STUB_HERDR_KEEP_RC=1 run "$MAIN" $RS
+expect 0 "warn: placement Astra: herdr-app do terminal.keep failed (adopted back by label)" "(L2b) keep fails"; keep_log
+seq_of; [ "$(tail -n 2 "$WORK/seq" | head -n 1)" = "hc label t3 herdr.space=s1 herdr.tab=tbt1" ] \
+  && [ "$(tail -n 1 "$WORK/seq")" = "pane.focus --terminal t9" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L2b) not adopted back, or no focus back"; }
+jq -e '[.spaces[].tabs[].terminals[].terminal] | index("t3") != null' "$STUB_HERDR_LS" >/dev/null || fail "(L2b) Astra without a pane"
+win '{spaces: ['"$OTHER"', {id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Lead", terminals:
+  [{terminal: "t1", pane: "pt1"}, {terminal: "t2", pane: "pt2"}, {terminal: "t3", pane: "pt3"}]}]}], focus: "t9"}'
+
+# (L3) all placed: a second up issues no placement command (and moves no focus)
+clr; run "$MAIN" $RS; expect 0 "Supervisor: already running" "(L3) up"; keep_log
+seq_of; [ ! -s "$WORK/seq" ] || { cp "$WORK/seq" "$WORK/out"; fail "(L3) placement commands on a second up"; }
+
+# (L4) team sessions into Teams by label only, never a focus; a runner never creates the space
+hrec alfa-lead t5 claude team; hrec beta-lead t7 claude team; hrec gamma-lead t8 claude team
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbT", name: "Teams", terminals: [{terminal: "t6"}]}]}], focus: "t1"}'
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in Teams" "(L4) into Teams"; keep_log
+line "hc label t5 herdr.space=s1 herdr.tab=tbT" "$STUB_LOG" "(L4) label"
+noline "tab.rename" "$STUB_LOG" "(L4) renamed"; noline "focus" "$STUB_LOG" "(L4) focus moved"
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "already placed: alfa-lead in Teams" "(L4) again"; keep_log
+noline "hc label" "$STUB_LOG" "(L4) relabelled"
+win '{spaces: ['"$SPACE"'], focus: "t1"}'
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "placed: alfa-lead in Teams" "(L4) no Teams tab"; keep_log
+line "hc label t5 herdr.space=s1" "$STUB_LOG" "(L4) space label"; line "tab.rename --id tbt5 --name Teams" "$STUB_LOG" "(L4) rename"
+win '{spaces: [], focus: "t1"}'
+clr; run "$MAIN" $RS place alfa-lead
+expect 0 "warn: placement alfa-lead: open the project as a Herdr space (or run /roles)" "(L4) no space"; keep_log
+noline "space.new" "$STUB_LOG" "(L4) a runner created a space"; line "  alfa-lead: hc attach t5 · herdr: t5" "$WORK/out" "(L4) hint"
+
+# (L5) the window does not answer: up and place exit 0 with a warning and the hint
+clr; STUB_HERDR_RC=1 run "$MAIN" $RS place alfa-lead
+expect 0 "warn: placement alfa-lead: Herdr window not open or not answering" "(L5) place"; keep_log
+clr; STUB_HERDR_RC=1 run "$MAIN" $RS; expect 0 "warn: placement Supervisor: Herdr window not open" "(L5) up"; keep_log
+STUB_HERDR_RC=1 run "$MAIN" $RS status; grep -E '^Fable .* pane: \?$' "$WORK/out" >/dev/null || fail "(L5) pane: ?"
+win '{spaces: ['"$SPACE"'], focus: "t9"}'
+clr; STUB_HERDR_DO_RC=1 run "$MAIN" $RS; expect 0 "warn: placement Supervisor: herdr-app do tab.rename failed" "(L5) do fails"; keep_log
+
+# (L6) two teams in the same second: one Teams tab (the layout lock, #35 / #77)
+win '{spaces: ['"$SPACE"'], focus: "t1"}'
+clr; ( TEAM_LAYOUT_LOCK_WAIT=10 bash -c "cd '$MAIN' && $RS place alfa-lead" > "$WORK/p1" 2>&1 & \
+  TEAM_LAYOUT_LOCK_WAIT=10 bash -c "cd '$MAIN' && $RS place beta-lead" > "$WORK/p2" 2>&1 & wait ); keep_log
+[ "$(grep -c 'tab.rename .* --name Teams' "$STUB_LOG")" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(L6) Teams tab made twice"; }
+jq -e '[.spaces[0].tabs[] | select(.name == "Teams") | .terminals[].terminal] | sort == ["t5", "t7"]' "$STUB_HERDR_LS" >/dev/null \
+  || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L6) both leads in one Teams tab"; }
+
+# (L9) a project role with its own place.tab gets its own tab
+prof '.teams.sessions.Monitor = {cli: "claude", model: "opus", effort: "medium",
+  contract: "docs/roles/monitor.md", place: {tab: "Ops", slot: "main"}}'
+hrec Monitor t4 claude
+win '{spaces: [{id: "s1", name: "smk", folder: $f, tabs: [{id: "tbL", name: "Lead",
+  terminals: [{terminal: "t1"}, {terminal: "t2"}, {terminal: "t3"}]}]}], focus: "t9"}'
+clr; run "$MAIN" $RS; expect 0 "placed: Monitor in Ops" "(L9) up"; keep_log
+line "hc label t4 herdr.space=s1" "$STUB_LOG" "(L9) label"; line "tab.rename --id tbt4 --name Ops" "$STUB_LOG" "(L9) rename"
+noline "focus" "$STUB_LOG" "(L9) a focus moved or given back with no move"
+cp "$WORK/prof.bak" "$P"; rm -f "$REG/Monitor.json"
+
+# (L10) a replaced terminal (another created_ms under the handle) is never placed
+hrec gamma-lead t8 claude team '+ {created_ms: "1"}'
+win '{spaces: ['"$SPACE"'], focus: "t1"}'
+clr; run "$MAIN" $RS place gamma-lead; expect 0 "warn: placement gamma-lead: gamma-lead: no live terminal of ours" "(L10) replaced"; keep_log
+noline "hc label" "$STUB_LOG" "(L10) labelled"
+
+# (L11) /roles names a held start: a recognised screen, or no status yet — never a key
+printf '%s\n' " 3 new MCP servers found in this project" " ❯ [ ] alpha" > "$WORK/mcp.scr"
+printf '%s\n' " Do you want to work in this folder?" " ❯ 1. Yes, I trust this folder" "   2. No, exit" > "$WORK/trust.scr"
+: > "$WORK/blank.scr"; rm -f "$D"/*   # no tmux session of (14) left under the name
+for c in "mcp.scr|startup dialog open" "trust.scr|needs trust" "blank.scr|no status yet"; do
+  rm -f "$REG/Supervisor.json"
+  clr; STUB_HERDR_RC=1 STUB_HC_NONAME=1 STUB_HC_ADDR=t1 STUB_HC_STATUS=null STUB_HC_SCREEN="$WORK/${c%%|*}" \
+    run "$MAIN" $RS up Supervisor
+  expect 0 "Supervisor: started (${c#*|})" "(L11) ${c#*|}"; noline "hc keys" "$STUB_LOG" "(L11) a key sent"
+done
+
+# (L7) no placement ever ended a terminal or touched a layout; (L8) tmux: no herdr-app at all
+! grep -E 'terminal\.kill|pane\.close|tab\.close|space\.close|layout\.set|layout\.reset|^hc (kill|rm) ' "$WORK/layout-all" \
+  > "$WORK/out" || fail "(L7) a placement ended a terminal or touched a layout"
+export TEAM_SESSION_HOST=tmux
+jq '.backend = "tmux" | .name = "smk-alfa-lead"' "$REG/alfa-lead.json" > "$WORK/r" && mv "$WORK/r" "$REG/alfa-lead.json"
+clr; run "$MAIN" $RS place alfa-lead; expect 0 "alfa-lead: tmux attach -t smk-alfa-lead" "(L8) tmux place"
+noline "herdr-app" "$STUB_LOG" "(L8) herdr-app under tmux"
+unset STUB_HERDR_LS
+echo "team-smoke-roles: (L) Herdr layout OK"
 
 echo "team-smoke-roles: OK"
