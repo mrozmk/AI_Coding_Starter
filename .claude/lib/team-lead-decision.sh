@@ -106,7 +106,8 @@ decision_open() {
 d_evidence() {
   local sid t f used=""
   sid="$(jq -r '.session_id // empty' "$TD/teamlead.json" 2>/dev/null)"
-  t="$(team_role_transcript "${TD%/.agents/team}" "${sid:--}")"
+  t="$(team_role_transcript "${TD%/.agents/team}" "${sid:--}" \
+    "$(jq -r '.claude_config_dir // empty' "$TD/teamlead.json" 2>/dev/null)")"
   [ "$t" != - ] && [ -f "$t" ] || return 1
   for f in "$DD"/d-*.md; do
     [ -f "$f" ] && [ "$f" != "$1" ] || continue

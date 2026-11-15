@@ -40,7 +40,7 @@ render_lead_prompt() {
 }
 
 launch_lead() {
-  local name pf sid n perm=auto why ch ck costs=()
+  local name pf sid n perm=auto why ch cc ck costs=()
   team_cancelled && cancel_exit
   name="$(sess_name lead)"
   (cd "$root" && bash .claude/lib/team-brief.sh check "$TEAM") >/dev/null \
@@ -53,6 +53,8 @@ launch_lead() {
     || echo "warn: TeamLead notes not created — bash .claude/lib/team-lead.sh notes-init $TEAM"
   if why="$(auto_blocker)"; then echo "warn: TeamLead launches in manual mode — $why"; perm=manual; fi
   ch="$(codex_home)" || die 1 "$ch"
+  # The project's Claude profile, as launch() takes it (team_claude_home, team-profile.sh).
+  cc="$(team_claude_home "$root")" || die 1 "$cc"
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
   [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
   # pipefail: no earlier session makes ls fail, which must not end the runner.
@@ -63,9 +65,9 @@ launch_lead() {
   rm -f "$TD/teamlead.reg.json"
   jq -n --arg team "$TEAM" --arg run "$RUN" --arg sid "$sid" --arg at "$(team_utc)" \
     --arg model "$TEAM_LEAD_MODEL" --arg effort "$TEAM_LEAD_EFFORT" --arg perm "$perm" \
-    --arg main "$root" --argjson n "$n" \
+    --arg main "$root" --argjson n "$n" --arg cc "$cc" \
     '{team: $team, run: $run, session_id: $sid, launched_at: $at, launch: $n, model: $model,
-      effort: $effort, permission_mode: $perm, main_root: $main}' > "$TD/teamlead.json.tmp"
+      effort: $effort, permission_mode: $perm, main_root: $main, claude_config_dir: $cc}' > "$TD/teamlead.json.tmp"
   mv "$TD/teamlead.json.tmp" "$TD/teamlead.json"
   # The .session/.prompt.md pair is how cost.py bind --team-run finds every lead session.
   printf '%s\n' "$sid" > "$TD/runs/$RUN/lead-$n.session"
@@ -74,7 +76,7 @@ launch_lead() {
   # Per-session env as in launch(); TEAM_SESSION_ROLE also reaches the hooks before settings load.
   tmux new-session -d -s "$name" -c "$CLONE" -e "TEAM_RUN_TEAM=$TEAM" -e "TEAM_RUN_ROLE=lead" \
     -e "TEAM_RUN_ID=$RUN" -e "TEAM_SESSION_ROLE=TeamLead" -e "CODEX_HOME=$ch" \
-    ${CLAUDE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"} ${costs[@]+"${costs[@]}"} \
+    ${cc:+-e "CLAUDE_CONFIG_DIR=$cc"} ${costs[@]+"${costs[@]}"} \
     "claude --session-id $sid -n $name --settings '$TD/teamlead.settings.json' --model '$TEAM_LEAD_MODEL' --effort '$TEAM_LEAD_EFFORT' --permission-mode '$perm' --disallowedTools AskUserQuestion -- \"\$(cat '$pf')\""
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
     --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
@@ -176,7 +178,7 @@ lead_attention() {
   bash "$root/.claude/lib/team-answer.sh" "$TEAM" "$role" yes --authority class \
     --why "deterministic class" --clone "$CLONE" --root "$root" >/dev/null 2>&1 || rc=$?
   if [ "$rc" = 0 ]; then echo "answered at authority class: $role prompt"; return 0; fi
-  t="$(team_role_transcript "$CLONE" "$(session_json session_id)")"
+  t="$(team_role_transcript "$CLONE" "$(session_json session_id)" "$(session_json claude_config_dir)")"
   p="$(team_pane_history "$name" 200 \
     | python3 -I "$root/.claude/lib/team_prompt.py" parse --transcript "${t:--}" 2>/dev/null)" || p='{}'
   if ! jq -e '.kind == "permission" and .complete' <<<"$p" >/dev/null 2>&1; then
