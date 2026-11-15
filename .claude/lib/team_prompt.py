@@ -4,6 +4,7 @@ Usage: python3 -I team_prompt.py parse [--transcript <file>|-]  < pane   → one
        python3 -I team_prompt.py event <transcript> <kind>      [< parse JSON] → id|ambiguous|-
        python3 -I team_prompt.py result <transcript> <tool_use_id>           → yes|no
        python3 -I team_prompt.py pending <transcript> <tool_use_id>          → yes|no|unknown
+       python3 -I team_prompt.py pending-tool <transcript>       → {"tool", "detail"}|{}|unknown
        python3 -I team_prompt.py user-after <transcript> <uuid> <text>       → yes|no
        python3 -I team_prompt.py typed <text>                   < pane   → yes|no
        python3 -I team_prompt.py strip                          < pane   → pane without escapes
@@ -25,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Re-exported: callers keep reading the transcript through team_prompt.
 from team_transcript import (  # noqa: E402,F401
     CONT_ROW, CONTEXT_ROW, EDIT_ROW, associated, diff_rows, entries, has_result, last_assistant,
-    pending, squash, tool_cwd, user_after)
+    pending, pending_tool, squash, tool_cwd, user_after)
 
 RULE = re.compile(r"^\s*─{20,}\s*$")
 NAMED_RULE = re.compile(r"^\s*─{20,}(\s+[A-Za-z0-9._-]+\s+─)?\s*$")
@@ -472,6 +473,10 @@ def main():
     if len(a) == 3 and a[0] == "pending":
         es = entries(a[1])
         print("unknown" if es is None else "yes" if a[2] in pending(es) else "no")
+        return 0
+    if len(a) == 2 and a[0] == "pending-tool":
+        es = entries(a[1])
+        print("unknown" if es is None else json.dumps(pending_tool(es), ensure_ascii=False))
         return 0
     if len(a) == 4 and a[0] == "user-after":
         print("yes" if user_after(a[1], a[2], a[3]) else "no")

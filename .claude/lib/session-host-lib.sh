@@ -423,6 +423,10 @@ sh_send() {
     sh_err "$a is a script session — send is refused"; return 2
   fi
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
+  # A dialog is open: no doorbell (the message stays in the inbox; the prompt hook shows it).
+  if [ "$(sh_state "$SH_MAIN" "$a" | jq -r '.state // ""' 2>/dev/null)" = blocked ]; then
+    sh_log "$SH_MAIN" "$a" "$SH_TD" "doorbell-blocked $(sh_utc) — $text"; return 9
+  fi
   [ -n "$reg" ] || reg="$(sh_record_get "$SH_MAIN" "$a" reg)"
   [ -z "$reg" ] || case "$reg" in /*) ;; *) reg="$(sh_reg_dir "$SH_MAIN")/$reg" ;; esac
   if [ -z "$reg" ] && [ "$(sh_kind "$a")" = team ] && [ "${a##*-}" = lead ] && [ -n "$SH_TD" ]; then
@@ -486,16 +490,44 @@ sh_hint() {
   echo "tmux attach -t $n"
 }
 
-# status <address> → one JSON line {state, kind, msg, source}. The tmux state file arrives with the
-# status hook (step 3); until then a live session is `unknown`.
+# sh_state <main> <address> → the hook's state file as one JSON object, or nothing when there is
+# none or it belongs to another session than the record's (a leftover of the replaced session).
+# A record without session_id (started without --session-id) accepts any state file.
+sh_state() {
+  local f rsid
+  f="$(sh_reg_dir "$1")/state/$2.json"
+  [ -f "$f" ] || return 0
+  rsid="$(sh_record_get "$1" "$2" session_id)"
+  jq -c --arg r "$rsid" 'select(type == "object" and ($r == "" or .session_id == $r))' "$f" 2>/dev/null || true
+}
+
+# status <address> → one JSON line {state, kind, msg, source}. tmux: a Claude session's state comes
+# from its own hooks (team-status.sh writes the state file); a permission prompt's tool and command
+# come from the transcript's open tool call, never from the screen. Codex and script sessions have
+# no hook: `unknown` while alive. No state file yet → `starting`.
 sh_status() {
-  local a="$1" n rc st
+  local a="$1" n rc cli st j t msg
   shift; sh_opts "$a" "$@" || return 2
   sh_backend "$SH_MAIN" "$a" >/dev/null || return $?
   n="$(sh_name "$SH_MAIN" "$a")" || return 2
   sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)"; rc=$?
-  case $rc in 0) st=unknown ;; 3) st=gone ;; *) return 1 ;; esac
-  jq -cn --arg s "$st" '{state: $s, kind: null, msg: null, source: "tmux"}'
+  case $rc in 0) ;; 3) jq -cn '{state: "gone", kind: null, msg: null, source: "tmux"}'; return 0 ;;
+    *) return 1 ;; esac
+  cli="$(sh_record_get "$SH_MAIN" "$a" cli)"
+  if [ -z "$cli" ] || [ "$cli" = codex ] || [ "$cli" = script ]; then
+    jq -cn '{state: "unknown", kind: null, msg: null, source: "none"}'; return 0
+  fi
+  j="$(sh_state "$SH_MAIN" "$a")"
+  if [ -z "$j" ]; then jq -cn '{state: "starting", kind: null, msg: null, source: "none"}'; return 0; fi
+  st="$(jq -r '.state // "unknown"' <<<"$j")"; msg=""
+  if [ "$st" = blocked ] && [ "$(jq -r '.kind // ""' <<<"$j")" = permission ]; then
+    t="$(jq -r '.transcript_path // ""' <<<"$j")"
+    [ -z "$t" ] || msg="$(python3 -I "$SH_LIB/team_prompt.py" pending-tool "$t" 2>/dev/null \
+      | jq -r 'select(type == "object" and .tool != null) | "\(.tool): \(.detail // "")"' 2>/dev/null \
+      | cut -c1-200)"
+  fi
+  jq -cn --argjson j "$j" --arg m "$msg" \
+    '{state: ($j.state // "unknown"), kind: ($j.kind // null), msg: (if $m == "" then null else $m end), source: "hook"}'
 }
 
 # sh_quote <word> → the word in POSIX single quotes ('…'\''…'), never printf %q.
@@ -558,7 +590,8 @@ sh_start() {
   if [ -n "$(sh_record_get "$SH_MAIN" "$a" program)" ] && sh_tmux has-session -t "=$n" 2>/dev/null; then
     sh_tmux kill-session -t "=$n" || true
   fi
-  envs+=(-e "HARNESS_ADDRESS=$a" -e "HARNESS_MAIN=$SH_MAIN" -e "HARNESS_REGISTRY=$(sh_reg_dir "$SH_MAIN")")
+  envs+=(-e "HARNESS_ADDRESS=$a" -e "HARNESS_MAIN=$SH_MAIN" -e "HARNESS_REGISTRY=$(sh_reg_dir "$SH_MAIN")"
+    -e "HARNESS_BACKEND=$be")
   if [ "$ch" = auto ]; then
     . "$SH_LIB/team-profile.sh"
     if ! w="$(team_claude_home "$SH_MAIN")"; then echo "$w" >&2; return 1; fi

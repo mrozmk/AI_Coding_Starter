@@ -115,10 +115,10 @@ echo "team-smoke-host: (6) kill OK"
 clr; run "$MAIN" $SH start alfa-coder --kind team --cwd "$CL" --cli claude --session-id s1 \
   --env "AGENT_COSTS_HOME=" --env "TEAM_RUN_TEAM=alfa" -- 'claude --session-id s1 -- "$(cat p)"'
 expect 0 "alfa-coder" "(7) start"
-line "tmux new-session -d -s alfa-coder -c $CL -e AGENT_COSTS_HOME= -e TEAM_RUN_TEAM=alfa -e HARNESS_ADDRESS=alfa-coder -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG claude --session-id s1 -- \"\$(cat p)\"" "(7) start argv"
+line "tmux new-session -d -s alfa-coder -c $CL -e AGENT_COSTS_HOME= -e TEAM_RUN_TEAM=alfa -e HARNESS_ADDRESS=alfa-coder -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG -e HARNESS_BACKEND=tmux claude --session-id s1 -- \"\$(cat p)\"" "(7) start argv"
 clr; run "$MAIN" $SH start helper:quote --kind helper --cwd "$CL" --cli script -- printf "it's"
 expect 0 "" "(7) two-element start"
-line "tmux new-session -d -s quote -c $CL -e HARNESS_ADDRESS=helper:quote -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG 'printf' 'it'\\''s'" "(7) quoted join"
+line "tmux new-session -d -s quote -c $CL -e HARNESS_ADDRESS=helper:quote -e HARNESS_MAIN=$MP -e HARNESS_REGISTRY=$REG -e HARNESS_BACKEND=tmux 'printf' 'it'\\''s'" "(7) quoted join"
 mkdir -p "$WORK/cc"; CC="$(cd "$WORK/cc" && pwd -P)"
 printf '# fixture\n%s\n' "$WORK/cc" > "$MAIN/.claude/claude-profile"
 clr; run "$MAIN" $SH start helper:cc --kind helper --cwd "$CL" --cli claude --claude-home auto -- claude
@@ -217,7 +217,7 @@ run "$CL" $SH alive alfa-coder --main "$MAIN"; expect 3 "" "(15) --main from a c
 echo '{"address":"Supervisor","backend":"tmux","program":"claude"}' > "$REG/Supervisor.json"
 STUB_TMUX_ALIVE=0 STUB_PANE_CMD=bash run "$MAIN" $SH alive Supervisor; expect 3 "" "(16) a shell is not the program"
 STUB_TMUX_ALIVE=0 run "$MAIN" $SH alive Supervisor; expect 0 "" "(16) the program runs"
-STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"unknown"' "(17) status alive"
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"starting"' "(17) status alive, no state yet"
 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"gone"' "(17) status gone"
 run "$MAIN" $SH start adhoc-t1 --kind role --cwd "$CL" --cli claude -- claude; expect 2 "registry only" "(18) adhoc"
 run "$MAIN" $SH alive 'bad name'; expect 2 "must match" "(18) malformed address"
@@ -225,4 +225,85 @@ run "$MAIN" $SH; expect 2 "Usage" "(18) usage"
 run "$MAIN" $SH frob x; expect 2 "unknown verb" "(18) unknown verb"
 
 echo "team-smoke-host: (14) hint, (15) main root, (16) program check, (17) status, (18) refusals OK"
+# ---- (19) status hook without HARNESS_ADDRESS: no file, today's output and tmux calls -------------
+HK="$SRC/.claude/hooks/team-status.sh"
+hk() {  # hk <payload> [env…] → RC, $WORK/out
+  local p="$1"; shift
+  set +e; printf '%s' "$p" | env "$@" bash "$HK" > "$WORK/out" 2>&1; RC=$?; set -e
+}
+SD="$WORK/hreg"
+for ev in '"hook_event_name":"UserPromptSubmit"' '"hook_event_name":"PostToolUse"' '"hook_event_name":"Stop"' \
+  '"hook_event_name":"SessionEnd"' '"hook_event_name":"Notification","notification_type":"permission_prompt"' \
+  '"hook_event_name":"Notification","notification_type":"idle_prompt"' '"hook_event_name":"Notification","notification_type":"other"' \
+  '"hook_event_name":"PreCompact"'; do
+  clr; hk "{\"session_id\":\"s1\",\"transcript_path\":\"/t\",$ev}" -u HARNESS_ADDRESS HARNESS_REGISTRY="$SD" TMUX="/tmp/x,1,0" TMUX_PANE=%3
+  [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(19) $ev: rc $RC or output"
+  [ ! -e "$SD" ] || fail "(19) $ev: a state file without HARNESS_ADDRESS"
+  case "$ev" in
+    *other*|*PreCompact*) [ ! -s "$STUB_LOG" ] || { cp "$STUB_LOG" "$WORK/out"; fail "(19) $ev: tmux called"; } ;;
+    *) [ "$(cat "$STUB_LOG")" = "tmux -S /tmp/x display-message -p -t %3 #S" ] \
+         || { cp "$STUB_LOG" "$WORK/out"; fail "(19) $ev: tmux calls changed"; } ;;
+  esac
+done
+clr; hk '{"session_id":"s1","hook_event_name":"Stop"}' -u TMUX -u HARNESS_ADDRESS
+[ "$RC" = 0 ] && [ ! -s "$WORK/out" ] && [ ! -s "$STUB_LOG" ] || fail "(19) outside tmux"
+echo "team-smoke-host: (19) status hook without HARNESS_ADDRESS OK"
+
+# ---- (20) status hook → state file: mapping, session fence, refusals -------------------------------
+mkdir -p "$SD"; rm -f "$SD"/*.json
+SF="$SD/state/alfa-coder.json"
+st() { hk "{\"session_id\":\"${2:-s1}\",\"transcript_path\":\"/t/s.jsonl\",$1}" -u TMUX HARNESS_ADDRESS=alfa-coder HARNESS_REGISTRY="$SD" ${3:-}; }
+want() { jq -e "$1" "$SF" >/dev/null 2>&1 || { cat "$SF" > "$WORK/out" 2>&1; fail "(20) $2"; }; }
+st '"hook_event_name":"UserPromptSubmit"'; want '.state == "working" and .kind == null and .session_id == "s1" and .transcript_path == "/t/s.jsonl"' "working"
+[ ! -s "$WORK/out" ] || fail "(20) the hook printed something"
+st '"hook_event_name":"Notification","notification_type":"permission_prompt"'; want '.state == "blocked" and .kind == "permission"' "permission"
+st '"hook_event_name":"Notification","notification_type":"elicitation_dialog"'; want '.kind == "question"' "question"
+st '"hook_event_name":"Notification","notification_type":"agent_needs_input"'; want '.kind == "input"' "input"
+st '"hook_event_name":"Notification","notification_type":"idle_prompt"'; want '.state == "idle"' "idle"
+st '"hook_event_name":"Stop"'; want '.state == "done"' "Stop is done"
+st '"hook_event_name":"PostToolUse","tool_input":{"session_id":"evil","hook_event_name":"Stop"}'
+want '.state == "working" and .session_id == "s1"' "nested keys do not win"
+echo '{"address": "alfa-coder", "session_id": "s1"}' > "$SD/alfa-coder.json"
+st '"hook_event_name":"Stop"' s2; want '.state == "working"' "a foreign session id is fenced off"
+st '"hook_event_name":"SessionEnd"' s2; [ -f "$SF" ] || fail "(20) an old SessionEnd removed the live state"
+st '"hook_event_name":"SessionEnd"'; [ ! -f "$SF" ] || fail "(20) SessionEnd kept the state file"
+st '"hook_event_name":"Stop"' s1 HARNESS_BACKEND=herdr; [ ! -f "$SF" ] || fail "(20) wrote under HARNESS_BACKEND=herdr"
+hk '{"session_id":"s1","hook_event_name":"Stop"}' -u TMUX HARNESS_ADDRESS=../x HARNESS_REGISTRY="$SD"
+[ "$RC" = 0 ] && [ ! -e "$SD/x.json" ] && [ ! -e "$WORK/x.json" ] || fail "(20) a path in HARNESS_ADDRESS"
+echo "team-smoke-host: (20) state file OK"
+
+# ---- (21) team_prompt.py pending-tool ------------------------------------------------------------------
+TR="$WORK/t.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"Read","input":{"file_path":"/x"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a"}]}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Bash","input":{"command":"rm -rf build","description":"d"}}]}}' > "$TR"
+[ "$(python3 -I "$L/team_prompt.py" pending-tool "$TR")" = '{"tool": "Bash", "detail": "rm -rf build"}' ] || fail "(21) open Bash call"
+head -n 2 "$TR" > "$WORK/t2.jsonl"; [ "$(python3 -I "$L/team_prompt.py" pending-tool "$WORK/t2.jsonl")" = '{}' ] || fail "(21) nothing open"
+[ "$(python3 -I "$L/team_prompt.py" pending-tool "$WORK/none.jsonl")" = unknown ] || fail "(21) unreadable"
+echo "team-smoke-host: (21) pending-tool OK"
+
+# ---- (22) status from the state file ----------------------------------------------------------------------
+mkdir -p "$REG/state"
+put_state() { printf '{"state":"%s","kind":%s,"session_id":"%s","transcript_path":"%s"}\n' "$1" "$2" "$3" "$TR" > "$REG/state/alfa-coder.json"; }
+put_state working null s1
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"working","kind":null,"msg":null,"source":"hook"' "(22) working"
+put_state blocked '"permission"' s1
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"blocked","kind":"permission","msg":"Bash: rm -rf build"' "(22) blocked + msg"
+noline capture-pane "(22) status read the screen"
+put_state done null s0
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"starting"' "(22) a leftover of another session"
+echo '{"address":"alfa-qa","cli":"codex","backend":"tmux"}' > "$REG/alfa-qa.json"
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-qa; expect 0 '"state":"unknown"' "(22) codex"
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-planner; expect 0 '"state":"unknown"' "(22) no record"
+echo "team-smoke-host: (22) status OK"
+
+# ---- (23) send → 9 while blocked ------------------------------------------------------------------------------
+put_state blocked '"permission"' s1
+clr; STUB_SOCK_RC=0 STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-coder "ring" --team-dir "$TDX" --reg "$WORK/reg.json"
+expect 9 "" "(23) blocked"; noline "send-keys" "(23) typed into a dialog"; noline "socket" "(23) used the socket"
+grep -q '^doorbell-blocked .* — ring$' "$TDX/send-coder.log" || fail "(23) doorbell-blocked line"
+put_state idle null s1
+clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-coder "ring2" --team-dir "$TDX"; expect 0 "" "(23) idle again"
+echo "team-smoke-host: (23) send while blocked OK"
+
 echo "team-smoke-host: OK"

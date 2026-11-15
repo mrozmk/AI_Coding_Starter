@@ -52,6 +52,18 @@ def pending(es):
     return open_calls
 
 
+def pending_tool(es):
+    """The newest open tool call (dict order = transcript order) as {tool, detail}; {} when none.
+    detail: a Bash command, else a file_path, else the first string input."""
+    calls = pending(es)
+    if not calls:
+        return {}
+    name, inp = list(calls.values())[-1]
+    detail = inp.get("command") if name == "Bash" else None
+    detail = detail or inp.get("file_path") or next((v for v in inp.values() if isinstance(v, str)), "")
+    return {"tool": name, "detail": detail}
+
+
 def squash(s):
     return "".join(str(s or "").split())
 
