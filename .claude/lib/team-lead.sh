@@ -5,7 +5,9 @@
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
 #        bash .claude/lib/team-lead.sh digest-check <team> <spec|plan path>
-#   pending lists the lead's open items (stop, gate, attention, inbox), oldest first:
+#        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
+#   pending lists the lead's open items — pending decisions first, then stop, gate, attention,
+#   inbox, oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
 #   lead. digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
@@ -18,10 +20,12 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
+LIB="$(cd "$(dirname "$0")" && pwd)"
+. "$LIB/team-lead-decision.sh"
 
 # resolve <team> → TD (the clone's team dir) and MAIN (the main checkout), from either side. In the
 # clone the main checkout is the one the runner recorded, never `git rev-parse` of the clone.
@@ -54,6 +58,11 @@ pending() {
   resolve "$1"
   {
     if [ -n "$RUN" ]; then
+      # Open human decisions sort before everything: the Operator's answers wait on them.
+      for f in "$TD/runs/$RUN"/decisions/d-*.md; do
+        [ -f "$f" ] && [ "$(dfm "$f" status)" = pending ] || continue
+        echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
+      done
       for f in "$TD/runs/$RUN"/*-*-*.json; do
         [ -f "$f" ] || continue
         case "$(basename "$f")" in teamlead-*) continue ;; esac  # verdicts, not stage records
@@ -173,6 +182,7 @@ case "$1" in
   whoami) [ $# -eq 1 ] || usage; team_lead_caller ;;
   pending) [ $# -eq 2 ] || usage; pending "$2" ;;
   digest-check) [ $# -eq 3 ] || usage; digest_check "$2" "$3" ;;
+  decision) shift; decision_main "$@" ;;
   end) [ $# -eq 2 ] || usage; end_lead "$2" ;;
   finalize) [ $# -eq 3 ] && [ "$3" = merged ] || usage; finalize "$2" "$3" ;;
   relaunch) [ $# -eq 2 ] || usage; resolve "$2"; touch "$TD/relaunch-lead"

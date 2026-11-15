@@ -275,7 +275,7 @@ wait_loop() {
     if [ "$n" -gt "$seen" ]; then
       seen="$n"; echo "needs attention: tmux attach -t $name"
       notify "needs attention" "$role waits for you: bash .claude/lib/team-attach.sh $TEAM $role"
-      ! team_lead_on || team_session_doorbell "$TD" lead "prompt $role: needs a decision"
+      ! team_lead_on || lead_attention "$role" "$n"
     fi
     if ! team_tmux_alive "$name"; then
       r="$(new_record "$role" "$attempt")"

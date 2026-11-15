@@ -213,10 +213,11 @@ V spec revise --for planner-1-3.json --ref "$RD/gate-spec-4.md" --message "round
 expect 5 "revise limit 3 reached for gate spec (teams.teamlead.revise_limit) — write escalate with a pending decision, approve" "(h) fourth revise"
 has "or remode" "$WORK/out" && fail "(h) remode offered in brainstorm"
 mkdir -p "$RD/decisions"
-printf -- '---\nid: d-1\nstatus: answered\noutcome: more-revise\ngate: spec\n---\nOne more round.\n' > "$RD/decisions/d-1.md"
+printf -- '---\nid: d-1\nstatus: answered\nanswer_outcome: more-revise\ngate: spec\n---\nOne more round.\n' > "$RD/decisions/d-1.md"
 V spec revise --for planner-1-3.json --ref "$RD/gate-spec-4.md" --message "granted" --decision d-1
 expect 0 "" "(h) granted revise"
-grep -q '^consumed: teamlead-spec-' "$RD/decisions/d-1.md" || fail "(h) grant not consumed"
+grep -q '^status: consumed' "$RD/decisions/d-1.md" && grep -q '^consumed_by: teamlead-spec-' "$RD/decisions/d-1.md" \
+  || fail "(h) grant not consumed"
 V spec revise --for planner-1-3.json --ref "$RD/gate-spec-5.md" --message "again" --decision d-1
 expect 4 "not an answered, unconsumed more-revise grant" "(h) a grant spent twice"
 V spec revise --for planner-1-3.json --ref "$RD/gate-spec-5.md" --message "again"

@@ -64,6 +64,10 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | basename of the stage record the lead must resolve: a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate) |
 | `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
 | `runs/<run>/gate-<gate>-<n>.md` | the lead | gate findings; a verdict's `ref` |
+| `runs/<run>/answers.md` | `team-answer.sh` (every authority answer) | `- <utc> [<role> <attempt>] <question> → <answer> — <why> [authority <a>] [decision <id>]` |
+| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision` | a human decision, §7 |
+| `runs/<run>/decisions/req-<n>.json` | runner (`lead_attention`) | a human-only prompt the lead opens a decision from: source, tool, command, binding |
+| `runs/<run>/.notified` | runner (`lead_notify`) | verdict files already notified to the Operator |
 | `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
 | `verdict-acked` | runner | the verdict files already acted on, one per line |
 | `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` — a closed run; the runner and `/start-team` refuse to resume it |
@@ -195,4 +199,50 @@ check first**, before any waiver.
   on an authority) to the role/attempt named by `acked` writes `runs/<run>/<record>.answered`, which
   restarts the stage clock (§2).
 - Exit codes beyond the sender's usual ones: 7 caller or decision rule, 8 `--tier` in a lead-owned
-  run, 9 human-only (open a pending decision; the decision flow is the next step).
+  run, 9 human-only (open a pending decision, §7).
+- **The runner answers first:** a new `permission_prompt` attention line is tried at `--authority
+  class` (no model wakes). Exit 0 → answered (`answers.md`); exit 9 → `decisions/req-<n>.json` and
+  the doorbell `human-only <role>: <tool> <command> — open a decision for req-<n>`; any other refusal
+  → `prompt <role>: <tool> <command> — team-answer.sh … --authority teamlead`. The tool and command
+  come from the transcript-bound parse; an unreadable one rings `prompt <role>: unreadable`. Other
+  attention kinds ring `prompt <role>: <kind> — <message>`.
+
+## 7. Human decisions
+
+The lead never waits on the Operator (`AskUserQuestion` is disabled for it); a decision only it
+cannot make becomes a file, and the stop that needs it waits while everything else goes on.
+
+- **Open** (lead only): `team-lead.sh decision open <team> --source <run file|attention:<n>>
+  --question "<line>" [--options "a|b"] [--recommend "<line>"] [--notify human_decision|abandon_decision]
+  [--gate spec|plan]`, or `--request req-<n>` (the runner's request: source, question and the prompt
+  binding `bind_session_id, bind_run, bind_attempt, bind_fp, bind_event, bind_pane` are copied). It
+  writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
+  notify`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
+  `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
+- **Notify:** the runner sends each verdict with `notify` set once (`.notified`) through
+  `team_channel_notify --alarm` — `<ticket> <id>: <question> — answer in tmux attach -t <team>-lead` —
+  whatever `TEAM_NOTIFY` says.
+- **Answer:** `team-lead.sh decision answer <team> d-<n> --text "<Operator's words>"
+  [--outcome continue|close|more-revise|approve]` → `status: answered`, `answered_at`,
+  `answered_via`, `## Answer`. It is bound to a human: from a **terminal** (stdin is a TTY and the id
+  is typed to confirm — `answered_via: terminal`), or from the **lead window**, where the lead's own
+  transcript must hold a typed user message after `created_at`, not a doorbell or `[team-run]` line,
+  that contains the answer text (`answered_via: teamlead-window <message uuid>`); else exit 7. A
+  non-pending decision refuses with exit 4 (a late answer to a withdrawn decision is never applied).
+- **Relay:** `team-answer.sh … --authority operator --decision <d-n.md>` requires `status: answered`,
+  checks the bound prompt instance (`--expect-*` from `bind_*`: a successor prompt refuses with 6) and,
+  under the send lock before the first key, sets `status: dispatched` + `dispatched_at` — one relay
+  per decision.
+- **Decision gate** (`team-verdict.sh decision <verdict> --for <run file|attention:<n>>`):
+  `escalate` (needs `--ref`), `continue` / `close` (need `--decision d-<n>` answered with that
+  `answer_outcome`; the decision becomes `status: consumed`, once), `resolved` (closes a pending or
+  answered decision without changing the run). The revise allowance of §4 counts consumed
+  `more-revise` grants. The runner acting on `continue` / `close` is a later step.
+- **Withdraw / list:** `decision withdraw <team> d-<n> --why "<line>"` (`status: withdrawn`, lead
+  only), `decision list <team> [--pending]`; `team-lead.sh pending` lists pending decisions first.
+- **Guard:** `guard-team-verdict.sh` refuses `team-lead.sh decision open|answer|withdraw` from any
+  session but the lead's (payload session id), like the verdict and authority calls.
+- **Known limit:** the lead can append to its own transcript with Bash, so the window binding raises
+  the bar (a deliberate, visible forgery) without making it impossible; the terminal path is the
+  strong one. Making the window path strong needs a write deny on the lead's transcript directory
+  or answers only from a terminal (an owner decision).

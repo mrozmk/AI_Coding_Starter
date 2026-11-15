@@ -18,7 +18,7 @@ team_lead_base_ok() {
   local f
   for f in .claude/team/prompts/teamlead.md .claude/hooks/guard-teamlead-write.sh \
     .claude/lib/team-lead.sh .claude/lib/team-lead-lib.sh .claude/lib/team-verdict.sh \
-    .claude/hooks/lib/memory-domain.sh; do
+    .claude/hooks/lib/memory-domain.sh .claude/lib/team-lead-decision.sh; do
     [ -f "$CLONE/$f" ] || { echo "no $f"; return 1; }
   done
   grep -q 'review)' "$CLONE/.claude/lib/team-record.sh" || { echo "no review verdict in team-record.sh"; return 1; }
@@ -133,6 +133,67 @@ lead_poll() {
     mkdir -p "$TD/inbox-rung" && touch "$m"
     team_session_doorbell "$TD" lead "inbox: $(basename "$f")"
   done
+  lead_notify
+}
+
+# A verdict with notify (human_decision, abandon_decision) reaches the Operator once, whatever
+# TEAM_NOTIFY says: these are the Operator's own events. runs/<run>/.notified lists the sent ones.
+lead_notify() {
+  local f d ev id q nf="$TD/runs/$RUN/.notified"
+  for f in "$TD/runs/$RUN"/teamlead-*-*.json; do
+    [ -f "$f" ] || continue
+    ev="$(rec "$f" notify)"; [ -n "$ev" ] || continue
+    ! grep -qxF "$(basename "$f")" "$nf" 2>/dev/null || continue
+    d="$(rec "$f" ref)"; id=""; q=""
+    if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
+    team_channel_names "$root" 2>/dev/null || { TEAM_CHANNEL_NOTIFIER=none; TEAM_CHANNEL_NAMES_ROOT="$root"; }
+    team_channel_notify --alarm "team $TEAM: $ev" \
+      "$(team_json ticket) ${id:-?}: ${q:-$(rec "$f" message)} — answer in tmux attach -t $(sess_name lead)"
+    basename "$f" >> "$nf"
+  done
+}
+
+# lead_attention <role> <line> — a new attention line with the lead on. A permission prompt is tried
+# at authority class first, so a deterministic class answers without waking the lead; a human-only
+# refusal (9) becomes a request runs/<run>/decisions/req-<n>.json the lead opens a decision from;
+# otherwise the lead is rung with the prompt's tool and command, read from the transcript-bound
+# parse (never from the screen alone; unreadable → said so).
+lead_attention() {
+  local role="$1" line kind name t p tool cmd rc=0 n d ev gen
+  line="$(sed -n "${2}p" "$TD/runs/$RUN/attention" 2>/dev/null)"; kind="$(cut -d' ' -f2 <<<"$line")"
+  name="$(sess_name "$role")"
+  if [ "$kind" != permission_prompt ]; then
+    team_session_doorbell "$TD" lead "prompt $role: ${kind:-attention} — $(cut -d' ' -f3- <<<"$line")"
+    return 0
+  fi
+  bash "$root/.claude/lib/team-answer.sh" "$TEAM" "$role" yes --authority class \
+    --why "deterministic class" --clone "$CLONE" --root "$root" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" = 0 ]; then echo "answered at authority class: $role prompt"; return 0; fi
+  t="$(team_role_transcript "$CLONE" "$(session_json session_id)")"
+  p="$(team_pane_history "$name" 200 \
+    | python3 -I "$root/.claude/lib/team_prompt.py" parse --transcript "${t:--}" 2>/dev/null)" || p='{}'
+  if ! jq -e '.kind == "permission" and .complete' <<<"$p" >/dev/null 2>&1; then
+    team_session_doorbell "$TD" lead "prompt $role: unreadable — tmux attach -t $name"; return 0
+  fi
+  tool="$(jq -r '.header // "?"' <<<"$p")"
+  cmd="$(jq -r '.command // ""' <<<"$p" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c1-200)"
+  if [ "$rc" != 9 ]; then
+    team_session_doorbell "$TD" lead \
+      "prompt $role: $tool $cmd — team-answer.sh $TEAM $role yes|no --authority teamlead --why …"
+    return 0
+  fi
+  d="$TD/runs/$RUN/decisions"; mkdir -p "$d"
+  n="$(ls "$d" | sed -n 's/^req-\([0-9]*\)\.json$/\1/p' | sort -n | tail -n 1)"; n=$(( ${n:-0} + 1 ))
+  ev="$(printf '%s' "$p" | python3 -I "$root/.claude/lib/team_prompt.py" event "$t" permission 2>/dev/null)" || ev=-
+  gen="$(team_pane_gen "$name")" || gen=-
+  jq -n --arg src "attention:$2" --arg role "$role" --arg tool "$tool" --arg cmd "$cmd" \
+    --arg sid "$(session_json session_id)" --arg run "$RUN" --arg att "$(session_json attempt)" \
+    --arg fp "$(jq -r '.fp // ""' <<<"$p")" --arg ev "$ev" --arg pane "$gen" --arg at "$(team_utc)" \
+    '{source: $src, role: $role, tool: $tool, command: $cmd, written_at: $at,
+      binding: {session_id: $sid, run: $run, attempt: $att, fp: $fp, event: $ev, pane: $pane}}' \
+    > "$d/.req-$n.json.tmp"
+  mv "$d/.req-$n.json.tmp" "$d/req-$n.json"
+  team_session_doorbell "$TD" lead "human-only $role: $tool $cmd — open a decision for req-$n"
 }
 
 lead_status() {  # → alive|dead|none — session <sid> — pending <n>

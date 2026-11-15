@@ -28,7 +28,7 @@ usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 TEAM="$1"; ROLE="$2"; action="$3"; shift 3; text=""; have_text=""
 if [ $(( $# % 2 )) = 1 ]; then text="$1"; have_text=1; shift; fi
 CLONE=""; ROOT=""; SESSION=""; QID=""; ATTEMPT=""; JOURNAL=""; TIER=""; SEND=""
-AUTH=""; WHY=""; DECISION=""; DEC_ID=""
+AUTH=""; WHY=""; DECISION=""; DEC_ID=""; DEC_FILE=""
 E_FP=""; E_PANE=""; E_EVENT=""; E_SESSION=""; E_RUN=""; E_ATTEMPT=""; E_RECORD=""; E_ANCHOR=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -450,7 +450,7 @@ if [ -n "$CLASS" ] || { [ -n "$AUTH" ] && [ "$action" = yes ]; }; then
     && [ "$(python3 -I "$LIB/team_prompt.py" pending "$T" "$EVENT")" = yes ]; } \
     || refuse 6 "prompt changed during classification"
 fi
-reserve_dispatch "$KEY"
+reserve_dispatch "$KEY"; auth_dispatch
 
 case "$action" in
   yes) send_key Enter ;;

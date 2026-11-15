@@ -11,6 +11,11 @@ auth_lead_owned() {
 }
 auth_lead_caller() { [ "${TEAM_SESSION_ROLE:-}" = TeamLead ] && auth_lead_owned; }
 auth_fm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
+auth_fm_set() {  # auth_fm_set <file> <key> <value> — replace or add one frontmatter key, atomically
+  awk -v k="$2" -v v="$3" '/^---$/ { n++; if (n == 2 && !done) print k ": " v; print; next }
+    n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
+  mv "$1.tmp" "$1"
+}
 
 # auth_preflight — before the lock: the caller and decision rules of the authority, and the
 # legacy refusal: a lead-owned run takes no --tier (the human-only check must not be bypassed).
@@ -39,7 +44,23 @@ auth_preflight() {
     && [ "$(dirname "$d")" = "$(cd "$TD/runs/$run/decisions" 2>/dev/null && pwd -P)" ] \
     && [ "$(auth_fm "$d" status)" = answered ] \
     || refuse 7 "authority operator needs --decision <an answered runs/$run/decisions/d-<n>.md>"
-  DEC_ID="$(auth_fm "$d" id)"
+  DEC_ID="$(auth_fm "$d" id)"; DEC_FILE="$d"
+  # A decision about a prompt binds that prompt instance: a successor prompt is never approved.
+  [ -n "$E_SESSION" ] || E_SESSION="$(auth_fm "$d" bind_session_id)"
+  [ -n "$E_RUN" ] || E_RUN="$(auth_fm "$d" bind_run)"
+  [ -n "$E_ATTEMPT" ] || E_ATTEMPT="$(auth_fm "$d" bind_attempt)"
+  [ -n "$E_FP" ] || E_FP="$(auth_fm "$d" bind_fp)"
+  [ -n "$E_EVENT" ] || E_EVENT="$(auth_fm "$d" bind_event)"
+  [ -n "$E_PANE" ] || E_PANE="$(auth_fm "$d" bind_pane)"
+}
+
+# auth_dispatch — under the send lock, before the first key: an operator decision is spent once.
+auth_dispatch() {
+  [ -n "$DEC_FILE" ] || return 0
+  [ "$(auth_fm "$DEC_FILE" status)" = answered ] \
+    || refuse 6 "decision $DEC_ID is $(auth_fm "$DEC_FILE" status) — dispatched once only"
+  auth_fm_set "$DEC_FILE" status dispatched
+  auth_fm_set "$DEC_FILE" dispatched_at "$(team_utc)"
 }
 
 # auth_event — with an authority there is no ledger: the live event must be readable and

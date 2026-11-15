@@ -353,9 +353,17 @@ for c in "rm -rf .git/objects" "rm -rf .git/refs/heads/x"; do
   for a in teamlead class; do chk "$a"; expect 1 "human-only: irreversible delete inside the git dir" "(k) $c, $a"; done
   chk operator; expect 0 "policy-authority: operator" "(k) $c, operator"
 done
-for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/"; do
+bashp "rm -rf .GIT/objects"; chk teamlead; expect 1 "inside the git dir" "(k) case-folded git dir path"
+for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/" "rm -rf .Git" "rm -rf .GIT/"; do
   bashp "$c"; chk operator; expect 1 "clone root or its .git — never" "(k) rm of the clone root: $c"
 done
+# With the clone under a temp root its ancestors are strictly "inside temp": still never.
+export TMPDIR="$(dirname "$WORK")"
+for c in "rm -rf .." "rm -rf $(dirname "$CREAL")"; do
+  bashp "$c"
+  for a in teamlead operator; do chk "$a"; expect 1 "clone root or its .git — never" "(k) ancestor under temp: $c, $a"; done
+done
+export TMPDIR="$WORK/tz"
 bashp "git remote add x https://example.invalid/r.git"
 for a in teamlead class; do chk "$a"; expect 1 "human-only: egress: git remote add" "(k) git remote add, $a"; done
 chk operator; expect 0 "policy-authority: operator" "(k) git remote add, operator"
@@ -429,5 +437,116 @@ TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-a
 expect 0 "" "(hook) the lead's own session"
 hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-answer.sh alfa coder say hi")"; expect 0 "" "(hook) plain sender use"
 echo "team-smoke-22: authority hook OK"
+
+# ==== pending decisions, the runner's class-first answering and the Operator notification =========
+DLD="$RD/decisions"; LTX="$(transcript sid-lead)"; mkdir -p "$(dirname "$LTX")"; : > "$LTX"
+prof '.teams.teamlead.enabled = true'  # (k) above switched it off for the next ticket
+DEC="bash .claude/lib/team-lead.sh decision"
+ldec() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
+said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead window, now
+  jq -cn --arg t "$1" --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
+    '{type: "user", uuid: ("u-" + ($t | length | tostring)), timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"
+}
+mkdir -p "$MAIN/.claude/team/sessions/operator-kit"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s/notify.log"\n' "$WORK" > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
+# ---- (m) open: a pending file, the escalate verdict with notify, one notification -----------------
+run "$CLONE" $DEC open alfa --source coder-1-1.json --question "Edit the settings?"
+expect 3 "only this run's TeamLead opens decisions" "(m) open by a non-lead"
+ldec open alfa --source coder-1-1.json --question "Allow the coder to edit .claude/settings.json?" \
+  --options "yes|no" --recommend "no — not ordered"
+expect 0 "[d-2] Allow the coder to edit .claude/settings.json?" "(m) open"
+[ "$(sed -n 's/^status: //p' "$DLD/d-2.md")" = pending ] && grep -q '^## Recommendation' "$DLD/d-2.md" \
+  || fail "(m) d-2.md not pending"
+V1="$(ls "$RD"/teamlead-decision-*.json | tail -n 1)"
+jq -e '.gate == "decision" and .verdict == "escalate" and .notify == "human_decision"
+  and (.ref | endswith("/decisions/d-2.md")) and .for == "coder-1-1.json"' "$V1" >/dev/null || fail "(m) escalate verdict"
+ldec open alfa --source nothere.json --question q; expect 1 "verdict was refused" "(m) a source outside the run"
+rm -f "$DLD/d-3.md"
+cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/"
+printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
+STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "" "(m) runner polls"
+[ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2: Allow the coder" "$WORK/notify.log" \
+  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) not exactly one human_decision notification"; }
+rm -f "$WORK/hs.n" "$TD/cancel"
+STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 TEAM_NOTIFY=0 run "$MAIN" $TR alfa
+[ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] || fail "(m) a restarted runner notified again"
+run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
+head -n 1 "$WORK/out" | grep -q "^decision .agents/team/runs/$RUN_ID/decisions/d-2.md — Allow the coder" \
+  || fail "(m) pending does not list the open decision first"
+echo "team-smoke-22: (m) open + one notification OK"
+
+# ---- (n) two pending: answered by id, bound to the Operator's own words; a second answer → 4 ------
+ldec open alfa --source coder-1-1.json --question "Which endpoint?" --options "old|new"; expect 0 "[d-3]" "(n) open d-3"
+ldec answer d-3 --text "use the old one"; expect 1 "not team d-3" "(n) answer without a team"
+ldec answer alfa d-3 --text "use the old one"; expect 7 "no Operator message" "(n) no Operator input yet"
+said_in_lead "prompt coder: use the old one"
+ldec answer alfa d-3 --text "use the old one"; expect 7 "no Operator message" "(n) a doorbell is not the Operator"
+said_in_lead "d-3 use the old one"
+ldec answer alfa d-3 --text "use the old one" --outcome continue; expect 0 "answered: d-3 (continue) via teamlead-window" "(n) answer by id"
+grep -q '^answered_via: teamlead-window u-' "$DLD/d-3.md" && [ "$(sed -n 's/^status: //p' "$DLD/d-2.md")" = pending ] \
+  || fail "(n) wrong decision answered"
+ldec answer alfa d-3 --text "use the old one"; expect 4 "d-3 is answered, not pending" "(n) second answer"
+# The decision gate: a control verdict spends the answered decision once.
+VD="env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh"
+run "$CLONE" $VD decision close --for coder-1-1.json --decision d-3 --message x; expect 4 "outcome continue, not close" "(n) wrong outcome"
+run "$CLONE" $VD decision continue --for coder-1-1.json --decision d-3 --message "Operator: old endpoint"
+expect 0 "teamlead-decision-" "(n) continue on the answered decision"
+grep -q '^status: consumed' "$DLD/d-3.md" || fail "(n) decision not consumed"
+run "$CLONE" $VD decision continue --for coder-1-1.json --decision d-3 --message again; expect 4 "consumed, not answered" "(n) a decision spent twice"
+run "$CLONE" $VD decision escalate --for attention:x --ref "$DLD/d-2.md" --message x; expect 4 "attention:<line number>" "(n) bad attention ref"
+echo "team-smoke-22: (n) answer by id + decision gate OK"
+
+# ---- (o) withdraw, then a late answer is refused ---------------------------------------------------
+ldec withdraw alfa d-2 --why "the coder found another way"; expect 0 "withdrawn: d-2" "(o) withdraw"
+said_in_lead "d-2 yes"
+ldec answer alfa d-2 --text "yes"; expect 4 "d-2 is withdrawn, not pending" "(o) answer after withdraw"
+run "$CLONE" bash .claude/lib/team-lead.sh decision list alfa --pending; expect 0 "" "(o) list"
+[ ! -s "$WORK/out" ] || fail "(o) a pending decision is left: $(cat "$WORK/out")"
+echo "team-smoke-22: (o) withdraw OK"
+
+# ---- the Operator's relay is bound to the prompt instance and dispatched once ---------------------
+bashp "git rm old.txt"; : > "$STUB_LOG"
+ldec open alfa --source coder-1-1.json --question "Remove old.txt?"; expect 0 "[d-4]" "(bind) open"
+printf '%s\n' "bind_session_id: sid-someone-else" > "$WORK/bind"
+awk -v b="$(cat "$WORK/bind")" '/^---$/ && ++n == 2 { print b } { print }' "$DLD/d-4.md" > "$WORK/d4" && mv "$WORK/d4" "$DLD/d-4.md"
+said_in_lead "d-4 yes remove it"; ldec answer alfa d-4 --text "yes remove it"; expect 0 "answered: d-4" "(bind) answer"
+lead alfa coder yes --authority operator --why "Operator: remove" --decision "$DLD/d-4.md"
+expect 6 "session changed" "(bind) a decision bound to another session instance"
+ldec open alfa --source coder-1-1.json --question "Remove old.txt now?"; expect 0 "[d-5]" "(once) open"
+said_in_lead "d-5 yes"; ldec answer alfa d-5 --text "yes"; expect 0 "" "(once) answer"
+lead alfa coder yes --authority operator --why "Operator: remove" --decision "$DLD/d-5.md"; expect 0 "sent yes" "(once) relay"
+grep -q '^status: dispatched' "$DLD/d-5.md" && grep -q '^dispatched_at: ' "$DLD/d-5.md" || fail "(once) not journalled"
+lead alfa coder yes --authority operator --why "again" --decision "$DLD/d-5.md"; expect 7 "needs --decision" "(once) second relay"
+hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-lead.sh decision answer alfa d-5 --text yes")"
+expect 2 "not it (refused)" "(hook) a stage answering a decision"
+hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-lead.sh decision list alfa")"; expect 0 "" "(hook) list is free"
+echo "team-smoke-22: decision binding + dispatch once + hook OK"
+
+# ---- (i) the runner answers at authority class first; human-only → a request; else the lead's ------
+runner_attention() {  # runner_attention <label> — one attention line, a runner start, stopped
+  echo "2026-11-14T12:00:00Z permission_prompt Claude needs your permission" > "$RD/attention"
+  rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$TD/send-lead.log"; : > "$STUB_LOG"
+  STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=10 run "$MAIN" $TR alfa
+  cp "$WORK/out" "$WORK/runner.out"
+}
+bashp "git status"; runner_attention "(i) clean prompt"
+has "answered at authority class: coder prompt" "$WORK/runner.out" || { cp "$WORK/runner.out" "$WORK/out"; fail "(i) the runner did not answer at class"; }
+grep -q 'send-keys -t %1 Enter' "$STUB_LOG" || fail "(i) no Enter sent to the stage"
+! grep -q 'prompt coder' "$TD/send-lead.log" 2>/dev/null && ! grep -q 'send-keys -t =alfa-lead: -l -- prompt' "$STUB_LOG" \
+  || fail "(i) the lead was rung for a class-answered prompt"
+grep -q "\[authority class\]" "$RD/answers.md" || fail "(i) class answer not in answers.md"
+editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""; runner_attention "(i) human-only"
+[ -f "$DLD/req-1.json" ] && jq -e '.role == "coder" and .tool == "Edit file" and .binding.session_id == "sid-auth-1"
+  and (.binding.event | length > 0) and .source == "attention:1"' "$DLD/req-1.json" >/dev/null \
+  || fail "(i) no request for a human-only prompt"
+grep -q 'human-only coder: Edit file .* — open a decision for req-1' "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null \
+  || fail "(i) the lead was not rung for the request"
+ldec open alfa --request req-1; expect 0 "[d-6] coder: Edit file" "(i) open from the request"
+grep -q '^bind_session_id: sid-auth-1' "$DLD/d-6.md" && grep -q '^source: decisions/req-1.json' "$DLD/d-6.md" \
+  || fail "(i) binding not copied from the request"
+bashp "git rm old.txt"; prof '.teams.policy.classes = {}'; runner_attention "(i) no class"
+grep -q 'prompt coder: Bash command git rm old.txt — team-answer.sh alfa coder yes|no --authority teamlead' \
+  "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || { { cat "$TD/send-lead.log"; grep alfa-lead "$STUB_LOG"; } > "$WORK/out" 2>&1; fail "(i) the lead was not rung with the command"; }
+echo "team-smoke-22: (i) runner class-first OK"
 
 echo "team-smoke-22: OK"

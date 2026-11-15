@@ -96,7 +96,8 @@ def rm_targets(words):
 
 def delete_causes(c, root, cmd):
     """Human-only causes of a recursive rm whose target is not inside the clone or a temp root, or
-    is inside a git dir; raises for the clone root and a git dir itself, which no authority deletes."""
+    is inside a git dir; raises for the clone root, a git dir or an ancestor of either, which no
+    authority deletes."""
     clone, temps, out, gits = os.path.realpath(root), temp_roots(), [], None
     cmds = [c.argv_plain(w) for w in c.canonical(cmd)]
     moved = any(w[:1] in (["cd"], ["pushd"]) for w in cmds)  # a relative path the check can't follow
@@ -111,13 +112,15 @@ def delete_causes(c, root, cmd):
                 out.append("irreversible delete outside the clone: %s (no match)" % t)
             for h in (os.path.realpath(h) for h in hits):
                 gits = git_dirs(clone) if gits is None else gits
-                if h == clone or h in gits:
+                # The root, a git dir, or an ancestor of either (`..`, a temp parent) — case-folded
+                # like c.under, the volume being case-insensitive.
+                if any(c.under(x, [h]) for x in [clone] + sorted(gits)):
                     raise c.Refuse("refuse: rm -r of the clone root or its .git — never")
                 if any(c.under(h, [g]) for g in gits):
                     out.append("irreversible delete inside the git dir: %s" % t)
                     continue
-                inside = c.under(h, [clone]) and h != clone
-                if not (inside or any(h != r and c.under(h, [r]) for r in temps)):
+                inside = c.under(h, [clone])
+                if not (inside or any(h.lower() != r.lower() and c.under(h, [r]) for r in temps)):
                     out.append("irreversible delete outside the clone: %s" % t)
     return out
 

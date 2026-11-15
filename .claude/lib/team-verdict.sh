@@ -6,7 +6,11 @@
 #   gates: spec → approve|revise|escalate (brainstorm); plan → approve|revise|escalate|remode
 #   (remode in quick only). --for names the planner's newest record (a review for spec, a done for
 #   plan). revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
-#   --decision names an answered decision with outcome more-revise that grants one more round.
+#   --decision names an answered decision with answer_outcome more-revise that grants one more round.
+#   decision → escalate|continue|close|resolved: --for is any file under runs/<run>/ (a record, a
+#   verdict, decisions/req-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
+#   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
+#   decision without changing the run. A used decision becomes status: consumed (once).
 #   Writes .agents/team/runs/<run>/teamlead-<gate>-<seq>.json.
 #   e.g. bash .claude/lib/team-verdict.sh spec revise --for planner-1-2.json \
 #          --ref .agents/team/runs/alfa-20261114-100000/gate-spec-1.md --message "2 findings"
@@ -15,14 +19,14 @@
 #   Contract: .agents/reference/team-lead.md §4, §5
 set -euo pipefail
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
-FOR=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""
+FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
-    --for) FOR="$(basename "$2")" ;; --ref) REF="$2" ;; --notify) NOTIFY="$2" ;;
+    --for) FOR="$(basename "$2")"; FOR_RAW="$2" ;; --ref) REF="$2" ;; --notify) NOTIFY="$2" ;;
     --message) MESSAGE="$2" ;; --decision) DECISION="$2" ;;
     *) usage ;;
   esac
@@ -43,17 +47,81 @@ TEAM="$(team_json team)"; TICKET="$(team_json ticket)"; MODE="$(jq -r '.mode // 
 bad() { echo "error: $1" >&2; exit 4; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
 
+fm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
+fm_set() {  # fm_set <file> <key> <value> — replace or add one frontmatter key, atomically
+  awk -v k="$2" -v v="$3" '/^---$/ { n++; if (n == 2 && !done) print k ": " v; print; next }
+    n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
+  mv "$1.tmp" "$1"
+}
+verdicts() { ls "$RD" 2>/dev/null | grep -E "^teamlead-$GATE-[0-9]+\.json\$" | sort -t- -k3,3n || true; }
+DIGEST=""
+write_verdict() {  # → prints the written file
+  local seq=1 n target tmp
+  n="$(verdicts | tail -n 1)"; [ -z "$n" ] || { n="${n#teamlead-"$GATE"-}"; seq=$((${n%.json} + 1)); }
+  target="$RD/teamlead-$GATE-$seq.json"; tmp="$RD/.teamlead-$GATE-$seq.json.tmp"
+  [ ! -e "$target" ] || { echo "error: $target already exists" >&2; exit 1; }
+  jq -n --arg team "$TEAM" --arg ticket "$TICKET" --arg run "$RUN" --arg gate "$GATE" \
+    --argjson seq "$seq" --arg for "$FOR" --arg verdict "$VERDICT" --arg ref "$REF" \
+    --arg notify "$NOTIFY" --arg message "$MESSAGE" --arg spec_digest "$DIGEST" \
+    --arg decision "$DECISION" --arg written_at "$(team_utc)" \
+    --arg session_id "$(team_lead_json session_id)" \
+    '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
+      ref: $ref, notify: $notify, message: $message, spec_digest: $spec_digest,
+      decision: $decision, written_at: $written_at, session_id: $session_id}' > "$tmp"
+  [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
+  mv "$tmp" "$target"
+  echo "$target"
+}
+# decision_file <d-n> → its path, or refuses
+decision_file() {
+  [[ "$1" =~ ^d-[0-9]+$ ]] && [ -f "$RD/decisions/$1.md" ] || bad "--decision $1: no runs/$RUN/decisions/$1.md"
+  echo "$RD/decisions/$1.md"
+}
+
 if [ "$GATE" = event ]; then
   [ "$VERDICT" = collision ] && [ -n "$REF" ] || usage
   exec bash "$MAIN/.claude/lib/team-inbox.sh" --main "$MAIN" write Supervisor collision \
     --from "$TEAM" --ticket "$TICKET" --run "$RUN" --ref "$REF" --message "$MESSAGE"
 fi
 
+# A human decision's gate: no stage record to be the newest of; the decision file carries the state.
+if [ "$GATE" = decision ]; then
+  case "$VERDICT" in escalate|continue|close|resolved) ;;
+    *) bad "verdict $VERDICT is not allowed at the decision gate" ;; esac
+  case "$FOR_RAW" in
+    attention:*) [[ "$FOR_RAW" =~ ^attention:[1-9][0-9]*$ ]] || bad "--for attention:<line number>"
+      FOR="$FOR_RAW" ;;
+    *) FOR="${FOR_RAW#"$RD"/}"; FOR="${FOR#.agents/team/runs/"$RUN"/}"
+       case "$FOR" in ""|/*|*..*) bad "--for must be a file under runs/$RUN/ or attention:<n>" ;; esac
+       [ -f "$RD/$FOR" ] || bad "--for $FOR is not a file under runs/$RUN/" ;;
+  esac
+  if [ "$VERDICT" = escalate ]; then
+    [ -n "$REF" ] && [ -f "$REF" ] || bad "escalate needs --ref <the decision file>"
+  else
+    [ -n "$DECISION" ] || bad "$VERDICT needs --decision d-<n>"
+    df="$(decision_file "$DECISION")"
+    case "$VERDICT:$(fm "$df" status)" in
+      resolved:pending|resolved:answered) ;;
+      resolved:*) bad "$DECISION is $(fm "$df" status) — nothing to resolve" ;;
+      *:answered) [ "$(fm "$df" answer_outcome)" = "$VERDICT" ] \
+          || bad "$DECISION was answered with outcome $(fm "$df" answer_outcome), not $VERDICT" ;;
+      *) bad "$DECISION is $(fm "$df" status), not answered (a control verdict uses it once)" ;;
+    esac
+  fi
+  t="$(write_verdict)"
+  if [ -n "$DECISION" ]; then
+    if [ "$VERDICT" = resolved ]; then fm_set "$df" status resolved
+    else fm_set "$df" status consumed; fi
+    fm_set "$df" consumed_by "$(basename "$t")"
+  fi
+  echo "$t"; exit 0
+fi
+
 # The gated record: the planner's newest record of the launched attempt, in the gate's verdict.
 case "$GATE" in
   spec) [ "$MODE" != quick ] || bad "quick mode has no spec gate"; want=review ;;
   plan) want=done ;;
-  acceptance|decision) bad "gate $GATE is not yet supported" ;;
+  acceptance) bad "gate $GATE is not yet supported" ;;
   *) bad "unknown gate $GATE (spec|plan)" ;;
 esac
 [ -f "$TD/session.json" ] && [ "$(session_json role)" = planner ] \
@@ -70,22 +138,19 @@ case "$GATE $VERDICT" in
 esac
 [ "$VERDICT" != revise ] || [ -n "$REF" ] || bad "revise needs --ref <findings file>"
 
-fm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
-verdicts() { ls "$RD" 2>/dev/null | grep -E "^teamlead-$GATE-[0-9]+\.json\$" | sort -t- -k3,3n || true; }
-
 if [ "$VERDICT" = revise ]; then
   team_profile_load "$MAIN"
   used=0; grants=0
   for f in $(verdicts); do [ "$(rec "$RD/$f" verdict)" != revise ] || used=$((used + 1)); done
+  # Consumed grants count, not verdict files: each answered more-revise decision is spent once.
   for f in "$RD"/decisions/d-*.md; do
-    [ -f "$f" ] && [ "$(fm "$f" outcome)" = more-revise ] && [ "$(fm "$f" gate)" = "$GATE" ] \
-      && [ -n "$(fm "$f" consumed)" ] && grants=$((grants + 1)) || true
+    [ -f "$f" ] && [ "$(fm "$f" answer_outcome)" = more-revise ] && [ "$(fm "$f" gate)" = "$GATE" ] \
+      && [ "$(fm "$f" status)" = consumed ] && grants=$((grants + 1)) || true
   done
   if [ -n "$DECISION" ]; then
-    df="$RD/decisions/$DECISION.md"
-    [[ "$DECISION" =~ ^d-[0-9]+$ ]] && [ -f "$df" ] && [ "$(fm "$df" status)" = answered ] \
-      && [ "$(fm "$df" outcome)" = more-revise ] && [ "$(fm "$df" gate)" = "$GATE" ] \
-      && [ -z "$(fm "$df" consumed)" ] \
+    df="$(decision_file "$DECISION")"
+    [ "$(fm "$df" status)" = answered ] && [ "$(fm "$df" answer_outcome)" = more-revise ] \
+      && [ "$(fm "$df" gate)" = "$GATE" ] \
       || bad "--decision $DECISION is not an answered, unconsumed more-revise grant for gate $GATE"
     grants=$((grants + 1))
   fi
@@ -107,7 +172,6 @@ case "$GATE $VERDICT $MODE" in
 esac
 if [ -n "$need" ] && ! bash "$LIB/team-lead.sh" digest-check "$TEAM" "$need"; then exit 7; fi
 
-DIGEST=""
 if [ "$GATE $VERDICT" = "spec approve" ]; then
   s="$(spec_of "$last")"; [ -n "$s" ] || bad "$FOR names no spec"
   DIGEST="$(digest "$(rec "$last" output_rev)" "$s")" || bad "spec $s not readable at $FOR's output_rev"
@@ -122,21 +186,9 @@ elif [ "$GATE $VERDICT" = "plan approve" ] && [ "$MODE" != quick ]; then
   fi
 fi
 
-seq=1; n="$(verdicts | tail -n 1)"; [ -z "$n" ] || { n="${n#teamlead-"$GATE"-}"; seq=$((${n%.json} + 1)); }
-target="$RD/teamlead-$GATE-$seq.json"; tmp="$RD/.teamlead-$GATE-$seq.json.tmp"
-[ ! -e "$target" ] || { echo "error: $target already exists" >&2; exit 1; }
-jq -n --arg team "$TEAM" --arg ticket "$TICKET" --arg run "$RUN" --arg gate "$GATE" \
-  --argjson seq "$seq" --arg for "$FOR" --arg verdict "$VERDICT" --arg ref "$REF" \
-  --arg notify "$NOTIFY" --arg message "$MESSAGE" --arg spec_digest "$DIGEST" \
-  --arg written_at "$(team_utc)" --arg session_id "$(team_lead_json session_id)" \
-  '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
-    ref: $ref, notify: $notify, message: $message, spec_digest: $spec_digest,
-    written_at: $written_at, session_id: $session_id}' > "$tmp"
-[ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
-mv "$tmp" "$target"
-# The grant is spent by this verdict: consumed goes into the decision's frontmatter.
+target="$(write_verdict)"
+# The grant is spent by this verdict.
 if [ -n "$DECISION" ] && [ "$VERDICT" = revise ]; then
-  awk -v c="consumed: $(basename "$target")" '/^---$/ && ++n == 2 { print c } { print }' "$df" > "$df.tmp"
-  mv "$df.tmp" "$df"
+  fm_set "$df" status consumed; fm_set "$df" consumed_by "$(basename "$target")"
 fi
 echo "$target"
