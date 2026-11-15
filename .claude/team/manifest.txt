@@ -63,7 +63,6 @@ own .claude/commands/mail-role.md
 own .claude/hooks/guard-team-memory.sh
 own .claude/hooks/guard-team-question.sh
 own .claude/hooks/team-attention.sh
-own .claude/hooks/supervisor-notify.sh
 own .claude/lib/costs/bindings.py
 own .claude/lib/costs/claude_adapter.py
 own .claude/lib/costs/codex_adapter.py
@@ -115,7 +114,6 @@ own .claude/team/escalation.local.json.tmpl
 own .claude/team/sessions/operator-kit/README.md
 own .claude/team/sessions/operator-kit/install.sh
 own .claude/team/sessions/operator-kit/escalate.sh
-own .claude/team/sessions/operator-kit/notify.sh
 own .claude/team/sessions/operator-kit/sessions-health.sh
 own .claude/team/sessions/operator-kit/kit.conf.tmpl
 own .claude/team/sessions/operator-kit/hooks/mail-guard.sh

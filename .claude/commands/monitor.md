@@ -1,7 +1,7 @@
 ---
 description: Watch parallel AI teams from this session — progress, permission prompts with their command, questions, ready-for-merge — and route their questions by escalation tier (TeamLead / Advisor)
 argument-hint: "[--tiers on|off]"
-allowed-tools: TaskStop, PushNotification, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/supervisor-sessions.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(bash .claude/lib/session-host.sh:*), mcp__atlassian__jira_get_issue
+allowed-tools: TaskStop, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/supervisor-sessions.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-attach.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(bash .claude/lib/session-host.sh:*), mcp__atlassian__jira_get_issue
 ---
 
 # /monitor — supervise running teams
@@ -108,10 +108,10 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
         `failed` / `revoked` / `pending` / `not-sent` / `unknown` → Operator action per 4(g).
         Step 4 applies the same branch whenever `open` answers `(existing, …)`.
    - `ATTENTION <team> <role>` / `RECORD … blocked` → tiers on: step 4. Tiers off: what it waits for
-     and the exact command or question from the screen lines/notes; `PushNotification`; offer
+     and the exact command or question from the screen lines/notes, as one line in this session; offer
      "approve <team>" / "reject <team> — reason" / "answer <team>: …" / open the window
      (`bash .claude/lib/team-attach.sh <team> <role>`).
-   - `RECORD … failed` → the reason from the notes; `PushNotification` (not a question). A reason
+   - `RECORD … failed` → the reason from the notes, as one line in this session (not a question). A reason
      starting `too big for quick` is no Operator notification but a `turn` to Supervisor:
      `bash .claude/lib/team-channel.sh turn TeamLead Supervisor --thread remode-<team>-<run> --body
      "bash .claude/lib/team-remode.sh <team> brainstorm, then /start-team <team>"`. In a single
@@ -144,7 +144,7 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
      auto-merge gate. A `READY` inside a `(reminder)` batch (the PR is still not merged) → one more
      `turn` on the same thread, `PR <id> still ready`.
    - `READY <team>`, **single window** (a `RECORD … wrapup … done` / `cli … done` accepted, PR
-     published) → `PushNotification` and a **post-run summary** in this session. Sources:
+     published) → a **post-run summary** in this session. Sources:
      `bash .claude/lib/team-run.sh <team> summary` (ticket, mode, PR, the QA lines, the wrapup or
      `cli-<n>.md` body) and `bash .claude/lib/team-question.sh <team> list`. **5 parts + one
      decisions line + the "TeamLead decisions" section**, plain prose in the developer's language
@@ -306,7 +306,7 @@ Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handlin
        `state=` (step 3 item 3), taking `<tier>` for `--reping` / `--resume` from the ledger as in
        item 2;
      - any other exit → one line quoting the message, then the NO-REPLY rule.
-   - (f) **Operator action** → `PushNotification`, the command or screen in the developer's
+   - (f) **Operator action** → one line in this session: the command or screen in the developer's
      language, and the offer
      as with tiers off; never a decision question. Nothing goes to the Supervisor. After the Operator's words → `answer …
      --tier 3 --author operator --send …`; when they acted in the role's window → `--send none`

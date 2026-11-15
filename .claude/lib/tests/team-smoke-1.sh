@@ -260,12 +260,11 @@ for bad in '{"planer":{"model":"opus"}}' '{"qa":{"modle":"opus"}}' \
   '{"coder":{"effort":"hihg"}}' '{"qa":{"effort":7}}'; do
   printf '%s\n' "$bad" > "$MAIN/.claude/team/roles.json"
   reset_runner; session coder 1 "$PLANNER_OUT"; cp "$TD/session.json" "$WORK/session.bak"
-  TEAM_NOTIFY=1 run "$MAIN" $TR alfa
+  run "$MAIN" $TR alfa
   expect 1 "roles.json" "invalid base config $bad"
   cmp -s "$TD/session.json" "$WORK/session.bak" || fail "bad base config changed session.json"
   has "new-session" "$STUB_LOG" && fail "bad base config launched a session"
-  grep -q '^notify --backend none --alarm team alfa: stopped (1)' "$STUB_LOG" \
-    || fail "runtime failure stopped notification suppressed"
+  ! has "notify " "$STUB_LOG" || fail "a runner stop notified someone"
 done
 cp "$WORK/roles.bak" "$MAIN/.claude/team/roles.json"
 rmdir "$HOME/.codex-acmeshop"

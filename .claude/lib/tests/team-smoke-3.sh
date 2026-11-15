@@ -63,7 +63,7 @@ echo '{"planner":{"model":"x"}}' > "$TD/roles.override.json"
 cp "$TD/roles.override.json" "$WORK/cli-override"
 for entry in coder=sonnet planner=/high; do
   : > "$STUB_LOG"
-  TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles "$entry"
+  run "$MAIN" $TR alfa roles "$entry"
   expect 1 "in mode cli only cli=" "cli refuses $entry"
   cmp -s "$WORK/cli-override" "$TD/roles.override.json" || fail "cli roles changed the override"
   [ ! -s "$STUB_LOG" ] || fail "cli role refusal notified or launched a tool"
@@ -72,7 +72,7 @@ run "$MAIN" $TR alfa roles --clear
 expect 0 "roles override cleared" "cli allows stale override cleanup"
 [ ! -e "$TD/roles.override.json" ] || fail "cli roles --clear kept the override"
 : > "$STUB_LOG"
-TEAM_NOTIFY=1 run "$MAIN" $TR alfa roles coder=/high
+run "$MAIN" $TR alfa roles coder=/high
 expect 1 "mode cli" "cli refuses creating an override"
 [ ! -e "$TD/roles.override.json" ] || fail "cli roles created an override"
 [ ! -s "$STUB_LOG" ] || fail "cli role refusal notified or launched a tool"

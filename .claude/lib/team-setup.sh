@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the team harness into another project from `.claude/team/manifest.txt`: copies the
 # `own` files, reports `shared` files the project already owns, merges the team hook entries (five
-# team hooks — the question and memory guards, the attention notifier, the team-watch SessionStart
+# team hooks — the question and memory guards, the attention hook, the team-watch SessionStart
 # re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` and
 # the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
 # `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail

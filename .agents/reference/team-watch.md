@@ -16,7 +16,7 @@ a manual diagnostic. The role sessions that receive the pushes: [supervisor-sess
 |---|---|
 | `team-watch.sh start [--takeover]` | registers this session as its role's receiver, then keeps both loops running (restarts loops of another version) and waits for their beats; `--no-register` = loops only |
 | `team-watch.sh register [--takeover]` | registration only; a live holder of the role refuses without `--takeover` |
-| `team-watch.sh status [--open]` | rc 0 `team-watch: works` / rc 1 `team-watch: not working`, then beats, routing, receivers, undelivered, mail, notifier, modes, pauses, open keys (`--open`: the open signals). Takes no lock |
+| `team-watch.sh status [--open]` | rc 0 `team-watch: works` / rc 1 `team-watch: not working`, then beats, routing, receivers, undelivered, mail, modes, pauses, open keys (`--open`: the open signals). Takes no lock |
 | `team-watch.sh stop` | kills the dog, then the daemon, marks every receiver inactive |
 | `team-watch.sh ping <role>` | queues one `PING` to the role (end-to-end check); prints `· socket <state>` |
 | `team-watch.sh ack <n>` / `done <n>` | the receiver's pickup / completion of batch `#n` |
@@ -94,17 +94,12 @@ Computed by the daemon (and the dog for the daemon) from the ledgers, never by a
 | `MONITOR daemon\|dog dead (last beat <UTC>)` | the peer's beat older than 2 × `TEAM_WATCH_SECS` | `MONITOR … recovered` |
 
 One alarm per episode. Each alarm goes to the alarm target (split: Supervisor; single: the
-receiver) as `[team-watch alarm] <text> · handle per <contract>` and always to the platform
-notifier. **Terminal rule:** an episode about the alarm target itself is a platform notification
-only — alarms never spawn alarms about alarms. With `notifier: none` that notification reaches
-nobody (a declared loss, printed by `status`).
+receiver) as `[team-watch alarm] <text> · handle per <contract>`. **Terminal rule:** an episode
+about the alarm target itself is only logged — alarms never spawn alarms about alarms.
 
-**Notifier:** every notification goes through the operator kit's
-`.claude/team/sessions/operator-kit/notify.sh --backend "$TEAM_CHANNEL_NOTIFIER" [--alarm] <title>
-<msg>` — never a platform binary. Alarms always; signals and runner notices only with
-`TEAM_NOTIFY=1`. Without the kit file nothing is sent and one stderr line per process says
-`notifier: <backend> — declared loss: operator-kit/notify.sh not installed, platform notifications
-reach nobody`.
+**No notifications.** team-watch notifies nobody: alarms and signals go to role sessions only. The
+Operator is reached only through `.claude/lib/notify.sh` (four events; `supervisor-sessions.md` →
+Operator notifications).
 
 ## Ledgers and rotation
 
@@ -160,8 +155,7 @@ Both are registered by `team-setup.sh` (ids `W`, `R`), never by the template `se
 `TEAM_WATCH_SEND_SECS` 5 · `TEAM_WATCH_LOCK_SECS` 5 · `TEAM_WATCH_PICKUP_SECS` 180 ·
 `TEAM_WATCH_ESC_UNSENT_SECS` 180 · `TEAM_WATCH_PROGRESS_SECS` 1800 · `TEAM_WATCH_BATCH_MAX` 25 ·
 `TEAM_WATCH_BATCH_BYTES` 60000 · `TEAM_WATCH_BACKLOG_MAX` 100 · `TEAM_WATCH_ROTATE_BYTES` 1048576 ·
-`TEAM_WATCH_KEEP_SECS` 604800 · `TEAM_NOTIFY` 0 · `TEAM_NOTIFY_SOUND`, `TEAM_NOTIFY_SOUND_ALARM`
-(for notify.sh) · `TEAM_MONITORING_JSON` · `TEAM_SESSION_ROLE` (Supervisor | TeamLead | Advisor) ·
+`TEAM_WATCH_KEEP_SECS` 604800 · `TEAM_MONITORING_JSON` · `TEAM_SESSION_ROLE` (Supervisor | TeamLead | Advisor) ·
 `CLAUDE_CONFIG_DIR`. `start` forwards the set ones to the loops (set-but-empty kept).
 **Rolling out a loop change:** bump `TW_VERSION` in `team-watch-route.sh`; the next `start` restarts
 loops of another version, and `monitoring.sh stop` refuses while they run.

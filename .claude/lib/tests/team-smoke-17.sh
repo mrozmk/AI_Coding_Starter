@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # team-watch control and hardening: duplicate delivery, tiers/answering enforcement, the
-# SessionStart hook per role, channel names and the kit notifier (declared loss), runner
-# notifications, ledger findings and rotation, the newest prompt + redaction, role-session prompts,
+# SessionStart hook per role, channel names, no notifications from team-watch or the runner, ledger findings and rotation, the newest prompt + redaction, role-session prompts,
 # the loop version bump, two checkouts on one machine (tmux_prefix), the state-file readers.
 # Cases (68)-(70), (75), (77), (78), (130)-(132), (S1), (P1).
 # It spawns loops and waits on pickup windows, so the runner keeps it out of a parallel batch.
@@ -32,7 +31,6 @@ ack_all() {  # ack_all <role> — every pending batch of that role
 role_prompt() {  # role_prompt <role> → tw_role_prompt's "<sub>\t<fp>\t<anchor>" line
   (cd "$MAIN" && bash -c '. .claude/lib/team-watch-lib.sh; tw_init "$PWD"; tw_role_prompt "$1"' _ "$1")
 }
-KIT="$MAIN/.claude/team/sessions/operator-kit/notify.sh"
 
 # ---- (68) duplicate delivery: one ack counted twice, one answer ----------------------------------
 run "$MAIN" $W ping TeamLead; wait_recv TEAM "PING TeamLead" 10
@@ -120,45 +118,24 @@ RC=$?; set -e
 [ "$(shasum < "$TWD/receivers/Supervisor.json")" = "$SUPSUM" ] || fail "hook touched another role"
 echo "team-smoke-17: (70) SessionStart hook per role OK"
 
-# ---- (130) notifications: through the kit's notify.sh, alarms always, signals with TEAM_NOTIFY=1 ---
-for v in - 0; do
-  : > "$STUB_LOG"
-  if [ "$v" = - ]; then run "$MAIN" env -u TEAM_NOTIFY bash -c '. .claude/lib/team-watch-lib.sh && tw_init "$PWD" && tw_notify sig "a signal" && tw_notify al "an alarm" alarm'
-  else run "$MAIN" env TEAM_NOTIFY=0 bash -c '. .claude/lib/team-watch-lib.sh && tw_init "$PWD" && tw_notify sig "a signal" && tw_notify al "an alarm" alarm'; fi
-  [ "$(nnotify "a signal")" = 0 ] || fail "TEAM_NOTIFY=$v: a signal notified"
-  grep -qx 'notify --backend osascript --alarm team-watch: al an alarm' "$STUB_LOG" \
-    || { cp "$STUB_LOG" "$WORK/out"; fail "TEAM_NOTIFY=$v: the alarm did not notify once with --alarm"; }
-done
-: > "$STUB_LOG"
-run "$MAIN" env TEAM_NOTIFY=1 bash -c '. .claude/lib/team-watch-lib.sh && tw_init "$PWD" && tw_notify sig "a signal"'
-grep -qx 'notify --backend osascript team-watch: sig a signal' "$STUB_LOG" || fail "TEAM_NOTIFY=1: the signal did not notify"
-: > "$STUB_LOG"; TEAM_NOTIFY=0 lib 'tw_alarm TeamLead "UNPICKED TeamLead #1"'
-[ "$(nnotify "UNPICKED TeamLead #1")" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "tw_alarm at TEAM_NOTIFY=0 did not notify once"; }
-grep -q '^osascript\|^notify-send' "$STUB_LOG" && fail "a platform binary was called directly"
-# Declared loss: no kit file → nothing sent, one stderr line per process, rc 0.
-mv "$KIT" "$WORK/notify.away"; : > "$STUB_LOG"
-lib 'tw_notify a "one" alarm; tw_notify b "two" alarm; echo rc=$?'
-[ "$(grep -c '^notifier: osascript — declared loss: operator-kit/notify.sh not installed, platform notifications reach nobody$' "$WORK/out")" = 1 ] \
-  && has "rc=0" "$WORK/out" && [ ! -s "$STUB_LOG" ] || fail "declared loss: not exactly one line, rc 0, nothing sent"
+# ---- (130) team-watch notifies nobody: no tw_notify, an alarm only reaches the target session -----
+lib 'type tw_notify >/dev/null 2>&1 && echo has-tw_notify; type team_channel_notify >/dev/null 2>&1 && echo has-tcn; echo rc=$?'
+! has "has-" "$WORK/out" || fail "a notification helper is still defined: $(cat "$WORK/out")"
+: > "$STUB_LOG"; lib 'tw_alarm TeamLead "UNPICKED TeamLead #1"'
+! grep -q '^notify \|^osascript\|^notify-send' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "tw_alarm notified someone"; }
+! has "declared loss" "$WORK/out" || fail "tw_alarm still prints a declared loss"
 run "$MAIN" $W status
-has "notifier: osascript — declared loss: operator-kit/notify.sh not installed" "$WORK/out" || fail "status hides the loss"
-echo "team-smoke-17: (130) notifier contract and declared loss OK"
+! has "notifier" "$WORK/out" || fail "status still prints a notifier line"
+echo "team-smoke-17: (130) team-watch notifies nobody OK"
 
-# ---- (131) runner notifications: silent by default, the kit with TEAM_NOTIFY=1 ---------------------
-: > "$STUB_LOG"
-run "$MAIN" env TEAM_NOTIFY=1 $TR alfa bogus
-expect 2 "unknown command bogus" "runner die without the kit"
-[ "$(grep -c 'declared loss' "$WORK/out")" = 1 ] || fail "runner: no single declared-loss line"
-mv "$WORK/notify.away" "$KIT"
-: > "$STUB_LOG"
-run "$MAIN" env -u TEAM_NOTIFY $TR alfa bogus
-expect 2 "unknown command bogus" "runner die, default"
-[ ! -s "$STUB_LOG" ] || [ "$(nnotify "team alfa")" = 0 ] || fail "the runner notified with TEAM_NOTIFY unset"
-run "$MAIN" env TEAM_NOTIFY=1 $TR alfa bogus
-expect 2 "unknown command bogus" "runner die, enabled"
-[ "$(grep -c '^notify --backend osascript --alarm team alfa: stopped (2) error: unknown command bogus' "$STUB_LOG")" = 1 ] \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "the runner did not notify once through the kit"; }
-grep -q '^osascript' "$STUB_LOG" && fail "the runner called osascript directly"
+# ---- (131) the runner notifies nobody, whatever TEAM_NOTIFY says ------------------------------------
+for v in - 1; do
+  : > "$STUB_LOG"
+  if [ "$v" = - ]; then run "$MAIN" $TR alfa bogus; else run "$MAIN" env TEAM_NOTIFY=1 $TR alfa bogus; fi
+  expect 2 "unknown command bogus" "runner die ($v)"
+  ! has "declared loss" "$WORK/out" || fail "runner ($v): a declared-loss line"
+  ! grep -q '^notify \|^osascript\|^notify-send' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "the runner notified ($v)"; }
+done
 echo "team-smoke-17: (131) runner notifications OK"
 
 # ---- (75) ledger findings and rotation ----------------------------------------------------------
@@ -304,11 +281,10 @@ holder; echo "$H" > "$TMUXD/smk-teamlead.pid"
 printf 'Bash command\n  bash .claude/lib/team-watch.sh status --open\nDo you want to proceed?\n❯ 1. Yes\n' \
   > "$STUB_PANE_DIR/smk-teamlead"
 : > "$STUB_LOG"
-TEAM_NOTIFY=1 run "$MAIN" $W tick --once; expect 0 "" "(78) tick"
+run "$MAIN" $W tick --once; expect 0 "" "(78) tick"
 wait_recv SUP "ATTENTION TeamLead (permission) fp=" 10
 [ "$(ratt Supervisor)" = 1 ] || fail "(78) expected one ATTENTION TeamLead event"
-grep -q '^notify --backend osascript team-watch: role prompt ATTENTION TeamLead (permission)' "$STUB_LOG" \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "(78) no soft notification for the role prompt"; }
+! grep -q '^notify ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(78) the role prompt notified someone"; }
 run "$MAIN" $W tick --once
 [ "$(ratt Supervisor)" = 1 ] || fail "(78) the second tick repeated the role prompt"
 sleep 2; TEAM_WATCH_PICKUP_SECS=1 lib tw_check_receivers
@@ -349,8 +325,7 @@ echo "team-smoke-17: (132) version bump OK"
 
 # ---- (S1) two checkouts on one machine: each starts and stops only its own loops ------------------
 O="$WORK/other"; git clone --quiet "$ADO_URL" "$O"
-mkdir -p "$O/.claude/team/sessions/operator-kit"
-cp -R "$MAIN/.claude/lib/." "$O/.claude/lib/"; cp "$KIT" "$O/.claude/team/sessions/operator-kit/"
+cp -R "$MAIN/.claude/lib/." "$O/.claude/lib/"; mkdir -p "$O/.claude/team/sessions"
 cp "$MAIN/.claude/team/sessions/monitoring.json" "$O/.claude/team/sessions/"
 jq '.teams.channel.tmux_prefix = "smx" | .teams.session_prefix = "smx"' "$MAIN/.claude/project-profile.json" > "$O/.claude/project-profile.json"
 : > "$STUB_LOG"
@@ -363,10 +338,10 @@ for n in smk-team-watch smk-team-watch-dog; do
 done
 run "$MAIN" $W status; expect 0 "team-watch: works" "S1: the first checkout still works"
 run "$MAIN" $W stop; expect 0 "team-watch: stopped" "stop the first"
-# Channel names: no teams.channel → the dir slug and notifier none; an invalid prefix is rc 3.
+# Channel names: no teams.channel → the dir slug; an invalid prefix is rc 3.
 N="$WORK/My.Repo X"; mkdir -p "$N"; git -C "$N" init --quiet
-R="$(bash -c '. "$1/team-channel.sh"; team_channel_names "$2" && echo "$TEAM_CHANNEL_TMUX_PREFIX $TEAM_CHANNEL_NOTIFIER $TEAM_CHANNEL_ADVISOR"' _ "$L" "$N")"
-[ "$R" = "my-repo-x none solo" ] || fail "S1: defaults without teams.channel: $R"
+R="$(bash -c '. "$1/team-channel.sh"; team_channel_names "$2" && echo "$TEAM_CHANNEL_TMUX_PREFIX $TEAM_CHANNEL_ADVISOR"' _ "$L" "$N")"
+[ "$R" = "my-repo-x solo" ] || fail "S1: defaults without teams.channel: $R"
 mkdir -p "$N/.claude"; echo '{"teams": {"channel": {"tmux_prefix": "a.b"}}}' > "$N/.claude/project-profile.json"
 set +e; bash -c '. "$1/team-channel.sh"; team_channel_names "$2"' _ "$L" "$N" 2> "$WORK/out"; RC=$?; set -e
 [ "$RC" = 3 ] && has "tmux_prefix=a.b must match" "$WORK/out" || fail "S1: an invalid prefix is not rc 3"

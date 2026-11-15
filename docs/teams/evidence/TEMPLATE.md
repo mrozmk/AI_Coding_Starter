@@ -30,7 +30,7 @@ project's box.
 | E03 | channel loads | live-a, live-b | `team-channel.sh show` exit 0, box = scratch box, suffix `P9` | pending |
 | E04 | kit | live-a, live-b | `install.sh --dry-run`, `--apply`, `--verify` exit 0; `escalation.local.json` rendered | pending |
 | E05 | profiles | live-a, live-b | `supervisor-sessions.sh check` → `Supervisor OK`, `TeamLead OK` | pending |
-| E06 | preflight | live-a, live-b | every row ok, or a declared-loss line where the notifier is `none` | pending |
+| E06 | preflight | live-a, live-b | every row ok (notifications off is an ok row), or the health check's declared-loss line | pending |
 | E07 | roles up | live-a | 3 tmux sessions `p9-supervisor|teamlead|advisor`, each `/session-role` shows its role | pending |
 | E08 | ping | live-a | `team-watch.sh ping` per role, `stats` → `picked` ≥ 1 each | pending |
 | E09 | mail round-trip | live-a (pair, then solo) | TeamLead→Advisor and back delivered and processed; Reviewer only in pair | pending |
@@ -42,14 +42,14 @@ project's box.
 | E15 | old run / stale fingerprint refused | offline | the regression parts in the suite log | pending |
 | E16 | tiers off with a pending reply blocks delivery | offline | `answer --tier 2` refused, q file unchanged | pending |
 | E17 | READY and incidents reach the Supervisor, routine does not | live-a | over the test team's run, the Supervisor is woken only for READY (`stats --since`) | pending |
-| E18 | unavailable receiver alarm outside the LLM | live-a | the test TeamLead's pid killed (only that pid) → `RECEIVER TeamLead down` + a platform notification | pending |
+| E18 | unavailable receiver alarm outside the LLM | live-a | the test TeamLead's pid killed (only that pid) → `RECEIVER TeamLead down` (no notification) | pending |
 | E19 | rollback hands control to one owner | live-a (last) | `receiver Supervisor: active`; kit `--verify` reports the files missing | pending |
 | E20 | menu keystroke path | attended | script A: `confirmed: yes` for `pick:2`; the Other answer lands as `x` | pending |
 | E21 | prompt binding | attended | script B: fingerprint equal after the re-render; `delivered once`, `confirmed: yes (tool_result)`; second answer → `already answered` | pending |
 | E22 | two projects on one machine | live-a | `tmux ls` shows the live project's sessions untouched (names only); `ps Reviewer` matches only the scratch loop | pending |
 | E23 | reuse never plants a second tool/box | live-b | E02-b plus equal `shasum` of the real registry before and after | pending |
 | E24 | socket wire format on this CLI | live-a | E08 `picked` + preflight row 10 `verified` | pending |
-| E25 | health check | live-a | `sessions-health.sh` with the test Advisor stopped → one notification; again → none | pending |
+| E25 | health check | live-a | `sessions-health.sh` with the test Advisor stopped → one `down:` log line and the state file; again → none | pending |
 
 ## Lines
 

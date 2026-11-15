@@ -62,16 +62,9 @@ BRANCH="$(team_json branch)"; LINE="$(team_json line)"
 RUN=""; ROLE=""; OWN_LOCK=0
 MODE="$(team_mode "$TD/team.json")" || { echo "error: cannot read the mode of $TD/team.json" >&2; exit 1; }
 
-# Runner notifications are off by default: its stops and waits reach TeamLead as
-# team-watch signals; TEAM_NOTIFY=1 enables them, stopped/blocked/failed as alarms. They go through
-# the operator kit's notifier with the channel's backend (team_channel_notify), never a platform
-# binary directly; an invalid channel block means no backend.
-notify() {
-  [ "${TEAM_NOTIFY:-0}" = 1 ] || return 0
-  team_channel_names "$root" 2>/dev/null || TEAM_CHANNEL_NOTIFIER=none
-  team_channel_notify ${3:+--alarm} "team $TEAM: $1" "$2"
-}
-die() { echo "$2" >&2; [ "$1" = 6 ] || notify "stopped ($1)" "$2" alarm; exit "$1"; }
+# The runner notifies nobody: its stops, waits and "ready" are its output and the run's files; only
+# the lead's verdicts reach the Operator, through notify.sh (lead_notify).
+die() { echo "$2" >&2; exit "$1"; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
 sess_name() { team_tmux_name "$TEAM" "$1"; }
 # The planner and the wrapup are attended: the developer answers them in their window.
@@ -126,7 +119,6 @@ handle_record() {
       ack_name "$r" > "$TD/acked"
       echo "$(rec "$r" verdict): $(last_blocker)"
       echo "answer in: $(sh_hint "$(sess_name "$ROLE")")"
-      notify "$(rec "$r" verdict)" "$(last_blocker) — /start-team $TEAM after answering" alarm
       [ "$(rec "$r" verdict)" = blocked ] && exit 2 || exit 1 ;;
     *) die 4 "record $(basename "$r") has an unknown verdict" ;;
   esac
@@ -278,7 +270,6 @@ wait_loop() {
     n=0; [ ! -f "$TD/runs/$RUN/attention" ] || n="$(wc -l < "$TD/runs/$RUN/attention" | tr -d ' ')"
     if [ "$n" -gt "$seen" ]; then
       seen="$n"; echo "needs attention: $(sh_hint "$name")"
-      notify "needs attention" "$role waits for you: bash .claude/lib/team-attach.sh $TEAM $role"
       ! team_lead_on || lead_attention "$role" "$n"
     fi
     if ! team_tmux_alive "$name"; then
@@ -346,7 +337,7 @@ cmd_advance() {
     if [ -z "$stage" ]; then
       ! team_lead_on || lead_accepted
       echo "ready: bash .claude/lib/team-merge-check.sh $TEAM"
-      notify "ready" "PR published — ask the supervisor to merge $TEAM"; exit 0
+      exit 0
     fi
     ROLE="$stage"; launch "$stage" 1; wait_loop "$stage"
   done

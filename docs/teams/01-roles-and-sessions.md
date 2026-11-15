@@ -71,7 +71,7 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 - the profile, plus the union of the project's and the local `deny` and `ask` rules, so the deny floor survives however `--settings` merges;
 - `{{CLONES}}` expanded from `teams.clone_parent` and `teams.clone_name`;
 - for the TeamLead, the PR update verbs added to `deny`;
-- from the installed kit's `role-hooks.settings.json`, exactly the `Notification` and `Stop` hooks, and nothing else, because a `PreToolUse` or `PermissionRequest` hook could approve a tool call.
+- from the installed kit's `role-hooks.settings.json`, exactly the `Stop` hook, and nothing else, because a `PreToolUse` or `PermissionRequest` hook could approve a tool call.
 
 **The check.** `supervisor-sessions.sh check` classifies each profile's `_samples` with the same fnmatch matcher as the tier-1 prompt check:
 
@@ -145,7 +145,7 @@ Other verbs:
 | 5 | team channel loads | FAIL with the loader's last error line |
 | 6 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
 | 7 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
-| 8 | notifier | `notify.sh --check`; `none` is an ok row that prints the declared loss |
+| 8 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
 | 9 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
 | 10 | Claude Code version | compared with the version the socket wire format was verified on (2.1.318); any other version prints `unverified: run team-watch.sh ping <role>`; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
 

@@ -497,6 +497,22 @@ head -c 70000 /dev/zero | tr '\0' x > "$OB/flush.log"; nt list
 run "$WORK" $KIT --bogus; expect 2 "Usage:" "(l) kit usage"
 echo "team-smoke-notify: (l) flush-job kit OK"
 
+# ---- (m) one path to the Operator: no other sink is left in the checkout (AC9) ----------------------
+OK_RE='^(\.claude/hooks/lib/guard_team_egress\.py|\.agents/reference/security-egress\.md|\.claude/lib/team-attach\.sh|\.claude/lib/notify\.sh|\.claude/team/notify-kit/.*|docs/teams/upgrade-notes\.md|\.claude/lib/tests/.*)$'
+left="$(cd "$SRC" && grep -rlE 'osascript|notify-send|terminal-notifier|PushNotification|TEAM_NOTIFY|team_channel_notify' \
+  .claude .agents/reference docs 2>/dev/null | grep -vE "$OK_RE" || true)"
+[ -z "$left" ] || fail "(m) a notification sink is left outside notify.sh: $left"
+[ ! -e "$SRC/.claude/team/sessions/operator-kit/notify.sh" ] && [ ! -e "$SRC/.claude/hooks/supervisor-notify.sh" ] \
+  || fail "(m) the platform notifier or the role Notification hook still ships"
+! grep -qE 'supervisor-notify\.sh|operator-kit/notify\.sh' "$SRC/.claude/team/manifest.txt" || fail "(m) the manifest still lists a removed sink"
+jq -e '.hooks | has("Notification") | not' "$SRC/.claude/team/sessions/operator-kit/hooks/role-hooks.settings.json.tmpl" >/dev/null \
+  || fail "(m) the kit's role hooks still wire a Notification hook"
+! grep -q '^notify()' "$SRC/.claude/lib/team-run.sh" || fail "(m) the runner still has notify()"
+! grep -qE 'tw_notify|notifier_line|team_channel_loss_line' "$SRC"/.claude/lib/team-watch*.sh "$SRC/.claude/lib/team-channel.sh" \
+  || fail "(m) team-watch or the channel still notifies"
+jq -e '.teams.channel | has("notifier") | not' "$SRC/.claude/project-profile.json.example" >/dev/null || fail "(m) the profile example still sets a notifier"
+echo "team-smoke-notify: (m) one path to the Operator OK"
+
 # ---- nothing reached a person; the recipient is nowhere ----------------------------------------------
 [ ! -s "$WORK/sinks.log" ] || { cp "$WORK/sinks.log" "$WORK/out"; fail "a platform notifier was called"; }
 ! grep -rlF "RCPTOKEN" "$OB" "$MAIN/.agents/team" "$WORK/out" "$WORK"/f1 "$WORK"/f2 "$OSL" "$WORK"/osa.texts \

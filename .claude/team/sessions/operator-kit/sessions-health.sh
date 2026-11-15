@@ -1,9 +1,9 @@
 #!/bin/bash
 # Health check of the supervision sessions, run by a scheduler (launchd or cron) from the installed
 # kit, outside the checkout: it reads only kit.conf and kit_dir (a launchd job cannot read
-# ~/Desktop). One notification per outage of a role session or a team-watch loop, with the
-# alarm sound; recovery clears it silently. It never restarts anything: a silent restart would
-# hide a crash loop.
+# ~/Desktop). It records which role sessions or team-watch loops are down (sessions-health.state,
+# plus one log line per new outage) and notifies nobody. It never restarts anything: a silent
+# restart would hide a crash loop.
 #
 # Usage: sessions-health.sh              one check (what the scheduler runs)
 #        sessions-health.sh --scheduled  exit 0 when a launchd job (LABEL) or a crontab line runs
@@ -42,8 +42,8 @@ for s in $(conf SESSIONS); do
 done
 now="${down# }"
 prev="$(cat "$S" 2>/dev/null || true)"
-if [ -n "$now" ] && [ "$now" != "$prev" ]; then
-  bash "$K/notify.sh" --alarm "$(conf PROJECT_CODE) sessions" "$now down" >/dev/null 2>&1 || true
-fi
+# State only: the outage alarm went with the notification model; notify.sh carries no
+# session event, and the health check's own fate is the session-host epic's.
+[ -z "$now" ] || [ "$now" = "$prev" ] || echo "$(date -u +%FT%TZ) down: $now"
 printf '%s\n' "$now" > "$S"
 exit 0

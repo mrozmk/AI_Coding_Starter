@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Fixtures for the team-watch parts (15-19): stub receiver sockets per role, a tmux stub that really
-# spawns the team-watch loops (never a real tmux server), a stub operator-kit notifier, role-bound
-# invocations. Sourced after team-smoke-lib.sh, after smoke_init + smoke_team.
+# spawns the team-watch loops (never a real tmux server), role-bound invocations. Sourced after team-smoke-lib.sh, after smoke_init + smoke_team.
 
 watch_init() {
   unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN TEAM_SESSION_ROLE \
-    TEAM_MONITORING_JSON TEAM_NOTIFY_SOUND TEAM_NOTIFY_SOUND_ALARM CLAUDECODE CLAUDE_CODE_ENTRYPOINT
+    TEAM_MONITORING_JSON CLAUDECODE CLAUDE_CODE_ENTRYPOINT
   PIDS=""; DPID=""
   SD="$(mktemp -d /tmp/tw.XXXXXX)"   # macOS caps a unix socket path at 104 bytes
   TMUXD="$WORK/tmux"; mkdir -p "$TMUXD"; export STUB_TMUX_DIR="$TMUXD"
@@ -25,14 +24,11 @@ watch_init() {
   cp "$SRC/.claude/lib/team-watch-send.py" "$SRC/.claude/lib/team-watch-signals.jq" \
     "$SRC/.claude/lib/session-wake.sh" "$SRC/.claude/lib/monitoring.sh" "$MAIN/.claude/lib/"
   cp "$SRC/.claude/lib/team-watch"*.sh "$SRC/.claude/lib/team-channel.sh" "$MAIN/.claude/lib/"
-  mkdir -p "$MAIN/.claude/team/sessions/operator-kit" "$MAIN/.claude/hooks"
+  mkdir -p "$MAIN/.claude/team/sessions" "$MAIN/.claude/hooks"
   cp "$SRC/.claude/team/sessions/monitoring.json" "$MAIN/.claude/team/sessions/"
   cp "$SRC/.claude/hooks/team-watch-session.sh" "$SRC/.claude/hooks/monitoring-rearm.sh" \
     "$MAIN/.claude/hooks/"
-  # The operator kit's notifier, stubbed: one log line per call (P7's notify.sh contract).
-  printf '#!/usr/bin/env bash\necho "notify $*" >> "$STUB_LOG"\n[ "$1" != --check ] || echo "notifier: $3 ok (stub)"\nexit 0\n' \
-    > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
-  jq '.teams.channel = {project_code: "SM", tmux_prefix: "smk", notifier: "osascript"}' \
+  jq '.teams.channel = {project_code: "SM", tmux_prefix: "smk"}' \
     "$MAIN/.claude/project-profile.json" > "$WORK/prof" && mv "$WORK/prof" "$MAIN/.claude/project-profile.json"
   watch_tmux_stub
   [ "$(command -v tmux)" = "$WORK/bin/tmux" ] || fail "fixture: tmux is not the stub"
@@ -203,7 +199,4 @@ setpid() {  # setpid <role> <pid> — fixture surgery on a receiver file
 }
 lib() {  # lib <shell> — a team-watch library call in MAIN → RC, $WORK/out
   run "$MAIN" bash -c ". .claude/lib/team-watch-lib.sh && tw_init \"\$PWD\" && $1"
-}
-nnotify() {  # nnotify <text> → stub notify.sh calls carrying it
-  grep -c "^notify .*$1" "$STUB_LOG" 2>/dev/null || true
 }

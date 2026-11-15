@@ -18,8 +18,9 @@ cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/s
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
 git -C "$CLONE" add .claude/hooks && git -C "$CLONE" commit --quiet -m "fixture guard"
-mkdir -p "$MAIN/.claude/team/sessions/operator-kit"
-printf '#!/usr/bin/env bash\necho "$*" >> "%s/notify.log"\n' "$WORK" > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
+# abandon_decision events of the current run in notify.sh's outbox (the fixture HOME)
+nab() { jq -r --arg r "$RUN_ID" 'select(.event == "abandon_decision" and .run == $r) | .id' \
+  "$HOME/.agent-comms/outbox/events/"*.json 2>/dev/null | grep -c . || true; }
 printf '## Ticket\nExport button.\n\n## Not ordered\nCSV import\n\n## In-flight work\n- none\n' > "$WORK/brief.md"
 run "$MAIN" bash .claude/lib/team-brief.sh write alfa "$WORK/brief.md"; expect 0 "" "fixture brief"
 # This run's spec and plan, then the coder's work, pushed: the qa revision is C1.
@@ -137,7 +138,7 @@ run "$MAIN" $TR alfa; expect 0 "ready:" "(e) resume after ready"
 echo "team-smoke-23: (e) single accepted OK"
 
 # ---- (f) abandon-recommended goes through an abandon_decision; decision close closes the run -------
-setup_run alfa-20261115-110000; rm -f "$WORK/notify.log"
+setup_run alfa-20261115-110000
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "gate acceptance qa-1-1.json" "(f) gate rung"
 V acceptance abandon-recommended --for qa-1-1.json --message x; expect 4 "needs --decision" "(f) bare abandon"
 ldec open alfa --source qa-1-1.json --question "Abandon AB-1600? The export duplicates beta's work." \
@@ -150,7 +151,7 @@ expect 0 "teamlead-acceptance-1.json" "(f) abandon-recommended"
 ldec withdraw alfa d-2 --why "not needed"; expect 0 "" "(f) withdraw d-2"
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "" "(f) runner waits on the decision"
 [ ! -e "$RD/closed.json" ] || fail "(f) abandon-recommended closed the run by itself"
-[ "$(grep -c 'abandon_decision' "$WORK/notify.log")" = 1 ] || { cp "$WORK/notify.log" "$WORK/out"; fail "(f) not exactly one abandon_decision notification"; }
+[ "$(nab)" = 1 ] || fail "(f) not exactly one abandon_decision event"
 LTX="$(transcript sid-lead)"; mkdir -p "$(dirname "$LTX")"
 jq -cn --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
   '{type: "user", uuid: "u-op", timestamp: $ts, message: {role: "user", content: "d-1 close it"}}' >> "$LTX"
@@ -159,7 +160,7 @@ V decision close --for qa-1-1.json --decision d-1 --message "Operator: close it"
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 8 "closed: abandon — PR 8371 to abandon before team-next" "(f) the run closes"
 jq -e '.reason == "abandon"' "$RD/closed.json" >/dev/null || fail "(f) closed.json"
 grep -l '^event: closed' "$SUP"/* | xargs grep -l "run: $RUN_ID" >/dev/null || fail "(f) no closed event"
-[ "$(grep -c 'abandon_decision' "$WORK/notify.log")" = 1 ] || fail "(f) a second abandon notification"
+[ "$(nab)" = 1 ] || fail "(f) a second abandon event"
 echo "team-smoke-23: (f) abandon through a decision OK"
 
 # ---- (g) the switch off: ready as today, no inbox file ---------------------------------------------
@@ -303,7 +304,7 @@ grep -l '^event: accepted' "$SUP"/* | xargs grep -l "run: $RUN_ID" | xargs grep 
 echo "team-smoke-23: (r) complete round 2 OK"
 
 # ---- (m) budget: a third rework in brainstorm (budget 2) → 9; (n) an Operator continue adds one -----
-rework_ready alfa-20261115-160000; rm -f "$WORK/notify.log"
+rework_ready alfa-20261115-160000
 for i in 1 2; do
   V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message "round $i"
   expect 0 "teamlead-acceptance-$i.json" "(m) rework $i"
@@ -317,7 +318,7 @@ V acceptance abandon-recommended --for qa-1-1.json --decision d-1 --message "bud
 # The two rework rounds happened; the runner acts only on what comes after them.
 printf 'teamlead-acceptance-1.json\nteamlead-acceptance-2.json\n' >> "$TD/verdict-acked"
 greset alfa-lead alfa-qa; export CANCEL_AT=12; run "$MAIN" $TR alfa; expect 6 "" "(n) runner notifies"
-[ "$(grep -c 'abandon_decision' "$WORK/notify.log")" = 1 ] || fail "(n) not exactly one abandon_decision notification"
+[ "$(nab)" = 1 ] || fail "(n) not exactly one abandon_decision event"
 jq -cn --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
   '{type: "user", uuid: "u-op-n", timestamp: $ts, message: {role: "user", content: "d-1 continue, one more"}}' >> "$LTX"
 ldec answer alfa d-1 --text "continue, one more" --outcome continue; expect 0 "answered: d-1 (continue)" "(n) Operator continue"
@@ -325,7 +326,7 @@ V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.m
 V decision continue --for qa-1-1.json --decision d-1 --message "Operator: one more"; expect 0 "teamlead-decision-" "(n) decision continue"
 : > "$TD/send-lead.log"; greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "" "(n) runner on continue"
 grep -qsF "continue granted" "$STUB_LOG" "$TD/send-lead.log" || fail "(n) the lead was not told to order the round"
-[ "$(grep -c 'abandon_decision' "$WORK/notify.log")" = 1 ] || fail "(n) a second abandon notification"
+[ "$(nab)" = 1 ] || fail "(n) a second abandon event"
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message granted; expect 0 "teamlead-acceptance-4.json" "(n) the granted round"
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message x; expect 9 "rework budget" "(n) one grant = one round"
 echo "team-smoke-23: (m) budget + (n) one grant OK"

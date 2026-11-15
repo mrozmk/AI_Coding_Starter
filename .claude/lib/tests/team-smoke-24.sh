@@ -33,14 +33,13 @@ smoke_init
 T0="$WORK/t0"; touch "$T0"
 
 smoke_team AB-2400 feature/AB-2400-x
-BR=feature/AB-2400-x; SUP="$MAIN/.agents/team/inbox/Supervisor/new"; NLOG="$WORK/notify.log"
+BR=feature/AB-2400-x; SUP="$MAIN/.agents/team/inbox/Supervisor/new"; OB="$HOME/.agent-comms/outbox"
 export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions/operator-kit" "$CLONE/.claude/hooks"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
-printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "$NLOG" > "$MAIN/.claude/team/sessions/operator-kit/notify.sh"
 # A project-added ask rule (human-only for the lead) for beta's coder prompt; committed, so every
 # stage validates on a clean tree.
 jq '.permissions.ask = ["Bash(az webapp restart*)"]' "$CLONE/.claude/settings.json" > "$WORK/s" \
@@ -124,11 +123,12 @@ lead_said() {  # lead_said <text> <uuid> — the Operator typed it into the lead
     '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $x}}' >> "$t"
 }
 events() { grep -h '^event: ' "$SUP"/* 2>/dev/null | sed 's/^event: //' | sort | tr '\n' ' ' || true; }
-notified() { if [ -s "$NLOG" ]; then grep -c . "$NLOG"; else echo 0; fi; }
+notified() { ls "$OB/events" 2>/dev/null | grep -c '\.json$' || true; }  # notify.sh events (fixture HOME)
+nev() { jq -r "$1" "$OB/events/"*.json 2>/dev/null; }
 fresh() {  # fresh <run id> <mode> — a new run, a fresh stub log, no inbox, no notifications
   RUN_ID="$1"; RD="$TD/runs/$RUN_ID"
   jq --arg m "$2" '.mode = $m' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
-  rm -rf "$TD/session.json" "$TD/acked" "$TD/verdict-acked" "$TD/round" "$MAIN/.agents/team/inbox" "$NLOG" \
+  rm -rf "$TD/session.json" "$TD/acked" "$TD/verdict-acked" "$TD/round" "$MAIN/.agents/team/inbox" "$OB" \
     "$WORK"/pane-*
   echo "$RUN_ID" > "$TD/run"; : > "$STUB_LOG"; : > "$TD/send-lead.log"
 }
@@ -208,7 +208,7 @@ wait_for "beta human-only ring" "rung 'human-only coder: Bash command az webapp 
 ldec open alfa --request req-1; expect 0 "[d-1] coder: Bash command" "beta decision"
 wait_for "beta notification" "[ \"\$(notified)\" -ge 1 ]"
 grep -q '^answer_in: coder$' "$RD/decisions/d-1.md" || fail "beta: the decision does not name the coder window"
-grep -q -- 'answer in .*alfa-coder' "$NLOG" || fail "beta: the notification does not name the stage window: $(cat "$NLOG")"
+nev '.answer | tostring' | grep -q 'alfa-coder' || fail "beta: the event does not name the stage window: $(nev .)"
 # The lead neither records nor relays it (owner, 2026-11-15): the Operator answers in the coder window.
 lead_said "d-1 yes, restart it" u-op-beta
 ldec answer alfa d-1 --text "yes, restart it" --tuning rule --why "a restart in the order's scope could be a rule"
@@ -231,7 +231,7 @@ printf 'target_rev: %s\n' "$BASE" > "$RD/wrapup-1.md"
 play --verdict done --pr 8371 --artifacts ".agents/team/runs/$RUN_ID/wrapup-1.md"; expect 0 "" "beta wrapup"
 runner_rc 0 "beta"
 [ "$(events)" = "accepted " ] || fail "beta: events '$(events)'"
-[ "$(notified)" = 1 ] && grep -q -- '--alarm team alfa: human_decision' "$NLOG" || fail "beta: notifications $(cat "$NLOG" 2>/dev/null)"
+[ "$(notified)" = 1 ] && [ "$(nev .event)" = human_decision ] || fail "beta: events $(nev .)"
 echo "team-smoke-24: beta (quick, human decision) OK"
 
 # ==== gamma: revise + collision, two reworks, the third refused, abandon → closed ======================
@@ -280,7 +280,7 @@ V decision close --for qa-1-1.json --decision d-1 --message "Operator: close it"
 runner_rc 8 "gamma"
 has "closed: abandon — PR 8371 to abandon before team-next" "$WORK/runner.out" || fail "gamma: closed line"
 [ "$(events)" = "closed collision " ] || fail "gamma: events '$(events)'"
-[ "$(notified)" = 1 ] && grep -q -- '--alarm team alfa: abandon_decision' "$NLOG" || fail "gamma: notifications $(cat "$NLOG" 2>/dev/null)"
+[ "$(notified)" = 1 ] && [ "$(nev .event)" = abandon_decision ] || fail "gamma: events $(nev .)"
 grep -q "^### .* alfa AB-2400 $RUN_ID — closed$" "$MAIN/.agents/team/teamlead-log.md" \
   && grep -qF -- "- d-1 Two reworks spent — abandon AB-2400? — tuning: TeamLead — " "$MAIN/.agents/team/teamlead-log.md" \
   || fail "gamma: no log block"

@@ -50,10 +50,9 @@ launch() {
   rm -f "$TW_DIR/$3" "$TW_DIR/$4"
   for v in TEAM_WATCH_SECS TEAM_WATCH_REMIND_SECS TEAM_WATCH_UNDELIVERED_SECS \
     TEAM_WATCH_SEND_SECS TEAM_WATCH_PICKUP_SECS TEAM_WATCH_ESC_UNSENT_SECS \
-    TEAM_WATCH_PROGRESS_SECS CLAUDE_CONFIG_DIR TEAM_NOTIFY TEAM_NOTIFY_SOUND \
-    TEAM_NOTIFY_SOUND_ALARM TEAM_WATCH_ROTATE_BYTES TEAM_WATCH_KEEP_SECS \
+    TEAM_WATCH_PROGRESS_SECS CLAUDE_CONFIG_DIR TEAM_WATCH_ROTATE_BYTES TEAM_WATCH_KEEP_SECS \
     TEAM_WATCH_BATCH_MAX TEAM_WATCH_BATCH_BYTES TEAM_WATCH_BACKLOG_MAX; do
-    # Set-but-empty is forwarded: TEAM_NOTIFY_SOUND= means "no sound", not "default".
+    # Set-but-empty is forwarded as set.
     [ -z "${!v+x}" ] || e+=(--env "$v=${!v}")
   done
   # `; read` keeps the pane after a crash, so its error can be shown. The loop runs outside any
@@ -141,16 +140,6 @@ mail_line() {  # a mail error key stays open while that probe's last run failed
     "$TW_DIR/open.json" 2>/dev/null || echo "mail: ok"
 }
 
-notifier_line() {  # the backend's state from the kit's notify.sh, else the declared loss
-  local k="$root/.claude/team/sessions/operator-kit/notify.sh" l
-  if [ -f "$k" ]; then
-    l="$(bash "$k" --check --backend "$TEAM_CHANNEL_NOTIFIER" 2>/dev/null | head -n 1)" || l=""
-    echo "${l:-notifier: $TEAM_CHANNEL_NOTIFIER — notify.sh --check printed nothing}"
-  else
-    team_channel_loss_line
-  fi
-}
-
 status() {
   local rc=0
   if tw_fresh beat && tw_fresh dog.beat; then
@@ -164,7 +153,6 @@ status() {
   receiver_lines
   undelivered_lines
   mail_line
-  notifier_line
   echo "tiers: $(tw_tiers)"
   echo "answering: $(tw_answering)"
   echo "classes: $(python3 -I "$(dirname "$0")/team_prompt_classes.py" switches "$root")"

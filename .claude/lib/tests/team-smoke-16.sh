@@ -57,13 +57,13 @@ run "$MAIN" $W pending TeamLead; expect 0 "$P" "pending lists the ping batch"
 run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$P"; expect 0 "picked #$P" "ack the ping"
 run "$MAIN" $W pending TeamLead; [ -z "$(cat "$WORK/out")" ] || fail "pending after ack"
 # The single Supervisor is a real receiver: its header carries role and ack, and it is timed —
-# its own episode is a platform notification only (the terminal rule).
+# its own episode is only logged (the terminal rule).
 msgs SUP | jq -se 'all(.[]; contains(" · role=Supervisor · ack: bash .claude/lib/team-watch.sh ack ")
   and contains(" · handle per .claude/commands/monitor.md · "))' >/dev/null \
   || fail "the single Supervisor header lacks role/ack/contract"
 : > "$STUB_LOG"
 TEAM_WATCH_PICKUP_SECS=1 daemon; sleep 5; stop_daemon
-[ "$(nnotify "UNPICKED Supervisor #")" -ge 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "the single Supervisor was not timed"; }
+grep -q 'alarm not sent: UNPICKED Supervisor #' "$WORK/daemon.log" || { cp "$WORK/daemon.log" "$WORK/out"; fail "the single Supervisor was not timed"; }
 grep -q "UNPICKED Supervisor" "$WORK"/*.recv && fail "an alarm about the Supervisor was sent to a socket"
 ack_all Supervisor
 echo "team-smoke-16: (61) register by role, single Supervisor OK"
@@ -122,23 +122,23 @@ TEAM_WATCH_PICKUP_SECS=2 daemon
 wait_recv SUP "UNPICKED TeamLead #$P" 15
 sleep 3
 [ "$(nrecv SUP "UNPICKED TeamLead #")" = 1 ] || fail "more than one UNPICKED per episode"
-grep -q '^notify --backend osascript --alarm team-watch: alarm UNPICKED TeamLead' "$STUB_LOG" \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "no kit notification for UNPICKED"; }
+! grep -q '^notify ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "UNPICKED notified someone"; }
 run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$P"
 wait_recv SUP "UNPICKED TeamLead recovered" 10
 sleep 2; stop_daemon
 [ "$(nrecv SUP "UNPICKED TeamLead recovered")" = 1 ] || fail "more than one recovered"
 echo "team-smoke-16: (64) UNPICKED episode OK"
 
-# ---- (65) terminal rule: the Supervisor's own episode is a notification only ---------------------
+# ---- (65) terminal rule: the Supervisor's own episode is only logged -------------------------------
 ack_all Supervisor   # the alarms of (64) were never picked up
 : > "$STUB_LOG"
 run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10
 P="$(last_batch SUP)"
-TEAM_NOTIFY=0 TEAM_WATCH_PICKUP_SECS=1 daemon; sleep 6; stop_daemon
+TEAM_WATCH_PICKUP_SECS=1 daemon; sleep 6; stop_daemon
 grep -q "UNPICKED Supervisor" "$WORK"/*.recv && fail "an alarm about the Supervisor was sent to a socket"
-[ "$(grep -c '^notify --backend osascript --alarm team-watch: alarm UNPICKED Supervisor #' "$STUB_LOG")" = 1 ] \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "expected exactly one notification for the Supervisor's episode"; }
+[ "$(grep -c "alarm not sent: UNPICKED Supervisor #$P " "$WORK/daemon.log")" = 1 ] \
+  || { cp "$WORK/daemon.log" "$WORK/out"; fail "expected exactly one log line for the Supervisor's episode"; }
+! grep -q '^notify ' "$STUB_LOG" || fail "the Supervisor's episode notified someone"
 grep -q '^osascript' "$STUB_LOG" && fail "team-watch called osascript directly"
 run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$P"; expect 0 "" "ack the supervisor ping"
 echo "team-smoke-16: (65) terminal rule OK"

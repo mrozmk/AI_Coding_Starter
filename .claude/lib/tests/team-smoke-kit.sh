@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The operator kit: the notifier, the installer (dry-run, apply, verify, rollback, refusals,
+# The operator kit (it notifies nobody): the installer (dry-run, apply, verify, rollback, refusals,
 # scheduler snippets), the out-of-repo health check, the role Stop hook and the escalation adapter
 # — each against a fixture channel (registry, box, recipients) under a throwaway HOME with a space in
 # its path. Stub binaries stand in for every platform tool (osascript, notify-send, tmux, pgrep,
@@ -11,7 +11,7 @@ BG=""
 trap 'for p in $BG; do kill "$p" 2>/dev/null || true; done
   [ -z "$SPID" ] || kill "$SPID" 2>/dev/null || true; rm -rf "$WORK"' EXIT
 export HOME="$WORK/home dir"; mkdir -p "$HOME"
-unset AGENT_MAIL_BOX CODEX_HOME TEAM_SESSION_ROLE TEAM_NOTIFIER TEAM_NOTIFY_SOUND TEAM_NOTIFY_SOUND_ALARM
+unset AGENT_MAIL_BOX CODEX_HOME TEAM_SESSION_ROLE
 REG="$HOME/.agent-mail/projects.json"
 LIB="$MAIN/.claude/lib"
 OK_DIR=.claude/team/sessions/operator-kit
@@ -25,17 +25,17 @@ cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tes
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
 cp "$SRC"/.claude/team/*.tmpl "$MAIN/.claude/team/"
 cp -R "$SRC/$OK_DIR" "$MAIN/.claude/team/sessions/"
-cp "$SRC/.claude/hooks/supervisor-notify.sh" "$MAIN/.claude/hooks/"
 printf '__pycache__/\n' >> "$MAIN/.gitignore"
 git -C "$MAIN" add -A && git -C "$MAIN" commit --quiet -m "kit fixture"
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
-prof '.teams.channel = {project_code: "QX", mail_suffix: "Qx", advisor: "pair", notifier: "osascript"}'
+prof '.teams.channel = {project_code: "QX", mail_suffix: "Qx", advisor: "pair"}'
 run "$MAIN" bash .claude/lib/team-mail-setup.sh "$MAIN"; expect 0 "" "fixture: the channel step"
 KIT="$(jq -r .kit_dir "$MAIN/.agents/team/channel.local.json")"
 BOX="$(jq -r .box "$MAIN/.agents/team/channel.local.json")"
 mailsum() { (cd "$(dirname "$BOX")" && shasum -a 256 mail.sqlite recipients.json); }
 
-# Stubs: every platform tool logs its argv; tmux/pgrep answer from fixture files.
+# Stubs: every platform tool logs its argv (a notifier binary must never be called); tmux/pgrep
+# answer from fixture files.
 SB="$WORK/kbin"; mkdir -p "$SB"
 for b in osascript notify-send; do
   printf '#!/bin/bash\nprintf "%%s|" %s "$@" >> "%s/notify.log"; echo >> "%s/notify.log"\n' "$b" "$WORK" "$WORK" > "$SB/$b"
@@ -46,58 +46,30 @@ printf '#!/bin/bash\n[ "$1" = list ] && [ -f "%s/launchd" ] && grep -qxF "$2" "%
 printf '#!/bin/bash\n[ "$1" = -l ] && cat "%s/crontab" 2>/dev/null; true\n' "$WORK" > "$SB/crontab"
 chmod +x "$SB"/*
 KP="$SB:$PATH"
-NOTIFY="bash $OK_DIR/notify.sh"
 nlog() { cat "$WORK/notify.log" 2>/dev/null || true; }
-
-# ---- (N) the notifier ---------------------------------------------------------------------------
-run "$MAIN" env PATH="$KP" $NOTIFY --backend osascript --alarm 'T"i\tle' $'line one\nline two'
-expect 0 "" "(N) osascript"
-has 'display notification "line one line two" with title "Title" sound name "Sosumi"' "$WORK/notify.log" \
-  || { nlog > "$WORK/out"; fail "(N) osascript argv / sanitising"; }
-: > "$WORK/notify.log"
-run "$MAIN" env PATH="$KP" TEAM_NOTIFY_SOUND_ALARM= $NOTIFY --backend osascript --alarm T M
-has 'display notification "M" with title "T"' "$WORK/notify.log" \
-  || { nlog > "$WORK/out"; fail "(N) set-but-empty alarm sound sent no notification"; }
-! grep -q 'sound name' "$WORK/notify.log" || fail "(N) set-but-empty alarm sound still sounded"
-: > "$WORK/notify.log"
-run "$MAIN" env PATH="$KP" $NOTIFY --backend notify-send --alarm T M
-has "notify-send|-u|critical|--|T|M|" "$WORK/notify.log" || { nlog > "$WORK/out"; fail "(N) notify-send argv"; }
-: > "$WORK/notify.log"
-run "$MAIN" env PATH="$KP" $NOTIFY --backend none T M
-[ ! -s "$WORK/notify.log" ] || fail "(N) none notified"
-run "$MAIN" env PATH="$KP" TEAM_NOTIFIER=notify-send $NOTIFY T "$(printf 'x%.0s' $(seq 1 300))"
-[ "$(awk -F'|' '{print length($6)}' "$WORK/notify.log")" = 200 ] \
-  || { nlog > "$WORK/out"; fail "(N) TEAM_NOTIFIER fallback / the 200-char cut"; }
-MB="$WORK/minbin"; mkdir -p "$MB"
-for t in bash tr cut dirname cat; do ln -s "$(command -v $t)" "$MB/$t"; done
-run "$MAIN" env PATH="$MB" bash $OK_DIR/notify.sh --backend osascript T M; expect 0 "" "(N) missing binary is silent"
-[ ! -s "$WORK/out" ] || fail "(N) missing binary printed"
-run "$MAIN" env PATH="$MB" bash $OK_DIR/notify.sh --check --backend osascript
-expect 0 "notifier: osascript missing osascript" "(N) --check missing"
-run "$MAIN" env PATH="$KP" $NOTIFY --check --backend notify-send; expect 0 "notifier: notify-send ok" "(N) --check ok"
-run "$MAIN" $NOTIFY --check; expect 0 "notifier: none — declared loss" "(N) --check none"
-echo "team-smoke-kit: (N) notifier OK"
 
 # ---- (I) the installer ------------------------------------------------------------------------
 homesum() { find "$HOME" -type f -exec shasum -a 256 {} + | sort; }
-mkdir -p "$KIT"; printf 'old notifier\n' > "$KIT/notify.sh"   # a live file that predates the kit
+mkdir -p "$KIT"; printf 'old health\n' > "$KIT/sessions-health.sh"   # a live file that predates the kit
+printf 'old kit notifier\n' > "$KIT/notify.sh"   # an old kit's notifier: no longer the installer's
 homesum > "$WORK/h0"; M0="$(mailsum)"
 run "$MAIN" $INST --dry-run; expect 0 "copy escalate.sh → $KIT/escalate.sh (new)" "(I) dry-run"
-has "copy notify.sh → $KIT/notify.sh (backup $KIT/notify.sh.bak-team-kit)" "$WORK/out" || fail "(I) dry-run backup line"
+has "copy sessions-health.sh → $KIT/sessions-health.sh (backup $KIT/sessions-health.sh.bak-team-kit)" "$WORK/out" || fail "(I) dry-run backup line"
+! has "notify.sh" "$WORK/out" || fail "(I) the dry-run still names notify.sh"
 homesum > "$WORK/h1"; cmp -s "$WORK/h0" "$WORK/h1" || fail "(I) the dry-run changed a byte under HOME"
 [ ! -e "$ESCF" ] || fail "(I) the dry-run rendered escalation.local.json"
 has "plan	.agents/team/escalation.local.json	written by --apply, after it installs escalate.sh" "$WORK/out" \
   && ! has "operator kit not installed" "$WORK/out" || fail "(I) the dry-run misreports escalation.local.json"
 run "$MAIN" $INST --apply; expect 0 "installed $KIT/hooks/role-hooks.settings.json" "(I) apply"
 has "write	.agents/team/escalation.local.json" "$WORK/out" || fail "(I) apply did not render the escalation config"
-[ "$(grep -c '^installed ' "$WORK/out")" = 6 ] || fail "(I) apply installed $(grep -c '^installed ' "$WORK/out") targets"
+[ "$(grep -c '^installed ' "$WORK/out")" = 5 ] || fail "(I) apply installed $(grep -c '^installed ' "$WORK/out") targets"
 [ "$(ls -ld "$KIT" | cut -c1-10)" = drwx------ ] || fail "(I) kit_dir is not mode 700"
 [ -x "$KIT/escalate.sh" ] && [ -x "$KIT/hooks/mail-guard.sh" ] || fail "(I) scripts not executable"
 jq -e --arg k "$KIT" '.hooks.Stop[0].hooks[0].command == "bash \"\($k)/hooks/mail-guard.sh\""
-  and (.hooks.Notification[0].matcher == "permission_prompt|elicitation_dialog")
-  and ([.hooks | keys[]] == ["Notification", "Stop"])' "$KIT/hooks/role-hooks.settings.json" >/dev/null \
+  and ([.hooks | keys[]] == ["Stop"])' "$KIT/hooks/role-hooks.settings.json" >/dev/null \
   || fail "(I) role-hooks.settings.json"
-for want in PROJECT_CODE=QX SUPERVISOR_NAME=SupervisorQx NOTIFIER=osascript LABEL=team.qx.sessions-health \
+! grep -q '^NOTIFIER=' "$KIT/kit.conf" || fail "(I) kit.conf still carries NOTIFIER"
+for want in PROJECT_CODE=QX SUPERVISOR_NAME=SupervisorQx LABEL=team.qx.sessions-health \
   "SESSIONS=main-supervisor main-teamlead main-advisor main-team-watch main-team-watch-dog" "KIT_DIR=$KIT"; do
   grep -qxF "$want" "$KIT/kit.conf" || { cp "$KIT/kit.conf" "$WORK/out"; fail "(I) kit.conf lacks $want"; }
 done
@@ -106,12 +78,18 @@ run "$MAIN" $INST --verify; expect 0 "ok $KIT/kit.conf" "(I) verify clean"
 echo tampered >> "$KIT/escalate.sh"
 run "$MAIN" $INST --verify; expect 1 "differs $KIT/escalate.sh" "(I) verify sees a tampered copy"
 run "$MAIN" $INST --apply; expect 0 "" "(I) re-apply"
-[ "$(cat "$KIT/notify.sh.bak-team-kit")" = "old notifier" ] || fail "(I) a re-apply replaced the first backup"
-sed -i.x 's/^NOTIFIER=.*/NOTIFIER=none/' "$KIT/kit.conf"; rm -f "$KIT/kit.conf.x"
+[ "$(cat "$KIT/sessions-health.sh.bak-team-kit")" = "old health" ] || fail "(I) a re-apply replaced the first backup"
+sed -i.x 's/^SUPERVISOR_NAME=.*/SUPERVISOR_NAME=Old/' "$KIT/kit.conf"; rm -f "$KIT/kit.conf.x"
 run "$MAIN" $INST --verify; expect 1 "differs $KIT/kit.conf" "(I) verify sees a stale render"
 run "$MAIN" $INST --apply; expect 0 "" "(I) re-apply after a stale render"
-run "$MAIN" env PATH="$KP" bash "$KIT/notify.sh" T M
-has "osascript|" "$WORK/notify.log" || fail "(I) the installed notifier ignored kit.conf"
+# A kit installed before the notification model: its hooks file still wires the removed hook.
+jq '.hooks.Notification = [{matcher: "permission_prompt", hooks: [{type: "command", command: "bash x/supervisor-notify.sh"}]}]' \
+  "$KIT/hooks/role-hooks.settings.json" > "$WORK/rh" && cp "$WORK/rh" "$KIT/hooks/role-hooks.settings.json"
+run "$MAIN" $INST --verify; expect 1 "differs $KIT/hooks/role-hooks.settings.json" "(I) verify sees the old hooks file"
+run "$MAIN" $INST --apply; expect 0 "" "(I) re-apply rewrites the old hooks file"
+jq -e '.hooks | has("Notification") | not' "$KIT/hooks/role-hooks.settings.json" >/dev/null || fail "(I) re-apply kept Notification"
+[ "$(cat "$KIT/notify.sh")" = "old kit notifier" ] && [ ! -e "$KIT/notify.sh.bak-team-kit" ] \
+  || fail "(I) the installer touched an old kit notify.sh"
 run "$MAIN" $INST --print-scheduler launchd; expect 0 "<string>team.qx.sessions-health</string>" "(I) launchd snippet"
 has "<string>$KIT/sessions-health.sh</string>" "$WORK/out" || fail "(I) launchd snippet path"
 run "$MAIN" $INST --print-scheduler cron; expect 0 "*/5 * * * * /bin/bash \"$KIT/sessions-health.sh\"" "(I) cron snippet"
@@ -127,8 +105,9 @@ run "$MAIN" $INST --apply; expect 1 "kit_dir is the mailbox directory" "(I) kit 
 [ ! -e "$(dirname "$BOX")/escalate.sh" ] || fail "(I) wrote into the mailbox dir"
 cp "$WORK/ch.bak" "$CH"
 # rollback: original restored, new files gone, no backup left, generated config removed
-run "$MAIN" $INST --rollback; expect 0 "restored $KIT/notify.sh" "(I) rollback"
-[ "$(cat "$KIT/notify.sh")" = "old notifier" ] || fail "(I) rollback did not restore the original"
+run "$MAIN" $INST --rollback; expect 0 "restored $KIT/sessions-health.sh" "(I) rollback"
+[ "$(cat "$KIT/sessions-health.sh")" = "old health" ] || fail "(I) rollback did not restore the original"
+[ "$(cat "$KIT/notify.sh")" = "old kit notifier" ] || fail "(I) rollback touched an old kit notify.sh"
 [ ! -e "$KIT/escalate.sh" ] && [ ! -e "$KIT/kit.conf" ] && [ ! -e "$KIT/hooks/mail-guard.sh" ] \
   || fail "(I) rollback left a kit file"
 [ -z "$(find "$KIT" -name '*.bak-team-kit*')" ] || fail "(I) rollback left a backup"
@@ -144,22 +123,22 @@ run "$MAIN" $INST --apply; expect 0 "" "(I) final apply for the next sections"
 echo "team-smoke-kit: (I) installer OK"
 
 # ---- (H) the health check ---------------------------------------------------------------------
-hc() { run "$MAIN" env PATH="$KP" bash "$KIT/sessions-health.sh" "$@"; }
+hc() { run "$MAIN" env PATH="$KP" bash "$KIT/sessions-health.sh" "$@"; cat "$WORK/out" >> "$WORK/health.log"; }
 printf '%s\n' main-supervisor main-teamlead main-advisor main-team-watch main-team-watch-dog > "$WORK/up"
-: > "$WORK/notify.log"; : > "$WORK/procs"
+: > "$WORK/notify.log"; : > "$WORK/procs"; : > "$WORK/health.log"
 hc; expect 0 "" "(H) all up"
-[ ! -s "$WORK/notify.log" ] || fail "(H) notified with everything up"
+[ ! -s "$WORK/health.log" ] || fail "(H) logged an outage with everything up"
 grep -vx main-advisor "$WORK/up" > "$WORK/up2"; mv "$WORK/up2" "$WORK/up"
 hc; hc
-[ "$(grep -c 'main-advisor down' "$WORK/notify.log")" = 1 ] || { nlog > "$WORK/out"; fail "(H) one notification per outage"; }
+[ "$(grep -c 'down: main-advisor$' "$WORK/health.log")" = 1 ] || { cp "$WORK/health.log" "$WORK/out"; fail "(H) one log line per outage"; }
 echo main-advisor >> "$WORK/up"
 hc; [ ! -s "$KIT/sessions-health.state" ] || [ -z "$(tr -d '\n' < "$KIT/sessions-health.state")" ] \
   || fail "(H) recovery did not clear the state"
-[ "$(grep -c 'down' "$WORK/notify.log")" = 1 ] || fail "(H) recovery notified"
+[ "$(grep -c 'down' "$WORK/health.log")" = 1 ] || fail "(H) recovery logged an outage"
 grep -vx main-supervisor "$WORK/up" > "$WORK/up2"; mv "$WORK/up2" "$WORK/up"
 echo "claude --name SupervisorZz --model opus" > "$WORK/procs"
-: > "$WORK/notify.log"; hc
-has "main-supervisor down" "$WORK/notify.log" || fail "(H) another project's Supervisor counted as up"
+: > "$WORK/health.log"; hc
+has "down: main-supervisor" "$WORK/health.log" || fail "(H) another project's Supervisor counted as up"
 echo "claude --name SupervisorQx --model opus" > "$WORK/procs"
 hc; [ "$(tr -d '\n' < "$KIT/sessions-health.state")" = "" ] || fail "(H) here-mode Supervisor not counted as up"
 hc --scheduled; expect 1 "scheduled: none" "(H) not scheduled"
@@ -170,6 +149,7 @@ if [ "$(uname -s)" = Darwin ]; then
   echo team.qx.sessions-health > "$WORK/launchd"
   hc --scheduled; expect 0 "scheduled: launchd team.qx.sessions-health" "(H) launchd"
 fi
+[ ! -s "$WORK/notify.log" ] || { nlog > "$WORK/out"; fail "(H) the health check called a notifier binary"; }
 echo "team-smoke-kit: (H) health check OK"
 
 # ---- (G) the role Stop hook -------------------------------------------------------------------

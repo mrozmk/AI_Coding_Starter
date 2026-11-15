@@ -14,8 +14,8 @@ tw_num() {  # tw_num <value> <default> <regex> → value when it matches, else d
   if [[ "$1" =~ $3 ]]; then echo "$1"; else echo "$2"; fi
 }
 
-# tw_init <main root> → $root, $TW_DIR, the knobs and the committed channel names (tmux prefix,
-# notifier); rc 3 with an error line when the profile's teams.channel block is invalid.
+# tw_init <main root> → $root, $TW_DIR, the knobs and the committed channel names (tmux
+# prefix); rc 3 with an error line when the profile's teams.channel block is invalid.
 tw_init() {
   root="$1"
   TW_DIR="$root/.agents/team/watch"
@@ -44,13 +44,6 @@ tw_iso() { date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 # tmp + mv in the target dir: a reader never sees a half-written file.
 tw_put() {  # tw_put <file> ← stdin
   cat > "$1.tmp.$$" && mv "$1.tmp.$$" "$1"
-}
-
-# tw_notify <title> <text> [alarm] — alarms always (as --alarm), signals only with TEAM_NOTIFY=1
-# (default off). Through the operator kit's notifier (team_channel_notify); sounds are its concern.
-tw_notify() {
-  [ "${3:-}" = alarm ] || [ "${TEAM_NOTIFY:-0}" = 1 ] || return 0
-  team_channel_notify ${3:+--alarm} "team-watch: $1" "$2"
 }
 
 # pr_timebox (team-lib.sh) keeps a signal death non-zero: a killed mail probe must not read as
@@ -238,8 +231,7 @@ tw_cursors() {  # → {<role>: <cursor>} for every receiver an event can be addr
 # tw_update <sig file> — caller holds tw_lock. New keys → one event each; keys gone → dropped
 # (open-interval rule: the same condition reopening is a new delivery); keys open longer than
 # TW_REMIND → `(reminder)`. A receiver's new registration sees its open keys as new:
-# `(current state)`. A result routed with an older routing generation is discarded. `notify`
-# lists new role-attention heads: a role session's prompt also gets a platform notification.
+# `(current state)`. A result routed with an older routing generation is discarded.
 # Events carry the signal key.
 tw_update() {
   local res w base
@@ -268,9 +260,7 @@ tw_update() {
                  | {to: .g.to, key: .g.key, label,
                     text: ([.g.head] + (.g.screen | map("  | " + .)) | join("\n"))} ],
        text: [ $rows[] | (if $split then "[\(.g.to)] " else "" end) as $pre
-               | $pre + .g.head, (.g.screen[] | "  | " + .) ],
-       notify: [ $rows[] | select(.g.kind == "role-attention"
-                   and (.label == "" or .label == "(current state)")) | .g.head ]}' > "$res" \
+               | $pre + .g.head, (.g.screen[] | "  | " + .) ]}' > "$res" \
     || return 1
   base="$(tw_last_seq)" || return 1
   jq -c --argjson base "$base" --arg at "$(team_utc)" '
@@ -294,26 +284,24 @@ tw_tick() {
   else
     rc=1; tw_log "tick: state lock busy"
   fi
-  jq -r '.notify[]' "$w/update.json" 2>/dev/null | while IFS= read -r h; do
-    tw_notify "role prompt" "$h"
-  done
   rm -rf "$w"
   tw_deliver || true
   return "$rc"
 }
 
-tw_undelivered() {  # tw_undelivered <role> — one notification (and alarm) per outage episode
+tw_undelivered() {  # tw_undelivered <role> — one alarm per outage episode (team-watch notifies nobody)
   local s="$TW_DIR/undelivered.$1.since"
   [ -f "$s" ] || tw_now > "$s"
   if [ $(( $(tw_now) - $(cat "$s") )) -ge "$TW_UNDELIVERED" ] \
     && [ ! -f "$TW_DIR/undelivered.$1.notified" ]; then
-    tw_notify "$1 not receiving" "re-register in its window: bash .claude/lib/team-watch.sh register" alarm
     touch "$TW_DIR/undelivered.$1.notified"
     # Queued, not sent: we hold send.d, so the target gets it on this or the next loop.
     if [ "$1" != "$(tw_alarm_target)" ] && tw_live "$(tw_alarm_target)" && tw_lock; then
       tw_append_to "$(tw_alarm_target)" "" "UNDELIVERED $1 ($(( $(tw_now) - $(cat "$s") ))s)" \
         alarm || tw_log "UNDELIVERED $1: alarm not queued"
       tw_unlock
+    else
+      tw_log "UNDELIVERED $1: no alarm target to tell (self or not live, or lock busy)"
     fi
   fi
 }
@@ -344,8 +332,8 @@ tw_receiver_line() {  # tw_receiver_line <role> → its status line, never the t
     + " · since \(.registered_at // "?")"' "$f"
 }
 
-# tw_check_peer <peer beat> <alarm flag> <name> — notify first, then report, so a hung receiver
-# or a hung daemon holding the lock cannot silence the alarm. An absent beat is not an outage.
+# tw_check_peer <peer beat> <alarm flag> <name> — one MONITOR alarm per outage (tw_alarm falls back
+# to send.d, so a hung daemon holding the lock cannot silence it). An absent beat is not an outage.
 tw_check_peer() {
   local f="$TW_DIR/$1" flag="$TW_DIR/$2" t
   [ -f "$f" ] || return 0
@@ -353,7 +341,6 @@ tw_check_peer() {
     [ ! -f "$flag" ] || return 0
     t="$(tw_iso "$(cut -d' ' -f1 "$f")" 2>/dev/null)" || t="?"
     touch "$flag"
-    tw_notify "$3 dead" "last beat $t — run bash .claude/lib/team-watch.sh start" alarm
     tw_alarm - "MONITOR $3 dead (last beat $t)"
   elif [ -f "$flag" ]; then
     rm -f "$flag"

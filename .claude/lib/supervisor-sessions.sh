@@ -65,8 +65,8 @@ kit_hooks_file() {  # → the installed kit's role-hooks.settings.json, or nothi
 # The TeamLead also gets the PR host's update verbs denied for the configured provider. One profile
 # per role: the template is teams.sessions.<Role>.settings (a team-watch receiver without one uses its
 # own name), and env.TEAM_SESSION_ROLE is the role, never the template's value. The kit
-# file gives only `.hooks.Notification` and `.hooks.Stop`: a PreToolUse or PermissionRequest hook
-# could approve a tool call, so no other event — and none of its permissions — is ever taken.
+# file gives only `.hooks.Stop`: a PreToolUse or PermissionRequest hook could approve a tool call,
+# and an old kit's Notification entry calls a removed hook, so nothing else is ever taken.
 materialize() {
   local r="$1" d="$TW_DIR/profiles" loc="$root/.claude/settings.local.json" out kh=null c
   local prov pr='[]' kf t=""
@@ -85,11 +85,11 @@ materialize() {
   fi
   kf="$(kit_hooks_file)"
   if [ -n "$kf" ]; then
-    kh="$(jq -ce '.hooks // {} | {Notification, Stop} | with_entries(select(.value | arrays))
+    kh="$(jq -ce '.hooks // {} | {Stop} | with_entries(select(.value | arrays))
       | select(length > 0)' "$kf" 2>/dev/null)" || kh=null
   else
     echo "warning: operator kit role-hooks.settings.json not installed —" \
-      "$r without platform notifications" >&2
+      "$r without the mail Stop guard" >&2
   fi
   mkdir -p "$d" && chmod 700 "$d"
   [ -f "$loc" ] || loc=/dev/null
@@ -301,15 +301,11 @@ pf_profiles() {
   esac
 }
 
-pf_notifier() {  # the notifier's own --check line; `none` is an informed choice, not a block
-  local l
-  l="$(bash "$KIT_SRC/notify.sh" --check --backend "$TEAM_CHANNEL_NOTIFIER" 2>/dev/null)" \
-    || l=""
-  case "$l" in
-    "notifier: none"*|"notifier: $TEAM_CHANNEL_NOTIFIER ok"*) echo "ok $l" ;;
-    "") pf "notifier: $TEAM_CHANNEL_NOTIFIER" fail "operator-kit/notify.sh --check printed nothing" ;;
-    *) echo "FAIL $l"; PF_RC=1 ;;
-  esac
+pf_notify() {  # notify.sh --check on one row; both channels off is an informed choice, not a block
+  local l rc=0
+  l="$(bash "$root/.claude/lib/notify.sh" --check 2>&1 | paste -sd ';' - | sed 's/;/ · /g')" || rc=$?
+  if [ "$rc" = 0 ] && [ -n "$l" ]; then echo "ok notifications: $l"
+  else pf "notifications" fail "notify.sh --check exit $rc: ${l:-no output}"; fi
 }
 
 pf_health() {  # the installed copy knows the scheduler label (kit.conf); else the template
@@ -353,7 +349,7 @@ preflight() {
   pf_channel
   pf_kit
   pf_profiles
-  pf_notifier
+  pf_notify
   pf_health
   pf_cli
   return "$PF_RC"
