@@ -442,7 +442,9 @@ echo "team-smoke-22: authority hook OK"
 DLD="$RD/decisions"; LTX="$(transcript sid-lead)"; mkdir -p "$(dirname "$LTX")"; : > "$LTX"
 prof '.teams.teamlead.enabled = true'  # (k) above switched it off for the next ticket
 DEC="bash .claude/lib/team-lead.sh decision"
-ldec() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
+# The lead records every answer with the tuning question (team-lead.md §10); `ldec0` omits it.
+ldec() { if [ "$1" = answer ]; then set -- "$@" --tuning none --why fixture; fi; run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
+ldec0() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }
 SAID=0
 said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead window, now
   SAID=$((SAID + 1))

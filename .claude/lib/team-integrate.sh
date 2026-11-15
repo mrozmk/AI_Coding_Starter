@@ -62,6 +62,9 @@ B="${BASE_OPT:-$TEAM_TRUNK}"
 
 # The run's TeamLead ends once the PR is in; never a reason to fail the integration (retryable).
 finalize_lead() {
+  # The lead's notes go to the shared log (once per run) before the lead ends; never fails the merge.
+  (cd "$root" && bash .claude/lib/team-lead.sh log-append "$TEAM" merged) >/dev/null 2>&1 \
+    || echo "warn: teamlead log not appended — retry: bash .claude/lib/team-lead.sh log-append $TEAM merged" >&2
   (cd "$root" && bash .claude/lib/team-lead.sh finalize "$TEAM" merged) >/dev/null 2>&1 \
     || echo "warn: TeamLead not finalized — retry: bash .claude/lib/team-lead.sh finalize $TEAM merged" >&2
 }

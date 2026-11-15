@@ -47,6 +47,8 @@ launch_lead() {
   [ -f "$TD/runs/$RUN/order-brief.md" ] || cp "$TD/order-brief.md" "$TD/runs/$RUN/order-brief.md"
   (cd "$root" && bash .claude/lib/team-lead.sh materialize "$TEAM") >/dev/null \
     || die 4 "TeamLead profile not materialised — bash .claude/lib/team-lead.sh materialize $TEAM"
+  (cd "$root" && bash .claude/lib/team-lead.sh notes-init "$TEAM") >/dev/null \
+    || echo "warn: TeamLead notes not created — bash .claude/lib/team-lead.sh notes-init $TEAM"
   if why="$(auto_blocker)"; then echo "warn: TeamLead launches in manual mode — $why"; perm=manual; fi
   ch="$(codex_home)" || die 1 "$ch"
   sid="$(uuidgen | tr 'A-Z' 'a-z')"
@@ -291,6 +293,9 @@ close_run() {
       pr_id: (if $pr == "" then null else ($pr | tonumber) end)}' > "$TD/runs/$RUN/closed.json"
   if [ -n "$pr" ]; then next="PR $pr to abandon before team-next"; else next="clone free"; fi
   lead_event closed "$2" "reason: $1 — $next"
+  # The run's notes go to the shared log before the lead ends; a log failure never blocks the close.
+  (cd "$root" && bash .claude/lib/team-lead.sh log-append "$TEAM" closed) >/dev/null \
+    || echo "warn: teamlead log not appended — bash .claude/lib/team-lead.sh log-append $TEAM closed" >&2
   (cd "$root" && bash .claude/lib/team-lead.sh end "$TEAM") >/dev/null \
     || echo "warn: TeamLead of $TEAM did not end" >&2
   end_session "$ROLE"

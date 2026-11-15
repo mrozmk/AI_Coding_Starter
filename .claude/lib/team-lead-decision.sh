@@ -5,6 +5,7 @@
 #     [--recommend "<text>"] [--notify human_decision|abandon_decision] [--gate spec|plan]
 #   decision open <team> --request req-<n>      (the runner's human-only request: binding copied)
 #   decision answer <team> d-<n> --text "<Operator answer>" [--outcome continue|close|more-revise|approve]
+#     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
 # open writes the file (status pending), then the escalate verdict with --notify, so the runner
 # notifies the Operator once. answer asks for a human: from a terminal (a TTY, the id typed to
@@ -25,6 +26,34 @@ d_file() {  # d_file <d-n> → path, or exit 2/4
   echo "$DD/$1.md"
 }
 one_line() { [ -n "$1" ] && [[ "$1" != *$'\n'* ]]; }
+
+# notes_add <heading> <line> — one line at the end of a section of the lead's notes (team-lead.md
+# §10); the file gets its five headings first when absent.
+notes_add() {
+  local f="$TD/runs/$RUN/teamlead-notes.md" h
+  [ -f "$f" ] || ( IFS='|'; for h in $NOTES_HEADINGS; do printf '%s\n\n' "$h"; done ) > "$f"
+  grep -qxF "$1" "$f" || printf '\n%s\n' "$1" >> "$f"
+  awk -v h="$1" -v l="$2" '
+    s && /^## / { print l; print ""; s = 0; b = 0 }
+    s && /^$/ { b++; next }
+    s { for (; b > 0; b--) print ""; print; next }
+    $0 == h { s = 1; print; next }
+    { print }
+    END { if (s) print l }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
+# notes_tune <d-n> <tuning> <why> — completes the decision's Operator-case line (added by open).
+notes_tune() {
+  local f="$TD/runs/$RUN/teamlead-notes.md" p="- $1 " t="— tuning: pending"
+  if grep -q "^- $1 .*— tuning: pending\$" "$f" 2>/dev/null; then
+    awk -v p="$p" -v t="$t" -v r="— tuning: $2 — $3" '
+      index($0, p) == 1 && substr($0, length($0) - length(t) + 1) == t {
+        $0 = substr($0, 1, length($0) - length(t)) r }
+      { print }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  else
+    notes_add "## Operator cases" "- $1 (answered) — tuning: $2 — $3"
+  fi
+}
 
 decision_open() {
   local src="" q="" opts="" rec="" notify=human_decision gate="" req="" n f tmp v rel bind=""
@@ -65,6 +94,8 @@ decision_open() {
   v="$( (cd "${TD%/.agents/team}" && bash "$LIB/team-verdict.sh" decision escalate --for "$rel" \
     --ref "$f" --notify "$notify" --message "d-$n: ${q:0:120}") )" \
     || d_bad 1 "decision d-$n written, but its escalate verdict was refused — see above"
+  # The one-line question only, cut as in the verdict message — never a prompt or a file's content.
+  notes_add "## Operator cases" "- d-$n ${q:0:120} — tuning: pending"
   echo "[d-$n] $q"
   echo "file: $f"; echo "verdict: $v"
 }
@@ -95,17 +126,27 @@ d_evidence() {
 }
 
 decision_answer() {
-  local id="${1:-}" text="" outcome="" f how ev c
+  local id="${1:-}" text="" outcome="" tuning="" why="" f how ev c
   [ -n "$id" ] || usage; shift
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
-    case "$1" in --text) text="$2" ;; --outcome) outcome="$2" ;; *) usage ;; esac
+    case "$1" in --text) text="$2" ;; --outcome) outcome="$2" ;; --tuning) tuning="$2" ;;
+      --why) why="$2" ;; *) usage ;; esac
     shift 2
   done
   one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
   case "$outcome" in ""|continue|close|more-revise|approve) ;;
     *) d_bad 2 "--outcome continue|close|more-revise|approve" ;; esac
+  case "$tuning" in ""|rule|TeamLead|none) ;; *) d_bad 2 "--tuning rule|TeamLead|none" ;; esac
+  # The tuning question (could a rule or the TeamLead have covered this?) is the lead's to answer.
+  if team_lead_caller; then
+    [ -n "$tuning" ] && one_line "$why" || d_bad 2 "the TeamLead records an answer with --tuning rule|TeamLead|none --why \"<line>\""
+  fi
+  [ -z "$tuning" ] || one_line "$why" || d_bad 2 "--tuning needs a one-line --why"
   f="$(d_file "$id")"
+  if [ "$(dfm "$f" status)" = withdrawn ]; then
+    notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"
+  fi
   [ "$(dfm "$f" status)" = pending ] || d_bad 4 "$id is $(dfm "$f" status), not pending — nothing applied"
   if [ -t 0 ] && [ -r /dev/tty ]; then
     printf 'Operator answer to %s: %s\nconfirm by typing %s: ' "$id" "$text" "$id" > /dev/tty
@@ -120,6 +161,7 @@ decision_answer() {
   dfm_set "$f" status answered; dfm_set "$f" answered_at "$(team_utc)"; dfm_set "$f" answered_via "$how"
   [ -z "$outcome" ] || dfm_set "$f" answer_outcome "$outcome"
   printf '\n## Answer\n%s\n' "$text" >> "$f"
+  [ -z "$tuning" ] || notes_tune "$id" "$tuning" "$why"
   echo "answered: $id${outcome:+ ($outcome)} via ${how%% *}"
 }
 

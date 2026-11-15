@@ -3,7 +3,8 @@
 # blind check and a complete brief (one decision per QA warning); ready and one `accepted` event
 # only after accept and a done wrapup; abandon goes through an abandon_decision; the acceptance
 # patch carries no spec or plan line. Rework rounds (team-lead.md §9): storage under r<n>/, the
-# rework coder on the same PR, the budget and its Operator grant, quick mode, crash recovery.
+# rework coder on the same PR, the budget and its Operator grant, quick mode, crash recovery; the
+# lead's notes and the shared log (team-lead.md §10).
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -49,7 +50,9 @@ greset() {  # greset <alive sessions...> — a runner start: lock, cancel, logs 
 }
 TR="bash .claude/lib/team-run.sh"
 V() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh "$@"; }
-ldec() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh decision "$@"; }
+# The lead records every answer with the tuning question (team-lead.md §10).
+ldec() { if [ "$1" = answer ]; then set -- "$@" --tuning none --why fixture; fi
+  run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh decision "$@"; }
 rec_json() {  # rec_json <role> <input> <output> <pr|null> <artifacts json> — record 1-1, done
   jq -n --arg role "$1" --arg in "$2" --arg out "$3" --argjson pr "$4" --argjson a "$5" \
     --arg run "$RUN_ID" --arg br "$BR" --arg ev ".agents/team/runs/$RUN_ID/qa-report-1.md" \
@@ -284,6 +287,9 @@ V acceptance accept --for qa-1-1.json --message ok; expect 0 "teamlead-acceptanc
 jq -e '.for == "r2/qa-1-1.json"' "$RD/teamlead-acceptance-2.json" >/dev/null || fail "(r) verdict for"
 greset alfa-lead alfa-qa; export CANCEL_AT=40; run "$MAIN" $TR alfa; expect 6 "launched: wrapup attempt 1" "(r) wrapup launched"
 [ -e "$RD/r2/qa-1-1.json.accepted" ] || fail "(r) round-2 qa not accepted"
+# The lead's notes are per run: the round-2 wrapup reads them at the run root.
+has ".agents/team/runs/$RUN_ID/teamlead-notes.md" "$RD/r2/wrapup-1.prompt.md" \
+  && ! has "runs/$RUN_ID/r2/teamlead-notes.md" "$RD/r2/wrapup-1.prompt.md" || fail "(r) wrapup reads the wrong notes path"
 # Round 1 has no accepted qa: "wrapup not done" means merge-check read round 2's records.
 mv "$TD/session.json" "$WORK/sj"
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa; expect 3 "wrapup not done" "(r) merge-check reads round 2"
@@ -384,6 +390,90 @@ run "$MAIN" $TR alfa check "$RD/r2/qa-1-1.json"; expect 4 "isDraft is not false"
 pr_set '.isDraft = false'
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "gate acceptance qa-1-1.json" "(q) round-2 qa published"
 echo "team-smoke-23: (q) blocked → draft rework → publish OK"
+unset STUB_ON_HAS_SESSION CANCEL_AT
+
+# ---- (u) a launched lead gets its notes file with the five headings ---------------------------------
+export STUB_ON_HAS_SESSION=". '$WORK/hs2.sh'"
+setup_run alfa-20261115-210000; echo qa-1-1.json > "$TD/acked"
+greset alfa-qa; export CANCEL_AT=12; run "$MAIN" $TR alfa; expect 6 "launched: TeamLead" "(u) lead launched"
+NOTES="$RD/teamlead-notes.md"
+[ "$(grep -c '^## ' "$NOTES" 2>/dev/null)" = 5 ] || fail "(u) notes: $(cat "$NOTES" 2>/dev/null)"
+for h in "## Order ambiguities" "## No-rule questions" "## Gate misses" "## Operator cases" "## Late answers"; do
+  grep -qxF "$h" "$NOTES" || fail "(u) notes lack $h"
+done
+echo "team-smoke-23: (u) notes created at launch OK"
+
+# ---- (v) every Operator case is in the notes with the tuning question; a late answer too -----------
+setup_run alfa-20261115-220000; NOTES="$RD/teamlead-notes.md"; echo qa-1-1.json > "$TD/acked"
+said() { jq -cn --arg t "$1" --arg u "$2" --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
+  '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"; }
+section() { awk -v h="$1" '$0 == h { f = 1; next } /^## / { f = 0 } f' "$NOTES"; }
+ldec open alfa --source qa-1-1.json --question "Ship without the CSV import?"; expect 0 "[d-1]" "(v) open"
+section "## Operator cases" | grep -qxF -- "- d-1 Ship without the CSV import? — tuning: pending" || fail "(v) no Operator case line: $(cat "$NOTES")"
+said "d-1 yes ship it" u-op-v1
+run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh decision answer alfa d-1 --text "yes ship it"
+expect 2 "--tuning rule|TeamLead|none" "(v) the lead answers the tuning question"
+run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh decision answer alfa d-1 --text "yes ship it" \
+  --tuning rule --why "the order's Not ordered list already says it"
+expect 0 "answered: d-1" "(v) answer with the tuning"
+section "## Operator cases" | grep -qxF -- "- d-1 Ship without the CSV import? — tuning: rule — the order's Not ordered list already says it" \
+  || fail "(v) tuning not completed: $(cat "$NOTES")"
+ldec open alfa --source qa-1-1.json --question "Rename the button?"; expect 0 "[d-2]" "(v) open d-2"
+ldec withdraw alfa d-2 --why "the qa settled it"; expect 0 "withdrawn: d-2" "(v) withdraw"
+said "d-2 no keep it" u-op-v2
+ldec answer alfa d-2 --text "no keep it"; expect 4 "d-2 is withdrawn, not pending" "(v) late answer refused"
+section "## Late answers" | grep -q -- "^- d-2 (withdrawn .*): no keep it$" || fail "(v) no late answer line: $(cat "$NOTES")"
+echo "team-smoke-23: (v) Operator cases + tuning + late answer OK"
+
+# ---- (w) close_run appends the notes once; a resume of the closed run appends nothing ---------------
+LOG="$MAIN/.agents/team/teamlead-log.md"
+blocks() { grep -c "^### .* alfa AB-1600 $1 — " "$LOG" 2>/dev/null || true; }
+ldec open alfa --source qa-1-1.json --question "Close it?"; expect 0 "[d-3]" "(w) open"
+said "d-3 close" u-op-w; ldec answer alfa d-3 --text "close" --outcome close; expect 0 "" "(w) answer"
+V decision close --for qa-1-1.json --decision d-3 --message "Operator: close"; expect 0 "" "(w) decision close"
+greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 8 "closed: abandon" "(w) closed"
+[ "$(blocks "$RUN_ID")" = 1 ] && grep -q "^### .* alfa AB-1600 $RUN_ID — closed$" "$LOG" \
+  && grep -qF -- "- d-1 Ship without the CSV import? — tuning: rule" "$LOG" && [ -s "$RD/log-appended" ] \
+  || fail "(w) log block: $(cat "$LOG" 2>/dev/null)"
+greset alfa-lead; run "$MAIN" $TR alfa; expect 1 "run closed" "(w) resume refused"
+run "$MAIN" bash .claude/lib/team-lead.sh log-append alfa closed; expect 0 "already appended" "(w) a second append"
+[ "$(blocks "$RUN_ID")" = 1 ] || fail "(w) appended twice"
+echo "team-smoke-23: (w) close appends once OK"
+
+# ---- (x) the log lock: a held lock times out without appending; two clones at once both land ---------
+setup_run alfa-20261115-230000; echo "- alfa-marker" >> "$RD/teamlead-notes.md"
+mkdir "$MAIN/.agents/team/teamlead-log.lock"
+TEAM_LOG_LOCK_SECS=1 run "$MAIN" bash .claude/lib/team-lead.sh log-append alfa merged; expect 1 "held for 1s" "(x) lock timeout"
+[ ! -e "$RD/log-appended" ] && [ "$(blocks "$RUN_ID")" = 0 ] || fail "(x) appended under a held lock"
+BTD="$WORK/main-beta/.agents/team"; rm -rf "$WORK/main-beta"; cp -R "$CLONE" "$WORK/main-beta"
+jq '.team = "beta"' "$BTD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$BTD/team.json"
+echo beta-20261115-230000 > "$BTD/run"; mkdir -p "$BTD/runs/beta-20261115-230000"
+jq '.team = "beta" | .run = "beta-20261115-230000"' "$BTD/teamlead.json" > "$WORK/tj" && mv "$WORK/tj" "$BTD/teamlead.json"
+printf '## Gate misses\n- beta-marker\n' > "$BTD/runs/beta-20261115-230000/teamlead-notes.md"
+( cd "$MAIN" && bash .claude/lib/team-lead.sh log-append alfa merged > "$WORK/la1" 2>&1 ) &
+( cd "$MAIN" && bash .claude/lib/team-lead.sh log-append beta merged > "$WORK/la2" 2>&1 ) &
+sleep 1; rmdir "$MAIN/.agents/team/teamlead-log.lock"; wait
+grep -q "appended" "$WORK/la1" && grep -q "appended" "$WORK/la2" || fail "(x) $(cat "$WORK/la1" "$WORK/la2")"
+[ "$(blocks "$RUN_ID")" = 1 ] && [ "$(grep -c '^### .* beta .* beta-20261115-230000 — merged$' "$LOG")" = 1 ] || fail "(x) not both blocks"
+awk -v a="alfa AB-1600 $RUN_ID" '/^### / { cur = index($0, a) ? "alfa" : (index($0, "beta-20261115-230000") ? "beta" : "") }
+  /alfa-marker/ && cur != "alfa" { bad = 1 } /beta-marker/ && cur != "beta" { bad = 1 } END { exit bad }' "$LOG" \
+  || fail "(x) interleaved blocks"
+rm -rf "$WORK/main-beta"
+echo "team-smoke-23: (x) log lock OK"
+
+# ---- (y) owns: the global TeamLead's policy log skips runs with their own lead ----------------------
+run "$MAIN" bash .claude/lib/team-lead.sh owns alfa; expect 0 "" "(y) a run with its own lead"
+jq '.run = "alfa-older"' "$TD/teamlead.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/teamlead.json"
+run "$MAIN" bash .claude/lib/team-lead.sh owns alfa; expect 1 "" "(y) a run without one"
+run "$MAIN" bash .claude/lib/team-lead.sh log-append alfa merged; expect 0 "no TeamLead in run" "(y) no lead, no block"
+echo "team-smoke-23: (y) owns OK"
+
+# ---- (z) the lead writes its notes, never memory --------------------------------------------------
+setup_run alfa-20261115-235900; HOOK="$CLONE/.claude/hooks/guard-teamlead-write.sh"
+gp() { jq -cn --arg f "$1" '{session_id: "sid-lead", tool_name: "Write", tool_input: {file_path: $f}}'; }
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(gp "$CLONE/.agents/memory/decisions.md")"; expect 2 "" "(z) memory write refused"
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(gp "$RD/teamlead-notes.md")"; expect 0 "" "(z) notes write allowed"
+echo "team-smoke-23: (z) notes yes, memory no OK"
 unset STUB_ON_HAS_SESSION CANCEL_AT
 
 echo "team-smoke-23: OK"

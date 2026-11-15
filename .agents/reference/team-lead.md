@@ -335,3 +335,37 @@ runs again.
   through `check_pr`). The plan check of round 1 does not apply. The coder prompt in round ≥ 2 fixes
   exactly the order's items, pushes to the same branch and records `done --pr <round 1's PR>`; the
   qa's publish step is a no-op on a published PR.
+
+## 10. Notes and the shared log
+
+- **Notes:** `runs/<run>/teamlead-notes.md`, one file per run at the run root (not per round), read
+  by every round's wrapup. `team-lead.sh notes-init <team>` creates it at each lead launch when
+  absent, with five sections: `## Order ambiguities`, `## No-rule questions`, `## Gate misses`,
+  `## Operator cases`, `## Late answers`. The lead writes the rest as things happen, in its own
+  words.
+  - `decision open` adds `- d-<n> <question> — tuning: pending` under `## Operator cases` (the
+    one-line question, cut to 120 characters as in the verdict message).
+  - `decision answer … --tuning rule|TeamLead|none --why "<line>"` completes it to
+    `— tuning: <x> — <why>`; both flags are required when the lead records the answer (a terminal
+    answer may leave the tuning pending for the lead).
+  - An answer to a withdrawn decision is refused (exit 4) and added under `## Late answers`.
+  - **Never in the notes:** credentials, tokens, `.env` values, a full prompt, a file's content or a
+    transcript excerpt. The notes leave the clone (the shared log), so they hold one-line summaries
+    only.
+- **Shared log:** `team-lead.sh log-append <team> merged|closed` appends one block
+  `### <UTC> <team> <ticket> <run> — <outcome>` plus the notes to `<main>/.agents/team/teamlead-log.md`.
+  The main checkout is the one `teamlead.json main_root` names, from either side, and it must be a
+  checkout with `.agents/`. The block is built aside and appended under the `mkdir` lock
+  `teamlead-log.lock` (30 s wait); `runs/<run>/log-appended` makes it once per run. A run without
+  its own lead appends nothing.
+  - `team-integrate.sh` calls it before finalizing the lead, on both success exits (`integrated:`
+    and `already integrated:`); `close_run` calls it before exit 8. A log failure warns and never
+    fails the merge or the close; a run closed and resumed, or integrated twice, appends nothing
+    the second time.
+  - The log replaces `teamlead-policy-log.md` for runs with a lead: `team-lead.sh owns <team>`
+    exits 0 for such a run, and the global TeamLead writes no policy line for it (`/monitor` →
+    Policy log). Runs without a lead keep the policy log.
+- **Wrapup:** with a lead, the wrapup's menus (groups (A) and (B)) are answered by the lead in the
+  wrapup window. A `decisions.md`, `patterns.md` or `index.md` entry gets a Codex opinion first
+  (`codex-bg.sh`, prompt text only, as in Answering). The wrapup stays the only writer of
+  `.agents/memory/`: the lead's write guard still refuses memory paths.

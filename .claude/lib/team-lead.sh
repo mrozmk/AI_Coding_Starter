@@ -7,11 +7,14 @@
 #        bash .claude/lib/team-lead.sh digest-check <team> <spec|plan path>
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
+#        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
 #   pending lists the lead's open items — pending decisions first, then stop, gate, attention,
 #   inbox, oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
-#   lead. digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
+#   lead. notes-init creates runs/<run>/teamlead-notes.md (five headings) when absent; log-append
+#   appends the notes once per run (runs/<run>/log-appended) to <main>/.agents/team/teamlead-log.md;
+#   owns exits 0 when the team's current run has its own TeamLead (teamlead.json run). digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
 #   when no path the plan names maps to a routed domain (.claude/memory-domains.json); else 1.
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
 #   .claude/team/sessions/TeamLead-run.settings.json unioned with the project and local deny/ask
@@ -21,7 +24,7 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
@@ -170,6 +173,53 @@ finalize() {
   echo "finalized: $1 ${RUN:-none} $2"
 }
 
+# The lead's notes (team-lead.md §10): one file per run at the run root, read by every round's wrapup.
+NOTES_HEADINGS="## Order ambiguities|## No-rule questions|## Gate misses|## Operator cases|## Late answers"
+notes_init() {
+  local f h
+  resolve "$1"
+  [ -n "$RUN" ] || { echo "error: no current run" >&2; exit 4; }
+  f="$TD/runs/$RUN/teamlead-notes.md"; mkdir -p "$(dirname "$f")"
+  if [ ! -f "$f" ]; then
+    ( IFS='|'; for h in $NOTES_HEADINGS; do printf '%s\n\n' "$h"; done ) > "$f.tmp" && mv "$f.tmp" "$f"
+  fi
+  echo "$f"
+}
+
+# log_append <team> <merged|closed> — the run's notes as one block of the shared log in the main
+# checkout, once per run. The block is built aside and appended under a mkdir lock, so blocks of
+# clones finishing at once never interleave.
+log_append() {
+  local outcome="$2" rd log lock tmp waited=0 max
+  resolve "$1"
+  case "$outcome" in merged|closed) ;; *) usage ;; esac
+  [ -n "$RUN" ] && [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ] \
+    || { echo "no TeamLead in run ${RUN:-none} — nothing to append"; return 0; }
+  rd="$TD/runs/$RUN"
+  [ ! -e "$rd/log-appended" ] || { echo "teamlead log: already appended for $RUN"; return 0; }
+  [ -n "$MAIN" ] && [ -d "$MAIN/.agents" ] && git -C "$MAIN" rev-parse --git-dir >/dev/null 2>&1 \
+    || { echo "error: main checkout '${MAIN:-none}' is not a checkout with .agents/" >&2; exit 1; }
+  mkdir -p "$MAIN/.agents/team"
+  log="$MAIN/.agents/team/teamlead-log.md"; lock="$MAIN/.agents/team/teamlead-log.lock"
+  tmp="$rd/.teamlead-log-block.tmp"
+  { echo "### $(team_utc) $1 $(jq -r '.ticket // "-"' "$TD/team.json") $RUN — $outcome"; echo
+    if [ -s "$rd/teamlead-notes.md" ]; then cat "$rd/teamlead-notes.md"; else echo "(no notes)"; fi
+    echo; } > "$tmp"
+  max=$(( ${TEAM_LOG_LOCK_SECS:-30} * 5 ))
+  until mkdir "$lock" 2>/dev/null; do
+    [ "$waited" -lt "$max" ] || { rm -f "$tmp"; echo "error: $lock held for ${TEAM_LOG_LOCK_SECS:-30}s" >&2; exit 1; }
+    sleep 0.2; waited=$((waited + 1))
+  done
+  cat "$tmp" >> "$log" && team_utc > "$rd/log-appended"
+  rmdir "$lock"; rm -f "$tmp"
+  echo "teamlead log: appended $RUN ($outcome) to $log"
+}
+
+owns() {
+  resolve "$1"
+  [ -n "$RUN" ] && [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ]
+}
+
 # Same union as supervisor-sessions.sh materialize, written into the clone instead of the main
 # checkout's watch/profiles: the lead runs in the clone, the global roles do not.
 materialize() {
@@ -212,6 +262,9 @@ case "$1" in
   digest-check) [ $# -eq 3 ] || usage; digest_check "$2" "$3" ;;
   decision) shift; decision_main "$@" ;;
   diff) [ $# -eq 2 ] || usage; acceptance_diff "$2" ;;
+  notes-init) [ $# -eq 2 ] || usage; notes_init "$2" ;;
+  log-append) [ $# -eq 3 ] || usage; log_append "$2" "$3" ;;
+  owns) [ $# -eq 2 ] || usage; owns "$2" ;;
   end) [ $# -eq 2 ] || usage; end_lead "$2" ;;
   finalize) [ $# -eq 3 ] && [ "$3" = merged ] || usage; finalize "$2" "$3" ;;
   relaunch) [ $# -eq 2 ] || usage; resolve "$2"; touch "$TD/relaunch-lead"

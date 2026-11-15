@@ -42,6 +42,14 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
 9. Write the record (`--pr` is required — the runner compares it with the coder's PR):
    `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --artifacts {{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`
 
+**With a per-run TeamLead** (`.agents/team/teamlead.json` exists): in step 1 also read the lead's
+notes `.agents/team/runs/{{RUN}}/teamlead-notes.md` (one file per run, every round). The TeamLead
+answers groups (A) and (B) of step 7 in this window; it answers a (B) item only after its Codex
+opinion, so wait for that answer. There is no Advisor escalation, no `Advisor no-reply` skip and no
+`## Deferred memory (B)`. Step 5's `Supervised decisions:` line counts the authority answers in
+`.agents/team/runs/{{RUN}}/answers.md` — `<n> (class: a, teamlead: b, operator: c)` from their
+`[authority …]` tags — not tiers. Without that file the rules below apply unchanged.
+
 Supervision rules for steps 5–8 (every tracker; `.agents/reference/team-decision-model.md` §3):
 
 - `Supervised decisions:` in step 5 also counts `fallback: f` — the `TeamLead-fallback` answers
