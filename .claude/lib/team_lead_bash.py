@@ -7,6 +7,7 @@ Refused:
   - a key or text sent into a session: tmux's send-keys/send/paste-buffer, hc keys/send/interrupt,
     session-host.sh keys/type/send to a stage address (<team>-planner|coder|qa|wrapup|cli) — the
     lead never presses a key in a stage window (a human-only prompt is the Operator's there);
+  - team-inbox.sh done for any address but the lead's own team (another inbox is not its to clear);
   - any command that names a protected path, unless it only reads it or is one of the scripts that
     own those files. Protected: everything under the clone's and the main checkout's
     .agents/team/ except the lead's own files under runs/<run>/ (and its round dirs r<n>/), the clone's
@@ -17,6 +18,7 @@ Refused:
 Best effort on command text: a path built at run time can pass (team-lead.md §7, limits).
 """
 import glob
+import json
 import os
 import re
 import sys
@@ -54,6 +56,34 @@ def keys_refusal(w):
             return "TeamLead never presses a key in a stage window (session-host.sh %s %s)" % (
                 rest[0], rest[1])
     return None
+
+
+def inbox_refusal(w, clone):
+    """The reason a team-inbox.sh call marks another address's message done, or None."""
+    name = os.path.basename(w[0]) if w else ""
+    if name == "team-inbox.sh":
+        rest = w[1:]
+    elif name in ("bash", "sh"):
+        # Shell options first (`bash -x …/team-inbox.sh`), then the script.
+        i = next((k for k, x in enumerate(w[1:], 1) if not x.startswith("-")), len(w))
+        if os.path.basename(w[i] if i < len(w) else "") != "team-inbox.sh":
+            return None
+        rest = w[i + 1:]
+    else:
+        return None
+    if rest[:1] == ["--main"]:
+        rest = rest[2:]
+    if rest[:1] != ["done"]:
+        return None
+    try:
+        with open(os.path.join(clone, ".agents", "team", "team.json")) as f:
+            own = json.load(f).get("team") or ""
+    except (OSError, ValueError, AttributeError):
+        own = ""
+    if own and rest[1:2] == [own]:
+        return None
+    return "TeamLead marks only its own team's inbox done (team-inbox.sh done %s <file>)" % (
+        own or "<team>")
 
 
 class Paths:
@@ -107,7 +137,7 @@ def check(clone, run, main, cmd):
             bases += [os.path.realpath(os.path.join(b, os.path.expanduser(w[1]))) for b in bases]
     for words in cmds:
         w = c.argv_plain(words)
-        why = keys_refusal(w) or keys_refusal(c.shell_words(words))
+        why = keys_refusal(w) or keys_refusal(c.shell_words(words)) or inbox_refusal(w, clone)
         if why:
             return why
         if not any(paths.hit(x, bases) for x in words):

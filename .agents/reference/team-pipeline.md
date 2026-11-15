@@ -33,9 +33,13 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
 - **Model and effort per role** come from `.claude/team/roles.json` (default: Opus [1M] for all; effort
   planner high, coder medium, qa high). The runner reads it from the main checkout, so a local edit
   applies at the next role launch; commit it to change the default. The qa role's
-  `/check-implementation` still reviews inline on the role's own model: the pinned finder agents
-  (`.claude/agents/correctness-reviewer.md`, `structure-reviewer.md`, checked by
-  `.claude/lib/finder-model.sh`) ship ready, but spawning them in parallel is a planned step. Codex reviews inside
+  `/check-implementation` spawns the two pinned finders in parallel (`correctness-reviewer`,
+  `structure-reviewer`; models and efforts in their agent files), proves their model and effort with
+  `.claude/lib/finder-model.sh`, and applies their findings itself. When a pinned model is
+  rate-limited or unavailable twice, the finder re-runs on the qa role's own model
+  (`workflow.finder_fallback`, default `session`; `off` stops the run); the QA report's `Warnings:`
+  and the PR description name every fallback. So the qa model in `roles.json` drives the apply, the
+  gate and that fallback, not the finders. Codex reviews inside
   `/brainstorm`, `/plan-feature` and `/check-implementation` run on the project profile, which the
   runner exports per role session (`CODEX_HOME`) from `.claude/codex-profile`; their config is
   `$CODEX_HOME/config.toml`. A role launched before that change keeps the environment it started

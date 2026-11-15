@@ -376,7 +376,7 @@ The QA report's free text records `Load: start … end … (waited …s)` for ea
 | `/brainstorm` | Step 8.8 rule → notes `## Learnings`, not `patterns.md`; Step 9 with a TeamLead commits the `Draft` spec, records `review` and waits for the spec gate (`Approved (TeamLead, <date>)`); without one it auto-approves unless a rethink signal and continues in the same turn |
 | `/plan-feature` | grill memory update and Step 7.9 → notes `## Learnings` |
 | `/execute` | Step 7 skipped (→ notes); routine deviation → `## Unattended decisions`; material → `TEAM-BLOCKED: <question>` before `/commit` |
-| `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks |
+| `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks; a finder `FALLBACK` line → `Warnings:` (§7) and the PR's `## QA`, verbatim |
 | `/commit` | Step 9 memory checkpoint skipped |
 | `/quick-change` | quick planner: Phases 0–2, then the plan file, no code |
 | `/pr-create` | not used by the team roles — Step 7a stops in team mode; the coder (draft) and cli (published) create the PR with `team-pr.sh create` against `team.json` `line` on both providers (§8a) |

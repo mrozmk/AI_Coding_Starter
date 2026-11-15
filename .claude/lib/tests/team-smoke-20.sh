@@ -162,8 +162,18 @@ bash .claude/lib/session-host.sh status alfa-coder
 bash .claude/lib/session-host.sh read alfa-coder --lines 40
 bash .claude/lib/session-host.sh alive alfa-coder
 bash .claude/lib/team-inbox.sh write Supervisor gate --from alfa
+bash .claude/lib/team-inbox.sh --main $MAIN done alfa $MAIN/.agents/team/inbox/alfa/new/20261115T120000Z-Supervisor-collision-answer.md
+bash .claude/lib/team-inbox.sh --main $MAIN list alfa
 hc read t1
 git status
+EOF2
+while IFS= read -r c; do
+  lhook $G "$(bash_p "$c")"; expect 2 "only its own team's inbox done" "(e2) inbox refused: $c"
+done <<EOF2
+bash .claude/lib/team-inbox.sh --main $MAIN done Supervisor $MAIN/.agents/team/inbox/Supervisor/new/x.md
+bash .claude/lib/team-inbox.sh done Supervisor x.md
+bash .claude/lib/team-inbox.sh --main $MAIN done beta x.md
+bash -x $MAIN/.claude/lib/team-inbox.sh --main $MAIN done Supervisor x.md
 EOF2
 lhook $G "$(bash_p 'cd "$X" && echo > answers.md')"; expect 2 "cannot be resolved" "(e2) a cd behind a variable"
 lhook $G "$(bash_p "git status" sid-stale)"; expect 2 "identity not current" "(e2) stale identity fails closed"

@@ -3,6 +3,33 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## `/check-implementation` spawns two parallel finders
+
+**Before:** Step 1 ran `/code-review high --fix` and `/deep-review` inline, one after the other,
+on the session's model; the qa role's run reviewed on the qa model. The finder agents
+`correctness-reviewer` / `structure-reviewer` were team-installed files the command did not use.
+
+**Now:** Step 1ab spawns both finders in parallel, read-only, on the models and efforts pinned in
+their agent files; the session applies their reports (bugs first, then structure) and stays the
+only mutator. `tree-fingerprint.sh` proves the finders wrote nothing, `finder-model.sh` proves the
+model and effort. A finder whose pinned model fails twice on a rate or usage limit, or is
+unavailable, re-runs once as its `-fallback` agent on the session's model; the report, the QA
+report's `Warnings:` and the PR description name it. The agents, their fallbacks and
+`tree-fingerprint.sh` are core now, not team-installed.
+
+**Cost:** two subagents per iteration (Opus 5.5 `xhigh` and Fable 5.1 `high`, up to 3 iterations)
+instead of one inline pass of each skill: faster wall-clock, more tokens.
+
+**Action:**
+- Sync `.claude/agents/{correctness,structure}-reviewer{,-fallback}.md`,
+  `.claude/lib/finder-model.sh`, `.claude/lib/tree-fingerprint.sh` and
+  `.claude/commands/check-implementation.md` (a `shared` file: merge by hand).
+- **Start a new session** before the first `/check-implementation` after the sync: a session keeps
+  the agent definitions it loaded, and the command stops with `Reviewer agents not loaded`
+  otherwise. Restart the role sessions for the same reason.
+- Optional: `workflow.finder_fallback: "off"` in `.claude/project-profile.json` makes a limited or
+  unavailable pinned model a STOP instead of the session-model fallback (absent = `session`).
+
 ## Session host, `/roles` and restore (#27–#36)
 
 **Before:** role sessions and team stages ran in tmux only. `supervisor-sessions.sh` (and
@@ -65,6 +92,7 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
   `~/.agent-ops/worker`, give the Worker's Codex host write access to the new path and drop the old
   one — or set `WORKER_ARTIFACTS` to a path you choose.
 - Replace `/sessions-up` and the other four commands in your own notes and scripts with `/roles`.
+
 
 ## `notify.sh` is the only path to the Operator
 

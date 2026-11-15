@@ -400,7 +400,7 @@ Only when both assertions pass do you carry `FILES_TOUCHED` to Step 5.2.
 
 ### Step 5.1b — Quality refinement (review + deep-review)
 
-Runs on **every** step, after execution reconciles clean (5.1-recon) and before the verifier gate (5.2). This is where the pipeline applies the same `code-review → deep-review` passes that `/check-implementation` runs standalone — fixing correctness bugs and applying structural cleanups *before* the independent gate judges the result. The verifier (Step 5.2) stays read-only, so the **fixer** (refiner) and the **judge** (verifier) are always different agents — the gate never grades its own work.
+Runs on **every** step, after execution reconciles clean (5.1-recon) and before the verifier gate (5.2). This is where the pipeline applies the `code-review → deep-review` passes (`/check-implementation` runs the same two reviews standalone, as read-only finders whose reports it applies) — fixing correctness bugs and applying structural cleanups *before* the independent gate judges the result. The verifier (Step 5.2) stays read-only, so the **fixer** (refiner) and the **judge** (verifier) are always different agents — the gate never grades its own work.
 
 This step is not a loop: the refiner runs **once** per step. The verifier's fix iterations (5.2) are correctness-only and handled by the executor — re-refining on every fix iteration is deliberately not done (it would re-spend `code-review`/`deep-review` tokens on the bulk of the code that is already clean).
 

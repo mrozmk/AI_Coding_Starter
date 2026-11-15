@@ -102,7 +102,7 @@ Exactly four events reach the Supervisor from a team, each an atomic file, then 
 | `session_dead` | runner | the lead died, or a stage died with partial work (`ref` = its `.session`) |
 
 Layout (`team-inbox.sh`): `<main>/.agents/team/inbox/<address>/{tmp,new,done}/`, files
-`<UTC %Y%m%dT%H%M%SZ>-<from>-<event>.md`, written to `tmp/` and renamed into `new/`. Frontmatter
+`<UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md`, written to `tmp/` and hard-linked into `new/` (never over an existing name: a clash takes the next `-n`). Frontmatter
 `id` (the file stem), `from`, `to`, `event`, `ticket`, `run`, `ref`, then a one-line body and an
 optional `--message` line. A team
 clone writes with `--main <teamlead.json main_root>`, never its own git root. A team address
@@ -121,7 +121,10 @@ result goes to stderr (`ring: <rc>`), never to the exit code: a blocked (9), gon
 `inbox-count.sh` prints `inbox: N waiting — …` at the recipient's next prompt.
 
 **A message may arrive twice after a crash** (a handler that dies after acting but before `done`).
-Every handler moves a file to `done/` only after acting, and acting twice is harmless.
+Every handler moves a file to `done/` only after acting, and acting twice is harmless. The
+per-run lead sees its team's messages in `pending` (this run's and run-less ones only, so an old
+run's leftover never reaches the next lead) and clears each with
+`team-inbox.sh --main <main> done <team> <file>`; its Bash guard refuses `done` for any other address.
 
 ## 4. Gates
 

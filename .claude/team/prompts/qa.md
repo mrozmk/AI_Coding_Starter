@@ -26,6 +26,8 @@ Nobody answers questions in this session: `AskUserQuestion` is not available.
    tool timeout.
 5. Write `{{RUN_DIR}}/qa-report-{{ATTEMPT}}.md` exactly per team-mode.md §7
    (`run: {{RUN}}`, `attempt: {{ATTEMPT}}`, `output_rev:` = `git rev-parse HEAD`).
+   Every finder `FALLBACK` part of `/check-implementation`'s `Finders:` line goes verbatim into
+   `Warnings:`.
    After the keyed lines add one free-text line per gate run: `Load: start <1m> end <1m>
    (waited <n>s)`, from the gate's "load avg" and "lock waited" lines.
 6. Verdict `❌ Escalated` or any rethink signal →
@@ -34,7 +36,7 @@ Nobody answers questions in this session: `AskUserQuestion` is not available.
    - Build `{{RUN_DIR}}/pr-description.md`: the current body from
      {{PR_BODY_GET}}, with
      `## Unattended decisions` and `## Learnings` replaced from the notes and a `## QA` section from
-     the report (gate outcomes, test counts, cross-model outcome). Keep the template checklist;
+     the report (gate outcomes, test counts, cross-model outcome, every finder `FALLBACK` line verbatim). Keep the template checklist;
      stay ≤ 4000 characters by trimming prose.
    - {{PR_BODY_SET}}
    - {{PR_PUBLISH}}

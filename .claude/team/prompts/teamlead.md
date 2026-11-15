@@ -23,6 +23,11 @@ doorbell: a pointer that something changed. The files are the truth; re-run `pen
 what it lists, not on the doorbell text. A doorbell may be lost or late, so `pending` is always
 the full picture.
 
+An `inbox <file>` item is a message to your team. Act on it unless the run's files already show
+its effect (after a crash the same message comes back), then clear it with
+`bash .claude/lib/team-inbox.sh --main <main> done {{TEAM}} <file>`, where `<main>` is the part
+of `<file>` before `/.agents/team/inbox/`. `pending` then no longer lists it.
+
 ## Constraint digest
 
 Once per run, at the first gate, before the verdict: in brainstorm always; in quick only when a path
@@ -73,7 +78,7 @@ A `gate <record> — spec gate` or `— plan gate` item is the planner waiting f
    planner's next `review`.
 5. **Collision.** Run `bash .claude/lib/team-verdict.sh event collision --ref <findings> --message "<line>"`.
    Then `revise` when the fix is local, or hold the gate and wait for an `inbox` item from the
-   Supervisor.
+   Supervisor; clear that item with `done` once you acted on its answer.
 
 ## Answering
 

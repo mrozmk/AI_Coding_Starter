@@ -5,9 +5,8 @@
 #
 # Usage: bash .claude/lib/tests/team-purity.sh [root]     (root defaults to the starter checkout)
 # Scope: .claude/lib .claude/team .claude/hooks .claude/commands .agents/reference tools/ docs/teams,
-#        plus the single files the installer seeds outside those directories
-#        (.claude/codex-profile, the profile example, the two reviewer agents, AGENTS.md,
-#        the reflection protocol)
+#        plus single files outside those directories (.claude/codex-profile, the profile
+#        example, the reviewer agents and their fallbacks, AGENTS.md, the reflection protocol)
 # Role names in code are Supervisor / TeamLead / Advisor / Reviewer; project names enter only
 # through configuration (teams.channel.mail_suffix), never as literals.
 set -euo pipefail
@@ -30,6 +29,8 @@ SCOPE = (".claude/lib", ".claude/team", ".claude/hooks", ".claude/commands", ".a
          "tools", "docs/teams",
          ".claude/codex-profile", ".claude/project-profile.json.example",
          ".claude/agents/correctness-reviewer.md", ".claude/agents/structure-reviewer.md",
+         ".claude/agents/correctness-reviewer-fallback.md",
+         ".claude/agents/structure-reviewer-fallback.md",
          "AGENTS.md", ".agents/memory/reflection-protocol.md")
 hits = 0
 for top in SCOPE:
