@@ -13,6 +13,8 @@ You are the **structure finder** of `/check-implementation` Step 1ab. You run `/
 
 `/deep-review` runs inline in this agent, so `model:` and `effort:` above are what it gets. Fable is the deliberate exception to the pipeline's "one model" default (`.claude/docs/guide.md` → Model & effort strategy): the structure judge benefits from the stronger model, and a judge is never the place to save tokens.
 
+When this pinned model is rate-limited or unavailable twice, the caller re-runs the review as `@structure-reviewer-fallback` on the session's model, with this file's body as its contract (`workflow.finder_fallback`; `off` stops instead). Keep the body self-contained for that reason.
+
 ## Inputs
 
 The parent passes:

@@ -6,6 +6,7 @@
 # Usage:
 #   bash .claude/lib/finder-model.sh <agent-type>=<agentId>…
 #     e.g. correctness-reviewer=a1b2c3 structure-reviewer=d4e5f6
+#          correctness-reviewer=a1b2c3 structure-reviewer-fallback=d4e5f6
 #     exit 0 every finder matches · 1 mismatch (`<agent>: seen …, expected …` on stdout)
 #     2 no / ambiguous / unreadable evidence (the gate stops)
 #
@@ -19,6 +20,8 @@
 # The frontmatter is the single source of truth; the harness may substitute a model silently, and
 # a preloaded skill runs at the agent's effort, so both are read from the transcript's
 # `type=="assistant"` records (`.message.model`, top-level `.effort`), parsed with jq.
+# `model: inherit` (the `*-fallback` finders) expects the main session's model: the last real
+# assistant model in the session's own transcript `<sid>.jsonl`, next to its `subagents/` dir.
 set -uo pipefail
 
 [ $# -ge 1 ] || { echo "usage: finder-model.sh <agent-type>=<agentId>…"; exit 2; }
@@ -39,6 +42,7 @@ shopt -u nullglob
 [ "${#hits[@]}" -eq 1 ] \
   || { echo "finder-model.sh: ambiguous session $sid: ${#hits[@]} subagent dirs"; exit 2; }
 dir="${hits[0]}"
+main_model=""  # resolved once, on the first `model: inherit` finder
 
 frontmatter() {  # $1 agent file, $2 key → value or empty
   sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2:[[:space:]]*//p" | head -1
@@ -85,6 +89,19 @@ for arg in "$@"; do
   want_model=$(frontmatter "$file" model); want_effort=$(frontmatter "$file" effort)
   [ -n "$want_model" ] && [ -n "$want_effort" ] \
     || { echo "$type: frontmatter lacks model: or effort:"; exit 2; }
+  via=""
+  if [ "$want_model" = inherit ]; then
+    if [ -z "$main_model" ]; then
+      # Streamed, not slurped: the main transcript is the session's whole history (tens of MB),
+      # and it is live — a half-written last line must not discard the records before it.
+      main_model=$({ jq -r 'select(.type == "assistant"
+          and (.message.model // "<synthetic>") != "<synthetic>") | .message.model' \
+        "${dir%/subagents}.jsonl" 2>/dev/null || true; } | tail -n 1)
+      [ -n "$main_model" ] \
+        || { echo "$type: model: inherit, but the session's own model is unreadable"; exit 2; }
+    fi
+    want_model="$main_model"; via=", fallback: session model"
+  fi
 
   meta="$dir/agent-$id.meta.json"; jsonl="$dir/agent-$id.jsonl"
   [ -f "$meta" ] && [ -f "$jsonl" ] || { echo "$type: no meta/transcript for agent $id"; exit 2; }
@@ -112,7 +129,7 @@ for arg in "$@"; do
     echo "$type: seen effort '$seen_effort', expected '$want_effort'"; bad=1
   fi
   if [ "$bad" -eq 0 ]; then
-    echo "$type: $seen_model / $seen_effort — OK ($(basename "$jsonl"))"
+    echo "$type: $seen_model / $seen_effort — OK ($(basename "$jsonl")$via)"
   else
     rc=1
   fi

@@ -13,6 +13,8 @@ You are the **correctness finder** of `/check-implementation` Step 1ab. You run 
 
 `effort: xhigh` is pinned in the frontmatter **and** passed as the skill argument. A skill preloaded through `skills:` runs inline in this agent (CLI 2.1.280 — a smoke transcript showed `effort: medium` with the frontmatter unpinned), so the frontmatter is what sets the effort; the argument covers a CLI that forks the skill instead. Keep both, and keep `model:` pinned — `finder-model.sh` checks the transcript against this frontmatter after every run.
 
+When this pinned model is rate-limited or unavailable twice, the caller re-runs the review as `@correctness-reviewer-fallback` on the session's model, with this file's body as its contract (`workflow.finder_fallback`; `off` stops instead). Keep the body self-contained for that reason.
+
 ## Inputs
 
 The parent passes:

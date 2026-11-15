@@ -4,7 +4,7 @@
 # Never reads real transcripts: every case runs with a fixture HOME and CLAUDE_CONFIG_DIR.
 set -u
 SCRIPT="$(cd "$(dirname "$0")/.." && pwd)/finder-model.sh"
-EXPECTED_CASES=36
+EXPECTED_CASES=44
 [ -f "$SCRIPT" ] || { echo "finder-model-test: FAIL — $SCRIPT missing"; exit 1; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/finder model.XXXXXX") \
   || { echo "finder-model-test: FAIL — mktemp"; exit 1; }
@@ -21,6 +21,7 @@ agent() {  # <type> <model> [effort]
 agent correctness-reviewer "$OPUS" high || die "agent file"
 agent structure-reviewer "$FABLE" high || die "agent file"
 agent noeffort-reviewer "$OPUS" || die "agent file"
+agent structure-reviewer-fallback inherit high || die "agent file"
 git -C "$R" init -q && git -C "$R" add .claude \
   && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m init || die "git repo"
 root=$(git -C "$R" rev-parse --show-toplevel) || die "toplevel"
@@ -178,6 +179,43 @@ run 0 "session launched from a subdirectory" "$CFG" sess-sub correctness-reviewe
 mk "$CFG" sess-dup d1 correctness-reviewer "$OPUS" high
 PROJ="$mapped-other" mk "$CFG" sess-dup d1 correctness-reviewer "$OPUS" high
 run 2 "session id under two project dirs" "$CFG" sess-dup correctness-reviewer=d1
+
+# `model: inherit` (a *-fallback finder) expects the main session's model, read from <sid>.jsonl.
+main() {  # <sid> <model>… — the session's own transcript, one assistant record per model
+  local f="$CFG/projects/$mapped/$1.jsonl" m; shift
+  : > "$f" || die "main transcript"
+  for m in "$@"; do
+    jq -n -c --arg m "$m" '{type:"assistant",message:{model:$m,content:[]}}' >> "$f" || die "main"
+  done
+}
+mk "$CFG" sess-fb fb1 structure-reviewer-fallback "$OPUS" high - handback
+main sess-fb claude-sonnet-5-5 "$OPUS" '<synthetic>'
+run 0 "fallback on the session's model" "$CFG" sess-fb structure-reviewer-fallback=fb1
+grep -q 'fallback: session model' <<<"$(cd "$R" && env -u CLAUDE_CONFIG_DIR HOME="$H" \
+  CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CODE_SESSION_ID=sess-fb bash "$SCRIPT" \
+  structure-reviewer-fallback=fb1 2>&1)" \
+  || { echo "FAIL [fallback OK line names the session model]"; fail=1; }
+mk "$CFG" sess-fb a9 correctness-reviewer "$OPUS" high
+run 0 "pinned finder and fallback in one call" "$CFG" sess-fb \
+  correctness-reviewer=a9 structure-reviewer-fallback=fb1
+mk "$CFG" sess-fb fb2 structure-reviewer-fallback "$FABLE" high - handback
+run 1 "fallback on another model than the session's" "$CFG" sess-fb structure-reviewer-fallback=fb2
+mk "$CFG" sess-fb fb3 structure-reviewer-fallback "$OPUS" medium - handback
+run 1 "fallback effort mismatch" "$CFG" sess-fb structure-reviewer-fallback=fb3
+mk "$CFG" sess-nomain fb4 structure-reviewer-fallback "$OPUS" high - handback
+run 2 "fallback, session transcript missing" "$CFG" sess-nomain structure-reviewer-fallback=fb4
+main sess-other "$OPUS"
+mk "$CFG" sess-nomain2 fb5 structure-reviewer-fallback "$OPUS" high - handback
+run 2 "fallback: another session's transcript does not count" "$CFG" sess-nomain2 \
+  structure-reviewer-fallback=fb5
+mk "$CFG" sess-live fb7 structure-reviewer-fallback "$OPUS" high - handback
+main sess-live "$OPUS"
+printf '{"type":"assistant","message":{"mod' >> "$CFG/projects/$mapped/sess-live.jsonl" || die "live"
+run 0 "fallback, session transcript with a half-written last line" "$CFG" sess-live \
+  structure-reviewer-fallback=fb7
+mk "$CFG" sess-syn fb6 structure-reviewer-fallback "$OPUS" high - handback
+main sess-syn '<synthetic>'
+run 2 "fallback, session transcript only <synthetic>" "$CFG" sess-syn structure-reviewer-fallback=fb6
 
 [ "$n" -eq "$EXPECTED_CASES" ] \
   || { echo "finder-model-test: FAIL — ran $n cases, expected $EXPECTED_CASES"; exit 1; }

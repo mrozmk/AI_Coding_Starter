@@ -23,7 +23,7 @@ The load-bearing move is **where the review sits**: before the code, not after. 
 ## What this is NOT
 
 - **`/execute`** — runs a written plan file from `.agents/plans/active/`. `/quick-change` has no plan file, by design; the plan lives in the conversation and dies with it.
-- **`/check-implementation`** — the full quality loop (code-review → deep-review → gates → design gate → cross-model, up to 3 iterations) over already-written code. `/quick-change` reviews **before** writing, then runs one low-effort correctness pass and one structural pass after — no loop, no design gate, no second model on the diff. If a change deserves that loop, it does not belong in this lane (Phase 0).
+- **`/check-implementation`** — the full quality loop (two parallel pinned-model finders → apply → gates → design gate → cross-model, up to 3 iterations) over already-written code. `/quick-change` reviews **before** writing, then runs one low-effort correctness pass and one structural pass after — no loop, no design gate, no second model on the diff. If a change deserves that loop, it does not belong in this lane (Phase 0).
 - **`/plan-feature`** — produces a durable, grilled plan artifact. `/quick-change` produces a disposable one.
 
 > **Writes nothing to `.agents/`** — except the invoked Task's `Status`/`Ref` cells in `.agents/backlog.md` after green gates (Phase 6). No spec, no plan, no handoff document; with the tracker-comments opt-in on, a ticket adds only its hash snapshot `.agents/handoffs/<KEY>.ticket.json` (Phase 0, locally excluded, never committed). The Codex brief goes to the session scratchpad. Beyond those two cells, the only thing this command changes in the repo is the code you asked for. (Memory reflection is deliberately omitted too — a change small enough for this lane rarely teaches a fresh Claude anything, and `/quick-change` should not develop a paperwork tail.)
@@ -174,7 +174,7 @@ Tests per the plan's test line and `CLAUDE.md` → Validation test policy. **In 
 
 ## Phase 3.5 — Correctness (`/code-review`, low effort)
 
-Run `/code-review` at **`low` effort** over the files this run touched (Phase 0's snapshot). **Solo:** apply what it confirms — the skill's `--fix` behaviour, same fixer channel `/check-implementation` uses. **Delegated:** run it **without** `--fix` on `git -C <worker-clone> diff <base SHA>` and relay the confirmed findings to the worker for Phase 5 (this replaces the `correctness-reviewer` agent on hosts that do not have it).
+Run `/code-review` at **`low` effort** over the files this run touched (Phase 0's snapshot). **Solo:** apply what it confirms — the skill's `--fix` behaviour (`/check-implementation` instead runs read-only finders and applies their reports itself; this lane keeps the one inline pass). **Delegated:** run it **without** `--fix` on `git -C <worker-clone> diff <base SHA>` and relay the confirmed findings to the worker for Phase 5 (this replaces the `correctness-reviewer` agent on hosts that do not have it).
 
 ### When `/code-review` returns no opinion — one fallback, then STOP
 

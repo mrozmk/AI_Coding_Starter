@@ -36,12 +36,18 @@
 !.claude/hooks/lib/guard_destructive_sql.py
 # core, not team: the stage-end marker the core pipeline commands run (a no-op without the stage hook)
 !.claude/lib/costs/runtime-mark.sh
+# core, not team: the core /check-implementation's two finders, their fallbacks and the proof that
+# read-only reviewers wrote nothing (delegated /quick-change uses it too)
+!.claude/agents/correctness-reviewer.md
+!.claude/agents/correctness-reviewer-fallback.md
+!.claude/agents/structure-reviewer.md
+!.claude/agents/structure-reviewer-fallback.md
+!.claude/lib/tree-fingerprint.sh
 # the human overview of the team layer stays in the starter; projects get the .agents/reference contracts
 !docs/teams/**
 
 # --- shared: the project's own copy wins; a difference is reported for a hand merge --------
 shared .claude/lib/codex-bg.sh
-shared .claude/lib/tree-fingerprint.sh
 shared AGENTS.md
 shared .claude/commands/quick-change.md
 shared .claude/commands/check-implementation.md
@@ -54,8 +60,6 @@ own .agents/reference/security-egress.md
 own .agents/reference/team-mode.md
 own .agents/reference/team-pipeline.md
 own .agents/reference/worker-clone.md
-own .claude/agents/correctness-reviewer.md
-own .claude/agents/structure-reviewer.md
 own .claude/commands/monitor.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md

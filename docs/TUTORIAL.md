@@ -325,7 +325,7 @@ Now design the feature:
 <details>
 <summary>💡 TIP — how this differs from a plain check</summary>
 
-There's also `/gates:verify-implementation` — but it only **reports** problems, it doesn't fix them. `/check-implementation` **fixes** (code-review --fix → deep-review → gate), in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
+There's also `/gates:verify-implementation` — but it only **reports** problems, it doesn't fix them. `/check-implementation` **fixes**: two reviewers look for bugs and for structure problems in parallel, your session applies what they found (bugs first), then the gate runs, in a loop. If you have `codex` installed, at the end a second, independent model reviews the code "fresh" — it often catches what the first model missed. It deliberately doesn't commit, so the last word is yours.
 </details>
 
 ---
