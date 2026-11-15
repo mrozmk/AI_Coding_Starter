@@ -45,7 +45,14 @@ team_actions() {
 # role_session <session> → alive | absent | unknown. A failed probe alone is not proof of absence
 # (socket or protocol errors after a tmux upgrade): only these two messages are.
 role_session() {
-  local out
+  local out m rc
+  m="$(team_main)" || m=""
+  # A Herdr record: the driver's alive (0 alive · 3 gone · 1 the probe failed).
+  if [ -n "$m" ] && [ "$(sh_record_get "$m" "$1" backend)" = herdr ]; then
+    out="$(sh_alive_addr "$m" "$1" 2>&1)"; rc=$?
+    case $rc in 0) echo alive ;; 3) echo absent ;; *) err "herdr: $1: ${out:-probe failed}"; echo unknown ;; esac
+    return 0
+  fi
   out="$(sh_tmux has-session -t "=$(team_sess "$1")" 2>&1)" && { echo alive; return 0; }
   case "$out" in
     *"can't find session"*|*"no server running"*) echo absent ;;

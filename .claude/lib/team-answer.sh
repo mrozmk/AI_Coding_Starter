@@ -119,17 +119,72 @@ identity() {
     || refuse 6 "role or attempt changed"
 }
 
+# HB: the target's backend (its registry record). Herdr is driven through the driver's lib calls on
+# the handle (PANE_ID), under this script's own send lock, as tmux is through send-keys.
 send_key() {
-  local i=$((KEYS + 1))
+  local i=$((KEYS + 1)) rc=0
   [ -z "$JOURNAL" ] || echo "$ATTEMPT try $i $*" >> "$JOURNAL"
-  if sh_tmux send-keys -t "$PANE_ID" "$@" 2>/dev/null; then
+  if [ "$HB" = herdr ]; then
+    # hc types text only by pasting and submitting it, which would answer an open prompt.
+    [ "$1" != -l ] || stop 5 "typing into an open prompt is not supported under herdr — answer in the window"
+    sh_herdr_keys "$PANE_ID" "$@" 2>/dev/null || rc=$?
+  else
+    sh_tmux send-keys -t "$PANE_ID" "$@" 2>/dev/null || rc=$?
+  fi
+  if [ "$rc" = 0 ]; then
     KEYS=$i; [ -z "$JOURNAL" ] || echo "$ATTEMPT ok $i" >> "$JOURNAL"
     return 0
   fi
   [ "$KEYS" -gt 0 ] || refuse 6 "pane gone"
   echo "error: send-keys failed at key $i — $KEYS keys sent" >&2; exit 4
 }
-type_text() { send_key -l -- "$1"; await_typed "$1"; send_key Enter; }
+type_text() {
+  if [ "$HB" = herdr ]; then herdr_type "$1"; return; fi
+  send_key -l -- "$1"; await_typed "$1"; send_key Enter
+}
+# herdr_type <text> — hc send pastes and submits in one step (the driver prints typed+submitted), so
+# there is no typed-text check and no Enter; delivery is confirmed from the transcript instead: a
+# new user message holding the text (hc may wrap it in an <hc from=…> tag).
+herdr_type() {
+  local i=$((KEYS + 1)) out size=0 n=0 max
+  [ -z "$JOURNAL" ] || echo "$ATTEMPT try $i type (herdr)" >> "$JOURNAL"
+  [ "$T" = - ] || [ ! -f "$T" ] || size="$(wc -c < "$T" | tr -d ' ')"
+  out="$(sh_herdr_type "$PANE_ID" "$1" 2>&1)" || true
+  if [ "$out" != typed+submitted ]; then
+    [ "$KEYS" -gt 0 ] || refuse 6 "type failed: ${out:-no answer}"
+    echo "error: type failed at key $i (${out:-no answer}) — $KEYS keys sent" >&2; exit 4
+  fi
+  KEYS=$i; [ -z "$JOURNAL" ] || echo "$ATTEMPT ok $i" >> "$JOURNAL"
+  [ "$T" != - ] || { echo "typed+submitted (no transcript to confirm)"; return 0; }
+  max=$(( ${TEAM_TYPED_SECS:-5} * 5 ))
+  while [ "$n" -lt "$max" ]; do
+    [ "$(python3 -I -c 'import json, sys
+f = open(sys.argv[1], "rb"); f.seek(int(sys.argv[2])); t = sys.argv[3]; hit = "no"
+for l in f:
+    try: o = json.loads(l)
+    except ValueError: continue
+    if o.get("type") != "user": continue
+    c = (o.get("message") or {}).get("content")
+    s = c if isinstance(c, str) else " ".join(x.get("text", "") for x in c or [] if isinstance(x, dict))
+    if t in s: hit = "yes"; break
+print(hit)' "$T" "$size" "$1" 2>/dev/null)" != yes ] || { echo "typed+submitted (transcript)"; return 0; }
+    sleep 0.2; n=$((n + 1))
+  done
+  stop 6 "typed text not in the transcript after submit"
+}
+# herdr_other <text> — `other` under herdr (owner, 2026-11-15): typing into the open menu is not
+# possible, so deny it (esc, as `no`), wait until the prompt is gone, then the text on the idle input.
+herdr_other() {
+  local n=0 max=$(( ${TEAM_TYPED_SECS:-5} * 5 ))
+  [ -z "$JOURNAL" ] || echo "$ATTEMPT other→deny+message (herdr)" >> "$JOURNAL"
+  echo "other→deny+message (herdr)"
+  send_key Escape
+  while [ "$(sh_herdr_state "$PANE_ID")" = blocked ]; do
+    n=$((n + 1)); [ "$n" -lt "$max" ] || stop 6 "prompt still open after Escape"
+    sleep 0.2
+  done
+  type_text "$1"
+}
 # An Enter sent before Claude Code took in the text is swallowed: wait for a settled frame with it.
 await_typed() {
   local i=0 max prev="" cur
@@ -340,7 +395,8 @@ finish_main() {
   case "$ACT:$SEND" in
     enter:*) send_key Enter ;;
     text:say) type_text "$text" ;;
-    text:other) press_down "$OTHER"; type_text "$text" ;;
+    text:other) if [ "$HB" = herdr ]; then herdr_other "$text"
+                else press_down "$OTHER"; type_text "$text"; fi ;;
   esac
   echo "finish: $ACT — $WHY"
   report_sent "$SEND" finish
@@ -355,6 +411,7 @@ HELD="$(team_send_lock "$TD" "$ROLE" "${TEAM_SEND_LOCK_WAIT_SENDER:-2}" "$OWNER"
 trap 'team_send_unlock "$TD" "$ROLE"' EXIT
 
 GEN="$(team_pane_gen "$name")" || refuse 6 "pane not found"
+HB="$(sh_record_get "$(team_main)" "$name" backend 2>/dev/null)"
 PANE_ID="${GEN%@*}"
 [ -z "$E_PANE" ] || [ "$E_PANE" = "$GEN" ] || refuse 6 "pane generation changed"
 T="$(team_role_transcript "$CLONE" "$(sj session_id)" "$(sj claude_config_dir)")"
@@ -473,7 +530,8 @@ case "$action" in
     type_text "Rejected by the developer${text:+: $text}. Treat it as a material question (team-mode.md §4): write a blocked record and wait." ;;
   say) [ -z "$DRAFT0" ] || clear_draft "$DRAFT0"; type_text "$text" ;;
   pick) press_down "$text"; send_key Enter ;;
-  other) press_down "$OTHER"; type_text "$text" ;;
+  other) if [ "$HB" = herdr ]; then herdr_other "$text"
+         else press_down "$OTHER"; type_text "$text"; fi ;;
   picks) multi_send ;;
 esac
 report_sent "$action" "$action"

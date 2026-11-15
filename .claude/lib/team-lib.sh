@@ -99,22 +99,28 @@ team_sess() {
   sh_target "$m" "$1"
 }
 
-# Session wrappers by address, over the driver. Non-zero = gone or the probe failed, as before.
+# Session wrappers by address, over the driver (the record's backend: tmux or herdr). Non-zero =
+# gone or the probe failed, as before.
+team_main() { sh_main_root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null; }
 team_tmux_alive() {
-  local n; n="$(team_sess "$1")" || return 1
-  sh_tmux has-session -t "=$n" 2>/dev/null   # in this shell, not a $(…): the caller stays tmux's parent
+  local m n; m="$(team_main)" || return 1
+  case "$(sh_record_get "$m" "$1" backend)" in
+    herdr|none) sh_alive_addr "$m" "$1" 2>/dev/null ;;
+    *) n="$(team_sess "$1")" || return 1
+       sh_tmux has-session -t "=$n" 2>/dev/null ;;   # in this shell, not a $(…): the caller stays tmux's parent
+  esac
 }
 
-# Last non-empty lines of a session's pane; empty when the session is gone.
+# Last non-empty lines of a session's screen; empty when the session is gone.
 team_pane() {
-  local n; n="$(team_sess "$1")" || return 0
-  sh_tmux_read "$n" "${2:-15}" 2>/dev/null || true
+  local m; m="$(team_main)" || return 0
+  sh_read_addr "$m" "$1" "${2:-15}" 2>/dev/null || true
 }
 
-# Pane plus scrollback, wrapped lines joined: a long command's start scrolls off the visible pane.
+# Screen plus scrollback, wrapped lines joined: a long command's start scrolls off the visible pane.
 team_pane_history() {
-  local n; n="$(team_sess "$1")" || return 0
-  sh_tmux_history "$n" "${2:-200}" 2>/dev/null || true
+  local m; m="$(team_main)" || return 0
+  sh_read_addr "$m" "$1" --history "${2:-200}" 2>/dev/null || true
 }
 
 # stdin → stdout with labelled secret values masked. Pattern-based: the floor for signals, not a
@@ -141,16 +147,17 @@ team_pane_anchor() {
   printf '%s' "${a:0:160}"
 }
 
-# Usage: team_pane_scroll <pane id> [lines] — the pane plus scrollback (a long command's
-# start scrolls off the visible pane), empty lines dropped. The parser reads this capture.
+# Usage: team_pane_scroll <pane id|herdr handle> [lines] — the screen plus scrollback (a long
+# command's start scrolls off the visible pane), empty lines dropped. The parser reads this capture.
 team_pane_scroll() {
   sh_read_target "$1" --history "${2:-200}" --squeeze 2>/dev/null || true
 }
 
-# Usage: team_pane_gen <address> → "<pane_id>@<session_created>"; a replaced session is a new value.
+# Usage: team_pane_gen <address> → "<pane_id>@<session_created>" (tmux) or "<handle>@<created_ms>"
+# (herdr); a replaced session is a new value. The part before @ is the target team_pane_scroll takes.
 team_pane_gen() {
-  local n; n="$(team_sess "$1")" || return 1
-  sh_gen "$n" 2>/dev/null
+  local m; m="$(team_main)" || return 1
+  sh_gen_addr "$m" "$1" 2>/dev/null
 }
 
 # Usage: team_role_transcript <clone> <session_id> [config dir] → the role's Claude transcript path,
@@ -337,6 +344,8 @@ team_ticket_checks() {
   for tool in "${TEAM_REQUIRED_TOOLS[@]}"; do
     command -v "$tool" >/dev/null 2>&1 || TEAM_PROBLEMS+=("$tool not on PATH (tmux/jq: brew install tmux jq)")
   done
+  # A session host (tmux, or Herdr when chosen): the driver's resolution, not a fixed tool name.
+  local host; host="$(sh_check_host --main "$root" 2>/dev/null)" || TEAM_PROBLEMS+=("${host:-no session host: install tmux or Herdr}")
   if [ "$TEAM_PR_PROVIDER" = azure-devops ] \
     && command -v az >/dev/null 2>&1 && ! az account show >/dev/null 2>&1; then
     TEAM_PROBLEMS+=("az is not logged in — run: az login")

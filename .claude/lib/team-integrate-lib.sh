@@ -85,9 +85,10 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   [ ! -e "$td/lock" ] \
     || { ie_no "the runner still holds $td/lock (pid $(cat "$td/lock/pid" 2>/dev/null || echo none))"
          return 3; }
-  if command -v tmux >/dev/null 2>&1; then
+  local m; m="$(sh_main_root 2>/dev/null)" || m=""
+  if [ -n "$m" ]; then
     for role in ${TEAM_ROLES:-planner coder qa wrapup} cli; do
-      ! sh_tmux has-session -t "=$(sh_target "$(sh_main_root 2>/dev/null)" "$team-$role" 2>/dev/null)" 2>/dev/null \
+      ! sh_alive_addr "$m" "$team-$role" 2>/dev/null \
         || { ie_no "the $role session of $team is still alive"; return 3; }
     done
   fi

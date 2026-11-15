@@ -218,6 +218,67 @@ case "$*" in
   *) exit 1 ;;
 esac
 STUB
+  # Fake herdr-core CLI (session-host driver, Herdr backend). Logs `hc $*`; `run` also writes its argv,
+  # one word per line, to $STUB_HC_RUN_ARGV. Behaviour from STUB_HC_*: SERVER (server status rc),
+  # ADDR (the handle), STATE (live|finished), FG / FG_NAME / FG_PID (foreground), STATUS (null|idle|
+  # working|blocked|done; STATUS_FILE wins and `keys … esc` writes idle into it), KIND, MSG, LABELS
+  # (JSON), CREATED, PID, SCREEN (a file `read` prints), ON_SEND (shell text `send` evals). Gone:
+  # STUB_HC_GONE=1 or $STUB_HC_GONE_FILE exists (kill and a `send … /exit` create it) — get, keys,
+  # send and read exit 3, or 11 when finished.
+  cat > "$WORK/bin/hc" <<'STUB'
+#!/usr/bin/env bash
+echo "hc $*" >> "$STUB_LOG"
+gone() { [ "${STUB_HC_GONE:-}" = 1 ] || { [ -n "${STUB_HC_GONE_FILE:-}" ] && [ -f "$STUB_HC_GONE_FILE" ]; }; }
+st() { if [ -n "${STUB_HC_STATUS_FILE:-}" ] && [ -f "$STUB_HC_STATUS_FILE" ]; then cat "$STUB_HC_STATUS_FILE"
+  else echo "${STUB_HC_STATUS:-idle}"; fi; }
+nf() { echo '{"error":{"kind":"not_found","message":"no such terminal"}}' >&2; exit 3; }
+fin() { [ "${STUB_HC_STATE:-live}" != finished ] || { echo '{"error":{"kind":"finished"}}' >&2; exit 11; }; }
+case "$1" in
+  server) [ "${2:-}" = status ] || exit 2
+          [ "${STUB_HC_SERVER:-0}" = 0 ] || exit "${STUB_HC_SERVER}"
+          echo '{"version":"0.1.20","live":1,"pid":4242}' ;;
+  run) [ -z "${STUB_HC_RUN_ARGV:-}" ] || printf '%s\n' "$@" > "$STUB_HC_RUN_ARGV"
+       [ "${STUB_HC_RUN_RC:-0}" = 0 ] || { echo '{"error":{"kind":"spawn_failed"}}' >&2; exit "$STUB_HC_RUN_RC"; }
+       rm -f "${STUB_HC_GONE_FILE:-/nonexistent}"
+       echo "{\"address\":\"${STUB_HC_ADDR:-t1a}\",\"state\":\"live\",\"created_ms\":${STUB_HC_CREATED:-1700000000000}}" ;;
+  get) gone && nf
+       # NONAME=1: no terminal under a name (only handles t… resolve); GET_RC_HANDLE: a handle probe fails.
+       case "${2:-}" in t[0-9]*) [ -z "${STUB_HC_GET_RC_HANDLE:-}" ] || exit "$STUB_HC_GET_RC_HANDLE" ;;
+         *) [ "${STUB_HC_NONAME:-}" != 1 ] || nf ;; esac
+       s="$(st)"; l="${STUB_HC_LABELS:-}"; [ -n "$l" ] || l='{}'
+       jq -cn --arg a "${STUB_HC_ADDR:-t1a}" --arg state "${STUB_HC_STATE:-live}" --arg fg "${STUB_HC_FG:-claude}" \
+         --arg fn "${STUB_HC_FG_NAME:-${STUB_HC_FG:-claude}}" --argjson fp "${STUB_HC_FG_PID:-999999}" \
+         --arg s "$s" --arg k "${STUB_HC_KIND:-}" --arg m "${STUB_HC_MSG:-}" \
+         --argjson l "$l" --argjson c "${STUB_HC_CREATED:-1700000000000}" \
+         --argjson p "${STUB_HC_PID:-4243}" --arg cwd "${STUB_HC_CWD:-/fixture}" \
+         '{address: $a, state: $state, labels: $l, created_ms: $c, pid: $p, cwd: $cwd, argv: ["sh"],
+           foreground: (if $state == "live" then {argv: [$fg], name: $fn, pid: $fp, cwd: $cwd} else null end),
+           status: (if $s == "null" or $state != "live" then null
+             else {state: $s} + (if $k != "" then {kind: $k} else {} end) + (if $m != "" then {msg: $m} else {} end) end)}' ;;
+  send) gone && nf; fin
+        [ "$(st)" != blocked ] || { echo '{"error":{"kind":"blocked","message":"blocked (permission)"}}' >&2; exit 9; }
+        [ "${3:-}" != /exit ] || [ -z "${STUB_HC_GONE_FILE:-}" ] || touch "$STUB_HC_GONE_FILE"
+        [ -z "${STUB_HC_ON_SEND:-}" ] || eval "$STUB_HC_ON_SEND"
+        echo '{"turn":1,"status":"idle","started":true}' ;;
+  keys) gone && nf; fin
+        case " $* " in *" esc "*) [ -z "${STUB_HC_STATUS_FILE:-}" ] || echo idle > "$STUB_HC_STATUS_FILE" ;; esac
+        echo '{"turn":1}' ;;
+  read) gone && nf; [ -z "${STUB_HC_SCREEN:-}" ] || cat "$STUB_HC_SCREEN" ;;
+  kill) [ -z "${STUB_HC_GONE_FILE:-}" ] || touch "$STUB_HC_GONE_FILE"; echo '{}' ;;
+  rm|label) echo '{}' ;;
+  *) exit 2 ;;
+esac
+STUB
+  cat > "$WORK/bin/herdr-app" <<'STUB'
+#!/usr/bin/env bash
+echo "herdr-app $*" >> "$STUB_LOG"
+case "$1" in
+  ls) if [ -n "${STUB_HERDR_LS:-}" ]; then cat "$STUB_HERDR_LS"; else echo '{"spaces":[]}'; fi ;;
+  do) echo '{"ok":true}' ;;
+  *) exit 2 ;;
+esac
+STUB
+  export HC_BIN="$WORK/bin/hc" HERDR_APP_BIN="$WORK/bin/herdr-app"
 }
 
 smoke_git_stub() {

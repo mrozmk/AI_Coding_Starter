@@ -519,18 +519,19 @@ STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 
 cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
 [ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2:" "$WORK/notify.log" \
   || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) a failing notify.sh: not exactly one legacy notification"; }
-# The driver refuses the hint (the lead recorded on herdr, exit 6): the runner lives on and the legacy
-# alarm carries the old text.
+# The lead on herdr (step 6): its record's handle is probed through the fake hc and the hint names
+# the Herdr terminal; the runner lives on and the legacy alarm carries that hint. (A driver that cannot
+# give a hint at all now means a broken record, which also fails the lead's liveness probe.)
 LR="$MAIN/.agents/team/registry/alfa-lead.json"; mkdir -p "$(dirname "$LR")"; rm -f "$WORK/lr.keep"
 [ ! -f "$LR" ] || cp "$LR" "$WORK/lr.keep"
-jq -n --slurpfile r <(cat "$WORK/lr.keep" 2>/dev/null || echo '{}') '($r[0] // {}) + {address: "alfa-lead", backend: "herdr"}' > "$LR"
+jq -n --slurpfile r <(cat "$WORK/lr.keep" 2>/dev/null || echo '{}') '($r[0] // {}) + {address: "alfa-lead", backend: "herdr", handle: "t5l", name: "smk-alfa-lead"}' > "$LR"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"; : > "$STUB_LOG"  # the last runner ended the coder
 printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
-STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) no driver hint: the runner lives"
+STUB_HC_ADDR=t5l STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) herdr hint: the runner lives"
 cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
 if [ -f "$WORK/lr.keep" ]; then cp "$WORK/lr.keep" "$LR"; else rm -f "$LR"; fi
-grep -q -- "d-2: .* — answer in tmux attach -t alfa-lead$" "$WORK/notify.log" \
-  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) no driver hint: legacy alarm lacks the old text"; }
+grep -q -- "d-2: .* — answer in herdr: smk-alfa-lead (click in the agent list) · hc attach t5l$" "$WORK/notify.log" \
+  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) herdr hint: legacy alarm lacks the herdr hint"; }
 cp "$WORK/notify.log.keep" "$WORK/notify.log"; cp "$WORK/stub.keep" "$STUB_LOG"
 rm -f "$WORK/hs.n" "$TD/cancel"
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 TEAM_NOTIFY=0 run "$MAIN" $TR alfa

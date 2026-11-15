@@ -144,11 +144,11 @@ answer() {
       --settings "$pf" 2>&1 >/dev/null)" || refuse "Operator action: $why"
   fi
   case "$act" in
-    yes) sh_tmux send-keys -t "=$s:" Enter ;;
-    no) sh_tmux send-keys -t "=$s:" Escape; sleep 1
-      sh_tmux send-keys -t "=$s:" -l -- \
-        "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window."
-      sh_tmux send-keys -t "=$s:" Enter ;;
+    yes) sh_keys "$r" --main "$root" enter ;;
+    no) sh_keys "$r" --main "$root" esc; sleep 1
+      sh_type "$r" --main "$root" \
+        "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window." --enter \
+        >/dev/null ;;
     pick|other)
       bash "$LIB/team-answer.sh" "$(sh_prefix "$root")" "$(lc "$r")" "$act" "$text" \
         --session "$r" || rc=$?

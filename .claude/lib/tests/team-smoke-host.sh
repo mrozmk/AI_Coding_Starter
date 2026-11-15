@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # team-smoke: serial
-# The session-host driver (tmux backend): every verb's tmux argv equals the call it replaces, exit
-# codes, locks, the registry record, backend resolution, the main-root rule and the readiness wait.
+# The session-host driver: every tmux verb's argv equals the call it replaces, exit codes, locks, the
+# registry record, backend resolution, the main-root rule and the readiness wait; the Herdr backend
+# behind the fake hc (cases H1–H13).
 # Serial: the readiness and graceful-kill cases sleep.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -139,17 +140,21 @@ jq -e --arg cl "$CL" '.address == "alfa-coder" and .kind == "team" and .backend 
   "$REG/alfa-coder.json" >/dev/null || { cp "$REG/alfa-coder.json" "$WORK/out"; fail "(8) record fields"; }
 prof '.teams.session_host = "herdr"'
 STUB_TMUX_ALIVE=0 run "$MAIN" env -u TEAM_SESSION_HOST $SH alive alfa-coder; expect 0 "" "(8) tmux record under a herdr profile"
-echo '{"address":"beta-coder","backend":"herdr"}' > "$REG/beta-coder.json"
-run "$MAIN" $SH alive beta-coder; expect 6 "not yet supported" "(8) herdr record"
+echo '{"address":"beta-coder","backend":"herdr","handle":"t9z"}' > "$REG/beta-coder.json"
+clr; run "$MAIN" $SH alive beta-coder; expect 0 "" "(8) herdr record"; line "hc get t9z --json" "(8) herdr record by handle"
 # A gone tmux record does not pin a fresh start: the configured backend decides.
-run "$MAIN" env -u TEAM_SESSION_HOST $SH start alfa-coder --kind team --cwd "$CL" --cli claude -- claude
-expect 6 "not yet supported" "(8) fresh start uses the configured backend"
+cp "$REG/alfa-coder.json" "$WORK/alfa-coder.rec"
+clr; STUB_HC_GONE=1 run "$MAIN" env -u TEAM_SESSION_HOST $SH start alfa-coder --kind team --cwd "$CL" --cli claude -- claude
+expect 0 "" "(8) fresh start uses the configured backend"
+[ "$(jq -r .backend "$REG/alfa-coder.json")" = herdr ] || fail "(8) fresh start not on herdr"
+noline "new-session" "(8) fresh herdr start used tmux"
+cp "$WORK/alfa-coder.rec" "$REG/alfa-coder.json"
 
 echo "team-smoke-host: (8) the record, backend per record OK"
 
 # ---- (9) host selection -----------------------------------------------------------------------------------
-run "$MAIN" env -u TEAM_SESSION_HOST $SH start helper:h1 --kind helper --cwd "$CL" --cli script -- true
-expect 6 "teams.session_host=herdr: not yet supported" "(9) herdr"
+STUB_HC_SERVER=1 run "$MAIN" env -u TEAM_SESSION_HOST $SH start helper:h1 --kind helper --cwd "$CL" --cli script -- true
+expect 6 "no session host: herdr core not answering" "(9) herdr without a core"
 prof '.teams.session_host = "tmux"'
 run "$MAIN" env -u TEAM_SESSION_HOST TMUX_BIN=no-such-tmux $SH start helper:h1 --kind helper --cwd "$CL" --cli script -- true
 expect 6 "no session host" "(9) no tmux"
@@ -157,7 +162,8 @@ prof '.teams.session_host = "herdr"'
 clr; run "$MAIN" env TEAM_SESSION_HOST=tmux $SH start helper:h2 --kind helper --cwd "$CL" --cli script -- true
 expect 0 "" "(9b) TEAM_SESSION_HOST overrides the profile"
 run "$MAIN" env TEAM_SESSION_HOST=tmux $SH --check-host; expect 0 "tmux" "(9b) check-host"
-run "$MAIN" env -u TEAM_SESSION_HOST $SH --check-host; expect 6 "not yet supported" "(9b) check-host herdr"
+run "$MAIN" env -u TEAM_SESSION_HOST $SH --check-host; expect 0 "herdr" "(9b) check-host herdr"
+STUB_HC_SERVER=1 run "$MAIN" env -u TEAM_SESSION_HOST $SH --check-host; expect 6 "herdr core not answering" "(9b) check-host herdr down"
 run "$MAIN" env TMUX_BIN=no-such-tmux $SH --check-host; expect 6 "no session host" "(9b) check-host none"
 prof '.'
 
@@ -327,7 +333,7 @@ chmod +x "$B2/tmux" "$B2/hc"
 hr() {  # hr <hook> <dir> <session id> [env…] → RC, $WORK/out
   local h="$1" d="$2" sid="$3"; shift 3
   set +e; printf '{"session_id":"%s","transcript_path":"/nonexistent","hook_event_name":"SessionStart","source":"startup"}' "$sid" \
-    | env "$@" PATH="$B2:$PATH" CLAUDE_PROJECT_DIR="$d" bash "$h" > "$WORK/out" 2>&1; RC=$?; set -e
+    | env "$@" PATH="$B2:$PATH" HC_BIN="$B2/hc" CLAUDE_PROJECT_DIR="$d" bash "$h" > "$WORK/out" 2>&1; RC=$?; set -e
 }
 NOV="-u HARNESS_ADDRESS -u HARNESS_REGISTRY -u HARNESS_MAIN -u TEAM_SESSION_ROLE -u HC_TERMINAL_ID -u TMUX -u TMUX_PANE -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN"
 hr "$SR" "$MAIN" sess-0001-aaaa $NOV HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG" \
@@ -739,5 +745,196 @@ rm -f "$REG/alfa-planner.reg.json"
 clr; run "$MAIN" $SH send adhoc-dev-1 "ping"; expect 3 "ad-hoc session — never rung" "(44) ad-hoc"
 noline "send-keys" "(44) an ad-hoc session was typed into"
 echo "team-smoke-host: (44) inbox sessions and the registry registration OK"
+
+# ---- (H) the Herdr backend, behind the fake hc (step 6) ------------------------------------------------
+# Every hc line of these cases is kept in $WORK/hc-all for (H2). Herdr is chosen by the profile.
+hclr() { grep '^hc ' "$STUB_LOG" >> "$WORK/hc-all" 2>/dev/null || true; clr; }
+argv_is() {  # argv_is <label> <word…> — the last `hc run` argv, word for word
+  printf '%s\n' "${@:2}" > "$WORK/argv.want"
+  diff "$WORK/argv.want" "$STUB_HC_RUN_ARGV" > "$WORK/out" 2>&1 || fail "$1: hc run argv differs"
+}
+cp "$WORK/prof.bak" "$P"; prof '.teams.session_host = "herdr"'
+HX="env -u TEAM_SESSION_HOST"
+export STUB_HC_RUN_ARGV="$WORK/hc-argv"
+rm -f "$REG/hb-coder.json" "$REG/Hrole.json"
+
+# (H1) start: argv, env words, the handle in the record
+hclr; STUB_HC_GONE=1 STUB_HC_ADDR=t7a run "$MAIN" $HX $SH start hb-coder --kind team --cwd "$CL" --cli claude \
+  --env K1=v1 --session-id s9 -- 'claude --session-id s9 -- "$(cat p)"'
+expect 0 "smk-hb-coder" "(H1) start"
+argv_is "(H1) one command" run --bg --no-parent --json --name smk-hb-coder --cwd "$CL" --label harness=smk \
+  --label kind=team --label address=hb-coder --label team=hb -- /usr/bin/env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT \
+  -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CONFIG_DIR K1=v1 HARNESS_ADDRESS=hb-coder \
+  "HARNESS_MAIN=$MP" "HARNESS_REGISTRY=$REG" HARNESS_BACKEND=herdr /bin/sh -c 'claude --session-id s9 -- "$(cat p)"'
+jq -e --arg cl "$CL" '.backend == "herdr" and .handle == "t7a" and .name == "smk-hb-coder" and .session_id == "s9"
+  and .team_dir == ($cl + "/.agents/team")' "$REG/hb-coder.json" >/dev/null \
+  || { cp "$REG/hb-coder.json" "$WORK/out"; fail "(H1) record"; }
+printf '# fixture\n%s\n' "$WORK/cc" > "$MAIN/.claude/claude-profile"
+hclr; STUB_HC_GONE=1 STUB_HC_ADDR=t7b run "$MAIN" $HX $SH start helper:hcc --kind helper --cwd "$CL" --cli claude \
+  --claude-home auto -- claude --model x
+expect 0 "" "(H1) claude home"
+argv_is "(H1) argv form" run --bg --no-parent --json --name smk-hcc --cwd "$CL" --label harness=smk \
+  --label kind=helper --label address=helper:hcc -- /usr/bin/env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT \
+  -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN HARNESS_ADDRESS=helper:hcc "HARNESS_MAIN=$MP" \
+  "HARNESS_REGISTRY=$REG" HARNESS_BACKEND=herdr "CLAUDE_CONFIG_DIR=$CC" claude --model x
+rm -f "$MAIN/.claude/claude-profile"
+hclr; STUB_HC_GONE=1 STUB_HC_RUN_RC=1 run "$MAIN" $HX $SH start helper:hfail --kind helper --cwd "$CL" --cli script -- true
+expect 1 "hc run failed" "(H1) hc run failure"
+echo "team-smoke-host: (H1) herdr start OK"
+
+# (H3) alive by handle: the program in the foreground, or in its process group; gone and finished
+STUB_HC_GONE=1 STUB_HC_ADDR=t7r run "$MAIN" $HX $SH start Hrole --kind role --cwd "$CL" --cli claude --program claude -- 'claude; read'
+expect 0 "" "(H3) role start"
+hclr; STUB_HC_ADDR=t7r run "$MAIN" $SH alive Hrole; expect 0 "" "(H3) claude in front"; line "hc get t7r --json" "(H3) by handle"
+STUB_HC_FG=zsh run "$MAIN" $SH alive Hrole; expect 3 "" "(H3) a kept shell is gone"
+# A process named claude in this shell's process group (a symlink keeps the name; a copied system
+# binary would be killed by code signing).
+mkdir -p "$WORK/pg"; ln -s "$(command -v sleep)" "$WORK/pg/claude"; "$WORK/pg/claude" 30 & PGC=$!
+PG="$(ps -o pgid= -p $$ | tr -d ' ')"
+STUB_HC_FG=/bin/sh STUB_HC_FG_NAME=sh STUB_HC_FG_PID="$PG" run "$MAIN" $SH alive Hrole
+expect 0 "" "(H3) claude in the foreground group (sh -c '…; read')"
+kill "$PGC" 2>/dev/null || true; wait "$PGC" 2>/dev/null || true
+STUB_HC_FG=/bin/sh STUB_HC_FG_NAME=sh STUB_HC_FG_PID="$PG" run "$MAIN" $SH alive Hrole
+expect 3 "" "(H3) sh -c with claude gone"
+STUB_HC_GONE=1 run "$MAIN" $SH alive Hrole; expect 3 "" "(H3) not found"
+STUB_HC_STATE=finished run "$MAIN" $SH alive Hrole; expect 3 "" "(H3) finished"
+echo "team-smoke-host: (H3) herdr alive OK"
+
+# (H4) status from hc get, never the screen
+STUB_HC_STATUS=null run "$MAIN" $SH status hb-coder
+[ "$RC" = 0 ] && [ "$(cat "$WORK/out")" = '{"state":"starting","kind":null,"msg":null,"source":"herdr"}' ] || fail "(H4) null"
+STUB_HC_STATUS=blocked STUB_HC_KIND=permission STUB_HC_MSG="approve Bash: touch x" run "$MAIN" $SH status hb-coder
+[ "$(cat "$WORK/out")" = '{"state":"blocked","kind":"permission","msg":"approve Bash: touch x","source":"herdr"}' ] || fail "(H4) blocked"
+STUB_HC_GONE=1 STUB_HC_ADDR=t7s run "$MAIN" $HX $SH start helper:hs --kind helper --cwd "$CL" --cli script -- 'bash x; read'
+STUB_HC_ADDR=t7s run "$MAIN" $SH status helper:hs; has '"state":"unknown"' "$WORK/out" || fail "(H4) script"
+STUB_HC_GONE=1 run "$MAIN" $SH status hb-coder; has '"state":"gone"' "$WORK/out" || fail "(H4) gone"
+echo "team-smoke-host: (H4) herdr status OK"
+
+# (H5) send: socket first; else hc send, never forced, draft risk logged once per session; blocked; script
+rm -f "$TDX/send-coder.log" "$REG/hb-coder.draft-logged"; echo '{}' > "$REG/hb-coder.reg.json"
+hclr; STUB_SOCK_RC=0 STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ping"; expect 0 "" "(H5) socket"
+noline "hc send" "(H5) socket path typed"
+rm -f "$REG/hb-coder.reg.json"
+hclr; STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ping 1"; expect 0 "" "(H5) fallback 1"
+line "hc send t7a ping 1" "(H5) hc send"
+STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ping 2"; expect 0 "" "(H5) fallback 2"
+[ "$(grep -c '^doorbell-draft-unsafe ' "$TDX/send-coder.log")" = 1 ] || { cp "$TDX/send-coder.log" "$WORK/out"; fail "(H5) draft line once"; }
+grep -q "^doorbell-draft-unsafe .* hb-coder$" "$TDX/send-coder.log" || fail "(H5) draft line text"
+[ "$(cat "$REG/hb-coder.draft-logged")" = s9 ] || fail "(H5) marker holds the session id"
+hclr; STUB_HC_STATUS=blocked run "$MAIN" $SH send hb-coder "ping 3"; expect 9 "" "(H5) blocked"
+noline "hc send" "(H5) blocked typed"
+STUB_HC_ADDR=t7s run "$MAIN" $SH send helper:hs "ping"; expect 2 "script session" "(H5) script"
+STUB_HC_STATE=finished run "$MAIN" $SH send hb-coder "ping 4"; expect 3 "" "(H5) finished"
+echo "team-smoke-host: (H5) herdr send OK"
+
+# (H6) type: hc send on an idle input (typed+submitted), refused on an open prompt
+hclr; STUB_HC_ADDR=t7a run "$MAIN" $SH type hb-coder "hello there" --enter; expect 0 "typed+submitted" "(H6) type"
+line "hc send t7a hello there" "(H6) argv"
+hclr; STUB_HC_STATUS=blocked run "$MAIN" $SH type hb-coder "x"; expect 9 "not supported under herdr" "(H6) blocked"
+noline "hc send" "(H6) typed into a prompt"
+echo "team-smoke-host: (H6) herdr type OK"
+
+# (H7) keys: the name map; an unknown key is refused before any call
+hclr; run "$MAIN" $SH keys hb-coder enter esc up down tab ctrl-c ctrl-e ctrl-u; expect 0 "" "(H7) keys"
+line "hc keys t7a enter esc up down tab ctrl+c ctrl+e ctrl+u" "(H7) argv"
+hclr; run "$MAIN" $SH keys hb-coder f13; expect 2 "unknown key" "(H7) unknown"; noline "hc keys" "(H7) unknown sent"
+echo "team-smoke-host: (H7) herdr keys OK"
+
+# (H8) kill: graceful /exit on idle, then rm; a held lock kills without /exit and logs it
+rm -f "$WORK/gone"
+hclr; STUB_HC_GONE_FILE="$WORK/gone" run "$MAIN" $SH kill hb-coder --graceful 2; expect 0 "" "(H8) graceful"
+line "hc send t7a /exit" "(H8) /exit"; line "hc rm t7a" "(H8) rm"
+rm -f "$WORK/gone"
+hclr; STUB_HC_GONE_FILE="$WORK/gone" STUB_HC_STATUS=working run "$MAIN" $SH kill hb-coder --graceful 2
+expect 0 "" "(H8) working"; noline "hc send" "(H8) /exit while working"; line "hc kill t7a" "(H8) kill"
+rm -f "$WORK/gone"; mkdir -p "$TDX/send-coder.lock"; echo 1 > "$TDX/send-coder.lock/pid"; echo "other" > "$TDX/send-coder.lock/owner"
+hclr; STUB_HC_GONE_FILE="$WORK/gone" run "$MAIN" $SH kill hb-coder --graceful 2; expect 0 "killed without /exit" "(H8) lock held"
+noline "hc send" "(H8) /exit under a held lock"; grep -q '^stop-during-send ' "$TDX/send-coder.log" || fail "(H8) stop-during-send"
+rm -rf "$TDX/send-coder.lock" "$WORK/gone"
+STUB_HC_GONE=1 run "$MAIN" $SH kill hb-coder; expect 0 "" "(H8) never ran"
+echo "team-smoke-host: (H8) herdr kill OK"
+
+# (H9) startup: the trust dialog is reported, never answered; the Codex update prompt gets one esc
+printf '%s\n' " Do you want to work in this folder?" " ❯ 1. Yes, I trust this folder" "   2. No, exit" > "$WORK/trust"
+hclr; STUB_HC_GONE=1 STUB_HC_ADDR=t7t run "$MAIN" $HX $SH start Htrust --kind role --cwd "$CL" --cli claude --wait-ready -- claude
+expect 0 "" "(H9) start"
+hclr; STUB_HC_ADDR=t7t STUB_HC_STATUS=null STUB_HC_SCREEN="$WORK/trust" TEAM_HOST_READY_SECS=2 TEAM_HOST_READY_POLL=0 \
+  run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_wait_ready Htrust t7t claude herdr"
+expect 0 "waiting at the folder trust dialog — accept it once in hc attach t7t" "(H9) trust"; noline "hc keys" "(H9) trust answered"
+printf '%s\n' "  Update available" "  1. Update now" "  2. Skip" "  Press enter to continue · esc skip" > "$WORK/upd"
+hclr; STUB_HC_ADDR=t7u STUB_HC_STATUS=null STUB_HC_SCREEN="$WORK/upd" TEAM_HOST_READY_SECS=2 TEAM_HOST_READY_POLL=0 \
+  run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_wait_ready Hcx t7u codex herdr"
+expect 0 "no sign of life" "(H9) update"; [ "$(count "hc keys t7u esc")" = 1 ] || { cp "$STUB_LOG" "$WORK/out"; fail "(H9) one esc"; }
+hclr; STUB_HC_ADDR=t7t STUB_HC_STATUS=idle run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_wait_ready Htrust t7t claude herdr"
+expect 0 "" "(H9) ready on a status"; [ ! -s "$WORK/out" ] || fail "(H9) ready warned"
+echo "team-smoke-host: (H9) herdr startup OK"
+
+# (H10) auto: tmux while the switch is off; with it on, herdr only when the core answers
+prof '.teams.session_host = "auto"'
+run "$MAIN" $HX $SH --check-host; expect 0 "tmux" "(H10) auto is tmux (switch off)"
+TEAM_SMOKE_AUTO_HERDR=1 run "$MAIN" $HX $SH --check-host; expect 0 "herdr" "(H10) auto probe, core up"
+TEAM_SMOKE_AUTO_HERDR=1 STUB_HC_SERVER=1 run "$MAIN" $HX $SH --check-host; expect 0 "tmux" "(H10) auto probe, core down"
+TEAM_SMOKE_AUTO_HERDR=1 run "$MAIN" $HX HC_BIN=no-such-hc TMUX_BIN=no-such-tmux $SH --check-host
+expect 6 "install tmux or Herdr" "(H10) neither"
+grep -q '^SH_AUTO_HERDR=0$' "$L/session-host-lib.sh" || fail "(H10) the shipped switch is not off"
+echo "team-smoke-host: (H10) auto OK"
+
+# (H11) a record's backend survives a session_host change
+hclr; STUB_TMUX_ALIVE=0 run "$MAIN" $HX $SH alive alfa-coder; expect 0 "" "(H11) tmux record under auto"
+line "tmux has-session -t =smk-alfa-coder" "(H11) still tmux"; noline "hc get" "(H11) asked herdr"
+hclr; run "$MAIN" $SH alive hb-coder; line "hc get t7a --json" "(H11) herdr record under auto"
+echo "team-smoke-host: (H11) backend per record OK"
+
+# (H12) under TEAM_SMOKE=1 only a fixture hc runs
+HC_BIN=/usr/bin/true run "$MAIN" $SH status hb-coder; expect 1 "refusing /usr/bin/true under TEAM_SMOKE=1" "(H12) real hc"
+echo "team-smoke-host: (H12) fixture hc OK"
+
+# (H13) start probes: our stale terminal under the name is removed; a live foreign one refuses
+prof '.teams.session_host = "herdr"'; rm -f "$REG/hb-qa.json"
+hclr; STUB_HC_ADDR=t7o STUB_HC_STATE=finished STUB_HC_LABELS='{"harness":"smk","address":"hb-qa"}' \
+  run "$MAIN" $HX $SH start hb-qa --kind team --cwd "$CL" --cli claude -- claude
+expect 0 "" "(H13) our stale terminal"; line "hc rm t7o" "(H13) removed"
+rm -f "$REG/hb-qa.json"
+hclr; STUB_HC_ADDR=t7f STUB_HC_LABELS='{"harness":"other"}' STUB_HC_CWD=/elsewhere \
+  run "$MAIN" $HX $SH start hb-qa --kind team --cwd "$CL" --cli claude -- claude
+expect 1 "smk-hb-qa belongs to another checkout (/elsewhere)" "(H13) foreign"; noline "hc run" "(H13) started over a foreign one"
+hclr; STUB_HC_ADDR=t7a run "$MAIN" $HX $SH start Hrole --kind role --cwd "$CL" --cli claude --program claude -- claude
+expect 1 "already running" "(H13) live record"
+echo "team-smoke-host: (H13) herdr start probes OK"
+
+# (H14) identity guard: the record's created_ms against the terminal now under its handle
+jq -e '.created_ms == "1700000000000"' "$REG/hb-coder.json" >/dev/null || fail "(H14) start did not record created_ms"
+export STUB_HC_CREATED=1800000000000   # another terminal now holds t7a
+hclr; STUB_HC_ADDR=t7a run "$MAIN" $SH alive hb-coder; expect 3 "hb-coder: terminal t7a is not the recorded one (replaced)" "(H14) alive"
+STUB_HC_ADDR=t7a run "$MAIN" $SH kill hb-coder --graceful 1; expect 0 "" "(H14) kill"
+STUB_HC_ADDR=t7a run "$MAIN" $SH send hb-coder "ping"; expect 3 "" "(H14) send"
+STUB_HC_ADDR=t7a run "$MAIN" $SH keys hb-coder enter; expect 3 "" "(H14) keys"
+STUB_HC_ADDR=t7a run "$MAIN" $SH type hb-coder "x"; expect 3 "" "(H14) type"
+STUB_HC_ADDR=t7a run "$MAIN" $SH status hb-coder; has '"state":"gone"' "$WORK/out" || fail "(H14) status"
+! grep -qE '^hc (kill|rm|send|keys) ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(H14) acted on the foreign terminal"; }
+hclr; STUB_HC_NONAME=1 STUB_HC_ADDR=t7a run "$MAIN" $HX $SH start hb-coder --kind team --cwd "$CL" --cli claude -- claude
+expect 0 "" "(H14) start over a replaced record"
+! grep -qE '^hc (kill|rm|send|keys) ' "$STUB_LOG" && grep -q '^hc run ' "$STUB_LOG" \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(H14) start touched the foreign terminal"; }
+jq -e '.created_ms == "1800000000000"' "$REG/hb-coder.json" >/dev/null || fail "(H14) the new start's created_ms"
+unset STUB_HC_CREATED
+jq 'del(.created_ms)' "$REG/hb-coder.json" > "$WORK/r.json" && mv "$WORK/r.json" "$REG/hb-coder.json"
+STUB_HC_CREATED=1900000000000 STUB_HC_ADDR=t7a run "$MAIN" $SH alive hb-coder; expect 0 "" "(H14) a record without created_ms is not checked"
+echo "team-smoke-host: (H14) identity guard OK"
+
+# (H15) start probe: our labelled terminal whose probe fails is neither killed nor removed
+rm -f "$REG/hb-wrapup.json"
+hclr; STUB_HC_ADDR=t7w STUB_HC_GET_RC_HANDLE=5 STUB_HC_LABELS='{"harness":"smk","address":"hb-wrapup"}' \
+  run "$MAIN" $HX $SH start hb-wrapup --kind team --cwd "$CL" --cli claude -- claude
+expect 1 "hb-wrapup: cannot probe smk-hb-wrapup — not started" "(H15) failed probe"
+! grep -qE '^hc (kill|rm|run) ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(H15) acted on a failed probe"; }
+echo "team-smoke-host: (H15) start probe on a failed probe OK"
+
+# (H2) no hc call of the part ever carried the force, keep or parent flag
+hclr; [ -s "$WORK/hc-all" ] || fail "(H2) no hc line recorded"
+! grep -nE -- '--force|--keep|--parent |--outlive-parent' "$WORK/hc-all" || { cp "$WORK/hc-all" "$WORK/out"; fail "(H2) forbidden hc flag"; }
+grep -q -- '--no-parent' "$WORK/hc-all" || fail "(H2) no --no-parent start"
+cp "$WORK/prof.bak" "$P"
+echo "team-smoke-host: (H2) hc flags OK"
 
 echo "team-smoke-host: OK"

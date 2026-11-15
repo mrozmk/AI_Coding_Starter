@@ -202,14 +202,16 @@ run "$MAIN" $RS status; grep -E '^Supervisor +tmux +alive ' "$WORK/out" >/dev/nu
 clr; run "$MAIN" $RS up Supervisor; expect 0 "Supervisor: already running" "(8) tmux: up"
 run "$MAIN" $RS stop Supervisor; expect 0 "Supervisor: stopped" "(8) tmux: stop"
 [ ! -f "$D/smk-mine" ] || fail "(8) tmux: the session survived stop"
-# Herdr: recorded, left alone until the Herdr backend exists
+# Herdr (step 6): the record's handle is driven through the fake hc like any session
 clr; HC_TERMINAL_ID=t9 run "$MAIN" $RS here Supervisor; expect 0 "" "(8) herdr: here"
 [ "$(jq -r '.backend + " " + .handle' "$REG/Supervisor.json")" = "herdr t9" ] || fail "(8) herdr: record"
-run "$MAIN" $RS status; grep -E '^Supervisor +herdr +unknown ' "$WORK/out" >/dev/null || fail "(8) herdr: status"
-clr; run "$MAIN" $RS up Supervisor; expect 0 "Supervisor: recorded on herdr — left as it is" "(8) herdr: up"
+STUB_HC_ADDR=t9 run "$MAIN" $RS status; grep -E '^Supervisor +herdr +alive +idle ' "$WORK/out" >/dev/null || fail "(8) herdr: status"
+clr; STUB_HC_ADDR=t9 run "$MAIN" $RS up Supervisor; expect 0 "Supervisor: already running" "(8) herdr: up"
 [ "$(starts)" = 0 ] || fail "(8) herdr: up started a session"
-run "$MAIN" $RS stop Supervisor; expect 1 "Supervisor: recorded on herdr — stop it in Herdr" "(8) herdr: stop"
-rm -f "$REG/Supervisor.json"
+rm -f "$WORK/hc-gone"; clr; STUB_HC_ADDR=t9 STUB_HC_GONE_FILE="$WORK/hc-gone" run "$MAIN" $RS stop Supervisor
+expect 0 "Supervisor: stopped" "(8) herdr: stop"; line "hc send t9 /exit" "$STUB_LOG" "(8) herdr: /exit"
+line "hc rm t9" "$STUB_LOG" "(8) herdr: rm"
+rm -f "$REG/Supervisor.json" "$WORK/hc-gone"
 echo "team-smoke-roles: (8) here on herdr / tmux / a plain terminal OK"
 
 # ---- (9) SessionStart: the contract line on every source, session.json on the live id -------------

@@ -55,6 +55,23 @@ expect 0 "sent other" "answer other"
 [ "$(downs)" = 3 ] || fail "other did not move to Type something."
 has "send-keys -t %1 -l -- counter only, no table" "$STUB_LOG" || fail "other did not type"
 has "send-keys -t %1 Enter" "$STUB_LOG" || fail "other did not press Enter"
+# Under herdr (a herdr record for the address) `other` is deny + message (owner, 2026-11-15): esc on
+# the open menu, then one hc send on the idle input, confirmed from the transcript; never typed into it.
+mkdir -p "$MAIN/.agents/team/registry"
+jq -n --arg td "$TD" '{address: "alfa-planner", kind: "team", backend: "herdr", handle: "t4p",
+  name: "smk-alfa-planner", cli: "claude", team_dir: $td}' > "$MAIN/.agents/team/registry/alfa-planner.json"
+echo blocked > "$WORK/hc-status"; mkdir -p "$(dirname "$(transcript sid-planner-1)")"
+printf '%s\n' "jq -cn --arg t \"<hc from=\\\"t1\\\">\$1</hc>\" '{type: \"user\", message: {content: \$t}}' >> '$(transcript sid-planner-1)'" \
+  > "$WORK/onsend"
+: > "$STUB_LOG"; STUB_HC_ADDR=t4p STUB_HC_SCREEN="$WORK/menu" STUB_HC_STATUS_FILE="$WORK/hc-status" \
+  STUB_HC_ON_SEND="bash '$WORK/onsend' \"\$3\"" run "$MAIN" $ANSWER alfa planner other "counter only, no table"
+expect 0 "other→deny+message (herdr)" "answer other under herdr"
+has "typed+submitted (transcript)" "$WORK/out" || fail "other under herdr: no transcript confirmation"
+has "hc keys t4p esc" "$STUB_LOG" || fail "other under herdr: no esc"
+[ "$(grep -c '^hc send ' "$STUB_LOG")" = 1 ] && has "hc send t4p counter only, no table" "$STUB_LOG" \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "other under herdr: not exactly one hc send"; }
+! grep -qE '^hc keys t4p .*(enter|down)|send-keys' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "other under herdr: typed into the menu"; }
+rm -f "$MAIN/.agents/team/registry/alfa-planner.json"
 : > "$STUB_LOG"; STUB_PANE="$WORK/perm" run "$MAIN" $ANSWER alfa planner pick 2
 expect 6 "no single-question menu on screen" "pick on a permission prompt"
 no_keys "pick on a permission prompt"

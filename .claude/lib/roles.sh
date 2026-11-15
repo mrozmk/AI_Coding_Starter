@@ -103,17 +103,27 @@ launch_cmd() {
 # A folder trust dialog is reported, never answered. A Claude role is past it once its hooks write
 # the state file; a Codex role once its prompt shows. TEAM_ROLES_TRUST_SECS (8) bounds the look.
 needs_trust() {  # needs_trust "<role>:<name>:<cli> …" → the roles waiting at the dialog
-  local pend="$1" left i=0 max="${TEAM_ROLES_TRUST_SECS:-8}" t r n c st esc=""
+  local pend="$1" left i=0 max="${TEAM_ROLES_TRUST_SECS:-8}" t r n c st esc="" h scr
   while [ -n "$pend" ] && [ "$i" -lt "$max" ]; do
     left=""
     for t in $pend; do
-      r="${t%%:*}"; n="${t#*:}"; c="${n#*:}"; n="${n%%:*}"
-      if [ "$c" = claude ] && [ -n "$(sh_state "$MAIN" "$r")" ]; then continue; fi
-      st="$(sh_screen_state "$(sh_tmux_read "$n" 40 2>/dev/null || true)" "$c")"
+      r="${t%%:*}"; n="${t#*:}"; c="${n#*:}"; n="${n%%:*}"; h=""
+      # Herdr: a role that reports a status is past every startup dialog (none reports one).
+      if [ "$(sh_record_get "$MAIN" "$r" backend)" = herdr ]; then
+        h="$(sh_target "$MAIN" "$r" 2>/dev/null)" || continue   # replaced: not ours to read or key
+        [ -z "$(sh_herdr_state "$h")" ] || continue
+        scr="$(sh_herdr_read "$h" 40 2>/dev/null || true)"
+      else
+        if [ "$c" = claude ] && [ -n "$(sh_state "$MAIN" "$r")" ]; then continue; fi
+        scr="$(sh_tmux_read "$n" 40 2>/dev/null || true)"
+      fi
+      st="$(sh_screen_state "$scr" "$c")"
       case "$st" in
         trust) echo "$r"; continue ;;
         ready) continue ;;
-        update) case " $esc " in *" $r "*) ;; *) sh_tmux send-keys -t "=$n:" Escape || true; esc="$esc $r" ;; esac ;;
+        update) case " $esc " in *" $r "*) ;; *)
+                  if [ -n "$h" ]; then sh_herdr_keys "$h" esc || true; else sh_tmux send-keys -t "=$n:" Escape || true; fi
+                  esc="$esc $r" ;; esac ;;
       esac
       left="$left $t"
     done
@@ -256,7 +266,6 @@ up() {
     case "$st" in
       0) res="$res$r: already running"$'\n' ;;
       3) todo="$todo $r" ;;
-      6) res="$res$r: recorded on herdr — left as it is (no Herdr backend yet)"$'\n' ;;
       *) res="$res$r: failed: liveness probe (exit $st)"$'\n'; rc=1 ;;
     esac
   done
@@ -302,7 +311,6 @@ status() {
         alive=gone
         [ "$(sh_record_get "$MAIN" "$r" stopped_at)" \> "$(sh_record_get "$MAIN" "$r" started_at)" ] && alive=stopped
       else alive=alive; fi
-    elif [ "$b" = herdr ]; then alive=unknown state=-
     else alive=unknown state=-; rc=1
     fi
     n="$(ls "$MAIN/.agents/team/inbox/$r/new" 2>/dev/null | wc -l | tr -d ' ')"
@@ -332,7 +340,6 @@ stop() {
            echo "$r: stopped"
          else echo "$r: still running"; rc=1; fi ;;
       3) echo "$r: not running" ;;
-      6) echo "$r: recorded on herdr — stop it in Herdr"; rc=1 ;;
       *) echo "$r: failed: liveness probe (exit $st)"; rc=1 ;;
     esac
   done
@@ -342,7 +349,7 @@ stop() {
 # here <Role> — this terminal's own handle goes into the record: Herdr's terminal id, the tmux
 # session, or (a plain terminal) this shell's pid and start time, which `exec` keeps for the CLI.
 here() {
-  local r="${1:-}" be h="" name="" cli m e s c t sid="" ch="" w="" flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}"
+  local r="${1:-}" be h="" name="" hcm="" cli m e s c t sid="" ch="" w="" flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}"
   [ -n "$r" ] || usage
   if [ "${CLAUDECODE:-}" = 1 ]; then
     echo "refused: a running Claude session cannot take a role — open a new terminal and run: bash .claude/lib/roles.sh here $r" >&2
@@ -353,10 +360,11 @@ here() {
   sh_alive "$r" --main "$MAIN" 2>/dev/null
   case $? in
     0) echo "refused: $r is already running ($(sh_hint "$r" --main "$MAIN" 2>/dev/null))" >&2; exit 1 ;;
-    6) echo "refused: $r is recorded on herdr — stop it there first" >&2; exit 1 ;;
   esac
   if [ -n "${HC_TERMINAL_ID:-}" ] && [[ "$HC_TERMINAL_ID" =~ ^[A-Za-z0-9_/-]+$ ]]; then
     be=herdr h="$HC_TERMINAL_ID" name="$HC_TERMINAL_ID"
+    # The identity guard of the driver (sh_herdr_handle): this terminal's creation time.
+    hcm="$(sh_herdr_get "$h" 2>/dev/null | jq -r '.created_ms // empty | tostring' 2>/dev/null)"
   elif [ -n "${TMUX:-}" ] && name="$(sh_tmux display-message -p '#S' 2>/dev/null)" && [ -n "$name" ]; then
     be=tmux h="$name"
   else
@@ -373,8 +381,9 @@ here() {
   t="$(tty 2>/dev/null)" || t=none
   sh_record_put "$MAIN" "$r" '{address: $a, kind: "role", backend: $b, handle: $h, name: $n, cwd: $cwd,
       cli: $cli, started_at: $at, pid: ($pid | tonumber), pid_start: $ps, tty: $tty}
-    + (if $cli == "claude" then {program: "claude", session_id: $sid} else {} end)' \
-    --arg a "$r" --arg b "$be" --arg h "$h" --arg n "$name" --arg cwd "$MAIN" --arg cli "$cli" \
+    + (if $cli == "claude" then {program: "claude", session_id: $sid} else {} end)
+    + (if $hcm != "" then {created_ms: $hcm} else {} end)' \
+    --arg a "$r" --arg b "$be" --arg h "$h" --arg n "$name" --arg hcm "$hcm" --arg cwd "$MAIN" --arg cli "$cli" \
     --arg at "$(sh_utc)" --arg pid "$$" --arg ps "$(sh_lstart $$)" --arg tty "$t" \
     --arg sid "$sid" || { echo "error: the registry record could not be written" >&2; exit 1; }
   cd "$MAIN" || exit 1
@@ -406,7 +415,6 @@ resume() {
   case $? in
     3) ;;
     0) echo "refused: $r is running" >&2; exit 1 ;;
-    6) echo "refused: $r is recorded on herdr — stop it there first" >&2; exit 1 ;;
     *) echo "refused: $r: liveness probe failed" >&2; exit 1 ;;
   esac
   sid="$(sh_record_get "$MAIN" "$r" session_id)"
