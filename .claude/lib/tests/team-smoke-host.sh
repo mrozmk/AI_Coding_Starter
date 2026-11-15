@@ -306,4 +306,109 @@ put_state idle null s1
 clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-coder "ring2" --team-dir "$TDX"; expect 0 "" "(23) idle again"
 echo "team-smoke-host: (23) send while blocked OK"
 
+# ---- (24) session-registry: a driver-started session ------------------------------------------------
+SR="$SRC/.claude/hooks/session-registry.sh"; IC="$SRC/.claude/hooks/inbox-count.sh"
+grep -q transcript "$SR" "$IC" && grep -n transcript "$SR" "$IC" | grep -v '^[^:]*:[0-9]*:#' | grep -q . \
+  && fail "(24) a registry hook touches the transcript"
+mode() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"; }
+B2="$WORK/bin2"; mkdir -p "$B2"   # the hooks call tmux/hc directly: per-case fakes
+cat > "$B2/tmux" <<'STUB'
+#!/usr/bin/env bash
+echo "tmux $*" >> "$STUB_LOG"
+case "$*" in *display-message*) echo "${FAKE_TMUX_NAME:-dev.1}" ;; *has-session*"=${FAKE_TMUX_LIVE:-none}") exit 0 ;; *has-session*) exit 1 ;; esac
+STUB
+cat > "$B2/hc" <<'STUB'
+#!/usr/bin/env bash
+echo "hc $*" >> "$STUB_LOG"
+[ "$1 $2" = "get ${FAKE_HC_LIVE:-t1k3}" ] || exit 3
+echo '{"name":"fix-login","tab":{"name":"Main"},"state":"live"}'
+STUB
+chmod +x "$B2/tmux" "$B2/hc"
+hr() {  # hr <hook> <dir> <session id> [env…] → RC, $WORK/out
+  local h="$1" d="$2" sid="$3"; shift 3
+  set +e; printf '{"session_id":"%s","transcript_path":"/nonexistent","hook_event_name":"SessionStart","source":"startup"}' "$sid" \
+    | env "$@" PATH="$B2:$PATH" CLAUDE_PROJECT_DIR="$d" bash "$h" > "$WORK/out" 2>&1; RC=$?; set -e
+}
+NOV="-u HARNESS_ADDRESS -u HARNESS_REGISTRY -u HARNESS_MAIN -u TEAM_SESSION_ROLE -u HC_TERMINAL_ID -u TMUX -u TMUX_PANE -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN"
+hr "$SR" "$MAIN" sess-0001-aaaa $NOV HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG" \
+  CLAUDE_CODE_MESSAGING_SOCKET=/tmp/cc-socks/1.sock CLAUDE_CODE_MESSAGING_TOKEN=tok-secret
+[ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(24) role: rc $RC or output"
+jq -e '.session_id == "sess-0001-aaaa" and (.last_seen | length > 0) and .reg == "Supervisor.reg.json"' "$REG/Supervisor.json" >/dev/null \
+  || { cp "$REG/Supervisor.json" "$WORK/out"; fail "(24) role record"; }
+grep -q 'tok-secret\|cc-socks' "$REG/Supervisor.json" && fail "(24) a secret in the record"
+jq -e '.token == "tok-secret" and .socket == "/tmp/cc-socks/1.sock" and .session_id == "sess-0001-aaaa"' "$REG/Supervisor.reg.json" >/dev/null || fail "(24) registration"
+[ "$(mode "$REG/Supervisor.reg.json")" = 600 ] && [ "$(mode "$REG/Supervisor.json")" = 600 ] || fail "(24) modes $(mode "$REG/Supervisor.reg.json") / $(mode "$REG/Supervisor.json")"
+hr "$SR" "$MAIN" sess-0002-bbbb $NOV HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG"
+jq -e '.session_id == "sess-0002-bbbb"' "$REG/Supervisor.json" >/dev/null || fail "(24) /clear moves the id"
+hr "$SR" "$MAIN" 'bad id!' $NOV HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG"
+jq -e '.session_id == "sess-0002-bbbb"' "$REG/Supervisor.json" >/dev/null || fail "(24) a malformed id was taken"
+hr "$SR" "$MAIN" sess-0003-cccc $NOV HARNESS_ADDRESS=Fable HARNESS_REGISTRY="$REG"
+[ ! -e "$REG/Fable.json" ] || fail "(24) a record created for an address the driver never started"
+echo "team-smoke-host: (24) session-registry, driver-started OK"
+
+# ---- (25) session-registry: a team stage in its clone ------------------------------------------------
+echo '{"address":"alfa-coder","backend":"tmux","session_id":"s1"}' > "$REG/alfa-coder.json"
+echo '{"team":"alfa","role":"coder","run":"r1","attempt":1,"session_id":"s1"}' > "$TDX/session.json"
+hr "$SR" "$CL" sess-0004-dddd $NOV HARNESS_ADDRESS=alfa-qa HARNESS_REGISTRY="$REG"
+jq -e '.session_id == "s1"' "$REG/alfa-coder.json" >/dev/null || fail "(25) another stage moved the record"
+hr "$SR" "$CL" sess-0004-dddd $NOV HARNESS_ADDRESS=alfa-coder HARNESS_REGISTRY="$REG" TEAM_SESSION_ROLE=TeamLead
+jq -e '.session_id == "s1"' "$REG/alfa-coder.json" >/dev/null || fail "(25) the TeamLead branch is not this step's"
+hr "$SR" "$CL" sess-0004-dddd $NOV HARNESS_ADDRESS=alfa-coder HARNESS_MAIN="$MP"
+jq -e '.session_id == "sess-0004-dddd"' "$REG/alfa-coder.json" >/dev/null || fail "(25) the clone's own stage"
+[ ! -e "$TDX/registry" ] || fail "(25) wrote a registry into the clone"
+echo "team-smoke-host: (25) session-registry, team stage OK"
+
+# ---- (26) session-registry: ad-hoc sessions ------------------------------------------------------------
+clr; hr "$SR" "$MAIN" sess-0005-eeee $NOV HC_TERMINAL_ID=t1k3
+[ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(26) herdr: rc $RC or output"
+jq -e --arg m "$MAIN" '.address == "adhoc-t1k3" and .kind == "adhoc" and .backend == "herdr" and .handle == "t1k3"
+  and .name == "fix-login" and .tab == "Main" and .cwd == $m and .session_id == "sess-0005-eeee"
+  and (keys - ["address","kind","backend","handle","name","tab","cwd","session_id","claude_pid","started_at","last_seen"] == [])' \
+  "$REG/adhoc-t1k3.json" >/dev/null || { cp "$REG/adhoc-t1k3.json" "$WORK/out"; fail "(26) herdr record fields"; }
+[ "$(mode "$REG/adhoc-t1k3.json")" = 600 ] || fail "(26) ad-hoc record mode"
+line "hc get t1k3 --json" "(26) hc probe"
+hr "$SR" "$MAIN" sess-0006-ffff $NOV HC_TERMINAL_ID=t1k3
+jq -e '.session_id == "sess-0006-ffff"' "$REG/adhoc-t1k3.json" >/dev/null || fail "(26) a new session in the same terminal"
+hr "$SR" "$MAIN" sess-0007-gggg $NOV TMUX="/tmp/s,1,0" TMUX_PANE=%4 FAKE_TMUX_NAME=dev.1
+jq -e '.address == "adhoc-dev-1" and .backend == "tmux" and .handle == "dev.1"' "$REG/adhoc-dev-1.json" >/dev/null || fail "(26) tmux record"
+hr "$SR" "$MAIN" sess-0008-hhhh $NOV
+expect 0 "ad-hoc session not registered (plain terminal)" "(26) plain terminal"
+n0="$(ls "$REG" | wc -l)"
+hr "$SR" "$MAIN" sess-0009-iiii $NOV HC_TERMINAL_ID=t9 TEAM_SESSION_ROLE=Supervisor
+hr "$SR" "$CL" sess-0009-iiii $NOV HC_TERMINAL_ID=t9
+[ "$(ls "$REG" | wc -l)" = "$n0" ] && [ ! -e "$TDX/registry" ] || fail "(26) a role or a clone got an ad-hoc record"
+echo "team-smoke-host: (26) ad-hoc records OK"
+
+# ---- (27) prune: old and gone only ------------------------------------------------------------------------
+for x in old-gone old-live new-gone; do
+  echo "{\"address\":\"adhoc-$x\",\"backend\":\"tmux\",\"handle\":\"$x\"}" > "$REG/adhoc-$x.json"
+done
+touch -t 202001010000 "$REG/adhoc-old-gone.json" "$REG/adhoc-old-live.json"
+hr "$SR" "$MAIN" sess-0010-jjjj $NOV HC_TERMINAL_ID=t1k3 FAKE_TMUX_LIVE=old-live
+[ ! -e "$REG/adhoc-old-gone.json" ] || fail "(27) an old, gone record survived"
+[ -e "$REG/adhoc-old-live.json" ] || fail "(27) an old record of a live terminal was pruned"
+[ -e "$REG/adhoc-new-gone.json" ] || fail "(27) a recent record was pruned"
+echo "team-smoke-host: (27) prune OK"
+
+# ---- (28) inbox-count ----------------------------------------------------------------------------------------
+ib() { hr "$IC" "$@"; }
+clr
+mkdir -p "$MP/.agents/team/inbox/alfa/new" "$MP/.agents/team/inbox/Supervisor/new"
+touch "$MP/.agents/team/inbox/alfa/new/1-a.md" "$MP/.agents/team/inbox/alfa/new/2-b.md" "$MP/.agents/team/inbox/alfa/new/x.tmp"
+ib "$CL" s $NOV HARNESS_ADDRESS=alfa-lead HARNESS_REGISTRY="$REG"
+[ "$RC" = 0 ] && [ "$(cat "$WORK/out")" = "inbox: 2 waiting — .agents/team/inbox/alfa/new" ] || fail "(28) TeamLead reads the team inbox"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_REGISTRY="$REG"
+[ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "(28) an empty inbox printed something"
+touch "$MP/.agents/team/inbox/Supervisor/new/3-c.md"
+ib "$MAIN" s $NOV HARNESS_ADDRESS=Supervisor HARNESS_MAIN="$MP"; expect 0 "inbox: 1 waiting — .agents/team/inbox/Supervisor/new" "(28) role inbox"
+jq '.last_seen = "2020-01-01T00:00:00Z"' "$REG/adhoc-t1k3.json" > "$WORK/r.json" && cat "$WORK/r.json" > "$REG/adhoc-t1k3.json"
+touch -t 202001010000 "$REG/adhoc-t1k3.json"; before="2020-01-01T00:00:00Z"
+ib "$MAIN" s $NOV HC_TERMINAL_ID=t1k3
+[ "$(jq -r .last_seen "$REG/adhoc-t1k3.json")" != "$before" ] || fail "(28) ad-hoc last_seen not refreshed"
+[ "$(mode "$REG/adhoc-t1k3.json")" = 600 ] || fail "(28) last_seen write changed the mode"
+cp "$REG/adhoc-t1k3.json" "$WORK/rec.bak"; ib "$MAIN" s $NOV HC_TERMINAL_ID=t1k3
+cmp -s "$REG/adhoc-t1k3.json" "$WORK/rec.bak" || fail "(28) last_seen rewritten within a minute"
+noline "hc " "(28) inbox-count called hc"
+echo "team-smoke-host: (28) inbox-count OK"
+
 echo "team-smoke-host: OK"

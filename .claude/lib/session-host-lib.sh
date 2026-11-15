@@ -78,12 +78,15 @@ sh_record_get() {
 }
 
 # sh_record_put <main> <address> <jq filter> [jq args…] — read ({} when absent), filter, write.
+# Registry files are 0600 and the directory 0700: records hold no secret, but registrations hold
+# the messaging-socket token, and both live side by side.
 sh_record_put() {
   local f filter="$3"; f="$(sh_record_file "$1" "$2")"; shift 3
-  mkdir -p "$(dirname "$f")" || return 1
-  { cat "$f" 2>/dev/null || echo '{}'; } \
-    | jq "$@" "(if type == \"object\" then . else {} end) | $filter" > "$f.tmp.$$" \
-    && mv "$f.tmp.$$" "$f" || { rm -f "$f.tmp.$$"; return 1; }
+  ( umask 077
+    mkdir -p "$(dirname "$f")" || exit 1
+    { cat "$f" 2>/dev/null || echo '{}'; } \
+      | jq "$@" "(if type == \"object\" then . else {} end) | $filter" > "$f.tmp.$$" \
+      && mv "$f.tmp.$$" "$f" || { rm -f "$f.tmp.$$"; exit 1; } )
 }
 
 # The tmux binary. Under TEAM_SMOKE=1 only a binary inside TEAM_SMOKE_BIN_DIR runs: a fixture must
