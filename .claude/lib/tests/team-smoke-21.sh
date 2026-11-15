@@ -110,9 +110,9 @@ git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "fixture guard" || t
 # has-session from files: $WORK/alive lists live sessions, a killed one is dead, CANCEL_AT stops.
 cat > "$WORK/hs.sh" <<'HS'
 n=$(( $(cat "$WORK/hs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$WORK/hs.n"
-s="${3#=}"
+s="${3#=}"; s="${s#smk-}"   # alive lists and cases name addresses; tmux names carry smk-
 [ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
-! grep -q -- "kill-session -t =$s\$" "$STUB_LOG" || exit 1
+! grep -q -- "kill-session -t =smk-$s\$" "$STUB_LOG" || exit 1
 grep -qx -- "$s" "$WORK/alive" 2>/dev/null && exit 0
 exit 1
 HS
@@ -186,9 +186,9 @@ V spec approve --for planner-1-2.json --message "covers the order"; expect 0 "te
 [ -n "$(jq -r .spec_digest "$RD/teamlead-spec-1.json")" ] || fail "(g) no spec_digest"
 greset alfa-lead alfa-planner
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate spec planner-1-2.json" "(g) runner"
-has "send-keys -t =alfa-planner: -l -- [team-run] TeamLead approved the spec (.agents/team/runs/$RUN_ID/teamlead-spec-1.json). Set **Status:** Approved (TeamLead, " "$STUB_LOG" \
+has "send-keys -t =smk-alfa-planner: -l -- [team-run] TeamLead approved the spec (.agents/team/runs/$RUN_ID/teamlead-spec-1.json). Set **Status:** Approved (TeamLead, " "$STUB_LOG" \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(g) no approve message to the planner"; }
-has "send-keys -t =alfa-lead: -l -- gate spec: .agents/team/runs/$RUN_ID/planner-1-2.json" "$STUB_LOG" \
+has "send-keys -t =smk-alfa-lead: -l -- gate spec: .agents/team/runs/$RUN_ID/planner-1-2.json" "$STUB_LOG" \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(g) the lead was not rung for the gate"; }
 [ "$(grep -c 'TeamLead approved the spec' "$STUB_LOG")" = 1 ] || fail "(g) approve message not exactly once"
 echo "team-smoke-21: (g) spec approve OK"
@@ -276,7 +276,7 @@ jq -e --arg r ".agents/team/runs/$RUN_ID/teamlead-plan-3.json" '.reason == "remo
   "$RD/closed.json" >/dev/null || fail "(l) closed.json"
 [ "$(grep -l '^event: closed' "$SUP"/* 2>/dev/null | wc -l | tr -d ' ')" = 1 ] || fail "(l) not exactly one closed event"
 grep -q '^reason: remode — clone free' "$(grep -l '^event: closed' "$SUP"/*)" || fail "(l) closed event body"
-has "kill-session -t =alfa-lead" "$STUB_LOG" || fail "(l) the lead was not ended"
+has "kill-session -t =smk-alfa-lead" "$STUB_LOG" || fail "(l) the lead was not ended"
 [ ! -e "$TD/session.json" ] || fail "(l) session.json left"
 greset alfa-lead
 run "$MAIN" $TR alfa; expect 1 "run closed (remode) — team-next for the next ticket, team-remode for remode" "(l) resume refused"

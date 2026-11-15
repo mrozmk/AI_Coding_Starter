@@ -2,6 +2,7 @@
 # Wrapup, transcript and role-override checks with an independent fixture.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
+unset HARNESS_MAIN  # a role session running this suite has one; the merge check must supply it
 smoke_init
 smoke_team AB-792 feature/AB-792-next
 
@@ -35,7 +36,7 @@ expect 0 '"ticket":"AB-792"' "resume keeps ticket identity"
 : > "$STUB_LOG"
 run "$MAIN" env -u AGENT_COSTS_HOME $TR alfa
 expect 5 "dead attempt 1 of planner" "resume launches existing clone"
-has "new-session -d -s alfa-planner" "$STUB_LOG" || fail "resume did not launch planner"
+has "new-session -d -s smk-alfa-planner" "$STUB_LOG" || fail "resume did not launch planner"
 has "--effort 'xhigh'" "$STUB_LOG" || fail "resume ignored corrected roles"
 ! has "AGENT_COSTS_HOME=" "$STUB_LOG" || fail "role launch forwarded an unset AGENT_COSTS_HOME"
 rm -f "$TD/session.json" "$TD/run"; rm -rf "$TD/runs/$RUN_ID"
@@ -97,6 +98,8 @@ rm -f "$TD/session.json"
 point "$W1"; mkrec wrapup "$W1"; summary "$TGT0"; merge_at "$W1"
 run "$MAIN" $MC alfa
 expect 0 "VERDICT: ok" "merge-check after wrapup"
+grep -qxF "HARNESS_MAIN=$(git -C "$MAIN" rev-parse --show-toplevel)" "$TD/merge-check-build.log" \
+  || fail "build_check did not see HARNESS_MAIN = the main checkout: $(cat "$TD/merge-check-build.log")"
 # The line gains the same memory file after the wrapup's target_rev.
 mkdir -p "$MAIN/.agents/memory" && echo "other team" > "$MAIN/.agents/memory/errors.md"
 git -C "$MAIN" add .agents/memory/errors.md && git -C "$MAIN" commit --quiet -m "other team memory"

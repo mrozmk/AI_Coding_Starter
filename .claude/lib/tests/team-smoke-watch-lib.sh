@@ -50,7 +50,8 @@ D="$STUB_TMUX_DIR"
 case "$1" in
   has-session) n="${3#=}"
     if [ -f "$D/$n.pid" ]; then kill -0 "$(cat "$D/$n.pid")" 2>/dev/null; exit $?; fi
-    case "$n" in smk-*|smx-*) exit 1 ;; esac
+    # Team stage sessions carry the fixture prefix too (smk-<team>-<role>): they follow STUB_TMUX_ALIVE.
+    case "$n" in *-planner|*-coder|*-qa|*-wrapup|*-cli|*-runner|*-lead) ;; smk-*|smx-*) exit 1 ;; esac
     gone="can't find session: $n"
     [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || echo "${STUB_TMUX_ERR:-$gone}" >&2
     exit "${STUB_TMUX_ALIVE:-1}" ;;
@@ -68,6 +69,7 @@ case "$1" in
   capture-pane) n=""
     for a in "$@"; do case "$a" in =*:) n="${a#=}"; n="${n%:}" ;; esac; done
     # A per-session file is the whole history; -S/-J are ignored, team_pane tails it.
+    [ -z "$n" ] || [ -f "${STUB_PANE_DIR:-/nonexistent}/$n" ] || n="${n#smk-}"   # pane files name addresses
     if [ -n "$n" ] && [ -f "${STUB_PANE_DIR:-/nonexistent}/$n" ]; then cat "$STUB_PANE_DIR/$n"
     elif [ -n "${STUB_PANE:-}" ]; then cat "$STUB_PANE"; fi ;;
 esac

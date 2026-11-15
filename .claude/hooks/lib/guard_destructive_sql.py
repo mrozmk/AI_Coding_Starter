@@ -99,8 +99,10 @@ ASK = re.compile(
 SHELL_DENY = re.compile(r"\b(drop|truncate)[ \t]+(table|database|schema)\b", re.I)
 SHELL_ASK = re.compile(r"\bdelete[ \t]+(top\s*\(\s*\d+\s*\)[ \t]+)?from[ \t]+" + OBJ, re.I)
 
-# String literals are kept so a `--` inside quotes does not hide the rest of the line.
-SQL_PARTS = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)
+# String literals and quoted identifiers ([..], "..") are kept so a `--` or `/*` inside them does
+# not hide the rest of the line.
+SQL_PARTS = re.compile(r"'(?:[^']|'')*'|\[(?:[^\]]|\]\])*\]|\"(?:[^\"]|\"\")*\"|/\*.*?\*/|--[^\n]*",
+                       re.S)
 MENTIONS_SQL = re.compile(r"sqlcmd|\.sql\b", re.I)
 SUBST = re.compile(r"\$\(|`|\)")  # same as guard_team_egress.SUBST
 DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
@@ -214,7 +216,7 @@ def substitutions(text):
 
 
 def strip_sql_comments(text):
-    return SQL_PARTS.sub(lambda m: m.group(0) if m.group(0).startswith("'") else " ", text)
+    return SQL_PARTS.sub(lambda m: m.group(0) if m.group(0)[0] in "'[\"" else " ", text)
 
 
 def tokenize(cmd):

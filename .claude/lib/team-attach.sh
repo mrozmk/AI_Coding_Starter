@@ -30,11 +30,13 @@ if [ $# -lt 1 ] || [ $# -gt 3 ]; then
   sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
-name="$1-${2:-planner}"; wait="${3:-0}"
-[[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad session name $name" >&2; exit 2; }
+addr="$1-${2:-planner}"; wait="${3:-0}"
+[[ "$addr" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad session name $addr" >&2; exit 2; }
+. "$(dirname "$0")/session-host-lib.sh"   # the driver: the address → its tmux name, probes via sh_tmux
+SH_M="$(sh_main_root)" && name="$(sh_target "$SH_M" "$addr")" || exit 2
 
 waited=0
-until tmux has-session -t "=$name" 2>/dev/null; do
+until sh_tmux has-session -t "=$name" 2>/dev/null; do
   [ "$waited" -lt "$wait" ] || { echo "error: tmux session $name not found" >&2; exit 1; }
   sleep 1; waited=$((waited + 1))
 done
@@ -111,7 +113,8 @@ if command -v herdr-app >/dev/null 2>&1 && command -v hc >/dev/null 2>&1 \
         for _ in 1 2 3 4 5; do listed "$t" || break; sleep 1; done
       done
       printf '%s\n' "$ours" | cut -f1 | while read -r s; do
-        [ -n "$s" ] && tmux has-session -t "=$s" 2>/dev/null || continue
+        [ -n "$s" ] && sh_tmux has-session -t "=$s" 2>/dev/null || continue
+        s="${s#"$(sh_prefix "$SH_M")"-}"   # the label holds the tmux name; the address has no prefix
         a="$(TEAM_ATTACH_REBUILT=1 bash "$0" "${s%-*}" "${s##*-}" 2>/dev/null \
           | sed -n 's/.*(\(t[0-9a-z]*\);.*/\1/p' || true)"
         [ -z "$a" ] || for _ in 1 2 3 4 5; do listed "$a" && break; sleep 1; done

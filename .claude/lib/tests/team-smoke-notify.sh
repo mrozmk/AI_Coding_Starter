@@ -147,7 +147,7 @@ grep -qx 'status: open' "$R1" && grep -qx 'team: alfa' "$R1" || fail "(i) frontm
   || fail "(i) summary not one 200-char line"
 EV="$(ls "$OB/events" | grep "_failure_$ID1\.json$")" || fail "(i) no failure event"
 jq -e --arg k "$ID1" '.event == "unrepaired_failure" and (.id | endswith(":failure:" + $k)) and .team == "alfa"
-  and .source == "operator-record" and .answer.address == "Supervisor" and (.answer.hint | test("supervisor$"))' \
+  and .source == "operator-record" and .answer.address == "Supervisor" and .answer.hint == "tmux attach -t smk-supervisor"' \
   "$OB/events/$EV" >/dev/null || fail "(i) event fields"
 orr failure --team alfa --summary "$(printf 'alfa-lead will not restart\n%s' "$(printf 'y%.0s' $(seq 300))")"
 expect 0 "open $ID1 (coalesced)" "(i) an open repeat"

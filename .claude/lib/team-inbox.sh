@@ -4,10 +4,10 @@
 #          --ticket <k> --run <r> [--ref <path>] [--message <one line>]
 #        bash .claude/lib/team-inbox.sh [--main <dir>] list <address> | done <address> <file>
 #   <main>/.agents/team/inbox/<address>/{tmp,new,done}/; write builds
-#   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>.md in tmp/ and renames it into new/, then rings the
-#   Supervisor's registered socket (a failed ring is ignored: the file is the truth). The
-#   Supervisor address takes only accepted|closed|collision|session_dead; a team address any event.
-#   A caller in a team clone passes --main (teamlead.json main_root), never its own git root.
+#   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>.md in tmp/, renames it into new/, then rings the address's
+#   session through session-host.sh send (rc on stderr `ring: <rc>`, never the exit: the file is
+#   the truth). Supervisor: a team sender only accepted|closed|collision|session_dead, a role or
+#   adhoc-* sender also message|advice, an unknown sender refused. Role/team address: any event.
 #   e.g. bash .claude/lib/team-inbox.sh --main ~/src/app write Supervisor accepted --from alfa \
 #          --ticket 7 --run alfa-20261114-090000 --ref runs/alfa-20261114-090000/acceptance-brief.md
 # Contract: .agents/reference/team-lead.md §3
@@ -43,9 +43,18 @@ write() {
   [[ "$event" =~ ^[a-z][a-z_-]*$ ]] || { echo "error: event '$event' must match [a-z_-]+" >&2; exit 2; }
   [ -n "$from" ] && [[ "$from" =~ ^[A-Za-z0-9-]+$ ]] || { echo "error: --from is required" >&2; exit 2; }
   if [ "$addr" = Supervisor ]; then
-    case "$event" in accepted|closed|collision|session_dead) ;;
-      *) echo "error: Supervisor takes accepted|closed|collision|session_dead, not $event" >&2; exit 2 ;;
-    esac
+    if [ -f "$MAIN/.agents/team/anchors/$from.json" ]; then
+      case "$event" in accepted|closed|collision|session_dead) ;;
+        *) echo "error: Supervisor takes accepted|closed|collision|session_dead from a team, not $event" >&2; exit 2 ;;
+      esac
+    elif [[ "$from" =~ ^adhoc-[A-Za-z0-9-]+$ ]] \
+      || (ROLES_ROOT="$MAIN"; . "$LIB/roles-lib.sh" && roles_is_declared "$from") 2>/dev/null; then
+      case "$event" in accepted|closed|collision|session_dead|message|advice) ;;
+        *) echo "error: Supervisor takes accepted|closed|collision|session_dead|message|advice from $from, not $event" >&2; exit 2 ;;
+      esac
+    else
+      echo "error: --from $from is no team, declared role or adhoc-* session" >&2; exit 2
+    fi
   fi
   mkdir -p "$D/tmp" "$D/new" "$D/done"
   stem="$(date -u +%Y%m%dT%H%M%SZ)-$from-$event"; f="$stem"
@@ -59,11 +68,16 @@ write() {
     [ -z "$msg" ] || printf '%s\n' "$msg"; } > "$D/tmp/$f.md"
   mv "$D/tmp/$f.md" "$D/new/$f.md"
   echo "$D/new/$f.md"
-  local reg="$MAIN/.agents/team/watch/receivers/Supervisor.json"
-  if [ "$addr" = Supervisor ] && [ -f "$reg" ]; then
-    printf 'inbox: %s %s %s — %s\n' "$event" "$from" "${ticket:-?}" "$D/new/$f.md" \
-      | python3 -I "$LIB/team-watch-send.py" "$reg" >/dev/null 2>&1 || true
-  fi
+  # The doorbell: the address's session (sh_inbox_session) through the driver. Blocked (9), gone (3)
+  # or skipped (10) loses nothing — the file is in new/ and the prompt hook counts it.
+  local s rc=0
+  if [ -f "$LIB/session-host.sh" ] && . "$LIB/session-host-lib.sh" 2>/dev/null; then
+    if s="$(sh_inbox_session "$MAIN" "$addr")"; then
+      bash "$LIB/session-host.sh" send "$s" "inbox: $event $from ${ticket:-?} — $D/new/$f.md" --main "$MAIN" \
+        >/dev/null 2>&1 || rc=$?
+    else rc=3; fi
+  else rc=127; fi
+  echo "ring: $rc" >&2
 }
 
 case "$cmd" in

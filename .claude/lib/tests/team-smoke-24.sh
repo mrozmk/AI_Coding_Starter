@@ -61,7 +61,7 @@ export STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" STUB_PANE="$FIX/idle.txt" TEAM_POLL
 # has-session is answered by hs.sh; STUB_TMUX_ALIVE=0 lets display-message name the pane (prompt binding).
 export STUB_TMUX_ALIVE=0
 # The sender captures the stage's pane by id (display-message → %1); only a coder prompt is ever shown.
-export STUB_ON_CAPTURE='case "$*" in *"=alfa-coder:"*|*"-t %1"*) [ ! -s "$WORK/pane-coder" ] || STUB_PANE="$WORK/pane-coder" ;; esac'
+export STUB_ON_CAPTURE='case "$*" in *"=smk-alfa-coder:"*|*"-t %1"*) [ ! -s "$WORK/pane-coder" ] || STUB_PANE="$WORK/pane-coder" ;; esac'
 
 # ---- helpers ---------------------------------------------------------------------------------------
 # A deadline bounds a failure, it never paces a pass: 60 s absorbs the whole suite running in
@@ -95,10 +95,10 @@ wait_for() {  # wait_for <label> <condition> — poll up to the deadline; a dead
     sleep 0.2
   done
 }
-launches() { grep -c -- "new-session -d -s alfa-$1 " "$STUB_LOG" || true; }
+launches() { grep -c -- "new-session -d -s smk-alfa-$1 " "$STUB_LOG" || true; }
 launched() { wait_for "$1 launch $2" "[ \"\$(launches $1)\" -ge $2 ]"; }
 rung() { grep -qsF -- "$1" "$STUB_LOG" "$TD/send-lead.log"; }   # a doorbell to the lead, sent or logged
-said_to() { grep -qsF -- "send-keys -t =alfa-$1: -l -- $2" "$STUB_LOG"; }
+said_to() { grep -qsF -- "send-keys -t =smk-alfa-$1: -l -- $2" "$STUB_LOG"; }
 play() { run "$CLONE" bash .claude/lib/team-record.sh "$@"; }     # the stage session's record
 V() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh "$@"; }
 ldec() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh decision "$@"; }
@@ -153,15 +153,15 @@ prof '.teams.teamlead.enabled = true'
 fresh alfa-20261116-100000 brainstorm
 start_runner
 launched planner 1
-[ "$(grep -n -- 'new-session -d -s alfa-lead ' "$STUB_LOG" | head -n 1 | cut -d: -f1)" -lt \
-  "$(grep -n -- 'new-session -d -s alfa-planner ' "$STUB_LOG" | head -n 1 | cut -d: -f1)" ] || fail "alfa: the planner launched before the lead"
+[ "$(grep -n -- 'new-session -d -s smk-alfa-lead ' "$STUB_LOG" | head -n 1 | cut -d: -f1)" -lt \
+  "$(grep -n -- 'new-session -d -s smk-alfa-planner ' "$STUB_LOG" | head -n 1 | cut -d: -f1)" ] || fail "alfa: the planner launched before the lead"
 on_stage planner
 spec Draft "Export button."; play --verdict review --artifacts .agents/specs/s.md; expect 0 "planner-1-1.json" "alfa review"
 wait_for "alfa spec gate" "rung 'gate spec: .agents/team/runs/$RUN_ID/planner-1-1.json'"
 printf 'scope: src/\nmade_at: 2026-11-16T10:00:00Z\n\n- none\n' > "$RD/digest.md"
 V spec approve --for planner-1-1.json --message "matches the order"; expect 0 "teamlead-spec-1.json" "alfa spec approve"
 wait_for "alfa approve said" "said_to planner '[team-run] TeamLead approved the spec'"
-grep -F -- "send-keys -t =alfa-planner: -l -- [team-run] TeamLead approved the spec" "$STUB_LOG" \
+grep -F -- "send-keys -t =smk-alfa-planner: -l -- [team-run] TeamLead approved the spec" "$STUB_LOG" \
   | grep -qF "Set **Status:** Approved (TeamLead, " || fail "alfa: no Approved (TeamLead, …) instruction"
 spec "Approved (TeamLead, 2026-11-16)" "Export button."; plan
 play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-2.json" "alfa planner done"

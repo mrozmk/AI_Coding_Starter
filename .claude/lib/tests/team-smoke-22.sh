@@ -26,17 +26,18 @@ run "$MAIN" bash .claude/lib/team-brief.sh write alfa "$WORK/brief.md"; expect 0
 # $WORK/hs.case adds per-case behaviour, CANCEL_AT stops the runner after that many calls.
 cat > "$WORK/hs.sh" <<'HS'
 n=$(( $(cat "$WORK/hs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$WORK/hs.n"
-s="${3#=}"
+s="${3#=}"; s="${s#smk-}"   # alive lists and cases name addresses; tmux names carry smk-
 [ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
 [ ! -f "$WORK/hs.case" ] || . "$WORK/hs.case"
-! grep -q -- "kill-session -t =$s\$" "$STUB_LOG" || exit 1
+! grep -q -- "kill-session -t =smk-$s\$" "$STUB_LOG" || exit 1
 grep -qx -- "$s" "$WORK/alive" 2>/dev/null && exit 0
 exit 1
 HS
 export STUB_ON_HAS_SESSION=". '$WORK/hs.sh'"
+LREG="$MAIN/.agents/team/registry/alfa-lead.reg.json"   # the lead's doorbell registration (main registry)
 reset() {  # reset — a fresh run state between runner invocations
   rm -rf "$TD/lock" "$TD/cancel" "$TD/acked" "$TD/runs" "$TD/session.json" "$TD/teamlead.json" \
-    "$TD/teamlead.reg.json" "$TD/lead-dead" "$TD/relaunch-lead" "$TD/inbox-rung" "$TD/send-lead.log" \
+    "$LREG" "$MAIN/.agents/team/registry/state/alfa-lead.json" "$TD/lead-dead" "$TD/relaunch-lead" "$TD/send-lead.log" \
     "$MAIN/.agents/team/inbox" "$WORK/hs.n" "$WORK/hs.case" "$WORK/lead.n" "$WORK/relaunched"
   : > "$STUB_LOG"; : > "$WORK/alive"; unset CANCEL_AT
   echo "$RUN_ID" > "$TD/run"; mkdir -p "$RD"
@@ -49,8 +50,8 @@ TR="bash .claude/lib/team-run.sh"
 # ---- (a) switch off: no lead, unchanged launch order ---------------------------------------------
 reset
 run "$MAIN" $TR alfa; expect 5 "dead attempt" "(a) runner, switch off"
-has "-s alfa-lead" "$STUB_LOG" && fail "(a) a lead launched with the switch off"
-has "-s alfa-planner" "$STUB_LOG" || fail "(a) the planner did not launch"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(a) a lead launched with the switch off"
+has "-s smk-alfa-planner" "$STUB_LOG" || fail "(a) the planner did not launch"
 [ ! -e "$TD/teamlead.json" ] && [ ! -d "$SUP" ] || fail "(a) lead state or events with the switch off"
 echo "team-smoke-22: (a) switch off OK"
 
@@ -74,11 +75,11 @@ echo "team-smoke-22: (g) old base OK"
 # ---- (b) switch on, brainstorm: the lead launches first, with its profile ------------------------
 reset
 run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/high)" "(b) runner, switch on"
-[ -n "$(line_of '-s alfa-lead')" ] && [ -n "$(line_of '-s alfa-planner')" ] \
-  && [ "$(line_of '-s alfa-lead')" -lt "$(line_of '-s alfa-planner')" ] || fail "(b) lead not before the planner"
+[ -n "$(line_of '-s smk-alfa-lead')" ] && [ -n "$(line_of '-s smk-alfa-planner')" ] \
+  && [ "$(line_of '-s smk-alfa-lead')" -lt "$(line_of '-s smk-alfa-planner')" ] || fail "(b) lead not before the planner"
 for x in "/main-alfa/.agents/team/teamlead.settings.json' " "--model 'fable' --effort 'high'" \
   "--disallowedTools AskUserQuestion -- " "-e TEAM_SESSION_ROLE=TeamLead"; do
-  grep -- "-s alfa-lead" "$STUB_LOG" | grep -qF -- "$x" || fail "(b) lead launch lacks: $x"
+  grep -- "-s smk-alfa-lead" "$STUB_LOG" | grep -qF -- "$x" || fail "(b) lead launch lacks: $x"
 done
 jq -e --arg r "$RUN_ID" '.run == $r and .model == "fable" and (.main_root | length > 0)' \
   "$TD/teamlead.json" >/dev/null || fail "(b) teamlead.json"
@@ -116,22 +117,43 @@ python3 -I "$WORK/srv.py" "$SD/l.sock" "$WORK/recv" & SRV=$!; SPID="$SRV"
 for _ in $(seq 1 50); do [ -S "$SD/l.sock" ] && break; sleep 0.1; done
 [ -S "$SD/l.sock" ] || fail "(d) stub socket did not bind"
 reset; lead_json; printf 'alfa-lead\nalfa-planner\n' > "$WORK/alive"
-jq -n --arg s "$SD/l.sock" '{socket: $s, token: "t", pid: null}' > "$TD/teamlead.reg.json"
+mkdir -p "$(dirname "$LREG")"; jq -n --arg s "$SD/l.sock" '{socket: $s, token: "t", pid: null}' > "$LREG"
 session planner 1 "$BASE"; mkrec planner "$BASE" blocked
 jq '.message = "which endpoint?"' "$RD/planner-1-1.json" > "$WORK/r" && mv "$WORK/r" "$RD/planner-1-1.json"
 mkdir -p "$MAIN/.agents/team/inbox/alfa/new"; echo x > "$MAIN/.agents/team/inbox/alfa/new/20261114T100500Z-Supervisor-collision-answer.md"
 export CANCEL_AT=15
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: planner-1-1.json" "(d) runner on a stop"
 has "TeamLead reused: alfa-lead" "$WORK/out" || fail "(d) the live lead of this run was not reused"
-has "-s alfa-lead" "$STUB_LOG" && fail "(d) a live lead was launched again"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(d) a live lead was launched again"
 [ "$(cat "$TD/acked")" = planner-1-1.json ] || fail "(d) record not acked"
-for _ in $(seq 1 30); do grep -q 'collision-answer' "$WORK/recv" 2>/dev/null && break; sleep 0.1; done
+for _ in $(seq 1 30); do grep -q 'stop planner 1' "$WORK/recv" 2>/dev/null && break; sleep 0.1; done
 touch "$WORK/recv"
 [ "$(grep -o 'stop planner 1: [^"]*which endpoint' "$WORK/recv" | wc -l | tr -d ' ')" = 1 ] \
   || { { cat "$WORK/recv"; cat "$TD/send-lead.log" 2>/dev/null; } >> "$WORK/out"; fail "(d) not exactly one stop doorbell"; }
-# ---- (j) a new file in the team's inbox rings the lead once, over many polls ----
-[ "$(grep -o 'inbox: 20261114T100500Z-Supervisor-collision-answer.md' "$WORK/recv" | wc -l | tr -d ' ')" = 1 ] \
-  || { cp "$WORK/recv" "$WORK/out"; fail "(j) inbox file not rung exactly once"; }
+# ---- (j) the runner no longer rings inbox files; team-inbox.sh write rings the lead once ----------
+grep -q 'inbox: 20261114T100500Z' "$WORK/recv" && { cp "$WORK/recv" "$WORK/out"; fail "(j) the runner rang an inbox file"; }
+[ ! -e "$TD/inbox-rung" ] || fail "(j) the runner wrote inbox-rung"
+run "$MAIN" bash .claude/lib/team-inbox.sh write alfa collision-answer --from Supervisor --ticket AB-1500 --run "$RUN_ID"
+expect 0 "ring: 0" "(j) a write to the team"
+for _ in $(seq 1 30); do grep -q 'inbox: collision-answer Supervisor' "$WORK/recv" 2>/dev/null && break; sleep 0.1; done
+[ "$(grep -o 'inbox: collision-answer Supervisor AB-1500' "$WORK/recv" | wc -l | tr -d ' ')" = 1 ] \
+  || { cp "$WORK/recv" "$WORK/out"; fail "(j) the write did not ring the lead exactly once"; }
+# A blocked lead: the ring is refused (9), the file stays in new/, write exits 0.
+LRS="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/alfa-lead.json" 2>/dev/null)"
+mkdir -p "$MAIN/.agents/team/registry/state"
+jq -n --arg s "$LRS" '{state: "blocked", kind: "permission", session_id: $s}' > "$MAIN/.agents/team/registry/state/alfa-lead.json"
+run "$MAIN" bash .claude/lib/team-inbox.sh write alfa message --from Supervisor --ticket AB-1500 --run "$RUN_ID"
+expect 0 "ring: 9" "(j) a blocked lead"
+[ -f "$(head -n 1 "$WORK/out")" ] || fail "(j) a refused ring lost the file"
+rm -f "$MAIN/.agents/team/registry/state/alfa-lead.json"
+# Sender rules to the Supervisor; a role or team address takes any event.
+TI="bash .claude/lib/team-inbox.sh"
+run "$MAIN" $TI write Supervisor message --from Fable --message hi; expect 0 "" "(j) a role sends a message"
+run "$MAIN" $TI write Supervisor advice --from adhoc-dev-1; expect 0 "" "(j) an ad-hoc session sends advice"
+run "$MAIN" $TI write Supervisor message --from alfa; expect 2 "from a team, not message" "(j) a team sends a message"
+run "$MAIN" $TI write Supervisor collision --from zzz; expect 2 "is no team, declared role or adhoc-*" "(j) an unknown sender"
+run "$MAIN" $TI write Supervisor collision --from alfa; expect 0 "" "(j) a team sends a collision"
+run "$MAIN" $TI write alfa collision --from Supervisor; expect 0 "" "(j) the Supervisor writes to a team"
 run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
 expect 0 "stop .agents/team/runs/$RUN_ID/planner-1-1.json — which endpoint?" "(d) pending lists the stop"
 grep -q '^inbox .*/main/.agents/team/inbox/alfa/new/20261114T100500Z' "$WORK/out" || fail "(d) pending lacks the inbox file"
@@ -141,7 +163,7 @@ reset; lead_json; printf 'alfa-lead\nalfa-planner\n' > "$WORK/alive"
 session planner 1 "$BASE"; mkrec planner "$BASE" failed; export CANCEL_AT=8
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead" "(d) failed record, no socket"
 [ "$(grep -c 'doorbell-skipped .*stop planner 1' "$TD/send-lead.log")" = 1 ] || fail "(d) skipped doorbell not logged once"
-echo "team-smoke-22: (d) wait in place + (j) inbox ring OK"
+echo "team-smoke-22: (d) wait in place + (j) inbox write ring OK"
 
 # ---- (e) a dead lead: one session_dead, then relaunch-lead relaunches it --------------------------
 reset; lead_json; printf 'alfa-lead\nalfa-planner\n' > "$WORK/alive"; session planner 1 "$BASE"
@@ -159,7 +181,7 @@ HS
 run "$MAIN" $TR alfa; expect 6 "TeamLead died — /start-team alfa relaunches it" "(e) dead lead"
 [ "$(grep -l '^event: session_dead' "$SUP"/* | wc -l | tr -d ' ')" = 1 ] || fail "(e) not exactly one session_dead"
 grep -q '^ref: .agents/team/teamlead.json' "$SUP"/* || fail "(e) session_dead ref"
-[ "$(grep -c -- '-s alfa-lead' "$STUB_LOG")" = 1 ] && [ -s "$RD/lead-1.session" ] || fail "(e) not relaunched once"
+[ "$(grep -c -- '-s smk-alfa-lead' "$STUB_LOG")" = 1 ] && [ -s "$RD/lead-1.session" ] || fail "(e) not relaunched once"
 [ ! -e "$TD/lead-dead" ] && [ ! -e "$TD/relaunch-lead" ] || fail "(e) relaunch markers left"
 run "$MAIN" bash .claude/lib/team-lead.sh relaunch alfa; expect 0 "relaunch requested" "(e) relaunch command"
 [ -e "$TD/relaunch-lead" ] || fail "(e) relaunch command wrote no request"
@@ -192,16 +214,16 @@ echo "team-smoke-22: execution-time limit OK"
 # ---- (f) mode cli → no lead -----------------------------------------------------------------------
 reset; jq '.mode = "cli"' "$TD/team.json" > "$WORK/t" && cp "$WORK/t" "$TD/team.json"
 run "$MAIN" $TR alfa
-has "-s alfa-lead" "$STUB_LOG" && fail "(f) a lead launched in mode cli"
-has "-s alfa-cli" "$STUB_LOG" || fail "(f) the cli session did not launch"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(f) a lead launched in mode cli"
+has "-s smk-alfa-cli" "$STUB_LOG" || fail "(f) the cli session did not launch"
 jq '.mode = "brainstorm"' "$TD/team.json" > "$WORK/t" && cp "$WORK/t" "$TD/team.json"
 echo "team-smoke-22: (f) cli OK"
 
 # ---- (h) end / finalize; team-integrate calls finalize on both success exits ----------------------
-reset; lead_json; echo alfa-lead > "$WORK/alive"; echo '{}' > "$TD/teamlead.reg.json"
+reset; lead_json; echo alfa-lead > "$WORK/alive"; mkdir -p "$(dirname "$LREG")"; echo '{}' > "$LREG"
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized: alfa $RUN_ID merged" "(h) finalize"
-has "kill-session -t =alfa-lead" "$STUB_LOG" || fail "(h) the lead was not ended"
-[ -f "$RD/finalized" ] && [ ! -e "$TD/teamlead.reg.json" ] || fail "(h) finalized marker / registration"
+has "kill-session -t =smk-alfa-lead" "$STUB_LOG" || fail "(h) the lead was not ended"
+[ -f "$RD/finalized" ] && [ ! -e "$LREG" ] || fail "(h) finalized marker / registration"
 cp "$RD/finalized" "$WORK/fin1"
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized:" "(h) finalize again"
 cmp -s "$RD/finalized" "$WORK/fin1" || fail "(h) finalize is not idempotent"
@@ -213,26 +235,30 @@ run "$MAIN" bash .claude/lib/team-lead.sh end alfa; expect 0 "TeamLead ended" "(
 echo "team-smoke-22: (h) end/finalize OK"
 
 # ---- SessionStart hook: registration, /clear identity refresh, silent for others -----------------
-reset; lead_json; H="$SRC/.claude/hooks/teamlead-register.sh"
+reset; lead_json; H="$SRC/.claude/hooks/session-registry.sh"
+LR="$MAIN/.agents/team/registry/alfa-lead.json"; mkdir -p "$(dirname "$LR")"
+[ -f "$LR" ] || echo '{"address": "alfa-lead", "kind": "team"}' > "$LR"
 reg_hook() {  # reg_hook <sid> [role] — the hook as a session of the clone
   set +e; CLAUDE_PROJECT_DIR="$CLONE" TEAM_SESSION_ROLE="${2-TeamLead}" \
     CLAUDE_CODE_MESSAGING_SOCKET=/tmp/x.sock CLAUDE_CODE_MESSAGING_TOKEN=tok \
     bash "$H" <<<"{\"session_id\": \"$1\"}" > "$WORK/out" 2>&1; RC=$?; set -e
 }
 reg_hook sid-lead coder; expect 0 "" "(reg) another role"
-[ ! -s "$WORK/out" ] && [ ! -e "$TD/teamlead.reg.json" ] || fail "(reg) a non-lead session registered"
+[ ! -s "$WORK/out" ] && [ ! -e "$LREG" ] || fail "(reg) a non-lead session registered"
 reg_hook sid-lead; expect 0 "Pending (oldest first" "(reg) the lead"
-[ "$(ls -l "$TD/teamlead.reg.json" | cut -c1-10)" = "-rw-------" ] \
+[ "$(ls -l "$LREG" | cut -c1-10)" = "-rw-------" ] && [ ! -e "$TD/teamlead.reg.json" ] \
   && jq -e '.socket == "/tmp/x.sock" and .token == "tok" and .session_id == "sid-lead"' \
-    "$TD/teamlead.reg.json" >/dev/null || fail "(reg) registration file"
+    "$LREG" >/dev/null || fail "(reg) registration file"
 # The registered pid is not an ancestor of this hook: a foreign process (the suite itself may run
 # under a claude, so the first registration's pid is not usable here).
-jq '.pid = 999999' "$TD/teamlead.reg.json" > "$WORK/r" && mv "$WORK/r" "$TD/teamlead.reg.json"
+jq '.pid = 999999' "$LREG" > "$WORK/r" && mv "$WORK/r" "$LREG"
 reg_hook sid-other; expect 0 "" "(reg) a foreign process with another id"
 [ "$(jq -r .session_id "$TD/teamlead.json")" = sid-lead ] || fail "(reg) a foreign process moved the id"
-jq --argjson p $$ '.pid = $p' "$TD/teamlead.reg.json" > "$WORK/r" && mv "$WORK/r" "$TD/teamlead.reg.json"
+jq --argjson p $$ '.pid = $p' "$LREG" > "$WORK/r" && mv "$WORK/r" "$LREG"
 reg_hook sid-after-clear; expect 0 "Pending" "(reg) /clear in the lead's own process"
 [ "$(jq -r .session_id "$TD/teamlead.json")" = sid-after-clear ] || fail "(reg) /clear did not refresh the id"
+jq -e '.session_id == "sid-after-clear" and .reg == "alfa-lead.reg.json"' "$LR" >/dev/null \
+  || { cp "$LR" "$WORK/out"; fail "(reg) the registry record did not follow the lead"; }
 echo "team-smoke-22: SessionStart registration OK"
 
 # ---- (i) team-watch: a run with its own lead is filtered, a legacy run is not ---------------------
@@ -253,17 +279,19 @@ echo "team-smoke-22: (i) team-watch filter OK"
 # ---- (k) team-next archives the run-scoped root files; the next ticket takes the no-lead branch ---
 reset; lead_json
 for f in teamlead.settings.json round verdict-acked lead-dead relaunch-lead; do echo x > "$TD/$f"; done
-mkdir -p "$TD/inbox-rung"; rm -f "$CLONE/.claude/hooks/guard-teamlead-write.sh"
+rm -f "$CLONE/.claude/hooks/guard-teamlead-write.sh"
+mkdir -p "$MAIN/.agents/team/registry"; echo '{}' > "$MAIN/.agents/team/registry/alfa-coder.json"; echo '{}' > "$LREG"
 run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop
 expect 0 "was AB-1500" "(k) team-next"
-for f in teamlead.json teamlead.settings.json round verdict-acked lead-dead relaunch-lead inbox-rung; do
+for f in teamlead.json teamlead.settings.json round verdict-acked lead-dead relaunch-lead; do
   [ ! -e "$TD/$f" ] || fail "(k) $f left at the team-dir root"
 done
+[ ! -e "$MAIN/.agents/team/registry/alfa-coder.json" ] && [ ! -e "$LREG" ] || fail "(k) the ended run's registry files stayed"
 ls "$TD"/archive/AB-1500-*/teamlead.json >/dev/null 2>&1 || fail "(k) teamlead.json not archived"
 prof '.teams.teamlead.enabled = false'
 : > "$STUB_LOG"; rm -f "$WORK/hs.case"; : > "$WORK/alive"
 run "$MAIN" $TR alfa
-has "-s alfa-planner" "$STUB_LOG" && ! has "-s alfa-lead" "$STUB_LOG" || fail "(k) next ticket not on the no-lead branch"
+has "-s smk-alfa-planner" "$STUB_LOG" && ! has "-s smk-alfa-lead" "$STUB_LOG" || fail "(k) next ticket not on the no-lead branch"
 echo "team-smoke-22: (k) team-next OK"
 
 # ==== authority: the per-run TeamLead's answers (checker, sender, hook) ===========================
@@ -480,6 +508,18 @@ STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 
 cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
 [ "$(wc -l < "$WORK/notify.log" | tr -d ' ')" = 1 ] && grep -q -- "--alarm team alfa: human_decision .* d-2:" "$WORK/notify.log" \
   || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) a failing notify.sh: not exactly one legacy notification"; }
+# The driver refuses the hint (the lead recorded on herdr, exit 6): the runner lives on and the legacy
+# alarm carries the old text.
+LR="$MAIN/.agents/team/registry/alfa-lead.json"; mkdir -p "$(dirname "$LR")"; rm -f "$WORK/lr.keep"
+[ ! -f "$LR" ] || cp "$LR" "$WORK/lr.keep"
+jq -n --slurpfile r <(cat "$WORK/lr.keep" 2>/dev/null || echo '{}') '($r[0] // {}) + {address: "alfa-lead", backend: "herdr"}' > "$LR"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$MAIN/.claude/lib/notify.sh"; : > "$STUB_LOG"  # the last runner ended the coder
+printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$WORK/notify.log"
+STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "legacy sink only" "(m) no driver hint: the runner lives"
+cp "$WORK/notify.sh.keep" "$MAIN/.claude/lib/notify.sh"
+if [ -f "$WORK/lr.keep" ]; then cp "$WORK/lr.keep" "$LR"; else rm -f "$LR"; fi
+grep -q -- "d-2: .* — answer in tmux attach -t alfa-lead$" "$WORK/notify.log" \
+  || { cp "$WORK/notify.log" "$WORK/out" 2>/dev/null || true; fail "(m) no driver hint: legacy alarm lacks the old text"; }
 cp "$WORK/notify.log.keep" "$WORK/notify.log"; cp "$WORK/stub.keep" "$STUB_LOG"
 rm -f "$WORK/hs.n" "$TD/cancel"
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 TEAM_NOTIFY=0 run "$MAIN" $TR alfa
@@ -488,7 +528,7 @@ STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=8 TEAM_NOTIFY=0 run "$MAIN" $TR 
 OB="$HOME/.agent-comms/outbox"
 [ "$(ls "$OB/events" | grep -c "_alfa_${RUN_ID}_d-2\.json$")" = 1 ] || { ls -la "$OB/events" > "$WORK/out" 2>&1 || true; fail "(m) not exactly one event file"; }
 jq -e '.event == "human_decision" and .team == "alfa" and .decision == "d-2" and .summary == null
-  and (.answer.hint | test("tmux attach -t .*alfa-lead$"))' "$OB/events/"*"_alfa_${RUN_ID}_d-2.json" >/dev/null \
+  and .answer.hint == "tmux attach -t smk-alfa-lead" and .answer.address == "alfa-lead"' "$OB/events/"*"_alfa_${RUN_ID}_d-2.json" >/dev/null \
   || fail "(m) event file"
 [ ! -e "$TD/runs/$RUN_ID/.notified" ] || fail "(m) .notified still written"
 run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
@@ -553,7 +593,7 @@ runner_attention() {  # runner_attention <label> — one attention line, a runne
 bashp "git status"; runner_attention "(i) clean prompt"
 has "answered at authority class: coder prompt" "$WORK/runner.out" || { cp "$WORK/runner.out" "$WORK/out"; fail "(i) the runner did not answer at class"; }
 grep -q 'send-keys -t %1 Enter' "$STUB_LOG" || fail "(i) no Enter sent to the stage"
-! grep -q 'prompt coder' "$TD/send-lead.log" 2>/dev/null && ! grep -q 'send-keys -t =alfa-lead: -l -- prompt' "$STUB_LOG" \
+! grep -q 'prompt coder' "$TD/send-lead.log" 2>/dev/null && ! grep -q 'send-keys -t =smk-alfa-lead: -l -- prompt' "$STUB_LOG" \
   || fail "(i) the lead was rung for a class-answered prompt"
 grep -q "\[authority class\]" "$RD/answers.md" || fail "(i) class answer not in answers.md"
 editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""; runner_attention "(i) human-only"

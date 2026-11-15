@@ -11,8 +11,10 @@
 #     record adhoc-<handle> (handle, name, tab, cwd, session_id, claude pid) so it can be resumed
 #     after a crash (`claude --resume <session_id>`); a plain terminal gets no record.
 #   prune: ad-hoc records not seen for 14 days whose terminal is gone.
+#   the per-run TeamLead in its clone: identity guard, teamlead.json + <team>-lead record on the
+#     live session id, <team>-lead.reg.json in the main registry, and its pending list (case 0).
 #
-# The per-run TeamLead keeps its own hook until the TeamLead branch lands. Records hold no secret;
+# Records hold no secret;
 # the registration holds the socket token. Everything is written 0600 (umask 077), tmp + mv. The
 # session id comes from the hook payload — the transcript is never read. Prints at most one line.
 # Always exits 0.
@@ -59,6 +61,59 @@ handle_alive() {  # handle_alive <backend> <handle>
   esac
 }
 
+reg_write() {  # reg_write <file> — the doorbell's registration (0600; the token never in argv)
+  jq -n --arg pid "$(claude_pid)" --arg sid "$sid" --arg at "$now" '
+    {socket: env.CLAUDE_CODE_MESSAGING_SOCKET, token: env.CLAUDE_CODE_MESSAGING_TOKEN,
+     pid: (if $pid == "" then null else ($pid | tonumber) end), session_id: $sid,
+     registered_at: $at}' > "$1.tmp.$$" 2>/dev/null && mv "$1.tmp.$$" "$1" || { rm -f "$1.tmp.$$"; return 1; }
+}
+
+# ---- 0. the per-run TeamLead in its clone (was teamlead-register.sh) ----------------------------
+# Only the lead's own claude may move the id: its pid equals the registered pid, or the lead's pane
+# owns this process. Then teamlead.json and the registry record <team>-lead get the live session
+# id, <team>-lead.reg.json is written in the main checkout's registry (main_root of teamlead.json),
+# and the lead's pending list is printed (plain stdout enters the context).
+if [ "${TEAM_SESSION_ROLE:-}" = TeamLead ]; then
+  [ -f "$ROOT/.agents/team/team.json" ] || exit 0
+  LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)" || exit 0
+  cd "$ROOT" 2>/dev/null || exit 0
+  { . "$LIB/team-lib.sh" && . "$LIB/team-lead-lib.sh"; } 2>/dev/null || exit 0
+  TD="$ROOT/.agents/team"
+  run="$(cat "$TD/run" 2>/dev/null)"
+  [ -n "$run" ] && [ "$(team_lead_json run)" = "$run" ] || exit 0
+  team="$(jq -r '.team // empty' "$TD/team.json" 2>/dev/null)"
+  la="$(team_tmux_name "$team" lead)"
+  main="$(team_lead_json main_root)"; REG=""
+  [ -z "$main" ] || [ ! -d "$main/.agents" ] || REG="$main/.agents/team/registry"
+  anc="" p=$$ i=0
+  while [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ] && [ "$i" -lt 30 ]; do
+    anc="$anc $p "; p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; i=$((i + 1))
+  done
+  is_anc() { [ -n "$1" ] && case "$anc" in *" $1 "*) true ;; *) false ;; esac; }
+  reg_pid="" pane_pid=""
+  if [ -n "$REG" ]; then
+    reg_pid="$(jq -r '.pid // empty' "$REG/$la.reg.json" 2>/dev/null)"
+    pane_pid="$(sh_pane_pid "$main" "$la" 2>/dev/null)"
+  fi
+  if is_anc "$reg_pid" || { [[ "$pane_pid" =~ ^[0-9]+$ ]] && is_anc "$pane_pid"; }; then
+    jq --arg s "$sid" '.session_id = $s' "$TD/teamlead.json" > "$TD/teamlead.json.tmp.$$" 2>/dev/null \
+      && mv "$TD/teamlead.json.tmp.$$" "$TD/teamlead.json"
+    rm -f "$TD/teamlead.json.tmp.$$"
+  fi
+  team_lead_caller "$sid" || exit 0
+  if [ -n "$REG" ]; then
+    r=""
+    [ -z "${CLAUDE_CODE_MESSAGING_SOCKET:-}" ] || { mkdir -p "$REG" && reg_write "$REG/$la.reg.json" && r="$la.reg.json"; }
+    [ ! -f "$REG/$la.json" ] || put "$REG/$la.json" \
+      '.session_id = $sid | .last_seen = $at | (if $r != "" then .reg = $r else . end)' \
+      --arg sid "$sid" --arg at "$now" --arg r "$r"
+  fi
+  echo "TeamLead of $team, run $run. Pending (oldest first; the files are the truth):"
+  p="$(bash "$LIB/team-lead.sh" pending "$team" 2>/dev/null)"
+  printf '%s\n' "${p:-none}"
+  exit 0
+fi
+
 # ---- 1. a session the driver started ----------------------------------------------------------
 if [ -n "${HARNESS_ADDRESS:-}" ]; then
   [[ "$HARNESS_ADDRESS" =~ ^[A-Za-z0-9:_-]+$ ]] || exit 0
@@ -66,20 +121,14 @@ if [ -n "${HARNESS_ADDRESS:-}" ]; then
   [ -n "$REG" ] || { [ -z "${HARNESS_MAIN:-}" ] || REG="$HARNESS_MAIN/.agents/team/registry"; }
   [ -n "$REG" ] && [ -f "$REG/$HARNESS_ADDRESS.json" ] || exit 0
   if [ -f "$ROOT/.agents/team/team.json" ]; then
-    # A team clone: only the clone's own active stage may move its record. The per-run TeamLead
-    # (role lead) is out of this hook until the TeamLead branch lands.
-    [ "${TEAM_SESSION_ROLE:-}" != TeamLead ] || exit 0
+    # A team clone: only the clone's own active stage may move its record (the lead is case 0).
     me="$(jq -r '"\(.team // "")-\(.role // "")"' "$ROOT/.agents/team/session.json" 2>/dev/null)"
     [ "$me" = "$HARNESS_ADDRESS" ] || exit 0
   fi
   f="$REG/$HARNESS_ADDRESS.json" r=""
   if [ -n "${CLAUDE_CODE_MESSAGING_SOCKET:-}" ]; then
     r="$HARNESS_ADDRESS.reg.json"
-    jq -n --arg pid "$(claude_pid)" --arg sid "$sid" --arg at "$now" '
-      {socket: env.CLAUDE_CODE_MESSAGING_SOCKET, token: env.CLAUDE_CODE_MESSAGING_TOKEN,
-       pid: (if $pid == "" then null else ($pid | tonumber) end), session_id: $sid,
-       registered_at: $at}' > "$REG/$r.tmp.$$" 2>/dev/null \
-      && mv "$REG/$r.tmp.$$" "$REG/$r" || { rm -f "$REG/$r.tmp.$$"; r=""; }
+    reg_write "$REG/$r" || r=""
   fi
   put "$f" '.session_id = $sid | .last_seen = $at | (if $r != "" then .reg = $r else . end)' \
     --arg sid "$sid" --arg at "$now" --arg r "$r"

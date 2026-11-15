@@ -6,6 +6,8 @@
 # Project values (trunk, tools, clone parent, gates) live in the profile, not here.
 # BASH_SOURCE, not $0: the dashboard and the smoke suites source this file from another directory.
 . "$(dirname "${BASH_SOURCE[0]}")/team-profile.sh"
+# The session-host driver: every tmux call goes through it (the wrappers below keep their names).
+[ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"
 
 TEAM_ROLES="planner coder qa wrapup"
 
@@ -88,24 +90,31 @@ team_run_ref() {
   if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 1 ]; then echo "$2/r$n"; else echo "$2"; fi
 }
 
-team_tmux_name() {
-  echo "$1-$2"
+# team_tmux_name <team> <role> → the ADDRESS <team>-<role>; only the driver knows tmux names (sh_name).
+team_tmux_name() { echo "$1-$2"; }
+# team_sess <address> → the live session name (sh_target): the main checkout from HARNESS_MAIN, else
+# this checkout — a clone shares the committed teams profile, so the same prefix.
+team_sess() {
+  local m; m="$(sh_main_root 2>/dev/null)" || m="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+  sh_target "$m" "$1"
 }
 
-# `=NAME` is an exact match; a plain target prefix-matches (`alfa` would hit `alfa-coder`).
-# Pane commands (capture-pane, send-keys) need `=NAME:` — tmux 3.7 finds no pane for `=NAME`.
+# Session wrappers by address, over the driver. Non-zero = gone or the probe failed, as before.
 team_tmux_alive() {
-  tmux has-session -t "=$1" 2>/dev/null
+  local n; n="$(team_sess "$1")" || return 1
+  sh_tmux has-session -t "=$n" 2>/dev/null   # in this shell, not a $(…): the caller stays tmux's parent
 }
 
 # Last non-empty lines of a session's pane; empty when the session is gone.
 team_pane() {
-  tmux capture-pane -p -t "=$1:" 2>/dev/null | sed '/^[[:space:]]*$/d' | tail -n "${2:-15}" || true
+  local n; n="$(team_sess "$1")" || return 0
+  sh_tmux_read "$n" "${2:-15}" 2>/dev/null || true
 }
 
 # Pane plus scrollback, wrapped lines joined: a long command's start scrolls off the visible pane.
 team_pane_history() {
-  tmux capture-pane -p -J -S -"${2:-200}" -t "=$1:" 2>/dev/null || true
+  local n; n="$(team_sess "$1")" || return 0
+  sh_tmux_history "$n" "${2:-200}" 2>/dev/null || true
 }
 
 # stdin → stdout with labelled secret values masked. Pattern-based: the floor for signals, not a
@@ -135,15 +144,13 @@ team_pane_anchor() {
 # Usage: team_pane_scroll <pane id> [lines] — the pane plus scrollback (a long command's
 # start scrolls off the visible pane), empty lines dropped. The parser reads this capture.
 team_pane_scroll() {
-  tmux capture-pane -p -J -S -"${2:-200}" -t "$1" 2>/dev/null | sed '/^[[:space:]]*$/d' || true
+  sh_read_target "$1" --history "${2:-200}" --squeeze 2>/dev/null || true
 }
 
-# Usage: team_pane_gen <session> → "<pane_id>@<session_created>"; a replaced session is a new value.
+# Usage: team_pane_gen <address> → "<pane_id>@<session_created>"; a replaced session is a new value.
 team_pane_gen() {
-  local g
-  g="$(tmux display-message -p -t "=$1:" '#{pane_id}@#{session_created}' 2>/dev/null)" || return 1
-  [ -n "$g" ] || return 1
-  echo "$g"
+  local n; n="$(team_sess "$1")" || return 1
+  sh_gen "$n" 2>/dev/null
 }
 
 # Usage: team_role_transcript <clone> <session_id> [config dir] → the role's Claude transcript path,

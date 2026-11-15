@@ -160,7 +160,7 @@ role_running() {  # tmux session, or the Supervisor's `here` window
 
 launch() {  # launch <role> — tmux session with the role env and a fresh session id
   local r="$1" s m e set="" flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}" sid name kf ch c
-  s="$(tw_tmux_name "$r")"
+  s="$(tw_session_name "$r")"
   m="$(sess_cfg "$r" model)" || exit 2
   e="$(sess_cfg "$r" effort)" || exit 2
   if [ "$r" = Advisor ]; then
@@ -177,8 +177,8 @@ launch() {  # launch <role> — tmux session with the role env and a fresh sessi
   name="$r$TEAM_CHANNEL_SUFFIX"
   c="$CLEAN claude --name $name --session-id $sid --model $m --effort $e$set $flags $(boot "$r"); read"
   # Per-session -e only: `tmux set-environment -g` would leak into every session.
-  $CLEAN tmux new-session -d -s "$s" -c "$root" -e "TEAM_SESSION_ROLE=$r" \
-    ${ch:+-e "CODEX_HOME=$ch"} ${CC:+-e "CLAUDE_CONFIG_DIR=$CC"} "$c"
+  sh_start "$r" --main "$root" --kind role --cwd "$root" --cli claude --no-probe --env "TEAM_SESSION_ROLE=$r" \
+    ${ch:+--env "CODEX_HOME=$ch"} ${CC:+--env "CLAUDE_CONFIG_DIR=$CC"} -- "$c" >/dev/null
   echo "$s: started ($name, $m, effort $e)"
 }
 
@@ -194,9 +194,9 @@ start() {
   # One Claude config dir for every role, resolved before any session starts.
   CC="$(team_claude_home "$root")" || refuse "$CC"
   for role in $(roles_of "${1:-}"); do
-    s="$(tw_tmux_name "$role")"
+    s="$(tw_session_name "$role")"
     case " $todo " in *" $role "*) launch "$role" ;; *) echo "$s: already running" ;; esac
-    echo "  tmux attach -t $s"
+    echo "  $(sh_hint "$role" --main "$root")"
   done
 }
 
@@ -207,7 +207,7 @@ here() {
   local flags="${TEAM_SESSIONS_CLAUDE_FLAGS:-}" name="Supervisor$TEAM_CHANNEL_SUFFIX"
   [ "${1:-}" = Supervisor ] || usage
   ! team_tmux_alive "$(tw_tmux_name Supervisor)" \
-    || refuse "$(tw_tmux_name Supervisor) runs in tmux — stop Supervisor first"
+    || refuse "$(tw_session_name Supervisor) runs in tmux — stop Supervisor first"
   ! ss_running "$name" || refuse "a claude --name $name already runs"
   m="$(sess_cfg Supervisor model)" || exit 2
   e="$(sess_cfg Supervisor effort)" || exit 2
@@ -235,8 +235,8 @@ answer() {
   esac
   [[ " $TW_PANE_ROLES " != *" ${TEAM_SESSION_ROLE:-} "* ]] \
     || refuse "$TEAM_SESSION_ROLE never answers a role prompt — the Supervisor does"
-  s="$(tw_tmux_name "$r")"
-  team_tmux_alive "$s" || refuse "$s is not running"
+  s="$(tw_session_name "$r")"
+  team_tmux_alive "$r" || refuse "$s is not running"
   cur="$(tw_role_prompt "$r")"
   [ -n "$cur" ] || refuse "no prompt or menu open in $s"
   IFS=$'\t' read -r sub cfp _ <<<"$cur"
@@ -246,17 +246,17 @@ answer() {
   esac
   if [ "$act" = yes ]; then
     [ -f "$pf" ] || refuse "Operator action: no materialised profile (materialize $r)"
-    why="$(team_pane_history "$s" 200 | python3 -I "$LIB/team_prompt_check.py" "$root" \
+    why="$(team_pane_history "$r" 200 | python3 -I "$LIB/team_prompt_check.py" "$root" \
       --settings "$pf" 2>&1 >/dev/null)" || refuse "Operator action: $why"
   fi
   case "$act" in
-    yes) tmux send-keys -t "=$s:" Enter ;;
-    no) tmux send-keys -t "=$s:" Escape; sleep 1
-      tmux send-keys -t "=$s:" -l -- \
+    yes) sh_tmux send-keys -t "=$s:" Enter ;;
+    no) sh_tmux send-keys -t "=$s:" Escape; sleep 1
+      sh_tmux send-keys -t "=$s:" -l -- \
         "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window."
-      tmux send-keys -t "=$s:" Enter ;;
+      sh_tmux send-keys -t "=$s:" Enter ;;
     pick|other)
-      bash "$LIB/team-answer.sh" "$TEAM_CHANNEL_TMUX_PREFIX" "$(lc "$r")" "$act" "$text" \
+      bash "$LIB/team-answer.sh" "$(sh_prefix "$root")" "$(lc "$r")" "$act" "$text" \
         --session "$r" || rc=$?
       [ "$rc" = 0 ] || exit "$rc" ;;
   esac
@@ -299,8 +299,8 @@ reviewer() {
 status() {
   local r s l
   for r in $TW_SESSION_ROLES; do
-    s="$(tw_tmux_name "$r")"
-    echo "$r: tmux $s $(team_tmux_alive "$s" && echo alive || echo down)"
+    s="$(tw_session_name "$r")"
+    echo "$r: tmux $s $(team_tmux_alive "$r" && echo alive || echo down)"
     if [ "$r" = Advisor ]; then
       echo "  receiver: n/a (agent-mail)"
       echo "  $(reviewer)"
@@ -499,10 +499,10 @@ up_loops() {
 # up_role <role> — a tmux session without its claude is the `; read` pane of a dead session.
 up_role() {
   local r="$1" s
-  s="$(tw_tmux_name "$r")"
-  if team_tmux_alive "$s"; then
+  s="$(tw_session_name "$r")"
+  if team_tmux_alive "$r"; then
     if ss_running "$r$TEAM_CHANNEL_SUFFIX"; then echo "$r: already running"; return 0; fi
-    tmux kill-session -t "=$s"
+    sh_tmux kill-session -t "=$s"
     start "$r" >/dev/null; echo "$r: restarted (dead pane)"
   elif [ "$r" = Supervisor ] && ss_running "$r$TEAM_CHANNEL_SUFFIX"; then
     echo "$r: running (here)"
@@ -534,7 +534,7 @@ up() {
   env -u TEAM_SESSION_ROLE bash "$LIB/monitoring.sh" start all \
     || echo "monitoring: start all failed — /monitoring start all in the Supervisor"
   for r in $TW_SESSION_ROLES; do
-    if team_tmux_alive "$(tw_tmux_name "$r")"; then echo "  tmux attach -t $(tw_tmux_name "$r")"; fi
+    if team_tmux_alive "$(tw_tmux_name "$r")"; then echo "  $(sh_hint "$r" --main "$root")"; fi
   done
   echo "Close this bootstrap session if it is not a role session."
 }
@@ -546,8 +546,8 @@ case "$cmd" in
   start) start "${1:-}" ;;
   stop)
     need_role "${1:-}"
-    s="$(tw_tmux_name "$1")"
-    if team_tmux_alive "$s"; then tmux kill-session -t "=$s"; echo "$s: stopped"
+    s="$(tw_session_name "$1")"
+    if team_tmux_alive "$1"; then sh_tmux kill-session -t "=$s"; echo "$s: stopped"
     else echo "$s: not running"; fi ;;
   status) status ;;
   check) python3 -I "$LIB/session_profile_check.py" "$root" --hooks ;;

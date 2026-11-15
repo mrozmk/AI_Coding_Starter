@@ -37,9 +37,10 @@ mktarget() {  # mktarget <name> → a fresh one-commit repo at $WORK/<name>
   mkdir -p "$t"; git -C "$t" init --quiet
   echo README > "$t/README"; git -C "$t" add README; git -C "$t" commit --quiet -m README
   # The core files a synced project already has (team-setup.sh refuses without them, see (20)).
-  mkdir -p "$t/.claude/lib/costs"
+  mkdir -p "$t/.claude/lib/costs" "$t/.claude/hooks/lib"
   cp "$ST/.claude/lib/team-profile.sh" "$ST/.claude/lib/team-tracker.sh" "$t/.claude/lib/"
   cp "$ST/.claude/lib/costs/runtime-mark.sh" "$t/.claude/lib/costs/"
+  cp "$ST/.claude/hooks/lib/guard_destructive_sql.py" "$t/.claude/hooks/lib/"
   printf '%s' "$t"
 }
 # Entries the manifest distributes — counted from the file, never hardcoded.
@@ -214,7 +215,8 @@ setup "$T"
 has "conflict settings.json Q: registered under PostToolUse, not PreToolUse" \
   || fail "7: a hook under the wrong event is not a conflict"
 S="$T/.claude/settings.json"
-[ "$(jq '[.hooks.PostToolUse[].hooks[]] | length' "$S")" = 1 ] || fail "7: the foreign entry was touched"
+[ "$(jq '[.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[]] | length' "$S")" = 1 ] \
+  || fail "7: the foreign entry was touched"
 jq -e '[.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[]
   | select(.command | test("guard-team-question"))] | length == 1' "$S" >/dev/null \
   || fail "7: no correct PreToolUse entry was added"
@@ -479,6 +481,14 @@ for c in missing stale; do
   has "sync-from-starter" || fail "20: the refusal does not say how to fix it"
   [ "$(treehash "$T")" = "$before" ] || fail "20: a refused install ($c) wrote to the target"
 done
+# … the destructive-SQL classifier is core too (sqlcmd-write.sh and the team guards import it)
+T=$(mktarget core-classifier)
+rm -f "$T/.claude/hooks/lib/guard_destructive_sql.py"
+before=$(treehash "$T")
+setup "$T"
+[ "$RC" = 2 ] && has "core file .claude/hooks/lib/guard_destructive_sql.py is missing" \
+  || fail "20: a missing classifier is not refused: $RC"
+[ "$(treehash "$T")" = "$before" ] || fail "20: a refused install (classifier) wrote to the target"
 T=$(mktarget core-current)
 setup "$T" --check
 [ "$RC" != 2 ] || fail "20: current core files are refused: $(cat "$WORK/out")"
@@ -572,5 +582,89 @@ jq -e '.hooks.PreToolUse[0].hooks[0].async == true and (.hooks.PreToolUse[1].hoo
 cp "$S" "$WORK/s22"
 setup "$T"
 cmp -s "$S" "$WORK/s22" || fail "22: the rerun changed settings.json"
+
+# ---- (23) session-host state hook: once per event, synchronous; a fresh target writes state ------
+NT='permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
+tstat() {  # tstat <settings> <event> <matcher|''> → how many correct team-status entries
+  jq --arg ev "$2" --arg m "$3" '[.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]
+    | select((.command | test("team-status.sh")) and .timeout == 3 and (.async // false) == false)] | length' "$1"
+}
+T=$(mktarget t23)
+setup "$T"
+S="$T/.claude/settings.json"
+[ -f "$T/.claude/hooks/team-status.sh" ] || fail "23: team-status.sh was not installed"
+for e in "PostToolUse:" "Notification:$NT" "UserPromptSubmit:" "Stop:" "SessionEnd:"; do
+  [ "$(tstat "$S" "${e%%:*}" "${e#*:}")" = 1 ] || fail "23: team-status is not registered once, synchronous, under ${e%%:*}"
+  [ "$(tstat "$ST/.claude/settings.json" "${e%%:*}" "${e#*:}")" = 1 ] \
+    || fail "23: the starter's own settings do not register team-status synchronously under ${e%%:*}"
+done
+[ "$(jq '[.hooks[]?[]?.hooks[]? | select(.command | test("team-status.sh"))] | length' "$S")" = 5 ] \
+  || fail "23: team-status.sh is registered more than 5 times"
+# State transitions through the target's own registrations only (TMUX unset: no OSC job).
+REG="$WORK/reg23"; mkdir -p "$REG"
+echo '{"address": "alfa-coder", "session_id": "s-new"}' > "$REG/alfa-coder.json"
+fire() {  # fire <event> <session id> [notification type]
+  local m='' cmd p
+  [ "$1" != Notification ] || m="$NT"
+  cmd="$(jq -r --arg ev "$1" --arg m "$m" '[.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]
+    | select(.command | test("team-status.sh")) | .command][0] // empty' "$S")"
+  [ -n "$cmd" ] || fail "23: no team-status registration for $1"
+  p="{\"hook_event_name\": \"$1\", \"session_id\": \"$2\", \"transcript_path\": \"/t/$2.jsonl\"${3:+, \"notification_type\": \"$3\"}}"
+  printf '%s' "$p" | (cd "$T" && env -u TMUX -u TMUX_PANE CLAUDE_PROJECT_DIR="$T" HARNESS_REGISTRY="$REG" \
+    HARNESS_ADDRESS=alfa-coder HARNESS_BACKEND=tmux bash -c "$cmd") || fail "23: the hook failed on $1"
+}
+st() { jq -r '.state + "/" + (.kind // "-") + "/" + .session_id' "$REG/state/alfa-coder.json" 2>/dev/null || echo none; }
+fire UserPromptSubmit s-new; [ "$(st)" = working/-/s-new ] || fail "23: UserPromptSubmit gave $(st)"
+fire Notification s-new permission_prompt; [ "$(st)" = blocked/permission/s-new ] || fail "23: permission_prompt gave $(st)"
+fire PostToolUse s-new; [ "$(st)" = working/-/s-new ] || fail "23: PostToolUse gave $(st)"
+fire Stop s-new; [ "$(st)" = done/-/s-new ] || fail "23: Stop gave $(st)"
+fire UserPromptSubmit s-old; [ "$(st)" = done/-/s-new ] || fail "23: a stale session's write was not ignored: $(st)"
+fire SessionEnd s-old; [ "$(st)" = done/-/s-new ] || fail "23: an old SessionEnd after a relaunch removed the state"
+fire SessionEnd s-new; [ "$(st)" = none ] || fail "23: SessionEnd left the state file"
+# An existing async registration is a conflict: kept, and a synchronous entry is added; the rerun is a no-op.
+T=$(mktarget t23b)
+mkdir -p "$T/.claude"
+TS='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh"'
+jq -n --arg s "$TS" '{hooks: {PostToolUse: [{hooks: [{type: "command", command: $s, async: true}]}]}}' \
+  > "$T/.claude/settings.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "conflict settings.json T: PostToolUse registers team-status async" || fail "23: an async state hook is not a conflict"
+[ "$(tstat "$S" PostToolUse '')" = 1 ] || fail "23: no synchronous entry next to the conflict"
+jq -e '.hooks.PostToolUse[0].hooks[0].async == true' "$S" >/dev/null || fail "23: the project's entry was rewritten"
+cp "$S" "$WORK/s23"
+setup "$T"
+cmp -s "$S" "$WORK/s23" || fail "23: the rerun changed settings.json"
+
+# ---- (24) session registry: the old TeamLead hook is retired, a foreign look-alike stays ----------
+T=$(mktarget t24)
+mkdir -p "$T/.claude"
+OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/teamlead-register.sh"'
+FOREIGN='bash "$CLAUDE_PROJECT_DIR/tools/teamlead-register.sh"'
+jq -n --arg o "$OLD" --arg f "$FOREIGN" '{hooks: {SessionStart: [
+   {matcher: "startup|resume|clear|compact", hooks: [{type: "command", command: $o, timeout: 5}]},
+   {matcher: "startup", hooks: [{type: "command", command: $f}, {type: "command", command: $o}]}]}}' \
+  > "$T/.claude/settings.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "retired settings.json: teamlead-register.sh" || fail "24: the old hook was not retired"
+[ "$(jq --arg o "$OLD" '[.hooks[]?[]?.hooks[]? | select(.command == $o)] | length' "$S")" = 0 ] \
+  || fail "24: the old hook is still registered"
+[ "$(jq --arg f "$FOREIGN" '[.hooks[]?[]?.hooks[]? | select(.command == $f)] | length' "$S")" = 1 ] \
+  || fail "24: a foreign hook whose path contains teamlead-register was dropped"
+[ "$(jq '[.hooks.SessionStart[] | select((.hooks | length) == 0)] | length' "$S")" = 0 ] \
+  || fail "24: an emptied entry was left behind"
+jq -e '[.hooks.SessionStart[] | .hooks[] | select((.command | test("session-registry.sh")) and .timeout == 5)]
+    | length == 1' "$S" >/dev/null \
+  || fail "24: session-registry.sh is not registered once"
+jq -e '[.hooks.UserPromptSubmit[] | .hooks[] | select((.command | test("inbox-count.sh")) and .timeout == 3
+    and (.async // false) == false)] | length == 1' "$S" >/dev/null || fail "24: inbox-count.sh is not registered once"
+[ -f "$T/.claude/hooks/session-registry.sh" ] && [ -f "$T/.claude/hooks/inbox-count.sh" ] \
+  && [ ! -e "$T/.claude/hooks/teamlead-register.sh" ] || fail "24: hook files"
+setup "$T"
+! has "retired settings.json" || fail "24: the rerun retired again"
+jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("teamlead-register"))] | length == 1' \
+  "$ST/.claude/settings.json" >/dev/null && fail "24: the starter's own settings still register teamlead-register"
+true
 
 echo "team-setup-smoke: OK"

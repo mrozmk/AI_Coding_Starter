@@ -41,6 +41,16 @@ team_profile_require_supported
 dir="$(team_clone_dir "$team" "$root")"
 TEAM_PROBLEMS=()
 team_check_name "$team" 2>/dev/null || TEAM_PROBLEMS+=("team name '$team' must match [a-z0-9-]+")
+# Session names (session-host-lib.sh sh_name): not a role, an ad-hoc or a helper name, and the
+# longest one, <prefix>-<team>-wrapup (as long as -runner), fits 32 characters.
+lt="$(printf '%s' "$team" | tr '[:upper:]' '[:lower:]')"
+for r in $(jq -r '.teams.sessions // {} | keys[]' "$root/.claude/project-profile.json" 2>/dev/null) \
+  Supervisor TeamLead Advisor Fable Astra; do
+  [ "$lt" != "$(printf '%s' "$r" | tr '[:upper:]' '[:lower:]')" ] \
+    || { TEAM_PROBLEMS+=("team name $team is a declared role"); break; }
+done
+case "$lt" in adhoc-*|team-watch|team-watch-dog|retro) TEAM_PROBLEMS+=("team name $team is reserved (adhoc-*, team-watch, retro)") ;; esac
+! lname="$(sh_name "$root" "$team-wrapup" 2>&1)" && TEAM_PROBLEMS+=("${lname#session-host: }") || true
 [ ! -e "$dir" ] || TEAM_PROBLEMS+=("$dir already exists — to start the next ticket there: team-next.sh")
 team_ticket_checks "$root" "$key" "$branch" "$base"
 team_mode_checks "$root" "$base" "$mode"

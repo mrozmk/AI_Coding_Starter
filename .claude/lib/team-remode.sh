@@ -131,10 +131,12 @@ bash "$root/.claude/lib/team-audit.sh" "$team" --final archived \
 old_run="$run"
 archive="$TD/archive/$ticket-remode-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
-for f in runs run acked cancel session.json teamlead.json teamlead.settings.json teamlead.reg.json \
-  round verdict-acked lead-dead relaunch-lead inbox-rung; do
+for f in runs run acked cancel session.json teamlead.json teamlead.settings.json \
+  round verdict-acked lead-dead relaunch-lead; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
 done
+# The team stays: only the lead's doorbell registration goes (the stage records are reused).
+rm -f "$root/.agents/team/registry/$team-lead.reg.json"
 
 # Later roles and the wrapup read the notes of the current run only.
 new_run="$team-$(date -u +%Y%m%d-%H%M%S)"
