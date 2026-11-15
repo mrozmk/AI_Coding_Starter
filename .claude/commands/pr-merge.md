@@ -116,8 +116,8 @@ ticket key`, and 5a / 5b runs. Otherwise run [.agents/reference/tracker-comments
   ledger line `informational` (§6 → Solo decisions) or a follow-up ticket — and re-runs;
 - exit `4` or a failed read → **STOP, no merge** until the user decides; the baseline stays.
 
-`--auto` (the Supervisor's team path) skips this step: the team's merge-time row of the contract
-waits for the per-run TeamLead (E1). Never print the read or the snapshot. Checked once: an armed
+`--auto` (the Supervisor's team path) skips this step: the Supervisor runs the team's merge-time
+check itself before it calls `/pr-merge --auto` (`.agents/reference/team-pipeline.md` §5a). Never print the read or the snapshot. Checked once: an armed
 auto-complete completes later without another read — the contract's §7 limit.
 
 ### Step 5 — Execute

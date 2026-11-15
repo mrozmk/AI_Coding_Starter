@@ -13,6 +13,8 @@
       "Bash(bash .claude/lib/team-lead.sh decision open *)",
       "Bash(bash .claude/lib/team-lead.sh decision withdraw *)",
       "Bash(bash .claude/lib/team-lead.sh decision list *)",
+      "Bash(bash .claude/lib/team-tracker.sh show *)",
+      "Bash(node .claude/lib/tracker-snapshot.mjs *)",
       "Bash(*.claude/lib/codex-bg.sh)",
       "Read(.agents/**)"
     ],
@@ -32,7 +34,9 @@
       "Skill(pr-merge)",
       "Skill(pr-merge *)",
       "Skill(release)",
-      "Skill(release *)"
+      "Skill(release *)",
+      "Bash(*notify.sh*)",
+      "Bash(*operator-record.sh*)"
     ],
     "ask": [
       "Bash(cat .env*)",
@@ -52,7 +56,12 @@
       "bash .claude/lib/team-remode.sh alfa brainstorm",
       "bash .claude/lib/team-integrate.sh alfa",
       "bash .claude/lib/team-watch.sh routing split",
-      "bash .claude/lib/team-watch.sh mode answering on"
+      "bash .claude/lib/team-watch.sh mode answering on",
+      "bash .claude/lib/notify.sh human_decision --summary x --answer Supervisor",
+      ".claude/lib/notify.sh release --summary x",
+      "bash -c '.claude/lib/notify.sh flush'",
+      "bash ~/.agent-comms/../notify.sh list",
+      "bash .claude/lib/operator-record.sh failure --summary x"
     ],
     "skills": [
       "Skill(pr-merge)",
@@ -66,7 +75,10 @@
       "bash .claude/lib/team-lead.sh diff alfa",
       "bash .claude/lib/team-lead.sh decision open alfa --source qa-1-1.json --question q",
       "bash .claude/lib/team-lead.sh decision withdraw alfa d-1 --why w",
-      "bash .claude/lib/team-lead.sh decision list alfa --pending"
+      "bash .claude/lib/team-lead.sh decision list alfa --pending",
+      "bash .claude/lib/team-tracker.sh show 12 --out /tmp/claude/show.json",
+      "node .claude/lib/tracker-snapshot.mjs snapshot --github /tmp/claude/show.json --out .agents/team/runs/alfa-20261116-100000/tracker-plan-1.json",
+      "node .claude/lib/tracker-snapshot.mjs compare - .agents/team/runs/alfa-20261116-100000/tracker-plan-1.json"
     ],
     "secrets": [
       "cat .env",

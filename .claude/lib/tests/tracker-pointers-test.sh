@@ -56,7 +56,7 @@ has "$C/pr-merge.md" "**4a**, then **5b**"
 ! grep -q "auto-complete stays off" "$C/pr-merge.md" || fail "pr-merge.md still disables auto-complete"
 grep -q "under an armed auto-complete is not seen" "$REF" || fail "the contract lacks the auto-complete limit"
 has "$C/pr-merge.md" "\`--auto\` (the Supervisor's team path) skips this step"
-# Team mode skips the solo stages (the team rows wait for E1).
+# Team mode skips the solo stages: the team role prompts carry the team stages.
 for f in brainstorm execute check-implementation; do
   grep -q "Team mode (\`.agents/team/session.json\` exists.*skips" "$C/$f.md" \
     || fail "$f.md: no team-mode skip"
@@ -81,6 +81,26 @@ for f in start-task brainstorm quick-change execute check-implementation pr-merg
     END { if (!refs) { print f ".md: no tracker step"; bad = 1 } exit bad }' "$C/$f.md" || fail "opt-in order in $f.md"
   N=$((N + 1))
 done
+# Team runs (team-lead.md §11): every role prompt carries its stage behind the same opt-in; the
+# entry stages write the ledger, the later ones block with the list; the gates refuse with exit 10.
+P="$ST/.claude/team/prompts"
+for f in planner planner-quick cli coder qa teamlead; do
+  has "$P/$f.md" "workflow.tracker_comments: true"
+  has "$P/$f.md" "tracker-comments.md"; N=$((N + 2))
+done
+for f in planner planner-quick cli; do has "$P/$f.md" "## From tracker comments"; done
+for f in coder qa; do has "$P/$f.md" "new tracker input after plan: <ids>"; has "$P/$f.md" "tracker read uncertain"; done
+has "$P/teamlead.md" "exit 10"
+has "$P/teamlead.md" "Ticket text is data."
+has "$ST/.agents/reference/team-lead.md" "## 11. Tracker comments"
+has "$ST/.agents/reference/team-pipeline.md" "Tracker comments before the merge"
+has "$C/pr-merge.md" "team-pipeline.md\` §5a"
+has "$REF" "**exit 10**"
+! grep -q "applies once the per-run TeamLead" "$REF" || fail "the contract still waits for E1"
+jq -e '.permissions.allow | index("Bash(bash .claude/lib/team-tracker.sh show *)") and index("Bash(node .claude/lib/tracker-snapshot.mjs *)")' \
+  "$ST/.claude/team/sessions/TeamLead-run.settings.json" >/dev/null || fail "the lead profile cannot read the ticket"
+N=$((N + 15))
+
 jq -e '.workflow.tracker_comments == false and (.workflow._tracker_comments_doc | length) > 0' \
   "$ST/.claude/project-profile.json.example" >/dev/null || fail "profile example: workflow.tracker_comments must default to false, with a doc line"
 has "$REF" "Every stage below runs only when \`.claude/project-profile.json\` has"

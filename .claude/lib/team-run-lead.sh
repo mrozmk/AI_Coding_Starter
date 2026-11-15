@@ -146,19 +146,32 @@ lead_poll() {
 }
 
 # A verdict with notify (human_decision, abandon_decision) reaches the Operator once, whatever
-# TEAM_NOTIFY says: these are the Operator's own events. runs/<run>/.notified lists the sent ones.
+# TEAM_NOTIFY says: these are the Operator's own events. notify.sh's write-once event file (id
+# <project>:<team>:<run>:<d-n>) is the dedup; the legacy team_channel_notify fires only for a newly
+# written event or a failed notify.sh, until #41 removes it. LEAD_NOTIFIED keeps one call per verdict per runner process.
+LEAD_NOTIFIED=" "
 lead_notify() {
-  local f d ev id q nf="$TD/runs/$RUN/.notified"
+  local f d ev id q out rc p h
   for f in "$TD/runs/$RUN"/teamlead-*-*.json; do
     [ -f "$f" ] || continue
     ev="$(rec "$f" notify)"; [ -n "$ev" ] || continue
-    ! grep -qxF "$(basename "$f")" "$nf" 2>/dev/null || continue
+    case "$LEAD_NOTIFIED" in *" $RUN/$(basename "$f") "*) continue ;; esac
     d="$(rec "$f" ref)"; id=""; q=""
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
     team_channel_names "$root" 2>/dev/null || { TEAM_CHANNEL_NOTIFIER=none; TEAM_CHANNEL_NAMES_ROOT="$root"; }
-    team_channel_notify --alarm "team $TEAM: $ev" \
-      "$(team_json ticket) ${id:-?}: ${q:-$(rec "$f" message)} — answer in $(sh_hint "$(sess_name lead)")"
-    basename "$f" >> "$nf"
+    h="$(sh_hint "$(sess_name lead)")"
+    p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
+    rc=0; out="$(bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
+      --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \
+      --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name lead)" \
+      --hint "$h" --ref "$d" --source runner 2>/dev/null)" || rc=$?
+    LEAD_NOTIFIED="$LEAD_NOTIFIED$RUN/$(basename "$f") "
+    # A failed sender must not silence the Operator: the legacy sink is the only channel that reaches a person yet.
+    [ "$rc" = 0 ] || { echo "warn: notify.sh exit $rc for $(basename "$f") — legacy sink only"; out=written; }
+    case "$out" in written*)
+      team_channel_notify --alarm "team $TEAM: $ev" \
+        "$(team_json ticket) ${id:-?}: ${q:-$(rec "$f" message)} — answer in $h" ;;
+    esac
   done
 }
 

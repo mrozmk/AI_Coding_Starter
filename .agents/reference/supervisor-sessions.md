@@ -77,6 +77,14 @@ it.
 **Bootstrap:** `/session-role Supervisor` (the `SessionStart` hook asks for it) — freeze state,
 `team-watch.sh pending Supervisor`, the latest `decisions.md` commits, unread mail.
 
+**Operator records** — the Supervisor's only path to a notification:
+`bash .claude/lib/operator-record.sh failure --summary "<line>" [--team <t>] [--ref <file>]` for a
+failure it tried and could not repair (a stage or TeamLead that will not restart, a broken main it
+cannot fix), `… release --summary "<line>"` for a release step that waits for the Operator, and
+`… close <id>` once the Operator has dealt with it. The script writes
+`.agents/team/operator/<id>.md` and calls `notify.sh` itself; an open record with the same event,
+team and summary is reused, not sent again. `notify.sh` is denied to every role profile.
+
 **Commands:** `supervisor-sessions.sh status|freeze on …|freeze status|preflight|answer …|reviewer`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` turn, then `/start-team <team>`),
@@ -308,6 +316,13 @@ Operator is needed) and is silent in team clones and for other notification type
 take it from the installed kit file `<kit_dir>/hooks/role-hooks.settings.json` (Supervisor and
 TeamLead through the materialised profile, the Advisor as its `--settings`). Installing the kit is
 an Operator action (`install.sh --apply`); a running session picks the hook up only after a restart.
+
+The single sender `.claude/lib/notify.sh` (notification model, epic E2) writes every Operator event
+— `human_decision`, `abandon_decision` (runner, from TeamLead verdicts), `unrepaired_failure`,
+`release` (`operator-record.sh`) — once into `~/.agent-comms/outbox/` and fans it out to the
+channels switched on in `~/.agent-comms/notify.json`. No channel is built yet (Herdr #39, iMessage
+#40), so every channel records `off`; `notify.sh --check` shows the switches and `notify.sh list`
+the events. The sinks above stay until #41.
 
 ## Migration
 

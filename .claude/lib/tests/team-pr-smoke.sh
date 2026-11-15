@@ -270,12 +270,15 @@ expect 0 "new body line" "body-get reads back what body-set wrote"
 has "second" "$WORK/out" || fail "body-get lost a line"
 
 setprofile '.teams.pr_provider = "azure-devops"'
-for op in coords "state 8" "identity 8 a b" "readiness 8" "publish 8" "body-get 8"; do
+for op in coords "state 8" "identity 8 a b" "readiness 8" "body-get 8"; do
   run "$MAIN" $PR $op
   expect 2 "azure-devops uses the team-lib.sh helpers" "team-pr.sh refuses ADO: $op"
 done
+# create/publish on ADO go to team-pr-ado.sh (part 25); here origin is GitHub, so it refuses there.
 run "$MAIN" $PR create --draft --head h --base b --title T --body-file "$BF"
-expect 2 "azure-devops uses the team-lib.sh helpers" "team-pr.sh refuses ADO: create"
+expect 2 "cannot resolve the Azure DevOps org/project/repo from origin" "team-pr.sh hands ADO create to team-pr-ado.sh"
+run "$MAIN" $PR publish 8
+expect 2 "cannot resolve the Azure DevOps org/project/repo from origin" "team-pr.sh hands ADO publish to team-pr-ado.sh"
 setprofile
 
 
@@ -328,8 +331,8 @@ has 'az repos pr update --org {{ORG_URL}} --id {{PR}} --draft false' "$WORK/b1-q
   || fail "the ADO qa prompt lost its publish command"
 b1_render azure-devops "Azure DevOps org" "https://dev.azure.com/o" auto coder "$WORK/b1-coder-ado" \
   || fail "ADO render of coder failed"
-has 'Run `/pr-create` — team mode creates an Azure DevOps draft' "$WORK/b1-coder-ado" \
-  || fail "the ADO coder prompt lost /pr-create"
+has 'team-pr.sh create --draft --head {{BRANCH}}' "$WORK/b1-coder-ado" \
+  || fail "the ADO coder prompt does not create its draft with team-pr.sh"
 # A missing block file is a hard failure, never a prompt shipped with a live placeholder.
 run "$MAIN" /bin/bash -c '. .claude/lib/team-pr-render.sh
   team_pr_render github "$PWD/nowhere" k h auto "x {{PR_CREATE}} y"'

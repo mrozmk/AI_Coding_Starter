@@ -122,16 +122,19 @@ yet → `.agents/handoffs/<KEY>.ticket.json`), so the next boundary compares aga
 user's "continue without the check" holds for that one boundary, and a later complete read still
 reports a comment that went missing.
 
-**Team runs (applies once the per-run TeamLead, E1, is merged).** E1 has no in-run path back to
-planning, so the reactions use its existing transitions only:
+**Team runs** (the per-run TeamLead, [team-lead.md](team-lead.md) §11). A run has no in-run path
+back to planning, so the reactions use its existing transitions only. The TeamLead's spec, plan and
+acceptance gates are enforced by `team-verdict.sh` (`team-tracker-gate.sh`): a missing ledger or
+snapshot, a fresh read older than the gated record, a change or an uncertain read refuses the
+approve or accept with **exit 10** (`tracker comments not current`).
 
 | Stage boundary | Changed | Uncertain |
 |---|---|---|
-| TeamLead `spec` / `plan` gate | `revise` with the list as findings (the planner reconciles, new snapshot) | `escalate` with a decision |
-| coder (start) | `blocked` "new tracker input after plan: <ids>" → the lead: informational → `answers.md`; inside the AC → answered within the plan; a scope change → a decision recommending `close` (the ticket restarts with a fresh run) | `blocked` → a decision |
-| qa | `blocked` with the list → informational → `answers.md`; inside the AC → `rework` from the qa `blocked` record; a scope change → a decision `close` | `blocked` → a decision |
-| TeamLead `acceptance` gate | named under `## Ordered vs delivered`; `rework` or a decision | a decision |
-| Supervisor before `/pr-merge` / `team-integrate.sh` | no merge; to the lead — informational → READY note, then merge; otherwise close/restart or a follow-up ticket | no merge until the Operator decides (its own decision, not QA's) |
+| TeamLead `spec` / `plan` gate | exit 10 → `revise` with the list as findings (the planner reconciles, new snapshot; after the spec approve, into the plan) | exit 10 → `escalate` with a decision |
+| coder (start of every round) | `blocked` "new tracker input after plan: <ids>" → the lead: informational → `say` with `<id>@<sha>` (`answers.md`); inside the AC → answered within the plan; a scope change → a decision recommending `close` (the ticket restarts with a fresh run) | `blocked` → a decision |
+| qa (before its gates) | `blocked` with the list → informational → `say`; inside the AC → `rework` from the qa `blocked` record; a scope change → a decision `close` | `blocked` → a decision |
+| TeamLead `acceptance` gate | exit 10 unless every id is named under `## Ordered vs delivered`; otherwise `rework` or a decision (`answers.md` `<id>@<sha>` count as reconciled) | exit 10 → a decision |
+| Supervisor before `team-merge-check.sh` / `team-integrate.sh` / `/pr-merge --auto` | no merge; one Operator question — informational → a PR-description note, then merge; otherwise close/restart or a follow-up ticket ([team-pipeline.md](team-pipeline.md) §5a) | no merge until the Operator decides (its own decision, not QA's) |
 | cli (before `/commit`) | `blocked` with the list | `blocked` |
 
 ## 7. Limits

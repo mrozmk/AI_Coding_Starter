@@ -6,6 +6,10 @@
 #   alfa  — brainstorm, clean: spec gate, plan gate, coder, qa, acceptance, wrapup → ready, accepted
 #   beta  — quick: plan gate, a human-only coder prompt → decision, one notification, operator relay
 #   gamma — brainstorm: spec revise + collision, two reworks, the third refused, abandon → closed
+#   trk   — brainstorm with workflow.tracker_comments on (github-shaped reads; the fixture's tracker
+#           stays jira, whose wrapup needs no tracker target): the planner's ledger + snapshot,
+#           the lead's fresh reads; a comment after the spec refuses the plan approve (exit 10) until
+#           the planner reconciles it into the plan; acceptance on a current read → ready
 #   off   — the switch off: no lead, the pre-TeamLead flow, a blocked coder ends the runner (exit 2)
 # Each scenario asserts the exact set of Supervisor events and Operator notifications.
 #
@@ -277,6 +281,69 @@ grep -q "^### .* alfa AB-2400 $RUN_ID — closed$" "$MAIN/.agents/team/teamlead-
   && grep -qF -- "- d-1 Two reworks spent — abandon AB-2400? — tuning: TeamLead — " "$MAIN/.agents/team/teamlead-log.md" \
   || fail "gamma: no log block"
 echo "team-smoke-24: gamma (revise, collision, rework budget, abandon) OK"
+
+# ==== trk: brainstorm, tracker comments on (github-shaped reads) ====================================================
+cp "$SRC/.claude/lib/tracker-snapshot.mjs" "$CLONE/.claude/lib/"
+git -C "$CLONE" add .claude/lib && git -C "$CLONE" commit --quiet -m "fixture snapshot tool"
+prof '.workflow.tracker_comments = true'
+SNAP="node $CLONE/.claude/lib/tracker-snapshot.mjs"
+tshow() {  # tshow <out snapshot> <comment id:body>... — snapshot a github show result of the ticket
+  local o="$1" c a=(); shift
+  for c in "$@"; do a+=("$(jq -cn --arg i "${c%%:*}" --arg b "${c#*:}" \
+    '{id: $i, author: "dev", created: "2026-11-16T09:00:00Z", updated: "2026-11-16T09:00:00Z", body: $b}')"); done
+  printf '%s\n' ${a[@]+"${a[@]}"} | jq -s '{key: "AB-2400", updated: "2026-11-16T09:00:00Z", body: "Export button.", comments: .}' \
+    > "$WORK/show.json"
+  $SNAP snapshot --github "$WORK/show.json" --out "$o" >/dev/null
+}
+ledger() {  # ledger <artifact> <snapshot> — append the entry stage's ledger
+  printf '\n## From tracker comments\nRead: AB-2400 · github · 2026-11-16T09:00:00Z · fetched 1 · complete · snapshot %s\nDescription: sha x — reconciled\n- 2026-11-16T09:00:00Z · 501 · sha y · dev · requirement · CSV header row\n' "$2" >> "$CLONE/$1"
+}
+fresh alfa-20261116-125000 brainstorm
+start_runner
+launched planner 1; on_stage planner
+mkdir -p "$CLONE/.agents/specs"; tshow "$CLONE/.agents/specs/s.ticket.json" "501:CSV header row"
+printf '# Spec\n\n**Status:** Draft\n\nExport button with a CSV header row.\n' > "$CLONE/.agents/specs/s.md"
+ledger .agents/specs/s.md .agents/specs/s.ticket.json
+git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "spec + ticket snapshot"
+play --verdict review --artifacts .agents/specs/s.md; expect 0 "planner-1-1.json" "trk review"
+wait_for "trk spec gate" "rung 'gate spec: .agents/team/runs/$RUN_ID/planner-1-1.json'"
+printf 'scope: src/\nmade_at: 2026-11-16T12:50:00Z\n\n- none\n' > "$RD/digest.md"
+V spec approve --for planner-1-1.json --message ok; expect 10 "no fresh read" "trk spec approve without a fresh read"
+tshow "$RD/tracker-spec-1.json" "501:CSV header row"
+V spec approve --for planner-1-1.json --message ok; expect 0 "teamlead-spec-1.json" "trk spec approve"
+wait_for "trk approve said" "said_to planner '[team-run] TeamLead approved the spec'"
+sed -i.bak 's/^\*\*Status:\*\* Draft/**Status:** Approved (TeamLead, 2026-11-16)/' "$CLONE/.agents/specs/s.md"
+rm -f "$CLONE/.agents/specs/s.md.bak"; git -C "$CLONE" commit --quiet -am "spec approved"; plan
+play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-2.json" "trk planner done"
+wait_for "trk plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-2.json'"
+# The Operator commented after the spec: the plan approve is refused, the lead sends it back.
+tshow "$RD/tracker-plan-1.json" "501:CSV header row" "502:a footer line too"
+V plan approve --for planner-1-2.json --message ok; expect 10 "new 502 — revise with the list as findings" "trk plan approve on a new comment"
+printf -- '- 502 (tracker comment): a footer line — reconcile into the plan\n' > "$RD/gate-plan-1.md"
+V plan revise --for planner-1-2.json --ref "$RD/gate-plan-1.md" --message "new tracker input: 502"; expect 0 "teamlead-plan-1.json" "trk plan revise"
+wait_for "trk amend said" "said_to planner '[team-run] TeamLead: amend the plan'"
+tshow "$CLONE/.agents/plans/active/${PLAN%.md}.ticket.json" "501:CSV header row" "502:a footer line too"
+ledger ".agents/plans/active/$PLAN" ".agents/plans/active/${PLAN%.md}.ticket.json"
+git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "plan reconciles 502"
+play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-3.json" "trk planner done again"
+wait_for "trk plan gate 2" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-3.json'"
+tshow "$RD/tracker-plan-2.json" "501:CSV header row" "502:a footer line too"
+V plan approve --for planner-1-3.json --message ok; expect 0 "teamlead-plan-2.json" "trk plan approve"
+launched coder 1; on_stage coder
+coder_round1
+launched qa 1; on_stage qa; qa_done "$RD"
+wait_for "trk acceptance gate" "rung 'gate acceptance: .agents/team/runs/$RUN_ID/qa-1-1.json'"
+brief "$RD"; tshow "$RD/tracker-acceptance-1.json" "501:CSV header row" "502:a footer line too"
+V acceptance accept --for qa-1-1.json --message "covers the order"; expect 0 "teamlead-acceptance-1.json" "trk accept"
+jq -e '.tracker | startswith("Tracker comments: none new")' "$RD/teamlead-acceptance-1.json" >/dev/null || fail "trk: no tracker line in the accept"
+launched wrapup 1; on_stage wrapup
+printf 'target_rev: %s\n\n## What matters for you\nPR 8371.\n' "$BASE" > "$RD/wrapup-1.md"
+play --verdict done --pr 8371 --artifacts ".agents/team/runs/$RUN_ID/wrapup-1.md"; expect 0 "wrapup-1-1.json" "trk wrapup"
+runner_rc 0 "trk"
+has "ready: bash .claude/lib/team-merge-check.sh alfa" "$WORK/runner.out" || fail "trk: not ready"
+[ "$(events)" = "accepted " ] || fail "trk: events '$(events)'"
+prof '.workflow.tracker_comments = false'
+echo "team-smoke-24: trk (tracker comments on) OK"
 
 # ==== off: the switch off — no lead, Approved (auto — team mode), a blocked coder ends the runner ======
 prof '.teams.teamlead.enabled = false'

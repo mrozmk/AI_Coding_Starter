@@ -28,7 +28,9 @@
       "Skill(pr-merge)",
       "Skill(pr-merge *)",
       "Skill(release)",
-      "Skill(release *)"
+      "Skill(release *)",
+      "Bash(*notify.sh*)",
+      "Bash(*operator-record.sh*)"
     ],
     "ask": [
       "Bash(cat .env*)",
@@ -47,7 +49,12 @@
       "bash .claude/lib/supervisor-sessions.sh answer Advisor --fp x yes",
       "bash .claude/lib/supervisor-sessions.sh here Supervisor",
       "bash .claude/lib/team-watch.sh routing split",
-      "bash .claude/lib/team-watch.sh mode answering on"
+      "bash .claude/lib/team-watch.sh mode answering on",
+      "bash .claude/lib/notify.sh human_decision --summary x --answer Supervisor",
+      ".claude/lib/notify.sh release --summary x",
+      "bash -c '.claude/lib/notify.sh flush'",
+      "bash ~/.agent-comms/../notify.sh list",
+      "bash .claude/lib/operator-record.sh failure --summary x"
     ],
     "skills": [
       "Skill(pr-merge)",

@@ -75,6 +75,13 @@ allowed "$R" "git push --dry-run origin main" "2 dry run"
 git -C "$R" push --quiet -u origin feature/x
 allowed "$R" "git push" "2 bare push on a working branch"
 
+# (2b) a team branch: cut --no-track from the protected line (team-new.sh), first pushed by /push
+# with -u; its PR to the protected line is made through the host (team-pr.sh), never a git push.
+git -C "$R" switch --quiet --no-track -c feature/AB-1-team develop
+allowed "$R" 'git push -u origin "feature/AB-1-team"' "2b team branch, first /push"
+allowed "$R" "git push" "2b team branch after -u"
+git -C "$R" switch --quiet feature/x
+
 # (3) a destination only git config knows is refused under pr-only, until it is named
 git -C "$R" config remote.origin.push HEAD:refs/heads/main
 blocked "$R" "git push origin feature/x" "3 remote.origin.push maps <src>"

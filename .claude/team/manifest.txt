@@ -85,6 +85,7 @@ own .claude/lib/team-next.sh
 own .claude/lib/team-pr-render.sh
 own .claude/lib/team-pr-state.sh
 own .claude/lib/team-pr.sh
+own .claude/lib/team-pr-ado.sh
 own .claude/lib/team-question.sh
 own .claude/lib/team-record.sh
 own .claude/lib/team-roles.sh
@@ -211,6 +212,9 @@ own .claude/lib/team-lead-lib.sh
 own .claude/lib/team-run-lead.sh
 own .claude/lib/team-inbox.sh
 own .claude/lib/team-verdict.sh
+own .claude/lib/team-tracker-gate.sh
+own .claude/lib/notify.sh
+own .claude/lib/operator-record.sh
 own .claude/hooks/teamlead-register.sh
 own .claude/team/prompts/teamlead.md
 own .agents/reference/team-lead.md
