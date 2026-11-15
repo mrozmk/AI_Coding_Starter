@@ -215,6 +215,12 @@ echo "team-smoke-host: (13) sh_gen / sh_pid OK"
 # ---- (14) hint, (15) main root, (16) program check, (17) status, (18) refusals -------------------------------
 run "$MAIN" $SH hint alfa-coder; expect 0 "tmux attach -t smk-alfa-coder" "(14) hint"
 run "$MAIN" $SH hint Supervisor; expect 0 "tmux attach -t smk-supervisor" "(14) role hint"
+run "$MAIN" env -u TMUX_TMPDIR $SH hint Supervisor
+expect 0 "tmux attach -t smk-supervisor" "(14) no TMUX_TMPDIR"; ! has "TMUX_TMPDIR" "$WORK/out" || fail "(14) a hint without TMUX_TMPDIR names it"
+run "$MAIN" env TMUX_TMPDIR="$WORK/tsock" $SH hint Supervisor
+expect 0 "TMUX_TMPDIR=$WORK/tsock tmux attach -t smk-supervisor" "(14) the hint names the project's tmux server"
+run "$MAIN" env TMUX_TMPDIR="$WORK/t sock" $SH hint Supervisor
+expect 0 "TMUX_TMPDIR='$WORK/t sock' tmux attach -t smk-supervisor" "(14) a TMUX_TMPDIR with a space is quoted"
 git -C "$CL" init --quiet; echo '{"team":"alfa"}' > "$TDX/team.json"
 run "$CL" $SH alive alfa-coder; expect 2 "team clone" "(15) git root of a clone refused"
 run "$CL" env HARNESS_MAIN="$MAIN" $SH alive alfa-coder; expect 3 "" "(15) HARNESS_MAIN from a clone"
@@ -638,14 +644,14 @@ lin check 13 --follow-up-of 10; expect 0 "Operator consent .agents/team/lineage/
 echo "team-smoke-host: (34) consent OK"
 
 # ---- (35) no direct tmux call outside the driver (step 1b) -------------------------------------------------
-# Every tmux call of the team layer goes through session-host-lib.sh. The exceptions are calls the
-# driver does not model yet, each with the step that removes it: path, the subcommands allowed there,
-# the step. A new direct call anywhere else — or another subcommand in an excepted file — fails.
+# Every tmux call of the team layer goes through session-host-lib.sh. The exceptions are permanent,
+# each with its reason: path, the subcommands allowed there, why. A new direct call anywhere else — or
+# another subcommand in an excepted file — fails.
 TMUX_RE='(^|[;&|(]|[[:space:]])tmux[[:space:]]+(-S[[:space:]]+[^[:space:]]+[[:space:]]+)?(new-session|has-session|kill-session|capture-pane|send-keys|display-message|list-clients|set-option|attach)'
 cat > "$WORK/tmux-exceptions" <<'EXC'
 .claude/lib/session-host-lib.sh	.*	— (the driver)
-.claude/hooks/session-registry.sh	display-message|has-session	10 (this terminal's handle through $TMUX's socket)
-.claude/hooks/inbox-count.sh	display-message	10 (this terminal's handle through $TMUX's socket)
+.claude/hooks/session-registry.sh	display-message|has-session	permanent: a SessionStart hook must not pay for sourcing the driver (this terminal's handle through $TMUX's socket)
+.claude/hooks/inbox-count.sh	display-message	permanent: a prompt-time hook must not pay for sourcing the driver (this terminal's handle through $TMUX's socket)
 EXC
 : > "$WORK/tmux-hits"
 for f in "$SRC"/.claude/lib/*.sh "$SRC"/.claude/lib/*.py "$SRC"/.claude/hooks/*.sh; do
@@ -802,7 +808,8 @@ expect 0 "smk-hb-coder" "(H1) start"
 argv_is "(H1) one command" run --bg --no-parent --json --name smk-hb-coder --cwd "$CL" --label harness=smk \
   --label kind=team --label address=hb-coder --label team=hb -- /usr/bin/env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT \
   -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CONFIG_DIR K1=v1 HARNESS_ADDRESS=hb-coder \
-  "HARNESS_MAIN=$MP" "HARNESS_REGISTRY=$REG" HARNESS_BACKEND=herdr /bin/sh -c 'claude --session-id s9 -- "$(cat p)"'
+  "HARNESS_MAIN=$MP" "HARNESS_REGISTRY=$REG" HARNESS_BACKEND=herdr /bin/sh -c \
+  "printf '\\033]2;%s\\007' 'hb-coder'; "'claude --session-id s9 -- "$(cat p)"'   # the pane title first (OSC 2)
 jq -e --arg cl "$CL" '.backend == "herdr" and .handle == "t7a" and .name == "smk-hb-coder" and .session_id == "s9"
   and .team_dir == ($cl + "/.agents/team")' "$REG/hb-coder.json" >/dev/null \
   || { cp "$REG/hb-coder.json" "$WORK/out"; fail "(H1) record"; }

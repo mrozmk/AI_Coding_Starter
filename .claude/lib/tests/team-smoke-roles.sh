@@ -152,7 +152,7 @@ echo "team-smoke-roles: (5) legacy key, project role OK"
 # ---- (6) the window line; the trust dialog -----------------------------------------------------------
 printf 'Do you trust the files in this folder?\n' > "$WORK/trust.txt"
 clr; STUB_PANE="$WORK/trust.txt" TMUX=/tmp/fake,1,0 STUB_SELF=smk-other run "$MAIN" $RS up Fable
-expect 0 "Fable: started (needs trust)" "(6) trust"; line "This window is not a role — close it." "$WORK/out" "(6) window"
+expect 0 "Fable: started (needs trust — pick Yes; Enter alone exits)" "(6) trust"; line "This window is not a role — close it." "$WORK/out" "(6) window"
 noline "send-keys" "$STUB_LOG" "(6) the trust dialog was answered"
 TMUX=/tmp/fake,1,0 STUB_SELF=smk-fable run "$MAIN" $RS up Fable; expect 0 "Fable: already running" "(6) role window"
 noline "This window is not a role" "$WORK/out" "(6) a role's own window"
@@ -491,7 +491,7 @@ noline "hc label" "$STUB_LOG" "(L10) labelled"
 printf '%s\n' " 3 new MCP servers found in this project" " ❯ [ ] alpha" > "$WORK/mcp.scr"
 printf '%s\n' " Do you want to work in this folder?" " ❯ 1. Yes, I trust this folder" "   2. No, exit" > "$WORK/trust.scr"
 : > "$WORK/blank.scr"; rm -f "$D"/*   # no tmux session of (14) left under the name
-for c in "mcp.scr|startup dialog open" "trust.scr|needs trust" "blank.scr|no status yet"; do
+for c in "mcp.scr|startup dialog open" "trust.scr|needs trust — pick Yes; Enter alone exits" "blank.scr|no status yet"; do
   rm -f "$REG/Supervisor.json"
   clr; STUB_HERDR_RC=1 STUB_HC_NONAME=1 STUB_HC_ADDR=t1 STUB_HC_STATUS=null STUB_HC_SCREEN="$WORK/${c%%|*}" \
     run "$MAIN" $RS up Supervisor

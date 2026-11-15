@@ -657,6 +657,21 @@ win() {  # win <fn> [args…] → one runner function in the runner's shell; doo
     team_session_doorbell() { echo "$3" >> "$WORK/bells"; }
     "$@") > "$WORK/out" 2>&1; RC=$?; set -e
 }
+# No session host for the decision's window (step 10): the hint passed to notify.sh says so and names
+# the status command, never a guessed tmux name; the runner goes on.
+nohost_notify() {
+  rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
+  sess_name() { team_tmux_name "$TEAM" "$1"; }
+  sh_hint() { return 1; }
+  LEAD_NOTIFIED=" "; lead_notify
+}
+cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.nohost"; rm -f "$WORK/nargs.log"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "%s/nargs.log"\n' "$WORK" > "$MAIN/.claude/lib/notify.sh"
+win nohost_notify; cp "$WORK/notify.sh.nohost" "$MAIN/.claude/lib/notify.sh"
+[ "$RC" = 0 ] || fail "(m) no host: lead_notify failed"
+grep -A1 -x -- "--hint" "$WORK/nargs.log" 2>/dev/null | tail -n 1 \
+  | grep -qx "no alfa-lead session found — bash .claude/lib/session-host.sh status alfa-lead" \
+  || { cp "$WORK/nargs.log" "$WORK/out" 2>/dev/null || true; fail "(m) no host: the fallback hint"; }
 st() { sed -n 's/^status: //p' "$DLD/$1.md"; }
 res() {  # res <tool_use id> <entry fields> — the stage's own answer to its prompt, in its transcript
   jq -cn --arg id "$1" --argjson x "$2" '{type: "user", uuid: ("u-" + $id),

@@ -182,6 +182,14 @@ expect 0 "recorded " "(i) same text after close"
 [ "$(ls "$OB/events" | grep -c '_failure_')" = 2 ] || fail "(i) after close the same text is a new event"
 orr release --summary "publish waits for the Operator" --ref "$WORK/t0"; expect 2 "inside the main checkout" "(i) --ref outside"
 orr release --summary "publish waits for the Operator" --ref "$MAIN/README"; expect 0 "recorded " "(i) release"
+# No session host for the hint (a record the driver refuses): a true line, never a guessed tmux name.
+RG="$MAIN/.agents/team/registry"; mkdir -p "$RG"; [ ! -f "$RG/Supervisor.json" ] || mv "$RG/Supervisor.json" "$WORK/sup.json"
+echo '{"backend": "bogus"}' > "$RG/Supervisor.json"
+orr failure --summary "the hint has no host"; expect 0 "recorded " "(i) no session host"
+ID2="$(sed -n 's/^recorded //p' "$WORK/out")"; EV="$(ls "$OB/events" | grep "_failure_$ID2\.json$")" || fail "(i) no event without a host"
+jq -e '.answer.hint == "no Supervisor session found — bash .claude/lib/roles.sh status"' "$OB/events/$EV" >/dev/null \
+  || { cp "$OB/events/$EV" "$WORK/out"; fail "(i) the no-host hint"; }
+rm "$RG/Supervisor.json"; [ ! -f "$WORK/sup.json" ] || mv "$WORK/sup.json" "$RG/Supervisor.json"
 CL="$WORK/clone"; mkdir -p "$CL/.agents/team"; git -C "$CL" init --quiet; echo '{"team":"alfa"}' > "$CL/.agents/team/team.json"
 run "$CL" $OR failure --summary x
 expect 1 "run from the main checkout" "(i) refused in a team clone"

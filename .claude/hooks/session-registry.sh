@@ -57,6 +57,8 @@ timebox() {  # timebox <secs> <cmd…> → exit 124 on timeout (pr_timebox, team
     $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
     alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
 }
+# Direct tmux calls, never the driver: a hook must not pay for sourcing session-host-lib.sh (a
+# permanent exception of part host (35)).
 tmux_name() {  # the tmux session of this pane, from $TMUX (socket,pid,index) and $TMUX_PANE
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 1
   tmux -S "${TMUX%%,*}" display-message -p -t "$TMUX_PANE" '#S' 2>/dev/null

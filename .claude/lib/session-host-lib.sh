@@ -644,14 +644,16 @@ sh_herdr_gen() {
   echo "$g"
 }
 
-# sh_herdr_launch_line <cli> <K=V…> -- <argv…> → SH_LINE: the argv `hc run` gets after `--`. The
-# caller's environment does not reach an hc terminal (it gets the login session's), so every variable
-# is a word for /usr/bin/env; one element is a shell command (`/bin/sh -c`), several are argv.
+# sh_herdr_launch_line <cli> <title> <K=V…> -- <argv…> → SH_LINE: the argv `hc run` gets after `--`.
+# The caller's environment does not reach an hc terminal (it gets the login session's), so every
+# variable is a word for /usr/bin/env; one element is a shell command (`/bin/sh -c`), several are argv.
+# A shell command first sets the terminal title to <title> (OSC 2): Herdr's pane header shows the
+# title the program set, and without it that is the wrapper's `sh` until the CLI sets its own.
 # No Claude config dir passed → unset, never inherited (spec §1 Environment).
 SH_LINE=()
 sh_herdr_launch_line() {
-  local kv=() ch=""
-  shift
+  local kv=() ch="" t="$2"
+  shift 2
   while [ $# -gt 0 ] && [ "$1" != -- ]; do
     kv+=("$1"); case "$1" in CLAUDE_CONFIG_DIR=*) ch=1 ;; esac; shift
   done
@@ -660,7 +662,9 @@ sh_herdr_launch_line() {
     -u CLAUDE_CODE_MESSAGING_TOKEN)
   [ -n "$ch" ] || SH_LINE+=(-u CLAUDE_CONFIG_DIR)
   SH_LINE+=(${kv[@]+"${kv[@]}"})
-  if [ $# -eq 1 ]; then SH_LINE+=(/bin/sh -c "$1"); else SH_LINE+=("$@"); fi
+  if [ $# -gt 1 ]; then SH_LINE+=("$@")
+  elif [ -n "$t" ]; then SH_LINE+=(/bin/sh -c "printf '\\033]2;%s\\007' $(sh_quote "$t"); $1")
+  else SH_LINE+=(/bin/sh -c "$1"); fi
 }
 
 # --- verbs ---------------------------------------------------------------------------------------
@@ -920,6 +924,9 @@ sh_kill() {
   ! sh_tmux_alive "$n" 2>/dev/null
 }
 
+# hint <address> → how a person looks at the session: `tmux attach -t <name>`, prefixed with
+# `TMUX_TMPDIR=<dir>` when this process has one (a per-project tmux server is reached only through it;
+# a plain Terminal without it finds the default server), `hc attach …` on Herdr, or a plain line.
 sh_hint() {
   local a="$1" n b
   shift; sh_opts "$a" "$@" || return 2
@@ -935,7 +942,16 @@ sh_hint() {
     echo "hc attach $n · herdr: $(sh_record_get "$SH_MAIN" "$a" name | grep . || echo "$n") (in the agent list once placed)"
     return 0
   fi
-  echo "tmux attach -t $n"
+  echo "$(sh_tmux_env)tmux attach -t $n"
+}
+
+# sh_tmux_env → "TMUX_TMPDIR=<dir> " when the variable is set (quoted only when it needs it), else "".
+sh_tmux_env() {
+  [ -n "${TMUX_TMPDIR:-}" ] || return 0
+  case "$TMUX_TMPDIR" in
+    *[!A-Za-z0-9_./-]*) printf 'TMUX_TMPDIR=%s ' "$(sh_quote "$TMUX_TMPDIR")" ;;
+    *) printf 'TMUX_TMPDIR=%s ' "$TMUX_TMPDIR" ;;
+  esac
 }
 
 # sh_state <main> <address> → the hook's state file as one JSON object, or nothing when there is
@@ -1056,7 +1072,7 @@ sh_herdr_run() {
   shift 5
   while [ $# -gt 0 ] && [ "$1" != -- ]; do [ "$1" = -e ] || kv+=("$1"); shift; done
   shift
-  sh_herdr_launch_line "$cli" ${kv[@]+"${kv[@]}"} -- "$@"
+  sh_herdr_launch_line "$cli" "$a" ${kv[@]+"${kv[@]}"} -- "$@"
   lab=(--label "harness=$(sh_prefix "$SH_MAIN")" --label "kind=$k" --label "address=$a")
   [ "$k" != team ] || lab+=(--label "team=${a%-*}")
   out="$(sh_hc run --bg --no-parent --json --name "$n" --cwd "$cwd" "${lab[@]}" -- "${SH_LINE[@]}" 2>&1)"
@@ -1184,7 +1200,7 @@ sh_start() {
 # screen decides meanwhile.
 sh_wait_ready() {
   local i=0 max="${TEAM_HOST_READY_SECS:-20}" poll="${TEAM_HOST_READY_POLL:-1}" esc="" scr st hint
-  hint="tmux attach -t $2"; [ "${4:-tmux}" != herdr ] || hint="hc attach $2"
+  hint="$(sh_tmux_env)tmux attach -t $2"; [ "${4:-tmux}" != herdr ] || hint="hc attach $2"
   while [ "$i" -lt "$max" ]; do
     if [ "${4:-tmux}" = herdr ]; then
       [ -z "$(sh_herdr_state "$2")" ] || return 0

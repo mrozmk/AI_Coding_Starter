@@ -161,7 +161,8 @@ lead_notify() {
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
     team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # only for the prefix; a broken channel block → the dir slug
     w="lead"; [ ! -f "$d" ] || w="$(lfm "$d" answer_in)"; w="${w:-lead}"  # human-only: the stage window
-    h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" || h="tmux attach -t $(sess_name "$w")"  # no host: never kill the runner
+    h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" \
+      || h="no $(sess_name "$w") session found — bash .claude/lib/session-host.sh status $(sess_name "$w")"  # no host: say so, never kill the runner
     p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
     rc=0; bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
       --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \

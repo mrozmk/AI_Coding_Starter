@@ -74,11 +74,10 @@ echo "recorded $ID"
 
 P="$(bash "$LIB/team-channel.sh" get tmux_prefix 2>/dev/null || true)"
 [ -n "$P" ] || P="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')"
-# The driver's hint names the live (prefixed) Supervisor session; the old text only without a host.
+# The driver's hint names the live (prefixed) Supervisor session. Without one, say so and name the
+# command that shows the roles — never a guessed tmux name.
 H="$(bash "$LIB/session-host.sh" hint Supervisor --main "$ROOT" 2>/dev/null)" || H=""
-if [ -z "$H" ]; then
-  S="$(bash "$LIB/team-channel.sh" name Supervisor 2>/dev/null || true)"; H="tmux attach -t ${S:-$P-supervisor}"
-fi
+[ -n "$H" ] || H="no Supervisor session found — bash .claude/lib/roles.sh status"
 args=(--project "$P" --summary "$SUMMARY" --answer Supervisor --hint "$H" --key "$ID"
   --source operator-record --main "$ROOT")
 [ -z "$TEAM" ] || args+=(--team "$TEAM")

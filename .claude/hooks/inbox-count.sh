@@ -25,6 +25,7 @@ elif [ ! -f "$ROOT/.agents/team/team.json" ] && [ -z "${TEAM_SESSION_ROLE:-}" ];
   h=""
   if [ -n "${HC_TERMINAL_ID:-}" ]; then h="$HC_TERMINAL_ID"
   elif [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
+    # Direct, never the driver: sourcing session-host-lib.sh on every prompt costs (part host (35)).
     h="$(tmux -S "${TMUX%%,*}" display-message -p -t "$TMUX_PANE" '#S' 2>/dev/null)"
   fi
   [ -z "$h" ] || ra="adhoc-$(printf '%s' "$h" | tr -c 'A-Za-z0-9_-' '-')"

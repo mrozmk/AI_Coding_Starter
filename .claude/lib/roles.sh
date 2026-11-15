@@ -146,7 +146,7 @@ placed() { printf '%s\n' "$2" | awk -F'\t' -v r="$1" '$1 == r && $2 != "none" &&
 # held_word <role> <needs_trust output> → the words after "started" / "resumed …", or nothing.
 held_word() {
   case " $(echo $2) " in
-    *" $1:trust "*) echo " (needs trust)" ;;
+    *" $1:trust "*) echo " (needs trust — pick Yes; Enter alone exits)" ;;   # Herdr's default is "No, exit"
     *" $1:dialog "*) echo " (startup dialog open)" ;;
     *" $1:nostatus "*) echo " (no status yet)" ;;
   esac
