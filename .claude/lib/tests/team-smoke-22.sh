@@ -167,6 +167,14 @@ run "$MAIN" $TI write alfa collision --from Supervisor; expect 0 "" "(j) the Sup
 run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
 expect 0 "stop .agents/team/runs/$RUN_ID/planner-1-1.json — which endpoint?" "(d) pending lists the stop"
 grep -q '^inbox .*/main/.agents/team/inbox/alfa/new/20261114T100500Z' "$WORK/out" || fail "(d) pending lacks the inbox file"
+# (d2) pending lists this run's and run-less messages only; a done message is gone from it.
+grep -q "^inbox .*-Supervisor-collision-answer.md — collision-answer" "$WORK/out" || fail "(d2) this run's message missing"
+run "$MAIN" $TI write alfa message --from Supervisor --run alfa-20000101-000000; OLD="$(head -n 1 "$WORK/out")"
+run "$MAIN" $TI done alfa 20261114T100500Z-Supervisor-collision-answer.md; expect 0 "/inbox/alfa/done/" "(d2) done"
+run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
+grep -q '20261114T100500Z' "$WORK/out" && fail "(d2) pending still lists a done message"
+grep -qF "$(basename "$OLD")" "$WORK/out" && fail "(d2) pending lists another run's message"
+grep -q "^inbox .*-Supervisor-collision-answer.md — collision-answer" "$WORK/out" || fail "(d2) this run's message lost"
 kill "$SRV" 2>/dev/null || true; SPID=""
 # Without a registration the doorbell is skipped and logged (pane not idle).
 reset; lead_json; printf 'alfa-lead\nalfa-planner\n' > "$WORK/alive"

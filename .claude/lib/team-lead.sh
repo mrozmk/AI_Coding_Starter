@@ -9,7 +9,7 @@
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
 #   pending lists the lead's open items — pending decisions first, then stop, gate, attention,
-#   inbox, oldest first:
+#   inbox (this run's or run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
 #   lead. notes-init creates runs/<run>/teamlead-notes.md (five headings) when absent; log-append
@@ -58,7 +58,7 @@ gate_decided() {  # gate_decided <record basename> — a non-escalate verdict na
 
 # One line per item, sorted by a 14-digit UTC key that is cut off before printing.
 pending() {
-  local f role attempt last ts since="" stage l gate rr
+  local f role attempt last ts since="" stage l gate rr ir
   resolve "$1"
   {
     if [ -n "$RUN" ]; then
@@ -102,7 +102,10 @@ pending() {
     if [ -n "$MAIN" ]; then
       for f in "$MAIN/.agents/team/inbox/$1/new"/*; do
         [ -f "$f" ] || continue
-        echo "$(basename "$f" | cut -c1-16 | tr -dc 0-9) inbox $f — $(sed -n 's/^event: //p' "$f" | head -n 1)"
+        # Another run's leftover is not this lead's to act on; a message without a run is.
+        ir="$(dfm "$f" run)"
+        [ -z "$ir" ] || [ "$ir" = "$RUN" ] || continue
+        echo "$(basename "$f" | cut -c1-16 | tr -dc 0-9) inbox $f — $(dfm "$f" event)"
       done
     fi
   } | sort -s -k1,1 | cut -d' ' -f2-

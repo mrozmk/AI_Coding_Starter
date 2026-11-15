@@ -4,7 +4,7 @@
 #          --ticket <k> --run <r> [--ref <path>] [--message <one line>]
 #        bash .claude/lib/team-inbox.sh [--main <dir>] list <address> | done <address> <file>
 #   <main>/.agents/team/inbox/<address>/{tmp,new,done}/; write builds
-#   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>.md in tmp/, renames it into new/, then rings the address's
+#   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md in tmp/, links it into new/, then rings the address's
 #   session through session-host.sh send (rc on stderr `ring: <rc>`, never the exit: the file is
 #   the truth). Supervisor: a team sender only accepted|closed|collision|session_dead, a role or
 #   adhoc-* sender also message|advice, an unknown sender refused. Role/team address: any event.
@@ -29,7 +29,7 @@ fi
 D="$MAIN/.agents/team/inbox/$addr"
 
 write() {
-  local event="$1" from="" ticket="" run="" ref="" msg="" stem f n=1
+  local event="$1" from="" ticket="" run="" ref="" msg="" stem f tmp n=1
   shift
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
@@ -58,15 +58,25 @@ write() {
   fi
   mkdir -p "$D/tmp" "$D/new" "$D/done"
   stem="$(date -u +%Y%m%dT%H%M%SZ)-$from-$event"; f="$stem"
-  while [ -e "$D/new/$f.md" ] || [ -e "$D/done/$f.md" ] || [ -e "$D/tmp/$f.md" ]; do
+  # Published with ln, which refuses an existing name: a parallel writer that picked the same name
+  # makes this one take the next suffix instead of replacing its message (mv would overwrite).
+  tmp="$D/tmp/$stem.$$.md"
+  while :; do
+    if [ ! -e "$D/done/$f.md" ]; then
+      { printf -- '---\nid: %s\nfrom: %s\nto: %s\nevent: %s\nticket: %s\nrun: %s\nref: %s\n---\n' \
+          "$f" "$from" "$addr" "$event" "$ticket" "$run" "$ref"
+        printf '%s from %s: ticket %s, run %s%s\n' "$event" "$from" "${ticket:-?}" "${run:-?}" \
+          "${ref:+ — $ref}"
+        [ -z "$msg" ] || printf '%s\n' "$msg"; } > "$tmp"
+      ln "$tmp" "$D/new/$f.md" 2>/dev/null && break
+      # Not a name clash (no hard links here, a permission error): stop instead of trying 100 names.
+      [ -e "$D/new/$f.md" ] || [ -e "$D/done/$f.md" ] \
+        || { rm -f "$tmp"; echo "error: cannot link $tmp into $D/new" >&2; exit 1; }
+    fi
     n=$((n + 1)); f="$stem-$n"
+    [ "$n" -le 100 ] || { rm -f "$tmp"; echo "error: no free name for $stem in $D/new" >&2; exit 1; }
   done
-  { printf -- '---\nid: %s\nfrom: %s\nto: %s\nevent: %s\nticket: %s\nrun: %s\nref: %s\n---\n' \
-      "$f" "$from" "$addr" "$event" "$ticket" "$run" "$ref"
-    printf '%s from %s: ticket %s, run %s%s\n' "$event" "$from" "${ticket:-?}" "${run:-?}" \
-      "${ref:+ — $ref}"
-    [ -z "$msg" ] || printf '%s\n' "$msg"; } > "$D/tmp/$f.md"
-  mv "$D/tmp/$f.md" "$D/new/$f.md"
+  rm -f "$tmp"
   echo "$D/new/$f.md"
   # The doorbell: the address's session (sh_inbox_session) through the driver. Blocked (9), gone (3)
   # or skipped (10) loses nothing — the file is in new/ and the prompt hook counts it.
