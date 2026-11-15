@@ -89,6 +89,10 @@ Then the next step, one of two:
 - **role sessions:** `bash .claude/lib/supervisor-sessions.sh check`, then the migration in
   `.agents/reference/supervisor-sessions.md` → Migration (`start all`, the channel check, `preflight`,
   `routing split`).
+Optional, Herdr users only: print (never run) the Herdr notification mod's install line,
+`bash .claude/team/herdr-mod/install.sh --dry-run` then without `--dry-run`, and the switch
+`{"version": 1, "herdr": {"enabled": true}}` for `~/.agent-comms/notify.json` (mode 0600; the
+user writes it). README: `.claude/team/herdr-mod/harness-notify/README.md`.
 The installer registered its SessionStart and Stop hooks (W, S, R); runbooks:
 `.agents/reference/team-watch.md`, `.agents/reference/supervisor-sessions.md`.
 

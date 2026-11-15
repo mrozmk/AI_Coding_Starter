@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The Operator's single sender (notify.sh, #38) and the Supervisor's record script
 # (operator-record.sh): the closed event vocabulary, write-once dedup, delivery state with crash
-# recovery (published / dispatching), the switch file's validation (no channel is built yet, so
-# every channel records off), prune at every call (a held entry survives), the flush lock, the
+# recovery (published / dispatching), the switch file's validation (iMessage is not built yet and
+# records off), the Herdr channel (#39: the spool entry, the registry record, the mod's logic under
+# node, the installer in a fixture app home), prune at every call (a held entry survives), the flush lock, the
 # record script's coalescing and 200-character cut, the role-profile deny. Fixture HOME only:
 # nothing reaches a person — no osascript / notify-send call, no file under the real
 # ~/.agent-comms, the recipient in no output or outbox file.
@@ -69,14 +70,14 @@ conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\"
 nt --check; expect 0 "imessage off — unknown tz Europe/DefinitelyMissing" "(d) unknown tz"
 conf "{\"version\": 1, \"herdr\": {\"enabled\": true}, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", $Q}}"
 nt --check; expect 0 "imessage on, recipient set — not built yet (#40), records off" "(d) both on"
-has "herdr on — not built yet (#39), records off" "$WORK/out" || fail "(d) herdr on"
+has "herdr on — mod not seen (no layout shows the harness-notify strip?)" "$WORK/out" || fail "(d) herdr on"
 LONG="$(printf 'Line one\tand a tab\nline two '; printf 'x%.0s' $(seq 300))"
 dec d-2 "$LONG"; expect 0 "written acme:alfa:r1:d-2" "(d) event with the switches on"
 E2="$OB/events/acme_alfa_r1_d-2.json"
 jq -e --arg r "$WORK/d.md" '(.summary | length) == 200 and (.summary | test("[\\n\\t]") | not)
   and (.summary | startswith("Line one and a tab line two")) and .ref == $r' "$E2" >/dev/null || fail "(d) summary not one 200-char line"
-[ "$(st acme_alfa_r1_d-2 herdr)" = "off not-built" ] && [ "$(st acme_alfa_r1_d-2 imessage)" = "off not-built" ] \
-  || fail "(d) a channel that is on must record off (not built)"
+[ "$(st acme_alfa_r1_d-2 herdr)" = "skipped-tmux -" ] && [ "$(st acme_alfa_r1_d-2 imessage)" = "off not-built" ] \
+  || fail "(d) herdr skips a session with no herdr record; imessage records off (not built)"
 echo "team-smoke-notify: (d) switch file OK"
 
 # ---- (e) crash after publishing: the next call delivers ----------------------------------------------
@@ -84,17 +85,21 @@ NOTIFY_CRASH_AT=published dec d-3; expect 137 "" "(e) crash after publishing"
 [ -f "$OB/events/acme_alfa_r1_d-3.json" ] && [ ! -e "$OB/state/acme_alfa_r1_d-3.herdr" ] || fail "(e) state after the crash"
 rm -rf "$OB/.flush.lock"   # a killed process may leave it; a dead pid is reclaimed anyway (h)
 nt flush; expect 0 "" "(e) flush"
-[ "$(st acme_alfa_r1_d-3 herdr)" = "off not-built" ] || fail "(e) not delivered by the next call"
+[ "$(st acme_alfa_r1_d-3 herdr)" = "skipped-tmux -" ] || fail "(e) not delivered by the next call"
 dec d-3; expect 0 "duplicate acme:alfa:r1:d-3" "(e) retry is a duplicate"
 echo "team-smoke-notify: (e) crash after publish OK"
 
 # ---- (f) crash while dispatching: outcome_unknown, never re-sent -------------------------------------
+# iMessage alone, so the crash hits a send that is not idempotent (a Herdr spool write is: (k)).
+BOTH="$(cat "$CONF")"
+conf "{\"version\": 1, \"imessage\": {\"enabled\": true, \"recipient\": \"$RCP\", $Q}}"
 NOTIFY_CRASH_AT=dispatching dec d-4; expect 137 "written acme:alfa:r1:d-4" "(f) crash in dispatching"
-[ "$(st acme_alfa_r1_d-4 herdr)" = "dispatching -" ] || fail "(f) not dispatching"
+[ "$(st acme_alfa_r1_d-4 imessage)" = "dispatching -" ] || fail "(f) not dispatching"
 nt flush; expect 0 "" "(f) recovery"
-[ "$(st acme_alfa_r1_d-4 herdr)" = "outcome_unknown interrupted" ] || fail "(f) not outcome_unknown"
-[ "$(st acme_alfa_r1_d-4 imessage)" = "off not-built" ] || fail "(f) the other channel was not delivered"
-nt flush; [ "$(st acme_alfa_r1_d-4 herdr)" = "outcome_unknown interrupted" ] || fail "(f) re-sent"
+[ "$(st acme_alfa_r1_d-4 imessage)" = "outcome_unknown interrupted" ] || fail "(f) not outcome_unknown"
+[ "$(st acme_alfa_r1_d-4 herdr)" = "off switch-off" ] || fail "(f) the other channel was not delivered"
+nt flush; [ "$(st acme_alfa_r1_d-4 imessage)" = "outcome_unknown interrupted" ] || fail "(f) re-sent"
+conf "$BOTH"
 echo "team-smoke-notify: (f) crash in dispatching OK"
 
 # ---- (g) prune at every call; held / pending / dispatching survive -----------------------------------
@@ -174,6 +179,136 @@ run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$W
 run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$SRC/.claude/team/sessions" Supervisor TeamLead
 expect 0 "TeamLead OK" "(j) the shipped profiles"
 echo "team-smoke-notify: (j) profile deny OK"
+
+# ---- (k) the Herdr channel (#39): spool entry from the registry record, the mod's logic, the installer -
+conf '{"version": 1, "herdr": {"enabled": true}}'
+MH="$WORK/hmain"; mkdir -p "$MH/.agents/team/registry"; git -C "$MH" init -q
+reg() { printf '%s\n' "$2" > "$MH/.agents/team/registry/$1.json"; }
+reg acme-alfa-lead '{"backend": "herdr", "handle": "t3k9", "name": "acme-alfa-lead"}'
+reg acme-beta-lead '{"backend": "tmux", "handle": "acme-beta-lead"}'
+reg acme-gamma-lead '{"backend": "herdr", "handle": "t1; touch /tmp/x"}'
+reg Supervisor '{"backend": "herdr", "handle": "vps/t7"}'
+hdec() {  # hdec <decision> <answer> — no --hint: the registry record decides it
+  nt human_decision --project acme --team alfa --ticket AB-1 --run r2 --decision "$1" \
+    --summary "Restart the app?" --answer "$2" --main "$MH"
+}
+HN="$OB/herdr/new"
+hdec h-1 acme-alfa-lead; expect 0 "written acme:alfa:r2:h-1" "(k) a herdr answer"
+[ "$(st acme_alfa_r2_h-1 herdr)" = "spooled -" ] || fail "(k) herdr not spooled"
+jq -e '.answer == {address: "acme-alfa-lead", backend: "herdr", handle: "t3k9",
+  hint: "herdr: acme-alfa-lead (click in the agent list) · hc attach t3k9"}' "$OB/events/acme_alfa_r2_h-1.json" >/dev/null \
+  || fail "(k) the event's answer is not the registry's"
+jq -e '(keys == ["action","body","created_at","id","title"]) and .id == "acme_alfa_r2_h-1"
+  and .title == "[acme] decision"
+  and .body == "alfa AB-1 h-1 — Restart the app? — answer: herdr: acme-alfa-lead (click in the agent list) · hc attach t3k9"
+  and .action == {name: "agent.focus", args: {terminal: "t3k9"}}' "$HN/acme_alfa_r2_h-1.json" >/dev/null \
+  || { cp "$HN/acme_alfa_r2_h-1.json" "$WORK/out"; fail "(k) the spool entry"; }
+[ "$(perm "$HN/acme_alfa_r2_h-1.json")" = 600 ] || fail "(k) spool entry mode"
+hdec h-1 acme-alfa-lead; expect 0 "duplicate acme:alfa:r2:h-1" "(k) a duplicate"
+[ "$(ls "$HN" | grep -c .)" = 1 ] || fail "(k) a duplicate wrote a second entry"
+mv "$HN/acme_alfa_r2_h-1.json" "$OB/herdr/done/"   # what the mod does after the toast
+NOTIFY_CRASH_AT=dispatching hdec h-2 acme-alfa-lead; expect 137 "" "(k) crash while spooling"
+rm -rf "$OB/.flush.lock"; nt flush
+[ "$(st acme_alfa_r2_h-2 herdr)" = "spooled -" ] && [ -f "$HN/acme_alfa_r2_h-2.json" ] || fail "(k) an interrupted spool is not redone"
+nt flush; [ ! -e "$HN/acme_alfa_r2_h-1.json" ] || fail "(k) an entry the mod moved was spooled again"
+hdec h-3 acme-beta-lead; [ "$(st acme_alfa_r2_h-3 herdr)" = "skipped-tmux -" ] && [ ! -e "$HN/acme_alfa_r2_h-3.json" ] \
+  || fail "(k) a tmux record was spooled"
+jq -e '.answer.hint == "tmux attach -t acme-beta-lead" and .answer.backend == "tmux"' "$OB/events/acme_alfa_r2_h-3.json" >/dev/null \
+  || fail "(k) the tmux hint"
+hdec h-4 acme-gamma-lead; [ "$(st acme_alfa_r2_h-4 herdr)" = "skipped-tmux -" ] || fail "(k) a malformed handle was spooled"
+nt human_decision --project acme --team alfa --run r2 --decision h-7 --summary "Q?" --answer acme-alfa-lead \
+  --hint "tmux attach -t acme-alfa-lead" --main "$MH"   # the callers' tmux fallback hint
+jq -e '.answer.hint | startswith("herdr: acme-alfa-lead")' "$OB/events/acme_alfa_r2_h-7.json" >/dev/null \
+  || fail "(k) a caller's tmux hint replaced the herdr hint"
+hdec h-5 acme-delta-lead; [ "$(st acme_alfa_r2_h-5 herdr)" = "skipped-tmux -" ] || fail "(k) no record was spooled"
+nt release --project acme --summary "Approve the release?" --answer Supervisor --key rel-1 --main "$MH"
+jq -e '.title == "[acme] release" and (.body | startswith("Approve the release? — answer: herdr: Supervisor"))
+  and .action.args.terminal == "vps/t7"' "$HN/acme_release_rel-1.json" >/dev/null || fail "(k) a Supervisor entry (no team words, a remote handle)"
+nt --check; expect 0 "herdr on — mod not seen (no layout" "(k) no heartbeat"
+touch "$OB/herdr/.mod-alive"; nt --check; expect 0 "herdr on — mod seen " "(k) a fresh heartbeat"
+touch -t "$(date -v-10M +%Y%m%d%H%M.%S)" "$OB/herdr/.mod-alive"; nt --check; expect 0 "herdr on — mod not seen for " "(k) an old heartbeat"
+conf '{"version": 1}'; hdec h-6 acme-alfa-lead
+[ "$(st acme_alfa_r2_h-6 herdr)" = "off switch-off" ] && [ ! -e "$HN/acme_alfa_r2_h-6.json" ] || fail "(k) herdr off spooled"
+echo "team-smoke-notify: (k) spool writer OK"
+
+# The mod's logic (spool.js) under node, on the entries notify.sh wrote.
+MOD="$SRC/.claude/team/herdr-mod/harness-notify"
+if command -v node >/dev/null 2>&1; then
+  cp "$HN/acme_alfa_r2_h-2.json" "$WORK/entry.json"
+  printf '%s\n' '{"id":"bad","title":"t","body":"b","created_at":"2026-01-01T00:00:00Z","action":{"name":"agent.focus","args":{"terminal":"t1; rm -rf ~"}}}' > "$WORK/badact.json"
+  run "$WORK" node --input-type=module -e '
+    import * as s from "'"$MOD"'/spool.js"; import { readFileSync } from "fs";
+    const ok = (c, m) => { if (!c) { console.log("FAIL " + m); process.exit(1); } };
+    const now = Date.parse(JSON.parse(readFileSync("entry.json", "utf8")).created_at) + 1000;
+    ok(s.idOf("acme_alfa_r2_h-2.json") === "acme_alfa_r2_h-2", "idOf");
+    for (const n of [".tmp.1", "..json", ".x.json", "a/b.json", "x.txt", "a b.json"]) ok(s.idOf(n) === null, "idOf rejects " + n);
+    const [cmd, args] = s.moveArgs("/H", "acme_alfa_r2_h-2");
+    ok(cmd === "mv" && args.join(" ") === "-f /H/.agent-comms/outbox/herdr/new/acme_alfa_r2_h-2.json /H/.agent-comms/outbox/herdr/done/acme_alfa_r2_h-2.json", "moveArgs");
+    for (const b of ["../x", "a/b", ".x", "a;b", ""]) { let t = false; try { s.moveArgs("/H", b); } catch { t = true; } ok(t, "moveArgs refuses " + b); }
+    const r = s.parse("acme_alfa_r2_h-2", readFileSync("entry.json", "utf8"), now);
+    ok(!r.error && !r.stale && r.item.action.args.terminal === "t3k9" && r.item.title === "[acme] decision", "parse");
+    const t = s.toast(r.item);
+    ok(t.level === "warning" && t.action.name === "agent.focus" && t.body.includes("Restart the app?"), "toast");
+    ok(s.parse("acme_alfa_r2_h-2", readFileSync("entry.json", "utf8"), now + 25 * 3600e3).stale, "stale after 24 h");
+    ok(s.parse("other", readFileSync("entry.json", "utf8"), now).error, "id must match the file name");
+    ok(s.parse("x", "not json", now).error, "not JSON");
+    const b = s.parse("bad", readFileSync("badact.json", "utf8"), Date.parse("2026-01-01T00:00:01Z"));
+    ok(!b.error && b.item.action === null && !("action" in s.toast(b.item)), "a malformed terminal drops the action");
+    let l = s.add([], r.item); l = s.add(l, r.item); ok(l.length === 1, "add dedups");
+    ok(s.stripText(l).startsWith("1 waiting — [acme] decision — alfa AB-1"), "strip text");
+    ok(s.stripText(s.ack(l, r.item.id)) === "harness: watching", "ack");
+    ok(s.expire(l, now + 25 * 3600e3).length === 0 && s.expire(l, now).length === 1, "expire");
+    ok(s.load("garbage").length === 0 && s.load(JSON.stringify([{ id: "../x" }, r.item])).length === 1, "load");
+    console.log("spool.js OK");'
+  expect 0 "spool.js OK" "(k) the mod logic under node"
+  run "$WORK" node --check "$MOD/main.js"; expect 0 "" "(k) main.js parses"
+  # main.js reaches files and programs only through spool.js's paths: two exec calls (touch the
+  # heartbeat, the move), reads only under the spool's new/.
+  [ "$(grep -c 'exec(' "$MOD/main.js")" = 2 ] && grep -q 'exec("touch", \[this.d.alive\])' "$MOD/main.js" \
+    && grep -q 'spool.moveArgs(home(), id)' "$MOD/main.js" \
+    && grep -q 'this.scan(cx); this.watch(cx);' "$MOD/main.js" \
+    && [ "$(grep -o 'readTextFile([^)]*)\|readdir([^)]*)' "$MOD/main.js" | grep -vc 'this.d.new')" = 0 ] \
+    || fail "(k) main.js reaches a path or a program outside the spool"
+  echo "team-smoke-notify: (k) mod logic OK"
+else
+  echo "team-smoke-notify: (k) mod logic skipped — no node"
+fi
+
+# The installer, in a fixture Herdr app home: only its own folder, never a foreign one.
+APPH="$WORK/herdr-app"; mkdir -p "$APPH/mods/toast" "$APPH/layouts"
+echo '{"sounds": {"enabled": false}}' > "$APPH/settings.json"; echo 'export default 1;' > "$APPH/mods/toast/main.js"
+echo '{}' > "$APPH/layouts/main.json"
+snap() { (cd "$APPH" && find . -path ./mods/harness-notify -prune -o -type f -print | sort | xargs shasum); }
+snap > "$WORK/apph.before"
+INST="bash $SRC/.claude/team/herdr-mod/install.sh"
+IH="$WORK/ihome"; mkdir -p "$IH"   # a HOME with no spool yet: the mod's first start
+mode() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"; }
+HOME="$IH" HERDR_APP_HOME="$APPH" run "$WORK" $INST --dry-run; expect 0 "would install $APPH/mods/harness-notify" "(k) dry run"
+grep -qF "would create $IH/.agent-comms/outbox/herdr/new and" "$WORK/out" || fail "(k) the dry run does not name the spool"
+[ ! -e "$APPH/mods/harness-notify" ] && [ ! -e "$IH/.agent-comms" ] || fail "(k) the dry run wrote"
+HOME="$IH" HERDR_APP_HOME="$APPH" run "$WORK" $INST; expect 0 "installed $APPH/mods/harness-notify" "(k) install"
+for d in "" /outbox /outbox/herdr /outbox/herdr/new /outbox/herdr/done; do
+  [ "$(mode "$IH/.agent-comms$d")" = 700 ] || fail "(k) the installer did not create $d with mode 700"; done
+[ -z "$(find "$IH" -type f)" ] || fail "(k) the installer wrote a file into the spool"
+for f in main.js spool.js mod.json README.md; do cmp -s "$MOD/$f" "$APPH/mods/harness-notify/$f" || fail "(k) $f not copied"; done
+[ -f "$APPH/mods/harness-notify/.installed-by-harness" ] || fail "(k) no ownership marker"
+HERDR_APP_HOME="$APPH" run "$WORK" $INST; expect 0 "updated $APPH/mods/harness-notify" "(k) update"
+snap > "$WORK/apph.after"; cmp -s "$WORK/apph.before" "$WORK/apph.after" || fail "(k) the installer touched another file of the app home"
+touch "$APPH/mods/harness-notify/notes.txt" "$APPH/mods/harness-notify/jsconfig.json" "$APPH/mods/harness-notify/gpui-kit.d.ts"
+HERDR_APP_HOME="$APPH" run "$WORK" $INST --rollback; expect 3 "holds files the harness did not install" "(k) rollback keeps a foreign file"
+[ -f "$APPH/mods/harness-notify/jsconfig.json" ] && [ -f "$APPH/mods/harness-notify/main.js" ] || fail "(k) a refused rollback removed something"
+rm "$APPH/mods/harness-notify/notes.txt"
+HOME="$IH" HERDR_APP_HOME="$APPH" run "$WORK" $INST --rollback; expect 0 "removed $APPH/mods/harness-notify" "(k) rollback"
+[ ! -e "$APPH/mods/harness-notify" ] || fail "(k) rollback left the folder (or Herdr's own jsconfig.json / .d.ts)"
+[ -d "$IH/.agent-comms/outbox/herdr/new" ] && [ -d "$IH/.agent-comms/outbox/herdr/done" ] || fail "(k) rollback removed the spool"
+mkdir "$APPH/mods/harness-notify"; echo mine > "$APPH/mods/harness-notify/main.js"
+HERDR_APP_HOME="$APPH" run "$WORK" $INST; expect 3 "was not installed by the harness" "(k) a foreign folder"
+HERDR_APP_HOME="$APPH" run "$WORK" $INST --rollback; expect 3 "was not installed by the harness" "(k) rollback of a foreign folder"
+[ "$(cat "$APPH/mods/harness-notify/main.js")" = mine ] || fail "(k) a foreign folder was touched"
+snap > "$WORK/apph.after"; cmp -s "$WORK/apph.before" "$WORK/apph.after" || fail "(k) another file of the app home changed"
+HERDR_APP_HOME="$WORK/no-app" run "$WORK" $INST; expect 3 "no Herdr app home" "(k) no app home"
+HERDR_APP_HOME="$APPH" run "$WORK" $INST --bogus; expect 2 "Usage:" "(k) usage"
+echo "team-smoke-notify: (k) installer OK"
 
 # ---- nothing reached a person; the recipient is nowhere ----------------------------------------------
 [ ! -s "$WORK/sinks.log" ] || { cp "$WORK/sinks.log" "$WORK/out"; fail "a platform notifier was called"; }

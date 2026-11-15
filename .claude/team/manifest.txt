@@ -173,6 +173,7 @@ own .claude/lib/team_prompt_classes.py
 own .claude/lib/team_prompt_authority.py
 own .claude/lib/team-answer-lead.sh
 own .claude/lib/team-lead-decision.sh
+own .claude/lib/team-evidence.sh
 own .claude/team/baseline-ask.json
 own .claude/lib/team_prompt_settings.py
 own .claude/lib/team_settings_diff.py
@@ -224,6 +225,11 @@ own .claude/lib/team-verdict.sh
 own .claude/lib/team-tracker-gate.sh
 own .claude/lib/notify.sh
 own .claude/lib/operator-record.sh
+own .claude/team/herdr-mod/install.sh
+own .claude/team/herdr-mod/harness-notify/main.js
+own .claude/team/herdr-mod/harness-notify/spool.js
+own .claude/team/herdr-mod/harness-notify/mod.json
+own .claude/team/herdr-mod/harness-notify/README.md
 own .claude/team/prompts/teamlead.md
 own .agents/reference/team-lead.md
 own .claude/hooks/guard-teamlead-write.sh

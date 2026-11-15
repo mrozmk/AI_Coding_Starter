@@ -122,17 +122,9 @@ d_evidence() {
     [ -f "$f" ] && [ "$f" != "$1" ] || continue
     used="$used $(dfm "$f" answered_via | sed -n 's/^teamlead-window //p')"
   done
-  jq -r --arg x "$2" --arg since "$(dfm "$1" created_at)" --arg id "$(basename "$1" .md)" \
-    --arg used "$used" '
-    ($used | split(" ") | map(select(. != ""))) as $u
-    | select(.type == "user" and ((.isMeta // false) | not) and ((.timestamp // "") >= $since))
-    | (.uuid // "?") as $uid
-    | (.message.content | if type == "string" then .
-        elif type == "array" then (map(select(.type == "text") | .text) | join(" ")) else "" end) as $m
-    | select($m != "" and ($m | contains($x))
-        and ($m | test("^(stop |gate |prompt |inbox: |relaunched: |human-only |\\[team-run\\])") | not))
-    | select((($u | index($uid)) == null) or ($m | test("(^|[^A-Za-z0-9-])" + $id + "([^0-9]|$)")))
-    | $uid' "$t" 2>/dev/null | tail -n 1
+  # A base without the matcher has no window evidence: the answer then needs the terminal.
+  . "$LIB/team-evidence.sh" 2>/dev/null || return 1
+  team_evidence_match "$t" "$2" "$(dfm "$1" created_at)" "$(basename "$1" .md)" "$used"
 }
 
 decision_answer() {

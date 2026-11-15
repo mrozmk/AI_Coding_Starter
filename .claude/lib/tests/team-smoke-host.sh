@@ -564,7 +564,16 @@ lin record 9 gamma --follow-up-of 8; expect 0 "9 already recorded" "(33) a re-st
 [ "$(grep -c '"ticket":"9"' "$LD/starts.jsonl")" = 1 ] || fail "(33) the ledger holds a ticket twice"
 lin check 10 --follow-up-of 7
 expect 9 "follow-up 3 of origin 7 (8, 9 started) — needs the Operator's consent" "(33) the third (a sibling) is refused"
+grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$LD/refused/10" && [ "$(mode "$LD/refused/10")" = 600 ] \
+  || fail "(33) the refusal stamp is missing or not 0600"
+cp "$LD/refused/10" "$WORK/stamp10"
 lin record 10 delta --follow-up-of 9; expect 9 "follow-up 3 of origin 7" "(33) record refuses the third too"
+cmp -s "$LD/refused/10" "$WORK/stamp10" || fail "(33) a second refusal moved the first refusal's time"
+lin lineage 11; expect 0 "parent= origin=11" "(33) lineage of a ticket with no lineage"
+lin lineage 10 --follow-up-of 9; expect 0 "parent=9 origin=7" "(33) lineage takes the parent's origin from the ledger"
+lin lineage 8 --ticket-file "$WORK/f8.md"; expect 0 "parent=7 origin=7" "(33) lineage from the body line"
+lin lineage 7; expect 0 "parent= origin=7" "(33) a chain's first ticket is its own origin"
+[ ! -e "$LD/refused/7" ] && [ ! -e "$LD/refused/8" ] || fail "(33) a free ticket got a refusal stamp"
 ! grep -q '"ticket":"10"' "$LD/starts.jsonl" || fail "(33) a refused start was recorded"
 lin check 10 --follow-up-of 9 --ticket-file "$WORK/f8.md"; expect 2 "ask the Operator which" "(33) flag and body disagree"
 printf 'Follow-up of 9 · origin 3\n' > "$WORK/f10.md"
@@ -596,6 +605,37 @@ grep -qx 'status: consumed' "$LD/consents/10.md" || fail "(34) the consent was n
 grep -q '"ticket":"10".*"consent":"consents/10.md"' "$LD/starts.jsonl" || fail "(34) the ledger names no consent"
 lin check 13 --follow-up-of 10; expect 9 "follow-up 4 of origin 7 (8, 9, 10 started)" "(34) the fourth needs its own consent"
 tty_consent 10 10; has "already started on a consent" "$WORK/out" || fail "(34) a consumed consent was rewritten"
+# The Supervisor-window path (no TTY): the Operator's typed message after the refusal holds --text.
+[ -f "$LD/refused/13" ] || fail "(34) no refusal stamp for 13"
+SUPT="$WORK/supproj"; mkdir -p "$SUPT" "$LM/.agents/team/registry"
+sup() {  # sup <uuid> <timestamp> <text> [isMeta] — one user line in the Supervisor transcript
+  jq -cn --arg u "$1" --arg t "$2" --arg m "$3" --argjson meta "${4:-false}" \
+    '{type: "user", isMeta: $meta, uuid: $u, timestamp: $t, message: {role: "user", content: $m}}' >> "$SUPT/s-sup.jsonl"
+}
+wlin() { TEAM_DASH_PROJECT_DIR="$SUPT" lin "$@" </dev/null; }
+wlin consent 13 --text "consent 13"; expect 7 "no message typed in the Supervisor window" "(34) no Supervisor record"
+jq -n --arg c "$LM" '{session_id: "s-sup", cwd: $c}' > "$LM/.agents/team/registry/Supervisor.json"
+sup u-old 2000-01-01T00:00:00.000Z "yes, consent 13"
+sup u-bell 2099-01-01T00:00:00.000Z "inbox: consent 13"
+sup u-run 2099-01-01T00:00:01.000Z "[team-run] consent 13"
+sup u-meta 2099-01-01T00:00:02.000Z "consent 13" true
+sup u-tw 2099-01-01T00:00:02.500Z "[team-watch #5] 1 signal(s) · mail: consent 13"
+sup u-hc 2099-01-01T00:00:02.700Z '<hc from="x">consent 13</hc>'
+wlin consent 13 --text "consent 13"
+expect 7 "no message typed in the Supervisor window" "(34) an old message, a doorbell, a runner, team-watch, hc or meta line is no consent"
+sup u-ask 2099-01-01T00:00:02.800Z "why is 13 refused?"
+wlin consent 13 --text "13"; expect 7 "holding 'consent 13'" "(34) a mention of the ticket is no consent"
+wlin consent 13 --text "why is 13 refused?"; expect 7 "holding 'consent 13'" "(34) a question naming the ticket is no consent"
+sup u-other 2099-01-01T00:00:02.900Z "consent 14"
+wlin consent 13 --text "consent 14"; expect 7 "holding 'consent 13'" "(34) the phrase with another key"
+wlin consent 13 --text "consent 130"; expect 7 "holding 'consent 13'" "(34) the key is a whole word"
+sup u-op 2099-01-01T00:00:03.000Z "OK — Consent 13, I accept the chain"
+wlin consent 11 --text "consent 11"; expect 7 "no message typed" "(34) a ticket never refused has no window path"
+wlin consent 13 --text "Consent 13, go ahead"; expect 7 "no message typed" "(34) --text must be the Operator's words verbatim"
+wlin consent 13 --text "Consent 13, I accept the chain"; expect 0 "consent written" "(34) the Supervisor-window consent (any case)"
+grep -qx 'answered_via: supervisor-window u-op' "$LD/consents/13.md" && grep -qx 'status: answered' "$LD/consents/13.md" \
+  || { cp "$LD/consents/13.md" "$WORK/out"; fail "(34) window consent fields"; }
+lin check 13 --follow-up-of 10; expect 0 "Operator consent .agents/team/lineage/consents/13.md" "(34) check accepts the window consent"
 echo "team-smoke-host: (34) consent OK"
 
 # ---- (35) no direct tmux call outside the driver (step 1b) -------------------------------------------------

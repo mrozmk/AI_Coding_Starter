@@ -535,4 +535,42 @@ STUB_TMUX_SOCK="/tmp/x'; touch pwned; '" STUB_TMUX_ALIVE=0 run "$MAIN" bash .cla
 expect 1 "contains a quote or backslash" "attach refuses a socket path with a quote"
 ! has osascript "$STUB_LOG" || fail "a socket path with a quote still reached osascript"
 
+# ---- (14) the follow-up cap at team-new / team-next (team-lineage.sh) ------------------------------
+LIN="bash .claude/lib/team-lineage.sh"; LD="$MAIN/.agents/team/lineage"
+for t in AB-790 AB-792 AB-793; do
+  [ "$(grep -c "\"ticket\":\"$t\"" "$LD/starts.jsonl")" = 1 ] || fail "(14) $t not recorded once by team-new/team-next"
+done
+jq -e '.origin_ticket == "AB-793" and .parent_ticket == null' "$TD/team.json" >/dev/null \
+  || fail "(14) team.json of a first ticket: origin_ticket is the ticket, parent_ticket null"
+run "$MAIN" $LIN record AB-801 x1 --follow-up-of AB-790; expect 0 "recorded AB-801 (origin AB-790)" "(14) follow-up 1"
+run "$MAIN" $LIN record AB-802 x2 --follow-up-of AB-801; expect 0 "recorded AB-802 (origin AB-790)" "(14) follow-up 2"
+run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop --follow-up-of AB-802
+expect 9 "follow-up 3 of origin AB-790 (AB-801, AB-802 started) — needs the Operator's consent" "(14) team-new refuses the third"
+[ ! -e "$WORK/main-gamma" ] || fail "(14) a refused team-new made a clone"
+! grep -q '"ticket":"AB-803"' "$LD/starts.jsonl" || fail "(14) a refused team-new was recorded"
+run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop --follow-up-of AB-803
+expect 2 "cannot be a follow-up of itself" "(14) team-new on a contradiction"
+[ ! -e "$WORK/main-gamma" ] || fail "(14) a contradiction made a clone"
+run "$MAIN" $NEW gamma AB-803 feature/AB-803-x origin/develop --follow-up-of
+expect 2 "--follow-up-of needs a ticket key" "(14) team-new --follow-up-of without a value"
+next_state > "$WORK/next.before"
+run "$MAIN" $NEXT alfa AB-804 feature/AB-804-x origin/develop --follow-up-of AB-790
+expect 9 "needs the Operator's consent" "(14) team-next refuses the third"
+next_untouched "(14) a refused team-next"
+run "$MAIN" $NEW gamma AB-811 feature/AB-811-x origin/develop --follow-up-of AB-810
+expect 0 "next:" "(14) a free follow-up"
+jq -e '.parent_ticket == "AB-810" and .origin_ticket == "AB-810"' "$WORK/main-gamma/.agents/team/team.json" >/dev/null \
+  || fail "(14) team.json lineage of a follow-up"
+[ "$(grep -c '"ticket":"AB-811"' "$LD/starts.jsonl")" = 1 ] || fail "(14) the free follow-up is not recorded once"
+# A record that loses the race under the lock: a hard stop after provisioning, no next: line.
+cp "$MAIN/.claude/lib/team-lineage.sh" "$WORK/lin-real.sh"
+printf '#!/usr/bin/env bash\n[ "$1" != record ] || { echo "follow-up 3 of origin AB-1 — needs the consent" >&2; exit 9; }\nexec bash "%s" "$@"\n' \
+  "$WORK/lin-real.sh" > "$MAIN/.claude/lib/team-lineage.sh"
+run "$MAIN" $NEW delta AB-821 feature/AB-821-x origin/develop
+expect 9 "needs the consent" "(14) a failed record stops team-new"
+! has "next:" "$WORK/out" || fail "(14) a failed record still printed next:"
+jq -e '.ticket == "AB-821" and .origin_ticket == "AB-821"' "$WORK/main-delta/.agents/team/team.json" >/dev/null \
+  || fail "(14) the clone of a failed record is not left in place with its lineage"
+git -C "$MAIN" checkout --quiet -- .claude/lib/team-lineage.sh
+
 echo "team-smoke-1: OK"

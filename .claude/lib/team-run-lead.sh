@@ -162,7 +162,7 @@ lead_notify() {
     rc=0; out="$(bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
       --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \
       --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name "$w")" \
-      --hint "$h" --ref "$d" --source runner 2>/dev/null)" || rc=$?
+      --hint "$h" --ref "$d" --source runner --main "$root" 2>/dev/null)" || rc=$?
     LEAD_NOTIFIED="$LEAD_NOTIFIED$RUN/$(basename "$f") "
     # A failed sender must not silence the Operator: the legacy sink is the only channel that reaches a person yet.
     [ "$rc" = 0 ] || { echo "warn: notify.sh exit $rc for $(basename "$f") — legacy sink only"; out=written; }

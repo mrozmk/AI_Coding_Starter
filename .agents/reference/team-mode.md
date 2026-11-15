@@ -261,6 +261,10 @@ after acceptance per team-decision-model.md §3 — the only role `guard-team-me
 there. Every role puts what it noticed but did not do under `## Follow-ups`; wrapup turns the
 worthwhile ones into tickets. `team-record.sh` creates the file with the four headings when absent and appends
 `## Blockers`.
+A github or jira follow-up ticket's body ends with the line `Follow-up of <ticket> · origin <origin>`;
+the third follow-up of one origin waits for the Operator's consent (a terminal, or the phrase
+`consent <ticket>` typed in the Supervisor window) before `/start-team` starts it (`team-lineage.sh`;
+`.agents/reference/roles/supervisor.md` → Follow-up chains).
 
 Wrapup follow-up tickets: fetch the run ticket's parent, then verify that parent's issue type is
 `Epic`; an ordinary Task is never a parent substitute. If no valid Epic exists, ask for and
