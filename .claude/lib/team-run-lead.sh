@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# The runner's per-run TeamLead: launch, reuse, relaunch, stop ring, poll, events, status.
+# The runner's per-run TeamLead: launch, reuse, relaunch, stop ring, poll, events, status, and the
+# rework rounds with the runner's round-aware record lookups.
 # Sourced by team-run.sh from the MAIN checkout after its own setup, never executed: every function
 # runs in the runner's shell and uses its globals (TEAM, RUN, MODE, TD, CLONE, root, die, rec,
-# sess_name, codex_home, auto_blocker). Every caller is guarded by team_lead_on, so with the
-# switch off (or mode cli) none of this runs. Bash 3.2. Contract: .agents/reference/team-lead.md
+# sess_name, codex_home, auto_blocker). Every lead caller is guarded by team_lead_on, so with the
+# switch off (or mode cli) only the record lookups run, always in round 1. Bash 3.2.
+# Contract: .agents/reference/team-lead.md
 
 team_lead_on() { [ "${TEAM_LEAD_ENABLED:-false}" = true ] && [ "$MODE" != cli ]; }
 
@@ -306,7 +308,22 @@ close_run() {
 
 # ---- rework rounds (team-lead.md §9) ----------------------------------------------------------
 # $TD/round = {run, round, verdict, pr_published}: the durable round and the acceptance rework verdict
-# that opened it. A round whose run differs from $RUN reads as round 1 (team_run_ref).
+# that opened it. A round whose run differs from $RUN reads as round 1 (team_run_ref). The runner's
+# record lookups live here too: round n ≥ 2 keeps its records in runs/<run>/r<n>/, the planner's
+# stay in round 1. They run with the switch off as well (always round 1 then).
+
+run_ref() { team_run_ref "$TD" "$RUN"; }
+accepted_record() { if [ "$1" = planner ]; then team_accepted_record "$RUN" planner; else team_accepted_record "$(run_ref)" "$1"; fi; }
+
+# new_record <role> <attempt> → the attempt's newest record of this round not yet acked, or empty.
+new_record() {
+  local role="$1" attempt="$2" last ackseq=0 acked=""
+  [ -f "$TD/acked" ] && acked="$(cat "$TD/acked")"
+  case "$acked" in "$(rp)$role-$attempt-"*) ackseq="${acked#"$(rp)$role-$attempt-"}"; ackseq="${ackseq%.json}" ;; esac
+  last="$(team_records "$(run_ref)" "$role" "$attempt" | tail -n 1)"
+  [ -n "$last" ] || return 0
+  [ "$(rec "$last" seq)" -gt "$ackseq" ] && echo "$last" || true
+}
 
 cur_round() { local r; r="$(run_ref)"; case "$r" in */r*) echo "${r##*/r}" ;; *) echo 1 ;; esac; }
 rp() { [ "$(cur_round)" = 1 ] || echo "r$(cur_round)/"; }      # the acked-name prefix of this round

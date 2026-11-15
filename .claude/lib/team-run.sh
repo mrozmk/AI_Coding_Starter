@@ -88,24 +88,11 @@ cancel_exit() {
   die 6 "cancelled by stop — session.json kept for the next run"
 }
 
-# Rework round n ≥ 2 keeps its records in runs/<run>/r<n>/ (team-lead.md §9); the planner's stay in round 1.
-run_ref() { team_run_ref "$TD" "$RUN"; }
-accepted_record() { if [ "$1" = planner ]; then team_accepted_record "$RUN" planner; else team_accepted_record "$(run_ref)" "$1"; fi; }
-
 last_blocker() {
   awk '/^## Blockers/{b=1; next} /^## /{b=0} b && /^- /{l=$0} END{print l}' "$TD/runs/$(run_ref)/notes.md" 2>/dev/null || true
 }
 
 # ---- stages -----------------------------------------------------------------------------------
-
-new_record() {
-  local role="$1" attempt="$2" last ackseq=0 acked=""
-  [ -f "$TD/acked" ] && acked="$(cat "$TD/acked")"
-  case "$acked" in "$(rp)$role-$attempt-"*) ackseq="${acked#"$(rp)$role-$attempt-"}"; ackseq="${ackseq%.json}" ;; esac
-  last="$(team_records "$(run_ref)" "$role" "$attempt" | tail -n 1)"
-  [ -n "$last" ] || return 0
-  [ "$(rec "$last" seq)" -gt "$ackseq" ] && echo "$last" || true
-}
 
 accept() {
   local r="$1"

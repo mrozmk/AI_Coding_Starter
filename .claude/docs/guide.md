@@ -446,7 +446,7 @@ Harness files should have an owner — route `.claude/**`, `.agents/**`, `CLAUDE
 For projects that run several AI **teams** in parallel on one machine. A team is a permanent git clone that runs a ticket through a fixed pipeline of fresh role sessions (planner → coder → qa → wrapup, or one `cli` role), driven by a shell runner in tmux. **Supervision roles** watch the teams:
 
 - a **Supervisor** that talks to you, merges within the gate and starts teams;
-- a **TeamLead** that decides every team question except two short lists;
+- a **TeamLead** that decides every team question except two short lists (global TeamLead — applies only with `teams.teamlead.enabled=false`; removed in the retirement step; see *Per-run TeamLead* below);
 - an **Advisor**, with an optional second-vendor **Reviewer**, for contract, schema, AC, sensitive-path and harness-rule questions.
 
 You are asked only for a short critical list and for actions only a human may click.
@@ -461,6 +461,16 @@ It is off until you opt in. `/setup:teams` installs the team layer and the agent
 - Human overview: [`docs/teams/`](https://github.com/mrozmk/AI_Coding_Starter/blob/main/docs/teams/README.md): decision model, pipeline, escalation, permissions, operator kit, follow-ups.
 - The contracts the agents follow: `.agents/reference/team-*.md`, `escalation-fallback.md`, `agent-mail.md`.
 - What is implemented vs verified on which host: `docs/teams/capabilities.md` — the offline column comes from the team test suite, the live column from the acceptance run.
+
+### Per-run TeamLead (pilot)
+
+Instead of one global TeamLead watching every team, each team run can get its own **TeamLead**: a session the runner starts next to the stages and ends with the run. It gates the spec and the plan, answers the stages' questions and permission prompts on an authority, accepts the delivery against the order (a blind order-vs-diff check) and orders rework within a budget. It never edits code, commits or merges.
+
+- **Switch it on:** `teams.teamlead.enabled: true` in `.claude/project-profile.json` (off by default; mode `cli` never has one). `/start-team` then asks for the order brief of each new run.
+- **Where you answer:** the `<team>-lead` window. Only human-only items reach you — a settings or permission edit, a production ask rule, egress, an irreversible delete — as `[d-<n>] <question>`. Type your answer there.
+- **What reaches you:** two notifications — `human_decision` (a pending decision) and `abandon_decision` (the lead recommends abandoning a run past its rework budget). The Supervisor gets four inbox events: `accepted`, `closed`, `collision` and `session_dead`.
+- **Where to look:** `runs/<run>/acceptance-brief.md` in the team clone (what was ordered vs delivered), and `.agents/team/teamlead-log.md` in your checkout (the lead's notes, one block per finished run).
+- **Its limits:** [`team-decision-model.md` §3](../../.agents/reference/team-decision-model.md), "Where the trust ends". The contract is in `.agents/reference/team-lead.md`.
 
 ## Orchestration internals — how the agent-spawning commands work
 

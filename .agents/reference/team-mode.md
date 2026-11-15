@@ -30,7 +30,13 @@ Written only by `team-run.sh` before a launch; removed by it when the role's rec
 `stop` keeps it (it is the recovery input of the next run). The runner also sets
 `TEAM_RUN_TEAM`, `TEAM_RUN_ROLE`, `TEAM_RUN_ID`, `TEAM_RUN_ATTEMPT` on the tmux session — informational;
 `session.json` is authoritative because hook processes are not documented to inherit the session
-environment.
+environment. `session.json` also carries `round` (1, or n in a rework round — team-lead.md §9).
+
+**Second identity — the per-run TeamLead** (`teams.teamlead.enabled=true`, never in mode cli): one
+lead session per run, launched by the runner before the first stage. Its identity is
+`.agents/team/teamlead.json` (`run`, `session_id`, `main_root`, …) plus `TEAM_SESSION_ROLE=TeamLead`
+on its tmux session; it never has a `session.json` and never writes a stage record. Contract:
+[team-lead.md](team-lead.md).
 
 ## 2. State files
 
@@ -42,7 +48,10 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `ticket.json`, `ticket.md` | `team-new.sh`/`team-next.sh`, from the supervisor's `--ticket-file` | the ticket the tracker read (§2a); `jira` has neither |
 | `session.json` | `team-run.sh` | §1 |
 | `run` | `team-run.sh` | current run id |
-| `acked` | `team-run.sh` | basename of the last acknowledged `blocked`/`failed` record |
+| `acked` | `team-run.sh` | the last acknowledged record, relative to `runs/<run>/` (`r<n>/<record>` in a rework round): a `blocked`/`failed` stop, or with a TeamLead a gate input |
+| `teamlead.*`, `round`, `verdict-acked`; `runs/<run>/teamlead-<gate>-<seq>.json`, `decisions/`, `answers.md`, `teamlead-notes.md`, `rework-<n>.md` | runner, TeamLead scripts | the per-run TeamLead's identity, verdicts, pending decisions, authority answers, notes and rework orders — team-lead.md §2, §9, §10 |
+| `runs/<run>/r<n>/` | runner, roles | rework round n ≥ 2: the same record, prompt, session, notes and report names as round 1 (team-lead.md §9) |
+| `<main checkout>/.agents/team/inbox/Supervisor/new/` | `team-inbox.sh` (runner, `team-verdict.sh event`) | the Supervisor's four events: `accepted`, `closed`, `collision`, `session_dead` (team-lead.md §3) |
 | `lock/` (`lock/pid`) | `team-run.sh` | runner mutex |
 | `cancel` | `team-run.sh stop` | stop request for a live runner |
 | `roles.override.json` | `team-run.sh roles` | per-ticket model/effort override, merged over `.claude/team/roles.json` at each launch |
@@ -125,13 +134,15 @@ two projects stays two bindings. At wrapup the adapter runs **inside the clone**
 
 | Role | Questions | Memory | Material decision | End |
 |---|---|---|---|---|
-| planner | asked normally (attended); `/brainstorm` Step 9 waits for the TeamLead's spec gate, or without one auto-approves unless a 🔶 rethink signal | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
+| planner | asked normally (attended); `/brainstorm` Step 9 waits for the per-run TeamLead's spec gate (and its `done` for the plan gate, team-lead.md §4), or without one auto-approves unless a 🔶 rethink signal | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
 | coder | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | `/pr-create` draft, `team-record --verdict done --pr <id>` |
 | qa | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
-| wrapup | asked normally (attended), only when it has recommendations | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; the developer may accept in the window) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
+| wrapup | asked normally (attended), only when it has recommendations | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the lead decides both groups, team-lead.md §10; the developer may accept in the window) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
 | cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | `/pr-create` published PR, `team-record --verdict done --pr <id>` |
 
-'Asked normally (attended)' means TeamLead answers per
+'Asked normally (attended)' means, with a per-run TeamLead, that the run's lead answers on an
+authority ([team-lead.md](team-lead.md) §6; the wrapup's menus §10) and only human-only items reach
+the Operator as pending decisions. Without one, TeamLead answers per
 [team-decision-model.md](team-decision-model.md) §3. Operator-list decisions reach the Operator
 through Advisor (tier 3) or, past a class deadline, a `turn` to Supervisor; Operator actions
 (§10) go to the Operator directly from TeamLead's window (team-decision-model.md §5).
@@ -207,6 +218,14 @@ session shows a permission prompt, the `Notification` hook flags it, the runner 
 `blocked` record for a prompt and never work around a rejected one — a rejection is a material
 question (`blocked`). Secrets stay `deny` for every role: read setting **names** only
 (`--query "[].name"`), never values, keys or connection strings.
+
+**Routing with a per-run TeamLead:** stage → the run's TeamLead → Operator. The runner rings the
+lead for every stop, gate and prompt; the lead answers on an authority (`class | teamlead | operator`)
+and opens a pending decision for a human-only item, which notifies the Operator once
+([team-decision-model.md](team-decision-model.md) §3, [team-lead.md](team-lead.md) §6–§7). The roles'
+behaviour below is the same.
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 **Routing.** Roles keep exactly this behaviour: coder/qa/cli write
 `blocked`, the planner and wrapup ask, permission prompts wait. The supervisor for teams is the
@@ -315,7 +334,8 @@ on top of it (`git diff --name-only <qa rev> <output_rev>` lists only `.agents/m
 the PR source to be this revision and refuses a memory overlap with the target line unless rerun
 with `--memory-reviewed`.
 
-Each call writes a new `<seq>`; nothing is overwritten.
+Each call writes a new `<seq>`; nothing is overwritten. Every record carries `round` (from
+`session.json`); a rework round n ≥ 2 writes into `runs/<run>/r<n>/` (team-lead.md §9).
 
 ## 7. QA report
 
@@ -390,6 +410,9 @@ ADO keeps `az` in `team-lib.sh`; github goes only through `.claude/lib/team-pr.s
 - delete the clone or `.agents/team/`.
 
 ## 10. Escalation tiers
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step. With the switch on,
+the run's lead answers on an authority instead ([team-lead.md](team-lead.md) §6).
 
 `/monitor` with tiers on (the default; `/monitor --tiers off` restores the plain behaviour,
 where nothing is answered without the developer's words) classifies every `ATTENTION`, `blocked`

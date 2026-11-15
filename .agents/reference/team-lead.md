@@ -94,7 +94,7 @@ registered socket (`.agents/team/watch/receivers/Supervisor.json`) when one exis
 
 | Event | Sender | When |
 |---|---|---|
-| `accepted` | runner | a lead's acceptance and the wrapup are done (later step) |
+| `accepted` | runner | a lead's `acceptance accept` and the wrapup are done (§8) |
 | `closed` | runner | a run is closed without merge (`close_run`, §4); the body names the reason and what is left (`PR <id> to abandon before team-next` or `clone free`) |
 | `collision` | lead | another team's in-flight work collides with this run (`team-verdict.sh event collision`) |
 | `session_dead` | runner | the lead died, or a stage died with partial work (`ref` = its `.session`) |

@@ -39,6 +39,9 @@ team_profile_int() {
     | if . == null then "" else tostring end' "$f" 2>/dev/null || echo '!')"
   TEAM_PROFILE_INT_V="${TEAM_PROFILE_INT_V:-$def}"
   if ! [[ "$TEAM_PROFILE_INT_V" =~ ^[0-9]+$ ]] || [ "$TEAM_PROFILE_INT_V" -lt "$min" ]; then
+    # With the lead switch off nothing reads these keys: a bad one falls back to its default
+    # instead of stopping every command that loads the profile.
+    [ "$TEAM_LEAD_ENABLED" = true ] || { TEAM_PROFILE_INT_V="$def"; return 0; }
     if [ "$min" -gt 0 ]; then
       team_profile_die "teams.teamlead.$key=$TEAM_PROFILE_INT_V must be a positive integer"
     fi
@@ -144,8 +147,11 @@ team_profile_load() {
     | if . == null then "settings-profiles\nprod-ask"
       elif type == "array" and length > 0 and all(.[]; type == "string" and length > 0)
       then join("\n") else "!" end' "$f" 2>/dev/null || echo '!')"
-  [ "$TEAM_LEAD_HUMAN_ONLY" != '!' ] \
-    || team_profile_die "teams.teamlead.human_only must be a non-empty list of rule-group names"
+  if [ "$TEAM_LEAD_HUMAN_ONLY" = '!' ]; then
+    [ "$TEAM_LEAD_ENABLED" != true ] \
+      || team_profile_die "teams.teamlead.human_only must be a non-empty list of rule-group names"
+    TEAM_LEAD_HUMAN_ONLY="$(printf 'settings-profiles\nprod-ask')"
+  fi
   # The per-run launcher's model/effort; the global role keeps its own default (opus) in
   # supervisor-sessions.sh sess_cfg.
   TEAM_LEAD_MODEL="$(jq -r '.teams.sessions.TeamLead.model // empty | strings' "$f" \

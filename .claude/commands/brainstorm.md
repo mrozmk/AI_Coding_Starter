@@ -448,7 +448,7 @@ This is the one place `/brainstorm` stops and waits. The spec is final here — 
 - `[team-run] TeamLead approved the spec …` → set `**Status:** Approved (TeamLead, <YYYY-MM-DD>)`, commit, and continue into planning;
 - `[team-run] TeamLead: revise the spec — findings in <file>` → apply the findings, re-run Step 6, commit, and record `review` again.
 
-A real directional fork from Step 2 still asks, before the spec is written. The `<TERMINAL-GATE>` below does not apply: the planner's own prompt owns the handoff.
+A real directional fork from Step 2 still asks, before the spec is written. The `<TERMINAL-GATE>` below does not apply: the planner's own prompt owns the handoff. The brainstorm stage ends at the approval line; if this command has a stage-end marker step, run it before continuing into planning.
 
 **Team mode without a TeamLead** (`.agents/team/session.json` exists, no `teamlead.json` of this run): do **not** ask. Present the same summary, approve the spec yourself (`Approved (auto — team mode)`), and continue into planning in the same turn — the planner role runs `/plan-feature` right after `/brainstorm`, so a waiting gate would stall the run. The two exceptions still ask: a real directional fork from Step 2, and a 🔶 rethink signal from Step 8.7 (none → no question). The `<TERMINAL-GATE>` below does not apply in team mode: the planner's own prompt owns the handoff.
 

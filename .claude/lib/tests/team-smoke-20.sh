@@ -139,11 +139,16 @@ load .; expect 0 "false 3 2 1 fable high settings-profiles,prod-ask" "(h) defaul
 load '.teams.teamlead = {enabled: true, revise_limit: 5, rework_budget: {quick: 0}}
   | .teams.sessions.TeamLead = {model: "claude-fable-5-2"}'
 expect 0 "true 5 2 0 claude-fable-5-2 high" "(h) set values"
-load '.teams.teamlead.revise_limit = 0'; expect 2 "teams.teamlead.revise_limit" "(h) revise_limit 0"
+load '.teams.teamlead.enabled = true | .teams.teamlead.revise_limit = 0'; expect 2 "teams.teamlead.revise_limit" "(h) revise_limit 0"
 load '.teams.teamlead.enabled = "yes"'; expect 2 "teams.teamlead.enabled" "(h) enabled not boolean"
-load '.teams.teamlead.rework_budget.brainstorm = -1'
+load '.teams.teamlead.enabled = true | .teams.teamlead.rework_budget.brainstorm = -1'
 expect 2 "teams.teamlead.rework_budget.brainstorm" "(h) negative budget"
-load '.teams.teamlead.human_only = []'; expect 2 "teams.teamlead.human_only" "(h) empty human_only"
+load '.teams.teamlead.enabled = true | .teams.teamlead.human_only = []'; expect 2 "teams.teamlead.human_only" "(h) empty human_only"
+# With the switch off a bad TeamLead key never stops a core command: defaults, no refusal.
+load '.teams.teamlead = {enabled: false, revise_limit: "garbage", rework_budget: {quick: -3}, human_only: []}'
+expect 0 "false 3 2 1 fable high settings-profiles,prod-ask" "(h) switch off: bad keys load with defaults"
+load '.teams.teamlead = {enabled: true, revise_limit: "garbage"}'
+expect 2 "teams.teamlead.revise_limit=garbage must be a positive integer" "(h) switch on: refused as today"
 load '.teams.sessions.TeamLead.effort = "huge"'; expect 2 "TeamLead.effort" "(h) bad effort"
 echo "team-smoke-20: (h) profile keys OK"
 

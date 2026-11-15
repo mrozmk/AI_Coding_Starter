@@ -6,7 +6,21 @@
 
 This page explains the model. When it and a contract disagree, the contract wins.
 
+## Per-run TeamLead (pilot)
+
+With `teams.teamlead.enabled=true` the decisions move to each run's own TeamLead: stage → TeamLead → Operator.
+
+- The lead answers every stage question on an **authority**: `class` (a deterministic class, answered by the runner before the lead is woken), `teamlead` (the lead itself) or `operator` (a human-only item, relayed from a pending decision). Every answer lands in `runs/<run>/answers.md`.
+- **Human-only** items never get the lead's approval: settings and permission-profile edits, ask rules the project added beyond the starter's baseline (the production group), egress, irreversible deletes outside the clone. Each one becomes a pending decision `[d-<n>]` and one `human_decision` notification. The Operator answers in the `<team>-lead` window.
+- A run past its rework budget ends in one `abandon_decision` notification; the Operator answers continue or close.
+- There is no policy log for these runs. The lead's notes go to `.agents/team/teamlead-log.md` when the run is merged or closed.
+- Where the trust ends (the human binding is not proof, the verdict guard sees command text only, the budget counts files the lead can write, script pushes skip the push hook): [`team-decision-model.md` §3](../../.agents/reference/team-decision-model.md).
+
+The sections below describe the global TeamLead.
+
 ## The principle
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 **The session that sees the question decides it, unless it is on a short list.**
 
@@ -22,6 +36,8 @@ Two rules always hold:
 The model was not designed on paper. The project it was ported from ran one supervisor session that asked the Operator everything. Over four days the Operator was asked six questions and answered all six "as recommended". Every analyst question cost the waiting team 10–20 minutes. The split moved almost every Operator question away from him and most Advisor questions to the TeamLead. The only questions still sent to the expensive analyst pair are the ones where a second model's opinion matters.
 
 ## The tiers at a glance
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 | Tier | Decides | What lands there |
 |---|---|---|
@@ -68,6 +84,8 @@ The Supervisor and the Advisor create technical tickets without asking: wrapup f
 Cosmetic changes never get a ticket.
 
 ## The policy log
+
+> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
 
 Some tier-1 answers set a precedent: a size-only Phase 0 override, a memory entry, a deferred memory entry, a QA-warnings disposition or a rethink. The TeamLead records each one append-only in `teamlead-policy-log.md`, in the channel's decisions directory. Before answering a question in the same class it reads the log:
 

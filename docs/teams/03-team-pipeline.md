@@ -36,6 +36,10 @@ Roles never exit their own session and never ask more than one question per call
 
 **Auto mode.** Roles run with `--permission-mode auto`: the classifier approves ordinary reads, builds and tests. What still prompts is ask-tier rules, team egress (the `guard-team-egress` hook) and settings edits. Tickets that edit `.claude/settings*.json` must run in manual mode. A classifier denial is a material question, never a reason to retry the same action under another spelling.
 
+## Per-run TeamLead (pilot)
+
+With `teams.teamlead.enabled=true` (not in mode `cli`) the runner launches a TeamLead before the first stage and waits in place on a stop instead of exiting. It gates the spec (`review` record) and the plan, accepts the qa result against the order brief, and may order **rework rounds**. A round n ≥ 2 keeps its records in `runs/<run>/r<n>/` and continues on the same branch and PR. The runner exits 8 when the lead closes a run without merge. The Supervisor reads four inbox events (`accepted`, `closed`, `collision`, `session_dead`) — [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md). Contract: [`team-lead.md`](../../.agents/reference/team-lead.md).
+
 ## Records and notes
 
 Every hand-off is a JSON **record** (`team-record.sh --verdict done|blocked|failed`) with the input and output revision, the PR, artefacts and evidence. Nothing is overwritten: each call writes a new sequence number.
