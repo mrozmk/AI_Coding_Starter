@@ -411,4 +411,115 @@ cmp -s "$REG/adhoc-t1k3.json" "$WORK/rec.bak" || fail "(28) last_seen rewritten 
 noline "hc " "(28) inbox-count called hc"
 echo "team-smoke-host: (28) inbox-count OK"
 
+# ---- (29) roles-lib: the teams.sessions reader and validator ------------------------------------------
+RL="$SRC/.claude/lib/roles-lib.sh"
+RR="$WORK/roles"; mkdir -p "$RR/.claude/team/sessions" "$RR/.agents/reference/roles"
+cp "$SRC/.agents/reference/roles/supervisor.md" "$SRC/.agents/reference/roles/advisor.md" "$RR/.agents/reference/roles/"
+cp "$SRC/.claude/team/sessions/Supervisor.settings.json" "$SRC/.claude/team/sessions/Advisor.settings.json" "$RR/.claude/team/sessions/"
+rp() { if [ -n "$1" ]; then printf '%s' "$1" > "$RR/.claude/project-profile.json"; else rm -f "$RR/.claude/project-profile.json"; fi; }
+rl() { run "$RR" env ROLES_ROOT="$RR" bash -c ". '$RL'; $1"; }
+rp ""
+rl 'roles_validate && echo "$(roles_list | tr "\n" " ")/ $(roles_list --standing | tr "\n" " ")"'
+expect 0 "Supervisor Fable Astra TeamLead / Supervisor Fable Astra " "(29) the shipped default list"
+[ "$(cat "$WORK/out")" = "Supervisor Fable Astra TeamLead / Supervisor Fable Astra " ] || fail "(29) the shipped default printed more than the list"
+rp '{"teams":{"sessions":{"Supervisor":{"model":"opus","effort":"medium"},"TeamLead":{"model":"opus","effort":"high"},"Advisor":{"model":"opus","effort":"high"}}}}'
+rl 'roles_validate && roles_list --standing | tr "\n" " " && roles_cfg Fable settings && roles_cfg Advisor contract && roles_cfg Supervisor place.slot && roles_cfg TeamLead standing'
+expect 0 "warning: teams.sessions.Advisor is deprecated — read as Fable" "(29) legacy shape"
+[ "$(sed -n 2,6p "$WORK/out" | tr '\n' '|')" = "Supervisor Fable Advisor|.agents/reference/roles/advisor.md|main|false|" ] \
+  || fail "(29) legacy shape read with code defaults"
+rp '{"teams":{"sessions":{"Fable":{},"Advisor":{"model":"sonnet"}}}}'
+rl 'roles_validate && roles_list && roles_cfg Advisor model'
+expect 0 "deprecated — read as Fable (ignored: Fable is declared)" "(29) Advisor beside Fable"
+[ "$(sed -n 2,3p "$WORK/out" | tr '\n' ' ')" = "Fable opus " ] || fail "(29) Advisor beside Fable is not ignored"
+rp '{"teams":{"sessions":{"supervisor":{},"Ab":{"cli":"x","model":"a b","effort":"huge","standing":"y"},"Mon":{"contract":"../x","settings":"a/b","place":{"tab":"Lead","slot":"main"}},"Supervisor":{},"Cx":{"cli":"codex","settings":"Advisor","contract":"none.md","place":{"tab":"","slot":"top"}},"Dx":{"settings":"Gone","contract":"/abs.md"},"Z":3,"Éa":{},"TeamLead":{"effort":"none"}}}}'
+rl 'roles_validate'; expect 2 "" "(29) a bad list"
+for e in \
+  'error: teams.sessions.supervisor: the role name must match ^[A-Z][A-Za-z0-9]{1,23}$' \
+  'error: teams.sessions.Éa: the role name must match ^[A-Z][A-Za-z0-9]{1,23}$' \
+  'error: teams.sessions.Z: the role name must match ^[A-Z][A-Za-z0-9]{1,23}$' \
+  'error: teams.sessions.Ab.standing must be true or false' \
+  'error: teams.sessions.Ab.cli=x must be claude|codex' \
+  'error: teams.sessions.Ab.model=a b is not a model name' \
+  'error: teams.sessions.Ab.effort=huge must be low|medium|high|xhigh|max' \
+  'error: teams.sessions.Mon.contract=../x must be a path inside the repo' \
+  'error: teams.sessions.Mon.settings=a/b is not a profile name' \
+  'error: teams.sessions.Cx.settings is for claude roles only' \
+  'error: teams.sessions.Cx.contract=none.md: no such file' \
+  'error: teams.sessions.Cx.place.tab is required' \
+  'error: teams.sessions.Cx.place.slot=top must be main|side' \
+  'error: teams.sessions.Dx.contract=/abs.md must be a path inside the repo' \
+  'error: teams.sessions.Dx.settings=Gone: no .claude/team/sessions/Gone.settings.json' \
+  'error: teams.sessions.TeamLead.effort=none must be low|medium|high|xhigh|max' \
+  'error: teams.sessions: tab Lead has more than one main slot (Mon, Supervisor)'; do
+  grep -qxF -- "$e" "$WORK/out" || fail "(29) missing: $e"
+done
+[ "$(grep -c '^error: ' "$WORK/out")" = 17 ] || fail "(29) not every error collected, or an extra one"
+# The locale trap: under a UTF-8 collation, bash's [A-Z] matches lowercase b–z.
+rp '{"teams":{"sessions":{"abc":{"standing":false}}}}'
+run "$RR" env LC_ALL=en_US.UTF-8 ROLES_ROOT="$RR" bash -c ". '$RL'; roles_validate"
+expect 2 "error: teams.sessions.abc: the role name must match" "(29) a lowercase name under en_US.UTF-8"
+# standing:false and disabled roles: cli/model/effort only; neither is listed for /roles to start.
+rp '{"teams":{"sessions":{"TeamLead":{"standing":false,"model":"fable"},"Old":{"enabled":false,"contract":"gone.md","settings":"Gone"}}}}'
+rl 'roles_validate && roles_list | tr "\n" " " && roles_list --standing | wc -l | tr -d " " && roles_is_declared Old && ! roles_is_declared Nobody && echo declared'
+expect 0 "" "(29) standing:false and disabled roles"
+[ "$(tr '\n' '|' < "$WORK/out")" = "TeamLead 0|declared|" ] || fail "(29) standing:false / disabled listing"
+rp '{"teams":{"sessions":[]}}'
+rl 'roles_validate'; expect 2 "error: .claude/project-profile.json: teams.sessions is not an object" "(29) no object"
+rp '{"teams":'
+rl 'roles_validate'; expect 2 "error: .claude/project-profile.json: not valid JSON" "(29) broken profile"
+echo "team-smoke-host: (29) roles-lib validator OK"
+
+# ---- (30) a project role from the profile alone; the shipped settings and contracts ------------------------
+# A monitoring role with its own contract, settings profile and tab: valid and listed, no code change.
+mkdir -p "$RR/docs/roles"; echo "# Monitor" > "$RR/docs/roles/monitor.md"
+jq '.env.TEAM_SESSION_ROLE = "Monitor"' "$RR/.claude/team/sessions/Supervisor.settings.json" > "$RR/.claude/team/sessions/Monitor.settings.json"
+rp '{"teams":{"sessions":{"Supervisor":{},"Monitor":{"model":"sonnet","effort":"low","settings":"Monitor","contract":"docs/roles/monitor.md","place":{"tab":"Ops","slot":"main"}},"Fable":{},"Astra":{}}}}'
+rl 'roles_validate && roles_list --standing | tr "\n" " " && for f in cli model effort settings contract place.tab place.slot standing; do roles_cfg Monitor $f; done | tr "\n" " " && roles_is_declared Monitor && echo declared'
+expect 0 "" "(30) a project role"
+[ "$(tr '\n' '|' < "$WORK/out")" = "Supervisor Monitor Fable Astra claude sonnet low Monitor docs/roles/monitor.md Ops main true declared|" ] \
+  || fail "(30) the project role's values or its place in the list"
+! grep -q 'Monitor' "$RL" || fail "(30) roles-lib.sh names the project role"
+rm "$RR/.claude/team/sessions/Monitor.settings.json"
+rl 'roles_validate'; expect 2 "error: teams.sessions.Monitor.settings=Monitor: no .claude/team/sessions/Monitor.settings.json" "(30) its settings file is required"
+rp '{"teams":{"sessions":{"Monitor":{"model":"sonnet","contract":"docs/roles/monitor.md","place":{"tab":"Lead","slot":"main"}},"Supervisor":{}}}}'
+rl 'roles_validate'; expect 2 "error: teams.sessions: tab Lead has more than one main slot (Monitor, Supervisor)" "(30) two mains in one tab"
+# The Advisor template passes the profile check (its _samples), and the shipped default names
+# contracts and settings that exist in the starter itself.
+run "$SRC" python3 -I -c 'import sys; sys.path.insert(0, ".claude/lib"); import session_profile_check as s
+out = []; rc = s.check_role(".", ".claude/team/sessions", "Advisor", out); print("\n".join(out)); sys.exit(rc)'
+expect 0 "Advisor OK" "(30) Advisor.settings.json samples"
+mkdir -p "$WORK/noprof"
+run "$SRC" env ROLES_ROOT="$WORK/noprof" bash -c ". '$RL'
+  for r in Supervisor Fable Astra; do c=\$(roles_cfg \$r contract); [ -f \"\$c\" ] || echo missing \$c; done
+  for r in Supervisor Fable; do s=\$(roles_cfg \$r settings); [ -f .claude/team/sessions/\$s.settings.json ] || echo missing \$s; done"
+expect 0 "" "(30) shipped contracts and settings"; [ ! -s "$WORK/out" ] || fail "(30) a shipped default names a missing file"
+echo "team-smoke-host: (30) project role and shipped profiles OK"
+
+# ---- (31) roles.lock: owner pid + start time, serialised stale reclaim ----------------------------------------
+LR="$WORK/lockreg"; LD="$LR/roles.lock"
+lk() { run "$WORK" bash -c ". '$RL'; $1"; }
+lk "roles_lock '$LR' 1 && cat '$LD/pid' && roles_unlock '$LR'"; expect 0 "" "(31) take and release"
+[ ! -e "$LD" ] && [ -s "$WORK/out" ] || fail "(31) the lock was not released"
+[ "$(mode "$LR")" = 700 ] || fail "(31) registry dir mode $(mode "$LR")"
+bash -c ". '$RL'; roles_lock '$LR' 1 && exec sleep 30" & HOLD=$!
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$LD/pid" ] && break; sleep 0.1; done
+[ "$(cat "$LD/pid" 2>/dev/null)" = "$HOLD" ] && [ -s "$LD/started" ] || fail "(31) the holder's pid/started"
+lk "roles_lock '$LR' 1"; expect 1 "another /roles is running (pid $HOLD)" "(31) a live holder is waited on"
+lk "roles_unlock '$LR'"; [ -e "$LD" ] || fail "(31) a non-holder released the lock"
+kill -9 "$HOLD"; wait "$HOLD" 2>/dev/null || true
+lk "roles_lock '$LR' 2 && echo got"; expect 0 "got" "(31) a SIGKILLed holder is reclaimed"
+rm -rf "$LD"; mkdir "$LD"; echo $$ > "$LD/pid"; echo "Thu Jan  1 00:00:00 1970" > "$LD/started"
+lk "roles_lock '$LR' 2 && echo got"; expect 0 "got" "(31) a reused pid (other start time) is reclaimed"
+rm -rf "$LD"; mkdir "$LD"; touch -t 202001010000 "$LD"
+lk "roles_lock '$LR' 2 && echo got"; expect 0 "got" "(31) a lock with no pid is reclaimed"
+rm -rf "$LD"; sleep 0.1 & DEAD=$!; wait "$DEAD"; mkdir "$LD"; echo "$DEAD" > "$LD/pid"
+: > "$WORK/lk.log"
+for w in a b; do
+  bash -c ". '$RL'; roles_lock '$LR' 5 || exit 1; echo in >> '$WORK/lk.log'; sleep 0.4; echo out >> '$WORK/lk.log'; roles_unlock '$LR'" &
+done
+wait
+[ "$(tr '\n' ' ' < "$WORK/lk.log")" = "in out in out " ] || { cp "$WORK/lk.log" "$WORK/out"; fail "(31) two waiters overlapped after a reclaim"; }
+[ ! -e "$LD" ] && [ ! -e "$LD.reclaim" ] || fail "(31) a lock or reclaim dir left behind"
+echo "team-smoke-host: (31) roles.lock OK"
+
 echo "team-smoke-host: OK"

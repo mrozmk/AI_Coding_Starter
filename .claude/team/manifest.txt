@@ -205,3 +205,12 @@ own .claude/commands/monitoring.md
 own .claude/commands/sessions-up.md
 own .claude/commands/team-watch.md
 own .agents/reference/supervisor-sessions.md
+
+# --- session registry and roles: hooks (registered after the per-run TeamLead merge), the roles
+# reader/validator, the Advisor settings template and the role contracts (session-host.sh above) ---
+own .claude/hooks/session-registry.sh
+own .claude/hooks/inbox-count.sh
+own .claude/lib/roles-lib.sh
+own .claude/team/sessions/Advisor.settings.json
+own .agents/reference/roles/supervisor.md
+own .agents/reference/roles/advisor.md
