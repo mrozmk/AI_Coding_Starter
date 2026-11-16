@@ -24,7 +24,6 @@ team_lead_base_ok() {
     .claude/hooks/guard-teamlead-bash.sh; do
     [ -f "$CLONE/$f" ] || { echo "no $f"; return 1; }
   done
-  grep -q 'review)' "$CLONE/.claude/lib/team-record.sh" || { echo "no review verdict in team-record.sh"; return 1; }
   grep -q 'teamlead.json' "$CLONE/.claude/team/prompts/planner.md" || { echo "no TeamLead branch in planner.md"; return 1; }
   grep -q '{{REWORK}}' "$CLONE/.claude/team/prompts/coder.md" || { echo "no rework round in coder.md"; return 1; }
 }
@@ -96,6 +95,11 @@ lead_start() {
   team_lead_on || return 0
   why="$(team_lead_base_ok)" \
     || die 4 "clone base lacks the per-run TeamLead ($why) — team-next onto a current line"
+  # An older clone base refuses a brainstorm plan approve until a gate that no longer runs approved:
+  # a run still in planning cannot finish there (team-lead.md §4, Older runs).
+  [ "$MODE" = quick ] || [ -n "$(accepted_record planner)" ] \
+    || grep -q 'the first gate is the plan gate' "$CLONE/.claude/lib/team-verdict.sh" \
+    || die 4 "clone base still has the spec gate (its team-verdict.sh predates the plan-gate-only TeamLead) — this brainstorm run cannot finish planning on the current runner: finish planning before updating the main checkout, or the Operator restarts the ticket on a fresh clone (team-new.sh)"
   if [ "$(team_lead_json run)" = "$RUN" ] && team_tmux_alive "$(sess_name lead)"; then
     echo "TeamLead reused: $(sess_name lead)"; return 0
   fi
@@ -125,8 +129,8 @@ lead_waiting() {
   case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
   r="$TD/runs/$RUN/$a"
   [ -f "$r" ] && [ ! -e "$r.answered" ] || return 1
-  # A gate input (review, done) waits on the lead as a stop does; the gate ends with the record accepted.
-  case "$(rec "$r" verdict)" in blocked|failed|review|done) return 0 ;; *) return 1 ;; esac
+  # A gate input (a done) waits on the lead as a stop does; the gate ends with the record accepted.
+  case "$(rec "$r" verdict)" in blocked|failed|done) return 0 ;; *) return 1 ;; esac
 }
 
 # Every wait_loop poll with the lead on: a dead lead is reported once, a requested relaunch
@@ -300,7 +304,7 @@ lead_status() {  # → alive|waiting at <dialog> …|dead|none — session <sid>
   echo "$s — session $sid — pending ${n:-0}"
 }
 
-# ---- gates (spec, plan) -----------------------------------------------------------------------
+# ---- gates (plan) -----------------------------------------------------------------------------
 
 lead_gate_ring() {  # lead_gate_ring <gate> <record> — ack the gate's input record, ring the lead
   ack_name "$2" > "$TD/acked"
@@ -325,14 +329,12 @@ lead_gate() {
   local a f v rel
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
   case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
-  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(spec|plan|acceptance|decision)-[0-9]+\.json$' \
+  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(plan|acceptance|decision)-[0-9]+\.json$' \
       | sort -t- -k3,3n || true); do
     [ "$(rec "$TD/runs/$RUN/$f" for)" = "$a" ] || continue
     ! grep -qxF "$f" "$TD/verdict-acked" 2>/dev/null || continue
     rel=".agents/team/runs/$RUN/$f"; v="$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)"
     case "$v" in
-      "spec approve") lead_say "[team-run] TeamLead approved the spec ($rel). Set **Status:** Approved (TeamLead, $(date +%Y-%m-%d)), commit, and continue with /plan-feature." || return 1 ;;
-      "spec revise") lead_say "[team-run] TeamLead: revise the spec — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record review again." || return 1 ;;
       "plan revise") lead_say "[team-run] TeamLead: amend the plan — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record done again." || return 1 ;;
       "plan remode") echo "$f" >> "$TD/verdict-acked"; close_run remode "$rel" ;;
       # Rejected: the approve is spent; the planner is sent the reason (reject_record) and rings

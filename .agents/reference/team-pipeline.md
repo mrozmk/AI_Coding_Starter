@@ -202,7 +202,7 @@ sessions, lock holder and the last attention line. All `team-*.sh` scripts are `
 | 1 | `failed` record | read the printed reason; fix in the session or relaunch the stage |
 | 2 | `blocked` record | attach, answer the question in the session, then `/start-team <team>` (it checks the runner pid, not the runner's session — that outlives the runner on `; read`) |
 | 3 | stalled (coder 4 h, cli 4 h, qa 3 h); one Operator event `stalled-[r<n>-]<role>-<attempt>` | attach and look; rerun to keep waiting |
-| 4 | a `done`/`review` record failed validation a 3rd time in one attempt with no TeamLead (the first two are sent back to the stage with the reason; with a lead the 3rd rings the lead); one Operator event `rejected-[r<n>-]<role>-<attempt>` | read the printed check; fix in the session, rerun |
+| 4 | a `done` record failed validation a 3rd time in one attempt with no TeamLead (the first two are sent back to the stage with the reason; with a lead the 3rd rings the lead); one Operator event `rejected-[r<n>-]<role>-<attempt>` | read the printed check; fix in the session, rerun |
 | 5 | dead session left partial work, or retry limit hit | inspect the clone; decide by hand |
 | 6 | cancelled by `stop` | rerun when ready — the stopped session is gone: a stage with no trace relaunches as attempt 2; partial work or attempt 2 → exit 5 |
 | 7 | orphan role session without `session.json` | attach or `stop` |
@@ -221,7 +221,8 @@ lock is older than 10 s; the runner never removes a lock by itself (that would r
 
 With `teams.teamlead.enabled=true` (not in mode cli) the runner launches one TeamLead per run before
 the first stage and keeps it until the run ends; `supervisor-sessions.sh` never starts it. It gates
-the spec and plan, answers the stages on an authority, accepts against the order and orders rework;
+the plan against the order (there is no spec gate — the planner approves its own spec), answers the
+stages on an authority, accepts against the order and orders rework;
 the contract is [team-lead.md](team-lead.md). Before you rely on it, read the limits in
 [team-decision-model.md](team-decision-model.md) §3, "Where the trust ends". What you do:
 

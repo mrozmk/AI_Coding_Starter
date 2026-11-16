@@ -75,14 +75,14 @@ echo "team-smoke-20: (d) record + question OK"
 
 # ---- (e) guard-teamlead-write.sh ---------------------------------------------------------------
 G=guard-teamlead-write.sh
-for f in gate-spec-1.md rework-2.md digest.md teamlead-notes.md opinion-1.md acceptance-brief.md \
+for f in gate-plan-1.md rework-2.md digest.md teamlead-notes.md opinion-1.md acceptance-brief.md \
   blind-check.md r2/acceptance-brief.md r2/gate-acceptance-1.md wrapup-decision-1.md; do
   lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/$f")"; expect 0 "" "(e) own file $f"
 done
 lhook $G "$(write_p Edit ".agents/team/runs/$RUN_ID/digest.md")"; expect 0 "" "(e) relative run path"
 lhook $G "$(write_p Write "/private/tmp/claude-$(id -u)/s/notes.md")"; expect 0 "" "(e) scratchpad"
 # Verdicts, decisions, answers, markers and records belong to the scripts (owner, 2026-11-15).
-for f in answers.md decisions/d-1.md decisions/req-1.json teamlead-spec-1.json closed.json \
+for f in answers.md decisions/d-1.md decisions/req-1.json teamlead-plan-1.json closed.json \
   coder-1-1.json.answered coder-1-1.json order-brief.md r2/answers.md attention x.md \
   teamlead-wrapup-1.json wrapup_proposals-1_1.json wrapup-state.json; do
   lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/$f")"

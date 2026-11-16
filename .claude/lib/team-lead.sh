@@ -4,7 +4,7 @@
 #        bash .claude/lib/team-lead.sh whoami                (exit 0 when the caller is the lead)
 #        bash .claude/lib/team-lead.sh pending <team>        (main checkout or the team's clone)
 #        bash .claude/lib/team-lead.sh end <team> | finalize <team> merged | relaunch <team>
-#        bash .claude/lib/team-lead.sh digest-check <team> <spec|plan path>
+#        bash .claude/lib/team-lead.sh digest-check <team> <plan path>
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
@@ -88,10 +88,9 @@ pending() {
           *" blocked"|*" failed")
             echo "$ts stop .agents/team/runs/$rr/$(basename "$f") — $(jq -r '.message // ""' "$f")" ;;
           # A gate stays open until a verdict other than escalate names its record.
-          "planner review"|"planner done")
+          "planner done")
             [ ! -e "$f.accepted" ] && ! gate_decided "$(basename "$f")" || continue
-            gate=plan; [ "$(jq -r .verdict "$f")" = done ] || gate=spec
-            echo "$ts gate .agents/team/runs/$RUN/$(basename "$f") — $gate gate" ;;
+            echo "$ts gate .agents/team/runs/$RUN/$(basename "$f") — plan gate" ;;
         esac
       done
       # Attention lines after the active stage's newest record are still unanswered.
@@ -120,8 +119,8 @@ pending() {
   } | sort -s -k1,1 | cut -d' ' -f2-
 }
 
-# The constraint digest is required at the brainstorm spec gate (decisions.md alone is input) and at
-# a quick plan gate only when the plan names a path of a routed memory domain.
+# The constraint digest is required at the plan gate in brainstorm (decisions.md alone is input) and
+# in quick only when the plan names a path of a routed memory domain.
 digest_check() {
   local root t dom
   resolve "$1"

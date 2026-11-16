@@ -1,6 +1,6 @@
 # Tracker comments at the per-run TeamLead's gates (.agents/reference/tracker-comments.md §5–§6,
-# team-lead.md §11). Sourced by team-verdict.sh for `spec approve`, `plan approve` and
-# `acceptance accept`; uses its globals (TD RD RRD RUN MAIN MODE TICKET GATE last LIB, rec, bad).
+# team-lead.md §11). Sourced by team-verdict.sh for `plan approve` and `acceptance
+# accept`; uses its globals (TD RD RRD RUN MAIN MODE TICKET GATE last LIB, rec, bad).
 # Opt-in: nothing runs unless workflow.tracker_comments is true in the main checkout's profile and
 # the run's tracker is not none (trk_on). Every refusal exits 10.
 # Bash 3.2 compatible.
@@ -23,9 +23,9 @@ trk_ledger() {
     f && /^Read: / && match($0, /snapshot [^ ]+/) { print substr($0, RSTART + 9, RLENGTH - 9); exit }'
 }
 
-# trk_baseline <planner record> <spec|plan> → BASE (a local copy of the baseline snapshot) and
-# BASE_FROM (<artifact>@<rev>). The spec gate reads the spec's ledger; the plan gate and acceptance
-# read the plan's own ledger, else its source spec's (contract §5.3).
+# trk_baseline <planner record> <plan> → BASE (a local copy of the baseline snapshot) and
+# BASE_FROM (<artifact>@<rev>). The plan gate and acceptance read the plan's own ledger, else its
+# source spec's (contract §5.3).
 BASE=""; BASE_FROM=""
 trk_baseline() {
   local r="$1" rev plan spec art snap key
@@ -39,7 +39,7 @@ trk_baseline() {
       spec="$(git show "$rev:$plan" 2>/dev/null | sed -n 's/^\*\*Source spec:\*\* *//p' | head -n 1 | tr -d '`')"
     fi
   fi
-  if [ -z "$snap" ] && [ -n "$spec" ] && { [ "$2" = spec ] || [ "$MODE" != quick ]; }; then
+  if [ -z "$snap" ] && [ -n "$spec" ] && [ "$MODE" != quick ]; then
     art="$spec"; snap="$(trk_ledger "$rev" "$spec")"
   fi
   [ -n "$art" ] || trk_fail "$(basename "$r") names no ${2} to read the ledger from"

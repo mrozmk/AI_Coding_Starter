@@ -197,18 +197,17 @@ has "ready:" "$WORK/out" || fail "(i) not ready"
 [ ! -e "$RD/accepted.sent" ] || fail "(i) accepted.sent without an event"
 echo "team-smoke-23: (i) accepted only after an accept verdict OK"
 
-# ---- (j) decision close is not limited to the acceptance gate: it closes the run at a spec gate -----
+# ---- (j) decision close is not limited to the acceptance gate: it closes the run at the plan gate -
 setup_run alfa-20261115-140000; rm -f "$RD"/coder-* "$RD"/qa-* "$RD"/planner-1-1.json.accepted
-jq '.verdict = "review" | .artifacts = [".agents/specs/s.md"]' "$RD/planner-1-1.json" > "$WORK/r" && mv "$WORK/r" "$RD/planner-1-1.json"
 session planner 1 "$BASE"; echo planner-1-1.json > "$TD/acked"
-ldec open alfa --source planner-1-1.json --question "Close AB-1600 at the spec gate?"; expect 0 "[d-1]" "(j) open"
+ldec open alfa --source planner-1-1.json --question "Close AB-1600 at the plan gate?"; expect 0 "[d-1]" "(j) open"
 jq -cn --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
   '{type: "user", uuid: "u-op-j", timestamp: $ts, message: {role: "user", content: "d-1 close"}}' >> "$LTX"
 ldec answer alfa d-1 --text "close" --outcome close; expect 0 "answered: d-1 (close)" "(j) answer"
 V decision close --for planner-1-1.json --decision d-1 --message "Operator: close"; expect 0 "" "(j) decision close"
-greset alfa-lead alfa-planner; run "$MAIN" $TR alfa; expect 8 "closed: abandon — clone free" "(j) the run closes at the spec gate"
+greset alfa-lead alfa-planner; run "$MAIN" $TR alfa; expect 8 "closed: abandon — clone free" "(j) the run closes at the plan gate"
 jq -e '.reason == "abandon"' "$RD/closed.json" >/dev/null || fail "(j) closed.json"
-echo "team-smoke-23: (j) close at a spec gate OK"
+echo "team-smoke-23: (j) close at the plan gate OK"
 
 # ---- rework fixtures: a launched session stays alive until it is killed ------------------------------
 cat > "$WORK/hs2.sh" <<'HS'
