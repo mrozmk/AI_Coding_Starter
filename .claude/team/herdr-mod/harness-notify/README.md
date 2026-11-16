@@ -13,8 +13,12 @@ per event into `~/.agent-comms/outbox/herdr/new/`, but only when the answering s
   toast runs `agent.focus` on the answering session's terminal.
 - The strip at the bottom keeps the toasts not yet clicked (a dot, then `2 waiting — …`). A click runs the
   same jump and drops the item. **clear**, at the strip's right end, drops every item: use it when
-  you answered elsewhere (in the stage's window, by iMessage), since nothing tells the strip that.
-  Items older than 24 hours fall off by themselves, also across a Herdr restart.
+  you answered elsewhere and the item is still there. Most answers clear it by themselves: when
+  the harness sees the answer (`notify.sh resolve`: a prompt answered in the stage's window, a
+  TeamLead decision answered or withdrawn, an operator record closed), it puts
+  `<id>.resolve` into `new/` and the strip drops the item at its next scan; an entry resolved
+  before it was shown gets no toast. Items older than 24 hours fall off by themselves, also across
+  a Herdr restart.
 - Herdr keeps that list for the mod in `~/.config/herdr-app/data/harness-notify/store.json`
   (the mod's `localStorage`), outside the mod folder.
 - It moves each entry to `~/.agent-comms/outbox/herdr/done/` with `mv`, so an entry is shown once.

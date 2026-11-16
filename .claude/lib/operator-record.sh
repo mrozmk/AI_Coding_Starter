@@ -10,14 +10,15 @@
 #   the same event, team and summary is reused (printed, nothing sent) until it is closed; after
 #   `close` the same text is a new record and a new event. The summary is one line, control
 #   characters stripped, cut to 200 characters; --ref must be a file inside the main checkout.
-#   Prints `recorded <id>`, `open <id> (coalesced)` or `closed <id>`.
+#   `close` also resolves the record's notification (notify.sh resolve --key: no further delivery,
+#   the Herdr strip drops it). Prints `recorded <id>`, `open <id> (coalesced)` or `closed <id>`.
 # Exit: 0 ok · 1 not the main checkout / no such record · 2 usage.
 #   e.g. bash .claude/lib/operator-record.sh failure --team alfa --summary "alfa-lead will not restart"
 # Spec: notification model (epic E2) §3. Bash 3.2 compatible; needs jq.
 set -euo pipefail
 umask 077
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 [ $# -ge 1 ] || usage
 LIB="$(cd "$(dirname "$0")" && pwd)"
@@ -35,6 +36,7 @@ case "$CMD" in
       awk -v t="$(date -u +%Y-%m-%dT%H:%M:%SZ)" '/^---$/ { n++; if (n == 2) print "closed_at: " t }
         n == 1 && /^status: / { print "status: closed"; next } { print }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     fi
+    bash "$LIB/notify.sh" resolve --key "$1" >/dev/null 2>&1 || true   # never fails the close
     echo "closed $1"; exit 0 ;;
   failure) EVENT=unrepaired_failure ;;
   release) EVENT=release ;;

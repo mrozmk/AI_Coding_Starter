@@ -20,11 +20,31 @@ export function idOf(name) {
   return ID_RE.test(id) ? id : null;
 }
 
-// The move of one entry new/ → done/, as exec arguments. Throws on an id that did not pass ID_RE.
-export function moveArgs(home, id) {
+// resolveOf("<id>.resolve") → the id: notify.sh resolve says the Operator answered it elsewhere.
+export function resolveOf(name) {
+  if (typeof name !== "string" || !name.endsWith(".resolve")) return null;
+  const id = name.slice(0, -8);
+  return ID_RE.test(id) ? id : null;
+}
+
+// plan(names) → the order of one scan over new/: every resolve marker first, then the entries, an
+// entry resolved in the same round marked quiet (moved without a toast — already answered).
+export function plan(names) {
+  const sorted = [...names].sort();
+  const resolved = sorted.map(resolveOf).filter(Boolean);
+  const r = new Set(resolved);
+  const entries = sorted.map((n) => ({ name: n, id: idOf(n) })).filter((e) => e.id)
+    .map((e) => ({ ...e, quiet: r.has(e.id) }));
+  return { resolved, entries };
+}
+
+// The move of one entry (or resolve marker) new/ → done/, as exec arguments. Throws on an id that
+// did not pass ID_RE or another extension.
+export function moveArgs(home, id, ext = ".json") {
   if (!ID_RE.test(id)) throw new Error(`bad spool id: ${id}`);
+  if (ext !== ".json" && ext !== ".resolve") throw new Error(`bad spool extension: ${ext}`);
   const d = dirs(home);
-  return ["mv", ["-f", `${d.new}/${id}.json`, `${d.done}/${id}.json`]];
+  return ["mv", ["-f", `${d.new}/${id}${ext}`, `${d.done}/${id}${ext}`]];
 }
 
 const line = (s, n) => (typeof s === "string" ? s.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, n) : "");

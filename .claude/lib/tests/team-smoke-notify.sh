@@ -290,7 +290,7 @@ if command -v node >/dev/null 2>&1; then
   # main.js reaches files and programs only through spool.js's paths: two exec calls (touch the
   # heartbeat, the move), reads only under the spool's new/.
   [ "$(grep -c 'exec(' "$MOD/main.js")" = 2 ] && grep -q 'exec("touch", \[this.d.alive\])' "$MOD/main.js" \
-    && grep -q 'spool.moveArgs(home(), id)' "$MOD/main.js" \
+    && grep -q 'spool.moveArgs(home(), id, ext)' "$MOD/main.js" \
     && grep -q 'this.scan(cx); this.watch(cx);' "$MOD/main.js" \
     && [ "$(grep -o 'readTextFile([^)]*)\|readdir([^)]*)' "$MOD/main.js" | grep -vc 'this.d.new')" = 0 ] \
     || fail "(k) main.js reaches a path or a program outside the spool"

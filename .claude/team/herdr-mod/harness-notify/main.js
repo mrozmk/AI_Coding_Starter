@@ -2,7 +2,8 @@
 // spool). It shows each new entry of ~/.agent-comms/outbox/herdr/new/ once as a toast through
 // Herdr's own `toast` mod, keeps the ones not yet clicked in this strip, and moves the entry to
 // done/. A click runs the entry's focus action (agent.focus on the answering session); "clear"
-// drops every item (dealt with elsewhere); an item older than a day falls off by itself.
+// drops every item (dealt with elsewhere); a resolve marker from notify.sh drops its item; an item
+// older than a day falls off by itself.
 // It touches nothing else: no setting, no sound, no other mod. Logic: spool.js. README.md.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -39,6 +40,11 @@ export default class HarnessNotify extends View {
 
   beat() { exec("touch", [this.d.alive]).catch(() => {}); }
 
+  move(id, ext) {
+    const [cmd, args] = spool.moveArgs(home(), id, ext);
+    return exec(cmd, args).then((x) => x.code === 0, () => false);
+  }
+
   save() { try { localStorage.setItem(KEY, JSON.stringify(this.list)); } catch { /* per copy only */ } }
 
   async scan(cx) {
@@ -51,9 +57,12 @@ export default class HarnessNotify extends View {
         let names = [];
         try { names = await fs.readdir(this.d.new); } catch { names = []; }
         const now = Date.now();
-        for (const name of names.sort()) {
-          const id = spool.idOf(name);
-          if (!id) continue;
+        const p = spool.plan(names);
+        for (const id of p.resolved) {   // answered elsewhere: the item goes, the marker to done/
+          this.list = spool.ack(this.list, id);
+          await this.move(id, ".resolve");
+        }
+        for (const { name, id, quiet } of p.entries) {
           let text = null;
           try { text = await readTextFile(`${this.d.new}/${name}`); } catch { text = null; }
           if (text === null) continue;   // gone meanwhile (another copy of the strip took it)
@@ -61,9 +70,8 @@ export default class HarnessNotify extends View {
           if (r.error && !this.bad.has(id)) { this.bad.add(id); console.log(`harness-notify: ${id} skipped — ${r.error}`); }
           // Move first, toast only on a move that worked: exec resolves on a failed mv too, and a
           // second copy of the strip (another layout or window) loses the race instead of toasting.
-          const [cmd, args] = spool.moveArgs(home(), id);
-          const moved = await exec(cmd, args).then((x) => x.code === 0, () => false);
-          if (moved && !r.error && !r.stale) { notify(spool.toast(r.item)); this.list = spool.add(this.list, r.item); }
+          const moved = await this.move(id, ".json");
+          if (moved && !r.error && !r.stale && !quiet) { notify(spool.toast(r.item)); this.list = spool.add(this.list, r.item); }
         }
         this.list = spool.expire(this.list, now);
       } while (this.again);

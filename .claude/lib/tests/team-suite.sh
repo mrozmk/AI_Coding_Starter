@@ -40,7 +40,8 @@ done
 STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke
   cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test
   gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
-  finder-model-test check-impl-contract-test team-inbox-test herdr-dock-test prime-probes-test
+  finder-model-test check-impl-contract-test team-inbox-test herdr-dock-test notify-resolve-test
+  prime-probes-test
   starter-fork-commit-test fix-snapshot-test branch-model-test guard-push-protected-test
   guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test
   guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test remote-build-test)
