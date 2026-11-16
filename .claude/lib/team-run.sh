@@ -49,6 +49,7 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-lead-lib.sh"
 . "$root/.claude/lib/team-run-lead.sh"
 . "$root/.claude/lib/team-run-dialog.sh"
+. "$root/.claude/lib/team-run-stop.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -65,9 +66,10 @@ BRANCH="$(team_json branch)"; LINE="$(team_json line)"
 RUN=""; ROLE=""; OWN_LOCK=0
 MODE="$(team_mode "$TD/team.json")" || { echo "error: cannot read the mode of $TD/team.json" >&2; exit 1; }
 
-# The runner's stops, waits and "ready" are its output and the run's files. Only two things reach the
-# Operator, through notify.sh: the lead's verdicts (lead_notify) and a session held at a startup
-# dialog (dialog_watch, team-run-dialog.sh) — both steps only the Operator can take.
+# The runner's stops, waits and "ready" are its output and the run's files. Only steps the Operator
+# alone can take reach the Operator, through notify.sh: the lead's verdicts (lead_notify), a session
+# held at a startup dialog (dialog_watch, team-run-dialog.sh), a stall and a rejected record nobody
+# in the team can fix (team-run-stop.sh).
 die() { echo "$2" >&2; exit "$1"; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
 sess_name() { team_tmux_name "$TEAM" "$1"; }
@@ -96,7 +98,7 @@ accept() {
   local r="$1"
   end_session "$ROLE"
   team_cancelled && cancel_exit
-  touch "$r.accepted"
+  touch "$r.accepted"; stop_resolve
   team_anchor_planner "$root" "$TEAM" "$r" || echo "warn: anchor not written" >&2
   rm -f "$TD/session.json"
   echo "accepted: $(basename "$r")"
@@ -109,14 +111,14 @@ handle_record() {
           if team_lead_on && [ "$ROLE" = planner ]; then lead_gate_ring plan "$r"; return 2; fi
           # The qa done is checked first (published PR, report), then the lead's acceptance gate.
           if team_lead_on && [ "$ROLE" = qa ]; then
-            validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
+            validate_record "$r" || { reject_record "$r" || return $?; }
             lead_gate_ring acceptance "$r"; return 2
           fi
-          validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
+          validate_record "$r" || { reject_record "$r" || return $?; }
           accept "$r" ;;
     review)
       team_lead_on || die 4 "record $(basename "$r") is a review, but the run has no TeamLead"
-      validate_record "$r" || die 4 "record $(basename "$r") rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
+      validate_record "$r" || { reject_record "$r" || return $?; }
       lead_gate_ring spec "$r"; return 2 ;;
     blocked|failed)
       if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
@@ -210,7 +212,7 @@ launch() {
     > "$TD/session.json"
   team_anchor_launch "$root" "$TEAM" "$CLONE" "$RUN" "$role" "$attempt" "$sid" \
     || echo "warn: anchor not written" >&2
-  printf '%s\n' "$sid" > "$TD/runs/$(run_ref)/$role-$attempt.session"
+  printf '%s\n' "$sid" > "$TD/runs/$(run_ref)/$role-$attempt.session"; stop_resolve
   render_prompt "$role" "$attempt" "$pf"
   attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
@@ -281,7 +283,7 @@ wait_loop() {
     fi
     ! team_lead_on || lead_poll
     if [ "$limit" -gt 0 ] && [ $(( $(team_now) - start )) -ge "$limit" ]; then
-      die 3 "stalled — attach: $(sh_hint "$name")"
+      stall_stop "$role" "$attempt"; die 3 "stalled — attach: $(sh_hint "$name")"
     fi
     sleep "$POLL"
   done

@@ -16,7 +16,7 @@ cap() { [ "$(wc -l < "$1")" -le "$2" ] || fail "$(basename "$1") has more than $
 for f in team-run.sh team_prompt.py team_transcript.py team_prompt_check.py team_prompt_classes.py \
   team_prompt_settings.py team-anchor.sh team-answer.sh team-question-lib.sh team-lib.sh team-watch.sh \
   team-new.sh team-lead-lib.sh team-next.sh tests/team-smoke-12.sh ../hooks/lib/guard_team_egress.py \
-  team-run-lead.sh team-run-dialog.sh team_prompt_authority.py team-answer-lead.sh team-answer-herdr.sh team-seed-lib.sh; do cap "$L/$f" 500; done
+  team-run-lead.sh team-run-dialog.sh team-run-stop.sh team_prompt_authority.py team-answer-lead.sh team-answer-herdr.sh team-seed-lib.sh; do cap "$L/$f" 500; done
 [ "$(python3 -I "$L/team_prompt_classes.py" names | tr '\n' ' ' | sed 's/ $//')" \
   = "$(sed -n 's/^TEAM_CLASSES="\(.*\)"$/\1/p' "$L/team-lib.sh")" ] || fail "class names differ"
 for t in '. "$root/.claude/lib/team-lib.sh"' '. "$root/.claude/lib/team-anchor.sh"' \
