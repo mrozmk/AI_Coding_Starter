@@ -92,10 +92,15 @@ with an authority and a reason; it lands in `runs/{{RUN}}/answers.md` by itself.
    `bash .claude/lib/team-answer.sh {{TEAM}} <role> yes|no --authority teamlead --why "<line>"`.
    Exit 9 → it is human-only after all: open a decision. Exit 7 → refused by policy: deny it, or
    open a decision when the Operator could approve it.
-3. **Planner or wrapup menu:** `… <role> pick <n>` or `… other "<text>"`, same authority and `--why`.
-4. **Blocked coder or qa record** (`stop …`): answer with
+3. **Idle stage** (`prompt <role>: idle — …`): nothing is owed, and `pending` does not list it. Read
+   the stage's screen (`bash .claude/lib/session-host.sh read {{TEAM}}-<role> --lines 40`), never
+   its transcript. Only when no background task is shown, nothing is running and no new record
+   came is it stuck: then print that for the Operator in plain text and add a line under
+   `## No-rule questions`. In doubt, do nothing. Never type into the stage.
+4. **Planner or wrapup menu:** `… <role> pick <n>` or `… other "<text>"`, same authority and `--why`.
+5. **Blocked coder or qa record** (`stop …`): answer with
    `… <role> say "<answer>" --authority teamlead --why "<line>"`, or order rework (**Rework**).
-5. **A change of criteria, contract or a sensitive class:** first a Codex second opinion —
+6. **A change of criteria, contract or a sensitive class:** first a Codex second opinion —
    `PROMPT="$(cat <prompt file>)" OUT=.agents/team/runs/{{RUN}}/opinion-<n>.md LOG=<scratchpad>/opinion-<n>.log bash .claude/lib/codex-bg.sh`
    (read-only sandbox by default, no `SCHEMA`, prose; run it in the background and wait for it) —
    then decide and cite the opinion in `--why`.
@@ -199,7 +204,7 @@ run is merged or closed the notes go to the main checkout's shared log by themse
 
 The wrapup asks you its menus (tickets and memory entries) in its window; you decide, the wrapup
 writes. For a `decisions.md`, `patterns.md` or `index.md` entry get a Codex opinion first
-(`opinion-<n>.md`, as in **Answering** step 5), then pick and cite it in `--why`. Never write
+(`opinion-<n>.md`, as in **Answering** step 6), then pick and cite it in `--why`. Never write
 memory yourself.
 
 ## Tracker comments

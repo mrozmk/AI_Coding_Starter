@@ -60,7 +60,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `order-brief.md` | `team-brief.sh write` | the order (team-mode.md §2) |
 | `runs/<run>/order-brief.md` | runner at launch | the frozen copy the lead reads |
 | `teamlead.json` | runner at launch; `session-registry.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root` |
-| `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer, its write guard (`guard-teamlead-write.sh`: the file tools reach only the lead's own files under `runs/<run>/` — notes, gate findings, rework orders, digest, opinions, blind check, acceptance brief — and the scratchpad) and its Bash guard (`guard-teamlead-bash.sh`, rules in `team_lead_bash.py`: no command that writes a script-owned file, the clone's `.claude/` or a transcript, and no key or text into a session) |
+| `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer, its write guard (`guard-teamlead-write.sh`: the file tools reach only the lead's own files under `runs/<run>/` — notes, gate findings, rework orders, digest, opinions, blind check, acceptance brief — and the scratchpad) and its Bash guard (`guard-teamlead-bash.sh`, rules in `team_lead_bash.py`: no command that writes a script-owned file, the clone's `.claude/` or a transcript, and no key or text into a session; the owning scripts in the clone's `.claude/lib/` pass, and of `costs/` only `/prime`'s closing `bash .claude/lib/costs/runtime-mark.sh stage end <name>`, which the stage hook records against the lead's registered session) |
 | `<main>/.agents/team/registry/<team>-lead.reg.json` | `session-registry.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target; removed on relaunch, at `end` and by `team-next.sh` / `team-remode.sh` |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
 | `lead-dead`, `relaunch-lead`, `send-lead.log` | runner | death reported once, relaunch request, skipped doorbells |
@@ -86,7 +86,8 @@ switches a later run to the lead branch.
 - `stop` — a role/attempt whose newest record is `blocked` or `failed`;
 - `gate` — a planner `review` (spec gate) or unaccepted `done` (plan gate) that no verdict other
   than `escalate` names yet;
-- `attention` — attention lines after the active stage's newest record;
+- `attention` — attention lines after the active stage's newest record, except `idle_prompt` (a
+  stage at an empty prompt is a notice, not a decision owed: §6);
 - `inbox` — files in `<main>/.agents/team/inbox/<team>/new/`.
 
 ## 3. Events to the Supervisor
@@ -230,6 +231,16 @@ check first**, before any waiver.
   → `prompt <role>: <tool> <command> — team-answer.sh … --authority teamlead`. The tool and command
   come from the transcript-bound parse; an unreadable one rings `prompt <role>: unreadable`. Other
   attention kinds ring `prompt <role>: <kind> — <message>`.
+- **An idle stage** (`idle_prompt`) rings once per line, `prompt <role>: idle — look at the screen;
+  nothing is owed unless it is stuck — <message>`, and `pending` never lists it. The lead reads the
+  stage's screen (`session-host.sh read`), never its transcript. It is stuck only when all three
+  hold: no background task is shown, nothing is running, and no new record came. Then the lead
+  prints it for the Operator in plain text (as any other item) and notes it under `## No-rule
+  questions`; it never types into the stage. In doubt it does nothing: the raw attention file
+  still reaches the Supervisor (`team-watch`, the team snapshot). A stage waiting on its own
+  background shell (a Codex review) is the normal case. `permission_prompt`,
+  `elicitation_dialog`, `agent_needs_input` and any other kind stay listed until the stage's next
+  record.
 
 ## 7. Human decisions
 

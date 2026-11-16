@@ -130,6 +130,12 @@ echo x > "\$CLAUDE_PROJECT_DIR/$R/answers.md"
 sed -i s/x/y/ .claude/hooks/guard-teamlead-bash.sh
 bash /tmp/team-answer.sh x > $R/answers.md
 bash .claude/lib/team-answer.sh alfa coder yes > $R/answers.md
+bash .claude/lib/costs/runtime-mark.sh stage end prime --session x
+bash .claude/lib/costs/runtime-mark.sh session --provider claude --source team-run
+bash .claude/lib/costs/runtime-mark.sh stage end prime > .claude/lib/costs/x
+sh .claude/lib/costs/runtime-mark.sh stage end prime
+python3 .claude/lib/costs/cost.py collect
+bash .claude/lib/costs/runtime-mark.sh stage end prime; echo x > .claude/lib/costs/runtime-mark.sh
 EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 2 "never" "(e2) key refused: $c"
@@ -166,6 +172,7 @@ bash .claude/lib/team-inbox.sh --main $MAIN done alfa $MAIN/.agents/team/inbox/a
 bash .claude/lib/team-inbox.sh --main $MAIN list alfa
 hc read t1
 git status
+bash .claude/lib/costs/runtime-mark.sh stage end prime
 EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 2 "only its own team's inbox done" "(e2) inbox refused: $c"

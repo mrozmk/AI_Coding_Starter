@@ -8,8 +8,8 @@
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
-#   pending lists the lead's open items — pending decisions first, then stop, gate, attention,
-#   inbox (this run's or run-less messages), oldest first:
+#   pending lists the lead's open items — pending decisions first, then stop, gate, attention
+#   (not idle_prompt), inbox (this run's or run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
 #   lead. notes-init creates runs/<run>/teamlead-notes.md (five headings) when absent; log-append
@@ -96,6 +96,8 @@ pending() {
       [ ! -f "$TD/runs/$RUN/attention" ] || while IFS= read -r l; do
         ts="$(printf '%s' "${l%% *}" | tr -dc 0-9)"
         [ -n "$ts" ] && [[ "$ts" > "$since" ]] || continue
+        # An idle stage is a notice, not a decision owed (the ring still comes, team-lead.md §6).
+        [ "$(cut -d' ' -f2 <<<"$l")" != idle_prompt ] || continue
         echo "$ts attention .agents/team/runs/$RUN/attention — ${stage:-?}: ${l#* }"
       done < "$TD/runs/$RUN/attention"
     fi
