@@ -8,7 +8,7 @@
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
-#   pending lists the lead's open items — pending decisions first, then stop, gate, attention
+#   pending lists the lead's open items — pending decisions first, then stop, rejected, gate, attention
 #   (not idle_prompt), inbox (this run's or run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
@@ -58,7 +58,7 @@ gate_decided() {  # gate_decided <record basename> — a non-escalate verdict na
 
 # One line per item, sorted by a 14-digit UTC key that is cut off before printing.
 pending() {
-  local f role attempt last ts since="" stage l gate rr ir
+  local f role attempt last ts since="" stage l gate rr ir a
   resolve "$1"
   {
     if [ -n "$RUN" ]; then
@@ -77,6 +77,13 @@ pending() {
           | tail -n 1)"
         [ "$(basename "$f")" = "$last" ] || continue
         ts="$(jq -r .written_at "$f" | tr -dc 0-9)"
+        # A record the runner rejected and handed to the lead (team-run-stop.sh): acked, no answer yet.
+        a="${rr#"$RUN"}"; a="${a#/}${a:+/}$(basename "$f")"
+        if [ -f "$(dirname "$f")/rejected-$(basename "$f" .json)" ] && [ "$(cat "$TD/acked" 2>/dev/null)" = "$a" ] \
+          && [ ! -e "$f.answered" ]; then
+          echo "$ts rejected .agents/team/runs/$rr/$(basename "$f") — $(head -n 1 "$(dirname "$f")/rejected-$(basename "$f" .json)")"
+          continue
+        fi
         case "$role $(jq -r .verdict "$f")" in
           *" blocked"|*" failed")
             echo "$ts stop .agents/team/runs/$rr/$(basename "$f") — $(jq -r '.message // ""' "$f")" ;;

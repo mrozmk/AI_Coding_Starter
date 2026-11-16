@@ -4,7 +4,8 @@
 # helpers (rec, artifact, accepted_record, run_ref, round_field, cancel_exit). Contract: .agents/reference/team-mode.md
 # Bash 3.2 compatible (macOS /bin/bash): no mapfile, no associative arrays.
 
-fail() { echo "validation failed: $*" >&2; return 1; }
+# REJECT_WHY keeps the reason for reject_record (team-run-stop.sh), which hands it to the stage.
+fail() { REJECT_WHY="$*"; echo "validation failed: $*" >&2; return 1; }
 
 check_common() {
   local r="$1"
@@ -237,6 +238,7 @@ check_wrapup() {
 
 validate_record() {
   local r="$1" role pr rev coder
+  REJECT_WHY=""
   role="$(rec "$r" role)"; pr="$(rec "$r" pr_id)"; rev="$(rec "$r" output_rev)"
   check_common "$r" || return 1
   case " $(team_mode_roles "$MODE") " in

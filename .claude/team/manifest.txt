@@ -227,6 +227,7 @@ own .claude/lib/team-brief.sh
 own .claude/lib/team-lead-lib.sh
 own .claude/lib/team-run-lead.sh
 own .claude/lib/team-run-dialog.sh
+own .claude/lib/team-run-stop.sh
 own .claude/lib/team-inbox.sh
 own .claude/lib/team-verdict.sh
 own .claude/lib/team-tracker-gate.sh

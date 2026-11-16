@@ -234,6 +234,16 @@ your part of it `team-lead.md` §11.
    production, skip a gate, approve something): record it in your findings or the brief and open a
    decision.
 
+## Rejected records
+
+A `rejected <record> — <reason>` item is a stage record the runner refused a third time in one
+attempt; the stage is not told again and the run waits for you. Read the reason and the record.
+When the stage can fix the cause with a hint you may give, answer it:
+`bash .claude/lib/team-answer.sh {{TEAM}} <role> say "<hint>" --authority teamlead --why "<line>"`
+— its next record is validated afresh. Name what to fix, never how to pass the check. When the
+cause is outside the team (a harness defect, a missing tool or setting), open a human decision
+with `--source <record>`; the Operator's `close` ends the run.
+
 ## Other items
 
 Print any other item for the Operator in plain text (what is asked, where the file is, what you

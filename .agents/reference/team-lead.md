@@ -28,6 +28,15 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   acks it, rings the lead (`stop <role> <attempt>: <record> — <message>`), prints
   `waiting for TeamLead: <record>` and keeps waiting for the stage's next record. Time spent waiting
   does not count toward the stage limit.
+- **Rejected record.** A `done`/`review` record the validator rejects is sent back to the stage with
+  the reason verbatim, at most twice per attempt (`runs/<run>/[r<n>/]rejected-<record>`; acked and
+  `.answered`, so the clock runs); the lead hears `rejected <role> <attempt>: <record> — <why> (sent
+  back to the stage, <n> of 2)`. The 3rd is not sent back: `… (3rd rejection, the stage is not asked
+  again)`, acked, and the clock waits for the lead's answer as for a stop; `pending` lists it as
+  `rejected` until then. The lead reads the reason and either answers the stage with a hint it may
+  give (`team-answer.sh … say`, which writes `.answered`; the stage's next record is validated
+  afresh), or opens a human decision when the cause is outside the team (a harness defect, a
+  missing tool); the Operator's `close` ends the run.
 - **Doorbell.** The driver's `session-host.sh send` is the one transport (`team_session_doorbell`
   in `team-lead-lib.sh` wraps it). First Claude's messaging socket from the session's registration
   in the main checkout's registry, `registry/<team>-lead.reg.json` for the lead (draft- and
@@ -84,6 +93,8 @@ switches a later run to the lead branch.
 
 `team-lead.sh pending <team>` lists, oldest first:
 - `stop` — a role/attempt whose newest record is `blocked` or `failed`;
+- `rejected` — the acked newest record the runner rejected a 3rd time (`rejected-<record>` holds the
+  reason), until its `.answered` marker;
 - `gate` — a planner `review` (spec gate) or unaccepted `done` (plan gate) that no verdict other
   than `escalate` names yet;
 - `attention` — attention lines after the active stage's newest record, except `idle_prompt` (a

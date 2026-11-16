@@ -335,10 +335,11 @@ lead_gate() {
       "spec revise") lead_say "[team-run] TeamLead: revise the spec — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record review again." || return 1 ;;
       "plan revise") lead_say "[team-run] TeamLead: amend the plan — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record done again." || return 1 ;;
       "plan remode") echo "$f" >> "$TD/verdict-acked"; close_run remode "$rel" ;;
-      # Acked only once accepted: a rejected record dies unacked, so a re-run validates it again.
+      # Rejected: the approve is spent; the planner is sent the reason (reject_record) and rings
+      # the gate again with its next done.
       "plan approve")
         validate_record "$TD/runs/$RUN/$a" \
-          || die 4 "record $a rejected — session left alive: $(sh_hint "$(sess_name "$ROLE")")"
+          || { echo "$f" >> "$TD/verdict-acked"; reject_record "$TD/runs/$RUN/$a" || true; return 1; }
         accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;
       # The qa done was validated when the gate was rung; accept it, the wrapup follows.
       "acceptance accept") accept "$TD/runs/$RUN/$a"; echo "$f" >> "$TD/verdict-acked"; return 0 ;;

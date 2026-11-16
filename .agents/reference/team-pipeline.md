@@ -201,14 +201,16 @@ sessions, lock holder and the last attention line. All `team-*.sh` scripts are `
 | 0 | stage(s) advanced; after qa: ready | run the merge check |
 | 1 | `failed` record | read the printed reason; fix in the session or relaunch the stage |
 | 2 | `blocked` record | attach, answer the question in the session, then `/start-team <team>` (it checks the runner pid, not the runner's session — that outlives the runner on `; read`) |
-| 3 | stalled (coder 4 h, cli 4 h, qa 3 h) | attach and look; rerun to keep waiting |
-| 4 | `done` record failed validation | read the printed check; fix in the session, rerun |
+| 3 | stalled (coder 4 h, cli 4 h, qa 3 h); one Operator event `stalled-[r<n>-]<role>-<attempt>` | attach and look; rerun to keep waiting |
+| 4 | a `done`/`review` record failed validation a 3rd time in one attempt with no TeamLead (the first two are sent back to the stage with the reason; with a lead the 3rd rings the lead); one Operator event `rejected-[r<n>-]<role>-<attempt>` | read the printed check; fix in the session, rerun |
 | 5 | dead session left partial work, or retry limit hit | inspect the clone; decide by hand |
 | 6 | cancelled by `stop` | rerun when ready — the stopped session is gone: a stage with no trace relaunches as attempt 2; partial work or attempt 2 → exit 5 |
 | 7 | orphan role session without `session.json` | attach or `stop` |
 | 8 | closed without merge by the per-run TeamLead (`runs/<run>/closed.json`, event `closed`) | §5a — `closed` |
 
 Every exit also writes the run's audit (team-mode.md §2); `warn: team audit failed` never changes the code.
+The 3 and 4 events go through `notify.sh` (`team-run-stop.sh`, marker `runs/<run>/operator-<decision>`)
+and are resolved when the run goes on: a record accepted or a new attempt launched.
 
 `bash .claude/lib/team-run.sh alfa stop` asks a live runner to stop (up to 90 s), then ends role
 sessions and removes the lock. A stale `lock/` (runner killed, `status` says `lock: stale`) →
