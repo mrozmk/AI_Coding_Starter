@@ -26,6 +26,11 @@ d_window() {  # d_window <file> — exit 7 for a human-only prompt's decision (a
   local r; r="$(dfm "$1" answer_in)"; [ -z "$r" ] || d_bad 7 \
     "human-only prompt: the Operator answers it in the $r window; the runner records it — nothing applied"
 }
+d_resolve() {  # d_resolve <file> — its Operator notification is answered or moot (#97); never fails
+  [ -n "$(dfm "$1" notify)" ] || return 0
+  bash "$LIB/notify.sh" resolve --team "$(jq -r .team "$TD/team.json")" --run "$RUN" \
+    --decision "$(dfm "$1" id)" >/dev/null 2>&1 || true
+}
 d_file() {  # d_file <d-n> → path, or exit 2/4
   [[ "$1" =~ ^d-[0-9]+$ ]] || d_bad 2 "decision id must be d-<n>"
   [ -f "$DD/$1.md" ] || d_bad 4 "no decision $1 in runs/$RUN/decisions/"
@@ -165,6 +170,7 @@ decision_answer() {
   [ -z "$outcome" ] || dfm_set "$f" answer_outcome "$outcome"
   printf '\n## Answer\n%s\n' "$text" >> "$f"
   [ -z "$tuning" ] || notes_tune "$id" "$tuning" "$why"
+  d_resolve "$f"
   echo "answered: $id${outcome:+ ($outcome)} via ${how%% *}"
 }
 
@@ -178,6 +184,7 @@ decision_withdraw() {
   [ "$(dfm "$f" status)" = pending ] || d_bad 4 "$id is $(dfm "$f" status), not pending"
   dfm_set "$f" status withdrawn; dfm_set "$f" withdrawn_at "$(team_utc)"
   printf '\n## Withdrawn\n%s\n' "$why" >> "$f"
+  d_resolve "$f"
   echo "withdrawn: $id"
 }
 

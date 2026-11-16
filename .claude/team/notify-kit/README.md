@@ -32,7 +32,8 @@ part outside the repo: a per-user launchd job that runs `notify.sh flush` when q
     retry could send twice.
 - **Quiet hours.** An event during quiet hours is held. The first flush after `quiet.end` (the end is
   exclusive) sends every held event as **one** message: `[harness] <n> held overnight`, then one
-  line per event, oldest first, cut to at most 1,000 characters.
+  line per event, oldest first, cut to at most 1,000 characters. An event resolved before then
+  (`notify.sh resolve`: answered elsewhere) leaves the batch, as `skipped resolved`.
 - **The message** is `[<project>] <label>: <team> <ticket> <d-n> — <summary> — answer: <hint>`. It
   holds the summary (one line, at most 200 characters) and where to answer, nothing else from the
   run.

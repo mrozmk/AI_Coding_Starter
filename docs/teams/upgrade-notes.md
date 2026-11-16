@@ -3,6 +3,23 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## An answer seen elsewhere resolves its notification (#97)
+
+**Before:** the Herdr strip kept an item until it was clicked, cleared or 24 hours old, and an event
+held for quiet hours went out in the morning batch even when the Operator had already answered it.
+
+**Now:** `notify.sh resolve (--team <t> --run <r> --decision <d> | --key <k>) [--project <p>]`
+marks an event answered elsewhere. It is called by the runner (a human-only prompt answered or
+withdrawn in the stage window), by `team-lead.sh decision answer|withdraw` and by
+`operator-record.sh close`; a failed resolve never stops them. A resolved event is delivered no
+further (`skipped resolved`: a held overnight message leaves the batch; a sent message stays sent).
+For a Herdr event it writes `<id>.resolve` into the spool's `new/`, and the strip drops the item.
+`notify.sh list` adds `resolved` to such a line. The end of a run does not resolve its pending
+decisions yet.
+
+**Action:** update the Herdr mod (`bash .claude/team/herdr-mod/install.sh`). An older mod ignores
+the `.resolve` files, and `notify.sh` removes them after a day.
+
 ## The Herdr strip can be cleared, and `--rollback` removes its list (#39)
 
 **Before:** the strip's waiting list lived in Herdr's store, `~/.config/herdr-app/data/harness-notify/store.json`,

@@ -6,7 +6,10 @@
 #             [--key <k>] [--source <who>] [--main <root>] [--now <epoch>] → written <id> | duplicate <id>
 #   notify.sh flush [--now <epoch>]   resume pending deliveries (an interrupted send becomes
 #                          outcome_unknown, never re-sent); send held iMessage events after quiet hours
-#   notify.sh list [--since <days>]   one line per event: id, event, each channel's state
+#   notify.sh list [--since <days>]   one line per event: id, event, each channel's state, resolved
+#   notify.sh resolve (--team <t> --run <r> --decision <d> | --key <k>) [--project <p>]
+#                          the Operator answered elsewhere: no further delivery, the strip drops it
+#                          → resolved <id> | already resolved <id> | unknown (each exit 0)
 #   notify.sh --check      one line per channel and one for the switch file; never waits for the
 #                          outbox lock (prune is skipped while a flush or send holds it)
 #   events: human_decision · abandon_decision (need --team --run --decision) ·
@@ -22,6 +25,9 @@
 # the event is `held`, and the first flush after them sends every held event as one message (the
 # kit's launchd job runs that flush at quiet.end: .claude/team/notify-kit). Every call prunes files past
 # NOTIFY_KEEP_DAYS (default 7; herdr/done 24 h), never one still pending, held or dispatching.
+# Resolve (#97): state/<id>.resolved (write-once) stops every delivery not yet made (`skipped
+# resolved`, a held overnight message included); a delivered one is never touched. For a herdr
+# event it also publishes herdr/new/<id>.resolve, on which the mod drops the strip item.
 # The summary is one line, control characters stripped, cut to 200 characters, and stored only
 # when a channel's switch is on. The recipient is never read into any output.
 # Callers: the runner (team-run-lead.sh lead_notify) and operator-record.sh — never a model
@@ -41,10 +47,11 @@ JOB="$HOME/Library/LaunchAgents/harness.notify-flush.plist"   # written by the n
 LABELS='{human_decision: "decision", abandon_decision: "abandon?", unrepaired_failure: "failure", release: "release"}'
 NOW=""   # --now, else NOTIFY_NOW, else the clock
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 crash() { [ "${NOTIFY_CRASH_AT:-}" != "$1" ] || exit 137; }   # tests: kill the process at a boundary
+part() { [[ "$2" =~ ^[A-Za-z0-9._-]+$ ]] || die 2 "$1 '$2' must be [A-Za-z0-9._-]+"; }
 
 # ---- the switch file -------------------------------------------------------------------------------
 # sw_load → SW_herdr / SW_imessage (on|off), WHY_<ch> (why a requested channel is off), CONF_STATE.
@@ -117,6 +124,7 @@ trap '[ -z "$LOCK" ] || rm -rf "$LOCK"' EXIT
 
 st_get() { local s; s="$(cut -d' ' -f1 "$OUT/state/$1.$2" 2>/dev/null || true)"; echo "${s:-pending}"; }
 st_tries() { local t; t="$(cut -d' ' -f4 "$OUT/state/$1.$2" 2>/dev/null || true)"; echo "${t:-0}"; }
+resolved() { [ -e "$OUT/state/$1.resolved" ]; }
 st_init() {  # st_init <file id> <channel> — the first state, write-once: never resets a delivery begun
   printf 'pending - %s\n' "$(utc)" > "$OUT/state/.$1.$2.init.$$"
   ln "$OUT/state/.$1.$2.init.$$" "$OUT/state/$1.$2" 2>/dev/null || true
@@ -187,7 +195,8 @@ held_batch() {
   for f in "$OUT"/events/*.json; do
     [ -f "$f" ] || continue; id="$(basename "$f" .json)"
     # The "t" prefix keeps the sort key a field when created_at is missing, so `read` never takes the id for it.
-    if [ "$(st_get "$id" imessage)" = held ]; then printf 't%s %s\n' "$(jq -r '.created_at // ""' "$f")" "$id"; fi
+    [ "$(st_get "$id" imessage)" = held ] || continue
+    if resolved "$id"; then st_set "$id" imessage skipped resolved; else printf 't%s %s\n' "$(jq -r '.created_at // ""' "$f")" "$id"; fi
   done | sort > "$OUT/state/.batch.$$"
   while read -r _ id; do ids="$ids $id"; n=$((n + 1)); t="$(st_tries "$id" imessage)"; [ "$t" -le "$max" ] || max="$t"; done < "$OUT/state/.batch.$$"
   rm -f "$OUT/state/.batch.$$"
@@ -220,6 +229,7 @@ deliver() {  # deliver <file id> <channel> — one step of the channel's state m
       if [ "$2" = herdr ]; then st_set "$1" "$2" pending; deliver "$1" "$2"; return; fi
       st_set "$1" "$2" outcome_unknown interrupted ;;
     pending|failed)
+      if resolved "$1"; then st_set "$1" "$2" skipped resolved; return 0; fi
       if [ "$(sw "$2")" = off ]; then [ "$s" = failed ] || st_set "$1" "$2" off switch-off; return 0; fi
       t=$(( $(st_tries "$1" "$2") + 1 ))
       [ "$s" = pending ] || [ "$t" -le 3 ] || return 0   # the third failure is final
@@ -232,7 +242,8 @@ deliver() {  # deliver <file id> <channel> — one step of the channel's state m
       st_set "$1" "$2" dispatching; crash dispatching
       r="$("send_$2" "$OUT/events/$1.json")"
       case "$r" in failed*) st_set "$1" "$2" ${r} "$t" ;; *) st_set "$1" "$2" ${r} ;; esac ;;
-    held) [ "$(sw "$2")" = on ] || st_set "$1" "$2" off switch-off ;;
+    held) if resolved "$1"; then st_set "$1" "$2" skipped resolved
+          elif [ "$(sw "$2")" = on ]; then :; else st_set "$1" "$2" off switch-off; fi ;;
   esac
 }
 RETRIED=0
@@ -263,6 +274,8 @@ prune() {
     n="$(basename "$f")"; [ -f "$OUT/events/${n%.*}.json" ] || rm -f "$f"
   done || true
   find "$OUT/herdr/done" -type f -mmin +1440 -exec rm -f {} + 2>/dev/null || true
+  # A resolve marker no strip took (none shown, an older mod) goes after a day as well.
+  find "$OUT/herdr/new" -name '*.resolve' -mmin +1440 -exec rm -f {} + 2>/dev/null || true
   # The kit's launchd job logs here; keep the last 64 KB.
   if [ -f "$OUT/flush.log" ] && [ "$(wc -c < "$OUT/flush.log")" -gt 65536 ]; then
     tail -c 32768 "$OUT/flush.log" > "$OUT/.flush.log.tmp" && mv "$OUT/.flush.log.tmp" "$OUT/flush.log"
@@ -273,7 +286,7 @@ prune() {
 [ $# -ge 1 ] || usage
 CMD="$1"; shift
 case "$CMD" in
-  human_decision|abandon_decision|unrepaired_failure|release|flush|list|--check) ;;
+  human_decision|abandon_decision|unrepaired_failure|release|flush|list|resolve|--check) ;;
   *) die 2 "unknown event '$CMD' — human_decision|abandon_decision|unrepaired_failure|release" ;;
 esac
 sw_load
@@ -320,12 +333,47 @@ case "$CMD" in
     since=""
     [ $# -eq 0 ] || { [ $# -eq 2 ] && [ "$1" = --since ] && [[ "$2" =~ ^[0-9]+$ ]] || usage; since="$2"; }
     outbox; lock; prune
-    for f in $(if [ -n "$since" ]; then find "$OUT/events" -name '*.json' -mmin -$((since * 1440)); \
-               else find "$OUT/events" -name '*.json'; fi | sort); do
+    # One path per line, so a HOME with a space in it is read whole.
+    { if [ -n "$since" ]; then find "$OUT/events" -name '*.json' -mmin -$((since * 1440)); \
+      else find "$OUT/events" -name '*.json'; fi; } | sort | while IFS= read -r f; do
       n="$(basename "$f" .json)"; line="$(jq -r '"\(.id) \(.event)"' "$f")"
       for c in $CHANNELS; do line="$line $c=$(st_get "$n" "$c")"; done
+      ! resolved "$n" || line="$line resolved"
       echo "$line"
     done
+    exit 0 ;;
+  resolve)
+    T=""; R=""; D=""; K=""; PR=""
+    while [ $# -gt 0 ]; do
+      [ $# -ge 2 ] || usage
+      case "$1" in --team) T="$2" ;; --run) R="$2" ;; --decision) D="$2" ;; --key) K="$2" ;;
+        --project) PR="$2" ;; *) usage ;; esac
+      shift 2
+    done
+    if [ -n "$K" ]; then [ -z "$T$R$D" ] || usage; part --key "$K"
+    else [ -n "$T" ] && [ -n "$R" ] && [ -n "$D" ] || usage; part --team "$T"; part --run "$R"; part --decision "$D"; fi
+    [ -z "$PR" ] || part --project "$PR"
+    [ -d "$OUT/events" ] || { echo unknown; exit 0; }   # nothing was ever sent from here
+    outbox; hit=""
+    # Matched by the fields every event file keeps (even with every channel off), so a caller needs
+    # no project prefix; --key names an operator record (release, unrepaired_failure).
+    for f in "$OUT"/events/*.json; do
+      [ -f "$f" ] || continue
+      jq -e --arg t "$T" --arg r "$R" --arg d "$D" --arg k "$K" --arg p "$PR" '($p == "" or .project == $p)
+        and (if $k != "" then (.event == "release" or .event == "unrepaired_failure") and (.id | endswith(":" + $k))
+             else .team == $t and .run == $r and .decision == $d end)' "$f" >/dev/null 2>&1 || continue
+      n="$(basename "$f" .json)"; id="$(jq -r .id "$f")"; hit=1
+      utc > "$OUT/state/.$n.resolved.$$"
+      if ln "$OUT/state/.$n.resolved.$$" "$OUT/state/$n.resolved" 2>/dev/null; then
+        if [ "$(jq -r '.answer.backend // ""' "$f")" = herdr ] && [ ! -e "$OUT/herdr/done/$n.resolve" ]; then
+          : > "$OUT/herdr/new/.tmp.$$" && ln "$OUT/herdr/new/.tmp.$$" "$OUT/herdr/new/$n.resolve" 2>/dev/null || true
+          rm -f "$OUT/herdr/new/.tmp.$$"
+        fi
+        echo "resolved $id"
+      else echo "already resolved $id"; fi
+      rm -f "$OUT/state/.$n.resolved.$$"
+    done
+    [ -n "$hit" ] || echo unknown
     exit 0 ;;
 esac
 
@@ -343,7 +391,6 @@ while [ $# -gt 0 ]; do
   shift 2
 done
 [ -n "$P" ] && [ -n "$SUMMARY" ] && [ -n "$ANSWER" ] || die 2 "$CMD needs --project, --summary and --answer"
-part() { [[ "$2" =~ ^[A-Za-z0-9._-]+$ ]] || die 2 "$1 '$2' must be [A-Za-z0-9._-]+"; }
 part --project "$P"
 case "$CMD" in
   human_decision|abandon_decision)

@@ -605,6 +605,7 @@ echo "team-smoke-22: (n) answer by id + decision gate OK"
 
 # ---- (o) withdraw, then a late answer is refused ---------------------------------------------------
 ldec withdraw alfa d-2 --why "the coder found another way"; expect 0 "withdrawn: d-2" "(o) withdraw"
+ls "$OB/state" 2>/dev/null | grep -q "_alfa_${RUN_ID}_d-2[.]resolved$" || fail "(o) the withdrawn decision's notification is not resolved"
 said_in_lead "d-2 yes"
 ldec answer alfa d-2 --text "yes"; expect 4 "d-2 is withdrawn, not pending" "(o) answer after withdraw"
 run "$CLONE" bash .claude/lib/team-lead.sh decision list alfa --pending; expect 0 "" "(o) list"

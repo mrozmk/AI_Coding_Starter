@@ -267,7 +267,7 @@ lead_window() {
       lfm_set "$f" status withdrawn; lfm_set "$f" withdrawn_at "$(team_utc)"
       printf '\n## Withdrawn\nprompt gone (the runner)\n' >> "$f"
       team_session_doorbell "$TD" lead "human-only $role: $did withdrawn — prompt gone"
-      continue
+      lead_resolve "$did"; continue
     fi
     lfm_set "$f" status resolved; lfm_set "$f" answered_at "$(team_utc)"
     lfm_set "$f" answered_via "stage-window $id"; lfm_set "$f" answer_outcome "$out"
@@ -276,7 +276,14 @@ lead_window() {
     printf -- '- %s [%s %s] %s → %s — Operator in the stage window [authority operator-window] [decision %s]\n' \
       "$(team_utc)" "$role" "$att" "$q" "$out" "$did" >> "$TD/runs/$RUN/answers.md"
     team_session_doorbell "$TD" lead "human-only $role: $did answered in the stage window — $out"
+    lead_resolve "$did"
   done
+}
+
+# lead_resolve <d-n> — the Operator's notification of that decision is answered or moot: no more
+# delivery, the Herdr strip drops it (#97). A failed resolve never stops the runner.
+lead_resolve() {
+  bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --decision "$1" >/dev/null 2>&1 || true
 }
 
 lead_status() {  # → alive|dead|none — session <sid> — pending <n>

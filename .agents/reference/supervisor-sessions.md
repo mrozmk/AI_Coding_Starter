@@ -357,6 +357,11 @@ strip until clicked. The iMessage channel (#40, any backend, macOS) sends one me
 holds events during quiet hours and sends them as one message after `quiet.end`; the opt-in
 `.claude/team/notify-kit/` installs the launchd job that runs that flush. `notify.sh --check` shows
 the switches, whether the mod was seen and the flush job's state; `notify.sh list` shows the events. It is the only path to the Operator.
+When the answer is seen elsewhere, the caller runs `notify.sh resolve` (#97): the runner for a
+human-only prompt answered or withdrawn in the stage window, `team-lead.sh decision answer|withdraw`,
+and `operator-record.sh close`. Nothing more is delivered for the event (a held overnight message
+leaves the batch; a sent one stays sent), and the strip drops it. A failed resolve never stops the
+caller. The end of a run does not resolve its pending decisions yet.
 
 ## Migration
 
