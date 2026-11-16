@@ -3,15 +3,19 @@
 #
 # Usage: bash .claude/lib/team-record.sh --verdict done|blocked|failed|review [--artifacts a,b]
 #          [--pr <id>] [--evidence a,b] [--message "<one line>"]
+#        bash .claude/lib/team-record.sh --verdict blocked --proposals <run dir>/wrapup_proposals-<a>_<k>.json
 #   e.g. bash .claude/lib/team-record.sh --verdict done --pr 8371 --artifacts .agents/plans/done/x.md
 #   review: the planner's committed spec for the TeamLead's spec gate (one .agents/specs/*.md).
+#   --proposals: the wrapup's items for this run's TeamLead (team_wrapup.py); the stop is marked
+#   `proposals` so audits and status do not count it as a block, and adds no notes line. <a> is the
+#   attempt, <k> the first number no file of the attempt uses yet; a file a verdict names is refused.
 #
 # Identity comes from .agents/team/session.json; contract: .agents/reference/team-mode.md §6.
 set -euo pipefail
 
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-VERDICT=""; ARTIFACTS=""; PR=""; EVIDENCE=""; MESSAGE=""
+VERDICT=""; ARTIFACTS=""; PR=""; EVIDENCE=""; MESSAGE=""; PROPOSALS=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
@@ -20,6 +24,7 @@ while [ $# -gt 0 ]; do
     --pr) PR="$2" ;;
     --evidence) EVIDENCE="$2" ;;
     --message) MESSAGE="$2" ;;
+    --proposals) PROPOSALS="$2" ;;
     *) usage ;;
   esac
   shift 2
@@ -52,7 +57,24 @@ output_rev="$(git rev-parse HEAD)"
 round="$(jq -r '.round // 1' "$(team_dir)/session.json")"; ref="$run"; [ "$round" = 1 ] || ref="$run/r$round"
 notes="$(team_notes_init "$ref")"
 
-if [ "$VERDICT" = blocked ] || [ "$VERDICT" = failed ]; then
+if [ -n "$PROPOSALS" ]; then
+  [ "$role" = wrapup ] && [ "$VERDICT" = blocked ] \
+    || { echo "error: --proposals is the wrapup's, with --verdict blocked" >&2; exit 2; }
+  [ "$(jq -r '.run // empty' "$(team_dir)/teamlead.json" 2>/dev/null)" = "$run" ] \
+    || { echo "error: --proposals needs this run's TeamLead (no teamlead.json for $run)" >&2; exit 2; }
+  PROPOSALS="${PROPOSALS#./}"
+  [ "$(dirname "$PROPOSALS")" = ".agents/team/runs/$ref" ] \
+    && [[ "$(basename "$PROPOSALS")" =~ ^wrapup_proposals-${attempt}_[1-9][0-9]*\.json$ ]] \
+    || { echo "error: --proposals must be .agents/team/runs/$ref/wrapup_proposals-${attempt}_<k>.json" >&2; exit 2; }
+  # A decided file is never rewritten into a second stop: the lead could not decide it again.
+  for v in "$(team_dir)/runs/$run"/teamlead-wrapup-*.json; do
+    [ -f "$v" ] || continue
+    [ "$(jq -r '.for // empty' "$v")" != "${PROPOSALS#.agents/team/runs/"$run"/}" ] \
+      || { echo "error: $PROPOSALS is already decided ($(basename "$v")) — write wrapup_proposals-${attempt}_<next k>.json" >&2; exit 2; }
+  done
+  python3 -I "$(dirname "$0")/team_wrapup.py" check "$(team_root)/$PROPOSALS" >/dev/null || exit 2
+  MESSAGE="wrapup proposals: $PROPOSALS"
+elif [ "$VERDICT" = blocked ] || [ "$VERDICT" = failed ]; then
   [ -n "$MESSAGE" ] || { echo "error: --verdict $VERDICT requires --message" >&2; exit 2; }
   echo "- [$role $attempt] $MESSAGE" >> "$notes"
 fi
@@ -68,13 +90,14 @@ jq -n --arg team "$team" --arg ticket "$ticket" --arg run "$run" --argjson round
   --arg input_rev "$input_rev" --arg output_rev "$output_rev" --arg verdict "$VERDICT" \
   --argjson pr_id "${PR:-null}" --arg artifacts "$ARTIFACTS" --arg evidence "$EVIDENCE" \
   --arg notes "${notes#"$(team_root)"/}" --arg message "$MESSAGE" \
-  --arg written_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg written_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg proposals "$PROPOSALS" \
   '{team: $team, ticket: $ticket, run: $run, round: $round, role: $role, attempt: $attempt, seq: $seq,
     branch: $branch, input_rev: $input_rev, output_rev: $output_rev, verdict: $verdict,
     pr_id: $pr_id,
     artifacts: ($artifacts | if . == "" then [] else split(",") end),
     evidence: ($evidence | if . == "" then [] else split(",") end),
-    notes: $notes, message: $message, written_at: $written_at}' > "$tmp"
+    notes: $notes, message: $message, written_at: $written_at}
+  + (if $proposals == "" then {} else {proposals: $proposals} end)' > "$tmp"
 [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
 mv "$tmp" "$target"
 echo "$target"

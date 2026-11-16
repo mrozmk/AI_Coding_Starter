@@ -1,7 +1,7 @@
 #!/bin/bash
 # PreToolUse(Edit|Write|NotebookEdit) guard — the per-run TeamLead writes only its own files under
 # .agents/team/runs/<run>/ (gate findings, rework orders, digest, notes, opinions, acceptance brief,
-# blind check — also in a round dir r<n>/) and the Claude scratchpad. Verdicts, decisions, answers,
+# blind check, wrapup decision — also in a round dir r<n>/) and the Claude scratchpad. Verdicts, decisions, answers,
 # markers and records in the same directory are written only by the scripts that own them.
 #
 # Problem it solves: the lead judges the team's work and must never change it. A deny rule cannot
@@ -44,7 +44,7 @@ RUNS="$(real "$ROOT/.agents/team/runs/$(team_lead_json run)")"
 SCRATCH="$(real "/private/tmp/claude-$(id -u)")"
 case "$P" in "$SCRATCH"/*) exit 0 ;; esac
 # An allowlist, so a new script-owned file is protected by default; same list as team_lead_bash.py OWN.
-own='^(r[0-9]+/)?(gate-[a-z]+-[0-9]+\.md|rework-[0-9]+\.md|digest\.md|teamlead-notes\.md|opinion-[0-9]+\.md|acceptance-brief\.md|blind-check\.md)$'
+own='^(r[0-9]+/)?(gate-[a-z]+-[0-9]+\.md|rework-[0-9]+\.md|digest\.md|teamlead-notes\.md|opinion-[0-9]+\.md|acceptance-brief\.md|blind-check\.md|wrapup-decision-[0-9]+\.md)$'
 case "$P" in
   "$RUNS"/*) [[ "${P#"$RUNS"/}" =~ $own ]] && exit 0
     refuse "TeamLead writes only its own notes and findings under runs/<run>/ — verdicts, decisions and answers are written by the scripts" ;;

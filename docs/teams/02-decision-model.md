@@ -75,7 +75,7 @@ Risk: <one line>
 
 ## Tickets from recommendations
 
-The Supervisor and the Advisor create technical tickets without asking: wrapup follow-ups, QA findings, analysis results. The TeamLead does not create tickets; its tickets come from the wrapup menu. Every such ticket:
+The Supervisor and the Advisor create technical tickets without asking: wrapup follow-ups, QA findings, analysis results. The TeamLead does not create tickets; its tickets come from the wrapup's proposals, which it decides alone (default no, at most one ticket and one memory entry per run without a stated reason). Every such ticket:
 
 - is searched for a duplicate first;
 - carries a recommendation line saying the Operator verifies it when the work starts;

@@ -202,7 +202,9 @@ roles_runs() (
     state=open
     if [ -z "$stage" ] && [ -n "$nr" ]; then
       stage="$(basename "$nr")"; stage="${stage%%-*}"
-      case "$(jq -r '.verdict // empty' "$nr" 2>/dev/null)" in blocked) state=blocked ;; failed) state=failed ;; esac
+      # A wrapup's proposals stop (#104) waits for its TeamLead, not for the Operator.
+      case "$(jq -r 'if .proposals then "proposals" else .verdict // empty end' "$nr" 2>/dev/null)" in
+        blocked) state=blocked ;; failed) state=failed ;; proposals) state=proposals ;; esac
     fi
     [ -n "$stage" ] || stage="$first"
     jq -cn --arg t "$t" --arg r "$run" --arg s "$stage" --arg st "$state" --arg c "$c" \

@@ -31,7 +31,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import team_prompt_check as c  # noqa: E402
 
 OWN = re.compile(r"^(r[0-9]+/)?(gate-[a-z]+-[0-9]+\.md|rework-[0-9]+\.md|digest\.md|"
-                 r"teamlead-notes\.md|opinion-[0-9]+\.md|acceptance-brief\.md|blind-check\.md)$")
+                 r"teamlead-notes\.md|opinion-[0-9]+\.md|acceptance-brief\.md|blind-check\.md|"
+                 r"wrapup-decision-[0-9]+\.md)$")
 SCRIPTS = {"team-verdict.sh", "team-answer.sh", "team-lead.sh", "team-tracker.sh", "team-inbox.sh",
            "tracker-snapshot.mjs", "codex-bg.sh", "session-host.sh"}
 # Commands that only read their file operands (sort -o, uniq <out>, sed -i write, so they are not here).

@@ -34,7 +34,7 @@ snapshot() {
   [ ! -f "$td/session.json" ] || stage="$(jq -r '"\(.role) attempt \(.attempt)"' "$td/session.json")"
   # Newest across rework rounds (runs/<run>/r<n>/, team-lead.md §9).
   r="$(ls -1t "$td/runs/$run"/*-*-*.json "$td/runs/$run"/r*/*-*-*.json 2>/dev/null | grep -v '/teamlead-' | head -n 1)" || true
-  [ -z "$r" ] || rec="$(basename "$r") $(jq -r .verdict "$r")$([ -e "$r.accepted" ] && echo ' accepted')"
+  [ -z "$r" ] || rec="$(basename "$r") $(jq -r 'if .proposals then "proposals" else .verdict end' "$r")$([ -e "$r.accepted" ] && echo ' accepted')"
   [ ! -f "$td/runs/$run/attention" ] || att="$(wc -l < "$td/runs/$run/attention" | tr -d ' ')"
   ! team_tmux_alive "$team-runner" || [ ! -d "$td/lock" ] || runner=up
   echo "$stage|$rec|$att|$runner"

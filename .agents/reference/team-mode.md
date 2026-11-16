@@ -140,11 +140,11 @@ branch's base and equal to the supervisor's, or the start is refused.
 | planner | asked normally (attended); `/brainstorm` Step 9 waits for the per-run TeamLead's spec gate (and its `done` for the plan gate, team-lead.md §4), or without one auto-approves unless a 🔶 rethink signal | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
 | coder | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
 | qa | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
-| wrapup | asked normally (attended), only when it has recommendations | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the lead decides both groups, team-lead.md §10; the developer may accept in the window) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
+| wrapup | asked normally (attended), only when it has recommendations; with a per-run TeamLead never — a proposals stop instead | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the wrapup asks nothing: it stops with a proposals file and the lead decides every item, team-lead.md §10) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
 | cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | published PR via `team-pr.sh create --ready`, `team-record --verdict done --pr <id>` |
 
 'Asked normally (attended)' means, with a per-run TeamLead, that the run's lead answers on an
-authority ([team-lead.md](team-lead.md) §6; the wrapup's menus §10) and only human-only items reach
+authority ([team-lead.md](team-lead.md) §6; the wrapup's proposals §10) and only human-only items reach
 the Operator as pending decisions. Without one, TeamLead answers per
 [team-decision-model.md](team-decision-model.md) §3. Operator-list decisions reach the Operator
 through Advisor (tier 3) or, past a class deadline, a `turn` to Supervisor; Operator actions

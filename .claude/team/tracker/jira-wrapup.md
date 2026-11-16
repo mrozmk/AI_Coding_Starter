@@ -45,6 +45,8 @@
      start counts the chain by it), before the step 4 create marker, which stays the last line.
 7. No new/unaccepted recommendations → step 8 for saved accepted work still unfinished,
    otherwise step 9. For new/unaccepted recommendations ask **one** `AskUserQuestion` (2–4 options):
+   With a per-run TeamLead ask no question: prepare and save the drafts as below, then follow
+   **With a per-run TeamLead** in the wrapup prompt instead of the menu.
    - Before the selection question, resolve missing required fields. If there is no verified
      parent Epic, ask here for its key, fetch it and verify `issuetype.name == "Epic"`; until
      resolved, do not offer a task for acceptance or create it.

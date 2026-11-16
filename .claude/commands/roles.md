@@ -27,7 +27,8 @@ allowed-tools: Bash(bash .claude/lib/roles.sh:*), AskUserQuestion
      - `multiSelect: true`, header `Resume runs`;
      - question `Which interrupted team runs should be resumed?`;
      - one option per run, label `<team>`, description `<run>, stage <stage>` plus `, <state>` when
-       the state is not `open` (`blocked`: it waits for an answer; `failed`: it needs a fix);
+       the state is not `open` (`blocked`: it waits for an answer; `failed`: it needs a fix;
+       `proposals`: the wrapup waits for its TeamLead's decision);
      - leave every option unselected.
    - At most 4 options: ask about the first 4. Print each further run as `more interrupted runs:
      resume them with /start-team <team>`, one line per team; never drop one silently.

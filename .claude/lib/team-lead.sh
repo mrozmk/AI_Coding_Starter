@@ -12,7 +12,7 @@
 #   (not idle_prompt), inbox (this run's or run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
-#   lead. notes-init creates runs/<run>/teamlead-notes.md (five headings) when absent; log-append
+#   lead. notes-init creates runs/<run>/teamlead-notes.md (six headings) when absent; log-append
 #   appends the notes once per run (runs/<run>/log-appended) to <main>/.agents/team/teamlead-log.md;
 #   owns exits 0 when the team's current run has its own TeamLead (teamlead.json run). digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
 #   when no path the plan names maps to a routed domain (.claude/memory-domains.json); else 1.
@@ -188,7 +188,7 @@ finalize() {
 }
 
 # The lead's notes (team-lead.md §10): one file per run at the run root, read by every round's wrapup.
-NOTES_HEADINGS="## Order ambiguities|## No-rule questions|## Gate misses|## Operator cases|## Late answers"
+NOTES_HEADINGS="## Order ambiguities|## No-rule questions|## Gate misses|## Operator cases|## Wrapup decisions|## Late answers"
 notes_init() {
   local f h
   resolve "$1"

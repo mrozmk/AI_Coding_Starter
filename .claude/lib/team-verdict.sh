@@ -4,6 +4,8 @@
 #          [--ref <file>] [--notify human_decision|abandon_decision] [--decision d-<n>]
 #          [--quick-call continue]
 #        bash .claude/lib/team-verdict.sh event collision --ref <file> --message "<line>"
+#        bash .claude/lib/team-verdict.sh wrapup decide --for <wrapup_proposals-<a>_<k>.json>
+#          --ref .agents/team/runs/<run>/wrapup-decision-<n>.md --message "<line>"
 #   gates: spec → approve|revise|escalate (brainstorm); plan → approve|revise|escalate|remode
 #   (remode in quick only). --for names the planner's newest record (a review for spec, a done for
 #   plan). revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
@@ -20,6 +22,11 @@
 #   verdict, decisions/req-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
 #   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
 #   decision without changing the run. A used decision becomes status: consumed (once).
+#   wrapup → decide: --for is the proposals file the wrapup's newest record (blocked, proposals)
+#   names; --ref the lead's decision file, checked by team_wrapup.py (every item accept|decline once,
+#   accept `needed because`, one optional correction line, the run's cap, a group B opinion). Once
+#   per proposals file; the items and the file's sha256 land in the verdict, the items also under
+#   `## Wrapup decisions` in the notes.
 #   Writes .agents/team/runs/<run>/teamlead-<gate>-<seq>.json.
 #   Tracker comments (opt-in workflow.tracker_comments, tracker not none): spec/plan approve and
 #   acceptance accept need the planner's ledger + snapshot and the lead's fresh read
@@ -32,7 +39,7 @@
 #   Contract: .agents/reference/team-lead.md §4, §5, §8, §9, §11
 set -euo pipefail
 
-usage() { sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""
@@ -81,12 +88,14 @@ write_verdict() {  # → prints the written file
     --arg notify "$NOTIFY" --arg message "$MESSAGE" --arg spec_digest "$DIGEST" \
     --arg decision "$DECISION" --arg written_at "$(team_utc)" \
     --arg session_id "$(team_lead_json session_id)" --arg quick_call "$QUICK_CALL" \
-    --arg tracker "$TRACKER_LINE" \
+    --arg tracker "$TRACKER_LINE" --argjson items "${ITEMS:-null}" --arg psha "${PROPOSALS_SHA:-}" \
     '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
       ref: $ref, notify: $notify, message: $message, spec_digest: $spec_digest,
       decision: $decision, written_at: $written_at, session_id: $session_id}
      + (if $quick_call == "" then {} else {quick_call: $quick_call} end)
-     + (if $tracker == "" then {} else {tracker: $tracker} end)' > "$tmp"
+     + (if $tracker == "" then {} else {tracker: $tracker} end)
+     + (if $items == null then {} else {items: $items} end)
+     + (if $psha == "" then {} else {proposals_sha256: $psha} end)' > "$tmp"
   [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
   mv "$tmp" "$target"
   echo "$target"
@@ -138,12 +147,49 @@ if [ "$GATE" = decision ]; then
   echo "$t"; exit 0
 fi
 
+# The wrapup's proposals: decided once, by the lead alone (no Operator path), from its decision file.
+if [ "$GATE" = wrapup ]; then
+  [ "$VERDICT" = decide ] || bad "verdict $VERDICT is not allowed at the wrapup gate (decide)"
+  [ -f "$TD/session.json" ] && [ "$(session_json role)" = wrapup ] || bad "no wrapup session"
+  last="$(team_records "$RREF" wrapup "$(session_json attempt)" | tail -n 1)"
+  [ -n "$last" ] && [ "$(rec "$last" verdict)" = blocked ] && [ -n "$(rec "$last" proposals)" ] \
+    || bad "the wrapup's newest record is no proposals stop"
+  prop="$(rec "$last" proposals)"
+  [ "$FOR" = "$(basename "$prop")" ] || bad "--for $FOR is not $(basename "$prop"), the proposals the wrapup's stop names"
+  FOR="${prop#.agents/team/runs/"$RUN"/}"
+  # Compared by resolved directory: the lead may pass a relative, absolute or /private path.
+  r="$(cd "$(dirname "$REF")" 2>/dev/null && pwd -P)" || bad "--ref must be .agents/team/runs/$RUN/wrapup-decision-<n>.md"
+  r="${r#"$(cd "$RD" && pwd -P)"}"; r="${r#/}"; r="${r:+$r/}$(basename "$REF")"
+  [[ "$r" =~ ^(r[0-9]+/)?wrapup-decision-[0-9]+\.md$ ]] && [ -f "$RD/$r" ] \
+    || bad "--ref must be .agents/team/runs/$RUN/wrapup-decision-<n>.md"
+  REF=".agents/team/runs/$RUN/$r"
+  for f in $(verdicts); do [ "$(rec "$RD/$f" for)" != "$FOR" ] || bad "$FOR is already decided ($f)"; done
+  # The cap counts the whole run: accepts of earlier proposals files, hand-offs aside.
+  prior="$(for f in $(verdicts); do cat "$RD/$f"; done | jq -rs '[.[].items // [] | .[]
+    | select(.decision == "accept" and (.handoff | not))] as $a
+    | "\([$a[] | select(.kind == "ticket")] | length),\([$a[] | select(.kind == "memory")] | length)"')"
+  ITEMS="$(python3 -I "$LIB/team_wrapup.py" decide "$TD/runs/$RUN/$FOR" "$RD/$r" "${prior:-0,0}" "$RD" "$RRD")" || exit 4
+  PROPOSALS_SHA="$(shasum -a 256 "$TD/runs/$RUN/$FOR" | cut -d' ' -f1)"
+  t="$(write_verdict)"
+  n="$RD/teamlead-notes.md"
+  lines="$(jq -r '.[] | "- \(.id) \(.decision) — \(.why)" + (if .over_cap then " — over cap because \(.over_cap)" else "" end)
+    + (if .correction then " (correction: \(.correction))" else "" end)' <<<"$ITEMS")"
+  if [ -f "$n" ] && grep -qxF '## Wrapup decisions' "$n"; then
+    ADD="$lines" awk '/^## / && f { print ENVIRON["ADD"]; f = 0 } { print }
+      $0 == "## Wrapup decisions" { f = 1 } END { if (f) print ENVIRON["ADD"] }' "$n" > "$n.tmp" \
+      && mv "$n.tmp" "$n"
+  else
+    printf '\n## Wrapup decisions\n%s\n' "$lines" >> "$n"
+  fi
+  echo "$t"; exit 0
+fi
+
 # The gated record: the gated role's newest record of the launched attempt, in the gate's verdict.
 case "$GATE" in
   spec) [ "$MODE" != quick ] || bad "quick mode has no spec gate"; role=planner; want=review ;;
   plan) role=planner; want=done ;;
   acceptance) role=qa; want=done ;;
-  *) bad "unknown gate $GATE (spec|plan|acceptance|decision)" ;;
+  *) bad "unknown gate $GATE (spec|plan|acceptance|decision|wrapup)" ;;
 esac
 [ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
   || bad "no $role session — the $GATE gate is the $role's"

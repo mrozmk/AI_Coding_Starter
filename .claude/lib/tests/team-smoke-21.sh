@@ -158,6 +158,8 @@ hook "$CLONE" "$(vp sid-planner-1 "$FORGE")"; expect 2 "not it (refused)" "(o) f
 hook "$CLONE" "$(vp sid-planner-1 "bash $CLONE/.claude/lib/team-verdict.sh spec approve")"; expect 2 "" "(o) absolute path"
 hook "$CLONE" "$(vp sid-planner-1 "env TEAM_SESSION_ROLE=TeamLead sh .claude/lib/team-verdict.sh plan approve")"; expect 2 "" "(o) env + sh"
 hook "$CLONE" "$(vp sid-planner-1 "bash '.claude/lib/team-verdict.sh'  'event' collision")"; expect 2 "" "(o) quoted name and gate"
+hook "$CLONE" "$(vp sid-wrapup-1 "TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh wrapup decide --for wrapup_proposals-1_1.json --ref x --message x")"
+expect 2 "not it (refused)" "(o) forged env: the wrapup deciding its own proposals"
 # Only an invocation is checked: work on the file itself passes from a stage session.
 for c in "git add .claude/lib/team-verdict.sh" "bash -n .claude/lib/team-verdict.sh" \
   "cat .claude/lib/team-verdict.sh" "grep -n revise .claude/lib/team-verdict.sh"; do
@@ -233,6 +235,139 @@ spec_body "Approved (TeamLead, 2026-11-14)" "Export button."
 prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-5.json" "(i) done after a Status edit"
 V plan approve --for planner-1-5.json --message ok; expect 0 "teamlead-plan-1.json" "(i) Status-only change"
 echo "team-smoke-21: (i) spec digest OK"
+
+# ---- (w) the wrapup's proposals under the lead: the record mark, the decision, notes, audit (#104) --
+session wrapup 1 "$BASE"; CL="$CLONE/.claude/lib"
+P=".agents/team/runs/$RUN_ID/wrapup_proposals-1_1.json"; WD="$RD/wrapup-decision-1.md"
+prec --verdict blocked --proposals "$P"; expect 2 "not readable JSON" "(w) no proposals file"
+echo '{"run": "x", "attempt": 1, "items": []}' > "$CLONE/$P"
+prec --verdict blocked --proposals "$P"; expect 2 "no items" "(w) nothing to propose is no stop"
+# An id with a trailing newline is no id (fullmatch, not `$`).
+jq -n '{items: [{id: "create-1\n", kind: "ticket", title: "t", body: "b"}]}' > "$CLONE/$P"
+prec --verdict blocked --proposals "$P"; expect 2 "an item id must be" "(w) an id with a trailing newline"
+jq -n '{items: [{id: "memory-1", kind: "memory", group: "A", target: "errors.md", text: "t", czytelnik: "c"}]}' > "$CLONE/$P"
+prec --verdict blocked --proposals "$P"; expect 2 "target must be a file under .agents/memory/" "(w) a bare memory target"
+# memory-2 says group A, but decisions.md is group B by its target.
+jq -n '{run: "x", attempt: 1, items: [
+  {id: "create-1", kind: "ticket", title: "Fix the CSV header", body: "b1"},
+  {id: "create-2", kind: "ticket", title: "Tidy the export module", body: "b2"},
+  {id: "memory-1", kind: "memory", group: "A", target: ".agents/memory/errors.md", text: "t1", czytelnik: "c"},
+  {id: "memory-2", kind: "memory", group: "A", target: ".agents/memory/decisions.md", text: "t2", czytelnik: "c"}]}' \
+  > "$CLONE/$P"
+prec --verdict blocked --proposals "/tmp/wrapup_proposals-1_1.json"; expect 2 "must be .agents/team/runs/" "(w) proposals outside the run dir"
+prec --verdict blocked --proposals ".agents/team/runs/$RUN_ID/wrapup_proposals-1.json"; expect 2 "wrapup_proposals-1_<k>.json" "(w) a name without its sequence"
+mv "$TD/teamlead.json" "$WORK/tl.json"
+prec --verdict blocked --proposals "$P"; expect 2 "needs this run's TeamLead" "(w) no lead"
+mv "$WORK/tl.json" "$TD/teamlead.json"
+session coder 1 "$BASE"; prec --verdict blocked --proposals "$P"; expect 2 "is the wrapup's" "(w) a coder"
+session wrapup 1 "$BASE"
+prec --verdict blocked --proposals "$P"; expect 0 "wrapup-1-1.json" "(w) the proposals stop"
+jq -e --arg p "$P" '.verdict == "blocked" and .proposals == $p and .message == "wrapup proposals: " + $p' \
+  "$RD/wrapup-1-1.json" >/dev/null || fail "(w) record lacks the proposals mark"
+grep -q '^- \[wrapup' "$RD/notes.md" 2>/dev/null && fail "(w) the proposals stop appended a blocker line"
+run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
+expect 0 "stop .agents/team/runs/$RUN_ID/wrapup-1-1.json — wrapup proposals: $P" "(w) pending lists the stop"
+# The audit does not count it as a block (run, stage), the run stays in progress, and the wait for
+# the lead is not stage time.
+python3 -I - "$CL" "$RD" "$WORK" > "$WORK/out" 2>&1 <<'PY' || fail "(w) audit counts the proposals stop: $(cat "$WORK/out")"
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import team_audit as a
+recs = a.load_records(sys.argv[2], ["wrapup"])
+c = a.run_counts(sys.argv[2], recs)
+assert c["records"] == {"proposals": 1}, c["records"]
+assert a.run_state([], recs) == "in-progress", a.run_state([], recs)
+assert a.stage(sys.argv[2], "wrapup", recs, {})["verdicts"] == {"proposals": 1}
+d = os.path.join(sys.argv[3], "lw"); os.makedirs(d, exist_ok=True)
+with open(os.path.join(d, "teamlead-wrapup-1.json"), "w") as f:
+    json.dump({"for": "wrapup_proposals-1_1.json", "written_at": "2026-11-16T10:20:00Z"}, f)
+r = [{"proposals": ".agents/team/runs/x-1/wrapup_proposals-1_1.json", "written_at": "2026-11-16T10:00:00Z"}]
+w = a.lead_wait(d, r, a.parse_utc("2026-11-16T10:30:00Z"))
+assert w == 20.0, w
+PY
+run "$CLONE" bash .claude/lib/team-lead.sh notes-init alfa
+WV() { V wrapup decide --for wrapup_proposals-1_1.json --ref "$WD" --message "decided"; }
+dec() { printf '%s\n' "$@" > "$WD"; }
+A1="- create-1 accept — needed because users hit the broken header"
+D2="- create-2 decline — cannot judge: a tidy-up from the implementation"
+M1="- memory-1 accept — needed because the next coder repeats it"
+M2="- memory-2 accept — needed because it fixes a wrong decision, opinion-1.md — over cap because two different mistakes"
+dec "$A1" "$D2" "$M1"; WV; expect 4 "not decided: memory-2" "(w) an item left out"
+dec "- create-1 accept — users hit it" "$D2" "$M1" "$M2"; WV; expect 4 "neither" "(w) accept without needed because"
+dec "- create-1 accept — needed because   " "$D2" "$M1" "$M2"; WV; expect 4 "non-empty reason" "(w) an empty needed-because"
+dec "$A1" "- create-2 decline —   " "$M1" "$M2"; WV; expect 4 "non-empty reason" "(w) an empty decline reason"
+dec "$A1" "$D2" "$M1" "- memory-2 accept — needed because x, opinion-1.md — over cap because  "; WV
+expect 4 "non-empty reason" "(w) an empty over-cap reason"
+dec "$A1" "- create-2 accept — needed because x" "$M1" "$M2"; WV; expect 4 "more than 1 ticket" "(w) the ticket cap"
+dec "$A1" "$D2" "$M1" "- memory-2 accept — needed because x, opinion-1.md"; WV; expect 4 "more than 1 memory entry" "(w) the memory cap counts A and B"
+dec "$A1" "  correction: one" "  correction: two" "$D2" "$M1" "$M2"; WV; expect 4 "one correction line per item" "(w) a second correction"
+dec "$A1" "$D2" "  correction: x" "$M1" "$M2"; WV; expect 4 "belongs under an accept" "(w) a correction under a decline"
+dec "$A1" "$A1" "$D2" "$M1" "$M2"; WV; expect 4 "decided twice" "(w) an item twice"
+dec "$A1" "$D2" "$M1" "$M2" "- create-9 decline — x"; WV; expect 4 "not a proposed item" "(w) an unknown item"
+dec "$A1" "$D2" "$M1" "$M2"; WV; expect 4 "group B accept names its Codex opinion" "(w) group B by target, no opinion file"
+echo opinion > "$RD/opinion-1.md"
+dec "$A1" "$D2" "$M1" "- memory-2 accept — needed because see notopinion-1.md — over cap because y"; WV
+expect 4 "group B accept names its Codex opinion" "(w) an opinion name inside another word"
+dec "$A1" "  correction: the header is 'id', not 'key'" "$D2" "$M1" "$M2"
+V wrapup decide --for wrapup_proposals-1_2.json --ref "$WD" --message x; expect 4 "is not wrapup_proposals-1_1.json" "(w) another proposals file"
+V wrapup decide --for wrapup_proposals-1_1.json --ref "$RD/gate-spec-1.md" --message x; expect 4 "wrapup-decision-<n>.md" "(w) not a decision file"
+WV; expect 0 "teamlead-wrapup-1.json" "(w) decide"
+jq -e --arg sha "$(shasum -a 256 "$CLONE/$P" | cut -d' ' -f1)" '[.items[] | [.id, .decision]] == [["create-1","accept"],["create-2","decline"],["memory-1","accept"],["memory-2","accept"]]
+  and .items[0].correction == "the header is '"'"'id'"'"', not '"'"'key'"'"'" and (.items[3].over_cap | length > 0)
+  and .items[3].group == "B" and .items[2].target == ".agents/memory/errors.md" and .proposals_sha256 == $sha' \
+  "$RD/teamlead-wrapup-1.json" >/dev/null || fail "(w) verdict items: $(cat "$RD/teamlead-wrapup-1.json")"
+awk '/^## Wrapup decisions$/ { f = 1; next } /^## / { f = 0 } f && NF' "$RD/teamlead-notes.md" > "$WORK/wd"
+[ "$(wc -l < "$WORK/wd" | tr -d ' ')" = 4 ] && grep -qF -- "- create-2 decline — cannot judge: a tidy-up" "$WORK/wd" \
+  && grep -qF -- "(correction: the header is 'id', not 'key')" "$WORK/wd" \
+  || fail "(w) notes section: $(cat "$RD/teamlead-notes.md")"
+grep '^## ' "$RD/teamlead-notes.md" | tail -n 1 | grep -q 'Late answers' || fail "(w) the notes headings moved"
+WV; expect 4 "already decided" "(w) decided once"
+run "$CLONE" bash .claude/lib/team-verdict.sh wrapup decide --for wrapup_proposals-1_1.json --ref "$WD" --message x
+expect 3 "only this run's TeamLead" "(w) the wrapup itself"
+# A decided file is never a second stop; a resume writes the next <k>.
+prec --verdict blocked --proposals "$P"; expect 2 "already decided (teamlead-wrapup-1.json)" "(w) a decided file restopped"
+# The cap counts the run: one ticket and two memory entries are already accepted. A hand-off uses no cap.
+P2=".agents/team/runs/$RUN_ID/wrapup_proposals-1_2.json"
+jq -n '{run: "x", attempt: 1, items: [
+  {id: "create-3", kind: "ticket", title: "Fix the CSV footer", body: "b3"},
+  {id: "memory-3", kind: "memory", group: "A", target: ".agents/memory/errors.md", text: "t3", czytelnik: "c", handoff: "q-2 accepted"}]}' \
+  > "$CLONE/$P2"
+prec --verdict blocked --proposals "$P2"; expect 0 "wrapup-1-2.json" "(w) a second proposals stop"
+WV2() { V wrapup decide --for wrapup_proposals-1_2.json --ref "$WD" --message "decided"; }
+dec "- create-3 accept — needed because the footer is broken too" "- memory-3 accept — needed because q-2 accepted it"
+WV2; expect 4 "more than 1 ticket accepted in this run" "(w) the cap counts earlier proposals files"
+dec "- create-3 decline — the footer defect is create-1's" "- memory-3 accept — needed because q-2 accepted it"
+WV2; expect 0 "teamlead-wrapup-2.json" "(w) a hand-off uses no cap"
+jq -e '.items[1].handoff == true' "$RD/teamlead-wrapup-2.json" >/dev/null || fail "(w) hand-off not marked: $(cat "$RD/teamlead-wrapup-2.json")"
+# The runner's done check: drafts and create intents against the ticket accepts, memory files against
+# the accepted targets, the decided proposals files against their sha256.
+G="$WORK/wg"; mkdir -p "$G"; git -C "$G" init --quiet
+gc() { git -C "$G" add -A; git -C "$G" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m "$1"; git -C "$G" rev-parse HEAD; }
+G0="$(gc a)"; mkdir -p "$G/.agents/memory"; echo x > "$G/.agents/memory/errors.md"; echo y > "$G/.agents/memory/decisions.md"
+G1="$(gc mem)"; echo z > "$G/.agents/memory/patterns.md"; G2="$(gc pat)"
+cwl() {  # cwl <state json> <from> <to> → RC of check_wrapup_lead
+  printf '%s' "$1" > "$RD/wrapup-state.json"
+  set +e; (cd "$G" && . "$CL/team-lib.sh" && . "$CL/team-validate.sh" && TD="$TD" && RUN="$RUN_ID" \
+    && run_ref() { echo "$RUN_ID"; } && check_wrapup_lead "$2" "$3") > "$WORK/out" 2>&1; RC=$?; set -e
+}
+OK1='{"drafts": {"create-1": {"accepted": true}}, "intents": {"create-1": {"op": "create", "draft_id": "create-1", "state": "done"}}}'
+cwl "$OK1" "$G0" "$G1"; expect 0 "" "(w) an accepted create-<n> draft + accepted memory files"
+cwl '{"drafts": {"1": {"accepted": true}}}' "$G0" "$G0"; expect 0 "" "(w) a bare draft key reads as create-<n>"
+cwl '{"drafts": {"create-1": {"accepted": true}, "create-2": {"accepted": true}}}' "$G0" "$G0"
+expect 1 "did not accept: create-2" "(w) a draft the lead declined"
+cwl '{"drafts": {"create-1": {"accepted": true}, "create-2": {"accepted": false}}, "intents": {"create-2": {"op": "create", "draft_id": "create-2", "state": "done"}}}' "$G0" "$G0"
+expect 1 "did not accept: create-2" "(w) a declined ticket created anyway"
+cwl '{"intents": {"create-3": {"state": "pending", "draft_id": "create-3"}}}' "$G0" "$G0"
+expect 1 "did not accept: create-3" "(w) a jira-style create intent without op"
+cwl "$OK1" "$G0" "$G2"; expect 1 "changed .agents/memory/patterns.md without a TeamLead memory accept" "(w) a memory file no accept names"
+cp "$CLONE/$P" "$WORK/p1"; echo ' ' >> "$CLONE/$P"
+cwl "$OK1" "$G0" "$G1"; expect 1 "wrapup_proposals-1_1.json changed after the TeamLead decided it" "(w) a decided file rewritten"
+cp "$WORK/p1" "$CLONE/$P"
+mv "$TD/teamlead.json" "$WORK/tl.json"; cwl '{"drafts": {"create-2": {"accepted": true}}}' "$G0" "$G2"
+expect 0 "" "(w) no lead: unchanged"; mv "$WORK/tl.json" "$TD/teamlead.json"
+rm -f "$RD"/wrapup-* "$RD"/teamlead-wrapup-* "$RD/opinion-1.md" "$CLONE/$P" "$CLONE/$P2"
+session planner 1 "$BASE"
+echo "team-smoke-21: (w) wrapup proposals OK"
 
 # ---- (k) plan approve → the runner accepts the planner record and launches the coder -------------
 # A rejected approve is spent: the planner is sent the reason (team-run-stop.sh reject_record) and the

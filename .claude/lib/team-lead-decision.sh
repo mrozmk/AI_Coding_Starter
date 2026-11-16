@@ -39,7 +39,7 @@ d_file() {  # d_file <d-n> → path, or exit 2/4
 one_line() { [ -n "$1" ] && [[ "$1" != *$'\n'* ]]; }
 
 # notes_add <heading> <line> — one line at the end of a section of the lead's notes (team-lead.md
-# §10); the file gets its five headings first when absent.
+# §10); the file gets its six headings first when absent.
 notes_add() {
   local f="$TD/runs/$RUN/teamlead-notes.md" h
   [ -f "$f" ] || ( IFS='|'; for h in $NOTES_HEADINGS; do printf '%s\n\n' "$h"; done ) > "$f"

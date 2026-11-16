@@ -411,9 +411,11 @@ runs again.
 
 - **Notes:** `runs/<run>/teamlead-notes.md`, one file per run at the run root (not per round), read
   by every round's wrapup. `team-lead.sh notes-init <team>` creates it at each lead launch when
-  absent, with five sections: `## Order ambiguities`, `## No-rule questions`, `## Gate misses`,
-  `## Operator cases`, `## Late answers`. The lead writes the rest as things happen, in its own
-  words.
+  absent, with six sections: `## Order ambiguities`, `## No-rule questions`, `## Gate misses`,
+  `## Operator cases`, `## Wrapup decisions`, `## Late answers`. The lead writes the rest as things
+  happen, in its own words.
+  - `team-verdict.sh wrapup decide` adds one line per wrapup item under `## Wrapup decisions`,
+    accepted and declined, so the shared log shows what was turned down and why.
   - `decision open` adds `- d-<n> <question> — tuning: pending` under `## Operator cases` (the
     one-line question, cut to 120 characters as in the verdict message).
   - `decision answer … --tuning rule|TeamLead|none --why "<line>"` completes it to
@@ -436,10 +438,47 @@ runs again.
   - The log replaces `teamlead-policy-log.md` for runs with a lead: `team-lead.sh owns <team>`
     exits 0 for such a run, and the global TeamLead writes no policy line for it (`/monitor` →
     Policy log). Runs without a lead keep the policy log.
-- **Wrapup:** with a lead, the wrapup's menus (groups (A) and (B)) are answered by the lead in the
-  wrapup window. A `decisions.md`, `patterns.md` or `index.md` entry gets a Codex opinion first
-  (`codex-bg.sh`, prompt text only, as in Answering). The wrapup stays the only writer of
-  `.agents/memory/`: the lead's write guard still refuses memory paths.
+- **Wrapup:** with a lead, the lead decides the wrapup's proposals alone; no item reaches the
+  Operator, and nothing depends on reading a terminal menu (#104).
+  - The wrapup asks nothing in its window. With at least one item it writes
+    `<round dir>/wrapup_proposals-<a>_<k>.json` (`team_wrapup.py`: `create-<n>` tickets with title
+    and body, `create-<n>` being the draft key; `memory-<n>` entries with group A|B, an
+    `.agents/memory/` target, text, `czytelnik:`, and `handoff` for a memory hand-off its decider
+    already accepted) and stops with `team-record.sh --verdict blocked --proposals <file>`. `<k>`
+    is the attempt's next free number: `team-record.sh` refuses a file a verdict already names, so a
+    decided file is never rewritten. With nothing to propose it writes neither and goes on.
+  - That record carries `proposals`, the mark that tells it apart from a block: no notes line,
+    `team-audit.sh` counts it under `records: proposals`, the team snapshot and `team-watch` show it
+    as the lead's (`proposals`), not as a blocked or failed stage, and no Operator case is opened.
+    It still takes the ordinary stop path (`stop wrapup <a>` doorbell, `pending`, the paused clock).
+  - The lead writes `runs/<run>/wrapup-decision-<n>.md`, one line per item:
+    `- <id> accept — needed because <why>` (optionally `— over cap because <why>`, and at most one
+    line `  correction: <one line>` under it) or `- <id> decline — <reason>`. Then
+    `team-verdict.sh wrapup decide --for <proposals file> --ref <decision file> --message "<line>"`
+    checks it — every item once, non-empty reasons, the run's cap, a group B accept naming its
+    `opinion-<n>.md` — writes `teamlead-wrapup-<n>.json` with the items and the proposals file's
+    sha256, and fills `## Wrapup decisions`. The hook `guard-team-verdict.sh` checks the session, so
+    a stage cannot call it under a forged role. Then
+    `team-answer.sh <team> wrapup say "decided: <verdict file>" --authority teamlead --why …`.
+  - **The filter.** Default **no**. A follow-up ticket passes only when the product needs it: a
+    defect the user or the next run would hit, or ordered work that was cut — never a
+    nice-to-have, a tidy-up, or an idea the implementation itself suggested. A memory entry passes
+    only when a future session would otherwise repeat a concrete mistake; one that describes a
+    temporary state says when it expires ("until #N lands"). An item the lead cannot judge is
+    declined (`cannot judge: …`). One wrong fact in a draft is a `correction:`, not a decline; a
+    draft that needs more is declined with the reason.
+  - **Cap:** 1 ticket and 1 memory entry per run (groups A and B together, every proposals file of
+    the run); each further accept needs `over cap because …`. A `handoff` item uses no cap.
+  - A group B entry (`decisions.md`, `patterns.md`, `index.md` by target, whatever the item says;
+    any other memory file, an entry that alters a historical decision) gets a Codex opinion first (`codex-bg.sh`, prompt text only,
+    as in Answering).
+  - The wrapup applies exactly the accepted items, each `correction` first, and records
+    `selected_by: teamlead`, `decision_ref` and the `correction` per item in `wrapup-state.json`.
+    The runner refuses its `done` when an accepted draft or a create intent has no ticket accept in
+    the lead's verdicts, when a changed memory file is not the target of an accepted memory item,
+    or when a decided proposals file changed after its verdict (sha256). The
+    wrapup stays the only writer of `.agents/memory/`: the lead's write guard still refuses memory
+    paths.
 
 ## 11. Tracker comments
 

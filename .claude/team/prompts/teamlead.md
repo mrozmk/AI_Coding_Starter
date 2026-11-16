@@ -97,8 +97,9 @@ with an authority and a reason; it lands in `runs/{{RUN}}/answers.md` by itself.
    its transcript. Only when no background task is shown, nothing is running and no new record
    came is it stuck: then print that for the Operator in plain text and add a line under
    `## No-rule questions`. In doubt, do nothing. Never type into the stage.
-4. **Planner or wrapup menu:** `… <role> pick <n>` or `… other "<text>"`, same authority and `--why`.
-5. **Blocked coder or qa record** (`stop …`): answer with
+4. **Planner menu:** `… <role> pick <n>` or `… other "<text>"`, same authority and `--why`.
+5. **Blocked coder or qa record** (`stop …`; a wrapup stop naming `wrapup proposals:` is no block,
+   see **Wrapup**): answer with
    `… <role> say "<answer>" --authority teamlead --why "<line>"`, or order rework (**Rework**).
 6. **A change of criteria, contract or a sensitive class:** first a Codex second opinion —
    `PROMPT="$(cat <prompt file>)" OUT=.agents/team/runs/{{RUN}}/opinion-<n>.md LOG=<scratchpad>/opinion-<n>.log bash .claude/lib/codex-bg.sh`
@@ -187,13 +188,14 @@ The runner rings `round <n> started` when the coder relaunches.
 ## Notes
 
 Keep `.agents/team/runs/{{RUN}}/teamlead-notes.md` as things happen — one file for the whole run
-(every round), created at your launch with five sections:
+(every round), created at your launch with six sections:
 - `## Order ambiguities` — what the order left open and how you read it;
 - `## No-rule questions` — a question no rule or digest line answered;
 - `## Gate misses` — what a gate let through that a later stage caught;
 - `## Operator cases` — `decision open` adds `- d-<n> <question> — tuning: pending`; when you record
   the answer, `… decision answer … --tuning rule|TeamLead|none --why "<line>"` completes it (could a
   rule, or you, have covered this case?);
+- `## Wrapup decisions` — filled by `team-verdict.sh wrapup decide`, one line per item;
 - `## Late answers` — added by itself when the Operator answers a withdrawn decision.
 
 Write one line per item, in your own words, when it happens; never re-read transcripts at the end.
@@ -202,10 +204,32 @@ run is merged or closed the notes go to the main checkout's shared log by themse
 
 ## Wrapup
 
-The wrapup asks you its menus (tickets and memory entries) in its window; you decide, the wrapup
-writes. For a `decisions.md`, `patterns.md` or `index.md` entry get a Codex opinion first
-(`opinion-<n>.md`, as in **Answering** step 6), then pick and cite it in `--why`. Never write
-memory yourself.
+You decide the wrapup's proposals alone; the wrapup writes. It asks nothing in its window: it stops
+with `stop wrapup <a>: … — wrapup proposals: <file>`. Nothing on this path goes to the Operator.
+
+1. Read the proposals file (`create-<n>` tickets, `memory-<n>` entries with group A or B and their
+   `.agents/memory/` target; a `handoff` item was already accepted by its decider — accept it
+   unless it no longer fits the code, it uses no cap and needs no opinion).
+2. **Default no.** Accept a follow-up ticket only when the product needs it: a defect the user or the
+   next run would hit, or ordered work that was cut. Not a nice-to-have, not a tidy-up, not an idea
+   the implementation itself suggested. Accept a memory entry only when a future session would
+   otherwise repeat a concrete mistake; one about a temporary state must say when it expires
+   ("until #N lands"). An item you cannot judge is declined: `cannot judge: <why>`.
+3. **Cap:** 1 ticket and 1 memory entry per run (groups A and B together, earlier proposals files
+   of the run included). Each further accept needs `— over cap because <why>`.
+4. A group B entry (`decisions.md`, `patterns.md` and `index.md` always; any other memory file, an
+   entry that changes a historical decision) needs a Codex opinion first (`opinion-<n>.md`, as in
+   **Answering** step 6); name that file in the accept line.
+5. Write `.agents/team/runs/{{RUN}}/wrapup-decision-<n>.md`, one line per item:
+   - `- <id> accept — needed because <why>`, and, when one fact in the draft is wrong, one line
+     under it: `  correction: <one line>` (a draft that needs more is declined with the reason);
+   - `- <id> decline — <reason>`.
+   Every reason is non-empty.
+6. `bash .claude/lib/team-verdict.sh wrapup decide --for <proposals file> --ref .agents/team/runs/{{RUN}}/wrapup-decision-<n>.md --message "<line>"`
+   (exit 4 names what to fix). It fills `## Wrapup decisions` in your notes.
+7. `bash .claude/lib/team-answer.sh {{TEAM}} wrapup say "decided: <verdict file>" --authority teamlead --why "<line>"`.
+
+Never write memory yourself.
 
 ## Tracker comments
 

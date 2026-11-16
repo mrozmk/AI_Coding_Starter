@@ -21,7 +21,7 @@ command -v jq >/dev/null 2>&1 || refuse "verdict guard needs jq — refused"
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Only an invocation — the script name followed by a gate — is checked, so git add, bash -n, cat or
 # grep on the file pass (a team working on the starter itself touches it).
-INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event)([^a-z]|$)'
+INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event|wrapup)([^a-z]|$)'
 # A sender call on an authority: the script name, later the option (plain stage use passes).
 ANSWER='team-answer\.sh.*--authority'
 DECIDE='team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?(open|answer|withdraw)'
