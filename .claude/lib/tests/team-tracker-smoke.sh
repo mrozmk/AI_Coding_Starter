@@ -907,4 +907,43 @@ solo '.'
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_tracker_profile_load; team_profile_load; echo reached'
 expect 2 "no teams profile — run /setup:teams" "team_profile_load after the light loader still validates"
 
+# ================================================================================================
+# (14) the type is one of teams.branch_types — /start-team builds <type>/<key>-<slug> from it:
+#      the first synonym the list holds, else the list's first entry with a warning
+# ================================================================================================
+fx_reset
+issue_json 13 OPEN '[]' > "$GH_DIR/issue-13.json"
+issue_json 15 OPEN '[{"name": "infra"}]' > "$GH_DIR/issue-15.json"
+BT='.teams.branch_types = ["feat", "fix", "chore", "docs", "refactor", "test"]'
+setprofile ".teams.tracker = \"github\" | $GH_BLOCK | $BT"
+run "$MAIN" $TRK read 13 --out "$WORK/bt13"
+expect 0 "" "an unlabelled issue is read"
+grep -qx "key=13 type=feat" "$WORK/out" || fail "an unlabelled issue must map feature onto feat"
+jq -e '.type == "feat"' "$WORK/bt13/ticket.json" >/dev/null || fail "ticket.json must carry the mapped type"
+! has warning "$WORK/out" || fail "a mapped type must not warn"
+run "$MAIN" $TRK read 7 --out "$WORK/bt7"
+expect 0 "key=7 type=fix" "a bug maps bugfix onto fix"
+run "$MAIN" $TRK read 11 --out "$WORK/bt11"
+expect 0 "key=11 type=docs" "a documentation label maps onto docs when the list has it"
+run "$MAIN" $TRK read 15 --out "$WORK/bt15"
+expect 0 "key=15 type=chore" "an infra label stays chore"
+setprofile ".teams.tracker = \"github\" | $GH_BLOCK | .teams.branch_types = [\"refactor\", \"test\"]"
+run "$MAIN" $TRK read 13 --out "$WORK/bt13b"
+expect 0 "key=13 type=refactor" "no synonym falls back to the list's first entry"
+has "warning: teams.branch_types has no type for a feature ticket — using 'refactor'" "$WORK/out" \
+  || fail "the fallback must say so"
+setprofile ".teams.tracker = \"github\" | $GH_BLOCK | .teams.branch_types = [\"feature\", \"chore\"]"
+run "$MAIN" $TRK read 11 --out "$WORK/bt11b"
+expect 0 "key=11 type=chore" "documentation without a docs type is a chore"
+setprofile ".teams.tracker = \"none\" | $BT"
+rm -rf "$MAIN/.agents/team"
+run "$MAIN" $TRK read --brief 'Do X' --out "$WORK/btn"
+expect 0 "" "a local ticket is read"
+grep -qx "key=L1 type=feat" "$WORK/out" || fail "a local ticket must map feature onto the list too"
+solo '.'
+run "$MAIN" $TRK read 11 --out "$WORK/bts"
+expect 0 "key=11 type=chore" "without a teams block documentation stays chore"
+run "$MAIN" $TRK read 13 --out "$WORK/bts13"
+expect 0 "key=13 type=feature" "without a teams block the generic kind is unchanged"
+
 echo "team-tracker-smoke: OK"
