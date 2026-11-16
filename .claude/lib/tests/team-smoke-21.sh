@@ -235,17 +235,25 @@ V plan approve --for planner-1-5.json --message ok; expect 0 "teamlead-plan-1.js
 echo "team-smoke-21: (i) spec digest OK"
 
 # ---- (k) plan approve → the runner accepts the planner record and launches the coder -------------
-# A rejected approve stays unacted: after the cause is removed a re-run validates it again.
+# A rejected approve is spent: the planner is sent the reason (team-run-stop.sh reject_record) and the
+# runner waits; the planner's next done rings the plan gate again and a new approve accepts it.
 greset alfa-lead alfa-planner; touch "$CLONE/stray.txt"
-run "$MAIN" $TR alfa; expect 4 "working tree is not clean" "(k) approve with a failing validation"
-[ ! -e "$RD/planner-1-5.json.accepted" ] && ! grep -qx teamlead-plan-1.json "$TD/verdict-acked" \
-  || fail "(k) a rejected approve was acted on"
+run "$MAIN" $TR alfa; expect 6 "sent back to planner (1 of 2)" "(k) approve with a failing validation"
+[ ! -e "$RD/planner-1-5.json.accepted" ] && grep -qx teamlead-plan-1.json "$TD/verdict-acked" \
+  || fail "(k) a rejected approve was accepted, or not spent"
 has "gate plan: .agents/team/runs/$RUN_ID/planner-1-5.json" "$STUB_LOG" || fail "(k) no plan gate ring"
+has "your done record .agents/team/runs/$RUN_ID/planner-1-5.json was rejected: " "$STUB_LOG" \
+  && has "working tree is not clean" "$RD/rejected-planner-1-5" && [ -e "$RD/planner-1-5.json.answered" ] \
+  || fail "(k) the planner was not told the reason"
 rm -f "$CLONE/stray.txt"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-6.json" "(k) the planner's next done"
+greset alfa-lead alfa-planner
+run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate plan planner-1-6.json" "(k) the plan gate rings again"
+V plan approve --for planner-1-6.json --message ok; expect 0 "teamlead-plan-2.json" "(k) a new approve"
 greset alfa-lead alfa-planner; export CANCEL_AT=30
 run "$MAIN" $TR alfa
-[ -e "$RD/planner-1-5.json.accepted" ] || fail "(k) planner record not accepted (exit $RC)"
-has "accepted: planner-1-5.json" "$WORK/out" && has "launched: coder attempt 1" "$WORK/out" \
+[ -e "$RD/planner-1-6.json.accepted" ] || fail "(k) planner record not accepted (exit $RC)"
+has "accepted: planner-1-6.json" "$WORK/out" && has "launched: coder attempt 1" "$WORK/out" \
   || fail "(k) coder not launched after the plan approve"
 echo "team-smoke-21: (k) plan approve OK"
 
