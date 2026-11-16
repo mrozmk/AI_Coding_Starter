@@ -220,9 +220,9 @@ lock is older than 10 s; the runner never removes a lock by itself (that would r
 ## 5a. Per-run TeamLead — the Supervisor's runbook
 
 With `teams.teamlead.enabled=true` (not in mode cli) the runner launches one TeamLead per run before
-the first stage and keeps it until the run ends; `supervisor-sessions.sh` never starts it. It gates
-the plan against the order (there is no spec gate — the planner approves its own spec), answers the
-stages on an authority, accepts against the order and orders rework;
+the first stage and keeps it until the run ends; `supervisor-sessions.sh` never starts it.
+It gates the plan against the order (there is no spec gate — the planner approves its own spec),
+answers the stages on an authority, accepts against the order and orders rework;
 the contract is [team-lead.md](team-lead.md). Before you rely on it, read the limits in
 [team-decision-model.md](team-decision-model.md) §3, "Where the trust ends". What you do:
 

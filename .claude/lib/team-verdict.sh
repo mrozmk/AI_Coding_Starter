@@ -184,6 +184,8 @@ fi
 
 # The gated record: the gated role's newest record of the launched attempt, in the gate's verdict.
 case "$GATE" in
+  # Sentinel: team-run-lead.sh lead_start greps a clone's copy of this file for the spec) refusal
+  # text to tell a plan-gate-only base from an older one — keep its wording verbatim.
   spec) bad "no spec gate: the first gate is the plan gate" ;;
   plan) role=planner; want=done ;;
   acceptance) role=qa; want=done ;;
@@ -288,11 +290,11 @@ if [ "$VERDICT" = revise ]; then
 fi
 
 # The plan approve that opens the run's work needs the constraint digest (team-lead.sh decides per mode).
-need=""
-case "$GATE $VERDICT" in
-  "plan approve") need="$(jq -r '[.artifacts[] | select(startswith(".agents/plans/"))][0] // empty' "$last")" ;;
-esac
-if [ -n "$need" ] && ! bash "$LIB/team-lead.sh" digest-check "$TEAM" "$need"; then exit 7; fi
+if [ "$GATE $VERDICT" = "plan approve" ]; then
+  need="$(jq -r '[.artifacts[] | select(startswith(".agents/plans/"))][0] // empty' "$last")"
+  [ -n "$need" ] || bad "$FOR names no plan"
+  bash "$LIB/team-lead.sh" digest-check "$TEAM" "$need" || exit 7
+fi
 
 # Tracker comments as requirements (opt-in): an approve or an accept needs a current read.
 case "$GATE $VERDICT" in
