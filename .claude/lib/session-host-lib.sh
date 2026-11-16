@@ -569,11 +569,13 @@ sh_herdr_read() {
 }
 
 # sh_herdr_history <handle> [lines] → screen plus history. While the program is working, blocked or
-# in error, herdr returns only the screen (no scroll input is sent).
+# in error, herdr returns only the screen (no scroll input is sent) and hc adds a note line of its own
+# on stdout after it (`[hc] only its screen: …`); dropped here, else a prompt's footer is not last.
 sh_herdr_history() {
-  local rc
-  sh_hc read "$1" --lines "${2:-200}" 2>/dev/null; rc=$?
-  sh_hc_rc "$rc"
+  local out rc
+  out="$(sh_hc read "$1" --lines "${2:-200}" 2>/dev/null)"; rc=$?
+  sh_hc_rc "$rc" || return $?
+  printf '%s\n' "$out" | sed '${/^\[hc\] only its screen: /d;}'
 }
 
 # sh_hc_key <name> → the hc key name (the driver's names and tmux's, as sh_key_name).

@@ -77,6 +77,21 @@ cat "$FIX/menu-phase0.txt" "$FIX/idle.txt" > "$WORK/quoted"
 pj "$WORK/quoted" '.kind == "none" and .complete'
 sed '$d' "$FIX/perm-awk.txt" > "$WORK/nofooter"
 pj "$WORK/nofooter" '.kind == "permission" and (.complete | not) and (.reason | startswith("incomplete:"))'
+# A named session's screens end with its name rule under the footer (Herdr stages, #105): a hook
+# confirmation and the checkbox — complete (menu-phase0 carries one already); mid-render with the
+# rule still is not.
+NAMED="$(printf '─%.0s' $(seq 60)) alfa-wrapup ─"
+{ echo "$RULE"; echo " Bash command"; echo " Run shell command"; echo "$DASH"; echo " │ gh issue list --limit 5"
+  echo "$DASH"; echo " │ Hook PreToolUse:Bash requires confirmation for this command:"
+  echo " │ team egress: gh in command position — Operator [settings]"; echo " settings.json to update hooks"
+  echo " Do you want to proceed?"; echo " ❯ 1. Yes"; echo "   2. No"; echo " Esc to cancel · Tab to amend"
+  echo "$NAMED"; } > "$WORK/hook-named"
+pj "$WORK/hook-named" '.kind == "permission" and .complete and .cursor == 1 and .command == "gh issue list --limit 5"
+  and (.reason_lines | index("settings.json to update hooks") != null)'
+printf '%s\n' "$(cat "$FIX/checkbox.txt")" "$NAMED" > "$WORK/checkbox-named"
+pj "$WORK/checkbox-named" '.kind == "checkbox" and .complete and .other == 4 and .cursor == 1'
+sed '$d' "$WORK/hook-named" | sed '$d' > "$WORK/hook-midrender"; echo "$NAMED" >> "$WORK/hook-midrender"
+pj "$WORK/hook-midrender" '.kind == "permission" and (.complete | not) and (.reason | startswith("incomplete:"))'
 sed 's/^❯ $/❯ half-typed/' "$FIX/idle.txt" > "$WORK/draft"
 pj "$WORK/draft" '.kind == "none" and (.input_empty | not) and .input == "half-typed"'
 { cat "$FIX/idle.txt"; echo "$RULE"; echo " Bash command"; echo " Show long lines"; } > "$WORK/below"

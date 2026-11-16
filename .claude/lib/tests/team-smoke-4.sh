@@ -680,6 +680,29 @@ ms checkbox review-cursor2 7
 run "$MAIN" $ANSWER alfa planner picks 1,3
 expect 4 "final Enter not sent" "refuse wrong review cursor"
 exact_keys $'Enter\nDown\nDown\nEnter\nDown\nDown\nEnter'
+# Under herdr (live, 2026-11-16): the stage's screens end with its session-name rule, and hc read
+# --lines adds a note line of its own after a blocked screen (stub). picks still sends the same keys
+# through hc and submits the review only once it is on screen.
+unset STUB_MULTI
+NAMED="$(printf '─%.0s' $(seq 40)) alfa-planner ─"
+printf '%s\n' "$(cat "$WORK/checkbox")" "$NAMED" > "$WORK/h-checkbox"
+printf '%s\n' "$(cat "$WORK/review")" "$NAMED" > "$WORK/h-review"
+mkdir -p "$MAIN/.agents/team/registry"
+jq -n --arg td "$TD" '{address: "alfa-planner", kind: "team", backend: "herdr", handle: "t4p",
+  name: "smk-alfa-planner", cli: "claude", team_dir: $td}' > "$MAIN/.agents/team/registry/alfa-planner.json"
+echo blocked > "$WORK/hc-status"
+cp "$WORK/bin/hc" "$WORK/bin/hc-base"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'if [ "$1" = read ] && [ "$(grep -c "^hc keys " "$STUB_LOG")" -ge 7 ]; then export STUB_HC_SCREEN="$H_REVIEW"; fi' \
+  'exec "$(dirname "$0")/hc-base" "$@"' > "$WORK/bin/hc"
+chmod +x "$WORK/bin/hc"
+: > "$STUB_LOG"; H_REVIEW="$WORK/h-review" STUB_HC_ADDR=t4p STUB_HC_SCREEN="$WORK/h-checkbox" \
+  STUB_HC_STATUS_FILE="$WORK/hc-status" run "$MAIN" $ANSWER alfa planner picks 1,3
+expect 0 "sent picks" "picks under herdr with the named rule and hc's note line"
+[ "$(sed -n 's/^hc keys t4p //p' "$STUB_LOG")" = $'enter\ndown\ndown\nenter\ndown\ndown\nenter\nenter' ] \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "picks under herdr: wrong keys"; }
+! grep -q '^tmux send-keys' "$STUB_LOG" || fail "picks under herdr: tmux keys sent"
+mv "$WORK/bin/hc-base" "$WORK/bin/hc"; rm -f "$MAIN/.agents/team/registry/alfa-planner.json"
 
 # Ledger must bind picks to a menu and distinguish picks:none from recorded-only send none.
 session planner 1 "$BASE"; ms checkbox review 7
