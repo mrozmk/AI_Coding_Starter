@@ -3,6 +3,25 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The TeamLead decides the wrapup's proposals; the wrapup asks nothing (#104)
+
+**Before:** with a per-run TeamLead the wrapup still asked its ticket and memory menus in its window.
+The lead answered through the screen parser, which could not read a checkbox question under Herdr,
+so the menu (and two egress prompts of the wrapup's own steps) reached the Operator.
+
+**Now:** with a lead the wrapup writes `wrapup_proposals-<attempt>_<k>.json` and stops with
+`team-record.sh --verdict blocked --proposals <file>`. That record carries a `proposals` field. The
+lead decides each item in `wrapup-decision-<n>.md` (default no, a cap of one ticket and one memory
+entry per run, an optional one-line correction) through `team-verdict.sh wrapup decide`, and every item,
+declined ones included, is logged under the new `## Wrapup decisions` heading of its notes. The
+runner refuses the wrapup's `done` when it applied an item the lead did not accept. The audit counts
+the stop under `records: proposals` (and leaves the wait for the lead out of the wrapup's minutes),
+and the team snapshot, `team-watch` and `/roles`' interrupted-runs list show `proposals`, not
+`blocked`. The wrapup reads the tracker through `team-tracker.sh` and edits files with the file tools
+and `jq`, so its own steps raise no egress prompt. Without a lead nothing changes.
+
+**Action:** none. A script of your own that reads stage records and treats every `blocked` as a
+block should skip a record with a `proposals` field.
 ## The runner reports a session held at a startup dialog
 
 **Before:** a TeamLead or stage started in a new clone directory sat at Claude's folder trust dialog

@@ -77,7 +77,8 @@ attention_pending() {
 record_open() {
   local v
   [ -n "$2" ] || return 1
-  v="$(jq -r '.verdict // empty' "$2" 2>/dev/null)" || return 1
+  # The wrapup's proposals stop (`proposals`) waits on the TeamLead, never on the Operator.
+  v="$(jq -r 'if .proposals then "proposals" else .verdict // empty end' "$2" 2>/dev/null)" || return 1
   case "$v" in blocked|failed) ;; *) return 1 ;; esac
   [ "$(basename "$2")" != "$(basename "$(cat "$1/acked" 2>/dev/null || true)")" ] || [ "$3" != up ]
 }
@@ -180,7 +181,8 @@ team_role() {  # team_role <td> <team> <run> <role> <cur role> <runner> <overrid
   local skills=null tf rop=false live='{}' sess="" po=false mo=false pk=unreadable
   [ -z "$run" ] || r="$(ls -1t "$td/runs/$run/$role"-*.json "$td/runs/$run"/r*/"$role"-*.json 2>/dev/null | head -n 1)" || true
   [ -z "$r" ] || rec="$(jq -c --arg f "$(basename "$r")" \
-    '{file: $f, verdict, message, written_at, attempt}' "$r" 2>/dev/null)" || rec='null'
+    '{file: $f, verdict: (if .proposals then "proposals" else .verdict end), message, written_at,
+      attempt}' "$r" 2>/dev/null)" || rec='null'
   [ -n "$rec" ] || rec='null'
   verdict="$(jq -r '.verdict // empty' <<<"$rec")"
   attempt="$(jq -r '.attempt // null' <<<"$rec")"

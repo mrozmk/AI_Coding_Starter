@@ -19,6 +19,8 @@
      `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`, one line each (title plus one sentence).
 7. No new/unaccepted recommendations → step 8 for accepted memory work still unfinished, otherwise
    step 9. For new/unaccepted memory recommendations ask **one** `AskUserQuestion` (2–4 options):
+   With a per-run TeamLead ask no question: follow **With a per-run TeamLead** in the wrapup
+   prompt instead of the menu.
    - 2–4 recommendations → multiSelect, one option each, naming its target file; exactly 1 →
      options "apply" / "skip"; more than 4 → number them in the question text and offer
      "all" / "none" (chosen numbers may be typed as "Other").

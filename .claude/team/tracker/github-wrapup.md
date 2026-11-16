@@ -64,13 +64,16 @@
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
      go through `.agents/memory/reflection-protocol.md` (the default is to save nothing),
      de-duplicated against `git show origin/{{LINE}}:<file>`, not against this branch;
-   - **tasks**: `## Follow-ups` items that this PR does not cover and that deserve a ticket.
+   - **tasks**: `## Follow-ups` items that this PR does not cover and that deserve a ticket, and
+     that no open issue already covers (`bash .claude/lib/team-tracker.sh list --out <file>`).
      Prepare a draft `{title, body}` for each. The body ends with the line
      `Follow-up of #{{TICKET}} · origin #{{ORIGIN_TICKET}}`, copied verbatim (the next start counts
      the chain by it), then `[wrapup {{RUN}} create-<n>]` as the last line. No parent Epic, no
      sprint, no assignee — the tracker has none.
 7. No new/unaccepted recommendations → step 8 for saved accepted work still unfinished,
    otherwise step 9. For new/unaccepted recommendations ask **one** `AskUserQuestion` (2–4 options):
+   With a per-run TeamLead ask no question: prepare and save the drafts as below, then follow
+   **With a per-run TeamLead** in the wrapup prompt instead of the menu.
    - Allocate an unused run-scoped create intent id for each new **ticket** draft; never recycle an
      id. A memory recommendation gets no draft and no create intent: the runner requires a `done`
      create intent for every accepted entry in `drafts`, so a `memory-<n>` draft there rejects the

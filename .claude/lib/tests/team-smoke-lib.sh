@@ -612,7 +612,8 @@ smoke_repos() {
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SRC/.claude/lib/team_prompt.py" \
     "$SRC/.claude/lib/team_prompt_classes.py" "$SRC/.claude/lib/team_prompt_settings.py" \
     "$SRC/.claude/lib/team_transcript.py" "$SRC/.claude/lib/team_settings_diff.py" \
-    "$SRC/.claude/lib/team_audit.py" "$SRC/.claude/lib/team_prompt_authority.py" "$SEED/.claude/lib/"
+    "$SRC/.claude/lib/team_audit.py" "$SRC/.claude/lib/team_prompt_authority.py" \
+    "$SRC/.claude/lib/team_wrapup.py" "$SEED/.claude/lib/"
   mkdir -p "$SEED/.claude/hooks/lib"
   cp "$SRC/.claude/hooks/lib/guard_destructive_sql.py" "$SRC/.claude/hooks/lib/guard_team_egress.py" \
     "$SEED/.claude/hooks/lib/"

@@ -246,6 +246,7 @@ own .agents/reference/team-lead.md
 own .claude/hooks/guard-teamlead-write.sh
 own .claude/hooks/guard-teamlead-bash.sh
 own .claude/lib/team_lead_bash.py
+own .claude/lib/team_wrapup.py
 own .claude/hooks/guard-team-verdict.sh
 own .claude/lib/session_profile_check.py
 own .claude/lib/supervisor-sessions.sh

@@ -101,6 +101,29 @@ def load_records(run_dir, roles):
     return recs
 
 
+def lead_wait(run_dir, mine, end):
+    """Minutes the wrapup waited for the TeamLead's decision on its proposals: not stage time."""
+    decided = {}
+    for f in os.listdir(run_dir):
+        if re.match(r"^teamlead-wrapup-\d+\.json$", f):
+            try:
+                with open(os.path.join(run_dir, f), encoding="utf-8") as h:
+                    v = json.load(h)
+                decided[v.get("for")] = parse_utc(v.get("written_at"))
+            except (OSError, ValueError, AttributeError):
+                continue
+    wait = 0.0
+    for r in mine:
+        if not r.get("proposals"):
+            continue
+        stop = parse_utc(r.get("written_at"))
+        rel = re.sub(r"^\.agents/team/runs/[^/]+/", "", r["proposals"])
+        done = decided.get(rel)
+        if stop and done and end and stop <= done <= end:
+            wait += (done - stop).total_seconds() / 60
+    return wait
+
+
 def stage(run_dir, role, recs, typical):
     mine = sorted((r for r in recs if r["_role"] == role),
                   key=lambda r: (r["_round"], r["_attempt"], r["_seq"]))
@@ -110,10 +133,12 @@ def stage(run_dir, role, recs, typical):
     start = min((mtime_utc(p) for p in prompts), default=None)
     last = accepted[-1] if accepted else (mine[-1] if mine else None)
     end = parse_utc(last.get("written_at")) if last else None
-    minutes = round((end - start).total_seconds() / 60) if start and end else None
+    minutes = round((end - start).total_seconds() / 60 - lead_wait(run_dir, mine, end)) \
+        if start and end else None
     verdicts = {}
     for r in mine:
-        verdicts[r.get("verdict", "?")] = verdicts.get(r.get("verdict", "?"), 0) + 1
+        v = "proposals" if r.get("proposals") else r.get("verdict", "?")
+        verdicts[v] = verdicts.get(v, 0) + 1
     status = "accepted" if accepted else "pending"
     return {"role": role, "status": status, "records": len(mine), "verdicts": verdicts,
             "attempts": max((r["_attempt"] for r in mine), default=0),
@@ -236,7 +261,9 @@ def run_counts(run_dir, recs):
     c["qa_rounds"] = sum(1 for r in recs if r["_role"] == "qa")
     c["records"] = {}
     for r in recs:
-        c["records"][r.get("verdict", "?")] = c["records"].get(r.get("verdict", "?"), 0) + 1
+        # The wrapup's proposals stop under a TeamLead is the normal path, not a block.
+        v = "proposals" if r.get("proposals") else r.get("verdict", "?")
+        c["records"][v] = c["records"].get(v, 0) + 1
     return c
 
 
@@ -289,7 +316,7 @@ def run_state(stages, recs):
     if stages and all(s["status"] == "accepted" for s in stages):
         return "done"
     newest = max(recs, key=lambda r: r.get("written_at") or "", default=None)
-    if newest and newest.get("verdict") in ("blocked", "failed"):
+    if newest and newest.get("verdict") in ("blocked", "failed") and not newest.get("proposals"):
         return newest["verdict"]
     return "in-progress"
 

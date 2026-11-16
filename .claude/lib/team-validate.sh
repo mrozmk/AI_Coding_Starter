@@ -220,6 +220,36 @@ check_wrapup_tracker() {  # check_wrapup_tracker <state-file> <tracker>
     || fail "tracker=github: wrapup-state.json lacks done comment/set-status delivered or an accepted follow-up"
 }
 
+# With this run's TeamLead the wrapup applies only what the lead accepted (#104): every accepted
+# draft and every create intent has an accept in a teamlead-wrapup verdict, every changed memory file
+# is the target of an accepted memory item, and no decided proposals file changed after the decision.
+check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
+  local acc sf="$TD/runs/$(run_ref)/wrapup-state.json" bad mem f p v
+  [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ] || return 0
+  for v in "$TD/runs/$RUN"/teamlead-wrapup-*.json; do
+    [ -f "$v" ] || continue
+    p="$TD/runs/$RUN/$(jq -r '.for // empty' "$v")"
+    [ -f "$p" ] && [ "$(shasum -a 256 "$p" | cut -d' ' -f1)" = "$(jq -r '.proposals_sha256 // empty' "$v")" ] \
+      || fail "$(basename "$p") changed after the TeamLead decided it ($(basename "$v"))" || return 1
+  done
+  acc="$(cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null \
+    | jq -s '[.[].items // [] | .[] | select(.decision == "accept")]')" || acc='[]'
+  # A draft key and an intent's draft_id are create-<n>; an older bare <n> is read the same way.
+  bad="$(jq -r --argjson acc "${acc:-[]}" '
+    def cid: tostring | if startswith("create-") then . else "create-" + . end;
+    ([$acc[] | select(.kind == "ticket") | .id]) as $ok
+    | [((.drafts // {}) | to_entries[] | select(.value.accepted == true) | .key | cid),
+       ((.intents // {}) | to_entries[] | select(.value.op == "create" or (.key | startswith("create-")))
+        | (.value.draft_id // .key) | cid)]
+    | unique | map(select(. as $i | $ok | index($i) | not)) | join(", ")' "$sf" 2>/dev/null)" || bad=""
+  [ -z "$bad" ] || fail "wrapup created or accepted ticket(s) the TeamLead did not accept: $bad" || return 1
+  mem="$(git diff --no-renames --name-only "$1" "$2" -- .agents/memory/)" || mem=""
+  for f in $mem; do
+    jq -e --arg f "$f" 'any(.[]; .kind == "memory" and .target == $f)' <<<"${acc:-[]}" >/dev/null \
+      || fail "wrapup changed $f without a TeamLead memory accept for that file" || return 1
+  done
+}
+
 # Wrapup may only add memory on top of the QA revision, so QA's build/test result still holds.
 check_wrapup() {
   local r="$1" pr="$2" rev="$3" qa_rev bad f
@@ -232,6 +262,7 @@ check_wrapup() {
   [ -s "$f" ] || fail "wrapup summary $f missing or empty" || return 1
   grep -Eq '^target_rev: [0-9a-f]{40}$' "$f" || fail "wrapup summary lacks 'target_rev: <sha>'" || return 1
   check_wrapup_tracker "$TD/runs/$(run_ref)/wrapup-state.json" "$(team_json tracker || true)" || return 1
+  check_wrapup_lead "$qa_rev" "$rev" || return 1
   check_pushed "$rev" && check_pr "$pr" "$rev" false
 }
 

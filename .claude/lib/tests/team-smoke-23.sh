@@ -299,6 +299,22 @@ greset alfa-lead alfa-qa; export CANCEL_AT=40; run "$MAIN" $TR alfa; expect 6 "l
 # The lead's notes are per run: the round-2 wrapup reads them at the run root.
 has ".agents/team/runs/$RUN_ID/teamlead-notes.md" "$RD/r2/wrapup-1.prompt.md" \
   && ! has "runs/$RUN_ID/r2/teamlead-notes.md" "$RD/r2/wrapup-1.prompt.md" || fail "(r) wrapup reads the wrong notes path"
+# With a lead the wrapup asks nothing: a proposals stop only when it has items, the tracker script,
+# the file tools (#104).
+for rule in "no memory hand-off → no proposals file and no stop" \
+  "team-record.sh --verdict blocked --proposals .agents/team/runs/$RUN_ID/r2/wrapup_proposals-1_<k>.json" \
+  'you ask nothing in this window (no `AskUserQuestion`)' 'never `gh` directly' \
+  "Never run inline interpreter code" '`selected_by: "teamlead"`' "Never edit a proposals file after its stop" \
+  '"handoff":' "With a per-run TeamLead: no question — the groups only label" \
+  "With a per-run TeamLead ask no question"; do
+  has "$rule" "$RD/r2/wrapup-1.prompt.md" || fail "(r) the lead-run wrapup prompt lacks: $rule"
+done
+# Every tracker's step 7 menu has the lead exception, and the lead has no wrapup menu to answer.
+for t in github jira none; do
+  has "With a per-run TeamLead ask no question" "$MAIN/.claude/team/tracker/$t-wrapup.md" \
+    || fail "(r) $t-wrapup.md step 7 lacks the lead exception"
+done
+has "**Planner or wrapup menu:**" "$MAIN/.claude/team/prompts/teamlead.md" && fail "(r) the lead still answers a wrapup menu"
 # Round 1 has no accepted qa: "wrapup not done" means merge-check read round 2's records.
 mv "$TD/session.json" "$WORK/sj"
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa; expect 3 "wrapup not done" "(r) merge-check reads round 2"
@@ -401,13 +417,13 @@ greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "gate acceptance qa-1-1
 echo "team-smoke-23: (q) blocked → draft rework → publish OK"
 unset STUB_ON_HAS_SESSION CANCEL_AT
 
-# ---- (u) a launched lead gets its notes file with the five headings ---------------------------------
+# ---- (u) a launched lead gets its notes file with the six headings ----------------------------------
 export STUB_ON_HAS_SESSION=". '$WORK/hs2.sh'"
 setup_run alfa-20261115-210000; echo qa-1-1.json > "$TD/acked"
 greset alfa-qa; export CANCEL_AT=12; run "$MAIN" $TR alfa; expect 6 "launched: TeamLead" "(u) lead launched"
 NOTES="$RD/teamlead-notes.md"
-[ "$(grep -c '^## ' "$NOTES" 2>/dev/null)" = 5 ] || fail "(u) notes: $(cat "$NOTES" 2>/dev/null)"
-for h in "## Order ambiguities" "## No-rule questions" "## Gate misses" "## Operator cases" "## Late answers"; do
+[ "$(grep -c '^## ' "$NOTES" 2>/dev/null)" = 6 ] || fail "(u) notes: $(cat "$NOTES" 2>/dev/null)"
+for h in "## Order ambiguities" "## No-rule questions" "## Gate misses" "## Operator cases" "## Wrapup decisions" "## Late answers"; do
   grep -qxF "$h" "$NOTES" || fail "(u) notes lack $h"
 done
 echo "team-smoke-23: (u) notes created at launch OK"
