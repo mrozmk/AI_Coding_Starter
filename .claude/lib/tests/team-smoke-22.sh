@@ -631,8 +631,8 @@ hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-lead.sh decision list alf
 echo "team-smoke-22: decision binding + dispatch once + hook OK"
 
 # ---- (i) the runner answers at authority class first; human-only → a request; else the lead's ------
-runner_attention() {  # runner_attention <label> — one attention line, a runner start, stopped
-  echo "2026-11-14T12:00:00Z permission_prompt Claude needs your permission" > "$RD/attention"
+runner_attention() {  # runner_attention <label> [<line>] — one attention line, a runner start, stopped
+  echo "${2:-2026-11-14T12:00:00Z permission_prompt Claude needs your permission}" > "$RD/attention"
   rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$TD/send-lead.log"; : > "$STUB_LOG"
   STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=10 run "$MAIN" $TR alfa
   cp "$WORK/out" "$WORK/runner.out"
@@ -656,6 +656,26 @@ bashp "git rm old.txt"; prof '.teams.policy.classes = {}'; runner_attention "(i)
 grep -q 'prompt coder: Bash command git rm old.txt — team-answer.sh alfa coder yes|no --authority teamlead' \
   "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || { { cat "$TD/send-lead.log"; grep alfa-lead "$STUB_LOG"; } > "$WORK/out" 2>&1; fail "(i) the lead was not rung with the command"; }
 echo "team-smoke-22: (i) runner class-first OK"
+
+# ---- (idle) an idle stage rings the lead once per line, but is no item the lead owes ---------------
+IDLE="2099-01-01T00:00:01Z idle_prompt Claude is waiting for your input"
+printf '%s\n' "$IDLE" > "$RD/attention"
+run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
+grep -q '^attention ' "$WORK/out" && fail "(idle) pending lists an idle_prompt line"
+{ echo "$IDLE"; echo "2099-01-01T00:00:02Z permission_prompt Claude needs your permission"
+  echo "2099-01-01T00:00:03Z elicitation_dialog server asks"; echo "2099-01-01T00:00:04Z agent_needs_input x"
+  echo "2099-01-01T00:00:05Z some_new_kind y"; } > "$RD/attention"
+run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
+[ "$(grep -c '^attention ' "$WORK/out")" = 4 ] || fail "(idle) pending does not list the four other kinds"
+for k in permission_prompt elicitation_dialog agent_needs_input some_new_kind; do
+  grep -q "attention .* — coder: $k " "$WORK/out" || fail "(idle) pending lacks the $k line"
+done
+grep -q idle_prompt "$WORK/out" && fail "(idle) pending lists the idle line among others"
+runner_attention "(idle) ring" "$IDLE"
+grep -q 'prompt coder: idle — look at the screen; nothing is owed unless it is stuck — Claude is waiting' \
+  "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || { cp "$WORK/runner.out" "$WORK/out"; fail "(idle) the lead was not rung for an idle stage"; }
+has "answered at authority class" "$WORK/runner.out" && fail "(idle) the runner tried to answer an idle stage"
+echo "team-smoke-22: (idle) idle stage OK"
 
 # ---- one typed message answers one decision, unless it names the others' ids -----------------------
 ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?"; expect 0 "[d-7]" "(once-ev) open d-7"

@@ -186,6 +186,10 @@ lead_attention() {
   local role="$1" line kind name t p tool cmd rc=0 n d ev gen
   line="$(sed -n "${2}p" "$TD/runs/$RUN/attention" 2>/dev/null)"; kind="$(cut -d' ' -f2 <<<"$line")"
   name="$(sess_name "$role")"
+  if [ "$kind" = idle_prompt ]; then
+    team_session_doorbell "$TD" lead "prompt $role: idle — look at the screen; nothing is owed unless it is stuck — $(cut -d' ' -f3- <<<"$line")"
+    return 0
+  fi
   if [ "$kind" != permission_prompt ]; then
     team_session_doorbell "$TD" lead "prompt $role: ${kind:-attention} — $(cut -d' ' -f3- <<<"$line")"
     return 0
