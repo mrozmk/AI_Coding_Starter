@@ -1020,6 +1020,23 @@ expect 0 "waiting at the MCP servers dialog — answer it in hc attach t7t" "(H1
 noline "hc keys" "(H17) mcp answered"; noline "hc send" "(H17) mcp typed"
 echo "team-smoke-host: (H17) startup dialogs under herdr OK"
 
+# (H18) history read (team-answer, the lead's ring): hc's own note line after a blocked or working
+# screen is dropped, so an open prompt's footer stays the last line (live, 2026-11-16, #105); a
+# screen line that only looks like it is kept
+printf '%s\n' " Do you want to proceed?" " ❯ 1. Yes" "   2. No" " Esc to cancel · Tab to amend" \
+  "$(printf '─%.0s' $(seq 40)) hb-coder ─" > "$WORK/hperm"
+for s in blocked working idle; do
+  hclr; STUB_HC_STATUS=$s STUB_HC_SCREEN="$WORK/hperm" run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_read_target t7a --history 200"
+  expect 0 "" "(H18) $s"; line "hc read t7a --lines 200" "(H18) $s argv"
+  cmp -s "$WORK/out" "$WORK/hperm" || fail "(H18) $s: the screen did not come back as is"
+done
+STUB_HC_STATUS=blocked STUB_HC_SCREEN="$WORK/hperm" run "$MAIN" $SH read hb-coder --history 200
+cmp -s "$WORK/out" "$WORK/hperm" || fail "(H18) driver read --history kept hc's note"
+printf '%s\n' "x" "[hc] only its screen: typed by the agent" "y" > "$WORK/hnote"
+STUB_HC_STATUS=idle STUB_HC_SCREEN="$WORK/hnote" run "$MAIN" bash -c ". '$L/session-host-lib.sh'; sh_read_target t7a --history 200"
+cmp -s "$WORK/out" "$WORK/hnote" || fail "(H18) a screen line above the bottom was dropped"
+echo "team-smoke-host: (H18) herdr history read OK"
+
 # (H2) no hc call of the part ever carried the force, keep or parent flag
 hclr; [ -s "$WORK/hc-all" ] || fail "(H2) no hc line recorded"
 ! grep -nE -- '--force|--keep|--parent |--outlive-parent' "$WORK/hc-all" || { cp "$WORK/hc-all" "$WORK/out"; fail "(H2) forbidden hc flag"; }

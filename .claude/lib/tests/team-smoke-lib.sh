@@ -263,7 +263,13 @@ case "$1" in
   keys) gone && nf; fin
         case " $* " in *" esc "*) [ -z "${STUB_HC_STATUS_FILE:-}" ] || echo idle > "$STUB_HC_STATUS_FILE" ;; esac
         echo '{"turn":1}' ;;
-  read) gone && nf; [ -z "${STUB_HC_SCREEN:-}" ] || cat "$STUB_HC_SCREEN" ;;
+  read) gone && nf; [ -z "${STUB_HC_SCREEN:-}" ] || cat "$STUB_HC_SCREEN"
+        # As the live hc (2026-11-16): with --lines, a working or blocked terminal gets a note line
+        # of hc's own on stdout after its screen.
+        case " $* :$(st)" in
+          *" --lines "*:blocked) echo "[hc] only its screen: it is blocked; history is not scrolled in this state" ;;
+          *" --lines "*:working) echo "[hc] only its screen: it is working; read again once it stops for its history" ;;
+        esac ;;
   kill) [ -z "${STUB_HC_GONE_FILE:-}" ] || touch "$STUB_HC_GONE_FILE"; echo '{}' ;;
   label) # With a window model (fake herdr-app): herdr.space=<s> [herdr.tab=<t>] adopts the terminal there;
          # an unknown tab id, or none, makes a new tab "tb<terminal>". STUB_HERDR_NOADOPT=1: no effect.
