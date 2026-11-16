@@ -48,6 +48,7 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-channel.sh"
 . "$root/.claude/lib/team-lead-lib.sh"
 . "$root/.claude/lib/team-run-lead.sh"
+. "$root/.claude/lib/team-run-dialog.sh"
 
 TD="$CLONE/.agents/team"
 # Read from the main checkout so a local edit applies at the next launch, without a PR.
@@ -64,8 +65,9 @@ BRANCH="$(team_json branch)"; LINE="$(team_json line)"
 RUN=""; ROLE=""; OWN_LOCK=0
 MODE="$(team_mode "$TD/team.json")" || { echo "error: cannot read the mode of $TD/team.json" >&2; exit 1; }
 
-# The runner notifies nobody: its stops, waits and "ready" are its output and the run's files; only
-# the lead's verdicts reach the Operator, through notify.sh (lead_notify).
+# The runner's stops, waits and "ready" are its output and the run's files. Only two things reach the
+# Operator, through notify.sh: the lead's verdicts (lead_notify) and a session held at a startup
+# dialog (dialog_watch, team-run-dialog.sh) — both steps only the Operator can take.
 die() { echo "$2" >&2; exit "$1"; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
 sess_name() { team_tmux_name "$TEAM" "$1"; }
@@ -262,6 +264,7 @@ wait_loop() {
     team_cancelled && cancel_exit
     t="$(team_now)"; [ "$waiting" = 0 ] || start=$((start + t - last)); last="$t"
     waiting=0; ! team_lead_on || ! lead_waiting "$role" "$attempt" || waiting=1
+    ! dialog_watch "$role" "$attempt" || waiting=1   # a startup dialog: the Operator's, not a stall
     r="$(new_record "$role" "$attempt")"
     if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
     ! team_lead_on || ! lead_gate "$role" "$attempt" || return 0
@@ -369,7 +372,7 @@ cmd_status() {
   for role in $(team_mode_roles "$MODE"); do
     r="$(ls -1t "$TD/runs/$(run_ref)/$role"-*.json 2>/dev/null | head -n 1)" || true
     [ -z "$r" ] || echo "$role: $(basename "$r") $(rec "$r" verdict)$([ -e "$r.accepted" ] && echo ' accepted')"
-    ! team_tmux_alive "$(sess_name "$role")" || echo "tmux: $(sess_name "$role") alive"
+    ! team_tmux_alive "$(sess_name "$role")" || dialog_label "$(sess_name "$role")"
   done
   if [ -d "$TD/lock" ]; then
     pid="$(cat "$TD/lock/pid" 2>/dev/null || true)"

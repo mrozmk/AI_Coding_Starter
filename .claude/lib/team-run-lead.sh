@@ -286,11 +286,11 @@ lead_resolve() {
   bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --decision "$1" >/dev/null 2>&1 || true
 }
 
-lead_status() {  # → alive|dead|none — session <sid> — pending <n>
+lead_status() {  # → alive|waiting at <dialog> …|dead|none — session <sid> — pending <n>
   local s=none sid=none n
   if [ -n "${RUN:-}" ] && [ "$(team_lead_json run)" = "$RUN" ]; then
     sid="$(team_lead_json session_id)"; s=dead
-    ! team_tmux_alive "$(sess_name lead)" || s=alive
+    ! team_tmux_alive "$(sess_name lead)" || s="$(dialog_word "$(sess_name lead)")"
   fi
   n="$( (cd "$root" && bash .claude/lib/team-lead.sh pending "$TEAM") 2>/dev/null | grep -c . || true)"
   echo "$s — session $sid — pending ${n:-0}"

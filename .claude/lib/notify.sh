@@ -30,7 +30,7 @@
 # event it also publishes herdr/new/<id>.resolve, on which the mod drops the strip item.
 # The summary is one line, control characters stripped, cut to 200 characters, and stored only
 # when a channel's switch is on. The recipient is never read into any output.
-# Callers: the runner (team-run-lead.sh lead_notify) and operator-record.sh — never a model
+# Callers: the runner (team-run-lead.sh lead_notify, team-run-dialog.sh) and operator-record.sh — never a model
 # session (the role profiles deny it).
 # Exit: 0 written, duplicate or done (also when delivery is deferred because a flush holds the lock)
 #       · 1 the outbox cannot be written, or flush / list cannot get the lock · 2 usage / unknown event.

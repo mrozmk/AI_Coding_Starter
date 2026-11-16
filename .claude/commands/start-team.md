@@ -218,7 +218,11 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    runner's `attach:` line says how to reach the planner (detach with Ctrl-b d)", and that coder/QA run alone, the
    team's TeamLead answers what it may, and only a decision that needs the Operator notifies them
    (`notify.sh`, when a channel is on in `~/.agent-comms/notify.json`; otherwise it waits in
-   `/tasks-status`). After QA a `wrapup` window opens with a plain summary of the run and, only if it has
+   `/tasks-status`). When step 4 ran `team-new.sh` (a new clone directory): the first sessions there —
+   the TeamLead and the planner — stop at Claude's folder trust dialog; the Operator accepts it once
+   in each, in the team's tab `<TEAM>` (Herdr) or through the runner's `attach:` / `warn:` hint (tmux),
+   by picking `Yes, I trust this folder` (Enter alone exits). The runner prints a `warn:` line and
+   notifies the Operator for each, and its stage clock waits meanwhile. After QA a `wrapup` window opens with a plain summary of the run and, only if it has
    recommendations (memory, new tickets), one question. Resume after answering:
    `/start-team <TEAM>`. Merge when ready: ask the supervisor ("merge <TEAM>"). For `pr_provider: github` the supervisor runs
    `team-merge-check.sh <TEAM>`, asks the Operator, then `team-integrate.sh <TEAM>`; for azure-devops it

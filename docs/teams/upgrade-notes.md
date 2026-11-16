@@ -3,6 +3,23 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The runner reports a session held at a startup dialog
+
+**Before:** a TeamLead or stage started in a new clone directory sat at Claude's folder trust dialog
+with no sign from the runner: `team-run.sh <team> status` said `tmux: <session> alive` (also under
+Herdr), no `warn:` line, no Operator event, and the stage's execution-time limit kept running.
+
+**Now:** the runner reads a session that reports no status yet against the driver's dialog screens
+(`session-host.md` §11). At the folder trust dialog or the MCP servers dialog it prints one `warn:`
+line with the hint (Herdr: also the team's tab), `status` shows `<backend>: <session> waiting at …`
+and `teamlead: waiting at …`, and one `human_decision` event goes out through `notify.sh` (decision
+`dialog-<role>-<attempt>` or `dialog-lead-<launch>`), resolved once the dialog is gone. While a
+stage's own dialog is open its limit pauses and no attempt is spent. The dialog is still never
+answered by code. The status label names the session's backend (`herdr:` or `tmux:`).
+
+**Action:** none. A script that read the `tmux: <session> alive` status line under Herdr now sees
+`herdr: <session> alive`.
+
 ## An answer seen elsewhere resolves its notification (#97)
 
 **Before:** the Herdr strip kept an item until it was clicked, cleared or 24 hours old, and an event

@@ -215,6 +215,18 @@ Sourced callers use these; they are not CLI verbs.
 
 The trust dialog is the Operator's decision and is never auto-accepted, whatever the folder.
 
+**The team runner** (`team-run-dialog.sh`) watches its TeamLead and stage sessions the same way at
+every poll, only while a session reports no status yet:
+
+- one `warn: <address>: waiting at the folder trust dialog — pick 'Yes, I trust this folder' (Enter
+  alone exits) in <hint>` line (Herdr: the hint also names the team's tab);
+- `team-run.sh <team> status` shows `<backend>: <address> waiting at …` and `teamlead: waiting at …`
+  in place of `alive`;
+- one `human_decision` event through `notify.sh` (decision `dialog-[r<n>-]<role>-<attempt>` or
+  `dialog-lead-<launch>`): accepting the dialog is a step only the Operator can take. It is resolved
+  (`notify.sh resolve`) once the dialog is gone, and the runner prints `startup dialog gone: <address>`;
+- a stage's own dialog pauses its execution-time limit, and no attempt is spent (the session is alive).
+
 ## 12. The doorbell
 
 `send <address> <one line>` rings a session that a message waits in its inbox. The message itself is
