@@ -69,7 +69,9 @@ Arguments for this run (`<ISSUE-KEY> [--line <branch>]`): **$ARGUMENTS**
 ### 4. Propose branch type + slug, then confirm
 
 - **github:** the adapter's `type` is the starting suggestion (`bug` label → `bugfix`;
-  `harness`/`infra`/`documentation` → `chore`; else `feature` — the same rules team runs use).
+  `harness`/`infra`/`documentation` → `chore`; else `feature` — the same rules team runs use; with a
+  `teams` block the adapter maps it onto `teams.branch_types`, a `documentation` label onto `docs`
+  when listed).
 - **jira:** map the issue type to a `<type>` as the starting suggestion:
   - `Bug` → `bugfix`
   - `Story` / `Task` / `Improvement` → `feature` (default); `chore` when the summary reads as

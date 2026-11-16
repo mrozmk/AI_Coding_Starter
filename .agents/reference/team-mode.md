@@ -103,9 +103,9 @@ a verdict or blocks merge/next. A flagged or sampled final run gets one detached
 | `none` | `L3`, allocated by the adapter (`.agents/team/local-ids`, `mkdir` lock) | `read --brief <text>`/`--brief-file <path>` | nothing (every op is a no-op) |
 
 `.claude/lib/team-tracker.sh` is the **only** place the harness calls `gh`. Ops:
-`read … --out <dir>` (writes `<dir>/ticket.json` + `ticket.md`, prints `key=<k> type=<t>` and
-`title=<t>`), `comment <key> --marker --body-file`, `set-status <key> started|delivered`,
-`create-followup --marker --title --body-file`. Writes are idempotent by a marker on the body's
+`read … --out <dir>` (writes `<dir>/ticket.json` + `ticket.md`, prints `key=<k> type=<t>`, `type`
+a `teams.branch_types` entry — the first synonym of the label's kind, else the first entry and a
+`warning:` — and `title=<t>`), `comment`, `set-status <key> started|delivered`, `create-followup`. Writes are idempotent by a marker on the body's
 **last** line, matched over a full enumeration. Exit codes: 0 ok · 1 ticket unusable · 2
 usage/profile · 3 `tracker=jira` · 4 recoverable (permissions, no project item, unknown logical
 status, failed or partial enumeration) — never the conclusion "not there".

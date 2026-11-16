@@ -73,6 +73,28 @@ write_ticket() {
   jq -r '"key=" + .key + " type=" + .type, "title=" + .title' "$dir/ticket.json"
 }
 
+# Usage: branch_type <kind> → $TYPE, the generic kind (feature|bugfix|docs|chore) as one of
+# teams.branch_types, because /start-team builds <type>/<key>-<slug> from it and team-new refuses a
+# type outside that list. The first synonym the list holds wins; none → the list's FIRST entry, with
+# a warning on stderr. Without a teams block there is no list: the kind as it is, docs as chore.
+TYPE=""
+branch_type() {
+  local syn c t
+  TYPE="$1"
+  if [ -z "${TEAM_TRACKER_TEAMS:-}" ]; then [ "$1" != docs ] || TYPE=chore; return 0; fi
+  case "$1" in
+    feature) syn="feature feat" ;;
+    bugfix)  syn="bugfix fix bug" ;;
+    docs)    syn="docs doc documentation chore" ;;
+    *)       syn="$1" ;;
+  esac
+  for c in $syn; do
+    for t in "${TEAM_BRANCH_TYPES[@]}"; do [ "$t" != "$c" ] || { TYPE="$t"; return 0; }; done
+  done
+  TYPE="${TEAM_BRANCH_TYPES[0]}"
+  echo "warning: teams.branch_types has no type for a $1 ticket — using '$TYPE'" >&2
+}
+
 op_read_github() {
   local dir="$1" type
   gh issue view "$KEY" --repo "$TEAM_GH_REPO" \
@@ -80,12 +102,14 @@ op_read_github() {
     || { sed 's/^/  | /' "$TMP/err" >&2; die 1 "issue #$KEY cannot be read"; }
   local state; state="$(jq -r '.state // empty' "$TMP/issue.json")"
   [ "$state" = OPEN ] || die 1 "issue #$KEY is $state"
-  # First matching RULE wins (not the first label): bug → bugfix, then the chore labels.
+  # First matching RULE wins (not the first label): bug → bugfix, the chore labels, documentation.
   type="$(jq -r '[.labels[]?.name] as $l
     | if ($l | index("bug")) then "bugfix"
-      elif ($l | map(. == "harness" or . == "infra" or . == "documentation") | any) then "chore"
+      elif ($l | map(. == "harness" or . == "infra") | any) then "chore"
+      elif ($l | index("documentation")) then "docs"
       else "feature" end' "$TMP/issue.json")"
-  jq --arg key "$KEY" --arg type "$type" \
+  branch_type "$type"
+  jq --arg key "$KEY" --arg type "$TYPE" \
     '{key: $key, title: (.title // ""), type: $type, labels: [.labels[]?.name],
       body: (.body // ""), url: (.url // "")}' "$TMP/issue.json" > "$TMP/ticket.json"
   write_ticket "$dir" "$TMP/ticket.json"
@@ -129,8 +153,9 @@ op_read_none() {
     END { print t }')"
   [ -n "$title" ] || die 1 "the brief has no usable title line"
   alloc_local_id
-  jq -n --arg key "$KEY" --arg title "$title" --arg body "$brief" \
-    '{key: $key, title: $title, type: "feature", labels: [], body: $body, url: ""}' \
+  branch_type feature
+  jq -n --arg key "$KEY" --arg title "$title" --arg body "$brief" --arg type "$TYPE" \
+    '{key: $key, title: $title, type: $type, labels: [], body: $body, url: ""}' \
     > "$TMP/ticket.json"
   write_ticket "$dir" "$TMP/ticket.json"
 }

@@ -115,8 +115,11 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 
    **`TRACKER=jira`** (only when `BRANCH` is not given). `mcp__atlassian__jira_get_issue(KEY,
    fields="summary,issuetype,labels,description")`; read it this way on every NEW run, also with
-   `BRANCH` given, for the follow-up line below. Type: `Bug` → `bugfix`; labels `harness`, `deploy`,
-   `consolidation` or a docs/config-only summary → `chore`; otherwise `feature`. Slug: the summary
+   `BRANCH` given, for the follow-up line below. Kind: `Bug` → `bugfix`; labels `harness`, `deploy`,
+   `consolidation` or a config-only summary → `chore`; a docs-only summary → `docs`; otherwise
+   `feature`. `type` = the kind as one of `teams.branch_types`, by the adapter's rule (the first
+   synonym the list holds — `feature`: feature, feat · `bugfix`: bugfix, fix, bug · `docs`: docs,
+   doc, documentation, chore · `chore`: chore; none → the list's first entry, and say so). Slug: the summary
    in **English**, kebab-case, 3–6 words, `[a-z0-9-]` only. `BRANCH` = `<type>/<KEY>-<slug>`.
    Jira unreachable → stop and ask for the branch as the third argument.
    A description line `Follow-up of <parent> · origin <origin>` → `FOLLOW` = `<parent>`; a
@@ -130,7 +133,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    (`none`: `bash .claude/lib/team-tracker.sh read --brief "<text>"|--brief-file <path>
    --out .agents/team/incoming/<TEAM>`). Non-zero exit → print its `error:` line verbatim and stop,
    **before** the clone. From its output take `KEY` (`key=`, for `none` the allocated `L<n>`), `type`
-   and `title`; then, only when `BRANCH` is not given, slug = the title in **English**, kebab-case,
+   (already one of `teams.branch_types`; a `warning:` line means no synonym matched and the list's
+   first entry was used — show it) and `title`; then, only when `BRANCH` is not given, slug = the title in **English**, kebab-case,
    3–6 words, `[a-z0-9-]` only, and `BRANCH` = `<type>/<KEY>-<slug>`.
 
 4. **Clone.** `CLONE` absent → `bash .claude/lib/team-new.sh <TEAM> <KEY> <BRANCH>
