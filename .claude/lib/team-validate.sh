@@ -116,7 +116,9 @@ check_qa_report() {
   line="$(grep -Ex 'Tests: passed=[0-9]+ failed=[0-9]+ skipped=[0-9]+ baseline=[0-9]+' "$f")" \
     || fail "qa report Tests line malformed" || return 1
   set -- $(tr -c '0-9\n' ' ' <<<"$line")
-  [ "$1" -gt 0 ] || fail "qa report Tests: passed=0 — no tests ran" || return 1
+  # passed=0 is honest only when there is no test gate. TEAM_TEST_GATE comes from the MAIN checkout's
+  # profile, loaded by the runner before it enters the clone — never from the clone QA can edit.
+  [ "$1" -gt 0 ] || [ "${TEAM_TEST_GATE:-}" = none ] || fail "qa report Tests: passed=0 — no tests ran" || return 1
   [ "$2" -le "$4" ] || fail "qa report Tests: failed=$2 exceeds baseline=$4" || return 1
   grep -qx 'Rethink signals: none' "$f" || fail "qa report needs 'Rethink signals: none'"
 }

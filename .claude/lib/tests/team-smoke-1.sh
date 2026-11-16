@@ -171,6 +171,14 @@ qa_case 's/^Gate code: passed$/Gate code: skipped/' "Gate code skipped needs a r
 qa_case 's/^Tests: passed=3/Tests: passed=x/' "Tests line malformed" "qa report non-integer tests"
 qa_case 's/^Tests: passed=3/Tests: passed=0/' "no tests ran" "qa report zero tests"
 qa_case 's/failed=0 skipped=0 baseline=0/failed=2 skipped=0 baseline=1/' "exceeds baseline" "qa report new failures"
+# teams.test_gate: none in the MAIN checkout's profile (the one the runner loads) → passed=0 is honest;
+# failed > baseline still fails there.
+PROF="$MAIN/.claude/project-profile.json"; cp "$PROF" "$WORK/prof.json"
+jq '.teams.test_gate = "none"' "$WORK/prof.json" > "$PROF"
+report 's/^Tests: passed=3/Tests: passed=0/'; run "$MAIN" $TR alfa check "$R"
+expect 0 "valid:" "qa report zero tests, test gate none"
+qa_case 's/^Tests: passed=3 failed=0 skipped=0 baseline=0/Tests: passed=0 failed=1 skipped=0 baseline=0/' "exceeds baseline" "qa report zero tests, gate none, new failure"
+cp "$WORK/prof.json" "$PROF"
 report
 run "$MAIN" $TR alfa check "$R"
 expect 0 "valid:" "qa valid"

@@ -365,9 +365,9 @@ Rethink signals: none | <list>
 
 `<outcome>` ∈ `passed|warn|skipped|substituted|not-verified`; a reason (` — <reason>`) is required
 for the last three. `Gate final-build` is the clean-tree `teams.build_check` + test gate rerun;
-anything but `passed` means no publication. `Verdict: escalated` or any rethink signal means a
-`blocked` record, not `done`. Free text may follow the keyed lines.
-The QA report's free text records `Load: start … end … (waited …s)` for each gate run.
+anything but `passed` means no publication. `Tests: passed=0` is accepted only when the main
+checkout's `teams.test_gate` is `none`. `Verdict: escalated` or any rethink signal means a `blocked`
+record, not `done`. Free text may follow; it records `Load: start … end … (waited …s)` per gate run.
 
 ## 8. What team mode changes per command
 
