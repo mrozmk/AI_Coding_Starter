@@ -107,23 +107,17 @@ export async function onSpawn(
   const result = await next({ ...e, model: decision.model })
   if (result.deny === undefined && result.agentId !== undefined) {
     const model = result.model
-    try {
-      void deps
-        .sessionId()
-        .then((sid) =>
-          deps.trace(
-            [
-              'bash', `${root}/.claude/lib/costs/runtime-mark.sh`, 'subagent',
-              '--session', sid, '--agent-type', e.subagentType,
-              '--parent-model', e.parentModel, '--model', model,
-            ],
-            root,
-          ),
-        )
-        .catch(() => undefined)
-    } catch {
-      // A synchronous throw from a dependency must not reach the started spawn.
-    }
+    void (async () => {
+      const sid = await deps.sessionId()
+      await deps.trace(
+        [
+          'bash', `${root}/.claude/lib/costs/runtime-mark.sh`, 'subagent',
+          '--session', sid, '--agent-type', e.subagentType,
+          '--parent-model', e.parentModel, '--model', model,
+        ],
+        root,
+      )
+    })().catch(() => undefined)
   }
   return result
 }
@@ -138,13 +132,16 @@ export const register: Register = (on) => {
           return resolveRoot(start, r.exitCode, r.stdout)
         },
         read: (p) => $.fs.read(p),
-        env: async () => ({
-          subagentModel: await $.env.get('CLAUDE_CODE_SUBAGENT_MODEL'),
-          subagentModelForce: await $.env.get('CLAUDE_CODE_SUBAGENT_MODEL_FORCE'),
-          defaultHaiku: await $.env.get('ANTHROPIC_DEFAULT_HAIKU_MODEL'),
-          defaultSonnet: await $.env.get('ANTHROPIC_DEFAULT_SONNET_MODEL'),
-          defaultOpus: await $.env.get('ANTHROPIC_DEFAULT_OPUS_MODEL'),
-        }),
+        env: async () => {
+          const [subagentModel, subagentModelForce, defaultHaiku, defaultSonnet, defaultOpus] = await Promise.all([
+            $.env.get('CLAUDE_CODE_SUBAGENT_MODEL'),
+            $.env.get('CLAUDE_CODE_SUBAGENT_MODEL_FORCE'),
+            $.env.get('ANTHROPIC_DEFAULT_HAIKU_MODEL'),
+            $.env.get('ANTHROPIC_DEFAULT_SONNET_MODEL'),
+            $.env.get('ANTHROPIC_DEFAULT_OPUS_MODEL'),
+          ])
+          return { subagentModel, subagentModelForce, defaultHaiku, defaultSonnet, defaultOpus }
+        },
         sessionId: () => $.session.id(),
         trace: (argv, cwd) => $.process.run(argv, { cwd }),
       },
