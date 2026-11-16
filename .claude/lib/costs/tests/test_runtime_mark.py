@@ -12,6 +12,8 @@ MARK = REPO / ".claude" / "lib" / "costs" / "runtime-mark.sh"
 HOOK = REPO / ".claude" / "hooks" / "stage-mark.sh"
 SID = "0a1b2c3d-0000-4000-8000-000000000001"
 ENV_SID = "0a1b2c3d-0000-4000-8000-000000000002"
+SUB = ("subagent", "--session", SID.upper(), "--agent-type", "general-purpose",
+       "--parent-model", "claude-fable-5-2[1m]", "--model", "claude-opus-5-5")
 
 
 class RuntimeMarkTest(unittest.TestCase):
@@ -117,6 +119,30 @@ class RuntimeMarkTest(unittest.TestCase):
         missing = os.path.join(self.home, "nope")
         self.run_sh(MARK, ("session", "--provider", "claude", "--session", SID, "--source",
                            "mail-role"), AGENT_COSTS_HOME=missing)
+        self.assertFalse(os.path.exists(missing))
+
+    def test_subagent_line(self):
+        self.mark(*SUB)
+        [line] = self.lines()
+        at = line.pop("at")
+        self.assertRegex(at, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+        self.assertEqual(line, {
+            "v": 1, "type": "subagent", "session": SID, "agent_type": "general-purpose",
+            "parent_model": "claude-fable-5-2[1m]", "model": "claude-opus-5-5"})
+
+    def test_subagent_bad_field_skips_line(self):
+        for flag, value in (("--session", "not-a-uuid"), ("--agent-type", "a b"),
+                            ("--parent-model", ""), ("--model", "x;y")):
+            args = list(SUB)
+            args[args.index(flag) + 1] = value
+            with self.subTest(flag=flag):
+                proc = self.mark(*args)
+                self.assertEqual(self.lines(), [])
+                self.assertIn("runtime-mark:", proc.stderr)
+
+    def test_subagent_missing_home_is_noop(self):
+        missing = os.path.join(self.home, "nope")
+        self.run_sh(MARK, SUB, AGENT_COSTS_HOME=missing)
         self.assertFalse(os.path.exists(missing))
 
     def test_bare_stage_end_is_noop(self):

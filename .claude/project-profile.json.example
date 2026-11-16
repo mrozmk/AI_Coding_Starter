@@ -39,7 +39,12 @@
     "_remote_build_doc": "Opt-in: true → teams.build_check can be \"bash \\\"$HARNESS_MAIN/.claude/lib/remote-build/remote-build-check.sh\\\"\": the build/test command runs on a remote node over ssh (never locally), from .claude/remote-build.json once that file is on origin/<Trunk> — the node is chosen only through trunk. The node must be a machine for untrusted code (.agents/reference/remote-build.md). Default: off — the check refuses.",
     "remote_build": false,
     "_finder_fallback_doc": "session | off. /check-implementation Step 1ab: when a pinned finder (@correctness-reviewer, @structure-reviewer) fails twice on a rate or usage limit or an unavailable model, session re-runs it once as its -fallback agent on the session's model (model: inherit, same effort, same read-only contract); the report and the team QA Warnings name it. off → STOP instead. Absent = session. Any other finder failure, or a model substitution seen by finder-model.sh, always stops.",
-    "finder_fallback": "session"
+    "finder_fallback": "session",
+    "_subagent_model_doc": "Opt-in: enabled true → the subagent-model mod (.claude/skills/subagent-model/) lowers a built-in subagent spawned without a model to the table's alias (haiku | sonnet | opus) when the session's model is dearer; never raises, never touches pinned, non-built-in, forked, resumed, teammate or workflow agents. No table → the default below; a table replaces it whole. One runtime-log line per changed spawn (.agents/reference/token-usage.md → Runtime log). Default: off.",
+    "subagent_model": {
+      "enabled": false,
+      "table": { "general-purpose": "opus", "claude": "opus", "Explore": "opus" }
+    }
   },
 
   "_tracker_doc": "jira | github | none. Asked (Screen 2, Q4). none => the backlog is .agents/backlog.md. github => the tasks are the issues of github.repo; .claude/lib/team-tracker.sh reads them without a teams block.",

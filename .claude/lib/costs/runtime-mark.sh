@@ -9,6 +9,7 @@
 #   runtime-mark.sh stage start|end NAME --session ID --source hook-skill|hook-prompt|skill-end
 #                   [--tool-use-id ID]
 #   runtime-mark.sh stage end NAME   # no --session: no-op — the stage hook records this call
+#   runtime-mark.sh subagent --session ID --agent-type T --parent-model M --model M
 #
 # Opt-in: writes $AGENT_COSTS_HOME/runtime.jsonl only when that dir exists. Contract:
 # .agents/reference/token-usage.md → Runtime log.
@@ -20,6 +21,7 @@ TICKET_RE='^([A-Z][A-Z0-9]+-[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|[A-Za-
 RUN_RE='^[a-z0-9]+-[0-9]{8}-[0-9]{6}$'
 ATTEMPT_RE='^[0-9]{1,3}$'
 TOOL_USE_RE='^[A-Za-z0-9_]{1,128}$'
+MODEL_RE='^[A-Za-z0-9._:@/-]{1,64}(\[[0-9a-z]{1,8}\])?$'
 
 # The end step a command runs (no --session) is a no-op before any dependency check: silent even
 # without $AGENT_COSTS_HOME or jq. The stage hook records that call with --session itself.
@@ -47,6 +49,7 @@ fi
 
 provider=""; session=""; session_set=0; source=""; name=""; ticket=""; team=""; role=""
 run=""; attempt=""; parent=""; cwd=""; team_json=""; tool_use_id=""
+agent_type=""; parent_model=""; model=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || skip "flag $1 has no value"
   case "$1" in
@@ -63,6 +66,9 @@ while [ $# -gt 0 ]; do
     --cwd) cwd="$2" ;;
     --team-json) team_json="$2" ;;
     --tool-use-id) tool_use_id="$2" ;;
+    --agent-type) agent_type="$2" ;;
+    --parent-model) parent_model="$2" ;;
+    --model) model="$2" ;;
     *) skip "unknown flag $1" ;;
   esac
   shift 2
@@ -106,8 +112,18 @@ elif [ "$type" = session ]; then
       attempt: (if \$attempt == \"\" then null else (\$attempt | tonumber) end),
       parent_session: \$parent, cwd: \$cwd, at: ($at_ms)} | $drop_empty")" \
     || skip "jq failed"
+elif [ "$type" = subagent ]; then
+  session="$(lower "$session")"
+  [[ "$session" =~ $UUID_RE ]] || skip "subagent needs a session uuid"
+  [[ "$agent_type" =~ $NAME_RE ]] || skip "bad agent type"
+  [[ "$parent_model" =~ $MODEL_RE ]] || skip "bad parent model"
+  [[ "$model" =~ $MODEL_RE ]] || skip "bad model"
+  line="$(jq -cn --arg session "$session" --arg agent_type "$agent_type" \
+    --arg parent_model "$parent_model" --arg model "$model" \
+    "{v: 1, type: \"subagent\", session: \$session, agent_type: \$agent_type,
+      parent_model: \$parent_model, model: \$model, at: ($at_ms)}")" || skip "jq failed"
 else
-  skip "first argument must be session or stage"
+  skip "first argument must be session, stage or subagent"
 fi
 
 printf '%s\n' "$line" >> "$home/runtime.jsonl" || skip "cannot append to $home/runtime.jsonl"

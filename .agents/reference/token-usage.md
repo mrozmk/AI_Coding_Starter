@@ -58,6 +58,7 @@ prompts or free text. `at` is UTC with milliseconds, like usage timestamps.
 |---|---|
 | `session` | `v`, `provider` (`claude`/`codex`), `session` (uuid), `source` (`team-run`/`start-team`/`mail-role`/`codex-bg`), optional `name`, `ticket`, `team`, `role`, `run`, `attempt`, `parent_session` (uuid), `cwd`, `at` |
 | `stage` | `v`, `session` (uuid), `event` (`start`/`end`), `name`, `source` (`hook-skill`/`hook-prompt`/`skill-end`), optional `tool_use_id`, `at` |
+| `subagent` | `v`, `session` (uuid), `agent_type`, `parent_model`, `model` (the model core started), `at` — all required |
 
 | Writer | Writes |
 |---|---|
@@ -66,6 +67,7 @@ prompts or free text. `at` is UTC with milliseconds, like usage timestamps.
 | `/start-team` | `session` · `start-team`: the supervisor session with team and ticket — no name, so no label and not resolvable by name; never a binding |
 | `mail-role` source | reserved for a role session's mail registration with `--name <NAME>` (labels and `bind --session NAME`); no shipped command writes it yet |
 | `.claude/hooks/stage-mark.sh` | `stage`: `hook-skill` (PreToolUse `Skill`), `hook-prompt` (UserPromptExpansion of a typed `/command`), `skill-end` (PreToolUse of the exact end-step Bash call). Ignores every payload with `agent_id`, i.e. sub-agents |
+| `subagent-model` mod | `subagent`: one line per spawn whose model it lowered; `cost.py` does not ingest it yet |
 
 **`stage-mark.sh` is registered by `/setup:teams`** (`team-setup.sh`: PreToolUse `Skill`, PreToolUse
 `Bash` filtered by `"if": "Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)"`, and

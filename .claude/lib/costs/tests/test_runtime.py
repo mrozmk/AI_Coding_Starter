@@ -69,6 +69,12 @@ class RuntimeTest(unittest.TestCase):
                      dict(mark(), at="yesterday"), mark()])
         self.assertEqual((self.count("registrations"), self.count("stage_marks")), (0, 1))
 
+    def test_subagent_lines_ignored(self):
+        sub = {"v": 1, "type": "subagent", "session": S1, "agent_type": "Explore",
+               "parent_model": "claude-fable-5-2", "model": "claude-opus-5-5", "at": AT}
+        self.assertEqual(self.ingest([reg(), sub, mark(), sub]), 4)
+        self.assertEqual((self.count("registrations"), self.count("stage_marks")), (1, 1))
+
     def test_resolve_name(self):
         self.ingest([reg(source="start-team"), reg(source="mail-role"),
                      reg(session=S2, name="Reviewer"), reg(session=S2, name="Twin", source="x")])

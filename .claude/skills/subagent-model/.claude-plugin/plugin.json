@@ -1,0 +1,5 @@
+{
+  "name": "subagent-model",
+  "version": "0.1.0",
+  "description": "Lowers the model of a built-in subagent spawned without one, from a rule table in .claude/project-profile.json (workflow.subagent_model); off by default, never raises, never blocks a spawn"
+}
