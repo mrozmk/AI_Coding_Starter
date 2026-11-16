@@ -47,7 +47,7 @@ nt resolve --key k1 --team alfa; ok '[ "$RC" = 2 ]' "--key with --team is usage"
 nt resolve --key 'a b'; ok '[ "$RC" = 2 ]' "a bad --key is usage"
 
 mkdir -p "$HOME/.agent-comms" && printf '%s\n' '{"version": 1, "herdr": {"enabled": true}, "imessage": {"enabled": true,
-  "recipient": "+48 600 000 000", "quiet": {"start": "22:00", "end": "07:00", "tz": "Europe/Warsaw"}}}' \
+  "recipient": "+48 600 RCPTOKEN", "quiet": {"start": "22:00", "end": "07:00", "tz": "Europe/Warsaw"}}}' \
   > "$HOME/.agent-comms/notify.json" || die "conf"
 
 # ---- a delivered herdr event: resolved, marker in the spool, the sent message untouched -------------
