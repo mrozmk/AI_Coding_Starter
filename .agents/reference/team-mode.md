@@ -379,11 +379,10 @@ record, not `done`. Free text may follow; it records `Load: start … end … (w
 
 ## 8a. PR provider
 
-`teams.pr_provider` (`azure-devops` | `github` | `none`) selects the PR layer; `none` turns it off,
-and team runs, PRs and merges refuse with a message naming the setting.
-ADO keeps `az` in `team-lib.sh`; github goes only through `.claude/lib/team-pr.sh` (needs `gh`,
-`teams.github.repo` — or the top-level `github.repo` when `teams.github` is absent — and `origin`
-matching it).
+`teams.pr_provider` (`azure-devops` | `github` | `none`) selects the PR layer; `none` turns it off, and
+team runs, PRs and merges refuse with a message naming the setting. ADO keeps `az` in `team-lib.sh`;
+github goes only through `.claude/lib/team-pr.sh` (needs `gh`, `teams.github.repo` — or the top-level
+`github.repo` when `teams.github` is absent — and `origin` matching it).
 
 - `team-pr.sh` ops: `coords`, `state`, `identity`, `readiness`, `create --draft|--ready`, `publish`,
   `body-get`, `body-set`. Exit: 0 ok · 2 usage/profile/provider · 3 refusal · 4 recoverable (network,

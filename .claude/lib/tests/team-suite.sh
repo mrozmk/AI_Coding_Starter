@@ -78,6 +78,10 @@ fi
 # into a fixture registration, and a fixture doorbell then rings that real session. A case that needs
 # a socket sets its own; `step` checks the variables are empty before every step.
 unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
+# Nor the calling session's identity — team-smoke-lib.sh smoke_init says why; this covers the
+# standalone steps and the mail part.
+unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM TEAM_RUN_ROLE TEAM_RUN_ID TEAM_RUN_ATTEMPT \
+  HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE
 
 OUT="${OUT:-${TMPDIR%/}/team-suite}"
 mkdir -p "$OUT" || { echo "team-suite: cannot create $OUT" >&2; exit 2; }
@@ -177,9 +181,15 @@ self_test() {
     bash "$HERE/team-suite.sh" --out "$t/o5" > "$t/r5" 2>&1; rc=$?
   [ "$rc" = 2 ] && grep -q 'unknown step: smoke-nosuch' "$t/r5" && [ ! -e "$t/o5" ] \
     || { echo "FAIL: an unknown TEAM_SUITE_SKIP name was not a usage error"; rm -rf "$t"; return 1; }
+  printf '%s\n' "env | grep -qE '^(HARNESS_|TEAM_RUN_TEAM=|HC_TERMINAL_ID=)' && { echo \"team-purity: FAIL\"; exit 1; }; echo \"PASS no session env\"" > "$t/team-purity.sh"
+  HARNESS_ADDRESS=x HARNESS_MAIN=/nonexistent TEAM_RUN_TEAM=x HC_TERMINAL_ID=x \
+    TEAM_SUITE_TESTS="$t" TEAM_SUITE_ONLY=purity TEAM_SUITE_SKIP= TEAM_SUITE_SELFTEST=0 \
+    bash "$HERE/team-suite.sh" --out "$t/o6" > "$t/r6" 2>&1; rc=$?
+  [ "$rc" = 0 ] && grep -q '^ok purity 1 checks' "$t/r6" \
+    || { echo "FAIL: the session env reached a step"; rm -rf "$t"; return 1; }
   rm -rf "$t"
   echo "self-test: failing step OK"; echo "self-test: 0-check step OK"; echo "self-test: real HOME OK"
-  echo "self-test: skip OK"; echo "self-test: unknown skip OK"
+  echo "self-test: skip OK"; echo "self-test: unknown skip OK"; echo "self-test: session env OK"
 }
 if [ "${TEAM_SUITE_SELFTEST:-1}" != 0 ]; then step self-test self_test; fi
 
