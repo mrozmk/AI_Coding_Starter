@@ -23,12 +23,28 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
 `bash .claude/lib/session-host.sh hint alfa-coder`. Merge: ask the supervisor ("merge alfa").
 
 - **Which mode** (`/start-team alfa ABC-801 --mode quick`, fixed per ticket, shown by `status` and
-  the team snapshot):
-  - `brainstorm` (default) — typical tickets: spec + plan, then coder → QA → wrapup;
+  the team snapshot). Each mode has a **When**, read from the ticket and the files it names, not
+  from an impression of its size:
+  - `brainstorm` (default) — typical tickets: spec + plan, then coder → QA → wrapup. **When** any
+    holds: an open design question (two or more approaches with a real trade-off the ticket does
+    not settle); or any `/quick-change` Phase 0 hit (`.claude/commands/quick-change.md` → Phase 0).
   - `quick` — small, clear changes: a Codex-reviewed short plan instead of a spec, then the same
-    coder → QA → wrapup;
+    coder → QA → wrapup. **When** all hold: the ticket states the wanted behaviour and its limits
+    (what changes, what stays); no open design question — one sane approach, or the ticket picks
+    it; no Phase 0 hit (the quick planner re-runs Phase 0 and stops with "too big for quick"
+    otherwise).
   - `cli` — very simple changes: one unattended session (`opus[1m]` / `medium`) that guards
-    eligibility, changes, runs the gates and publishes the PR itself — no QA, no wrapup.
+    eligibility, changes, runs the gates and publishes the PR itself — no QA, no wrapup. **When**
+    everything `quick` requires holds (the cli role re-runs Phase 0 as its eligibility guard), and:
+    the change is text or configuration that no script reads as behaviour (docs, comments,
+    wording, a value the ticket names); no test to add or change; nothing in the pipeline's own
+    scripts, prompts, hooks or guards (`.claude/lib/**`, `.claude/hooks/**`, `.claude/team/**`,
+    `.claude/commands/**` and the `.agents/reference/` contracts they cite).
+
+  Pick the lightest mode whose **When** holds; unsure between two → the heavier. A literal
+  `/start-team` without `--mode` still starts `brainstorm`; when the Supervisor starts a ticket
+  itself (no mode from the Operator), it passes the lightest allowed mode as `--mode`. The start
+  report names the mode and the criterion that decided it (`/start-team` step 7).
 
 - **Model and effort per role** come from `.claude/team/roles.json` (default: Opus [1M] for all; effort
   planner high, coder medium, qa high). The runner reads it from the main checkout, so a local edit

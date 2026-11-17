@@ -61,9 +61,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `.claude/settings*.json`** — the auto-mode classifier refuses that as self-modification.
    `MODE` = the word after `--mode`, also taken out before the positional parse; default
    `brainstorm`. A value outside `brainstorm|quick|cli`, or `--mode` with no value → stop and say
-   the allowed values. Which mode: brainstorm = typical tickets; quick = small clear changes (a
-   Codex-reviewed short plan, then coder → QA → wrapup); cli = very simple changes (one session,
-   Opus/medium, no QA).
+   the allowed values. Which mode: the criteria in `.agents/reference/team-pipeline.md` → Which
+   mode. Without `--mode` this command starts `brainstorm` and never classifies.
    `--brief "<text>"` / `--brief-file <path>` are taken out the same way, before the positional
    parse — for `TRACKER=none` they *are* the ticket (there is no key to name).
    `FOLLOW` = the key after `--follow-up-of` (the ticket this one follows up; a leading `#`
@@ -218,7 +217,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `bash .claude/lib/session-host.sh hint <TEAM>-<role>` names how to look at any role.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
-   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE>`, "Herdr: the team has its own tab `<TEAM>` (TeamLead left, the working stage right) — talk to the planner there; tmux: the
+   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE> — <reason>` (one
+   sentence: the Which-mode criterion that decided it; "set by the Operator (`--mode`)"; "default —
+   no `--mode`"; on a RESUME "fixed per ticket"), "Herdr: the team has its own tab `<TEAM>` (TeamLead left, the working stage right) — talk to the planner there; tmux: the
    runner's `attach:` line says how to reach the planner (detach with Ctrl-b d)", and that coder/QA run alone, the
    team's TeamLead answers what it may, and only a decision that needs the Operator notifies them
    (`notify.sh`, when a channel is on in `~/.agent-comms/notify.json`; otherwise it waits in
