@@ -62,7 +62,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `MODE` = the word after `--mode`, also taken out before the positional parse; default
    `brainstorm`. A value outside `brainstorm|quick|cli`, or `--mode` with no value → stop and say
    the allowed values. Which mode: the criteria in `.agents/reference/team-pipeline.md` → Which
-   mode; when the Operator named no mode, pass the lightest mode they allow as `--mode`.
+   mode. Without `--mode` this command starts `brainstorm` and never classifies.
    `--brief "<text>"` / `--brief-file <path>` are taken out the same way, before the positional
    parse — for `TRACKER=none` they *are* the ticket (there is no key to name).
    `FOLLOW` = the key after `--follow-up-of` (the ticket this one follows up; a leading `#`

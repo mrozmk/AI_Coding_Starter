@@ -27,21 +27,19 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   from an impression of its size:
   - `brainstorm` (default) — typical tickets: spec + plan, then coder → QA → wrapup. **When** any
     holds: an open design question (two or more approaches with a real trade-off the ticket does
-    not settle); several modules or layers; the ticket does not say what "done" is; or a
-    `/quick-change` Phase 0 hit (sensitive path, schema or migration, new dependency, public
-    contract, design reference — `.claude/commands/quick-change.md` → Phase 0).
+    not settle); or any `/quick-change` Phase 0 hit (`.claude/commands/quick-change.md` → Phase 0).
   - `quick` — small, clear changes: a Codex-reviewed short plan instead of a spec, then the same
     coder → QA → wrapup. **When** all hold: the ticket states the wanted behaviour and its limits
     (what changes, what stays); no open design question — one sane approach, or the ticket picks
-    it; one module or layer; no Phase 0 hit (the quick planner re-runs Phase 0 and stops with
-    "too big for quick" otherwise).
+    it; no Phase 0 hit (the quick planner re-runs Phase 0 and stops with "too big for quick"
+    otherwise).
   - `cli` — very simple changes: one unattended session (`opus[1m]` / `medium`) that guards
     eligibility, changes, runs the gates and publishes the PR itself — no QA, no wrapup. **When**
-    all hold: the change is text or configuration that no script reads as behaviour (docs,
-    comments, wording, a value the ticket names); no test to add or change; nothing in the
-    pipeline's own scripts, prompts, hooks or guards (`.claude/lib/**`, `.claude/hooks/**`,
-    `.claude/team/**`, `.claude/commands/**` and the `.agents/reference/` contracts they cite);
-    no Phase 0 hit (the cli role re-runs Phase 0 as its eligibility guard).
+    everything `quick` requires holds (the cli role re-runs Phase 0 as its eligibility guard), and:
+    the change is text or configuration that no script reads as behaviour (docs, comments,
+    wording, a value the ticket names); no test to add or change; nothing in the pipeline's own
+    scripts, prompts, hooks or guards (`.claude/lib/**`, `.claude/hooks/**`, `.claude/team/**`,
+    `.claude/commands/**` and the `.agents/reference/` contracts they cite).
 
   Pick the lightest mode whose **When** holds; unsure between two → the heavier. A literal
   `/start-team` without `--mode` still starts `brainstorm`; when the Supervisor starts a ticket
