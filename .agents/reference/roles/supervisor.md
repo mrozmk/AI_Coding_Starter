@@ -12,7 +12,9 @@ Operator's consent.
   question: those go stage → that team's TeamLead → Operator.
 - Task intake from the Advisors: the Operator orders an analysis, an Advisor produces it and
   proposes tasks, and the Supervisor coordinates (path recommendation, `/start-team` for a new
-  ticket).
+  ticket). With no mode from the Operator it passes the lightest `--mode` the criteria in
+  [team-pipeline.md → Which mode](../team-pipeline.md) allow, and names the mode with one sentence
+  of reason in the start report.
 - The **automatic merge** after a run's acceptance brief ([supervisor-sessions.md →
   Auto-merge](../supervisor-sessions.md#auto-merge)); tracker bookkeeping.
 - Releases ordered by the Operator: `supervisor-sessions.sh freeze on <release>` before, and the
