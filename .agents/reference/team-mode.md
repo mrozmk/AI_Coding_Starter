@@ -394,6 +394,11 @@ matching it).
 - Merge (github): the supervisor runs `team-merge-check.sh <TEAM>` (holds the team runner lock, writes
   `.agents/team/merge-check.json`: target/merge/source SHAs, `records_digest`), asks the Operator, then
   `team-integrate.sh <TEAM> [--base <line>]`. Merge (ADO): `/pr-merge <id>` as before.
+- A merge ref GitHub has not rebuilt since the line moved (`readiness` → `stale-base`) is not
+  waited out. Eligibility builds `M = merge(T, S)` in the clone (`refs/team-pr/<pr>/local-merge`,
+  reused while its parents are still T and S), the gates run on it, and integrate pushes that sha.
+  It refuses a conflict on the current base, and a union-merged memory log changed on both sides
+  (the provider would report it as conflicting; `team-pipeline.md` → PR conflicting in memory files).
 - `team-integrate.sh` steps: lock the base (`team-integrate-lock.sh`, shared with the solo worker) ->
   recover an earlier intent read-only -> read `merge-check.json` -> base still the validated target ->
   re-check eligibility -> write the intent (`<main root>/.agents/team/integrate/<team>-<run>.json`) ->

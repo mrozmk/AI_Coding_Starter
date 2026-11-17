@@ -40,19 +40,111 @@ team_records_digest() {  # <td> <run>
   } | LC_ALL=C sort | shasum -a 256 | awk '{print $1}'
 }
 
+# Usage: team_local_merge <clone> <pr> <line> <branch> <T> <S> → prints the sha of M = merge(T, S)
+#   kept under `refs/team-pr/<pr>/local-merge` in the clone; rc 3 with the reason on stderr.
+# Reused while its FULL parent list is still exactly `T S` AND its tree is the merge-tree result,
+# so merge-check and integrate (two calls, minutes apart) agree on one sha; a fresh commit-tree would
+# carry new timestamps. The guards and merge-tree run on every call: a ref is writable by anything in
+# the clone, so only a commit whose content IS merge(T, S) may be reused. Built with
+# merge-tree/commit-tree, so the clone's worktree and index are never touched.
+team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
+  local clone="$1" pr="$2" line="$3" branch="$4" t="$5" s="$6"
+  local ref="refs/team-pr/$pr/local-merge" have mb dt ds both attrs union tree m mrc=0
+  # T is the live base tip from ls-remote; the clone may not have fetched it yet.
+  git -C "$clone" cat-file -e "$t^{commit}" 2>/dev/null \
+    || git -C "$clone" fetch --quiet origin "refs/heads/$line" 2>/dev/null || true
+  git -C "$clone" cat-file -e "$t^{commit}" 2>/dev/null \
+    && git -C "$clone" cat-file -e "$s^{commit}" 2>/dev/null \
+    || { echo "error: PR #$pr: $line tip $t or head $s is not in $clone — cannot build the local merge" >&2
+         return 3; }
+  mb="$(git -C "$clone" merge-base "$t" "$s")" \
+    || { echo "error: PR #$pr: no merge base of $t and $s" >&2; return 3; }
+  # Union merge would splice overlapping memory edits silently, while the provider's merge reports
+  # them as conflicting (team-pipeline.md): refuse instead of testing a merge GitHub would not make.
+  dt="$(git -C "$clone" diff --no-renames --name-only "$mb" "$t")" \
+    && ds="$(git -C "$clone" diff --no-renames --name-only "$mb" "$s")" \
+    || { echo "error: PR #$pr: cannot diff against the merge base $mb" >&2; return 3; }
+  # comm must collate like the sort that fed it, or it silently misses common lines.
+  both="$(LC_ALL=C comm -12 <(printf '%s\n' "$dt" | LC_ALL=C sort) <(printf '%s\n' "$ds" | LC_ALL=C sort) \
+    | grep -v '^$' || true)"
+  if [ -n "$both" ]; then
+    attrs="$(printf '%s\n' "$both" | git -C "$clone" check-attr --stdin --source "$t" merge)" \
+      || { echo "error: PR #$pr: cannot read the merge attributes of $t" >&2; return 3; }
+    union="$(printf '%s\n' "$attrs" | sed -n 's/: merge: union$//p')"
+    [ -z "$union" ] \
+      || { echo "error: PR #$pr and $line both changed union-merged memory logs: $(echo $union)" \
+             "— the provider reports this as conflicting; follow team-pipeline.md → PR conflicting in memory files" >&2
+           return 3; }
+  fi
+  tree="$(git -C "$clone" merge-tree --write-tree "$t" "$s" 2>/dev/null)" || mrc=$?
+  case "$mrc" in
+    0) ;;
+    1) echo "error: PR #$pr conflicts with $line on the current base ($t) — resolve it on the PR" >&2
+       return 3 ;;
+    *) echo "error: PR #$pr: git merge-tree failed (exit $mrc)" >&2; return 3 ;;
+  esac
+  have="$(git -C "$clone" rev-parse -q --verify "$ref^{commit}" 2>/dev/null || true)"
+  if [ -n "$have" ] \
+    && [ "$(git -C "$clone" rev-list --parents -n 1 "$have" 2>/dev/null)" = "$have $t $s" ] \
+    && [ "$(git -C "$clone" rev-parse -q --verify "$have^{tree}" 2>/dev/null)" = "$tree" ]; then
+    printf '%s\n' "$have"; return 0
+  fi
+  m="$(git -C "$clone" commit-tree "$tree" -p "$t" -p "$s" -m "Merge pull request #$pr from $branch")" \
+    || { echo "error: PR #$pr: cannot create the local merge commit" >&2; return 3; }
+  git -C "$clone" update-ref "$ref" "$m" \
+    || { echo "error: PR #$pr: cannot store $ref" >&2; return 3; }
+  printf '%s\n' "$m"
+}
+
+# Usage: team_merge_commit_now <clone> <pr> <line> <branch>
+#   rc 0 · 3 refusal (conflict, incomplete readiness, local merge refused) · 4 recomputing
+#   The commit the integrator would push right now, from `team-pr.sh readiness`: GitHub's under
+#   `refs/team-pr/<pr>/merge` in the clone, or, when that ref is stale, the local merge under
+#   `refs/team-pr/<pr>/local-merge`. Resets, then sets IE_SRC / IE_TGT / IE_MERGE / IE_MERGE_REF.
+team_merge_commit_now() {
+  local clone="$1" pr="$2" line="$3" branch="$4" out rc=0 merge
+  IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
+  out="$( cd "$clone" && bash .claude/lib/team-pr.sh readiness "$pr" )" || rc=$?
+  # A refusal before any ref is read (fork, closed PR) prints to stderr only — no JSON to parse.
+  merge=unknown
+  [ -z "$out" ] || merge="$(jq -r '.merge // "unknown"' <<<"$out" 2>/dev/null || echo unknown)"
+  # readiness reports `conflict` only with a non-zero exit.
+  [ "$merge" != conflict ] \
+    || { echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3; }
+  if [ "$rc" != 0 ] && [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" != stale-base ]; then
+    echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
+    return 4
+  fi
+  IE_TGT="$(jq -r '.target_sha // ""' <<<"$out")"
+  IE_SRC="$(jq -r '.source_sha // ""' <<<"$out")"
+  [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] \
+    || { echo "error: readiness of PR #$pr is incomplete: $out" >&2; return 3; }
+  if [ "$rc" = 0 ]; then
+    IE_MERGE="$(jq -r '.merge_sha // ""' <<<"$out")"; IE_MERGE_REF="refs/team-pr/$pr/merge"
+    [ -n "$IE_MERGE" ] || { echo "error: readiness of PR #$pr is incomplete: $out" >&2; return 3; }
+  else
+    IE_MERGE="$(team_local_merge "$clone" "$pr" "$line" "$branch" "$IE_TGT" "$IE_SRC")" || return 3
+    IE_MERGE_REF="refs/team-pr/$pr/local-merge"
+    echo "PR #$pr merge ref is stale (built on $(jq -r .merge_base_sha <<<"$out"), $line is at" \
+      "$IE_TGT) — testing the local merge $IE_MERGE instead" >&2
+  fi
+}
+
 # Usage: team_integration_eligible <team> <clone> <run> <mode> <pr>
 #   rc 0 eligible · 3 refusal · 4 recoverable (GitHub still recomputing the merge ref)
-#   sets IE_SRC / IE_TGT / IE_MERGE from `team-pr.sh readiness`.
+#   sets IE_SRC / IE_TGT / IE_MERGE from `team-pr.sh readiness`, and IE_MERGE_REF to the clone ref
+#   carrying IE_MERGE. A merge ref GitHub has not rebuilt since the line moved (`stale-base`) is not
+#   waited out: M = merge(T, S) is built locally (team_local_merge) and that is what gets tested.
 #
 # Run TWICE on the same run: by merge-check before the gates, and by integrate immediately before
 # the push, under the integration lock. The second call is what makes the gate verdict mean
 # anything — between the two, a role could have restarted, the clone could have gone dirty, or
 # GitHub could have rebuilt the merge ref.
-IE_SRC=""; IE_TGT=""; IE_MERGE=""
+IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
 team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   local team="$1" clone="$2" run="$3" mode="$4" pr="$5"
-  local td="$clone/.agents/team" rd branch line role rec out rc=0 merge
-  IE_SRC=""; IE_TGT=""; IE_MERGE=""
+  local td="$clone/.agents/team" rd branch line role rec out
+  IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
   ie_no() { echo "error: $1" >&2; return 3; }
   [ -n "$run" ] || { ie_no "no run id for team $team — nothing to integrate"; return 3; }
   rd="$td/runs/$(team_ie_run_ref "$td" "$run")"
@@ -110,30 +202,8 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   [ "$(jq -r '.draft' <<<"$out")" = false ] \
     || { ie_no "PR #$pr is still a draft — publish it first"; return 3; }
 
-  # (5) readiness: the tested merge commit, under `refs/team-pr/<pr>/merge` in the clone.
-  rc=0
-  out="$( cd "$clone" && bash .claude/lib/team-pr.sh readiness "$pr" )" || rc=$?
-  # A refusal before any ref is read (fork, closed PR) prints to stderr only — no JSON to parse.
-  merge=unknown
-  [ -z "$out" ] || merge="$(jq -r '.merge // "unknown"' <<<"$out" 2>/dev/null || echo unknown)"
-  if [ "$rc" != 0 ]; then
-    case "$merge" in
-      conflict) echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3 ;;
-      *) if [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" = stale-base ]; then
-           echo "error: PR #$pr merge ref was built on $(jq -r .merge_base_sha <<<"$out"), but $line is" \
-             "at $(jq -r .target_sha <<<"$out") — GitHub has not rebuilt it since $line moved." \
-             "Wait and rerun merge-check, or close and reopen PR #$pr (Operator decision) to force it" >&2
-         else
-           echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
-         fi
-         return 4 ;;
-    esac
-  fi
-  IE_TGT="$(jq -r '.target_sha' <<<"$out")"
-  IE_MERGE="$(jq -r '.merge_sha' <<<"$out")"
-  IE_SRC="$(jq -r '.source_sha' <<<"$out")"
-  [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] && [ -n "$IE_MERGE" ] \
-    || { ie_no "readiness of PR #$pr is incomplete: $out"; return 3; }
+  # (5) readiness: the tested merge commit.
+  team_merge_commit_now "$clone" "$pr" "$line" "$branch" || return $?
 }
 
 # Usage: team_merge_check_write <file> <run> <pr> <repo> <head_ref> <base_ref> <source_sha>

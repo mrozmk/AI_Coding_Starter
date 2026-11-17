@@ -115,7 +115,8 @@ ls_remote() {  # ls_remote <ref> → the sha, empty when the ref is absent
 }
 
 # Printed on EVERY outcome, including the refusals: the caller logs what it saw.
-# `reason` is diagnostic only — callers branch on `merge` and the exit code. `stale-base`: the merge
+# Callers branch on `merge` and the exit code; `reason` is diagnostic, except that eligibility
+# (team-integrate-lib.sh) builds the merge locally on `stale-base`. `stale-base`: the merge
 # ref we read and fetched is one commit, on the right head, but its parent 1 (`merge_base_sha`) is
 # not the target tip — GitHub has not rebuilt it since the target moved.
 emit_readiness() {  # emit_readiness <merge> <target_sha> <merge_sha> <source_sha> <parents_ok> <reason> [<p1>]

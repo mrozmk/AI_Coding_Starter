@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Supervisor's merge check for a team PR: wrapup revision = PR source, memory-only after QA,
-# then build + test-gate on ADO's merge ref.
+# then build + test-gate on the provider's merge ref. github: a merge ref not rebuilt since the line
+# moved is replaced by the merge commit built locally (team-integrate-lib.sh, team_local_merge).
 #
 # Usage: bash .claude/lib/team-merge-check.sh <team> [--memory-reviewed]
 #   e.g. bash .claude/lib/team-merge-check.sh alfa
@@ -13,11 +14,12 @@
 # Holds the machine gate lock (gate-lock.sh) from after the local refusals to the end of the test
 # gate; a lock timeout is exit 3.
 # Exit: 0 VERDICT ok · 1 VERDICT fail or dirty clone
-#   3 refused (identity, stale merge, moved tips, records changed during the check, gate lock)
+#   3 refused (identity, stale merge, moved tips, records changed during the check, gate lock,
+#     a local merge that conflicts or overlaps union-merged memory logs)
 #   4 recalculating (github merge ref pending)
 set -euo pipefail
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 case "${2:-}" in "") REVIEWED=0 ;; --memory-reviewed) REVIEWED=1 ;; *) usage ;; esac
 TEAM="$1"
@@ -125,7 +127,8 @@ fi
 
 if [ "$TEAM_PR_PROVIDER" = github ]; then
   # Same check integrate runs again under the lock, so the gate verdict and the push agree on what
-  # "eligible" means. It also leaves the tested merge commit under `refs/team-pr/<pr>/merge`.
+  # "eligible" means. It also leaves the tested merge commit under $IE_MERGE_REF (GitHub's
+  # `refs/team-pr/<pr>/merge`, or `refs/team-pr/<pr>/local-merge` when that one is stale).
   rc=0
   team_integration_eligible "$TEAM" "$CLONE" "$RUN" "$MODE" "$pr" || rc=$?
   case "$rc" in
@@ -133,7 +136,7 @@ if [ "$TEAM_PR_PROVIDER" = github ]; then
     4) die 4 "merge ref recalculating — rerun later" ;;
     *) die 3 "PR #$pr is not eligible for a merge check" ;;
   esac
-  merge_commit="$IE_MERGE"
+  merge_commit="$IE_MERGE"; merge_ref="$IE_MERGE_REF"
   # readiness read the tips itself; if they disagree with ours, something moved mid-check already.
   [ "$IE_SRC" = "$SRC" ] && [ "$IE_TGT" = "$TGT" ] \
     || die 3 "PR head/base differ from origin tips — rerun"
@@ -157,13 +160,13 @@ fi
 
 [ -z "$(git status --porcelain)" ] || die 1 "clone $CLONE is dirty — refusing to switch"
 if [ "$TEAM_PR_PROVIDER" = github ]; then
-  # The ref `refs/team-pr/<pr>/merge` is only the delivery vehicle — readiness fetched the commit
+  # The ref is only the delivery vehicle — readiness fetched the commit (or eligibility built it)
   # into a ref we own (FETCH_HEAD is global and any concurrent fetch rewrites it). What we check
   # out is the IMMUTABLE SHA: a ref is mutable, so checking out the ref could put the gates on an
   # M0 while this verdict records an M1.
-  echo "tested merge commit: $merge_commit (via refs/team-pr/$pr/merge)"
-  [ "$(git rev-parse -q --verify "refs/team-pr/$pr/merge" || true)" = "$merge_commit" ] \
-    || die 4 "refs/team-pr/$pr/merge is not $merge_commit — rerun"
+  echo "tested merge commit: $merge_commit (via $merge_ref)"
+  [ "$(git rev-parse -q --verify "$merge_ref" || true)" = "$merge_commit" ] \
+    || die 4 "$merge_ref is not $merge_commit — rerun"
   MERGE_OBJ="$merge_commit"
 else
   MERGE_OBJ=FETCH_HEAD
@@ -253,12 +256,11 @@ if [ "$TEAM_PR_PROVIDER" = github ]; then
   # gates ran on a workflow state that no longer exists.
   [ "$(team_records_digest "$TD" "$RUN")" = "$digest0" ] \
     || die 3 "void: records changed during check — rerun"
-  # GitHub may rebuild the synthetic merge ref while the gates run (Amendment 8); the commit we
-  # tested would then no longer be the one the integrator could push.
-  rc=0
-  rr="$(bash .claude/lib/team-pr.sh readiness "$pr")" || rc=$?
-  [ "$rc" = 0 ] && [ "$(jq -r '.merge_sha' <<<"$rr")" = "$merge_commit" ] \
-    || die 4 "merge ref recalculated during check — rerun"
+  # Amendment 8: the commit the integrator would push now must still be the tested one — GitHub may
+  # have rebuilt its ref, or the local merge may no longer come out the same (the rest of
+  # eligibility is integrate's own re-check).
+  team_merge_commit_now "$CLONE" "$pr" "$LINE" "$BRANCH" || true
+  [ "$IE_MERGE" = "$merge_commit" ] || die 4 "merge ref recalculated during check — rerun"
 fi
 
 verdict=ok
