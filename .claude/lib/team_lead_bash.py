@@ -13,9 +13,8 @@ Refused:
     own those files. Protected: everything under the clone's and the main checkout's
     .agents/team/ except the lead's own files under runs/<run>/ (and its round dirs r<n>/), the clone's
     .claude/ (the scripts and guards themselves) and any *.jsonl (a stage transcript). The owning
-    scripts count only when run from the clone's .claude/lib/; so does /prime's closing
-    `bash .claude/lib/costs/runtime-mark.sh stage end <name>` (exactly that form, nothing else
-    under costs/). A redirection target, a `bash -c` string and a path inside a
+    scripts count only when run from the clone's .claude/lib/ (nothing under costs/: the lead
+    runs no stage command). A redirection target, a `bash -c` string and a path inside a
     word (`open('…/answers.md','w')`) count; a path behind $VAR or a backtick cannot be resolved
     and is refused when it names .agents/team.
 Best effort on command text: a path built at run time can pass (team-lead.md §7, limits).
@@ -38,7 +37,6 @@ SCRIPTS = {"team-verdict.sh", "team-answer.sh", "team-lead.sh", "team-tracker.sh
 # Commands that only read their file operands (sort -o, uniq <out>, sed -i write, so they are not here).
 READERS = {"cat", "head", "tail", "less", "jq", "grep", "egrep", "rg", "wc", "ls", "diff", "stat",
            "file", "cut", "shasum", "md5", "test", "[", "realpath", "cd", "pushd"}
-STAGE_NAME = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 STAGES = re.compile(r"^[a-z0-9-]+-(planner|coder|qa|wrapup|cli)$")
 TEAM_TEXT = re.compile(r"[A-Za-z0-9_./~${}`*?-]*\.agents/team(/[A-Za-z0-9_./~${}`*?<>-]*)?")
 
@@ -100,7 +98,6 @@ class Paths:
         # Resolved: a clone may link its .claude/ (or lib/) elsewhere.
         self.claude = os.path.realpath(os.path.join(self.clone, ".claude"))
         self.lib = os.path.realpath(os.path.join(self.clone, ".claude", "lib"))
-        self.mark = os.path.realpath(os.path.join(self.lib, "costs", "runtime-mark.sh"))
 
     def protected(self, full):
         if full.endswith(".jsonl") or c.under(full, [self.claude]):
@@ -152,10 +149,6 @@ def check(clone, run, main, cmd):
         prog = w[1] if name in ("bash", "sh", "node") and len(w) > 1 else w[0] if w else ""
         script = os.path.basename(prog) in SCRIPTS and os.path.realpath(
             os.path.join(paths.clone, prog)) == os.path.join(paths.lib, os.path.basename(prog))
-        # /prime's closing cost mark (a no-op the stage hook records): this one file, this one form.
-        script = script or (name == "bash" and len(w) == 5 and w[2:4] == ["stage", "end"]
-                            and STAGE_NAME.match(w[4]) and os.path.realpath(
-                                os.path.join(paths.clone, prog)) == paths.mark)
         # One word alone is a redirection operand (`> file`) or the file run as a program.
         if script or (name in READERS and len(words) > 1):
             continue
