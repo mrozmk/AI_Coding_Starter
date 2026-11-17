@@ -132,6 +132,7 @@ echo x > "\$CLAUDE_PROJECT_DIR/$R/answers.md"
 sed -i s/x/y/ .claude/hooks/guard-teamlead-bash.sh
 bash /tmp/team-answer.sh x > $R/answers.md
 bash .claude/lib/team-answer.sh alfa coder yes > $R/answers.md
+bash .claude/lib/costs/runtime-mark.sh stage end prime
 bash .claude/lib/costs/runtime-mark.sh stage end prime --session x
 bash .claude/lib/costs/runtime-mark.sh session --provider claude --source team-run
 bash .claude/lib/costs/runtime-mark.sh stage end prime > .claude/lib/costs/x
@@ -175,7 +176,6 @@ bash .claude/lib/team-inbox.sh --main $MAIN done alfa $MAIN/.agents/team/inbox/a
 bash .claude/lib/team-inbox.sh --main $MAIN list alfa
 hc read t1
 git status
-bash .claude/lib/costs/runtime-mark.sh stage end prime
 EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 2 "only its own team's inbox done" "(e2) inbox refused: $c"
@@ -189,6 +189,10 @@ EOF2
 lhook $G "$(bash_p 'cd "$X" && echo > answers.md')"; expect 2 "cannot be resolved" "(e2) a cd behind a variable"
 lhook $G "$(bash_p "git status" sid-stale)"; expect 2 "identity not current" "(e2) stale identity fails closed"
 shook $G "$(bash_p "echo x >> $R/answers.md" sid-coder-1)"; expect 0 "" "(e2) a stage passes"
+# The lead's bootstrap is a fixed read set, not /prime — so no stage marker to allow above.
+BOOT="$(sed -n '/^## Bootstrap/,/^## Every turn/p' "$SRC/.claude/team/prompts/teamlead.md")"
+case "$BOOT" in *'Run `/prime`'*) fail "(e2) the lead's bootstrap still runs /prime" ;; esac
+case "$BOOT" in *'.agents/memory/project-brief.md'*) ;; *) fail "(e2) the lead's bootstrap does not name the project brief" ;; esac
 echo "team-smoke-20: (e2) Bash guard OK"
 
 # ---- (f) the global-role hooks stay silent in a clone ------------------------------------------

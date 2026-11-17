@@ -69,7 +69,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `order-brief.md` | `team-brief.sh write` | the order (team-mode.md §2) |
 | `runs/<run>/order-brief.md` | runner at launch | the frozen copy the lead reads |
 | `teamlead.json` | runner at launch; `session-registry.sh` (session id) | `team, run, session_id, launched_at, launch, model, effort, permission_mode, main_root` |
-| `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer, its write guard (`guard-teamlead-write.sh`: the file tools reach only the lead's own files under `runs/<run>/` — notes, gate findings, rework orders, digest, opinions, blind check, acceptance brief — and the scratchpad) and its Bash guard (`guard-teamlead-bash.sh`, rules in `team_lead_bash.py`: no command that writes a script-owned file, the clone's `.claude/` or a transcript, and no key or text into a session; the owning scripts in the clone's `.claude/lib/` pass, and of `costs/` only `/prime`'s closing `bash .claude/lib/costs/runtime-mark.sh stage end <name>`, which the stage hook records against the lead's registered session) |
+| `teamlead.settings.json` | `team-lead.sh materialize` (mode 600) | the lead's permission layer, its write guard (`guard-teamlead-write.sh`: the file tools reach only the lead's own files under `runs/<run>/` — notes, gate findings, rework orders, digest, opinions, blind check, acceptance brief — and the scratchpad) and its Bash guard (`guard-teamlead-bash.sh`, rules in `team_lead_bash.py`: no command that writes a script-owned file, the clone's `.claude/` or a transcript, and no key or text into a session; the owning scripts in the clone's `.claude/lib/` pass; nothing under `costs/` does — the lead runs no stage command, and the runner registers its session for costs) |
 | `<main>/.agents/team/registry/<team>-lead.reg.json` | `session-registry.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target; removed on relaunch, at `end` and by `team-next.sh` / `team-remode.sh` |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
 | `lead-dead`, `relaunch-lead`, `send-lead.log` | runner | death reported once, relaunch request, skipped doorbells |
@@ -208,7 +208,7 @@ plan gate is the first lead check.
 
 The lead loads project knowledge in three layers:
 
-1. **Always:** `/prime` quick at bootstrap — nothing wholesale beyond it.
+1. **Always, at bootstrap:** the order brief, this contract and `.agents/memory/project-brief.md` (skipped when absent or `status: empty`); `CLAUDE.md` is already in context and is not re-read. Nothing else is read at bootstrap — no `/prime`: its command text, `index.md`, `architecture.md` and listings serve a session that writes code.
 2. **Per task: the constraint digest.** At the plan gate one distillation sub-agent reads
    `.agents/memory/decisions.md` and the domain files `index.md` routes for the paths the plan
    touches (`.claude/memory-domains.json` rules, the same lookup as `guard-memory.sh`:
@@ -217,7 +217,7 @@ The lead loads project knowledge in three layers:
    applies. The lead saves it verbatim as `runs/<run>/digest.md` (`scope:` and `made_at:` header)
    and uses it for the rest of the run: gates, answers, acceptance. The brief is in the role prompt
    (`teamlead.md` → Constraint digest).
-3. **Never:** `/prime full` or the whole `domain/*`.
+3. **Never:** `/prime` (either mode) or the whole `domain/*`.
 
 When it is required: always in brainstorm (decisions.md alone is input); in quick only when a path
 the plan names maps to a routed domain. A project without `memory-domains.json` has no routed
