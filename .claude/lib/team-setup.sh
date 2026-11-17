@@ -4,7 +4,8 @@
 # team hooks — the question and memory guards, the attention hook, the team-watch SessionStart
 # re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` and
 # the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
-# `permissions.allow` / Operator `ask` rules into `settings.json`, ignores `.agents/team/` and the fallback mail
+# `permissions.allow` / Operator `ask` rules into `settings.json`, the three trunk writers omitted
+# and removed under the profile's `workflow.team_merge: auto`, ignores `.agents/team/` and the fallback mail
 # box `.agents/agent-mail/`, and seeds `.claude/codex-profile` and `.claude/claude-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge. A `retired` file is deleted only while it is byte for
 # byte a version the starter shipped; a changed one is a `conflict`, never deleted.
@@ -383,8 +384,11 @@ hook_merge I UserPromptSubmit "$H/inbox-count.sh\"" '[]' false '' '{"timeout":3}
 # L's own check sees its SessionStart entry first).
 sync_merge E "$H/session-registry.sh\"" 5 SessionEnd ''
 
+# The owner's /setup:start answer; a missing or unreadable profile keeps the prompts (confirm).
+TEAM_MERGE="$(jq -r '.workflow.team_merge // "confirm"' "$TARGET/.claude/project-profile.json" 2>/dev/null || echo confirm)"
+
 # The roles run these from the clones; anything wider stays the project's own decision.
-NEW="$(printf '%s' "$NEW" | jq '
+NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
   ["Bash(bash .claude/lib/team-*.sh*)", "Bash(git switch *)", "Bash(git show *)",
    "Bash(gh pr view*)", "Bash(gh issue view*)", "Bash(bash .claude/lib/codex-bg.sh*)",
    "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
@@ -405,8 +409,11 @@ NEW="$(printf '%s' "$NEW" | jq '
    "Bash(bash .claude/lib/costs/runtime-mark.sh:*)"] as $want
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
+  # Under workflow.team_merge=auto (the owner answer to /setup:start) the three are left out and
+  # removed — the roles in the clones then lose the prompt too.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
-     "Bash(bash .claude/lib/team-merge-check.sh*)",
+     "Bash(bash .claude/lib/team-merge-check.sh*)"] as $merge
+  | ((if $tm == "auto" then [] else $merge end) + [
      # The channel step writes the machine registry and boxes outside the repo.
      "Bash(bash .claude/lib/team-mail-setup.sh*)",
      # The operator kit is installed outside the repo by the Operator only.
@@ -420,14 +427,14 @@ NEW="$(printf '%s' "$NEW" | jq '
      # the role-session Operator actions: clearing a freeze, the rollback, taking a window (here).
      "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
      "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
-     "Bash(bash .claude/lib/roles.sh here *)"] as $ask
+     "Bash(bash .claude/lib/roles.sh here *)"]) as $ask
   # Rules this installer added for the launcher verbs step 9a removed (exact strings only; a rule
   # worded any other way stays).
   | (["status*", "start *", "stop *", "up*", "here *"]
      | map("Bash(bash .claude/lib/supervisor-sessions.sh " + . + ")")) as $gone
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) - $gone)
-  | .permissions.ask = ((.permissions.ask // []) - $gone)
+  | .permissions.ask = ((.permissions.ask // []) - $gone - (if $tm == "auto" then $merge else [] end))
   | .permissions.allow = ((.permissions.allow // []) + ($want - (.permissions.allow // [])))
   | .permissions.ask = ((.permissions.ask // []) + ($ask - (.permissions.ask // [])))')"
 

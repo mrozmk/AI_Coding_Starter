@@ -786,4 +786,39 @@ fake_setup "$T"; [ "$RC" = 2 ] && has "still exists in the starter" || fail "26:
 printf 'own .claude/team/ok\nretired .claude/commands/nope.md not-a-blob-id\n' > "$FS/.claude/team/manifest.txt"
 fake_setup "$T"; [ "$RC" = 2 ] && has "is not a blob id" || fail "26: a bad blob id is not drift"
 
+# ---- (27) workflow.team_merge: auto leaves the trunk writers off ask, confirm puts them back ---
+T=$(mktarget tm)
+S="$T/.claude/settings.json"
+P="$T/.claude/project-profile.json"
+TM_RULES="team-integrate.sh team-integrate-lock.sh team-merge-check.sh"
+tm_count() {  # tm_count <expected> <case> — each trunk writer on ask exactly <expected> times
+  local r
+  for r in $TM_RULES; do
+    [ "$(jq --arg a "Bash(bash .claude/lib/$r*)" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = "$1" ] \
+      || fail "27: $2: $r on ask is not $1 time(s)"
+  done
+}
+echo '{"teams":{},"workflow":{"team_merge":"confirm"}}' > "$P"
+setup "$T"
+[ "$RC" != 2 ] && [ "$RC" != 3 ] || fail "27: confirm install exited $RC"
+tm_count 1 confirm
+echo '{"teams":{},"workflow":{"team_merge":"auto"}}' > "$P"
+setup "$T"
+[ "$RC" != 2 ] && [ "$RC" != 3 ] || fail "27: auto run exited $RC"
+tm_count 0 auto
+[ "$(jq '[.permissions.ask[] | select(. == "Bash(bash .claude/lib/team-mail-setup.sh*)")] | length' "$S")" = 1 ] \
+  || fail "27: auto dropped the channel step from ask"
+[ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/team-*.sh*)")] | length' "$S")" = 1 ] \
+  || fail "27: auto changed the team-*.sh allow"
+setup "$T"
+has "kept	generated	.claude/settings.json" || fail "27: the second auto run changed settings.json"
+tm_count 0 "auto rerun"
+echo '{"teams":{},"workflow":{"team_merge":"confirm"}}' > "$P"
+setup "$T"
+tm_count 1 "back to confirm"
+echo '{"teams":{}}' > "$P"
+setup "$T"
+[ "$RC" != 2 ] && [ "$RC" != 3 ] || fail "27: default run exited $RC"
+tm_count 1 "no workflow key (default)"
+
 echo "team-setup-smoke: OK"

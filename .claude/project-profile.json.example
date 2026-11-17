@@ -23,6 +23,8 @@
     "protected": [],
     "_merge_doc": "squash | merge-commit | ff. `ff` only for the direct-push override; otherwise the preset's implied value.",
     "merge": "ff",
+    "_team_merge_doc": "confirm | auto. Asked by /setup:start (Screen 2, Q7); absent = confirm. confirm: team-setup.sh (/setup:teams) puts team-merge-check.sh, team-integrate.sh and team-integrate-lock.sh behind ask, so each of those merge steps waits for a click. auto: team-setup.sh leaves the three out and removes them when present — for every session that uses the project settings, the team roles in the clones included (the scripts' own refusals still apply). It gates only these three scripts: the Azure DevOps merge (/pr-merge) and the Supervisor's auto-merge decision (supervisor-sessions.md → Auto-merge) do not read it. Role sessions run with a materialized copy of the ask list: restart a running one after a change.",
+    "team_merge": "confirm",
     "_orchestrate_publish_doc": "push | branch-local. gitflow and any PR-gated flow => branch-local; direct push and feature-branch => push.",
     "orchestrate_publish": "push",
     "_jira_transition_doc": "Opt-in Jira transition guard (.claude/hooks/guard-jira-transition.sh). jira_transition_comment: true → a jira_transition_issue call without a comment is refused. jira_transition_evidence: {\"<PROJECT>:<transition id>\": \"<case-insensitive ERE>\"} — that transition's comment must match, e.g. {\"PROJ:31\": \"Release-[0-9]+|no deploy\"}; ids are workflow-scoped, hence the project prefix. \"*:<transition id>\" applies to every project without its own string key (the exact key wins; an exact \"\" opts a project out). Default: off, no rules.",

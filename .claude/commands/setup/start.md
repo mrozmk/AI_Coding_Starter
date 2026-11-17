@@ -93,8 +93,11 @@ Shaping rule: 3 screens, ≤4 questions each — yields only when a detected val
    *Na tym komputerze: <zainstalowany | brak> — tylko informacja.* / *On this machine: <installed | absent> — informational only.*
    Tak · Nie / Yes · No
    *Codex to drugie AI, które sprawdza plany i kod. Pytam o zespół, bo ta odpowiedź trafia do wspólnego pliku. Jeśli nie: usuwam `/codex-review`, reszta pomija Codex sama.* / *Codex is a second AI that checks plans and code. I ask about the team because this answer goes into a shared file. If no: `/codex-review` is removed; everything else skips Codex on its own.* → `codex`, `commands.codex`
+7. **Czy Supervisor ma sam mergować zaakceptowane PR-y zespołów AI?** / **Should the Supervisor merge accepted AI-team PRs on its own?**
+   Potwierdzam każdy merge (Recommended) · Automatycznie / I confirm each merge (Recommended) · Automatically
+   *Dotyczy tylko równoległych zespołów AI (`/setup:teams`). Potwierdzam: kroki `team-merge-check.sh`, `team-integrate.sh` i `team-integrate-lock.sh` czekają na Twoje kliknięcie (reguły `ask`). Automatycznie: te trzy reguły znikają z `.claude/settings.json` — także dla ról w klonach zespołów. Merge w Azure DevOps (`/pr-merge`) i decyzja Supervisora o auto-merge ich nie czytają.* / *Only for the parallel AI teams (`/setup:teams`). I confirm: the `team-merge-check.sh`, `team-integrate.sh` and `team-integrate-lock.sh` steps wait for your click (`ask` rules). Automatically: those three rules are removed from `.claude/settings.json` — for the roles in the team clones too. The Azure DevOps merge (`/pr-merge`) and the Supervisor's auto-merge decision do not read them.* → `workflow.team_merge` (`confirm` | `auto`)
 
-**Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart; the LSP activation gate from step 6b, when a manifest is present). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
+**Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart; the LSP activation gate from step 6b, when a manifest is present; the role-session restart from step 9, when it changes the settings). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
 
 ### A.3 Derive the profile
 
@@ -106,6 +109,7 @@ Expand the answers into `.claude/project-profile.json` (schema and field docs: `
 - `github` (only for `tracker=github`): the Q4 follow-ups — `repo`, plus the six Project fields or none of them (No Project). It is the one github block of the profile: the team layer reads it too when `teams.github` is absent.
 - `app_surface` = `unknown` (keeps all QA tooling; `/setup:create-CLAUDE_MD` detects it from the stack later).
 - `commands`: `pr` = `git_host != none || <user keeps PR tooling>` (with `git_host=none` recommend **keep**), `jira` = `tracker == jira`, `confluence`, `codex` = the Screen 2 answer, `qa_runtime_ui` = `true` (because `app_surface=unknown`).
+- `workflow.team_merge` = the Q7 answer (`confirm` | `auto`).
 
 Show the full profile and the `commands.*` manifest on Screen 3. Write the file only after **Approve and run**.
 
@@ -113,7 +117,7 @@ Show the full profile and the `commands.*` manifest on Screen 3. Write the file 
 
 ## Phase B — Configure
 
-Nine ordered steps (0–8). Each reports one line `created | kept | skipped(<why>)`. Never rewrite a whole file — replace only the named block or entry.
+Ten ordered steps (0–9). Each reports one line `created | kept | skipped(<why>)`. Never rewrite a whole file — replace only the named block or entry.
 
 **0. Fork commit.** Gives the first `/maintain:sync-from-starter` a 3-way base. `last_sync_commit` in `.claude/.starter-sync.json` already set → `kept`. Otherwise run `bash .claude/lib/starter-fork-commit.sh "$(jq -r .starter_repo .claude/.starter-sync.json)"` (needs the network; it reads committed history only, so earlier writes in this command do not affect it). It prints `<hash> <date> <method>` → set exactly `last_sync_commit` = the hash and `last_sync_date` = the date with `jq` (write to a temp file, then move it over), report `created (<method>)`. Exit 1 → write nothing, report `skipped(<its reason> — the first sync infers the base again, else runs 2-way)`. A brownfield copy has no exact evidence and is skipped by design — never type a commit in by hand. No `jq` → `skipped(jq not on PATH)`.
 
@@ -209,6 +213,8 @@ After all groups: run the six reference sweeps from `.claude/commands/maintain/c
 
 **`mkdir -p` the destination directory first** (`docs/`, `.github/`, `.bitbucket/`, `.gitlab/merge_request_templates/` — none exists in a fresh clone; idempotent).
 
+**9. Team merge rules.** The three rules: `Bash(bash .claude/lib/team-merge-check.sh*)`, `Bash(bash .claude/lib/team-integrate.sh*)`, `Bash(bash .claude/lib/team-integrate-lock.sh*)`. Requires `jq`; absent → `skipped(jq not on PATH — edit permissions.ask in .claude/settings.json by hand: …)` with the three strings. Profile has no `teams` object → `skipped(team layer not installed — /setup:teams applies workflow.team_merge)`. Otherwise edit `.claude/settings.json` with `jq` (write to a temp file in `.claude/`, then move it over): `auto` → remove exactly the three strings from `.permissions.ask`; `confirm` → add each one missing. Nothing changed → `kept`; else `created (<auto: 3 ask rules removed | confirm: N ask rules added>)` plus the human step "running role sessions keep their materialized copy of the ask list — restart them: `bash .claude/lib/roles.sh stop <role>`, then `/roles`".
+
 ---
 
 ## Phase C — Route
@@ -255,6 +261,7 @@ UI-heavy product: `/design-ui` after `/architect` for the critical flow's key sc
 
 - Show the current profile as a table; for each screen ask **keep / change**. Changed answers re-derive the profile (A.3) and re-run Phase B — steps report `kept` for anything already in place.
 - Enabled → disabled for a group: the normal pruning path (step 7).
+- A profile without `workflow.team_merge` shows Q7 as `confirm (default)`; changing it re-runs step 9.
 - **Disabled → enabled for a pruned group is refused.** Print exactly: `Group <x> was pruned. To restore: remove its paths from .claude/.starter-sync.json → excluded, then run /maintain:sync-from-starter — it re-offers them.` Restoring is not built into this command.
 - Never re-create a file reported `kept`; never re-delete. Step 6b is idempotent: an `enabledPlugins` entry already `true` and a preflight line already present both report `kept`. Unresolved `{slot}` tokens in `TESTING.md` are filled by `/setup:create-CLAUDE_MD`, not by a re-run.
 
@@ -267,7 +274,7 @@ Terminal report, in the chosen language:
 1. Profile summary (one line per top-level field).
 2. Phase B table — step · status · detail. **The table never truncates.**
 3. Pruned groups and the paths recorded in `excluded`; groups kept because of unclassifiable hits, with the hits.
-4. Human TODOs: the `! cp .env.example .env && chmod 600 .env` line, keys to fill, restart; the step 6b activation gate, when a manifest was present.
+4. Human TODOs: the `! cp .env.example .env && chmod 600 .env` line, keys to fill, restart; the step 6b activation gate, when a manifest was present; the step 9 role-session restart, when printed.
 5. The Phase C list.
 
 Do not repeat the interview transcript. Reference-sweep leftovers, if any, go under item 3 verbatim — never summarised away.
