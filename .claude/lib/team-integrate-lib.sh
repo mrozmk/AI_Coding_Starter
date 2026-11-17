@@ -42,17 +42,14 @@ team_records_digest() {  # <td> <run>
 
 # Usage: team_local_merge <clone> <pr> <line> <branch> <T> <S> → prints the sha of M = merge(T, S)
 #   kept under `refs/team-pr/<pr>/local-merge` in the clone; rc 3 with the reason on stderr.
-# Reused while its FULL parent list is still exactly `T S`, so merge-check and integrate (two
-# calls, minutes apart) agree on one sha; a fresh commit-tree would carry new timestamps. Built with
+# Reused while its FULL parent list is still exactly `T S` AND its tree is the merge-tree result,
+# so merge-check and integrate (two calls, minutes apart) agree on one sha; a fresh commit-tree would
+# carry new timestamps. The guards and merge-tree run on every call: a ref is writable by anything in
+# the clone, so only a commit whose content IS merge(T, S) may be reused. Built with
 # merge-tree/commit-tree, so the clone's worktree and index are never touched.
 team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
   local clone="$1" pr="$2" line="$3" branch="$4" t="$5" s="$6"
-  local ref="refs/team-pr/$pr/local-merge" have mb dt ds both union tree m mrc=0
-  have="$(git -C "$clone" rev-parse -q --verify "$ref^{commit}" 2>/dev/null || true)"
-  if [ -n "$have" ] \
-    && [ "$(git -C "$clone" rev-list --parents -n 1 "$have" 2>/dev/null)" = "$have $t $s" ]; then
-    printf '%s\n' "$have"; return 0
-  fi
+  local ref="refs/team-pr/$pr/local-merge" have mb dt ds both attrs union tree m mrc=0
   # T is the live base tip from ls-remote; the clone may not have fetched it yet.
   git -C "$clone" cat-file -e "$t^{commit}" 2>/dev/null \
     || git -C "$clone" fetch --quiet origin "refs/heads/$line" 2>/dev/null || true
@@ -67,12 +64,13 @@ team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
   dt="$(git -C "$clone" diff --no-renames --name-only "$mb" "$t")" \
     && ds="$(git -C "$clone" diff --no-renames --name-only "$mb" "$s")" \
     || { echo "error: PR #$pr: cannot diff against the merge base $mb" >&2; return 3; }
-  both="$(comm -12 <(printf '%s\n' "$dt" | LC_ALL=C sort) <(printf '%s\n' "$ds" | LC_ALL=C sort) \
+  # comm must collate like the sort that fed it, or it silently misses common lines.
+  both="$(LC_ALL=C comm -12 <(printf '%s\n' "$dt" | LC_ALL=C sort) <(printf '%s\n' "$ds" | LC_ALL=C sort) \
     | grep -v '^$' || true)"
   if [ -n "$both" ]; then
-    union="$(printf '%s\n' "$both" | git -C "$clone" check-attr --stdin --source "$t" merge)" \
+    attrs="$(printf '%s\n' "$both" | git -C "$clone" check-attr --stdin --source "$t" merge)" \
       || { echo "error: PR #$pr: cannot read the merge attributes of $t" >&2; return 3; }
-    union="$(printf '%s\n' "$union" | sed -n 's/: merge: union$//p')"
+    union="$(printf '%s\n' "$attrs" | sed -n 's/: merge: union$//p')"
     [ -z "$union" ] \
       || { echo "error: PR #$pr and $line both changed union-merged memory logs: $(echo $union)" \
              "— the provider reports this as conflicting; follow team-pipeline.md → PR conflicting in memory files" >&2
@@ -85,6 +83,12 @@ team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
        return 3 ;;
     *) echo "error: PR #$pr: git merge-tree failed (exit $mrc)" >&2; return 3 ;;
   esac
+  have="$(git -C "$clone" rev-parse -q --verify "$ref^{commit}" 2>/dev/null || true)"
+  if [ -n "$have" ] \
+    && [ "$(git -C "$clone" rev-list --parents -n 1 "$have" 2>/dev/null)" = "$have $t $s" ] \
+    && [ "$(git -C "$clone" rev-parse -q --verify "$have^{tree}" 2>/dev/null)" = "$tree" ]; then
+    printf '%s\n' "$have"; return 0
+  fi
   m="$(git -C "$clone" commit-tree "$tree" -p "$t" -p "$s" -m "Merge pull request #$pr from $branch")" \
     || { echo "error: PR #$pr: cannot create the local merge commit" >&2; return 3; }
   git -C "$clone" update-ref "$ref" "$m" \
@@ -105,7 +109,7 @@ team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
 IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
 team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   local team="$1" clone="$2" run="$3" mode="$4" pr="$5"
-  local td="$clone/.agents/team" rd branch line role rec out rc=0 merge lm
+  local td="$clone/.agents/team" rd branch line role rec out rc=0 merge
   IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
   ie_no() { echo "error: $1" >&2; return 3; }
   [ -n "$run" ] || { ie_no "no run id for team $team — nothing to integrate"; return 3; }
@@ -171,30 +175,26 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   # A refusal before any ref is read (fork, closed PR) prints to stderr only — no JSON to parse.
   merge=unknown
   [ -z "$out" ] || merge="$(jq -r '.merge // "unknown"' <<<"$out" 2>/dev/null || echo unknown)"
-  if [ "$rc" != 0 ]; then
-    case "$merge" in
-      conflict) echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3 ;;
-      *) if [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" != stale-base ]; then
-           echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
-           return 4
-         fi
-         IE_TGT="$(jq -r '.target_sha // ""' <<<"$out")"
-         IE_SRC="$(jq -r '.source_sha // ""' <<<"$out")"
-         [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] \
-           || { ie_no "readiness of PR #$pr is incomplete: $out"; return 3; }
-         lm="$(team_local_merge "$clone" "$pr" "$line" "$branch" "$IE_TGT" "$IE_SRC")" || return 3
-         echo "PR #$pr merge ref is stale (built on $(jq -r .merge_base_sha <<<"$out"), $line is at" \
-           "$IE_TGT) — testing the local merge $lm instead" >&2
-         IE_MERGE="$lm"; IE_MERGE_REF="refs/team-pr/$pr/local-merge"
-         return 0 ;;
-    esac
+  # readiness reports `conflict` only with a non-zero exit.
+  [ "$merge" != conflict ] \
+    || { echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3; }
+  if [ "$rc" != 0 ] && [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" != stale-base ]; then
+    echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
+    return 4
   fi
-  IE_TGT="$(jq -r '.target_sha' <<<"$out")"
-  IE_MERGE="$(jq -r '.merge_sha' <<<"$out")"
-  IE_SRC="$(jq -r '.source_sha' <<<"$out")"
-  IE_MERGE_REF="refs/team-pr/$pr/merge"
-  [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] && [ -n "$IE_MERGE" ] \
+  IE_TGT="$(jq -r '.target_sha // ""' <<<"$out")"
+  IE_SRC="$(jq -r '.source_sha // ""' <<<"$out")"
+  [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] \
     || { ie_no "readiness of PR #$pr is incomplete: $out"; return 3; }
+  if [ "$rc" = 0 ]; then
+    IE_MERGE="$(jq -r '.merge_sha // ""' <<<"$out")"; IE_MERGE_REF="refs/team-pr/$pr/merge"
+    [ -n "$IE_MERGE" ] || { ie_no "readiness of PR #$pr is incomplete: $out"; return 3; }
+  else
+    IE_MERGE="$(team_local_merge "$clone" "$pr" "$line" "$branch" "$IE_TGT" "$IE_SRC")" || return 3
+    IE_MERGE_REF="refs/team-pr/$pr/local-merge"
+    echo "PR #$pr merge ref is stale (built on $(jq -r .merge_base_sha <<<"$out"), $line is at" \
+      "$IE_TGT) — testing the local merge $IE_MERGE instead" >&2
+  fi
 }
 
 # Usage: team_merge_check_write <file> <run> <pr> <repo> <head_ref> <base_ref> <source_sha>

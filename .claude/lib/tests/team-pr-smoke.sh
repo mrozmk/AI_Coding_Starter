@@ -566,6 +566,15 @@ c_refresh() {  # c_refresh <pr> <head> <base> — rebuild the merge ref against 
   Mx="$(bare rev-parse "refs/pull/$1/merge")"
 }
 
+c_head_append() {  # c_head_append <pr> <path> <line> — one more commit on the PR head, re-recorded
+  mkdir -p "$(dirname "$CL/$2")"
+  printf '%s\n' "$3" >> "$CL/$2"
+  git -C "$CL" add "$2" && git -C "$CL" commit --quiet -m "append $2"
+  Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
+  c_record "$RDC" "$RUNC" "$1" "$Sx"
+  c_refresh "$1" "$BRC" "$TRUNK"
+}
+
 # (C-setup) delta carries the refusal battery; its trunk pushes move the line, so it comes first.
 mk_ready delta 44
 run "$MAIN" $IT delta
@@ -814,11 +823,7 @@ expect 0 '"status":"completed"' "PR 42 reads as merged after the local merge lan
 # (C3c) a stale merge ref whose local merge conflicts on the current base: refused, nothing built.
 # Placed after C1 (not next to C3) so delta's variables stay intact for C4–C5.
 mk_ready xi 60
-printf 'head\n' > "$CL/c3c.txt"
-git -C "$CL" add c3c.txt && git -C "$CL" commit --quiet -m "c3c head"
-Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
-c_record "$RDC" "$RUNC" 60 "$Sx"
-c_refresh 60 "$BRC" "$TRUNK"
+c_head_append 60 c3c.txt head
 smoke_gh_append "$TRUNK" c3c.txt trunk
 run "$MAIN" $MC xi
 expect 3 "conflicts with $TRUNK on the current base" "a local merge that conflicts is refused"
@@ -832,11 +837,9 @@ bare show "$TRUNK:.gitattributes" 2>/dev/null | grep -q '^\.agents/memory/\*\.md
   || smoke_gh_append "$TRUNK" .gitattributes '.agents/memory/*.md merge=union'
 smoke_gh_append "$TRUNK" .agents/memory/c3d.md "base entry"
 mk_ready omicron 61
-printf 'head entry\n' >> "$CL/.agents/memory/c3d.md"
-git -C "$CL" add .agents/memory/c3d.md && git -C "$CL" commit --quiet -m "c3d head"
-Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
-c_record "$RDC" "$RUNC" 61 "$Sx"
-c_refresh 61 "$BRC" "$TRUNK"
+c_head_append 61 .agents/memory/c3d.md "head entry"
+# .agents/PRD.md sorts before the log in C but after it in en_US: the overlap must still be found.
+smoke_gh_append "$TRUNK" .agents/PRD.md "trunk prd"
 smoke_gh_append "$TRUNK" .agents/memory/c3d.md "trunk entry"
 run "$MAIN" $MC omicron
 expect 3 "PR conflicting in memory files" "a memory log changed on both sides is refused"
@@ -846,15 +849,24 @@ has ".agents/memory/c3d.md" "$WORK/out" || fail "the union overlap does not name
   || fail "a union overlap left a local-merge ref"
 
 mk_ready rho 62
-printf 'head entry\n' >> "$CL/.agents/memory/c3d-head.md"
-git -C "$CL" add .agents/memory/c3d-head.md && git -C "$CL" commit --quiet -m "c3d head only"
-Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
-c_record "$RDC" "$RUNC" 62 "$Sx"
-c_refresh 62 "$BRC" "$TRUNK"
+c_head_append 62 .agents/memory/c3d-head.md "head entry"
 smoke_gh_append "$TRUNK" .agents/memory/c3d-trunk.md "trunk entry"
 run "$MAIN" $MC rho
 expect 0 "VERDICT: ok" "memory logs changed on one side each still get a local merge"
 has "testing the local merge" "$WORK/out" || fail "rho's stale merge ref was not reported"
+
+# (C3e) a local-merge ref with the right parents but another tree is never reused: the gates and the
+# push only ever see merge(T, S).
+Tr="$(bare rev-parse "refs/heads/$TRUNK")"
+forged="$(git -C "$CL" commit-tree "$Sx^{tree}" -p "$Tr" -p "$Sx" -m forged)"
+git -C "$CL" update-ref refs/team-pr/62/local-merge "$forged"
+run "$MAIN" $MC rho
+expect 0 "VERDICT: ok" "a forged local-merge ref is rebuilt, not reused"
+[ "$(jq -r .merge_sha "$RDC/merge-check.json")" != "$forged" ] \
+  || fail "merge-check tested the forged local-merge commit"
+[ "$(git -C "$CL" rev-parse "refs/team-pr/62/local-merge^{tree}")" \
+  = "$(git -C "$CL" merge-tree --write-tree "$Tr" "$Sx")" ] \
+  || fail "the rebuilt local merge is not merge(T, S)"
 
 # (C7) the base is moved to part of the source before the integration — refused, base untouched
 mk_ready eps 45
