@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Offline test of notify.sh resolve (#97): the Operator answered elsewhere, so no further delivery
 # (a held overnight iMessage included, a delivered one untouched), a Herdr resolve marker in the
-# spool, idempotent and project-prefix free; operator-record.sh close resolves its record; the
-# harness-notify mod's scan order under node. Fixture HOME and an osascript stub only — nothing
+# spool, idempotent and project-prefix free; operator-record.sh close resolves its record and only
+# that one (#98); resolve --all resolves every event of one team and run (#98); the harness-notify
+# mod's scan order under node. Fixture HOME and an osascript stub only — nothing
 # reaches a person, no real ~/.agent-comms.
 set -u
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -108,6 +109,37 @@ before=$(snap); OUT=$(cd "$MH" && bash "$OR" close "$id" 2>&1); RC=$?
 ok '[ "$RC" = 0 ] && [ "$OUT" = "closed $id" ] && [ "$(snap)" = "$before" ]' "a second close: exit 0, nothing more written"
 nt resolve --key "$id"; ok '[[ "$OUT" == "already resolved "*":release:$id" ]]' \
   "resolve --key finds it again"
+
+# ---- per-record close (#98): of two open release records, close resolves only its own ---------------
+OUT=$(cd "$MH" && bash "$OR" release --summary "Step A" 2>&1); ida=$(sed -n 's/^recorded //p' <<<"$OUT")
+OUT=$(cd "$MH" && bash "$OR" release --summary "Step B" 2>&1); idb=$(sed -n 's/^recorded //p' <<<"$OUT")
+FA="$(ls "$OB/events" | grep -- "_release_$ida.json$")"; FB="$(ls "$OB/events" | grep -- "_release_$idb.json$")"
+ok '[ -n "$ida" ] && [ -n "$idb" ] && [ "$ida" != "$idb" ] && [ -n "$FA" ] && [ -n "$FB" ]' "two open release records, two events"
+OUT=$(cd "$MH" && bash "$OR" close "$ida" 2>&1); RC=$?
+ok '[ "$RC" = 0 ] && [ -f "$OB/state/${FA%.json}.resolved" ] && grep -qx "status: closed" "$MH/.agents/team/operator/$ida.md"' \
+  "close <A> resolves A's event and closes A's record"
+ok '[ ! -e "$OB/state/${FB%.json}.resolved" ] && grep -qx "status: open" "$MH/.agents/team/operator/$idb.md"' \
+  "B's event stays deliverable and B's record open"
+
+# ---- resolve --all (#98): every event of one team and run, nothing of another ------------------------
+nt resolve --team alfa --run r1 --all --decision h-1; ok '[ "$RC" = 2 ]' "--all with --decision is usage"
+nt resolve --key k1 --all; ok '[ "$RC" = 2 ]' "--all with --key is usage"
+nt resolve --team alfa --all; ok '[ "$RC" = 2 ]' "--all without --run is usage"
+dec r-1; dec r-2
+nt human_decision --project acme --team alfa --ticket AB-1 --run r2 --decision r-1 --summary s --answer acme-alfa-lead --main "$MH"
+nt human_decision --project acme --team beta --ticket AB-1 --run r1 --decision r-1 --summary s --answer acme-beta-lead --main "$MH"
+nt resolve --team alfa --run r1 --all
+ok '[ "$RC" = 0 ] && grep -qx "resolved acme:alfa:r1:r-1" <<<"$OUT" && grep -qx "resolved acme:alfa:r1:r-2" <<<"$OUT" && grep -qx "resolved acme:alfa:r1:h-4" <<<"$OUT"' \
+  "--all resolves the run's pending events"
+ok 'grep -qx "already resolved acme:alfa:r1:h-1" <<<"$OUT" && grep -qx "already resolved other:alfa:r1:h-6" <<<"$OUT" && ! grep -qE ":r2:|:beta:|release" <<<"$OUT"' \
+  "--all: already resolved ones say so; other runs, teams and records are not matched"
+ok '[ -f "$OB/state/acme_alfa_r1_r-1.resolved" ] && [ -f "$HN/acme_alfa_r1_r-1.resolve" ] && [ -f "$HN/acme_alfa_r1_r-2.resolve" ]' \
+  "--all writes the state marker and the herdr resolve marker"
+ok '[ ! -e "$OB/state/acme_alfa_r2_r-1.resolved" ] && [ ! -e "$OB/state/acme_beta_r1_r-1.resolved" ] && [ ! -e "$OB/state/${FB%.json}.resolved" ]' \
+  "another run, another team and an open operator record stay unresolved"
+before=$(snap); nt resolve --team alfa --run r1 --all
+ok '[ "$RC" = 0 ] && ! grep -q "^resolved " <<<"$OUT" && [ "$(snap)" = "$before" ]' "a second --all writes nothing"
+nt resolve --team alfa --run r9 --all; ok '[ "$RC" = 0 ] && [ "$OUT" = unknown ]' "--all of a run with no event: unknown, exit 0"
 
 # ---- prune: a marker no strip took goes after a day ---------------------------------------------------
 : > "$HN/zz-old.resolve" && touch -t 202601010000 "$HN/zz-old.resolve" && : > "$HN/zz-new.resolve" || die "markers"

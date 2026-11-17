@@ -93,7 +93,9 @@ it.
 `bash .claude/lib/operator-record.sh failure --summary "<line>" [--team <t>] [--ref <file>]` for a
 failure it tried and could not repair (a stage or TeamLead that will not restart, a broken main it
 cannot fix), `… release --summary "<line>"` for a release step that waits for the Operator, and
-`… close <id>` once the Operator has dealt with it. The script writes
+`… close <id>` itself as soon as the Operator has acted on that record — answered it, finished the
+release step, or the failure is repaired. One record per step, closed by id; the Operator never
+closes one, and the end of a release (`freeze off`) closes nothing. The script writes
 `.agents/team/operator/<id>.md` and calls `notify.sh` itself; an open record with the same event,
 team and summary is reused, not sent again. `notify.sh` is denied to every role profile.
 
@@ -361,7 +363,8 @@ When the answer is seen elsewhere, the caller runs `notify.sh resolve` (#97): th
 human-only prompt answered or withdrawn in the stage window, `team-lead.sh decision answer|withdraw`,
 and `operator-record.sh close`. Nothing more is delivered for the event (a held overnight message
 leaves the batch; a sent one stays sent), and the strip drops it. A failed resolve never stops the
-caller. The end of a run does not resolve its pending decisions yet.
+caller. When a run ends (the runner's `close_run`, `team-lead.sh finalize`), `notify.sh resolve --team
+<t> --run <r> --all` resolves every event of that run.
 
 ## Migration
 

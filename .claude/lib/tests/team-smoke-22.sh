@@ -244,7 +244,15 @@ IBA="$MAIN/.agents/team/inbox/alfa"; mkdir -p "$IBA/new"
 for m in "1:$RUN_ID" "2:$RUN_ID" "3:alfa-20990101-000000"; do
   printf -- '---\nid: m%s\nrun: %s\n---\nx\n' "${m%%:*}" "${m#*:}" > "$IBA/new/20261115T00000${m%%:*}Z-Supervisor-message.md"
 done
+# The run's notifications are resolved when it ends; another run's are not (notify.sh resolve --all).
+for r in "$RUN_ID" alfa-20990101-000000; do
+  run "$MAIN" bash .claude/lib/notify.sh human_decision --project smk --team alfa --ticket AB-1 --run "$r" \
+    --decision x-1 --summary s --answer alfa-lead --main "$MAIN"; expect 0 "written" "(h) seed a notification"
+done
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized: alfa $RUN_ID merged" "(h) finalize"
+NST="$HOME/.agent-comms/outbox/state"
+[ -f "$NST/smk_alfa_${RUN_ID}_x-1.resolved" ] && [ ! -e "$NST/smk_alfa_alfa-20990101-000000_x-1.resolved" ] \
+  || { ls "$NST" > "$WORK/out" 2>&1; fail "(h) finalize did not resolve exactly the run's notifications"; }
 [ -f "$IBA/done/20261115T000001Z-Supervisor-message.md" ] && [ -f "$IBA/done/20261115T000002Z-Supervisor-message.md" ] \
   && [ -f "$IBA/new/20261115T000003Z-Supervisor-message.md" ] && [ ! -e "$IBA/new/20261115T000001Z-Supervisor-message.md" ] \
   || { ls -R "$IBA" > "$WORK/out"; fail "(h) finalize did not move exactly the run's inbox messages to done/"; }

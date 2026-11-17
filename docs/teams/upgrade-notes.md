@@ -3,6 +3,20 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## A run end resolves its notifications; the Supervisor closes operator records (#98)
+
+**Before:** a pending decision of a run that was closed or merged stayed on the Herdr strip and in
+the overnight batch. An operator record (`release`, `unrepaired_failure`) stayed open until someone
+closed it by hand.
+
+**Now:** the runner's `close_run` and `team-lead.sh finalize` run `notify.sh resolve --team <t>
+--run <r> --all`, which resolves every event of that run. `--all` is the new form; a bare `--team
+--run` is still usage. The Supervisor contract closes each operator record by id
+(`operator-record.sh close <id>`) as soon as the Operator has acted on it, and its bootstrap closes
+the open records whose step is already done.
+
+**Action:** none.
+
 ## The TeamLead decides the wrapup's proposals; the wrapup asks nothing (#104)
 
 **Before:** with a per-run TeamLead the wrapup still asked its ticket and memory menus in its window.
@@ -50,8 +64,7 @@ withdrawn in the stage window), by `team-lead.sh decision answer|withdraw` and b
 `operator-record.sh close`; a failed resolve never stops them. A resolved event is delivered no
 further (`skipped resolved`: a held overnight message leaves the batch; a sent message stays sent).
 For a Herdr event it writes `<id>.resolve` into the spool's `new/`, and the strip drops the item.
-`notify.sh list` adds `resolved` to such a line. The end of a run does not resolve its pending
-decisions yet.
+`notify.sh list` adds `resolved` to such a line.
 
 **Action:** update the Herdr mod (`bash .claude/team/herdr-mod/install.sh`). An older mod ignores
 the `.resolve` files, and `notify.sh` removes them after a day.

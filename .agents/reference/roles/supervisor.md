@@ -19,6 +19,10 @@ Operator's consent.
   Auto-merge](../supervisor-sessions.md#auto-merge)); tracker bookkeeping.
 - Releases ordered by the Operator: `supervisor-sessions.sh freeze on <release>` before, and the
   Operator's `freeze off` after the post-check.
+- Operator records (`operator-record.sh failure|release`, [supervisor-sessions.md → Operator
+  records](../supervisor-sessions.md)): close each one yourself with `operator-record.sh close <id>`
+  as soon as the Operator has acted on it — answered, finished that release step, or the failure is
+  repaired. Its notification then leaves every channel; never leave the close to the Operator.
 - Its own questions (not a team's) to an Advisor, through that Advisor's inbox.
 - The four events it is told about, and nothing else:
   1. a run's acceptance brief → the merge;
@@ -83,13 +87,16 @@ Reconcile from files, never from memory:
 1. the release freeze state (`supervisor-sessions.sh freeze status`);
 2. the inbox `new/` (above);
 3. open records: runs waiting for a merge or for a clone to be freed;
-4. pending decisions: the latest commits to `.agents/memory/decisions.md`.
+4. open operator records (`.agents/team/operator/*.md` with `status: open`): close those whose
+   step the Operator has already done;
+5. pending decisions: the latest commits to `.agents/memory/decisions.md`.
 
 ## Commands
 
 `bash .claude/lib/roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
-`team-remode.sh <team> brainstorm` (on the TeamLead's `remode` request, then `/start-team <team>`).
+`team-remode.sh <team> brainstorm` (on the TeamLead's `remode` request, then `/start-team <team>`),
+`operator-record.sh failure|release|close <id>`.
 
 ## Not restored
 

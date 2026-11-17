@@ -11,7 +11,7 @@
 #   pending lists the lead's open items — pending decisions first, then stop, rejected, gate, attention
 #   (not idle_prompt), inbox (this run's or run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
-#   once per run and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
+#   once per run, resolves its notifications and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
 #   lead. notes-init creates runs/<run>/teamlead-notes.md (six headings) when absent; log-append
 #   appends the notes once per run (runs/<run>/log-appended) to <main>/.agents/team/teamlead-log.md;
 #   owns exits 0 when the team's current run has its own TeamLead (teamlead.json run). digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
@@ -178,8 +178,10 @@ end_lead() {
 
 finalize() {
   end_lead "$1" >/dev/null
-  # The run is over: its inbox messages go to done/ (team-inbox.sh close-run); never blocks.
+  # The run is over: its inbox messages go to done/ (team-inbox.sh close-run) and its Operator
+  # notifications are resolved; never blocks.
   [ -z "$RUN" ] || bash "$LIB/team-inbox.sh" --main "$MAIN" close-run "$1" "$RUN" >/dev/null 2>&1 || true
+  [ -z "$RUN" ] || bash "$LIB/notify.sh" resolve --team "$1" --run "$RUN" --all >/dev/null 2>&1 || true
   if [ -n "$RUN" ] && [ -d "$TD/runs/$RUN" ] && [ ! -e "$TD/runs/$RUN/finalized" ]; then
     printf '%s %s\n' "$2" "$(team_utc)" > "$TD/runs/$RUN/finalized"
   fi
