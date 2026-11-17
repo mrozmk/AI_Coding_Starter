@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # order brief (team-brief.sh): in-flight list from the anchors, validation, no silent rewrite,
-# check, archived by team-next; the TeamLead's spec and plan gates (verdicts, revise limit, spec
-# digest, plan approve, quick remode → closed).
+# check, archived by team-next; the TeamLead's plan gate (verdicts, revise limit, digest at a
+# brainstorm plan approve, no spec gate, older-base refusal, quick remode → closed).
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -94,7 +94,7 @@ ls "$TD"/archive/AB-1400-*/order-brief.md >/dev/null 2>&1 || fail "(e) the brief
 run "$MAIN" $B check alfa; expect 4 "no order brief" "(e) the new ticket has no brief yet"
 echo "team-smoke-21: (e) archive OK"
 
-# ==== gates (step 4): spec gate, plan gate, revise limit, digest, close ===========================
+# ==== gates (step 4): plan gate, revise limit, digest, no spec gate, close =======================
 RUN_ID=alfa-20261114-110000; RD="$TD/runs/$RUN_ID"; SUP="$MAIN/.agents/team/inbox/Supervisor/new"
 BASE="$(jq -r .base_sha "$TD/team.json")"; SPEC=.agents/specs/s.md; PLAN=.agents/plans/active/p.md
 export WORK TD
@@ -128,34 +128,37 @@ spec_body() { mkdir -p "$CLONE/.agents/specs"; printf '# Spec\n\n**Status:** %s\
 rm -rf "$TD/runs" "$TD/acked" "$TD/verdict-acked"; echo "$RUN_ID" > "$TD/run"; mkdir -p "$RD"
 jq -n --arg r "$RUN_ID" --arg m "$MAIN" '{team: "alfa", run: $r, session_id: "sid-lead", main_root: $m}' \
   > "$TD/teamlead.json"
-spec_body Draft "Export button."
+# The planner approves its own spec (/brainstorm Step 9 in team mode): no spec gate.
+spec_body "Approved (auto — team mode)" "Export button."
+commit_file "$PLAN" "# Plan"
 
-# ---- (f) review: planner only, one spec, no message ---------------------------------------------
-session coder 1 "$BASE"
-prec --verdict review --artifacts "$SPEC"; expect 2 "only the planner records review" "(f) coder review"
+# ---- (f) no review record; the planner's done goes to the plan gate ------------------------------
 session planner 1 "$BASE"
-prec --verdict review --artifacts "$SPEC,$PLAN"; expect 2 "one .agents/specs/*.md" "(f) two artifacts"
-# The exact command /brainstorm Step 9 runs.
-run "$CLONE" bash .claude/lib/team-record.sh --verdict review --artifacts .agents/specs/s.md
-expect 0 "planner-1-1.json" "(f) the brainstorm review command"
-grep -q '^- \[planner' "$RD/notes.md" 2>/dev/null && fail "(f) review appended a blocker"
-echo "team-smoke-21: (f) review record OK"
+prec --verdict review --artifacts "$SPEC"; expect 2 "there is no spec gate" "(f) review refused"
+[ -z "$(ls "$RD"/planner-*.json 2>/dev/null)" ] || fail "(f) a refused review wrote a record"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-1.json" "(f) the planner's done"
+echo "team-smoke-21: (f) no review record OK"
 
-# ---- (j) non-lead, (n) older --for ---------------------------------------------------------------
-run "$CLONE" bash .claude/lib/team-verdict.sh spec approve --for planner-1-1.json --message x
+# ---- (j) non-lead, (n) older --for, no spec gate -------------------------------------------------
+run "$CLONE" bash .claude/lib/team-verdict.sh plan approve --for planner-1-1.json --message x
 expect 3 "only this run's TeamLead" "(j) non-lead caller"
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-2.json" "(n) second review"
-V spec approve --for planner-1-1.json --message ok; expect 4 "not the newest planner record" "(n) older --for"
-V spec remode --for planner-1-2.json --message x; expect 4 "not allowed at the spec gate" "(n) bad verdict"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-2.json" "(n) second done"
+V plan approve --for planner-1-1.json --message ok; expect 4 "not the newest planner record" "(n) older --for"
+V spec approve --for planner-1-2.json --message ok; expect 4 "no spec gate: the first gate is the plan gate" "(n) spec gate refused"
+V plan accept --for planner-1-2.json --message x; expect 4 "not allowed at the plan gate" "(n) bad verdict"
 V acceptance accept --for planner-1-2.json --message x; expect 4 "the acceptance gate is the qa's" "(n) acceptance on a planner record"
+[ -z "$(ls "$RD"/teamlead-*.json 2>/dev/null)" ] || fail "(n) a refused verdict was written"
 echo "team-smoke-21: (j) caller + (n) --for OK"
 
 # ---- (o) the verdict guard binds the call to the hook payload's session id -----------------------
 HOOK="$SRC/.claude/hooks/guard-team-verdict.sh"
 vp() { jq -cn --arg s "$1" --arg c "$2" '{session_id: $s, tool_name: "Bash", tool_input: {command: $c}}'; }
-FORGE="TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh spec approve --for planner-1-2.json --message x"
+FORGE="TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh plan approve --for planner-1-2.json --message x"
 hook "$CLONE" "$(vp sid-planner-1 "$FORGE")"; expect 2 "not it (refused)" "(o) forged env from a stage"
-hook "$CLONE" "$(vp sid-planner-1 "bash $CLONE/.claude/lib/team-verdict.sh spec approve")"; expect 2 "" "(o) absolute path"
+# A forged spec call is still refused by the hook, before the script's own refusal.
+hook "$CLONE" "$(vp sid-planner-1 "TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh spec approve --for planner-1-2.json --message x")"
+expect 2 "not it (refused)" "(o) forged spec call"
+hook "$CLONE" "$(vp sid-planner-1 "bash $CLONE/.claude/lib/team-verdict.sh plan approve")"; expect 2 "" "(o) absolute path"
 hook "$CLONE" "$(vp sid-planner-1 "env TEAM_SESSION_ROLE=TeamLead sh .claude/lib/team-verdict.sh plan approve")"; expect 2 "" "(o) env + sh"
 hook "$CLONE" "$(vp sid-planner-1 "bash '.claude/lib/team-verdict.sh'  'event' collision")"; expect 2 "" "(o) quoted name and gate"
 hook "$CLONE" "$(vp sid-wrapup-1 "TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh wrapup decide --for wrapup_proposals-1_1.json --ref x --message x")"
@@ -167,74 +170,62 @@ for c in "git add .claude/lib/team-verdict.sh" "bash -n .claude/lib/team-verdict
 done
 TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-planner-1 "$FORGE")"; expect 2 "" "(o) role env, wrong session"
 TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp "" "$FORGE")"; expect 2 "" "(o) empty session id"
-TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-verdict.sh spec approve")"
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-verdict.sh plan approve")"
 expect 0 "" "(o) the lead's own session"
 hook "$CLONE" "$(vp sid-planner-1 "git status")"; expect 0 "" "(o) other commands untouched"
 hook "$MAIN" "$(vp sid-planner-1 "$FORGE")"; expect 0 "" "(o) no-op outside a team clone"
 echo "team-smoke-21: (o) verdict guard OK"
 
-# ---- (p) brainstorm spec approve needs the constraint digest ------------------------------------
-V spec approve --for planner-1-2.json --message "covers the order"
+# ---- (p) a brainstorm plan approve needs the constraint digest -----------------------------------
+V plan approve --for planner-1-2.json --message "covers the order"
 expect 7 "constraint digest missing — see the Digest section of the TeamLead prompt" "(p) no digest.md"
 printf 'made_at: x\n\nnone\n' > "$RD/digest.md"
-V spec approve --for planner-1-2.json --message "covers the order"; expect 7 "constraint digest missing" "(p) no scope header"
-[ ! -e "$RD/teamlead-spec-1.json" ] || fail "(p) a refused approve wrote a verdict"
-# ---- (q) with the digest it passes --------------------------------------------------------------
-printf 'scope: %s\nmade_at: 2026-11-14T11:00:00Z\n\n- none\n' "$SPEC" > "$RD/digest.md"
+V plan approve --for planner-1-2.json --message "covers the order"; expect 7 "constraint digest missing" "(p) no scope header"
+[ ! -e "$RD/teamlead-plan-1.json" ] || fail "(p) a refused approve wrote a verdict"
+# ---- (q) with the digest it passes (below) --------------------------------------------------------
+printf 'scope: %s\nmade_at: 2026-11-14T11:00:00Z\n\n- none\n' "$PLAN" > "$RD/digest.md"
 echo "team-smoke-21: (p) digest required + (q) digest present OK"
 
-# ---- (g) spec approve → digest stored, the runner messages the planner ---------------------------
-V spec approve --for planner-1-2.json --message "covers the order"; expect 0 "teamlead-spec-1.json" "(g) approve"
-[ -n "$(jq -r .spec_digest "$RD/teamlead-spec-1.json")" ] || fail "(g) no spec_digest"
-greset alfa-lead alfa-planner
-run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate spec planner-1-2.json" "(g) runner"
-has "send-keys -t =smk-alfa-planner: -l -- [team-run] TeamLead approved the spec (.agents/team/runs/$RUN_ID/teamlead-spec-1.json). Set **Status:** Approved (TeamLead, " "$STUB_LOG" \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "(g) no approve message to the planner"; }
-has "send-keys -t =smk-alfa-lead: -l -- gate spec: .agents/team/runs/$RUN_ID/planner-1-2.json" "$STUB_LOG" \
-  || { cp "$STUB_LOG" "$WORK/out"; fail "(g) the lead was not rung for the gate"; }
-[ "$(grep -c 'TeamLead approved the spec' "$STUB_LOG")" = 1 ] || fail "(g) approve message not exactly once"
-echo "team-smoke-21: (g) spec approve OK"
-
 # ---- (m) escalate keeps waiting; the gate stays pending ------------------------------------------
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-3.json" "(m) third review"
-V spec escalate --for planner-1-3.json --message "human-only question"; expect 0 "" "(m) escalate"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-3.json" "(m) third done"
+V plan escalate --for planner-1-3.json --message "human-only question"; expect 0 "teamlead-plan-1.json" "(m) escalate"
+[ "$(jq -r 'has("spec_digest")' "$RD/teamlead-plan-1.json")" = false ] || fail "(m) the verdict carries spec_digest"
 greset alfa-lead alfa-planner
-run "$MAIN" $TR alfa; expect 6 "gate spec planner-1-3.json" "(m) runner keeps waiting"
+run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate plan planner-1-3.json" "(m) runner keeps waiting"
+has "send-keys -t =smk-alfa-lead: -l -- gate plan: .agents/team/runs/$RUN_ID/planner-1-3.json" "$STUB_LOG" \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(m) the lead was not rung for the plan gate"; }
+has "gate spec" "$STUB_LOG" && { cp "$STUB_LOG" "$WORK/out"; fail "(m) a spec gate was rung"; }
 has "[team-run]" "$STUB_LOG" && { cp "$STUB_LOG" "$WORK/out"; fail "(m) escalate messaged the planner"; }
-grep -qx teamlead-spec-2.json "$TD/verdict-acked" || fail "(m) escalate not marked acted"
+grep -qx teamlead-plan-1.json "$TD/verdict-acked" || fail "(m) escalate not marked acted"
 run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
-expect 0 "gate .agents/team/runs/$RUN_ID/planner-1-3.json — spec gate" "(m) pending lists the open gate"
+expect 0 "gate .agents/team/runs/$RUN_ID/planner-1-3.json — plan gate" "(m) pending lists the open gate"
 echo "team-smoke-21: (m) escalate OK"
 
-# ---- (h) revise limit, one Operator grant --------------------------------------------------------
-V spec revise --for planner-1-3.json --message x; expect 4 "revise needs --ref" "(h) revise without ref"
+# ---- (h) revise limit on the plan gate, one Operator grant ---------------------------------------
+V plan revise --for planner-1-3.json --message x; expect 4 "revise needs --ref" "(h) revise without ref"
 for i in 1 2 3; do
-  V spec revise --for planner-1-3.json --ref "$RD/gate-spec-$i.md" --message "round $i"; expect 0 "" "(h) revise $i"
+  V plan revise --for planner-1-3.json --ref "$RD/gate-plan-$i.md" --message "round $i"; expect 0 "" "(h) revise $i"
 done
-V spec revise --for planner-1-3.json --ref "$RD/gate-spec-4.md" --message "round 4"
-expect 5 "revise limit 3 reached for gate spec (teams.teamlead.revise_limit) — write escalate with a pending decision, approve" "(h) fourth revise"
+V plan revise --for planner-1-3.json --ref "$RD/gate-plan-4.md" --message "round 4"
+expect 5 "revise limit 3 reached for gate plan (teams.teamlead.revise_limit) — write escalate with a pending decision, approve" "(h) fourth revise"
 has "or remode" "$WORK/out" && fail "(h) remode offered in brainstorm"
 mkdir -p "$RD/decisions"
-printf -- '---\nid: d-1\nstatus: answered\nanswer_outcome: more-revise\ngate: spec\n---\nOne more round.\n' > "$RD/decisions/d-1.md"
-V spec revise --for planner-1-3.json --ref "$RD/gate-spec-4.md" --message "granted" --decision d-1
-expect 0 "" "(h) granted revise"
-grep -q '^status: consumed' "$RD/decisions/d-1.md" && grep -q '^consumed_by: teamlead-spec-' "$RD/decisions/d-1.md" \
+printf -- '---\nid: d-1\nstatus: answered\nanswer_outcome: more-revise\ngate: plan\n---\nOne more round.\n' > "$RD/decisions/d-1.md"
+V plan revise --for planner-1-3.json --ref "$RD/gate-plan-4.md" --message "granted" --decision d-1
+expect 0 "teamlead-plan-5.json" "(h) granted revise"
+grep -q '^status: consumed' "$RD/decisions/d-1.md" && grep -q '^consumed_by: teamlead-plan-5.json' "$RD/decisions/d-1.md" \
   || fail "(h) grant not consumed"
-V spec revise --for planner-1-3.json --ref "$RD/gate-spec-5.md" --message "again" --decision d-1
+V plan revise --for planner-1-3.json --ref "$RD/gate-plan-5.md" --message "again" --decision d-1
 expect 4 "not an answered, unconsumed more-revise grant" "(h) a grant spent twice"
-V spec revise --for planner-1-3.json --ref "$RD/gate-spec-5.md" --message "again"
+V plan revise --for planner-1-3.json --ref "$RD/gate-plan-5.md" --message "again"
 expect 5 "revise limit 3" "(h) refused after the grant"
 echo "team-smoke-21: (h) revise limit OK"
 
-# ---- (i) spec body edited after approve → plan approve exit 6; a Status-only change passes --------
-commit_file "$PLAN" "# Plan"
-spec_body Draft "Export button and a CSV import."
-prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-4.json" "(i) done after a body edit"
-V plan approve --for planner-1-4.json --message ok; expect 6 "spec changed after approval — re-run the spec gate" "(i) body edit"
-spec_body "Approved (TeamLead, 2026-11-14)" "Export button."
-prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-5.json" "(i) done after a Status edit"
-V plan approve --for planner-1-5.json --message ok; expect 0 "teamlead-plan-1.json" "(i) Status-only change"
-echo "team-smoke-21: (i) spec digest OK"
+# ---- (i) a spec body edited after the planner's own approve does not block a plan approve --------
+spec_body "Approved (auto — team mode)" "Export button and a CSV import."
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-4.json" "(i) done after a spec edit"
+V plan approve --for planner-1-4.json --message ok; expect 0 "teamlead-plan-6.json" "(i) plan approve"
+echo "team-smoke-21: (i) no spec digest OK"
 
 # ---- (w) the wrapup's proposals under the lead: the record mark, the decision, notes, audit (#104) --
 session wrapup 1 "$BASE"; CL="$CLONE/.claude/lib"
@@ -310,7 +301,7 @@ dec "$A1" "$D2" "$M1" "- memory-2 accept — needed because see notopinion-1.md 
 expect 4 "group B accept names its Codex opinion" "(w) an opinion name inside another word"
 dec "$A1" "  correction: the header is 'id', not 'key'" "$D2" "$M1" "$M2"
 V wrapup decide --for wrapup_proposals-1_2.json --ref "$WD" --message x; expect 4 "is not wrapup_proposals-1_1.json" "(w) another proposals file"
-V wrapup decide --for wrapup_proposals-1_1.json --ref "$RD/gate-spec-1.md" --message x; expect 4 "wrapup-decision-<n>.md" "(w) not a decision file"
+V wrapup decide --for wrapup_proposals-1_1.json --ref "$RD/gate-plan-1.md" --message x; expect 4 "wrapup-decision-<n>.md" "(w) not a decision file"
 WV; expect 0 "teamlead-wrapup-1.json" "(w) decide"
 jq -e --arg sha "$(shasum -a 256 "$CLONE/$P" | cut -d' ' -f1)" '[.items[] | [.id, .decision]] == [["create-1","accept"],["create-2","decline"],["memory-1","accept"],["memory-2","accept"]]
   and .items[0].correction == "the header is '"'"'id'"'"', not '"'"'key'"'"'" and (.items[3].over_cap | length > 0)
@@ -374,21 +365,21 @@ echo "team-smoke-21: (w) wrapup proposals OK"
 # runner waits; the planner's next done rings the plan gate again and a new approve accepts it.
 greset alfa-lead alfa-planner; touch "$CLONE/stray.txt"
 run "$MAIN" $TR alfa; expect 6 "sent back to planner (1 of 2)" "(k) approve with a failing validation"
-[ ! -e "$RD/planner-1-5.json.accepted" ] && grep -qx teamlead-plan-1.json "$TD/verdict-acked" \
+[ ! -e "$RD/planner-1-4.json.accepted" ] && grep -qx teamlead-plan-6.json "$TD/verdict-acked" \
   || fail "(k) a rejected approve was accepted, or not spent"
-has "gate plan: .agents/team/runs/$RUN_ID/planner-1-5.json" "$STUB_LOG" || fail "(k) no plan gate ring"
-has "your done record .agents/team/runs/$RUN_ID/planner-1-5.json was rejected: " "$STUB_LOG" \
-  && has "working tree is not clean" "$RD/rejected-planner-1-5" && [ -e "$RD/planner-1-5.json.answered" ] \
+has "gate plan: .agents/team/runs/$RUN_ID/planner-1-4.json" "$STUB_LOG" || fail "(k) no plan gate ring"
+has "your done record .agents/team/runs/$RUN_ID/planner-1-4.json was rejected: " "$STUB_LOG" \
+  && has "working tree is not clean" "$RD/rejected-planner-1-4" && [ -e "$RD/planner-1-4.json.answered" ] \
   || fail "(k) the planner was not told the reason"
 rm -f "$CLONE/stray.txt"
-prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-6.json" "(k) the planner's next done"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-5.json" "(k) the planner's next done"
 greset alfa-lead alfa-planner
-run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate plan planner-1-6.json" "(k) the plan gate rings again"
-V plan approve --for planner-1-6.json --message ok; expect 0 "teamlead-plan-2.json" "(k) a new approve"
+run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate plan planner-1-5.json" "(k) the plan gate rings again"
+V plan approve --for planner-1-5.json --message ok; expect 0 "teamlead-plan-7.json" "(k) a new approve"
 greset alfa-lead alfa-planner; export CANCEL_AT=30
 run "$MAIN" $TR alfa
-[ -e "$RD/planner-1-6.json.accepted" ] || fail "(k) planner record not accepted (exit $RC)"
-has "accepted: planner-1-6.json" "$WORK/out" && has "launched: coder attempt 1" "$WORK/out" \
+[ -e "$RD/planner-1-5.json.accepted" ] || fail "(k) planner record not accepted (exit $RC)"
+has "accepted: planner-1-5.json" "$WORK/out" && has "launched: coder attempt 1" "$WORK/out" \
   || fail "(k) coder not launched after the plan approve"
 echo "team-smoke-21: (k) plan approve OK"
 
@@ -398,7 +389,7 @@ cmd_reset_quick() {
   jq '.mode = "quick"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
 }
 cmd_reset_quick; session planner 1 "$BASE"
-V spec approve --for planner-1-1.json --message x; expect 4 "quick mode has no spec gate" "(l) no spec gate in quick"
+V spec approve --for planner-1-1.json --message x; expect 4 "no spec gate: the first gate is the plan gate" "(l) no spec gate in quick"
 prec --verdict done --artifacts "$PLAN"; expect 0 "planner-1-1.json" "(l) quick done"
 # ---- (r) quick, no routed domain: approve without a digest; (s) routed: exit 7 until it exists -----
 V plan approve --for planner-1-1.json --message ok; expect 0 "teamlead-plan-1.json" "(r) quick, no routed domain"
@@ -425,6 +416,38 @@ greset alfa-lead
 run "$MAIN" $TR alfa; expect 1 "run closed (remode) — team-next for the next ticket, team-remode for remode" "(l) resume refused"
 run "$MAIN" $TR alfa status; expect 0 "closed: remode" "(l) status shows the closure"
 echo "team-smoke-21: (l) quick remode OK"
+
+# ---- (t) runner: a review record is an error; an older base refuses a brainstorm run in planning --
+t_reset() {  # t_reset <mode> — a fresh run of this RUN_ID with its lead, no stage session
+  rm -rf "$TD/runs" "$TD/acked" "$TD/verdict-acked" "$TD/session.json"; mkdir -p "$RD"
+  jq --arg m "$1" '.mode = $m' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
+  jq -n --arg r "$RUN_ID" --arg m "$MAIN" '{team: "alfa", run: $r, session_id: "sid-lead", main_root: $m}' \
+    > "$TD/teamlead.json"
+}
+t_reset brainstorm; session planner 1 "$BASE"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-1.json" "(t) a planner done"
+jq '.verdict = "review"' "$RD/planner-1-1.json" > "$WORK/r" && mv "$WORK/r" "$RD/planner-1-1.json"
+greset alfa-lead
+run "$MAIN" $TR alfa; expect 4 "is a review: there is no spec gate" "(t) a review record"
+VF="$CLONE/.claude/lib/team-verdict.sh"; cp "$VF" "$WORK/verdict.sh"
+grep -v 'the first gate is the plan gate' "$WORK/verdict.sh" > "$VF"
+git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "older base"
+t_reset brainstorm; greset alfa-lead
+run "$MAIN" $TR alfa
+expect 4 "clone base still has the spec gate (its team-verdict.sh predates the plan-gate-only TeamLead) — this brainstorm run cannot finish planning on the current runner: finish planning before updating the main checkout, or the Operator restarts the ticket on a fresh clone (team-new.sh)" "(t) older base, planner not accepted"
+has "team-next" "$WORK/out" && fail "(t) the refusal names team-next"
+t_reset brainstorm; session planner 1 "$BASE"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-1.json" "(t) older base: a planner done"
+touch "$RD/planner-1-1.json.accepted"; rm -f "$TD/session.json"; greset alfa-lead
+run "$MAIN" $TR alfa
+has "clone base still has the spec gate" "$WORK/out" && fail "(t) an accepted planner was refused"
+has "TeamLead reused: alfa-lead" "$WORK/out" || fail "(t) older base, planner accepted: the lead was not reused"
+t_reset quick; greset alfa-lead
+run "$MAIN" $TR alfa
+has "clone base still has the spec gate" "$WORK/out" && fail "(t) a quick run was refused"
+has "TeamLead reused: alfa-lead" "$WORK/out" || fail "(t) older base, quick: the lead was not reused"
+cp "$WORK/verdict.sh" "$VF"; git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "current base"
+echo "team-smoke-21: (t) review record + older base OK"
 unset STUB_ON_HAS_SESSION STUB_PANE CANCEL_AT
 
 echo "team-smoke-21: OK"

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Write a team handoff record for the current role (called by planner/coder/qa in a team clone).
 #
-# Usage: bash .claude/lib/team-record.sh --verdict done|blocked|failed|review [--artifacts a,b]
+# Usage: bash .claude/lib/team-record.sh --verdict done|blocked|failed [--artifacts a,b]
 #          [--pr <id>] [--evidence a,b] [--message "<one line>"]
 #        bash .claude/lib/team-record.sh --verdict blocked --proposals <run dir>/wrapup_proposals-<a>_<k>.json
 #   e.g. bash .claude/lib/team-record.sh --verdict done --pr 8371 --artifacts .agents/plans/done/x.md
-#   review: the planner's committed spec for the TeamLead's spec gate (one .agents/specs/*.md).
 #   --proposals: the wrapup's items for this run's TeamLead (team_wrapup.py); the stop is marked
 #   `proposals` so audits and status do not count it as a block, and adds no notes line. <a> is the
 #   attempt, <k> the first number no file of the attempt uses yet; a file a verdict names is refused.
@@ -13,7 +12,7 @@
 # Identity comes from .agents/team/session.json; contract: .agents/reference/team-mode.md §6.
 set -euo pipefail
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 VERDICT=""; ARTIFACTS=""; PR=""; EVIDENCE=""; MESSAGE=""; PROPOSALS=""
 while [ $# -gt 0 ]; do
@@ -39,10 +38,8 @@ done
 case "$VERDICT" in
   done|blocked|failed) ;;
   review)
-    [ "$(session_json role)" = planner ] || { echo "error: only the planner records review" >&2; exit 2; }
-    case "$ARTIFACTS" in .agents/specs/*.md) ;; *) false ;; esac && [[ "$ARTIFACTS" != *,* ]] \
-      || { echo "error: --verdict review needs --artifacts <one .agents/specs/*.md>" >&2; exit 2; } ;;
-  *) echo "error: --verdict must be done, blocked, failed or review" >&2; exit 2 ;;
+    echo "error: --verdict review is gone: there is no spec gate — approve the spec yourself and record done after /plan-feature" >&2; exit 2 ;;
+  *) echo "error: --verdict must be done, blocked or failed" >&2; exit 2 ;;
 esac
 if [ -n "$PR" ] && ! [[ "$PR" =~ ^[0-9]+$ ]]; then
   echo "error: --pr must be numeric" >&2; exit 2

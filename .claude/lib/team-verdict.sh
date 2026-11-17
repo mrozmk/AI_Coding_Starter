@@ -6,9 +6,8 @@
 #        bash .claude/lib/team-verdict.sh event collision --ref <file> --message "<line>"
 #        bash .claude/lib/team-verdict.sh wrapup decide --for <wrapup_proposals-<a>_<k>.json>
 #          --ref .agents/team/runs/<run>/wrapup-decision-<n>.md --message "<line>"
-#   gates: spec → approve|revise|escalate (brainstorm); plan → approve|revise|escalate|remode
-#   (remode in quick only). --for names the planner's newest record (a review for spec, a done for
-#   plan). revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
+#   gates: plan → approve|revise|escalate|remode (remode in quick only); there is no spec gate.
+#   --for names the planner's newest record, a done. revise needs --ref (the findings) and is capped per gate by teams.teamlead.revise_limit;
 #   --decision names an answered decision with answer_outcome more-revise that grants one more round.
 #   acceptance → accept|rework|abandon-recommended on the qa's newest done record (rework: done or
 #   blocked) of the current round; round files live in runs/<run>/ (round 1) or runs/<run>/r<n>/.
@@ -28,18 +27,18 @@
 #   per proposals file; the items and the file's sha256 land in the verdict, the items also under
 #   `## Wrapup decisions` in the notes.
 #   Writes .agents/team/runs/<run>/teamlead-<gate>-<seq>.json.
-#   Tracker comments (opt-in workflow.tracker_comments, tracker not none): spec/plan approve and
+#   Tracker comments (opt-in workflow.tracker_comments, tracker not none): plan approve and
 #   acceptance accept need the planner's ledger + snapshot and the lead's fresh read
 #   runs/<run>/tracker-<gate>-<n>.json (acceptance: in the round's dir) — team-tracker-gate.sh.
-#   e.g. bash .claude/lib/team-verdict.sh spec revise --for planner-1-2.json \
-#          --ref .agents/team/runs/alfa-20261114-100000/gate-spec-1.md --message "2 findings"
+#   e.g. bash .claude/lib/team-verdict.sh plan revise --for planner-1-2.json \
+#          --ref .agents/team/runs/alfa-20261114-100000/gate-plan-1.md --message "2 findings"
 # Exit: 0 written · 2 usage · 3 not the lead · 4 bad gate/verdict/for · 5 revise limit
-#       6 spec changed after approval · 7 constraint digest missing (team-lead.sh digest-check)
+#       7 constraint digest missing (team-lead.sh digest-check)
 #       8 acceptance brief incomplete · 9 rework budget reached · 10 tracker comments not current.
 #   Contract: .agents/reference/team-lead.md §4, §5, §8, §9, §11
 set -euo pipefail
 
-usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""
@@ -77,7 +76,6 @@ fm_set() {  # fm_set <file> <key> <value> — replace or add one frontmatter key
 }
 TRACKER_LINE=""
 verdicts() { ls "$RD" 2>/dev/null | grep -E "^teamlead-$GATE-[0-9]+\.json\$" | sort -t- -k3,3n || true; }
-DIGEST=""
 write_verdict() {  # → prints the written file
   local seq=1 n target tmp
   n="$(verdicts | tail -n 1)"; [ -z "$n" ] || { n="${n#teamlead-"$GATE"-}"; seq=$((${n%.json} + 1)); }
@@ -85,12 +83,12 @@ write_verdict() {  # → prints the written file
   [ ! -e "$target" ] || { echo "error: $target already exists" >&2; exit 1; }
   jq -n --arg team "$TEAM" --arg ticket "$TICKET" --arg run "$RUN" --arg gate "$GATE" \
     --argjson seq "$seq" --arg for "$FOR" --arg verdict "$VERDICT" --arg ref "$REF" \
-    --arg notify "$NOTIFY" --arg message "$MESSAGE" --arg spec_digest "$DIGEST" \
+    --arg notify "$NOTIFY" --arg message "$MESSAGE" \
     --arg decision "$DECISION" --arg written_at "$(team_utc)" \
     --arg session_id "$(team_lead_json session_id)" --arg quick_call "$QUICK_CALL" \
     --arg tracker "$TRACKER_LINE" --argjson items "${ITEMS:-null}" --arg psha "${PROPOSALS_SHA:-}" \
     '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
-      ref: $ref, notify: $notify, message: $message, spec_digest: $spec_digest,
+      ref: $ref, notify: $notify, message: $message,
       decision: $decision, written_at: $written_at, session_id: $session_id}
      + (if $quick_call == "" then {} else {quick_call: $quick_call} end)
      + (if $tracker == "" then {} else {tracker: $tracker} end)
@@ -186,10 +184,12 @@ fi
 
 # The gated record: the gated role's newest record of the launched attempt, in the gate's verdict.
 case "$GATE" in
-  spec) [ "$MODE" != quick ] || bad "quick mode has no spec gate"; role=planner; want=review ;;
+  # Sentinel: team-run-lead.sh lead_start greps a clone's copy of this file for the spec) refusal
+  # text to tell a plan-gate-only base from an older one — keep its wording verbatim.
+  spec) bad "no spec gate: the first gate is the plan gate" ;;
   plan) role=planner; want=done ;;
   acceptance) role=qa; want=done ;;
-  *) bad "unknown gate $GATE (spec|plan|acceptance|decision|wrapup)" ;;
+  *) bad "unknown gate $GATE (plan|acceptance|decision|wrapup)" ;;
 esac
 [ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
   || bad "no $role session — the $GATE gate is the $role's"
@@ -203,7 +203,7 @@ last="$(team_records "$RREF" "$role" "$(session_json attempt)" | tail -n 1)"
 FOR="${last#"$RD"/}"
 
 case "$GATE $VERDICT" in
-  "spec approve"|"spec revise"|"spec escalate"|"plan approve"|"plan revise"|"plan escalate") ;;
+  "plan approve"|"plan revise"|"plan escalate") ;;
   "plan remode") [ "$MODE" = quick ] || bad "remode is for quick mode only" ;;
   "acceptance accept"|"acceptance rework"|"acceptance abandon-recommended") ;;
   *) bad "verdict $VERDICT is not allowed at the $GATE gate" ;;
@@ -289,35 +289,16 @@ if [ "$VERDICT" = revise ]; then
   fi
 fi
 
-# The spec is read at the record's output_rev, never from the working tree; the Status line is
-# excluded so setting Approved after the gate does not move the digest.
-digest() { git show "$1:$2" | grep -v '^\*\*Status:\*\*' | shasum -a 256 | cut -d' ' -f1; }
-spec_of() { jq -r '[.artifacts[] | select(startswith(".agents/specs/"))][0] // empty' "$1"; }
-# The approve that opens the run's work needs the constraint digest (brainstorm spec, quick plan).
-need=""
-case "$GATE $VERDICT $MODE" in
-  "spec approve "*) need="$(spec_of "$last")" ;;
-  "plan approve quick") need="$(jq -r '[.artifacts[] | select(startswith(".agents/plans/"))][0] // empty' "$last")" ;;
-esac
-if [ -n "$need" ] && ! bash "$LIB/team-lead.sh" digest-check "$TEAM" "$need"; then exit 7; fi
-
-if [ "$GATE $VERDICT" = "spec approve" ]; then
-  s="$(spec_of "$last")"; [ -n "$s" ] || bad "$FOR names no spec"
-  DIGEST="$(digest "$(rec "$last" output_rev)" "$s")" || bad "spec $s not readable at $FOR's output_rev"
-elif [ "$GATE $VERDICT" = "plan approve" ] && [ "$MODE" != quick ]; then
-  ok=""
-  for f in $(GATE=spec verdicts); do [ "$(rec "$RD/$f" verdict)" != approve ] || ok="$RD/$f"; done
-  [ -n "$ok" ] || bad "no spec approve in run $RUN — run the spec gate first"
-  s="$(spec_of "$last")"; [ -n "$s" ] || s="$(spec_of "$RD/$(rec "$ok" for)")"
-  d="$(digest "$(rec "$last" output_rev)" "$s")" || bad "spec $s not readable at $FOR's output_rev"
-  if [ "$d" != "$(rec "$ok" spec_digest)" ]; then
-    echo "error: spec changed after approval — re-run the spec gate" >&2; exit 6
-  fi
+# The plan approve that opens the run's work needs the constraint digest (team-lead.sh decides per mode).
+if [ "$GATE $VERDICT" = "plan approve" ]; then
+  need="$(jq -r '[.artifacts[] | select(startswith(".agents/plans/"))][0] // empty' "$last")"
+  [ -n "$need" ] || bad "$FOR names no plan"
+  bash "$LIB/team-lead.sh" digest-check "$TEAM" "$need" || exit 7
 fi
 
 # Tracker comments as requirements (opt-in): an approve or an accept needs a current read.
 case "$GATE $VERDICT" in
-  "spec approve"|"plan approve"|"acceptance accept")
+  "plan approve"|"acceptance accept")
     . "$LIB/team-tracker-gate.sh"; if trk_on; then trk_gate; fi ;;
 esac
 

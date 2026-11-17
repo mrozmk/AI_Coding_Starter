@@ -1,8 +1,8 @@
 # Per-run TeamLead — role contract
 
 One TeamLead session per team run, in brainstorm and quick mode (`teams.teamlead.enabled: true`;
-mode `cli` never has one). It gates the team's spec and plan, answers the team's stops, accepts the
-result against the order brief and escalates only human-only decisions to the Operator. It never
+mode `cli` never has one). It gates the team's plan against the order, answers the team's stops,
+accepts the result against the order brief and escalates only human-only decisions to the Operator. It never
 writes code, commits, pushes, merges or writes a stage record. With the switch off the runner's
 behaviour is unchanged and the global TeamLead (`supervisor-sessions.md#teamlead`) handles the team.
 
@@ -28,7 +28,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   acks it, rings the lead (`stop <role> <attempt>: <record> — <message>`), prints
   `waiting for TeamLead: <record>` and keeps waiting for the stage's next record. Time spent waiting
   does not count toward the stage limit.
-- **Rejected record.** A `done`/`review` record the validator rejects is sent back to the stage with
+- **Rejected record.** A `done` record the validator rejects is sent back to the stage with
   the reason verbatim, at most twice per attempt (`runs/<run>/[r<n>/]rejected-<record>`; acked and
   `.answered`, so the clock runs); the lead hears `rejected <role> <attempt>: <record> — <why> (sent
   back to the stage, <n> of 2)`. The 3rd is not sent back: `… (3rd rejection, the stage is not asked
@@ -73,7 +73,7 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `<main>/.agents/team/registry/<team>-lead.reg.json` | `session-registry.sh` (mode 600) | `socket, token, pid, session_id, registered_at` — the doorbell's target; removed on relaunch, at `end` and by `team-next.sh` / `team-remode.sh` |
 | `runs/<run>/lead-<n>.prompt.md`, `lead-<n>.session` | runner, per launch (relaunches count) | the rendered prompt and session id; `cost.py bind --team-run` pairs them |
 | `lead-dead`, `relaunch-lead`, `send-lead.log` | runner | death reported once, relaunch request, skipped doorbells |
-| `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | the stage record the lead must resolve, relative to `runs/<run>/` (`r<n>/<record>` in a rework round): a `blocked`/`failed` stop, a planner `review` (spec gate) or `done` (plan gate), a qa `done` (acceptance gate) |
+| `acked` | runner, on a stop (`lead_stop`) or a gate (`lead_gate_ring`) | the stage record the lead must resolve, relative to `runs/<run>/` (`r<n>/<record>` in a rework round): a `blocked`/`failed` stop, a planner `done` (plan gate), a qa `done` (acceptance gate) |
 | `round`, `round-transition` | runner (§9) | the durable rework round `{run, round, verdict, pr_published}`; the transition intent `{run, from, to, verdict, pr_published}` |
 | `runs/<run>/rework-<n>.md`, `runs/<run>/r<n>/` | the lead; runner + stages | the round's rework order; round n's records, prompts, sessions, reports and acceptance files |
 | `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
@@ -95,8 +95,8 @@ switches a later run to the lead branch.
 - `stop` — a role/attempt whose newest record is `blocked` or `failed`;
 - `rejected` — the acked newest record the runner rejected a 3rd time (`rejected-<record>` holds the
   reason), until its `.answered` marker;
-- `gate` — a planner `review` (spec gate) or unaccepted `done` (plan gate) that no verdict other
-  than `escalate` names yet;
+- `gate` — an unaccepted planner `done` (plan gate) that no verdict other than `escalate` names
+  yet;
 - `attention` — attention lines after the active stage's newest record, except `idle_prompt` (a
   stage at an empty prompt is a notice, not a decision owed: §6);
 - `inbox` — files in `<main>/.agents/team/inbox/<team>/new/`.
@@ -143,21 +143,24 @@ the next lead no longer count them.
 
 ## 4. Gates
 
-The lead gates the planner's spec (brainstorm) and plan (both modes) with verdict records the
-runner acts on. Writer: `team-verdict.sh <gate> <verdict> --for <record> --message "<line>"
+The lead gates the planner's plan (both modes) against the order with verdict records the runner
+acts on. Writer: `team-verdict.sh <gate> <verdict> --for <record> --message "<line>"
 [--ref <findings>] [--notify human_decision|abandon_decision] [--decision d-<n>]`, lead only
 (`team_lead_caller`), into `runs/<run>/teamlead-<gate>-<seq>.json` (`team, ticket, run, gate, seq,
-for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
+for, verdict, ref, notify, message, written_at, session_id`).
 
 | Gate | Input (`--for`) | Verdicts | Runner |
 |---|---|---|---|
-| `spec` (brainstorm) | the planner's `review` record (`/brainstorm` Step 9) | `approve` · `revise` · `escalate` | approve → `[team-run] TeamLead approved the spec …`, the planner sets `Approved (TeamLead, <date>)` and plans; revise → `[team-run] TeamLead: revise the spec — findings in <ref>…`; escalate → keeps waiting |
 | `plan` | the planner's `done` record, before validation | `approve` · `revise` · `escalate` · `remode` (quick) | approve → validate + accept, the next stage launches; revise → `[team-run] TeamLead: amend the plan …`; remode → `close_run remode`; escalate → keeps waiting |
+
+There is no spec gate: the planner approves its own spec (`Approved (auto — team mode)`) and the
+plan gate is the first lead check.
 
 - **Refusals** (exit): `3` not the lead; `4` an unknown gate (`acceptance`/`decision` come later),
   a verdict outside the gate's set, `--for` that is not the planner's newest record or not in the
-  gate's verdict, `revise` without `--ref`; `5` revise limit; `6` spec changed after approval;
-  `7` constraint digest missing (§5); `10` tracker comments not current (§11).
+  gate's verdict, `revise` without `--ref`, the gate `spec` ("no spec gate: the first gate is the
+  plan gate"); `5` revise limit; `7` constraint digest missing (§5); `10` tracker comments not
+  current (§11).
 - **Caller guard.** The script's own check (role env + `teamlead.json`) can be forged by a stage
   that prefixes `TEAM_SESSION_ROLE=TeamLead`. `guard-team-verdict.sh` (PreToolUse `Bash`, project
   settings, `/setup:teams` id `V`) refuses an invocation of `team-verdict.sh` (and of
@@ -169,10 +172,27 @@ for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
   Past it: `escalate` with a pending decision, `approve`, or (quick plan) `remode`. An answered
   decision `runs/<run>/decisions/d-<n>.md` with frontmatter `outcome: more-revise` and
   `gate: <gate>`, passed as `--decision d-<n>`, grants one more round and is marked `consumed`.
-- **Spec digest.** A spec `approve` stores the SHA-256 of the spec at the record's `output_rev`
-  without its `**Status:**` line. A brainstorm plan `approve` recomputes it at the `done` record's
-  `output_rev`; a body change refuses (exit 6) and the spec gate runs again (it counts against the
-  spec gate's limit), while setting `Approved (TeamLead, …)` passes.
+- **Conformance only.** The plan gate checks conformance with the order, not technical quality. A
+  finding is allowed only when it names the item it rests on, in one of five kinds: (1) an ordered
+  item the plan does not cover; (2) a `Not ordered` item the plan does; (3) an addition beyond the
+  order with no reason given; (4) a collision with in-flight work in the brief; (5) a recorded
+  project rule the plan breaks — a digest line or a CLAUDE.md hard rule, cited by file and heading.
+  Each finding reads `- <brief item or rule> — <what the plan does or misses>`. **Not findings,
+  never a `revise`:** design opinions, missing tests, code structure, tooling or verification
+  advice — the planner's own reviews (`/brainstorm`, `/plan-feature`, their cross-model step) own
+  those. Examples of what is out, from a real spec gate: "two paths are relative, resolve the root
+  and add a test for it"; "add a test that the ingest skips the new record type"; "record the
+  verified engine version next to the constant"; "add a typecheck to the acceptance criteria" —
+  none rests on an order item or a recorded rule. A human-only question (→ `escalate`) and, in
+  quick, "is this still quick?" (→ `remode`) stay the lead's.
+- **Older runs.** The runner and the lead's prompt come from the main checkout, but the lead's
+  `team-verdict.sh` and the planner's `/brainstorm` come from the clone's base. A brainstorm run on
+  an older base whose planner has no accepted record yet cannot finish planning (its
+  `team-verdict.sh` wants a spec verdict first), so `lead_start` refuses it (exit 4): `clone base
+  still has the spec gate (its team-verdict.sh predates the plan-gate-only TeamLead) — this
+  brainstorm run cannot finish planning on the current runner: finish planning before updating the
+  main checkout, or the Operator restarts the ticket on a fresh clone (team-new.sh)`. A run whose
+  planner is already accepted, and every quick run, keep working.
 - **Planner messages** go through `team_session_doorbell <team dir> planner` (idle input, send
   lock). A skipped message leaves its verdict unacted, and the next poll retries it.
 - **Close.** `close_run <reason> <ref>` writes `closed.json`, the `closed` event, ends the lead and
@@ -181,7 +201,7 @@ for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
   `remode`: the new brainstorm run starts from the current `HEAD` (the committed quick plan stays in
   history) and keeps the order brief.
 - **Collision.** `team-verdict.sh event collision --ref <file> --message "<line>"` writes the
-  Supervisor event; the lead then either sends the spec back (`revise`) or holds the gate until the
+  Supervisor event; the lead then either sends the plan back (`revise`) or holds the gate until the
   Supervisor answers through `inbox/<team>/`.
 
 ## 5. Project context
@@ -189,9 +209,9 @@ for, verdict, ref, notify, message, spec_digest, written_at, session_id`).
 The lead loads project knowledge in three layers:
 
 1. **Always:** `/prime` quick at bootstrap — nothing wholesale beyond it.
-2. **Per task: the constraint digest.** At the first gate one distillation sub-agent reads
-   `.agents/memory/decisions.md` and the domain files `index.md` routes for the paths the spec or
-   plan touches (`.claude/memory-domains.json` rules, the same lookup as `guard-memory.sh`:
+2. **Per task: the constraint digest.** At the plan gate one distillation sub-agent reads
+   `.agents/memory/decisions.md` and the domain files `index.md` routes for the paths the plan
+   touches (`.claude/memory-domains.json` rules, the same lookup as `guard-memory.sh`:
    `.claude/hooks/lib/memory-domain.sh`). It returns only the constraints bearing on this task,
    each cited (`- <constraint> — <file>#<heading or line>`), at most 60 lines, `none` when nothing
    applies. The lead saves it verbatim as `runs/<run>/digest.md` (`scope:` and `made_at:` header)
@@ -201,8 +221,8 @@ The lead loads project knowledge in three layers:
 
 When it is required: always in brainstorm (decisions.md alone is input); in quick only when a path
 the plan names maps to a routed domain. A project without `memory-domains.json` has no routed
-domains, so quick never needs one. `team-lead.sh digest-check <team> <spec|plan path>` decides;
-`team-verdict.sh` runs it before a brainstorm spec `approve` or a quick plan `approve` and refuses
+domains, so quick never needs one. `team-lead.sh digest-check <team> <plan path>` decides;
+`team-verdict.sh` runs it before every plan `approve` and refuses
 with exit 7 (`constraint digest missing — see the Digest section of the TeamLead prompt`).
 
 ## 6. Answering on an authority
@@ -260,7 +280,7 @@ cannot make becomes a file, and the stop that needs it waits while everything el
 
 - **Open** (lead only): `team-lead.sh decision open <team> --source <run file|attention:<n>>
   --question "<line>" [--options "a|b"] [--recommend "<line>"] [--notify human_decision|abandon_decision]
-  [--gate spec|plan]`, or `--request req-<n>` (the runner's request: source, question and the prompt
+  [--gate plan]`, or `--request req-<n>` (the runner's request: source, question and the prompt
   binding `bind_session_id, bind_run, bind_attempt, bind_fp, bind_event, bind_pane` are copied). It
   writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
   notify`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
@@ -308,7 +328,7 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   `more-revise` grants; the rework budget of §9 counts consumed `continue` grants of abandon
   decisions.
 - **Close is not limited to acceptance.** The runner acts on `decision close` whose `--for` is the
-  acked record at **any** gate or stop — a spec, plan or acceptance gate, a coder or qa `blocked`
+  acked record at **any** gate or stop — a plan or acceptance gate, a coder or qa `blocked`
   stop: the Operator said close, so the run closes there (`close_run abandon`, exit 8). A `continue`
   only means something at the acceptance gate (§9); elsewhere it changes nothing in the runner.
 - **Withdraw / list:** `decision withdraw <team> d-<n> --why "<line>"` (`status: withdrawn`, lead
@@ -490,8 +510,8 @@ a run tracker other than `none`. With the switch off nothing below runs. The con
   snapshot next to the artifact (`<spec|plan>.ticket.json`) and writes the `## From tracker
   comments` ledger whose `Read:` line names it. The cli reads at its start and keeps the snapshot
   as `runs/<run>/ticket.json`, with the ledger in its `cli-<attempt>.md`.
-- **Gates** (`team-tracker-gate.sh`, sourced by `team-verdict.sh` for `spec approve`, `plan
-  approve` and `acceptance accept`). The lead writes a fresh read first:
+- **Gates** (`team-tracker-gate.sh`, sourced by `team-verdict.sh` for `plan approve` and
+  `acceptance accept`). The lead writes a fresh read first:
   `runs/<run>/tracker-<gate>-<n>.json` (acceptance: in the round's dir), a snapshot by
   `tracker-snapshot.mjs`. Every refusal exits **10**:
   - the gated artifact at the record's `output_rev` has no ledger, or its snapshot is not committed
@@ -499,8 +519,8 @@ a run tracker other than `none`. With the switch off nothing below runs. The con
   - no fresh read, a fresh read of another key, or one whose `read_at` is older than the gated
     record's `written_at`;
   - `compare <baseline> <fresh>`: the baseline is the plan's own snapshot, else its source spec's
-    (contract §5.3); for the spec gate the spec's. Spec and plan: exit 3 → refused, "revise with
-    the list as findings" (the planner reconciles; after the spec approve, into the plan); exit 4
+    (contract §5.3). Plan: exit 3 → refused, "revise with the list as findings" (the planner
+    reconciles into the plan); exit 4
     → refused, "escalate with a decision". Acceptance: the baseline is that of the planner record
     the plan `approve` named; `--reconciled` is every `<id>@<sha>` in `runs/<run>/answers.md`;
     exit 3 passes only when every listed id (and `description`, when it changed) appears under

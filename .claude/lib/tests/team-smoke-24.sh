@@ -3,9 +3,9 @@
 # every session played by writing the files a real session writes, through the record, verdict,
 # decision and sender scripts. Waits are on a file or a log line with a 60 s deadline, never a fixed
 # sleep as the pass condition. Scenarios (the owner's flow lanes):
-#   alfa  — brainstorm, clean: spec gate, plan gate, coder, qa, acceptance, wrapup → ready, accepted
+#   alfa  — brainstorm, clean: plan gate, coder, qa, acceptance, wrapup → ready, accepted
 #   beta  — quick: plan gate, a human-only coder prompt → decision, one notification, operator relay
-#   gamma — brainstorm: spec revise + collision, two reworks, the third refused, abandon → closed
+#   gamma — brainstorm: plan revise + collision, two reworks, the third refused, abandon → closed
 #   trk   — brainstorm with workflow.tracker_comments on (github-shaped reads; the fixture's tracker
 #           stays jira, whose wrapup needs no tracker target): the planner's ledger + snapshot,
 #           the lead's fresh reads; a comment after the spec refuses the plan approve (exit 10) until
@@ -16,7 +16,7 @@
 # Spec acceptance criteria → asserting cases (parts 20–24):
 #   lead per run, reuse, end; none in cli            22 b, e, f, h; 24 alfa
 #   order brief required                             21 b; 22 c
-#   no plan before spec approve; Approved (TeamLead) 21 g; 24 alfa
+#   no spec gate; Approved (auto — team mode)       21 f, n, t; 24 alfa
 #   no coder before plan approve; quick remode       21 k, l; 24 alfa, beta
 #   blocked does not end the runner                  22 d; 24 off (it does with the switch off)
 #   classes first; human-only → one notification     22 i–m; 24 beta
@@ -156,19 +156,16 @@ launched planner 1
 [ "$(grep -n -- 'new-session -d -s smk-alfa-lead ' "$STUB_LOG" | head -n 1 | cut -d: -f1)" -lt \
   "$(grep -n -- 'new-session -d -s smk-alfa-planner ' "$STUB_LOG" | head -n 1 | cut -d: -f1)" ] || fail "alfa: the planner launched before the lead"
 on_stage planner
-spec Draft "Export button."; play --verdict review --artifacts .agents/specs/s.md; expect 0 "planner-1-1.json" "alfa review"
-wait_for "alfa spec gate" "rung 'gate spec: .agents/team/runs/$RUN_ID/planner-1-1.json'"
-printf 'scope: src/\nmade_at: 2026-11-16T10:00:00Z\n\n- none\n' > "$RD/digest.md"
-V spec approve --for planner-1-1.json --message "matches the order"; expect 0 "teamlead-spec-1.json" "alfa spec approve"
-wait_for "alfa approve said" "said_to planner '[team-run] TeamLead approved the spec'"
-grep -F -- "send-keys -t =smk-alfa-planner: -l -- [team-run] TeamLead approved the spec" "$STUB_LOG" \
-  | grep -qF "Set **Status:** Approved (TeamLead, " || fail "alfa: no Approved (TeamLead, …) instruction"
-spec "Approved (TeamLead, 2026-11-16)" "Export button."; plan
-play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-2.json" "alfa planner done"
-wait_for "alfa plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-2.json'"
+# The planner approves its own spec; its done is the lead's first gate.
+spec "Approved (auto — team mode)" "Export button."; plan
+play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-1.json" "alfa planner done"
+wait_for "alfa plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-1.json'"
 [ "$(launches coder)" = 0 ] || fail "alfa: the coder launched before the plan gate"
-git -C "$CLONE" show HEAD~1:.agents/specs/s.md | grep -q '^\*\*Status:\*\* Approved (TeamLead, ' || fail "alfa: spec commit not Approved (TeamLead, …)"
-V plan approve --for planner-1-2.json --message ok; expect 0 "teamlead-plan-1.json" "alfa plan approve"
+git -C "$CLONE" show HEAD~1:.agents/specs/s.md | grep -q '^\*\*Status:\*\* Approved (auto — team mode)' || fail "alfa: spec commit not Approved (auto — team mode)"
+has "gate spec" "$STUB_LOG" && fail "alfa: a spec gate was rung"
+V plan approve --for planner-1-1.json --message ok; expect 7 "constraint digest missing" "alfa plan approve without the digest"
+printf 'scope: src/\nmade_at: 2026-11-16T10:00:00Z\n\n- none\n' > "$RD/digest.md"
+V plan approve --for planner-1-1.json --message ok; expect 0 "teamlead-plan-1.json" "alfa plan approve"
 launched coder 1; on_stage coder
 [ "$(launches qa)" = 0 ] || fail "alfa: qa before the coder"
 coder_round1
@@ -239,21 +236,19 @@ echo "team-smoke-24: beta (quick, human decision) OK"
 fresh alfa-20261116-120000 brainstorm
 start_runner
 launched planner 1; on_stage planner
-spec Draft "Export button. Also a CSV import."; play --verdict review --artifacts .agents/specs/s.md; expect 0 "" "gamma review"
-wait_for "gamma spec gate 1" "rung 'gate spec: .agents/team/runs/$RUN_ID/planner-1-1.json'"
-echo "- CSV import is beyond the order (Not ordered)" > "$RD/gate-spec-1.md"
-V spec revise --for planner-1-1.json --ref ".agents/team/runs/$RUN_ID/gate-spec-1.md" --message "1 finding"; expect 0 "" "gamma revise"
-V event collision --ref ".agents/team/runs/$RUN_ID/gate-spec-1.md" --message "beta's open PR touches the export"; expect 0 "" "gamma collision"
-wait_for "gamma revise said" "said_to planner '[team-run] TeamLead: revise the spec'"
-spec Draft "Export button."; play --verdict review --artifacts .agents/specs/s.md; expect 0 "planner-1-2.json" "gamma review 2"
-wait_for "gamma spec gate 2" "rung 'gate spec: .agents/team/runs/$RUN_ID/planner-1-2.json'"
+spec "Approved (auto — team mode)" "Export button, gamma."; plan
+printf '2. Add a CSV import.\n' >> "$CLONE/.agents/plans/active/$PLAN"
+git -C "$CLONE" commit --quiet -am "plan with a CSV import"
+play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-1.json" "gamma planner done"
+wait_for "gamma plan gate 1" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-1.json'"
+echo "- CSV import is beyond the order (Not ordered)" > "$RD/gate-plan-1.md"
+V plan revise --for planner-1-1.json --ref ".agents/team/runs/$RUN_ID/gate-plan-1.md" --message "1 finding"; expect 0 "" "gamma revise"
+V event collision --ref ".agents/team/runs/$RUN_ID/gate-plan-1.md" --message "beta's open PR touches the export"; expect 0 "" "gamma collision"
+wait_for "gamma amend said" "said_to planner '[team-run] TeamLead: amend the plan'"
+plan; play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-2.json" "gamma planner done 2"
+wait_for "gamma plan gate 2" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-2.json'"
 printf 'scope: src/\nmade_at: 2026-11-16T12:00:00Z\n\n- none\n' > "$RD/digest.md"
-V spec approve --for planner-1-2.json --message ok; expect 0 "" "gamma spec approve"
-wait_for "gamma approve said" "said_to planner '[team-run] TeamLead approved the spec'"
-spec "Approved (TeamLead, 2026-11-16)" "Export button."; plan
-play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-3.json" "gamma planner done"
-wait_for "gamma plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-3.json'"
-V plan approve --for planner-1-3.json --message ok; expect 0 "" "gamma plan approve"
+V plan approve --for planner-1-2.json --message ok; expect 0 "" "gamma plan approve"
 launched coder 1; on_stage coder; coder_round1
 launched qa 1; on_stage qa; qa_done "$RD"
 for n in 2 3; do
@@ -275,7 +270,7 @@ expect 0 "[d-1]" "gamma abandon decision"
 V acceptance abandon-recommended --for qa-1-1.json --decision d-1 --message "budget spent"; expect 0 "" "gamma abandon-recommended"
 wait_for "gamma notification" "[ \"\$(notified)\" -ge 1 ]"
 lead_said "d-1 close it" u-op-gamma
-ldec answer alfa d-1 --text "close it" --outcome close --tuning TeamLead --why "the lead could have stopped at the spec gate"
+ldec answer alfa d-1 --text "close it" --outcome close --tuning TeamLead --why "the lead could have stopped at the plan gate"
 expect 0 "answered: d-1 (close)" "gamma Operator answer"
 ls "$OB/state" 2>/dev/null | grep -q "_alfa_${RUN_ID}_d-1[.]resolved$" || fail "gamma: the answered decision's notification is not resolved"
 V decision close --for qa-1-1.json --decision d-1 --message "Operator: close it"; expect 0 "" "gamma decision close"
@@ -308,33 +303,26 @@ fresh alfa-20261116-125000 brainstorm
 start_runner
 launched planner 1; on_stage planner
 mkdir -p "$CLONE/.agents/specs"; tshow "$CLONE/.agents/specs/s.ticket.json" "501:CSV header row"
-printf '# Spec\n\n**Status:** Draft\n\nExport button with a CSV header row.\n' > "$CLONE/.agents/specs/s.md"
+printf '# Spec\n\n**Status:** Approved (auto — team mode)\n\nExport button with a CSV header row.\n' > "$CLONE/.agents/specs/s.md"
 ledger .agents/specs/s.md .agents/specs/s.ticket.json
-git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "spec + ticket snapshot"
-play --verdict review --artifacts .agents/specs/s.md; expect 0 "planner-1-1.json" "trk review"
-wait_for "trk spec gate" "rung 'gate spec: .agents/team/runs/$RUN_ID/planner-1-1.json'"
+git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "spec + ticket snapshot"; plan
+play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-1.json" "trk planner done"
+wait_for "trk plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-1.json'"
 printf 'scope: src/\nmade_at: 2026-11-16T12:50:00Z\n\n- none\n' > "$RD/digest.md"
-V spec approve --for planner-1-1.json --message ok; expect 10 "no fresh read" "trk spec approve without a fresh read"
-tshow "$RD/tracker-spec-1.json" "501:CSV header row"
-V spec approve --for planner-1-1.json --message ok; expect 0 "teamlead-spec-1.json" "trk spec approve"
-wait_for "trk approve said" "said_to planner '[team-run] TeamLead approved the spec'"
-sed -i.bak 's/^\*\*Status:\*\* Draft/**Status:** Approved (TeamLead, 2026-11-16)/' "$CLONE/.agents/specs/s.md"
-rm -f "$CLONE/.agents/specs/s.md.bak"; git -C "$CLONE" commit --quiet -am "spec approved"; plan
-play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-2.json" "trk planner done"
-wait_for "trk plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-2.json'"
+V plan approve --for planner-1-1.json --message ok; expect 10 "no fresh read" "trk plan approve without a fresh read"
 # The Operator commented after the spec: the plan approve is refused, the lead sends it back.
 tshow "$RD/tracker-plan-1.json" "501:CSV header row" "502:a footer line too"
-V plan approve --for planner-1-2.json --message ok; expect 10 "new 502 — revise with the list as findings" "trk plan approve on a new comment"
+V plan approve --for planner-1-1.json --message ok; expect 10 "new 502 — revise with the list as findings" "trk plan approve on a new comment"
 printf -- '- 502 (tracker comment): a footer line — reconcile into the plan\n' > "$RD/gate-plan-1.md"
-V plan revise --for planner-1-2.json --ref "$RD/gate-plan-1.md" --message "new tracker input: 502"; expect 0 "teamlead-plan-1.json" "trk plan revise"
+V plan revise --for planner-1-1.json --ref "$RD/gate-plan-1.md" --message "new tracker input: 502"; expect 0 "teamlead-plan-1.json" "trk plan revise"
 wait_for "trk amend said" "said_to planner '[team-run] TeamLead: amend the plan'"
 tshow "$CLONE/.agents/plans/active/${PLAN%.md}.ticket.json" "501:CSV header row" "502:a footer line too"
 ledger ".agents/plans/active/$PLAN" ".agents/plans/active/${PLAN%.md}.ticket.json"
 git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "plan reconciles 502"
-play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-3.json" "trk planner done again"
-wait_for "trk plan gate 2" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-3.json'"
+play --verdict done --artifacts ".agents/specs/s.md,.agents/plans/active/$PLAN"; expect 0 "planner-1-2.json" "trk planner done again"
+wait_for "trk plan gate 2" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-2.json'"
 tshow "$RD/tracker-plan-2.json" "501:CSV header row" "502:a footer line too"
-V plan approve --for planner-1-3.json --message ok; expect 0 "teamlead-plan-2.json" "trk plan approve"
+V plan approve --for planner-1-2.json --message ok; expect 0 "teamlead-plan-2.json" "trk plan approve"
 launched coder 1; on_stage coder
 coder_round1
 launched qa 1; on_stage qa; qa_done "$RD"

@@ -137,14 +137,14 @@ decision, never a default:
   snapshot.
 
 **Team runs** (the per-run TeamLead, [team-lead.md](team-lead.md) §11). A run has no in-run path
-back to planning, so the reactions use its existing transitions only. The TeamLead's spec, plan and
+back to planning, so the reactions use its existing transitions only. The TeamLead's plan and
 acceptance gates are enforced by `team-verdict.sh` (`team-tracker-gate.sh`): a missing ledger or
 snapshot, a fresh read older than the gated record, a change or an uncertain read refuses the
 approve or accept with **exit 10** (`tracker comments not current`).
 
 | Stage boundary | Changed | Uncertain |
 |---|---|---|
-| TeamLead `spec` / `plan` gate | exit 10 → `revise` with the list as findings (the planner reconciles, new snapshot; after the spec approve, into the plan) | exit 10 → `escalate` with a decision |
+| TeamLead `plan` gate | exit 10 → `revise` with the list as findings (the planner reconciles into the plan, new snapshot) | exit 10 → `escalate` with a decision |
 | coder (start of every round) | `blocked` "new tracker input after plan: <ids>" → the lead: informational → `say` with `<id>@<sha>` (`answers.md`); inside the AC → answered within the plan; a scope change → a decision recommending `close` (the ticket restarts with a fresh run) | `blocked` → a decision |
 | qa (before its gates) | `blocked` with the list → informational → `say`; inside the AC → `rework` from the qa `blocked` record; a scope change → a decision `close` | `blocked` → a decision |
 | TeamLead `acceptance` gate | exit 10 unless every id is named under `## Ordered vs delivered`; otherwise `rework` or a decision (`answers.md` `<id>@<sha>` count as reconciled) | exit 10 → a decision |

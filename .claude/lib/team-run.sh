@@ -117,9 +117,7 @@ handle_record() {
           validate_record "$r" || { reject_record "$r" || return $?; }
           accept "$r" ;;
     review)
-      team_lead_on || die 4 "record $(basename "$r") is a review, but the run has no TeamLead"
-      validate_record "$r" || { reject_record "$r" || return $?; }
-      lead_gate_ring spec "$r"; return 2 ;;
+      die 4 "record $(basename "$r") is a review: there is no spec gate — the planner approves its spec itself and records done after /plan-feature" ;;
     blocked|failed)
       if team_lead_on; then lead_stop "$r"; echo "waiting for TeamLead: $(basename "$r")"; return 2; fi
       ack_name "$r" > "$TD/acked"

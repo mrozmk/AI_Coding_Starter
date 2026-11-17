@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tracker comments at the per-run TeamLead's gates (team-tracker-gate.sh; tracker-comments.md §5–§6,
-# team-lead.md §11), opt-in workflow.tracker_comments. Spec and plan approve: no ledger, a snapshot
+# team-lead.md §11), opt-in workflow.tracker_comments. Plan approve: no ledger, a snapshot
 # of another ticket, no fresh read, a stale fresh read, a changed ticket (compare 3) and an uncertain
 # read (compare 4) are refused with exit 10; a current read passes and its line lands in the
 # verdict; the switch off or tracker none checks nothing. Acceptance accept: a change named under
@@ -56,85 +56,85 @@ D0="Export button."
 # ---- (a) switch off: no check, no tracker field ---------------------------------------------------
 session planner 1 "$BASE"
 artifact "$SPEC" Spec no
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-1.json" "(a) review"
-V spec approve --for planner-1-1.json --message ok; expect 0 "teamlead-spec-1.json" "(a) switch off: approve"
-jq -e 'has("tracker") | not' "$RD/teamlead-spec-1.json" >/dev/null || fail "(a) a tracker line with the switch off"
+artifact "$PLAN" Plan no
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-1.json" "(a) done"
+V plan approve --for planner-1-1.json --message ok; expect 0 "teamlead-plan-1.json" "(a) switch off: approve"
+jq -e 'has("tracker") | not' "$RD/teamlead-plan-1.json" >/dev/null || fail "(a) a tracker line with the switch off"
 echo "team-smoke-26: (a) switch off OK"
 
 prof '.workflow.tracker_comments = true'
 # ---- (b) tracker none: the contract is a no-op ----------------------------------------------------
 jq '.tracker = "none"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-2.json" "(b) review"
-V spec approve --for planner-1-2.json --message ok; expect 0 "teamlead-spec-2.json" "(b) tracker none: approve"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-2.json" "(b) done"
+V plan approve --for planner-1-2.json --message ok; expect 0 "teamlead-plan-2.json" "(b) tracker none: approve"
 jq '.tracker = "github"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
 echo "team-smoke-26: (b) tracker none OK"
 
-# ---- (c) spec gate: no ledger → 10 ----------------------------------------------------------------
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-3.json" "(c) review"
-fresh "$RD" spec 1 "$D0" "1001:CSV header row"
-V spec approve --for planner-1-3.json --message ok
+# ---- (c) plan gate: no ledger → 10 ----------------------------------------------------------------
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-3.json" "(c) done"
+fresh "$RD" plan 1 "$D0" "1001:CSV header row"
+V plan approve --for planner-1-3.json --message ok
 expect 10 "has no '## From tracker comments' ledger" "(c) no ledger"
-[ ! -e "$RD/teamlead-spec-3.json" ] || fail "(c) a refused approve wrote a verdict"
+[ ! -e "$RD/teamlead-plan-3.json" ] || fail "(c) a refused approve wrote a verdict"
 # A ledger whose snapshot is not committed → 10.
 artifact "$SPEC" Spec yes .agents/specs/s.ticket.json
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-4.json" "(c) review"
-V spec approve --for planner-1-4.json --message ok; expect 10 "is not committed" "(c) snapshot not committed"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-4.json" "(c) done"
+V plan approve --for planner-1-4.json --message ok; expect 10 "is not committed" "(c) snapshot not committed"
 # A snapshot of another ticket → 10.
 entry_snap .agents/specs/s.ticket.json "$D0" "1001:CSV header row"
 jq '.key = "AB-1"' "$CLONE/.agents/specs/s.ticket.json" > "$WORK/k" && cat "$WORK/k" > "$CLONE/.agents/specs/s.ticket.json"
 git -C "$CLONE" commit --quiet -am "wrong key"
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-5.json" "(c) review"
-V spec approve --for planner-1-5.json --message ok; expect 10 "is for 'AB-1', the run's ticket is AB-2600" "(c) other ticket"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-5.json" "(c) done"
+V plan approve --for planner-1-5.json --message ok; expect 10 "is for 'AB-1', the run's ticket is AB-2600" "(c) other ticket"
 echo "team-smoke-26: (c) ledger + snapshot required OK"
 
 # ---- (d) fresh read: none, stale, another ticket → 10 ---------------------------------------------
 entry_snap .agents/specs/s.ticket.json "$D0" "1001:CSV header row"
-prec --verdict review --artifacts "$SPEC"; expect 0 "planner-1-6.json" "(d) review"
-rm -f "$RD"/tracker-spec-*.json
-V spec approve --for planner-1-6.json --message ok; expect 10 "no fresh read: snapshot the ticket into runs/$RUN_ID/tracker-spec-<n>.json" "(d) no fresh read"
-fresh "$RD" spec 1 "$D0" "1001:CSV header row"
-jq '.read_at = "2026-01-01T00:00:00.000Z"' "$RD/tracker-spec-1.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-spec-1.json"
-V spec approve --for planner-1-6.json --message ok; expect 10 "before planner-1-6.json was written" "(d) stale fresh read"
-fresh "$RD" spec 2 "$D0" "1001:CSV header row"
-jq '.key = "AB-9"' "$RD/tracker-spec-2.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-spec-2.json"
-V spec approve --for planner-1-6.json --message ok; expect 10 "tracker-spec-2.json is for 'AB-9'" "(d) fresh read of another ticket"
+prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-6.json" "(d) done"
+rm -f "$RD"/tracker-plan-*.json
+V plan approve --for planner-1-6.json --message ok; expect 10 "no fresh read: snapshot the ticket into runs/$RUN_ID/tracker-plan-<n>.json" "(d) no fresh read"
+fresh "$RD" plan 1 "$D0" "1001:CSV header row"
+jq '.read_at = "2026-01-01T00:00:00.000Z"' "$RD/tracker-plan-1.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-plan-1.json"
+V plan approve --for planner-1-6.json --message ok; expect 10 "before planner-1-6.json was written" "(d) stale fresh read"
+fresh "$RD" plan 2 "$D0" "1001:CSV header row"
+jq '.key = "AB-9"' "$RD/tracker-plan-2.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-plan-2.json"
+V plan approve --for planner-1-6.json --message ok; expect 10 "tracker-plan-2.json is for 'AB-9'" "(d) fresh read of another ticket"
 echo "team-smoke-26: (d) fresh read OK"
 
 # ---- (e) compare 3 → revise, compare 4 → escalate (both exit 10) ----------------------------------
-fresh "$RD" spec 3 "$D0" "1001:CSV header row" "1002:also a PDF export"
-V spec approve --for planner-1-6.json --message ok
+fresh "$RD" plan 3 "$D0" "1001:CSV header row" "1002:also a PDF export"
+V plan approve --for planner-1-6.json --message ok
 expect 10 "Tracker comments: new 1002 — revise with the list as findings" "(e) a new comment"
-fresh "$RD" spec 4 "Export button and a print view." "1001:CSV header row"
-V spec approve --for planner-1-6.json --message ok; expect 10 "description changed — revise" "(e) description changed"
-fresh "$RD" spec 5 "$D0" "1001:CSV header row"
-jq '.status = "possibly-truncated"' "$RD/tracker-spec-5.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-spec-5.json"
-V spec approve --for planner-1-6.json --message ok; expect 10 "uncertain — possibly-truncated, 1 read — escalate with a decision" "(e) uncertain read"
+fresh "$RD" plan 4 "Export button and a print view." "1001:CSV header row"
+V plan approve --for planner-1-6.json --message ok; expect 10 "description changed — revise" "(e) description changed"
+fresh "$RD" plan 5 "$D0" "1001:CSV header row"
+jq '.status = "possibly-truncated"' "$RD/tracker-plan-5.json" > "$WORK/s" && cat "$WORK/s" > "$RD/tracker-plan-5.json"
+V plan approve --for planner-1-6.json --message ok; expect 10 "uncertain — possibly-truncated, 1 read — escalate with a decision" "(e) uncertain read"
 # revise and escalate are never checked: they are the reactions.
-V spec revise --for planner-1-6.json --ref "$RD/gate-spec-1.md" --message "new tracker input: 1002"
-expect 0 "teamlead-spec-3.json" "(e) revise passes"
+V plan revise --for planner-1-6.json --ref "$RD/gate-plan-1.md" --message "new tracker input: 1002"
+expect 0 "teamlead-plan-3.json" "(e) revise passes"
 echo "team-smoke-26: (e) changed → revise, uncertain → escalate OK"
 
 # ---- (f) current → approve, the line stored ------------------------------------------------------
-fresh "$RD" spec 6 "$D0" "1001:CSV header row"
-V spec approve --for planner-1-6.json --message ok; expect 0 "teamlead-spec-4.json" "(f) current read"
+fresh "$RD" plan 6 "$D0" "1001:CSV header row"
+V plan approve --for planner-1-6.json --message ok; expect 0 "teamlead-plan-4.json" "(f) current read"
 jq -e '.tracker | startswith("Tracker comments: none new") and contains("baseline .agents/specs/s.md@")' \
-  "$RD/teamlead-spec-4.json" >/dev/null || fail "(f) tracker line not in the verdict"
+  "$RD/teamlead-plan-4.json" >/dev/null || fail "(f) tracker line not in the verdict"
 echo "team-smoke-26: (f) current → approve OK"
 
-# ---- (g) plan gate: the source spec's snapshot is the baseline; the plan's own wins ---------------
-sed -i.bak 's/^\*\*Status:\*\* Draft/**Status:** Approved (TeamLead, 2026-11-16)/' "$CLONE/$SPEC"; rm -f "$CLONE/$SPEC.bak"
+# ---- (g) the source spec's snapshot is the baseline until the plan has its own -------------------
+sed -i.bak 's/^\*\*Status:\*\* Draft/**Status:** Approved (auto — team mode)/' "$CLONE/$SPEC"; rm -f "$CLONE/$SPEC.bak"
 git -C "$CLONE" commit --quiet -am "approved"
-artifact "$PLAN" Plan no
 prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-7.json" "(g) done"
-fresh "$RD" plan 1 "$D0" "1001:CSV header row" "1003:after the spec"
+fresh "$RD" plan 7 "$D0" "1001:CSV header row" "1003:after the spec"
 V plan approve --for planner-1-7.json --message ok; expect 10 "new 1003 — revise" "(g) new after the spec"
 # The planner reconciles 1003 into its plan: its own ledger and snapshot are now the baseline.
 entry_snap .agents/plans/active/p.ticket.json "$D0" "1001:CSV header row" "1003:after the spec"
 artifact "$PLAN" Plan yes .agents/plans/active/p.ticket.json
 prec --verdict done --artifacts "$SPEC,$PLAN"; expect 0 "planner-1-8.json" "(g) done again"
-fresh "$RD" plan 2 "$D0" "1001:CSV header row" "1003:after the spec"
-V plan approve --for planner-1-8.json --message ok; expect 0 "teamlead-plan-1.json" "(g) plan's own baseline"
-jq -e '.tracker | contains("baseline .agents/plans/active/p.md@")' "$RD/teamlead-plan-1.json" >/dev/null \
+fresh "$RD" plan 8 "$D0" "1001:CSV header row" "1003:after the spec"
+V plan approve --for planner-1-8.json --message ok; expect 0 "teamlead-plan-5.json" "(g) plan's own baseline"
+jq -e '.tracker | contains("baseline .agents/plans/active/p.md@")' "$RD/teamlead-plan-5.json" >/dev/null \
   || fail "(g) the plan's own snapshot was not the baseline"
 echo "team-smoke-26: (g) plan gate OK"
 

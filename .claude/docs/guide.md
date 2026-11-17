@@ -466,7 +466,7 @@ It is off until you opt in. `/setup:teams` installs the team layer into a projec
 
 ### Per-run TeamLead (pilot)
 
-Instead of one global TeamLead watching every team, each team run can get its own **TeamLead**: a session the runner starts next to the stages and ends with the run. It gates the spec and the plan, answers the stages' questions and permission prompts on an authority, accepts the delivery against the order (a blind order-vs-diff check) and orders rework within a budget. It never edits code, commits or merges.
+Instead of one global TeamLead watching every team, each team run can get its own **TeamLead**: a session the runner starts next to the stages and ends with the run. It gates the plan against the order (there is no spec gate), answers the stages' questions and permission prompts on an authority, accepts the delivery against the order (a blind order-vs-diff check) and orders rework within a budget. It never edits code, commits or merges.
 
 - **Switch it on:** `teams.teamlead.enabled: true` in `.claude/project-profile.json` (off by default; mode `cli` never has one). `/start-team` then asks for the order brief of each new run.
 - **Where you answer:** the `<team>-lead` window. Only human-only items reach you — a settings or permission edit, a production ask rule, egress, an irreversible delete — as `[d-<n>] <question>`. Type your answer there.

@@ -2,7 +2,7 @@
 # Pending human decisions of the per-run TeamLead: runs/<run>/decisions/d-<n>.md. Sourced by
 # team-lead.sh after resolve (TD, RUN, MAIN, LIB set), never executed. Bash 3.2.
 #   decision open <team> --source <run file|attention:<n>> --question "<text>" [--options "<a|b>"]
-#     [--recommend "<text>"] [--notify human_decision|abandon_decision] [--gate spec|plan]
+#     [--recommend "<text>"] [--notify human_decision|abandon_decision] [--gate plan]
 #   decision open <team> --request req-<n>      (the runner's human-only request: binding copied)
 #   decision answer <team> d-<n> --text "<Operator answer>" [--outcome continue|close|more-revise|approve]
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
@@ -78,7 +78,7 @@ decision_open() {
   done
   team_lead_caller || d_bad 3 "only this run's TeamLead opens decisions"
   case "$notify" in human_decision|abandon_decision) ;; *) d_bad 2 "--notify human_decision|abandon_decision" ;; esac
-  case "$gate" in ""|spec|plan) ;; *) d_bad 2 "--gate spec|plan" ;; esac
+  case "$gate" in ""|plan) ;; *) d_bad 2 "--gate plan" ;; esac
   if [ -n "$req" ]; then
     [[ "$req" =~ ^req-[0-9]+$ ]] && [ -f "$DD/$req.json" ] || d_bad 4 "no request $req in runs/$RUN/decisions/"
     src="decisions/$req.json"

@@ -137,7 +137,7 @@ branch's base and equal to the supervisor's, or the start is refused.
 
 | Role | Questions | Memory | Material decision | End |
 |---|---|---|---|---|
-| planner | asked normally (attended); `/brainstorm` Step 9 waits for the per-run TeamLead's spec gate (and its `done` for the plan gate, team-lead.md §4), or without one auto-approves unless a 🔶 rethink signal | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
+| planner | asked normally (attended); `/brainstorm` approves the spec itself (`Approved (auto — team mode)`) with or without a TeamLead; with a per-run TeamLead its `done` waits for the plan gate (team-lead.md §4) | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
 | coder | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
 | qa | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
 | wrapup | asked normally (attended), only when it has recommendations; with a per-run TeamLead never — a proposals stop instead | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the wrapup asks nothing: it stops with a proposals file and the lead decides every item, team-lead.md §10) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
@@ -312,7 +312,7 @@ is authoritative for a decision's current state.
 
 ## 6. Record
 
-`bash .claude/lib/team-record.sh --verdict done|blocked|failed|review [--artifacts a,b] [--pr <id>]
+`bash .claude/lib/team-record.sh --verdict done|blocked|failed [--artifacts a,b] [--pr <id>]
 [--evidence a,b] [--message "<one line>"]` → prints the path it wrote.
 
 ```json
@@ -325,15 +325,11 @@ is authoritative for a decision's current state.
 
 - `done` — the role's work is committed (tree clean, `HEAD` = `output_rev`) and, for coder/qa,
   pushed. The runner validates it against git and ADO. A cli `done` is pushed with its PR
-  **published** (`isDraft false`) and carries no plan artifact.
+  **published** (`isDraft false`) and carries no plan artifact. With a TeamLead the planner's
+  `done` waits for the plan gate before validation (team-lead.md §4).
 - `blocked` — a material question; `--message` required. **Stay idle in the session — do not
   exit.** The supervisor attaches and answers; continue, then write a new record.
 - `failed` — the role cannot finish (e.g. empty QA delta); `--message` required.
-- `review` — planner only, with a TeamLead: the committed `Draft` spec for the spec gate;
-  `--artifacts` names exactly one `.agents/specs/*.md`, no `--message`. The runner validates it
-  (clean tree, `HEAD` = `output_rev`, spec committed) and never accepts it; the planner waits for
-  the runner's `[team-run]` line. With a TeamLead the planner's `done` waits for the plan gate
-  before validation (team-lead.md §4).
 
 **wrapup `done`:** `--pr` = the coder's PR; `output_rev` is the QA revision or a memory-only commit
 on top of it (`git diff --name-only <qa rev> <output_rev>` lists only `.agents/memory/**`);
@@ -373,7 +369,7 @@ record, not `done`. Free text may follow; it records `Load: start … end … (w
 
 | Command | Team mode |
 |---|---|
-| `/brainstorm` | Step 8.8 rule → notes `## Learnings`, not `patterns.md`; Step 9 with a TeamLead commits the `Draft` spec, records `review` and waits for the spec gate (`Approved (TeamLead, <date>)`); without one it auto-approves unless a rethink signal and continues in the same turn |
+| `/brainstorm` | Step 8.8 rule → notes `## Learnings`, not `patterns.md`; Step 9 approves the spec itself (`Approved (auto — team mode)`) unless a rethink signal and continues in the same turn |
 | `/plan-feature` | grill memory update and Step 7.9 → notes `## Learnings` |
 | `/execute` | Step 7 skipped (→ notes); routine deviation → `## Unattended decisions`; material → `TEAM-BLOCKED: <question>` before `/commit` |
 | `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks; a finder `FALLBACK` line → `Warnings:` (§7) and the PR's `## QA`, verbatim |

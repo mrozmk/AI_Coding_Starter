@@ -1,6 +1,6 @@
 # Tracker comments at the per-run TeamLead's gates (.agents/reference/tracker-comments.md §5–§6,
-# team-lead.md §11). Sourced by team-verdict.sh for `spec approve`, `plan approve` and
-# `acceptance accept`; uses its globals (TD RD RRD RUN MAIN MODE TICKET GATE last LIB, rec, bad).
+# team-lead.md §11). Sourced by team-verdict.sh for `plan approve` and `acceptance accept`; uses
+# its globals (TD RD RRD RUN MAIN MODE TICKET GATE last LIB, rec, bad).
 # Opt-in: nothing runs unless workflow.tracker_comments is true in the main checkout's profile and
 # the run's tracker is not none (trk_on). Every refusal exits 10.
 # Bash 3.2 compatible.
@@ -23,9 +23,9 @@ trk_ledger() {
     f && /^Read: / && match($0, /snapshot [^ ]+/) { print substr($0, RSTART + 9, RLENGTH - 9); exit }'
 }
 
-# trk_baseline <planner record> <spec|plan> → BASE (a local copy of the baseline snapshot) and
-# BASE_FROM (<artifact>@<rev>). The spec gate reads the spec's ledger; the plan gate and acceptance
-# read the plan's own ledger, else its source spec's (contract §5.3).
+# trk_baseline <planner record> → BASE (a local copy of the baseline snapshot) and
+# BASE_FROM (<artifact>@<rev>). The plan gate and acceptance read the plan's own ledger, else its
+# source spec's (contract §5.3).
 BASE=""; BASE_FROM=""
 trk_baseline() {
   local r="$1" rev plan spec art snap key
@@ -33,16 +33,16 @@ trk_baseline() {
   spec="$(jq -r '[.artifacts[] | select(startswith(".agents/specs/"))][0] // empty' "$r")"
   plan="$(jq -r '[.artifacts[] | select(startswith(".agents/plans/"))][0] // empty' "$r")"
   art=""; snap=""
-  if [ "$2" = plan ] && [ -n "$plan" ]; then
+  if [ -n "$plan" ]; then
     art="$plan"; snap="$(trk_ledger "$rev" "$plan")"
     if [ -z "$snap" ] && [ -z "$spec" ]; then
       spec="$(git show "$rev:$plan" 2>/dev/null | sed -n 's/^\*\*Source spec:\*\* *//p' | head -n 1 | tr -d '`')"
     fi
   fi
-  if [ -z "$snap" ] && [ -n "$spec" ] && { [ "$2" = spec ] || [ "$MODE" != quick ]; }; then
+  if [ -z "$snap" ] && [ -n "$spec" ] && [ "$MODE" != quick ]; then
     art="$spec"; snap="$(trk_ledger "$rev" "$spec")"
   fi
-  [ -n "$art" ] || trk_fail "$(basename "$r") names no ${2} to read the ledger from"
+  [ -n "$art" ] || trk_fail "$(basename "$r") names no plan to read the ledger from"
   [ -n "$snap" ] || trk_fail "$art at $(basename "$r")'s output_rev has no '## From tracker comments' ledger with a 'Read: … snapshot <path>' line — the planner reads the ticket at entry (tracker-comments.md §3–§4)"
   git show "$rev:$snap" > "$TRK_TMP/base.json" 2>/dev/null \
     || trk_fail "the ledger's snapshot $snap is not committed at $(basename "$r")'s output_rev"
@@ -84,7 +84,7 @@ trk_gate() {
     pr=""
     for f in $(GATE=plan verdicts); do [ "$(rec "$RD/$f" verdict)" != approve ] || pr="$RD/$(rec "$RD/$f" for)"; done
     [ -n "$pr" ] && [ -f "$pr" ] || trk_fail "no plan approve in run $RUN — nothing to take the baseline from"
-    trk_baseline "$pr" plan
+    trk_baseline "$pr"
     trk_fresh "$RRD" "$last"
     [ ! -f "$RD/answers.md" ] \
       || recon="$(grep -oE '[A-Za-z0-9_-]+@[0-9a-f]{64}' "$RD/answers.md" | sort -u | paste -sd, - || true)"
@@ -99,7 +99,7 @@ trk_gate() {
          [ -z "$missing" ] || trk_fail "${TRACKER_LINE} — name${missing} under '## Ordered vs delivered' in acceptance-brief.md, or order a rework / open a decision" ;;
     esac
   else
-    trk_baseline "$last" "$GATE"
+    trk_baseline "$last"
     trk_fresh "$RD" "$last"
     trk_compare
     case "$TRK_RC" in
