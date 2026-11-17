@@ -256,19 +256,11 @@ if [ "$TEAM_PR_PROVIDER" = github ]; then
   # gates ran on a workflow state that no longer exists.
   [ "$(team_records_digest "$TD" "$RUN")" = "$digest0" ] \
     || die 3 "void: records changed during check — rerun"
-  # Only "is the tested commit still the one the integrator would push" is re-asked here; the rest
-  # of eligibility is integrate's own re-check. GitHub rebuilding its merge ref while the gates ran
-  # (Amendment 8) voids a test of that ref; on `stale-base`, a local merge that no longer comes out
-  # as the tested commit (or a ref GitHub has since rebuilt) voids a test of the local merge.
-  rc=0; now=""
-  rr="$(bash .claude/lib/team-pr.sh readiness "$pr")" || rc=$?
-  if [ "$merge_ref" = "refs/team-pr/$pr/merge" ]; then
-    [ "$rc" != 0 ] || now="$(jq -r '.merge_sha // ""' <<<"$rr")"
-  elif [ "$rc" != 0 ] && [ "$(jq -r '.reason // ""' <<<"$rr" 2>/dev/null || true)" = stale-base ]; then
-    now="$(team_local_merge "$CLONE" "$pr" "$LINE" "$BRANCH" \
-      "$(jq -r '.target_sha // ""' <<<"$rr")" "$(jq -r '.source_sha // ""' <<<"$rr")")" || now=""
-  fi
-  [ "$now" = "$merge_commit" ] || die 4 "merge ref recalculated during check — rerun"
+  # Amendment 8: the commit the integrator would push now must still be the tested one — GitHub may
+  # have rebuilt its ref, or the local merge may no longer come out the same (the rest of
+  # eligibility is integrate's own re-check).
+  team_merge_commit_now "$CLONE" "$pr" "$LINE" "$BRANCH" || true
+  [ "$IE_MERGE" = "$merge_commit" ] || die 4 "merge ref recalculated during check — rerun"
 fi
 
 verdict=ok

@@ -96,6 +96,40 @@ team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
   printf '%s\n' "$m"
 }
 
+# Usage: team_merge_commit_now <clone> <pr> <line> <branch>
+#   rc 0 · 3 refusal (conflict, incomplete readiness, local merge refused) · 4 recomputing
+#   The commit the integrator would push right now, from `team-pr.sh readiness`: GitHub's under
+#   `refs/team-pr/<pr>/merge` in the clone, or, when that ref is stale, the local merge under
+#   `refs/team-pr/<pr>/local-merge`. Resets, then sets IE_SRC / IE_TGT / IE_MERGE / IE_MERGE_REF.
+team_merge_commit_now() {
+  local clone="$1" pr="$2" line="$3" branch="$4" out rc=0 merge
+  IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
+  out="$( cd "$clone" && bash .claude/lib/team-pr.sh readiness "$pr" )" || rc=$?
+  # A refusal before any ref is read (fork, closed PR) prints to stderr only — no JSON to parse.
+  merge=unknown
+  [ -z "$out" ] || merge="$(jq -r '.merge // "unknown"' <<<"$out" 2>/dev/null || echo unknown)"
+  # readiness reports `conflict` only with a non-zero exit.
+  [ "$merge" != conflict ] \
+    || { echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3; }
+  if [ "$rc" != 0 ] && [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" != stale-base ]; then
+    echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
+    return 4
+  fi
+  IE_TGT="$(jq -r '.target_sha // ""' <<<"$out")"
+  IE_SRC="$(jq -r '.source_sha // ""' <<<"$out")"
+  [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] \
+    || { echo "error: readiness of PR #$pr is incomplete: $out" >&2; return 3; }
+  if [ "$rc" = 0 ]; then
+    IE_MERGE="$(jq -r '.merge_sha // ""' <<<"$out")"; IE_MERGE_REF="refs/team-pr/$pr/merge"
+    [ -n "$IE_MERGE" ] || { echo "error: readiness of PR #$pr is incomplete: $out" >&2; return 3; }
+  else
+    IE_MERGE="$(team_local_merge "$clone" "$pr" "$line" "$branch" "$IE_TGT" "$IE_SRC")" || return 3
+    IE_MERGE_REF="refs/team-pr/$pr/local-merge"
+    echo "PR #$pr merge ref is stale (built on $(jq -r .merge_base_sha <<<"$out"), $line is at" \
+      "$IE_TGT) — testing the local merge $IE_MERGE instead" >&2
+  fi
+}
+
 # Usage: team_integration_eligible <team> <clone> <run> <mode> <pr>
 #   rc 0 eligible · 3 refusal · 4 recoverable (GitHub still recomputing the merge ref)
 #   sets IE_SRC / IE_TGT / IE_MERGE from `team-pr.sh readiness`, and IE_MERGE_REF to the clone ref
@@ -109,7 +143,7 @@ team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
 IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
 team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   local team="$1" clone="$2" run="$3" mode="$4" pr="$5"
-  local td="$clone/.agents/team" rd branch line role rec out rc=0 merge
+  local td="$clone/.agents/team" rd branch line role rec out
   IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
   ie_no() { echo "error: $1" >&2; return 3; }
   [ -n "$run" ] || { ie_no "no run id for team $team — nothing to integrate"; return 3; }
@@ -168,33 +202,8 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   [ "$(jq -r '.draft' <<<"$out")" = false ] \
     || { ie_no "PR #$pr is still a draft — publish it first"; return 3; }
 
-  # (5) readiness: the tested merge commit — GitHub's under `refs/team-pr/<pr>/merge` in the clone,
-  # or, when that ref is stale, the local merge under `refs/team-pr/<pr>/local-merge`.
-  rc=0
-  out="$( cd "$clone" && bash .claude/lib/team-pr.sh readiness "$pr" )" || rc=$?
-  # A refusal before any ref is read (fork, closed PR) prints to stderr only — no JSON to parse.
-  merge=unknown
-  [ -z "$out" ] || merge="$(jq -r '.merge // "unknown"' <<<"$out" 2>/dev/null || echo unknown)"
-  # readiness reports `conflict` only with a non-zero exit.
-  [ "$merge" != conflict ] \
-    || { echo "error: PR #$pr conflicts with $line — resolve it on the PR" >&2; return 3; }
-  if [ "$rc" != 0 ] && [ "$(jq -r '.reason // ""' <<<"$out" 2>/dev/null)" != stale-base ]; then
-    echo "error: PR #$pr merge ref is $merge — GitHub is still recomputing, rerun later" >&2
-    return 4
-  fi
-  IE_TGT="$(jq -r '.target_sha // ""' <<<"$out")"
-  IE_SRC="$(jq -r '.source_sha // ""' <<<"$out")"
-  [ -n "$IE_SRC" ] && [ -n "$IE_TGT" ] \
-    || { ie_no "readiness of PR #$pr is incomplete: $out"; return 3; }
-  if [ "$rc" = 0 ]; then
-    IE_MERGE="$(jq -r '.merge_sha // ""' <<<"$out")"; IE_MERGE_REF="refs/team-pr/$pr/merge"
-    [ -n "$IE_MERGE" ] || { ie_no "readiness of PR #$pr is incomplete: $out"; return 3; }
-  else
-    IE_MERGE="$(team_local_merge "$clone" "$pr" "$line" "$branch" "$IE_TGT" "$IE_SRC")" || return 3
-    IE_MERGE_REF="refs/team-pr/$pr/local-merge"
-    echo "PR #$pr merge ref is stale (built on $(jq -r .merge_base_sha <<<"$out"), $line is at" \
-      "$IE_TGT) — testing the local merge $IE_MERGE instead" >&2
-  fi
+  # (5) readiness: the tested merge commit.
+  team_merge_commit_now "$clone" "$pr" "$line" "$branch" || return $?
 }
 
 # Usage: team_merge_check_write <file> <run> <pr> <repo> <head_ref> <base_ref> <source_sha>
