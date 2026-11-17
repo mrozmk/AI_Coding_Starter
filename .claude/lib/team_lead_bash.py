@@ -13,8 +13,8 @@ Refused:
     own those files. Protected: everything under the clone's and the main checkout's
     .agents/team/ except the lead's own files under runs/<run>/ (and its round dirs r<n>/), the clone's
     .claude/ (the scripts and guards themselves) and any *.jsonl (a stage transcript). The owning
-    scripts count only when run from the clone's .claude/lib/ (nothing under costs/: the lead
-    runs no stage command). A redirection target, a `bash -c` string and a path inside a
+    scripts count only when run from the clone's .claude/lib/ (nothing under costs/:
+    the lead runs no stage command). A redirection target, a `bash -c` string and a path inside a
     word (`open('…/answers.md','w')`) count; a path behind $VAR or a backtick cannot be resolved
     and is refused when it names .agents/team.
 Best effort on command text: a path built at run time can pass (team-lead.md §7, limits).
