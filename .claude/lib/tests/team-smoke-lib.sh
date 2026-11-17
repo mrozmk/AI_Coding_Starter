@@ -592,6 +592,16 @@ smoke_gh_pull_stale() {  # smoke_gh_pull_stale <pr> <head> <base> — ref built,
   smoke_gh_commit "$3" "stale-$1"
 }
 
+smoke_gh_append() {  # smoke_gh_append <branch> <path> <line> — one commit appending <line> to <path>
+  smoke_gh_wc "append"
+  git -C "$SGW" checkout --quiet -B "$1" "origin/$1"
+  mkdir -p "$(dirname "$SGW/$2")"
+  printf '%s\n' "$3" >> "$SGW/$2"
+  git -C "$SGW" add "$2" && git -C "$SGW" commit --quiet -m "append $2"
+  git -C "$SGW" push --quiet origin "$1"
+  rm -rf "$SGW"
+}
+
 # Usage: smoke_profile ['<jq filter>'] → the TT `teams` profile on stdout, optionally edited.
 # These are exactly the values team-lib.sh and worker-next.sh used to hardcode.
 smoke_profile() {

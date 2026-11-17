@@ -579,14 +579,22 @@ expect 3 "conflicts with $TRUNK" "a conflicting PR fails the merge check"
 unset STUB_GH_MERGEABLE
 [ ! -f "$RDC/merge-check.json" ] || fail "a conflicting PR still got a merge-check verdict"
 
-# (C3) no merge ref at all, then one built against an older base
+# (C3) no merge ref at all, then one built against an older base: the check builds the merge
+# commit itself instead of waiting for GitHub to rebuild the ref.
 bare update-ref -d "refs/pull/44/merge"
 run "$MAIN" $MC delta
 expect 4 "merge ref recalculating" "a missing merge ref is recoverable, not a refusal"
 c_refresh 44 "$BRC" "$TRUNK"
 smoke_gh_commit "$TRUNK" "c3-move"
 run "$MAIN" $MC delta
-expect 4 "merge ref recalculating" "a merge ref whose parent 1 is not the base is recalculating"
+expect 0 "VERDICT: ok" "a merge ref built on an older base is replaced by the local merge"
+has "testing the local merge" "$WORK/out" || fail "the stale merge ref was not reported"
+LM44="$(git -C "$CL" rev-parse refs/team-pr/44/local-merge)"
+[ "$(jq -r .merge_sha "$RDC/merge-check.json")" = "$LM44" ] \
+  || fail "the verdict names $(jq -r .merge_sha "$RDC/merge-check.json"), not the local merge $LM44"
+[ "$(git -C "$CL" rev-list --parents -n 1 "$LM44")" = "$LM44 $(bare rev-parse "refs/heads/$TRUNK") $Sx" ] \
+  || fail "the local merge is not exactly (trunk tip, PR head)"
+rm -f "$RDC/merge-check.json"
 c_refresh 44 "$BRC" "$TRUNK"
 
 # (C3b) the merge ref the gates would check out is moved away before the checkout: the commit is
@@ -669,11 +677,14 @@ expect 0 "VERDICT: ok" "a check whose runner lock lost its pid still finishes"
 [ ! -e "$TDC/lock" ] || fail "a lock with an empty pid was left behind by its own creator"
 rm -f "$RDC/merge-check.json"
 # …but a lock carrying somebody ELSE's pid is left in place (the team-run.sh rule), with a warning.
+# The closing eligibility call — the one integrate runs — then sees a live runner and voids the
+# verdict: integrate would refuse that clone too.
 setprofile "$C_PROFILE | .teams.build_check = \"echo 1 > $TDC/lock/pid\""
 run "$MAIN" $MC delta
-expect 0 "VERDICT: ok" "a check whose runner lock was taken over still finishes"
+expect 3 "no longer eligible" "a check whose runner lock was taken over writes no verdict"
 has "runner lock is pid 1, not ours" "$WORK/out" || fail "the foreign runner lock was not reported"
 [ -e "$TDC/lock" ] || fail "a runner lock belonging to another pid was removed"
+[ ! -f "$RDC/merge-check.json" ] || fail "a check that lost its runner lock wrote a verdict"
 rm -rf "$TDC/lock"
 rm -f "$RDC/merge-check.json"
 setprofile "$C_PROFILE"
@@ -782,19 +793,68 @@ run "$MAIN" $IT beta
 expect 3 "target moved since merge-check" "beta's readiness from the old trunk is dead"
 [ ! -f "$MAIN/.agents/team/integrate/beta-$(cat "$CL_B/.agents/team/run").json" ] \
   || fail "a step-5 refusal wrote an intent"
-# GitHub has not rebuilt beta's merge ref yet: the check says so and names the way out.
+# GitHub has not rebuilt beta's merge ref (still on the old trunk): the check builds
+# merge(alfa's result, beta) itself, and integrate lands exactly that commit — no Operator step.
 run "$MAIN" $MC beta
-expect 4 "close and reopen PR #42" "a stale merge ref after alfa's push is named, not a bare rerun"
-c_refresh 42 "$BR_B" "$TRUNK"
-[ "$Tx" = "$M_A" ] || fail "beta's new merge ref was not built against alfa's result"
-run "$MAIN" $MC beta
-expect 0 "VERDICT: ok" "merge check beta against the new trunk"
+expect 0 "VERDICT: ok" "merge check beta on the local merge against the new trunk"
+has "testing the local merge" "$WORK/out" || fail "beta's stale merge ref was not reported"
 M_B="$(jq -r .merge_sha "$RD_B/merge-check.json")"
+[ "$M_B" = "$(git -C "$CL_B" rev-parse refs/team-pr/42/local-merge)" ] \
+  || fail "beta's verdict does not name its local merge"
+[ "$(git -C "$CL_B" rev-list --parents -n 1 "$M_B")" = "$M_B $M_A $(bare rev-parse "refs/heads/$BR_B")" ] \
+  || fail "beta's local merge is not exactly (alfa's result, beta's head)"
 run "$MAIN" $IT beta
-expect 0 "integrated: PR #42 into $TRUNK" "beta integrates after re-validating"
+expect 0 "integrated: PR #42 into $TRUNK" "beta integrates the local merge after re-validating"
 [ "$(bare rev-parse "refs/heads/$TRUNK")" = "$M_B" ] || fail "the trunk is not beta's merge commit"
+run "$MAIN" bash .claude/lib/team-pr.sh state 42
+expect 0 '"status":"completed"' "PR 42 reads as merged after the local merge lands"
 [ "$(bare rev-list --parents -n 1 "$M_B" | awk '{print $2}')" = "$M_A" ] \
   || fail "beta's merge commit does not sit on alfa's result"
+
+# (C3c) a stale merge ref whose local merge conflicts on the current base: refused, nothing built.
+# Placed after C1 (not next to C3) so delta's variables stay intact for C4–C5.
+mk_ready xi 60
+printf 'head\n' > "$CL/c3c.txt"
+git -C "$CL" add c3c.txt && git -C "$CL" commit --quiet -m "c3c head"
+Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
+c_record "$RDC" "$RUNC" 60 "$Sx"
+c_refresh 60 "$BRC" "$TRUNK"
+smoke_gh_append "$TRUNK" c3c.txt trunk
+run "$MAIN" $MC xi
+expect 3 "conflicts with $TRUNK on the current base" "a local merge that conflicts is refused"
+[ ! -f "$RDC/merge-check.json" ] || fail "a conflicting local merge wrote a verdict"
+! git -C "$CL" rev-parse -q --verify refs/team-pr/60/local-merge >/dev/null \
+  || fail "a conflicting local merge left a local-merge ref"
+
+# (C3d) union-merged memory logs: a log changed on both sides is refused (the provider would call
+# it conflicting); two different logs merge as usual.
+bare show "$TRUNK:.gitattributes" 2>/dev/null | grep -q '^\.agents/memory/\*\.md  *merge=union' \
+  || smoke_gh_append "$TRUNK" .gitattributes '.agents/memory/*.md merge=union'
+smoke_gh_append "$TRUNK" .agents/memory/c3d.md "base entry"
+mk_ready omicron 61
+printf 'head entry\n' >> "$CL/.agents/memory/c3d.md"
+git -C "$CL" add .agents/memory/c3d.md && git -C "$CL" commit --quiet -m "c3d head"
+Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
+c_record "$RDC" "$RUNC" 61 "$Sx"
+c_refresh 61 "$BRC" "$TRUNK"
+smoke_gh_append "$TRUNK" .agents/memory/c3d.md "trunk entry"
+run "$MAIN" $MC omicron
+expect 3 "PR conflicting in memory files" "a memory log changed on both sides is refused"
+has ".agents/memory/c3d.md" "$WORK/out" || fail "the union overlap does not name the path"
+[ ! -f "$RDC/merge-check.json" ] || fail "a union overlap wrote a verdict"
+! git -C "$CL" rev-parse -q --verify refs/team-pr/61/local-merge >/dev/null \
+  || fail "a union overlap left a local-merge ref"
+
+mk_ready rho 62
+printf 'head entry\n' >> "$CL/.agents/memory/c3d-head.md"
+git -C "$CL" add .agents/memory/c3d-head.md && git -C "$CL" commit --quiet -m "c3d head only"
+Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
+c_record "$RDC" "$RUNC" 62 "$Sx"
+c_refresh 62 "$BRC" "$TRUNK"
+smoke_gh_append "$TRUNK" .agents/memory/c3d-trunk.md "trunk entry"
+run "$MAIN" $MC rho
+expect 0 "VERDICT: ok" "memory logs changed on one side each still get a local merge"
+has "testing the local merge" "$WORK/out" || fail "rho's stale merge ref was not reported"
 
 # (C7) the base is moved to part of the source before the integration — refused, base untouched
 mk_ready eps 45
