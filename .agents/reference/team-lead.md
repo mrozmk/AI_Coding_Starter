@@ -1,10 +1,10 @@
 # Per-run TeamLead — role contract
 
-One TeamLead session per team run, in brainstorm and quick mode (`teams.teamlead.enabled: true`;
-mode `cli` never has one). It gates the team's plan against the order, answers the team's stops,
-accepts the result against the order brief and escalates only human-only decisions to the Operator. It never
-writes code, commits, pushes, merges or writes a stage record. With the switch off the runner's
-behaviour is unchanged and the global TeamLead (`supervisor-sessions.md#teamlead`) handles the team.
+One TeamLead session per team run, in brainstorm and quick mode (mode `cli` never has one). It gates
+the team's plan against the order, answers the team's stops, accepts the result against the order
+brief and escalates only human-only decisions to the Operator. It never writes code, commits,
+pushes, merges or writes a stage record. It is the only TeamLead model: the global TeamLead is
+retired.
 
 Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-profile.json.example`
 → `_teamlead_doc`.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # team-watch routing: role-bound receivers, single Supervisor (the default, acks and is timed),
-# split routing, batch acks, pickup alarms with the terminal rule, handover, receiver liveness.
-# Cases (61)-(67).
+# split routing, batch acks, pickup alarms with the terminal rule, handover, the retired global
+# TeamLead (never registered, never delivered to, a stale routing reads as the Supervisor).
+# Cases (61)-(68c).
 # It spawns loops and waits on pickup windows, so the runner keeps it out of a parallel batch.
 # team-smoke: serial
 set -euo pipefail
@@ -10,57 +11,54 @@ set -euo pipefail
 smoke_init
 smoke_team AB-1118 chore/AB-1118-watch
 watch_init
-mkrole SUP; mkrole TEAM
+mkrole SUP; mkrole ADV
 
-# alfa: a permission prompt; beta: a blocked record; eps: READY.
-session coder 1 "$BASE"
-echo "2026-10-19T10:00:00Z permission_prompt Claude needs your permission" > "$RD/attention"
-mkdir "$TD/lock"; echo $$ > "$TD/lock/pid"
-mkclone beta beta-20261019-000000; wrec "$CT" beta beta-20261019-000000 coder blocked "which endpoint?"
-mkclone eps eps-20261019-000000
-for r in planner coder qa wrapup; do wrec "$CT" eps eps-20261019-000000 "$r" done; done
 ack_all() {  # ack_all <role> — every pending batch of that role
   local n
   for n in $(cd "$MAIN" && $W pending "$1"); do run "$MAIN" env TEAM_SESSION_ROLE="$1" $W ack "$n"; done
 }
+FILTER="$SRC/.claude/lib/team-watch-signals.jq"
 
 # ---- (61) register by role; no routing.json = single Supervisor -----------------------------------
 run "$MAIN" $W status; has "routing: single Supervisor" "$WORK/out" || fail "default routing"
 run "$MAIN" $W routing split; expect 0 "routing split" "routing split"
-as - TEAM $W register; expect 1 "TEAM_SESSION_ROLE unset or unknown" "register without a role in split"
+as - SUP $W register; expect 1 "TEAM_SESSION_ROLE unset — split routing needs a role session" \
+  "register without a role in split"
 E1="$(grep '^error:' "$WORK/out")"
 run "$MAIN" env -u TEAM_SESSION_ROLE $W ack 1; expect 1 "" "ack without a role in split"
 [ "$(grep '^error:' "$WORK/out")" = "$E1" ] || fail "register and ack errors differ"
-as TeamLead TEAM $W register; expect 0 "TeamLead registered" "register TeamLead"
-[ "$(stat -f %Lp "$TWD/receivers")" = 700 ] || fail "receivers dir not mode 700"
-sleep 3000 & H=$!; PIDS="$PIDS $H"; setpid TeamLead "$H"
-as TeamLead TEAM $W register; expect 1 "held by live pid $H" "a live holder refuses"
-as TeamLead TEAM $W register --takeover; expect 0 "replaced TeamLead pid $H" "takeover"
-setpid TeamLead "$(dead_pid)"
-as TeamLead TEAM $W register; expect 0 "replaced TeamLead pid" "a dead holder is taken"
-ID_T="$(jq -r .id "$TWD/receivers/TeamLead.json")"
+# A leftover global TeamLead window never registers — not even as the Supervisor.
+as TeamLead ADV $W register
+expect 1 "TEAM_SESSION_ROLE=TeamLead is not a team-watch receiver (receivers: Supervisor)" \
+  "the retired TeamLead registers"
+[ ! -e "$TWD/receivers/TeamLead.json" ] && [ ! -e "$TWD/receivers/Supervisor.json" ] \
+  || fail "a refused TeamLead wrote a receiver file"
+as Advisor ADV $W register; expect 1 "TEAM_SESSION_ROLE=Advisor is not a team-watch receiver" \
+  "the Advisor is no receiver"
 as Supervisor SUP $W register; expect 0 "Supervisor registered" "register Supervisor"
-[ "$(jq -r .id "$TWD/receivers/TeamLead.json")" = "$ID_T" ] || fail "Supervisor touched TeamLead"
-as Advisor TEAM $W register; expect 1 "TEAM_SESSION_ROLE unset or unknown" "the Advisor is no receiver"
+[ "$(stat -f %Lp "$TWD/receivers")" = 700 ] || fail "receivers dir not mode 700"
+sleep 3000 & H=$!; PIDS="$PIDS $H"; setpid Supervisor "$H"
+as Supervisor SUP $W register; expect 1 "held by live pid $H" "a live holder refuses"
+as Supervisor SUP $W register --takeover; expect 0 "replaced Supervisor pid $H" "takeover"
+setpid Supervisor "$(dead_pid)"
+as Supervisor SUP $W register; expect 0 "replaced Supervisor pid" "a dead holder is taken"
 
 run "$MAIN" $W routing single Supervisor; expect 0 "routing single Supervisor" "routing single Supervisor"
 run "$MAIN" $W routing single Advisor; expect 2 "" "single needs a receiver role"
-as TeamLead TEAM $W register; expect 0 "standby — routing single Supervisor" "standby"
-run "$MAIN" $W ping TeamLead; expect 0 "" "ping"
-wait_recv TEAM "PING TeamLead" 10
-run "$MAIN" $W tick --once
-wait_recv SUP "ATTENTION alfa coder (permission)" 30
-[ "$(nrecv TEAM "ATTENTION alfa")" = 0 ] || fail "standby got a routed signal"
-[ "$(nrecv SUP "PING TeamLead")" = 0 ] || fail "the ping reached the routed receiver"
-P="$(last_batch TEAM)"
-run "$MAIN" $W pending TeamLead; expect 0 "$P" "pending lists the ping batch"
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$P"; expect 0 "picked #$P" "ack the ping"
-run "$MAIN" $W pending TeamLead; [ -z "$(cat "$WORK/out")" ] || fail "pending after ack"
+OLD_RECEIVER=TeamLead
+run "$MAIN" $W routing single "$OLD_RECEIVER"; expect 2 "" "the retired TeamLead is no single receiver"
+run "$MAIN" $W ping Supervisor; expect 0 "team-watch: ping Supervisor queued (seq" "ping"
+wait_recv SUP "PING Supervisor" 10
+P="$(last_batch SUP)"
+run "$MAIN" $W pending Supervisor; expect 0 "$P" "pending lists the ping batch"
+run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$P"; expect 0 "picked #$P" "ack the ping"
+run "$MAIN" $W pending Supervisor; [ -z "$(cat "$WORK/out")" ] || fail "pending after ack"
 # The single Supervisor is a real receiver: its header carries role and ack, and it is timed —
 # its own episode is only logged (the terminal rule).
 msgs SUP | jq -se 'all(.[]; contains(" · role=Supervisor · ack: bash .claude/lib/team-watch.sh ack ")
   and contains(" · handle per .claude/commands/monitor.md · "))' >/dev/null \
   || fail "the single Supervisor header lacks role/ack/contract"
+run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10 2
 : > "$STUB_LOG"
 TEAM_WATCH_PICKUP_SECS=1 daemon; sleep 5; stop_daemon
 grep -q 'alarm not sent: UNPICKED Supervisor #' "$WORK/daemon.log" || { cp "$WORK/daemon.log" "$WORK/out"; fail "the single Supervisor was not timed"; }
@@ -70,69 +68,63 @@ echo "team-smoke-16: (61) register by role, single Supervisor OK"
 
 # ---- (62) split routing ---------------------------------------------------------------------------
 mailcfg "printf '[agent-mail] #7 2026-10-19 from=Advisor kind=turn awaiting=Supervisor thread=t\\n'"
+mkclone omega; echo '{not json' > "$CT/session.json"
 NS="$(msgs SUP | wc -l | tr -d ' ')"
 run "$MAIN" $W routing split; expect 0 "batches transferred" "routing split again"
 run "$MAIN" $W tick --once; expect 0 "" "tick in split"
-wait_recv TEAM "ATTENTION alfa coder (permission)" 30
-wait_recv SUP "MAIL Supervisor [agent-mail] #7" 10
-B_T="$(last_batch TEAM)"; B_S="$(last_batch SUP)"
-M="$(msgs TEAM | tail -n 1)"
-for x in "RECORD beta coder: coder-1-1.json blocked" "READY eps: PR 8571" "RUNNER beta stopped" \
-  "role=TeamLead · ack: bash .claude/lib/team-watch.sh ack $B_T" "handle per .claude/commands/monitor.md"; do
-  jq -e --arg x "$x" 'contains($x)' <<<"$M" >/dev/null || { echo "$M" > "$WORK/out"; fail "TeamLead lacks: $x"; }
-done
-msgs SUP | tail -n +"$((NS + 1))" | jq -se 'length > 0 and all(.[]; contains("role=Supervisor")
-  and contains("handle per .agents/reference/team-watch.md#supervisor")
-  and (contains("ATTENTION") | not) and (contains("READY") | not))' >/dev/null \
-  || fail "the split Supervisor got a team signal or the wrong contract"
-jq -e 'contains("MAIL")' <<<"$M" >/dev/null && fail "TeamLead got the Supervisor's mail"
-jq -n '{snapshot: {teams: []}, mail: {}, mail_errors: {Supervisor: "x", TeamLead: "y"},
-  snapshot_error: null, routing: {mode: "split", receiver: null, live: {TeamLead: true}}}' \
-  | jq -f "$SRC/.claude/lib/team-watch-signals.jq" > "$WORK/sig.json"
-jq -e 'any(.[]; .key == "err:mail:Supervisor" and .to == "Supervisor")
-  and any(.[]; .key == "err:mail:TeamLead" and .to == "TeamLead")' "$WORK/sig.json" >/dev/null \
-  || { cp "$WORK/sig.json" "$WORK/out"; fail "mail error routing"; }
-jq -n '{mail_errors: {TeamLead: "y"}, routing: {mode: "split", live: {}}}' \
-  | jq -f "$SRC/.claude/lib/team-watch-signals.jq" > "$WORK/sig.json"
+wait_recv SUP "MAIL Supervisor [agent-mail] #7" 30
+wait_recv SUP "ERROR omega: unreadable session.json" 10
+B_S="$(last_batch SUP)"
+msgs SUP | tail -n +"$((NS + 1))" | jq -se --arg a "ack: bash .claude/lib/team-watch.sh ack $B_S" '
+  length > 0 and all(.[]; contains("role=Supervisor")
+  and contains("handle per .agents/reference/team-watch.md#supervisor"))
+  and (.[-1] | contains($a))' >/dev/null \
+  || fail "the split Supervisor got the wrong contract or ack"
+# Every non-mail signal and a non-receiver role's mail error go to the Supervisor.
+jq -n '{snapshot: {teams: [], errors: ["tmux: no server"]}, mail: {},
+  mail_errors: {Supervisor: "x", TeamLead: "y"}, snapshot_error: null,
+  roles: {Advisor: {sub: "menu", fp: "f1", anchor: "Pick one", screen: []}},
+  routing: {mode: "split", receiver: null, live: {Supervisor: true}}}' \
+  | jq -f "$FILTER" > "$WORK/sig.json"
+jq -e 'length == 4 and all(.[]; .to == "Supervisor")
+  and any(.[]; .key == "err:mail:Supervisor") and any(.[]; .key == "err:mail:TeamLead")
+  and any(.[]; .key == "ratt:Advisor:menu:f1") and any(.[]; .key == "err:tmux: no server")' \
+  "$WORK/sig.json" >/dev/null || { cp "$WORK/sig.json" "$WORK/out"; fail "split routing of non-mail signals"; }
+jq -n '{mail_errors: {Supervisor: "y"}, routing: {mode: "split", live: {}}}' \
+  | jq -f "$FILTER" > "$WORK/sig.json"
 jq -e '.[0].to == "Supervisor"' "$WORK/sig.json" >/dev/null || fail "a dead receiver's mail error goes to the Supervisor"
+# A pre-upgrade render still carrying mail.TeamLead: the key is ignored, never an ERROR.
+jq '.mail.TeamLead = "exit 3"' "$MAIN/.agents/team/watch.local.json" > "$WORK/wl" \
+  && cp "$WORK/wl" "$MAIN/.agents/team/watch.local.json"
+run "$MAIN" $W signals; expect 0 "" "signals with a stale mail.TeamLead"
+jq -e 'all(.[]; (.key | contains("TeamLead") | not) and (.head | contains("TeamLead") | not))
+  and any(.[]; .key | startswith("mail:Supervisor:"))' "$WORK/out" >/dev/null \
+  || fail "a stale mail.TeamLead probe surfaced"
+mailcfg "printf '[agent-mail] #7 2026-10-19 from=Advisor kind=turn awaiting=Supervisor thread=t\\n'"
 echo "team-smoke-16: (62) split routing OK"
 
 # ---- (63) one batch per receiver, ack by number --------------------------------------------------
-jq -se --argjson b "$B_T" --argjson s "$B_S" '
-  (map(select(.batch == $b and .to == "TeamLead")) | length == 1)
-  and (map(select(.batch == $s and .to == "Supervisor")) | length == 1)' \
-  "$TWD/deliveries.jsonl" >/dev/null || fail "deliveries do not match the batches"
-jq -ne --slurpfile d "$TWD/deliveries.jsonl" --slurpfile e "$TWD/events.jsonl" --argjson b "$B_T" '
-  ($d | map(select(.batch == $b and .to == "TeamLead"))[0].seqs) as $s
-  | ($s | max) == $b and ($s | length) >= 3
-  and [$e[] | select(.to == "TeamLead" and .seq >= ($s | min) and .seq <= $b) | .seq] == $s' \
-  >/dev/null || fail "batch seqs differ from the TeamLead events"
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$B_S"; expect 1 "is not TeamLead's" "foreign ack"
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$B_T"; expect 0 "picked #$B_T" "ack TeamLead"
-ack_all TeamLead; ack_all Supervisor
+jq -se --argjson s "$B_S" 'map(select(.batch == $s and .to == "Supervisor")) | length == 1' \
+  "$TWD/deliveries.jsonl" >/dev/null || fail "deliveries do not match the batch"
+jq -ne --slurpfile d "$TWD/deliveries.jsonl" --slurpfile e "$TWD/events.jsonl" --argjson b "$B_S" '
+  ($d | map(select(.batch == $b and .to == "Supervisor"))[0].seqs) as $s
+  | ($s | max) == $b and ($s | length) >= 2
+  and [$e[] | select(.to == "Supervisor" and .seq >= ($s | min) and .seq <= $b) | .seq] == $s' \
+  >/dev/null || fail "batch seqs differ from the Supervisor events"
+run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack 999999; expect 1 "is not Supervisor's" "foreign ack"
+run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$B_S"; expect 1 "is not a team-watch receiver" \
+  "ack by the retired TeamLead"
+run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$B_S"; expect 0 "picked #$B_S" "ack Supervisor"
+ack_all Supervisor
 TEAM_WATCH_PICKUP_SECS=2 daemon; sleep 4; stop_daemon
 grep -q UNPICKED "$WORK"/*.recv && fail "UNPICKED after every batch was acked"
 echo "team-smoke-16: (63) batch ack OK"
 
-# ---- (64) UNPICKED, one alarm per episode ---------------------------------------------------------
-: > "$STUB_LOG"
-run "$MAIN" $W ping TeamLead; wait_recv TEAM "PING TeamLead" 10 2
-P="$(last_batch TEAM)"
-TEAM_WATCH_PICKUP_SECS=2 daemon
-wait_recv SUP "UNPICKED TeamLead #$P" 15
-sleep 3
-[ "$(nrecv SUP "UNPICKED TeamLead #")" = 1 ] || fail "more than one UNPICKED per episode"
-! grep -q '^notify ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "UNPICKED notified someone"; }
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$P"
-wait_recv SUP "UNPICKED TeamLead recovered" 10
-sleep 2; stop_daemon
-[ "$(nrecv SUP "UNPICKED TeamLead recovered")" = 1 ] || fail "more than one recovered"
-echo "team-smoke-16: (64) UNPICKED episode OK"
-
 # ---- (65) terminal rule: the Supervisor's own episode is only logged -------------------------------
-ack_all Supervisor   # the alarms of (64) were never picked up
+ack_all Supervisor
 : > "$STUB_LOG"
-run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10
+NP="$(nrecv SUP "PING Supervisor")"
+run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10 $((NP + 1))
 P="$(last_batch SUP)"
 TEAM_WATCH_PICKUP_SECS=1 daemon; sleep 6; stop_daemon
 grep -q "UNPICKED Supervisor" "$WORK"/*.recv && fail "an alarm about the Supervisor was sent to a socket"
@@ -144,27 +136,29 @@ run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$P"; expect 0 "" "ack the s
 echo "team-smoke-16: (65) terminal rule OK"
 
 # ---- (67) handover ---------------------------------------------------------------------------------
-run "$MAIN" $W ping TeamLead; wait_recv TEAM "PING TeamLead" 10 3
-OLD="$(last_batch TEAM)"
+NP="$(nrecv SUP "PING Supervisor")"
+run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10 $((NP + 1))
+OLD="$(last_batch SUP)"
 jq -cn --argjson s "$(( $(tail -n 1 "$TWD/events.jsonl" | jq .seq) + 1 ))" \
-  '{seq: $s, at: "x", to: "TeamLead", label: "", text: "QUEUED never sent"}' >> "$TWD/events.jsonl"
-touch "$TWD/alarm.unpicked.TeamLead"
-N0="$(nrecv SUP "ATTENTION alfa coder (permission)")"
+  '{seq: $s, at: "x", to: "Supervisor", label: "", text: "QUEUED never sent"}' >> "$TWD/events.jsonl"
+touch "$TWD/alarm.unpicked.Supervisor"
+N0="$(nrecv SUP "(current state)")"
 run "$MAIN" $W routing single Supervisor; expect 0 "routing single Supervisor —" "handover to single"
-[ ! -f "$TWD/alarm.unpicked.TeamLead" ] || fail "episode flag survived the handover"
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$OLD"; expect 1 "transferred" "ack of a transferred batch"
+[ ! -f "$TWD/alarm.unpicked.Supervisor" ] || fail "episode flag survived the handover"
+run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$OLD"; expect 1 "transferred" "ack of a transferred batch"
 has "handle the (current state) batch instead" "$WORK/out" || fail "transferred refusal text"
-jq -se 'any(.[]; .transferred == true and .to == "TeamLead")' "$TWD/deliveries.jsonl" >/dev/null \
+jq -se 'any(.[]; .transferred == true and .to == "Supervisor")' "$TWD/deliveries.jsonl" >/dev/null \
   || fail "the undelivered event was not transferred"
 run "$MAIN" $W tick --once; run "$MAIN" $W tick --once
-wait_recv SUP "ATTENTION alfa coder (permission)" 30 $((N0 + 1))
-[ "$(nrecv SUP "ATTENTION alfa coder (permission)")" = $((N0 + 1)) ] || fail "re-delivered more than once"
-msgs SUP | tail -n 1 | jq -e 'contains("(current state)")' >/dev/null || fail "no (current state) to the Supervisor"
-grep -q "QUEUED never sent" "$WORK/SUP.recv" "$WORK/TEAM.recv" && fail "a transferred event was sent"
-N1="$(nrecv TEAM "ATTENTION alfa coder (permission)")"
+wait_recv SUP "(current state)" 30 $((N0 + 1))
+[ "$(nrecv SUP "(current state)")" = $((N0 + 1)) ] || fail "re-delivered more than once"
+msgs SUP | tail -n 1 | jq -e 'contains("MAIL [agent-mail] #7")' >/dev/null \
+  || fail "the single (current state) lacks the open mail"
+grep -q "QUEUED never sent" "$WORK/SUP.recv" && fail "a transferred event was sent"
 run "$MAIN" $W routing split; run "$MAIN" $W tick --once
-wait_recv TEAM "(current state)" 30 1
-[ "$(nrecv TEAM "ATTENTION alfa coder (permission)")" -gt "$N1" ] || fail "split back: no current state"
+wait_recv SUP "(current state)" 30 $((N0 + 2))
+msgs SUP | tail -n 1 | jq -e 'contains("MAIL Supervisor [agent-mail] #7")' >/dev/null \
+  || fail "split back: no current state"
 rm -f "$TWD/routing.json"
 run "$MAIN" $W status; has "routing: single Supervisor" "$WORK/out" || fail "no routing.json is not single Supervisor"
 run "$MAIN" $W routing split
@@ -178,10 +172,45 @@ run "$MAIN" $W routing split
 run "$MAIN" $W routing split
 echo "team-smoke-16: (67) handover OK"
 
-# ---- (66) RECEIVER down ---------------------------------------------------------------------------
-ack_all Supervisor; ack_all TeamLead
-kill "$TEAM_PID"; wait "$TEAM_PID" 2>/dev/null || true
-daemon; wait_recv SUP "RECEIVER TeamLead down" 15; sleep 2; stop_daemon
-[ "$(nrecv SUP "RECEIVER TeamLead down")" = 1 ] || fail "RECEIVER down more than once"
-echo "team-smoke-16: (66) RECEIVER down OK"
+# ---- (68b) retired events never delivered ----------------------------------------------------------
+echo "team-smoke-16: (68b) queued att:, ratt:TeamLead: and err:mail:TeamLead events and an event to TeamLead are never delivered; Supervisor mail and an Advisor ratt: in the same queue are"
+run "$MAIN" $W tick --once; ack_all Supervisor
+S0="$(tail -n 1 "$TWD/events.jsonl" | jq .seq)"
+qev() {  # qev <to> <key> <text> — one queued event past the last seq
+  jq -cn --argjson s "$(( $(tail -n 1 "$TWD/events.jsonl" | jq .seq) + 1 ))" --arg to "$1" \
+    --arg k "$2" --arg t "$3" '{seq: $s, at: "x", to: $to, key: $k, label: "", text: $t}' \
+    >> "$TWD/events.jsonl"
+}
+qev Supervisor "att:alfa:coder:permission" "RETIRED att"
+qev Supervisor "ratt:TeamLead:menu:f9" "RETIRED ratt TeamLead"
+qev Supervisor "err:mail:TeamLead" "RETIRED err mail TeamLead"
+qev TeamLead "mail:TeamLead:x" "RETIRED to TeamLead"
+qev Supervisor "mail:Supervisor:[agent-mail] #8" "LIVE mail Supervisor"
+qev Supervisor "ratt:Advisor:menu:f2" "LIVE ratt Advisor"
+cp "$WORK/SUP.recv" "$WORK/sup.before"
+run "$MAIN" $W tick --once; expect 0 "events to retired receiver TeamLead are not delivered" \
+  "tick over a queue with retired events"
+wait_recv SUP "LIVE ratt Advisor" 10
+[ "$(nrecv SUP "LIVE mail Supervisor")" = 1 ] || fail "the Supervisor mail was not delivered once"
+grep -q RETIRED "$WORK/SUP.recv" "$WORK/ADV.recv" 2>/dev/null && fail "a retired event was sent"
+jq -se --argjson s0 "$S0" '[.[] | select(.to == "TeamLead")] == []
+  and ([.[] | select(.to == "Supervisor") | .seqs[]? | select(. > $s0)] | sort)
+    == [$s0 + 5, $s0 + 6]' "$TWD/deliveries.jsonl" >/dev/null \
+  || { cp "$TWD/deliveries.jsonl" "$WORK/out"; fail "the ledger carries a retired event"; }
+ack_all Supervisor
+echo "team-smoke-16: (68b) retired events never delivered OK"
+
+# ---- (68c) a routing.json saying single TeamLead reads as single Supervisor ------------------------
+jq -n '{mode: "single", receiver: "TeamLead", gen: 99}' > "$TWD/routing.json"
+run "$MAIN" $W status
+has "routing: single Supervisor" "$WORK/out" || fail "a stale single TeamLead is not read as the Supervisor"
+has "routing: stale receiver TeamLead — read as single Supervisor; repair: team-watch.sh routing single Supervisor" \
+  "$WORK/out" || fail "status lacks the stale receiver line"
+run "$MAIN" $W signals; expect 0 "" "signals under a stale single TeamLead"
+jq -e 'length > 0 and all(.[]; .to == "Supervisor")' "$WORK/out" >/dev/null \
+  || fail "a stale single TeamLead routed a signal away from the Supervisor"
+run "$MAIN" env -u TEAM_SESSION_ROLE $W pending Supervisor; expect 0 "" "pending under a stale routing"
+run "$MAIN" $W routing single Supervisor; expect 0 "routing single Supervisor" "repair"
+run "$MAIN" $W status; ! has "stale receiver" "$WORK/out" || fail "the stale line survived the repair"
+echo "team-smoke-16: (68c) stale single TeamLead OK"
 echo "team-smoke-16: OK"

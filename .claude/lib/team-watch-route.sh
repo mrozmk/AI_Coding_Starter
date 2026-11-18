@@ -2,19 +2,20 @@
 # team-watch routing: role-bound receivers, routing table, acks, pickup alarms, handover, stats.
 # Sourced by team-watch-lib.sh, never executed; functions only.
 # Runbook and state files: .agents/reference/team-watch.md.
-# TW_ROLES is the single source of the receiver role names; mirrors to change with it:
-# team-watch-signals.jq destinations, tw_contract (team-watch-deliver.sh), the roles of
-# .claude/team/sessions/monitoring.json and the role-profile checker of the session launcher.
+# TW_ROLES is the single source of the receiver role names; mirrors to change with it: the
+# signal filter's dest (team-watch-signals.jq), tw_contract (team-watch-deliver.sh), the roles of
+# .claude/team/sessions/monitoring.json and ROLES in session_profile_check.py.
 # TW_SESSION_ROLES adds the session roles that are no receiver; TW_PANE_ROLES are the role
 # sessions whose own prompts the daemon scans (the Supervisor answers them).
 # TW_LEGACY is only the name of the default single receiver: no routing.json = `single Supervisor`,
 # the single-window /monitor. It is a real role that acks; nothing iterates it next to TW_ROLES.
 
-TW_ROLES="Supervisor TeamLead"
-TW_PANE_ROLES="TeamLead Advisor"
+TW_ROLES="Supervisor"
+TW_PANE_ROLES="Advisor"
 TW_LEGACY=Supervisor
-# A version bump makes `team-watch.sh start` restart running loops.
-TW_VERSION=1
+# A version bump makes `team-watch.sh start` restart running loops (2: restarts loops still running
+# the global-TeamLead code).
+TW_VERSION=2
 TW_SESSION_ROLES="$TW_ROLES Advisor"
 TW_ROUTE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -75,12 +76,24 @@ tw_session_name() { team_sess "$(tw_tmux_name "$1")"; }
 
 tw_receiver_file() { echo "$TW_DIR/receivers/$1.json"; }
 
+# A persisted single receiver that is no receiver role any more (a pre-upgrade `single TeamLead`)
+# reads as the Supervisor, so alarms, the self-role fallback, the filter and handover agree.
 tw_routing() {  # → "split" | "single <role>"; no routing.json = the single-window Supervisor
-  local f="$TW_DIR/routing.json"
+  local f="$TW_DIR/routing.json" m
   [ -f "$f" ] || { echo "single $TW_LEGACY"; return 0; }
-  jq -r --arg l "$TW_LEGACY" \
-    'if .mode == "split" then "split" else "single \(.receiver // $l)" end' "$f" 2>/dev/null \
-    || echo "single $TW_LEGACY"
+  m="$(jq -r --arg l "$TW_LEGACY" \
+    'if .mode == "split" then "split" else "single \(.receiver // $l)" end' "$f" 2>/dev/null)" \
+    || m="single $TW_LEGACY"
+  case "$m" in split) ;; *) tw_role_ok "${m#single }" || m="single $TW_LEGACY" ;; esac
+  echo "$m"
+}
+
+# tw_routing_stale → the persisted single receiver when tw_routing replaced it, else nothing.
+tw_routing_stale() {
+  local r
+  r="$(jq -r 'select(.mode != "split") | .receiver // empty' "$TW_DIR/routing.json" 2>/dev/null)"
+  [ -n "$r" ] && ! tw_role_ok "$r" && echo "$r"
+  return 0
 }
 
 tw_gen() { jq -r '.gen // 0' "$TW_DIR/routing.json" 2>/dev/null || echo 0; }
@@ -114,14 +127,20 @@ tw_live() {  # tw_live <role> — active registration, pid alive (when known), s
 }
 
 # tw_self_role → this session's role: TEAM_SESSION_ROLE, else the single-routing receiver (the
-# single window). Split routing without a role is an error — never a guess.
+# single window). A set role that is no receiver is refused (a leftover global TeamLead window
+# never registers as the Supervisor); split routing without a role is an error — never a guess.
 tw_self_role() {
   local m
-  if tw_role_ok "${TEAM_SESSION_ROLE:-}"; then echo "$TEAM_SESSION_ROLE"; return 0; fi
+  if [ -n "${TEAM_SESSION_ROLE:-}" ]; then
+    if tw_role_ok "$TEAM_SESSION_ROLE"; then echo "$TEAM_SESSION_ROLE"; return 0; fi
+    echo "error: TEAM_SESSION_ROLE=$TEAM_SESSION_ROLE is not a team-watch receiver" \
+      "(receivers: $TW_ROLES)" >&2
+    return 1
+  fi
   m="$(tw_routing)"
   if [ "$m" = split ]; then
-    echo "error: TEAM_SESSION_ROLE unset or unknown — split routing needs a role session" \
-      "(TEAM_SESSION_ROLE=Supervisor|TeamLead)" >&2
+    echo "error: TEAM_SESSION_ROLE unset — split routing needs a role session" \
+      "(TEAM_SESSION_ROLE=Supervisor)" >&2
     return 1
   fi
   echo "${m#single }"

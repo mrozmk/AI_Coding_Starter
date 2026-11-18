@@ -10,7 +10,8 @@
 #           stays jira, whose wrapup needs no tracker target): the planner's ledger + snapshot,
 #           the lead's fresh reads; a comment after the spec refuses the plan approve (exit 10) until
 #           the planner reconciles it into the plan; acceptance on a current read → ready
-#   off   — the switch off: no lead, the pre-TeamLead flow, a blocked coder ends the runner (exit 2)
+#   off   — no lead through the fixture seam (TEAM_SMOKE_NO_LEAD): the no-lead flow, a blocked coder
+#           ends the runner (exit 2)
 # Each scenario asserts the exact set of Supervisor events and Operator notifications.
 #
 # Spec acceptance criteria → asserting cases (parts 20–24):
@@ -18,7 +19,7 @@
 #   order brief required                             21 b; 22 c
 #   no spec gate; Approved (auto — team mode)       21 f, n, t; 24 alfa
 #   no coder before plan approve; quick remode       21 k, l; 24 alfa, beta
-#   blocked does not end the runner                  22 d; 24 off (it does with the switch off)
+#   blocked does not end the runner                  22 d; 24 off (it does under the fixture seam)
 #   classes first; human-only → one notification     22 i–m; 24 beta
 #   non-blocking decisions, matching                 22 m–o; 24 beta
 #   revise limit                                     21 h; 24 gamma (revise)
@@ -148,7 +149,7 @@ qa_done() {  # qa_done <run dir> — report, the PR published, the record
   qa_report "$1/qa-report-1.md"; pr_at false "$(head_rev)"
   play --verdict done --pr 8371 --evidence "${1#"$CLONE"/}/qa-report-1.md"; expect 0 "qa-1-1.json" "$RUN_ID qa record"
 }
-prof '.teams.teamlead.enabled = true'
+unset TEAM_SMOKE_NO_LEAD
 
 # ==== alfa: brainstorm, clean ==========================================================================
 fresh alfa-20261116-100000 brainstorm
@@ -340,8 +341,8 @@ has "ready: bash .claude/lib/team-merge-check.sh alfa" "$WORK/runner.out" || fai
 prof '.workflow.tracker_comments = false'
 echo "team-smoke-24: trk (tracker comments on) OK"
 
-# ==== off: the switch off — no lead, Approved (auto — team mode), a blocked coder ends the runner ======
-prof '.teams.teamlead.enabled = false'
+# ==== off: the fixture seam — no lead, Approved (auto — team mode), a blocked coder ends the runner ====
+export TEAM_SMOKE_NO_LEAD=1
 fresh alfa-20261116-130000 brainstorm; rm -f "$TD/teamlead.json"
 start_runner
 launched planner 1; on_stage planner

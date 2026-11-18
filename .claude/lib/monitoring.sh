@@ -21,7 +21,7 @@ W="bash .claude/lib/team-watch.sh"
 mon_self() {
   tw_session_role_ok "${TEAM_SESSION_ROLE:-}" || {
     echo "error: TEAM_SESSION_ROLE unset or unknown — monitoring.sh runs in a role session" \
-      "(start it as TEAM_SESSION_ROLE=<Supervisor|TeamLead|Advisor> claude …)" >&2; exit 2; }
+      "(start it as TEAM_SESSION_ROLE=<Supervisor|Advisor> claude …)" >&2; exit 2; }
   echo "$TEAM_SESSION_ROLE"
 }
 

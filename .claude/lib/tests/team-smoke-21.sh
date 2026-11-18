@@ -98,8 +98,7 @@ echo "team-smoke-21: (e) archive OK"
 RUN_ID=alfa-20261114-110000; RD="$TD/runs/$RUN_ID"; SUP="$MAIN/.agents/team/inbox/Supervisor/new"
 BASE="$(jq -r .base_sha "$TD/team.json")"; SPEC=.agents/specs/s.md; PLAN=.agents/plans/active/p.md
 export WORK TD
-jq '.teams.teamlead.enabled = true' "$MAIN/.claude/project-profile.json" > "$WORK/p" \
-  && mv "$WORK/p" "$MAIN/.claude/project-profile.json"
+unset TEAM_SMOKE_NO_LEAD
 mkdir -p "$MAIN/.claude/team/sessions" "$CLONE/.claude/hooks"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"

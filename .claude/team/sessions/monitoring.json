@@ -8,12 +8,6 @@
       "pause": {"pass": {"alarms": true, "mail_threads": ["incident-"]}},
       "start": []
     },
-    "TeamLead": {
-      "team_watch": true,
-      "wake": {"team-prompts": 60, "mail": 90, "pending": 120},
-      "pause": {"pass": {}},
-      "start": ["mode tiers on"]
-    },
     "Advisor": {
       "team_watch": false,
       "wake": {"mail": 20},

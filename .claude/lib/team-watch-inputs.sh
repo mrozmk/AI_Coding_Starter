@@ -8,8 +8,10 @@ tw_mail_cfg() {  # tw_mail_cfg <cfg> → <role>\t<command> per probe; split: .ma
   local m
   m="$(tw_routing)"
   if [ "$m" = split ]; then
-    jq -r '(.mail // {}) | to_entries[] | select((.value | type) == "string" and .value != "")
-      | "\(.key)\t\(.value)"' "$1"
+    # TeamLead: the retired receiver's key in a pre-upgrade render, ignored; any other unknown
+    # role still surfaces as an error.
+    jq -r '(.mail // {}) | to_entries[] | select(.key != "TeamLead")
+      | select((.value | type) == "string" and .value != "") | "\(.key)\t\(.value)"' "$1"
   else
     jq -r --arg r "${m#single }" '(if (.mail_unread | type) == "string" then .mail_unread
       else (.mail // {})[$r] // "" end) as $c | select($c != "") | "\($r)\t\($c)"' "$1"
@@ -52,26 +54,6 @@ tw_mail() {
     esac
     jq --arg r "$r" --arg c "$c" '.[$r] = $c' "$w/mail_err.json" | tw_put "$w/mail_err.json"
   done
-}
-
-# tw_esc_mail <work dir> → esc_mail.json {lines, error}: unread Advisor replies on esc-* threads
-# for the TeamLead. Kept out of mail.json, so an escalation reply never becomes a MAIL signal.
-tw_esc_mail() {
-  local w="$1" cfg="$root/.agents/team/watch.local.json" secs c rc=0 e
-  echo '{"lines": [], "error": null}' > "$w/esc_mail.json"
-  [ -f "$cfg" ] && jq empty "$cfg" >/dev/null 2>&1 || return 0
-  c="$(jq -r '.esc_mail.TeamLead // empty | strings' "$cfg")"
-  [ -n "$c" ] || return 0
-  secs="$(jq -r '.timeout_secs // 10' "$cfg")"
-  [[ "$secs" =~ ^[0-9]+$ ]] && [ "$secs" -ge 1 ] && [ "$secs" -le 60 ] || secs=10
-  tw_timebox "$secs" bash -c "$c" < /dev/null > "$w/em.out" 2> "$w/em.err" || rc=$?
-  case "$rc" in
-    0) jq -n --rawfile m "$w/em.out" '{lines: ($m | split("\n") | map(select(length > 0))),
-         error: null}' > "$w/esc_mail.json"; return 0 ;;
-    124) e="esc_mail probe timed out after ${secs}s" ;;
-    *) e="esc_mail probe exit $rc: $(tail -n 1 "$w/em.err" 2>/dev/null | cut -c1-160)" ;;
-  esac
-  jq -n --arg e "$e" '{lines: [], error: $e}' > "$w/esc_mail.json"
 }
 
 # tw_role_block <role> → TW_RB_SUB (menu|permission) and TW_RB_BLOCK (raw) for the open prompt in

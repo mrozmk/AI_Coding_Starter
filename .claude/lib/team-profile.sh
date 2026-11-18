@@ -62,9 +62,6 @@ team_profile_int() {
     | if . == null then "" else tostring end' "$f" 2>/dev/null || echo '!')"
   TEAM_PROFILE_INT_V="${TEAM_PROFILE_INT_V:-$def}"
   if ! [[ "$TEAM_PROFILE_INT_V" =~ ^[0-9]+$ ]] || [ "$TEAM_PROFILE_INT_V" -lt "$min" ]; then
-    # With the lead switch off nothing reads these keys: a bad one falls back to its default
-    # instead of stopping every command that loads the profile.
-    [ "$TEAM_LEAD_ENABLED" = true ] || { TEAM_PROFILE_INT_V="$def"; return 0; }
     if [ "$min" -gt 0 ]; then
       team_profile_die "teams.teamlead.$key=$TEAM_PROFILE_INT_V must be a positive integer"
     fi
@@ -154,11 +151,13 @@ team_profile_load() {
     TEAM_CLONE_NAME="$v"
   fi
 
-  # The per-run TeamLead. Off by default: the global TeamLead runs unchanged until it is retired.
-  v="$(jq -r '.teams.teamlead.enabled | if . == null then "false" else tostring end' "$f" \
+  # The per-run TeamLead's keys (always read: the lead runs in every brainstorm and quick run).
+  # The old switch: absent or true is a no-op, false names the removal.
+  v="$(jq -r '.teams.teamlead.enabled | if . == null then "true" else tostring end' "$f" \
     2>/dev/null || true)"
   case "$v" in
-    true|false) TEAM_LEAD_ENABLED="$v" ;;
+    true) ;;
+    false) team_profile_die "teams.teamlead.enabled was removed — the global TeamLead is retired; the per-run TeamLead is always on in brainstorm and quick mode. Delete the key." ;;
     *) team_profile_die "teams.teamlead.enabled=${v:-<invalid>} must be true|false" ;;
   esac
   team_profile_int "$f" revise_limit 3 1; TEAM_LEAD_REVISE_LIMIT="$TEAM_PROFILE_INT_V"
@@ -170,11 +169,8 @@ team_profile_load() {
     | if . == null then "settings-profiles\nprod-ask"
       elif type == "array" and length > 0 and all(.[]; type == "string" and length > 0)
       then join("\n") else "!" end' "$f" 2>/dev/null || echo '!')"
-  if [ "$TEAM_LEAD_HUMAN_ONLY" = '!' ]; then
-    [ "$TEAM_LEAD_ENABLED" != true ] \
-      || team_profile_die "teams.teamlead.human_only must be a non-empty list of rule-group names"
-    TEAM_LEAD_HUMAN_ONLY="$(printf 'settings-profiles\nprod-ask')"
-  fi
+  [ "$TEAM_LEAD_HUMAN_ONLY" != '!' ] \
+    || team_profile_die "teams.teamlead.human_only must be a non-empty list of rule-group names"
   # The per-run launcher's model/effort (teams.sessions.TeamLead, a standing:false role in
   # roles-lib.sh; its defaults here are the per-run ones).
   TEAM_LEAD_MODEL="$(jq -r '.teams.sessions.TeamLead.model // empty | strings' "$f" \

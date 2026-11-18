@@ -9,7 +9,7 @@
 #        bash .claude/lib/team-watch.sh run|dog|tick --once|signals
 #        bash .claude/lib/team-watch.sh [--once] <team> [team...]   (the poller, team-watch-poll.sh)
 #   e.g. bash .claude/lib/team-watch.sh ack 42     (first action on a [team-watch #42] message)
-#   roles: Supervisor TeamLead. `team-watch.sh pending` and `team-watch.sh status` take no lock and
+#   roles: Supervisor. `team-watch.sh pending` and `team-watch.sh status` take no lock and
 #   return at once (the Stop hooks call them).
 # Runbook: .agents/reference/team-watch.md.
 set -euo pipefail
@@ -141,7 +141,7 @@ mail_line() {  # a mail error key stays open while that probe's last run failed
 }
 
 status() {
-  local rc=0
+  local rc=0 stale
   if tw_fresh beat && tw_fresh dog.beat; then
     echo "team-watch: works"
   else
@@ -150,6 +150,9 @@ status() {
   echo "daemon: last beat $(ago beat)"
   echo "dog: last beat $(ago dog.beat)"
   echo "routing: $(tw_routing)"
+  stale="$(tw_routing_stale)"
+  [ -z "$stale" ] || echo "routing: stale receiver $stale — read as single $TW_LEGACY;" \
+    "repair: team-watch.sh routing single $TW_LEGACY"
   receiver_lines
   undelivered_lines
   mail_line

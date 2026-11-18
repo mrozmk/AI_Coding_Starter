@@ -11,16 +11,15 @@ set -euo pipefail
 smoke_init
 smoke_team AB-1139 chore/AB-1139-watch
 watch_init
-mkrole SUP; mkrole TEAM
+mkrole SUP; mkrole ADV
 Q="bash .claude/lib/team-question.sh"
 session coder 1 "$BASE"
 echo "2026-10-19T10:00:00Z permission_prompt Claude needs your permission" > "$RD/attention"
 mkdir "$TD/lock"; echo $$ > "$TD/lock/pid"
 mailcfg true
 run "$MAIN" $W routing split; expect 0 "" "routing split"
-as Supervisor SUP $W register; as TeamLead TEAM $W register
-expect 0 "TeamLead registered" "register both roles"
-run "$MAIN" $W tick --once; wait_recv TEAM "ATTENTION alfa coder (permission)" 30
+as Supervisor SUP $W register; expect 0 "Supervisor registered" "register the Supervisor"
+run "$MAIN" $W tick --once; expect 0 "" "first tick"
 ago() { touch -t "$(date -r $(( $(date +%s) - $2 )) +%Y%m%d%H%M.%S)" "$1"; }
 holder() { sleep 3000 > /dev/null 2>&1 & H=$!; PIDS="$PIDS $H"; }  # → H
 seq_of() { jq -r 'select(.text | startswith($t)) | .seq' --arg t "$1" "$TWD/events.jsonl" | tail -n 1; }
@@ -33,20 +32,20 @@ role_prompt() {  # role_prompt <role> → tw_role_prompt's "<sub>\t<fp>\t<anchor
 }
 
 # ---- (68) duplicate delivery: one ack counted twice, one answer ----------------------------------
-run "$MAIN" $W ping TeamLead; wait_recv TEAM "PING TeamLead" 10
-P="$(last_batch TEAM)"
+run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10
+P="$(last_batch SUP)"
 # The whole commit is lost (cursor and delivery line): the same batch goes out again. A lost cursor
 # alone does not resend — delivery skips every seq the ledger carried.
-rm -f "$TWD/cursor.TeamLead"
-jq -c --argjson b "$P" 'select(.batch != $b or .to != "TeamLead")' "$TWD/deliveries.jsonl" \
+rm -f "$TWD/cursor.Supervisor"
+jq -c --argjson b "$P" 'select(.batch != $b or .to != "Supervisor")' "$TWD/deliveries.jsonl" \
   > "$WORK/d" && mv "$WORK/d" "$TWD/deliveries.jsonl"
 run "$MAIN" $W tick --once
-wait_recv TEAM "[team-watch #$P]" 10 2
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$P"; expect 0 "picked #$P" "first ack"
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead $W ack "$P"; expect 0 "(duplicate)" "second ack"
-run "$MAIN" $W stats; expect 0 "TeamLead: delivered=" "stats"
-grep '^TeamLead:' "$WORK/out" | grep -q ' duplicates=1 ' || fail "stats: duplicates=1 expected"
-grep '^TeamLead:' "$WORK/out" | grep -Eq 'pickup_p50=[0-9]+s pickup_max=[0-9]+s' \
+wait_recv SUP "[team-watch #$P]" 10 2
+run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$P"; expect 0 "picked #$P" "first ack"
+run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$P"; expect 0 "(duplicate)" "second ack"
+run "$MAIN" $W stats; expect 0 "Supervisor: delivered=" "stats"
+grep '^Supervisor:' "$WORK/out" | grep -q ' duplicates=1 ' || fail "stats: duplicates=1 expected"
+grep '^Supervisor:' "$WORK/out" | grep -Eq 'pickup_p50=[0-9]+s pickup_max=[0-9]+s' \
   || fail "stats: pickup latency missing"
 run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" --summary "deploy?"
 expect 0 "q-1" "open"
@@ -91,7 +90,7 @@ L="$MAIN/.claude/lib"
 # would pass or fail on the profile alone and say nothing about the state file.
 PF="$MAIN/.claude/project-profile.json"; cp "$PF" "$WORK/prof.before"
 jq '.teams.policy.classes.merge_line = {enabled: true}' "$WORK/prof.before" > "$PF"
-(. "$L/team-lib.sh"; echo '{"paused": {"TeamLead": {"since": "2026-11-04T08:00:00Z", "by": "x"}}}' > "$TWD/state.json"
+(. "$L/team-lib.sh"; echo '{"paused": {"Supervisor": {"since": "2026-11-04T08:00:00Z", "by": "x"}}}' > "$TWD/state.json"
   team_mode_ok "$MAIN" 1 yes && team_class_on "$MAIN" merge-line) || fail "a pause changed tiers or classes"
 jq '. + {tiers: "off", classes: {"merge-line": "off"}}' "$TWD/state.json" > "$WORK/st" && mv "$WORK/st" "$TWD/state.json"
 (. "$L/team-lib.sh"; [ "$(team_mode_ok "$MAIN" 1 yes)" = "tiers off" ] && ! team_class_on "$MAIN" merge-line) \
@@ -107,21 +106,30 @@ run "$MAIN" $W mode tiers on; expect 0 "team-watch: tiers on" "a stale pid-less 
 echo "team-smoke-17: (P1) state readers and writer OK"
 
 # ---- (70) the SessionStart hook re-points only its own role ---------------------------------------
-SUPSUM="$(shasum < "$TWD/receivers/Supervisor.json")"
-set +e
-CLAUDE_PROJECT_DIR="$MAIN" TEAM_SESSION_ROLE=TeamLead CLAUDE_CODE_MESSAGING_SOCKET="$TEAM_SOCK" \
-  CLAUDE_CODE_MESSAGING_TOKEN=tok2 bash "$SRC/.claude/hooks/team-watch-session.sh" < /dev/null \
-  > "$WORK/hk" 2>&1
-RC=$?; set -e
+hook() {  # hook <role> <socket> <token> → RC, $WORK/hk
+  set +e
+  CLAUDE_PROJECT_DIR="$MAIN" TEAM_SESSION_ROLE="$1" CLAUDE_CODE_MESSAGING_SOCKET="$2" \
+    CLAUDE_CODE_MESSAGING_TOKEN="$3" bash "$SRC/.claude/hooks/team-watch-session.sh" < /dev/null \
+    > "$WORK/hk" 2>&1
+  RC=$?; set -e
+}
+# A leftover TeamLead window or the Advisor (no receiver) touches nothing, not even the Supervisor.
+for r in TeamLead Advisor; do
+  SUPSUM="$(shasum < "$TWD/receivers/Supervisor.json")"
+  hook "$r" "$ADV_SOCK" tok9
+  [ "$RC" = 0 ] && [ ! -s "$WORK/hk" ] || fail "hook ($r) printed or failed (exit $RC)"
+  [ "$(shasum < "$TWD/receivers/Supervisor.json")" = "$SUPSUM" ] || fail "hook ($r) touched the Supervisor"
+  [ ! -e "$TWD/receivers/$r.json" ] || fail "hook ($r) wrote a receiver file"
+done
+hook Supervisor "$SUP_SOCK" tok2
 [ "$RC" = 0 ] && [ ! -s "$WORK/hk" ] || fail "hook printed or failed (exit $RC)"
-[ "$(jq -r .token "$TWD/receivers/TeamLead.json")" = tok2 ] || fail "hook did not re-point TeamLead"
-[ "$(shasum < "$TWD/receivers/Supervisor.json")" = "$SUPSUM" ] || fail "hook touched another role"
+[ "$(jq -r .token "$TWD/receivers/Supervisor.json")" = tok2 ] || fail "hook did not re-point the Supervisor"
 echo "team-smoke-17: (70) SessionStart hook per role OK"
 
 # ---- (130) team-watch notifies nobody: no tw_notify, an alarm only reaches the target session -----
 lib 'type tw_notify >/dev/null 2>&1 && echo has-tw_notify; type team_channel_notify >/dev/null 2>&1 && echo has-tcn; echo rc=$?'
 ! has "has-" "$WORK/out" || fail "a notification helper is still defined: $(cat "$WORK/out")"
-: > "$STUB_LOG"; lib 'tw_alarm TeamLead "UNPICKED TeamLead #1"'
+: > "$STUB_LOG"; lib 'tw_alarm Supervisor "UNPICKED Supervisor #1"'
 ! grep -q '^notify \|^osascript\|^notify-send' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "tw_alarm notified someone"; }
 ! has "declared loss" "$WORK/out" || fail "tw_alarm still prints a declared loss"
 run "$MAIN" $W status
@@ -139,21 +147,24 @@ done
 echo "team-smoke-17: (131) runner notifications OK"
 
 # ---- (75) ledger findings and rotation ----------------------------------------------------------
-# C5: undelivered counts only the role's own events past its cursor.
+# C5: undelivered counts only the role's own events past its cursor (here: a pre-upgrade queue to
+# the retired TeamLead is foreign).
 L5="$(tail -n 1 "$TWD/events.jsonl" 2>/dev/null | jq -r '.seq // 0')"; L5="${L5:-0}"
 for i in 1 2 3; do
-  jq -cn --argjson s "$((L5 + i))" '{seq: $s, at: "x", to: "Supervisor", label: "", text: "t"}'
+  jq -cn --argjson s "$((L5 + i))" '{seq: $s, at: "x", to: "TeamLead", label: "", text: "t"}'
 done >> "$TWD/events.jsonl"
-jq -cn --argjson s "$((L5 + 4))" '{seq: $s, at: "x", to: "TeamLead", label: "", text: "m"}' \
+jq -cn --argjson s "$((L5 + 4))" '{seq: $s, at: "x", to: "Supervisor", label: "", text: "m"}' \
   >> "$TWD/events.jsonl"
-echo "$L5" > "$TWD/cursor.TeamLead"; date -u +%s > "$TWD/undelivered.TeamLead.since"
-run "$MAIN" $W status; has "undelivered TeamLead: 1 " "$WORK/out" || fail "C5: foreign events counted"
-rm -f "$TWD/undelivered.TeamLead.since"
+echo "$L5" > "$TWD/cursor.Supervisor"; date -u +%s > "$TWD/undelivered.Supervisor.since"
+run "$MAIN" $W status; has "undelivered Supervisor: 1 " "$WORK/out" || fail "C5: foreign events counted"
+rm -f "$TWD/undelivered.Supervisor.since"
 lib tw_deliver
-# C6: a held lock plus a 12 s send.d of a live multi-receiver sender — the alarm never reclaims it.
+# C6: a held lock plus a live sender's send.d younger than tw_send_max — the alarm never reclaims it.
+lib tw_send_max; SM="$(tail -n 1 "$WORK/out")"
+[ "$SM" -gt 3 ] || fail "C6: tw_send_max $SM"
 holder; mkdir "$TWD/lock.d"; echo "$H" > "$TWD/lock.d/pid"
-holder; H2="$H"; mkdir "$TWD/send.d"; echo "$H2" > "$TWD/send.d/pid"; ago "$TWD/send.d" 12
-TEAM_WATCH_LOCK_SECS=1 lib 'tw_alarm TeamLead "C6 probe"'
+holder; H2="$H"; mkdir "$TWD/send.d"; echo "$H2" > "$TWD/send.d/pid"; ago "$TWD/send.d" $((SM - 3))
+TEAM_WATCH_LOCK_SECS=1 lib 'tw_alarm - "C6 probe"'
 [ "$(cat "$TWD/send.d/pid" 2>/dev/null)" = "$H2" ] || fail "C6: a live sender's send.d was reclaimed"
 rm -rf "$TWD/lock.d" "$TWD/send.d"
 # C7: an unreadable ack ledger is logged, never an UNPICKED alarm with an empty batch.
@@ -167,35 +178,35 @@ ls "$TWD"/alarm.unpicked.* >/dev/null 2>&1 && fail "C7: an UNPICKED episode open
 cp "$WORK/acks.bak" "$TWD/acks.jsonl"
 # C9: a ping batched with a later event — its text names no seq, the header's ack is the batch.
 holder; mkdir "$TWD/send.d"; echo "$H" > "$TWD/send.d/pid"
-TEAM_WATCH_LOCK_SECS=1 run "$MAIN" $W ping TeamLead
-lib 'tw_lock; tw_append_to TeamLead "" "LATER event"; tw_unlock'
+TEAM_WATCH_LOCK_SECS=1 run "$MAIN" $W ping Supervisor
+lib 'tw_lock; tw_append_to Supervisor "" "LATER event"; tw_unlock'
 rm -rf "$TWD/send.d"; lib tw_deliver
-wait_recv TEAM "LATER event" 10
-M="$(msgs TEAM | tail -n 1 | jq -r .)"; B="$(last_batch TEAM)"
-grep -q "^PING TeamLead — confirm: ack the number in this message's header" <<<"$M" || fail "C9: ping text: $M"
-grep '^PING TeamLead' <<<"$M" | grep -Eq 'ack [0-9]' && fail "C9: the ping text names a seq"
+wait_recv SUP "LATER event" 10
+M="$(msgs SUP | tail -n 1 | jq -r .)"; B="$(last_batch SUP)"
+grep -q "^PING Supervisor — confirm: ack the number in this message's header" <<<"$M" || fail "C9: ping text: $M"
+grep '^PING Supervisor' <<<"$M" | grep -Eq 'ack [0-9]' && fail "C9: the ping text names a seq"
 grep -q "ack: bash .claude/lib/team-watch.sh ack $B " <<<"$M" || fail "C9: header ack is not #$B"
 [ "$B" = "$(seq_of "LATER event")" ] || fail "C9: batch is not the later event"
-ack_all TeamLead; ack_all Supervisor
+ack_all Supervisor
 # C10 (R1): a truncated last events.jsonl line fails loudly — no append restarting at seq 1, no
 # "delivered" over an unreadable log (the outage flag stays), no ping queued; repaired, it resumes.
 cp "$TWD/events.jsonl" "$WORK/events.bak"; LS="$(tail -n 1 "$WORK/events.bak" | jq -r .seq)"
-printf '{"seq": %s, "at": "x", "to": "TeamL' "$((LS + 1))" >> "$TWD/events.jsonl"
+printf '{"seq": %s, "at": "x", "to": "Superv' "$((LS + 1))" >> "$TWD/events.jsonl"
 lib tw_last_seq
 [ "$RC" = 1 ] && has "events.jsonl: last line has no seq" "$WORK/out" || fail "C10: tw_last_seq rc $RC"
-lib 'tw_lock; tw_append_to TeamLead "" "AFTER truncation"; r=$?; tw_unlock; exit $r'
+lib 'tw_lock; tw_append_to Supervisor "" "AFTER truncation"; r=$?; tw_unlock; exit $r'
 [ "$RC" = 1 ] || fail "C10: an append over a truncated log returned $RC"
 grep -q 'AFTER truncation' "$TWD/events.jsonl" && fail "C10: an event was appended after the cut line"
-date -u +%s > "$TWD/undelivered.TeamLead.since"
-lib 'tw_claim "$TW_DIR/send.d" 5 30 && { tw_deliver_one TeamLead; r=$?; tw_release "$TW_DIR/send.d"; exit $r; }'
-[ "$RC" = 1 ] && has "TeamLead: events.jsonl unreadable" "$WORK/out" || fail "C10: deliver over an unreadable log rc $RC"
-[ -f "$TWD/undelivered.TeamLead.since" ] || fail "C10: the outage flag was cleared as delivered"
-run "$MAIN" $W ping TeamLead
+date -u +%s > "$TWD/undelivered.Supervisor.since"
+lib 'tw_claim "$TW_DIR/send.d" 5 30 && { tw_deliver_one Supervisor; r=$?; tw_release "$TW_DIR/send.d"; exit $r; }'
+[ "$RC" = 1 ] && has "Supervisor: events.jsonl unreadable" "$WORK/out" || fail "C10: deliver over an unreadable log rc $RC"
+[ -f "$TWD/undelivered.Supervisor.since" ] || fail "C10: the outage flag was cleared as delivered"
+run "$MAIN" $W ping Supervisor
 [ "$RC" = 1 ] && has "ping not queued" "$WORK/out" || fail "C10: ping over a truncated log rc $RC"
-cp "$WORK/events.bak" "$TWD/events.jsonl"; rm -f "$TWD/undelivered.TeamLead.since"
-lib 'tw_lock; tw_append_to TeamLead "" "AFTER repair"; tw_unlock'
+cp "$WORK/events.bak" "$TWD/events.jsonl"; rm -f "$TWD/undelivered.Supervisor.since"
+lib 'tw_lock; tw_append_to Supervisor "" "AFTER repair"; tw_unlock'
 [ "$(seq_of "AFTER repair")" = "$((LS + 1))" ] || fail "C10: the repaired log did not resume at $((LS + 1))"
-lib tw_deliver; ack_all TeamLead
+lib tw_deliver; ack_all Supervisor
 # C11 (R1): four claimant processes against one dead holder — exactly one holds, every round, and
 # no reclaim leftovers stay behind. A .reclaim dir whose holder died is cleared after 5 s.
 cat > "$WORK/claimant.sh" <<'CLAIM'
@@ -221,20 +232,18 @@ rm -rf "$WORK"/c.d*
 # Rotation: an undelivered event and an open batch survive; seq stays monotonic.
 now="$(date -u +%s)"
 for i in 1 2 3 4 5; do
-  case "$i" in 3|4) to=Supervisor ;; *) to=TeamLead ;; esac
-  jq -cn --argjson s "$i" --arg to "$to" \
-    '{seq: $s, at: "2026-01-01T00:00:00Z", to: $to, label: "", text: "rot \($s)"}'
+  jq -cn --argjson s "$i" \
+    '{seq: $s, at: "2026-01-01T00:00:00Z", to: "Supervisor", label: "", text: "rot \($s)"}'
 done > "$TWD/events.jsonl"
-for b in 1 2 5 3; do
-  [ "$b" = 3 ] && to=Supervisor || to=TeamLead
-  jq -cn --argjson b "$b" --arg to "$to" --argjson t "$((now - 100))" \
-    '{batch: $b, to: $to, seqs: [$b], delivered_at: "2026-01-01T00:00:00Z", t: $t}'
-done > "$TWD/deliveries.jsonl"
-for b in 1 2 5; do
+for b in 1 2 3; do
   jq -cn --argjson b "$b" --argjson t "$((now - 100))" \
-    '{batch: $b, to: "TeamLead", state: "done", at: "2026-01-01T00:00:00Z", t: $t}'
+    '{batch: $b, to: "Supervisor", seqs: [$b], delivered_at: "2026-01-01T00:00:00Z", t: $t}'
+done > "$TWD/deliveries.jsonl"
+for b in 1 2; do
+  jq -cn --argjson b "$b" --argjson t "$((now - 100))" \
+    '{batch: $b, to: "Supervisor", state: "done", at: "2026-01-01T00:00:00Z", t: $t}'
 done > "$TWD/acks.jsonl"
-echo 5 > "$TWD/cursor.TeamLead"; echo 3 > "$TWD/cursor.Supervisor"
+echo 3 > "$TWD/cursor.Supervisor"
 rm -f "$TWD"/*.jsonl.1
 TEAM_WATCH_ROTATE_BYTES=200 TEAM_WATCH_KEEP_SECS=0 lib tw_rotate; expect 0 "" "rotate"
 [ "$(jq -sc 'map(.seq)' "$TWD/events.jsonl")" = "[4,5]" ] \
@@ -243,10 +252,10 @@ TEAM_WATCH_ROTATE_BYTES=200 TEAM_WATCH_KEEP_SECS=0 lib tw_rotate; expect 0 "" "r
 [ "$(jq -sc 'map(.batch)' "$TWD/deliveries.jsonl")" = "[3]" ] || fail "rotation: kept deliveries"
 [ ! -s "$TWD/acks.jsonl" ] && [ -s "$TWD/acks.jsonl.1" ] || fail "rotation: acks"
 run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack 3; expect 0 "picked #3" "rotation: open batch ack"
-run "$MAIN" $W ping TeamLead; expect 0 "(seq 6)" "rotation: seq stays monotonic"
+run "$MAIN" $W ping Supervisor; expect 0 "(seq 6)" "rotation: seq stays monotonic"
 TEAM_WATCH_ROTATE_BYTES=100000 lib tw_rotate
 [ "$(jq -sc 'map(.seq)' "$TWD/events.jsonl.1")" = "[1,2,3]" ] || fail "rotation under the limit"
-ack_all TeamLead; ack_all Supervisor
+ack_all Supervisor
 echo "team-smoke-17: (75) ledger findings and rotation OK"
 
 # ---- (77) the newest prompt from the history, egress refused, redaction ------------------------
@@ -274,37 +283,35 @@ printf 'Bash command\n  npm run deploy -- --name app-x\nDo you want to proceed?\
 echo "team-smoke-17: (77) newest prompt and redaction OK"
 
 # ---- (78) a role session's own prompt reaches the Supervisor -------------------------------------
-ratt() { jq -s --arg to "$1" 'map(select(.to == $to and (.text | startswith("ATTENTION TeamLead"))))
+ratt() { jq -s --arg to "$1" 'map(select(.to == $to and (.text | startswith("ATTENTION Advisor"))))
   | length' "$TWD/events.jsonl"; }
 export STUB_PANE_DIR="$WORK/panes"; mkdir -p "$STUB_PANE_DIR"
-holder; echo "$H" > "$TMUXD/smk-teamlead.pid"
+holder; echo "$H" > "$TMUXD/smk-advisor.pid"
 printf 'Bash command\n  bash .claude/lib/team-watch.sh status --open\nDo you want to proceed?\n❯ 1. Yes\n' \
-  > "$STUB_PANE_DIR/smk-teamlead"
+  > "$STUB_PANE_DIR/smk-advisor"
 : > "$STUB_LOG"
 run "$MAIN" $W tick --once; expect 0 "" "(78) tick"
-wait_recv SUP "ATTENTION TeamLead (permission) fp=" 10
-[ "$(ratt Supervisor)" = 1 ] || fail "(78) expected one ATTENTION TeamLead event"
+wait_recv SUP "ATTENTION Advisor (permission) fp=" 10
+[ "$(ratt Supervisor)" = 1 ] || fail "(78) expected one ATTENTION Advisor event"
 ! grep -q '^notify ' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(78) the role prompt notified someone"; }
 run "$MAIN" $W tick --once
 [ "$(ratt Supervisor)" = 1 ] || fail "(78) the second tick repeated the role prompt"
 sleep 2; TEAM_WATCH_PICKUP_SECS=1 lib tw_check_receivers
 [ -f "$TWD/alarm.unpicked.Supervisor" ] || fail "(78) no UNPICKED for the unacked role prompt"
 ack_all Supervisor; lib tw_check_receivers
-run "$MAIN" $W routing single TeamLead; run "$MAIN" $W tick --once
-[ "$(ratt Supervisor)" = 2 ] || fail "(78) single TeamLead: its own prompt must go to the Supervisor"
 run "$MAIN" $W routing single Supervisor; run "$MAIN" $W tick --once
-[ "$(ratt Supervisor)" = 3 ] || fail "(78) single Supervisor did not get the role prompt"
+[ "$(ratt Supervisor)" = 2 ] || fail "(78) single Supervisor did not get the role prompt"
 run "$MAIN" $W routing split
-cp "$STUB_PANE_DIR/smk-teamlead" "$WORK/pane-keep"
+cp "$STUB_PANE_DIR/smk-advisor" "$WORK/pane-keep"
 { printf 'ATTENTION alfa coder (permission): Do you want to proceed?\n'
-  for i in $(seq 1 9); do echo "  working $i"; done; } > "$STUB_PANE_DIR/smk-teamlead"
-R="$(role_prompt TeamLead)"
-[ -z "$R" ] || fail "(78) a received ATTENTION head counted as the TeamLead's own prompt: $R"
-cp "$WORK/pane-keep" "$STUB_PANE_DIR/smk-teamlead"
-FP="$(role_prompt TeamLead | cut -f2)"
+  for i in $(seq 1 9); do echo "  working $i"; done; } > "$STUB_PANE_DIR/smk-advisor"
+R="$(role_prompt Advisor)"
+[ -z "$R" ] || fail "(78) a received ATTENTION head counted as the Advisor's own prompt: $R"
+cp "$WORK/pane-keep" "$STUB_PANE_DIR/smk-advisor"
+FP="$(role_prompt Advisor | cut -f2)"
 [[ "$FP" =~ ^[0-9a-f]{12}$ ]] || fail "(78) fingerprint: $FP"
-rm -f "$STUB_PANE_DIR/smk-teamlead"; echo dead > "$TMUXD/smk-teamlead.pid"; unset STUB_PANE_DIR
-ack_all Supervisor; ack_all TeamLead
+rm -f "$STUB_PANE_DIR/smk-advisor"; echo dead > "$TMUXD/smk-advisor.pid"; unset STUB_PANE_DIR
+ack_all Supervisor
 echo "team-smoke-17: (78) role-session prompts OK"
 
 # ---- (132) version bump: fresh loops of another version are restarted ----------------------------

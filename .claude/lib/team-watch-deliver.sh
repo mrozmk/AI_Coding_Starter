@@ -4,7 +4,8 @@
 # Runbook: .agents/reference/team-watch.md.
 # shellcheck disable=SC2154  # root and TW_* are set by tw_init in team-watch-lib.sh
 
-# One definition of the alarm and incident classes for delivery, collapse and rebase. The second
+# One definition of the alarm and incident classes for delivery, collapse and rebase. `retired`
+# drops events of the global-TeamLead machinery queued before the upgrade: never sent. The second
 # alarm branch classifies a record without a class by its head. `wire` counts the bytes
 # team-watch-send.py writes: json.dumps escapes every non-ASCII char (ensure_ascii).
 # A broken mail channel passes any incident pass: the role must not learn it in the morning.
@@ -19,9 +20,12 @@ TW_DELIVER_DEFS='
     or (((.key // "") | test("^err:mail(:|$)")) and ($pass.alarms == true
         or (($pass.mail_threads // []) | length) > 0));
   def wire: tojson | explode | map(if . < 128 then 1 elif . < 65536 then 6 else 12 end) | add;
+  def retired: (.key // "") | test("^(att|rec|run|ready|esc|escreply|advisor-silent):"
+    + "|^err:esc_mail$|^ratt:TeamLead:|^err:mail:TeamLead$");
   def unsent($r; $c; $d): ([$d[] | select(.to == $r and .transferred != true) | .seqs[]?
       | select(. > $c) | {key: tostring, value: true}] | from_entries) as $sent
-    | map(select(.to == $r and .seq > $c and ($sent[.seq | tostring] | not)));'
+    | map(select(.to == $r and .seq > $c and ($sent[.seq | tostring] | not)
+      and (retired | not)));'
 
 # Candidates = all pending, or only the incident class while paused (a pause never moves the
 # cursor; what it sent is skipped later by the delivery ledger). The batch
@@ -50,7 +54,7 @@ tw_send() {  # tw_send <role> <message> → the sender's exit status
 }
 
 # tw_contract <role> → the file a receiver handles its messages by: in single routing the one
-# window runs /monitor; in split the TeamLead does and the Supervisor follows the runbook.
+# window runs /monitor; in split the Supervisor follows the runbook.
 tw_contract() {
   if [ "$1" = Supervisor ] && [ "$(tw_routing)" = split ]; then
     echo .agents/reference/team-watch.md#supervisor
@@ -194,6 +198,8 @@ tw_deliver() {
   tw_claim "$TW_DIR/send.d" "$TW_LOCK_SECS" "$(tw_send_max)" \
     || { tw_undelivered "$(tw_alarm_target)"; return 1; }
   for r in $(jq -r '.to // empty' "$TW_DIR/events.jsonl" 2>/dev/null | sort -u); do
+    # A pre-upgrade addressee (the global TeamLead): no cursor moves, no ledger line, no alarm.
+    if ! tw_role_ok "$r"; then tw_log "events to retired receiver $r are not delivered"; continue; fi
     tw_deliver_one "$r" || rc=1
   done
   tw_release "$TW_DIR/send.d"

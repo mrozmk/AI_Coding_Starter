@@ -83,7 +83,7 @@ brief() {  # brief [warnings section lines] — the acceptance brief, written af
     echo; echo "## Open defects"; echo "none"; echo; echo "## Warnings"; printf '%s\n' "${1:-none}"
     echo; echo "## Recommendation"; echo "accept"; } > "$RD/acceptance-brief.md"
 }
-prof '.teams.teamlead.enabled = true'
+unset TEAM_SMOKE_NO_LEAD
 setup_run alfa-20261115-100000
 
 # ---- (a) qa done with the lead on: validated, the acceptance gate rung, no wrapup yet -------------
@@ -179,14 +179,13 @@ grep -l '^event: closed' "$SUP"/* | xargs grep -l "run: $RUN_ID" >/dev/null || f
 [ "$(nab)" = 1 ] || fail "(f) a second abandon event"
 echo "team-smoke-23: (f) abandon through a decision OK"
 
-# ---- (g) the switch off: ready as today, no inbox file ---------------------------------------------
-prof '.teams.teamlead.enabled = false'
+# ---- (g) no lead (the fixture seam): ready as without a lead, no inbox file ------------------------
 setup_run alfa-20261115-120000; touch "$RD/qa-1-1.json.accepted"
 rec_json wrapup "$C1" "$C1" 8371 '[]'; touch "$RD/wrapup-1-1.json.accepted"; rm -f "$TD/session.json"
 N0="$(ls "$SUP" | wc -l | tr -d ' ')"
-greset; run "$MAIN" $TR alfa; expect 0 "ready:" "(g) ready without a lead"
+greset; TEAM_SMOKE_NO_LEAD=1 run "$MAIN" $TR alfa; expect 0 "ready:" "(g) ready without a lead"
 [ "$(ls "$SUP" | wc -l | tr -d ' ')" = "$N0" ] && [ ! -e "$RD/accepted.sent" ] || fail "(g) an inbox file without a lead"
-echo "team-smoke-23: (g) switch off OK"
+echo "team-smoke-23: (g) no lead OK"
 
 # ---- (h) the acceptance patch holds no line of this run's spec or plan -----------------------------
 run "$CLONE" bash .claude/lib/team-lead.sh diff alfa; expect 0 "acceptance-diff.patch" "(h) diff"
@@ -195,8 +194,7 @@ has "src/export.txt" "$RD/acceptance-diff.patch" || fail "(h) the delivery is no
 ! grep -q '\.agents/specs/\|\.agents/plans/' "$RD/acceptance-diff.stat" || fail "(h) spec or plan in the stat"
 echo "team-smoke-23: (h) blind patch OK"
 
-# ---- (i) a lead switched on after the qa was accepted: ready, but no accepted event without a verdict
-prof '.teams.teamlead.enabled = true'
+# ---- (i) a lead resumed after the qa was accepted: ready, but no accepted event without a verdict
 setup_run alfa-20261115-130000; touch "$RD/qa-1-1.json.accepted"
 rec_json wrapup "$C1" "$C1" 8371 '[]'; touch "$RD/wrapup-1-1.json.accepted"; rm -f "$TD/session.json"
 greset alfa-lead; run "$MAIN" $TR alfa; expect 0 "accepted event skipped: no acceptance accept verdict" "(i) ready"
@@ -312,7 +310,7 @@ for rule in "no memory hand-off → no proposals file and no stop" \
   "team-record.sh --verdict blocked --proposals .agents/team/runs/$RUN_ID/r2/wrapup_proposals-1_<k>.json" \
   'you ask nothing in this window (no `AskUserQuestion`)' 'never `gh` directly' \
   "Never run inline interpreter code" '`selected_by: "teamlead"`' "Never edit a proposals file after its stop" \
-  '"handoff":' "With a per-run TeamLead: no question — the groups only label" \
+  '"handoff":' "No question — the groups only label the proposals items" \
   "With a per-run TeamLead ask no question"; do
   has "$rule" "$RD/r2/wrapup-1.prompt.md" || fail "(r) the lead-run wrapup prompt lacks: $rule"
 done

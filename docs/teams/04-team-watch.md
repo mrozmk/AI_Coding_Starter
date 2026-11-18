@@ -7,7 +7,7 @@
 
 **Contract:**
 - [`team-watch.md`](../../.agents/reference/team-watch.md): the daemon, signals, batches, routing, alarms, ledgers, pause, wake loops, hooks, env knobs, wire format.
-- [`monitor.md`](../../.claude/commands/monitor.md): what a receiver does with a batch (single routing and the split TeamLead).
+- [`monitor.md`](../../.claude/commands/monitor.md): what a receiver does with a batch (single routing).
 
 ## The shape
 
@@ -37,8 +37,9 @@ The Operator verbs (`routing`, `stop`, `register --takeover`, `mode answering`, 
 
 A signal has a **head** and a **key**. Heads:
 
-- `ATTENTION`, `RECORD`, `RUNNER`, `READY`, `ESCALATION`: per team;
-- `ADVISOR silent`, a role session's own `ATTENTION … fp=`, `MAIL`, `ERROR`: per role or channel.
+- a role session's own `ATTENTION … fp=`, `MAIL`, `ERROR`: per role or channel.
+
+The receiver is the Supervisor alone. The team signals (`ATTENTION <team> …`, `RECORD`, `RUNNER`, `READY`, `ESCALATION`) and the Advisor ones (`ADVISOR silent`) are retired: a team run's stops go to its own per-run TeamLead. Events of those kinds queued before the upgrade are dropped unsent.
 
 The full table, with each head's destination in split routing, is in [`team-watch.md` § Signals](../../.agents/reference/team-watch.md#signals).
 
@@ -47,7 +48,7 @@ The full table, with each head's destination in split routing, is in [`team-watc
 ## Routing
 
 - **`single Supervisor`**: the default, when no `routing.json` exists. One window runs `/monitor` and receives everything.
-- **`routing split`**: each role gets its own signals. The TeamLead gets the team signals, the Supervisor gets role-level signals and every alarm, and mail goes to its addressee.
+- **`routing split`**: the Supervisor gets every non-mail signal and every alarm, and mail goes to its addressee.
 - **`routing single <role>`**: one receiver gets everything, except a prompt of that receiver's own session, which goes to the Supervisor.
 
 **The handover is atomic.** It takes the send claim, then the lock, and then:

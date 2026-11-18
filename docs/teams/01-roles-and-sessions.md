@@ -9,7 +9,7 @@
 
 ## Per-run TeamLead (pilot)
 
-With `teams.teamlead.enabled=true` the TeamLead is not a role session. The runner starts one lead per team run, as `<team>-lead` in the team clone, and ends it with the run. `supervisor-sessions.sh` never starts it, and team-watch drops the signals of a run that has its own lead. The Supervisor and the Advisor stay as below. Contract: [`team-lead.md`](../../.agents/reference/team-lead.md); the Supervisor's side: [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md).
+In brainstorm and quick mode the TeamLead is not a role session. The runner starts one lead per team run, as `<team>-lead` in the team clone, and ends it with the run. `supervisor-sessions.sh` never starts it, and team-watch carries no team signal. The Supervisor and the Advisor stay as below. Contract: [`team-lead.md`](../../.agents/reference/team-lead.md); the Supervisor's side: [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md).
 
 ## The shape
 
@@ -41,7 +41,7 @@ Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-pr
 
 ## `/monitor` belongs to the TeamLead
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 In split routing, `/monitor` is the TeamLead's handling contract for `[team-watch #<n>]` messages. It takes only `--tiers on|off` and no longer a team list, because the daemon pushes every team's signals.
 

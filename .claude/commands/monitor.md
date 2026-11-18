@@ -6,6 +6,8 @@ allowed-tools: TaskStop, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .clau
 
 # /monitor — supervise running teams
 
+> Team signals and the Advisor escalation path are retired: this command now receives only mail, role-session prompts and errors, and leaves with the wake-loop machinery.
+
 Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handling contract of
 `[team-watch #<n>]` messages. The session that runs it is the **TeamLead**
 (`.agents/reference/team-decision-model.md` §1): the TeamLead role session
