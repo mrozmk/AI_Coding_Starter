@@ -45,14 +45,14 @@ team_records_digest() {  # <td> <run>
 # Union merge would splice overlapping memory edits silently, while the provider's merge reports
 # them as conflicting (team-pipeline.md): refuse instead of testing a merge GitHub would not make.
 team_lm_union_guard() {
-  local paths attrs union
+  local clone="$1" pr="$2" line="$3" t="$4" paths attrs union
   paths="$(grep -v '^$' || true)"
   [ -n "$paths" ] || return 0
-  attrs="$(printf '%s\n' "$paths" | git -C "$1" check-attr --stdin --source "$4" merge)" \
-    || { echo "error: PR #$2: cannot read the merge attributes of $4" >&2; return 3; }
+  attrs="$(printf '%s\n' "$paths" | git -C "$clone" check-attr --stdin --source "$t" merge)" \
+    || { echo "error: PR #$pr: cannot read the merge attributes of $t" >&2; return 3; }
   union="$(printf '%s\n' "$attrs" | sed -n 's/: merge: union$//p')"
   [ -z "$union" ] && return 0
-  echo "error: PR #$2 and $3 both changed union-merged memory logs: $(echo $union)" \
+  echo "error: PR #$pr and $line both changed union-merged memory logs: $(echo $union)" \
     "— the provider reports this as conflicting; follow team-pipeline.md → PR conflicting in memory files" >&2
   return 3
 }
@@ -66,8 +66,9 @@ team_lm_union_guard() {
 # merge-tree/commit-tree, so the clone's worktree and index are never touched.
 # Two union guards, both reading T's attributes — the same ones merge-tree is told to use with
 # `--attr-source "$t"` (otherwise it reads the worktree's, which sits at S): the input guard refuses
-# a union path both sides changed (it alone sees a union output equal to one parent), the merge
-# guard refuses a union path merge-tree content-merged (it alone sees a rename into a union path).
+# a union path both sides changed (it alone names a memory conflict merge-tree itself reports as a
+# conflict, e.g. a whole-file modify/delete), the merge guard refuses a union path merge-tree
+# content-merged (it alone sees a rename into a union path).
 team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
   local clone="$1" pr="$2" line="$3" branch="$4" t="$5" s="$6"
   local ref="refs/team-pr/$pr/local-merge" have mb dt ds both out tree m mrc=0

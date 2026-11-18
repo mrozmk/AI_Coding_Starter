@@ -920,8 +920,8 @@ has ".agents/memory/c3g.md" "$WORK/out" || fail "the rename refusal does not nam
 ! git -C "$CL" rev-parse -q --verify refs/team-pr/64/local-merge >/dev/null \
   || fail "a rename into a union path left a local-merge ref"
 
-# (C3h) union resolves a delete/edit of one line to exactly one side, so the result alone cannot
-# show the overlap: the input-side guard must still refuse it.
+# (C3h) union resolves a delete/edit of one line to exactly one side, so a tree diff of the result
+# cannot show the overlap; it is still refused (both guards see it: merge-tree reports the path).
 c_trunk_write .agents/memory/c3h.md $'start\nold entry\nend\n'
 mk_ready tau 65
 c_head_write 65 .agents/memory/c3h.md $'start\ncorrected entry\nend\n'
