@@ -118,9 +118,8 @@ Layout (`team-inbox.sh`): `<main>/.agents/team/inbox/<address>/{tmp,new,done}/`,
 `id` (the file stem), `from`, `to`, `event`, `ticket`, `run`, `ref`, then a one-line body and an
 optional `--message` line. A team
 clone writes with `--main <teamlead.json main_root>`, never its own git root. A team address
-(`inbox/<team>/`) takes any event, e.g. the Supervisor's `collision-answer`. Team-watch drops every
-team signal of a run with its own lead (`lead: true` in the snapshot), so neither the global
-TeamLead nor single-routing delivery sees that run's stops.
+(`inbox/<team>/`) takes any event, e.g. the Supervisor's `collision-answer`. Team-watch carries no
+team signal, so a run's stops reach only its own lead.
 
 **Sender rules.** To the Supervisor: a team sender (an anchor exists for `--from`) only the four
 events above; a declared role or an `adhoc-*` session also `message` and `advice`; any other

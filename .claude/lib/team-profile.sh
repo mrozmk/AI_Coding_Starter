@@ -158,7 +158,7 @@ team_profile_load() {
   case "$v" in
     true) ;;
     false) team_profile_die "teams.teamlead.enabled was removed — the global TeamLead is retired; the per-run TeamLead is always on in brainstorm and quick mode. Delete the key." ;;
-    *) team_profile_die "teams.teamlead.enabled=${v:-<invalid>} must be true|false" ;;
+    *) team_profile_die "teams.teamlead.enabled=${v:-<invalid>} — the key was removed. Delete it." ;;
   esac
   team_profile_int "$f" revise_limit 3 1; TEAM_LEAD_REVISE_LIMIT="$TEAM_PROFILE_INT_V"
   team_profile_int "$f" rework_budget.brainstorm 2 0
