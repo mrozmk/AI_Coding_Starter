@@ -13,8 +13,9 @@ echo '{"role":"coder"}' > "$D/role/.agents/team/session.json"
 echo '{}' > "$D/between/.agents/team/team.json"
 
 run() { # <fixture> <command> → exit code; stderr in $D/err
-  jq -nc --arg c "$2" '{session_id:"s-test",tool_name:"Bash",tool_input:{command:$c}}' \
-    | (cd /tmp && CLAUDE_PROJECT_DIR="$D/$1" bash "$H") 2>"$D/err" >/dev/null
+  # A file, not a pipe: the hook may exit before reading stdin, and pipefail would report SIGPIPE.
+  jq -nc --arg c "$2" '{session_id:"s-test",tool_name:"Bash",tool_input:{command:$c}}' > "$D/payload"
+  (cd /tmp && CLAUDE_PROJECT_DIR="$D/$1" bash "$H") <"$D/payload" 2>"$D/err" >/dev/null
 }
 expect() { # <rc> <fixture> <stderr text or ""> <command>
   local rc; run "$2" "$4"; rc=$?
