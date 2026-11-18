@@ -18,6 +18,8 @@ default.
 
 No `table` → the default above; a `table` replaces it whole. A row's value must be `haiku`,
 `sonnet` or `opus`; a full model id, a typo or a non-string drops that row.
+The profile is read from the session's project root when that directory has
+`.claude/project-profile.json`, else from the git top level.
 
 ## Decision order
 
@@ -49,6 +51,8 @@ First match wins; every rule but the last passes the spawn through unchanged.
 The engine already runs `Explore` on Opus when the session is above it. The row adds nothing to
 the bill; it makes those spawns traceable, and their count decides whether a later
 `"Explore": "sonnet"` is worth it.
+With `CLAUDE_CODE_DISABLE_EXPLORE_INHERIT_CAP` set the engine runs `Explore` on the session's
+model, so on a session above Opus the row does lower it — a real price change, not only a trace.
 
 ## Trace
 

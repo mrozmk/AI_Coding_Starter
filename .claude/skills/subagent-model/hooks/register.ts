@@ -81,6 +81,21 @@ export function resolveRoot(start: string, exitCode: number, stdout: string): st
   return exitCode === 0 && top !== '' ? top : start
 }
 
+/** The session root's own profile wins (a `.claude/` below the git top level); else git's top level; git missing → the session root. */
+export async function findRoot(
+  start: string,
+  io: { exists(path: string): Promise<boolean>; git(): Promise<{ exitCode: number; stdout: string }> },
+): Promise<string> {
+  if (await io.exists(`${start}/.claude/project-profile.json`)) return start
+  let r: { exitCode: number; stdout: string }
+  try {
+    r = await io.git()
+  } catch {
+    return start
+  }
+  return resolveRoot(start, r.exitCode, r.stdout)
+}
+
 export type Deps = {
   root(): Promise<string>
   read(path: string): Promise<string>
@@ -128,8 +143,10 @@ export const register: Register = (on) => {
       {
         root: async () => {
           const start = await $.session.root()
-          const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: start })
-          return resolveRoot(start, r.exitCode, r.stdout)
+          return findRoot(start, {
+            exists: (p) => $.fs.exists(p),
+            git: () => $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: start }),
+          })
         },
         read: (p) => $.fs.read(p),
         env: async () => {
