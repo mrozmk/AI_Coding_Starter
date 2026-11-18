@@ -40,6 +40,23 @@ team_records_digest() {  # <td> <run>
   } | LC_ALL=C sort | shasum -a 256 | awk '{print $1}'
 }
 
+# Usage: team_lm_union_guard <clone> <pr> <line> <T> < paths → rc 3 with the reason on stderr when a
+#   path on stdin is union-merged by T's attributes (or they cannot be read); rc 0 otherwise.
+# Union merge would splice overlapping memory edits silently, while the provider's merge reports
+# them as conflicting (team-pipeline.md): refuse instead of testing a merge GitHub would not make.
+team_lm_union_guard() {
+  local clone="$1" pr="$2" line="$3" t="$4" paths attrs union
+  paths="$(grep -v '^$' || true)"
+  [ -n "$paths" ] || return 0
+  attrs="$(printf '%s\n' "$paths" | git -C "$clone" check-attr --stdin --source "$t" merge)" \
+    || { echo "error: PR #$pr: cannot read the merge attributes of $t" >&2; return 3; }
+  union="$(printf '%s\n' "$attrs" | sed -n 's/: merge: union$//p')"
+  [ -z "$union" ] && return 0
+  echo "error: PR #$pr and $line both changed union-merged memory logs: $(echo $union)" \
+    "— the provider reports this as conflicting; follow team-pipeline.md → PR conflicting in memory files" >&2
+  return 3
+}
+
 # Usage: team_local_merge <clone> <pr> <line> <branch> <T> <S> → prints the sha of M = merge(T, S)
 #   kept under `refs/team-pr/<pr>/local-merge` in the clone; rc 3 with the reason on stderr.
 # Reused while its FULL parent list is still exactly `T S` AND its tree is the merge-tree result,
@@ -47,9 +64,14 @@ team_records_digest() {  # <td> <run>
 # carry new timestamps. The guards and merge-tree run on every call: a ref is writable by anything in
 # the clone, so only a commit whose content IS merge(T, S) may be reused. Built with
 # merge-tree/commit-tree, so the clone's worktree and index are never touched.
+# Two union guards, both reading T's attributes — the same ones merge-tree is told to use with
+# `--attr-source "$t"` (otherwise it reads the worktree's, which sits at S): the input guard refuses
+# a union path both sides changed (it alone names a memory conflict merge-tree itself reports as a
+# conflict, e.g. a whole-file modify/delete), the merge guard refuses a union path merge-tree
+# content-merged (it alone sees a rename into a union path).
 team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
   local clone="$1" pr="$2" line="$3" branch="$4" t="$5" s="$6"
-  local ref="refs/team-pr/$pr/local-merge" have mb dt ds both attrs union tree m mrc=0
+  local ref="refs/team-pr/$pr/local-merge" have mb dt ds both out tree m mrc=0
   # T is the live base tip from ls-remote; the clone may not have fetched it yet.
   git -C "$clone" cat-file -e "$t^{commit}" 2>/dev/null \
     || git -C "$clone" fetch --quiet origin "refs/heads/$line" 2>/dev/null || true
@@ -59,30 +81,33 @@ team_local_merge() {  # <clone> <pr> <line> <branch> <T> <S>
          return 3; }
   mb="$(git -C "$clone" merge-base "$t" "$s")" \
     || { echo "error: PR #$pr: no merge base of $t and $s" >&2; return 3; }
-  # Union merge would splice overlapping memory edits silently, while the provider's merge reports
-  # them as conflicting (team-pipeline.md): refuse instead of testing a merge GitHub would not make.
+  # Input guard: the paths both sides changed since the merge base.
   dt="$(git -C "$clone" diff --no-renames --name-only "$mb" "$t")" \
     && ds="$(git -C "$clone" diff --no-renames --name-only "$mb" "$s")" \
     || { echo "error: PR #$pr: cannot diff against the merge base $mb" >&2; return 3; }
   # comm must collate like the sort that fed it, or it silently misses common lines.
   both="$(LC_ALL=C comm -12 <(printf '%s\n' "$dt" | LC_ALL=C sort) <(printf '%s\n' "$ds" | LC_ALL=C sort) \
     | grep -v '^$' || true)"
-  if [ -n "$both" ]; then
-    attrs="$(printf '%s\n' "$both" | git -C "$clone" check-attr --stdin --source "$t" merge)" \
-      || { echo "error: PR #$pr: cannot read the merge attributes of $t" >&2; return 3; }
-    union="$(printf '%s\n' "$attrs" | sed -n 's/: merge: union$//p')"
-    [ -z "$union" ] \
-      || { echo "error: PR #$pr and $line both changed union-merged memory logs: $(echo $union)" \
-             "— the provider reports this as conflicting; follow team-pipeline.md → PR conflicting in memory files" >&2
-           return 3; }
-  fi
-  tree="$(git -C "$clone" merge-tree --write-tree "$t" "$s" 2>/dev/null)" || mrc=$?
+  printf '%s\n' "$both" | team_lm_union_guard "$clone" "$pr" "$line" "$t" || return 3
+  # -z output: `<tree>NUL NUL`, then per message `<n>NUL<path>…NUL<type>NUL<message>NUL`; NULs become
+  # newlines and newlines (inside messages) \002, so each field is one line.
+  out="$(set -o pipefail
+         LC_ALL=C git -C "$clone" --attr-source "$t" merge-tree --write-tree --messages -z "$t" "$s" \
+           2>/dev/null | LC_ALL=C tr '\n\0' '\002\n')" || mrc=$?
   case "$mrc" in
     0) ;;
     1) echo "error: PR #$pr conflicts with $line on the current base ($t) — resolve it on the PR" >&2
        return 3 ;;
     *) echo "error: PR #$pr: git merge-tree failed (exit $mrc)" >&2; return 3 ;;
   esac
+  tree="$(printf '%s\n' "$out" | sed -n 1p)"
+  # The stable `Auto-merging` type names every content-merged path by its RESULT name.
+  printf '%s\n' "$out" | LC_ALL=C awk 'NR <= 2 { next }
+      st == 0 { n = $0 + 0; st = 1; k = 0; p = ""; next }
+      st == 1 && k < n { p = p $0 "\n"; k++; next }
+      st == 1 { ty = $0; st = 2; next }
+      st == 2 { if (ty == "Auto-merging") printf "%s", p; st = 0 }' \
+    | team_lm_union_guard "$clone" "$pr" "$line" "$t" || return 3
   have="$(git -C "$clone" rev-parse -q --verify "$ref^{commit}" 2>/dev/null || true)"
   if [ -n "$have" ] \
     && [ "$(git -C "$clone" rev-list --parents -n 1 "$have" 2>/dev/null)" = "$have $t $s" ] \

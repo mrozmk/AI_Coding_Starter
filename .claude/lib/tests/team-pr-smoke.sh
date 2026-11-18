@@ -575,6 +575,34 @@ c_head_append() {  # c_head_append <pr> <path> <line> — one more commit on the
   c_refresh "$1" "$BRC" "$TRUNK"
 }
 
+c_head_write() {  # c_head_write <pr> <path> <text> — one PR head commit replacing <path> with <text>
+  printf '%s' "$3" > "$CL/$2"
+  git -C "$CL" add "$2" && git -C "$CL" commit --quiet -m "rewrite $2"
+  Sx="$(git -C "$CL" rev-parse HEAD)"; git -C "$CL" push --quiet origin "$BRC"
+  c_record "$RDC" "$RUNC" "$1" "$Sx"
+  c_refresh "$1" "$BRC" "$TRUNK"
+}
+
+c_trunk_write() {  # c_trunk_write <path> <text> — one trunk commit replacing <path> with <text>
+  smoke_gh_wc "write"
+  git -C "$SGW" checkout --quiet -B "$TRUNK" "origin/$TRUNK"
+  printf '%s' "$2" > "$SGW/$1"
+  git -C "$SGW" add "$1" && git -C "$SGW" commit --quiet -m "rewrite $1"
+  git -C "$SGW" push --quiet origin "$TRUNK"
+  rm -rf "$SGW"
+}
+
+c_trunk_mv_append() {  # c_trunk_mv_append <from> <to> <line> — one trunk commit: rename, then append
+  smoke_gh_wc "mv"
+  git -C "$SGW" checkout --quiet -B "$TRUNK" "origin/$TRUNK"
+  mkdir -p "$(dirname "$SGW/$2")"
+  git -C "$SGW" mv "$1" "$2"
+  printf '%s\n' "$3" >> "$SGW/$2"
+  git -C "$SGW" add "$2" && git -C "$SGW" commit --quiet -m "move $1 to $2"
+  git -C "$SGW" push --quiet origin "$TRUNK"
+  rm -rf "$SGW"
+}
+
 # (C-setup) delta carries the refusal battery; its trunk pushes move the line, so it comes first.
 mk_ready delta 44
 run "$MAIN" $IT delta
@@ -864,6 +892,46 @@ expect 0 "VERDICT: ok" "a forged local-merge ref is rebuilt, not reused"
 [ "$(git -C "$CL" rev-parse "refs/team-pr/62/local-merge^{tree}")" \
   = "$(git -C "$CL" merge-tree --write-tree "$Tr" "$Sx")" ] \
   || fail "the rebuilt local merge is not merge(T, S)"
+
+# (C3f) the merge reads its attributes from the base, not from the clone's worktree (at the head):
+# a union rule only the head adds does not turn a two-sided append into a clean merge.
+smoke_gh_append "$TRUNK" c3f/log.md "base entry"
+mk_ready pi 63
+c_head_append 63 .gitattributes 'c3f/*.md merge=union'
+c_head_append 63 c3f/log.md "head entry"
+smoke_gh_append "$TRUNK" c3f/log.md "trunk entry"
+run "$MAIN" $MC pi
+expect 3 "conflicts with $TRUNK on the current base" "a union rule only the head adds is not applied"
+[ ! -f "$RDC/merge-check.json" ] || fail "a head-only union rule wrote a verdict"
+! git -C "$CL" rev-parse -q --verify refs/team-pr/63/local-merge >/dev/null \
+  || fail "a head-only union rule left a local-merge ref"
+
+# (C3g) a rename into a union path escapes a path intersection: the base moves a plain file into
+# the memory dir and appends, the head appends to the old name; merge-tree unions both. Five lines,
+# so one appended line keeps the rename above git's 50 % similarity threshold.
+for l in one two three four five; do smoke_gh_append "$TRUNK" c3g.txt "$l"; done
+mk_ready sigma 64
+c_head_append 64 c3g.txt "head line"
+c_trunk_mv_append c3g.txt .agents/memory/c3g.md "trunk line"
+run "$MAIN" $MC sigma
+expect 3 "PR conflicting in memory files" "a rename into a union path changed on both sides is refused"
+has ".agents/memory/c3g.md" "$WORK/out" || fail "the rename refusal does not name the union path"
+[ ! -f "$RDC/merge-check.json" ] || fail "a rename into a union path wrote a verdict"
+! git -C "$CL" rev-parse -q --verify refs/team-pr/64/local-merge >/dev/null \
+  || fail "a rename into a union path left a local-merge ref"
+
+# (C3h) union resolves a delete/edit of one line to exactly one side, so a tree diff of the result
+# cannot show the overlap; it is still refused (both guards see it: merge-tree reports the path).
+c_trunk_write .agents/memory/c3h.md $'start\nold entry\nend\n'
+mk_ready tau 65
+c_head_write 65 .agents/memory/c3h.md $'start\ncorrected entry\nend\n'
+c_trunk_write .agents/memory/c3h.md $'start\nend\n'
+run "$MAIN" $MC tau
+expect 3 "PR conflicting in memory files" "a union delete/edit equal to one side is refused"
+has ".agents/memory/c3h.md" "$WORK/out" || fail "the delete/edit refusal does not name the path"
+[ ! -f "$RDC/merge-check.json" ] || fail "a union delete/edit wrote a verdict"
+! git -C "$CL" rev-parse -q --verify refs/team-pr/65/local-merge >/dev/null \
+  || fail "a union delete/edit left a local-merge ref"
 
 # (C7) the base is moved to part of the source before the integration — refused, base untouched
 mk_ready eps 45
