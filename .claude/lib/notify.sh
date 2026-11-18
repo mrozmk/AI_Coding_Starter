@@ -7,8 +7,9 @@
 #   notify.sh flush [--now <epoch>]   resume pending deliveries (an interrupted send becomes
 #                          outcome_unknown, never re-sent); send held iMessage events after quiet hours
 #   notify.sh list [--since <days>]   one line per event: id, event, each channel's state, resolved
-#   notify.sh resolve (--team <t> --run <r> --decision <d> | --key <k>) [--project <p>]
+#   notify.sh resolve (--team <t> --run <r> (--decision <d> | --all) | --key <k>) [--project <p>]
 #                          the Operator answered elsewhere: no further delivery, the strip drops it
+#                          --all: every event of that team and run (a run that ended: close_run, finalize)
 #                          → resolved <id> | already resolved <id> | unknown (each exit 0)
 #   notify.sh --check      one line per channel and one for the switch file; never waits for the
 #                          outbox lock (prune is skipped while a flush or send holds it)
@@ -27,7 +28,8 @@
 # NOTIFY_KEEP_DAYS (default 7; herdr/done 24 h), never one still pending, held or dispatching.
 # Resolve (#97): state/<id>.resolved (write-once) stops every delivery not yet made (`skipped
 # resolved`, a held overnight message included); a delivered one is never touched. For a herdr
-# event it also publishes herdr/new/<id>.resolve, on which the mod drops the strip item.
+# event it also publishes herdr/new/<id>.resolve, on which the mod drops the strip item. A run end
+# resolves every event of the run with --all (team-run-lead.sh close_run, team-lead.sh finalize).
 # The summary is one line, control characters stripped, cut to 200 characters, and stored only
 # when a channel's switch is on. The recipient is never read into any output.
 # Callers: the runner (team-run-lead.sh lead_notify, team-run-dialog.sh, team-run-stop.sh) and operator-record.sh — never a model
@@ -47,7 +49,7 @@ JOB="$HOME/Library/LaunchAgents/harness.notify-flush.plist"   # written by the n
 LABELS='{human_decision: "decision", abandon_decision: "abandon?", unrepaired_failure: "failure", release: "release"}'
 NOW=""   # --now, else NOTIFY_NOW, else the clock
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 crash() { [ "${NOTIFY_CRASH_AT:-}" != "$1" ] || exit 137; }   # tests: kill the process at a boundary
@@ -343,14 +345,16 @@ case "$CMD" in
     done
     exit 0 ;;
   resolve)
-    T=""; R=""; D=""; K=""; PR=""
+    T=""; R=""; D=""; K=""; PR=""; A=""
     while [ $# -gt 0 ]; do
+      if [ "$1" = --all ]; then A=1; shift; continue; fi
       [ $# -ge 2 ] || usage
       case "$1" in --team) T="$2" ;; --run) R="$2" ;; --decision) D="$2" ;; --key) K="$2" ;;
         --project) PR="$2" ;; *) usage ;; esac
       shift 2
     done
-    if [ -n "$K" ]; then [ -z "$T$R$D" ] || usage; part --key "$K"
+    if [ -n "$K" ]; then [ -z "$T$R$D$A" ] || usage; part --key "$K"
+    elif [ -n "$A" ]; then [ -n "$T" ] && [ -n "$R" ] && [ -z "$D" ] || usage; part --team "$T"; part --run "$R"
     else [ -n "$T" ] && [ -n "$R" ] && [ -n "$D" ] || usage; part --team "$T"; part --run "$R"; part --decision "$D"; fi
     [ -z "$PR" ] || part --project "$PR"
     [ -d "$OUT/events" ] || { echo unknown; exit 0; }   # nothing was ever sent from here
@@ -359,9 +363,9 @@ case "$CMD" in
     # no project prefix; --key names an operator record (release, unrepaired_failure).
     for f in "$OUT"/events/*.json; do
       [ -f "$f" ] || continue
-      jq -e --arg t "$T" --arg r "$R" --arg d "$D" --arg k "$K" --arg p "$PR" '($p == "" or .project == $p)
+      jq -e --arg t "$T" --arg r "$R" --arg d "$D" --arg k "$K" --arg p "$PR" --arg a "$A" '($p == "" or .project == $p)
         and (if $k != "" then (.event == "release" or .event == "unrepaired_failure") and (.id | endswith(":" + $k))
-             else .team == $t and .run == $r and .decision == $d end)' "$f" >/dev/null 2>&1 || continue
+             else .team == $t and .run == $r and ($a != "" or .decision == $d) end)' "$f" >/dev/null 2>&1 || continue
       n="$(basename "$f" .json)"; id="$(jq -r .id "$f")"; hit=1
       utc > "$OUT/state/.$n.resolved.$$"
       if ln "$OUT/state/.$n.resolved.$$" "$OUT/state/$n.resolved" 2>/dev/null; then

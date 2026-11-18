@@ -376,7 +376,8 @@ lead_accepted() {
 }
 
 # close_run <reason> <ref> — end the run without a merge. closed.json goes first, so a resume
-# refuses the run even when a later step fails; then the Supervisor event, the lead, the stage.
+# refuses the run even when a later step fails; then the Supervisor event, the lead, the run's
+# notifications, the stage.
 close_run() {
   local r pr="" next
   r="$(team_accepted_record "$RUN" coder)"; [ -z "$r" ] || pr="$(rec "$r" pr_id)"
@@ -391,6 +392,7 @@ close_run() {
   (cd "$root" && bash .claude/lib/team-lead.sh end "$TEAM") >/dev/null \
     || echo "warn: TeamLead of $TEAM did not end" >&2
   bash "$root/.claude/lib/team-inbox.sh" --main "$root" close-run "$TEAM" "$RUN" >/dev/null 2>&1 || true  # its inbox → done/
+  bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --all >/dev/null 2>&1 || true  # every Operator item of the run is moot
   end_session "$ROLE"
   rm -f "$TD/session.json"
   echo "closed: $1 — $next"

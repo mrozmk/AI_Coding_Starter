@@ -161,7 +161,15 @@ V decision close --for qa-1-1.json --decision d-1 --message "Operator: close it"
 IBA="$MAIN/.agents/team/inbox/alfa"; mkdir -p "$IBA/new"
 printf -- '---\nid: m1\nrun: %s\n---\nx\n' "$RUN_ID" > "$IBA/new/20261115T110001Z-Supervisor-message.md"
 printf -- '---\nid: m2\nrun: alfa-20990101-000000\n---\nx\n' > "$IBA/new/20261115T110002Z-Supervisor-message.md"
+# ...and its notifications are resolved; another run's are not (notify.sh resolve --all).
+for r in "$RUN_ID" alfa-20990101-000000; do
+  run "$MAIN" bash .claude/lib/notify.sh human_decision --project smk --team alfa --ticket AB-1600 --run "$r" \
+    --decision x-1 --summary s --answer alfa-lead --main "$MAIN"; expect 0 "written" "(f) seed a notification"
+done
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 8 "closed: abandon — PR 8371 to abandon before team-next" "(f) the run closes"
+NST="$HOME/.agent-comms/outbox/state"
+[ -f "$NST/smk_alfa_${RUN_ID}_x-1.resolved" ] && [ ! -e "$NST/smk_alfa_alfa-20990101-000000_x-1.resolved" ] \
+  || { ls "$NST" > "$WORK/out" 2>&1; fail "(f) close_run did not resolve exactly the run's notifications"; }
 [ -f "$IBA/done/20261115T110001Z-Supervisor-message.md" ] && [ ! -e "$IBA/new/20261115T110001Z-Supervisor-message.md" ] \
   && [ -f "$IBA/new/20261115T110002Z-Supervisor-message.md" ] \
   || { ls -R "$IBA" > "$WORK/out"; fail "(f) close_run did not move exactly the run's inbox message to done/"; }
