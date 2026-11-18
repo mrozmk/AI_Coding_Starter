@@ -47,15 +47,21 @@ lead_json() { jq -n --arg r "$RUN_ID" --arg m "$MAIN" \
 line_of() { grep -n -- "$1" "$STUB_LOG" | head -n 1 | cut -d: -f1; }
 TR="bash .claude/lib/team-run.sh"
 
-# ---- (a) switch off: no lead, unchanged launch order ---------------------------------------------
+# ---- (a) fixture seam: no lead, unchanged launch order -------------------------------------------
 reset
-run "$MAIN" $TR alfa; expect 5 "dead attempt" "(a) runner, switch off"
-has "-s smk-alfa-lead" "$STUB_LOG" && fail "(a) a lead launched with the switch off"
+run "$MAIN" $TR alfa; expect 5 "dead attempt" "(a) runner, no-lead seam"
+has "-s smk-alfa-lead" "$STUB_LOG" && fail "(a) a lead launched under the no-lead seam"
 has "-s smk-alfa-planner" "$STUB_LOG" || fail "(a) the planner did not launch"
-[ ! -e "$TD/teamlead.json" ] && [ ! -d "$SUP" ] || fail "(a) lead state or events with the switch off"
-echo "team-smoke-22: (a) switch off OK"
+[ ! -e "$TD/teamlead.json" ] && [ ! -d "$SUP" ] || fail "(a) lead state or events under the seam"
+# The seam is honoured only under the smoke marker: without it a brainstorm run has its lead.
+( unset TEAM_SMOKE; export TEAM_SMOKE_NO_LEAD=1 MODE=brainstorm
+  . "$SRC/.claude/lib/team-run-lead.sh"; team_lead_on ) \
+  || fail "(a) TEAM_SMOKE_NO_LEAD without TEAM_SMOKE switched the lead off"
+( export MODE=cli; unset TEAM_SMOKE_NO_LEAD; . "$SRC/.claude/lib/team-run-lead.sh"; team_lead_on ) \
+  && fail "(a) mode cli has a lead"
+echo "team-smoke-22: (a) no-lead seam OK"
 
-prof '.teams.teamlead.enabled = true'
+unset TEAM_SMOKE_NO_LEAD
 
 # ---- (c) no brief → exit 4, no lead --------------------------------------------------------------
 reset; mv "$TD/order-brief.md" "$WORK/placed-brief.md"
@@ -72,9 +78,9 @@ has "-s alfa-" "$STUB_LOG" && fail "(g) a session launched on an old base"
 mv "$WORK/tl.md" "$CLONE/.claude/team/prompts/teamlead.md"
 echo "team-smoke-22: (g) old base OK"
 
-# ---- (b) switch on, brainstorm: the lead launches first, with its profile ------------------------
+# ---- (b) brainstorm: the lead launches first, with its profile -----------------------------------
 reset
-run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/high)" "(b) runner, switch on"
+run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/high)" "(b) runner, brainstorm"
 [ -n "$(line_of '-s smk-alfa-lead')" ] && [ -n "$(line_of '-s smk-alfa-planner')" ] \
   && [ "$(line_of '-s smk-alfa-lead')" -lt "$(line_of '-s smk-alfa-planner')" ] || fail "(b) lead not before the planner"
 for x in "/main-alfa/.agents/team/teamlead.settings.json' " "--model 'fable' --effort 'high'" \
@@ -301,7 +307,7 @@ jq -e '.session_id == "sid-after-clear" and .reg == "alfa-lead.reg.json"' "$LR" 
   || { cp "$LR" "$WORK/out"; fail "(reg) the registry record did not follow the lead"; }
 echo "team-smoke-22: SessionStart registration OK"
 
-# ---- (i) team-watch: a run with its own lead is filtered, a legacy run is not ---------------------
+# ---- (i) team-watch: no team signal for a run with or without its own lead -----------------------
 reset; lead_json
 run "$MAIN" bash .claude/lib/team-snapshot.sh --out "$WORK/snap.json"; expect 0 "" "(i) snapshot"
 jq -e '.teams[] | select(.team == "alfa") | .lead == true' "$WORK/snap.json" >/dev/null || fail "(i) snapshot lead flag"
@@ -312,8 +318,9 @@ jq -n '{routing: {mode: "split", receiver: "Supervisor", live: {}}, snapshot: {t
   {team: "alfa", run: "a1", lead: true, runner: "stale", finished: false, roles: []},
   {team: "beta", run: "b1", runner: "stale", finished: false, roles: []}]}}' \
   | jq -f "$L/team-watch-signals.jq" > "$WORK/sig.json"
-jq -e 'map(select(.kind == "runner") | .team) == ["beta"]' "$WORK/sig.json" >/dev/null \
-  || { cp "$WORK/sig.json" "$WORK/out"; fail "(i) signal filter"; }
+jq -e '[.[] | select(.kind | IN("attention","record","runner","ready","escalation"))] | length == 0' \
+  "$WORK/sig.json" >/dev/null \
+  || { cp "$WORK/sig.json" "$WORK/out"; fail "(i) signal filter produced a team signal"; }
 echo "team-smoke-22: (i) team-watch filter OK"
 
 # ---- (k) team-next archives the run-scoped root files; the next ticket takes the no-lead branch ---
@@ -341,7 +348,7 @@ for f in teamlead.json teamlead.settings.json round verdict-acked lead-dead rela
 done
 [ ! -e "$MAIN/.agents/team/registry/alfa-coder.json" ] && [ ! -e "$LREG" ] || fail "(k) the ended run's registry files stayed"
 ls "$TD"/archive/AB-1500-*/teamlead.json >/dev/null 2>&1 || fail "(k) teamlead.json not archived"
-prof '.teams.teamlead.enabled = false'
+export TEAM_SMOKE_NO_LEAD=1
 : > "$STUB_LOG"; rm -f "$WORK/hs.case"; : > "$WORK/alive"
 run "$MAIN" $TR alfa
 has "-s smk-alfa-planner" "$STUB_LOG" && ! has "-s smk-alfa-lead" "$STUB_LOG" || fail "(k) next ticket not on the no-lead branch"
@@ -532,7 +539,7 @@ echo "team-smoke-22: authority hook OK"
 
 # ==== pending decisions, the runner's class-first answering and the Operator notification =========
 DLD="$RD/decisions"; LTX="$(transcript sid-lead)"; mkdir -p "$(dirname "$LTX")"; : > "$LTX"
-prof '.teams.teamlead.enabled = true'  # (k) above switched it off for the next ticket
+unset TEAM_SMOKE_NO_LEAD  # (k) above ran the next ticket without a lead
 DEC="bash .claude/lib/team-lead.sh decision"
 # The lead records every answer with the tuning question (team-lead.md §10); `ldec0` omits it.
 ldec() { if [ "$1" = answer ]; then set -- "$@" --tuning none --why fixture; fi; run "$CLONE" env TEAM_SESSION_ROLE=TeamLead $DEC "$@"; }

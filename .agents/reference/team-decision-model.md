@@ -7,9 +7,9 @@ rows. Mechanics: [team-questions.md](team-questions.md); the Advisor no-reply fa
 
 Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/02-decision-model.md`.
 
-Two models coexist while the global role exists. With `teams.teamlead.enabled=true` the **per-run
-TeamLead** model applies (the first subsection of §1, §3, §4 and §5); with the switch off, the
-global TeamLead model (the sections marked below). The per-run contract is
+One model: in brainstorm and quick mode the **per-run TeamLead** decides (the first subsection of
+§1, §3, §4 and §5). The sections marked global TeamLead below are retired: no run reaches them.
+The per-run contract is
 [team-lead.md](team-lead.md); this file states who decides and links there.
 
 ## 1. Roles
@@ -29,7 +29,7 @@ the Reviewer are not on this path.
 
 ### Global TeamLead
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 | Role | What it is | Decides |
 |---|---|---|
@@ -46,7 +46,7 @@ session is Supervisor and TeamLead; the model still applies, only the hops disap
 
 ## 2. Principle
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 **The session that sees the question decides it, unless it is on a short list.** The TeamLead sees
 every team question, so it decides them; the Advisor gets a narrow list; the Operator gets only the
@@ -88,7 +88,7 @@ stated in full in one place:
 
 ### Tier table (global TeamLead)
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 | Question type | Decider | Reviewer | Time limit | Past the limit | Informs |
 |---|---|---|---|---|---|
@@ -168,7 +168,7 @@ appended once per run to the main checkout's `.agents/team/teamlead-log.md` at m
 ([team-lead.md](team-lead.md) §10). `team-lead.sh owns <team>` tells the global TeamLead which runs
 to skip.
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 Policy-class answers (Phase 0 size, memory, deferred memory, QA warnings, rethink) are recorded
 append-only in `teamlead-policy-log.md` in the team channel's decisions directory (no channel: the
@@ -189,7 +189,7 @@ verdict, answered in the `<team>-lead` window or with `team-lead.sh decision ans
 The Supervisor's `operator-record.sh` sends `unrepaired_failure` and `release`. Everything else stays between the
 stage, the lead and the Supervisor's inbox.
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 - Operator actions (team-mode.md §10) — directly in the TeamLead's window (one line +
   the block), never as a decision question and never through the Supervisor.
@@ -201,7 +201,7 @@ stage, the lead and the Supervisor's inbox.
 
 ## Targets (not implemented)
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 - Per-class deadlines: a blocking Advisor-list question past 60 min goes to the Supervisor for the
   Operator's list; a non-blocking one past 30 min becomes a Follow-up. Until then the NO-REPLY rule

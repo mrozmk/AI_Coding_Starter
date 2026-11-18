@@ -110,7 +110,7 @@ run "$MAIN" $TR alfa; expect 3 "stalled" "(3) a session past its start"
 echo "team-smoke-dialog: (3) no false alarm OK"
 
 # ---- (4) the TeamLead at the trust dialog: warn, status, one event, resolved when gone ---------------
-prof '.teams.teamlead.enabled = true'
+unset TEAM_SMOKE_NO_LEAD
 mkdir -p "$CLONE/.claude/hooks" "$MAIN/.claude/team/sessions"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
@@ -131,7 +131,7 @@ export GONE_WHO=alfa-lead GONE_AT=1040000 CANCEL_AT=1100000
 run "$MAIN" $TR alfa; expect 6 "startup dialog gone: alfa-lead" "(4) lead dialog gone"
 [ "$(nev dialog-lead-1)" = 1 ] && resolved dialog-lead-1 && [ ! -e "$RD/dialog-lead" ] || fail "(4) the lead event not resolved once"
 echo "team-smoke-dialog: (4) TeamLead at the trust dialog OK"
-prof '.teams.teamlead.enabled = false'
+export TEAM_SMOKE_NO_LEAD=1
 
 # ---- (5) Herdr: no program status + the dialog on screen; the tab in the hint; status wording --------
 reset; record alfa-qa herdr t7q; session qa 1 "$BASE"; echo null > "$WORK/hc.status"

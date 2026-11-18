@@ -38,7 +38,7 @@ Roles never exit their own session and never ask more than one question per call
 
 ## Per-run TeamLead (pilot)
 
-With `teams.teamlead.enabled=true` (not in mode `cli`) the runner launches a TeamLead before the first stage and waits in place on a stop instead of exiting. It gates the plan against the order (there is no spec gate: the planner approves its own spec), accepts the qa result against the order brief, and may order **rework rounds**. A round n ≥ 2 keeps its records in `runs/<run>/r<n>/` and continues on the same branch and PR. The runner exits 8 when the lead closes a run without merge. The Supervisor reads four inbox events (`accepted`, `closed`, `collision`, `session_dead`) — [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md). Contract: [`team-lead.md`](../../.agents/reference/team-lead.md).
+In brainstorm and quick mode (not in mode `cli`) the runner launches a TeamLead before the first stage and waits in place on a stop instead of exiting. It gates the plan against the order (there is no spec gate: the planner approves its own spec), accepts the qa result against the order brief, and may order **rework rounds**. A round n ≥ 2 keeps its records in `runs/<run>/r<n>/` and continues on the same branch and PR. The runner exits 8 when the lead closes a run without merge. The Supervisor reads four inbox events (`accepted`, `closed`, `collision`, `session_dead`) — [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md). Contract: [`team-lead.md`](../../.agents/reference/team-lead.md).
 
 ## Records and notes
 

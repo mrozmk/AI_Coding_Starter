@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # team-watch: signal filter over producer-built clones, snapshot fields, the end-to-end loop against
 # a stub receiver socket (single routing: the Supervisor acks), watchdog, undelivered/deadline and
-# the socket-mode refusal, serialised delivery, the SessionStart hook, CLI, escalations without
-# `sent:`. Cases (40)-(47).
+# the socket-mode refusal, serialised delivery, the SessionStart hook, CLI. Cases (40)-(46).
 # It spawns loops and waits on time windows, so the runner keeps it out of a parallel batch.
 # team-smoke: serial
 set -euo pipefail
@@ -35,20 +34,11 @@ mkclone omega; echo '{not json' > "$CT/session.json"
 m5 "printf '[agent-mail] id=9\\n'"
 
 sigs "fixtures"
-sig 'any(.[]; .head == "ATTENTION alfa coder (permission): Do you want to proceed?"
-  and .screen == ["npm run deploy -- --name app-x"])' "alfa permission prompt"
 sig 'all(.[]; .to == "Supervisor")' "no routing.json routes everything to single Supervisor"
-sig 'any(.[]; .kind == "attention" and .team == "alfa")
-  and any(.[]; .head | startswith("RUNNER beta stopped"))
-  and any(.[]; .head | startswith("RUNNER gamma stopped"))' "one team without runner hides nothing"
-sig '[.[] | select(.kind == "record")] | map(select(.team == "beta" or .team == "gamma"))
-  | length == 2 and (map(.key) | unique | length == 2)
-  and any(.[]; .head == "RECORD beta coder: coder-1-1.json blocked — which endpoint?")' \
-  "same record name in two teams"
+# Team stops are the per-run TeamLead's: prompts, records, runner state and READY raise nothing.
+sig 'all(.[]; .kind != "attention" and .kind != "record" and .kind != "runner" and .kind != "ready")
+  and all(.[]; (.key // "") | test("^(att|rec|run|ready|esc):") | not)' "no team signal kinds"
 sig 'all(.[]; .team != "delta")' "idle team without run"
-sig 'any(.[]; .head == "READY eps: PR 8571 (active)") and all(.[]; .key != "run:eps:eps-20261019-000000:wrapup-1-1.json")' \
-  "ready team"
-sig 'any(.[]; .kind == "attention" and .team == "zeta" and .role == "planner")' "attended planner"
 sig 'any(.[]; .head == "MAIL [agent-mail] id=9")' "mail line"
 sig 'any(.[]; .head == "ERROR omega: unreadable session.json")' "unreadable session.json"
 sig 'all(.[]; .head | contains("transcript not identified") | not)' "transcript noise surfaced"
@@ -57,14 +47,8 @@ jq '.attempt = "x"' "$EPS/runs/eps-20261019-000000/wrapup-1-1.json" > "$WORK/w"
 cp "$EPS/runs/eps-20261019-000000/wrapup-1-1.json" "$WORK/w.orig"
 mv "$WORK/w" "$EPS/runs/eps-20261019-000000/wrapup-1-1.json"
 sigs "malformed terminal role"
-sig 'all(.[]; .kind != "ready" or .team != "eps") and any(.[]; .head == "ERROR eps/wrapup: failed")' \
-  "malformed terminal role"
+sig 'any(.[]; .head == "ERROR eps/wrapup: failed")' "malformed terminal role"
 mv "$WORK/w.orig" "$EPS/runs/eps-20261019-000000/wrapup-1-1.json"
-
-jq '.status = "completed"' "$STUB_PR" > "$WORK/pr" && mv "$WORK/pr" "$STUB_PR"
-rm -f "$TWD/cache/pr-eps-8571"
-sigs "completed PR"
-sig 'all(.[]; .kind != "ready" or .team != "eps")' "a completed PR closes READY"
 
 STUB_TMUX_ALIVE=1 STUB_TMUX_ERR="protocol version mismatch" sigs "tmux error"
 sig 'any(.[]; .head | startswith("ERROR tmux: "))' "blind pane probes are an ERROR"
@@ -170,15 +154,10 @@ done
 run "$MAIN" $W mode tiers off; expect 0 "team-watch: tiers off" "mode tiers off"
 DPID=""; GPID=""
 daemon
-wait_r "ATTENTION alfa coder (permission)" 60
-wait_r "RUNNER beta stopped" 60
-wait_r "RECORD beta coder: coder-1-1.json blocked" 60
 wait_r "MAIL [agent-mail] id=9" 60
 wait_r "tiers=off" 5
-R=$(record --verdict blocked --message "which endpoint?")
-wait_r "RECORD alfa coder: $(basename "$R") blocked — which endpoint?" 60
-dead_pid > "$TD/lock/pid"
-wait_r "RUNNER alfa stale" 60
+m5 "printf '[agent-mail] id=9\\n[agent-mail] id=10\\n'"
+wait_r "MAIL [agent-mail] id=10" 60
 jq -nR '[inputs | fromjson? | select(.type == "auth")] | length > 0 and all(.token == "t0k")' "$WORK/recv" \
   | grep -qx true || fail "auth line does not carry the token"
 has session_id "$WORK/recv" && fail "a message carries a session_id"
@@ -189,17 +168,18 @@ jq -nR '[inputs | fromjson? | select(.type == "user") | .message.content
   "$WORK/recv" | grep -qx true || { cat "$WORK/recv" > "$WORK/out"; fail "single Supervisor header lacks role/ack/contract"; }
 run "$MAIN" $W mode tiers on
 
-: > "$WORK/pane"
+# A read mail line closes its key; the same line unread again is a new delivery.
+m5 "printf '[agent-mail] id=9\\n'"
 for _ in $(seq 1 120); do
-  jq -e '.keys | keys | any(startswith("att:alfa:"))' "$TWD/open.json" >/dev/null 2>&1 || break
+  jq -e '.keys | has("mail:[agent-mail] id=10")' "$TWD/open.json" >/dev/null 2>&1 || break
   sleep 0.5
 done
-jq -e '.keys | keys | any(startswith("att:alfa:"))' "$TWD/open.json" >/dev/null 2>&1 \
-  && fail "closed prompt stayed open"
-printf 'Bash command\n  npm run deploy -- --name app-x\nDo you want to proceed?\n❯ 1. Yes\n' > "$WORK/pane"
-wait_r "ATTENTION alfa coder (permission)" 60 2
-echo "2026-10-19T10:05:00Z permission_prompt Claude needs your permission" >> "$RD/attention"
-wait_r "ATTENTION alfa coder (permission)" 60 3
+jq -e '.keys | has("mail:[agent-mail] id=10")' "$TWD/open.json" >/dev/null 2>&1 \
+  && fail "a read mail line stayed open"
+m5 "printf '[agent-mail] id=9\\n[agent-mail] id=10\\n'"
+wait_r "MAIL [agent-mail] id=10" 60 2
+run "$MAIN" $W ping Supervisor; expect 0 "team-watch: ping Supervisor queued (seq" "ping in the loop"
+wait_r "PING Supervisor — confirm" 30
 echo "team-smoke-15: (42) end-to-end OK"
 
 # ---- (43) watchdog ---------------------------------------------------------------------------------
@@ -216,7 +196,7 @@ echo "team-smoke-15: (43) watchdog OK"
 
 # ---- (44) undelivered + deadline + socket mode -----------------------------------------------------
 kill "$SRV"; wait "$SRV" 2>/dev/null || true; rm -f "$SD/sup.sock"
-echo "2026-10-19T10:10:00Z permission_prompt Claude needs your permission" >> "$RD/attention"
+m5 "printf '[agent-mail] id=9\\n[agent-mail] id=10\\n[agent-mail] id=12\\n'"
 C0="$(cat "$TWD/cursor.Supervisor")"; : > "$STUB_LOG"
 TEAM_WATCH_UNDELIVERED_SECS=0 run "$MAIN" $W tick --once
 [ "$(cat "$TWD/cursor.Supervisor")" = "$C0" ] || fail "undelivered batch moved the cursor"
@@ -361,57 +341,4 @@ m="$(grep -n 'kill-session -t =smk-team-watch$' "$STUB_LOG" | cut -d: -f1)" || t
 [ -n "$d" ] && [ -n "$m" ] && [ "$d" -lt "$m" ] || { cp "$STUB_LOG" "$WORK/out"; fail "stop must kill the dog first"; }
 echo "team-smoke-15: (45) CLI OK"
 
-# ---- (47) escalation started without sent -----------------------------------------------------------
-export TEAM_WATCH_ESC_UNSENT_SECS=60 TEAM_WATCH_REMIND_SECS=999999
-run "$MAIN" $W routing split; expect 0 "" "routing split for (47)"
-KR=kappa-20261024-000000; mkclone kappa "$KR"; KQ="$CT/runs/$KR/questions"; mkdir -p "$KQ"
-ago() { date -u -r $(( $(date +%s) - $1 )) +%Y-%m-%dT%H:%M:%SZ; }
-OLD="$(ago 120)"; NEW="$(ago 10)"
-qled() {  # qled <qid> <escalation line>... — a hand-written ledger in the real format
-  { printf 'role: coder\nattempt: 1\nrun: %s\nkind: blocked\n\n## Summary\nx\n\n## Escalation\n' "$KR"
-    printf '%s\n' "${@:2}"; } > "$KQ/$1.md"
-}
-qled q-1 "started: $OLD tier 2" "sent: seq 1 $OLD id 7 thread esc-$KR-q-1"
-qled q-2 "started: $OLD tier 2"
-qled q-3 "started: $NEW tier 2"
-qled q-4 "started: $NEW tier 2" "failed: seq 1 $NEW — no receipt" \
-  "outcome: no-reply — send failed (no receipt)" "ended: $NEW"
-qled q-5 "started: $OLD tier 2" "outcome: cancelled" "ended: $OLD"
-qled q-6 "started: $OLD tier 2" "sent: seq 1 $OLD id 8 thread esc-$KR-q-6" \
-  "reply: 3 pending-operator" "waiting: operator $OLD eta -" "reping: $OLD seq 2 — transport"
-qled q-7 "started: $OLD tier 2"; printf '\n## Answer\ntier: 1\ndelivery: sent\n' >> "$KQ/q-7.md"
-sigs "escalation ledgers"
-EK="esc:kappa:$KR"
-sig "[.[] | select(.kind == \"escalation\")] | map(.key) | sort == [\"$EK:q-2:1\", \"$EK:q-4:1\"]" \
-  "only unsent q-2 (old) and failed q-4 (fresh)"
-sig "any(.[]; .key == \"$EK:q-2:1\" and .to == \"TeamLead\"
-  and .head == \"ESCALATION kappa q-2 seq 1: started without sent > 1 min (since $OLD)\")" \
-  "killed send past the threshold"
-sig "any(.[]; .key == \"$EK:q-4:1\"
-  and .head == \"ESCALATION kappa q-4 seq 1: not sent — send failed (no receipt)\")" \
-  "failed send at once"
-rm -f "$KQ"/q-*.md
-qled q-8 "started: $NEW tier 2" "failed: seq 1 $NEW — rc 1" "outcome: no-reply — send failed (rc 1)" \
-  "ended: $NEW"
-evs() { grep -c "\"key\":\"$EK:q-8:1\"" "$TWD/events.jsonl" || true; }
-run "$MAIN" $W tick --once; expect 0 "" "tick: failed send"
-[ "$(evs)" = 1 ] || fail "failed send raised $(evs) events"
-printf '%s\n' "reping: $(ago 0) seq 1 — transport" >> "$KQ/q-8.md"
-run "$MAIN" $W tick --once; expect 0 "" "tick: retry in progress"
-printf '%s\n' "outcome: no-reply — send failed (rc 1)" "ended: $(ago 0)" >> "$KQ/q-8.md"
-run "$MAIN" $W tick --once; expect 0 "" "tick: retry failed"
-[ "$(evs)" = 1 ] || fail "a retry of the same seq reopened the incident ($(evs) events)"
-jq -e --arg k "$EK:q-8:1" '.keys | has($k)' "$TWD/open.json" >/dev/null || fail "incident not open"
-printf '%s\n' "reping: $(ago 0) seq 1 — transport" "sent: seq 1 $(ago 0) id 9 thread esc-$KR-q-8" \
-  >> "$KQ/q-8.md"
-run "$MAIN" $W tick --once; expect 0 "" "tick: sent"
-! jq -e --arg k "$EK:q-8:1" '.keys | has($k)' "$TWD/open.json" >/dev/null || fail "sent: did not clear"
-jq -n '{snapshot: {teams: [{team: "k", run: "r", roles: [], esc_unsent: [
-  {q: "q-1", seq: 1, since: "2026-10-24T10:00:00Z", state: "unsent", reason: "-"},
-  {q: "q-2", seq: 1, since: "2026-10-24T10:00:00Z", state: "failed", reason: "x"},
-  {q: "q-3", seq: 1, since: "bad", state: "failed", reason: "x"}]}]}}' | jq -f "$FILTER" > "$WORK/sig.json"
-sig '[.[] | select(.kind == "escalation") | .key] == ["esc:k:r:q-2:1"]' \
-  "an old producer without .now keeps failed only; a bad since is skipped"
-unset TEAM_WATCH_ESC_UNSENT_SECS TEAM_WATCH_REMIND_SECS
-echo "team-smoke-15: (47) escalation started without sent OK"
 echo "team-smoke-15: OK"

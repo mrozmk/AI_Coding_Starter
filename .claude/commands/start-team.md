@@ -23,11 +23,11 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
 
 0a. **Profile preflight** — before the clone and before `tmux`:
    `bash -c 'source .claude/lib/team-profile.sh; team_profile_load; team_profile_require_supported;
-   echo "trunk: $TEAM_TRUNK"; echo "tracker: $TEAM_TRACKER"; echo "teamlead: $TEAM_LEAD_ENABLED"'`.
+   echo "trunk: $TEAM_TRUNK"; echo "tracker: $TEAM_TRACKER"'`.
    Non-zero exit → print its `error:` line verbatim and stop (no clone, no branch, no tmux session).
    `TEAM_TRUNK` is the trunk used in step 4; `TRACKER` (the `tracker:` line, one of `jira`,
-   `github`, `none`) decides steps 1, 3 and 4; `TEAMLEAD` (the `teamlead:` line, `true`|`false`)
-   decides step 4c and the brief check in step 2.
+   `github`, `none`) decides steps 1, 3 and 4. The ticket's mode decides step 4c and the brief
+   check in step 2: a per-run TeamLead in brainstorm and quick mode, none in mode `cli`.
 
 1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`). A `TEAM` equal to a roles tab (`lead`, or
    any `teams.sessions` `place.tab`, case-insensitive) → STOP before any side effect: "team name
@@ -85,7 +85,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `bash .claude/lib/team-run.sh <TEAM> status`:
    - a line `closed: <reason>` → refuse "run closed (<reason>) — team-next for the next ticket,
      team-remode for remode" and stop (the runner refuses it too, `runs/<run>/closed.json`);
-   - a line `lock: runner <pid> alive` → if the status also shows `teamlead: dead` (switch on), run
+   - a line `lock: runner <pid> alive` → if the status also shows `teamlead: dead`, run
      `bash .claude/lib/team-lead.sh relaunch <TEAM>` (it writes `<CLONE>/.agents/team/relaunch-lead`;
      the live runner relaunches the lead at its next poll), report "TeamLead relaunch requested"
      and stop; otherwise say "runner already running — watch:
@@ -97,7 +97,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      A live session alone never
      means a live runner: it outlives the runner after a `blocked` record.
 
-   With `TEAMLEAD` = `true` and the ticket's mode not `cli` (`mode` in
+   With the ticket's mode not `cli` (`mode` in
    `<CLONE>/.agents/team/team.json`): `bash .claude/lib/team-brief.sh check <TEAM>` must pass;
    otherwise write the brief first as in step 4c (`write`, never `--replace`).
 
@@ -177,7 +177,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    The override lives until `team-next` (the next ticket); undo with
    `bash .claude/lib/team-run.sh <TEAM> roles --clear`. A role already running keeps its model.
 
-4c. **Order brief** (NEW runs only, only when `TEAMLEAD` = `true` and `MODE` ≠ `cli`; after steps 4
+4c. **Order brief** (NEW runs only, only when `MODE` ≠ `cli`; after steps 4
    and 4b). The per-run TeamLead judges every gate and the acceptance against this file.
    - Run `bash .claude/lib/team-brief.sh inflight <TEAM>`.
    - Write a draft in your scratchpad with exactly these three sections:

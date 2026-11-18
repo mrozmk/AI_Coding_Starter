@@ -19,15 +19,14 @@ the single-window flow (routing `single Supervisor`). Mechanics of the push chan
 | Session | tmux | Role | team-watch pushes |
 |---|---|---|---|
 | **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | alarms + its own mail |
-| **TeamLead** | `<prefix>-teamlead` | runs `/monitor`: team signals, tier 1, decides team questions (team-decision-model.md §3), the Advisor and Operator lists to the Advisor | team signals + its own mail |
+| **TeamLead** (retired) | `<prefix>-teamlead` | the global TeamLead — retired: no run reaches it ([§ TeamLead](#teamlead)) | none |
 | **Advisor** | `<prefix>-advisor` | task intake, tier 2 (with the Reviewer under `advisor: pair`) | none — agent-mail only, wake loop `mail` |
 
-**The per-run TeamLead is not one of these sessions.** With `teams.teamlead.enabled=true` the runner
+**The per-run TeamLead is not one of these sessions.** In brainstorm and quick mode the runner
 (`team-run.sh`) launches one lead per team run as `<team>-lead` in the team clone and ends it with
-the run; `supervisor-sessions.sh` never starts, stops or restores it, and team-watch drops every
-signal of a run that has its own lead. Its answers reach the Supervisor only as the four inbox
-events ([team-pipeline.md](team-pipeline.md) §5a, [team-lead.md](team-lead.md)). During the
-coexistence the global TeamLead row above still runs for runs without a lead.
+the run; `supervisor-sessions.sh` never starts, stops or restores it, and team-watch carries no
+team signal. Its answers reach the Supervisor only as the four inbox events
+([team-pipeline.md](team-pipeline.md) §5a, [team-lead.md](team-lead.md)).
 
 `<prefix>` is `teams.channel.tmux_prefix` (default: the repo directory slug); the mail recipient
 name is the role plus `teams.channel.mail_suffix`, and the same name is the session's `--name`, so
@@ -106,7 +105,7 @@ team and summary is reused, not sent again. `notify.sh` is denied to every role 
 
 ## TeamLead
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 **Does:** `/monitor` — the only receiver of team signals in split routing: decide every team
 question per [team-decision-model.md](team-decision-model.md) §3 (policy-class decisions go to the

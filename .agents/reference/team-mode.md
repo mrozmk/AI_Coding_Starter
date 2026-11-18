@@ -34,7 +34,7 @@ Written only by `team-run.sh` before a launch; removed by it when the role's rec
 `session.json` is authoritative because hook processes are not documented to inherit the session
 environment. `session.json` also carries `round` (1, or n in a rework round — team-lead.md §9).
 
-**Second identity — the per-run TeamLead** (`teams.teamlead.enabled=true`, never in mode cli): one
+**Second identity — the per-run TeamLead** (brainstorm and quick mode, never in mode cli): one
 lead session per run, launched by the runner before the first stage. Its identity is
 `.agents/team/teamlead.json` (`run`, `session_id`, `main_root`, …) plus `TEAM_SESSION_ROLE=TeamLead`
 in its session's environment; it never has a `session.json` and never writes a stage record. Contract:
@@ -228,7 +228,7 @@ and opens a pending decision for a human-only item, which notifies the Operator 
 ([team-decision-model.md](team-decision-model.md) §3, [team-lead.md](team-lead.md) §6–§7). The roles'
 behaviour below is the same.
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 **Routing.** Roles keep exactly this behaviour: coder/qa/cli write
 `blocked`, the planner and wrapup ask, permission prompts wait. The supervisor for teams is the
@@ -421,8 +421,8 @@ github goes only through `.claude/lib/team-pr.sh` (needs `gh`, `teams.github.rep
 
 ## 10. Escalation tiers
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step. With the switch on,
-the run's lead answers on an authority instead ([team-lead.md](team-lead.md) §6).
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery. The
+run's lead answers on an authority instead ([team-lead.md](team-lead.md) §6).
 
 `/monitor` with tiers on (the default; `/monitor --tiers off` restores the plain behaviour,
 where nothing is answered without the developer's words) classifies every `ATTENTION`, `blocked`

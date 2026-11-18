@@ -3,9 +3,10 @@
 Usage: python3 -I .claude/lib/session_profile_check.py <main checkout> [--hooks]
          [--profiles <dir>] [--clone <dir>] [role ...]
 
-Roles: the team-watch receivers (ROLES) plus every standing, enabled Claude role of teams.sessions
-with a `settings` template (read through roles-lib.sh, the one reader); a role's template may carry
-another name (Fable → Advisor.settings.json). Rules come from the materialised profile
+Roles: the team-watch receiver (ROLES, the Supervisor) plus every standing, enabled Claude role of
+teams.sessions with a `settings` template (read through roles-lib.sh, the one reader); a role's
+template may carry another name (Fable → Advisor.settings.json). A declared `TeamLead` is the per-run
+launcher's model/effort, never a session profile, and is skipped. Rules come from the materialised profile
 (.agents/team/watch/profiles/<role>.settings.json, written by `supervisor-sessions.sh materialize`,
 whose env role must be <role>) when it exists, else from the template, plus the project settings. The per-run role TeamLead-run reads TeamLead-run.settings.json and, with
 --clone <dir>, the materialised <dir>/.agents/team/teamlead.settings.json (team-lead.sh
@@ -24,7 +25,7 @@ import subprocess
 import sys
 
 # Mirror of TW_ROLES in team-watch-route.sh; the smoke part `sessions` asserts they are equal.
-ROLES = ("Supervisor", "TeamLead")
+ROLES = ("Supervisor",)
 # Per-run roles: never in ROLES (not team-watch receivers); profile <role>.settings.json, env role
 # without the suffix.
 RUN_ROLES = ("TeamLead-run",)
@@ -110,7 +111,9 @@ def declared(main):
                        env=dict(os.environ, ROLES_ROOT=main))
     if p.returncode != 0:
         raise ValueError((p.stderr.strip().splitlines() or ["roles-lib.sh failed"])[-1])
-    return dict(line.split("\t", 1) for line in p.stdout.splitlines() if "\t" in line)
+    found = dict(line.split("\t", 1) for line in p.stdout.splitlines() if "\t" in line)
+    found.pop("TeamLead", None)
+    return found
 
 
 def mat_path(main, role, clone):

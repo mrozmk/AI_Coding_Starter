@@ -11,9 +11,10 @@ set -euo pipefail
 smoke_init
 smoke_team AB-1253 chore/AB-1253-x
 watch_init
-mkrole TM; mkrole SU
+mkrole SU; mkrole AD
 MON="bash .claude/lib/monitoring.sh"
-jq '.roles.TeamLead.pause.pass = {}' "$MAIN/.claude/team/sessions/monitoring.json" > "$WORK/mon.json"
+cp "$MAIN/.claude/team/sessions/monitoring.json" "$WORK/mon.json"
+jq '.roles.Supervisor.pause.pass = {}' "$WORK/mon.json" > "$WORK/nopass.json"
 export TEAM_MONITORING_JSON="$WORK/mon.json"
 
 cat > "$WORK/send" <<EOF
@@ -45,21 +46,22 @@ same_state() {  # same_state <label> — state.json byte-equal to $WORK/st.befor
 }
 
 run "$MAIN" $W routing split; expect 0 "" "routing split"
-as TeamLead TM $W register; expect 0 "TeamLead registered" "register TM"
 as Supervisor SU $W register; expect 0 "Supervisor registered" "register SU"
 
 # ---- (220) incident-channel errors pass a pause with an incident pass -----------------------------
+# One paused Supervisor, two policies in turn: an empty pass {} holds the mail error, the shipped
+# incident pass lets it through; neither moves the cursor.
 as Supervisor SU $MON stop; expect 0 "paused since" "stop SU (220)"
-as TeamLead TM $MON stop; expect 0 "paused since" "stop TM (220)"
-CS="$(cur Supervisor)"; CT="$(cur TeamLead)"
-sigupd "[$(sg err:mail:Supervisor Supervisor "ERROR mail Supervisor: E220"),
-  $(sg err:mail:TeamLead TeamLead "ERROR mail TeamLead: T220")]"
+CS="$(cur Supervisor)"
+sigupd "[$(sg err:mail:Supervisor Supervisor "ERROR mail Supervisor: E220")]"
+TEAM_MONITORING_JSON="$WORK/nopass.json" deliver
+TEAM_MONITORING_JSON="$WORK/nopass.json" deliver
+sleep 1
+[ "$(nrecv SU "E220")" = 0 ] || fail "an err:mail event passed an empty pass {}"
+[ "$(cur Supervisor)" = "$CS" ] || fail "a held incident moved the cursor"
 deliver; deliver
 wait_recv SU "ERROR mail Supervisor: E220" 10
-sleep 1
-[ "$(nrecv TM "T220")" = 0 ] || fail "an err:mail event passed an empty pass {}"
-[ "$(cur Supervisor)" = "$CS" ] && [ "$(cur TeamLead)" = "$CT" ] \
-  || fail "an incident-channel delivery moved a cursor"
+[ "$(cur Supervisor)" = "$CS" ] || fail "an incident-channel delivery moved the cursor"
 echo "team-smoke-19: (220) incident-channel errors pass a pause OK"
 
 # ---- (222) a stop during the slow source read does not wake ----------------------------------------
@@ -72,25 +74,25 @@ echo "[agent-mail] m222 kind=turn thread=ops-222"
 EOF
 chmod +x "$WORK/slowmail"
 mailcfg true "bash $WORK/slowmail"
-jq '.remind_secs = 3600 | .roles.TeamLead.wake = {"mail": 0}' "$WORK/mon.json" > "$WORK/wake.json"
+jq '.remind_secs = 3600 | .roles.Advisor.wake = {"mail": 0}' "$WORK/mon.json" > "$WORK/wake.json"
 sleep 300 & FC=$!; PIDS="$PIDS $FC"
-( cd "$MAIN" && exec env TEAM_SESSION_ROLE=TeamLead TEAM_WAKE_CLAUDE_PID="$FC" TEAM_WAKE_SECS=1 \
+( cd "$MAIN" && exec env TEAM_SESSION_ROLE=Advisor TEAM_WAKE_CLAUDE_PID="$FC" TEAM_WAKE_SECS=1 \
     TEAM_WAKE_SLOW_SECS=1 TEAM_MONITORING_JSON="$WORK/wake.json" \
-    CLAUDE_CODE_MESSAGING_SOCKET="$TM_SOCK" CLAUDE_CODE_MESSAGING_TOKEN=tok \
+    CLAUDE_CODE_MESSAGING_SOCKET="$AD_SOCK" CLAUDE_CODE_MESSAGING_TOKEN=tok \
     bash .claude/lib/session-wake.sh ) > "$WORK/wake.out" 2>&1 &
 WPID=$!; PIDS="$PIDS $WPID"
-for _ in $(seq 1 30); do [ -f "$TWD/wake/TeamLead.json" ] && break; sleep 0.2; done
-[ -f "$TWD/wake/TeamLead.json" ] || fail "the wake loop did not arm"
+for _ in $(seq 1 30); do [ -f "$TWD/wake/Advisor.json" ] && break; sleep 0.2; done
+[ -f "$TWD/wake/Advisor.json" ] || fail "the wake loop did not arm"
 sleep 3; kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "baseline woke"; }
-N0="$(nmsg TM)"
+N0="$(nmsg AD)"
 touch "$WORK/mail.go"
 for _ in $(seq 1 50); do [ -f "$WORK/mail.reading" ] && break; sleep 0.2; done
 [ -f "$WORK/mail.reading" ] || fail "the slow mail source was never read"
-as TeamLead TM $MON stop; expect 0 "paused since" "stop during the read"
+as Advisor AD $MON stop; expect 0 "paused since" "stop during the read"
 sleep 6
 kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "a stop during the read woke"; }
-! has "WAKE TeamLead" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "WAKE text"; }
-[ "$(nmsg TM)" = "$N0" ] || fail "a paused loop pushed into the session"
+! has "WAKE Advisor" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "WAKE text"; }
+[ "$(nmsg AD)" = "$N0" ] || fail "a paused loop pushed into the session"
 kill "$FC"
 for _ in $(seq 1 20); do kill -0 "$WPID" 2>/dev/null || break; sleep 0.3; done
 ! kill -0 "$WPID" 2>/dev/null || fail "the loop outlived its claude"
@@ -103,8 +105,8 @@ cp "$TWD/state.json" "$WORK/st.orig"
 for bad in empty broken; do
   if [ "$bad" = empty ]; then : > "$TWD/state.json"; else printf '{"paused": ' > "$TWD/state.json"; fi
   cp "$TWD/state.json" "$WORK/st.before"
-  run "$MAIN" $MON paused TeamLead; expect 0 "unreadable" "paused over $bad"
-  as TeamLead TM $MON stop; expect 1 "unreadable" "stop over $bad"; same_state "stop ($bad)"
+  run "$MAIN" $MON paused Advisor; expect 0 "unreadable" "paused over $bad"
+  as Advisor AD $MON stop; expect 1 "unreadable" "stop over $bad"; same_state "stop ($bad)"
   run "$MAIN" $W mode tiers on; expect 1 "unreadable" "mode tiers over $bad"
   same_state "mode tiers ($bad)"
   run "$MAIN" $W mode class merge-line on; expect 1 "unreadable" "mode class over $bad"
@@ -112,13 +114,13 @@ for bad in empty broken; do
   run "$MAIN" $W status; has "paused: unreadable (state.json)" "$WORK/out" || fail "status over $bad"
 done
 cp "$WORK/st.orig" "$TWD/state.json"
-run "$MAIN" $MON paused TeamLead; expect 1 "" "restored state.json is not a pause"
+run "$MAIN" $MON paused Advisor; expect 1 "" "restored state.json is not a pause"
 echo "team-smoke-19: (223) unreadable state.json OK"
 
 # ---- (224) rotation keeps a pause-delivered incident's delivery line --------------------------------
 as Supervisor SU $MON stop; expect 0 "paused since" "stop SU (224)"
-lib 'tw_lock && tw_append_to Supervisor "" "UNPICKED TeamLead #224"; tw_unlock'
-deliver; wait_recv SU "UNPICKED TeamLead #224" 10
+lib 'tw_lock && tw_append_to Supervisor "" "MONITOR dog dead #224"; tw_unlock'
+deliver; wait_recv SU "MONITOR dog dead #224" 10
 B224="$(last_batch SU)"
 as Supervisor SU $W ack "$B224"; expect 0 "" "ack #$B224"
 as Supervisor SU $W done "$B224"; expect 0 "" "done #$B224"
@@ -131,20 +133,20 @@ jq -s -e --argjson b "$B224" 'any(.[]; .to == "Supervisor" and .batch == $b)' \
   "$TWD/deliveries.jsonl" >/dev/null || fail "rotation dropped the pause delivery #$B224"
 deliver; deliver
 [ "$(nsent)" = "$S0" ] || fail "the pause-delivered incident #$B224 was resent after rotation"
-[ "$(nrecv SU "UNPICKED TeamLead #224")" = 1 ] || fail "#$B224 received twice"
+[ "$(nrecv SU "MONITOR dog dead #224")" = 1 ] || fail "#$B224 received twice"
 echo "team-smoke-19: (224) rotation dedup OK"
 
 # ---- (227) version: loops of another version make stop refuse -----------------------------------
 echo "$(date -u +%s) 1 v$((TWV - 1))" > "$TWD/beat"; echo "$(date -u +%s) 1 v$((TWV - 1))" > "$TWD/dog.beat"
-as TeamLead TM $MON stop; expect 1 "older version" "stop over old loops"
+as Advisor AD $MON stop; expect 1 "older version" "stop over old loops"
 rm -f "$TWD/beat" "$TWD/dog.beat"
 echo "team-smoke-19: (227) version guard OK"
 
 # ---- (228) stop→incident→stop keeps since/by; the batch stays pending for the Stop hook ----------
 startall
 as Supervisor SU $MON stop; expect 0 "paused since" "stop SU (228)"
-lib 'tw_lock && tw_append_to Supervisor "" "UNPICKED TeamLead #228"; tw_unlock'
-deliver; wait_recv SU "UNPICKED TeamLead #228" 10
+lib 'tw_lock && tw_append_to Supervisor "" "MONITOR dog dead #228"; tw_unlock'
+deliver; wait_recv SU "MONITOR dog dead #228" 10
 B228="$(last_batch SU)"
 touch "$TWD/deliveries.jsonl" "$TWD/acks.jsonl"
 P228="$(jq -c .paused.Supervisor "$TWD/state.json")"; C228="$(cur Supervisor)"
@@ -171,18 +173,18 @@ echo "team-smoke-19: (228) stop→incident→stop OK"
 
 # ---- (229) stop of one role, then stop all over mixed states ----------------------------------
 startall
-as TeamLead TM $MON stop; expect 0 "paused since" "stop TM (229)"
-S1="$(jq -r .paused.TeamLead.since "$TWD/state.json")"
+as Advisor AD $MON stop; expect 0 "paused since" "stop AD (229)"
+S1="$(jq -r .paused.Advisor.since "$TWD/state.json")"
 lib 'echo "$TW_SESSION_ROLES"'; R229="$(cat "$WORK/out")"
-[ "$R229" = "Supervisor TeamLead Advisor" ] || fail "TW_SESSION_ROLES: $R229"
+[ "$R229" = "Supervisor Advisor" ] || fail "TW_SESSION_ROLES: $R229"
 sleep 1
 run "$MAIN" env -u TEAM_SESSION_ROLE $MON stop all; expect 0 "" "stop all (229)"
-jq -e --arg s "$S1" '.paused.TeamLead == {since: $s, by: "TeamLead"}' "$TWD/state.json" \
-  >/dev/null || fail "stop all re-dated the TeamLead pause"
-grep -F "TeamLead: paused since" "$WORK/out" | grep -qF "already paused" \
-  || fail "stop all did not report the kept TeamLead pause"
+jq -e --arg s "$S1" '.paused.Advisor == {since: $s, by: "Advisor"}' "$TWD/state.json" \
+  >/dev/null || fail "stop all re-dated the Advisor pause"
+grep -F "Advisor: paused since" "$WORK/out" | grep -qF "already paused" \
+  || fail "stop all did not report the kept Advisor pause"
 for r in $R229; do
-  [ "$r" = TeamLead ] && continue
+  [ "$r" = Advisor ] && continue
   jq -e --arg r "$r" --arg s "$S1" '.paused[$r].since != $s and .paused[$r].by == "operator"' \
     "$TWD/state.json" >/dev/null || fail "stop all: $r not newly paused by operator"
 done
@@ -191,11 +193,11 @@ echo "team-smoke-19: (229) stop all over mixed states OK"
 
 # ---- (230) a broken pause flag is refused, never re-dated -------------------------------------------
 startall
-for bad in '"x"' '{}' '{"since":"bogus"}' '{"since":"2026-11-04T99:99:99Z","by":"TeamLead"}'; do
-  jq --argjson b "$bad" '.paused = ((.paused // {}) | .TeamLead = $b)' "$TWD/state.json" \
+for bad in '"x"' '{}' '{"since":"bogus"}' '{"since":"2026-11-04T99:99:99Z","by":"Advisor"}'; do
+  jq --argjson b "$bad" '.paused = ((.paused // {}) | .Advisor = $b)' "$TWD/state.json" \
     > "$WORK/st.new"
   mv "$WORK/st.new" "$TWD/state.json"; cp "$TWD/state.json" "$WORK/st.before"
-  as TeamLead TM $MON stop; expect 1 "pause flag unreadable" "stop over $bad"
+  as Advisor AD $MON stop; expect 1 "pause flag unreadable" "stop over $bad"
   same_state "stop over $bad"
   run "$MAIN" env -u TEAM_SESSION_ROLE $MON stop all; expect 1 "pause flag unreadable" \
     "stop all over $bad"

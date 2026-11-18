@@ -1,11 +1,9 @@
 # team-watch signal filter:
-#   {now, esc_unsent_secs, snapshot, mail: {<role>: [lines]}, mail_errors: {<role>: text},
-#    esc_mail: [lines], esc_mail_error, snapshot_error, routing,
+#   {snapshot, mail: {<role>: [lines]}, mail_errors: {<role>: text}, snapshot_error, routing,
 #    roles: {<role>: {sub, fp, anchor, screen}}} → [{key, kind, team, role, head, screen, to}]
-# Destinations mirror TW_ROLES (team-watch-route.sh): team signals → TeamLead, the role-level
-# ones (silence, role prompts, unrouted mail errors) → Supervisor; single routing → the receiver.
-# Each team is evaluated on its own object: one team's state never hides another's signals.
-# Keys carry team and run, so identical record names in two teams or runs never collide.
+# Destinations mirror TW_ROLES (team-watch-route.sh): every signal → Supervisor, mail to its own
+# role in split; single routing → the receiver. Team stops are the per-run TeamLead's and the
+# Advisor escalation path is retired: neither produces a signal here.
 
 def sig($key; $kind; $team; $role; $head; $screen; $to):
   {key: $key, kind: $kind, team: $team, role: $role, head: $head, screen: ($screen // []),
@@ -17,114 +15,7 @@ def single($R): $R.mode != "split";
 def dest($R; $kind; $role):
   if single($R) then $R.receiver
   elif $kind == "mail" then $role
-  else "TeamLead" end;
-
-def finished($t): $t.finished == true;
-
-def attended($r): ($r.role == "planner" or $r.role == "wrapup")
-  and ($r.attention_pending == true or $r.attended_pending == true);
-
-def attention($t; $R):
-  $t.roles[]? as $r
-  | select($r.live == true and ($r.menu_open == true or $r.prompt_open == true or attended($r)))
-  | (if $r.menu_open == true then "menu" elif $r.prompt_open == true then "permission"
-     else "question" end) as $sub
-  | sig("att:\($t.team):\($t.run):\($r.role):\($r.attempt):\($r.attention_count):\($r.anchor)";
-        "attention"; $t.team; $r.role;
-        "ATTENTION \($t.team) \($r.role) (\($sub)): \($r.anchor)"; $r.screen;
-        dest($R; "attention"; null));
-
-def record($t; $R):
-  $t.roles[]? as $r
-  | select($r.record_open == true and $r.record != null)
-  | sig("rec:\($t.team):\($t.run):\($r.record.file)"; "record"; $t.team; $r.role;
-        "RECORD \($t.team) \($r.role): \($r.record.file) \($r.record.verdict)"
-        + " — \($r.record.message // "")";
-        $r.screen; dest($R; "record"; null));
-
-def runner($t; $R):
-  select($t.runner != "up" and (finished($t) | not))
-  | ([$t.roles[]?.record | select(. != null)] | sort_by(.written_at // "") | last | .file // "none")
-      as $newest
-  | sig("run:\($t.team):\($t.run):\($newest)"; "runner"; $t.team; null;
-        "RUNNER \($t.team) \(if $t.runner == "stale" then "stale" else "stopped" end)"
-        + " (run \($t.run))";
-        []; dest($R; "runner"; null));
-
-# A merged/abandoned PR (state free) closes READY: an idle finished team would be reminded forever.
-def ready($t; $R):
-  select(finished($t) and $t.runner != "up" and $t.state != "free")
-  | sig("ready:\($t.team):\($t.run)"; "ready"; $t.team; null;
-        "READY \($t.team): PR \($t.pr_id // "?")"
-        + (if $t.pr_status then " (" + $t.pr_status + ")" else "" end);
-        []; dest($R; "ready"; null));
-
-# An escalation request without `sent:`: at once after a failed send, else past $min seconds. An
-# old producer without `.now` still gets the failed ones. The key has no state: a retry of the
-# same seq keeps one incident.
-def escalation($t; $R; $now; $min):
-  $t.esc_unsent[]? as $e
-  | ($e.since | try fromdateiso8601 catch null) as $since
-  | select($since != null)
-  | select($e.state == "failed" or ($now != null and $now - $since >= $min))
-  | sig("esc:\($t.team):\($t.run):\($e.q):\($e.seq)"; "escalation"; $t.team; null;
-        "ESCALATION \($t.team) \($e.q) seq \($e.seq): "
-        + (if $e.state == "failed" then "not sent — \($e.reason)"
-           else "started without sent > \(($min / 60) | ceil) min (since \($e.since))" end);
-        []; dest($R; "escalation"; null));
-
-def team_signals($R):
-  .now as $now | (.esc_unsent_secs // 180) as $min
-  | .snapshot.teams[]? as $t
-  | select($t.run != null)
-  # A run with its own per-run TeamLead is handled by that lead: neither the global TeamLead nor
-  # single-routing delivery sees its stops. Legacy runs (no lead) are unchanged.
-  | select($t.lead != true)
-  | attention($t; $R), record($t; $R), runner($t; $R), ready($t; $R),
-    escalation($t; $R; $now; $min);
-
-def escalations: [.snapshot.teams[]? as $t | $t.escalations[]? | {team: $t.team} + .];
-
-def epoch: try fromdateiso8601 catch null;
-
-# An unread Advisor reply on an esc-* thread that no live team-escalate.sh waiter will consume.
-def escreply($R):
-  escalations as $E
-  | .esc_mail[]? | strings
-  | ([capture("#(?<id>[0-9]+)")] | .[0]) as $i | ([capture("thread=(?<t>\\S+)")] | .[0]) as $th
-  | select($i != null and $th != null)
-  | ([$E[] | select(.thread == $th.t)] | .[0]) as $e
-  | if $e == null then
-      sig("escreply:\($i.id)"; "escreply"; null; null;
-          "ESCALATION \($th.t): Advisor reply #\($i.id) without a current q"; [];
-          dest($R; "escreply"; null))
-    elif $e.waiter != "live" then
-      sig("escreply:\($i.id)"; "escreply"; $e.team; $e.role;
-          "ESCALATION \($e.team) \($e.q): Advisor reply #\($i.id)"
-          + " without a waiter (\($e.state))"; [];
-          dest($R; "escreply"; null))
-    else empty end;
-
-# One episode per Advisor silence, from ledger facts only: it opens on a timeout after the last
-# recorded Advisor reply and closes only when a new reply moves that point, never on an answer.
-def silence($R):
-  escalations as $E
-  | ([$E[].replies[]? | {s: ., n: epoch} | select(.n != null)] | max_by(.n)) as $last
-  | [ $E[] | . as $e
-      | [.timeouts[]? | epoch | select(. != null and ($last == null or . > $last.n))] as $ts
-      | select($ts | length > 0) | $e + {first: ($ts | min)} ] as $timed
-  | select($timed | length > 0)
-  | [ $timed[] | select((.state | IN("sent", "consumed", "recorded", "revoked")) | not)
-      | select(.last_outcome != "reviewer-fallback") ] as $waiting
-  | sig("advisor-silent:\($last.s // "none")"; "silence"; null; null;
-        "ADVISOR silent since \([$timed[].first] | min | todateiso8601): "
-        + "\($waiting | length) escalation(s) waiting";
-        [$waiting[] | "\(.team) \(.q) tier \(.tier) class \(.class)"];
-        (if single($R) then $R.receiver else "Supervisor" end));
-
-def esc_mail_error($R):
-  .esc_mail_error // empty | strings
-  | sig("err:esc_mail"; "error"; null; null; "ERROR esc_mail: \(.)"; []; dest($R; "error"; null));
+  else "Supervisor" end;
 
 def surfaced_error:
   test("^(team .*: failed|teams: (failed|invalid output)|[a-z0-9-]+/[a-z]+: failed"
@@ -161,5 +52,4 @@ def role_signals($R):
         (if single($R) and $R.receiver != $r then $R.receiver else "Supervisor" end));
 
 (.routing // {mode: "single", receiver: "Supervisor", live: {}}) as $R
-| [ (if .snapshot_error == null then team_signals($R), escreply($R), silence($R) else empty end),
-    mail_signals($R), error_signals($R), esc_mail_error($R), role_signals($R) ]
+| [ mail_signals($R), error_signals($R), role_signals($R) ]

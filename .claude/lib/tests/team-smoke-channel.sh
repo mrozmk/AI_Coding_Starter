@@ -46,10 +46,10 @@ has "skip	.agents/team/escalation.local.json	no adapter at" "$WORK/out" \
 [ ! -e "$ESCF" ] || fail "(2) escalation.local.json written without an adapter"
 ! grep -q '{{' "$WATCH" || fail "(2) an unfilled placeholder"
 jq -e --arg l "$(cd "$LIB" && pwd)" '(._generated | startswith("by team-channel.sh render"))
-  and (.mail.TeamLead | contains("\"" + $l + "/team-mail.sh\" QX inbox --for TeamLeadQx --unread --limit 0"))
-  and (.esc_mail.TeamLead | contains(" from=AdvisorQx "))
-  and (.wake_mail.Advisor | contains("--for AdvisorQx "))
-  and (.mail.Supervisor | contains("--for SupervisorQx "))' "$WATCH" >/dev/null \
+  and (.mail.Supervisor | contains("\"" + $l + "/team-mail.sh\" QX inbox --for SupervisorQx --unread --limit 0"))
+  and (.mail | has("TeamLead") | not) and (has("esc_mail") | not)
+  and (.mail_unread | contains("--for SupervisorQx "))
+  and (.wake_mail.Advisor | contains("--for AdvisorQx "))' "$WATCH" >/dev/null \
   || { cp "$WATCH" "$WORK/out"; fail "(2) watch.local.json content"; }
 ! grep -q 'mail\.sqlite\|agent_mail\.py' "$WATCH" || fail "(2) a box or tool path in the probes"
 
@@ -65,25 +65,24 @@ run "$MAIN" $CH name Advisor; expect 0 "AdvisorQx" "(3) name"
 run "$MAIN" $CH name Opus; expect 2 "must be Supervisor|TeamLead|Advisor|Reviewer" "(3) bad role"
 run "$MAIN" $CH get decisions_dir; expect 0 "$HOME/.agent-mail/main/decisions" "(3) get"
 
-# ---- (4) the probes filter by role: turns wake, esc- replies from the Advisor only -------------
+# ---- (4) the probes filter by role: the split probe passes turns, the single one drops esc- ----
 probe() { run "$MAIN" bash -c "$(jq -r "$1" "$WATCH")"; }
-run "$MAIN" $CH turn Supervisor TeamLead --body "pick up AB-1"
+run "$MAIN" $CH turn Advisor Supervisor --body "pick up AB-1"
 expect 0 "SENT id=" "(4) turn"
-run "$MAIN" bash .claude/lib/team-mail.sh QX send --from AdvisorQx --to TeamLeadQx --kind report \
-  --thread esc-r1-q-1 --body "status: answer"
-expect 0 "SENT id=" "(4) an esc- reply"
-run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to TeamLeadQx --kind report \
+run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to SupervisorQx --kind report \
   --thread esc-r1-q-1 --body "opinion: agree"
-expect 0 "SENT id=" "(4) a Reviewer note on the thread"
-# A turn on an esc- thread: only the TeamLead probe's thread filter can drop it (kind=turn passes).
-run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to TeamLeadQx --kind turn \
+expect 0 "SENT id=" "(4) a Reviewer note on an esc- thread"
+run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to SupervisorQx --kind turn \
   --thread esc-r1-q-1 --body "your turn on the escalation"
 expect 0 "SENT id=" "(4) a turn on an esc- thread"
-probe .mail.TeamLead; expect 0 "from=SupervisorQx kind=turn" "(4) mail probe"
-[ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 1 ] || fail "(4) the mail probe passed an esc- line"
-probe '.esc_mail.TeamLead'; expect 0 "from=AdvisorQx" "(4) esc_mail probe"
-[ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 1 ] || fail "(4) esc_mail passed a non-Advisor line"
-probe .mail.Supervisor; expect 0 "" "(4) empty probe"; [ ! -s "$WORK/out" ] || fail "(4) Supervisor has mail"
+# Split: kind=turn only — the report waits, both turns wake.
+probe .mail.Supervisor; expect 0 "from=AdvisorQx kind=turn" "(4) split mail probe"
+[ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 2 ] && ! grep -q ' kind=report ' "$WORK/out" \
+  || fail "(4) the split probe is not the two turns"
+# Single window: every kind, but never an esc- thread line.
+probe .mail_unread; expect 0 "from=AdvisorQx kind=turn" "(4) single-window probe"
+[ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 1 ] || fail "(4) the single-window probe passed an esc- line"
+probe .wake_mail.Advisor; expect 0 "" "(4) empty probe"; [ ! -s "$WORK/out" ] || fail "(4) the Advisor has mail"
 
 # ---- (5) refusals: stale local half, suffix drift, bad policy ----------------------------------
 cp "$REG" "$WORK/reg.bak"

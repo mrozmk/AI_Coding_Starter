@@ -201,8 +201,8 @@ jq '.permissions.deny -= ["Bash(*notify.sh*)"]' "$SRC/.claude/team/sessions/Supe
   > "$WORK/prof/Supervisor.settings.json"
 run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$WORK/prof" Supervisor
 [ "$RC" != 0 ] && has "notify.sh flush' → prompt, expected deny" "$WORK/out" || fail "(j) a missing deny passed"
-run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$SRC/.claude/team/sessions" Supervisor TeamLead
-expect 0 "TeamLead OK" "(j) the shipped profiles"
+run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$SRC/.claude/team/sessions" Supervisor
+expect 0 "Supervisor OK" "(j) the shipped profile"
 echo "team-smoke-notify: (j) profile deny OK"
 
 # ---- (k) the Herdr channel (#39): spool entry from the registry record, the mod's logic, the installer -

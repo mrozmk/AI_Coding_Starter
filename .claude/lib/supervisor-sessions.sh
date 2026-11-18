@@ -3,7 +3,7 @@
 # tier-1 answer to a role session's own prompt. Starting, stopping and listing roles is roles.sh.
 # Usage: bash .claude/lib/supervisor-sessions.sh materialize <role> | check | preflight | reviewer
 #        bash .claude/lib/supervisor-sessions.sh freeze on <release> | freeze off | freeze status
-#        bash .claude/lib/supervisor-sessions.sh answer TeamLead|Advisor --fp <fp> \
+#        bash .claude/lib/supervisor-sessions.sh answer Advisor --fp <fp> \
 #          yes | no "<reason>" | pick <n> | other "<text>"
 #        bash .claude/lib/supervisor-sessions.sh rollback   (Operator action)
 #   materialize: .agents/team/watch/profiles/<Role>.settings.json from the role's template
@@ -47,27 +47,22 @@ kit_hooks_file() {  # → the installed kit's role-hooks.settings.json, or nothi
 # or merges those keys is not documented, and the deny floor must survive both. The profile's
 # named-read allow goes along with {{CLONES}} expanded: a `/path` rule in a --settings file anchors
 # at that file's directory, so the clones need an absolute `//` path, from the one clone resolver.
-# The TeamLead also gets the PR host's update verbs denied for the configured provider. One profile
-# per role: the template is teams.sessions.<Role>.settings (a team-watch receiver without one uses its
+# One profile per role: the template is teams.sessions.<Role>.settings (a team-watch receiver without one uses its
 # own name), and env.TEAM_SESSION_ROLE is the role, never the template's value. The kit
 # file gives only `.hooks.Stop`: a PreToolUse or PermissionRequest hook could approve a tool call,
 # and an old kit's Notification entry calls a removed hook, so nothing else is ever taken.
 materialize() {
   local r="$1" d="$TW_DIR/profiles" loc="$root/.claude/settings.local.json" out kh=null c
-  local prov pr='[]' kf t=""
+  local kf t=""
   [[ "$r" =~ ^[A-Z][A-Za-z0-9]{1,23}$ ]] || { echo "error: materialize: '$r' is not a role name" >&2; exit 2; }
+  # A teams.sessions.TeamLead declaration would still resolve a template below.
+  [ "$r" != TeamLead ] || { echo "error: materialize: the global TeamLead is retired — the per-run" \
+    "lead's profile is team-lead.sh materialize" >&2; exit 2; }
   if roles_is_declared "$r"; then t="$(roles_cfg "$r" settings)" || exit 2; fi
   [ -n "$t" ] || ! tw_role_ok "$r" || t="$r"
   [ -n "$t" ] || { echo "error: materialize: $r has no settings profile (teams.sessions.$r.settings)" >&2; exit 2; }
   c="$(team_clone_glob "$root")" || { echo "error: materialize $r needs the teams profile" >&2
     exit 2; }
-  prov="$(team_profile_load "$root"; printf '%s' "$TEAM_PR_PROVIDER")"
-  if [ "$r" = TeamLead ]; then
-    case "$prov" in
-      github) pr='["Bash(gh pr merge*)","Bash(gh pr edit*)"]' ;;
-      azure-devops) pr='["Bash(az repos pr update*)"]' ;;
-    esac
-  fi
   kf="$(kit_hooks_file)"
   if [ -n "$kf" ]; then   # the operator kit is optional: without it nothing is merged, silently
     kh="$(jq -ce '.hooks // {} | {Stop} | with_entries(select(.value | arrays))
@@ -77,11 +72,11 @@ materialize() {
   [ -f "$loc" ] || loc=/dev/null
   out="$d/$r.settings.json"
   ( umask 077
-    jq -s --arg c "/$c*" --argjson kh "$kh" --argjson pr "$pr" --arg r "$r" '
+    jq -s --arg c "/$c*" --argjson kh "$kh" --arg r "$r" '
       (.[2] // {}) as $l | [.[0], .[1], $l] as $all
       | {env: ((.[0].env // {}) + {TEAM_SESSION_ROLE: $r}),
          permissions: {allow: [.[0].permissions.allow // [] | .[] | gsub("\\{\\{CLONES\\}\\}"; $c)],
-                       deny: ([$all[] | .permissions.deny // [] | .[]] + $pr | unique),
+                       deny: ([$all[] | .permissions.deny // [] | .[]] | unique),
                        ask: ([$all[] | .permissions.ask // [] | .[]] | unique)}}
       + (if .[0].hooks then {hooks: .[0].hooks} else {} end)
       + (if $kh then {hooks: $kh} else {} end)' \
@@ -96,7 +91,7 @@ role_running() {  # tmux session, or the Supervisor's `here` window
   team_tmux_alive "$(tw_tmux_name "$1")" || ss_running "$1$TEAM_CHANNEL_SUFFIX"
 }
 
-# answer <TeamLead|Advisor> --fp <fp> <action> [text] — the only tier-1 path into a role session's
+# answer Advisor --fp <fp> <action> [text] — the only tier-1 path into a role session's
 # own prompt. Bound to the fingerprint of the block the Supervisor read; any refusal types nothing,
 # and `yes` passes the same check as a team prompt against the role's materialised profile.
 answer() {

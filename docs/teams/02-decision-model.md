@@ -8,7 +8,7 @@ This page explains the model. When it and a contract disagree, the contract wins
 
 ## Per-run TeamLead (pilot)
 
-With `teams.teamlead.enabled=true` the decisions move to each run's own TeamLead: stage → TeamLead → Operator.
+In brainstorm and quick mode the decisions are each run's own TeamLead's: stage → TeamLead → Operator.
 
 - The lead answers every stage question on an **authority**: `class` (a deterministic class, answered by the runner before the lead is woken), `teamlead` (the lead itself) or `operator` (a human-only item, relayed from a pending decision). Every answer lands in `runs/<run>/answers.md`.
 - **Human-only** items never get the lead's approval: settings and permission-profile edits, ask rules the project added beyond the starter's baseline (the production group), egress, irreversible deletes outside the clone. Each one becomes a pending decision `[d-<n>]` and one `human_decision` notification. The Operator answers in the `<team>-lead` window.
@@ -20,7 +20,7 @@ The sections below describe the global TeamLead.
 
 ## The principle
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 **The session that sees the question decides it, unless it is on a short list.**
 
@@ -37,7 +37,7 @@ The model was not designed on paper. The project it was ported from ran one supe
 
 ## The tiers at a glance
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 | Tier | Decides | What lands there |
 |---|---|---|
@@ -85,7 +85,7 @@ Cosmetic changes never get a ticket.
 
 ## The policy log
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 Some tier-1 answers set a precedent: a size-only Phase 0 override, a memory entry, a deferred memory entry, a QA-warnings disposition or a rethink. The TeamLead records each one append-only in `teamlead-policy-log.md`, in the channel's decisions directory. Before answering a question in the same class it reads the log:
 

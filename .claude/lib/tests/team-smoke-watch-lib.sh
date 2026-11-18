@@ -186,10 +186,10 @@ wsess() {  # wsess <td> <team> <run> <role>
     '{team: $t, role: $role, run: $run, attempt: 1, ticket: "AB-1118", input_rev: "",
       launched_at: "2026-10-19T00:00:00Z"}' > "$1/session.json"
 }
-mailcfg() {  # mailcfg <Supervisor cmd> [TeamLead cmd] — the rendered watch.local.json shape
+mailcfg() {  # mailcfg <Supervisor cmd> [Advisor wake cmd] — the rendered watch.local.json shape
   mkdir -p "$MAIN/.agents/team"
-  jq -n --arg s "$1" --arg t "${2:-true}" \
-    '{mail: {Supervisor: $s, TeamLead: $t}, mail_unread: $s, timeout_secs: 10}' \
+  jq -n --arg s "$1" --arg a "${2:-true}" \
+    '{mail: {Supervisor: $s}, wake_mail: {Advisor: $a}, mail_unread: $s, timeout_secs: 10}' \
     > "$MAIN/.agents/team/watch.local.json"
 }
 dead_pid() { sh -c 'exit 0' & local p=$!; wait "$p" 2>/dev/null || true; echo "$p"; }

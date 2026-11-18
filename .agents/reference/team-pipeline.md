@@ -91,10 +91,10 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
 - **`/tasks-status`** is the Supervisor's on-demand report: what waits for the Operator's decision
   (`waiting-operator` escalations) first, then what waits on the team (`attention[]`, PRs awaiting
   merge), then every open task with its team run and PR state. Nothing is pushed — you ask for it.
-- **With a per-run TeamLead** (`teams.teamlead.enabled=true`) the runner starts one lead per run and
+- **The per-run TeamLead** (brainstorm and quick mode): the runner starts one lead per run and
   you work from the Supervisor's inbox instead of `/monitor` — §5a.
-- **`/monitor alfa gamma`** (global TeamLead — applies only with `teams.teamlead.enabled=false`;
-  removed in the retirement step; a separate control session is handy — it is the **TeamLead**) streams
+- **`/monitor alfa gamma`** (global TeamLead — retired: no run reaches it; this text goes with the
+  remaining machinery; a separate control session is handy — it is the **TeamLead**) streams
   progress every 15 s: stage changes, records, permission prompts **with the command on the role's
   screen**, questions, runner stops and ready-for-merge; a 30-minute summary on each re-arm. With
   tiers on (the default) it decides every team question outside the Advisor and Operator lists of
@@ -235,7 +235,7 @@ lock is older than 10 s; the runner never removes a lock by itself (that would r
 
 ## 5a. Per-run TeamLead — the Supervisor's runbook
 
-With `teams.teamlead.enabled=true` (not in mode cli) the runner launches one TeamLead per run before
+In brainstorm and quick mode (not in mode cli) the runner launches one TeamLead per run before
 the first stage and keeps it until the run ends; `supervisor-sessions.sh` never starts it.
 It gates the plan against the order (there is no spec gate — the planner approves its own spec),
 answers the stages on an authority, accepts against the order and orders rework;
@@ -420,7 +420,7 @@ fill the history up to 12.
 
 ## 11. Question escalation tiers
 
-> **global TeamLead** — applies only with `teams.teamlead.enabled=false`; removed in the retirement step.
+> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 Policy: [team-mode.md §10](team-mode.md) (matrix, rules, Operator actions). What the supervisor
 does:

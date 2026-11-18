@@ -3,11 +3,14 @@
 # rework rounds with the runner's round-aware record lookups.
 # Sourced by team-run.sh from the MAIN checkout after its own setup, never executed: every function
 # runs in the runner's shell and uses its globals (TEAM, RUN, MODE, TD, CLONE, root, die, rec,
-# sess_name, codex_home, auto_blocker). Every lead caller is guarded by team_lead_on, so with the
-# switch off (or mode cli) only the record lookups run, always in round 1. Bash 3.2.
+# sess_name, codex_home, auto_blocker). Every lead caller is guarded by team_lead_on, so in mode cli
+# (or a fixture with TEAM_SMOKE_NO_LEAD=1 under TEAM_SMOKE=1) only the record lookups run, always in
+# round 1. Bash 3.2.
 # Contract: .agents/reference/team-lead.md
 
-team_lead_on() { [ "${TEAM_LEAD_ENABLED:-false}" = true ] && [ "$MODE" != cli ]; }
+team_lead_on() {
+  [ "$MODE" != cli ] && ! { [ "${TEAM_SMOKE:-}" = 1 ] && [ "${TEAM_SMOKE_NO_LEAD:-}" = 1 ]; }
+}
 
 # Seconds since the epoch; a fixture clock only under the smoke marker.
 team_now() {
@@ -360,8 +363,8 @@ lead_gate() {
 
 # lead_accepted — the run is ready after the lead's accept and a done wrapup: one `accepted` event
 # to the Supervisor, guarded by runs/<run>/accepted.sent (a resume re-enters cmd_advance). Only when
-# an `acceptance accept` verdict names the accepted qa record: a lead switched on after the qa was
-# accepted wrote no brief, and the event must not point at one.
+# an `acceptance accept` verdict names the accepted qa record: a run resumed with a lead after its
+# qa was accepted without one wrote no brief, and the event must not point at one.
 lead_accepted() {
   local qa f v=""
   [ ! -e "$TD/runs/$RUN/accepted.sent" ] || return 0
@@ -403,7 +406,7 @@ close_run() {
 # $TD/round = {run, round, verdict, pr_published}: the durable round and the acceptance rework verdict
 # that opened it. A round whose run differs from $RUN reads as round 1 (team_run_ref). The runner's
 # record lookups live here too: round n ≥ 2 keeps its records in runs/<run>/r<n>/, the planner's
-# stay in round 1. They run with the switch off as well (always round 1 then).
+# stay in round 1. They run in mode cli and under the fixture seam as well (always round 1 then).
 
 run_ref() { team_run_ref "$TD" "$RUN"; }
 accepted_record() { if [ "$1" = planner ]; then team_accepted_record "$RUN" planner; else team_accepted_record "$(run_ref)" "$1"; fi; }

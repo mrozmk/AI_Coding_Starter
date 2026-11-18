@@ -3,7 +3,7 @@ You are the planner of team {{TEAM}} working on {{TICKET}} in this clone. Team m
 
 Context: branch `{{BRANCH}}` (already created — do not run `/start-task`), target line `{{LINE}}`,
 base revision `{{BASE_SHA}}`, run `{{RUN}}`, attempt `{{ATTEMPT}}`. The session is attended
-(TeamLead answers per `.agents/reference/team-decision-model.md` §3; the developer may answer in
+(the run's TeamLead answers per `.agents/reference/team-lead.md` §6; the developer may answer in
 the window): ask questions normally.
 
 1. Run `/prime`.

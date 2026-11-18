@@ -132,9 +132,8 @@
       "tmux_prefix": "xy",
       "advisor": "pair"
     },
-    "_teamlead_doc": "OPTIONAL — the per-run TeamLead: one lead session per team run that gates the plan against the order, answers the team's questions, accepts the result against the order brief and escalates only human-only decisions to the Operator. enabled: true switches a project from the global TeamLead to the per-run one (default false — nothing changes). human_only: rule groups whose prompts only the Operator answers — settings-profiles (settings and permission-profile changes) and prod-ask (the project's production ask rules); default both. rework_budget.brainstorm / .quick: rework rounds after a rejected acceptance before the Operator decides (defaults 2 and 1). revise_limit: revise verdicts per gate before the lead must escalate (default 3, at least 1). The values below equal the defaults. Contract: .agents/reference/team-lead.md.",
+    "_teamlead_doc": "OPTIONAL — the per-run TeamLead: one lead session per brainstorm or quick run (never in mode cli) that gates the plan against the order, answers the team's questions, accepts the result against the order brief and escalates only human-only decisions to the Operator. human_only: rule groups whose prompts only the Operator answers — settings-profiles (settings and permission-profile changes) and prod-ask (the project's production ask rules); default both. rework_budget.brainstorm / .quick: rework rounds after a rejected acceptance before the Operator decides (defaults 2 and 1). revise_limit: revise verdicts per gate before the lead must escalate (default 3, at least 1). The values below equal the defaults. Contract: .agents/reference/team-lead.md.",
     "teamlead": {
-      "enabled": false,
       "human_only": ["settings-profiles", "prod-ask"],
       "rework_budget": {"brainstorm": 2, "quick": 1},
       "revise_limit": 3

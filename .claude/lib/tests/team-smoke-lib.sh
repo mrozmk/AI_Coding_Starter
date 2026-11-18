@@ -110,7 +110,8 @@ smoke_init() {
   export TEAM_CONFIRM_SECS=0 TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
   export TEAM_GATE_LOCK_POLL=0.1
   # The marker team-escalate.sh requires before it honours TEAM_ESCALATE_UNIT_SECS.
-  export TEAM_SMOKE=1
+  # No per-run TeamLead in a fixture unless the part unsets TEAM_SMOKE_NO_LEAD (the lead parts).
+  export TEAM_SMOKE=1 TEAM_SMOKE_NO_LEAD=1
   # The session-host driver runs only fixture binaries under TEAM_SMOKE=1, and never picks a host
   # by itself: a fake `hc` on PATH must not move an old part off tmux.
   export TEAM_SMOKE_BIN_DIR="$WORK/bin" TEAM_SESSION_HOST=tmux

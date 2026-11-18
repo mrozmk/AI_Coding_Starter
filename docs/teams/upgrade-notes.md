@@ -3,6 +3,31 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The global TeamLead is retired: the switch and the team routes (#22)
+
+**Before:** `teams.teamlead.enabled` (default `false`) picked the model. Off, the global TeamLead
+session ran `/monitor`, team-watch pushed it the team signals (`ATTENTION <team> …`, `RECORD`,
+`RUNNER`, `READY`, `ESCALATION`) and the Advisor's escalation replies, and the wrapup asked its (B)
+memory questions through the Advisor.
+
+**Now:** every brainstorm and quick run has its own per-run TeamLead; mode `cli` has none. The
+profile key is gone: `true` is accepted as a no-op, `false` is refused by every command that loads
+the profile. team-watch has one receiver, the Supervisor (`TW_ROLES`), produces no team or Advisor
+signal, and drops unsent any event of those kinds queued before the upgrade and any event addressed
+to the TeamLead. A `TEAM_SESSION_ROLE=TeamLead` window is refused as a receiver, a `routing.json`
+saying `single TeamLead` reads as `single Supervisor`, the mail guard holds only the Supervisor, and
+`supervisor-sessions.sh` neither materializes nor answers a TeamLead. The escalation scripts, the
+tier ledger, `/monitor` and the permission profiles stay until a later step.
+
+**Action:**
+- Delete `teams.teamlead.enabled` from `.claude/project-profile.json` (`false` is refused).
+- End any global TeamLead window and its armed `session-wake.sh` loop.
+- If the daemon is used, run `bash .claude/lib/team-watch.sh start` once (the version bump
+  restarts it); `team-watch.sh status` names a stale `single TeamLead` routing and its repair.
+- Re-run the operator kit's `install.sh --apply` (`--verify` only compares).
+- Optional: re-render with `/setup:teams` to drop `mail.TeamLead` / `esc_mail` from
+  `watch.local.json` (they are ignored).
+
 ## A run end resolves its notifications; the Supervisor closes operator records (#98)
 
 **Before:** a pending decision of a run that was closed or merged stayed on the Herdr strip and in

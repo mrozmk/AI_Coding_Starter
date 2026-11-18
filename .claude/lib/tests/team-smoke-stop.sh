@@ -88,7 +88,7 @@ has "launched: qa attempt 2" "$WORK/out" && resolved stalled-qa-1 && [ ! -e "$RD
 echo "team-smoke-stop: (2) stalled OK"
 
 # ---- (3) rejected, lead on: the third rings the lead, the runner waits, no Operator event -----------
-prof '.teams.teamlead.enabled = true'
+unset TEAM_SMOKE_NO_LEAD
 mkdir -p "$CLONE/.claude/hooks" "$MAIN/.claude/team/sessions"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
@@ -153,6 +153,5 @@ unset STUB_PANE STUB_TMUX_ALIVE
 qa4 4 "$RD" 8371; rm -f "$TD/lock" "$TD/cancel"; : > "$STUB_LOG"; echo 1000000 > "$WORK/clock"; unset REC2_AT REC3_AT
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate acceptance qa-1-4.json" "(4) the stage's next record validates"
 ! has "rejected: qa-1-4.json" "$WORK/out" || fail "(4) the fixed record was rejected"
-prof '.teams.teamlead.enabled = false'
 echo "team-smoke-stop: (4) lead's list, say, revalidation OK"
 echo "team-smoke-stop: OK"

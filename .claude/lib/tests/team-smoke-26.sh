@@ -14,7 +14,6 @@ smoke_team AB-2600 feature/AB-2600-x
 RUN_ID=alfa-20261116-120000; RD="$TD/runs/$RUN_ID"; SPEC=.agents/specs/s.md; PLAN=.agents/plans/active/p.md
 export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
-prof '.teams.teamlead.enabled = true'
 mkdir -p "$MAIN/.claude/team/sessions"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/lib/tracker-snapshot.mjs" "$CLONE/.claude/lib/"

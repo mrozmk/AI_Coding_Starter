@@ -159,18 +159,21 @@ guard() {  # guard <role or -> [project dir]
   if [ "$r" = - ]; then run "$MAIN" env -u TEAM_SESSION_ROLE CLAUDE_PROJECT_DIR="$d" bash "$GUARD" <<<'{}'
   else run "$MAIN" env TEAM_SESSION_ROLE="$r" CLAUDE_PROJECT_DIR="$d" bash "$GUARD" <<<'{}'; fi
 }
-run "$MAIN" $M send --from SupervisorQx --to TeamLeadQx --kind turn --thread esc-r1-q-9 --body x
-guard TeamLead; expect 0 "" "(G) esc- only"; [ ! -s "$WORK/out" ] || fail "(G) blocked on an esc- turn"
-run "$MAIN" $M send --from Supervisor --to TeamLead --kind turn --thread other --body x
-guard TeamLead; [ ! -s "$WORK/out" ] || fail "(G) blocked on another project's recipient"
-run "$MAIN" $M send --from SupervisorQx --to TeamLeadQx --kind turn --thread work-1 --body x
-guard TeamLead; expect 0 "Unread agent-mail turn for TeamLeadQx" "(G) unread turn blocks"
+run "$MAIN" $M send --from AdvisorQx --to SupervisorQx --kind turn --thread esc-r1-q-9 --body x
+guard Supervisor; expect 0 "" "(G) esc- only"; [ ! -s "$WORK/out" ] || fail "(G) blocked on an esc- turn"
+run "$MAIN" $M send --from Advisor --to Supervisor --kind turn --thread other --body x
+guard Supervisor; [ ! -s "$WORK/out" ] || fail "(G) blocked on another project's recipient"
+run "$MAIN" $M send --from AdvisorQx --to SupervisorQx --kind turn --thread work-1 --body x
+guard Supervisor; expect 0 "Unread agent-mail turn for SupervisorQx" "(G) unread turn blocks"
 jq -e '.decision == "block"' "$WORK/out" >/dev/null || fail "(G) not a block decision"
+# The retired global TeamLead holds nothing, whatever its mail.
+run "$MAIN" $M send --from SupervisorQx --to TeamLeadQx --kind turn --thread work-2 --body x
+guard TeamLead; expect 0 "" "(G) TeamLead"; [ ! -s "$WORK/out" ] || fail "(G) the retired TeamLead was held"
 guard Advisor; [ ! -s "$WORK/out" ] || fail "(G) the Advisor was held"
 guard -; [ ! -s "$WORK/out" ] || fail "(G) a role-less window was held"
 mkdir -p "$WORK/fakeclone/.agents/team"; echo '{}' > "$WORK/fakeclone/.agents/team/team.json"
-guard TeamLead "$WORK/fakeclone"; [ ! -s "$WORK/out" ] || fail "(G) a clone was held"
-mv "$CH" "$WORK/ch.away"; guard TeamLead; [ ! -s "$WORK/out" ] || fail "(G) held without a channel"
+guard Supervisor "$WORK/fakeclone"; [ ! -s "$WORK/out" ] || fail "(G) a clone was held"
+mv "$CH" "$WORK/ch.away"; guard Supervisor; [ ! -s "$WORK/out" ] || fail "(G) held without a channel"
 mv "$WORK/ch.away" "$CH"
 # the team-watch and monitoring layers, stubbed: pending batches, a paused Supervisor
 cp "$LIB/team-watch.sh" "$WORK/tw.real"

@@ -28,7 +28,6 @@ tw_init() {
   TW_SEND_SECS="$(tw_num "${TEAM_WATCH_SEND_SECS:-}" 5 '^[1-9][0-9]*$')"
   TW_LOCK_SECS="$(tw_num "${TEAM_WATCH_LOCK_SECS:-}" 5 '^[1-9][0-9]*$')"
   TW_PICKUP="$(tw_num "${TEAM_WATCH_PICKUP_SECS:-}" 180 '^[0-9]+$')"
-  TW_ESC_UNSENT="$(tw_num "${TEAM_WATCH_ESC_UNSENT_SECS:-}" 180 '^[0-9]+$')"
   TW_PROGRESS="$(tw_num "${TEAM_WATCH_PROGRESS_SECS:-}" 1800 '^[0-9]+$')"
   TW_BATCH_MAX="$(tw_num "${TEAM_WATCH_BATCH_MAX:-}" 25 '^[1-9][0-9]*$')"
   TW_BATCH_BYTES="$(tw_num "${TEAM_WATCH_BATCH_BYTES:-}" 60000 '^[1-9][0-9]*$')"
@@ -126,12 +125,11 @@ tw_routing_json() {  # → {mode, receiver, live: {<role>: bool}}
     receiver: ($m | split(" ")[1] // null), live: $live}'
 }
 
-# tw_inputs <work dir> → <work dir>/in.json = {now, esc_unsent_secs, snapshot, mail, mail_errors,
-# esc_mail, esc_mail_error, snapshot_error, routing, roles} and <work dir>/gen, the routing
-# generation the signals were routed with. A failed read is never data: an empty or invalid
-# snapshot is snapshot_error, a failed esc_mail probe is esc_mail_error.
+# tw_inputs <work dir> → <work dir>/in.json = {snapshot, mail, mail_errors, snapshot_error,
+# routing, roles} and <work dir>/gen, the routing generation the signals were
+# routed with. A failed read is never data: an empty or invalid snapshot is snapshot_error.
 tw_inputs() {
-  local w="$1" se="" rc=0 ep
+  local w="$1" se="" rc=0
   mkdir -p "$TW_DIR/cache"
   rm -f "$w/snap.json"
   tw_gen > "$w/gen"
@@ -144,19 +142,13 @@ tw_inputs() {
     se="team-snapshot.sh wrote no valid snapshot"
   fi
   [ -z "$se" ] || echo null > "$w/snap.json"
-  # Concurrent like tw_mail's probes: two sequential timeouts outlast the dog's 2 × TW_SECS.
-  tw_esc_mail "$w" & ep=$!
   tw_mail "$w"
-  wait "$ep" || true
   tw_role_panes "$w" || echo '{}' > "$w/roles.json"
   jq -n --slurpfile s "$w/snap.json" --slurpfile m "$w/mail.json" \
-    --slurpfile me "$w/mail_err.json" --slurpfile em "$w/esc_mail.json" --arg se "$se" \
+    --slurpfile me "$w/mail_err.json" --arg se "$se" \
     --argjson r "$(tw_routing_json)" \
-    --slurpfile ro "$w/roles.json" \
-    --argjson now "$(tw_now)" --argjson eu "$TW_ESC_UNSENT" '
-    {now: $now, esc_unsent_secs: $eu,
-     snapshot: (if $se == "" then $s[0] else null end), mail: $m[0], mail_errors: $me[0],
-     esc_mail: ($em[0].lines // []), esc_mail_error: $em[0].error,
+    --slurpfile ro "$w/roles.json" '
+    {snapshot: (if $se == "" then $s[0] else null end), mail: $m[0], mail_errors: $me[0],
      snapshot_error: (if $se == "" then null else $se end), routing: $r,
      roles: ($ro[0] // {})}' \
     > "$w/in.json"
