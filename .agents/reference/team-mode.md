@@ -415,7 +415,7 @@ github goes only through `.claude/lib/team-pr.sh` (needs `gh`, `teams.github.rep
 - write `.agents/memory/` — except the `wrapup` role after acceptance per team-decision-model.md §3
   (the hook `guard-team-memory.sh` enforces both);
 - start the app — runtime smoke reports `SKIPPED`;
-- merge a PR (`/pr-merge` or `team-integrate.sh` is the supervisor's);
+- merge a PR (`/pr-merge` or `team-integrate.sh` is the supervisor's) or run the trunk writers `team-merge-check.sh`, `team-integrate.sh`, `team-integrate-lock.sh` or `team-automerge-check.sh` — `guard-team-verdict.sh` refuses them in a role session, whatever `workflow.team_merge` says;
 - push to a protected branch;
 - delete the clone or `.agents/team/`.
 

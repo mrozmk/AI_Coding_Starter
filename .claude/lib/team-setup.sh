@@ -5,7 +5,8 @@
 # re-registration and the wake-loop Stop hook — + the egress guard under `Bash` and `WebFetch` and
 # the destructive-SQL guard under `Bash`, both guards with `"onFailure": "block"`) and the role
 # `permissions.allow` / Operator `ask` rules into `settings.json`, the three trunk writers omitted
-# and removed under the profile's `workflow.team_merge: auto`, ignores `.agents/team/` and the fallback mail
+# and removed under the profile's `workflow.team_merge: auto` (role sessions are refused them by
+# `guard-team-verdict.sh` either way), ignores `.agents/team/` and the fallback mail
 # box `.agents/agent-mail/`, and seeds `.claude/codex-profile` and `.claude/claude-profile`. It NEVER overwrites a file the target already has — a difference is a
 # `conflict` with a diff, for a hand merge. A `retired` file is deleted only while it is byte for
 # byte a version the starter shipped; a changed one is a `conflict`, never deleted.
@@ -410,7 +411,8 @@ NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
   # Under workflow.team_merge=auto (the owner answer to /setup:start) the three are left out and
-  # removed — the roles in the clones then lose the prompt too.
+  # removed — the roles in the clones lose the prompt, but guard-team-verdict.sh refuses the trunk
+  # writers (and team-automerge-check.sh) from any role session.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
      "Bash(bash .claude/lib/team-merge-check.sh*)"] as $merge
   | ((if $tm == "auto" then [] else $merge end) + [

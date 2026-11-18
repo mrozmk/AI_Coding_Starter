@@ -1,7 +1,19 @@
 #!/bin/bash
-# PreToolUse(Bash) guard — in a team clone only this run's TeamLead session runs team-verdict.sh
-# and team-answer.sh on an authority (--authority class|teamlead|operator), and changes the run's
-# pending decisions (team-lead.sh decision open|answer|withdraw).
+# PreToolUse(Bash) guard with two rules for a team clone.
+#
+# 1. Trunk writers — in a role session (.agents/team/session.json exists) a command naming
+# team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh or team-automerge-check.sh is
+# refused, whatever the ask rules and workflow.team_merge say: under team_merge=auto the roles lose
+# the prompt, and the scripts check only that the *target* team is idle, never the caller. The rule
+# is a fail-closed allowlist: each command segment naming one passes only as an inspection form
+# (git -C? add|diff|show|log|status|grep|ls-files|blame|commit|rm|mv, cat, head, tail, grep, wc, ls,
+# diff, shellcheck, bash|sh -n) with no $( or backtick and no prefix. Best effort: a path in a
+# variable or a renamed copy never shows the name. The main checkout and a clone between stages
+# pass untouched.
+#
+# 2. Verdicts — only this run's TeamLead session runs team-verdict.sh and team-answer.sh on an
+# authority (--authority class|teamlead|operator), and changes the run's pending decisions
+# (team-lead.sh decision open|answer|withdraw).
 #
 # Problem it solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
@@ -15,10 +27,32 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 [ -f "$ROOT/.agents/team/team.json" ] || exit 0
 PAYLOAD=$(cat)
 # Cheap pre-filter: this hook runs on every Bash call in a clone.
-case "$PAYLOAD" in *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*) ;; *) exit 0 ;; esac
+case "$PAYLOAD" in
+  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*) ;;
+  *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*) ;;
+  *) exit 0 ;;
+esac
 refuse() { echo "$*" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "verdict guard needs jq — refused"
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
+
+TRUNK='team-(merge-check|integrate|integrate-lock|automerge-check)\.sh'
+if [ -f "$ROOT/.agents/team/session.json" ] && [[ "$CMD" =~ $TRUNK ]]; then
+  TRUNK_MSG="team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh and team-automerge-check.sh are the Supervisor's — run them from the main checkout, never from a role session (refused)"
+  # Matched on the segment with quoted spans masked; bash|sh -n takes file operands only.
+  INSPECT='^[[:space:]]*(git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(add|diff|show|log|status|grep|ls-files|blame|commit|rm|mv)([[:space:]]|$)|(cat|head|tail|grep|wc|ls|diff|shellcheck)([[:space:]]|$)|(bash|sh)[[:space:]]+-n([[:space:]]+[^-[:space:]][^[:space:]]*)+[[:space:]]*$)'
+  { . "$(dirname "$0")/lib/git-segments.sh" && command -v git_segments >/dev/null; } 2>/dev/null \
+    || refuse "$TRUNK_MSG — git-segments.sh missing"
+  while IFS= read -r seg; do
+    [[ "$seg" =~ $TRUNK ]] || continue
+    case "$seg" in *'$('*|*'`'*) refuse "$TRUNK_MSG" ;; esac
+    masked=$(printf '%s' "$seg" | sed -E "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g")
+    [[ "$masked" =~ $INSPECT ]] || refuse "$TRUNK_MSG"
+  done <<EOF_TRUNK
+$(git_segments "$CMD")
+EOF_TRUNK
+fi
+
 # Only an invocation — the script name followed by a gate — is checked, so git add, bash -n, cat or
 # grep on the file pass (a team working on the starter itself touches it).
 INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event|wrapup)([^a-z]|$)'

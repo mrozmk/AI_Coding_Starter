@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
 done
 
 STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke
-  cost-tests guard-team-egress-test guard-destructive-sql-test guard-leak-smoke team-audit-test
+  cost-tests guard-team-egress-test guard-team-trunk-test guard-destructive-sql-test guard-leak-smoke team-audit-test
   gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
   finder-model-test check-impl-contract-test team-inbox-test herdr-dock-test notify-resolve-test
   prime-probes-test
