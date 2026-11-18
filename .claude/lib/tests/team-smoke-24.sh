@@ -34,6 +34,7 @@ T0="$WORK/t0"; touch "$T0"
 
 smoke_team AB-2400 feature/AB-2400-x
 BR=feature/AB-2400-x; SUP="$MAIN/.agents/team/inbox/Supervisor/new"; OB="$HOME/.agent-comms/outbox"
+FIX_RUNS=()  # every fixture run id, appended by fresh(); the outside-the-fixture guard matches them
 export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions/operator-kit" "$CLONE/.claude/hooks"
@@ -126,7 +127,7 @@ events() { grep -h '^event: ' "$SUP"/* 2>/dev/null | sed 's/^event: //' | sort |
 notified() { ls "$OB/events" 2>/dev/null | grep -c '\.json$' || true; }  # notify.sh events (fixture HOME)
 nev() { jq -r "$1" "$OB/events/"*.json 2>/dev/null; }
 fresh() {  # fresh <run id> <mode> — a new run, a fresh stub log, no inbox, no notifications
-  RUN_ID="$1"; RD="$TD/runs/$RUN_ID"
+  RUN_ID="$1"; RD="$TD/runs/$RUN_ID"; FIX_RUNS+=("$1")
   jq --arg m "$2" '.mode = $m' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
   rm -rf "$TD/session.json" "$TD/acked" "$TD/verdict-acked" "$TD/round" "$MAIN/.agents/team/inbox" "$OB" \
     "$WORK"/pane-*
@@ -356,14 +357,39 @@ echo "team-smoke-24: off (switch off) OK"
 
 # ---- nothing outside the fixture ------------------------------------------------------------------
 REAL="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-# Live sessions on this machine write ~/.agent-comms and ~/.agent-mail all the time: there a newer
-# file only fails when it carries this fixture (its scratch path or its ticket).
-for d in "$REAL/.agent-comms" "$REAL/.agent-mail"; do
-  [ ! -d "$d" ] || [ -z "$(find "$d" -type f -newer "$T0" -exec grep -lF -e "$WORK" -e AB-2400 {} + 2>/dev/null)" ] \
-    || fail "a fixture file appeared under $d"
+fixture_files() {  # fixture_files <dir> — files newer than $T0 that carry a fixture id in their path (relative to <dir>) or contents
+  [ -d "$1" ] || return 0
+  local ids=("$WORK" AB-2400 "${FIX_RUNS[@]}") pats=() f i
+  for i in "${ids[@]}"; do pats+=(-e "$i"); done
+  find "$1" -type f -newer "$T0" 2>/dev/null | while IFS= read -r f; do
+    for i in "${ids[@]}"; do
+      case "${f#"$1"/}" in *"$i"*) echo "$f"; continue 2 ;; esac
+    done
+    ! grep -qF "${pats[@]}" "$f" 2>/dev/null || echo "$f"
+  done
+}
+# Self-check: live-run-shaped files must not hit, each fixture-shaped file must.
+G="$WORK/guard-check"; mkdir -p "$G/miss/runs/alfa-20990101-000000" "$G/hit3/runs/${FIX_RUNS[0]}" "$G/hit1" "$G/hit2" "$G/hit4"
+printf '## Learnings\n- x\n' > "$G/miss/runs/alfa-20990101-000000/notes.md"
+printf 'prompt\n' > "$G/miss/attention"
+printf '{"run":"alfa-20990101-000000","round":2}\n' > "$G/miss/round"
+printf '## Gate misses\n' > "$G/miss/runs/alfa-20990101-000000/teamlead-notes.md"
+printf '%s/x\n' "$WORK" > "$G/hit1/f"
+printf 'AB-2400\n' > "$G/hit2/f"
+printf '## Gate misses\n' > "$G/hit3/runs/${FIX_RUNS[0]}/teamlead-notes.md"
+printf '{"run":"%s","round":2}\n' "${FIX_RUNS[1]}" > "$G/hit4/round"
+[ -z "$(fixture_files "$G/miss")" ] || fail "guard self-check: a live-run file hit: $(fixture_files "$G/miss" | head -n 1)"
+for i in 1 2 3 4; do
+  [ "$(fixture_files "$G/hit$i" | wc -l | tr -d ' ')" = 1 ] || fail "guard self-check: fixture file hit$i missed"
 done
-[ ! -d "$SRC/.agents/team" ] || [ -z "$(find "$SRC/.agents/team" -newer "$T0" -print -quit 2>/dev/null)" ] \
-  || fail "a file appeared under the worktree's .agents/team"
+echo "team-smoke-24: guard self-check OK"
+# Live sessions on this machine write ~/.agent-comms and ~/.agent-mail all the time, and a live team
+# run writes the worktree's .agents/team: a newer file there only fails when it carries a fixture id.
+for d in "$REAL/.agent-comms" "$REAL/.agent-mail"; do
+  [ -z "$(fixture_files "$d")" ] || fail "a fixture file appeared under $d"
+done
+[ -z "$(fixture_files "$SRC/.agents/team")" ] \
+  || fail "a fixture file appeared under the worktree's .agents/team: $(fixture_files "$SRC/.agents/team" | head -n 1)"
 [ "$HOME" != "$REAL" ] || fail "the part ran with the real HOME"
 echo "team-smoke-24: no file outside the fixture OK"
 echo "team-smoke-24: OK"
