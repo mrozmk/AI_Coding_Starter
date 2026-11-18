@@ -46,6 +46,15 @@ refused './.claude/lib/team-integrate.sh beta'
 refused 'source .claude/lib/team-integrate-lock.sh'
 refused "bash -n -c 'bash .claude/lib/team-integrate.sh'"
 refused "git -c alias.x='!bash .claude/lib/team-integrate.sh' x"
+# a segment without the name runs the script fed by an allowed one
+refused 'cat .claude/lib/team-integrate.sh | bash -s beta'
+refused 'ls .claude/lib/team-integrate.sh | xargs -I{} bash {} beta'
+refused 'bash -n +n .claude/lib/team-integrate.sh beta'
+# a quote, backslash or variable hides an option from bash -n; git grep -O runs a pager command
+refused 'bash -n "+n" "-c" "bash .claude/lib/team-integrate.sh beta"'
+refused 'bash -n \+n .claude/lib/team-integrate.sh beta'
+refused 'bash -n $X .claude/lib/team-integrate.sh beta'
+refused "git grep -O'bash .claude/lib/team-integrate.sh beta;' -e x -- f"
 
 # --- role session: inspection forms pass
 passes 'bash -n .claude/lib/team-integrate.sh'
@@ -56,6 +65,7 @@ passes 'git -C ../AI_Coding_Starter diff .claude/lib/team-integrate.sh'
 passes 'git commit -m "fix(team): team-integrate.sh x"'
 passes 'bash .claude/lib/team-integrate-lib.sh'
 passes 'git status'
+passes 'grep -n lock .claude/lib/team-integrate.sh | head -5'
 
 # --- no role session: no-op
 expect 0 between "" 'bash .claude/lib/team-integrate.sh beta'
