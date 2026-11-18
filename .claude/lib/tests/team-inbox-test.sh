@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline test of .claude/lib/team-inbox.sh's queue verbs: list, done, and write's publication
+# Offline test of .claude/lib/team-inbox.sh's queue verbs: list, done, prune, and write's publication
 # (a unique name, never over an existing message, a parallel writer takes the next -n).
 # The script runs from a fixture lib dir without session-host.sh, so write never rings anything
 # (`ring: 127`); `date` is a stub, so every write lands in the same second.
@@ -68,6 +68,28 @@ ids=$(cat "$D/new"/20261115T120020Z-Supervisor-session_dead* | sed -n 's/^id: //
 msgs=$(cat "$D/new"/20261115T120020Z-Supervisor-session_dead* | grep -c '^m[0-9]*$')
 ok '[ "$cnt" = 20 ] && [ "$ids" = 20 ] && [ "$msgs" = 20 ]' "20 parallel writes in one second keep 20 messages ($cnt files, $ids ids, $msgs bodies)"
 ok '[ -z "$(ls -A "$D/tmp")" ]' "tmp/ holds no leftover"
+
+# ---- prune: done/ by age, every address, never tmp/ or new/ (#106) ------------------------------
+B="$M/.agents/team/inbox/Supervisor"
+mkdir -p "$B/done" "$B/new" "$B/tmp" || die "second address"
+for f in "$D/done/old-a.md" "$B/done/old-b.md" "$D/new/old-new.md" "$B/tmp/old-tmp.md"; do
+  echo old > "$f" && touch -t 202001010000 "$f" || die "old file $f"
+done
+echo recent > "$B/done/recent.md" || die "recent file"
+out=$(ti --main "$M" prune --days 100000 2>&1); rc=$?
+ok '[ "$rc" = 0 ] && [ -f "$D/done/old-a.md" ] && [ -f "$B/done/old-b.md" ]' "prune --days N keeps messages younger than N days"
+out=$(ti --main "$M" prune 2>&1); rc=$?
+ok '[ "$rc" = 0 ] && [ ! -e "$D/done/old-a.md" ] && [ ! -e "$B/done/old-b.md" ]' \
+  "prune (default 30 days) deletes old done/ messages of every address"
+ok '[[ "$out" == "pruned: 2 done/ message(s) older than 30 day(s)"* ]]' "prune reports the count ($out)"
+ok '[ -f "$B/done/recent.md" ] && [ -f "$D/done/$(basename "$p0")" ]' "prune keeps recent done/ messages"
+ok '[ -f "$D/new/old-new.md" ] && [ -f "$B/tmp/old-tmp.md" ]' "prune never touches new/ or tmp/"
+out=$(ti --main "$M" prune --days x 2>&1); rc=$?
+ok '[ "$rc" = 2 ]' "prune --days with a non-number exits 2"
+out=$(mkdir -p "$T/fresh/.agents" && ti --main "$T/fresh" prune 2>&1); rc=$?
+ok '[ "$rc" = 0 ] && [[ "$out" == "pruned: 0 "* ]]' "prune with no inbox yet prunes nothing, exit 0"
+out=$(cd "$C" && PATH="$T/bin:$PATH" bash "$T/lib/team-inbox.sh" prune 2>&1); rc=$?
+ok '[ "$rc" = 2 ] && [[ "$out" == *"team clone"* ]]' "prune in a team clone without --main exits 2"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "team-inbox-test: OK ($n checks)"

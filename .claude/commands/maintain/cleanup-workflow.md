@@ -183,6 +183,9 @@ Memory pruning runs at **two granularities, in this order**:
 - **Section 2B — file-level (per-file).** Archive whole memory files that have gone cold per the
   read-telemetry sidecar. Quarterly archive `archive/YYYY-Q<N>/<file>`.
 
+Then **Section 2C** prunes the team inbox's handled messages (`done/`) by age — not memory, but
+the same housekeeping pass.
+
 **Order matters: 2A → 2B.** Prune entries in living files first, then judge whole dead files — a
 file emptied by 2A becomes an obvious 2B candidate in the same run. The two archive schemes differ
 on purpose (entries vs whole files); both are historical-only and never auto-loaded.
@@ -437,6 +440,22 @@ Archive created/updated:
   .agents/memory/archive/2026-Q2/domain-deploy.md (whole file)
 ```
 
+### Section 2C — Team inbox: prune `done/` by age
+
+Handled supervision messages collect under `.agents/team/inbox/<address>/done/` in the main
+checkout (git-ignored, per machine). Run this only when `.claude/lib/team-inbox.sh` and
+`.agents/team/inbox/` both exist and the checkout is not a team clone (no
+`.agents/team/team.json`) — otherwise print `2C: no team inbox — skipped` and go on:
+
+```bash
+bash .claude/lib/team-inbox.sh prune
+```
+
+It deletes `done/` messages older than 30 days (file mtime) for every address and never touches
+`tmp/` or `new/`; `--days N` changes the age. No per-file question and no archive: a handled
+message is a delivered doorbell, its substance lives in the file its `ref` points at. Print the
+script's `pruned: …` line as the 2C output.
+
 ---
 
 ## Phase 3: Workflow Health Warnings
@@ -688,6 +707,7 @@ After all 5 phases:
 ## Phase 2: Memory pruning
    2A entries:  <K> kept, <A> archived, <D> deleted, <S> skipped.
    2B files:    <A> archived, <P> pinned, <R> reset, <S> skipped.
+   2C inbox:    <N> done/ messages pruned (or skipped — no team inbox).
    Archives: <list of created archive files / dirs (2A daily, 2B quarterly)>.
 
 ## Phase 3: Workflow health
@@ -712,7 +732,7 @@ After all 5 phases:
 
 - **Use `rg`, never `grep` or `find`** — for *searching*. A bounded single-file field extraction (`head -N | grep -m1 '^key:'`, `wc -l | awk '{print $1}'`) is not a search and is exempt, both from the rule and from Phase 4.2's contradiction check.
 - **Phase 1: no auto-fix.** Suggestions only — user repairs manually.
-- **Phase 2: archive is the default.** Delete only on explicit user choice.
+- **Phase 2: archive is the default.** Delete only on explicit user choice. The one exception is 2C: handled team-inbox messages older than the age limit are deleted without a question.
 - **Phase 2 runs 2A (entry-level) before 2B (file-level).** 2A cuts stale entries from living files (daily archive `archive/<file>-YYYY-MM-DD.md`); 2B archives whole cold files (quarterly archive `archive/YYYY-Q<N>/`). Both schemes coexist by design.
 - **Phase 2B: archive is the default for cold files.** `Pin` and `Keep, reset` are the only telemetry *writes* the command makes (frontmatter flip / sidecar bump); everything else only reads the sidecar.
 - **Phase 3: no actions.** Pure signal — let the user decide. 3.6 measures `CLAUDE.md` and flags narrative; it moves nothing.

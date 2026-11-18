@@ -6,6 +6,9 @@
 #        bash .claude/lib/team-inbox.sh [--main <dir>] close-run <address> <run>
 #   close-run: a run ended (finalize, the runner's close_run) — its messages (frontmatter `run:`)
 #   move from new/ to done/, so the prompt hook and the team's next lead stop counting them.
+#        bash .claude/lib/team-inbox.sh [--main <dir>] prune [--days N]
+#   prune: housekeeping (/maintain:cleanup-workflow) — deletes done/ messages of every address
+#   whose mtime is older than N days (default 30); tmp/ and new/ are never touched.
 #   <main>/.agents/team/inbox/<address>/{tmp,new,done}/; write builds
 #   <UTC %Y%m%dT%H%M%SZ>-<from>-<event>[-n].md in tmp/, links it into new/, then rings the address's
 #   session through session-host.sh send (rc on stderr `ring: <rc>`, never the exit: the file is
@@ -16,13 +19,17 @@
 # Contract: .agents/reference/team-lead.md §3
 set -euo pipefail
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 LIB="$(cd "$(dirname "$0")" && pwd)"
 MAIN=""
 if [ "${1:-}" = --main ]; then [ $# -ge 2 ] || usage; MAIN="$2"; shift 2; fi
-[ $# -ge 2 ] || usage
-cmd="$1" addr="$2"; shift 2
-[[ "$addr" =~ ^[A-Za-z0-9-]+$ ]] || { echo "error: address '$addr' must match [A-Za-z0-9-]+" >&2; exit 2; }
+[ $# -ge 1 ] || usage
+cmd="$1" addr=""; shift
+if [ "$cmd" != prune ]; then
+  [ $# -ge 1 ] || usage
+  addr="$1"; shift
+  [[ "$addr" =~ ^[A-Za-z0-9-]+$ ]] || { echo "error: address '$addr' must match [A-Za-z0-9-]+" >&2; exit 2; }
+fi
 if [ -z "$MAIN" ]; then
   MAIN="$(git rev-parse --show-toplevel)"
   [ ! -f "$MAIN/.agents/team/team.json" ] \
@@ -108,5 +115,19 @@ case "$cmd" in
       mv "$f" "$D/done/$(basename "$f")" && n=$((n + 1))
     done
     echo "closed: $n message(s) of run $1 → $D/done" ;;
+  prune)
+    days=30
+    while [ $# -gt 0 ]; do
+      case "$1" in --days) [ $# -ge 2 ] || usage; days="$2"; shift 2 ;; *) usage ;; esac
+    done
+    [[ "$days" =~ ^[0-9]+$ ]] || { echo "error: --days must be a whole number, not '$days'" >&2; exit 2; }
+    n=0; I="$MAIN/.agents/team/inbox"
+    for dd in "$I"/*/done; do
+      [ -d "$dd" ] || continue
+      while IFS= read -r f; do
+        rm -f "$f" && n=$((n + 1))
+      done < <(find "$dd" -maxdepth 1 -type f -name '*.md' -mmin +$((10#$days * 1440)))
+    done
+    echo "pruned: $n done/ message(s) older than $days day(s) under $I" ;;
   *) usage ;;
 esac
