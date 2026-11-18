@@ -142,16 +142,10 @@ class RuntimeMarkTest(unittest.TestCase):
                 self.mark(*args)
                 key = "parent_model" if flag == "--parent-model" else "model"
                 self.assertEqual(self.lines()[-1][key], value)
-        written = len(self.lines())
-        args = list(SUB)
-        args[args.index("--model") + 1] = "a" * 257
-        proc = self.mark(*args)
-        self.assertEqual(len(self.lines()), written)
-        self.assertIn("runtime-mark:", proc.stderr)
 
     def test_subagent_bad_field_skips_line(self):
         for flag, value in (("--session", "not-a-uuid"), ("--agent-type", "a b"),
-                            ("--parent-model", ""), ("--model", "x;y")):
+                            ("--parent-model", ""), ("--model", "x;y"), ("--model", "a" * 257)):
             args = list(SUB)
             args[args.index(flag) + 1] = value
             with self.subTest(flag=flag):
