@@ -359,13 +359,10 @@ echo "team-smoke-24: off (switch off) OK"
 REAL="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
 fixture_files() {  # fixture_files <dir> — files newer than $T0 that carry a fixture id in their path (relative to <dir>) or contents
   [ -d "$1" ] || return 0
-  local ids=("$WORK" AB-2400 "${FIX_RUNS[@]}") pats=() f i
-  for i in "${ids[@]}"; do pats+=(-e "$i"); done
+  local pats=(-e "$WORK" -e AB-2400) f r
+  for r in "${FIX_RUNS[@]}"; do pats+=(-e "$r"); done
   find "$1" -type f -newer "$T0" 2>/dev/null | while IFS= read -r f; do
-    for i in "${ids[@]}"; do
-      case "${f#"$1"/}" in *"$i"*) echo "$f"; continue 2 ;; esac
-    done
-    ! grep -qF "${pats[@]}" "$f" 2>/dev/null || echo "$f"
+    if printf '%s\n' "${f#"$1"/}" | grep -qF "${pats[@]}" || grep -qF "${pats[@]}" "$f" 2>/dev/null; then echo "$f"; fi
   done
 }
 # Self-check: live-run-shaped files must not hit, each fixture-shaped file must.
@@ -385,11 +382,9 @@ done
 echo "team-smoke-24: guard self-check OK"
 # Live sessions on this machine write ~/.agent-comms and ~/.agent-mail all the time, and a live team
 # run writes the worktree's .agents/team: a newer file there only fails when it carries a fixture id.
-for d in "$REAL/.agent-comms" "$REAL/.agent-mail"; do
-  [ -z "$(fixture_files "$d")" ] || fail "a fixture file appeared under $d"
+for d in "$REAL/.agent-comms" "$REAL/.agent-mail" "$SRC/.agents/team"; do
+  [ -z "$(fixture_files "$d")" ] || fail "a fixture file appeared under $d: $(fixture_files "$d" | head -n 1)"
 done
-[ -z "$(fixture_files "$SRC/.agents/team")" ] \
-  || fail "a fixture file appeared under the worktree's .agents/team: $(fixture_files "$SRC/.agents/team" | head -n 1)"
 [ "$HOME" != "$REAL" ] || fail "the part ran with the real HOME"
 echo "team-smoke-24: no file outside the fixture OK"
 echo "team-smoke-24: OK"
