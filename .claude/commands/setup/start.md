@@ -97,7 +97,7 @@ Shaping rule: 3 screens, ≤4 questions each — yields only when a detected val
    Potwierdzam każdy merge (Recommended) · Automatycznie / I confirm each merge (Recommended) · Automatically
    *Dotyczy tylko równoległych zespołów AI (`/setup:teams`). Potwierdzam: kroki `team-merge-check.sh`, `team-integrate.sh` i `team-integrate-lock.sh` czekają na Twoje kliknięcie (reguły `ask`). Automatycznie: te trzy reguły znikają z `.claude/settings.json` — także dla ról w klonach zespołów. Merge w Azure DevOps (`/pr-merge`) i decyzja Supervisora o auto-merge ich nie czytają.* / *Only for the parallel AI teams (`/setup:teams`). I confirm: the `team-merge-check.sh`, `team-integrate.sh` and `team-integrate-lock.sh` steps wait for your click (`ask` rules). Automatically: those three rules are removed from `.claude/settings.json` — for the roles in the team clones too. The Azure DevOps merge (`/pr-merge`) and the Supervisor's auto-merge decision do not read them.* → `workflow.team_merge` (`confirm` | `auto`)
 
-**Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart; the LSP activation gate from step 6b, when a manifest is present; the role-session restart from step 9, when it changes the settings). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
+**Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart; the LSP activation gate from step 6b, when a manifest is present; the step 9 restart and commit + push for the team clones, when it changes the settings; the `teams` compatibility notes from A.3, when any). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
 
 ### A.3 Derive the profile
 
@@ -111,7 +111,12 @@ Expand the answers into `.claude/project-profile.json` (schema and field docs: `
 - `commands`: `pr` = `git_host != none || <user keeps PR tooling>` (with `git_host=none` recommend **keep**), `jira` = `tracker == jira`, `confluence`, `codex` = the Screen 2 answer, `qa_runtime_ui` = `true` (because `app_surface=unknown`).
 - `workflow.team_merge` = the Q7 answer (`confirm` | `auto`).
 
-Show the full profile and the `commands.*` manifest on Screen 3. Write the file only after **Approve and run**.
+Show the full profile and the `commands.*` manifest on Screen 3. Write the file only after **Approve and run**. No profile yet → write `schema` plus the derived keys. An existing profile → merge with `jq` (write to a temp file in `.claude/`, then move it over): each derived top-level key replaces its value, `workflow` is merged key by key (`.workflow = ((.workflow // {}) + $d.workflow)`), every key A.3 does not derive is kept (`teams` from `/setup:teams`, `ba`, `status_report`, `jira`, `workflow.tracker_comments` and the other opt-ins the example documents), and A.3 never deletes a key. Why: a fresh write drops the `teams` block, and step 9 then skips a changed Q7.
+
+With a kept `teams` block (no new question):
+
+- Q4 tracker ≠ `teams.tracker` → the top-level `tracker` is written as answered, but the effective tracker stays `teams.tracker` (`team-tracker.sh` and `/start-task` read it while a `teams` block exists). Screen 3 lists "change `teams.tracker` with `/setup:teams`" under manual steps; the Report repeats it under human TODOs.
+- `tracker=github` + No Project while `teams.tracker=github` and the profile has no `teams.github` → the top-level `github` block keeps its six Project fields (the team layer reads that block and requires them — `.claude/commands/setup/teams.md`); Screen 3 says so. Otherwise No Project writes the block without them.
 
 ---
 
@@ -213,7 +218,7 @@ After all groups: run the six reference sweeps from `.claude/commands/maintain/c
 
 **`mkdir -p` the destination directory first** (`docs/`, `.github/`, `.bitbucket/`, `.gitlab/merge_request_templates/` — none exists in a fresh clone; idempotent).
 
-**9. Team merge rules.** The three rules: `Bash(bash .claude/lib/team-merge-check.sh*)`, `Bash(bash .claude/lib/team-integrate.sh*)`, `Bash(bash .claude/lib/team-integrate-lock.sh*)`. Requires `jq`; absent → `skipped(jq not on PATH — edit permissions.ask in .claude/settings.json by hand: …)` with the three strings. Profile has no `teams` object → `skipped(team layer not installed — /setup:teams applies workflow.team_merge)`. Otherwise edit `.claude/settings.json` with `jq` (write to a temp file in `.claude/`, then move it over): `auto` → remove exactly the three strings from `.permissions.ask`; `confirm` → add each one missing. Nothing changed → `kept`; else `created (<auto: 3 ask rules removed | confirm: N ask rules added>)` plus the human step "running role sessions keep their materialized copy of the ask list — restart them: `bash .claude/lib/roles.sh stop <role>`, then `/roles`".
+**9. Team merge rules.** The three rules: `Bash(bash .claude/lib/team-merge-check.sh*)`, `Bash(bash .claude/lib/team-integrate.sh*)`, `Bash(bash .claude/lib/team-integrate-lock.sh*)`. Requires `jq`; absent → `skipped(jq not on PATH — edit permissions.ask in .claude/settings.json by hand: …)` with the three strings. Profile has no `teams` object → `skipped(team layer not installed — /setup:teams applies workflow.team_merge)`. Otherwise edit `.claude/settings.json` with `jq` (write to a temp file in `.claude/`, then move it over): `auto` → remove exactly the three strings from `.permissions.ask`; `confirm` → add each one missing. Nothing changed → `kept`; else `created (<auto: N ask rules removed | confirm: N ask rules added>)` — N is the number of exact strings actually removed or added — plus the human step "running role sessions keep their materialized copy of the ask list — restart them: `bash .claude/lib/roles.sh stop <role>`, then `/roles`; team clones are cut from `origin/<trunk>` and read their own committed `.claude/settings.json` — commit and push this change before the next team run, else the clones' roles keep the old ask list".
 
 ---
 
@@ -259,7 +264,7 @@ UI-heavy product: `/design-ui` after `/architect` for the critical flow's key sc
 
 ## Re-run (profile exists, or `--rerun`)
 
-- Show the current profile as a table; for each screen ask **keep / change**. Changed answers re-derive the profile (A.3) and re-run Phase B — steps report `kept` for anything already in place.
+- Show the current profile as a table; for each screen ask **keep / change**. Changed answers re-derive the profile (A.3 merges into the existing file — keys it does not derive stay) and re-run Phase B — steps report `kept` for anything already in place.
 - Enabled → disabled for a group: the normal pruning path (step 7).
 - A profile without `workflow.team_merge` shows Q7 as `confirm (default)`; changing it re-runs step 9.
 - **Disabled → enabled for a pruned group is refused.** Print exactly: `Group <x> was pruned. To restore: remove its paths from .claude/.starter-sync.json → excluded, then run /maintain:sync-from-starter — it re-offers them.` Restoring is not built into this command.
@@ -274,7 +279,7 @@ Terminal report, in the chosen language:
 1. Profile summary (one line per top-level field).
 2. Phase B table — step · status · detail. **The table never truncates.**
 3. Pruned groups and the paths recorded in `excluded`; groups kept because of unclassifiable hits, with the hits.
-4. Human TODOs: the `! cp .env.example .env && chmod 600 .env` line, keys to fill, restart; the step 6b activation gate, when a manifest was present; the step 9 role-session restart, when printed.
+4. Human TODOs: the `! cp .env.example .env && chmod 600 .env` line, keys to fill, restart; the step 6b activation gate, when a manifest was present; the step 9 human step (role-session restart, commit + push for the clones), when printed; the A.3 `teams` compatibility notes, when any.
 5. The Phase C list.
 
 Do not repeat the interview transcript. Reference-sweep leftovers, if any, go under item 3 verbatim — never summarised away.
