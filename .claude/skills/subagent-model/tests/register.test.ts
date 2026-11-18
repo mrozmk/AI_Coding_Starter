@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { AgentSpawnInput, AgentSpawnResult } from 'claude-code'
 
-import { DEFAULT_TABLE, type Deps, decide, family, onSpawn, parseConfig, resolveRoot } from '../hooks/register'
+import { DEFAULT_TABLE, type Deps, decide, family, findRoot, onSpawn, parseConfig, resolveRoot } from '../hooks/register'
 
 const FABLE = 'claude-fable-5-2[1m]'
 const ON = { table: DEFAULT_TABLE }
@@ -103,6 +103,22 @@ test('resolveRoot takes the git top level, else the start directory', async () =
   expect(resolveRoot('/wt/sub', 0, '/wt\n')).toBe('/wt')
   expect(resolveRoot('/x', 128, '')).toBe('/x')
   expect(resolveRoot('/x', 0, '  ')).toBe('/x')
+})
+
+test('findRoot: the start profile wins, else the git top level, else the start directory', async () => {
+  const probed: string[] = []
+  let gitCalls = 0
+  const io = (hasProfile: boolean, git: () => Promise<{ exitCode: number; stdout: string }>) => ({
+    exists: async (p: string) => { probed.push(p); return hasProfile },
+    git: () => { gitCalls++; return git() },
+  })
+  expect(await findRoot('/mono/app', io(true, async () => ({ exitCode: 0, stdout: '/mono\n' })))).toBe('/mono/app')
+  expect(gitCalls).toBe(0)
+  expect(probed).toEqual(['/mono/app/.claude/project-profile.json'])
+  expect(await findRoot('/repo/src', io(false, async () => ({ exitCode: 0, stdout: '/repo\n' })))).toBe('/repo')
+  expect(await findRoot('/x', io(false, async () => ({ exitCode: 128, stdout: '' })))).toBe('/x')
+  expect(await findRoot('/x', io(false, async () => { throw new Error('git: not found') }))).toBe('/x')
+  expect(gitCalls).toBe(3)
 })
 
 type Call = { e: AgentSpawnInput }

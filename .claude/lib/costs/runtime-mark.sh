@@ -21,7 +21,8 @@ TICKET_RE='^([A-Z][A-Z0-9]+-[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|[A-Za-
 RUN_RE='^[a-z0-9]+-[0-9]{8}-[0-9]{6}$'
 ATTEMPT_RE='^[0-9]{1,3}$'
 TOOL_USE_RE='^[A-Za-z0-9_]{1,128}$'
-MODEL_RE='^[A-Za-z0-9._:@/-]{1,64}(\[[0-9a-z]{1,8}\])?$'
+# 1–256 base chars (provider ARNs, Vertex paths); {1,256} exceeds RE_DUP_MAX (255) on macOS and breaks the regex.
+MODEL_RE='^[A-Za-z0-9._:@/-]{0,255}[A-Za-z0-9._:@/-](\[[0-9a-z]{1,8}\])?$'
 
 # The end step a command runs (no --session) is a no-op before any dependency check: silent even
 # without $AGENT_COSTS_HOME or jq. The stage hook records that call with --session itself.

@@ -130,6 +130,25 @@ class RuntimeMarkTest(unittest.TestCase):
             "v": 1, "type": "subagent", "session": SID, "agent_type": "general-purpose",
             "parent_model": "claude-fable-5-2[1m]", "model": "claude-opus-5-5"})
 
+    def test_subagent_long_provider_ids(self):
+        arn = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3d4e5f6"
+        vertex = "projects/p/locations/us-east5/publishers/anthropic/models/claude-opus-5-5"
+        self.assertGreater(len(arn), 64)
+        for flag, value in (("--parent-model", arn), ("--model", vertex),
+                            ("--model", "a" * 256), ("--model", "a" * 256 + "[1m]")):
+            args = list(SUB)
+            args[args.index(flag) + 1] = value
+            with self.subTest(flag=flag, value=value):
+                self.mark(*args)
+                key = "parent_model" if flag == "--parent-model" else "model"
+                self.assertEqual(self.lines()[-1][key], value)
+        written = len(self.lines())
+        args = list(SUB)
+        args[args.index("--model") + 1] = "a" * 257
+        proc = self.mark(*args)
+        self.assertEqual(len(self.lines()), written)
+        self.assertIn("runtime-mark:", proc.stderr)
+
     def test_subagent_bad_field_skips_line(self):
         for flag, value in (("--session", "not-a-uuid"), ("--agent-type", "a b"),
                             ("--parent-model", ""), ("--model", "x;y")):
