@@ -73,8 +73,16 @@ echo "team-smoke-10: (b) race re-check OK"
 printf '## Follow-ups\n- [planner 1] split the remode doc — team-pipeline.md\n' > "$RD/notes.md"
 prec failed "too big for quick: spans 9 files"
 echo planner-1-1.json > "$TD/acked"
+# The remoded run's notifications are resolved; another run's are not.
+for r in "$RUN_ID" alfa-20990101-000000; do
+  run "$MAIN" bash .claude/lib/notify.sh human_decision --project smk --team alfa --ticket AB-1260 --run "$r" \
+    --decision x-1 --summary s --answer alfa-lead --main "$MAIN"; expect 0 "written" "seed a notification"
+done
 run "$MAIN" $REMODE alfa brainstorm
 expect 0 "next:     /start-team alfa" "remode succeeds"
+NST="$HOME/.agent-comms/outbox/state"
+[ -f "$NST/smk_alfa_${RUN_ID}_x-1.resolved" ] && [ ! -e "$NST/smk_alfa_alfa-20990101-000000_x-1.resolved" ] \
+  || { ls "$NST" > "$WORK/out" 2>&1; fail "remode did not resolve exactly the remoded run's notifications"; }
 [ "$(jq -r .mode "$TD/team.json")" = brainstorm ] || fail "remode left the mode"
 [ "$(jq -r .base_sha "$TD/team.json")" = "$BASE" ] || fail "remode changed base_sha"
 [ "$(jq -r .branch "$TD/team.json")" = "$BR" ] || fail "remode changed the branch"

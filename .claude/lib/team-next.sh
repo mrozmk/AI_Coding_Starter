@@ -162,6 +162,7 @@ bash "$root/.claude/lib/team-audit.sh" "$team" --final archived \
   || echo "warn: TeamLead of $team did not end — check: tmux has-session -t =$team-lead" >&2
 
 # The state files are git-ignored, so switching first leaves them in place for the archive.
+old_run="$(cat "$TD/run" 2>/dev/null || true)"
 git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 archive="$TD/archive/$old_ticket-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
@@ -170,6 +171,8 @@ for f in runs run acked cancel team.json merge-check-build.log roles.override.js
   round verdict-acked lead-dead relaunch-lead; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
 done
+# Only now: a .resolved marker is permanent, and a failed switch above leaves the run live.
+[ -z "$old_run" ] || bash "$root/.claude/lib/notify.sh" resolve --team "$team" --run "$old_run" --all >/dev/null 2>&1 || true
 # The ended run's session records and doorbell registrations (the next run's start writes new ones).
 for r in planner coder qa wrapup cli lead; do
   rm -f "$root/.agents/team/registry/$team-$r.json" "$root/.agents/team/registry/$team-$r.reg.json"

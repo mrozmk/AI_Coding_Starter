@@ -321,8 +321,21 @@ reset; lead_json
 for f in teamlead.settings.json round verdict-acked lead-dead relaunch-lead; do echo x > "$TD/$f"; done
 rm -f "$CLONE/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/guard-teamlead-bash.sh"
 mkdir -p "$MAIN/.agents/team/registry"; echo '{}' > "$MAIN/.agents/team/registry/alfa-coder.json"; echo '{}' > "$LREG"
+# The archived run's notifications are resolved, another run's are not; x-k: (h)'s x-1 is resolved.
+for r in "$RUN_ID" alfa-20990102-000000; do
+  run "$MAIN" bash .claude/lib/notify.sh human_decision --project smk --team alfa --ticket AB-1 --run "$r" \
+    --decision x-k --summary s --answer alfa-lead --main "$MAIN"; expect 0 "written" "(k) seed a notification"
+done
+NST="$HOME/.agent-comms/outbox/state"
+# A failed switch leaves the run in place, so its notifications stay open.
+STUB_GIT_FAIL_DIR="$CLONE" STUB_GIT_FAIL_CMD=switch \
+  run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop
+expect 128 "forced switch failure" "(k) team-next with a failing switch"
+[ ! -e "$NST/smk_alfa_${RUN_ID}_x-k.resolved" ] || fail "(k) a failed switch resolved the still-live run's notifications"
 run "$MAIN" perl -e 'alarm 30; exec @ARGV' bash .claude/lib/team-next.sh alfa AB-1501 feature/AB-1501-y origin/develop
 expect 0 "was AB-1500" "(k) team-next"
+[ -f "$NST/smk_alfa_${RUN_ID}_x-k.resolved" ] && [ ! -e "$NST/smk_alfa_alfa-20990102-000000_x-k.resolved" ] \
+  || { ls "$NST" > "$WORK/out" 2>&1; fail "(k) team-next did not resolve exactly the archived run's notifications"; }
 for f in teamlead.json teamlead.settings.json round verdict-acked lead-dead relaunch-lead; do
   [ ! -e "$TD/$f" ] || fail "(k) $f left at the team-dir root"
 done

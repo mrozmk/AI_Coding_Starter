@@ -135,6 +135,8 @@ for f in runs run acked cancel session.json teamlead.json teamlead.settings.json
   round verdict-acked lead-dead relaunch-lead; do
   [ ! -e "$TD/$f" ] || mv "$TD/$f" "$archive/"
 done
+# The archived run's Operator items are moot (best effort, after the move as in team-next).
+bash "$root/.claude/lib/notify.sh" resolve --team "$team" --run "$old_run" --all >/dev/null 2>&1 || true
 # The team stays: only the lead's doorbell registration goes (the stage records are reused).
 rm -f "$root/.agents/team/registry/$team-lead.reg.json"
 
