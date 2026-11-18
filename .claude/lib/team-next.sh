@@ -161,8 +161,8 @@ bash "$root/.claude/lib/team-audit.sh" "$team" --final archived \
 (cd "$root" && bash .claude/lib/team-lead.sh end "$team") >/dev/null 2>&1 \
   || echo "warn: TeamLead of $team did not end — check: tmux has-session -t =$team-lead" >&2
 
-# The state files are git-ignored, so switching first leaves them in place for the archive.
 old_run="$(cat "$TD/run" 2>/dev/null || true)"
+# The state files are git-ignored, so switching first leaves them in place for the archive.
 git -C "$dir" switch --quiet --no-track -c "$branch" "$base"
 archive="$TD/archive/$old_ticket-$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$archive"
