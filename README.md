@@ -126,8 +126,9 @@ The rules are enforced by scripts, not by prompts.
 
 ```text
 /setup:teams           install the team layer into your project
+/roles                 start or restore the supervision role sessions
 /start-team alfa PROJ-142   start team "alfa" on a ticket
-/monitor               watch all teams: progress, questions, work ready to merge
+/tasks-status          see where every task stands: what waits for you, what blocks Done
 ```
 
 Optional, and only when you need it. Details: [Parallel AI teams](docs/teams/README.md).
