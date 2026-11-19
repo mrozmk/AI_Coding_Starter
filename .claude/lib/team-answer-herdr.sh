@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # The Herdr half of team-answer.sh: typing and `other` through the session-host driver. Sourced by
-# team-answer.sh (its globals: PANE_ID, KEYS, ATTEMPT, JOURNAL, T, name; its helpers: refuse, stop,
+# team-answer.sh (its globals: PANE_ID, KEYS, T, name; its helpers: refuse, stop,
 # send_key, type_text). Not run on its own.
 # herdr_type <text> — hc send pastes and submits in one step (the driver prints typed+submitted), so
 # there is no typed-text check and no Enter; delivery is confirmed from the transcript instead: a
 # new user message holding the text (hc may wrap it in an <hc from=…> tag).
 herdr_type() {
   local i=$((KEYS + 1)) out size=0 n=0 max
-  [ -z "$JOURNAL" ] || echo "$ATTEMPT try $i type (herdr)" >> "$JOURNAL"
   [ "$T" = - ] || [ ! -f "$T" ] || size="$(wc -c < "$T" | tr -d ' ')"
   # Refused (9) on an open prompt or an empty status (a startup dialog may be open): the driver's
   # one-line reason lands in the refuse/stop message below.
@@ -16,7 +15,7 @@ herdr_type() {
     [ "$KEYS" -gt 0 ] || refuse 6 "type failed: ${out:-no answer}"
     echo "error: type failed at key $i (${out:-no answer}) — $KEYS keys sent" >&2; exit 4
   fi
-  KEYS=$i; [ -z "$JOURNAL" ] || echo "$ATTEMPT ok $i" >> "$JOURNAL"
+  KEYS=$i
   [ "$T" != - ] || { echo "typed+submitted (no transcript to confirm)"; return 0; }
   max=$(( ${TEAM_TYPED_SECS:-5} * 5 ))
   while [ "$n" -lt "$max" ]; do
@@ -38,7 +37,6 @@ print(hit)' "$T" "$size" "$1" 2>/dev/null)" != yes ] || { echo "typed+submitted 
 # possible, so deny it (esc, as `no`), wait until the prompt is gone, then the text on the idle input.
 herdr_other() {
   local n=0 max=$(( ${TEAM_TYPED_SECS:-5} * 5 ))
-  [ -z "$JOURNAL" ] || echo "$ATTEMPT other→deny+message (herdr)" >> "$JOURNAL"
   echo "other→deny+message (herdr)"
   send_key Escape
   while [ "$(sh_herdr_state "$PANE_ID")" = blocked ]; do

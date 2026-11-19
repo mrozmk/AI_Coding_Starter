@@ -16,7 +16,7 @@ set -euo pipefail
 
 usage() { sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] || usage
-# Anything that is not a subcommand is a team list for the no-daemon poller (/monitor without a
+# Anything that is not a subcommand is a team list for the no-daemon poller (without a
 # daemon, and the rollback target).
 case "$1" in
   start|register|status|stop|mode|ack|done|ping|pending|routing|stats|run|dog|tick|signals) ;;
@@ -217,7 +217,7 @@ set_mode() {  # set_mode <tiers|answering> <on|off>
   echo "team-watch: $1 $2"
 }
 
-set_class() {  # set_class <name> <on|off> — a tier-1 class switch, same lock as set_mode
+set_class() {  # set_class <name> <on|off> — a class switch, same lock as set_mode
   local s
   tw_lock || { echo "error: team-watch state lock busy" >&2; exit 1; }
   s="$(tw_state_json)" || refuse_state

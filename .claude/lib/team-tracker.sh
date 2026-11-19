@@ -36,7 +36,7 @@ team_tracker_profile_load "$root"
 
 TMP="$(mktemp -d)"
 LOCK=""
-# `rm -rf`, not `rmdir`: the lock dir holds a `pid` file, like team_q_lock's.
+# `rm -rf`, not `rmdir`: the lock dir holds a `pid` file, like team-send-lock.sh's.
 cleanup() { [ -z "$LOCK" ] || rm -rf "$LOCK"; rm -rf "$TMP"; }
 trap cleanup EXIT
 

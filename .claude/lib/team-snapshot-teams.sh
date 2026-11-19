@@ -15,7 +15,7 @@ pane_prompt_kind() {
 }
 
 # team_actions <team> <role> <status> <prompt kind> → JSON array of copyable commands. For
-# `attention` they follow the pane in /monitor's order: menu → pick/other, permission prompt →
+# `attention` they follow the pane in the order a reader acts on them: menu → pick/other, permission prompt →
 # yes/no, else say. An unreadable kind uses the greps; menu first there: a Yes/No
 # AskUserQuestion also matches team_prompt_open's `❯ 1. Yes`.
 team_actions() {

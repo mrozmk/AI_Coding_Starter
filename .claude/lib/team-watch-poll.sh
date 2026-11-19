@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Watch one or more teams and print one line per state change: the event stream /monitor arms as
+# Watch one or more teams and print one line per state change: the event stream armed as
 # a Monitor when no team-watch daemon pushes into this session (the single-window flow and the
 # rollback target). team-watch.sh hands any non-subcommand argument list to this script.
 #

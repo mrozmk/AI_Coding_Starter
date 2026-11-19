@@ -2,12 +2,11 @@
 
 > **Not the delivery path for role messages any more.** A role message is an inbox file rung by the
 > session-host doorbell ([session-host.md](../../.agents/reference/session-host.md) §12); `/roles`
-> starts no daemon. The daemon below runs only when started by hand for `/monitor`
+> starts no daemon. The daemon below runs only when started by hand
 > (`bash .claude/lib/team-watch.sh start`) and is retired in a later release.
 
 **Contract:**
-- [`team-watch.md`](../../.agents/reference/team-watch.md): the daemon, signals, batches, routing, alarms, ledgers, pause, hooks, env knobs, wire format.
-- [`monitor.md`](../../.claude/commands/monitor.md): what a receiver does with a batch (single routing).
+- [`team-watch.md`](../../.agents/reference/team-watch.md): the daemon, signals, batches, routing, alarms, ledgers, pause, hooks, env knobs, wire format; what a receiver does with a batch is its § Supervisor.
 
 ## The shape
 
@@ -20,7 +19,7 @@
 
 Acks, alarms and the routing are computed outside every LLM, from ledgers in `<main>/.agents/team/watch/`.
 
-`/monitor` handles the pushed messages and no longer polls: a single window starts the daemon itself with `team-watch.sh start`, and role sessions get it from `bash .claude/lib/monitoring.sh start` (the `/monitoring` command is gone; see `01-roles-and-sessions.md`).
+The receiver handles the pushed messages and does not poll: a single window starts the daemon itself with `team-watch.sh start`, and role sessions get it from `bash .claude/lib/monitoring.sh start` (the `/monitoring` command is gone; see `01-roles-and-sessions.md`).
 
 | Command | Use |
 |---|---|
@@ -31,7 +30,7 @@ Acks, alarms and the routing are computed outside every LLM, from ledgers in `<m
 | `team-watch.sh routing split` / `routing single <role>` | the handover |
 | `team-watch.sh stop` | stop the dog, then the daemon, and mark every receiver inactive |
 
-The Operator verbs (`routing`, `stop`, `register --takeover`, `mode answering`, `mode class`) are ask-tier in a project's settings. Everything else is allow-tier.
+The Operator verbs (`routing`, `stop`, `register --takeover`, `mode answering`, `mode class`) are ask-tier in a project's settings. Everything else is allow-tier. Since the question ledger was removed (#22 slice 3) the `mode tiers` and `mode answering` switches gate no sender; they go with the daemon.
 
 ## Signals and the open-interval rule
 
@@ -47,7 +46,7 @@ The full table, with each head's destination in split routing, is in [`team-watc
 
 ## Routing
 
-- **`single Supervisor`**: the default, when no `routing.json` exists. One window runs `/monitor` and receives everything.
+- **`single Supervisor`**: the default, when no `routing.json` exists. One window receives everything.
 - **`routing split`**: the Supervisor gets every non-mail signal and every alarm, and mail goes to its addressee.
 - **`routing single <role>`**: one receiver gets everything, except a prompt of that receiver's own session, which goes to the Supervisor.
 
@@ -59,7 +58,7 @@ The full table, with each head's destination in split routing, is in [`team-watc
 
 The next tick replays the open state to the new receiver. A role registered while it is not routed is `standby`.
 
-**Rollback** to the single window: `team-watch.sh routing single Supervisor`, then `/monitor` in that window.
+**Rollback** to the single window: `team-watch.sh routing single Supervisor`, then `team-watch.sh register` in that window.
 
 ## Receivers and acks
 
@@ -124,8 +123,6 @@ Delivered text stays untrusted data. The receiving CLI frames it as a peer messa
 ## Language
 
 The protocol is English only: signal heads, batch and alarm lines, the `WAKE` message and every `status` line. No Polish form is emitted or parsed, so there is no alias table at this layer.
-
-Polish aliases live one layer up, in what a receiver accepts from the Operator, and English stays canonical. Examples are "approve <team>" ("zatwierdź <team>") and "revoke <team> q-<n> — <reason>" ("cofnij <team> q-<n> — <powód>"). The full list is in [`monitor.md`](../../.claude/commands/monitor.md).
 
 ## Known limits
 

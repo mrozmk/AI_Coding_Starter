@@ -55,7 +55,7 @@ SGR = re.compile(r"\x1b\[([0-9;:]*)m")
 # The cursor sits on the suggestion's first character as one inverse cell; tmux closes it with
 # the next SGR (`\x1b[0;2m`), not with 27.
 INVERSE_CELL = re.compile(r"\x1b\[(?:0;)?7m([^\x1b])(?:\x1b\[(?:0;)?27m)?(?=\x1b\[([0-9;:]*)m)")
-MULTI = "multi-question menu — answer in the window (tier 3)"
+MULTI = "multi-question menu — answer in the window"
 RECOVER = {"Bash": ("Bash command", re.compile(r"^Do you want to proceed\?$")),
            "Edit": ("Edit file", re.compile(r"^Do you want to make this edit to (?P<n>.+)\?$")),
            "Write": ("Create file",

@@ -8,7 +8,7 @@
 # TW_SESSION_ROLES adds the session roles that are no receiver; TW_PANE_ROLES are the role
 # sessions whose own prompts the daemon scans (the Supervisor answers them).
 # TW_LEGACY is only the name of the default single receiver: no routing.json = `single Supervisor`,
-# the single-window /monitor. It is a real role that acks; nothing iterates it next to TW_ROLES.
+# the Supervisor's window. It is a real role that acks; nothing iterates it next to TW_ROLES.
 
 TW_ROLES="Supervisor"
 TW_PANE_ROLES="Advisor"

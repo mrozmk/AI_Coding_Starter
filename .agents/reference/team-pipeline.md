@@ -62,7 +62,7 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   with ([codex-spawn.md → Codex profile](codex-spawn.md#codex-profile)). The same holds for
   `CLAUDE_CONFIG_DIR`: an optional `.claude/claude-profile` in the main checkout names it, else the
   runner forwards its own value; it is recorded as `claude_config_dir` in the role's `session.json`,
-  where the transcript readers (`team-answer`, `team-question`) take it from.
+  where the transcript readers (`team-answer`) take it from.
   Per ticket, without a commit: `/start-team alfa ABC-787 --roles planner=claude-fable-5-1/high`
   (or `bash .claude/lib/team-run.sh alfa roles …` on a running team) writes the clone's
   `.agents/team/roles.override.json`, merged per role and key over `roles.json`; validated at write
@@ -92,22 +92,7 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   first, then what waits on the team (`attention[]`, PRs awaiting
   merge), then every open task with its team run and PR state. Nothing is pushed — you ask for it.
 - **The per-run TeamLead** (brainstorm and quick mode): the runner starts one lead per run and
-  you work from the Supervisor's inbox instead of `/monitor` — §5a.
-- **`/monitor alfa gamma`** (global TeamLead — retired: no run reaches it; this text goes with the
-  remaining machinery; a separate control session is handy — it is the **TeamLead**) streams
-  progress every 15 s: stage changes, records, permission prompts **with the command on the role's
-  screen**, questions, runner stops and ready-for-merge; a 30-minute summary on each re-arm. With
-  tiers on (the default) it decides every team question outside the Advisor and Operator lists of
-  team-decision-model.md §3 and prints one line each, sends only those lists to the Advisor and
-  brings you only Operator actions (§11). Answer there: "approve alfa", "reject alfa —
-  reason", "answer alfa: …" (accepted aliases: "zatwierdź alfa", "odrzuć alfa — powód",
-  "odpowiedz alfa: …"; `team-answer.sh` / `team-question.sh`, allow-tier; they act only when the
-  role's screen still shows that question); "revoke alfa q-3 — reason" (alias "cofnij alfa q-3 —
-  powód") revokes a supervisor answer. `/monitor --tiers off alfa` = the old behaviour: nothing is answered without
-  your explicit words.
-- **On `ready`, `/monitor` prints a 5-line summary** (team · ticket · what was coded · what it
-  gives · QA + PR) plus a `Supervisor decisions:` count line and a "TeamLead decisions" section,
-  ending `Merge <team>?`. The summary's prose is in the developer's language (profile `language`).
+  you work from the Supervisor's inbox — §5a.
 
 ## 1. One-time setup
 
@@ -201,9 +186,8 @@ bash .claude/lib/session-host.sh hint alfa-runner   # how to watch it
 
 or from the supervisor session with `run_in_background`. Open the planner
 (`bash .claude/lib/session-host.sh hint alfa-planner`), answer `/brainstorm` and `/plan-feature`, detach; the runner moves
-on to coder, qa and wrapup by itself. With `/monitor` running (tiers on), the planner's questions
-can also be answered by the supervisor (tier 1) or the analysts (tier 2), who answer or ask the
-Operator themselves; attaching still works. Wrapup opens its window with a plain summary of the run (also
+on to coder, qa and wrapup by itself. With a per-run TeamLead the run's lead answers the planner's
+questions (§5a); attaching still works. Wrapup opens its window with a plain summary of the run (also
 posted as a Jira comment) and asks one question only when it recommends memory or new tickets.
 
 `bash .claude/lib/team-run.sh alfa status` prints team, run, newest record per role, live
@@ -332,7 +316,7 @@ The procedure:
    `jq -r .teams.test_gate .claude/project-profile.json` is not `none`; green = both exit 0. With
    `origin/<line>` an ancestor of the commit, that tree is what the PR merge produces;
 5. green → plain push, check `git ls-remote origin refs/heads/<branch>` equals the tested sha;
-   the merge is then an Operator action (`team-mode.md` §10): the Operator merges the PR in the
+   the merge is then an Operator action: the Operator merges the PR in the
    provider's UI after checking `git ls-remote origin refs/heads/<line>`
    still equals the target sha from step 1 (moved → repeat from step 1). Red → stop, nothing
    pushed; bring the output to the Operator.
@@ -418,32 +402,7 @@ hung ADO costs one timeout per snapshot, not one per finished team. Finished sub
 for 10 min after `finished_at`; the snapshot never drops a finish younger than 10 min, older ones
 fill the history up to 12.
 
-## 11. Question escalation tiers
-
-> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
-
-Policy: [team-mode.md §10](team-mode.md) (matrix, rules, Operator actions). What the supervisor
-does:
-
-- **Tier 1** — TeamLead decides every team question outside the Advisor and Operator lists of
-  team-decision-model.md §3 and prints `alfa q-3 (tier 1): <question> → <answer>`.
-- **Tier 2 / 3** — the Advisor escalation path is removed; the run's TeamLead answers on an
-  authority ([team-lead.md](team-lead.md) §6).
-- **Operator actions** — `ask`-tier / egress / production prompts, merge, deploy, your
-  scripts, window recovery: one line in this session with the command or screen in the
-  developer's language + the offer, as before. Never a decision question.
-
-**Where questions live:** `../<repo>-<team>/.agents/team/runs/<run>/questions/q-<n>.md` (binding,
-summary, screen, `## Answer` / `## Revoked`); tier 1/2 answers also go to the
-notes' `## Supervised decisions` and from there to the PR body, the wrapup's Jira summary
-(`## Supervisor decisions`) and the `/monitor` ready line. `bash .claude/lib/team-question.sh alfa list`
-prints every question with its tier and state and a `total=` count line.
-
-**Revoke:** "revoke alfa q-3 — reason" (alias "cofnij alfa q-3 — powód") →
-`team-question.sh alfa revoke q-3 --why "<reason>"`. It
-records `## Revoked` and, when the role is idle on the same attempt with no prompt open, types the
-revoke text (undo, treat as material, wait); otherwise it says it was not delivered — tell the role
-yourself. The question is then tier 3 (you decide).
+## 11. Sender binding
 
 **Menu keystroke check (once, attended):** in a scratch tmux session with Claude Code, ask a
 single-question `AskUserQuestion` with 3 options, run `bash .claude/lib/team-answer.sh <team>
@@ -461,19 +420,7 @@ prompt (ABA) refuses with zero keys. A clipped or unknown prompt is `unreadable`
 identical pending calls are `ambiguous` — both are Operator actions. The egress gate refuses a
 `Fetch`/`WebFetch` prompt and any Bash command naming `curl`, `wget`, `ssh`, `scp`, `rsync` or `nc`
 as a word, also as a path segment (`tools/curl/…`): such a false positive costs one Operator
-action by design. Delivery states and `retry`: [team-questions.md](team-questions.md) item 3.
-
-**Prompt binding check (once, attended):** in a scratch tmux session with Claude Code on a test
-role, trigger a harmless `echo binding-check` permission prompt, run `team-question.sh <team> open
-<role> --kind permission --anchor "echo binding-check" --summary x`, let some output change above the
-prompt (a spinner or a new log line is enough), then `answer q-<n> --tier 1 --author
-supervisor --why test --send yes`: it must deliver once and end `state=consumed` with
-`confirmed: yes (tool_result)`; a second `answer` must say `already answered`. Team roles report
-this check `SKIPPED` (team-mode §9).
-
-**Latency:** a planner `AskUserQuestion` reaches `/monitor` only through Claude Code's
-`idle_prompt` notification (an `ATTENTION` event of the 15 s poll), so the supervisor reacts when
-that fires, not instantly.
+action by design.
 
 ## 12. Machine gate lock and run audit
 
@@ -498,10 +445,9 @@ project profile does a flagged or sampled final run get one detached, report-onl
 session `helper:retro-<run>` (prompt `.claude/team/prompts/retro-run.md`) — a Claude session, so a cost the
 project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_clean`, model).
 
-**Team supervision layer.** The question ledger and the tiers work from
-one `/monitor` window. The durable signal daemon is [team-watch.md](team-watch.md): with its loops
-running, it pushes `[team-watch #<n>]` batches into the registered role sessions, and `/monitor`
-is the handling contract of those messages (the single window starts the daemon itself). The role
+**Team supervision layer.** The durable signal daemon is [team-watch.md](team-watch.md): with its loops
+running, it pushes `[team-watch #<n>]` batches into the registered role sessions, and
+[team-watch.md § Supervisor](team-watch.md#supervisor) is the handling contract of those messages. The role
 sessions — launcher, profiles, preflight — are [supervisor-sessions.md](supervisor-sessions.md);
 the operator kit is a separate layer.
 

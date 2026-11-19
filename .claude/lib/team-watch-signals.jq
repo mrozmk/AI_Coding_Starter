@@ -43,8 +43,8 @@ def mail_signals($R):
     else sig("mail:\($r):" + .; "mail"; null; null; "MAIL \($r) " + .; []; dest($R; "mail"; $r))
     end;
 
-# A role session's own prompt or menu: the Supervisor decides (tier 1 via the session launcher's
-# answer); single routing keeps it with the receiver unless the receiver is the one asking.
+# A role session's own prompt or menu: the Supervisor decides, or the Operator in that window;
+# single routing keeps it with the receiver unless the receiver is the one asking.
 def role_signals($R):
   (.roles // {}) | to_entries[] | .key as $r | .value as $p
   | sig("ratt:\($r):\($p.sub):\($p.fp)"; "role-attention"; null; $r;

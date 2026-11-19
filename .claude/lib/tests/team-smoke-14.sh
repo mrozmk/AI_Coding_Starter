@@ -25,7 +25,7 @@ pj() {  # pj <pane> <transcript|-> <jq condition> <label>
   $PY parse --transcript "$2" < "$1" > "$WORK/p.json"
   jq -e "$3" "$WORK/p.json" >/dev/null || { cp "$WORK/p.json" "$WORK/out"; fail "$4: $3"; }
 }
-ev() {  # ev <pane> <tool_use id|ambiguous> <label> — the event team-question open records
+ev() {  # ev <pane> <tool_use id|ambiguous> <label> — the event the sender binds
   local got
   $PY parse --transcript "$T" < "$1" > "$WORK/p.json"
   got="$($PY event "$T" permission < "$WORK/p.json")"

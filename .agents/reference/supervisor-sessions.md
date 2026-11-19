@@ -5,15 +5,15 @@
 > [session-host.md](session-host.md) and the role contracts in [roles/](roles/supervisor.md). The
 > `supervisor-sessions.sh` launch verbs (`start`, `up`, `here`, `stop`, `status`) are deprecated
 > pointers to `roles.sh` and go in the next release. `materialize`, `check`, `preflight`, `freeze`,
-> `rollback` and `answer` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The tmux tables below describe the
+> `rollback` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The tmux tables below describe the
 > old launcher.
 
-The single-window `/monitor` (one session receives every team signal, talks to the Operator, runs
+The single supervision window (one session receives every team signal, talks to the Operator, runs
 the teams) is split into long-lived role sessions with fixed roles. Identity is
 `TEAM_SESSION_ROLE`, set by the launcher; **scripts, not models**, enforce the routing, the pickup
 alarms, the modes, the permissions and the merge gate. The supervision layer is opt-in on top of
 the single-window flow (routing `single Supervisor`). Mechanics of the push channel:
-[team-watch.md](team-watch.md); tiers: [team-mode.md](team-mode.md) §10; the decision model:
+[team-watch.md](team-watch.md); the decision model:
 [team-decision-model.md](team-decision-model.md); the mail channel: [agent-mail.md](agent-mail.md).
 
 | Session | tmux | Role | team-watch pushes |
@@ -58,20 +58,15 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
 - the **automatic merge** after QA ready ([Auto-merge](#auto-merge)); tracker bookkeeping;
 - releases ordered by the Operator, with `supervisor-sessions.sh freeze on <release>` before and
   the Operator's `freeze off` after the post-check;
-- its own tier 2/3 questions (not a team's) to the Advisor by plain agent-mail;
+- its own questions (not a team's) to the Advisor by plain agent-mail;
 - the alarms: `UNPICKED` / `STALLED` / `RECEIVER … down` / `UNDELIVERED` / `MONITOR` → find out why
   (the role's window, `roles.sh status`), tell the Operator in one line when a role
   is down or stuck;
 - `ATTENTION TeamLead|Advisor (<permission|menu>) fp=<fp>: <anchor>` — a role session's own prompt
-  or menu: classify per [team-mode.md](team-mode.md) §10; tier 1 only through
-  `bash .claude/lib/supervisor-sessions.sh answer <role> --fp <fp> yes|no "<reason>"|pick <n>|other
-  "<text>"` and only when the script accepts. Any refusal (`stale:` — handle the newer ATTENTION;
-  `Operator action: …` — ask/deny tier, egress, SQL write, an unreadable block or no
-  `session.json`) → an Operator action with a notification and the role's window.
+  or menu: an Operator action with a notification and the role's window.
 
-**Does not:** answer a team question (`team-answer.sh`, `team-question.sh * answer` are denied by
-its profile); run `/monitor` in split routing; relay the Operator's
-decision to a team (that goes through tier 3 or the role's window); switch `routing` on its own;
+**Does not:** answer a team question (`team-answer.sh` is denied by its profile); relay the
+Operator's decision to a team (that goes through the role's window); switch `routing` on its own;
 clear a freeze without the Operator.
 
 **Wakes the Supervisor only for:** `ATTENTION TeamLead|Advisor`; a READY `turn` from the TeamLead
@@ -92,38 +87,14 @@ closes one, and the end of a release (`freeze off`) closes nothing. The script w
 `.agents/team/operator/<id>.md` and calls `notify.sh` itself; an open record with the same event,
 team and summary is reused, not sent again. `notify.sh` is denied to every role profile.
 
-**Commands:** `roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight|answer …|reviewer`,
+**Commands:** `roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight|reviewer`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` turn, then `/start-team <team>`),
 `team-watch.sh status|stats|pending|mode tiers …`.
 
 ## TeamLead
 
-> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
-
-**Does:** `/monitor` — the only receiver of team signals in split routing: decide every team
-question per [team-decision-model.md](team-decision-model.md) §3 (policy-class decisions go to the
-policy log `<decisions_dir>/teamlead-policy-log.md`); resume stopped runners. `READY` →
-no summary to the Operator: the post-run note goes to `<decisions_dir>/<date>-<team>-ready-TeamLead.md`
-with its "TeamLead decisions" section, then a `turn` to the Supervisor on `ready-<team>-<run>`.
-An Operator action → a notification plus the block in this window; nothing to the Supervisor.
-
-**Does not:** merge or release (`/pr-merge`, `/release`, `git push` and the PR host's update verbs
-denied); create, advance, remode or integrate teams (`team-new.sh`, `team-next.sh`,
-`team-remode.sh`, `team-integrate.sh` denied); switch routing, `mode answering`, the freeze, run
-`rollback`, `answer` or `here` (denied; `mode tiers` stays `/monitor`'s). Step 5 of `/monitor`
-("Developer's decisions") applies only to the Operator's words typed in this window.
-
-**Policy log:** one cross-team log of the TeamLead's policy-class decisions. The TeamLead appends
-decision and revocation lines and never rewrites them; the Advisor promotes a recurring entry to
-`.agents/memory/decisions.md` and replaces it with one `[promoted]` pointer line. Procedure and
-formats: `/monitor` → `## Policy log`.
-
-**Bootstrap** (the SessionStart hook names the contract on start, `/clear` and compaction) — `team-question.sh <team> list` for every clone,
-`team-watch.sh status --open`, read the policy log, reconcile as `/monitor` step 3.
-
-**Commands:** `/monitor`, `team-question.sh`, `team-run.sh`, `session-host.sh hint`,
-`team-watch.sh ack|done|status|pending TeamLead`.
+The global TeamLead is retired; the per-run TeamLead is not a supervision session ([team-lead.md](team-lead.md)).
 
 ## Advisor
 
@@ -144,8 +115,8 @@ path only (another project's same-name loop never counts); a missing one is rest
 `pause.pass`, `start` steps (allow-list: `mode tiers on`).
 **Commands:** `bash .claude/lib/monitoring.sh start|stop|status [all]` (`all` only from the
 Supervisor or a role-less caller; the `/monitoring` command is gone, the script stays until the
-team-watch side is retired); `/monitor` stays the handling contract of
-`[team-watch #<n>]` messages and starts nothing.
+team-watch side is retired); [team-watch.md § Supervisor](team-watch.md#supervisor) is the
+handling contract of `[team-watch #<n>]` messages.
 
 **Pause:** one durable flag per role in `.agents/team/watch/state.json` `.paused[<role>] = {since,
 by}`; an unreadable flag counts as a pause. A pause holds the team-watch push (routine not sent,
@@ -184,7 +155,7 @@ the morning; each role then gets its `(current state)`.
 ## Routing
 
 `bash .claude/lib/team-watch.sh routing split|single <role>` — an Operator action (an `ask` rule;
-denied to the TeamLead). No `routing.json` = `single Supervisor`: the single-window `/monitor`.
+denied to the TeamLead). No `routing.json` = `single Supervisor`: the Supervisor's window receives everything.
 
 | Event | split | single `<r>` |
 |---|---|---|
@@ -230,8 +201,8 @@ tool call.
 
 | Role | Denied on top of the project + local rules |
 |---|---|
-| TeamLead | `git push`, the PR update verbs (by provider), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|answer\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `Skill(pr-merge)`, `Skill(release)` |
-| Supervisor | `team-answer.sh`, `team-question.sh * answer *` |
+| TeamLead | `git push`, the PR update verbs (by provider), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `Skill(pr-merge)`, `Skill(release)` |
+| Supervisor | `team-answer.sh` |
 
 `supervisor-sessions.sh check` classifies each profile's `_samples` (deny > ask > allow > prompt,
 the fnmatch matcher of `team_prompt_check.py`) and lists the effective hooks per layer: `forbidden`
@@ -270,8 +241,7 @@ Follow the role contract the session context names and reconcile now …"; a Cod
 preflight's settings check use the same dir), else from the launcher's own environment; a declared
 dir that does not resolve refuses `start` / `here` before any session starts. The session id
 is written to `.agents/team/watch/sessions/<role>/session.json` by the `session-registry.sh` hook on
-every start, `/clear` or resume, so `team-answer.sh --session <role>` binds its keys to the
-role's own transcript, as for a pipeline team. A changed `settings.local.json` needs `roles.sh stop
+every start, `/clear` or resume. A changed `settings.local.json` needs `roles.sh stop
 <Role>` + `roles.sh` (the materialised union is rebuilt on start).
 
 **A role in the Operator's own terminal:** `roles.sh here <Role>` refuses inside Claude Code and
@@ -279,12 +249,6 @@ while the role runs, materialises and checks the profile, writes the role's reco
 terminal's handle (Herdr terminal id, tmux session, or — a plain terminal — the shell's pid and
 start time, which `exec` keeps) and execs the role's CLI with its role environment — an Operator
 action (an `ask` rule). `sessions-health.sh` counts a Supervisor window as up.
-
-**`answer`** is the only tier-1 path into a role session's own prompt: bound to `--fp`, refused with
-zero keys on any mismatch, refused for a caller whose `TEAM_SESSION_ROLE` is a pane role (only the
-Supervisor answers role prompts). `yes` runs `team_prompt_check.py` against the role's materialised
-profile; `no` types `Rejected by the Supervisor: <text>. Do not work around it — ask the Operator in
-this window.`; `pick|other` go through `team-answer.sh <prefix> <role> … --session <Role>`.
 
 **`preflight` rows:** (1) receivers live — a refused socket is a FAIL with the send's own wording
 (`socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>`), a role not started yet a
@@ -371,7 +335,7 @@ Operator actions, in order; each step's rollback is `supervisor-sessions.sh roll
 
 **Rollback:** `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on, the
 Operator steps printed) and `! bash .claude/team/sessions/operator-kit/install.sh --rollback`.
-Ownership is back only when a plain `claude` window has run `/monitor` and
+Ownership is back only when a plain `claude` window has run `bash .claude/lib/team-watch.sh register` and
 `team-watch.sh status` shows `receiver Supervisor: … active`.
 
 ## Smoke checklist
@@ -381,11 +345,10 @@ Ownership is back only when a plain `claude` window has run `/monitor` and
 | directive per role, silent in a clone | `sessions` (1) | `/clear` in a role window |
 | three sessions under their prefix, role env, clean env, model/effort per role | `sessions` (2) | `start all` |
 | profiles OK, deny floor kept, local leak blocks `start` | `sessions` (3) | `/permissions` per window |
-| role prompt answered once, stale/foreign refused with zero keys | `sessions` (4), part 17 (78) | a prompt in the TeamLead window |
-| preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
+| role prompt reaches the Supervisor once and notifies nobody | part 17 (78) | a prompt in the Advisor window || preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
 | Reviewer loop of this box only | `sessions` (6) | `reviewer` |
 | `status` lines, `up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` switches routing and answering | `sessions` (9) | `up` after a reboot |
-| tier-1 menu handled exactly once, duplicates counted | part 17 (68) | a menu in a test team |
+| a delivered signal handled exactly once, duplicates counted | part 17 (68) | a menu in a test team |
 | `/clear`, a pid restart, alarms outside the LLM, rollback handover | the team-watch parts 15–19 | `/clear` in the TeamLead, kill a test receiver, rollback after the smoke |
 
 ## Pilot

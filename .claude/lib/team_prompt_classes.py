@@ -1,10 +1,10 @@
-"""Deterministic ask-tier classes the TeamLead may approve at tier 1.
+"""Deterministic ask-tier classes the per-run TeamLead's runner may approve (--authority class).
 
 Usage: python3 -I team_prompt_classes.py names              → one class name per line
        python3 -I team_prompt_classes.py switches <main>    → merge-line=on|off|disabled …
                                          (disabled = not enabled in the profile)
 Library: classify(clone, main, header, inp, cwd, matches, session) → (name, "") | (None, reason),
-called only by team_prompt_check.py --classes. Trusted inputs come from <main>: the runner anchor
+called by team_prompt_check.py (--classes, and team_prompt_authority.py's class flow). Trusted inputs come from <main>: the runner anchor
 .agents/team/anchors/<team>.json, the CLAUDE.md Branch model, the committed profile
 (.claude/project-profile.json → teams.branch_types, teams.policy.classes) and the watch/state.json
 switches; clone files (team.json, records, refs) are only compared against them. Nothing is executed.

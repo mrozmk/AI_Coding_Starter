@@ -63,7 +63,6 @@ own .agents/reference/team-mode.md
 own .agents/reference/team-pipeline.md
 own .agents/reference/session-host.md
 own .agents/reference/worker-clone.md
-own .claude/commands/monitor.md
 own .claude/commands/setup/teams.md
 own .claude/commands/start-team.md
 own .claude/hooks/guard-team-memory.sh
@@ -99,7 +98,6 @@ own .claude/lib/team-pr-render.sh
 own .claude/lib/team-pr-state.sh
 own .claude/lib/team-pr.sh
 own .claude/lib/team-pr-ado.sh
-own .claude/lib/team-question.sh
 own .claude/lib/team-record.sh
 own .claude/lib/team-roles.sh
 own .claude/lib/team-run.sh
@@ -151,7 +149,6 @@ own .claude/team/tracker/none-wrapup.md
 
 # --- own: question ledger, delivery, gate lock, audit (re-sync at the source pin) ---
 own .agents/reference/team-decision-model.md
-own .agents/reference/team-questions.md
 own .claude/commands/pr-merge.md
 own .claude/hooks/guard-destructive-sql.sh
 own .claude/hooks/guard-team-egress.sh
@@ -161,7 +158,6 @@ own .claude/lib/gate_lock.py
 own .claude/lib/team-anchor.sh
 own .claude/lib/team-audit.sh
 own .claude/lib/team-automerge-check.sh
-own .claude/lib/team-question-lib.sh
 own .claude/lib/team-remode.sh
 own .claude/lib/team-send-lock.sh
 own .claude/lib/session-host.sh
@@ -277,3 +273,9 @@ retired .agents/reference/team-advisor.md ac31d6b3703def81db028da86ae3ed6527859b
 # --- retired: the role wake loop and its Stop hook; one blob id (v3.1.0 and v3.2.0 shipped the same) ---
 retired .claude/lib/session-wake.sh 8475cf958508bed42c4a66a19ff7e3cdb155f98a
 retired .claude/hooks/monitoring-rearm.sh 83d5201f648e1d3d1e88de993884813c5e820145
+
+# --- retired: the question ledger and the monitor command (global TeamLead retirement, slice 3); all shipped blob ids ---
+retired .claude/lib/team-question.sh e67dc45d94b775c945dc3667cae8f715e9402bd5 98a795f3f3fa2f8aed1b62328c392dc26c361e0e 1c82f571ad600164061201d1b1a2ccf249ae58dd 76b1cfe1b198acfccf9de640940303da1d78a508 de623eba142af7830079bec1ae9e7768275d8e2d 4c61448c9cfa768f5693aacdd002caa4b7ab5796 37ef471e2e5ee3f47c3ce71d53ec4e67f32a4c9d 3b2b89dd210e32056455d9b56c3c30c964d0f18a
+retired .claude/lib/team-question-lib.sh 634df3950c006ad1c99651124851eb840c5bec51 9a6f2cd69f7c5f2e6904ead2f5afcceb17af11ba cc0355fb0f6681cd05625683e1b89f5bf557e02e e772be4e8c2ab63e0883833af591dd4760a2b4c4
+retired .claude/commands/monitor.md b545ba7d80e57824f19fb04721f256e0287bc028 ec2c3c35d583ebc95b0886bf9afe4435fc016970 cdccfaabf1304663538780f8f691bad1bbc91791 c646aa81a93fe4f1bcf1873ed8ae4085f49c140e 4d967c50b179c8d1bc3dba28951a49e10435c27a 86618d8d420ce4fd5e36b486225b7b821b388df8 635f58de8f2b015bd0ae8c2fc0e9fb813901d198 d044420b57190766ac07c0f8a9d7f615224b125d 67e6cd26d342af2aadc31df854c7ffcf7eb8b800 e50c9730b5aa5e20a771e509ba757bfc6abe4a07 4ee8328a6d877542d55eabce2e690189c51251c2 3844596fce06d39cfb606f45c62041dafd9b1085 da26021adf314004226d8c843f8328c4b0fd7158 3992550b2f782ffe9ba4b85dfd9c0e96c6807795 8d61370ae81e122f295e7e9befb7934ea915de68 fdfe5cbc94c5d718363a43e15ffeec9941ebf86a ecea959d59af66f125871c5c66a2133aef61efbc 714f3e353fc7640e5f7ad7e6560e4bcec418d23f 78f6fdcff0ea932f9f6c5bb96e4c748612d9b9ca 7a616a68f2a68fdf2229a75d14184eae09d5b529 262380fcee9a3b4403e87f707ef3bb7af2866687 e5ce2abd70e9124ffe04688c0856853103761b6a
+retired .agents/reference/team-questions.md 78671ac7b3f7b767eccc8e4750a23a7342344d41 a74e6c9542171f5a6fc21dcb897ab4dbeb69046f eef98eb8ccc7d0e4f1fc6e2efcb629f193a84263 c01fb816d817a0486a4fac95ad19f2d6e3a7d9f5 fc63b86c1a3fa3fc72afad634fa86466c853f199 ae12e0d77c2784b545e48a5914fe29c772b4310d

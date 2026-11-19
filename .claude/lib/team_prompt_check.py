@@ -6,17 +6,17 @@ Usage: team_prompt_check.py [<root>] [--settings <file>]... [--block] < pane his
          [--main <main checkout>] < pane
        team_prompt_check.py <clone> --strict --transcript <file> --authority class|teamlead|operator
          [--main <main checkout>] < pane   (team_prompt_authority.py: human-only first)
-Exit 0 = tier 1 (no egress, nothing in the prompt matches an ask/deny rule of <root>'s settings or
+Exit 0 = may be approved (no egress, nothing in the prompt matches an ask/deny rule of <root>'s settings or
 a --settings file and the SQL guard stays quiet), exit 1 = the Operator must answer in the window,
 with the reason on stderr. Default: the newest prompt in the history is the one checked.
 --strict (the sender): team_prompt.py must read a complete active permission prompt;
 --transcript also checks the original input of its unique pending tool_use.
 Refused too: a prompt whose command cannot be read (never approve what was not read), a WebFetch
-prompt or a Bash command naming an egress tool (an Operator action, team-mode.md §10) and an
+prompt or a Bash command naming an egress tool (human-only, team-decision-model.md §3) and an
 unreadable policy, an Edit/Write of .claude/settings*.json or a Bash command naming one
 and, with a --main other than <root>, an Edit/Write outside <root> or a Bash path under <main>
 (the classes trust its .git, CLAUDE.md and .agents/team/). --block prints the
-command block and exits 0, or 1 when there is none. --classes (the sender, tier 1 only): a refusal
+command block and exits 0, or 1 when there is none. --classes (the class tests' direct entry; at runtime the sender reaches the classes through --authority class): a refusal
 whose only cause is ask-tier rule matches or the settings refusal is waived when the prompt is in
 one enabled team_prompt_classes.py class — prints `policy-class: <name>`, exit 0; deny, egress, the
 SQL guard and unreadable prompts are never waived. --report prints `class: <name>`, `class: not

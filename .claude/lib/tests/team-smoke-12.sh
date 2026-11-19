@@ -14,7 +14,7 @@ for f in sys.argv[1:]:
   > "$WORK/out" 2>&1 || fail "python compile"
 cap() { [ "$(wc -l < "$1")" -le "$2" ] || fail "$(basename "$1") has more than $2 lines"; }
 for f in team-run.sh team_prompt.py team_transcript.py team_prompt_check.py team_prompt_classes.py \
-  team_prompt_settings.py team-anchor.sh team-answer.sh team-question-lib.sh team-lib.sh team-watch.sh \
+  team_prompt_settings.py team-anchor.sh team-answer.sh team-lib.sh team-watch.sh \
   team-new.sh team-lead-lib.sh team-next.sh tests/team-smoke-12.sh ../hooks/lib/guard_team_egress.py \
   team-run-lead.sh team-run-dialog.sh team-run-stop.sh team_prompt_authority.py team-answer-lead.sh team-answer-herdr.sh team-seed-lib.sh; do cap "$L/$f" 500; done
 [ "$(python3 -I "$L/team_prompt_classes.py" names | tr '\n' ' ' | sed 's/ $//')" \
@@ -36,7 +36,6 @@ RUN_ID=alfa-20261025-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; 
 CREAL="$(cd "$CLONE" && pwd -P)"
 ANCHOR="$MAIN/.agents/team/anchors/alfa.json"
 PC="python3 -I $SRC/.claude/lib/team_prompt_check.py"
-Q="bash .claude/lib/team-question.sh"
 RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"
 export STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane"
 printf '%s\n' '**Integration:** `develop`' '**Maintenance:** `rc/rc` — old' '**Retired:** `feature/old`' \
@@ -415,37 +414,24 @@ rm -rf "$W"; printf 'not json\n' > "$W"
 rm -rf "$W"; cp "$WORK/state.bak" "$W"
 echo "team-smoke-12: (197) switches OK"
 
-# ---- (198) ledger end-to-end ------------------------------------------------------------------
+# ---- (198) class answer end-to-end ------------------------------------------------------------
+ANS="bash .claude/lib/team-answer.sh"
 bashp "$MERGE"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" \
-  --summary "merge the line"
-expect 0 "" "open merge prompt"; Q1="$(head -n 1 "$WORK/out" | cut -d' ' -f1)"
-run "$MAIN" $Q alfa policy coder; expect 0 "class: merge-line" "policy coder"
-has "classes: merge-line=on" "$WORK/out" || fail "policy lacks the classes line"
 : > "$STUB_LOG"
-run "$MAIN" $Q alfa answer "$Q1" --tier 1 --author supervisor --why "class merge-line: line" \
-  --send yes
-expect 0 "$Q1 state=sent" "tier-1 class answer"
+run "$MAIN" $ANS alfa coder yes --authority class --why "class merge-line: line"
+expect 0 "policy-class: merge-line" "class answer"
 [ "$(keyc)" = 1 ] || fail "class answer keys $(keyc)"
-grep -qx 'class: merge-line' "$RD/questions/$Q1.md" || fail "q lacks class: merge-line"
-grep -qF -- "- $Q1 [tier 1, supervisor, class merge-line]" "$RD/notes.md" || fail "notes line"
-run "$MAIN" $Q alfa list; expect 0 "$Q1 coder permission tier=1" "list"
-has "class=merge-line" "$WORK/out" || fail "list lacks class=merge-line"
+grep -q '\[authority class\]' "$RD/answers.md" || fail "answers.md lacks the class answer"
+grep -q 'q=authority:class' "$TD/send-coder.log" || fail "no class dispatch line"
 bashp "$MERGE"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" \
-  --summary "merge again"
-expect 0 "" "open second merge prompt"; Q2="$(head -n 1 "$WORK/out" | cut -d' ' -f1)"
 : > "$STUB_LOG"
-run "$MAIN" $Q alfa answer "$Q2" --tier 3 --author operator --why "operator" --send yes
-expect 5 "not sent — policy" "tier 3 takes no class"; [ "$(keyc)" = 0 ] || fail "tier 3 keys"
-! grep -q '^class: ' "$RD/questions/$Q2.md" || fail "tier 3 recorded a class"
-echo "team-smoke-12: (198) ledger OK"
+run "$MAIN" $ANS alfa coder yes
+expect 7 "Operator answers in the window" "a bare yes takes no class"
+[ "$(keyc)" = 0 ] || fail "bare yes keys $(keyc)"
+echo "team-smoke-12: (198) class answer OK"
 
 # ---- (199) re-bind before the first key -------------------------------------------------------
 bashp "$MERGE"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" \
-  --summary "merge, then the prompt changes"
-expect 0 "" "open re-bind prompt"; Q3="$(head -n 1 "$WORK/out" | cut -d' ' -f1)"
 perm "Run it" "git status" > /dev/null; cp "$WORK/pane" "$WORK/pane2"
 perm "Run it" "$MERGE"
 : > "$STUB_LOG"; echo 0 > "$WORK/capn"
@@ -453,9 +439,9 @@ perm "Run it" "$MERGE"
 { echo "n=\$(( \$(cat '$WORK/capn') + 1 )); echo \"\$n\" > '$WORK/capn'"
   echo "[ \"\$n\" -lt 2 ] || cp '$WORK/pane2' '$WORK/pane'"; } > "$WORK/oncap.sh"
 export STUB_ON_CAPTURE="bash $WORK/oncap.sh"
-run "$MAIN" $Q alfa answer "$Q3" --tier 1 --author supervisor --why "class merge-line" --send yes
+run "$MAIN" $ANS alfa coder yes --authority class --why "class merge-line"
 unset STUB_ON_CAPTURE
-expect 5 "prompt changed during classification" "prompt replaced during classification"
+expect 6 "prompt changed during classification" "prompt replaced during classification"
 [ "$(keyc)" = 0 ] || fail "re-bind refusal sent keys"
 echo "team-smoke-12: (199) re-bind OK"
 
@@ -473,12 +459,6 @@ pend Bash "$(jq -cn --rawfile v "$WORK/visible" '{command: ("S=/x; PROMPT=\"head
 pj "$CLIP" "$T" '.complete and .kind == "permission" and .recovered == "transcript"
   and .header == "Bash command" and .cursor == 1 and (.fp | startswith("v2:"))
   and .fp != "v2:unreadable"'
-FPA="$(jq -r .fp "$WORK/p.json")"
-cp "$CLIP" "$WORK/pane"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" \
-  --summary "clipped prompt"
-expect 0 "" "open clipped prompt"; Q4="$(head -n 1 "$WORK/out" | cut -d' ' -f1)"
-grep -qx "fingerprint: $FPA" "$RD/questions/$Q4.md" || fail "open and the sender parse differ"
 pj "$CLIP" - "$UNREAD"; pj "$CLIP" "$WORK/missing.jsonl" "$UNREAD"
 pend Bash "$(jq -cn --rawfile v "$WORK/visible" \
   '{command: ($v | split("\n") | reverse | join("\n"))}')"

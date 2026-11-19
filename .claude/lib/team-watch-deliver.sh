@@ -53,15 +53,8 @@ tw_send() {  # tw_send <role> <message> → the sender's exit status
   fi
 }
 
-# tw_contract <role> → the file a receiver handles its messages by: in single routing the one
-# window runs /monitor; in split the Supervisor follows the runbook.
-tw_contract() {
-  if [ "$1" = Supervisor ] && [ "$(tw_routing)" = split ]; then
-    echo .agents/reference/team-watch.md#supervisor
-  else
-    echo .claude/commands/monitor.md
-  fi
-}
+# tw_contract <role> → the file a receiver handles its messages by (every routing).
+tw_contract() { echo .agents/reference/team-watch.md#supervisor; }
 
 tw_collapse_line() {  # tw_collapse_line <role> → the `(skipped …)` line while one is unsent
   jq -r '"(skipped \(.n) backlog events from \(.from)–\(.to)"

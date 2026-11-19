@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Role-session support: the SessionStart contract line (session-registry.sh), the role launch
-# through roles.sh (the old launcher verbs are gone), the role profiles and their check, the tier-1 `answer` into
-# a role prompt (team-answer.sh --session), preflight, the Reviewer deliver check, the SQL guard over
-# the launcher verbs and the rollback. /roles itself: part `roles`.
+# through roles.sh (the old launcher verbs are gone), the role profiles and their check, roles.sh here,
+# preflight, the Reviewer deliver check, the SQL guard over the launcher verbs and the rollback. /roles itself: part `roles`.
 # Fixture HOME and channel (registry + box from the channel step), stub claude / tmux / launchctl /
 # crontab: nothing reads or writes the real ~/.agent-mail, ~/.agent-ops or a tmux server.
 # It waits on pickup windows (ping → ack), so the runner keeps it out of a parallel batch.
@@ -102,16 +101,12 @@ esac
 exit 0
 STUB
 chmod +x "$WORK/bin/"*
-role_prompt() {  # role_prompt <role> → tw_role_prompt's "<sub>\t<fp>\t<anchor>" line
-  (cd "$MAIN" && bash -c '. .claude/lib/team-watch-lib.sh; tw_init "$PWD"; tw_role_prompt "$1"' _ "$1")
-}
 claude_lines() { grep -c '^claude --name' "$STUB_LOG" 2>/dev/null || true; }
 wait_claude() {  # wait_claude <count>
   for _ in $(seq 1 50); do [ "$(claude_lines)" -ge "$1" ] && return 0; sleep 0.1; done
   cp "$STUB_LOG" "$WORK/out"; fail "expected $1 claude launches"
 }
 holder() { sleep 3000 > /dev/null 2>&1 & H=$!; PIDS="$PIDS $H"; }  # → H
-no_keys() { ! grep -q '^tmux send-keys' "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "$1: keys were sent"; }; }
 
 # ---- (1) the SessionStart contract line (session-registry.sh, which absorbed session-role.sh) ----
 hookr() { echo "{\"session_id\":\"$1\"}" | (shift; env CLAUDE_PROJECT_DIR="$MAIN" "$@" bash "$HOOKR") 2>/dev/null; }
@@ -229,58 +224,7 @@ jq -e '(.hooks | keys) == ["Stop"] and (.permissions.allow | index("Bash(*)") | 
 cp "$WORK/rh.keep" "$RH"
 echo "team-smoke-sessions: (3) profiles OK"
 
-# ---- (4) answer: the tier-1 path into a role session's own prompt ---------------------------------
-export STUB_PANE_DIR="$WORK/panes"; mkdir -p "$STUB_PANE_DIR"
-: > "$STUB_LOG"
-# The Advisor's own session (TW_PANE_ROLES), started directly. `materialize Advisor` is refused (the
-# legacy name has no template), so its profile is a fixture: the Fable profile under the Advisor's role.
-run "$MAIN" $SS answer TeamLead --fp 000000000000 pick 2; expect 2 "" "(4) the retired TeamLead is no answer target"
-run "$MAIN" $SS materialize Fable; expect 0 "" "(4) materialize Fable"
-jq '.env.TEAM_SESSION_ROLE = "Advisor"' "$TWD/profiles/Fable.settings.json" > "$WORK/adv.json"
-( umask 077; cp "$WORK/adv.json" "$TWD/profiles/Advisor.settings.json" )
-SID="0f0f0f0f-4444-4444-4444-444444444444"; mkdir -p "$TWD/sessions/Advisor"
-jq -n --arg s "$SID" '{team: "-", role: "Advisor", run: "-", attempt: 1, session_id: $s}' > "$TWD/sessions/Advisor/session.json"
-(cd "$MAIN" && tmux new-session -d -s smk-advisor -c "$MAIN" -e TEAM_SESSION_ROLE=Advisor \
-  "claude --name AdvisorXY --session-id $SID")
-wait_claude 1
-cp "$FIX/menu-phase0.txt" "$STUB_PANE_DIR/smk-advisor"
-FP="$(role_prompt Advisor | cut -f2)"
-[ "$(role_prompt Advisor | cut -f1)" = menu ] && [[ "$FP" =~ ^[0-9a-f]{12}$ ]] \
-  || fail "(4) role prompt: $(role_prompt Advisor)"
-T="$HOME/.claude/projects/$(echo "$MP" | sed 's/[^A-Za-z0-9]/-/g')/$SID.jsonl"
-mkdir -p "$(dirname "$T")"; cp "$FIX/t-menu-pending.jsonl" "$T"
-: > "$STUB_LOG"
-run "$MAIN" $SS answer Advisor --fp 000000000000 pick 2; expect 1 "stale:" "(4) wrong fp"
-run "$MAIN" env TEAM_SESSION_ROLE=Advisor $SS answer Advisor --fp "$FP" pick 2
-expect 1 "never answers a role prompt" "(4) a role session answering"
-run "$MAIN" $SS answer Advisor --fp "$FP" yes; expect 1 "does not fit a menu" "(4) yes on a menu"
-run "$MAIN" bash .claude/lib/team-answer.sh smk advisor pick 2 --session Advisor --clone "$CLONE"
-expect 2 "exclude each other" "(4) --session with --clone"
-mv "$TWD/sessions/Advisor/session.json" "$WORK/sj.keep"
-run "$MAIN" $SS answer Advisor --fp "$FP" pick 2; expect 5 "no readable session.json" "(4) no session.json"
-mv "$WORK/sj.keep" "$TWD/sessions/Advisor/session.json"
-no_keys "(4) refusals"
-export STUB_ON_ENTER="jq -cn '{type: \"user\", uuid: \"u-done\", message: {content: [{type: \"tool_result\", tool_use_id: \"toolu_01menu\"}]}}' >> '$T'"
-run "$MAIN" $SS answer Advisor --fp "$FP" pick 2
-expect 0 "answered Advisor pick (fp $FP)" "(4) pick through team-answer.sh --session"
-has "confirmed: yes (tool_result)" "$WORK/out" || fail "(4) the answer was not confirmed from the role's transcript"
-[ "$(grep -c '^tmux send-keys -t %smk-advisor Down' "$STUB_LOG")" = 1 ] \
-  && has "tmux send-keys -t %smk-advisor Enter" "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(4) pick keys"; }
-unset STUB_ON_ENTER
-printf 'Bash command\n  cat .env\nDo you want to proceed?\n❯ 1. Yes\n' > "$STUB_PANE_DIR/smk-advisor"
-FP2="$(role_prompt Advisor | cut -f2)"
-: > "$STUB_LOG"
-run "$MAIN" $SS answer Advisor --fp "$FP2" yes; expect 1 "Operator action:" "(4) ask-tier command"
-run "$MAIN" $SS answer Advisor --fp "$FP2" pick 1; expect 1 "does not fit a permission" "(4) pick on a permission"
-no_keys "(4) policy refusals"
-printf 'Bash command\n  bash .claude/lib/team-mail.sh --here inbox --for Advisor --unread\nDo you want to proceed?\n❯ 1. Yes\n' \
-  > "$STUB_PANE_DIR/smk-advisor"
-FP3="$(role_prompt Advisor | cut -f2)"
-run "$MAIN" $SS answer Advisor --fp "$FP3" yes; expect 0 "answered Advisor yes (fp $FP3)" "(4) tier 1 yes"
-has "tmux send-keys -t =smk-advisor: Enter" "$STUB_LOG" || fail "(4) Enter not sent"
-: > "$STUB_LOG"
-run "$MAIN" $SS answer Advisor --fp "$FP3" no "out of scope"; expect 0 "answered Advisor no" "(4) no"
-has "Rejected by the Supervisor: out of scope. Do not work around it" "$STUB_LOG" || fail "(4) rejection text"
+# ---- (4) roles.sh here ---------------------------------------------------------------------------
 holder; echo "$H" > "$TMUXD/smk-supervisor.pid"
 run "$MAIN" $RS here Supervisor; expect 1 "Supervisor is already running" "(4) here while tmux runs"
 echo dead > "$TMUXD/smk-supervisor.pid"
@@ -304,9 +248,7 @@ run "$MAIN" env STUB_CLAUDE_EXIT=1 $RS here Supervisor; expect 1 "Claude profile
 grep -q '^claude ' "$STUB_LOG" && fail "(4) an unresolvable Claude profile still ran claude"
 cmp -s "$MP/.agents/team/registry/Supervisor.json" "$WORK/sup-rec.bak" || fail "(4) a refused here rewrote the record"
 rm -f "$MAIN/.claude/claude-profile" "$MP/.agents/team/registry/Supervisor.json"
-rm -f "$STUB_PANE_DIR/smk-advisor" "$TWD/profiles/Advisor.settings.json"
-run "$MAIN" tmux kill-session -t =smk-advisor
-echo "team-smoke-sessions: (4) answer OK"
+echo "team-smoke-sessions: (4) here OK"
 
 # ---- (5) preflight -------------------------------------------------------------------------------
 mkrole SUP

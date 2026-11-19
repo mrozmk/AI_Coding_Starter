@@ -70,7 +70,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release`, `/orchestrate` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
 | **QA and security** | `/prime-qa`, `/qa-verify`, `/test-e2e`, `/audit-security`, `/seo-geo-audit` |
-| **Teams (opt-in)** | `/start-team`, `/monitor`, `/roles` |
+| **Teams (opt-in)** | `/start-team`, `/roles` |
 | **Session and upkeep** | `/handoff`, `/hc`, `/analysis`, `/simply`, `/retro`, `/maintain:refresh-brief`, `/maintain:cleanup-workflow`, `/maintain:sync-from-starter` |
 
 ### Agents by role
@@ -448,16 +448,15 @@ Harness files should have an owner — route `.claude/**`, `.agents/**`, `CLAUDE
 For projects that run several AI **teams** in parallel on one machine. A team is a permanent git clone that runs a ticket through a fixed pipeline of fresh role sessions (planner → coder → qa → wrapup, or one `cli` role), driven by a shell runner in tmux. **Supervision roles** watch the teams:
 
 - a **Supervisor** that talks to you, merges within the gate and starts teams;
-- a **TeamLead** that decides every team question except two short lists (global TeamLead — retired: no run reaches it; this text goes with the remaining machinery; see *Per-run TeamLead* below);
 - an **Advisor**, with an optional second-vendor **Reviewer**, for contract, schema, AC, sensitive-path and harness-rule questions.
 
 You are asked only for a short critical list and for actions only a human may click.
 
-Scripts, not prompts, enforce the routing, the binding of each answer to the exact prompt, tier refusals, the merge gate and the alarms.
+Scripts, not prompts, enforce the routing, the binding of each answer to the exact prompt, the human-only refusals, the merge gate and the alarms.
 
 **Requirements:** macOS (Linux is not supported yet), plus `jq`, `claude`, `codex`, `git`, `python3`, `perl` and a session host — `tmux`, or Herdr (`hc`) with `teams.session_host: "herdr"` — and `/setup:teams` stops if one is missing (`sqlite3` only for the agent-mail kit). The Codex CLI is required even with `advisor: solo`.
 
-It is off until you opt in. `/setup:teams` installs the team layer into a project, and the agent-mail kit (cross-machine mail) only when you ask for it. `/start-team` provisions and starts a team, and `/monitor` supervises it. Commit and push the `teams` profile to trunk before the first `/start-team`. The supervision role sessions are started, restored, stopped and listed by `/roles` (after a crash or reboot too: it restores the standing roles, asks which interrupted team runs to resume, and prints a resume line for each gone ad-hoc conversation; `/roles resume <Role>` continues a Claude role's previous conversation; the driver behind it: `.agents/reference/session-host.md`); the role contract reaches each session through the SessionStart hook on start, `/clear` and compaction. The old commands `/session-role`, `/sessions-up`, `/mail-role`, `/team-watch` and `/monitoring` are gone (`/setup:teams` removes their unchanged copies from a project). Everything project-specific is configuration in `.claude/project-profile.json` → `teams` (`teams.channel` for names, `teams.policy` for policy) and never a default.
+It is off until you opt in. `/setup:teams` installs the team layer into a project, and the agent-mail kit (cross-machine mail) only when you ask for it. `/start-team` provisions and starts a team, and its per-run TeamLead supervises the run. Commit and push the `teams` profile to trunk before the first `/start-team`. The supervision role sessions are started, restored, stopped and listed by `/roles` (after a crash or reboot too: it restores the standing roles, asks which interrupted team runs to resume, and prints a resume line for each gone ad-hoc conversation; `/roles resume <Role>` continues a Claude role's previous conversation; the driver behind it: `.agents/reference/session-host.md`); the role contract reaches each session through the SessionStart hook on start, `/clear` and compaction. The old commands `/session-role`, `/sessions-up`, `/mail-role`, `/team-watch` and `/monitoring` are gone (`/setup:teams` removes their unchanged copies from a project). Everything project-specific is configuration in `.claude/project-profile.json` → `teams` (`teams.channel` for names, `teams.policy` for policy) and never a default.
 
 - Setting it up: run `/setup:teams <path to this starter clone>` in **your project's** root, then follow [`docs/teams/09-setup.md`](https://github.com/mrozmk/AI_Coding_Starter/blob/main/docs/teams/09-setup.md) (fresh machine or one that already runs the channel, the profile from `.claude/project-profile.json.example`, the operator kit).
 - Human overview: [`docs/teams/`](https://github.com/mrozmk/AI_Coding_Starter/blob/main/docs/teams/README.md): decision model, pipeline, permissions, operator kit, follow-ups.
@@ -634,7 +633,7 @@ Full rules live in [CLAUDE.md](../../CLAUDE.md).
   | before `git commit` | `guard-commit` | blocks a commit with nothing staged (so `git add … && git commit` in one call is blocked too), scans the staged changes for credentials, and logs the staged set |
   | before `git push` | `guard-push` | pre-publication secret scan (above) |
   | before Edit/Write | `guard-memory`, `guard-team-memory` | memory-distillation gate; team clones may write memory only from the wrap-up role |
-  | before AskUserQuestion | `guard-team-question` | routes a team role's question through the question ledger |
+  | before AskUserQuestion | `guard-team-question` | holds a team stage to one question per AskUserQuestion call |
   | after Edit/Write | `guard-comments`, `nudge-files`, `guard-memory-scope` | comment-noise nudge, file-size nudge, memory-scope check |
   | after Read/Bash | `track-memory-read` | memory read telemetry |
   | around Grep/LSP | `nudge-lsp`, `warm-lsp` | nudge toward LSP for symbol searches; warm tsserver before cross-project queries (TS/JS) |

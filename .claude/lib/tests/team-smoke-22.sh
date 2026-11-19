@@ -479,11 +479,22 @@ bashp "curl https://example.invalid/x"; chk teamlead; expect 1 "human-only: egre
 chk operator; expect 1 "human-only: egress: curl" "(egress) operator"
 echo "team-smoke-22: authority never-waived + egress OK"
 
-# ---- sender: legacy refusal, caller rules, decision, answers.md, the .answered marker -------------
+# ---- sender: a TeamLead's bare call, caller rules, decision, answers.md, the .answered marker ------
 ANS="bash .claude/lib/team-answer.sh"
 lead() { run "$MAIN" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM="${LT:-alfa}" $ANS "$@"; }
 bashp "git rm old.txt"
-run "$MAIN" $ANS alfa coder yes --tier 1; expect 8 "run is owned by its TeamLead — use --authority" "(legacy) --tier in a lead-owned run"
+# A pending human-only request on the open prompt: a bare TeamLead call would skip that check.
+mkdir -p "$RD/decisions"; echo '{"binding": {"event": "toolu_human"}}' > "$RD/decisions/req-1.json"
+n0="$(grep -c '^tmux send-keys' "$STUB_LOG" || true)"
+lead alfa coder no; expect 7 "a TeamLead answers only with --authority" "(bare) TeamLead call without --authority"
+[ "$(grep -c '^tmux send-keys' "$STUB_LOG" || true)" = "$n0" ] || fail "(bare) keys sent on a refused TeamLead call"
+! grep -q 'operator-window' "$RD/answers.md" 2>/dev/null || fail "(bare) a refused call logged an answer"
+# Outside a TeamLead session the same bare call is not refused by that rule: the Escape goes out
+# (this stub pane stays on the prompt, so it may end as exit 4, which still proves delivery).
+run "$MAIN" $ANS alfa coder no
+! has "a TeamLead answers only" "$WORK/out" || fail "(bare) a non-TeamLead call was refused as a TeamLead"
+[ "$(grep -c '^tmux send-keys' "$STUB_LOG" || true)" -gt "$n0" ] || fail "(bare) a non-TeamLead bare call sent nothing"
+rm -f "$RD/decisions/req-1.json"; bashp "git rm old.txt"; : > "$STUB_LOG"
 run "$MAIN" $ANS alfa coder yes --authority teamlead --why w; expect 7 "is the run's TeamLead's" "(caller) not the lead"
 lead alfa coder yes --authority teamlead; expect 2 "needs --why" "(caller) no --why"
 LT=beta lead alfa coder yes --authority teamlead --why w; expect 7 "only its own team" "(caller) another team"

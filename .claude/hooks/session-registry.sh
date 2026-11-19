@@ -18,7 +18,7 @@
 #     live session id, <team>-lead.reg.json in the main registry, and its pending list (case 0).
 #   a role session (TEAM_SESSION_ROLE = a standing role of teams.sessions, main checkout): the
 #     contract line, on every source, so it is back in context after /clear and compaction; and
-#     watch/sessions/<Role>/session.json on the live id (team-answer.sh --session reads it).
+#     watch/sessions/<Role>/session.json on the live id.
 #     A hook starts no turn: the bootstrap line itself is on the launch line (roles.sh).
 #
 # Records hold no secret;

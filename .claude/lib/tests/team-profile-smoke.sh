@@ -9,7 +9,6 @@ smoke_init
 P="$MAIN/.claude/project-profile.json"
 NEXT="bash .claude/lib/team-next.sh"
 WATCH="bash .claude/lib/team-watch.sh"
-QUESTION="bash .claude/lib/team-question.sh"
 ANSWER="bash .claude/lib/team-answer.sh"
 WORKER="bash .claude/lib/worker-next.sh"
 MERGE="bash .claude/lib/team-merge-check.sh"
@@ -192,9 +191,6 @@ run "$MAIN" $WATCH --once gamma
 expect 0 "WATCH gamma" "team-watch finds a clone outside the repo's parent"
 ! has "no clone" "$WORK/out" || fail "team-watch reports no clone for a custom clone_parent"
 
-run "$MAIN" $QUESTION gamma list
-expect 0 "total" "team-question finds a clone outside the repo's parent"
-
 # The full prompt layout the sender parses (top rule, header, framed command, options).
 { printf '─%.0s' $(seq 80); echo; echo " Bash command"; echo " Say hello"
   printf '╌%.0s' $(seq 80); echo; echo " │ echo hello"; printf '╌%.0s' $(seq 80); echo
@@ -218,7 +214,7 @@ unset STUB_PANE STUB_TMUX_ALIVE
 # resolver — it must not drop this team.
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
   c="$(team_clone_dir gamma)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
-expect 0 "monitor-ok: $GC" "/monitor preflight accepts a custom clone_parent"
+expect 0 "monitor-ok: $GC" "the preflight accepts a custom clone_parent"
 
 setprofile "$DTS | .teams.clone_parent = null"
 : > "$STUB_LOG"
@@ -309,7 +305,7 @@ for bad in '{team}-x' 'a/{team}' 'nope' '{team}{team}'; do
     "clone_name '$bad' is refused"
   ! has reached "$WORK/out" || fail "clone_name '$bad' still loaded"
 done
-# Consumers: a clone created under the template is found by the resolver, team-watch and /monitor.
+# Consumers: a clone created under the template is found by the resolver, team-watch and the Supervisor.
 setprofile "$CN"
 run "$MAIN" $NEW zeta AB-795 chore/AB-795-x origin/develop
 expect 0 "next:" "team-new honours clone_name"
@@ -322,7 +318,7 @@ expect 0 "WATCH zeta" "team-watch finds a {Team} clone"
 ! has "no clone" "$WORK/out" || fail "team-watch reports no clone for a {Team} template"
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
   c="$(team_clone_dir zeta)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
-expect 0 "monitor-ok: $ZC" "/monitor preflight accepts a clone_name template"
+expect 0 "monitor-ok: $ZC" "the preflight accepts a clone_name template"
 run "$MAIN" $NEXT zeta AB-796 chore/AB-796-x origin/develop
 expect 0 "clone:    $ZC" "team-next switches the {Team} clone it resolved"
 

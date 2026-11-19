@@ -181,20 +181,6 @@ team_role_transcript() {
   esac
 }
 
-# Usage: team_mode_ok <main root> <tier> <send> — the shared tiers/answering state of the main
-# checkout (team-watch.sh mode); absent or unreadable = both on. Prints the refusal, rc 1.
-team_mode_ok() {
-  local mode
-  mode="$(jq -r '"\(.tiers // "on") \(.answering // "on")"' \
-    "$1/.agents/team/watch/state.json" 2>/dev/null)" || mode="on on"
-  case "$mode" in
-    *" off") [ "$2" = 3 ] && [ "$3" = none ] || { echo "answering off"; return 1; } ;;
-  esac
-  case "$mode" in
-    "off "*) [ "$2" = 3 ] || { echo "tiers off"; return 1; } ;;
-  esac
-}
-
 TEAM_CLASSES="merge-line allow-offline add-ask prod-diagnose"
 
 # Usage: team_class_on <main root> <class> — the class is enabled in the committed profile
@@ -300,47 +286,6 @@ team_notes_init() {
 }
 
 team_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-
-# Usage: team_q_lock <q file> <team> — the question ledger's lock (team-question).
-team_q_lock() {
-  local q="$1" id tries=0 max p hint=""
-  max=$(( ${TEAM_QUESTION_LOCK_SECS:-30} * 5 ))
-  until mkdir "$q.lock" 2>/dev/null; do
-    if [ "$tries" -ge "$max" ]; then
-      p="$(cat "$q.lock/pid" 2>/dev/null || echo none)"; id="$(basename "$q" .md)"; id="${id#.}"
-      kill -0 "$p" 2>/dev/null || hint=" — stale: team-question.sh $2 unlock $id"
-      echo "error: $id busy (lock held by pid $p)$hint" >&2
-      return 1
-    fi
-    sleep 0.2; tries=$((tries + 1))
-  done
-  echo $$ > "$q.lock/pid"
-}
-
-# Usage: team_q_state <q file> → "<state>\t<tier>\t<author>"
-# Reads the last ## Answer / ## Revoked; every other section is ignored. Answer states:
-# consumed|sent|not-sent-stale|not-sent|unknown|failed|pending|recorded — an unknown
-# `delivery:` value reads `unknown`, never `sent`.
-team_q_state() {
-  awk '
-    /^## /     { sec = substr($0, 4)
-                 if (sec == "Answer") { h = "answer"; tier = ""; author = ""; dl = ""; cf = 0 }
-                 if (sec == "Revoked") { h = "revoked"; dl = "" }
-                 next }
-    sec == "Answer" && /^tier: /   { tier = substr($0, 7) }
-    sec == "Answer" && /^author: / { author = substr($0, 9) }
-    sec == "Answer" && /^confirmed: yes/ { cf = 1 }
-    (sec == "Answer" || sec == "Revoked") && /^delivery: / { dl = substr($0, 11) }
-    END {
-      if (h == "revoked") st = "revoked"
-      else if (h == "answer") st = (dl == "pending") ? "pending" : (dl == "sent") \
-        ? (cf ? "consumed" : "sent") : (dl ~ /^not sent — stale/) ? "not-sent-stale" \
-        : (dl ~ /^not sent — /) ? "not-sent" : (dl ~ /^unknown — /) ? "unknown" \
-        : (dl ~ /^failed/) ? "failed" : (dl == "recorded only") ? "recorded" : "unknown"
-      else st = "open"
-      printf "%s\t%s\t%s\n", st, (tier == "" ? "-" : tier), (author == "" ? "-" : author)
-    }' "$1"
-}
 
 # Ticket preflight shared by team-new and team-next; appends to TEAM_PROBLEMS, never exits.
 team_ticket_checks() {

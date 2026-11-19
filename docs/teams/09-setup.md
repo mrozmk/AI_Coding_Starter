@@ -9,7 +9,7 @@ and the acceptance run. [capabilities.md](capabilities.md) says what is proven.
 ## Requirements
 
 - **macOS only today.** Linux is unsupported until the BSD `stat -f` / `date -r` sites are ported
-  (follow-up F12): they break the daemon, the runner and the question ledger there. `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`.
+  (follow-up F12): they break the daemon and the runner there. `/bin/bash` 3.2 or newer, Python 3.9+ (stdlib only), `perl`.
 - A session host — `tmux`, or Herdr (`hc`) with `teams.session_host: "herdr"` — plus `jq`, `git`,
   Claude Code (`claude`) and the Codex CLI (`codex`) on `PATH`; `/setup:teams` stops when any of them
   is missing (`sqlite3` only for the optional agent-mail kit). **Codex is required even with `advisor: solo`**: `solo` only
@@ -75,7 +75,7 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
    `team-watch.sh start` from a terminal stops at the receiver registration. Details and the
    switch to split routing: [01 → The launcher](01-roles-and-sessions.md#the-launcher). The
    [migration](../../.agents/reference/supervisor-sessions.md#migration) applies only when a single
-   `/monitor` window already runs the daemon.
+   Supervisor window already runs the daemon.
 
 ## A machine that already runs the channel
 
@@ -104,7 +104,8 @@ The acceptance checks, their ids (E00–E25) and the line format:
 ## Verified so far
 
 - **Offline:** `team-suite.sh`, 39 steps, OK on `f3d7996` (macOS), including the offline-only
-  checks E15 (an old run or a stale fingerprint is refused) and E16 (tiers off blocks delivery).
+  checks E15 (an old run or a stale fingerprint is refused) and E16 (a check of the question
+  ledger, removed in #22 slice 3).
   Per capability: [capabilities.md](capabilities.md).
 - **Live dry-run, not acceptance:** E01–E06 (host tools, channel fresh and reuse, channel loads, kit,
   profiles, cold preflight) on macOS with Claude Code 2.1.318:

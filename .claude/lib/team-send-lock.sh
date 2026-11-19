@@ -12,8 +12,7 @@ team_send_lock() {
     if [ "$tries" -ge "$max" ]; then
       p="$(cat "$d/pid" 2>/dev/null || echo none)"; o="$(cat "$d/owner" 2>/dev/null || echo unknown)"
       if kill -0 "$p" 2>/dev/null; then echo "pid $p ($o)"
-      else echo "pid $p ($o) — stale: team-question.sh $(jq -r '.team // "<team>"' \
-        "$1/team.json" 2>/dev/null || echo '<team>') unlock-send $2"; fi
+      else echo "pid $p ($o) — stale: remove $d once pid $p is dead"; fi
       return 1
     fi
     sleep 0.2; tries=$((tries + 1))

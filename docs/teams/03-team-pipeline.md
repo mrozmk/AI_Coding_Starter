@@ -51,12 +51,13 @@ In brainstorm and quick mode (not in mode `cli`) the runner launches a TeamLead 
 
 Every hand-off is a JSON **record** (`team-record.sh --verdict done|blocked|failed`) with the input and output revision, the PR, artefacts and evidence. Nothing is overwritten: each call writes a new sequence number.
 
-The run's `notes.md` is append-only and has five sections:
+The run's `notes.md` is append-only and has four sections:
 - *Unattended decisions*;
 - *Learnings*, which replace every memory write a command would make;
 - *Follow-ups*;
-- *Supervised decisions*, written only by the question ledger;
 - *Blockers*.
+
+The TeamLead's answers to a role's prompts land in `runs/<run>/answers.md`, not in the notes.
 
 Memory is written only by the wrapup role, after acceptance, inside the team's PR.
 

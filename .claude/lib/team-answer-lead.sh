@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The sender's authority path (team-answer.sh --authority class|teamlead|operator). Sourced by
 # team-answer.sh, never executed; every function uses its globals (TEAM, ROLE, TD, AUTH, WHY,
-# DECISION, TIER, SESSION, action, text, P, T, EVENT, E_EVENT, refuse, sj, newest_record).
+# DECISION, action, text, P, T, EVENT, E_EVENT, refuse, sj, newest_record).
 # Bash 3.2. Contract: .agents/reference/team-lead.md §6
 
 # The run belongs to its per-run TeamLead: teamlead.json names the clone's current run.
@@ -17,18 +17,16 @@ auth_fm_set() {  # auth_fm_set <file> <key> <value> — replace or add one front
   mv "$1.tmp" "$1"
 }
 
-# auth_preflight — before the lock: the caller and decision rules of the authority, and the
-# legacy refusal: a lead-owned run takes no --tier (the human-only check must not be bypassed).
+# auth_preflight — before the lock: the caller and decision rules of the authority, and a TeamLead
+# session's bare call (no --authority) refused: it would skip the caller and human-only checks.
 auth_preflight() {
   local d run
   if [ -z "$AUTH" ]; then
-    { [ -n "$TIER" ] && auth_lead_owned; } && refuse 8 "run is owned by its TeamLead — use --authority"
+    [ "${TEAM_SESSION_ROLE:-}" != TeamLead ] || refuse 7 "a TeamLead answers only with --authority class|teamlead|operator --why \"<line>\""
     return 0
   fi
   case "$AUTH" in class|teamlead|operator) ;;
     *) echo "error: --authority must be class, teamlead or operator" >&2; exit 2 ;; esac
-  [ -z "$TIER" ] && [ -z "$SESSION" ] \
-    || { echo "error: --authority excludes --tier and --session" >&2; exit 2; }
   [ -n "$WHY" ] && [[ "$WHY" != *$'\n'* ]] \
     || { echo "error: --authority needs --why \"<one line>\"" >&2; exit 2; }
   if [ "$AUTH" != class ] || auth_lead_caller; then

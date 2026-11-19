@@ -50,6 +50,17 @@ jq -e --arg l "$(cd "$LIB" && pwd)" '(._generated | startswith("by team-channel.
   || { cp "$WATCH" "$WORK/out"; fail "(2) watch.local.json content"; }
 ! grep -q 'mail\.sqlite\|agent_mail\.py' "$WATCH" || fail "(2) a box or tool path in the probes"
 
+# ---- (2b) render keeps a hand-written file and an identical one -------------------------------
+run "$MAIN" $CH render
+expect 0 "keep	.agents/team/watch.local.json	identical to the template" "(2b) a second render keeps an identical file"
+cp "$WATCH" "$WORK/watch.gen"
+echo '{"_generated": "by hand", "probes": []}' > "$WATCH"; cp "$WATCH" "$WORK/watch.hand"
+run "$MAIN" $CH render
+expect 0 "keep	.agents/team/watch.local.json	hand-written — move it away to render it from the template" \
+  "(2b) render keeps a hand-written file"
+cmp -s "$WATCH" "$WORK/watch.hand" || fail "(2b) render changed a hand-written file"
+cp "$WORK/watch.gen" "$WATCH"
+
 # ---- (3) the exported values ------------------------------------------------------------------
 run "$MAIN" $CH show
 expect 0 "TEAM_CHANNEL_KEY=QX" "(3) show"
