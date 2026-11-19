@@ -156,7 +156,7 @@ schema alone does not carry it.
 
 | Adapter | Wakes by | Used for |
 |---|---|---|
-| `monitor` | nobody — the recipient wakes itself (`wait --follow` or its wake loop); `deliver` refuses it | Supervisor, TeamLead, Advisor |
+| `monitor` | nobody — the recipient wakes itself (`wait --follow`, or `inbox --unread` by hand); `deliver` refuses it | Supervisor, TeamLead, Advisor |
 | `codex-queue` | `codex queue --thread <UUID> --message <signal>` | Reviewer; the window must be open and the UUID changes every session |
 | `exec` | a command template, **only when the Operator listed it** in `<box dir>/adapters.allow` | tests, other tools |
 | `claude-resume` | `claude -p --resume <id>` | experimental, never proven; needs `--allow-experimental` |
@@ -239,7 +239,7 @@ deliveries that went `failed` come back with `requeue <id> --for Reviewer<suffix
 
 ## The operator kit
 
-The role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).
+The role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md). Nothing pushes mail into an idle Advisor (a `monitor`-adapter recipient without a team-watch receiver): it reads its mail by hand (`inbox --unread`) or with `wait --follow`. The Reviewer's `codex-queue` deliver loop is unchanged.
 
 ## What the channel does not guarantee
 

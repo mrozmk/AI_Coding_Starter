@@ -92,22 +92,19 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 24 ] || fail "2: allow is not the 24 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 23 ] || fail "2: allow is not the 23 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
   || fail "2: the operator kit installer is not behind ask"
-# team-watch: W (SessionStart, no matcher, sync, timeout 5) and R (Stop), the wake/pause scripts
-# allowed, the Operator verbs behind ask — each exactly once.
+# team-watch: W (SessionStart, no matcher, sync, timeout 5); no Stop hook R (the wake loop is retired); the pause script allowed, the Operator verbs behind ask — each exactly once.
 jq -e '[.hooks.SessionStart[] | select(has("matcher") | not) | .hooks[]
   | select((.command | test("team-watch-session")) and .timeout == 5 and (.async // false) == false)]
   | length == 1' "$S" >/dev/null || fail "2: no SessionStart hook W with timeout 5"
-jq -e '[.hooks.Stop[] | .hooks[] | select(.command | test("monitoring-rearm"))] | length == 1' \
-  "$S" >/dev/null || fail "2: no Stop hook R"
-for a in "Bash(bash .claude/lib/session-wake.sh*)" "Bash(bash .claude/lib/monitoring.sh*)"; do
-  [ "$(jq --arg a "$a" '[.permissions.allow[] | select(. == $a)] | length' "$S")" = 1 ] \
-    || fail "2: allow $a not present once"
-done
+jq -e '[.hooks.Stop[]? | .hooks[] | select(.command | test("monitoring-rearm"))] | length == 0' "$S" >/dev/null || fail "2: a Stop hook R is registered"
+[ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/monitoring.sh*)")] | length' "$S")" = 1 ] \
+  || fail "2: allow Bash(bash .claude/lib/monitoring.sh*) not present once"
+[ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/session-wake.sh*)")] | length' "$S")" = 0 ] || fail "2: the session-wake allow rule is still added"
 for a in routing stop "register --takeover" "mode answering" "mode class"; do
   a="Bash(bash .claude/lib/team-watch.sh $a*)"
   [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
@@ -283,7 +280,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 26 ] || fail "10: allow is not 2 project + 24 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 25 ] || fail "10: allow is not 2 project + 23 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -351,7 +348,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 24' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -429,7 +426,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 24' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -738,12 +735,12 @@ jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role"))] | lengt
 
 # ---- (26) retired files: an unchanged shipped version is deleted, a changed one stays a conflict ---
 # The five deprecated /roles pointers (step 9a-1) are `retired` manifest lines with the blob ids of
-# the versions the starter shipped, and so are the six files of the removed escalation path. So are
-# the allow/ask rules for the launcher verbs 9a removed.
+# the versions the starter shipped, and so are the six files of the removed escalation path, and the
+# role wake loop's two files. So are the allow/ask rules for the launcher verbs 9a removed.
 T=$(mktarget t26)
 mkdir -p "$T/.claude/commands"
 RET=$(sed -n 's/^retired \([^ ]*\) .*/\1/p' "$MANIFEST")
-N=$(printf '%s\n' "$RET" | grep -c .); [ "$N" -ge 11 ] || fail "26: the manifest retires $N files, expected the five commands and the six escalation files"
+N=$(printf '%s\n' "$RET" | grep -c .); [ "$N" -ge 13 ] || fail "26: the manifest retires $N files, fewer than the retired files"
 for p in $RET; do
   [ ! -e "$ST/$p" ] || fail "26: $p is retired but still in the starter"
   grep -qxF "own $p" "$MANIFEST" && fail "26: $p is both retired and own"
@@ -822,5 +819,25 @@ echo '{"teams":{}}' > "$P"
 setup "$T"
 [ "$RC" != 2 ] && [ "$RC" != 3 ] || fail "27: default run exited $RC"
 tm_count 1 "no workflow key (default)"
+
+# ---- (28) the role wake loop is retired: its Stop hook and allow rule leave on a re-run ----------
+T=$(mktarget t28)
+mkdir -p "$T/.claude"
+OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/monitoring-rearm.sh"'
+WA='Bash(bash .claude/lib/session-wake.sh*)'
+jq -n --arg o "$OLD" --arg a "$WA" '{permissions: {allow: [$a]},
+  hooks: {Stop: [{hooks: [{type: "command", command: $o}]}]}}' > "$T/.claude/settings.json"
+echo '{"teams":{}}' > "$T/.claude/project-profile.json"
+setup "$T"
+S="$T/.claude/settings.json"
+has "retired settings.json: monitoring-rearm.sh" || fail "28: the Stop hook was not retired"
+jq -e --arg o "$OLD" '[.hooks[]?[]?.hooks[]? | select(.command == $o)] | length == 0' "$S" >/dev/null \
+  || fail "28: monitoring-rearm.sh is still registered"
+jq -e --arg a "$WA" '.permissions.allow | index($a) | not' "$S" >/dev/null \
+  || fail "28: the session-wake allow rule stayed"
+[ ! -e "$T/.claude/lib/session-wake.sh" ] && [ ! -e "$T/.claude/hooks/monitoring-rearm.sh" ] \
+  || fail "28: a retired wake file was installed"
+setup "$T"
+! has "retired settings.json" || fail "28: the rerun retired again"
 
 echo "team-setup-smoke: OK"

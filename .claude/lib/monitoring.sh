@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Per-role listening of the supervision sessions: night pause, wake loop, start steps.
+# Per-role listening of the supervision sessions: night pause and start steps.
 # Usage: bash .claude/lib/monitoring.sh start|stop|status [all]
-#        bash .claude/lib/monitoring.sh ensure|paused <role>|armed <role>
+#        bash .claude/lib/monitoring.sh paused <role>
 #   role = TEAM_SESSION_ROLE; `all` = every session role, from the Supervisor or a role-less caller
 #   e.g. bash .claude/lib/monitoring.sh stop all    (the Supervisor, at night)
 # Runbook: .agents/reference/team-watch.md#pause
@@ -170,50 +170,6 @@ mon_start() {
     mon_start_steps "$roles"
   fi
   for r in $roles; do echo "$r: running · readiness: $(mon_state "$r")"; done
-  [ "${1:-}" = all ] || mon_ensure
-}
-
-# mon_armed <role> → "pid <p> claude <c> since <UTC>"; rc 1 unless both pids live and the loop
-# beat within 3 of its ticks — a live pid alone does not prove the loop still listens.
-mon_armed() {
-  local f="$TW_DIR/wake/$1.json" p c s t b
-  [ -f "$f" ] || return 1
-  IFS=$'\t' read -r p c s t <<<"$(jq -r '[.pid, .claude_pid, .since, (.secs // 3)]
-    | map(tostring) | @tsv' "$f" 2>/dev/null)" || return 1
-  [[ "$p" =~ ^[0-9]+$ ]] && [[ "$c" =~ ^[0-9]+$ ]] && [[ "$t" =~ ^[0-9]+$ ]] || return 1
-  kill -0 "$p" 2>/dev/null && kill -0 "$c" 2>/dev/null || return 1
-  b="$(tw_num "$(cat "$TW_DIR/wake/$1.beat" 2>/dev/null)" 0 '^[0-9]+$')"
-  [ $(( $(tw_now) - b )) -le $(( 3 * t + 5 )) ] || return 1
-  echo "pid $p claude $c since $s"
-}
-
-mon_wake_state() {  # → none declared | armed (…) | dormant (paused) | not armed
-  local a
-  if [ "$(mon_decl "$1" '.wake // {} | length')" = 0 ]; then echo "none declared"; return 0; fi
-  if ! a="$(mon_armed "$1")"; then echo "not armed"
-  elif tw_paused "$1" >/dev/null; then echo "dormant (paused)"
-  else echo "armed ($a)"; fi
-}
-
-mon_mail_missing() {  # the role declares a mail source but watch.local.json has no probe for it
-  local cfg="$root/.agents/team/watch.local.json"
-  [ "$(mon_decl "$1" '.wake.mail // null')" != null ] || return 1
-  [ -z "$(jq -r --arg r "$1" '.mail[$r] // .wake_mail[$r] // ""' "$cfg" 2>/dev/null)" ]
-}
-
-mon_ensure() {
-  local r a
-  r="$(mon_self)"
-  if [ "$(mon_decl "$r" '.wake // {} | length')" = 0 ]; then
-    echo "wake: none declared"; return 0
-  fi
-  if a="$(mon_armed "$r")"; then
-    echo "wake: armed (pid $(echo "$a" | cut -d' ' -f2), since ${a##* })"
-  else
-    echo "wake: not armed — start in the background (Bash, run_in_background: true):" \
-      "bash .claude/lib/session-wake.sh"
-  fi
-  ! mon_mail_missing "$r" || echo "mail: not configured"
 }
 
 # mon_state <role> → paused (…) | running | missing (…) | degraded (…)
@@ -225,12 +181,9 @@ mon_state() {
       || { echo "missing (no active team-watch receiver)"; return 0; }
     tw_live "$r" || why="$why, receiver not live"
     { tw_current beat && tw_current dog.beat; } || why="$why, team-watch loops not current"
-  elif ! mon_armed "$r" >/dev/null && ! team_tmux_alive "$(tw_tmux_name "$r")"; then
-    echo "missing (no tmux $(tw_session_name "$r"), no wake loop)"; return 0
+  elif ! team_tmux_alive "$(tw_tmux_name "$r")"; then
+    echo "missing (no tmux $(tw_session_name "$r"))"; return 0
   fi
-  [ "$(mon_decl "$r" '.wake // {} | length')" = 0 ] || mon_armed "$r" >/dev/null \
-    || why="$why, wake loop not armed or silent"
-  ! mon_mail_missing "$r" || why="$why, mail probe not configured"
   if [ -z "$why" ]; then echo running; else echo "degraded (${why#, })"; fi
 }
 
@@ -248,7 +201,6 @@ mon_status() {
         "$TW_DIR/events.jsonl")" || u="?"
       echo "  $l · undelivered: $u"
     fi
-    echo "  wake: $(mon_wake_state "$r")"
   done
 }
 
@@ -256,11 +208,6 @@ case "$cmd" in
   start|stop|status)
     [ $# -le 1 ] && { [ -z "${1:-}" ] || [ "$1" = all ]; } || usage
     "mon_$cmd" "${1:-}" ;;
-  ensure) [ $# = 0 ] || usage; mon_ensure ;;
   paused) tw_session_role_ok "${1:-}" || usage; tw_paused "$1" ;;
-  armed)  # no wake declared (or no readable declaration) = nothing to arm, for the Stop hook
-    tw_session_role_ok "${1:-}" || usage
-    case "$(mon_decl "$1" '.wake // {} | length')" in 0|null) exit 0 ;; esac
-    mon_armed "$1" ;;
   *) usage ;;
 esac

@@ -1,4 +1,4 @@
-# Reference: team-watch (daemon, routing, alarms, pause, wake loops)
+# Reference: team-watch (daemon, routing, alarms, pause)
 
 > **No longer the delivery path for role messages.** A role message is an inbox file rung by the
 > session-host doorbell (`session-host.sh send`; [session-host.md](session-host.md) §12), and
@@ -10,8 +10,8 @@ The durable monitor of the supervision roles. One detached daemon and one watchd
 snapshot the teams, run the mail probes, evaluate the signal filter and **push** batches into the
 registered role sessions over Claude Code's cross-session messaging socket. Acks and alarms are
 computed outside every LLM. Code: `.claude/lib/team-watch.sh` (CLI) and `team-watch-{lib,route,
-deliver,inputs}.sh`, `team-watch-send.py`, `team-watch-signals.jq`, `session-wake.sh`,
-`monitoring.sh`; hooks `team-watch-session.sh` (SessionStart) and `monitoring-rearm.sh` (Stop);
+deliver,inputs}.sh`, `team-watch-send.py`, `team-watch-signals.jq`,
+`monitoring.sh`; hook `team-watch-session.sh` (SessionStart);
 declaration `.claude/team/sessions/monitoring.json`. `/monitor` handles the pushed messages and
 arms no poller; `team-watch-poll.sh` (`team-watch.sh <teams>` hands a team list to it) stays only as
 a manual diagnostic. The role sessions that receive the pushes: [supervisor-sessions.md](supervisor-sessions.md).
@@ -111,7 +111,7 @@ Operator notifications).
 State lives in `<main>/.agents/team/watch/`: `events.jsonl` (seq, to, key, label, text), `cursor.<role>`,
 `deliveries.jsonl`, `acks.jsonl` (`picked | done | transferred | superseded`), `open.json`,
 `routing.json`, `receivers/<role>.json` (mode 600, holds the token), `state.json` (switches and
-pauses), beats, `wake/`. Writers take `lock.d` (and `send.d` around a send); a claim of a dead pid,
+pauses), beats. Writers take `lock.d` (and `send.d` around a send); a claim of a dead pid,
 or a pid-less one older than 2 s, is reclaimed. A `state.json` that is not a JSON object is never
 rewritten: every writer refuses (`state.json unreadable — fix it by hand`) and every reader treats
 it as a pause. Rotation starts past `TEAM_WATCH_ROTATE_BYTES` and keeps whatever an addressee has
@@ -121,39 +121,27 @@ lines go to `<file>.jsonl.1`.
 ## Mail probes
 
 Read from the rendered `.agents/team/watch.local.json` (`team-channel.sh render`, template
-`.claude/team/watch.local.json.tmpl`): `mail.<role>` in split, `mail_unread` in single,
-`wake_mail.Advisor` for the Advisor's wake loop (a leftover `mail.TeamLead` or `esc_mail` of an
-older render is ignored). This layer never
+`.claude/team/watch.local.json.tmpl`): `mail.<role>` in split, `mail_unread` in single
+(a leftover `mail.TeamLead`, `esc_mail` or `wake_mail` of an older render is ignored). This layer never
 reads a box or tool path. No file = `mail: not configured`, not an error; a failing or timed-out
 probe is an `err:mail` signal, never "no mail".
 
 ## Pause
 
 `monitoring.sh stop [all]` pauses a role (`all`: from the Supervisor or a role-less caller), `start
-[all]` ends it and replays the open state, `status [all]`, `ensure` (the wake-loop check of one
-role), `paused <role>` (rc 0 + `<since UTC> (<by>)`), `armed <role>`. A pause acks, supersedes and
+[all]` ends it and replays the open state, `status [all]`,
+`paused <role>` (rc 0 + `<since UTC> (<by>)`). A pause acks, supersedes and
 moves nothing: `UNPICKED`/`STALLED` stay armed. Only `.roles[<Role>].pause.pass` of
 `monitoring.json` passes (`alarms: true`, `mail_threads` prefixes; a broken declaration falls back
 to alarms + `incident-`). A second stop keeps `since`/`by`; a broken flag is refused. The shipped
 pass values are example policy for the Operator to change.
 
-## Wake loops
-
-`session-wake.sh` runs in a role session as Bash `run_in_background`. It watches the role's
-declared sources (`team-prompts`, `mail`, `pending`, with grace seconds), pushes **one** `WAKE <role>
-<source>:` message into its own session and exits; the message ends with `Handle it, then re-arm in
-the background: bash .claude/lib/session-wake.sh (the Stop hook enforces it)`. Second arm:
-`ALREADY-ARMED`; another claude holds it: `HELD`. A paused role's loop only sleeps. Knobs:
-`TEAM_WAKE_SECS` (3), `TEAM_WAKE_SLOW_SECS` (30), `TEAM_WAKE_CLAUDE_PID`.
-
 ## Hooks
 
 - `SessionStart → team-watch-session.sh` (timeout 5): after `/clear`, resume or compact, re-points
   this session's own receiver to its current socket/token — same claude pid only, a takeover wins.
-- `Stop → monitoring-rearm.sh`: blocks a turn end while the role's declared wake loop is not armed;
-  exits at once outside a role session (`TEAM_SESSION_ROLE`) or in a clone.
 
-Both are registered by `team-setup.sh` (ids `W`, `R`), never by the template `settings.json`.
+It is registered by `team-setup.sh` (id `W`), never by the template `settings.json`; a re-run retires the Stop hook `monitoring-rearm.sh` that older installs registered (id `R`).
 
 ## Env knobs
 

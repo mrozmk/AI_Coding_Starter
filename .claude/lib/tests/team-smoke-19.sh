@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# team-watch pause hardening: incident-channel errors pass a pause, a stop during the wake loop's
-# slow read does not wake, an empty or unreadable state.json is a pause and never rewritten,
+# team-watch pause hardening: incident-channel errors pass a pause, an empty or unreadable
+# state.json is a pause and never rewritten,
 # rotation keeps a pause-delivered incident, version guard, idempotent stop (since/by kept), a
-# broken pause flag refused. Cases (220), (222)-(224), (227)-(230).
-# It runs a wake loop against a slow probe, so the runner keeps it out of a parallel batch.
+# broken pause flag refused. Cases (220), (223)-(224), (227)-(230).
+# It runs the team-watch loops, so the runner keeps it out of a parallel batch.
 # team-smoke: serial
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -63,41 +63,7 @@ deliver; deliver
 wait_recv SU "ERROR mail Supervisor: E220" 10
 [ "$(cur Supervisor)" = "$CS" ] || fail "an incident-channel delivery moved the cursor"
 echo "team-smoke-19: (220) incident-channel errors pass a pause OK"
-
-# ---- (222) a stop during the slow source read does not wake ----------------------------------------
-startall
-cat > "$WORK/slowmail" <<EOF
-#!/usr/bin/env bash
-[ -f "$WORK/mail.go" ] || exit 0
-touch "$WORK/mail.reading"; sleep 3
-echo "[agent-mail] m222 kind=turn thread=ops-222"
-EOF
-chmod +x "$WORK/slowmail"
-mailcfg true "bash $WORK/slowmail"
-jq '.remind_secs = 3600 | .roles.Advisor.wake = {"mail": 0}' "$WORK/mon.json" > "$WORK/wake.json"
-sleep 300 & FC=$!; PIDS="$PIDS $FC"
-( cd "$MAIN" && exec env TEAM_SESSION_ROLE=Advisor TEAM_WAKE_CLAUDE_PID="$FC" TEAM_WAKE_SECS=1 \
-    TEAM_WAKE_SLOW_SECS=1 TEAM_MONITORING_JSON="$WORK/wake.json" \
-    CLAUDE_CODE_MESSAGING_SOCKET="$AD_SOCK" CLAUDE_CODE_MESSAGING_TOKEN=tok \
-    bash .claude/lib/session-wake.sh ) > "$WORK/wake.out" 2>&1 &
-WPID=$!; PIDS="$PIDS $WPID"
-for _ in $(seq 1 30); do [ -f "$TWD/wake/Advisor.json" ] && break; sleep 0.2; done
-[ -f "$TWD/wake/Advisor.json" ] || fail "the wake loop did not arm"
-sleep 3; kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "baseline woke"; }
-N0="$(nmsg AD)"
-touch "$WORK/mail.go"
-for _ in $(seq 1 50); do [ -f "$WORK/mail.reading" ] && break; sleep 0.2; done
-[ -f "$WORK/mail.reading" ] || fail "the slow mail source was never read"
-as Advisor AD $MON stop; expect 0 "paused since" "stop during the read"
-sleep 6
-kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "a stop during the read woke"; }
-! has "WAKE Advisor" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "WAKE text"; }
-[ "$(nmsg AD)" = "$N0" ] || fail "a paused loop pushed into the session"
-kill "$FC"
-for _ in $(seq 1 20); do kill -0 "$WPID" 2>/dev/null || break; sleep 0.3; done
-! kill -0 "$WPID" 2>/dev/null || fail "the loop outlived its claude"
-rm -f "$WORK/mail.go" "$WORK/mail.reading"; mailcfg true
-echo "team-smoke-19: (222) stop during the read does not wake OK"
+mailcfg true   # the probe config the cases below run with
 
 # ---- (223) an empty or unreadable state.json is a pause, never overwritten -----------------------
 startall

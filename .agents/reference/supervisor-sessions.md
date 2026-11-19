@@ -20,7 +20,7 @@ the single-window flow (routing `single Supervisor`). Mechanics of the push chan
 |---|---|---|---|
 | **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | alarms + its own mail |
 | **TeamLead** (retired) | `<prefix>-teamlead` | the global TeamLead — retired: no run reaches it ([§ TeamLead](#teamlead)) | none |
-| **Advisor** | `<prefix>-advisor` | task intake, on request through the Supervisor | none — agent-mail only, wake loop `mail` |
+| **Advisor** | `<prefix>-advisor` | task intake, on request through the Supervisor | none — agent-mail only (with the kit), read by hand |
 
 **The per-run TeamLead is not one of these sessions.** In brainstorm and quick mode the runner
 (`team-run.sh`) launches one lead per team run as `<team>-lead` in the team clone and ends it with
@@ -108,11 +108,6 @@ no summary to the Operator: the post-run note goes to `<decisions_dir>/<date>-<t
 with its "TeamLead decisions" section, then a `turn` to the Supervisor on `ready-<team>-<run>`.
 An Operator action → a notification plus the block in this window; nothing to the Supervisor.
 
-**Wake loop:** `bash .claude/lib/session-wake.sh` in `run_in_background`, sources and grace
-periods from `.claude/team/sessions/monitoring.json`. A wake pushes one message into the session
-over its own socket and exits; the Stop hook `monitoring-rearm.sh` refuses to end a turn while the
-loop is not armed.
-
 **Does not:** merge or release (`/pr-merge`, `/release`, `git push` and the PR host's update verbs
 denied); create, advance, remode or integrate teams (`team-new.sh`, `team-next.sh`,
 `team-remode.sh`, `team-integrate.sh` denied); switch routing, `mode answering`, the freeze, run
@@ -125,8 +120,7 @@ decision and revocation lines and never rewrites them; the Advisor promotes a re
 formats: `/monitor` → `## Policy log`.
 
 **Bootstrap** (the SessionStart hook names the contract on start, `/clear` and compaction) — `team-question.sh <team> list` for every clone,
-`team-watch.sh status --open`, read the policy log, reconcile as `/monitor` step 3, then
-`monitoring.sh ensure`.
+`team-watch.sh status --open`, read the policy log, reconcile as `/monitor` step 3.
 
 **Commands:** `/monitor`, `team-question.sh`, `team-run.sh`, `session-host.sh hint`,
 `team-watch.sh ack|done|status|pending TeamLead`.
@@ -138,8 +132,7 @@ formats: `/monitor` → `## Policy log`.
 > Fable's settings template is `.claude/team/sessions/Advisor.settings.json`. What follows is the
 > agent-mail side of the old single Advisor, kept until agent-mail becomes optional.
 
-It is no team-watch receiver: its wake loop (`session-wake.sh`, source `mail`) wakes it on
-unread `turn`s. Under `advisor: pair` it runs the Reviewer's deliver loop:
+It is no team-watch receiver and nothing wakes it on mail: with the kit it reads unread `turn`s by hand (`team-mail.sh <KEY> inbox --for Advisor<suffix> --unread`) at bootstrap. Under `advisor: pair` it runs the Reviewer's deliver loop:
 `supervisor-sessions.sh reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's
 path only (another project's same-name loop never counts); a missing one is restored per
 [agent-mail.md](agent-mail.md) → Bring-up. Under `advisor: solo` the Reviewer does not exist
@@ -147,8 +140,8 @@ path only (another project's same-name loop never counts); a missing one is rest
 
 ## Monitoring
 
-**Declaration:** `.claude/team/sessions/monitoring.json` — per role `team_watch`, `wake` sources
-with grace seconds, `pause.pass`, `start` steps (allow-list: `mode tiers on`), `remind_secs`.
+**Declaration:** `.claude/team/sessions/monitoring.json` — per role `team_watch`,
+`pause.pass`, `start` steps (allow-list: `mode tiers on`).
 **Commands:** `bash .claude/lib/monitoring.sh start|stop|status [all]` (`all` only from the
 Supervisor or a role-less caller; the `/monitoring` command is gone, the script stays until the
 team-watch side is retired); `/monitor` stays the handling contract of
@@ -156,7 +149,7 @@ team-watch side is retired); `/monitor` stays the handling contract of
 
 **Pause:** one durable flag per role in `.agents/team/watch/state.json` `.paused[<role>] = {since,
 by}`; an unreadable flag counts as a pause. A pause holds the team-watch push (routine not sent,
-`pause.pass` sent), the wake loops (dormant) and the kit's Stop hook; it **never** acks,
+`pause.pass` sent) and the kit's Stop hook; it **never** acks,
 supersedes, marks `done` or moves a cursor, and never silences alarms or incident threads. A
 bootstrap (start, `/clear`, compact) keeps the pause. Details:
 [team-watch.md](team-watch.md) → Pause.

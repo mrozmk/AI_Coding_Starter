@@ -195,7 +195,7 @@ own .claude/lib/team-mail-setup.sh
 own .claude/lib/team-channel.sh
 own .agents/reference/agent-mail.md
 
-# --- team-watch daemon, routing, wake loops, pause (re-sync at the source pin) -----------------------
+# --- team-watch daemon, routing, pause (re-sync at the source pin) -----------------------------------
 own .claude/lib/team-watch-lib.sh
 own .claude/lib/team-watch-route.sh
 own .claude/lib/team-watch-deliver.sh
@@ -203,10 +203,8 @@ own .claude/lib/team-watch-inputs.sh
 own .claude/lib/team-watch-send.py
 own .claude/lib/team-watch-signals.jq
 own .claude/lib/team-watch-poll.sh
-own .claude/lib/session-wake.sh
 own .claude/lib/monitoring.sh
 own .claude/hooks/team-watch-session.sh
-own .claude/hooks/monitoring-rearm.sh
 own .claude/team/sessions/monitoring.json
 own .agents/reference/team-watch.md
 # the source's alert-intake outbox is not ported (decision): no file may ship under its name
@@ -275,3 +273,7 @@ retired .claude/team/escalation.local.json.tmpl 569bf549c5dac9f620910b9aabb115a2
 retired .claude/team/sessions/operator-kit/escalate.sh 41018e0571e8bc09fa2f7772b77d52b8cf29a9de 2b9acf4bf4c56cfbf63fdeff74dbbd438fe8f640
 retired .agents/reference/escalation-fallback.md c3be57ba073ead3ac8a195ec2929bed078ecdb5d 6105e967b8a52e0a6293b5cb0cda394f4b79719b 9e0a072e1644ca58b029f2b21f07956aee60e222 6f7d33b532cd06521ae0ee60b30ba4c2c6454171 99f5b173a1cb0ec267e29f6760961bdbe9f82c6e 2130dbd9bb63846e80d5f6d1f2843370fc5cc7f8 45230e82675a4aff564b36cdd614ef8a2dcf33ed
 retired .agents/reference/team-advisor.md ac31d6b3703def81db028da86ae3ed6527859b30
+
+# --- retired: the role wake loop and its Stop hook; one blob id (v3.1.0 and v3.2.0 shipped the same) ---
+retired .claude/lib/session-wake.sh 8475cf958508bed42c4a66a19ff7e3cdb155f98a
+retired .claude/hooks/monitoring-rearm.sh 83d5201f648e1d3d1e88de993884813c5e820145

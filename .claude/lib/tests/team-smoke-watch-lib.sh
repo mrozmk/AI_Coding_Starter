@@ -22,12 +22,11 @@ watch_init() {
   cp "$SRC/.claude/settings.json" "$MAIN/.claude/"
   # The team-watch layer beyond the team-*.sh the seed carries.
   cp "$SRC/.claude/lib/team-watch-send.py" "$SRC/.claude/lib/team-watch-signals.jq" \
-    "$SRC/.claude/lib/session-wake.sh" "$SRC/.claude/lib/monitoring.sh" "$MAIN/.claude/lib/"
+    "$SRC/.claude/lib/monitoring.sh" "$MAIN/.claude/lib/"
   cp "$SRC/.claude/lib/team-watch"*.sh "$SRC/.claude/lib/team-channel.sh" "$MAIN/.claude/lib/"
   mkdir -p "$MAIN/.claude/team/sessions" "$MAIN/.claude/hooks"
   cp "$SRC/.claude/team/sessions/monitoring.json" "$MAIN/.claude/team/sessions/"
-  cp "$SRC/.claude/hooks/team-watch-session.sh" "$SRC/.claude/hooks/monitoring-rearm.sh" \
-    "$MAIN/.claude/hooks/"
+  cp "$SRC/.claude/hooks/team-watch-session.sh" "$MAIN/.claude/hooks/"
   jq '.teams.channel = {project_code: "SM", tmux_prefix: "smk"}' \
     "$MAIN/.claude/project-profile.json" > "$WORK/prof" && mv "$WORK/prof" "$MAIN/.claude/project-profile.json"
   watch_tmux_stub
@@ -186,10 +185,9 @@ wsess() {  # wsess <td> <team> <run> <role>
     '{team: $t, role: $role, run: $run, attempt: 1, ticket: "AB-1118", input_rev: "",
       launched_at: "2026-10-19T00:00:00Z"}' > "$1/session.json"
 }
-mailcfg() {  # mailcfg <Supervisor cmd> [Advisor wake cmd] — the rendered watch.local.json shape
+mailcfg() {  # mailcfg <Supervisor cmd> — the rendered watch.local.json shape
   mkdir -p "$MAIN/.agents/team"
-  jq -n --arg s "$1" --arg a "${2:-true}" \
-    '{mail: {Supervisor: $s}, wake_mail: {Advisor: $a}, mail_unread: $s, timeout_secs: 10}' \
+  jq -n --arg s "$1" '{mail: {Supervisor: $s}, mail_unread: $s, timeout_secs: 10}' \
     > "$MAIN/.agents/team/watch.local.json"
 }
 dead_pid() { sh -c 'exit 0' & local p=$!; wait "$p" 2>/dev/null || true; echo "$p"; }

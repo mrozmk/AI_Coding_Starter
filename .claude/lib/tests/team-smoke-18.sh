@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# team-watch delivery, pause and wake: bounded batches and backlog collapse; the per-role pause with
-# its pass-through (no ack, no cursor move, dedup by the delivery ledger); replay at start; the wake
-# loop (beat, socket push, pane-hash prompts); the re-arm Stop hook; version guards.
-# One receiver (the Supervisor): its pause policies run as sequential phases. The Advisor is the
-# session role with a wake loop.
-# Cases (160)-(166), (168b).
-# It runs wake loops and waits on their grace windows, so the runner keeps it out of a parallel batch.
+# team-watch delivery and pause: bounded batches and backlog collapse; the per-role pause with
+# its pass-through (no ack, no cursor move, dedup by the delivery ledger); replay at start;
+# version guards.
+# One receiver (the Supervisor): its pause policies run as sequential phases.
+# Cases (160)-(164), (168b).
+# It runs the team-watch loops, so the runner keeps it out of a parallel batch.
 # team-smoke: serial
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -200,11 +199,10 @@ has "alarm not sent: UNPICKED Supervisor #" "$WORK/out" || fail "the pause silen
 lib 'tw_alarm - "MONITOR daemon dead (163)"'; wait_recv SU "MONITOR daemon dead (163)" 10
 echo "team-smoke-18: (163) pause acks nothing OK"
 
-# ---- (164) start replays and confirms, ensure keeps the pause, all, send.d -------------------------
-as Supervisor SU $MON ensure; expect 0 "wake: none declared" "ensure SU"
-run "$MAIN" $MON paused Supervisor; expect 0 "(Supervisor)" "ensure kept the pause"
-as Advisor AD $MON ensure
-expect 0 "wake: not armed — start in the background (Bash, run_in_background: true): bash .claude/lib/session-wake.sh" "ensure AD"
+# ---- (164) start replays and confirms, all, send.d -------------------------------------------------
+run "$MAIN" $MON paused Supervisor; expect 0 "(Supervisor)" "paused before start"
+as Advisor AD $MON ensure; expect 2 "Usage:" "ensure is retired"
+as Advisor AD $MON armed Advisor; expect 2 "Usage:" "armed is retired"
 as Supervisor SU $MON stop; expect 0 "already paused" "stop SU (164)"
 fresh_beats
 as Supervisor SU $MON start; expect 0 "Supervisor: running · readiness: running" "start SU"
@@ -226,108 +224,16 @@ wait "$HOLD" || true
 has "Advisor: paused since" "$WORK/out" && has "already paused" "$WORK/out" || fail "stop all: the kept pause"
 run "$MAIN" env -u TEAM_SESSION_ROLE $MON status all; expect 0 "Supervisor: paused (" "status all"
 has "Advisor: paused (" "$WORK/out" && has "  passes: " "$WORK/out" || fail "status all: Advisor / passes"
+! has "wake:" "$WORK/out" || fail "status still prints a wake line"
 run "$MAIN" $W status; grep -q '^paused: .*Supervisor since .* (operator)' "$WORK/out" || fail "team-watch status"
 run "$MAIN" env -u TEAM_SESSION_ROLE $MON start all; expect 0 "" "start all (164)"
 run "$MAIN" env -u TEAM_SESSION_ROLE $MON status all
-has "Advisor: missing (no tmux smk-advisor, no wake loop)" "$WORK/out" || fail "Advisor not missing"
+has "Advisor: missing (no tmux smk-advisor)" "$WORK/out" || fail "Advisor not missing"
 echo '{"paused": ' > "$TWD/state.json"
 run "$MAIN" $MON paused Advisor; expect 0 "unreadable" "unreadable flag counts as a pause"
 as Advisor AD $MON stop; expect 1 "unreadable" "stop over an unreadable state.json"
 echo '{}' > "$TWD/state.json"
-echo "team-smoke-18: (164) start, ensure, all OK"
-
-# ---- (165) wake loop ------------------------------------------------------------------------------
-jq '.remind_secs = 3600 | .roles.Advisor.wake = {"team-prompts": 2}' "$WORK/mon.json" > "$WORK/wake.json"
-sleep 300 & FC=$!; PIDS="$PIDS $FC"
-wake() {  # wake [extra env…] — the loop in the background as the Advisor; WPID, $WORK/wake.out
-  ( cd "$MAIN" && exec env TEAM_SESSION_ROLE=Advisor TEAM_WAKE_CLAUDE_PID="$FC" TEAM_WAKE_SECS=1 \
-      TEAM_WAKE_SLOW_SECS=1 TEAM_MONITORING_JSON="$WORK/wake.json" \
-      CLAUDE_CODE_MESSAGING_SOCKET="$AD_SOCK" CLAUDE_CODE_MESSAGING_TOKEN=tok "$@" \
-      bash .claude/lib/session-wake.sh ) > "$WORK/wake.out" 2>&1 &
-  WPID=$!; PIDS="$PIDS $WPID"
-  for _ in $(seq 1 30); do [ -f "$TWD/wake/Advisor.json" ] && return 0; sleep 0.2; done
-  fail "the wake loop did not arm"
-}
-gone() {  # gone <pid> <secs>
-  local end=$((SECONDS + $2))
-  while kill -0 "$1" 2>/dev/null; do [ "$SECONDS" -lt "$end" ] || return 1; sleep 0.3; done
-}
-# A second question of the same role is a new screen: the pane hash wakes.
-mkdir -p "$WORK/panes"; export STUB_PANE_DIR="$WORK/panes"
-printf 'First question?\n❯ 1. Yes\nEnter to select\n' > "$WORK/panes/alfa-coder"
-wake
-sleep 5; kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "baseline woke"; }
-run "$MAIN" env TEAM_SESSION_ROLE=Advisor TEAM_WAKE_CLAUDE_PID="$FC" TEAM_MONITORING_JSON="$WORK/wake.json" \
-  bash .claude/lib/session-wake.sh; expect 0 "ALREADY-ARMED" "second arm"
-TEAM_MONITORING_JSON="$WORK/wake.json" run "$MAIN" $MON armed Advisor; expect 0 "pid $WPID" "armed with a beat"
-N2="$(nmsg AD)"
-printf 'Second question?\n❯ 1. Yes\nEnter to select\n' > "$WORK/panes/alfa-coder"
-gone "$WPID" 8 || fail "a second question of the same role did not wake"
-has "WAKE Advisor team-prompts:" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "wake text"; }
-has "alfa-coder" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "pane wake text"; }
-has "Handle it, then re-arm in the background: bash .claude/lib/session-wake.sh (the Stop hook enforces it)" \
-  "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "wake tail"; }
-wait_recv AD "WAKE Advisor team-prompts:" 5
-[ "$(nmsg AD)" -gt "$N2" ] || fail "the wake was not pushed into the session"
-[ ! -f "$TWD/wake/Advisor.json" ] || fail "pidfile kept after the wake"
-wake
-as Advisor AD $MON stop; expect 0 "paused since" "pause the woken role"
-printf 'Third question?\n❯ 1. Yes\nEnter to select\n' > "$WORK/panes/alfa-coder"
-sleep 5; kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "a paused loop woke"; }
-as Advisor AD env TEAM_MONITORING_JSON="$WORK/wake.json" $MON status; expect 0 "dormant (paused)" "dormant"
-kill "$FC"; gone "$WPID" 6 || fail "the loop outlived its claude"
-[ ! -f "$TWD/wake/Advisor.json" ] || fail "pidfile kept after claude died"
-unset STUB_PANE_DIR
-run "$MAIN" env -u TEAM_SESSION_ROLE $MON start all; expect 0 "" "start all (165)"
-# Teams come from clones with team.json (epsilon); a team session without one (zeta) is never scanned.
-sleep 300 & FC=$!; PIDS="$PIDS $FC"
-export STUB_PANE_DIR="$WORK/panes"
-mkdir -p "$WORK/main-epsilon/.agents/team"
-echo '{"team":"epsilon"}' > "$WORK/main-epsilon/.agents/team/team.json"
-mkdir -p "$WORK/main-zeta/.agents/team"
-wake
-sleep 4; kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "epsilon baseline woke"; }
-N3="$(nmsg AD)"; L3="$(wc -l < "$STUB_LOG")"
-printf 'Question zeta?\n❯ 1. Yes\nEnter to select\n' > "$WORK/panes/zeta-coder"
-sleep 5
-kill -0 "$WPID" 2>/dev/null || { cp "$WORK/wake.out" "$WORK/out"; fail "a zeta prompt woke the loop"; }
-[ "$(nmsg AD)" = "$N3" ] || fail "a zeta prompt pushed into the session"
-tail -n +"$((L3 + 1))" "$STUB_LOG" > "$WORK/slice3"
-! grep -q 'capture-pane.*=smk-zeta-' "$WORK/slice3" || fail "zeta was scanned"
-grep -q 'capture-pane.*=smk-epsilon-coder:' "$WORK/slice3" || fail "the loop did not scan epsilon"
-printf 'Question epsilon?\n❯ 1. Yes\nEnter to select\n' > "$WORK/panes/epsilon-coder"
-gone "$WPID" 8 || fail "an epsilon prompt did not wake within 8s"
-has "epsilon-coder" "$WORK/wake.out" || { cp "$WORK/wake.out" "$WORK/out"; fail "epsilon wake text"; }
-kill "$FC"
-rm -rf "$WORK/main-epsilon" "$WORK/main-zeta" "$WORK/slice3"
-rm -f "$WORK/panes/zeta-coder" "$WORK/panes/epsilon-coder"
-unset STUB_PANE_DIR
-echo "team-smoke-18: (165) wake loop OK"
-
-# ---- (166) Stop hook ------------------------------------------------------------------------------
-HOOK="$SRC/.claude/hooks/monitoring-rearm.sh"
-export TEAM_SESSION_ROLE=Advisor
-hook "$MAIN" '{}'; [ "$RC" = 0 ] && jq -e '.decision == "block" and (.reason
-  | startswith("Wake loop of role Advisor is not armed. Start it in the background"))' "$WORK/out" >/dev/null \
-  || fail "no block without a loop"
-hook "$MAIN" '{"stop_hook_active": true}'; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "blocked twice"
-sleep 300 & FC=$!; PIDS="$PIDS $FC"
-TEAM_MONITORING_JSON="$MAIN/.claude/team/sessions/monitoring.json"
-( cd "$MAIN" && exec env TEAM_WAKE_CLAUDE_PID="$FC" TEAM_WAKE_SECS=1 \
-    CLAUDE_CODE_MESSAGING_SOCKET="$AD_SOCK" CLAUDE_CODE_MESSAGING_TOKEN=tok \
-    bash .claude/lib/session-wake.sh ) > "$WORK/wake.out" 2>&1 & WPID=$!; PIDS="$PIDS $WPID"
-for _ in $(seq 1 30); do [ -f "$TWD/wake/Advisor.json" ] && break; sleep 0.2; done
-hook "$MAIN" '{}'; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "blocked with a live loop"
-kill "$WPID" "$FC" 2>/dev/null || true
-export TEAM_SESSION_ROLE=Supervisor
-hook "$MAIN" '{}'; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "Supervisor (no wake declared) blocked"
-export TEAM_SESSION_ROLE=Advisor
-hook "$CLONE" '{}'; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] || fail "blocked in a team clone"
-unset TEAM_SESSION_ROLE
-T0=$SECONDS; hook "$MAIN" '{}'; [ "$RC" = 0 ] && [ ! -s "$WORK/out" ] && [ $((SECONDS - T0)) -lt 2 ] \
-  || fail "a role-less session was held or slowed"
-export TEAM_MONITORING_JSON="$WORK/mon.json"
-echo "team-smoke-18: (166) Stop hook OK"
+echo "team-smoke-18: (164) start, all OK"
 
 # ---- (168b) version guards; a collapse never drops an alarm -------------------------------------
 echo "$(date -u +%s) 1 v$((TWV - 1))" > "$TWD/beat"; echo "$(date -u +%s) 1 v$((TWV - 1))" > "$TWD/dog.beat"

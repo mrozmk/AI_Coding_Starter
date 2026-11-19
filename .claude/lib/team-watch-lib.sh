@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # team-watch library: tick, heartbeats; delivery lives in team-watch-deliver.sh.
-# Sourced by team-watch.sh, session-wake.sh, monitoring.sh and the team-watch-session hook, never
+# Sourced by team-watch.sh, monitoring.sh and the team-watch-session hook, never
 # executed; the caller runs tw_init <main root> first. Runbook: .agents/reference/team-watch.md.
 # Bash 3.2 compatible: the open set lives in open.json and is diffed with jq.
 

@@ -6,7 +6,7 @@
 > (`bash .claude/lib/team-watch.sh start`) and is retired in a later release.
 
 **Contract:**
-- [`team-watch.md`](../../.agents/reference/team-watch.md): the daemon, signals, batches, routing, alarms, ledgers, pause, wake loops, hooks, env knobs, wire format.
+- [`team-watch.md`](../../.agents/reference/team-watch.md): the daemon, signals, batches, routing, alarms, ledgers, pause, hooks, env knobs, wire format.
 - [`monitor.md`](../../.claude/commands/monitor.md): what a receiver does with a batch (single routing).
 
 ## The shape
@@ -91,10 +91,9 @@ An alarm goes to the alarm target as `[team-watch alarm] <text> · handle per <c
 
 **Terminal rule:** an episode about the alarm target itself is only logged. Alarms never spawn alarms about alarms.
 
-## Pause and wake loops
+## Pause
 
 - **Pause.** `monitoring.sh stop [all]` pauses a role and `start [all]` resumes it, replaying the open state. A pause acks, supersedes and moves nothing, so `UNPICKED` and `STALLED` stay armed. Only what the role's `pause.pass` in `.claude/team/sessions/monitoring.json` declares gets through: alarms, and mail threads with listed prefixes. The shipped values are example policy.
-- **Wake loops.** In a role session, `session-wake.sh` runs as a background Bash task. It watches the role's declared sources (team prompts, mail, pending batches), pushes **one** `WAKE <role> <source>:` message into its own session, and exits. The `Stop` hook (`monitoring-rearm.sh`) blocks the end of a turn while that loop is not armed. A paused role's loop only sleeps.
 - **Changing `tmux_prefix`.** Run `team-watch.sh stop` first: loops under the old name keep running unseen, and `status` reports `not working` meanwhile.
 
 ## The wire format and its boundary

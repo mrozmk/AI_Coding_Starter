@@ -3,6 +3,26 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The role wake loop is retired (#52)
+
+**Before:** `/setup:teams` registered a `Stop` hook (`monitoring-rearm.sh`) that refused to end a
+role session's turn while its wake loop (`session-wake.sh`) was not armed, and allowed
+`session-wake.sh`. `monitoring.sh` had `ensure` and `armed`; `monitoring.json` declared `wake`
+sources and `remind_secs`; the kit's `watch.local.json` carried a `wake_mail` probe.
+
+**Now:** role messages are inbox files rung by the session host's doorbell (`session-host.md`
+§12); no loop runs. Both scripts are gone; `monitoring.sh` keeps `start|stop|status|paused`.
+With the agent-mail kit, an Advisor reads its mail by hand; the Reviewer's deliver loop is
+unchanged.
+
+**Action:**
+- Re-run `/setup:teams`: it deletes the two scripts when unchanged (a locally changed copy is a
+  conflict to resolve by hand), retires the `Stop` hook and the `session-wake.sh` allow rule.
+  Until then, a `settings.json` still naming `monitoring-rearm.sh` shows a hook error at each
+  turn end once the file is gone.
+- End any armed `session-wake.sh` background task in a running role session.
+- Optional: drop `wake` / `remind_secs` from a project-edited `monitoring.json` (ignored now).
+
 ## The Advisor escalation path is removed (#22, slice 2)
 
 **Before:** `team-escalate.sh` (with its parser `team-escalate-lib.sh`) sent tier-2/3 questions to

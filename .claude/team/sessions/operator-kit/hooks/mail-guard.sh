@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Stop hook of the supervision roles (the operator kit's): refuses to end a turn while this role
 # has unread agent-mail turns or unacked team-watch batches. The role is the launcher's
-# TEAM_SESSION_ROLE, never a transcript title; only the Supervisor is held (the Advisor's wake
-# loop covers its mail; a role-less window is silent — the UNPICKED alarm covers it).
-# A paused Supervisor (/monitoring stop) is held only to its pause.pass.mail_threads and to the
+# TEAM_SESSION_ROLE, never a transcript title; only the Supervisor is held (an Advisor reads its
+# own mail by hand at bootstrap; a role-less window is silent — the UNPICKED alarm covers it).
+# A paused Supervisor (monitoring.sh stop) is held only to its pause.pass.mail_threads and to the
 # batches delivered since its pause.
 # Every address comes from the channel config (team_channel_load). Fails open: no jq, no channel,
 # a failing helper → nothing to hold. Prints {"decision":"block",…} only on the block path; always

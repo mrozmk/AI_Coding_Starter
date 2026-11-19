@@ -195,13 +195,6 @@ case "$BOOT" in *'Run `/prime`'*) fail "(e2) the lead's bootstrap still runs /pr
 case "$BOOT" in *'.agents/memory/project-brief.md'*) ;; *) fail "(e2) the lead's bootstrap does not name the project brief" ;; esac
 echo "team-smoke-20: (e2) Bash guard OK"
 
-# ---- (f) the global-role hooks stay silent in a clone ------------------------------------------
-for f in monitoring-rearm.sh; do   # session-role.sh is gone (session-registry.sh: part roles)
-  lhook $f '{"session_id": "sid-lead"}'; expect 0 "" "(f) $f"
-  [ ! -s "$WORK/out" ] || fail "(f) $f printed in the clone"
-done
-echo "team-smoke-20: (f) global-role hooks OK"
-
 # ---- (g) materialize ---------------------------------------------------------------------------
 mkdir -p "$MAIN/.claude/team/sessions"
 cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"

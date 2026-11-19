@@ -46,7 +46,7 @@ jq -e --arg l "$(cd "$LIB" && pwd)" '(._generated | startswith("by team-channel.
   and (.mail.Supervisor | contains("\"" + $l + "/team-mail.sh\" QX inbox --for SupervisorQx --unread --limit 0"))
   and (.mail | has("TeamLead") | not) and (has("esc_mail") | not)
   and (.mail_unread | contains("--for SupervisorQx "))
-  and (.wake_mail.Advisor | contains("--for AdvisorQx "))' "$WATCH" >/dev/null \
+  and (has("wake_mail") | not)' "$WATCH" >/dev/null \
   || { cp "$WATCH" "$WORK/out"; fail "(2) watch.local.json content"; }
 ! grep -q 'mail\.sqlite\|agent_mail\.py' "$WATCH" || fail "(2) a box or tool path in the probes"
 
@@ -79,7 +79,6 @@ probe .mail.Supervisor; expect 0 "from=AdvisorQx kind=turn" "(4) split mail prob
 # Single window: every kind, but never an esc- thread line.
 probe .mail_unread; expect 0 "from=AdvisorQx kind=turn" "(4) single-window probe"
 [ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 1 ] || fail "(4) the single-window probe passed an esc- line"
-probe .wake_mail.Advisor; expect 0 "" "(4) empty probe"; [ ! -s "$WORK/out" ] || fail "(4) the Advisor has mail"
 
 # ---- (5) refusals: stale local half, suffix drift, bad policy ----------------------------------
 cp "$REG" "$WORK/reg.bak"
