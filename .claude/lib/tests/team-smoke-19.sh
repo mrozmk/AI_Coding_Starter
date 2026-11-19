@@ -38,7 +38,6 @@ sg() {  # sg <key> <to> <head> [kind]
 }
 deliver() { lib 'tw_deliver'; }
 cur() { cat "$TWD/cursor.$1" 2>/dev/null || echo 0; }
-nmsg() { msgs "$1" | wc -l | tr -d ' '; }
 nsent() { wc -l < "$WORK/send.log" | tr -d ' '; }
 startall() { run "$MAIN" env -u TEAM_SESSION_ROLE $MON start all; expect 0 "" "start all"; }
 same_state() {  # same_state <label> — state.json byte-equal to $WORK/st.before

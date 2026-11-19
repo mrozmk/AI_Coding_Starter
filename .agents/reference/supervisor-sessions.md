@@ -130,7 +130,7 @@ formats: `/monitor` → `## Policy log`.
 > The Advisors are the roles Fable (Claude) and Astra (Codex) in `teams.sessions`, started by
 > `/roles` (`bash .claude/lib/roles.sh`); their contract is [roles/advisor.md](roles/advisor.md) and
 > Fable's settings template is `.claude/team/sessions/Advisor.settings.json`. What follows is the
-> agent-mail side of the old single Advisor, kept until agent-mail becomes optional.
+> agent-mail side of the old single Advisor, kept for projects that install the agent-mail kit.
 
 It is no team-watch receiver and nothing wakes it on mail: with the kit it reads unread `turn`s by hand (`team-mail.sh <KEY> inbox --for Advisor<suffix> --unread`) at bootstrap. Under `advisor: pair` it runs the Reviewer's deliver loop:
 `supervisor-sessions.sh reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's
