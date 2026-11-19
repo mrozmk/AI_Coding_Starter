@@ -52,6 +52,8 @@ secret values: setting names only (`--query "[].name"`).
 Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
 heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call
 short, one action. Never `rm -rf`: write to a new output directory instead.
+Edit the run notes and every other file with the Edit tool, never with `python3 -`, `python3 -c`
+or `sed -i` through a here-doc: the egress guard stops an inline interpreter for the Operator.
 
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`
