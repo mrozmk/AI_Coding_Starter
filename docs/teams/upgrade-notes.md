@@ -3,6 +3,42 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The Advisor escalation path is removed (#22, slice 2)
+
+**Before:** `team-escalate.sh` (with its parser `team-escalate-lib.sh`) sent tier-2/3 questions to
+the Advisor through the operator kit's adapter `escalate.sh`, configured by
+`.agents/team/escalation.local.json` (rendered from `escalation.local.json.tmpl`). The question
+ledger had escalation states and an `orphans` verb, the team snapshot carried `esc_unsent` and
+`escalations`, and `supervisor-sessions.sh preflight` had an `escalations have live waiters` row.
+Since the global TeamLead's retirement nothing reached that path, but `/setup:teams` still
+installed it.
+
+**Now:** the six files are `retired` in the manifest: `team-escalate.sh`, `team-escalate-lib.sh`,
+`escalation.local.json.tmpl`, the kit's `escalate.sh`, `escalation-fallback.md` and
+`team-advisor.md`. The ledger reads only `## Answer` / `## Revoked` (an old `## Escalation`
+section is ignored), `team-question.sh list` prints no escalation counters, the snapshot has no
+`esc_unsent`/`escalations`, `team-channel.sh render` writes only `watch.local.json`, the kit
+installer no longer copies `escalate.sh`, and the preflight has no waiter row. The question
+ledger, `/monitor`, the `answer` verb, the tier tables and the session permission profiles stay
+until the next step.
+
+**Action — order first.** `/setup:teams` keeps a differing `own` file as a `conflict` while it
+deletes an unmodified `retired` one in the same pass, and an installation's old runtime files still
+name the retired ones (`team-question.sh` and `team-snapshot.sh` source `team-escalate-lib.sh`,
+`operator-kit/install.sh` copies `escalate.sh`, `team-channel.sh` renders
+`escalation.local.json.tmpl`). So:
+1. First update every runtime file this release changed: `team-lib.sh`, `team-question.sh`,
+   `team-snapshot.sh`, `team-snapshot-teams.sh`, `team-channel.sh`, `team-mail-setup.sh`,
+   `supervisor-sessions.sh`, `operator-kit/install.sh` — with `/maintain:sync-from-starter`, or by
+   hand-merging each `--check` conflict.
+2. Only then run `/setup:teams`: it deletes an unmodified shipped copy of the six removed files and
+   reports a modified one as `conflict` (delete or keep it by hand).
+3. Check: `bash .claude/lib/team-snapshot.sh >/dev/null`; `bash .claude/lib/team-question.sh
+   <team> list` on a live team; with the kit installed, `install.sh --apply` followed by
+   `install.sh --verify`.
+4. Re-run the kit's `install.sh --apply` (it no longer copies `escalate.sh`), then delete
+   `<kit_dir>/escalate.sh` and `.agents/team/escalation.local.json` by hand.
+
 ## The global TeamLead is retired: the switch and the team routes (#22)
 
 **Before:** `teams.teamlead.enabled` (default `false`) picked the model. Off, the global TeamLead

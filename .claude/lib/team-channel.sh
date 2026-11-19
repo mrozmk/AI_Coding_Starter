@@ -22,7 +22,7 @@
 #                           through team-mail.sh; args go to `send` (--body/--body-file, --thread…);
 #                           `--kind info` makes it an info mail instead: no --awaiting, wakes nobody;
 #                           any other --kind exits 2
-#   render [--dry-run]      .agents/team/{watch,escalation}.local.json from .claude/team/*.tmpl
+#   render [--dry-run]      .agents/team/watch.local.json from .claude/team/watch.local.json.tmpl
 # Exports (team_channel_load):
 #   TEAM_CHANNEL_ROOT        the checkout the config was read from
 #   TEAM_CHANNEL_CODE        teams.channel.project_code (required)
@@ -198,8 +198,7 @@ team_tool_hash() {  # team_tool_hash <dir> → <12 hex>
 }
 
 # ---- render: the generated local configs ---------------------------------------------------------
-# A path spliced into a shell command inside JSON must survive both: the same character set the
-# escalation config parser accepts (team-escalate-lib.sh esc_config_ok), minus the quote.
+# A path spliced into a shell command inside JSON must survive both: a conservative character set, minus the quote.
 TEAM_CHANNEL_SAFE='^/[A-Za-z0-9_./~@%+=:, -]*$'
 TEAM_CHANNEL_MARK="by team-channel.sh render"
 
@@ -246,20 +245,6 @@ team_channel_render() {  # team_channel_render [--dry-run] — after team_channe
       echo "error: team channel: '$v' has characters a generated command cannot carry" >&2; return 3; }
   done
   team_channel_render_one "$t/watch.local.json.tmpl" .agents/team/watch.local.json "$dry" || return
-  # The adapter is the operator kit's; a config pointing at a missing adapter would turn every
-  # escalation into a failed send, so without it the file is not written (NO-REPLY no config).
-  if [ ! -f "$TEAM_CHANNEL_KIT/escalate.sh" ]; then
-    printf 'skip\t%s\t%s\n' .agents/team/escalation.local.json \
-      "no adapter at $TEAM_CHANNEL_KIT/escalate.sh (operator kit not installed)"
-    return 0
-  fi
-  # advisor solo: no Reviewer, so no opinion op — the no-reply fallback stays off (D4).
-  if [ "$TEAM_CHANNEL_ADVISOR" = solo ]; then
-    team_channel_render_one "$t/escalation.local.json.tmpl" .agents/team/escalation.local.json \
-      "$dry" 'del(.opinion)'
-  else
-    team_channel_render_one "$t/escalation.local.json.tmpl" .agents/team/escalation.local.json "$dry"
-  fi
 }
 
 TEAM_CHANNEL_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

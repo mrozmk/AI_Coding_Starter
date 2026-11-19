@@ -1,6 +1,6 @@
 # 08 — Operator kit
 
-The supervision roles need a few files **outside** the repository: the escalation adapter, the
+The supervision roles need a few files **outside** the repository: the
 role Stop hook and an optional health check. They live under `kit_dir`
 (the `kit_dir` field of the gitignored `.agents/team/channel.local.json`, default
 `<box dir>/kit`), so one install serves every clone of the project and no clone can edit them.
@@ -11,15 +11,13 @@ the project's settings put `install.sh` on `ask`.
 
 ```bash
 bash .claude/team/sessions/operator-kit/install.sh --dry-run    # what would change
-bash .claude/team/sessions/operator-kit/install.sh --apply      # back up, copy/render, render escalation.local.json
+bash .claude/team/sessions/operator-kit/install.sh --apply      # back up, copy/render
 bash .claude/team/sessions/operator-kit/install.sh --verify     # live files == templates
 bash .claude/team/sessions/operator-kit/install.sh --rollback   # restore the backups
 ```
 
 - Run it after the channel step of `/setup:teams` ([09 → Fresh machine](09-setup.md#fresh-machine-no-agent-mailprojectsjson)):
   the installer reads `kit_dir` and the box from the channel config.
-- `--apply` is what makes escalation work: it writes `.agents/team/escalation.local.json`, which
-  the channel step skips while no adapter exists.
 - **Lifetimes.** A template change reaches the live copy only on your next `--apply`;
   `--verify` reports the drift until then, and the preflight's `operator kit installed` row FAILs.
   This drift is intended: the live kit changes only by your hand.

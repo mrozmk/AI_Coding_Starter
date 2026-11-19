@@ -19,10 +19,10 @@ The layer is opt-in on top of the single-window flow. As long as there is no `ro
 
 | Role | Host | Session (tmux name / Herdr terminal) | Does | Never |
 |---|---|---|---|---|
-| **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze, alarms, a role session's own prompts (tier 1 through `answer`) | answers or escalates a team question; switches routing on its own; clears a freeze without the Operator |
-| **TeamLead** | Claude | `<prefix>-teamlead` | runs `/monitor`: team signals, tier 1, decides team questions, sends the Advisor and Operator lists through `team-escalate.sh`, writes the READY note | merges, releases, pushes; creates, advances or remodes teams; switches routing or answering |
-| **Advisor** | Claude | `<prefix>-advisor` | task intake, tier 2; under `advisor: pair` it runs the Reviewer's deliver loop | receives team-watch pushes; it wakes only on its own unread mail |
-| **Reviewer** | Codex | none, an agent-mail recipient | the second opinion on a tier-2 escalation (`advisor: pair` only) | exists under `advisor: solo` |
+| **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze, alarms, a role session's own prompts (tier 1 through `answer`) | answers a team question; switches routing on its own; clears a freeze without the Operator |
+| **TeamLead** | Claude | `<prefix>-teamlead` | runs `/monitor`: team signals, tier 1, decides team questions, writes the READY note | merges, releases, pushes; creates, advances or remodes teams; switches routing or answering |
+| **Advisor** | Claude | `<prefix>-advisor` | task intake, on request through the Supervisor; under `advisor: pair` it runs the Reviewer's deliver loop | receives team-watch pushes; it wakes only on its own unread mail |
+| **Reviewer** | Codex | none, an agent-mail recipient | the second opinion the Advisor asks for (`advisor: pair` only) | exists under `advisor: solo` |
 
 The **Operator** is the human. Operator actions (routing, `freeze off`, `here`, `rollback`, `register --takeover`, installing the kit) sit behind `ask` and are never taken by a role on its own.
 
@@ -62,7 +62,7 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 | Role | Denied on top of the project and local rules |
 |---|---|
 | TeamLead | `git push`, the PR host's update verbs (per `teams.pr_provider`), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|answer\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `/pr-merge`, `/release` |
-| Supervisor | `team-answer.sh`, `team-question.sh * answer *`, `team-escalate.sh` |
+| Supervisor | `team-answer.sh`, `team-question.sh * answer *` |
 
 **The committed ask entries, `Bash(cat .env*)` and `Read(**/.env*)`.** Both profiles carry these two ask rules; the second keeps the Read tool from opening a `.env` the Bash rule never sees. They give the profile's `secrets` samples something to prove in a project whose own settings ask nothing. Provider- and cloud-specific secret verbs belong in the project's copy of the profile or in `teams.policy` examples, not in the template.
 
@@ -121,7 +121,7 @@ Other verbs:
 
 `teams.channel.advisor` defaults to `pair` when the profile has `codex: true`, and to `solo` otherwise.
 
-- **`pair`.** The Advisor answers tier 2 together with the Reviewer (Codex): it runs the Reviewer's deliver loop, and the escalation adapter's `opinion` is available.
+- **`pair`.** The Advisor works with the Reviewer (Codex): it runs the Reviewer's deliver loop.
 - **`solo`.** The Reviewer does not exist: `/setup:teams` prints `reviewer: none`, `supervisor-sessions.sh reviewer` prints `Reviewer: none (advisor solo)`, and every note carries `reviewer: none`.
 
 `solo` removes the Reviewer from the channel and nothing else. **The Codex CLI is still required by the team pipeline today:** `/setup:teams` stops without `codex` on `PATH`, the profile example lists it in `required_tools`, and the runner refuses to launch any team role while `.claude/codex-profile` does not resolve to an existing directory. Making it conditional is follow-up F32.
@@ -134,14 +134,13 @@ Other verbs:
 |---|---|---|
 | 1 | receivers live | see below |
 | 2 | team-watch loops beating | FAIL `beat or dog.beat stale — bash .claude/lib/team-watch.sh start` |
-| 3 | escalations have live waiters | FAIL naming each `escalating` / `waiting-operator` q without a live `team-escalate.sh` waiter |
-| 4 | mail probe and picked ping per role | FAIL on a missing `.mail` probe in `watch.local.json`, or a role whose `team-watch.sh ping` was never picked |
-| 5 | team channel loads | FAIL with the loader's last error line |
-| 6 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
-| 7 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
-| 8 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
-| 9 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
-| 10 | Claude Code version | compared with the version the socket wire format was verified on (2.1.318); any other version prints `unverified: run team-watch.sh ping <role>`; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
+| 3 | mail probe and picked ping per role | FAIL on a missing `.mail` probe in `watch.local.json`, or a role whose `team-watch.sh ping` was never picked |
+| 4 | team channel loads | FAIL with the loader's last error line |
+| 5 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
+| 6 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
+| 7 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
+| 8 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
+| 9 | Claude Code version | compared with the version the socket wire format was verified on (2.1.318); any other version prints `unverified: run team-watch.sh ping <role>`; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
 
 **The socket row (1).** Each registered receiver's socket is judged by `team-watch-send.py --check`, the send's own predicate and wording:
 

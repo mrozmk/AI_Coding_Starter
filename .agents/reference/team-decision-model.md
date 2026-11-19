@@ -2,8 +2,7 @@
 
 Who decides a team question, who is only informed, and when the Operator is asked. The tier table
 is canonical in [team-mode.md](team-mode.md) §10 (one copy; edit it there); this file refines its
-rows. Mechanics: [team-questions.md](team-questions.md); the Advisor no-reply fallback:
-[escalation-fallback.md](escalation-fallback.md).
+rows. Mechanics: [team-questions.md](team-questions.md).
 
 Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/02-decision-model.md`.
 
@@ -36,11 +35,9 @@ the Reviewer are not on this path.
 | **Operator** | the human owner of the project | the critical list (§3), Operator actions (team-mode.md §10) |
 | **Supervisor** | the session that runs the project's operations: merges after the gate, team start/stop/queue, releases, incidents | operational actions — never a team question |
 | **TeamLead** | the session running `/monitor`: sees every team question | every team question outside the two lists below |
-| **Advisor** | the analyst session (narrow list) | the Advisor list (§3), with the Reviewer |
-| **Reviewer** | an independent second analyst (another model or session) | nothing alone; its opinion is the second voice of a tier-2 decision |
+| **Advisor** | standing analyst, on request through the Supervisor | nothing from a team (roadmap §0.5) |
 
-Role names in code and ledgers are exactly these four (plus `TeamLead-fallback` as the author of a
-fallback delivery). A project that runs several projects' sessions on one machine distinguishes
+Role names in code and ledgers are exactly these four. A project that runs several projects' sessions on one machine distinguishes
 them by configuration (a mail suffix), never by renaming the roles. In a one-window setup the same
 session is Supervisor and TeamLead; the model still applies, only the hops disappear.
 
@@ -142,16 +139,6 @@ names in `teams.policy.classes.prod_diagnose`). Every class is **off until the p
 (`teams.policy.classes.<name>.enabled: true`); the Operator's word (`team-watch.sh mode class <name>
 on|off`) can then switch an enabled class off and on again, never enable a disabled one.
 
-**Advisor no-reply fallback.** A tier-2 escalation in an eligible class (`analysts-condition`,
-`plan-variant`, `borderline`, `policy-deviation`) closes without the Advisor when the wait times
-out and the newest Reviewer message on the thread opens with `opinion: agree`, newer than the
-request, over the TeamLead's recorded recommendation. The script decides, the TeamLead delivers,
-marked `fallback: Advisor no-reply` (`--author TeamLead-fallback`). Critical classes (`ac`,
-`contract`, `schema`, `sensitive`, `harness-rule`, `conflict`, unclassified) and every q with
-`waiting: operator` never fall back. Under `teams.channel.advisor: solo` the fallback is off by
-design (reason `advisor solo`): there is no Reviewer, and every tier-2 question waits for the
-Advisor.
-
 **Tickets from recommendations.** The Supervisor and the Advisor create technical tickets without
 asking (wrapup follow-ups, QA findings, analysis). Each carries the recommendation line —
 `teams.policy.tickets.recommendation_line` from the profile, else "Created from a recommendation —
@@ -177,8 +164,8 @@ main checkout's `.agents/team/decisions/`), one line `- <UTC> [<class>] <decisio
 case; a deviation from a live precedent goes to the Advisor as blocking tier 2. Two writers,
 two scopes: the TeamLead is append-only and the only writer of decision and revocation lines; the
 Advisor's one exception is promotion — it moves a recurring entry to `decisions.md` through a PR
-and replaces exactly that entry's line with a `[promoted]` pointer, after which it is a rule
-([team-advisor.md](team-advisor.md) §3). Format and procedure: `monitor.md` → Policy log.
+and replaces exactly that entry's line with a `[promoted]` pointer, after which it is a rule.
+Format and procedure: `monitor.md` → Policy log.
 
 ## 5. The route to the Operator
 
@@ -193,8 +180,6 @@ stage, the lead and the Supervisor's inbox.
 
 - Operator actions (team-mode.md §10) — directly in the TeamLead's window (one line +
   the block), never as a decision question and never through the Supervisor.
-- Operator-list decisions — through the Advisor (`team-escalate.sh` tier 3); the Advisor relays
-  `decided-by: operator` + a verified `operator-ref`.
 - Merge stays with the Supervisor: the decider of a team's questions does not also merge their
   result; QA and the cross-model review stay the independent gate. The release freeze flag
   `.agents/team/release-freeze` stops the auto-merge gate.
@@ -204,8 +189,4 @@ stage, the lead and the Supervisor's inbox.
 > **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
 
 - Per-class deadlines: a blocking Advisor-list question past 60 min goes to the Supervisor for the
-  Operator's list; a non-blocking one past 30 min becomes a Follow-up. Until then the NO-REPLY rule
-  of team-mode.md §10 applies (re-ping ≤ 2, then wait without a deadline), except the wrapup (B)
-  memory case (monitor.md 4(e); Transitional supervision rules — the scripts do not enforce them.)
-- One `ADVISOR silent` signal per episode: a critical q that times out later in the same episode
-  raises no new notification.
+  Operator's list; a non-blocking one past 30 min becomes a Follow-up.

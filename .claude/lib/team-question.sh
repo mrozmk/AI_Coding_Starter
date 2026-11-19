@@ -7,37 +7,30 @@
 #          --why "<one line>" [--text "<answer>"] --send <action> [--run <run>]
 # Actions: yes|no|say|other|pick:<n>|picks:<n,n|none>|none (recorded only).
 # Refused while tiers are off (tier 1/2) or answering is off (all but --tier 3 --send none).
-# A recorded reviewer-fallback is answered only with --tier 2 --author TeamLead-fallback and its
-#   recorded send/text/Reviewer id, or at tier 3.
 #        bash .claude/lib/team-question.sh <team> retry <q-id> --run <run>   (not-sent-stale only)
 #        bash .claude/lib/team-question.sh <team> finish <q-id> --run <run>   (sent unconfirmed /
 #          unknown tier-1/2 say|other, once: sends the missing text or Enter)
 #        bash .claude/lib/team-question.sh <team> revoke <q-id> --why "<one line>"
 #        bash .claude/lib/team-question.sh <team> show <q-id> | list | policy [<role>]
 #          | screen <role>
-#        bash .claude/lib/team-question.sh <team> orphans
 #        bash .claude/lib/team-question.sh <team> unlock <q-id>|open   (stale lock of a killed call)
 #        bash .claude/lib/team-question.sh <team> unlock-send <role>   (stale send lock)
 #   e.g. bash .claude/lib/team-question.sh alfa answer q-3 --tier 1 --author supervisor \
 #          --why "inside the plan" --text "Counter + backoff." --send say
 # answer/retry exit: 0 sent|consumed|recorded · 1 refused, q unchanged · 3 not-sent-stale (retry) ·
 #   4 unknown · 5 not-sent|failed; the last line is "q-<n> state=<state> — <delivery>".
-# list: tierN counts sent/consumed/recorded answers of tier N (fallback= the TeamLead-fallback
-#   ones of tier 2); failed= counts failed/not-sent*, pending= pending/unknown; the other counters
-#   count questions in that state; all add up to total.
-# orphans: escalations with no live waiter that need a --resume (dead waiter, no-reply,
-#   cancelled, staged reply).
+# list: tierN counts sent/consumed/recorded answers of tier N; failed= counts failed/not-sent*,
+#   pending= pending/unknown; the other counters count questions in that state; all add up to total.
 # Contract: .agents/reference/team-mode.md §10.
 set -euo pipefail
 
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 die() { echo "error: $*" >&2; exit 1; }
 [ $# -ge 2 ] || usage
 TEAM="$1"; CMD="$2"; shift 2
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
 . "$LIB/team-question-lib.sh"
-. "$LIB/team-escalate-lib.sh"
 team_check_name "$TEAM" || exit 2
 root="$(git rev-parse --show-toplevel)"
 CLONE="$(team_clone_dir "$TEAM" "$root")"
@@ -149,9 +142,6 @@ cmd_open() {
     st="$(team_q_state "$q" | cut -f1)"
     case "$kind:$st" in
       blocked:open) [ -n "$defer" ] || qb_set_binding "$q" ;;
-      # Still unanswered, but only a deferred binding is filled: a changed screen stays stale.
-      blocked:escalating|blocked:escalated|blocked:waiting-operator)
-        [ -n "$defer" ] || [ "$(field "$q" fingerprint)" != - ] || qb_set_binding "$q" ;;
       *) note="" ;;
     esac
     echo "$(basename "$q" .md) $q (existing, state=$st)$note"; cat "$q"; return 0
@@ -275,27 +265,6 @@ deliver() {
   exit "$(qb_exit "$st")"
 }
 
-fallback_guard() {  # under the q lock, before the journal: a refusal leaves the q unchanged
-  local last send reviewer text
-  last="$(esc_last_outcome "$1")"
-  if [ "$AUTHOR" = TeamLead-fallback ]; then
-    [ "$TIER" = 2 ] && [ "$last" = reviewer-fallback ] \
-      && [[ "$WHY" == "$ESC_FALLBACK_WHY"* ]] \
-      || die "refused: TeamLead-fallback needs a recorded reviewer-fallback outcome"
-    # The delivery is the one try_fallback recorded, field for field.
-    IFS=$'\t' read -r send reviewer text <<<"$(esc_fallback_block "$1")" || true
-    [ -n "$send" ] || die "refused: the recorded fallback has no send/reviewer/text block"
-    [ "$SEND" = "$send" ] || die "refused: --send $SEND differs from the recorded fallback ($send)"
-    [ "$(esc_one_line "$TEXT")" = "$text" ] \
-      || die "refused: --text differs from the recorded fallback"
-    [ "${WHY#"$ESC_FALLBACK_WHY"}" = "$reviewer" ] \
-      || die "refused: --why must name the recorded Reviewer #$reviewer"
-    TEXT="$text"
-  elif [ "$last" = reviewer-fallback ] && [ "$TIER" != 3 ]; then
-    die "refused: a recorded fallback is answered with --author TeamLead-fallback (or tier 3)"
-  fi
-}
-
 cmd_answer() {
   local id="${1:-}" q st reason shown
   [ -n "$id" ] || usage; shift; q="$(qpath "$id")"; [ -f "$q" ] || die "$id not found"
@@ -310,7 +279,6 @@ cmd_answer() {
   done
   q_lock "$q"
   [ -z "$ARUN" ] || [ "$ARUN" = "$RUN" ] || die "stale: run changed — nothing sent"
-  fallback_guard "$q"
   st="$(team_q_state "$q" | cut -f1)"
   case "$st" in
     sent|consumed|recorded) die "$id already answered" ;;
@@ -452,7 +420,7 @@ cmd_revoke() {
 }
 
 cmd_list() {
-  local n q st tier author cls total=0 t1=0 t2=0 t3=0 rv=0 fl=0 pd=0 op=0 eg=0 ed=0 wo=0 fb=0
+  local n q st tier author cls total=0 t1=0 t2=0 t3=0 rv=0 fl=0 pd=0 op=0
   for n in $(ls -1 "$QD" 2>/dev/null | sed -n 's/^q-\([0-9][0-9]*\)\.md$/\1/p' | sort -n); do
     q="$QD/q-$n.md"
     IFS=$'\t' read -r st tier author <<<"$(team_q_state "$q")"
@@ -462,38 +430,15 @@ cmd_list() {
     echo "q-$n $(field "$q" role) $(field "$q" kind) tier=$tier author=$author" \
       "state=$st${cls:+ class=$cls}"
     total=$((total + 1))
-    [ "$author:$tier" != TeamLead-fallback:2 ] || tier=fallback
     case "$st:$tier" in
       sent:1|consumed:1|recorded:1) t1=$((t1 + 1)) ;;
-      sent:fallback|consumed:fallback|recorded:fallback) fb=$((fb + 1)) ;;
       sent:2|consumed:2|recorded:2) t2=$((t2 + 1)) ;;
       sent:*|consumed:*|recorded:*) t3=$((t3 + 1)) ;; revoked:*) rv=$((rv + 1)) ;;
       failed:*|not-sent:*|not-sent-stale:*) fl=$((fl + 1)) ;;
       pending:*|unknown:*) pd=$((pd + 1)) ;; open:*) op=$((op + 1)) ;;
-      escalating:*) eg=$((eg + 1)) ;; escalated:*) ed=$((ed + 1)) ;;
-      waiting-operator:*) wo=$((wo + 1)) ;;
     esac
   done
-  echo "total=$total tier1=$t1 tier2=$t2 tier3=$t3 revoked=$rv failed=$fl pending=$pd" \
-    "open=$op escalating=$eg escalated=$ed waiting=$wo fallback=$fb"
-}
-
-cmd_orphans() {
-  local q st last why
-  for q in "$QD"/q-*.md; do
-    [[ "$(basename "$q")" =~ ^q-[0-9]+\.md$ ]] || continue
-    [ "$(esc_waiter "$q")" != live ] || continue
-    st="$(team_q_state "$q" | cut -f1)"; last="$(esc_last_outcome "$q")"; why=""
-    case "$st:$last" in
-      escalating:*|waiting-operator:*) why=dead-waiter ;;
-      escalated:no-reply*) why=no-reply ;;
-      escalated:cancelled) why=cancelled ;;
-    esac
-    [ -z "$(esc_staged_unconsumed "$q")" ] || why=staged-reply
-    [ -n "$why" ] || continue
-    echo "$(basename "$q" .md) role=$(field "$q" role) tier=$(esc_tier "$q") state=$st" \
-      "outcome=${last:--} reason=$why path=$q"
-  done
+  echo "total=$total tier1=$t1 tier2=$t2 tier3=$t3 revoked=$rv failed=$fl pending=$pd open=$op"
 }
 
 cmd_policy() {  # cmd_policy [<role>] — with a role, the class of its open prompt
@@ -535,7 +480,6 @@ case "$CMD" in
   revoke) cmd_revoke "$@" ;;
   show) [ $# = 1 ] || usage; q="$(qpath "$1")"; [ -f "$q" ] || die "$1 not found"; cat "$q" ;;
   list) cmd_list ;;
-  orphans) [ $# = 0 ] || usage; cmd_orphans ;;
   policy) [ $# -le 1 ] || usage; cmd_policy "$@" ;;
   screen) [ $# = 1 ] || usage; team_check_name "$1" || exit 2; pane "$1" 25 ;;
   unlock) [ $# = 1 ] || usage

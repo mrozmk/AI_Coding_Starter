@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Question escalation: team-answer menu actions, team-question ledger, team-escalate.
+# Question ledger: team-answer menu actions, team-question ledger.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -7,7 +7,6 @@ smoke_team AB-799 chore/AB-799-tiers
 RUN_ID=alfa-20261006-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 ANSWER="bash .claude/lib/team-answer.sh"
 Q="bash .claude/lib/team-question.sh"
-ESC="bash .claude/lib/team-escalate.sh"
 RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"
 printf '%s\n' "⏺ One question before the plan." "$RULE" " ☐ Retry" \
   "│ Which retry design for the worker?" "❯ 1. Counter + backoff (Recommended)" \
@@ -220,7 +219,7 @@ run "$MAIN" $Q alfa answer "$QM" --tier 1 --author supervisor --why x --text y -
 expect 1 "tier 3 only" "tier 1 after a revoke"
 run "$MAIN" $Q alfa list
 expect 0 "" "list"
-[ "$(last_line)" = "total=6 tier1=0 tier2=0 tier3=2 revoked=2 failed=1 pending=0 open=1 escalating=0 escalated=0 waiting=0 fallback=0" ] \
+[ "$(last_line)" = "total=6 tier1=0 tier2=0 tier3=2 revoked=2 failed=1 pending=0 open=1" ] \
   || fail "list counts: $(last_line)"
 session planner 1 "$BASE"; export STUB_PANE="$WORK/menu"
 tool_done sid-planner-1 toolu_m2; ask sid-planner-1 toolu_m3 "Which retry design for the worker?"
@@ -235,7 +234,7 @@ expect 1 "delivery unknown" "re-send a pending answer"
 run "$MAIN" $Q alfa answer "$QP" --tier 3 --author operator --why "checked window" --text x --send none
 expect 0 "" "record a pending answer at tier 3"
 run "$MAIN" $Q alfa list
-[ "$(last_line)" = "total=7 tier1=0 tier2=0 tier3=3 revoked=2 failed=1 pending=0 open=1 escalating=0 escalated=0 waiting=0 fallback=0" ] \
+[ "$(last_line)" = "total=7 tier1=0 tier2=0 tier3=3 revoked=2 failed=1 pending=0 open=1" ] \
   || fail "list counts after $QP: $(last_line)"
 echo '{"permissions":{"ask":["Bash(sqlcmd:*)"],"deny":["Read(**/.env)"]}}' > "$CLONE/.claude/settings.local.json"
 mv "$CLONE/.claude/settings.json" "$WORK/settings.json"
@@ -244,312 +243,6 @@ expect 0 "ask  .claude/settings.local.json: Bash(sqlcmd:*)" "policy ask"
 has "deny  .claude/settings.local.json: Read(**/.env)" "$WORK/out" || fail "policy deny"
 has "missing: .claude/settings.json" "$WORK/out" || fail "policy missing file"
 mv "$WORK/settings.json" "$CLONE/.claude/settings.json"
-
-# ---- (32) team-escalate (Advisor reply protocol) --------------------------------------
-mkdir -p "$MAIN/.agents/team"
-export TEAM_ESCALATE_UNIT_SECS=1 TEAM_ESCALATE_POLL=0.2 TEAM_ESCALATE_BACKOFF_SECS=0
-export SENT="$WORK/sent" READY="$WORK/ready" CNT="$WORK/cnt"
-CFG="$MAIN/.agents/team/escalation.local.json"
-A6='"$1" "$2" "$3" "$4" "$5" "$6"'
-rawcfg() {  # rawcfg <send template> <wait template> [timeout_min]
-  jq -n --arg s "$1" --arg w "$2" --argjson t "${3:-2}" '{send: $s, wait: $w, timeout_min: $t}' > "$CFG"
-}
-# cfg <send body> <wait body> [timeout_min] — stub adapters behind the adapter template; a send
-# body that does not exit prints the receipt last.
-cfg() {
-  printf '%s\necho "SENT id=1"\n' "$1" > "$WORK/esc-send.sh"
-  printf '%s\n' "$2" > "$WORK/esc-wait.sh"
-  rawcfg "bash $WORK/esc-send.sh $A6" "bash $WORK/esc-wait.sh $A6" "${3:-2}"
-}
-gone() {  # gone <pattern> <secs> — no process matches within <secs>
-  local i=0
-  while pgrep -f "$1" >/dev/null; do [ "$i" -lt "$2" ] || return 1; sleep 1; i=$((i + 1)); done
-}
-SEND='printf "%s|%s|%s|%s|%s|%s\n" "$1" "$2" "$3" "$4" "$5" "$6" >> "$SENT"'
-ANS='printf "status: answer\nauthor: Advisor+Reviewer\n\nUse counter + backoff.\n"'
-# First wait call prints pending-operator, the next ones run $1 (a counter in $CNT).
-pend() { printf 'n=$(cat "$CNT" 2>/dev/null || echo 0); echo $((n + 1)) > "$CNT"; if [ "$n" = 0 ]; then printf "status: pending-operator\\neta: tonight\\n\\nAsked the Operator.\\n"; else %s; fi' "$1"; }
-pf() { echo "$(dirname "$QF")/$QN.payload.md"; }
-QF="$(qf q-2)"; QN=q-2
-run "$MAIN" $ESC alfa coder 2 "$QF" --blocks "retry design of the worker"
-expect 3 "NO-REPLY no config" "escalate without config"
-has "outcome: no-reply — no config" "$QF" || fail "q-2 lacks outcome: no-reply"
-has "sent: no" "$WORK/out" || fail "no config reported a delivered request"
-run "$MAIN" $ESC alfa coder 2 "$QF" --blocks x
-expect 2 "use --reping or --resume" "default mode on an escalated question"
-cfg "true" "true" 0
-run "$MAIN" $ESC alfa coder 2 "$QF" --reping "config fixed"
-expect 3 "invalid config: timeout_min" "re-ping with timeout_min 0"
-cfg "$SEND" "$ANS"; : > "$SENT"
-run "$MAIN" $ESC alfa coder 2 "$QF" --reping "config fixed"
-expect 0 "ANSWER" "escalate with an answer"; has "status: answer" "$WORK/out" || fail "no status"
-[ "$(cat "$SENT")" = "$(cd "$(dirname "$QF")" && pwd -P)/q-2.payload.md|alfa|coder|q-2|esc-alfa-20261006-000000-q-2|1" ] \
-  || fail "send args: $(cat "$SENT")"
-for l in "ticket: AB-799" "team: alfa" "role: coder" "run: alfa-20261006-000000" "question: q-2" \
-  "tier: 2" "decision-needed-from: analysts" "thread: esc-alfa-20261006-000000-q-2" "seq: 1" \
-  "## Question" "## Options" "## Files" "- spec:" "## Screen"; do
-  grep -qxF -- "$l" "$(pf)" || grep -qF -- "$l" "$(pf)" || fail "payload lacks '$l'"
-done
-grep -A1 -x '## Blocks' "$(pf)" | grep -qx 'retry design of the worker' || fail "payload ## Blocks"
-has "Second view" "$(pf)" || fail "payload lacks the question text"
-has "outcome: answer" "$QF" && has "reply: - answer" "$QF" || fail "q-2 lacks outcome: answer"
-run "$MAIN" $ESC alfa coder 2 "$QF" --reping x
-expect 2 "" "re-ping an answered escalation"
-RD0="$RD"; RUN_ID=alfa-20261006-000032; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"
-mkdir -p "$RD"; session coder 1 "$BASE"; export STUB_PANE="$WORK/idle"
-fresh() {  # fresh <summary> → QF, QN: a new open question in this run
-  record --verdict blocked --message "$1" >/dev/null
-  run "$MAIN" $Q alfa open coder --kind blocked --summary "$1"
-  expect 0 "" "open $1"
-  QN="$(head -n 1 "$WORK/out" | cut -d' ' -f1)"; QF="$(qf "$QN")"
-}
-esc() { run "$MAIN" $ESC alfa coder "$@"; }
-fresh "disagree"; cfg true 'printf "status: disagree\n\nA: counter. B: table.\n"'
-esc 2 "$QF" --blocks x
-expect 3 "status: disagree is retired" "escalate with a disagreement"
-has "reply: - disagree" "$QF" || fail "disagree reply not recorded"
-cfg true 'echo ok'
-esc 2 "$QF" --reping "disagree retired"
-expect 3 "unparseable answer" "re-ping with an unparseable reply"
-has "(repings: 1, sent: yes)" "$WORK/out" || fail "re-ping count"
-fresh "deadline"; cfg true 'sleep 31.5'; s=$(date +%s)
-esc 2 "$QF" --blocks x
-expect 3 "timeout after 2 min" "escalate past the deadline"
-[ $(( $(date +%s) - s )) -lt 10 ] || fail "timeout took too long"; gone 'sleep 31.5' 0 || fail "wait survived"
-fresh "send deadline"; cfg 'sleep 31.6' true
-esc 2 "$QF" --blocks x
-expect 3 "send timeout" "send past the deadline"; gone 'sleep 31.6' 0 || fail "send survived"
-! has "sent: seq" "$QF" || fail "a timed-out send was recorded as sent"
-fresh "wait child"; cfg true 'sleep 31.9 & exit 1'
-esc 2 "$QF" --blocks x
-expect 3 "wait failed (rc 1)" "wait leaves a child behind"; gone 'sleep 31.9' 3 || fail "child survived"
-fresh "pending"; rm -f "$CNT"; cfg true "$(pend 'sleep 3; printf "status: answer\n\nGo with the table.\n"')"
-esc 2 "$QF" --blocks x
-expect 0 "ANSWER" "pending-operator, then an answer past the deadline"
-has "Go with the table." "$WORK/out" || fail "pending answer body"
-has "waiting: operator" "$QF" && has "reply: - pending-operator" "$QF" || fail "pending not recorded"
-fresh "tier 3"; cfg true 'printf "status: answer\ndecided-by: analysts\n\nTable.\n"'
-esc 3 "$QF" --blocks x
-expect 3 "tier 3 needs the Operator's decision" "tier-3 answer by the analysts"
-cfg true 'printf "status: answer\ndecided-by: operator\n\nTable.\n"'
-esc 3 "$QF" --reping "needs the Operator"
-expect 3 "tier 3 needs the Operator's decision" "tier-3 answer without operator-ref"
-esc 2 "$QF" --reping x
-expect 2 "tier mismatch" "re-ping at another tier"
-cfg true 'printf "status: answer\ndecided-by: operator\noperator-ref: x sha256:abcd1234\n\nTable.\n"'
-esc 3 "$QF" --reping "needs the Operator"
-expect 0 "ANSWER" "tier-3 answer with the Operator's decision"
-fresh "unverified"; cfg true 'printf "status: unverified-operator-ref\ndecided-by: operator\n\nT.\n"'
-esc 3 "$QF" --blocks x
-expect 3 "operator-ref not verified" "unverified operator-ref"
-fresh "withdrawn"; cfg true 'printf "status: withdrawn\n\nThe coder already decided.\n"'
-esc 2 "$QF" --blocks x
-expect 0 "WITHDRAWN" "withdrawn"; has "outcome: withdrawn" "$QF" || fail "withdrawn not recorded"
-esc 2 "$QF" --reping x
-expect 2 "withdrawn" "re-ping a withdrawn escalation"
-fresh "sticky"; rm -f "$CNT"; cfg true "$(pend 'exit 1')"
-esc 2 "$QF" --blocks x
-expect 3 "wait failed" "pending-operator, then a failed wait"; has "sent: yes" "$WORK/out" || fail "sent flag"
-run "$MAIN" $Q alfa list
-grep -q "^$QN .*state=waiting-operator$" "$WORK/out" || fail "$QN not waiting-operator"
-has " waiting=1" "$WORK/out" || fail "list lacks waiting=1"
-cfg true 'sleep 3; printf "status: answer\n\nGo.\n"'
-esc 2 "$QF" --reping "wait failed"
-expect 0 "ANSWER" "sticky wait has no deadline"
-has "reping-kind: transport" "$(pf)" && has "reping: wait failed" "$(pf)" || fail "transport re-ping payload"
-fresh "failed send"; : > "$SENT"; cfg "$SEND; exit 1" "$ANS"
-esc 2 "$QF" --blocks x
-expect 3 "send failed (rc 1)" "failed send"; has "sent: no" "$WORK/out" || fail "failed send flag"
-[ "$(wc -l < "$SENT" | tr -d ' ')" = 3 ] || fail "send attempts: $(cat "$SENT")"
-! has "sent: seq" "$QF" || fail "a failed send was recorded"
-[ "$(grep -c '^failed: seq 1 .* — rc 1$' "$QF")" = 3 ] || fail "failed send attempts not recorded"
-: > "$SENT"; cfg "$SEND" "$ANS"
-esc 2 "$QF" --reping "send failed"
-expect 0 "ANSWER" "re-send after a failed send"
-[ "$(tail -n 1 "$SENT" | cut -d'|' -f6)" = 1 ] || fail "re-send changed the seq: $(cat "$SENT")"
-grep -q '^sent: seq 1 ' "$QF" || fail "re-send not recorded"
-fresh "cap"; cfg "$SEND" 'exit 1'
-esc 2 "$QF" --blocks x; expect 3 "wait failed" "cap: first send"
-esc 2 "$QF" --reping a; expect 3 "(repings: 1, sent: yes)" "cap: re-ping 1"
-esc 2 "$QF" --reping b; expect 3 "(repings: 2, sent: yes)" "cap: re-ping 2"
-n0=$(wc -l < "$SENT")
-esc 2 "$QF" --reping c; expect 2 "reping limit (2 delivered)" "cap: re-ping 3"
-esc 2 "$QF" --resume; expect 3 "wait failed" "resume after the cap"
-[ "$(wc -l < "$SENT")" = "$n0" ] || fail "resume sent the question"
-grep -q '^resumed: ' "$QF" || fail "resume not recorded"
-printf 'mail-id: 77\nstatus: answer\n\nStaged answer.\n' > "$(dirname "$QF")/$QN.reply-77.md"
-cfg true 'exit 1'
-esc 2 "$QF" --resume
-expect 0 "ANSWER" "staged reply replay"; has "Staged answer." "$WORK/out" || fail "staged body"
-! has "mail-id:" "$WORK/out" || fail "mail-id leaked into the reply"
-grep -A1 -x 'reply: 77 answer' "$QF" | grep -qx 'outcome: answer' || fail "reply 77 not consumed with its outcome"
-fresh "replay"; cfg true 'exit 1'
-esc 2 "$QF" --blocks x; expect 3 "wait failed" "replay: first send"
-D="$(dirname "$QF")"
-printf 'mail-id: 50\nstatus: pending-operator\n\nAsked.\n' > "$D/$QN.reply-50.md"
-esc 2 "$QF" --resume; expect 3 "wait failed" "replay: staged pending"
-has "reply: 50 pending-operator" "$QF" || fail "staged pending not recorded"
-printf 'mail-id: 50\nstatus: answer\n\nSTALE-BODY\n' > "$D/$QN.reply-50.md"
-printf 'mail-id: 49\nstatus: answer\n\nTMP-BODY\n' > "$D/$QN.reply-49.md.tmp"
-printf 'mail-id: 51\nstatus: answer\n\nFresh body.\n' > "$D/$QN.reply-51.md"
-esc 2 "$QF" --resume; expect 0 "Fresh body." "replay skips a recorded id"
-! has "STALE-BODY" "$WORK/out" && ! has "TMP-BODY" "$WORK/out" || fail "replayed a recorded id or a tmp file"
-fresh "waiter"; cfg true 'exit 1'
-esc 2 "$QF" --blocks x; expect 3 "wait failed" "waiter: first send"
-mkdir "$QF.wait"; sleep 30 & WP=$!; echo "$WP" > "$QF.wait/pid"
-esc 2 "$QF" --resume; expect 1 "busy (waiter pid $WP)" "a live waiter"
-kill "$WP"; wait "$WP" 2>/dev/null || true
-esc 2 "$QF" --resume; expect 3 "wait failed" "a dead waiter is taken over"
-[ ! -e "$QF.wait" ] || fail "waiter lock left behind"
-fresh "retier"; cfg "$SEND" 'printf "status: answer\n\nAnalysts: use the counter.\n"'
-esc 2 "$QF" --blocks x; expect 0 "ANSWER" "retier: tier-2 answer"
-cp "$QF" "$WORK/q.before"
-esc 2 "$QF" --retier "needs Operator"; expect 2 "" "retier at tier 2"
-cmp -s "$QF" "$WORK/q.before" || fail "a refused retier changed the ledger"
-cfg "$SEND" 'exit 1'
-esc 3 "$QF" --retier "needs Operator"; expect 3 "wait failed" "retier"
-for l in "tier: 3" "decision-needed-from: operator" "## Analysts' recommendation" \
-  "Analysts: use the counter." "reping: needs Operator"; do
-  has "$l" "$(pf)" || fail "retier payload lacks '$l'"
-done
-grep -q '^retier: .* tier 3 seq 2 — needs Operator$' "$QF" || fail "retier line"
-fresh "legacy"
-printf '\n## Escalation\nstarted: 2026-10-01T00:00:00Z\noutcome: disagree\nended: 2026-10-01T00:01:00Z\n' >> "$QF"
-cp "$QF" "$WORK/q.before"
-esc 3 "$QF" --retier x; expect 2 "needs a recorded tier-2 answer" "retier without an answer"
-cmp -s "$QF" "$WORK/q.before" || fail "a refused retier changed the legacy ledger"
-cfg "$SEND" "$ANS"
-esc 2 "$QF" --reping "legacy"; expect 0 "ANSWER" "re-ping a legacy escalation"
-grep -A1 -x '## Blocks' "$(pf)" | grep -qF -- '- [coder 1] legacy' || fail "legacy payload ## Blocks"
-fresh "rejected then valid"; cfg true 'exit 1'
-esc 2 "$QF" --blocks x; expect 3 "wait failed" "rejected: first send"
-printf 'mail-id: 77\nstatus: disagree\n\nA or B.\n' > "$(dirname "$QF")/$QN.reply-77.md"
-printf 'mail-id: 78\nstatus: answer\n\nB.\n' > "$(dirname "$QF")/$QN.reply-78.md"
-esc 2 "$QF" --resume; expect 3 "disagree is retired" "rejected staged reply"
-has "reply: 77 disagree" "$QF" || fail "rejected reply not recorded"
-esc 2 "$QF" --resume; expect 0 "ANSWER" "the next staged reply"
-fresh "cap, then retier"; cfg "$SEND" 'exit 1'
-esc 2 "$QF" --blocks x; esc 2 "$QF" --reping a
-cfg "$SEND" "$ANS"; esc 2 "$QF" --reping b; expect 0 "ANSWER" "cap+retier: answer"
-cfg "exit 1" 'exit 1'
-esc 3 "$QF" --retier "needs Operator"; expect 3 "sent: no" "retier with a failing send"
-: > "$SENT"; cfg "$SEND" 'exit 1'
-esc 3 "$QF" --reping "send failed"; expect 3 "wait failed" "re-send a retier past the cap"
-[ "$(tail -n 1 "$SENT" | cut -d'|' -f6)" = 4 ] || fail "retier re-send seq: $(cat "$SENT")"
-grep -q '^sent: seq 4 ' "$QF" && has "tier: 3" "$(pf)" || fail "retier re-send not recorded"
-fresh "staged pending"; cfg "$SEND" 'exit 1'
-esc 2 "$QF" --blocks x; expect 3 "wait failed" "staged pending: first send"
-printf 'mail-id: 90\nstatus: pending-operator\n\nAsked.\n' > "$(dirname "$QF")/$QN.reply-90.md"
-esc 2 "$QF" --reping "still nothing"; expect 3 "wait failed" "staged pending before a re-ping"
-awk '/^waiting: /{w = NR} /^sent: seq 2 /{s = NR} END{exit !(w && s && w < s)}' "$QF" \
-  || fail "staged pending not drained before the send"
-has "reping-kind: transport" "$(pf)" || fail "staged pending re-ping kind"
-fresh "cancel"; rm -f "$CNT" "$READY"
-cfg true "$(pend 'trap "" TERM; touch "$READY"; sleep 31.8')"
-( cd "$MAIN" && exec bash .claude/lib/team-escalate.sh alfa coder 2 "$QF" --blocks x ) > "$WORK/esc" 2>&1 & EP=$!
-i=0; until [ -e "$READY" ] && pgrep -f 'sleep 31.8' >/dev/null; do
-  [ "$i" -lt 50 ] || fail "escalation adapter did not start"; sleep 0.2; i=$((i + 1))
-done
-kill -TERM "$EP"; set +e; wait "$EP"; rc=$?; set -e
-[ "$rc" = 143 ] || fail "cancelled escalation exit $rc"
-gone 'sleep 31.8' 5 || fail "TERM-ignoring adapter survived"
-[ "$(grep '^outcome:' "$QF" | tail -n 1)" = "outcome: cancelled" ] || fail "no outcome: cancelled"
-run "$MAIN" $Q alfa list
-grep -q "^$QN .*state=waiting-operator$" "$WORK/out" || fail "TERM left $QN outside waiting-operator"
-esc 2 "$RD0/questions/q-1.md" --blocks x
-expect 2 "already answered" "escalate a revoked question"
-fresh "locked"; mkdir "$QF.lock"
-TEAM_QUESTION_LOCK_SECS=1 esc 2 "$QF" --blocks x
-[ "$RC" != 0 ] && has "busy (lock held" "$WORK/out" || fail "escalate ignored the lock"
-! grep -q '^started:' "$QF" || fail "escalate started under a lock"
-rmdir "$QF.lock"
-cfg true 'mkdir "$(dirname "$1")/$4.md.lock"; printf "status: answer\n\nUse the table.\n"'
-TEAM_QUESTION_LOCK_SECS=1 esc 2 "$QF" --blocks x
-expect 4 "ANSWER" "escalate when the outcome cannot be recorded"
-has "Use the table." "$WORK/out" && has "outcome not recorded" "$WORK/out" || fail "exit 4 output"
-! grep -q '^reply: ' "$QF" || fail "exit 4 recorded the reply"
-rmdir "$QF.lock"
-esc 1 "$QF" --blocks x
-expect 2 "" "escalate at tier 1"
-echo x > "$WORK/q-9.md"
-esc 2 "$WORK/q-9.md" --blocks x
-expect 2 "" "escalate a file outside the clone"
-# static template guard, SENT receipt, per-run threads against a dedup-keyed fake mail.
-lib_ok() { ( . "$MAIN/.claude/lib/team-escalate-lib.sh"; esc_config_ok "$1" ); }
-mkdir -p "$WORK/dummy"
-printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/dummy/argv"\n' "$WORK" > "$WORK/dummy/bash"
-chmod +x "$WORK/dummy/bash"; cp "$WORK/dummy/bash" "$WORK/dummy/sh"
-for t in "bash /a/esc.sh send $A6" "sh ~/esc.sh wait $A6" "bash \"/a b/esc.sh\" send $A6"; do
-  lib_ok "$t" || fail "template refused: $t"
-  # On dummies: an accepted template passes thread and seq through in place.
-  rm -f "$WORK/dummy/argv"
-  env -i PATH="$WORK/dummy:/usr/bin:/bin" /bin/bash -c "$t" x P T R Q THR SEQ
-  [ "$(tail -n 6 "$WORK/dummy/argv" | tr '\n' ' ')" = "P T R Q THR SEQ " ] \
-    || fail "template does not forward on dummies: $t"
-done
-for t in 'bash /a/esc.sh send "$1" "$2" "$3" "$4"' "/bin/bash /a/esc.sh $A6" "bash /a; rm $A6" \
-  'bash $HOME/esc.sh '"$A6" "bash /a | tee $A6" "bash /a \$(id) $A6" "env bash /a $A6" \
-  "bash /a 'x' $A6" "$(printf 'bash /a\nrm %s' "$A6")" "bash -c \"/a send\" $A6" \
-  "sh \"-c\" /a $A6" "bash +c \"/a send\" $A6" "sh +c /a $A6" "bash $A6" \
-  "bash \"\$1\" /a send $A6"; do
-  ! lib_ok "$t" || fail "template accepted: $t"
-done
-cat > "$WORK/fake-mail.sh" <<'EOF'
-# fake-mail.sh send|wait <payload> <team> <role> <qid> <thread> <seq> — agent_mail's dedup key
-d="$(dirname "$0")"; store="$d/mail.store"; touch "$store"
-case "$1" in
-  send) key="$6-$7"
-    id="$(awk -v k="$key" '$3 == k {print $1; exit}' "$store")"
-    [ -n "$id" ] || { id=$(( $(wc -l < "$store") + 1 )); echo "$id $6 $key" >> "$store"; }
-    # mail.mute: the legacy adapter that dropped stdout (>/dev/null) on its first send.
-    if [ -e "$d/mail.mute" ]; then rm -f "$d/mail.mute"; exit 0; fi
-    echo "SENT id=$id thread=$6" ;;
-  wait) f="$d/mail.reply.$6"; [ -f "$f" ] || exit 1; cat "$f"; rm -f "$f" ;;
-esac
-EOF
-FM="bash $WORK/fake-mail.sh"; : > "$WORK/mail.store"
-newrun() { RUN_ID="$1"; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
-  session coder 1 "$BASE"; }
-sent_id() { sed -n 's/^sent: seq 1 .* id \([0-9]*\) thread .*/\1/p' "$1"; }
-newrun alfa-20261006-001199; rawcfg "$FM send $A6" "$FM wait $A6"
-fresh "dedup run a"; QA="$QF"; QNA="$QN"
-printf 'status: answer\n\nRun A.\n' > "$WORK/mail.reply.esc-$RUN_ID-$QN"
-esc 2 "$QF" --blocks x; expect 0 "Run A." "dedup: first run"
-newrun alfa-20261006-001200
-fresh "dedup run b"; [ "$QN" = "$QNA" ] || fail "second run did not reuse $QNA ($QN)"
-printf 'status: answer\n\nStale A.\n' > "$WORK/mail.reply.esc-alfa-20261006-001199-$QN"
-printf 'status: answer\n\nRun B.\n' > "$WORK/mail.reply.esc-$RUN_ID-$QN"
-touch "$WORK/mail.mute"
-esc 2 "$QF" --blocks x; expect 0 "Run B." "dedup: second run, first send without a receipt"
-! has "Stale A." "$WORK/out" && [ -f "$WORK/mail.reply.esc-alfa-20261006-001199-$QN" ] \
-  || fail "a reply on the old run's thread was consumed"
-grep -q " thread esc-alfa-20261006-001199-$QN$" "$QA" && grep -q " thread esc-$RUN_ID-$QN$" "$QF" \
-  || fail "sent: lines lack their run's thread"
-[ -n "$(sent_id "$QA")" ] && [ -n "$(sent_id "$QF")" ] && [ "$(sent_id "$QA")" != "$(sent_id "$QF")" ] \
-  || fail "two runs share a message id: $(cat "$WORK/mail.store")"
-awk '/^failed: seq 1 .* — no receipt$/{f = NR} /^sent: seq 1 /{s = NR} END{exit !(f && s && f < s)}' \
-  "$QF" || fail "no receipt, then a receipt not recorded in order"
-[ "$(grep -c " esc-$RUN_ID-$QN " "$WORK/mail.store")" = 1 ] || fail "the retry stored a second message"
-cfg "$SEND" "$ANS"; : > "$SENT"
-fresh "no forward"
-rawcfg "bash $WORK/esc-send.sh \"\$1\" \"\$2\" \"\$3\" \"\$4\"" "bash $WORK/esc-wait.sh $A6"
-esc 2 "$QF" --blocks x
-expect 3 "NO-REPLY invalid config: adapter does not forward thread/seq" "send without thread/seq"
-rawcfg "bash $WORK/esc-send.sh $A6" "bash $WORK/esc-wait.sh \"\$1\" \"\$2\" \"\$3\" \"\$4\""
-esc 2 "$QF" --reping "send fixed"
-expect 3 "invalid config: adapter does not forward thread/seq" "wait without thread/seq"
-rawcfg "/bin/bash $WORK/esc-send.sh $A6" "bash $WORK/esc-wait.sh $A6"
-esc 2 "$QF" --reping "absolute"; expect 3 "does not forward thread/seq" "absolute /bin/bash"
-rawcfg "bash $WORK/esc-send.sh; bash $WORK/esc-send.sh $A6" "bash $WORK/esc-wait.sh $A6"
-esc 2 "$QF" --reping "two commands"; expect 3 "does not forward thread/seq" "a ; in send"
-[ ! -s "$SENT" ] || fail "an invalid config ran the adapter: $(cat "$SENT")"
-fresh "no receipt"; cfg 'exit 0' "$ANS"
-esc 2 "$QF" --blocks x
-expect 3 "NO-REPLY invalid adapter (no SENT receipt)" "rc 0 without a receipt"
-! grep -q '^sent: ' "$QF" || fail "rc 0 without a receipt recorded as sent"
-[ "$(grep -c '^failed: seq 1 .* — no receipt$' "$QF")" = 2 ] || fail "no-receipt attempts"
-RUN_ID=alfa-20261006-000000; echo "$RUN_ID" > "$TD/run"; RD="$RD0"
-session planner 1 "$BASE"; export STUB_PANE="$WORK/menu"
 
 # ---- (33) busy role: deferred fingerprint, author, dash text ----------------------------------
 session coder 3 "$BASE"; export STUB_PANE="$WORK/idle"
@@ -577,27 +270,18 @@ expect 0 "sent say" "answer after re-open"
 run "$MAIN" $ANSWER alfa coder say "-x starts with a dash"
 expect 0 "sent say" "say text with a leading dash"
 has "send-keys -t %1 -l -- -x starts with a dash" "$STUB_LOG" || fail "dash not typed"
-record --verdict blocked --message "busy then escalated" >/dev/null
+record --verdict blocked --message "busy, tier 2" >/dev/null
 STUB_PANE="$WORK/busy" run "$MAIN" $Q alfa open coder --kind blocked --summary "Busy, tier 2"
 head -n 1 "$WORK/out" | grep -q '^q-9 .*fingerprint deferred' || fail "busy open did not defer q-9"
-cfg true 'printf "status: answer\n\nUse the counter.\n"'
-run "$MAIN" $ESC alfa coder 2 "$(qf q-9)" --blocks x
-expect 0 "ANSWER" "escalate a deferred question"
 run "$MAIN" $Q alfa open coder --kind blocked --summary "Busy, tier 2"
-expect 0 "(existing, state=escalated)" "re-open an escalated deferred question"
+expect 0 "(existing, state=open)" "re-open a deferred question"
 grep -qx 'fingerprint: v2:none' "$(qf q-9)" || fail "q-9 fingerprint not refreshed"
 run "$MAIN" $Q alfa answer q-9 --tier 2 --author Advisor+Reviewer --why x --text "Counter." \
   --send say
-expect 0 "sent say" "tier-2 answer after an escalated re-open"
-record --verdict blocked --message "escalated, then the screen changed" >/dev/null
+expect 0 "sent say" "tier-2 answer after a deferred re-open"
+record --verdict blocked --message "a second blocked question" >/dev/null
 run "$MAIN" $Q alfa open coder --kind blocked --summary "Idle, tier 2"
 head -n 1 "$WORK/out" | grep -q '^q-10 ' || fail "idle open did not allocate q-10"
-fp10="$(grep '^fingerprint: ' "$(qf q-10)")"
-run "$MAIN" $ESC alfa coder 2 "$(qf q-10)" --blocks x
-expect 0 "ANSWER" "escalate a bound question"
-STUB_PANE="$WORK/menu" run "$MAIN" $Q alfa open coder --kind blocked --summary "Idle, tier 2"
-expect 0 "(existing, state=escalated)" "re-open an escalated question on a new screen"
-[ "$(grep '^fingerprint: ' "$(qf q-10)")" = "$fp10" ] || fail "q-10 fingerprint overwritten"
 
 # ---- (34) single-question multiSelect: live-probe renderer and exact delivery -----------------
 cp "$FIX/checkbox.txt" "$WORK/checkbox"; cp "$FIX/review.txt" "$WORK/review"

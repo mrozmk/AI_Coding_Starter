@@ -1,10 +1,8 @@
-# Reference: team questions — ledger, delivery, escalation mechanics
+# Reference: team questions — ledger and delivery mechanics
 
 The step-by-step mechanics behind [team-mode.md](team-mode.md) §10 (tiers, rules, Operator
 actions) and [team-decision-model.md](team-decision-model.md) (who decides). Scripts live in
 `.claude/lib/` and run from the main checkout; `/monitor` (the TeamLead) drives them.
-
-Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/05-escalation.md`.
 
 1. `team-question.sh <team> open <role> --kind blocked|menu|permission|idle [--anchor "<screen
    line>"] --summary "…"` records `questions/q-<n>.md` with its binding v2: role,
@@ -51,7 +49,7 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
    for `no` it first appears after Escape and is saved from that post-Escape capture, without a
    re-check. Limit: a human typing in the milliseconds between the last capture and `C-u` is not
    detectable. Sender exit → `delivery:` → state (read by `team_q_state`, `list`,
-   `team-escalate.sh`, `/monitor`):
+   `/monitor`):
 
    | sender | `delivery:` | state | `answer`/`retry` exit |
    |---|---|---|---|
@@ -83,38 +81,6 @@ Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams
    cursor/range, an unknown/truncated renderer or already selected Other refuse; unexpected review
    never gets a final Enter. A refusal/delivery failure follows `/monitor`'s Operator-action route
    without automatic retry.
-4. Tiers 2 and 3: `team-escalate.sh <team> <role> <2|3> <q file> --blocks "<decision>"
-   [--class <c>] [--recommend "<send> <text>"] [--options "<text>"] [--files "<a,b>"]` in the
-   background writes the self-contained payload `q-<n>.payload.md`, sends it to Advisor on thread
-   `esc-<run>-<qid>` and waits for his reply (`status: answer | pending-operator | withdrawn`,
-   optional `author:`, `decided-by: analysts | operator`, `operator-ref:`, `eta:`, a blank line,
-   the body). Modes: `--reping "<reason>"` (re-send an undelivered request, or a new re-ping — at
-   most 2 delivered), `--resume` (wait only; on an answered q a late read), `--retier "<reason>"`
-   (tier 3 after a tier-2 answer). `## Escalation` lines: `started:` / `reping:` / `retier:` /
-   `resumed:` / `late:`, `recommend:`, `sent: seq <n> <utc> id <id> thread <thread>` (older
-   ledgers: `sent: seq <n> <utc>`), `failed: seq <n> <utc> — no receipt|rc <n>|timeout` (one per
-   failed send attempt), `reply: <mail-id> <status>`, `waited:`, `opinion:`, `fallback:`,
-   `waiting: operator` (state `waiting-operator`, sticky until a final reply), `outcome: answer |
-   withdrawn | reviewer-fallback | late-<status> | no-reply — <reason> | cancelled`, `ended:`. A
-   staged reply (`q-<n>.reply-<id>.md`) is replayed once by mail id; a `<q>.wait/` lock keeps one
-   waiter per thread. Exit 0 `ANSWER` / `WITHDRAWN` / `FALLBACK` / `LATE <status>` + the text · 1
-   busy · 2 usage / refused state / reping limit / tier mismatch · 3 `NO-REPLY <reason> (repings:
-   <n>, sent: <yes|no>)` · 4 final reply printed, outcome not recorded (ledger lock timeout) ·
-   130/143 cancelled. A tier-3 `answer` counts only with `decided-by: operator` + an
-   `operator-ref` the adapter verified. Under `advisor: solo` no question closes by fallback
-   (`fallback: no — advisor solo`); every tier-2 question waits for the Advisor. The supervisor writes the answer.
-   **Config contract.** `send` and `wait` are each one simple command: first word `bash`
-   or `sh` (on PATH, no absolute path), then the adapter (no option word `-…`/`+…`) and fixed
-   words, ending with `"$1" "$2" "$3" "$4" "$5" "$6"`; besides those tokens only
-   `[A-Za-z0-9_./~@%+=:,-]`, spaces and plain double quotes. The check is static — nothing from
-   the config runs to test it — and happens before any adapter runs; a template outside it ends in
-   `NO-REPLY invalid config: adapter does not forward thread/seq`. Without `$5`/`$6` the adapter
-   falls back to a per-qid dedup key, so a qid reused in a later run collided and the message was
-   silently dropped. **Receipt:** a send counts only when the adapter exits 0 and its last stdout
-   line is `SENT id=<n>`; rc 0 without it (`failed: … — no receipt`) is retried once at once (same
-   seq), then `NO-REPLY invalid adapter (no SENT receipt)`; a failed send or a `--reping` consumes
-   a reply `peek` finds first; `--retier` takes max request seq + 1. A ledger with
-   `started:` but no `sent:` is surfaced as `ESCALATION … started without sent | not sent — <reason>`.
-5. `team-question.sh <team> revoke q-<n> --why "…"` (the developer's "revoke <team> q-<n>", alias "cofnij <team> q-<n>")
+4. `team-question.sh <team> revoke q-<n> --why "…"` (the developer's "revoke <team> q-<n>", alias "cofnij <team> q-<n>")
    records `## Revoked` and, when the role is idle on the same attempt with no prompt open, types
    the revoke text; the question becomes tier 3 (the Operator decides).

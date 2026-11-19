@@ -86,8 +86,6 @@ own .agents/reference/token-usage.md
 own .claude/commands/ai-costs.md
 own .claude/lib/team-answer.sh
 own .claude/lib/team-answer-herdr.sh
-own .claude/lib/team-escalate-lib.sh
-own .claude/lib/team-escalate.sh
 own .claude/lib/team-integrate-lib.sh
 own .claude/lib/team-integrate-lock.sh
 own .claude/lib/team-integrate.sh
@@ -117,10 +115,8 @@ own .claude/lib/team_prompt_check.py
 own .claude/lib/worker-lib.sh
 own .claude/lib/worker-next.sh
 own .claude/project-profile.json.example
-own .claude/team/escalation.local.json.tmpl
 own .claude/team/sessions/operator-kit/README.md
 own .claude/team/sessions/operator-kit/install.sh
-own .claude/team/sessions/operator-kit/escalate.sh
 own .claude/team/sessions/operator-kit/sessions-health.sh
 own .claude/team/sessions/operator-kit/kit.conf.tmpl
 own .claude/team/sessions/operator-kit/hooks/mail-guard.sh
@@ -153,9 +149,7 @@ own .claude/team/tracker/jira-wrapup.md
 own .claude/team/tracker/none-read.md
 own .claude/team/tracker/none-wrapup.md
 
-# --- own: question ledger, delivery, escalation, gate lock, audit (re-sync at the source pin) ---
-own .agents/reference/escalation-fallback.md
-own .agents/reference/team-advisor.md
+# --- own: question ledger, delivery, gate lock, audit (re-sync at the source pin) ---
 own .agents/reference/team-decision-model.md
 own .agents/reference/team-questions.md
 own .claude/commands/pr-merge.md
@@ -273,3 +267,11 @@ retired .claude/commands/sessions-up.md 924f1a5543cf8b535d93e025ddf5b38bc5fa038e
 retired .claude/commands/mail-role.md 7e2ae80fc1e8debe7ca19f11ec84733921f29f34 a2301e05d34bee700cda3aa0357242f918711799
 retired .claude/commands/monitoring.md 6bcb27c4766d8ca802ca98dc03b5645f4b74a914 0bc93792146379600cfd2c28623db4dab131d552
 retired .claude/commands/team-watch.md 4bcf36bf0a0a43cff90f2a2c222d7a2fe6e54b0d 25587375e6f046b8073bfa44c4fac8d6dea7ccbd
+
+# --- retired: the Advisor escalation path (global TeamLead retirement, slice 2); all shipped blob ids ---
+retired .claude/lib/team-escalate.sh 474ba30b4a1b803d695bc8f2a172f06ec802dbac c407020147d01c39b5738b24e579cad6f2b25ae9 3de533e4a9b00e10ed95e09af73c85e7444642cd ea784db043c08e2a669db36cb72e51396438edfb 8d1910a976b6b8cc49a5610867d3657ec2295765 331a8d92ba16e15b1fd096c2a5b5ec3934ac4071 4c96be03f866304c98c9c3ec669cec4fccdfbbbe
+retired .claude/lib/team-escalate-lib.sh df488405e095b11e4cfd537f6541265ebc041e11 cc3b1f768ec70ea5b3833ba770e125a1e114b151 080531fd3a481478ba5470e13136e21c40567c0b 4d78db1c29dfff74c6782da3c0a98199ec760562
+retired .claude/team/escalation.local.json.tmpl 569bf549c5dac9f620910b9aabb115a2b4f555ed
+retired .claude/team/sessions/operator-kit/escalate.sh 41018e0571e8bc09fa2f7772b77d52b8cf29a9de 2b9acf4bf4c56cfbf63fdeff74dbbd438fe8f640
+retired .agents/reference/escalation-fallback.md c3be57ba073ead3ac8a195ec2929bed078ecdb5d 6105e967b8a52e0a6293b5cb0cda394f4b79719b 9e0a072e1644ca58b029f2b21f07956aee60e222 6f7d33b532cd06521ae0ee60b30ba4c2c6454171 99f5b173a1cb0ec267e29f6760961bdbe9f82c6e 2130dbd9bb63846e80d5f6d1f2843370fc5cc7f8 45230e82675a4aff564b36cdd614ef8a2dcf33ed
+retired .agents/reference/team-advisor.md ac31d6b3703def81db028da86ae3ed6527859b30

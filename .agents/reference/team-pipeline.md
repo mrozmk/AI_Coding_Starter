@@ -89,7 +89,7 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
 - **The supervisor session is not notified.** `/start-team` returns after
   launching; ask it for "status alfa", "show alfa coder" or "merge alfa" when you want.
 - **`/tasks-status`** is the Supervisor's on-demand report: what waits for the Operator's decision
-  (`waiting-operator` escalations) first, then what waits on the team (`attention[]`, PRs awaiting
+  first, then what waits on the team (`attention[]`, PRs awaiting
   merge), then every open task with its team run and PR state. Nothing is pushed — you ask for it.
 - **The per-run TeamLead** (brainstorm and quick mode): the runner starts one lead per run and
   you work from the Supervisor's inbox instead of `/monitor` — §5a.
@@ -427,50 +427,17 @@ does:
 
 - **Tier 1** — TeamLead decides every team question outside the Advisor and Operator lists of
   team-decision-model.md §3 and prints `alfa q-3 (tier 1): <question> → <answer>`.
-- **Tier 2 / 3** — only the Advisor list (tier 2) and the Operator list (tier 3) of §3:
-  `alfa q-3 → Advisor (tier <t>)`: runs `team-escalate.sh` in the background.
-  Advisor consults Reviewer and, for tier 3, asks you himself; he relays your decision with
-  `decided-by: operator` + an `operator-ref`. The answer is re-checked against the matrix, then
-  delivered; an analysts' answer that touches a tier-3 class goes back to Advisor with `--retier`.
+- **Tier 2 / 3** — the Advisor escalation path is removed; the run's TeamLead answers on an
+  authority ([team-lead.md](team-lead.md) §6).
 - **Operator actions** — `ask`-tier / egress / production prompts, merge, deploy, your
   scripts, window recovery: one line in this session with the command or screen in the
   developer's language + the offer, as before. Never a decision question.
-- **No reply** — `alfa q-3: Advisor no reply (<reason>) — <action>`, printed only when the
-  reason changes. The supervisor re-pings Advisor (at most 2 delivered re-pings), then waits
-  without a deadline; it never forwards the question to you. `status: pending-operator` from
-  Advisor (you were asked) keeps the question in `waiting-operator` — the 30-minute summary lists
-  it as "waiting for the Operator via the Advisor: q-<n>". You can still answer it yourself
-  ("answer alfa: …").
 
 **Where questions live:** `../<repo>-<team>/.agents/team/runs/<run>/questions/q-<n>.md` (binding,
-summary, screen, `## Answer` / `## Revoked` / `## Escalation`), next to `q-<n>.payload.md` (what
-Advisor received) and staged replies `q-<n>.reply-<id>.md`; tier 1/2 answers also go to the
+summary, screen, `## Answer` / `## Revoked`); tier 1/2 answers also go to the
 notes' `## Supervised decisions` and from there to the PR body, the wrapup's Jira summary
 (`## Supervisor decisions`) and the `/monitor` ready line. `bash .claude/lib/team-question.sh alfa list`
 prints every question with its tier and state and a `total=` count line.
-
-**Escalation adapter setup:** `/setup:teams` → channel renders the **main checkout's**
-`.agents/team/escalation.local.json` (gitignored) from `.claude/team/escalation.local.json.tmpl`
-with the channel config (`bash .claude/lib/team-channel.sh render`; written only once the operator
-kit's adapter `<kit_dir>/escalate.sh` exists, without `opinion` under `advisor: solo`; a file
-without the template's `_generated` marker is never replaced). Its operations:
-- `send` — a command that sends the payload to Advisor; it gets `$1` = payload file, `$2` = team,
-  `$3` = role, `$4` = q id, `$5` = thread `esc-<run>-<qid>`, `$6` = seq as positional arguments
-  (never interpolated; dedup key `$5-$6`); must exit 0;
-- `wait` — a command that prints one Advisor reply on the thread: an optional `mail-id: <id>`,
-  `status: answer|pending-operator|withdrawn`, optional `author:`, `decided-by:
-  analysts|operator`, `operator-ref: <note> sha256:<prefix>`, `eta:`, a blank line, the body. It
-  stages the reply to `<dir of $1>/<qid>.reply-<mail-id>.md` **before** acking it, so a crash
-  replays it. For `decided-by: operator` it verifies the `operator-ref`: a note under the
-  channel's `decisions/`, whose sha256 starts with the prefix, containing the exact line
-  `thread: <thread>` and an `Operator decision:` line; a failed check is published as
-  `status: unverified-operator-ref`;
-- `timeout_min` — 1–240, bounds each `send` and the wait for a first reply; the whole process
-  group is killed past it. After `pending-operator` the wait has no deadline.
-
-No file, invalid JSON, a failing or hanging command or an unparseable reply → `NO-REPLY` and the
-re-ping behaviour above — never a question to you. No adapter yet → no file → `NO-REPLY no
-config`. The channel's machine paths never appear in the repo.
 
 **Revoke:** "revoke alfa q-3 — reason" (alias "cofnij alfa q-3 — powód") →
 `team-question.sh alfa revoke q-3 --why "<reason>"`. It
@@ -531,7 +498,7 @@ project profile does a flagged or sampled final run get one detached, report-onl
 session `helper:retro-<run>` (prompt `.claude/team/prompts/retro-run.md`) — a Claude session, so a cost the
 project opts into; `audit.json` keeps only its knobs (`on_flag`, `sample_every_clean`, model).
 
-**Team supervision layer.** The question ledger, the tiers and the escalation adapter work from
+**Team supervision layer.** The question ledger and the tiers work from
 one `/monitor` window. The durable signal daemon is [team-watch.md](team-watch.md): with its loops
 running, it pushes `[team-watch #<n>]` batches into the registered role sessions, and `/monitor`
 is the handling contract of those messages (the single window starts the daemon itself). The role

@@ -36,8 +36,8 @@ Operator's consent.
 
 ## Does not
 
-- Answer or escalate a team question (`team-answer.sh`, `team-question.sh * answer`,
-  `team-escalate.sh` are denied by its settings profile).
+- Answer a team question (`team-answer.sh`, `team-question.sh * answer` are denied by its
+  settings profile).
 - Relay the Operator's decision to a team other than through that team's TeamLead.
 - Clear a release freeze without the Operator.
 

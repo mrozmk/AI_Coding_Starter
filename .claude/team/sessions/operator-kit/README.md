@@ -4,7 +4,6 @@ These are templates for the files that live **outside** the checkout, under `<ki
 
 | Template | Live path | What it is |
 |---|---|---|
-| `escalate.sh` | `<kit_dir>/escalate.sh` | the escalation adapter that `escalation.local.json` points at: `send`, `wait`, `peek`, `opinion` (contract: `.agents/reference/team-questions.md`) |
 | `sessions-health.sh` | `<kit_dir>/sessions-health.sh` | optional: records which role sessions or team-watch loops are down (a state file and one log line per outage), run by a scheduler; notifies nobody and never restarts anything |
 | `hooks/mail-guard.sh` | `<kit_dir>/hooks/mail-guard.sh` | the role Stop hook: no turn ends with unread `turn` mail or unacked team-watch batches |
 | `hooks/role-hooks.settings.json.tmpl` | `<kit_dir>/hooks/role-hooks.settings.json` | rendered: the `Stop` hook (mail guard) the role sessions take |
@@ -12,13 +11,13 @@ These are templates for the files that live **outside** the checkout, under `<ki
 
 ```bash
 ! bash .claude/team/sessions/operator-kit/install.sh --dry-run                # what would change
-! bash .claude/team/sessions/operator-kit/install.sh --apply                  # backups, copy/render, render escalation.local.json
+! bash .claude/team/sessions/operator-kit/install.sh --apply                  # backups, copy/render
 ! bash .claude/team/sessions/operator-kit/install.sh --verify                 # live == templates (the role preflight runs this once P5 adds it)
-! bash .claude/team/sessions/operator-kit/install.sh --rollback               # restore, delete backups, drop the generated escalation config
+! bash .claude/team/sessions/operator-kit/install.sh --rollback               # restore, delete backups
 ! bash .claude/team/sessions/operator-kit/install.sh --print-scheduler launchd   # or: cron — install the printed entry yourself
 ```
 
-- **Lifetimes.** A change to a template takes effect only after your `--apply`, and `--verify` shows the drift until then. `escalate.sh` and `mail-guard.sh` read the channel through the checkout's `team-channel.sh` and `team-mail.sh` at run time, so a change to those libraries is live at once, while the kit's own logic waits for `--apply`.
+- **Lifetimes.** A change to a template takes effect only after your `--apply`, and `--verify` shows the drift until then. `mail-guard.sh` reads the channel through the checkout's `team-channel.sh` and `team-mail.sh` at run time, so a change to those libraries is live at once, while the kit's own logic waits for `--apply`.
 - **Backups.** `--apply` keeps the first install's original (`*.bak-team-kit`, or a `.absent` marker). `--rollback` restores it and deletes the backup.
 - **Never touched:** `mail.sqlite*`, `recipients.json`, delivery logs, `*.lock` files, the decisions notes, any launchd job or crontab line.
 - **No notifications here.** The kit sends nothing to the Operator. The four Operator events go through `.claude/lib/notify.sh` and its opt-in channels (`~/.agent-comms/notify.json`; see `.claude/team/notify-kit/README.md`). Without a scheduled `sessions-health.sh`, a dead tmux server is recorded by nobody; `bash .claude/lib/supervisor-sessions.sh preflight` prints that (the `health check:` row), and its `operator kit installed` row runs `install.sh --verify`.

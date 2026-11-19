@@ -17,7 +17,6 @@ if [ $# -gt 0 ]; then
 fi
 
 . "$(dirname "$0")/team-lib.sh"
-. "$(dirname "$0")/team-escalate-lib.sh"
 . "$(dirname "$0")/team-roles.sh"
 . "$(dirname "$0")/team-modes.sh"
 . "$(dirname "$0")/team-pr-state.sh"

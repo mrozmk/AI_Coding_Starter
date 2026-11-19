@@ -90,13 +90,9 @@ box/tool no longer match the registry entry of `key` (stale: rerun the channel s
 | `team-channel.sh render [--dry-run]` | the generated local configs below |
 
 **Generated, never typed.** `render` (run by the channel step after it writes
-`channel.local.json`) fills `.claude/team/watch.local.json.tmpl` and
-`.claude/team/escalation.local.json.tmpl` into the gitignored `.agents/team/watch.local.json`
-(the team-watch probes — every probe calls `team-mail.sh <key>`, so the box and tool are resolved
-from the registry at run time and no path is written; the TeamLead's `esc_mail` keeps only
-`from=Advisor<suffix>`) and `.agents/team/escalation.local.json` (the four adapter lines
-`bash "<kit_dir>/escalate.sh" <op> "$1" … "$6"`, written only once the operator kit's adapter
-exists, without `opinion` under `advisor: solo`). A rendered file carries a `_generated` marker; a
+`channel.local.json`) fills `.claude/team/watch.local.json.tmpl` into the gitignored
+`.agents/team/watch.local.json` (the team-watch probes — every probe calls `team-mail.sh <key>`,
+so the box and tool are resolved from the registry at run time and no path is written). A rendered file carries a `_generated` marker; a
 file without it is hand-written and is reported `keep … hand-written`, never replaced. A path the
 generated commands cannot carry (outside `[A-Za-z0-9_./~@%+=:, -]`) refuses the render.
 
@@ -234,9 +230,7 @@ created; the tool copy shows as a `create tool-copy` (or `keep tool-copy`) line.
 needs write access to the box directory and read access to the tool. First thing after start:
 `python3 -I -B <tool>/agent_mail.py --box "<box>" register --as Reviewer<suffix> --adapter codex-queue --thread <UUID from /status or $CODEX_THREAD_ID>`;
 then the Advisor (re)starts `team-mail.sh <KEY> deliver Reviewer<suffix>`. The Reviewer's cycle:
-`inbox --unread --ack → work → send --kind turn --awaiting Advisor<suffix> → ack`. For team
-escalations its first line is exactly `opinion: agree` or `opinion: disagree` (a critical ground
-found → `disagree` plus `class: <critical class> — <why>`). With `teams.channel.advisor = solo`
+`inbox --unread --ack → work → send --kind turn --awaiting Advisor<suffix> → ack`. With `teams.channel.advisor = solo`
 there is no Reviewer and the step says so.
 
 **After a crash**: the Advisor restarts `deliver` and reads `inbox --unread` (messages never
@@ -245,7 +239,7 @@ deliveries that went `failed` come back with `requeue <id> --for Reviewer<suffix
 
 ## The operator kit
 
-The escalation adapter (`escalate.sh`, which `escalation.local.json` points at), the role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).
+The role Stop hook (`mail-guard.sh`) and the optional health check live outside the repo in `<kit_dir>`. They are installed by the Operator with `.claude/team/sessions/operator-kit/install.sh`, and all of them read the channel through `team-channel.sh`. See [`operator-kit/README.md`](../../.claude/team/sessions/operator-kit/README.md).
 
 ## What the channel does not guarantee
 
@@ -261,6 +255,6 @@ Linux (`flock`, `ps` formats) is to verify.
 In the repository: the tool code, the client, the setup step, this document. Local and never
 committed: the box and its WAL files, `recipients.json` (session ids), `*.lock`, `deliver-*.log`,
 `decisions/`, `.agents/team/channel.local.json` and the rendered
-`.agents/team/{watch,escalation}.local.json`. The tool's own fallback box (no `--box`, no
+`.agents/team/watch.local.json`. The tool's own fallback box (no `--box`, no
 `AGENT_MAIL_BOX`) is `<repo>/.agents/agent-mail/mail.sqlite` — ignored by `.gitignore`, and
 never used by the client.

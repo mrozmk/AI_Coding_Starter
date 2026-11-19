@@ -215,23 +215,6 @@ pf_receivers() {
   else pf "receivers live" ok; fi
 }
 
-pf_waiters() {  # an escalating / waiting-operator q needs a live team-escalate.sh waiter
-  local d q st p bad=""
-  for d in $(team_clone_dirs "$root"); do
-    for q in "$d"/runs/"$(cat "$d/run" 2>/dev/null)"/questions/q-*.md; do
-      case "$q" in *.payload.md|*.reply-*.md) continue ;; esac
-      [ -f "$q" ] || continue
-      st="$(team_q_state "$q" | cut -f1)"
-      case "$st" in escalating|waiting-operator) ;; *) continue ;; esac
-      p="$(cat "$q.wait/pid" 2>/dev/null || true)"
-      [ -n "$p" ] && kill -0 "$p" 2>/dev/null \
-        || bad="$bad $(jq -r .team "$d/team.json")/$(basename "$q" .md)($st)"
-    done
-  done
-  if [ -z "$bad" ]; then pf "escalations have live waiters" ok
-  else pf "escalations have live waiters" fail "${bad# }"; fi
-}
-
 pf_mail() {  # a mail probe per role in watch.local.json, and a picked ping per role
   local cfg="$root/.agents/team/watch.local.json" r miss="" unpicked="" why=""
   touch "$TW_DIR/events.jsonl" "$TW_DIR/deliveries.jsonl" "$TW_DIR/acks.jsonl"
@@ -321,7 +304,6 @@ preflight() {
   pf_receivers
   if tw_loops_ok; then pf "team-watch loops beating" ok
   else pf "team-watch loops beating" fail "beat or dog.beat stale — bash .claude/lib/team-watch.sh start"; fi
-  pf_waiters
   pf_mail
   pf_channel
   pf_kit

@@ -6,11 +6,9 @@
 # Usage: bash .claude/team/sessions/operator-kit/install.sh
 #   --dry-run                  what would change; writes nothing
 #   --apply                    first-install backup per live file (*.bak-team-kit, never replaced),
-#                              copy/render, then render the escalation config (team-channel.sh
-#                              render — it appears only once the adapter exists)
+#                              copy/render, then render the team-watch config (team-channel.sh render)
 #   --verify                   exit 0 only when every live file equals its template / fresh render
-#   --rollback                 restore every backup and delete it, remove files that were absent,
-#                              remove a *generated* escalation.local.json (a hand-written one stays)
+#   --rollback                 restore every backup and delete it, remove files that were absent
 #   --print-scheduler launchd|cron   the health-check scheduler entry to install yourself
 # Never touches the mailbox, recipients.json, delivery logs, locks or the decisions notes; never
 # loads, writes or removes a launchd job or a crontab line. Exit: 0 ok · 1 drift / refused / error
@@ -30,7 +28,6 @@ BAK=.bak-team-kit
 LABEL="team.$(printf '%s' "$TEAM_CHANNEL_CODE" | tr '[:upper:]' '[:lower:]').sessions-health"
 P="$TEAM_CHANNEL_TMUX_PREFIX"
 SESSIONS="$P-supervisor $P-teamlead $P-advisor $P-team-watch $P-team-watch-dog"
-ESCF="$root/.agents/team/escalation.local.json"
 
 refuse() { echo "error: $*" >&2; exit 1; }
 [[ "$KIT" =~ $TEAM_CHANNEL_SAFE ]] || refuse "kit_dir '$KIT' has characters a hook command cannot carry"
@@ -40,8 +37,7 @@ case "$KIT/" in
 esac
 
 # <kind> <template, relative to this dir> <live, relative to KIT>
-MAP="copy escalate.sh escalate.sh
-copy sessions-health.sh sessions-health.sh
+MAP="copy sessions-health.sh sessions-health.sh
 copy hooks/mail-guard.sh hooks/mail-guard.sh
 render hooks/role-hooks.settings.json.tmpl hooks/role-hooks.settings.json
 render kit.conf.tmpl kit.conf"
@@ -142,11 +138,7 @@ EOF
 case "$1" in
   --dry-run)
     each dry
-    # The render sees no adapter yet and says skip; --apply installs it first and then writes the
-    # file, so the dry-run reports what --apply will do.
-    (cd "$root" && bash .claude/lib/team-channel.sh render --dry-run) \
-      | sed 's|^skip	\.agents/team/escalation\.local\.json	no adapter at .*|plan	.agents/team/escalation.local.json	written by --apply, after it installs escalate.sh|' \
-      || true ;;
+    (cd "$root" && bash .claude/lib/team-channel.sh render --dry-run) || true ;;
   --apply)
     mkdir -p "$KIT"; chmod 700 "$KIT"
     each apply_one
@@ -156,12 +148,6 @@ case "$1" in
     exit "$bad" ;;
   --rollback)
     each rollback_one
-    if [ -f "$ESCF" ]; then
-      case "$(jq -r '._generated // empty | strings' "$ESCF" 2>/dev/null || true)" in
-        "$TEAM_CHANNEL_MARK"*) rm -f "$ESCF"; echo "removed $ESCF (generated; its adapter is gone)" ;;
-        *) echo "kept $ESCF (hand-written — it may point at the removed adapter)" ;;
-      esac
-    fi
     echo "scheduler: remove it yourself if installed — launchd $LABEL or the crontab line naming $KIT/sessions-health.sh" ;;
   --print-scheduler) scheduler "${2:-}" ;;
   *) usage ;;

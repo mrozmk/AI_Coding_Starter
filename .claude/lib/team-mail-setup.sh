@@ -21,7 +21,7 @@
 #   suffix = teams.channel.mail_suffix, else ""; label = project_code, else the key;
 #   codex_home = the value line of .claude/codex-profile, else null.
 # Output: one `<action>\t<what>\t<detail>` line per step (the last ones render the generated
-#   .agents/team/{watch,escalation}.local.json through team-channel.sh), then the Reviewer
+#   .agents/team/watch.local.json through team-channel.sh), then the Reviewer
 #   instructions.
 # Exit: 0 done · 1 refused (nothing written) · 2 usage. Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
@@ -310,12 +310,12 @@ else
   if [ -z "$DRY" ]; then mkdir -p "$(dirname "$CH")"; write_json "$CH" "$CJ"; fi
 fi
 
-# ---- the generated local configs: .agents/team/{watch,escalation}.local.json --------------------
+# ---- the generated local config: .agents/team/watch.local.json -----------------------------------
 # Rendered from .claude/team/*.tmpl by team-channel.sh, which reads the channel config just written;
 # a render problem is reported, never fatal — the channel itself is bound.
 if [ -n "$DRY" ]; then
   if ! (cd "$REPO" && bash "$HERE/team-channel.sh" render --dry-run 2>/dev/null); then
-    step plan render ".agents/team/watch.local.json + escalation.local.json, after the channel file"
+    step plan render ".agents/team/watch.local.json, after the channel file"
   fi
 elif ! jq -e '.teams.channel | type == "object"' "$PROFILE" >/dev/null 2>&1; then
   step skip render "no teams.channel in the profile — the generated configs need its names"

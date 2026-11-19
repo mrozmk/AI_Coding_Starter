@@ -252,51 +252,6 @@ team_events() {  # team_events <td> <team> <run> — records, launch, attention 
   done < "$td/runs/$run/attention"
 }
 
-# team_esc_unsent <td> <run> → one {q, seq, since, state, reason} line per escalating/escalated
-# question whose outstanding request has no `sent:`.
-team_esc_unsent() {
-  local f q seq since state reason
-  for f in "$1/runs/$2/questions"/q-*.md; do
-    [ -f "$f" ] && [[ "$(basename "$f")" =~ ^q-[0-9]+\.md$ ]] || continue
-    case "$(team_q_state "$f" | cut -f1)" in escalating|escalated) ;; *) continue ;; esac
-    q="$(basename "$f" .md)"
-    IFS=$'\t' read -r seq since state reason <<<"$(esc_unsent "$f")" || true
-    [ -n "$seq" ] || continue
-    jq -cn --arg q "$q" --arg seq "$seq" --arg since "$since" --arg state "$state" \
-      --arg reason "$reason" '{q: $q, seq: ($seq | tonumber? // $seq), since: $since,
-      state: $state, reason: $reason}'
-  done
-}
-
-# team_escalations <td> <run> → one line per q with a ledger: the inputs of the escreply and
-# silence signals. `replies` holds real Advisor replies only, never an empty late read.
-team_escalations() {
-  local f q waiter tr
-  for f in "$1/runs/$2/questions"/q-*.md; do
-    [ -f "$f" ] && [[ "$(basename "$f")" =~ ^q-[0-9]+\.md$ ]] || continue
-    grep -qx '## Escalation' "$f" || continue
-    q="$(basename "$f" .md)"; waiter="$(esc_waiter "$f")"
-    tr="$(esc_lines "$f" | awk '
-      /^waited: / { t = t sep_t $2; sep_t = " "; w = 1; next }
-      /^outcome: no-reply — timeout after/ { if (!w) lt = 1; w = 0; next }
-      /^outcome: (late-pending-operator)$/ { r1 = 1; w = 0; next }
-      /^outcome: / { w = 0; next }
-      /^reply: [^ ]+ (answer|withdrawn)$/ { r1 = 1; next }
-      /^waiting: operator / { r = r sep_r $3; sep_r = " "; next }
-      /^ended: / { if (lt) { t = t sep_t $2; sep_t = " " }
-        if (r1) { r = r sep_r $2; sep_r = " " }; lt = 0; r1 = 0 }
-      END { printf "%s\t%s\n", t, r }')"
-    jq -cn --arg q "$q" --arg role "$(esc_field "$f" role)" --arg tier "$(esc_tier "$f")" \
-      --arg class "$(esc_class "$f")" --arg thread "esc-$2-$q" \
-      --arg state "$(team_q_state "$f" | cut -f1)" --arg last "$(esc_last_outcome "$f")" \
-      --arg waiter "$waiter" --arg t "${tr%%$'\t'*}" --arg r "${tr#*$'\t'}" '
-      {q: $q, role: $role, tier: ($tier | tonumber? // $tier), class: $class, thread: $thread,
-       state: $state, last_outcome: (if $last == "" then null else $last end), waiter: $waiter,
-       timeouts: ($t | split(" ") | map(select(. != ""))),
-       replies: ($r | split(" ") | map(select(. != "")))}'
-  done
-}
-
 snap_team() {  # snap_team <clone .agents/team dir> → team object
   local td="$1" team run runner=down pid cur="" role f ov base problem mode pr prs="" last fin
   local lead=false
@@ -313,10 +268,8 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
   fi
   [ ! -f "$td/session.json" ] || cur="$(jq -r '.role // empty' "$td/session.json" 2>/dev/null)" \
     || err "$team: unreadable session.json"
-  : > "$W/recs"; : > "$W/esc"; : > "$W/escs"
+  : > "$W/recs"
   if [ -n "$run" ]; then
-    team_esc_unsent "$td" "$run" > "$W/esc" || err "$team: escalation ledgers unreadable"
-    team_escalations "$td" "$run" > "$W/escs" || err "$team: escalation ledgers unreadable"
     for f in "$td/runs/$run"/*-*-*.json "$td/runs/$run"/r*/*-*-*.json; do  # every rework round too
       [ -f "$f" ] || continue
       case "$(basename "$f")" in teamlead-*) continue ;; esac  # TeamLead verdicts, not stage records
@@ -349,15 +302,14 @@ snap_team() {  # snap_team <clone .agents/team dir> → team object
     prs="$(pr_state "${td%/.agents/team}" "$team" "$pr")"
   fi
   jq -c --arg run "$run" --arg runner "$runner" --arg mode "$mode" --arg prs "$prs" \
-    --arg pr "$pr" --slurpfile roles "$W/roles" --argjson fin "$fin" --slurpfile esc "$W/esc" \
-    --slurpfile escs "$W/escs" --argjson lead "$lead" '
+    --arg pr "$pr" --slurpfile roles "$W/roles" --argjson fin "$fin" --argjson lead "$lead" '
     {team, ticket, branch, line, mode: $mode, run: (if $run == "" then null else $run end), runner: $runner,
      finished: $fin, lead: $lead,
      pr_id: (if $pr == "" then null else ($pr | tonumber? // $pr) end),
      pr_status: (if $prs == "" then null else $prs end),
      state: ({completed: "free", abandoned: "free", active: "awaiting_merge",
               unknown: "pr_unknown"}[$prs]),
-     roles: $roles, esc_unsent: $esc, escalations: $escs,
+     roles: $roles,
      resume_hint: (if $runner != "up" and any($roles[]; .status == "blocked" or .status == "failed")
                    then "/start-team \(.team)" else null end)}' "$td/team.json"
 }

@@ -738,15 +738,17 @@ jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role"))] | lengt
 
 # ---- (26) retired files: an unchanged shipped version is deleted, a changed one stays a conflict ---
 # The five deprecated /roles pointers (step 9a-1) are `retired` manifest lines with the blob ids of
-# the versions the starter shipped. So are the allow/ask rules for the launcher verbs 9a removed.
+# the versions the starter shipped, and so are the six files of the removed escalation path. So are
+# the allow/ask rules for the launcher verbs 9a removed.
 T=$(mktarget t26)
 mkdir -p "$T/.claude/commands"
 RET=$(sed -n 's/^retired \([^ ]*\) .*/\1/p' "$MANIFEST")
-[ "$(printf '%s\n' "$RET" | grep -c .)" = 5 ] || fail "26: the manifest does not retire the five commands"
+N=$(printf '%s\n' "$RET" | grep -c .); [ "$N" -ge 11 ] || fail "26: the manifest retires $N files, expected the five commands and the six escalation files"
 for p in $RET; do
   [ ! -e "$ST/$p" ] || fail "26: $p is retired but still in the starter"
   grep -qxF "own $p" "$MANIFEST" && fail "26: $p is both retired and own"
   b=$(sed -n "s|^retired $p ||p" "$MANIFEST"); b=${b##* }   # the last id listed: the newest shipped version
+  mkdir -p "$(dirname "$T/$p")"
   git -C "$ST" cat-file blob "$b" > "$T/$p" 2>/dev/null || fail "26: $p: blob $b is not in the starter's history"
 done
 printf 'my own notes\n' >> "$T/.claude/commands/mail-role.md"   # a project edit: never deleted
@@ -757,14 +759,14 @@ echo '{"teams":{}}' > "$T/.claude/project-profile.json"
 H0=$(treehash "$T")
 setup "$T" --check
 [ "$RC" = 1 ] || fail "26: --check exited $RC, expected 1 (the edited command is a conflict)"
-[ "$(field remove retired)" = 4 ] || fail "26: --check does not plan 4 removals"
+[ "$(field remove retired)" = $((N - 1)) ] || fail "26: --check does not plan $((N - 1)) removals"
 [ "$(treehash "$T")" = "$H0" ] || fail "26: --check wrote something"
 setup "$T"
 [ "$RC" = 1 ] || fail "26: install exited $RC, expected 1"
-[ "$(field removed retired)" = 4 ] || fail "26: not 4 retired files removed"
+[ "$(field removed retired)" = $((N - 1)) ] || fail "26: not $((N - 1)) retired files removed"
 has "conflict (retired — changed locally; delete or keep it by hand)	retired	.claude/commands/mail-role.md" \
   || fail "26: the edited retired file is not a conflict"
-has "removed=4" || fail "26: the summary does not count the removals"
+has "removed=$((N - 1))" || fail "26: the summary does not count the removals"
 for p in $RET; do
   case "$p" in */mail-role.md) [ -f "$T/$p" ] || fail "26: the edited $p was deleted" ;;
     *) [ ! -e "$T/$p" ] || fail "26: $p was not deleted" ;; esac

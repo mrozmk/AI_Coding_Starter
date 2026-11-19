@@ -318,8 +318,8 @@ for n in $(cd "$MAIN" && $W pending Supervisor); do run "$MAIN" env TEAM_SESSION
 beat() { echo "$(date -u +%s) 1 v$TWV" > "$TWD/beat"; echo "$(date -u +%s) 1 v$TWV" > "$TWD/dog.beat"; }
 beat; run "$MAIN" $SS preflight; expect 0 "ok receivers live" "(5) preflight green"
 grep -q '^FAIL' "$WORK/out" && fail "(5) preflight green printed a FAIL"
-[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 10 ] || fail "(5) preflight must print 10 rows"
-for row in "ok team-watch loops beating" "ok escalations have live waiters" \
+[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 9 ] || fail "(5) preflight must print 9 rows"
+for row in "ok team-watch loops beating" \
   "ok mail probe and picked ping per role" "ok team channel loads" "ok operator kit installed" \
   "ok role profiles" "ok notifications: config: missing (~/.agent-comms/notify.json) · herdr off · imessage off" \
   "ok health check: none — declared loss: a dead tmux server is noticed by nobody" \
@@ -373,11 +373,6 @@ mv "$WORK/install.keep" "$MAIN/.claude/team/sessions/operator-kit/install.sh"
 echo '{"permissions": {"allow": ["Bash(bash .claude/team/*)"]}}' > "$MAIN/.claude/settings.local.json"
 beat; run "$MAIN" $SS preflight; expect 1 "FAIL role profiles — local allow leak (Operator: settings.local.json)" "(5) leak row"
 rm -f "$MAIN/.claude/settings.local.json"
-mkdir -p "$RD/questions"
-printf 'role: coder\nattempt: 1\nkind: blocked\n\n## Summary\nx\n\n## Escalation\nstarted: 2026-10-19T10:00:00Z tier 2\n' \
-  > "$RD/questions/q-9.md"
-beat; run "$MAIN" $SS preflight; expect 1 "FAIL escalations have live waiters — alfa/q-9(escalating)" "(5) orphaned escalation"
-rm -f "$RD/questions/q-9.md"
 echo "team-smoke-sessions: (5) preflight OK"
 
 # ---- (6) reviewer: the deliver loop of THIS box, never another project's same-name loop ----------

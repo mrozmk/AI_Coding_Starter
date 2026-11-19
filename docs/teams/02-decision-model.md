@@ -94,15 +94,12 @@ Some tier-1 answers set a precedent: a size-only Phase 0 override, a memory entr
 
 **Deferred memory.** A wrapup (B) memory proposal the Advisor did not answer closes as skip, is recorded as `memory-deferred` and handed to the Advisor as one deduplicated `info`. Transitional supervision rules — the scripts do not enforce them. The guards live in `/monitor` 4(e).
 
-**Who may write the log.** The TeamLead appends decision and revocation lines and never rewrites one. The Advisor may replace exactly one promoted entry with a `[promoted]` pointer when it moves that conclusion into `decisions.md` through a PR. These are the only two writers, and their scopes are the ones just stated ([`team-advisor.md`](../../.agents/reference/team-advisor.md) §3 is the Advisor's side).
+**Who may write the log.** The TeamLead appends decision and revocation lines and never rewrites one. The Advisor may replace exactly one promoted entry with a `[promoted]` pointer when it moves that conclusion into `decisions.md` through a PR. These are the only two writers, and their scopes are the ones just stated.
 
 ## What is a target, not behaviour
 
 The per-class deadline overflow is an agreed **target**, not running code: a blocking Advisor-list question past 60 minutes would go to the Supervisor for the Operator's list, and a non-blocking one past 30 minutes would become a follow-up.
 
-What runs today:
-- the escalation adapter's timeout on each send and on the first reply;
-- at most two delivered re-pings, then a wait without a deadline;
-- the Advisor no-reply fallback for eligible classes ([05](05-escalation.md#when-the-advisor-is-silent)).
+Nothing of it runs today: the Advisor escalation path is removed.
 
 See [follow-ups](follow-ups.md) F6.

@@ -49,12 +49,12 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
    names an existing entry lacks). The dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
    copy under `~/.agent-mail/tools/` (named by its content: identical tools share one copy), the box and its `decisions/`, registers the three Claude
    roles and writes the gitignored `.agents/team/channel.local.json`, then renders
-   `watch.local.json`. `escalation.local.json` is `skip`ped until step 6.
+   `watch.local.json`.
 5. **Verify:** `bash .claude/lib/team-mail.sh --here check` prints `OK <KEY> (box …, tool …)` and
    `bash .claude/lib/team-channel.sh show` exits 0.
 6. **Operator kit** (an Operator action, run it yourself with `!`):
    `bash .claude/team/sessions/operator-kit/install.sh --dry-run`, then `--apply`, then
-   `--verify` (every line `ok`). `--apply` also renders `.agents/team/escalation.local.json`.
+   `--verify` (every line `ok`).
    See [08](08-operator-kit.md).
 7. **Reviewer** (`advisor: pair` only): the channel step's `reviewer:` block is for the
    Reviewer's own Codex window, which registers itself with its thread id.

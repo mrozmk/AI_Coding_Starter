@@ -109,7 +109,6 @@ smoke_init() {
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1
   export TEAM_CONFIRM_SECS=0 TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
   export TEAM_GATE_LOCK_POLL=0.1
-  # The marker team-escalate.sh requires before it honours TEAM_ESCALATE_UNIT_SECS.
   # No per-run TeamLead in a fixture unless the part unsets TEAM_SMOKE_NO_LEAD (the lead parts).
   export TEAM_SMOKE=1 TEAM_SMOKE_NO_LEAD=1
   # The session-host driver runs only fixture binaries under TEAM_SMOKE=1, and never picks a host

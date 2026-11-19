@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # The channel config (team-channel.sh): the load and its refusals, the rendered local configs
-# (watch probes, escalation adapter lines, solo, hand-written files kept), the role-filtered mail
-# probes, and one escalation end to end through a fixture box with a fixture kit adapter.
+# (watch probes, solo, hand-written files kept) and the role-filtered mail probes.
 # The HOME is throwaway (with a space in its path); nothing reads or writes the real ~/.agent-mail.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -13,7 +12,7 @@ export HOME="$WORK/home dir"; mkdir -p "$HOME"
 unset AGENT_MAIL_BOX CODEX_HOME
 REG="$HOME/.agent-mail/projects.json"
 CH="bash .claude/lib/team-channel.sh"
-WATCH="$MAIN/.agents/team/watch.local.json"; ESCF="$MAIN/.agents/team/escalation.local.json"
+WATCH="$MAIN/.agents/team/watch.local.json"
 LIB="$MAIN/.claude/lib"
 
 # The main checkout gets what /setup:teams installs for the channel: the vendored tool and the
@@ -35,15 +34,13 @@ prof '.teams.channel = {project_code: "QX", mail_suffix: "Qx", advisor: "pair"}'
 run "$MAIN" $CH show
 expect 3 "not configured — no .agents/team/channel.local.json" "(1) no local half"
 
-# ---- (2) the channel step binds the box and renders; escalation waits for the kit adapter ------
+# ---- (2) the channel step binds the box and renders ------------------------------------------
 run "$MAIN" bash .claude/lib/team-mail-setup.sh "$MAIN" --dry-run
 expect 0 "plan	render" "(2) dry-run plans the render"
 [ ! -e "$WATCH" ] || fail "(2) the dry-run rendered"
 run "$MAIN" bash .claude/lib/team-mail-setup.sh "$MAIN"
 expect 0 "write	.agents/team/watch.local.json" "(2) fresh setup renders the watch probes"
-has "skip	.agents/team/escalation.local.json	no adapter at" "$WORK/out" \
-  || fail "(2) escalation rendered without an adapter"
-[ ! -e "$ESCF" ] || fail "(2) escalation.local.json written without an adapter"
+! has "escalation" "$WORK/out" || fail "(2) render still names escalation"
 ! grep -q '{{' "$WATCH" || fail "(2) an unfilled placeholder"
 jq -e --arg l "$(cd "$LIB" && pwd)" '(._generated | startswith("by team-channel.sh render"))
   and (.mail.Supervisor | contains("\"" + $l + "/team-mail.sh\" QX inbox --for SupervisorQx --unread --limit 0"))
@@ -105,81 +102,6 @@ prof 'del(.teams.channel.notifier) | del(.teams.channel.advisor)'
 run "$MAIN" $CH get advisor; expect 0 "solo" "(5) advisor default without codex"
 prof '.codex = true'
 run "$MAIN" $CH get advisor; expect 0 "pair" "(5) advisor default with codex"
-
-# ---- (6) the kit adapter appears: escalation renders; solo drops opinion; hand-written stays ----
-KIT="$(jq -r .kit_dir "$MAIN/.agents/team/channel.local.json")"
-mkdir -p "$KIT"
-# A fixture adapter with the operator kit's contract (the real one ships with the kit): every
-# address comes from the channel config, the reply filter is the Advisor's name, the opinion
-# filter the Reviewer's.
-cat > "$KIT/escalate.sh" <<'EOF'
-set -euo pipefail
-op="$1" payload="$2" qid="$5" thread="$6" seq="$7"
-. .claude/lib/team-channel.sh; team_channel_load
-M="bash .claude/lib/team-mail.sh $TEAM_CHANNEL_KEY"
-newest() {  # newest <sender> → the newest unread message from <sender> on the thread, as JSON
-  $M inbox --for "$TEAM_CHANNEL_TEAMLEAD" --unread --json --limit 0 \
-    | jq -c --arg t "$thread" --arg s "$1" '[.[] | select(.thread == $t and .sender == $s)] | last // empty'
-}
-stage() {  # stage <json> → staged reply printed, acked
-  local id f; id="$(jq -r .id <<<"$1")"; f="$(dirname "$payload")/$qid.reply-$id.md"
-  { echo "mail-id: $id"; jq -r .body <<<"$1"; } > "$f"
-  $M ack "$id" --by "$TEAM_CHANNEL_TEAMLEAD" >/dev/null; cat "$f"
-}
-case "$op" in
-  send) bash .claude/lib/team-channel.sh turn TeamLead Advisor --thread "$thread" \
-          --dedup-key "$thread-$seq" --body-file "$payload" | sed -n 's/^\(SENT id=[0-9]*\).*/\1/p' ;;
-  peek) m="$(newest "$TEAM_CHANNEL_ADVISOR_NAME")"; if [ -n "$m" ]; then stage "$m"; else echo EMPTY; fi ;;
-  wait) while m="$(newest "$TEAM_CHANNEL_ADVISOR_NAME")"; [ -z "$m" ]; do sleep 0.2; done; stage "$m" ;;
-  opinion) m="$(newest "$TEAM_CHANNEL_REVIEWER")"
-    [ -z "$m" ] || { echo "mail-id: $(jq -r .id <<<"$m")"; jq -r .body <<<"$m"; } ;;
-esac
-EOF
-run "$MAIN" $CH render
-expect 0 "write	.agents/team/escalation.local.json" "(6) render with the adapter"
-has "keep	.agents/team/watch.local.json	identical" "$WORK/out" || fail "(6) watch not kept"
-KQ="$(cd "$KIT" && pwd)"
-for op in send wait opinion peek; do
-  [ "$(jq -r ".$op" "$ESCF")" = "bash \"$KQ/escalate.sh\" $op \"\$1\" \"\$2\" \"\$3\" \"\$4\" \"\$5\" \"\$6\"" ] \
-    || fail "(6) $op line: $(jq -r ".$op" "$ESCF")"
-done
-prof '.teams.channel.advisor = "solo"'
-run "$MAIN" $CH render
-expect 0 "rewrite	.agents/team/escalation.local.json" "(6) solo re-render"
-jq -e 'has("opinion") | not' "$ESCF" >/dev/null || fail "(6) solo kept the opinion op"
-prof '.teams.channel.advisor = "pair"'
-run "$MAIN" $CH render; expect 0 "rewrite	.agents/team/escalation.local.json" "(6) back to pair"
-cp "$ESCF" "$WORK/esc.bak"; jq 'del(._generated)' "$WORK/esc.bak" > "$ESCF"; cp "$ESCF" "$WORK/hand"
-run "$MAIN" $CH render; expect 0 "hand-written" "(6) a hand-written file"
-cmp -s "$ESCF" "$WORK/hand" || fail "(6) the hand-written file was replaced"
-cp "$WORK/esc.bak" "$ESCF"
-
-# ---- (7) one escalation through the fixture box: send, Advisor reply, ANSWER -------------------
-smoke_team AB-1301 chore/AB-1301-channel
-RUN_ID=alfa-20261104-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"
-mkdir -p "$RD/questions"; session coder 1 "$BASE"
-export TEAM_ESCALATE_UNIT_SECS=1 TEAM_ESCALATE_POLL=0.2 TEAM_ESCALATE_PEEK_SECS=1
-QF="$RD/questions/q-1.md"; T="esc-$RUN_ID-q-1"
-printf '# q-1 — alfa coder attempt 1\nrole: coder\nattempt: 1\nrun: %s\nkind: blocked\n' "$RUN_ID" > "$QF"
-printf 'record: -\nanchor: x\nfingerprint: v2:none\nopened: 2026-11-04T00:00:00Z\n\n' >> "$QF"
-printf '## Summary\nWhich design?\n\n## Context\n- last blocker: -\n\n## Screen\n    x\n' >> "$QF"
-(cd "$MAIN" && exec bash .claude/lib/team-escalate.sh alfa coder 2 "$QF" --blocks x) \
-  > "$WORK/esc.out" 2>&1 &
-BGP=$!; BG="$BG $BGP"
-i=0; until grep -q '^sent: ' "$QF" 2>/dev/null; do
-  i=$((i + 1)); [ "$i" -lt 100 ] || { cp "$WORK/esc.out" "$WORK/out"; fail "(7) never sent"; }; sleep 0.2
-done
-run "$MAIN" bash .claude/lib/team-mail.sh QX inbox --for AdvisorQx --unread --limit 0
-expect 0 "from=TeamLeadQx kind=turn awaiting=AdvisorQx thread=$T" "(7) the request in the Advisor's inbox"
-printf 'status: answer\ndecided-by: analysts\n\nUse the queue.\n' > "$WORK/reply"
-run "$MAIN" bash .claude/lib/team-mail.sh QX send --from AdvisorQx --to TeamLeadQx --kind report \
-  --thread "$T" --body-file "$WORK/reply"
-expect 0 "SENT id=" "(7) the Advisor replies"
-wait "$BGP" && RC=0 || RC=$?
-cp "$WORK/esc.out" "$WORK/out"
-expect 0 "ANSWER" "(7) the escalation closes on the reply"
-has "Use the queue." "$WORK/out" || fail "(7) the answer text"
-grep -q '^reply: [0-9]* answer' "$QF" || fail "(7) the reply is not in the ledger"
 
 # ---- (8) turn takes --kind turn (the default, with --awaiting) or --kind info only --------------
 run "$MAIN" $CH turn Supervisor TeamLead --kind turn --thread k8 --body "explicit turn"

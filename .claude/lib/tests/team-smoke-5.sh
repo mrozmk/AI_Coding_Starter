@@ -7,7 +7,6 @@ smoke_team AB-1142 chore/AB-1142-fp
 RUN_ID=alfa-20261020-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 ANSWER="bash .claude/lib/team-answer.sh"
 Q="bash .claude/lib/team-question.sh"
-ESC="bash .claude/lib/team-escalate.sh"
 TR="bash .claude/lib/team-run.sh"
 PY="$SRC/.claude/lib/team_prompt.py"
 RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"
@@ -413,11 +412,9 @@ for d in "sent" "failed (rc 1)" "pending" "recorded only" "not sent — mode off
   || fail "historical states:$got"
 [ "$(hq sent "confirmed: yes (tool_result)"$'\n')" = consumed ] || fail "consumed"
 [ "$(hq sent "confirmed: no — x"$'\n')" = sent ] || fail "unconfirmed sent"
-run "$MAIN" $ESC alfa coder 2 "$(qf "$QLIM")" --blocks x
-expect 2 "already answered" "escalate a not-sent-stale q"
 run "$MAIN" $Q alfa list; expect 0 "state=not-sent-stale" "list shows precise states"
 last="$(tail -n 1 "$WORK/out")"
-sum=0; for k in tier1 tier2 tier3 revoked failed pending open escalating escalated waiting; do
+sum=0; for k in tier1 tier2 tier3 revoked failed pending open; do
   sum=$((sum + $(sed -n "s/.* $k=\([0-9]*\).*/\1/p" <<<" $last")))
 done
 [ "$sum" = "$(sed -n 's/^total=\([0-9]*\).*/\1/p' <<<"$last")" ] || fail "list counters: $last"

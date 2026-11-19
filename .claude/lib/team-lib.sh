@@ -301,7 +301,7 @@ team_notes_init() {
 
 team_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-# Usage: team_q_lock <q file> <team> — the question ledger's lock (team-question, team-escalate).
+# Usage: team_q_lock <q file> <team> — the question ledger's lock (team-question).
 team_q_lock() {
   local q="$1" id tries=0 max p hint=""
   max=$(( ${TEAM_QUESTION_LOCK_SECS:-30} * 5 ))
@@ -318,8 +318,7 @@ team_q_lock() {
 }
 
 # Usage: team_q_state <q file> → "<state>\t<tier>\t<author>"
-# Reads the last ## Answer / ## Revoked plus any ## Escalation; once Advisor reported the Operator
-# asked (`waiting:`), only a final outcome leaves waiting-operator. Answer states:
+# Reads the last ## Answer / ## Revoked; every other section is ignored. Answer states:
 # consumed|sent|not-sent-stale|not-sent|unknown|failed|pending|recorded — an unknown
 # `delivery:` value reads `unknown`, never `sent`.
 team_q_state() {
@@ -332,18 +331,13 @@ team_q_state() {
     sec == "Answer" && /^author: / { author = substr($0, 9) }
     sec == "Answer" && /^confirmed: yes/ { cf = 1 }
     (sec == "Answer" || sec == "Revoked") && /^delivery: / { dl = substr($0, 11) }
-    sec == "Escalation" && /^(started|reping|retier|resumed): / {
-      esc = asked ? "waiting-operator" : "escalating"; next }
-    sec == "Escalation" && /^waiting: / { asked = 1; esc = "waiting-operator"; next }
-    sec == "Escalation" && /^outcome: (answer|withdrawn)$/ { asked = 0; esc = "escalated"; next }
-    sec == "Escalation" && /^outcome: / { esc = asked ? "waiting-operator" : "escalated" }
     END {
       if (h == "revoked") st = "revoked"
       else if (h == "answer") st = (dl == "pending") ? "pending" : (dl == "sent") \
         ? (cf ? "consumed" : "sent") : (dl ~ /^not sent — stale/) ? "not-sent-stale" \
         : (dl ~ /^not sent — /) ? "not-sent" : (dl ~ /^unknown — /) ? "unknown" \
         : (dl ~ /^failed/) ? "failed" : (dl == "recorded only") ? "recorded" : "unknown"
-      else st = (esc != "") ? esc : "open"
+      else st = "open"
       printf "%s\t%s\t%s\n", st, (tier == "" ? "-" : tier), (author == "" ? "-" : author)
     }' "$1"
 }

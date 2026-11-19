@@ -1,12 +1,12 @@
 ---
 description: Watch parallel AI teams from this session — progress, permission prompts with their command, questions, ready-for-merge — and route their questions by escalation tier (TeamLead / Advisor)
 argument-hint: "[--tiers on|off]"
-allowed-tools: TaskStop, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/supervisor-sessions.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-escalate.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(bash .claude/lib/session-host.sh:*), mcp__atlassian__jira_get_issue
+allowed-tools: TaskStop, Bash(bash .claude/lib/team-watch.sh:*), Bash(bash .claude/lib/monitoring.sh:*), Bash(bash .claude/lib/supervisor-sessions.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/team-answer.sh:*), Bash(bash .claude/lib/team-question.sh:*), Bash(bash .claude/lib/team-channel.sh:*), Bash(bash .claude/lib/session-host.sh:*), mcp__atlassian__jira_get_issue
 ---
 
 # /monitor — supervise running teams
 
-> Team signals and the Advisor escalation path are retired: this command now receives only mail, role-session prompts and errors, and leaves with the wake-loop machinery.
+> Team signals and the Advisor escalation path are retired: this command now receives only mail, role-session prompts and errors, and leaves with the wake-loop machinery. The escalation steps below name scripts that no longer exist and do not run; the whole command is removed in the next retirement slice.
 
 Arguments: **$ARGUMENTS**. Supervisor command for the main checkout: the handling contract of
 `[team-watch #<n>]` messages. The session that runs it is the **TeamLead**

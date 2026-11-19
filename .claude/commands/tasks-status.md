@@ -38,7 +38,7 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
    team column. `bash .claude/lib/team-snapshot.sh --out <scratch>/snap.json`, once. Join
    `teams[]` to tasks by `ticket` (github `7` = `#7`). Per team keep: the current role and its
    status, `runner`, `state` (`free` / `awaiting_merge` / `pr_unknown`), `pr_id`, `pr_status`,
-   `escalations[]`, `resume_hint`. A team whose ticket is not in the task list gets its own row.
+   `resume_hint`. A team whose ticket is not in the task list gets its own row.
 
 4. **What blocks Done — from evidence only.**
    - **jira / github:** Haiku extractors — `Agent` calls with `model: haiku` (the alias, never a
@@ -61,10 +61,8 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
 6. **Who acts.** Sort every open item into one of two sections; each source is one list entry, so
    a new source is one more line, not a new step.
    - **Waiting for you** — only decisions that are the Operator's:
-     1. `teams[].escalations[]` with `state == "waiting-operator"` — team, role, question id,
-        thread;
-     2. tasks whose extracted "waiting on" is the Operator, with the evidence that says so;
-     3. *(when the per-run TeamLead lands)* its pending human-decision files.
+     1. tasks whose extracted "waiting on" is the Operator, with the evidence that says so;
+     2. *(when the per-run TeamLead lands)* its pending human-decision files.
    - **Waiting on the team** — everything the TeamLead, Advisor or Supervisor acts on:
      `attention[]` items (role questions, prompts, `blocked`/`failed` records with their
      `resume_hint`) and PRs `awaiting_merge` (the Supervisor's merge gate; it reaches the Operator

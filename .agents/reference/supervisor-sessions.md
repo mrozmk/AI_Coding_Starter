@@ -20,7 +20,7 @@ the single-window flow (routing `single Supervisor`). Mechanics of the push chan
 |---|---|---|---|
 | **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | alarms + its own mail |
 | **TeamLead** (retired) | `<prefix>-teamlead` | the global TeamLead — retired: no run reaches it ([§ TeamLead](#teamlead)) | none |
-| **Advisor** | `<prefix>-advisor` | task intake, tier 2 (with the Reviewer under `advisor: pair`) | none — agent-mail only, wake loop `mail` |
+| **Advisor** | `<prefix>-advisor` | task intake, on request through the Supervisor | none — agent-mail only, wake loop `mail` |
 
 **The per-run TeamLead is not one of these sessions.** In brainstorm and quick mode the runner
 (`team-run.sh`) launches one lead per team run as `<team>-lead` in the team clone and ends it with
@@ -62,12 +62,6 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
 - the alarms: `UNPICKED` / `STALLED` / `RECEIVER … down` / `UNDELIVERED` / `MONITOR` → find out why
   (the role's window, `roles.sh status`), tell the Operator in one line when a role
   is down or stuck;
-- `ADVISOR silent since <UTC>: <n> escalation(s) waiting` → one line to the Operator naming the
-  waiting qs from the screen (`<team> <q> tier <t> class <c>`). It never answers them, never
-  re-sends them, and is never reminded; the episode ends only on a new Advisor reply, not on an
-  Operator answer to one q. Same handling under `advisor: solo`, where nothing closes by fallback
-  and the screen lists every timed-out q ([escalation-fallback.md](escalation-fallback.md) →
-  Signals);
 - `ATTENTION TeamLead|Advisor (<permission|menu>) fp=<fp>: <anchor>` — a role session's own prompt
   or menu: classify per [team-mode.md](team-mode.md) §10; tier 1 only through
   `bash .claude/lib/supervisor-sessions.sh answer <role> --fp <fp> yes|no "<reason>"|pick <n>|other
@@ -75,8 +69,8 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
   `Operator action: …` — ask/deny tier, egress, SQL write, an unreadable block or no
   `session.json`) → an Operator action with a notification and the role's window.
 
-**Does not:** answer or escalate a team question (`team-answer.sh`, `team-question.sh * answer`,
-`team-escalate.sh` are denied by its profile); run `/monitor` in split routing; relay the Operator's
+**Does not:** answer a team question (`team-answer.sh`, `team-question.sh * answer` are denied by
+its profile); run `/monitor` in split routing; relay the Operator's
 decision to a team (that goes through tier 3 or the role's window); switch `routing` on its own;
 clear a freeze without the Operator.
 
@@ -109,8 +103,7 @@ team and summary is reused, not sent again. `notify.sh` is denied to every role 
 
 **Does:** `/monitor` — the only receiver of team signals in split routing: decide every team
 question per [team-decision-model.md](team-decision-model.md) §3 (policy-class decisions go to the
-policy log `<decisions_dir>/teamlead-policy-log.md`); send the Advisor list and the Operator list
-via `team-escalate.sh` (tier 2 / tier 3; it owns the waiters); resume stopped runners. `READY` →
+policy log `<decisions_dir>/teamlead-policy-log.md`); resume stopped runners. `READY` →
 no summary to the Operator: the post-run note goes to `<decisions_dir>/<date>-<team>-ready-TeamLead.md`
 with its "TeamLead decisions" section, then a `turn` to the Supervisor on `ready-<team>-<run>`.
 An Operator action → a notification plus the block in this window; nothing to the Supervisor.
@@ -132,11 +125,10 @@ decision and revocation lines and never rewrites them; the Advisor promotes a re
 formats: `/monitor` → `## Policy log`.
 
 **Bootstrap** (the SessionStart hook names the contract on start, `/clear` and compaction) — `team-question.sh <team> list` for every clone,
-`team-watch.sh status --open`, read the policy log, reconcile as `/monitor` step 3,
-`team-question.sh <team> orphans` → one background `team-escalate.sh … --resume` per line, then
+`team-watch.sh status --open`, read the policy log, reconcile as `/monitor` step 3, then
 `monitoring.sh ensure`.
 
-**Commands:** `/monitor`, `team-question.sh`, `team-escalate.sh`, `team-run.sh`, `session-host.sh hint`,
+**Commands:** `/monitor`, `team-question.sh`, `team-run.sh`, `session-host.sh hint`,
 `team-watch.sh ack|done|status|pending TeamLead`.
 
 ## Advisor
@@ -151,8 +143,7 @@ unread `turn`s. Under `advisor: pair` it runs the Reviewer's deliver loop:
 `supervisor-sessions.sh reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's
 path only (another project's same-name loop never counts); a missing one is restored per
 [agent-mail.md](agent-mail.md) → Bring-up. Under `advisor: solo` the Reviewer does not exist
-(`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`. What it answers on an
-escalation thread, and its one policy-log exception: [team-advisor.md](team-advisor.md).
+(`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`.
 
 ## Monitoring
 
@@ -247,7 +238,7 @@ tool call.
 | Role | Denied on top of the project + local rules |
 |---|---|
 | TeamLead | `git push`, the PR update verbs (by provider), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|answer\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `Skill(pr-merge)`, `Skill(release)` |
-| Supervisor | `team-answer.sh`, `team-question.sh * answer *`, `team-escalate.sh` |
+| Supervisor | `team-answer.sh`, `team-question.sh * answer *` |
 
 `supervisor-sessions.sh check` classifies each profile's `_samples` (deny > ask > allow > prompt,
 the fnmatch matcher of `team_prompt_check.py`) and lists the effective hooks per layer: `forbidden`
@@ -304,11 +295,11 @@ this window.`; `pick|other` go through `team-answer.sh <prefix> <role> … --ses
 
 **`preflight` rows:** (1) receivers live — a refused socket is a FAIL with the send's own wording
 (`socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>`), a role not started yet a
-WARN; (2) team-watch loops beating; (3) escalations have live waiters; (4) a mail probe and a picked
-ping per role; (5) the team channel loads; (6) the operator kit installed (`install.sh --verify`);
-(7) role profiles; (8) notifications (the `.claude/lib/notify.sh --check` lines on one row; both
-channels off is an ok row); (9) the health check scheduled (`sessions-health.sh --scheduled`; none is an ok row with the
-declared loss); (10) the Claude Code version against the one the socket wire format was verified on
+WARN; (2) team-watch loops beating; (3) a mail probe and a picked
+ping per role; (4) the team channel loads; (5) the operator kit installed (`install.sh --verify`);
+(6) role profiles; (7) notifications (the `.claude/lib/notify.sh --check` lines on one row; both
+channels off is an ok row); (8) the health check scheduled (`sessions-health.sh --scheduled`; none is an ok row with the
+declared loss); (9) the Claude Code version against the one the socket wire format was verified on
 — with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no
 `"crossSessionInbound": "accept"` in the user settings it is a FAIL naming that line (preflight only
 reads the file). On the verified CLI the messaging token is **not** enforced: the socket's 0600
@@ -374,15 +365,14 @@ Operator actions, in order; each step's rollback is `supervisor-sessions.sh roll
    --dry-run`, then `--apply`.
 2. `/roles` (or `bash .claude/lib/roles.sh up`; `roles.sh here Supervisor` for a plain terminal);
    then `bash .claude/lib/team-watch.sh mode answering off` while the old
-   single window still owns waiters.
+   single window is still running.
 3. In each window: the role's contract line appears (SessionStart hook); check `/permissions` against
    [Profiles](#profiles). Each registers as `standby` while routing is single.
 4. Channel check: `team-watch.sh ping <role>` for each role; each window acks; `team-watch.sh stats`
    shows `picked` for the ping batches.
 5. Stop the old single window from handling team signals and close it. **Never** `team-watch.sh
    stop` — it stops the shared daemon for every role.
-6. `supervisor-sessions.sh preflight` until green (no orphaned escalation — `team-escalate.sh …
-   --resume` under the TeamLead where needed).
+6. `supervisor-sessions.sh preflight` until green.
 7. The switch: `bash .claude/lib/team-watch.sh routing split` + `mode answering on`.
 8. Smoke ([Smoke checklist](#smoke-checklist)), then the [Pilot](#pilot).
 
