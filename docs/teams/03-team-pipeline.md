@@ -8,7 +8,14 @@
 
 Each **team** is a permanent git clone of the project, a workstation reused ticket after ticket. Where clones live and what they are called is configuration: `teams.clone_parent`, and `teams.clone_name` (default `<repo dir>-{team}`, next to the main checkout).
 
-Clones are used rather than worktrees because each team needs its own `.claude/`, `.agents/`, build output and a copy of the Operator's `settings.local.json`. The roles of one ticket run **one after another in the same clone**, and two teams never share a working tree.
+Clones are used rather than worktrees because a worktree shares one git database with the main checkout — branches, stash, config, hooks and `.git/info/exclude` — and a clone has its own:
+
+- **Blast radius.** Roles work unattended. In a worktree a wrong `git branch -D`, `git stash` or `git gc` hits every team and the Operator's checkout; in a clone it stays in the clone, and the only way out is a push and a PR, where the gates stand.
+- **The trunk.** One branch can be checked out in one worktree only, so team scripts that switch to and merge the trunk would not work as they are.
+- **Per-clone files.** `project-profile.json` and `harness-version.json` are kept out of git through `.git/info/exclude`, which worktrees share.
+- **Same path as a developer.** Branch, push, PR, merge — and the clone may live on another machine.
+
+A worktree would save disk and a few seconds at provisioning, nothing else: the folder trust dialog, the copy of the Operator's `settings.local.json` and the build output are per directory either way. The roles of one ticket run **one after another in the same clone**, and two teams never share a working tree.
 
 A ticket runs in one of three modes, fixed when the team is provisioned (`/start-team <team> <KEY> --mode …`):
 
