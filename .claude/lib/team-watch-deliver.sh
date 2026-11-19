@@ -53,7 +53,7 @@ tw_send() {  # tw_send <role> <message> → the sender's exit status
   fi
 }
 
-# tw_contract <role> → the file a receiver handles its messages by (every routing).
+# tw_contract [<role>] → the file every receiver handles its messages by (the role is ignored).
 tw_contract() { echo .agents/reference/team-watch.md#supervisor; }
 
 tw_collapse_line() {  # tw_collapse_line <role> → the `(skipped …)` line while one is unsent

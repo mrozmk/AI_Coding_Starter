@@ -345,7 +345,8 @@ Ownership is back only when a plain `claude` window has run `bash .claude/lib/te
 | directive per role, silent in a clone | `sessions` (1) | `/clear` in a role window |
 | three sessions under their prefix, role env, clean env, model/effort per role | `sessions` (2) | `start all` |
 | profiles OK, deny floor kept, local leak blocks `start` | `sessions` (3) | `/permissions` per window |
-| role prompt reaches the Supervisor once and notifies nobody | part 17 (78) | a prompt in the Advisor window || preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
+| role prompt reaches the Supervisor once and notifies nobody | part 17 (78) | a prompt in the Advisor window |
+| preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
 | Reviewer loop of this box only | `sessions` (6) | `reviewer` |
 | `status` lines, `up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` switches routing and answering | `sessions` (9) | `up` after a reboot |
 | a delivered signal handled exactly once, duplicates counted | part 17 (68) | a menu in a test team |

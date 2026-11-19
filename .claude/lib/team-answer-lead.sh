@@ -85,7 +85,7 @@ auth_event() {
 # .answered marker (a say, or yes/no on an authority) that resumes the stage clock (lead_waiting).
 auth_after() {
   local run rd a acked q ans
-  # A clone-less target (a supervision session) has no run: nothing to log or mark.
+  # A clone-less target has no run: nothing to log or mark.
   run="$(cat "$TD/run" 2>/dev/null || true)"; [ -n "$run" ] || return 0
   rd="$TD/runs/$run"; a="$(sj attempt)"
   if [ -n "$AUTH" ] && [ -d "$rd" ]; then

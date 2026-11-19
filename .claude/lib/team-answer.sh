@@ -255,7 +255,7 @@ report_sent() {  # report_sent <confirm mode> <label>
   capture | plain | sed '/^[[:space:]]*$/d' | tail -n 8 | sed 's/^/  | /'
 }
 
-# Last gate, immediately before the first key: a stop or mode switch during preflight wins.
+# Last gate, immediately before the first key: a stop during preflight wins.
 last_gate() {
   [ ! -e "$TD/cancel" ] || refuse 6 "team stopped"
   identity
@@ -266,8 +266,7 @@ reserve_dispatch() {  # reserve_dispatch <instance key> — one dispatch per ins
   if hit="$(grep -F " $h " "$log" 2>/dev/null | tail -n 1)"; then
     refuse 6 "instance already dispatched by $(sed -n 's/.* \(q=[^ ]*\) .*/\1/p' <<<"$hit")"
   fi
-  local who=""; [ -z "$AUTH" ] || who="authority:$AUTH"
-  [ -z "$who" ] || echo "dispatch $(team_utc) $h q=$who attempt=$(sj attempt) pid=$$" >> "$log"
+  [ -z "$AUTH" ] || echo "dispatch $(team_utc) $h q=authority:$AUTH attempt=$(sj attempt) pid=$$" >> "$log"
 }
 
 auth_preflight
