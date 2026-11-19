@@ -128,7 +128,7 @@ rollback() {
 Rollback: routing single Supervisor, answering on. Operator steps, in this order:
   1. ! bash .claude/team/sessions/operator-kit/install.sh --rollback
   2. start a plain `claude` in the main checkout (no TEAM_SESSION_ROLE)
-  3. bash .claude/lib/team-watch.sh register   (in that window — it registers the Supervisor receiver; batches are handled per .agents/reference/team-watch.md § Supervisor)
+  3. bash .claude/lib/team-watch.sh start   (in that window — it registers the Supervisor receiver and starts the loops; batches are handled per .agents/reference/team-watch.md § Supervisor)
 Ownership is complete only when `team-watch.sh status` shows `receiver Supervisor: … active`;
 until then the backlog waits on the Supervisor's cursor.
 EOF

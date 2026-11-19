@@ -335,7 +335,7 @@ Operator actions, in order; each step's rollback is `supervisor-sessions.sh roll
 
 **Rollback:** `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on, the
 Operator steps printed) and `! bash .claude/team/sessions/operator-kit/install.sh --rollback`.
-Ownership is back only when a plain `claude` window has run `bash .claude/lib/team-watch.sh register` and
+Ownership is back only when a plain `claude` window has run `bash .claude/lib/team-watch.sh start` and
 `team-watch.sh status` shows `receiver Supervisor: … active`.
 
 ## Smoke checklist

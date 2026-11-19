@@ -14,8 +14,8 @@ TW_ROLES="Supervisor"
 TW_PANE_ROLES="Advisor"
 TW_LEGACY=Supervisor
 # A version bump makes `team-watch.sh start` restart running loops (2: restarts loops still running
-# the global-TeamLead code).
-TW_VERSION=2
+# the global-TeamLead code; 3: restarts loops still pushing the retired /monitor contract).
+TW_VERSION=3
 TW_SESSION_ROLES="$TW_ROLES Advisor"
 TW_ROUTE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

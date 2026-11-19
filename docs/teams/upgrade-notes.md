@@ -23,8 +23,9 @@ dead. `team-question.sh`, `team-question-lib.sh`, `.claude/commands/monitor.md` 
    `/setup:teams`: it deletes unmodified copies of the four retired files and reports a locally
    modified one as a conflict.
 2. Close any open `/monitor` window.
-3. Restart the team-watch daemon if it runs: `bash .claude/lib/team-watch.sh stop`, then `start`
-   (loops of the same version keep the old receiver contract otherwise).
+3. If the team-watch daemon runs, run `bash .claude/lib/team-watch.sh start` in the receiver's
+   Claude window: `TW_VERSION` is now 3, so `start` replaces the loops still pushing the
+   `/monitor` contract (never `stop` first — it deactivates every receiver).
 4. The session profiles still name `team-question.sh` and `supervisor-sessions.sh answer` in their
    rules and samples until slice 4 — harmless, the commands no longer run.
 

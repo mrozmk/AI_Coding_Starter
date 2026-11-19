@@ -144,7 +144,7 @@ On the verified CLI the messaging token is not enforced. The 0600 mode and the o
 ## After a restart, and rollback
 
 - **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations. It starts no team-watch loop; a single Supervisor window starts it by hand (`bash .claude/lib/team-watch.sh start`).
-- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `team-watch.sh register`, and `team-watch.sh status` shows the Supervisor receiver active.
+- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `team-watch.sh start`, and `team-watch.sh status` shows the Supervisor receiver active.
 
 The migration steps (for a machine that already runs a single Supervisor window) and the smoke checklist are in the contract.
 

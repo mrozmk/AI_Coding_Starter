@@ -109,6 +109,9 @@ mkdir -p "$(dirname "$(transcript "$SID")")"
 echo '{"type":"assistant","uuid":"a-c","message":{"content":[{"type":"text","text":"x"}]}}' \
   > "$(transcript "$SID")"
 { cat "$FIX/idle.txt"; echo "$RULE"; echo " Bash command"; echo " x"; } > "$WORK/pane"
+: > "$STUB_LOG"; run "$MAIN" $ANSWER alfa coder yes
+expect 3 "incomplete: prompt still rendering" "yes on a prompt still rendering"
+[ "$(keyc)" = 0 ] || fail "yes on a prompt still rendering: $(keyc) keys sent"
 echo "team-smoke-6: (113) prompt still rendering OK"
 
 # ---- (114) snapshot detection follows the parse --------------------------------------------

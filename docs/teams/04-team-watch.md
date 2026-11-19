@@ -58,7 +58,7 @@ The full table, with each head's destination in split routing, is in [`team-watc
 
 The next tick replays the open state to the new receiver. A role registered while it is not routed is `standby`.
 
-**Rollback** to the single window: `team-watch.sh routing single Supervisor`, then `team-watch.sh register` in that window.
+**Rollback** to the single window: `team-watch.sh routing single Supervisor`, then `team-watch.sh start` in that window.
 
 ## Receivers and acks
 

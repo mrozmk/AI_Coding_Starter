@@ -165,7 +165,7 @@ read and handle the turn; `ERROR mail <role>`: name the broken probe to the Oper
 `UNPICKED`/`STALLED <role>` → look at that window, ask the Operator if it is stuck; `RECEIVER <role>
 down` → the role re-registers in its window (`team-watch.sh register`); `UNDELIVERED` → the same;
 `MONITOR … dead` → `team-watch.sh start`. Then `done <n>`. Rollback to the single window:
-`team-watch.sh routing single Supervisor`, then `team-watch.sh register` in that window.
+`team-watch.sh routing single Supervisor`, then `team-watch.sh start` in that window.
 
 ## Wire format
 
