@@ -511,7 +511,8 @@ run "$WORK" $KIT --bogus; expect 2 "Usage:" "(l) kit usage"
 echo "team-smoke-notify: (l) flush-job kit OK"
 
 # ---- (m) one path to the Operator: no other sink is left in the checkout (AC9) ----------------------
-OK_RE='^(\.claude/hooks/lib/guard_team_egress\.py|\.agents/reference/security-egress\.md|\.claude/lib/notify\.sh|\.claude/team/notify-kit/.*|docs/teams/upgrade-notes\.md|\.claude/lib/tests/.*)$'
+# The Herdr panels kit's files-plus-menu runs osascript to put a file on the pasteboard: not a sink.
+OK_RE='^(\.claude/hooks/lib/guard_team_egress\.py|\.agents/reference/security-egress\.md|\.claude/lib/notify\.sh|\.claude/team/notify-kit/.*|docs/teams/upgrade-notes\.md|\.claude/lib/tests/.*|\.claude/team/herdr-mod/panels/mods/files-plus-menu/main\.js)$'
 left="$(cd "$SRC" && grep -rlE 'osascript|notify-send|terminal-notifier|PushNotification|TEAM_NOTIFY|team_channel_notify' \
   .claude .agents/reference docs 2>/dev/null | grep -vE "$OK_RE" || true)"
 [ -z "$left" ] || fail "(m) a notification sink is left outside notify.sh: $left"
