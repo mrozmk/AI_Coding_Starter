@@ -758,9 +758,9 @@ cmp -s "$WORK/delta-team.json" "$DTD/team.json" || fail "the refused team-next r
 [ -f "$DTD/ticket.json" ] || fail "the refused team-next lost the original ticket"
 
 # ================================================================================================
-# (11) team-run summary: /monitor's only source for the tracker, the ticket title and its link
+# (11) team-run summary: the Supervisor's read-only source for the tracker, the ticket title and its link
 # ================================================================================================
-# /monitor must never read clone files, so whatever it prints about the ticket comes from here.
+# a supervision session never reads clone files, so whatever it prints about the ticket comes from here.
 github_profile
 run "$MAIN" $TR alfa summary
 expect 0 "tracker: github" "the summary of a github clone names its tracker"

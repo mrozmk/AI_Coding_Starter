@@ -5,7 +5,6 @@
 - [`roles.md`](../../.claude/commands/roles.md) (`/roles`, script `roles.sh`): starts, stops, lists and takes the role sessions declared in `teams.sessions`; the role contracts are in [`.agents/reference/roles/`](../../.agents/reference/roles/).
 
 > **`/roles` replaces the old launcher.** The old `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are gone (they were pointers to it for one release, v3.2.0). The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
-- [`monitor.md`](../../.claude/commands/monitor.md): the TeamLead's handling contract.
 
 ## Per-run TeamLead (pilot)
 
@@ -13,15 +12,14 @@ In brainstorm and quick mode the TeamLead is not a role session. The runner star
 
 ## The shape
 
-The single-window `/monitor` splits into long-lived **role sessions**, each with one fixed role. Scripts, not models, enforce the routing, the pickup alarms, the modes, the permissions and the merge gate.
+Supervision runs as long-lived **role sessions**, each with one fixed role. Scripts, not models, enforce the routing, the pickup alarms, the modes, the permissions and the merge gate.
 
-The layer is opt-in on top of the single-window flow. As long as there is no `routing.json`, routing is `single Supervisor` and one plain window runs `/monitor` as before.
+The layer is opt-in on top of the single-window flow. As long as there is no `routing.json`, routing is `single Supervisor` and one plain window receives everything.
 
 | Role | Host | Session (tmux name / Herdr terminal) | Does | Never |
 |---|---|---|---|---|
-| **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze, alarms, a role session's own prompts (tier 1 through `answer`) | answers a team question; switches routing on its own; clears a freeze without the Operator |
-| **TeamLead** | Claude | `<prefix>-teamlead` | runs `/monitor`: team signals, tier 1, decides team questions, writes the READY note | merges, releases, pushes; creates, advances or remodes teams; switches routing or answering |
-| **Advisor** | Claude | `<prefix>-advisor` | task intake, on request through the Supervisor; under `advisor: pair` it runs the Reviewer's deliver loop | receives team-watch pushes; it wakes only on its own unread mail |
+| **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze, alarms | answers a team question; switches routing on its own; clears a freeze without the Operator |
+| **Advisor** | Claude | `<prefix>-advisor` | task intake, on request through the Supervisor; under `advisor: pair` it runs the Reviewer's deliver loop | receives team-watch pushes; it reads its agent-mail by hand (with the kit) |
 | **Reviewer** | Codex | none, an agent-mail recipient | the second opinion the Advisor asks for (`advisor: pair` only) | exists under `advisor: solo` |
 
 The **Operator** is the human. Operator actions (routing, `freeze off`, `here`, `rollback`, `register --takeover`, installing the kit) sit behind `ask` and are never taken by a role on its own.
@@ -32,22 +30,12 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 - **`TEAM_SESSION_ROLE`** (`Supervisor` | `TeamLead` | `Advisor`) is the identity. `/roles` sets it in each role session's launch environment, and each role profile sets it again under `env`. A session's memory never decides its role.
 - `<prefix>` is `teams.session_prefix`, else `teams.channel.tmux_prefix`, else the repo directory slug, cut to 12 characters ([session-host.md](../../.agents/reference/session-host.md) §2). The session's `--name` is the role plus `teams.channel.mail_suffix`. Two projects on one machine therefore never share a session or a process name.
-- The **`SessionStart` hook `session-registry.sh`** (id `L`, registered by `team-setup.sh`; it absorbed `session-role.sh`, which `team-setup.sh` now retires) runs after startup, resume, `/clear` and compact. It names the role's contract (`teams.sessions.<Role>.contract`) and keeps `.agents/team/watch/sessions/<role>/session.json` on the live session id, so `team-answer.sh --session <role>` binds to the role's own transcript. It stays silent in a team clone and without a known role.
+- The **`SessionStart` hook `session-registry.sh`** (id `L`, registered by `team-setup.sh`; it absorbed `session-role.sh`, which `team-setup.sh` now retires) runs after startup, resume, `/clear` and compact. It names the role's contract (`teams.sessions.<Role>.contract`) and keeps `.agents/team/watch/sessions/<role>/session.json` on the live session id. It stays silent in a team clone and without a known role.
 - The bootstrap line is on the launch line itself (`You are <Role>. Follow the role contract …`): a hook adds context but starts no turn.
 
 ## Models
 
 Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `roles.sh stop <Role>` and `roles.sh up <Role>`.
-
-## `/monitor` belongs to the TeamLead
-
-> **global TeamLead** — retired: no run reaches it; this text goes with the remaining machinery.
-
-In split routing, `/monitor` is the TeamLead's handling contract for `[team-watch #<n>]` messages. It takes only `--tiers on|off` and no longer a team list, because the daemon pushes every team's signals.
-
-`READY` produces no summary for the Operator. The note goes to `<decisions_dir>/<date>-<team>-ready-TeamLead.md`, with its "TeamLead decisions" section, and a `turn` goes to the Supervisor on thread `ready-<team>-<run>`. The Supervisor then runs `team-automerge-check.sh`.
-
-In the single window (no role, routing `single Supervisor`), the same `/monitor` runs everything, as before.
 
 ## Role profiles and their check
 
@@ -61,8 +49,8 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 
 | Role | Denied on top of the project and local rules |
 |---|---|
-| TeamLead | `git push`, the PR host's update verbs (per `teams.pr_provider`), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|answer\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `/pr-merge`, `/release` |
-| Supervisor | `team-answer.sh`, `team-question.sh * answer *` |
+| TeamLead | `git push`, the PR host's update verbs (per `teams.pr_provider`), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `/pr-merge`, `/release` |
+| Supervisor | `team-answer.sh` |
 
 **The committed ask entries, `Bash(cat .env*)` and `Read(**/.env*)`.** Both profiles carry these two ask rules; the second keeps the Read tool from opening a `.env` the Bash rule never sees. They give the profile's `secrets` samples something to prove in a project whose own settings ask nothing. Provider- and cloud-specific secret verbs belong in the project's copy of the profile or in `teams.policy` examples, not in the template.
 
@@ -73,7 +61,7 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 - for the TeamLead, the PR update verbs added to `deny`;
 - from the installed kit's `role-hooks.settings.json`, exactly the `Stop` hook, and nothing else, because a `PreToolUse` or `PermissionRequest` hook could approve a tool call.
 
-**The check.** `supervisor-sessions.sh check` classifies each profile's `_samples` with the same fnmatch matcher as the tier-1 prompt check:
+**The check.** `supervisor-sessions.sh check` classifies each profile's `_samples` with the same fnmatch matcher as the prompt check ([06](06-permissions.md#the-prompt-check)):
 
 - `forbidden` must be deny;
 - `reads` must be allow;
@@ -113,7 +101,6 @@ messaging variables dropped. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are set per se
 
 Other verbs:
 
-- `answer <role> --fp <fp> yes|no|pick|other` is the only tier-1 path into a role session's own prompt. It is bound to the fingerprint and refused with zero keys on any mismatch.
 - `freeze on|off|status` and `rollback` are covered in the contract.
 - `reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's path only, or `Reviewer: none (advisor solo)`.
 
@@ -156,13 +143,13 @@ On the verified CLI the messaging token is not enforced. The 0600 mode and the o
 
 ## After a restart, and rollback
 
-- **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations. It starts no team-watch loop; `/monitor` users start it by hand (`bash .claude/lib/team-watch.sh start`).
-- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `/monitor`, and `team-watch.sh status` shows the Supervisor receiver active.
+- **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations. It starts no team-watch loop; a single Supervisor window starts it by hand (`bash .claude/lib/team-watch.sh start`).
+- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `team-watch.sh start`, and `team-watch.sh status` shows the Supervisor receiver active.
 
-The migration steps (for a machine that already runs a single `/monitor` window) and the smoke checklist are in the contract.
+The migration steps (for a machine that already runs a single Supervisor window) and the smoke checklist are in the contract.
 
 ## Language
 
-Role names, preflight rows, `LEAK` and `answer` lines are English only, and no Polish form is parsed at this layer. The Operator's accepted Polish aliases live in `/monitor` ([04 → Language](04-team-watch.md#language)).
+Role names, preflight rows and `LEAK` lines are English only, and no Polish form is parsed at this layer ([04 → Language](04-team-watch.md#language)).
 
 Acceptance rows: [capabilities](capabilities.md).

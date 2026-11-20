@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Role-session support of the supervision layer: role profiles, preflight, freeze, rollback, the
-# tier-1 answer to a role session's own prompt. Starting, stopping and listing roles is roles.sh.
+# Role-session support of the supervision layer: role profiles, preflight, freeze, rollback.
+# Starting, stopping and listing roles is roles.sh.
 # Usage: bash .claude/lib/supervisor-sessions.sh materialize <role> | check | preflight | reviewer
 #        bash .claude/lib/supervisor-sessions.sh freeze on <release> | freeze off | freeze status
-#        bash .claude/lib/supervisor-sessions.sh answer Advisor --fp <fp> \
-#          yes | no "<reason>" | pick <n> | other "<text>"
 #        bash .claude/lib/supervisor-sessions.sh rollback   (Operator action)
 #   materialize: .agents/team/watch/profiles/<Role>.settings.json from the role's template
 #   (teams.sessions.<Role>.settings, a .claude/team/sessions/<name>.settings.json), env role = <Role>.
@@ -12,7 +10,7 @@
 # Contract and runbook: .agents/reference/supervisor-sessions.md
 set -euo pipefail
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-watch-lib.sh"
@@ -28,7 +26,6 @@ KIT_SRC="$root/.claude/team/sessions/operator-kit"
 VERIFIED_CLI=2.1.318
 export ROLES_ROOT="$root"
 refuse() { echo "refused: $*" >&2; exit 1; }
-lc() { echo "$1" | tr '[:upper:]' '[:lower:]'; }
 
 # The machine half of the channel (kit dir, codex home, mail key) loads once, on demand; a
 # checkout without a configured channel still launches, without the kit's hooks.
@@ -91,49 +88,6 @@ role_running() {  # tmux session, or the Supervisor's `here` window
   team_tmux_alive "$(tw_tmux_name "$1")" || ss_running "$1$TEAM_CHANNEL_SUFFIX"
 }
 
-# answer Advisor --fp <fp> <action> [text] — the only tier-1 path into a role session's
-# own prompt. Bound to the fingerprint of the block the Supervisor read; any refusal types nothing,
-# and `yes` passes the same check as a team prompt against the role's materialised profile.
-answer() {
-  local r="${1:-}" fp="${3:-}" act="${4:-}" text="${5:-}" s cur sub cfp why rc=0
-  local pf="$TW_DIR/profiles/${1:-x}.settings.json"
-  [[ " $TW_PANE_ROLES " == *" $r "* ]] && [ "${2:-}" = --fp ] && [ -n "$fp" ] || usage
-  case "$act" in
-    yes) ;;
-    no|other) [ -n "$text" ] || usage ;;
-    pick) [[ "$text" =~ ^[1-9][0-9]?$ ]] || usage ;;
-    *) usage ;;
-  esac
-  [[ " $TW_PANE_ROLES " != *" ${TEAM_SESSION_ROLE:-} "* ]] \
-    || refuse "$TEAM_SESSION_ROLE never answers a role prompt — the Supervisor does"
-  s="$(tw_session_name "$r")"
-  team_tmux_alive "$r" || refuse "$s is not running"
-  cur="$(tw_role_prompt "$r")"
-  [ -n "$cur" ] || refuse "no prompt or menu open in $s"
-  IFS=$'\t' read -r sub cfp _ <<<"$cur"
-  [ "$cfp" = "$fp" ] || refuse "stale: the prompt changed — handle the newer ATTENTION"
-  case "$act:$sub" in
-    yes:menu|pick:permission|other:permission) refuse "$act does not fit a $sub in $s" ;;
-  esac
-  if [ "$act" = yes ]; then
-    [ -f "$pf" ] || refuse "Operator action: no materialised profile (materialize $r)"
-    why="$(team_pane_history "$r" 200 | python3 -I "$LIB/team_prompt_check.py" "$root" \
-      --settings "$pf" 2>&1 >/dev/null)" || refuse "Operator action: $why"
-  fi
-  case "$act" in
-    yes) sh_keys "$r" --main "$root" enter ;;
-    no) sh_keys "$r" --main "$root" esc; sleep 1
-      sh_type "$r" --main "$root" \
-        "Rejected by the Supervisor: $text. Do not work around it — ask the Operator in this window." --enter \
-        >/dev/null ;;
-    pick|other)
-      bash "$LIB/team-answer.sh" "$(sh_prefix "$root")" "$(lc "$r")" "$act" "$text" \
-        --session "$r" || rc=$?
-      [ "$rc" = 0 ] || exit "$rc" ;;
-  esac
-  echo "answered $r $act (fp $fp)"
-}
-
 freeze_line() {
   [ -f "$FREEZE" ] || { echo "freeze: off"; return 0; }
   jq -r '"freeze: on — \(.release // "?") (\(.by // "?"), \(.at // "?"))"' "$FREEZE" 2>/dev/null \
@@ -174,7 +128,7 @@ rollback() {
 Rollback: routing single Supervisor, answering on. Operator steps, in this order:
   1. ! bash .claude/team/sessions/operator-kit/install.sh --rollback
   2. start a plain `claude` in the main checkout (no TEAM_SESSION_ROLE)
-  3. /monitor in that window — it registers the Supervisor receiver
+  3. bash .claude/lib/team-watch.sh start   (in that window — it registers the Supervisor receiver and starts the loops; batches are handled per .agents/reference/team-watch.md § Supervisor)
 Ownership is complete only when `team-watch.sh status` shows `receiver Supervisor: … active`;
 until then the backlog waits on the Supervisor's cursor.
 EOF
@@ -321,6 +275,5 @@ case "$cmd" in
   preflight) preflight ;;
   freeze) freeze "$@" ;;
   rollback) rollback ;;
-  answer) answer "$@" ;;
   *) usage ;;
 esac

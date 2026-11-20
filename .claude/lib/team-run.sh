@@ -5,7 +5,7 @@
 #   e.g. tmux new-session -d -s alfa-runner "bash .claude/lib/team-run.sh alfa; read"
 #   internal: bash .claude/lib/team-run.sh <team> check <record>   (validate one record)
 #   bash .claude/lib/team-run.sh <team> roles <role>=[<model>][/<effort>][/<perm>]… | --clear
-#   bash .claude/lib/team-run.sh <team> summary   (post-run summary sources for /monitor)
+#   bash .claude/lib/team-run.sh <team> summary   (post-run summary sources, read-only)
 #   modes (team.json .mode, set by team-new/next): brainstorm · quick · cli
 #
 # Env: TEAM_ATTACH=all|planner (default all) — Herdr: every stage, or only the attended planner and
@@ -396,12 +396,12 @@ cmd_stop() {
   echo "stopped; session.json kept for the next run"
 }
 
-# Read-only sources for /monitor's post-run summary: clone files are outside the supervisor's dirs.
+# Read-only sources for the post-run summary: clone files are outside the supervisor's dirs.
 cmd_summary() {
   local r f trk tf title="" url=""
   RUN="$(cat "$TD/run" 2>/dev/null || true)"
   trk="$(team_json tracker)"; [ -n "$trk" ] || trk=jira
-  # /monitor never reads clone files, so the ticket title and link travel through here. `jira` has no
+  # A supervision session never reads clone files, so the ticket title and link travel through here. `jira` has no
   # ticket.json — it keeps reading them over MCP, and both values stay empty.
   tf="$TD/ticket.json"
   if [ -f "$tf" ]; then

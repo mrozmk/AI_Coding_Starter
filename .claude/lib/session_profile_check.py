@@ -11,7 +11,7 @@ launcher's model/effort, never a session profile, and is skipped. Rules come fro
 whose env role must be <role>) when it exists, else from the template, plus the project settings. The per-run role TeamLead-run reads TeamLead-run.settings.json and, with
 --clone <dir>, the materialised <dir>/.agents/team/teamlead.settings.json (team-lead.sh
 materialize); its env role is TeamLead. Each `_samples` command is classified deny > ask > allow > prompt with the
-same fnmatch matcher team_prompt_check.py uses for tier 1 — an approximation of Claude Code's
+same fnmatch matcher team_prompt_check.py uses for a team prompt — an approximation of Claude Code's
 matcher, so the live `/permissions` check stays a runbook step. `reads` must be allow, `secrets`
 ask or deny, `writes` anything but allow. A sample written `Read(<path>)` is checked against the
 Read(...) rules instead (`**/` also matches no directory). A `secrets`/`writes` sample allowed only

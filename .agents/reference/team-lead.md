@@ -243,9 +243,8 @@ check first**, before any waiver.
   `git branch -d`/`-D`, `git rm`, `Edit(**/.env.*)` (owner's decision, 2026-11-15; `.env` itself
   is a deny rule, so no prompt exists for it), and `rm -rf` whose every target is inside the clone
   (not its root or `.git`) or a temp root.
-- The legacy path stays for runs without a lead: `--tier`/`--classes` behave as before (a class
-  may still waive a settings edit there). In a **lead-owned run** (`teamlead.json.run` = the
-  clone's run) `--tier` is refused with exit 8, so the human-only check cannot be bypassed.
+- A TeamLead session's bare call (no `--authority`) is refused with exit 7, so the human-only
+  check cannot be bypassed.
 - Without a ledger the identity checks run on every authority call: the stage transcript from
   `session.json`, a readable and unambiguous live event (equal to `--expect-event` when given), the
   dispatch journalled in `send-<role>.log` as `q=authority:<a>`.
@@ -253,8 +252,8 @@ check first**, before any waiver.
   <why> [authority <a>] [decision <id>]` to `runs/<run>/answers.md`. A delivered `say` (or yes/no
   on an authority) to the role/attempt named by `acked` writes `runs/<run>/<record>.answered`, which
   restarts the stage clock (§2).
-- Exit codes beyond the sender's usual ones: 7 caller or decision rule, 8 `--tier` in a lead-owned
-  run, 9 human-only (open a pending decision, §7).
+- Exit codes beyond the sender's usual ones: 7 caller or decision rule, 9 human-only (open a
+  pending decision, §7).
 - **The runner answers first:** a new `permission_prompt` attention line is tried at `--authority
   class` (no model wakes). Exit 0 → answered (`answers.md`); exit 9 → `decisions/req-<n>.json` and
   the doorbell `human-only <role>: <tool> <command> — open a decision for req-<n>`; any other refusal
@@ -454,9 +453,7 @@ runs again.
     and `already integrated:`); `close_run` calls it before exit 8. A log failure warns and never
     fails the merge or the close; a run closed and resumed, or integrated twice, appends nothing
     the second time.
-  - The log replaces `teamlead-policy-log.md` for runs with a lead: `team-lead.sh owns <team>`
-    exits 0 for such a run, and the global TeamLead writes no policy line for it (`/monitor` →
-    Policy log). Runs without a lead keep the policy log.
+  - The log is the record of a run with a lead: `team-lead.sh owns <team>` exits 0 for such a run.
 - **Wrapup:** with a lead, the lead decides the wrapup's proposals alone; no item reaches the
   Operator, and nothing depends on reading a terminal menu (#104).
   - The wrapup asks nothing in its window. With at least one item it writes

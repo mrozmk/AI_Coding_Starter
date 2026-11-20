@@ -9,9 +9,9 @@ recommendation; see **With a per-run TeamLead** below.
 Your job: tell the developer in plain words what this run did, and propose memory updates or new
 tickets **only when they are worth it**. "Nothing to save, no new tasks" is a good result.
 
-1. Read `.agents/team/runs/{{RUN}}/notes.md` (including `## Supervised decisions`) and, in a rework
+1. Read `.agents/team/runs/{{RUN}}/notes.md` and, in a rework
    round, `{{RUN_DIR}}/notes.md` and the `rework-*.md` orders in `.agents/team/runs/{{RUN}}/`; every
-   `*.json` record in those directories, every file under `.agents/team/runs/{{RUN}}/questions/` (when
+   `*.json` record in those directories, `.agents/team/runs/{{RUN}}/answers.md` (when
    present), `{{QA_REPORT}}`, `{{PLAN}}` and the PR description
    ({{PR_BODY_GET}}). Do not run `/prime`.
 2. `git fetch --quiet origin {{LINE}}`, then `git rev-parse origin/{{LINE}}` → `T`.
@@ -22,19 +22,12 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
    unforeseen), `## Coder` (what was done, deviations from the plan and why, what blocked), `## QA`
    (findings, fixes, what is left), `## What matters for you` (external effects, PR state). Short
    and concrete; explain any jargon in a few words. Add `## Supervisor decisions`: one plain line
-   per question file showing its history — the tier 1/2 answer (tier, who, a few words) with a
-   state word: *revoked* after a `## Revoked`, *confirmed* when `delivery: sent` with
-   `confirmed: yes`, *sent unconfirmed* when `delivery: sent` with `confirmed: no`, *undelivered*
-   when its `delivery: failed` or `not sent — …`, *delivery uncertain* when `delivery: pending` or
-   `unknown — …`; then the last tier-3 answer that replaced it, *replaced by the Operator:
-   <answer>*, with the same state words for that block; a q answered only at tier 3 shows that
-   answer and its state word (the q files are authoritative; notes lines are not updated for these
-   states); *none* when there are none. The state words follow the developer's language too
-   (`pl`: cofnięta · potwierdzona · wysłana bez potwierdzenia · niedoręczona · doręczenie niepewne
-   · zastąpiona przez Operatora · brak).
+   per `answers.md` entry — the authority (`class`, `teamlead`, `operator`, `operator-window`), the
+   role and a few words of the answer; *none* when the file is absent or empty. The words follow
+   the developer's language (`pl`: brak).
    This section is part of the summary posted in step 4. The summary posted in step 4
    stays ≤ ~15 lines. Each narrative section gets 1–3 lines, and a section with nothing to report
-   is omitted, except `## What matters for you`. `## Supervisor decisions` is the per-q ledger the
+   is omitted, except `## What matters for you`. `## Supervisor decisions` is the answer list the
    PR's `## Wrap-up` points to and is outside the count. The limit yields only for an open QA
    problem or a required Operator action, which are never compressed. It never lowers the memory bar.
 {{TRACKER_WRAPUP}}
@@ -89,10 +82,7 @@ Supervision rules for steps 5–8 (every tracker; `.agents/reference/team-decisi
 - **Memory hand-offs (step 6).** A `Memory hand-off <file> (supervisor)` line carries its reader
   `czytelnik: <When to Read row> — <task>` and, once accepted, `accepted: <who> <date>, <ref>`.
   Its decider already judged it against `.agents/memory/reflection-protocol.md` → The bar; do not
-  judge it again. Apply it verbatim only after three checks: (1) step 1 confirms the ref — a q in
-  `questions/` whose current answer (the latest `## Answer`, not followed by `## Revoked` and not
-  replaced by a later tier-3 answer) accepts this hand-off from the decider §3 names for that
-  file, or a note path quoted in `{{PLAN}}` that you read and that states the acceptance (decider
+  judge it again. Apply it verbatim only after three checks: (1) step 1 confirms the ref — a note path quoted in `{{PLAN}}` that you read and that states the acceptance (decider
   and date); an unreadable note fails the check; (2) when `{{PLAN}}` quotes the hand-off text, the
   notes text equals that quote, `czytelnik:` included (after removing the plan's list indent; the
   `[<role> <attempt>]` prefix and the appended `accepted:` are not compared); (3) the target is

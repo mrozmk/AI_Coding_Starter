@@ -86,7 +86,7 @@ box/tool no longer match the registry entry of `key` (stale: rerun the channel s
 |---|---|
 | `team-channel.sh show` / `get <field>` | the exported values / one of them |
 | `team-channel.sh name <Role>` | `<Role><suffix>` for `Supervisor\|TeamLead\|Advisor\|Reviewer` |
-| `team-channel.sh turn <From> <To> [send args]` | a wake-up `--kind turn --awaiting <To><suffix>` through `team-mail.sh <key> send` (`/monitor`'s `turn` to Supervisor) |
+| `team-channel.sh turn <From> <To> [send args]` | a wake-up `--kind turn --awaiting <To><suffix>` through `team-mail.sh <key> send` |
 | `team-channel.sh render [--dry-run]` | the generated local configs below |
 
 **Generated, never typed.** `render` (run by the channel step after it writes

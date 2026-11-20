@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 # wrapped Bash description, transient review frames, footered review, prompt still
-# rendering at open, parser-first snapshot detection, revoke on a spinner-only busy role.
+# rendering, parser-first snapshot detection.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
 smoke_team AB-1157 chore/AB-1157-parser
 RUN_ID=alfa-20261020-110000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
-Q="bash .claude/lib/team-question.sh"
+ANSWER="bash .claude/lib/team-answer.sh"
 PY="$SRC/.claude/lib/team_prompt.py"
 RULE="$(printf '─%.0s' $(seq 120))"
 export STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane"
-qf() { echo "$RD/questions/$1.md"; }
-qid() { head -n 1 "$WORK/out" | cut -d' ' -f1; }
 keyc() { grep -c '^tmux send-keys ' "$STUB_LOG" || true; }
-no_keys() { [ "$(keyc)" = 0 ] || fail "$1: keys were sent"; }
 setpane() { cp "$1" "$WORK/pane"; }
 pj() {  # pj <fixture> <jq condition> — parser output check
   python3 -I "$PY" parse < "$1" > "$WORK/p.json"
@@ -51,21 +48,19 @@ sed 's/^❯ 1\. \[ \] Apple/  1. [ ] Apple/; s/^     Submit$/❯    Submit/' "$F
   > "$WORK/submit-frame"
 pj "$WORK/submit-frame" '(.complete | not) and .reason == "unreadable: missing unique Submit row"'
 LASTC=""
-fresh_menu() {  # fresh_menu <tool_use id> → QC, a new checkbox instance opened on the ledger
+fresh_menu() {  # fresh_menu <tool_use id> — a new checkbox instance on screen and in the transcript
   [ -z "$LASTC" ] || tool_done "$SID" "$LASTC"
   pending_tool "$SID" "$1" AskUserQuestion '{"questions":[{"question":"Pick fruits"}]}'; LASTC="$1"
-  setpane "$FIX/checkbox.txt"; rm -f "$WORK/mark"
-  run "$MAIN" $Q alfa open planner --kind menu --anchor "Pick fruits" --summary "fruits $1"
-  expect 0 "" "open checkbox $1"; QC="$(qid)"; : > "$STUB_LOG"
+  setpane "$FIX/checkbox.txt"; rm -f "$WORK/mark"; : > "$STUB_LOG"
 }
 on_cap() {  # on_cap <first frame cmd> <later pane> — STUB_ON_CAPTURE after the 7 checkbox keys
   echo "if [ \"\$(grep -c '^tmux send-keys ' \"\$STUB_LOG\")\" -ge 7 ]; then
     if [ ! -e '$WORK/mark' ]; then $1; touch '$WORK/mark'; else cp '$2' '$WORK/pane'; fi; fi"
 }
-picks() { run "$MAIN" $Q alfa answer "$QC" --tier 1 --author s --why w --send picks:1,3; }
+picks() { run "$MAIN" $ANSWER alfa planner picks 1,3; }
 fresh_menu toolu_r1
 STUB_ON_CAPTURE="$(on_cap "cp '$WORK/submit-frame' '$WORK/pane'" "$FIX/review.txt")" picks
-expect 0 "$QC state=" "review after a transient Submit frame"
+expect 0 "sent picks" "review after a transient Submit frame"
 [ "$(keyc)" = 8 ] || fail "transient frame: $(keyc) keys, the final Enter expected"
 fresh_menu toolu_r2
 STUB_ON_CAPTURE="$(on_cap "cp '$WORK/submit-frame' '$WORK/pane'" "$WORK/submit-frame")" picks
@@ -114,21 +109,9 @@ mkdir -p "$(dirname "$(transcript "$SID")")"
 echo '{"type":"assistant","uuid":"a-c","message":{"content":[{"type":"text","text":"x"}]}}' \
   > "$(transcript "$SID")"
 { cat "$FIX/idle.txt"; echo "$RULE"; echo " Bash command"; echo " x"; } > "$WORK/pane"
-n0="$(ls -1 "$RD/questions" | grep -c '^q-[0-9]*\.md$' || true)"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Bash command" --summary "rendering"
-expect 1 "prompt is still rendering" "open on a prompt still rendering"
-[ "$(ls -1 "$RD/questions" | grep -c '^q-[0-9]*\.md$' || true)" = "$n0" ] \
-  || fail "a q was created for a rendering prompt"
-record --verdict blocked --message "rendering" >/dev/null
-run "$MAIN" $Q alfa open coder --kind blocked --summary "rendering"
-expect 0 "fingerprint deferred: prompt still rendering" "blocked open while rendering"
-QB="$(qid)"
-grep -qx 'fingerprint: -' "$(qf "$QB")" || fail "$QB fingerprint not deferred"
-! grep -q '^unreadable:' "$(qf "$QB")" || fail "$QB stored unreadable"
-setpane "$FIX/idle.txt"
-run "$MAIN" $Q alfa open coder --kind blocked --summary "rendering"
-expect 0 "(existing, state=open)" "blocked re-open after render"
-grep -qx 'fingerprint: v2:none' "$(qf "$QB")" || fail "$QB not rebound after render"
+: > "$STUB_LOG"; run "$MAIN" $ANSWER alfa coder yes
+expect 3 "incomplete: prompt still rendering" "yes on a prompt still rendering"
+[ "$(keyc)" = 0 ] || fail "yes on a prompt still rendering: $(keyc) keys sent"
 echo "team-smoke-6: (113) prompt still rendering OK"
 
 # ---- (114) snapshot detection follows the parse --------------------------------------------
@@ -148,22 +131,5 @@ printf 'Bash command\n  ls\nDo you want to proceed?\n❯ 1. Yes\n' > "$WORK/pane
 pj "$WORK/pane-min" '(.complete | not)'
 STUB_PANE="$WORK/pane-min" snap "unreadable fallback" 'coder | .prompt_open'
 echo "team-smoke-6: (115) regex fallback OK"
-
-# ---- (116) revoke on a spinner-only busy role types nothing ---------------------------------
-record --verdict blocked --message "revoke case" >/dev/null
-setpane "$FIX/idle.txt"
-run "$MAIN" $Q alfa open coder --kind blocked --summary "revoke case"; QR="$(qid)"
-: > "$STUB_LOG"
-echo '{"type":"user","uuid":"u-9","message":{"content":"Counter."}}' > "$WORK/said"
-STUB_ON_SENDKEYS="cat '$WORK/said' >> '$(transcript "$SID")'" \
-  run "$MAIN" $Q alfa answer "$QR" --tier 1 --author s --why w --text "Counter." --send say
-expect 0 "$QR state=consumed" "say before the revoke"
-setpane "$FIX/busy.txt"; : > "$STUB_LOG"
-run "$MAIN" $Q alfa revoke "$QR" --why x
-[ "$RC" != 0 ] || fail "revoke on a busy role succeeded"
-sed -n '/^## Revoked/,$p' "$(qf "$QR")" | grep -qx 'delivery: not sent — stale (role is busy)' \
-  || { cp "$(qf "$QR")" "$WORK/out"; fail "revoke delivery on a busy role"; }
-no_keys "revoke on a busy role"
-echo "team-smoke-6: (116) revoke on a busy role OK"
 
 echo "team-smoke-6: OK"

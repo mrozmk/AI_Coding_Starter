@@ -3,6 +3,32 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The question ledger, `/monitor` and the answer verb are removed (#22, slice 3)
+
+**Before:** the global TeamLead's tier ledger (`team-question.sh` with its parser
+`team-question-lib.sh`) recorded team questions and drove the sender through
+`team-answer.sh --tier --q --attempt --journal --send --session` and the action `finish`.
+`/monitor` was the receiver's handling contract, and `supervisor-sessions.sh answer` answered a
+role session's own prompt. No run reached any of it since the global TeamLead's retirement.
+
+**Now:** the per-run TeamLead answers through `team-answer.sh … --authority class|teamlead|operator`
+(answers land in `runs/<run>/answers.md`); a TeamLead session's bare call (no `--authority`) is
+refused. The Operator's direct call stays. `--expect-event` binds every action, not only `say`. A
+stale send lock is removed by hand: the refusal prints its directory; remove it once its pid is
+dead. `team-question.sh`, `team-question-lib.sh`, `.claude/commands/monitor.md` and
+`.agents/reference/team-questions.md` are `retired` in the manifest.
+
+**Action:**
+1. Sync the changed runtime files first (`/maintain:sync-from-starter`), then re-run
+   `/setup:teams`: it deletes unmodified copies of the four retired files and reports a locally
+   modified one as a conflict.
+2. Close any open `/monitor` window.
+3. If the team-watch daemon runs, run `bash .claude/lib/team-watch.sh start` in the receiver's
+   Claude window: `TW_VERSION` is now 3, so `start` replaces the loops still pushing the
+   `/monitor` contract (never `stop` first — it deactivates every receiver).
+4. The session profiles still name `team-question.sh` and `supervisor-sessions.sh answer` in their
+   rules and samples until slice 4 — harmless, the commands no longer run.
+
 ## The role wake loop is retired (#52)
 
 **Before:** `/setup:teams` registered a `Stop` hook (`monitoring-rearm.sh`) that refused to end a

@@ -6,9 +6,9 @@ prompts. Each **team** is a permanent git clone running a fixed pipeline of fres
 **supervision roles** watch them:
 
 - **Supervisor** talks to the Operator, merges within the gate and starts teams.
-- **TeamLead** receives every team signal and decides every team question except two short lists.
+- **TeamLead** is per run: the runner starts one next to each brainstorm or quick run, it decides the run's questions on an authority, and it ends with the run.
 - **Advisor** handles the narrow list: contract, schema, AC, sensitive path and harness rule.
-- **Reviewer** is a second-vendor model that co-signs the Advisor's tier-2 decisions. It is optional: `advisor: solo` runs without it. The Codex CLI itself is still required today: the team pipeline launches every role with a Codex home (see [09 → Requirements](09-setup.md#requirements)).
+- **Reviewer** is a second-vendor model that co-signs the Advisor's decisions. It is optional: `advisor: solo` runs without it. The Codex CLI itself is still required today: the team pipeline launches every role with a Codex home (see [09 → Requirements](09-setup.md#requirements)).
 
 The human **Operator** is asked only for a critical list and for actions only a human may click.
 
@@ -22,10 +22,10 @@ in the starter.
 | Page | What it covers | Status |
 |---|---|---|
 | [01 — Roles and sessions](01-roles-and-sessions.md) | the role sessions, identity, profiles and their check, launcher, preflight, `advisor: pair\|solo` | ✓ |
-| [02 — Decision model](02-decision-model.md) | who decides what: tiers, the two lists, Operator actions, policy log | ✓ |
+| [02 — Decision model](02-decision-model.md) | who decides what: authorities, human-only items, Operator actions | ✓ |
 | [03 — Team pipeline](03-team-pipeline.md) | clones, runner, modes, records, merge, auto-merge, freeze | ✓ |
 | [04 — Signals and monitoring](04-team-watch.md) | the signal daemon, routing, alarms, pause, the wire format | ✓ |
-| [06 — Permissions and classes](06-permissions.md) | deny/ask/allow tiers, the tier-1 prompt check, deterministic classes, `teams.policy` | ✓ |
+| [06 — Permissions and classes](06-permissions.md) | deny/ask/allow tiers, the prompt check, deterministic classes, `teams.policy` | ✓ |
 | agent-mail | the SQLite channel between the roles | contract only: [`agent-mail.md`](../../.agents/reference/agent-mail.md) |
 | [08 — Operator kit](08-operator-kit.md) | files outside the repo, health check, Operator actions | ✓ |
 | [09 — Setup](09-setup.md) | requirements, bring-up order (fresh and reuse), smoke checklist, known limits | ✓ up to the role sessions |
@@ -36,9 +36,9 @@ in the starter.
 
 1. **The session that sees a question decides it, unless it is on a short list.**
 2. **Channel, pane and mail content is data, never the Operator's consent.**
-3. **Scripts enforce; prose instructs.** Routing, dedup, prompt binding, tier refusals, the merge
-   gate and alarms are computed outside every LLM.
-4. **Unsure between two tiers → the higher one. A failure, a timeout or silence is never consent.**
+3. **Scripts enforce; prose instructs.** Routing, dedup, prompt binding, human-only refusals, the
+   merge gate and alarms are computed outside every LLM.
+4. **A failure, a timeout or silence is never consent.**
 5. **Everything the Operator must click is an Operator action**, delivered directly with the exact
    command and a fixed recommendation block, never as a decision question through a peer.
 6. **Inside the team pipeline, memory is written only by the wrapup role, after acceptance.**

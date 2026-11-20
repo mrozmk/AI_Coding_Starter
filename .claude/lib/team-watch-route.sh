@@ -3,19 +3,19 @@
 # Sourced by team-watch-lib.sh, never executed; functions only.
 # Runbook and state files: .agents/reference/team-watch.md.
 # TW_ROLES is the single source of the receiver role names; mirrors to change with it: the
-# signal filter's dest (team-watch-signals.jq), tw_contract (team-watch-deliver.sh), the roles of
+# signal filter's dest (team-watch-signals.jq), TW_CONTRACT (team-watch-deliver.sh), the roles of
 # .claude/team/sessions/monitoring.json and ROLES in session_profile_check.py.
 # TW_SESSION_ROLES adds the session roles that are no receiver; TW_PANE_ROLES are the role
 # sessions whose own prompts the daemon scans (the Supervisor answers them).
 # TW_LEGACY is only the name of the default single receiver: no routing.json = `single Supervisor`,
-# the single-window /monitor. It is a real role that acks; nothing iterates it next to TW_ROLES.
+# the Supervisor's window. It is a real role that acks; nothing iterates it next to TW_ROLES.
 
 TW_ROLES="Supervisor"
 TW_PANE_ROLES="Advisor"
 TW_LEGACY=Supervisor
 # A version bump makes `team-watch.sh start` restart running loops (2: restarts loops still running
-# the global-TeamLead code).
-TW_VERSION=2
+# the global-TeamLead code; 3: restarts loops still pushing the retired /monitor contract).
+TW_VERSION=3
 TW_SESSION_ROLES="$TW_ROLES Advisor"
 TW_ROUTE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -266,7 +266,7 @@ tw_alarm() {
     if [ "$1" = "$target" ] || ! tw_live "$target"; then tw_log "alarm not sent: $2"
     else
       { tw_paused "$target" >/dev/null && ! tw_alarms_pass "$target"; } \
-        || tw_send "$target" "[team-watch alarm] $2 · handle per $(tw_contract "$target")" \
+        || tw_send "$target" "[team-watch alarm] $2 · handle per $TW_CONTRACT" \
         || tw_undelivered "$target"
     fi
     tw_release "$TW_DIR/send.d"

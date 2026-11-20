@@ -7,14 +7,15 @@ What the team layer does, and how far each claim is proven. Three words, used ex
 - `to verify` — not yet proven: no evidence line, another host, or another CLI version.
 
 The **offline** column cites the `team-suite.sh` steps that cover the row, with their check counts,
-from the full run on `f3d7996` (2026-11-05T15:37Z, 39 steps, `team-suite: OK`, macOS). The
+from the full run on `f3d7996` (2026-11-05T15:37Z, 39 steps, `team-suite: OK`, macOS); the counts
+of the steps #22 slice 3 touched come from its per-task gate run (2026-11-19, `team-suite: OK`). The
 **live** column cites an E-id and stays `to verify` until the acceptance run (P9 phases B and C)
 writes that line. The offline dry-run of E01–E06 is recorded in
 [evidence/p9a-walkthrough-2026-11-05.md](evidence/p9a-walkthrough-2026-11-05.md); it is not a
 live acceptance line.
 
 - Verified host: `to verify` (filled from E01: macOS · Claude Code · Codex CLI · `/bin/bash` · Python · tmux · jq)
-- Linux: **unsupported today** — the BSD `stat -f` sites break the daemon, the runner and the question ledger; ported and verified only under follow-up F12 (also flock, ps formats, SIGALRM, the messaging socket, cron/systemd for the health check). The stdlib-only agent-mail tool passed its unittest on Ubuntu 24.04 ([p9a evidence](evidence/p9a-walkthrough-2026-11-05.md#linux-colima-vm-ubuntu-24044-kernel-68-python-3123))
+- Linux: **unsupported today** — the BSD `stat -f` sites break the daemon and the runner; ported and verified only under follow-up F12 (also flock, ps formats, SIGALRM, the messaging socket, cron/systemd for the health check). The stdlib-only agent-mail tool passed its unittest on Ubuntu 24.04 ([p9a evidence](evidence/p9a-walkthrough-2026-11-05.md#linux-colima-vm-ubuntu-24044-kernel-68-python-3123))
 - Other Claude Code versions: `to verify` — the messaging socket is an observed interface (preflight row 10)
 
 ## Capabilities
@@ -26,15 +27,14 @@ live acceptance line.
 | Operator kit installs, verifies and rolls back outside the repo | P7 | implemented | smoke-kit (6) | to verify (E04, E19) |
 | Role profiles check and preflight | P5 | implemented | smoke-sessions (10), session-profiles (2) | to verify (E05, E06) |
 | Role sessions start under their prefix and report their role | P5 | implemented | smoke-sessions (10) | to verify (E07) |
-| Signal daemon delivers to the role sessions over the messaging socket | P4 | implemented | smoke-15 (11), smoke-16 (8) — a stub receiver socket | to verify (E08, E24) |
+| Signal daemon delivers to the role sessions over the messaging socket | P4 | implemented | smoke-15 (10), smoke-16 (8) — a stub receiver socket | to verify (E08, E24) |
 | Role-to-role mail round-trip (Reviewer only in `pair`) | P2, P5 | implemented | agent-mail-unittest (73) | to verify (E09) |
 | Split routing: routine to the TeamLead, READY and incidents to the Supervisor | P4 | implemented | smoke-16 (8) | to verify (E10, E17) |
-| A tier-1 menu is answered exactly once | P1 | implemented | smoke-4 (1), smoke-5 (15), smoke-17 (12) | to verify (E11) |
-| Deny / ask outside an enabled class is never auto-approved | P1, P8 | implemented | smoke-12 (16), smoke-policy (1), guard-team-egress-test (105), guard-destructive-sql-test (87) | to verify (E12) |
+| A menu is answered exactly once | P1 | implemented | smoke-4 (1), smoke-5 (13), smoke-17 (12) | to verify (E11) |
+| Deny / ask outside an enabled class is never auto-approved | P1, P8 | implemented | smoke-12 (16), smoke-policy (1), guard-team-egress-test (126), guard-destructive-sql-test (87) | to verify (E12) |
 | `/clear` and a pid restart keep the routing | P4 | implemented | smoke-16 (8), smoke-17 (12) | to verify (E14) |
-| An old run or a stale fingerprint is refused | P1 | implemented | smoke-4 (1), smoke-5 (15) (E15) | — offline only |
-| Tiers off with a pending reply blocks delivery | P1 | implemented | smoke-17 (12) (E16) | — offline only |
-| An unavailable receiver raises an alarm outside the LLM | P4 | implemented | smoke-15 (11), smoke-16 (8) | to verify (E18) |
+| An old run or a stale fingerprint is refused | P1 | implemented | smoke-4 (1), smoke-5 (13) (E15) | — offline only |
+| An unavailable receiver raises an alarm outside the LLM | P4 | implemented | smoke-15 (10), smoke-16 (8) | to verify (E18) |
 | Rollback hands control back to one owner | P4, P5, P7 | implemented | smoke-16 (8), smoke-sessions (10), smoke-kit (6) | to verify (E19) |
 | Menu keystroke path | P1 | implemented | — | to verify (E20, attended) — never run: no TTY, Operator-only |
 | Prompt binding holds across a re-render | P1 | implemented | — | to verify (E21, attended) — never run: no TTY, Operator-only |

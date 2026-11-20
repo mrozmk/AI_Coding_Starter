@@ -87,7 +87,7 @@ Status table, conflicts with instructions, the `alfa` clone path, the allow/ask 
 Then the next step, one of two:
 - **single window:** in the supervising window run `bash .claude/lib/team-watch.sh start` (one
   daemon + watchdog in tmux `<tmux_prefix>-team-watch[-dog]`, this session registered as the
-  receiver); routing stays `single Supervisor` and that window runs `/monitor` in pushed mode;
+  receiver); routing stays `single Supervisor` and that window handles the pushed batches;
 - **role sessions:** `bash .claude/lib/supervisor-sessions.sh check`, then `/roles` (starts the
   standing roles), `bash .claude/lib/supervisor-sessions.sh preflight` and the routing step in
   `.agents/reference/supervisor-sessions.md` → Migration.
@@ -100,7 +100,7 @@ Optional, macOS: print (never run) the iMessage channel's steps — the user add
 (`enabled`, `recipient`, `quiet`) to the same file, then runs `bash .claude/team/notify-kit/install.sh
 --dry-run` and without it from the main checkout (the quiet-end flush job). README:
 `.claude/team/notify-kit/README.md`.
-The installer registered its SessionStart and Stop hooks (W, S, R); runbooks:
+The installer registered its SessionStart hooks (W `team-watch-session.sh`, L `session-registry.sh`); runbooks:
 `.agents/reference/team-watch.md`, `.agents/reference/supervisor-sessions.md`.
 
 ## Re-run

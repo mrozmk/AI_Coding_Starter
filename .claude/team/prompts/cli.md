@@ -32,7 +32,7 @@ There is no planner, no QA and no wrapup after you.
    {{TEST_GATE}} (Bash `run_in_background: true` — it may queue behind another clone's gate),
    plus `bash .claude/lib/tests/team-smoke.sh` when `.claude/lib/team-*.sh` changed. Fix until green.
 6. Write `{{RUN_DIR}}/cli-{{ATTEMPT}}.md` in plain Polish: `## Co zmieniono`
-   (2–3 sentences, no file names) and `## Co to daje` (1–2 sentences). `/monitor` reads this file.
+   (2–3 sentences, no file names) and `## Co to daje` (1–2 sentences). The Supervisor reads this file.
 7. **Tracker comments (opt-in, as at step 2):** before `/commit`, run the freshness check
    (tracker-comments.md §5) against `{{RUN_DIR}}/ticket.json`. Exit 3 → `bash
    .claude/lib/team-record.sh --verdict blocked --message "new tracker input: <ids>"`; exit 4 or a

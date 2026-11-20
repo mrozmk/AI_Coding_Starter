@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# team-watch control and hardening: duplicate delivery, tiers/answering enforcement, the
+# team-watch control and hardening: duplicate delivery, concurrent mode writers, the
 # SessionStart hook per role, channel names, no notifications from team-watch or the runner, ledger findings and rotation, the newest prompt + redaction, role-session prompts,
 # the loop version bump, two checkouts on one machine (tmux_prefix), the state-file readers.
 # Cases (68)-(70), (75), (77), (78), (130)-(132), (S1), (P1).
@@ -12,7 +12,6 @@ smoke_init
 smoke_team AB-1139 chore/AB-1139-watch
 watch_init
 mkrole SUP; mkrole ADV
-Q="bash .claude/lib/team-question.sh"
 session coder 1 "$BASE"
 echo "2026-10-19T10:00:00Z permission_prompt Claude needs your permission" > "$RD/attention"
 mkdir "$TD/lock"; echo $$ > "$TD/lock/pid"
@@ -31,7 +30,7 @@ role_prompt() {  # role_prompt <role> → tw_role_prompt's "<sub>\t<fp>\t<anchor
   (cd "$MAIN" && bash -c '. .claude/lib/team-watch-lib.sh; tw_init "$PWD"; tw_role_prompt "$1"' _ "$1")
 }
 
-# ---- (68) duplicate delivery: one ack counted twice, one answer ----------------------------------
+# ---- (68) duplicate delivery: one ack counted twice ----------------------------------------------
 run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10
 P="$(last_batch SUP)"
 # The whole commit is lost (cursor and delivery line): the same batch goes out again. A lost cursor
@@ -47,42 +46,16 @@ run "$MAIN" $W stats; expect 0 "Supervisor: delivered=" "stats"
 grep '^Supervisor:' "$WORK/out" | grep -q ' duplicates=1 ' || fail "stats: duplicates=1 expected"
 grep '^Supervisor:' "$WORK/out" | grep -Eq 'pickup_p50=[0-9]+s pickup_max=[0-9]+s' \
   || fail "stats: pickup latency missing"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" --summary "deploy?"
-expect 0 "q-1" "open"
-run "$MAIN" $Q alfa open coder --kind permission --anchor "Do you want to proceed?" --summary "deploy?"
-expect 0 "(existing" "the same question again"
-run "$MAIN" $Q alfa answer q-1 --tier 3 --author operator --why "approved in the window" --send none
-expect 0 "recorded" "first answer"
-run "$MAIN" $Q alfa answer q-1 --tier 1 --author supervisor --why "in the plan" --send yes
-expect 1 "already answered" "second answer"
 echo "team-smoke-17: (68) duplicate delivery OK"
 
-# ---- (69) tiers / answering enforcement in answer -------------------------------------------------
-mkclone beta beta-20261019-000000; wrec "$CT" beta beta-20261019-000000 coder blocked "which?"
-wsess "$CT" beta beta-20261019-000000 coder; BQ="$CT/runs/beta-20261019-000000/questions/q-1.md"
-mkclone gamma gamma-20261019-000000; wrec "$CT" gamma gamma-20261019-000000 coder blocked "which?"
-wsess "$CT" gamma gamma-20261019-000000 coder
-run "$MAIN" $Q beta open coder --kind blocked --summary "which endpoint?"; expect 0 "q-1" "open beta"
-run "$MAIN" $Q gamma open coder --kind blocked --summary "which endpoint?"; expect 0 "q-1" "open gamma"
-run "$MAIN" $W mode tiers off; expect 0 "team-watch: tiers off" "mode tiers off"
-S0="$(shasum < "$BQ")"
-run "$MAIN" $Q beta answer q-1 --tier 2 --author analysts --why w --text "use v2" --send say
-expect 1 "refused: tiers off" "tier 2 while tiers off"
-[ "$(shasum < "$BQ")" = "$S0" ] || fail "a refused answer changed the q file"
-run "$MAIN" $Q beta answer q-1 --tier 3 --author operator --why w --text "use v2" --send say
-has "refused:" "$WORK/out" && fail "an Operator tier-3 answer was refused while tiers are off"
-run "$MAIN" $W mode tiers on; run "$MAIN" $W mode answering off; expect 0 "team-watch: answering off" "answering off"
-run "$MAIN" $Q gamma answer q-1 --tier 3 --author operator --why w --text "use v2" --send say
-expect 1 "refused: answering off" "delivering answer while answering off"
-run "$MAIN" $Q gamma answer q-1 --tier 3 --author operator --why w --text "did it" --send none
-expect 0 "recorded" "recorded-only tier 3 while answering off"
+# ---- (69) team-watch.sh mode: concurrent writers ----
 (cd "$MAIN" && $W mode tiers off >/dev/null) & A=$!
 (cd "$MAIN" && $W mode answering off >/dev/null) & B=$!
 wait "$A" "$B"
 jq -e '.tiers == "off" and .answering == "off"' "$TWD/state.json" >/dev/null \
   || fail "concurrent mode switches lost one"
 run "$MAIN" $W mode tiers on; run "$MAIN" $W mode answering on
-echo "team-smoke-17: (69) tiers/answering enforcement OK"
+echo "team-smoke-17: (69) mode writers OK"
 
 # ---- (P1) the state-file readers ignore .paused; the writer refuses a non-object -----------------
 L="$MAIN/.claude/lib"
@@ -91,10 +64,10 @@ L="$MAIN/.claude/lib"
 PF="$MAIN/.claude/project-profile.json"; cp "$PF" "$WORK/prof.before"
 jq '.teams.policy.classes.merge_line = {enabled: true}' "$WORK/prof.before" > "$PF"
 (. "$L/team-lib.sh"; echo '{"paused": {"Supervisor": {"since": "2026-11-04T08:00:00Z", "by": "x"}}}' > "$TWD/state.json"
-  team_mode_ok "$MAIN" 1 yes && team_class_on "$MAIN" merge-line) || fail "a pause changed tiers or classes"
+  team_class_on "$MAIN" merge-line) || fail "a pause changed the classes"
 jq '. + {tiers: "off", classes: {"merge-line": "off"}}' "$TWD/state.json" > "$WORK/st" && mv "$WORK/st" "$TWD/state.json"
-(. "$L/team-lib.sh"; [ "$(team_mode_ok "$MAIN" 1 yes)" = "tiers off" ] && ! team_class_on "$MAIN" merge-line) \
-  || fail "tiers/class off next to a pause not honoured"
+(. "$L/team-lib.sh"; ! team_class_on "$MAIN" merge-line) \
+  || fail "class off next to a pause not honoured"
 cp "$WORK/prof.before" "$PF"
 echo '[]' > "$TWD/state.json"; cp "$TWD/state.json" "$WORK/st.before"
 run "$MAIN" $W mode tiers on; expect 1 "state.json unreadable" "the writer refuses a non-object"

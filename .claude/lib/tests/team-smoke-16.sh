@@ -56,7 +56,7 @@ run "$MAIN" $W pending Supervisor; [ -z "$(cat "$WORK/out")" ] || fail "pending 
 # The single Supervisor is a real receiver: its header carries role and ack, and it is timed —
 # its own episode is only logged (the terminal rule).
 msgs SUP | jq -se 'all(.[]; contains(" · role=Supervisor · ack: bash .claude/lib/team-watch.sh ack ")
-  and contains(" · handle per .claude/commands/monitor.md · "))' >/dev/null \
+  and contains(" · handle per .agents/reference/team-watch.md#supervisor · "))' >/dev/null \
   || fail "the single Supervisor header lacks role/ack/contract"
 run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 10 2
 : > "$STUB_LOG"
