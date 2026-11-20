@@ -34,6 +34,8 @@ The egress guard is a **best-effort guard over `Bash` and `WebFetch`, not an all
 `WebSearch` and MCP tools are out of its scope. What it catches and what it does not:
 [`security-egress.md`](../../.agents/reference/security-egress.md).
 
+In the main checkout the Supervisor can lift the guard's `gh` prompt per clone with `Bash(gh …)` allow rules in `.claude/settings.local.json` — never for a team role, the TeamLead or an Advisor, never from `settings.json`, never for inline interpreters, and only for one plain `gh …` command. Rule forms and limits: [`security-egress.md`](../../.agents/reference/security-egress.md) → Local `gh` rules for the Supervisor.
+
 ## The prompt check
 
 `team_prompt_check.py` decides whether a sender (`team-answer.sh`) may press Enter on a team role's permission prompt. On the Operator's direct call it answers *yes* only when all of these hold:

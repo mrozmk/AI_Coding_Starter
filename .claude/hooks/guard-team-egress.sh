@@ -3,6 +3,7 @@
 # egress, so an unlisted WebFetch host or an egress tool in command position asks
 # (lib/guard_team_egress.py). Never allows. Fail-closed: no python3 / a crash asks.
 # Contract: .agents/reference/security-egress.md, .agents/reference/team-mode.md
+# The Supervisor's local Bash(gh ...) allow rules (main checkout only): lib/guard_team_egress.py.
 
 # Armed in a team run (session.json / TEAM_RUN_TEAM) and in every role session (TEAM_SESSION_ROLE:
 # Supervisor, TeamLead, Advisor are launched with only that).

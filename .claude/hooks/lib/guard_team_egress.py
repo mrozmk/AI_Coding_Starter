@@ -13,6 +13,10 @@ URL or `host:path` -> ask unless the host is in the same WebFetch allowlist; a b
 a local path passes (the remote's configured URL was itself set through this check or by a human).
 A URL set as git config — `git config remote.<n>.url|pushurl <url>`, `git -c remote.<n>.url=<url>`,
 `url.<base>.insteadOf` — and `git push --repo[=]<url>` get the same host check.
+The Supervisor in the main checkout (TEAM_SESSION_ROLE=Supervisor, no TEAM_RUN_TEAM, neither
+.agents/team/session.json nor team.json) passes a gh command that matches a Bash(gh ...) allow rule
+of settings.local.json only — never settings.json, and only as one plain simple command (no
+compound, no substitution, no env prefix or wrapper).
 """
 import json
 import os
@@ -26,7 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, commands, doc_heredocs_removed, strip_wrappers, tokenize)
+    SEPARATORS, SHELL_C, commands, doc_heredocs_removed, strip_wrappers, tokenize)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -44,6 +48,12 @@ SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
 SUBST = re.compile(r"\$\(|`|\)")
 DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
+# Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
+# backslash anywhere else -> ignored (still asked).
+GH_RULE = re.compile(r"^Bash\(gh ([^()*:\"'\\]+?)(:\*| \*)?\)$")
+# What a plain `gh ...` never needs: substitution, redirection (bash /dev/tcp), and the `#` / `\`
+# that the shared comment stripper misreads (`x\ #; curl …` would hide the curl).
+UNPLAIN = re.compile(r"\$\(|[`<>#\\]")
 GIT_NET = {"push", "fetch", "pull", "clone", "ls-remote", "submodule", "remote"}
 # Config keys that redirect where git connects: the value is a URL, or (insteadOf) the key holds it.
 GIT_URL_KEY = re.compile(r"^remote\.[^=]+\.(url|pushurl)$", re.I)
@@ -252,6 +262,47 @@ def host_allowed(host, domains):
     return any(host.endswith(d) if d.startswith(".") else host == d for d in domains)
 
 
+def supervisor_main_checkout(project):
+    """The Supervisor's own session in the main checkout: never a team run, a clone or the TeamLead."""
+    team = os.path.join(project, ".agents", "team")
+    return (bool(project) and os.environ.get("TEAM_SESSION_ROLE") == "Supervisor"
+            and not os.environ.get("TEAM_RUN_TEAM")
+            and not os.path.exists(os.path.join(team, "session.json"))
+            and not os.path.exists(os.path.join(team, "team.json")))
+
+
+def local_gh_rules(project):
+    """(words, prefix) of the Bash(gh ...) allow rules in settings.local.json; [] when absent or bad."""
+    try:
+        with open(os.path.join(project, ".claude", "settings.local.json"), encoding="utf-8") as fh:
+            allow = (json.load(fh).get("permissions") or {}).get("allow") or []
+    except (OSError, ValueError, AttributeError):
+        return []
+    rules = []
+    for rule in allow if isinstance(allow, list) else []:
+        m = GH_RULE.match(rule) if isinstance(rule, str) else None
+        if m and m.group(1).split():
+            rules.append((tuple(m.group(1).split()), bool(m.group(2))))
+    return rules
+
+
+def local_gh_exempt(cmd, project):
+    """The Supervisor's plain `gh ...` command: one simple command with a literal `gh` first (no env
+    prefix, wrapper or path), no separator, substitution or redirection, covered by a local rule."""
+    if UNPLAIN.search(cmd) or not supervisor_main_checkout(project):
+        return False
+    try:
+        words = tokenize(cmd)
+    except ValueError:
+        return False
+    # Any separator token, real or quoted (the tokenizer cannot tell them apart), means not plain.
+    if words[:1] != ["gh"] or any(set(w) <= SEPARATORS for w in words):
+        return False
+    rest = tuple(words[1:])
+    return any(rest[:len(w)] == w if prefix else rest == w
+               for w, prefix in local_gh_rules(project))
+
+
 def webfetch_reason(url, project):
     try:
         host = (urlsplit(url).hostname or "").rstrip(".") if isinstance(url, str) else ""
@@ -283,7 +334,12 @@ def main():
         reason = webfetch_reason(tool_input.get("url"), os.environ.get("CLAUDE_PROJECT_DIR", ""))
     elif tool == "Bash":
         cmd = tool_input.get("command")
-        reason = bash_reason(cmd) if isinstance(cmd, str) else "unreadable Bash command"
+        if not isinstance(cmd, str):
+            reason = "unreadable Bash command"
+        elif local_gh_exempt(cmd, os.environ.get("CLAUDE_PROJECT_DIR", "")):
+            reason = ""
+        else:
+            reason = bash_reason(cmd)
     else:
         return
     if reason:
