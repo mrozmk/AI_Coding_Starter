@@ -4,8 +4,10 @@ A best-effort guard over Bash and WebFetch, not an allowlist (MCP tools and WebS
 scope). WebFetch to a host outside the project's WebFetch(domain:...) allowlist -> ask; a Bash command
 whose command-position word is an egress-capable tool (curl wget ssh scp rsync nc ftp sftp gh npm npx
 pip pip3 pipx uvx osascript; python/python3 with -c, -, no arguments or -m other than a local test
-module, node with -e/-p/--eval/-) -> ask, also inside bash -c, tmux arguments, eval, $(...) and
-here-doc lines. gh pr view / gh issue view pass only as the simple command's own first word (also
+module, node with -e/-p/--eval/-) -> ask, also inside bash -c, tmux arguments, eval, $(...),
+here-doc lines and the strings of flock -c / env -S; a command with a redirection before its verb
+is also read from every later word (`</dev/null curl …`), and a brace-expanded verb (`{curl,} …`)
+asks. gh pr view / gh issue view pass only as the simple command's own first word (also
 in a string nested under no wrapper), with a plain OWNER/REPO repo value, no URL, --hostname, brace
 expansion or option-shaped glob, and no $, backtick, #, backslash, GH_HOST or GH_REPO in the text
 or its tokens (a quoted ';' does not hide an argument: the whole string is checked). A /dev/tcp or
@@ -35,7 +37,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SEPARATORS, SHELL_C, commands, doc_heredocs_removed, strip_wrappers, tokenize)
+    SEPARATORS, SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans,
+    strip_wrappers, tokenize, unredirected)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -232,19 +235,42 @@ def egress_in(cmd, depth=0, reads_ok=True):
 def verb_in(cmd, names, depth=0, reads_ok=True):
     """First of <names> in command position, also nested; a loopback probe is not `nc`.
     <reads_ok> turns False for good once this string or an enclosing one could point a gh read at
-    another host."""
+    another host. Readings are only ever added (the tokens have lost quotes and spacing): a command
+    with a redirection before its verb is read on from every later word, and every command is also
+    read with its redirections dropped. An unparsable part stops nothing: ValueError only when no
+    other part names one."""
     tokens = tokenize(cmd)
     if names is EGRESS and net_device(cmd, tokens):
         return NET_FOUND
     reads_ok = reads_ok and not gh_read_tainted(cmd, tokens)
-    for raw in commands(tokens):
-        words = strip_wrappers(raw)
+    # (words, expand, plain): a suffix is never expanded again — every suffix of its source is
+    # queued — and never plain: it may have cut a wrapper off, so it keeps no gh read exemption.
+    todo = [(c, True, True) for c in commands(tokens)]
+    todo += [(s[k:], False, False) for s in split_spans(tokens) for k in range(1, len(s))]
+    todo += [(c, False, True) for fds in (True, False) for c in unredirected(tokens, fds)]
+    done, inners, broken = set(), set(), False
+    while todo:
+        raw, expand, plain = todo.pop(0)
+        if (tuple(raw), plain) in done:
+            continue
+        done.add((tuple(raw), plain))
+        strings = []
+        try:
+            words = strip_wrappers(raw, strings)
+        except ValueError:
+            # The strings collected so far and the raw substitutions are still scanned below.
+            broken, words = True, []
+        if expand and redirection_led(raw, words):
+            todo += [(r[k:], False, False) for r in (raw, words) for k in range(1, len(r))]
+        plain = reads_ok and plain and words == raw
         # strip_wrappers re-splits `flock -c "<cmd>"` / `env -S "<cmd>"`: check what it produced too.
         if names is EGRESS and net_device("", words):
             return NET_FOUND
+        if names is EGRESS and words and BRACE.search(words[0]):
+            return "brace expansion " + words[0]
         verb = os.path.basename(words[0].lstrip("`")) if words else ""
         if verb in names and not (verb == "nc" and loopback_probe(words)) and not (
-                names is EGRESS and not egress_capable(verb, words, reads_ok and words == raw)):
+                names is EGRESS and not egress_capable(verb, words, plain)):
             return verb
         if verb == "git" and names is EGRESS:
             for arg in [git_repo_arg(words) or ""] + git_config_urls(words):
@@ -254,7 +280,7 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
         if depth >= 3:
             continue
         # From the raw words: an assignment `x=$(curl …)` is stripped as a wrapper above.
-        nested = [SUBST.sub(" ; ", w) for w in raw if "$(" in w or "`" in w]
+        nested = [SUBST.sub(" ; ", w) for w in raw if "$(" in w or "`" in w] + strings
         flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
         if verb in SHELLS and flag:
             nested.append(words[flag + 1])
@@ -265,9 +291,18 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
             nested.extend(words[1:])
         # A wrapper rewrites a nested string too: `xargs -I o bash -c 'gh … -R o/r'`.
         for inner in nested:
-            found = verb_in(inner, names, depth + 1, reads_ok and words == raw)
+            if (inner, plain) in inners:
+                continue
+            inners.add((inner, plain))
+            try:
+                found = verb_in(inner, names, depth + 1, plain)
+            except ValueError:
+                broken = True
+                continue
             if found:
                 return found
+    if broken:
+        raise ValueError("an unparsable part names no egress tool")
     return ""
 
 

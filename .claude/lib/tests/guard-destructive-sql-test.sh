@@ -220,6 +220,10 @@ run deny "bash -lc nests sqlcmd"            "bash -lc \"sqlcmd -Q 'DROP TABLE t'
 run deny "timeout with a duration"          "timeout 5 sqlcmd -Q \"DROP TABLE t\""
 run deny "env with an option"               "env -i sqlcmd -Q \"DROP TABLE t\""
 run deny "env -S splits its string"         "env -S \"sqlcmd -Q 'DROP TABLE t'\""
+run deny "--split-string comment then sqlcmd" "env --split-string=\"# c\" sqlcmd -Q \"DROP TABLE t\""
+run deny "unsplittable --split-string skipped" "env --split-string=\"'\"; sql''cmd -Q \"DROP TABLE t\""
+run deny "nested bad env -S in --split-string" "env --split-string=\"env -S \\\"'\\\"\"; sql''cmd -Q \"DROP TABLE t\""
+run deny "nested bad flock -c in --split-string" "env --split-string=\"flock l -c \\\"'\\\"\"; sql''cmd -Q \"DROP TABLE t\""
 run ask  "stdbuf wrapper"                   "stdbuf -o0 sqlcmd -Q \"DELETE FROM dbo.X WHERE Id=1\""
 run none "a wrapped read"                   "timeout 5 sqlcmd -Q \"SELECT 1\""
 # Command substitution and sqlcmd long options (R1)
