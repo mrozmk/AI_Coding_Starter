@@ -5,7 +5,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, closeOverlay, openOverlay, theme, exec, notify, spaces, panes, run } from "herdr";
+import { props, closeOverlay, openOverlay, theme, exec, notify, spaces, panes, run, shared, setShared } from "herdr";
 
 async function moveToTrash(p) {
   const r = await exec("/usr/bin/trash", [p.path], { on: p.on ?? null });
@@ -66,12 +66,23 @@ function previewFor(p) {
   return null;
 }
 
+// Reuses a preview tab only while its registered file-view pane still shows this file (machine,
+// full path); shared with files-plus, whose source tabs carry preview=false in the same key.
 function previewMarkdown(p) {
   const name = `Preview ${p.name}`, space = spaces().find(s => s.active);
-  const viewers = new Set(panes().filter(x => x.mod === "file-view").map(x => x.tab));
-  const open = space?.tabs.find(tab => tab.name === name && viewers.has(tab.id));
-  if (open) run("tab.select", { id: open.id });
-  else run("tab.new", { name, mod: "file-view", props: { file: p.path, on: p.on ?? null, preview: true } });
+  const key = JSON.stringify([p.on ?? null, p.path, true]), reg = shared("file-view.panes") ?? {};
+  const inSpace = new Set((space?.tabs ?? []).map(t => t.id));
+  const open = panes().find(x => x.mod === "file-view" && reg[x.pane] === key && inSpace.has(x.tab));
+  if (open) { run("tab.select", { id: open.tab }); return; }
+  const before = new Set(spaces().flatMap(s => s.tabs.map(t => t.id)));
+  run("tab.new", { name, mod: "file-view", props: { file: p.path, on: p.on ?? null, preview: true } });
+  const created = spaces().flatMap(s => s.tabs).find(t => !before.has(t.id));
+  const live = panes(), pane = created && live.find(x => x.mod === "file-view" && x.tab === created.id);
+  // Keyed by pane, not tab: a tab can outlive its first pane (split in another, close the first).
+  const ids = new Set(live.map(x => x.pane));
+  const kept = Object.fromEntries(Object.entries(reg).filter(([id]) => ids.has(id)));
+  if (pane) kept[pane.pane] = key;
+  if (pane || Object.keys(kept).length !== Object.keys(reg).length) setShared("file-view.panes", kept);
 }
 
 async function previewHtml(p) {

@@ -198,5 +198,72 @@ DISC=$(node --input-type=module -e '
 OUT=$(HOME="$T/h" sh -c "$DISC" 2>&1)
 ok '[ "$OUT" = "$(printf ".claude\n.codex-x")" ]' "discovery lists plain profile names only"
 
+# ---- (20) file tabs are reused by full path ------------------------------------------------------
+# Both openers run over one in-memory Herdr model; each case prints "<case> ok" or "<case> bad: <why>".
+OUT=$(node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  const [fp, menu] = process.argv.slice(-2);
+  const cut = (path, head, name) => {
+    const lines = readFileSync(path, "utf8").split("\n"), i = lines.indexOf(head), j = lines.indexOf("}", i + 1);
+    if (i < 0 || j < 0) { console.log(`cut ${name} missing in ${path}`); process.exit(1); }
+    return lines.slice(i, j + 1).join("\n") + `\nreturn ${name};`;
+  };
+  let seq = 0, calls = [];
+  const sp = [{ id: "s1", active: true, tabs: [{ id: "t0", name: "zsh" }] }, { id: "s2", active: false, tabs: [{ id: "t9", name: "other" }] }];
+  let pn = [{ pane: "p0", tab: "t0", mod: null }, { pane: "p9", tab: "t9", mod: null }];
+  const store = {};
+  const env = [
+    () => JSON.parse(JSON.stringify(sp)),
+    () => pn.map(p => ({ ...p })),
+    (cmd, args) => {
+      calls.push([cmd, args]);
+      if (cmd === "tab.new") { seq++; sp[0].tabs.push({ id: `t${seq}`, name: args.name }); pn.push({ pane: `p${seq}`, tab: `t${seq}`, mod: args.mod }); }
+      return null;
+    },
+    k => store[k],
+    (k, v) => { store[k] = JSON.parse(JSON.stringify(v)); return null; },
+  ];
+  const open = new Function("spaces", "panes", "run", "shared", "setShared", cut(fp, "function openFileTab(file, on) {", "openFileTab"))(...env);
+  const prev = new Function("spaces", "panes", "run", "shared", "setShared", cut(menu, "function previewMarkdown(p) {", "previewMarkdown"))(...env);
+  const step = f => { calls = []; f(); return calls; };
+  const news = c => c.filter(x => x[0] === "tab.new").length, sel = c => c.filter(x => x[0] === "tab.select").map(x => x[1].id);
+  const check = (name, cond, why) => console.log(cond ? `${name} ok` : `${name} bad: ${why} ${JSON.stringify(calls)}`);
+  const reg = () => store["file-view.panes"] ?? {};
+  const tabOf = id => pn.find(p => p.pane === id)?.tab;
+  const split = (tab, pane) => { pn.push({ pane: `x${pane}`, tab, mod: "file-view" }); pn = pn.filter(p => p.pane !== pane); };
+
+  let c = [...step(() => open("/r/a/README.md", null)), ...step(() => open("/r/b/README.md", null))];
+  calls = c; check("c1", news(c) === 2 && sel(c).length === 0, "two same-named files must open two tabs");
+  const aPane = Object.keys(reg()).find(id => reg()[id] === JSON.stringify([null, "/r/a/README.md", false])), aTab = tabOf(aPane);
+  c = step(() => open("/r/a/README.md", null));
+  check("c2", aTab && news(c) === 0 && sel(c).join() === aTab, "reopening a path must select its tab");
+  split(aTab, aPane);
+  c = step(() => open("/r/a/README.md", null));
+  check("c3", news(c) === 1 && !sel(c).includes(aTab) && !(aPane in reg()), "a tab whose registered pane closed must not be reused");
+  c = step(() => open("/r/a/README.md", "m1"));
+  check("c4", news(c) === 1 && sel(c).length === 0, "the same path on another machine must open a new tab");
+
+  c = step(() => prev({ path: "/r/a/README.md", name: "README.md", on: null }));
+  check("c5a", news(c) === 1 && sel(c).length === 0, "a source tab must not match a preview");
+  c = step(() => prev({ path: "/r/b/README.md", name: "README.md", on: null }));
+  check("c5b", news(c) === 1 && sel(c).length === 0, "two same-named previews must open two tabs");
+  const pPane = Object.keys(reg()).find(id => reg()[id] === JSON.stringify([null, "/r/a/README.md", true])), pTab = tabOf(pPane);
+  c = step(() => prev({ path: "/r/a/README.md", name: "README.md", on: null }));
+  check("c5c", pTab && news(c) === 0 && sel(c).join() === pTab, "reopening a preview must select its tab");
+  split(pTab, pPane);
+  c = step(() => prev({ path: "/r/a/README.md", name: "README.md", on: null }));
+  check("c6", news(c) === 1 && !sel(c).includes(pTab) && !(pPane in reg()), "a preview tab whose registered pane closed must not be reused");
+' "$KD/mods/files-plus/main.js" "$KD/mods/files-plus-menu/main.js" 2>&1); RC=$?
+ok '[ "$RC" = 0 ]' "the file-tab model runs"
+ok '[[ "$OUT" == *"c1 ok"* ]]' "files-plus: two same-named files in different folders open two tabs"
+ok '[[ "$OUT" == *"c2 ok"* ]]' "files-plus: reopening the same path selects its tab"
+ok '[[ "$OUT" == *"c3 ok"* ]]' "files-plus: a tab whose registered pane was closed is not reused; the registry is pruned"
+ok '[[ "$OUT" == *"c4 ok"* ]]' "files-plus: the same path on another machine opens a new tab"
+ok '[[ "$OUT" == *"c5a ok"* ]]' "files-plus-menu: a source tab of the file does not match its preview"
+ok '[[ "$OUT" == *"c5b ok"* ]]' "files-plus-menu: two same-named previews open two tabs"
+ok '[[ "$OUT" == *"c5c ok"* ]]' "files-plus-menu: reopening the same preview selects its tab"
+ok '[[ "$OUT" == *"c6 ok"* ]]' "files-plus-menu: a preview tab whose registered pane was closed is not reused; the registry is pruned"
+ok 'grep -q "^## Changes" "$KD/README.md"' "the kit README carries a change note"
+
 [ "$fail" -eq 0 ] || exit 1
 echo "herdr-kit-test: OK ($n checks)"
