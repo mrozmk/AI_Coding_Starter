@@ -38,6 +38,9 @@
 !.claude/hooks/lib/guard_destructive_sql.py
 # core, not team: the stage-end marker the core pipeline commands run (a no-op without the stage hook)
 !.claude/lib/costs/runtime-mark.sh
+# user-level, not team: the Herdr panels kit installs into the user's Herdr app home, never into a
+# project; /setup:teams must not copy it (whether a command offers it is a separate decision)
+!.claude/team/herdr-mod/panels/**
 # core, not team: the core /check-implementation's two finders, their fallbacks and the proof that
 # read-only reviewers wrote nothing (delegated /quick-change uses it too)
 !.claude/agents/correctness-reviewer.md

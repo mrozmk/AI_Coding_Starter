@@ -285,9 +285,16 @@ S="$T/.claude/settings.json"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
+excluded() {  # excluded <path> — a `!` entry of the manifest matches it (team-setup.sh's rule)
+  local g
+  while IFS= read -r g; do case "$1" in $g) return 0 ;; esac; done < <(sed -n 's/^!//p' "$MANIFEST")
+  return 1
+}
+excluded .claude/team/herdr-mod/panels/kit.json || fail "11: the panels kit is not excluded"
+! excluded .claude/team/roles.json || fail "11: an exclusion glob matches a distributed file"
 while IFS= read -r p; do
   case "$p" in */tests/*) continue ;; esac
-  grep -qxF "!$p" "$MANIFEST" && continue  # a core file that lives in a harness tree
+  excluded "$p" && continue  # a core or user-level file that lives in a harness tree
   grep -qxF "own $p" "$MANIFEST" || grep -qxF "shared $p" "$MANIFEST" \
     || fail "11: $p is in the harness tree but not in the manifest"
 done < <(git -C "$ST" ls-files '.claude/lib/team-*.sh' .claude/team \

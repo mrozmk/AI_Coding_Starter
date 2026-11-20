@@ -1,0 +1,19 @@
+{
+  "herdr_version": "0.1.16",
+  "mods": [
+    "file-view",
+    "files-plus",
+    "files-plus-menu",
+    "files-plus-name",
+    "limits",
+    "machines",
+    "machines-menu",
+    "pane-plus",
+    "spaces-plus",
+    "spaces-plus-menu",
+    "tabs-plus"
+  ],
+  "layouts": [
+    "harness"
+  ]
+}
