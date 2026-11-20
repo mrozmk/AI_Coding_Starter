@@ -9,7 +9,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { props, readTextFile, writeTextFile, watchFolder, exec, theme, settings, notify } from "herdr";
 
-const LANG = { md: "markdown", ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
+const LANG = { md: "markdown", mq4: "cpp", mq5: "cpp", mqh: "cpp", ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const LIMIT = 400000;
 
 export default class FileView extends View {
@@ -50,10 +50,14 @@ export default class FileView extends View {
           const t = theme(), name = p.file.split("/").pop(), ext = name.includes(".") ? name.split(".").pop() : "txt";
           const editable = !p.on && text.length <= LIMIT;
           if (editable) this.disk = text;
-          this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: !editable, soft_wrap: true,
+          // .env, .env.local, prod.env: KEY=value with # comments, which the shell grammar colours.
+          const lang = name.startsWith(".env") || ext === "env" ? "sh" : LANG[ext] ?? ext;
+          // Markdown is mostly markers (#, -, *, `, >): colour them there; in code they would be noise.
+          const marks = lang === "markdown" ? { punctuation: t.ansi4 } : {};
+          this.code = EditorState.new({ language: lang, readonly: !editable, soft_wrap: true,
             value: text.length > LIMIT ? text.slice(0, LIMIT) + "\n… (file truncated)" : text,
             font_family: settings().font_family, font_size: 13,
-            syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
+            syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6, ...marks } });
           if (editable) this.code.on("change", (_e, cx) => {
             const dirty = this.code.value() !== this.disk;
             if (dirty !== this.dirty) { this.dirty = dirty; cx.notify(); }
