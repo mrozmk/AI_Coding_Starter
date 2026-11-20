@@ -123,6 +123,7 @@ Apply the **A / B / C classification from [.claude/starter-sync-playbook.md → 
 - `diff -rq` per category-A tree (commands, agents, skills, templates, hooks, workflows, the files directly in `lib` — `*.sh` and `*.mjs`, never `*.test.mjs` — `lib/guarded-writes`, `lib/local-env`, `lib/remote-build` and `lib/trunk-trust` (core), `team`, `lib/costs`, `hooks/lib` — whose `guard_destructive_sql.py` is core) → which files are new / changed / project-only. A file directly in `lib` that is a manifest `own` entry follows the team-harness rule below and a `shared` one is category B; every other one is core, category A in every project. The last three are the team harness: scope them to the `own` paths of `.claude/team/manifest.txt` — the union of `theirs` and `base` manifests, so an `own` path the starter dropped from both its tree and its manifest still reaches the upstream-deletion rows above (no `base` → `theirs` only, and a dropped path shows as project-custom) (tests excluded there), and treat its `shared` entries as category B. Exceptions — core files with harness-looking paths, each a named `!` line in the manifest: `hooks/lib/leak-patterns.sh` and `hooks/lib/git-segments.sh` (diff them with the hooks) and the tracker adapter `lib/team-tracker.sh` + `lib/team-profile.sh` (diff them with `lib`) and the stage-end writer `lib/costs/runtime-mark.sh` (diff it with `lib`, not with the team's `lib/costs`), in every project. Not every `!` line is core: most mark paths that must never ship.
 - For each "changed" file, compute a **content-only** diffstat that ignores whitespace (`diff -wB`) — a file that differs only by blank lines / trailing space is effectively identical and should be marked so, not treated as a real change. This prevents whitespace noise from inflating the task list.
 - Record `ours:N theirs:M` (lines each side has that the other lacks) per file — this is the signal that separates a tiny upstream tweak from a heavy local customization.
+- **Herdr kit hint — computed once, here.** When `base` exists and the project has `.claude/commands/maintain/sync-herdr-kit.md`, run `git -C <clone> diff --quiet <base> HEAD -- .claude/team/herdr-mod/panels/`; exit 1 → hold the line `Herdr kit changed upstream — /maintain:sync-herdr-kit installs or updates it in your Herdr app home (opt-in).` for the run's final report; exit 0 or any other exit → no line. The kit's files are user-level: the `!` manifest entry already keeps them out of the task list; this command never installs them.
 
 ## Step 2.5: Build the task list (NEW — this is the spine of the run)
 
@@ -192,7 +193,7 @@ When the subagent returns, relay a one-line result to the user and mark the task
 
 ### 4.4 — `--check` mode
 
-In `--check` mode, do Steps 4.1 only (analysis + recommendation) for every task, skip 4.2–4.3 entirely, then jump to a summary report and STOP. Write nothing, spawn no edit subagents.
+In `--check` mode, do Steps 4.1 only (analysis + recommendation) for every task, skip 4.2–4.3 entirely, then jump to a summary report — with the Herdr kit hint from Step 2, when held — and STOP. Write nothing, spawn no edit subagents.
 
 ## Step 5: Sanity-check (after the loop, before manifest)
 
@@ -230,6 +231,7 @@ This is what makes the _next_ sync a true 3-way merge. Include it in the staged 
   is blocked, tell the user the exact dir(s) to remove manually via the `!`-prefix and move on — a
   leftover `/tmp` clone is harmless (wiped on restart), so never let cleanup block the run.
 - Final report from the task list: per task — added / updated / adapted / merged / conflict-resolved / deleted / skipped (with the skipped category-C/project-only count). The task list IS the report; summarize it.
+- **Herdr kit hint** — when Step 2 held it, print that one line in the report (once).
 - **Point the user at the findings handoff** from Step 0a: `@.agents/handoffs/starter-upstream-regressions.md` — "regressions/contributions captured for improving the starter".
 - **Rollback note:** nothing was committed; everything is in the working tree — `git restore <path>` (or `git checkout -- .`) reverts the whole sync. Only `/commit` makes it permanent.
 - Propose (do **not** run):
@@ -255,3 +257,4 @@ This is what makes the _next_ sync a true 3-way merge. Include it in the staged 
 - **NEVER task bootstrap-only artifacts** (Step 2.5.1b) — the legacy `.claude/README.md`, `.claude/STARTER-LICENSE`, root `LICENSE`/`README.md`, and `create-CLAUDE_MD` *as a bootstrap driver*. This sync runs on a live project; the bootstrap chain already ran. Note them in one line, never gate on them.
 - **ALWAYS keep a findings handoff** (Step 0a) — append upstream regressions / contribution candidates to `.agents/handoffs/starter-upstream-regressions.md` as you make keep-project decisions. It's a local scratchpad; never stage/commit it.
 - Clean up the `/tmp` starter clone(s) at the end via `find … -delete` (`rm -rf` is `ask`-tier in settings, not denied). A leftover clone is harmless — never let cleanup block the run.
+- **NEVER install the Herdr kit.** `.claude/team/herdr-mod/panels/` installs into the user's Herdr app home, not the project; only `/maintain:sync-herdr-kit` does it, after the user's yes. This command at most prints the Step 2 hint.

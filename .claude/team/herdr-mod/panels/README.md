@@ -27,6 +27,9 @@ bash .claude/team/herdr-mod/panels/install.sh --dry-run   # what it would do; wr
 bash .claude/team/herdr-mod/panels/install.sh
 ```
 
+From any project with the workflow, without a starter checkout: `/maintain:sync-herdr-kit` (it
+fetches the kit from the starter and runs this installer).
+
 `HERDR_APP_HOME` points it at another app home. A rerun after a starter update updates the kit.
 Check a mod with `herdr-app check <mod folder>`.
 
