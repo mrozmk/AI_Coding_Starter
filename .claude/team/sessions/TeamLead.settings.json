@@ -1,28 +1,34 @@
 {
-  "_comment": "Role profile for the TeamLead: an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. The PR host's update verbs are denied at materialise time from teams.pr_provider (github: gh pr merge/edit, azure-devops: az repos pr update), so this file carries none. The launcher materialises it ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned, the operator kit's Notification and Stop hooks added); _samples feed session_profile_check.py. Project-specific named reads go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/supervisor-sessions.md#teamlead",
+  "_comment": "Role profile for the per-run TeamLead: one lead session per team run, launched in the team's clone with --settings. It may read the team's state, write verdicts and answers through the named scripts (team-lead.sh decision answer is deliberately not allowed: outside auto mode the Operator's approval of that prompt is itself a human act), and write files only under .agents/team/runs/<run>/ and the scratchpad (guard-teamlead-write.sh, registered at materialise time — a deny rule cannot say 'everything except one directory'). It never commits, pushes, merges, rewrites history or writes a stage record. The PR host's update verbs are denied at materialise time from teams.pr_provider; `team-lead.sh materialize <team>` unions this file with the project and local deny/ask rules into <clone>/.agents/team/teamlead.settings.json. _samples feed session_profile_check.py (role TeamLead). Contract: .agents/reference/team-lead.md",
   "env": {
     "TEAM_SESSION_ROLE": "TeamLead"
   },
   "permissions": {
     "allow": [
-      "Read({{CLONES}}/**)",
-      "Bash(bash .claude/lib/team-mail.sh * inbox *)",
-      "Bash(bash .claude/lib/team-mail.sh * recipients)",
-      "Bash(bash .claude/lib/team-mail.sh * recipients *)",
-      "Bash(bash .claude/lib/team-mail.sh * ack *)",
-      "Bash(bash .claude/lib/team-mail.sh * send *)",
-      "Bash(bash .claude/lib/team-lead.sh owns *)"
+      "Bash(bash .claude/lib/team-verdict.sh *)",
+      "Bash(bash .claude/lib/team-answer.sh *)",
+      "Bash(bash .claude/lib/team-lead.sh whoami)",
+      "Bash(bash .claude/lib/team-lead.sh pending *)",
+      "Bash(bash .claude/lib/team-lead.sh diff *)",
+      "Bash(bash .claude/lib/team-lead.sh decision open *)",
+      "Bash(bash .claude/lib/team-lead.sh decision withdraw *)",
+      "Bash(bash .claude/lib/team-lead.sh decision list *)",
+      "Bash(bash .claude/lib/team-tracker.sh show *)",
+      "Bash(node .claude/lib/tracker-snapshot.mjs *)",
+      "Bash(*.claude/lib/codex-bg.sh)",
+      "Read(.agents/**)"
     ],
     "deny": [
+      "Bash(git commit*)",
       "Bash(git push*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
+      "Bash(git reset*)",
+      "Bash(bash .claude/lib/team-record.sh*)",
       "Bash(bash .claude/lib/team-new.sh*)",
       "Bash(bash .claude/lib/team-next.sh*)",
       "Bash(bash .claude/lib/team-remode.sh*)",
       "Bash(bash .claude/lib/team-integrate.sh*)",
-      "Bash(bash .claude/lib/supervisor-sessions.sh freeze*)",
-      "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
-      "Bash(bash .claude/lib/supervisor-sessions.sh answer*)",
-      "Bash(bash .claude/lib/roles.sh here*)",
       "Bash(bash .claude/lib/team-watch.sh routing*)",
       "Bash(bash .claude/lib/team-watch.sh mode answering*)",
       "Skill(pr-merge)",
@@ -30,7 +36,22 @@
       "Skill(release)",
       "Skill(release *)",
       "Bash(*notify.sh*)",
-      "Bash(*operator-record.sh*)"
+      "Bash(*operator-record.sh*)",
+      "Bash(tmux send-keys*)",
+      "Bash(tmux send *)",
+      "Bash(tmux paste-buffer*)",
+      "Bash(*tmux*send-keys*)",
+      "Bash(*tmux*paste-buffer*)",
+      "Bash(hc keys*)",
+      "Bash(hc send*)",
+      "Bash(hc interrupt*)",
+      "Bash(*session-host.sh keys*)",
+      "Bash(*session-host.sh type*)",
+      "Bash(*session-host.sh send *-planner*)",
+      "Bash(*session-host.sh send *-coder*)",
+      "Bash(*session-host.sh send *-qa*)",
+      "Bash(*session-host.sh send *-wrapup*)",
+      "Bash(*session-host.sh send *-cli*)"
     ],
     "ask": [
       "Bash(cat .env*)",
@@ -39,15 +60,16 @@
   },
   "_samples": {
     "forbidden": [
+      "git commit -m x",
       "git push origin feat/x",
+      "git merge origin/main",
+      "git rebase origin/main",
+      "git reset --hard HEAD~1",
+      "bash .claude/lib/team-record.sh --verdict done",
       "bash .claude/lib/team-new.sh alfa 12 feat/12-x origin/main",
       "bash .claude/lib/team-next.sh alfa 13",
       "bash .claude/lib/team-remode.sh alfa brainstorm",
       "bash .claude/lib/team-integrate.sh alfa",
-      "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0",
-      "bash .claude/lib/supervisor-sessions.sh rollback",
-      "bash .claude/lib/supervisor-sessions.sh answer Advisor --fp x yes",
-      "bash .claude/lib/roles.sh here Supervisor",
       "bash .claude/lib/team-watch.sh routing split",
       "bash .claude/lib/team-watch.sh mode answering on",
       "bash .claude/lib/notify.sh human_decision --summary x --answer Supervisor",
@@ -62,17 +84,16 @@
       "Skill(release)",
       "Skill(release *)"
     ],
-    "allowed": [
-      "bash .claude/lib/team-question.sh alfa answer q-1 --tier 1",
-      "bash .claude/lib/team-escalate.sh alfa coder 2 x",
-      "bash .claude/lib/team-watch.sh ack 12",
-      "bash .claude/lib/team-watch.sh mode tiers on"
-    ],
     "reads": [
-      "bash .claude/lib/team-mail.sh --here inbox --for TeamLead --unread",
-      "bash .claude/lib/team-mail.sh --here recipients",
-      "bash .claude/lib/team-mail.sh --here send --to Supervisor --kind turn --body x",
-      "bash .claude/lib/team-lead.sh owns alfa"
+      "bash .claude/lib/team-lead.sh whoami",
+      "bash .claude/lib/team-lead.sh pending alfa",
+      "bash .claude/lib/team-lead.sh diff alfa",
+      "bash .claude/lib/team-lead.sh decision open alfa --source qa-1-1.json --question q",
+      "bash .claude/lib/team-lead.sh decision withdraw alfa d-1 --why w",
+      "bash .claude/lib/team-lead.sh decision list alfa --pending",
+      "bash .claude/lib/team-tracker.sh show 12 --out /tmp/claude/show.json",
+      "node .claude/lib/tracker-snapshot.mjs snapshot --github /tmp/claude/show.json --out .agents/team/runs/alfa-20261116-100000/tracker-plan-1.json",
+      "node .claude/lib/tracker-snapshot.mjs compare - .agents/team/runs/alfa-20261116-100000/tracker-plan-1.json"
     ],
     "secrets": [
       "cat .env",
@@ -82,9 +103,8 @@
     ],
     "writes": [
       "git push --force origin main",
-      "bash .claude/lib/team-new.sh alfa 12 feat/12-x origin/main",
-      "rm -rf /",
-      "bash .claude/team/sessions/operator-kit/install.sh --apply"
+      "git commit --amend --no-edit",
+      "rm -rf /"
     ]
   }
 }

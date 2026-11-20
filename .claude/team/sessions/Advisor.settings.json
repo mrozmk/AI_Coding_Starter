@@ -1,5 +1,5 @@
 {
-  "_comment": "Settings template for the Advisors (the shipped Fable; any Claude role whose teams.sessions entry names settings: Advisor): an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. An Advisor works on request through the Supervisor and stays off the team path, so the team-answering, escalation and team-control commands, merges, releases and pushes are denied. The launcher materialises one profile per role from this template, with env.TEAM_SESSION_ROLE set to that role ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned); _samples feed session_profile_check.py. Project-specific named reads go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/advisor.md",
+  "_comment": "Settings template for the Advisors (the shipped Fable; any Claude role whose teams.sessions entry names settings: Advisor): an extra --settings layer. It narrows writes (deny/ask) and allows only named reads plus the agent-mail client; arrays merge across layers and deny/ask beat allow. An Advisor works on request through the Supervisor and stays off the team path, so the team-answering and team-control commands, merges, releases and pushes are denied. The launcher materialises one profile per role from this template, with env.TEAM_SESSION_ROLE set to that role ({{CLONES}} expanded from teams.clone_parent/clone_name, the project and local deny/ask rules unioned); _samples feed session_profile_check.py. Project-specific named reads go into the project's own copy, each with a matching _samples.reads line. Contract: .agents/reference/roles/advisor.md",
   "env": {
     "TEAM_SESSION_ROLE": "Advisor"
   },
@@ -15,15 +15,12 @@
     "deny": [
       "Bash(git push*)",
       "Bash(bash .claude/lib/team-answer.sh*)",
-      "Bash(bash .claude/lib/team-question.sh * answer *)",
-      "Bash(bash .claude/lib/team-escalate.sh*)",
       "Bash(bash .claude/lib/team-new.sh*)",
       "Bash(bash .claude/lib/team-next.sh*)",
       "Bash(bash .claude/lib/team-remode.sh*)",
       "Bash(bash .claude/lib/team-integrate.sh*)",
       "Bash(bash .claude/lib/supervisor-sessions.sh freeze*)",
       "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
-      "Bash(bash .claude/lib/supervisor-sessions.sh answer*)",
       "Skill(start-team)",
       "Skill(start-team *)",
       "Skill(pr-merge)",
@@ -42,15 +39,12 @@
     "forbidden": [
       "git push origin feat/x",
       "bash .claude/lib/team-answer.sh alfa coder yes",
-      "bash .claude/lib/team-question.sh alfa answer q-1 --tier 1",
-      "bash .claude/lib/team-escalate.sh alfa coder 2 q-1.md",
       "bash .claude/lib/team-new.sh alfa 12 feat/12-x origin/main",
       "bash .claude/lib/team-next.sh alfa 13",
       "bash .claude/lib/team-remode.sh alfa brainstorm",
       "bash .claude/lib/team-integrate.sh alfa",
       "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0",
-      "bash .claude/lib/supervisor-sessions.sh rollback",
-      "bash .claude/lib/supervisor-sessions.sh answer TeamLead --fp x yes"
+      "bash .claude/lib/supervisor-sessions.sh rollback"
     ],
     "skills": [
       "Skill(start-team)",
@@ -62,8 +56,7 @@
     ],
     "allowed": [
       "git log --oneline -20",
-      "bash .claude/lib/session-host.sh status Supervisor",
-      "bash .claude/lib/team-question.sh alfa list"
+      "bash .claude/lib/session-host.sh status Supervisor"
     ],
     "reads": [
       "bash .claude/lib/team-mail.sh --here inbox --for Advisor --unread",

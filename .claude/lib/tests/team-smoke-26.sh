@@ -15,7 +15,7 @@ RUN_ID=alfa-20261116-120000; RD="$TD/runs/$RUN_ID"; SPEC=.agents/specs/s.md; PLA
 export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions"
-cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
+cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/lib/tracker-snapshot.mjs" "$CLONE/.claude/lib/"
 git -C "$CLONE" add -A && git -C "$CLONE" commit --quiet -m "fixture snapshot tool"
 echo "$RUN_ID" > "$TD/run"; mkdir -p "$RD"

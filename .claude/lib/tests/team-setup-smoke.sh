@@ -92,7 +92,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 23 ] || fail "2: allow is not the 23 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 22 ] || fail "2: allow is not the 22 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
@@ -105,6 +105,7 @@ jq -e '[.hooks.Stop[]? | .hooks[] | select(.command | test("monitoring-rearm"))]
 [ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/monitoring.sh*)")] | length' "$S")" = 1 ] \
   || fail "2: allow Bash(bash .claude/lib/monitoring.sh*) not present once"
 [ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/session-wake.sh*)")] | length' "$S")" = 0 ] || fail "2: the session-wake allow rule is still added"
+[ "$(jq '[.permissions.allow[] | select(. == "Bash(bash .claude/lib/supervisor-sessions.sh answer *)")] | length' "$S")" = 0 ] || fail "2: the answer-verb allow rule is still added"
 for a in routing stop "register --takeover" "mode answering" "mode class"; do
   a="Bash(bash .claude/lib/team-watch.sh $a*)"
   [ "$(jq --arg a "$a" '[.permissions.ask[] | select(. == $a)] | length' "$S")" = 1 ] \
@@ -125,7 +126,7 @@ done
   || fail "2: ask roles.sh here not present once"
 SSA="Bash(bash .claude/lib/supervisor-sessions.sh"
 for a in "$SSA check*)" "$SSA preflight*)" "$SSA materialize*)" "$SSA reviewer*)" \
-  "$SSA freeze on *)" "$SSA freeze status*)" "$SSA answer *)" \
+  "$SSA freeze on *)" "$SSA freeze status*)" \
   "Bash(printenv TEAM_SESSION_ROLE)" "Bash(bash .claude/lib/test-gate.sh*)"; do
   [ "$(jq --arg a "$a" '[.permissions.allow[] | select(. == $a)] | length' "$S")" = 1 ] \
     || fail "2: allow $a not present once"
@@ -280,7 +281,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 25 ] || fail "10: allow is not 2 project + 23 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 24 ] || fail "10: allow is not 2 project + 22 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -348,7 +349,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -426,7 +427,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 23' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
@@ -839,5 +840,22 @@ jq -e --arg a "$WA" '.permissions.allow | index($a) | not' "$S" >/dev/null \
   || fail "28: a retired wake file was installed"
 setup "$T"
 ! has "retired settings.json" || fail "28: the rerun retired again"
+
+# ---- (29) the answer verb is retired: its allow rule leaves on a re-run ----
+T=$(mktarget t29)
+mkdir -p "$T/.claude"
+AA='Bash(bash .claude/lib/supervisor-sessions.sh answer *)'
+AK='Bash(bash .claude/lib/supervisor-sessions.sh answer* --fp x)'
+jq -n --arg a "$AA" --arg k "$AK" '{permissions: {allow: [$a, $k]}}' > "$T/.claude/settings.json"
+echo '{"teams":{}}' > "$T/.claude/project-profile.json"
+setup "$T"
+S="$T/.claude/settings.json"
+jq -e --arg a "$AA" '.permissions.allow | index($a) == null' "$S" >/dev/null \
+  || fail "29: the answer-verb allow rule stayed"
+jq -e --arg k "$AK" '.permissions.allow | index($k) != null' "$S" >/dev/null \
+  || fail "29: a differently worded answer rule was removed"
+jq '.permissions.allow' "$S" > "$WORK/allow29"
+setup "$T"
+jq '.permissions.allow' "$S" | cmp -s - "$WORK/allow29" || fail "29: the rerun changed allow"
 
 echo "team-setup-smoke: OK"

@@ -3,6 +3,31 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The session profiles drop the global TeamLead; `TeamLead-run` is renamed (#22, slice 4)
+
+**Before:** `Supervisor.settings.json` and `Advisor.settings.json` denied and sampled
+`team-question.sh`, `team-escalate.sh` and `supervisor-sessions.sh answer`;
+`TeamLead.settings.json` was the global TeamLead's role profile; the per-run lead's profile was
+`TeamLead-run.settings.json`; `/setup:teams` allowed `supervisor-sessions.sh answer *`.
+
+**Now:** the dead rules and samples are gone; `TeamLead.settings.json` is the per-run lead's
+profile (the old global file is replaced); `team-lead.sh materialize` refuses a
+`TeamLead.settings.json` that is not the per-run profile (env role `TeamLead`, deny `git commit*`
+and `team-record.sh*`); `TeamLead-run.settings.json` is `retired`; `/setup:teams` removes the exact
+`supervisor-sessions.sh answer *` allow.
+
+**Action:**
+1. Sync the changed runtime files and `.claude/team/sessions/` together
+   (`/maintain:sync-from-starter`) — a new `team-lead.sh` with the old sessions files refuses to
+   materialise, so the next team run stops before its lead starts.
+2. Re-run `/setup:teams`: it deletes an unmodified `TeamLead-run.settings.json` (a modified one is
+   a conflict — move any project-specific rule into `TeamLead.settings.json`, then delete it) and
+   the allow rule.
+3. A project that kept its own copy of the global `TeamLead.settings.json` resolves the sync
+   conflict to the starter's per-run file.
+4. A per-run lead running during the sync keeps its materialised profile; the next launch reads
+   the new name.
+
 ## The question ledger, `/monitor` and the answer verb are removed (#22, slice 3)
 
 **Before:** the global TeamLead's tier ledger (`team-question.sh` with its parser
@@ -23,11 +48,12 @@ dead. `team-question.sh`, `team-question-lib.sh`, `.claude/commands/monitor.md` 
    `/setup:teams`: it deletes unmodified copies of the four retired files and reports a locally
    modified one as a conflict.
 2. Close any open `/monitor` window.
-3. If the team-watch daemon runs, run `bash .claude/lib/team-watch.sh start` in the receiver's
-   Claude window: `TW_VERSION` is now 3, so `start` replaces the loops still pushing the
-   `/monitor` contract (never `stop` first — it deactivates every receiver).
-4. The session profiles still name `team-question.sh` and `supervisor-sessions.sh answer` in their
-   rules and samples until slice 4 — harmless, the commands no longer run.
+3. If the team-watch daemon runs, run `bash .claude/lib/team-watch.sh start` in a Claude session
+   in the main checkout (single routing) or in the Supervisor role session (split routing):
+   `TW_VERSION` is now 3, so `start` replaces the loops still pushing the `/monitor` contract
+   (never `stop` first — it deactivates every receiver).
+4. The session profiles' entries for `team-question.sh` and `supervisor-sessions.sh answer` went
+   in slice 4 (above).
 
 ## The role wake loop is retired (#52)
 

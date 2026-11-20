@@ -98,7 +98,7 @@ has "$C/pr-merge.md" "team-pipeline.md\` §5a"
 has "$REF" "**exit 10**"
 ! grep -q "applies once the per-run TeamLead" "$REF" || fail "the contract still waits for E1"
 jq -e '.permissions.allow | index("Bash(bash .claude/lib/team-tracker.sh show *)") and index("Bash(node .claude/lib/tracker-snapshot.mjs *)")' \
-  "$ST/.claude/team/sessions/TeamLead-run.settings.json" >/dev/null || fail "the lead profile cannot read the ticket"
+  "$ST/.claude/team/sessions/TeamLead.settings.json" >/dev/null || fail "the lead profile cannot read the ticket"
 N=$((N + 15))
 
 jq -e '.workflow.tracker_comments == false and (.workflow._tracker_comments_doc | length) > 0' \

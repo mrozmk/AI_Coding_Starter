@@ -197,11 +197,11 @@ echo "team-smoke-20: (e2) Bash guard OK"
 
 # ---- (g) materialize ---------------------------------------------------------------------------
 mkdir -p "$MAIN/.claude/team/sessions"
-cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
+cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 jq '.permissions.deny = ["Bash(git rebase*)"] | .permissions.ask = ["Bash(git tag*)"]' \
   "$MAIN/.claude/settings.json" > "$WORK/s" && cp "$WORK/s" "$MAIN/.claude/settings.json"
 run "$MAIN" bash .claude/lib/team-lead.sh materialize alfa
-expect 0 "profile TeamLead-run:" "(g) materialize"
+expect 0 "profile TeamLead:" "(g) materialize"
 P="$TD/teamlead.settings.json"
 [ "$(ls -l "$P" | cut -c1-10)" = "-rw-------" ] || fail "(g) profile is not mode 600"
 jq -e '(.permissions.deny | index("Bash(az repos pr update*)")) and
@@ -216,10 +216,32 @@ jq -e '(.permissions.deny | index("Bash(az repos pr update*)")) and
     or . == "Bash(*session-host.sh send *-coder*)")] | length == 8)' "$P" \
   >/dev/null || fail "(g) materialised profile content"
 run "$MAIN" python3 -I "$L/session_profile_check.py" "$MAIN" --profiles "$MAIN/.claude/team/sessions" \
-  --clone "$CLONE" TeamLead-run
-expect 0 "TeamLead-run OK" "(g) profile check of the materialised file"
+  --clone "$CLONE" TeamLead
+expect 0 "TeamLead OK" "(g) profile check of the materialised file"
 run "$CLONE" bash .claude/lib/team-lead.sh materialize alfa; expect 1 "main checkout" "(g) from a clone"
 echo "team-smoke-20: (g) materialize OK"
+
+# ---- (g2) materialize refuses the retired global profile ---------------------------------------
+LT="$MAIN/.claude/team/sessions/TeamLead.settings.json"
+cp "$LT" "$WORK/lead.keep"
+rm -f "$TD/teamlead.settings.json"
+# The global profile's real rules, abridged: env role TeamLead, no git commit / team-record.sh deny.
+jq -n '{env: {TEAM_SESSION_ROLE: "TeamLead"},
+  permissions: {allow: ["Read({{CLONES}}/**)", "Bash(bash .claude/lib/team-mail.sh * inbox *)",
+                        "Bash(bash .claude/lib/team-lead.sh owns *)"],
+                deny: ["Bash(git push*)", "Bash(bash .claude/lib/team-new.sh*)",
+                       "Bash(bash .claude/lib/team-integrate.sh*)"],
+                ask: ["Bash(cat .env*)"]}}' > "$LT"
+run "$MAIN" bash .claude/lib/team-lead.sh materialize alfa
+expect 1 "is not the per-run TeamLead profile" "(g2) global profile as shipped"
+[ ! -e "$TD/teamlead.settings.json" ] || fail "(g2) a refused materialize wrote the profile"
+jq '.permissions.allow -= ["Read({{CLONES}}/**)"]' "$LT" > "$WORK/s" && cp "$WORK/s" "$LT"
+run "$MAIN" bash .claude/lib/team-lead.sh materialize alfa
+expect 1 "is not the per-run TeamLead profile" "(g2) global profile without the clones read"
+[ ! -e "$TD/teamlead.settings.json" ] || fail "(g2) a refused materialize wrote the profile (no clones read)"
+cp "$WORK/lead.keep" "$LT"
+run "$MAIN" bash .claude/lib/team-lead.sh materialize alfa; expect 0 "profile TeamLead:" "(g2) restored"
+echo "team-smoke-20: (g2) global-profile guard OK"
 
 # ---- (h) teams.teamlead profile keys -----------------------------------------------------------
 load() {  # load <jq edit> → RC + $WORK/out of the profile load in a scratch root

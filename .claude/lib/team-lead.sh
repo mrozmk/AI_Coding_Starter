@@ -17,9 +17,11 @@
 #   owns exits 0 when the team's current run has its own TeamLead (teamlead.json run). digest-check exits 0 when runs/<run>/digest.md has a `scope:` header, or in quick mode
 #   when no path the plan names maps to a routed domain (.claude/memory-domains.json); else 1.
 #   materialize writes <clone>/.agents/team/teamlead.settings.json (mode 600): the role profile
-#   .claude/team/sessions/TeamLead-run.settings.json unioned with the project and local deny/ask
+#   .claude/team/sessions/TeamLead.settings.json unioned with the project and local deny/ask
 #   rules, the PR host's update verbs denied for teams.pr_provider, guard-teamlead-write.sh
 #   registered for Edit|Write|NotebookEdit and guard-teamlead-bash.sh for Bash.
+#   It refuses a profile that is not the per-run one (env role TeamLead, deny git commit and
+#   team-record.sh) — the retired global TeamLead.settings.json a partial sync left behind.
 #   e.g. bash .claude/lib/team-lead.sh materialize alfa
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
@@ -238,7 +240,7 @@ owns() {
 # Same union as supervisor-sessions.sh materialize, written into the clone instead of the main
 # checkout's watch/profiles: the lead runs in the clone, the global roles do not.
 materialize() {
-  local team="$1" root clone loc out pr='[]'
+  local team="$1" root clone loc out tpl pr='[]'
   team_check_name "$team" || exit 2
   root="$(team_root)"
   [ ! -f "$root/.agents/team/team.json" ] \
@@ -246,6 +248,11 @@ materialize() {
   team_profile_load "$root"
   clone="$(team_clone_dir "$team" "$root")"
   [ -f "$clone/.agents/team/team.json" ] || { echo "error: $clone is not a team clone" >&2; exit 1; }
+  tpl="$root/.claude/team/sessions/TeamLead.settings.json"
+  jq -e '.env.TEAM_SESSION_ROLE == "TeamLead"
+    and ((.permissions.deny // []) | index("Bash(git commit*)") != null
+         and index("Bash(bash .claude/lib/team-record.sh*)") != null)' "$tpl" >/dev/null 2>&1 \
+    || { echo "error: $tpl is not the per-run TeamLead profile (the retired global one?) — run /maintain:sync-from-starter" >&2; exit 1; }
   case "$TEAM_PR_PROVIDER" in
     github) pr='["Bash(gh pr merge*)","Bash(gh pr edit*)"]' ;;
     azure-devops) pr='["Bash(az repos pr update*)"]' ;;
@@ -265,10 +272,10 @@ materialize() {
            command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-write.sh\""}]},
            {matcher: "Bash", hooks: [{type: "command", onFailure: "block",
            command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-bash.sh\""}]}]}}' \
-      "$root/.claude/team/sessions/TeamLead-run.settings.json" "$root/.claude/settings.json" "$loc" \
+      "$tpl" "$root/.claude/settings.json" "$loc" \
       > "$out.tmp"
     mv "$out.tmp" "$out" )
-  jq -r '"profile TeamLead-run: \(.permissions.deny | length) deny,"
+  jq -r '"profile TeamLead:\(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
 }
 

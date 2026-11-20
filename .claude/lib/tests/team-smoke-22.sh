@@ -15,7 +15,7 @@ SUP="$MAIN/.agents/team/inbox/Supervisor/new"
 export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions" "$CLONE/.claude/hooks"
-cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
+cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 # The doorbell's socket sender, from the main checkout (the seed carries only team-*.sh).
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"

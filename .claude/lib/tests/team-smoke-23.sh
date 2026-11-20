@@ -14,7 +14,7 @@ BR=feature/AB-1600-x; SUP="$MAIN/.agents/team/inbox/Supervisor/new"
 export WORK TD
 prof() { jq "$1" "$MAIN/.claude/project-profile.json" > "$WORK/p" && mv "$WORK/p" "$MAIN/.claude/project-profile.json"; }
 mkdir -p "$MAIN/.claude/team/sessions" "$CLONE/.claude/hooks"
-cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
+cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
 git -C "$CLONE" add .claude/hooks && git -C "$CLONE" commit --quiet -m "fixture guard"

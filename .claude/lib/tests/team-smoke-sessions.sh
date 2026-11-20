@@ -36,7 +36,7 @@ HOOKR="$MAIN/.claude/hooks/session-registry.sh"
 cp "$SRC/.claude/lib/supervisor-sessions.sh" "$SRC/.claude/lib/session_profile_check.py" \
   "$SRC/.claude/lib/roles.sh" "$MAIN/.claude/lib/"
 cp "$SRC/.claude/team/sessions/Supervisor.settings.json" "$SRC/.claude/team/sessions/Advisor.settings.json" \
-  "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
+  "$MAIN/.claude/team/sessions/"
 mkdir -p "$MAIN/.agents/reference/roles"; cp "$SRC"/.agents/reference/roles/*.md "$MAIN/.agents/reference/roles/"
 cp "$SRC/.claude/hooks/session-registry.sh" "$MAIN/.claude/hooks/"
 mkdir -p "$MAIN/tools"

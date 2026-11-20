@@ -8,7 +8,7 @@ teams.sessions with a `settings` template (read through roles-lib.sh, the one re
 template may carry another name (Fable → Advisor.settings.json). A declared `TeamLead` is the per-run
 launcher's model/effort, never a session profile, and is skipped. Rules come from the materialised profile
 (.agents/team/watch/profiles/<role>.settings.json, written by `supervisor-sessions.sh materialize`,
-whose env role must be <role>) when it exists, else from the template, plus the project settings. The per-run role TeamLead-run reads TeamLead-run.settings.json and, with
+whose env role must be <role>) when it exists, else from the template, plus the project settings. The per-run role TeamLead reads TeamLead.settings.json and, with
 --clone <dir>, the materialised <dir>/.agents/team/teamlead.settings.json (team-lead.sh
 materialize); its env role is TeamLead. Each `_samples` command is classified deny > ask > allow > prompt with the
 same fnmatch matcher team_prompt_check.py uses for a team prompt — an approximation of Claude Code's
@@ -26,9 +26,9 @@ import sys
 
 # Mirror of TW_ROLES in team-watch-route.sh; the smoke part `sessions` asserts they are equal.
 ROLES = ("Supervisor",)
-# Per-run roles: never in ROLES (not team-watch receivers); profile <role>.settings.json, env role
-# without the suffix.
-RUN_ROLES = ("TeamLead-run",)
+# Per-run roles: never in ROLES (not team-watch receivers); profile <role>.settings.json, read with
+# --clone from the materialised <clone>/.agents/team/teamlead.settings.json.
+RUN_ROLES = ("TeamLead",)
 LAYERS = (("project", ".claude/settings.json"), ("local", ".claude/settings.local.json"))
 
 
@@ -129,7 +129,7 @@ def check_role(main, pdir, role, out, clone=None, template=None):
         out.append("%s FAIL: profile %s missing" % (role, template))
         return 1
     fails, leaks, notes = [], [], []
-    env_role = template.split("-")[0] if template in RUN_ROLES else template
+    env_role = template
     if profile.get("env", {}).get("TEAM_SESSION_ROLE") != env_role:
         fails.append("env.TEAM_SESSION_ROLE is not %s" % env_role)
     mp = mat_path(main, role, clone)

@@ -209,7 +209,6 @@ own .agents/reference/team-watch.md
 # --- role sessions: profiles, their check and the support script ------------------------------------
 own .claude/team/sessions/Supervisor.settings.json
 own .claude/team/sessions/TeamLead.settings.json
-own .claude/team/sessions/TeamLead-run.settings.json
 own .claude/lib/team-lead.sh
 own .claude/lib/team-brief.sh
 own .claude/lib/team-lead-lib.sh
@@ -279,3 +278,6 @@ retired .claude/lib/team-question.sh e67dc45d94b775c945dc3667cae8f715e9402bd5 98
 retired .claude/lib/team-question-lib.sh 634df3950c006ad1c99651124851eb840c5bec51 9a6f2cd69f7c5f2e6904ead2f5afcceb17af11ba cc0355fb0f6681cd05625683e1b89f5bf557e02e e772be4e8c2ab63e0883833af591dd4760a2b4c4
 retired .claude/commands/monitor.md b545ba7d80e57824f19fb04721f256e0287bc028 ec2c3c35d583ebc95b0886bf9afe4435fc016970 cdccfaabf1304663538780f8f691bad1bbc91791 c646aa81a93fe4f1bcf1873ed8ae4085f49c140e 4d967c50b179c8d1bc3dba28951a49e10435c27a 86618d8d420ce4fd5e36b486225b7b821b388df8 635f58de8f2b015bd0ae8c2fc0e9fb813901d198 d044420b57190766ac07c0f8a9d7f615224b125d 67e6cd26d342af2aadc31df854c7ffcf7eb8b800 e50c9730b5aa5e20a771e509ba757bfc6abe4a07 4ee8328a6d877542d55eabce2e690189c51251c2 3844596fce06d39cfb606f45c62041dafd9b1085 da26021adf314004226d8c843f8328c4b0fd7158 3992550b2f782ffe9ba4b85dfd9c0e96c6807795 8d61370ae81e122f295e7e9befb7934ea915de68 fdfe5cbc94c5d718363a43e15ffeec9941ebf86a ecea959d59af66f125871c5c66a2133aef61efbc 714f3e353fc7640e5f7ad7e6560e4bcec418d23f 78f6fdcff0ea932f9f6c5bb96e4c748612d9b9ca 7a616a68f2a68fdf2229a75d14184eae09d5b529 262380fcee9a3b4403e87f707ef3bb7af2866687 e5ce2abd70e9124ffe04688c0856853103761b6a
 retired .agents/reference/team-questions.md 78671ac7b3f7b767eccc8e4750a23a7342344d41 a74e6c9542171f5a6fc21dcb897ab4dbeb69046f eef98eb8ccc7d0e4f1fc6e2efcb629f193a84263 c01fb816d817a0486a4fac95ad19f2d6e3a7d9f5 fc63b86c1a3fa3fc72afad634fa86466c853f199 ae12e0d77c2784b545e48a5914fe29c772b4310d
+
+# --- retired: the per-run lead's provisional profile name (global TeamLead retirement, slice 4); all shipped blob ids ---
+retired .claude/team/sessions/TeamLead-run.settings.json 07aa0eb3cff00d17638f765c32b95d6470e27e27 a26d864a07646bad06cf7807a98ffbbcfedaf206 c7cfeaa07e29adf7d7b5a42bbe80d259f93f985c e5a74032a0e0874c862521a69475c575029de6ea e95f6c18640ed1d91dc7a8ae2483e370b1c15089

@@ -35,11 +35,11 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 ## Models
 
-Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, every role runs `opus`: the Supervisor at effort `medium`, and the TeamLead and the Advisor at `high`, because the TeamLead decides design questions inside the AC. The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `roles.sh stop <Role>` and `roles.sh up <Role>`.
+Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, the Supervisor runs `opus` at effort `medium` and the Advisors run at `high` (Fable on `fable`, Astra on Codex). The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `roles.sh stop <Role>` and `roles.sh up <Role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort (default `fable` / `high`, read by the runner at each launch); it starts no role session.
 
 ## Role profiles and their check
 
-`.claude/team/sessions/Supervisor.settings.json` and `TeamLead.settings.json` are an extra `--settings` layer. The Advisor has no repo profile. Each profile:
+`.claude/team/sessions/Supervisor.settings.json` and `Advisor.settings.json` are an extra `--settings` layer (the Claude Advisors share the `Advisor` template). The per-run TeamLead's `TeamLead.settings.json` is materialised by `team-lead.sh materialize` into the team clone ([`team-lead.md`](../../.agents/reference/team-lead.md)). Each role profile:
 
 - sets `env.TEAM_SESSION_ROLE`;
 - uses `deny` and `ask` to narrow writes;
@@ -49,8 +49,8 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 
 | Role | Denied on top of the project and local rules |
 |---|---|
-| TeamLead | `git push`, the PR host's update verbs (per `teams.pr_provider`), `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback\|here`, `team-watch.sh routing`, `team-watch.sh mode answering`, `/pr-merge`, `/release` |
-| Supervisor | `team-answer.sh` |
+| Supervisor | `team-answer.sh`, `notify.sh` |
+| Advisor | `git push`, `team-answer.sh`, `team-new.sh`, `team-next.sh`, `team-remode.sh`, `team-integrate.sh`, `supervisor-sessions.sh freeze\|rollback`, `/start-team`, `/pr-merge`, `/release`, `notify.sh`, `operator-record.sh` |
 
 **The committed ask entries, `Bash(cat .env*)` and `Read(**/.env*)`.** Both profiles carry these two ask rules; the second keeps the Read tool from opening a `.env` the Bash rule never sees. They give the profile's `secrets` samples something to prove in a project whose own settings ask nothing. Provider- and cloud-specific secret verbs belong in the project's copy of the profile or in `teams.policy` examples, not in the template.
 
@@ -58,7 +58,6 @@ Deny and ask beat allow across every layer, so a profile allow is additive and t
 
 - the profile, plus the union of the project's and the local `deny` and `ask` rules, so the deny floor survives however `--settings` merges;
 - `{{CLONES}}` expanded from `teams.clone_parent` and `teams.clone_name`;
-- for the TeamLead, the PR update verbs added to `deny`;
 - from the installed kit's `role-hooks.settings.json`, exactly the `Stop` hook, and nothing else, because a `PreToolUse` or `PermissionRequest` hook could approve a tool call.
 
 **The check.** `supervisor-sessions.sh check` classifies each profile's `_samples` with the same fnmatch matcher as the prompt check ([06](06-permissions.md#the-prompt-check)):

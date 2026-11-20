@@ -90,7 +90,7 @@ echo "team-smoke-stop: (2) stalled OK"
 # ---- (3) rejected, lead on: the third rings the lead, the runner waits, no Operator event -----------
 unset TEAM_SMOKE_NO_LEAD
 mkdir -p "$CLONE/.claude/hooks" "$MAIN/.claude/team/sessions"
-cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
+cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 printf '## Ticket\nExport.\n\n## Not ordered\nnone stated\n\n## In-flight work\n- none\n' > "$WORK/brief.md"
 run "$MAIN" bash .claude/lib/team-brief.sh write alfa "$WORK/brief.md"; expect 0 "" "(3) fixture brief"

@@ -112,7 +112,7 @@ echo "team-smoke-dialog: (3) no false alarm OK"
 # ---- (4) the TeamLead at the trust dialog: warn, status, one event, resolved when gone ---------------
 unset TEAM_SMOKE_NO_LEAD
 mkdir -p "$CLONE/.claude/hooks" "$MAIN/.claude/team/sessions"
-cp "$SRC/.claude/team/sessions/TeamLead-run.settings.json" "$MAIN/.claude/team/sessions/"
+cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 printf '## Ticket\nExport.\n\n## Not ordered\nnone stated\n\n## In-flight work\n- none\n' > "$WORK/brief.md"
 run "$MAIN" bash .claude/lib/team-brief.sh write alfa "$WORK/brief.md"; expect 0 "" "(4) fixture brief"

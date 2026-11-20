@@ -398,7 +398,7 @@ NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
    "Bash(bash .claude/lib/supervisor-sessions.sh check*)",
    "Bash(bash .claude/lib/supervisor-sessions.sh preflight*)", "Bash(bash .claude/lib/supervisor-sessions.sh materialize*)",
    "Bash(bash .claude/lib/supervisor-sessions.sh reviewer*)", "Bash(bash .claude/lib/supervisor-sessions.sh freeze on *)",
-   "Bash(bash .claude/lib/supervisor-sessions.sh freeze status*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)",
+   "Bash(bash .claude/lib/supervisor-sessions.sh freeze status*)",
    "Bash(printenv TEAM_SESSION_ROLE)",
    # /roles: start, list, stop and place the role sessions; taking a window (here) is asked.
    "Bash(bash .claude/lib/roles.sh)", "Bash(bash .claude/lib/roles.sh up*)",
@@ -430,10 +430,10 @@ NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
      "Bash(bash .claude/lib/supervisor-sessions.sh freeze off*)",
      "Bash(bash .claude/lib/supervisor-sessions.sh rollback*)",
      "Bash(bash .claude/lib/roles.sh here *)"]) as $ask
-  # Rules this installer added for the launcher verbs step 9a removed and for the retired role wake loop (exact strings only; a rule worded any other way stays).
+  # Rules this installer added for the launcher verbs step 9a removed, the retired role wake loop and the retired answer verb (exact strings only; a rule worded any other way stays).
   | ((["status*", "start *", "stop *", "up*", "here *"]
      | map("Bash(bash .claude/lib/supervisor-sessions.sh " + . + ")"))
-     + ["Bash(bash .claude/lib/session-wake.sh*)"]) as $gone
+     + ["Bash(bash .claude/lib/session-wake.sh*)", "Bash(bash .claude/lib/supervisor-sessions.sh answer *)"]) as $gone
   | .permissions = (.permissions // {})
   | .permissions.allow = ((.permissions.allow // []) - $gone)
   | .permissions.ask = ((.permissions.ask // []) - $gone - (if $tm == "auto" then $merge else [] end))

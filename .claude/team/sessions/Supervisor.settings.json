@@ -15,8 +15,6 @@
     ],
     "deny": [
       "Bash(bash .claude/lib/team-answer.sh*)",
-      "Bash(bash .claude/lib/team-question.sh * answer *)",
-      "Bash(bash .claude/lib/team-escalate.sh*)",
       "Bash(*notify.sh*)"
     ],
     "ask": [
@@ -27,8 +25,6 @@
   "_samples": {
     "forbidden": [
       "bash .claude/lib/team-answer.sh alfa coder yes",
-      "bash .claude/lib/team-question.sh alfa answer q-1 --tier 1",
-      "bash .claude/lib/team-escalate.sh alfa coder 2 q-1.md",
       "bash .claude/lib/notify.sh human_decision --summary x --answer Supervisor",
       ".claude/lib/notify.sh release --summary x",
       "bash -c '.claude/lib/notify.sh flush'",
@@ -38,8 +34,7 @@
     "allowed": [
       "bash .claude/lib/team-automerge-check.sh alfa",
       "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0",
-      "bash .claude/lib/team-watch.sh register",
-      "bash .claude/lib/supervisor-sessions.sh answer TeamLead --fp x yes"
+      "bash .claude/lib/team-watch.sh register"
     ],
     "reads": [
       "bash .claude/lib/team-mail.sh --here inbox --for Supervisor --unread",
