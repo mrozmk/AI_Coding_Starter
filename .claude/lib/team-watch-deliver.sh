@@ -53,8 +53,8 @@ tw_send() {  # tw_send <role> <message> → the sender's exit status
   fi
 }
 
-# tw_contract [<role>] → the file every receiver handles its messages by (the role is ignored).
-tw_contract() { echo .agents/reference/team-watch.md#supervisor; }
+# The file every receiver handles its messages and alarms by.
+TW_CONTRACT=.agents/reference/team-watch.md#supervisor
 
 tw_collapse_line() {  # tw_collapse_line <role> → the `(skipped …)` line while one is unsent
   jq -r '"(skipped \(.n) backlog events from \(.from)–\(.to)"
@@ -69,7 +69,7 @@ tw_message() {
   local extra
   extra=" · role=$2 · ack: bash .claude/lib/team-watch.sh ack $(jq '.[-1].seq' "$1")"
   [ "$(tw_answering)" = on ] || extra="$extra · answering=off"
-  jq -r --arg tiers "$(tw_tiers)" --arg x "$extra" --arg c "$(tw_contract "$2")" \
+  jq -r --arg tiers "$(tw_tiers)" --arg x "$extra" --arg c "$TW_CONTRACT" \
     --arg cl "$(tw_collapse_line "$2")" '
     (map(.label | select(. != "")) | unique | join(" ")) as $l
     | "[team-watch #\(last.seq)] \(length) signal(s)\(if $l == "" then "" else " " + $l end)"

@@ -222,8 +222,8 @@ confirm() {  # confirm <say|other|…>
   max=$(( ${TEAM_CONFIRM_SECS:-5} * 2 ))
   while :; do
     if [ "$mode" = say ]; then
-      if real_event "$SAY_EVENT" && [ "$(python3 -I "$LIB/team_prompt.py" user-after "$T" \
-          "$SAY_EVENT" "$text")" = yes ]; then echo "confirmed: yes (transcript)"; return; fi
+      if real_event "$EVENT" && [ "$(python3 -I "$LIB/team_prompt.py" user-after "$T" \
+          "$EVENT" "$text")" = yes ]; then echo "confirmed: yes (transcript)"; return; fi
     elif real_event "$EVENT" \
         && [ "$(python3 -I "$LIB/team_prompt.py" result "$T" "$EVENT")" = yes ]; then
       echo "confirmed: yes (tool_result)"; return
@@ -271,8 +271,7 @@ reserve_dispatch() {  # reserve_dispatch <instance key> — one dispatch per ins
 
 auth_preflight
 team_tmux_alive "$name" || refuse 6 "session gone"
-OWNER="direct pid=$$"
-HELD="$(team_send_lock "$TD" "$ROLE" "${TEAM_SEND_LOCK_WAIT_SENDER:-2}" "$OWNER")" \
+HELD="$(team_send_lock "$TD" "$ROLE" "${TEAM_SEND_LOCK_WAIT_SENDER:-2}" "direct pid=$$")" \
   || refuse 3 "target busy ($HELD)"
 trap 'team_send_unlock "$TD" "$ROLE"' EXIT
 
@@ -322,7 +321,6 @@ if real_event "$E_EVENT"; then
   [ "$EVENT" = "$E_EVENT" ] || refuse 6 "new prompt event"
 fi
 auth_event
-SAY_EVENT="$EVENT"
 
 CLASS=""
 if [ "$action" = yes ]; then
