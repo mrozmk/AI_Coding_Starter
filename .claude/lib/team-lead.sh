@@ -275,7 +275,7 @@ materialize() {
       "$tpl" "$root/.claude/settings.json" "$loc" \
       > "$out.tmp"
     mv "$out.tmp" "$out" )
-  jq -r '"profile TeamLead:\(.permissions.deny | length) deny,"
+  jq -r '"profile TeamLead: \(.permissions.deny | length) deny,"
     + " \(.permissions.ask | length) ask, \(.permissions.allow | length) allow"' "$out"
 }
 

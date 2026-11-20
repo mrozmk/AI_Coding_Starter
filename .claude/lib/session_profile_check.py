@@ -10,7 +10,7 @@ launcher's model/effort, never a session profile, and is skipped. Rules come fro
 (.agents/team/watch/profiles/<role>.settings.json, written by `supervisor-sessions.sh materialize`,
 whose env role must be <role>) when it exists, else from the template, plus the project settings. The per-run role TeamLead reads TeamLead.settings.json and, with
 --clone <dir>, the materialised <dir>/.agents/team/teamlead.settings.json (team-lead.sh
-materialize); its env role is TeamLead. Each `_samples` command is classified deny > ask > allow > prompt with the
+materialize). Each `_samples` command is classified deny > ask > allow > prompt with the
 same fnmatch matcher team_prompt_check.py uses for a team prompt — an approximation of Claude Code's
 matcher, so the live `/permissions` check stays a runbook step. `reads` must be allow, `secrets`
 ask or deny, `writes` anything but allow. A sample written `Read(<path>)` is checked against the
@@ -129,9 +129,8 @@ def check_role(main, pdir, role, out, clone=None, template=None):
         out.append("%s FAIL: profile %s missing" % (role, template))
         return 1
     fails, leaks, notes = [], [], []
-    env_role = template
-    if profile.get("env", {}).get("TEAM_SESSION_ROLE") != env_role:
-        fails.append("env.TEAM_SESSION_ROLE is not %s" % env_role)
+    if profile.get("env", {}).get("TEAM_SESSION_ROLE") != template:
+        fails.append("env.TEAM_SESSION_ROLE is not %s" % template)
     mp = mat_path(main, role, clone)
     perms, own_deny, local, floor, materialised = effective(main, profile, mp, notes)
     if materialised and role not in RUN_ROLES \
