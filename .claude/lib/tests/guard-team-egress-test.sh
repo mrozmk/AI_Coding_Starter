@@ -219,6 +219,12 @@ sh_ ask  "eval \"export GH_''HOST=evil.example\"; gh pr view 1"
 sh_ ask  'bash -O extglob -c "gh issue view 1 --@(repo) evil.example/o/r"'
 sh_ ask  'gh issue view 1 --+(repo) evil.example/o/r'
 sh_ ask  'gh issue view 1 --rep(o) evil.example/o/r'
+sh_ ask  "echo evil.example/o | xargs -I o bash -c 'gh issue view 1 -R o/r'"
+sh_ ask  "$(printf '%s\n' "bash <(cat <<'X'" 'gh pr view `echo r/o/x.example R- | rev` `base64 f`' \
+  "echo it's" 'X' ')')"
+sh_ ask  'gh issue view 1 --repo>/dev/null evil.example/o/r'
+sh_ ask  "eval 'gh issue view 1' '--repo evil.example/o/r'"
+sh_ none "bash -c 'gh pr view 1'"
 sh_ none "gh pr view 3 --json files -q '.files[].path'"
 sh_ none 'gh issue view 4 -R o/r'
 sh_ none 'gh pr view 3 --repo o/r-x.y --json title -q .title'

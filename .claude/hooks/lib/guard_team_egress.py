@@ -5,14 +5,13 @@ scope). WebFetch to a host outside the project's WebFetch(domain:...) allowlist 
 whose command-position word is an egress-capable tool (curl wget ssh scp rsync nc ftp sftp gh npm npx
 pip pip3 pipx uvx osascript; python/python3 with -c, -, no arguments or -m other than a local test
 module, node with -e/-p/--eval/-) -> ask, also inside bash -c, tmux arguments, eval, $(...) and
-here-doc lines.
-gh pr view / gh issue view pass only as the simple command's own first word, with a plain
-OWNER/REPO repo value, no URL, --hostname, brace expansion or option-shaped glob, and no $,
-backtick, #, backslash,
-GH_HOST or GH_REPO in the text or its tokens (a quoted ';' does not hide an argument: the whole
-string is checked). A /dev/tcp or /dev/udp path (bash's sockets) -> ask, whatever the verb, at
-every nesting level. Never emits allow: no output leaves the
-decision to Claude Code's own rules, so deny still wins. Unreadable input -> ask (fail-closed).
+here-doc lines. gh pr view / gh issue view pass only as the simple command's own first word (also
+in a string nested under no wrapper), with a plain OWNER/REPO repo value, no URL, --hostname, brace
+expansion or option-shaped glob, and no $, backtick, #, backslash, GH_HOST or GH_REPO in the text
+or its tokens (a quoted ';' does not hide an argument: the whole string is checked). A /dev/tcp or
+/dev/udp path (bash's sockets) -> ask, whatever the verb, at every nesting level. Never emits
+allow: no output leaves the decision to Claude Code's own rules, so deny still wins. Unreadable
+input -> ask (fail-closed).
 A loopback port probe (`nc -z [-v] [-w n] [-G n] localhost|127.0.0.1|::1 <ports>`) is not egress.
 git push/fetch/pull/clone/ls-remote/submodule add/remote add|set-url whose repository argument is a
 URL or `host:path` -> ask unless the host is in the same WebFetch allowlist; a bare remote name or
@@ -117,6 +116,8 @@ def gh_host_selector(words):
     gh auth -h shorthand in any short-flag cluster. Over-matching only asks more."""
     auth = words[1:2] == ["auth"]
     for i, w in enumerate(words):
+        # A glued redirection stays in the token: gh gets `--repo>/dev/null h/o/r` as --repo h/o/r.
+        w = re.split(r"[<>]", w, maxsplit=1)[0]
         if ("://" in w or w == "--hostname" or w.startswith("--hostname=")
                 or BRACE.search(w) or GLOB_OPTION.match(w)):
             return True
@@ -223,9 +224,9 @@ def git_host_ok(host):
         return False
 
 
-def egress_in(cmd, depth=0):
+def egress_in(cmd, depth=0, reads_ok=True):
     """Name of the first egress tool in command position, or ''. ValueError on unparsable text."""
-    return verb_in(cmd, EGRESS, depth)
+    return verb_in(cmd, EGRESS, depth, reads_ok)
 
 
 def verb_in(cmd, names, depth=0, reads_ok=True):
@@ -235,10 +236,7 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
     tokens = tokenize(cmd)
     if names is EGRESS and net_device(cmd, tokens):
         return NET_FOUND
-    # The whole string, not one command: a quoted ';' splits `gh … --template ';' -R host/o/r`.
-    reads_ok = reads_ok and not (GH_READS_TAINT.search(cmd) or gh_host_selector(tokens)
-                                 or GH_READS_TAINT.search(unquoted(cmd))
-                                 or any(GH_READS_TAINT.search(t) for t in tokens))
+    reads_ok = reads_ok and not gh_read_tainted(cmd, tokens)
     for raw in commands(tokens):
         words = strip_wrappers(raw)
         # strip_wrappers re-splits `flock -c "<cmd>"` / `env -S "<cmd>"`: check what it produced too.
@@ -260,10 +258,14 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
         flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
         if verb in SHELLS and flag:
             nested.append(words[flag + 1])
-        elif verb in ("tmux", "eval"):
+        elif verb == "eval":
+            # eval joins its arguments into one command: `eval 'gh issue view 1' '--repo h/o/r'`.
+            nested.append(" ".join(words[1:]))
+        elif verb == "tmux":
             nested.extend(words[1:])
+        # A wrapper rewrites a nested string too: `xargs -I o bash -c 'gh … -R o/r'`.
         for inner in nested:
-            found = verb_in(inner, names, depth + 1, reads_ok)
+            found = verb_in(inner, names, depth + 1, reads_ok and words == raw)
             if found:
                 return found
     return ""
@@ -329,6 +331,14 @@ def net_device(cmd, tokens):
     return bool(NET_DEV.search(cmd)) or any(NET_DEV.search(w) for w in tokens)
 
 
+def gh_read_tainted(cmd, tokens=()):
+    """True when <cmd> could point a gh read at another host. The whole string, not one command:
+    a quoted ';' splits `gh … --template ';' -R host/o/r`."""
+    return bool(GH_READS_TAINT.search(cmd) or gh_host_selector(list(tokens))
+                or GH_READS_TAINT.search(unquoted(cmd))
+                or any(GH_READS_TAINT.search(t) for t in tokens))
+
+
 def bash_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
@@ -339,7 +349,8 @@ def bash_reason(cmd, project):
         found = egress_in(cmd)
     except ValueError:
         try:
-            found = egress_in(doc_heredocs_removed(cmd))
+            # The taint comes from the raw text: the doc-heredoc strip blanks out backquotes.
+            found = egress_in(doc_heredocs_removed(cmd), reads_ok=not gh_read_tainted(cmd))
         except ValueError:
             # Unparsable: an egress tool cannot sit in command position without its name.
             if MENTIONS_EGRESS.search(cmd):
