@@ -9,7 +9,7 @@ sessions in Herdr. `install.sh` installs or updates them into a Herdr app home
 - `files-plus` — a lazy file browser for the focused pane's folder, with bounded read-only previews.
 - `files-plus-menu` — the right-click menu of a `files-plus` row (copy path, open, new file or folder, rename, delete).
 - `files-plus-name` — the name dialog of `files-plus` (rename, new file, new folder).
-- `file-view` — a read-only file viewer in its own tab, opened by `files-plus`.
+- `file-view` — a file editor in its own tab, opened by `files-plus`; ⌘S saves (read-only for another machine's files and for files too large to load whole).
 - `limits` — usage limits of every Claude and Codex profile on this computer.
 - `machines` — load of each machine: CPU, memory, swap, disk, the heaviest and the orphaned processes.
 - `machines-menu` — the right-click menu of an orphaned process in `machines`.
