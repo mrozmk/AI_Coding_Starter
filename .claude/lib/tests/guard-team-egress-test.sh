@@ -391,6 +391,34 @@ print(1)
 EOF'
 sh_ ask  '</dev/null gh issue view 1 -R evil.example/o/r'
 sh_ ask  "gh issue view 1 --json title --template '<' -R evil.example/o/r"
+# a redirection glued to a separator, or between a wrapper and its -c / -S string
+sh_ ask  'true;</dev/null curl https://evil.example/x'
+sh_ ask  '(</dev/null curl https://evil.example/x)'
+sh_ ask  'echo a |</dev/null curl https://evil.example/x'
+sh_ ask  'true &&</dev/null curl https://evil.example/x'
+sh_ ask  "bash -c 'true;</dev/null curl https://evil.example/x'"
+sh_ ask  "flock </dev/null /tmp/l -c 'curl https://evil.example/x'"
+sh_ ask  "flock /tmp/l >/dev/null -c 'true; curl https://evil.example/x'"
+sh_ ask  "flock /tmp/l 2>&1 -c 'curl https://evil.example/x'"
+sh_ ask  "env >/dev/null -S 'curl https://evil.example/x'"
+sh_ ask  "env >/dev/null --split-string='true; curl https://evil.example/x'"
+sh_ ask  "bash -c >/dev/null 'curl https://evil.example/x'"
+sh_ ask  "bash -c <> /dev/null 'curl https://evil.example/x'"
+sh_ ask  $'bash -c <<- EOF \'curl https://evil.example/x\'\nEOF'
+sh_ ask  "flock 9 </dev/null -c 'curl https://evil.example/x'"
+sh_ ask  "env -iS 'bash -c' 'curl https://evil.example/x'"
+sh_ ask  "env --split-string='bash -c' 'curl https://evil.example/x'"
+# a reading that may have cut a wrapper off keeps no gh read exemption
+sh_ ask  'xargs <f gh pr view 1'
+sh_ ask  'xargs -a f >/dev/null gh pr view 1'
+sh_ ask  'xargs -a f 2>&1 gh pr view 1'
+sh_ ask  'cat f | xargs >/dev/null gh issue view'
+sh_ ask  'timeout 5 >/dev/null gh pr view 1'
+sh_ ask  '</dev/null gh pr view 1'
+sh_ none 'gh pr view 1 2>&1 | head -3'
+sh_ none 'gh pr view 1 >/tmp/t.json 2>&1'
+sh_ none 'jq . <f >g; sort <in >out'
+sh_ none "diff <(ls) <(cat x)"
 sh_ none 'ls 2>/dev/null'
 sh_ none 'git status >/dev/null 2>&1'
 sh_ none 'jq . <f >g'

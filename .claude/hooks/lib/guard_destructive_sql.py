@@ -46,7 +46,7 @@ def env_string(words):
     `-iS s`, `--split-string[=]s`), else None. A cluster that reaches -u/-C first is their value."""
     w = words[0]
     if w == "--split-string" or w.startswith("--split-string="):
-        return (w[15:], words[1:]) if "=" in w else (" ".join(words[1:2]), words[2:])
+        return (w[len("--split-string="):], words[1:]) if "=" in w else (" ".join(words[1:2]), words[2:])
     for i, c in enumerate(w[1:] if w[:1] == "-" and w[:2] != "--" else "", 1):
         if c in "uC":
             return None
@@ -60,8 +60,9 @@ def strip_wrappers(words, strings=None):
     `curl …`; `env -S "<string>"` and `flock <file> -c "<string>"` split their string; `find …
     -exec <cmd> …` yields <cmd>. ValueError when a string to split is unparsable. <strings>, when
     given, collects text to scan as commands of its own: the flock -c string, and for env -S in any
-    spelling (env_string) its string and the words after it — env's `#` / `\\c` rules are not
-    shlex's, and the other spellings are still skipped as options here."""
+    spelling (env_string) its string, the words after it, and both joined (`env -iS 'bash -c' 'cmd'`)
+    — env's `#` / `\\c` rules are not shlex's, and the other spellings are still skipped as options
+    here."""
     while words:
         head = os.path.basename(words[0])
         if words[0] in KEYWORDS:
@@ -81,7 +82,8 @@ def strip_wrappers(words, strings=None):
         while words and (words[0].startswith("-") or re.match(r"^\w+=", words[0])):
             found = env_string(words) if head == "env" else None
             if found and strings is not None:
-                strings += [found[0], shlex.join(found[1])]
+                rest = shlex.join(found[1])
+                strings += [found[0], rest, found[0] + " " + rest]
             if found and words[0].startswith("-S"):
                 words, split = shlex.split(found[0]) + found[1], True
                 break
@@ -288,6 +290,32 @@ def split_spans(tokens):
                       if tokens[k] and set(tokens[k]) <= SEPARATORS), len(tokens))
             spans.append(tokens[i + 1:j])
     return spans
+
+
+def unredirected(tokens, fds=True):
+    """The commands of <tokens> with every redirection dropped — an operator word with its attached
+    target, a bare operator with the next word, the `&`/`|` target of `2>&1` / `>|f`, and a `<`
+    glued to a separator (`true;</dev/null curl`) — so a wrapper keeps its own operands:
+    `flock </dev/null f -c 'curl …'` → `flock f -c 'curl …'`. <fds>: a number before a redirection
+    is its fd (`3 <f`), else a word of its own (`flock 9 </dev/null -c …`) — the spacing is lost."""
+    cmds, cur, drop = [], [], ""
+    for i, t in enumerate(tokens):
+        if t and set(t) <= SEPARATORS | {"<"}:
+            glued = re.fullmatch(r"([;&|()!\n]*)(<+&?)", t)
+            target = t in ("&", "|") and i and tokens[i - 1][-1:] in ("<", ">")
+            if cur and not target and (not glued or glued.group(1)):
+                cmds.append(cur)
+                cur = []
+            drop = glued.group(2) if glued else "w" if target else ""
+        elif drop:
+            # A spaced `<>` / `<<-` reaches here cut in two (`<` `>`, `<<` `-`): the target is next.
+            drop = "w" if (drop, t) in (("<", ">"), ("<<", "-")) else ""
+        elif REDIR.match(t):
+            drop = "" if t[REDIR.match(t).end():] else "w"
+        elif not (fds and FD_WORD.match(t) and tokens[i + 1:i + 2]
+                  and tokens[i + 1][:1] in ("<", ">")):
+            cur.append(t)
+    return cmds + [cur] * bool(cur)
 
 
 def heredocs(cmd):

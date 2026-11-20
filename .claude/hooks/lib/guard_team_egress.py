@@ -38,7 +38,7 @@ sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
     SEPARATORS, SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans,
-    strip_wrappers, tokenize)
+    strip_wrappers, tokenize, unredirected)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -236,21 +236,24 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
     """First of <names> in command position, also nested; a loopback probe is not `nc`.
     <reads_ok> turns False for good once this string or an enclosing one could point a gh read at
     another host. Readings are only ever added (the tokens have lost quotes and spacing): a command
-    with a redirection before its verb is read on from every later word. An unparsable part stops
-    nothing: ValueError only when no other part names one."""
+    with a redirection before its verb is read on from every later word, and every command is also
+    read with its redirections dropped. An unparsable part stops nothing: ValueError only when no
+    other part names one."""
     tokens = tokenize(cmd)
     if names is EGRESS and net_device(cmd, tokens):
         return NET_FOUND
     reads_ok = reads_ok and not gh_read_tainted(cmd, tokens)
-    # (words, expand): a suffix is never expanded again — every suffix of its source is queued.
-    todo = [(c, True) for c in commands(tokens)]
-    todo += [(s[k:], False) for s in split_spans(tokens) for k in range(1, len(s))]
+    # (words, expand, plain): a suffix is never expanded again — every suffix of its source is
+    # queued — and never plain: it may have cut a wrapper off, so it keeps no gh read exemption.
+    todo = [(c, True, True) for c in commands(tokens)]
+    todo += [(s[k:], False, False) for s in split_spans(tokens) for k in range(1, len(s))]
+    todo += [(c, False, True) for fds in (True, False) for c in unredirected(tokens, fds)]
     done, inners, broken = set(), set(), False
     while todo:
-        raw, expand = todo.pop(0)
-        if tuple(raw) in done:
+        raw, expand, plain = todo.pop(0)
+        if (tuple(raw), plain) in done:
             continue
-        done.add(tuple(raw))
+        done.add((tuple(raw), plain))
         strings = []
         try:
             words = strip_wrappers(raw, strings)
@@ -258,15 +261,16 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
             # The strings collected so far and the raw substitutions are still scanned below.
             broken, words = True, []
         if expand and redirection_led(raw, words):
-            todo += [(r[k:], False) for r in (raw, words) for k in range(1, len(r))]
+            todo += [(r[k:], False, False) for r in (raw, words) for k in range(1, len(r))]
+        plain = reads_ok and plain and words == raw
         # strip_wrappers re-splits `flock -c "<cmd>"` / `env -S "<cmd>"`: check what it produced too.
         if names is EGRESS and net_device("", words):
             return NET_FOUND
         if names is EGRESS and words and BRACE.search(words[0]):
             return "brace expansion " + words[0]
-        verb =os.path.basename(words[0].lstrip("`")) if words else ""
+        verb = os.path.basename(words[0].lstrip("`")) if words else ""
         if verb in names and not (verb == "nc" and loopback_probe(words)) and not (
-                names is EGRESS and not egress_capable(verb, words, reads_ok and words == raw)):
+                names is EGRESS and not egress_capable(verb, words, plain)):
             return verb
         if verb == "git" and names is EGRESS:
             for arg in [git_repo_arg(words) or ""] + git_config_urls(words):
@@ -277,7 +281,7 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
             continue
         # From the raw words: an assignment `x=$(curl …)` is stripped as a wrapper above.
         nested = [SUBST.sub(" ; ", w) for w in raw if "$(" in w or "`" in w] + strings
-        flag =next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
+        flag = next((i for i, w in enumerate(words[1:-1], 1) if SHELL_C.match(w)), 0)
         if verb in SHELLS and flag:
             nested.append(words[flag + 1])
         elif verb == "eval":
@@ -287,12 +291,11 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
             nested.extend(words[1:])
         # A wrapper rewrites a nested string too: `xargs -I o bash -c 'gh … -R o/r'`.
         for inner in nested:
-            key = (inner, reads_ok and words == raw)
-            if key in inners:
+            if (inner, plain) in inners:
                 continue
-            inners.add(key)
+            inners.add((inner, plain))
             try:
-                found = verb_in(inner, names, depth + 1, key[1])
+                found = verb_in(inner, names, depth + 1, plain)
             except ValueError:
                 broken = True
                 continue
