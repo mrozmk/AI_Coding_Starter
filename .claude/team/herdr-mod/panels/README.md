@@ -77,7 +77,30 @@ by hand under `"global"` in your `keys.json`:
 
 - `limits` finds the profiles in your home folder: `.claude`, `.claude-*` (with `projects/`) and
   `.codex`, `.codex-*` (with `sessions/`), paired by suffix. Its Claude rows come from
-  `rate-limits.json` in each profile folder, written by a status-line script this kit does not
-  ship; without it the row says no data yet. Codex rows come from the newest session log.
+  `rate-limits.json` in each profile folder, written by `rate-limits.sh` once you hook it up (see
+  below); without it the row says no data yet. Codex rows come from the newest session log.
 - Checked against Herdr `0.1.16` (`kit.json`). A newer Herdr may change the mod API.
 - Notices and licences: `NOTICE.md`.
+
+### Claude rows: rate-limits.sh
+
+`rate-limits.sh` turns the JSON Claude Code hands a status line command into `rate-limits.json`.
+It is opt-in: the installer does not copy it and nothing changes your settings.
+
+- Copy it into your Claude folder:
+  `cp .claude/team/herdr-mod/panels/rate-limits.sh ~/.claude/rate-limits.sh`. Each `~/.claude-*`
+  profile has its own settings — repeat per profile. The script writes into the folder of the
+  profile it runs under (`CLAUDE_CONFIG_DIR`, else `~/.claude`).
+- Hook it up in that profile's `settings.json`, one of three ways:
+  - alone (the status line stays empty):
+    `"statusLine": {"type": "command", "command": "bash ~/.claude/rate-limits.sh"}`
+  - as a wrapper around your status line command — it passes the same input on and shows that
+    command's output:
+    `"statusLine": {"type": "command", "command": "bash ~/.claude/rate-limits.sh node ~/.claude/my-statusline.js"}`
+  - from your own status line script — pipe it the JSON your script received:
+    `printf '%s' "$input" | bash ~/.claude/rate-limits.sh`
+- Claude Code sends the limits only to Claude.ai subscribers, after a session's first response;
+  until then the row says no data yet.
+- A `CLAUDE_CONFIG_DIR` outside `~/.claude` / `~/.claude-*` is not seen by the panel.
+- To remove it: put `statusLine` back as it was (or delete it), then delete
+  `~/.claude/rate-limits.sh` and `~/.claude/rate-limits.json`.
