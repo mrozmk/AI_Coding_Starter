@@ -5,7 +5,13 @@ scope). WebFetch to a host outside the project's WebFetch(domain:...) allowlist 
 whose command-position word is an egress-capable tool (curl wget ssh scp rsync nc ftp sftp gh npm npx
 pip pip3 pipx uvx osascript; python/python3 with -c, -, no arguments or -m other than a local test
 module, node with -e/-p/--eval/-) -> ask, also inside bash -c, tmux arguments, eval, $(...) and
-here-doc lines. Never emits allow: no output leaves the
+here-doc lines.
+gh pr view / gh issue view pass only as the simple command's own first word, with a plain
+OWNER/REPO repo value, no URL, --hostname, brace expansion or option-shaped glob, and no $,
+backtick, #, backslash,
+GH_HOST or GH_REPO in the text or its tokens (a quoted ';' does not hide an argument: the whole
+string is checked). A /dev/tcp or /dev/udp path (bash's sockets) -> ask, whatever the verb, at
+every nesting level. Never emits allow: no output leaves the
 decision to Claude Code's own rules, so deny still wins. Unreadable input -> ask (fail-closed).
 A loopback port probe (`nc -z [-v] [-w n] [-G n] localhost|127.0.0.1|::1 <ports>`) is not egress.
 git push/fetch/pull/clone/ls-remote/submodule add/remote add|set-url whose repository argument is a
@@ -16,7 +22,7 @@ A URL set as git config — `git config remote.<n>.url|pushurl <url>`, `git -c r
 The Supervisor in the main checkout (TEAM_SESSION_ROLE=Supervisor, no TEAM_RUN_TEAM, neither
 .agents/team/session.json nor team.json) passes a gh command that matches a Bash(gh ...) allow rule
 of settings.local.json only — never settings.json, and only as one plain simple command (no
-compound, no `$` expansion or substitution, no env prefix or wrapper).
+compound, no `$` expansion or substitution, no env prefix or wrapper, no gh host selector).
 """
 import json
 import os
@@ -55,6 +61,19 @@ GH_RULE = re.compile(r"^Bash\(gh ([^()*:\"'\\]+?)(:\*| \*)?\)$")
 # `$(...)` at run time: `${a=$}${b=(}…$[x]`), backquotes, redirection (bash /dev/tcp), and the
 # `#` / `\` that the shared comment stripper misreads (`x\ #; curl …` would hide the curl).
 UNPLAIN = re.compile(r"[$`<>#\\]")
+# gh reads `[HOST/]OWNER/REPO`; a third part, `git@…` or a scheme makes it pick another host.
+GH_PLAIN_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+# What an exempt gh read never carries: expansion or substitution, the `#` / `\` the shared comment
+# stripper misreads (`x\ # -R host/o/r` hides the -R), the env names that select gh's host, or a
+# `(` glued to a word (extglob / zsh grouping: `--@(repo)`, `--rep(o)` can match a file `--repo`).
+GH_READS_TAINT = re.compile(r"[$`#\\]|GH_HOST|GH_REPO|[^\s;&|()<>]\(")
+# Brace expansion rebuilds a word at run time: `--re{p..p}o=host/o/r` reaches gh as `--repo=…`.
+BRACE = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
+# A glob that can match a file named like an option (`--rep[o]`, `[-]-repo` with a file `--repo`).
+GLOB_OPTION = re.compile(r"^[-*?\[][^*?\[]*[*?\[]|^[*?\[]")
+# bash's socket pseudo-files: a redirection there is egress whatever the verb.
+NET_DEV = re.compile(r"/dev/(tcp|udp)\b")
+NET_FOUND = "network redirection (/dev/tcp or /dev/udp)"
 GIT_NET = {"push", "fetch", "pull", "clone", "ls-remote", "submodule", "remote"}
 # Config keys that redirect where git connects: the value is a URL, or (insteadOf) the key holds it.
 GIT_URL_KEY = re.compile(r"^remote\.[^=]+\.(url|pushurl)$", re.I)
@@ -92,9 +111,33 @@ def loopback_probe(words):
             and all(re.fullmatch(r"[0-9]+(-[0-9]+)?", w) for w in ports))
 
 
-def egress_capable(verb, words):
+def gh_host_selector(words):
+    """True when <words> could point gh at another host: a repo value that is not plain
+    OWNER/REPO (any -R / --repo spelling, also a short-flag cluster), a URL, --hostname, or the
+    gh auth -h shorthand in any short-flag cluster. Over-matching only asks more."""
+    auth = words[1:2] == ["auth"]
+    for i, w in enumerate(words):
+        if ("://" in w or w == "--hostname" or w.startswith("--hostname=")
+                or BRACE.search(w) or GLOB_OPTION.match(w)):
+            return True
+        short = w.startswith("-") and not w.startswith("--")
+        if auth and short and "h" in w[1:]:
+            return True
+        if w == "--repo" or w.startswith("--repo="):
+            value = w[len("--repo="):] if "=" in w else "".join(words[i + 1:i + 2])
+        elif short and "R" in w[1:]:
+            rest = w[w.index("R") + 1:]
+            value = (rest[1:] if rest.startswith("=") else rest) or "".join(words[i + 1:i + 2])
+        else:
+            continue
+        if not GH_PLAIN_REPO.match(value):
+            return True
+    return False
+
+
+def egress_capable(verb, words, reads_ok=True):
     """False for the forms of an egress verb that are not egress: an interpreter running a file,
-    the read-only gh views the roles are allowed."""
+    the read-only gh views the roles are allowed. <reads_ok> False: a gh read is egress too."""
     if verb in INLINE:
         # No arguments at all reads the program from stdin (`python3 <<EOF`).
         if len(words) == 1:
@@ -107,7 +150,7 @@ def egress_capable(verb, words):
                 return True
         return False
     if verb == "gh":
-        return words[1:3] not in GH_READS
+        return not reads_ok or words[1:3] not in GH_READS
     return True
 
 
@@ -185,13 +228,25 @@ def egress_in(cmd, depth=0):
     return verb_in(cmd, EGRESS, depth)
 
 
-def verb_in(cmd, names, depth=0):
-    """First of <names> in command position, also nested; a loopback probe is not `nc`."""
-    for raw in commands(tokenize(cmd)):
+def verb_in(cmd, names, depth=0, reads_ok=True):
+    """First of <names> in command position, also nested; a loopback probe is not `nc`.
+    <reads_ok> turns False for good once this string or an enclosing one could point a gh read at
+    another host."""
+    tokens = tokenize(cmd)
+    if names is EGRESS and net_device(cmd, tokens):
+        return NET_FOUND
+    # The whole string, not one command: a quoted ';' splits `gh … --template ';' -R host/o/r`.
+    reads_ok = reads_ok and not (GH_READS_TAINT.search(cmd) or gh_host_selector(tokens)
+                                 or GH_READS_TAINT.search(unquoted(cmd))
+                                 or any(GH_READS_TAINT.search(t) for t in tokens))
+    for raw in commands(tokens):
         words = strip_wrappers(raw)
+        # strip_wrappers re-splits `flock -c "<cmd>"` / `env -S "<cmd>"`: check what it produced too.
+        if names is EGRESS and net_device("", words):
+            return NET_FOUND
         verb = os.path.basename(words[0].lstrip("`")) if words else ""
         if verb in names and not (verb == "nc" and loopback_probe(words)) and not (
-                names is EGRESS and not egress_capable(verb, words)):
+                names is EGRESS and not egress_capable(verb, words, reads_ok and words == raw)):
             return verb
         if verb == "git" and names is EGRESS:
             for arg in [git_repo_arg(words) or ""] + git_config_urls(words):
@@ -208,7 +263,7 @@ def verb_in(cmd, names, depth=0):
         elif verb in ("tmux", "eval"):
             nested.extend(words[1:])
         for inner in nested:
-            found = verb_in(inner, names, depth + 1)
+            found = verb_in(inner, names, depth + 1, reads_ok)
             if found:
                 return found
     return ""
@@ -246,7 +301,8 @@ def local_gh_rules(project):
 
 def local_gh_exempt(cmd, project):
     """The Supervisor's plain `gh ...` command: one simple command with a literal `gh` first (no env
-    prefix, wrapper or path), no separator, expansion or redirection, covered by a local rule."""
+    prefix, wrapper or path), no separator, expansion or redirection, no gh host selector, covered by a
+    local rule."""
     if UNPLAIN.search(cmd) or not supervisor_main_checkout(project):
         return False
     try:
@@ -254,14 +310,29 @@ def local_gh_exempt(cmd, project):
     except ValueError:
         return False
     # Any separator token, real or quoted (the tokenizer cannot tell them apart), means not plain.
-    if words[:1] != ["gh"] or any(set(w) <= SEPARATORS for w in words):
+    if (words[:1] != ["gh"] or any(set(w) <= SEPARATORS for w in words)
+            or gh_host_selector(words)):
         return False
     rest = tuple(words[1:])
     return any(rest[:len(w)] == w if prefix else rest == w
                for w, prefix in local_gh_rules(project))
 
 
+def unquoted(text):
+    """<text> without quotes and backslashes: a name split by quotes at any nesting depth
+    (`eval "export GH_''HOST=x"`, `bash -c "… /dev/t''cp/…"`) reads whole again."""
+    return re.sub(r"[\"'\\]", "", text)
+
+
+def net_device(cmd, tokens):
+    """A bash /dev/tcp or /dev/udp path in the text or in a token (quotes joined: /dev/t''cp)."""
+    return bool(NET_DEV.search(cmd)) or any(NET_DEV.search(w) for w in tokens)
+
+
 def bash_reason(cmd, project):
+    # Raw text first: an unparsable command never reaches verb_in's per-level check.
+    if net_device(cmd, [unquoted(cmd)]):
+        return NET_FOUND
     if local_gh_exempt(cmd, project):
         return ""
     try:
@@ -274,6 +345,8 @@ def bash_reason(cmd, project):
             if MENTIONS_EGRESS.search(cmd):
                 return "unparsable command mentions an egress tool"
             return ""
+    if found == NET_FOUND:
+        return found
     if found.startswith("git to "):
         return found + " (not in the WebFetch allowlist)"
     return found + " in command position" if found else ""
