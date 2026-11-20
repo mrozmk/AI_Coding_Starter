@@ -2,7 +2,7 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, openOverlay, run, notify } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, openOverlay, run, notify, shared, setShared } from "herdr";
 
 // A focused mod pane (a file-view tab) has no folder: keep showing the last one in that space.
 const lastLocation = new Map();
@@ -45,7 +45,8 @@ const BY_EXT = {
   zip: ["file-archive", ORANGE], tar: ["file-archive", ORANGE], gz: ["file-archive", ORANGE], tgz: ["file-archive", ORANGE], "7z": ["file-archive", ORANGE], rar: ["file-archive", ORANGE],
 };
 // Opens a file in its own tab (file-view), or shows the tab already showing it in this space.
-// A tab is matched by name (the file name) and by holding a file-view pane.
+// A tab is reused only while the file-view pane it was opened with still shows that file (machine,
+// full path), tracked in shared("file-view.panes") because a mod pane's props cannot be read back.
 // Files dropped from Finder are copied, never moved. A taken name becomes "name copy.ext",
 // then "name copy 2.ext" (as in Finder and files-plus-menu's Paste); prints the final name.
 const COPY_INTO = `src=$1 dir=$2; name=\${src##*/}; base=$name; ext=
@@ -77,10 +78,19 @@ async function dropInto(dir, paths, on) {
 
 function openFileTab(file, on) {
   const name = file.split("/").pop(), space = spaces().find(s => s.active);
-  const viewers = new Set(panes().filter(p => p.mod === "file-view").map(p => p.tab));
-  const open = space?.tabs.find(tab => tab.name === name && viewers.has(tab.id));
-  if (open) run("tab.select", { id: open.id });
-  else run("tab.new", { name, mod: "file-view", props: { file, on: on ?? null } });
+  const key = JSON.stringify([on ?? null, file, false]), reg = shared("file-view.panes") ?? {};
+  const inSpace = new Set((space?.tabs ?? []).map(t => t.id));
+  const open = panes().find(p => p.mod === "file-view" && reg[p.pane] === key && inSpace.has(p.tab));
+  if (open) { run("tab.select", { id: open.tab }); return; }
+  const before = new Set(spaces().flatMap(s => s.tabs.map(t => t.id)));
+  run("tab.new", { name, mod: "file-view", props: { file, on: on ?? null } });
+  const created = spaces().flatMap(s => s.tabs).find(t => !before.has(t.id));
+  const live = panes(), pane = created && live.find(p => p.mod === "file-view" && p.tab === created.id);
+  // Keyed by pane, not tab: a tab can outlive its first pane (split in another, close the first).
+  const ids = new Set(live.map(p => p.pane));
+  const kept = Object.fromEntries(Object.entries(reg).filter(([id]) => ids.has(id)));
+  if (pane) kept[pane.pane] = key;
+  if (pane || Object.keys(kept).length !== Object.keys(reg).length) setShared("file-view.panes", kept);
 }
 
 // A folder's mark is the most serious one among the changed files anywhere inside it.

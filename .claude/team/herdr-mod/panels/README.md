@@ -105,3 +105,9 @@ It is opt-in: the installer does not copy it and nothing changes your settings.
 - To remove it, in every profile you hooked it up in (`~/.claude` and each `~/.claude-*`): put
   that profile's `statusLine` back as it was (or delete it), then delete its copy of the script
   and its `rate-limits.json` — e.g. `~/.claude/rate-limits.sh` and `~/.claude/rate-limits.json`.
+
+## Changes
+
+- 2026-11-20 — `files-plus` and its menu's Preview reuse an open file tab only for the same file
+  (machine and full path): two files with the same name in different folders open as two tabs.
+  Tabs opened before this change are not reused. Run `/maintain:sync-herdr-kit` to update.
