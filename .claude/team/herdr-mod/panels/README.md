@@ -102,5 +102,6 @@ It is opt-in: the installer does not copy it and nothing changes your settings.
 - Claude Code sends the limits only to Claude.ai subscribers, after a session's first response;
   until then the row says no data yet.
 - A `CLAUDE_CONFIG_DIR` outside `~/.claude` / `~/.claude-*` is not seen by the panel.
-- To remove it: put `statusLine` back as it was (or delete it), then delete
-  `~/.claude/rate-limits.sh` and `~/.claude/rate-limits.json`.
+- To remove it, in every profile you hooked it up in (`~/.claude` and each `~/.claude-*`): put
+  that profile's `statusLine` back as it was (or delete it), then delete its copy of the script
+  and its `rate-limits.json` — e.g. `~/.claude/rate-limits.sh` and `~/.claude/rate-limits.json`.

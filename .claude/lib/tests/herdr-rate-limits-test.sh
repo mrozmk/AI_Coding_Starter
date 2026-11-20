@@ -76,6 +76,10 @@ rm -f "$F"
 run "$FULL" -- sh -c 'cat; echo; echo wrapped'
 ok '[ "$RC" -eq 0 ] && [ "$OUT" = "$(printf "%s\nwrapped" "$FULL")" ]' "pass-through: wrapped command gets the exact input"
 ok '[ -f "$F" ]' "pass-through: file written"
+run "$FULL"$'\n' -- sh -c 'cat; echo wrapped'
+ok '[ "$RC" -eq 0 ] && [ "$OUT" = "$(printf "%s\nwrapped" "$FULL")" ]' "pass-through: a trailing newline reaches the wrapped command"
+run "$FULL"$'\n' -- wc -c
+ok '[ "$RC" -eq 0 ] && [ "$(echo $OUT)" = "$(( ${#FULL} + 1 ))" ]' "pass-through: byte count with a trailing newline unchanged"
 run "$FULL" -- sh -c 'exit 5'
 ok '[ "$RC" -eq 5 ]' "pass-through: wrapped command's exit status"
 

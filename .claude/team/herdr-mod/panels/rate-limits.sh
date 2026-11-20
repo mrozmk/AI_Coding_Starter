@@ -10,7 +10,9 @@
 # and the script itself never prints (stdout is the status line).
 set -u
 
-input="$(cat)"
+# The sentinel keeps trailing newlines, which $(...) would strip: <cmd> gets the input byte for byte.
+input="$(cat; printf x)"
+input="${input%x}"
 dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
 if command -v jq >/dev/null 2>&1 && [ -d "$dir" ]; then
