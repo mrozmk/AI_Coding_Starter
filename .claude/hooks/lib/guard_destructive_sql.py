@@ -41,10 +41,27 @@ FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir"}
 SHELL_C = re.compile(r"^-[a-zA-Z]*c[a-zA-Z]*$")  # -c, -lc, -ec
 
 
-def strip_wrappers(words):
+def env_string(words):
+    """(string, rest) when words[0] is env's -S in a getopt spelling (`-S s`, `-Ss`, a cluster
+    `-iS s`, `--split-string[=]s`), else None. A cluster that reaches -u/-C first is their value."""
+    w = words[0]
+    if w == "--split-string" or w.startswith("--split-string="):
+        return (w[15:], words[1:]) if "=" in w else (" ".join(words[1:2]), words[2:])
+    for i, c in enumerate(w[1:] if w[:1] == "-" and w[:2] != "--" else "", 1):
+        if c in "uC":
+            return None
+        if c == "S":
+            return (w[i + 1:], words[1:]) if w[i + 1:] else (" ".join(words[1:2]), words[2:])
+    return None
+
+
+def strip_wrappers(words, strings=None):
     """The words from the command a wrapper chain runs: `sudo -u x timeout 5 env A=1 curl …` →
     `curl …`; `env -S "<string>"` and `flock <file> -c "<string>"` split their string; `find …
-    -exec <cmd> …` yields <cmd>. ValueError when a string to split is unparsable."""
+    -exec <cmd> …` yields <cmd>. ValueError when a string to split is unparsable. <strings>, when
+    given, collects text to scan as commands of its own: the flock -c string, and for env -S in any
+    spelling (env_string) its string and the words after it — env's `#` / `\\c` rules are not
+    shlex's, and the other spellings are still skipped as options here."""
     while words:
         head = os.path.basename(words[0])
         if words[0] in KEYWORDS:
@@ -62,10 +79,11 @@ def strip_wrappers(words):
         words = words[1:]
         split = False
         while words and (words[0].startswith("-") or re.match(r"^\w+=", words[0])):
-            if head == "env" and words[0].startswith("-S"):
-                text = words[0][2:] or " ".join(words[1:2])
-                rest = words[1:] if words[0][2:] else words[2:]
-                words, split = shlex.split(text) + rest, True
+            found = env_string(words) if head == "env" else None
+            if found and strings is not None:
+                strings += [found[0], shlex.join(found[1])]
+            if found and words[0].startswith("-S"):
+                words, split = shlex.split(found[0]) + found[1], True
                 break
             words = words[2:] if words[0] in takes_value else words[1:]
         if split:
@@ -73,6 +91,8 @@ def strip_wrappers(words):
         if head in POSITIONAL and words:
             words = words[1:]
         if head == "flock" and len(words) > 1 and words[0] in ("-c", "--command"):
+            if strings is not None:
+                strings.append(words[1])
             words = shlex.split(words[1]) + words[2:]
         if head == "timeout" and words and re.match(r"^\d", words[0]):
             words = words[1:]
@@ -238,6 +258,36 @@ def commands(tokens):
             cur.append(t)
     if cur:
         yield cur
+
+
+# A bash redirection word: optional fd (`2`, `{fd}`), the operator, then an attached target or none.
+REDIR = re.compile(r"^(?:[0-9]+|\{\w+\})?(&>>?|<<<|<<-?|<>|<&|>&|>>|>\||<|>)")
+FD_WORD = re.compile(r"^(?:[0-9]+|\{\w+\})$")
+
+
+def redirection_led(raw, words):
+    """True when a redirection stands before the verb of <raw> (<words> = its strip_wrappers result):
+    as the first word, as an fd word before one (`3 <f`), or anywhere in a wrapper word stripped
+    (`flock </dev/null /tmp/l curl`, `X=1> /dev/null curl`). Where its target ends cannot be told
+    from the tokens."""
+    n = len(raw) - len(words)
+    prefix = raw[:n] if n >= 0 and raw[n:] == words else []
+    return (any("<" in w or ">" in w for w in prefix) or bool(words and REDIR.match(words[0]))
+            or len(words) > 1 and bool(FD_WORD.match(words[0])) and bool(REDIR.match(words[1])))
+
+
+def split_spans(tokens):
+    """The words from the target of an operator tokenize() cuts in two — `<<`, `<<<`, `<&`, and a
+    `&`/`|` right after `>`/`<` (`2>&1`, `>|f`, `{fd}>&1`) — to the next separator: commands() splits
+    there and reads that target as the verb (`2>&1 curl` → `1 curl`)."""
+    spans = []
+    for i, t in enumerate(tokens):
+        if t in ("<<", "<<<", "<&") or (
+                t in ("&", "|") and i and tokens[i - 1][-1:] in ("<", ">")):
+            j = next((k for k in range(i + 1, len(tokens))
+                      if tokens[k] and set(tokens[k]) <= SEPARATORS), len(tokens))
+            spans.append(tokens[i + 1:j])
+    return spans
 
 
 def heredocs(cmd):
