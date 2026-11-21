@@ -29,7 +29,7 @@ The parent passes:
 1. `cd WORKTREE_PATH`; look at `git status --porcelain` and, when `BASE` is a rev, `git diff --stat BASE...HEAD`.
 2. Run the `deep-review` skill as `/deep-review report-only <SCOPE_FILES>` — the literal `report-only` token first, then the paths. The skill's own contract makes that mode audit-and-report; honour it.
 3. Route every finding by the skill's conviction table: high-conviction + obvious fix, needs-a-human, low tier. Comment-noise deletions are high-conviction findings — list them, the caller applies them. Standard-9 findings route the same way and keep their `rule:` / `duplicate of:` tags.
-4. Print the skill's `Duplicate search:` record, then emit the report below and stop.
+4. Print the skill's `Duplicate search:` record (above the block, never inside it), then emit the report below and stop.
 
 ## Never
 
@@ -58,4 +58,4 @@ STATUS: completed | failed — <reason>
 
 Write `- none` under an empty heading; never omit a heading. A clean review is a valid result.
 
-`STANDARDS:` copies the skill's `Standards:` line. The bracketed tags are optional per line — only those that apply, never invented. The `Duplicate search:` record goes above the block, never inside it.
+`STANDARDS:` copies the skill's `Standards:` line. The bracketed tags are optional per line — only those that apply, never invented.
