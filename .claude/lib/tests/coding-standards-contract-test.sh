@@ -37,6 +37,9 @@ def section(text, name):
     m = re.search(r"^## " + re.escape(name) + r"\n(.*?)(?=^## |\Z)", text, re.S | re.M)
     return m.group(1) if m else ""
 
+def between(text, start, end):
+    return text.split(start, 1)[1].split(end, 1)[0] if start in text else ""
+
 seed = read(SEED)
 lines = seed.splitlines()
 check(len(lines) <= 200, f"seed: {len(lines)} lines, limit 200")
@@ -74,32 +77,32 @@ check("### Standards vs memory" in protocol, "reflection-protocol.md has `### St
 check(DOC in read(".claude/docs/guide.md"), f"guide.md names {DOC}")
 
 pf = read(".claude/commands/plan-feature.md")
-lookup = pf.split("**2. Pattern Recognition**", 1)[-1].split("**3. Dependency Analysis**", 1)[0]
+lookup = between(pf, "**2. Pattern Recognition**", "**3. Dependency Analysis**")
 for needle in ("whole repository", "rg --hidden", DOC, "## Shared helpers", "## One shape per problem",
                "## Open — pick one", "**Reuse:**", "Open questions:"):
     check(needle in lookup, f"plan-feature Pattern Recognition lacks {needle!r}")
-ptf = pf.split("### Patterns to Follow", 1)[-1].split("## STEP-BY-STEP TASKS", 1)[0]
+ptf = between(pf, "### Patterns to Follow", "## STEP-BY-STEP TASKS")
 for needle in ("**Reuse:**", "→ reuse <path:line>", "→ none found (searched: <terms / paths>)",
                "→ shared at <path>", "**Standards:**", "skipped — no docs/coding-standards.md",
                "**Shapes:**", "**Open — pick one:**"):
     check(needle in ptf, f"plan template Patterns to Follow lacks {needle!r}")
-notes = pf.split("\n## NOTES\n", 1)[-1].split("## Phase 4.5", 1)[0]
+notes = between(pf, "\n## NOTES\n", "## Phase 4.5")
 check("Open questions:" in notes, "plan template NOTES does not name Open questions:")
 check("(its `**Reuse:**` block included)" in pf, "densify rule does not protect the Reuse block")
-major = pf.split("**🟠 MAJOR**", 1)[-1].split("**🟡 MEDIUM**", 1)[0]
+major = between(pf, "**🟠 MAJOR**", "**🟡 MEDIUM**")
 for needle in ("**Reuse:**", "## One shape per problem", "## Shared helpers"):
     check(needle in major, f"grilling MAJOR list lacks {needle!r}")
-p7 = pf.split("### Step 7.3", 1)[-1].split("### Step 7.4", 1)[0]
+p7 = between(pf, "### Step 7.3", "### Step 7.4")
 check(DOC in p7, f"Phase 7 prompt does not name {DOC}")
 
 qc = read(".claude/commands/quick-change.md")
-q1 = qc.split("## Phase 1 —", 1)[-1].split("## Phase 2 —", 1)[0]
+q1 = between(qc, "## Phase 1 —", "## Phase 2 —")
 for needle in ("Reuse: <existing path:line> | none found (searched: <terms / paths>)",
                "whole repository", DOC, "CS-<n>"):
     check(needle in q1, f"quick-change Phase 1 lacks {needle!r}")
-q2 = qc.split("## Phase 2 —", 1)[-1].split("## Phase 3 —", 1)[0]
+q2 = between(qc, "## Phase 2 —", "## Phase 3 —")
 check("(its `Reuse:` line included)" in q2, "quick-change Phase 2 brief does not carry the Reuse: line")
-tm = qc.split("## Team mode (quick planner)", 1)[-1].split("## Phase 0", 1)[0]
+tm = between(qc, "## Team mode (quick planner)", "## Phase 0")
 check("the `Reuse:` line" in tm, "quick-change team-mode plan shape lacks the Reuse: line")
 
 for f in fails:
