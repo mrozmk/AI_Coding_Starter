@@ -16,13 +16,13 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 
 **Strip a literal `report-only` token from `$ARGUMENTS` before anything else. If it was present → Report-only mode, whatever the caller — it overrides caller-based detection.** That strip-first rule is what guarantees two bullets never match at once.
 
-- **Report-only mode** (the `report-only` token was passed): **audit, report, apply nothing.** Output shape — one entry per finding: `file:line` · the problem · the remedy, grouped by the routing table's tiers, with human-decision items under a literal `NEEDS_HUMAN` heading (the caller filters on that label and on the anchors); the Approval bar verdict applies. The caller routes the findings to its own fixer — today the only such caller is `/check-implementation codex`, where Codex is the mutator and this skill must stay a finder.
+- **Report-only mode** (the `report-only` token was passed): **audit, report, apply nothing.** Output shape — one entry per finding: `file:line` · the problem · the remedy, grouped by the routing table's tiers, with human-decision items under a literal `NEEDS_HUMAN` heading (the caller filters on that label and on the anchors); the Approval bar verdict applies. A standard-9 finding ends with the tags that apply — `rule: CS-<n>`, `duplicate of: <path:line>` — and the report closes with standard 9's `Standards:` line and `Duplicate search:` record (every mode prints both). The caller routes the findings to its own fixer — today the only such caller is `/check-implementation codex`, where Codex is the mutator and this skill must stay a finder.
 - **Pipeline mode** (spawned by `orchestrator-refiner`, or `/check-implementation` Step 1b **without** the token, or `/quick-change` Phase 4): **audit then apply high-conviction findings.** You mutate the working tree for findings you are confident about and that have an obvious fix; everything that needs a human decision goes to `NEEDS_HUMAN`. You never pause to ask the user — the pipeline is non-interactive (see "What you do with findings" below).
 - **Standalone mode** (the user ran `/deep-review` directly): **report-first.** Produce the findings + recommended remedies and stop. Apply nothing until the user says to.
 
 ---
 
-## Non-negotiable standards (0–7)
+## Non-negotiable standards (0–9)
 
 **0. Be ambitious about structural simplification.**
 - Do not stop at "this could be a bit cleaner."
@@ -57,10 +57,11 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 - Question unnecessary optionality, `unknown`, `any`, or cast-heavy code when a clearer type boundary could exist (and the equivalent escape hatches in other languages).
 - Prefer explicit typed models or shared contracts over loosely-shaped ad-hoc objects.
 - If a branch relies on silent fallback to paper over an unclear invariant, ask whether the boundary should be made explicit instead.
+- **String-coded control flow is a type-boundary defect.** A branch the change adds that depends on the content of a free-text string — a prefix, substring, regex or equality test on a message, reason or label (`startsWith("unknown:")`, a status read from a text prefix, a comparison against a persisted message, `!== 'Priv'` while an enum exists) — where an enum, a typed result or an existing type would carry the same fact, is a finding. Remedy: branch on the type. The type exists, is reachable from the changed files, and the string is produced inside them, so the remedy edits only the changed files → high-conviction + obvious fix; the type has to be introduced, the string's producer lies outside the change (the fix needs it changed), or the string crosses a public contract or a persisted value → `NEEDS_HUMAN` with the recommended type. Parsing an external payload's text into a type once, at the boundary, is the fix, not the smell.
 
 **6. Keep logic in the canonical layer and reuse existing helpers.**
 - Call out feature logic leaking into shared paths, or implementation details leaking through APIs.
-- Prefer existing canonical utilities/helpers over bespoke one-offs. When in doubt about whether a helper already exists or is still used, resolve it with LSP (`workspaceSymbol` to find the canonical one, `findReferences` / `incomingCalls` to confirm usage) rather than grep.
+- Prefer existing canonical utilities/helpers over bespoke one-offs. When in doubt about whether a helper already exists or is still used, resolve it with LSP (`workspaceSymbol` to find the canonical one, `findReferences` / `incomingCalls` to confirm usage) rather than grep — and for whether a helper already exists, also run standard 9's repository-wide duplicate search, whose text search finds what symbol lookup cannot.
 - Push code toward the right package, service, or module instead of normalizing architectural drift.
 
 **7. Treat unnecessary sequential orchestration and non-atomic updates as design smells when the cleaner structure is obvious.**
@@ -75,6 +76,18 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 - **Keep** every comment that records a genuine *why* — a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Deleting one of those is a regression, not a cleanup, and this clause is what stops the standard from over-correcting.
 
 > This is the step with **write authority** in the comment loop. `guard-comments.sh` only nudges at write time, and `/gates:verify-implementation` only warns — this standard is reached from two independent paths (`orchestrator-refiner` inside `/orchestrate`, and `/check-implementation` Step 1b), which is why the deletion lives here rather than in either of those — except in report-only mode, where the deletion is reported and the caller's fixer applies it.
+
+**9. Measure the change against the project's written standards and against the rest of the repository.**
+Two duties, both in every mode. They read beyond the diff; nothing here widens what a mutator may edit.
+- **Standards.** If `docs/coding-standards.md` exists at the root of the checkout under review, read it once per review. Its `## Rules` hold `### CS-<n> — <rule>` blocks with `Enforced by:`, `Applies to:`, `Example:` and `Why:`.
+  - A change that breaks a rule marked `Enforced by: review` whose `Applies to` covers the changed file is a finding: tag it `rule: CS-<n>` and quote the rule's sentence. When `Applies to` does not clearly cover the file, raise nothing.
+  - Rules marked `Enforced by: tool (…)` are not re-checked — the tool owns them. A rule whose heading is marked `(withdrawn)` is neither enforced nor counted.
+  - A change that solves a problem listed under `## One shape per problem` in another shape, or re-implements a row of `## Shared helpers`, is a finding that names the row (its `Problem` or `Need` cell) in its text.
+  - A convention finding with no `CS-<n>` and no row to cite is not raised from this duty. Items under `## Open — pick one` are never findings.
+  - Record `Standards: checked <n> review rules` (n = the `Enforced by: review` rules read, withdrawn ones excluded), or `Standards: skipped — no docs/coding-standards.md` when the file is absent. The duplicate duty runs either way.
+- **Duplicates.** For every function, class, component or module-level helper the change **adds**, search the whole repository — not only the changed files — for an existing equivalent, two ways: *by name* (the new name and its obvious synonyms; LSP `workspaceSymbol` where a language server runs, else `rg --hidden -g '!.git' <name>` over the whole repository) and *by what it does* (its distinctive call, literal, regex or path — always a text search over the whole repository, `rg --hidden -g '!.git' <pattern>`, LSP or not: plain `rg` from the root skips dot-directories and symbol lookup cannot find a body). The change's own removed side is not a duplicate (a rename or a move), and a `.gitignore`d copy does not count. An equivalent found is a finding naming both paths: `duplicate of: <path:line>`. Record every search in a `Duplicate search:` block, one line per added symbol — `<symbol> — name: <queries> · behaviour: <patterns> · <none | path:line>` — or `Duplicate search: no added symbols`.
+- **Routing — the conviction table first, then the remedy's edit scope; never where the existing code lives.** The table under "What you do with findings" still decides first: a remedy that changes a public contract (an exported name or signature other code calls, a route, a persisted value) or product behaviour, or trades one valid reframing against another, is `NEEDS_HUMAN` even when every edit is local. Otherwise a remedy that edits only the changed files — replace the new helper with a call to (an import of) the existing one wherever it lives, follow the documented shape, comply with the broken `CS-<n>` rule — is **high-conviction + obvious fix**. A remedy that needs the existing code moved to a shared place, generalised or changed, touches any file outside the change, or picks between two near-equivalents with no clear canonical one is **`NEEDS_HUMAN`** with the recommended direction.
+- **Tags.** A finding from this standard ends with the tags that apply — `rule: CS-<n>` for a broken review rule, `duplicate of: <path:line>` for a duplicate. Never invent a tag to fill the shape.
 
 ---
 
@@ -96,7 +109,7 @@ When you apply a fix, follow the existing code's idiom and stay within the chang
 
 ## Priority order (report the important things first)
 
-1. Structural code-quality regressions
+1. Structural code-quality regressions — a broken `Enforced by: review` rule and a re-written existing helper (standard 9) count here
 2. Missed opportunities for dramatic simplification / code-judo restructuring
 3. Spaghetti / branching complexity increases
 4. Boundary / abstraction / type-contract problems that make the code harder to reason about
@@ -117,6 +130,7 @@ Treat these as presumptive blockers unless the author justifies them:
 - New spaghetti bolted onto unrelated code paths.
 - Feature logic leaked into a shared/canonical layer it doesn't belong in.
 - A thin abstraction or cast that hides a real invariant.
+- A broken `Enforced by: review` rule, or an existing helper written again (standard 9).
 
 Approval requires: no structural regression, no missed dramatic simplification, no unjustified sprawl, no architectural-boundary leak.
 

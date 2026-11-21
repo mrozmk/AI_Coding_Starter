@@ -27,9 +27,9 @@ The parent passes:
 ## Procedure
 
 1. `cd WORKTREE_PATH`; look at `git status --porcelain` and, when `BASE` is a rev, `git diff --stat BASE...HEAD`.
-2. Run the `deep-review` skill as `/deep-review report-only <SCOPE_FILES>` — the literal `report-only` token first, then the paths. The skill's own contract makes that mode audit-and-report; honour it.
-3. Route every finding by the skill's conviction table: high-conviction + obvious fix, needs-a-human, low tier. Comment-noise deletions are high-conviction findings — list them, the caller applies them.
-4. Emit the report below and stop.
+2. Run the `deep-review` skill as `/deep-review report-only <SCOPE_FILES>` — the literal `report-only` token first, then the paths. When `BASE` is a rev, tell the skill that the change is `git diff BASE...HEAD` plus the working tree, so standard 9's added symbols and removed side come from that diff. The skill's own contract makes that mode audit-and-report; honour it.
+3. Route every finding by the skill's conviction table: high-conviction + obvious fix, needs-a-human, low tier. Comment-noise deletions are high-conviction findings — list them, the caller applies them. Standard-9 findings route the same way and keep their `rule:` / `duplicate of:` tags.
+4. Print the skill's `Duplicate search:` record (above the block, never inside it), then emit the report below and stop.
 
 ## Never
 
@@ -44,11 +44,12 @@ The parent passes:
 === STRUCTURE REPORT ===
 WORKDIR_TOPLEVEL: <git rev-parse --show-toplevel>
 SCOPE: <N files>
+STANDARDS: checked <n> review rules | skipped — no docs/coding-standards.md
 HIGH_CONVICTION:
-- [S1] <file:line> · <problem> · remedy: <concrete edit>
+- [S1] <file:line> · <problem> · remedy: <concrete edit>[ · rule: CS-<n>][ · duplicate of: <path:line>]
 - ...
 NEEDS_HUMAN:
-- [H1] <file:line> · <the decision> · recommended: <direction>
+- [H1] <file:line> · <the decision> · recommended: <direction>[ · rule: CS-<n>][ · duplicate of: <path:line>]
 LOW_TIER:
 - <file:line> · <note>
 STATUS: completed | failed — <reason>
@@ -56,3 +57,5 @@ STATUS: completed | failed — <reason>
 ```
 
 Write `- none` under an empty heading; never omit a heading. A clean review is a valid result.
+
+`STANDARDS:` copies the skill's `Standards:` line. The bracketed tags are optional per line — only those that apply, never invented.
