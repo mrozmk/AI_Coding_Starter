@@ -9,13 +9,12 @@
 //   exit 0 = plan computed · 1 = the backlog has errors / legacy backlog · 2 = usage, missing
 //   backlog, invalid profile or config value
 
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  byIdAsc, chainPaths, checkAgainstRoot, NO_CORE_WARNING, parseBacklog, readIfExists, SCOPES,
-  SIZE_POINTS, writeAtomic,
+  backlogFingerprint, byIdAsc, chainPaths, checkAgainstRoot, NO_CORE_WARNING, parseBacklog, readBacklogFiles,
+  readIfExists, SCOPES, SIZE_POINTS, writeAtomic,
 } from './backlog-check.mjs';
 
 export const DEFAULTS = {
@@ -430,17 +429,8 @@ export function buildPlan({ backlog, flows, config }) {
 
   return {
     config, summary, warnings, phases, schedule, sprints, outside,
-    meta: { backlogSha: backlogSha(backlog.raw ?? ''), order, chains, teams: { core: coreTeam, later: laterTeam } },
+    meta: { backlogSha: backlogFingerprint(backlog.raw ?? '', backlog.files ?? []), order, chains, teams: { core: coreTeam, later: laterTeam } },
   };
-}
-
-/** sha256 (12 hex) of the backlog without its `**Last check:**` line — the hash /check-backlog records. */
-function backlogSha(raw) {
-  const lines = raw.split('\n');
-  if (lines[lines.length - 1] === '') lines.pop();
-  const kept = lines.filter((l) => !l.startsWith('**Last check:**'));
-  const text = kept.length ? `${kept.join('\n')}\n` : '';
-  return crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
 }
 
 /** The `--json` view: the analyst's input. */
@@ -566,7 +556,7 @@ function parseArgs(argv) {
 }
 
 const USAGE = `usage: delivery-plan.mjs [--root <dir>] [--mode solo|team] [--developers <n>] [--core-developers auto|0|1] [--sessions <n>] [--json] [--write]
-  --root             project root (default: cwd); reads .agents/backlog.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml, .claude/project-profile.json → delivery
+  --root             project root (default: cwd); reads .agents/backlog.md + its Epic files (.agents/backlog/E*.md), docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml, .claude/project-profile.json → delivery
   --mode             solo | team (overrides delivery.mode)
   --developers       developers who join at scale (team.developers)
   --core-developers  auto | 0 | 1 — developers beside the Tech Lead in CORE (team.core_developers)
@@ -586,9 +576,9 @@ export function main(argv = process.argv.slice(2)) {
     return 1;
   };
 
-  const md = readIfExists(path.join(root, '.agents', 'backlog.md'));
+  const { md, epicFiles } = readBacklogFiles(path.join(root, '.agents', 'backlog.md'));
   if (md === null || md.trim() === '') { console.error(`delivery-plan: .agents/backlog.md not found under ${root}\n${USAGE}`); return 2; }
-  const parsed = parseBacklog(md);
+  const parsed = parseBacklog(md, { epicFiles });
   if (parsed.legacy) {
     const msg = 'legacy WP backlog — regenerate with /setup:create-backlog';
     if (json) console.log(JSON.stringify({ errors: [msg], legacy: true })); else console.log(`delivery-plan: ${msg}`);
@@ -597,7 +587,7 @@ export function main(argv = process.argv.slice(2)) {
   const prdNamed = parsed.sourcePrd;
   if (prdNamed && !fs.existsSync(path.resolve(root, prdNamed))) { console.error(`delivery-plan: PRD not found at ${prdNamed} (named by the backlog header)`); return 2; }
   const res = checkAgainstRoot(root, parsed);
-  if (res.errors.length) return fail(res.errors, res.preScope ? { preScope: true } : {});
+  if (res.errors.length) return fail(res.errors, res.preScope ? { preScope: true } : res.preDetail ? { preDetail: true } : {});
 
   const { config, error } = loadConfig(root, { mode: args.mode, developers: args.developers, coreDevelopers: args['core-developers'], sessions: args.sessions });
   if (error) { console.error(`delivery-plan: ${error}`); return 2; }

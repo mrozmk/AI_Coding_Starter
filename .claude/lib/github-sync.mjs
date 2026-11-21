@@ -7,6 +7,9 @@
 //   node .claude/lib/github-sync.mjs [--root <dir>] [--epic E<n>] --preview
 //   node .claude/lib/github-sync.mjs [--root <dir>] --epic E<n> --apply --yes
 //
+// Reads `.agents/backlog.md` and its Epic files (`.agents/backlog/E<n>-….md`, the criteria). A
+// selected Task with no acceptance criterion yet (Epic file and approved spec both empty) stops the
+// run before any GitHub call.
 // Order: validate the sources and every known issue's identity → plan in memory → preview, or
 // (`--apply --yes`, one Epic group) write → verify. `--preview` and `--apply` without `--yes` make
 // no write call of any kind — not to GitHub, not to the backlog.
@@ -23,7 +26,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PRE_SCOPE_MESSAGE, cleanId, loadInventory, parseBacklog, parseTables, resolveTask } from './backlog-check.mjs';
+import {
+  PRE_DETAIL_MESSAGE, PRE_SCOPE_MESSAGE, cleanId, loadInventory, parseBacklog, parseTables, readBacklogFiles, resolveTask,
+} from './backlog-check.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const NAMESPACE = /\*\*Jira namespace:\*\*\s*`?([a-z0-9]+(?:-[a-z0-9]+)*)`?/;
@@ -88,10 +93,11 @@ function setCell(file, lineNo, col, value) {
   fs.renameSync(tmp, file);
 }
 
-function loadRows(root, md) {
-  const backlog = parseBacklog(md);
+function loadRows(root, md, epicFiles) {
+  const backlog = parseBacklog(md, { epicFiles });
   if (backlog.legacy) throw new Stop(1, 'legacy backlog (work packages) — regenerate it with /setup:create-backlog');
   if (backlog.preScope) throw new Stop(1, PRE_SCOPE_MESSAGE);
+  if (backlog.preDetail) throw new Stop(1, PRE_DETAIL_MESSAGE);
   const tables = parseTables(md);
   const epicT = tables.find((t) => ['Epic', 'Title', 'Pts', 'Jira'].every((h) => t.header.includes(h)));
   const taskT = tables.find((t) => ['ID', 'Epic', 'Size', 'Pts', 'Jira'].every((h) => t.header.includes(h)));
@@ -187,7 +193,7 @@ function run(a) {
   if (!fs.existsSync(file)) throw new Stop(1, 'no .agents/backlog.md — run /setup:create-backlog first');
   const check = spawnSync(process.execPath, [path.join(HERE, 'backlog-check.mjs'), '--root', a.root], { encoding: 'utf8' });
   if (check.status !== 0) throw new Stop(1, `the backlog checker refuses it — fix these first:\n${check.stdout}${check.stderr}`);
-  const md = fs.readFileSync(file, 'utf8');
+  const { md, epicFiles } = readBacklogFiles(file);
   const ns = NAMESPACE.exec(md)?.[1];
   if (!ns) throw new Stop(1, 'the backlog header has no **Jira namespace:** — the markers need it');
   const rev = SCOPE_REV.exec(md);
@@ -198,9 +204,16 @@ function run(a) {
       throw new Stop(1, `the backlog trails the PRD (v${rev[1]}.${rev[2]} < ${prd}) — run /update-backlog first`);
     }
   }
-  const { epics, tasks } = loadRows(a.root, md);
+  const { epics, tasks } = loadRows(a.root, md, epicFiles);
   const chosen = a.epic ? epics.filter((e) => e.id === a.epic) : epics;
   if (!chosen.length) throw new Stop(1, `no Epic ${a.epic} in the backlog`);
+  // Create-only: an issue mirrored before its Task has criteria would never get them. Stop before
+  // any GitHub call (preview and apply alike) — an approved spec in Ref that supplies them passes.
+  const chosenIds = new Set(chosen.map((e) => e.id));
+  const bare = tasks.filter((t) => chosenIds.has(t.epic) && !t.ac.current.some((x) => !x.withdrawn)).map((t) => t.id);
+  if (bare.length) {
+    throw new Stop(1, `Task(s) ${bare.join(', ')} have no acceptance criteria yet — run /setup:delivery-plan (the sync is create-only: an issue created now would never get them)`);
+  }
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'github-sync-'));
   try {

@@ -36,12 +36,18 @@ issue() {  # issue <n> <body> — append an issue to the stub's list
   jq --argjson n "$1" --arg b "$2" '. + [{number: $n, title: "x", body: $b}]' "$GH_DIR/issues.json" \
     > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/issues.json"
 }
-backlog() {  # backlog [E0-2 Jira cell] — the minimal valid backlog the checker accepts
+E0F="$MAIN/.agents/backlog/E0-foundation.md"
+backlog() {  # backlog [E0-2 Jira cell] [structure] — the minimal valid backlog (+ its Epic file) the checker accepts
+  # `structure`: **Detail:** structure, and E0-2 has a Summary line but no criterion yet.
+  local detail=full
+  [ "${2:-}" = structure ] && detail=structure
   mkdir -p "$MAIN/.agents" "$MAIN/docs"
+  rm -rf "$MAIN/.agents/backlog"
+  mkdir -p "$MAIN/.agents/backlog"
   printf '# PRD — Demo\n\n## 3. Goals\n- **G-1** — ship\n' > "$MAIN/docs/PRD.md"
   cat > "$B" <<EOF
 # Demo — Backlog (Epics + Tasks)
-**Date:** 2026-10-10 · **Source PRD:** \`docs/PRD.md\` · **Jira namespace:** \`demo\` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
+**Date:** 2026-10-10 · **Source PRD:** \`docs/PRD.md\` · **Jira namespace:** \`demo\` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours) · **Detail:** $detail
 
 ## Epic map
 | Epic | Title | Outcome | Key assumption | Pts | Depends on | Jira |
@@ -56,13 +62,6 @@ backlog() {  # backlog [E0-2 Jira cell] — the minimal valid backlog the checke
 | E0-1 | E0 | Project scaffold | tech | H | 8 | — | CORE | — | — | TODO | — | — |
 | E0-2 | E0 | Auth skeleton | tech | M | 4 | E0-1 | CORE | — | — | TODO | ${1:-—} | — |
 
-## Acceptance criteria
-### E0-1 — Project scaffold
-- **E0-1.AC1** — Given a clean clone, when tests run, then they pass.
-
-### E0-2 — Auth skeleton
-- **E0-2.AC1** — Given no session, when a protected route is hit, then 401.
-
 ## Story map
 <!-- storymap:begin -->
 x
@@ -76,6 +75,19 @@ x
 
 ## Consciously out of scope
 - none
+EOF
+  local e02='### Acceptance criteria
+- **E0-2.AC1** — Given no session, when a protected route is hit, then 401.'
+  [ "$detail" = structure ] && e02='**Summary:** a protected route refuses a caller without a session.'
+  cat > "$E0F" <<EOF
+# E0 — Foundation
+
+## E0-1 — Project scaffold
+### Acceptance criteria
+- **E0-1.AC1** — Given a clean clone, when tests run, then they pass.
+
+## E0-2 — Auth skeleton
+$e02
 EOF
 }
 cell() {  # cell <row id> — that row's Jira cell (Epic: last column; Task: second to last)
@@ -195,8 +207,8 @@ expect 0 "0 created · 0 recovered · 3 verified" "a second apply is a no-op"
 [ "$(writes)" = 0 ] || { sed 's/^/  | /' "$GH_LOG"; fail "a second apply wrote to GitHub"; }
 cmp -s "$B" "$WORK/backlog.synced" || fail "a second apply changed the backlog"
 
-# A backlog edit after the sync is reported, never pushed.
-sed -i.bak 's/then 401\./then 401 with a reason./' "$B" && rm -f "$B.bak"
+# A backlog edit after the sync is reported, never pushed — the criterion lives in the Epic file.
+sed -i.bak 's/then 401\./then 401 with a reason./' "$E0F" && rm -f "$E0F.bak"
 run "$MAIN" $SYNC --preview
 expect 0 "2 changed since sync" "an AC edit after the sync is reported"
 has "E0-2 synced ${T2} [changed since sync]" "$WORK/out" || fail "the edited row is not named"
@@ -231,5 +243,20 @@ expect 1 "another tracker's" "a Jira key in the cell is refused"
 solo '.tracker = "jira"'; fx_reset; backlog
 run "$MAIN" $SYNC --preview
 expect 3 "needs tracker=github" "tracker=jira is refused"
+
+# ================================================================================================
+# (6) Detail: structure — a Task with only its Summary line stops the sync before any create
+# ================================================================================================
+solo; fx_reset; backlog '' structure
+run "$MAIN" node .claude/lib/backlog-check.mjs
+expect 0 "" "the checker accepts a structure backlog with a Summary-only Task"
+cp "$B" "$WORK/backlog.before"
+run "$MAIN" $SYNC --preview
+expect 1 "Task(s) E0-2 have no acceptance criteria yet — run /setup:delivery-plan" "preview of a criterion-less Task is refused"
+run "$MAIN" $SYNC --epic E0 --apply --yes
+expect 1 "the sync is create-only: an issue created now would never get them" "apply of a criterion-less Task is refused"
+[ "$(creates)" = 0 ] || fail "a criterion-less Task still created an issue"
+[ "$(writes)" = 0 ] || { sed 's/^/  | /' "$GH_LOG"; fail "the criteria guard still wrote to GitHub"; }
+cmp -s "$B" "$WORK/backlog.before" || fail "the criteria guard changed the backlog"
 
 echo "team-tracker-sync-smoke: OK"

@@ -74,8 +74,11 @@ sections and every `[internal]` span. Templates: `description-templates.md` → 
 
 The `## Acceptance criteria` block comes **verbatim** from the AC resolver — the approved spec in
 the Task's `Ref` with a `## Acceptance Criteria` section and the newest `YYYY-MM-DD` filename
-prefix, filtered to the Task's ids; else the backlog block (`brainstorm.md` Step 5, `qa-verify.md`).
-When `node .claude/lib/backlog-check.mjs --next-ids <row> --json` exists, use its `current`.
+prefix, filtered to the Task's ids; else the Task's block in its backlog Epic file
+`.agents/backlog/E<n>-<slug>.md` (`brainstorm.md` Step 5, `qa-verify.md`). Read it through
+`node .claude/lib/backlog-check.mjs --next-ids <row>` — its `current` (and `source`, the file it
+came from). A Task with no current criterion (a `**Detail:** structure` backlog) gets no draft —
+see step 2 of `/jira draft`.
 
 Prose is the user's to edit; **AC text under an existing id is read-only**. A changed AC text, a
 missing id or a new unnumbered criterion is flagged by `drafts` and refused by `send` with: "add
@@ -89,7 +92,10 @@ criteria via `/update-backlog` (new id), then re-draft". Drafts never write AC b
    missing → stop (same message as sync). `project_key` per HARD-GATE invariant 2.
 2. **Plan.** For the selected Epic (or every Epic): the Epic row and its Task rows **without** a Jira
    key and **not** withdrawn. Rows that already have a key are skipped (reported). A withdrawn row
-   that already has a draft → reported "row withdrawn — discard?" (the file is kept).
+   that already has a draft → reported "row withdrawn — discard?" (the file is kept). A Task whose
+   `--next-ids` `current` is empty (no acceptance criteria yet) → the draft stops before any file
+   is written: "`<row>` has no acceptance criteria yet — run `/setup:delivery-plan` (details the
+   Epics), then re-draft".
 3. **Epic file.** `inprogress/E1/_epic.md`: create from **Draft Epic** when absent. When the Epic
    row has a key (already sent) → `status: reference` + `jira_key`, and every new Task gets
    `parent_epic_key` filled.

@@ -234,8 +234,8 @@ Print one numbered list. Run nothing. State that the listed commands continue in
 3. `/architect` — subdomains, decisions (`AD-n`), stack; writes `docs/architecture.md` + `docs/map/system.yaml`
 4. `/maintain:refresh-brief` — distill the PRD into `project-brief.md`
 5. `/prime` — reload with the new brief
-6. `/setup:create-backlog` — Epics/Tasks, Scope, story map
-7. `/setup:delivery-plan` — order per person and session, working days
+6. `/setup:create-backlog` — Epics/Tasks, Scope, story map, a Summary per Task
+7. `/setup:delivery-plan` — details the Epics and computes the plan: order per person and session, working days
 8. `/jira sync` — when `tracker=jira`; `/github-sync` — when `tracker=github`
 9. `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M)
 10. `/plan-feature` → 11. `/execute`
@@ -249,7 +249,7 @@ UI-heavy product: `/design-ui` after `/architect` for the critical flow's key sc
 2. `/setup:map-codebase` — architecture map + reconstructed PRD, then its own cascade
 3. `/discover --import <your requirements>` — when discovery exists outside the repo
 4. `/setup:create-backlog` — optional
-5. `/setup:delivery-plan` — order per person and session, working days (after the backlog)
+5. `/setup:delivery-plan` — details the Epics and computes the plan: order per person and session, working days (after the backlog)
 
 **Suggestions — printed, never executed.** `/setup:start` installs no packages and adds no MCP servers (the LSP plugin in step 6b is *declared*, its install stays a printed human step); these are for the human to copy if wanted:
 

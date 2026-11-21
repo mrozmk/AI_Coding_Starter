@@ -63,7 +63,7 @@ Filenames only — don't read the plans themselves unless the BA asks.
 
 !`ls -la .agents/backlog.md 2>/dev/null || echo "no local backlog"`
 
-If `.agents/backlog.md` exists, read it and note: the Epic map, the Task count per `Status` (TODO / WIP / DONE), and points done vs total per Epic. Then run the checker and report its output — never fix the backlog from here (structural edits go through `/update-backlog`, `/setup:create-backlog` → Maintenance contract):
+If `.agents/backlog.md` exists, read it (the index; the per-Task detail lives in `.agents/backlog/E<n>-<slug>.md` — read those only when the BA asks about a Task) and note: the Epic map, the Task count per `Status` (TODO / WIP / DONE), and points done vs total per Epic. Then run the checker and report its output — never fix the backlog from here (structural edits go through `/update-backlog`, `/setup:create-backlog` → Maintenance contract):
 
 ```bash
 node .claude/lib/backlog-check.mjs
@@ -71,9 +71,14 @@ node .claude/lib/backlog-check.mjs
 
 Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure. A pre-Scope backlog (`Wave` / `Slice` columns, no `Scope`) is reported with the checker's message, which names `node .claude/lib/backlog-migrate.mjs --write`.
 
-Report the backlog's `**Last check:**` line and mark it **stale** when its hash differs from
-`grep -v '^\*\*Last check:\*\*' .agents/backlog.md | shasum -a 256 | cut -c1-12` (a partial scope
-never reads as a whole-backlog `ship`); none → "never checked — `/check-backlog`".
+Report the backlog's `**Detail:**` field (`structure` = Summary lines only, criteria come from
+`/setup:delivery-plan`; `full` = every live Task has criteria in its Epic file) and its
+`**Last check:**` line with the recorded mode, and mark the check **stale** when its hash differs
+from `node .claude/lib/backlog-check.mjs --fingerprint` (`backlog.md` plus every Epic file in
+`.agents/backlog/`; a partial scope never reads as a whole-backlog `ship`, a `structure` check never
+as a detail check); none → "never checked — `/check-backlog`". A backlog whose criteria are still in
+`.agents/backlog.md` (pre-detail) is reported with the checker's message, which names
+`node .claude/lib/backlog-migrate.mjs --write`.
 
 Also report the scope register next to the backlog: the PRD's `**Baseline:**` / `**Current:**` and the backlog's `**Scope rev:**` (behind → "run `/update-backlog`"), the three newest `D-n` titles with their `**Approval:**`, and the **pending sources** — notes, specs and `docs/discovery.md` whose `shasum -a 256 | cut -c1-12` hash appears in no `D-n` `**Sources:**` line with a filled `**Tasks:**` line (names, count). Structural changes go through `/update-backlog`; never fix the backlog from here.
 

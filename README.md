@@ -52,8 +52,9 @@ the `.claude/` and `.agents/` folders that shape how the AI works.
 ```text
 /discover              interview or import your sources
 /architect             bounded contexts, stack choice, decision records
-/setup:create-backlog  epics and tasks with sizes, dependencies and acceptance criteria
+/setup:create-backlog  epics and tasks with sizes, dependencies and a one-line summary each
 /check-backlog         an independent critic grades the backlog before anyone builds from it
+/setup:delivery-plan   acceptance criteria per epic, then the order per person and the working days
 /jira sync             mirror the backlog into Jira epics and tasks
 ```
 

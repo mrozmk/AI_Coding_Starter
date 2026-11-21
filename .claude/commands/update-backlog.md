@@ -9,14 +9,17 @@ argument-hint: "[<note | spec | docs/discovery.md> …] — empty = every pendin
 
 <HARD-GATE>
 No file is written until (a) the clarification loop resolved every intent, (b) the user approved
-the preview, (c) the candidate pair passed `node .claude/lib/backlog-check.mjs --candidate
-.agents/.pending-update`, and (d) both targets' hashes are unchanged since they were read. Cancel at
-any gate deletes `.agents/.pending-update/` and writes nothing else.
+the preview, (c) the candidate set passed `node .claude/lib/backlog-check.mjs --candidate
+.agents/.pending-update --write`, and (d) every target's original hash (or absence) is unchanged
+since it was read. Cancel at any gate deletes `.agents/.pending-update/` and writes nothing else.
 </HARD-GATE>
 
-**What this is.** The **only** structural writer of `.agents/backlog.md` after it exists (and, for
-scope, of the register in `docs/PRD.md`). `/check-backlog` and `/jira resync` route their changes
-through this command's apply phase. It never writes `Status` of a row with a Jira key, any `Jira`
+**What this is.** The **only** structural writer of the Task table and the Epic map of
+`.agents/backlog.md` after it exists (and, for scope, of the register in `docs/PRD.md`). It also
+writes the Epic files `.agents/backlog/E<n>-<slug>.md` — Task headings, Summary lines, Goal / scope
+lines and criteria; `/setup:delivery-plan`'s detail step writes Goal / scope lines and criteria
+there too, never the table. `/check-backlog` and `/jira resync` route their changes through this
+command's apply phase. It never writes `Status` of a row with a Jira key, any `Jira`
 cell, `.agents/jira/`, or `**Last check:**`; it never regenerates Epics, never renumbers an id and
 never puts emoji markers in table cells.
 
@@ -30,16 +33,18 @@ Questions and the preview in the project's communication language; every artifac
 
 ## Phase 0 — Pre-flight
 
-1. **Interrupted write.** `.agents/.pending-update/manifest.json` exists → classify each target
-   against it: hash = `original` → untouched; = `candidate` → installed; for the backlog also =
-   `rendered` (the hash after `--write`, recorded in the manifest in Phase 8) → installed and
-   rendered; anything else → `unexpected`.
-   - both `original` → offer *discard* or *redo*;
-   - PRD `installed` + backlog `original` → **finish**: install the backlog candidate, `--write`,
-     record `rendered`, remove the dir — never discard;
-   - both installed (backlog `candidate` or `rendered`) → **finish**: `--write` (idempotent), record
-     `rendered`, remove the dir;
-   - any `unexpected` → stop with manual instructions and keep the dir.
+1. **Interrupted write.** `.agents/.pending-update/manifest.json` exists → remove every leftover
+   `<target>.tmp` first, then classify each target the manifest lists by its current hash:
+   = `original` → untouched (absence counts as the original of a new Epic file); = `candidate` →
+   installed (absence counts as the candidate of an Epic file the run removed); anything else →
+   `unexpected`. A target whose original and candidate hashes are equal (an Epic file the run did
+   not change) counts as either.
+   - all `original` → offer *discard* or *redo*;
+   - all `candidate` → **finish** from Phase 8 step 5 (verify, checker, remove the dir);
+   - a mix of `original` and `candidate` → **finish** the install: Phase 8 steps 2–6 for every
+     target still `original` — never discard (the candidate set is complete, validated and
+     rendered, so rolling forward always reaches one consistent state);
+   - any `unexpected` → stop, name each such target with manual instructions and keep the dir.
 2. **Revisions.** Read the PRD header `**Current:**` and the backlog header `**Scope rev:**`. Register
    ahead → **reconcile mode** (below) runs first.
 3. **Pending Jira refreshes.** List every `**Jira refresh:** <key> pending` entry in the PRD
@@ -72,7 +77,8 @@ fills that `D-n`'s `**Tasks:**` / `**Jira refresh:**` lines instead of writing a
 
 ## Phase 2 — Load
 
-Read the sources, `docs/PRD.md`, `.agents/backlog.md`; record both targets' sha256. Run
+Read the sources, `docs/PRD.md`, `.agents/backlog.md` and every Epic file in `.agents/backlog/`
+(`E<n>-<slug>.md`; `delivery-plan.md` is not one); record every target's sha256. Run
 `node .claude/lib/backlog-check.mjs --next-ids` and keep the JSON (next free ids; per Task the
 current AC, its source and `nextAc`).
 
@@ -100,6 +106,16 @@ Scan each source for backlog-actionable statements and build
 | `withdraw-requirement` | `R-n` `(withdrawn per D-k)` only if no live Task traces it after this run — otherwise ask: withdraw those Tasks too, or keep the requirement | per the answer |
 | `outside-add` / `outside-edit` / `outside-remove` | none (an `edit` meaning change of a traced `R-n` follows the rows above) | an `X-n` row in `## Outside the dev backlog` (next free `X-n`; never renumbered): `Owner`, `Item`, `Needed by` (Task ids or `—`), `Traces` (active `R-` / `NFR-` / `AD-` ids or `—`), `Notes`. Removing a row that is the only trace of an active `R-n` / `NFR-n` needs a Task or another row to take the trace, else the checker fails the candidate |
 | `move-outside` | none | a non-developer Task leaves the plan by the removal rule above (`withdraw-task` for a protected or an unprotected Task alike); its dependents swap the dependency on it for the Task's own prerequisites, so the order between the remaining Tasks is kept (a swap touching a protected dependent → question), and the withdrawn row's `Chain` cell becomes `—`, so a chain it sat in stays one path; a new `X-n` row lists them under `Needed by` and takes over the Task's `R-` / `NFR-` / `AD-` traces; the Epic's `Pts` follows the rows that remain |
+
+**Epic files.** A criterion edit (a withdrawn id, a new id) lands in the Task's block of its Epic
+file. A new Task gets its `## <id> — <title>` block with a `**Summary:**` line in its Epic's file
+and — when the backlog header reads `**Detail:** full` — its criteria in the same run (ids from
+`nextAc`); under `**Detail:** structure` a Summary is enough (`/setup:delivery-plan` details it
+later). A new Epic gets a new Epic file `<id>-<slug>.md`, the slug by the rule of `epicSlug` in
+`backlog-check.mjs` (lowercase, diacritics dropped, non-alphanumerics → `-`, at most 40
+characters); an existing file is never renamed, even when its Epic's title changes.
+`withdraw-task` and `move-outside` keep the Task's block — the table row marks it; nothing is
+deleted from an Epic file.
 
 **Outside rows and requirement edits.** An `X-n` row's `Traces` follow the same register edits as a
 Task's: a superseded `R-n` → the row re-traces to the successor `R-m` (an outside row has no build
@@ -132,10 +148,11 @@ their protection reasons, transitive dependents, `scopes`, the `outside` rows (`
 (an `X-n` id is itself a valid target: its `Needed by` Tasks and their dependents). Shown per intent
 in the preview — the `outside` rows next to the Tasks; summarised into the `D-n` `**Impact:**`.
 
-## Phase 6 — Build the candidate pair
+## Phase 6 — Build the candidate set
 
-In `.agents/.pending-update/` (gitignored): `PRD.md`, `backlog.md`, `manifest.json` (per target: the
-original hash from Phase 2 and the candidate hash).
+In `.agents/.pending-update/` (gitignored): `PRD.md`, `backlog.md` and `backlog/` with a **full copy
+of every Epic file** — changed or not; an Epic file the run removes is absent, a new one is present.
+`manifest.json` is written last (below).
 
 - **Register:** the edits above + **one** `D-n` (or the reconcile-mode `D-n` lines filled). Kind:
   `scope` when any register id is added, superseded or withdrawn **or** any Task is added, withdrawn
@@ -144,28 +161,41 @@ original hash from Phase 2 and the candidate hash).
   `BA direct decision`), `Decision` (the user's words), `Approval: proposed`, `Affects`, `Impact`,
   `Tasks`, `Jira refresh` (keys of touched keyed Tasks and their keyed `Relates` / dependents). **Only
   `scope` bumps `**Current:**`**; the backlog's `**Scope rev:**` = `Current`.
-- **Backlog:** row / AC changes and `## Outside the dev backlog` row changes; AC ids from `nextAc`
-  (never renumber).
-- `node .claude/lib/backlog-check.mjs --candidate .agents/.pending-update` — errors → back to the
-  preview with the errors; the repo is unchanged.
+- **Backlog:** row changes and `## Outside the dev backlog` row changes in `backlog.md`; Task
+  blocks and criteria in the Epic files (above); AC ids from `nextAc` (never renumber).
+- `node .claude/lib/backlog-check.mjs --candidate .agents/.pending-update --write` — validates the
+  set and, when it passes, renders the story map and the `>` meta lines inside the candidate
+  directory (the repo files are never touched). Errors → back to the preview with the errors; the
+  repo is unchanged.
+- Then `manifest.json`: per target — `docs/PRD.md`, `.agents/backlog.md` and every
+  `.agents/backlog/E<n>-<slug>.md` present in the repo or in the candidate — the original sha256
+  from Phase 2 or `absent`, and the sha256 of the rendered candidate file or `absent`. The candidate
+  hashes are the final hashes: nothing is generated after the install.
 
 ## Phase 7 — Preview and review gate
 
-Show: the `D-n`; each changed register line (old → new); each changed Task row and AC block; each
-changed `X-n` row; the impact table; checker warnings verbatim; the Epics left untouched, by name. Approve → Phase 8.
+Show: the `D-n`; each changed register line (old → new); each changed Task row; per Epic file
+(new files by name), each changed Task block; each changed `X-n` row; the impact table; checker warnings verbatim; the Epics left untouched, by name. Approve → Phase 8.
 Patch → rebuild the candidate (Phase 6) and show again. Cancel → delete `.agents/.pending-update/`,
 nothing else written.
 
 ## Phase 8 — Write
 
-1. Re-check both targets' sha256 against Phase 2 — changed → abort, delete the pending dir, write
-   nothing ("the file changed during the run — re-run `/update-backlog`").
-2. Install the PRD: copy the candidate over `docs/PRD.md`, verify its hash = the candidate hash.
-3. Install the backlog the same way.
-4. `node .claude/lib/backlog-check.mjs --write` (story map), then record the backlog's new
-   hash as `rendered` in `manifest.json`.
-5. Remove `.agents/.pending-update/` — only after step 4 succeeded.
-6. Only after the writes returned, report: counts per intent kind, the `D-n`, pending Jira refreshes,
+Each install is atomic: copy the candidate file to `<target>.tmp` in the target's own directory,
+then rename it over the target.
+
+1. Re-check every target against Phase 2 — its sha256, or its absence for a target that did not
+   exist — changed → abort, delete the pending dir, write nothing ("the file changed during the run
+   — re-run `/update-backlog`").
+2. Install the PRD.
+3. Install the Epic files — the new and the changed ones, then remove the ones the candidate
+   dropped.
+4. Install `backlog.md`.
+5. Verify every target against its candidate hash (or its absence), then run
+   `node .claude/lib/backlog-check.mjs` (read-only) once. A mismatch or a checker error → stop,
+   name the target or print the errors, keep the dir (Phase 0 resumes from it).
+6. Remove `.agents/.pending-update/` — only after step 5 passed.
+7. Only after the writes returned, report: counts per intent kind, the `D-n`, pending Jira refreshes,
    drafted-but-unsent Tasks that changed ("draft stale — `/jira draft E<n>` refreshes it").
    **Offer (never run):** `/check-backlog --since D-k` (when it exists), `/jira draft` when new rows
    exist, and **`/maintain:refresh-brief` — always**.

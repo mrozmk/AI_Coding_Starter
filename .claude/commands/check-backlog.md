@@ -1,5 +1,5 @@
 ---
-description: Independent critic + grill for .agents/backlog.md — @start-critic grades it against the backlog rubric, one Codex cross-model review attacks the cut and the order, the main thread judges, the user decides, accepted fixes go through /update-backlog's apply phase
+description: Independent critic + grill for .agents/backlog.md and its Epic files (structure or detail mode, from the Detail header) — @start-critic grades them against the backlog rubric, one Codex cross-model review attacks the cut and the order, the main thread judges, the user decides, accepted fixes go through /update-backlog's apply phase
 argument-hint: "[--epic E<n>] [--since D-k]"
 ---
 
@@ -14,6 +14,14 @@ adds one (plus one cross-model Codex review), and routes every accepted fix thro
 
 **This command writes nothing itself** except the one `**Last check:**` header line (step 10).
 Every structural change goes through `/update-backlog`'s apply phases.
+
+Mode: read from the backlog header's `**Detail:**` field. **Structure** (`**Detail:** structure`,
+written by `/setup:create-backlog`): the Epic files carry Summary lines, and criteria may be
+missing — the rules that grade criteria are deferred (K5; the criteria parts of K1, K2, K9), a
+Task's Summary is graded in their place, and criteria that already exist are still graded.
+**Detail** (`**Detail:** full`, written by `/setup:delivery-plan` and the migration): every rule.
+The mode goes into the critic spawn (`MODE: structure | detail`), the Codex prompt, the report and
+the `**Last check:**` line.
 
 Scope: empty = the whole backlog · `--epic E<n>` = that Epic · `--since D-k` = the Tasks named in
 the `**Tasks:**` lines of `D-k` and every later `D-n`, plus one hop of `Relates` siblings and direct
@@ -36,18 +44,20 @@ passed to the critic as known context (it must not re-report them).
 ## 2. Current view
 
 `node .claude/lib/backlog-check.mjs --next-ids` → write, for every in-scope **live** Task, its
-`current` criteria (id, text, source file; withdrawn ones omitted) to
+`summary`, its `current` criteria (id, text; withdrawn ones omitted) and its `source` (the approved
+spec in `Ref`, else its Epic file `.agents/backlog/E<n>-<slug>.md`) to
 `$SCRATCH/check-backlog-current.md` (`$SCRATCH` = the session scratchpad, never `/tmp`, never the
-repo). These are the criteria the critic grades — they may come from an approved spec, not the
-backlog block.
+repo); a Task with no criteria yet is listed with `criteria: none yet`. These are the criteria the
+critic grades — they may come from an approved spec, not the Epic file.
 
 ## 3. Critic
 
 Spawn `@start-critic` (read-only) with:
 
 ```
-ARTIFACT: .agents/backlog.md $SCRATCH/check-backlog-current.md
+ARTIFACT: .agents/backlog.md .agents/backlog/E*.md $SCRATCH/check-backlog-current.md
 RUBRIC:   .claude/skills/backlog/backlog-rubric.md
+MODE:     structure | detail   (from **Detail:** — structure defers the criteria rules, see the rubric's Modes)
 SOURCES:  docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml (those that exist)
           + every approved spec named in the Ref cell of an in-scope Task
 ROUND:    1
@@ -58,10 +68,13 @@ METHOD:   .claude/commands/setup/create-backlog.md   (Phase 3 split patterns and
 ```
 
 - ≤ ~25 live Tasks, or a narrow `--epic` / `--since`: **one call, all rules**.
-- Otherwise: one call per in-scope Epic with `RULES: K1,K2,K5,K7,K11` and `SCOPE: E<n>` (K11 for
-  that Epic's Tasks), plus one global call with `RULES: K3,K4,K6,K8,K9,K10,K11 (outside rows only)`
+- Otherwise: one call per in-scope Epic with `RULES: K1,K2,K5,K7,K11`, `SCOPE: E<n>` (K11 for
+  that Epic's Tasks) and `ARTIFACT` = `.agents/backlog.md`, that Epic's file and the current view;
+  `K5` stays in both modes — under `MODE: structure` the critic grades the criteria that exist and
+  raises nothing for a Summary-only Task's missing ones. Plus one global call with `RULES: K3,K4,K6,K8,K9,K10,K11 (outside rows only)`
   and `SCOPE` = the selection plus the in-scope rows of `## Outside the dev backlog` (every row on a
-  whole-backlog run, also one with `Needed by: —`). The union of the calls is K1–K11.
+  whole-backlog run, also one with `Needed by: —`). The union of the calls is K1–K11; every call
+  carries the same `MODE`.
 
 Deduplicate findings by (rule, id). A spawn failure → `Critic: not-reviewed — <reason>`; the
 verdict cannot be `ship`.
@@ -84,8 +97,8 @@ answers become **intents** in `/update-backlog`'s model:
 | change a Task's `Scope` / resize | `edit` of the structural cells |
 | move a non-developer Task to the outside section, or add / edit / remove an `X-n` row | the outside-row intent of `/update-backlog` (the moved Task leaves the plan by its removal rule; the new `X-n` row takes its traces and lists its dependents under `Needed by`) |
 | a soft relation / a chain | `edit` adding `Relates` / `Chain` |
-| rewrite a criterion — **backlog-owned** (the current view's `source` is `.agents/backlog.md`) | withdraw the AC id + a new id |
-| rewrite a criterion — **spec-owned** (`source` is an approved spec) | no backlog intent: report "revise `<spec>` — `/brainstorm <Task id>` (new AC id in the spec)"; a backlog rewrite would not change the criteria QA verifies |
+| rewrite a criterion — **backlog-owned** (the current view's `source` starts with `.agents/backlog` — an Epic file) | withdraw the AC id + a new id |
+| rewrite a criterion — **spec-owned** (`source` is anything else — an approved spec) | no backlog intent: report "revise `<spec>` — `/brainstorm <Task id>` (new AC id in the spec)"; a backlog rewrite would not change the criteria QA verifies |
 
 A split or merge whose dependent is protected, or whose redirect is ambiguous, becomes a question —
 never a silent rewire.
@@ -93,7 +106,7 @@ never a silent rewire.
 ## 6. Apply
 
 When any intent exists: run `/update-backlog` with these intents as its input — its **Phase 0**
-(pre-flight: interrupted write, revisions), **Phase 2** (load, record both targets' hashes,
+(pre-flight: interrupted write, revisions), **Phase 2** (load, record every target's hash,
 `--next-ids`) and the protection rules and questions of **Phase 4** apply to them unchanged, then
 Phase 5 impact → Phase 6 candidate → Phase 7 preview → Phase 8 write — the `D-n` titled `check-backlog <date>` and
 `Sources: BA direct decision (check-backlog findings #…)`. A candidate that fails the checker leaves
@@ -134,8 +147,11 @@ bash .claude/lib/codex-bg.sh
 
 > You are a senior delivery lead doing an independent, adversarial review of a developer backlog
 > that another author wrote; a first critic ended `<ship | revise | rethink | not-reviewed>`. The
-> artifacts are `.agents/backlog.md` and `<$SCRATCH/check-backlog-current.md>` (the current
-> acceptance criteria of every in-scope live Task). The rubric is
+> artifacts are `.agents/backlog.md`, the Epic files `.agents/backlog/E*.md` and
+> `<$SCRATCH/check-backlog-current.md>` (the Summary and current acceptance criteria of every
+> in-scope live Task). MODE: `<structure | detail>` — in structure mode the rubric's criteria rules
+> are deferred as its Modes paragraph states; grade the Summary lines and any criteria that exist,
+> and raise nothing for criteria not written yet. The rubric is
 > `.claude/skills/backlog/backlog-rubric.md` (K1–K11). The sources the backlog must trace to are
 > `<docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml — those that exist>`
 > plus `<every approved spec named in the Ref cell of an in-scope Task, or "no specs">`. The method
@@ -167,7 +183,7 @@ re-enter step 7. The step never changes the critic's verdict by itself: an accep
 
 ## 9. Report
 
-Per rule: kept / dropped; fixes applied (with the `D-n`); open findings; checker warnings verbatim;
+`Mode: structure | detail`; per rule: kept / dropped; fixes applied (with the `D-n`); open findings; checker warnings verbatim;
 `Codex: <n> raised · <a> accepted · <d> dropped | not reviewed — <reason>`; the verdict
 `ship | revise | rethink`.
 
@@ -178,18 +194,21 @@ when absent; replace it when present; an older inline `· **Last check:** …` f
 own line first):
 
 ```
-**Last check:** YYYY-MM-DD · scope: all | E2 | since D-4 · verdict: ship | revise | rethink · backlog sha256: <12 hex>
+**Last check:** YYYY-MM-DD · mode: structure | detail · scope: all | E2 | since D-4 · verdict: ship | revise | rethink · backlog sha256: <12 hex>
 ```
 
-The hash is **canonical** — the backlog without its own `**Last check:**` line, computed after
-every write of this run, so writing the line does not invalidate it:
+The hash is **canonical** — `backlog.md` without its own `**Last check:**` line plus every Epic
+file (never `delivery-plan.md`), computed after every write of this run, so writing the line does
+not invalidate it:
 
 ```bash
-grep -v '^\*\*Last check:\*\*' .agents/backlog.md | shasum -a 256 | cut -c1-12
+node .claude/lib/backlog-check.mjs --fingerprint
 ```
 
 `/prime-ba` recomputes it the same way; a different value means the backlog changed since the check.
-A partial scope never reads as a whole-backlog `ship`.
+A partial scope never reads as a whole-backlog `ship`, and a `structure` check never reads as a
+detail check — `/setup:delivery-plan` details the Epics, and a `/check-backlog` after it records
+`mode: detail`.
 
 ---
 

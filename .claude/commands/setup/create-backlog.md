@@ -1,5 +1,5 @@
 ---
-description: Generate .agents/backlog.md — Epics and Tasks (user stories + technical tasks) with sizes M/H/XH, dependency DAG, Scope CORE / MUST / COULD (CORE first, then parallel sessions), developer work only with an outside-the-dev-backlog section, story map, and acceptance criteria with ids — the delivery map the pipeline and /jira sync consume
+description: Generate .agents/backlog.md — Epics and Tasks (user stories + technical tasks) with sizes M/H/XH, dependency DAG, Scope CORE / MUST / COULD (CORE first, then parallel sessions), developer work only with an outside-the-dev-backlog section, story map, and one Epic file per Epic with a one-line Summary per Task (acceptance criteria come from /setup:delivery-plan) — the delivery map the pipeline and /jira sync consume
 argument-hint: "[path-to-prd | optional — defaults to docs/PRD.md]"
 ---
 
@@ -9,14 +9,14 @@ argument-hint: "[path-to-prd | optional — defaults to docs/PRD.md]"
 
 ## What this produces — and why it is NOT the PRD
 
-This command writes **one** artifact: `.agents/backlog.md`. It is the **planning source of truth** for delivery — a pipeline-steering meta-artifact, not another planning document and not a spec.
+This command writes the backlog **structure**: `.agents/backlog.md` (the index — Epic map, Task table, story map, outside rows) and one Epic file per Epic, `.agents/backlog/E<n>-<slug>.md`, with a heading and a one-line `**Summary:**` per Task. It writes **no acceptance criteria and no Goal / scope lines** — `/setup:delivery-plan` details every Epic later. The backlog is the **planning source of truth** for delivery — a pipeline-steering meta-artifact, not another planning document and not a spec.
 
 There are three levels of "what to build" in this template, and the backlog fills the gap between the other two:
 
 | Level | Artifact | Scope | Read by |
 |-------|----------|-------|---------|
 | Product intent | `docs/PRD.md` (+ `docs/discovery.md`, `docs/architecture.md`) | *what & why*, ids `G-/R-/NFR-/BR-/FL-/AD-` | human, `/brainstorm` |
-| **Delivery map** | **`.agents/backlog.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, `Scope` CORE / MUST / COULD (CORE first, then parallel sessions), developer work only, AC ids | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
+| **Delivery map** | **`.agents/backlog.md` + `.agents/backlog/E<n>-<slug>.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, `Scope` CORE / MUST / COULD (CORE first, then parallel sessions), developer work only, a Summary per Task; criteria come from `/setup:delivery-plan` | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
 | Per-feature DAG | umbrella plan `## Execution Plan` | sub-steps of ONE Task (or a few) | `/orchestrate` |
 
 The PRD says *what & why*. The backlog **operationalizes** it into Epics and Tasks with dependencies and sizes. It **does not** restate the PRD — it traces to its ids. Jira mirrors the backlog 1:1 via `/jira sync` (create-only) and, for synced Tasks, owns workflow status (umbrella D7: a Task with a `Jira` key takes its `Status` from Jira; without one the local cell is authoritative).
@@ -24,7 +24,7 @@ The PRD says *what & why*. The backlog **operationalizes** it into Epics and Tas
 > **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE Task (or an explicitly listed few); the backlog decides *which* Tasks exist, how big they are, what must be built first (`CORE`) before several sessions can work at once, and what is committed (`MUST`) or optional (`COULD`). Who builds what in which order is `/setup:delivery-plan`'s job.
 
 <HARD-GATE>
-This command produces a backlog — never code, never a spec, never a plan. Do NOT scaffold files, write implementation, or call `/brainstorm`, `/plan-feature`, `/quick-change` or `/jira`. It stops at `.agents/backlog.md` (plus the `backlog-check.mjs --write` gate on that file). The backlog is **opt-in**: a project that never runs this command has an untouched pipeline.
+This command produces a backlog — never code, never a spec, never a plan. Do NOT scaffold files, write implementation, or call `/brainstorm`, `/plan-feature`, `/quick-change` or `/jira`. It stops at `.agents/backlog.md` and the Epic files (plus the `backlog-check.mjs --write` gate on them). The backlog is **opt-in**: a project that never runs this command has an untouched pipeline.
 </HARD-GATE>
 
 ---
@@ -50,7 +50,7 @@ This command produces a backlog — never code, never a spec, never a plan. Do N
 2. **PRD missing** → STOP, do not write anything:
    > "PRD not found at `<path>`. Run `/discover` first (greenfield), or `/setup:map-codebase` (existing codebase — it reconstructs a PRD), then rerun `/setup:create-backlog`."
 3. **Backlog already exists** (`.agents/backlog.md` present and non-empty) → STOP and ask, do not silently overwrite:
-   > "`.agents/backlog.md` already exists. It is a living artifact with Status/Ref/Jira filled in by the pipeline — regenerating wholesale would discard that progress. To change the structure (new Epic, re-shaped DAG), edit it directly and run `node .claude/lib/backlog-check.mjs --write`. Re-run me only to rebuild from scratch — confirm you want that."
+   > "`.agents/backlog.md` already exists. It is a living artifact with Status/Ref/Jira filled in by the pipeline, and its Epic files in `.agents/backlog/` may already carry acceptance criteria — regenerating wholesale would discard that progress. To change the structure (new Epic, re-shaped DAG), edit the files directly and run `node .claude/lib/backlog-check.mjs --write`. Re-run me only to rebuild from scratch: that replaces `.agents/backlog.md` and every `.agents/backlog/E*.md` (never `.agents/backlog/delivery-plan.md`) — confirm you want that."
    Only regenerate if the user explicitly confirms.
 4. Read `docs/discovery.md`, `docs/architecture.md` and `docs/map/system.yaml` when they exist. Missing ones are not an error: note each gap in "Open questions" (a missing discovery means no story map; a missing architecture means no `AD-n` traces and no `Node` cells).
 5. **Architecture still a draft** (`docs/architecture.md` header carries `**Status:** draft` — `/architect`'s publication gate has not released it) → STOP, do not import its `AD-n` or nodes:
@@ -76,20 +76,33 @@ Concretely, the forks worth a question here are usually:
 
 Everything else (Task granularity, sizes, naming, the `Scope` of Tasks the sources settle) — decide and write the assumption into the backlog. One question per message, multiple choice via `AskUserQuestion`, lead with your pick. Zero questions is the right count for a PRD with an obvious critical flow and a clean phase breakdown.
 
+### Phase 2.5: Hand the writing to `@backlog-author`
+
+After the questions, the main session spawns `@backlog-author` once (pinned model; it writes, it does not ask). The spawn prompt carries:
+
+| Input | Value |
+|---|---|
+| `SOURCES` | the resolved PRD path, `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` — the ones that exist, plus the gaps Phase 0 noted |
+| `ANSWERS` | the operator's answers from Phase 2 (and the assumptions you stated), verbatim |
+| `METHOD` | `.claude/commands/setup/create-backlog.md` — Phases 3–6 |
+| `OUTPUT` | `.agents/backlog.md` and `.agents/backlog/E<n>-<slug>.md`, one per Epic |
+
+The agent follows Phases 3–6 below and returns the list of files written and its open questions. The main session then runs the Phase 7 gate. Errors go back to the same agent (`SendMessage`) with the checker output verbatim, at most twice; still red after that → the main session fixes the files itself. Agent unavailable (not installed, rate or usage limit, pinned model unavailable) → the main session writes Phases 3–6 itself, and the report says `**Author:** main session — @backlog-author unavailable`.
+
 ### Phase 3: What a Task is
 
 The hierarchy is **Epic → Task**, nothing in between. A Task is one of two things:
 
 | Type | What it is | Must carry |
 |------|-----------|------------|
-| `story` | one **user story** — "As a <role> I want <capability> so that <outcome>", traced to the `R-n` / `FL-n.Ak` / `G-n` it delivers | ≥1 happy-path AC **and** ≥1 unwanted-behaviour AC (the failure, the forbidden action, the empty state) |
-| `tech` | one **technical task** — scaffold, schema, contract, refactor, spike — traced to the `AD-n` / `NFR-n` that demands it | ≥1 AC stating the observable result; a spike's AC is the decision it produces |
+| `story` | one **user story** — "As a <role> I want <capability> so that <outcome>", traced to the `R-n` / `FL-n.Ak` / `G-n` it delivers | a `**Summary:**` line naming the outcome a user can observe |
+| `tech` | one **technical task** — scaffold, schema, contract, refactor, spike — traced to the `AD-n` / `NFR-n` that demands it | a `**Summary:**` line naming the observable result; a spike's Summary names the decision it produces |
 
 **Three relations, one order.** `Depends on` is the hard order (Jira `Blocks`). `Relates` is shared context without order (Jira `Relates`) — one relation per pair: a pair is either a dependency or a relation, never both. `Chain` is an advisory name for "one developer, these Tasks, in this order": its members are already one line in `Depends on`, share the Epic and the `Node`, and the order is the `Depends on` path, never the table order. A chain of small Tasks on one file set is usually one Task.
 
 **Size every Task** `M` (4 pts) · `H` (8 pts) · `XH` (16 pts) — a currency for planning, not hours. Anything bigger than `XH` is **split**, in this order of preference (Humanizing Work's patterns): **workflow steps** (one step of the flow each) → **CRUD operations** → **business-rule variations** → **data variations** → **data-entry methods** → **major effort first, the rest later** → **simple core now, complex cases later** → **defer performance** (make it work, then make it fast as its own Task) → **spike** (last resort — a timeboxed `tech` Task whose output is a decision). Epic points are the sum of their Tasks' points; the checker enforces it.
 
-**Every Task gets acceptance criteria with ids** `E<n>-<m>.AC<k>`, written as Gherkin (`Given … When … Then …`) or EARS (`WHEN … the system shall …`). These ids are stable: `/brainstorm` copies them into the spec, `/plan-feature` into the plan, `/qa-verify` keys its verdicts by them. Never renumber — a dropped criterion keeps its id with `(withdrawn)`.
+**Every Task gets a one-line `**Summary:**`** in its Epic file — what the Task delivers, in the PRD's words, as an outcome a user or system can observe; no technical approach. **This command writes no acceptance criteria.** `/setup:delivery-plan` details each Epic later: Goal, In scope, Out of scope and criteria with ids `E<n>-<m>.AC<k>` (Gherkin or EARS), stable from then on — `/brainstorm` copies them into the spec, `/plan-feature` into the plan, `/qa-verify` keys its verdicts by them.
 
 **Developer work only.** Tasks are what developers build: application code, including auth, sessions and RBAC (security *is* a feature here; it goes through `/brainstorm` like any other Task), logging and metrics calls, caching code, queue consumers, and performance work with a concrete deliverable in the code.
 
@@ -116,13 +129,13 @@ The hierarchy is **Epic → Task**, nothing in between. A Task is one of two thi
 - **Every backbone activity of a critical flow is traced by a `CORE` or `MUST` Task.** A critical activity covered only by `COULD` Tasks (or by none) is a checker error.
 - The story map's rows are the `Scope` values (`CORE`, `MUST`, `COULD`); the checker generates it.
 
-### Phase 6: Write `.agents/backlog.md`
+### Phase 6: Write `.agents/backlog.md` and the Epic files
 
-Create `.agents/` if needed (it exists in this template). Write **exactly** this structure — tables over prose, references over restatement. The header's `**Source PRD:**` is the path resolved in Phase 0; the marker-comment pair is mandatory and its body is generated in Phase 7 — never hand-write it. Sections not applicable to the project stay as a one-line "none" rather than disappearing, so readers and tooling find the same headings everywhere.
+Create `.agents/` and `.agents/backlog/` if needed. Write `.agents/backlog.md` **exactly** in this structure — tables over prose, references over restatement. The header's `**Source PRD:**` is the path resolved in Phase 0; the marker-comment pair is mandatory and its body is generated in Phase 7 — never hand-write it. Sections not applicable to the project stay as a one-line "none" rather than disappearing, so readers and tooling find the same headings everywhere.
 
 ```markdown
 # <Project> — Backlog (Epics + Tasks)
-**Date:** YYYY-MM-DD · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
+**Date:** YYYY-MM-DD · **Detail:** structure · **Source PRD:** `<resolved PRD path, default docs/PRD.md>` · **Scope rev:** `<the PRD's **Current:** version — omit this field when the PRD has none>` · **Architecture:** `docs/architecture.md` · **Jira namespace:** `<kebab slug>` · **Sizes:** M=4 · H=8 · XH=16 points (currency, not hours)
 **Last check:** — (written by `/check-backlog`, always on its own line)
 
 ## Epic map
@@ -135,10 +148,6 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 | ID | Epic | Task | Type | Size | Pts | Depends on | Relates | Chain | Scope | Node | Traces | Status | Jira | Ref |
 |----|------|------|------|------|-----|------------|---------|-------|-------|------|--------|--------|------|-----|
 | E0-1 | E0 | Project scaffold | tech | H | 8 | — | — | — | CORE | platform-core | AD-1 | TODO | — | — |
-
-## Acceptance criteria
-### E0-1 — Project scaffold
-- **E0-1.AC1** — Given … When … Then …
 
 ## Story map
 <!-- storymap:begin -->
@@ -153,7 +162,18 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 ## External blockers · ## Open questions · ## Consciously out of scope
 ```
 
-**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Scope` `CORE|MUST|COULD`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task or outside row); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. Outside rows: `ID` `X-n`; `Needed by` — Task ids or `—`; `Traces` — active `R-`/`NFR-`/`AD-` ids or `—` (an active `R-`/`NFR-` traced only here counts as covered). The section is optional for the checker, but write it — with an empty table when nothing falls outside. The last three headings are separate `##` sections in the real file (one line each when empty).
+**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Scope` `CORE|MUST|COULD`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task or outside row); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. Outside rows: `ID` `X-n`; `Needed by` — Task ids or `—`; `Traces` — active `R-`/`NFR-`/`AD-` ids or `—` (an active `R-`/`NFR-` traced only here counts as covered). The section is optional for the checker, but write it — with an empty table when nothing falls outside. The last three headings are separate `##` sections in the real file (one line each when empty). `**Detail:** structure` says the Epic files carry Summary lines only; `/setup:delivery-plan` sets it to `full` once every live Task has criteria.
+
+Then write **one Epic file per Epic**, `.agents/backlog/E<n>-<slug>.md` — the slug is the Epic title in lowercase kebab-case ASCII (diacritics dropped, at most 40 characters, cut at a `-`), written once and never renamed; the file's identity is its `E<n>` prefix. Per Task: its heading and a one-line `**Summary:**`, in Task-table order, nothing else:
+
+```markdown
+# E0 — Foundation
+
+## E0-1 — Project scaffold
+**Summary:** <one line — what the Task delivers, in the PRD's words>
+```
+
+No `**Goal:**`, `**In scope:**` or `**Out of scope:**` lines and no acceptance-criteria subsection here — `/setup:delivery-plan` writes them. No `>` meta line either — `backlog-check.mjs --write` generates it under each Task heading from the table. A withdrawn Task keeps its block.
 
 ### Phase 7: Gate — `backlog-check.mjs --write`
 
@@ -161,13 +181,13 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 node .claude/lib/backlog-check.mjs --write
 ```
 
-Run from the project root. It reads the PRD path from the header written in Phase 6 and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, AC ids, trace coverage, `Node` cells and the system tree; then — only when there are **no errors** — fills the `storymap` marker region (the story map only; ordering and parallel work are `/setup:delivery-plan`'s job). **Fix every error in the file and rerun until it exits 0.** Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker region; `--write` owns it. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
+Run from the project root. It reads the PRD path from the header written in Phase 6, the Epic files in `.agents/backlog/`, and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, trace coverage, `Node` cells, the system tree and the Epic files (every live Task has its block in its Epic's file with a `**Summary:**` — under `**Detail:** structure` criteria may be missing, and any that exist are validated); then — only when there are **no errors** — fills the `storymap` marker region and the `>` meta line under each Task heading in the Epic files (ordering and parallel work are `/setup:delivery-plan`'s job). **Fix every error and rerun until it exits 0** — through `@backlog-author` first, as Phase 2.5 says. Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker region or a `>` meta line; `--write` owns them. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
 
 ### Phase 7.5: Independent check — `/check-backlog` (recommended)
 
 Offer `/check-backlog` now (`AskUserQuestion`: **run it now** (Recommended) / later): an independent
 critic grades the judgement calls the checker cannot (CORE sufficiency and minimality, size
-honesty, AC quality, developer-only scope) and routes accepted fixes through `/update-backlog`, with its own approval gates.
+honesty, Summary quality, developer-only scope; in structure mode it defers the rules that grade criteria) and routes accepted fixes through `/update-backlog`, with its own approval gates.
 Run → its verdict goes into the Phase 8 report as `**Check:** <verdict> (<D-n> if fixes were
 applied)`; later → `**Check:** not run — /check-backlog before the first /jira draft`.
 
@@ -176,7 +196,8 @@ applied)`; later → `**Check:** not run — /check-backlog before the first /ji
 ```markdown
 ## Backlog created
 
-**Source PRD:** `<path>` · **Written:** `.agents/backlog.md`
+**Source PRD:** `<path>` · **Written:** `.agents/backlog.md` + <N> Epic files in `.agents/backlog/` · **Detail:** structure
+**Author:** @backlog-author <or "main session — @backlog-author unavailable">
 **Epics:** <N> · **Tasks:** <K> (<stories> story · <tech> tech) · **Points:** E0 <p> · E1 <p> · … · total <P>
 **Scope:** CORE <T> Tasks / <p> pts · MUST <p> pts · COULD <p> pts
 **Outside the dev backlog:** <N> rows (<owners>)
@@ -186,9 +207,10 @@ applied)`; later → `**Check:** not run — /check-backlog before the first /ji
 
 **Next steps:**
 1. Review the backlog — correct the CORE boundary, the MUST / COULD line, sizes or DAG if you disagree (edit the file, then `node .claude/lib/backlog-check.mjs --write`).
-2. `/setup:delivery-plan` — who builds what in which order and how many working days it takes.
-3. Jira project? `/jira sync` mirrors Epics and Tasks (create-only, writes keys back).
-4. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks. The size is a suggestion — the destination command's own guard decides (`/quick-change` Phase 0 may still send an `M` Task to `/brainstorm`).
+2. `/check-backlog` (if Phase 7.5 did not run it) — the structure review.
+3. `/setup:delivery-plan` — details the Epics (Goal, scope and acceptance criteria per Task) and computes who builds what in which order and how many working days it takes.
+4. Jira project? `/jira sync` mirrors Epics and Tasks (create-only, writes keys back); a Task needs its criteria first.
+5. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks. The size is a suggestion — the destination command's own guard decides (`/quick-change` Phase 0 may still send an `M` Task to `/brainstorm`).
    When a backlog exists, the pipeline writes `Status`/`Ref` back into it automatically.
 ```
 
@@ -200,7 +222,7 @@ Keep the report to this skeleton — add lines only for a blocker the user must 
 
 - **`Status`, `Ref` and `Jira` cells are written by the pipeline** — `/plan-feature` (Status → `WIP`, Ref → spec + plan), `/execute` and `/orchestrate` (Status → `DONE` per the whole-Task rule: only when no active plan still lists the Task), `/quick-change` (`DONE` on completion), `/brainstorm` Step 0 (read-only status refresh from Jira for Tasks with a key), `/jira sync` (keys) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation on the file's content; it is mechanical and safe.
 - **Structural change (new Epic, new or re-sized Task, re-shaped DAG) goes through `/update-backlog`** (and `/check-backlog` through it): it previews every change, shows its impact, protects work in progress, records one `D-n` in the PRD change log and validates the candidate before writing. A hand edit stays allowed — then run `node .claude/lib/backlog-check.mjs --write`; the next `/update-backlog` (or the checker's `Scope rev` warning) surfaces it. No other automated step rewrites the DAG; that is how a backlog starts "pretending to be the truth".
-- **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its AC ids stay. The checker still validates its ids but leaves it out of the story map, the delivery plan and trace coverage. Jira issues are never deleted by the pipeline.
+- **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its block in the Epic file and its AC ids stay. The checker still validates its ids but leaves it out of the story map, the delivery plan and trace coverage. Jira issues are never deleted by the pipeline.
 - The backlog is **short, tabular, referential**. If it grows narrative, it has drifted from its job — prune it back to tables + references.
 
 ## Notes

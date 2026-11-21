@@ -1,13 +1,17 @@
-// Validator + generator for `.agents/backlog.md` (Epics + Tasks) and `docs/map/system.yaml`.
-// Owns every check a model must not self-grade: ids, DAG, sizes, trace coverage, system-tree
-// integrity, Scope order, the `## Outside the dev backlog` rows, and the derived story map it writes
-// back into its marker region. Scheduling lives in `delivery-plan.mjs`, not here.
-// Also warns on a Task delivered by a done plan whose Status / Ref was never written back.
+// Validator + generator for `.agents/backlog.md` (Epics + Tasks), its Epic files
+// (`.agents/backlog/E<n>-<slug>.md` — per-Task Summary / Goal / scope and acceptance criteria) and
+// `docs/map/system.yaml`. Owns every check a model must not self-grade: ids, DAG, sizes, trace
+// coverage, system-tree integrity, Scope order, the `## Outside the dev backlog` rows, where each
+// criterion lives, and the derived story map + Epic-file meta lines it writes back (`--write`).
+// Scheduling lives in `delivery-plan.mjs`, not here. Also warns on a Task delivered by a done plan
+// whose Status / Ref was never written back. `--candidate <dir>` validates `<dir>/PRD.md` +
+// `<dir>/backlog.md` + `<dir>/backlog/E*.md`; `--fingerprint` prints the hash of the backlog set.
 // Node builtins only — ships to every downstream (umbrella D4).
 //
-//   node .claude/lib/backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only]
+//   node .claude/lib/backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--candidate <dir>] [--fingerprint]
 //   exit 0 = no errors · 1 = errors · 2 = usage / missing backlog or system.yaml
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,9 +48,23 @@ const STATUS_WITHDRAWN = /^withdrawn(?:\s+per\s+(D-\d+))?$/i;
 const CHAIN_TOKEN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SCOPE_REV = /\*\*Scope rev:\*\*\s*(v\d+\.\d+)/;
 const PRD_CURRENT = /\*\*Current:\*\*\s*(v\d+\.\d+)/;
-const AC_SECTION_HEADING = /^##\s+Acceptance criteria\b/i;
-const AC_BLOCK_HEADING = /^###\s+(E\d+-\d+)\b/;
-const AC_DEFINITION = /^\s*[-*]\s+\*\*(E\d+-\d+\.AC[^*]*)\*\*/;
+export const AC_SECTION_HEADING = /^##\s+Acceptance criteria\b/i;
+export const AC_BLOCK_HEADING = /^###\s+(E\d+-\d+)\b/;
+export const AC_DEFINITION = /^\s*[-*]\s+\*\*(E\d+-\d+\.AC[^*]*)\*\*/;
+// Epic files (`.agents/backlog/E<n>-<slug>.md`): the one home of a Task's detail and criteria.
+const DETAIL = /\*\*Detail:\*\*\s*(\S+)/;
+const DETAILS = ['structure', 'full'];
+const EPIC_FILE = /^(E\d+)-.+\.md$/;
+const EPIC_HEADING = /^#\s+(E\d+)\b/;
+const TASK_HEADING = /^##\s+(E\d+-\d+)\b(.*)$/;
+const CRITERIA_HEADING = /^###\s+Acceptance criteria\b/i;
+const DETAIL_LABELS = { summary: 'Summary', goal: 'Goal', inScope: 'In scope', outOfScope: 'Out of scope' };
+const LABEL_LINE = new RegExp(`^\\*\\*(${Object.values(DETAIL_LABELS).join('|')}):\\*\\*\\s*(.*)$`);
+const LABEL_KEY = Object.fromEntries(Object.entries(DETAIL_LABELS).map(([k, v]) => [v, k]));
+// The shape of a generated meta line (`renderMeta`): anything else under a Task heading is content.
+const META_LINE = /^> (Withdrawn · )?Size \S+ \(/;
+export const EPIC_DIR = '.agents/backlog';
+export const PRE_DETAIL_MESSAGE = 'acceptance criteria still in .agents/backlog.md — run: node .claude/lib/backlog-migrate.mjs --write';
 // A PRD NFR row whose Requirement cell starts with this is a declared non-applicable characteristic.
 const NFR_NOT_APPLICABLE = /^N\/A\b/;
 const ARCHITECTURE_DRAFT = /^\*\*Status:\*\*\s*draft\b/im;
@@ -60,6 +78,36 @@ const isSeparator = (line) => /^\s*\|?\s*:?-{3,}/.test(line) && !/[^\s|:-]/.test
 export const cleanId = (cell) => (cell ?? '').replace(/[`*]/g, '').trim();
 const isNone = (cell) => { const c = cleanId(cell); return c === '' || c === '—' || c === '-'; };
 const listCell = (cell) => (isNone(cell) ? [] : cleanId(cell).split(',').map((s) => s.trim()).filter(Boolean));
+
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
+/**
+ * A fenced-code tracker (CommonMark): fed one line at a time, returns true for a fence line or a
+ * line inside a fence. A fence opens on ≥ 3 identical backticks or tildes after ≤ 3 spaces (a
+ * backtick fence's info string holds no backtick) and closes only on the same character, at least as
+ * many, and nothing but whitespace after. `scan.openedAt()` is the 1-based number (count of lines
+ * fed) of the line that opened a still-open fence, else null.
+ */
+export function fenceScanner() {
+  let open = null;
+  let fed = 0;
+  const scan = (line) => {
+    fed += 1;
+    if (open) {
+      const c = FENCE_CLOSE.exec(line);
+      if (c && c[1][0] === open.ch && c[1].length >= open.len) open = null;
+      return true;
+    }
+    const o = FENCE_OPEN.exec(line);
+    if (!o || (o[1][0] === '`' && line.slice(o[0].length).includes('`'))) return false;
+    open = { ch: o[1][0], len: o[1].length, line: fed };
+    return true;
+  };
+  scan.openedAt = () => open?.line ?? null;
+  return scan;
+}
+/** Per line of `lines`: true when it is a fence line or inside a fenced code block. */
+export const fenceMask = (lines) => { const scan = fenceScanner(); return lines.map((l) => scan(l)); };
 
 /** Every pipe table in `md`: `{ header, rows }`, each row keyed by its header cell (plus `_line`). */
 export function parseTables(md) {
@@ -119,16 +167,101 @@ function parseOutside(md, tables, requireTable) {
 }
 
 const acText = (line) => line.replace(AC_DEFINITION, '').replace(/^\s*[—-]\s*/, '').trim();
+const EMPTY_DETAIL = () => ({ detail: null, details: new Map(), files: [] });
 
-/** Parse `.agents/backlog.md` into epics, tasks, acceptance criteria and header fields. */
-export function parseBacklog(md) {
+/** The id slug of an Epic file name (`E5-checkout-payment.md`): lowercase ASCII, ≤ 40 chars at a `-` boundary. */
+export function epicSlug(title) {
+  const slug = String(title ?? '').toLowerCase().replace(/ł/g, 'l').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (slug.length <= 40) return slug || 'epic';
+  const cut = slug.slice(0, 41).lastIndexOf('-');
+  return (cut > 0 ? slug.slice(0, cut) : slug.slice(0, 40)).replace(/-+$/, '') || 'epic';
+}
+export const epicFileName = (id, title) => `${id}-${epicSlug(title)}.md`;
+/** The Epic id of an Epic file name (`E5-checkout.md` → `E5`), or null when the name is no Epic file. */
+export const epicOfFile = (name) => EPIC_FILE.exec(name)?.[1] ?? null;
+
+/**
+ * One Epic file: its Task blocks (`## E<n>-<m> — …` up to the next `## `), their label paragraphs
+ * and every criterion definition with where it sits — `block` (the open Task heading, or null) and
+ * `inCriteria` (under that block's `### Acceptance criteria`; only a level-3 heading changes it, a
+ * `####` sub-heading keeps it), so the check can reject one written anywhere else. A fenced code
+ * block is text: nothing inside it is a heading, label or criterion. Structural faults are
+ * `problems`, never skipped.
+ */
+function parseEpicFile({ name, text }) {
+  const epic = epicOfFile(name);
+  const problems = [];
+  const tasks = [];
+  const acs = [];
+  const lines = text.split(/\r?\n/);
+  const first = lines.findIndex((l) => l.trim() !== '');
+  const head = first === -1 ? null : EPIC_HEADING.exec(lines[first]);
+  if (!epic || !head || head[1] !== epic) problems.push(`Epic file ${name}: first line must be \`# ${epic ?? 'E<n>'} — <title>\``);
+  let block = null;
+  let inCriteria = false;
+  let label = null;
+  let last = null;
+  const scan = fenceScanner();
+  // An indented continuation line belongs to the criterion above it.
+  const continues = (line) => last && /^\s+\S/.test(line);
+  lines.forEach((line, idx) => {
+    const inFence = scan(line);
+    if (idx === first && /^#\s/.test(line)) return;
+    if (inFence) {
+      if (continues(line)) last.text = `${last.text} ${line.trim()}`;
+      else { last = null; label = null; }
+      return;
+    }
+    const t = TASK_HEADING.exec(line);
+    if (t) {
+      if (tasks.some((x) => x.id === t[1])) problems.push(`Epic file ${name}: duplicate Task heading ${t[1]} (line ${idx + 1})`);
+      block = { id: t[1], title: t[2].replace(/^\s*[—-]\s*/, '').trim(), summary: '', goal: '', inScope: '', outOfScope: '' };
+      tasks.push(block);
+      inCriteria = false; label = null; last = null;
+      return;
+    }
+    if (/^#{1,2}\s/.test(line)) {
+      problems.push(`Epic file ${name} line ${idx + 1}: unexpected heading \`${line.trim()}\` — only \`## <Task id> — …\` blocks`);
+      block = null; inCriteria = false; label = null; last = null;
+      return;
+    }
+    if (/^###\s/.test(line)) { inCriteria = block !== null && CRITERIA_HEADING.test(line); label = null; last = null; return; }
+    // A deeper sub-heading groups criteria: it ends the one above, the block and its section stay.
+    if (/^#{4,}\s/.test(line)) { label = null; last = null; return; }
+    const d = AC_DEFINITION.exec(line);
+    if (d) {
+      last = { id: d[1].trim(), task: d[1].split('.')[0], block: block?.id ?? null, file: name, inCriteria, line: idx + 1, text: acText(line) };
+      acs.push(last); label = null;
+      return;
+    }
+    if (continues(line) && !/^\s*[-*]\s+\*\*/.test(line)) { last.text = `${last.text} ${line.trim()}`; return; }
+    last = null;
+    const l = LABEL_LINE.exec(line);
+    if (l && block) { label = LABEL_KEY[l[1]]; block[label] = l[2].trim(); return; }
+    // A label paragraph runs on over non-blank lines that are no label, heading, list item or `>` line.
+    if (label && line.trim() !== '' && !/^\s*([-*]|\d+\.)\s/.test(line) && !/^>/.test(line)) { block[label] = `${block[label]} ${line.trim()}`.trim(); return; }
+    label = null;
+  });
+  if (scan.openedAt() !== null) problems.push(`Epic file ${name}: unclosed code fence opened on line ${scan.openedAt()}`);
+  return { name, epic, tasks, acs, problems };
+}
+
+/** Parse `.agents/backlog.md` (+ the Epic-file texts) into epics, tasks, criteria and header fields. Pure. */
+export function parseBacklog(md, { epicFiles = [] } = {}) {
   const tables = parseTables(md);
   const hasSize = tables.some((t) => t.header.includes('Size'));
-  if (/^##\s+Work packages/m.test(md) && !hasSize) return { legacy: true, epics: [], tasks: [], acs: [], outside: [], problems: [] };
+  if (/^##\s+Work packages/m.test(md) && !hasSize) return { legacy: true, preDetail: false, epics: [], tasks: [], acs: [], outside: [], problems: [], ...EMPTY_DETAIL() };
   // A Task table still on Wave / Slice (and without Scope) is migrated, never half-checked.
   const keyed = findTaskTable(tables);
   if (keyed && !keyed.header.includes('Scope') && (keyed.header.includes('Wave') || keyed.header.includes('Slice'))) {
-    return { legacy: false, preScope: true, epics: [], tasks: [], acs: [], outside: [], problems: [] };
+    return { legacy: false, preScope: true, preDetail: false, epics: [], tasks: [], acs: [], outside: [], problems: [], ...EMPTY_DETAIL() };
+  }
+  // Criteria still in a `## Acceptance criteria` section of backlog.md: migrated, never half-checked.
+  const mdLines = md.split(/\r?\n/);
+  const fenced = fenceMask(mdLines);
+  if (mdLines.some((l, i) => !fenced[i] && AC_SECTION_HEADING.test(l))) {
+    return { legacy: false, preScope: false, preDetail: true, epics: [], tasks: [], acs: [], outside: [], problems: [], ...EMPTY_DETAIL(), raw: md };
   }
 
   const problems = [];
@@ -159,27 +292,68 @@ export function parseBacklog(md) {
     withdrawn: /\(withdrawn\)/i.test(r.Task ?? ''), line: r._line,
   })).filter((t) => t.id !== '');
 
-  // /qa-verify reads criteria only from `## Acceptance criteria` → `### <Task id> — …` blocks; a
-  // definition anywhere else is recorded with `inSection: false` so the check can reject it.
-  const acs = [];
-  let block = null;
-  let inSection = false;
-  let last = null;
-  md.split(/\r?\n/).forEach((line, idx) => {
-    const h = AC_BLOCK_HEADING.exec(line);
-    if (h) { block = h[1]; last = null; return; }
-    if (/^##\s/.test(line)) { block = null; inSection = AC_SECTION_HEADING.test(line); last = null; return; }
-    const d = AC_DEFINITION.exec(line);
-    if (d) { last = { id: d[1].trim(), task: d[1].split('.')[0], block, inSection, line: idx + 1, text: acText(line) }; acs.push(last); return; }
-    // An indented continuation line belongs to the criterion above it.
-    if (last && /^\s+\S/.test(line) && !/^\s*[-*]\s+\*\*/.test(line)) last.text = `${last.text} ${line.trim()}`;
-    else last = null;
-  });
+  // /qa-verify reads criteria only from an Epic file's `## <Task id>` → `### Acceptance criteria`.
+  const parsedFiles = epicFiles.map(parseEpicFile);
+  const acs = parsedFiles.flatMap((f) => f.acs);
+  const epicOf = new Map(tasks.map((t) => [t.id, t.epic]));
+  const details = new Map();
+  for (const f of parsedFiles) {
+    problems.push(...f.problems);
+    for (const t of f.tasks) {
+      // A Task with a block in its own Epic's file and another elsewhere resolves to its own file.
+      const own = f.epic === (epicOf.get(t.id) ?? t.id.split('-')[0]);
+      if (details.has(t.id) && !own) continue;
+      details.set(t.id, { file: f.name, summary: t.summary, goal: t.goal, inScope: t.inScope, outOfScope: t.outOfScope });
+    }
+  }
+  const files = parsedFiles.map((f, i) => ({ name: f.name, epic: f.epic, taskIds: f.tasks.map((t) => t.id), text: epicFiles[i].text }));
 
   const outside = parseOutside(md, tables, requireTable);
+  // A criterion definition anywhere else in backlog.md (outside a fenced example) is misplaced.
+  const strayAcs = mdLines.flatMap((l, i) => {
+    const d = fenced[i] ? null : AC_DEFINITION.exec(l);
+    return d ? [{ id: d[1].trim(), task: d[1].split('.')[0], line: i + 1 }] : [];
+  });
 
+  const lines = md.split(/\r?\n/);
+  const firstSection = lines.findIndex((l) => l.startsWith('## '));
+  const header = (firstSection === -1 ? lines : lines.slice(0, firstSection)).join('\n');
   const prd = /\*\*Source PRD:\*\*\s*`([^`]+)`/.exec(md);
-  return { legacy: false, preScope: false, epics, tasks, acs, outside, problems, sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null, raw: md };
+  return {
+    legacy: false, preScope: false, preDetail: false, epics, tasks, acs, strayAcs, outside, problems,
+    detail: DETAIL.exec(header)?.[1] ?? null, details, files,
+    sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null, raw: md,
+  };
+}
+
+/**
+ * `.agents/backlog.md` and its Epic files: `{ md, epicFiles: [{ name, text }] }`. Epic files are the
+ * regular files in `epicDir` named `E<n>-….md` (so `delivery-plan.md` never is one), in id order; a
+ * missing backlog is `md: null`, a missing directory no Epic files.
+ */
+export function readBacklogFiles(backlogPath, epicDir = path.join(path.dirname(backlogPath), 'backlog')) {
+  const md = readIfExists(backlogPath);
+  let epicFiles = [];
+  if (fs.existsSync(epicDir) && fs.statSync(epicDir).isDirectory()) {
+    epicFiles = fs.readdirSync(epicDir, { withFileTypes: true })
+      .filter((d) => d.isFile() && EPIC_FILE.test(d.name)).map((d) => d.name).sort(byIdAsc)
+      .map((name) => ({ name, text: fs.readFileSync(path.join(epicDir, name), 'utf8') }));
+  }
+  return { md, epicFiles };
+}
+
+/**
+ * sha256 (12 hex) of the backlog set: `backlog.md` without its `**Last check:**` line, then every
+ * Epic file in id order behind a `--- <name> ---` separator. With no Epic files it equals the old
+ * backlog-only hash. The one fingerprint /check-backlog records and the delivery plan cites.
+ */
+export function backlogFingerprint(md, epicFiles = []) {
+  const lines = (md ?? '').split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  const kept = lines.filter((l) => !l.startsWith('**Last check:**'));
+  let text = kept.length ? `${kept.join('\n')}\n` : '';
+  for (const f of [...epicFiles].sort((a, b) => byIdAsc(a.name, b.name))) text += `\n--- ${f.name} ---\n${f.text}`;
+  return crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -447,11 +621,18 @@ export function checkSystem(system) {
 
 const pointsOf = (size) => SIZE_POINTS[size];
 
+/** Repo-relative path of an Epic's file: the one on disk, else the name `epicFileName` would give it. */
+function epicFilePath(b, epic) {
+  const name = (b.files ?? []).find((f) => f.epic === epic)?.name ?? epicFileName(epic, b.epics.find((e) => e.id === epic)?.title ?? '');
+  return path.posix.join(EPIC_DIR, name);
+}
+
 /** Every backlog check. `backlog` is the markdown or the `parseBacklog` result. */
 export function checkBacklog({ backlog, inventory, system }) {
   const b = typeof backlog === 'string' ? parseBacklog(backlog) : backlog;
   if (b.legacy) return { errors: [], warnings: [], legacy: true };
   if (b.preScope) return { errors: [PRE_SCOPE_MESSAGE], warnings: [], legacy: false, preScope: true };
+  if (b.preDetail) return { errors: [PRE_DETAIL_MESSAGE], warnings: [], legacy: false, preDetail: true };
   // A dropped table (missing column) would make every check below fail on an empty list — report
   // the structural problem alone instead of that cascade.
   if (b.problems.length) return { errors: [...b.problems], warnings: [] };
@@ -545,23 +726,62 @@ export function checkBacklog({ backlog, inventory, system }) {
     else if (e.pts !== sum) errors.push(`Epic ${e.id}: Pts ${e.pts} ≠ ${sum} (sum of its Tasks)`);
   }
 
+  // --- Epic files: one per Epic, a block per live Task in its own Epic's file
+  const { detail, files, details } = b;
+  if (!DETAILS.includes(detail)) errors.push('backlog header: **Detail:** must be `structure` or `full`');
+  const fileOf = new Map();
+  for (const f of files) {
+    if (fileOf.has(f.epic)) errors.push(`Epic ${f.epic}: two Epic files (${fileOf.get(f.epic)}, ${f.name})`);
+    else fileOf.set(f.epic, f.name);
+    if (!epicIds.has(f.epic)) errors.push(`Epic file ${f.name}: Epic ${f.epic} not in the Epic map`);
+  }
+  const hasBlock = new Set();
+  for (const f of files) {
+    for (const id of f.taskIds) {
+      const t = byId.get(id);
+      if (!t) { errors.push(`${f.name}: Task ${id} not in the Task table`); continue; }
+      if (t.epic !== f.epic) errors.push(`${f.name}: Task ${id} belongs to Epic ${t.epic}`);
+      else hasBlock.add(id);
+    }
+  }
+  const epicPath = (epic) => epicFilePath(b, epic);
+  for (const t of b.tasks) {
+    if (!t.withdrawn && !hasBlock.has(t.id)) errors.push(`Task ${t.id}: no \`## ${t.id} — …\` block in the Epic file of ${t.epic} (${epicPath(t.epic)})`);
+  }
+
   // --- acceptance criteria
   const acCount = new Map();
   const seenAc = new Set();
   for (const ac of b.acs) {
     if (!AC_ID.test(ac.id)) { errors.push(`malformed AC id ${ac.id} (expected E<n>-<m>.AC<k>)`); continue; }
-    if (seenAc.has(ac.id)) errors.push(`duplicate AC definition ${ac.id} (line ${ac.line}) — /qa-verify keys criteria by id`);
+    if (seenAc.has(ac.id)) errors.push(`duplicate AC definition ${ac.id} (${ac.file} line ${ac.line}) — /qa-verify keys criteria by id`);
     seenAc.add(ac.id);
     if (!taskIds.has(ac.task)) errors.push(`AC ${ac.id}: Task ${ac.task} not in Task table`);
     // Only a criterion where /qa-verify will find it counts toward "Task has ≥1 AC".
-    if (!ac.inSection) { errors.push(`${ac.id} defined outside ## Acceptance criteria (line ${ac.line})`); continue; }
-    if (ac.block !== ac.task) { errors.push(`AC ${ac.id} defined under the ${ac.block ?? 'section'} heading — expected ### ${ac.task}`); continue; }
+    if (ac.block === null || !ac.inCriteria) { errors.push(`${ac.id} defined outside a Task's ### Acceptance criteria (${ac.file} line ${ac.line})`); continue; }
+    if (ac.block !== ac.task) { errors.push(`AC ${ac.id} defined under ## ${ac.block} — expected ## ${ac.task} (${ac.file})`); continue; }
     acCount.set(ac.task, (acCount.get(ac.task) ?? 0) + 1);
   }
+  for (const ac of b.strayAcs) {
+    const where = byId.has(ac.task) ? epicPath(byId.get(ac.task).epic) : '.agents/backlog/E<n>-<slug>.md';
+    errors.push(`${ac.id} defined in .agents/backlog.md (line ${ac.line}) — criteria live in the Task's block of its Epic file (${where})`);
+  }
+  // "≥ 1 criterion under `full`" is judged by checkAgainstRoot: only the resolver knows whether an
+  // approved spec in Ref owns a Task's criteria.
+  const undetailed = [];
   for (const t of b.tasks) {
     const n = acCount.get(t.id) ?? 0;
-    if (n === 0) errors.push(`Task ${t.id}: no acceptance criterion (expected - **${t.id}.AC1** — …)`);
+    if (!t.withdrawn && hasBlock.has(t.id)) {
+      const where = epicPath(t.epic);
+      const d = details.get(t.id) ?? {};
+      if (detail === 'structure' && n === 0 && !d.summary) errors.push(`Task ${t.id}: no **Summary:** line (${where})`);
+      if (detail === 'full' && (!d.goal || !d.inScope || !d.outOfScope)) undetailed.push(t.id);
+    }
     if (t.size === 'XH' && t.type === 'story' && n > 5) warnings.push(`Task ${t.id}: XH story with ${n} criteria — split it (workflow steps, business-rule variations, …)`);
+  }
+  if (undetailed.length) {
+    const rest = undetailed.length - 5;
+    warnings.push(`${undetailed.length} Task(s) without Goal / In scope / Out of scope (${undetailed.slice(0, 5).join(', ')}${rest > 0 ? `, +${rest}` : ''}) — /setup:delivery-plan details them`);
   }
 
   // --- traces (withdrawn Tasks keep valid ids but no longer cover anything)
@@ -583,7 +803,7 @@ export function checkBacklog({ backlog, inventory, system }) {
   // --- outside rows: work the dev team needs but does not do; their traces count for coverage
   const tracedOutside = new Set();
   const seenOutside = new Set();
-  for (const x of b.outside ?? []) {
+  for (const x of b.outside) {
     if (!OUTSIDE_ID.test(x.id)) errors.push(`outside ${x.id || `row (line ${x.line})`}: id must match X-<n>`);
     if (seenOutside.has(x.id)) errors.push(`duplicate outside id ${x.id}`);
     seenOutside.add(x.id);
@@ -785,6 +1005,43 @@ export function replaceRegion(md, name, body) {
   return `${md.slice(0, begin)}\n${body}\n${md.slice(end)}`;
 }
 
+/** The generated `>` meta line under a Task heading in its Epic file — derived from the Task table row. */
+export function renderMeta(task) {
+  const pts = SIZE_POINTS[task.size] ?? task.pts;
+  const line = `Size ${task.size} (${pts}) · Scope ${task.scope} · Depends on ${task.deps.join(', ') || '—'} · Traces ${task.traces.join(', ') || '—'}`;
+  return `> ${task.withdrawn ? 'Withdrawn · ' : ''}${line}`;
+}
+
+/**
+ * An Epic file with exactly one meta line directly under every Task heading the table knows: the
+ * generated meta lines (`META_LINE`) right under the heading — blank lines between them included —
+ * are replaced, none → one inserted. A `>` quote of another shape is content and stays, and so does
+ * a blank line before non-meta content; a heading inside a fenced code block is no Task heading.
+ * Everything else, and the file's line endings, stay as they are.
+ */
+export function renderEpicFile(text, backlog) {
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const byId = new Map(backlog.tasks.map((t) => [t.id, t]));
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  const scan = fenceScanner();
+  for (let i = 0; i < lines.length; i += 1) {
+    out.push(lines[i]);
+    if (scan(lines[i])) continue;
+    const h = TASK_HEADING.exec(lines[i]);
+    const task = h && byId.get(h[1]);
+    if (!task) continue;
+    // Drop every meta line in the run of blank / meta lines below the heading, with the blanks before it.
+    let end = i;
+    for (let j = i + 1; j < lines.length && (lines[j].trim() === '' || META_LINE.test(lines[j])); j += 1) {
+      if (META_LINE.test(lines[j])) end = j;
+    }
+    i = end;
+    out.push(renderMeta(task));
+  }
+  return out.join(eol);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Helpers for the writers: next free ids + the AC resolver, impact, candidate validation
 // ---------------------------------------------------------------------------------------------
@@ -795,11 +1052,11 @@ const maxNum = (ids, re) => Math.max(0, ...ids.map((id) => re.exec(id)).filter(B
 /** AC definitions of `taskId` inside a spec's `## Acceptance Criteria` section only. */
 function specCriteria(md, taskId) {
   const out = [];
-  let inSection = false;
+  let inCriteria = false;
   let last = null;
   for (const line of md.split(/\r?\n/)) {
-    if (/^##\s/.test(line)) { inSection = /^##\s+Acceptance criteria\b/i.test(line); last = null; continue; }
-    if (!inSection) continue;
+    if (/^##\s/.test(line)) { inCriteria = /^##\s+Acceptance criteria\b/i.test(line); last = null; continue; }
+    if (!inCriteria) continue;
     const d = AC_DEFINITION.exec(line);
     if (d) {
       last = d[1].trim().split('.')[0] === taskId ? { id: d[1].trim(), text: acText(line) } : null;
@@ -815,25 +1072,35 @@ function specCriteria(md, taskId) {
 /**
  * The AC resolver `brainstorm.md` Step 5 and `qa-verify.md` define, made mechanical: `current` =
  * the Task-filtered `## Acceptance Criteria` of the approved spec in `Ref` with the newest
- * `YYYY-MM-DD` filename prefix, else the backlog block; `nextAc` = 1 + the highest AC number in
- * **any** definition the Task ever had (backlog + every spec in `Ref`, withdrawn included).
+ * `YYYY-MM-DD` filename prefix, else the Task's block in its Epic file; `nextAc` = 1 + the highest
+ * AC number in **any** definition the Task ever had (Epic file + every spec in `Ref`, withdrawn
+ * included). `summary` is the block's Summary line; `missing` lists what the detail step still owes
+ * (`goal`, `inScope`, `outOfScope`, `criteria` = no active resolved criterion from either source).
  */
 export function resolveTask(root, backlog, task) {
   const specs = (task.ref ?? '').split(',').map((s) => cleanId(s)).filter((p) => p.endsWith('.md'))
     .map((p) => ({ path: p, md: readIfExists(path.resolve(root, p)) })).filter((s) => s.md !== null);
-  const fromBacklog = backlog.acs.filter((a) => a.task === task.id && a.inSection).map((a) => ({ id: a.id, text: a.text }));
+  const fromBacklog = backlog.acs.filter((a) => a.task === task.id && a.inCriteria && a.block === a.task).map((a) => ({ id: a.id, text: a.text }));
+  const block = backlog.details?.get(task.id) ?? null;
   const approved = specs
     .filter((s) => /^\*\*Status:\*\*\s*Approved/im.test(s.md) && /^##\s+Acceptance criteria\b/im.test(s.md) && SPEC_DATE.test(s.path))
     .sort((a, b) => (SPEC_DATE.exec(a.path)[1] < SPEC_DATE.exec(b.path)[1] ? -1 : SPEC_DATE.exec(a.path)[1] > SPEC_DATE.exec(b.path)[1] ? 1 : 0));
   const owner = approved.length ? approved[approved.length - 1] : null;
   const fromSpec = owner ? specCriteria(owner.md, task.id) : [];
   const currentList = owner && fromSpec.length ? fromSpec : fromBacklog;
-  const all = [...fromBacklog, ...specs.flatMap((s) => specCriteria(s.md, task.id))].map((a) => a.id);
+  // A misplaced definition in backlog.md still holds its id until it is moved: never re-issued.
+  const stray = (backlog.strayAcs ?? []).filter((a) => a.task === task.id);
+  const all = [...fromBacklog, ...stray, ...specs.flatMap((s) => specCriteria(s.md, task.id))].map((a) => a.id);
   const k = maxNum(all, /\.AC(\d+)$/);
+  const current = currentList.map((a) => ({ ...a, withdrawn: /^\(withdrawn\)/i.test(a.text) }));
+  const missing = ['goal', 'inScope', 'outOfScope'].filter((key) => !block?.[key]);
+  if (!current.some((a) => !a.withdrawn)) missing.push('criteria');
   return {
-    current: currentList.map((a) => ({ ...a, withdrawn: /^\(withdrawn\)/i.test(a.text) })),
-    source: owner && fromSpec.length ? owner.path : '.agents/backlog.md',
+    current,
+    source: owner && fromSpec.length ? owner.path : epicFilePath(backlog, task.epic),
     nextAc: `${task.id}.AC${k + 1}`,
+    summary: block?.summary ?? '',
+    missing,
   };
 }
 
@@ -903,7 +1170,7 @@ export function impactOf(ids, backlog, prdMd) {
 // CLI
 // ---------------------------------------------------------------------------------------------
 
-const BOOL_FLAGS = new Set(['write', 'json', 'system-only', 'chains', 'next-ids', 'help']);
+const BOOL_FLAGS = new Set(['write', 'json', 'system-only', 'chains', 'next-ids', 'fingerprint', 'help']);
 const VALUE_FLAGS = new Set(['root', 'prd', 'impact', 'candidate']);
 
 /** `{ _: positionals, <flag>: true | value }`, or `null` on an unknown flag / value flag without a value. */
@@ -921,17 +1188,18 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains] [--next-ids] [--impact <ids>] [--candidate <dir>]
-  --root         project root (default: cwd); reads .agents/backlog.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml
+const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains] [--next-ids] [--impact <ids>] [--candidate <dir>] [--fingerprint]
+  --root         project root (default: cwd); reads .agents/backlog.md, .agents/backlog/E*.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml
   --prd          PRD path override (default: the backlog header's **Source PRD:**, else docs/PRD.md)
-  --write        regenerate the storymap marker region in .agents/backlog.md (only when there are no errors)
+  --write        regenerate the storymap marker region in .agents/backlog.md and the \`>\` meta line under every Task heading of the Epic files (only when there are no errors)
   --json         print { errors, warnings, notes, outsideCovered } instead of text
   --system-only  validate docs/map/system.yaml alone (used by /architect)
   --chains       print { chains: { <token>: { ids, members, problems } } } as JSON — the Depends-on order /jira sync numbers "k of n" by (read-only)
-  --next-ids     print { next, taskNext, tasks: { <id>: { current, source, nextAc } } } as JSON — next free ids + the AC resolver; optional Task ids as positionals filter tasks (read-only)
+  --next-ids     print { next, taskNext, tasks: { <id>: { current, source, nextAc, summary, missing } } } as JSON — next free ids + the AC resolver; optional Task ids as positionals filter tasks (read-only)
   --impact       print the impact of changing the comma-separated ids (R-/G-/NFR-/AD-/Task/X-) as JSON (read-only)
-  --candidate    validate <dir>/PRD.md + <dir>/backlog.md instead of the repo's (also checks the storymap region and renders it in memory); --write refused
-a pre-Scope backlog (Wave / Slice columns) exits 1 in every mode until it is migrated (backlog-migrate.mjs)
+  --candidate    validate <dir>/PRD.md + <dir>/backlog.md + <dir>/backlog/E*.md instead of the repo's (also checks the storymap region and renders it in memory); with --write, renders inside <dir> only
+  --fingerprint  print the sha256 (12 hex) of .agents/backlog.md (minus its **Last check:** line) + the Epic files, then exit 0 — any backlog generation; refused with --candidate
+a pre-Scope backlog (Wave / Slice columns) or one with criteria still in .agents/backlog.md exits 1 in every mode until it is migrated (backlog-migrate.mjs)
 exit 0 = no errors · 1 = errors · 2 = usage / missing input`;
 
 function report(result, { json, notes = [] }) {
@@ -947,14 +1215,24 @@ function report(result, { json, notes = [] }) {
 /**
  * `checkBacklog` against the project's own sources: the inventory of `root` (loaded here unless the
  * caller already has it) and `docs/map/system.yaml`. A broken system.yaml is an error, not a throw.
- * Returns the `checkBacklog` result plus `inventory`.
+ * Adds the one root-aware rule: under `**Detail:** full` every live Task resolves (`resolveTask`)
+ * to at least one active criterion. Returns the `checkBacklog` result plus `inventory`.
  */
 export function checkAgainstRoot(root, parsed, inventory = loadInventory(root, parsed.sourcePrd ?? 'docs/PRD.md')) {
   const errors = [];
   let system = null;
   try { system = loadSystem(root); } catch (err) { errors.push(err.message); }
   const res = checkBacklog({ backlog: parsed, inventory, system });
-  return { ...res, errors: [...errors, ...res.errors], inventory };
+  // Under `full` every live Task resolves to ≥ 1 active criterion — from its Epic file or from the
+  // approved spec in its Ref (a missing, Draft or criterion-less spec exempts nothing).
+  const criteria = [];
+  if (parsed.detail === 'full' && !parsed.legacy && !parsed.preScope && !parsed.preDetail && !(parsed.problems ?? []).length) {
+    for (const t of parsed.tasks) {
+      if (t.withdrawn || resolveTask(root, parsed, t).current.some((a) => !a.withdrawn)) continue;
+      criteria.push(`Task ${t.id}: no acceptance criterion (expected - **${t.id}.AC1** — … in ${epicFilePath(parsed, t.epic)}, or an approved spec in Ref)`);
+    }
+  }
+  return { ...res, errors: [...errors, ...res.errors, ...criteria], inventory };
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -972,12 +1250,14 @@ export function main(argv = process.argv.slice(2)) {
     return res.errors.length ? 1 : 0;
   }
 
-  if (args.candidate && args.write) { console.error('backlog-check: --write is refused with --candidate (install the candidate first)'); return 2; }
+  if (args.candidate && args.fingerprint) { console.error('backlog-check: --fingerprint is refused with --candidate (fingerprint the installed set)'); return 2; }
   const candidate = args.candidate ? path.resolve(root, args.candidate) : null;
   const backlogPath = candidate ? path.join(candidate, 'backlog.md') : path.join(root, '.agents', 'backlog.md');
-  const md = readIfExists(backlogPath);
+  const epicDir = candidate ? path.join(candidate, 'backlog') : path.join(root, EPIC_DIR);
+  const { md, epicFiles } = readBacklogFiles(backlogPath, epicDir);
   if (md === null || md.trim() === '') { console.error(`backlog-check: ${candidate ? `${backlogPath}` : '.agents/backlog.md'} not found under ${root}\n${USAGE}`); return 2; }
-  const parsed = parseBacklog(md);
+  if (args.fingerprint) { console.log(backlogFingerprint(md, epicFiles)); return 0; }
+  const parsed = parseBacklog(md, { epicFiles });
   if (parsed.legacy && candidate) { console.error('backlog-check: --candidate: legacy WP backlog — a candidate must be a new-format backlog'); return 1; }
   if (parsed.legacy) {
     const msg = 'legacy WP backlog — regenerate with /setup:create-backlog to use Task checks';
@@ -986,6 +1266,10 @@ export function main(argv = process.argv.slice(2)) {
   }
   if (parsed.preScope) {
     if (json) console.log(JSON.stringify({ errors: [PRE_SCOPE_MESSAGE], warnings: [], preScope: true })); else console.log(`backlog-check: ${PRE_SCOPE_MESSAGE}`);
+    return 1;
+  }
+  if (parsed.preDetail) {
+    if (json) console.log(JSON.stringify({ errors: [PRE_DETAIL_MESSAGE], warnings: [], preDetail: true })); else console.log(`backlog-check: ${PRE_DETAIL_MESSAGE}`);
     return 1;
   }
 
@@ -1030,12 +1314,17 @@ export function main(argv = process.argv.slice(2)) {
   const notes = [];
   if (!res.errors.length && parsed.tasks.length) {
     if (args.write) {
+      // Candidate mode renders inside the candidate directory only — the repo files are never touched.
       try {
         locateRegions(md, Object.keys(REGIONS));
         const storyMap = renderStoryMap(parsed.tasks, inventory.flows);
         const next = replaceRegion(md, 'storymap', storyMap || '_No flows in docs/discovery.md — no story map._');
-        if (next !== md) fs.writeFileSync(backlogPath, next);
-        notes.push(`wrote the story map into .agents/backlog.md${next === md ? ' (unchanged)' : ''}`);
+        const changed = epicFiles.map((f) => ({ name: f.name, next: renderEpicFile(f.text, parsed), text: f.text })).filter((f) => f.next !== f.text);
+        // Epic files first, backlog.md last: an interrupted write leaves the index stale, never the details.
+        for (const f of changed) writeAtomic(path.join(epicDir, f.name), f.next);
+        if (next !== md) writeAtomic(backlogPath, next);
+        const label = path.relative(root, backlogPath).split(path.sep).join('/');
+        notes.push(`wrote the story map into ${label} and the meta lines of ${changed.length} Epic file(s)${next === md && !changed.length ? ' (unchanged)' : ''}`);
       } catch (err) {
         res.errors.push(err.message);
       }

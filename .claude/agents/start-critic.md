@@ -1,6 +1,6 @@
 ---
 name: start-critic
-description: Independent, read-only judge of a start-phase artifact (/discover PRD + discovery, /architect architecture + system map) — grades it against the rubric it is given and returns schema-shaped JSON findings; never edits. Spawned by /discover, /architect and /check-backlog.
+description: Independent, read-only judge of a start-phase artifact (/discover PRD + discovery, /architect architecture + system map) — grades it against the rubric it is given and returns schema-shaped JSON findings; never edits. Spawned by /discover, /architect, /check-backlog and /setup:delivery-plan.
 tools: Read, Glob, Grep
 model: fable
 effort: high
@@ -18,13 +18,14 @@ ships the defects the sweep lists, which is why this judge exists.
 | Input | Meaning |
 |---|---|
 | `ARTIFACT` | one or more paths to judge (e.g. `docs/PRD.md docs/discovery.md`, or `docs/architecture.md docs/map/system.yaml`) |
-| `RUBRIC` | the rubric path — `.claude/skills/discover/prd-rubric.md` or `.claude/skills/architect/architecture-rubric.md`. Its rule ids are the only `rule` values you may cite, plus `other:<named principle>` for a real defect the rubric does not cover |
+| `RUBRIC` | the rubric path — `.claude/skills/discover/prd-rubric.md`, `.claude/skills/architect/architecture-rubric.md` or `.claude/skills/backlog/backlog-rubric.md`. Its rule ids are the only `rule` values you may cite, plus `other:<named principle>` for a real defect the rubric does not cover |
 | `SOURCES` | paths whose ids and statements the artifact must trace to and agree with — `.agents/sources/*` for a PRD; `docs/PRD.md` + `docs/discovery.md` for an architecture. May be empty |
 | `METHOD` | optional: the rubric's companion files a rule depends on (e.g. `decision-dimensions.md`, `subdomains.md` for an architecture) — method references you read with the rubric, not traced sources |
 | `ROUND` | `1` or `2` — the author gets at most two rounds per artifact |
 | `PRIOR` | round 2: the findings the author was asked to fix in round 1, verbatim; `/check-backlog` also passes the mechanical checker's warnings here as known context (never re-report them) |
 | `SCOPE` | optional: `all`, or a list of Epic / Task ids — report nothing outside it, except a rule that is inherently global may report a finding that names an in-scope id |
 | `RULES` | optional: the rule ids to sweep; omitted = every rule of `RUBRIC` |
+| `MODE` | optional, backlog only: `structure` or `detail` — the rubric's Modes paragraph says which rules (or rule parts) a `structure` backlog defers; omitted = `detail` |
 
 ## Method — in this order
 

@@ -20,7 +20,10 @@ preview.
 - **Bodies are generated, not written by hand.** Epic: Outcome · Key assumption · appetite / cut
   first · Depends on. Task: Type · Size/Pts · Scope · Traces · Depends on (issue numbers when
   known) · the Task's **current** acceptance criteria verbatim (the approved spec named in `Ref`,
-  else the backlog block — the resolver `/brainstorm` uses). Titles are `<row id> — <title>`.
+  else the Task's block in its Epic file `.agents/backlog/E<n>-<slug>.md` — the resolver
+  `/brainstorm` uses). Titles are `<row id> — <title>`.
+- **A Task without resolved criteria is refused** — a `**Detail:** structure` backlog has none yet;
+  the script names `/setup:delivery-plan`, which details the Epics.
 - **Identity** — every body carries `<!-- backlog:<namespace>:<row id> -->` on a line of its own
   (any position: a note added under it on GitHub does not break it) and the hash of what was
   mirrored. The namespace is the backlog header's `**Jira namespace:**`.
@@ -31,8 +34,9 @@ preview.
   is adopted, never created twice. A marker on two issues, or a cell that names another issue than
   the marker's, **stops the group** before any write: fix it by hand.
 - **"Changed since sync"** — a synced row whose backlog content differs from what was mirrored is
-  reported, never pushed. Issues created before the `Scope` migration report "changed since sync"
-  from then on: their body line changed, and the sync is create-only, so it never rewrites a body.
+  reported, never pushed. Issues created before the `Scope` migration, and before the criteria
+  moved into the Epic files, report "changed since sync" from then on: their body changed, and the
+  sync is create-only, so it never rewrites a body.
 - **Limits checked first** — more than 100 sub-issues under one Epic (GitHub's cap) stops the group.
 
 ## Steps

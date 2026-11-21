@@ -6,9 +6,10 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DEFAULTS, loadConfig, buildPlan, renderPlan, simulate } from './delivery-plan.mjs';
-import { NO_CORE_WARNING, parseBacklog } from './backlog-check.mjs';
+import { epicFileName, NO_CORE_WARNING, parseBacklog } from './backlog-check.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url).replace(/\.test\.mjs$/, '.mjs');
+const CHECKER = path.join(path.dirname(SCRIPT), 'backlog-check.mjs');
 
 // ---------------------------------------------------------------------------------------------
 // Fixtures — a neutral "Shop" backlog built from a compact Task list; every case writes its own.
@@ -30,9 +31,8 @@ function backlogMd(tasks, { outside = [] } = {}) {
     return `| ${e} | Epic ${e} | outcome ${e} | assumption | ${pts} | — | — |`;
   });
   const rows = tasks.map((t) => `| ${t.id} | ${t.id.split('-')[0]} | ${t.title ?? `Task ${t.id}`}${t.withdrawn ? ' (withdrawn)' : ''} | story | ${SIZE[t.pts]} | ${t.pts} | ${t.deps.join(', ') || '—'} | — | ${t.chain ?? '—'} | ${t.scope} | ${t.node ?? '—'} | ${(t.traces ?? []).join(', ') || '—'} | ${t.status ?? 'TODO'} | — | — |`);
-  const acs = tasks.map((t) => `### ${t.id} — Task ${t.id}\n- **${t.id}.AC1** — Given a shop, when ${t.id} is used, then it works.`);
   return `# Shop — Backlog (Epics + Tasks)
-**Date:** 2026-10-10 · **Sizes:** M=4 · H=8 · XH=16 points
+**Date:** 2026-10-10 · **Sizes:** M=4 · H=8 · XH=16 points · **Detail:** full
 
 ## Epic map
 | Epic | Title | Outcome | Key assumption | Pts | Depends on | Jira |
@@ -42,9 +42,6 @@ ${epicRows.join('\n')}
 ## Task table
 ${TASK_HEADER}
 ${rows.join('\n')}
-
-## Acceptance criteria
-${acs.join('\n\n')}
 
 ## Story map
 <!-- storymap:begin -->
@@ -71,12 +68,25 @@ const DISCOVERY = `# Discovery — Shop
 - **FL-1.A2** — Place order
 `;
 
-function project({ backlog, discovery = null, profile = null } = {}) {
+/** One Epic file per Epic of the Task table: per live Task its heading, a Summary and one criterion. */
+function epicFilesFor(md) {
+  const parsed = parseBacklog(md);
+  return parsed.epics.map((e) => {
+    const blocks = parsed.tasks.filter((t) => t.epic === e.id && !t.withdrawn)
+      .map((t) => `## ${t.id} — ${t.title}\n**Summary:** ${t.title} for the shop.\n### Acceptance criteria\n- **${t.id}.AC1** — Given a shop, when ${t.id} is used, then it works.\n`);
+    return { name: epicFileName(e.id, e.title), text: `# ${e.id} — ${e.title}\n\n${blocks.join('\n')}` };
+  });
+}
+
+/** A project with `backlog` and its Epic files (default: derived from the backlog's Task table). */
+function project({ backlog, epicFiles = epicFilesFor(backlog), discovery = null, profile = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delivery-plan-'));
   fs.mkdirSync(path.join(dir, '.agents'));
   fs.mkdirSync(path.join(dir, 'docs'));
   fs.mkdirSync(path.join(dir, '.claude'));
   fs.writeFileSync(path.join(dir, '.agents', 'backlog.md'), backlog);
+  if (epicFiles.length) fs.mkdirSync(path.join(dir, '.agents', 'backlog'));
+  for (const f of epicFiles) fs.writeFileSync(path.join(dir, '.agents', 'backlog', f.name), f.text);
   if (discovery !== null) fs.writeFileSync(path.join(dir, 'docs', 'discovery.md'), discovery);
   if (profile !== null) fs.writeFileSync(path.join(dir, '.claude', 'project-profile.json'), typeof profile === 'string' ? profile : JSON.stringify(profile));
   return dir;
@@ -289,11 +299,16 @@ const LEGACY = `# Old — Backlog
 | MVP | E0-1 | — | /brainstorm | TODO |
 `;
 
-test('gate: checker error, pre-Scope and legacy backlogs exit 1 with nothing written and no schedule', () => {
+// Criteria still in a `## Acceptance criteria` section of backlog.md: the pre-detail shape.
+const PRE_DETAIL = backlogMd([T('E1-1', 'CORE', 8)]).replace('## Story map', '## Acceptance criteria\n### E1-1 — Task E1-1\n- **E1-1.AC1** — Given a shop, when E1-1 is used, then it works.\n\n## Story map');
+
+test('gate: checker error, pre-Scope, pre-detail and legacy backlogs exit 1 with nothing written and no schedule', () => {
   const broken = backlogMd([T('E1-1', 'CORE', 8), T('E1-2', 'MUST', 8, ['E9-9'])]);
-  for (const [label, backlog, re] of [['checker error', broken, /unknown dependency E9-9/], ['pre-Scope', PRE_SCOPE, /pre-Scope backlog/], ['legacy', LEGACY, /legacy WP backlog/]]) {
+  const cases = [['checker error', broken, /unknown dependency E9-9/], ['pre-Scope', PRE_SCOPE, /pre-Scope backlog/],
+    ['pre-detail', PRE_DETAIL, /acceptance criteria still in \.agents\/backlog\.md — run: node \.claude\/lib\/backlog-migrate\.mjs --write/], ['legacy', LEGACY, /legacy WP backlog/]];
+  for (const [label, backlog, re] of cases) {
     for (const flags of [['--write'], ['--json', '--write']]) {
-      const dir = project({ backlog });
+      const dir = project({ backlog, epicFiles: [] });
       const r = run(dir, ...flags);
       assert.equal(r.code, 1, `${label} ${flags}: ${r.out}`);
       assert.match(r.out, re, label);
@@ -302,6 +317,13 @@ test('gate: checker error, pre-Scope and legacy backlogs exit 1 with nothing wri
       assert.doesNotMatch(r.out, /## Task schedule|"schedule"/, label);
     }
   }
+  const json = JSON.parse(run(project({ backlog: PRE_DETAIL, epicFiles: [] }), '--json').stdout);
+  assert.equal(json.preDetail, true);
+  assert.equal(json.errors.length, 1);
+  // A Detail: full backlog whose Epic files are missing names the missing criteria.
+  const bare = run(project({ backlog: backlogMd([T('E1-1', 'CORE', 8)]), epicFiles: [] }));
+  assert.equal(bare.code, 1, bare.out);
+  assert.match(bare.out, /Task E1-1: no acceptance criterion/);
   const plain = run(project({ backlog: broken }));
   assert.match(plain.out, /^delivery-plan: the backlog has errors — fix them first:/);
 });
@@ -368,6 +390,10 @@ test('render: --write creates the file with the headings in order, the analysis 
   }
   assert.match(md, /^> Generated by delivery-plan\.mjs — do not edit; rerun \/setup:delivery-plan\.$/m);
   assert.match(md, /^\*\*Backlog:\*\* sha256 [0-9a-f]{12} · \*\*Mode:\*\* team · \*\*Velocity:\*\* 64 \/ 96 pts per person per sprint \(10 working days\)$/m);
+  // The header cites the fingerprint of the whole set (backlog.md + Epic files), the checker's own.
+  const fp = spawnSync(process.execPath, [CHECKER, '--root', dir, '--fingerprint'], { encoding: 'utf8' });
+  assert.equal(fp.status, 0, fp.stderr);
+  assert.match(md, new RegExp(`^\\*\\*Backlog:\\*\\* sha256 ${fp.stdout.trim()} · `, 'm'));
   assert.match(md, /<!-- analysis:begin -->\n_Not written — run \/setup:delivery-plan\._\n<!-- analysis:end -->/);
   assert.doesNotMatch(md, /\b(19|20)\d\d\b/, 'no four-digit year');
   assert.doesNotMatch(md, /[$€£¥]/, 'no currency sign');

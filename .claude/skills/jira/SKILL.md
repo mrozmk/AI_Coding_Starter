@@ -13,7 +13,7 @@ Single entry point for all Jira Cloud operations on Epics, Tasks, and Bugs. All 
 
 For parameter shapes and deeper protocol detail, defer to `.agents/reference/jira-mcp-atlassian.md`.
 
-**Delivery order — when `.agents/backlog.md` exists.** In projects that have a backlog, it is the **planning source of truth**: Epics, Tasks, sizes, the dependency DAG and the acceptance-criteria ids all live there. Jira **mirrors** it one-way via `/jira sync` — create-only, idempotent by the row's `Jira` cell, keys written back into the backlog (Flow H). Never reconstruct backlog ordering, structure or sizes from Jira, and never treat Jira as a second, parallel delivery map.
+**Delivery order — when `.agents/backlog.md` exists.** In projects that have a backlog, it is the **planning source of truth**: Epics, Tasks, sizes and the dependency DAG live there, and each Task's acceptance criteria live in its Epic file `.agents/backlog/E<n>-<slug>.md` (read through `node .claude/lib/backlog-check.mjs --next-ids`, which prefers an approved spec in the Task's `Ref`). Jira **mirrors** it one-way via `/jira sync` — create-only, idempotent by the row's `Jira` cell, keys written back into the backlog (Flow H). Never reconstruct backlog ordering, structure or sizes from Jira, and never treat Jira as a second, parallel delivery map.
 
 The one thing Jira **does** own is the **workflow status of a synced Task** (umbrella decision D7): a Task row with a `Jira` key takes its `Status` from Jira, and `/brainstorm` Step 0 refreshes those cells **read-only**. A Task without a key keeps its local `Status` as authoritative. `/jira sync` itself never reads or writes `Status` and never transitions anything.
 
