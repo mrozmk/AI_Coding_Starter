@@ -65,18 +65,22 @@ still describes live code until the release that retires it.
 |---|---|
 | `teams.session_host: "tmux"` | tmux; rc 6 "no session host: install tmux or Herdr" without it |
 | `teams.session_host: "herdr"` | Herdr; rc 6 "herdr core not answering" when `hc server status` does not answer within 3 s |
-| `teams.session_host: "auto"` (default) | **tmux today.** `auto` probes Herdr first only once the switch `SH_AUTO_HERDR` in `session-host-lib.sh` is `1`; it stays `0` until the owner switches it (§14) |
+| `teams.session_host: "auto"` (default) | Herdr when its core answers `hc server status` within 3 s, else tmux; rc 6 "no session host: install tmux or Herdr" with neither. The switch `SH_AUTO_HERDR` in `session-host-lib.sh` is `1` (owner, 2026-11-21; §14); `0` would make `auto` tmux only |
 | `TEAM_SESSION_HOST=auto\|herdr\|tmux` | overrides the profile key for this process |
 
 - **Each session keeps the backend recorded at its start** for its whole life. A verb on an address
   with no record uses tmux: a session from before the driver. A fresh start after the previous
   instance is gone uses the configured backend, not the old record's.
+- **A machine without tmux** (a Herdr-only setup): the tmux liveness probe answers "gone" (rc 3),
+  so a session that has no record yet starts on the configured backend instead of failing its
+  probe. Under `auto`, sessions started while Herdr answered stay there; one started after its
+  core stopped answering goes to tmux.
 - `bash .claude/lib/session-host.sh --check-host` prints the backend a fresh start would use, or the
   reason it cannot start (rc 6).
 - **Fixture rule:** under `TEAM_SMOKE=1` only binaries inside `TEAM_SMOKE_BIN_DIR` run (`tmux`, `hc`,
   `herdr-app`; `TMUX_BIN`, `HC_BIN` and `HERDR_APP_BIN` name them). A test never reaches the
-  machine's real server. Part host turns the `auto` probe on for itself with
-  `TEAM_SMOKE_AUTO_HERDR=1`, and only under `TEAM_SMOKE=1`.
+  machine's real server. Under `TEAM_SMOKE=1` the `auto` probe runs only with
+  `TEAM_SMOKE_AUTO_HERDR=1` (part host sets it), so a fixture with an `hc` stub stays on tmux.
 
 ## 4. Verbs
 
@@ -305,11 +309,11 @@ follows those answers:
 | Ad-hoc sessions after a crash | Resume lines only, nothing reopened (§13) |
 | What a team's tab shows | One tab per team, named after it: its TeamLead left, the stage working now right; a team named like a roles tab (`lead`) is refused (owner, 2026-11-15; §13) |
 
-Still open, so these may change:
+Switched by the owner on 2026-11-21:
 
-- **`auto` → Herdr:** `SH_AUTO_HERDR` stays `0` (so `auto` = tmux) until the owner switches it. The
-  live re-check of the graceful kill (L1) passed on 2026-11-15: `kill --graceful 20` on an idle
-  role returned in 2 s. Flipping the switch is a separate change.
+- **`auto` → Herdr:** `SH_AUTO_HERDR` is `1`: `auto` picks Herdr when its core answers and falls
+  back to tmux. The live re-check of the graceful kill (L1) had passed on 2026-11-15
+  (`kill --graceful 20` on an idle role returned in 2 s).
 
 Closed by the live check of 2026-11-15:
 

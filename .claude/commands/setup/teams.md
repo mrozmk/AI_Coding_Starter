@@ -20,7 +20,7 @@ Runs in the **target** repo root. `<starter-root>` is required: when it is missi
 
 ## Step 1 — Preflight
 
-`command -v jq claude codex git python3 perl`, the session host — `tmux`, or `hc` when the profile sets `teams.session_host: "herdr"` (`auto` is tmux today) — plus `teams.required_tools` when a profile exists (the hooks and the runner need the last two); `sqlite3` only when Step 5c installs the agent-mail kit. Anything missing: list it and STOP. If the profile has `build_check`, print the absolute paths it names and `test -e` each; a missing one is a **warning** (venv, `.hcc`), not a STOP.
+`command -v jq claude codex git python3 perl`, the session host — `bash .claude/lib/session-host.sh --check-host` prints the one a start would use: `herdr` needs `hc` with its core answering, `tmux` needs `tmux`, `auto` (the default) takes Herdr when it answers and tmux otherwise — plus `teams.required_tools` when a profile exists (the hooks and the runner need the last two); `sqlite3` only when Step 5c installs the agent-mail kit. Anything missing: list it and STOP. If the profile has `build_check`, print the absolute paths it names and `test -e` each; a missing one is a **warning** (venv, `.hcc`), not a STOP.
 
 ## Step 2 — Plan
 

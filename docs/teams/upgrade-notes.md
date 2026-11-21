@@ -3,6 +3,24 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## `auto` picks Herdr when it answers; a machine without tmux can start sessions
+
+**Before:** `teams.session_host: "auto"` (the default) always meant tmux; Herdr ran only when the
+profile said `herdr`. On a machine without tmux, a role or team session that had no registry record
+yet failed its liveness probe (`<Role>: failed: liveness probe (exit 1)`), so `/roles` could not
+start it even with `session_host: "herdr"`.
+
+**Now:** `auto` starts a session on Herdr when its core answers `hc server status`, else on tmux
+(exit 6 with neither). `herdr` and `tmux` still pin one host and never fall back. Without a tmux
+binary the tmux liveness probe answers "gone", so a session with no record starts on the configured
+host. `/roles status` shows `-` as the backend of a role that has no record.
+
+**Action:**
+1. A project on the default `auto` whose operator runs Herdr now gets new sessions in Herdr. To
+   keep tmux, set `teams.session_host: "tmux"`. Running sessions keep their host.
+2. To get "Herdr, else tmux", set `teams.session_host: "auto"` (or remove the key). `herdr` stays
+   strict: a start stops with exit 6 while the core does not answer.
+
 ## The session profiles drop the global TeamLead; `TeamLead-run` is renamed (#22, slice 4)
 
 **Before:** `Supervisor.settings.json` and `Advisor.settings.json` denied and sampled
@@ -305,8 +323,8 @@ pushed by the team-watch daemon and woken by wake loops. agent-mail was part of 
 
 **Now:**
 - **One driver.** Every session goes through `.claude/lib/session-host.sh`, on tmux or Herdr
-  (`teams.session_host: auto | tmux | herdr`). **`auto` is tmux today**: Herdr runs only when
-  chosen explicitly, until the owner switches `auto` to it. A running session stays on the
+  (`teams.session_host: auto | tmux | herdr`). **`auto` was tmux then**: Herdr ran only when
+  chosen explicitly (since switched — see the note at the top). A running session stays on the
   backend it started on. Contract: `.agents/reference/session-host.md`.
 - **Prefixed names.** Every session name carries the project prefix (`teams.session_prefix`, else
   `teams.channel.tmux_prefix`, else the repo slug, cut to 12): `<prefix>-<team>-<role>`,

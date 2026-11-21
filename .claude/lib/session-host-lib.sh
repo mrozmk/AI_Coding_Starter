@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The session-host driver, sourced form: every interaction with the terminal multiplexer goes
 # through these functions (CLI: session-host.sh). Backends: tmux, and herdr (herdr-core through
-# `hc`, chosen explicitly: `auto` stays tmux until SH_AUTO_HERDR is switched on, sh_auto_herdr).
+# `hc`: chosen explicitly, or by `auto` when its core answers — else tmux; sh_auto_herdr).
 # Bash 3.2; sourced, never executed — the lib sets no shell options, callers run under their own.
 #
 # Addresses (the harness's names) → session names, all carrying the project prefix (sh_prefix), so
@@ -214,12 +214,14 @@ sh_herdr_up() {
   jq -e '.version | strings' <<<"$j" >/dev/null 2>&1
 }
 
-# The one switch for `auto`: 0 = auto is tmux; 1 = auto probes herdr-core first (sh_herdr_up). Off
-# until the Herdr backend has been checked on a live Herdr (owner, 2026-11-15). The smoke part host
-# turns the probe on for itself with TEAM_SMOKE_AUTO_HERDR=1, under TEAM_SMOKE=1 only.
-SH_AUTO_HERDR=0
+# The one switch for `auto`: 1 = auto probes herdr-core first (sh_herdr_up) and falls back to tmux;
+# 0 = auto is tmux. On since the owner switched it (2026-11-21), after the live check of
+# 2026-11-15. Under TEAM_SMOKE=1 the probe runs only with TEAM_SMOKE_AUTO_HERDR=1, so a fixture
+# with an `hc` stub keeps starting its sessions in tmux unless the test asks for the probe.
+SH_AUTO_HERDR=1
 sh_auto_herdr() {
-  [ "$SH_AUTO_HERDR" = 1 ] || { [ "${TEAM_SMOKE:-}" = 1 ] && [ "${TEAM_SMOKE_AUTO_HERDR:-}" = 1 ]; }
+  if [ "${TEAM_SMOKE:-}" = 1 ]; then [ "${TEAM_SMOKE_AUTO_HERDR:-}" = 1 ]; return; fi
+  [ "$SH_AUTO_HERDR" = 1 ]
 }
 
 # sh_configured_host <main> → auto | herdr | tmux (TEAM_SESSION_HOST wins over the profile key).
@@ -366,6 +368,9 @@ sh_log() {
 # a dead session leaves a `; read` shell behind.
 sh_tmux_alive() {
   local out cmd
+  # No tmux on this machine (a Herdr-only setup): no tmux session can be alive. Without this a
+  # session that has no record yet — read as tmux — could never be started.
+  command -v "${TMUX_BIN:-tmux}" >/dev/null 2>&1 || return 3
   if out="$(sh_tmux has-session -t "=$1" 2>&1)"; then
     [ -n "${2:-}" ] || return 0
     cmd="$(sh_tmux display-message -p -t "=$1:" '#{pane_current_command}' 2>/dev/null || true)"

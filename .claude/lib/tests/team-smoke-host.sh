@@ -923,14 +923,15 @@ hclr; STUB_HC_ADDR=t7t STUB_HC_STATUS=idle run "$MAIN" bash -c ". '$L/session-ho
 expect 0 "" "(H9) ready on a status"; [ ! -s "$WORK/out" ] || fail "(H9) ready warned"
 echo "team-smoke-host: (H9) herdr startup OK"
 
-# (H10) auto: tmux while the switch is off; with it on, herdr only when the core answers
+# (H10) auto: herdr when the core answers, else tmux. Under TEAM_SMOKE=1 the probe runs only with
+# TEAM_SMOKE_AUTO_HERDR=1, so a fixture that ships an hc stub stays on tmux unless it asks.
 prof '.teams.session_host = "auto"'
-run "$MAIN" $HX $SH --check-host; expect 0 "tmux" "(H10) auto is tmux (switch off)"
+run "$MAIN" $HX $SH --check-host; expect 0 "tmux" "(H10) auto without the probe flag under TEAM_SMOKE"
 TEAM_SMOKE_AUTO_HERDR=1 run "$MAIN" $HX $SH --check-host; expect 0 "herdr" "(H10) auto probe, core up"
 TEAM_SMOKE_AUTO_HERDR=1 STUB_HC_SERVER=1 run "$MAIN" $HX $SH --check-host; expect 0 "tmux" "(H10) auto probe, core down"
 TEAM_SMOKE_AUTO_HERDR=1 run "$MAIN" $HX HC_BIN=no-such-hc TMUX_BIN=no-such-tmux $SH --check-host
 expect 6 "install tmux or Herdr" "(H10) neither"
-grep -q '^SH_AUTO_HERDR=0$' "$L/session-host-lib.sh" || fail "(H10) the shipped switch is not off"
+grep -q '^SH_AUTO_HERDR=1$' "$L/session-host-lib.sh" || fail "(H10) the shipped switch is not on"
 echo "team-smoke-host: (H10) auto OK"
 
 # (H11) a record's backend survives a session_host change
@@ -942,6 +943,18 @@ echo "team-smoke-host: (H11) backend per record OK"
 # (H12) under TEAM_SMOKE=1 only a fixture hc runs
 HC_BIN=/usr/bin/true run "$MAIN" $SH status hb-coder; expect 1 "refusing /usr/bin/true under TEAM_SMOKE=1" "(H12) real hc"
 echo "team-smoke-host: (H12) fixture hc OK"
+
+# (H12b) no tmux on the machine: a session with no record (read as tmux) is gone, not a failed
+# probe — otherwise a Herdr-only setup could never start it
+prof '.teams.session_host = "herdr"'; rm -f "$REG/hb-new.json"
+hclr; run "$MAIN" $HX TMUX_BIN=no-such-tmux $SH alive hb-new; expect 3 "" "(H12b) no record, no tmux: gone"
+run "$MAIN" $HX TMUX_BIN=no-such-tmux $SH status hb-new; expect 0 '"state":"gone"' "(H12b) status"
+hclr; STUB_HC_GONE=1 STUB_HC_ADDR=t7n run "$MAIN" $HX TMUX_BIN=no-such-tmux $SH start hb-new --kind team --cwd "$CL" --cli claude -- claude
+expect 0 "smk-hb-new" "(H12b) starts on herdr"
+grep -q '^hc run --bg .* --name smk-hb-new ' "$STUB_LOG" || fail "(H12b) no hc run for smk-hb-new"
+[ "$(jq -r .backend "$REG/hb-new.json")" = herdr ] || fail "(H12b) the record's backend"
+rm -f "$REG/hb-new.json"
+echo "team-smoke-host: (H12b) no tmux binary OK"
 
 # (H13) start probes: our stale terminal under the name is removed; a live foreign one refuses
 prof '.teams.session_host = "herdr"'; rm -f "$REG/hb-qa.json"

@@ -349,7 +349,7 @@ status() {
     fi
     n="$(ls "$MAIN/.agents/team/inbox/$r/new" 2>/dev/null | wc -l | tr -d ' ')"
     sid="$(sh_record_get "$MAIN" "$r" session_id)"; seen="$(sh_record_get "$MAIN" "$r" last_seen)"
-    printf '%-12s %-7s %-7s %-9s %-5s %-36s %s' "$r" "${b:-tmux}" "$alive" "$state" "$n" "${sid:--}" "${seen:--}"
+    printf '%-12s %-7s %-7s %-9s %-5s %-36s %s' "$r" "${b:--}" "$alive" "$state" "$n" "${sid:--}" "${seen:--}"
     if [ -n "$panes" ]; then
       pane="$(printf '%s\n' "$panes" | awk -F'\t' -v r="$r" '$1 == r { print $2 }')"
       printf ' pane: %s\n' "${pane:--}"

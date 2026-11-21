@@ -16,8 +16,8 @@
 #   team clone), --team-dir <dir> (a team address without a record), --lock-held <owner> (the
 #   caller holds the target lock), --owner <text> (the lock owner text).
 # Addresses: <Role> · <team>-<role> · helper:<name> · adhoc-<handle> (registry only).
-# Backend: teams.session_host = auto | herdr | tmux (TEAM_SESSION_HOST overrides); auto = tmux until
-#   switched (SH_AUTO_HERDR). Each session keeps the backend recorded at its start (herdr: its handle).
+# Backend: teams.session_host = auto | herdr | tmux (TEAM_SESSION_HOST overrides); auto = herdr when
+#   its core answers, else tmux. Each session keeps the backend recorded at its start (herdr: its handle).
 # Exit codes: 0 ok · 2 usage · 3 gone · 6 no host · 9 blocked · 10 skipped (lock held, input not
 #   safe) · 1 other failure.
 #   e.g. bash .claude/lib/session-host.sh alive alfa-coder

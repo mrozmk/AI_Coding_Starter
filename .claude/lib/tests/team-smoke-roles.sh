@@ -442,6 +442,10 @@ noline "agent.focus" "$STUB_LOG" "(L2) agent.focus"
 jq -e '[.spaces[] | select(.id == "s1") | .tabs[] | select(.name == "Lead") | .terminals[].terminal] == ["t1", "t2", "t3"]
   and .focus == "t9"' "$STUB_HERDR_LS" >/dev/null || { cp "$STUB_HERDR_LS" "$WORK/out"; fail "(L2) Lead tab or focus"; }
 run "$MAIN" $RS status; grep -E '^Supervisor +herdr +alive .* pane: Lead$' "$WORK/out" >/dev/null || fail "(L2) status pane column"
+# (L2a) a role with no record on a machine without tmux: no backend named, `gone` — never a failed probe
+mv "$REG/Astra.json" "$WORK/Astra.keep"
+TMUX_BIN=no-such-tmux run "$MAIN" $RS status; grep -E '^Astra +- +gone +gone ' "$WORK/out" >/dev/null || fail "(L2a) a role with no record, no tmux"
+mv "$WORK/Astra.keep" "$REG/Astra.json"
 
 # (L2b) the keep after a park fails: the terminal is adopted back by label, never left paneless,
 # and the focus still goes back
