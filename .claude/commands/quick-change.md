@@ -61,7 +61,7 @@ mandatory. A worker handoff alone never means this workflow is complete.
   - `# Feature: <title>`
   - `**Source spec:** none (quick mode)`
   - `**Execution effort:** low|medium`
-  - `## Feature Description` (Cel) and `## Solution Statement` (Podejście + odrzucona alternatywa + Ryzyko)
+  - `## Feature Description` (Cel) and `## Solution Statement` (Podejście + odrzucona alternatywa + Ryzyko + the `Reuse:` line)
   - `## STEP-BY-STEP TASKS` — one `### {ACTION} <path>` per file, each with `- [ ]`, `- **IMPLEMENT**:`, `- **EXPECT**:` (`present` / `contains` …) and `- **VALIDATE**:`
   - `## VALIDATION COMMANDS` (Level 1 = `CLAUDE.md → Validation`)
   - `## ACCEPTANCE CRITERIA` (the one-sentence "done")
@@ -112,6 +112,7 @@ Write a plan that is genuinely short — **5–12 lines**, and it stays in the c
 - **Cel** — one sentence, and what "done" looks like.
 - **Zmiana** — the files to touch and what happens in each, concretely enough to review (`src/x.ts: dodaj guard na pusty payload przed …`).
 - **Podejście i odrzucona alternatywa** — the direction, plus the one option you considered and dropped, with the reason. *This is the part Codex reviews hardest; a plan with no alternative gives it nothing to push against.*
+- **Reuse** — one line: `Reuse: <existing path:line> | none found (searched: <terms / paths>)`, after searching the whole repository (by name and by behaviour) for an existing equivalent of anything new the change adds; several new pieces → one entry each, `;`-separated. When `docs/coding-standards.md` exists, the line also names the review-enforced `CS-<n>` rules the change touches and the `## Shared helpers` / `## One shape per problem` row it follows.
 - **Ryzyko** — what could break, and what already covers it (existing test, type, guard) or does not.
 - **Testy** — what gets a test and what deliberately does not, per `CLAUDE.md` → Validation test policy.
 
@@ -127,7 +128,7 @@ Do **not** start editing yet. Not one line.
 
 **Exactly two things can leave a run without the opinion, and neither is a choice:** `codex` is not installed (Phase 0 established this), or it failed to produce a result twice in a row (below). In both cases the run continues, and the report states the absence on its own line. Those are tool failures, not decisions — never present them as one, and **never fabricate a review** (project rule: never fake it).
 
-**Write the brief to the scratchpad, not to `.agents/`.** Codex cannot see this conversation, so the brief must stand alone — the plan from Phase 1 verbatim, plus the paths of the files it would change and the current behaviour it changes. 10–20 lines into `$SCRATCH/quick-change-brief.md`. (`/codex-review` sanctions exactly this shortcut for changes where `/handoff` would be overkill — see its Step 1.)
+**Write the brief to the scratchpad, not to `.agents/`.** Codex cannot see this conversation, so the brief must stand alone — the plan from Phase 1 verbatim (its `Reuse:` line included), plus the paths of the files it would change and the current behaviour it changes. 10–20 lines into `$SCRATCH/quick-change-brief.md`. (`/codex-review` sanctions exactly this shortcut for changes where `/handoff` would be overkill — see its Step 1.)
 
 Assemble the prompt: orientation (*"read `.claude/commands/prime.md` and follow its quick-mode steps; do not run it as a slash command"*) → *"read `$SCRATCH/quick-change-brief.md` — it is the full proposal; nothing has been implemented yet"* → the current files by path → then the **idea-mode task**, taken from [`/codex-review`](codex-review.md) Step 3 rather than reinvented:
 

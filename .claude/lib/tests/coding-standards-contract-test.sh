@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Offline contract test of the coding-standards seed and its routing: the seed
 # (.agents/reference/coding-standards.md.example) has the fixed shape, and the memory index, the
-# reflection protocol and the guide name docs/coding-standards.md. Text checks only.
+# reflection protocol and the guide name docs/coding-standards.md. It also pins the reuse statement the
+# planning commands require (`/plan-feature`'s reuse lookup, `**Reuse:**` block, grilling finding and
+# cross-model conventions; `/quick-change`'s `Reuse:` line). Text checks only.
 #
 # Usage: bash .claude/lib/tests/coding-standards-contract-test.sh [root]   (default: this checkout)
 set -u
@@ -70,6 +72,35 @@ check(DOC in protocol, f"reflection-protocol.md names {DOC}")
 check("### Standards vs memory" in protocol, "reflection-protocol.md has `### Standards vs memory`")
 
 check(DOC in read(".claude/docs/guide.md"), f"guide.md names {DOC}")
+
+pf = read(".claude/commands/plan-feature.md")
+lookup = pf.split("**2. Pattern Recognition**", 1)[-1].split("**3. Dependency Analysis**", 1)[0]
+for needle in ("whole repository", "rg --hidden", DOC, "## Shared helpers", "## One shape per problem",
+               "## Open — pick one", "**Reuse:**", "Open questions:"):
+    check(needle in lookup, f"plan-feature Pattern Recognition lacks {needle!r}")
+ptf = pf.split("### Patterns to Follow", 1)[-1].split("## STEP-BY-STEP TASKS", 1)[0]
+for needle in ("**Reuse:**", "→ reuse <path:line>", "→ none found (searched: <terms / paths>)",
+               "→ shared at <path>", "**Standards:**", "skipped — no docs/coding-standards.md",
+               "**Shapes:**", "**Open — pick one:**"):
+    check(needle in ptf, f"plan template Patterns to Follow lacks {needle!r}")
+notes = pf.split("\n## NOTES\n", 1)[-1].split("## Phase 4.5", 1)[0]
+check("Open questions:" in notes, "plan template NOTES does not name Open questions:")
+check("(its `**Reuse:**` block included)" in pf, "densify rule does not protect the Reuse block")
+major = pf.split("**🟠 MAJOR**", 1)[-1].split("**🟡 MEDIUM**", 1)[0]
+for needle in ("**Reuse:**", "## One shape per problem", "## Shared helpers"):
+    check(needle in major, f"grilling MAJOR list lacks {needle!r}")
+p7 = pf.split("### Step 7.3", 1)[-1].split("### Step 7.4", 1)[0]
+check(DOC in p7, f"Phase 7 prompt does not name {DOC}")
+
+qc = read(".claude/commands/quick-change.md")
+q1 = qc.split("## Phase 1 —", 1)[-1].split("## Phase 2 —", 1)[0]
+for needle in ("Reuse: <existing path:line> | none found (searched: <terms / paths>)",
+               "whole repository", DOC, "CS-<n>"):
+    check(needle in q1, f"quick-change Phase 1 lacks {needle!r}")
+q2 = qc.split("## Phase 2 —", 1)[-1].split("## Phase 3 —", 1)[0]
+check("(its `Reuse:` line included)" in q2, "quick-change Phase 2 brief does not carry the Reuse: line")
+tm = qc.split("## Team mode (quick planner)", 1)[-1].split("## Phase 0", 1)[0]
+check("the `Reuse:` line" in tm, "quick-change team-mode plan shape lacks the Reuse: line")
 
 for f in fails:
     print(f"FAIL [{f}]")

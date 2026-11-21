@@ -59,6 +59,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 - Pull conventions (naming, file organization, error handling, logging) from `.agents/memory/patterns.md` and `CLAUDE.md → Style & Conventions`. Only inspect the codebase directly if those are silent on the area you need.
 - Search for similar implementations in the codebase (the spec's "Architecture" and "Files" sections name the relevant areas). **If the project exposes an LSP**, prefer `workspaceSymbol` to locate analogous services/classes and `documentSymbol` to read a pattern file's structure without loading the whole file (see CLAUDE.md → Code Navigation, if present).
+- **Reuse lookup — one statement per new piece.** For every new function, class, component, service or module-level helper the plan is about to introduce, search the **whole repository** — not only the areas the spec names — for an existing equivalent, two ways: *by name* (the planned name and its obvious synonyms; LSP `workspaceSymbol` where a language server runs, else `rg`) and *by behaviour* (its distinctive call, literal, regex or path — `rg --hidden -g '!.git' <pattern>` from the root). When `docs/coding-standards.md` exists, also read its `## Shared helpers` and `## One shape per problem` tables, note the `CS-<n>` rules marked `Enforced by: review` whose `Applies to` covers a file the plan touches, and note every item under `## Open — pick one` the feature hits. Results go into the plan's `**Reuse:**` block (`### Patterns to Follow`). Logic needed by two modules that may not import each other gets one shared place in the plan, never a planned copy. An `## Open — pick one` item the feature hits is a question to the user (`AskUserQuestion`); in pipeline mode (`.claude/orchestrate-run.json` with `"stage": "plan"`) it is recorded under `Open questions:` in the plan's `## NOTES` instead — the plan never silently picks a variant. Absent file → the standards part is skipped; the repository search still runs.
 - Document anti-patterns to avoid — use `.agents/memory/errors.md` as a starting point; past mistakes are recorded there.
 
 **3. Dependency Analysis**
@@ -201,6 +202,16 @@ The following plan should be complete, but it's important that you validate code
 
 <Specific patterns extracted from the codebase — include actual code snippets from the project>
 
+**Reuse:** <one line per new function, class, component, service or module-level helper — from the Phase 1 reuse lookup>
+- <new piece> → reuse <path:line>[ (row: <the `## Shared helpers` Need>)]
+- <new piece> → none found (searched: <terms / paths>)
+- <new piece> → shared at <path> (needed by <module A> and <module B>, which may not import each other)
+
+**Standards:** <`CS-<n>`, … — the review-enforced rules whose `Applies to` covers the touched files> | skipped — no docs/coding-standards.md
+**Shapes:** <Problem> → <the shape to use> (row of `## One shape per problem`), one per recurring problem the feature hits (flag, error body, date/time, logging, loading state …) | none hit
+**Open — pick one:** <item> → <the user's answer> | <item> → open question (`## NOTES`) | none hit
+<With no docs/coding-standards.md only the `Standards:` line stays, reading `skipped — …`.>
+
 **Naming Conventions:**
 
 **Error Handling:**
@@ -301,7 +312,7 @@ Execute every applicable command to ensure zero regressions and feature correctn
 
 ## NOTES
 
-<Additional context, design decisions, trade-offs — kept minimal; the spec carries the "why", the plan carries the "how". List the binding `AD-n` rules the spec cites (one line each) so the executor and verifier see them.>
+<Additional context, design decisions, trade-offs — kept minimal; the spec carries the "why", the plan carries the "how". List the binding `AD-n` rules the spec cites (one line each) so the executor and verifier see them. Pipeline mode: an `Open questions:` sub-list holds every `## Open — pick one` item the reuse lookup left open.>
 ```
 
 ---
@@ -376,7 +387,7 @@ Use `AskUserQuestion`. Present only the options that apply, recommend one, and *
 
 **Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): do **not** ask. Choose **(a)** when the overflow is modest; **(c)** when the file is still over the hard cap after one honest densify pass; never **(b)** — parallel top-level plans are a multi-clone operator flow the pipeline cannot run. **(d)** is the one case that stays a question, and only when the spec's `Appetite & Cut Lines` say the scope itself is wrong. Report the choice in Step 4.5.5 as `decided by the pipeline` and continue.
 
-- **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow`, a per-task `PATTERN` / `GOTCHA` / `EXPECT` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
+- **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow` (its `**Reuse:**` block included), a per-task `PATTERN` / `GOTCHA` / `EXPECT` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
 - **(b) Split into parallel top-level plans** — *offered only when Gate A passed.* Produces N independent plans in `.agents/plans/active/`, each runnable in its own clone. This is the only option that buys wall-clock. Say so, and say what it costs (below).
 - **(c) Split into a sequential umbrella + sub-steps** — context hygiene only, **no speedup**. Appropriate when one file is genuinely unwieldy but the work is a dependency chain.
 - **(d) Narrow the scope / return to `/brainstorm`** — the spec is too broad for one task. Point at the spec's `Appetite & Cut Lines` if it has them: the cut order is the standing answer to what goes first.
@@ -660,6 +671,7 @@ Read the plan(s) end-to-end. Generate findings split into 4 severities:
 - A task whose checklist is "whatever the compiler reports" for a removal/rename — name the `rg` sweep that enumerates the sites; the compiler is not the enumeration mechanism, and a type-stripping test runner reports nothing.
 - An AC that names tooling the repo lacks (a VR baseline, a brand switch, a driver) with no execution path in this repo — restate it or mark `DEFER — why:` at plan time; never scaffold the tooling inside the task.
 - A binder/shell ticket (a page shell, an umbrella) whose contract is derived from its own AC only — derive it from every sibling ticket's ACs, or the shell ships without the slots they need.
+- A new function, class, component, service or module-level helper with no line in the `**Reuse:**` block, a planned shape that contradicts a row of `docs/coding-standards.md` → `## One shape per problem` or re-implements a `## Shared helpers` row, or the same logic planned as a copy in two modules — run the Phase 1 reuse lookup for it and write the line (reuse, `none found (searched: …)`, or the shared place); follow the row.
 
 **🟡 MEDIUM** — test omissions + edge cases that surface in production:
 
@@ -868,7 +880,7 @@ command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: abse
 
 The prompt must open codex up to find **new** classes of problem (not a checklist), while a hard evidence bar keeps breadth from becoming noise. Use this shape (fill the `<...>` slots):
 
-> You are a senior engineer doing an independent, adversarial review of an implementation PLAN (no code written yet) AND of the decision to build this feature the way the plan builds it. Plan: `<plan-path>`; spec: `<spec-path>`. Read the plan, the spec, and the repo files it touches. Project conventions live in `CLAUDE.md`, `.agents/memory/patterns.md`, `errors.md`, `decisions.md`. A finding that merely prefers a different convention to a documented one is INVALID — drop it yourself. A documented decision may be questioned only when you anchor concrete, material friction to it in this repo; report that as `kind: "fundamental"`.
+> You are a senior engineer doing an independent, adversarial review of an implementation PLAN (no code written yet) AND of the decision to build this feature the way the plan builds it. Plan: `<plan-path>`; spec: `<spec-path>`. Read the plan, the spec, and the repo files it touches. Project conventions live in `CLAUDE.md`, `.agents/memory/patterns.md`, `errors.md`, `decisions.md` and, when present, `docs/coding-standards.md`. A finding that merely prefers a different convention to a documented one is INVALID — drop it yourself. A documented decision may be questioned only when you anchor concrete, material friction to it in this repo; report that as `kind: "fundamental"`.
 >
 > **Look broadly — your value is seeing what a self-review on the same plan would miss.** Don't limit yourself to a checklist. Consider, among anything else you notice:
 > - **Approach & architecture** — is there a fundamentally simpler / safer / more idiomatic way to reach the spec's goal? Does this fit the existing architecture or fight it? Compare it explicitly against `.agents/memory/architecture.md` and `decisions.md`: name every divergence (a new layer, a new module boundary, a pattern used nowhere else, a dependency direction that breaks the documented one) and whether the document declares it as intentional. A declared divergence clears only the "undeclared" charge — its justification and consequences are still yours to judge, and a documented decision may be reopened when you can anchor concrete, material friction to it.
