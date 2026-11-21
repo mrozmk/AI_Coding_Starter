@@ -1,6 +1,7 @@
 // Validator + generator for `.agents/backlog.md` (Epics + Tasks) and `docs/map/system.yaml`.
 // Owns every check a model must not self-grade: ids, DAG, sizes, trace coverage, system-tree
-// integrity, and the derived lanes / story map it writes back into the two marker regions.
+// integrity, Scope order, the `## Outside the dev backlog` rows, and the derived story map it writes
+// back into its marker region. Scheduling lives in `delivery-plan.mjs`, not here.
 // Also warns on a Task delivered by a done plan whose Status / Ref was never written back.
 // Node builtins only — ships to every downstream (umbrella D4).
 //
@@ -20,14 +21,16 @@ const SUBDOMAINS = new Set(['core', 'supporting', 'generic']);
 const CRITICALITIES = new Set(['critical', 'normal']);
 const LINK_KINDS = new Set(['calls', 'events', 'acl', 'ohs', 'customer-supplier', 'conformist', 'realizedBy']);
 const FORBIDDEN_SYSTEM_KEYS = new Set(['status', 'progress', 'done', 'completed']);
-const LANE_COUNTS = [2, 3, 4];
-const CRITICAL_PATH_SHARE = 0.6;
 
 const TASK_ID = /^E\d+-\d+$/;
 const JIRA_KEY = /^[A-Z]+-\d+/;
 const EPIC_ID = /^E\d+$/;
 const AC_ID = /^E\d+-\d+\.AC\d+$/;
-const SLICE = /^(WS|R\d+)$/;
+export const SCOPES = ['CORE', 'MUST', 'COULD'];
+export const NO_CORE_WARNING = 'no CORE Task — the delivery plan starts every session on day 0; mark the Tasks that must exist before parallel work';
+const OUTSIDE_ID = /^X-\d+$/;
+export const OUTSIDE_HEADING = /^##\s+Outside the dev backlog\b/;
+export const PRE_SCOPE_MESSAGE = 'pre-Scope backlog (Wave / Slice columns) — run: node .claude/lib/backlog-migrate.mjs --write';
 const INVENTORY_ID = /^(G|R|NFR|BR|A|Q|AD|FL|D)-\d+(\.A\d+)?$/;
 const REGISTER_ID = /^(G|R|NFR)-\d+$/;
 const BOLD_LIST_ID = /^\s*[-*]\s+\*\*([A-Za-z]+-\d+(?:\.A\d+)?)\*\*/;
@@ -52,7 +55,7 @@ const ARCHITECTURE_DRAFT = /^\*\*Status:\*\*\s*draft\b/im;
 // Markdown helpers
 // ---------------------------------------------------------------------------------------------
 
-const splitCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim());
+export const splitCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim());
 const isSeparator = (line) => /^\s*\|?\s*:?-{3,}/.test(line) && !/[^\s|:-]/.test(line);
 export const cleanId = (cell) => (cell ?? '').replace(/[`*]/g, '').trim();
 const isNone = (cell) => { const c = cleanId(cell); return c === '' || c === '—' || c === '-'; };
@@ -80,16 +83,40 @@ export function parseTables(md) {
 }
 
 const findTable = (tables, ...needed) => tables.find((t) => needed.every((h) => t.header.includes(h)));
+/** The Task table is the one carrying these key columns — whatever else its header holds. */
+export const findTaskTable = (tables) => findTable(tables, 'ID', 'Epic', 'Size', 'Pts');
 
 // Every column the checker reads. A table located by its key columns must carry all of them — a
 // renamed `Depends on` would otherwise silently turn every dependency into an empty list.
 const EPIC_COLUMNS = ['Epic', 'Title', 'Outcome', 'Key assumption', 'Pts', 'Depends on', 'Jira'];
-const TASK_COLUMNS = ['ID', 'Epic', 'Task', 'Type', 'Size', 'Pts', 'Depends on', 'Wave', 'Slice', 'Node', 'Traces', 'Status', 'Jira', 'Ref'];
-const headerLine = (cols) => `| ${cols.join(' | ')} |`;
+const TASK_COLUMNS = ['ID', 'Epic', 'Task', 'Type', 'Size', 'Pts', 'Depends on', 'Scope', 'Node', 'Traces', 'Status', 'Jira', 'Ref'];
+export const OUTSIDE_COLUMNS = ['ID', 'Owner', 'Item', 'Needed by', 'Traces', 'Notes'];
+export const headerLine = (cols) => `| ${cols.join(' | ')} |`;
 
 // ---------------------------------------------------------------------------------------------
 // Backlog
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Rows of `## Outside the dev backlog`, found by the section heading — never by columns. No heading →
+ * `[]` (the section is optional); a heading whose first table lacks a column, or with no table
+ * before the next `## ` heading, is a structural problem so a renamed column never reads as "no rows".
+ */
+function parseOutside(md, tables, requireTable) {
+  const lines = md.split(/\r?\n/);
+  const start = lines.findIndex((l) => OUTSIDE_HEADING.test(l));
+  if (start === -1) return [];
+  let stop = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
+  if (stop === -1) stop = lines.length;
+  // `line` is 1-based: the heading sits on line start + 1, the next heading on stop + 1.
+  const table = tables.find((t) => t.line > start + 1 && t.line < stop + 1);
+  const found = requireTable('Outside the dev backlog table', table, OUTSIDE_COLUMNS);
+  return (found?.rows ?? []).map((r) => ({
+    id: cleanId(r.ID), owner: cleanId(r.Owner), item: cleanId(r.Item),
+    neededBy: listCell(r['Needed by']), traces: listCell(r.Traces), line: r._line,
+  // Only a wholly empty row is dropped: a filled row with a blank ID must fail the id check, not vanish.
+  })).filter((x) => x.id !== '' || x.owner !== '' || x.item !== '' || x.neededBy.length || x.traces.length);
+}
 
 const acText = (line) => line.replace(AC_DEFINITION, '').replace(/^\s*[—-]\s*/, '').trim();
 
@@ -97,7 +124,12 @@ const acText = (line) => line.replace(AC_DEFINITION, '').replace(/^\s*[—-]\s*/
 export function parseBacklog(md) {
   const tables = parseTables(md);
   const hasSize = tables.some((t) => t.header.includes('Size'));
-  if (/^##\s+Work packages/m.test(md) && !hasSize) return { legacy: true, epics: [], tasks: [], acs: [], problems: [] };
+  if (/^##\s+Work packages/m.test(md) && !hasSize) return { legacy: true, epics: [], tasks: [], acs: [], outside: [], problems: [] };
+  // A Task table still on Wave / Slice (and without Scope) is migrated, never half-checked.
+  const keyed = findTaskTable(tables);
+  if (keyed && !keyed.header.includes('Scope') && (keyed.header.includes('Wave') || keyed.header.includes('Slice'))) {
+    return { legacy: false, preScope: true, epics: [], tasks: [], acs: [], outside: [], problems: [] };
+  }
 
   const problems = [];
   // Locate by key columns, then demand the full header; a table missing a column is dropped so no
@@ -110,7 +142,7 @@ export function parseBacklog(md) {
     return null;
   };
   const epicTable = requireTable('Epic map table', findTable(tables, 'Epic', 'Title', 'Pts'), EPIC_COLUMNS);
-  const taskTable = requireTable('Task table', findTable(tables, 'ID', 'Epic', 'Size', 'Pts'), TASK_COLUMNS);
+  const taskTable = requireTable('Task table', keyed, TASK_COLUMNS);
 
   const epics = (epicTable?.rows ?? []).map((r) => ({
     id: cleanId(r.Epic), title: cleanId(r.Title), pts: Number(cleanId(r.Pts)), deps: listCell(r['Depends on']), line: r._line,
@@ -119,7 +151,7 @@ export function parseBacklog(md) {
   // A withdrawn Task keeps its row (ids are append-only) but is no longer planned work.
   const tasks = (taskTable?.rows ?? []).map((r) => ({
     id: cleanId(r.ID), epic: cleanId(r.Epic), title: cleanId(r.Task), type: cleanId(r.Type), size: cleanId(r.Size),
-    pts: Number(cleanId(r.Pts)), deps: listCell(r['Depends on']), wave: cleanId(r.Wave), slice: cleanId(r.Slice),
+    pts: Number(cleanId(r.Pts)), deps: listCell(r['Depends on']), scope: cleanId(r.Scope),
     node: isNone(r.Node) ? null : cleanId(r.Node), traces: listCell(r.Traces), status: cleanId(r.Status),
     jira: isNone(r.Jira) ? null : cleanId(r.Jira), ref: isNone(r.Ref) ? null : cleanId(r.Ref),
     // Optional columns: a table without them reads as `—` everywhere.
@@ -144,15 +176,25 @@ export function parseBacklog(md) {
     else last = null;
   });
 
+  const outside = parseOutside(md, tables, requireTable);
+
   const prd = /\*\*Source PRD:\*\*\s*`([^`]+)`/.exec(md);
-  return { legacy: false, epics, tasks, acs, problems, sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null, raw: md };
+  return { legacy: false, preScope: false, epics, tasks, acs, outside, problems, sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null, raw: md };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Inventory (PRD + discovery + architecture ids, flows) and system.yaml
 // ---------------------------------------------------------------------------------------------
 
-const readIfExists = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null);
+export const readIfExists = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null);
+
+/** Write through a temp file + rename, creating the directory: a reader never sees a half-written file. */
+export function writeAtomic(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp.${process.pid}`;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, file);
+}
 
 // Verbatim provenance (`Quote: "…"`, a quoted `Source` cell) is content: markers inside it are not state.
 const unquoted = (text) => text.replace(/Quote:\s*"[^"]*"/g, '').replace(/·\s*"[^"]*"/g, '');
@@ -409,6 +451,7 @@ const pointsOf = (size) => SIZE_POINTS[size];
 export function checkBacklog({ backlog, inventory, system }) {
   const b = typeof backlog === 'string' ? parseBacklog(backlog) : backlog;
   if (b.legacy) return { errors: [], warnings: [], legacy: true };
+  if (b.preScope) return { errors: [PRE_SCOPE_MESSAGE], warnings: [], legacy: false, preScope: true };
   // A dropped table (missing column) would make every check below fail on an empty list — report
   // the structural problem alone instead of that cascade.
   if (b.problems.length) return { errors: [...b.problems], warnings: [] };
@@ -449,8 +492,7 @@ export function checkBacklog({ backlog, inventory, system }) {
     if (!TASK_TYPES.has(t.type)) errors.push(`Task ${t.id}: Type ${t.type || '(empty)'} not in story/tech`);
     if (pointsOf(t.size) === undefined) errors.push(`Task ${t.id}: Size ${t.size || '(empty)'} not in M/H/XH`);
     else if (t.pts !== pointsOf(t.size)) errors.push(`Task ${t.id}: Pts ${Number.isNaN(t.pts) ? '(not a number)' : t.pts} ≠ ${pointsOf(t.size)} for Size ${t.size}`);
-    if (!/^\d+$/.test(t.wave)) errors.push(`Task ${t.id}: Wave ${t.wave || '(empty)'} must be an integer (0 = sequential foundation)`);
-    if (!SLICE.test(t.slice)) errors.push(`Task ${t.id}: Slice ${t.slice || '(empty)'} must be WS or R<n>`);
+    if (!SCOPES.includes(t.scope)) errors.push(`Task ${t.id}: Scope ${t.scope || '(empty)'} must be CORE, MUST or COULD`);
     if (!TASK_STATUSES.has(t.status)) errors.push(`Task ${t.id}: Status ${t.status || '(empty)'} not in TODO/WIP/DONE/BLOCKED`);
     if (sys && t.node && !sys.nodes.has(t.node)) errors.push(`Task ${t.id}: unknown Node ${t.node} (not in docs/map/system.yaml)`);
   }
@@ -459,7 +501,11 @@ export function checkBacklog({ backlog, inventory, system }) {
   for (const t of b.tasks) {
     for (const d of t.deps) {
       if (!taskIds.has(d)) { errors.push(`Task ${t.id}: unknown dependency ${d}`); continue; }
-      if (t.wave === '0' && byId.get(d).wave !== '0') errors.push(`Task ${t.id}: Wave-0 Task depends on ${d} (Wave ${byId.get(d).wave}) — foundation cannot wait on later work`);
+      // Scope order binds planned work only: a withdrawn Task on either side raises nothing.
+      const dep = byId.get(d);
+      if (t.withdrawn || dep.withdrawn || !SCOPES.includes(t.scope) || !SCOPES.includes(dep.scope)) continue;
+      if (t.scope === 'CORE' && dep.scope !== 'CORE') errors.push(`Task ${t.id}: CORE Task depends on ${d} (${dep.scope}) — CORE cannot wait on later work`);
+      if (t.scope === 'MUST' && dep.scope === 'COULD') errors.push(`Task ${t.id}: MUST Task depends on ${d} (COULD) — committed work cannot depend on optional work`);
     }
   }
   const taskCycle = findCycle(taskIds, (id) => byId.get(id).deps);
@@ -534,6 +580,22 @@ export function checkBacklog({ backlog, inventory, system }) {
     }
     if (!t.withdrawn && t.type === 'tech' && t.traces.length === 0) warnings.push(`Task ${t.id}: tech Task with no trace (AD-n / NFR-n)`);
   }
+  // --- outside rows: work the dev team needs but does not do; their traces count for coverage
+  const tracedOutside = new Set();
+  const seenOutside = new Set();
+  for (const x of b.outside ?? []) {
+    if (!OUTSIDE_ID.test(x.id)) errors.push(`outside ${x.id || `row (line ${x.line})`}: id must match X-<n>`);
+    if (seenOutside.has(x.id)) errors.push(`duplicate outside id ${x.id}`);
+    seenOutside.add(x.id);
+    for (const id of x.neededBy) if (!taskIds.has(id)) errors.push(`outside ${x.id}: Needed by ${id} is not a Task`);
+    for (const id of x.traces) {
+      const def = inv.ids.get(id);
+      if (!def) { errors.push(`outside ${x.id}: unknown trace ${id}`); continue; }
+      // No build history to protect: anything but an active id is an error here.
+      if (def.state !== 'active') { errors.push(`outside ${x.id}: traces ${def.state} ${id}`); continue; }
+      tracedOutside.add(id);
+    }
+  }
   errors.push(...(inv.problems ?? []));
   for (const [id, def] of inv.ids) {
     if (!REGISTER_ID.test(id) || def.state !== 'superseded') continue;
@@ -546,13 +608,13 @@ export function checkBacklog({ backlog, inventory, system }) {
   const hasRequirements = [...inv.ids.keys()].some((id) => id.startsWith('R-'));
   if (hasRequirements) {
     for (const [id, def] of inv.ids) {
-      if (def.state === 'active' && /^(R|NFR)-\d+$/.test(id) && !traced.has(id)) errors.push(`${id}: no Task traces it`);
+      if (def.state === 'active' && /^(R|NFR)-\d+$/.test(id) && !traced.has(id) && !tracedOutside.has(id)) errors.push(`${id}: no Task and no outside row traces it`);
     }
   }
   const liveFlows = inv.flows.filter((f) => !f.withdrawn);
   for (const f of liveFlows.filter((x) => x.critical)) {
     for (const a of f.activities.filter((x) => !x.withdrawn)) {
-      if (!live.some((t) => t.slice === 'WS' && t.traces.includes(a.id))) errors.push(`${a.id} (critical flow ${f.id}): no Slice WS Task traces it — the walking skeleton has a gap`);
+      if (!live.some((t) => (t.scope === 'CORE' || t.scope === 'MUST') && t.traces.includes(a.id))) errors.push(`${a.id} (critical flow ${f.id}): no CORE or MUST Task traces it`);
     }
   }
   if (sys && liveFlows.length) {
@@ -567,8 +629,23 @@ export function checkBacklog({ backlog, inventory, system }) {
     const used = new Set(live.map((t) => t.node).filter(Boolean));
     for (const [id, n] of sys.nodes) if (n.kind === 'leaf' && !used.has(id)) warnings.push(`leaf ${id}: no Task targets it`);
   }
-  if (!errors.length && live.length) warnings.push(...scheduleWarnings(live));
-  return { errors, warnings, legacy: false };
+  if (!errors.length && live.length) warnings.push(...scopeWarnings(live));
+  const outsideCovered = [...tracedOutside].filter((id) => !traced.has(id)).sort(byIdAsc);
+  return { errors, warnings, legacy: false, outsideCovered };
+}
+
+/** Scope advisories over a valid DAG of live Tasks: no CORE at all, and CORE Tasks nothing later needs. */
+function scopeWarnings(live) {
+  const core = live.filter((t) => t.scope === 'CORE');
+  if (!core.length) return [NO_CORE_WARNING];
+  const later = live.filter((t) => t.scope !== 'CORE');
+  if (!later.length) return [];
+  // Every Task some live non-CORE Task needs, directly or transitively.
+  const byId = new Map(live.map((t) => [t.id, t]));
+  const needed = new Set();
+  const walk = (t) => { for (const d of t.deps) if (byId.has(d) && !needed.has(d)) { needed.add(d); walk(byId.get(d)); } };
+  later.forEach(walk);
+  return core.filter((t) => !needed.has(t.id)).map((t) => `Task ${t.id}: CORE, but nothing outside CORE depends on it — candidate to leave CORE`);
 }
 
 /**
@@ -633,171 +710,29 @@ export function staleTaskWarnings(tasks, plans) {
   return warnings;
 }
 
-/** Parallelism warnings over a valid DAG: a dominant critical path, and same-wave Tasks on one Node split across lanes. */
-function scheduleWarnings(tasks) {
-  const warnings = [];
-  const schedules = LANE_COUNTS.map((n) => scheduleLanes(tasks, n));
-  const { criticalPath } = schedules[0];
-  const parallel = tasks.filter((t) => t.wave !== '0');
-  const nonFoundation = parallel.reduce((a, t) => a + t.pts, 0);
-  if (nonFoundation > 0 && criticalPath.pts > CRITICAL_PATH_SHARE * nonFoundation) {
-    warnings.push(`critical path ${criticalPath.ids.join(' → ')} = ${criticalPath.pts} pts, ${Math.round((100 * criticalPath.pts) / nonFoundation)}% of ${nonFoundation} non-foundation pts — too sequential for parallel lanes`);
-  }
-  const seenPair = new Set();
-  const onNode = parallel.filter((t) => t.node);
-  schedules.forEach((s, k) => {
-    const laneOf = new Map();
-    s.lanes.forEach((lane, i) => lane.ids.forEach((id) => laneOf.set(id, i)));
-    for (let i = 0; i < onNode.length; i += 1) {
-      for (let j = i + 1; j < onNode.length; j += 1) {
-        const a = onNode[i]; const c = onNode[j];
-        const key = `${a.id}|${c.id}`;
-        if (a.wave === c.wave && a.node === c.node && laneOf.get(a.id) !== laneOf.get(c.id) && !seenPair.has(key)) {
-          seenPair.add(key);
-          warnings.push(`Tasks ${a.id} and ${c.id} share Node ${a.node} in Wave ${a.wave} but land in different lanes (N=${LANE_COUNTS[k]}) — expect merge contention; sequence them or split the node`);
-        }
-      }
-    }
-  });
-  return warnings;
-}
-
 // ---------------------------------------------------------------------------------------------
-// Scheduling + rendering
+// Rendering
 // ---------------------------------------------------------------------------------------------
 
-const taskPts = (t) => (Number.isFinite(t.pts) ? t.pts : pointsOf(t.size) ?? 0);
 // Numeric-aware so E1-2 sorts before E1-10.
-const byIdAsc = new Intl.Collator('en', { numeric: true }).compare;
+export const byIdAsc = new Intl.Collator('en', { numeric: true }).compare;
 
-function topoOrder(tasks) {
-  const ids = new Set(tasks.map((t) => t.id));
-  const byId = new Map(tasks.map((t) => [t.id, t]));
-  const out = [];
-  const done = new Set();
-  while (out.length < tasks.length) {
-    const ready = tasks.filter((t) => !done.has(t.id) && t.deps.every((d) => !ids.has(d) || done.has(d))).map((t) => t.id).sort(byIdAsc);
-    if (!ready.length) throw new Error(`dependency cycle among ${[...ids].filter((i) => !done.has(i)).join(', ')}`);
-    out.push(ready[0]);
-    done.add(ready[0]);
-  }
-  return out.map((id) => byId.get(id));
-}
-
-/**
- * Wave-0 Tasks run sequentially in one foundation lane; the rest are list-scheduled over the DAG
- * onto `n` lanes: ready Tasks ordered by longest remaining path (pts desc, then id asc), each
- * placed where it can start earliest (ties → lowest lane). Withdrawn Tasks are not planned work and
- * are left out. Deterministic for a given input.
- */
-export function scheduleLanes(tasks, n) {
-  const planned = tasks.filter((t) => !t.withdrawn);
-  const foundation = topoOrder(planned.filter((t) => String(t.wave) === '0'));
-  const foundationPts = foundation.reduce((a, t) => a + taskPts(t), 0);
-  const rest = planned.filter((t) => String(t.wave) !== '0');
-  const restIds = new Set(rest.map((t) => t.id));
-  const byId = new Map(rest.map((t) => [t.id, t]));
-
-  const succ = new Map(rest.map((t) => [t.id, []]));
-  for (const t of rest) for (const d of t.deps) if (restIds.has(d)) succ.get(d).push(t.id);
-  const remaining = new Map();
-  const longest = (id) => {
-    if (remaining.has(id)) return remaining.get(id);
-    remaining.set(id, taskPts(byId.get(id)));
-    const v = taskPts(byId.get(id)) + Math.max(0, ...succ.get(id).map(longest));
-    remaining.set(id, v);
-    return v;
-  };
-  topoOrder(rest);
-  rest.forEach((t) => longest(t.id));
-
-  const lanes = Array.from({ length: Math.max(1, n) }, () => ({ ids: [], pts: 0, free: 0 }));
-  const finish = new Map();
-  const scheduled = new Set();
-  while (scheduled.size < rest.length) {
-    const ready = rest.filter((t) => !scheduled.has(t.id) && t.deps.every((d) => !restIds.has(d) || scheduled.has(d)))
-      .sort((a, b) => remaining.get(b.id) - remaining.get(a.id) || byIdAsc(a.id, b.id));
-    const t = ready[0];
-    const depFinish = Math.max(0, ...t.deps.filter((d) => restIds.has(d)).map((d) => finish.get(d)));
-    let best = 0;
-    for (let i = 1; i < lanes.length; i += 1) if (Math.max(lanes[i].free, depFinish) < Math.max(lanes[best].free, depFinish)) best = i;
-    const start = Math.max(lanes[best].free, depFinish);
-    lanes[best].ids.push(t.id);
-    lanes[best].pts += taskPts(t);
-    lanes[best].free = start + taskPts(t);
-    finish.set(t.id, lanes[best].free);
-    scheduled.add(t.id);
-  }
-
-  let head = null;
-  for (const t of rest) if (!head || remaining.get(t.id) > remaining.get(head) || (remaining.get(t.id) === remaining.get(head) && byIdAsc(t.id, head) < 0)) head = t.id;
-  const criticalIds = [];
-  for (let cur = head; cur; ) {
-    criticalIds.push(cur);
-    const next = succ.get(cur).filter((s) => remaining.get(s) === remaining.get(cur) - taskPts(byId.get(cur))).sort(byIdAsc);
-    cur = next[0] ?? null;
-  }
-  return {
-    foundation: foundation.map((t) => t.id),
-    foundationPts,
-    lanes: lanes.map((l) => ({ ids: l.ids, pts: l.pts })),
-    makespan: Math.max(0, ...lanes.map((l) => l.free)),
-    criticalPath: { ids: criticalIds, pts: head ? remaining.get(head) : 0 },
-  };
-}
-
-/** Markdown for the `lanes` region: foundation, then one table per N = 2, 3, 4. */
-export function renderLanes(tasks) {
-  const schedules = LANE_COUNTS.map((n) => scheduleLanes(tasks, n));
-  const base = schedules[0];
-  const out = [];
-  out.push(base.foundation.length
-    ? `**Foundation (Wave 0, sequential):** ${base.foundation.join(' → ')} · ${base.foundationPts} pts`
-    : '**Foundation (Wave 0):** none');
-  if (base.lanes.every((l) => !l.ids.length)) out.push('', 'No parallel work yet — foundation only.');
-  else {
-    schedules.forEach((s, k) => {
-      out.push('', `### N = ${LANE_COUNTS[k]} developers`, '', '| Lane | Tasks | Pts |', '|------|-------|-----|');
-      s.lanes.forEach((l, i) => out.push(`| ${i + 1} | ${l.ids.length ? l.ids.join(', ') : '—'} | ${l.pts} |`));
-      out.push('', `Makespan: ${s.makespan} pts after the foundation · critical path: ${s.criticalPath.ids.join(' → ')} (${s.criticalPath.pts} pts)`);
-    });
-  }
-  // Chains are advisory: printed so a human sees where the lanes split them, never scheduled.
-  const chains = chainPaths(tasks);
-  if (chains.size) {
-    const byId = new Map(tasks.map((t) => [t.id, t]));
-    out.push('', '### Chains (advisory — one developer, in order)', '', '| Chain | Order | Pts |', '|-------|-------|-----|');
-    for (const [token, ch] of chains) {
-      const pts = ch.ids.filter((id) => !byId.get(id).withdrawn).reduce((a, id) => a + taskPts(byId.get(id)), 0);
-      out.push(`| ${token} | ${ch.ids.join(' → ')} | ${pts} |`);
-    }
-  }
-  return out.join('\n');
-}
-
-const sliceOrder = (a, b) => {
-  if (a === b) return 0;
-  if (a === 'WS') return -1;
-  if (b === 'WS') return 1;
-  return Number(a.slice(1)) - Number(b.slice(1)) || byIdAsc(a, b);
-};
-
-/** Markdown for the `storymap` region: one table per flow (critical first), slices × activities. */
+/** Markdown for the `storymap` region: one table per flow (critical first), Scopes × activities. */
 export function renderStoryMap(tasks, flows) {
   const live = (flows ?? []).filter((f) => !f.withdrawn);
   if (!live.length) return '';
   const planned = tasks.filter((t) => !t.withdrawn);
   const ordered = [...live.filter((f) => f.critical), ...live.filter((f) => !f.critical)];
-  const slices = [...new Set(planned.map((t) => t.slice).filter((s) => SLICE.test(s)))].sort(sliceOrder);
+  const scopes = SCOPES.filter((s) => planned.some((t) => t.scope === s));
   const out = [];
   for (const f of ordered) {
     const acts = f.activities.filter((a) => !a.withdrawn);
     out.push(`### ${f.id} — ${f.name || f.id}${f.critical ? ' (critical)' : ''}`, '');
     if (!acts.length) { out.push('_No backbone activities in docs/discovery.md._', ''); continue; }
-    out.push(`| Slice | ${acts.map((a) => (a.name ? `${a.id} ${a.name}` : a.id)).join(' | ')} |`);
+    out.push(`| Scope | ${acts.map((a) => (a.name ? `${a.id} ${a.name}` : a.id)).join(' | ')} |`);
     out.push(`|-------|${acts.map(() => '---').join('|')}|`);
-    for (const s of slices) {
-      const cells = acts.map((a) => planned.filter((t) => t.slice === s && t.traces.includes(a.id)).map((t) => t.id).join(', ') || '—');
+    for (const s of scopes) {
+      const cells = acts.map((a) => planned.filter((t) => t.scope === s && t.traces.includes(a.id)).map((t) => t.id).join(', ') || '—');
       out.push(`| ${s} | ${cells.join(' | ')} |`);
     }
     out.push('');
@@ -807,9 +742,8 @@ export function renderStoryMap(tasks, flows) {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** The two regions `--write` regenerates in `.agents/backlog.md`, with their literal markers. */
+/** The region `--write` regenerates in `.agents/backlog.md`, with its literal markers. */
 export const REGIONS = {
-  lanes: { begin: '<!-- lanes:begin -->', end: '<!-- lanes:end -->' },
   storymap: { begin: '<!-- storymap:begin -->', end: '<!-- storymap:end -->' },
 };
 
@@ -917,7 +851,11 @@ export function nextIds(root, backlog, inventory) {
 /** Why a Task is protected from in-place edits (`/update-backlog`); empty = unprotected. Jira status is not read here. */
 const protection = (t) => [t.status !== 'TODO' && `status ${t.status}`, t.ref && 'ref', t.jira && 'jira key'].filter(Boolean);
 
-/** What a change to each id touches: tracing Tasks (+ protection), transitive dependents, slices, goals, Epic cut lines. */
+/**
+ * What a change to each id touches: tracing Tasks (+ protection), transitive dependents, scopes,
+ * goals, Epic cut lines, and the `## Outside the dev backlog` rows tracing it (`outside`) — their
+ * `Needed by` Tasks join the affected Tasks. An `X-n` id targets its own `Needed by` Tasks.
+ */
 export function impactOf(ids, backlog, prdMd) {
   const byId = new Map(backlog.tasks.map((t) => [t.id, t]));
   const succ = new Map(backlog.tasks.map((t) => [t.id, []]));
@@ -934,9 +872,18 @@ export function impactOf(ids, backlog, prdMd) {
     const m = line && /Traces:\s*([^·]+)/.exec(line);
     return m ? m[1].split(',').map((s) => s.trim()).filter((s) => /^G-\d+$/.test(s)) : [];
   };
-  const detail = (t) => ({ id: t.id, epic: t.epic, slice: t.slice, jira: t.jira, withdrawn: t.withdrawn, protected: protection(t) });
+  const detail = (t) => ({ id: t.id, epic: t.epic, scope: t.scope, jira: t.jira, withdrawn: t.withdrawn, protected: protection(t) });
+  const outsideRows = backlog.outside ?? [];
   return ids.map((id) => {
-    const tasks = TASK_ID.test(id) ? [byId.get(id)].filter(Boolean) : backlog.tasks.filter((t) => t.traces.includes(id));
+    let tasks;
+    let rows = [];
+    if (TASK_ID.test(id)) tasks = [byId.get(id)].filter(Boolean);
+    else {
+      rows = OUTSIDE_ID.test(id) ? outsideRows.filter((x) => x.id === id) : outsideRows.filter((x) => x.traces.includes(id));
+      const needed = new Set(rows.flatMap((x) => x.neededBy));
+      const tracing = (t) => !OUTSIDE_ID.test(id) && t.traces.includes(id);
+      tasks = backlog.tasks.filter((t) => tracing(t) || needed.has(t.id));
+    }
     const deps = [...new Set(tasks.flatMap((t) => dependents(t.id)))].sort(byIdAsc).map((d) => byId.get(d));
     const all = [...tasks, ...deps];
     return {
@@ -944,7 +891,8 @@ export function impactOf(ids, backlog, prdMd) {
       goals: goalsOf(id),
       tasks: tasks.map(detail),
       dependents: deps.map(detail),
-      slices: [...new Set(all.map((t) => t.slice))].sort(),
+      outside: rows.map((x) => ({ id: x.id, owner: x.owner, neededBy: x.neededBy })),
+      scopes: SCOPES.filter((s) => all.some((t) => t.scope === s)),
       epics: [...new Set(all.map((t) => t.epic))].sort(byIdAsc).map((e) => ({ id: e, cut: cut(e) })),
       jira: [...new Set(all.map((t) => t.jira).filter(Boolean))],
     };
@@ -976,21 +924,37 @@ function parseArgs(argv) {
 const USAGE = `usage: backlog-check.mjs [--root <dir>] [--prd <path>] [--write] [--json] [--system-only] [--chains] [--next-ids] [--impact <ids>] [--candidate <dir>]
   --root         project root (default: cwd); reads .agents/backlog.md, docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml
   --prd          PRD path override (default: the backlog header's **Source PRD:**, else docs/PRD.md)
-  --write        regenerate the lanes / storymap marker regions in .agents/backlog.md (only when there are no errors)
-  --json         print { errors, warnings, lanes } instead of text
+  --write        regenerate the storymap marker region in .agents/backlog.md (only when there are no errors)
+  --json         print { errors, warnings, notes, outsideCovered } instead of text
   --system-only  validate docs/map/system.yaml alone (used by /architect)
   --chains       print { chains: { <token>: { ids, members, problems } } } as JSON — the Depends-on order /jira sync numbers "k of n" by (read-only)
   --next-ids     print { next, taskNext, tasks: { <id>: { current, source, nextAc } } } as JSON — next free ids + the AC resolver; optional Task ids as positionals filter tasks (read-only)
-  --impact       print the impact of changing the comma-separated ids (R-/G-/NFR-/AD-/Task) as JSON (read-only)
-  --candidate    validate <dir>/PRD.md + <dir>/backlog.md instead of the repo's (also checks marker regions and renders them in memory); --write refused
+  --impact       print the impact of changing the comma-separated ids (R-/G-/NFR-/AD-/Task/X-) as JSON (read-only)
+  --candidate    validate <dir>/PRD.md + <dir>/backlog.md instead of the repo's (also checks the storymap region and renders it in memory); --write refused
+a pre-Scope backlog (Wave / Slice columns) exits 1 in every mode until it is migrated (backlog-migrate.mjs)
 exit 0 = no errors · 1 = errors · 2 = usage / missing input`;
 
-function report(result, { json, lanes = null, notes = [] }) {
-  if (json) { console.log(JSON.stringify({ errors: result.errors, warnings: result.warnings, lanes, notes })); return; }
+function report(result, { json, notes = [] }) {
+  const outsideCovered = result.outsideCovered ?? [];
+  if (json) { console.log(JSON.stringify({ errors: result.errors, warnings: result.warnings, notes, outsideCovered })); return; }
   for (const e of result.errors) console.log(`error: ${e}`);
   for (const w of result.warnings) console.log(`warning: ${w}`);
+  if (outsideCovered.length) console.log(`covered outside the dev backlog: ${outsideCovered.join(', ')}`);
   for (const n of notes) console.log(`note: ${n}`);
   console.log(`backlog-check: ${result.errors.length} error(s), ${result.warnings.length} warning(s)`);
+}
+
+/**
+ * `checkBacklog` against the project's own sources: the inventory of `root` (loaded here unless the
+ * caller already has it) and `docs/map/system.yaml`. A broken system.yaml is an error, not a throw.
+ * Returns the `checkBacklog` result plus `inventory`.
+ */
+export function checkAgainstRoot(root, parsed, inventory = loadInventory(root, parsed.sourcePrd ?? 'docs/PRD.md')) {
+  const errors = [];
+  let system = null;
+  try { system = loadSystem(root); } catch (err) { errors.push(err.message); }
+  const res = checkBacklog({ backlog: parsed, inventory, system });
+  return { ...res, errors: [...errors, ...res.errors], inventory };
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -1017,8 +981,12 @@ export function main(argv = process.argv.slice(2)) {
   if (parsed.legacy && candidate) { console.error('backlog-check: --candidate: legacy WP backlog — a candidate must be a new-format backlog'); return 1; }
   if (parsed.legacy) {
     const msg = 'legacy WP backlog — regenerate with /setup:create-backlog to use Task checks';
-    if (json) console.log(JSON.stringify({ errors: [], warnings: [msg], lanes: null, legacy: true })); else console.log(`backlog-check: ${msg}`);
+    if (json) console.log(JSON.stringify({ errors: [], warnings: [msg], legacy: true })); else console.log(`backlog-check: ${msg}`);
     return 0;
+  }
+  if (parsed.preScope) {
+    if (json) console.log(JSON.stringify({ errors: [PRE_SCOPE_MESSAGE], warnings: [], preScope: true })); else console.log(`backlog-check: ${PRE_SCOPE_MESSAGE}`);
+    return 1;
   }
 
   if (args.chains) {
@@ -1047,35 +1015,27 @@ export function main(argv = process.argv.slice(2)) {
   const warnings = [];
   if (!inventory.prdExists) warnings.push(`PRD not found at ${prdPath} — requirement coverage not checked`);
   if (inventory.architectureDraft) warnings.push('docs/architecture.md is draft — AD ids not loaded');
-  let system = null;
-  const errors = [];
-  try { system = loadSystem(root); } catch (err) { errors.push(err.message); }
-
-  const res = checkBacklog({ backlog: parsed, inventory, system });
-  res.errors.unshift(...errors);
+  const res = checkAgainstRoot(root, parsed, inventory);
   res.warnings.unshift(...warnings);
   if (!candidate) res.warnings.push(...staleTaskWarnings(parsed.tasks, loadPlanTasks(root)));
 
   if (candidate && !res.errors.length) {
     // A candidate must be installable: --write would otherwise fail only after the swap.
     try {
-      locateRegions(md, Object.keys(REGIONS));
-      replaceRegion(replaceRegion(md, 'lanes', renderLanes(parsed.tasks)), 'storymap', renderStoryMap(parsed.tasks, inventory.flows) || '_No flows in docs/discovery.md — no story map._');
+      locateRegions(md, ['storymap']);
+      replaceRegion(md, 'storymap', renderStoryMap(parsed.tasks, inventory.flows) || '_No flows in docs/discovery.md — no story map._');
     } catch (err) { res.errors.push(`candidate: ${err.message}`); }
   }
 
-  let lanes = null;
   const notes = [];
   if (!res.errors.length && parsed.tasks.length) {
-    lanes = Object.fromEntries(LANE_COUNTS.map((n) => [n, scheduleLanes(parsed.tasks, n)]));
     if (args.write) {
       try {
         locateRegions(md, Object.keys(REGIONS));
-        let next = replaceRegion(md, 'lanes', renderLanes(parsed.tasks));
         const storyMap = renderStoryMap(parsed.tasks, inventory.flows);
-        next = replaceRegion(next, 'storymap', storyMap || '_No flows in docs/discovery.md — no story map._');
+        const next = replaceRegion(md, 'storymap', storyMap || '_No flows in docs/discovery.md — no story map._');
         if (next !== md) fs.writeFileSync(backlogPath, next);
-        notes.push(`wrote lanes + story map into .agents/backlog.md${next === md ? ' (unchanged)' : ''}`);
+        notes.push(`wrote the story map into .agents/backlog.md${next === md ? ' (unchanged)' : ''}`);
       } catch (err) {
         res.errors.push(err.message);
       }
@@ -1083,7 +1043,7 @@ export function main(argv = process.argv.slice(2)) {
   } else if (args.write && res.errors.length) {
     notes.push('--write skipped: fix the errors first');
   }
-  report(res, { json, lanes, notes });
+  report(res, { json, notes });
   return res.errors.length ? 1 : 0;
 }
 

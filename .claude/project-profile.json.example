@@ -156,6 +156,15 @@
   "_ba_doc": "BA profile. enabled: a Business Analyst runs discovery and the backlog in this repo (written by /setup:start later; nothing reads it yet). meetings_dir: where raw transcripts are dropped for /meeting-notes. vendor / client: participant-group labels in meeting notes (defaults Vendor / Client). Absent block = BA profile off.",
   "ba": { "enabled": false, "meetings_dir": ".agents/sources/meetings/", "vendor": "", "client": "" },
 
+  "_delivery_doc": "Delivery-plan settings, read by /setup:delivery-plan (which writes `mode` and the numbers you answer) and .claude/lib/delivery-plan.mjs (flags override). mode: solo | team. velocity: points per person per sprint — pessimistic and optimal — and sprint_days, the working days of one sprint. solo.sessions / team.*_sessions: parallel sessions of one person (integers 1–6); sessions split that person's throughput, they do not add to it. team: developers (>= 1) join when CORE is done; tl_core_sessions = the Tech Lead's sessions during CORE; tl_scale_sessions and tl_scale_share (0 < share <= 1) = the Tech Lead after the team scales; core_developers: auto (one developer joins CORE when that cuts it by at least 20 %) | 0 | 1. Absent block = the defaults shown here.",
+  "delivery": {
+    "mode": "team",
+    "velocity": { "pessimistic": 64, "optimal": 96, "sprint_days": 10 },
+    "solo": { "sessions": 3 },
+    "team": { "developers": 2, "developer_sessions": 3, "tl_core_sessions": 3, "tl_scale_sessions": 2,
+              "tl_scale_share": 0.5, "core_developers": "auto" }
+  },
+
   "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web. ba = the BA command group (meeting-notes, update-backlog, check-backlog, resync) — pruning arrives with the /setup:start interview. herdr = /maintain:sync-herdr-kit, the opt-in installer of the Herdr panels kit; derived from its existing value, else true (a no-op without a Herdr app home).",
   "commands": {
     "pr": true,

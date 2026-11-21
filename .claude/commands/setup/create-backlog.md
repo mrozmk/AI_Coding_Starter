@@ -1,5 +1,5 @@
 ---
-description: Generate .agents/backlog.md — Epics and Tasks (user stories + technical tasks) with sizes M/H/XH, dependency DAG, sequential foundation + parallel lanes for 2–4 developers, story map with walking skeleton, and acceptance criteria with ids — the delivery map the pipeline and /jira sync consume
+description: Generate .agents/backlog.md — Epics and Tasks (user stories + technical tasks) with sizes M/H/XH, dependency DAG, Scope CORE / MUST / COULD (CORE first, then parallel sessions), developer work only with an outside-the-dev-backlog section, story map, and acceptance criteria with ids — the delivery map the pipeline and /jira sync consume
 argument-hint: "[path-to-prd | optional — defaults to docs/PRD.md]"
 ---
 
@@ -16,12 +16,12 @@ There are three levels of "what to build" in this template, and the backlog fill
 | Level | Artifact | Scope | Read by |
 |-------|----------|-------|---------|
 | Product intent | `docs/PRD.md` (+ `docs/discovery.md`, `docs/architecture.md`) | *what & why*, ids `G-/R-/NFR-/BR-/FL-/AD-` | human, `/brainstorm` |
-| **Delivery map** | **`.agents/backlog.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, waves, lanes, slices, AC ids | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
+| **Delivery map** | **`.agents/backlog.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, `Scope` CORE / MUST / COULD (CORE first, then parallel sessions), developer work only, AC ids | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
 | Per-feature DAG | umbrella plan `## Execution Plan` | sub-steps of ONE Task (or a few) | `/orchestrate` |
 
 The PRD says *what & why*. The backlog **operationalizes** it into Epics and Tasks with dependencies and sizes. It **does not** restate the PRD — it traces to its ids. Jira mirrors the backlog 1:1 via `/jira sync` (create-only) and, for synced Tasks, owns workflow status (umbrella D7: a Task with a `Jira` key takes its `Status` from Jira; without one the local cell is authoritative).
 
-> **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE Task (or an explicitly listed few); the backlog decides *which* Tasks exist, how big they are, in what order, and who can work on them at the same time.
+> **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE Task (or an explicitly listed few); the backlog decides *which* Tasks exist, how big they are, what must be built first (`CORE`) before several sessions can work at once, and what is committed (`MUST`) or optional (`COULD`). Who builds what in which order is `/setup:delivery-plan`'s job.
 
 <HARD-GATE>
 This command produces a backlog — never code, never a spec, never a plan. Do NOT scaffold files, write implementation, or call `/brainstorm`, `/plan-feature`, `/quick-change` or `/jira`. It stops at `.agents/backlog.md` (plus the `backlog-check.mjs --write` gate on that file). The backlog is **opt-in**: a project that never runs this command has an untouched pipeline.
@@ -32,7 +32,7 @@ This command produces a backlog — never code, never a spec, never a plan. Do N
 ## Where it sits in the pipeline
 
 ```
-/discover → /architect → /maintain:refresh-brief → /prime → [/setup:create-backlog] → (/jira sync) → /brainstorm | /quick-change (per Task) → /plan-feature → /execute
+/discover → /architect → /maintain:refresh-brief → /prime → [/setup:create-backlog] → (/check-backlog) → (/setup:delivery-plan) → (/jira sync) → /brainstorm | /quick-change (per Task) → /plan-feature → /execute
 ```
 
 - **Greenfield:** run after `/discover` and `/architect`. The backlog traces every Task to the ids they produced; where architecture is still open it records the assumption and keeps going.
@@ -65,15 +65,16 @@ Also load, on demand (per `index.md` → When to Read), only the domain memory t
 
 ### Phase 2: Decide the structure yourself; ask only about directional forks
 
-**Default to deciding, not asking** (same contract as `/brainstorm`). Derive Epics, Tasks, sizes, the DAG and the walking skeleton from the sources and state your assumptions. Reserve questions for the few genuine forks:
+**Default to deciding, not asking** (same contract as `/brainstorm`). Derive Epics, Tasks, sizes, the DAG and each Task's `Scope` from the sources and state your assumptions. Reserve questions for the few genuine forks:
 
 **Ask the user only when ALL hold:** the answer is not discoverable from PRD/discovery/architecture/memory, AND it is a directional decision (changes *what* ships first or *how the work decomposes*), AND getting it wrong is expensive to reverse.
 
 Concretely, the forks worth a question here are usually:
-- **The walking-skeleton boundary** — which Tasks form slice `WS`. (Lead with your recommendation: "I'd make `WS` the thinnest end-to-end path through `FL-1` — X, Y, Z; W defers to `R2` — agree?")
+- **The CORE boundary** — which Tasks must exist before several sessions can build at once. (Lead with your recommendation: "I'd make CORE: X, Y, Z — what must exist before several sessions can build at once — agree?")
+- **The MUST / COULD line** where the PRD leaves a requirement optional.
 - **Epic decomposition** when the PRD bundles independent subsystems and there's more than one reasonable cut.
 
-Everything else (Task granularity, sizes, wave assignment, naming, slices) — decide and write the assumption into the backlog. One question per message, multiple choice via `AskUserQuestion`, lead with your pick. Zero questions is the right count for a PRD with an obvious critical flow and a clean phase breakdown.
+Everything else (Task granularity, sizes, naming, the `Scope` of Tasks the sources settle) — decide and write the assumption into the backlog. One question per message, multiple choice via `AskUserQuestion`, lead with your pick. Zero questions is the right count for a PRD with an obvious critical flow and a clean phase breakdown.
 
 ### Phase 3: What a Task is
 
@@ -82,7 +83,7 @@ The hierarchy is **Epic → Task**, nothing in between. A Task is one of two thi
 | Type | What it is | Must carry |
 |------|-----------|------------|
 | `story` | one **user story** — "As a <role> I want <capability> so that <outcome>", traced to the `R-n` / `FL-n.Ak` / `G-n` it delivers | ≥1 happy-path AC **and** ≥1 unwanted-behaviour AC (the failure, the forbidden action, the empty state) |
-| `tech` | one **technical task** — scaffold, schema, contract, infrastructure, refactor, spike — traced to the `AD-n` / `NFR-n` that demands it | ≥1 AC stating the observable result; a spike's AC is the decision it produces |
+| `tech` | one **technical task** — scaffold, schema, contract, refactor, spike — traced to the `AD-n` / `NFR-n` that demands it | ≥1 AC stating the observable result; a spike's AC is the decision it produces |
 
 **Three relations, one order.** `Depends on` is the hard order (Jira `Blocks`). `Relates` is shared context without order (Jira `Relates`) — one relation per pair: a pair is either a dependency or a relation, never both. `Chain` is an advisory name for "one developer, these Tasks, in this order": its members are already one line in `Depends on`, share the Epic and the `Node`, and the order is the `Depends on` path, never the table order. A chain of small Tasks on one file set is usually one Task.
 
@@ -90,37 +91,34 @@ The hierarchy is **Epic → Task**, nothing in between. A Task is one of two thi
 
 **Every Task gets acceptance criteria with ids** `E<n>-<m>.AC<k>`, written as Gherkin (`Given … When … Then …`) or EARS (`WHEN … the system shall …`). These ids are stable: `/brainstorm` copies them into the spec, `/plan-feature` into the plan, `/qa-verify` keys its verdicts by them. Never renumber — a dropped criterion keeps its id with `(withdrawn)`.
 
-**Cross-cutting concerns — security, infrastructure, observability, performance — belong in the backlog, two distinct ways:**
+**Developer work only.** Tasks are what developers build: application code, including auth, sessions and RBAC (security *is* a feature here; it goes through `/brainstorm` like any other Task), logging and metrics calls, caching code, queue consumers, and performance work with a concrete deliverable in the code.
 
-1. **As normal Epics/Tasks in the DAG** when they are *deliverable work* the pipeline will build:
-   - `E0 Foundation` — CI/CD, deploy pipeline, project scaffold. **MUST be the first Epic, and its scaffold Task (`E0-1`) MUST be the first Task with no dependencies** — on greenfield it is the literal entry point that creates the project skeleton the whole `WS` stands on. The HARD-GATE still holds: the backlog *describes* `E0-1`, it does not scaffold files — `E0-1` produces the skeleton later, when it runs through the pipeline like any other Task. (Brownfield exception: a mapped codebase already has a skeleton, so `E0-1` is "adopt/normalize existing scaffold" or omitted — record which.)
-   - Auth, sessions, RBAC — security *is* a feature here; it goes through `/brainstorm` like any other Task.
-   - Logging, metrics, alerting; performance work with a concrete deliverable (a caching layer, a query pass).
-2. **As gates / external blockers OUTSIDE the DAG** when they are a *condition*, not work you implement: a dependency security audit → *blocks release*; a pen-test → *blocks prod*; a legal/product decision → *blocks an Epic*. Record them in **External blockers** with what each one gates ("Security audit → blocks E5+"). You don't "design and implement" an audit — you commission it and wait.
+1. **Work another team delivers goes to `## Outside the dev backlog`, never to a Task** — CI/CD and deploy pipelines, environments, monitoring / alerting setup, test plans and QA execution, designs. Each is an `X-n` row: `Owner` (the team — DevOps, QA, Design, …), `Item`, `Needed by` (the Task ids that need it, or `—`), `Traces` (the `R-` / `NFR-` / `AD-` ids it delivers, or `—`), `Notes`. An outside row carries no points and no status and is never scheduled; a requirement it traces counts as covered.
+2. **`E0 Foundation` stays the first Epic, and its scaffold Task (`E0-1`) MUST be the first Task with no dependencies** — on greenfield it is the literal entry point that creates the project skeleton everything else stands on. E0 holds no CI/CD: the pipeline is an outside row. The HARD-GATE still holds: the backlog *describes* `E0-1`, it does not scaffold files — `E0-1` produces the skeleton later, when it runs through the pipeline like any other Task. (Brownfield exception: a mapped codebase already has a skeleton, so `E0-1` is "adopt/normalize existing scaffold" or omitted — record which.)
+3. **Conditions one waits for stay OUTSIDE the DAG in `External blockers`**, not work you implement: a dependency security audit → *blocks release*; a pen-test → *blocks prod*; a legal/product decision → *blocks an Epic*. Record what each one gates ("Security audit → blocks E5+"). You don't "design and implement" an audit — you commission it and wait.
 
-> If the PRD has a "Security & Configuration" or "Deployment" section, mine it here: deliverable items become Tasks; sign-off-style items become external blockers.
+> If the PRD has a "Security & Configuration" or "Deployment" section, mine it here: application work becomes Tasks; work another team delivers becomes outside rows; sign-off-style items become external blockers.
 
-### Phase 4: Parallel-first decomposition — the owner's rule, absolutely key
+### Phase 4: CORE first — the owner's rule, absolutely key
 
-Tasks are cut so that **2, 3 or 4 developers can work at the same time**. Not always possible — but it is the planning default everywhere it is.
+`CORE` is the project-specific pool of Tasks that must exist before many sessions can work at once: the `E0-1` scaffold, the shared data shapes and contracts other Tasks code against (a schema, an interface, an event schema, an API shape), and the one or two key capabilities everything hangs on.
 
-1. **Wave 0 = only what must be sequential.** `E0-1` scaffold first; then the schema, the auth skeleton, the contracts other Tasks code against (an interface, an event schema, an API shape). Wave-0 Tasks form one sequential chain — a Wave-0 Task never depends on a later wave (checker error). Keep Wave 0 as small as honesty allows: every Task you put there is a Task nobody can parallelize.
-2. **After Wave 0, cut for parallel lanes.** One Task per `Node` (bounded context / leaf of `system.yaml`) where possible, so two developers never edit the same module in the same wave. **Contracts first:** when a producer and a consumer must both change, make the contract its own `tech` Task; it unblocks both sides to run in parallel. Prefer two `M` Tasks on different nodes over one `H` Task spanning both.
-3. **Avoid two same-wave Tasks on one `Node`.** The checker warns when two Tasks in the same wave share a `Node` and land in different lanes — sequence them (dependency) or split the node.
-4. **`Wave` is a priority band, not a total order.** Duplicate wave numbers are intentional: same-wave Tasks with no mutual dependency run in parallel. Never encode the DAG in the wave column; encode it in `Depends on` — the checker derives the lanes from the DAG and the points, not from the waves.
+1. **A CORE Task depends only on CORE Tasks** (checker error otherwise).
+2. **Keep CORE sufficient** — after it, enough independent Tasks are ready for every session; `/setup:delivery-plan` measures it. **Keep CORE small** — every CORE Task delays the moment the team scales. A CORE Task nothing outside CORE depends on is not CORE (the checker warns).
+3. **After CORE, cut for parallel work.** One Task per `Node` (bounded context / leaf of `system.yaml`) where possible, so two developers never edit the same module at the same time. **Contracts first:** when a producer and a consumer must both change, make the contract its own `tech` Task; it unblocks both sides to run in parallel. Prefer two `M` Tasks on different nodes over one `H` Task spanning both.
+4. **`MUST` = committed scope, `COULD` = optional scope awaiting a decision.** A `MUST` Task never depends on a `COULD` Task (checker error). `Scope` is not an order inside a phase: Tasks with no mutual dependency run in parallel; encode every ordering need in `Depends on`.
 5. **Each Epic carries its *why*** — **Outcome** (the product effect, traced to a `G-n` / PRD section) and **Key assumption** (the most load-bearing thing you're *not yet sure of*). One sentence each. Below the Epic map, each Epic also gets **appetite** (how much it is *worth* — the budget, not the estimate) and **cut first** (what drops first when the Epic grows). An AI agent has no "that's enough" instinct; the cut line is the hand-brake.
-6. **The DAG is the only order.** `Chain` names a sequence for a human; the lanes do not honour it — the parallel plan prints each chain so you can see where the lanes split it. Encode a real ordering need in `Depends on`.
+6. **The DAG is the only order.** `Chain` names a sequence for a human; nothing schedules by it. Encode a real ordering need in `Depends on`.
 
-### Phase 5: Story map and slices
+### Phase 5: Story map
 
 - **Backbone** = the `FL-n.Ak` activities of the critical flow(s), left to right. Every `story` Task that realises an activity traces it (`Traces: FL-1.A2`).
-- **`WS` (walking skeleton)** = the thinnest set of Tasks that covers **every** backbone activity of every critical flow end-to-end — plus the Wave-0 foundation it needs. A critical activity with no `Slice: WS` Task is a checker error: the skeleton has a gap.
-- **Later slices** `R2`, `R3`, … are outcome-tied releases (each named by the `G-n` it moves), not leftovers.
-- **Slices ≠ waves.** A slice says *what ships together*; a wave says *who builds what when*. A `WS` Task can sit in Wave 2; an `R2` Task can sit in Wave 1 if it unblocks something.
+- **Every backbone activity of a critical flow is traced by a `CORE` or `MUST` Task.** A critical activity covered only by `COULD` Tasks (or by none) is a checker error.
+- The story map's rows are the `Scope` values (`CORE`, `MUST`, `COULD`); the checker generates it.
 
 ### Phase 6: Write `.agents/backlog.md`
 
-Create `.agents/` if needed (it exists in this template). Write **exactly** this structure — tables over prose, references over restatement. The header's `**Source PRD:**` is the path resolved in Phase 0; the two marker-comment pairs are mandatory and their bodies are generated in Phase 7 — never hand-write them. Sections not applicable to the project stay as a one-line "none" rather than disappearing, so readers and tooling find the same headings everywhere.
+Create `.agents/` if needed (it exists in this template). Write **exactly** this structure — tables over prose, references over restatement. The header's `**Source PRD:**` is the path resolved in Phase 0; the marker-comment pair is mandatory and its body is generated in Phase 7 — never hand-write it. Sections not applicable to the project stay as a one-line "none" rather than disappearing, so readers and tooling find the same headings everywhere.
 
 ```markdown
 # <Project> — Backlog (Epics + Tasks)
@@ -134,9 +132,9 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 (each Epic below the table: `**E1** — appetite: … · cut first: …`)
 
 ## Task table
-| ID | Epic | Task | Type | Size | Pts | Depends on | Relates | Chain | Wave | Slice | Node | Traces | Status | Jira | Ref |
-|----|------|------|------|------|-----|------------|---------|-------|------|-------|------|--------|--------|------|-----|
-| E0-1 | E0 | Project scaffold | tech | H | 8 | — | — | — | 0 | WS | platform-core | AD-1 | TODO | — | — |
+| ID | Epic | Task | Type | Size | Pts | Depends on | Relates | Chain | Scope | Node | Traces | Status | Jira | Ref |
+|----|------|------|------|------|-----|------------|---------|-------|-------|------|--------|--------|------|-----|
+| E0-1 | E0 | Project scaffold | tech | H | 8 | — | — | — | CORE | platform-core | AD-1 | TODO | — | — |
 
 ## Acceptance criteria
 ### E0-1 — Project scaffold
@@ -147,15 +145,15 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 (generated by backlog-check --write)
 <!-- storymap:end -->
 
-## Parallel plan
-<!-- lanes:begin -->
-(generated by backlog-check --write)
-<!-- lanes:end -->
+## Outside the dev backlog
+| ID | Owner | Item | Needed by | Traces | Notes |
+|----|-------|------|-----------|--------|-------|
+| X-1 | DevOps | Deployment pipeline | E0-1 | NFR-1 | — |
 
 ## External blockers · ## Open questions · ## Consciously out of scope
 ```
 
-**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Wave` integer, `0` = sequential foundation; `Slice` `WS|R2|R3…`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. The last three headings are separate `##` sections in the real file (one line each when empty).
+**Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Scope` `CORE|MUST|COULD`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task or outside row); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. Outside rows: `ID` `X-n`; `Needed by` — Task ids or `—`; `Traces` — active `R-`/`NFR-`/`AD-` ids or `—` (an active `R-`/`NFR-` traced only here counts as covered). The section is optional for the checker, but write it — with an empty table when nothing falls outside. The last three headings are separate `##` sections in the real file (one line each when empty).
 
 ### Phase 7: Gate — `backlog-check.mjs --write`
 
@@ -163,13 +161,13 @@ Create `.agents/` if needed (it exists in this template). Write **exactly** this
 node .claude/lib/backlog-check.mjs --write
 ```
 
-Run from the project root. It reads the PRD path from the header written in Phase 6 and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, AC ids, trace coverage, `Node` cells and the system tree; then — only when there are **no errors** — fills the `storymap` and `lanes` marker regions (foundation chain, lanes for N = 2, 3, 4 with makespan and critical path). **Fix every error in the file and rerun until it exits 0.** Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker regions; `--write` owns them. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
+Run from the project root. It reads the PRD path from the header written in Phase 6 and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, AC ids, trace coverage, `Node` cells and the system tree; then — only when there are **no errors** — fills the `storymap` marker region (the story map only; ordering and parallel work are `/setup:delivery-plan`'s job). **Fix every error in the file and rerun until it exits 0.** Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker region; `--write` owns it. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
 
 ### Phase 7.5: Independent check — `/check-backlog` (recommended)
 
 Offer `/check-backlog` now (`AskUserQuestion`: **run it now** (Recommended) / later): an independent
-critic grades the judgement calls the checker cannot (Wave-0 minimality, size honesty, AC quality,
-skeleton thinness) and routes accepted fixes through `/update-backlog`, with its own approval gates.
+critic grades the judgement calls the checker cannot (CORE sufficiency and minimality, size
+honesty, AC quality, developer-only scope) and routes accepted fixes through `/update-backlog`, with its own approval gates.
 Run → its verdict goes into the Phase 8 report as `**Check:** <verdict> (<D-n> if fixes were
 applied)`; later → `**Check:** not run — /check-backlog before the first /jira draft`.
 
@@ -180,16 +178,17 @@ applied)`; later → `**Check:** not run — /check-backlog before the first /ji
 
 **Source PRD:** `<path>` · **Written:** `.agents/backlog.md`
 **Epics:** <N> · **Tasks:** <K> (<stories> story · <tech> tech) · **Points:** E0 <p> · E1 <p> · … · total <P>
-**Walking skeleton (WS):** <T> Tasks, <p> pts — <one line: the flow it proves>
-**Makespan after foundation:** N=2 → <p> pts · N=3 → <p> pts · N=4 → <p> pts (foundation <p> pts, sequential)
+**Scope:** CORE <T> Tasks / <p> pts · MUST <p> pts · COULD <p> pts
+**Outside the dev backlog:** <N> rows (<owners>)
 **Chains:** <token: E1-2 → E1-3 (12 pts), … — or "none">
 **Check:** <verdict from Phase 7.5, or "not run — /check-backlog before the first /jira draft">
 **backlog-check warnings:** <each one verbatim, or "none">
 
 **Next steps:**
-1. Review the backlog — correct the WS boundary, sizes or DAG if you disagree (edit the file, then `node .claude/lib/backlog-check.mjs --write`).
-2. Jira project? `/jira sync` mirrors Epics and Tasks (create-only, writes keys back).
-3. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks. Lanes are suggestions — the destination command's own guard decides (`/quick-change` Phase 0 may still send an `M` Task to `/brainstorm`).
+1. Review the backlog — correct the CORE boundary, the MUST / COULD line, sizes or DAG if you disagree (edit the file, then `node .claude/lib/backlog-check.mjs --write`).
+2. `/setup:delivery-plan` — who builds what in which order and how many working days it takes.
+3. Jira project? `/jira sync` mirrors Epics and Tasks (create-only, writes keys back).
+4. Start the first Task: `/brainstorm <Task id>` for H/XH Tasks, `/quick-change <Task id>` for M Tasks. The size is a suggestion — the destination command's own guard decides (`/quick-change` Phase 0 may still send an `M` Task to `/brainstorm`).
    When a backlog exists, the pipeline writes `Status`/`Ref` back into it automatically.
 ```
 
@@ -201,7 +200,7 @@ Keep the report to this skeleton — add lines only for a blocker the user must 
 
 - **`Status`, `Ref` and `Jira` cells are written by the pipeline** — `/plan-feature` (Status → `WIP`, Ref → spec + plan), `/execute` and `/orchestrate` (Status → `DONE` per the whole-Task rule: only when no active plan still lists the Task), `/quick-change` (`DONE` on completion), `/brainstorm` Step 0 (read-only status refresh from Jira for Tasks with a key), `/jira sync` (keys) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation on the file's content; it is mechanical and safe.
 - **Structural change (new Epic, new or re-sized Task, re-shaped DAG) goes through `/update-backlog`** (and `/check-backlog` through it): it previews every change, shows its impact, protects work in progress, records one `D-n` in the PRD change log and validates the candidate before writing. A hand edit stays allowed — then run `node .claude/lib/backlog-check.mjs --write`; the next `/update-backlog` (or the checker's `Scope rev` warning) surfaces it. No other automated step rewrites the DAG; that is how a backlog starts "pretending to be the truth".
-- **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its AC ids stay. The checker still validates its ids but leaves it out of lanes, the story map and trace coverage. Jira issues are never deleted by the pipeline.
+- **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its AC ids stay. The checker still validates its ids but leaves it out of the story map, the delivery plan and trace coverage. Jira issues are never deleted by the pipeline.
 - The backlog is **short, tabular, referential**. If it grows narrative, it has drifted from its job — prune it back to tables + references.
 
 ## Notes

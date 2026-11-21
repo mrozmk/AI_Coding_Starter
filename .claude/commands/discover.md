@@ -22,7 +22,7 @@ file lives in `commands/`, so relative paths would resolve wrong for sub-agents)
 | [`.claude/skills/discover/discovery-template.md`](../skills/discover/discovery-template.md) | `docs/discovery.md` skeleton |
 | [`.claude/skills/discover/prd-template.md`](../skills/discover/prd-template.md) | `docs/PRD.md` skeleton with ids |
 | [`.claude/skills/discover/prd-rubric.md`](../skills/discover/prd-rubric.md) | what the critics grade against (P1–P7, B1–B5, I1–I3) |
-| [`.claude/agents/start-critic.md`](../agents/start-critic.md) | the read-only critic — `claude-fable-5-1`, effort `high`, JSON findings |
+| [`.claude/agents/start-critic.md`](../agents/start-critic.md) | the read-only critic — `fable` (latest Fable), effort `high`, JSON findings |
 | [`.claude/lib/codex-bg.sh`](../lib/codex-bg.sh) | the Codex spawn wrapper (Phase 7) |
 
 Ids follow one scheme, shared with `/architect`, `/setup:create-backlog` and `/qa-verify`:

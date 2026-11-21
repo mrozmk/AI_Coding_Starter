@@ -24,7 +24,7 @@ file lives in `commands/`, so relative paths would resolve wrong for sub-agents)
 | [`.claude/skills/architect/stack-research.md`](../skills/architect/stack-research.md) | the stack method (web research, 2–3 candidates, confidence tags) |
 | [`.claude/skills/architect/system-schema.md`](../skills/architect/system-schema.md) | `docs/map/system.yaml` schema + worked example |
 | [`.claude/skills/architect/architecture-rubric.md`](../skills/architect/architecture-rubric.md) | what the critics grade against (A1–A9) |
-| [`.claude/agents/start-critic.md`](../agents/start-critic.md) | the read-only critic — `claude-fable-5-1`, effort `high`, JSON findings |
+| [`.claude/agents/start-critic.md`](../agents/start-critic.md) | the read-only critic — `fable` (latest Fable), effort `high`, JSON findings |
 | [`.claude/lib/codex-bg.sh`](../lib/codex-bg.sh) | the Codex spawn wrapper (Phase 6) |
 | `.claude/lib/backlog-check.mjs` | `--system-only` validates `docs/map/system.yaml` (Phase 4, 7) |
 

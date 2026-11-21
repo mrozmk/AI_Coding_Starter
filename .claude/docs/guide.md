@@ -34,7 +34,7 @@ The starter ships **no application code** — only the scaffolding that makes Cl
 | `settings.json` → `skillOverrides` | Switches off the Claude Code bundled skills the starter replaces or does not want auto-triggered (`init`, `design`, `dataviz`, `simplify`, the `artifact-*` trio, …). Kept on: `code-review` and `security-review` (the quality pipeline calls them), `run`, `loop`, `schedule`, `claude-api`, `update-config`, `claude-in-chrome`. Undocumented key, verified on Claude Code 2.1.257 (2026-09-16); values `off` / `user-invocable-only` / `name-only`. |
 | `output-styles/` | Output styles — `Simply` (three-block answers: done / did it work / now what, ≤120 words, no walls of text). Activate per session with `/output-style simply`. |
 | `workflows/` | `Workflow` orchestration scripts — `map-codebase.js` (brownfield fan-out comprehension), driven by `/setup:map-codebase` |
-| `lib/` | Shared scripts — `backlog-check.mjs` (backlog validator), `codex-bg.sh` (the one way to spawn Codex), `git-baseline.sh`, the team layer's `team-*.sh`, `costs/` (token usage) |
+| `lib/` | Shared scripts — `backlog-check.mjs` (backlog validator), `delivery-plan.mjs` (the delivery-plan scheduler), `backlog-migrate.mjs` (one-off migration of a pre-Scope backlog), `codex-bg.sh` (the one way to spawn Codex), `git-baseline.sh`, the team layer's `team-*.sh`, `costs/` (token usage) |
 | `team/` | The opt-in team layer (manifest, role prompts, tracker and PR adapters) |
 | config files | `project-profile.json.example` (the `/setup:start` answers), `qa-env.json` (QA hosts), `comment-guard.json`, `nudge-rules.json`, `memory-domains.json`, `starter-sync-playbook.md` (how sync classifies files) |
 | `settings.json` | Security-first permissions (non-destructive git allowed, destructive ops denied, deny on secrets, audit-log hooks) |
@@ -48,7 +48,7 @@ Layers of persistent project knowledge:
 | `sources/` | **Raw input materials** — briefs, transcripts, sketches, PDFs supplied by the user. Feeds `/discover` and `/setup:createwikillm`. Never modified by Claude. | Immutable input, pruned manually |
 | `memory/` | Lessons, decisions, quirks, patterns, plus three regenerated files: `architecture.md` (directory map), `project-brief.md` (TL;DR of PRD), `domain/business-model.md` (pricing/billing facts) | Mixed — most files append-only, three are regenerated wholesale by their owning command |
 | `reference/` | Stable domain/API references | Long-lived, updated as domain evolves |
-| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — Epics → Tasks (user stories or technical tasks) sized M/H/XH, a dependency DAG, a sequential Wave 0 foundation, parallel lanes for 2–4 developers and a story map with a walking skeleton. Each Task feeds one `/brainstorm` (H/XH) or `/quick-change` (M) cycle; `/jira sync` mirrors it into Jira. | Generated once; `Status`/`Ref` written back by `/plan-feature` (WIP), `/execute`, `/quick-change` and `/orchestrate` (DONE); `Jira` cells by `/jira sync`; structural changes through `/update-backlog` |
+| `backlog.md` *(optional)* | **Delivery map** from `/setup:create-backlog` — Epics → Tasks (user stories or technical tasks) sized M/H/XH, a dependency DAG, `Scope` CORE / MUST / COULD (CORE first, then parallel sessions), developer work only with an outside-the-dev-backlog section, and a story map. Each Task feeds one `/brainstorm` (H/XH) or `/quick-change` (M) cycle; `/jira sync` mirrors it into Jira. | Generated once; `Status`/`Ref` written back by `/plan-feature` (WIP), `/execute`, `/quick-change` and `/orchestrate` (DONE); `Jira` cells by `/jira sync`; structural changes through `/update-backlog` |
 | `specs/` | Design docs from `/brainstorm` | Lives with the feature |
 | `plans/` | Implementation plans — `active/` → `done/` | Short-lived |
 | `meeting-notes/` | One dated note per meeting transcript, from `/meeting-notes` | Immutable once written |
@@ -66,7 +66,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | Role | Commands |
 |------|----------|
 | **Setup** | `/setup:start` (guided bootstrap), `/setup:map-codebase` (existing codebase), `/setup:create-CLAUDE_MD`, `/setup:createwikillm`, `/setup:teams` |
-| **Business analyst** | `/prime-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
+| **Business analyst** | `/prime-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/setup:delivery-plan`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release`, `/orchestrate` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
 | **QA and security** | `/prime-qa`, `/qa-verify`, `/test-e2e`, `/audit-security`, `/seo-geo-audit` |
@@ -82,6 +82,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Review finders** | `correctness-reviewer`, `structure-reviewer` — read-only; the caller applies the fixes |
 | **QA verifiers** | `qa-contract`, `qa-runtime-ui` (`/qa-verify`); `qa-runtime-app.md.example` and `qa-runtime-device.md.example` are opt-in templates |
 | **Security audit** | `audit-threat-modeler`, `audit-control-verifier`, `audit-finding-validator` (`/audit-security`) |
+| **Planning** | `delivery-analyst` (`/setup:delivery-plan`) — reads the computed plan, never edits |
 | **Docs** | `documentation-manager` (`/orchestrate --sync-docs`) |
 
 ---
@@ -95,7 +96,7 @@ This starter supports two distinct roles. Both share the same knowledge layers (
 ### Business Analyst flow
 
 ```
-New chat → /prime-ba → /discover → /architect → /setup:create-backlog → /check-backlog → /jira sync
+New chat → /prime-ba → /discover → /architect → /setup:create-backlog → /check-backlog → /setup:delivery-plan → /jira sync
 ```
 
 | Step | What it means |
@@ -105,8 +106,9 @@ New chat → /prime-ba → /discover → /architect → /setup:create-backlog �
 | **Source files** | Drop briefs, transcripts, sketches, PDFs into [.agents/sources/](../../.agents/sources/). Raw input — never modified by Claude; `/discover` reads it automatically. |
 | **`/discover`** | The BA interview (or `--import` of existing requirements) → `docs/discovery.md` + `docs/PRD.md` with stable ids, judged by an independent critic and one Codex review. |
 | **`/architect`** | Subdomains, per-context decisions and the stack → `docs/architecture.md` + `docs/map/system.yaml`. |
-| **`/setup:create-backlog`** | Epics and Tasks with sizes, dependencies, lanes and acceptance criteria → `.agents/backlog.md`. |
+| **`/setup:create-backlog`** | Epics and Tasks with sizes, dependencies, Scope CORE / MUST / COULD (developer work only, an outside-the-dev-backlog section) and acceptance criteria → `.agents/backlog.md`. |
 | **`/check-backlog`** | The independent critic grades the backlog; you decide which fixes to apply. |
+| **`/setup:delivery-plan`** | The Tech Lead's step: the order per person and session, the CORE phase and working days / weeks / sprints → `.agents/backlog/delivery-plan.md`. |
 | **`/jira sync`** | Drafts the Epics and Tasks locally, sends them on your confirmation (one per Epic group), and writes the keys back into the backlog. |
 
 When scope changes later: `/meeting-notes <transcript>` turns a meeting into a note, and `/update-backlog` applies the changes to the PRD and the backlog in one reviewed write.
@@ -115,7 +117,7 @@ When scope changes later: `/meeting-notes <transcript>` turns a meeting into a n
 
 The first half is always the same — **prime → brainstorm → plan-feature** turns an idea (a free-text request, or one you lift from a Jira issue) into an approved, codebase-aware plan. How you take that plan to *shipped* is your call — pick by how much you want to drive:
 
-> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into **Epics and Tasks** with sizes (M/H/XH), a dependency DAG and parallel lanes. Each Task row then tells you which `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
+> **Multi-phase project?** Run `/setup:create-backlog` once (after the PRD) to generate `.agents/backlog.md` — a delivery map that breaks the PRD into **Epics and Tasks** with sizes (M/H/XH), a dependency DAG and a `Scope` (CORE / MUST / COULD) — developer work only, with an outside-the-dev-backlog section for other teams' work. Each Task row then tells you which `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) to run next, and in what order. It's optional: when the backlog exists, `/plan-feature` and `/orchestrate` tick `Status`/`Ref` back into it; when it doesn't, the flow below is unchanged. See [§Map the delivery (optional)](#optional-map-the-delivery-before-brainstorming-feature-by-feature).
 
 **A — Manual (more human-in-the-loop):**
 
@@ -303,11 +305,13 @@ If you already have briefs, transcripts, sketches, PDFs, or any written material
 
 ```
 /setup:create-backlog
+/check-backlog
+/setup:delivery-plan
 ```
 
-> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. On a new product `/setup:start` lists it as a regular step; on an existing codebase it is optional. Reads the PRD (plus `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present) and writes `.agents/backlog.md`: a **delivery map** of **Epics → Tasks** — user stories or technical tasks, each sized `M` (4 pts), `H` (8) or `XH` (16; anything bigger is split), points summed to the Epic, with acceptance criteria carrying ids (`E1-2.AC1`) and traces to the PRD/architecture ids. A small **sequential Wave 0** foundation (scaffold `E0-1`, schema, contracts) comes first; after it the Tasks are cut into **parallel lanes for 2, 3 and 4 developers**, and a **story map** marks the **walking skeleton** — the thinnest set of Tasks that covers the critical flow end-to-end. `node .claude/lib/backlog-check.mjs --write` validates ids, the DAG, sizes and trace coverage, then fills in the lanes and the story map. Each Task = one `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) cycle — the layer between the PRD and the per-feature plan's `## Execution Plan`.
+> Run `/prime` first — this command (and `/brainstorm`) stops without primed context. On a new product `/setup:start` lists it as a regular step; on an existing codebase it is optional. Reads the PRD (plus `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present) and writes `.agents/backlog.md`: a **delivery map** of **Epics → Tasks** — user stories or technical tasks, each sized `M` (4 pts), `H` (8) or `XH` (16; anything bigger is split), points summed to the Epic, with acceptance criteria carrying ids (`E1-2.AC1`) and traces to the PRD/architecture ids. Every Task carries a **`Scope`**: **`CORE`** — the small pool that must exist before several sessions can work at once (scaffold `E0-1`, shared data shapes and contracts, the one or two key capabilities) — then **`MUST`** (committed) and **`COULD`** (optional); every critical-flow activity is covered by a CORE or MUST Task. The backlog holds **developer work only**: pipelines, environments, monitoring setup, test plans and designs go to an **`## Outside the dev backlog`** section (`X-n` rows with an owner and the Tasks that need them). `node .claude/lib/backlog-check.mjs --write` validates ids, the DAG, `Scope` order, sizes and trace coverage, then fills in the story map (rows by `Scope`). Who builds what in which order, and how long it takes, is `/setup:delivery-plan`'s job (`.agents/backlog/delivery-plan.md`). Each Task = one `/brainstorm <Task>` (H/XH) or `/quick-change <Task>` (M) cycle — the layer between the PRD and the per-feature plan's `## Execution Plan`.
 >
-> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira mirrors it with `/jira sync` — one-way, create-only (Epics and Tasks, with parent, labels, estimate and `Blocks` links), each Jira key written back into the Task's `Jira` cell. It drafts locally first (`.agents/jira/inprogress/`) and asks once per Epic group before sending; after creating it runs the recorded follow-ups (Epic links, attachments, an open-questions comment, and an optional initial status from `initial_jira_status`). It never updates or deletes an existing issue; `/jira resync` reads groomed Jira text back and reports drift. Jira then owns only the workflow status of synced Tasks; structure, order and sizes stay in the backlog — never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* Task (Status `TODO`, all `Depends on` `DONE`, lowest `Wave`), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
+> **Backlog is the source of truth; Jira is an optional mirror of it.** The local `.agents/backlog.md` is the canonical "what-to-build-in-what-order" map — create it first, always. A team on Jira mirrors it with `/jira sync` — one-way, create-only (Epics and Tasks, with parent, labels, estimate and `Blocks` links), each Jira key written back into the Task's `Jira` cell. It drafts locally first (`.agents/jira/inprogress/`) and asks once per Epic group before sending; after creating it runs the recorded follow-ups (Epic links, attachments, an open-questions comment, and an optional initial status from `initial_jira_status`). It never updates or deletes an existing issue; `/jira resync` reads groomed Jira text back and reports drift. Jira then owns only the workflow status of synced Tasks; structure, order and sizes stay in the backlog — never a second parallel list maintained in reverse. A bare `/brainstorm` (no topic, no Jira reference) **resolves its topic from the backlog** — it picks the next *free* Task (Status `TODO`, all `Depends on` `DONE`, by `Scope` rank CORE → MUST → COULD), guards against a stale "already done" status, and designs that; an explicit topic or a Jira reference always overrides.
 >
 > It's the input to `/brainstorm`, not another spec. The MVP is laid out as a sub-graph with a fan-in Definition of Done, not a flat checklist. Universal structure for every project; optional **domain adapters** (layer tags, a reference build, parity gates) kick in only for ports/migrations.
 >
@@ -408,8 +412,9 @@ Checks what shipped against the Task's acceptance criteria, one by one, and writ
 | `/maintain:refresh-brief` | After substantial PRD changes — regenerates `project-brief.md` (and `domain/business-model.md` if PRD has pricing content) so future `/prime` calls stay fast and current. |
 | `/discover [idea] \| --import <path>` | Once at the start of a product (and again when scope shifts — every existing id is preserved) — BA interview or import of existing requirements → `docs/discovery.md` + `docs/PRD.md` with stable ids, judged by an independent critic. |
 | `/architect [--stack <area>]` | Once after `/discover` — subdomains, per-context decisions (`AD-n`), stack → `docs/architecture.md` + `docs/map/system.yaml`; ad-hoc later with `--stack <area>` for focused research (`--stack realtime`, `--stack auth`). |
-| `/setup:create-backlog` | Once after `/architect` — Epics and Tasks with sizes, a dependency DAG, Wave 0, lanes for 2–4 developers and acceptance criteria with ids → `.agents/backlog.md`. |
+| `/setup:create-backlog` | Once after `/architect` — Epics and Tasks with sizes, a dependency DAG, Scope CORE / MUST / COULD, developer work only (an outside-the-dev-backlog section) and acceptance criteria with ids → `.agents/backlog.md`. |
 | `/check-backlog` | After `/setup:create-backlog`, before building from it — the independent critic grades the backlog, you decide, accepted fixes go through `/update-backlog`. |
+| `/setup:delivery-plan [plan]` | After `/check-backlog`, and after each structural backlog change — the Tech Lead picks the team mode (stored in the profile's `delivery` block); `delivery-plan.mjs` writes `.agents/backlog/delivery-plan.md` (order per person and session, CORE for Tech Lead alone or + 1, working days / weeks / sprints at two velocities) and `delivery-analyst` fills its `## Analysis`. No calendar, no money; never edits the backlog. |
 | `/meeting-notes <transcript>` | After a meeting — turns one transcript (DOCX, Markdown or text) into one dated, immutable note in `.agents/meeting-notes/`, after a clarification loop and a review gate. |
 | `/update-backlog` | When scope changes after the baseline (meeting notes, specs, decisions said in chat) — applies them to the PRD and `.agents/backlog.md` in one reviewed, validated write, shows the impact first, protects work in progress, records one `D-n`. |
 | `/jira sync` | After `/setup:create-backlog` (and after each structural backlog edit) on a Jira team — creates the Epics/Tasks in Jira (draft first, one confirmation per Epic group), writes the keys back into the backlog's `Jira` cells. Never updates or deletes an existing issue; `/jira resync` reports drift. |
@@ -492,6 +497,7 @@ Three commands do heavy multi-step work. They use **two different orchestration 
 | Design parity | `orchestrator-designer` | Opus 5 · **`high`** | ❌ read-only | pixel/structural audit vs reference design |
 | Design critique | `design-critic` | Fable 5.1 · **`high`** | ❌ read-only | judges `/design-ui` mockups from rendered screenshots — the author fixes, the critic never edits |
 | Start-phase critique | `start-critic` | Fable 5.1 · **`high`** | ❌ read-only | judges `/discover`, `/architect` and `/check-backlog` artifacts against their rubric — the author fixes, the critic never edits |
+| Delivery-plan reading | `delivery-analyst` | Opus · `medium` | ❌ read-only | `/setup:delivery-plan`: reads the computed plan JSON and writes the analysis the command inserts — the script schedules, the agent only explains |
 | Correctness finder | `correctness-reviewer` | Opus 5.5 · **`xhigh`** | ❌ read-only | `/check-implementation` Step 1ab: runs `/code-review` and reports confirmed bugs; the main session applies fixes |
 | Structure finder | `structure-reviewer` | Fable 5.1 · **`high`** | ❌ read-only | runs `/deep-review report-only` in parallel with the correctness finder |
 | Finder fallbacks | `correctness-reviewer-fallback`, `structure-reviewer-fallback` | the session's model (`inherit`) · same effort as their finder | ❌ read-only | only after a finder's pinned model failed twice on a rate/usage limit or was unavailable, unless `workflow.finder_fallback` is `off`; same contract, named in the report |

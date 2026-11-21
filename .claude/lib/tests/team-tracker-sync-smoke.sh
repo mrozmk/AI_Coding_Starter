@@ -51,10 +51,10 @@ backlog() {  # backlog [E0-2 Jira cell] — the minimal valid backlog the checke
 **E0** — appetite: small · cut first: nothing
 
 ## Task table
-| ID | Epic | Task | Type | Size | Pts | Depends on | Wave | Slice | Node | Traces | Status | Jira | Ref |
-|----|------|------|------|------|-----|------------|------|-------|------|--------|--------|------|-----|
-| E0-1 | E0 | Project scaffold | tech | H | 8 | — | 0 | WS | — | — | TODO | — | — |
-| E0-2 | E0 | Auth skeleton | tech | M | 4 | E0-1 | 0 | WS | — | — | TODO | ${1:-—} | — |
+| ID | Epic | Task | Type | Size | Pts | Depends on | Scope | Node | Traces | Status | Jira | Ref |
+|----|------|------|------|------|-----|------------|-------|------|--------|--------|------|-----|
+| E0-1 | E0 | Project scaffold | tech | H | 8 | — | CORE | — | — | TODO | — | — |
+| E0-2 | E0 | Auth skeleton | tech | M | 4 | E0-1 | CORE | — | — | TODO | ${1:-—} | — |
 
 ## Acceptance criteria
 ### E0-1 — Project scaffold
@@ -67,11 +67,6 @@ backlog() {  # backlog [E0-2 Jira cell] — the minimal valid backlog the checke
 <!-- storymap:begin -->
 x
 <!-- storymap:end -->
-
-## Parallel plan
-<!-- lanes:begin -->
-x
-<!-- lanes:end -->
 
 ## External blockers
 - none

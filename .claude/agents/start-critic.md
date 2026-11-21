@@ -2,7 +2,7 @@
 name: start-critic
 description: Independent, read-only judge of a start-phase artifact (/discover PRD + discovery, /architect architecture + system map) — grades it against the rubric it is given and returns schema-shaped JSON findings; never edits. Spawned by /discover, /architect and /check-backlog.
 tools: Read, Glob, Grep
-model: claude-fable-5-1
+model: fable
 effort: high
 permissionMode: default
 ---

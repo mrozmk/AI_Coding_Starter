@@ -168,7 +168,7 @@ Choosing the structure and the technology is a decision worth making deliberatel
 /setup:create-backlog
 ```
 
-💬 **What happens:** `/maintain:refresh-brief` condenses the fresh PRD into the short brief that `/prime` loads, and `/prime` reloads the context. Then Claude reads the PRD, the discovery and the architecture and lays out a **delivery map** into `.agents/backlog.md` — "epics" and tasks (user stories or technical tasks), each with a size `M` / `H` / `XH` (4 / 8 / 16 points), in dependency order, with acceptance criteria that carry ids (`E1-2.AC1`). A small **Wave 0** foundation runs first, one task after another; after it the tasks are split into **parallel lanes for 2, 3 and 4 developers**, and a story map marks the **walking skeleton** — the thinnest set of tasks that makes the critical flow work end-to-end. **The first task is always `E0-1: project scaffold`** — the foundation everything else stands on. (The backlog only *describes* this task — it does not create files; the scaffold is built in Step 4, when you execute it.)
+💬 **What happens:** `/maintain:refresh-brief` condenses the fresh PRD into the short brief that `/prime` loads, and `/prime` reloads the context. Then Claude reads the PRD, the discovery and the architecture and lays out a **delivery map** into `.agents/backlog.md` — "epics" and tasks (user stories or technical tasks), each with a size `M` / `H` / `XH` (4 / 8 / 16 points), in dependency order, with acceptance criteria that carry ids (`E1-2.AC1`). Every task carries a **Scope**: `CORE` (the small set that must exist before parallel sessions can work — it runs first), `MUST` (the committed scope) or `COULD` (optional), and a story map shows which tasks cover each step of the critical flow. The backlog holds **developer work only** — pipelines, environments, test runs or designs owned by other teams go to its `Outside the dev backlog` section. The order per person and session, and the working days it takes, come later from `/setup:delivery-plan`. **The first task is always `E0-1: project scaffold`** — the foundation everything else stands on. (The backlog only *describes* this task — it does not create files; the scaffold is built in Step 4, when you execute it.)
 
 ✅ **How you know it's OK:** a `.agents/backlog.md` file is created, and at the top of its table there's a task `E0-1` of type "project scaffold".
 
@@ -179,7 +179,7 @@ Choosing the structure and the technology is a decision worth making deliberatel
 <details>
 <summary>💡 TIP — why a backlog and why the scaffold is a task, not a manual step</summary>
 
-The backlog is the **layer between the PRD and a single plan**: the PRD says *what and why* (prose), the backlog says *in what dependency structure to deliver it* (tasks with IDs, sizes, a DAG, ordering, parallel lanes). Thanks to this, the project scaffold isn't a "manual terminal hack" but the **first normal pipeline task** — it goes through the same quality gates as any other feature.
+The backlog is the **layer between the PRD and a single plan**: the PRD says *what and why* (prose), the backlog says *in what dependency structure to deliver it* (tasks with IDs, sizes, a DAG, a Scope). Thanks to this, the project scaffold isn't a "manual terminal hack" but the **first normal pipeline task** — it goes through the same quality gates as any other feature.
 
 `.agents/backlog.md` is the **single source of truth** for "what to build, in what order".
 </details>
@@ -832,7 +832,7 @@ The discovery and the PRD are the common foundation of all scenarios. The differ
 /setup:create-backlog
 ```
 
-💬 **What happens:** Claude turns the PRD into a **delivery map** in `.agents/backlog.md` — epics, tasks with IDs (`E0-1`, `E1-2`, …) as user stories or technical tasks, sizes (`M` / `H` / `XH`, summed to the epic), dependencies (DAG), parallel lanes for 2–4 developers and a story map with the walking skeleton. This is the **canonical** list of "what to build, in what order".
+💬 **What happens:** Claude turns the PRD into a **delivery map** in `.agents/backlog.md` — epics, tasks with IDs (`E0-1`, `E1-2`, …) as user stories or technical tasks, sizes (`M` / `H` / `XH`, summed to the epic), dependencies (DAG), a Scope per task (`CORE` / `MUST` / `COULD`) and a story map. `/setup:delivery-plan` then turns it into an order per person and session with working days. This is the **canonical** list of "what to build, in what order".
 
 ✅ **How you know it's OK:** a `.agents/backlog.md` was created with a table of epics and tasks.
 

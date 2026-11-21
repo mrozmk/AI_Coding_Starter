@@ -69,7 +69,7 @@ If `.agents/backlog.md` exists, read it and note: the Epic map, the Task count p
 node .claude/lib/backlog-check.mjs
 ```
 
-Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure.
+Report every error and warning verbatim. A missing script (workflow older than the Epic/Task backlog) or a legacy work-package backlog is a note in the report, not a failure. A pre-Scope backlog (`Wave` / `Slice` columns, no `Scope`) is reported with the checker's message, which names `node .claude/lib/backlog-migrate.mjs --write`.
 
 Report the backlog's `**Last check:**` line and mark it **stale** when its hash differs from
 `grep -v '^\*\*Last check:\*\*' .agents/backlog.md | shasum -a 256 | cut -c1-12` (a partial scope

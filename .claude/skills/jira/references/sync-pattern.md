@@ -40,6 +40,9 @@ Do **not** reach for the batch-create tool or a `validate_only` dry-run here —
   collision-free.
 - **Legacy backlog** (a `## Work packages` heading, or a Task table without a `Jira` column) → stop:
   `"Legacy backlog — brak kolumny Jira. Przegeneruj przez /setup:create-backlog."`
+- **Pre-Scope backlog** (a Task table header with `Wave` / `Slice` and no `Scope`; the checker
+  fails with its pre-Scope message) → stop:
+  `"Backlog sprzed kolumny Scope — uruchom node .claude/lib/backlog-migrate.mjs --write."`
 - **`project_key`** — per HARD-GATE invariant 2: from the user's argument, else
   `$JIRA_DEFAULT_PROJECT`, else ask. Never guessed from an existing issue key in the file.
 
@@ -363,7 +366,7 @@ report exists to catch.
   source of truth for all of them. `Relates` links are reconciled like `Blocks` — never inferred
   from Jira.
 - **Writes only `Jira` cells** in `.agents/backlog.md`. Never `Status`, never `Ref`, never the table
-  structure, never the generated `storymap` / `lanes` regions.
+  structure, never the generated `storymap` region.
 - **No auto-retry on 4xx; no rollback.**
 - **No sub-tasks** (HARD-GATE invariant 3) — Epics and Tasks only.
 

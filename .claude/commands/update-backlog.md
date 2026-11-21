@@ -50,8 +50,10 @@ Questions and the preview in the project's communication language; every artifac
 Every `D-n` of kind `scope` above the backlog's `Scope rev` whose `**Tasks:**` line is `—` was
 written by `/discover`, which never edits the backlog. Build intents from its `**Affects:**`,
 **reusing the ids it already defined** (never supersede again): a superseded `R-n` → unprotected
-Tasks tracing it re-trace to the successor, protected ones get a `delta-linked` Task; a withdrawn
-`R-n` → a `withdraw-task` question per live Task; an added `R-n` → an `add` Task. This run then
+Tasks tracing it re-trace to the successor, protected ones get a `delta-linked` Task, and every
+`X-n` row of `## Outside the dev backlog` tracing it re-traces to the successor; a withdrawn `R-n`
+→ a `withdraw-task` question per live Task and a question per `X-n` row tracing it (does the row
+stay); an added `R-n` → an `add` Task (or an `outside-add` row when another team delivers it). This run then
 fills that `D-n`'s `**Tasks:**` / `**Jira refresh:**` lines instead of writing a new `D-n` for it.
 
 ## Phase 1 — Sources
@@ -96,6 +98,12 @@ Scan each source for backlog-actionable statements and build
 | `merge` | none — the union of the originals' active traces | originals → `withdraw-task`; one new Task with the union of their prerequisites; their dependents redirected to it; protected dependents → question |
 | `withdraw-task` | none | `Task` cell `(withdrawn)`; `Status` → `DONE` / `BLOCKED` **only when the row has no Jira key**; keyed → `Status` untouched + `Jira refresh: <key> pending` |
 | `withdraw-requirement` | `R-n` `(withdrawn per D-k)` only if no live Task traces it after this run — otherwise ask: withdraw those Tasks too, or keep the requirement | per the answer |
+| `outside-add` / `outside-edit` / `outside-remove` | none (an `edit` meaning change of a traced `R-n` follows the rows above) | an `X-n` row in `## Outside the dev backlog` (next free `X-n`; never renumbered): `Owner`, `Item`, `Needed by` (Task ids or `—`), `Traces` (active `R-` / `NFR-` / `AD-` ids or `—`), `Notes`. Removing a row that is the only trace of an active `R-n` / `NFR-n` needs a Task or another row to take the trace, else the checker fails the candidate |
+| `move-outside` | none | a non-developer Task leaves the plan by the removal rule above (`withdraw-task` for a protected or an unprotected Task alike); its dependents swap the dependency on it for the Task's own prerequisites, so the order between the remaining Tasks is kept (a swap touching a protected dependent → question), and the withdrawn row's `Chain` cell becomes `—`, so a chain it sat in stays one path; a new `X-n` row lists them under `Needed by` and takes over the Task's `R-` / `NFR-` / `AD-` traces; the Epic's `Pts` follows the rows that remain |
+
+**Outside rows and requirement edits.** An `X-n` row's `Traces` follow the same register edits as a
+Task's: a superseded `R-n` → the row re-traces to the successor `R-m` (an outside row has no build
+history, so it is never protected); a withdrawn `R-n` → a question whether the row stays.
 
 **Protection.** A Task is **protected** when `Status ≠ TODO`, or `Ref` is non-empty (a spec or plan
 exists), or its `Jira` key's live status is not in the project's backlog / waiting set — read
@@ -110,15 +118,19 @@ reason; "don't know" → `[Assumption — to verify]`; more than 8 questions →
 preview. Always asked, even when the source is clear:
 
 - every removal and withdrawal;
-- placement of a new Task: Epic (an existing one, or "new Epic" → next `E<n>` with Title, Outcome,
-  Key assumption asked here), Wave, Slice, Node, Size, `Depends on` / `Relates`;
-- an intent whose impact touches `WS` or a protected Task: **accept / reject**.
+- placement of a new item: developer work (a Task) or work another team delivers (an `X-n` row in
+  `## Outside the dev backlog`, with `Owner` and `Needed by` asked here); for a Task: Epic (an
+  existing one, or "new Epic" → next `E<n>` with Title, Outcome, Key assumption asked here),
+  `Scope` (`CORE` / `MUST` / `COULD`), Node, Size, `Depends on` / `Relates`;
+- an intent whose impact touches `CORE` or a protected Task: **accept / reject**.
 
 ## Phase 5 — Impact
 
 `node .claude/lib/backlog-check.mjs --impact <ids>` for each intent's targets → tracing Tasks with
-their protection reasons, transitive dependents, slices, the goals an `R-n` traces, each Epic's cut
-line, Jira keys involved. Shown per intent in the preview; summarised into the `D-n` `**Impact:**`.
+their protection reasons, transitive dependents, `scopes`, the `outside` rows (`X-n`, owner,
+`Needed by`) that trace the id, the goals an `R-n` traces, each Epic's cut line, Jira keys involved
+(an `X-n` id is itself a valid target: its `Needed by` Tasks and their dependents). Shown per intent
+in the preview — the `outside` rows next to the Tasks; summarised into the `D-n` `**Impact:**`.
 
 ## Phase 6 — Build the candidate pair
 
@@ -127,19 +139,20 @@ original hash from Phase 2 and the candidate hash).
 
 - **Register:** the edits above + **one** `D-n` (or the reconcile-mode `D-n` lines filled). Kind:
   `scope` when any register id is added, superseded or withdrawn **or** any Task is added, withdrawn
-  or restructured; else `editorial` when only register wording changed; else `confirmation`
+  or restructured **or** any `X-n` row is added, edited or removed; else `editorial` when only register wording changed; else `confirmation`
   (`Affects: none`) for processed sources that changed nothing. Fields: `Sources` (paths + hashes, or
   `BA direct decision`), `Decision` (the user's words), `Approval: proposed`, `Affects`, `Impact`,
   `Tasks`, `Jira refresh` (keys of touched keyed Tasks and their keyed `Relates` / dependents). **Only
   `scope` bumps `**Current:**`**; the backlog's `**Scope rev:**` = `Current`.
-- **Backlog:** row / AC changes; AC ids from `nextAc` (never renumber).
+- **Backlog:** row / AC changes and `## Outside the dev backlog` row changes; AC ids from `nextAc`
+  (never renumber).
 - `node .claude/lib/backlog-check.mjs --candidate .agents/.pending-update` — errors → back to the
   preview with the errors; the repo is unchanged.
 
 ## Phase 7 — Preview and review gate
 
-Show: the `D-n`; each changed register line (old → new); each changed Task row and AC block; the
-impact table; checker warnings verbatim; the Epics left untouched, by name. Approve → Phase 8.
+Show: the `D-n`; each changed register line (old → new); each changed Task row and AC block; each
+changed `X-n` row; the impact table; checker warnings verbatim; the Epics left untouched, by name. Approve → Phase 8.
 Patch → rebuild the candidate (Phase 6) and show again. Cancel → delete `.agents/.pending-update/`,
 nothing else written.
 
@@ -149,7 +162,7 @@ nothing else written.
    nothing ("the file changed during the run — re-run `/update-backlog`").
 2. Install the PRD: copy the candidate over `docs/PRD.md`, verify its hash = the candidate hash.
 3. Install the backlog the same way.
-4. `node .claude/lib/backlog-check.mjs --write` (lanes + story map), then record the backlog's new
+4. `node .claude/lib/backlog-check.mjs --write` (story map), then record the backlog's new
    hash as `rendered` in `manifest.json`.
 5. Remove `.agents/.pending-update/` — only after step 4 succeeded.
 6. Only after the writes returned, report: counts per intent kind, the `D-n`, pending Jira refreshes,

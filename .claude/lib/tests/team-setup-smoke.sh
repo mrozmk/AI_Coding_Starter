@@ -531,7 +531,7 @@ while IFS= read -r p; do
   mkdir -p "$D/$(dirname "$p")"; cp "$ST/$p" "$D/$p"
 done < <(git -C "$ST" ls-files)
 git -C "$D" init --quiet
-for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs; do
+for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs delivery-plan.mjs backlog-migrate.mjs; do
   [ -f "$D/.claude/lib/$f" ] || fail "21: a project without teams lacks .claude/lib/$f"
 done
 jq -n '{schema: 1, tracker: "github", github: {repo: "owner/repo"}}' > "$D/.claude/project-profile.json"

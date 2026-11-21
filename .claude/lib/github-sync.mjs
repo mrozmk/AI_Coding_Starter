@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cleanId, loadInventory, parseBacklog, parseTables, resolveTask } from './backlog-check.mjs';
+import { PRE_SCOPE_MESSAGE, cleanId, loadInventory, parseBacklog, parseTables, resolveTask } from './backlog-check.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const NAMESPACE = /\*\*Jira namespace:\*\*\s*`?([a-z0-9]+(?:-[a-z0-9]+)*)`?/;
@@ -91,6 +91,7 @@ function setCell(file, lineNo, col, value) {
 function loadRows(root, md) {
   const backlog = parseBacklog(md);
   if (backlog.legacy) throw new Stop(1, 'legacy backlog (work packages) — regenerate it with /setup:create-backlog');
+  if (backlog.preScope) throw new Stop(1, PRE_SCOPE_MESSAGE);
   const tables = parseTables(md);
   const epicT = tables.find((t) => ['Epic', 'Title', 'Pts', 'Jira'].every((h) => t.header.includes(h)));
   const taskT = tables.find((t) => ['ID', 'Epic', 'Size', 'Pts', 'Jira'].every((h) => t.header.includes(h)));
@@ -108,7 +109,7 @@ function loadRows(root, md) {
     const raw = taskT.rows.find((r) => r._line === t.line);
     return {
       kind: 'task', id: t.id, epic: t.epic, title: t.title, type: t.type, size: t.size, pts: t.pts,
-      wave: t.wave, slice: t.slice, traces: t.traces, deps: t.deps, ac: resolveTask(root, backlog, t),
+      scope: t.scope, traces: t.traces, deps: t.deps, ac: resolveTask(root, backlog, t),
       cell: cleanId(raw?.Jira ?? ''), line: t.line, col: taskT.header.indexOf('Jira'),
     };
   });
@@ -127,7 +128,7 @@ function renderBody(row, numbers) {
       `**Depends on:** ${depText(row.deps, numbers)}`, '', tail].join('\n');
   }
   const acs = row.ac.current.filter((a) => !a.withdrawn);
-  return [`**Type:** ${row.type} · **Size:** ${row.size} (${row.pts} pts) · **Wave:** ${row.wave} · **Slice:** ${row.slice}`,
+  return [`**Type:** ${row.type} · **Size:** ${row.size} (${row.pts} pts) · **Scope:** ${row.scope}`,
     `**Traces:** ${row.traces.join(', ') || '—'}`, `**Depends on:** ${depText(row.deps, numbers)}`, '',
     '## Acceptance criteria', ...(acs.length ? acs.map((a) => `- **${a.id}** — ${a.text}`) : ['- (none yet)']),
     `(source: \`${row.ac.source}\`)`, '', tail].join('\n');

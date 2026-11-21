@@ -187,7 +187,7 @@ Ids only; definitions in `docs/discovery.md` → `## Assumptions`.
 ## Release intent
 
 One paragraph: what slice 1 must prove, for whom, through which critical flow (`FL-n`), and what
-evidence (`G-n`) would say it worked. Delivery order and waves live in `.agents/backlog.md`.
+evidence (`G-n`) would say it worked. Delivery order lives in `.agents/backlog.md` and `.agents/backlog/delivery-plan.md`.
 
 ## Change log
 
@@ -203,7 +203,7 @@ generation and a critic's `ship` are never approval.
 **Decision:** <one or two sentences, the decider's wording>
 **Approval:** proposed | approved by <role/name> on <date>
 **Affects:** <R-37 superseded by R-52 · R-41 withdrawn · R-60 added · Q-7 closed | none>
-**Impact:** <G-n moved · slice · protected Tasks · Jira issues — `—` until a backlog exists>
+**Impact:** <G-n moved · scope · protected Tasks · Jira issues — `—` until a backlog exists>
 **Tasks:** — <written by later commands>
 **Jira refresh:** — <written by later commands>
 -->
