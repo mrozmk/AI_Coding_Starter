@@ -2,6 +2,8 @@
 # Offline contract test of /check-implementation Step 1ab: the command spawns the two read-only
 # finders in parallel, proves them (fingerprint, report contract, finder-model.sh), falls back to
 # the session's model only as declared, and every place that copies a FALLBACK line says so.
+# It also pins the structure finder's standards contract (the `STANDARDS:` line, the `rule:` /
+# `duplicate of:` tags, `/deep-review` standard 9 and the string-coded wording of standard 5).
 # Text checks only — nothing is spawned.
 #
 # Usage: bash .claude/lib/tests/check-impl-contract-test.sh [root]   (default: this checkout)
@@ -92,6 +94,45 @@ for name, skill in (("correctness-reviewer", "code-review"), ("structure-reviewe
     never = read(f".claude/agents/{name}.md").split("## Never", 1)[-1].split("\n## ", 1)[0]
     check("`rm -rf`" in never and "mktemp -d" in never and "never cleaned up" in never,
           f"{name}: Never list lacks the no-rm-rf / fresh-mktemp fixture rule")
+
+dr = read(".claude/commands/deep-review.md")
+check("## Non-negotiable standards (0–9)" in dr, "deep-review heading does not cover standards 0–9")
+s9 = dr.split("**9. ", 1)[-1].split("\n---", 1)[0] if "**9. " in dr else ""
+check(bool(s9), "deep-review lacks standard 9")
+for needle in ("docs/coding-standards.md", "Enforced by: review", "Enforced by: tool",
+               "## One shape per problem", "## Shared helpers", "## Open — pick one",
+               "Standards: checked <n> review rules",
+               "Standards: skipped — no docs/coding-standards.md", "rg --hidden",
+               "Duplicate search:", "rule: CS-<n>", "duplicate of: <path:line>", "NEEDS_HUMAN",
+               "edit scope"):
+    check(needle in s9, f"deep-review standard 9 lacks {needle!r}")
+s5 = dr.split("**5. ", 1)[-1].split("**6. ", 1)[0]
+check("String-coded control flow" in s5, "deep-review standard 5 does not name string-coded control flow")
+check("rule: CS-<n>" in dr.split("## Non-negotiable", 1)[0],
+      "deep-review report-only output shape does not name the tags")
+for rel in (".claude/agents/orchestrator-refiner.md", ".claude/commands/quick-change.md"):
+    check("Enforced by: review" not in read(rel), f"{rel} carries a copy of standard 9")
+
+sr = read(".claude/agents/structure-reviewer.md")
+block = sr.split("=== STRUCTURE REPORT ===", 1)[-1].split("=== END STRUCTURE REPORT ===", 1)[0]
+check("STANDARDS: checked <n> review rules | skipped — no docs/coding-standards.md" in block,
+      "structure report lacks the STANDARDS line")
+for h in ("HIGH_CONVICTION:", "NEEDS_HUMAN:", "LOW_TIER:", "STATUS:"):
+    check(h in block, f"structure report lost {h}")
+check("rule: CS-<n>" in block and "duplicate of: <path:line>" in block,
+      "structure report lines lack the rule:/duplicate of: tags")
+_, fbody = front(read(".claude/agents/structure-reviewer-fallback.md"))
+check("`STANDARDS:`" in fbody and "`rule:`" in fbody and "`duplicate of:`" in fbody,
+      "structure-reviewer-fallback does not carry the STANDARDS line and tags")
+
+apply_ = s1.split("**1ab-apply.", 1)[-1].split("**1ab-codex.", 1)[0]
+check("`rule: CS-<n>`" in apply_ and "`duplicate of: <path:line>`" in apply_,
+      "1ab-apply does not route rule:/duplicate of: findings")
+check("`STANDARDS:`" in s1.split("**1ab-apply.", 1)[0], "1ab report contract does not name STANDARDS:")
+check(any(l.startswith("- Standards:") for l in rep.splitlines()),
+      "Step 3 report lacks the Standards: line")
+s15 = ci.split("## Step 1.5", 1)[-1].split("## Step 2", 1)[0]
+check("docs/coding-standards.md" in s15, "Step 1.5 prompt does not name docs/coding-standards.md")
 
 qa = read(".claude/team/prompts/qa.md")
 step5 = qa.split("\n5. ", 1)[-1].split("\n6. ", 1)[0]

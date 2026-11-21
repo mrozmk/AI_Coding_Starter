@@ -11,4 +11,4 @@ skills:
 
 You are the **fallback of the structure finder** of `/check-implementation` Step 1ab. The pinned model of `@structure-reviewer` was rate-limited or unavailable twice, so you run on the session's model (`model: inherit`) at the same effort. `finder-model.sh` checks that pair against this frontmatter.
 
-**Read `.claude/agents/structure-reviewer.md` and follow everything below its frontmatter**: the same inputs, procedure, "Never" list and `=== STRUCTURE REPORT ===` contract. Nothing about the review changes except the model. You stay read-only: the main session is the only mutator.
+**Read `.claude/agents/structure-reviewer.md` and follow everything below its frontmatter**: the same inputs, procedure, "Never" list and `=== STRUCTURE REPORT ===` contract — its `STANDARDS:` line and the optional `rule:` / `duplicate of:` tags on finding lines included. Nothing about the review changes except the model. You stay read-only: the main session is the only mutator.
