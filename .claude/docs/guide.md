@@ -55,7 +55,7 @@ Layers of persistent project knowledge:
 | `handoffs/` · `jira/` | `/handoff` files and other local reports; `/jira` drafts (`inprogress/`, `sent/`) | Local scratch, per clone |
 | `project-profile.json` | Your `/setup:start` answers (groups, tracker, branch model, `teams`) | Edited with `/setup:start --rerun` |
 
-The product documents live in `docs/`: `docs/discovery.md` and `docs/PRD.md` (from `/discover`), `docs/architecture.md` and `docs/map/system.yaml` (from `/architect`).
+The product documents live in `docs/`: `docs/discovery.md` and `docs/PRD.md` (from `/discover`), `docs/architecture.md` and `docs/map/system.yaml` (from `/architect`), and, optionally, `docs/coding-standards.md` — the rules every change must follow, copied from `.agents/reference/coding-standards.md.example` on first need (absent = no command checks against it).
 
 Full routing of "what to read when" lives in [.agents/memory/index.md](../../.agents/memory/index.md) — its `When to Read` table tells Claude which memory files to load for the current task. `CLAUDE.md` stays slim (hard cap: ≤165 lines / ≤9 500 chars, enforced by `/setup:create-CLAUDE_MD`) and points to memory files instead of duplicating their content.
 

@@ -1,0 +1,42 @@
+# Coding standards
+
+> Optional seed. Copy to `docs/coding-standards.md` on first need and replace the sample rows below — they are illustrations. While `docs/coding-standards.md` is absent, every command skips its standards step.
+> It holds the rules every change must follow: a reviewer may reject a change for one. Traps and notes stay in `.agents/memory/patterns.md`, the "why" in `.agents/memory/decisions.md` — the division: `.agents/memory/reflection-protocol.md` → Standards vs memory.
+> Ids `CS-<n>` are stable: never renumbered or reused; a withdrawn rule keeps its heading with `(withdrawn)`. `Enforced by: tool` = a linter, compiler or CI check already fails on it, so reviewers do not re-check it; `Enforced by: review` = a reviewer may reject a change for it and cites the id.
+> A convention the code follows in competing ways goes under `## Open — pick one`, never under `## Rules`. Soft limit: 200 lines.
+
+## Rules
+
+### CS-1 — Import another module only through its public entry point
+- Enforced by: tool (.eslintrc.json: no-restricted-imports)
+- Applies to: `src/**`
+- Example: `src/orders/index.ts:1`
+- Why: a module's internals can change without breaking its callers.
+
+### CS-2 — Use a helper listed under Shared helpers instead of writing a new one
+- Enforced by: review
+- Applies to: all code
+- Example: `src/lib/http.ts:12`
+- Why: copies of one helper drift apart, and each copy needs its own fix.
+
+### CS-3 — Return API errors in the shape named under One shape per problem
+- Enforced by: review
+- Applies to: `src/api/**`
+- Example: `src/api/errors.ts:8`
+- Why: callers handle one error body, not several.
+
+## Shared helpers
+
+| Need | Use | Path |
+|---|---|---|
+| HTTP call with retry and timeout | `httpGet()` | `src/lib/http.ts:12` |
+
+## One shape per problem
+
+| Problem | The shape to use | Reference |
+|---|---|---|
+| Error response body | `{ "error": { "code", "message" } }` built by `toErrorBody()` | `src/api/errors.ts:8` |
+
+## Open — pick one
+
+- Date handling — native `Date` in `src/orders/`, a date library in `src/billing/`; a person picks one, then it becomes a rule.

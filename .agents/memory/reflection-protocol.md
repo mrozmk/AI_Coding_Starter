@@ -46,10 +46,25 @@ Save when — and only when — the run produced one of:
 | Spec / test-runner / Storybook / Playwright / jsdom trap | `domain/testing.md` |
 | Undocumented API / protocol quirk | `api.md` |
 | Deliberate X-over-Y decision + rationale | `decisions.md` |
+| A rule every change must follow — a reviewer may reject a change for it | `docs/coding-standards.md` as the next `CS-n` (file absent → `patterns.md`) |
 | Reusable project-specific pattern | `patterns.md` |
 | Knowledge specific to one module | `domain/{module}.md` |
 
 If unsure between two files, pick the most specific. If a `domain/` file doesn't exist yet, create it from the template below.
+
+### Standards vs memory
+
+When the project has `docs/coding-standards.md`, a finding is placed by this test:
+
+| File | Holds | Test |
+|---|---|---|
+| `docs/coding-standards.md` | rules every change must follow | a reviewer may reject a change for it |
+| `.agents/memory/patterns.md` | non-obvious traps and ways that help the author | helps writing, is no ground for rejection |
+| `.agents/memory/decisions.md` | why X over Y | answers "why this way" |
+
+**Promotion.** A pattern that becomes a rule for everyone moves to `docs/coding-standards.md` as the next `CS-n`, and `patterns.md` keeps at most a one-line pointer to it. Replacing the entry with that pointer is the one sanctioned edit of an existing entry besides the date-order repair. `patterns.md` merges with `merge=union` (`.gitattributes`), so a promotion is made on an up-to-date branch as its own commit, merged alone, and the merged file is checked to hold the pointer and not the old text — the procedure of a memory prune (`/maintain:cleanup-workflow` Phase 2). An ordinary reflection pass never promotes: it names the candidate in its report.
+
+While `docs/coding-standards.md` is absent, such a rule goes to `patterns.md` as today.
 
 **`errors.md` is application code only.** Before writing there, check the **Scope** section at the top of that file — the entry must name a source file or symbol of the shipped application. Toolchain friction goes to `domain/harness.md`, test-harness traps to `domain/testing.md`. `guard-memory-scope.sh` nudges on a misroute but does not block.
 

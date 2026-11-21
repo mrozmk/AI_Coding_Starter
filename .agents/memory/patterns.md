@@ -10,6 +10,8 @@ These are patterns **NOT obvious** from the codebase alone — if a convention i
 
 Add newest entries at the **END**.
 
+Rules every change must follow live in `docs/coding-standards.md` when the project has one — what goes where: [reflection-protocol.md → Standards vs memory](reflection-protocol.md#standards-vs-memory).
+
 ---
 
 ## Format
