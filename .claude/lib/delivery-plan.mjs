@@ -5,7 +5,7 @@
 // Node builtins only — ships to every downstream.
 //
 //   node .claude/lib/delivery-plan.mjs [--root <dir>] [--mode solo|team] [--developers <n>]
-//        [--core-developers auto|0|1] [--sessions <n>] [--json] [--write]
+//        [--core-developers auto|0|1] [--sessions <n>] [--tl-share <0..1>] [--json] [--write]
 //   exit 0 = plan computed · 1 = the backlog has errors / legacy backlog · 2 = usage, missing
 //   backlog, invalid profile or config value
 
@@ -33,7 +33,7 @@ const LONGEST_CHAIN_SHARE = 0.6;
 const PLAN_FILE = path.join('.agents', 'backlog', 'delivery-plan.md');
 const VARIANTS = ['optimal', 'pessimistic'];
 // When an outside row is needed — a group heading in the plan and the `when` value of `--json`.
-const OUTSIDE_WHEN = { core: 'before CORE', solo: 'after CORE', scale: 'during scale', none: 'no Task named' };
+const OUTSIDE_WHEN = { core: 'before CORE', inCore: 'during CORE', solo: 'after CORE', scale: 'during scale', follows: 'follows developer work', none: 'no Task named' };
 const CORE_LABEL = { '+1': 'Tech Lead + 1', alone: 'Tech Lead alone' };
 
 const round3 = (x) => Math.round(x * 1000) / 1000;
@@ -64,12 +64,12 @@ function validateConfig(c) {
   return null;
 }
 
-const numberFlag = (v) => (v === undefined ? undefined : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v);
+const numberFlag = (v) => (v === undefined ? undefined : /^-?(\d+(\.\d*)?|\.\d+)$/.test(v) ? Number(v) : v);
 const coreDevelopers = (v) => (v === '0' || v === 0 ? 0 : v === '1' || v === 1 ? 1 : v);
 
 /**
  * `DEFAULTS` ⊕ `.claude/project-profile.json` → `delivery` ⊕ flags (`{ mode, developers,
- * coreDevelopers, sessions }`, raw strings). `--sessions` sets `solo.sessions` in solo mode and
+ * coreDevelopers, sessions, tlShare }`, raw strings). `--sessions` sets `solo.sessions` in solo mode and
  * `team.developer_sessions` in team mode. Returns `{ config }` or `{ error }` (exit 2).
  */
 export function loadConfig(root, flags = {}) {
@@ -96,6 +96,7 @@ export function loadConfig(root, flags = {}) {
     if (config.mode === 'solo') config.solo.sessions = numberFlag(flags.sessions);
     else config.team.developer_sessions = numberFlag(flags.sessions);
   }
+  if (flags.tlShare !== undefined) config.team.tl_scale_share = numberFlag(flags.tlShare);
   config.team.core_developers = coreDevelopers(config.team.core_developers);
   const error = validateConfig(config);
   return error ? { error } : { config };
@@ -313,30 +314,53 @@ function sprintsOf({ membership, intervals, records, byId, velocity, end }) {
   });
 }
 
-/** Outside rows that still gate live, not-done work, with the first day one of their Tasks starts. */
+/**
+ * Outside rows that still gate live, not-done work: the first day one of their `Needed by` Tasks
+ * starts, and the day the last open `Starts after` Task ends — from then the other team can begin
+ * (`canStart` 0 = every Task it waited for is done; `null` = the row names none).
+ */
 function outsideRows(rows, schedule, byId, solo, daysOf) {
-  const startOf = new Map(schedule.map((s) => [s.id, s]));
+  const slot = new Map(schedule.map((s) => [s.id, s]));
   return rows.map((x) => {
-    const tasks = x.neededBy.filter((id) => startOf.has(id)).sort(byIdAsc);
+    const tasks = x.neededBy.filter((id) => slot.has(id)).sort(byIdAsc);
     if (x.neededBy.length > 0 && tasks.length === 0) return null;
-    const first = tasks.length ? Math.min(...tasks.map((id) => startOf.get(id).start)) : null;
+    const first = tasks.length ? Math.min(...tasks.map((id) => slot.get(id).start)) : null;
+    const named = x.startsAfter ?? [];
+    const waits = named.filter((id) => slot.has(id)).sort(byIdAsc);
+    const canStart = waits.length ? Math.max(...waits.map((id) => slot.get(id).end)) : named.length ? 0 : null;
     let when = OUTSIDE_WHEN.none;
-    if (tasks.some((id) => byId.get(id).scope === 'CORE')) when = OUTSIDE_WHEN.core;
+    // Needed by CORE: before CORE starts, unless the item itself waits for a CORE Task still open.
+    if (tasks.some((id) => byId.get(id).scope === 'CORE')) when = waits.length ? OUTSIDE_WHEN.inCore : OUTSIDE_WHEN.core;
     else if (tasks.length) when = solo ? OUTSIDE_WHEN.solo : OUTSIDE_WHEN.scale;
+    else if (named.length) when = OUTSIDE_WHEN.follows;
     return {
       id: x.id, owner: x.owner, item: x.item, neededBy: tasks, when,
       firstStart: first === null ? null : round3(first), firstDay: first === null ? null : daysOf(first),
+      startsAfter: waits, canStart: canStart === null ? null : round3(canStart), canStartDay: canStart === null ? null : daysOf(canStart),
     };
   }).filter(Boolean).sort((a, b) => byIdAsc(a.id, b.id));
 }
 
-function planWarnings({ live, byId, outside, sets, phases, sprints, membership, laterTeam, solo, velocity, coreEnd, planEnd }) {
+function planWarnings({ live, work, byId, outside, sets, phases, sprints, membership, laterTeam, solo, velocity, coreEnd, planEnd }) {
   const warnings = [];
   if (live.length && !live.some((t) => t.scope === 'CORE')) warnings.push(NO_CORE_WARNING);
   for (const x of outside.filter((o) => o.when === OUTSIDE_WHEN.core)) {
     const coreTasks = x.neededBy.filter((id) => byId.get(id).scope === 'CORE');
     warnings.push(`outside ${x.id} (${x.owner}: ${x.item}) is needed by CORE Task${coreTasks.length > 1 ? 's' : ''} ${coreTasks.join(', ')} — it must be ready before CORE starts`);
   }
+  // The schedule does not wait for other teams: an item that can begin only when (or after) the
+  // first Task needing it starts has no time left to be done.
+  const days = (d) => `day ${fmt1(d.pessimistic)} / ${fmt1(d.optimal)}`;
+  for (const x of outside) {
+    if (!x.startsAfter.length || x.firstStart === null) continue;
+    if (x.canStart < x.firstStart - EPS) {
+      if (x.when === OUTSIDE_WHEN.inCore) warnings.push(`outside ${x.id} (${x.owner}: ${x.item}) is needed by CORE work (${x.neededBy.join(', ')}) from ${days(x.firstDay)} and can start on ${days(x.canStartDay)} (pessimistic / optimal — after ${x.startsAfter.join(', ')}) — it must be done in between`);
+      continue;
+    }
+    warnings.push(`outside ${x.id} (${x.owner}: ${x.item}) can start only on ${days(x.canStartDay)} (pessimistic / optimal — after ${x.startsAfter.join(', ')}), yet ${x.neededBy.join(', ')} need${x.neededBy.length > 1 ? '' : 's'} it from ${days(x.firstDay)} — no time left for it; the plan does not wait for other teams`);
+  }
+  const blocked = work.filter((t) => t.status === 'BLOCKED').map((t) => t.id).sort(byIdAsc);
+  if (blocked.length) warnings.push(`${blocked.length} BLOCKED Task${blocked.length > 1 ? 's are' : ' is'} scheduled as if unblocked: ${blocked.join(', ')} — the plan assumes each blocker is cleared before the Task's start day`);
   if (!solo && sets.MUST.tasks.length) {
     const scaleSessions = laterTeam.reduce((a, p) => a + p.sessions, 0);
     const mustIds = new Set(sets.MUST.tasks.map((t) => t.id));
@@ -401,7 +425,7 @@ export function buildPlan({ backlog, flows, config }) {
     : [...coreTeam.map((p) => ({ share: p.share, from: 0, to: coreEnd })), ...laterTeam.map((p) => ({ share: p.share, from: coreEnd, to: Infinity }))];
   const sprints = sprintsOf({ membership, intervals: SCOPES.flatMap((name) => runs[name].intervals), records, byId, velocity, end: couldEnd });
   const outside = outsideRows(backlog.outside ?? [], schedule, byId, solo, daysOf);
-  const warnings = planWarnings({ live, byId, outside, sets, phases, sprints, membership, laterTeam, solo, velocity, coreEnd, planEnd: couldEnd });
+  const warnings = planWarnings({ live, work, byId, outside, sets, phases, sprints, membership, laterTeam, solo, velocity, coreEnd, planEnd: couldEnd });
 
   const hasTail = couldEnd - mustEnd > EPS;
   const summary = { mode: config.mode, units: { core: round3(coreEnd), development: round3(mustEnd), couldTail: round3(couldEnd - mustEnd), total: round3(couldEnd) }, core };
@@ -484,14 +508,16 @@ export function renderPlan(plan) {
   out.push('');
 
   out.push('## Needed from other teams', '');
+  if (outside.length) out.push('_First start_: the day the first Task that needs the item begins. _Can start_: the day the last Task the item waits for ends.', '');
   if (!outside.length) out.push('_Nothing — no open row in `## Outside the dev backlog`._', '');
   for (const group of Object.values(OUTSIDE_WHEN)) {
     const rows = outside.filter((x) => x.when === group);
     if (!rows.length) continue;
-    out.push(`### ${group[0].toUpperCase()}${group.slice(1)}`, '', '| ID | Owner | Item | Needed by | First start — pessimistic | First start — optimal |', '|---|---|---|---|---|---|');
+    out.push(`### ${group[0].toUpperCase()}${group.slice(1)}`, '', '| ID | Owner | Item | Needed by | First start — pessimistic | First start — optimal | Starts after | Can start — pessimistic | Can start — optimal |', '|---|---|---|---|---|---|---|---|---|');
     for (const x of rows) {
       const day = (k) => (x.firstDay ? `day ${fmt1(x.firstDay[k])}` : '—');
-      out.push(`| ${x.id} | ${cellText(x.owner)} | ${cellText(x.item)} | ${x.neededBy.join(', ') || '—'} | ${day('pessimistic')} | ${day('optimal')} |`);
+      const can = (k) => (x.canStartDay === null ? '—' : x.canStart === 0 ? 'now' : `day ${fmt1(x.canStartDay[k])}`);
+      out.push(`| ${x.id} | ${cellText(x.owner)} | ${cellText(x.item)} | ${x.neededBy.join(', ') || '—'} | ${day('pessimistic')} | ${day('optimal')} | ${x.startsAfter.join(', ') || '—'} | ${can('pessimistic')} | ${can('optimal')} |`);
     }
     out.push('');
   }
@@ -538,7 +564,7 @@ export function renderPlan(plan) {
 // ---------------------------------------------------------------------------------------------
 
 const BOOL_FLAGS = new Set(['write', 'json', 'help']);
-const VALUE_FLAGS = new Set(['root', 'mode', 'developers', 'core-developers', 'sessions']);
+const VALUE_FLAGS = new Set(['root', 'mode', 'developers', 'core-developers', 'sessions', 'tl-share']);
 
 /** `{ _: positionals, <flag>: true | value }`, or `null` on an unknown flag / value flag without a value. */
 function parseArgs(argv) {
@@ -555,12 +581,13 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = `usage: delivery-plan.mjs [--root <dir>] [--mode solo|team] [--developers <n>] [--core-developers auto|0|1] [--sessions <n>] [--json] [--write]
+const USAGE = `usage: delivery-plan.mjs [--root <dir>] [--mode solo|team] [--developers <n>] [--core-developers auto|0|1] [--sessions <n>] [--tl-share <0..1>] [--json] [--write]
   --root             project root (default: cwd); reads .agents/backlog.md + its Epic files (.agents/backlog/E*.md), docs/PRD.md, docs/discovery.md, docs/architecture.md, docs/map/system.yaml, .claude/project-profile.json → delivery
   --mode             solo | team (overrides delivery.mode)
   --developers       developers who join at scale (team.developers)
   --core-developers  auto | 0 | 1 — developers beside the Tech Lead in CORE (team.core_developers)
   --sessions         sessions per person: solo.sessions in solo mode, team.developer_sessions in team mode
+  --tl-share         the Tech Lead's share of a full person once the team scales, in (0, 1] (team.tl_scale_share)
   --json             print { config, summary, warnings, phases, schedule, sprints, outside }
   --write            write .agents/backlog/delivery-plan.md (creates the directory); without it the plan is printed
 exit 0 = plan computed · 1 = the backlog has errors or is a legacy WP backlog (nothing written) · 2 = usage / missing backlog / invalid profile or config`;
@@ -589,7 +616,7 @@ export function main(argv = process.argv.slice(2)) {
   const res = checkAgainstRoot(root, parsed);
   if (res.errors.length) return fail(res.errors, res.preScope ? { preScope: true } : res.preDetail ? { preDetail: true } : {});
 
-  const { config, error } = loadConfig(root, { mode: args.mode, developers: args.developers, coreDevelopers: args['core-developers'], sessions: args.sessions });
+  const { config, error } = loadConfig(root, { mode: args.mode, developers: args.developers, coreDevelopers: args['core-developers'], sessions: args.sessions, tlShare: args['tl-share'] });
   if (error) { console.error(`delivery-plan: ${error}`); return 2; }
 
   let plan;

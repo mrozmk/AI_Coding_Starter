@@ -53,7 +53,10 @@ short, anchored reading the Tech Lead acts on.
   of CORE, a Task to split — each with the reason from the data. Nothing worth changing → say so in
   one line.
 - **Needs from other teams** — the outside rows that gate CORE or an early Task, with the first day
-  that Task starts. None → one line saying so.
+  that Task starts (`firstDay`); the rows that wait for developer work, with the day they can start
+  (`canStartDay`, after their `startsAfter` Tasks); a row whose two days leave the other team no
+  time, and the `BLOCKED` Tasks the plan schedules (both are in `warnings`). None → one line saying
+  so.
 
 ## Rules
 

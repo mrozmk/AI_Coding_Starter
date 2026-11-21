@@ -38,9 +38,16 @@ Two marks decide what a Task gets:
 2. **Read the sources the `Traces` cells name** — the `R-n`, `FL-n` / `FL-n.Ak`, `NFR-n`, `AD-n`
    and `BR-n` lines in `SOURCES`; for a spec-owned Task also the spec, so your lines agree with it.
    Only `active` register ids are raw material.
-3. **Read `FILE`** in full — the headings, the Summary lines and any Goal, scope lines and criteria
+3. **Read the decisions that govern the Epic's Nodes**, traced or not — in `docs/architecture.md`
+   → `## Decisions`, every `active` `AD-n` row whose `Context` is `all` or names the `Node` of one
+   of the Epic's Tasks (or a parent of that Node in `docs/map/system.yaml`): its `Decision`,
+   `Binds` and `Rule` cells. A rule such a row sets on behaviour — a processing window, a
+   retention period, an ordering or idempotency guarantee, a limit, what happens when a dependency
+   is down — is raw material for the criteria of the Task it binds, even when that Task's `Traces`
+   cell does not name the `AD-n`. No architecture file → skip this step.
+4. **Read `FILE`** in full — the headings, the Summary lines and any Goal, scope lines and criteria
    already there.
-4. **Write, in each Task block of `TASKS`**, after the Summary line, what its `missing` list names:
+5. **Write, in each Task block of `TASKS`**, after the Summary line, what its `missing` list names:
    - `**Goal:**` — the outcome and for whom, one or two sentences.
    - `**In scope:**` — what the Task delivers.
    - `**Out of scope:**` — what a reader would wrongly assume is included.
@@ -48,7 +55,7 @@ Two marks decide what a Task gets:
      Then or IF / THEN form, ids from the Task's `nextAc` upwards — never an id that exists in the
      Epic file or in a spec. At least one unwanted-behaviour criterion (an invalid input, a refused
      action, a failure path) per `story` Task. Each criterion traceable to a requirement, flow step
-     or decision the Task traces.
+     or decision the Task traces, or to a decision that governs its Node (step 3).
 
    A Task whose requirements the sources still mark as undecided or optional (its Scope is
    `COULD`, or the PRD line says the behaviour waits for a decision) keeps its **decision gate**:
@@ -78,8 +85,15 @@ order.
   never written as a criterion.
 - A spec-owned or protected Task that seems to lack a criterion is reported in your final message
   (the caller proposes it through `/brainstorm <Task id>` or `/update-backlog`), never written.
+- A criterion that rests on an `AD-n` the Task's `Traces` cell does not name is written, and the
+  missing trace is reported (`<Task id>: add trace AD-n`) — the caller adds it through
+  `/update-backlog`.
+- Developer work only. An outcome only another team can produce — a pipeline, an environment, a
+  monitoring setup, a test run, a design, content — is never a criterion: report it as an
+  outside-row proposal (owner, item, and whether it waits for this Task or this Task waits for it).
 - A Task whose size does not fit its criteria is reported, never resized; a Task that should be
   split or depends on something its row does not name is reported, never restructured.
 
 Your final message lists: the Tasks detailed, the number of criteria written, every assumption,
-every size doubt and every structural or frozen-criterion proposal — nothing else.
+every size doubt, every missing trace, every outside-row proposal and every structural or
+frozen-criterion proposal — nothing else.

@@ -262,7 +262,7 @@ test('--write on a pre-Scope backlog: both transforms in one run; the result pas
   assert.match(after, /^\*\*Date:\*\* 2026-10-10 · \*\*Source PRD:\*\* `docs\/PRD\.md` · \*\*Sizes:\*\* M=4 · H=8 · XH=16 points · \*\*Detail:\*\* full$/m);
 
   assert.doesNotMatch(after, /\| Wave \||\| Slice \||## Parallel plan|lanes:begin/);
-  const outsideAt = after.indexOf('## Outside the dev backlog\n| ID | Owner | Item | Needed by | Traces | Notes |\n|----|-------|------|-----------|--------|-------|\n\n## External blockers');
+  const outsideAt = after.indexOf('## Outside the dev backlog\n| ID | Owner | Item | Needed by | Starts after | Traces | Notes |\n|----|-------|------|-----------|--------------|--------|-------|\n\n## External blockers');
   assert.ok(outsideAt > 0, 'outside section sits right before ## External blockers');
   assert.match(after, /<!-- storymap:begin -->\n### FL-1 — Place order \(critical\)/);
 });
@@ -335,11 +335,11 @@ test('a table without Relates / Chain migrates, and one with them keeps them by 
 
 test('no External blockers heading: the outside section goes at the end of the file', () => {
   const { md } = migrate(backlogMd({ blockers: false, parallel: false, acs: null }));
-  assert.ok(md.endsWith('<!-- storymap:end -->\n\n## Outside the dev backlog\n| ID | Owner | Item | Needed by | Traces | Notes |\n|----|-------|------|-----------|--------|-------|\n'));
+  assert.ok(md.endsWith('<!-- storymap:end -->\n\n## Outside the dev backlog\n| ID | Owner | Item | Needed by | Starts after | Traces | Notes |\n|----|-------|------|-----------|--------------|--------|-------|\n'));
 });
 
 test('an existing outside section is not added twice', () => {
-  const src = backlogMd().replace('## External blockers', '## Outside the dev backlog\n| ID | Owner | Item | Needed by | Traces | Notes |\n|---|---|---|---|---|---|\n| X-1 | DevOps | Pipeline | E0-1 | — | — |\n\n## External blockers');
+  const src = backlogMd().replace('## External blockers', '## Outside the dev backlog\n| ID | Owner | Item | Needed by | Starts after | Traces | Notes |\n|---|---|---|---|---|---|---|\n| X-1 | DevOps | Pipeline | E0-1 | — | — | — |\n\n## External blockers');
   const { md, summary } = migrate(src);
   assert.equal(md.split('## Outside the dev backlog').length, 2);
   assert.deepEqual(summary.added, ['Scope column']);

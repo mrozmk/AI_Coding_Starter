@@ -26,7 +26,7 @@ the `**Last check:**` line.
 Scope: empty = the whole backlog · `--epic E<n>` = that Epic · `--since D-k` = the Tasks named in
 the `**Tasks:**` lines of `D-k` and every later `D-n`, plus one hop of `Relates` siblings and direct
 `Depends on` neighbours. A scoped run (`--epic`, `--since`) also covers the rows of
-`## Outside the dev backlog` whose `Needed by` or `Traces` touch the scoped Tasks.
+`## Outside the dev backlog` whose `Needed by`, `Starts after` or `Traces` touch the scoped Tasks.
 
 ---
 
@@ -95,7 +95,7 @@ answers become **intents** in `/update-backlog`'s model:
 | split a Task | `split` — replacements share its traces, the first takes its prerequisites, its dependents are redirected to the named replacement |
 | merge Tasks | `merge` — union of traces and prerequisites, dependents redirected |
 | change a Task's `Scope` / resize | `edit` of the structural cells |
-| move a non-developer Task to the outside section, or add / edit / remove an `X-n` row | the outside-row intent of `/update-backlog` (the moved Task leaves the plan by its removal rule; the new `X-n` row takes its traces and lists its dependents under `Needed by`) |
+| move a non-developer Task to the outside section, or add / edit / remove an `X-n` row | the outside-row intent of `/update-backlog` (the moved Task leaves the plan by its removal rule; the new `X-n` row takes its traces and lists its dependents under `Needed by` and its own prerequisites under `Starts after`) |
 | a soft relation / a chain | `edit` adding `Relates` / `Chain` |
 | rewrite a criterion — **backlog-owned** (the current view's `source` starts with `.agents/backlog` — an Epic file) | withdraw the AC id + a new id |
 | rewrite a criterion — **spec-owned** (`source` is anything else — an approved spec) | no backlog intent: report "revise `<spec>` — `/brainstorm <Task id>` (new AC id in the spec)"; a backlog rewrite would not change the criteria QA verifies |
@@ -116,7 +116,7 @@ the finding open; nothing is written.
 
 After a structural write: regenerate the current view (step 2), then **one** more critic call —
 `SCOPE` = the changed and new **live** Task ids (a Task withdrawn by the fix is history, not
-re-graded) plus the outside rows the run changed or whose `Needed by` / `Traces` touch those Tasks,
+re-graded) plus the outside rows the run changed or whose `Needed by` / `Starts after` / `Traces` touch those Tasks,
 all rules, `ROUND: 2`, `PRIOR` = the applied findings. Unresolved findings are
 reported; never a third round.
 

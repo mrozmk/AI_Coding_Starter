@@ -19,8 +19,8 @@ const CHECKER = path.join(path.dirname(SCRIPT), 'backlog-check.mjs');
 const SIZE = { 4: 'M', 8: 'H', 16: 'XH' };
 const TASK_HEADER = `| ID | Epic | Task | Type | Size | Pts | Depends on | Relates | Chain | Scope | Node | Traces | Status | Jira | Ref |
 |----|------|------|------|------|-----|------------|---------|-------|-------|------|--------|--------|------|-----|`;
-const OUTSIDE_HEADER = `| ID | Owner | Item | Needed by | Traces | Notes |
-|----|-------|------|-----------|--------|-------|`;
+const OUTSIDE_HEADER = `| ID | Owner | Item | Needed by | Starts after | Traces | Notes |
+|----|-------|------|-----------|--------------|--------|-------|`;
 
 const T = (id, scope, pts, deps = [], extra = {}) => ({ id, scope, pts, deps, ...extra });
 
@@ -377,7 +377,7 @@ test('render: --write creates the file with the headings in order, the analysis 
     T('E2-2', 'MUST', 4, ['E2-1'], { node: 'orders', chain: 'order-flow' }),
     T('E2-3', 'COULD', 4, ['E1-1']),
   ];
-  const dir = project({ backlog: backlogMd(tasks, { outside: ['| X-1 | DevOps | Deployment pipeline | E1-1 | — | — |', '| X-2 | QA | Test data | E2-1 | — | — |'] }) });
+  const dir = project({ backlog: backlogMd(tasks, { outside: ['| X-1 | DevOps | Deployment pipeline | E1-1 | — | — | — |', '| X-2 | QA | Test data | E2-1 | — | — | — |'] }) });
   const r = run(dir, '--write');
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /wrote \.agents\/backlog\/delivery-plan\.md/);
@@ -407,9 +407,83 @@ test('render: --write creates the file with the headings in order, the analysis 
   assert.equal(fs.readFileSync(planFile(dir), 'utf8'), md);
 });
 
+test('outside rows: Starts after gives the day the other team can begin; a non-positive window and BLOCKED Tasks are warned', () => {
+  const tasks = [
+    T('E1-1', 'CORE', 8),
+    T('E2-1', 'MUST', 8, ['E1-1']),
+    T('E2-2', 'MUST', 8, ['E1-1'], { status: 'BLOCKED' }),
+    T('E2-3', 'MUST', 8, ['E2-1']),
+    T('E3-1', 'MUST', 4, ['E1-1'], { status: 'DONE' }),
+  ];
+  const outside = [
+    '| X-1 | QA | End-to-end suite | — | E2-1, E2-3 | — | — |',     // follows developer work
+    '| X-2 | QA | Test data | E2-3 | E2-1 | — | — |',                // E2-3 starts the moment E2-1 ends: no window
+    '| X-3 | DevOps | Review environment | E2-3 | E1-1 | — | — |',   // E1-1 ends before E2-3 starts: fine
+    '| X-4 | QA | Smoke run | — | E3-1 | — | — |',                   // everything it waited for is done
+    '| X-5 | Design | Icons | — | — | — | — |',
+  ];
+  const plan = buildPlan({ backlog: parseBacklog(backlogMd(tasks, { outside })), flows: [], config: structuredClone(DEFAULTS) });
+  const slot = new Map(plan.schedule.map((s) => [s.id, s]));
+  const row = new Map(plan.outside.map((x) => [x.id, x]));
+  assert.deepEqual(plan.outside.map((x) => [x.id, x.when]), [['X-1', 'follows developer work'], ['X-2', 'during scale'], ['X-3', 'during scale'], ['X-4', 'follows developer work'], ['X-5', 'no Task named']]);
+  assert.deepEqual(row.get('X-1').startsAfter, ['E2-1', 'E2-3']);
+  assert.equal(row.get('X-1').canStart, Math.max(slot.get('E2-1').end, slot.get('E2-3').end));
+  assert.deepEqual(row.get('X-1').canStartDay, { pessimistic: slot.get('E2-3').pessimistic.end, optimal: slot.get('E2-3').optimal.end });
+  assert.equal(row.get('X-1').firstStart, null);
+  assert.equal(row.get('X-2').canStart, slot.get('E2-1').end);
+  assert.equal(row.get('X-3').canStart, slot.get('E1-1').end);
+  assert.deepEqual([row.get('X-4').startsAfter, row.get('X-4').canStart], [[], 0], 'a done Task no longer delays the item');
+  assert.deepEqual([row.get('X-5').canStart, row.get('X-5').canStartDay], [null, null]);
+
+  assert.ok(slot.get('E2-3').start <= slot.get('E2-1').end + 1e-9, 'fixture: E2-3 starts when E2-1 ends');
+  const windowless = plan.warnings.filter((w) => /can start only on/.test(w));
+  assert.equal(windowless.length, 1, plan.warnings.join('\n'));
+  assert.match(windowless[0], /^outside X-2 \(QA: Test data\) can start only on day [\d.]+ \/ [\d.]+ \(pessimistic \/ optimal — after E2-1\), yet E2-3 needs it from day [\d.]+ \/ [\d.]+ — no time left for it; the plan does not wait for other teams$/);
+  assert.ok(plan.warnings.includes("1 BLOCKED Task is scheduled as if unblocked: E2-2 — the plan assumes each blocker is cleared before the Task's start day"), plan.warnings.join('\n'));
+  assert.ok(slot.has('E2-2'), 'a BLOCKED Task stays in the schedule');
+
+  const md = renderPlan(plan);
+  assert.match(md, /### Follows developer work\n\n\| ID \| Owner \| Item \| Needed by \| First start — pessimistic \| First start — optimal \| Starts after \| Can start — pessimistic \| Can start — optimal \|/);
+  assert.match(md, /\| X-1 \| QA \| End-to-end suite \| — \| — \| — \| E2-1, E2-3 \| day [\d.]+ \| day [\d.]+ \|/);
+  assert.match(md, /\| X-4 \| QA \| Smoke run \| — \| — \| — \| — \| now \| now \|/);
+  assert.match(md, /\| X-5 \| Design \| Icons \| — \| — \| — \| — \| — \| — \|/);
+  const clean = buildPlan({ backlog: parseBacklog(backlogMd(tasks.map((t) => ({ ...t, status: t.status === 'BLOCKED' ? 'TODO' : t.status })))), flows: [], config: structuredClone(DEFAULTS) });
+  assert.equal(clean.warnings.some((w) => /BLOCKED/.test(w)), false);
+});
+
+test('outside rows: an item needed by CORE that waits for a CORE Task is "during CORE", not "before CORE"', () => {
+  const tasks = [T('E1-1', 'CORE', 8), T('E1-2', 'CORE', 8, ['E1-1']), T('E1-3', 'CORE', 8, ['E1-2']), T('E2-1', 'MUST', 8, ['E1-3'])];
+  const outside = [
+    '| X-1 | DevOps | Cluster access | E1-1 | — | — | — |',       // before CORE
+    '| X-2 | DevOps | Seed data | E1-3 | E1-1 | — | — |',         // a window: E1-2 runs in between
+    '| X-3 | QA | Contract review | E1-2 | E1-1 | — | — |',       // no window
+  ];
+  const plan = buildPlan({ backlog: parseBacklog(backlogMd(tasks, { outside })), flows: [], config: structuredClone(DEFAULTS) });
+  assert.deepEqual(plan.outside.map((x) => [x.id, x.when]), [['X-1', 'before CORE'], ['X-2', 'during CORE'], ['X-3', 'during CORE']]);
+  const about = (id) => plan.warnings.filter((w) => w.startsWith(`outside ${id} `));
+  assert.deepEqual(about('X-1'), ['outside X-1 (DevOps: Cluster access) is needed by CORE Task E1-1 — it must be ready before CORE starts']);
+  assert.equal(about('X-2').length, 1, plan.warnings.join('\n'));
+  assert.match(about('X-2')[0], /^outside X-2 \(DevOps: Seed data\) is needed by CORE work \(E1-3\) from day [\d.]+ \/ [\d.]+ and can start on day [\d.]+ \/ [\d.]+ \(pessimistic \/ optimal — after E1-1\) — it must be done in between$/);
+  assert.equal(about('X-3').length, 1, plan.warnings.join('\n'));
+  assert.match(about('X-3')[0], /can start only on .* yet E1-2 needs it from .* — no time left for it/);
+  assert.match(renderPlan(plan), /### During CORE\n\n\| ID \|/);
+});
+
+test('config: --tl-share overrides team.tl_scale_share and is validated', () => {
+  const dir = project({ backlog: backlogMd([T('E1-1', 'CORE', 8), T('E2-1', 'MUST', 8, ['E1-1'])]) });
+  const full = run(dir, '--tl-share', '1', '--json');
+  assert.equal(full.code, 0, full.out);
+  assert.equal(JSON.parse(full.stdout).config.team.tl_scale_share, 1);
+  assert.equal(JSON.parse(run(dir, '--json').stdout).config.team.tl_scale_share, 0.5);
+  assert.equal(JSON.parse(run(dir, '--tl-share', '.25', '--json').stdout).config.team.tl_scale_share, 0.25, 'a bare fraction is a number');
+  const bad = run(dir, '--tl-share', '1.5');
+  assert.equal(bad.code, 2, bad.out);
+  assert.match(bad.out, /invalid delivery\.team\.tl_scale_share: 1\.5 — must be a number in \(0, 1\]/);
+});
+
 test('render: renderPlan is pure and lists an outside row only while its Task is open', () => {
   const tasks = [T('E1-1', 'CORE', 8, [], { status: 'DONE' }), T('E2-1', 'MUST', 8, ['E1-1'])];
-  const parsed = parseBacklog(backlogMd(tasks, { outside: ['| X-1 | DevOps | Deployment pipeline | E1-1 | — | — |'] }));
+  const parsed = parseBacklog(backlogMd(tasks, { outside: ['| X-1 | DevOps | Deployment pipeline | E1-1 | — | — | — |'] }));
   const plan = buildPlan({ backlog: parsed, flows: [], config: structuredClone(DEFAULTS) });
   assert.deepEqual(plan.outside, []);
   assert.equal(renderPlan(plan), renderPlan(plan));

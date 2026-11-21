@@ -51,22 +51,36 @@ backlog's structure goes through `/update-backlog`.
 ## 1. Team mode
 
 Read `.claude/project-profile.json` → `delivery` (absent file or block = the script's defaults).
-Ask once with `AskUserQuestion`; the recommended option is the stored `mode`, else `team`. Each
-label shows the effective numbers — the stored ones, else the defaults below:
+Ask once with `AskUserQuestion` — two questions in the one call. Each label shows the effective
+numbers — the stored ones, else the defaults below.
+
+**Team mode** — the recommended option is the stored `mode`, else `team`:
 
 - **Team** — the Tech Lead alone builds CORE on up to 3 sessions (with one developer when that cuts
-  CORE by at least 20 %); then 2 developers × 3 sessions, the Tech Lead on 2 sessions at half share.
+  CORE by at least 20 %); then 2 developers × 3 sessions, the Tech Lead on 2 sessions at the share
+  answered in the second question.
 - **Solo** — one person, 3 sessions, all phases.
 - **Other numbers** — free text: mode, developers, sessions per person, velocity (points per person
   per sprint, pessimistic / optimal), sprint length in working days.
 
+**The Tech Lead's share after CORE** (team mode; a Solo answer ignores it) — how much of a full
+developer the Tech Lead still builds once the developers join. The recommended option is the stored
+`team.tl_scale_share`, else Half:
+
+- **Half (0.5)** — building and leading (reviews, decisions, unblocking) in equal parts; the usual
+  case with two or more developers.
+- **Full (1)** — the Tech Lead builds like any developer; a Tech Lead + 1 team.
+- **Quarter (0.25)** — mostly leading; a larger team.
+- Other — a number above 0 and at most 1.
+
 Write the answer into the profile with `jq --arg/--argjson`, merging into the existing object and
-keeping `schema` and every other block (the `/setup:teams` rule). **Team** and **Solo** write only
-`delivery.mode`; stored numbers stay. **Other numbers** writes `mode` plus the keys the answer
-names, into their place in the block — `velocity.pessimistic`, `velocity.optimal`,
-`velocity.sprint_days`, `solo.sessions`, `team.developers`, `team.developer_sessions`,
-`team.tl_core_sessions`, `team.tl_scale_sessions`, `team.tl_scale_share`,
-`team.core_developers` (`auto`, `0` or `1`). An answer that does not map to these keys → ask again
+keeping `schema` and every other block (the `/setup:teams` rule). **Team** writes `delivery.mode`
+and `delivery.team.tl_scale_share`; **Solo** writes only `delivery.mode`; other stored numbers
+stay. **Other numbers** writes `mode`, the share from the second question (team mode) plus the
+keys the answer names, into their place in the block — `velocity.pessimistic`,
+`velocity.optimal`, `velocity.sprint_days`, `solo.sessions`, `team.developers`,
+`team.developer_sessions`, `team.tl_core_sessions`, `team.tl_scale_sessions`,
+`team.core_developers` (`auto`, `0` or `1`). The share has one source: the second question. An answer that does not map to these keys → ask again
 for that value only.
 
 ```bash
@@ -214,7 +228,8 @@ another, each with `backlog.md` as the index and its own `OUT` / `LOG` (`-<k>` s
 > exist>` plus `<every approved spec named in a Ref cell, or "no specs">`. Read
 > `.claude/agents/start-critic.md` and follow its method, its bar for a finding and its output
 > shape exactly; `ROUND: final`. Your goal is the consistency no per-Epic critic can see: every
-> criterion backed by the PRD or discovery, nothing invented and nothing lost, one behaviour not
+> criterion backed by the PRD, discovery or an architecture decision (`AD-n`) that governs the
+> Task's Node, nothing invented and nothing lost, one behaviour not
 > defined in two Epics, contracts at Epic boundaries (what one Epic's criteria assume of
 > another's), outcome not method, size against criteria. These checker warnings are known context
 > — do not re-report them: `<the checker warnings, verbatim, or "none">`. Decisions the operator
@@ -237,8 +252,11 @@ re-spawn Codex and never re-enter the critic rounds.
 
 Every finding that needs the table — a Task to split, a size that does not match the criteria, a
 missing dependency — and every kept finding on a spec-owned or protected criterion is collected,
-never applied here. Show the list to the Tech Lead, each item with its way: `/update-backlog` for
-the table and protected Tasks, `/brainstorm <Task id>` for a spec.
+never applied here. What the authors reported joins the list: a missing trace
+(`<Task id>: add trace AD-n`) and an outside-row proposal (work another team delivers, with the
+Task it waits for or that waits for it). Show the list to the Tech Lead, each item with its way:
+`/update-backlog` for the table, the outside rows and protected Tasks, `/brainstorm <Task id>` for
+a spec.
 
 ### 2.8 Close
 
@@ -283,7 +301,9 @@ Then the analyst's input:
 node .claude/lib/delivery-plan.mjs --json > "$SCRATCH/delivery-plan.json"
 ```
 
-The JSON carries `config`, `summary`, `warnings`, `phases`, `schedule`, `sprints` and `outside`.
+The JSON carries `config`, `summary`, `warnings`, `phases`, `schedule`, `sprints` and `outside`
+(per open outside row: `firstDay` — the day the first Task that needs it starts — and
+`canStartDay` — the day the last Task it waits for ends).
 
 ## 4. Analysis
 
@@ -312,12 +332,14 @@ In the project's communication language:
   In scope / Out of scope and the findings, not every criterion; Tasks still missing detail; the `**Detail:**` value
   written; the review recorded, or which review is missing; Epics or fixes the main session did in
   place of an agent;
-- mode and team (one line per phase);
+- mode and team (one line per phase, with the Tech Lead's share after CORE);
 - CORE duration for "Tech Lead alone" and "Tech Lead + 1", the recommendation and the rule or
   override that decided it;
 - the join day;
 - development done (CORE + MUST) and the COULD tail — days / weeks / sprints, pessimistic and
   optimal;
+- what other teams need to know, from the plan's `## Needed from other teams`: per outside row
+  the day it is first needed and the day it can start (none → one line saying so);
 - every warning of the plan verbatim, then the checker warnings from step 0 (the ones step 2
   resolved left out);
 - the backlog review state when it is not fresh and whole;
@@ -336,6 +358,11 @@ Shape cap: this skeleton — unless a warning needs its Task ids, which are neve
   (`backlog.md` and the Epic files), so a plan older than the backlog is visible.
 - The script is the only scheduler of the workflow; the backlog itself holds no lanes, waves or
   durations.
+- To compare team variants without touching the profile, run the script with flags and no
+  `--write` — `--mode`, `--developers`, `--core-developers`, `--sessions`, `--tl-share`.
+- A `BLOCKED` Task is scheduled like any other and named in a warning: the plan assumes its
+  blocker is cleared before the Task's start day. An outside row is never scheduled: the plan
+  only prints when it is needed and when it can start, and warns when the two leave no time.
 - Step 2 details Tasks; it never restructures them. A Task added later by `/update-backlog` under
   `**Detail:** full` gets its criteria in that run; under `structure`, the next run of this command
   details it.

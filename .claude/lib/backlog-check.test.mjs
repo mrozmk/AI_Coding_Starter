@@ -172,9 +172,9 @@ const ACS = `### E0-1 — Project scaffold
 ### E2-2 — Report export
 - **E2-2.AC1** — Given a report, when export is clicked, then a CSV downloads.`;
 
-const OUTSIDE_HEADER = `| ID | Owner | Item | Needed by | Traces | Notes |
-|----|-------|------|-----------|--------|-------|`;
-const OUTSIDE_ROWS = ['| X-1 | DevOps | Deployment pipeline | E0-1 | — | — |'];
+const OUTSIDE_HEADER = `| ID | Owner | Item | Needed by | Starts after | Traces | Notes |
+|----|-------|------|-----------|--------------|--------|-------|`;
+const OUTSIDE_ROWS = ['| X-1 | DevOps | Deployment pipeline | E0-1 | — | — | — |'];
 
 function backlogMd({ rows = TASK_ROWS, epics, header, detail = 'full', markers = true, taskHeader = TASK_HEADER, outside = OUTSIDE_ROWS, outsideHeader = OUTSIDE_HEADER } = {}) {
   const epicRows = epics ?? [
@@ -534,12 +534,16 @@ const ERROR_CASES = [
   ['MUST Task depending on a COULD Task', { rows: withRow('E2-1', '| E2-1 | E2 | Report view | story | H | 8 | E2-2 | MUST | reporting | FL-2.A1, BR-1 | TODO | — | — |') }, /Task E2-1: MUST Task depends on E2-2 \(COULD\) — committed work cannot depend on optional work/],
   ['Type outside story/tech', { rows: withRow('E2-2', '| E2-2 | E2 | Report export | bug | M | 4 | E0-1 | COULD | — | FL-2.A1 | TODO | — | — |') }, /Task E2-2: Type bug not in story\/tech/],
   ['Scope outside CORE/MUST/COULD', { rows: withRow('E2-2', '| E2-2 | E2 | Report export | story | M | 4 | E0-1 | MVP | — | FL-2.A1 | TODO | — | — |') }, /Task E2-2: Scope MVP must be CORE, MUST or COULD/],
-  ['outside row: Needed by not a Task', { outside: ['| X-1 | DevOps | Deployment pipeline | E9-9 | — | — |'] }, /^outside X-1: Needed by E9-9 is not a Task$/],
-  ['outside row: unknown trace', { outside: ['| X-1 | DevOps | Deployment pipeline | E0-1 | R-99 | — |'] }, /^outside X-1: unknown trace R-99$/],
-  ['outside row: withdrawn trace', { outside: ['| X-1 | DevOps | Deployment pipeline | E0-1 | R-3 | — |'] }, /^outside X-1: traces withdrawn R-3$/],
-  ['outside row: duplicate id', { outside: ['| X-1 | DevOps | Deployment pipeline | E0-1 | — | — |', '| X-1 | QA | Test plan | E1-2 | — | — |'] }, /^duplicate outside id X-1$/],
-  ['outside row: malformed id', { outside: ['| OPS-1 | DevOps | Deployment pipeline | E0-1 | — | — |'] }, /^outside OPS-1: id must match X-<n>$/],
-  ['outside row: blank id on a filled row', { outside: ['| | DevOps | Deployment pipeline | E0-1 | — | — |'] }, /^outside row \(line \d+\): id must match X-<n>$/],
+  ['outside row: Needed by not a Task', { outside: ['| X-1 | DevOps | Deployment pipeline | E9-9 | — | — | — |'] }, /^outside X-1: Needed by E9-9 is not a Task$/],
+  ['outside row: Starts after not a Task', { outside: ['| X-1 | QA | Regression run | — | E9-9 | — | — |'] }, /^outside X-1: Starts after E9-9 is not a Task$/],
+  ['outside row: Starts after a Task that is in Needed by', { outside: ['| X-1 | QA | Regression run | E1-2 | E1-2 | — | — |'] }, /^outside rows: wait cycle E1-2 → X-1 → E1-2 — an item and the Tasks around it wait for each other$/],
+  ['outside row: Starts after a Task that depends on a Needed by Task', { outside: ['| X-1 | QA | Regression run | E0-1 | E1-3 | — | — |'] }, /^outside rows: wait cycle E0-1 → X-1 → E1-3 → E1-2 → E0-1 — an item and the Tasks around it wait for each other$/],
+  ['outside rows: two rows that wait for each other through Tasks', { outside: ['| X-1 | QA | Regression run | E2-2 | E2-1 | — | — |', '| X-2 | QA | Test data | E2-1 | E2-2 | — | — |'] }, /^outside rows: wait cycle E2-1 → X-2 → E2-2 → X-1 → E2-1 — an item and the Tasks around it wait for each other$/],
+  ['outside row: unknown trace', { outside: ['| X-1 | DevOps | Deployment pipeline | E0-1 | — | R-99 | — |'] }, /^outside X-1: unknown trace R-99$/],
+  ['outside row: withdrawn trace', { outside: ['| X-1 | DevOps | Deployment pipeline | E0-1 | — | R-3 | — |'] }, /^outside X-1: traces withdrawn R-3$/],
+  ['outside row: duplicate id', { outside: ['| X-1 | DevOps | Deployment pipeline | E0-1 | — | — | — |', '| X-1 | QA | Test plan | E1-2 | — | — | — |'] }, /^duplicate outside id X-1$/],
+  ['outside row: malformed id', { outside: ['| OPS-1 | DevOps | Deployment pipeline | E0-1 | — | — | — |'] }, /^outside OPS-1: id must match X-<n>$/],
+  ['outside row: blank id on a filled row', { outside: ['| | DevOps | Deployment pipeline | E0-1 | — | — | — |'] }, /^outside row \(line \d+\): id must match X-<n>$/],
   ['outside section: renamed Needed by column', { outsideHeader: OUTSIDE_HEADER.replace('| Needed by |', '| Blocks |') }, /^Outside the dev backlog table \(line \d+\): missing column\(s\) `Needed by`/],
   ['outside section: heading with no table', { outside: [], outsideHeader: '- ask the platform team' }, /^Outside the dev backlog table not found/],
 ];
@@ -946,7 +950,7 @@ test('(5) SCOPES is the fixed order and parseBacklog reads a scope per Task', ()
   assert.equal(b.preScope, false);
   assert.deepEqual(b.tasks.map((t) => t.scope), ['CORE', 'CORE', 'MUST', 'MUST', 'MUST', 'MUST', 'COULD']);
   assert.equal('wave' in b.tasks[0] || 'slice' in b.tasks[0], false);
-  assert.deepEqual(b.outside, [{ id: 'X-1', owner: 'DevOps', item: 'Deployment pipeline', neededBy: ['E0-1'], traces: [], line: b.outside[0].line }]);
+  assert.deepEqual(b.outside, [{ id: 'X-1', owner: 'DevOps', item: 'Deployment pipeline', neededBy: ['E0-1'], startsAfter: [], traces: [], line: b.outside[0].line }]);
   assert.deepEqual(parseBacklog(backlogMd({ outside: null })).outside, [], 'the section is optional');
   assert.deepEqual(check(project({ backlog: backlogMd({ outside: null }) })).errors, []);
 });
@@ -967,9 +971,26 @@ test('(5) a withdrawn dependency or dependent raises no Scope-order error', () =
   assert.ok(!hasError(check(project({ backlog: backlogMd({ rows: coreDep }) })), /CORE Task depends on/));
 });
 
+test('outside row: Starts after names the Tasks the item waits for; a later Task may need the item', () => {
+  // The run starts after E1-2 and gates E2-1, which already depends on E1-2: no loop.
+  const outside = ['| X-1 | QA | Regression run | E2-1 | E1-2, E0-2 | — | — |', '| X-2 | QA | Release sign-off | — | E1-3 | — | — |'];
+  const md = backlogMd({ outside });
+  assert.deepEqual(parseBacklog(md).outside.map((x) => [x.id, x.neededBy, x.startsAfter]), [['X-1', ['E2-1'], ['E1-2', 'E0-2']], ['X-2', [], ['E1-3']]]);
+  assert.deepEqual(check(project({ backlog: md })).errors, []);
+  // A withdrawn Task in either cell is a warning, and the wait graph does not run through it:
+  // E1-3 depends on the withdrawn E1-2, so "needed by E0-1, starts after E1-3" is no loop.
+  const withdrawnRows = withRow('E1-2', '| E1-2 | E1 | Place order (withdrawn) | story | H | 8 | E0-1 | MUST | orders | R-2, FL-1.A2, AD-5 | DONE | — | — |');
+  const stale = check(project({ backlog: backlogMd({ rows: withdrawnRows, outside: ['| X-1 | QA | Regression run | E0-1, E1-2 | E1-3, E1-2 | R-2 | — |'] }) }));
+  assert.equal(stale.errors.some((e) => /wait cycle/.test(e)), false, stale.errors.join('\n'));
+  assert.ok(stale.warnings.includes('outside X-1: Needed by E1-2 is withdrawn — name the Task that replaces it, or drop the id'), stale.warnings.join('\n'));
+  assert.ok(stale.warnings.includes('outside X-1: Starts after E1-2 is withdrawn — name the Task that replaces it, or drop the id'), stale.warnings.join('\n'));
+  const renamed = check(project({ backlog: backlogMd({ outsideHeader: OUTSIDE_HEADER.replace('| Starts after |', '| After |') }) }));
+  assert.ok(hasError(renamed, /^Outside the dev backlog table \(line \d+\): missing column\(s\) `Starts after`/), renamed.errors.join('\n'));
+});
+
 test('(6) coverage: a requirement traced only by an outside row passes and is reported as covered outside', () => {
   const rows = withRow('E1-1', '| E1-1 | E1 | Sign in | story | M | 4 | E0-2 | MUST | authn | FL-1.A1 | TODO | — | — |');
-  const outside = ['| X-1 | DevOps | Session store provisioning | E1-1 | R-1 | — |'];
+  const outside = ['| X-1 | DevOps | Session store provisioning | E1-1 | — | R-1 | — |'];
   const dir = project({ backlog: backlogMd({ rows, outside }) });
   const res = check(dir);
   assert.deepEqual(res.errors, []);
@@ -983,7 +1004,7 @@ test('(6) coverage: a requirement traced only by an outside row passes and is re
 });
 
 test('(6) a superseded requirement traced by an outside row is an error, not a warning', () => {
-  const outside = ['| X-1 | DevOps | Export service | E2-2 | R-4 | — |'];
+  const outside = ['| X-1 | DevOps | Export service | E2-2 | — | R-4 | — |'];
   const res = check(project({ prd: REGISTER_PRD, backlog: backlogMd({ rows: registerRows('FL-2.A1'), outside }) }));
   assert.ok(hasError(res, /^outside X-1: traces superseded R-4$/), res.errors.join('\n'));
 });
@@ -1005,11 +1026,11 @@ test('(7) warnings: no CORE Task; a CORE Task nothing outside CORE depends on', 
 
 test('--impact: outside rows join the impact of a requirement, and an X-n id is a target', () => {
   const rows = withRow('E1-1', '| E1-1 | E1 | Sign in | story | M | 4 | E0-2 | MUST | authn | FL-1.A1 | TODO | — | — |');
-  const outside = ['| X-1 | DevOps | Session store provisioning | E1-2 | R-1 | — |'];
+  const outside = ['| X-1 | DevOps | Session store provisioning | E1-2 | — | R-1 | — |'];
   const dir = project({ backlog: backlogMd({ rows, outside }) });
   const { impact } = runJson(dir, '--impact', 'R-1,X-1,R-99');
   const r1 = impact.find((x) => x.id === 'R-1');
-  assert.deepEqual(r1.outside, [{ id: 'X-1', owner: 'DevOps', neededBy: ['E1-2'] }]);
+  assert.deepEqual(r1.outside, [{ id: 'X-1', owner: 'DevOps', neededBy: ['E1-2'], startsAfter: [] }]);
   assert.deepEqual(r1.tasks.map((t) => t.id), ['E1-2']);
   assert.deepEqual(r1.dependents.map((t) => t.id), ['E1-3', 'E2-1']);
   const x1 = impact.find((x) => x.id === 'X-1');
@@ -1020,6 +1041,9 @@ test('--impact: outside rows join the impact of a requirement, and an X-n id is 
   assert.deepEqual([none.tasks, none.dependents, none.outside, none.scopes], [[], [], [], []]);
   const parsed = parseBacklog(backlogMd({ rows, outside }));
   assert.deepEqual(impactOf(['X-1'], parsed, '')[0].outside.map((x) => x.id), ['X-1']);
+  // A Task id lists the rows that name it in either cell, so a split or a withdrawal shows them.
+  const both = parseBacklog(backlogMd({ rows, outside: [...outside, '| X-2 | QA | Regression run | — | E1-2, E1-3 | — | — |'] }));
+  assert.deepEqual(impactOf(['E1-2', 'E1-3', 'E2-2'], both, '').map((i) => i.outside.map((x) => x.id)), [['X-1', 'X-2'], ['X-2'], []]);
 });
 
 test('pre-Scope backlog: parsed as preScope; every CLI mode exits 1 with the migration message', () => {
@@ -1254,7 +1278,7 @@ test('(13) CLI exit codes 0 / 1 / 2 and the --json shape', () => {
   assert.deepEqual(j.errors, []);
   assert.deepEqual(j.outsideCovered, []);
   const rows = withRow('E1-1', '| E1-1 | E1 | Sign in | story | M | 4 | E0-2 | MUST | authn | FL-1.A1 | TODO | — | — |');
-  const covered = run(project({ backlog: backlogMd({ rows, outside: ['| X-1 | DevOps | Session store provisioning | E1-1 | R-1 | — |'] }) }), '--json');
+  const covered = run(project({ backlog: backlogMd({ rows, outside: ['| X-1 | DevOps | Session store provisioning | E1-1 | — | R-1 | — |'] }) }), '--json');
   assert.equal(covered.code, 0, covered.out);
   assert.deepEqual(JSON.parse(covered.out).outsideCovered, ['R-1']);
 });

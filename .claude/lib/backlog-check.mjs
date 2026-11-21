@@ -138,7 +138,7 @@ export const findTaskTable = (tables) => findTable(tables, 'ID', 'Epic', 'Size',
 // renamed `Depends on` would otherwise silently turn every dependency into an empty list.
 const EPIC_COLUMNS = ['Epic', 'Title', 'Outcome', 'Key assumption', 'Pts', 'Depends on', 'Jira'];
 const TASK_COLUMNS = ['ID', 'Epic', 'Task', 'Type', 'Size', 'Pts', 'Depends on', 'Scope', 'Node', 'Traces', 'Status', 'Jira', 'Ref'];
-export const OUTSIDE_COLUMNS = ['ID', 'Owner', 'Item', 'Needed by', 'Traces', 'Notes'];
+export const OUTSIDE_COLUMNS = ['ID', 'Owner', 'Item', 'Needed by', 'Starts after', 'Traces', 'Notes'];
 export const headerLine = (cols) => `| ${cols.join(' | ')} |`;
 
 // ---------------------------------------------------------------------------------------------
@@ -146,7 +146,8 @@ export const headerLine = (cols) => `| ${cols.join(' | ')} |`;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Rows of `## Outside the dev backlog`, found by the section heading — never by columns. No heading →
+ * Rows of `## Outside the dev backlog` (`Needed by` = the Tasks that need the item, `Starts after` =
+ * the Tasks the item waits for), found by the section heading — never by columns. No heading →
  * `[]` (the section is optional); a heading whose first table lacks a column, or with no table
  * before the next `## ` heading, is a structural problem so a renamed column never reads as "no rows".
  */
@@ -161,9 +162,9 @@ function parseOutside(md, tables, requireTable) {
   const found = requireTable('Outside the dev backlog table', table, OUTSIDE_COLUMNS);
   return (found?.rows ?? []).map((r) => ({
     id: cleanId(r.ID), owner: cleanId(r.Owner), item: cleanId(r.Item),
-    neededBy: listCell(r['Needed by']), traces: listCell(r.Traces), line: r._line,
+    neededBy: listCell(r['Needed by']), startsAfter: listCell(r['Starts after']), traces: listCell(r.Traces), line: r._line,
   // Only a wholly empty row is dropped: a filled row with a blank ID must fail the id check, not vanish.
-  })).filter((x) => x.id !== '' || x.owner !== '' || x.item !== '' || x.neededBy.length || x.traces.length);
+  })).filter((x) => x.id !== '' || x.owner !== '' || x.item !== '' || x.neededBy.length || x.startsAfter.length || x.traces.length);
 }
 
 const acText = (line) => line.replace(AC_DEFINITION, '').replace(/^\s*[—-]\s*/, '').trim();
@@ -807,7 +808,13 @@ export function checkBacklog({ backlog, inventory, system }) {
     if (!OUTSIDE_ID.test(x.id)) errors.push(`outside ${x.id || `row (line ${x.line})`}: id must match X-<n>`);
     if (seenOutside.has(x.id)) errors.push(`duplicate outside id ${x.id}`);
     seenOutside.add(x.id);
-    for (const id of x.neededBy) if (!taskIds.has(id)) errors.push(`outside ${x.id}: Needed by ${id} is not a Task`);
+    for (const [cell, ids] of [['Needed by', x.neededBy], ['Starts after', x.startsAfter]]) {
+      for (const id of ids) {
+        if (!taskIds.has(id)) errors.push(`outside ${x.id}: ${cell} ${id} is not a Task`);
+        // The plan reads a withdrawn Task as gone: the row would silently stop gating or waiting.
+        else if (byId.get(id).withdrawn) warnings.push(`outside ${x.id}: ${cell} ${id} is withdrawn — name the Task that replaces it, or drop the id`);
+      }
+    }
     for (const id of x.traces) {
       const def = inv.ids.get(id);
       if (!def) { errors.push(`outside ${x.id}: unknown trace ${id}`); continue; }
@@ -815,6 +822,19 @@ export function checkBacklog({ backlog, inventory, system }) {
       if (def.state !== 'active') { errors.push(`outside ${x.id}: traces ${def.state} ${id}`); continue; }
       tracedOutside.add(id);
     }
+  }
+  // One wait graph: a Task waits for its prerequisites and for the outside items it needs, an item
+  // for its `Starts after` Tasks. Withdrawn Tasks are out, as in the plan. The Task DAG alone is
+  // acyclic here, so a cycle always runs through an outside row.
+  if (!taskCycle) {
+    const liveTask = (id) => byId.has(id) && !byId.get(id).withdrawn;
+    const rows = new Map(b.outside.filter((x) => OUTSIDE_ID.test(x.id)).map((x) => [x.id, x]));
+    const itemsOf = new Map();
+    for (const x of rows.values()) for (const n of x.neededBy) itemsOf.set(n, [...(itemsOf.get(n) ?? []), x.id]);
+    const nodes = new Set([...b.tasks.filter((t) => !t.withdrawn).map((t) => t.id), ...rows.keys()]);
+    const waitsFor = (id) => (rows.has(id) ? rows.get(id).startsAfter.filter(liveTask) : [...byId.get(id).deps.filter(liveTask), ...(itemsOf.get(id) ?? [])]);
+    const loop = findCycle(nodes, waitsFor);
+    if (loop) errors.push(`outside rows: wait cycle ${loop.join(' → ')} — an item and the Tasks around it wait for each other`);
   }
   errors.push(...(inv.problems ?? []));
   for (const [id, def] of inv.ids) {
@@ -1121,7 +1141,8 @@ const protection = (t) => [t.status !== 'TODO' && `status ${t.status}`, t.ref &&
 /**
  * What a change to each id touches: tracing Tasks (+ protection), transitive dependents, scopes,
  * goals, Epic cut lines, and the `## Outside the dev backlog` rows tracing it (`outside`) — their
- * `Needed by` Tasks join the affected Tasks. An `X-n` id targets its own `Needed by` Tasks.
+ * `Needed by` Tasks join the affected Tasks. An `X-n` id targets its own `Needed by` Tasks; a Task
+ * id lists the rows that name it in `Needed by` or `Starts after`.
  */
 export function impactOf(ids, backlog, prdMd) {
   const byId = new Map(backlog.tasks.map((t) => [t.id, t]));
@@ -1144,8 +1165,10 @@ export function impactOf(ids, backlog, prdMd) {
   return ids.map((id) => {
     let tasks;
     let rows = [];
-    if (TASK_ID.test(id)) tasks = [byId.get(id)].filter(Boolean);
-    else {
+    if (TASK_ID.test(id)) {
+      tasks = [byId.get(id)].filter(Boolean);
+      rows = outsideRows.filter((x) => x.neededBy.includes(id) || (x.startsAfter ?? []).includes(id));
+    } else {
       rows = OUTSIDE_ID.test(id) ? outsideRows.filter((x) => x.id === id) : outsideRows.filter((x) => x.traces.includes(id));
       const needed = new Set(rows.flatMap((x) => x.neededBy));
       const tracing = (t) => !OUTSIDE_ID.test(id) && t.traces.includes(id);
@@ -1158,7 +1181,7 @@ export function impactOf(ids, backlog, prdMd) {
       goals: goalsOf(id),
       tasks: tasks.map(detail),
       dependents: deps.map(detail),
-      outside: rows.map((x) => ({ id: x.id, owner: x.owner, neededBy: x.neededBy })),
+      outside: rows.map((x) => ({ id: x.id, owner: x.owner, neededBy: x.neededBy, startsAfter: x.startsAfter ?? [] })),
       scopes: SCOPES.filter((s) => all.some((t) => t.scope === s)),
       epics: [...new Set(all.map((t) => t.epic))].sort(byIdAsc).map((e) => ({ id: e, cut: cut(e) })),
       jira: [...new Set(all.map((t) => t.jira).filter(Boolean))],

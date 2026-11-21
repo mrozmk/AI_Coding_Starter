@@ -100,12 +100,12 @@ Scan each source for backlog-actionable statements and build
 | `edit` — same meaning | none, or an `editorial` `D-n` for a register wording fix | **unprotected** Task: prose / AC edited — AC text under an existing id is never edited: withdraw it and add a new id |
 | `edit` — meaning changed | old `R-n` `(superseded by R-m per D-k)`, new `R-m` | unprotected Task: `Traces` → `R-m`, AC withdraw + new; **protected Task untouched** + a `delta-linked` intent |
 | `delta-linked` | the `R-m` from the row above | new Task, `Relates: <protected id>`, `Traces: R-m` (a delta of a delta relates to the original protected Task) |
-| `split` | none — replacements **share the original's active traces** | original → `withdraw-task`; k new Tasks with its `Traces`, AC per replacement from `nextAc`; the first replacement takes the original's `Depends on`; every dependent of the original is redirected to the replacement the intent names (default: the last); a redirect touching a protected dependent → question |
-| `merge` | none — the union of the originals' active traces | originals → `withdraw-task`; one new Task with the union of their prerequisites; their dependents redirected to it; protected dependents → question |
-| `withdraw-task` | none | `Task` cell `(withdrawn)`; `Status` → `DONE` / `BLOCKED` **only when the row has no Jira key**; keyed → `Status` untouched + `Jira refresh: <key> pending` |
+| `split` | none — replacements **share the original's active traces** | original → `withdraw-task`; k new Tasks with its `Traces`, AC per replacement from `nextAc`; the first replacement takes the original's `Depends on`; every dependent of the original is redirected to the replacement the intent names (default: the last); a redirect touching a protected dependent → question; an `X-n` row naming the original follows it — in `Starts after` → every replacement, in `Needed by` → the first replacement |
+| `merge` | none — the union of the originals' active traces | originals → `withdraw-task`; one new Task with the union of their prerequisites; their dependents redirected to it; protected dependents → question; an `X-n` row naming an original in `Needed by` or `Starts after` → the new Task |
+| `withdraw-task` | none | `Task` cell `(withdrawn)`; `Status` → `DONE` / `BLOCKED` **only when the row has no Jira key**; keyed → `Status` untouched + `Jira refresh: <key> pending`; an `X-n` row naming the Task in `Needed by` or `Starts after` drops the id (the checker warns on a withdrawn id left there — the plan would read it as done) |
 | `withdraw-requirement` | `R-n` `(withdrawn per D-k)` only if no live Task traces it after this run — otherwise ask: withdraw those Tasks too, or keep the requirement | per the answer |
-| `outside-add` / `outside-edit` / `outside-remove` | none (an `edit` meaning change of a traced `R-n` follows the rows above) | an `X-n` row in `## Outside the dev backlog` (next free `X-n`; never renumbered): `Owner`, `Item`, `Needed by` (Task ids or `—`), `Traces` (active `R-` / `NFR-` / `AD-` ids or `—`), `Notes`. Removing a row that is the only trace of an active `R-n` / `NFR-n` needs a Task or another row to take the trace, else the checker fails the candidate |
-| `move-outside` | none | a non-developer Task leaves the plan by the removal rule above (`withdraw-task` for a protected or an unprotected Task alike); its dependents swap the dependency on it for the Task's own prerequisites, so the order between the remaining Tasks is kept (a swap touching a protected dependent → question), and the withdrawn row's `Chain` cell becomes `—`, so a chain it sat in stays one path; a new `X-n` row lists them under `Needed by` and takes over the Task's `R-` / `NFR-` / `AD-` traces; the Epic's `Pts` follows the rows that remain |
+| `outside-add` / `outside-edit` / `outside-remove` | none (an `edit` meaning change of a traced `R-n` follows the rows above) | an `X-n` row in `## Outside the dev backlog` (next free `X-n`; never renumbered): `Owner`, `Item`, `Needed by` (Task ids or `—`), `Starts after` (the Task ids the item waits for, or `—`; never a wait cycle with `Needed by`), `Traces` (active `R-` / `NFR-` / `AD-` ids or `—`), `Notes`. Removing a row that is the only trace of an active `R-n` / `NFR-n` needs a Task or another row to take the trace, else the checker fails the candidate |
+| `move-outside` | none | a non-developer Task leaves the plan by the removal rule above (`withdraw-task` for a protected or an unprotected Task alike); its dependents swap the dependency on it for the Task's own prerequisites, so the order between the remaining Tasks is kept (a swap touching a protected dependent → question), and the withdrawn row's `Chain` cell becomes `—`, so a chain it sat in stays one path; a new `X-n` row lists them under `Needed by`, the Task's own prerequisites under `Starts after`, and takes over the Task's `R-` / `NFR-` / `AD-` traces; the Epic's `Pts` follows the rows that remain |
 
 **Epic files.** A criterion edit (a withdrawn id, a new id) lands in the Task's block of its Epic
 file. A new Task gets its `## <id> — <title>` block with a `**Summary:**` line in its Epic's file
@@ -135,7 +135,7 @@ preview. Always asked, even when the source is clear:
 
 - every removal and withdrawal;
 - placement of a new item: developer work (a Task) or work another team delivers (an `X-n` row in
-  `## Outside the dev backlog`, with `Owner` and `Needed by` asked here); for a Task: Epic (an
+  `## Outside the dev backlog`, with `Owner`, `Needed by` and `Starts after` asked here); for a Task: Epic (an
   existing one, or "new Epic" → next `E<n>` with Title, Outcome, Key assumption asked here),
   `Scope` (`CORE` / `MUST` / `COULD`), Node, Size, `Depends on` / `Relates`;
 - an intent whose impact touches `CORE` or a protected Task: **accept / reject**.
@@ -145,7 +145,8 @@ preview. Always asked, even when the source is clear:
 `node .claude/lib/backlog-check.mjs --impact <ids>` for each intent's targets → tracing Tasks with
 their protection reasons, transitive dependents, `scopes`, the `outside` rows (`X-n`, owner,
 `Needed by`) that trace the id, the goals an `R-n` traces, each Epic's cut line, Jira keys involved
-(an `X-n` id is itself a valid target: its `Needed by` Tasks and their dependents). Shown per intent
+(an `X-n` id is itself a valid target: its `Needed by` Tasks and their dependents; a Task id
+lists the rows that name it in `Needed by` or `Starts after`). Shown per intent
 in the preview — the `outside` rows next to the Tasks; summarised into the `D-n` `**Impact:**`.
 
 ## Phase 6 — Build the candidate set
