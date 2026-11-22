@@ -20,10 +20,13 @@ URL or `host:path` -> ask unless the host is in the same WebFetch allowlist; a b
 a local path passes (the remote's configured URL was itself set through this check or by a human).
 A URL set as git config — `git config remote.<n>.url|pushurl <url>`, `git -c remote.<n>.url=<url>`,
 `url.<base>.insteadOf` — and `git push --repo[=]<url>` get the same host check.
-The Supervisor in the main checkout (TEAM_SESSION_ROLE=Supervisor, no TEAM_RUN_TEAM, neither
-.agents/team/session.json nor team.json) passes a gh command that matches a Bash(gh ...) allow rule
-of settings.local.json only — never settings.json, and only as one plain simple command (no
-compound, no `$` expansion or substitution, no env prefix or wrapper, no gh host selector).
+On the gh pr|issue view read path a single-quoted --jq/--template value that gh's option layout
+binds is data, not checked for taint. The Supervisor in the main checkout (TEAM_SESSION_ROLE=
+Supervisor, no TEAM_RUN_TEAM, neither .agents/team/session.json nor team.json) passes compounds of
+gh commands covered by a Bash(gh ...) allow rule of settings.local.json (never settings.json) and
+allowlisted companions, and inline Python under the local Bash(python3 -) / Bash(python3 -c *)
+opt-in; gh output piped into a shell or interpreter asks. Every Supervisor ask is appended to
+.agents/touches/<yyyy-mm>.jsonl. All of it: guard_team_egress_supervisor.py.
 """
 import json
 import os
@@ -37,8 +40,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SEPARATORS, SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans,
-    strip_wrappers, tokenize, unredirected)
+    SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans, strip_wrappers,
+    tokenize, unredirected)
+from guard_team_egress_supervisor import (  # noqa: E402
+    BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
+    supervisor_main_checkout, supervisor_verdict)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -56,23 +62,6 @@ SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
 SUBST = re.compile(r"\$\(|`|\)")
 DOMAIN_RULE = re.compile(r"^WebFetch\(domain:([^)]*)\)$")
-# Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
-# backslash anywhere else -> ignored (still asked).
-GH_RULE = re.compile(r"^Bash\(gh ([^()*:\"'\\]+?)(:\*| \*)?\)$")
-# What a plain `gh ...` never needs: any `$` (parameter or arithmetic expansion can assemble a
-# `$(...)` at run time: `${a=$}${b=(}…$[x]`), backquotes, redirection (bash /dev/tcp), and the
-# `#` / `\` that the shared comment stripper misreads (`x\ #; curl …` would hide the curl).
-UNPLAIN = re.compile(r"[$`<>#\\]")
-# gh reads `[HOST/]OWNER/REPO`; a third part, `git@…` or a scheme makes it pick another host.
-GH_PLAIN_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-# What an exempt gh read never carries: expansion or substitution, the `#` / `\` the shared comment
-# stripper misreads (`x\ # -R host/o/r` hides the -R), the env names that select gh's host, or a
-# `(` glued to a word (extglob / zsh grouping: `--@(repo)`, `--rep(o)` can match a file `--repo`).
-GH_READS_TAINT = re.compile(r"[$`#\\]|GH_HOST|GH_REPO|[^\s;&|()<>]\(")
-# Brace expansion rebuilds a word at run time: `--re{p..p}o=host/o/r` reaches gh as `--repo=…`.
-BRACE = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
-# A glob that can match a file named like an option (`--rep[o]`, `[-]-repo` with a file `--repo`).
-GLOB_OPTION = re.compile(r"^[-*?\[][^*?\[]*[*?\[]|^[*?\[]")
 # bash's socket pseudo-files: a redirection there is egress whatever the verb.
 NET_DEV = re.compile(r"/dev/(tcp|udp)\b")
 NET_FOUND = "network redirection (/dev/tcp or /dev/udp)"
@@ -111,32 +100,6 @@ def loopback_probe(words):
     ports = words[i + 1:]
     return ("z" in flags and i < len(words) and words[i] in LOOPBACK and bool(ports)
             and all(re.fullmatch(r"[0-9]+(-[0-9]+)?", w) for w in ports))
-
-
-def gh_host_selector(words):
-    """True when <words> could point gh at another host: a repo value that is not plain
-    OWNER/REPO (any -R / --repo spelling, also a short-flag cluster), a URL, --hostname, or the
-    gh auth -h shorthand in any short-flag cluster. Over-matching only asks more."""
-    auth = words[1:2] == ["auth"]
-    for i, w in enumerate(words):
-        # A glued redirection stays in the token: gh gets `--repo>/dev/null h/o/r` as --repo h/o/r.
-        w = re.split(r"[<>]", w, maxsplit=1)[0]
-        if ("://" in w or w == "--hostname" or w.startswith("--hostname=")
-                or BRACE.search(w) or GLOB_OPTION.match(w)):
-            return True
-        short = w.startswith("-") and not w.startswith("--")
-        if auth and short and "h" in w[1:]:
-            return True
-        if w == "--repo" or w.startswith("--repo="):
-            value = w[len("--repo="):] if "=" in w else "".join(words[i + 1:i + 2])
-        elif short and "R" in w[1:]:
-            rest = w[w.index("R") + 1:]
-            value = (rest[1:] if rest.startswith("=") else rest) or "".join(words[i + 1:i + 2])
-        else:
-            continue
-        if not GH_PLAIN_REPO.match(value):
-            return True
-    return False
 
 
 def egress_capable(verb, words, reads_ok=True):
@@ -306,55 +269,6 @@ def verb_in(cmd, names, depth=0, reads_ok=True):
     return ""
 
 
-def allow_rules(path):
-    """The str entries of permissions.allow in <path>; raises OSError/ValueError/AttributeError."""
-    with open(path, encoding="utf-8") as fh:
-        allow = (json.load(fh).get("permissions") or {}).get("allow") or []
-    return [r for r in allow if isinstance(r, str)] if isinstance(allow, list) else []
-
-
-def supervisor_main_checkout(project):
-    """The Supervisor's own session in the main checkout: never a team run, a clone or the TeamLead."""
-    team = os.path.join(project, ".agents", "team")
-    return (bool(project) and os.environ.get("TEAM_SESSION_ROLE") == "Supervisor"
-            and not os.environ.get("TEAM_RUN_TEAM")
-            and not os.path.exists(os.path.join(team, "session.json"))
-            and not os.path.exists(os.path.join(team, "team.json")))
-
-
-def local_gh_rules(project):
-    """(words, prefix) of the Bash(gh ...) allow rules in settings.local.json; [] when absent or bad."""
-    try:
-        allow = allow_rules(os.path.join(project, ".claude", "settings.local.json"))
-    except (OSError, ValueError, AttributeError):
-        return []
-    rules = []
-    for rule in allow:
-        m = GH_RULE.match(rule)
-        if m and m.group(1).split():
-            rules.append((tuple(m.group(1).split()), bool(m.group(2))))
-    return rules
-
-
-def local_gh_exempt(cmd, project):
-    """The Supervisor's plain `gh ...` command: one simple command with a literal `gh` first (no env
-    prefix, wrapper or path), no separator, expansion or redirection, no gh host selector, covered by a
-    local rule."""
-    if UNPLAIN.search(cmd) or not supervisor_main_checkout(project):
-        return False
-    try:
-        words = tokenize(cmd)
-    except ValueError:
-        return False
-    # Any separator token, real or quoted (the tokenizer cannot tell them apart), means not plain.
-    if (words[:1] != ["gh"] or any(set(w) <= SEPARATORS for w in words)
-            or gh_host_selector(words)):
-        return False
-    rest = tuple(words[1:])
-    return any(rest[:len(w)] == w if prefix else rest == w
-               for w, prefix in local_gh_rules(project))
-
-
 def unquoted(text):
     """<text> without quotes and backslashes: a name split by quotes at any nesting depth
     (`eval "export GH_''HOST=x"`, `bash -c "… /dev/t''cp/…"`) reads whole again."""
@@ -368,7 +282,14 @@ def net_device(cmd, tokens):
 
 def gh_read_tainted(cmd, tokens=()):
     """True when <cmd> could point a gh read at another host. The whole string, not one command:
-    a quoted ';' splits `gh … --template ';' -R host/o/r`."""
+    a quoted ';' splits `gh … --template ';' -R host/o/r`. A single-quoted bound formatting value
+    of a gh view is data: masked first."""
+    masked = format_masked(cmd, egress_in)
+    if masked != cmd:
+        try:
+            cmd, tokens = masked, tokenize(masked)
+        except ValueError:
+            pass
     return bool(GH_READS_TAINT.search(cmd) or gh_host_selector(list(tokens))
                 or GH_READS_TAINT.search(unquoted(cmd))
                 or any(GH_READS_TAINT.search(t) for t in tokens))
@@ -378,8 +299,9 @@ def bash_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
         return NET_FOUND
-    if local_gh_exempt(cmd, project):
-        return ""
+    decision, why = supervisor_verdict(cmd, project, egress_in)
+    if decision != "defer":
+        return why
     try:
         found = egress_in(cmd)
     except ValueError:
@@ -447,6 +369,7 @@ def webfetch_reason(url, project):
 
 
 def main():
+    project = os.environ.get("CLAUDE_PROJECT_DIR", "")
     try:
         payload = json.load(sys.stdin)
         tool = payload.get("tool_name")
@@ -455,17 +378,20 @@ def main():
             raise ValueError
     except (ValueError, AttributeError):
         print(json.dumps(verdict("unreadable hook payload")))
+        if supervisor_main_checkout(project):
+            record_touch(project, None, "unreadable hook payload")
         return
     if tool == "WebFetch":
-        reason = webfetch_reason(tool_input.get("url"), os.environ.get("CLAUDE_PROJECT_DIR", ""))
+        reason = webfetch_reason(tool_input.get("url"), project)
     elif tool == "Bash":
         cmd = tool_input.get("command")
-        reason = (bash_reason(cmd, os.environ.get("CLAUDE_PROJECT_DIR", ""))
-                  if isinstance(cmd, str) else "unreadable Bash command")
+        reason = bash_reason(cmd, project) if isinstance(cmd, str) else "unreadable Bash command"
     else:
         return
     if reason:
         print(json.dumps(verdict(reason)))
+        if supervisor_main_checkout(project):
+            record_touch(project, payload.get("cwd"), reason)
 
 
 if __name__ == "__main__":

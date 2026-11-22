@@ -464,9 +464,10 @@ else
   emit merged generated "$SET"
 fi
 
-# ---- .gitignore: runtime state in .agents/team/, the tool's fallback mail box in .agents/agent-mail/
+# ---- .gitignore: runtime state in .agents/team/, the tool's fallback mail box in .agents/agent-mail/,
+# the Supervisor's local touch log written by the egress guard in .agents/touches/
 IGN=""
-for d in .agents/team/ .agents/agent-mail/; do
+for d in .agents/team/ .agents/agent-mail/ .agents/touches/; do
   git -C "$TARGET" check-ignore -q "${d}probe" 2>/dev/null || IGN="$IGN$d\n"
 done
 if [ -z "$IGN" ]; then

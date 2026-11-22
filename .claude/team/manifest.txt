@@ -156,6 +156,7 @@ own .claude/commands/pr-merge.md
 own .claude/hooks/guard-destructive-sql.sh
 own .claude/hooks/guard-team-egress.sh
 own .claude/hooks/lib/guard_team_egress.py
+own .claude/hooks/lib/guard_team_egress_supervisor.py
 own .claude/lib/gate-lock.sh
 own .claude/lib/gate_lock.py
 own .claude/lib/team-anchor.sh
