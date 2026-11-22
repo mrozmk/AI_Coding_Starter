@@ -2,7 +2,8 @@
 # Offline contract test of /qa-verify's run record: the two hard gates, registry §7 (dispositions,
 # the record template and its rules, both marker types), the criterion fingerprint — extracted from
 # the registry and run on fixed vectors, so the test runs the same bytes the command runs — the
-# re-check rules, Phase 3's one-pass decisions and one approval, and the neighbouring contracts.
+# re-check rules, Phase 3's one-pass decisions and one approval, the modes, the pool, groups, the
+# feature path and deferrals, and the neighbouring contracts.
 # Text and pipeline checks only — nothing is spawned, no tracker is called.
 #
 # Usage: bash .claude/lib/tests/qa-verify-contract-test.sh [root]   (default: this checkout)
@@ -46,7 +47,7 @@ EOF
 )
 want2=$(cat <<'EOF'
 <HARD-GATE>
-**QA never mutates.** No source edits. No mutating git. No editing the AC text — not to clarify it, not to fix a typo. No transitioning the issue's status. **On finding a defect, record a `FAIL` with a severity and keep verifying — never fix it.** A proposed fix appears only as text in the row's notes. The single permitted outward write is the evidence comment on the tracker, after explicit human approval. This boundary has no exception: a QA run that repairs what it inspects has destroyed the evidence it exists to produce.
+**QA never mutates.** No source edits. No mutating git. No editing the AC text — not to clarify it, not to fix a typo. No transitioning the issue's status. **On finding a defect, record a `FAIL` with a severity and keep verifying — never fix it.** A proposed fix appears only as text in the row's notes. The permitted outward writes are the run's tracker comments — records and deferral pointers — after explicit human approval, and the one-time `qa.pool_status` setting with its `decisions.md` entry, on the Operator's answer. This boundary has no exception: a QA run that repairs what it inspects has destroyed the evidence it exists to produce.
 </HARD-GATE>
 EOF
 )
@@ -78,7 +79,13 @@ The **newest** candidate is the record
 an invalid newest record is never skipped in favour of an older valid one
 counts that disagree with the rows
 its `build=` is `-` or 7–40 lowercase hex digits
+charged to <KEY>
+Verify it when this ticket reaches <pool status>.
+`group=-` for a single-ticket run
+is a re-check-form record with `build=-`
+any disposition may carry
 EOF
+lacks "$REG" '`group=-` and `mode=first|recheck` in this revision'; check $? "registry still says group=- only"
 
 # Headings outside fenced blocks: ## 1.…7. in order, §7 the last level-two heading, ### 1a. inside §1.
 HEADS=$(awk '/^```/ { fence = !fence; next } !fence && /^##+ / { print NR ":" $0 }' "$ROOT/$REG")
@@ -213,11 +220,83 @@ for neg in 'sign-off box' 'signs each row' 'row by row' '## Tracker comment (pre
   lacks "$CMD" "$neg"; check $? "qa-verify still says: $neg"
 done
 
+# ---- modes, pool, groups ----------------------------------------------------------------------------
+POOL_PINS=$(cat <<'EOF'
+## Step 0.1 — Mode
+## Step 0.2 — The pool
+## Step 0.75 — PR data and incoming deferrals
+## Step 0.8 — Groups
+qa-fp/<KEY>/<ac_id>.txt
+<KEY> <id> <change>
+(group <id>)
+target read not complete — a duplicate pointer is possible (deduplicated on read)
+a sibling result was posted on the same record
+open F<n> from group <id>
+file record — no pointer posted
+a group is capped at 5 tickets — split the list
+pool mode needs qa.pool_status
+team-tracker.sh pool --status
+team-tracker.sh item-status
+team-pr.sh prs
+team-pr.sh files
+more tickets in <pool_status> not read
+by approximate time in status
+1. **link**
+2. **files**
+3. **spec**
+4. **epic**
+never merges them
+charged to <KEY>
+from spec <path>
+from epic <KEY>
+deferred-in from <SRC>
+Verify it when this ticket reaches QA.
+target done — verify in the next run of <SRC>
+target state unknown — pointer posted
+listed as stale
+verified in the run of group <group id>
+F<n> is charged here — verify it in a group run with <keys>
+<KEY>:<ac_id>
+tracker none has no pool
+EOF
+)
+pins "$CMD" "pool" <<< "$POOL_PINS"
+for neg in 'In this revision a `DEFERRED` row is a plain row' '**PR data is not read by this command yet.**' \
+           '**No argument → list candidates and stop.**'; do
+  lacks "$CMD" "$neg"; check $? "qa-verify still says: $neg"
+done
+
+# Phase 1 prints the pool listing, the groups, the proposal and the feature path in that order —
+# looked up inside the Phase 1 section only (the same phrases occur in Step 0.8).
+P1="$WORK/phase1.md"
+awk '/^## Phase 1 — Gate/ { f = 1; next } f && /^## / { exit } f' "$ROOT/$CMD" > "$P1"
+prev=0; ord_ok=0
+for ph in 'the pool listing' 'the groups with edges' 'proposed for this run' 'the feature path per group'; do
+  ln=$(grep -nF -- "$ph" "$P1" | head -1 | cut -d: -f1)
+  if [ -z "$ln" ] || [ "$ln" -le "$prev" ]; then ord_ok=1; break; fi
+  prev=$ln
+done
+check $ord_ok "phase 1: the pool listing, groups, proposal and feature path are not in order"
+
+# Break-check: a command without one pool pin must fail the same pins.
+mkdir -p "$WORK/b/.claude/commands"
+grep -vF 'never merges them' "$ROOT/$CMD" > "$WORK/b/$CMD"
+# In a subshell: ROOT, FAILS and N change only in its own copies.
+( ROOT=$WORK/b; FAILS=(); pins "$CMD" "pool" <<< "$POOL_PINS"; [ "${#FAILS[@]}" -gt 0 ] )
+check $? "break-check: a removed pool pin went unnoticed"
+
 # ---- neighbours ------------------------------------------------------------------------------------
 has .agents/reference/jira-mcp-atlassian.md '`AC-3`'; check $? "jira-mcp-atlassian: no AC-3 example"
 has .agents/reference/jira-mcp-atlassian.md 'AC3'; check $? "jira-mcp-atlassian: no AC3 rule"
 has .agents/reference/tracker-comments.md 'qa-verify:v1 record'; check $? "tracker-comments: the QA record is not a named producer"
 has .claude/lib/tracker-snapshot.mjs 'qa-verify:v1 record'; check $? "tracker-snapshot.mjs: ownMarker does not know the QA record"
+has .agents/reference/tracker-comments.md 'qa-verify:v1 deferral'; check $? "tracker-comments: the deferral pointer is not a named producer"
+has .claude/lib/tracker-snapshot.mjs 'qa-verify:v1 deferral'; check $? "tracker-snapshot.mjs: ownMarker does not know the deferral pointer"
+has .claude/lib/team-tracker.sh 'op_pool'; check $? "team-tracker.sh: no pool op"
+has .claude/lib/team-pr.sh 'op_prs'; check $? "team-pr.sh: no prs op"
+has .agents/reference/pr-host-api.md 'PR facts for `/qa-verify`'; check $? "pr-host-api: no PR facts section"
+has .claude/project-profile.json.example 'pool_status'; check $? "profile example: no qa.pool_status"
+has .claude/starter-sync-playbook.md 'pr-host-api.md'; check $? "sync playbook: pr-host-api §8 is not routed"
 
 for f in "${FAILS[@]+"${FAILS[@]}"}"; do echo "FAIL [$f]"; done
 [ "${#FAILS[@]}" -eq 0 ] || exit 1

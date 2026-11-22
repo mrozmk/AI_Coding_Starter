@@ -1,7 +1,8 @@
 # Shared gh stub for the tracker smokes: every call is logged to $GH_LOG, all state lives in
-# $GH_DIR (issues.json, comments.json, items.json, fields.json, issue-<n>.json, subs-<n>.json), 30
-# items per page, failures by env switch (STUB_GH_PAGE2_FAIL, STUB_GH_CREATE_THEN_FAIL,
-# STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY, STUB_GH_SUB_DENY). Sourced; needs $WORK/bin on PATH.
+# $GH_DIR (issues.json, comments.json, items.json, fields.json, issue-<n>.json, subs-<n>.json,
+# pool-items.json for `gh api graphql`), 30 items per page, failures by env switch
+# (STUB_GH_PAGE2_FAIL, STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY,
+# STUB_GH_SUB_DENY). Sourced; needs $WORK/bin on PATH.
 gh_stub_install() {
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -45,6 +46,32 @@ case "${1:-}" in
       *) echo "stub: gh issue $2" >&2; exit 1 ;;
     esac ;;
   api)
+    if [ "${2:-}" = graphql ]; then
+      # The pool query: answered from $G/pool-items.json, 2 nodes per page; the cursor is c<page>.
+      # STUB_GH_POOL_STUCK (cursor never advances), STUB_GH_POOL_TOTAL (a wrong totalCount),
+      # STUB_GH_NODEPS (a host without issue dependencies refuses blockedBy/blocking).
+      cur=""; fname=""; q=""; shift 2
+      while [ $# -gt 0 ]; do case "$1" in
+        -f|-F) case "$2" in cursor=*) cur="${2#cursor=}" ;; fname=*) fname="${2#fname=}" ;;
+                 query=*) q="${2#query=}" ;; esac; shift 2 ;;
+        *) shift ;; esac; done
+      echo "graphql fname=$fname" >> "$GH_LOG"
+      nd=0; case "$q" in *blockedBy*) ;; *) nd=1 ;; esac
+      if [ "$nd" = 0 ] && [ "${STUB_GH_NODEPS:-0}" = 1 ]; then
+        echo "Field 'blockedBy' doesn't exist on type 'Issue'" >&2; exit 1
+      fi
+      k=0; [ -z "$cur" ] || k="${cur#c}"
+      n=$(jq 'length' "$G/pool-items.json")
+      start=$((k * 2)); more=false; [ $((start + 2)) -ge "$n" ] || more=true; ec="c$((k + 1))"
+      if [ "${STUB_GH_POOL_STUCK:-0}" = 1 ]; then more=true; ec=c1; fi
+      jq -c --argjson s "$start" --argjson tot "${STUB_GH_POOL_TOTAL:-$n}" --argjson more "$more" \
+        --arg ec "$ec" --arg nd "$nd" '{data: {node: {items: {totalCount: $tot,
+          pageInfo: {hasNextPage: $more, endCursor: $ec},
+          nodes: (.[$s:($s + 2)] | if $nd == "1"
+            then map(del(.content.blockedBy, .content.blocking)) else . end)}}}}' \
+        "$G/pool-items.json"
+      exit 0
+    fi
     meth=GET; path=""; input=""; SUBID=0; shift
     while [ $# -gt 0 ]; do case "$1" in
       -X) meth="$2"; shift 2 ;; --input) input="$2"; shift 2 ;;

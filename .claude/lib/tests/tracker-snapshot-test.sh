@@ -96,6 +96,29 @@ run snapshot --github "$WORK/show4b.json" --out "$WORK/f4b.json"
 run compare "$WORK/base.json" "$WORK/f4b.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 911 913 914" ] || fail "4b qa record compare: $RC $OUT"
 
+# (4b2) the /qa-verify deferral pointer: the two-line form and the Jira-joined form are own; an
+#       earlier-line marker, a blockquote and every malformed field are human comments
+QAD='qa-verify:v1 deferral src=AB-1 row=AC-3 fp=0a1b2c'
+QAS='QA: AB-1 AC-3 waits for this ticket — "The banner shows". Verify it when this ticket reaches QA.'
+R41=$(printf 'r%.0s' $(seq 41))
+gh_show "$WORK/show4d.json" "SECRETWORD two"
+jq --arg m "$QAD" --arg s "$QAS" --arg r41 "$R41" '
+  def c($id; $b): {id: $id, author: "qa", created: "2026-11-07T08:00:00Z",
+                   updated: "2026-11-07T08:00:00Z", body: ("SECRETWORD\n" + $b)};
+  .comments += [c("920"; $s + "\n" + $m), c("921"; $s + " " + $m),
+    c("922"; $m + "\nplease look again"), c("923"; $s + "\n> " + $m),
+    c("924"; $s + "\nqa-verify:v1 deferral src=AB-1 row=AC-3 fp=xyz123"),
+    c("925"; $s + "\nqa-verify:v1 deferral src=unknown row=AC-3 fp=0a1b2c"),
+    c("926"; $s + "\nqa-verify:v1 deferral src=AB-1 row=AC/1 fp=0a1b2c"),
+    c("927"; $s + "\nqa-verify:v1 deferral src=7 row=" + $r41 + " fp=0a1b2c")]' \
+  "$WORK/show4d.json" > "$WORK/t" && mv "$WORK/t" "$WORK/show4d.json"
+run snapshot --github "$WORK/show4d.json" --out "$WORK/f4d.json"
+[ "$(jq -c '[.comments[3:][].own]' "$WORK/f4d.json")" = '[true,true,false,false,false,false,false,false]' ] \
+  || fail "4b2 deferral pointer own flags: $(jq -c '[.comments[3:][].own]' "$WORK/f4d.json")"
+run compare "$WORK/base.json" "$WORK/f4d.json"
+[ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 922 923 924 925 926 927" ] \
+  || fail "4b2 deferral pointer compare: $RC $OUT"
+
 # (4c) the /qa-verify record in a Jira ADF body: only a top-level paragraph carries an own marker
 jq -n --arg m "$QAM" '{key: "AB-2", fields: {description: "SECRETWORD d", updated: "2026-11-06T09:00:00.000+0000",
   comment: {startAt: 0, maxResults: 2, total: 2, comments: [

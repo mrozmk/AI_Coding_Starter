@@ -1,8 +1,8 @@
 # Reference: PR-host REST APIs (PR comments) — GitHub · Bitbucket Cloud · GitLab
 
-Distilled, project-local reference for the `/pr-comments` skill. Covers just the pull-request
-comment surface per host: auth, the endpoints the helper uses, pagination, the comment/thread model
-and its normalisation, and known gotchas. Consult this first; fall back to upstream docs only when
+Distilled, project-local reference for the `/pr-comments` skill and the PR facts `/qa-verify`
+reads (§8). Covers just the pull-request comment surface per host: auth, the endpoints the
+helper uses, pagination, the comment/thread model and its normalisation, and known gotchas. Consult this first; fall back to upstream docs only when
 something here is marked **validate live** or a behaviour diverges at runtime.
 
 The helper `.claude/skills/pr-comments/references/pr-api.sh` detects the host from `origin` and
@@ -259,6 +259,39 @@ once a path is exercised, and paste the response shape if it diverges.
 - GitLab — [Discussions API](https://docs.gitlab.com/ee/api/discussions.html) ·
   [Merge requests API](https://docs.gitlab.com/ee/api/merge_requests.html) ·
   [Personal access tokens](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html).
+
+## 8. PR facts for `/qa-verify`
+
+`/qa-verify` (Step 0.75) groups tickets by four PR facts. It reads them **only through
+`.claude/lib/team-pr.sh`**; this section is documentation, not an input the command parses.
+
+| Fact | GitHub | Bitbucket Cloud | GitLab | Azure DevOps |
+|---|---|---|---|---|
+| PRs of a ticket (merged and follow-up included) | `team-pr.sh prs <key>` | `GET /pullrequests?q=…&state=MERGED` — **no helper — unavailable** | `GET /merge_requests?search=…&state=all` — **no helper — unavailable** | `GET …/pullrequests?searchCriteria.status=all` — **no helper — unavailable** |
+| Changed files | `team-pr.sh files <pr>` | `GET /pullrequests/{id}/diffstat` — **no helper — unavailable** | `GET /merge_requests/{iid}/diffs` — **no helper — unavailable** | `GET …/pullrequests/{id}/iterations/{id}/changes` — **no helper — unavailable** |
+| Description | `team-pr.sh body-get <pr>` | `GET /pullrequests/{id}` → `description` — **no helper — unavailable** | `description` — **no helper — unavailable** | `description` — **no helper — unavailable** |
+| Merge commit | `prs` → `merge_commit` | `merge_commit.hash` — **no helper — unavailable** | `merge_commit_sha` — **no helper — unavailable** | `lastMergeCommit.commitId` — **no helper — unavailable** |
+
+GitHub discovery (`prs`):
+
+- **A GitHub issue number** — the issue's timeline cross-references from PRs of the same repo,
+  united with the issue's `closedByPullRequestsReferences` (a closing PR that never
+  cross-referenced the issue is still found).
+- **A tracker key** (`ABC-175`) — GitHub search over title and body, plus the full PR listing
+  matched on the head branch (`<type>/ABC-175-…`; search does not index branch names). The key is
+  matched boundary-safe (`ABC-17` never matches `ABC-175`).
+- Either door at its limit (search 200, listing 1000), or any failed read → exit 4: PR data
+  unavailable for that ticket, never an empty or partial list.
+
+`relation`: `closes` (a GitHub closing reference to this repo's issue, or `Closes|Fixes|Resolves
+<KEY>` in the body) · `branch` (the head branch carries the key as a token) · `mentions` (any other
+reference). A ticket's PRs are the `closes` and `branch` ones; `mentions` are shown, never used for
+files or merge commits. `files` sets `truncated: true` at GitHub's 3000-file stop.
+
+**Unavailable** (another host, `pr_provider` none, no teams block, a failed read) makes
+`/qa-verify` say so once per run: grouping uses links, deferral edges, spec and epic only, and a
+re-check verifies every observed row. `pr-api.sh resolve-pr` lists open PRs only, so it does not
+fill the gap for the other hosts.
 
 _Update §5 the moment a path is validated live. Update the relevant host section whenever a runtime
 probe reveals a shape that diverges from what is documented._
