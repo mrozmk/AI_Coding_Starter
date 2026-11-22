@@ -218,7 +218,7 @@ say so and fall back to assumptions.
    stop, report the gap, leave `docs/PRD.md` unwritten (an existing one untouched).
 4. **`docs/PRD.md`** from `.claude/skills/discover/prd-template.md`: `G-n` with baseline, target,
    date, reader; `R-n` as EARS sentences grouped by capability, each with `Traces: G-n`; the NFR
-   table; scope with non-goals + rationale; §7 and §8 left as the `/architect` placeholders; §12
+   table; §3 **Source precedence** (the agreed rule from Tier 0 Q11, or `Open — Q-n`); scope with non-goals + rationale; §7 and §8 left as the `/architect` placeholders; §12
    risks pointing at `A-n`; §13 open `Q-n` by id with owner; §14 `A-n` index; Release intent.
    First write: header `Baseline: v1.0 (<today>) · Approved by: proposed · Current: v1.0`, every
    register id `Added: v1.0`, `## Change log` with only its placeholder line. Update mode:

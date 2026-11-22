@@ -81,6 +81,22 @@ the product for, today's workaround.
 
 **Decision owner:** <role / name> — answers open questions within <latency>.
 
+**Source precedence** — what the team does when two sources disagree: this PRD, a design file, a
+ticket's acceptance criteria, a client or product-owner statement, the as-built code. Name only the
+sources the project has.
+
+- **Default:** <first wins → … → last, e.g. ticket acceptance criteria → PRD → design file → client
+  statement → as-built code> | the decision owner rules each case
+- **By subject** (optional): <subject> — <source that wins>, e.g. layout / geometry — design file;
+  behaviour — ticket acceptance criteria
+- **Override recorded by:** <role> in <where — a `D-n` under `## Change log` for a change to a
+  register id, a ticket comment, an ADR>
+
+Undecided → one line `Open — Q-n` instead of the three bullets. The rule names the side recommended
+to the decision owner; it never settles a conflict by itself — a conflict found in discovery is
+still a `Q-n` with both quotes, and a change to a register id still goes through supersede + `D-n`
+(`/update-backlog`).
+
 ## 4. Scope
 
 **In scope (slice 1)**

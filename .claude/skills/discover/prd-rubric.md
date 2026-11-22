@@ -32,10 +32,15 @@ Sources: the BMAD PRD rubric, GitHub spec-kit `/clarify` and Kiro specs.
 Could an engineer and a product owner start the first slice from this PRD without a meeting?
 
 - **strong** — scope, the critical flow, goals with numbers and the first slice's intent are all
-  present; the open questions are owned and none blocks slice 1.
-- **thin** — one of those is implied rather than stated; a reader would need to ask one question.
+  present; the open questions are owned and none blocks slice 1; §3 says what happens when sources
+  disagree (a **Source precedence** rule, or an owned `Q-n`).
+- **thin** — one of those is implied rather than stated; a reader would need to ask one question;
+  or §3 has no **Source precedence** — neither a rule nor an owned `Q-n`.
 - **broken** — the PRD describes a wish, not a decision: no slice 1, no critical flow, or an
   unowned blocking question.
+
+Source precedence is graded for presence only: the order or rule the project chose is a product
+choice, never a finding; "the decision owner rules each case" is a complete rule.
 
 ### P2 Substance over theater
 

@@ -20,7 +20,7 @@ Kiro EARS requirements.
 
 ## Tier 0
 
-Always covered — by derivation where possible, by asking otherwise. The ten questions plus Q0.
+Always covered — by derivation where possible, by asking otherwise. The eleven questions plus Q0.
 
 **Q0 — Project type (derived, then confirmed).** From the sources and the repo, classify the
 project as one of: *greenfield product* · *internal tool* · *integration* · *data / AI* · *existing
@@ -55,6 +55,11 @@ alternatives; the confirmed type selects the Tier 1 pack. A project that is hone
 10. **Decision owner and latency.** Who decides open questions, and how fast can they answer
     (same day, weekly meeting, quarterly committee)? `→ feeds: discovery Open questions Q-n
     (owner), PRD §13`
+11. **Source precedence.** When two sources disagree — this PRD, a design file, a ticket's
+    acceptance criteria, a client or product-owner statement, the built code — which one wins (one
+    order, a rule per subject such as "layout from the design, behaviour from the ticket", or "the
+    decision owner rules each case"), and who records an override where? `→ feeds: PRD §3 Source
+    precedence, discovery Open questions Q-n`
 
 **Gate G1** (checked after Tier 0): problem, outcome and appetite are *Clear* in the coverage
 table. If any of the three is *Missing*, Tier 1 does not start.
