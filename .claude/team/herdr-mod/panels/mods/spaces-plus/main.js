@@ -1,12 +1,44 @@
 // Derived from Herdr's shipped "spaces" mod (Apache License 2.0); modified. Notices: NOTICE.md of the starter's Herdr panels kit.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
-// its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
+// its first terminal is in now, only where unusual: branch, ahead/behind. Under each space, its
+// tabs with one status mark each (working / needs you / idle; done counts as idle). Click to
 // switch, right-click for its menu, drag to reorder.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, pickFolder } from "herdr";
+import { spaces, machines, panes, agents, terminals, setAgentOrder, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, pickFolder } from "herdr";
+
+const RANK = { blocked: 3, working: 2, idle: 1 };
+const LABEL = { blocked: "needs you", working: "working", idle: "idle" };
+const norm = (s) => (s === "error" ? "blocked" : s === "working" || s === "blocked" ? s : "idle");
+const top = (list) => list.reduce((m, s) => (RANK[s] > RANK[m] ? s : m), "idle");
+
+// Status per tab id, from each pane and each live sub-agent (no pane) of an agent in that tab.
+// Not TabInfo.status: it ranks done above working, so a tab with one agent done and one
+// working would read done, and done reads as idle here.
+function tabStatuses(ps) {
+  const byTab = new Map();
+  const add = (tab, s) => byTab.set(tab, [...(byTab.get(tab) ?? []), norm(s)]);
+  for (const p of ps) add(p.tab, p.status);
+  const tabOf = new Map(agents().map((a) => [a.address, a.tab]));
+  for (const k of terminals()) {
+    if (k.state === "live" && k.parent && tabOf.has(k.parent) && !tabOf.has(k.address)) add(tabOf.get(k.parent), k.status);
+  }
+  return new Map([...byTab].map(([tab, list]) => [tab, top(list)]));
+}
+
+// Own avatars: space-icons/<slug of the space name>.svg or .png ("My App - API" -> my-app-api.svg).
+// Without a file the space keeps its colored letter. Picked up live when files change.
+const ICON_DIR = "mods/spaces-plus/space-icons";
+const slug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+function toggleSidebar() {
+  const width = find(layout(), "sidebar")?.size?.px;
+  if (!narrow()) setShared("sidebar.width", width);
+  setShared("sidebar.collapsed", !narrow());
+  run("layout.resize", { id: "sidebar", px: narrow() ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44 });
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -91,6 +123,8 @@ export default class Spaces extends View {
     this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    this.icons = new Map(); // slug -> home-relative icon path
+    this.watchIcons(cx);
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -257,6 +291,37 @@ export default class Spaces extends View {
     }
   }
 
+  watchIcons(cx) {
+    cx.spawn(async (cx) => {
+      try {
+        for (;;) {
+          const r = await exec("sh", ["-c", `d="\${HERDR_APP_HOME:-$HOME/.config/herdr-app}/${ICON_DIR}"; mkdir -p "$d" && printf '%s\\n' "$d" && ls "$d"`]);
+          const [dir, ...files] = r.stdout.split("\n").filter(Boolean);
+          const icons = new Map();
+          // An svg wins over a png of the same name.
+          for (const f of files.filter((f) => /\.(svg|png)$/i.test(f)).sort((a, b) => (a.endsWith(".svg") ? -1 : 1) - (b.endsWith(".svg") ? -1 : 1))) {
+            const key = f.replace(/\.[^.]+$/, "").toLowerCase();
+            if (!icons.has(key)) icons.set(key, `${ICON_DIR}/${f}`);
+          }
+          this.icons = icons;
+          cx.notify();
+          if (!dir) return;
+          await watchFolder(dir);
+        }
+      } catch { /* no icons: letters stay */ }
+    });
+  }
+
+  // The space's own icon, else its colored letter.
+  avatar(w, t) {
+    const own = this.icons.get(slug(w.name));
+    if (own) return image(own).w(18).h(18).flex_none().rounded(5);
+    const colors = shared("space.colors") ?? {};
+    const color = colors[w.id] ?? "ansi6";
+    const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+    return h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?");
+  }
+
   watch(repo, cx) {
     if (this.watching.has(repo)) return;
     this.watching.add(repo);
@@ -324,7 +389,7 @@ export default class Spaces extends View {
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const rows = this.ordered();
-    const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
+    const draw = (r) => (collapsed ? [this.compact(r, t)] : [this.row(r, t), ...r.w.tabs.map((tab) => this.tabRow(r.w, tab, t))]);
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
@@ -332,7 +397,7 @@ export default class Spaces extends View {
         || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
     };
     const loadingRow = m => div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(draw);
+    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.flatMap(draw);
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -366,8 +431,10 @@ export default class Spaces extends View {
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
         .on_click(() => run("space.new", { machine: m ?? "" }))
         .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
-      if (!collapsed && rebuilt) return [head];
-      return [head, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : empty])];
+      // Another machine's group starts below a rule, apart from the one above it.
+      const rule = m ? [div().id(`machine-rule-${m}`).flex_none().mt(12).mb(6).mx(collapsed ? 2 : 8).h(1).bg(t.border)] : [];
+      if (!collapsed && rebuilt) return [...rule, head];
+      return [...rule, head, ...(folded ? [] : mine.length ? mine.flatMap(draw) : [loading(m) ? loadingRow(m) : empty])];
     });
   }
 
@@ -379,7 +446,8 @@ export default class Spaces extends View {
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
     const repo = tree || same(g.name) ? "" : g.name;
-    const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
+    // One piece of information at a time: ahead/behind wins over repo and branch.
+    const where = g.ahead > 0 || g.behind > 0 ? "" : [repo, branch].filter(Boolean).join(" \u00b7 ");
     return h_flex()
       .flex_1()
       .min_w(0)
@@ -396,9 +464,6 @@ export default class Spaces extends View {
   row({ w, i, g, tree }, t) {
     const on = w.active;
     const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
-    const colors = shared("space.colors") ?? {};
-    const color = colors[w.id] ?? "ansi6";
-    const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -444,24 +509,59 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree, el => el.child(this.avatar(w, t)))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(this.mark(t, this.spaceStatus(w))),
       );
   }
 
-  compact({ w, i }, t) {
+  spaceStatus(w) {
+    return top(w.tabs.map((tab) => this.statuses.get(tab.id) ?? "idle"));
+  }
+
+  mark(t, status) {
+    if (status === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
+    if (status === "blocked") return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(10.5).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
+    return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle ?? t.dim);
+  }
+
+  tabRow(w, tab, t) {
+    const status = this.statuses.get(tab.id) ?? "idle";
+    const shown = w.active && tab.active;
+    return h_flex()
+      .id(`tab-${tab.id}`)
+      .pl(17).pr(8).h(26).flex_none().items_center().rounded(8)
+      .text_size(12.5)
+      .when(shown, (el) => el.bg(t.selected))
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click(() => run("tab.select", { id: tab.id }))
+      // Tree line from the space's avatar down to this tab.
+      .child(div().self_start().mt(-4).w(9).h(17).mr(10).flex_none()
+        .border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input))
+      .child(div().flex_1().min_w(0).truncate()
+        .text_color(shown || status !== "idle" ? t.foreground : t.muted).child(tab.name))
+      .child(this.mark(t, status));
+  }
+
+  // Rail: the space's avatar and its status; hover lists its tabs.
+  compact({ w }, t) {
+    const tip = [w.name, ...w.tabs.map((tab) => `  ${tab.name} — ${LABEL[this.statuses.get(tab.id) ?? "idle"]}`)].join("\n");
     return h_flex()
       .id(`space-${w.id}`)
-      .h(26)
+      .h(30)
       .flex_none()
       .justify_center()
-      .gap(4)
-      .when(w.active, (el) => el.bg(t.raised))
+      .items_center()
+      .gap(6)
+      .rounded(6)
+      .when(w.active, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
+      .tooltip(tip)
       .on_click(() => run("space.select", { id: w.id }))
-      .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
-      .child(div().text_color(tone(t, w.status)).child(glyph(w.status)));
+      .child(this.avatar(w, t))
+      .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.mark(t, this.spaceStatus(w))));
   }
 
   render() {
@@ -479,13 +579,24 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
+    this.statuses = tabStatuses(panes());
+    // agent.next / agent.prev follow space and tab order, the order this list shows.
+    setAgentOrder(agents().map((a) => a.address));
+    const newSpace = div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "spaces-plus-menu", kind: "popup", width: 170 }); }).child(svg("mods/workspace-chrome/plus.svg").size(14));
+    const expand = div().id("collapse").size(26).flex_none().flex().items_center().justify_center().rounded(8).text_size(16)
+      .text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_click(toggleSidebar).child("\u00bb");
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
-      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
+      .child(h_flex().h(31).when(!collapsed, el => el.pl(16).pr(10).justify_between()).when(collapsed, el => el.justify_center()).items_center().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))
-        .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "spaces-plus-menu", kind: "popup", width: 170 }); }).child(svg("mods/workspace-chrome/plus.svg").size(14))))
+        // Rail: expand where "+" is, and "+" moves to the bottom.
+        .child(collapsed ? expand : newSpace))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
-        .children(this.grouped(t, collapsed)));
+        .children(this.grouped(t, collapsed)))
+      .when(collapsed, (el) => el.child(
+        // Same grey as the footer's Settings icon.
+        h_flex().h(34).flex_none().items_center().justify_center().text_color(t.muted).child(newSpace)));
   }
 }

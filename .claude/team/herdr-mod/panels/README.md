@@ -1,6 +1,6 @@
 # Herdr panels kit — side panels and a layout for the Operator's Herdr window
 
-An optional, user-level kit: eleven Herdr mods and one layout (`harness`) that frame the harness's
+An optional, user-level kit: twelve Herdr mods and one layout (`harness`) that frame the harness's
 sessions in Herdr. `install.sh` installs or updates them into a Herdr app home
 (`~/.config/herdr-app` by default), never into a project.
 
@@ -14,9 +14,12 @@ sessions in Herdr. `install.sh` installs or updates them into a Herdr app home
 - `machines` — load of each machine: CPU, memory, swap, disk, the heaviest and the orphaned processes.
 - `machines-menu` — the right-click menu of an orphaned process in `machines`.
 - `pane-plus` — a pane header with a "copy hc send" button, for layouts that frame their panes.
-- `spaces-plus` — workspace spaces with stable coloured avatars and worktrees under their checkout.
+- `spaces-plus` — the left menu: workspace spaces with stable coloured avatars (or your own icon from
+  `mods/spaces-plus/space-icons/<space-name-slug>.svg|png`), worktrees under their checkout, each
+  space's tabs with one status mark (working / needs you / idle), and a collapsible rail.
 - `spaces-plus-menu` — the "+" menu of `spaces-plus` (open a folder as a space, new folder).
 - `tabs-plus` — tabs with pane layouts for the shown tab (zoom, columns, rows, main left, main top, grid).
+- `workspace-status-plus` — the status bar: machine, the shown space's branch (click it to switch branch), agent count.
 
 The layout `harness` places them around the terminals. Switch to it in Herdr (`layout.switch`).
 

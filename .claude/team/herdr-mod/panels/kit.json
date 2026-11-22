@@ -11,7 +11,8 @@
     "pane-plus",
     "spaces-plus",
     "spaces-plus-menu",
-    "tabs-plus"
+    "tabs-plus",
+    "workspace-status-plus"
   ],
   "layouts": [
     "harness"

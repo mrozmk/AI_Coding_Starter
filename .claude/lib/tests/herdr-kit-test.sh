@@ -100,7 +100,7 @@ installed_ok() {
   done
 }
 ok '[ "$RC" = 0 ]' "install → 0"
-ok installed_ok "eleven folders with main.js and a marker listing the kit's files"
+ok installed_ok "twelve folders with main.js and a marker listing the kit's files"
 ok 'cmp -s "$KD/layouts/harness.json" "$APP/layouts/harness.json" && [ "$(cat "$APP/layouts/.harness$MARK")" = "$(sha "$APP/layouts/harness.json")" ]' "layout installed with its digest sidecar"
 ok '[ "$(others)" = "$base" ]' "install leaves every other file byte-identical"
 

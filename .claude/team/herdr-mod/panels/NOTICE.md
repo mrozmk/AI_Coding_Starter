@@ -2,7 +2,7 @@
 
 ## Mods derived from Herdr
 
-Four mods of this kit are derived from Herdr's shipped mods, Apache License 2.0
+Five mods of this kit are derived from Herdr's shipped mods, Apache License 2.0
 (`LICENSE-Apache-2.0.txt`), modified. Each one's `main.js` says so on its first line.
 
 | Kit mod | Derived from | Herdr version (`mod.json` → `cloned_from`) |
@@ -11,6 +11,7 @@ Four mods of this kit are derived from Herdr's shipped mods, Apache License 2.0
 | `pane-plus` | `pane` | 0.1.13 |
 | `spaces-plus` | `spaces` | 0.1.13 |
 | `tabs-plus` | `tabs` | 0.1.13 |
+| `workspace-status-plus` | `workspace-status` | 0.1.16 |
 
 The icons that came with those Herdr mods are covered by Herdr's notices (Apache License 2.0;
 Lucide).
