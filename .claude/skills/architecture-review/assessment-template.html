@@ -1,0 +1,308 @@
+<!--
+  Architecture Assessment — HTML report template (report 2 of /architecture-review)
+  Render by replacing {{placeholders}} with values from the run — same syntax as report-template.html:
+    {{field}}                      a value
+    {{#each list}} ... {{/each}}   repeat the inner block per item
+    {{#if field}} ... {{/if}}      render only when the field is truthy
+  Save the rendered file into the run's scratch directory; Publish moves it to
+  .agents/reference/architecture-assessment-YYYY-MM-DD.html (NEVER the repo source tree).
+
+  Sources — never computed by hand:
+    - Scorecard values, area scores, {{overall}}, {{scoredShare}}, {{inconclusive}} and
+      {{inconclusiveReasons}} are copied from scorecard.json (`arch-assess.mjs score`).
+    - Every finding card field comes from records.json (one record = one card).
+    - Measurements come from arch-measure.json (`arch-assess.mjs measure`).
+  Axis cell: the value 0–3, or "not assessed — {{reason}}" when the value is null. The four axis
+  cells are filled by name (axes.boundaries, axes.runtime, axes.change_cost, axes.safety_net) in
+  the header's order — never by iterating axes: scorecard.json writes its keys sorted.
+  Verdict call: keep | restructure | inconclusive — forced to inconclusive when the script says so.
+  Findings: three tiers (Needed now · Before the next feature in the area · When convenient); measured
+  effects and predicted consequences are labelled apart. A tier with no record shows one line
+  ({{noTierFinding}}, per tier); no record in any tier sets {{noFindings}}.
+  Language: English, plain, no hedging. Vocabulary: ASSESSMENT.md.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Architecture Assessment — {{repoName}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        --bg: #fafaf9;
+        --ink: #111111;
+        --ink-2: #444444;
+        --ink-3: #888888;
+        --ink-4: #bbbbbb;
+        --line: #e8e6e3;
+        --line-soft: #f0f0f0;
+        --green: #3a8d4f;
+        --green-soft: #eaf3ec;
+        --amber: #d49043;
+        --amber-soft: #fdf4ee;
+        --red: #b5483b;
+        --red-soft: #fbeeec;
+        --slate: #3a6588;
+        --slate-soft: #f0f5fa;
+        --dark: #1a1d20;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        margin: 0;
+        padding: 32px 16px;
+        font-size: 14px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      .container { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+      .header-strip {
+        display: flex; justify-content: space-between; align-items: baseline;
+        padding: 0 4px; font-size: 12px; color: var(--ink-3);
+      }
+      .header-strip .title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+      .card { background: #fff; border: 1px solid var(--line-soft); border-radius: 20px; padding: 28px 32px; }
+      .card h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+      .card h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 10px; }
+      .card p { color: var(--ink-2); margin: 0 0 8px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      .muted { color: var(--ink-3); font-size: 12px; }
+      .warn { background: var(--amber-soft); color: var(--amber); border-radius: 12px; padding: 10px 14px; font-size: 13px; margin-top: 10px; }
+      .section-label {
+        text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px; font-weight: 600;
+        color: var(--ink-3); margin: 16px 0 6px;
+      }
+      .badge {
+        text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; font-weight: 600;
+        padding: 5px 11px; border-radius: 999px; display: inline-block;
+      }
+      .call-keep         { background: var(--green-soft); color: var(--green); }
+      .call-restructure  { background: var(--red-soft); color: var(--red); }
+      .call-inconclusive { background: var(--slate-soft); color: var(--slate); }
+      .tier-now   { background: var(--red-soft); color: var(--red); }
+      .tier-next  { background: var(--amber-soft); color: var(--amber); }
+      .tier-later { background: var(--slate-soft); color: var(--slate); }
+      .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      .stat { background: var(--bg); border: 1px solid var(--line-soft); border-radius: 12px; padding: 10px 14px; min-width: 120px; }
+      .stat .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+      .stat .v { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.3; }
+      .scroll { overflow-x: auto; margin-top: 8px; }
+      table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+      table.t th {
+        text-align: left; text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px;
+        font-weight: 600; color: var(--ink-3); padding: 0 12px 8px 0; border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+      }
+      table.t td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: var(--ink-2); }
+      table.t tr:last-child td { border-bottom: none; }
+      .na { color: var(--ink-3); font-size: 12px; }
+      .finding { border: 1px solid var(--line-soft); border-radius: 16px; padding: 18px 20px; margin-top: 12px; }
+      .finding-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .finding h3 { font-size: 15px; font-weight: 700; margin: 0; }
+      .facts { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; margin-top: 10px; font-size: 13px; }
+      .facts .k { color: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; padding-top: 2px; }
+      .facts .v { color: var(--ink-2); }
+      ul.plain { margin: 0; padding-left: 18px; color: var(--ink-2); }
+      ul.plain li { margin: 4px 0; }
+      footer {
+        margin-top: 8px; display: flex; justify-content: space-between;
+        font-size: 11px; color: var(--ink-4); padding: 0 4px;
+      }
+      @media (max-width: 760px) {
+        .facts { grid-template-columns: 1fr; }
+        .finding-head { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- 1 Header -->
+      <div class="header-strip">
+        <span class="title">Architecture Assessment — {{repoName}}</span>
+        <span>{{reviewDate}}</span>
+      </div>
+      <section class="card">
+        <h1>Architecture Assessment — {{repoName}}</h1>
+        <p class="mono">revision {{revision}} · scope {{focus}} · tree {{treeStatus}}</p>
+        {{#if treeChanged}}
+        <div class="warn">The working tree changed while this run read it ({{treeChangedText}}): measurements, auditor findings and anchors may come from different file versions.</div>
+        {{/if}}
+        <div class="section-label">Runs</div>
+        <table class="t">
+          <thead><tr><th>Run</th><th>Took part</th><th>Reason</th></tr></thead>
+          <tbody>
+            {{#each runs}}
+            <tr><td>{{name}}</td><td>{{tookPart}}</td><td>{{reason}}</td></tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 2 Verdict -->
+      <section class="card">
+        <h2>Verdict <span class="badge call-{{verdictCall}}">{{verdictCall}}</span></h2>
+        <p>{{verdictText}}</p>
+        <div class="stats">
+          <div class="stat"><div class="k">Overall</div><div class="v">{{overall}} / 10</div></div>
+          <div class="stat"><div class="k">Lines scored</div><div class="v">{{scoredShare}}</div></div>
+        </div>
+        <p class="muted">The overall score is a coverage-adjusted lower bound: an unscored area counts with 0 points over its lines.</p>
+        {{#if inconclusive}}
+        <div class="warn">Inconclusive: {{inconclusiveReasons}}</div>
+        {{/if}}
+      </section>
+
+      <!-- 3 Scorecard -->
+      <section class="card">
+        <h2>Scorecard</h2>
+        <p class="muted">Axes 0–3 (3 = nothing above "when convenient"). Area score = assessed points / 12 × 10; a not-assessed axis earns 0.</p>
+        <div class="scroll">
+          <table class="t">
+            <thead><tr><th>Area</th><th>Boundaries</th><th>Runtime</th><th>Change cost</th><th>Safety net</th><th>Score</th><th></th></tr></thead>
+            <tbody>
+              {{#each areas}}
+              <tr>
+                <td class="mono">{{name}}<br /><span class="muted">{{sourceLines}} lines</span></td>
+                <td>{{#if axes.boundaries.assessed}}{{axes.boundaries.value}}{{/if}}{{#if axes.boundaries.notAssessed}}<span class="na">not assessed — {{axes.boundaries.reason}}</span>{{/if}}</td>
+                <td>{{#if axes.runtime.assessed}}{{axes.runtime.value}}{{/if}}{{#if axes.runtime.notAssessed}}<span class="na">not assessed — {{axes.runtime.reason}}</span>{{/if}}</td>
+                <td>{{#if axes.change_cost.assessed}}{{axes.change_cost.value}}{{/if}}{{#if axes.change_cost.notAssessed}}<span class="na">not assessed — {{axes.change_cost.reason}}</span>{{/if}}</td>
+                <td>{{#if axes.safety_net.assessed}}{{axes.safety_net.value}}{{/if}}{{#if axes.safety_net.notAssessed}}<span class="na">not assessed — {{axes.safety_net.reason}}</span>{{/if}}</td>
+                <td><strong>{{score}}</strong><br /><span class="muted">{{assessedAxes}} of 4 axes</span></td>
+                <td>{{sentence}}</td>
+              </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 4 Measurements -->
+      <section class="card">
+        <h2>Measurements</h2>
+        <div class="section-label">Sizes</div>
+        <div class="scroll">
+          <table class="t">
+            <thead><tr><th>Area</th><th>Source files</th><th>Source lines</th><th>Test files</th><th>Test lines</th><th>Change cost (median / max files)</th></tr></thead>
+            <tbody>
+              {{#each sizes}}
+              <tr><td class="mono">{{name}}</td><td>{{sourceFiles}}</td><td>{{sourceLines}}</td><td>{{testFiles}}</td><td>{{testLines}}</td><td>{{changeCost}}</td></tr>
+              {{/each}}
+            </tbody>
+          </table>
+        </div>
+        <div class="section-label">System map</div>
+        {{#if mapSkipped}}<p class="muted">Not compared — {{mapSkipped}}.</p>{{/if}}
+        {{#if mapCompared}}
+        <p class="muted">Candidates to inspect, not violations — a breach needs a rule that constrains the source dependency.</p>
+        <ul class="plain">
+          {{#each mapAgainst}}<li class="mono">against: {{importer}} → {{imported}} (declared {{linkKind}} the other way)</li>{{/each}}
+          {{#each mapUndeclared}}<li class="mono">undeclared: {{importer}} → {{imported}} ({{count}} imports)</li>{{/each}}
+          {{#each mapIncomparable}}<li class="mono">incomparable: {{from}} {{kind}} {{to}} — {{reason}}</li>{{/each}}
+        </ul>
+        {{/if}}
+        <div class="section-label">Cycles between areas</div>
+        <ul class="plain">
+          {{#each cycles}}<li class="mono">{{members}}</li>{{/each}}
+        </ul>
+        {{#if noCycles}}<p class="muted">None.</p>{{/if}}
+      </section>
+
+      <!-- 5 What works -->
+      <section class="card">
+        <h2>What works — keep as is</h2>
+        <ul class="plain">
+          {{#each keep}}<li>{{text}}</li>{{/each}}
+        </ul>
+      </section>
+
+      <!-- 6 Findings -->
+      <section class="card">
+        <h2>Findings</h2>
+        {{#each tiers}}
+        <div class="section-label">{{tierName}}</div>
+        {{#each findings}}
+        <div class="finding">
+          <div class="finding-head">
+            <h3>{{title}}</h3>
+            <span class="badge tier-{{tier}}">{{tierName}}</span>
+          </div>
+          <div class="facts">
+            <div class="k">Claim</div><div class="v">{{claim}}</div>
+            <div class="k">Rule or promise broken</div><div class="v">{{rule}}</div>
+            <div class="k">Anchors</div><div class="v mono">{{anchors}}</div>
+            <div class="k">Areas · class</div><div class="v">{{areas}} · {{className}}</div>
+            <div class="k">Evidence kind</div><div class="v">{{evidenceKind}}</div>
+            <div class="k">Verified by</div><div class="v">{{verifiedBy}}</div>
+            <div class="k">Source</div><div class="v">{{source}}</div>
+            <div class="k">Consequence ({{consequenceKind}})</div><div class="v">{{consequence}}</div>
+            <div class="k">Change</div><div class="v">{{change}}</div>
+            <div class="k">Effort · confidence</div><div class="v">{{effort}} · {{confidence}}</div>
+            {{#if candidate}}<div class="k">Report 1</div><div class="v"><a href="{{reportOneFile}}">candidate {{candidate}}</a></div>{{/if}}
+          </div>
+        </div>
+        {{/each}}
+        {{#if noTierFinding}}<p class="muted">Nothing reached this tier.</p>{{/if}}
+        {{/each}}
+        {{#if noFindings}}<p class="muted">Nothing reached a tier.</p>{{/if}}
+      </section>
+
+      <!-- 7 Corrections -->
+      <section class="card">
+        <h2>Corrections</h2>
+        <p class="muted">Findings the refutation pass refuted or narrowed, confirmed by the main session in the code.</p>
+        <ul class="plain">
+          {{#each corrections}}<li><strong>{{title}}</strong> — {{kind}}: {{note}} <span class="mono">{{anchors}}</span></li>{{/each}}
+        </ul>
+      </section>
+
+      <!-- 8 Not recommended -->
+      <section class="card">
+        <h2>Not recommended</h2>
+        <ul class="plain">
+          {{#each notRecommended}}<li>{{text}}</li>{{/each}}
+        </ul>
+      </section>
+
+      <!-- 9 Documentation drift -->
+      <section class="card">
+        <h2>Documentation drift</h2>
+        <ul class="plain">
+          {{#each drift}}<li>{{text}} <span class="mono">{{anchors}}</span></li>{{/each}}
+        </ul>
+      </section>
+
+      <!-- 10 Suggested order -->
+      <section class="card">
+        <h2>Suggested order</h2>
+        <ol class="plain">
+          {{#each order}}<li>{{text}}</li>{{/each}}
+        </ol>
+      </section>
+
+      <!-- 11 Not covered -->
+      <section class="card">
+        <h2>Not covered</h2>
+        <div class="section-label">Unread</div>
+        <ul class="plain">{{#each unread}}<li class="mono">{{text}}</li>{{/each}}</ul>
+        <div class="section-label">Executed commands</div>
+        <ul class="plain">{{#each executed}}<li><span class="mono">{{command}}</span> — {{result}}</li>{{/each}}</ul>
+        <div class="section-label">Unmeasured</div>
+        <ul class="plain">{{#each unmeasured}}<li>{{text}}</li>{{/each}}</ul>
+      </section>
+
+      <footer>
+        <span>/architecture-review — assessment</span>
+        <span>{{reviewDate}}</span>
+      </footer>
+    </div>
+  </body>
+</html>
