@@ -144,7 +144,7 @@ deliver() {
       || [ "${tier:-}" = operator ] \
       || [ -n "$(ask_get "$id" requires_decision)" ]; then
     if ! verify_operator "$id" "$a"; then
-      ask_cas "$id" "delivering answered" timed-out >/dev/null 2>&1 || true
+      ask_reject "$id" >/dev/null 2>&1 || true
       out_refuse "Operator approval could not be verified for $id"
       return 0
     fi

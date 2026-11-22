@@ -270,6 +270,10 @@ out=$(cd "$CLONE" && CLAUDE_PROJECT_DIR="$CLONE" bash "$MAIN/.claude/lib/team-as
 ok 'grep -q "^answered — end your turn now" <<<"$out" && [ "$(st a-1)" != delivered ]' "wait does not deliver an Operator-bound answer"
 TO=16 H "$T/w7.out"
 ok '[ "$(j "$T/w7.out" .decision)" = block ] && grep -q "Operator approval could not be verified for a-1" "$T/w7.out"' "the next Stop verifies it in the hook (no decision → refused)"
+ok '[ ! -e "$AD/a-1.answer.json" ] && ls "$AD"/a-1.answer.rejected-*.json >/dev/null 2>&1 && [ "$(st a-1)" = timed-out ]' "the unverified answer moves aside and the ask reopens"
+(cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" \
+  && ask_answer_write a-1 '{"id":"a-1","form":"text","value":"go on","authority":"teamlead","why":"w","decision":"","answered_at":"x","lead_session_id":"lid-1"}'); ARC=$?
+ok '[ "$ARC" = 0 ]' "the reopened ask takes a new answer"
 
 # ================================================================================================
 # guards

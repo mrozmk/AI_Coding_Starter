@@ -158,6 +158,18 @@ ask_answer_write() {
   rm -f "$tmp"
 }
 
+# ask_reject <id> — an answer the hook could not verify moves aside (kept for the audit as
+# a-<n>.answer.rejected-<epoch>-<pid>.json) and the ask times out: else ask_reconcile would revive
+# it as answered on every retry, and the lead could neither see nor re-answer the ask.
+ask_reject() {
+  local id="$1"
+  ask_lock || return 1
+  [ ! -f "$ASK_D/$id.answer.json" ] \
+    || mv "$ASK_D/$id.answer.json" "$ASK_D/$id.answer.rejected-$(date +%s)-$$.json"
+  case "$(ask_get "$id" state)" in answered|delivering) ask_set "$id" '.state = "timed-out"' ;; esac
+  ask_unlock
+}
+
 # ask_poll <id> <deadline epoch> → prints the answer JSON (0), 1 on the deadline, 2 withdrawn.
 ask_poll() {
   while :; do
