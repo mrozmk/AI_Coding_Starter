@@ -87,9 +87,11 @@ a4 --what="--data '{\"password\": \"pp9pp9" # guard-push:allow
 a4 --what 'export DB_PASSWORD=dbdb77' # guard-push:allow
 a4 --what '{"password": "a\"b7b7"}' # guard-push:allow
 a4 --what 'Server=x;Password="c""d8d8";' # guard-push:allow
+a4 --what 'deploy --password  ee55ff' # guard-push:allow
+a4 --what 'login --token "q\"rr66"' # guard-push:allow
 F4="$(mfile "$T/m4")"
-[ "$(count "$F4")" = 9 ] \
-  && ! jq -r '.what, .answer' "$F4" | grep -qE 'abc123|xyz|hunter2|s3cr|k9k9k9|t0k3n|ab12|pp9pp9|dbdb77|b7b7|d8d8' # guard-push:allow
+[ "$(count "$F4")" = 11 ] \
+  && ! jq -r '.what, .answer' "$F4" | grep -qE 'abc123|xyz|hunter2|s3cr|k9k9k9|t0k3n|ab12|pp9pp9|dbdb77|b7b7|d8d8|ee55ff|rr66' # guard-push:allow
 ok "4 secrets masked in what and answer" $?
 
 # (5) 20 concurrent writers: 20 whole lines.

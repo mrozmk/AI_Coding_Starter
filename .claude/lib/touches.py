@@ -22,7 +22,7 @@ _KEY = (r"password|passwd|pwd|secret|token|sig|connectionstring|accountkey|share
 _Q = r""""(?:\\.|""|[^"\\])*(?:"|$)|'(?:\\.|''|[^'\\])*(?:'|$)"""
 _LABELLED = re.compile(r"""(["']?)(?<![A-Za-z0-9])([A-Za-z0-9_]*?(?:%s))\1(\s*[=:]\s*)(%s|[^\s;&,"'}]+)"""
                        % (_KEY, _Q), re.I)
-_FLAGS = re.compile(r"""(--(?:password|secret|token|sas-token|connection-string|account-key))([ =])("[^"]*"|'[^']*'|\S+)""", re.I)
+_FLAGS = re.compile(r"""(--(?:password|secret|token|sas-token|connection-string|account-key))(\s*=\s*|\s+)(%s|\S+)""" % _Q, re.I)
 _BEARER = re.compile(r"\b(Bearer\s+)\S+", re.I)
 # The known-format tokens of hooks/lib/leak-patterns.sh, prefix kept and length relaxed: a token
 # cut by an upstream truncation is still masked.
