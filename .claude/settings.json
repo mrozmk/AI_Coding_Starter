@@ -62,6 +62,7 @@
       "Bash(bash .claude/lib/git-baseline.sh:*)",
       "Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)",
       "Bash(bash .claude/lib/design-render.sh:*)",
+      "Bash(bash .claude/lib/touches.sh report*)",
       "Bash(bash .claude/skills/pr-comments/references/pr-api.sh:*)",
       "Bash(bash .claude/skills/audit-security/scripts/probe-tools.sh)",
       "Bash(bash .claude/skills/audit-security/scripts/scan-secrets.sh:*)",
@@ -373,6 +374,11 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/team-status.sh\"",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/touch-notify.sh\"",
+            "async": true
           }
         ]
       }

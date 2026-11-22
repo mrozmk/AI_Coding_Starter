@@ -86,8 +86,9 @@ Every scripted caller survives a missing or failing `touches.sh`: one `warn: tou
 - `touches.sh report --brief --team T --ticket K --run RUN`: the run's count from the run id's
   timestamp (`Operator touches: <n> — <a>× <reason> (<kind>), …`), then `Recurring:` lines for
   clusters of three or more over the whole log that the run contributed to. The wrapup publishes
-  **only the count line**; the `Recurring:` lines feed its local ticket proposals and are never
-  pasted anywhere (a log example may come from another run or a solo session).
+  **only the count line**; the `Recurring:` lines are local context, never a ticket on their own
+  (the wrapup's follow-up bar drafts tickets only from `→ follow-up` lines of the acceptance brief),
+  and are never pasted anywhere (a log example may come from another run or a solo session).
 - `/tasks-status` shows the last seven days' header and top rows when a log exists.
 
 ## Dedup and limits
