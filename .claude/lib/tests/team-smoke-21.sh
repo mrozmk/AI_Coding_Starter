@@ -261,6 +261,7 @@ expect 0 "stop .agents/team/runs/$RUN_ID/wrapup-1-1.json — wrapup proposals: $
 # the lead is not stage time.
 python3 -I - "$CL" "$RD" "$WORK" > "$WORK/out" 2>&1 <<'PY' || fail "(w) audit counts the proposals stop: $(cat "$WORK/out")"
 import json, os, sys
+sys.dont_write_bytecode = True  # no __pycache__/ in the clone: (k) validates a clean tree
 sys.path.insert(0, sys.argv[1])
 import team_audit as a
 recs = a.load_records(sys.argv[2], ["wrapup"])
@@ -358,6 +359,267 @@ expect 0 "" "(w) no lead: unchanged"; mv "$WORK/tl.json" "$TD/teamlead.json"
 rm -f "$RD"/wrapup-* "$RD"/teamlead-wrapup-* "$RD/opinion-1.md" "$CLONE/$P" "$CLONE/$P2"
 session planner 1 "$BASE"
 echo "team-smoke-21: (w) wrapup proposals OK"
+
+# ---- (ws) a standards item: proposed, decided, written, verified ----
+H0="$(git -C "$CLONE" rev-parse HEAD)"; BR0="$(git -C "$CLONE" branch --show-current)"
+cp "$RD/teamlead-notes.md" "$WORK/ws-notes" 2>/dev/null || : > "$WORK/ws-notes"
+DOC="$CLONE/docs/coding-standards.md"; PAT="$CLONE/.agents/memory/patterns.md"
+mkdir -p "$CLONE/docs" "$CLONE/.agents/memory"
+printf '%s\n' '# Coding standards' '' '## Rules' '' '### CS-1 — a' '- Enforced by: review' '- Applies to: all' \
+  '- Example: a.sh:1' '- Why: a' '' '### CS-3 — b (withdrawn)' '- Enforced by: review' '- Applies to: all' \
+  '- Example: b.sh:1' '- Why: b' '' '## Shared helpers' '' '| Need | Use | Path |' '|---|---|---|' \
+  '| HTTP call | `get()` | `h.sh:1` |' '' '## One shape per problem' '' '| Problem | Shape | Reference |' \
+  '|---|---|---|' '' '## Open — pick one' '' '- Dates — two ways.' > "$DOC"
+printf '%s\n' '---' 'created: 2026-01-01' '---' '' '# Memory: Patterns' '' '## Format' '' '```' '## {Pattern name}' \
+  '```' '' '## Old trap (2026-01-01)' '' 'old body' '```' '## not a heading' '```' '' '## Next (2026-01-02)' '' \
+  'next body' > "$PAT"
+git -C "$CLONE" add docs/coding-standards.md .agents/memory/patterns.md
+git -C "$CLONE" commit --quiet -m "standards fixtures"
+QA="$(git -C "$CLONE" rev-parse HEAD)"
+session wrapup 1 "$QA"
+ST() { run "$CLONE" bash .claude/lib/team-standards.sh "$@"; }
+SV() { run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-verify "$RD" "$@"; }
+qa_files() { git -C "$CLONE" checkout --quiet "$QA" -- docs/coding-standards.md .agents/memory/patterns.md; }
+git -C "$CLONE" show "$QA:docs/coding-standards.md" > "$WORK/ws-qs"; QS="$WORK/ws-qs"
+git -C "$CLONE" show "$QA:.agents/memory/patterns.md" > "$WORK/ws-qp"; QP="$WORK/ws-qp"
+std_item() {  # std_item <id> <group> <section> <text> [<promotes> <sha>] → one JSON item
+  jq -cn --arg id "$1" --arg g "$2" --arg s "$3" --arg t "$4" --arg p "${5:-}" --arg h "${6:-}" \
+    '{id: $id, kind: "memory", group: $g, target: "docs/coding-standards.md", section: $s, text: $t,
+      evidence: "src/a.sh:3", czytelnik: "Before writing code — any change"}
+     + (if $p == "" then {} else {promotes: $p, promotes_sha256: $h} end)'
+}
+mem_item() { jq -cn --arg id "$1" --arg t "$2" --arg g "$3" \
+  '{id: $id, kind: "memory", group: $g, target: $t, text: "an entry", czytelnik: "c"}'; }
+props() { jq -s '{run: "x", attempt: 1, items: .}' > "$CLONE/$1"; }  # props <path> ← items on stdin
+slate() { rm -f "$RD"/wrapup-1-*.json "$RD"/teamlead-wrapup-*.json "$CLONE/$P" "$CLONE/$P2" "$WD"; qa_files; }
+RULE_C="$(printf 'c\n- Enforced by: review\n- Applies to: all\n- Example: c.sh:1\n- Why: c')"
+OLD="## Old trap (2026-01-01)"
+MC1="- memory-1 accept — needed because the next coder copies the helper, opinion-1.md"
+
+# (A) shapes: team_wrapup.py check refuses before the stop.
+std_item memory-1 B Rules "$RULE_C" | jq -c '. + {handoff: "q-1 accepted"}' | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "a standards item is never a hand-off" "(ws) a standards hand-off"
+std_item memory-1 B Misc "x" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "section must be one of" "(ws) an unknown section"
+std_item memory-1 B Rules "$(printf 'c\n- Enforced by: review\n- Applies to: all\n- Example: c.sh:1')" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "rule text must be the rule" "(ws) a rule with 3 bullets"
+std_item memory-1 B Rules "$(printf 'c\n- Enforced by: lint\n- Applies to: all\n- Example: c.sh:1\n- Why: c')" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "Enforced by must be review or tool" "(ws) Enforced by lint"
+std_item memory-1 B "Shared helpers" "| a | b |" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "exactly 3 non-empty cells" "(ws) a row with 2 cells"
+{ std_item memory-1 B "Shared helpers" "| a | b | c |"; std_item memory-2 B "Open — pick one" "- x"; } | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "one standards item per proposals file" "(ws) two standards items"
+std_item memory-1 B "Shared helpers" "| a | b | c |" "$OLD" "$(printf '%064d' 0)" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 2 "promotes needs section Rules" "(ws) promotes on a row"
+std_item memory-1 B "Shared helpers" '| a \| b | c | d |' | props "$P"
+mv "$DOC" "$WORK/ws-away"
+prec --verdict blocked --proposals "$P"; expect 2 "docs/coding-standards.md is absent" "(ws) the doc is absent"
+mv "$WORK/ws-away" "$DOC"
+prec --verdict blocked --proposals "$P"; expect 0 "wrapup-1-1.json" "(ws) an escaped pipe stays in its cell"
+rm -f "$RD"/wrapup-1-*.json
+
+# (B) entry-sha: the fenced '## not a heading' is inside the hashed entry; the preamble is no entry.
+ST entry-sha "$OLD"; expect 0 "" "(ws) entry-sha"
+SHA_OLD="$(cat "$WORK/out")"; [[ "$SHA_OLD" =~ ^[0-9a-f]{64}$ ]] || fail "(ws) entry-sha is no sha"
+sed 's/^## not a heading$/## not a heading!/' "$PAT" > "$WORK/ws-p" && mv "$WORK/ws-p" "$PAT"
+ST entry-sha "$OLD"; expect 0 "" "(ws) entry-sha after a fenced line changed"
+[ "$(cat "$WORK/out")" != "$SHA_OLD" ] || fail "(ws) the fenced line is outside the hashed entry"
+qa_files
+ST entry-sha "$OLD" --rev "$QA"; expect 0 "$SHA_OLD" "(ws) entry-sha of a revision"
+ST entry-sha "## Format"; expect 4 "promotes is not a patterns.md entry heading" "(ws) ## Format is no entry"
+session coder 1 "$QA"; ST entry-sha "$OLD"; expect 2 "the wrapup's" "(ws) entry-sha as a coder"
+session wrapup 1 "$QA"
+
+# (C) a promotion: decide, write, resume, verify, the run limit, the runner check, a changed target.
+{ std_item memory-1 A Rules "$RULE_C" "$OLD" "$SHA_OLD"; mem_item memory-2 .agents/memory/errors.md A; } | props "$P"
+prec --verdict blocked --proposals "$P"; expect 0 "wrapup-1-1.json" "(ws) the proposals stop"
+jq -e --arg s "$(shasum -a 256 "$CLONE/$P" | cut -d' ' -f1)" '.proposals_sha256 == $s' "$RD/wrapup-1-1.json" >/dev/null \
+  || fail "(ws) the stop lacks proposals_sha256"
+cp "$CLONE/$P" "$WORK/ws-p1"; echo ' ' >> "$CLONE/$P"
+dec "$MC1" "- memory-2 decline — no repeatable mistake"; WV; expect 4 "changed since the wrapup's stop" "(ws) proposals changed after the stop"
+cp "$WORK/ws-p1" "$CLONE/$P"
+dec "$MC1" "  correction: x" "- memory-2 decline — no repeatable mistake"; WV; expect 4 "takes no correction" "(ws) a correction"
+dec "$MC1" "- memory-2 decline — no repeatable mistake"; WV; expect 4 "group B accept names its Codex opinion" "(ws) group B by target"
+echo opinion > "$RD/opinion-1.md"
+WV; expect 0 "teamlead-wrapup-1.json" "(ws) decide"
+VF="$RD/teamlead-wrapup-1.json"
+jq -e --arg o "$OLD" '.items[0] | .group == "B" and .section == "Rules" and .promotes == $o and (.text | startswith("c\n"))' \
+  "$VF" >/dev/null || fail "(ws) verdict item: $(cat "$VF")"
+run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-standards.sh add --verdict "$VF" --item memory-1 --target-rev "$QA"
+expect 2 "TeamLead decides standards items" "(ws) the writer refuses the lead"
+session coder 1 "$QA"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-add "$CLONE" memory-1 "$VF" "$QA"
+expect 4 "standards-add is the wrapup's" "(ws) the writer itself refuses a coder"
+session wrapup 1 "$QA"
+cp "$VF" "$WORK/ws-v.json"; ST add --verdict "$WORK/ws-v.json" --item memory-1 --target-rev "$QA"
+expect 4 "the verdict is not this run's" "(ws) a verdict from elsewhere"
+ST add --verdict "$VF" --item memory-2 --target-rev "$QA"; expect 4 "memory-2 is not accepted" "(ws) a declined item"
+ST add --verdict "$VF" --item memory-9 --target-rev "$QA"; expect 4 "not accepted" "(ws) an item not in the verdict"
+MODE0="$(stat -f %Lp "$DOC")"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 0 "applied CS-4" "(ws) written"
+has "### CS-4 — c" "$DOC" || fail "(ws) the rule is not CS-4"
+grep -qxF "$OLD — promoted to docs/coding-standards.md CS-4" "$PAT" && ! grep -qxF "$OLD" "$PAT" \
+  && grep -qxF "## Next (2026-01-02)" "$PAT" && [ "$(head -n 12 "$PAT")" = "$(head -n 12 "$QP")" ] \
+  || fail "(ws) patterns.md after the promotion: $(cat "$PAT")"
+[ "$(stat -f %Lp "$DOC")" = "$MODE0" ] || fail "(ws) the writer changed the doc's mode"
+cp "$DOC" "$WORK/ws-as"; cp "$PAT" "$WORK/ws-ap"; AS="$WORK/ws-as"; AP="$WORK/ws-ap"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 0 "already applied CS-4" "(ws) a rerun"
+cmp -s "$DOC" "$AS" && cmp -s "$PAT" "$AP" || fail "(ws) a rerun changed a file"
+cp "$QP" "$PAT"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 0 "pointer written" "(ws) a resume writes only the pointer"
+cmp -s "$DOC" "$AS" && cmp -s "$PAT" "$AP" || fail "(ws) the resume differs from the first write"
+SV "$QS" "$QS" "$AS" "$QP" "$QP" "$AP"; expect 0 "promoted" "(ws) verify both rendered"
+SV "$QS" "$QS" "$AS" "$QP" "$QP" "$QP"; expect 4 "patterns.md differs" "(ws) verify without the pointer"
+sed 's/CS-4$/CS-9/' "$AP" > "$WORK/ws-ap9"
+SV "$QS" "$QS" "$AS" "$QP" "$QP" "$WORK/ws-ap9"; expect 4 "" "(ws) verify a pointer to CS-9"
+{ cat "$AS"; printf '\n### CS-5 — d\n- Enforced by: review\n- Applies to: all\n- Example: d.sh:1\n- Why: d\n'; } > "$WORK/ws-asx"
+SV "$QS" "$QS" "$WORK/ws-asx" "$QP" "$QP" "$AP"; expect 4 "differs from the accepted item" "(ws) verify an extra rule"
+SV "$QS" "$QS" "$QS" "$QP" "$QP" "$QP"; expect 4 "not applied" "(ws) verify nothing written"
+SV "$QS" "$QS" - "$QP" "$QP" "$AP"; expect 4 "removed" "(ws) verify the doc removed"
+# The run limit: a second proposals file's standards accept is refused.
+std_item memory-3 B "Shared helpers" "| a | b | c |" | props "$P2"
+prec --verdict blocked --proposals "$P2"; expect 0 "wrapup-1-2.json" "(ws) a second proposals stop"
+dec "- memory-3 accept — needed because n, opinion-1.md — over cap because m"
+WV2; expect 4 "memory-3: one standards item per run — 1 already accepted" "(ws) one standards item per run"
+# The runner: check_wrapup_standards then check_wrapup_lead in one shell (the STD_PATTERNS_OK hand-off).
+SG="$WORK/wsg"; mkdir -p "$SG/docs" "$SG/.agents/memory"; git -C "$SG" init --quiet
+sgc() { git -C "$SG" add -A; git -C "$SG" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m "$1"; git -C "$SG" rev-parse HEAD; }
+cp "$QS" "$SG/docs/coding-standards.md"; cp "$QP" "$SG/.agents/memory/patterns.md"; S0="$(sgc qa)"
+git -C "$SG" branch line "$S0"
+sgw() {  # sgw <doc> <patterns> → a wrapup commit on S0
+  git -C "$SG" switch --quiet --detach "$S0"; cp "$1" "$SG/docs/coding-standards.md"; cp "$2" "$SG/.agents/memory/patterns.md"
+  sgc wrapup
+}
+cws() {  # cws <qa> <wrapup> <target_rev> <base> <line ref> → RC
+  printf '{}' > "$RD/wrapup-state.json"
+  set +e; (cd "$SG" && . "$CL/team-lib.sh" && . "$CL/team-validate.sh" && TD="$TD" && RUN="$RUN_ID" \
+    && run_ref() { echo "$RUN_ID"; } && check_wrapup_standards "$@" && check_wrapup_lead "$1" "$2") \
+    > "$WORK/out" 2>&1; RC=$?; set -e
+}
+SW="$(sgw "$AS" "$AP")"
+cws "$S0" "$SW" "$S0" "$S0" refs/heads/line; expect 0 "" "(ws) runner: the accepted item applied, pointer passes the lead check"
+SX="$(sgw "$WORK/ws-asx" "$AP")"
+cws "$S0" "$SX" "$S0" "$S0" refs/heads/line; expect 1 "beyond the TeamLead's accepted standards item" "(ws) runner: an extra edit"
+git -C "$SG" switch --quiet --detach "$SW"; chmod 755 "$SG/docs/coding-standards.md"; SM="$(sgc mode)"
+cws "$S0" "$SM" "$S0" "$S0" refs/heads/line; expect 1 "mode" "(ws) runner: a mode change"
+git -C "$SG" switch --quiet --detach "$S0"; git -C "$SG" rm --quiet docs/coding-standards.md; SD="$(sgc del)"
+cws "$S0" "$SD" "$S0" "$S0" refs/heads/line; expect 1 "removed" "(ws) runner: the doc deleted"
+git -C "$SG" switch --quiet --detach "$S0"; SS="$(sgc sibling)"
+cws "$S0" "$SW" "$SS" "$S0" refs/heads/line; expect 1 "is not on the target line" "(ws) runner: a sibling target_rev"
+mv "$TD/teamlead.json" "$WORK/tl.json"
+cws "$S0" "$SW" "$S0" "$S0" refs/heads/line; expect 1 "without this run's TeamLead" "(ws) runner: no lead"
+mv "$WORK/tl.json" "$TD/teamlead.json"
+# The writer on a changed target: the line added CS-7, so the item becomes CS-8 on top of it.
+qa_files; git -C "$CLONE" switch --quiet -c ws-side "$QA"
+printf '\n### CS-7 — z\n- Enforced by: review\n- Applies to: all\n- Example: z.sh:1\n- Why: z\n' >> "$DOC"
+git -C "$CLONE" commit --quiet -am "line standard"; T="$(git -C "$CLONE" rev-parse HEAD)"
+git -C "$CLONE" switch --quiet "$BR0"
+cmp -s "$DOC" "$QS" || fail "(ws) the worktree is not QA's doc"
+ST add --verdict "$VF" --item memory-1 --target-rev "$T"; expect 0 "applied CS-8" "(ws) written on the target version"
+has "### CS-7 — z" "$DOC" && has "### CS-8 — c" "$DOC" || fail "(ws) not the target version plus CS-8: $(cat "$DOC")"
+git -C "$CLONE" show "$T:docs/coding-standards.md" > "$WORK/ws-ts"
+SV "$WORK/ws-ts" "$QS" "$DOC" "$QP" "$QP" "$PAT"; expect 0 "" "(ws) verify on the target base"
+qa_files; git -C "$CLONE" switch --quiet -c ws-side2 "$QA"
+printf '# Coding standards\n' > "$DOC"; git -C "$CLONE" commit --quiet -am "line drops Rules"; T2="$(git -C "$CLONE" rev-parse HEAD)"
+git -C "$CLONE" switch --quiet "$BR0"
+ST add --verdict "$VF" --item memory-1 --target-rev "$T2"; expect 4 "section Rules appears 0 times" "(ws) a target without the section"
+cmp -s "$DOC" "$QS" && cmp -s "$PAT" "$QP" || fail "(ws) a refused write changed a file"
+git -C "$CLONE" show "$T2:docs/coding-standards.md" > "$WORK/ws-t2s"
+SV "$WORK/ws-t2s" "$QS" "$QS" "$QP" "$QP" "$QP"; expect 0 "" "(ws) verify re-derives the refusal"
+
+# (D) a stale promoted entry: refused, nothing written; the runner re-derives it.
+slate
+std_item memory-1 B Rules "$RULE_C" "$OLD" "$SHA_OLD" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 0 "" "(ws) stale: stop"
+dec "$MC1"; WV; expect 0 "teamlead-wrapup-1.json" "(ws) stale: decide"
+sed 's/^old body$/changed body/' "$PAT" > "$WORK/ws-pe" && cp "$WORK/ws-pe" "$PAT"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 4 "no longer matches" "(ws) a stale entry"
+cmp -s "$DOC" "$QS" && cmp -s "$PAT" "$WORK/ws-pe" || fail "(ws) a stale refusal wrote"
+SV "$QS" "$QS" "$QS" "$WORK/ws-pe" "$QP" "$WORK/ws-pe"; expect 0 "" "(ws) verify a stale refusal"
+! has promoted "$WORK/out" || fail "(ws) a refused promotion reported as promoted"
+{ cat "$WORK/ws-pe"; printf '\n## Extra (2026-01-03)\n\nx\n'; } > "$WORK/ws-pe2"
+SV "$QS" "$QS" "$QS" "$WORK/ws-pe" "$QP" "$WORK/ws-pe2"; expect 0 "" "(ws) verify a stale refusal next to another entry"
+# The runner: a refused promotion leaves patterns.md to check_wrapup_lead — an unaccepted entry fails.
+git -C "$SG" switch --quiet --detach "$S0"; cp "$WORK/ws-pe" "$SG/.agents/memory/patterns.md"; SLP="$(sgc linepat)"
+git -C "$SG" branch line3 "$SLP"
+{ cat "$QP"; printf '\n## Extra (2026-01-03)\n\nx\n'; } > "$WORK/ws-qpx"
+SWX="$(sgw "$QS" "$WORK/ws-qpx")"
+cws "$S0" "$SWX" "$SLP" "$S0" refs/heads/line3
+expect 1 "patterns.md without a TeamLead memory accept" "(ws) runner: a refused promotion does not cover patterns.md"
+# Order: the standards item first, then an ordinary patterns.md entry as its own entry.
+slate
+{ std_item memory-1 B Rules "$RULE_C" "$OLD" "$SHA_OLD"; mem_item memory-2 .agents/memory/patterns.md B; } | props "$P"
+prec --verdict blocked --proposals "$P"; expect 0 "" "(ws) order: stop"
+dec "$MC1" "- memory-2 accept — needed because m, opinion-1.md — over cap because two lessons"
+WV; expect 0 "teamlead-wrapup-1.json" "(ws) order: decide"
+ST add --verdict "$VF" --item memory-2 --target-rev "$QA"; expect 4 "memory-2 is not a standards item" "(ws) order: an ordinary accept"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 0 "applied CS-4" "(ws) order: standards first"
+printf '\n## New (2026-01-03)\n\nnew body\n' >> "$PAT"
+SV "$QS" "$QS" "$DOC" "$QP" "$QP" "$PAT"; expect 0 "" "(ws) order: verify with another patterns.md item"
+
+# (E) a row accepted next to a declined rule.
+slate
+std_item memory-1 B Rules "$RULE_C" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 0 "" "(ws) row: first stop"
+dec "- memory-1 decline — a rule invented from the implementation"; WV; expect 0 "teamlead-wrapup-1.json" "(ws) row: decline the rule"
+ROW='| Retry wrapper | `retry()` | `src/r.sh:2` |'
+std_item memory-2 B "Shared helpers" "$ROW" | props "$P2"
+prec --verdict blocked --proposals "$P2"; expect 0 "" "(ws) row: second stop"
+dec "- memory-2 accept — needed because three copies exist, opinion-1.md"; WV2; expect 0 "teamlead-wrapup-2.json" "(ws) row: accept"
+ST add --verdict "$RD/teamlead-wrapup-2.json" --item memory-2 --target-rev "$QA"; expect 0 "applied row" "(ws) row written"
+[ "$(awk '/^## Shared helpers$/ { f = 1; next } /^## / { f = 0 } f && /^\|/ { l = $0 } END { print l }' "$DOC")" = "$ROW" ] \
+  && ! has "### CS-4" "$DOC" || fail "(ws) the row: $(cat "$DOC")"
+SV "$QS" "$QS" "$DOC" "$QP" "$QP" "$QP"; expect 0 "" "(ws) row: verify"
+{ cat "$DOC"; printf '\n### CS-4 — c\n- Enforced by: review\n- Applies to: all\n- Example: c.sh:1\n- Why: c\n'; } > "$WORK/ws-dr"
+SV "$QS" "$QS" "$WORK/ws-dr" "$QP" "$QP" "$QP"; expect 4 "" "(ws) row: verify with the declined rule written too"
+# A refused row (its section missing on the base): verify re-derives the refusal, the merge check passes.
+grep -vxF '## Shared helpers' "$QS" > "$WORK/ws-nosec"
+SV "$WORK/ws-nosec" "$QS" "$QS" "$QP" "$QP" "$QP"; expect 0 "" "(ws) row: verify a refused row"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-merged "$RD" "$WORK/ws-nosec" "$WORK/ws-nosec" "$QP"
+expect 0 "" "(ws) row: the merge check skips a refused row"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-merged "$RD" "$DOC" "$DOC" "$QP"
+expect 0 "" "(ws) row: the merge check finds the row once"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-merged "$RD" "$DOC" "$QS" "$QP"
+expect 4 "found 0 times after the merge" "(ws) row: the merge check misses a lost row"
+
+# (G) mixed bases: an old-shape run passes the new runner; a stop without the sha still decides.
+slate
+mem_item memory-1 .agents/memory/errors.md A | props "$P"
+prec --verdict blocked --proposals "$P"; expect 0 "wrapup-1-1.json" "(ws) old shape: stop"
+jq 'del(.proposals_sha256)' "$RD/wrapup-1-1.json" > "$WORK/ws-r" && mv "$WORK/ws-r" "$RD/wrapup-1-1.json"
+dec "- memory-1 accept — needed because n"; WV; expect 0 "teamlead-wrapup-1.json" "(ws) a stop without proposals_sha256"
+git -C "$SG" switch --quiet --detach "$S0"; echo lesson > "$SG/.agents/memory/errors.md"; SE="$(sgc errors)"
+cws "$S0" "$SE" "$S0" "$S0" refs/heads/line; expect 0 "" "(ws) old shape: the standards file unchanged"
+jq '.items[0].target = ".agents/memory/patterns.md"' "$VF" > "$WORK/ws-v" && mv "$WORK/ws-v" "$VF"
+git -C "$SG" switch --quiet --detach "$S0"; echo changed >> "$SG/docs/coding-standards.md"; SL="$(sgc line2)"
+git -C "$SG" branch line2 "$SL"
+git -C "$SG" switch --quiet --detach "$S0"; echo entry >> "$SG/.agents/memory/patterns.md"; SP="$(sgc pat)"
+cws "$S0" "$SP" "$SL" "$S0" refs/heads/line2; expect 0 "" "(ws) a patterns-only accept while the line changed the standards file"
+jq '.items[0].target = "docs/coding-standards.md"' "$VF" > "$WORK/ws-v" && mv "$WORK/ws-v" "$VF"
+SV "$QS" "$QS" "$QS" "$QP" "$QP" "$QP"; expect 4 "verdict lacks the standards payload" "(ws) a standards accept without its payload"
+grep -q 'check_wrapup_standards' "$SRC/.claude/team/prompts/wrapup.md" \
+  && grep -q 'standards route off' "$SRC/.claude/team/prompts/wrapup.md" || fail "(ws) the wrapup prompt lacks the route gate"
+
+# (F) a symlinked destination is refused; a foreign .tmp beside the doc stays untouched.
+slate
+std_item memory-1 B Rules "$RULE_C" | props "$P"
+prec --verdict blocked --proposals "$P"; expect 0 "" "(ws) symlink: stop"
+dec "$MC1"; WV; expect 0 "teamlead-wrapup-1.json" "(ws) symlink: decide"
+cp "$DOC" "$CLONE/docs/copy.md"; rm -f "$DOC"; ln -s copy.md "$DOC"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 4 "symlinked destination" "(ws) a symlinked doc"
+cmp -s "$CLONE/docs/copy.md" "$QS" || fail "(ws) the symlink target changed"
+rm -f "$DOC" "$CLONE/docs/copy.md"; qa_files
+printf 'keep' > "$DOC.tmp"; chmod 600 "$DOC.tmp"
+ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 0 "applied CS-4" "(ws) written beside a foreign .tmp"
+[ "$(cat "$DOC.tmp")" = keep ] && [ "$(stat -f %Lp "$DOC.tmp")" = 600 ] || fail "(ws) the writer touched docs/coding-standards.md.tmp"
+rm -f "$DOC.tmp"
+
+slate; rm -f "$RD"/wrapup-* "$RD/opinion-1.md"
+git -C "$CLONE" switch --quiet -C "$BR0" "$H0"; git -C "$CLONE" branch --quiet -D ws-side ws-side2
+cp "$WORK/ws-notes" "$RD/teamlead-notes.md"
+[ -z "$(git -C "$CLONE" status --porcelain)" ] || fail "(ws) left the clone dirty: $(git -C "$CLONE" status --porcelain)"
+session planner 1 "$BASE"
+echo "team-smoke-21: (ws) standards item OK"
 
 # ---- (k) plan approve → the runner accepts the planner record and launches the coder -------------
 # A rejected approve is spent: the planner is sent the reason (team-run-stop.sh reject_record) and the

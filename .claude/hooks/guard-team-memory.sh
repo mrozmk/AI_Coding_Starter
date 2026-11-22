@@ -8,7 +8,8 @@
 #
 # Team mode ⇔ .agents/team/session.json exists (written by team-run.sh). Hook processes
 # are not documented to inherit the session environment, so the file is the signal.
-# Blocks (exit 2) Edit/Write under .agents/memory/ in team mode; contract:
+# Blocks (exit 2) Edit/Write under .agents/memory/ and of exactly docs/coding-standards.md (never
+# docs/**; the wrapup writes it through team-standards.sh) in team mode; contract:
 # .agents/reference/team-mode.md. MUST be registered synchronously. Fails open.
 
 command -v jq >/dev/null 2>&1 || exit 0
@@ -22,8 +23,16 @@ FILE=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.file_path // ""' 2>/dev/null)
 [ -z "$FILE" ] && exit 0
 
 case "$FILE" in
-  */.agents/memory/*|.agents/memory/*) ;;
-  *) exit 0 ;;
+  */.agents/memory/*|.agents/memory/*) WHAT=memory ;;
+  *)
+    # Exactly docs/coding-standards.md (never docs/**), resolved, so an alias or a symlink of
+    # another name that points at it matches too.
+    case "$FILE" in /*) ;; *) FILE="$ROOT/$FILE" ;; esac
+    real() { python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null; }
+    P="$(real "$FILE")" && STD="$(real "$ROOT/docs/coding-standards.md")" \
+      || { P="$(printf '%s' "${FILE#"$ROOT"/}" | sed -e 's#/\./#/#g' -e 's#^\./##')"; STD=docs/coding-standards.md; }
+    [ "$P" = "$STD" ] || exit 0
+    WHAT=standards ;;
 esac
 # The per-run TeamLead never writes memory, even while the wrapup stage runs; a stale lead neither.
 if [ "${TEAM_SESSION_ROLE:-}" = TeamLead ]; then
@@ -42,5 +51,9 @@ fi
 [ "$(jq -r '.role // ""' "$SESSION" 2>/dev/null)" = wrapup ] && exit 0
 
 RUN=$(jq -r '.run // "<run>"' "$SESSION" 2>/dev/null)
+if [ "$WHAT" = standards ]; then
+  echo "team mode: docs/coding-standards.md is written by the wrapup role only (team-standards.sh add, after the TeamLead accepts) — add the finding under ## Learnings, prefixed standards:, in .agents/team/runs/${RUN}/notes.md" >&2
+  exit 2
+fi
 echo "team mode: project memory is written by the wrapup role only — add the lesson under ## Learnings in .agents/team/runs/${RUN}/notes.md (see .agents/reference/team-mode.md)" >&2
 exit 2

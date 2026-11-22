@@ -59,8 +59,12 @@ expect 2 "identity not current" "(c) stale lead refused"
 lhook guard-team-memory.sh "$(write_p Write "$CLONE/.agents/memory/decisions.md" "")"
 expect 2 "identity not current" "(c) lead without a session_id refused"
 shook guard-team-memory.sh "$M"; expect 0 "" "(c) wrapup still writes memory"
+S="$(write_p Write "$CLONE/docs/coding-standards.md")"
+lhook guard-team-memory.sh "$S"; expect 2 "TeamLead decides memory proposals" "(c) lead refused the standards file"
+shook guard-team-memory.sh "$S"; expect 0 "" "(c) wrapup writes the standards file"
 session coder 1 "$BASE"
 shook guard-team-memory.sh "$M"; expect 2 "wrapup role only" "(c) coder still refused"
+shook guard-team-memory.sh "$S"; expect 2 "wrapup role only" "(c) coder refused the standards file"
 echo "team-smoke-20: (c) memory guard OK"
 
 # ---- (d) team-record.sh refuses the lead; guard-team-question.sh skips it ----------------------

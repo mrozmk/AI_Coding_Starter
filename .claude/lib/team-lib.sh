@@ -246,12 +246,30 @@ team_claude_project_dir() {
   echo "${TEAM_DASH_PROJECT_DIR:-$cfg/projects/$(team_project_slug "$1")}"
 }
 
-# team_non_memory_files <from> <to> → changed paths outside .agents/memory/; rc 1 if the diff failed.
+# team_non_memory_files <from> <to> → changed paths outside .agents/memory/ and docs/coding-standards.md
+# (check_wrapup_standards judges that one); rc 1 if the diff failed.
 # --no-renames: a move from code into memory must list the deleted source path too.
 team_non_memory_files() {
   local d
   d="$(git diff --no-renames --name-only "$1" "$2")" || return 1
-  printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^$' || true
+  printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^docs/coding-standards\.md$' -e '^$' || true
+}
+
+# team_blob_tmp <rev> <path> → a temp file holding the blob, or "-" when the path is absent there
+# (the caller removes the file).
+team_blob_tmp() {
+  local t
+  t="$(mktemp)" || return 1
+  if git show "$1:$2" > "$t" 2>/dev/null; then echo "$t"; else rm -f "$t"; echo -; fi
+}
+
+# team_lead_accepts <run dir> → JSON array of every accepted item in the run's teamlead-wrapup
+# verdicts ([] when there is none).
+team_lead_accepts() {
+  local a
+  a="$(cat "$1"/teamlead-wrapup-*.json 2>/dev/null \
+    | jq -s '[.[].items // [] | .[] | select(.decision == "accept")]' 2>/dev/null)" || a=""
+  printf '%s\n' "${a:-[]}"
 }
 
 team_records() {

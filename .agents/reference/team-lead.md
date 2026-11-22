@@ -537,8 +537,10 @@ runs again.
   - The wrapup asks nothing in its window. With at least one item it writes
     `<round dir>/wrapup_proposals-<a>_<k>.json` (`team_wrapup.py`: `create-<n>` tickets with title
     and body, `create-<n>` being the draft key; `memory-<n>` entries with group A|B, an
-    `.agents/memory/` target, text, `czytelnik:`, and `handoff` for a memory hand-off its decider
-    already accepted) and stops with `team-record.sh --verdict blocked --proposals <file>`. `<k>`
+    `.agents/memory/` or `docs/coding-standards.md` target, text, `czytelnik:`, and `handoff` for a
+    memory hand-off its decider already accepted — a `docs/coding-standards.md` target is a
+    standards item: `section`, exact `text`, `path:line` `evidence`, optional `promotes` +
+    `promotes_sha256`; always group B, never a hand-off) and stops with `team-record.sh --verdict blocked --proposals <file>`. `<k>`
     is the attempt's next free number: `team-record.sh` refuses a file a verdict already names, so a
     decided file is never rewritten. With nothing to propose it writes neither and goes on.
   - That record carries `proposals`, the mark that tells it apart from a block: no notes line,
@@ -560,9 +562,13 @@ runs again.
     only when a future session would otherwise repeat a concrete mistake; one that describes a
     temporary state says when it expires ("until #N lands"). An item the lead cannot judge is
     declined (`cannot judge: …`). One wrong fact in a draft is a `correction:`, not a decline; a
-    draft that needs more is declined with the reason.
+    draft that needs more is declined with the reason. A standards item takes no `correction:`: it
+    is declined with the corrected text as the reason.
   - **Cap:** 1 ticket and 1 memory entry per run (groups A and B together, every proposals file of
-    the run); each further accept needs `over cap because …`. A `handoff` item uses no cap.
+    the run); each further accept needs `over cap because …`. A `handoff` item uses no cap. A
+    standards item counts as a memory entry, and at most one is accepted per run — no override.
+    The stop record carries the proposals file's `proposals_sha256`; `team-verdict.sh` refuses a
+    file changed since the stop.
   - A group B entry (`decisions.md`, `patterns.md`, `index.md` by target, whatever the item says;
     any other memory file, an entry that alters a historical decision) gets a Codex opinion first (`codex-bg.sh`, prompt text only,
     as in Answering).
@@ -573,6 +579,20 @@ runs again.
     or when a decided proposals file changed after its verdict (sha256). The
     wrapup stays the only writer of `.agents/memory/`: the lead's write guard still refuses memory
     paths.
+  - **Standards item.** The wrapup writes an accepted one first, with
+    `team-standards.sh add --verdict <file> --item <id> --target-rev <T>` (`team_wrapup.py
+    standards-add`): the next free `CS-<n>` (withdrawn ids counted, nothing renumbered), a table
+    row or an `Open — pick one` line; a resume adds nothing twice. With `promotes` the
+    `patterns.md` entry becomes the one-line pointer `<heading> — promoted to
+    docs/coding-standards.md CS-<n>` in the same write. The runner (`check_wrapup_standards`)
+    re-renders the accepted item on one base chosen by rule (the `target_rev` version when the line
+    changed the file since the team base, else the QA version) and requires the file — and, for a
+    promotion, `patterns.md` — to be byte-equal to it; a refusal is accepted only when the runner
+    re-derives it from the same inputs and nothing changed. Without an accepted item the file must
+    stay unchanged. In a team run the wrapup promotes a `patterns.md` entry only through an
+    accepted standards item; the merge check's overlap and its pointer-consistency check
+    (`standards-merged` on the merge commit) stand in for `reflection-protocol.md` → Promotion's
+    "merged alone". `guard-team-memory.sh` lets only the wrapup Edit/Write the file.
 
 ## 11. Tracker comments
 

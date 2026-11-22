@@ -172,12 +172,20 @@ if [ "$GATE" = wrapup ]; then
     || bad "--ref must be .agents/team/runs/$RUN/wrapup-decision-<n>.md"
   REF=".agents/team/runs/$RUN/$r"
   for f in $(verdicts); do [ "$(rec "$RD/$f" for)" != "$FOR" ] || bad "$FOR is already decided ($f)"; done
-  # The cap counts the whole run: accepts of earlier proposals files, hand-offs aside.
+  # The cap and the one-standards-item limit count the whole run: accepts of earlier proposals files,
+  # hand-offs aside (tickets, memory entries, standards items).
   prior="$(for f in $(verdicts); do cat "$RD/$f"; done | jq -rs '[.[].items // [] | .[]
     | select(.decision == "accept" and (.handoff | not))] as $a
-    | "\([$a[] | select(.kind == "ticket")] | length),\([$a[] | select(.kind == "memory")] | length)"')"
-  ITEMS="$(python3 -I "$LIB/team_wrapup.py" decide "$TD/runs/$RUN/$FOR" "$RD/$r" "${prior:-0,0}" "$RD" "$RRD")" || exit 4
+    | "\([$a[] | select(.kind == "ticket")] | length),\([$a[] | select(.kind == "memory")] | length)"
+      + ",\([$a[] | select(.kind == "memory" and .target == "docs/coding-standards.md")] | length)"')"
+  # The lead decides the bytes the wrapup's stop named: the file must not move before or during decide.
+  stop_sha="$(rec "$last" proposals_sha256)"
   PROPOSALS_SHA="$(shasum -a 256 "$TD/runs/$RUN/$FOR" | cut -d' ' -f1)"
+  [ -z "$stop_sha" ] || [ "$PROPOSALS_SHA" = "$stop_sha" ] \
+    || bad "$FOR changed since the wrapup's stop — the wrapup writes a new proposals file and stops again"
+  ITEMS="$(python3 -I "$LIB/team_wrapup.py" decide "$TD/runs/$RUN/$FOR" "$RD/$r" "${prior:-0,0,0}" "$RD" "$RRD")" || exit 4
+  [ "$(shasum -a 256 "$TD/runs/$RUN/$FOR" | cut -d' ' -f1)" = "$PROPOSALS_SHA" ] \
+    || bad "$FOR changed since the wrapup's stop — the wrapup writes a new proposals file and stops again"
   t="$(write_verdict)"
   n="$RD/teamlead-notes.md"
   lines="$(jq -r '.[] | "- \(.id) \(.decision) — \(.why)" + (if .over_cap then " — over cap because \(.over_cap)" else "" end)

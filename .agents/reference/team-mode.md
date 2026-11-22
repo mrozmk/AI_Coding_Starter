@@ -133,7 +133,7 @@ branch's base and equal to the supervisor's, or the start is refused.
 | planner | asked normally — with a per-run TeamLead the lead answers through the ask channel, without one the developer in the window (attended); `/brainstorm` approves the spec itself (`Approved (auto — team mode)`) with or without a TeamLead; with a per-run TeamLead its `done` waits for the plan gate (team-lead.md §4) | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
 | coder | with a per-run TeamLead: may ask, the lead answers (ask channel); without one never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
 | qa | with a per-run TeamLead: may ask, the lead answers (ask channel); without one never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
-| wrapup | asked normally (attended), only when it has recommendations; with a per-run TeamLead never — a proposals stop instead | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the wrapup asks nothing: it stops with a proposals file and the lead decides every item, team-lead.md §10) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
+| wrapup | asked normally (attended), only when it has recommendations; with a per-run TeamLead never — a proposals stop instead | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the wrapup asks nothing: it stops with a proposals file and the lead decides every item, team-lead.md §10); also `docs/coding-standards.md`, only an accepted standards item, via `team-standards.sh add` | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
 | cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | published PR via `team-pr.sh create --ready`, `team-record --verdict done --pr <id>` |
 
 'Asked normally (attended)' means, with a per-run TeamLead, that the run's lead answers on an
@@ -297,7 +297,9 @@ to finish its post-create operations. Assignee and the currently active sprint c
 - `failed` — the role cannot finish (e.g. empty QA delta); `--message` required.
 
 **wrapup `done`:** `--pr` = the coder's PR; `output_rev` is the QA revision or a memory-only commit
-on top of it (`git diff --name-only <qa rev> <output_rev>` lists only `.agents/memory/**`);
+on top of it (`git diff --name-only <qa rev> <output_rev>` lists only `.agents/memory/**`, plus
+`docs/coding-standards.md` changed by exactly the TeamLead's accepted standards item — the runner
+re-renders it and compares bytes);
 `runs/<run>/wrapup-<attempt>.md` exists with a `target_rev:` line. `team-merge-check` then expects
 the PR source to be this revision and refuses a memory overlap with the target line unless rerun
 with `--memory-reviewed`.
@@ -378,7 +380,8 @@ github goes only through `.claude/lib/team-pr.sh` (needs `gh`, `teams.github.rep
 ## 9. Never in team mode
 
 - write `.agents/memory/` — except the `wrapup` role after acceptance per team-decision-model.md §3
-  (the hook `guard-team-memory.sh` enforces both);
+  (the hook `guard-team-memory.sh` enforces both); the same holds for `docs/coding-standards.md`,
+  which the wrapup writes only through `team-standards.sh add` for an accepted standards item;
 - start the app — runtime smoke reports `SKIPPED`;
 - merge a PR (`/pr-merge` or `team-integrate.sh` is the supervisor's) or run the trunk writers `team-merge-check.sh`, `team-integrate.sh`, `team-integrate-lock.sh` or `team-automerge-check.sh` — `guard-team-verdict.sh` refuses them in a role session, whatever `workflow.team_merge` says;
 - push to a protected branch;

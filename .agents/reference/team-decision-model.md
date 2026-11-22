@@ -56,7 +56,9 @@ stated in full in one place:
 **Memory acceptance.** Whoever accepts a memory entry or hand-off applies
 `.agents/memory/reflection-protocol.md` → The bar; the default answer is skip. A recommendation without
 `czytelnik:` (a `When to Read` row) is skipped. In the wrapup, (A) is the TeamLead group and (B)
-the Advisor+Reviewer group (`prompts/wrapup.md`).
+the Advisor+Reviewer group (`prompts/wrapup.md`). A standards item (target
+`docs/coding-standards.md`) is accepted like a group B memory entry: same bar, Codex opinion, at
+most one per run (team-lead.md §10).
 
 **Deterministic classes.** `team_prompt_classes.py` knows `merge-line` (a `git merge --no-ff
 origin/<line>` into the team's working branch), `allow-offline` (a settings edit adding only

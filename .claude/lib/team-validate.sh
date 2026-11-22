@@ -226,8 +226,7 @@ check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
     [ -f "$p" ] && [ "$(shasum -a 256 "$p" | cut -d' ' -f1)" = "$(jq -r '.proposals_sha256 // empty' "$v")" ] \
       || fail "$(basename "$p") changed after the TeamLead decided it ($(basename "$v"))" || return 1
   done
-  acc="$(cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null \
-    | jq -s '[.[].items // [] | .[] | select(.decision == "accept")]')" || acc='[]'
+  acc="$(team_lead_accepts "$TD/runs/$RUN")"
   # A draft key and an intent's draft_id are create-<n>; an older bare <n> is read the same way.
   bad="$(jq -r --argjson acc "${acc:-[]}" '
     def cid: tostring | if startswith("create-") then . else "create-" + . end;
@@ -239,22 +238,69 @@ check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
   [ -z "$bad" ] || fail "wrapup created or accepted ticket(s) the TeamLead did not accept: $bad" || return 1
   mem="$(git diff --no-renames --name-only "$1" "$2" -- .agents/memory/)" || mem=""
   for f in $mem; do
+    # The pointer of an accepted promotion, already verified byte for byte by check_wrapup_standards.
+    [ "$f" = .agents/memory/patterns.md ] && [ "${STD_PATTERNS_OK:-0}" = 1 ] && continue
     jq -e --arg f "$f" 'any(.[]; .kind == "memory" and .target == $f)' <<<"${acc:-[]}" >/dev/null \
       || fail "wrapup changed $f without a TeamLead memory accept for that file" || return 1
   done
 }
 
-# Wrapup may only add memory on top of the QA revision, so QA's build/test result still holds.
+# The wrapup changes docs/coding-standards.md only as this run's TeamLead accepted it (team-lead.md
+# §10): one base per file chosen by rule (the target_rev version when the line changed the file
+# since the team base, else the QA version), the accepted item re-rendered on it, bytes compared.
+# Sets STD_PATTERNS_OK=1 only when an accepted promotion was applied and its patterns.md change is
+# verified here; a refused promotion leaves patterns.md to check_wrapup_lead.
+check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <line ref>
+  local qa="$1" rev="$2" trev="$3" base="$4" line="$5" std=docs/coding-standards.md
+  local pat=.agents/memory/patterns.md lib n=0 promo=0 lead=0 f e_qa e_w files="" b out rc=0 acc
+  STD_PATTERNS_OK=0
+  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ]; then
+    lead=1
+    acc="$(team_lead_accepts "$TD/runs/$RUN")"
+    n="$(jq --arg t "$std" '[.[] | select(.target == $t)] | length' <<<"$acc")" || n=0
+    promo="$(jq --arg t "$std" '[.[] | select(.target == $t and has("promotes"))] | length' <<<"$acc")" || promo=0
+  fi
+  if [ "${n:-0}" = 0 ]; then
+    [ "$(git ls-tree "$qa" -- "$std")" = "$(git ls-tree "$rev" -- "$std")" ] && return 0
+    [ "$lead" = 1 ] || fail "wrapup changed $std without this run's TeamLead" || return 1
+    fail "wrapup changed $std without an accepted standards item"; return 1
+  fi
+  for f in "$std" $([ "${promo:-0}" = 0 ] || echo "$pat"); do
+    e_qa="$(git ls-tree "$qa" -- "$f")"; e_w="$(git ls-tree "$rev" -- "$f")"
+    [ -z "$e_qa" ] || [ -n "$e_w" ] || fail "wrapup removed $f" || return 1
+    [ -z "$e_w" ] || [ "$(echo "$e_w" | cut -d' ' -f2)" = blob ] || fail "wrapup made $f a non-file" || return 1
+    [ -z "$e_qa" ] || [ -z "$e_w" ] || [ "${e_qa%% *}" = "${e_w%% *}" ] \
+      || fail "wrapup changed the mode of $f" || return 1
+  done
+  git merge-base --is-ancestor "$base" "$trev" 2>/dev/null && git merge-base --is-ancestor "$trev" "$line" 2>/dev/null \
+    || fail "target_rev $trev is not on the target line after the team base" || return 1
+  for f in "$std" "$pat"; do
+    b="$qa"
+    if ! git diff --quiet "$base" "$trev" -- "$f" 2>/dev/null && git cat-file -e "$trev:$f" 2>/dev/null; then b="$trev"; fi
+    files="$files $(team_blob_tmp "$b" "$f") $(team_blob_tmp "$qa" "$f") $(team_blob_tmp "$rev" "$f")"
+  done
+  # shellcheck disable=SC2086  # $files: six temp paths (or -), no spaces in mktemp names
+  out="$(python3 -I "$lib/team_wrapup.py" standards-verify "$TD/runs/$RUN" $files 2>&1)" || rc=$?
+  for f in $files; do [ "$f" = - ] || rm -f "$f"; done
+  [ "$rc" = 0 ] || fail "wrapup changed $std beyond the TeamLead's accepted standards item: ${out#error: }" || return 1
+  [ "$out" != promoted ] || STD_PATTERNS_OK=1
+}
+
+# Wrapup may only add memory (and an accepted standards item) on top of the QA revision, so QA's
+# build/test result still holds.
 check_wrapup() {
   local r="$1" pr="$2" rev="$3" qa_rev bad f
   check_coder_pr wrapup "$pr" || return 1
   qa_rev="$(rec "$(accepted_record qa)" output_rev)"
   [ -n "$qa_rev" ] || fail "no accepted qa record" || return 1
   bad="$(team_non_memory_files "$qa_rev" "$rev")" || fail "cannot diff $qa_rev..$rev" || return 1
-  [ -z "$bad" ] || fail "wrapup changed files outside .agents/memory/: $(echo $bad)" || return 1
+  [ -z "$bad" ] || fail "wrapup changed files outside .agents/memory/ and docs/coding-standards.md: $(echo $bad)" || return 1
   f="$TD/runs/$(run_ref)/wrapup-$(rec "$r" attempt).md"
   [ -s "$f" ] || fail "wrapup summary $f missing or empty" || return 1
   grep -Eq '^target_rev: [0-9a-f]{40}$' "$f" || fail "wrapup summary lacks 'target_rev: <sha>'" || return 1
+  check_wrapup_standards "$qa_rev" "$rev" "$(sed -n 's/^target_rev: //p' "$f")" \
+    "$(team_json base_sha)" "refs/remotes/origin/$(team_json line)" || return 1
   check_wrapup_tracker "$TD/runs/$(run_ref)/wrapup-state.json" "$(team_json tracker || true)" || return 1
   check_wrapup_lead "$qa_rev" "$rev" || return 1
   check_pushed "$rev" && check_pr "$pr" "$rev" false
