@@ -114,6 +114,22 @@ run snapshot --jira "$WORK/j-qa0.json" --out "$WORK/jq0.json"
 run compare "$WORK/jq0.json" "$WORK/jq1.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 921" ] || fail "4c jira ADF compare: $RC $OUT"
 
+# (4d) ADF tail: every trailing blank paragraph is dropped (a record stays own); a non-paragraph block
+# after the marker (a screenshot) is the tail, so a pasted marker above it is not own
+jq -n --arg m "$QAM" '{key: "AB-3", fields: {description: "SECRETWORD d", updated: "2026-11-06T09:00:00.000+0000",
+  comment: {startAt: 0, maxResults: 2, total: 2, comments: [
+    {id: "930", created: "2026-11-06 09:00:00+00:00", updated: "2026-11-06 09:00:00+00:00",
+     body: {type: "doc", version: 1, content: [
+       {type: "paragraph", content: [{type: "text", text: "SECRETWORD record"}]},
+       {type: "paragraph", content: [{type: "text", text: $m}]},
+       {type: "paragraph", content: []}, {type: "paragraph", content: [{type: "text", text: " "}]}]}},
+    {id: "931", created: "2026-11-06 09:01:00+00:00", updated: "2026-11-06 09:01:00+00:00",
+     body: {type: "doc", version: 1, content: [
+       {type: "paragraph", content: [{type: "text", text: $m}]},
+       {type: "mediaSingle", content: [{type: "media", attrs: {id: "x", type: "file"}}]}]}}]}}}' > "$WORK/j-qa-tail.json"
+run snapshot --jira "$WORK/j-qa-tail.json" --out "$WORK/jq-tail.json"
+[ "$(jq -c '[.comments[].own]' "$WORK/jq-tail.json")" = '[true,false]' ] || fail "4d jira ADF tail own flags"
+
 # (5) no baseline → everything non-own is new, description counts as changed
 run compare - "$WORK/same.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 900 901; no baseline — description and every comment count as new" ] \

@@ -43,8 +43,10 @@ function lineList(text) {
 function ownMarker(body) {
   let last, first;
   if (typeof body === 'object' && body !== null) {
-    const blocks = (Array.isArray(body.content) ? body.content : [])
-      .filter((b, i, all) => i < all.length - 1 || adfText(b).trim() !== '');
+    // Trailing blank paragraphs go, like lineList's trailing blank lines; any other block stays the tail.
+    const blocks = Array.isArray(body.content) ? [...body.content] : [];
+    const blank = (b) => b && b.type === 'paragraph' && adfText(b).trim() === '';
+    while (blocks.length && blank(blocks[blocks.length - 1])) blocks.pop();
     const para = (b) => (b && b.type === 'paragraph' ? lineList(adfText(b)) : []);
     const tail = para(blocks[blocks.length - 1]);
     last = (tail[tail.length - 1] ?? '').trim();

@@ -77,6 +77,7 @@ select first, then validate
 The **newest** candidate is the record
 an invalid newest record is never skipped in favour of an older valid one
 counts that disagree with the rows
+its `build=` is `-` or 7–40 lowercase hex digits
 EOF
 
 # Headings outside fenced blocks: ## 1.…7. in order, §7 the last level-two heading, ### 1a. inside §1.
@@ -196,6 +197,8 @@ pins "$CMD" "re-check" <<'EOF'
 | Matched; every row `PASS` / `CITED`; the match is uncertain or PR data is unavailable | Verify every observed row again; carry only `CITED` rows |
 PR data: unavailable — every observed row is verified again
 a row whose disposition came from a verifier
+`git rev-parse --verify --quiet "<build>^{commit}"`
+a deployed sha is never stamped on an observation of another host
 EOF
 
 # ---- Phase 3 ----------------------------------------------------------------------------------------

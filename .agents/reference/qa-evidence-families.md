@@ -270,7 +270,7 @@ Rules:
   `qa-verify:v1 deferral src=<SRC> row=<id> fp=<fp>`
 
   A deferral marker is never a record candidate.
-- **A valid record:** version `v1`; the marker's `ticket=` is this target; the three `###` sections are present; every bullet under `### Criteria` matches `- <id> [<6 lowercase hex>] — <disposition>[ (carried from <YYYY-MM-DD>)][ / <severity>] — …` with a §6 or §7a disposition; the marker's counts equal the rows counted by disposition. Anything else — an unknown version, a missing section, a row that does not parse or has no fingerprint, counts that disagree with the rows (a human edited the record) — is an older format: full run.
+- **A valid record:** version `v1`; the marker's `ticket=` is this target; the three `###` sections are present; every bullet under `### Criteria` matches `- <id> [<6 lowercase hex>] — <disposition>[ (carried from <YYYY-MM-DD>)][ / <severity>] — …` with a §6 or §7a disposition; the marker's counts equal the rows counted by disposition; the marker's `run=` matches `[0-9]{8}T[0-9]{6}Z` and its `build=` is `-` or 7–40 lowercase hex digits (record text is tracker input — a value that reaches a shell is checked first). Anything else — an unknown version, a missing section, a row that does not parse or has no fingerprint, counts that disagree with the rows (a human edited the record), a `run=` or `build=` of another shape — is an older format: full run.
 - **Jira:** a criterion id shaped like an issue key (`AC-3`) is written `AC3` in a Jira comment; backlog ids such as `E1-2.AC3` stay (`jira-mcp-atlassian.md` §3).
 
 ### 7c. The criterion fingerprint
