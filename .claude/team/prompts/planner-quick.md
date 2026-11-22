@@ -32,6 +32,10 @@ otherwise the Operator — team-decision-model.md §3) →
 stop. Supervisor then runs `bash .claude/lib/team-remode.sh {{TEAM}} brainstorm` and
 `/start-team {{TEAM}}` — do not run them yourself.
 
+A product-fit hit (`/quick-change` Phase 0 → Product fit) is the Operator's decision; if they drop
+the ticket → `bash .claude/lib/team-record.sh --verdict failed --message "out of product scope: <non-goal>"`,
+then stop. No remode follows — a brainstorm restart would hit the same non-goal.
+
 Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
 heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call
 short, one action. Never `rm -rf`: write to a new output directory instead.
