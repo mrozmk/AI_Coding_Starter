@@ -288,7 +288,7 @@ Input on stdin: the criterion verbatim as its source shows it — one bullet, po
 
 1. `LC_ALL=C` throughout (byte semantics, the same on BSD and GNU tools).
 2. CR, LF and TAB → a space.
-3. Strip a leading list marker (`-`, `*`, `+` or `<digits>.` followed by spaces).
+3. Strip a leading list marker (`-`, `*`, `+`, `<digits>.` or `<digits>)` followed by spaces), then a task-list checkbox (`[ ]`, `[x]` or `[X]`) directly after it, followed by spaces or the end of the text. A checkbox with no list marker before it is prose and stays; ticking a box is not a rewording.
 4. Strip a leading criterion id as a complete token — optional `**`, `(E<n>-<m>.)?AC-?<n>`, optional `**`, an optional separator `—`, `–`, `-`, `:` or `.`, then at least one space (`AC1 text`, `**AC1** text`, `**E1-2.AC1** — text`, `AC-3: text`, `AC1. text`). Ids shift when a ticket is edited; the fingerprint must not. Text that merely starts with the letters `AC` (`ACME …`) is not an id.
 5. Split the text into code spans by backtick **runs** — a run of N backticks opens a span that only a run of exactly N closes (so ``` ``a`b`` ``` is one span); an unclosed run makes the rest a span. **Inside a code span every character is kept literally** — only the delimiting runs go; a literal `[KEY](url)` there stays. **Outside**, links `[text](url)` → `text`, then every `*` is deleted, a `~~` pair is deleted (a single `~` stays), and an `_` is deleted unless it sits between two alphanumerics (so `foo_bar` keeps it, `_menu_` loses both).
 6. Collapse runs of spaces to one; trim both ends; no trailing newline.
@@ -298,7 +298,7 @@ Input on stdin: the criterion verbatim as its source shows it — one bullet, po
 ```bash
 set -o pipefail
 LC_ALL=C tr '\r\n\t' '   ' \
-| LC_ALL=C sed -E -e 's/^ *([-*+]|[0-9]+\.) +//' \
+| LC_ALL=C sed -E -e 's/^ *([-*+]|[0-9]+[.)]) +(\[[ xX]\]( +|$))?//' \
     -e 's/^\*{0,2}(E[0-9]+-[0-9]+\.)?AC-?[0-9]+\*{0,2}( *(—|–|-|:|\.))? +//' \
 | LC_ALL=C awk 'function prose(s,   m, t, n, j, c, p, q) {
       while (match(s, /\[[^]]*\]\([^)]*\)/)) { m = substr(s, RSTART, RLENGTH)

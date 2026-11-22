@@ -176,6 +176,20 @@ fpv 'The banner shows the refusal reason' f723b2
 fpv 'the banner shows the decline reason' 0a1ec5
 fpv 'ACME logo shows' f27b7e
 fpv 'logo shows' 64ec76
+# list markers and task-list checkboxes (#196)
+fpv 'The menu opens on click' ca3187
+fpv '- [ ] The menu opens on click' ca3187
+fpv '- [x] The menu opens on click' ca3187
+fpv '- [X] The menu opens on click' ca3187
+fpv '1) The menu opens on click' ca3187
+fpv '1. The menu opens on click' ca3187
+fpv '- [x] **AC1** The menu opens on click' ca3187
+fpv '[x] The menu opens on click' dd99c1
+fpv '- `[x]` The menu opens on click' dd99c1
+fpv '- [x](http://a/b) The menu opens on click' 7a76cf
+fpv '- [x]' e3b0c4
+printf '%s\n' '- [x]' > "$WORK/box-nl.txt"
+[ "$(bash "$WORK/fp.sh" < "$WORK/box-nl.txt")" = e3b0c4 ]; check $? "fingerprint: an empty checkbox with a trailing newline"
 
 # pipefail: a failing stage fails the block
 sed 's/cut -c1-6/false/' "$WORK/fp.sh" > "$WORK/fp-broken.sh"
