@@ -100,9 +100,9 @@ A run after the PRD exists (`/discover --fault-lines`) that leaves an open block
 accepted by its current owner unticks the last item and adds under it, once per `Q-n`,
 `reopened by Q-n (fault-line run YYYY-MM-DD) — needs <owner>'s decision`; an existing line for
 that `Q-n` stays, its `<owner>` set to the current one. Every run that writes
-this list — a full run's Phase 5 too — removes a `reopened by` line once its `Q-n` is closed or
-accepted (a DoR annotation, not an id line), and ticks the item again only when its predicate
-holds and no such line remains.
+this list — a full run's Phase 5 too — removes a `reopened by` line once its `Q-n` is closed,
+accepted or no longer `blocks slice 1: yes` (a DoR annotation, not an id line), and ticks the
+item again only when its predicate holds and no such line remains.
 
 - [ ] Problem, users and the current alternative are stated (categories 1, 11).
 - [ ] At least one `G-n` with a target value **and** a date (category 9).
@@ -175,7 +175,9 @@ rules.
 5. **Who is asked.** First every fault-line `Q-n` still open from an earlier run, whatever its
    owner, is rechecked against the current deciding records (item 3); one a record now decides
    is closed with ` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`,
-   not asked. Then only `team`-owned questions are asked — the new survivors and the earlier ones
+   not asked — except an `analyst` or `client` one whose decision `docs/PRD.md` does not carry
+   yet: it stays open, the report cites the record, and the full update run of item 7 closes it.
+   Then only `team`-owned questions are asked — the new survivors and the earlier ones
    still open — in the session's question round (`/discover` Phase 3 and the mode's step 4 say
    which), ranked with the other questions under §2 (≤5 per round); none when the user has said
    done (§2 item 8). The others are listed for their owner; a `team` question left over stays
