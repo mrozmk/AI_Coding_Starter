@@ -53,6 +53,22 @@ hook "$CLONE" '{"tool_input":{"file_path":".agents/memory/errors.md"}}'
 expect 2 "written by the wrapup role only" "guard blocks memory in team mode"
 hook "$CLONE" '{"tool_input":{"file_path":"src/Foo.cs"}}'
 expect 0 "" "guard passes non-memory path"
+hook "$CLONE" '{"tool_input":{"file_path":"docs/coding-standards.md"}}'
+expect 2 "docs/coding-standards.md is written by the wrapup role only" "guard blocks the standards file"
+hook "$CLONE" "{\"tool_input\":{\"file_path\":\"$CLONE/docs/coding-standards.md\"}}"
+expect 2 "written by the wrapup role only" "guard blocks the standards file by absolute path"
+hook "$CLONE" "{\"tool_input\":{\"file_path\":\"$CLONE/docs/./coding-standards.md\"}}"
+expect 2 "written by the wrapup role only" "guard blocks an alias of the standards file"
+hook "$CLONE" '{"tool_input":{"file_path":"docs/other.md"}}'
+expect 0 "" "guard passes another docs path"
+hook "$CLONE" '{"tool_input":{"file_path":"docs/old-coding-standards.md"}}'
+expect 0 "" "guard passes a similar docs name"
+mkdir -p "$CLONE/docs"
+printf '# Coding standards\n' > "$CLONE/docs/coding-standards.md"
+ln -s coding-standards.md "$CLONE/docs/alias.md"
+hook "$CLONE" "{\"tool_input\":{\"file_path\":\"$CLONE/docs/alias.md\"}}"
+expect 2 "written by the wrapup role only" "guard blocks a symlink of another name to the standards file"
+rm -f "$CLONE/docs/alias.md" "$CLONE/docs/coding-standards.md"
 hook "$MAIN" '{"tool_input":{"file_path":".agents/memory/errors.md"}}'
 expect 0 "" "guard passes outside team mode"
 

@@ -308,7 +308,7 @@ Apply its bar strictly — **the default is to save nothing.** A clean loop (no 
 - an **undocumented quirk** that explained a failure → `api.md`
 - a **deliberate fix-direction decision** worth its rationale → `decisions.md`
 
-**Team mode** (`.agents/team/session.json` exists): write nothing to `.agents/memory/` — the entry goes under `## Learnings` in `.agents/team/runs/<run>/notes.md`, since `guard-team-memory.sh` rejects a memory write from every role but `wrapup`. Step 3's report is written, never asked about.
+**Team mode** (`.agents/team/session.json` exists): write nothing to `.agents/memory/` — the entry goes under `## Learnings` in `.agents/team/runs/<run>/notes.md`, since `guard-team-memory.sh` rejects a memory write from every role but `wrapup`. Step 3's report is written, never asked about. A standards-worthy finding (a new helper other code should reuse, a settled shape for a recurring problem, a `duplicate of:` tag) goes there too, prefixed `standards:` — the wrapup picks it up.
 
 Append at most one or two entries, at the END of the file. This step does **not** commit — like the rest of the command, it leaves a ready-to-`/commit` tree (a memory write is just another working-tree change). Carry the outcome into the report's `Memory:` line in Step 3.
 

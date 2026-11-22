@@ -81,6 +81,17 @@ W2="$(git -C "$CLONE" rev-parse HEAD)"; point "$W2"; pr_w "$W2"
 R=$(record --verdict done --pr 8371 --artifacts "$RD/wrapup-1.md")
 run "$MAIN" $TR alfa check "$R"
 expect 4 "outside .agents/memory/" "wrapup touched code"
+# The standards file without this run's TeamLead, and another docs path: each a wrapup commit on Q.
+point "$Q"; commit_file docs/coding-standards.md "# Coding standards"
+W3="$(git -C "$CLONE" rev-parse HEAD)"; point "$W3"; pr_w "$W3"
+R=$(record --verdict done --pr 8371 --artifacts "$RD/wrapup-1.md")
+run "$MAIN" $TR alfa check "$R"
+expect 4 "docs/coding-standards.md without this run's TeamLead" "wrapup touched the standards file without a lead"
+point "$Q"; commit_file docs/other.md "other"
+W4="$(git -C "$CLONE" rev-parse HEAD)"; point "$W4"; pr_w "$W4"
+R=$(record --verdict done --pr 8371 --artifacts "$RD/wrapup-1.md")
+run "$MAIN" $TR alfa check "$R"
+expect 4 "outside .agents/memory/" "wrapup touched another docs path"
 point "$Q"; pr_w "$Q"
 R=$(record --verdict done --pr 8371 --artifacts "$RD/wrapup-1.md")
 run "$MAIN" $TR alfa check "$R"
@@ -126,6 +137,39 @@ run "$MAIN" $MC alfa --memory-reviewed
 expect 3 "outside .agents/memory/" "merge-check code on top of wrapup"
 run "$MAIN" $MC alfa --bogus
 expect 2 "Usage:" "merge-check bad flag"
+# A supervisor fix touching the standards file, with no accepted standards item: still refused.
+point "$F1"; commit_file docs/coding-standards.md "# Coding standards"
+F3="$(git -C "$CLONE" rev-parse HEAD)"; point "$F3"; merge_at "$F3" "$TGT1"
+run "$MAIN" $MC alfa --memory-reviewed
+expect 3 "outside .agents/memory/" "merge-check standards fix without an accepted item"
+# This run's lead accepted a rule `x` with a promotion; the wrapup wrote it as CS-2 with its pointer.
+rule() { printf '### CS-%s — %s\n- Enforced by: review\n- Applies to: all\n- Example: a.sh:1\n- Why: %s' "$1" "$2" "$3"; }
+std() { printf '# Coding standards\n\n## Rules\n\n'; rule 1 a a; printf '\n\n'; rule "$1" x y; }
+pat() { printf '# Memory: Patterns\n\n## Format\n\n## Old (2026-01-01) — promoted to docs/coding-standards.md CS-%s' "$1"; }
+jq -n --arg t "$(printf 'x\n- Enforced by: review\n- Applies to: all\n- Example: a.sh:1\n- Why: y')" \
+  '{run: "alfa-20261004-000000", for: "wrapup_proposals-1_1.json",
+    items: [{id: "memory-1", kind: "memory", decision: "accept", why: "w", group: "B",
+             target: "docs/coding-standards.md", section: "Rules", text: $t, evidence: "a.sh:1",
+             promotes: "## Old (2026-01-01)", promotes_sha256: ("0" * 64)}]}' > "$RD/teamlead-wrapup-1.json"
+point "$Q"; commit_file docs/coding-standards.md "$(std 2)"; commit_file .agents/memory/patterns.md "$(pat 2)"
+W5="$(git -C "$CLONE" rev-parse HEAD)"; point "$W5"; mkrec wrapup "$W5"; summary "$TGT0"
+mkdir -p "$MAIN/docs"
+{ printf '# Coding standards\n\n## Rules\n\n'; rule 1 a a; printf '\n\n'; rule 2 y y; printf '\n'; } > "$MAIN/docs/coding-standards.md"
+git -C "$MAIN" add docs/coding-standards.md && git -C "$MAIN" commit --quiet -m "other team standard"
+git -C "$MAIN" push --quiet origin HEAD:develop
+TGT2="$(git -C "$MAIN" rev-parse HEAD)"
+merge_at "$W5" "$TGT2"
+run "$MAIN" $MC alfa
+expect 3 "memory overlap: docs/coding-standards.md" "merge-check standards overlap"
+commit_file docs/coding-standards.md "$(std 3)"
+F5="$(git -C "$CLONE" rev-parse HEAD)"; point "$F5"; merge_at "$F5" "$TGT2"
+run "$MAIN" $MC alfa --memory-reviewed
+expect 3 "standards item not intact after the merge" "merge-check renumbered rule with a stale pointer"
+commit_file .agents/memory/patterns.md "$(pat 3)"
+F6="$(git -C "$CLONE" rev-parse HEAD)"; point "$F6"; merge_at "$F6" "$TGT2"
+run "$MAIN" $MC alfa --memory-reviewed
+expect 0 "VERDICT: ok" "merge-check renumbered rule with its pointer"
+rm -f "$RD/teamlead-wrapup-1.json"
 unset MERGE_SHA; rm -f "$RD"/wrapup-1-1.json*; point "$Q"
 
 # ---- (16) hook, notes, unlock, static checks -----------------------------------------------------

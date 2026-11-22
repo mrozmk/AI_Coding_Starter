@@ -246,12 +246,13 @@ team_claude_project_dir() {
   echo "${TEAM_DASH_PROJECT_DIR:-$cfg/projects/$(team_project_slug "$1")}"
 }
 
-# team_non_memory_files <from> <to> → changed paths outside .agents/memory/; rc 1 if the diff failed.
+# team_non_memory_files <from> <to> → changed paths outside .agents/memory/ and docs/coding-standards.md
+# (check_wrapup_standards judges that one); rc 1 if the diff failed.
 # --no-renames: a move from code into memory must list the deleted source path too.
 team_non_memory_files() {
   local d
   d="$(git diff --no-renames --name-only "$1" "$2")" || return 1
-  printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^$' || true
+  printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^docs/coding-standards\.md$' -e '^$' || true
 }
 
 team_records() {

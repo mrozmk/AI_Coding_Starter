@@ -226,20 +226,27 @@ with `stop wrapup <a>: … — wrapup proposals: <file>`. Nothing on this path g
 
 1. Read the proposals file (`create-<n>` tickets, `memory-<n>` entries with group A or B and their
    `.agents/memory/` target; a `handoff` item was already accepted by its decider — accept it
-   unless it no longer fits the code, it uses no cap and needs no opinion).
+   unless it no longer fits the code, it uses no cap and needs no opinion). A `memory-<n>` item with
+   target `docs/coding-standards.md` is a standards item: its `section`, exact `text` and `path:line`
+   `evidence` (and, for a rule replacing a `patterns.md` entry, `promotes`); never a hand-off. The
+   stop record names the file's `proposals_sha256` — the bytes you decide; a file changed after the
+   stop is refused.
 2. **Default no.** Accept a follow-up ticket only when the product needs it: a defect the user or the
    next run would hit, or ordered work that was cut. Not a nice-to-have, not a tidy-up, not an idea
    the implementation itself suggested. Accept a memory entry only when a future session would
    otherwise repeat a concrete mistake; one about a temporary state must say when it expires
    ("until #N lands"). An item you cannot judge is declined: `cannot judge: <why>`.
 3. **Cap:** 1 ticket and 1 memory entry per run (groups A and B together, earlier proposals files
-   of the run included). Each further accept needs `— over cap because <why>`.
-4. A group B entry (`decisions.md`, `patterns.md` and `index.md` always; any other memory file, an
+   of the run included). Each further accept needs `— over cap because <why>`. At most one
+   standards item is accepted per run — no `over cap` for it.
+4. A group B entry (`decisions.md`, `patterns.md` and `index.md` always; a `docs/coding-standards.md`
+   standards item always; any other memory file, an
    entry that changes a historical decision) needs a Codex opinion first (`opinion-<n>.md`, as in
    **Answering** step 6); name that file in the accept line.
 5. Write `.agents/team/runs/{{RUN}}/wrapup-decision-<n>.md`, one line per item:
    - `- <id> accept — needed because <why>`, and, when one fact in the draft is wrong, one line
-     under it: `  correction: <one line>` (a draft that needs more is declined with the reason);
+     under it: `  correction: <one line>` (a draft that needs more is declined with the reason;
+     a standards item takes no correction — decline it with the corrected text as the reason);
    - `- <id> decline — <reason>`.
    Every reason is non-empty.
 6. `bash .claude/lib/team-verdict.sh wrapup decide --for <proposals file> --ref .agents/team/runs/{{RUN}}/wrapup-decision-<n>.md --message "<line>"`

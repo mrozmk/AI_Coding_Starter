@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Supervisor's merge check for a team PR: wrapup revision = PR source, memory-only after QA,
-# then build + test-gate on the provider's merge ref. github: a merge ref not rebuilt since the line
-# moved is replaced by the merge commit built locally (team-integrate-lib.sh, team_local_merge).
+# Supervisor's merge check for a team PR: wrapup revision = PR source, memory-only after QA (plus an
+# accepted docs/coding-standards.md item), then build + test-gate on the provider's merge ref. github:
+# a merge ref not rebuilt since the line moved is replaced by the local merge commit (team_local_merge).
 #
 # Usage: bash .claude/lib/team-merge-check.sh <team> [--memory-reviewed]
 #   e.g. bash .claude/lib/team-merge-check.sh alfa
@@ -82,13 +82,23 @@ echo "test-gate: lock waited ${GATE_LOCK_WAITED}s (merge check)"
 export TEAM_GATE_LOCK_TOKEN="$GATE_LOCK_TOKEN"
 [ ! -f "$TD/session.json" ] \
   || die 3 "a role went live while waiting for the lock ($(jq -r .role "$TD/session.json"))"
-# memory_only <from> <to> → prints the changed files; dies on a failed diff or a non-memory file.
+# docs/coding-standards.md passes after QA only when this run's TeamLead accepted a standards item
+# (team-lead.md §10) — so --memory-reviewed cannot bring in a standard the lead never accepted.
+STD_OK=0
+if [ "$MODE" != cli ] && [ -n "$RUN" ] && cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null \
+    | jq -se 'any(.[].items // [] | .[]; .decision == "accept" and .target == "docs/coding-standards.md")' \
+      >/dev/null 2>&1; then
+  STD_OK=1
+fi
+# memory_only <from> <to> → prints the changed files; dies on a failed diff or a non-memory file
+# (docs/coding-standards.md counts as memory here only with STD_OK).
 memory_only() {
   local d bad
   # --no-renames: a move from code into memory must list the deleted source path too.
   d="$(git diff --no-renames --name-only "$1" "$2")" || die 3 "cannot diff $1..$2"
   bad="$(printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^$' || true)"
-  [ -z "$bad" ] || die 3 "changes after QA outside .agents/memory/: $(echo $bad)"
+  [ "$STD_OK" = 0 ] || bad="$(printf '%s\n' "$bad" | grep -v -e '^docs/coding-standards\.md$' -e '^$' || true)"
+  [ -z "$bad" ] || die 3 "changes after QA outside .agents/memory/ and docs/coding-standards.md: $(echo $bad)"
   printf '%s\n' "$d" | grep -v '^$' || true
 }
 
@@ -115,7 +125,7 @@ delta=""
 if [ -n "$delta" ]; then
   tr_rev="$(sed -n 's/^target_rev: //p' "$TD/runs/$(team_run_ref "$TD" "$RUN")/wrapup-$(jq -r .attempt "$wr").md" 2>/dev/null)"
   [ -n "$tr_rev" ] || die 3 "wrapup summary has no target_rev"
-  tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory)" \
+  tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory docs/coding-standards.md)" \
     || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
   # Union merge would splice both versions silently; a human reads them first.
   ov="$(comm -12 <(printf '%s\n' "$delta" | sort) <(printf '%s\n' "$tdelta" | sort) | grep -v '^$' || true)"
@@ -173,6 +183,18 @@ else
   echo "fetching refs/pull/$pr/merge"
   git fetch --quiet origin "refs/pull/$pr/merge"
   [ "$(git rev-parse FETCH_HEAD)" = "$merge_commit" ] || die 3 "FETCH_HEAD is not lastMergeCommit $merge_commit"
+fi
+# An accepted standards item must stand once in the merge, and a promotion's pointer must name its
+# final CS id — a reviewed conflict fix may renumber the rule and leave the pointer behind.
+if [ "$STD_OK" = 1 ]; then
+  sb() { local t; t="$(mktemp)"; if git show "$1:$2" > "$t" 2>/dev/null; then echo "$t"; else rm -f "$t"; echo -; fi; }
+  sw="$(sb "$want" docs/coding-standards.md)"; sm="$(sb "$merge_commit" docs/coding-standards.md)"
+  pm="$(sb "$merge_commit" .agents/memory/patterns.md)"
+  src=0
+  sout="$(python3 -I "$root/.claude/lib/team_wrapup.py" standards-merged "$TD/runs/$RUN" "$sw" "$sm" "$pm" 2>&1 >/dev/null)" \
+    || src=$?
+  for t in "$sw" "$sm" "$pm"; do [ "$t" = - ] || rm -f "$t"; done
+  [ "$src" = 0 ] || die 3 "standards item not intact after the merge: ${sout#error: } — fix it in the reviewed merge"
 fi
 
 # The HEAD assertions below can only DETECT a clone that stayed put; they cannot stop a runner or a

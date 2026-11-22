@@ -65,14 +65,18 @@
      in the run-scoped state. Resume uses that state, not a newly numbered recommendation list
      or an attempt-scoped report, to identify consent and the matching issue key.
 8. Apply only what the developer accepted:
-   - memory: before editing a file, if `git diff --quiet {{BASE_SHA}} origin/{{LINE}} -- <file>`
+   - memory: before editing a file that still equals its QA version
+     (`git diff --quiet "$(jq -r .input_rev .agents/team/session.json)" -- <file>` — never over the
+     standards writer's pointer), if `git diff --quiet {{BASE_SHA}} origin/{{LINE}} -- <file>`
      reports a change, start from the target version (`git show origin/{{LINE}}:<file> > <file>`)
      and add the new entry at the top, above the newest one; never edit an existing entry (only
      the `⚠️ SUPERSEDED <YYYY-MM-DD>` title prefix of `reflection-protocol.md` is allowed).
      `merge=union` from `.gitattributes` applies only to local merges — the PR merge does not rely
      on it, so the PR can still show a conflict in that file. Do not merge `origin/{{LINE}}` here
-     (after QA wrapup may change only `.agents/memory/**`); that conflict is resolved after wrapup
-     per `.agents/reference/team-pipeline.md` §6. Edit only `.agents/memory/**`, then `/commit`
+     (after QA wrapup may change only `.agents/memory/**` and, through `team-standards.sh add`,
+     `docs/coding-standards.md`); that conflict is resolved after wrapup
+     per `.agents/reference/team-pipeline.md` §6. Edit only `.agents/memory/**` (the standards file
+     only through `team-standards.sh add`), then `/commit`
      (`{{TICKET}} reconcile memory after <short topic>`) and `/push`;
    - tasks: `/jira create` with the saved run-scoped accepted draft and verified parent Epic.
      Follow the stable intent id → issue key mapping even when recommendation order changes.

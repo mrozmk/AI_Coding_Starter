@@ -325,6 +325,12 @@ A conflict in an excluded memory file (`git check-attr merge` → `unspecified`:
 `architecture.md`, …) or in any path outside `.agents/memory/` is not covered —
 `git merge --abort`, stop and bring it to the Operator.
 
+That stop still holds for a git conflict in `docs/coding-standards.md`. A reviewed overlap there
+(the merge check's `memory overlap`) is resolved by keeping both additions; when both runs took the
+same `CS-<n>`, the later one takes the next free id and its `patterns.md` pointer is renumbered with
+it in the same fix — the merge check refuses a pointer to a missing id (`standards item not intact
+after the merge`).
+
 ## 7. Memory reconciliation
 
 The `wrapup` role does it, inside the team's PR: role hand-offs verbatim, other learnings through

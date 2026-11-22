@@ -40,6 +40,34 @@ nice-to-have, a tidy-up, or an idea that came only from the implementation. A me
 a future session would otherwise repeat a concrete mistake — name the mistake; an entry about a
 temporary state says when it expires ("until #N lands").
 
+**A standards item (steps 6–7).** Only when `docs/coding-standards.md` exists (absent: never
+propose one, never create the file), and only when the run added a helper other code should reuse,
+settled the shape of a recurring problem, or its review recorded `duplicate of: <path:line>` (the QA
+report, `standards:` lines in the notes). At most one per run, under the same bar: only what the
+product's code needs, never a nice-to-have or a rule invented from the implementation. Competing
+variants go to `Open — pick one`, never `Rules`. The item names its section, the exact text and the
+`path:line` evidence:
+
+| `section` | `text` |
+|---|---|
+| `Rules` | 5 lines: the rule, `- Enforced by: review` (or `- Enforced by: tool (<what>)`), `- Applies to: …`, `- Example: …`, `- Why: …` — the writer adds `### CS-<next free n> — ` |
+| `Shared helpers` / `One shape per problem` | one table row `\| a \| b \| c \|` (3 non-empty cells) |
+| `Open — pick one` | one line starting `- ` |
+
+The worktree is not touched before the decision, and every target read uses the fixed sha `T` from
+step 2, never the movable `origin/{{LINE}}`: when `git diff --quiet {{BASE_SHA}} <T> -- <file>`
+reports a change, judge the text on `git show <T>:<file>` (read-only) and take the hash with
+`--rev <T>`. A rule that replaces a `patterns.md` entry carries `promotes` (the entry's `## `
+heading line) and `promotes_sha256` from
+`bash .claude/lib/team-standards.sh entry-sha "<heading line>" [--rev <T>]`. Without a per-run
+TeamLead there is no standards route: name the candidate in `wrapup-{{ATTEMPT}}.md` under
+`## Standards candidate`.
+**Mixed bases (route gate):** the runner's checks come from the main checkout, so propose a
+standards item only when `grep -q check_wrapup_standards "<main_root>/.claude/lib/team-validate.sh"`
+succeeds (`main_root` from `.agents/team/teamlead.json`). Otherwise the main checkout's runner would
+refuse the write as "outside .agents/memory/" and strand the run: name the candidate under
+`## Standards candidate` instead, with the line `standards route off — the main checkout predates it`.
+
 **Commands in this role.** Read the tracker only through `bash .claude/lib/team-tracker.sh`
 (github: `list --out <scratchpad file>` to de-duplicate follow-ups), never `gh` directly. Write a
 memory entry with the Edit or Write tool; edit JSON (`wrapup-state.json`, the proposals file) with
@@ -58,19 +86,32 @@ decides every recommendation; you ask nothing in this window (no `AskUserQuestio
   key in `wrapup-state.json` and its stable create intent id, the body complete with its marker
   line; save the draft first, as step 7 says), a memory entry `{"id": "memory-<n>", "kind":
   "memory", "group": "A"|"B", "target": ".agents/memory/<file>", "text", "czytelnik"}` (group B as
-  in **Decider groups** below; `decisions.md`, `patterns.md` and `index.md` are always B). A
+  in **Decider groups** below; `decisions.md`, `patterns.md` and `index.md` are always B), a
+  standards item `{"id": "memory-<n>", "kind": "memory", "group": "B", "target":
+  "docs/coding-standards.md", "section", "text", "evidence": "<path>:<line>", "czytelnik"[,
+  "promotes", "promotes_sha256"]}` (always group B, never a `handoff`; see **A standards item**). A
   memory hand-off (step 6) that passed its three checks is a memory item too, with `"handoff":
   "<its accepted: ref>"` — it is no new proposal and uses no cap. Tracker none: memory items only
   (`## Follow-upy` needs no decision). Show the same items in `wrapup-{{ATTEMPT}}.md`.
 - Stop: `bash .claude/lib/team-record.sh --verdict blocked --proposals {{RUN_DIR}}/wrapup_proposals-{{ATTEMPT}}_<k>.json`,
   then end the turn and wait. The lead answers `decided: <verdict file>`.
 - Read that verdict's `items`. Apply exactly the `accept` items (step 8), each `correction` applied
-  to its draft or entry first; never an item it declined. Save per item in `wrapup-state.json`
+  to its draft or entry first; never an item it declined. Apply an accepted standards item
+  **first**: `bash .claude/lib/team-standards.sh add --verdict <verdict file> --item <id> --target-rev <T>`.
+  Never refresh `docs/coding-standards.md` or, for a promotion, `patterns.md` yourself: the writer
+  starts from `<T>`'s version only for a file this wrapup has not changed yet, and hashes the
+  promoted entry before any other edit can touch it. Then the other accepted memory items, whose
+  step 8 refresh skips a file this wrapup already changed, so the pointer survives; an ordinary
+  entry never goes under a promoted heading — it is its own `## ` entry. Exit 4 → leave both files
+  as they are and write `not applied: <verdict file>:<id> — <reason>` as its own line in
+  `wrapup-{{ATTEMPT}}.md` (for the reader — the runner re-derives the refusal itself and refuses
+  `done` when the item could have been applied); never edit the file by hand. Save per item in `wrapup-state.json`
   `selected_by: "teamlead"`, `decision_ref: "<verdict file>"` and its `correction` (ticket drafts:
   `accepted: true|false` on the draft, with the corrected text saved verbatim). List the declined
   items with their reason in `wrapup-{{ATTEMPT}}.md`. Never edit a proposals file after its stop.
   A resume reads the verdicts it has; an item none of them names goes into a new proposals file
-  (the next `<k>`) and a new stop. Memory you write is exactly the accepted items' `target` files.
+  (the next `<k>`) and a new stop. Memory you write is exactly the accepted items' `target` files
+  (plus `patterns.md` for an accepted promotion).
 
 There is no Advisor escalation, no `Advisor no-reply` skip and no `## Deferred memory (B)` with a
 lead, and nothing goes to the Operator. Step 5's `Supervised decisions:` line counts the authority
@@ -102,6 +143,7 @@ Supervision rules for steps 5–8 (every tracker; `.agents/reference/team-decisi
   TeamLead).
 
 You may write `.agents/memory/**` only after it was accepted in step 7 (or is an accepted hand-off
-line, step 6); no other file of the repository changes in this role.
+line, step 6), and `docs/coding-standards.md` only through `team-standards.sh add` for an accepted
+standards item; no other file of the repository changes in this role.
 
 Do not exit the session yourself; the runner ends it.

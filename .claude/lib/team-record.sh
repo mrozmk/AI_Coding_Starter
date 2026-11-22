@@ -70,6 +70,8 @@ if [ -n "$PROPOSALS" ]; then
       || { echo "error: $PROPOSALS is already decided ($(basename "$v")) — write wrapup_proposals-${attempt}_<next k>.json" >&2; exit 2; }
   done
   python3 -I "$(dirname "$0")/team_wrapup.py" check "$(team_root)/$PROPOSALS" >/dev/null || exit 2
+  # The sha binds the stop to the bytes it names: team-verdict.sh refuses a file changed after it.
+  PROPOSALS_SHA="$(shasum -a 256 "$(team_root)/$PROPOSALS" | cut -d' ' -f1)"
   MESSAGE="wrapup proposals: $PROPOSALS"
 elif [ "$VERDICT" = blocked ] || [ "$VERDICT" = failed ]; then
   [ -n "$MESSAGE" ] || { echo "error: --verdict $VERDICT requires --message" >&2; exit 2; }
@@ -88,13 +90,15 @@ jq -n --arg team "$team" --arg ticket "$ticket" --arg run "$run" --argjson round
   --argjson pr_id "${PR:-null}" --arg artifacts "$ARTIFACTS" --arg evidence "$EVIDENCE" \
   --arg notes "${notes#"$(team_root)"/}" --arg message "$MESSAGE" \
   --arg written_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg proposals "$PROPOSALS" \
+  --arg psha "${PROPOSALS_SHA:-}" \
   '{team: $team, ticket: $ticket, run: $run, round: $round, role: $role, attempt: $attempt, seq: $seq,
     branch: $branch, input_rev: $input_rev, output_rev: $output_rev, verdict: $verdict,
     pr_id: $pr_id,
     artifacts: ($artifacts | if . == "" then [] else split(",") end),
     evidence: ($evidence | if . == "" then [] else split(",") end),
     notes: $notes, message: $message, written_at: $written_at}
-  + (if $proposals == "" then {} else {proposals: $proposals} end)' > "$tmp"
+  + (if $proposals == "" then {} else {proposals: $proposals} end)
+  + (if $psha == "" then {} else {proposals_sha256: $psha} end)' > "$tmp"
 [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
 mv "$tmp" "$target"
 echo "$target"
