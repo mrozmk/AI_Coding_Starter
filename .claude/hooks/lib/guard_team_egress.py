@@ -44,7 +44,7 @@ from guard_destructive_sql import (  # noqa: E402
     tokenize, unredirected)
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
-    supervisor_main_checkout, supervisor_verdict)
+    supervisor_verdict)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -378,8 +378,7 @@ def main():
             raise ValueError
     except (ValueError, AttributeError):
         print(json.dumps(verdict("unreadable hook payload")))
-        if supervisor_main_checkout(project):
-            record_touch(project, None, "unreadable hook payload")
+        record_touch(project, None, "unreadable hook payload")
         return
     if tool == "WebFetch":
         reason = webfetch_reason(tool_input.get("url"), project)
@@ -390,8 +389,7 @@ def main():
         return
     if reason:
         print(json.dumps(verdict(reason)))
-        if supervisor_main_checkout(project):
-            record_touch(project, payload.get("cwd"), reason)
+        record_touch(project, payload.get("cwd"), reason)
 
 
 if __name__ == "__main__":

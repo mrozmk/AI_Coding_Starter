@@ -12,9 +12,9 @@ import re
 import shlex
 import stat
 import sys
+import time
 # Local imports below: never write __pycache__ into the project (callers run python3 -I, not -B).
 sys.dont_write_bytecode = True
-import time  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
@@ -95,29 +95,25 @@ def supervisor_main_checkout(project):
             and not os.path.exists(os.path.join(team, "team.json")))
 
 
-def local_gh_rules(project):
-    """(words, prefix) of the Bash(gh ...) allow rules in settings.local.json; [] when absent or bad."""
+def local_rules(project):
+    """The str allow rules of the checkout's settings.local.json; [] when absent or malformed."""
     try:
-        allow = allow_rules(os.path.join(project, ".claude", "settings.local.json"))
+        return allow_rules(os.path.join(project, ".claude", "settings.local.json"))
     except (OSError, ValueError, AttributeError):
         return []
-    rules = []
-    for rule in allow:
-        m = GH_RULE.match(rule)
-        if m and m.group(1).split():
-            rules.append((tuple(m.group(1).split()), bool(m.group(2))))
-    return rules
 
 
-def local_python_rules(project):
-    """The inline-Python forms settings.local.json opts into: "-" for the exact Bash(python3 -),
-    "-c" for Bash(python3 -c *) / Bash(python3 -c:*); nothing else counts (Bash(python3 *))."""
-    try:
-        allow = set(allow_rules(os.path.join(project, ".claude", "settings.local.json")))
-    except (OSError, ValueError, AttributeError):
-        return set()
+def gh_rules_of(allow):
+    """(words, prefix) of the Bash(gh ...) rules among <allow>."""
+    found = [GH_RULE.match(rule) for rule in allow]
+    return [(tuple(m.group(1).split()), bool(m.group(2))) for m in found if m and m.group(1).split()]
+
+
+def python_forms_of(allow):
+    """The inline-Python forms <allow> opts into: "-" for the exact Bash(python3 -), "-c" for
+    Bash(python3 -c *) / Bash(python3 -c:*); nothing else counts (Bash(python3 *))."""
     forms = {"-"} if "Bash(python3 -)" in allow else set()
-    return forms | ({"-c"} if allow & {"Bash(python3 -c *)", "Bash(python3 -c:*)"} else set())
+    return forms | ({"-c"} if set(allow) & {"Bash(python3 -c *)", "Bash(python3 -c:*)"} else set())
 
 
 def read_word(cmd, i):
@@ -290,7 +286,7 @@ def format_masked(cmd, egress_in):
     view or a safe companion — never masked toward an interpreter (`… -q '\\(.x)' | bash`)."""
     segs = plain_segments(cmd) or []
     views = [tuple(w.value for w in s[:3]) in GH_VIEWS for s in segs]
-    if not any(views) or not all(v or companion_state([w.value for w in s], egress_in) == "safe"
+    if not any(views) or not all(v or companion_safe([w.value for w in s], egress_in)
                                  for s, v in zip(segs, views)):
         return cmd
     words = []
@@ -308,6 +304,7 @@ COMPANIONS = {"cd", "jq", "head", "tail", "sort", "uniq", "wc", "grep", "cut", "
 SHELLS_I = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
 INTERP = {"python", "python3", "node", "perl", "ruby", "php", "lua"}
 STDIN_CODE = {"xargs", "source", ".", "eval"}
+STDIN_PATHS = {"-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"}  # script operands read stdin too
 # What these run cannot be verified here.
 MODIFIERS = {"noglob", "nocorrect", "builtin", "command", "exec", "env", "nohup", "sudo", "time",
              "nice", "timeout", "stdbuf", "caffeinate", "watch", "flock", "chrt", "ionice"}
@@ -318,32 +315,39 @@ HEREDOC = re.compile(
 PRINTF_OK = re.compile(r"(?:[^%]|%[s%])*", re.S)
 
 
-def companion_state(vals, egress_in):
-    """"safe" for an allowlisted companion that passes its option checks and the egress check."""
+def companion_safe(vals, egress_in):
+    """True for an allowlisted companion that passes its option checks and the egress check."""
     if not vals or vals[0] not in COMPANIONS:
-        return None
+        return False
     head, args = vals[0], vals[1:]
     if head == "cd" and len(args) > 1:
-        return None
+        return False
     # GNU/BSD sort accept abbreviated long options (an abbreviation of --compress-program).
     if head == "sort" and any(a.startswith("--") for a in args):
-        return None
+        return False
     if head == "printf" and args and (args[0].startswith("-") or not PRINTF_OK.fullmatch(args[0])
                                       or any(a.startswith("-v") for a in args[1:])):
-        return None
+        return False
     try:
-        return "safe" if egress_in(shlex.join(vals)) == "" else None
+        return egress_in(shlex.join(vals)) == ""
     except ValueError:
-        return None
+        return False
 
 
 def stdin_executor(vals):
     """True when this command runs what it reads on stdin: a shell or interpreter with no script
-    operand, xargs / source / . / eval, or a wrapper whose target cannot be verified."""
+    operand (or `-`, /dev/stdin, a shell's -s), xargs / source / . / eval, or an unverifiable wrapper."""
     head = os.path.basename(vals[0]) if vals else ""
-    if head in SHELLS_I or head in INTERP:
-        return all(v.startswith("-") for v in vals[1:])
-    return head in STDIN_CODE or head in MODIFIERS
+    if head not in SHELLS_I and head not in INTERP:
+        return head in STDIN_CODE or head in MODIFIERS
+    k = 1
+    while k < len(vals) and vals[k].startswith("-") and vals[k] != "-":
+        if head in SHELLS_I and re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*", vals[k]):
+            return True  # `bash -s x`: the script comes from stdin, x is $1
+        k += 1
+        if vals[k - 1] == "--":
+            break
+    return k == len(vals) or vals[k] in STDIN_PATHS
 
 
 def piped_verdict(cmds, ops):
@@ -358,9 +362,9 @@ def piped_verdict(cmds, ops):
     return "defer", ""
 
 
-def python_heredoc_ok(cmd, project):
+def python_heredoc_ok(cmd, forms):
     """`python3 - <<DELIM` whose first delimiter line ends the command, the body literal (quoted
-    delimiter, or no `$` / backquote / `\\`), under the local Bash(python3 -) opt-in."""
+    delimiter, or no `$` / backquote / `\\`), under the local Bash(python3 -) opt-in (<forms>)."""
     m = HEREDOC.match(cmd)
     lines = cmd[m.end():].split("\n") if m else []
     delim = m and (m.group(1) or m.group(2) or m.group(3))
@@ -368,7 +372,7 @@ def python_heredoc_ok(cmd, project):
         return False
     if m.group(3) and re.search(r"[$`\\]", "\n".join(lines[:lines.index(delim)])):
         return False
-    return "-" in local_python_rules(project)
+    return "-" in forms
 
 
 def gh_covered(seg, vals, rules):
@@ -411,12 +415,14 @@ def supervisor_verdict(cmd, project, egress_in):
     for every session but the Supervisor's in the main checkout): today's path decides."""
     if not supervisor_main_checkout(project):
         return "defer", ""
-    if python_heredoc_ok(cmd, project):
+    allow = local_rules(project)
+    py = python_forms_of(allow)
+    if python_heredoc_ok(cmd, py):
         return "exempt", ""
     segs = plain_segments(cmd)
     if segs is None:
         return backstop(cmd)
-    gh_rules, py = local_gh_rules(project), local_python_rules(project)
+    gh_rules = gh_rules_of(allow)
     kinds = []
     for seg in segs:
         vals = [w.value for w in seg]
@@ -426,7 +432,7 @@ def supervisor_verdict(cmd, project, egress_in):
             code = seg[2].parts if len(seg) == 3 else []
             kinds.append("py" if "-c" in py and len(code) == 1 and code[0][0] in "sd" else "other")
         else:
-            kinds.append("safe" if companion_state(vals, egress_in) == "safe" else "other")
+            kinds.append("safe" if companion_safe(vals, egress_in) else "other")
     if "other" not in kinds and ("gh" in kinds or "py" in kinds):
         return "exempt", ""
     return piped_verdict([[w.value for w in s] for s in segs], [s.op for s in segs])
@@ -434,7 +440,10 @@ def supervisor_verdict(cmd, project, egress_in):
 
 def record_touch(project, cwd, reason):
     """Append one Operator touch-log line for a Supervisor ask to .agents/touches/<yyyy-mm>.jsonl
-    through pinned directory fds (no symlinked dir, FIFO or hard-linked file). Never raises."""
+    through pinned directory fds (no symlinked dir, FIFO or hard-linked file); a no-op for every
+    other session. Never raises."""
+    if not supervisor_main_checkout(project):
+        return
     fds = []
     try:
         rel = (os.path.relpath(os.path.realpath(cwd), os.path.realpath(project))

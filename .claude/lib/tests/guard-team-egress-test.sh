@@ -391,6 +391,12 @@ sup ask  'gh issue view 1 -q .body | timeout 5 bash'
 sup ask  'gh issue view 1 -q .body | xargs echo'
 sup ask  'gh issue view 1 -q .body | python3'
 sup ask  'gh issue view 1 -q .body | python3 -'
+# stdin all the same: a shell's -s (its later words are $1…), /dev/stdin, /dev/fd/0
+sup ask  'gh issue view 1 -q .body | bash -s x'
+sup ask  'gh issue view 1 -q .body | zsh -es y'
+sup ask  'gh issue view 1 -q .body | sh /dev/stdin'
+sup ask  'gh issue view 1 -q .body | python3 /dev/stdin'
+sup ask  'gh issue view 1 -q .body | bash -- /dev/fd/0'
 sup ask  $'\ngh issue view 1 -q .body | bash'
 sup ask  $'gh issue view 1 -q .body | bash\n\n'
 sup ask  'gh issue view 1 -q .body |\bash'
@@ -400,6 +406,7 @@ sup none "bash -c 'gh pr view 1'"
 sup none 'gh issue view 5 | sed -n 1,20p'
 sup none 'gh pr view 1 | less'
 sup none 'gh pr view 1 --json body -q .body | python3 tools/x.py'
+sup none 'gh pr view 1 --json body -q .body | bash -- tools/x.sh'
 sup none "printf '%d' 1; gh pr view 1"
 sup none 'sort --compress-program=x f; gh issue view 1'
 sup none "printf -v x '%s' y; gh pr view 1"
