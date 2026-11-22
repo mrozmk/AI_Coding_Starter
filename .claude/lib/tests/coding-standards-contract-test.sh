@@ -4,9 +4,9 @@
 # reflection protocol and the guide name docs/coding-standards.md. It also pins the reuse statement the
 # planning commands require (`/plan-feature`'s reuse lookup, `**Reuse:**` block, grilling finding and
 # cross-model conventions; `/quick-change`'s `Reuse:` line).
-# It also pins the per-criterion proof contract: the four-kind `Proof:` grammar, `AC-n` labels and
-# the withdrawn exclusion in `/plan-feature` and `/quick-change`, grill step 5.1f, and `/execute`'s
-# red-before-green line. Text checks only. It also asserts that
+# It also pins the per-criterion proof contract: the four-kind `Proof:` grammar and `AC-n` labels
+# in `/plan-feature` and `/quick-change`, the withdrawn exclusion and the test-first task order in
+# `/plan-feature`, grill step 5.1f, and `/execute`'s red-before-green line. Text checks only. It also asserts that
 # `/setup:map-codebase`, the map-codebase workflow's standards prompt and the seed agree on the four
 # section names, and that the renderer hard-codes none.
 #
@@ -128,11 +128,16 @@ ac = strict_between(pf, "## ACCEPTANCE CRITERIA", "## NOTES", "plan template ACC
 for needle in GRAMMAR + ("**Proof lines — every active criterion.**",
                          "Under each criterion write one or more `Proof:` lines as nested list items",
                          "`AC-1 … AC-n` in document order", "skipping numbers already used",
-                         "`(withdrawn)` keeps its id and text but takes no `Proof:` line",
+                         "`(withdrawn)` keeps its id and text but takes no `Proof:` line and is not counted",
                          "The `Technical checks` sub-list takes neither",
                          "`contains — <test file> :: <test name literal>`",
                          "unless that named test case already exists",
-                         "never in a separate tests-only sub-step"):
+                         "Order that task before the task(s) that implement the behaviour it proves",
+                         "never in a separate tests-only sub-step",
+                         "the criterion is a structural fact provable without running anything",
+                         "the criterion asserts an outcome that appears only when something runs",
+                         "the criterion can only be observed in a running app",
+                         "the criterion is behavioural, could be tested, and the plan deliberately adds no test"):
     check(needle in ac, f"plan template ACCEPTANCE CRITERIA lacks {needle!r}")
 ts = strict_between(pf, "## TESTING STRATEGY", "### Core Functions to Test (if applicable)",
                     "plan template TESTING STRATEGY")
@@ -147,7 +152,7 @@ for needle in ("**Trigger:** always", "🟠 MAJOR", "no `Proof:` line", "carries
                "behaviour an existing test covers and names no task that updates or removes that test",
                "neither writes that test (before the behaviour) nor names the existing case"):
     check(needle in gate, f"grill step 5.1f lacks {needle!r}")
-check("These five gates" in pf, "plan-feature gates note does not count five gates")
+check("These five gates" in gate,"plan-feature gates note does not count five gates")
 check("a tests-only sub-step never holds a test a `Proof: test` line names" in pf,
       "plan-feature split mechanics still allow a proof test in a tests-only sub-step")
 p7s = strict_between(pf, "### Step 7.3 — Build the review prompt (BROAD mandate + strict evidence bar)",
