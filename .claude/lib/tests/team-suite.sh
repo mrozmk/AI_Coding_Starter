@@ -40,10 +40,10 @@ done
 STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke
   cost-tests guard-team-egress-test guard-team-trunk-test guard-destructive-sql-test guard-leak-smoke team-audit-test
   gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
-  finder-model-test check-impl-contract-test coding-standards-contract-test team-inbox-test team-ask-test herdr-dock-test herdr-kit-test herdr-kit-sync-test herdr-rate-limits-test notify-resolve-test
-  prime-probes-test
+  finder-model-test check-impl-contract-test coding-standards-contract-test coding-standards-gen-test qa-verify-contract-test team-inbox-test team-ask-test herdr-dock-test herdr-kit-test herdr-kit-sync-test herdr-rate-limits-test notify-resolve-test
+  prime-probes-test arch-assess-test
   starter-fork-commit-test fix-snapshot-test branch-model-test guard-push-protected-test
-  guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test
+  guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test pr-merge-github-test
   guarded-writes-az-test guarded-writes-ops-sql-test local-env-test trunk-trust-test remote-build-test)
 ALL=()
 [ ! -f "$TESTS/team-smoke.sh" ] \

@@ -1,0 +1,25 @@
+{
+  "$comment": "Shape of the Codex refutation pass's final message (Phase A step 3). Validated by `node .claude/lib/arch-assess.mjs check refutation --submitted <records.json>`; never passed to codex-bg.sh as SCHEMA.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "verdict", "target", "correction", "evidence", "evidence_kind", "command"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "verdict": { "enum": ["confirmed", "overstated", "refuted", "not-checked"] },
+          "target": { "enum": ["claim", "consequence", "change"] },
+          "correction": { "type": "string" },
+          "evidence": { "type": "string" },
+          "evidence_kind": { "enum": ["static", "test", "probe", "runtime"] },
+          "command": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

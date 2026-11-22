@@ -1,0 +1,11 @@
+name: ci
+on: [push]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PHP style
+        run: vendor/bin/phpcs --standard=PSR12 src
+      - run: cargo fmt --check
+      - run: gofmt -l .
+      - run: dotnet build

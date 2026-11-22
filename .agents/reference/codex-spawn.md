@@ -2,8 +2,8 @@
 
 The single source of truth for how any slash command launches Codex (`codex exec`) in the
 background for a cross-model review. `/plan-feature` (Phase 7), `/brainstorm` (Step 8.4),
-`/check-implementation` (Step 1.5), `/orchestrate` (Phase 7 step 0), `/design-ui` (Phase 4), and
-`/codex-review` all link here. The executable form is `.claude/lib/codex-bg.sh` — this file is the
+`/check-implementation` (Step 1.5), `/orchestrate` (Phase 7 step 0), `/design-ui` (Phase 4),
+`/architecture-review` and `/codex-review` all link here. The executable form is `.claude/lib/codex-bg.sh` — this file is the
 *why*; the wrapper is the *how*. If you add a new command that runs codex, reuse the wrapper and
 link here; do **not** copy a fresh `codex exec` invocation into the command (that drift is exactly
 what this pattern exists to kill).
@@ -101,6 +101,7 @@ re-validates everything).
 | `/check-implementation` Step 1.5 (also `/orchestrate` Phase 7 step 0) | `high` | (unset — `SCHEMA` run) |
 | `/quick-change` Phase 2 | `high` | `read-only` (default) |
 | `/architecture-review --codex` | `high` | `read-only` (default) |
+| `/architecture-review` Phase 0b (auditor) and Phase A (refutation) | `high` | `read-only` (default) |
 | `/execute codex` (executor) | `medium` | `workspace-write` |
 | `/check-implementation codex` (fixer) | `high` | `workspace-write` |
 | `/design-ui` Phase 4 (cross-model design review, `IMAGES` set) | `high` | (unset — `SCHEMA` run) |
@@ -236,6 +237,8 @@ out-of-scope change instead of reverting it.
 | `/codex-review` | (long-wakeup fallback; heartbeat from log is primary) | — | no hard ceiling — relay heartbeats, kill only on a genuine hang |
 | `/quick-change` Phase 2 | 4 min | 3 min | 25 min — then proceed without the opinion, reported on its own line |
 | `/architecture-review --codex` Phase 0 | 8 min | 5 min | 60 min (whole-codebase sweep) — then render the report from one sweep |
+| `/architecture-review` Phase 0b (auditor) | 8 min | 5 min | 40 min — then report 2 renders without it |
+| `/architecture-review` Phase A (refutation) | 4 min | 3 min | 25 min — then no corrections pass, said in the report |
 | `/execute codex` (executor) | 8 min | 3 min | 90 min — then STOP, tree left as-is, plan not moved |
 | `/check-implementation` Step 1.5 (cross-model review) | 6 min | 3 min | 50 min (single pass) — then fail-open skip |
 | `/check-implementation codex` (fixer) | 6 min | 3 min | 60 min — then STOP, "fixer failed" |

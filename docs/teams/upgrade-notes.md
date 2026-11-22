@@ -30,7 +30,12 @@ manifest.
    "clone base lacks the ask channel"): finish it on a main checkout from before the change, or
    restart the ticket on a fresh clone (`team-new.sh`). Land the change when no such run needs a
    runner restart.
-3. Mode cli and runs without a TeamLead are unchanged.
+3. Mode cli and runs without a TeamLead lose the screen sender too: `team-answer.sh <team> <role>
+   yes|no|say|pick|other|picks` no longer exists for any caller, and the team snapshot's role card
+   offers the stage's window hint (`session-host.sh hint <team>-<role>`) and `/start-team <team>`
+   instead of sender commands. Nothing answers such a stage from outside: a prompt or question
+   there is answered in the stage's own window. Its stages get no ask hooks, and coder and qa keep
+   `AskUserQuestion` disabled.
 
 ## `auto` picks Herdr when it answers; a machine without tmux can start sessions
 

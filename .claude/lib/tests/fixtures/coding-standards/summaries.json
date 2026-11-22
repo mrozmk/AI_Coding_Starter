@@ -1,0 +1,67 @@
+[
+  {
+    "module": "src/lib",
+    "purpose": "Shared helpers for dates and error bodies.",
+    "keyFiles": [{ "path": "src/lib/dates.ts", "role": "date formatting" }, { "path": "src/lib/errors.ts", "role": "error body" }],
+    "publicAPI": ["formatDate", "parseIsoDate", "toErrorBody"],
+    "deps": [],
+    "domainConcepts": [],
+    "dataModel": [],
+    "externalIntegrations": [],
+    "serviceInterface": { "isService": false, "communicates": [] },
+    "conventions": [],
+    "helpersDefined": [
+      { "need": "Format a date as YYYY-MM-DD", "symbol": "formatDate", "at": "src/lib/dates.ts:2" }
+    ],
+    "helpersUsed": [],
+    "problemShapes": []
+  },
+  {
+    "module": "src/orders",
+    "purpose": "Order descriptions and order errors.",
+    "keyFiles": [{ "path": "src/orders/a.ts", "role": "orders" }],
+    "publicAPI": ["describeOrder", "orderNotFound"],
+    "deps": ["src/lib"],
+    "domainConcepts": [{ "name": "Order", "description": "A placed order." }],
+    "dataModel": [],
+    "externalIntegrations": [],
+    "serviceInterface": { "isService": false, "communicates": [] },
+    "conventions": [
+      { "rule": "Exported functions declare an explicit return type", "appliesTo": "src/orders/**", "consistency": "consistent", "evidence": ["src/orders/a.ts:9"], "variants": [] },
+      { "rule": "Records carry an `id: string` field", "appliesTo": "src/orders/**", "consistency": "consistent", "evidence": ["src/orders/a.ts:5"], "variants": [] }
+    ],
+    "helpersDefined": [],
+    "helpersUsed": [
+      { "symbol": "formatDate", "definedIn": "src/lib/dates.ts", "at": "src/orders/a.ts:10" }
+    ],
+    "problemShapes": [
+      { "problem": "error handling and error bodies", "shape": "`toErrorBody()` builds `{ error: { code, message } }`", "consistency": "consistent", "evidence": ["src/orders/a.ts:14"], "variants": [] }
+    ]
+  },
+  {
+    "module": "src/billing",
+    "purpose": "Invoice labels, reminders and invoice errors.",
+    "keyFiles": [{ "path": "src/billing/b.ts", "role": "invoices" }, { "path": "src/billing/c.ts", "role": "reminders" }],
+    "publicAPI": ["invoiceLabel", "invoiceNotFound", "reminderText"],
+    "deps": ["src/lib"],
+    "domainConcepts": [{ "name": "Invoice", "description": "A bill for an order." }],
+    "dataModel": [],
+    "externalIntegrations": [],
+    "serviceInterface": { "isService": false, "communicates": [] },
+    "conventions": [
+      { "rule": "Exported functions declare an explicit return type", "appliesTo": "src/billing/**", "consistency": "consistent", "evidence": ["src/billing/b.ts:10"], "variants": [] },
+      { "rule": "Dates are formatted for display", "appliesTo": "src/billing/**", "consistency": "mixed", "evidence": ["src/billing/b.ts:11", "src/billing/c.ts:5"], "variants": [
+        { "shape": "`formatDate()` from src/lib", "evidence": "src/billing/b.ts:11" },
+        { "shape": "`toLocaleDateString()`", "evidence": "src/billing/c.ts:5" }
+      ] }
+    ],
+    "helpersDefined": [],
+    "helpersUsed": [
+      { "symbol": "formatDate", "definedIn": "src/lib/dates.ts", "at": "src/billing/b.ts:11" },
+      { "symbol": "parseMoney", "definedIn": "src/lib/dates.ts", "at": "src/billing/b.ts:7" }
+    ],
+    "problemShapes": [
+      { "problem": "error handling and error bodies", "shape": "`toErrorBody()` builds `{ error: { code, message } }`", "consistency": "consistent", "evidence": ["src/billing/b.ts:15"], "variants": [] }
+    ]
+  }
+]

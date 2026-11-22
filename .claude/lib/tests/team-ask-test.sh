@@ -119,7 +119,13 @@ pl question-two; HB a2; wf "$AD/a-2.json"
 L a-2 --pick SQLite --authority teamlead --why w; ok '[ "$LRC" = 7 ]' "--pick on a two-question ask → 7"
 L a-2 --answers '{"Which storage?": "SQLite"}' --authority teamlead --why w; ok '[ "$LRC" = 7 ]' "--answers missing a question → 7"
 L a-2 --allow --authority teamlead --why w; ok '[ "$LRC" = 7 ]' "--allow does not answer a question → 7"
+# A caller whose cwd is the clone gets that clone: never the sibling <clone>-<team> team_clone_dir
+# derives from a main checkout (#202); a team the clone does not carry is refused.
+mkdir -p "$T/clone-beta/.agents/team" && cp "$TD/team.json" "$T/clone-beta/.agents/team/team.json"
+(cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh alfa a-2 --text x --authority teamlead --why w) > "$T/l.out" 2>&1; LRC=$?
+ok '[ "$LRC" = 7 ] && grep -q "is not team alfa.s clone" "$T/l.out"' "another team's sender call from this clone → 7"
 L a-2 --text "use files, plain JSON" --authority teamlead --why w; wait "$HP"
+ok '[ "$LRC" = 0 ] && [ "$(st a-2)" = delivered ] && [ ! -e "$T/clone-beta/.agents/team/runs" ]' "a caller in the clone answers in that clone, not the sibling <clone>-beta"
 ok '[ "$(j "$T/a2.out" .hookSpecificOutput.permissionDecision)" = deny ] && [ "$(j "$T/a2.out" .hookSpecificOutput.permissionDecisionReason)" = "The TeamLead answered: \"Which storage?\" → use files, plain JSON" ]' "free text → deny with the answer spelled out"
 
 pl question-one; HB a3; wf "$AD/a-3.json"

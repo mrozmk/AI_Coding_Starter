@@ -92,7 +92,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[]
 jq -e '[.hooks.Notification[] | select(.matcher | split("|") | index("permission_prompt"))
   | .hooks[] | select((.command | test("team-attention")) and .async == true)] | length == 1' \
   "$S" >/dev/null || fail "2: no async Notification hook A"
-[ "$(jq '.permissions.allow | length' "$S")" = 22 ] || fail "2: allow is not the 22 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 35 ] || fail "2: allow is not the 35 role rules"
 jq -e '.permissions.ask | index("Bash(bash .claude/lib/team-mail-setup.sh*)")' "$S" >/dev/null \
   || fail "2: the channel setup is not behind ask"
 jq -e '.permissions.ask | index("Bash(bash .claude/team/sessions/operator-kit/install.sh*)")' "$S" >/dev/null \
@@ -281,7 +281,7 @@ S="$T/.claude/settings.json"
   || fail "10: the project's allow rules lost their order"
 [ "$(jq -r '.permissions.deny | join(",")' "$S")" = "Bash(curl:*)" ] || fail "10: deny was changed"
 [ "$(jq -r '.ask.keep' "$S")" = true ] || fail "10: an unrelated key was dropped"
-[ "$(jq '.permissions.allow | length' "$S")" = 24 ] || fail "10: allow is not 2 project + 22 role rules"
+[ "$(jq '.permissions.allow | length' "$S")" = 37 ] || fail "10: allow is not 2 project + 35 role rules"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
@@ -356,7 +356,7 @@ ln -s settings.local.json "$T/.claude/settings.json.team-setup.tmp"
 setup "$T"
 cmp -s "$WORK/local14" "$T/.claude/settings.local.json" \
   || fail "14: the merge wrote through a planted temp-name symlink"
-jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 35' "$T/.claude/settings.json" >/dev/null \
   || fail "14: settings.json was not written"
 [ -L "$T/.claude/settings.json.team-setup.tmp" ] || fail "14: the planted symlink was consumed"
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
@@ -434,7 +434,7 @@ mkdir -p "$T/.claude"
 printf '{}\n' > "$T/.claude/settings.json"
 setup "$T"
 [ "$RC" = 3 ] || fail "17: a valid empty object exited $RC, expected 3"
-jq -e '.permissions.allow | length == 22' "$T/.claude/settings.json" >/dev/null \
+jq -e '.permissions.allow | length == 35' "$T/.claude/settings.json" >/dev/null \
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
