@@ -162,8 +162,6 @@ CHECKS=$((CHECKS + 1))
 # (f) qa-probe.sh browser lines: driver, project-local Playwright resolution, launch summary
 QAP="$(cd "$(dirname "$0")/.." && pwd)/qa-probe.sh"
 [ -f "$QAP" ] || die "qa-probe.sh missing"
-qap() { (cd "$1" && CLAUDE_PROJECT_DIR="$1" bash "$QAP" 2>/dev/null </dev/null); }
-qline() { qap "$1" | grep -E "^$2: " ; }
 qaenv() {  # <dir> <json members> — minimal config; no base_url/local_url keeps the probe offline
   mkdir -p "$1/.claude" && printf '{"artifacts_dir":""%s}\n' "${2:+, $2}" > "$1/.claude/qa-env.json" \
     || die "qaenv $1"
@@ -193,8 +191,6 @@ qrun "$Q" qa-defaults
 qhas qa-defaults "browser-driver: script (default)"
 qhas qa-defaults "$PW_NONE"
 qhas qa-defaults "browser-launch: defaults"
-[ "$(qline "$Q" browser-driver)" = "browser-driver: script (default)" ] || bad qa-defaults "qline"
-CHECKS=$((CHECKS + 1))
 
 # 2. explicit and unknown drivers
 for d in mcp subagent; do

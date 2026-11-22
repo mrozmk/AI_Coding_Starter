@@ -317,6 +317,7 @@ rev-parse --path-format=absolute --git-path info/exclude
 a set `channel` cannot be established in an MCP-launched browser
 dispatched width tags
 the mount is verified on the parsed final URL
+mount not verified under mcp
 MCP output directory not established
 never write into a run directory this run did not create
 nothing later replaces it
@@ -403,6 +404,10 @@ EOF
   sed -e 's#^const WIDTHS = \[\];#const WIDTHS = [1024, 1440];#' "$WORK/run.mjs" > "$WORK/run2.mjs"
   sed -e "s#^const TARGET = .*#const TARGET = 'http://localhost:3000/storybook?path=/story/button--primary';#" \
       "$WORK/run.mjs" > "$WORK/run3.mjs"
+  sed -e "s@^const TARGET = .*@const TARGET = 'http://localhost:3000/#/components/button';@" \
+      "$WORK/run.mjs" > "$WORK/runH.mjs"
+  sed -e "s#^const TARGET = .*#const TARGET = 'http://localhost:3000/list?tag=one\&tag=two';#" \
+      "$WORK/run.mjs" > "$WORK/runQ.mjs"
   NODE_RUN="node --no-global-search-paths"
 
   STUB_HANG=1 $NODE_RUN "$WORK/run.mjs" > "$WORK/hang.json"; rc=$?
@@ -431,6 +436,12 @@ EOF
   mount "$WORK/run3.mjs" 'http://localhost:3000/storybook?path=/story/button--danger' "another story"
   STUB_URL='http://localhost:3000/storybook?path=/story/button--primary&args=x' $NODE_RUN "$WORK/run3.mjs" > "$WORK/extra.json"
   check $? "skeleton stub: an extra query parameter failed the mount check"
+  mount "$WORK/runH.mjs" 'http://localhost:3000/#/login' "a hash-route redirect"
+  mount "$WORK/runQ.mjs" 'http://localhost:3000/list?tag=one' "a missing value of a repeated key"
+  STUB_URL='http://localhost:3000/list?tag=two&tag=one' $NODE_RUN "$WORK/runQ.mjs" > "$WORK/repeat.json"
+  check $? "skeleton stub: every value of a repeated key present failed the mount check"
+  STUB_URL='http://localhost:3000/#/components/button' $NODE_RUN "$WORK/runH.mjs" > "$WORK/hash.json"
+  check $? "skeleton stub: the right hash route failed the mount check"
 
   STUB_TIMEOUT_AT=2 $NODE_RUN "$WORK/run2.mjs" > "$WORK/widths.json"; rc=$?
   [ "$rc" -eq 0 ] && jq -e '.status == "done" and .required == ["w1024","w1440"]
