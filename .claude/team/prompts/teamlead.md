@@ -186,8 +186,9 @@ round's blind check or brief.
    ("When <who> runs <what>, <wrong result>") and
    `not fixable here: <path outside the delta | decision needed>` in its `<why>`, and only when it
    meets the ticket bar (**Wrapup** step 2); otherwise route it `keep` (it is fine to ship) or `fix`
-   (a rework item). At most one `→ follow-up` line per run, every round's brief and section
-   together; a second defect that meets the bar is
+   (a rework item). At most one `→ follow-up` line per run, counted in the brief you accept with:
+   the wrapup reads only that brief, so an earlier round's `→ follow-up` line that still holds is
+   copied into it; a second defect that meets the bar is
    `keep — over the run's ticket cap: <failure sentence>`. Ordered work that was cut and deserves a
    ticket is written under `## Ordered vs delivered` as
    `- <order line> → follow-up — cut: <why>` and is that one line. No `→ follow-up` line → the
@@ -210,7 +211,8 @@ round: the coder continues on the same branch and the same PR, then qa runs agai
 1. Write `.agents/team/runs/{{RUN}}/rework-<n>.md` (n = the next round: 2 for the first rework):
    one item per line, each tied to an order line or a QA defect — the coder fixes exactly these.
    The order also lists every own-and-reached finding the earlier rounds left open (the QA reports'
-   warnings) — a rework round leaves no logged finding of this run behind.
+   warnings), except one routed `→ follow-up` — a rework round
+   leaves no logged finding of this run behind.
 2. `bash .claude/lib/team-verdict.sh acceptance rework --for <qa record> --ref
    .agents/team/runs/{{RUN}}/rework-<n>.md --message "<line>"`. In quick mode the first rework adds
    `--quick-call continue`; the alternative is `abandon-recommended` — a remode once code exists is

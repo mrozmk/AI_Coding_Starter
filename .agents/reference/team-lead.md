@@ -434,12 +434,13 @@ stage clock is paused while the gate waits (`lead_waiting`).
   - `accept` — needs `blind-check.md`, then the brief (not older than the blind check) with the six
     headings, and for a QA `Verdict: ready-with-warnings` one `- <warning> → keep|fix|follow-up —
     <why>` line under `## Warnings` per comma-separated item of the report's `Warnings:` line;
-    otherwise exit 8 naming the missing piece. Routing (prompt rule; the script checks only the
-    line's shape): an item is a comma-free label; `→ follow-up` needs the failure sentence and
+    otherwise exit 8 naming the missing piece. The runner accepts the qa record and launches the
+    wrapup. Routing (prompt rule; the script checks only the line's shape): an item is a comma-free
+    label; `→ follow-up` needs the failure sentence and
     `not fixable here: <path outside the delta | decision needed>` in `<why>`, else the lead routes
-    it `keep` or `fix`; at most one `→ follow-up` line per run across rounds (a cut order line under
-    `## Ordered vs delivered` included); the wrapup drafts tickets only from those lines (§10). The runner accepts the qa record and launches the
-    wrapup.
+    it `keep` or `fix`; at most one `→ follow-up` line per run (a cut order line under
+    `## Ordered vs delivered` included), counted in the accepted brief — an earlier round's line
+    that still holds is copied into it; the wrapup drafts tickets only from that brief (§10).
   - `rework` — opens the next round (§9).
   - `abandon-recommended` — needs `--decision d-<n>`, a pending decision opened with
     `--notify abandon_decision` (its escalate verdict is the one notification); the runner waits.
@@ -466,8 +467,8 @@ runs again.
 - **Order:** the lead writes `runs/<run>/rework-<n>.md` (n = the next round; each item tied to an
   order line or a QA defect), then `team-verdict.sh acceptance rework --for <qa record> --ref
   runs/<run>/rework-<n>.md`. `--for` is the qa's newest record of the current round, `done` or
-  `blocked`. The order also lists every own-and-reached finding the earlier rounds left open — a
-  rework round leaves no logged finding of this run behind.
+  `blocked`. The order also lists every own-and-reached finding the earlier rounds left open,
+  except one routed `→ follow-up` — a rework round leaves no logged finding of this run behind.
 - **Budget:** rounds the lead may order alone = `teams.teamlead.rework_budget.<mode>` (defaults
   brainstorm 2, quick 1) + the consumed Operator `continue` grants of decisions opened with
   `--notify abandon_decision` — one grant, one round. The count is derived from files (rework

@@ -23,7 +23,8 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
    unforeseen), `## Coder` (what was done, deviations from the plan and why, what blocked), `## QA`
    (findings, fixes, what is left; it ends with one count line
    `QA dropped N findings: a hypothetical, b cosmetic, c not own — list in the run notes`, counted
-   from the notes' `dropped —` lines, omitted when N is 0; no parking file), `## What matters for
+   from the `dropped —` lines of every round's notes (`notes.md` and each `r<n>/notes.md`),
+   omitted when N is 0; no parking file), `## What matters for
    you` (external effects, PR state). Short
    and concrete; explain any jargon in a few words. Add `## Supervisor decisions`: one plain line
    per `answers.md` entry — the authority (`class`, `teamlead`, `operator`, `operator-window`), the

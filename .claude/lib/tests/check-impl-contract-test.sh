@@ -171,7 +171,10 @@ for needle in ("**The finding filter (own + reached)**", "**own**", "**reached**
                "When <who> runs <what> on a supported setup, <wrong result>",
                "dropped — hypothetical | cosmetic | not own",
                "only in iteration 1 and in the one cross-model apply pass",
-               "more than 8 own-and-reached findings", "back to the coder", "comma-free label"):
+               "more than 8 own-and-reached findings", "back to the coder", "comma-free label",
+               "cross-model findings Step 1.5d hands over", "sensitive path found then goes to the warnings",
+               "still hold after that spawn", "unpushed commits Step 1.5 reviews",
+               "Step 1.5 is skipped as for an escalated loop"):
     check(needle in ci, f"{CI}: lacks {needle!r}")
 item1 = apply_.split("\n1. ", 1)[-1].split("\n2. ", 1)[0]
 codex_ = s1.split("**1ab-codex.", 1)[-1]
@@ -188,12 +191,14 @@ check("comma-free label" in qa, "qa.md: lacks 'comma-free label'")
 wr = read(".claude/team/prompts/wrapup.md")
 for needle in ("holds **one defect**", "When <who> runs <what>, <wrong result>.", "**Real use.**",
                "**Silent harm.**", "**Not fixable in this run.**", "No riders",
-               "→ follow-up` line of the accepted `acceptance-brief.md`", "QA dropped N findings"):
+               "→ follow-up` line of the accepted `acceptance-brief.md`", "QA dropped N findings",
+               "every round's notes"):
     check(needle in wr, f"wrapup.md: lacks {needle!r}")
 
 tl = read(".claude/team/prompts/teamlead.md")
 for needle in ("0 by default; at most 1 per run", "not fixable here:",
-               "At most one `→ follow-up` line per run",
+               "At most one `→ follow-up` line per run", "counted in the brief you accept with",
+               "except one routed `→ follow-up`",
                "leaves no logged finding of this run behind", 'never "the brief routes it"'):
     check(needle in tl, f"teamlead.md: lacks {needle!r}")
 check("1 ticket and 1 memory entry per run" not in tl, "teamlead.md: still carries the old ticket cap")
@@ -201,7 +206,8 @@ check("1 ticket and 1 memory entry per run" not in tl, "teamlead.md: still carri
 tlr = read(".agents/reference/team-lead.md")
 for needle in ("0 by default; at most 1 per run", "not fixable here:",
                "leaves no logged finding of this run behind", "holds **one defect**",
-               "**Calibration", "extra rework rounds"):
+               "**Calibration", "extra rework rounds", "counted in the accepted brief",
+               "except one routed `→ follow-up`"):
     check(needle in tlr, f"team-lead.md: lacks {needle!r}")
 check("1 ticket and 1 memory entry per run" not in tlr, "team-lead.md: still carries the old ticket cap")
 
