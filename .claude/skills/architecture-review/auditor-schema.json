@@ -1,0 +1,43 @@
+{
+  "$comment": "Shape of the Codex auditor's final message (Phase 0b). Validated by `node .claude/lib/arch-assess.mjs check auditor`; never passed to codex-bg.sh as SCHEMA.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision", "scope", "findings", "coverage_limits"],
+  "properties": {
+    "revision": { "type": ["string", "null"] },
+    "scope": { "type": "string" },
+    "coverage_limits": { "type": "array", "items": { "type": "string" } },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["invariant", "entry_point", "trigger", "user_impact", "anchors", "evidence_kind", "command", "observed", "uncertainty", "recommended_action"],
+        "properties": {
+          "invariant": { "type": "string" },
+          "entry_point": { "type": "string" },
+          "trigger": { "type": "string" },
+          "user_impact": { "type": "string" },
+          "anchors": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "line"],
+              "properties": {
+                "path": { "type": "string", "minLength": 1 },
+                "line": { "type": "integer", "minimum": 1 }
+              }
+            }
+          },
+          "evidence_kind": { "enum": ["static", "test", "probe", "runtime"] },
+          "command": { "type": ["string", "null"] },
+          "observed": { "type": "string" },
+          "uncertainty": { "type": "string" },
+          "recommended_action": { "type": "string" }
+        }
+      }
+    }
+  }
+}
