@@ -454,6 +454,7 @@ export async function measure(opts) {
 
   const entries = [];
   let skipped = 0;
+  const realRoot = fs.realpathSync(root);
   for (const rel of candidates) {
     if (!inInventory(rel)) continue;
     const abs = path.join(root, rel);
@@ -461,6 +462,10 @@ export async function measure(opts) {
     try {
       const st = fs.lstatSync(abs);
       if (!st.isFile()) { skipped++; continue; }
+      // lstat checks only the last component: an indexed child of a directory replaced by a
+      // symlink still resolves, possibly out of the root.
+      const real = path.relative(realRoot, fs.realpathSync(abs));
+      if (real === '..' || real.startsWith('..' + path.sep) || path.isAbsolute(real)) { skipped++; continue; }
       buf = fs.readFileSync(abs);
     } catch { skipped++; continue; }
     if (buf.subarray(0, 8192).includes(0)) { skipped++; continue; }

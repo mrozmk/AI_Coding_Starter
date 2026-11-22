@@ -192,6 +192,16 @@ ln -s "$WORK/outside" "$MD/docs"
 measure mapdir
 q mapdir '.map == {skipped: "outside the root"}' || fail "M8 symlinked map dir: $(jq -c .map "$WORK/mapdir.json")"
 ok "M8 a map reached through a symlink out of the root is never read"
+repo symdir; SD="$WORK/symdir"
+put "$SD/a/mod.py" "x = 1"
+put "$SD/b/x.py" "y = 1"
+commit "$SD"
+mv "$SD/b" "$WORK/symdir-b-moved"
+put "$WORK/outside-b/x.py" "secret = 1"
+ln -s "$WORK/outside-b" "$SD/b"
+measure symdir
+q symdir '[.files[].path] == ["a/mod.py"]' || fail "M8 indexed child under a symlinked dir: $(jq -c '[.files[].path]' "$WORK/symdir.json")"
+ok "M8 an indexed file reached through a directory symlink out of the root is never read"
 
 # ---- measure: areas ----------------------------------------------------------------------------
 repo areas; AR="$WORK/areas"
