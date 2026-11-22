@@ -217,7 +217,8 @@ Otherwise:
    not lead to a second PR. Exactly one → the result. None → the create's error verbatim; stop (no
    retry with other flags).
 7. **Report:** ✅ PR `#<n>` (draft or published) + URL, title, `DEST`, author line; next: review, then
-   `/pr-merge <id>` (azure-devops) or the host's merge; repeat every warning.
+   `/pr-merge <id>` (when `.claude/commands/pr-merge.md` exists — the team harness ships it), else
+   the host's merge; repeat every warning.
 
 ---
 
