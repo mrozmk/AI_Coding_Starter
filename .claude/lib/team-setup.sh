@@ -391,7 +391,15 @@ TEAM_MERGE="$(jq -r '.workflow.team_merge // "confirm"' "$TARGET/.claude/project
 # The roles run these from the clones; anything wider stays the project's own decision.
 NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
   ["Bash(bash .claude/lib/team-*.sh*)", "Bash(git switch *)", "Bash(git show *)",
-   "Bash(gh pr view*)", "Bash(gh issue view*)", "Bash(bash .claude/lib/codex-bg.sh*)",
+   "Bash(gh pr view*)", "Bash(gh issue view*)",
+   # Read-only tracker and PR reads for a session that works with GitHub issues. In a role
+   # session guard-team-egress.sh still asks for every gh beyond pr/issue view (the Supervisor:
+   # unless a settings.local.json rule matches), so these widen only the plain sessions.
+   "Bash(gh issue list*)", "Bash(gh pr list*)", "Bash(gh pr checks*)", "Bash(gh pr diff*)",
+   "Bash(gh pr status*)", "Bash(gh project list*)", "Bash(gh project view*)",
+   "Bash(gh project item-list*)", "Bash(gh project field-list*)", "Bash(gh run list*)",
+   "Bash(gh run view*)", "Bash(gh label list*)", "Bash(gh auth status*)",
+   "Bash(bash .claude/lib/codex-bg.sh*)",
    "Bash(PROMPT=* bash .claude/lib/codex-bg.sh*)",
    "Bash(bash .claude/lib/monitoring.sh*)",
    # The role-session support verbs; its Operator actions are on the ask list below.
