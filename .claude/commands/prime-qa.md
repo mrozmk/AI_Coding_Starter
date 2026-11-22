@@ -75,6 +75,9 @@ The probe reads `.claude/qa-env.json` and emits `key: value` lines. **Transcribe
 | `browser-mcp-servers-running: N` | **Information, not a gate.** `0` = you are alone; higher = other testers are working in parallel. Never treat any value as a failure. |
 | `parallel-safe flag …: NO` | A second concurrent browser session will collide with the first. Warn; do not block. |
 | `artifacts-dir …: NOT gitignored` | Screenshots would become committable. Warn — QA evidence is point-in-time, not repo history. |
+| `browser-driver: …` | Who observes browser rows in `/qa-verify`: `script` (default) · `mcp` · `subagent`; `UNKNOWN` is treated as `script`. |
+| `playwright: …` | Whether the project's own Playwright (≥ 1.49) resolves — the `script` driver needs it; otherwise `/qa-verify` falls back to the browser MCP. Information, not a gate. |
+| `browser-launch: …` | Launch settings (`qa-env.json → browser_launch`) every driver must honour. |
 
 Two rules that govern this phase and are easy to erode:
 
@@ -97,6 +100,8 @@ One dot-separated line prefixed with the mode: `Loaded (qa): index.md · project
 - **Credentials file:** `<present, N bytes, modified … | MISSING>`
 - **Browser MCP servers running:** `<N>`
 - **Parallel-safe:** `<yes | no | not applicable>`
+- **Browser driver:** `<browser-driver line value>` · **Playwright:** `<resolves (pkg version) | below 1.49 | not resolvable | not checked>`
+- **Browser launch:** `<defaults | the set keys>`
 
 ### MCP roster
 - `<Browser automation | tracker | design tool>`: `<available | absent>` each.
