@@ -3,8 +3,9 @@
 # the record template and its rules, both marker types), the criterion fingerprint — extracted from
 # the registry and run on fixed vectors, so the test runs the same bytes the command runs — the
 # re-check rules, Phase 3's one-pass decisions and one approval, the modes, the pool, groups, the
-# feature path and deferrals, and the neighbouring contracts.
-# Text and pipeline checks only — nothing is spawned, no tracker is called.
+# feature path and deferrals, the browser drivers and the script skeleton (extracted and run against
+# a stub Playwright), and the neighbouring contracts.
+# Text and pipeline checks only — nothing is spawned, no tracker is called, no real browser runs.
 #
 # Usage: bash .claude/lib/tests/qa-verify-contract-test.sh [root]   (default: this checkout)
 set -u
@@ -284,6 +285,169 @@ grep -vF 'never merges them' "$ROOT/$CMD" > "$WORK/b/$CMD"
 # In a subshell: ROOT, FAILS and N change only in its own copies.
 ( ROOT=$WORK/b; FAILS=(); pins "$CMD" "pool" <<< "$POOL_PINS"; [ "${#FAILS[@]}" -gt 0 ] )
 check $? "break-check: a removed pool pin went unnoticed"
+
+# ---- browser drivers ---------------------------------------------------------------------------------
+# A plain heredoc, not $(cat <<…): bash 3.2 misparses the apostrophes below inside a command substitution.
+cat > "$WORK/browser-pins.txt" <<'EOF'
+### Lane S — the browser drivers
+#### Driver `script` (default)
+#### Driver `mcp`
+#### Driver `subagent`
+The fall-back order is script → mcp → NEEDS-HUMAN, and it applies only to `script`.
+are chosen on purpose and fall straight to `NEEDS-HUMAN`.
+Browser drivers apply only to the rows the project roster (registry §2) binds to `qa-runtime-ui`
+<artifacts_dir>/<run>/<KEY>-<ac_id>.mjs
+<artifacts_dir>/<run>/<group id>-F<n>.mjs
+never `launchPersistentContext`
+never `waitForTimeout`
+A script that hits its hard limit → the row is `NEEDS-HUMAN` with the limit and the step quoted — no retry of that row.
+A wait that times out at the action timeout is an observation, not a crash
+A visual row is never decided from computed values alone
+decided from computed values alone
+driver: script (main session)
+This retry applies to spawned agents only.
+artifacts dir <dir> is committable
+not established in the <driver> browser
+mcp: a single call is bounded by the server's own timeouts
+BROWSER_DRIVER: <configured> → <effective> (<reason>)
+an empty `channel` or `user_agent` is written as `undefined`
+every tag in `required` has at least one assertion
+a desktop server of the `browser automation` class (any but the one named by `qa-env.json → device_mcp_server`
+rev-parse --path-format=absolute --git-path info/exclude
+a set `channel` cannot be established in an MCP-launched browser
+dispatched width tags
+the mount is verified on the parsed final URL
+mount not verified under mcp
+MCP output directory not established
+never write into a run directory this run did not create
+nothing later replaces it
+the intended human gate
+<!-- qa-script:begin -->
+<!-- qa-script:end -->
+EOF
+BROWSER_PINS=$(cat "$WORK/browser-pins.txt")
+pins "$CMD" "browser" <<< "$BROWSER_PINS"
+mkdir -p "$WORK/bb/.claude/commands"
+grep -vF 'no retry of that row' "$ROOT/$CMD" > "$WORK/bb/$CMD"
+( ROOT=$WORK/bb; FAILS=(); pins "$CMD" "browser" <<< "$BROWSER_PINS"; [ "${#FAILS[@]}" -gt 0 ] )
+check $? "break-check: a removed browser pin went unnoticed"
+
+UI=.claude/agents/qa-runtime-ui.md
+pins "$UI" "qa-runtime-ui" <<'EOF'
+browser_driver to subagent (not the default)
+A visual criterion is never decided from computed values alone
+BROWSER_LAUNCH
+<ARTIFACTS_DIR>/<KEY>-<ac-id>-<slug>.png
+EOF
+# A plain YAML scalar with ': ' does not parse; the agent would still show in the Phase-0 listing.
+! sed -n 's/^description: //p' "$ROOT/$UI" | grep -q ': '; check $? "qa-runtime-ui: description contains ': '"
+
+# qa-env.json: the shape, not the defaults (a downstream may set another driver).
+jq -e '(.browser_driver // "") as $d | (["","script","mcp","subagent"] | index($d)) != null
+  and (.browser_launch | type == "object" and has("channel") and has("user_agent") and has("ignore_https_errors"))
+  and (.browser_launch.ignore_https_errors | type == "boolean")
+  and has("_browser_driver_doc") and has("_browser_launch_doc")' "$ROOT/.claude/qa-env.json" >/dev/null 2>&1
+check $? "qa-env.json: browser_driver / browser_launch shape"
+has .claude/commands/prime-qa.md '`browser-driver: …`'; check $? "prime-qa: no browser-driver reading row"
+has .claude/commands/prime-qa.md '**Browser driver:**'; check $? "prime-qa: no Browser driver fact"
+
+# The script skeleton: extracted from the command, checked as text, then run against a stub Playwright.
+awk '/^<!-- qa-script:end -->$/{exit} f; /^<!-- qa-script:begin -->$/{f=1}' "$ROOT/$CMD" | sed '/^```/d' > "$WORK/skel.mjs"
+[ -s "$WORK/skel.mjs" ]; check $? "skeleton: the extracted block is empty"
+for want in 'newContext(' 'setDefaultTimeout(' 'setDefaultNavigationTimeout(' 'emit(124)' 'process.exit(code)' \
+            'ariaSnapshot()' 'resp.status()' 'result.required.push(tag)' '${OUT}/${BASE}-${tag}.png' \
+            'not the mount target' 'searchParams' 'page.screenshot('; do
+  grep -qF -- "$want" "$WORK/skel.mjs"; check $? "skeleton: lacks $want"
+done
+for neg in waitForTimeout launchPersistentContext userDataDir; do
+  ! grep -qF -- "$neg" "$WORK/skel.mjs"; check $? "skeleton: contains $neg"
+done
+for re in '^const HARD_LIMIT_MS = 120000;$' '^const ROOT = ' '^const OUT = ' '^const TARGET = ' \
+          '^const WIDTHS = \[\];' '^const EXPECT_URL = '; do
+  [ "$(grep -c -- "$re" "$WORK/skel.mjs")" = 1 ]; check $? "skeleton: not exactly one line matching $re"
+done
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "skip: node absent — skeleton stub runs not executed"; check 0 "skeleton stub runs skipped"
+else
+  node --check "$WORK/skel.mjs" 2>/dev/null; check $? "skeleton: node --check fails"
+  S="$WORK/stub"; mkdir -p "$S/node_modules/playwright"
+  printf '{}\n' > "$S/package.json"
+  printf '{"name":"playwright","version":"1.50.0","main":"index.js"}\n' > "$S/node_modules/playwright/package.json"
+  cat > "$S/node_modules/playwright/index.js" <<'EOF'
+let calls = 0;
+const loc = {
+  waitFor() {
+    if (process.env.STUB_HANG) return new Promise(() => {});
+    calls += 1;
+    if (process.env.STUB_TIMEOUT_AT && calls === Number(process.env.STUB_TIMEOUT_AT)) {
+      const e = new Error('Timeout 10000ms exceeded'); e.name = 'TimeoutError'; return Promise.reject(e);
+    }
+    return Promise.resolve();
+  },
+  ariaSnapshot: async () => '- button "Pay"',
+  screenshot: async () => {},
+  textContent: async () => 'Pay',
+};
+const page = {
+  goto: async () => ({ status: () => Number(process.env.STUB_STATUS || 200) }),
+  url: () => process.env.STUB_URL || 'http://localhost:3000/route',
+  screenshot: async () => {},
+  locator: () => loc,
+};
+const context = { setDefaultTimeout() {}, setDefaultNavigationTimeout() {}, newPage: async () => page, close: async () => {} };
+const browser = { newContext: async () => context, close: async () => {}, version: () => 'stub' };
+module.exports = { chromium: { launch: async () => browser } };
+EOF
+  sed -e "s#^const ROOT = .*#const ROOT = '$S';#" -e "s#^const OUT = .*#const OUT = '$WORK';#" \
+      -e 's#^const HARD_LIMIT_MS = 120000;#const HARD_LIMIT_MS = 1000;#' "$WORK/skel.mjs" > "$WORK/run.mjs"
+  sed -e 's#^const WIDTHS = \[\];#const WIDTHS = [1024, 1440];#' "$WORK/run.mjs" > "$WORK/run2.mjs"
+  sed -e "s#^const TARGET = .*#const TARGET = 'http://localhost:3000/storybook?path=/story/button--primary';#" \
+      "$WORK/run.mjs" > "$WORK/run3.mjs"
+  sed -e "s@^const TARGET = .*@const TARGET = 'http://localhost:3000/#/components/button';@" \
+      "$WORK/run.mjs" > "$WORK/runH.mjs"
+  sed -e "s#^const TARGET = .*#const TARGET = 'http://localhost:3000/list?tag=one\&tag=two';#" \
+      "$WORK/run.mjs" > "$WORK/runQ.mjs"
+  NODE_RUN="node --no-global-search-paths"
+
+  STUB_HANG=1 $NODE_RUN "$WORK/run.mjs" > "$WORK/hang.json"; rc=$?
+  [ "$rc" -eq 124 ]; check $? "skeleton stub: a hang exits $rc, want 124"
+  [ "$(wc -l < "$WORK/hang.json" | tr -d ' ')" = 1 ]; check $? "skeleton stub: a hang prints not exactly one JSON line"
+  jq -e '.status == "hard-limit" and .error == "hard limit 1000 ms reached at step observe default"' "$WORK/hang.json" >/dev/null 2>&1
+  check $? "skeleton stub: the hard-limit JSON"
+
+  $NODE_RUN "$WORK/run.mjs" > "$WORK/done.json"; rc=$?
+  [ "$rc" -eq 0 ]; check $? "skeleton stub: done exits $rc, want 0"
+  jq -e '.status == "done" and .observed["default.text"] == "Pay" and .observed["default.http"] == 200
+    and (.assertions | length) == 1 and .assertions[0].ok == false and (.screenshots | length) == 2' "$WORK/done.json" >/dev/null 2>&1
+  check $? "skeleton stub: the done JSON"
+
+  STUB_STATUS=403 $NODE_RUN "$WORK/run.mjs" > "$WORK/http.json"; rc=$?
+  [ "$rc" -eq 1 ] && jq -e '.status == "error" and (.error | startswith("HTTP 403 at "))' "$WORK/http.json" >/dev/null 2>&1
+  check $? "skeleton stub: HTTP 403 is not an environment error (rc $rc)"
+
+  mount() {  # mount <script> <final url> <label> — a wrong mount must end as an error
+    STUB_URL="$2" $NODE_RUN "$1" > "$WORK/mount.json"; local r=$?
+    [ "$r" -eq 1 ] && jq -e '.status == "error" and (.error | test("not the mount target"))' "$WORK/mount.json" >/dev/null 2>&1
+    check $? "skeleton stub: $3 passed the mount check (rc $r)"
+  }
+  mount "$WORK/run.mjs" 'http://localhost:3000/login?return=/route' "a login redirect"
+  mount "$WORK/run.mjs" 'http://stub.test/route' "another host"
+  mount "$WORK/run3.mjs" 'http://localhost:3000/storybook?path=/story/button--danger' "another story"
+  STUB_URL='http://localhost:3000/storybook?path=/story/button--primary&args=x' $NODE_RUN "$WORK/run3.mjs" > "$WORK/extra.json"
+  check $? "skeleton stub: an extra query parameter failed the mount check"
+  mount "$WORK/runH.mjs" 'http://localhost:3000/#/login' "a hash-route redirect"
+  mount "$WORK/runQ.mjs" 'http://localhost:3000/list?tag=one' "a missing value of a repeated key"
+  STUB_URL='http://localhost:3000/list?tag=two&tag=one' $NODE_RUN "$WORK/runQ.mjs" > "$WORK/repeat.json"
+  check $? "skeleton stub: every value of a repeated key present failed the mount check"
+  STUB_URL='http://localhost:3000/#/components/button' $NODE_RUN "$WORK/runH.mjs" > "$WORK/hash.json"
+  check $? "skeleton stub: the right hash route failed the mount check"
+
+  STUB_TIMEOUT_AT=2 $NODE_RUN "$WORK/run2.mjs" > "$WORK/widths.json"; rc=$?
+  [ "$rc" -eq 0 ] && jq -e '.status == "done" and .required == ["w1024","w1440"]
+    and (.observed["w1440.visible"] | startswith("condition not met")) and (.assertions | length) == 1' "$WORK/widths.json" >/dev/null 2>&1
+  check $? "skeleton stub: two widths with a timed-out second wait (rc $rc)"
+fi
 
 # ---- neighbours ------------------------------------------------------------------------------------
 has .agents/reference/jira-mcp-atlassian.md '`AC-3`'; check $? "jira-mcp-atlassian: no AC-3 example"
