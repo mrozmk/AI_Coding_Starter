@@ -270,12 +270,12 @@ def format_bindings(values):
     return bound
 
 
-def bound_ok(word, i, bound):
-    """A bound formatting value that is one single-quoted word (also glued `--jq='…'`): pure data."""
-    p = word.parts
-    return i in bound and (
-        (len(p) == 1 and p[0][0] == "s")
-        or (len(p) == 2 and p[0] in (("u", "--jq="), ("u", "--template=")) and p[1][0] == "s"))
+def bound_words(seg):
+    """Indexes of <seg>'s bound formatting values that are one single-quoted word (also glued
+    `--jq='…'`): pure data."""
+    bound, glued = format_bindings([w.value for w in seg]), (("u", "--jq="), ("u", "--template="))
+    return {i for i in bound for p in [seg[i].parts]
+            if (len(p) == 1 and p[0][0] == "s") or (len(p) == 2 and p[0] in glued and p[1][0] == "s")}
 
 
 def format_masked(cmd, egress_in):
@@ -289,8 +289,7 @@ def format_masked(cmd, egress_in):
         return cmd
     words = []
     for s in (s for s, v in zip(segs, views) if v):
-        bound = format_bindings([w.value for w in s])
-        words += [s[i] for i in bound if bound_ok(s[i], i, bound)]
+        words += [s[i] for i in bound_words(s)]
     for w in sorted(words, key=lambda w: w.start, reverse=True):
         keep = w.parts[0][1] if w.parts[0][0] == "u" else ""
         cmd = cmd[:w.start] + keep + "_" + cmd[w.end:]
@@ -380,8 +379,7 @@ def gh_covered(seg, vals, rules):
     rest = tuple(vals[1:])
     if not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
         return False
-    bound = format_bindings(vals)
-    ok = {i for i in bound if bound_ok(seg[i], i, bound)}
+    ok = bound_words(seg)
     text = " ".join(w.raw for i, w in enumerate(seg) if i not in ok)
     return not (UNPLAIN.search(text) or any(set(v) <= SEPARATORS for v in vals)
                 or gh_host_selector(["_" if i in ok else v for i, v in enumerate(vals)]))
@@ -398,7 +396,7 @@ def backstop(cmd):
         s = t.strip("\n")
         if t == "{" and not cur:
             continue  # a group opener: its first command reads the same stdin
-        if not (t and set(t) <= SEPARATORS) or (s[:1] == "&" and cur and cur[-1][-1] in "<>"):
+        if not (t and set(t) <= SEPARATORS) or (s[:1] == "&" and cur and cur[-1][-1:] in ("<", ">")):
             cur.append(t)  # `2>&1` tokenizes as `2>`, `&`, `1`: that `&` is the redirection's
             continue
         op = "|" if s[:1] == "|" and s[:2] != "||" else t  # `|`, `|&`, `|(` all pipe

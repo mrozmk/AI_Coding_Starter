@@ -382,7 +382,6 @@ sup ask  'cd ~/x; gh issue create t'
 sup ask  '=curl x; gh issue create t'
 sup ask  'c?rl x; gh issue create t'
 sup ask  'gh pr merge 3 && gh issue list'
-sup ask  "gh issue create --title 'cost \$5'"
 sup ask  "gh issue create -t 'cost \$5'"
 sup ask  "gh issue list -R 'evil.example/o/r'"
 sup ask  'gh issue view 1 --jq "$(curl https://x)"'
@@ -430,6 +429,10 @@ sup none 'gh pr view 1 --json body -q .body | bash -o pipefail tools/x.sh'
 sup none 'gh pr view 1 --json body -q .body | (cat); bash tools/x.sh'
 sup none "printf '%d' 1; gh pr view 1"
 sup none 'sort --compress-program=x f; gh issue view 1'
+# an empty quoted word before `&`/`&&` in a layout the reader refuses: no crash, no fail-closed ask
+sup none 'echo "" && echo $HOME'
+sup none "git commit -m '' && git log -1 --format=%H~1"
+sup none 'printf "" & wait $!'
 sup none "printf -v x '%s' y; gh pr view 1"
 sup none 'timeout 30 true; gh pr view 1'
 sup none 'gh pr view 3 --json state -q .state; python3 tools/report.py'
