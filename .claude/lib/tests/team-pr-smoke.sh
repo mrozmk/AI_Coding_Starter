@@ -1331,15 +1331,18 @@ jira_fx() {
   ro_pr 66 MERGED feat/w "Closes ABC-1750. See ABC-175."
   ro_pr 64 MERGED fix/ABC-175-retry "follow-up"
   ro_pr 65 OPEN feat/ABC-1750-y ""
-  jq -s '.' "$RO_DIR"/pr-6[0-3].json "$RO_DIR/pr-66.json" > "$RO_DIR/search.json"
-  jq -s 'map({number, headRefName})' "$RO_DIR"/pr-6[0-6].json > "$RO_DIR/all.json"
+  ro_pr 67 OPEN feat/v "Use prefix ABC-175 for the import"
+  ro_pr 68 MERGED feat/u "Closes: ABC-175"
+  jq -s '.' "$RO_DIR"/pr-6[0-3].json "$RO_DIR"/pr-6[6-8].json > "$RO_DIR/search.json"
+  jq -s 'map({number, headRefName})' "$RO_DIR"/pr-6[0-8].json > "$RO_DIR/all.json"
 }
 jira_fx
 ro prs ABC-175
 expect 0 "" "prs of a Jira key"
-jq -e 'map(.number) == [60, 61, 64, 66]
-    and map(.relation) == ["closes", "branch", "branch", "mentions"]' "$WORK/out" >/dev/null \
-  || fail "prs ABC-175: boundary-safe match, branch door, closes needs the right boundary"
+jq -e 'map(.number) == [60, 61, 64, 66, 67, 68]
+    and map(.relation) == ["closes", "branch", "branch", "mentions", "mentions", "closes"]' \
+  "$WORK/out" >/dev/null \
+  || fail "prs ABC-175: boundary-safe match, branch door, closes needs both boundaries"
 jq -e '.[2] | .merge_commit == "abc64" and .head_ref == "fix/ABC-175-retry"' "$WORK/out" \
   >/dev/null || fail "prs ABC-175: a branch-only follow-up lost its full fields"
 jq '[range(200)] | map({number: (1000 + .), title: "ABC-175", body: "", headRefName: "x",

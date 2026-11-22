@@ -1,8 +1,8 @@
 # Reference: PR-host REST APIs (PR comments) — GitHub · Bitbucket Cloud · GitLab
 
-Distilled, project-local reference for the `/pr-comments` skill and the PR facts `/qa-verify` reads (§8). Covers just the pull-request
-comment surface per host: auth, the endpoints the helper uses, pagination, the comment/thread model
-and its normalisation, and known gotchas. Consult this first; fall back to upstream docs only when
+Distilled, project-local reference for the `/pr-comments` skill and the PR facts `/qa-verify`
+reads (§8). Covers just the pull-request comment surface per host: auth, the endpoints the
+helper uses, pagination, the comment/thread model and its normalisation, and known gotchas. Consult this first; fall back to upstream docs only when
 something here is marked **validate live** or a behaviour diverges at runtime.
 
 The helper `.claude/skills/pr-comments/references/pr-api.sh` detects the host from `origin` and

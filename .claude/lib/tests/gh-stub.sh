@@ -1,8 +1,8 @@
 # Shared gh stub for the tracker smokes: every call is logged to $GH_LOG, all state lives in
 # $GH_DIR (issues.json, comments.json, items.json, fields.json, issue-<n>.json, subs-<n>.json,
-# pool-items.json for `gh api graphql`), 30
-# items per page, failures by env switch (STUB_GH_PAGE2_FAIL, STUB_GH_CREATE_THEN_FAIL,
-# STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY, STUB_GH_SUB_DENY). Sourced; needs $WORK/bin on PATH.
+# pool-items.json for `gh api graphql`), 30 items per page, failures by env switch
+# (STUB_GH_PAGE2_FAIL, STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY,
+# STUB_GH_SUB_DENY). Sourced; needs $WORK/bin on PATH.
 gh_stub_install() {
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash

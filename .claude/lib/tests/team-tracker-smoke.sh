@@ -1013,6 +1013,11 @@ jq 'map(if .content.number == 9 then .content.timelineItems.pageInfo.hasNextPage
 run "$MAIN" $TRK pool --status QA --out "$WORK/p-links.json"
 expect 4 "issue #9 has more links than one page" "pool: a truncated link list is exit 4"
 pool_fx
+{ jq '.[]' "$GH_DIR/pool-items.json"; pool_node 7 OPEN Todo 2026-11-06T08:00:00Z; } | jq -s '.' \
+  > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/pool-items.json"
+run "$MAIN" $TRK pool --status QA --out "$WORK/p-twice.json"
+expect 4 "issue #7 has more than one item" "pool: an issue in the status and in another is exit 4"
+pool_fx
 STUB_GH_NODEPS=1 run "$MAIN" $TRK pool --status QA --out "$WORK/p-nodeps.json"
 expect 0 "items=2" "pool: a host without issue dependencies still lists the pool"
 jq -e '.dependencies == "unavailable" and ([.items[] | select(.key == "9")][0]

@@ -281,12 +281,9 @@ check $ord_ok "phase 1: the pool listing, groups, proposal and feature path are 
 # Break-check: a command without one pool pin must fail the same pins.
 mkdir -p "$WORK/b/.claude/commands"
 grep -vF 'never merges them' "$ROOT/$CMD" > "$WORK/b/$CMD"
-ROOT_SAVE=$ROOT; ROOT=$WORK/b; FAILS_SAVE=${#FAILS[@]}; N_SAVE=$N
-pins "$CMD" "pool" <<< "$POOL_PINS"
-grew=1; [ "${#FAILS[@]}" -gt "$FAILS_SAVE" ] && grew=0
-ROOT=$ROOT_SAVE; N=$N_SAVE
-if [ "$FAILS_SAVE" -eq 0 ]; then FAILS=(); else FAILS=("${FAILS[@]:0:$FAILS_SAVE}"); fi
-check $grew "break-check: a removed pool pin went unnoticed"
+# In a subshell: ROOT, FAILS and N change only in its own copies.
+( ROOT=$WORK/b; FAILS=(); pins "$CMD" "pool" <<< "$POOL_PINS"; [ "${#FAILS[@]}" -gt 0 ] )
+check $? "break-check: a removed pool pin went unnoticed"
 
 # ---- neighbours ------------------------------------------------------------------------------------
 has .agents/reference/jira-mcp-atlassian.md '`AC-3`'; check $? "jira-mcp-atlassian: no AC-3 example"

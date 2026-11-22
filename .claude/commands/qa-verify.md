@@ -162,7 +162,7 @@ Every mode, every target — single, group and pool, with or without `qa.pool_st
 
 ## Step 0.8 — Groups
 
-Group and pool runs. An edge joins two tickets of the run and names its signal, in this precedence (1 strongest):
+Group and pool runs. **A group run (2–5 arguments) is one group by the Operator's choice:** its edges and cross-references are computed and shown at the gate, never used to split it (its cap is the Step 0.1 refusal); GitHub dependency and mention edges come from the pool read, so a group run shows none. Pool runs build groups by the rules below. An edge joins two tickets of the run and names its signal, in this precedence (1 strongest):
 
 1. **link** — a Jira issue link; a GitHub dependency (`blocked_by` / `blocking`) or cross-reference (`mentions`) between two pool issues; or a **deferral** edge — an incoming deferral comment, or a `DEFERRED → <KEY>` row in a newest record, between two tickets of the run;
 2. **files** — the tickets' PRs (`closes` / `branch`) share a changed path, or the two tickets name the same route or screen in their criteria or PR descriptions;
@@ -368,7 +368,7 @@ Show **one list** of every `FAIL`, `ENV` and `NEEDS-HUMAN` row — the group's t
 - a `DEFERRED → <KEY>` row whose **source** has a file record target (a spec path, a Task with an empty or `(unverified)` `Jira` cell) stays local — the list says `file record — no pointer posted; re-run this source when <KEY> lands`;
 - anything else → unchanged.
 
-Then **one** `AskUserQuestion`: `Accept all recommendations` (first, recommended) or `Change some` — the free-text answer lists one `<id> <change>` per line (in a group run one `<KEY> <id> <change>` per line; feature-path rows as `F<n> <change>`). Allowed changes: a `FAIL`'s severity; a `FAIL` → `NEEDS-HUMAN` with the Operator's reason; a `NEEDS-HUMAN` → `DEFERRED → <KEY>` (a key is required); a feature-path `FAIL`'s charge; keep. Asked once — no per-finding round trips. An empty list skips the question.
+Then **one** `AskUserQuestion`: `Accept all recommendations` (first, recommended) or `Change some` — the free-text answer lists one `<id> <change>` per line (in a group run, or whenever the list holds rows of more than one ticket — incoming `deferred-in` rows included — one `<KEY> <id> <change>` per line, `<KEY>` the row's own ticket; feature-path rows as `F<n> <change>`). Allowed changes: a `FAIL`'s severity; a `FAIL` → `NEEDS-HUMAN` with the Operator's reason; a `NEEDS-HUMAN` → `DEFERRED → <KEY>` (a key is required); a feature-path `FAIL`'s charge; keep. Asked once — no per-finding round trips. An empty list skips the question.
 
 ### 3. The record
 
@@ -381,12 +381,7 @@ Build one record per ticket per `registry §7b`, serialized from that ticket's o
 
 Jira target: key-shaped ids are written without the hyphen (`AC-3` → `AC3`, `registry §7b`), in records, feature paths and deferral comments.
 
-**Deferral comments.** With the same approval that posts the group's records, every `DEFERRED → <KEY>` row of a tracker-record source adds one comment on `<KEY>` (`registry §7b`):
-
-```markdown
-QA: <SRC> <id> waits for this ticket — "<criterion, one line>". Verify it when this ticket reaches <pool status>.
-qa-verify:v1 deferral src=<SRC> row=<id> fp=<fp>
-```
+**Deferral comments.** With the same approval that posts the group's records, every `DEFERRED → <KEY>` row of a tracker-record source adds one comment on `<KEY>` in the shape of `registry §7b` (the deferral comment: one sentence, then the marker line).
 
 - `<pool status>` is `qa.pool_status`; when the key is unset (single and group modes never ask for it) the sentence ends `Verify it when this ticket reaches QA.`
 - **No comment when** the target is already done — GitHub: `bash .claude/lib/team-tracker.sh item-status <KEY> --out <scratchpad>/item-<KEY>.json` says the issue is closed and its Status sits after `qa.pool_status` in `statuses` order; Jira: status category Done — the row stays `DEFERRED → <KEY>` with the note `target done — verify in the next run of <SRC>` (that run verifies it: a non-PASS row is always verified); the target is in the same group (step 2); the tracker is `none`; the source has a file record target (step 2). A target state that cannot be established (`qa.pool_status` unset, no Project, no board item, a failed read) → the comment is posted and the post approval shows `target state unknown — pointer posted`. No ticket to point at → `NEEDS-HUMAN` (unchanged).
@@ -396,6 +391,7 @@ qa-verify:v1 deferral src=<SRC> row=<id> fp=<fp>
 **Deferral results.** The verdicts of `deferred-in from <SRC>` rows are posted on the source — one record per source per group run:
 
 - Built on the source's newest valid record, **re-read at build time**, with **all** of that source's still-live replacements applied together, in re-check form: `mode=recheck`, Run line `re-check of <date of the source's record>`, `group=<this group's id>` and **`build=-`** (the record mixes observations from different builds, so the same-build stop never fires on it). Each replaced row gets its new disposition; every other row is carried forward with its provenance — `(carried from <date>)` on any disposition (`registry §7a`), an already-carried row keeping its date. One bullet under `### Outside the criteria`: `<ids> verified in the run of group <group id> on record <comment id>` — the base record's tracker comment id.
+- **Only while the source's criteria are unchanged:** the source's current fingerprints (Step 0.75) equal the base record's row fingerprints, multiplicities included. Otherwise no result is posted on the source — a carried record would omit a new criterion or keep a removed one; the verdict stays in this target's record under `### Outside the criteria`, and the post approval and step 6 say `<SRC>: criteria changed since its record — re-check <SRC>`.
 - **Right before posting,** re-read the source: a newer record than the base → stop that source's write and show the rebuilt record for approval again; the group's other posts go ahead.
 - **Right after posting,** re-read it once: any other QA record posted between the base and this result (a sibling result from another machine, or an ordinary re-check) → print `<SRC>: a sibling result was posted on the same record — re-check <SRC>`. The result is then invalid by the base rule (`registry §7b`), so the source's next run is a full run; step 6 says the newest verdict line of `<SRC>` must not be trusted.
 

@@ -201,8 +201,21 @@ project_items() {
     || die 4 "incomplete item list for project $TEAM_GH_PROJECT_NUMBER"
 }
 
+# Usage: project_item_match "<refusal>" → $TMP/match.json (the items of issue #$KEY) and HITS.
+# Identity is repo + number, never the number alone (owner/A#7 and owner/B#7 can share a project).
+# An ambiguous match is recoverable, not a coin flip: acting on the wrong item is unrecoverable.
+project_item_match() {
+  jq --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
+    '[.items[] | select(.content.type == "Issue" and .content.number == $n
+       and .content.repository == $repo)]' "$TMP/items.json" > "$TMP/match.json" \
+    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
+  HITS="$(jq -r 'length' "$TMP/match.json")"
+  [ "$HITS" -le 1 ] || die 4 "issue #$KEY matches $HITS items in project \
+$TEAM_GH_PROJECT_NUMBER — refusing to $1"
+}
+
 op_set_status() {
-  local logical="$1" opt item name hits
+  local logical="$1" opt item name
   case "$logical" in
     started)   opt="$TEAM_GH_STATUS_STARTED" ;;
     delivered) opt="$TEAM_GH_STATUS_DELIVERED" ;;
@@ -210,15 +223,7 @@ op_set_status() {
   esac
   if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
   project_items
-  # Identity is repo + number, never the number alone (owner/A#7 and owner/B#7 can share a project).
-  # An ambiguous match is recoverable, not a coin flip: editing the wrong item is unrecoverable.
-  jq --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
-    '[.items[] | select(.content.type == "Issue" and .content.number == $n
-       and .content.repository == $repo)]' "$TMP/items.json" > "$TMP/match.json" \
-    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
-  hits="$(jq -r 'length' "$TMP/match.json")"
-  [ "$hits" -le 1 ] || die 4 "issue #$KEY matches $hits items in project \
-$TEAM_GH_PROJECT_NUMBER — refusing to edit one of them"
+  project_item_match "edit one of them"
   item="$(jq -r '.[0].id // ""' "$TMP/match.json")"
   [ -n "$item" ] \
     || die 4 "issue #$KEY is not in project $TEAM_GH_PROJECT_NUMBER — not adding it"
@@ -403,10 +408,10 @@ $(jq -r '.options | join(", ")' "$TMP/sfield.json"))"
     gh_or4 gh api graphql -f "pid=$TEAM_GH_PROJECT_ID" -f "fname=$fname" -f "query=$q" \
       > "$TMP/page-1.json"
   fi
+  total="$(jq -r '.data.node.items.totalCount' "$TMP/page-1.json" 2>/dev/null || true)"
   while :; do
     jq -e '(has("errors") | not) and (.data.node.items.nodes | type == "array")' \
       "$TMP/page-$k.json" >/dev/null 2>&1 || die 4 "project $TEAM_GH_PROJECT_ID answered no item page"
-    [ "$k" -gt 1 ] || total="$(jq -r '.data.node.items.totalCount' "$TMP/page-1.json")"
     [[ "$total" =~ ^[0-9]+$ ]] || die 4 "project $TEAM_GH_PROJECT_ID has no readable totalCount"
     more="$(jq -r '.data.node.items.pageInfo.hasNextPage' "$TMP/page-$k.json")"
     [ "$more" = true ] || break
@@ -425,8 +430,12 @@ $(jq -r '.options | join(", ")' "$TMP/sfield.json"))"
   jq --arg repo "$TEAM_GH_REPO" --arg s "$want" '[.[] | select(.content.__typename == "Issue"
       and .content.repository.nameWithOwner == $repo and (.status.name? // null) == $s)]' \
     "$TMP/nodes.json" > "$TMP/sel.json" || die 4 "item list is not parseable"
-  n="$(jq -r 'group_by(.content.number) | map(select(length > 1) | .[0].content.number)
-    | .[0] // ""' "$TMP/sel.json")"
+  # Ambiguity over every item of the issue, not only those in <name>: an issue in QA and in Todo
+  # has no single status (item-status refuses it too).
+  n="$(jq -r --arg repo "$TEAM_GH_REPO" --arg s "$want" '[.[] | select(.content.__typename == "Issue"
+      and .content.repository.nameWithOwner == $repo)] | group_by(.content.number)
+    | map(select(length > 1 and any(.[]; (.status.name? // null) == $s)) | .[0].content.number)
+    | .[0] // ""' "$TMP/nodes.json")"
   [ -z "$n" ] || die 4 "issue #$n has more than one item in project $TEAM_GH_PROJECT_ID — refusing to pick one"
   n="$(jq -r 'map(select([.content.blockedBy, .content.blocking, .content.timelineItems]
       | any(.pageInfo.hasNextPage? == true)) | .content.number) | .[0] // ""' "$TMP/sel.json")"
@@ -454,20 +463,14 @@ $(jq -r '.options | join(", ")' "$TMP/sfield.json"))"
 # item-status: one issue, open or closed, with its board Status — by the set-status identity
 # (repo + number over the full item list; more than one item is exit 4). Read-only.
 op_item_status() {
-  local out="$1" hits
+  local out="$1"
   [ -n "$TEAM_GH_PROJECT_ID" ] \
     || die 2 "item-status needs a GitHub Project (project_id) — none configured"
   gh issue view "$KEY" --repo "$TEAM_GH_REPO" --json state > "$TMP/issue.json" 2>"$TMP/err" \
     || { sed 's/^/  | /' "$TMP/err" >&2; die 1 "issue #$KEY cannot be read"; }
   project_items
   status_field
-  jq --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
-    '[.items[] | select(.content.type == "Issue" and .content.number == $n
-       and .content.repository == $repo)]' "$TMP/items.json" > "$TMP/match.json" \
-    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
-  hits="$(jq -r 'length' "$TMP/match.json")"
-  [ "$hits" -le 1 ] || die 4 "issue #$KEY matches $hits items in project \
-$TEAM_GH_PROJECT_NUMBER — refusing to read one of them"
+  project_item_match "read one of them"
   jq -n --slurpfile i "$TMP/issue.json" --slurpfile m "$TMP/match.json" \
     --slurpfile f "$TMP/sfield.json" --arg key "$KEY" \
     '{key: $key, state: ($i[0].state // ""),
@@ -525,16 +528,11 @@ op_add_sub_issue() {
 
 # project-add: idempotent — the full board list first (repo + number identity); >1 match is exit 4.
 op_project_add() {
-  local hits url
+  local url
   if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
   project_items
-  hits="$(jq -r --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
-    '[.items[] | select(.content.type == "Issue" and .content.number == $n
-       and .content.repository == $repo)] | length' "$TMP/items.json")" \
-    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
-  [ "$hits" -le 1 ] || die 4 "issue #$KEY matches $hits items in project \
-$TEAM_GH_PROJECT_NUMBER — refusing to guess"
-  if [ "$hits" = 1 ]; then echo "exists"; return 0; fi
+  project_item_match "guess"
+  if [ "$HITS" = 1 ]; then echo "exists"; return 0; fi
   gh_or4 gh issue view "$KEY" --repo "$TEAM_GH_REPO" --json url > "$TMP/url.json"
   url="$(jq -r '.url // empty' "$TMP/url.json")"
   [ -n "$url" ] || die 4 "issue #$KEY has no URL"
