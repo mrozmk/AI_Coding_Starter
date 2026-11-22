@@ -267,7 +267,7 @@ export function render({ draft, scan, repo, outRoot = repo, seed, toolsOnly = fa
     const candidates = (Array.isArray(draft.helperCandidates) ? draft.helperCandidates : []).filter((c) => c && !draft.helpers.some((h) => h.path === c.at));
     if (candidates.length && files && modules) {
       for (const c of findConsumers({ repo, files, modules, candidates })) {
-        if (c.result === 'row') {
+        if ((c.consumers || []).length >= 2) {
           const h = { need: c.need, use: c.symbol, path: c.at, support: [{ module: c.module, ref: c.at }, ...c.consumers] };
           if (survives('helpers', h, h.path, h.need, h.path)) helpers.push(row(h));
           else c.result = 'dropped';

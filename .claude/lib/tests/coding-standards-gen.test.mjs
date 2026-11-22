@@ -1,7 +1,6 @@
 // Tests of the coding-standards generation chain: the deterministic config/CI scan
 // (standards-tools.mjs), the verifying renderer (coding-standards-render.mjs) and the map-codebase
-// workflow run under a stub harness. Scripts are imported inside each test, so the scanner tests run
-// before the renderer exists.
+// workflow run under a stub harness.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -131,6 +130,17 @@ test('scanner: harness paths, the file list, build integration and symlinks', as
   const ci = path.join(props, '.github/workflows/ci.yml');
   fs.writeFileSync(ci, fs.readFileSync(ci, 'utf8').replace(/^.*dotnet build.*\n/m, ''));
   assert.equal(tool(await fixtureScan(props), 'msbuild').enforced, false);
+
+  // EnforceCodeStyleInBuild makes EditorConfig error diagnostics a build check only with a built project.
+  const style = copyRepo();
+  fs.writeFileSync(path.join(style, 'Directory.Build.props'),
+    '<Project>\n  <PropertyGroup>\n    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>\n  </PropertyGroup>\n</Project>\n');
+  fs.appendFileSync(path.join(style, '.editorconfig'), '\n[*.cs]\ndotnet_diagnostic.IDE0005.severity = error\n');
+  assert.equal(tool(await fixtureScan(style), 'editorconfig').enforced, true);
+  fs.rmSync(path.join(style, 'app/App.csproj'));
+  const styleCi = path.join(style, '.github/workflows/ci.yml');
+  fs.writeFileSync(styleCi, fs.readFileSync(styleCi, 'utf8').replace(/^.*dotnet build.*\n/m, ''));
+  assert.equal(tool(await fixtureScan(style), 'editorconfig').enforced, false);
 
   const linked = copyRepo();
   const outside = path.join(tmp(), '.prettierrc.json');

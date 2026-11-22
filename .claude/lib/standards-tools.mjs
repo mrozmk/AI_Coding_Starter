@@ -366,7 +366,9 @@ export function scan({ repo, files }) {
   const out = { tools: [], observed: [], unparsed, unattributed: [], notLoaded: [], scopeUnknown: [], ignored };
   const strictProp = (c) => c.rules.some((r) => (STRICT_PROPS.test(r.rule) && /^true$/i.test(r.setting)) || (r.rule === 'WarningsAsErrors' && r.setting.trim()));
   const msbuild = configs.get('msbuild');
-  const codeStyleInBuild = msbuild.some((c) => c.rules.some((r) => r.rule === 'EnforceCodeStyleInBuild' && /^true$/i.test(r.setting)));
+  // EnforceCodeStyleInBuild acts only when a project is built: it needs a .csproj/.sln and a build run.
+  const codeStyleInBuild = hasProject && runs.some((r) => r.tool === 'msbuild' && !r.scopeUnknown)
+    && msbuild.some((c) => c.rules.some((r) => r.rule === 'EnforceCodeStyleInBuild' && /^true$/i.test(r.setting)));
   for (const t of TOOLS) {
     const cfgs = configs.get(t.tool).sort((a, b) => a.path.split('/').length - b.path.split('/').length || (a.path < b.path ? -1 : 1));
     const all = runs.filter((r) => r.tool === t.tool);
