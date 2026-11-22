@@ -2,7 +2,10 @@
 # Offline contract test of /pr-merge's GitHub path: provider routing, the team-run / fork /
 # ownership refusals before any write, the Branch-model strategy mapping, a single guarded merge
 # call (never --admin / --auto / --delete-branch), required checks only, the rerun route and the
-# guarded cleanup order — plus the Azure DevOps strings other tests pin and the /push hint.
+# guarded cleanup order — plus the Azure DevOps strings other tests pin and the /push hint; then
+# the hardening: long-lived heads (KEEP) never deleted, the merge-queue / moved-PR read before the
+# merge, rerun MERGE_SHA and lookup, failed-switch skip, exact ls-remote refs, the quoted Azure
+# message, G3(c) push-vs-pull, the git_host none fallback and /push inside /pr-create.
 set -euo pipefail
 
 ST=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -119,5 +122,95 @@ grep -qF 'Next: /pr-create, then merge the PR on the host.' "$P" || fail "push.m
 ! grep -qF "(azure-devops) or the host's merge" "$ST/.claude/commands/pr-create.md" \
   || fail "pr-create.md still limits /pr-merge to azure-devops"
 N=$((N + 3))
+
+# Azure DevOps section bounds (it ends where the GitHub path starts).
+[ "$AZ" -lt "$GH" ] || fail "## Azure DevOps path does not precede ## GitHub path"
+az_line() { local l; l=$(line_of "$1" "${2:-$AZ}"); [ -n "$l" ] && [ "$l" -lt "$GH" ] && echo "$l"; }
+GR=$(heading '## Guardrails') || true
+[ -n "$GR" ] || fail "no ## Guardrails section"
+GR_END=$(printf '%s\n' "$BODY" | awk -v s="$GR" 'NR > s && /^## / { print NR; exit }')
+GSEC=$(printf '%s\n' "$BODY" | awk -v s="$GR" -v e="$GR_END" 'NR > s && NR < e')
+
+# (11) KEEP: one definition in ## Guardrails from branch-model.sh, with the /push fallback; the
+#      read-only tools are pre-approved, a GraphQL call (could be a mutation) is not.
+for p in 'KEEP' 'branch-model.sh fields' '`main`, `master`, `trunk`, `develop`'; do
+  printf '%s\n' "$GSEC" | grep -qF -- "$p" || fail "## Guardrails lacks: $p"
+done
+for t in 'Bash(bash .claude/lib/branch-model.sh:*)' 'Bash(gh repo view:*)'; do
+  case "$TOOLS" in *"$t"*) ;; *) fail "allowed-tools lacks $t" ;; esac
+done
+case "$TOOLS" in *"gh api graphql"*|*"gh api:"*) fail "allowed-tools pre-approves gh api graphql" ;; esac
+N=$((N + 3))
+
+# (12) G5: the long-lived-head and merge-queue reads sit between the checks and the merge call;
+#      the queue read STOPs; the post-merge re-read watches autoMergeRequest.
+for p in 'deleteBranchOnMerge' 'isMergeQueueEnabled'; do
+  l=$(gh_line "$p") || fail "GitHub path lacks: $p"
+  [ "$l" -gt "$CHECKS" ] && [ "$l" -lt "$MERGE" ] || fail "$p is not between gh pr checks and the merge (line $l)"
+done
+Q=$(gh_line 'isMergeQueueEnabled: true') || fail "no isMergeQueueEnabled: true rule"
+printf '%s\n' "$BODY" | sed -n "${Q},$((Q + 2))p" | grep -qF 'STOP' || fail "isMergeQueueEnabled: true is not a STOP"
+in_gh 'the PR moved after the checks'
+AM=$(gh_line 'autoMergeRequest') || fail "GitHub path lacks autoMergeRequest"
+[ "$AM" -gt "$MERGE" ] || fail "autoMergeRequest does not follow the merge call"
+N=$((N + 4))
+
+# (13) G7: the KEEP skip comes before the first remote deletion.
+K7=$(line_of 'KEEP' "$G7"); DEL=$(line_of 'git push origin --delete' "$G7")
+[ -n "$K7" ] && [ "$K7" -lt "$DEL" ] || fail "Step G7 has no KEEP skip before git push origin --delete"
+N=$((N + 1))
+
+# (14) Rerun MERGE_SHA comes from the MERGED row; G6 has no own re-read.
+case "$RL" in *MERGE_SHA*) ;; *) fail "the MERGED row does not set MERGE_SHA" ;; esac
+G6=$(gh_line '### Step G6') || fail "no Step G6"
+printf '%s\n' "$BODY" | awk -v s="$G6" -v e="$G7" 'NR > s && NR < e' | grep -qF -- '--json mergeCommit' \
+  && fail "Step G6 still re-reads mergeCommit"
+N=$((N + 2))
+
+# (15) G2: the argument-less rerun lookup, guarded by the local tip.
+G2=$(gh_line '### Step G2') || fail "no Step G2"
+G3=$(gh_line '### Step G3') || fail "no Step G3"
+for p in '--state merged' 'refs/heads/<BRANCH>'; do
+  l=$(line_of "$p" "$G2"); [ -n "$l" ] && [ "$l" -lt "$G3" ] || fail "Step G2 lacks: $p"
+done
+N=$((N + 2))
+
+# (16) A failed switch skips the rest of the local cleanup, on both paths.
+SW=$(line_of 'git switch <BASE>' "$G7")
+printf '%s\n' "$BODY" | sed -n "${SW},$((SW + 1))p" | grep -qF 'skip the rest' || fail "Step G7: no skip after a failed git switch <BASE>"
+A6=$(az_line '### Step 6 — Cleanup') || fail "no Azure Step 6 — Cleanup"
+SWA=$(az_line 'git switch <TARGET>' "$A6") || fail "Azure Step 6 lacks git switch <TARGET>"
+printf '%s\n' "$BODY" | sed -n "${SWA},$((SWA + 2))p" | grep -qF 'skip the rest' || fail "Azure Step 6: no skip after a failed git switch <TARGET>"
+N=$((N + 2))
+
+# (17) ls-remote matches the exact ref on both paths.
+grep -qF 'ls-remote --heads' "$F" && fail "pr-merge.md still uses ls-remote --heads"
+LR=$(line_of 'git ls-remote --exit-code' "$G7")
+printf '%s\n' "$BODY" | sed -n "${LR}p" | grep -qF 'refs/heads/<HEAD>' || fail "Step G7 ls-remote is not refs/heads/<HEAD>"
+LRA=$(az_line 'git ls-remote --exit-code' "$A6") || fail "Azure Step 6 lacks git ls-remote --exit-code"
+printf '%s\n' "$BODY" | sed -n "${LRA}p" | grep -qF 'refs/heads/<SOURCE>' || fail "Azure Step 6 ls-remote is not refs/heads/<SOURCE>"
+N=$((N + 3))
+
+# (18) Azure: single-quoted merge message, the source branch never deleted by the host.
+grep -qF -- '--merge-commit-message "' "$F" && fail "a double-quoted --merge-commit-message is left"
+grep -qF -- '--delete-source-branch true' "$F" && fail "--delete-source-branch true is left"
+has "--merge-commit-message '<MSG>'"
+has '--delete-source-branch false'
+N=$((N + 4))
+
+# (19) G3(c): local branch ahead of the PR head → push, not pull.
+for p in 'merge-base --is-ancestor' 'run /push'; do
+  l=$(line_of "$p" "$G3"); [ -n "$l" ] && [ "$l" -lt "$(gh_line '### Step G4')" ] || fail "Step G3 lacks: $p"
+done
+N=$((N + 2))
+
+# (20) ## Provider: git_host none falls back to the origin host.
+printf '%s\n' "$PSEC" | grep -qF 'git_host: none' || fail "## Provider does not name git_host: none"
+printf '%s\n' "$PSEC" | grep -qF '`origin` host' || fail "## Provider lacks the origin fallback"
+N=$((N + 2))
+
+# (21) /push skips its next-step line inside /pr-create.
+grep -qF '`/pr-create` Step 5' "$P" || fail "push.md does not skip its next-step line inside /pr-create Step 5"
+N=$((N + 1))
 
 echo "pr-merge-github-test: OK ($N checks)"
