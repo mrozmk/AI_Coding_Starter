@@ -175,16 +175,19 @@ rules.
 5. **Who is asked.** First every fault-line `Q-n` still open from an earlier run, whatever its
    owner, is rechecked against the current deciding records (item 3); one a record now decides
    is closed with ` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`,
-   not asked — except an `analyst` or `client` one whose decision `docs/PRD.md` does not carry
-   yet: it stays open, the report cites the record, and the full update run of item 7 closes it.
+   not asked — except, under `--fault-lines`, an `analyst` or `client` one whose decision
+   `docs/PRD.md` does not carry yet: it stays open, the report cites the record, and the full
+   update run of item 7 closes it. A full run closes it here like any other, and its Phase 5
+   writes the decision into the PRD.
    ` → resolved by` is only for a record cited by file: an earlier `analyst` or `client` one
    whose owner decides it in a full run's session closes with item 7's form alone (` → D-n` or
-   ` → answered in session`), never with both. Then only `team`-owned questions are asked — the new survivors and the earlier ones
-   still open — in the session's question round (`/discover` Phase 3 and the mode's step 4 say
-   which), ranked with the other questions under §2 (≤5 per round); none when the user has said
-   done (§2 item 8). The others are listed for their owner; a `team` question left over stays
-   open. The Phase 5 DoR round may ask a blocking `team` one, never an `analyst` or `client` one:
-   that one needs its owner's `accepted as open by <owner>` line (§4), or the PRD stays unwritten.
+   ` → answered in session`), never with both. Then only `team`-owned questions are asked — the
+   new survivors and the earlier ones still open — in the session's question round (`/discover`
+   Phase 3 and the mode's step 4 say which), ranked with the other questions under §2 (≤5 per
+   round); none when the user has said done (§2 item 8). The others are listed for their owner;
+   a `team` question left over stays open. The Phase 5 DoR round may ask a blocking `team` one,
+   never an `analyst` or `client` one: that one needs its owner's `accepted as open by <owner>`
+   line (§4), or the PRD stays unwritten.
 6. **`blocks slice 1`.** `yes` only when, without a decision, the slice 1 already agreed cannot
    be defined, delivered or verified. An optional extension is `no` even when one of its answers
    would touch the critical flow.

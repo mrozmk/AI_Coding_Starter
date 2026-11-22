@@ -160,7 +160,8 @@ undecided "in or out?" questions become owned `Q-n` without a new interview.
    §2); those left over stay open. Never a second round.
 5. **Write `docs/discovery.md`** — append the new `Q-n` (next free id); close each answered one
    — new or earlier — and log it under `## Clarifications` / `### Session YYYY-MM-DD`
-   (`coverage.md` §5 item 7). File absent → create it with the template header
+   (`coverage.md` §5 item 7). File absent and the run writes at least one `Q-n` → create it
+   with the template header
    (`**Mode:** fault-lines`, the project type read from the PRD and the repo, not asked),
    `## Clarifications` and `## Open questions` only, plus the line
    `Other sections: not written yet — a full /discover run writes them.` When the file has a
@@ -168,10 +169,11 @@ undecided "in or out?" questions become owned `Q-n` without a new interview.
    closing and re-owning, per `coverage.md` §4; a file without one gets none.
 6. **Write `docs/PRD.md`** — only `## 13. Open questions`, synced by id from
    `docs/discovery.md` for every `Q-n` this run touched: a new open one is added as the
-   `prd-template.md` §13 line (`` - `Q-n` — <one line> · owner <role> · blocks slice 1: yes | no ``),
-   not the long `Q-n` line of `discovery-template.md`, a closed one is dropped, a still-open one gets its current owner and
-   `blocks slice 1`; other rows stay as they are. No such section (a reconstructed or legacy
-   PRD) → append it at the end with the heading and intro line of
+   `prd-template.md` §13 line
+   (`` - `Q-n` — <one line> · owner <role> · blocks slice 1: yes | no ``), not the long `Q-n`
+   line of `discovery-template.md`, a closed one is dropped, a still-open one gets its current
+   owner and `blocks slice 1`; other rows stay as they are. No such section (a reconstructed or
+   legacy PRD) and an open `Q-n` to add → append it at the end with the heading and intro line of
    `.claude/skills/discover/prd-template.md` §13. Nothing else in the PRD changes: no non-goal,
    no register id, no `**Current:**` bump.
 7. **Skipped** — the Definition of Ready gate (no PRD rewrite), Phase 6 and Phase 7: the run
