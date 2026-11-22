@@ -237,12 +237,7 @@ if (modules.length === 0) {
     unanalyzed: [],
     analyzed: 0,
     total: 0,
-    standardsDraft: null,
-    rejected: [],
-    writtenNotFollowed: [],
-    toolsNamedNotPresent: [],
-    standardsSkipped: '',
-    standardsInputChars: 0,
+    standardsDraft: null, rejected: [], writtenNotFollowed: [], toolsNamedNotPresent: [], standardsSkipped: '', standardsInputChars: 0,
     error: 'No modules passed in args.modules — run the /setup:map-codebase Phase-0 scan + Checkpoint 1 first.',
   }
 }
@@ -298,7 +293,7 @@ const docsPromptText =
 (1) documentedDecisions — architecture decisions / ADRs (title; rationale incl. alternatives & consequences if stated; source file);
 (2) documentedPatterns — conventions/standards a contributor must follow (name, description, source, kind): kind \`rule\` when a reviewer may reject a change for it, \`trap\` or \`note\` when it helps writing code but is no ground for rejection;
 (3) whyContext — the product/business intent and rationale (the "why") that code cannot reveal;
-(4) namedTools — every lint/format/analyzer tool a doc names (tool, source).
+(4) namedTools — every lint, format or static-analysis tool a doc names (tool, source); not test runners, hook or task runners, commit-message linters or single rules.
 Use ONLY these files; do not read source. ${citeNote}
 
 Files:
@@ -350,11 +345,13 @@ const toolFacts = (toolScan.tools || []).map((t) => ({
   rules: (t.configs || []).filter((c) => c.attributed).flatMap((c) => (c.rules || []).filter((r) => !(c.notEnforced || []).includes(r.rule)).map((r) => r.rule)),
 }))
 
+const REF = { type: 'string', pattern: '^\\S+:\\d+(-\\d+)?$', description: 'exactly one path:line copied from a cited observation\'s evidence — nothing else' }
+const OBS_ID = { type: 'string', pattern: '^[^,\\s]+#(c|hd|hu|s)\\d+$', description: 'exactly one observation id' }
 const STANDARDS_DRAFT = obj({
-  rules: { type: 'array', items: obj({ rule: str, appliesTo: str, example: str, why: str, observations: { type: 'array', items: str }, documentedIds: { type: 'array', items: str } }) },
-  helpers: { type: 'array', items: obj({ need: str, use: str, path: str, observations: { type: 'array', items: str } }) },
-  shapes: { type: 'array', items: obj({ problem: str, shape: str, reference: str, observations: { type: 'array', items: str } }) },
-  open: { type: 'array', items: obj({ topic: str, variants: { type: 'array', items: obj({ shape: str, evidence: str, observation: str }) } }) },
+  rules: { type: 'array', items: obj({ rule: str, appliesTo: str, example: REF, why: str, observations: { type: 'array', items: OBS_ID }, documentedIds: { type: 'array', items: str } }) },
+  helpers: { type: 'array', items: obj({ need: str, use: str, path: REF, observations: { type: 'array', items: OBS_ID } }) },
+  shapes: { type: 'array', items: obj({ problem: str, shape: str, reference: REF, observations: { type: 'array', items: OBS_ID } }) },
+  open: { type: 'array', items: obj({ topic: str, variants: { type: 'array', items: obj({ shape: str, evidence: REF, observation: OBS_ID }) } }) },
   writtenNotFollowed: { type: 'array', items: obj({ id: str, rule: str, source: str, reason: { type: 'string', enum: ['mixed', 'contrary', 'no evidence', 'not assessed'] }, evidence: str }) },
 })
 
@@ -394,6 +391,9 @@ const runStandards = obs.size > 0 && !overBudget
 if (overBudget) log(`standards synthesis skipped: input ${standardsInputChars} chars over ${STANDARDS_INPUT_BUDGET}`)
 
 const fileOfRef = (ref) => String(ref).replace(/:\d+(-\d+)?$/, '')
+// A model may wrap a ref in prose or list several ids; keep the first candidate the evidence confirms.
+const refsIn = (s) => [String(s || '').trim(), ...[...String(s || '').matchAll(/[\w@./-]+:\d+(?:-\d+)?/g)].map((m) => m[0])]
+const pick = (candidates, allowed) => candidates.find((c) => allowed.includes(c))
 const identifiers = (s) => new Set([...String(s || '').matchAll(/`([^`]+)`/g)].map((m) => (/^[A-Za-z_$][\w$.]*/.exec(m[1].trim()) || [''])[0]).filter(Boolean))
 const list = (a) => (Array.isArray(a) ? a : [])
 
@@ -419,8 +419,8 @@ function checkDraft(draft, obsMap, mods) {
     if (!c) continue
     if (c.usable.some((o) => o.kind !== 'conventions' || o.item.consistency !== 'consistent')) reject('rules', r, 'not a consistent convention')
     else if (modulesOf(c.usable) < 2) reject('rules', r, 'fewer than two modules')
-    else if (!c.usable.some((o) => counting(o).includes(r.example))) reject('rules', r, 'example not in its observations')
-    else kept.rules.push({ ...r, support: support(c.usable) })
+    else if (!pick(refsIn(r.example), c.usable.flatMap(counting))) reject('rules', r, 'example not in its observations')
+    else kept.rules.push({ ...r, example: pick(refsIn(r.example), c.usable.flatMap(counting)), support: support(c.usable) })
   }
   for (const x of list(draft.shapes)) {
     const c = cited(x, 'shapes')
@@ -431,9 +431,9 @@ function checkDraft(draft, obsMap, mods) {
     if (c.usable.some((o) => o.kind !== 'problemShapes')) reject('shapes', x, 'not a shape observation')
     else if (dissent.length) reject('shapes', x, `dissent: ${dissent.join(', ')}`)
     else if (modulesOf(c.usable) < 2) reject('shapes', x, 'fewer than two modules')
-    else if (!c.usable.some((o) => counting(o).includes(x.reference))) reject('shapes', x, 'reference not in its observations')
+    else if (!pick(refsIn(x.reference), c.usable.flatMap(counting))) reject('shapes', x, 'reference not in its observations')
     else if (!common.size) reject('shapes', x, 'shapes disagree')
-    else kept.shapes.push({ ...x, support: support(c.usable) })
+    else kept.shapes.push({ ...x, reference: pick(refsIn(x.reference), c.usable.flatMap(counting)), support: support(c.usable) })
   }
   for (const h of list(draft.helpers)) {
     const c = cited(h, 'helpers')
@@ -445,8 +445,14 @@ function checkDraft(draft, obsMap, mods) {
     else kept.helpers.push({ ...h, support: [{ module: def.module, ref: def.item.at }, ...users.map((u) => ({ module: u.module, ref: u.item.at }))] })
   }
   for (const o of list(draft.open)) {
-    const fine = list(o.variants).length >= 2 && list(o.variants).every((v) => obsMap.has(v.observation) && refsOf(obsMap.get(v.observation)).includes(v.evidence))
-    if (fine) kept.open.push(o)
+    const variants = list(o.variants).map((v) => {
+      for (const id of String(v.observation || '').split(/[,\s]+/).filter((x) => obsMap.has(x))) {
+        const evidence = pick(refsIn(v.evidence), refsOf(obsMap.get(id)))
+        if (evidence) return { ...v, evidence, observation: id }
+      }
+      return null
+    })
+    if (variants.length >= 2 && variants.every(Boolean)) kept.open.push({ ...o, variants })
     else reject('open', o, 'a variant does not rest on its observation')
   }
   return { kept, rejected }
@@ -572,19 +578,16 @@ if (rawDraft && typeof rawDraft === 'object') {
 }
 if (rejected.length) log(`standards draft: ${rejected.length} item(s) rejected by the observation check`)
 
+// A doc names a tool loosely ("ESLint 9 (flat config)"): present when the whole name or any word of it is observed.
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const present = new Set((toolScan.observed || []).map(norm))
+const named = (t) => [norm(t), ...String(t || '').split(/[^A-Za-z0-9]+/).map(norm)].some((w) => w && present.has(w))
 const toolsNamedNotPresent = hasToolScan
-  ? list(docsAnalysis && docsAnalysis.namedTools).filter((t) => t && !present.has(norm(t.tool))).map((t) => ({ tool: t.tool, source: t.source }))
+  ? list(docsAnalysis && docsAnalysis.namedTools).filter((t) => t && !named(t.tool)).map((t) => ({ tool: t.tool, source: t.source }))
   : []
 
 return {
-  standardsDraft,
-  rejected,
-  writtenNotFollowed,
-  toolsNamedNotPresent,
-  standardsSkipped,
-  standardsInputChars,
+  standardsDraft, rejected, writtenNotFollowed, toolsNamedNotPresent, standardsSkipped, standardsInputChars,
   architectureBody: architectureBody || '',
   prdBody: prdBody || '',
   dataModelBody: dataModelBody || '',

@@ -421,6 +421,14 @@ test('workflow: the draft check keeps what observations support and rejects the 
   money.helpers[0].observations = ['src/lib#hd1', 'src/orders#hu1', 'src/billing#hu2'];
   assert.equal((await rejectedFor(money))[0].section, 'helpers');
 
+  const loose = goodDraft();
+  loose.rules[0].example = 'explicit return type at src/orders/a.ts:9; also src/billing/b.ts:10';
+  loose.open[0].variants[0].observation = 'src/orders#c1, src/billing#c2';
+  const lr = await runWorkflow({ draft: loose });
+  assert.deepEqual(lr.result.rejected, []);
+  assert.equal(lr.result.standardsDraft.rules[0].example, 'src/orders/a.ts:9');
+  assert.equal(lr.result.standardsDraft.open[0].variants[0].observation, 'src/billing#c2');
+
   const far = goodDraft();
   far.rules[0].example = 'src/orders/a.ts:10';
   assert.equal((await rejectedFor(far))[0].section, 'rules');
@@ -456,6 +464,10 @@ test('workflow: named tools, the input budget and a docs-only run', async () => 
   const toolScan = await fixtureScan();
   const named = await runWorkflow({ draft: goodDraft(), args: { toolScan } });
   assert.deepEqual(named.result.toolsNamedNotPresent.map((t) => t.tool), ['StyleCop']);
+  const loose = json('docs-analysis.json');
+  loose.namedTools = [{ tool: 'ESLint 9 (flat config)', source: 'CLAUDE.md' }, { tool: 'Biome', source: 'CLAUDE.md' }];
+  const ln = await runWorkflow({ draft: goodDraft(), docs: loose, args: { toolScan } });
+  assert.deepEqual(ln.result.toolsNamedNotPresent.map((t) => t.tool), ['Biome']);
 
   const big = 'x'.repeat(1000);
   const bigModules = Array.from({ length: 60 }, (_, i) => ({ name: `m${i}`, files: [`m${i}/f.ts`], imports: [], importedBy: [], isCore: false }));
