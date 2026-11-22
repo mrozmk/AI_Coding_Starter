@@ -47,13 +47,15 @@ new_sid() {
 # looks for it.
 claude_name() {
   local x
-  x="$( . "$LIB/team-channel.sh" && team_channel_names "$MAIN" && printf '%s' "${TEAM_CHANNEL_SUFFIX:-}" )" 2>/dev/null || x=""
+  x="$( { . "$LIB/team-channel.sh" && team_channel_names "$MAIN" && printf '%s' "${TEAM_CHANNEL_SUFFIX:-}"; } 2>/dev/null )" || x=""
   echo "$1$x"
 }
-# The channel's CODEX_HOME for a Claude role (its codex calls); else the caller's.
+# The channel's CODEX_HOME for a Claude role (its codex calls); else the caller's. The agent-mail
+# channel is optional: without one this falls back silently. The redirect sits inside the
+# substitution, since one after a bare assignment leaves the substitution's stderr on the terminal.
 codex_home() {
   local h
-  h="$( . "$LIB/team-channel.sh" && team_channel_load "$MAIN" && printf '%s' "${TEAM_CHANNEL_CODEX_HOME:-}" )" 2>/dev/null || h=""
+  h="$( { . "$LIB/team-channel.sh" && team_channel_load "$MAIN" && printf '%s' "${TEAM_CHANNEL_CODEX_HOME:-}"; } 2>/dev/null )" || h=""
   echo "${h:-${CODEX_HOME:-}}"
 }
 standing() { roles_list --standing | grep -qxF "$1"; }
