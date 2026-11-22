@@ -96,6 +96,14 @@ any item is open. An item that cannot be satisfied gets either another question 
 `Q-n` with an explicit line `accepted as open by <owner>` — that line is what lets the item count
 as satisfied for slice 1.
 
+A run after the PRD exists (`/discover --fault-lines`) that leaves an open blocking `Q-n` not
+accepted by its current owner unticks the last item and adds under it, once per `Q-n`,
+`reopened by Q-n (fault-line run YYYY-MM-DD) — needs <owner>'s decision`; an existing line for
+that `Q-n` stays, its `<owner>` set to the current one. Every run that writes
+this list — a full run's Phase 5 too — removes a `reopened by` line once its `Q-n` is closed or
+accepted (a DoR annotation, not an id line), and ticks the item again only when its predicate
+holds and no such line remains.
+
 - [ ] Problem, users and the current alternative are stated (categories 1, 11).
 - [ ] At least one `G-n` with a target value **and** a date (category 9).
 - [ ] Appetite and what gives first when it overruns (category 7).
@@ -164,13 +172,15 @@ rules.
      business analyst or product owner decides;
    - `client` — it moves a goal, a non-goal, the appetite or what the client pays for; the
      decision owner named in `## Stakeholders` decides.
-5. **Who is asked.** Only `team`-owned questions, in the session — the new survivors together
-   with the fault-line `Q-n` still open and `team`-owned from an earlier run, each rechecked
-   against the current deciding records first (one a record now decides is closed with
-   ` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`, not asked)
-   — in the Phase 4 round when one runs, otherwise in the one round Phase 3 allows, ranked with
-   the other questions under §2 (≤5 per round); none when the user has said done (§2 item 8).
-   The others are listed for their owner; a `team` question left over stays open.
+5. **Who is asked.** First every fault-line `Q-n` still open from an earlier run, whatever its
+   owner, is rechecked against the current deciding records (item 3); one a record now decides
+   is closed with ` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`,
+   not asked. Then only `team`-owned questions are asked — the new survivors and the earlier ones
+   still open — in the session's question round (`/discover` Phase 3 and the mode's step 4 say
+   which), ranked with the other questions under §2 (≤5 per round); none when the user has said
+   done (§2 item 8). The others are listed for their owner; a `team` question left over stays
+   open. The Phase 5 DoR round may ask a blocking `team` one, never an `analyst` or `client` one:
+   that one needs its owner's `accepted as open by <owner>` line (§4), or the PRD stays unwritten.
 6. **`blocks slice 1`.** `yes` only when, without a decision, the slice 1 already agreed cannot
    be defined, delivered or verified. An optional extension is `no` even when one of its answers
    would touch the critical flow.

@@ -161,16 +161,11 @@ undecided "in or out?" questions become owned `Q-n` without a new interview.
 5. **Write `docs/discovery.md`** — append the new `Q-n` (next free id); close each answered one
    — new or earlier — and log it under `## Clarifications` / `### Session YYYY-MM-DD`
    (`coverage.md` §5 item 7). File absent → create it with the template header
-   (`**Mode:** fault-lines`, the project type derived as in step 5), `## Clarifications` and
-   `## Open questions` only, plus the line
-   `Other sections: not written yet — a full /discover run writes them.` After closing and
-   re-owning, recompute the last `## Definition of Ready` item from its full predicate
-   (`coverage.md` §4: every open question is an owned `Q-n`, and every open blocker is
-   accepted in writing by its current owner). Each `reopened by Q-n` line whose `Q-n` is now
-   closed or accepted is removed; each open, unaccepted blocker without one gets
-   `reopened by Q-n (fault-line run YYYY-MM-DD) — needs <owner>'s decision`. The item is
-   ticked only when the predicate holds and no `reopened by` line remains, and unticked
-   otherwise.
+   (`**Mode:** fault-lines`, the project type read from the PRD and the repo, not asked),
+   `## Clarifications` and `## Open questions` only, plus the line
+   `Other sections: not written yet — a full /discover run writes them.` When the file has a
+   `## Definition of Ready` section, recompute its last item and its `reopened by` lines after
+   closing and re-owning, per `coverage.md` §4; a file without one gets none.
 6. **Write `docs/PRD.md`** — only `## 13. Open questions`, synced by id from
    `docs/discovery.md` for every `Q-n` this run touched: a new open one is added in the
    template's line shape, a closed one is dropped, a still-open one gets its current owner and
@@ -181,9 +176,9 @@ undecided "in or out?" questions become owned `Q-n` without a new interview.
 7. **Skipped** — the Definition of Ready gate (no PRD rewrite), Phase 6 and Phase 7: the run
    writes questions and clarifications, never a requirement.
 8. **Report** (instead of Phase 8) — files touched; the fault-line tally (Phase 8 item 4a);
-   asked / answered; each `blocks slice 1: yes` with the DoR line it reopened; the non-`team`
-   `Q-n` listed per owner with the route their decision takes (`coverage.md` §5 item 7);
-   `Critic: skipped — fault-line mode`.
+   asked / answered; each `blocks slice 1: yes` with the DoR line it reopened (or `no DoR yet`);
+   the non-`team` `Q-n` listed per owner with the route their decision takes (`coverage.md` §5
+   item 7); `Critic: skipped — fault-line mode`.
 
 ---
 
@@ -237,10 +232,11 @@ they take this phase's one round):
    "This fails if ___", then the cheapest test that would show it. A claim with no cheap test and
    confidence L is a risk with an owner. → risks table + `A-n` validate-by.
 4. **Fault lines** — what the plan has not decided: "someone proposes X — in or out?". Read
-   the principles from the working state of Phases 0–2 (quote what has no id yet); draft 8–12
-   concrete change proposals through the four lenses in
+   the principles — in a full run from the working state of Phases 0–2 (quote what has no id
+   yet), under `--fault-lines` from the PRD, `docs/discovery.md` and a published
+   `docs/architecture.md`; draft 8–12 concrete change proposals through the four lenses in
    `.claude/skills/discover/question-bank.md` → Fault lines, each with the principle it tests
-   and both sides argued; discard every proposal an active record already decides, citing it;
+   and both sides argued; discard every proposal a current record already decides, citing it;
    each survivor becomes a `Q-n` owned by `team`, `analyst` or `client`. Only `team`-owned ones
    are asked; the others are listed for their owner. Rules:
    `.claude/skills/discover/coverage.md` §5. → `## Open questions`, PRD §13.

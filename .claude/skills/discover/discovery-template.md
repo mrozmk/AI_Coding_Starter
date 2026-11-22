@@ -1,10 +1,14 @@
 # Discovery template — `docs/discovery.md`
 
-`/discover` Phase 5 fills this skeleton first; the PRD is derived from it.
+`/discover` Phase 5 fills this skeleton first; the PRD is derived from it. It is the working
+record of discovery — coverage, every answer, the flows, the rules, the glossary, the
+assumptions — and the file `backlog-check.mjs` (and later `/architect`) reads for `FL-n` /
+`FL-n.Ak` / `BR-n` / `A-n` / `Q-n` ids.
 `/discover --fault-lines` on a project without this file writes only the header,
-`## Clarifications` and `## Open questions`. It is the working record of discovery — coverage, every answer, the flows, the rules, the glossary, the assumptions
-— and the file `backlog-check.mjs` (and later `/architect`) reads for `FL-n` / `FL-n.Ak` / `BR-n` /
-`A-n` / `Q-n` ids. Id syntax is umbrella D5 exactly:
+`## Clarifications`, `## Open questions` and the line
+`Other sections: not written yet — a full /discover run writes them.`
+
+Id syntax is umbrella D5 exactly:
 
 - flows: heading `### FL-1 — <name>` followed by a line `**Critical:** yes|no`;
 - backbone activities: one per line, `- **FL-1.A1** — <activity>` — this list is what the story
@@ -143,8 +147,8 @@ Source of truth per entity:
   when applicable>
 - **Q-2** — <question> · owner PO · blocks slice 1: no → D-3
 - **Q-3** — Fault line (<lens>): someone proposes <change> for <horizon> — in or out? · tests
-  <principle id or quote> · for: <one sentence> · against: <one sentence> · owner team |
-  analyst | client · blocks slice 1: yes | no
+  <principle id or quote> · for: <one sentence> · against: <one sentence> ·
+  owner team | analyst | client · blocks slice 1: yes | no
 - …
 
 This file owns every `Q-n`'s text and state. Closing a question appends ` → D-n` (the scope
