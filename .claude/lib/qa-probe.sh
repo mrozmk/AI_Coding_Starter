@@ -102,7 +102,7 @@ else
 fi
 
 # --- Deployed build SHA (reported, never a rejection) --------------------------
-# The SHA now decides ancestry in /qa-verify, so only an identified build counts: a
+# /qa-verify decides ancestry from this SHA, so only an identified build counts: a
 # meta tag, a body that is one SHA, or one named JSON field — never a stray hex token
 # (an asset hash, a request id). This section never touches DEPLOYED_OK.
 HEAD_SHA=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)
