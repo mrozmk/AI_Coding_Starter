@@ -94,8 +94,8 @@ sources the project has.
 
 Undecided → one line `Open — Q-n` instead of the three bullets. The rule names the side recommended
 to the decision owner; it never settles a conflict by itself — a conflict found in discovery is
-still a `Q-n` with both quotes, and a change to a register id still goes through supersede + `D-n`
-(`/update-backlog`).
+still a `Q-n` with both quotes, and a change to a register id still follows the **Register
+rules** above — supersede, withdraw or editorial fix, each with its `D-n` (`/update-backlog`).
 
 ## 4. Scope
 
