@@ -72,6 +72,8 @@ for r in Fable Astra; do line "$r: started" "$WORK/out" "(1) up"; done
 line "  Supervisor: tmux attach -t smk-supervisor" "$WORK/out" "(1) hint"
 noline "This window is not a role" "$WORK/out" "(1) plain shell"
 noline "error: team channel" "$WORK/out" "(1) the optional channel's absence leaked to stderr"
+for r in Supervisor Fable Astra; do for d in tmp new done; do
+  [ -d "$MAIN/.agents/team/inbox/$r/$d" ] || fail "(1) no inbox $r/$d after up"; done; done
 [ "$(starts)" = 3 ] || fail "(1) $(starts) new-session calls, expected 3"
 for r in Supervisor Fable Astra; do line "-e TEAM_SESSION_ROLE=$r -e HARNESS_ADDRESS=$r" "$STUB_LOG" "(1) env $r"; done
 grep '^tmux new-session.* -s smk-astra ' "$STUB_LOG" > "$WORK/astra"

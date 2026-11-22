@@ -90,6 +90,13 @@ Reconcile from files, never from memory:
    step the Operator has already done;
 5. pending decisions: the latest commits to `.agents/memory/decisions.md`.
 
+**Report what waits on the Operator, not what was checked.** A check that found nothing is not
+reported. Name no command, no script output, no commit date, no ad-hoc session and no internal
+path; say each finding in the Operator's terms.
+- Nothing open → one line: `Ready — nothing waits on you.`
+- Otherwise one line per open item, each with its one next action (e.g. `Run alfa-… accepted —
+  merging now.`, `Release freeze on for 3.4.0 — waiting for your freeze off after the post-check.`).
+
 ## Commands
 
 `bash .claude/lib/roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight`,

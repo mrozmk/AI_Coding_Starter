@@ -285,6 +285,10 @@ up() {
       || { echo "error: $only is not a standing, enabled role of teams.sessions" >&2; exit 2; }
     list="$only"
   fi
+  # Each role's inbox exists from its first start, so an empty one reads as empty, not as missing
+  # (team-inbox.sh would otherwise create it only with the first message).
+  for r in $list; do mkdir -p "$MAIN/.agents/team/inbox/$r/tmp" "$MAIN/.agents/team/inbox/$r/new" \
+    "$MAIN/.agents/team/inbox/$r/done"; done
   for r in $list; do
     sh_alive "$r" --main "$MAIN" 2>/dev/null; st=$?
     case "$st" in
