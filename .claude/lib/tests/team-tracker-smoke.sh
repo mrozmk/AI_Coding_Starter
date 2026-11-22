@@ -946,4 +946,130 @@ expect 0 "key=11 type=chore" "without a teams block documentation stays chore"
 run "$MAIN" $TRK read 13 --out "$WORK/bts13"
 expect 0 "key=13 type=feature" "without a teams block the generic kind is unchanged"
 
+# ================================================================================================
+# (15) pool / item-status: the /qa-verify pool read — every item in a Status, whatever the issue
+#      state, with its links; refusals are exit codes, never a short pool
+# ================================================================================================
+github_profile
+fx_reset
+jq -n '{fields: [{id: "PVTSSF_x", name: "Status",
+    options: [{id: "opt-started", name: "In Progress"}, {id: "opt-qa", name: "QA"},
+              {id: "opt-delivered", name: "Delivered"}]}]}' > "$GH_DIR/fields.json"
+pool_node() {  # pool_node <n> <state> <status|""> <updatedAt> [content jq] — one GraphQL item node
+  jq -n --argjson n "$1" --arg st "$2" --arg s "$3" --arg u "$4" '
+    {id: ("PVTI_" + ($n | tostring)),
+     status: (if $s == "" then null else {name: $s, updatedAt: $u} end),
+     content: {__typename: "Issue", number: $n, title: ("Issue " + ($n | tostring)), state: $st,
+       url: ("https://github.com/owner/repo/issues/" + ($n | tostring)),
+       repository: {nameWithOwner: "owner/repo"}, parent: null,
+       blockedBy: {pageInfo: {hasNextPage: false}, nodes: []},
+       blocking: {pageInfo: {hasNextPage: false}, nodes: []},
+       timelineItems: {pageInfo: {hasNextPage: false}, nodes: []}}}' | jq "${5:-.}"
+}
+pool_fx() {
+  {
+    pool_node 7 OPEN QA 2026-11-01T08:00:00Z \
+      '.content.blocking.nodes = [{number: 9, repository: {nameWithOwner: "owner/repo"}}]'
+    pool_node 9 CLOSED QA 2026-11-05T08:00:00Z '.content.parent = {number: 2,
+        repository: {nameWithOwner: "owner/repo"}}
+      | .content.blockedBy.nodes = [{number: 7, repository: {nameWithOwner: "owner/repo"}},
+          {number: 7, repository: {nameWithOwner: "other/repo"}}]
+      | .content.timelineItems.nodes = [{source: {__typename: "Issue", number: 11,
+            repository: {nameWithOwner: "owner/repo"}}},
+          {source: {__typename: "PullRequest"}},
+          {source: {__typename: "Issue", number: 9, repository: {nameWithOwner: "owner/repo"}}}]'
+    pool_node 11 OPEN Todo 2026-11-02T08:00:00Z
+    pool_node 7 OPEN QA 2026-11-03T08:00:00Z '.content.repository.nameWithOwner = "other/repo"'
+    pool_node 40 OPEN QA 2026-11-04T08:00:00Z '.content.__typename = "PullRequest"'
+  } | jq -s '.' > "$GH_DIR/pool-items.json"
+}
+pool_fx
+run "$MAIN" $TRK pool --status QA --out "$WORK/pool.json"
+expect 0 "items=2" "pool --status returns the repo's issues in that status, across pages"
+jq -e '[.items[].key] == ["7", "9"] and .status == "QA" and .tracker == "github"
+    and .repo == "owner/repo" and .statuses == ["In Progress", "QA", "Delivered"]
+    and .dependencies == "available"' "$WORK/pool.json" >/dev/null \
+  || fail "pool header / item order (status_since ascending) / board order"
+jq -e '[.items[] | select(.key == "9")][0] | .state == "CLOSED" and .parent == 2
+    and .blocked_by == ["7"] and .blocking == [] and .mentions == ["11"]
+    and .status_since == "2026-11-05T08:00:00Z" and .url == "https://github.com/owner/repo/issues/9"' \
+  "$WORK/pool.json" >/dev/null || fail "pool: a closed issue in the status, with its links"
+jq -e '[.items[] | select(.key == "7")][0] | .blocking == ["9"] and .parent == null' \
+  "$WORK/pool.json" >/dev/null || fail "pool: #7 lost its blocking link"
+[ "$(stat -f %Lp "$WORK/pool.json" 2>/dev/null || stat -c %a "$WORK/pool.json")" = 600 ] \
+  || fail "pool must write its output owner-only (0600)"
+grep -qx 'graphql fname=Status' "$GH_LOG" || fail "pool must query the status field by its name"
+[ "$(grep -c '^graphql fname=' "$GH_LOG" | tr -d ' ')" = 3 ] || fail "pool must read all three pages"
+
+STUB_GH_POOL_STUCK=1 run "$MAIN" $TRK pool --status QA --out "$WORK/p-stuck.json"
+expect 4 "" "pool: a cursor that never advances is recoverable, never a spin"
+run "$MAIN" $TRK pool --status Nope --out "$WORK/p-nope.json"
+expect 1 "options: In Progress, QA, Delivered" "pool: an unknown status names the options"
+STUB_GH_POOL_TOTAL=99 run "$MAIN" $TRK pool --status QA --out "$WORK/p-short.json"
+expect 4 "incomplete item list" "pool: fewer nodes than totalCount is exit 4"
+[ ! -e "$WORK/p-short.json" ] || fail "a short pool still wrote its output"
+jq 'map(if .content.number == 9 then .content.timelineItems.pageInfo.hasNextPage = true else . end)' \
+  "$GH_DIR/pool-items.json" > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/pool-items.json"
+run "$MAIN" $TRK pool --status QA --out "$WORK/p-links.json"
+expect 4 "issue #9 has more links than one page" "pool: a truncated link list is exit 4"
+pool_fx
+STUB_GH_NODEPS=1 run "$MAIN" $TRK pool --status QA --out "$WORK/p-nodeps.json"
+expect 0 "items=2" "pool: a host without issue dependencies still lists the pool"
+jq -e '.dependencies == "unavailable" and ([.items[] | select(.key == "9")][0]
+    | .blocked_by == [] and .mentions == ["11"])' "$WORK/p-nodeps.json" >/dev/null \
+  || fail "pool: dependencies unavailable must be stated, mentions kept"
+run "$MAIN" $TRK pool --out "$WORK/x.json"
+expect 2 "needs --status" "pool without --status is a usage error"
+run "$MAIN" $TRK pool 7 --status QA --out "$WORK/x.json"
+expect 2 "takes no ticket key" "pool refuses a key"
+
+# item-status: one issue, open or closed, by the set-status identity (repo + number).
+jq -n '[{id: "i7", status: "QA", content: {type: "Issue", number: 7, repository: "owner/repo"}},
+        {id: "i9", status: "QA", content: {type: "Issue", number: 9, repository: "owner/repo"}},
+        {id: "o9", status: "Done", content: {type: "Issue", number: 9, repository: "other/repo"}},
+        {id: "d1", status: "QA", content: {type: "Issue", number: 1001, repository: "owner/repo"}},
+        {id: "d2", status: "Todo", content: {type: "Issue", number: 1001, repository: "owner/repo"}}]' \
+  > "$GH_DIR/items.json"
+issue_json 1001 OPEN '[]' > "$GH_DIR/issue-1001.json"
+run "$MAIN" $TRK item-status 9 --out "$WORK/is9.json"
+expect 0 "key=9 status=QA" "item-status of a closed issue on the board"
+jq -e '.key == "9" and .state == "CLOSED" and .status == "QA" and .on_board == 1
+    and .statuses == ["In Progress", "QA", "Delivered"]' "$WORK/is9.json" >/dev/null \
+  || fail "item-status output shape"
+run "$MAIN" $TRK item-status 1001 --out "$WORK/is-dup.json"
+expect 4 "refusing" "item-status: two items for one issue is exit 4"
+run "$MAIN" $TRK item-status 11 --out "$WORK/is11.json"
+expect 0 "key=11 status=null" "item-status of an issue off the board"
+jq -e '.status == null and .on_board == 0 and .state == "OPEN"' "$WORK/is11.json" >/dev/null \
+  || fail "item-status off the board must say status null, on_board 0"
+run "$MAIN" $TRK item-status 404 --out "$WORK/is404.json"
+expect 1 "cannot be read" "item-status of a missing issue"
+run "$MAIN" $TRK item-status 9
+expect 2 "needs --out" "item-status needs --out"
+
+# list stays open-only and keeps its shape next to the new ops.
+echo '[{"number": 7, "title": "Fix the thing", "updated_at": "", "assignees": [], "labels": []},
+  {"number": 11, "title": "Docs", "updated_at": "", "assignees": [], "labels": []}]' \
+  > "$GH_DIR/issues.json"
+run "$MAIN" $TRK list --out "$WORK/pool-list.json"
+expect 0 "items=2" "list next to pool"
+jq -e '[.items[].key] == ["7", "11"] and (.items[0] | keys)
+    == ["assignees", "key", "labels", "on_board", "status", "title", "updated", "url"]' \
+  "$WORK/pool-list.json" >/dev/null || fail "list output changed shape"
+[ "$(posts)" = 0 ] || fail "pool/item-status posted a comment"
+[ "$(grep -c -- 'item-edit' "$GH_LOG" | tr -d ' ')" = 0 ] || fail "pool/item-status edited the board"
+
+solo '.github = {repo: "owner/repo"}'
+run "$MAIN" $TRK pool --status QA --out "$WORK/x.json"
+expect 2 "pool needs a GitHub Project" "pool without a Project is a profile error"
+run "$MAIN" $TRK item-status 9 --out "$WORK/x.json"
+expect 2 "needs a GitHub Project" "item-status without a Project is a profile error"
+setprofile '.teams.tracker = "none"'
+: > "$GH_LOG"
+run "$MAIN" $TRK pool --status QA --out "$WORK/x.json"
+expect 0 "skipped (tracker=none)" "pool is a no-op for none"
+run "$MAIN" $TRK item-status L1 --out "$WORK/x.json"
+expect 0 "skipped (tracker=none)" "item-status is a no-op for none"
+[ ! -s "$GH_LOG" ] || { sed 's/^/  | /' "$GH_LOG"; fail "pool under none called gh"; }
+
 echo "team-tracker-smoke: OK"

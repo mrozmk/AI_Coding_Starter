@@ -227,6 +227,8 @@ Merge order for one criterion: `FAIL` › `ENV` › `NEEDS-HUMAN` › `DEFERRED`
 
 Carried forms (re-check only): `PASS (carried from <YYYY-MM-DD>)` and `CITED (carried from <YYYY-MM-DD>)`.
 
+In a deferral-result record (`/qa-verify` → deferrals) any disposition may carry `(carried from <YYYY-MM-DD>)`; elsewhere only `PASS` and `CITED` are carried, plus a charged feature-path `FAIL` (§7b).
+
 ### 7b. The record
 
 One record per ticket per run, in exactly this shape:
@@ -261,16 +263,21 @@ Rules:
 - Headings and one-level bullets only — no table, no task list (`jira-mcp-atlassian.md` §3).
 - `<UTC date>` and every `<date>` are `YYYY-MM-DD`; `run=` is `YYYYMMDDTHHMMSSZ`, the run's start.
 - One row per criterion, carrying its merged disposition (§7a merge order); `<family>` names the deciding family, several families joined with ` + `. A criterion carries more than one row (same id and fp) only where the command says so — readers group rows by fp.
-- `### Feature path` and `### Outside the criteria` are always present; an empty one holds `- none`. A single-ticket run writes `- none` under `### Feature path`.
+- `### Feature path` and `### Outside the criteria` are always present; an empty one holds `- none`. A single-ticket run writes `- none` under `### Feature path`, unless it carries an open charged feature-path `FAIL` (next rule).
+- **Feature-path rows:** `- F<n> — <disposition>[ (carried from <YYYY-MM-DD>)][ / <severity>] — <steps, one line> (<from spec <path> | from epic <KEY> | derived>)[ — charged to <KEY>[+<KEY>…] (group <id>)]`. One row per F step on every ticket of the group. Feature-path rows are not fingerprinted and not in the marker counts. A feature-path `FAIL` counts in `Blockers` only on the tickets it is charged to. `(group <id>)` names the group that observed the row and travels with every carry. **A charged `FAIL` is carried** on that ticket's later records by any run whose group does not contain every key of `(group <id>)`; only a group run containing all of them, which derives and verifies the feature path again, replaces it.
+- **A deferral-result record** (the verdict of a deferred row, posted on its source by another ticket's run) is a re-check-form record with `build=-`: it mixes observations from different builds. Its `### Outside the criteria` holds `<ids> verified in the run of group <group id> on record <comment id>` — the tracker comment id of the record it was built on. It is valid only while that base is the record candidate immediately before it on the ticket; another record posted in between (an ordinary re-check, a sibling result) makes it invalid — an older format, so the next run is a full run.
 - The verdict line: `<n>` = `FAIL` rows with severity `blocker`. `n ≥ 1` → `Not acceptable`; `n = 0` and at least one `ENV` row → `Not verifiable now — environment`; otherwise `Acceptable — move the ticket yourself`. The three texts are fixed. "Acceptable" means nothing was found that stops the ticket, not that every criterion was observed — the `NEEDS-HUMAN` rows say what is left.
-- The marker is the last line; fields in exactly that order, single spaces. Counts are **rows** by disposition, carried rows included. `ticket=` is the tracker key (a GitHub issue as its bare number), or the record file's slug for a file record. `group=-` and `mode=first|recheck` in this revision; `light` is reserved.
+- The marker is the last line; fields in exactly that order, single spaces. Counts are **rows** by disposition, carried rows included. `ticket=` is the tracker key (a GitHub issue as its bare number), or the record file's slug for a file record. `mode=first|recheck`; `light` is reserved. `group=-` for a single-ticket run; a group run writes its keys in gate order joined by `+` (`174+175`).
 - **Finding the record — select first, then validate.** Candidates are the comments (for a file record, the files) whose last non-empty line ends with a segment that starts `qa-verify:v` followed by a version and ` record ` — a converter may join the marker onto the verdict line, or turn a key into a link; link markup is stripped before parsing. The **newest** candidate is the record; it is then validated, and an invalid newest record is never skipped in favour of an older valid one.
-- The deferral comment carries its own reserved marker:
+- The deferral comment, posted on the ticket a `DEFERRED → <KEY>` row waits for, carries its own reserved marker as its last line:
 
-  `qa-verify:v1 deferral src=<SRC> row=<id> fp=<fp>`
+  ```markdown
+  QA: <SRC> <id> waits for this ticket — "<criterion, one line>". Verify it when this ticket reaches <pool status>.
+  qa-verify:v1 deferral src=<SRC> row=<id> fp=<fp>
+  ```
 
-  A deferral marker is never a record candidate.
-- **A valid record:** version `v1`; the marker's `ticket=` is this target; the three `###` sections are present; every bullet under `### Criteria` matches `- <id> [<6 lowercase hex>] — <disposition>[ (carried from <YYYY-MM-DD>)][ / <severity>] — …` with a §6 or §7a disposition; the marker's counts equal the rows counted by disposition; the marker's `run=` matches `[0-9]{8}T[0-9]{6}Z` and its `build=` is `-` or 7–40 lowercase hex digits (record text is tracker input — a value that reaches a shell is checked first). Anything else — an unknown version, a missing section, a row that does not parse or has no fingerprint, counts that disagree with the rows (a human edited the record), a `run=` or `build=` of another shape — is an older format: full run.
+  A deferral marker is never a record candidate. The marker is read from a comment's last non-empty line (a converter may join the sentence onto it); `src` must be a tracker key (`[A-Z]+-[0-9]+` or a bare issue number), `row` 1–40 characters of `[A-Za-z0-9.-]`, `fp` six lowercase hex digits — anything else is malformed and ignored. A pointer is posted only for a source whose record target is a tracker ticket; a file-record source keeps its `DEFERRED` row local.
+- **A valid record:** version `v1`; the marker's `ticket=` is this target; the three `###` sections are present; every bullet under `### Criteria` matches `- <id> [<6 lowercase hex>] — <disposition>[ (carried from <YYYY-MM-DD>)][ / <severity>] — …` with a §6 or §7a disposition; the marker's counts equal the rows counted by disposition; the marker's `run=` matches `[0-9]{8}T[0-9]{6}Z` and its `build=` is `-` or 7–40 lowercase hex digits; its `group=` is `-` or 2–5 keys of `[A-Za-z0-9-]` joined by `+` (record text is tracker input — a value that reaches a shell is checked first); a deferral-result record's base is the record candidate immediately before it. Anything else — an unknown version, a missing section, a row that does not parse or has no fingerprint, counts that disagree with the rows (a human edited the record), a `run=`, `build=` or `group=` of another shape, a deferral result with another record between it and its base — is an older format: full run.
 - **Jira:** a criterion id shaped like an issue key (`AC-3`) is written `AC3` in a Jira comment; backlog ids such as `E1-2.AC3` stay (`jira-mcp-atlassian.md` §3).
 
 ### 7c. The criterion fingerprint

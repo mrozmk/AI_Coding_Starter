@@ -57,7 +57,8 @@ function ownMarker(body) {
     first = (lines[0] ?? '').trim();
   }
   return /^\[wrapup \S+ [a-z]+-\S+\]$/.test(last) || /^token-usage-report: \S+$/.test(first)
-    || /^(?:(?:\*\*)?Blockers: \d+\.(?:\*\*)? (?:Acceptable — move the ticket yourself|Not acceptable|Not verifiable now — environment) )?qa-verify:v1 record run=\S+ ticket=\S+ mode=(?:first|recheck|light) group=\S+ build=\S+ pass=\d+ fail=\d+ cited=\d+ deferred=\d+ env=\d+ needs-human=\d+$/.test(last);
+    || /^(?:(?:\*\*)?Blockers: \d+\.(?:\*\*)? (?:Acceptable — move the ticket yourself|Not acceptable|Not verifiable now — environment) )?qa-verify:v1 record run=\S+ ticket=\S+ mode=(?:first|recheck|light) group=\S+ build=\S+ pass=\d+ fail=\d+ cited=\d+ deferred=\d+ env=\d+ needs-human=\d+$/.test(last)
+    || /^(?:QA: .+\. )?qa-verify:v1 deferral src=(?:[A-Z]+-[0-9]+|[0-9]+) row=[A-Za-z0-9.-]{1,40} fp=[0-9a-f]{6}$/.test(last);
 }
 
 // No author: the comparator does not need it, and a snapshot stored next to a spec is committed.

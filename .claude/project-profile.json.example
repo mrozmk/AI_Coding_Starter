@@ -62,6 +62,9 @@
     "status_options": {"started": "opt-started-example", "delivered": "opt-delivered-example"}
   },
 
+  "_qa_doc": "Optional. pool_status: the Jira status name or GitHub Project Status option that means waiting for QA — /qa-verify with no argument reads the tickets in it. Asked by /setup:start after Q4 (skippable); absent => the first pool run of /qa-verify asks once and writes it with a decisions.md entry.",
+  "qa": {"pool_status": "Ready for QA"},
+
   "_status_report_doc": "OPTIONAL, NOT asked by /setup:start; add by hand. Read by /tasks-status only. jira_jql: the JQL that picks the tasks the report covers when the tracker is jira; omitted => `assignee = currentUser() AND statusCategory != Done ORDER BY status, key` (my open issues, across projects) and the report says it used that default.",
   "status_report": {
     "jira_jql": "project = PROJ AND statusCategory != Done ORDER BY status, key"

@@ -1244,6 +1244,136 @@ has "intent done" "$WORK/out" || fail "the done-intent refusal does not say whic
 ) || fail "snap_attention provider commands"
 
 # ================================================================================================
+# (E1) prs / files: the read-only PR facts /qa-verify groups by — a section-local stub, its own log
+# ================================================================================================
+SMOKE_ORIGIN=github
+setprofile
+export RO_LOG="$WORK/ro.log" RO_DIR="$WORK/ro"
+mkdir -p "$WORK/bin-ro" "$RO_DIR"
+: > "$RO_LOG"
+cat > "$WORK/bin-ro/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "gh $*" >> "$RO_LOG"
+D="$RO_DIR"
+pages() { [ -f "$1" ] || { echo "ro stub: no fixture $1" >&2; exit 1; }; jq -c '.[]' "$1"; }
+case "${1:-} ${2:-}" in
+  "api repos/acme/widgets/issues/"*"/timeline"*)
+    n="${2#repos/acme/widgets/issues/}"; pages "$D/timeline-${n%%/*}.json" ;;
+  "api repos/acme/widgets/pulls/"*"/files"*)
+    n="${2#repos/acme/widgets/pulls/}"; pages "$D/files-${n%%/*}.json" ;;
+  "issue view")
+    [ "${4:-} ${5:-}" = "--repo acme/widgets" ] && [ -f "$D/closed-$3.json" ] || exit 1
+    cat "$D/closed-$3.json" ;;
+  "pr view")
+    [ "${4:-} ${5:-}" = "--repo acme/widgets" ] && [ -f "$D/pr-$3.json" ] || exit 1
+    cat "$D/pr-$3.json" ;;
+  "pr list")
+    s=""; lim=30; shift 2
+    while [ $# -gt 0 ]; do case "$1" in
+      --search) s="$2"; shift 2 ;; --limit) lim="$2"; shift 2 ;; *) shift ;; esac; done
+    if [ -n "$s" ]; then jq --argjson l "$lim" '.[0:$l]' "$D/search.json"
+    else jq --argjson l "$lim" '.[0:$l]' "$D/all.json"; fi ;;
+  *) echo "ro stub: gh $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$WORK/bin-ro/gh"
+ro() { PATH="$WORK/bin-ro:$PATH" run "$MAIN" $PR "$@"; }
+ro_pr() {  # ro_pr <n> <state> <head> <body> [closing refs json] [title]
+  jq -n --argjson n "$1" --arg s "$2" --arg h "$3" --arg b "$4" --argjson c "${5:-[]}" \
+    --arg t "${6:-PR $1}" '{number: $n, title: $t, state: $s, headRefName: $h, body: $b,
+      mergedAt: (if $s == "MERGED" then "2026-11-20T10:00:00Z" else null end),
+      updatedAt: "2026-11-21T10:00:00Z",
+      mergeCommit: (if $s == "MERGED" then {oid: ("abc" + ($n | tostring))} else null end),
+      url: ("https://github.com/acme/widgets/pull/" + ($n | tostring)),
+      closingIssuesReferences: $c}' > "$RO_DIR/pr-$1.json"
+}
+xref() {  # xref <n> <repo> <is a PR> — one cross-referenced timeline event
+  jq -n --argjson n "$1" --arg r "$2" --argjson p "$3" '{event: "cross-referenced",
+    source: {issue: ({number: $n, repository: {full_name: $r}}
+      + (if $p then {pull_request: {url: "u"}} else {} end))}}'
+}
+REF175='[{"number": 175, "repository": {"name": "widgets", "owner": {"login": "acme"}}}]'
+REF175O='[{"number": 175, "repository": {"name": "widgets", "owner": {"login": "other"}}}]'
+
+# GitHub issue 175: cross-references over two pages, plus a closing PR the timeline never saw.
+{ xref 50 acme/widgets true; xref 51 acme/widgets true; xref 52 acme/widgets true
+  echo '{"event": "labeled"}'; xref 9 acme/widgets false; xref 53 fork/widgets true
+  xref 55 acme/widgets true; } | jq -s '[.[0:4], .[4:]]' > "$RO_DIR/timeline-175.json"
+echo '{"closedByPullRequestsReferences": [{"number": 54,
+  "repository": {"name": "widgets", "owner": {"login": "acme"}}}]}' > "$RO_DIR/closed-175.json"
+ro_pr 50 MERGED feat/175-pool "Closes #175" "$REF175"
+ro_pr 51 OPEN fix/175-retry "retry"
+ro_pr 52 MERGED feat/176-x "after #175"
+ro_pr 54 MERGED chore/cleanup "squashed"
+ro_pr 55 OPEN docs/notes "see #175" "$REF175O"
+ro prs 175
+expect 0 "" "prs of a GitHub issue"
+jq -e 'map(.number) == [50, 51, 52, 54, 55]
+    and map(.relation) == ["closes", "branch", "mentions", "closes", "mentions"]' "$WORK/out" \
+  >/dev/null || fail "prs 175: numbers/relations (fork and non-PR excluded, closing ref united)"
+jq -e '.[0] | .merge_commit == "abc50" and .merged_at == "2026-11-20T10:00:00Z"
+    and .head_ref == "feat/175-pool" and .state == "MERGED"
+    and .url == "https://github.com/acme/widgets/pull/50"' "$WORK/out" >/dev/null \
+  || fail "prs 175: a merged PR lost its merge commit"
+jq -e '.[1] | .merge_commit == null and .merged_at == null' "$WORK/out" >/dev/null \
+  || fail "prs 175: an open PR must have no merge commit"
+mv "$RO_DIR/timeline-175.json" "$RO_DIR/tl.keep"
+ro prs 175
+expect 4 "" "prs: a failed timeline read is recoverable, never an empty list"
+mv "$RO_DIR/tl.keep" "$RO_DIR/timeline-175.json"
+
+# Jira key ABC-175: search over title/body, plus the full listing matched on the branch.
+jira_fx() {
+  ro_pr 60 MERGED feat/other "Closes ABC-175"
+  ro_pr 61 OPEN feat/ABC-175-x "" "" "ABC-175 the pool"
+  ro_pr 62 OPEN feat/ABC-1750-z "" "" "ABC-1750 something else"
+  ro_pr 63 OPEN feat/y "see #175"
+  ro_pr 66 MERGED feat/w "Closes ABC-1750. See ABC-175."
+  ro_pr 64 MERGED fix/ABC-175-retry "follow-up"
+  ro_pr 65 OPEN feat/ABC-1750-y ""
+  jq -s '.' "$RO_DIR"/pr-6[0-3].json "$RO_DIR/pr-66.json" > "$RO_DIR/search.json"
+  jq -s 'map({number, headRefName})' "$RO_DIR"/pr-6[0-6].json > "$RO_DIR/all.json"
+}
+jira_fx
+ro prs ABC-175
+expect 0 "" "prs of a Jira key"
+jq -e 'map(.number) == [60, 61, 64, 66]
+    and map(.relation) == ["closes", "branch", "branch", "mentions"]' "$WORK/out" >/dev/null \
+  || fail "prs ABC-175: boundary-safe match, branch door, closes needs the right boundary"
+jq -e '.[2] | .merge_commit == "abc64" and .head_ref == "fix/ABC-175-retry"' "$WORK/out" \
+  >/dev/null || fail "prs ABC-175: a branch-only follow-up lost its full fields"
+jq '[range(200)] | map({number: (1000 + .), title: "ABC-175", body: "", headRefName: "x",
+    state: "OPEN", mergedAt: null, updatedAt: "", mergeCommit: null, url: ""})' -n \
+  > "$RO_DIR/search.json"
+ro prs ABC-175
+expect 4 "hit its limit" "prs: a search answer at its limit is exit 4"
+jira_fx
+jq '[range(1000)] | map({number: (2000 + .), headRefName: "x"})' -n > "$RO_DIR/all.json"
+ro prs ABC-175
+expect 4 "PR listing hit its limit" "prs: a full listing at its limit is exit 4"
+ro prs 'abc-1;rm'
+expect 2 "" "prs: a key of neither shape is a usage error"
+
+# files: every page; GitHub stops at 3000.
+jq -n '[[{filename: "src/a.ts"}, {filename: "src/b.ts"}], [{filename: "docs/c.md"}]]' \
+  > "$RO_DIR/files-50.json"
+ro files 50
+expect 0 "" "files of a PR"
+jq -e '.pr == 50 and .files == ["src/a.ts", "src/b.ts", "docs/c.md"] and .truncated == false' \
+  "$WORK/out" >/dev/null || fail "files: every path across pages"
+jq -n '[range(30) as $p | [range(100) as $i | {filename: ("f\($p * 100 + $i)")}]]' \
+  > "$RO_DIR/files-56.json"
+ro files 56
+expect 0 "" "files of a huge PR"
+jq -e '(.files | length) == 3000 and .truncated == true' "$WORK/out" >/dev/null \
+  || fail "files: 3000 paths must say truncated"
+ro files x
+expect 2 "must be a number" "files: a non-number is a usage error"
+
+grep -q 'issues/175/timeline' "$RO_LOG" || fail "the read stub saw no prs call"
+! grep -E 'api -X|--method|pr (create|edit|ready|merge)' "$RO_LOG" || fail "a read op made a write call"
+
+# ================================================================================================
 # (C13) nothing in this suite ever merged or forced anything through gh or git
 # ================================================================================================
 ! grep -E 'pr merge|--admin|--force' "$GH_LOG" "$STUB_LOG" "$GIT_LOG" \

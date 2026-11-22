@@ -8,6 +8,9 @@
 #   readiness <pr>                           → {merge, target_sha, merge_sha, source_sha, parents_ok}
 #   create --draft|--ready --head <b> --base <b> --title <t> --body-file <f>   → pr=<n>
 #   publish <pr> · body-get <pr> · body-set <pr> <file>
+#   prs <issue number | KEY>  → [{number,title,state,merged_at,updated_at,merge_commit,head_ref,url,relation}]
+#   files <pr>                → {pr, files, truncated}
+#   (prs and files are read-only — the PR facts /qa-verify groups tickets by)
 #
 # `readiness` is deliberately separate from `state`: a merged or closed PR has no merge ref and
 # often no source branch, and that must still read as a valid lifecycle. `merge=ok` requires the
@@ -241,12 +244,96 @@ op_create() {  # op_create draft|ready <head> <base> <title> <body file>
   settle_found "$mode"
 }
 
+# ---- prs / files (read-only: GETs only) ---------------------------------------------------------
+
+PR_FIELDS=number,title,state,mergedAt,updatedAt,mergeCommit,headRefName,url,body
+# One output row per PR; `merged_at` / `merge_commit` only for a merged PR.
+PR_ROW='def row($rel): {number, title: (.title // ""), state: (.state // ""),
+  merged_at: (if .state == "MERGED" then .mergedAt else null end), updated_at: (.updatedAt // null),
+  merge_commit: (if .state == "MERGED" then (.mergeCommit.oid? // null) else null end),
+  head_ref: (.headRefName // ""), url: (.url // ""), relation: $rel};'
+
+# prs: every PR of the repo that references the ticket. An issue number: its cross-referencing PRs
+# united with its closing PRs (a closing PR need not cross-reference). A Jira key: GitHub search
+# over title/body, plus the full listing matched on the branch (search does not index branch
+# names). A door at its limit, or any failed read, is exit 4 — never an empty or partial list.
+op_prs() {
+  local k="$1" n
+  : > "$TMP/rows.jsonl"
+  if [[ "$k" =~ ^[0-9]+$ ]]; then
+    ghc api "repos/$TEAM_GH_REPO/issues/$k/timeline?per_page=100" --paginate > "$TMP/tl.json" \
+      2>"$TMP/err" || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "timeline of issue #$k cannot be read — recoverable"; }
+    ghc issue view "$k" --repo "$TEAM_GH_REPO" --json closedByPullRequestsReferences \
+      > "$TMP/cb.json" 2>"$TMP/err" \
+      || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "closing PRs of issue #$k cannot be read — recoverable"; }
+    jq -n --slurpfile cb "$TMP/cb.json" --arg repo "$TEAM_GH_REPO" \
+      '[$cb[0].closedByPullRequestsReferences[]?
+        | select((.repository.owner.login + "/" + .repository.name) == $repo) | .number]' \
+      > "$TMP/closedby.json" || die 4 "closing PRs of issue #$k are not parseable"
+    jq -sr --slurpfile cb "$TMP/closedby.json" --arg repo "$TEAM_GH_REPO" \
+      '[.[][]? | select(.event == "cross-referenced" and .source.issue.pull_request != null
+          and .source.issue.repository.full_name == $repo) | .source.issue.number]
+       + $cb[0] | unique | .[]' "$TMP/tl.json" > "$TMP/cand.txt" \
+      || die 4 "timeline of issue #$k is not parseable"
+    for n in $(cat "$TMP/cand.txt"); do
+      pr_view "$n" "$PR_FIELDS,closingIssuesReferences"
+      jq -c --argjson k "$k" --slurpfile cb "$TMP/closedby.json" --arg repo "$TEAM_GH_REPO" \
+        "$PR_ROW"' .number as $self | row(if ([.closingIssuesReferences[]? | select(.number == $k
+              and (.repository.owner.login + "/" + .repository.name) == $repo)] | length) > 0
+            or ($cb[0] | index($self)) != null then "closes"
+          elif (.headRefName // "" | test("^[^/]+/" + ($k | tostring) + "-")) then "branch"
+          else "mentions" end)' "$TMP/pr.json" >> "$TMP/rows.jsonl" \
+        || die 4 "PR #$n is not parseable"
+    done
+  elif [[ "$k" =~ ^[A-Z]+-[0-9]+$ ]]; then
+    ghc pr list --repo "$TEAM_GH_REPO" --state all --search "$k" --json "$PR_FIELDS" --limit 200 \
+      > "$TMP/search.json" 2>"$TMP/err" \
+      || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "PR search for $k failed — recoverable"; }
+    [ "$(jq 'length' "$TMP/search.json")" -lt 200 ] \
+      || die 4 "search for $k hit its limit — the PR list may be incomplete"
+    ghc pr list --repo "$TEAM_GH_REPO" --state all --json number,headRefName --limit 1000 \
+      > "$TMP/all.json" 2>"$TMP/err" \
+      || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "PR listing failed — recoverable"; }
+    [ "$(jq 'length' "$TMP/all.json")" -lt 1000 ] \
+      || die 4 "PR listing hit its limit — branch matches for $k cannot be proven complete"
+    cp "$TMP/search.json" "$TMP/cands.json"
+    jq -r --slurpfile s "$TMP/search.json" --arg k "$k" \
+      '($s[0] | map(.number)) as $seen | .[] | select((.headRefName // "")
+         | test("^[^/]+/" + $k + "-")) | .number | select(. as $n | $seen | index($n) | not)' \
+      "$TMP/all.json" > "$TMP/branch.txt" || die 4 "the PR listing is not parseable"
+    for n in $(cat "$TMP/branch.txt"); do
+      pr_view "$n" "$PR_FIELDS"
+      jq -s '.[0] + [.[1]]' "$TMP/cands.json" "$TMP/pr.json" > "$TMP/c2.json" \
+        && mv "$TMP/c2.json" "$TMP/cands.json" || die 4 "PR #$n is not parseable"
+    done
+    jq -c --arg k "$k" "$PR_ROW"' .[]
+      | select([.title, .body, .headRefName] | map(. // "")
+          | any(test("(^|[^A-Za-z0-9-])" + $k + "([^0-9]|$)")))
+      | row(if (.body // "" | test("(close[sd]?|fix(e[sd])?|resolve[sd]?) " + $k + "([^0-9]|$)"; "i"))
+              then "closes"
+            elif (.headRefName // "" | test("^[^/]+/" + $k + "-")) then "branch"
+            else "mentions" end)' "$TMP/cands.json" > "$TMP/rows.jsonl" \
+      || die 4 "the PR list for $k is not parseable"
+  else
+    die 2 "prs needs a GitHub issue number or a tracker key ([A-Z]+-[0-9]+), not '$k'"
+  fi
+  jq -s 'unique_by(.number) | sort_by(.number)' "$TMP/rows.jsonl"
+}
+
+# files: every changed path of a PR, every page; GitHub stops listing at 3000 files.
+op_files() {
+  ghc api "repos/$TEAM_GH_REPO/pulls/$1/files?per_page=100" --paginate > "$TMP/f.json" \
+    2>"$TMP/err" || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "files of PR #$1 cannot be read — recoverable"; }
+  jq -s --argjson n "$1" 'add // [] | map(.filename) | {pr: $n, files: ., truncated: (length >= 3000)}' \
+    "$TMP/f.json" || die 4 "files of PR #$1 are not parseable"
+}
+
 # ---- dispatch -----------------------------------------------------------------------------------
 
 op="${1:-}"; [ $# -eq 0 ] || shift
 case "$op" in
-  coords|state|identity|readiness|create|publish|body-get|body-set) ;;
-  *) die 2 "usage: team-pr.sh coords|state|identity|readiness|create|publish|body-get|body-set …" ;;
+  coords|state|identity|readiness|create|publish|body-get|body-set|prs|files) ;;
+  *) die 2 "usage: team-pr.sh coords|state|identity|readiness|create|publish|body-get|body-set|prs|files …" ;;
 esac
 
 # Nothing talks to GitHub before origin is confirmed to be the profile's repo.
@@ -305,4 +392,10 @@ case "$op" in
     [ -r "$2" ] || die 2 "body file '$2' is not readable"
     ghc pr edit "$1" --repo "$TEAM_GH_REPO" --body-file "$2" > "$TMP/edit" 2>"$TMP/err" \
       || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "gh pr edit #$1 failed — recoverable"; } ;;
+  prs)
+    [ $# -eq 1 ] || die 2 "usage: prs <issue number | KEY>"
+    op_prs "$1" ;;
+  files)
+    [ $# -eq 1 ] || die 2 "usage: files <pr>"
+    norm_pr "$1"; op_files "$1" ;;
 esac

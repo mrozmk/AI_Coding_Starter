@@ -20,7 +20,9 @@ Tracker `none` → the whole contract is a no-op (`Tracker comments: skipped —
   team wrapup's `[wrapup <run> <intent>]` as the last line, the cost report's
   `token-usage-report: <KEY>` as the first line, and the QA record of `/qa-verify`, whose last
   non-empty line ends with a `qa-verify:v1 record run=… ticket=…` segment (a Jira converter may join
-  it onto the verdict line). A new producer adds its rule to
+  it onto the verdict line), and `/qa-verify`'s deferral pointer, whose last non-empty line ends
+  with a `qa-verify:v1 deferral src=… row=… fp=…` segment (the same converter join). A new producer
+  adds its rule to
   `.claude/lib/tracker-snapshot.mjs` (`ownMarker`) and here. A human comment that merely quotes a
   marker is not an own entry; an unclear material comment is escalated, never dropped.
 

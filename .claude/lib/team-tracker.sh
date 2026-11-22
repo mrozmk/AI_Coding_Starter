@@ -14,6 +14,8 @@
 #   sub-issues <parent> --out <file>                         (read-only; /github-sync)
 #   add-sub-issue <parent> <child>                           (idempotent; /github-sync)
 #   project-add <key>                                        (idempotent; /github-sync)
+#   pool --status <name> --out <file>                        (read-only; /qa-verify)
+#   item-status <key> --out <file>                           (read-only; /qa-verify)
 #
 # Profile: the `teams` block when there is one (full validation), else the top-level `tracker` and
 # `github` block of a single-session project (`team_tracker_profile_load`). A github block without
@@ -347,6 +349,135 @@ op_show() {
   jq -r '"key=" + .key + " comments=" + (.comments | length | tostring)' "$out"
 }
 
+# The pool query (verified live against a Project): the status value by the Status field's NAME
+# (one value per item, no field-value paging), the issue's parent, dependency links and the issues
+# that cross-reference it. POOL_Q_NODEPS drops the two dependency fields for a host without them.
+POOL_Q_HEAD='query($pid: ID!, $cursor: String, $fname: String!) { node(id: $pid) { ... on ProjectV2 {
+  items(first: 100, after: $cursor) { totalCount pageInfo { hasNextPage endCursor }
+    nodes { id
+      status: fieldValueByName(name: $fname) { ... on ProjectV2ItemFieldSingleSelectValue {
+        name updatedAt } }
+      content { __typename ... on Issue { number title state url repository { nameWithOwner }
+        parent { number repository { nameWithOwner } }'
+POOL_Q_DEPS='
+        blockedBy(first: 50) { pageInfo { hasNextPage } nodes { number repository { nameWithOwner } } }
+        blocking(first: 50) { pageInfo { hasNextPage } nodes { number repository { nameWithOwner } } }'
+POOL_Q_TAIL='
+        timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT]) { pageInfo { hasNextPage }
+          nodes { ... on CrossReferencedEvent { source { __typename
+            ... on Issue { number repository { nameWithOwner } } } } } } } } } } } } }'
+POOL_Q="$POOL_Q_HEAD$POOL_Q_DEPS$POOL_Q_TAIL"
+POOL_Q_NODEPS="$POOL_Q_HEAD$POOL_Q_TAIL"
+
+# Usage: status_field → $TMP/sfield.json ({name, options}) of the profile's Status field.
+status_field() {
+  gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
+    --format json > "$TMP/fields.json"
+  jq --arg f "$TEAM_GH_STATUS_FIELD_ID" \
+    '[.fields[]? | select(.id == $f)] | .[0] // {} | {name: (.name // ""), options: [.options[]?.name]}' \
+    "$TMP/fields.json" > "$TMP/sfield.json" \
+    || die 4 "field list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
+  [ -n "$(jq -r '.name' "$TMP/sfield.json")" ] \
+    || die 4 "status field $TEAM_GH_STATUS_FIELD_ID is not in project $TEAM_GH_PROJECT_NUMBER"
+}
+
+# pool: every item of the Project whose Status is <name> and whose content is an issue of the repo,
+# WHATEVER the issue state (a merged ticket's issue is closed while it still waits in QA). Pages are
+# files; a page set that is short, repeats a cursor, or an item whose link list does not fit one page
+# is exit 4 — a short read must never look like "not in the pool". Read-only; output mode 0600.
+op_pool() {
+  local want="$1" out="$2" fname q deps=available k=1 cur="" prev="" more total n
+  [ -n "$TEAM_GH_PROJECT_ID" ] || die 2 "pool needs a GitHub Project (project_id) — none configured"
+  status_field
+  fname="$(jq -r '.name' "$TMP/sfield.json")"
+  jq -e --arg s "$want" '.options | index($s) != null' "$TMP/sfield.json" >/dev/null \
+    || die 1 "status '$want' is not an option of the Status field (options: \
+$(jq -r '.options | join(", ")' "$TMP/sfield.json"))"
+  q="$POOL_Q"
+  # Not through gh_or4: a host without issue dependencies fails here, and stderr says which field.
+  if ! gh api graphql -f "pid=$TEAM_GH_PROJECT_ID" -f "fname=$fname" -f "query=$q" \
+      > "$TMP/page-1.json" 2> "$TMP/gql.err"; then
+    grep -qE 'blockedBy|blocking' "$TMP/gql.err" \
+      || { sed 's/^/  | /' "$TMP/gql.err" >&2; die 4 "gh api graphql failed — recoverable"; }
+    deps=unavailable; q="$POOL_Q_NODEPS"
+    gh_or4 gh api graphql -f "pid=$TEAM_GH_PROJECT_ID" -f "fname=$fname" -f "query=$q" \
+      > "$TMP/page-1.json"
+  fi
+  while :; do
+    jq -e '(has("errors") | not) and (.data.node.items.nodes | type == "array")' \
+      "$TMP/page-$k.json" >/dev/null 2>&1 || die 4 "project $TEAM_GH_PROJECT_ID answered no item page"
+    [ "$k" -gt 1 ] || total="$(jq -r '.data.node.items.totalCount' "$TMP/page-1.json")"
+    [[ "$total" =~ ^[0-9]+$ ]] || die 4 "project $TEAM_GH_PROJECT_ID has no readable totalCount"
+    more="$(jq -r '.data.node.items.pageInfo.hasNextPage' "$TMP/page-$k.json")"
+    [ "$more" = true ] || break
+    cur="$(jq -r '.data.node.items.pageInfo.endCursor // ""' "$TMP/page-$k.json")"
+    # A cursor that never advances must not spin; nor may more pages than items.
+    [ -n "$cur" ] && [ "$cur" != "$prev" ] && [ "$k" -le $((total + 1)) ] \
+      || die 4 "item pages of project $TEAM_GH_PROJECT_ID do not advance — refusing a partial pool"
+    prev="$cur"; k=$((k + 1))
+    gh_or4 gh api graphql -f "pid=$TEAM_GH_PROJECT_ID" -f "fname=$fname" -f "cursor=$cur" \
+      -f "query=$q" > "$TMP/page-$k.json"
+  done
+  jq -s 'map(.data.node.items.nodes[])' "$TMP"/page-*.json > "$TMP/nodes.json" \
+    || die 4 "item pages of project $TEAM_GH_PROJECT_ID are not parseable"
+  [ "$(jq 'length' "$TMP/nodes.json")" = "$total" ] \
+    || die 4 "incomplete item list for project $TEAM_GH_PROJECT_ID"
+  jq --arg repo "$TEAM_GH_REPO" --arg s "$want" '[.[] | select(.content.__typename == "Issue"
+      and .content.repository.nameWithOwner == $repo and (.status.name? // null) == $s)]' \
+    "$TMP/nodes.json" > "$TMP/sel.json" || die 4 "item list is not parseable"
+  n="$(jq -r 'group_by(.content.number) | map(select(length > 1) | .[0].content.number)
+    | .[0] // ""' "$TMP/sel.json")"
+  [ -z "$n" ] || die 4 "issue #$n has more than one item in project $TEAM_GH_PROJECT_ID — refusing to pick one"
+  n="$(jq -r 'map(select([.content.blockedBy, .content.blocking, .content.timelineItems]
+      | any(.pageInfo.hasNextPage? == true)) | .content.number) | .[0] // ""' "$TMP/sel.json")"
+  [ -z "$n" ] || die 4 "issue #$n has more links than one page — refusing a partial link list"
+  jq -n --slurpfile sel "$TMP/sel.json" --slurpfile f "$TMP/sfield.json" --arg repo "$TEAM_GH_REPO" \
+    --arg s "$want" --arg deps "$deps" '
+    def nums($self): [.[]? | select(.repository.nameWithOwner? == $repo) | .number
+      | select(. != $self)] | unique | map(tostring);
+    {tracker: "github", repo: $repo, status: $s, statuses: $f[0].options, dependencies: $deps,
+     items: ([$sel[0][] | .content as $c
+       | {key: ($c.number | tostring), title: ($c.title // ""), state: ($c.state // ""),
+          url: ($c.url // ""), status_since: (.status.updatedAt // ""),
+          parent: (if $c.parent != null and $c.parent.repository.nameWithOwner == $repo
+                   then $c.parent.number else null end),
+          blocked_by: ($c.blockedBy.nodes // [] | nums($c.number)),
+          blocking: ($c.blocking.nodes // [] | nums($c.number)),
+          mentions: ([$c.timelineItems.nodes[]?.source | select(.__typename? == "Issue")]
+                     | nums($c.number))}]
+       | sort_by(.status_since))}' > "$TMP/pool.json" || die 4 "the pool cannot be built"
+  chmod 600 "$TMP/pool.json"
+  write_atomic "$TMP/pool.json" "$out"
+  jq -r '"items=" + (.items | length | tostring) + " status=" + .status' "$out"
+}
+
+# item-status: one issue, open or closed, with its board Status — by the set-status identity
+# (repo + number over the full item list; more than one item is exit 4). Read-only.
+op_item_status() {
+  local out="$1" hits
+  [ -n "$TEAM_GH_PROJECT_ID" ] \
+    || die 2 "item-status needs a GitHub Project (project_id) — none configured"
+  gh issue view "$KEY" --repo "$TEAM_GH_REPO" --json state > "$TMP/issue.json" 2>"$TMP/err" \
+    || { sed 's/^/  | /' "$TMP/err" >&2; die 1 "issue #$KEY cannot be read"; }
+  project_items
+  status_field
+  jq --argjson n "$KEY" --arg repo "$TEAM_GH_REPO" \
+    '[.items[] | select(.content.type == "Issue" and .content.number == $n
+       and .content.repository == $repo)]' "$TMP/items.json" > "$TMP/match.json" \
+    || die 4 "item list of project $TEAM_GH_PROJECT_NUMBER is not parseable"
+  hits="$(jq -r 'length' "$TMP/match.json")"
+  [ "$hits" -le 1 ] || die 4 "issue #$KEY matches $hits items in project \
+$TEAM_GH_PROJECT_NUMBER — refusing to read one of them"
+  jq -n --slurpfile i "$TMP/issue.json" --slurpfile m "$TMP/match.json" \
+    --slurpfile f "$TMP/sfield.json" --arg key "$KEY" \
+    '{key: $key, state: ($i[0].state // ""),
+      status: (if ($m[0] | length) == 1 then ($m[0][0].status // null) else null end),
+      on_board: ($m[0] | length), statuses: $f[0].options}' > "$TMP/is.json" \
+    || die 4 "issue #$KEY cannot be joined with project $TEAM_GH_PROJECT_NUMBER"
+  write_atomic "$TMP/is.json" "$out"
+  jq -r '"key=" + .key + " status=" + (.status // "null")' "$out"
+}
+
 # markers: every issue line that starts with <prefix> and ends with ` -->`, over the full list →
 # {"<marker line>": [{number, hash}]}; `hash` is the issue's `<!-- backlog-hash:<h> -->` line, or
 # null. Read-only. More than one number under a marker is the caller's ambiguity to refuse.
@@ -416,8 +547,8 @@ $TEAM_GH_PROJECT_NUMBER — refusing to guess"
 
 op="${1:-}"; [ $# -eq 0 ] || shift
 case "$op" in
-  read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add) ;;
-  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add …" ;;
+  read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add|pool|item-status) ;;
+  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add|pool|item-status …" ;;
 esac
 
 if [ "$TEAM_TRACKER" = jira ]; then
@@ -433,10 +564,11 @@ fi
 [ "$TEAM_TRACKER" != none ] || [ -n "$TEAM_TRACKER_TEAMS" ] \
   || die 2 "read: local L<n> tickets need the teams block — tracker=none without teams has no tickets"
 
-OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; PREFIX=""; POS=()
+OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; PREFIX=""; STATUS=""; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --out)        OUT="${2:-}"; shift 2 || die 2 "--out needs a directory" ;;
+    --status)     STATUS="${2:-}"; shift 2 || die 2 "--status needs a name" ;;
     --marker)     MARKER="${2:-}"; shift 2 || die 2 "--marker needs a value" ;;
     --body-file)  BODY_FILE="${2:-}"; shift 2 || die 2 "--body-file needs a path" ;;
     --title)      TITLE="${2:-}"; shift 2 || die 2 "--title needs a value" ;;
@@ -509,4 +641,14 @@ case "$op" in
     [ -n "$OUT" ] || die 2 "show needs --out <file>"
     norm_key "$1"
     op_show "$OUT" ;;
+  pool)
+    [ $# -eq 0 ] || die 2 "pool takes no ticket key"
+    [ -n "$STATUS" ] || die 2 "pool needs --status <name>"
+    [ -n "$OUT" ] || die 2 "pool needs --out <file>"
+    op_pool "$STATUS" "$OUT" ;;
+  item-status)
+    [ $# -eq 1 ] || die 2 "item-status needs a ticket key"
+    [ -n "$OUT" ] || die 2 "item-status needs --out <file>"
+    norm_key "$1"
+    op_item_status "$OUT" ;;
 esac
