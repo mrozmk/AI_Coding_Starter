@@ -50,7 +50,8 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 - Show: `git log --oneline origin/<branch>~3..origin/<branch>`
 - Confirm: "Push complete. `origin/<branch>` is up to date."
 - When the Branch model says `**Protected push:** pr-only` (read as in step 2) and `<branch>` is not
-  protected, end with exactly one line:
+  protected, end with exactly one line — skipped when this `/push` runs as `/pr-create` Step 5
+  (that command goes on to its own PR step):
   - `.claude/commands/pr-merge.md` exists → "Next: /pr-create, then /pr-merge."
   - absent → "Next: /pr-create, then merge the PR on the host."
 
