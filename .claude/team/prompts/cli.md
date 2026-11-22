@@ -20,7 +20,9 @@ There is no planner, no QA and no wrapup after you.
    (`.claude/commands/quick-change.md` → Phase 0): a sensitive path per `CLAUDE.md → Validation`;
    a migration or schema change; a new dependency; a public contract; more than about 5 files or
    more than one module or layer; work that needs a design reference to be judged (visual work
-   against a design source); "done" that cannot be said in one sentence. Any hit →
+   against a design source); a ticket that conflicts with the brief's Non-goals or Change test
+   (`/quick-change` Phase 0 → Product fit; the brief has neither → no check); "done" that cannot
+   be said in one sentence. Any hit →
    `bash .claude/lib/team-record.sh --verdict blocked --message "not a cli change: <check> — <reason>"`
    and wait. If the developer answers "continue anyway", proceed and log the override under
    `## Unattended decisions`.
