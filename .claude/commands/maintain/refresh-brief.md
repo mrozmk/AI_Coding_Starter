@@ -30,6 +30,7 @@ Read the full PRD. Identify which sections are present:
 
 - Executive Summary / Mission / Target Users / MVP Scope → feed `project-brief.md`
 - Tech Stack / Architecture → feed `project-brief.md`
+- Scope → Out of scope (non-goals) (§4), Goals (§2), Core Architecture & Patterns (§7) → feed the brief's Non-goals and Change test sections
 - Pricing / Plans / Monetization / Billing / Subscription / Stripe → feed `business-model.md`
 
 When `docs/architecture.md` exists, the PRD's `Technology Stack` / `Core Architecture & Patterns` sections are its digest (written by `/architect`); take Stack/Architecture from them and add `docs/architecture.md` to the brief's Key Files.
@@ -38,7 +39,7 @@ When `docs/architecture.md` exists, the PRD's `Technology Stack` / `Core Archite
 
 Path: `.agents/memory/project-brief.md`.
 
-**Hard cap: 50 lines of body content** (excluding frontmatter). The brief is a TL;DR — if you are tempted to exceed 50 lines, condense further.
+**Hard cap: 60 lines of body content** (excluding frontmatter) — one limit for the whole brief. Non-goals and Change test take their share of it (at most 10 lines with their headings); every other section keeps its own limit below. The brief is a TL;DR — if you are tempted to exceed 60 lines, condense further.
 
 **Frontmatter:**
 ```yaml
@@ -53,13 +54,17 @@ description: Distilled TL;DR of the PRD — loaded by /prime instead of full PRD
 
 1. **What** — one paragraph (≤4 lines). Product purpose and value proposition.
 2. **Who** — one or two lines per primary persona. Maximum 3 personas.
-3. **Stack** — single line summary (e.g. "Next.js 14 + Prisma + Postgres + BullMQ + Redis"). No deep detail — that lives in `architecture.md`.
-4. **Architecture** — 5-7 bullets. Top-level pattern, data flow, async/jobs, auth model, deployment shape.
-5. **Status** — one line. Phase: bootstrapping / MVP build / post-MVP / mature. Optionally with current focus. When the PRD header carries `**Baseline:**`, add one sub-line `Scope register: Baseline v1.0 (<date>, approved by <who> | proposed) · Current v1.N (<date>) · newest: D-k <title> (<approval>), …` with the three newest `D-n` from `## Change log`. No baseline header → no sub-line.
-6. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one.
-7. **Key Files** — table. Always include: `docs/PRD.md`, `CLAUDE.md`, `README.md`, `.agents/memory/index.md`, `.agents/memory/architecture.md`, `.agents/plans/active/`. Add 2-4 project-critical files if they exist.
+3. **Non-goals** — the PRD's `Out of scope (non-goals)` list (§4), one bullet each: `<excluded thing> — <reason>`, in the PRD's wording. Keep a horizon qualifier the PRD gives (`in slice 1`, `this cycle`) — never widen a time-boxed exclusion into a permanent one. At most 5 bullets; a longer list → the 5 that most constrain day-to-day changes, then one line `+<N> more — <PRD path> §4` with the path Step 1 resolved. No §4 list, or an empty one → omit this section and Change test; never derive non-goals from other sections (Step 6 warns).
+4. **Change test** — exactly two lines, written only when Non-goals is: `A change fits when …` — from the active goals (the active-ids rule of Step 5, **Scope rule — active ids only**, applies to `G-n` here too) and the in-scope list; `Resist a change when …` — from the non-goals and, when §7 holds binding `AD-n` decisions rather than *pending `/architect`*, from those. Keep the PRD's horizon qualifiers.
+5. **Stack** — single line summary (e.g. "Next.js 14 + Prisma + Postgres + BullMQ + Redis"). No deep detail — that lives in `architecture.md`.
+6. **Architecture** — 5-7 bullets. Top-level pattern, data flow, async/jobs, auth model, deployment shape.
+7. **Status** — one line. Phase: bootstrapping / MVP build / post-MVP / mature. Optionally with current focus. When the PRD header carries `**Baseline:**`, add one sub-line `Scope register: Baseline v1.0 (<date>, approved by <who> | proposed) · Current v1.N (<date>) · newest: D-k <title> (<approval>), …` with the three newest `D-n` from `## Change log`. No baseline header → no sub-line.
+8. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one.
+9. **Key Files** — table. Always include: `docs/PRD.md`, `CLAUDE.md`, `README.md`, `.agents/memory/index.md`, `.agents/memory/architecture.md`, `.agents/plans/active/`. Add 2-4 project-critical files if they exist.
 
 **Overwrite policy:** the file is regenerated wholesale — preserve no prior content. Brief is derived state from PRD.
+
+**Non-goals about to vanish:** when the existing brief has a `## Non-goals` section and this PRD has no §4 list, stop before writing: show that section and ask the user — move the still-valid items into PRD §4 and refresh again, or confirm they are dropped. Never carry the old section over: the command cannot tell a hand-written list from one it generated earlier, so carrying it would republish an exclusion the PRD has since removed.
 
 ### 4. Decide on `business-model.md`
 
@@ -112,6 +117,9 @@ Output a short summary:
 
 **Skipped:**
 - `business-model.md` — no pricing/billing content in PRD  ← only if skipped
+
+**Warnings:**
+- ⚠️ PRD has no Out of scope (non-goals) list (§4) — Non-goals and Change test omitted; add §4 and refresh.  ← only when §4 is absent or empty
 
 **Next:** `/prime` will now load brief instead of full PRD.
 ```
