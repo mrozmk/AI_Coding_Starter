@@ -179,7 +179,8 @@ undecided "in or out?" questions become owned `Q-n` without a new interview.
 7. **Skipped** — the Definition of Ready gate (no PRD rewrite), Phase 6 and Phase 7: the run
    writes questions and clarifications, never a requirement.
 8. **Report** (instead of Phase 8) — files touched; the fault-line tally (Phase 8 item 4a);
-   asked / answered; each `blocks slice 1: yes` with the DoR line it reopened (or `no DoR yet`);
+   asked / answered; each `blocks slice 1: yes` with the DoR line it reopened (or its
+   `accepted as open by <owner>` line, or `no DoR yet`);
    the non-`team` `Q-n` listed per owner with the route their decision takes (`coverage.md` §5
    item 7); `Critic: skipped — fault-line mode`.
 

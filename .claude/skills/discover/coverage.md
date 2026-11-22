@@ -138,8 +138,8 @@ rules.
    non-goals list, the critical flow draft, `BR-n`, NFRs, the Source precedence answer, imported
    rows and the user's corrections — and quotes what has no id yet. `--fault-lines` reads
    `docs/PRD.md` (`G-n`, §4 non-goals, the critical-flow `R-n`, `NFR-n`, §3), `docs/discovery.md`
-   (`BR-n`) and the active `AD-n` of a published `docs/architecture.md`; a PRD without ids (one
-   `/setup:map-codebase` reconstructed) gives quoted lines.
+   (`BR-n`) and the active `AD-n` of a published `docs/architecture.md` — never a superseded or
+   withdrawn id; a PRD without ids (one `/setup:map-codebase` reconstructed) gives quoted lines.
 2. **Draft 8–12 proposals**, at least one per lens when the principles give material. Fewer than
    8 only when they do not, and the report says why; never more than 12. Each names the
    principle it tests (an id or a quote) and argues both sides, one sentence each.
