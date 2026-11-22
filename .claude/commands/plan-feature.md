@@ -671,7 +671,7 @@ The other gates decide tests per component and per path; nothing asks "which tes
 2. it is behavioural (it asserts what happens when something runs) and carries only `static` proofs;
 3. a `test` proof names a test — file and case — that no task creates or updates (an `EXPECT: contains — <test file> :: <test name literal>`) and that does not already exist in the repo; in an umbrella, also when the sub-step that implements the behaviour neither writes that test (before the behaviour) nor names the existing case;
 4. it uses `none` on a path where the `CLAUDE.md → Validation` test policy says a test MUST exist;
-5. the plan changes behaviour an existing test covers and names no task that updates or removes that test.
+5. the plan changes behaviour an existing test covers and names no task that updates or removes that test — unless that test is an unchanged case a `Proof: test` line names, which already asserts the new behaviour.
 
 Finding text: _"Criterion <id> <has no proof | is behavioural but proven only by `static` | names test <file :: case> that no task writes and the repo lacks | uses `none` on MUST path <path> | changes behaviour covered by <test file> with no task updating it>; the criterion will be accepted on a code reading, or the run will stop on a missing test. FIX: <add the `Proof:` line | add a `test` proof and its task | name the existing case | replace `none` with a test | add the task that updates or removes the test>."_ It is 🟠, not 🟡: Step 5.4's frugal scope would drop a 🟡 — the gap 5.1d closed for sensitive paths.
 

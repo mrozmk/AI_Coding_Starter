@@ -150,9 +150,10 @@ gate = strict_between(pf, "### Step 5.1f — AC proof gate (MANDATORY for every 
 for needle in ("**Trigger:** always", "🟠 MAJOR", "no `Proof:` line", "carries only `static` proofs",
                "no task creates or updates", "test policy says a test MUST exist",
                "behaviour an existing test covers and names no task that updates or removes that test",
-               "neither writes that test (before the behaviour) nor names the existing case"):
+               "neither writes that test (before the behaviour) nor names the existing case",
+               "unless that test is an unchanged case a `Proof: test` line names"):
     check(needle in gate, f"grill step 5.1f lacks {needle!r}")
-check("These five gates" in gate,"plan-feature gates note does not count five gates")
+check("These five gates" in gate, "plan-feature gates note does not count five gates")
 check("a tests-only sub-step never holds a test a `Proof: test` line names" in pf,
       "plan-feature split mechanics still allow a proof test in a tests-only sub-step")
 p7s = strict_between(pf, "### Step 7.3 — Build the review prompt (BROAD mandate + strict evidence bar)",
@@ -184,6 +185,9 @@ ex = read(".claude/commands/execute.md")
 e2 = strict_between(ex, "### 2. Execute Tasks in Order", "#### a. Navigate to the task", "execute §2 head")
 for needle in ("**Proof tests first — red before green.**", "see it fail",
                "a test that cannot compile yet counts as failing", "pull the test task forward",
+               "rework a test this plan writes until it fails for the missing behaviour",
+               "an existing case the plan leaves unchanged is not rewritten",
+               "in `/execute codex` the supervisor does it, never Codex",
                "the umbrella's `## ACCEPTANCE CRITERIA`",
                "`red before green: <test> — yes | n/a — <why>`", "`## Unattended decisions`"):
     check(needle in e2, f"execute §2 lacks {needle!r}")
