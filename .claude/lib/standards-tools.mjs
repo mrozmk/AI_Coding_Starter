@@ -110,6 +110,8 @@ const WIRING = /(^|\/)(package\.json|composer\.json|Makefile|Jenkinsfile|\.gitla
 const STRICT_PROPS = /^(TreatWarningsAsErrors|EnforceCodeStyleInBuild)$/;
 // A segment that installs, removes or only names a tool — never a checking run (`pip install flake8`).
 const NOT_A_RUN = /^\s*(?:\w+=\S*\s+)*(?:sudo\s+)?(?:(?:(?:(?:python3?|py)\s+-m\s+)?(?:pip3?|pipx|uv\s+pip|poetry|npm|yarn|pnpm|bun|gem|bundle|composer|go|cargo|brew|apt(?:-get)?|apk|choco|dotnet\s+tool)\s+(?:global\s+)?(?:install|i|add|require|uninstall|remove|rm)\b)|echo\b|printf\b|which\b|command\s+-v\b)/;
+// An informational mode prints and exits 0 whatever the code holds (`eslint --version`, `tsc --showConfig`).
+const INFO_ONLY = /(^|\s)--(version|help|init|showConfig|print-config)(\s|=|$)/;
 
 const posix = (...p) => { const j = path.posix.normalize(path.posix.join(...p)); return j === '.' ? '' : j.replace(/\/$/, ''); };
 const under = (a, b) => b === '' || a === b || a.startsWith(`${b}/`);
@@ -239,7 +241,7 @@ function extract(t, file, text) {
 // the strict flag. null when the text is not a checking invocation of that tool.
 export function parseRun(toolId, text) {
   const t = BY_ID.get(toolId);
-  if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text)) return null;
+  if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text) || INFO_ONLY.test(text)) return null;
   const toks = text.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
   let i = toks.findIndex((x) => t.bin.test(x.replace(/^["']|["']$/g, '')));
   const run = { targets: [], excludes: [], selected: null, strict: false, scopeUnknown: false };
@@ -308,12 +310,16 @@ function runsOf(cmds) {
   const seen = new Set();
   for (const c of cmds) {
     let dir = c.dir;
-    for (const seg of c.text.split(/&&|\|\||;|\|/)) {
+    const parts = c.text.split(/(&&|\|\||;|\|)/);
+    for (let k = 0; k < parts.length; k += 2) {
+      const seg = parts[k];
       const cd = /^\s*cd\s+(\S+)\s*$/.exec(seg);
       if (cd) { dir = posix(dir, cd[1]); continue; }
+      // `eslint src || true`: a failure the command swallows is observed, never a checking run.
+      const masked = parts[k + 1] === '||' && /^\s*(true|:|exit\s+0|echo\b.*)\s*$/.test(parts[k + 2] || '');
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
-        if (/fix/i.test(c.key) && /--fix\b/.test(seg)) continue;
+        if (masked || (/fix/i.test(c.key) && /--fix\b/.test(seg))) continue;
         const r = parseRun(t.tool, seg);
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }

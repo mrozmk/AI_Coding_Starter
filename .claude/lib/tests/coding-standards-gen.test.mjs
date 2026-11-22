@@ -177,6 +177,18 @@ test('scanner: installing or naming a tool is not a run', async () => {
   fs.writeFileSync(path.join(dir, '.github/workflows/ci.yml'), 'jobs:\n  lint:\n    steps:\n      - run: pip install flake8 mypy\n');
   const s = await fixtureScan(dir, ['setup.cfg', '.stylelintrc.json', 'package.json', '.github/workflows/ci.yml']);
   for (const id of ['flake8', 'mypy', 'stylelint']) assert.equal(tool(s, id).enforced, false, id);
+  assert.equal(parseRun('eslint', 'eslint --version'), null);
+  assert.equal(parseRun('typescript', 'tsc --showConfig'), null);
+});
+
+test('scanner: a run whose failure is swallowed does not enforce', async () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'eslint.config.mjs'), "export default [{ rules: { eqeqeq: 'error' } }];\n");
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "lint": "eslint src || true" } }\n');
+  const files = ['eslint.config.mjs', 'package.json'];
+  assert.equal(tool(await fixtureScan(dir, files), 'eslint').enforced, false);
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "lint": "eslint src || exit 1" } }\n');
+  assert.equal(tool(await fixtureScan(dir, files), 'eslint').enforced, true);
 });
 
 test('scanner: a Bitbucket pipeline wires a tool; a fix script does not', async () => {
