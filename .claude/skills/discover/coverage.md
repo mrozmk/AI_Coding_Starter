@@ -96,6 +96,14 @@ any item is open. An item that cannot be satisfied gets either another question 
 `Q-n` with an explicit line `accepted as open by <owner>` — that line is what lets the item count
 as satisfied for slice 1.
 
+A run after the PRD exists (`/discover --fault-lines`) that leaves an open blocking `Q-n` not
+accepted by its current owner unticks the last item and adds under it, once per `Q-n`,
+`reopened by Q-n (fault-line run YYYY-MM-DD) — needs <owner>'s decision`; an existing line for
+that `Q-n` stays, its `<owner>` set to the current one. Every run that writes
+this list — a full run's Phase 5 too — removes a `reopened by` line once its `Q-n` is closed,
+accepted or no longer `blocks slice 1: yes` (a DoR annotation, not an id line), and ticks the
+item again only when its predicate holds and no such line remains.
+
 - [ ] Problem, users and the current alternative are stated (categories 1, 11).
 - [ ] At least one `G-n` with a target value **and** a date (category 9).
 - [ ] Appetite and what gives first when it overruns (category 7).
@@ -116,3 +124,82 @@ as satisfied for slice 1.
 
 The ticked copy of this list lives at the end of `docs/discovery.md` (`## Definition of Ready`);
 `prd-rubric.md` treats an unticked item as a `blocker`.
+
+---
+
+## 5. Fault lines
+
+The fourth Challenge pass (`/discover` Phase 3, and alone under `/discover --fault-lines`) looks
+for what the plan has **not** decided — "someone proposes X — in or out?". The lenses and the
+proposal shape live in `.claude/skills/discover/question-bank.md` → Fault lines; these are its
+rules.
+
+1. **Principles in.** A full run reads the working state of Phases 0–2 — goal candidates, the
+   non-goals list, the critical flow draft, `BR-n`, NFRs, the Source precedence answer, imported
+   rows and the user's corrections — and quotes what has no id yet. `--fault-lines` reads
+   `docs/PRD.md` (`G-n`, §4 non-goals, the critical-flow `R-n`, `NFR-n`, §3), `docs/discovery.md`
+   (`BR-n`) and the active `AD-n` of a published `docs/architecture.md` — never a superseded or
+   withdrawn id; a PRD without ids (one `/setup:map-codebase` reconstructed) gives quoted lines.
+2. **Draft 8–12 proposals**, at least one per lens when the principles give material. Fewer than
+   8 only when they do not, and the report says why; never more than 12. Each names the
+   principle it tests (an id or a quote) and argues both sides, one sentence each.
+3. **Discard only on a deciding record.** A proposal is discarded when an existing record
+   decides it — the record is current and states in or out for this proposal, for the same scope
+   and horizon — and the report cites it (file + id, or `file:line`). Records: an explicit in/out
+   statement anywhere in `docs/PRD.md` (§4 scope lines, an active register id, a `D-n`, or a
+   plain sentence elsewhere, cited by line); in `docs/discovery.md` active `BR-n`,
+   `## Clarifications` lines and closed `Q-n`; the active `AD-n` of a published
+   `docs/architecture.md` (an `AD-n` pointer in memory counts only through that current row);
+   `.agents/memory/decisions.md`; the effective source set (`/discover` Phase 0 step 2) and, in a
+   full run, the accepted `--import` rows (cite `<path>:<row>`, or the extract's row id) and an
+   explicit in/out statement the user made in this session — the opening idea or an answer,
+   cited verbatim with where it was said (a pre-filled derivation is not a statement); an
+   **Approved** spec's `Assumed in scope despite the non-goal "<bullet>" (decided by <who>)` line,
+   for that exact feature only. A later record that explicitly supersedes an earlier one wins; a
+   record the project marks retired or replaced (a status note naming its replacement source)
+   decides nothing — the named replacement does.
+   Superseded or withdrawn ids, a draft architecture and any other spec content decide nothing;
+   an inferred statement — hedged ("appears to", "likely") or describing what the code does, as
+   a reconstructed PRD does — can motivate a proposal, never decide one. Two records that
+   disagree decide nothing — keep one `Q-n` quoting both. An open `Q-n` of any kind asking the
+   same decision for the same scope and horizon is not a new proposal: no second id, its id and
+   provenance stay. Discards are reported, never written to a file.
+4. **Owner.** Every survivor becomes a `Q-n` (line shape: `discovery-template.md` → Open
+   questions) with one owner:
+   - `team` — the call stays inside the stated goals and non-goals and changes only how or when
+     the team delivers;
+   - `analyst` — it changes which capability or user is in scope inside the agreed goals; the
+     business analyst or product owner decides;
+   - `client` — it moves a goal, a non-goal, the appetite or what the client pays for; the
+     decision owner named in `## Stakeholders` decides.
+5. **Who is asked.** First every fault-line `Q-n` still open from an earlier run, whatever its
+   owner, is rechecked against the current deciding records (item 3); one a record now decides
+   is closed with ` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`,
+   not asked — except, under `--fault-lines`, an `analyst` or `client` one whose decision
+   `docs/PRD.md` does not carry yet: it stays open, the report cites the record, and the full
+   update run of item 7 closes it. A full run closes it here like any other, and its Phase 5
+   writes the decision into the PRD.
+   ` → resolved by` is only for a record cited by file: an earlier `analyst` or `client` one
+   whose owner decides it in a full run's session closes with item 7's form alone (` → D-n` or
+   ` → answered in session`), never with both. Then only `team`-owned questions are asked — the
+   new survivors and the earlier ones still open — in the session's question round (`/discover`
+   Phase 3 and the mode's step 4 say which), ranked with the other questions under §2 (≤5 per
+   round); none when the user has said done (§2 item 8). The others are listed for their owner;
+   a `team` question left over stays open. The Phase 5 DoR round may ask a blocking `team` one,
+   never an `analyst` or `client` one: that one needs its owner's `accepted as open by <owner>`
+   line (§4), or the PRD stays unwritten.
+6. **`blocks slice 1`.** `yes` only when, without a decision, the slice 1 already agreed cannot
+   be defined, delivered or verified. An optional extension is `no` even when one of its answers
+   would touch the critical flow.
+7. **Closing.** A `team` answer closes the `Q-n` with
+   ` → answered in session YYYY-MM-DD (team: in | out, horizon now | slice 1 | later)` and one
+   `## Clarifications` line naming the id and the chosen outcome — a "yes" to the Recommended
+   option is written out as that option, never as "Recommended accepted"
+   (`- Q: Q-7 — … in or out? → A: out (team, horizon slice 1)`) — and nothing else: unlike
+   §2 item 7 it feeds no target section — never a PRD non-goal, never a register id. An answer
+   that turns out to move scope leaves the `Q-n` open, re-owned to `analyst` or `client`. Their
+   decision later goes through a full `/discover` update run, which closes the `Q-n`
+   (` → D-n` or ` → answered in session`), drops it from PRD §13 and records any register
+   change; a project with a backlog then reconciles it with `/update-backlog`, as that run's
+   report says. PRD §13 follows `docs/discovery.md` by id for every `Q-n` a run touches: a
+   closed one leaves it, an open one's row carries its current owner and `blocks slice 1`.

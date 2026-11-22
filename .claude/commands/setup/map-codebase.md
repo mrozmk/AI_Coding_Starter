@@ -184,7 +184,7 @@ If a cascade step fails, **stop and report** — the artifacts from earlier phas
 **Skipped:** <loud skip stats with reasons>.
 **Unanalyzed (if any):** <module names> — rerun or inspect manually.
 
-**Next:** run /prime, then the normal cycle — /brainstorm → /plan-feature → /execute.
+**Next:** run /prime, then the normal cycle — /brainstorm → /plan-feature → /execute. Optional: `/discover --fault-lines` lists the scope `docs/PRD.md` leaves undecided as owned open questions.
 ```
 
 ---
