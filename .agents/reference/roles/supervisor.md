@@ -23,7 +23,11 @@ Operator's consent.
   records](../supervisor-sessions.md)): close each one yourself with `operator-record.sh close <id>`
   as soon as the Operator has acted on it — answered, finished that release step, or the failure is
   repaired. Its notification then leaves every channel; never leave the close to the Operator.
-- Its own questions (not a team's) to an Advisor, through that Advisor's inbox.
+- Its own questions (not a team's) to an Advisor, through that Advisor's inbox. A question for a
+  position goes to every running Advisor with the same brief, names the consolidating Advisor
+  (default: Fable) and the routing — the others send their positions to it, it sends one agreed
+  answer — and the Supervisor waits for that one answer instead of reconciling separate ones
+  ([advisor.md](advisor.md) → Does). With one Advisor running, ask that one and tell the Operator.
 - The four events it is told about, and nothing else:
   1. a run's acceptance brief → the merge;
   2. a run closed without a merge → free the clone;
