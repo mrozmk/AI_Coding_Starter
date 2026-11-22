@@ -42,8 +42,9 @@ Arguments: **$ARGUMENTS** — `[PR-ID] [--auto <team>]` (both optional; `--auto`
   a running blocking policy is a **STOP** naming what is missing (`self_approve` is off).
 - **Stop, don't work around:** conflicts, a rejected policy, a rejecting reviewer vote (`-10`/`-5`),
   or an `az` error → report verbatim and stop.
-- **Branch deletion only after `completed`.** Remote `git push origin --delete <source>` and local
-  `git branch -D <source>` (ask-tier) run only once Azure DevOps reports the PR `completed`.
+- **Branch deletion only after the merge.** Remote `git push origin --delete <source>` and local
+  `git branch -D <source>` (ask-tier) run only once the host reports the PR merged (Azure DevOps
+  `completed`, GitHub `MERGED`).
   Never force anything else locally.
 - **Tracker comments gate the completion** (Step 4a, opt-in `workflow.tracker_comments`): new, edited
   or uncertain ticket input since the baseline → STOP, no merge. The decision is the user's, recorded
@@ -235,8 +236,8 @@ If it stopped or timed out: what it waits for, and that auto-complete is still s
 ## GitHub path
 
 Coordinates: `<owner>/<repo>` from `origin` (`git@github.com:<o>/<r>.git` or
-`https://github.com/<o>/<r>.git`). Every `gh` call passes `--repo <owner>/<repo>`. No step asks a
-question; every STOP names its fix.
+`https://github.com/<o>/<r>.git`). Every `gh pr` call passes `--repo <owner>/<repo>` (the
+account-scoped `gh api user` takes none). No step asks a question; every STOP names its fix.
 
 ### Step G1 — Guards and auth
 
@@ -264,7 +265,8 @@ Runs for both lookups, before any write:
 
 - (a) **Fork:** head repository (`headRepositoryOwner.login + "/" + headRepository.name`) ≠
   `<owner>/<repo>` → STOP: "a fork's PR — not merged from here".
-- (b) **Team run:** `find .agents/team/anchors -maxdepth 1 -name '*.json' -exec jq -r --arg b "<HEAD>" 'select(.branch == $b) | .team' {} +`
+- (b) **Team run:** the invoking checkout's own `.agents/team/team.json` has `branch` = `<HEAD>` (a
+  team clone, also between role sessions) → the STOP below. Otherwise `find .agents/team/anchors -maxdepth 1 -name '*.json' -exec jq -r --arg b "<HEAD>" 'select(.branch == $b) | .team' {} +`
   prints a team → STOP: "PR of team `<team>` — team PRs merge through team-merge-check.sh →
   team-integrate.sh".
 - (c) **Own work:** unless the PR is already `MERGED`, `git rev-parse --verify --quiet refs/heads/<HEAD>` must equal `HEAD_SHA`;
@@ -275,7 +277,8 @@ Runs for both lookups, before any write:
 ### Step G4 — Decide (no questions)
 
 Apply the first matching row; after any *resolve* action re-read Step G2's `gh pr view` (at most 3
-loops):
+loops). `HEAD_SHA` stays the sha Step G3 accepted: a re-read whose `headRefOid`, `headRefName` or
+head repository differs → STOP: "the PR head moved after the ownership check — re-run".
 
 | State | Action |
 |---|---|
@@ -290,9 +293,9 @@ loops):
 
 Read the required checks: `gh pr checks <n> --repo <owner>/<repo> --required --json name,bucket`.
 
-- The command fails with `no required checks reported` (no branch protection, or none marked
-  required) → no required checks, go on. Any other failure → STOP with the error verbatim (an
-  unreadable state is not "none").
+- The command fails with `no required checks reported` or `no checks reported` (no CI, no branch
+  protection, or none marked required) → no required checks, go on. Any other failure → STOP with
+  the error verbatim (an unreadable state is not "none").
 - Any `bucket` `fail` or `cancel` → STOP naming those checks.
 - Any `pending` → start a `Monitor` (background until-loop, the same `gh pr checks … --required`
   every 60 s, **max 30 min**) and end the turn; the notification resumes here. Timeout → report
@@ -300,8 +303,8 @@ Read the required checks: `gh pr checks <n> --repo <owner>/<repo> --required --j
   (`gh pr merge` would silently arm auto-merge).
 - All `pass` / `skipping` → go on.
 
-Then Step 4a (tracker comments, opt-in) exactly as written there — for github its key rule reads
-the `<n>` of `<type>/<n>-…` in `HEAD`. Then `MERGE` and the strategy from Step 3's rule
+Then Step 4a (tracker comments, opt-in) exactly as written there, reading its `SOURCE` as `HEAD`
+and its "5a or 5b" as the merge below. Then `MERGE` and the strategy from Step 3's rule
 (`CLAUDE.md` → Branch model **Merge**; absent → squash for working types, merge commit for
 `release` / `hotfix`):
 
@@ -311,9 +314,10 @@ the `<n>` of `<type>/<n>-…` in `HEAD`. Then `MERGE` and the strategy from Step
 
 Merge:
 
-`gh pr merge <n> --repo <owner>/<repo> <--merge|--squash|--rebase> --match-head-commit <HEAD_SHA> --subject "<PR title> (#<n>)"`
+`gh pr merge <n> --repo <owner>/<repo> <--merge|--squash|--rebase> --match-head-commit <HEAD_SHA> --subject '<PR title> (#<n>)'`
 
-Never `--admin`, never `--auto`, never `--delete-branch`. Any error (head moved, not mergeable,
+The subject goes in single quotes, each `'` of the title written as `'\''`: a title is data, and
+backticks or `$(` inside double quotes would run. Never `--admin`, never `--auto`, never `--delete-branch`. Any error (head moved, not mergeable,
 403) → show it verbatim and STOP; never retry with other flags. Re-read
 `gh pr view <n> --repo <owner>/<repo> --json state,mergeCommit` (a few reads) until `state` is
 `MERGED`; `MERGE_SHA` = `mergeCommit.oid`.
@@ -322,7 +326,8 @@ Never `--admin`, never `--auto`, never `--delete-branch`. Any error (head moved,
 
 Effective tracker as `/pr-create` resolves it (`teams.tracker` when a `teams` block exists, else
 the top-level `tracker`, else `none`). `github` / `none` → nothing (the PR's closing keyword closes
-the issue on GitHub). `jira` → Step 6a from item 1 on, with `COMMIT` = `MERGE_SHA` (on a rerun
+the issue on GitHub). `jira` → Step 6a from item 1 on, reading its `SOURCE` as `HEAD` and every
+"go to Step 6" as "go to Step G7", with `COMMIT` = `MERGE_SHA` (on a rerun
 re-read it with `gh pr view <n> --repo <owner>/<repo> --json mergeCommit`) and the comment
 `Merged in PR #<n>, merge commit <COMMIT>`. A tracker failure is reported, never a reason to skip
 Step G7.
@@ -331,6 +336,10 @@ Step G7.
 
 In this order:
 
+0. **Shared head.** `gh pr list --repo <owner>/<repo> --head <HEAD> --state open --json number,headRepositoryOwner,headRepository`,
+   filtered to `<owner>/<repo>` as in Step G2: another open PR still uses `<HEAD>`, or the lookup
+   fails → skip item 1 (deleting the remote branch would close that PR) and report "`<HEAD>` is the
+   head of open PR `#…` — remote branch kept".
 1. **Remote branch.**
    - `LIVE` = the sha of `git ls-remote --exit-code --heads origin <HEAD>` (absent → nothing to do;
      GitHub may have deleted it).
@@ -355,8 +364,7 @@ In this order:
 ✅ PR `#<n>` merged · strategy · merge commit `MERGE_SHA` · remote branch (deleted by GitHub / by
 this command / kept — why) · local state (`BASE_SHA`, contains the merge commit, local branch
 removed or kept — why) · URL. Add `Tracker comments: …` when Step 4a ran and `Tracker: …` (tracker
-jira) as in Step 7. On a STOP: what blocks and the fix. Then the stage end marker, as for the Azure
-DevOps path.
+jira) as in Step 7. On a STOP: what blocks and the fix.
 
 ## Stage end marker (token usage)
 

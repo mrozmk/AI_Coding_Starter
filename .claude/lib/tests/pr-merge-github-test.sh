@@ -51,14 +51,14 @@ N=$((N + 1))
 #     first `gh pr ready` and the merge call.
 READY=$(gh_line 'gh pr ready') || fail "no gh pr ready in the GitHub path"
 MERGE=$(gh_line 'gh pr merge <n>') || fail "no gh pr merge <n> in the GitHub path"
-for p in '.agents/team/session.json' '.agents/team/anchors' 'refs/heads/<HEAD>'; do
+for p in '.agents/team/session.json' '.agents/team/team.json' '.agents/team/anchors' 'refs/heads/<HEAD>' 'the PR head moved after the ownership check'; do
   l=$(gh_line "$p") || fail "GitHub path lacks: $p"
   [ "$l" -lt "$READY" ] && [ "$l" -lt "$MERGE" ] || fail "$p comes after a write (line $l)"
 done
 OWN=$(gh_line 'refs/heads/<HEAD>')
 printf '%s\n' "$BODY" | sed -n "${OWN}p" | grep -qF 'HEAD_SHA' || fail "the own-branch check does not compare with HEAD_SHA"
 in_gh "a fork's PR"
-N=$((N + 4))
+N=$((N + 6))
 
 # (4) Strategy mapping.
 for m in 'merge commit → `--merge`' 'squash → `--squash`' 'rebase → `--rebase`'; do in_gh "$m"; done
@@ -69,19 +69,22 @@ N=$((N + 1))
 ML=$(printf '%s\n' "$BODY" | sed -n "${MERGE}p")
 case "$ML" in *--match-head-commit*) ;; *) fail "the merge call is not pinned with --match-head-commit" ;; esac
 case "$ML" in *--admin*|*--auto*|*--delete-branch*) fail "the merge call carries a bypass flag: $ML" ;; esac
+case "$ML" in *"--subject '"*) ;; *) fail "the merge subject is not single-quoted: $ML" ;; esac
+printf '%s\n' "$SECTION" | grep -F 'gh api user' | grep -qF -- '--repo' && fail "gh api user carries --repo"
 while IFS= read -r line; do
   printf '%s\n' "$line" | grep -qi 'never' || fail "--admin outside a prohibition: $line"
 done < <(printf '%s\n' "$BODY" | grep -F -- '--admin' || true)
-N=$((N + 3))
+N=$((N + 5))
 
 # (6) Required checks only; an unreadable state is a STOP; checks before the merge.
 in_gh '--required'
 in_gh 'no required checks reported'
+in_gh 'no checks reported'
 OTHER=$(gh_line 'any other failure' || gh_line 'Any other failure') || fail "no 'any other failure' rule"
 printf '%s\n' "$BODY" | sed -n "${OTHER}p" | grep -qF 'STOP' || fail "'any other failure' is not a STOP"
 CHECKS=$(gh_line 'gh pr checks') || fail "no gh pr checks in the GitHub path"
 [ "$CHECKS" -lt "$MERGE" ] || fail "gh pr checks does not precede the merge"
-N=$((N + 4))
+N=$((N + 5))
 
 # (7) Rerun: an already merged PR goes through the tracker step and the cleanup.
 RR=$(gh_line '| `state: MERGED` |') || fail "no state: MERGED row"
@@ -92,7 +95,7 @@ N=$((N + 1))
 # (8) Cleanup order inside G7; both deletions guarded by HEAD_SHA on their own line.
 G7=$(gh_line '### Step G7') || fail "no Step G7"
 prev=$G7
-for p in 'git ls-remote --exit-code' 'git push origin --delete' 'git switch <BASE>' 'git pull --ff-only' 'git branch -D' 'git fetch origin --prune'; do
+for p in '--head <HEAD> --state open' 'git ls-remote --exit-code' 'git push origin --delete' 'git switch <BASE>' 'git pull --ff-only' 'git branch -D' 'git fetch origin --prune'; do
   l=$(line_of "$p" "$G7"); [ -n "$l" ] && [ "$l" -lt "$GH_END" ] || fail "Step G7 lacks: $p"
   [ "$l" -gt "$prev" ] || fail "Step G7 order: $p (line $l) not after line $prev"
   prev=$l
