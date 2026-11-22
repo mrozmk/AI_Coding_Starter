@@ -40,7 +40,7 @@ dialog_label() { local b; b="$(sh_record_get "$root" "$1" backend)"; echo "${b:-
 # A failed notify.sh is retried on the next ticks, three tries per decision, then one warn:.
 DIALOG_WARNED=" " DIALOG_FAILS=" "
 dialog_tick() {
-  local f="$TD/runs/$RUN/dialog-$1" k o p rc n
+  local f="$TD/runs/$RUN/dialog-$1" k o p rc n w
   k="$(dialog_screen "$2")"; o="$(cat "$f" 2>/dev/null || true)"
   if [ -n "$o" ] && { [ -z "$k" ] || [ "$o" != "$3" ]; }; then
     bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --decision "$o" >/dev/null 2>&1 || true
@@ -49,10 +49,18 @@ dialog_tick() {
   fi
   [ -n "$k" ] || return 1
   # Operator touches (team-lead.md §10): one durable line per dialog kind and session, written at
-  # first sight — the dialog-<who> marker above is removed when the dialog clears.
+  # first sight — the dialog-<who> marker above is removed when the dialog clears — and one
+  # touch-log entry per session (decision id) and dialog kind (`<decision>-<kind>.touched`).
   mkdir -p "$TD/runs/$RUN"
   grep -qF " dialog $1:$k" "$TD/runs/$RUN/operator-touches" 2>/dev/null \
     || echo "$(team_utc) dialog $1:$k" >> "$TD/runs/$RUN/operator-touches"
+  if [ ! -e "$TD/runs/$RUN/$3-$k.touched" ]; then
+    w="$1"; [ "$w" != lead ] || w=TeamLead
+    if bash "$root/.claude/lib/touches.sh" add --main "$root" --where "team $TEAM / $(team_json ticket) / $w" \
+      --kind other --reason direct --what "startup dialog $k in $w" >/dev/null 2>&1; then
+      : > "$TD/runs/$RUN/$3-$k.touched"
+    else echo "warn: touch not recorded (dialog $1)"; fi
+  fi
   case "$DIALOG_WARNED" in *" $3 "*) ;; *)
     echo "warn: $2: waiting at $(dialog_what "$k") — $(dialog_how "$k") in $(dialog_where "$2")"
     DIALOG_WARNED="$DIALOG_WARNED$3 " ;;

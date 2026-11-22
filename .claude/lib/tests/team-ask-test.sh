@@ -310,6 +310,8 @@ ok '[ "$TLRC" = 7 ]' "decision answer --outcome allow on a message saying deny �
 TL decision answer beta d-1 --text "d-1 deny: fetch from the mirror" --tuning none --why w
 ok '[ "$TLRC" = 0 ] && grep -q "^answer_outcome: deny$" "$RD/decisions/d-1.md" && grep -q "^answer_value: fetch from the mirror$" "$RD/decisions/d-1.md"' "the outcome and value are read from the reply ($(cat "$T/tl.out"))"
 ok 'grep -q " decision d-1$" "$RD/operator-touches"' "a human answer appends an Operator touch"
+TF="$MAIN/.agents/touches/$(date -u +%Y-%m).jsonl"
+ok '[ "$(grep -c . "$TF")" = 1 ] && [ "$(jq -r .kind "$TF")" = permission ] && [ "$(jq -r .reason "$TF")" = human-only ] && [ "$(jq -r .answer "$TF")" = "deny: fetch from the mirror" ] && [ "$(jq -r .where "$TF")" = "team beta / 1 / coder" ] && [ "$(jq -r ".wait_s | type" "$TF")" = number ]' "the answer is one touch-log entry: permission, human-only (operator-tier ask), the normalised answer, wait_s"
 L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why "Operator: deny"
 ok '[ "$LRC" = 7 ]' "a deny decision relayed as --allow → 7"
 L a-1 --deny "fetch from the mirror" --authority operator --decision "$RD/decisions/d-1.md" --why "Operator: deny"; wait "$HP"
@@ -327,6 +329,12 @@ ok '[ "$TLRC" = 7 ]' "a reply \"d-3 do not allow\" → 7"
 say_op u3 "allow"; TL decision answer beta d-4 --text "allow" --tuning none --why w
 ok '[ "$TLRC" = 7 ]' "an unqualified reply with two pending decisions → 7"
 kill "$HP" 2>/dev/null; pkill -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; sleep 0.2
+# the touch-log reason a decision carries: an enum, stored as touch_reason
+newrun treason
+TL decision open beta --source asks/none.json --question q --reason bogus
+ok '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ]' "decision open --reason bogus → 2, nothing written"
+TL decision open beta --source asks/none.json --question q --reason lead-unsure
+ok 'grep -q "^touch_reason: lead-unsure$" "$RD/decisions/d-1.md"' "decision open --reason lead-unsure stores touch_reason: lead-unsure"
 # an escalated question: only the relay answers it, with exactly the stored labels
 newrun opq; pl question-two; HB q1; wf "$AD/a-1.json"; TL decision open beta --ask a-1
 ok 'grep -q "reply: \"d-1 Storage: <label>; Outputs: <label>\"" "$T/tl.out" && [ "$(j "$AD/a-1.json" .requires_decision)" = d-1 ]' "an escalated question carries requires_decision and a multi-question reply format"
@@ -479,6 +487,18 @@ runner 'dialog_screen() { cat "$T/screen"; }; dialog_what() { echo d; }; dialog_
   echo trust > "$T/screen"; dialog_tick coder beta-coder dlg-1; dialog_tick coder beta-coder dlg-1;
   echo mcp > "$T/screen"; dialog_tick coder beta-coder dlg-1; echo "" > "$T/screen"; dialog_tick coder beta-coder dlg-1; true' 2>/dev/null
 ok '[ "$(grep -c " dialog coder:" "$RD/operator-touches")" = 2 ]' "a trust then an MCP dialog in one attempt: two touch lines, kept after they clear"
+# The project touch log: one entry per session (decision id) and dialog kind, durable across ticks.
+DSTUB='dialog_screen() { cat "$T/screen"; }; dialog_what() { echo d; }; dialog_how() { echo h; }; dialog_where() { echo w; };'
+ok '[ "$(grep -c "startup dialog trust in coder" "$TF")" = 1 ] && [ "$(grep -c "startup dialog mcp in coder" "$TF")" = 1 ]' "one touch-log entry per dialog kind of a session, repeated ticks add none"
+runner "$DSTUB"' echo trust > "$T/screen"; dialog_tick coder beta-coder dlg-2; dialog_tick coder beta-coder dlg-2; true' 2>/dev/null
+ok '[ "$(grep -c "startup dialog trust in coder" "$TF")" = 2 ]' "another attempt (decision id) at the same dialog kind is its own entry"
+mv "$MAIN/.agents/touches" "$T/touches.saved" && : > "$MAIN/.agents/touches"
+runner "$DSTUB"' echo trust > "$T/screen"; dialog_tick coder beta-coder dlg-3; true' 2>/dev/null
+ok '[ ! -e "$RD/dlg-3-trust.touched" ] && grep -q "warn: touch not recorded (dialog coder)" "$T/r.out"' "a failed touch write leaves no marker and warns"
+rm -f "$MAIN/.agents/touches"; mv "$T/touches.saved" "$MAIN/.agents/touches"
+runner "$DSTUB"' echo trust > "$T/screen"; dialog_tick coder beta-coder dlg-3; dialog_tick coder beta-coder dlg-3; true' 2>/dev/null
+ok '[ -e "$RD/dlg-3-trust.touched" ] && [ "$(grep -c "startup dialog trust in coder" "$TF")" = 3 ]' "the next tick writes the entry once, later ticks add none"
+echo "" > "$T/screen"; runner "$DSTUB"' dialog_tick coder beta-coder dlg-3; true' 2>/dev/null
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) decision d-1" >> "$RD/operator-touches"
 (cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-lead.sh log-append beta closed) > "$T/la.out" 2>&1
 ok '[ "$(head -n 1 "$RD/teamlead-notes.md")" = "Operator touches: 3" ]' "the lead's notes state Operator touches: 3 ($(cat "$T/la.out"))"

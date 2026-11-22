@@ -23,6 +23,10 @@ Operator's consent.
   records](../supervisor-sessions.md)): close each one yourself with `operator-record.sh close <id>`
   as soon as the Operator has acted on it — answered, finished that release step, or the failure is
   repaired. Its notification then leaves every channel; never leave the close to the Operator.
+- Anything that reached the Operator through you and no script recorded (a restart, a manual fix): one line with
+  `bash .claude/lib/touches.sh add --kind restart|other --reason <code> --what "<line>"`, and
+  for a team's matter `--where "team <team> / <ticket> / <role>"` so its wrapup counts it
+  ([operator-touches.md](../operator-touches.md)).
 - Its own questions (not a team's) to an Advisor, through that Advisor's inbox. A question for a
   position goes to every running Advisor with the same brief, names the consolidating Advisor
   (default: Fable) and the routing — the others send their positions to it, it sends one agreed

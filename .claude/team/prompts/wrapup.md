@@ -35,6 +35,13 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
    is omitted, except `## What matters for you`. `## Supervisor decisions` is the answer list the
    PR's `## Wrap-up` points to and is outside the count. The limit yields only for an open QA
    problem or a required Operator action, which are never compressed. It never lowers the memory bar.
+   Run `bash .claude/lib/touches.sh report --brief --team {{TEAM}} --ticket {{TICKET}} --run {{RUN}}`
+   once and add `## Operator touches` with **only its first line** (`Operator touches: <n> — …`).
+   Like `## Supervisor decisions` it is outside the ~15-line count. The command fails or is
+   missing → `Operator touches: not available — <one-line reason>`. The `Recurring:` lines after it
+   stay local: they feed steps 6–7 and are never pasted into the summary, the PR or a ticket — a
+   log example may come from another run or a solo session.
+   The PR description's `## Wrap-up` (step 5, every tracker) carries that same `Operator touches:` line as one of its lines.
 {{TRACKER_WRAPUP}}
 9. Write the record (`--pr` is required — the runner compares it with the coder's PR):
    `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --artifacts {{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`
