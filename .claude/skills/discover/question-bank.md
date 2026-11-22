@@ -261,3 +261,27 @@ a reason**. A characteristic without a number is *Partial*, never *Clear*.
    `→ feeds: PRD NFR-n (performance efficiency), PRD §12`
 3. **Value per period.** What is the problem costing today per month, in money or hours?
    `→ feeds: PRD G-n, PRD §1`
+
+---
+
+## Fault lines
+
+Not questions to put to the user but **lenses for drafting change proposals** in the fourth
+Challenge pass; `.claude/skills/discover/coverage.md` §5 holds the rules (count, discard,
+owner, who is asked). Every proposal is concrete and has one shape:
+
+- **Proposal** — "Someone proposes <a concrete change> for <horizon: now | slice 1 | later> —
+  in or out?" (or "horizon undecided" when the horizon is itself the question).
+- **Tests** — the principle it puts under pressure: an id (`G-n`, a §4 non-goal, `R-n`,
+  `NFR-n`, `BR-n`, `AD-n`) or a quoted line.
+- **For** / **Against** — one sentence each, the strongest honest case.
+
+1. **Off-mission feature.** Which feature would a user, a sales call or a competitor ask for next
+   that sits beside the mission rather than inside it? `→ feeds: discovery Q-n (owner), PRD §13`
+2. **Principle collision.** Where do two stated principles pull opposite ways — speed against
+   accuracy, one goal against a non-goal, the Source precedence against a stakeholder's habit —
+   and which change would favour one of them? `→ feeds: discovery Q-n (owner), PRD §13`
+3. **Slippery slope.** Which small, reasonable step, repeated three times, ends at something a
+   non-goal excludes? `→ feeds: discovery Q-n (owner), PRD §13`
+4. **Scope expansion.** Which adjacent user, platform, market or integration would widen the
+   product's reach — and its load? `→ feeds: discovery Q-n (owner), PRD §13`

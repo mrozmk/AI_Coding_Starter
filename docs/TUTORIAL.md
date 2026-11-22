@@ -129,6 +129,8 @@ A PRD (Product Requirements Document) describes **what** you're building and **w
 
 Already have the requirements somewhere else (a spreadsheet, a list)? `/discover --import requirements.csv` turns every row into an id'd entry, quotes the original wording, and asks only about what the rows don't answer.
 
+Already past discovery, or brought an existing codebase in through `/setup:map-codebase`? `/discover --fault-lines` drafts the "someone proposes X — in or out?" questions your PRD leaves undecided, asks the team the ones it owns, and lists the rest as open questions for their owner.
+
 `.agents/sources/` is the project's **input layer** — you drop raw materials here (briefs, transcripts, sketches, PDFs), and commands like `/discover` treat them as input context. Claude **never** modifies them — they're your source material, read-only. Full description: [Framework guide → step 3](../.claude/docs/guide.md#3-define-the-product).
 </details>
 
