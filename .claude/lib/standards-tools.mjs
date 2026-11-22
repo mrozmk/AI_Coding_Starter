@@ -415,7 +415,10 @@ export function scan({ repo, files }) {
       enforced = er.length > 0; by = 'ci';
     }
     if (!enforced) { by = null; if (all.some((r) => r.scopeUnknown)) out.scopeUnknown.push(t.tool); }
-    const applies = enforced ? uniq(er.flatMap((r) => (r.targets.length ? r.targets.map((x) => { const j = posix(r.dir, x); return /[*?]/.test(j) ? j : `${j}/**`; }) : [r.dir ? `${r.dir}/**` : t.appliesTo]))) : [];
+    // A compiler run checks the projects it builds: TypeScript's scope is each attributed config's directory.
+    const applies = !enforced ? []
+      : t.tool === 'typescript' ? uniq(cfgs.filter((c) => c.attributed).map((c) => (c.dir ? `${c.dir}/${t.appliesTo}` : t.appliesTo)))
+        : uniq(er.flatMap((r) => (r.targets.length ? r.targets.map((x) => { const j = posix(r.dir, x); return /[*?]/.test(j) ? j : `${j}/**`; }) : [r.dir ? `${r.dir}/**` : t.appliesTo])));
     out.tools.push({
       tool: t.tool, display: t.display, class: t.class, aliases: t.aliases,
       configs: cfgs.map(({ dir, ...c }) => c),

@@ -10,9 +10,11 @@ command -v node >/dev/null 2>&1 || { echo "coding-standards-gen-test: FAIL — n
 T=$(mktemp "${TMPDIR:-/tmp}/csgen.XXXXXX") || { echo "coding-standards-gen-test: FAIL — mktemp"; exit 1; }
 trap 'rm -f "$T"' EXIT
 node --test --test-reporter=tap "$ROOT/.claude/lib/tests/coding-standards-gen.test.mjs" >"$T" 2>&1
-if grep -q '^not ok ' "$T" || ! grep -q '^ok ' "$T"; then
+RC=$?
+# node's exit status decides first: a run that crashes after some `ok` lines is a failure.
+if [ "$RC" -ne 0 ] || grep -q '^not ok ' "$T" || ! grep -q '^ok ' "$T"; then
   cat "$T"
-  echo "coding-standards-gen-test: FAIL"
+  echo "coding-standards-gen-test: FAIL (node exit $RC)"
   exit 1
 fi
 echo "coding-standards-gen-test: OK ($(grep -c '^ok ' "$T") checks)"

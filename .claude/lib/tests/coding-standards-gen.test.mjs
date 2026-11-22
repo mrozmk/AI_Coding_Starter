@@ -209,6 +209,19 @@ test('scanner: a compiler-only repository enforces no lint or format tool', asyn
   const s = await fixtureScan(dir, ['package.json', 'tsconfig.json']);
   assert.equal(tool(s, 'typescript').enforced, true);
   assert.deepEqual(s.tools.filter((t) => t.enforced && (t.class === 'lint' || t.class === 'format')), []);
+  assert.deepEqual(tool(s, 'typescript').appliesTo, ['**/*.ts']);
+});
+
+test('scanner: tsc -p <dir> scopes TypeScript to the selected project', async () => {
+  const dir = tmp();
+  for (const p of ['packages/api', 'packages/web']) {
+    fs.mkdirSync(path.join(dir, p), { recursive: true });
+    fs.writeFileSync(path.join(dir, p, 'tsconfig.json'), '{ "compilerOptions": { "strict": true } }\n');
+  }
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "build": "tsc -p packages/api" } }\n');
+  const s = await fixtureScan(dir, ['package.json', 'packages/api/tsconfig.json', 'packages/web/tsconfig.json']);
+  assert.equal(tool(s, 'typescript').enforced, true);
+  assert.deepEqual(tool(s, 'typescript').appliesTo, ['packages/api/**/*.ts']);
 });
 
 // ---- renderer ----
@@ -523,4 +536,93 @@ test('workflow: named tools, the input budget and a docs-only run', async () => 
   assert.equal(docsOnly.result.standardsDraft, null);
   assert.ok(docsOnly.result.writtenNotFollowed.some((w) => w.source === 'CLAUDE.md' && w.reason === 'no evidence'));
   assert.ok(docsOnly.result.docsAnalysis.documentedPatterns.every((p) => p.source));
+});
+
+test('workflow: keyword-led shapes, one-sentence rules and helper candidates', async () => {
+  const thrown = (a, b) => { const s = json('summaries.json'); s[1].problemShapes[0].shape = a; s[2].problemShapes[0].shape = b; return s; };
+  const td = goodDraft();
+  td.shapes[0].shape = '`throw new ApiError()`';
+  const apart = await runWorkflow({ draft: td, summaries: thrown('`throw new ApiError()`', '`throw new HttpError()`') });
+  assert.equal(apart.result.rejected.find((r) => r.section === 'shapes').reason, 'shapes disagree');
+  const same = await runWorkflow({ draft: td, summaries: thrown('`throw new ApiError()`', '`throw new ApiError(code)`') });
+  assert.equal(same.result.standardsDraft.shapes.length, 1);
+
+  const two = goodDraft();
+  two.rules[0].rule = 'Exported functions declare a return type. Callers read it from the signature.';
+  const tr = await runWorkflow({ draft: two });
+  assert.equal(tr.result.rejected.find((r) => r.section === 'rules').reason, 'rule is more than one sentence');
+  const abbr = goodDraft();
+  abbr.rules[0].rule = 'Exported functions declare a return type, e.g. `Promise<Order>`, never `any`.';
+  assert.equal((await runWorkflow({ draft: abbr })).result.standardsDraft.rules.length, 1);
+  assert.ok(call(tr.calls, 'synthesize:coding-standards')[0].prompt.includes('the rule in one sentence'));
+
+  const withHelper = json('summaries.json');
+  withHelper[0].helpersDefined.push({ need: 'Build the API error body', symbol: 'toErrorBody()', at: 'src/lib/errors.ts:9' }, { need: 'Outside the sample', symbol: 'x', at: 'src/lib/other.ts:1' });
+  const hc = await runWorkflow({ draft: goodDraft(), summaries: withHelper });
+  assert.deepEqual(hc.result.standardsDraft.helperCandidates, [{ module: 'src/lib', need: 'Build the API error body', symbol: 'toErrorBody()', at: 'src/lib/errors.ts:9' }]);
+});
+
+test('renderer: helper consumers beyond the module samples become a checked row', async () => {
+  const repo = copyRepo();
+  const files = defaultList(repo);
+  const sampled = [
+    { name: 'src/lib', files: ['src/lib/dates.ts', 'src/lib/errors.ts'] },
+    { name: 'src/orders', files: ['src/orders/a.ts'] },
+    { name: 'src/billing', files: ['src/billing/c.ts'] },
+  ];
+  const draft = json('draft-good.json');
+  draft.helperCandidates = [
+    { module: 'src/lib', need: 'Build the API error body', symbol: 'toErrorBody()', at: 'src/lib/errors.ts:9' },
+    { module: 'src/lib', need: 'Parse an ISO date', symbol: 'Date.parse / parseIsoDate', at: 'src/lib/dates.ts:9' },
+    { module: 'src/lib', need: 'Wrong line', symbol: 'formatDate', at: 'src/lib/dates.ts:3' },
+  ];
+  const { text, summary } = await renderIn(repo, { draft, files, modules: sampled });
+  const by = (sym) => summary.helperSearch.find((c) => c.symbol === sym);
+  assert.equal(by('toErrorBody()').result, 'row');
+  assert.deepEqual(by('toErrorBody()').consumers, [{ module: 'src/billing', ref: 'src/billing/b.ts:2' }, { module: 'src/orders', ref: 'src/orders/a.ts:2' }]);
+  assert.ok(text.includes('| Build the API error body | `toErrorBody()` | `src/lib/errors.ts:9` |'));
+  assert.equal(by('Date.parse / parseIsoDate').result, 'fewer than two consumer modules');
+  assert.equal(by('Date.parse / parseIsoDate').name, 'parseIsoDate');
+  assert.equal(by('formatDate').result, 'definition line does not name the symbol');
+  assert.equal(summary.helpers, 2);
+
+  fs.writeFileSync(path.join(repo, 'src/billing/d.ts'), 'export function toErrorBody(c: string) {\n  return c;\n}\n');
+  const own = await renderIn(repo, { draft, files: defaultList(repo), modules: sampled, outRoot: repo });
+  assert.equal(own.summary.helperSearch.find((c) => c.symbol === 'toErrorBody()').result, 'fewer than two consumer modules');
+
+  const graph = sampled.map((m) => (m.name === 'src/lib' ? { ...m, importedBy: ['src/orders'] } : m));
+  const ig = await renderIn(copyRepo(), { draft, files, modules: graph });
+  assert.deepEqual(ig.summary.helperSearch.find((c) => c.symbol === 'toErrorBody()').consumers, [{ module: 'src/orders', ref: 'src/orders/a.ts:2' }]);
+
+  const barrel = copyRepo();
+  fs.writeFileSync(path.join(barrel, 'src/billing/index.ts'), "export {\n  toErrorBody,\n} from '../lib/errors';\n");
+  fs.writeFileSync(path.join(barrel, 'src/billing/view.html'), '<p>{{ toErrorBody }}</p>\n');
+  const noB = defaultList(barrel).filter((f) => f !== 'src/billing/b.ts');
+  const br = await renderIn(barrel, { draft, files: noB, modules: sampled });
+  assert.equal(br.summary.helperSearch.find((c) => c.symbol === 'toErrorBody()').result, 'fewer than two consumer modules');
+
+  const none = await renderIn(copyRepo(), { draft });
+  assert.ok(none.summary.helperSearch.every((c) => c.result.startsWith('not searched')));
+});
+
+test('renderer: a multi-sentence heading is dropped; nothing surviving writes no file', async () => {
+  const repo = copyRepo();
+  const draft = json('draft-good.json');
+  draft.rules[0].rule = 'Exported functions declare a return type. Callers read it.';
+  const { text, summary } = await renderIn(repo, { draft });
+  assert.equal(summary.dropped.find((d) => d.section === 'rules').reason, 'heading is more than one sentence');
+  for (const h of text.split('\n').filter((l) => l.startsWith('### '))) assert.ok(!/\. [A-Z]/.test(h), h);
+
+  const dir = tmp();
+  const empty = { rules: [], helpers: [], shapes: [], open: [] };
+  const r = await renderIn(dir, { draft: empty, scan: { tools: [] } });
+  assert.equal(r.path, null);
+  assert.equal(r.summary.notWritten, 'nothing survived');
+  assert.equal(fs.existsSync(path.join(dir, 'docs')), false);
+  const scanFile = path.join(tmp(), 'scan.json');
+  fs.writeFileSync(scanFile, '{ "tools": [] }\n');
+  const cli = spawnSync(process.execPath, [RENDERER, 'render', '--scan', scanFile, '--repo', dir, '--tools-only', '--seed', SEED], { encoding: 'utf8' });
+  assert.equal(cli.status, 0);
+  assert.equal(JSON.parse(cli.stdout).path, null);
+  assert.equal(fs.existsSync(path.join(dir, 'docs')), false);
 });

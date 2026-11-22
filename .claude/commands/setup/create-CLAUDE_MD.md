@@ -380,7 +380,7 @@ While either branch fires, push detail out of `CLAUDE.md` into the file named in
 **Skipped entirely when run as the cascade of `/setup:map-codebase`** — that run already handled the file, with or without output, over the approved scope.
 
 - `docs/coding-standards.md` exists → leave it untouched (no reconstructed copy).
-- Absent → write `git ls-files -z -co --exclude-standard` to a scratch file and run `node .claude/lib/standards-tools.mjs scan --repo . --files-from <list>`. When any tool has `enforced: true` and class `lint` or `format`, save the scan JSON and run `node .claude/lib/coding-standards-render.mjs render --tools-only --scan <f> --repo . --date <today> --by /setup:create-CLAUDE_MD`: it writes the seed's shape with only `Enforced by: tool` rules. Otherwise create nothing — a compiler-only, unenforced or harness-owned config does not count — and name the unenforced configs in the report.
+- Absent → write `git ls-files -z -co --exclude-standard` to a scratch file and run `node .claude/lib/standards-tools.mjs scan --repo . --files-from <list>`. When any tool has `enforced: true` and class `lint` or `format`, save the scan JSON and run `node .claude/lib/coding-standards-render.mjs render --tools-only --scan <f> --repo . --date <today> --by /setup:create-CLAUDE_MD`: it writes the seed's shape with only `Enforced by: tool` rules — or no file when every rule fails its check (`path: null`, `notWritten: "nothing survived"`; report it). Otherwise create nothing — a compiler-only, unenforced or harness-owned config does not count — and name the unenforced configs in the report.
 
 ---
 

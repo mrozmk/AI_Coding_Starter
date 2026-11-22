@@ -12,7 +12,8 @@ export const meta = {
 // Checkpoint 1 (the script never scans the filesystem itself):
 //   args = {
 //     modules:     [{ name, files: string[], imports: string[], importedBy: string[], isCore: bool }],
-//                  // approved partition; files pre-capped; imports/importedBy/isCore = coarse import-graph signal
+//                  // approved partition; files pre-capped; imports/importedBy/isCore = coarse import-graph signal;
+//                  // optional roots: string[] = the directories the module owns (read by the renderer, not here)
 //     docFiles:    string[],   // README/docs/ADRs for the docs-analyzer (the "why")
 //     infraFiles:  string[],   // IaC/CI files for the infra-analyzer
 //     readmeHead:  string,     // first ~3000 chars of README — grounding for every analyzer
@@ -31,6 +32,8 @@ export const meta = {
 //   them to decisions.md / patterns.md / architecture.md.
 //   standardsDraft is the checked draft (every kept item carries support [{ module, ref }]) the
 //   command hands to coding-standards-render.mjs, or null; rejected lists what the check removed.
+//   standardsDraft.helperCandidates [{ module, need, symbol, at }]: defined helpers with no kept row —
+//   the renderer searches the whole file list for their consumers (--files-from, --modules).
 // ---------------------------------------------------------------------------
 
 const PROBLEMS = ['config/feature flag', 'error handling and error bodies', 'logging', 'date/time', 'async/cancellation', 'data access', 'retry', 'loading state']
@@ -348,7 +351,7 @@ const toolFacts = (toolScan.tools || []).map((t) => ({
 const REF = { type: 'string', pattern: '^\\S+:\\d+(-\\d+)?$', description: 'exactly one path:line copied from a cited observation\'s evidence — nothing else' }
 const OBS_ID = { type: 'string', pattern: '^[^,\\s]+#(c|hd|hu|s)\\d+$', description: 'exactly one observation id' }
 const STANDARDS_DRAFT = obj({
-  rules: { type: 'array', items: obj({ rule: str, appliesTo: str, example: REF, why: str, observations: { type: 'array', items: OBS_ID }, documentedIds: { type: 'array', items: str } }) },
+  rules: { type: 'array', items: obj({ rule: { type: 'string', description: 'the rule in ONE sentence — a rule with several requirements is several rules' }, appliesTo: str, example: REF, why: str, observations: { type: 'array', items: OBS_ID }, documentedIds: { type: 'array', items: str } }) },
   helpers: { type: 'array', items: obj({ need: str, use: str, path: REF, observations: { type: 'array', items: OBS_ID } }) },
   shapes: { type: 'array', items: obj({ problem: str, shape: str, reference: REF, observations: { type: 'array', items: OBS_ID } }) },
   open: { type: 'array', items: obj({ topic: str, variants: { type: 'array', items: obj({ shape: str, evidence: REF, observation: OBS_ID }) } }) },
@@ -358,8 +361,8 @@ const STANDARDS_DRAFT = obj({
 const standardsPrompt = (input) =>
   `You are a standards-synthesizer. From the per-module observations below (JSON, each with an id), the scanned tool facts and the documented rules, draft the content of \`docs/coding-standards.md\` for its four sections, in this order: \`## Rules\`, \`## Shared helpers\`, \`## One shape per problem\`, \`## Open — pick one\`. Use ONLY this input — do NOT read source.
 
-- Rules: a convention \`consistent\` in at least two modules → a review rule (rule, appliesTo, example, why), unless an enforced scanned tool rule already covers it across its modules — then skip it (the tool rule is written separately). Never claim a tool and never write a "passes <tool>" rule. Never turn a size or length limit from CLAUDE.md's Code Structure & Modularity into a rule.
-- Shared helpers: a helper used from at least two other modules → a row (need, use, path = its helpersDefined \`at\`).
+- Rules: a convention \`consistent\` in at least two modules → a review rule (rule, appliesTo, example, why), the rule in one sentence — split a rule with several requirements into several rules, each on its own observations; unless an enforced scanned tool rule already covers it across its modules — then skip it (the tool rule is written separately). Never claim a tool and never write a "passes <tool>" rule. Never turn a size or length limit from CLAUDE.md's Code Structure & Modularity into a rule.
+- Shared helpers: a helper used from at least two other modules → a row (need, use, path = its helpersDefined \`at\`). Write only the rows these observations show; a script searches the whole file list for the consumers of every other defined helper.
 - One shape per problem: one shape for a problem in at least two modules → a row (problem, shape, reference).
 - Open — pick one: a convention or shape that is \`mixed\`, or differs between modules → an open item with each variant (shape, evidence, observation), never a rule.
 - Every item lists the observation ids it rests on and cites a \`path:line\` taken from those observations' evidence.
@@ -394,7 +397,16 @@ const fileOfRef = (ref) => String(ref).replace(/:\d+(-\d+)?$/, '')
 // A model may wrap a ref in prose or list several ids; keep the first candidate the evidence confirms.
 const refsIn = (s) => [String(s || '').trim(), ...[...String(s || '').matchAll(/[\w@./-]+:\d+(?:-\d+)?/g)].map((m) => m[0])]
 const pick = (candidates, allowed) => candidates.find((c) => allowed.includes(c))
-const identifiers = (s) => new Set([...String(s || '').matchAll(/`([^`]+)`/g)].map((m) => (/^[A-Za-z_$][\w$.]*/.exec(m[1].trim()) || [''])[0]).filter(Boolean))
+// A shape is named by its first identifier after any leading keyword: `throw new ApiError()` → ApiError.
+const LEAD_WORDS = new Set(['new', 'throw', 'await', 'return', 'yield', 'async', 'typeof', 'void', 'delete', 'raise', 'const', 'let', 'var', 'export', 'import', 'function', 'def', 'fn', 'func', 'class', 'pub', 'go', 'defer'])
+const shapeName = (code) => {
+  let s = code.trim()
+  for (let m; (m = /^([A-Za-z_$][\w$]*)\s+/.exec(s)) && LEAD_WORDS.has(m[1]);) s = s.slice(m[0].length)
+  return (/^[A-Za-z_$][\w$.]*/.exec(s) || [''])[0]
+}
+const identifiers = (s) => new Set([...String(s || '').matchAll(/`([^`]+)`/g)].map((m) => shapeName(m[1])).filter(Boolean))
+// One sentence: no sentence end followed by a capital outside code spans and common abbreviations.
+const sentences = (s) => String(s || '').replace(/`[^`]*`/g, 'x').replace(/\b(e\.g|i\.e|etc|vs|cf)\./gi, 'x').split(/[.!?]["')\]]?\s+(?=[A-Z(])/).filter((x) => x.trim()).length
 const list = (a) => (Array.isArray(a) ? a : [])
 
 // Every kept item must rest on observations: module binding, two modules, the cited ref among their
@@ -417,7 +429,8 @@ function checkDraft(draft, obsMap, mods) {
   for (const r of list(draft.rules)) {
     const c = cited(r, 'rules')
     if (!c) continue
-    if (c.usable.some((o) => o.kind !== 'conventions' || o.item.consistency !== 'consistent')) reject('rules', r, 'not a consistent convention')
+    if (sentences(r.rule) > 1) reject('rules', r, 'rule is more than one sentence')
+    else if (c.usable.some((o) => o.kind !== 'conventions' || o.item.consistency !== 'consistent')) reject('rules', r, 'not a consistent convention')
     else if (modulesOf(c.usable) < 2) reject('rules', r, 'fewer than two modules')
     else if (!pick(refsIn(r.example), c.usable.flatMap(counting))) reject('rules', r, 'example not in its observations')
     else kept.rules.push({ ...r, example: pick(refsIn(r.example), c.usable.flatMap(counting)), support: support(c.usable) })
@@ -577,6 +590,17 @@ if (rawDraft && typeof rawDraft === 'object') {
   writtenNotFollowed = unassessed('no evidence')
 }
 if (rejected.length) log(`standards draft: ${rejected.length} item(s) rejected by the observation check`)
+
+// Consumers of a helper usually sit outside the analyzers' file samples: every defined helper whose
+// definition lies in its module's files and is no kept row goes to the renderer, which searches the whole
+// file list for its consumers and checks each consumer path:line on disk.
+const keptHelperPaths = new Set(list(standardsDraft && standardsDraft.helpers).map((h) => h.path))
+const helperCandidates = standardsInput.flatMap((e) => {
+  const files = new Set((modules.find((m) => m.name === e.module) || {}).files || [])
+  return e.helpersDefined.filter((h) => typeof h.at === 'string' && files.has(fileOfRef(h.at)) && !keptHelperPaths.has(h.at))
+    .map((h) => ({ module: e.module, need: h.need, symbol: h.symbol, at: h.at }))
+})
+if (helperCandidates.length) standardsDraft = { ...(standardsDraft || { rules: [], helpers: [], shapes: [], open: [], writtenNotFollowed }), helperCandidates }
 
 // A doc names a tool loosely ("ESLint 9 (flat config)"): present when the whole name or any word of it is observed.
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
