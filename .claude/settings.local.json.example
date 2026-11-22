@@ -2,8 +2,32 @@
   "_comment": [
     "Per-developer local overrides. Copy to .claude/settings.local.json (gitignored) and edit.",
     "Never commit the real file — it carries machine-specific paths and personal allow rules.",
-    "Project-wide rules belong in .claude/settings.json instead, so the whole team gets them."
+    "Project-wide rules belong in .claude/settings.json instead, so the whole team gets them.",
+    "The read-only gh rules below lift the egress guard's prompt for the Supervisor in the main",
+    "checkout only (.agents/reference/security-egress.md). Wider rules (Bash(gh issue *),",
+    "Bash(gh pr *), Bash(gh project *)) and the inline-Python opt-in (Bash(python3 -),",
+    "Bash(python3 -c *)) are your own choice to add by hand: a gh write rule reaches every",
+    "repository the token can, so prefer the narrowest. Every rule here is also a native allow",
+    "rule for every plain session in this checkout, not only for the Supervisor."
   ],
+  "permissions": {
+    "allow": [
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr status *)",
+      "Bash(gh project view *)",
+      "Bash(gh project item-list *)",
+      "Bash(gh project field-list *)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(gh label list *)",
+      "Bash(gh auth status)"
+    ]
+  },
   "env": {
     "JIRA_DEFAULT_PROJECT": "REPLACE-WITH-PROJECT-KEY",
     "JIRA_DEFAULT_COMPONENTS": "",

@@ -84,6 +84,7 @@ For every `conflict (shared — merge by hand)` line give one instruction: which
 ## Report (Polish)
 
 Status table, conflicts with instructions, the `alfa` clone path, the allow/ask permission note, the agent-mail kit (not installed, or the channel mode reuse/extend/fresh, key, box and the Reviewer step), and the reminder: **the profile must be committed and pushed to the trunk before the first `/start-team`** (clones read `origin/<trunk>`).
+Add one sentence: the Supervisor's local egress rules are listed in `.claude/settings.local.json.example` (read-only `gh` rules; the wider `gh` rules and the inline-Python opt-in as a commented choice); `/setup:teams` never writes `settings.local.json`.
 Then the next step, one of two:
 - **single window:** in the supervising window run `bash .claude/lib/team-watch.sh start` (one
   daemon + watchdog in tmux `<tmux_prefix>-team-watch[-dog]`, this session registered as the

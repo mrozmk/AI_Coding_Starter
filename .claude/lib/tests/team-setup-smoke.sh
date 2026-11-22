@@ -152,6 +152,7 @@ egress() {  # egress <settings> <matcher> → how many blocking egress guards th
   | select((.command | test("guard-destructive-sql")) and .onFailure == "block")] | length' "$S")" = 1 ] \
   || fail "2: the destructive-SQL guard is not registered once, blocking, under Bash"
 git -C "$T" check-ignore -q .agents/agent-mail/mail.sqlite || fail "2: .agents/agent-mail/ is not ignored"
+git -C "$T" check-ignore -q .agents/touches/2026-01.jsonl || fail "2: .agents/touches/ is not ignored"
 # The token-usage stage hook: PreToolUse Skill, PreToolUse Bash filtered to the end step, and
 # UserPromptExpansion — each once, synchronous, timeout 5; the full writer allow once.
 END_IF='Bash(bash .claude/lib/costs/runtime-mark.sh stage end *)'
@@ -455,7 +456,8 @@ jq -e '.hooks.PreToolUse[1] | .matcher == "Bash" and (.hooks | length == 3)
   || fail "18: the guard did not join the exact Bash entry after the project's hook"
 [ "$(jq '.hooks.PreToolUse[0].hooks | length' "$S")" = 0 ] || fail "18: the guard joined Bash|Edit"
 [ "$(egress "$S" Bash)" = 1 ] && [ "$(egress "$S" WebFetch)" = 1 ] || fail "18: registration counts"
-grep -qxF '.agents/agent-mail/' "$T/.gitignore" && [ "$(grep -c '^.agents/team/$' "$T/.gitignore")" = 1 ] \
+grep -qxF '.agents/agent-mail/' "$T/.gitignore" && grep -qxF '.agents/touches/' "$T/.gitignore" \
+  && [ "$(grep -c '^.agents/team/$' "$T/.gitignore")" = 1 ] \
   || fail "18: only the missing ignore line is appended"
 cp "$S" "$WORK/s18"
 setup "$T"

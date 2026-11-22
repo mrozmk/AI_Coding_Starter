@@ -11,11 +11,11 @@ for f in sys.argv[1:]:
     compile(open(f, encoding="utf-8").read(), f, "exec")' "$L/team_prompt.py" \
   "$L/team_prompt_check.py" "$L/team_prompt_classes.py" "$L/team_prompt_settings.py" \
   "$L/team_prompt_authority.py" "$L/team_transcript.py" "$SRC/.claude/hooks/lib/guard_team_egress.py" \
-  > "$WORK/out" 2>&1 || fail "python compile"
+  "$SRC/.claude/hooks/lib/guard_team_egress_supervisor.py" > "$WORK/out" 2>&1 || fail "python compile"
 cap() { [ "$(wc -l < "$1")" -le "$2" ] || fail "$(basename "$1") has more than $2 lines"; }
 for f in team-run.sh team_prompt.py team_transcript.py team_prompt_check.py team_prompt_classes.py \
   team_prompt_settings.py team-anchor.sh team-answer.sh team-lib.sh team-watch.sh \
-  team-new.sh team-lead-lib.sh team-next.sh tests/team-smoke-12.sh ../hooks/lib/guard_team_egress.py \
+  team-new.sh team-lead-lib.sh team-next.sh tests/team-smoke-12.sh ../hooks/lib/guard_team_egress.py ../hooks/lib/guard_team_egress_supervisor.py \
   team-run-lead.sh team-run-asks.sh team-run-dialog.sh team-run-stop.sh team_prompt_authority.py team-answer-lead.sh team-ask.sh team-seed-lib.sh ../hooks/team-ask-hook.sh; do cap "$L/$f" 500; done
 [ "$(python3 -I "$L/team_prompt_classes.py" names | tr '\n' ' ' | sed 's/ $//')" \
   = "$(sed -n 's/^TEAM_CLASSES="\(.*\)"$/\1/p' "$L/team-lib.sh")" ] || fail "class names differ"

@@ -34,7 +34,7 @@ The egress guard is a **best-effort guard over `Bash` and `WebFetch`, not an all
 `WebSearch` and MCP tools are out of its scope. What it catches and what it does not:
 [`security-egress.md`](../../.agents/reference/security-egress.md).
 
-In the main checkout the Supervisor can lift the guard's `gh` prompt per clone with `Bash(gh …)` allow rules in `.claude/settings.local.json` — never for a team role, the TeamLead or an Advisor, never from `settings.json`, never for inline interpreters, and only for one plain `gh …` command. Rule forms and limits: [`security-egress.md`](../../.agents/reference/security-egress.md) → Local `gh` rules for the Supervisor.
+In the main checkout the Supervisor can lift the guard's `gh` prompt per clone with `Bash(gh …)` allow rules in `.claude/settings.local.json` — never for a team role, the TeamLead or an Advisor, never from `settings.json` — also for compounds of covered `gh` commands with allowlisted companions (`| jq`, `| head`, `cd <path>`, …), and, with `Bash(python3 -)` / `Bash(python3 -c *)`, for opt-in inline Python. Every Supervisor prompt is logged to `.agents/touches/`. Rule forms and limits: [`security-egress.md`](../../.agents/reference/security-egress.md) → Local `gh` rules for the Supervisor.
 
 ## The prompt check
 
