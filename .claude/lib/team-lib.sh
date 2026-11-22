@@ -255,6 +255,23 @@ team_non_memory_files() {
   printf '%s\n' "$d" | grep -v -e '^\.agents/memory/' -e '^docs/coding-standards\.md$' -e '^$' || true
 }
 
+# team_blob_tmp <rev> <path> → a temp file holding the blob, or "-" when the path is absent there
+# (the caller removes the file).
+team_blob_tmp() {
+  local t
+  t="$(mktemp)" || return 1
+  if git show "$1:$2" > "$t" 2>/dev/null; then echo "$t"; else rm -f "$t"; echo -; fi
+}
+
+# team_lead_accepts <run dir> → JSON array of every accepted item in the run's teamlead-wrapup
+# verdicts ([] when there is none).
+team_lead_accepts() {
+  local a
+  a="$(cat "$1"/teamlead-wrapup-*.json 2>/dev/null \
+    | jq -s '[.[].items // [] | .[] | select(.decision == "accept")]' 2>/dev/null)" || a=""
+  printf '%s\n' "${a:-[]}"
+}
+
 team_records() {
   local d
   d="$(team_dir)/runs/$1"

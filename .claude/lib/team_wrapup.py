@@ -7,6 +7,7 @@ Usage: python3 -I team_wrapup.py check <proposals.json>                 → item
        python3 -I team_wrapup.py standards-add <root> <item id> <verdict.json> <target_rev>
        python3 -I team_wrapup.py standards-verify <run dir> <std-base> <std-qa> <std-after>
                                                    <pat-base> <pat-qa> <pat-after>   (absent file: -)
+                                                   → "promoted" when an accepted promotion was applied
        python3 -I team_wrapup.py standards-merged <run dir> <std-wrapup> <std-merged> <pat-merged>
   <T>,<M>,<S>: tickets, memory entries and standards items this run's earlier wrapup verdicts
   already accepted, so the cap and the one-standards-item limit count the whole run.
@@ -77,8 +78,20 @@ def text(item, key):
     return v
 
 
+def is_std(item):
+    """A standards item: a memory item whose target is docs/coding-standards.md."""
+    return item.get("target") == STD
+
+
+def std_payload(item):
+    """The accepted standards item of a verdict; a verdict from before the payload copy is refused."""
+    if "section" not in item or "text" not in item:
+        raise Bad("verdict lacks the standards payload — written by an older clone")
+    return item
+
+
 def group(item):
-    if item["target"] == STD:
+    if is_std(item):
         return "B"
     return "B" if os.path.basename(item["target"]) in GROUP_B_FILES else item["group"]
 
@@ -179,7 +192,7 @@ def load_proposals(path):
             raise Bad("item %s: target must be a file under .agents/memory/ or %s" % (it["id"], STD))
         if it.get("group") not in ("A", "B"):
             raise Bad("item %s needs group A or B" % it["id"])
-        if t == STD:
+        if is_std(it):
             check_standards_item(it)
             standards += 1
             if standards > 1:
@@ -213,7 +226,7 @@ def decide(items, decision, prior, opinion_dirs):
         if m:
             if last is None or last["decision"] != "accept":
                 raise Bad("line %d: a correction belongs under an accept" % n)
-            if last.get("target") == STD:
+            if is_std(last):
                 raise Bad("a standards item takes no correction — decline it with the reason")
             if "correction" in last:
                 raise Bad("line %d: one correction line per item — decline a draft that needs more" % n)
@@ -243,7 +256,7 @@ def decide(items, decision, prior, opinion_dirs):
             d.update(group=group(it), target=it["target"])
             if "handoff" in it:
                 d["handoff"] = True
-            if it["target"] == STD:
+            if is_std(it):
                 # The decided text travels with the decision: the writer and the runner read it here.
                 d.update((k, it[k]) for k in PAYLOAD if k in it)
         out[i] = last = d
@@ -255,7 +268,7 @@ def decide(items, decision, prior, opinion_dirs):
     for d in (out[it["id"]] for it in items):
         if d["decision"] != "accept" or d.get("handoff"):
             continue
-        if d.get("target") == STD:
+        if is_std(d):
             if counts["standards"] >= 1:
                 raise Bad("%s: one standards item per run — %d already accepted" % (d["id"], counts["standards"]))
             counts["standards"] += 1
@@ -385,8 +398,10 @@ def pointer(item, cs):
 
 
 def pointer_lines(doc, item):
+    if not doc or "promotes" not in item:
+        return []
     pre = "%s — promoted to %s CS-" % (item["promotes"], STD)
-    return [l for l in split_doc(doc)[0] if l.startswith(pre) and l[len(pre):].isdigit()] if doc else []
+    return [l for l in split_doc(doc)[0] if l.startswith(pre) and l[len(pre):].isdigit()]
 
 
 def promote(doc, item, cs):
@@ -465,11 +480,9 @@ def verdict_item(verdict_path, vdoc, item_id):
     it = next((x for x in vdoc.get("items") or [] if isinstance(x, dict) and x.get("id") == item_id), None)
     if it is None or it.get("decision") != "accept":
         raise Bad("%s is not accepted in %s" % (item_id, verdict_path))
-    if it.get("target") != STD:
+    if not is_std(it):
         raise Bad("%s is not a standards item" % item_id)
-    if "section" not in it or "text" not in it:
-        raise Bad("verdict lacks the standards payload — written by an older clone")
-    return it
+    return std_payload(it)
 
 
 def write_all(changes):
@@ -549,10 +562,8 @@ def accepted_standards(run_dir):
         for it in read_json(v).get("items") or []:
             if not isinstance(it, dict) or it.get("decision") != "accept":
                 continue
-            if it.get("target") == STD:
-                if "section" not in it or "text" not in it:
-                    raise Bad("verdict lacks the standards payload — written by an older clone")
-                out.append(("%s:%s" % (os.path.basename(v), it.get("id")), it))
+            if is_std(it):
+                out.append(("%s:%s" % (os.path.basename(v), it.get("id")), std_payload(it)))
             elif it.get("kind") == "memory" and it.get("target") == PATTERNS:
                 other_pat = True
     return out, other_pat
@@ -564,6 +575,8 @@ def first_diff(a, b):
 
 
 def standards_verify(run_dir, std_base, std_qa, std_after, pat_base, pat_qa, pat_after):
+    """Raises Bad on the first difference; returns True when an accepted promotion was applied (its
+    patterns.md change is then verified here), False when none was — check_wrapup_lead judges it."""
     items, other_pat = accepted_standards(run_dir)
     exp_std, exp_pat, promoted, applied = std_base, pat_base, [], []
     for label, item in items:
@@ -589,17 +602,18 @@ def standards_verify(run_dir, std_base, std_qa, std_after, pat_base, pat_qa, pat
             raise Bad("accepted standards item %s not applied" % applied[-1])
         raise Bad("%s differs from the accepted item rendered at line %d" % (STD, first_diff(exp_std, std_after)))
     if not promoted:
-        return
+        return False
     if not other_pat:
         if pat_after != exp_pat:
             raise Bad("patterns.md differs from the promotion of %s at line %d"
                       % (promoted[-1][0], first_diff(exp_pat, pat_after)))
-        return
+        return True
     # Another accepted memory item may change patterns.md too: the pointer and no promoted entry suffice.
     for label, item, cs in promoted:
         if pat_after is None or pointer(item, cs) not in split_doc(pat_after)[0] \
                 or find_entry(pat_after, item["promotes"])[1]:
             raise Bad("patterns.md lacks the pointer of %s or keeps the promoted entry" % label)
+    return True
 
 
 def applied_at(doc, item):
@@ -616,7 +630,11 @@ def applied_at(doc, item):
 def standards_merged(run_dir, std_wrapup, std_merged, pat_merged):
     items, _ = accepted_standards(run_dir)
     for label, item in items:
-        if std_wrapup is None or applied_at(std_wrapup, item)[0] == 0:
+        try:
+            done = std_wrapup is not None and applied_at(std_wrapup, item)[0] > 0
+        except Bad:  # the item's section is missing or doubled: the writer refused, nothing to keep
+            done = False
+        if not done:
             continue
         if std_merged is None:
             raise Bad("%s: %s absent after the merge" % (label, STD))
@@ -644,7 +662,8 @@ def main(argv):
             print(standards_add(*argv[2:6]))
             return 0
         if len(argv) == 9 and argv[1] == "standards-verify":
-            standards_verify(argv[2], *[read_opt(p) for p in argv[3:9]])
+            if standards_verify(argv[2], *[read_opt(p) for p in argv[3:9]]):
+                print("promoted")
             return 0
         if len(argv) == 6 and argv[1] == "standards-merged":
             standards_merged(argv[2], *[read_opt(p) for p in argv[3:6]])

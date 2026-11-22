@@ -85,9 +85,8 @@ export TEAM_GATE_LOCK_TOKEN="$GATE_LOCK_TOKEN"
 # docs/coding-standards.md passes after QA only when this run's TeamLead accepted a standards item
 # (team-lead.md §10) — so --memory-reviewed cannot bring in a standard the lead never accepted.
 STD_OK=0
-if [ "$MODE" != cli ] && [ -n "$RUN" ] && cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null \
-    | jq -se 'any(.[].items // [] | .[]; .decision == "accept" and .target == "docs/coding-standards.md")' \
-      >/dev/null 2>&1; then
+if [ "$MODE" != cli ] && [ -n "$RUN" ] && team_lead_accepts "$TD/runs/$RUN" \
+    | jq -e 'any(.[]; .target == "docs/coding-standards.md")' >/dev/null 2>&1; then
   STD_OK=1
 fi
 # memory_only <from> <to> → prints the changed files; dies on a failed diff or a non-memory file
@@ -187,9 +186,8 @@ fi
 # An accepted standards item must stand once in the merge, and a promotion's pointer must name its
 # final CS id — a reviewed conflict fix may renumber the rule and leave the pointer behind.
 if [ "$STD_OK" = 1 ]; then
-  sb() { local t; t="$(mktemp)"; if git show "$1:$2" > "$t" 2>/dev/null; then echo "$t"; else rm -f "$t"; echo -; fi; }
-  sw="$(sb "$want" docs/coding-standards.md)"; sm="$(sb "$merge_commit" docs/coding-standards.md)"
-  pm="$(sb "$merge_commit" .agents/memory/patterns.md)"
+  sw="$(team_blob_tmp "$want" docs/coding-standards.md)"; sm="$(team_blob_tmp "$merge_commit" docs/coding-standards.md)"
+  pm="$(team_blob_tmp "$merge_commit" .agents/memory/patterns.md)"
   src=0
   sout="$(python3 -I "$root/.claude/lib/team_wrapup.py" standards-merged "$TD/runs/$RUN" "$sw" "$sm" "$pm" 2>&1 >/dev/null)" \
     || src=$?

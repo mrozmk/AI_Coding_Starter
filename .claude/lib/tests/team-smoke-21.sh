@@ -468,7 +468,7 @@ cmp -s "$DOC" "$AS" && cmp -s "$PAT" "$AP" || fail "(ws) a rerun changed a file"
 cp "$QP" "$PAT"
 ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 0 "pointer written" "(ws) a resume writes only the pointer"
 cmp -s "$DOC" "$AS" && cmp -s "$PAT" "$AP" || fail "(ws) the resume differs from the first write"
-SV "$QS" "$QS" "$AS" "$QP" "$QP" "$AP"; expect 0 "" "(ws) verify both rendered"
+SV "$QS" "$QS" "$AS" "$QP" "$QP" "$AP"; expect 0 "promoted" "(ws) verify both rendered"
 SV "$QS" "$QS" "$AS" "$QP" "$QP" "$QP"; expect 4 "patterns.md differs" "(ws) verify without the pointer"
 sed 's/CS-4$/CS-9/' "$AP" > "$WORK/ws-ap9"
 SV "$QS" "$QS" "$AS" "$QP" "$QP" "$WORK/ws-ap9"; expect 4 "" "(ws) verify a pointer to CS-9"
@@ -536,8 +536,16 @@ sed 's/^old body$/changed body/' "$PAT" > "$WORK/ws-pe" && cp "$WORK/ws-pe" "$PA
 ST add --verdict "$VF" --item memory-1 --target-rev "$QA"; expect 4 "no longer matches" "(ws) a stale entry"
 cmp -s "$DOC" "$QS" && cmp -s "$PAT" "$WORK/ws-pe" || fail "(ws) a stale refusal wrote"
 SV "$QS" "$QS" "$QS" "$WORK/ws-pe" "$QP" "$WORK/ws-pe"; expect 0 "" "(ws) verify a stale refusal"
+! has promoted "$WORK/out" || fail "(ws) a refused promotion reported as promoted"
 { cat "$WORK/ws-pe"; printf '\n## Extra (2026-01-03)\n\nx\n'; } > "$WORK/ws-pe2"
 SV "$QS" "$QS" "$QS" "$WORK/ws-pe" "$QP" "$WORK/ws-pe2"; expect 0 "" "(ws) verify a stale refusal next to another entry"
+# The runner: a refused promotion leaves patterns.md to check_wrapup_lead — an unaccepted entry fails.
+git -C "$SG" switch --quiet --detach "$S0"; cp "$WORK/ws-pe" "$SG/.agents/memory/patterns.md"; SLP="$(sgc linepat)"
+git -C "$SG" branch line3 "$SLP"
+{ cat "$QP"; printf '\n## Extra (2026-01-03)\n\nx\n'; } > "$WORK/ws-qpx"
+SWX="$(sgw "$QS" "$WORK/ws-qpx")"
+cws "$S0" "$SWX" "$SLP" "$S0" refs/heads/line3
+expect 1 "patterns.md without a TeamLead memory accept" "(ws) runner: a refused promotion does not cover patterns.md"
 # Order: the standards item first, then an ordinary patterns.md entry as its own entry.
 slate
 { std_item memory-1 B Rules "$RULE_C" "$OLD" "$SHA_OLD"; mem_item memory-2 .agents/memory/patterns.md B; } | props "$P"
@@ -564,6 +572,15 @@ ST add --verdict "$RD/teamlead-wrapup-2.json" --item memory-2 --target-rev "$QA"
 SV "$QS" "$QS" "$DOC" "$QP" "$QP" "$QP"; expect 0 "" "(ws) row: verify"
 { cat "$DOC"; printf '\n### CS-4 — c\n- Enforced by: review\n- Applies to: all\n- Example: c.sh:1\n- Why: c\n'; } > "$WORK/ws-dr"
 SV "$QS" "$QS" "$WORK/ws-dr" "$QP" "$QP" "$QP"; expect 4 "" "(ws) row: verify with the declined rule written too"
+# A refused row (its section missing on the base): verify re-derives the refusal, the merge check passes.
+grep -vxF '## Shared helpers' "$QS" > "$WORK/ws-nosec"
+SV "$WORK/ws-nosec" "$QS" "$QS" "$QP" "$QP" "$QP"; expect 0 "" "(ws) row: verify a refused row"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-merged "$RD" "$WORK/ws-nosec" "$WORK/ws-nosec" "$QP"
+expect 0 "" "(ws) row: the merge check skips a refused row"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-merged "$RD" "$DOC" "$DOC" "$QP"
+expect 0 "" "(ws) row: the merge check finds the row once"
+run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-merged "$RD" "$DOC" "$QS" "$QP"
+expect 4 "found 0 times after the merge" "(ws) row: the merge check misses a lost row"
 
 # (G) mixed bases: an old-shape run passes the new runner; a stop without the sha still decides.
 slate

@@ -226,8 +226,7 @@ check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
     [ -f "$p" ] && [ "$(shasum -a 256 "$p" | cut -d' ' -f1)" = "$(jq -r '.proposals_sha256 // empty' "$v")" ] \
       || fail "$(basename "$p") changed after the TeamLead decided it ($(basename "$v"))" || return 1
   done
-  acc="$(cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null \
-    | jq -s '[.[].items // [] | .[] | select(.decision == "accept")]')" || acc='[]'
+  acc="$(team_lead_accepts "$TD/runs/$RUN")"
   # A draft key and an intent's draft_id are create-<n>; an older bare <n> is read the same way.
   bad="$(jq -r --argjson acc "${acc:-[]}" '
     def cid: tostring | if startswith("create-") then . else "create-" + . end;
@@ -246,28 +245,21 @@ check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
   done
 }
 
-# std_blob <rev> <path> → a temp file holding the blob, or "-" when the path is absent there.
-std_blob() {
-  local t
-  t="$(mktemp)" || return 1
-  if git show "$1:$2" > "$t" 2>/dev/null; then echo "$t"; else rm -f "$t"; echo -; fi
-}
-
 # The wrapup changes docs/coding-standards.md only as this run's TeamLead accepted it (team-lead.md
 # §10): one base per file chosen by rule (the target_rev version when the line changed the file
 # since the team base, else the QA version), the accepted item re-rendered on it, bytes compared.
-# Sets STD_PATTERNS_OK=1 when an accepted promotion's patterns.md change is verified here.
+# Sets STD_PATTERNS_OK=1 only when an accepted promotion was applied and its patterns.md change is
+# verified here; a refused promotion leaves patterns.md to check_wrapup_lead.
 check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <line ref>
   local qa="$1" rev="$2" trev="$3" base="$4" line="$5" std=docs/coding-standards.md
-  local pat=.agents/memory/patterns.md lib n=0 promo=0 lead=0 f e_qa e_w files="" b out rc=0
+  local pat=.agents/memory/patterns.md lib n=0 promo=0 lead=0 f e_qa e_w files="" b out rc=0 acc
   STD_PATTERNS_OK=0
   lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ]; then
     lead=1
-    n="$(cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null | jq -s --arg t "$std" \
-      '[.[].items // [] | .[] | select(.decision == "accept" and .target == $t)] | length')" || n=0
-    promo="$(cat "$TD/runs/$RUN"/teamlead-wrapup-*.json 2>/dev/null | jq -s --arg t "$std" \
-      '[.[].items // [] | .[] | select(.decision == "accept" and .target == $t and has("promotes"))] | length')" || promo=0
+    acc="$(team_lead_accepts "$TD/runs/$RUN")"
+    n="$(jq --arg t "$std" '[.[] | select(.target == $t)] | length' <<<"$acc")" || n=0
+    promo="$(jq --arg t "$std" '[.[] | select(.target == $t and has("promotes"))] | length' <<<"$acc")" || promo=0
   fi
   if [ "${n:-0}" = 0 ]; then
     [ "$(git ls-tree "$qa" -- "$std")" = "$(git ls-tree "$rev" -- "$std")" ] && return 0
@@ -286,13 +278,13 @@ check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <lin
   for f in "$std" "$pat"; do
     b="$qa"
     if ! git diff --quiet "$base" "$trev" -- "$f" 2>/dev/null && git cat-file -e "$trev:$f" 2>/dev/null; then b="$trev"; fi
-    files="$files $(std_blob "$b" "$f") $(std_blob "$qa" "$f") $(std_blob "$rev" "$f")"
+    files="$files $(team_blob_tmp "$b" "$f") $(team_blob_tmp "$qa" "$f") $(team_blob_tmp "$rev" "$f")"
   done
   # shellcheck disable=SC2086  # $files: six temp paths (or -), no spaces in mktemp names
-  out="$(python3 -I "$lib/team_wrapup.py" standards-verify "$TD/runs/$RUN" $files 2>&1 >/dev/null)" || rc=$?
+  out="$(python3 -I "$lib/team_wrapup.py" standards-verify "$TD/runs/$RUN" $files 2>&1)" || rc=$?
   for f in $files; do [ "$f" = - ] || rm -f "$f"; done
   [ "$rc" = 0 ] || fail "wrapup changed $std beyond the TeamLead's accepted standards item: ${out#error: }" || return 1
-  [ "${promo:-0}" = 0 ] || STD_PATTERNS_OK=1
+  [ "$out" != promoted ] || STD_PATTERNS_OK=1
 }
 
 # Wrapup may only add memory (and an accepted standards item) on top of the QA revision, so QA's
