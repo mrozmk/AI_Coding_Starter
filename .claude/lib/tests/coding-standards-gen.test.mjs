@@ -108,6 +108,11 @@ test('scanner: extracted items carry their lines', async () => {
   assert.deepEqual(ruleNames(cfg(tool(s, 'golangci'), '.golangci.yml')), ['govet', 'errcheck']);
   assert.ok(ruleNames(cfg(tool(s, 'phpcs'), 'phpcs.xml')).includes('PSR12'));
   assert.deepEqual(ruleNames(cfg(eslint, 'packages/web/eslint.config.mjs')), ['no-var']);
+
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'eslint.config.mjs'), "export default [...tseslint.configs.recommendedTypeChecked.map((c) => c), ...nx.configs['flat/base']];\n");
+  const presets = cfg(tool(await fixtureScan(dir, ['eslint.config.mjs']), 'eslint'), 'eslint.config.mjs').presets.map((p) => p.name);
+  assert.deepEqual(presets, ['tseslint.configs.recommendedTypeChecked', "nx.configs['flat/base']"]);
 });
 
 test('scanner: harness paths, the file list, build integration and symlinks', async () => {
@@ -228,7 +233,10 @@ test('renderer: a good draft renders the seed shape with tool rules first', asyn
 
 test('renderer: a bad draft drops what does not resolve and escapes what does', async () => {
   const repo = copyRepo();
-  const { text, summary } = await renderIn(repo, { draft: json('draft-bad.json') });
+  const bad = json('draft-bad.json');
+  bad.rules[1].appliesTo = 'services, components';
+  const { text, summary } = await renderIn(repo, { draft: bad });
+  assert.ok(text.includes('- Applies to: services, components\n'));
   const dropped = (item) => summary.dropped.find((d) => d.item === item);
   assert.deepEqual(dropped('Exported functions declare an explicit return type').documentedIds, ['doc#r1']);
   assert.ok(dropped('Format a date'));

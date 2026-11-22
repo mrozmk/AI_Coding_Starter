@@ -226,7 +226,7 @@ function extract(t, file, text) {
       const sev = m[5] === '2' ? 'error' : m[5] === '1' ? 'warn' : m[5];
       if (!SEVERITY_OFF.has(sev)) rules.push({ rule: m[1] ?? m[2] ?? m[3], setting: sev, line: lineAt(m.index) });
     }
-    for (const m of text.matchAll(/\b([\w$]+\.configs(?:\.[\w$]+|\[\s*['"][^'"]+['"]\s*\])+)/g)) presets.push({ name: m[1], line: lineAt(m.index) });
+    for (const m of text.matchAll(/\b([\w$]+\.configs(?:\.[\w$]+\b(?!\s*\()|\[\s*['"][^'"]+['"]\s*\])+)/g)) presets.push({ name: m[1], line: lineAt(m.index) });
     for (const m of text.matchAll(/extends\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/g)) for (const s of m[1].matchAll(/['"]([^'"]+)['"]/g)) presets.push({ name: s[1], line: lineAt(m.index) });
   } else {
     for (const m of text.matchAll(/^\s*['"]?([A-Za-z_$][\w$-]*)['"]?\s*:\s*([^,\n{[]+)/gm)) rules.push({ rule: m[1], setting: m[2].trim(), line: lineAt(m.index) });

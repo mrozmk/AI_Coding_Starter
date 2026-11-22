@@ -157,7 +157,8 @@ export function render({ draft, scan, repo, outRoot = repo, seed, toolsOnly = fa
       if (bad) drop(0, r, r.rule, bad);
       else if (supportModules(r, ok) < 2) drop(0, r, r.rule, 'support below two modules');
       else {
-        const applies = /^[\w./*{},@-]+(\s*,\s*[\w./*{},@-]+)*$/.test(one(r.appliesTo)) ? one(r.appliesTo).split(/\s*,\s*/).map(tick).join(', ') : one(r.appliesTo);
+        const parts = one(r.appliesTo).split(/\s*,\s*(?![^{]*\})/);
+        const applies = parts.every((p) => /^[\w./*{}@-]+$/.test(p) && /[/*.]/.test(p)) ? parts.map(tick).join(', ') : one(r.appliesTo);
         rules.push({ title: one(r.rule), by: 'review', applies, example: r.example, why: one(r.why), documentedIds: r.documentedIds || [] });
       }
     }
