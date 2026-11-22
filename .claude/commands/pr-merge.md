@@ -48,10 +48,13 @@ Azure DevOps origin → `azure-devops`) — the `/pr-create` Step 3 rule: `git_h
   `completed`, GitHub `MERGED`).
   Never force anything else locally.
 - **Long-lived branches are never deleted.** `KEEP` = the `trunk`, `integration`, `maintenance`
-  and `protected` lists of `bash .claude/lib/branch-model.sh fields`; its exit 3 (no Branch model
-  block) → `main`, `master`, `trunk`, `develop` (the `/push` step 2 fallback). A source/head branch
-  in `KEEP` (e.g. a `develop → main` PR) is merged but never deleted by this command, remote or
-  local.
+  and `protected` lists of `bash .claude/lib/branch-model.sh fields`. Its exit 3 (no Branch model
+  block) or an empty `protected=` (exit 0, the Protected field omitted) → the protected part is
+  `main`, `master`, `trunk`, `develop` (the `/push` step 2 fallback: block absent or field empty).
+  Any other non-zero exit → `KEEP` is unreadable: every source/head branch counts as in `KEEP`
+  (nothing is deleted; report "Branch model unreadable — `<branch>` kept" with the script's error).
+  A source/head branch in `KEEP` (e.g. a `develop → main` PR) is merged but never deleted by this
+  command, remote or local.
 - **Tracker comments gate the completion** (Step 4a, opt-in `workflow.tracker_comments`): new, edited
   or uncertain ticket input since the baseline → STOP, no merge. The decision is the user's, recorded
   outside this command; then re-run.
@@ -175,8 +178,9 @@ every 60 s, **max 30 min**) and end the turn; the notification resumes this comm
 - `completed` → Step 6a.
 - `abandoned`, or a policy flips to `rejected` (check `az repos pr policy list` once when the loop
   ends) → report the blocker and stop. Auto-complete stays set; nothing else is changed.
-- Timeout → report what it still waits for (e.g. "Build running 30 min") and say that
-  `/pr-merge <id>` later only does the cleanup.
+- Timeout → report what it still waits for (e.g. "Build running 30 min") and say that the source
+  branch is deleted only by a re-run after the PR completes (5a / 5b pass
+  `--delete-source-branch false`): run `/pr-merge <id>` once it is `completed` to do the cleanup.
 
 Any `az` error (e.g. "policy not satisfied", 403) → show it verbatim and stop; never retry with
 other flags, never `--bypass-policy`.
@@ -246,13 +250,16 @@ Step 6b runs first on every path that reaches this step (the "go to Step 6" exit
 ### Step 7 — Report
 
 ✅ PR `#<id>` completed · self-approval if cast · strategy · merge commit (`lastMergeCommit`) ·
-remote branch (deleted by this command / kept — why) · local state (`<TARGET>` up to date,
-local branch removed) · URL `<ORG_URL>/<project>/_git/<repo>/pullrequest/<id>`. Then one line on
+remote branch (deleted by this command / kept — why) · local state as Step 6.2 ran it (`<TARGET>`
+up to date, then local branch removed / kept — why (`KEEP`, tip ≠ `MERGED_SRC`) / absent; or the
+local step skipped — why (dirty tree, failed switch); never "removed" for a branch that was not) ·
+URL `<ORG_URL>/<project>/_git/<repo>/pullrequest/<id>`. Then one line on
 what happens next per `.agents/reference/git-policy.md` (the project's build/deploy after a merge).
 Add `Tracker comments: <none new … | the STOP line | skipped — <reason>>` when Step 4a ran.
 Add `Tracker: <KEY> → <status> | already <status> | not transitioned — <reason>` (tracker jira).
-If it stopped or timed out: what it waits for, and that auto-complete is still set (never with
-`--auto`, which never arms it). With `--auto` the report is the one-line note
+If it stopped or timed out: what it waits for, that auto-complete is still set (never with
+`--auto`, which never arms it), and that the source branch is deleted only by a re-run
+(`/pr-merge <id>`) after the PR completes. With `--auto` the report is the one-line note
 `auto-merge <team> PR #<id> <merge commit> (QA <Verdict>)` for Supervisor.
 
 ---
@@ -352,10 +359,14 @@ Immediately before the merge call — after the checks wait and Step 4a, so a lo
 them stale — two reads:
 
 - **Long-lived head.** `HEAD` in `KEEP` (`## Guardrails`) →
-  `gh repo view <owner>/<repo> --json deleteBranchOnMerge --jq .deleteBranchOnMerge`; `true` or a
-  failed read → STOP: "`<HEAD>` is a long-lived branch (Branch model) and the repository deletes
-  head branches on merge — turn that setting off or merge on the host keeping the branch". (The
-  Branch model is local text; GitHub's auto-delete does not read it.)
+  `gh repo view <owner>/<repo> --json deleteBranchOnMerge --jq .deleteBranchOnMerge`:
+  - `true` → STOP: "`<HEAD>` is a long-lived branch (Branch model) and the repository deletes head
+    branches on merge — a merge on the host deletes it too; turn off *Automatically delete head
+    branches* in the repository settings, then re-run". (The Branch model is local text; GitHub's
+    auto-delete does not read it.)
+  - A failed read → STOP with the error verbatim: "cannot read `deleteBranchOnMerge` — `<HEAD>` is
+    a long-lived branch and an unreadable setting is not `false`; fix the read (`gh auth status`,
+    repository access), then re-run".
 - **Merge queue and a moved PR.**
   `gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){isMergeQueueEnabled baseRefName headRefOid}}}' -f o=<owner> -f r=<repo> -F n=<n> --jq .data.repository.pullRequest`:
   - `isMergeQueueEnabled: true` → STOP: "`<BASE>` requires a merge queue — /pr-merge does not
@@ -417,15 +428,18 @@ In this order:
      (ask-tier; `-D` because a squash or rebase merge is never an ancestor). A different tip →
      keep it and report "local `<HEAD>` has commits after the merged head — kept".
    - `git fetch origin --prune`
-3. **Base state:** `BASE_SHA` = `git rev-parse <BASE>`; `git merge-base --is-ancestor <MERGE_SHA> <BASE>`
+3. **Base state** — only when item 2 reached its pull (a skipped item 2 — dirty tree or failed
+   switch — gets no base-state line; its skip reason is the local state):
+   `BASE_SHA` = `git rev-parse <BASE>`; `git merge-base --is-ancestor <MERGE_SHA> <BASE>`
    → report "local `<BASE>` at `<BASE_SHA>`, contains the merge commit" (or that it does not, when
    the pull was refused).
 
 ### Step G8 — Report
 
 ✅ PR `#<n>` merged · strategy · merge commit `MERGE_SHA` · remote branch (deleted by GitHub / by
-this command / kept — why, a long-lived head named as such) · local state (`BASE_SHA`, contains the merge commit, local branch
-removed or kept — why) · URL. Add `Tracker comments: …` when Step 4a ran and `Tracker: …` (tracker
+this command / kept — why, a long-lived head named as such) · local state as Step G7 ran it
+(`BASE_SHA`, contains the merge commit, local branch removed or kept — why; or the local step
+skipped — why, with no base-state line) · URL. Add `Tracker comments: …` when Step 4a ran and `Tracker: …` (tracker
 jira) as in Step 7. On a STOP: what blocks and the fix.
 
 ## Stage end marker (token usage)

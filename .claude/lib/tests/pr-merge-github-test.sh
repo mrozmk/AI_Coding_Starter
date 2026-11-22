@@ -211,6 +211,73 @@ N=$((N + 2))
 
 # (21) /push skips its next-step line inside /pr-create.
 grep -qF '`/pr-create` Step 5' "$P" || fail "push.md does not skip its next-step line inside /pr-create Step 5"
-N=$((N + 1))
+grep -F '`/pr-create` Step 5' "$P" | grep -qF 'skipped' || fail "push.md's /pr-create Step 5 line does not say skipped"
+N=$((N + 2))
+
+# (22) Azure Step 6.1: KEEP, the other-active-PR lookup and the MERGED_SRC keep rule precede the
+#      remote deletion; Step 6.2 deletes the local branch only outside KEEP at MERGED_SRC.
+A7=$(az_line '### Step 7' "$A6") || fail "no Azure Step 7"
+a6_line() { local l; l=$(line_of "$1" "$A6"); [ -n "$l" ] && [ "$l" -lt "$A7" ] && echo "$l"; }
+ADEL=$(a6_line 'git push origin --delete <SOURCE>') || fail "Azure Step 6 lacks git push origin --delete <SOURCE>"
+for p in 'lastMergeSourceCommit' 'KEEP' '--source-branch "<SOURCE>" --status active' 'differs from `MERGED_SRC`'; do
+  l=$(a6_line "$p") || fail "Azure Step 6 lacks: $p"
+  [ "$l" -lt "$ADEL" ] || fail "Azure Step 6: $p (line $l) not before the remote deletion"
+done
+MV=$(a6_line 'differs from `MERGED_SRC`')
+printf '%s\n' "$BODY" | sed -n "${MV},$((MV + 1))p" | grep -qF 'kept' || fail "Azure Step 6: a moved origin/<SOURCE> is not kept"
+ABD=$(a6_line 'git branch -D <SOURCE>') || fail "Azure Step 6 lacks git branch -D <SOURCE>"
+for p in 'KEEP' 'MERGED_SRC'; do
+  printf '%s\n' "$BODY" | sed -n "$((ABD - 1)),${ABD}p" | grep -qF "$p" || fail "Azure git branch -D <SOURCE> is not guarded by $p"
+done
+N=$((N + 7))
+
+# (23) G5 STOPs: deleteBranchOnMerge true and a failed read each STOP (separate messages, no
+#      "merge on the host keeping the branch" advice); the GraphQL failed read STOPs.
+DB=$(gh_line 'deleteBranchOnMerge --jq') || fail "no deleteBranchOnMerge read"
+printf '%s\n' "$BODY" | sed -n "$((DB + 1))p" | grep -qF '`true` → STOP' || fail "deleteBranchOnMerge true is not a STOP"
+DBF=$(line_of 'cannot read `deleteBranchOnMerge`' "$DB") || true
+[ -n "$DBF" ] && [ "$DBF" -lt "$MERGE" ] || fail "no own STOP message for a failed deleteBranchOnMerge read"
+printf '%s\n' "$BODY" | sed -n "$((DBF - 1)),${DBF}p" | grep -qF 'A failed read → STOP with the error verbatim' \
+  || fail "a failed deleteBranchOnMerge read is not a STOP with the error"
+in_gh 'a merge on the host deletes it too'
+printf '%s\n' "$SECTION" | grep -qF 'merge on the host keeping the branch' && fail "G5 still advises a host merge keeping the branch"
+GQ=$(gh_line 'unreadable is not "no queue"') || fail "no GraphQL failed-read rule"
+printf '%s\n' "$BODY" | sed -n "${GQ}p" | grep -qF 'A failed read → STOP' || fail "the GraphQL failed read is not a STOP"
+[ "$GQ" -lt "$MERGE" ] || fail "the GraphQL failed-read STOP does not precede the merge"
+N=$((N + 6))
+
+# (24) The rerun MERGE_SHA source, the merged-fallback tip STOP, the Azure quote escape, the
+#      Provider STOP scope.
+case "$RL" in *'mergeCommit.oid'*) ;; *) fail "the MERGED row does not name mergeCommit.oid" ;; esac
+GV=$(line_of '`<n>` → `gh pr view <n>' "$G2") || fail "Step G2 lacks the gh pr view <n> read"
+printf '%s\n' "$BODY" | sed -n "${GV}p" | grep -qF ',mergeCommit' || fail "Step G2's gh pr view does not request mergeCommit"
+TM=$(line_of 'local tip different or absent' "$G2"); [ -n "$TM" ] && [ "$TM" -lt "$G3" ] || fail "Step G2 lacks the tip-mismatch rule"
+printf '%s\n' "$BODY" | sed -n "${TM}p" | grep -qF 'STOP' || fail "the merged-fallback tip mismatch is not a STOP"
+# grep, not line_of: awk -v would read the backslash as an escape.
+printf '%s\n' "$BODY" | awk -v s="$AZ" -v e="$GH" 'NR > s && NR < e' | grep -qF -- "each \`'\` of the title written as \`'\\''\`" \
+  || fail "the Azure message lacks the '\\'' escape rule"
+printf '%s\n' "$PSEC" | grep -qF '`none` read from `teams.pr_provider` → STOP' || fail "the Provider STOP is not scoped to teams.pr_provider"
+printf '%s\n' "$PSEC" | grep -qF -- '- `none` → STOP' && fail "## Provider still STOPs on any none"
+N=$((N + 6))
+
+# (25) KEEP never leaves out the fallback names: an empty protected= falls back as in /push
+#      step 2, any other non-zero exit keeps every branch.
+for p in 'empty `protected=`' 'block absent or field empty' 'Any other non-zero exit' 'every source/head branch counts as in `KEEP`'; do
+  printf '%s\n' "$GSEC" | grep -qF -- "$p" || fail "## Guardrails KEEP lacks: $p"
+done
+N=$((N + 4))
+
+# (26) Re-run notice on an Azure timeout; reports follow the skip and keep paths.
+A5C=$(az_line '**5c. Wait for it**') || fail "no Azure 5c"
+TO=$(line_of 'Timeout →' "$A5C"); [ -n "$TO" ] && [ "$TO" -lt "$A7" ] || fail "Azure 5c lacks its timeout exit"
+printf '%s\n' "$BODY" | sed -n "${TO},$((TO + 2))p" | grep -qF 're-run after the PR completes' || fail "Azure 5c timeout does not say a re-run deletes the branch"
+A7SEC=$(printf '%s\n' "$BODY" | awk -v s="$A7" -v e="$GH" 'NR > s && NR < e')
+for p in 'deleted only by a re-run' 'tip ≠ `MERGED_SRC`' 'failed switch'; do
+  printf '%s\n' "$A7SEC" | grep -qF -- "$p" || fail "Azure Step 7 lacks: $p"
+done
+G73=$(line_of '**Base state**' "$G7"); [ -n "$G73" ] && [ "$G73" -lt "$GH_END" ] || fail "Step G7 lacks item 3"
+printf '%s\n' "$BODY" | sed -n "${G73}p" | grep -qF 'only when item 2 reached its pull' || fail "Step G7 item 3 is not skipped with item 2"
+in_gh 'skipped — why, with no base-state line'
+N=$((N + 7))
 
 echo "pr-merge-github-test: OK ($N checks)"
