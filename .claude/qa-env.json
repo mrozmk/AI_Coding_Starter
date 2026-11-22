@@ -50,5 +50,18 @@
   "breakpoint_token_prefix": "",
 
   "_device_mcp_server_doc": "Name of the device-mode browser MCP server in .mcp.json (the one started with a mobile/touch profile, separate from the desktop browser server). Empty => family `cross-device / viewport` routes to NEEDS-HUMAN; the desktop server is never used as a stand-in.",
-  "device_mcp_server": ""
+  "device_mcp_server": "",
+
+  "_browser_driver_doc": "Who observes browser rows (the rows registry §2 binds to qa-runtime-ui). 'script' (also when empty) = /qa-verify's main session writes one self-terminating Playwright script per row into <artifacts_dir>/<run>/ and runs it with THIS project's own Playwright (>= 1.49); when Playwright does not resolve from the project it falls back to 'mcp', then to NEEDS-HUMAN. 'mcp' = the main session drives the browser MCP itself. 'subagent' = the qa-runtime-ui sub-agent over the browser MCP (the old default). An explicit 'mcp' or 'subagent' never falls back.",
+  "browser_driver": "",
+
+  "_browser_launch_doc": "Launch settings every browser driver honours. Under 'script' they are written into each script; under 'mcp' and 'subagent' the browser MCP server launches the browser, so start that server with the matching settings — /qa-verify checks each set value in the live browser before the lane and guards the lane when one is not established. Empty / false = the browser's default.",
+  "browser_launch": {
+    "_channel_doc": "Browser channel ('chrome', 'msedge', …). Empty = Playwright's bundled Chromium.",
+    "channel": "",
+    "_user_agent_doc": "User-agent string, e.g. one a CDN accepts where the headless default is blocked. Empty = the browser's own.",
+    "user_agent": "",
+    "_ignore_https_errors_doc": "true for a host with a self-signed certificate.",
+    "ignore_https_errors": false
+  }
 }

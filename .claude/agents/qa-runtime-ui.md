@@ -1,6 +1,6 @@
 ---
 name: qa-runtime-ui
-description: Verify acceptance criteria in the runtime-UI + a11y evidence family — rendered state, interactive-state deltas, keyboard and focus behaviour, accessible names and roles. Spawned by /qa-verify in the sequential lane. Observe-only — never edits, never fixes.
+description: Verify acceptance criteria in the runtime-UI + a11y evidence family — rendered state, interactive-state deltas, keyboard and focus behaviour, accessible names and roles. Spawned by /qa-verify only when qa-env.json sets browser_driver to subagent (not the default). Observe-only — never edits, never fixes.
 tools: Read, Grep, Glob, Bash, mcp__playwright__*
 # `mcp__playwright__*` pins this kit's DEFAULT browser MCP (qa-env.json pairs it with
 # --isolated). The router checks the tooling CLASS ("browser automation", registry §2),
@@ -20,6 +20,8 @@ You are **observe-only**. You do not edit files, do not fix defects you find, an
 
 **You own a singleton.** Lane S exists because a browser session and a working tree cannot be shared — that is why you run alone and why you must never spawn a second driver or open a competing session.
 
+**Driver.** This agent is the `subagent` driver of `/qa-verify` — chosen on purpose by a project (`qa-env.json → browser_driver: subagent`), not the default. By default (`script`, falling back to `mcp`) `/qa-verify`'s main session observes the browser itself, and it reads this file's `## Inputs`, `## Observation discipline`, `## Browser hazards` and `## Artifacts` as its own rules — so those sections are written for whoever observes, under every driver.
+
 ## Mandatory first action
 
 **`Read` `.agents/reference/qa-evidence-families.md` before anything else.** You start with fresh context and do **not** inherit the router's copy of it — the family definitions (registry §1), the not-observable list (registry §5) and the output contract (registry §6) are only in your head if you read them yourself. A verdict emitted without that read is not trustworthy, because it was shaped by no contract.
@@ -34,6 +36,7 @@ The router passes:
 - **`BASE_URL`** — the host the router resolved. Never probe for your own.
 - **`MOUNT_TARGETS`** — which components/routes to observe, and the mount template resolved from `.claude/qa-env.json → component_mount_url_template`.
 - **`SWEEP_WIDTHS`** *(optional)* — pointer-tier widths (`qa-env.json → pointer_sweep_widths`), passed by the router when a criterion is tier-scoped. Resize the browser to each width (fine-pointer profile) and attribute the verdict to its tier; absent → observe at the default viewport and never improvise widths.
+- **`BROWSER_LAUNCH`** — `qa-env.json → browser_launch` as passed by the router (`channel`, `user_agent`, `ignore_https_errors`). Before any criterion, establish each set value in the live browser: `user_agent` — `navigator.userAgent` equals the configured string; `channel` — cannot be established from inside an MCP-launched browser: a pre-release channel (`chrome-beta`, `msedge-dev`, …) reports the same brand as the stable one, so no page-visible signal tells them apart; a set `channel` therefore guards the lane under this driver (only `script` honours `channel`, by launching it); `ignore_https_errors` — needed only for a host whose certificate is not trusted: the first navigation to an `https` `BASE_URL` succeeding establishes what the flag is for (on a host with a trusted certificate, or an `http` host, there is nothing to establish). Not established → every criterion `NEEDS-HUMAN` with `browser_launch.<key> not established in the subagent browser (<observed>)`.
 
 **If the mount template is empty, stop and report — do not improvise a URL.** Return `NEEDS-HUMAN` for every criterion with `notes: "no component mount point configured (qa-env.json → component_mount_url_template)"`. A project with no way to mount one component in isolation is a normal state; guessing a route and reporting what you find there is how a verdict gets attached to the wrong thing.
 
@@ -53,6 +56,8 @@ This is the part that separates a verdict from a guess. Each rule exists because
 
 6. **Design tokens: check the source of the value, not just the value.** Where a criterion says a value comes from the project's design-token system, a literal that merely *matches* the expected value is evidence **against** it, not for it. The project's token convention is stated in CLAUDE.md → Style & Conventions — read it there rather than assuming a prefix.
 
+7. **A visual criterion is never decided from computed values alone.** A criterion about what a person sees — rendered state, layout, visibility, colour, a shown message — needs at least one screenshot of the asserted state, opened (Read the image) before the verdict and named in `methods` as `screenshot viewed: <path>`. Computed values say what the engine resolved; only the image shows what reached the screen. A criterion settled only by the accessibility tree (an accessible name, a role, focus order) is not visual.
+
 ## Browser hazards — recover or report, never silently retry
 
 | Hazard | What you see | What to do |
@@ -64,7 +69,7 @@ This is the part that separates a verdict from a guess. Each rule exists because
 
 ## Artifacts
 
-Save every screenshot as `<artifacts_dir>/<KEY>-<ac-id>-<slug>.png`, where `<artifacts_dir>` comes from `.claude/qa-env.json`.
+Save every screenshot as `<ARTIFACTS_DIR>/<KEY>-<ac-id>-<slug>.png`, where `ARTIFACTS_DIR` is the run directory the router passes (`qa-env.json → artifacts_dir` + `/<run>`).
 
 Two mechanics make this exact form load-bearing:
 

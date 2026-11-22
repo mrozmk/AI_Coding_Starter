@@ -55,7 +55,7 @@ Family → the verifier that owns it → the **execution lane** it must run in.
 | Family | Verifier | Lane | Required tooling |
 |---|---|---|---|
 | `runtime / behavior` | `qa-runtime` | S | browser automation |
-| `runtime-UI + a11y` | `qa-runtime-ui` | S | browser automation |
+| `runtime-UI + a11y` | `qa-runtime-ui` | S | Playwright resolvable from the project (driver `script`) or browser automation (drivers `mcp`, `subagent`) |
 | `design parity` | `qa-design-parity` | I | design-tool MCP |
 | `contract / type / boundary` | `qa-contract` | P | none — filesystem only |
 | `config / external` | `qa-config` | P | none — filesystem only |
@@ -66,8 +66,10 @@ Family → the verifier that owns it → the **execution lane** it must run in.
 | Lane | Meaning | Why it exists |
 |---|---|---|
 | `P` | Parallel sub-agent, browser-free, non-mutating | Nothing it touches is a singleton, so any number may run at once |
-| `S` | Sequential, owns the single browser / running app / working tree | A browser session and a working tree are singletons; two concurrent drivers corrupt each other's evidence |
+| `S` | Sequential, owns the single browser / running app / working tree — the `qa-runtime-ui` binding observes in the main session by default (driver `script` or `mcp`) and is spawned only under driver `subagent`; other bindings in this lane (device, app) spawn as before | A browser session and a working tree are singletons; two concurrent drivers corrupt each other's evidence |
 | `I` | Inline in the parent session | Some MCP servers (design tools, trackers) exist only in the parent session and are unreachable from a spawned sub-agent |
+
+**The main-session browser lane.** For the rows the roster binds to `qa-runtime-ui`, `qa-env.json → browser_driver` decides who observes: `script` (the default — one self-terminating Playwright script per row, run with the project's own Playwright and kept under `artifacts_dir/<run>/`), `mcp` (the main session drives the browser MCP), or `subagent` (the agent is spawned). `script` falls back to `mcp`, then to `NEEDS-HUMAN`; an explicit `mcp` or `subagent` does not fall back. The observation rules are `qa-runtime-ui.md`'s under every driver; the procedure is `/qa-verify` → Phase 2 → Lane S. Families bound to another verifier keep their lane.
 
 **Build status is derived, never declared here.** There is deliberately **no build-status column** in the table above. `/qa-verify` derives it in Phase 0 from an injected `ls .claude/agents/qa-*.md` and treats any family whose canonical verifier is absent from that listing as guarded. A hand-maintained column can lie at exactly the moment the guard exists to fire — the router spawns an agent whose file does not exist and the run errors out. The roster names the *intended* verifier; whether it *exists* is a fact read off the filesystem.
 

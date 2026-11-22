@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Offline test of every `!`-probe in .claude/commands/prime.md: each one exits 0 on
 # empty and partial input, keeps its semantics, and uses no form the team-clone skill-load
-# permission check rejects (`-exec`, awk, sed, sort, xargs, `$(`).
+# permission check rejects (`-exec`, awk, sed, sort, xargs, `$(`). Also covers the browser
+# lines of .claude/lib/qa-probe.sh (driver, project-local Playwright, launch summary).
 set -u
 PRIME="$(cd "$(dirname "$0")/../.." && pwd)/commands/prime.md"
 EXPECTED_PROBES=12
@@ -157,6 +158,91 @@ line='  1  0 -rw-r--r--   1 u  g   1234 Nov 14 18:12 ./.agents/specs/a\ b\\c\"d.
 got=$(printf '%s\n' "$line" | eval "jq $(jqpart "$P_SPECS")" | head -1)
 [ "$got" = "1234${TAB}./.agents/specs/a b\\c\"d.md" ] || bad gnu "escaped name: $got"
 CHECKS=$((CHECKS + 1))
+
+# (f) qa-probe.sh browser lines: driver, project-local Playwright resolution, launch summary
+QAP="$(cd "$(dirname "$0")/.." && pwd)/qa-probe.sh"
+[ -f "$QAP" ] || die "qa-probe.sh missing"
+qap() { (cd "$1" && CLAUDE_PROJECT_DIR="$1" bash "$QAP" 2>/dev/null </dev/null); }
+qline() { qap "$1" | grep -E "^$2: " ; }
+qaenv() {  # <dir> <json members> — minimal config; no base_url/local_url keeps the probe offline
+  mkdir -p "$1/.claude" && printf '{"artifacts_dir":""%s}\n' "${2:+, $2}" > "$1/.claude/qa-env.json" \
+    || die "qaenv $1"
+}
+stub() {  # <dir> <pkg> <version> [noentry] — a package the probe can only resolve, never run
+  mkdir -p "$1/node_modules/$2" \
+    && printf '{"name":"%s","version":"%s","main":"index.js"}\n' "$2" "$3" > "$1/node_modules/$2/package.json" \
+    || die "stub $2"
+  [ "${4:-}" = noentry ] || : > "$1/node_modules/$2/index.js" || die "stub entry $2"
+}
+QOUT=""
+qrun() {  # <dir> <label> [VAR=value …] — run the probe, assert exit 0, keep its output
+  local d="$1" l="$2" rc; shift 2
+  QOUT=$(cd "$d" && env "$@" CLAUDE_PROJECT_DIR="$d" bash "$QAP" 2>/dev/null </dev/null); rc=$?
+  CHECKS=$((CHECKS + 1)); [ "$rc" -eq 0 ] || bad "$l" "qa-probe exit $rc"
+}
+qhas() {  # <label> <exact line>
+  CHECKS=$((CHECKS + 1))
+  grep -qxF "$2" <<<"$QOUT" \
+    || bad "$1" "missing '$2' — got: $(grep -E '^(browser-driver|playwright|browser-launch): ' <<<"$QOUT" | tr '\n' '|')"
+}
+PW_NONE="playwright: not resolvable from the project"
+
+# 1. defaults: no driver key, no Playwright, no launch block
+Q="$T/qa defaults"; repo "$Q"; qaenv "$Q" ""
+qrun "$Q" qa-defaults
+qhas qa-defaults "browser-driver: script (default)"
+qhas qa-defaults "$PW_NONE"
+qhas qa-defaults "browser-launch: defaults"
+[ "$(qline "$Q" browser-driver)" = "browser-driver: script (default)" ] || bad qa-defaults "qline"
+CHECKS=$((CHECKS + 1))
+
+# 2. explicit and unknown drivers
+for d in mcp subagent; do
+  Q="$T/qa driver $d"; repo "$Q"; qaenv "$Q" "\"browser_driver\":\"$d\""
+  qrun "$Q" "qa-driver-$d"; qhas "qa-driver-$d" "browser-driver: $d"
+done
+Q="$T/qa driver unknown"; repo "$Q"; qaenv "$Q" '"browser_driver":"chrome"'
+qrun "$Q" qa-driver-unknown
+qhas qa-driver-unknown 'browser-driver: UNKNOWN "chrome" — treated as script'
+
+# 3./4. a usable and a too-old playwright
+Q="$T/qa pw 150"; repo "$Q"; qaenv "$Q" ""; stub "$Q" playwright 1.50.0
+qrun "$Q" qa-pw-ok; qhas qa-pw-ok "playwright: resolves from the project (playwright 1.50.0)"
+Q="$T/qa pw 148"; repo "$Q"; qaenv "$Q" ""; stub "$Q" playwright 1.48.2
+qrun "$Q" qa-pw-old
+qhas qa-pw-old "playwright: resolves from the project (playwright 1.48.2) — below 1.49, the script driver needs locator.ariaSnapshot"
+
+# 5. @playwright/test alone, first usable wins, a missing entry file is not resolvable
+Q="$T/qa pwt"; repo "$Q"; qaenv "$Q" ""; stub "$Q" @playwright/test 1.52.0
+qrun "$Q" qa-pwt; qhas qa-pwt "playwright: resolves from the project (@playwright/test 1.52.0)"
+Q="$T/qa pw mixed"; repo "$Q"; qaenv "$Q" ""; stub "$Q" playwright 1.40.0; stub "$Q" @playwright/test 1.52.0
+qrun "$Q" qa-pw-mixed; qhas qa-pw-mixed "playwright: resolves from the project (@playwright/test 1.52.0)"
+Q="$T/qa pw noentry"; repo "$Q"; qaenv "$Q" ""; stub "$Q" playwright 1.50.0 noentry
+qrun "$Q" qa-pw-noentry; qhas qa-pw-noentry "$PW_NONE"
+
+# 5b. a Playwright outside the checkout never counts: NODE_PATH, a parent directory
+Q="$T/qa nodepath"; repo "$Q"; qaenv "$Q" ""; stub "$T/global pw" playwright 1.50.0
+qrun "$Q" qa-nodepath NODE_PATH="$T/global pw/node_modules"; qhas qa-nodepath "$PW_NONE"
+Q="$T/parent/child"; repo "$Q"; qaenv "$Q" ""; stub "$T/parent" playwright 1.50.0
+qrun "$Q" qa-parent; qhas qa-parent "$PW_NONE"
+
+# 6. launch settings: set keys only, the user-agent string is never printed
+Q="$T/qa launch"; repo "$Q"
+qaenv "$Q" '"browser_launch":{"channel":"chrome","user_agent":"X/1","ignore_https_errors":true}'
+qrun "$Q" qa-launch
+qhas qa-launch "browser-launch: channel=chrome · user-agent=custom · ignore-https-errors=yes"
+CHECKS=$((CHECKS + 1)); grep -qF 'X/1' <<<"$QOUT" && bad qa-launch "user_agent string printed"
+
+# 7. node not on PATH → the Playwright line says so, the probe still exits 0
+mkdir -p "$T/nonode" || die "nonode"
+for t in jq git curl pgrep wc tr date grep awk head cat dirname; do
+  p=$(command -v "$t" 2>/dev/null) || continue
+  case "$p" in /*) ln -s "$p" "$T/nonode/$t" || die "link $t" ;; esac
+done
+Q="$T/qa nonode"; repo "$Q"; qaenv "$Q" ""
+QOUT=$(cd "$Q" && PATH="$T/nonode" CLAUDE_PROJECT_DIR="$Q" /bin/bash "$QAP" 2>/dev/null </dev/null); rc=$?
+CHECKS=$((CHECKS + 1)); [ "$rc" -eq 0 ] || bad qa-nonode "qa-probe exit $rc"
+qhas qa-nonode "playwright: NOT CHECKED — node not on PATH"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "prime-probes-test: OK ($CHECKS checks)"

@@ -15,6 +15,7 @@
 # CONTRACT: emit `key: value` lines on stdout, exit 0 ALWAYS. Print nothing secret —
 # .env is stat-ed (size + mtime), never read. Every network call carries an explicit
 # timeout: a command whose job is detecting a blocked environment must never itself block.
+# The browser section runs `node` locally (module resolution only, no network).
 
 ROOT="$CLAUDE_PROJECT_DIR"
 [ -z "$ROOT" ] && ROOT="$PWD"
@@ -198,6 +199,33 @@ for k in touch_sweep_widths pointer_sweep_widths; do
   if [ "$N" -gt 0 ]; then emit "$k: $N widths"; else emit "$k: unset"; fi
 done
 emit "breakpoint_token_prefix: ${BP_PREFIX:-unset}"
+
+# --- Browser driver (information only, never a gate) ---------------------------
+# Who observes browser rows in /qa-verify, and whether the project's own Playwright
+# resolves for the default `script` driver. Resolution only: the package manifest is
+# read as data, never imported, and only a node_modules inside this checkout counts.
+DRIVER=$(cfg browser_driver)
+case "$DRIVER" in
+  "") emit "browser-driver: script (default)" ;;
+  script|mcp|subagent) emit "browser-driver: $DRIVER" ;;
+  *) emit "browser-driver: UNKNOWN \"$DRIVER\" — treated as script" ;;
+esac
+
+if ! command -v node >/dev/null 2>&1; then
+  emit "playwright: NOT CHECKED — node not on PATH"
+else
+  BOUND=$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)
+  [ -z "$BOUND" ] && BOUND="$ROOT"
+  PW=$(node --no-global-search-paths -e 'const fs=require("fs"),path=require("path"),real=q=>{try{return fs.realpathSync(q)}catch(x){return path.resolve(q)}},root=real(process.argv[1]),bound=real(process.argv[2]||root),r=require("module").createRequire(root+"/");let old="";for(const p of ["playwright","@playwright/test"]){const dir=(r.resolve.paths(p)||[]).find(d=>fs.existsSync(path.join(d,p,"package.json")));if(!dir||(dir!==bound&&!dir.startsWith(bound+path.sep)))continue;let e;try{e=r.resolve(p)}catch(x){continue}let m=null;try{m=JSON.parse(fs.readFileSync(path.join(dir,p,"package.json"),"utf8"))}catch(x){continue}if(!m||m.name!==p)continue;const v=String(m.version||"");const n=v.split(".").map(x=>parseInt(x,10));if(n[0]>1||(n[0]===1&&n[1]>=49)){console.log("ok "+p+" "+v);process.exit(0)}if(!old)old=p+" "+v}if(old){console.log("old "+old);process.exit(0)}process.exit(1)' "$ROOT" "$BOUND" 2>/dev/null)
+  case "$PW" in
+    ok\ *) emit "playwright: resolves from the project (${PW#ok })" ;;
+    old\ *) emit "playwright: resolves from the project (${PW#old }) — below 1.49, the script driver needs locator.ariaSnapshot" ;;
+    *) emit "playwright: not resolvable from the project" ;;
+  esac
+fi
+
+LAUNCH=$(jq -r '(.browser_launch // {}) as $b | [ (if (($b.channel // "") | tostring) != "" then "channel=" + ($b.channel | tostring) else empty end), (if (($b.user_agent // "") | tostring) != "" then "user-agent=custom" else empty end), (if $b.ignore_https_errors == true then "ignore-https-errors=yes" else empty end) ] | join(" · ")' "$CONFIG" 2>/dev/null)
+emit "browser-launch: ${LAUNCH:-defaults}"
 
 # --- Artifacts destination -----------------------------------------------------
 if [ -n "$ARTIFACTS" ]; then

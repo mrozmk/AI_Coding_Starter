@@ -84,6 +84,9 @@ Never leave it implicit. `qa-contract` is told to **cite** this value instead of
 > **Never collapse `not-applicable` into the not-verified warning.** A starter ships `base_url: ""`, so doing that stamps "deployed build may lag HEAD" on every local run — a warning that fires on the default configuration is one people stop reading, which is the exact failure this stamping exists to prevent. `prime-qa.md` puts the same rule the other way round: *unverified is not "matched"*. Both directions matter.
 
 - `BUILD_SHA` — the commit the observation provably runs against: `matched (<sha>)` → that sha; every other state → `-`. `NOT-VERIFIED` proves nothing; `not-applicable` and `MISMATCH` run on a local server whose build the probe does not establish (it only checks that the URL answers) — server provenance not verified. `BUILD_SHA` is the record's `build=` and the re-check stop's comparison value (Phase 0.5); `-` makes the stop inconclusive, never a stop. **Freshness:** the probe output `/prime-qa` left may predate a deployment. Before the stop row can fire and before `build=` is written, run the probe once in this invocation — `bash .claude/lib/qa-probe.sh`, the same argument-free script `/prime-qa` runs — and take `BUILD_SHA` from that output; if it cannot run, `BUILD_SHA` is `-`. Take `BASE_URL`, `BASE_URL_REASON` and `BUILD_SKEW` from the same fresh output, so the host the verifiers observe and the build stamped on it come from one probe run (a deployment since `/prime-qa` can turn `matched` into `MISMATCH` and move the run to local) — a deployed sha is never stamped on an observation of another host.
+- `BROWSER_DRIVER` — from the probe's `browser-driver:` line: the configured driver (`script`, `mcp`, `subagent`); empty means `script`, and `UNKNOWN "<v>"` is treated as `script`. Phase 0 step 3b turns it into the effective driver.
+- `PLAYWRIGHT` — from the probe's `playwright:` line. It is usable for the `script` driver only when the line reads `resolves from the project (<pkg> <ver>)` with no `—` suffix; `<pkg>` is what the skeleton's `PKG` constant gets (Phase 2 → Lane S).
+- `BROWSER_LAUNCH` — the probe's `browser-launch:` line is a redacted summary for display (the gate, `/prime-qa`). The **typed values** (`channel`, `user_agent`, `ignore_https_errors`) are read once here from `.claude/qa-env.json → browser_launch` with `jq`, and they are what every driver uses: written into each script under `script`, compared against by the main session under `mcp`, passed as `BROWSER_LAUNCH` to the sub-agent under `subagent`. The full user-agent string is never printed at the gate.
 
 ## Step 0.1 — Mode
 
@@ -207,9 +210,19 @@ Which verifiers actually exist on disk, injected at command load:
 2. **Classify semantically** per `registry §3`. Reason about what evidence would settle each criterion; never keyword-match. One AC may map to several families — emit **one row per (ac_id, family)** pair.
 3. **Guard unbuilt verifiers.** For each row, look up the family's canonical verifier in `registry §2`, then check the injected listing above. If that agent file is **not** in the listing → `verdict: NEEDS-HUMAN`, `agent: (none)`, and a note naming the missing verifier. **Never spawn an agent that is absent from the listing** — the listing, not the roster table, is the truth about what exists.
 
-3b. **Guard unreachable tooling.** A built verifier is not a usable one. For each row, read the family's `Required tooling` class from `registry §2` and check this session's MCP roster for a server of that class:
+3b. **Guard unreachable tooling.** A built verifier is not a usable one. For each row, read the family's `Required tooling` class from `registry §2` and check this session's MCP roster for a server of that class.
 
-   - **browser automation** absent → `verdict: NEEDS-HUMAN`, `agent: (none)`, note naming the missing class. Do **not** spawn.
+   **Browser drivers.** Browser drivers apply only to the rows the project roster (registry §2) binds to `qa-runtime-ui` — the binding, not the family name, because a project may bind `runtime-UI + a11y` to another verifier. For those rows the effective driver comes from `BROWSER_DRIVER` and `PLAYWRIGHT` (Step 0):
+
+   | Configured (`BROWSER_DRIVER`) | Effective driver |
+   |---|---|
+   | `script` (set, empty or `UNKNOWN`) | `script` when `PLAYWRIGHT` is usable; else `mcp` when a desktop server of the `browser automation` class (any but the one named by `qa-env.json → device_mcp_server` — a touch profile never observes desktop rows) is in this session's roster; else `NEEDS-HUMAN` — `no browser driver: Playwright not usable from the project (<the playwright line>) and no browser MCP in this session` |
+   | `mcp` | `mcp` when such a desktop server is in the roster; else `NEEDS-HUMAN` naming the missing class |
+   | `subagent` | today's guards — `qa-runtime-ui` in the listing (step 3) and the class in the roster; else `NEEDS-HUMAN` |
+
+   The fall-back order is script → mcp → NEEDS-HUMAN, and it applies only to `script`. `mcp` and `subagent` are chosen on purpose and fall straight to `NEEDS-HUMAN`. Step 3 stays as is for every driver (`qa-runtime-ui.md` holds the observation rules the main session follows too). A family the roster binds to another verifier (an adopted `qa-runtime-app`, the device lane) keeps its current guards and dispatch, below.
+
+   - **browser automation** absent, for a row whose family is **not** bound to `qa-runtime-ui` → `verdict: NEEDS-HUMAN`, `agent: (none)`, note naming the missing class. Do **not** spawn.
    - **design-tool MCP** absent → `verdict: not-verified`, never a pass.
    - **none — filesystem only** → nothing to check.
 
@@ -268,7 +281,7 @@ Applies to a run whose record target (Step 0.7) holds a record. Today's fingerpr
 Print, in this order — a single run prints items 1, 2, 6 and 8; a group or pool run prints every item:
 
 1. `SUBJECT: <resolved | (unresolved)>` and `GATE_STATUS: <green | not-run | unknown>` — per ticket in a group or pool run.
-2. `BASE_URL: <value | (unresolved)> (<reason>)` and `BUILD_SKEW: <the probe's line, verbatim>`. These print **here**, before the table and therefore before the approval — the environment a matrix was verified against is part of what the human is approving, and it is unrecoverable afterwards.
+2. `BASE_URL: <value | (unresolved)> (<reason>)` and `BUILD_SKEW: <the probe's line, verbatim>`. These print **here**, before the table and therefore before the approval — the environment a matrix was verified against is part of what the human is approving, and it is unrecoverable afterwards. When any row is bound to `qa-runtime-ui`, also print `BROWSER_DRIVER: <configured> → <effective> (<reason>)` and `BROWSER_LAUNCH: <the probe's line>`; under an effective `mcp` the line `mcp: a single call is bounded by the server's own timeouts`; and, when the artifacts directory is committable, `ARTIFACTS: <dir> is committable — add it to <exclude file> before approving: echo '<dir relative to the owner>/' >> <exclude file>`, with `<exclude file>` from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (the command never writes it). The committability check is the Phase 2 guard's owner-aware check (Lane S → Before the first browser row), run here as a read — the probe's `artifacts-dir … NOT gitignored` line is the hint, unless the directory lies outside the work tree.
 3. In pool mode, the pool listing: every read ticket with key, title, time in status (`~` when approximate), newest record state, PRs, incoming deferrals and group id; the not-read line (Step 0.2); the PR-data and dependency states; the tickets set aside at resolution (Step 0.1) with their stop messages.
 4. In a group or pool run, the groups with edges — every edge with its signal — and every cross-reference with its signal (Step 0.8).
 5. The group(s) proposed for this run.
@@ -295,17 +308,153 @@ In re-check mode only the rows planned `verify` or `new` (Phase 0.5) are dispatc
 
 **A group or pool run** verifies the picked groups one after another; for each group Phases 2 → 2.5 → 3 finish before the next starts, so an interrupted session loses nothing already decided. Subsets are keyed `<KEY>:<ac_id>` (two tickets' `AC-1` never collide) and dispatched per ticket with that ticket's own `SUBJECT`; feature-path rows travel keyed `F<n>` with the `SUBJECT`s of the group.
 
-**Lanes P and S are built; Lane I is still guarded.** Never write or improvise dispatch for a verifier that is not in the injected listing — the Phase-0 guards decide what runs, not this section.
+**Lanes P and S are built; Lane I is still guarded.** Lane S runs in the main session under `script`/`mcp`, as a spawned `qa-runtime-ui` only under `subagent` (Phase 0 step 3b picks the driver). Never write or improvise dispatch for a verifier that is not in the injected listing — the Phase-0 guards decide what runs, not this section.
 
 - **Lane P** (parallel, browser-free, non-mutating) — spawn each built verifier **once**, with only its own family's `AC_SUBSET` (a JSON object `{ac_id: "AC text"}`), plus `SUBJECT` and `GATE_STATUS`. Several Lane-P agents may run concurrently because nothing they touch is a singleton.
-- **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. Dispatch rules below.
+- **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. The drivers and the dispatch rules are below.
 - **Lane I** (inline in this session) — exists because **some MCP servers are reachable only from the parent session**, never from a spawned sub-agent. Still guarded by Phase 0: its verifier is not in the injected listing, so its rows resolve to `NEEDS-HUMAN`.
 
-### Lane S dispatch
+### Lane S — the browser drivers
 
-**Run Lane S after every Lane P agent has returned, and run at most one Lane S agent at a time.** This is not a scheduling preference — it is the constraint the lane exists for.
+**Run Lane S after every Lane P agent has returned, and run at most one Lane S observer at a time** — one script, one MCP-driven row or one spawned agent. This is not a scheduling preference — it is the constraint the lane exists for.
 
-**Preflight, once, before the first browser verifier:**
+The driver sub-sections below govern the rows the roster binds to `qa-runtime-ui`, by the effective driver Phase 0 step 3b resolved. Every other Lane S binding — the device lane, an adopted app verifier — keeps spawning as described here whatever `browser_driver` says.
+
+**Two browser servers.** When `qa-env.json → device_mcp_server` is set, the device lane has its **own** preflight — the spawned-verifier preflight of `#### Driver \`subagent\``, run against the device server; a failure there aborts only the device lane (its rows → `NEEDS-HUMAN`), the desktop lane still runs, and vice versa. The device lane gets the inputs of `#### Driver \`subagent\`` → What to pass (without `BROWSER_LAUNCH`), with **`SWEEP_WIDTHS`** = `qa-env.json → touch_sweep_widths` and **`BREAKPOINT_TOKEN_PREFIX`** = `qa-env.json → breakpoint_token_prefix` (empty = its token cross-check is skipped) — the verifiers never read `qa-env.json` themselves, so an unpassed value reads to them as unset.
+
+#### Before the first browser row (every driver)
+
+1. **The committable-directory guard.** Take the run directory `ARTIFACTS_DIR` (`qa-env.json → artifacts_dir` + `/<run>`, where `<run>` is the record's `run=` value), absolute; find its nearest existing ancestor and ask git from there which work tree owns it: `git -C <ancestor> rev-parse --show-toplevel` fails → no repository owns it → the guard passes; it succeeds → that work tree (this project's, or any other checkout the path lands in) is the one to check, and the directory must be ignored there — `git -C <owner> check-ignore -q` on its path and on its trailing-slash form (the probe's idiom: a directory-only rule matches a not-yet-existing path only in the slash form). Committable → every browser row `NEEDS-HUMAN` — `artifacts dir <dir> is committable`, and no file is written. The fix the gate prints names the owner's exclude file from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (a linked worktree has a `.git` file, not a directory). Under `mcp` and `subagent` the same owner-aware check also covers **the browser MCP server's own output directory** (where it writes auto-named files and console logs): the `--output-dir <dir>` argument of the browser server in `qa-env.json → mcp_config_file`, resolved against the project root. No such argument found → the gate says `MCP output directory not established — the server may write logs into the work tree`, and the lane is guarded like a committable directory.
+2. **Reserve `ARTIFACTS_DIR` atomically** — `mkdir -p` the parents, then a plain `mkdir` on the leaf. The leaf already exists → another session took that second: take the next second as the run's `run=` value, carry it into the record and every artifact path, and try again — never write into a run directory this run did not create. A re-check therefore never overwrites the captures behind an earlier record.
+3. **Under `script` and `mcp`, Read `.claude/agents/qa-runtime-ui.md`** → `## Inputs`, `## Observation discipline`, `## Browser hazards`, `## Artifacts`, and apply them as the main session's own rules. The inputs are the ones the sub-agent gets: `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`, `SWEEP_WIDTHS` = `pointer_sweep_widths` for a tier-scoped criterion, `KEY`, `ARTIFACTS_DIR`, `BASE_URL`. **An empty mount template skips the lane** — its rows `NEEDS-HUMAN` with `no component mount point configured`, as under every driver.
+
+#### Driver `script` (default)
+
+One script per observed row at `<artifacts_dir>/<run>/<KEY>-<ac_id>.mjs` (feature-path rows: `<artifacts_dir>/<run>/<group id>-F<n>.mjs`), written with the Write tool from the skeleton below and never overwritten — a rewrite for the same row is `-2`, `-3`. Run it from the project root:
+
+```bash
+node --no-global-search-paths <script> > <script without .mjs>.json; echo "exit=$?"
+```
+
+— the same resolution policy as the probe, never a machine-global Playwright — with the Bash tool's `timeout` set to the script's hard limit + 30000 ms; one script at a time; then Read the JSON. Each run is a host program generated for this ticket: in a session without a matching allow rule it raises a permission prompt, and that prompt is the intended human gate — the command never widens an allow rule to avoid it.
+
+- **Every script starts from the skeleton.** The package the probe selected (`PKG` = the `<pkg>` of the probe's `playwright: resolves from the project (<pkg> <ver>)` line) is required from the project root; a fresh browser and a new isolated context — never `launchPersistentContext`, never a user-data directory; `browser_launch` applied; explicit action (10 s) and navigation (30 s) timeouts; the hard limit (120 s) is a timer that prints the JSON with `status: "hard-limit"` and exits with status 124 — a timer, because macOS has no `timeout`; waits on conditions only — never `waitForTimeout` or a sleep; the accessibility snapshot before the screenshot; every artifact named from the script's own basename (`BASE`, attempt suffix included) — screenshots `<ARTIFACTS_DIR>/<BASE>-<width tag>.png`, so a `-2` attempt never overwrites the evidence behind the first; one JSON object on stdout.
+- **How `browser_launch` lands in `LAUNCH`:** an empty `channel` or `user_agent` is written as `undefined` (never `''` — an empty user agent is sent as-is, and an empty channel is not the bundled browser); `ignore_https_errors` as a boolean; a string value as a JS string literal (`JSON.stringify` of the value).
+- **The main response is checked at every navigation.** Its status and final URL are observed; a status ≥ 400 ends the script as an environment error (`HTTP <status> at <url>`) unless `EXPECT_HTTP_ERROR` is set for a criterion about an error page — so a CDN denial or a broken mount route is never observed as the component. Then **the mount is verified on the parsed final URL**: same origin, same pathname, and every query parameter of `TARGET` (or of `EXPECT_URL`, set only for an intended redirect) present with the same value — so a component workbench that picks the story by `?path=` cannot pass on another story, and a login page whose URL merely contains the route (`/login?return=/route`) cannot pass either.
+- **Screenshots:** the viewport (`page.screenshot`) is captured **before** anything can scroll, then the element crop (`locator.screenshot` scrolls the element into view and crops it). A criterion about visibility without scrolling, placement or overflow is judged on the viewport capture.
+- **A tier-scoped criterion:** one context per width of `SWEEP_WIDTHS` (the skeleton's `WIDTHS`), observations keyed by width tag; the JSON's `required` lists every tag the script was asked to cover. A tier-scoped criterion with `pointer_sweep_widths` unset is observed at the default viewport and its row notes `pointer_sweep_widths unset — default viewport only`; it cannot `PASS` a claim about a named tier.
+- A wait that times out at the action timeout is an observation, not a crash — recorded as `condition not met within <n> ms` and judged under Observation discipline 4 (enumerate before claiming absence), never a `FAIL` on its own.
+- A script that hits its hard limit → the row is `NEEDS-HUMAN` with the limit and the step quoted — no retry of that row. A script-authoring error (a selector typo, a syntax slip) may be fixed once in a `-2` script; an environment error (navigation refused, a certificate) → `NEEDS-HUMAN` with the error quoted; missing or unparseable JSON → `NEEDS-HUMAN` quoting the exit status, no retry.
+- **Preflight:** `<artifacts_dir>/<run>/preflight.mjs` from the same skeleton — `TARGET` = the first dispatched row's mount target (a route the gate approved; a bare `BASE_URL` may legitimately answer 404 while the configured probe paths work), no locator; it observes `page.title()`, `navigator.userAgent` and `browser.version()`; `HARD_LIMIT_MS = 60000`. A failure every row shares — the browser does not launch, the hard limit, a certificate or connection error — aborts the lane: every browser row `NEEDS-HUMAN` with the error quoted; Lanes P and I continue; never a retry loop. An HTTP or mount failure of that one route is attached to the first row only (its row `NEEDS-HUMAN` with the status and URL), and the lane goes on.
+
+The skeleton, verbatim:
+
+<!-- qa-script:begin -->
+```js
+// /qa-verify script — <KEY> <ac_id> — run from the project root: node <this file> > <this file without .mjs>.json
+import { createRequire } from 'node:module';
+
+const ROOT = '/abs/project/root';                 // the project whose own Playwright runs
+const PKG = 'playwright';                         // the probe's selection: 'playwright' or '@playwright/test'
+const TARGET = 'http://localhost:3000/route';     // BASE_URL + the row's mount target
+const OUT = '/abs/project/root/.playwright-mcp/RUN'; // ARTIFACTS_DIR (artifacts_dir + /<run>)
+const BASE = 'KEY-AC-1';                          // this script's file name without .mjs (attempt suffix included)
+const KEY = 'KEY';
+const AC = 'AC-1';
+const LAUNCH = { channel: undefined, userAgent: undefined, ignoreHTTPSErrors: false }; // qa-env.json → browser_launch
+const WIDTHS = [];                                // SWEEP_WIDTHS for a tier-scoped criterion; [] = default viewport
+const EXPECT_HTTP_ERROR = false;                  // true only for a criterion about an error page
+const EXPECT_URL = '';                            // the expected final URL after an intended redirect; '' = TARGET
+const ACTION_MS = 10000;
+const NAV_MS = 30000;
+const HARD_LIMIT_MS = 120000;
+
+const result = { key: KEY, ac_id: AC, status: 'error', step: 'start', required: [], observed: {}, assertions: [], screenshots: [] };
+const emit = (code) => { process.stdout.write(JSON.stringify(result) + '\n'); process.exit(code); };
+const hard = setTimeout(() => {
+  result.status = 'hard-limit';
+  result.error = `hard limit ${HARD_LIMIT_MS} ms reached at step ${result.step}`;
+  emit(124);
+}, HARD_LIMIT_MS);
+
+const req = createRequire(ROOT + '/package.json');
+let pw;
+try { pw = req(PKG); } catch {}
+if (!pw) { result.error = `${PKG} not resolvable from ${ROOT}`; emit(2); }
+
+let browser;
+try {
+  result.step = 'launch';
+  browser = await pw.chromium.launch({ headless: true, channel: LAUNCH.channel });
+  for (const width of (WIDTHS.length ? WIDTHS : [null])) {
+    const tag = width ? `w${width}` : 'default';
+    result.required.push(tag);
+    const context = await browser.newContext({
+      userAgent: LAUNCH.userAgent,
+      ignoreHTTPSErrors: LAUNCH.ignoreHTTPSErrors,
+      ...(width ? { viewport: { width, height: 900 } } : {}),
+    });
+    context.setDefaultTimeout(ACTION_MS);
+    context.setDefaultNavigationTimeout(NAV_MS);
+    const page = await context.newPage();
+    result.step = `navigate ${tag}`;
+    const resp = await page.goto(TARGET);
+    const status = resp ? resp.status() : null;   // null for a file:// target
+    result.observed[`${tag}.http`] = status;
+    result.observed[`${tag}.url`] = page.url();
+    if (status !== null && status >= 400 && !EXPECT_HTTP_ERROR) throw new Error(`HTTP ${status} at ${page.url()}`);
+    const want = new URL(EXPECT_URL || TARGET);
+    const got = new URL(page.url());
+    const mounted = got.origin === want.origin && got.pathname === want.pathname
+      && [...want.searchParams].every(([k, v]) => got.searchParams.get(k) === v);
+    if (!mounted) throw new Error(`landed on ${page.url()}, not the mount target ${want.href}`);
+    // Observe: wait on conditions only (locator.waitFor, page.waitForFunction, load states).
+    result.step = `observe ${tag}`;
+    const el = page.locator('<selector>');
+    try {
+      await el.waitFor({ state: 'visible' });
+    } catch (e) {
+      if (e?.name !== 'TimeoutError') throw e;
+      result.observed[`${tag}.visible`] = `condition not met within ${ACTION_MS} ms`;
+      await context.close();
+      continue;
+    }
+    const view = `${OUT}/${BASE}-${tag}-viewport.png`;  // the viewport as the user sees it, before anything can scroll
+    await page.screenshot({ path: view });
+    result.screenshots.push(view);
+    result.observed[`${tag}.aria`] = await el.ariaSnapshot();
+    const shot = `${OUT}/${BASE}-${tag}.png`;            // element crop (it scrolls the element into view)
+    await el.screenshot({ path: shot });
+    result.screenshots.push(shot);
+    const actual = (await el.textContent())?.trim();
+    result.observed[`${tag}.text`] = actual;
+    result.assertions.push({ name: `${tag}: <what the criterion asserts>`, expected: '<expected>', actual, ok: actual === '<expected>' });
+    await context.close();
+  }
+  result.status = 'done';
+} catch (e) {
+  result.error = String(e?.message ?? e).slice(0, 500);
+}
+result.step = 'close';
+await browser?.close().catch(() => {});
+clearTimeout(hard);
+emit(result.status === 'done' ? 0 : 1);
+```
+<!-- qa-script:end -->
+
+The constant lines stay one per line (`const HARD_LIMIT_MS = …;`) — the contract test rewrites them; the observation block between the `// Observe` comment and `result.status = 'done'` is the part a row adapts.
+
+#### Driver `mcp`
+
+The main session drives the browser MCP tools itself, one row at a time. Every wait it issues carries a timeout no longer than the action timeout (the tool's own timeout argument where it has one); a navigation or wait that reports a timeout ends the row `NEEDS-HUMAN` with the timeout quoted; the row budget (120 s) is checked between calls, and a row past it is abandoned; no retry loop; the same sweep, screenshot and conversion rules as `script`. A single outstanding MCP call is bounded only by the server's own timeouts — the router cannot cancel a call in flight; it runs in the observed main session, where the Operator can interrupt it.
+
+Artifacts: the screenshots as above (named from the log's basename), plus the step log `<artifacts_dir>/<run>/<KEY>-<ac_id>.mcp.md` — each call and the value it observed, then, as its last section, a fenced JSON block **in the script result's shape** (`status` `done` | `hard-limit` | `error`, `required` — the dispatched width tags, `observed`, `assertions` with `name`/`expected`/`actual`/`ok`, `screenshots`, `error`), written by the main session when the row ends. The conversion reads that block exactly as it reads a script's JSON.
+
+**Preflight:** a single navigation to the first dispatched row's mount target within **~60 s** (liveness), the neighbours count (`qa-env.json → browser_mcp_process_pattern` — recorded, never gated on), and the `browser_launch` check below. A failure aborts the lane as under `script`.
+
+#### Driver `subagent`
+
+The `qa-runtime-ui` sub-agent is spawned, as before. **Preflight, once, before the first spawned browser verifier:**
 
 1. **Tooling** — is a server of the `browser automation` class in this session's roster? (Phase 0 step 3b already resolved this; do not re-decide it here.)
 2. **Liveness** — can the browser answer a single navigation within **~60 s**? Anything slower is a hung driver, not a slow one.
@@ -317,11 +466,71 @@ In re-check mode only the rows planned `verify` or `new` (Phase 0.5) are dispatc
 - **Continue Lanes P and I.** One dead lane is not a dead run.
 - **Never retry in a loop.** Two sessions contending for one browser profile can burn tens of minutes and will not resolve themselves; the failure needs a human, and a retry loop is what stops it from reaching one.
 
-**Two browser servers.** When `qa-env.json → device_mcp_server` is set, the device lane has its **own** preflight; a failure there aborts only the device lane (its rows → `NEEDS-HUMAN`), the desktop lane still runs, and vice versa.
+**What to pass:** `AC_SUBSET`, `SUBJECT`, `GATE_STATUS`, the router-resolved `BASE_URL`, and `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`. **If that template is empty, skip the lane** and route its criteria to `NEEDS-HUMAN` with `no component mount point configured` as the reason. A project with no way to mount a component in isolation is a normal state — say so rather than pointing the verifier at a guessed route. Also pass **`KEY`** (the tracker key or spec slug) and **`ARTIFACTS_DIR`** — the run directory reserved in "Before the first browser row" (after the committable-directory guard passed) — every browser verifier derives its per-AC artifact names from these two (`qa-runtime-ui.md → Artifacts`); never pass one concrete screenshot path for a subset with several `ac_id`s. **Sweep widths travel with the dispatch too:** a `qa-runtime-ui` subset with tier-scoped criteria gets **`SWEEP_WIDTHS`** = `pointer_sweep_widths` — the verifier never reads `qa-env.json` itself, so an unpassed list reads to it as "not configured". And **`BROWSER_LAUNCH`** — the typed `browser_launch` values (Step 0), which the sub-agent establishes in its browser before any criterion.
 
-**What to pass:** `AC_SUBSET`, `SUBJECT`, `GATE_STATUS`, the router-resolved `BASE_URL`, and `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`. **If that template is empty, skip the lane** and route its criteria to `NEEDS-HUMAN` with `no component mount point configured` as the reason. A project with no way to mount a component in isolation is a normal state — say so rather than pointing the verifier at a guessed route. Also pass **`KEY`** (the tracker key or spec slug) and **`ARTIFACTS_DIR`** (`qa-env.json → artifacts_dir` + `/<run>`, where `<run>` is the record's `run=` value; create it before the first browser dispatch, so a re-check never overwrites the captures behind an earlier record) — every browser verifier derives its per-AC artifact names from these two (`qa-runtime-ui.md → Artifacts`); never pass one concrete screenshot path for a subset with several `ac_id`s. **Sweep widths travel with the dispatch too:** the device lane gets **`SWEEP_WIDTHS`** = `qa-env.json → touch_sweep_widths`, and a `qa-runtime-ui` subset with tier-scoped criteria gets **`SWEEP_WIDTHS`** = `pointer_sweep_widths` — the verifiers never read `qa-env.json` themselves, so an unpassed list reads to them as "not configured". The device lane additionally gets **`BREAKPOINT_TOKEN_PREFIX`** = `qa-env.json → breakpoint_token_prefix` (empty = its token cross-check is skipped) — same rule: unpassed reads as unset.
+### Collecting agent results — all spawned agents
 
-**Collect each agent's JSON array** per `registry §6`. If it does not parse: retry **once** with the same subset. Still failing → that agent's ACs become `NEEDS-HUMAN` with the parse failure quoted in `notes`. **Never silently drop an agent's ACs** — a missing row reads as approval.
+**Collect each agent's JSON array** per `registry §6`. If it does not parse: retry **once** with the same subset. Still failing → that agent's ACs become `NEEDS-HUMAN` with the parse failure quoted in `notes`. **Never silently drop an agent's ACs** — a missing row reads as approval. This retry applies to spawned agents only. Those are the Lane P agents, the device lane, an adopted app verifier and the `subagent` driver; a main-session script's missing JSON is never retried (Driver `script`).
+
+### `browser_launch` — every driver
+
+`script` writes the values into every script (`LAUNCH`). Under `mcp` and `subagent` the browser MCP server launches the browser, so each set value is established in the live browser before any row — by the main session under `mcp`, by the sub-agent under `subagent`:
+
+- `user_agent` — `navigator.userAgent` equals the configured string.
+- `channel` — a set `channel` cannot be established in an MCP-launched browser: a pre-release channel (`chrome-beta`, `msedge-dev`, …) reports the same brand as the stable one, so no page-visible signal tells them apart. A set `channel` therefore guards the lane under `mcp` and `subagent`; only `script` honours it, by launching it.
+- `ignore_https_errors` — needed only for a host whose certificate is not trusted: the first navigation to an `https` `BASE_URL` succeeding establishes what the flag is for (on a host with a trusted certificate, or an `http` host, there is nothing to establish).
+
+Not established → every row of the lane `NEEDS-HUMAN` — `browser_launch.<key> not established in the <driver> browser (<observed>)`. Under `script` the preflight prints `navigator.userAgent` and the browser version into its JSON — the evidence of the browser used. The command never edits the MCP config.
+
+### After the rows — the screenshot check, then the conversion
+
+**A visual row is never decided from computed values alone.** For every visual row (`qa-runtime-ui.md` → Observation discipline 7: a criterion about what a person sees), whatever the driver, the main session opens (Read) at least one screenshot of the asserted state before accepting a verdict, and the working file names the opened path. No screenshot to open → `NEEDS-HUMAN` — `decided from computed values alone`.
+
+**Conversion of a script result (or an MCP step log's JSON block) to a registry §6 row:** `agent: "qa-runtime-ui"`, with `notes` starting `driver: script (main session)` or `driver: mcp (main session)`; `methods` one per independent method (`aria snapshot of <locator>`, `getComputedStyle on <locator>`, `screenshot viewed: <path>`); `evidence` the observed values quoted from the JSON; `artifacts` the script, its JSON and the screenshots (`mcp`: the `.mcp.md` log and the screenshots). The checks run in this order:
+
+1. `status` `hard-limit` or `error` → `NEEDS-HUMAN` with that diagnostic quoted verbatim (the limit and the step, or the error) — nothing later replaces it.
+2. A false assertion at any width → `FAIL` with its width named and any uncovered width listed in `notes` (an observed defect is never hidden behind an unobserved width); severity set by the router; it then faces Phase 2.5.
+3. The screenshot check above.
+4. **Coverage** — the router compares the result's `required` with the dispatched width tags it derives itself (`w<width>` for each `SWEEP_WIDTHS` entry it passed, `default` when it passed none): any difference → `NEEDS-HUMAN` — `script covered <tags>, dispatched <tags>` (a script left at `WIDTHS = []` cannot pass a two-tier row).
+5. **Verdict** — `PASS` only when `status` is `done`, every tag in `required` has at least one assertion and all of them are `ok`, and the observation rules are met. A required tag with no assertion (a `condition not met` observation, a skipped width) leaves the row `NEEDS-HUMAN` — `not observed at <tag>` — unless other evidence settles that width: `PASS` is never audited by Phase 2.5, so it must be complete here. `severity` only on `FAIL`.
+
+Worked rows — (a) a script that finished with one false assertion, (b) a script that hit its hard limit, (c) an `mcp` row whose step log ends with a passing block:
+
+```json
+[
+  {
+    "ac_id": "AC-2",
+    "family": "runtime-UI + a11y",
+    "agent": "qa-runtime-ui",
+    "verdict": "FAIL",
+    "severity": "major",
+    "methods": ["aria snapshot of #pay", "screenshot viewed: .playwright-mcp/20261122T101500Z/ABC-1-AC-2-default.png"],
+    "evidence": ["default.aria: - button \"Pay now\"", "assertion default: button label — expected \"Pay\", actual \"Pay now\""],
+    "artifacts": [".playwright-mcp/20261122T101500Z/ABC-1-AC-2.mjs", ".playwright-mcp/20261122T101500Z/ABC-1-AC-2.json", ".playwright-mcp/20261122T101500Z/ABC-1-AC-2-default-viewport.png", ".playwright-mcp/20261122T101500Z/ABC-1-AC-2-default.png"],
+    "notes": "driver: script (main session) — status done, 1 of 1 assertions false"
+  },
+  {
+    "ac_id": "AC-3",
+    "family": "runtime-UI + a11y",
+    "agent": "qa-runtime-ui",
+    "verdict": "NEEDS-HUMAN",
+    "methods": [],
+    "evidence": ["status hard-limit — \"hard limit 120000 ms reached at step observe default\""],
+    "artifacts": [".playwright-mcp/20261122T101500Z/ABC-1-AC-3.mjs", ".playwright-mcp/20261122T101500Z/ABC-1-AC-3.json"],
+    "notes": "driver: script (main session) — hard limit 120000 ms reached at step observe default"
+  },
+  {
+    "ac_id": "AC-4",
+    "family": "runtime-UI + a11y",
+    "agent": "qa-runtime-ui",
+    "verdict": "PASS",
+    "methods": ["aria snapshot of the dialog", "screenshot viewed: .playwright-mcp/20261122T101500Z/ABC-1-AC-4-default.png"],
+    "evidence": ["log block: status done, required [\"default\"], assertion default: dialog title — expected \"Confirm\", actual \"Confirm\""],
+    "artifacts": [".playwright-mcp/20261122T101500Z/ABC-1-AC-4.mcp.md", ".playwright-mcp/20261122T101500Z/ABC-1-AC-4-default.png"],
+    "notes": "driver: mcp (main session)"
+  }
+]
+```
 
 ---
 
@@ -375,7 +584,7 @@ Then **one** `AskUserQuestion`: `Accept all recommendations` (first, recommended
 Build one record per ticket per `registry §7b`, serialized from that ticket's own `(<KEY>, <ac_id>)` pairs:
 
 - the Run line (`first`, or `re-check of <date>`; `group: <keys>`, or `single`), the Environment line from `BASE_URL` / `BASE_URL_REASON` and `BUILD_SHA` (or the skew state when it is `-`), and `Criteria from:`;
-- one row per criterion with `[<fp>]`. A Phase-0 `not-verified` row (design-tool MCP absent) is written `NEEDS-HUMAN — design-tool MCP absent (not-verified)` and counted in `needs-human=` — the record admits only §6 / §7a dispositions — and it joins the one-pass list like any `NEEDS-HUMAN`;
+- one row per criterion with `[<fp>]` — a browser row's `<observed value, one line>` quotes the script's observed value (or the MCP step log's). A Phase-0 `not-verified` row (design-tool MCP absent) is written `NEEDS-HUMAN — design-tool MCP absent (not-verified)` and counted in `needs-human=` — the record admits only §6 / §7a dispositions — and it joins the one-pass list like any `NEEDS-HUMAN`;
 - `### Feature path` — the group's feature-path rows on every ticket of the group, a carried charged `FAIL` with its `(group <id>)` (Phase 0 step 5), or `- none` when there are neither; `### Outside the criteria` (out-of-AC observations, removed rows, an incomplete Jira history (Step 0.75), or `- none`);
 - the verdict line — a feature-path `FAIL` counts in `Blockers` only on the tickets it is charged to — and the marker with `run=` = the run's start in `YYYYMMDDTHHMMSSZ`, `group=<group id>` (or `-`), `build=` = `BUILD_SHA`.
 
@@ -412,7 +621,7 @@ The file is local markdown, so a table is fine here. Include:
 
 - A header stamping `SUBJECT`, `GATE_STATUS`, **`BASE_URL` + its resolution reason**, **`BUILD_SKEW`**, `BUILD_SHA`, the AC source, the record target, the mode, and the date. The environment a run was verified against must be readable off the artifact, not reconstructed from a session nobody kept.
 - **Every runtime / SSR / visual row carries the skew stamp** from the Step 0 state table — including the `not-applicable` case, which stamps the local host rather than a warning.
-- One row per AC: fp · family · agent · methods · evidence · artifact paths · disposition · severity (`FAIL` rows only).
+- One row per AC: fp · family · agent · methods · evidence · artifact paths · disposition · severity (`FAIL` rows only). Under a browser driver the artifact paths are the script, its JSON and the screenshots (`mcp`: the step log and the screenshots), plus the effective driver; a visual row names the screenshot that was opened.
 - The source rows behind any merged verdict.
 - **The blocker tally:** count of `FAIL` rows with severity `blocker`. **≥1 blocker ⇒ not acceptable**, stated in those words.
 - Every `FAIL` cites its `ac_id` and **quotes the clause it contradicts**.
@@ -496,6 +705,8 @@ The command never transitions a ticket.
 - **Never read a deferral marker as a record, and never skip an invalid newest record for an older one** (registry §7b).
 - **Never merge two groups on a weaker signal, and never exceed 5 tickets in a group.**
 - **Never verify a deferred row from the pointer's text — verify the source's criterion.**
+- **Never decide a visual row from computed values alone, and never retry a script that hit its hard limit.**
+- **Never write browser evidence into a committable directory.**
 
 ---
 
@@ -504,7 +715,8 @@ The command never transitions a ticket.
 - **Why the classification gate is a full stop.** Misclassification is the cheapest error to fix before verification and the most expensive after — the run spends its whole budget gathering the wrong evidence and produces a matrix that looks complete. Stopping is not caution; it is the only moment the correction is free.
 - **Why build status is derived, not declared.** A hand-maintained "is it built?" column can lie at exactly the moment the guard exists to fire, and the run then errors out spawning an agent whose file does not exist. Reading `.claude/agents/` removes the failure mode instead of documenting it.
 - **Why every sub-agent re-reads the registry.** A spawned agent starts with fresh context and does not inherit this session's copy. One shared file read independently is what keeps the router and its verifiers speaking the same protocol.
-- **Why the browser lane is dormant by default rather than absent.** Lane S needs the project to describe how a component is mounted for observation (`qa-env.json → component_mount_url_template`), and many projects have no answer. Shipping it dormant is what makes a partial roster *honest*: an unconfigured or untooled lane degrades its criteria to `NEEDS-HUMAN` with the reason stated, instead of quietly not appearing. The two Phase-0 guards are the same idea at two altitudes — step 3 asks whether the verifier **exists**, step 3b asks whether it can **observe**. A row that passes both is the only kind that may claim evidence.
+- **Why the browser lane is dormant by default rather than absent.** Lane S needs the project to describe how a component is mounted for observation (`qa-env.json → component_mount_url_template`), and many projects have no answer — under every driver. Shipping it dormant is what makes a partial roster *honest*: an unconfigured or untooled lane degrades its criteria to `NEEDS-HUMAN` with the reason stated, instead of quietly not appearing. The two Phase-0 guards are the same idea at two altitudes — step 3 asks whether the verifier **exists**, step 3b asks whether it can **observe**. A row that passes both is the only kind that may claim evidence.
+- **Why the main session drives the browser.** A spawned agent waiting on a locked browser can be neither observed nor stopped — its session is out of sight until it returns, however long that takes. A self-terminating script in an isolated context cannot lock a profile, ends itself at its hard limit, and stays behind in the artifacts directory as evidence and as raw material for a later regression test. The `mcp` driver keeps the same visibility for a project without its own Playwright; `subagent` stays available for a project that chooses it.
 
 ## Stage end marker (token usage)
 
