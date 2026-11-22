@@ -179,8 +179,8 @@ every 60 s, **max 30 min**) and end the turn; the notification resumes this comm
 - `abandoned`, or a policy flips to `rejected` (check `az repos pr policy list` once when the loop
   ends) → report the blocker and stop. Auto-complete stays set; nothing else is changed.
 - Timeout → report what it still waits for (e.g. "Build running 30 min") and say that the source
-  branch is deleted only by a re-run after the PR completes (5a / 5b pass
-  `--delete-source-branch false`): run `/pr-merge <id>` once it is `completed` to do the cleanup.
+  branch is deleted only by a re-run after the PR completes: run `/pr-merge <id>` once it is
+  `completed` to do the cleanup.
 
 Any `az` error (e.g. "policy not satisfied", 403) → show it verbatim and stop; never retry with
 other flags, never `--bypass-policy`.
@@ -222,8 +222,7 @@ reported with its retry command, never a reason to stop the cleanup.
 
 Step 6b runs first on every path that reaches this step (the "go to Step 6" exits of Step 6a too).
 
-1. **Remote branch** — this command is the only one that deletes it (5a / 5b pass
-   `--delete-source-branch false`). `MERGED_SRC` =
+1. **Remote branch.** `MERGED_SRC` =
    `az repos pr show --id <PR_ID> --org "$ORG_URL" --query lastMergeSourceCommit.commitId -o tsv`
    (one read). Keep the remote branch, and say why, when any of these holds:
    - `SOURCE` is in `KEEP` (`## Guardrails`) → "`<SOURCE>` is a long-lived branch — kept";
