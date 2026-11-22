@@ -434,7 +434,11 @@ stage clock is paused while the gate waits (`lead_waiting`).
   - `accept` — needs `blind-check.md`, then the brief (not older than the blind check) with the six
     headings, and for a QA `Verdict: ready-with-warnings` one `- <warning> → keep|fix|follow-up —
     <why>` line under `## Warnings` per comma-separated item of the report's `Warnings:` line;
-    otherwise exit 8 naming the missing piece. The runner accepts the qa record and launches the
+    otherwise exit 8 naming the missing piece. Routing (prompt rule; the script checks only the
+    line's shape): an item is a comma-free label; `→ follow-up` needs the failure sentence and
+    `not fixable here: <path outside the delta | decision needed>` in `<why>`, else the lead routes
+    it `keep` or `fix`; at most one `→ follow-up` line per run across rounds (a cut order line under
+    `## Ordered vs delivered` included); the wrapup drafts tickets only from those lines (§10). The runner accepts the qa record and launches the
     wrapup.
   - `rework` — opens the next round (§9).
   - `abandon-recommended` — needs `--decision d-<n>`, a pending decision opened with
@@ -462,7 +466,8 @@ runs again.
 - **Order:** the lead writes `runs/<run>/rework-<n>.md` (n = the next round; each item tied to an
   order line or a QA defect), then `team-verdict.sh acceptance rework --for <qa record> --ref
   runs/<run>/rework-<n>.md`. `--for` is the qa's newest record of the current round, `done` or
-  `blocked`.
+  `blocked`. The order also lists every own-and-reached finding the earlier rounds left open — a
+  rework round leaves no logged finding of this run behind.
 - **Budget:** rounds the lead may order alone = `teams.teamlead.rework_budget.<mode>` (defaults
   brainstorm 2, quick 1) + the consumed Operator `continue` grants of decisions opened with
   `--notify abandon_decision` — one grant, one round. The count is derived from files (rework
@@ -554,15 +559,24 @@ runs again.
     sha256, and fills `## Wrapup decisions`. The hook `guard-team-verdict.sh` checks the session, so
     a stage cannot call it under a forged role. Then the lead answers the proposals stop's ask:
     `team-answer.sh <team> a-<n> --text "decided: <verdict file>" --authority teamlead --why …`.
-  - **The filter.** Default **no**. A follow-up ticket passes only when the product needs it: a
-    defect the user or the next run would hit, or ordered work that was cut — never a
-    nice-to-have, a tidy-up, or an idea the implementation itself suggested. A memory entry passes
+  - **The filter.** Default **no**. A follow-up ticket comes only from a `→ follow-up` line of the
+    accepted acceptance brief (§8) and holds **one defect**: its first line is the failure sentence
+    "When <who> runs <what>, <wrong result>", and it passes only on real use (a command or pipeline
+    in use today, a supported setup — no "if", "could", non-default environment or second fault),
+    silent harm (wrong without an error; not a loud failure, a wording slip, a slow path or a
+    refactor) and not fixable in this run (outside the run's lines, or a decision the order does
+    not cover — named). Cut ordered work is the other valid ticket, its first line naming the order
+    line. No riders; up to three anchors with one failure sentence. The accept reason is the
+    failure sentence, never "the brief routes it". A memory entry passes
     only when a future session would otherwise repeat a concrete mistake; one that describes a
     temporary state says when it expires ("until #N lands"). An item the lead cannot judge is
     declined (`cannot judge: …`). One wrong fact in a draft is a `correction:`, not a decline; a
     draft that needs more is declined with the reason.
-  - **Cap:** 1 ticket and 1 memory entry per run (groups A and B together, every proposals file of
-    the run); each further accept needs `over cap because …`. A `handoff` item uses no cap.
+  - **Cap:** tickets **0 by default; at most 1 per run**, only for a `→ follow-up` line that meets
+    the bar (`team_wrapup.py` still accepts a second ticket with `over cap because` until script
+    enforcement lands — the lead never writes it for a ticket); 1 memory entry per run (groups A
+    and B together, every proposals file of the run), each further memory accept needs
+    `over cap because …`. A `handoff` item uses no cap.
   - A group B entry (`decisions.md`, `patterns.md`, `index.md` by target, whatever the item says;
     any other memory file, an entry that alters a historical decision) gets a Codex opinion first (`codex-bg.sh`, prompt text only,
     as in Answering).
@@ -573,6 +587,9 @@ runs again.
     or when a decided proposals file changed after its verdict (sha256). The
     wrapup stays the only writer of `.agents/memory/`: the lead's write guard still refuses memory
     paths.
+  - **Calibration.** After the next ten team runs the Supervisor compares tickets created,
+    extra rework rounds and QA edits against the rate before this policy (about one follow-up ticket per
+    run). A lower ticket count bought by routine extra rework misses the goal.
 
 ## 11. Tracker comments
 

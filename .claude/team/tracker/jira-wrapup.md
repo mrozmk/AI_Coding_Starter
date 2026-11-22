@@ -34,9 +34,10 @@
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
      go through `.agents/memory/reflection-protocol.md` (the default is to save nothing),
      de-duplicated against `git show origin/{{LINE}}:<file>`, not against this branch;
-   - **tasks**: `## Follow-ups` items that this PR does not cover and that deserve a ticket.
-     Prepare `/jira create` drafts (required fields, components, description template, queued
-     attachments). Fetch {{TICKET}} with `fields="parent"`, then fetch that parent's
+   - **tasks**: one `/jira create` draft per `→ follow-up` line of the accepted
+     `acceptance-brief.md` that passes the bar for steps 6–7 (required fields, components,
+     description template, queued attachments); the description's first line is
+     the failure sentence (a cut-work ticket: the order line it cuts). Fetch {{TICKET}} with `fields="parent"`, then fetch that parent's
      `summary,issuetype`; use it only when `issuetype.name == "Epic"`. Never use the run's ordinary
      Task as parent, or substitute a guessed/catch-all epic. An absent/non-Epic parent needs the
      clarification in step 7. Apply `.agents/memory/domain/jira.md`: its assignee and the

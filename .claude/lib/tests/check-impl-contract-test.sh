@@ -4,6 +4,10 @@
 # the session's model only as declared, and every place that copies a FALLBACK line says so.
 # It also pins the structure finder's standards contract (the `STANDARDS:` line, the `rule:` /
 # `duplicate of:` tags, `/deep-review` standard 9 and the string-coded wording of standard 5).
+# It also pins the follow-up policy text: the own + reached finding filter in Step 1ab/1.5, the drop
+# tags in the qa prompt, the one-defect ticket bar in the wrapup prompt, the TeamLead prompt,
+# `team-lead.md` and the three tracker wrapup blocks, the ticket cap and rework clearing its own
+# findings.
 # Text checks only — nothing is spawned.
 #
 # Usage: bash .claude/lib/tests/check-impl-contract-test.sh [root]   (default: this checkout)
@@ -161,6 +165,50 @@ check("same fixer channel `/check-implementation` uses" not in read(".claude/com
 check("two subagents per iteration" in read(".claude/docs/guide.md"), "guide.md does not state the cost")
 check("two subagents per iteration" in read("docs/teams/upgrade-notes.md"),
       "upgrade-notes.md does not state the cost")
+
+CI = "check-implementation.md"
+for needle in ("**The finding filter (own + reached)**", "**own**", "**reached**",
+               "When <who> runs <what> on a supported setup, <wrong result>",
+               "dropped — hypothetical | cosmetic | not own",
+               "only in iteration 1 and in the one cross-model apply pass",
+               "more than 8 own-and-reached findings", "back to the coder", "comma-free label"):
+    check(needle in ci, f"{CI}: lacks {needle!r}")
+item1 = apply_.split("\n1. ", 1)[-1].split("\n2. ", 1)[0]
+codex_ = s1.split("**1ab-codex.", 1)[-1]
+FILTER = "the finding filter (own + reached)"
+check(FILTER in item1, f"{CI}: 1ab-apply item 1 does not use {FILTER!r}")
+check(FILTER in codex_, f"{CI}: 1ab-codex does not use {FILTER!r}")
+check(FILTER in s15, f"{CI}: Step 1.5 does not use {FILTER!r}")
+check("apply `medium` only on a **sensitive path" not in item1,
+      f"{CI}: 1ab-apply item 1 still carries the old sensitive-path-only filter")
+
+check("dropped — hypothetical|cosmetic|not own" in qa, "qa.md: lacks the drop tags")
+check("comma-free label" in qa, "qa.md: lacks 'comma-free label'")
+
+wr = read(".claude/team/prompts/wrapup.md")
+for needle in ("holds **one defect**", "When <who> runs <what>, <wrong result>.", "**Real use.**",
+               "**Silent harm.**", "**Not fixable in this run.**", "No riders",
+               "→ follow-up` line of the accepted `acceptance-brief.md`", "QA dropped N findings"):
+    check(needle in wr, f"wrapup.md: lacks {needle!r}")
+
+tl = read(".claude/team/prompts/teamlead.md")
+for needle in ("0 by default; at most 1 per run", "not fixable here:",
+               "At most one `→ follow-up` line per run",
+               "leaves no logged finding of this run behind", 'never "the brief routes it"'):
+    check(needle in tl, f"teamlead.md: lacks {needle!r}")
+check("1 ticket and 1 memory entry per run" not in tl, "teamlead.md: still carries the old ticket cap")
+
+tlr = read(".agents/reference/team-lead.md")
+for needle in ("0 by default; at most 1 per run", "not fixable here:",
+               "leaves no logged finding of this run behind", "holds **one defect**",
+               "**Calibration", "extra rework rounds"):
+    check(needle in tlr, f"team-lead.md: lacks {needle!r}")
+check("1 ticket and 1 memory entry per run" not in tlr, "team-lead.md: still carries the old ticket cap")
+
+for t in ("github", "jira", "none"):
+    tw = read(f".claude/team/tracker/{t}-wrapup.md")
+    for needle in ("→ follow-up", "the failure sentence"):
+        check(needle in tw, f"{t}-wrapup.md: lacks {needle!r}")
 
 man = read(".claude/team/manifest.txt").splitlines()
 for p in (".claude/agents/correctness-reviewer.md", ".claude/agents/correctness-reviewer-fallback.md",

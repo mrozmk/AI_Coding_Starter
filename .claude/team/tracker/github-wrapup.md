@@ -64,9 +64,11 @@
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
      go through `.agents/memory/reflection-protocol.md` (the default is to save nothing),
      de-duplicated against `git show origin/{{LINE}}:<file>`, not against this branch;
-   - **tasks**: `## Follow-ups` items that this PR does not cover and that deserve a ticket, and
-     that no open issue already covers (`bash .claude/lib/team-tracker.sh list --out <file>`).
-     Prepare a draft `{title, body}` for each. The body ends with the line
+   - **tasks**: one draft per `→ follow-up` line of the accepted `acceptance-brief.md` that passes
+     the bar for steps 6–7, when no open issue already covers it
+     (`bash .claude/lib/team-tracker.sh list --out <file>`). Prepare a draft `{title, body}` for
+     each; the body's first line is the failure sentence (a cut-work ticket: the order line it
+     cuts). The body ends with the line
      `Follow-up of #{{TICKET}} · origin #{{ORIGIN_TICKET}}`, copied verbatim (the next start counts
      the chain by it), then `[wrapup {{RUN}} create-<n>]` as the last line. No parent Epic, no
      sprint, no assignee — the tracker has none.

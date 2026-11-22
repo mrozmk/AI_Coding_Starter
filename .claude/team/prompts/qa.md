@@ -30,9 +30,13 @@ Without a lead nobody answers questions and the tool is disabled.
    (`run: {{RUN}}`, `attempt: {{ATTEMPT}}`, `output_rev:` = `git rev-parse HEAD`).
    Every finder `FALLBACK` part of `/check-implementation`'s `Finders:` line goes verbatim into
    `Warnings:`.
+   A warning from `/check-implementation`'s finding filter goes into `Warnings:` as its
+   comma-free label (the line is split at every comma); its failure sentence goes on a free-text
+   line after the keyed lines (`F<n>: When …`).
    After the keyed lines add one free-text line per gate run: `Load: start <1m> end <1m>
    (waited <n>s)`, from the gate's "load avg" and "lock waited" lines.
-6. Verdict `❌ Escalated` or any rethink signal →
+6. Verdict `❌ Escalated` (more than 8 own findings included — the message names them as back to
+   the coder) or any rethink signal →
    `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait.
 7. Otherwise publish:
    - Build `{{RUN_DIR}}/pr-description.md`: the current body from
@@ -59,6 +63,8 @@ or `sed -i` through a here-doc: the egress guard stops an inline interpreter for
 
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`
-in the same notes file as `- [qa {{ATTEMPT}}] <item> — <where>`.
+in the same notes file as `- [qa {{ATTEMPT}}] <item> — <where>`; a finding the finding filter
+dropped carries its tag:
+`- [qa {{ATTEMPT}}] dropped — hypothetical|cosmetic|not own: <finding> — <file:line>`.
 
 Do not exit the session yourself; the runner ends it.

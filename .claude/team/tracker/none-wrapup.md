@@ -14,9 +14,10 @@
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
      go through `.agents/memory/reflection-protocol.md` (the default is to save nothing),
      de-duplicated against `git show origin/{{LINE}}:<file>`, not against this branch;
-   - **tasks**: `## Follow-ups` items that this PR does not cover and that deserve a ticket. No
-     ticket is created: they go to a `## Follow-upy` list in
-     `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`, one line each (title plus one sentence).
+   - **tasks**: each `→ follow-up` line of the accepted `acceptance-brief.md` that passes the bar
+     for steps 6–7. No ticket is created: they go to a `## Follow-upy` list in
+     `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`, one line each — the failure sentence (a cut-work item:
+     the order line it cuts).
 7. No new/unaccepted recommendations → step 8 for accepted memory work still unfinished, otherwise
    step 9. For new/unaccepted memory recommendations ask **one** `AskUserQuestion` (2–4 options):
    With a per-run TeamLead ask no question: follow **With a per-run TeamLead** in the wrapup

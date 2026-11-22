@@ -182,6 +182,16 @@ round's blind check or brief.
    `## Scope delta`, `## Fit risks`, `## Open defects`, `## Warnings`, `## Recommendation`. Under
    `## Warnings` write `none` for a QA verdict `ready`; for `ready-with-warnings` one line per
    warning of the report's `Warnings:` line: `- <warning> → keep|fix|follow-up — <why>`.
+   `<warning>` is the report's comma-free label. Route `→ follow-up` only with the failure sentence
+   ("When <who> runs <what>, <wrong result>") and
+   `not fixable here: <path outside the delta | decision needed>` in its `<why>`, and only when it
+   meets the ticket bar (**Wrapup** step 2); otherwise route it `keep` (it is fine to ship) or `fix`
+   (a rework item). At most one `→ follow-up` line per run, every round's brief and section
+   together; a second defect that meets the bar is
+   `keep — over the run's ticket cap: <failure sentence>`. Ordered work that was cut and deserves a
+   ticket is written under `## Ordered vs delivered` as
+   `- <order line> → follow-up — cut: <why>` and is that one line. No `→ follow-up` line → the
+   wrapup drafts no ticket.
 6. The verdict, one of:
    - `bash .claude/lib/team-verdict.sh acceptance accept --for <record> --message "<line>"`
      (exit 8 names what the brief lacks);
@@ -199,6 +209,8 @@ round: the coder continues on the same branch and the same PR, then qa runs agai
 
 1. Write `.agents/team/runs/{{RUN}}/rework-<n>.md` (n = the next round: 2 for the first rework):
    one item per line, each tied to an order line or a QA defect — the coder fixes exactly these.
+   The order also lists every own-and-reached finding the earlier rounds left open (the QA reports'
+   warnings) — a rework round leaves no logged finding of this run behind.
 2. `bash .claude/lib/team-verdict.sh acceptance rework --for <qa record> --ref
    .agents/team/runs/{{RUN}}/rework-<n>.md --message "<line>"`. In quick mode the first rework adds
    `--quick-call continue`; the alternative is `abandon-recommended` — a remode once code exists is
@@ -239,13 +251,23 @@ with `stop wrapup <a>: … — wrapup proposals: <file>`. Nothing on this path g
 1. Read the proposals file (`create-<n>` tickets, `memory-<n>` entries with group A or B and their
    `.agents/memory/` target; a `handoff` item was already accepted by its decider — accept it
    unless it no longer fits the code, it uses no cap and needs no opinion).
-2. **Default no.** Accept a follow-up ticket only when the product needs it: a defect the user or the
-   next run would hit, or ordered work that was cut. Not a nice-to-have, not a tidy-up, not an idea
-   the implementation itself suggested. Accept a memory entry only when a future session would
+2. **Default no.** Accept a follow-up ticket only for a `→ follow-up` line of the accepted
+   acceptance brief that meets the bar: one defect, first line the failure sentence
+   "When <who> runs <what>, <wrong result>"; **real use** (something a command or pipeline in use
+   today produces on a supported setup — no "if", "could", non-default environment or second
+   fault); **silent harm** (wrong without an error — a wrong verdict, lost content, a decision
+   answered by the wrong party, a human pulled in for nothing; not a loud failure with a clear
+   message, a wording slip, a slow path or a refactor); **not fixable in this run** (outside the
+   run's lines, or a decision the order does not cover — named). Ordered work that was cut is the
+   other valid ticket; its first line names the order line. No riders; up to three anchors with the
+   same failure sentence. Your accept reason is the failure sentence (or the cut order line),
+   never "the brief routes it". Accept a memory entry only when a future session would
    otherwise repeat a concrete mistake; one about a temporary state must say when it expires
    ("until #N lands"). An item you cannot judge is declined: `cannot judge: <why>`.
-3. **Cap:** 1 ticket and 1 memory entry per run (groups A and B together, earlier proposals files
-   of the run included). Each further accept needs `— over cap because <why>`.
+3. **Cap:** tickets **0 by default; at most 1 per run**, only for a `→ follow-up` line that meets
+   the bar — never `over cap` for a ticket. 1 memory entry per run (groups A and B together,
+   earlier proposals files of the run included); each further memory accept needs
+   `— over cap because <why>`.
 4. A group B entry (`decisions.md`, `patterns.md` and `index.md` always; any other memory file, an
    entry that changes a historical decision) needs a Codex opinion first (`opinion-<n>.md`, as in
    **Answering** step 7); name that file in the accept line.
