@@ -31,6 +31,7 @@ Read the full PRD. Identify which sections are present:
 - Executive Summary / Mission / Target Users / MVP Scope → feed `project-brief.md`
 - Tech Stack / Architecture → feed `project-brief.md`
 - Scope → Out of scope (non-goals) (§4), Goals (§2), Core Architecture & Patterns (§7) → feed the brief's Non-goals and Change test sections
+- Users & stakeholders → **Source precedence** (§3) → feeds one Key Conventions bullet
 - Pricing / Plans / Monetization / Billing / Subscription / Stripe → feed `business-model.md`
 
 When `docs/architecture.md` exists, the PRD's `Technology Stack` / `Core Architecture & Patterns` sections are its digest (written by `/architect`); take Stack/Architecture from them and add `docs/architecture.md` to the brief's Key Files.
@@ -59,7 +60,7 @@ description: Distilled TL;DR of the PRD — loaded by /prime instead of full PRD
 5. **Stack** — single line summary (e.g. "Next.js 14 + Prisma + Postgres + BullMQ + Redis"). No deep detail — that lives in `architecture.md`.
 6. **Architecture** — 5-7 bullets. Top-level pattern, data flow, async/jobs, auth model, deployment shape.
 7. **Status** — one line. Phase: bootstrapping / MVP build / post-MVP / mature. Optionally with current focus. When the PRD header carries `**Baseline:**`, add one sub-line `Scope register: Baseline v1.0 (<date>, approved by <who> | proposed) · Current v1.N (<date>) · newest: D-k <title> (<approval>), …` with the three newest `D-n` from `## Change log`. No baseline header → no sub-line.
-8. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one.
+8. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one. When PRD §3 has a **Source precedence** block, one of these bullets is `Source precedence (recommended to the decision owner): <default>[; <subject> — <source>] — overrides recorded by <who> in <where>`, in the PRD's wording; an open block (`Open — Q-n`) → `Source precedence: open — <Q-n>`; no block → no bullet and no warning.
 9. **Key Files** — table. Always include: `docs/PRD.md`, `CLAUDE.md`, `README.md`, `.agents/memory/index.md`, `.agents/memory/architecture.md`, `.agents/plans/active/`. Add 2-4 project-critical files if they exist.
 
 **Overwrite policy:** the file is regenerated wholesale — preserve no prior content. Brief is derived state from PRD.
