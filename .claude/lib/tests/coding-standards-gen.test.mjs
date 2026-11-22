@@ -176,7 +176,8 @@ test('scanner: option parsing per tool', async () => {
 test('scanner: installing or naming a tool is not a run', async () => {
   const { parseRun } = await scanner();
   for (const [id, cmd] of [['flake8', 'pip install flake8 mypy'], ['mypy', 'python -m pip install mypy'], ['stylelint', 'npm i -D stylelint-config-standard'],
-    ['eslint', 'npm install -g eslint'], ['eslint', 'yarn global add eslint'], ['rubocop', 'gem install rubocop'], ['eslint', 'echo running eslint'], ['psalm', 'which psalm']]) {
+    ['eslint', 'npm install -g eslint'], ['eslint', 'yarn global add eslint'], ['rubocop', 'gem install rubocop'], ['eslint', 'echo running eslint'], ['psalm', 'which psalm'],
+    ['eslint', 'npm ls eslint'], ['eslint', 'yarn why eslint'], ['eslint', 'pnpm update eslint']]) {
     assert.equal(parseRun(id, cmd), null, cmd);
   }
   const dir = tmp();
@@ -232,6 +233,27 @@ test('scanner: tsc -p <dir> scopes TypeScript to the selected project', async ()
   const s = await fixtureScan(dir, ['package.json', 'packages/api/tsconfig.json', 'packages/web/tsconfig.json']);
   assert.equal(tool(s, 'typescript').enforced, true);
   assert.deepEqual(tool(s, 'typescript').appliesTo, ['packages/api/**/*.ts']);
+});
+
+test('scanner: tsc with file operands builds no project', async () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'tsconfig.json'), '{ "compilerOptions": { "strict": true } }\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "check": "tsc --noEmit src/a.ts" } }\n');
+  assert.equal(tool(await fixtureScan(dir, ['package.json', 'tsconfig.json']), 'typescript').enforced, false);
+});
+
+test('scanner: eslint -c <file> attributes the selected config, not the run directory one', async () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'packages/web'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'eslint.config.mjs'), "export default [{ rules: { eqeqeq: 'error' } }];\n");
+  fs.writeFileSync(path.join(dir, 'packages/web/eslint.config.mjs'), "export default [{ rules: { 'no-var': 'error' } }];\n");
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "lint": "eslint -c packages/web/eslint.config.mjs src" } }\n');
+  const eslint = tool(await fixtureScan(dir, ['package.json', 'eslint.config.mjs', 'packages/web/eslint.config.mjs']), 'eslint');
+  assert.equal(eslint.enforced, true);
+  assert.equal(cfg(eslint, 'packages/web/eslint.config.mjs').attributed, true);
+  assert.deepEqual(cfg(eslint, 'packages/web/eslint.config.mjs').notEnforced, []);
+  assert.equal(cfg(eslint, 'eslint.config.mjs').attributed, false);
+  assert.deepEqual(eslint.appliesTo, ['src/**']);
 });
 
 // ---- renderer ----

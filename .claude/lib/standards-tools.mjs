@@ -109,7 +109,7 @@ const HARNESS = /^(\.claude|\.agents|\.codex)\//;
 const WIRING = /(^|\/)(package\.json|composer\.json|Makefile|Jenkinsfile|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|\.pre-commit-config\.yaml|\.lintstagedrc(\.\w+)?)$|^\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)azure-pipelines[^/]*\.ya?ml$|^\.husky\/[^/]+$/;
 const STRICT_PROPS = /^(TreatWarningsAsErrors|EnforceCodeStyleInBuild)$/;
 // A segment that installs, removes or only names a tool — never a checking run (`pip install flake8`).
-const NOT_A_RUN = /^\s*(?:\w+=\S*\s+)*(?:sudo\s+)?(?:(?:(?:(?:python3?|py)\s+-m\s+)?(?:pip3?|pipx|uv\s+pip|poetry|npm|yarn|pnpm|bun|gem|bundle|composer|go|cargo|brew|apt(?:-get)?|apk|choco|dotnet\s+tool)\s+(?:global\s+)?(?:install|i|add|require|uninstall|remove|rm)\b)|echo\b|printf\b|which\b|command\s+-v\b)/;
+const NOT_A_RUN = /^\s*(?:\w+=\S*\s+)*(?:sudo\s+)?(?:(?:(?:(?:python3?|py)\s+-m\s+)?(?:pip3?|pipx|uv\s+pip|poetry|npm|yarn|pnpm|bun|gem|bundle|composer|go|cargo|brew|apt(?:-get)?|apk|choco|dotnet\s+tool)\s+(?:global\s+)?(?:install|i|add|require|uninstall|remove|rm|ls|list|why|view|info|show|outdated|update|upgrade|up|audit|explain)\b)|echo\b|printf\b|which\b|command\s+-v\b)/;
 // An informational mode prints and exits 0 whatever the code holds (`eslint --version`, `tsc --showConfig`).
 const INFO_ONLY = /(^|\s)--(version|help|init|showConfig|print-config)(\s|=|$)/;
 
@@ -377,8 +377,11 @@ export function scan({ repo, files }) {
     const selects = (r, c) => { const s = posix(r.dir, r.selected); return s === c.path || (s === c.dir && /(^|\/)tsconfig\.json$/.test(c.path)); };
     const external = eff.find((r) => r.selected && !cfgs.some((c) => selects(r, c)));
     const covers = (r, c) => {
-      if (t.tool === 'typescript') return r.selected ? selects(r, c) : c.dir === r.dir && /(^|\/)tsconfig\.json$/.test(c.path);
+      // `tsc a.ts` compiles the named files and ignores tsconfig.json; only a project build checks a config.
+      if (t.tool === 'typescript') return r.selected ? selects(r, c) : !r.targets.some((x) => /\.[cm]?tsx?$/.test(x)) && c.dir === r.dir && /(^|\/)tsconfig\.json$/.test(c.path);
       if (t.tool === 'msbuild') return hasProject && strictProp(c);
+      // `eslint -c <file>` loads that config only; a selection naming no config of this tool keeps directory coverage.
+      if (r.selected && cfgs.some((o) => selects(r, o))) return selects(r, c);
       if (c.dir === r.dir) return true;
       return under(c.dir, r.dir) && (!r.targets.length || r.targets.some((x) => under(c.dir, posix(r.dir, x.split('*')[0]))));
     };
