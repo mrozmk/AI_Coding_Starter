@@ -5,6 +5,7 @@ A flexible template for creating global rules. Adapt the **project-specific sect
 > **Hard cap: ≤165 lines and ≤9 500 characters**, measured on the generated body (from `# CLAUDE.md` below), not on this preamble. The baseline body is ~115 lines / ~7 000 characters with its placeholders (about a third of the lines are blank), less once they are filled, so a project has real room for its own content. Push detail into memory files instead of bloating `CLAUDE.md`:
 > - Directory tree, file map, naming rules, tech stack → `.agents/memory/architecture.md`
 > - Patterns and conventions → `.agents/memory/patterns.md`
+> - Rules every change must follow, shared helpers, one shape per problem → `docs/coding-standards.md`
 > - Architectural decisions, anything carrying a date or a "user decision" → `.agents/memory/decisions.md`
 > - Incident history, false positives, "this tripped N times" → `.agents/memory/errors.md` or `.agents/reference/`
 > - Module-specific knowledge → `.agents/memory/domain/{module}.md`
@@ -93,6 +94,8 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 ## Style & Conventions
 
 {Naming, formatting, docstring style, type-hint policy — link the linter/formatter config, do not enumerate its rules.}
+
+**Coding standards:** [docs/coding-standards.md](docs/coding-standards.md) — rules a reviewer may reject a change for, shared helpers, one shape per problem (absent → none written yet).
 
 **Comments: why, not what — cap 1-2 lines.** A comment that restates the code or echoes a name is noise and gets deleted; keep only a *why* the code cannot express. Longer reasoning → `.agents/memory/` with a one-line pointer.
 

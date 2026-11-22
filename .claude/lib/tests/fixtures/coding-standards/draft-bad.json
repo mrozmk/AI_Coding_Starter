@@ -1,0 +1,50 @@
+{
+  "rules": [
+    {
+      "rule": "Exported functions declare an explicit return type",
+      "appliesTo": "src/**",
+      "example": "src/orders/a.ts:999",
+      "why": "Callers read the contract from the signature.",
+      "observations": ["src/orders#c1", "src/billing#c1"],
+      "documentedIds": ["doc#r1"],
+      "support": [{ "module": "src/orders", "ref": "src/orders/a.ts:9" }, { "module": "src/billing", "ref": "src/billing/b.ts:10" }]
+    },
+    {
+      "rule": "Interfaces describe records | never classes",
+      "appliesTo": "src/**",
+      "example": "src/orders/a.ts:4",
+      "why": "Plain records serialise as they are.\nClasses carry behaviour.",
+      "observations": ["src/orders#c2", "src/billing#c3"],
+      "documentedIds": [],
+      "support": [{ "module": "src/orders", "ref": "src/orders/a.ts:4" }, { "module": "src/billing", "ref": "src/billing/b.ts:4" }]
+    }
+  ],
+  "helpers": [
+    {
+      "need": "Format a date",
+      "use": "formatDate()",
+      "path": "../outside.ts:1",
+      "observations": ["src/lib#hd1", "src/orders#hu1", "src/billing#hu1"],
+      "support": [{ "module": "src/lib", "ref": "../outside.ts:1" }, { "module": "src/orders", "ref": "src/orders/a.ts:10" }, { "module": "src/billing", "ref": "src/billing/b.ts:11" }]
+    }
+  ],
+  "shapes": [
+    {
+      "problem": "error handling and error bodies",
+      "shape": "`Result<T | E>`",
+      "reference": "src/orders/a.ts:14",
+      "observations": ["src/orders#s1", "src/billing#s1"],
+      "support": [{ "module": "src/orders", "ref": "src/orders/a.ts:14" }, { "module": "src/billing", "ref": "src/billing/b.ts:15" }]
+    }
+  ],
+  "open": [
+    {
+      "topic": "Date formatting for display",
+      "variants": [
+        { "shape": "`formatDate()`", "evidence": "src/billing/b.ts:11", "observation": "src/billing#c2" },
+        { "shape": "`toLocaleDateString()`", "evidence": "src/billing/c.ts:999", "observation": "src/billing#c2" }
+      ]
+    }
+  ],
+  "writtenNotFollowed": []
+}

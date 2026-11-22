@@ -3,7 +3,9 @@
 # (.agents/reference/coding-standards.md.example) has the fixed shape, and the memory index, the
 # reflection protocol and the guide name docs/coding-standards.md. It also pins the reuse statement the
 # planning commands require (`/plan-feature`'s reuse lookup, `**Reuse:**` block, grilling finding and
-# cross-model conventions; `/quick-change`'s `Reuse:` line). Text checks only.
+# cross-model conventions; `/quick-change`'s `Reuse:` line). Text checks only. It also asserts that
+# `/setup:map-codebase`, the map-codebase workflow's standards prompt and the seed agree on the four
+# section names, and that the renderer hard-codes none.
 #
 # Usage: bash .claude/lib/tests/coding-standards-contract-test.sh [root]   (default: this checkout)
 set -u
@@ -104,6 +106,19 @@ q2 = between(qc, "## Phase 2 —", "## Phase 3 —")
 check("(its `Reuse:` line included)" in q2, "quick-change Phase 2 brief does not carry the Reuse: line")
 tm = between(qc, "## Team mode (quick planner)", "## Phase 0")
 check("the `Reuse:` line" in tm, "quick-change team-mode plan shape lacks the Reuse: line")
+
+names = ["## " + s for s in SECTIONS]
+def in_order(text):
+    pos = [text.find(n) for n in names]
+    return all(p >= 0 for p in pos) and pos == sorted(pos)
+mc = read(".claude/commands/setup/map-codebase.md")
+item = between(mc, "**Coding standards**", "## 🛑 Checkpoint 2")
+check(in_order(item), "map-codebase.md Coding standards item does not name the four sections in order")
+wf = read(".claude/workflows/map-codebase.js")
+sp = between(wf, "const standardsPrompt", "\nconst ")
+check(in_order(sp), "workflow standards prompt does not name the four sections in order")
+rd = read(".claude/lib/coding-standards-render.mjs")
+check(not any(s in rd for s in SECTIONS[1:]) and "## Rules" not in rd, "renderer hard-codes a section name")
 
 for f in fails:
     print(f"FAIL [{f}]")

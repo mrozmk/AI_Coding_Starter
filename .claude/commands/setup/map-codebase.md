@@ -30,11 +30,12 @@ Build the work-list cheaply with shell tools. *(These steps are deliberately NOT
 3. **Detect stack(s), workspaces & deployable units** — read root manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`/`build.gradle*`, `Cargo.toml`, `*.csproj`, `pubspec.yaml`, …). **Monorepo:** detect workspaces (`pnpm-workspace.yaml`, `turbo.json`, Nx, Cargo/Gradle multi-module) and partition by package FIRST. Note **deployable-unit signals** (`Dockerfile`, `docker-compose*.yml`, per-service manifests/entrypoints, `k8s/`) — feeds `serviceInterface.isService` + topology.
 4. **Categorize every kept file** (priority-ordered, specific→general; UA taxonomy): `code | config | docs | infra | data | script | markup`. Rules: `LICENSE`→code · Dockerfile/`docker-compose.*`/`.github/workflows/`/`.circleci/`/`k8s|kubernetes/`→**infra** · `*.sql`/`.prisma`/`.graphql`/`.proto`/schema·model defs→**data** · `README*`/`docs/`/`*.md`/ADRs→**docs** · `.tf`/`.tfvars`→infra · shell→script · the rest of source→**code**.
 5. **Drop the noise** (SKIP): tests (`*test*`,`*spec*`,`__tests__/`,`e2e/`), **migration history** (incremental `migrations/` files) + seeds, generated/vendored (`*.min.*`, lockfiles, `*_pb2.py`, `*.generated.*`, codegen), framework boilerplate, assets/binaries. Note: keep **consolidated** schema (`schema.prisma`, `db/schema.rb`) — that's `data`, not migration history.
-6. **Route categories:** `code`+`data`(schema/model) → **modules**; `docs` → `docFiles`; `infra` → `infraFiles`.
+6. **Route categories:** `code`+`data`(schema/model) → **modules**; `docs` → `docFiles`; `infra` → `infraFiles`. `docFiles` also gains `CLAUDE.md`, `AGENTS.md` and the `.agents/memory/patterns.md` / `decisions.md` whose `status:` is not `empty` — prose rules to compare with the code, read for comparison only.
 7. **Coarse import graph + in-degree** (the light neighborMap). Grep import/require/use/include statements across `code` files and map each resolved target to its owning module → build `module → {imports:[modules], importedBy:[modules]}`. Compute **in-degree** (how many modules import it); flag the top modules (high in-degree) as `isCore=true`. Within each module, **prioritize** files by incoming-import count when capping.
 8. **Partition into modules** — group by directory/package. **Cap files per module** (≤ ~25 high-signal); on overflow keep the top by in-degree and note the truncation (loud).
 9. **Grounding capture** (UA practice): `readmeHead` = first ~3000 chars of `README*`; primary manifest content; `entryPoint` = first match of common patterns (`src/index.*`,`src/main.*`,`main.py`,`manage.py`,`app.py`,`main.go`,`cmd/*/main.go`,`src/main.rs`,`Program.cs`,`index.php`, …).
 10. **Skip report** — counts + reasons (e.g. "4,180 skipped: 3,100 tests, 900 generated, 180 vendored").
+11. **Seed preflight** — `.agents/reference/coding-standards.md.example` exists with four `## ` sections, else stop before any fan-out: "seed missing — sync `.agents/reference/coding-standards.md.example` from the starter, then rerun".
 
 Produce: `modules = [{ name, files, imports, importedBy, isCore }]`, `docFiles`, `infraFiles`, `readmeHead`, `entryPoint`, and the skip report.
 
@@ -50,6 +51,17 @@ Present, via `AskUserQuestion`:
 - **recommended default = the computed partition**.
 
 Wait for approval. Only then spend tokens on the fan-out.
+
+---
+
+## Config scan (deterministic)
+
+Write the approved file list (the Phase-0 enumeration after the ignore file and the Checkpoint-1
+changes) to a scratch file, one path per line, then run
+`node .claude/lib/standards-tools.mjs scan --repo <root> --files-from <list>` and keep its JSON as
+`toolScan`. It lists what each lint / format / analyzer / compiler config enforces and which script,
+hook or CI run checks it (harness paths ignored, nothing outside the repo opened) — the only source of
+`Enforced by: tool` rules.
 
 ---
 
@@ -69,6 +81,8 @@ Workflow({
     entryPoint:  '<detected entry point, or empty>',
     today:       '<inject today's date, YYYY-MM-DD>',   // the script cannot call new Date()
     projectName: '<detected from manifest, else the repo dir name>',
+    toolScan:    <the scan JSON>,
+    root:        '<absolute analyzed checkout>',   // only when the session's cwd is not the analyzed root; file lists stay repo-relative
   }
 })
 ```
@@ -82,7 +96,7 @@ Workflow({
 > when `typeof args === "string"`, and a malformed blob throws) because that shape was observed in
 > practice — the tolerance is a safety net, not permission to pass a string.
 
-The script fans out one `module-analyzer` per module (parallel, capped concurrency, schema-validated summaries), then synthesizes — **from the summaries only, never re-reading source** — an architecture body and a reconstructed-PRD body. It returns `{ architectureBody, prdBody, unanalyzed, analyzed, total }`. Track progress in `/workflows`.
+The script fans out one `module-analyzer` per module (parallel, capped concurrency, schema-validated summaries), then synthesizes — **from the summaries only, never re-reading source** — an architecture body and a reconstructed-PRD body, and one standards synthesizer drafts the coding standards, which the script checks against the analyzers' observations. It returns `{ architectureBody, prdBody, unanalyzed, analyzed, total, standardsDraft, rejected, writtenNotFollowed, toolsNamedNotPresent, standardsSkipped }` (plus `standardsInputChars`). Track progress in `/workflows`.
 
 ---
 
@@ -118,16 +132,21 @@ On return:
    Then add a brief **`## Data Model`** section to `architecture.md` that points to it: "Persistence schema: see [domain/data-model.md](domain/data-model.md)." If `hasDataModel` is false, skip both (the project has no detected persistence layer) and say so in the report.
 4. **Seed knowledge layers from `docsAnalysis`** (only the non-empty parts):
    - **`.agents/memory/decisions.md`** — for each `documentedDecisions` entry, **append** (newest at end) an entry in the file's format (`## [<date>] <title>` + **Chosen/Why/Consequences**), tagged `(imported from ADR: <source>)`. These are real, sourced decisions — appropriate to seed at brownfield bootstrap; they are reviewable at Checkpoint 2.
-   - **`.agents/memory/patterns.md`** — for each `documentedPatterns` entry, **append** in the patterns format, tagged with its `source`.
+   - **`.agents/memory/patterns.md`** — for each `documentedPatterns` entry whose `kind` is `trap` or `note`, **append** in the patterns format, tagged with its `source`. A `kind: rule` entry feeds the standards synthesis only, never `patterns.md`.
+   - Never append an entry whose `source` is under `.agents/memory/` — it was read from memory for comparison (the same rule holds for `decisions.md`).
    - Infrastructure needs no separate write — it is already folded into `architecture.md` (`## Infrastructure` + the Service & Integration Map) by the synthesizer.
    - If `docsAnalysis` is null (no docs/ADRs found), skip and note it in the report.
-5. If `unanalyzed` is non-empty, surface those module names **loudly** in the next step.
+5. **Coding standards** — when `standardsDraft` is non-null or `toolScan` has a tool with `enforced: true`: write the draft and the scan to scratch files and run `node .claude/lib/coding-standards-render.mjs render --draft <f> --scan <f> --repo <analyzed checkout> --out-root <destination root> --date <today> --by /setup:map-codebase` (`--out-root` = the main repo root under the worktree redirect, else the same root; without a draft: `--tools-only` in place of `--draft <f>`). It re-checks every cited `path:line` on disk, drops what fails, and writes `docs/coding-standards.md` with the four sections `## Rules`, `## Shared helpers`, `## One shape per problem`, `## Open — pick one` — or `docs/coding-standards.reconstructed.md` when `docs/coding-standards.md` exists; say which. Exit 2 → report its message and write nothing else for the standards file.
+   **Report assembly** (every run, file or not): the scan diagnostics straight from `toolScan` — unwired (tools with `enforced: false`, with their configs), `unattributed`, `notLoaded`, `scopeUnknown`, each config's `notEnforced`, `unparsed`; the workflow's `rejected`, `writtenNotFollowed`, `toolsNamedNotPresent`, `standardsSkipped` (+ `standardsInputChars`); and — only when the renderer ran — its summary (path, counts, `dropped`, `overSoftLimit`). Then reconcile: a documented id of the draft that is in no `renderedDocumentedIds` and only in `dropped` entries joins "written but not followed" with its source and the reason `evidence failed: <drop reason>`.
+6. If `unanalyzed` is non-empty, surface those module names **loudly** in the next step.
 
 ---
 
 ## 🛑 Checkpoint 2 — validate the PRD before it propagates
 
 Present a short summary of `architecture.md` + the path to the written PRD. Ask the user to **review and edit the PRD on disk** (it is inferred from code — code shows *what*, not *why*; `project-brief.md` and `CLAUDE.md` will inherit its content). Confirm to proceed.
+
+Also show the standards file's path (or "not written — <why>"), the rule counts by `Enforced by` (tool / review), the helper rows, the shape rows, the `## Open — pick one` list, and the diagnostics: dropped and rejected items, unwired tools ("configured, no run found — not written as enforced"), unattributed nested configs, config rules a run does not select (`notEnforced`), tools named in docs but absent, `standardsSkipped`, `overSoftLimit`. Ask the user to review the standards file on disk like the PRD.
 
 - **Decline / not now** → stop here. `architecture.md` and the PRD are already persisted; the user can resume by running the cascade commands manually.
 
@@ -138,7 +157,7 @@ Present a short summary of `architecture.md` + the path to the written PRD. Ask 
 After approval, run in order:
 
 1. **`/maintain:refresh-brief`** — distills the (now validated) `docs/PRD.md` → `project-brief.md` (+ `business-model.md` if the PRD has pricing).
-2. **`/setup:create-CLAUDE_MD`** — consumes the produced `architecture.md` and generates `CLAUDE.md` + project `README.md` (it asks its own git-workflow / language questions).
+2. **`/setup:create-CLAUDE_MD`** — consumes the produced `architecture.md` and generates `CLAUDE.md` + project `README.md` (it asks its own git-workflow / language questions). Invoke it **with its step 3.7 skipped** and say so: this run already handled `docs/coding-standards.md`, with or without output.
 
 If a cascade step fails, **stop and report** — the artifacts from earlier phases are already on disk, so nothing is lost; the user reruns the failed step.
 
@@ -155,9 +174,12 @@ If a cascade step fails, **stop and report** — the artifacts from earlier phas
 - .agents/memory/decisions.md            (+N entries imported from ADRs, if any)
 - .agents/memory/patterns.md             (+N entries from docs, if any)
 - docs/PRD.md                            (reconstructed — validated at Checkpoint 2)
+- docs/coding-standards.md (or .reconstructed.md) — <n> rules (<t> tool / <r> review), <h> helpers, <s> shapes, <o> open
 - .agents/memory/project-brief.md        (via /maintain:refresh-brief)
 - CLAUDE.md + README.md                  (via /setup:create-CLAUDE_MD)
 
+**Written but not followed:** <rule — source — reason, or none>.
+**Tools named in docs, not found:** <tool — source, or none>.
 **Coverage:** analyzed <analyzed>/<total> modules.
 **Skipped:** <loud skip stats with reasons>.
 **Unanalyzed (if any):** <module names> — rerun or inspect manually.
@@ -172,6 +194,8 @@ If a cascade step fails, **stop and report** — the artifacts from earlier phas
 - **Never let the aggregator read source** — only the analyzers read files; synthesis works from summaries. This is the scale guarantee.
 - **Both checkpoints are command-level** — they cannot live inside the `Workflow` (it is non-interactive).
 - **Never overwrite an existing `docs/PRD.md`** — write `docs/PRD.reconstructed.md` instead.
+- **Never overwrite an existing `docs/coding-standards.md`** — write `docs/coding-standards.reconstructed.md` instead.
+- **Every standards entry rests on evidence a script checked;** an `Enforced by: tool` rule only for a tool shown to run.
 - **Checkpoint 2 is mandatory before the cascade** — downstream inherits the PRD's inferences.
 - **No silent caps** — always report what was skipped/truncated, with counts.
 - **`today` must be injected into `args`** — the script cannot call `new Date()`.

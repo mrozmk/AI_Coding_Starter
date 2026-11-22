@@ -1,0 +1,13 @@
+{
+  "documentedDecisions": [],
+  "documentedPatterns": [
+    { "name": "Format dates with formatDate", "description": "Every displayed date goes through formatDate.", "source": "CLAUDE.md", "kind": "rule" },
+    { "name": "Locale dates differ per machine", "description": "toLocaleDateString output depends on the host locale.", "source": ".agents/memory/patterns.md", "kind": "trap" }
+  ],
+  "whyContext": "A small order and billing fixture.",
+  "namedTools": [
+    { "tool": "ESLint", "source": "CLAUDE.md" },
+    { "tool": "gofmt", "source": "CLAUDE.md" },
+    { "tool": "StyleCop", "source": "CLAUDE.md" }
+  ]
+}

@@ -235,6 +235,7 @@ Anything mechanically enforced by `settings.json` or a hook needs no prose beyon
 |---|---|
 | Directory tree, file map, naming rules, tech stack | `.agents/memory/architecture.md` |
 | Project-specific patterns (auth flow, error wrapping, query builders) | `.agents/memory/patterns.md` |
+| Rules every change must follow (a reviewer may reject a change for one), shared helpers, one shape per recurring problem | `docs/coding-standards.md` |
 | Architectural decisions and trade-offs; any paragraph carrying a date or a user decision | `.agents/memory/decisions.md` |
 | Incident history, false positives, "this tripped N times" | `.agents/memory/errors.md` (application defects) or `.agents/reference/` (process) |
 | Policy rationale — why a permission tier, an egress rule or a deploy chain is shaped the way it is | `.agents/reference/` (the starter ships `security-egress.md` and `git-policy.md`) |
@@ -243,7 +244,7 @@ Anything mechanically enforced by `settings.json` or a hook needs no prose beyon
 `CLAUDE.md` keeps **rules, conventions, policies, and pointers** — not maps, not history.
 
 **Adapt to the project:**
-- Fill in project-specific sections: `Project Overview` (two or three sentences, the stack named in one breath — there is no `Tech Stack` section; the stack table goes to `architecture.md`), `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules), `Validation`, `Notes`.
+- Fill in project-specific sections: `Project Overview` (two or three sentences, the stack named in one breath — there is no `Tech Stack` section; the stack table goes to `architecture.md`), `Commands`, `Architecture` (1-paragraph high-level only — full map is in `architecture.md`), `Style & Conventions` (link to linter config; do not enumerate rules; keep its one-line pointer to `docs/coding-standards.md`, and never copy a size limit or rule from it), `Validation`, `Notes`.
 - **Validation derivation.** Besides the manifest scripts, read `lint-staged` / husky hooks / `.pre-commit-config.yaml` so a check that runs only at pre-commit is still listed in `Validation` — the gates run it explicitly, the hook is not their substitute. If `TESTING.md` exists with unresolved `{test-runner}` / `{test-command}` / `{coverage-tool}` tokens, resolve them with **the TESTING slot table in `setup/start.md` step 8** (same rules, same outputs) and touch nothing else in that file — one table, two callers.
 - **LSP detection → `## Code Navigation` section (conditional).** The detection is a **repo-scoped declaration, never machine state**: an `enabledPlugins` entry in `.claude/settings.json` whose key matches `*-lsp@claude-plugins-official` **with the value `true`** (written by `/setup:start` step 6b — a key set to `false` is a disabled plugin, not a declaration), or a symbol-level LSP wired into the toolchain (e.g. `typescript-language-server`, `gopls`, `rust-analyzer`, `intelephense`, `pyright` declared in a manifest or an in-repo editor/LSP config). On a hit, add a `## Code Navigation (LSP)` section naming the LSP tools (goToDefinition / findReferences / incomingCalls / hover) and carrying three statements:
   1. **When.** Use `rg` to locate distinctive text; use LSP when semantic identity or an exhaustive list of references / callers matters, especially for overloaded names (`price`, `name`, `show` — measured: `rg` missed 3 of 20 references to one such name, LSP found 20/20). Use `rg` for content the language server does not parse — HTML templates, styles, embedded template strings.
@@ -374,6 +375,13 @@ printf 'CLAUDE.md: %s lines / %s chars (cap 165 / 9500)\n' "$L" "$C"
 
 While either branch fires, push detail out of `CLAUDE.md` into the file named in the *Where detail lives* table above, leave a one-line pointer, and re-run the two commands. Cut prose, never a mandatory section, a mandatory content line, or a rule. On a **refresh** run the same cut applies to what the project accumulated since bootstrap — paragraphs with dates, case histories and rationale are moved, not kept because they were already there; `/maintain:cleanup-workflow` Phase 5 does the same job between refreshes. If a mandatory rule genuinely makes compliance impossible, stop cutting and **say so explicitly in the Phase 4 report** with the final numbers — an over-cap file with every rule intact beats an on-cap file missing a contract, and the second failure is silent.
 
+### 3.7 docs/coding-standards.md — tool rules only, never invented
+
+**Skipped entirely when run as the cascade of `/setup:map-codebase`** — that run already handled the file, with or without output, over the approved scope.
+
+- `docs/coding-standards.md` exists → leave it untouched (no reconstructed copy).
+- Absent → write `git ls-files -z -co --exclude-standard` to a scratch file and run `node .claude/lib/standards-tools.mjs scan --repo . --files-from <list>`. When any tool has `enforced: true` and class `lint` or `format`, save the scan JSON and run `node .claude/lib/coding-standards-render.mjs render --tools-only --scan <f> --repo . --date <today> --by /setup:create-CLAUDE_MD`: it writes the seed's shape with only `Enforced by: tool` rules. Otherwise create nothing — a compiler-only, unenforced or harness-owned config does not count — and name the unenforced configs in the report.
+
 ---
 
 ## Phase 4: OUTPUT
@@ -417,12 +425,17 @@ While either branch fires, push detail out of `CLAUDE.md` into the file named in
 
 `.agents/memory/` ships with the starter — the append-mode files (`index.md`, `errors.md`, `decisions.md`, `api.md`, `patterns.md`), the regenerated ones (`architecture.md`, `project-brief.md`), `reflection-protocol.md`, plus a `domain/` directory seeded with `business-model.md` (and any other starter domain files).
 
+### Coding standards
+
+{One of: "untouched — exists" | "created — <n> tool rules" | "not created — no enforced lint/format tool (<unenforced configs>)" | "skipped — handled by /setup:map-codebase"}
+
 ### Next Steps
 
 1. Review the generated `CLAUDE.md`
 2. Add any project-specific notes
 3. Remove any **project-specific** sections that don't apply (never remove baseline sections listed in Phase 3)
 4. Optionally create reference docs in `.agents/reference/`
+5. {Only when the standards file was not created — ≥ ~50 source files (the `/setup:map-codebase` size guard, its Preconditions): "Run `/setup:map-codebase` to write `docs/coding-standards.md` from the code". Smaller: "Copy `.agents/reference/coding-standards.md.example` to `docs/coding-standards.md` when the first rule appears; `/setup:map-codebase` writes it from the code once the codebase passes ~50 source files".}
 ```
 
 ---
