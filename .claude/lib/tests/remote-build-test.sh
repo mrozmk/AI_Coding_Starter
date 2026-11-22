@@ -94,6 +94,8 @@ clean_node "after a failing command"
 run 0 "node has the commit"; has "(bundle 0 bytes)" "empty bundle"
 
 # ---- 2b. a child the command left behind is stopped, not waited for ---------------------------------
+# margin: the command returns at once but leaves a 30 s child holding the output pipe; the 20 s bound
+# proves the build returns before that child ends on its own (10 s to spare, far below the 60 s timeout).
 : > "$CTL/bg"; t0=$(date +%s)
 run 0 "leftover child"
 [ $(( $(date +%s) - t0 )) -lt 20 ] || fail "the run waited for a child the command left behind"

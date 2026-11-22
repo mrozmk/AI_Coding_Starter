@@ -687,9 +687,14 @@ sh_ none "env -S 'ls -la'"
 sh_ none 'cat <<EOF
 {"a": 1}
 EOF'
-# every suffix is read once: 1000 leading redirections must not make the hook slow
-s=$SECONDS; check none "1000 leading redirections" "$(hook "$(bash_cmd "$(printf '>x%s ' $(seq 1 1000))")")"
-[ $((SECONDS - s)) -lt 5 ] || { echo "FAIL 1000 leading redirections took $((SECONDS - s))s"; fail=1; }
+# every suffix is read once: 1000 leading redirections must not make the hook slow. Against a
+# same-load control (the same hook call with one redirection) only the extra parsing counts; margin
+# 4 s — a linear pass costs well under a second, a quadratic one blows it whatever the load.
+now() { perl -MTime::HiRes=time -e 'printf "%.3f\n", time'; }
+c0=$(now); check none "one leading redirection" "$(hook "$(bash_cmd '>x1 ')")"; c1=$(now)
+s0=$(now); check none "1000 leading redirections" "$(hook "$(bash_cmd "$(printf '>x%s ' $(seq 1 1000))")")"; s1=$(now)
+awk -v a="$s0" -v b="$s1" -v c="$c0" -v d="$c1" 'BEGIN { exit !((b - a) - (d - c) < 4) }' \
+  || { echo "FAIL 1000 leading redirections took $s0→$s1 against the control $c0→$c1"; fail=1; }
 # --- bytecode (F31): both guard hooks run python3 -I -B, and every module that imports local
 # modules sets dont_write_bytecode itself, so no caller writes __pycache__ into the project. Apple's
 # python3 -I never writes bytecode, so the hooks are checked by argv and the modules with the flag

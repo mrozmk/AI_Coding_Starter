@@ -5,6 +5,7 @@ set -euo pipefail
 smoke_init
 
 # ---- (3) team-new ----------------------------------------------------------------------------------
+case_mark "(3) team-new"
 run "$MAIN" $NEW alfa AB-790
 expect 2 "Usage:" "team-new argc"
 chmod 644 "$MAIN/.env"
@@ -28,6 +29,7 @@ run "$MAIN" $NEW beta AB-791 feature/AB-791-pushed origin/develop
 expect 1 "already exists on origin" "team-new pushed branch"
 
 # ---- (4) team-record -------------------------------------------------------------------------------
+case_mark "(4) team-record"
 TD="$CLONE/.agents/team"
 REC="bash .claude/lib/team-record.sh"
 RUN_ID=alfa-20261002-000000
@@ -48,6 +50,7 @@ has "- [planner 1] which endpoint?" "$TD/runs/$RUN_ID/notes.md" || fail "blocker
 rm -f "$TD/runs/$RUN_ID/"planner-*.json
 
 # ---- (5) guard-team-memory -------------------------------------------------------------------------
+case_mark "(5) guard-team-memory"
 HOOK="$SRC/.claude/hooks/guard-team-memory.sh"
 hook "$CLONE" '{"tool_input":{"file_path":".agents/memory/errors.md"}}'
 expect 2 "written by the wrapup role only" "guard blocks memory in team mode"
@@ -73,6 +76,7 @@ hook "$MAIN" '{"tool_input":{"file_path":".agents/memory/errors.md"}}'
 expect 0 "" "guard passes outside team mode"
 
 # ---- one-question guard: exercise the synchronous command shipped in settings --------------------
+case_mark "one-question guard: exercise the synchro"
 QCOMMAND=$(jq -er '.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion") |
   .hooks | select(length == 1) | .[0] | select(.type == "command" and .async != true) |
   .command' "$SRC/.claude/settings.json")
@@ -102,6 +106,7 @@ question_hook "$OUTSIDE" "$TWO"
 expect 0 "" "question guard passes two outside team"
 
 # ---- (6) validation via `team-run.sh <team> check` ---------------------------------------------------
+case_mark "(6) validation via team-run.sh <team> ch"
 TR="bash .claude/lib/team-run.sh"
 commit_file .agents/specs/s.md spec
 commit_file .agents/plans/active/p.md plan
@@ -154,6 +159,7 @@ expect 0 "valid:" "coder valid"
 CODER_REC="$R"
 
 # ---- (9) QA report validator -------------------------------------------------------------------------
+case_mark "(9) QA report validator"
 session qa 1 "$C1"
 touch "$CODER_REC.accepted"
 QR="$TD/runs/$RUN_ID/qa-report-1.md"
@@ -204,6 +210,7 @@ jq '.pr_id = 8371' "$R" > "$WORK/r.json" && mv "$WORK/r.json" "$R"
 QA_REC="$R"
 
 # ---- (7) team-merge-check ----------------------------------------------------------------------------
+case_mark "(7) team-merge-check"
 touch "$QA_REC.accepted"
 rm -f "$TD/session.json"; WR_REC="${QA_REC%/*}/wrapup-1-1.json"  # merge check: no live role, wrapup done
 jq '.role = "wrapup"' "$QA_REC" > "$WR_REC" && touch "$WR_REC.accepted"
@@ -223,6 +230,7 @@ has "validated source=$C1 target=$BASE" "$WORK/out" || fail "merge-check validat
 rm -f "$QA_REC.accepted" "$WR_REC" "$WR_REC.accepted"
 
 # ---- (8) runner recovery -----------------------------------------------------------------------------
+case_mark "(8) runner recovery"
 reset_runner() { rm -rf "$TD/lock" "$TD/cancel" "$TD/acked"; : > "$STUB_LOG"; }
 set_branch() {  # point the clone branch and its origin tip at <sha> (fixture-only ref surgery)
   git -C "$CLONE" switch --quiet -C feature/AB-790-x "$1"
@@ -366,6 +374,7 @@ expect 0 "stopped" "stop after owner exit"
 [ ! -d "$TD/lock" ] || fail "stop left the lock"
 
 # ---- (8a) reconciliation, PR identity, cancel ------------------------------------------------------
+case_mark "(8a) reconciliation, PR identity, cancel"
 mv "$WORK/coder.json" "$CODER_REC"
 set_branch "$C1"
 reset_runner
@@ -399,6 +408,7 @@ has "new-session" "$STUB_LOG" && fail "cancelled run launched a session"
 [ -f "$TD/session.json" ] || fail "cancel removed session.json"
 
 # ---- (10) team-next: reuse the clone for the next ticket -------------------------------------------
+case_mark "(10) team-next: reuse the clone for the"
 NEXT="bash .claude/lib/team-next.sh"
 reset_runner
 run "$MAIN" $NEXT alfa AB-792 feature/AB-792-next origin/develop
@@ -473,10 +483,12 @@ ls -d "$TD"/archive/AB-792-*/runs/"$NEXT_RUN" >/dev/null 2>&1 \
   || fail "--abandoned did not archive AB-792"
 
 # ---- (11) a permission prompt on the stage's screen (the snapshot below reads it) -------------------
+case_mark "(11) a permission prompt on the stage's"
 # Nothing answers a pane any more (the screen sender is retired: the ask channel, team-ask.sh).
 cp "$FIX/perm-awk.txt" "$WORK/pane"
 
 # ---- (12) team-snapshot -------------------------------------------------------------------------
+case_mark "(12) team-snapshot"
 SNAP="bash .claude/lib/team-snapshot.sh"
 CL="$WORK/claude"; mkdir -p "$CL/sess-1/subagents"
 printf '%s\n' '{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5"}}' \
@@ -525,6 +537,7 @@ TEAM_DASH_PROJECT_DIR="$WORK/none" snap "degraded" '.supervisor.status == "unkno
 rm -f "$TD/session.json"; unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 
 # ---- (14) the follow-up cap at team-new / team-next (team-lineage.sh) ------------------------------
+case_mark "(14) the follow-up cap at team-new / tea"
 LIN="bash .claude/lib/team-lineage.sh"; LD="$MAIN/.agents/team/lineage"
 for t in AB-790 AB-792 AB-793; do
   [ "$(grep -c "\"ticket\":\"$t\"" "$LD/starts.jsonl")" = 1 ] || fail "(14) $t not recorded once by team-new/team-next"

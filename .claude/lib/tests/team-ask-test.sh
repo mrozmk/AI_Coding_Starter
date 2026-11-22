@@ -87,6 +87,8 @@ H() {  # H <out> [payload] — run the hook in the foreground (TO = registration
 }
 HB() { cp "$T/p.json" "$T/p-$1.json"; H "$T/$1.out" "$T/p-$1.json" & HP=$!; sleep 0.3; }
 wf() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt "${2:-50}" ]; do sleep 0.2; i=$((i + 1)); done; [ -e "$1" ]; }
+# wfc <condition> [polls] — a bounded poll on a condition; its result is the assertion (inside `ok`).
+wfc() { local i=0; while ! eval "$1" && [ "$i" -lt "${2:-50}" ]; do sleep 0.2; i=$((i + 1)); done; eval "$1"; }
 L() {  # L <args…> — the lead's sender, from the clone → LRC, $T/l.out
   (cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=beta bash .claude/lib/team-answer.sh beta "$@") \
     > "$T/l.out" 2>&1; LRC=$?
@@ -106,7 +108,7 @@ say_op() {  # say_op <uuid> <text> — an Operator message typed in the lead's w
 # ================================================================================================
 newrun q1; pl question-two; HB a1
 wf "$AD/a-1.json"; ok '[ "$(st a-1)" = waiting ] && [ "$(j "$AD/a-1.json" .kind)" = question ] && [ "$(j "$AD/a-1.json" .tier)" = lead ]' "a question is filed, waiting, tier lead"
-sleep 0.5; ok 'grep -q "^beta-lead ask coder a-1: Which storage?" "$RINGS"' "the lead is rung with the first question"
+ok "wfc 'grep -q \"^beta-lead ask coder a-1: Which storage?\" \"\$RINGS\"'" "the lead is rung with the first question"
 L a-1 --answers '{"Which storage?": "SQLite", "Which outputs?": "JSON, HTML"}' --authority teamlead --why "order says so"
 wait "$HP"
 ok '[ "$LRC" = 0 ] && [ "$(j "$T/a1.out" .hookSpecificOutput.permissionDecision)" = allow ]' "two questions + multi-select → allow ($(cat "$T/l.out"))"
@@ -149,7 +151,7 @@ ok '[ "$(j "$T/a7.out" .hookSpecificOutput.decision.behavior)" = deny ] && grep 
 
 # ---- tiers -----------------------------------------------------------------------------------------
 pl perm-curl; HB a8; wf "$AD/a-8.json"
-ok '[ "$(j "$AD/a-8.json" .tier)" = operator ] && sleep 0.3 && grep -q "a-8 operator: Bash curl" "$RINGS"' "egress (curl) → operator, rung as operator"
+ok '[ "$(j "$AD/a-8.json" .tier)" = operator ] && wfc '\''grep -q "a-8 operator: Bash curl" "$RINGS"'\''' "egress (curl) → operator, rung as operator"
 L a-8 --allow --authority teamlead --why w; ok '[ "$LRC" = 9 ]' "--allow at teamlead on an operator ask → 9"
 L a-8 --deny no --authority teamlead --why w; ok '[ "$LRC" = 9 ]' "--deny at teamlead on an operator ask → 9 too"
 kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
@@ -189,8 +191,12 @@ ok '[ "$(grep -l "Keep it" "$T/k1.out" "$T/k2.out" | wc -l | tr -d " ")" = 1 ] &
 ok '! L a-1 --pick "Keep it" --authority teamlead --why w || [ "$LRC" != 0 ]; [ "$(st a-1)" = delivered ]' "the sender never moves a delivered ask back"
 # a hook killed while waiting: the retry claims it
 newrun dead; pl question-one; HB d1; wf "$AD/a-1.json"; kill -9 "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
-pkill -9 -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; sleep 0.2
-pl question-one; HB d2; sleep 0.5; ok '[ ! -e "$AD/a-2.json" ] && [ "$(st a-1)" = waiting ]' "a dead waiter's ask is claimed by the retry"
+pkill -9 -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; w0="$(j "$AD/a-1.json" .waiter_pid)"
+ok 'wfc '\''! kill -0 "$w0" 2>/dev/null'\''' "the first waiter is dead before the retry"
+pl question-one; HB d2
+# The claim is a state change: a new, live waiter pid on a-1 (a timed-out poll fails through ok).
+ok 'wfc '\''w="$(j "$AD/a-1.json" .waiter_pid)"; [ "$w" != "$w0" ] && kill -0 "$w" 2>/dev/null'\''' "the retry claims the dead waiter's ask"
+ok '[ ! -e "$AD/a-2.json" ] && [ "$(st a-1)" = waiting ]' "a dead waiter's ask is claimed by the retry"
 L a-1 --pick "Keep it" --authority teamlead --why w; wait "$HP"
 # a permission ask that timed out is withdrawn; its retry is new; a late answer refused
 newrun pto; pl perm-wc; TO=16 H "$T/p1.out"
@@ -228,7 +234,10 @@ ok '[ "$(j "$AD/a-1.json" .kind)" = text ] && [ "$(j "$AD/a-1.json" .payload.sou
 TL pending beta; ok 'grep -q "^ask .agents/team/runs/$RUN/asks/a-1.json — coder text — Which endpoint" "$T/tl.out" && ! grep -q "^stop " "$T/tl.out"' "pending lists the blocked record once, as its ask"
 L a-1 --text "v2, keep v1 read-only" --authority teamlead --why w; wait "$HP"
 ok '[ "$(j "$T/st1.out" .decision)" = block ] && grep -q "v2, keep v1 read-only" "$T/st1.out" && [ -e "$RD/coder-1-1.json.answered" ]' "--text → block with the answer, the record's .answered marker"
-sleep 1.2; rec 2 done; pl stop-plain; H "$T/st2.out"
+# The hook ends a turn on a record written strictly after the previous Stop (whole seconds): put that
+# Stop marker in an older second instead of sleeping past it.
+for m in "$AD"/.stop-*; do echo $(( $(date +%s) - 5 )) > "$m"; done
+rec 2 done; pl stop-plain; H "$T/st2.out"
 ok '[ ! -s "$T/st2.out" ] && [ "$HRC" = 0 ]' "the turn wrote its done record → the stage ends (no output)"
 pl stop-bg; H "$T/st3.out"; ok '[ ! -s "$T/st3.out" ]' "a background task → no ask"
 pl stop-cron; H "$T/st4.out"; ok '[ ! -s "$T/st4.out" ]' "a pending ScheduleWakeup (session_crons) → no ask"
