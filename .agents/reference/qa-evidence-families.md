@@ -221,7 +221,7 @@ Verifiers return only §6 verdicts (`PASS` · `FAIL` · `NEEDS-HUMAN`) and never
 |---|---|---|
 | `CITED` | The criterion's static part is taken from the task ledger's `met` row, with its `file:line` | Only when the run has a task ledger to cite; a run without one never writes it |
 | `DEFERRED → <KEY>` | The criterion cannot be settled until ticket `<KEY>` lands | The Operator confirms it for a `NEEDS-HUMAN` row in the one-pass decision; with no ticket to name, the row stays `NEEDS-HUMAN` |
-| `ENV` | A failure whose cause is shown to be the environment, not the ticket's code | Only under the command's environment-evidence rule; without that evidence the row stays `FAIL` |
+| `ENV` | A failure whose cause is shown to be the environment, not the ticket's code | Only under the command's environment-evidence rule (`/qa-verify` Step 0.76 row 3 or its feature-path rule, Phase 2.5 question 4); without that evidence the row stays `FAIL` |
 
 `DEFERRED` comes only from the Operator's one-pass decision on a `NEEDS-HUMAN` row — no key named, the row stays `NEEDS-HUMAN`. `CITED` and `ENV` are written only by a command step that states their evidence rule; a revision of the command without that step never writes them.
 

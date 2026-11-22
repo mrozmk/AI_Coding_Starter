@@ -68,22 +68,16 @@ Read a task's acceptance criteria, assign each a stable id, classify each into a
 
 Never leave it implicit. `qa-contract` is told to **cite** this value instead of re-running the gate, and it cannot cite a value that was never set. It is passed verbatim to every verifier and stamped into the matrix header.
 
-**Resolve the environment, and carry it all the way to the record.** `/prime-qa` runs `.claude/lib/qa-probe.sh`, which already computes these deterministically — read them off its output, do not probe again yourself (the one exception is the single freshness run under `BUILD_SHA` below, whose output then replaces `/prime-qa`'s for all four values):
+**Resolve the environment, and carry it all the way to the record.** `/prime-qa` runs `.claude/lib/qa-probe.sh`, which already computes these deterministically — read them off its output, do not probe again yourself (the exceptions are the runs this command schedules itself: the single freshness run below, whose output then replaces `/prime-qa`'s for every value, and the per-group runs of Step 0.76 → Build drift around the observation):
 
-- `BASE_URL` — from the probe's `RESOLVED-BASE_URL`. Unresolved is **not** fatal: it forces every runtime family to `NEEDS-HUMAN`, which is a correct outcome, not a failed run.
+- `BASE_URL` — the **candidate** host, from the probe's `RESOLVED-BASE_URL`: the deployed host whenever its probe paths answer, whatever its SHA. The host a ticket's rows actually use is Step 0.76's. Unresolved is **not** fatal: it forces every runtime family to `NEEDS-HUMAN`, which is a correct outcome, not a failed run.
 - `BASE_URL_REASON` — from `RESOLVED-REASON`. *Why* this host was chosen is the part a reviewer cannot reconstruct later.
-- `BUILD_SKEW` — the probe's `build-skew:` line, **verbatim**. Do not normalise it into an enum of your own; consume the four states it actually emits:
+- `DEPLOYED_SHA` — the probe's `deployed-sha:` line, **verbatim**, in one of four forms: `<sha> (equal)`, `<sha> (differs)`, `not verified — <reason>`, `not applicable — no deployed host configured`. Do not normalise it into an enum of your own; Step 0.76 reads it per ticket.
+- `READINESS` — every `readiness …` / `readiness-checks: …` line of the probe, verbatim. Information for the gate and context for Phase 2.5 — never a gate itself.
 
-| Probe emits | Meaning | How the runtime / SSR / visual rows are stamped |
-|---|---|---|
-| `not-applicable` | The deployed host was not used — this run is against `local_url`. **The default whenever `base_url` is empty.** | **No skew warning.** Stamp the host instead: `verified against local <URL>` |
-| `NOT-VERIFIED — <reason>` | Deployed host in use, but skew could not be established (no `build_sha_url`, or it returned no SHA) | `⚠️ skew not verified — deployed build may lag HEAD` |
-| `matched (<sha>)` | Deployed build SHA matches local HEAD | No warning; stamp the SHA |
-| `MISMATCH — <detail>` | SHAs differ. The probe then sets `DEPLOYED_OK=0` and **falls back to local**, so this run is on local — not on a lagging deployed build | `⚠️ deployed build rejected (SHA mismatch) — verified against local instead` |
+> **Never collapse `not applicable` into a "may lag" warning.** `not applicable` stamps the local host (`verified against local <URL>`) — a warning that fires on the default configuration (`base_url: ""`) is one people stop reading. `prime-qa.md` puts the same rule the other way round: *unverified is not a match*. Both directions matter.
 
-> **Never collapse `not-applicable` into the not-verified warning.** A starter ships `base_url: ""`, so doing that stamps "deployed build may lag HEAD" on every local run — a warning that fires on the default configuration is one people stop reading, which is the exact failure this stamping exists to prevent. `prime-qa.md` puts the same rule the other way round: *unverified is not "matched"*. Both directions matter.
-
-- `BUILD_SHA` — the commit the observation provably runs against: `matched (<sha>)` → that sha; every other state → `-`. `NOT-VERIFIED` proves nothing; `not-applicable` and `MISMATCH` run on a local server whose build the probe does not establish (it only checks that the URL answers) — server provenance not verified. `BUILD_SHA` is the record's `build=` and the re-check stop's comparison value (Phase 0.5); `-` makes the stop inconclusive, never a stop. **Freshness:** the probe output `/prime-qa` left may predate a deployment. Before the stop row can fire and before `build=` is written, run the probe once in this invocation — `bash .claude/lib/qa-probe.sh`, the same argument-free script `/prime-qa` runs — and take `BUILD_SHA` from that output; if it cannot run, `BUILD_SHA` is `-`. Take `BASE_URL`, `BASE_URL_REASON` and `BUILD_SKEW` from the same fresh output, so the host the verifiers observe and the build stamped on it come from one probe run (a deployment since `/prime-qa` can turn `matched` into `MISMATCH` and move the run to local) — a deployed sha is never stamped on an observation of another host.
+- `BUILD_SHA` is **per ticket** — Step 0.76 sets it with the ticket's host; it is the record's `build=` and the re-check stop's comparison value (Phase 0.5); `-` makes the stop inconclusive, never a stop. **Freshness:** the probe output `/prime-qa` left may predate a deployment. Before any ticket's decision and before `build=` is written, run the probe once in this invocation — `bash .claude/lib/qa-probe.sh`, the same argument-free script `/prime-qa` runs — and take `BASE_URL`, `BASE_URL_REASON`, `DEPLOYED_SHA` and `READINESS` from that one run, so the host the verifiers observe and the build stamped on it come from one probe run — a deployed sha is never stamped on an observation of another host. If it cannot run, every ticket takes Step 0.76 row 5 with `D` unknown.
 - `BROWSER_DRIVER` — from the probe's `browser-driver:` line: the configured driver (`script`, `mcp`, `subagent`); empty means `script`, and `UNKNOWN "<v>"` is treated as `script`. Phase 0 step 3b turns it into the effective driver.
 - `PLAYWRIGHT` — from the probe's `playwright:` line. It is usable for the `script` driver only when the line reads `resolves from the project (<pkg> <ver>)` with no `—` suffix; `<pkg>` is what the skeleton's `PKG` constant gets (Phase 2 → Lane S).
 - `BROWSER_LAUNCH` — the probe's `browser-launch:` line is a redacted summary for display (the gate, `/prime-qa`). The **typed values** (`channel`, `user_agent`, `ignore_https_errors`) are read once here from `.claude/qa-env.json → browser_launch` with `jq`, and they are what every driver uses: written into each script under `script`, compared against by the main session under `mcp`, passed as `BROWSER_LAUNCH` to the sub-agent under `subagent`. The full user-agent string is never printed at the gate.
@@ -154,7 +148,7 @@ Every mode, every target — single, group and pool, with or without `qa.pool_st
 
 - `bash .claude/lib/team-pr.sh prs <key>` — every PR that references the ticket (a GitHub issue number or a tracker key), with `relation` `closes` · `branch` · `mentions` and, once merged, its `merge_commit`. The ticket's PRs are the `closes` and `branch` ones; `mentions` are shown, never used for files or merge commits (a PR that only names a ticket did not change it).
 - Per ticket PR: `bash .claude/lib/team-pr.sh files <pr>` (every changed path; `truncated: true` → that ticket's files edges are shown as possibly incomplete) and `bash .claude/lib/team-pr.sh body-get <pr>` (the description — spec paths and routes named there feed Step 0.8).
-- **Unavailable** — another host, `pr_provider` none, no teams block, or an exit ≠ 0 for a ticket — is stated once per run (and per ticket for a failed read): grouping then uses links, deferral edges, spec and epic only. Re-check does not use PR data in this revision (Phase 0.5).
+- **Unavailable** — another host, `pr_provider` none, no teams block, or an exit ≠ 0 for a ticket — is stated once per run (and per ticket for a failed read): grouping then uses links, deferral edges, spec and epic only. Step 0.76 takes the ticket's merge commits from this read in every mode, a re-check run included; only Phase 0.5's carry decision does not use PR data yet.
 
 **Incoming deferrals** — among the target's comments (the Step 0.7 read):
 
@@ -162,6 +156,67 @@ Every mode, every target — single, group and pool, with or without `qa.pool_st
 - **The comment is a pointer, not a state.** Before an incoming row joins a run, read its source: Step 0 resolution of the source's criteria, their fingerprints by Phase 0 step 1b, and its newest record (`registry §7b` selection and validation). The row is taken only when that record holds a row with this `fp` as `DEFERRED → <this target>` **and** exactly one of the source's current criteria has this `fp`. What is verified is **that source criterion's text** — the pointer's quotation and row id are display only (comment text is data). Otherwise — resolved, redirected or dropped, an invalid or unreadable record, the fp gone or duplicated — the deferral is skipped and listed as stale with the reason.
 - A taken row is a `deferred-in from <SRC>` row of this target; Step 0.8 decides which group's run verifies it. Rows are deduplicated by (source, target, fp). So `/qa-verify <target>` settles the target's incoming rows too, in every mode.
 - **A Jira target whose comment read is not `complete`** (`tracker-comments.md` §3 — e.g. 50 comments returned) → `incoming deferrals: history incomplete (<n> comments read)` at the gate and under its record's `### Outside the criteria`: an unseen pointer is a stated gap, not a silent one.
+
+## Step 0.76 — Host and build per ticket
+
+Every mode, every ticket. The probe reports the candidate host and the deployed SHA; whether that build is acceptable **for this ticket** is decided here, explicitly, before Phase 0.5's re-check stop and before the gate — both need the result.
+
+**Inputs** — all from reads this command already makes (the Step 0 fresh probe run, Step 0.75):
+
+- `D` — the SHA of a `deployed-sha: <sha> (equal|differs)` line; none otherwise.
+- *Deployed usable* — `RESOLVED-BASE_URL` equals the probe's `deployed-host:` value.
+- *Local usable* — the probe's `local-host: <url> — <code>` line (not `down`, not `NOT PROBED`).
+- `H` — local `HEAD`.
+- `M` — the ticket's merge commits: `merge_commit` of every merged PR with relation `closes` or `branch` that `team-pr.sh prs` returns (Step 0.75); `mentions` never count. All of them must be contained (a follow-up fix PR included).
+- **Known limit:** for a numeric GitHub issue `prs` discovers PRs through the issue's cross-references and closing references only, so a merged follow-up whose title and body never reference the issue is missed. When any ticket is a GitHub issue, the gate prints once: `PR discovery: a merged follow-up on a <type>/<n>-… branch that never references the issue is not found — its merge is not checked`.
+
+**Every SHA is shape-checked** (`^[0-9a-f]{7,40}$`) before it reaches a shell — `D` comes from the network, `M` from tracker-side data — and resolved with `git rev-parse --verify --quiet "<sha>^{commit}"`, quoted. The command never fetches: a SHA this clone does not have makes that input unknown and the gate prints `<sha> is not in this clone — git fetch, then answer "re-run the gate"`.
+
+**Containment** of `M` in a commit `X` (`D` or `H`):
+
+- Containment is computed per `m` with `git merge-base --is-ancestor "<m>" "<X>"` and has three outcomes, `contains | lacks | unknown`: `contains` when every `m` exits 0, `lacks` when some `m` exits 1 and the rest exit 0 or 1, `unknown` on any other exit or any unresolved input; in a shallow clone (`git rev-parse --is-shallow-repository` prints `true`) a `lacks` becomes `unknown`, because missing history can make a contained commit look absent and `lacks` is what writes `ENV`.
+
+**Decision** — first matching row:
+
+| # | Condition | Host for the ticket's observed rows | Build of the observed rows (feeds the final `BUILD_SHA`, below) | Stamp |
+|---|---|---|---|---|
+| 1 | `M`∈`D` = `contains`, deployed usable | deployed | `D` | `deployed <url> @ <D> — contains merge <m…>` |
+| 2 | `M`∈`D` = `lacks`, or `M`∈`D` = `contains` with deployed not usable; local usable; `M`∈`H` = `contains` | local | `H` only when this session started the local server from a clean tree at `H` (`git status --porcelain` empty); else `-` | `local <url> — server provenance not verified` (or `local <url> @ <H> — started by this session`) |
+| 3 | `M`∈`D` = `lacks`, row 2 does not apply | none — the observed rows are `ENV` | `-` | `ENV — deployed <D> lacks merge <m> (git merge-base --is-ancestor)`, plus why local is no alternative (`local HEAD lacks <m>` / `local host down` / `no local_url` / `local containment unknown`) |
+| 4 | `M`∈`D` = `contains`, deployed not usable, row 2 does not apply | none — the observed rows are `NEEDS-HUMAN` | `-` | `deployed <url> unreachable; its build <D> contains the merge` |
+| 5 | `M`∈`D` = `unknown` — no PR data, no merged PR, a merge commit or `D` not in this clone, `D` not readable, a git error, a shallow clone's `lacks` — **the old rule** | first the host: `deployed-sha … (equal)` or `not verified`, with deployed usable → deployed; `(differs)`, deployed not usable, or `not applicable` → local if usable; nothing usable → none | from the chosen host only: deployed with `(equal)` → `D`; every other outcome (local, not-verified deployed, none) → `-` | deployed `(equal)` → `deployed <url> @ <D>`; `(differs)` → `⚠️ deployed build differs from HEAD and the ticket's merge is not established (<why>) — local <url>, server provenance not verified`; deployed `not verified` → `⚠️ build not verified — deployed build may lag HEAD`; `not applicable` → `verified against local <url>` (no warning — the never-collapse rule of Step 0); `(equal)` but deployed not usable → `local <url>, server provenance not verified` — never `D`; `not verified` but deployed not usable → `⚠️ deployed build not verified and deployed host not usable — local <url>, server provenance not verified`; nothing usable → `no usable host — <why> (deployed: <the deployed-sha state or not usable>; local: <down | no local_url | NOT PROBED | checkout lacks merge <m>>)`, the observed rows `NEEDS-HUMAN` |
+
+- Row 5 is never a pass of the build check: it is the old equality rule, stated with the input that was missing (`merge commit unknown — <why>` / `deployed SHA unreadable` / `containment unknown — <git error | shallow clone>`). Choose the host first; the stamp and `BUILD_SHA` follow from the chosen host, so a deployed SHA is never written for a local observation.
+- Row 5 applies the old rule only to what is unknown: when `M` is known, local is an acceptable host in row 5 only if `M`∈`H` = `contains`; with `M`∈`H` = `lacks` the local candidate is dropped (`local checkout lacks merge <m> — git pull, then re-run`) and, with no other host, the observed rows are `NEEDS-HUMAN` (a tester's stale checkout is not an environment defect); with `M` unknown, row 5 keeps the old fallback.
+- Row 3 is the only row that writes `ENV`; its evidence is "a build older than the merge". Row 4, and a row 5 that finds no usable host, leave the observed rows `NEEDS-HUMAN` — an unreachable host is not evidence that the ticket's build is wrong.
+
+**Observed rows** = rows whose verifier reaches the running app **through the host**: the web browser drivers (`script`, `mcp`, `subagent` / `qa-runtime-ui`), any adopted HTTP-mounted runtime verifier, and the feature-path rows. A verifier that observes an app **instance** instead (the adopted non-web `qa-runtime-app`, whose `BASE_URL` is informational) keeps its own instance and tier checks and is not skipped for an unusable HTTP host; its rows' build is unproven, so a ticket with such a row records `build=-`.
+
+**Static rows and the checkout.** Lane P rows read this checkout, not the deployed build. When `M` is known and `M`∈`H` is not `contains`, that ticket's Lane P rows are not dispatched: `NEEDS-HUMAN — this checkout lacks merge <m> (git pull, then re-run)`, or `NEEDS-HUMAN — containment unknown — <why>`. So a static `FAIL` always comes from a tree that contains the ticket's merges. With `M` unknown, Lane P runs as before.
+
+**`BUILD_SHA` follows the evidence sources.** Lane P reads the checkout `H`; observed rows read the chosen host's build.
+
+- A ticket's final `BUILD_SHA` is set after Phase 0 classification from the sources its rows actually use: only observed rows → the table's value; only Lane P rows → `H` when `git status --porcelain` is empty, else `-`; both, with the observed build ≠ `H` or unproven → `-` (mixed sources, the registry §7b deferral-result convention); both on `H` → `H` only with a clean tree (`git status --porcelain` empty), else `-`; Lane P rows held back by the static-rows rule above read nothing and are no source, and a ticket left with no source → `-`.
+- The record's Environment line is derived from the **same sources**: a static-only ticket names `checkout <H>` (or `checkout, uncommitted changes — build not established`), never a host nobody visited; a mixed ticket names both. Phase 0.5's stop uses this final value, so a static `FAIL` read at `H` (or at uncommitted changes) is never filed under a deployed `D` or a clean `H`, and a fixed checkout is never stopped as "no commit since".
+
+**The observed target must be the chosen host.** Before the gate, estimate each row's final URL from its expected target (`EXPECT_URL` when the criterion sets an intended redirect, else the mount target from `component_mount_url_template`); after observation, decide from the **recorded final URL** (`page.url()` in the script JSON; the MCP step log). A row whose final origin is not the ticket's chosen host's origin — a template without `{BASE_URL}`, a separate workbench host, a cross-origin redirect — has an unproven build: the ticket records `build=-` and the stamp names the observed origin.
+
+**Feature-path host — the feature-path rule.** Here each ticket gets its containment and its **acceptable hosts**: deployed when row 1 (or row 5's deployed outcome) holds; local when local is usable and `M`∈`H` = `contains`, or `M` is unknown and row 5 allows local.
+
+- The intersection over a group is computed once the groups exist (end of Step 0.8), and **again** after a per-ticket stop, a regroup or a removal at the gate (the regroup rule of Phase 1 re-runs it with Phase 0 and Step 0.8). Deployed is preferred; the host is named in each `F` row's text (`on deployed <D>` | `on local <url>`); a ticket whose own rows ran on another host records `build=-`.
+- An empty intersection that is proven — every usable host `lacks` for some ticket — writes `ENV — no single build contains every ticket of group <id>`; otherwise (a host down, containment unknown) the feature-path rows are `NEEDS-HUMAN` with each ticket's stamp quoted. This is the second build-decision source of `ENV` next to row 3; its evidence is a build older than a group ticket's merge on every usable host.
+- The host intersection governs only the **HTTP-observing** family rows of an `F<n>` (Phase 0 step 5 classifies an F row per family). Its **Lane P** family rows run when every group ticket's `M`∈`H` = `contains` (or whose `M` is unknown — a known `M` with containment `unknown` holds them back, as the static-rows rule does), independently of any host, and merge with the observed rows by the registry order.
+- Gate item 7 prints per group `FEATURE PATH HOST: <deployed <D> | local <url> | none — <reason>>`; a ticket stop whose build changes because of the recompute is re-evaluated before the gate is shown again.
+
+**Incoming deferred rows.** A `deferred-in from <SRC>` row verifies the **source's** criterion, so its build must contain the source's merges too: read `bash .claude/lib/team-pr.sh prs <SRC>` (the Step 0.75 op), compute the source's acceptable hosts, and observe the row on a host acceptable for **both** source and target (deployed preferred); its Lane P part needs the checkout to contain both. Source PR data unavailable → the source part follows row 5 and the gate says so. No host acceptable for both → the row stays `NEEDS-HUMAN — no build contains both <SRC> and <KEY>` and no deferral result is posted for it.
+
+**Build drift around the observation** — every group, the first included. The gate may wait; a deployment may land meanwhile.
+
+- Right before a group's Phase 2, run the probe again and recompute this step for its tickets: any change of host, `deployed-sha:`, `BUILD_SHA` or a readiness line against what the gate showed → that group does not start; show the difference and ask the gate again for that group only.
+- Right after the group's last observed row — only when some row was observed on the deployed host and `build_sha_url` is configured — run the probe once more. A `deployed-sha:` that changed during the observations → before Phase 2.5, every row observed on deployed in that group becomes `NEEDS-HUMAN — deployed build changed during observation (<D1> → <D2>); re-verify` (checkout and local rows keep theirs), those tickets record `build=-`, and `### Outside the criteria` repeats the line.
+- **Readiness sample:** the probe is argument-free, so every run repeats the readiness checks. The sample the gate shows and the group's records cite is the **pre-observation** run; the post-observation run is read for `deployed-sha:` only.
+
+**Downstream uses:** Lane S builds each row's target from **its ticket's** host (feature-path rows: the feature-path host; incoming deferred rows: the host acceptable for both source and target, shown beside the row at the gate); Phase 0.5's stop compares the record's `build=` with **this ticket's** `BUILD_SHA`; the record's Environment line and `build=` are the ticket's host, stamp and `BUILD_SHA` — so `build:` names the build the observation actually ran against, or `-` when no single build can be named.
 
 ## Step 0.8 — Groups
 
@@ -253,7 +308,7 @@ Applies to a run whose record target (Step 0.7) holds a record. Today's fingerpr
 | --- | --- |
 | No record on the target | First run — `mode=first` |
 | No `qa-verify:v1 record` marker (an older, marker-less comment), an unknown `qa-verify:v<N>`, or a record that fails validation (registry §7b) | Full run — `mode=first`; the gate says why |
-| The record has `fail` > 0, today's criteria and the record's rows match one-to-one by fingerprint (no new, gone or duplicated fingerprint), and its `build=` sha resolves to the same commit as this run's `BUILD_SHA` | Stop before the gate: no commit since the failed record — nothing to re-check |
+| The record has `fail` > 0, today's criteria and the record's rows match one-to-one by fingerprint (no new, gone or duplicated fingerprint), and its `build=` sha resolves to the same commit as this ticket's `BUILD_SHA` (Step 0.76) | Stop before the gate: no commit since the failed record — nothing to re-check |
 | The record has `fail` > 0 but the criteria changed, `build=-`, `BUILD_SHA` is `-`, or the two commits differ | No stop — continue with the rows below |
 | A fingerprint of today's criteria is not in the record | Verify as new |
 | A fingerprint of the record is not in today's criteria | Drop; list as removed |
@@ -268,7 +323,8 @@ Applies to a run whose record target (Step 0.7) holds a record. Today's fingerpr
 - "Observed row" = a row whose disposition came from a verifier (`PASS`, `FAIL`, `NEEDS-HUMAN`).
 - A carried row's `<date>` is the date of the observation it rests on: an already-carried row keeps its date; otherwise the re-checked record's run date.
 - "Same commit" = `git rev-parse --verify --quiet "<build>^{commit}"` equals `git rev-parse --verify --quiet "<BUILD_SHA>^{commit}"`, run only on a `build=` that passed the registry §7b shape check (`-` or 7–40 lowercase hex), quoted. An unknown sha is inconclusive → no stop.
-- **Re-check does not use PR data yet** — Step 0.75 reads it for grouping only; a ticket's own PRs cannot show a regression that another ticket's merge caused. Always take the "PR data is unavailable" row and print `PR data: unavailable — every observed row is verified again`.
+- **The stop fires only on a record whose Environment line carries a Step 0.76 stamp** — its host part begins `deployed `, `local `, `checkout ` or `verified against local `. An older record, written before per-ticket build provenance (its static rows may have read uncommitted changes), never stops: the gate prints `older record without build provenance — verifying again`.
+- **The carry decision does not use PR data yet** — a ticket's own PRs cannot show a regression that another ticket's merge caused. For carrying, always take the "PR data is unavailable" row and print `carry: PR data not used — every observed row is verified again`. This concerns the carry decision only: Step 0.76 takes the ticket's merge commits from the Step 0.75 read in a re-check run too, so its host and build decision (row 5 included) follows whether that read succeeded, never this line.
 - **In a group or pool run the stop row is evaluated per ticket.** A stopped ticket is shown at the gate with its reason and its override, and is left out of its group; the group and the session continue with the rest.
 - `mode=recheck` and the Run line `re-check of <date>` apply whenever the record validated, even when every row is verified again.
 - Removed rows → the terminal, the working file, and one bullet `Removed since the record of <date>: <id> [<fp>], …` under the record's `### Outside the criteria`.
@@ -281,20 +337,20 @@ Applies to a run whose record target (Step 0.7) holds a record. Today's fingerpr
 Print, in this order — a single run prints items 1, 2, 6 and 8; a group or pool run prints every item:
 
 1. `SUBJECT: <resolved | (unresolved)>` and `GATE_STATUS: <green | not-run | unknown>` — per ticket in a group or pool run.
-2. `BASE_URL: <value | (unresolved)> (<reason>)` and `BUILD_SKEW: <the probe's line, verbatim>`. These print **here**, before the table and therefore before the approval — the environment a matrix was verified against is part of what the human is approving, and it is unrecoverable afterwards. When any row is bound to `qa-runtime-ui`, also print `BROWSER_DRIVER: <configured> → <effective> (<reason>)` and `BROWSER_LAUNCH: <the probe's line>`; under an effective `mcp` the line `mcp: a single call is bounded by the server's own timeouts`; and, when the artifacts directory is committable, `ARTIFACTS: <dir> is committable — add it to <exclude file> before approving: echo '<dir relative to the owner>/' >> <exclude file>`, with `<exclude file>` from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (the command never writes it). The committability check is the Phase 2 guard's owner-aware check (Lane S → Before the first browser row), run here as a read — the probe's `artifacts-dir … NOT gitignored` line is the hint, unless the directory lies outside the work tree.
+2. `BASE_URL: <value | (unresolved)> (<reason>)`, `DEPLOYED_SHA: <the probe's line, verbatim>` and every `READINESS` line, plus the PR-discovery limit line (Step 0.76) when it applies. These print **here**, before the table and therefore before the approval — the environment a matrix was verified against is part of what the human is approving, and it is unrecoverable afterwards. When any row is bound to `qa-runtime-ui`, also print `BROWSER_DRIVER: <configured> → <effective> (<reason>)` and `BROWSER_LAUNCH: <the probe's line>`; under an effective `mcp` the line `mcp: a single call is bounded by the server's own timeouts`; and, when the artifacts directory is committable, `ARTIFACTS: <dir> is committable — add it to <exclude file> before approving: echo '<dir relative to the owner>/' >> <exclude file>`, with `<exclude file>` from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (the command never writes it). The committability check is the Phase 2 guard's owner-aware check (Lane S → Before the first browser row), run here as a read — the probe's `artifacts-dir … NOT gitignored` line is the hint, unless the directory lies outside the work tree.
 3. In pool mode, the pool listing: every read ticket with key, title, time in status (`~` when approximate), newest record state, PRs, incoming deferrals and group id; the not-read line (Step 0.2); the PR-data and dependency states; the tickets set aside at resolution (Step 0.1) with their stop messages.
 4. In a group or pool run, the groups with edges — every edge with its signal — and every cross-reference with its signal (Step 0.8).
 5. The group(s) proposed for this run.
-6. Per ticket (in a group or pool run, per proposed ticket): `RECORD TARGET: <Jira KEY | GitHub #<n> | file .agents/handoffs/qa-<slug>-ac-matrix[-n].md>` and `MODE: <first | recheck of <date> | full run — <why>>` (Step 0.7, Phase 0.5) — or the per-ticket re-check stop with its override. In re-check mode, also the re-check plan — one line per criterion, `<id> [<fp>] — carry | verify (<reason>) | new | removed` — and the `PR data: unavailable — every observed row is verified again` line. Then the classification table (in a group or pool run the AC column reads `<KEY>:<ac_id>`):
+6. Per ticket (in a group or pool run, per proposed ticket): `RECORD TARGET: <Jira KEY | GitHub #<n> | file .agents/handoffs/qa-<slug>-ac-matrix[-n].md>` and `MODE: <first | recheck of <date> | full run — <why>>` (Step 0.7, Phase 0.5) — or the per-ticket re-check stop with its override. Then `HOST: <deployed | local | none (ENV) | none> · build: <BUILD_SHA> · <stamp>` (Step 0.76) and, when the ticket's Lane P rows are held back, the checkout line (`this checkout lacks merge <m>` / `containment unknown — <why>`). In re-check mode, also the re-check plan — one line per criterion, `<id> [<fp>] — carry | verify (<reason>) | new | removed` — and the `carry: PR data not used — every observed row is verified again` line. Then the classification table (in a group or pool run the AC column reads `<KEY>:<ac_id>`):
 
    | AC | fp | Criterion (short) | Family | Verifier | Lane | Pre-verdict |
    |---|---|---|---|---|---|---|
 
    and the incoming rows marked `deferred-in from <SRC>`, with the stale deferrals and their reasons.
-7. In a group or pool run, the feature path per group — derived rows `F1 … Fn` with their source, and the open charged rows (`open F<n> from group <id>`) apart — classified like the criteria (Phase 0 step 5).
+7. In a group or pool run, the feature path per group — derived rows `F1 … Fn` with their source, and the open charged rows (`open F<n> from group <id>`) apart — classified like the criteria (Phase 0 step 5), with `FEATURE PATH HOST: <deployed <D> | local <url> | none — <reason>>` per group (Step 0.76 → Feature-path host).
 8. Then **stop and ask for explicit approval.**
 
-State plainly: **nothing has run yet**; correcting a misclassification, a wrong `SUBJECT`, a wrong `GATE_STATUS`, or a wrong `BASE_URL` right now is free. Do not proceed on silence, on a "looks good" that arrived before the table, or on an approval of something else.
+State plainly: **nothing has run yet**; correcting a misclassification, a wrong `SUBJECT`, a wrong `GATE_STATUS`, or a wrong host right now is free. Do not proceed on silence, on a "looks good" that arrived before the table, or on an approval of something else.
 
 In a group or pool run the Operator may also regroup, reorder, remove a ticket, or override a per-ticket stop. Any of these re-runs Phase 0 for the changed tickets, recomputes Step 0.8 and shows the gate again.
 
@@ -306,12 +362,12 @@ In a group or pool run the Operator may also regroup, reorder, remove a ticket, 
 
 In re-check mode only the rows planned `verify` or `new` (Phase 0.5) are dispatched; carried rows are not re-sent to any verifier.
 
-**A group or pool run** verifies the picked groups one after another; for each group Phases 2 → 2.5 → 3 finish before the next starts, so an interrupted session loses nothing already decided. Subsets are keyed `<KEY>:<ac_id>` (two tickets' `AC-1` never collide) and dispatched per ticket with that ticket's own `SUBJECT`; feature-path rows travel keyed `F<n>` with the `SUBJECT`s of the group.
+**A group or pool run** verifies the picked groups one after another; for each group Phases 2 → 2.5 → 3 finish before the next starts, so an interrupted session loses nothing already decided. Subsets are keyed `<KEY>:<ac_id>` (two tickets' `AC-1` never collide) and dispatched per ticket with that ticket's own `SUBJECT`; feature-path rows travel keyed `F<n>` with the `SUBJECT`s of the group. The probe runs before and after every group's observations (Step 0.76 → Build drift around the observation).
 
 **Lanes P and S are built; Lane I is still guarded.** Lane S runs in the main session under `script`/`mcp`, as a spawned `qa-runtime-ui` only under `subagent` (Phase 0 step 3b picks the driver). Never write or improvise dispatch for a verifier that is not in the injected listing — the Phase-0 guards decide what runs, not this section.
 
-- **Lane P** (parallel, browser-free, non-mutating) — spawn each built verifier **once**, with only its own family's `AC_SUBSET` (a JSON object `{ac_id: "AC text"}`), plus `SUBJECT` and `GATE_STATUS`. Several Lane-P agents may run concurrently because nothing they touch is a singleton.
-- **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. The drivers and the dispatch rules are below.
+- **Lane P** (parallel, browser-free, non-mutating) — spawn each built verifier **once**, with only its own family's `AC_SUBSET` (a JSON object `{ac_id: "AC text"}`), plus `SUBJECT` and `GATE_STATUS` — only for tickets whose checkout passes Step 0.76's static-rows rule. Several Lane-P agents may run concurrently because nothing they touch is a singleton.
+- **Lane S** (sequential) — exists because **a browser session and a working tree are singletons**; two concurrent drivers corrupt each other's evidence. Each row's mount target is built on **its ticket's** host from Step 0.76 (feature-path rows: the feature-path host; incoming deferred rows: the host Step 0.76 → Incoming deferred rows chose for both tickets). The drivers and the dispatch rules are below.
 - **Lane I** (inline in this session) — exists because **some MCP servers are reachable only from the parent session**, never from a spawned sub-agent. Still guarded by Phase 0: its verifier is not in the injected listing, so its rows resolve to `NEEDS-HUMAN`.
 
 ### Lane S — the browser drivers
@@ -326,7 +382,7 @@ The driver sub-sections below govern the rows the roster binds to `qa-runtime-ui
 
 1. **The committable-directory guard.** Take the run directory `ARTIFACTS_DIR` (`qa-env.json → artifacts_dir` + `/<run>`, where `<run>` is the record's `run=` value), absolute; find its nearest existing ancestor and ask git from there which work tree owns it: `git -C <ancestor> rev-parse --show-toplevel` fails → no repository owns it → the guard passes; it succeeds → that work tree (this project's, or any other checkout the path lands in) is the one to check, and the directory must be ignored there — `git -C <owner> check-ignore -q` on its path and on its trailing-slash form (the probe's idiom: a directory-only rule matches a not-yet-existing path only in the slash form). Committable → every browser row `NEEDS-HUMAN` — `artifacts dir <dir> is committable`, and no file is written. The fix the gate prints names the owner's exclude file from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (a linked worktree has a `.git` file, not a directory). Under `mcp` and `subagent` the same owner-aware check also covers **the browser MCP server's own output directory** (where it writes auto-named files and console logs): the `--output-dir <dir>` argument of the browser server in `qa-env.json → mcp_config_file`, resolved against the project root. No such argument found → the gate says `MCP output directory not established — the server may write logs into the work tree`, and the lane is guarded like a committable directory.
 2. **Reserve `ARTIFACTS_DIR` atomically** — `mkdir -p` the parents, then a plain `mkdir` on the leaf. The leaf already exists → another session took that second: take the next second as the run's `run=` value, carry it into the record and every artifact path, and try again — never write into a run directory this run did not create. A re-check therefore never overwrites the captures behind an earlier record.
-3. **Under `script` and `mcp`, Read `.claude/agents/qa-runtime-ui.md`** → `## Inputs`, `## Observation discipline`, `## Browser hazards`, `## Artifacts`, and apply them as the main session's own rules. The inputs are the ones the sub-agent gets: `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`, `SWEEP_WIDTHS` = `pointer_sweep_widths` for a tier-scoped criterion, `KEY`, `ARTIFACTS_DIR`, `BASE_URL`. **An empty mount template skips the lane** — its rows `NEEDS-HUMAN` with `no component mount point configured`, as under every driver.
+3. **Under `script` and `mcp`, Read `.claude/agents/qa-runtime-ui.md`** → `## Inputs`, `## Observation discipline`, `## Browser hazards`, `## Artifacts`, and apply them as the main session's own rules. The inputs are the ones the sub-agent gets: `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`, `SWEEP_WIDTHS` = `pointer_sweep_widths` for a tier-scoped criterion, `KEY`, `ARTIFACTS_DIR`, the row's ticket host (Step 0.76). **An empty mount template skips the lane** — its rows `NEEDS-HUMAN` with `no component mount point configured`, as under every driver.
 
 #### Driver `script` (default)
 
@@ -345,7 +401,7 @@ node --no-global-search-paths <script> > <script without .mjs>.json; echo "exit=
 - **A tier-scoped criterion:** one context per width of `SWEEP_WIDTHS` (the skeleton's `WIDTHS`), observations keyed by width tag; the JSON's `required` lists every tag the script was asked to cover. A tier-scoped criterion with `pointer_sweep_widths` unset is observed at the default viewport and its row notes `pointer_sweep_widths unset — default viewport only`; it cannot `PASS` a claim about a named tier.
 - A wait that times out at the action timeout is an observation, not a crash — recorded as `condition not met within <n> ms` and judged under Observation discipline 4 (enumerate before claiming absence), never a `FAIL` on its own.
 - A script that hits its hard limit → the row is `NEEDS-HUMAN` with the limit and the step quoted — no retry of that row. A script-authoring error (a selector typo, a syntax slip) may be fixed once in a `-2` script; an environment error (navigation refused, a certificate) → `NEEDS-HUMAN` with the error quoted; missing or unparseable JSON → `NEEDS-HUMAN` quoting the exit status, no retry.
-- **Preflight:** `<artifacts_dir>/<run>/preflight.mjs` from the same skeleton — `TARGET` = the first dispatched row's mount target (a route the gate approved; a bare `BASE_URL` may legitimately answer 404 while the configured probe paths work), no locator; it observes `page.title()`, `navigator.userAgent` and `browser.version()`; `HARD_LIMIT_MS = 60000`. A failure every row shares — the browser does not launch, the hard limit, a certificate or connection error — aborts the lane: every browser row `NEEDS-HUMAN` with the error quoted; Lanes P and I continue; never a retry loop. An HTTP or mount failure of that one route is attached to the first row only (its row `NEEDS-HUMAN` with the status and URL), and the lane goes on.
+- **Preflight — one preflight per host** in use: `<artifacts_dir>/<run>/<group id>-preflight-<n>.mjs` (`<n>` = the host's ordinal in gate order, its JSON beside it by the same basename) from the same skeleton — `TARGET` = the first dispatched row's mount target **on that host** (a route the gate approved; a bare host root may legitimately answer 404 while the configured probe paths work), no locator; it observes `page.title()`, `navigator.userAgent` and `browser.version()`; `HARD_LIMIT_MS = 60000`. The gate and the working file record `host → preflight file`. A browser-launch failure or the preflight's own hard limit is lane-wide: every browser row `NEEDS-HUMAN` with the error quoted; Lanes P and I continue; never a retry loop. A navigation, certificate or connection failure aborts only the rows on **that host** (`NEEDS-HUMAN` with the error quoted); rows on the other approved hosts go on. An HTTP or mount failure of that one route is attached to the first row only (its row `NEEDS-HUMAN` with the status and URL), and the lane goes on.
 
 The skeleton, verbatim:
 
@@ -356,7 +412,7 @@ import { createRequire } from 'node:module';
 
 const ROOT = '/abs/project/root';                 // the project whose own Playwright runs
 const PKG = 'playwright';                         // the probe's selection: 'playwright' or '@playwright/test'
-const TARGET = 'http://localhost:3000/route';     // BASE_URL + the row's mount target
+const TARGET = 'http://localhost:3000/route';     // the ticket's host (Step 0.76) + the row's mount target
 const OUT = '/abs/project/root/.playwright-mcp/RUN'; // ARTIFACTS_DIR (artifacts_dir + /<run>)
 const BASE = 'KEY-AC-1';                          // this script's file name without .mjs (attempt suffix included)
 const KEY = 'KEY';
@@ -455,23 +511,23 @@ The main session drives the browser MCP tools itself, one row at a time. Every w
 
 Artifacts: the screenshots as above (named from the log's basename), plus the step log `<artifacts_dir>/<run>/<KEY>-<ac_id>.mcp.md` — each call and the value it observed, then, as its last section, a fenced JSON block **in the script result's shape** (`status` `done` | `hard-limit` | `error`, `required` — the dispatched width tags, `observed`, `assertions` with `name`/`expected`/`actual`/`ok`, `screenshots`, `error`), written by the main session when the row ends. The conversion reads that block exactly as it reads a script's JSON.
 
-**Preflight:** a single navigation to the first dispatched row's mount target within **~60 s** (liveness), the neighbours count (`qa-env.json → browser_mcp_process_pattern` — recorded, never gated on), and the `browser_launch` check below. A failure aborts the lane as under `script`.
+**Preflight — one per host in use:** a single navigation to the first dispatched row's mount target **on that host** within **~60 s** (liveness), the neighbours count (`qa-env.json → browser_mcp_process_pattern` — recorded, never gated on), and the `browser_launch` check below. A failure is scoped as under `script`: a browser that does not start is lane-wide; a navigation, certificate or connection failure aborts only that host's rows.
 
 #### Driver `subagent`
 
-The `qa-runtime-ui` sub-agent is spawned, as before. **Preflight, once, before the first spawned browser verifier:**
+The `qa-runtime-ui` sub-agent is spawned, as before — **one subset per host** when a group's rows use more than one host (Step 0.76), so each spawn covers one host. **Preflight, once per host, before the first spawned browser verifier on it:**
 
 1. **Tooling** — is a server of the `browser automation` class in this session's roster? (Phase 0 step 3b already resolved this; do not re-decide it here.)
 2. **Liveness** — can the browser answer a single navigation within **~60 s**? Anything slower is a hung driver, not a slow one.
 3. **Neighbours** — count already-running browser MCP servers using `qa-env.json → browser_mcp_process_pattern`. **Record the count; never gate on it.** It is diagnostic context for a collision, not permission to proceed.
 
-**On a preflight failure — a timeout, or a profile reported as already in use — abort the lane:**
+**On a preflight failure — a timeout, or a profile reported as already in use — abort the lane** (scoped as under `script`: a browser that does not start or a profile already in use is lane-wide; a navigation, certificate or connection failure aborts only that host's subset, and the other hosts' subsets go on):
 
-- Mark every criterion routed to Lane S as `NEEDS-HUMAN`, quoting the actual error in `notes`.
+- Mark every criterion routed to Lane S (to that host's subset, for a host-scoped failure) as `NEEDS-HUMAN`, quoting the actual error in `notes`.
 - **Continue Lanes P and I.** One dead lane is not a dead run.
 - **Never retry in a loop.** Two sessions contending for one browser profile can burn tens of minutes and will not resolve themselves; the failure needs a human, and a retry loop is what stops it from reaching one.
 
-**What to pass:** `AC_SUBSET`, `SUBJECT`, `GATE_STATUS`, the router-resolved `BASE_URL`, and `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`. **If that template is empty, skip the lane** and route its criteria to `NEEDS-HUMAN` with `no component mount point configured` as the reason. A project with no way to mount a component in isolation is a normal state — say so rather than pointing the verifier at a guessed route. Also pass **`KEY`** (the tracker key or spec slug) and **`ARTIFACTS_DIR`** — the run directory reserved in "Before the first browser row" (after the committable-directory guard passed) — every browser verifier derives its per-AC artifact names from these two (`qa-runtime-ui.md → Artifacts`); never pass one concrete screenshot path for a subset with several `ac_id`s. **Sweep widths travel with the dispatch too:** a `qa-runtime-ui` subset with tier-scoped criteria gets **`SWEEP_WIDTHS`** = `pointer_sweep_widths` — the verifier never reads `qa-env.json` itself, so an unpassed list reads to it as "not configured". And **`BROWSER_LAUNCH`** — the typed `browser_launch` values (Step 0), which the sub-agent establishes in its browser before any criterion.
+**What to pass:** `AC_SUBSET`, `SUBJECT`, `GATE_STATUS`, the subset's host from Step 0.76 (as `BASE_URL` — the ticket's host, the feature-path host, or for an incoming deferred row the host chosen for both tickets), and `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`. **If that template is empty, skip the lane** and route its criteria to `NEEDS-HUMAN` with `no component mount point configured` as the reason. A project with no way to mount a component in isolation is a normal state — say so rather than pointing the verifier at a guessed route. Also pass **`KEY`** (the tracker key or spec slug) and **`ARTIFACTS_DIR`** — the run directory reserved in "Before the first browser row" (after the committable-directory guard passed) — every browser verifier derives its per-AC artifact names from these two (`qa-runtime-ui.md → Artifacts`); never pass one concrete screenshot path for a subset with several `ac_id`s. **Sweep widths travel with the dispatch too:** a `qa-runtime-ui` subset with tier-scoped criteria gets **`SWEEP_WIDTHS`** = `pointer_sweep_widths` — the verifier never reads `qa-env.json` itself, so an unpassed list reads to it as "not configured". And **`BROWSER_LAUNCH`** — the typed `browser_launch` values (Step 0), which the sub-agent establishes in its browser before any criterion.
 
 ### Collecting agent results — all spawned agents
 
@@ -483,9 +539,9 @@ The `qa-runtime-ui` sub-agent is spawned, as before. **Preflight, once, before t
 
 - `user_agent` — `navigator.userAgent` equals the configured string.
 - `channel` — a set `channel` cannot be established in an MCP-launched browser: a pre-release channel (`chrome-beta`, `msedge-dev`, …) reports the same brand as the stable one, so no page-visible signal tells them apart. A set `channel` therefore guards the lane under `mcp` and `subagent`; only `script` honours it, by launching it.
-- `ignore_https_errors` — needed only for a host whose certificate is not trusted: the first navigation to an `https` `BASE_URL` succeeding establishes what the flag is for (on a host with a trusted certificate, or an `http` host, there is nothing to establish).
+- `ignore_https_errors` — needed only for a host whose certificate is not trusted, and established **per host**: the first navigation to an `https` target of that host succeeding establishes what the flag is for (on a host with a trusted certificate, or an `http` host, there is nothing to establish). A host where it is not established guards only that host's rows.
 
-Not established → every row of the lane `NEEDS-HUMAN` — `browser_launch.<key> not established in the <driver> browser (<observed>)`. Under `script` the preflight prints `navigator.userAgent` and the browser version into its JSON — the evidence of the browser used. The command never edits the MCP config.
+`channel` and `user_agent` are process-wide. Not established → every row of the lane `NEEDS-HUMAN` — `browser_launch.<key> not established in the <driver> browser (<observed>)`. Under `script` the preflight prints `navigator.userAgent` and the browser version into its JSON — the evidence of the browser used. The command never edits the MCP config.
 
 ### After the rows — the screenshot check, then the conversion
 
@@ -541,17 +597,24 @@ Worked rows — (a) a script that finished with one false assertion, (b) a scrip
 
 ## Phase 2.5 — Self-audit
 
-For **every `FAIL`** and **every absence-based `NEEDS-HUMAN`**, answer three questions explicitly, in writing:
+For **every `FAIL`** and **every absence-based `NEEDS-HUMAN`**, answer the questions below explicitly, in writing:
 
 1. Was it confirmed by a **second independent method**? (Two greps over the same file are one method.)
 2. Is the evidence **concrete observed values**, or a single artifact that could itself be wrong?
 3. Is the **severity honest** — would you defend `blocker` to the person whose release it stops?
+4. **Is the cause in this ticket's code, or in the environment?** Asked of every `FAIL` that survives 1–3 (never of an absence-based `NEEDS-HUMAN`). `ENV` needs its own evidence, one of three kinds:
+   1. **Kind 1 — an independent surface:** the same failure observed in this run on a surface independent of the ticket's change, named, and shown not to render or call anything the ticket's PRs changed. Available only with a complete PR file list (Step 0.75 read succeeded, not `truncated`) and the surface's own files (its route, component and the shared modules it imports) absent from it; for a feature-path row `F<n>` the list is the union of every group ticket's PR files, each read complete, so a surface that uses a module another group ticket changed does not qualify. The surface's route, component and imports are traced at the build both failures were observed on — on the deployed host `git show "<D>:<path>"` for a resolved `D`, on a clean checkout the working tree — and when that revision or the dependency chain cannot be established, kind 1 is unavailable.
+   2. **Kind 2 — an older build:** the build under test is older than the ticket's merge — Step 0.76 row 3 or the feature-path rule.
+   3. **Kind 3 — an external resource shown absent:** observed in the failing step itself — a response from that system captured in the row's evidence (a status, an error body naming the missing schema, space or resource). A `readiness <name>: FAILED | UNREACHABLE` line is context, not proof — an anonymous probe from the tester's machine measures that machine's access (a VPN gap, a `401` to an unauthenticated probe), not what the observed host used; quote it beside kind-3 evidence, never in place of it.
+
+   Without one of the three, the row stays `FAIL` — "probably the environment" is not evidence. `ENV` is not a blocker (registry §7b verdict line).
 
 Then emit a line:
 
 ```
 DECISION: KEEP        — <finding> — confirmed by <method 1> + <method 2>
 DECISION: DOWNGRADE → NEEDS-HUMAN — <finding> — single method (<the one method>), not presentable
+DECISION: ENV         — <finding> — <evidence kind>: <evidence>
 ```
 
 **Hard rule: a `FAIL` resting on a single method or a single artifact is not presentable.** Downgrade it. Retracted findings cost more trust than missed ones.
@@ -588,10 +651,10 @@ Then **one** `AskUserQuestion`: `Accept all recommendations` (first, recommended
 
 Build one record per ticket per `registry §7b`, serialized from that ticket's own `(<KEY>, <ac_id>)` pairs:
 
-- the Run line (`first`, or `re-check of <date>`; `group: <keys>`, or `single`), the Environment line from `BASE_URL` / `BASE_URL_REASON` and `BUILD_SHA` (or the skew state when it is `-`), and `Criteria from:`;
+- the Run line (`first`, or `re-check of <date>`; `group: <keys>`, or `single`), the Environment line from the ticket's host and stamp (Step 0.76) and its `BUILD_SHA` (or the stamp's build state when it is `-`), and `Criteria from:`;
 - one row per criterion with `[<fp>]` — a browser row's `<observed value, one line>` quotes the script's observed value (or the MCP step log's). A Phase-0 `not-verified` row (design-tool MCP absent) is written `NEEDS-HUMAN — design-tool MCP absent (not-verified)` and counted in `needs-human=` — the record admits only §6 / §7a dispositions — and it joins the one-pass list like any `NEEDS-HUMAN`;
 - `### Feature path` — the group's feature-path rows on every ticket of the group, a carried charged `FAIL` with its `(group <id>)` (Phase 0 step 5), or `- none` when there are neither; `### Outside the criteria` (out-of-AC observations, removed rows, an incomplete Jira history (Step 0.75), or `- none`);
-- the verdict line — a feature-path `FAIL` counts in `Blockers` only on the tickets it is charged to — and the marker with `run=` = the run's start in `YYYYMMDDTHHMMSSZ`, `group=<group id>` (or `-`), `build=` = `BUILD_SHA`.
+- the verdict line — a feature-path `FAIL` counts in `Blockers` only on the tickets it is charged to — and the marker with `run=` = the run's start in `YYYYMMDDTHHMMSSZ`, `group=<group id>` (or `-`), `build=` = this ticket's `BUILD_SHA`.
 
 Jira target: key-shaped ids are written without the hyphen (`AC-3` → `AC3`, `registry §7b`), in records, feature paths and deferral comments.
 
@@ -624,14 +687,15 @@ Write to `.agents/handoffs/qa-<slug>-ac-matrix.md`, where `<slug>` is:
 
 The file is local markdown, so a table is fine here. Include:
 
-- A header stamping `SUBJECT`, `GATE_STATUS`, **`BASE_URL` + its resolution reason**, **`BUILD_SKEW`**, `BUILD_SHA`, the AC source, the record target, the mode, and the date. The environment a run was verified against must be readable off the artifact, not reconstructed from a session nobody kept.
-- **Every runtime / SSR / visual row carries the skew stamp** from the Step 0 state table — including the `not-applicable` case, which stamps the local host rather than a warning.
+- A header stamping `SUBJECT`, `GATE_STATUS`, **`BASE_URL` + its resolution reason**, **`DEPLOYED_SHA`**, the readiness lines, the ticket's `HOST` line, `BUILD_SHA`, the AC source, the record target, the mode, and the date. The environment a run was verified against must be readable off the artifact, not reconstructed from a session nobody kept.
+- **Every runtime / SSR / visual row carries the host stamp** from Step 0.76 — including the `not applicable` case, which stamps the local host rather than a warning.
 - One row per AC: fp · family · agent · methods · evidence · artifact paths · disposition · severity (`FAIL` rows only). Under a browser driver the artifact paths are the script, its JSON and the screenshots (`mcp`: the step log and the screenshots), plus the effective driver; a visual row names the screenshot that was opened.
 - The source rows behind any merged verdict.
 - **The blocker tally:** count of `FAIL` rows with severity `blocker`. **≥1 blocker ⇒ not acceptable**, stated in those words.
 - Every `FAIL` cites its `ac_id` and **quotes the clause it contradicts**.
 - Findings that map to no AC go in a separate **"Out-of-AC observations"** block below the rows — never mixed into AC rows, never counted in the tally.
 - The re-check plan, when there is one, and the removed rows.
+- An `## Environment defects` section — this group's causes with their evidence, the waiting rows `<KEY>:<id>` and a draft ticket text per cause (title `Environment: <cause>`; body: what is not ready, how it was shown, which tickets wait, what would unblock them — e.g. `deploy a build containing <merge>`). Written **before** the record section, so the marker stays the last line; omitted when the group has no `ENV` row and no failed readiness line. A cause resting on evidence kind 1 alone (the failure reproduces on an independent surface) is drafted as `Environment: cause not identified — <failure>`, and its body says the failure reproduces outside this ticket's change and may be another change's regression, not infrastructure — the row stays `ENV`, and the draft keeps the Operator from filing it as an infrastructure defect.
 - **As its last section, the record text** — so the file's last line is the marker.
 
 Which writes are required:
@@ -673,6 +737,8 @@ Print, per ticket, the verdict line's text — `Acceptable — move the ticket y
 - `do not trust the newest verdict line of <SRC> — re-check it` after a sibling result (Deferral results);
 - `nothing was observed or carried — verify by hand before you move it` when no row is `PASS`, `FAIL` or `CITED` (carried included). The one-pass decision changes a disposition, never adds an observation, so an all-`DEFERRED` ticket gets this line too.
 
+After the last group, print **`Environment defects`** once for the run — built from the working files' saved `## Environment defects` sections, deduplicated by cause across the run, failed readiness checks included even when no row depended on them; each cause with its evidence, its waiting rows and its draft ticket text. An interrupted session keeps what finished groups wrote. The command creates no ticket and posts none of these texts.
+
 The command never transitions a ticket.
 
 ---
@@ -688,6 +754,7 @@ The command never transitions a ticket.
 | `deferred-in from <SRC>` | A row `<SRC>` deferred to this ticket; its verdict is posted on `<SRC>` as a deferral result |
 | `stale deferral` | A pointer whose source no longer holds the row as deferred here — not taken; the reason is listed |
 | `FAIL` + severity | Confirmed by ≥2 independent methods and survived Phase 2.5. `blocker` means not shippable |
+| `ENV` | The environment, not the ticket's code, is shown to be the cause (Phase 2.5 question 4, or Step 0.76 row 3 or the feature-path rule). Not a blocker — the ticket is not sent back; see Environment defects |
 | `NEEDS-HUMAN` — *verifier not built* | The criterion is real and unchecked. Nothing is wrong with the run; the lane does not exist yet |
 | `NEEDS-HUMAN` — *not observable here* | `registry §5` matched. Making it observable needs tooling or access this repo lacks |
 | `NEEDS-HUMAN` — *downgraded* | Something looked like a defect on one method only. Look at it yourself before believing or dismissing it |
@@ -712,6 +779,7 @@ The command never transitions a ticket.
 - **Never verify a deferred row from the pointer's text — verify the source's criterion.**
 - **Never decide a visual row from computed values alone, and never retry a script that hit its hard limit.**
 - **Never write browser evidence into a committable directory.**
+- **Never write `ENV` without its evidence** (Phase 2.5 question 4, Step 0.76 row 3 or the feature-path rule), **and never stamp a build the observation did not run on.**
 
 ---
 

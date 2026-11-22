@@ -3,8 +3,9 @@
 # the record template and its rules, both marker types), the criterion fingerprint — extracted from
 # the registry and run on fixed vectors, so the test runs the same bytes the command runs — the
 # re-check rules, Phase 3's one-pass decisions and one approval, the modes, the pool, groups, the
-# feature path and deferrals, the browser drivers and the script skeleton (extracted and run against
-# a stub Playwright), and the neighbouring contracts.
+# feature path and deferrals, the per-ticket host-and-build decision, the ENV evidence rule, the
+# browser drivers and the script skeleton (extracted and run against a stub Playwright), and the
+# neighbouring contracts.
 # Text and pipeline checks only — nothing is spawned, no tracker is called, no real browser runs.
 #
 # Usage: bash .claude/lib/tests/qa-verify-contract-test.sh [root]   (default: this checkout)
@@ -194,7 +195,7 @@ pins "$CMD" "re-check" <<'EOF'
 ## Phase 0.5 — Re-check plan
 | No record on the target | First run — `mode=first` |
 | No `qa-verify:v1 record` marker (an older, marker-less comment), an unknown `qa-verify:v<N>`, or a record that fails validation (registry §7b) | Full run — `mode=first`; the gate says why |
-| The record has `fail` > 0, today's criteria and the record's rows match one-to-one by fingerprint (no new, gone or duplicated fingerprint), and its `build=` sha resolves to the same commit as this run's `BUILD_SHA` | Stop before the gate: no commit since the failed record — nothing to re-check |
+| The record has `fail` > 0, today's criteria and the record's rows match one-to-one by fingerprint (no new, gone or duplicated fingerprint), and its `build=` sha resolves to the same commit as this ticket's `BUILD_SHA` (Step 0.76) | Stop before the gate: no commit since the failed record — nothing to re-check |
 | The record has `fail` > 0 but the criteria changed, `build=-`, `BUILD_SHA` is `-`, or the two commits differ | No stop — continue with the rows below |
 | A fingerprint of today's criteria is not in the record | Verify as new |
 | A fingerprint of the record is not in today's criteria | Drop; list as removed |
@@ -203,7 +204,9 @@ pins "$CMD" "re-check" <<'EOF'
 | Matched; every row `PASS` / `CITED`; PR data available; no changed file matches its subject or mount target | Carry — `PASS (carried from <date>)` / `CITED (carried from <date>)` |
 | Matched; every row `PASS` / `CITED`; a changed file matches its subject or mount target | Verify |
 | Matched; every row `PASS` / `CITED`; the match is uncertain or PR data is unavailable | Verify every observed row again; carry only `CITED` rows |
-PR data: unavailable — every observed row is verified again
+carry: PR data not used — every observed row is verified again
+Step 0.76 takes the ticket's merge commits from the Step 0.75 read in a re-check run too
+Step 0.76 takes the ticket's merge commits from this read in every mode, a re-check run included; only Phase 0.5's carry decision does not use PR data yet.
 a row whose disposition came from a verifier
 `git rev-parse --verify --quiet "<build>^{commit}"`
 a deployed sha is never stamped on an observation of another host
@@ -285,6 +288,103 @@ grep -vF 'never merges them' "$ROOT/$CMD" > "$WORK/b/$CMD"
 # In a subshell: ROOT, FAILS and N change only in its own copies.
 ( ROOT=$WORK/b; FAILS=(); pins "$CMD" "pool" <<< "$POOL_PINS"; [ "${#FAILS[@]}" -gt 0 ] )
 check $? "break-check: a removed pool pin went unnoticed"
+
+# ---- environment readiness --------------------------------------------------------------------------
+# The per-ticket host-and-build decision (Step 0.76), the ENV evidence rule (Phase 2.5 question 4) and
+# the probe lines /prime-qa transcribes. A plain heredoc file — bash 3.2, see the browser drivers note.
+cat > "$WORK/env-pins.txt" <<'EOF'
+## Step 0.76 — Host and build per ticket
+git merge-base --is-ancestor
+git rev-parse --is-shallow-repository
+contains | lacks | unknown
+server provenance not verified
+never a pass of the build check
+this checkout lacks merge
+no single build contains every ticket of group
+is not in this clone — git fetch
+PR discovery: a merged follow-up
+DEPLOYED_SHA: <the probe's line, verbatim>
+HOST: <deployed | local | none (ENV) | none>
+Is the cause in this ticket's code, or in the environment?
+DECISION: ENV
+the row stays `FAIL`
+not `truncated`
+## Environment defects
+The command creates no ticket and posts none of these texts.
+Never write `ENV` without its evidence
+FEATURE PATH HOST:
+one preflight per host
+local checkout lacks merge
+cause not identified
+older record without build provenance
+deployed build changed during observation
+no build contains both
+EOF
+ENV_PINS=$(cat "$WORK/env-pins.txt")
+pins "$CMD" "env" <<< "$ENV_PINS"
+for f in "$CMD" .claude/commands/prime-qa.md; do
+  for neg in 'build-skew' 'BUILD_SKEW' 'MISMATCH'; do
+    lacks "$f" "$neg"; check $? "$f still says: $neg"
+  done
+done
+pins .claude/commands/prime-qa.md "prime-qa env" <<'EOF'
+Step 0.76
+`deployed-sha: <sha> (differs)`
+**Readiness:**
+Every runtime or visual observation made **on the deployed host** carries that caveat (`/qa-verify` Step 0.76 row 5); an observation on the local host or of the checkout does not.
+A readiness line is context, not proof: it is never `ENV` evidence on its own
+quoted beside kind-3 evidence, never in place of it
+EOF
+for neg in 'Re-check does not use PR data' 'PR data: unavailable — every observed row is verified again'; do
+  lacks "$CMD" "$neg"; check $? "qa-verify still says: $neg"
+done
+for neg in 'may cite it as `ENV` evidence' 'Every runtime or visual observation this session carries that caveat'; do
+  lacks .claude/commands/prime-qa.md "$neg"; check $? "prime-qa still says: $neg"
+done
+jq -e '(.readiness_checks | type == "array") and has("_readiness_checks_doc")' "$ROOT/.claude/qa-env.json" >/dev/null 2>&1
+check $? "qa-env.json: readiness_checks shape"
+
+# Conditions bound to outcomes: each rule line must occur WHOLE inside its own section, so a flipped
+# outcome with every name kept still fails. `@@ <heading>` opens the section the next lines live in.
+cat > "$WORK/env-rules.txt" <<'EOF'
+@@ Step 0.76 — Host and build per ticket
+- Containment is computed per `m` with `git merge-base --is-ancestor "<m>" "<X>"` and has three outcomes, `contains | lacks | unknown`: `contains` when every `m` exits 0, `lacks` when some `m` exits 1 and the rest exit 0 or 1, `unknown` on any other exit or any unresolved input; in a shallow clone (`git rev-parse --is-shallow-repository` prints `true`) a `lacks` becomes `unknown`, because missing history can make a contained commit look absent and `lacks` is what writes `ENV`.
+| 1 | `M`∈`D` = `contains`, deployed usable | deployed | `D` | `deployed <url> @ <D> — contains merge <m…>` |
+| 2 | `M`∈`D` = `lacks`, or `M`∈`D` = `contains` with deployed not usable; local usable; `M`∈`H` = `contains` | local | `H` only when this session started the local server from a clean tree at `H` (`git status --porcelain` empty); else `-` | `local <url> — server provenance not verified` (or `local <url> @ <H> — started by this session`) |
+| 3 | `M`∈`D` = `lacks`, row 2 does not apply | none — the observed rows are `ENV` | `-` | `ENV — deployed <D> lacks merge <m> (git merge-base --is-ancestor)`, plus why local is no alternative (`local HEAD lacks <m>` / `local host down` / `no local_url` / `local containment unknown`) |
+| 4 | `M`∈`D` = `contains`, deployed not usable, row 2 does not apply | none — the observed rows are `NEEDS-HUMAN` | `-` | `deployed <url> unreachable; its build <D> contains the merge` |
+| 5 | `M`∈`D` = `unknown` — no PR data, no merged PR, a merge commit or `D` not in this clone, `D` not readable, a git error, a shallow clone's `lacks` — **the old rule** | first the host: `deployed-sha … (equal)` or `not verified`, with deployed usable → deployed; `(differs)`, deployed not usable, or `not applicable` → local if usable; nothing usable → none | from the chosen host only: deployed with `(equal)` → `D`; every other outcome (local, not-verified deployed, none) → `-` | deployed `(equal)` → `deployed <url> @ <D>`; `(differs)` → `⚠️ deployed build differs from HEAD and the ticket's merge is not established (<why>) — local <url>, server provenance not verified`; deployed `not verified` → `⚠️ build not verified — deployed build may lag HEAD`; `not applicable` → `verified against local <url>` (no warning — the never-collapse rule of Step 0); `(equal)` but deployed not usable → `local <url>, server provenance not verified` — never `D`; `not verified` but deployed not usable → `⚠️ deployed build not verified and deployed host not usable — local <url>, server provenance not verified`; nothing usable → `no usable host — <why> (deployed: <the deployed-sha state or not usable>; local: <down | no local_url | NOT PROBED | checkout lacks merge <m>>)`, the observed rows `NEEDS-HUMAN` |
+- Row 5 applies the old rule only to what is unknown: when `M` is known, local is an acceptable host in row 5 only if `M`∈`H` = `contains`; with `M`∈`H` = `lacks` the local candidate is dropped (`local checkout lacks merge <m> — git pull, then re-run`) and, with no other host, the observed rows are `NEEDS-HUMAN` (a tester's stale checkout is not an environment defect); with `M` unknown, row 5 keeps the old fallback.
+- A ticket's final `BUILD_SHA` is set after Phase 0 classification from the sources its rows actually use: only observed rows → the table's value; only Lane P rows → `H` when `git status --porcelain` is empty, else `-`; both, with the observed build ≠ `H` or unproven → `-` (mixed sources, the registry §7b deferral-result convention); both on `H` → `H` only with a clean tree (`git status --porcelain` empty), else `-`; Lane P rows held back by the static-rows rule above read nothing and are no source, and a ticket left with no source → `-`.
+@@ Phase 2.5 — Self-audit
+   1. **Kind 1 — an independent surface:** the same failure observed in this run on a surface independent of the ticket's change, named, and shown not to render or call anything the ticket's PRs changed. Available only with a complete PR file list (Step 0.75 read succeeded, not `truncated`) and the surface's own files (its route, component and the shared modules it imports) absent from it; for a feature-path row `F<n>` the list is the union of every group ticket's PR files, each read complete, so a surface that uses a module another group ticket changed does not qualify. The surface's route, component and imports are traced at the build both failures were observed on — on the deployed host `git show "<D>:<path>"` for a resolved `D`, on a clean checkout the working tree — and when that revision or the dependency chain cannot be established, kind 1 is unavailable.
+   2. **Kind 2 — an older build:** the build under test is older than the ticket's merge — Step 0.76 row 3 or the feature-path rule.
+   3. **Kind 3 — an external resource shown absent:** observed in the failing step itself — a response from that system captured in the row's evidence (a status, an error body naming the missing schema, space or resource). A `readiness <name>: FAILED | UNREACHABLE` line is context, not proof — an anonymous probe from the tester's machine measures that machine's access (a VPN gap, a `401` to an unauthenticated probe), not what the observed host used; quote it beside kind-3 evidence, never in place of it.
+EOF
+env_rules() {  # every rule line occurs as a whole line inside the section its `@@` header names
+  local line sec="" n=0
+  while IFS= read -r line; do
+    case "$line" in
+      "") continue ;;
+      "@@ "*) sec="## ${line#@@ }"
+              awk -v h="$sec" 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f' "$ROOT/$CMD" > "$WORK/env-sec.md"
+              continue ;;
+    esac
+    n=$((n + 1))
+    grep -qxF -- "$line" "$WORK/env-sec.md"; check $? "env rule $n not whole in '$sec': ${line:0:70}"
+  done < "$WORK/env-rules.txt"
+}
+env_rules
+
+# Break-checks: a removed pin line, and an outcome flipped with every name kept, must both fail.
+mkdir -p "$WORK/be/.claude/commands" "$WORK/br/.claude/commands"
+grep -vF 'never a pass of the build check' "$ROOT/$CMD" > "$WORK/be/$CMD"
+( ROOT=$WORK/be; FAILS=(); pins "$CMD" "env" <<< "$ENV_PINS"; [ "${#FAILS[@]}" -gt 0 ] )
+check $? "break-check: a removed env pin went unnoticed"
+sed '/^| 2 | /s/| local |/| deployed |/' "$ROOT/$CMD" > "$WORK/br/$CMD"
+! cmp -s "$ROOT/$CMD" "$WORK/br/$CMD"; check $? "break-check: row 2's host cell was not found to flip"
+( ROOT=$WORK/br; FAILS=(); env_rules; [ "${#FAILS[@]}" -gt 0 ] )
+check $? "break-check: a flipped Step 0.76 outcome went unnoticed"
 
 # ---- browser drivers ---------------------------------------------------------------------------------
 # A plain heredoc, not $(cat <<…): bash 3.2 misparses the apostrophes below inside a command substitution.

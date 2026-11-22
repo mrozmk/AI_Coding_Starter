@@ -16,6 +16,8 @@
 # .env is stat-ed (size + mtime), never read. Every network call carries an explicit
 # timeout: a command whose job is detecting a blocked environment must never itself block.
 # The browser section runs `node` locally (module resolution only, no network).
+# The probe reports the deployed build SHA; it does not decide which build is acceptable
+# for a ticket — /qa-verify makes that per-ticket decision.
 
 ROOT="$CLAUDE_PROJECT_DIR"
 [ -z "$ROOT" ] && ROOT="$PWD"
@@ -99,31 +101,74 @@ else
   done
 fi
 
-# --- Build skew ----------------------------------------------------------------
+# --- Deployed build SHA (reported, never a rejection) --------------------------
+# /qa-verify decides ancestry from this SHA, so only an identified build counts: a
+# meta tag, a body that is one SHA, or one named JSON field — never a stray hex token
+# (an asset hash, a request id). This section never touches DEPLOYED_OK.
 HEAD_SHA=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)
 [ -n "$HEAD_SHA" ] && emit "local-HEAD: $HEAD_SHA"
 
-SKEW="not-applicable"
-if [ "$DEPLOYED_OK" -eq 1 ]; then
-  if [ -z "$BUILD_SHA_URL" ]; then
-    SKEW="NOT-VERIFIED — no build_sha_url configured; the deployed build may lag HEAD"
+if [ -z "$BASE_URL_CFG" ]; then
+  emit "deployed-sha: not applicable — no deployed host configured"
+elif [ "$HAVE_CURL" -eq 0 ]; then
+  emit "deployed-sha: not verified — curl missing from PATH"
+elif [ -z "$BUILD_SHA_URL" ]; then
+  emit "deployed-sha: not verified — no build_sha_url configured; the deployed build may lag HEAD"
+else
+  # One call: body, then the status on the last line; curl's own exit kept apart.
+  R=$(curl -q -s "$BUILD_SHA_URL" -w '\n%{http_code}' --connect-timeout 5 --max-time 10 2>/dev/null)
+  RC=$?
+  CODE=$(printf '%s\n' "$R" | tail -n 1)
+  BODY=$(printf '%s\n' "$R" | sed '$d')
+  SHA_REASON=""
+  DEP_SHA=""
+  if [ "$RC" -ne 0 ]; then
+    case "$CODE" in
+      000|"") SHA_REASON="build_sha_url unreachable (timeout or connection refused)" ;;
+      *) SHA_REASON="build_sha_url transfer incomplete (curl exit $RC)" ;;
+    esac
   else
-    DEP_SHA=$(curl -s "$BUILD_SHA_URL" --connect-timeout 5 --max-time 10 2>/dev/null \
-              | grep -Eo '[0-9a-f]{7,40}' | head -1)
-    if [ -z "$DEP_SHA" ]; then
-      SKEW="NOT-VERIFIED — build_sha_url returned no recognisable SHA"
-    elif [ -n "$HEAD_SHA" ] && [ "${DEP_SHA#"$HEAD_SHA"}" != "$DEP_SHA" ]; then
-      SKEW="matched ($DEP_SHA)"
-    elif [ -n "$HEAD_SHA" ] && [ "${HEAD_SHA#"$DEP_SHA"}" != "$HEAD_SHA" ]; then
-      SKEW="matched ($DEP_SHA)"
-    else
-      SKEW="MISMATCH — deployed $DEP_SHA != local $HEAD_SHA"
-      DEPLOYED_OK=0
-      FAIL_REASON="deployed build SHA $DEP_SHA does not match local HEAD $HEAD_SHA"
+    case "$CODE" in 2??) : ;; *) SHA_REASON="build_sha_url returned $CODE" ;; esac
+  fi
+  if [ -z "$SHA_REASON" ]; then
+    # 1. <meta name="build-sha" content="…">, whole attributes only
+    M=$(printf '%s' "$BODY" | tr '\n\r\t' '   ' | grep -Eo '<meta[[:space:]][^>]*>' \
+        | grep -E '[[:space:]]name="build-sha"' \
+        | grep -Eo '[[:space:]]content="[0-9a-f]{7,40}"' | cut -d'"' -f2 | sort -u)
+    case "$(printf '%s' "$M" | grep -c .)" in
+      0) DEP_SHA="" ;;
+      1) DEP_SHA="$M" ;;
+      *) SHA_REASON="conflicting build-sha meta tags" ;;
+    esac
+  fi
+  if [ -z "$SHA_REASON" ] && [ -z "$DEP_SHA" ]; then
+    # 2. the body is one SHA
+    DEP_SHA=$(printf '%s' "$BODY" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr -d '\n')
+    if [ "$(printf '%s\n' "$BODY" | grep -c '[^[:space:]]')" -gt 1 ] \
+       || ! printf '%s' "$DEP_SHA" | grep -Eqx '[0-9a-f]{7,40}'; then
+      DEP_SHA=""
     fi
   fi
+  if [ -z "$SHA_REASON" ] && [ -z "$DEP_SHA" ]; then
+    # 3. one JSON document, one named field; a parser failure yields nothing
+    DEP_SHA=$(printf '%s' "$BODY" | jq -rs 'if length == 1 and (.[0] | type) == "object" then .[0]
+        | [.sha, .commit, .commit_sha, .git_sha, .build_sha, .revision]
+        | map(select(type == "string" and test("\\A[0-9a-f]{7,40}\\z"))) | unique
+        | if length == 1 then .[0] else empty end else empty end' 2>/dev/null) || DEP_SHA=""
+  fi
+  printf '%s' "$DEP_SHA" | grep -Eqx '[0-9a-f]{7,40}' || DEP_SHA=""
+  if [ -n "$SHA_REASON" ]; then
+    emit "deployed-sha: not verified — $SHA_REASON"
+  elif [ -z "$DEP_SHA" ]; then
+    emit "deployed-sha: not verified — build_sha_url returned no recognisable SHA"
+  elif [ -z "$HEAD_SHA" ]; then
+    emit "deployed-sha: not verified — no local HEAD to compare (deployed $DEP_SHA)"
+  elif [ "${DEP_SHA#"$HEAD_SHA"}" != "$DEP_SHA" ] || [ "${HEAD_SHA#"$DEP_SHA"}" != "$HEAD_SHA" ]; then
+    emit "deployed-sha: $DEP_SHA (equal)"
+  else
+    emit "deployed-sha: $DEP_SHA (differs)"
+  fi
 fi
-emit "build-skew: $SKEW"
 
 # --- Local fallback ------------------------------------------------------------
 if [ -n "$LOCAL_URL" ] && [ "$HAVE_CURL" -eq 1 ]; then
@@ -146,13 +191,64 @@ fi
 # --- BASE_URL resolution (deterministic — the model transcribes, does not derive)
 if [ "$DEPLOYED_OK" -eq 1 ]; then
   emit "RESOLVED-BASE_URL: $BASE_URL_CFG"
-  emit "RESOLVED-REASON: deployed host reachable on every probe path"
+  emit "RESOLVED-REASON: deployed host reachable on every probe path — build vs ticket decided per ticket by /qa-verify"
 elif [ -n "$LOCAL_URL" ]; then
   emit "RESOLVED-BASE_URL: $LOCAL_URL"
   emit "RESOLVED-REASON: $FAIL_REASON"
 else
   emit "RESOLVED-BASE_URL: (none)"
   emit "RESOLVED-REASON: $FAIL_REASON, and no local_url configured — QA cannot observe runtime behaviour"
+fi
+
+# --- Readiness checks (information, never a gate) ------------------------------
+# Every entry is validated inside jq on the complete value: a shell check after $(…)
+# would see trailing newlines stripped. The URL is never printed (it may carry a token).
+NR=$(jq 'if has("readiness_checks") then (.readiness_checks | if type == "array" then length else -1 end) else 0 end' "$CONFIG" 2>/dev/null)
+printf '%s' "$NR" | grep -Eq '^-?[0-9]+$' || NR=-1
+if [ "$NR" -lt 0 ]; then
+  emit "readiness-checks: MALFORMED — not an array"
+elif [ "$NR" -eq 0 ]; then
+  emit "readiness-checks: none configured"
+elif [ "$HAVE_CURL" -eq 0 ]; then
+  emit "readiness-checks: NOT PROBED — curl missing from PATH"
+else
+  RMAX=$NR
+  [ "$RMAX" -gt 10 ] && RMAX=10
+  i=0
+  while [ "$i" -lt "$RMAX" ]; do
+    E=$(jq -r --argjson i "$i" '.readiness_checks[$i] as $e
+      | if ($e | type) != "object" then "bad entry must be an object"
+        elif ($e.name | type) != "string" or ($e.name | test("\\A[A-Za-z0-9._-]{1,40}\\z") | not) then "bad name must match [A-Za-z0-9._-]{1,40}"
+        elif ($e.url | type) != "string" or ($e.url | test("\\Ahttps?://[^/?#@\\s]+([/?#]\\S*)?\\z") | not) then "bad url must be http(s) without userinfo"
+        elif ($e | has("expect_status")) and (($e.expect_status | type) != "number" or $e.expect_status != ($e.expect_status | floor) or $e.expect_status < 100 or $e.expect_status > 599) then "bad expect_status must be an integer 100-599"
+        else "ok \($e.name) \($e.url) \(if $e | has("expect_status") then $e.expect_status | tostring else "-" end)" end' "$CONFIG" 2>/dev/null)
+    i=$((i + 1))
+    case "$E" in
+      ok\ *) : ;;
+      bad\ *) emit "readiness #$i: MALFORMED — ${E#bad }"; continue ;;
+      *) emit "readiness #$i: MALFORMED — entry unreadable"; continue ;;
+    esac
+    # A valid name and URL hold no whitespace; read (not an unquoted expansion) keeps a
+    # `[1-3]` in the URL from being globbed against the filesystem.
+    read -r _ RN U EXP <<< "$E"
+    RC_CODE=$(curl -q -s -o /dev/null --globoff --proto =http,https -w '%{http_code}' \
+                --connect-timeout 5 --max-time 10 "$U" 2>/dev/null)
+    if [ -z "$RC_CODE" ] || [ "$RC_CODE" = "000" ]; then
+      emit "readiness $RN: UNREACHABLE — timeout or connection refused"
+    elif [ "$EXP" != "-" ]; then
+      if [ "$RC_CODE" = "$EXP" ]; then
+        emit "readiness $RN: ok — $RC_CODE"
+      else
+        emit "readiness $RN: FAILED — got $RC_CODE, expected $EXP"
+      fi
+    else
+      case "$RC_CODE" in
+        2??|3??) emit "readiness $RN: ok — $RC_CODE" ;;
+        *) emit "readiness $RN: FAILED — got $RC_CODE, expected 2xx/3xx" ;;
+      esac
+    fi
+  done
+  [ "$NR" -gt 10 ] && emit "readiness-checks: $((NR - 10)) more not run (limit 10)"
 fi
 
 # --- Credentials file: presence only, never contents ---------------------------

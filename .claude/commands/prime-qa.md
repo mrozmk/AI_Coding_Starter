@@ -60,7 +60,7 @@ One injected probe, run at command load — before you reason about anything:
 
 !`bash .claude/lib/qa-probe.sh`
 
-The probe reads `.claude/qa-env.json` and emits `key: value` lines. **Transcribe them; do not re-derive them.** In particular `RESOLVED-BASE_URL` / `RESOLVED-REASON` are computed deterministically in the script precisely so the environment decision does not depend on model judgment.
+The probe reads `.claude/qa-env.json` and emits `key: value` lines. **Transcribe them; do not re-derive them.** In particular `RESOLVED-BASE_URL` / `RESOLVED-REASON` are computed deterministically in the script precisely so the environment decision does not depend on model judgment. The probe does **not** decide which build is acceptable for a ticket: it reports the candidate deployed SHA, and `/qa-verify` makes that decision per ticket, explicitly, in Step 0.76 — from these lines plus the ticket's merge commit.
 
 ### Reading the probe output
 
@@ -68,8 +68,11 @@ The probe reads `.claude/qa-env.json` and emits `key: value` lines. **Transcribe
 |---|---|
 | `qa-config: MISSING` | `.claude/qa-env.json` is not filled in. Every environment fact below is unavailable — say so plainly and offer to fill the file in. Do **not** guess a host. |
 | `RESOLVED-BASE_URL: (none)` | Nothing to observe against. Runtime/visual verification is impossible this session; only static/code-level checks can run. |
-| `build-skew: NOT-VERIFIED` | The deployed build **may** lag local `HEAD`. Every runtime or visual observation this session carries that caveat. Unverified is not "matched". |
-| `build-skew: MISMATCH` | A *proven* stale build. The probe already fell back to local — a stale build must never be signed off. |
+| `deployed-sha: <sha> (differs)` | The deployed build differs from local `HEAD`. **A SHA difference alone never disqualifies the deployed host** — which host is the candidate, and why, is always `RESOLVED-BASE_URL` / `RESOLVED-REASON` (a failed probe path still moves it to local); `/qa-verify` decides per ticket whether the deployed build contains the ticket's merge. |
+| `deployed-sha: not verified — …` | The deployed build **may** lag local `HEAD`. Every runtime or visual observation made **on the deployed host** carries that caveat (`/qa-verify` Step 0.76 row 5); an observation on the local host or of the checkout does not. Unverified is not a match. |
+| `deployed-sha: not applicable` | No deployed host configured — local runs carry no skew warning. |
+| `readiness <name>: FAILED \| UNREACHABLE` | An external system the feature needs is not ready. Warn; never stop — `/qa-verify` shows it at the gate. A readiness line is context, not proof: it is never `ENV` evidence on its own (`/qa-verify` Phase 2.5, kind 3 — an anonymous probe from the tester's machine measures that machine's access, not what the observed host used); it is quoted beside kind-3 evidence, never in place of it. |
+| `readiness #<i>: MALFORMED` | Fix the entry in `qa-env.json → readiness_checks`. |
 | `probe <path>: UNREACHABLE` | Most likely a **VPN / network gap**, not a host outage. Say so rather than declaring the environment broken. |
 | `credentials-file …: MISSING` | Tracker-driven verification (reading acceptance criteria from Jira) will soft-fail. Local specs still work. |
 | `browser-mcp-servers-running: N` | **Information, not a gate.** `0` = you are alone; higher = other testers are working in parallel. Never treat any value as a failure. |
@@ -96,12 +99,13 @@ One dot-separated line prefixed with the mode: `Loaded (qa): index.md · project
 ### Environment — facts
 - **BASE_URL:** `<RESOLVED-BASE_URL>` — `<RESOLVED-REASON>`
 - **Probes:** `<path>=<code>` · … (or `not configured`)
-- **Build skew:** `<matched (sha) | NOT-VERIFIED — reason | MISMATCH — detail | not applicable>`
+- **Deployed SHA:** `<sha (equal) | sha (differs) | not verified — reason | not applicable>`
 - **Credentials file:** `<present, N bytes, modified … | MISSING>`
 - **Browser MCP servers running:** `<N>`
 - **Parallel-safe:** `<yes | no | not applicable>`
 - **Browser driver:** `<browser-driver line value>` · **Playwright:** `<resolves (pkg version) | below 1.49 | not resolvable | not checked>`
 - **Browser launch:** `<defaults | the set keys>`
+- **Readiness:** `<name>=<ok|FAILED|UNREACHABLE|MALFORMED>` · … (or `none configured`)
 
 ### MCP roster
 - `<Browser automation | tracker | design tool>`: `<available | absent>` each.
