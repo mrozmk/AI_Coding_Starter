@@ -1,19 +1,32 @@
 ---
-description: Merge (complete) an Azure DevOps pull request — invoking it IS the go-ahead: publishes a draft, self-approves, completes with the Branch-model strategy (or sets auto-complete and waits while policies run), then cleans up remote and local branches, then (tracker jira) moves the ticket to its merged status. Stops only on a real blocker; never bypasses policies.
+description: Merge (complete) a pull request on Azure DevOps or GitHub — invoking it IS the go-ahead. Azure DevOps — publishes a draft, self-approves, completes with the Branch-model strategy (or sets auto-complete and waits while policies run), then cleans up remote and local branches, then (tracker jira) moves the ticket to its merged status; GitHub — publishes a draft, checks the required checks, merges with the Branch-model strategy, cleans up branches, never with --admin. Stops only on a real blocker; never bypasses policies.
 argument-hint: "[PR-ID] [--auto <team>]"
-allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+allowed-tools: Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git ls-remote:*), Bash(git push origin --delete:*), Bash(git rev-parse:*), Bash(git remote:*), Bash(git switch:*), Bash(git fetch:*), Bash(cat:*), Bash(az account show:*), Bash(az repos show:*), Bash(az repos pr show:*), Bash(az repos pr list:*), Bash(az repos pr policy list:*), Bash(az repos pr update:*), Bash(az repos pr set-vote:*), Bash(bash .claude/lib/team-automerge-check.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-tracker.sh show:*), Bash(node .claude/lib/tracker-snapshot.mjs:*), Monitor, Skill, mcp__atlassian__jira_get_issue, mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_transition_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(gh api user:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(git pull --ff-only:*), Bash(git merge-base:*)
 ---
 
-# /pr-merge — Complete an Azure DevOps Pull Request
+# /pr-merge — Merge a Pull Request (Azure DevOps or GitHub)
 
-> **Azure DevOps only** (`teams.pr_provider: azure-devops`; GitHub team PRs merge through
-> `team-integrate.sh`; `none` → STOP: "teams.pr_provider is none — the PR layer is off"). In Azure Repos "merge" is called **Complete**.
+> **Provider:** see `## Provider` below — Azure DevOps or GitHub (GitHub team PRs still merge
+> through `team-integrate.sh`). In Azure Repos "merge" is called **Complete**.
 > **Running `/pr-merge` is the user's decision to merge** — the command asks nothing. It resolves
 > every state it can on its own (draft → publish, missing approval → self-approve, policies running
 > → auto-complete + wait), cleans up the branches, and stops only on a blocker it must not work
 > around. Companion of `/pr-create`. Re-running it on an already completed PR just does the cleanup.
 
 Arguments: **$ARGUMENTS** — `[PR-ID] [--auto <team>]` (both optional; `--auto` needs the PR id)
+
+---
+
+## Provider
+
+`PROVIDER` = `teams.pr_provider` when `.claude/project-profile.json` has a `teams` block, else its
+`git_host`, else the `origin` host (github.com → `github`, an Azure DevOps origin →
+`azure-devops`) — the same rule as `/pr-create` Step 7a.
+
+- `none` → STOP: "teams.pr_provider is none — the PR layer is off".
+- `azure-devops` → `## Azure DevOps path`.
+- `github` → `## GitHub path`.
+- Anything else → STOP: "merging is supported for azure-devops and github only".
 
 ---
 
@@ -41,10 +54,12 @@ Arguments: **$ARGUMENTS** — `[PR-ID] [--auto <team>]` (both optional; `--auto`
   passed — team-decision-model.md §5): never Step 5b, never `Monitor`; before
   Step 5a run `bash .claude/lib/team-automerge-check.sh <team> --recheck <PR_ID>` — exit ≠ 0 →
   STOP with its line, nothing changed. Without `--auto` every step below is unchanged.
+- **GitHub:** never `--admin`, never `--auto`, never `--delete-branch`. A pending, failing or
+  unreadable required check is reported, not worked around.
 
 ---
 
-## Process
+## Azure DevOps path
 
 ### Step 1 — Coordinates and auth
 
@@ -214,6 +229,134 @@ Add `Tracker: <KEY> → <status> | already <status> | not transitioned — <reas
 If it stopped or timed out: what it waits for, and that auto-complete is still set (never with
 `--auto`, which never arms it). With `--auto` the report is the one-line note
 `auto-merge <team> PR #<id> <merge commit> (QA <Verdict>)` for Supervisor.
+
+---
+
+## GitHub path
+
+Coordinates: `<owner>/<repo>` from `origin` (`git@github.com:<o>/<r>.git` or
+`https://github.com/<o>/<r>.git`). Every `gh` call passes `--repo <owner>/<repo>`. No step asks a
+question; every STOP names its fix.
+
+### Step G1 — Guards and auth
+
+- `.agents/team/session.json` exists → STOP: "a team role never merges — the Supervisor merges
+  team PRs (team-mode.md §9)".
+- `gh api user --jq .login` fails → STOP with the error and the fix `gh auth login`.
+
+### Step G2 — Find the PR
+
+Same argument grammar as Step 2. `--auto` → STOP: "--auto is the Azure DevOps team path only".
+
+- `<n>` → `gh pr view <n> --repo <owner>/<repo> --json number,title,url,state,isDraft,mergeable,headRefName,headRefOid,baseRefName,headRepositoryOwner,headRepository,mergeCommit`.
+- Empty → `BRANCH` = `git rev-parse --abbrev-ref HEAD`, then
+  `gh pr list --repo <owner>/<repo> --head <BRANCH> --state open --json number,headRefName,headRepositoryOwner,headRepository`,
+  keeping only entries with `headRepositoryOwner.login + "/" + headRepository.name` =
+  `<owner>/<repo>` and `headRefName` = `BRANCH` (the `/pr-create` Step 7a filter). Exactly one →
+  `gh pr view` it as above. None → STOP: "No open PR for `<BRANCH>` — run /pr-create first."
+  Several → STOP, list them: "run `/pr-merge <n>`" (never guess).
+
+`HEAD` = `headRefName`, `BASE` = `baseRefName`, `HEAD_SHA` = `headRefOid`.
+
+### Step G3 — Whose PR is it
+
+Runs for both lookups, before any write:
+
+- (a) **Fork:** head repository (`headRepositoryOwner.login + "/" + headRepository.name`) ≠
+  `<owner>/<repo>` → STOP: "a fork's PR — not merged from here".
+- (b) **Team run:** `find .agents/team/anchors -maxdepth 1 -name '*.json' -exec jq -r --arg b "<HEAD>" 'select(.branch == $b) | .team' {} +`
+  prints a team → STOP: "PR of team `<team>` — team PRs merge through team-merge-check.sh →
+  team-integrate.sh".
+- (c) **Own work:** unless the PR is already `MERGED`, `git rev-parse --verify --quiet refs/heads/<HEAD>` must equal `HEAD_SHA`;
+  else STOP: "`<HEAD>` is not this checkout's branch at the PR head (`<HEAD_SHA>`) — a team PR from
+  another machine, or unpulled work; pull it or merge it where it was made". (c) is the
+  cross-machine guard: anchors exist only on the machine that runs the team.
+
+### Step G4 — Decide (no questions)
+
+Apply the first matching row; after any *resolve* action re-read Step G2's `gh pr view` (at most 3
+loops):
+
+| State | Action |
+|---|---|
+| `state: MERGED` | → **Step G6**, then **Step G7** (a rerun finishes the tracker step and the cleanup) |
+| `state: CLOSED` | **STOP** — closed without merge |
+| `isDraft: true` | *resolve:* `gh pr ready <n> --repo <owner>/<repo>` |
+| `mergeable: CONFLICTING` | **STOP** — merge `<BASE>` into the branch, push, re-run |
+| `mergeable: UNKNOWN` | *resolve:* re-read (GitHub computes it lazily); still `UNKNOWN` after the loops → **STOP** |
+| `mergeable: MERGEABLE` | → **Step G5** |
+
+### Step G5 — Required checks, then merge
+
+Read the required checks: `gh pr checks <n> --repo <owner>/<repo> --required --json name,bucket`.
+
+- The command fails with `no required checks reported` (no branch protection, or none marked
+  required) → no required checks, go on. Any other failure → STOP with the error verbatim (an
+  unreadable state is not "none").
+- Any `bucket` `fail` or `cancel` → STOP naming those checks.
+- Any `pending` → start a `Monitor` (background until-loop, the same `gh pr checks … --required`
+  every 60 s, **max 30 min**) and end the turn; the notification resumes here. Timeout → report
+  what still runs and that `/pr-merge <n>` later continues. Never merge while a check is pending
+  (`gh pr merge` would silently arm auto-merge).
+- All `pass` / `skipping` → go on.
+
+Then Step 4a (tracker comments, opt-in) exactly as written there — for github its key rule reads
+the `<n>` of `<type>/<n>-…` in `HEAD`. Then `MERGE` and the strategy from Step 3's rule
+(`CLAUDE.md` → Branch model **Merge**; absent → squash for working types, merge commit for
+`release` / `hotfix`):
+
+- merge commit → `--merge`
+- squash → `--squash`
+- rebase → `--rebase`
+
+Merge:
+
+`gh pr merge <n> --repo <owner>/<repo> <--merge|--squash|--rebase> --match-head-commit <HEAD_SHA> --subject "<PR title> (#<n>)"`
+
+Never `--admin`, never `--auto`, never `--delete-branch`. Any error (head moved, not mergeable,
+403) → show it verbatim and STOP; never retry with other flags. Re-read
+`gh pr view <n> --repo <owner>/<repo> --json state,mergeCommit` (a few reads) until `state` is
+`MERGED`; `MERGE_SHA` = `mergeCommit.oid`.
+
+### Step G6 — Tracker
+
+Effective tracker as `/pr-create` resolves it (`teams.tracker` when a `teams` block exists, else
+the top-level `tracker`, else `none`). `github` / `none` → nothing (the PR's closing keyword closes
+the issue on GitHub). `jira` → Step 6a from item 1 on, with `COMMIT` = `MERGE_SHA` (on a rerun
+re-read it with `gh pr view <n> --repo <owner>/<repo> --json mergeCommit`) and the comment
+`Merged in PR #<n>, merge commit <COMMIT>`. A tracker failure is reported, never a reason to skip
+Step G7.
+
+### Step G7 — Cleanup (only after `MERGED`)
+
+In this order:
+
+1. **Remote branch.**
+   - `LIVE` = the sha of `git ls-remote --exit-code --heads origin <HEAD>` (absent → nothing to do;
+     GitHub may have deleted it).
+   - `LIVE` = `HEAD_SHA` → `git push origin --delete <HEAD>`.
+   - Any other sha → leave it and report "`origin/<HEAD>` moved to `<LIVE>` after the merge — not
+     deleted". The check and the delete are two calls: a push in between is not caught (no
+     compare-and-swap without `--force-with-lease`, which the deny list blocks) — stated, accepted.
+2. **Local** — only with a clean working tree (`git status --porcelain` empty; dirty → skip this
+   step and say why):
+   - `git switch <BASE>`
+   - `git pull --ff-only origin <BASE>` (a refusal → report it verbatim, keep going)
+   - local `<HEAD>` exists and `git rev-parse refs/heads/<HEAD>` = `HEAD_SHA` → `git branch -D <HEAD>`
+     (ask-tier; `-D` because a squash or rebase merge is never an ancestor). A different tip →
+     keep it and report "local `<HEAD>` has commits after the merged head — kept".
+   - `git fetch origin --prune`
+3. **Base state:** `BASE_SHA` = `git rev-parse <BASE>`; `git merge-base --is-ancestor <MERGE_SHA> <BASE>`
+   → report "local `<BASE>` at `<BASE_SHA>`, contains the merge commit" (or that it does not, when
+   the pull was refused).
+
+### Step G8 — Report
+
+✅ PR `#<n>` merged · strategy · merge commit `MERGE_SHA` · remote branch (deleted by GitHub / by
+this command / kept — why) · local state (`BASE_SHA`, contains the merge commit, local branch
+removed or kept — why) · URL. Add `Tracker comments: …` when Step 4a ran and `Tracker: …` (tracker
+jira) as in Step 7. On a STOP: what blocks and the fix. Then the stage end marker, as for the Azure
+DevOps path.
 
 ## Stage end marker (token usage)
 

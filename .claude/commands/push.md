@@ -49,6 +49,10 @@ Push local commits to `origin/<current-branch>`. Branch is detected dynamically 
 
 - Show: `git log --oneline origin/<branch>~3..origin/<branch>`
 - Confirm: "Push complete. `origin/<branch>` is up to date."
+- When the Branch model says `**Protected push:** pr-only` (read as in step 2) and `<branch>` is not
+  protected, end with exactly one line:
+  - `.claude/commands/pr-merge.md` exists → "Next: /pr-create, then /pr-merge."
+  - absent → "Next: /pr-create, then merge the PR on the host."
 
 ## CRITICAL rules:
 - **Reverting a merge:** `git revert -m 1 <merge>` run on the *base* branch (e.g. develop after a develop→feature merge) removes the base's own commits, not the feature's. Revert on the branch that received the merge, and only with the parent number checked against `git show --format=%P`.

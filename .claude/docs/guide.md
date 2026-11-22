@@ -436,7 +436,7 @@ Checks what shipped against the Task's acceptance criteria, one by one, and writ
 | `/orchestrate <feature \| spec \| plan>` | Hands-off: runs brainstorm → plan → build (execute → refine → verify → commit → push per step) → closing commit, compacting between stages; asks only at forks and blockers. |
 | `/recon <topic>` | Before `/brainstorm` on a broad topic — research agents gather memory, prior specs, the integration surface, docs and similar repos into a cited brief (no files written). |
 | `/handoff [focus]` | At a session boundary — compacts the conversation into a handoff file in `.agents/handoffs/` for the next session. |
-| `/pr-merge` | Completing an Azure DevOps pull request — publishes a draft, approves, completes with the Branch-model strategy, cleans up branches, moves the Jira ticket. |
+| `/pr-merge` | Merging a pull request — Azure DevOps (publishes a draft, approves, completes with the Branch-model strategy, moves the Jira ticket) or GitHub (publishes a draft, waits for required checks, merges with the Branch-model strategy); cleans up branches. |
 | `/gates:design-quality-check` | Pixel-level audit of an implemented UI section against its reference design. |
 | `/setup:create-CLAUDE_MD` | After the first scaffolding — generates `CLAUDE.md`, `architecture.md` and the project README from the real code. |
 | `/analysis` | Deep analytical pass before a decision — no code, no files, 99% certainty rule, uses `AskUserQuestion` when possible. |
