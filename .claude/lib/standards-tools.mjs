@@ -30,18 +30,18 @@ export const TOOLS = [
     configs: [/(^|\/)\.eslintrc(\.(json|ya?ml|js|cjs))?$/, /(^|\/)eslint\.config\.(js|mjs|cjs|ts)$/],
     runs: /(^|[\s/])(eslint|ng\s+lint|nx\s+(lint|run-many|affected)\b.*\blint)(\s|$)/, bin: /^(.*\/)?(eslint|ng|nx)$/,
     selectFlags: ['-c', '--config'], excludeFlags: ['--ignore-pattern'], strictFlags: ['--max-warnings'],
-    valueFlags: ['--ext', '-f', '--format', '-o', '--output-file', '--rulesdir', '--cache-location', '--parser'],
+    valueFlags: ['--ext', '-f', '--format', '-o', '--output-file', '--rulesdir', '--cache-location', '--parser', '--rule', '--resolve-plugins-relative-to'],
     appliesTo: '**/*.{js,jsx,ts,tsx}',
   }),
   T('prettier', 'Prettier', 'format', {
     configs: [/(^|\/)\.prettierrc(\.(json|ya?ml|json5|js|cjs|mjs|toml))?$/, /(^|\/)prettier\.config\.(js|cjs|mjs)$/],
-    runs: /\bprettier\b.*\s(--check|-c|--list-different|-l)(\s|$)/, bin: /^(.*\/)?prettier$/,
+    runs: /\bprettier\b.*\s(--check|-c|--list-different|-l)(\s|$)|\bnx\s+format:check\b/, bin: /^(.*\/)?(prettier|nx)$/,
     selectFlags: ['--config'], excludeFlags: ['--ignore-path'], valueFlags: ['--log-level', '--parser'],
   }),
   T('stylelint', 'Stylelint', 'lint', {
     configs: [/(^|\/)\.stylelintrc(\.(json|ya?ml|js|cjs))?$/, /(^|\/)stylelint\.config\.(js|cjs|mjs)$/],
     runs: /\bstylelint\b/, bin: /^(.*\/)?stylelint$/, selectFlags: ['--config'], excludeFlags: ['--ignore-pattern'],
-    strictFlags: ['--max-warnings'], valueFlags: ['-f', '--formatter'], appliesTo: '**/*.{css,scss}',
+    strictFlags: ['--max-warnings'], valueFlags: ['-f', '--formatter', '--ignore-path', '--config-basedir', '--custom-syntax'], appliesTo: '**/*.{css,scss}',
   }),
   T('biome', 'Biome', 'lint', {
     configs: [/(^|\/)biome\.jsonc?$/], runs: /\bbiome\s+(check|ci|lint)\b/, bin: /^(.*\/)?biome$/,
@@ -106,7 +106,7 @@ export const TOOLS = [
 ];
 const BY_ID = new Map(TOOLS.map((t) => [t.tool, t]));
 const HARNESS = /^(\.claude|\.agents|\.codex)\//;
-const WIRING = /(^|\/)(package\.json|composer\.json|Makefile|Jenkinsfile|\.gitlab-ci\.yml|\.pre-commit-config\.yaml|\.lintstagedrc(\.\w+)?)$|^\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)azure-pipelines[^/]*\.ya?ml$|^\.husky\/[^/]+$/;
+const WIRING = /(^|\/)(package\.json|composer\.json|Makefile|Jenkinsfile|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|\.pre-commit-config\.yaml|\.lintstagedrc(\.\w+)?)$|^\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)azure-pipelines[^/]*\.ya?ml$|^\.husky\/[^/]+$/;
 const STRICT_PROPS = /^(TreatWarningsAsErrors|EnforceCodeStyleInBuild)$/;
 
 const posix = (...p) => { const j = path.posix.normalize(path.posix.join(...p)); return j === '.' ? '' : j.replace(/\/$/, ''); };
@@ -282,7 +282,7 @@ function commands(file, text) {
     return out;
   }
   const ci = /\.ya?ml$/.test(file) || base === 'Jenkinsfile';
-  const runDir = /^\.github\/|(^|\/)(\.gitlab-ci\.yml|azure-pipelines|Jenkinsfile)|^\.husky\//.test(file) ? '' : dirOf(file);
+  const runDir = /^\.github\/|(^|\/)(\.gitlab-ci\.yml|bitbucket-pipelines\.yml|azure-pipelines|Jenkinsfile)|^\.husky\//.test(file) ? '' : dirOf(file);
   lines.forEach((raw, i) => {
     if (/^\s*#/.test(raw) || (ci && /^\s*-?\s*(name|uses|id|if|with|env|runs-on|image|stage|on|description)\s*:/.test(raw))) return;
     const txt = raw.replace(/^\s*-\s+/, '').replace(/^\s*(run|script|before_script|after_script|command|cmd|entry)\s*:\s*[|>]?-?\s*/, '').replace(/^\s*[@-]?/, '');
@@ -310,7 +310,7 @@ function runsOf(cmds) {
       if (cd) { dir = posix(dir, cd[1]); continue; }
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
-        if (t.tool === 'eslint' && /fix/i.test(c.key) && /--fix\b/.test(seg)) continue;
+        if (/fix/i.test(c.key) && /--fix\b/.test(seg)) continue;
         const r = parseRun(t.tool, seg);
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }

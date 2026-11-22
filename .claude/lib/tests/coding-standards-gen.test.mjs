@@ -150,8 +150,22 @@ test('scanner: option parsing per tool', async () => {
   assert.equal(ph.selected, 'PSR12');
   assert.equal(parseRun('eslint', 'eslint $FILES').scopeUnknown, true);
   assert.equal(parseRun('eslint', 'eslint $(git diff --name-only)').scopeUnknown, true);
+  assert.deepEqual(parseRun('eslint', "eslint --fix --rule '@nx/enforce-module-boundaries: off'").targets, []);
+  assert.deepEqual(parseRun('stylelint', 'stylelint "**/*.scss" --ignore-path .gitignore').targets, ['**/*.scss']);
+  assert.ok(parseRun('prettier', 'npx nx format:check --base="$NX_BASE" --head=HEAD'));
   assert.equal(parseRun('gofmt', 'gofmt -l .'), null);
   assert.equal(parseRun('prettier', 'prettier --write src'), null);
+});
+
+test('scanner: a Bitbucket pipeline wires a tool; a fix script does not', async () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, '.prettierrc'), '{ "semi": false }\n');
+  fs.writeFileSync(path.join(dir, '.stylelintrc.json'), '{ "rules": { "color-no-invalid-hex": true } }\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "lint:styles:fix": "stylelint \\"**/*.scss\\" --fix" } }\n');
+  fs.writeFileSync(path.join(dir, 'bitbucket-pipelines.yml'), 'pipelines:\n  default:\n    - step:\n        script:\n          - npx nx format:check --base="$NX_BASE"\n');
+  const s = await fixtureScan(dir, ['.prettierrc', '.stylelintrc.json', 'bitbucket-pipelines.yml', 'package.json']);
+  assert.deepEqual(tool(s, 'prettier').wiredBy, ['bitbucket-pipelines.yml:5']);
+  assert.equal(tool(s, 'stylelint').enforced, false);
 });
 
 test('scanner: a compiler-only repository enforces no lint or format tool', async () => {
