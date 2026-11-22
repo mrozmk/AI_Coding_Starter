@@ -589,11 +589,8 @@ export async function measure(opts) {
   const map = compareMap(root, fileArea, fileEdges);
 
   const historyMatchers = order.filter((a) => kept.has(a.name));
-  const historyArea = (p) => {
-    const hit = historyMatchers.find((a) => a.match(p));
-    if (hit) return hit.name;
-    return fileArea.get(p) === '(rest)' ? '(rest)' : null;
-  };
+  // A path still in the tree keeps the area files[] records; the matchers only place deleted paths.
+  const historyArea = (p) => fileArea.get(p) ?? historyMatchers.find((a) => a.match(p))?.name ?? null;
   let revision = null;
   try { revision = execFileSync('git', ['-C', root, 'rev-parse', '--verify', '-q', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { revision = null; }
   const change_cost = await changeCost(root, historyArea, areas.map((a) => a.name), commits, revision);
