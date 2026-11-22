@@ -19,7 +19,7 @@
   "_local_serve_command_tier1_doc": "Non-browser apps only (see qa-evidence-families.md §2 tiers). How to start the app in the OTHER tier than local_serve_command — typically inspection-only, without the driver extension that Tier 2 needs but that mocks the device keyboard. Empty => the app has a single way to run.",
   "local_serve_command_tier1": "",
 
-  "_build_sha_url_doc": "Optional URL returning the DEPLOYED build's commit SHA (a build-info endpoint, or an HTML page carrying <meta name=\"build-sha\">). Used to detect a deployed build lagging local HEAD. Empty => the probe stamps 'skew not verified' rather than fabricating an endpoint — an unverified skew must never read as a verified match.",
+  "_build_sha_url_doc": "Optional URL returning the DEPLOYED build's commit SHA: a plain-text body that is just the SHA, an HTML page carrying <meta name=\"build-sha\" content=\"<sha>\">, or a JSON object whose sha, commit, commit_sha, git_sha, build_sha or revision field holds the SHA (one distinct value). The probe reports it as 'deployed-sha: <sha> (equal|differs)' against local HEAD and never rejects the deployed host for a difference — /qa-verify decides per ticket whether that build contains the ticket's merge. A non-2xx answer, no SHA or two different SHAs => 'not verified'. Empty => 'not verified — no build_sha_url configured' rather than fabricating an endpoint — an unverified build must never read as a verified match.",
   "build_sha_url": "",
 
   "_artifacts_dir_doc": "Where QA persists screenshots / traces. Must be gitignored — QA evidence is point-in-time, not repo history. The probe warns if it is not.",
@@ -63,5 +63,8 @@
     "user_agent": "",
     "_ignore_https_errors_doc": "true for a host with a self-signed certificate.",
     "ignore_https_errors": false
-  }
+  },
+
+  "_readiness_checks_doc": "Optional list of { \"name\", \"url\", \"expect_status\" } for external systems a feature needs (a CMS API, a content space, an auth provider), e.g. {\"name\":\"cms\",\"url\":\"https://cms.example/api/health\",\"expect_status\":200}. The probe requests each once (http/https only, 5 s connect / 10 s total, no body, no credentials, at most 10 entries) and prints 'readiness <name>: ok | FAILED | UNREACHABLE | MALFORMED' — information for the gate, never a gate itself. name matches [A-Za-z0-9._-]{1,40}; expect_status is an integer 100-599, absent = any 2xx/3xx. A URL with userinfo (user:pass@) is refused. Never put a secret here — this file is committed and a token in a query string cannot be detected; the URL itself is never printed.",
+  "readiness_checks": []
 }

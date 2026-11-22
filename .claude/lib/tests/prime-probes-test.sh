@@ -2,7 +2,8 @@
 # Offline test of every `!`-probe in .claude/commands/prime.md: each one exits 0 on
 # empty and partial input, keeps its semantics, and uses no form the team-clone skill-load
 # permission check rejects (`-exec`, awk, sed, sort, xargs, `$(`). Also covers the browser
-# lines of .claude/lib/qa-probe.sh (driver, project-local Playwright, launch summary).
+# lines of .claude/lib/qa-probe.sh (driver, project-local Playwright, launch summary) and
+# its deployed-sha and readiness lines (offline, through a curl stub on PATH).
 set -u
 PRIME="$(cd "$(dirname "$0")/../.." && pwd)/commands/prime.md"
 EXPECTED_PROBES=12
@@ -181,7 +182,7 @@ qrun() {  # <dir> <label> [VAR=value …] — run the probe, assert exit 0, keep
 qhas() {  # <label> <exact line>
   CHECKS=$((CHECKS + 1))
   grep -qxF "$2" <<<"$QOUT" \
-    || bad "$1" "missing '$2' — got: $(grep -E '^(browser-driver|playwright|browser-launch): ' <<<"$QOUT" | tr '\n' '|')"
+    || bad "$1" "missing '$2' — got: $(grep -E '^(browser-driver|playwright|browser-launch|deployed-sha|readiness[^:]*|RESOLVED-BASE_URL): ' <<<"$QOUT" | tr '\n' '|')"
 }
 PW_NONE="playwright: not resolvable from the project"
 
@@ -231,7 +232,7 @@ CHECKS=$((CHECKS + 1)); grep -qF 'X/1' <<<"$QOUT" && bad qa-launch "user_agent s
 
 # 7. node not on PATH → the Playwright line says so, the probe still exits 0
 mkdir -p "$T/nonode" || die "nonode"
-for t in jq git curl pgrep wc tr date grep awk head cat dirname; do
+for t in jq git curl pgrep wc tr date grep awk head cat dirname sed sort cut tail; do
   p=$(command -v "$t" 2>/dev/null) || continue
   case "$p" in /*) ln -s "$p" "$T/nonode/$t" || die "link $t" ;; esac
 done
@@ -239,6 +240,177 @@ Q="$T/qa nonode"; repo "$Q"; qaenv "$Q" ""
 QOUT=$(cd "$Q" && PATH="$T/nonode" CLAUDE_PROJECT_DIR="$Q" /bin/bash "$QAP" 2>/dev/null </dev/null); rc=$?
 CHECKS=$((CHECKS + 1)); [ "$rc" -eq 0 ] || bad qa-nonode "qa-probe exit $rc"
 qhas qa-nonode "playwright: NOT CHECKED — node not on PATH"
+
+# (g) qa-probe.sh deployed SHA and readiness checks (offline: a curl stub on PATH)
+# The stub answers from a TAB-separated map (the temp root contains a space) and logs the
+# URL of EVERY invocation, whatever its scheme, so "never requested" is a real negative.
+mkdir -p "$T/curlstub" || die "curlstub"
+cat > "$T/curlstub/curl" <<'STUB'
+#!/bin/bash
+url="" fmt="" null=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -w) fmt="$2"; shift ;;
+    -o) [ "$2" = /dev/null ] && null=1; shift ;;
+    --connect-timeout|--max-time|--proto) shift ;;
+    -*) : ;;
+    *) url="$1" ;;
+  esac; shift
+done
+printf '%s\n' "$url" >> "${CURL_STUB_LOG:-/dev/null}"
+line=$(grep -F -- "$url	" "${CURL_STUB_MAP:-/dev/null}" 2>/dev/null | head -1)
+code=000 body=- rc=7
+if [ -n "$line" ]; then
+  code=$(printf '%s' "$line" | cut -f2); body=$(printf '%s' "$line" | cut -f3)
+  rc=$(printf '%s' "$line" | cut -f4); [ -n "$rc" ] || rc=0
+fi
+[ "$null" -eq 0 ] && [ "$body" != - ] && cat "$body"
+if [ -n "$fmt" ]; then
+  fmt=${fmt//%\{http_code\}/$code}; fmt=${fmt//%\{time_total\}/0.01}; fmt=${fmt//\\n/$'\n'}
+  printf '%s' "$fmt"
+fi
+exit "$rc"
+STUB
+chmod +x "$T/curlstub/curl" || die "curlstub chmod"
+rec() {  # <url> <code> <body-file|-> [curl exit] → one map record
+  printf '%s\t%s\t%s\t%s' "$1" "$2" "$3" "${4:-0}"
+}
+body() {  # <dir> <name> <content> → writes the body file, prints its path
+  printf '%s' "$3" > "$1/$2" || die "body $2"; printf '%s' "$1/$2"
+}
+qnet() {  # <dir> <label> <map record…> — run the probe against the stub, assert exit 0
+  local d="$1" l="$2" r; shift 2
+  : > "$d/map" || die "map $d"
+  for r in "$@"; do printf '%s\n' "$r" >> "$d/map"; done
+  : > "$d/log" || die "log $d"
+  qrun "$d" "$l" PATH="$T/curlstub:$PATH" CURL_STUB_MAP="$d/map" CURL_STUB_LOG="$d/log"
+}
+one_sha() {  # <label> — exactly one deployed-sha line
+  CHECKS=$((CHECKS + 1))
+  [ "$(grep -c '^deployed-sha: ' <<<"$QOUT")" = 1 ] || bad "$1" "not exactly one deployed-sha line"
+}
+NET='"base_url":"http://dep.test","probe_paths":["/"],"build_sha_url":"http://dep.test/sha","local_url":"http://loc.test"'
+ROOT_OK=$(rec http://dep.test/ 200 -)
+LOC_OK=$(rec http://loc.test 200 -)
+NOSHA="deployed-sha: not verified — build_sha_url returned no recognisable SHA"
+shacase() {  # <label> <expected line> <body content> [code] [curl exit] — sha URL answers <body>
+  local Q="$T/qa sha $1" b
+  repo "$Q"; qaenv "$Q" "$NET"
+  b=$(body "$Q" sha.body "$3")
+  qnet "$Q" "$1" "$ROOT_OK" "$LOC_OK" "$(rec http://dep.test/sha "${4:-200}" "$b" "${5:-0}")"
+  qhas "$1" "$2"; one_sha "$1"
+}
+
+# 1. a differing SHA is reported, the deployed host is kept; 13. no build-skew line remains
+shacase sha-differs "deployed-sha: deadbee1234 (differs)" "deadbee1234"
+qhas sha-differs "RESOLVED-BASE_URL: http://dep.test"
+CHECKS=$((CHECKS + 1)); grep -q '^build-skew:' <<<"$QOUT" && bad sha-differs "build-skew line still printed"
+
+# 2. equal to local HEAD
+Q="$T/qa sha equal"; repo "$Q"; qaenv "$Q" "$NET"
+h=$(git -C "$Q" rev-parse HEAD) || die "rev-parse $Q"
+b=$(body "$Q" sha.body "$h")
+qnet "$Q" sha-equal "$ROOT_OK" "$LOC_OK" "$(rec http://dep.test/sha 200 "$b")"
+qhas sha-equal "deployed-sha: $h (equal)"; one_sha sha-equal
+
+# 3. unreadable body → not verified, the deployed host still kept
+shacase sha-unreadable "$NOSHA" "hello world"
+qhas sha-unreadable "RESOLVED-BASE_URL: http://dep.test"
+
+# 4. non-2xx: a hex token in an error body is never a SHA
+shacase sha-500 "deployed-sha: not verified — build_sha_url returned 500" "request id deadbeef12" 500
+
+# 5. the meta tag wins over an asset hash before it
+shacase sha-meta "deployed-sha: abc1234def (differs)" \
+  '<html><script src="/app.3f2a9b1c.js"></script><meta name="build-sha" content="abc1234def"></html>'
+
+# 6. unidentified or ambiguous → never a SHA
+shacase sha-asset "$NOSHA" '<html><script src="/app.3f2a9b1c4d.js"></script></html>'
+shacase sha-two-one-line "$NOSHA" "abc1234def 9c1f84d"
+shacase sha-json-two-fields "$NOSHA" '{"sha":"abc1234def5678","revision":"deadbeefcafe12"}'
+shacase sha-json-request-id "deployed-sha: abc1234def5678 (differs)" \
+  '{"commit":"abc1234def5678","request_id":"deadbeefcafe12"}'
+shacase sha-incomplete "deployed-sha: not verified — build_sha_url transfer incomplete (curl exit 18)" \
+  "abc1234def5678" 200 18
+shacase sha-meta-conflict "deployed-sha: not verified — conflicting build-sha meta tags" \
+  '<meta name="build-sha" content="abc1234def"><meta name="build-sha" content="deadbeefcafe">'
+shacase sha-json-two-docs "$NOSHA" '{"sha":"abc1234def5678"}{"sha":"deadbeefcafe12"}'
+shacase sha-json-broken-tail "$NOSHA" '{"sha":"abc1234def5678"} {"sha":'
+shacase sha-meta-data-attrs "$NOSHA" \
+  '<meta data-name="build-sha" content="abcdef1"><meta name="build-sha" data-content="abcdef1">'
+
+# 7. a probe path down: the local host is resolved, the SHA is still reported
+Q="$T/qa sha root down"; repo "$Q"; qaenv "$Q" "$NET"
+b=$(body "$Q" sha.body "deadbee1234")
+qnet "$Q" sha-root-down "$LOC_OK" "$(rec http://dep.test/sha 200 "$b")"
+qhas sha-root-down "deployed-sha: deadbee1234 (differs)"
+qhas sha-root-down "RESOLVED-BASE_URL: http://loc.test"; one_sha sha-root-down
+
+# 8. no deployed host → not applicable
+Q="$T/qa sha none"; repo "$Q"; qaenv "$Q" ""
+qrun "$Q" sha-none
+qhas sha-none "deployed-sha: not applicable — no deployed host configured"; one_sha sha-none
+
+# 9. readiness: ok, FAILED, UNREACHABLE, and refused entries that are never requested
+Q="$T/qa ready mixed"; repo "$Q"
+qaenv "$Q" "$NET"', "readiness_checks":[
+  {"name":"ok","url":"https://ok.test/","expect_status":200},
+  {"name":"bad","url":"https://bad.test/","expect_status":200},
+  {"name":"gone","url":"https://gone.test/"},
+  {"name":"cred","url":"https://u:p@cms.test/"},
+  {"name":"a b","url":"https://ab.test/"},
+  {"name":"file","url":"file:///etc/passwd"},
+  {"name":"n","url":"https://x.test/","expect_status":null}]'
+b=$(body "$Q" sha.body "deadbee1234")
+qnet "$Q" ready-mixed "$ROOT_OK" "$LOC_OK" "$(rec http://dep.test/sha 200 "$b")" \
+  "$(rec https://ok.test/ 200 -)" "$(rec https://bad.test/ 503 -)"
+qhas ready-mixed "readiness ok: ok — 200"
+qhas ready-mixed "readiness bad: FAILED — got 503, expected 200"
+qhas ready-mixed "readiness gone: UNREACHABLE — timeout or connection refused"
+qhas ready-mixed "readiness #4: MALFORMED — url must be http(s) without userinfo"
+qhas ready-mixed "readiness #5: MALFORMED — name must match [A-Za-z0-9._-]{1,40}"
+qhas ready-mixed "readiness #6: MALFORMED — url must be http(s) without userinfo"
+qhas ready-mixed "readiness #7: MALFORMED — expect_status must be an integer 100-599"
+CHECKS=$((CHECKS + 1))
+[ "$(grep -c 'cms.test\|ab.test\|/etc/passwd\|x.test' "$Q/log")" = 0 ] \
+  || bad ready-mixed "a refused entry was requested: $(tr '\n' '|' < "$Q/log")"
+CHECKS=$((CHECKS + 1))
+got=$(grep -v 'dep.test\|loc.test' "$Q/log" | tr '\n' '|')
+[ "$got" = "https://ok.test/|https://bad.test/|https://gone.test/|" ] \
+  || bad ready-mixed "readiness requests: $got"
+
+# 10. no expect_status → any 2xx/3xx is ok
+Q="$T/qa ready redirect"; repo "$Q"
+qaenv "$Q" "$NET"', "readiness_checks":[{"name":"r","url":"https://r.test/"}]'
+qnet "$Q" ready-redirect "$ROOT_OK" "$LOC_OK" "$(rec https://r.test/ 302 -)"
+qhas ready-redirect "readiness r: ok — 302"
+
+# 11. at most 10 entries run, the rest is announced
+Q="$T/qa ready cap"; repo "$Q"
+entries="" recs=()
+for n in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  entries="$entries${entries:+,}{\"name\":\"r$n\",\"url\":\"https://r$n.test/\"}"
+  recs+=("$(rec "https://r$n.test/" 200 -)")
+done
+qaenv "$Q" "$NET, \"readiness_checks\":[$entries]"
+qnet "$Q" ready-cap "$ROOT_OK" "$LOC_OK" "${recs[@]}"
+qhas ready-cap "readiness-checks: 2 more not run (limit 10)"
+CHECKS=$((CHECKS + 1))
+[ "$(grep -c '^https://r[0-9]*\.test/$' "$Q/log")" = 10 ] || bad ready-cap "not exactly 10 readiness requests"
+
+# 12. none configured / not an array
+Q="$T/qa ready none"; repo "$Q"; qaenv "$Q" ""
+qrun "$Q" ready-none; qhas ready-none "readiness-checks: none configured"
+Q="$T/qa ready false"; repo "$Q"; qaenv "$Q" '"readiness_checks":false'
+qrun "$Q" ready-false; qhas ready-false "readiness-checks: MALFORMED — not an array"
+
+# 12b. a URL with brackets is one literal transfer (--globoff)
+Q="$T/qa ready glob"; repo "$Q"
+qaenv "$Q" "$NET"', "readiness_checks":[{"name":"g","url":"https://g.test/[1-3]"}]'
+qnet "$Q" ready-glob "$ROOT_OK" "$LOC_OK" "$(rec 'https://g.test/[1-3]' 200 -)"
+qhas ready-glob "readiness g: ok — 200"
+CHECKS=$((CHECKS + 1))
+[ "$(grep -v 'dep.test\|loc.test' "$Q/log")" = 'https://g.test/[1-3]' ] || bad ready-glob "not one literal transfer"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "prime-probes-test: OK ($CHECKS checks)"
