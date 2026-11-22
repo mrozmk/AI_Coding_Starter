@@ -82,6 +82,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Critics** | `start-critic` (`/discover`, `/architect`, `/check-backlog`, `/setup:delivery-plan`), `design-critic` (`/design-ui`) |
 | **Backlog authors** | `backlog-author` (`/setup:create-backlog` — the structure), `backlog-epic-author` and `backlog-epic-fixer` (`/setup:delivery-plan` — one Epic file each: details, then accepted fixes) |
 | **Review finders** | `correctness-reviewer`, `structure-reviewer` — read-only; the caller applies the fixes |
+| **Architecture review** | `architecture-sweeper` (`/architecture-review` Phase 1 sweeps and Phase 3 variants) — read-only, whole-file reads |
 | **QA verifiers** | `qa-contract`, `qa-runtime-ui` (`/qa-verify`); `qa-runtime-app.md.example` and `qa-runtime-device.md.example` are opt-in templates |
 | **Security audit** | `audit-threat-modeler`, `audit-control-verifier`, `audit-finding-validator` (`/audit-security`) |
 | **Planning** | `delivery-analyst` (`/setup:delivery-plan`) — reads the computed plan, never edits |
@@ -506,6 +507,7 @@ Three commands do heavy multi-step work. They use **two different orchestration 
 | Correctness finder | `correctness-reviewer` | Opus 5.5 · **`xhigh`** | ❌ read-only | `/check-implementation` Step 1ab: runs `/code-review` and reports confirmed bugs; the main session applies fixes |
 | Structure finder | `structure-reviewer` | Fable 5.1 · **`high`** | ❌ read-only | runs `/deep-review report-only` in parallel with the correctness finder |
 | Finder fallbacks | `correctness-reviewer-fallback`, `structure-reviewer-fallback` | the session's model (`inherit`) · same effort as their finder | ❌ read-only | only after a finder's pinned model failed twice on a rate/usage limit or was unavailable, unless `workflow.finder_fallback` is `off`; same contract, named in the report |
+| Architecture sweep | `architecture-sweeper` | Opus 5.5 · `medium` | ❌ read-only | `/architecture-review`: one area (or group of small areas) per instance in Phase 1, returning depth + risk + coverage; one interface variant per instance in Phase 3 |
 | Security audit | `audit-threat-modeler`, `audit-control-verifier`, `audit-finding-validator` | Opus 5 · **`high`** | ❌ read-only | threat model, invariant checks and a falsifier pass for `/audit-security` |
 | QA verifiers | `qa-contract`, `qa-runtime-ui` | Sonnet 4.6 · default | ❌ read-only | `/qa-verify` evidence families — see the note below |
 | Commit | `orchestrator-committer` | Sonnet 5 · `low` (`acceptEdits`) | ✅ git index | purely mechanical stage+commit |

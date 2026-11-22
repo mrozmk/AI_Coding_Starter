@@ -15,7 +15,8 @@
   Axis cell: the value 0–3, or "not assessed — {{reason}}" when the value is null.
   Verdict call: keep | restructure | inconclusive — forced to inconclusive when the script says so.
   Findings: three tiers (Needed now · Before the next feature in the area · When convenient); measured
-  effects and predicted consequences are labelled apart. A tier with no record shows one line.
+  effects and predicted consequences are labelled apart. A tier with no record shows one line
+  ({{noTierFinding}}, per tier); no record in any tier sets {{noFindings}}.
   Language: English, plain, no hedging. Vocabulary: ASSESSMENT.md.
 -->
 <!doctype html>
@@ -248,7 +249,7 @@
         {{/each}}
         {{#if noTierFinding}}<p class="muted">Nothing reached this tier.</p>{{/if}}
         {{/each}}
-        {{#if noTierFinding}}<p class="muted">Nothing reached a tier.</p>{{/if}}
+        {{#if noFindings}}<p class="muted">Nothing reached a tier.</p>{{/if}}
       </section>
 
       <!-- 7 Corrections -->

@@ -118,10 +118,13 @@ function readJson(file) {
 
 // ---------------------------------------------------------------- measure: per-file signals
 
-function langOf(rel) {
-  const base = path.posix.basename(rel);
+function extOf(base) {
   const dot = base.lastIndexOf('.');
-  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
+}
+
+function langOf(rel) {
+  const ext = extOf(path.posix.basename(rel));
   if (ext === 'py') return 'py';
   if (JS_EXT.includes(ext)) return 'js';
   if (SIZES_ONLY.has(ext)) return ext;
@@ -131,8 +134,7 @@ function langOf(rel) {
 function inInventory(rel) {
   if (rel === '.claude' || rel.startsWith('.claude/')) return true;
   const base = path.posix.basename(rel);
-  const dot = base.lastIndexOf('.');
-  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
+  const ext = extOf(base);
   return !(PROSE_EXT.has(ext) || ext === 'lock' || LOCKFILES.has(base));
 }
 
@@ -327,8 +329,8 @@ function deriveAutoAreas(files, R) {
 
 // ---------------------------------------------------------------- measure: change cost
 
-async function changeCost(root, areaOf, areaNames, limit) {
-  try { execFileSync('git', ['-C', root, 'rev-parse', '--verify', '-q', 'HEAD'], { stdio: 'ignore' }); } catch { return { skipped: 'no history' }; }
+async function changeCost(root, areaOf, areaNames, limit, revision) {
+  if (revision === null) return { skipped: 'no history' };
   const prefix = execFileSync('git', ['-C', root, 'rev-parse', '--show-prefix'], { encoding: 'utf8' }).trim();
   const samples = new Map(areaNames.map((a) => [a, []]));
   const full = () => [...samples.values()].every((s) => s.length >= limit);
@@ -538,7 +540,6 @@ export async function measure(opts) {
     if (names.includes('(rest)')) usage('--area name (rest) is reserved');
   } else {
     const { dirs, rootArea } = deriveAutoAreas(sourceFiles, R);
-    // deepest dir first, so a file lands in the most specific area
     areaDefs = dirs.sort(cmp).map((d) => ({ name: d, globs: [`${d}/**`], derived: 'auto', depth: d.split('/').length, match: (p) => p.startsWith(d + '/') }));
     if (rootArea) {
       const name = '(root)';
@@ -548,14 +549,14 @@ export async function measure(opts) {
   const order = opts.area?.length ? areaDefs : [...areaDefs].sort((a, b) => b.depth - a.depth || cmp(a.name, b.name));
   const assign = (p) => order.find((a) => a.match(p))?.name ?? null;
   for (const e of entries) e.area = assign(e.path);
-  const lineSum = (name, test) => entries.filter((e) => e.area === name && e.test === test);
-  const kept = new Set(areaDefs.filter((a) => lineSum(a.name, false).reduce((s, e) => s + e.lines, 0) > 0).map((a) => a.name));
+  const entriesOf = (name, test) => entries.filter((e) => e.area === name && e.test === test);
+  const kept = new Set(areaDefs.filter((a) => entriesOf(a.name, false).reduce((s, e) => s + e.lines, 0) > 0).map((a) => a.name));
   for (const e of entries) if (!kept.has(e.area)) e.area = '(rest)';
   const areaList = areaDefs.filter((a) => kept.has(a.name));
   if (!opts.area?.length) areaList.sort(by('name'));
   if (entries.some((e) => e.area === '(rest)')) areaList.push({ name: '(rest)', globs: [], derived: opts.area?.length ? 'explicit' : 'auto' });
   const areas = areaList.map((a) => {
-    const src = lineSum(a.name, false), tst = lineSum(a.name, true);
+    const src = entriesOf(a.name, false), tst = entriesOf(a.name, true);
     return {
       name: a.name, globs: a.globs, derived: a.derived,
       source_files: src.length, source_lines: src.reduce((s, e) => s + e.lines, 0),
@@ -585,20 +586,18 @@ export async function measure(opts) {
   const fileArea = new Map(entries.map((e) => [e.path, e.area]));
   const map = compareMap(root, fileArea, fileEdges);
 
-  const areaMatchers = areaList.filter((a) => a.name !== '(rest)').map((a) => areaDefs.find((d) => d.name === a.name));
-  const orderedMatchers = opts.area?.length ? areaMatchers : [...areaMatchers].sort((a, b) => b.depth - a.depth || cmp(a.name, b.name));
+  const historyMatchers = order.filter((a) => kept.has(a.name));
   const historyArea = (p) => {
-    const hit = orderedMatchers.find((a) => a.match(p));
+    const hit = historyMatchers.find((a) => a.match(p));
     if (hit) return hit.name;
     return fileArea.get(p) === '(rest)' ? '(rest)' : null;
   };
-  const change_cost = await changeCost(root, historyArea, areas.map((a) => a.name), commits);
+  let revision = null;
+  try { revision = execFileSync('git', ['-C', root, 'rev-parse', '--verify', '-q', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { revision = null; }
+  const change_cost = await changeCost(root, historyArea, areas.map((a) => a.name), commits, revision);
 
   const safety_flags = entries.filter((e) => !e.test && e.lang !== 'def' && !e.sibling_test && e.test_imported !== true && !e.test_referenced
     && (e.lines >= SAFETY_LINES || (e.branches ?? 0) >= SAFETY_BRANCHES)).map((e) => e.path).sort(cmp);
-
-  let revision = null;
-  try { revision = execFileSync('git', ['-C', root, 'rev-parse', '--verify', '-q', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { revision = null; }
 
   return {
     revision,
