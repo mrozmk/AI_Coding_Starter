@@ -70,6 +70,8 @@
       "Bash(bash .claude/skills/audit-security/scripts/scan-iac.sh:*)",
       "Bash(node .claude/skills/audit-security/scripts/audit-runner.mjs:*)",
       "Bash(node .claude/lib/backlog-check.mjs:*)",
+      "Bash(node .claude/lib/standards-tools.mjs:*)",
+      "Bash(node .claude/lib/coding-standards-render.mjs:*)",
       "Bash(node .claude/lib/delivery-plan.mjs:*)",
       "Bash(node .claude/lib/backlog-migrate.mjs:*)",
       "WebFetch(domain:developer.mozilla.org)",
