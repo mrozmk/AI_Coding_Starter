@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="rim" x1=".15" y1=".2" x2=".85" y2=".9">
+      <stop stop-color="#ccfaff"/><stop offset=".4" stop-color="#5fd4ff"/><stop offset=".72" stop-color="#438bbf"/><stop offset="1" stop-color="#152947"/>
+    </linearGradient>
+    <radialGradient id="eye">
+      <stop stop-color="#9bffff"/><stop offset=".35" stop-color="#28befa"/><stop offset="1" stop-color="#0875e0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#030610"/>
+  <path fill="#070b16" stroke="url(#rim)" stroke-width="2" stroke-linejoin="round"
+    d="m5 34 9-5 6-8 4-1q3-10 13-15l-6 13q10-3 20-12l-7 12 13-5-9 12 12-4-11 13 8-2-9 10q-3 9-2 16l-15-5q7-9 5-16l-5-1-9 10-10 3 6-6 6-3 5-8-10 2-7 6-6 1Z"/>
+  <path fill="#5fd4ff" d="m10 39 5-2-3 7Zm14-17 8-6-5 6Z"/>
+  <ellipse cx="24" cy="27" rx="8" ry="6" fill="url(#eye)"/>
+  <path fill="#e5ffff" d="m18 29 10-6q-2 7-10 6Z"/>
+  <path fill="#37648a" d="m33 29 14-7-8 7-6 2Zm4 7 11-7-7 8Z"/>
+</svg>

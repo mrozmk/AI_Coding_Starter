@@ -30,7 +30,9 @@ function tabStatuses(ps) {
 
 // Own avatars: space-icons/<slug of the space name>.svg or .png ("My App - API" -> my-app-api.svg).
 // Without a file the space keeps its colored letter. Picked up live when files change.
-const ICON_DIR = "mods/spaces-plus/space-icons";
+// The kit ships a few as space-icon-<slug>.svg next to this file; an own icon of the same slug wins.
+const MOD_DIR = "mods/spaces-plus";
+const ICON_DIR = `${MOD_DIR}/space-icons`;
 const slug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 function toggleSidebar() {
@@ -295,13 +297,21 @@ export default class Spaces extends View {
     cx.spawn(async (cx) => {
       try {
         for (;;) {
-          const r = await exec("sh", ["-c", `d="\${HERDR_APP_HOME:-$HOME/.config/herdr-app}/${ICON_DIR}"; mkdir -p "$d" && printf '%s\\n' "$d" && ls "$d"`]);
-          const [dir, ...files] = r.stdout.split("\n").filter(Boolean);
+          // Own icons first, then the kit's (prefixed "=" in the listing).
+          const r = await exec("sh", ["-c", `h="\${HERDR_APP_HOME:-$HOME/.config/herdr-app}"; d="$h/${ICON_DIR}"; mkdir -p "$d" && printf '%s\\n' "$d" && ls "$d"; ls "$h/${MOD_DIR}" | grep '^space-icon-' | sed 's/^/=/'; true`]);
+          const [dir, ...lines] = r.stdout.split("\n").filter(Boolean);
           const icons = new Map();
+          const own = lines.filter((f) => !f.startsWith("="));
+          const kit = lines.filter((f) => f.startsWith("=")).map((f) => f.slice(1));
           // An svg wins over a png of the same name.
-          for (const f of files.filter((f) => /\.(svg|png)$/i.test(f)).sort((a, b) => (a.endsWith(".svg") ? -1 : 1) - (b.endsWith(".svg") ? -1 : 1))) {
+          const bySvg = (a, b) => (a.endsWith(".svg") ? -1 : 1) - (b.endsWith(".svg") ? -1 : 1);
+          for (const f of own.filter((f) => /\.(svg|png)$/i.test(f)).sort(bySvg)) {
             const key = f.replace(/\.[^.]+$/, "").toLowerCase();
             if (!icons.has(key)) icons.set(key, `${ICON_DIR}/${f}`);
+          }
+          for (const f of kit.filter((f) => /\.(svg|png)$/i.test(f)).sort(bySvg)) {
+            const key = f.replace(/^space-icon-/, "").replace(/\.[^.]+$/, "").toLowerCase();
+            if (!icons.has(key)) icons.set(key, `${MOD_DIR}/${f}`);
           }
           this.icons = icons;
           cx.notify();

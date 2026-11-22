@@ -15,7 +15,8 @@ sessions in Herdr. `install.sh` installs or updates them into a Herdr app home
 - `machines-menu` — the right-click menu of an orphaned process in `machines`.
 - `pane-plus` — a pane header with a "copy hc send" button, for layouts that frame their panes.
 - `spaces-plus` — the left menu: workspace spaces with stable coloured avatars (or your own icon from
-  `mods/spaces-plus/space-icons/<space-name-slug>.svg|png`), worktrees under their checkout, each
+  `mods/spaces-plus/space-icons/<space-name-slug>.svg|png`; the kit ships `space-icon-harness-dev.svg`),
+  worktrees under their checkout, each
   space's tabs with one status mark (working / needs you / idle), and a collapsible rail.
 - `spaces-plus-menu` — the "+" menu of `spaces-plus` (open a folder as a space, new folder).
 - `tabs-plus` — tabs with pane layouts for the shown tab (zoom, columns, rows, main left, main top, grid).
