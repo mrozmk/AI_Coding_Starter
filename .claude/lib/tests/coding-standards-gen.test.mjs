@@ -160,6 +160,23 @@ test('scanner: option parsing per tool', async () => {
   assert.ok(parseRun('prettier', 'npx nx format:check --base="$NX_BASE" --head=HEAD'));
   assert.equal(parseRun('gofmt', 'gofmt -l .'), null);
   assert.equal(parseRun('prettier', 'prettier --write src'), null);
+  assert.ok(parseRun('gofmt', 'test -z "$(gofmt -l .)"'));
+});
+
+test('scanner: installing or naming a tool is not a run', async () => {
+  const { parseRun } = await scanner();
+  for (const [id, cmd] of [['flake8', 'pip install flake8 mypy'], ['mypy', 'python -m pip install mypy'], ['stylelint', 'npm i -D stylelint-config-standard'],
+    ['eslint', 'npm install -g eslint'], ['eslint', 'yarn global add eslint'], ['rubocop', 'gem install rubocop'], ['eslint', 'echo running eslint'], ['psalm', 'which psalm']]) {
+    assert.equal(parseRun(id, cmd), null, cmd);
+  }
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'setup.cfg'), '[flake8]\nmax-line-length = 100\n\n[mypy]\nstrict = True\n');
+  fs.writeFileSync(path.join(dir, '.stylelintrc.json'), '{ "rules": { "color-no-invalid-hex": true } }\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "setup": "npm i -D stylelint-config-standard" } }\n');
+  fs.mkdirSync(path.join(dir, '.github/workflows'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.github/workflows/ci.yml'), 'jobs:\n  lint:\n    steps:\n      - run: pip install flake8 mypy\n');
+  const s = await fixtureScan(dir, ['setup.cfg', '.stylelintrc.json', 'package.json', '.github/workflows/ci.yml']);
+  for (const id of ['flake8', 'mypy', 'stylelint']) assert.equal(tool(s, id).enforced, false, id);
 });
 
 test('scanner: a Bitbucket pipeline wires a tool; a fix script does not', async () => {
@@ -311,7 +328,7 @@ test('renderer: output and evidence stay inside the roots', async () => {
   const noLint = copyRepo();
   editJson(path.join(noLint, 'package.json'), (o) => { delete o.scripts.lint; });
   const rn = await renderIn(src, { scan: s, outRoot: noLint });
-  assert.ok(rn.summary.dropped.some((d) => d.section === 0 && /ESLint/.test(d.item) && d.reason === 'differs in destination'));
+  assert.ok(rn.summary.dropped.some((d) => d.section === 'rules' && /ESLint/.test(d.item) && d.reason === 'differs in destination'));
   assert.ok(!rn.text.includes('Code passes ESLint'));
 
   const w = tmp();

@@ -126,7 +126,7 @@ function toolRules(scan, ok, dropped) {
     } else continue;
     const support = [...cfgs.map((c) => `${c.path}:1`), ...(t.wiredBy || []), ...(t.ciChecks || []).map((x) => x.at)];
     const bad = [example, ...support].map(ok).find(Boolean);
-    if (bad) { dropped.push({ section: 0, item: title, reason: bad, documentedIds: [] }); continue; }
+    if (bad) { dropped.push({ section: 'rules', item: title, reason: bad, documentedIds: [] }); continue; }
     const except = (t.appliesExcept || []).length ? ` (except ${t.appliesExcept.map(tick).join(', ')})` : '';
     out.push({ title, by, applies: t.appliesTo.map(tick).join(', ') + except, example, why: `${t.display} fails the check when this is broken, so reviewers do not re-check it.`, documentedIds: [] });
   }
@@ -145,6 +145,14 @@ export function render({ draft, scan, repo, outRoot = repo, seed, toolsOnly = fa
   const ok = evidence(repo, outRoot);
   const dropped = [];
   const drop = (section, item, name, reason) => dropped.push({ section, item: one(name), reason, documentedIds: item.documentedIds || [] });
+  // An item survives when its own ref resolves and its support spans two modules (`exclude`: a helper's definition).
+  const survives = (section, item, ref, name, exclude) => {
+    const bad = ok(ref);
+    if (bad) drop(section, item, name, bad);
+    else if (supportModules(item, ok, exclude) < 2) drop(section, item, name, 'support below two modules');
+    else return true;
+    return false;
+  };
 
   const rules = toolRules(scan, ok, dropped);
   const toolCount = rules.length;
@@ -153,30 +161,20 @@ export function render({ draft, scan, repo, outRoot = repo, seed, toolsOnly = fa
   const open = [];
   if (!toolsOnly) {
     for (const r of draft.rules) {
-      const bad = ok(r.example);
-      if (bad) drop(0, r, r.rule, bad);
-      else if (supportModules(r, ok) < 2) drop(0, r, r.rule, 'support below two modules');
-      else {
-        const parts = one(r.appliesTo).split(/\s*,\s*(?![^{]*\})/);
-        const applies = parts.every((p) => /^[\w./*{}@-]+$/.test(p) && /[/*.]/.test(p)) ? parts.map(tick).join(', ') : one(r.appliesTo);
-        rules.push({ title: one(r.rule), by: 'review', applies, example: r.example, why: one(r.why), documentedIds: r.documentedIds || [] });
-      }
+      if (!survives('rules', r, r.example, r.rule)) continue;
+      const parts = one(r.appliesTo).split(/\s*,\s*(?![^{]*\})/);
+      const applies = parts.every((p) => /^[\w./*{}@-]+$/.test(p) && /[/*.]/.test(p)) ? parts.map(tick).join(', ') : one(r.appliesTo);
+      rules.push({ title: one(r.rule), by: 'review', applies, example: r.example, why: one(r.why), documentedIds: r.documentedIds || [] });
     }
     for (const h of draft.helpers) {
-      const bad = ok(h.path);
-      if (bad) drop(1, h, h.need, bad);
-      else if (supportModules(h, ok, h.path) < 2) drop(1, h, h.need, 'support below two modules');
-      else helpers.push(`| ${cell(h.need)} | ${cell(tick(h.use))} | ${tick(h.path)} |`);
+      if (survives('helpers', h, h.path, h.need, h.path)) helpers.push(`| ${cell(h.need)} | ${cell(tick(h.use))} | ${tick(h.path)} |`);
     }
     for (const x of draft.shapes) {
-      const bad = ok(x.reference);
-      if (bad) drop(2, x, x.problem, bad);
-      else if (supportModules(x, ok) < 2) drop(2, x, x.problem, 'support below two modules');
-      else shapes.push(`| ${cell(x.problem)} | ${cell(x.shape)} | ${tick(x.reference)} |`);
+      if (survives('shapes', x, x.reference, x.problem)) shapes.push(`| ${cell(x.problem)} | ${cell(x.shape)} | ${tick(x.reference)} |`);
     }
     for (const o of draft.open) {
       const vs = (o.variants || []).filter((v) => !ok(v.evidence));
-      if (vs.length < 2) { drop(3, o, o.topic, 'fewer than two resolving variants'); continue; }
+      if (vs.length < 2) { drop('open', o, o.topic, 'fewer than two resolving variants'); continue; }
       open.push({ topic: one(o.topic), line: `- ${one(o.topic)} — ${vs.map((v) => `${one(v.shape)} (${tick(v.evidence)})`).join('; ')}; a person picks one, then it becomes a rule.` });
     }
   }

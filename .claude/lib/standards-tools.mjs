@@ -91,7 +91,7 @@ export const TOOLS = [
     aliases: ['golangci-lint'], configs: [/(^|\/)\.golangci\.(ya?ml|toml)$/], runs: /golangci-lint\s+run\b/,
     bin: /^(.*\/)?golangci-lint$/, sub: ['run'], selectFlags: ['-c', '--config'], observe: /\bgolangci(-lint)?\b/i, appliesTo: GO,
   }),
-  T('gofmt', 'gofmt', 'format', { runs: /test\s+-z\s+"?\$\(\s*gofmt\s+-l/, bin: /^(.*\/)?gofmt$/, valueFlags: [], observe: /\bgofmt\b|\bgo\s+fmt\b/, appliesTo: GO }),
+  T('gofmt', 'gofmt', 'format', { runs: /test\s+-z\s+"?\$\(\s*gofmt\s+-l/, bin: /^(.*\/)?gofmt$/, observe: /\bgofmt\b|\bgo\s+fmt\b/, appliesTo: GO }),
   T('govet', 'go vet', 'analyzer', { aliases: ['go vet'], runs: /\bgo\s+vet\b/, bin: /^go$/, sub: ['vet'], observe: /\bgo\s+vet\b/, appliesTo: GO }),
   T('rustfmt', 'rustfmt', 'format', {
     configs: [/(^|\/)\.?rustfmt\.toml$/], runs: /\bcargo\s+fmt\b.*--check|\brustfmt\b.*--check/, bin: /^(.*\/)?(cargo|rustfmt)$/,
@@ -108,6 +108,8 @@ const BY_ID = new Map(TOOLS.map((t) => [t.tool, t]));
 const HARNESS = /^(\.claude|\.agents|\.codex)\//;
 const WIRING = /(^|\/)(package\.json|composer\.json|Makefile|Jenkinsfile|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|\.pre-commit-config\.yaml|\.lintstagedrc(\.\w+)?)$|^\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)azure-pipelines[^/]*\.ya?ml$|^\.husky\/[^/]+$/;
 const STRICT_PROPS = /^(TreatWarningsAsErrors|EnforceCodeStyleInBuild)$/;
+// A segment that installs, removes or only names a tool — never a checking run (`pip install flake8`).
+const NOT_A_RUN = /^\s*(?:\w+=\S*\s+)*(?:sudo\s+)?(?:(?:(?:(?:python3?|py)\s+-m\s+)?(?:pip3?|pipx|uv\s+pip|poetry|npm|yarn|pnpm|bun|gem|bundle|composer|go|cargo|brew|apt(?:-get)?|apk|choco|dotnet\s+tool)\s+(?:global\s+)?(?:install|i|add|require|uninstall|remove|rm)\b)|echo\b|printf\b|which\b|command\s+-v\b)/;
 
 const posix = (...p) => { const j = path.posix.normalize(path.posix.join(...p)); return j === '.' ? '' : j.replace(/\/$/, ''); };
 const under = (a, b) => b === '' || a === b || a.startsWith(`${b}/`);
@@ -163,7 +165,7 @@ function fromObject(t, obj, lines, q) {
     }
     addPresets(obj.extends);
   } else {
-    if (t.tool === 'phpstan' || t.tool === 'rubocop') addPresets(obj.includes ?? obj.inherit_from);
+    addPresets(t.tool === 'phpstan' || t.tool === 'rubocop' ? obj.includes ?? obj.inherit_from : obj.extends);
     const walk = (o) => {
       for (const [k, v] of Object.entries(o)) {
         if (['extends', 'includes', 'inherit_from', '$schema'].includes(k)) continue;
@@ -172,7 +174,6 @@ function fromObject(t, obj, lines, q) {
       }
     };
     walk(obj);
-    if (t.tool !== 'phpstan' && t.tool !== 'rubocop') addPresets(obj.extends);
   }
   return { rules, presets };
 }
@@ -238,11 +239,13 @@ function extract(t, file, text) {
 // the strict flag. null when the text is not a checking invocation of that tool.
 export function parseRun(toolId, text) {
   const t = BY_ID.get(toolId);
-  if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text))) return null;
+  if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text)) return null;
   const toks = text.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
   let i = toks.findIndex((x) => t.bin.test(x.replace(/^["']|["']$/g, '')));
   const run = { targets: [], excludes: [], selected: null, strict: false, scopeUnknown: false };
-  if (i < 0 || /^(.*\/)?(ng|nx)$/.test(toks[i])) return run;
+  // No binary token: a run only when the binary sits in a command substitution (`test -z "$(gofmt -l .)"`).
+  if (i < 0) return toks.some((x) => { const m = /\$\(\s*([^\s)]+)/.exec(x); return m && t.bin.test(m[1]); }) ? run : null;
+  if (/^(.*\/)?(ng|nx)$/.test(toks[i])) return run;
   i += 1;
   while (i < toks.length && t.sub.includes(toks[i])) i++;
   const flagVal = (tok, eq) => (eq >= 0 ? tok.slice(eq + 1) : toks[++i]);
@@ -395,7 +398,16 @@ export function scan({ repo, files }) {
     const er = all.filter((r) => enforcing.has(r));
     let enforced;
     let by = null;
-    if (t.tool === 'typescript' || t.tool === 'editorconfig') { enforced = cfgs.some((c) => c.attributed); by = 'build'; } else if (t.tool === 'msbuild') { enforced = hasProject && eff.length > 0 && cfgs.some(strictProp); by = 'build'; if (!enforced) cfgs.forEach((c) => { c.attributed = false; }); } else if (cfgs.length) { enforced = cfgs.some((c) => c.attributed) || !!external; by = 'wired'; } else { enforced = er.length > 0; by = 'ci'; }
+    if (t.tool === 'typescript' || t.tool === 'editorconfig') {
+      enforced = cfgs.some((c) => c.attributed); by = 'build';
+    } else if (t.tool === 'msbuild') {
+      enforced = hasProject && eff.length > 0 && cfgs.some(strictProp); by = 'build';
+      if (!enforced) cfgs.forEach((c) => { c.attributed = false; });
+    } else if (cfgs.length) {
+      enforced = cfgs.some((c) => c.attributed) || !!external; by = 'wired';
+    } else {
+      enforced = er.length > 0; by = 'ci';
+    }
     if (!enforced) { by = null; if (all.some((r) => r.scopeUnknown)) out.scopeUnknown.push(t.tool); }
     const applies = enforced ? uniq(er.flatMap((r) => (r.targets.length ? r.targets.map((x) => { const j = posix(r.dir, x); return /[*?]/.test(j) ? j : `${j}/**`; }) : [r.dir ? `${r.dir}/**` : t.appliesTo]))) : [];
     out.tools.push({
