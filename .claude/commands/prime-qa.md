@@ -69,9 +69,9 @@ The probe reads `.claude/qa-env.json` and emits `key: value` lines. **Transcribe
 | `qa-config: MISSING` | `.claude/qa-env.json` is not filled in. Every environment fact below is unavailable — say so plainly and offer to fill the file in. Do **not** guess a host. |
 | `RESOLVED-BASE_URL: (none)` | Nothing to observe against. Runtime/visual verification is impossible this session; only static/code-level checks can run. |
 | `deployed-sha: <sha> (differs)` | The deployed build differs from local `HEAD`. **A SHA difference alone never disqualifies the deployed host** — which host is the candidate, and why, is always `RESOLVED-BASE_URL` / `RESOLVED-REASON` (a failed probe path still moves it to local); `/qa-verify` decides per ticket whether the deployed build contains the ticket's merge. |
-| `deployed-sha: not verified — …` | The deployed build **may** lag local `HEAD`. Every runtime or visual observation this session carries that caveat. Unverified is not a match. |
+| `deployed-sha: not verified — …` | The deployed build **may** lag local `HEAD`. Every runtime or visual observation made **on the deployed host** carries that caveat (`/qa-verify` Step 0.76 row 5); an observation on the local host or of the checkout does not. Unverified is not a match. |
 | `deployed-sha: not applicable` | No deployed host configured — local runs carry no skew warning. |
-| `readiness <name>: FAILED \| UNREACHABLE` | An external system the feature needs is not ready. Warn; never stop — `/qa-verify` shows it at the gate and may cite it as `ENV` evidence. |
+| `readiness <name>: FAILED \| UNREACHABLE` | An external system the feature needs is not ready. Warn; never stop — `/qa-verify` shows it at the gate. A readiness line is context, not proof: it is never `ENV` evidence on its own (`/qa-verify` Phase 2.5, kind 3 — an anonymous probe from the tester's machine measures that machine's access, not what the observed host used); it is quoted beside kind-3 evidence, never in place of it. |
 | `readiness #<i>: MALFORMED` | Fix the entry in `qa-env.json → readiness_checks`. |
 | `probe <path>: UNREACHABLE` | Most likely a **VPN / network gap**, not a host outage. Say so rather than declaring the environment broken. |
 | `credentials-file …: MISSING` | Tracker-driven verification (reading acceptance criteria from Jira) will soft-fail. Local specs still work. |

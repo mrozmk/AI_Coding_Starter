@@ -204,7 +204,9 @@ pins "$CMD" "re-check" <<'EOF'
 | Matched; every row `PASS` / `CITED`; PR data available; no changed file matches its subject or mount target | Carry — `PASS (carried from <date>)` / `CITED (carried from <date>)` |
 | Matched; every row `PASS` / `CITED`; a changed file matches its subject or mount target | Verify |
 | Matched; every row `PASS` / `CITED`; the match is uncertain or PR data is unavailable | Verify every observed row again; carry only `CITED` rows |
-PR data: unavailable — every observed row is verified again
+carry: PR data not used — every observed row is verified again
+Step 0.76 takes the ticket's merge commits from the Step 0.75 read in a re-check run too
+Step 0.76 takes the ticket's merge commits from this read in every mode, a re-check run included; only Phase 0.5's carry decision does not use PR data yet.
 a row whose disposition came from a verifier
 `git rev-parse --verify --quiet "<build>^{commit}"`
 a deployed sha is never stamped on an observation of another host
@@ -329,7 +331,16 @@ pins .claude/commands/prime-qa.md "prime-qa env" <<'EOF'
 Step 0.76
 `deployed-sha: <sha> (differs)`
 **Readiness:**
+Every runtime or visual observation made **on the deployed host** carries that caveat (`/qa-verify` Step 0.76 row 5); an observation on the local host or of the checkout does not.
+A readiness line is context, not proof: it is never `ENV` evidence on its own
+quoted beside kind-3 evidence, never in place of it
 EOF
+for neg in 'Re-check does not use PR data' 'PR data: unavailable — every observed row is verified again'; do
+  lacks "$CMD" "$neg"; check $? "qa-verify still says: $neg"
+done
+for neg in 'may cite it as `ENV` evidence' 'Every runtime or visual observation this session carries that caveat'; do
+  lacks .claude/commands/prime-qa.md "$neg"; check $? "prime-qa still says: $neg"
+done
 jq -e '(.readiness_checks | type == "array") and has("_readiness_checks_doc")' "$ROOT/.claude/qa-env.json" >/dev/null 2>&1
 check $? "qa-env.json: readiness_checks shape"
 
@@ -342,7 +353,7 @@ cat > "$WORK/env-rules.txt" <<'EOF'
 | 2 | `M`∈`D` = `lacks`, or `M`∈`D` = `contains` with deployed not usable; local usable; `M`∈`H` = `contains` | local | `H` only when this session started the local server from a clean tree at `H` (`git status --porcelain` empty); else `-` | `local <url> — server provenance not verified` (or `local <url> @ <H> — started by this session`) |
 | 3 | `M`∈`D` = `lacks`, row 2 does not apply | none — the observed rows are `ENV` | `-` | `ENV — deployed <D> lacks merge <m> (git merge-base --is-ancestor)`, plus why local is no alternative (`local HEAD lacks <m>` / `local host down` / `no local_url` / `local containment unknown`) |
 | 4 | `M`∈`D` = `contains`, deployed not usable, row 2 does not apply | none — the observed rows are `NEEDS-HUMAN` | `-` | `deployed <url> unreachable; its build <D> contains the merge` |
-| 5 | `M`∈`D` = `unknown` — no PR data, no merged PR, a merge commit or `D` not in this clone, `D` not readable, a git error, a shallow clone's `lacks` — **the old rule** | first the host: `deployed-sha … (equal)` or `not verified`, with deployed usable → deployed; `(differs)`, deployed not usable, or `not applicable` → local if usable; nothing usable → none | from the chosen host only: deployed with `(equal)` → `D`; every other outcome (local, not-verified deployed, none) → `-` | deployed `(equal)` → `deployed <url> @ <D>`; `(differs)` → `⚠️ deployed build differs from HEAD and the ticket's merge is not established (<why>) — local <url>, server provenance not verified`; deployed `not verified` → `⚠️ build not verified — deployed build may lag HEAD`; `not applicable` → `verified against local <url>` (no warning — the never-collapse rule of Step 0); `(equal)` but deployed not usable → `local <url>, server provenance not verified` — never `D` |
+| 5 | `M`∈`D` = `unknown` — no PR data, no merged PR, a merge commit or `D` not in this clone, `D` not readable, a git error, a shallow clone's `lacks` — **the old rule** | first the host: `deployed-sha … (equal)` or `not verified`, with deployed usable → deployed; `(differs)`, deployed not usable, or `not applicable` → local if usable; nothing usable → none | from the chosen host only: deployed with `(equal)` → `D`; every other outcome (local, not-verified deployed, none) → `-` | deployed `(equal)` → `deployed <url> @ <D>`; `(differs)` → `⚠️ deployed build differs from HEAD and the ticket's merge is not established (<why>) — local <url>, server provenance not verified`; deployed `not verified` → `⚠️ build not verified — deployed build may lag HEAD`; `not applicable` → `verified against local <url>` (no warning — the never-collapse rule of Step 0); `(equal)` but deployed not usable → `local <url>, server provenance not verified` — never `D`; `not verified` but deployed not usable → `⚠️ deployed build not verified and deployed host not usable — local <url>, server provenance not verified`; nothing usable → `no usable host — <why> (deployed: <the deployed-sha state or not usable>; local: <down | no local_url | NOT PROBED | checkout lacks merge <m>>)`, the observed rows `NEEDS-HUMAN` |
 - Row 5 applies the old rule only to what is unknown: when `M` is known, local is an acceptable host in row 5 only if `M`∈`H` = `contains`; with `M`∈`H` = `lacks` the local candidate is dropped (`local checkout lacks merge <m> — git pull, then re-run`) and, with no other host, the observed rows are `NEEDS-HUMAN` (a tester's stale checkout is not an environment defect); with `M` unknown, row 5 keeps the old fallback.
 - A ticket's final `BUILD_SHA` is set after Phase 0 classification from the sources its rows actually use: only observed rows → the table's value; only Lane P rows → `H` when `git status --porcelain` is empty, else `-`; both, with the observed build ≠ `H` or unproven → `-` (mixed sources, the registry §7b deferral-result convention); both on `H` → `H` only with a clean tree (`git status --porcelain` empty), else `-`; Lane P rows held back by the static-rows rule above read nothing and are no source, and a ticket left with no source → `-`.
 @@ Phase 2.5 — Self-audit
