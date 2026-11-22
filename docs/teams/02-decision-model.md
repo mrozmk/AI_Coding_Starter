@@ -2,7 +2,7 @@
 
 **Contract:**
 - [`team-decision-model.md`](../../.agents/reference/team-decision-model.md): the roles, the authorities, memory acceptance, deterministic classes.
-- [`team-lead.md` §6](../../.agents/reference/team-lead.md#6-answering-on-an-authority): answering on an authority and the human-only check.
+- [`team-lead.md` §6](../../.agents/reference/team-lead.md#6-answering-through-the-ask-channel): the ask channel and its tiers.
 
 This page explains the model. When it and a contract disagree, the contract wins.
 

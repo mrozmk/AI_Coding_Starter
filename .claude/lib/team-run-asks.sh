@@ -8,7 +8,7 @@
 # lead_withdraw_asks all|stale <why> — withdraw the run's open asks (all, or those whose session or
 # attempt is no longer the stage's) and every pending decision bound to one of them.
 lead_withdraw_asks() {
-  local scope="$1" why="$2" id f did sid att
+  local scope="$1" why="$2" id sid att
   ask_init "$TD" 2>/dev/null || return 0
   sid="$(jq -r '.session_id // ""' "$TD/session.json" 2>/dev/null || true)"
   att="$(jq -r '.attempt // "" | tostring' "$TD/session.json" 2>/dev/null || true)"
@@ -19,15 +19,23 @@ lead_withdraw_asks() {
       [ "$(ask_get "$id" session_id)" != "$sid" ] || [ "$(ask_get "$id" attempt)" != "$att" ] || continue
     fi
     ask_cas "$id" "waiting timed-out answered delivering" withdrawn || continue
-    for f in "$ASK_TD/runs/$ASK_RUN"/decisions/d-*.md; do
-      [ -f "$f" ] && [ "$(lfm "$f" bind_ask)" = "$id" ] && [ "$(lfm "$f" status)" = pending ] || continue
-      did="$(lfm "$f" id)"
-      lfm_set "$f" status withdrawn; lfm_set "$f" withdrawn_at "$(team_utc)"
-      printf '\n## Withdrawn\nask gone (the runner): %s\n' "$why" >> "$f"
-      lead_resolve "$did"
-    done
+    lead_withdraw_decisions "$id" "$why" || true
     team_session_doorbell "$TD" lead "ask $(ask_get "$id" role) $id withdrawn — $why"
   done
+}
+
+# lead_withdraw_decisions <a-n> <why> — withdraw and resolve every pending decision bound to that
+# ask. → 0 when one was withdrawn.
+lead_withdraw_decisions() {
+  local f did rc=1
+  for f in "$ASK_TD/runs/$ASK_RUN"/decisions/d-*.md; do
+    [ -f "$f" ] && [ "$(lfm "$f" bind_ask)" = "$1" ] && [ "$(lfm "$f" status)" = pending ] || continue
+    did="$(lfm "$f" id)"
+    lfm_set "$f" status withdrawn; lfm_set "$f" withdrawn_at "$(team_utc)"
+    printf '\n## Withdrawn\nask gone (the runner): %s\n' "$2" >> "$f"
+    lead_resolve "$did"; rc=0
+  done
+  return "$rc"
 }
 
 # lead_asks — every poll: follow-ups re-derived from every answer file (an interrupted sender, an
@@ -47,7 +55,14 @@ lead_asks() {
   lead_withdraw_asks stale "the stage session or attempt was replaced"
   now="$(team_now)"
   for id in $(ask_ids); do
-    case "$(ask_get "$id" state)" in waiting|timed-out) ;; *) continue ;; esac
+    case "$(ask_get "$id" state)" in
+      waiting|timed-out) ;;
+      # A permission ask withdrawn by its own hook's deadline: its decision goes with it.
+      withdrawn) lead_withdraw_decisions "$id" "the ask timed out; the stage's retry files a new ask" \
+          && team_session_doorbell "$TD" lead "ask $(ask_get "$id" role) $id withdrawn — timed out, its decision withdrawn"
+        continue ;;
+      *) continue ;;
+    esac
     [ ! -f "$ASK_D/$id.answer.json" ] || continue
     pending=""
     for f in "$ASK_TD/runs/$ASK_RUN"/decisions/d-*.md; do
@@ -55,23 +70,19 @@ lead_asks() {
     done
     [ -z "$pending" ] || continue
     last="$(cat "$ASK_D/.rung-$id" 2>/dev/null || true)"
-    [[ "$last" =~ ^[0-9]+$ ]] || last="$(record_epoch "$(ask_get "$id" filed_at)")"
+    [[ "$last" =~ ^[0-9]+$ ]] || last="$(team_epoch "$(ask_get "$id" filed_at)")"
     [ $((now - last)) -ge "$every" ] || continue
     echo "$now" > "$ASK_D/.rung-$id"
-    team_session_doorbell "$TD" lead "ask $(ask_get "$id" role) $id$([ "$(ask_get "$id" tier)" != operator ] || echo ' operator'): $(ask_one_line "$id")"
+    team_session_doorbell "$TD" lead "$(ask_ring_line "$id")"
   done
   # A blocked record the stage hook never turned into an ask (it failed open): ring it once.
   acked="$(cat "$TD/acked" 2>/dev/null)" || return 0
   r="$TD/runs/$RUN/$acked"
   [ -f "$r" ] && [ "$(rec "$r" verdict)" = blocked ] && [ ! -e "$r.answered" ] && [ ! -e "$r.noask" ] || return 0
   [ -z "$(ask_open_for_record "$acked")" ] || return 0
-  [ $((now - $(record_epoch "$(rec "$r" written_at)"))) -ge 60 ] || return 0
+  [ $((now - $(team_epoch "$(rec "$r" written_at)"))) -ge 60 ] || return 0
   touch "$r.noask"
   team_session_doorbell "$TD" lead "stop $(rec "$r" role) $(rec "$r" attempt): ${r#"$CLONE"/} — $(rec "$r" message) (no ask filed)"
-}
-
-record_epoch() {  # record_epoch <ISO UTC> → epoch, or 0
-  date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null || echo 0
 }
 
 # lead_ask_near <role> <attempt> <epoch> <secs> [waiting] — an ask of that attempt filed or
@@ -84,7 +95,7 @@ lead_ask_near() {
     [ -z "${5:-}" ] || [ "$(ask_get "$id" state)" != waiting ] || return 0
     for t in "$(ask_get "$id" filed_at)" "$(ask_get "$id" delivered_at)"; do
       [ -n "$t" ] || continue
-      d=$(( $3 - $(record_epoch "$t") )); d="${d#-}"
+      d=$(( $3 - $(team_epoch "$t") )); d="${d#-}"
       [ "$d" -gt "$4" ] || return 0
     done
   done
@@ -114,7 +125,7 @@ lead_attention() {
   local role="$1" line kind msg at
   line="$(sed -n "${2}p" "$TD/runs/$RUN/attention" 2>/dev/null || true)"
   kind="$(cut -d' ' -f2 <<<"$line")"; msg="$(cut -d' ' -f3- <<<"$line")"
-  at="$(record_epoch "$(cut -d' ' -f1 <<<"$line")")"
+  at="$(team_epoch "$(cut -d' ' -f1 <<<"$line")")"
   case "$kind" in
     idle_prompt|stop-failed)
       lead_final_record "$role" "$(session_json attempt)" && return 0
@@ -136,7 +147,7 @@ lead_attention_deferred() {
   for e in $todo; do
     n="${e%%:*}"; role="${e#*:}"
     line="$(sed -n "${n}p" "$TD/runs/$RUN/attention" 2>/dev/null || true)"
-    at="$(record_epoch "$(cut -d' ' -f1 <<<"$line")")"
+    at="$(team_epoch "$(cut -d' ' -f1 <<<"$line")")"
     lead_ask_near "$role" "$(session_json attempt)" "$at" 10 waiting && continue
     team_session_doorbell "$TD" lead "attention $role: permission prompt with no ask — $(cut -d' ' -f3- <<<"$line") (the channel did not see it; the Operator answers it in the window)"
   done
@@ -198,8 +209,8 @@ lead_close_refused() {  # lead_close_refused <why> [ended]
 stage_hooks_materialise() {
   jq --arg m "$root" --argjson t "${TEAM_ASK_TIMEOUT_SECS:-715}" 'del(._comment)
     | .hooks |= map_values(map(.hooks |= map(
-        (if .timeout == 600 then .timeout = $t
-           | .command |= sub("TEAM_ASK_TIMEOUT=600"; "TEAM_ASK_TIMEOUT=\($t)") else . end)
+        (if (.command | test("TEAM_ASK_TIMEOUT=")) then .timeout = $t
+           | .command |= gsub("\\{\\{TIMEOUT\\}\\}"; ($t | tostring)) else . end)
         | .command |= gsub("\\{\\{MAIN\\}\\}"; $m))))' \
     "$root/.claude/team/stage-hooks.json" > "$TD/stage-hooks.settings.json.tmp" \
     && jq -e '.hooks.Stop' "$TD/stage-hooks.settings.json.tmp" >/dev/null \

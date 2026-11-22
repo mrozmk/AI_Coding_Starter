@@ -333,6 +333,9 @@ team_notes_init() {
 }
 
 team_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+team_epoch() {  # team_epoch <ISO UTC> → epoch, or 0
+  date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null || echo 0
+}
 
 # Ticket preflight shared by team-new and team-next; appends to TEAM_PROBLEMS, never exits.
 team_ticket_checks() {

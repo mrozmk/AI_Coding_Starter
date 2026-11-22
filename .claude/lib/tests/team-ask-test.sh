@@ -244,6 +244,16 @@ ok '[ "$out" = "pending — run this again" ]' "wait before an answer → pendin
 L a-1 --text "never" --authority teamlead --why w
 out=$(cd "$CLONE" && CLAUDE_PROJECT_DIR="$CLONE" bash "$MAIN/.claude/lib/team-ask.sh" wait a-1 --secs 1)
 ok '[ "$out" = "The TeamLead answered: never" ] && [ "$(st a-1)" = delivered ]' "wait after the answer prints it and delivers"
+# the wait's own permission prompt (a manual-mode stage): allowed by the hook, no ask, no Operator
+jq -n --arg c "bash $MAIN/.claude/lib/team-ask.sh wait a-1 --secs 30" --arg w "$CLONE" '{session_id: "sid-1",
+  hook_event_name: "PermissionRequest", cwd: $w, tool_name: "Bash", tool_input: {command: $c}}' > "$T/p.json"
+H "$T/w3.out"
+ok '[ "$(j "$T/w3.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ ! -e "$AD/a-2.json" ]' "the Stop fallback's wait command prompts → allowed by the hook, no ask filed"
+jq -n --arg c "bash $MAIN/.claude/lib/team-ask.sh wait a-1; curl -s https://example.invalid" --arg w "$CLONE" '{session_id: "sid-1",
+  hook_event_name: "PermissionRequest", cwd: $w, tool_name: "Bash", tool_input: {command: $c}}' > "$T/p.json"
+HB w4; wf "$AD/a-2.json"
+ok '[ "$(j "$AD/a-2.json" .tier)" = operator ]' "a wait command with anything appended is no fast path → tiered (operator)"
+kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
 
 # ================================================================================================
 # guards
@@ -347,6 +357,12 @@ say_op u5 "d-1 allow"; TL decision answer beta d-1 --text "d-1 allow" --tuning n
 (cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_answer_write a-1 '{"id":"a-1","form":"allow","value":"","authority":"operator","why":"w","decision":"d-1","answered_at":"2026-01-01T00:00:00Z","lead_session_id":"lid-1"}')
 runner lead_asks; wait "$HP" 2>/dev/null
 ok 'grep -q "^status: dispatched$" "$RD/decisions/d-1.md"' "a sender killed before auth_dispatch: the runner marks the decision dispatched"
+# an operator-tier permission ask withdrawn by its hook's deadline takes its pending decision along
+newrun ptd; pl perm-curl; TO=21 HB pt; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"
+wait "$HP" 2>/dev/null; : > "$RINGS"
+runner lead_asks
+ok '[ "$(st a-1)" = withdrawn ] && grep -q "^status: withdrawn$" "$RD/decisions/d-1.md" && grep -q "ask coder a-1 withdrawn — timed out, its decision withdrawn" "$RINGS"' "a timed-out permission ask: lead_asks withdraws its pending decision and rings the lead"
+: > "$RINGS"; runner lead_asks; ok '[ ! -s "$RINGS" ]' "the timed-out ask's decision is withdrawn once"
 # lead_attention
 newrun att; mkdir -p "$RD"; : > "$RINGS"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) stop-failed coder 1" > "$RD/attention"

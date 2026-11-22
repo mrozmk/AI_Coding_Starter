@@ -49,7 +49,3 @@ auth_dispatch() {
   auth_fm_set "$DEC_FILE" status dispatched
   auth_fm_set "$DEC_FILE" dispatched_at "$(team_utc)"
 }
-
-# auth_after_ask — the answers.md line and a record's .answered marker, from the answer file
-# (team-ask.sh ask_follow_up; the runner re-derives the same after an interrupted sender).
-auth_after_ask() { ask_follow_up "$ASK"; }

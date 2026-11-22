@@ -187,9 +187,7 @@ wait_and_answer() {
 }
 
 ring() {  # ring <id> — detached, so a busy send lock never eats the wait
-  local op=""
-  [ "$(ask_get "$1" tier)" != operator ] || op=" operator"
-  ( team_session_doorbell "$TD" lead "ask $ROLE $1$op: $(ask_one_line "$1")" ) >/dev/null 2>&1 &
+  ( team_session_doorbell "$TD" lead "$(ask_ring_line "$1")" ) >/dev/null 2>&1 &
 }
 
 # file_ask <kind> <payload json> <tier> <tier cause> → ASK_ID set, ASK_NEW
@@ -220,10 +218,6 @@ handle() {
   wait_and_answer "$id"
 }
 
-record_epoch() {  # record_epoch <ISO UTC> → epoch, or 0
-  date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null || echo 0
-}
-
 stop_branch() {
   local mark="$ASK_D/.stop-$STAGE_SID" prev ref rd rec v id msg p fp done_turn="" newid
   prev="$(cat "$mark" 2>/dev/null || echo 0)"; [[ "$prev" =~ ^[0-9]+$ ]] || prev=0
@@ -249,7 +243,7 @@ stop_branch() {
       return 0
     fi
     # 3. the turn wrote its final record → the stage ends.
-    if [ "$(record_epoch "$(jq -r '.written_at // ""' "$rd/$rec")")" -gt "$prev" ]; then
+    if [ "$(team_epoch "$(jq -r '.written_at // ""' "$rd/$rec")")" -gt "$prev" ]; then
       done_turn=1
       case "$v" in done|failed) return 0 ;; esac
     fi
@@ -281,6 +275,17 @@ case "$EV:$TOOL" in
   PreToolUse:ExitPlanMode) handle plan "$(jq -c '{tool_name, tool_input}' <<<"$PAYLOAD")" ;;
   PermissionRequest:AskUserQuestion|PermissionRequest:ExitPlanMode) exit 0 ;;
   PermissionRequest:*)
+    # The channel's own wait, as the Stop fallback names it (a main-checkout path the checker would
+    # tier operator as outside the clone): this exact form only → allow.
+    if [ "$TOOL" = Bash ]; then
+      cmd="$(jq -r '.tool_input.command // ""' <<<"$PAYLOAD")"
+      case "$cmd" in "bash $LIB/team-ask.sh wait "*)
+        if [[ "${cmd#"bash $LIB/team-ask.sh wait "}" =~ ^a-[0-9]+( --secs [0-9]+)?$ ]]; then
+          jq -n '{hookSpecificOutput: {hookEventName: "PermissionRequest", decision: {behavior: "allow"}}}'
+          exit 0
+        fi ;;
+      esac
+    fi
     jq -c '{tool_name, tool_input, cwd}' <<<"$PAYLOAD" > "$TMP.in" || exit 0
     line="$(python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$TMP.in" --main "$MAIN" 2>/dev/null)" || exit 0
     case "$line" in

@@ -20,7 +20,7 @@
 #   rework needs --quick-call continue); abandon-recommended needs --decision d-<n>, pending, opened
 #   with --notify abandon_decision.
 #   decision → escalate|continue|close|resolved: --for is any file under runs/<run>/ (a record, a
-#   verdict, decisions/req-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
+#   verdict, asks/a-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
 #   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
 #   decision without changing the run. A used decision becomes status: consumed (once).
 #   wrapup → decide: --for is the proposals file the wrapup's newest record (blocked, proposals)

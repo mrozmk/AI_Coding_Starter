@@ -68,14 +68,13 @@ pending_decision_for() {  # pending_decision_for <a-n> — a pending decision is
   done
   return 1
 }
-epoch_of() { date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null || echo 0; }
 # ask_covers <role> <utc> — an ask of that stage is waiting, or was filed within 10 s of <utc>.
 ask_covers() {
   local a d
   for a in $(ask_ids); do
     [ "$(ask_get "$a" role)" = "$1" ] || continue
     [ "$(ask_get "$a" state)" != waiting ] || return 0
-    d=$(( $(epoch_of "$2") - $(epoch_of "$(ask_get "$a" filed_at)") )); d="${d#-}"
+    d=$(( $(team_epoch "$2") - $(team_epoch "$(ask_get "$a" filed_at)") )); d="${d#-}"
     [ "$d" -gt 10 ] || return 0
   done
   return 1

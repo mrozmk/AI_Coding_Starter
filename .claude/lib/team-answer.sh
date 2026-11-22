@@ -109,5 +109,7 @@ rc=0; ask_answer_write "$ASK" "$ANSWER" || rc=$?
 [ "$rc" = 0 ] || refuse 6 "ask $ASK already answered"
 ask_cas "$ASK" "waiting timed-out" answered || true
 auth_dispatch
-auth_after_ask
+# The answers.md line and a record's .answered marker (the runner re-derives the same after an
+# interrupted sender).
+ask_follow_up "$ASK"
 echo "answered: $ASK ($FORM) — the stage hook returns it${DEC_ID:+ [decision $DEC_ID]}"

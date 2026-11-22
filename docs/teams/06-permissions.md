@@ -1,7 +1,7 @@
 # 06 — Permissions, the prompt check, classes, `teams.policy`
 
 **Contract:**
-- [`team-lead.md` §6](../../.agents/reference/team-lead.md#6-answering-on-an-authority): answering a prompt on an authority (`class | teamlead | operator`) and the human-only check.
+- [`team-lead.md` §6](../../.agents/reference/team-lead.md#6-answering-through-the-ask-channel): the ask channel and its tiers (`class | lead | operator`).
 - [`team-decision-model.md` → Deterministic classes](../../.agents/reference/team-decision-model.md#3-decision-model).
 - [`security-egress.md`](../../.agents/reference/security-egress.md): egress.
 
@@ -47,13 +47,16 @@ In the main checkout the Supervisor can lift the guard's `gh` prompt per clone w
 - the command edits no settings file;
 - every path resolves inside the clone.
 
-The per-run TeamLead answers on an authority instead (`--authority class|teamlead|operator`,
-[`team-lead.md` §6](../../.agents/reference/team-lead.md#6-answering-on-an-authority)). The
-human-only check runs first: a settings edit, a project-added ask rule, egress or a recursive `rm`
-outside the clone is refused on every authority (exit 9); the Operator answers it in the stage
-window, never a waiver. Then
-`teamlead` and `operator` may waive a baseline ask match, `class` only inside an enabled class.
-Deny, the SQL guard and an unreadable or unbound prompt are refused on every authority.
+In a lead run the tier decides who answers the ask
+([`team-lead.md` §6](../../.agents/reference/team-lead.md#6-answering-through-the-ask-channel)):
+`class` — ask matches only, inside one enabled class, answered by the hook at once; `lead` — a
+baseline ask match, an unknown tool or a request no rule names, answered by the TeamLead
+(`team-answer.sh <team> a-<n> --allow|--deny … --authority teamlead`); `operator` — egress, a
+settings or guard-profile edit, a project-added ask rule, a recursive `rm` outside the clone, the
+SQL guard, an edit or path outside the clone — answered only by an Operator decision the lead opens
+(`team-lead.sh decision open <team> --ask a-<n>`; the Operator replies `d-<n> allow` or
+`d-<n> deny: …` in the lead's window, never in a stage window). A deny rule is evaluated before the
+hook and is never waived.
 
 Rules are matched against the line, each command segment and the canonical form of every command. In the canonical form, quoting is removed, wrappers such as `env`/`sudo`/`nohup` are stripped, shell paths are reduced to their basename and nested `bash -c`/`eval` strings are parsed, so a rule cannot be bypassed by respelling. Anything it cannot lex or resolve is refused and goes to the Operator. Its `--report` mode always exits 0 and is a description, never an authorisation.
 

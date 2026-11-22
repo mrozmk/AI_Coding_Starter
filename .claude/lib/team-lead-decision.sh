@@ -27,6 +27,9 @@ dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter k
   mv "$1.tmp" "$1"
 }
 d_bad() { echo "error: $2" >&2; exit "$1"; }
+d_reply_shape() {  # d_reply_shape <a-n> — the reply form of a multi-question ask
+  jq -r '[.payload.tool_input.questions[] | "\(.header // .question): <label>"] | join("; ")' "$ASK_D/$1.json"
+}
 d_resolve() {  # d_resolve <file> — its Operator notification is answered or moot (#97); never fails
   [ -n "$(dfm "$1" notify)" ] || return 0
   bash "$LIB/notify.sh" resolve --team "$(jq -r .team "$TD/team.json")" --run "$RUN" \
@@ -82,7 +85,6 @@ decision_open() {
   case "$notify" in human_decision|abandon_decision) ;; *) d_bad 2 "--notify human_decision|abandon_decision" ;; esac
   case "$gate" in ""|plan) ;; *) d_bad 2 "--gate plan" ;; esac
   if [ -n "$ask" ]; then
-    . "$LIB/team-ask.sh"
     ask_init "$TD" || d_bad 4 "no current run"
     ask_valid_id "$ask" && [ -f "$ASK_D/$ask.json" ] || d_bad 4 "no ask $ask in runs/$RUN/asks/"
     case "$(ask_state "$ask")" in waiting|timed-out) ;;
@@ -96,7 +98,7 @@ ask_kind: $kind"
     case "$kind" in
       permission|plan) reply="reply: \"d-<n> allow\" | \"d-<n> deny: <what instead>\"" ;;
       *) if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json")" -gt 1 ]; then
-           reply="reply: \"d-<n> $(jq -r '[.payload.tool_input.questions[] | "\(.header // .question): <label>"] | join("; ")' "$ASK_D/$ask.json")\""
+           reply="reply: \"d-<n> $(d_reply_shape "$ask")\""
          else reply="reply: \"d-<n> <answer>\""; fi ;;
     esac
   fi
@@ -187,7 +189,7 @@ decision_answer() {
       *)
         [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
         aval="$rest"
-        . "$LIB/team-ask.sh"; ask_init "$TD" || d_bad 4 "no current run"
+        ask_init "$TD" || d_bad 4 "no current run"
         if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then
           amap="$(jq -c --arg r "$rest" '[.payload.tool_input.questions[] | {k: (.header // .question), q: .question}] as $qs
             | ($r | split(";") | map(capture("^\\s*(?<h>[^:]+?)\\s*:\\s*(?<l>.+?)\\s*$"))) as $ps
@@ -195,7 +197,7 @@ decision_answer() {
             | [$ps[] | . as $p | ($qs | map(select(.k == $p.h)) | .[0]) as $m
                 | if $m == null then error("header") else {key: $m.q, value: $p.l} end] | from_entries' \
             "$ASK_D/$ask.json" 2>/dev/null)" \
-            || d_bad 7 "reply must read $id $(jq -r '[.payload.tool_input.questions[] | "\(.header // .question): <label>"] | join("; ")' "$ASK_D/$ask.json")"
+            || d_bad 7 "reply must read $id $(d_reply_shape "$ask")"
           aval=""
         fi ;;
     esac

@@ -120,16 +120,13 @@ ask_fp() {  # ask_fp <kind> <agent_id> <payload json>
 # only) an ask of the same session and fp that is timed-out, or answered with no live waiter;
 # never a waiting one. Else files a-<max+1>. The ask is published with its tier already set.
 ask_file() {
-  local in="$1" kind sid fp f id n st w
+  local in="$1" kind sid fp id n st w
   ASK_ID=""; ASK_NEW=0
   kind="$(jq -r .kind "$in")"; sid="$(jq -r '.session_id // ""' "$in")"
   fp="$(ask_fp "$kind" "$(jq -r '.agent_id // ""' "$in")" "$(jq -c '.payload' "$in")")"
   ask_lock || return 1
   if [ "$kind" != permission ]; then
-    for f in "$ASK_D"/a-*.json; do
-      case "$f" in *.answer.json) continue ;; esac
-      [ -f "$f" ] || continue
-      id="$(basename "$f" .json)"
+    for id in $(ask_ids); do
       [ "$(ask_get "$id" session_id)" = "$sid" ] && [ "$(ask_get "$id" fp)" = "$fp" ] || continue
       ask_reconcile "$id"; st="$(ask_get "$id" state)"; w="$(ask_get "$id" waiter_pid)"
       case "$st" in
@@ -190,11 +187,9 @@ ask_timeout() {
 
 # ask_open_for_record <ref> — the ask whose source is record:<ref>, any state, or nothing.
 ask_open_for_record() {
-  local f
-  for f in "$ASK_D"/a-*.json; do
-    case "$f" in *.answer.json) continue ;; esac
-    [ -f "$f" ] || continue
-    [ "$(jq -r '.payload.source // empty' "$f")" = "record:$1" ] && { basename "$f" .json; return 0; }
+  local id
+  for id in $(ask_ids); do
+    [ "$(jq -r '.payload.source // empty' "$ASK_D/$id.json")" = "record:$1" ] && { echo "$id"; return 0; }
   done
   return 0
 }
@@ -208,6 +203,14 @@ ask_one_line() {
        elif $k == "plan" then ($p.tool_input.plan // "plan" | split("\n") | map(select(length > 0)) | .[0] // "plan")
        else ($p.text // "" | .[0:120]) end)
     | gsub("[\n\r\t]"; " ") | .[0:160]' "$ASK_D/$1.json" 2>/dev/null
+}
+
+# ask_ring_line <id> — the lead's doorbell line of an ask (the hook and the runner both ring it):
+# `ask <role> a-<n>[ operator]: <one line>`.
+ask_ring_line() {
+  local op=""
+  [ "$(ask_get "$1" tier)" != operator ] || op=" operator"
+  echo "ask $(ask_get "$1" role) $1$op: $(ask_one_line "$1")"
 }
 
 ask_ids() {  # ask_ids — every ask id, by n
