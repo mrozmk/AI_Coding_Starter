@@ -138,6 +138,13 @@ setpane "$FIX/perm-awk2.txt"; : > "$STUB_LOG"
 run "$MAIN" $ANSWER alfa coder yes --expect-event toolu_018q18
 expect 3 "transcript unreadable" "an expected event without a readable transcript"; no_keys "no event"
 session coder 1 "$BASE" "$SID"
+# A caller inside the clone without --clone (the per-run TeamLead): the transcript is found and
+# the event binds — a wrong expectation is then a changed event (6), never "transcript unreadable".
+setpane "$FIX/perm-awk.txt"; : > "$STUB_LOG"
+run "$CLONE" env HARNESS_MAIN="$MAIN" $ANSWER alfa coder yes --expect-event toolu_other
+expect 6 "new prompt event" "a caller inside the clone binds the event"; no_keys "clone caller"
+run "$CLONE" env HARNESS_MAIN="$MAIN" $ANSWER beta coder yes
+expect 2 "is not the clone of team beta" "a caller inside another team's clone"; no_keys "other clone"
 echo "team-smoke-5: (83) binding OK"
 
 # ---- (84) identity refusals, zero keys each ---------------------------------------------------

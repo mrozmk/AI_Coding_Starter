@@ -53,7 +53,13 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 name="$TEAM-$ROLE"
 [ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 [[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad session name $name" >&2; exit 2; }
-# A caller inside a clone passes --clone: the derivation from <main> breaks there.
+# A caller inside a clone (the per-run TeamLead's cwd) is in the clone already: team_clone_dir
+# derives a sibling of <main> and would name <clone>-<team>, whose transcript path does not exist.
+if [ -z "$CLONE" ] && [ -f "$ROOT/.agents/team/team.json" ]; then
+  [ "$(jq -r '.team // empty' "$ROOT/.agents/team/team.json" 2>/dev/null)" = "$TEAM" ] \
+    || { echo "error: $ROOT is not the clone of team $TEAM — pass --clone" >&2; exit 2; }
+  CLONE="$ROOT"
+fi
 [ -n "$CLONE" ] || CLONE="$(team_clone_dir "$TEAM" "$ROOT")"
 TD="$CLONE/.agents/team"
 # A clone-less caller: lock in this checkout.
