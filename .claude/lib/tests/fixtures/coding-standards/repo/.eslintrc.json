@@ -1,0 +1,8 @@
+{
+  // legacy config kept for old editors
+  "extends": ["eslint:recommended"],
+  "rules": {
+    "no-alert": "error",
+    "no-debugger": "off"
+  }
+}
