@@ -177,7 +177,9 @@ rules.
    is closed with ` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`,
    not asked — except an `analyst` or `client` one whose decision `docs/PRD.md` does not carry
    yet: it stays open, the report cites the record, and the full update run of item 7 closes it.
-   Then only `team`-owned questions are asked — the new survivors and the earlier ones
+   ` → resolved by` is only for a record cited by file: an earlier `analyst` or `client` one
+   whose owner decides it in a full run's session closes with item 7's form alone (` → D-n` or
+   ` → answered in session`), never with both. Then only `team`-owned questions are asked — the new survivors and the earlier ones
    still open — in the session's question round (`/discover` Phase 3 and the mode's step 4 say
    which), ranked with the other questions under §2 (≤5 per round); none when the user has said
    done (§2 item 8). The others are listed for their owner; a `team` question left over stays

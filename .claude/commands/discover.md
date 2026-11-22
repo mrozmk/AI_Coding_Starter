@@ -167,8 +167,9 @@ undecided "in or out?" questions become owned `Q-n` without a new interview.
    `## Definition of Ready` section, recompute its last item and its `reopened by` lines after
    closing and re-owning, per `coverage.md` §4; a file without one gets none.
 6. **Write `docs/PRD.md`** — only `## 13. Open questions`, synced by id from
-   `docs/discovery.md` for every `Q-n` this run touched: a new open one is added in the
-   template's line shape, a closed one is dropped, a still-open one gets its current owner and
+   `docs/discovery.md` for every `Q-n` this run touched: a new open one is added as the
+   `prd-template.md` §13 line (`` - `Q-n` — <one line> · owner <role> · blocks slice 1: yes | no ``),
+   not the long `Q-n` line of `discovery-template.md`, a closed one is dropped, a still-open one gets its current owner and
    `blocks slice 1`; other rows stay as they are. No such section (a reconstructed or legacy
    PRD) → append it at the end with the heading and intro line of
    `.claude/skills/discover/prd-template.md` §13. Nothing else in the PRD changes: no non-goal,
@@ -382,7 +383,9 @@ In chat, in the project's communication language, ≤40 lines:
    id superseded or withdrawn this run. `/discover` never edits the backlog.
 4. **Open questions** — every `Q-n` with owner and whether it blocks slice 1.
 4a. **Fault lines** — drafted <n> · discarded <d>, each with the record it cites · kept <k>
-   (`team` <t> / `analyst` <a> / `client` <c>) · asked <q>; fewer than 8 drafted → why.
+   (`team` <t> / `analyst` <a> / `client` <c>) · asked <q>; fewer than 8 drafted → why. Also
+   every earlier `Q-n` this run closed with ` → resolved by`, each with the record it cites, and
+   every proposal merged into an existing open `Q-n`, with that id.
 5. **Review** — critic verdict per round and the kept/dropped tally; every dropped blocker/major
    with its evidence; Codex verdict or the skip reason; any 🔶 rethink signal.
 6. **Next steps**, in order: `/architect` (subdomains, contexts, `AD-n` decisions, fills PRD §7–§8)

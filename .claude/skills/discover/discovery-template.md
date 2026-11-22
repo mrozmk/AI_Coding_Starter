@@ -7,6 +7,7 @@ assumptions — and the file `backlog-check.mjs` (and later `/architect`) reads 
 `/discover --fault-lines` on a project without this file writes only the header,
 `## Clarifications`, `## Open questions` and the line
 `Other sections: not written yet — a full /discover run writes them.`
+A full run that writes the other sections into such a file removes that line.
 
 Id syntax is umbrella D5 exactly:
 
