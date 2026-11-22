@@ -56,10 +56,10 @@ alternatives; the confirmed type selects the Tier 1 pack. A project that is hone
     (same day, weekly meeting, quarterly committee)? `→ feeds: discovery Open questions Q-n
     (owner), PRD §13`
 11. **Source precedence.** When two sources disagree — this PRD, a design file, a ticket's
-    acceptance criteria, a client or product-owner statement, the built code — which one wins (one
-    order, a rule per subject such as "layout from the design, behaviour from the ticket", or "the
-    decision owner rules each case"), and who records an override where? `→ feeds: PRD §3 Source
-    precedence, discovery Open questions Q-n`
+    acceptance criteria, a client or product-owner statement, the built code — which one wins by
+    default (one order, or "the decision owner rules each case"), which rules per subject apply on
+    top, if any (such as "layout from the design, behaviour from the ticket"), and who records an
+    override where? `→ feeds: PRD §3 Source precedence, discovery Open questions Q-n`
 
 **Gate G1** (checked after Tier 0): problem, outcome and appetite are *Clear* in the coverage
 table. If any of the three is *Missing*, Tier 1 does not start.

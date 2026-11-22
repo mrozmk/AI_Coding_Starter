@@ -40,7 +40,8 @@ Could an engineer and a product owner start the first slice from this PRD withou
   unowned blocking question.
 
 Source precedence is graded for presence only: the order or rule the project chose is a product
-choice, never a finding; "the decision owner rules each case" is a complete rule.
+choice, never a finding by itself (a contradiction with another stated requirement is still B3);
+"the decision owner rules each case" is a complete rule.
 
 ### P2 Substance over theater
 
