@@ -179,6 +179,19 @@ printf 'schema: 1\nnodes:\n  - id: core\n    name: C\n    kind: trunk\n  - id: c
 measure map
 q map '.map.skipped | startswith("invalid")' || fail "M8 duplicate id map: $(jq -c .map "$WORK/map.json")"
 ok "M8 malformed and invalid maps are skipped with a reason"
+repo mapln; ML="$WORK/mapln"
+put "$ML/a/mod.py" "x = 1"
+put "$WORK/outside/map/system.yaml" "secret: line"
+mkdir -p "$ML/docs/map"
+ln -s "$WORK/outside/map/system.yaml" "$ML/docs/map/system.yaml"
+measure mapln
+q mapln '.map == {skipped: "outside the root"}' || fail "M8 symlinked map file: $(jq -c .map "$WORK/mapln.json")"
+repo mapdir; MD="$WORK/mapdir"
+put "$MD/a/mod.py" "x = 1"
+ln -s "$WORK/outside" "$MD/docs"
+measure mapdir
+q mapdir '.map == {skipped: "outside the root"}' || fail "M8 symlinked map dir: $(jq -c .map "$WORK/mapdir.json")"
+ok "M8 a map reached through a symlink out of the root is never read"
 
 # ---- measure: areas ----------------------------------------------------------------------------
 repo areas; AR="$WORK/areas"

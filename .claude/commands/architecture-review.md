@@ -140,7 +140,7 @@ It writes areas, per-file sizes and signals (`lines`, `branches`, `fan_in`, `men
 
 1. the depth instructions below — this section from "Don't follow rigid heuristics" to "Do **not** propose interfaces yet", passed verbatim;
 2. [`.claude/skills/architecture-review/ASSESSMENT.md`](../skills/architecture-review/ASSESSMENT.md) §2–3 — the risk checklist, the per-finding fields and the coverage block;
-3. the assignment's slice of `$SCRATCH/arch-measure.json` (its areas and their `files[]` rows).
+3. the assignment's slice of `$SCRATCH/arch-measure.json` — its areas and their `files[]` rows, their `change_cost` entries (or the top-level `change_cost.skipped` reason), and the `graph` edges, `mutual` pairs and `cycles` and the `map` entries (`against`, `undeclared`, `incomparable`, or `map.skipped`) that touch its areas; class 8 and class 12 of `ASSESSMENT.md` cite these figures.
 
 Each sweep returns three typed sections: **`depth`** (observations and deletion-test results — what this phase has always collected), **`risk`** (findings per `ASSESSMENT.md` §3) and **`coverage`** (per assigned area and axis: `checked`, or `not-checked` with the unread files). The lenses meet only in the agent's reading.
 

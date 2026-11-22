@@ -379,6 +379,8 @@ async function changeCost(root, areaOf, areaNames, limit, revision) {
 function compareMap(root, fileArea, fileEdges) {
   const file = path.join(root, 'docs/map/system.yaml');
   if (!fs.existsSync(file)) return { skipped: 'absent' };
+  const real = path.relative(fs.realpathSync(root), fs.realpathSync(file));
+  if (real.startsWith('..') || path.isAbsolute(real) || !fs.statSync(file).isFile()) return { skipped: 'outside the root' };
   let parsed;
   try { parsed = parseYaml(fs.readFileSync(file, 'utf8')); } catch (e) { return { skipped: `unparseable: ${e.message}` }; }
   const { errors } = checkSystem(parsed);
