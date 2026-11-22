@@ -12,7 +12,9 @@
       {{inconclusiveReasons}} are copied from scorecard.json (`arch-assess.mjs score`).
     - Every finding card field comes from records.json (one record = one card).
     - Measurements come from arch-measure.json (`arch-assess.mjs measure`).
-  Axis cell: the value 0–3, or "not assessed — {{reason}}" when the value is null.
+  Axis cell: the value 0–3, or "not assessed — {{reason}}" when the value is null. The four axis
+  cells are filled by name (axes.boundaries, axes.runtime, axes.change_cost, axes.safety_net) in
+  the header's order — never by iterating axes: scorecard.json writes its keys sorted.
   Verdict call: keep | restructure | inconclusive — forced to inconclusive when the script says so.
   Findings: three tiers (Needed now · Before the next feature in the area · When convenient); measured
   effects and predicted consequences are labelled apart. A tier with no record shows one line
@@ -170,9 +172,10 @@
               {{#each areas}}
               <tr>
                 <td class="mono">{{name}}<br /><span class="muted">{{sourceLines}} lines</span></td>
-                {{#each axes}}
-                <td>{{#if assessed}}{{value}}{{/if}}{{#if notAssessed}}<span class="na">not assessed — {{reason}}</span>{{/if}}</td>
-                {{/each}}
+                <td>{{#if axes.boundaries.assessed}}{{axes.boundaries.value}}{{/if}}{{#if axes.boundaries.notAssessed}}<span class="na">not assessed — {{axes.boundaries.reason}}</span>{{/if}}</td>
+                <td>{{#if axes.runtime.assessed}}{{axes.runtime.value}}{{/if}}{{#if axes.runtime.notAssessed}}<span class="na">not assessed — {{axes.runtime.reason}}</span>{{/if}}</td>
+                <td>{{#if axes.change_cost.assessed}}{{axes.change_cost.value}}{{/if}}{{#if axes.change_cost.notAssessed}}<span class="na">not assessed — {{axes.change_cost.reason}}</span>{{/if}}</td>
+                <td>{{#if axes.safety_net.assessed}}{{axes.safety_net.value}}{{/if}}{{#if axes.safety_net.notAssessed}}<span class="na">not assessed — {{axes.safety_net.reason}}</span>{{/if}}</td>
                 <td><strong>{{score}}</strong><br /><span class="muted">{{assessedAxes}} of 4 axes</span></td>
                 <td>{{sentence}}</td>
               </tr>

@@ -681,7 +681,8 @@ export function extractJson(text) {
   const lines = text.split('\n');
   const blocks = [];
   for (let i = 0; i < lines.length; i++) {
-    if (!/^\s*```json\s*$/.test(lines[i])) continue;
+    // A bare fence too: both prompts show their output example in one.
+    if (!/^\s*```(json)?\s*$/i.test(lines[i])) continue;
     let j = i + 1;
     while (j < lines.length && !/^\s*```\s*$/.test(lines[j])) j++;
     if (j >= lines.length) break;

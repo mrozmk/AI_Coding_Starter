@@ -61,10 +61,13 @@ is durable, a non-atomic replace, a last-writer-wins race on hand-edited content
 
 ### 4. Silent degradation
 
-A failure path that returns a plausible default instead of an error, so the caller and the operator
-cannot tell the result is degraded.
-- Counts: a swallowed exception that returns an empty list; a fallback that reports success.
-- Does not count: a fallback that is logged, surfaced to the caller, or named in the result.
+A subsystem that switches itself off without surfacing its state — including a failure path that
+returns a plausible default instead of an error — so the caller and the operator cannot tell the
+result is degraded.
+- Counts: a feature that disables itself on a missing dependency and says nothing; a swallowed
+  exception that returns an empty list; a fallback that reports success.
+- Does not count: a switch-off or fallback that is logged, surfaced to the caller, or named in the
+  result or a status the operator sees.
 - Axis: *Runtime behaviour*.
 
 ### 5. Work growth
@@ -85,10 +88,13 @@ it waits behind it.
 
 ### 7. Unbounded waits
 
-A call, lock or poll with no timeout, ceiling or cancellation, so one stuck dependency stalls the
-caller indefinitely.
-- Counts: a network call without a timeout; a polling loop with no hard limit.
-- Does not count: a wait bounded by an outer, enforced deadline.
+A wait with no deadline — a call, lock or poll with no timeout, ceiling or cancellation, so one stuck
+dependency stalls the caller indefinitely — or an expensive route with no admission limit, so load
+piles up without bound.
+- Counts: a network call without a timeout; a polling loop with no hard limit; an expensive
+  endpoint or job entry with no concurrency, queue or rate limit.
+- Does not count: a wait bounded by an outer, enforced deadline; a route bounded by an enforced
+  limit upstream.
 - Axis: *Runtime behaviour*.
 
 ### 8. Dependency direction
@@ -115,9 +121,11 @@ tools — so a broken wiring ships green.
 
 ### 10. Admitted but unused
 
-Code, configuration or an option that is accepted, documented or parsed but has no effect — a flag
-read by nothing, a setting the code ignores, a branch no caller reaches.
-- Counts: a documented option no code path reads; a parsed field never used.
+Data or code paths validated and stored, never read — and code, configuration or an option that is
+accepted, documented or parsed but has no effect: a flag read by nothing, a setting the code
+ignores, a branch no caller reaches.
+- Counts: a field validated and persisted that no reader consumes; a documented option no code
+  path reads; a parsed field never used.
 - Does not count: a deliberately reserved field marked as such.
 - Axis: *Change cost*.
 
