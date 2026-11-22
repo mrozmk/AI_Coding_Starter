@@ -348,6 +348,25 @@ sup none 'gh issue create --title t || true'
 sup none 'gh issue list | grep x | wc -l'
 sup none 'gh issue list | tee out.txt'
 sup none $'gh issue list\ngh issue view 1'
+# --- a literal for loop: judged per value, the variable written in
+LJQ='"=== \(.number)\n" + ([.body | split("\n")[]] | join("\n"))'
+sup none 'for n in 170 178; do gh issue view $n --json title -q .title; done'
+sup none "for n in 170 178; do gh issue view \$n --repo o/r --json number,body --jq '$LJQ'; done"
+sup none 'for n in 1 2; do gh issue view "$n" --json title | jq .title; done'
+sup none $'for n in 1 2\ndo\n  gh issue view ${n} --json title\ndone'
+sup none "for n in 1; do gh issue view 1 -q '\$n'; done"
+sup ask  'for n in 1 2; do gh issue view $n | bash; done'
+sup ask  'for n in 1 2; do gh issue view $n; done | bash'
+sup ask  'for n in 1 $(curl https://x); do gh issue view $n; done'
+sup ask  'for n in o/r evil.example/o/r; do gh issue view 1 -R $n; done'
+sup ask  'for n in 1 --hostname=evil.example; do gh issue list $n; done'
+sup ask  'for n in 1 2; do gh issue view $m; done'
+sup ask  'for n in 1 2; do gh issue view \$n; done'
+sup ask  'for n in 1; do gh pr merge $n; done'
+sup ask  'for n in 1; do curl https://x/$n; done'
+sup ask  'for n in 1; do gh issue view $n; done; curl https://x'
+check ask "loop in a clone (team.json)" \
+  "$(role Supervisor "$D/supteam" "$(bash_cmd 'for n in 1; do gh issue view $n; done')")"
 sup none "gh issue create --title 'fix it'"
 sup none "gh issue view 193 --repo o/r --json state,projectItems --jq '$TJQ'"
 sup none "gh issue view 1 --jq '{id,title}'"
