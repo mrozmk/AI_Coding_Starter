@@ -41,6 +41,8 @@ if [ "$EV" = PreToolUse ]; then
     real() { python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
     P="$(real "$FILE")" && [ -n "$P" ] || guard_refuse "cannot resolve $FILE — refused"
     RUNS="$(real "$TD/runs")" || guard_refuse "cannot resolve the runs dir — refused"
+    # Case-folded: on a case-insensitive volume `RUNS/x/ASKS` is the same directory.
+    P="$(tr '[:upper:]' '[:lower:]' <<<"$P")"; RUNS="$(tr '[:upper:]' '[:lower:]' <<<"$RUNS")"
     case "$P" in "$RUNS"/*/asks|"$RUNS"/*/asks/*|"$RUNS"/*/decisions|"$RUNS"/*/decisions/*)
       jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
         permissionDecisionReason: "asks/ and decisions/ are written by the hook and the TeamLead'"'"'s scripts only"}}'
@@ -94,7 +96,7 @@ fallback() {
 # main-checkout code: the decision is bound to this ask, answered by the Operator (terminal, or a
 # typed `d-<n> …` message in the lead's own transcript) with this very answer.
 verify_operator() {
-  local id="$1" a="$2" did f via uuid t form val want kind
+  local id="$1" a="$2" did f via uuid t form val want kind msg
   did="$(jq -r '.decision // ""' <<<"$a")"
   [[ "$did" =~ ^d-[0-9]+$ ]] || return 1
   f="$ASK_TD/runs/$ASK_RUN/decisions/$did.md"
@@ -122,19 +124,24 @@ verify_operator() {
     "$(jq -r '.session_id // "-"' "$TD/teamlead.json")" \
     "$(jq -r '.claude_config_dir // empty' "$TD/teamlead.json")")"
   [ -f "$t" ] || return 1
-  jq -e -s --arg u "$uuid" --arg w "$want" '
+  msg="$(jq -r -s --arg u "$uuid" '
     map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)))
     | map(.message.content | if type == "string" then . elif type == "array"
         then (map(select(.type == "text") | .text) | join(" ")) else "" end
-        | sub("^\\s+"; ""))
-    | any(startswith($w))' "$t" >/dev/null 2>&1
+        | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1
+  case "$msg" in "$want"*) ;; *) return 1 ;; esac
+  # Several questions: the Operator's own labels, parsed here, must be the relayed map.
+  [ "$form" != answers ] \
+    || [ "$(ask_reply_map "$id" "${msg#"$did "}")" = "$(jq -cS .value <<<"$a")" ]
 }
 
 # deliver <id> <answer json> — emits the hook output of this event for the answer.
 deliver() {
   local id="$1" a="$2" kind form val q1
   kind="$(ask_get "$id" kind)"; form="$(jq -r .form <<<"$a")"
+  # ${tier:-}: the tier this hook computed for a permission (handle's local), whatever the file says.
   if [ "$(jq -r .authority <<<"$a")" = operator ] || [ "$(ask_get "$id" tier)" = operator ] \
+      || [ "${tier:-}" = operator ] \
       || [ -n "$(ask_get "$id" requires_decision)" ]; then
     if ! verify_operator "$id" "$a"; then
       ask_cas "$id" "delivering answered" timed-out >/dev/null 2>&1 || true

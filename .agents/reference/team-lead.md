@@ -392,7 +392,9 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   decisions.
 - **Close is not limited to acceptance.** The runner acts on `decision close` whose `--for` is the
   acked record at **any** gate or stop — a plan or acceptance gate, a coder or qa `blocked`
-  stop: the Operator said close, so the run closes there (`close_run abandon`, exit 8). A `continue`
+  stop: the Operator said close, so the run closes there (`close_run abandon`, exit 8). A stage
+  that asked before its first record has no acked record: there `--for` is the refused
+  `teamlead-run-<n>.json` (gate `run`) or a live ask of the current stage. A `continue`
   only means something at the acceptance gate (§9); elsewhere it changes nothing in the runner.
 - **Withdraw / list:** `decision withdraw <team> d-<n> --why "<line>"` (`status: withdrawn`, lead
   only), `decision list <team> [--pending]`; `team-lead.sh pending` lists pending decisions first.

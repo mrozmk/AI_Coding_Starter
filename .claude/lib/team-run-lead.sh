@@ -265,6 +265,17 @@ lead_gate() {
       esac
       lead_close "$f"; continue
     fi
+    # The Operator's close of a stage that has no acked record of its own (it asked before its
+    # first record): the decision close names the refused run close or a live ask of the stage.
+    if [ "$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)" = "decision close" ]; then
+      case "$for" in
+        teamlead-run-*.json) [ "$(rec "$TD/runs/$RUN/$for" gate)" = run ] || continue
+          echo "$f" >> "$TD/verdict-acked"; close_run abandon ".agents/team/runs/$RUN/$f" ;;
+        asks/a-*.json) [ "$(jq -r .role "$TD/runs/$RUN/$for" 2>/dev/null || true)" = "$1" ] \
+          && [ "$(jq -r '.attempt | tostring' "$TD/runs/$RUN/$for" 2>/dev/null || true)" = "$2" ] || continue
+          echo "$f" >> "$TD/verdict-acked"; close_run abandon ".agents/team/runs/$RUN/$f" ;;
+      esac
+    fi
     [ -n "$mine" ] && [ "$for" = "$a" ] || continue
     rel=".agents/team/runs/$RUN/$f"; v="$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)"
     case "$v" in

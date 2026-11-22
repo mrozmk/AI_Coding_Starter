@@ -256,6 +256,18 @@ ask_follow_up() {
   return 0
 }
 
+# ask_reply_map <id> <reply> — a multi-question reply `<header>: <label>; …` → the canonical
+# {question: label} map, or rc≠0 (count or header mismatch). decision answer (the lead's copy) and
+# the hook's Operator check (the main checkout's) parse the Operator's words the same way.
+ask_reply_map() {
+  jq -cS --arg r "$2" '[.payload.tool_input.questions[] | {k: (.header // .question), q: .question}] as $qs
+    | ($r | split(";") | map(capture("^\\s*(?<h>[^:]+?)\\s*:\\s*(?<l>.+?)\\s*$"))) as $ps
+    | if ($ps | length) != ($qs | length) then error("count") else . end
+    | [$ps[] | . as $p | ($qs | map(select(.k == $p.h)) | .[0]) as $m
+        | if $m == null then error("header") else {key: $m.q, value: $p.l} end] | from_entries' \
+    "$ASK_D/$1.json" 2>/dev/null
+}
+
 # ask_text_form <answer json> — the answer as the stage reads it (wait, Stop block reason).
 ask_text_form() {
   jq -r 'if .form == "allow" then "The TeamLead allowed it."
@@ -281,8 +293,20 @@ ask_main() {
   ask_valid_id "$id" || { echo "usage: team-ask.sh wait a-<n> [--secs N]" >&2; return 2; }
   if [ "${1:-}" = --secs ]; then [[ "${2:-}" =~ ^[0-9]+$ ]] || return 2; secs="$2"; fi
   [ -f "$ASK_D/$id.json" ] || { echo "error: no ask $id" >&2; return 4; }
+  # Only this stage's own Stop ask: every other kind is delivered by its hook.
+  [ "$(ask_get "$id" kind)" = text ] \
+    && [ "$(ask_get "$id" session_id)" = "$(jq -r '.session_id // ""' "$ASK_TD/session.json" 2>/dev/null)" ] \
+    || { echo "error: $id is not this stage's Stop ask" >&2; return 4; }
   local ans
   if ans="$(ask_poll "$id" $(( $(date +%s) + secs )))"; then
+    if [ -e "$ASK_TD/cancel" ] || [ -e "$ASK_TD/closing" ]; then
+      echo "withdrawn — the team was stopped; write nothing more"; return 0
+    fi
+    # An Operator-bound answer is verified by the Stop hook (main-checkout code), never here.
+    if [ "$(jq -r .authority <<<"$ans")" = operator ] || [ "$(ask_get "$id" tier)" = operator ] \
+        || [ -n "$(ask_get "$id" requires_decision)" ]; then
+      echo "answered — end your turn now; the Stop hook checks and delivers the answer"; return 0
+    fi
     if ask_claim_delivery "$id"; then
       ask_text_form "$ans"; ask_delivered "$id" || true; return 0
     fi

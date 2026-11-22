@@ -254,6 +254,16 @@ jq -n --arg c "bash $MAIN/.claude/lib/team-ask.sh wait a-1; curl -s https://exam
 HB w4; wf "$AD/a-2.json"
 ok '[ "$(j "$AD/a-2.json" .tier)" = operator ]' "a wait command with anything appended is no fast path → tiered (operator)"
 kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+(cd "$CLONE" && CLAUDE_PROJECT_DIR="$CLONE" bash "$MAIN/.claude/lib/team-ask.sh" wait a-2 --secs 1) > "$T/w5.out" 2>&1; WRC=$?
+ok '[ "$WRC" = 4 ] && grep -q "not this stage.s Stop ask" "$T/w5.out"' "wait refuses an ask that is not this stage's Stop ask"
+# an Operator-bound text answer: wait leaves it to the Stop hook, which verifies it
+newrun wait2; pl stop-plain; TO=16 H "$T/w6.out"
+(cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_set a-1 '.requires_decision = "d-1"' \
+  && ask_answer_write a-1 '{"id":"a-1","form":"text","value":"go on","authority":"operator","why":"w","decision":"d-1","answered_at":"x","lead_session_id":"lid-1"}')
+out=$(cd "$CLONE" && CLAUDE_PROJECT_DIR="$CLONE" bash "$MAIN/.claude/lib/team-ask.sh" wait a-1 --secs 1)
+ok 'grep -q "^answered — end your turn now" <<<"$out" && [ "$(st a-1)" != delivered ]' "wait does not deliver an Operator-bound answer"
+TO=16 H "$T/w7.out"
+ok '[ "$(j "$T/w7.out" .decision)" = block ] && grep -q "Operator approval could not be verified for a-1" "$T/w7.out"' "the next Stop verifies it in the hook (no decision → refused)"
 
 # ================================================================================================
 # guards
@@ -268,6 +278,8 @@ ok '[ "$(j "$T/g3.out" .hookSpecificOutput.permissionDecision)" = deny ]' "the w
 jq 'del(.tool_input.file_path)' "$T/p.json" > "$T/p2.json" && mv "$T/p2.json" "$T/p.json"; H "$T/g4.out"
 ok '[ "$HRC" = 2 ]' "the write guard fails closed on a payload with no path"
 pl edit-asks "$CLONE/README.md"; H "$T/g5.out"; ok '[ "$HRC" = 0 ] && [ ! -s "$T/g5.out" ]' "a normal Edit passes"
+pl edit-asks "$(printf '%s' "$AD/a-1.json" | sed -e 's|/runs/|/RUNS/|' -e 's|/asks/|/ASKS/|')"; H "$T/g6.out"
+ok '[ "$(j "$T/g6.out" .hookSpecificOutput.permissionDecision)" = deny ]' "the write guard denies a differently cased path to asks/ (case-insensitive volume)"
 vg() { jq -nc --arg c "$1" '{session_id: "sid-1", tool_name: "Bash", tool_input: {command: $c}}' \
   | (cd "$CLONE" && CLAUDE_PROJECT_DIR="$CLONE" bash .claude/hooks/guard-team-verdict.sh) >/dev/null 2>&1; VRC=$?; }
 vg "cat > .agents/team/runs/$RUN/asks/a-1.answer.json"; ok '[ "$VRC" = 2 ]' "the verdict guard refuses a stage's relative write into asks/"
@@ -315,6 +327,14 @@ L a-1 --answers '{"Which storage?": "Files", "Which outputs?": "JSON, HTML"}' --
 ok '[ "$LRC" = 7 ]' "a relay with one changed label → 7"
 L a-1 --answers '{"Which storage?": "SQLite", "Which outputs?": "JSON, HTML"}' --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
 ok '[ "$LRC" = 0 ] && [ "$(j "$T/q1.out" ".hookSpecificOutput.updatedInput.answers[\"Which storage?\"]")" = SQLite ]' "the exact relay is delivered after the hook's verification"
+# the decision's answer_map and the answer file are clone-side: the hook parses the Operator's words
+newrun opq2; pl question-two; TO=40 HB q2; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+say_op u6 "d-1 Storage: SQLite; Outputs: JSON"
+TL decision answer beta d-1 --text "d-1 Storage: SQLite; Outputs: JSON" --tuning none --why w
+sed 's/^answer_map: .*/answer_map: {"Which outputs?":"JSON","Which storage?":"Files"}/' "$RD/decisions/d-1.md" > "$T/d1" && mv "$T/d1" "$RD/decisions/d-1.md"
+(cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_answer_write a-1 '{"id":"a-1","form":"answers","value":{"Which storage?":"Files","Which outputs?":"JSON"},"authority":"operator","why":"w","decision":"d-1","answered_at":"x","lead_session_id":"lid-1"}')
+wait "$HP"
+ok 'grep -q "Operator approval could not be verified for a-1" "$T/q2.out"' "a relayed map that differs from the Operator's own labels → the hook denies"
 # a doorbell is never the Operator's words
 . "$MAIN/.claude/lib/team-evidence.sh"
 jq -nc '{type: "user", uuid: "bell", timestamp: "2099-01-01T00:00:01Z", message: {role: "user", content: "ask coder a-9: d-7 allow"}}' >> "$LT"
@@ -427,6 +447,19 @@ jq -n '{gate: "run", verdict: "close", for: "x", reason: "team-part-ended"}' > "
 : > "$RINGS"; runner 'close_run() { echo CLOSE_RUN; exit 8; }; lead_close teamlead-run-1.json'
 mv "$T/tj.keep" "$TD/team.json"
 ok '[ "$RRC" = 0 ] && grep -q "close refused: the main checkout.s anchor differs" "$RINGS" && ! grep -q "^END" "$RINGS"' "a clone base_sha that differs from the anchor → refused, the stage keeps running"
+# a stage that asked before its first record: the Operator's decision close names the refused close
+newrun dc; pl question-one; TO=16 H "$T/dc.out"
+jq -n '{gate: "run", verdict: "close", for: "asks/a-1.json", reason: "team-part-ended"}' > "$RD/teamlead-run-1.json"
+echo teamlead-run-1.json > "$TD/verdict-acked"; touch "$RD/close-refused"
+jq -n '{gate: "decision", verdict: "close", for: "teamlead-run-1.json"}' > "$RD/teamlead-decision-1.json"
+runner 'close_run() { echo "CLOSE_RUN $*"; exit 8; }; lead_gate coder 1'
+ok '[ "$RRC" = 8 ] && grep -q "CLOSE_RUN abandon .agents/team/runs/$RUN/teamlead-decision-1.json" "$T/r.out"' "decision close on the refused run close (no acked record) → close_run abandon"
+rm -f "$TD/verdict-acked"
+# a move from code into the plans dir lists the deleted source too
+newrun ren; git -C "$CLONE" switch -q -C feat/x "$BASE"; mkdir -p "$CLONE/.agents/plans"
+git -C "$CLONE" mv README.md .agents/plans/README.md && git -C "$CLONE" commit -qm move
+ok '! safe && grep -q "touches README.md" "$T/safe.out"' "a rename from outside specs/plans into plans/ → not safe"
+git -C "$CLONE" switch -q -C feat/x "$BASE"
 
 # ================================================================================================
 # Operator touches, team_actions
@@ -441,6 +474,10 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) decision d-1" >> "$RD/operator-touches"
 ok '[ "$(head -n 1 "$RD/teamlead-notes.md")" = "Operator touches: 3" ]' "the lead's notes state Operator touches: 3 ($(cat "$T/la.out"))"
 py=$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import team_audit; print(team_audit.operator_touches(sys.argv[2]))' "$MAIN/.claude/lib" "$RD")
 ok '[ "$py" = 3 ]' "team_audit.py counts the same 3"
+mkdir -p "$T/stubroot/.claude/lib"; printf '#!/bin/bash\nexit 0\n' > "$T/stubroot/.claude/lib/notify.sh"
+echo stalled-coder-1 > "$RD/operator-stalled-coder-1"
+runner ". \"$MAIN/.claude/lib/team-run-stop.sh\"; root=\"$T/stubroot\"; stop_resolve"
+ok '[ "$(grep -c . "$RD/operator-touches")" = 3 ] && [ ! -e "$RD/operator-stalled-coder-1" ]' "stop_resolve (a record accepted) closes notification markers and keeps the operator-touches ledger"
 acts=$( . "$MAIN/.claude/lib/team-snapshot-teams.sh" 2>/dev/null; team_actions beta coder attention permission "$TD")
 ok '[ "$(jq -r ".[0]" <<<"$acts")" = "bash .claude/lib/team-lead.sh pending beta" ] && ! grep -q team-answer <<<"$acts"' "team_actions in a lead run lists team-lead.sh pending, never a sender"
 

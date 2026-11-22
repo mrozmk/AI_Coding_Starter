@@ -306,7 +306,9 @@ team's part — close it, at the plan gate or on any stop:
 --reason delivered-elsewhere|team-part-ended --message "<line>"`. The runner checks again, pushes
 the branch and closes the run (a `closed` event to the Supervisor). Exit 4 (`close would lose
 unmerged work`: a coder record or a PR of the run, a dirty tree, code beyond the spec and the plan)
-→ open a decision instead; a `close refused: …` doorbell from the runner → the same.
+→ open a decision instead; a `close refused: …` doorbell from the runner → the same. When the
+Operator answers close and the stage has no acked record of its own, the `decision close` names
+the refused `teamlead-run-<n>.json` or the stage's live `asks/a-<n>.json` as `--for`.
 
 ## Other items
 

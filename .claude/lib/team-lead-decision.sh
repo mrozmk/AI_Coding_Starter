@@ -191,13 +191,7 @@ decision_answer() {
         aval="$rest"
         ask_init "$TD" || d_bad 4 "no current run"
         if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then
-          amap="$(jq -c --arg r "$rest" '[.payload.tool_input.questions[] | {k: (.header // .question), q: .question}] as $qs
-            | ($r | split(";") | map(capture("^\\s*(?<h>[^:]+?)\\s*:\\s*(?<l>.+?)\\s*$"))) as $ps
-            | if ($ps | length) != ($qs | length) then error("count") else . end
-            | [$ps[] | . as $p | ($qs | map(select(.k == $p.h)) | .[0]) as $m
-                | if $m == null then error("header") else {key: $m.q, value: $p.l} end] | from_entries' \
-            "$ASK_D/$ask.json" 2>/dev/null)" \
-            || d_bad 7 "reply must read $id $(d_reply_shape "$ask")"
+          amap="$(ask_reply_map "$ask" "$rest")" || d_bad 7 "reply must read $id $(d_reply_shape "$ask")"
           aval=""
         fi ;;
     esac

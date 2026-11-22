@@ -295,7 +295,7 @@ team_close_safe() {
   [ -z "$(git -C "$clone" status --porcelain 2>/dev/null)" ] || { echo "the tree is not clean"; return 1; }
   git -C "$clone" merge-base --is-ancestor "$base" HEAD 2>/dev/null \
     || { echo "base $base is not an ancestor of HEAD"; return 1; }
-  bad="$(git -C "$clone" log -m --format= --name-only "$base..HEAD" 2>/dev/null \
+  bad="$(git -C "$clone" log -m --no-renames --format= --name-only "$base..HEAD" 2>/dev/null \
     | grep -v -E '^$|^\.agents/(specs|plans)/' | head -n 1)"
   [ -z "$bad" ] || { echo "a commit beyond base touches $bad"; return 1; }
   return 0
