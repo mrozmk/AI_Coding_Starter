@@ -115,6 +115,8 @@ case "${1:-}" in
       field-list)
         cat "$G/fields.json" ;;
       item-add)
+        [ "${STUB_GH_ITEMADD_FAIL:-0}" != 1 ] \
+          || { echo "your token has not been granted the required scopes: project" >&2; exit 1; }
         u=""; while [ $# -gt 0 ]; do case "$1" in --url) u="$2"; shift 2 ;; *) shift ;; esac; done
         jq --argjson n "${u##*/}" '. + [{id: ("item-new-" + ($n | tostring)), status: null,
             content: {type: "Issue", number: $n, repository: "owner/repo"}}]' \

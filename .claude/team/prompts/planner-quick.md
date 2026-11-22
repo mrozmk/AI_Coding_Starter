@@ -32,8 +32,9 @@ otherwise the Operator — team-decision-model.md §3) →
 stop. Supervisor then runs `bash .claude/lib/team-remode.sh {{TEAM}} brainstorm` and
 `/start-team {{TEAM}}` — do not run them yourself.
 
-A product-fit hit (`/quick-change` Phase 0 → Product fit) is the Operator's decision; if they drop
-the ticket → `bash .claude/lib/team-record.sh --verdict failed --message "out of product scope: <non-goal>"`,
+A product-fit hit (`/quick-change` Phase 0 → Product fit) is the Operator's decision, never a
+`too big for quick` record; if they drop the ticket or choose to change the PRD's non-goals first →
+`bash .claude/lib/team-record.sh --verdict failed --message "out of product scope: <non-goal>"`,
 then stop. No remode follows — a brainstorm restart would hit the same non-goal.
 
 Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a

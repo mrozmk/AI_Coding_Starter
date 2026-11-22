@@ -229,6 +229,27 @@ expect 0 "created 100" "the follow-up is created"
 run "$MAIN" $TRK create-followup --marker MARKER-F --title "Follow up" --body-file "$WORK/f.md"
 expect 0 "exists 100" "a retry finds the follow-up by marker"
 [ "$(creates)" = 1 ] || fail "the retry created a second issue ($(creates) creates)"
+grep -q "^project: exists" "$WORK/out" || fail "the retry did not report the board entry ($(cat "$WORK/out"))"
+jq -e 'any(.[]; .content.number == 100)' "$GH_DIR/items.json" >/dev/null || fail "the follow-up is not on the board"
+
+# The board half: added after `created`, a failed add is a warning (exit 0, no second issue), its
+# retry adds it; without Project fields it is skipped.
+fx_reset
+body_file "$WORK/f.md" MARKER-P
+run "$MAIN" $TRK create-followup --marker MARKER-P --title "Follow up" --body-file "$WORK/f.md"
+expect 0 "project: added" "created is followed by the project add"
+fx_reset
+body_file "$WORK/f.md" MARKER-Q
+export STUB_GH_ITEMADD_FAIL=1
+run "$MAIN" $TRK create-followup --marker MARKER-Q --title "Follow up" --body-file "$WORK/f.md"
+unset STUB_GH_ITEMADD_FAIL
+expect 0 "warning: project add failed for #" "a failed project add is a warning, exit 0"
+grep -q "^created " "$WORK/out" || fail "the failed add hid the created line"
+[ "$(creates)" = 1 ] || fail "a failed project add created $(creates) issues"
+run "$MAIN" $TRK create-followup --marker MARKER-Q --title "Follow up" --body-file "$WORK/f.md"
+expect 0 "project: added" "the retry finds the issue and adds it to the board"
+grep -q "^exists " "$WORK/out" || fail "the retry did not find the issue"
+[ "$(creates)" = 1 ] || fail "the retry created a second issue"
 
 fx_reset
 jq -n --arg g MARKER-G --arg h MARKER-H '([range(50)] | map({number: (200 + .),
@@ -876,6 +897,9 @@ expect 0 "items=1" "list without a Project still lists the issues"
 jq -e '.statuses == [] and .items[0].status == null and .items[0].on_board == 0' \
   "$WORK/solo-noproj.json" >/dev/null || fail "list without a Project must report no board"
 [ "$(grep -c '^gh project' "$GH_LOG" | tr -d ' ')" = 0 ] || fail "no Project, yet gh project was called"
+body_file "$WORK/f.md" MARKER-NP
+run "$MAIN" $TRK create-followup --marker MARKER-NP --title "Follow up" --body-file "$WORK/f.md"
+expect 0 "project: skipped (no project)" "a create without Project fields skips the board"
 
 solo 'del(.github.status_field_id)'
 run "$MAIN" $TRK list --out "$WORK/x.json"

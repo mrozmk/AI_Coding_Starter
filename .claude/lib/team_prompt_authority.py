@@ -23,9 +23,11 @@ Contract: .agents/reference/team-lead.md §6
 """
 import fnmatch
 import glob
+import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 
@@ -228,9 +230,30 @@ HEADERS = {"Bash": "Bash command", "Edit": "Edit file", "MultiEdit": "Edit file"
            "NotebookEdit": "Edit file", "Write": "Write file", "WebFetch": "Fetch"}
 
 
-def tool_rule_tier(c, root, extra, tool):
-    """An unevaluated tool (MCP, Skill, …): a project-added ask rule naming it → operator, a
-    baseline one or none → lead."""
+def rule_covers(rule, tool, inp):
+    """True when ask rule <rule> covers this unevaluated tool call; an argument that cannot be
+    judged counts as covered (the Operator decides)."""
+    name, paren, arg = rule.partition("(")
+    if not paren:
+        # A bare server rule (mcp__srv) covers every tool of that server.
+        return fnmatch.fnmatchcase(tool, rule) or (
+            rule.startswith("mcp__") and rule.count("__") == 1 and tool.startswith(rule + "__"))
+    if not fnmatch.fnmatchcase(tool, name):
+        return False
+    if name != "Skill" or not arg.endswith(")"):
+        return True
+    arg, skill = arg[:-1], (inp or {}).get("skill")
+    if arg.endswith((":*", " *")):  # an argument suffix; the name itself is kept as written
+        arg = arg[:-2]
+    if not isinstance(skill, str) or not skill or not arg or re.search(r"[\s()]", arg):
+        return True
+    return fnmatch.fnmatchcase(skill, arg)
+
+
+def tool_rule_tier(c, root, extra, tool, inp=None):
+    """An unevaluated tool (MCP, Skill, Read, …): a project-added ask rule covering the call
+    (rule_covers: a bare name or server, a parameterized rule — a Skill rule by its skill name,
+    any other argument as covered) → operator, a baseline one or none → lead."""
     base = baseline()
     for path in [os.path.join(root, ".claude", f) for f in c.SETTINGS_NAMES] + extra:
         try:
@@ -239,7 +262,7 @@ def tool_rule_tier(c, root, extra, tool):
         except (OSError, ValueError, AttributeError):
             continue
         for rule in asks if isinstance(asks, list) else []:
-            if isinstance(rule, str) and "(" not in rule and fnmatch.fnmatchcase(tool, rule):
+            if isinstance(rule, str) and rule_covers(rule, tool, inp):
                 if base is None or rule not in base:
                     return ("operator", "production ask: %s" % rule)
     return ("lead", None)
@@ -263,7 +286,7 @@ def tier(c, root, main, extra, tool, header, cmds, inp, text, cwd):
     except Exception as e:  # noqa: BLE001 — the egress guard asks the Operator when it fails
         return ("operator", "egress: guard failed (%s)" % e.__class__.__name__)
     if header is None:
-        return tool_rule_tier(c, root, extra, tool)
+        return tool_rule_tier(c, root, extra, tool, inp)
     try:
         human, asks = human_causes(c, root, main, extra, header, cmds, inp, text, cwd)
     except c.Refuse as e:
@@ -280,9 +303,90 @@ def tier(c, root, main, extra, tool, header, cmds, inp, text, cwd):
     return ("class", name) if name else ("lead", None)
 
 
+# The retry key of an operator-tier permission: what an Operator approval is bound to, so a retry
+# of the same call after the hook's deadline can claim the decided answer (team-lead.md §6).
+TREE_MAX = 20000
+UNPINNED = re.compile(r"[$`]|<\(|>\(")
+FILE_TOOLS = ("Read", "Edit", "MultiEdit", "Write", "NotebookEdit")
+
+
+class Unpinned(Exception):
+    """The request names an input the checker cannot know."""
+
+
+def path_digest(p):
+    """A file → (realpath, size, mtime_ns, sha1); a directory → a tree digest of its entries
+    (no symlink following); a missing path → (realpath, absent)."""
+    real = os.path.realpath(p)
+    if not os.path.lexists(p):
+        return [real, "absent"]
+    if os.path.isdir(real):
+        rows, n = [], 0
+        for top, dirs, files in os.walk(real):
+            for name in sorted(dirs) + sorted(files):
+                n += 1
+                if n > TREE_MAX:
+                    raise Unpinned("tree")
+                full = os.path.join(top, name)
+                st = os.lstat(full)
+                kind = "l" if os.path.islink(full) else "d" if os.path.isdir(full) else "f"
+                rows.append([os.path.relpath(full, real), kind, st.st_size, st.st_mtime_ns])
+        return [real, "tree", hashlib.sha1(json.dumps(sorted(rows)).encode()).hexdigest()]
+    st = os.stat(real)
+    h = hashlib.sha1()
+    with open(real, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return [real, st.st_size, st.st_mtime_ns, h.hexdigest()]
+
+
+def bash_paths(cmd, cwd):
+    """Every existing path a Bash command names: each word and each word's part after @, < or =
+    (redirection targets included), joined to cwd. Unpinned for $, a backtick, $(…), a process
+    substitution, a glob or ~user."""
+    if UNPINNED.search(cmd):
+        raise Unpinned("expansion")
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    out = []
+    for word in lex:
+        if not word or set(word) <= set("();<>|&"):
+            continue
+        if re.search(r"[*?\[]", word) or re.match(r"~[^/]", word):
+            raise Unpinned("glob")
+        parts = [word] + [word.split(s, 1)[1] for s in "@<=" if s in word]
+        for part in parts:
+            if not part:
+                continue
+            full = os.path.join(cwd, os.path.expanduser(part))
+            if os.path.lexists(full):
+                out.append(path_digest(full))
+    return out
+
+
+def retry_key(tool, inp, cwd):
+    """sha1 over the canonical {tool_name, tool_input, cwd} and a digest of every path the request
+    names, or None when its inputs cannot be pinned (any failure counts as that)."""
+    try:
+        if tool == "Bash":
+            paths = bash_paths(inp.get("command") or "", cwd)
+        elif tool in FILE_TOOLS:
+            target = inp.get("file_path") or inp.get("notebook_path")
+            paths = [path_digest(os.path.join(cwd, os.path.expanduser(target)))] \
+                if isinstance(target, str) and target else []
+        else:
+            paths = []
+        blob = json.dumps({"tool_name": tool, "tool_input": inp, "cwd": cwd, "paths": paths},
+                          sort_keys=True, separators=(",", ":"))
+        return hashlib.sha1(blob.encode()).hexdigest()
+    except Exception:  # noqa: BLE001 — an unknown input never carries an approval
+        return None
+
+
 def input_tier(c, root, main, extra, path):
     """team_prompt_check.py --input-json: the tier line of one structured permission
-    ({tool_name, tool_input, cwd}), or None when the file cannot be read."""
+    ({tool_name, tool_input, cwd}) and a second line `retry: <key>|none` (retry_key, operator tier
+    only), or None when the file cannot be read."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -298,7 +402,12 @@ def input_tier(c, root, main, extra, path):
         inp["file_path"] = os.path.join(cwd, os.path.expanduser(target))
     cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
     text = str(inp.get("file_path") or inp.get("url") or cmd.split("\n", 1)[0])
+    raw = dict(data.get("tool_input") or {})
     kind, why = tier(c, root, main, extra, tool, HEADERS.get(tool), [cmd] if tool == "Bash" else [],
                      inp, text, cwd)
-    return "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
+    key = None
+    if kind == "operator" and not str(why).startswith("egress: guard failed"):
+        key = retry_key(tool, raw, cwd)
+    line = "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
         else "tier: operator — %s" % why
+    return "%s\nretry: %s" % (line, key or "none")

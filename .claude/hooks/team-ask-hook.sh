@@ -87,7 +87,12 @@ out_refuse() {  # out_refuse <reason> — the deny/block form of this event
 fallback() {
   case "$EV" in
     PreToolUse) out_pre_deny "No answer from the TeamLead yet (ask $1 is still open). Ask again with the same input — the answer will be waiting." ;;
-    PermissionRequest) out_perm_deny "No answer from the TeamLead yet (ask $1, withdrawn). Retry the same tool call to ask the TeamLead again." ;;
+    PermissionRequest)
+      if [ "$(ask_get "$1" state)" = timed-out ]; then
+        out_perm_deny "No answer yet: ask $1 waits for the Operator's decision and stays open. Retry the same tool call later — the decided answer will be waiting."
+      else
+        out_perm_deny "No answer from the TeamLead yet (ask $1, withdrawn). Retry the same tool call to ask the TeamLead again."
+      fi ;;
     Stop) out_block "No answer from the TeamLead yet (ask $1). Run \`bash $LIB/team-ask.sh wait $1\` (waits up to 9 min) and follow the answer it prints; repeat while it says pending." ;;
   esac
 }
@@ -96,7 +101,7 @@ fallback() {
 # main-checkout code: the decision is bound to this ask, answered by the Operator (terminal, or a
 # typed `d-<n> …` message in the lead's own transcript) with this very answer.
 verify_operator() {
-  local id="$1" a="$2" did f via uuid t form val want kind msg
+  local id="$1" a="$2" did f via uuid t form val msg p x
   did="$(jq -r '.decision // ""' <<<"$a")"
   [[ "$did" =~ ^d-[0-9]+$ ]] || return 1
   f="$ASK_TD/runs/$ASK_RUN/decisions/$did.md"
@@ -117,22 +122,28 @@ verify_operator() {
     "teamlead-window "*) uuid="${via#teamlead-window }" ;;
     *) return 1 ;;
   esac
-  kind="$(ask_get "$id" kind)"
-  case "$form" in allow|deny) want="$did $form" ;; answers) want="$did " ;; *) want="$did $val" ;; esac
+  # The lead session and its config dir from the main checkout's anchor (the runner's lead_sessions),
+  # never from the clone's teamlead.json; no answered_session (an older decision) → current_id.
+  x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
   # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
   t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
-    "$(jq -r '.session_id // "-"' "$TD/teamlead.json")" \
-    "$(jq -r '.claude_config_dir // empty' "$TD/teamlead.json")")"
+    "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
   [ -f "$t" ] || return 1
-  msg="$(jq -r -s --arg u "$uuid" '
-    map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)))
+  # The message must be eligible as the writer's evidence was: typed after the decision opened.
+  msg="$(jq -r -s --arg u "$uuid" --arg since "$(dfm_h created_at)" '
+    map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
+        and ((.timestamp // "") >= $since)))
     | map(.message.content | if type == "string" then . elif type == "array"
         then (map(select(.type == "text") | .text) | join(" ")) else "" end
         | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1
-  case "$msg" in "$want"*) ;; *) return 1 ;; esac
-  # Several questions: the Operator's own labels, parsed here, must be the relayed map.
-  [ "$form" != answers ] \
-    || [ "$(ask_reply_map "$id" "${msg#"$did "}")" = "$(jq -cS .value <<<"$a")" ]
+  # The Operator's whole reply, parsed by the writer's own parser, must be this very answer.
+  p="$(ask_parse_reply "$id" "$did" "$msg")" || return 1
+  case "$form" in allow|deny) [ "$(jq -r .outcome <<<"$p")" = "$form" ] || return 1 ;; esac
+  case "$form" in
+    answers) [ "$(jq -cS .map <<<"$p")" = "$(jq -cS .value <<<"$a")" ] ;;
+    allow) [ -z "$(jq -r .value <<<"$p")" ] ;;
+    *) [ "$(jq -r .value <<<"$p")" = "$val" ] ;;
+  esac
 }
 
 # deliver <id> <answer json> — emits the hook output of this event for the answer.
@@ -152,6 +163,18 @@ deliver() {
   if stopped; then
     ask_cas "$id" "waiting timed-out answered delivering" withdrawn || true
     out_refuse "$STOP_MSG"; return 0
+  fi
+  # An allow rides only the inputs the Operator saw: the checker's key must still be the stored one.
+  local rk now
+  rk="$(ask_get "$id" retry_key)"
+  if [ "$kind:$form" = permission:allow ] && [ -n "$rk" ] && [ "$rk" != none ]; then
+    jq -c .payload "$ASK_D/$id.json" > "$TMP.re" 2>/dev/null
+    now="$(python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$TMP.re" --main "$MAIN" 2>/dev/null \
+      | sed -n 's/^retry: //p')"
+    if [ "$now" != "$rk" ]; then
+      ask_cas "$id" "delivering" withdrawn || true
+      out_perm_deny "the operation's inputs changed since the decision — retry the call"; return 0
+    fi
   fi
   case "$kind:$form" in
     question:answers)
@@ -202,9 +225,10 @@ file_ask() {
   jq -n --arg kind "$1" --arg role "$ROLE" --arg att "$ATTEMPT" --arg round "${ROUND:-1}" \
     --arg sid "$STAGE_SID" --arg aid "$(jq -r '.agent_id // ""' <<<"$PAYLOAD")" \
     --arg aty "$(jq -r '.agent_type // ""' <<<"$PAYLOAD")" --argjson p "$2" --arg tier "$3" \
-    --arg cause "$4" '{kind: $kind, role: $role, attempt: ($att | tonumber? // $att),
-      round: ($round | tonumber? // 1), session_id: $sid, agent_id: $aid, agent_type: $aty,
-      payload: $p, tier: $tier, tier_cause: $cause}' > "$TMP.ask" || return 1
+    --arg cause "$4" --arg rk "${RETRY_KEY:-}" --arg hsid "$SID" '{kind: $kind, role: $role,
+      attempt: ($att | tonumber? // $att), round: ($round | tonumber? // 1), session_id: $sid,
+      hook_session_id: $hsid, agent_id: $aid, agent_type: $aty, payload: $p, tier: $tier,
+      tier_cause: $cause} + (if $rk == "" then {} else {retry_key: $rk} end)' > "$TMP.ask" || return 1
   ask_file "$TMP.ask" >/dev/null || return 1
 }
 
@@ -293,15 +317,20 @@ case "$EV:$TOOL" in
         fi ;;
       esac
     fi
-    jq -c '{tool_name, tool_input, cwd}' <<<"$PAYLOAD" > "$TMP.in" || exit 0
-    line="$(python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$TMP.in" --main "$MAIN" 2>/dev/null)" || exit 0
+    # The filed payload carries the canonical cwd: a retry claims an ask only from the same cwd.
+    c="$(jq -r '.cwd // ""' <<<"$PAYLOAD")"; c="$( (cd "$c" 2>/dev/null && pwd -P) || printf '%s' "$c")"
+    jq -c --arg c "$c" '{tool_name, tool_input, cwd: $c}' <<<"$PAYLOAD" > "$TMP.in" || exit 0
+    out="$(python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$TMP.in" --main "$MAIN" 2>/dev/null)" || exit 0
+    line="$(sed -n 1p <<<"$out")"
+    # An operator-tier ask with a retry key outlives the deadline (timed-out, claimable); none → withdrawn.
+    RETRY_KEY="$(sed -n 's/^retry: //p' <<<"$out")"; [ -n "$RETRY_KEY" ] || RETRY_KEY=none
     case "$line" in
       "tier: class "*) tier=class; cause="${line#tier: class }" ;;
       "tier: lead") tier=lead; cause="" ;;
       "tier: operator — "*) tier=operator; cause="${line#tier: operator — }" ;;
       *) exit 0 ;;
     esac
-    handle permission "$(jq -c '{tool_name, tool_input}' <<<"$PAYLOAD")" "$tier" "$cause" ;;
+    handle permission "$(cat "$TMP.in")" "$tier" "$cause" ;;
   Stop:*)
     if ! stop_branch; then
       echo "$(ask_utc) stop-failed $ROLE $ATTEMPT" >> "$TD/runs/$RUN/attention" 2>/dev/null || true

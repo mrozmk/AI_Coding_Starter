@@ -118,6 +118,7 @@ expect 4 "recoverable" "a failed page 2 is recoverable, never a short marker lis
 printf 'text\n<!-- backlog:demo:E0-1 -->\n' > "$WORK/b1.md"
 run "$MAIN" $TRK create-issue --marker '<!-- backlog:demo:E0-1 -->' --title t --body-file "$WORK/b1.md"
 expect 0 "exists 5" "create-issue finds the marker above a human note — no duplicate"
+grep -q "^project: \(added\|exists\)$" "$WORK/out" || fail "create-issue printed no project line ($(cat "$WORK/out"))"
 printf 'no marker here\n' > "$WORK/b2.md"
 run "$MAIN" $TRK create-issue --marker '<!-- backlog:demo:E0-9 -->' --title t --body-file "$WORK/b2.md"
 expect 2 "must be a line of" "create-issue refuses a body without its marker"
@@ -200,6 +201,8 @@ jq -e --arg t2 "${T2#\#}" '[.[] | select(.number == ($t2 | tonumber))][0].body
   | test("Depends on:\\*\\* #40 \\(E0-1\\)")' "$GH_DIR/issues.json" >/dev/null \
   || fail "E0-2's body does not name its dependency's issue number"
 [ "$(creates)" = 2 ] || fail "expected 2 creates, got $(creates)"
+[ "$(grep -c 'item-add' "$GH_LOG" | tr -d ' ')" = 3 ] || fail "expected one item-add per row (2 by create, 1 recovered), got $(grep -c 'item-add' "$GH_LOG")"
+[ "$(grep -c 'project: (added by create)' "$WORK/out" | tr -d ' ')" = 2 ] || fail "the created rows were added to the board again"
 cp "$B" "$WORK/backlog.synced"
 : > "$GH_LOG"
 run "$MAIN" $SYNC --epic E0 --apply --yes

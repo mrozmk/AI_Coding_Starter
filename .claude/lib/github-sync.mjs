@@ -258,11 +258,15 @@ function apply(root, tmp, file, ns, g, numbers) {
     const n = Number(/^(created|exists) (\d+)$/m.exec(out)?.[2]);
     if (!n) throw new Stop(4, `${row.id}: create-issue printed '${out}'`);
     row.number = n; numbers[row.id] = n;
+    // create-issue already put it on the board; a warning line leaves it to the project-add below.
+    row.onBoard = /^project: (added|exists|skipped \(no project\))$/m.test(out);
     setCell(file, row.line, row.col, `#${n} (unverified)`);  // at once: a crash after this is a recover
     say(`${row.id} ${out}`);
   }
   for (const t of g.tasks) say(`${t.id} sub-issue: ${tracker(root, ['add-sub-issue', String(g.epic.number), String(t.number)])}`);
-  for (const row of rows) say(`${row.id} project: ${tracker(root, ['project-add', String(row.number)])}`);
+  for (const row of rows) {
+    say(`${row.id} project: ${row.onBoard ? '(added by create)' : tracker(root, ['project-add', String(row.number)])}`);
+  }
   const back = readMarkers(root, tmp, ns);
   let bad = 0;
   for (const row of rows) {

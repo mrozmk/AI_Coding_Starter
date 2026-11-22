@@ -10,11 +10,14 @@
 # File contract (the hook runs the main checkout's copy, the lead the clone's: this is the format
 # both share). <clone>/.agents/team/runs/<run>/asks/ — every round of the run, each ask carries it:
 #   a-<n>.json         {id, kind: question|permission|plan|text, role, attempt, round, session_id,
-#                       agent_id, agent_type, payload, tier: class|lead|operator, tier_cause, fp,
-#                       state, filed_at, waiter_pid?, claimed_by?, requires_decision?}
-#                      payload: the hook's {tool_name, tool_input} or {text, source}; source
-#                      `message` or `record:<path relative to runs/<run>/>` (the `acked` format).
-#                      fp = sha1(kind + agent_id + canonical payload).
+#                       hook_session_id?, agent_id, agent_type, payload, tier: class|lead|operator,
+#                       tier_cause, retry_key?, fp, state, filed_at, waiter_pid?, claimed_by?,
+#                       requires_decision?}
+#                      payload: the hook's {tool_name, tool_input} ({tool_name, tool_input, cwd}
+#                      for a permission, cwd canonical) or {text, source}; source `message` or
+#                      `record:<path relative to runs/<run>/>` (the `acked` format).
+#                      fp = sha1(kind + agent_id + canonical payload). retry_key: the checker's
+#                      `retry:` line (sha1 of the input and the files it names, or none).
 #   a-<n>.answer.json  {id, form, value, authority, why, decision, answered_at, lead_session_id};
 #                      form allow|deny|answers|pick|text. Created once (ln, never over a file).
 #   .lock/pid          the ask lock (mkdir; a dead holder is reclaimed).
@@ -22,8 +25,10 @@
 #   .rung-a-<n>        epoch of the runner's last ring for that ask.
 # States: waiting (a live waiter_pid polls) → timed-out (the waiter returned its fallback) →
 # answered (the answer file exists) → delivering (claimed_by one hook or wait) → delivered; or
-# withdrawn. delivered and withdrawn are terminal. A permission ask is never claimed by content
-# (no tool_use_id): on its waiter's timeout it is withdrawn and its retry files a new ask.
+# withdrawn. delivered and withdrawn are terminal. A permission ask is withdrawn at its waiter's
+# deadline (its retry files a new ask) unless it is operator-tier with a retry key: that one times
+# out, keeps its decision, and is claimed by the retry of the same session, hook session, attempt,
+# agent, cwd, input and key — only when exactly one such ask exists (ask_retry_ok).
 # Bash 3.2 + jq. Contract: .agents/reference/team-lead.md §6
 
 ASK_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,6 +70,13 @@ ask_set() {
   jq "$@" "$f" > "$ASK_D/.$id.json.tmp" && mv "$ASK_D/.$id.json.tmp" "$f"
 }
 
+# ask_retry_ok <id> — a permission ask that outlives its waiter's deadline: operator-tier with a
+# retry key (the one eligibility rule of timeout, reconcile, claim and fallback).
+ask_retry_ok() {
+  [ "$(ask_get "$1" tier)" = operator ] || return 1
+  case "$(ask_get "$1" retry_key)" in ""|none) return 1 ;; esac
+}
+
 # ask_reconcile <id> — under the lock: an answer file wins over waiting|timed-out; a dead waiter
 # times out (a permission ask is withdrawn); a dead delivery claimer gives the answer back.
 ask_reconcile() {
@@ -75,7 +87,7 @@ ask_reconcile() {
   fi
   case "$st" in
     waiting) ask_alive "$(ask_get "$id" waiter_pid)" && return 0
-      if [ "$(ask_get "$id" kind)" = permission ]; then ask_set "$id" '.state = "withdrawn"'
+      if [ "$(ask_get "$id" kind)" = permission ] && ! ask_retry_ok "$id"; then ask_set "$id" '.state = "withdrawn"'
       else ask_set "$id" '.state = "timed-out"'; fi ;;
     delivering) ask_alive "$(ask_get "$id" claimed_by)" \
       || ask_set "$id" '.state = "answered" | del(.claimed_by)' ;;
@@ -116,11 +128,13 @@ ask_fp() {  # ask_fp <kind> <agent_id> <payload json>
 
 # ask_file <ask json file> — {kind, role, attempt, round, session_id, agent_id, agent_type,
 # payload, tier, tier_cause[, requires_decision]} → prints a-<n> and sets ASK_ID, ASK_NEW (1 for
-# a new ask, 0 for a claim; call it without a subshell to read them). Claims (question/plan/text
-# only) an ask of the same session and fp that is timed-out, or answered with no live waiter;
-# never a waiting one. Else files a-<max+1>. The ask is published with its tier already set.
+# a new ask, 0 for a claim; call it without a subshell to read them). Claims (question/plan/text)
+# the first ask of the same session and fp that is timed-out, or answered with no live waiter;
+# never a waiting one. A permission claims only under ask_retry_ok's rule (see the header): one
+# match → claimed, several → all withdrawn; the same call with another key withdraws its old ask.
+# Else files a-<max+1>. The ask is published with its tier already set.
 ask_file() {
-  local in="$1" kind sid fp id n st w
+  local in="$1" kind sid fp id n st w rk hs att aid cands
   ASK_ID=""; ASK_NEW=0
   kind="$(jq -r .kind "$in")"; sid="$(jq -r '.session_id // ""' "$in")"
   fp="$(ask_fp "$kind" "$(jq -r '.agent_id // ""' "$in")" "$(jq -c '.payload' "$in")")"
@@ -137,6 +151,38 @@ ask_file() {
       esac
       ask_unlock; ASK_ID="$id"; echo "$id"; return 0
     done
+  elif [ "$(jq -r '.tier // ""' "$in")" = operator ] && rk="$(jq -r '.retry_key // ""' "$in")" \
+      && [ -n "$rk" ] && [ "$rk" != none ]; then
+    # An operator-tier permission retried after its deadline claims the one ask it repeats.
+    hs="$(jq -r '.hook_session_id // ""' "$in")"; att="$(jq -r '.attempt | tostring' "$in")"
+    aid="$(jq -r '.agent_id // ""' "$in")"; cands=""
+    for id in $(ask_ids); do
+      [ "$(ask_get "$id" kind)" = permission ] && [ "$(ask_get "$id" session_id)" = "$sid" ] \
+        && [ "$(ask_get "$id" hook_session_id)" = "$hs" ] && [ "$(ask_get "$id" attempt)" = "$att" ] \
+        && [ "$(ask_get "$id" agent_id)" = "$aid" ] && [ "$(ask_get "$id" fp)" = "$fp" ] \
+        && [ "$(ask_get "$id" tier)" = operator ] \
+        && jq -e '.payload | has("cwd")' "$ASK_D/$id.json" >/dev/null 2>&1 || continue
+      ask_reconcile "$id"; st="$(ask_get "$id" state)"
+      if [ "$(ask_get "$id" retry_key)" != "$rk" ]; then
+        # Superseded: the same call, but a file it names changed — that approval cannot apply.
+        [ "$st" != timed-out ] || ask_set "$id" '.state = "withdrawn"'
+        continue
+      fi
+      case "$st" in
+        timed-out) cands="$cands $id" ;;
+        answered) ask_alive "$(ask_get "$id" waiter_pid)" || cands="$cands $id" ;;
+      esac
+    done
+    case "$(wc -w <<<"$cands" | tr -d ' ')" in
+      0) ;;
+      1) id="${cands# }"
+        if [ "$(ask_get "$id" state)" = timed-out ]; then
+          ask_set "$id" '.state = "waiting" | .waiter_pid = ($p | tonumber)' --arg p "${ASK_PID:-$$}"
+        else ask_set "$id" '.waiter_pid = ($p | tonumber)' --arg p "${ASK_PID:-$$}"; fi
+        ask_unlock; ASK_ID="$id"; echo "$id"; return 0 ;;
+      # Ambiguous: no guess. Each is withdrawn (the runner withdraws its decision), a new ask filed.
+      *) for id in $cands; do ask_set "$id" '.state = "withdrawn"'; done ;;
+    esac
   fi
   n="$(ls "$ASK_D" 2>/dev/null | sed -n 's/^a-\([0-9]*\)\.json$/\1/p' | sort -n | tail -n 1)"
   n=$(( ${n:-0} + 1 )); id="a-$n"
@@ -185,13 +231,13 @@ ask_claim_delivery() { ask_cas "$1" "answered" delivering claimed_by; }
 ask_delivered() { ask_cas "$1" "delivering" delivered; }
 
 # ask_timeout <id> → prints the state after the waiter's deadline: answered (deliver after all),
-# timed-out, or withdrawn (a permission ask).
+# timed-out, or withdrawn (a permission ask that ask_retry_ok refuses).
 ask_timeout() {
   local st
   ask_lock || return 1
   ask_reconcile "$1"; st="$(ask_get "$1" state)"
   if [ "$st" = waiting ]; then
-    if [ "$(ask_get "$1" kind)" = permission ]; then st=withdrawn; else st=timed-out; fi
+    if [ "$(ask_get "$1" kind)" = permission ] && ! ask_retry_ok "$1"; then st=withdrawn; else st=timed-out; fi
     ask_set "$1" '.state = $s' --arg s "$st"
   fi
   ask_unlock; echo "$st"
@@ -269,15 +315,40 @@ ask_follow_up() {
 }
 
 # ask_reply_map <id> <reply> — a multi-question reply `<header>: <label>; …` → the canonical
-# {question: label} map, or rc≠0 (count or header mismatch). decision answer (the lead's copy) and
-# the hook's Operator check (the main checkout's) parse the Operator's words the same way.
+# {question: label} map, or rc≠0: a fragment that is no `<header>: <label>`, an unknown or repeated
+# header, or a key set other than the ask's questions — what the sender would refuse anyway.
 ask_reply_map() {
   jq -cS --arg r "$2" '[.payload.tool_input.questions[] | {k: (.header // .question), q: .question}] as $qs
-    | ($r | split(";") | map(capture("^\\s*(?<h>[^:]+?)\\s*:\\s*(?<l>.+?)\\s*$"))) as $ps
+    | ($r | split(";") | map(capture("^\\s*(?<h>[^:]+?)\\s*:\\s*(?<l>.+?)\\s*$") // error("fragment"))) as $ps
+    | if ($ps | map(.h) | unique | length) != ($ps | length) then error("duplicate") else . end
     | if ($ps | length) != ($qs | length) then error("count") else . end
     | [$ps[] | . as $p | ($qs | map(select(.k == $p.h)) | .[0]) as $m
-        | if $m == null then error("header") else {key: $m.q, value: $p.l} end] | from_entries' \
+        | if $m == null then error("header") else {key: $m.q, value: $p.l} end] | from_entries
+    | if (keys | sort) != ($qs | map(.q) | sort) then error("keys") else . end' \
     "$ASK_D/$1.json" 2>/dev/null
+}
+
+# ask_parse_reply <id> <d-id> <message> — the Operator's whole reply to a decision bound to ask
+# <id> → {"outcome","value","map"} (compact), or rc≠0. One parser for decision answer (the lead's
+# call) and the stage hook's re-verification (main checkout): the message, trimmed, must start
+# with "<d-id> "; permission|plan read `allow` | `deny[: <what instead>]`; several questions read
+# `<header>: <label>; …` (ask_reply_map); anything else is the answer text.
+ask_parse_reply() {
+  local id="$1" did="$2" m rest out="" val="" map=null
+  m="$(jq -rn --arg m "$3" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')" || return 1
+  case "$m" in "$did "*) rest="${m#"$did "}" ;; *) return 1 ;; esac
+  case "$(ask_get "$id" kind)" in
+    permission|plan)
+      case "$rest" in
+        allow) out=allow ;;
+        deny|"deny:"*) out=deny; val="${rest#deny}"; val="${val#:}"; val="${val# }" ;;
+        *) return 1 ;;
+      esac ;;
+    *) if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$id.json")" -gt 1 ]; then
+         map="$(ask_reply_map "$id" "$rest")" || return 1
+       else val="$rest"; fi ;;
+  esac
+  jq -cn --arg o "$out" --arg v "$val" --argjson m "$map" '{outcome: $o, value: $v, map: $m}'
 }
 
 # ask_text_form <answer json> — the answer as the stage reads it (wait, Stop block reason).

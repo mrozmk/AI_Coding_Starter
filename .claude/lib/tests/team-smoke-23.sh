@@ -320,6 +320,14 @@ for t in github jira none; do
     || fail "(r) $t-wrapup.md step 7 lacks the lead exception"
 done
 has "**Planner or wrapup menu:**" "$MAIN/.claude/team/prompts/teamlead.md" && fail "(r) the lead still answers a wrapup menu"
+# A product-fit hit always reaches the Operator: the lead opens a decision, a drop or a non-goal
+# change records `out of product scope`, never `too big for quick`.
+has "product-fit hit" "$SRC/.claude/team/prompts/teamlead.md" || fail "(r) the lead prompt does not route a product-fit hit"
+has "out of product scope" "$SRC/.claude/team/prompts/planner.md" || fail "(r) planner.md lacks the out-of-product-scope rule"
+has "change the PRD's non-goals first" "$SRC/.claude/team/prompts/planner-quick.md" || fail "(r) planner-quick.md lacks the non-goal change"
+grep -n 'too big for quick' "$SRC/.claude/commands/quick-change.md" | grep 'Product fit' | grep -qv 'out of product scope' \
+  && fail "(r) quick-change.md routes a product-fit hit to too big for quick"
+has "at least one trace id" "$SRC/.claude/commands/brainstorm.md" || fail "(r) brainstorm.md lacks the Traces predicate"
 # Round 1 has no accepted qa: "wrapup not done" means merge-check read round 2's records.
 mv "$TD/session.json" "$WORK/sj"
 run "$MAIN" bash .claude/lib/team-merge-check.sh alfa; expect 3 "wrapup not done" "(r) merge-check reads round 2"

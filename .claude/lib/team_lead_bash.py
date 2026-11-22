@@ -1,7 +1,9 @@
 """The per-run TeamLead's Bash check, run by guard-teamlead-bash.sh before every Bash call.
 
-Usage: python3 -I team_lead_bash.py <clone> <run> [<main checkout>] < command
+Usage: python3 -I team_lead_bash.py <clone> <run> [<main checkout>] [--trust clone] < command
        → exit 0 allowed · exit 2 refused, the reason on stdout
+       --trust clone: the guard runs from the clone (an older profile registered the clone's copy):
+       the owning scripts count from the clone's lib, as before the main-checkout tools.
 
 Refused:
   - a key or text sent into a session: tmux's send-keys/send/paste-buffer, hc keys/send/interrupt,
@@ -12,9 +14,9 @@ Refused:
   - any command that names a protected path, unless it only reads it or is one of the scripts that
     own those files. Protected: everything under the clone's and the main checkout's
     .agents/team/ except the lead's own files under runs/<run>/ (and its round dirs r<n>/), the clone's
-    .claude/ (the scripts and guards themselves) and any *.jsonl (a stage transcript). The owning
-    scripts count only when run from the clone's .claude/lib/ (nothing under costs/:
-    the lead runs no stage command). A redirection target, a `bash -c` string and a path inside a
+    and the main checkout's .claude/ (the scripts and guards themselves) and any *.jsonl (a stage
+    transcript). The owning scripts count only when run from the main checkout's .claude/lib/ — the
+    copy the runner and the stage hook run (nothing under costs/: the lead runs no stage command). A redirection target, a `bash -c` string and a path inside a
     word (`open('…/answers.md','w')`) count; a path behind $VAR or a backtick cannot be resolved
     and is refused when it names .agents/team.
 Best effort on command text: a path built at run time can pass (team-lead.md §7, limits).
@@ -90,17 +92,20 @@ def inbox_refusal(w, clone):
 
 
 class Paths:
-    def __init__(self, clone, run, main):
+    def __init__(self, clone, run, main, trust_clone=False):
         self.clone = os.path.realpath(clone)
         self.teams = [os.path.realpath(os.path.join(d, ".agents", "team"))
                       for d in {clone, main or clone}]
         self.own = os.path.realpath(os.path.join(clone, ".agents", "team", "runs", run))
-        # Resolved: a clone may link its .claude/ (or lib/) elsewhere.
-        self.claude = os.path.realpath(os.path.join(self.clone, ".claude"))
-        self.lib = os.path.realpath(os.path.join(self.clone, ".claude", "lib"))
+        # Resolved: a clone may link its .claude/ (or lib/) elsewhere. Both .claude/ trees are
+        # protected; the owning scripts run from the main checkout's lib (an older profile that
+        # registered the clone's guard: --trust clone, the clone's lib).
+        self.claude = [os.path.realpath(os.path.join(d, ".claude")) for d in [clone] + ([main] if main else [])]
+        owner = clone if trust_clone or not main else main
+        self.lib = os.path.realpath(os.path.join(owner, ".claude", "lib"))
 
     def protected(self, full):
-        if full.endswith(".jsonl") or c.under(full, [self.claude]):
+        if full.endswith(".jsonl") or c.under(full, self.claude):
             return True
         if not any(c.under(full, [t]) or full == t for t in self.teams):
             return False
@@ -123,13 +128,13 @@ class Paths:
         return False
 
 
-def check(clone, run, main, cmd):
+def check(clone, run, main, cmd, trust_clone=False):
     """→ None when allowed, else the refusal line."""
     try:
         cmds = c.canonical(cmd)
     except c.Refuse as e:
         return "TeamLead Bash: %s" % e
-    paths = Paths(clone, run, main)
+    paths = Paths(clone, run, main, trust_clone)
     # Every directory a `cd` chain can reach is a base, each target joined to every earlier base
     # (`cd a && cd ../team/…`); a target behind $VAR or a backtick cannot be followed at all.
     bases = [paths.clone]
@@ -158,10 +163,14 @@ def check(clone, run, main, cmd):
 
 
 def main(argv):
+    trust_clone = argv[-2:] == ["--trust", "clone"]
+    if trust_clone:
+        argv = argv[:-2]
     if len(argv) not in (3, 4):
         print(__doc__.strip().split("\n\n")[1], file=sys.stderr)
         return 2
-    why = check(argv[1], argv[2], argv[3] if len(argv) == 4 else None, sys.stdin.read())
+    why = check(argv[1], argv[2], (argv[3] or None) if len(argv) == 4 else None, sys.stdin.read(),
+                trust_clone)
     if why:
         print(why)
         return 2

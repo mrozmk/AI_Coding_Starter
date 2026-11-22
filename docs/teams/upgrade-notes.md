@@ -3,6 +3,42 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The TeamLead runs the team tools from the main checkout; follow-ups land on the board
+
+**Before:** the per-run TeamLead called `bash .claude/lib/team-answer.sh|team-lead.sh|team-verdict.sh`
+in its clone, so a ticket that changed those files changed how its own lead answered, and a clone
+cut before the ask channel was refused at runner start ("clone base lacks the ask channel"). An
+operator-tier permission ask was withdrawn at the stage hook's deadline, so an Operator answer that
+came later was spent; `decision answer` judged the Operator's reply with its own parser and the
+hook with another, so a recorded answer could be refused at delivery; after a lead relaunch the
+previous lead's answer no longer verified. Wrapup follow-ups and `/github-sync` issues were created
+off the Project board.
+
+**Now:** the lead's prompt and materialised profile name every team tool by the main checkout's
+path (the clone spelling is denied), both lead guards are registered from the main checkout, and
+the lead's SessionStart `pending` runs the main checkout's `team-lead.sh`. An operator-tier
+permission ask whose inputs the checker can pin (its `retry:` key) times out instead of being
+withdrawn and is claimed by the stage's retry of the same call; `ask_parse_reply` parses the
+Operator's reply on both sides; the runner records every lead session of a run in the main
+checkout's anchor (`lead_sessions`) and the answer check reads only those. `create-followup` and
+`create-issue` add the issue to the Project; a failed add is a `warning:` line, not an error.
+The frontmatter setters keep backslashes and quotes verbatim.
+
+**Action:**
+1. Take the change with `/maintain:sync-from-starter` first — `team-tracker.sh` is a core file, not
+   in the team manifest, and `/setup:teams` refuses a stale core in its preflight — then run
+   `/setup:teams` for the team layer and resolve the conflicts it reports.
+2. Pull with no team run active. For an active run, from the main checkout: `bash
+   .claude/lib/team-run.sh <team> stop`, then `bash .claude/lib/team-lead.sh end <team>` (the
+   runner stop leaves the lead alive and a resume would reuse it with its old profile), update,
+   then `/start-team <team>`. Never `team-lead.sh relaunch` on a live lead.
+3. A clone on an old base no longer needs a refusal for its sender. It keeps its own SessionStart
+   registry hook (which prints the clone's `pending`) until it takes this change; the lead's prompt
+   runs the main checkout's `pending` first anyway.
+4. Wrapup follow-ups and `/github-sync` issues are added to the Project. A failed add is a warning
+   in the wrapup's record and summary, repaired on the wrapup's resume (`project_add: "failed"` →
+   `team-tracker.sh project-add <issue>`).
+
 ## The TeamLead answers every stop through hooks; the screen sender is retired
 
 **Before:** the per-run TeamLead answered a stage by having `team-answer.sh <team> <role>

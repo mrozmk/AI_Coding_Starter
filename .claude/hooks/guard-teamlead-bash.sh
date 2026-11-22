@@ -27,6 +27,20 @@ SID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""' 2>/dev/null)
 [ -n "$SID" ] && team_lead_caller "$SID" || refuse "TeamLead identity not current — restart the lead"
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [ -n "$CMD" ] || exit 0
-WHY=$(printf '%s' "$CMD" | python3 -I "$LIB/team_lead_bash.py" "$ROOT" "$(team_lead_json run)" \
-  "$(team_lead_json main_root)" 2>&1) || refuse "${WHY:-TeamLead Bash guard: check failed — refused}"
+# The guard trusts the checkout it runs from: registered from the main checkout (materialize) its
+# own checkout is the main one and the owning scripts are main's; registered from the clone (an
+# older profile) it keeps the clone's scripts (--trust clone) until the profile is re-materialised.
+OWN="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd -P)" || refuse "TeamLead Bash guard: cannot resolve its checkout — refused"
+PROOT="$(pwd -P)"
+MR="$(team_lead_json main_root)"
+if [ "$OWN" != "$PROOT" ]; then
+  if [ -n "$MR" ] && [ "$( (cd "$MR" 2>/dev/null && pwd -P) || echo "$MR")" != "$OWN" ]; then
+    refuse "TeamLead identity: main_root differs from the guard's checkout — the profile and the main checkout disagree; the Operator re-materialises it from the main checkout: \`bash .claude/lib/team-lead.sh materialize <team>\`, then \`team-lead.sh relaunch <team>\`"
+  fi
+  WHY=$(printf '%s' "$CMD" | python3 -I "$LIB/team_lead_bash.py" "$ROOT" "$(team_lead_json run)" "$OWN" 2>&1) \
+    || refuse "${WHY:-TeamLead Bash guard: check failed — refused}"
+else
+  WHY=$(printf '%s' "$CMD" | python3 -I "$LIB/team_lead_bash.py" "$ROOT" "$(team_lead_json run)" \
+    "$MR" --trust clone 2>&1) || refuse "${WHY:-TeamLead Bash guard: check failed — refused}"
+fi
 exit 0

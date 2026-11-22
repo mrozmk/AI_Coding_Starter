@@ -74,8 +74,9 @@ newrun() {  # newrun <id> — a fresh run (its own asks dir), the coder stage at
   RUN="beta-$1"; echo "$RUN" > "$TD/run"; RD="$TD/runs/$RUN"; AD="$RD/asks"; mkdir -p "$RD"
   jq -n --arg r "$RUN" '{team: "beta", role: "coder", run: $r, round: 1, attempt: 1, session_id: "sid-1", ticket: "1"}' > "$TD/session.json"
   jq -n --arg r "$RUN" --arg m "$MAIN" --arg cc "$T/cc" '{team: "beta", run: $r, session_id: "lid-1", main_root: $m, claude_config_dir: $cc}' > "$TD/teamlead.json"
-  jq -n --arg r "$RUN" --arg b "$BASE" --arg c "$(cd "$CLONE" && pwd -P)" \
-    '{team: "beta", ticket: "1", branch: "feat/x", line: "main", base_sha: $b, clone: $c, run: $r}' > "$MAIN/.agents/team/anchors/beta.json"
+  jq -n --arg r "$RUN" --arg b "$BASE" --arg c "$(cd "$CLONE" && pwd -P)" --arg cc "$T/cc" \
+    '{team: "beta", ticket: "1", branch: "feat/x", line: "main", base_sha: $b, clone: $c, run: $r,
+      lead_sessions: {run: $r, ids: ["lid-1"], current_id: "lid-1", config_dir: $cc}}' > "$MAIN/.agents/team/anchors/beta.json"
   rm -f "$TD/cancel" "$TD/closing" "$TD/acked"
 }
 pl() {  # pl <fixture> [askfile] → $T/p.json with the clone's cwd
@@ -87,11 +88,11 @@ H() {  # H <out> [payload] — run the hook in the foreground (TO = registration
 }
 HB() { cp "$T/p.json" "$T/p-$1.json"; H "$T/$1.out" "$T/p-$1.json" & HP=$!; sleep 0.3; }
 wf() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt "${2:-50}" ]; do sleep 0.2; i=$((i + 1)); done; [ -e "$1" ]; }
-L() {  # L <args…> — the lead's sender, from the clone → LRC, $T/l.out
-  (cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=beta bash .claude/lib/team-answer.sh beta "$@") \
+L() {  # L <args…> — the lead's sender, the main checkout's copy, cwd the clone → LRC, $T/l.out
+  (cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=beta bash "$MAIN/.claude/lib/team-answer.sh" beta "$@") \
     > "$T/l.out" 2>&1; LRC=$?
 }
-TL() { (cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=beta bash .claude/lib/team-lead.sh "$@") > "$T/tl.out" 2>&1; TLRC=$?; }
+TL() { (cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=beta bash "$MAIN/.claude/lib/team-lead.sh" "$@") > "$T/tl.out" 2>&1; TLRC=$?; }
 st() { jq -r .state "$AD/$1.json"; }
 j() { jq -r "$2" "$1" 2>/dev/null; }
 LT="$T/cc/projects/$(printf '%s' "$CLONE" | sed 's/[^A-Za-z0-9]/-/g')/lid-1.jsonl"
@@ -99,6 +100,16 @@ mkdir -p "$(dirname "$LT")"
 say_op() {  # say_op <uuid> <text> — an Operator message typed in the lead's window
   jq -nc --arg u "$1" --arg t "$2" --arg ts "2099-01-01T00:00:00Z" \
     '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $t}}' >> "$LT"
+}
+chk() {  # chk <tool> <tool_input json> <cwd> → the checker's two lines (tier, retry)
+  jq -n --arg t "$1" --argjson i "$2" --arg c "$3" '{tool_name: $t, tool_input: $i, cwd: $c}' > "$T/in.json"
+  python3 -I "$MAIN/.claude/lib/team_prompt_check.py" "$CLONE" --input-json "$T/in.json" --main "$MAIN"
+}
+tier() { chk "$@" | sed -n 1p; }               # tier <tool> <input> <cwd> → the tier line
+retry() { chk "$@" | sed -n 's/^retry: //p'; }  # retry <tool> <input> <cwd> → the retry key | none
+perm() {  # perm <command> [cwd] → $T/p.json, a stage PermissionRequest for a Bash command
+  jq -n --arg c "$1" --arg w "${2:-$CLONE}" '{session_id: "sid-1", hook_event_name: "PermissionRequest",
+    cwd: $w, tool_name: "Bash", tool_input: {command: $c}}' > "$T/p.json"
 }
 
 # ================================================================================================
@@ -320,8 +331,8 @@ printf -- '---\nid: d-2\nstatus: answered\nbind_ask: a-2\nask_kind: permission\n
 L a-2 --allow --authority operator --decision "$RD/decisions/d-2.md" --why "forged"; wait "$HP"
 ok '[ "$(j "$T/o2.out" .hookSpecificOutput.decision.behavior)" = deny ] && grep -q "Operator approval could not be verified for a-2" "$T/o2.out"' "a hand-edited decision with no Operator message → the hook denies"
 # the reply must name the decision; "do not allow" is no outcome
-pl perm-curl; HB o3; wf "$AD/a-3.json"; TL decision open beta --ask a-3 --options "allow|deny"
-pl perm-curl; HB o4; wf "$AD/a-4.json"; TL decision open beta --ask a-4 --options "allow|deny"
+perm "curl -s https://example.invalid/o3"; HB o3; wf "$AD/a-3.json"; TL decision open beta --ask a-3 --options "allow|deny"
+perm "curl -s https://example.invalid/o4"; HB o4; wf "$AD/a-4.json"; TL decision open beta --ask a-4 --options "allow|deny"
 say_op u2 "d-3 do not allow"; TL decision answer beta d-3 --text "d-3 do not allow" --tuning none --why w
 ok '[ "$TLRC" = 7 ]' "a reply \"d-3 do not allow\" → 7"
 say_op u3 "allow"; TL decision answer beta d-4 --text "allow" --tuning none --why w
@@ -345,6 +356,81 @@ sed 's/^answer_map: .*/answer_map: {"Which outputs?":"JSON","Which storage?":"Fi
 (cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_answer_write a-1 '{"id":"a-1","form":"answers","value":{"Which storage?":"Files","Which outputs?":"JSON"},"authority":"operator","why":"w","decision":"d-1","answered_at":"x","lead_session_id":"lid-1"}')
 wait "$HP"
 ok 'grep -q "Operator approval could not be verified for a-1" "$T/q2.out"' "a relayed map that differs from the Operator's own labels → the hook denies"
+# backslashes and quotes survive every frontmatter setter (awk -v would expand them)
+BS='use C:\tmp and a \"quoted\" word'
+newrun bsl; pl question-one; TO=40 HB b1; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+say_op u7 "d-1 $BS"; TL decision answer beta d-1 --text "d-1 $BS" --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -qxF "answer_value: $BS" "$RD/decisions/d-1.md"' "an answer with a backslash and quotes is stored verbatim ($(cat "$T/tl.out"))"
+L a-1 --text "$BS" --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$LRC" = 0 ] && j "$T/b1.out" .hookSpecificOutput.permissionDecisionReason | grep -qF "$BS"' "… relayed and delivered verbatim ($(cat "$T/l.out"))"
+newrun bsl2; pl question-two; TO=40 HB b2; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+say_op u8 'd-1 Storage: C:\tmp; Outputs: JSON'; TL decision answer beta d-1 --text 'd-1 Storage: C:\tmp; Outputs: JSON' --tuning none --why w
+ok 'jq -e . <<<"$(sed -n "s/^answer_map: //p" "$RD/decisions/d-1.md")" >/dev/null' "an answer_map holding a backslash stays valid JSON"
+L a-1 --answers '{"Which storage?": "C:\\tmp", "Which outputs?": "JSON"}' --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$LRC" = 0 ] && ! grep -q "could not be verified" "$T/b2.out" && [ "$(j "$T/b2.out" ".hookSpecificOutput.updatedInput.answers[\"Which storage?\"]")" = "C:\\tmp" ]' "… and its relay is delivered ($(cat "$T/l.out"))"
+# one parser on both sides (ask_parse_reply): the writer records only what the hook accepts
+newrun prs; pl perm-curl; TO=60 HB p1; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"
+say_op uA "ok, d-1 allow"
+TL decision answer beta d-1 --text "ok, d-1 allow" --tuning none --why w; ok '[ "$TLRC" = 7 ]' "a reply with a preamble → 7"
+TL decision answer beta d-1 --text "d-1 allow" --tuning none --why w; ok '[ "$TLRC" = 7 ]' "… and its shortened form matches no whole message → 7"
+say_op uB "d-1 deny: use the mirror and log it"
+TL decision answer beta d-1 --text "d-1 deny: use the mirror" --tuning none --why w; ok '[ "$TLRC" = 7 ] && grep -q "^status: pending$" "$RD/decisions/d-1.md"' "a deny whose alternative the lead shortened → 7, still pending"
+say_op uC "  d-1 allow  "
+TL decision answer beta d-1 --text "  d-1 allow  " --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -q "^answer_outcome: allow$" "$RD/decisions/d-1.md"' "a padded verbatim reply is recorded ($(cat "$T/tl.out"))"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$LRC" = 0 ] && [ "$(j "$T/p1.out" .hookSpecificOutput.decision.behavior)" = allow ]' "… and delivered by the hook ($(cat "$T/l.out"))"
+newrun prs2; pl question-two; TO=40 HB p2; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+say_op uD "d-1 Storage: Postgres; Outputs: CSV, XML"
+TL decision answer beta d-1 --text "d-1 Storage: Postgres; Outputs: CSV" --tuning none --why w; ok '[ "$TLRC" = 7 ]' "a multi-question reply with a shortened label → 7"
+say_op uE "d-1 Storage: SQLite; Storage: Files"
+TL decision answer beta d-1 --text "d-1 Storage: SQLite; Storage: Files" --tuning none --why w; ok '[ "$TLRC" = 7 ]' "a header named twice → 7"
+say_op uF "d-1 Storage: SQLite; Outputs: JSON; and hurry"
+TL decision answer beta d-1 --text "d-1 Storage: SQLite; Outputs: JSON; and hurry" --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -q "^status: pending$" "$RD/decisions/d-1.md"' "a malformed trailing fragment → 7, the decision stays pending"
+kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+newrun prs3; mkdir -p "$RD/decisions"; pl perm-curl; HB p3; wf "$AD/a-1.json"; say_op uG "d-1 deny: other words"
+printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: deny\nanswer_value: fetch from the mirror\nanswered_via: teamlead-window uG\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"
+L a-1 --deny "fetch from the mirror" --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok 'grep -q "Operator approval could not be verified for a-1" "$T/p3.out"' "a hand-edited decision whose message says other words → the hook denies"
+newrun prs4; mkdir -p "$RD/decisions"; pl perm-curl; HB p4; wf "$AD/a-1.json"
+jq -nc '{type: "user", uuid: "uH", timestamp: "2000-06-01T00:00:00Z", message: {role: "user", content: "d-1 allow"}}' >> "$LT"
+printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\nask_kind: permission\nanswer_outcome: allow\nanswered_via: teamlead-window uH\ncreated_at: 2001-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-1.md"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok 'grep -q "Operator approval could not be verified for a-1" "$T/p4.out"' "a message typed before the decision opened → the hook denies"
+# the run's lead sessions (the anchor's lead_sessions): relaunch, forgery, config dir, /clear, legacy
+ANC="$MAIN/.agents/team/anchors/beta.json"; LTD="$(dirname "$LT")"
+sayx() { jq -nc --arg u "$2" --arg t "$3" '{type: "user", uuid: $u, timestamp: "2099-01-01T00:00:00Z", message: {role: "user", content: $t}}' >> "$1"; }
+anc() { jq "$1" "$ANC" > "$T/anc" && mv "$T/anc" "$ANC"; }
+tlj() { jq "$1" "$TD/teamlead.json" > "$T/tlj" && mv "$T/tlj" "$TD/teamlead.json"; }
+opask() { perm "curl -s https://example.invalid/$1"; TO=40 HB "$1"; wf "$AD/a-$2.json"; TL decision open beta --ask "a-$2" --options "allow|deny"; }
+relay() { L "a-$1" --allow --authority operator --decision "$RD/decisions/d-$1.md" --why w; wait "$HP"; }
+newrun rel; opask r1 1; sayx "$LT" uR1 "d-1 allow"; TL decision answer beta d-1 --text "d-1 allow" --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -qx "answered_session: lid-1" "$RD/decisions/d-1.md"' "decision answer records answered_session ($(cat "$T/tl.out"))"
+tlj '.session_id = "lid-0"'; anc '.lead_sessions.ids += ["lid-0"] | .lead_sessions.current_id = "lid-0"'
+relay 1; ok '[ "$LRC" = 0 ] && [ "$(j "$T/r1.out" .hookSpecificOutput.decision.behavior)" = allow ]' "after a relaunch (to an id sorting first) the previous lead's answer is delivered ($(cat "$T/l.out"))"
+opask r2 2; sayx "$LTD/lid-0.jsonl" uR2 "d-2 allow"; TL decision answer beta d-2 --text "d-2 allow" --tuning none --why w
+grep -v '^answered_session: ' "$RD/decisions/d-2.md" > "$T/d2" && mv "$T/d2" "$RD/decisions/d-2.md"
+relay 2; ok '[ "$(j "$T/r2.out" .hookSpecificOutput.decision.behavior)" = allow ]' "a decision without answered_session verifies against the anchor's current_id"
+opask r3 3; sayx "$LTD/lid-0.jsonl" uR3 "d-3 allow"; TL decision answer beta d-3 --text "d-3 allow" --tuning none --why w
+echo lid-x > "$RD/lead-9.session"; cp "$LTD/lid-0.jsonl" "$LTD/lid-x.jsonl"
+sed 's/^answered_session: .*/answered_session: lid-x/' "$RD/decisions/d-3.md" > "$T/d3" && mv "$T/d3" "$RD/decisions/d-3.md"
+relay 3; ok 'grep -q "could not be verified for a-3" "$T/r3.out"' "an answered_session the anchor does not list → the hook denies"
+CC2="$T/cc2/projects/$(basename "$LTD")"; mkdir -p "$CC2"; opask r4 4; sayx "$CC2/lid-0.jsonl" uR4 "d-4 allow"
+tlj ".claude_config_dir = \"$T/cc2\""; TL decision answer beta d-4 --text "d-4 allow" --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -q "^status: pending$" "$RD/decisions/d-4.md"' "a clone-side config dir with a forged transcript gives the writer no evidence"
+printf -- '---\nid: d-4\nstatus: answered\nbind_ask: a-4\nask_kind: permission\nanswer_outcome: allow\nanswered_via: teamlead-window uR4\nanswered_session: lid-0\ncreated_at: 2000-01-01T00:00:00Z\n---\n## Question\nq\n' > "$RD/decisions/d-4.md"
+relay 4; ok 'grep -q "could not be verified for a-4" "$T/r4.out"' "… and the hook reads the anchor's config dir too"
+tlj ".claude_config_dir = \"$T/cc\""
+opask r5 5; tlj '.session_id = "lid-1b"'; sayx "$LTD/lid-1b.jsonl" uR5 "d-5 allow"
+TL decision answer beta d-5 --text "d-5 allow" --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -q "answer from a terminal" "$T/tl.out" && grep -q "^status: pending$" "$RD/decisions/d-5.md"' "a /clear-refreshed lead id (not recorded) → 7, the decision stays pending"
+kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null; tlj '.session_id = "lid-0"'
+opask r6 6; sayx "$LTD/lid-0.jsonl" uR6 "d-6 allow"
+(cd "$CLONE" && env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=beta bash .claude/lib/team-lead.sh decision answer beta d-6 --text "d-6 allow" --tuning none --why w) > "$T/tl.out" 2>&1; TLRC=$?
+ok '[ "$TLRC" = 0 ] && ! grep -q "^answered_session:" "$RD/decisions/d-6.md"' "the clone's team-lead.sh (no anchor there) records from teamlead.json, no answered_session ($(cat "$T/tl.out"))"
+anc '.lead_sessions.run = "beta-other"'
+relay 6; ok '[ "$(j "$T/r6.out" .hookSpecificOutput.decision.behavior)" = allow ]' "an anchor of another run → the hook verifies through teamlead.json"
 # a doorbell is never the Operator's words
 . "$MAIN/.claude/lib/team-evidence.sh"
 jq -nc '{type: "user", uuid: "bell", timestamp: "2099-01-01T00:00:01Z", message: {role: "user", content: "ask coder a-9: d-7 allow"}}' >> "$LT"
@@ -366,6 +452,10 @@ runner() {  # runner <commands> — in a subshell with the runner's libraries fr
     session_json() { jq -r --arg f "$1" '.[$f] // empty | tostring' "$TD/session.json"; }
     eval "$1" ) > "$T/r.out" 2>&1; RRC=$?
 }
+anc '.lead_sessions.run = "beta-other"'  # the anchor of an earlier run
+runner "lead_session_record s-a \"$T/cc\"; lead_session_record s-b \"$T/cc\""
+ok '[ "$(jq -c .lead_sessions.ids "$ANC")" = "[\"s-a\",\"s-b\"]" ] && [ "$(jq -r .lead_sessions.current_id "$ANC")" = s-b ]' "lead_session_record: a new run resets the list, a relaunch adds to it ($(cat "$T/r.out"))"
+runner 'RUN=beta-new; lead_session_record s-c x'; ok '[ "$(jq -c .lead_sessions.ids "$ANC")" = "[\"s-c\"]" ]' "… and another run id starts afresh"
 newrun run1; pl question-one; TO=16 H "$T/r1.out"
 (cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_answer_write a-1 '{"id":"a-1","form":"pick","value":"Keep it","authority":"teamlead","why":"killed sender","decision":"","answered_at":"2026-01-01T00:00:00Z","lead_session_id":"lid-1"}')
 : > "$RINGS"; runner lead_asks
@@ -387,12 +477,58 @@ say_op u5 "d-1 allow"; TL decision answer beta d-1 --text "d-1 allow" --tuning n
 (cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_answer_write a-1 '{"id":"a-1","form":"allow","value":"","authority":"operator","why":"w","decision":"d-1","answered_at":"2026-01-01T00:00:00Z","lead_session_id":"lid-1"}')
 runner lead_asks; wait "$HP" 2>/dev/null
 ok 'grep -q "^status: dispatched$" "$RD/decisions/d-1.md"' "a sender killed before auth_dispatch: the runner marks the decision dispatched"
-# an operator-tier permission ask withdrawn by its hook's deadline takes its pending decision along
+# an operator-tier permission ask outlives its hook's deadline: timed-out, its decision kept, the
+# Operator's later answer claimed by the stage's retry of the same call
+answer_op() {  # answer_op <d-n> <a-n> — the Operator types the allow reply, the lead records and relays it
+  say_op "u-$RUN-$1" "$1 allow"; TL decision answer beta "$1" --text "$1 allow" --tuning none --why w
+  L "$2" --allow --authority operator --decision "$RD/decisions/$1.md" --why w
+}
+waitst() { local i=0; while [ "$(st "$1")" != "$2" ] && [ "$i" -lt 50 ]; do sleep 0.2; i=$((i + 1)); done; }
 newrun ptd; pl perm-curl; TO=21 HB pt; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"
-wait "$HP" 2>/dev/null; : > "$RINGS"
-runner lead_asks
-ok '[ "$(st a-1)" = withdrawn ] && grep -q "^status: withdrawn$" "$RD/decisions/d-1.md" && grep -q "ask coder a-1 withdrawn — timed out, its decision withdrawn" "$RINGS"' "a timed-out permission ask: lead_asks withdraws its pending decision and rings the lead"
-: > "$RINGS"; runner lead_asks; ok '[ ! -s "$RINGS" ]' "the timed-out ask's decision is withdrawn once"
+wait "$HP" 2>/dev/null; : > "$RINGS"; runner lead_asks
+ok '[ "$(st a-1)" = timed-out ] && grep -q "^status: pending$" "$RD/decisions/d-1.md" && ! grep -q withdrawn "$RINGS" && grep -q "waits for the Operator.s decision and stays open" "$T/pt.out"' "an operator permission ask times out, its decision stays pending, nothing withdrawn"
+answer_op d-1 a-1; ok '[ "$LRC" = 0 ] && [ "$(st a-1)" = answered ]' "the Operator's late answer is relayed ($(cat "$T/l.out"))"
+TO=21 H "$T/pt2.out"
+ok '[ ! -e "$AD/a-2.json" ] && [ "$(j "$T/pt2.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ "$(st a-1)" = delivered ]' "the retry of the same call claims it and gets the allow"
+TO=21 HB pt3; wf "$AD/a-2.json"; ok '[ -e "$AD/a-2.json" ]' "a further retry files a new ask"; kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+newrun pcwd; mkdir -p "$CLONE/sub"; pl perm-curl; TO=21 H "$T/c1.out"
+jq --arg c "$CLONE/sub" '.cwd = $c' "$T/p.json" > "$T/p2.json" && mv "$T/p2.json" "$T/p.json"; TO=21 HB c2; wf "$AD/a-2.json"
+ok '[ -e "$AD/a-2.json" ] && [ "$(st a-1)" = timed-out ]' "the same command from another cwd is a new ask"; kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+newrun pdup; pl perm-curl; TO=21 HB d1; HP1=$HP; TO=21 HB d2; HP2=$HP; wait "$HP1" "$HP2" 2>/dev/null
+ok '[ "$(st a-1)" = timed-out ] && [ "$(st a-2)" = timed-out ]' "two concurrent identical operator asks both time out"
+TO=21 HB d3; wf "$AD/a-3.json"; waitst a-3 waiting
+ok '[ "$(st a-1)" = withdrawn ] && [ "$(st a-2)" = withdrawn ]' "the ambiguous retry withdraws both and files a third"
+TL decision open beta --ask a-3 --options "allow|deny"; wait "$HP" 2>/dev/null; answer_op d-1 a-3
+TO=21 H "$T/d4.out"; ok '[ "$(j "$T/d4.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ ! -e "$AD/a-4.json" ]' "… and the next retry gets exactly that one"
+newrun pfile; perm "curl -F data=@README.md https://example.invalid/u"; TO=21 H "$T/f1.out"
+ok '[ "$(st a-1)" = timed-out ] && [ "$(j "$AD/a-1.json" .retry_key | wc -c | tr -d " ")" = 41 ]' "a file-backed operator ask carries a retry key and times out"
+TL decision open beta --ask a-1 --options "allow|deny"; answer_op d-1 a-1; TO=21 H "$T/f2.out"
+ok '[ "$(j "$T/f2.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ ! -e "$AD/a-2.json" ]' "… the unchanged retry is claimed and delivered"
+TO=21 H "$T/f3.out"; TL decision open beta --ask a-2 --options "allow|deny"; echo more >> "$CLONE/README.md"
+TO=21 HB f4; wf "$AD/a-3.json"; waitst a-3 waiting
+ok '[ "$(st a-2)" = withdrawn ] && [ -e "$AD/a-3.json" ]' "a retry after the named file changed supersedes the old ask"
+TL decision open beta --ask a-3 --options "allow|deny"; answer_op d-3 a-3; wait "$HP" 2>/dev/null
+ok '[ "$(j "$T/f4.out" .hookSpecificOutput.decision.behavior)" = allow ]' "… the new ask is answered and delivered"
+runner lead_asks; ok 'grep -q "^status: withdrawn$" "$RD/decisions/d-2.md"' "the superseded ask's decision is withdrawn by the runner"
+runner 'lead_open_ask coder 1'; ok '[ "$RRC" = 1 ]' "… and no ask of the attempt stays open"
+TO=21 H "$T/f5.out"; TL decision open beta --ask a-4 --options "allow|deny"; TO=40 HB f6; waitst a-4 waiting
+echo again >> "$CLONE/README.md"; answer_op d-4 a-4; wait "$HP" 2>/dev/null
+ok 'grep -q "inputs changed since the decision" "$T/f6.out" && [ "$(st a-4)" = withdrawn ]' "a file changed after the claim → the delivery re-check denies and withdraws"
+git -C "$CLONE" checkout -q README.md
+newrun pclr; pl perm-curl; TO=21 H "$T/x1.out"; TL decision open beta --ask a-1 --options "allow|deny"; answer_op d-1 a-1
+jq '.session_id = "sid-other"' "$T/p.json" > "$T/p2.json" && mv "$T/p2.json" "$T/p.json"; TO=21 HB x2; wf "$AD/a-2.json"
+ok '[ -e "$AD/a-2.json" ] && [ "$(st a-1)" = answered ]' "another stage conversation (a /clear) never claims a late answer"; kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
+newrun punc; perm 'curl "$URL"'; TO=21 HB u1; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"; wait "$HP" 2>/dev/null
+ok '[ "$(st a-1)" = withdrawn ] && [ "$(j "$AD/a-1.json" .retry_key)" = none ]' "a \$VAR operand cannot be pinned: withdrawn at its deadline"
+runner lead_asks; ok 'grep -q "^status: withdrawn$" "$RD/decisions/d-1.md"' "… the runner withdraws its decision"
+TO=21 HB u2; wf "$AD/a-2.json"; TL decision open beta --ask a-2 --options "allow|deny"; answer_op d-2 a-2; wait "$HP" 2>/dev/null
+runner 'lead_open_ask coder 1'; ok '[ "$(j "$T/u2.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ "$RRC" = 1 ]' "… its replacement is answered and nothing stays open"
+k1="$(retry Bash '{"command": "curl -s https://example.invalid/x"}' "$CLONE")"; k2="$(retry Edit '{"file_path": "/etc/x.conf", "old_string": "a", "new_string": "b"}' "$CLONE")"
+ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [[ "$k2" =~ ^[0-9a-f]{40}$ ]]' "retry keys for a plain egress command and an outside-clone Edit ($k1 | $k2)"
+ok '[ "$(retry Bash "{\"command\": \"curl \\\"\$URL\\\"\"}" "$CLONE")" = none ] && [ "$(retry Bash "{\"command\": \"curl https://example.invalid/*\"}" "$CLONE")" = none ]' "retry: none for a \$VAR operand and a glob"
+mkdir -p "$CLONE/tree"; k1="$(retry Bash '{"command": "scp -r tree h.example.invalid:"}' "$CLONE")"; touch "$CLONE/tree/new"
+k2="$(retry Bash '{"command": "scp -r tree h.example.invalid:"}' "$CLONE")"; rm -r "$CLONE/tree"
+ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [ "$k1" != "$k2" ]' "a recursive operation is pinned by its tree digest (a file added changes the key)"
 # lead_attention
 newrun att; mkdir -p "$RD"; : > "$RINGS"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) stop-failed coder 1" > "$RD/attention"
@@ -407,13 +543,17 @@ runner 'lead_attention coder 4; lead_attention_deferred'; ok '! grep -q "attenti
 L a-1 --allow --authority teamlead --why w; wait "$HP"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) elicitation_dialog MCP asks" >> "$RD/attention"
 runner 'lead_attention coder 5'; ok 'grep -q "attention coder: elicitation_dialog — MCP asks" "$RINGS"' "other kinds ring attention <role>: <kind>"
-# the older clone base is refused once, at runner start
+# an older clone sender no longer stops the run: the lead sends with the main checkout's copy
 cp -R "$CLONE/.claude" "$T/oldclaude"; printf '#!/usr/bin/env bash\necho old sender\n' > "$T/oldclaude/lib/team-answer.sh"
-runner "CLONE=$T/oldwrap; mkdir -p \$CLONE; cp -R $T/oldclaude \$CLONE/.claude; accepted_record() { echo x; }; team_lead_on() { return 0; }; lead_start"
-ok '[ "$RRC" = 4 ] && grep -q "clone base lacks the ask channel (its team-answer.sh predates the hook answering path) — finish this run on a main checkout from before the change, or the Operator restarts the ticket on a fresh clone (team-new.sh)" "$T/r.out"' "an older-base clone (planner accepted) is refused at runner start, exit 4"
-runner "CLONE=$T/oldwrap; accepted_record() { echo ''; }; team_lead_on() { return 0; }; MODE=quick; lead_start"
-ok '[ "$RRC" = 4 ] && grep -q "lacks the ask channel" "$T/r.out"' "… and with no record yet"
-ok '! sed -n "/^launch() {/,/^}/p" "$MAIN/.claude/lib/team-run.sh" | grep -q "lacks the ask channel"' "a stage launch never refuses a run already past lead_start"
+runner "CLONE=$T/oldwrap; mkdir -p \$CLONE; cp -R $T/oldclaude \$CLONE/.claude; accepted_record() { echo x; }; team_lead_on() { return 0; }; team_tmux_alive() { return 1; }; launch_lead() { echo LAUNCHED; }; lead_start"
+ok '[ "$RRC" = 0 ] && grep -q LAUNCHED "$T/r.out"' "an older-sender clone (planner accepted) reaches the lead at runner start ($(cat "$T/r.out"))"
+ok '! grep -q "lacks the ask channel" "$MAIN/.claude/lib/team-run-lead.sh" "$MAIN/.claude/lib/team-run.sh"' "no runner start or stage launch refuses for the clone's sender"
+newrun nosnd; mv "$CLONE/.claude/lib/team-answer.sh" "$T/answer.keep"; pl perm-wc; HB ns; wf "$AD/a-1.json"
+L a-1 --allow --authority teamlead --why w; wait "$HP"; mv "$T/answer.keep" "$CLONE/.claude/lib/team-answer.sh"
+ok '[ "$LRC" = 0 ] && [ "$(j "$T/ns.out" .hookSpecificOutput.decision.behavior)" = allow ]' "a clone without team-answer.sh: the main checkout's sender answers, the hook delivers"
+runner "LINE=main; render_lead_prompt \"$T/lp.md\""
+ok '[ "$RRC" = 0 ] && ! grep -q "bash \.claude/lib/\|node \.claude/lib/" "$T/lp.md" && grep -qF "bash $MAIN/.claude/lib/team-lead.sh pending beta" "$T/lp.md"' "the rendered lead prompt calls only main-checkout tools ($(cat "$T/r.out"))"
+ok '[ "$(. "$MAIN/.claude/lib/team-lead-lib.sh" 2>/dev/null; team_lead_lib_prefix "/a b")" = "'"'"'/a b/.claude/lib/'"'"'" ]' "a main path with a space is quoted"
 
 # ================================================================================================
 # closing a run: team_close_safe, the run close verdict, the runner's fence, the team-next receipt
@@ -494,10 +634,6 @@ ok '[ "$(jq -r ".[0]" <<<"$acts")" = "bash .claude/lib/team-lead.sh pending beta
 # ================================================================================================
 # the structured tier, direct (cwd-relative operands, outside-clone notebook)
 # ================================================================================================
-tier() {  # tier <tool> <tool_input json> <cwd> → the checker's tier line
-  jq -n --arg t "$1" --argjson i "$2" --arg c "$3" '{tool_name: $t, tool_input: $i, cwd: $c}' > "$T/in.json"
-  python3 -I "$MAIN/.claude/lib/team_prompt_check.py" "$CLONE" --input-json "$T/in.json" --main "$MAIN"
-}
 mkdir -p "$CLONE/sub/build" "$T/out/build" "$CLONE/a" "$CLONE/b"
 t1="$(tier Bash '{"command": "rm -r build"}' "$CLONE/sub")"; t2="$(tier Bash '{"command": "rm -r build"}' /)"
 ok '[ "$t1" = "tier: lead" ] && [[ "$t2" == "tier: operator"* ]]' "a relative rm -r build tiers by its real target ($t1 | $t2)"
@@ -507,6 +643,25 @@ printf 'DELETE FROM dbo.Users;\n' > "$CLONE/a/q.sql"; printf -- '-- nothing\n' >
 ta="$(tier Bash '{"command": "sqlcmd -S s.example.invalid -d d -i q.sql"}' "$CLONE/a")"
 tb="$(tier Bash '{"command": "sqlcmd -S s.example.invalid -d d -i q.sql"}' "$CLONE/b")"
 ok '[[ "$ta" == "tier: operator"* ]] && [ "$tb" = "tier: lead" ]' "two same-named SQL files in different cwds tier by their own content ($ta | $tb)"
+ka="$(retry Bash '{"command": "sqlcmd -S s.example.invalid -d d -i q.sql"}' "$CLONE/a")"; printf 'DELETE FROM dbo.Orders;\n' > "$CLONE/a/q.sql"
+kb="$(retry Bash '{"command": "sqlcmd -S s.example.invalid -d d -i q.sql"}' "$CLONE/a")"
+ok '[[ "$ka" =~ ^[0-9a-f]{40}$ ]] && [ "$ka" != "$kb" ]' "the SQL guard's operator ask is pinned by its -i file's content"
+# parameterized and server ask rules for an unevaluated tool (Skill, Read, MCP)
+cp "$CLONE/.claude/settings.local.json" "$T/local.keep"; cp "$MAIN/.claude/team/baseline-ask.json" "$T/base.keep"
+jq '.permissions.ask += ["Skill(deploy)", "Skill(ship *)", "Skill(rel:*)", "Skill(maintain:refresh-brief)", "Read(./secrets/**)", "mcp__srvx", "Skill(base-skill)"]' \
+  "$T/local.keep" > "$CLONE/.claude/settings.local.json"
+jq '. + ["Skill(base-skill)"]' "$T/base.keep" > "$MAIN/.claude/team/baseline-ask.json"
+for c in 'deploy|tier: operator — production ask: Skill(deploy)' 'deployment|tier: lead' 'ship|tier: operator — production ask: Skill(ship *)' \
+  'shipping|tier: lead' 'rel|tier: operator — production ask: Skill(rel:*)' 'release|tier: lead' 'other|tier: lead' \
+  'maintain:refresh-brief|tier: operator — production ask: Skill(maintain:refresh-brief)' 'base-skill|tier: lead'; do
+  s="${c%%|*}"; want="${c#*|}"; got="$(tier Skill "$(jq -nc --arg s "$s" '{skill: $s}')" "$CLONE")"
+  ok '[ "$got" = "$want" ]' "a Skill prompt for $s → $want ($got)"
+done
+got="$(tier Skill '{}' "$CLONE")"; ok '[[ "$got" == "tier: operator"* ]]' "a Skill prompt with no skill name while a Skill rule exists → operator ($got)"
+got="$(tier Read '{"file_path": "/x/y"}' "$CLONE")"; ok '[ "$got" = "tier: operator — production ask: Read(./secrets/**)" ]' "a project Read(<glob>) rule tiers any Read prompt operator ($got)"
+got="$(tier mcp__srvx__do '{}' "$CLONE")"; ok '[ "$got" = "tier: operator — production ask: mcp__srvx" ]' "a bare server rule covers its tools ($got)"
+got="$(tier mcp__srvxy__do '{}' "$CLONE")"; ok '[ "$got" = "tier: lead" ]' "… and not a server sharing its prefix ($got)"
+cp "$T/local.keep" "$CLONE/.claude/settings.local.json"; cp "$T/base.keep" "$MAIN/.claude/team/baseline-ask.json"
 
 # ================================================================================================
 # replay: the 2026-11-21 and 2026-11-22 cases as asks answered by the lead (or a lead close)

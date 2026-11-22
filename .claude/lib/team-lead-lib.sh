@@ -41,3 +41,33 @@ team_session_doorbell() {
   sh_send "$name" "$3" --team-dir "$td" >/dev/null 2>&1 || true
   return 0
 }
+
+# team_lead_trusted <main> <clone> <run> [session id] → "<session id>\t<config dir>" of a lead
+# session of <run> recorded by the runner in the main checkout's anchor (found by the clone's
+# physical path, never by a clone-written name); no id → the anchor's current_id. rc 1 otherwise.
+team_lead_trusted() {
+  local phys anc="" x sess
+  phys="$(cd "$2" 2>/dev/null && pwd -P)" || return 1
+  for x in "$1"/.agents/team/anchors/*.json; do
+    [ -f "$x" ] && [ "$(jq -r '.clone // ""' "$x" 2>/dev/null)" = "$phys" ] || continue
+    [ -z "$anc" ] || return 1; anc="$x"
+  done
+  # A run launched by a runner from before lead_sessions (no anchor here, or another run):
+  # today's evidence — the clone's teamlead.json, marked legacy (no answered_session written).
+  if [ -z "$anc" ] || ! jq -e --arg r "$3" '.lead_sessions.run == $r' "$anc" >/dev/null 2>&1; then
+    jq -er '"\(.session_id)\t\(.claude_config_dir // "")\tlegacy"' "$2/.agents/team/teamlead.json" 2>/dev/null
+    return
+  fi
+  sess="${4:-$(jq -r '.lead_sessions.current_id // ""' "$anc")}"
+  jq -er --arg s "$sess" 'select(.lead_sessions.ids | index($s)) | "\($s)\t\(.lead_sessions.config_dir // "")"' "$anc"
+}
+
+# team_lead_lib_prefix <main> — the main checkout's .claude/lib/ as the lead types it and as its
+# permission rules spell it; single-quoted when the path holds a character a word would split on.
+team_lead_lib_prefix() {
+  case "$1" in
+    *"'"*) return 1 ;;
+    *[!A-Za-z0-9._/+@-]*) printf "'%s/.claude/lib/'" "$1" ;;
+    *) printf '%s/.claude/lib/' "$1" ;;
+  esac
+}
