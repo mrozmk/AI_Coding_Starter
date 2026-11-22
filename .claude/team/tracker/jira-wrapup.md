@@ -34,15 +34,17 @@
    - **memory**: `Memory hand-off … (supervisor)` lines are applied verbatim. Other `## Learnings`
      go through `.agents/memory/reflection-protocol.md` (the default is to save nothing),
      de-duplicated against `git show origin/{{LINE}}:<file>`, not against this branch;
-   - **tasks**: `## Follow-ups` items that this PR does not cover and that deserve a ticket.
-     Prepare `/jira create` drafts (required fields, components, description template, queued
-     attachments). Fetch {{TICKET}} with `fields="parent"`, then fetch that parent's
-     `summary,issuetype`; use it only when `issuetype.name == "Epic"`. Never use the run's ordinary
-     Task as parent, or substitute a guessed/catch-all epic. An absent/non-Epic parent needs the
-     clarification in step 7. Apply `.agents/memory/domain/jira.md`: its assignee and the
-     currently active sprint of its board (read it; never hardcode a sprint). The description ends
-     with the line `Follow-up of {{TICKET}} · origin {{ORIGIN_TICKET}}`, copied verbatim (the next
-     start counts the chain by it), before the step 4 create marker, which stays the last line.
+   - **tasks**: one `/jira create` draft per `→ follow-up` line of the accepted
+     `acceptance-brief.md` that passes the bar for steps 6–7 (required fields, components,
+     description template, queued attachments); the description's first line is
+     the failure sentence (a cut-work ticket: the order line it cuts).
+     Fetch {{TICKET}} with `fields="parent"`, then fetch that parent's `summary,issuetype`; use
+     it only when `issuetype.name == "Epic"`. Never use the run's ordinary Task as parent, or
+     substitute a guessed/catch-all epic. An absent/non-Epic parent needs the clarification in
+     step 7. Apply `.agents/memory/domain/jira.md`: its assignee and the currently active sprint
+     of its board (read it; never hardcode a sprint). The description ends with the line
+     `Follow-up of {{TICKET}} · origin {{ORIGIN_TICKET}}`, copied verbatim (the next start counts
+     the chain by it), before the step 4 create marker, which stays the last line.
 7. No new/unaccepted recommendations → step 8 for saved accepted work still unfinished,
    otherwise step 9. For new/unaccepted recommendations ask **one** `AskUserQuestion` (2–4 options):
    With a per-run TeamLead ask no question: prepare and save the drafts as below, then follow

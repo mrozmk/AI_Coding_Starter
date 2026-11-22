@@ -12,7 +12,8 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
 1. Read `.agents/team/runs/{{RUN}}/notes.md` and, in a rework
    round, `{{RUN_DIR}}/notes.md` and the `rework-*.md` orders in `.agents/team/runs/{{RUN}}/`; every
    `*.json` record in those directories, `.agents/team/runs/{{RUN}}/answers.md` (when
-   present), `{{QA_REPORT}}`, `{{PLAN}}` and the PR description
+   present), `{{QA_REPORT}}`, the accepted round's `{{RUN_DIR}}/acceptance-brief.md`, `{{PLAN}}`
+   and the PR description
    ({{PR_BODY_GET}}). Do not run `/prime`.
 2. `git fetch --quiet origin {{LINE}}`, then `git rev-parse origin/{{LINE}}` → `T`.
 3. Write `{{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`: first line `target_rev: <T>`, then the
@@ -20,7 +21,11 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
    them is plain prose in the developer's language — `language` in `.claude/project-profile.json`
    (`pl` | `en`; `en` when absent). Sections: `## Planning` (what was decided, what was
    unforeseen), `## Coder` (what was done, deviations from the plan and why, what blocked), `## QA`
-   (findings, fixes, what is left), `## What matters for you` (external effects, PR state). Short
+   (findings, fixes, what is left; it ends with one count line
+   `QA dropped N findings: a hypothetical, b cosmetic, c not own — list in the run notes`, counted
+   from the `dropped —` lines of every round's notes (`notes.md` and each `r<n>/notes.md`),
+   omitted when N is 0; no parking file), `## What matters for
+   you` (external effects, PR state). Short
    and concrete; explain any jargon in a few words. Add `## Supervisor decisions`: one plain line
    per `answers.md` entry — the authority (`class`, `teamlead`, `operator`, `operator-window`), the
    role and a few words of the answer; *none* when the file is absent or empty. The words follow
@@ -34,11 +39,27 @@ tickets **only when they are worth it**. "Nothing to save, no new tasks" is a go
 9. Write the record (`--pr` is required — the runner compares it with the coder's PR):
    `bash .claude/lib/team-record.sh --verdict done --pr {{PR}} --artifacts {{RUN_DIR}}/wrapup-{{ATTEMPT}}.md`
 
-**The bar for steps 6–7.** Default: propose nothing. A ticket only when the product needs it — a
-defect the user or the next run would hit, or ordered work that was cut; name which. Never a
-nice-to-have, a tidy-up, or an idea that came only from the implementation. A memory entry only when
-a future session would otherwise repeat a concrete mistake — name the mistake; an entry about a
-temporary state says when it expires ("until #N lands").
+**The bar for steps 6–7.** Default: propose nothing. A ticket is drafted only for a
+`→ follow-up` line of the accepted `acceptance-brief.md`, one ticket per such line — a QA warning or
+a `## Follow-ups` item of the notes is never a ticket on its own. A follow-up ticket
+holds **one defect**, and its first line is the failure sentence:
+"When <who> runs <what>, <wrong result>." It passes only when all three hold:
+- **Real use.** The trigger is something a command or pipeline in use today produces on a
+  supported setup. A sentence that needs "if", "could", a non-default environment or a second
+  fault does not pass.
+- **Silent harm.** The result is wrong without an error (a wrong verdict, lost content, a decision
+  answered by the wrong party, a human pulled in for nothing). A loud failure with a clear message,
+  a wording slip, a slow path or a refactor does not pass.
+- **Not fixable in this run.** The defect is outside the lines this run changed, or its fix needs
+  a decision the order does not cover — name which. A defect in the run's own lines with a local
+  fix is fixed by QA or by rework, never ticketed.
+
+Ordered work that was cut is the other valid ticket; its first line names the order line.
+No riders: a ticket never carries "the rest of the findings". Up to three anchors are fine when they
+produce the same failure sentence. A `→ follow-up` line that fails the bar is not drafted; `## QA`
+names it in a few words. A memory entry only when a future session would otherwise repeat a
+concrete mistake — name the mistake; an entry about a temporary state says when it expires
+("until #N lands").
 
 **A standards item (steps 6–7).** Only when `docs/coding-standards.md` exists (absent: never
 propose one, never create the file), and only when the run added a helper other code should reuse,
