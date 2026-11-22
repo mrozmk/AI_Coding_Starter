@@ -345,10 +345,12 @@ cannot make becomes a file, and the stop that needs it waits while everything el
 
 - **Open** (lead only): `team-lead.sh decision open <team> --source <run file|attention:<n>>
   --question "<line>" [--options "a|b"] [--recommend "<line>"] [--notify human_decision|abandon_decision]
-  [--gate plan]`, or `--ask a-<n>` (an open ask: source `asks/a-<n>.json`, the binding `bind_ask,
+  [--gate plan] [--reason human-only|no-rule|lead-unsure|channel-failed|guard]`, or `--ask a-<n>` (an open ask: source `asks/a-<n>.json`, the binding `bind_ask,
   bind_session_id, bind_attempt, ask_kind`; a question or stop ask gets `requires_decision: d-<n>`).
+  `--reason` (default: `human-only` for an operator-tier ask, a `--gate plan` or an
+  `abandon_decision`, else `no-rule`) is stored as `touch_reason`.
   It prints the decision with its reply format and writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
-  notify`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
+  notify, touch_reason`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
   `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
 - **Notify:** the runner sends each verdict with `notify` set through `.claude/lib/notify.sh
   <event>` (the one sender, the only path to the Operator). The event id
@@ -366,7 +368,8 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   ask (replaced session or attempt, a stop) withdraws its pending decision.
 - **Answer:** `team-lead.sh decision answer <team> d-<n> --text "<Operator's words>"
   [--outcome continue|close|more-revise|approve|allow|deny]` → `status: answered`, `answered_at`,
-  `answered_via`, `## Answer`, and `<utc> decision d-<n>` appended to `runs/<run>/operator-touches`.
+  `answered_via`, `## Answer`, and `<utc> decision d-<n>` appended to `runs/<run>/operator-touches`
+  and one entry to the project's touch log ([operator-touches.md](operator-touches.md)).
   For an ask decision the Operator's reply has a fixed form, so two pending decisions never share
   one: it must start with `d-<n> `, then `allow` | `deny: <what instead>` (permission, plan — the
   outcome is read from it; anything else, e.g. "do not allow", refuses with 7) or the answer
@@ -517,7 +520,9 @@ runs again.
     cleanup does not erase it) plus an older run's `[authority operator-window]` lines of
     `answers.md`. `log-append` writes it as the first line of the run's notes (replacing an earlier
     one), so the shared log carries it; `team_audit.py` prints the same count in the run's report
-    (`team-lead.sh operator_touches` and `team_audit.py operator_touches`, one rule).
+    (`team-lead.sh operator_touches` and `team_audit.py operator_touches`, one rule). The
+    project-wide, cross-run view — with permission prompts — is the touch log
+    ([operator-touches.md](operator-touches.md)); the wrapup reports the run's share of it.
   - **Never in the notes:** credentials, tokens, `.env` values, a full prompt, a file's content or a
     transcript excerpt. The notes leave the clone (the shared log), so they hold one-line summaries
     only.

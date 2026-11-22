@@ -522,20 +522,25 @@ setup "$T" --check
 # ---- (21) a project without teams has every file the core tracker commands call -----------------
 # The tree a sync gives a project that never installed the harness: the starter's tracked files
 # minus every manifest own/shared path and the tests, and directly in .claude/lib/ only what the
-# playbook's category A routes there (*.sh, *.mjs, never *.test.mjs). The sync itself is prose this
-# cannot run; this checks that the routing rule carries the commands' whole closure.
+# playbook's category A routes there (*.sh, *.mjs, never *.test.mjs, plus the touch log's worker
+# touches.py). The sync itself is prose this cannot run; this checks that the routing rule carries
+# the commands' whole closure.
 D="$WORK/solo"; mkdir -p "$D"
 while IFS= read -r p; do
   case "$p" in */tests/*|*.test.mjs) continue ;; esac
   grep -qxF "own $p" "$MANIFEST" && continue
   grep -qxF "shared $p" "$MANIFEST" && continue
-  case "$p" in .claude/lib/*/*) ;; .claude/lib/*.sh|.claude/lib/*.mjs) ;; .claude/lib/*) continue ;; esac
+  case "$p" in .claude/lib/*/*) ;; .claude/lib/*.sh|.claude/lib/*.mjs) ;; .claude/lib/touches.py) ;;
+    .claude/lib/*) continue ;; esac
   mkdir -p "$D/$(dirname "$p")"; cp "$ST/$p" "$D/$p"
 done < <(git -C "$ST" ls-files)
 git -C "$D" init --quiet
-for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs delivery-plan.mjs backlog-migrate.mjs; do
+for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs delivery-plan.mjs backlog-migrate.mjs touches.sh touches.py; do
   [ -f "$D/.claude/lib/$f" ] || fail "21: a project without teams lacks .claude/lib/$f"
 done
+mkdir -p "$D/.agents"
+set +e; bash "$D/.claude/lib/touches.sh" report --main "$D" > "$WORK/out" 2>&1; RC=$?; set -e
+[ "$RC" = 0 ] || fail "21: the distributed touches.sh does not find its worker (exit $RC)"
 jq -n '{schema: 1, tracker: "github", github: {repo: "owner/repo"}}' > "$D/.claude/project-profile.json"
 set +e; (cd "$D" && bash .claude/lib/team-tracker.sh set-status 7 started) > "$WORK/out" 2>&1; RC=$?; set -e
 [ "$RC" = 0 ] && has "skipped (no project)" || fail "21: the adapter does not load without teams (exit $RC)"

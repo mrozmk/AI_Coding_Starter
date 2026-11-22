@@ -75,7 +75,9 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
    A wait date already past means the next step is the read, not more waiting. Flag a task whose
    status no evidence backs, or that looks superseded.
 
-8. **Print** the report below. Nothing before it.
+8. **Print** the report below. Nothing before it. Before printing, run
+   `bash .claude/lib/touches.sh report --since 7d` once (it exits 0 also without a log); a missing
+   script or a non-zero exit → omit the Operator touches block.
 
 ## Report
 
@@ -97,6 +99,8 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
 ## <k>. Teams without a listed task (<n>)
 
 **Check:** extractor caveats, status/evidence mismatches, unverified PRs — omit when none.
+
+**Operator touches (7 days):** <header line count> — <up to 3 group rows, newest first>; recurring: <top Recurring line> — omit when the log is absent or the report says none recorded.
 
 <n> tasks · <k> extracted · <t> teams
 ```

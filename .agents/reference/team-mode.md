@@ -75,6 +75,7 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `runs/<run>/asks/a-<n>.json`, `a-<n>.answer.json` | the stage hook (`team-ask-hook.sh`); `team-answer.sh` (the lead) | every stop of a stage in a lead run and its one answer — the ask channel, team-lead.md §6 |
 | `stage-hooks.settings.json` | `team-run.sh launch` (lead runs) | the stage's `--settings` layer: the ask hooks, materialised from `<main>/.claude/team/stage-hooks.json` |
 | `runs/<run>/operator-touches` | `team-lead.sh decision answer`, the runner's dialog watch | one line per human action the run needed (team-lead.md §10) |
+| `<main checkout>/.agents/touches/<yyyy-mm>.jsonl` | `touches.sh` (decision answer, the runner's dialog watch, the Notification hook, the egress guard, by hand) | one JSON line per human intervention, per project and machine ([operator-touches.md](operator-touches.md)) |
 | `send-<role>.lock/` (`pid`, `owner`) | the session-host driver (`sh_send`, `sh_kill`), `team-run.sh end_session` | per-target send lock: one writer of keys into the role's pane (the doorbell, `/exit`); never reclaimed automatically (remove a stale lock once its pid is dead) |
 | `send-<role>.log` | the driver, `team-run.sh` | append-only: `doorbell-skipped …`; `stop-during-send <utc> <owner>` when a stop found the lock held |
 

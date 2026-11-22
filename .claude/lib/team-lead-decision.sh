@@ -3,7 +3,9 @@
 # team-lead.sh after resolve (TD, RUN, MAIN, LIB set), never executed. Bash 3.2.
 #   decision open <team> --source <run file|attention:<n>> --question "<text>" [--options "<a|b>"]
 #     [--recommend "<text>"] [--notify human_decision|abandon_decision] [--gate plan]
+#     [--reason human-only|no-rule|lead-unsure|channel-failed|guard]
 #   decision open <team> --ask a-<n> [--question "<text>"] [--options "<a|b>"] [--recommend "<text>"]
+#     [--reason human-only|no-rule|lead-unsure|channel-failed|guard]
 #     (an operator-tier ask, or a workflow human gate in a question: bound to the ask)
 #   decision answer <team> d-<n> --text "<Operator answer>"
 #     [--outcome continue|close|more-revise|approve|allow|deny]
@@ -18,7 +20,8 @@
 # (permission, plan) or `d-<n> <answer>` (question, text; several questions:
 # `d-<n> <header>: <label>; <header>: <label>`) — and answer derives answer_outcome /
 # answer_value / answer_map from it; team-answer.sh relays exactly those. A human answer appends
-# `<utc> decision d-<n>` to runs/<run>/operator-touches.
+# `<utc> decision d-<n>` to runs/<run>/operator-touches and one entry to the project's touch log
+# (`touches.sh add`, .agents/reference/operator-touches.md).
 
 dfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
@@ -34,6 +37,37 @@ d_resolve() {  # d_resolve <file> — its Operator notification is answered or m
   [ -n "$(dfm "$1" notify)" ] || return 0
   bash "$LIB/notify.sh" resolve --team "$(jq -r .team "$TD/team.json")" --run "$RUN" \
     --decision "$(dfm "$1" id)" >/dev/null 2>&1 || true
+}
+# d_reason_default <a-n|""> <gate> <notify> — the touch-log reason when the lead names none: an
+# operator-tier ask, a plan gate or an abandon decision is human-only, anything else no-rule.
+d_reason_default() {
+  if [ -n "$1" ] && ask_init "$TD" 2>/dev/null && [ "$(ask_get "$1" tier || true)" = operator ]; then
+    echo human-only
+  elif [ "$2" = plan ] || [ "$3" = abandon_decision ]; then echo human-only
+  else echo no-rule; fi
+}
+d_touch_reason() {  # d_touch_reason <file> — its touch_reason, derived for a file an older copy opened
+  local r; r="$(dfm "$1" touch_reason)"
+  [ -n "$r" ] || r="$(d_reason_default "$(dfm "$1" bind_ask)" "$(dfm "$1" gate)" "$(dfm "$1" notify)")"
+  echo "$r"
+}
+# d_touch_log <file> <d-n> <ask> <ask kind> <outcome> <answer value> <reply rest> <text> — the
+# answered decision as one entry of the project's touch log; a failure warns, the answer stands.
+d_touch_log() {
+  local f="$1" kind=decision ans c a ws="" stage
+  if [ -n "$3" ]; then kind="${4:-decision}"; elif [ "$(dfm "$f" gate)" = plan ]; then kind=plan; fi
+  case "$3:$4" in
+    :*) ans="$8" ;;
+    *:permission|*:plan) ans="$5"; [ -z "$6" ] || ans="deny: $6" ;;
+    *) ans="$7" ;;
+  esac
+  c="$(team_epoch "$(dfm "$f" created_at)")"; a="$(team_epoch "$(dfm "$f" answered_at)")"
+  [ "$c" -le 0 ] || [ "$a" -lt "$c" ] || ws=$(( a - c ))
+  stage="$(dfm "$f" stage)"; case "$stage" in ""|-) stage=TeamLead ;; esac
+  bash "$LIB/touches.sh" add --main "$MAIN" \
+    --where "team $(jq -r .team "$TD/team.json") / $(jq -r .ticket "$TD/team.json") / $stage" \
+    --kind "$kind" --reason "$(d_touch_reason "$f")" --what "$(sed -n '/^## Question$/{n;p;q;}' "$f")" \
+    --answer "$ans" ${ws:+--wait-s "$ws"} >/dev/null 2>&1 || echo "warn: touch not recorded ($2)" >&2
 }
 d_file() {  # d_file <d-n> → path, or exit 2/4
   [[ "$1" =~ ^d-[0-9]+$ ]] || d_bad 2 "decision id must be d-<n>"
@@ -72,16 +106,20 @@ notes_tune() {
 
 decision_open() {
   local src="" q="" opts="" rec="" notify=human_decision gate="" ask="" n f tmp v rel bind="" kind=""
-  local reply=""
+  local reply="" reason=""
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
     case "$1" in
       --source) src="$2" ;; --question) q="$2" ;; --options) opts="$2" ;; --recommend) rec="$2" ;;
-      --notify) notify="$2" ;; --gate) gate="$2" ;; --ask) ask="$2" ;; *) usage ;;
+      --notify) notify="$2" ;; --gate) gate="$2" ;; --ask) ask="$2" ;;
+      --reason) reason="$2" ;;
+      *) usage ;;
     esac
     shift 2
   done
   team_lead_caller || d_bad 3 "only this run's TeamLead opens decisions"
+  case "$reason" in ""|human-only|no-rule|lead-unsure|channel-failed|guard) ;;
+    *) d_bad 2 "--reason human-only|no-rule|lead-unsure|channel-failed|guard" ;; esac
   case "$notify" in human_decision|abandon_decision) ;; *) d_bad 2 "--notify human_decision|abandon_decision" ;; esac
   case "$gate" in ""|plan) ;; *) d_bad 2 "--gate plan" ;; esac
   if [ -n "$ask" ]; then
@@ -103,6 +141,7 @@ ask_kind: $kind"
     esac
   fi
   [ -n "$src" ] && one_line "$q" || d_bad 2 "decision open needs --source and a one-line --question"
+  [ -n "$reason" ] || reason="$(d_reason_default "$ask" "$gate" "$notify")"
   mkdir -p "$DD"
   n="$(ls "$DD" 2>/dev/null | sed -n 's/^d-\([0-9]*\)\.md$/\1/p' | sort -n | tail -n 1)"
   n=$(( ${n:-0} + 1 )); f="$DD/d-$n.md"; tmp="$DD/.d-$n.md.tmp"
@@ -110,6 +149,7 @@ ask_kind: $kind"
     echo "stage: $(jq -r '.role // "-"' "$TD/session.json" 2>/dev/null || echo -)"
     echo "attempt: $(jq -r '.attempt // "-"' "$TD/session.json" 2>/dev/null || echo -)"
     echo "source: $src"; echo "created_at: $(team_utc)"; echo "notify: $notify"
+    echo "touch_reason: $reason"
     [ -z "$gate" ] || echo "gate: $gate"
     [ -z "$bind" ] || printf '%s\n' "$bind"
     echo "---"; echo "## Question"; echo "$q"
@@ -217,6 +257,7 @@ decision_answer() {
     [ -z "$amap" ] || dfm_set "$f" answer_map "$amap"
   fi
   echo "$(team_utc) decision $id" >> "$TD/runs/$RUN/operator-touches"
+  d_touch_log "$f" "$id" "$ask" "${kind:-}" "$outcome" "$aval" "${rest:-}" "$text"
   printf '\n## Answer\n%s\n' "$text" >> "$f"
   [ -z "$tuning" ] || notes_tune "$id" "$tuning" "$why"
   d_resolve "$f"

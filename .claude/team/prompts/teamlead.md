@@ -86,8 +86,10 @@ first check.
    - `bash .claude/lib/team-verdict.sh plan approve --for <record> --message "<line>"`
    - `bash .claude/lib/team-verdict.sh plan revise --for <record> --ref .agents/team/runs/{{RUN}}/gate-plan-<n>.md --message "<line>"`
    - `bash .claude/lib/team-verdict.sh plan escalate --for <record> --message "<line>"` when a
-     human-only question blocks the gate: print the question for the Operator in plain text, end
-     the turn, and write the final verdict after the answer.
+     human-only question blocks the gate: open a decision —
+     `bash .claude/lib/team-lead.sh decision open {{TEAM}}{{DECISION_REASON}} --source <record> --question "<line>" --gate plan` —
+     print it with its reply format, end the turn; the Operator answers it in your window
+     (`decision answer`), then write the final verdict.
    - quick only: `bash .claude/lib/team-verdict.sh plan remode --for <record> --message "<line>"`,
      when the work is not quick any more; the run closes and the Supervisor remodes it.
 4. **Exit 7** (constraint digest missing): make the digest, then write the verdict again.
@@ -135,11 +137,14 @@ the stage. No screen is read and nothing is typed into a stage.
 
 ### Human decisions
 
-- Open: `bash .claude/lib/team-lead.sh decision open {{TEAM}} --source <record|attention:<n>>
+- Open: `bash .claude/lib/team-lead.sh decision open {{TEAM}}{{DECISION_REASON}} --source <record|attention:<n>>
   --question "<one line>" [--options "a|b"] [--recommend "<line>"]`, or for an ask
-  `… decision open {{TEAM}} --ask a-<n> [--options "allow|deny"] --recommend "<line>"` (the ask is
+  `… decision open {{TEAM}}{{DECISION_REASON}} --ask a-<n> [--options "allow|deny"] --recommend "<line>"` (the ask is
   bound for you; an escalated question or stop is then answered only by the Operator's relay). It
   writes `runs/{{RUN}}/decisions/d-<n>.md` and notifies the Operator once.
+- `--reason` (when the call shows it) records why the Operator is needed in the project's touch
+  log: an operator-tier ask or a human-only question → `human-only`; no rule or digest line
+  answers it → `no-rule`; a rule exists but you will not decide it → `lead-unsure`.
 - **The Operator answers every decision in your window**, never in a stage's.
 - Print `[d-<n>] <question>` with the options, your recommendation and the reply format `decision
   open` printed — `d-<n> allow` | `d-<n> deny: <what instead>` (a permission or a plan) or
@@ -187,7 +192,7 @@ round's blind check or brief.
      (exit 8 names what the brief lacks);
    - rework — see **Rework** below;
    - abandon: open a decision first —
-     `bash .claude/lib/team-lead.sh decision open {{TEAM}} --source <record> --question "<line>"
+     `bash .claude/lib/team-lead.sh decision open {{TEAM}}{{DECISION_REASON}} --source <record> --question "<line>"
      --notify abandon_decision` — then `… acceptance abandon-recommended --for <record>
      --decision d-<n> --message "<line>"`. The Operator's answer becomes `decision close` (the run
      closes) or `decision continue`.
@@ -205,7 +210,7 @@ round: the coder continues on the same branch and the same PR, then qa runs agai
    not offered.
 3. Exit 9 means the rework budget (`teams.teamlead.rework_budget`) is spent; you may not order
    another round alone. Open the decision —
-   `bash .claude/lib/team-lead.sh decision open {{TEAM}} --source <qa record> --question "<line>"
+   `bash .claude/lib/team-lead.sh decision open {{TEAM}}{{DECISION_REASON}} --source <qa record> --question "<line>"
    --notify abandon_decision --recommend abandon` — which is the one notification, then
    `… acceptance abandon-recommended --for <qa record> --decision d-<n> --message "<line>"`.
 4. The Operator's answer: `continue` → `… decision continue --for <qa record> --decision d-<n>`, and

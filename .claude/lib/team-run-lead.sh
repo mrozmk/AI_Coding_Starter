@@ -39,6 +39,10 @@ render_lead_prompt() {
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put MODE "$MODE"
   put ORDER_BRIEF ".agents/team/runs/$RUN/order-brief.md"
+  # The prompt comes from main, the lead runs the clone's scripts: offer --reason only if they take it.
+  if grep -q -- '--reason' "$CLONE/.claude/lib/team-lead-decision.sh" 2>/dev/null; then
+    put DECISION_REASON ' --reason <human-only|no-rule|lead-unsure>'
+  else put DECISION_REASON ''; fi
   printf '%s\n' "$p" > "$1"
 }
 

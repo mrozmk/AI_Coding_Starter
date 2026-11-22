@@ -14,9 +14,10 @@ set -uo pipefail
 SENSITIVE_RE='(^|/)\.env|\.pem$|\.key$|\.p12$|\.pfx$|\.keystore$|\.jks$|\.ppk$|(^|/)id_(rsa|dsa|ecdsa|ed25519)|(^|/)\.(npmrc|pypirc|netrc|htpasswd)$|(^|/)\.aws/credentials$|kubeconfig|\.tfstate|\.tfvars$|credential|secret|service-account[^/]*\.json$|user-profile\.md$'
 # Ignored harness files (settings.local.json, hooks state) are invisible to `git status` yet can
 # weaken permissions — hashed like secrets. Telemetry that Claude's own hooks append to between
-# capture and compare, and the worktree checkouts, are excluded or every run would deviate.
+# capture and compare, and the worktree checkouts, are excluded or every run would deviate — and
+# the Operator touch log, which any session appends to.
 PROTECTED_RE='^(\.claude|\.agents)/'
-TELEMETRY_RE='^\.claude/(audit\.log|memory-usage\.json|scheduled_tasks\.lock|worktrees/)|(^|/)\.DS_Store$'
+TELEMETRY_RE='^\.claude/(audit\.log|memory-usage\.json|scheduled_tasks\.lock|worktrees/)|(^|/)\.DS_Store$|^\.agents/touches/[0-9]{4}-[0-9]{2}\.jsonl$'
 # Vendored/cache trees churn on every install or test run — excluded from the sensitive scan
 # (vendored "credentials.js" is not a secret); their disappearance is still a deviation.
 CACHE_RE='(^|/)(node_modules|\.venv|venv|vendor|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|coverage|dist|build|\.next|\.turbo|target)/'
