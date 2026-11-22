@@ -6,6 +6,7 @@
 # Usage: bash .claude/lib/team-pr.sh create --draft|--ready --head <b> --base <b> --title <t>
 #          --body-file <f>                                                     → pr=<n>
 #        bash .claude/lib/team-pr.sh publish <pr>                              → pr=<n>
+#        bash .claude/lib/team-pr.sh by-branch <b>          → `none` or PR ids, any state (read-only)
 #
 # create is idempotent like the github path: the active PRs of the head branch are looked up before
 # the create and again after it, and the answer of `az repos pr create` itself is never trusted — a
@@ -128,5 +129,14 @@ case "$op" in
   publish)
     [ $# -eq 1 ] || die 2 "usage: publish <pr>"
     norm_pr "$1"; ado_publish "$1"; echo "pr=$1" ;;
-  *) die 2 "usage: team-pr.sh create|publish … (azure-devops)" ;;
+  by-branch)
+    [ $# -eq 1 ] && [ -n "$1" ] || die 2 "usage: by-branch <branch>"
+    azc repos pr list --org "$ADO_ORG_URL" --project "$ADO_PROJECT" --repository "$ADO_REPO" \
+      --source-branch "$1" --status all -o json > "$TMP/list.json" 2>"$TMP/err" \
+      || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "az repos pr list for $1 failed — recoverable"; }
+    ids="$(jq -r --arg r "$ADO_REPO" --arg h "refs/heads/$1" '[.[] | select(.repository.name == $r
+      and .sourceRefName == $h) | .pullRequestId | tostring] | join(" ")' "$TMP/list.json")" \
+      || die 4 "the PR list for $1 is not parseable"
+    echo "${ids:-none}" ;;
+  *) die 2 "usage: team-pr.sh create|publish|by-branch … (azure-devops)" ;;
 esac

@@ -344,22 +344,13 @@ echo "$(date -u -r "$T0" +%Y-%m-%dT%H:%M:%SZ) permission_prompt Claude needs you
 STUB_TMUX_ALIVE=0 STUB_PANE= snap "permission_prompt skipped" 'coder.status == "running"
   and .attention == []'
 
-# Role-card commands follow the pane: text question → say, menu → pick/other, prompt → yes/no.
+# Role-card commands no longer follow the pane (the screen sender is retired): a run without a
+# per-run TeamLead offers the stage's window and /start-team, whatever the pane shows.
 echo "$(date -u -r "$T0" +%Y-%m-%dT%H:%M:%SZ) idle_prompt Claude is waiting" > "$RD/attention"
-ACT='coder.actions | map(split(" ")[4]) as $v'
-STUB_TMUX_ALIVE=0 STUB_PANE= snap "question offers say" "coder.status == \"attention\"
-  and ($ACT | (\$v | index(\"say\")) and (\$v | index(\"yes\") | not))"
-printf 'Which one?\n❯ 1. A\n  2. Type something.\nEnter to select · ↑/↓ to navigate\n' \
-  > "$WORK/pane-menu"
-STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane-menu" snap "menu offers pick/other" "$ACT
-  | (\$v | index(\"pick\")) and (\$v | index(\"other\")) and (\$v | index(\"say\") | not)
-  and (\$v | index(\"yes\") | not)"
-printf 'Ship it?\n❯ 1. Yes\n  2. No\n  3. Type something.\nEnter to select\n' > "$WORK/pane-yn"
-STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane-yn" snap "Yes/No menu offers pick/other" "$ACT
-  | (\$v | index(\"pick\")) and (\$v | index(\"yes\") | not) and (\$v | index(\"no\") | not)"
+ACT='coder.actions == ["bash .claude/lib/session-host.sh hint alfa-coder", "/start-team alfa"]'
+STUB_TMUX_ALIVE=0 STUB_PANE= snap "a question offers the window, no sender" "coder.status == \"attention\" and $ACT"
 printf 'Bash command\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n' > "$WORK/pane-prompt"
-STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane-prompt" snap "prompt offers yes/no" "$ACT
-  | (\$v | index(\"yes\")) and (\$v | index(\"no\")) and (\$v | index(\"say\") | not)"
+STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane-prompt" snap "a prompt offers the same, no yes/no" "$ACT"
 rm -f "$TD/session.json" "$RD/attention"
 
 # Finished = the mode's last role: a failed wrapup line must not let qa pass for the last role.

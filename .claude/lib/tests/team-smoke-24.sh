@@ -4,7 +4,8 @@
 # decision and sender scripts. Waits are on a file or a log line with a 60 s deadline, never a fixed
 # sleep as the pass condition. Scenarios (the owner's flow lanes):
 #   alfa  — brainstorm, clean: plan gate, coder, qa, acceptance, wrapup → ready, accepted
-#   beta  — quick: plan gate, a human-only coder prompt → decision, one notification, operator relay
+#   beta  — quick: plan gate, an operator-tier coder ask through the real stage hook → decision, one
+#           notification, the Operator's reply in the lead window, the lead's relay, the hook's answer
 #   gamma — brainstorm: plan revise + collision, two reworks, the third refused, abandon → closed
 #   trk   — brainstorm with workflow.tracker_comments on (github-shaped reads; the fixture's tracker
 #           stays jira, whose wrapup needs no tracker target): the planner's ledger + snapshot,
@@ -20,7 +21,7 @@
 #   no spec gate; Approved (auto — team mode)       21 f, n, t; 24 alfa
 #   no coder before plan approve; quick remode       21 k, l; 24 alfa, beta
 #   blocked does not end the runner                  22 d; 24 off (it does under the fixture seam)
-#   classes first; human-only → one notification     22 i–m; 24 beta
+#   classes first; operator tier → one notification  12 198; 22 i–m; 24 beta
 #   non-blocking decisions, matching                 22 m–o; 24 beta
 #   revise limit                                     21 h; 24 gamma (revise)
 #   answers.md, notes Operator cases                 22 p; 23 v; 24 beta
@@ -42,7 +43,7 @@ mkdir -p "$MAIN/.claude/team/sessions/operator-kit" "$CLONE/.claude/hooks"
 cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 cp "$SRC/.claude/lib/team-watch-send.py" "$MAIN/.claude/lib/"
-# A project-added ask rule (human-only for the lead) for beta's coder prompt; committed, so every
+# A project-added ask rule (operator tier, never the lead's) for beta's coder prompt; committed, so every
 # stage validates on a clean tree.
 jq '.permissions.ask = ["Bash(az webapp restart*)"]' "$CLONE/.claude/settings.json" > "$WORK/s" \
   && mv "$WORK/s" "$CLONE/.claude/settings.json"
@@ -61,8 +62,6 @@ HS
 export STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" STUB_PANE="$FIX/idle.txt" TEAM_POLL_SECS=1
 # has-session is answered by hs.sh; STUB_TMUX_ALIVE=0 lets display-message name the pane (prompt binding).
 export STUB_TMUX_ALIVE=0
-# The sender captures the stage's pane by id (display-message → %1); only a coder prompt is ever shown.
-export STUB_ON_CAPTURE='case "$*" in *"=smk-alfa-coder:"*|*"-t %1"*) [ ! -s "$WORK/pane-coder" ] || STUB_PANE="$WORK/pane-coder" ;; esac'
 
 # ---- helpers ---------------------------------------------------------------------------------------
 # A deadline bounds a failure, it never paces a pass: 60 s absorbs the whole suite running in
@@ -184,7 +183,7 @@ has "ready: bash .claude/lib/team-merge-check.sh alfa" "$WORK/runner.out" || fai
 [ "$(notified)" = 0 ] || fail "alfa: $(notified) notifications"
 echo "team-smoke-24: alfa (brainstorm, clean) OK"
 
-# ==== beta: quick, a human-only prompt → decision → the Operator answers in the stage window ===========
+# ==== beta: quick, an operator-tier ask (the real stage hook) → decision → the lead relays the reply ===
 fresh alfa-20261116-110000 quick
 start_runner
 launched planner 1; on_stage planner
@@ -193,35 +192,51 @@ wait_for "beta plan gate" "rung 'gate plan: .agents/team/runs/$RUN_ID/planner-1-
 [ "$(launches coder)" = 0 ] || fail "beta: the coder launched before the plan gate"
 V plan approve --for planner-1-1.json --message ok; expect 0 "teamlead-plan-1.json" "beta plan approve"
 launched coder 1; on_stage coder
-CSID="$(sj session_id)"; CREAL="$(cd "$CLONE" && pwd -P)"; CT="$(transcript "$CSID")"; mkdir -p "$(dirname "$CT")"
-jq -cn '{type: "assistant", uuid: "a-w", message: {content: [{type: "text", text: "working"}]}}' >> "$CT"
-pending_tool "$CSID" t1 Bash '{"command": "az webapp restart --name x", "description": "Restart it"}' "$CREAL"
-RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"
-{ echo "$RULE"; echo " Bash command"; echo " Restart it"; echo "$DASH"; echo " │ az webapp restart --name x"
-  echo "$DASH"; echo " This command requires approval"; echo " Do you want to proceed?"
-  echo " ❯ 1. Yes"; echo "   2. No"; echo " Esc to cancel · Tab to amend"; } > "$WORK/pane-coder"
+CSID="$(sj session_id)"; CREAL="$(cd "$CLONE" && pwd -P)"
+# The coder's PermissionRequest reaches the real stage hook (main checkout's copy, as the runner's
+# stage-hooks.settings.json registers it): a project-added ask → an operator-tier ask, rung, waited on.
+jq -e '.hooks.PermissionRequest[0].hooks[0].command | contains("/.claude/hooks/team-ask-hook.sh")
+  and (contains("{{MAIN}}") | not)' "$TD/stage-hooks.settings.json" >/dev/null \
+  || fail "beta: no materialised stage hooks for the coder"
+grep -- "-s smk-alfa-coder " "$STUB_LOG" | grep -qF -- "/.agents/team/stage-hooks.settings.json'" \
+  || fail "beta: the coder was launched without the stage hooks"
+grep -- "-s smk-alfa-coder " "$STUB_LOG" | grep -qF -- "--disallowedTools AskUserQuestion" \
+  && fail "beta: a stage of a lead run may not ask"
+jq -n --arg s "$CSID" --arg c "$CREAL" '{hook_event_name: "PermissionRequest", session_id: $s, cwd: $c,
+  tool_name: "Bash", tool_input: {command: "az webapp restart --name x", description: "Restart it"}}' > "$WORK/perm.json"
+# The stage's environment, as the session host launches it: HARNESS_MAIN names the main checkout.
+( CLAUDE_PROJECT_DIR="$CLONE" HARNESS_MAIN="$MAIN" TEAM_ASK_TIMEOUT=90 bash "$MAIN/.claude/hooks/team-ask-hook.sh" \
+  < "$WORK/perm.json" > "$WORK/hook.out" 2> "$WORK/hook.err" ) & HKPID=$!
+wait_for "beta ask filed" "[ -f '$RD/asks/a-1.json' ]"
+jq -e '.kind == "permission" and .tier == "operator" and (.tier_cause | startswith("production ask: Bash(az webapp restart*)"))
+  and .role == "coder" and .state == "waiting"' "$RD/asks/a-1.json" >/dev/null || fail "beta: the ask: $(cat "$RD/asks/a-1.json")"
+wait_for "beta operator ring" "rung 'ask coder a-1 operator: Bash az webapp restart --name x'"
+# The Notification hook's permission_prompt line: covered by the ask, so the runner rings nothing more.
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) permission_prompt Claude needs your permission" >> "$RD/attention"
-wait_for "beta request" "[ -f '$RD/decisions/req-1.json' ]"
-wait_for "beta human-only ring" "rung 'human-only coder: Bash command az webapp restart'"
-! grep -q '\[authority class\]' "$RD/answers.md" 2>/dev/null || fail "beta: the class answered a human-only prompt"
-ldec open alfa --request req-1; expect 0 "[d-1] coder: Bash command" "beta decision"
+run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh alfa a-1 --allow \
+  --authority teamlead --why "looks fine"
+expect 9 "is the Operator's" "beta: the lead cannot answer an operator-tier ask itself"
+ldec open alfa --ask a-1; expect 0 "[d-1] coder: Bash az webapp restart --name x" "beta decision"
 wait_for "beta notification" "[ \"\$(notified)\" -ge 1 ]"
-grep -q '^answer_in: coder$' "$RD/decisions/d-1.md" || fail "beta: the decision does not name the coder window"
-nev '.answer | tostring' | grep -q 'alfa-coder' || fail "beta: the event does not name the stage window: $(nev .)"
-# The lead neither records nor relays it (owner, 2026-11-15): the Operator answers in the coder window.
-lead_said "d-1 yes, restart it" u-op-beta
-ldec answer alfa d-1 --text "yes, restart it" --tuning rule --why "a restart in the order's scope could be a rule"
-expect 7 "answers it in the coder window" "beta: the lead cannot record a human-only answer"
-TEAM_CONFIRM_SECS=1 run "$MAIN" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh \
-  alfa coder yes --authority operator --why "Operator: yes, restart it" --decision "$RD/decisions/d-1.md"
-expect 7 "answers it in the coder window" "beta: the lead cannot relay it"
-tool_done "$CSID" t1; rm -f "$WORK/pane-coder"
-wait_for "beta window answer" "grep -q '^status: resolved' '$RD/decisions/d-1.md'"
-wait_for "beta window ring" "rung 'human-only coder: d-1 answered in the stage window — approved'"
+nev '.answer | tostring' | grep -q 'alfa-lead' || fail "beta: the event does not name the lead window: $(nev .)"
+# The Operator types the fixed reply into the lead window; the lead records it, then relays it.
+lead_said "d-1 allow" u-op-beta
+ldec answer alfa d-1 --text "d-1 allow" --tuning rule --why "a restart in the order's scope could be a rule"
+expect 0 "answered: d-1" "beta: the lead records the Operator's reply"
 wait_for "beta resolved (#97)" "ls '$OB/state' 2>/dev/null | grep -q '_alfa_${RUN_ID}_d-1[.]resolved\$'"
-grep -q '\[coder 1\] coder: Bash command az webapp restart --name x → approved — Operator in the stage window \[authority operator-window\] \[decision d-1\]$' "$RD/answers.md" \
-  || fail "beta: the window answer is not in answers.md"
-grep -qF -- "- d-1 coder: Bash command" "$RD/teamlead-notes.md" || fail "beta: no Operator case in the notes"
+run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh alfa a-1 --allow \
+  --authority operator --why "Operator: allow the restart" --decision "$RD/decisions/d-1.md"
+expect 0 "answered: a-1 (allow)" "beta: the lead relays the Operator's answer"
+wait_for "beta hook delivered" "! kill -0 $HKPID 2>/dev/null"
+wait "$HKPID" || fail "beta: the stage hook failed: $(cat "$WORK/hook.err")"
+jq -e '.hookSpecificOutput.hookEventName == "PermissionRequest" and .hookSpecificOutput.decision.behavior == "allow"' \
+  "$WORK/hook.out" >/dev/null || fail "beta: the hook's answer: $(cat "$WORK/hook.out") $(cat "$WORK/hook.err")"
+[ "$(jq -r .state "$RD/asks/a-1.json")" = delivered ] || fail "beta: the ask is not delivered"
+grep -q '^status: dispatched' "$RD/decisions/d-1.md" || fail "beta: the decision is not dispatched"
+grep -q '\[coder 1\] ask a-1 Bash az webapp restart --name x → allow — Operator: allow the restart \[authority operator\] \[decision d-1\]$' "$RD/answers.md" \
+  || { cp "$RD/answers.md" "$WORK/out"; fail "beta: the relayed answer is not in answers.md"; }
+grep -qF -- "- d-1 coder: Bash az webapp restart" "$RD/teamlead-notes.md" || fail "beta: no Operator case in the notes"
+! rung "permission prompt with no ask" || fail "beta: the runner rang a permission prompt the ask covers"
 coder_round1
 launched qa 1; on_stage qa; qa_done "$RD"
 wait_for "beta acceptance gate" "rung 'gate acceptance: .agents/team/runs/$RUN_ID/qa-1-1.json'"

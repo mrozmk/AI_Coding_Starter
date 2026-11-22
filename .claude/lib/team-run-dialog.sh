@@ -48,6 +48,11 @@ dialog_tick() {
     [ -n "$k" ] || echo "startup dialog gone: $2"
   fi
   [ -n "$k" ] || return 1
+  # Operator touches (team-lead.md §10): one durable line per dialog kind and session, written at
+  # first sight — the dialog-<who> marker above is removed when the dialog clears.
+  mkdir -p "$TD/runs/$RUN"
+  grep -qF " dialog $1:$k" "$TD/runs/$RUN/operator-touches" 2>/dev/null \
+    || echo "$(team_utc) dialog $1:$k" >> "$TD/runs/$RUN/operator-touches"
   case "$DIALOG_WARNED" in *" $3 "*) ;; *)
     echo "warn: $2: waiting at $(dialog_what "$k") — $(dialog_how "$k") in $(dialog_where "$2")"
     DIALOG_WARNED="$DIALOG_WARNED$3 " ;;

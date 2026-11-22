@@ -402,25 +402,37 @@ hung ADO costs one timeout per snapshot, not one per finished team. Finished sub
 for 10 min after `finished_at`; the snapshot never drops a finish younger than 10 min, older ones
 fill the history up to 12.
 
-## 11. Sender binding
+## 11. Ask channel
 
-**Menu keystroke check (once, attended):** in a scratch tmux session with Claude Code, ask a
-single-question `AskUserQuestion` with 3 options, run `bash .claude/lib/team-answer.sh <team>
-<role> pick 2` and confirm option 2 is chosen; repeat with `other "x"` and confirm the text lands
-in `Type something.`. If it misbehaves, answer menus in the window — `pick`/`other` print the
-resulting screen, and a still-open menu falls back to an Operator action in the window.
-Multi-question menus are always an Operator action in the window.
+In a run with a per-run TeamLead every stage stop reaches the lead as a file
+(`runs/<run>/asks/a-<n>.json`) through Claude Code hooks and goes back as hook JSON; the screen
+sender (pane capture, parse, transcript binding, keys) is retired. The contract is
+[team-lead.md](team-lead.md) §6.
 
-**Prompt binding:** a bound answer requires the same *prompt instance*, not the same
-screen. The `v2:` fingerprint covers only the active prompt's content (header, description,
-command lines as rendered, reason, question, options), so spinners, counters and log lines above
-it never refuse; a changed argument, option or order, a re-wrapped command after a resize, a new
-pane generation, `session_id`, attempt or run, or a new transcript `tool_use` for an identical
-prompt (ABA) refuses with zero keys. A clipped or unknown prompt is `unreadable` and two
-identical pending calls are `ambiguous` — both are Operator actions. The egress gate refuses a
-`Fetch`/`WebFetch` prompt and any Bash command naming `curl`, `wget`, `ssh`, `scp`, `rsync` or `nc`
-as a word, also as a path segment (`tools/curl/…`): such a false positive costs one Operator
-action by design.
+**Measured hook facts** (Claude Code 2.1.322, the probe of the change): `PreToolUse`
+`AskUserQuestion` takes `allow` + `updatedInput` with `answers` (multi-select labels
+comma-joined) and shows no menu; a sub-agent's `PermissionRequest` carries `agent_id` and
+`agent_type`; a `PreToolUse` hook's own `ask` (the egress guard's, in default and auto mode)
+reaches `PermissionRequest`; a background shell or sub-agent shows in the `Stop` payload's
+`background_tasks`, a pending `ScheduleWakeup` in `session_crons`; a 700 s `PermissionRequest` wait
+works (registration timeout 900). The runner registers every ask hook with **715 s**
+(`TEAM_ASK_TIMEOUT_SECS`; the hook answers by its own deadline 15 s earlier) — raise it only after
+measuring a longer wait.
+
+**Worked proof (once per hook-contract change, attended).** In a disposable main checkout (a
+copy of the starter, one commit) and a fixture clone at the path its profile resolves for a team
+`proof` (`team.json`, `run`, `session.json` role `coder` with a fresh session id, `teamlead.json`
+of the same run with a second id, the anchor in the main checkout): materialise
+`stage-hooks.settings.json` as `launch` does and the lead's profile with `team-lead.sh materialize
+proof` from the main checkout. Start two real sessions in tmux, both with cwd = the clone: the stage
+(`claude --session-id <sid> --settings <clone>/.agents/team/stage-hooks.settings.json
+--permission-mode auto`) asking one `AskUserQuestion` with two questions, spawning a sub-agent that
+runs a command a clone-local ask rule (with its baseline entry) tiers `lead`, then ending with a
+plain-text question; and the lead (`env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=proof claude
+--session-id <lid> --settings <clone>/.agents/team/teamlead.settings.json --permission-mode auto
+--disallowedTools AskUserQuestion`) polling `team-lead.sh pending proof` and answering each ask with
+`team-answer.sh proof a-<n> … --authority teamlead`. Pass: three answer files, three `delivered`
+asks, and the stage's next text after each follows the answer.
 
 ## 12. Machine gate lock and run audit
 

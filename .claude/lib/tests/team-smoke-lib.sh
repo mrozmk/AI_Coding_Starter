@@ -32,6 +32,18 @@ pending_tool() {  # pending_tool <sid> <tool_use id> <tool> <json input> [cwd]
     uuid: ("a-" + $id), message: {content: [{type: "tool_use", id: $id, name: $n, input: $in}]}}
     | if $cwd != "" then .cwd = $cwd else . end' >> "$(transcript "$1")"
 }
+# mkask <a-n> <kind> <tier> <payload json> [waiter pid] — an ask of the current stage, as the stage
+# hook files it (team-ask.sh file contract); role, attempt and session id come from session.json.
+# A permission ask needs a live waiter pid, or the channel withdraws it as timed out.
+mkask() {
+  local run; run="$(cat "$TD/run")"; mkdir -p "$TD/runs/$run/asks"
+  jq -n --arg id "$1" --arg k "$2" --arg t "$3" --argjson p "$4" --arg w "${5:-}" \
+    --slurpfile s "$TD/session.json" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{id: $id, kind: $k, role: $s[0].role, attempt: $s[0].attempt, round: ($s[0].round // 1),
+      session_id: $s[0].session_id, agent_id: "", agent_type: "", payload: $p, tier: $t,
+      tier_cause: "", fp: ("fixture-" + $id), state: "waiting", filed_at: $at}
+     + (if $w != "" then {waiter_pid: ($w | tonumber)} else {} end)' > "$TD/runs/$run/asks/$1.json"
+}
 tool_done() {  # tool_done <sid> <tool_use id>
   jq -cn --arg id "$2" '{type: "user", uuid: ("u-" + $id),
     message: {content: [{type: "tool_result", tool_use_id: $id}]}}' >> "$(transcript "$1")"
@@ -648,7 +660,10 @@ smoke_repos() {
   cp "$SRC/.agents/reference/worker-clone.md" "$SEED/.agents/reference/"
   cp "$SRC/AGENTS.md" "$SEED/"
   cp "$SRC/.claude/hooks/guard-team-memory.sh" "$SEED/.claude/hooks/"
-  # Fixture fix (starter import): team-answer.sh runs team_prompt_check.py, which imports hooks/lib.
+  # The ask channel: the stage hook and the template the runner materialises at every launch.
+  cp "$SRC/.claude/hooks/team-ask-hook.sh" "$SEED/.claude/hooks/"
+  cp "$SRC/.claude/team/stage-hooks.json" "$SEED/.claude/team/"
+  # Fixture fix (starter import): the stage hook runs team_prompt_check.py, which imports hooks/lib.
   mkdir -p "$SEED/.claude/hooks/lib"
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SEED/.claude/lib/"
   cp "$SRC"/.claude/hooks/lib/*.py "$SEED/.claude/hooks/lib/"  # never a stray __pycache__/

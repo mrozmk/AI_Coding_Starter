@@ -1,24 +1,24 @@
-"""Authority decisions for team_prompt_check.py --authority class|teamlead|operator.
+"""The tier of a structured permission request (team_prompt_check.py --input-json, the stage hook).
 
 Imported by the checker, never run: every function takes the checker module `c` (its Refuse,
 parsers and rule matchers), so both share one Refuse class and one implementation of each check.
 
-The human-only check runs first, before any waiver. Its causes are what only the Operator may
-approve: an Edit/Write (or a Bash command naming) .claude/settings*.json or a guard profile
-.claude/team/sessions/*.settings.json, an egress prompt or command (git remote add/set-url too),
-a recursive rm with a target outside the clone and the temp roots, and an ask match whose rule is
-not in the starter's baseline (.claude/team/baseline-ask.json — a project's added asks are its
-production rules; a missing or unreadable baseline makes every ask production). Never waived by
-any authority: a deny match, the SQL guard, an unreadable or unbound prompt, a recovered prompt
-(header off screen), no live session, an edit or path outside the clone, a recursive rm of the
-clone root or its .git.
+Egress first, by the real egress classifier (guard_team_egress.bash_reason / webfetch_reason).
+Then the human-only causes — what only the Operator may approve: an Edit/Write (or a Bash command
+naming) .claude/settings*.json or a guard profile .claude/team/sessions/*.settings.json, an egress
+prompt or command (git remote add/set-url too), a recursive rm with a target outside the clone and
+the temp roots, and an ask match whose rule is not in the starter's baseline
+(.claude/team/baseline-ask.json — a project's added asks are its production rules; a missing or
+unreadable baseline makes every ask production) — and the causes no authority waives (a deny
+match, the SQL guard, an edit or path outside the clone, a recursive rm of the clone root or its
+.git). Relative operands resolve against the payload's cwd; the clone root stays the boundary.
 
-  class    — no human-only cause, then today's --classes flow (a class waives baseline asks only)
-  teamlead — no human-only cause; baseline ask matches are waived
-  operator — as teamlead (the lead relaying an Operator decision on a baseline ask); a human-only
-             cause is refused at every authority: the Operator answers it in the stage's window
+  class    — ask matches only, in one enabled team_prompt_classes.py class: the hook answers
+  lead     — no human-only cause: the TeamLead allows or denies (also a prompt no rule explains —
+             a hook's own ask leaves no trace in the payload — and an unevaluated tool type)
+  operator — any human-only or never-waived cause: only an Operator decision answers, either way
 `Edit(**/.env.*)` is a baseline ask, so the TeamLead may approve it (owner's decision, 2026-11-15);
-`Edit(**/.env)` is a deny rule, never waived.
+`Edit(**/.env)` is a deny rule, never reaches the hook.
 Contract: .agents/reference/team-lead.md §6
 """
 import fnmatch
@@ -30,22 +30,21 @@ import subprocess
 import tempfile
 
 import guard_destructive_sql
-import team_prompt
 import team_prompt_classes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASELINE = os.path.join(HERE, "..", "team", "baseline-ask.json")
-AUTHORITIES = ("class", "teamlead", "operator")
 PROFILE_PATH = re.compile(r"^\.claude/team/sessions/(.+/)?[^/]+\.settings\.json$", re.I)
 PROFILE_TEXT = re.compile(r"\.claude/team/sessions/\S*\.settings\.json", re.I)
 FILE_RULE = re.compile(r"^(Edit|Write|MultiEdit|NotebookEdit)\((.+)\)$")
 EDITS = ("Edit file", "Write file", "Create file", "Overwrite file")
 
 
-def path_scan(c, cmd, root, main):
+def path_scan(c, cmd, root, main, cwd=None):
     """[("settings", name) | ("outside", word)] in the order the canonical words name them; globs
-    are expanded from <root>, a $VAR or a path relative to a `cd` target is not resolved."""
-    out, dirs, base = [], c.guarded_main(root, main), os.path.realpath(root)
+    are expanded from <cwd> (default <root>), a $VAR or a path relative to a `cd` target is not
+    resolved."""
+    out, dirs, base = [], c.guarded_main(root, main), os.path.realpath(cwd or root)
     for words in c.canonical(cmd):
         for part in (p for w in words for p in w.split("=")):
             full = os.path.join(base, os.path.expanduser(part))
@@ -97,11 +96,12 @@ def rm_targets(words):
     return targets if recursive else None
 
 
-def delete_causes(c, root, cmd):
+def delete_causes(c, root, cmd, cwd=None):
     """Human-only causes of a recursive rm whose target is not inside the clone or a temp root, or
     is inside a git dir; raises for the clone root, a git dir or an ancestor of either, which no
-    authority deletes."""
+    authority deletes. A relative target resolves against <cwd> (default the clone root)."""
     clone, temps, out, gits = os.path.realpath(root), temp_roots(), [], None
+    base = os.path.realpath(cwd or root)
     cmds = [c.argv_plain(w) for w in c.canonical(cmd)]
     moved = any(w[:1] in (["cd"], ["pushd"]) for w in cmds)  # a relative path the check can't follow
     for targets in (rm_targets(w) for w in cmds):
@@ -109,7 +109,7 @@ def delete_causes(c, root, cmd):
             if re.search(r"[$`]", t) or (moved and not t.startswith(("/", "~"))):
                 out.append("irreversible delete outside the clone: %s (unresolved)" % t)
                 continue
-            full = os.path.join(clone, os.path.expanduser(t))
+            full = os.path.join(base, os.path.expanduser(t))
             hits = glob.glob(full) if re.search(r"[*?[]", t) else [full]
             if not hits:
                 out.append("irreversible delete outside the clone: %s (no match)" % t)
@@ -180,15 +180,16 @@ def file_asks(c, root, extra, header, inp, text):
     return out
 
 
-def human_causes(c, root, main, extra, header, cmds, inp, text):
-    """→ (human-only causes, ask matches); raises every never-waived refusal."""
+def human_causes(c, root, main, extra, header, cmds, inp, text, cwd=None):
+    """→ (human-only causes, ask matches); raises every never-waived refusal. <cwd> (the hook
+    payload's) is the base of relative operands; the clone root stays the containment boundary."""
     human, found = [], []
     if re.match(r"(WebFetch|Fetch)\b", header):
         human.append("egress: %s prompt" % header)
     tiered, bash = c.rules(root, extra), header.startswith("Bash")
     for cmd in cmds:
         if bash:
-            for kind, word in path_scan(c, cmd, root, main):
+            for kind, word in path_scan(c, cmd, root, main, cwd):
                 if kind == "outside":
                     raise c.Refuse("refuse (outside clone): %s — Operator" % word)
                 human.append("settings edit: %s via Bash" % word)
@@ -203,8 +204,9 @@ def human_causes(c, root, main, extra, header, cmds, inp, text):
             # A new remote plus the allowed git push sends the repository to an unapproved host.
             human += ["egress: git remote %s" % w[2] for w in map(c.argv_plain, c.canonical(cmd))
                       if w[:2] == ["git", "remote"] and w[2:3] in (["add"], ["set-url"])]
-            human += delete_causes(c, root, cmd)
-        decision, reason = guard_destructive_sql.classify(cmd, root, root)
+            human += delete_causes(c, root, cmd, cwd)
+        # The live guard's argument order: (command, cwd, project).
+        decision, reason = guard_destructive_sql.classify(cmd, cwd or root, root)
         if decision:
             raise c.Refuse("refuse (%s): %s" % (decision, reason))
         found += c.matches(cmd, tiered, bash)
@@ -220,28 +222,83 @@ def human_causes(c, root, main, extra, header, cmds, inp, text):
     return human, asks
 
 
-def flow(c, root, main, pane, transcript, extra, authority):
-    """→ class name (class), the authority (teamlead/operator), or None when nothing needed a
-    waiver; else Refuse. A human-only refusal reads `human-only: <cause> — pending decision`."""
-    if transcript is None:
-        raise c.Refuse("refuse: could not read the command behind the prompt (no transcript)")
-    header, cmds, inp, tid, text, recovered = c.strict_commands(pane, transcript, root)
-    human, asks = human_causes(c, root, main, extra, header, cmds, inp, text)
-    if not human and not asks:
-        return None
-    # The role's transcript is Bash-writable: a header off screen is never approved by a rule.
-    if recovered:
-        raise c.Refuse("refuse: recovered prompt — header off screen")
-    session = c.session_id(root)
-    if session is None:
-        raise c.Refuse("refuse: no live session")
+# Structured input (the stage hook's PermissionRequest): the tool types the checker evaluates in
+# full. Any other tool is tiered by its ask rule alone and is never a class.
+HEADERS = {"Bash": "Bash command", "Edit": "Edit file", "MultiEdit": "Edit file",
+           "NotebookEdit": "Edit file", "Write": "Write file", "WebFetch": "Fetch"}
+
+
+def tool_rule_tier(c, root, extra, tool):
+    """An unevaluated tool (MCP, Skill, …): a project-added ask rule naming it → operator, a
+    baseline one or none → lead."""
+    base = baseline()
+    for path in [os.path.join(root, ".claude", f) for f in c.SETTINGS_NAMES] + extra:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                asks = json.load(fh).get("permissions", {}).get("ask", [])
+        except (OSError, ValueError, AttributeError):
+            continue
+        for rule in asks if isinstance(asks, list) else []:
+            if isinstance(rule, str) and "(" not in rule and fnmatch.fnmatchcase(tool, rule):
+                if base is None or rule not in base:
+                    return ("operator", "production ask: %s" % rule)
+    return ("lead", None)
+
+
+def tier(c, root, main, extra, tool, header, cmds, inp, text, cwd):
+    """→ ("class", name) | ("lead", None) | ("operator", cause) for one structured permission.
+    Egress first, by the real egress classifier; then the human-only causes and every never-waived
+    refusal (operator); a prompt no rule explains keeps a checkpoint (lead, never automatic: a
+    hook's own ask leaves no trace in the payload); ask matches in an enabled class → class."""
+    try:
+        if tool == "Bash":
+            for cmd in cmds:
+                r = c.guard_team_egress.bash_reason(cmd, root)
+                if r:
+                    return ("operator", "egress: %s" % r)
+        elif tool == "WebFetch":
+            r = c.guard_team_egress.webfetch_reason((inp or {}).get("url"), root)
+            if r:
+                return ("operator", "egress: %s" % r)
+    except Exception as e:  # noqa: BLE001 — the egress guard asks the Operator when it fails
+        return ("operator", "egress: guard failed (%s)" % e.__class__.__name__)
+    if header is None:
+        return tool_rule_tier(c, root, extra, tool)
+    try:
+        human, asks = human_causes(c, root, main, extra, header, cmds, inp, text, cwd)
+    except c.Refuse as e:
+        return ("operator", str(e))
     if human:
-        raise c.Refuse("human-only: %s — pending decision" % human[0])
-    if authority in ("teamlead", "operator"):
-        return authority
-    name, why = team_prompt_classes.classify(
-        root, main, header, inp, team_prompt.tool_cwd(transcript, tid),
-        [(t, r) for t, r, _ in asks], session)
-    if name is None:
-        raise c.Refuse("%s; class: %s" % (c.tier_refusal(*asks[0]), why))
-    return name
+        return ("operator", human[0])
+    if not asks:
+        return ("lead", None)
+    session = c.session_id(root)
+    if session is None or tool == "WebFetch":
+        return ("lead", None)
+    name, _ = team_prompt_classes.classify(root, main, header, inp, cwd,
+                                           [(t, r) for t, r, _ in asks], session)
+    return ("class", name) if name else ("lead", None)
+
+
+def input_tier(c, root, main, extra, path):
+    """team_prompt_check.py --input-json: the tier line of one structured permission
+    ({tool_name, tool_input, cwd}), or None when the file cannot be read."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        tool, inp = data.get("tool_name"), data.get("tool_input") or {}
+        if not isinstance(tool, str) or not isinstance(inp, dict):
+            return None
+    except (OSError, ValueError, AttributeError):
+        return None
+    cwd = data.get("cwd") if isinstance(data.get("cwd"), str) and data.get("cwd") else root
+    inp = dict(inp)
+    target = inp.get("file_path") or inp.get("notebook_path")
+    if isinstance(target, str) and target:
+        inp["file_path"] = os.path.join(cwd, os.path.expanduser(target))
+    cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
+    text = str(inp.get("file_path") or inp.get("url") or cmd.split("\n", 1)[0])
+    kind, why = tier(c, root, main, extra, tool, HEADERS.get(tool), [cmd] if tool == "Bash" else [],
+                     inp, text, cwd)
+    return "tier: class %s" % why if kind == "class" else "tier: lead" if kind == "lead" \
+        else "tier: operator — %s" % why

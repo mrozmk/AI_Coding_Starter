@@ -3,7 +3,7 @@
 # Bash 3.2.
 #   team_evidence_match <transcript> <text> <since> <id> <used uuids>
 #     → the uuid of the newest typed user message at or after <since> that contains <text> and is
-#       no doorbell, runner, team-watch or hc message line; a uuid already used by another answer
+#       no doorbell (stop, gate, prompt, ask, attention, …), runner, team-watch or hc message line; a uuid already used by another answer
 #       (space-separated list) counts only when that message names <id>. Nothing when no match.
 # Callers: team-lead-decision.sh d_evidence (the TeamLead window) and team-lineage.sh consent (the
 # Supervisor window). It raises the bar; it is not proof (team-lead.md §7).
@@ -18,7 +18,7 @@ team_evidence_match() {
     | (.message.content | if type == "string" then .
         elif type == "array" then (map(select(.type == "text") | .text) | join(" ")) else "" end) as $m
     | select($m != "" and ($m | contains($x))
-        and ($m | test("^(stop |gate |prompt |inbox: |relaunched: |human-only |\\[team-run\\]|\\[team-watch |<hc from=)") | not))
+        and ($m | test("^(stop |gate |prompt |ask |attention |inbox:|relaunched: |human-only |\\[team-run\\]|\\[team-watch |<hc from=)") | not))
     | select((($u | index($uid)) == null) or ($m | test("(^|[^A-Za-z0-9-])" + $id + "([^0-9]|$)")))
     | $uid' "$1" 2>/dev/null | tail -n 1
 }

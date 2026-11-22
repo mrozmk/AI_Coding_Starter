@@ -3,6 +3,40 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The TeamLead answers every stop through hooks; the screen sender is retired
+
+**Before:** the per-run TeamLead answered a stage by having `team-answer.sh <team> <role>
+yes|no|say|pick|other|picks` capture its pane, parse it, bind it to the transcript and type keys
+(a Herdr helper under Herdr); the runner tried a permission prompt at `--authority class` from the
+pane and wrote a request file for a human-only one, which the Operator answered in the stage's
+window. A tall menu, a sub-agent's prompt or several questions in one call fell back to the
+Operator.
+
+**Now:** in a lead run the runner passes each stage `--settings
+<clone>/.agents/team/stage-hooks.settings.json` (materialised from the main checkout's
+`.claude/team/stage-hooks.json`): `.claude/hooks/team-ask-hook.sh` files every stop as
+`runs/<run>/asks/a-<n>.json` and returns the lead's answer as hook JSON. The lead answers with
+`team-answer.sh <team> a-<n> --answers|--pick|--text|--allow|--deny … --authority teamlead|operator`;
+an operator-tier ask goes through a decision (`decision open --ask a-<n>`) the Operator answers in
+the lead's window. Coder and qa may ask in a lead run; planner and wrapup are answered by the lead.
+`guard-team-question.sh` is a no-op. The lead can close a run that loses nothing (`team-verdict.sh
+run close`). Each run reports `Operator touches: <n>`. The Herdr sender helper is `retired` in the
+manifest.
+
+**Action:**
+1. Run `/setup:teams` to take the new and changed files (`team-ask.sh`, `team-ask-hook.sh`,
+   `stage-hooks.json`, the sender, the runner).
+2. A lead run whose clone was cut before this change is refused at its next runner start (exit 4,
+   "clone base lacks the ask channel"): finish it on a main checkout from before the change, or
+   restart the ticket on a fresh clone (`team-new.sh`). Land the change when no such run needs a
+   runner restart.
+3. Mode cli and runs without a TeamLead lose the screen sender too: `team-answer.sh <team> <role>
+   yes|no|say|pick|other|picks` no longer exists for any caller, and the team snapshot's role card
+   offers the stage's window hint (`session-host.sh hint <team>-<role>`) and `/start-team <team>`
+   instead of sender commands. Nothing answers such a stage from outside: a prompt or question
+   there is answered in the stage's own window. Its stages get no ask hooks, and coder and qa keep
+   `AskUserQuestion` disabled.
+
 ## `auto` picks Herdr when it answers; a machine without tmux can start sessions
 
 **Before:** `teams.session_host: "auto"` (the default) always meant tmux; Herdr ran only when the

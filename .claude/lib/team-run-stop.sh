@@ -32,6 +32,8 @@ stop_resolve() {
   local f d
   for f in "$TD/runs/$RUN"/operator-*; do
     [ -f "$f" ] || continue
+    # operator-touches is the run's append-only ledger of human actions, not a notification marker.
+    case "$f" in */operator-touches) continue ;; esac
     d="$(cat "$f")"
     bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --decision "$d" >/dev/null 2>&1 || true
     rm -f "$f"; echo "operator item resolved: $d"

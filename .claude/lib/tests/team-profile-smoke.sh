@@ -9,7 +9,6 @@ smoke_init
 P="$MAIN/.claude/project-profile.json"
 NEXT="bash .claude/lib/team-next.sh"
 WATCH="bash .claude/lib/team-watch.sh"
-ANSWER="bash .claude/lib/team-answer.sh"
 WORKER="bash .claude/lib/worker-next.sh"
 MERGE="bash .claude/lib/team-merge-check.sh"
 
@@ -191,25 +190,6 @@ run "$MAIN" $WATCH --once gamma
 expect 0 "WATCH gamma" "team-watch finds a clone outside the repo's parent"
 ! has "no clone" "$WORK/out" || fail "team-watch reports no clone for a custom clone_parent"
 
-# The full prompt layout the sender parses (top rule, header, framed command, options).
-{ printf '─%.0s' $(seq 80); echo; echo " Bash command"; echo " Say hello"
-  printf '╌%.0s' $(seq 80); echo; echo " │ echo hello"; printf '╌%.0s' $(seq 80); echo
-  echo " This command requires approval"; echo " Do you want to proceed?"; echo " ❯ 1. Yes"
-  echo "   2. Yes, and don't ask again for echo commands in this project"; echo "   3. No"
-  echo " Esc to cancel · Tab to amend"; } > "$WORK/pane"
-export STUB_PANE="$WORK/pane" STUB_TMUX_ALIVE=0
-: > "$STUB_LOG"
-run "$MAIN" $ANSWER gamma coder yes
-expect 0 "" "team-answer approves a tier-1 prompt in the custom clone"
-grep -q "send-keys -t %1 Enter" "$STUB_LOG" || fail "team-answer sent no Enter"
-mkdir -p "$GC/.claude"
-printf '{"permissions": {"ask": ["Bash(echo:*)"]}}\n' > "$GC/.claude/settings.json"
-: > "$STUB_LOG"
-run "$MAIN" $ANSWER gamma coder yes
-expect 7 "refuse (ask-tier)" "team-answer reads the custom clone's ask rules"
-! grep -q "send-keys -t %1 Enter" "$STUB_LOG" || fail "a refused team-answer sent Enter"
-unset STUB_PANE STUB_TMUX_ALIVE
-
 # The role-session preflight (supervisor-sessions.sh preflight) resolves clones through the one
 # resolver — it must not drop this team.
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
@@ -258,16 +238,6 @@ peek '.teams.test_gate = "~/g/test gate.sh"' 'printf "%s\n" "$TEAM_TEST_GATE"; t
 expect 0 "$HOME/g/test gate.sh" "a test_gate path with ~ is expanded"
 peek '.teams.test_gate = "none"' 'printf "[%s]\n" "$TEAM_TEST_GATE"'
 expect 0 "[none]" "the none sentinel is not path-expanded"
-
-# ---- (12) an unresolvable clone must never be approved as tier 1 -------------------------------
-rm -f "$GC/.claude/settings.json"            # without rules, a readable clone would be tier 1
-export STUB_PANE="$WORK/pane" STUB_TMUX_ALIVE=0
-: > "$STUB_LOG"
-rm -f "$P"
-run "$MAIN" $ANSWER gamma coder yes
-expect 2 "no teams profile" "team-answer refuses when the clone cannot be resolved"
-! grep -q "send-keys -t %1 Enter" "$STUB_LOG" || fail "unresolved clone still got an Enter"
-unset STUB_PANE STUB_TMUX_ALIVE
 
 # ---- (13) merge-check and worker init refuse an unsupported profile before any side effect -----
 setprofile "$DTS | .teams.clone_parent = null"

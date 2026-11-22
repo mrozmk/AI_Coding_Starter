@@ -121,7 +121,7 @@ Sourced callers use these; they are not CLI verbs.
 | Helper | Use |
 |---|---|
 | `sh_gen <name>` · `sh_gen_addr <main> <address>` | The session's generation: `<pane_id>@<session_created>` (tmux) or `<handle>@<created_ms>` (Herdr). A replaced session is a new value |
-| `sh_read_target <target> [--history N] [--escapes] [--squeeze]` | A capture by a resolved tmux target (a pane id such as `%1`). `team-answer.sh` reads the colours with `--escapes` |
+| `sh_read_target <target> [--history N] [--escapes] [--squeeze]` | A capture by a resolved tmux target (a pane id such as `%1`), `--escapes` keeping the colours |
 | `sh_pane_pid <main> <address>` | The foreground pane's pid (Herdr: the terminal's root program), for the TeamLead ownership probe |
 | `sh_inbox_session <main> <inbox address>` | The session an inbox write rings: a role → itself; a team → `<team>-lead` |
 | `sh_alive_addr`, `sh_read_addr` | `alive` / `read` with the record's backend, for the `team-lib.sh` wrappers |
@@ -154,7 +154,6 @@ Sourced callers use these; they are not CLI verbs.
 | `send` on blocked | No doorbell, `9`, logged `doorbell-blocked`. The message stays in the inbox and the prompt hook shows it | The same |
 | `type` on blocked | Typed only on a recognised idle empty input; an open prompt is never typed into | Refused with `9`: `hc send` would answer the prompt |
 | Startup dialogs | Read from the screen (§11) | No status while a dialog is open: `type` and `send` refuse with `9` ("starting"); the screen tells which dialog |
-| "Other" answer into an open prompt | Typed as before | `team-answer.sh other` falls back to `deny` plus a message to the stage |
 
 ## 8. The status state file (tmux)
 

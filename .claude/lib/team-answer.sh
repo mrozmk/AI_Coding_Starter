@@ -1,399 +1,115 @@
 #!/usr/bin/env bash
-# Answer a team role from the supervisor: approve or reject its open permission prompt, or type a reply.
+# The per-run TeamLead answers an ask of its stage: runs/<run>/asks/a-<n>.json → a-<n>.answer.json,
+# which the stage hook returns to Claude Code (team-ask.sh, .claude/hooks/team-ask-hook.sh).
 #
-# Usage: bash .claude/lib/team-answer.sh <team> <role> <action> [<text>|<n>|<n,n>|none] [<option> <v>]…
-# Actions: yes|no|say|pick|other|picks
-#   e.g. bash .claude/lib/team-answer.sh alfa coder yes
-#        bash .claude/lib/team-answer.sh alfa coder say "Use the existing endpoint, no new route."
-#        bash .claude/lib/team-answer.sh alfa planner pick 2
-#        bash .claude/lib/team-answer.sh alfa planner other "Use the counter."
-# picks answers one checkbox question; none sends explicit "none - skip all", not an empty answer.
-# Options: --clone --root
-#   --expect-fp --expect-pane --expect-event --expect-session --expect-run --expect-attempt
-#   --expect-record --expect-anchor.
-#   --authority class|teamlead|operator --why "<line>" [--decision <answered d-<n>.md>] — the
-#   per-run TeamLead path (team-answer-lead.sh, team-lead.md §6).
-# Exit: 0 sent · 2 usage · 3 not sent, stale · 4 partial (keys sent, then a failure) · 5 not sent,
-#   unreadable · 6 not sent, changed · 7 not sent, policy · 9 not sent, human-only (a pending decision).
+# Usage: bash .claude/lib/team-answer.sh <team> a-<n> <form> --authority teamlead|operator
+#          --why "<line>" [--decision <answered d-<n>.md>]
+# Forms: --answers '<json: question text → label>' | --pick "<label>" | --text "<free text>"
+#        | --allow | --deny "<what to do instead>"
+#   question: --answers, --pick (a single-question ask; one of its labels), --text (free text)
+#   permission, plan: --allow, --deny · text (a stop): --text
+#   e.g. bash .claude/lib/team-answer.sh alfa a-3 --pick "Option A" --authority teamlead --why "the order says A"
+# Run from the team's clone (the lead's cwd): its .agents/team/team.json must name <team>.
+# Exit: 0 written · 2 usage · 6 stale, replaced or already answered · 7 caller or decision rule
+#   · 9 operator tier (open a decision: team-lead.sh decision open <team> --ask a-<n>).
 set -euo pipefail
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 3 ] || usage
-TEAM="$1"; ROLE="$2"; action="$3"; shift 3; text=""; have_text=""
-if [ $(( $# % 2 )) = 1 ]; then text="$1"; have_text=1; shift; fi
-CLONE=""; ROOT=""
-AUTH=""; WHY=""; DECISION=""; DEC_ID=""; DEC_FILE=""
-E_FP=""; E_PANE=""; E_EVENT=""; E_SESSION=""; E_RUN=""; E_ATTEMPT=""; E_RECORD=""; E_ANCHOR=""
+TEAM="$1"; ASK="$2"; shift 2
+FORM=""; VALUE=""; AUTH=""; WHY=""; DECISION=""; DEC_ID=""; DEC_FILE=""
+setform() { [ -z "$FORM" ] || { echo "error: one answer form only" >&2; exit 2; }; FORM="$1"; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --clone) CLONE="$2" ;; --root) ROOT="$2" ;;
-    --expect-fp) E_FP="$2" ;; --expect-pane) E_PANE="$2" ;; --expect-event) E_EVENT="$2" ;;
-    --expect-session) E_SESSION="$2" ;; --expect-run) E_RUN="$2" ;;
-    --expect-attempt) E_ATTEMPT="$2" ;; --expect-record) E_RECORD="$2" ;;
-    --expect-anchor) E_ANCHOR="$2" ;;
-    --authority) AUTH="$2" ;; --why) WHY="$2" ;; --decision) DECISION="$2" ;;
+    --allow) setform allow; shift; continue ;;
+    --answers|--pick|--text|--deny|--authority|--why|--decision) [ $# -ge 2 ] || usage ;;
     *) usage ;;
+  esac
+  case "$1" in
+    --answers) setform answers; VALUE="$2" ;; --pick) setform pick; VALUE="$2" ;;
+    --text) setform text; VALUE="$2" ;; --deny) setform deny; VALUE="$2" ;;
+    --authority) AUTH="$2" ;; --why) WHY="$2" ;; --decision) DECISION="$2" ;;
   esac
   shift 2
 done
-case "$action" in pick|other|picks) [ -n "$have_text" ] || usage ;; esac
-case "$action" in
-  yes|no) ;;
-  say|other) [ -n "$text" ] || { echo "error: $action needs the text to type" >&2; exit 2; } ;;
-  pick) [[ "$text" =~ ^[1-9][0-9]?$ ]] || { echo "error: pick needs an option number 1-99" >&2; exit 2; } ;;
-  picks) [[ "$text" = none || "$text" =~ ^[1-9][0-9]?(,[1-9][0-9]?)*$ ]] \
-           || { echo "error: picks needs option numbers separated by commas, or none" >&2; exit 2; } ;;
-  *) echo "error: action must be yes, no, say, pick, other or picks" >&2; exit 2 ;;
+[[ "$TEAM" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad team name $TEAM" >&2; exit 2; }
+[[ "$ASK" =~ ^a-[0-9]+$ ]] || { echo "error: the ask id must be a-<n>" >&2; exit 2; }
+[ -n "$FORM" ] || { echo "error: an answer form is required" >&2; exit 2; }
+case "$FORM" in
+  answers) jq -e 'type == "object" and length > 0 and all(.[]; type == "string" and length > 0)' \
+    <<<"$VALUE" >/dev/null 2>&1 || { echo "error: --answers needs a JSON object of question → label" >&2; exit 2; } ;;
+  pick|text) [ -n "$VALUE" ] || { echo "error: --$FORM needs a value" >&2; exit 2; } ;;
 esac
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
-. "$LIB/team-send-lock.sh"
 . "$LIB/team-answer-lead.sh"
-. "$LIB/team-answer-herdr.sh"   # herdr_type, herdr_other
-name="$TEAM-$ROLE"
-[ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-[[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "error: bad session name $name" >&2; exit 2; }
-# A caller inside a clone (the per-run TeamLead's cwd) is in the clone already: team_clone_dir
-# derives a sibling of <main> and would name <clone>-<team>, whose transcript path does not exist.
-if [ -z "$CLONE" ] && [ -f "$ROOT/.agents/team/team.json" ]; then
-  [ "$(jq -r '.team // empty' "$ROOT/.agents/team/team.json" 2>/dev/null)" = "$TEAM" ] \
-    || { echo "error: $ROOT is not the clone of team $TEAM — pass --clone" >&2; exit 2; }
-  CLONE="$ROOT"
-fi
-[ -n "$CLONE" ] || CLONE="$(team_clone_dir "$TEAM" "$ROOT")"
-TD="$CLONE/.agents/team"
-# A clone-less caller: lock in this checkout.
-[ -d "$TD" ] || { TD="$ROOT/.agents/team"; mkdir -p "$TD"; }
-KEYS=0; DRAFT0=""
+. "$LIB/team-ask.sh"
+refuse() { local rc="$1"; shift; echo "error: $* — nothing written" >&2; exit "$rc"; }
 
-refuse() { local rc="$1"; shift; echo "error: $* — nothing sent" >&2; exit "$rc"; }
-stop() {  # stop <rc if nothing was sent> <reason> — a failure after a key is always partial (4)
-  local rc="$1"; shift
-  [ "$KEYS" = 0 ] || { echo "error: $* — $KEYS keys sent" >&2; exit 4; }
-  refuse "$rc" "$@"
-}
-multi_error() { stop 5 "$* — answer in the window"; }
-sj() { jq -r --arg f "$1" '.[$f] // empty | tostring' "$TD/session.json" 2>/dev/null || true; }
-real_event() { case "$1" in ""|-|ambiguous) return 1 ;; esac; }
-# With -e: a dim prompt suggestion on the input line is not a draft (team_prompt.py).
-capture() { sh_read_target "$PANE_ID" --history 200 --escapes 2>/dev/null || true; }
-parse() { printf '%s\n' "$1" | python3 -I "$LIB/team_prompt.py" parse --transcript "${T:--}"; }
-plain() { python3 -I "$LIB/team_prompt.py" strip; }
-is_typed() { [ "$(printf '%s\n' "$2" | python3 -I "$LIB/team_prompt.py" typed "$1")" = yes ]; }
-fields() {  # fields <parse json> → KIND COMPLETE REASON FP CURSOR OTHER BUSY EMPTY OPT1 INPUT
-  IFS=$'\x1f' read -r KIND COMPLETE REASON FP CURSOR OTHER BUSY EMPTY OPT1 INPUT \
-    <<<"$(jq -r '[.kind, .complete, .reason, .fp, (.cursor // "-"), (.other // "-"), .busy,
-    (.input_empty // "-"), (.options[0].label // ""), (.input // "")] | map(tostring)
-    | join("\u001f")' <<<"$1")"
-}
-draft_why() {  # draft_why <input> → why a human draft is not recoverable, or nothing
-  case "$1" in
-    *"[Pasted text #"*) echo "paste chip" ;;
-    *"[Image #"*) echo "image chip" ;;
-  esac
-}
-newest_record() { team_newest_record "$TD" "$(team_run_ref "$TD" "$(cat "$TD/run" 2>/dev/null)")" "$ROLE" "$(sj attempt)"; }
-identity() {
-  local s; s="$(sj session_id)"
-  [ -z "$E_SESSION" ] || [ "$E_SESSION" = "${s:--}" ] || refuse 6 "session changed"
-  [ -z "$E_RUN" ] || [ "$E_RUN" = "$(cat "$TD/run" 2>/dev/null)" ] || refuse 6 "run changed"
-  [ -z "$E_ATTEMPT" ] || { [ "$E_ATTEMPT" = "$(sj attempt)" ] && [ "$ROLE" = "$(sj role)" ]; } \
-    || refuse 6 "role or attempt changed"
-}
-
-# HB: the target's backend (its registry record). Herdr is driven through the driver's lib calls on
-# the handle (PANE_ID), under this script's own send lock, as tmux is through send-keys.
-send_key() {
-  local i=$((KEYS + 1)) rc=0
-  if [ "$HB" = herdr ]; then
-    # hc types text only by pasting and submitting it, which would answer an open prompt.
-    [ "$1" != -l ] || stop 5 "typing into an open prompt is not supported under herdr — answer in the window"
-    sh_herdr_keys "$PANE_ID" "$@" 2>/dev/null || rc=$?
-  else
-    sh_tmux send-keys -t "$PANE_ID" "$@" 2>/dev/null || rc=$?
-  fi
-  if [ "$rc" = 0 ]; then
-    KEYS=$i
-    return 0
-  fi
-  [ "$KEYS" -gt 0 ] || refuse 6 "pane gone"
-  echo "error: send-keys failed at key $i — $KEYS keys sent" >&2; exit 4
-}
-type_text() {
-  if [ "$HB" = herdr ]; then herdr_type "$1"; return; fi
-  send_key -l -- "$1"; await_typed "$1"; send_key Enter
-}
-# An Enter sent before Claude Code took in the text is swallowed: wait for a settled frame with it.
-await_typed() {
-  local i=0 max prev="" cur
-  max=$(( ${TEAM_TYPED_SECS:-5} * 5 ))
-  while [ "$i" -lt "$max" ]; do
-    cur="$(capture)"
-    if is_typed "$1" "$cur"; then [ "$cur" != "$prev" ] || return 0; prev="$cur"; else prev=""; fi
-    sleep 0.2; i=$((i + 1))
-  done
-  stop 6 "typed text not on screen — Enter not sent"
-}
-clear_draft() {  # clear_draft <draft> — save it before any clearing key, then verify an empty line
-  local run dir f i=0 a
-  run="$(cat "$TD/run" 2>/dev/null || true)"; a="$(sj attempt)"
-  dir="$TD/drafts"; [ -z "$run" ] || dir="$TD/runs/$run/drafts"
-  f="$dir/$ROLE-${a:-x}-$(team_utc | tr -d :).txt"
-  { mkdir -p "$dir" && printf '%s\n' "$1" > "$f" && [ "$(cat "$f")" = "$1" ]; } 2>/dev/null \
-    || stop 6 "draft not saved"
-  echo "draft saved: $f"
-  send_key C-e; send_key C-u
-  while [ "$i" -lt 10 ]; do
-    sleep 0.2
-    fields "$(parse "$(capture)")"
-    [ "$COMPLETE:$KIND:$BUSY:$EMPTY" != true:none:false:true ] || return 0
-    i=$((i + 1))
-  done
-  stop 6 "draft not cleared (saved in $f)"
-}
-press_down() {
-  local i=1
-  while [ "$i" -lt "$1" ]; do send_key Down; i=$((i + 1)); done
-}
-
-multi_ready() {
-  local n seen=',' requests
-  [ "$CURSOR" = 1 ] || stop 6 "menu cursor is not on option 1 — answer in the window"
-  TITLE="$(jq -r .title <<<"$P")"
-  [ "$text" != none ] || return 0
-  IFS=',' read -r -a requests <<<"$text"
-  for n in "${requests[@]}"; do
-    [ "$n" -lt "$OTHER" ] || multi_error "option $n is not a real option on screen"
-    [[ "$seen" != *",$n,"* ]] || multi_error "duplicate option $n"
-    seen="$seen$n,"
-  done
-}
-
-# Capture the actual review before the final Enter; never submit an unanswered question.
-multi_review() {
-  local i=0 r k why=""
-  while [ "$i" -lt 20 ]; do
-    r="$(parse "$(capture)")"; k="$(jq -r .kind <<<"$r")"
-    if [ "$k" = review ]; then
-      jq -e --arg t "$TITLE" --arg e "$EXPECTED" '.review | .title == $t and .ready
-        and .submit_cursor and .bullets == 1 and (.unanswered | not)
-        and any(.answers[]; . == $e)' <<<"$r" >/dev/null \
-        || multi_error "unexpected review or answer; final Enter not sent"
-      # Polling outlives intermediate frames: submit only the still-open call's own review.
-      if real_event "$EVENT" \
-          && [ "$(python3 -I "$LIB/team_prompt.py" pending "$T" "$EVENT")" != yes ]; then
-        multi_error "prompt event closed before review; final Enter not sent"
-      fi
-      return 0
-    fi
-    # Frames between the checkbox keys and the review (cursor on Submit, redraw) are transient.
-    case "$k:$(jq -r .reason <<<"$r")" in
-      checkbox:*|menu:*|*:incomplete:*|unreadable:*)
-        r="$(jq -r '.reason | sub("^unreadable: "; "")' <<<"$r")"; [ -z "$r" ] || why="$r" ;;
-      *) multi_error "review screen unavailable" ;;
-    esac
-    sleep 0.1; i=$((i + 1))
-  done
-  multi_error "review screen did not appear${why:+ (last: $why)}; final Enter not sent"
-}
-
-multi_send() {
-  local i=1 want mark
-  EXPECTED=''
-  while [ "$i" -lt "$OTHER" ]; do
-    want=' '; [[ ",$text," != *",$i,"* ]] || want='✔'
-    mark="$(jq -r --argjson n "$i" '.options[] | select(.n == $n)
-      | if .checked then "✔" else " " end' <<<"$P")"
-    [ "$want" = "$mark" ] || send_key Enter
-    if [ "$want" = '✔' ]; then
-      EXPECTED="${EXPECTED:+$EXPECTED, }$(jq -r --argjson n "$i" \
-        '.options[] | select(.n == $n) | .label' <<<"$P")"
-    fi
-    send_key Down; i=$((i + 1))
-  done
-  if [ "$text" = none ]; then
-    EXPECTED='none - skip all'
-    send_key Enter
-    send_key -l -- "$EXPECTED"
-  fi
-  send_key Down
-  send_key Enter
-  multi_review
-  send_key Enter
-}
-
-# Positive evidence only: an empty, mid-render or merely resized capture proves nothing.
-confirm() {  # confirm <say|other|…>
-  local mode="$1" n=0 max
-  max=$(( ${TEAM_CONFIRM_SECS:-5} * 2 ))
-  while :; do
-    if [ "$mode" = say ]; then
-      if real_event "$EVENT" && [ "$(python3 -I "$LIB/team_prompt.py" user-after "$T" \
-          "$EVENT" "$text")" = yes ]; then echo "confirmed: yes (transcript)"; return; fi
-    elif real_event "$EVENT" \
-        && [ "$(python3 -I "$LIB/team_prompt.py" result "$T" "$EVENT")" = yes ]; then
-      echo "confirmed: yes (tool_result)"; return
-    fi
-    fields "$(parse "$(capture)")"
-    if [ "$COMPLETE:$KIND:$BUSY" = true:none:true ]; then
-      [ "$mode" = say ] && echo "confirmed: yes (role busy)" \
-        || echo "confirmed: yes (prompt gone, role busy)"
-      return
-    fi
-    if [ "$mode" != say ] && ! real_event "$EVENT" && [ "$COMPLETE" = true ] \
-        && [ "$KIND" != "$ORIG_KIND" ]; then
-      case "$KIND" in
-        permission|menu|checkbox) echo "confirmed: yes (successor screen)"; return ;;
-      esac
-    fi
-    n=$((n + 1)); [ "$n" -lt "$max" ] || break
-    sleep 0.5
-  done
-  if [ "$mode" != say ] && [ "$COMPLETE" = true ] && [ "$FP" = "$ORIG_FP" ]; then
-    echo "confirmed: no — prompt still open"
-  else
-    echo "confirmed: no — no positive evidence"
-  fi
-}
-report_sent() {  # report_sent <confirm mode> <label>
-  confirm "$1"
-  echo "sent $2 to $name; screen now:"
-  capture | plain | sed '/^[[:space:]]*$/d' | tail -n 8 | sed 's/^/  | /'
-}
-
-# Last gate, immediately before the first key: a stop during preflight wins.
-last_gate() {
-  [ ! -e "$TD/cancel" ] || refuse 6 "team stopped"
-  identity
-}
-reserve_dispatch() {  # reserve_dispatch <instance key> — one dispatch per instance, before keys
-  local h hit log="$TD/send-$ROLE.log"
-  h="$(printf '%s' "$1" | shasum -a 1 | cut -d' ' -f1)"
-  if hit="$(grep -F " $h " "$log" 2>/dev/null | tail -n 1)"; then
-    refuse 6 "instance already dispatched by $(sed -n 's/.* \(q=[^ ]*\) .*/\1/p' <<<"$hit")"
-  fi
-  [ -z "$AUTH" ] || echo "dispatch $(team_utc) $h q=authority:$AUTH attempt=$(sj attempt) pid=$$" >> "$log"
-}
-
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || refuse 7 "not in a team clone"
+TD="$ROOT/.agents/team"
+[ "$(jq -r '.team // empty' "$TD/team.json" 2>/dev/null)" = "$TEAM" ] \
+  || refuse 7 "this checkout is not team $TEAM's clone — a TeamLead answers only its own team"
+[ ! -e "$TD/cancel" ] || refuse 6 "team stopped"
 auth_preflight
-team_tmux_alive "$name" || refuse 6 "session gone"
-HELD="$(team_send_lock "$TD" "$ROLE" "${TEAM_SEND_LOCK_WAIT_SENDER:-2}" "direct pid=$$")" \
-  || refuse 3 "target busy ($HELD)"
-trap 'team_send_unlock "$TD" "$ROLE"' EXIT
-
-GEN="$(team_pane_gen "$name")" || refuse 6 "pane not found"
-HB="$(sh_record_get "$(team_main)" "$name" backend 2>/dev/null)"
-PANE_ID="${GEN%@*}"
-[ -z "$E_PANE" ] || [ "$E_PANE" = "$GEN" ] || refuse 6 "pane generation changed"
-T="$(team_role_transcript "$CLONE" "$(sj session_id)" "$(sj claude_config_dir)")"
-PANE="$(capture)"; [ -n "$PANE" ] || refuse 3 "capture empty"
-P="$(parse "$PANE")"; fields "$P"
-if [ "$COMPLETE" != true ]; then
-  case "$REASON" in incomplete:*) refuse 3 "$REASON" ;; esac
-  refuse 5 "${REASON#unreadable: }"
-fi
-ORIG_KIND="$KIND"; ORIG_FP="$FP"
-case "$action" in
-  yes|no) [ "$KIND" = permission ] || refuse 6 "no permission prompt on screen"
-    [ "$action" = no ] || { [ "$CURSOR" = 1 ] && [ "$OPT1" = Yes ]; } \
-      || refuse 6 "permission cursor is not on Yes" ;;
-  pick|other) [ "$KIND" = menu ] && [ "$OTHER" != - ] || refuse 6 "no single-question menu on screen"
-    [ "$CURSOR" = 1 ] || refuse 6 "menu cursor is not on option 1" ;;
-  picks) [ "$KIND" = checkbox ] || refuse 6 "no single-question checkbox menu on screen"
-    multi_ready ;;
-  say) [ "$KIND" = none ] || refuse 6 "a menu or permission prompt is open"
-    [ "$BUSY" = false ] || refuse 3 "role is busy"
-    if [ "$EMPTY" != true ]; then
-      WHY="$(draft_why "$INPUT")"
-      [ -z "$WHY" ] || refuse 5 "draft not recoverable ($WHY) — clear the line in the window"
-      DRAFT0="$INPUT"
-    fi
-    [ -z "$E_ANCHOR" ] || plain <<<"$PANE" | grep -F -- "$E_ANCHOR" >/dev/null \
-      || refuse 6 "anchor no longer on screen" ;;
+sj() { jq -r --arg f "$1" '.[$f] // empty | tostring' "$TD/session.json" 2>/dev/null || true; }
+ask_init "$TD" || refuse 6 "no current run"
+AF="$ASK_D/$ASK.json"
+[ -f "$AF" ] || refuse 6 "no ask $ASK in runs/$ASK_RUN/asks/"
+[ "$(ask_get "$ASK" session_id)" = "$(sj session_id)" ] && [ "$(ask_get "$ASK" attempt)" = "$(sj attempt)" ] \
+  || refuse 6 "ask $ASK belongs to a replaced session"
+case "$(ask_state "$ASK")" in
+  delivered|delivering) refuse 6 "ask $ASK already answered and delivered" ;;
+  withdrawn) refuse 6 "ask $ASK withdrawn — answer the newer ask" ;;
+  answered) refuse 6 "ask $ASK already answered" ;;
 esac
-if [ "$action" = pick ]; then
-  jq -e --argjson n "$text" 'any(.options[]; .n == $n)' <<<"$P" >/dev/null \
-    || refuse 6 "option $text not on screen"
+[ ! -e "$TD/closing" ] || refuse 6 "the run is closing"
+
+KIND="$(ask_get "$ASK" kind)"; TIER="$(ask_get "$ASK" tier)"; REQ="$(ask_get "$ASK" requires_decision)"
+case "$TIER" in class|lead|operator) ;; *) refuse 6 "ask $ASK is not classified" ;; esac
+if [ "$TIER" = operator ] || [ -n "$REQ" ]; then
+  [ "$AUTH" = operator ] && [ -n "$DEC_ID" ] \
+    || refuse 9 "ask $ASK is the Operator's${REQ:+ (decision $REQ)} — open a decision: team-lead.sh decision open $TEAM --ask $ASK"
+  [ -z "$REQ" ] || [ "$REQ" = "$DEC_ID" ] || refuse 7 "ask $ASK waits for decision $REQ, not $DEC_ID"
 fi
 
-[ -z "$E_FP" ] || [ "$E_FP" = "$FP" ] || refuse 6 "prompt content changed"
-identity
-[ -z "$E_RECORD" ] || [ "$E_RECORD" = "$(newest_record)" ] || refuse 6 "a newer record exists"
-case "$KIND" in permission) EVKIND=permission ;; none) EVKIND=blocked ;; *) EVKIND=menu ;; esac
-EVENT=-
-[ "$T" = - ] || EVENT="$(printf '%s' "$P" | python3 -I "$LIB/team_prompt.py" event "$T" "$EVKIND")"
-if real_event "$E_EVENT"; then
-  case "$EVENT" in ambiguous) refuse 5 "ambiguous event" ;; -) refuse 3 "transcript unreadable" ;; esac
-  [ "$EVENT" = "$E_EVENT" ] || refuse 6 "new prompt event"
-fi
-auth_event
-
-CLASS=""
-if [ "$action" = yes ]; then
-  POL=("$CLONE" --strict --main "$ROOT")
-  [ -z "$AUTH" ] || POL+=(--transcript "$T" --authority "$AUTH")
-  # ask/deny, SQL writes and egress are the Operator's to answer in the window.
-  if ! PERR="$(printf '%s\n' "$PANE" | python3 -I "$LIB/team_prompt_check.py" "${POL[@]}" 2>&1)"; then
-    case "$PERR" in
-      *"could not read"*) refuse 5 "$PERR" ;;
-      *"human-only:"*) refuse 9 "$PERR" ;;
-      *) refuse 7 "$PERR — Operator answers in the window" ;;
-    esac
-  fi
-  CLASS="$(sed -n 's/^policy-class: //p' <<<"$PERR" | tail -n 1)"
-  [ -z "$CLASS" ] || echo "policy-class: $CLASS"
-fi
-
-case "$action" in
-  say) if [ -n "$E_RECORD" ]; then KEY="$GEN|record:$E_RECORD|$EVENT"
-       elif [ -n "$E_ANCHOR" ]; then KEY="$GEN|anchor:$E_ANCHOR|$EVENT"
-       else KEY="$GEN|say:$(printf '%s' "$text" | shasum -a 1 | cut -d' ' -f1)|$EVENT"; fi ;;
-  *) KEY="$GEN|$FP|$EVENT" ;;
+# The form must fit the ask's kind and payload.
+case "$KIND:$FORM" in
+  question:answers)
+    jq -e --argjson a "$VALUE" '[.payload.tool_input.questions[].question] | sort == ($a | keys | sort)' \
+      "$AF" >/dev/null 2>&1 || refuse 7 "--answers keys must be exactly the asked question texts" ;;
+  question:pick)
+    jq -e --arg v "$VALUE" '(.payload.tool_input.questions | length) == 1
+      and any(.payload.tool_input.questions[0].options[]; .label == $v)' "$AF" >/dev/null 2>&1 \
+      || refuse 7 "--pick needs one of the labels of a single-question ask" ;;
+  question:text|permission:allow|permission:deny|plan:allow|plan:deny|text:text) ;;
+  *) refuse 7 "--$FORM does not answer a $KIND ask" ;;
 esac
 
-# Idle inputs all fingerprint v2:none and the send lock cannot stop a human typing: re-read it.
-if [ -n "$DRAFT0" ]; then
-  fields "$(parse "$(capture)")"
-  { [ "$COMPLETE:$KIND:$BUSY" = true:none:false ] && [ "$INPUT" = "$DRAFT0" ]; } \
-    || refuse 6 "draft changed"
+# An Operator decision is relayed, never reworded: the form equals the decision's stored answer.
+if [ -n "$DEC_ID" ]; then
+  case "$FORM" in
+    allow|deny) [ "$(auth_fm "$DEC_FILE" answer_outcome)" = "$FORM" ] \
+      || refuse 7 "decision $DEC_ID reads ${DEC_ID} $(auth_fm "$DEC_FILE" answer_outcome), not --$FORM" ;;
+  esac
+  case "$FORM" in
+    answers) [ "$(jq -cS . <<<"$(auth_fm "$DEC_FILE" answer_map)" 2>/dev/null)" = "$(jq -cS . <<<"$VALUE")" ] \
+      || refuse 7 "--answers differs from decision $DEC_ID's answer" ;;
+    pick|text|deny) [ "$(auth_fm "$DEC_FILE" answer_value)" = "$VALUE" ] \
+      || refuse 7 "the value differs from decision $DEC_ID's answer" ;;
+  esac
 fi
 
-last_gate
-if [ -n "$CLASS" ] || { [ -n "$AUTH" ] && [ "$action" = yes ]; }; then
-  [ -z "$CLASS" ] || team_class_on "$ROOT" "$CLASS" \
-    || refuse 7 "class $CLASS off or not enabled — Operator answers in the window"
-  # The classification widened the decision and took time: the prompt must be the one classified.
-  fields "$(parse "$(capture)")"
-  { [ "$COMPLETE:$KIND:$CURSOR:$OPT1" = true:permission:1:Yes ] && [ "$FP" = "$ORIG_FP" ] \
-    && [ "$(python3 -I "$LIB/team_prompt.py" pending "$T" "$EVENT")" = yes ]; } \
-    || refuse 6 "prompt changed during classification"
-fi
-reserve_dispatch "$KEY"; auth_dispatch
-
-case "$action" in
-  yes) send_key Enter ;;
-  no)
-    send_key Escape
-    i=0; idle=""
-    while [ "$i" -lt 10 ]; do
-      sleep 0.2
-      fields "$(parse "$(capture)")"
-      if [ "$COMPLETE:$KIND:$EMPTY" = true:none:true ]; then idle=1; break; fi
-      if [ "$COMPLETE:$KIND:$BUSY" = true:none:false ]; then
-        WHY="$(draft_why "$INPUT")"
-        [ -z "$WHY" ] || stop 6 "draft not recoverable ($WHY) after Escape"
-        idle=1; break
-      fi
-      i=$((i + 1))
-    done
-    [ -n "$idle" ] || stop 6 "screen after Escape is not idle input"
-    [ "$EMPTY" = true ] || clear_draft "$INPUT"
-    type_text "Rejected by the developer${text:+: $text}. Treat it as a material question (team-mode.md §4): write a blocked record and wait." ;;
-  say) [ -z "$DRAFT0" ] || clear_draft "$DRAFT0"; type_text "$text" ;;
-  pick) press_down "$text"; send_key Enter ;;
-  other) if [ "$HB" = herdr ]; then herdr_other "$text"
-         else press_down "$OTHER"; type_text "$text"; fi ;;
-  picks) multi_send ;;
-esac
-report_sent "$action" "$action"
-auth_after
+if [ "$FORM" = answers ]; then V="$(jq -c . <<<"$VALUE")"; else V="$(jq -n --arg v "$VALUE" '$v')"; fi
+ANSWER="$(jq -n --arg id "$ASK" --arg form "$FORM" --argjson v "$V" --arg auth "$AUTH" --arg why "$WHY" \
+  --arg dec "$DEC_ID" --arg at "$(team_utc)" --arg lsid "$(jq -r '.session_id // ""' "$TD/teamlead.json")" \
+  '{id: $id, form: $form, value: $v, authority: $auth, why: $why, decision: $dec, answered_at: $at,
+    lead_session_id: $lsid}')"
+rc=0; ask_answer_write "$ASK" "$ANSWER" || rc=$?
+[ "$rc" = 0 ] || refuse 6 "ask $ASK already answered"
+ask_cas "$ASK" "waiting timed-out" answered || true
+auth_dispatch
+# The answers.md line and a record's .answered marker (the runner re-derives the same after an
+# interrupted sender).
+ask_follow_up "$ASK"
+echo "answered: $ASK ($FORM) — the stage hook returns it${DEC_ID:+ [decision $DEC_ID]}"

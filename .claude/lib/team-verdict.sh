@@ -3,6 +3,8 @@
 # Usage: bash .claude/lib/team-verdict.sh <gate> <verdict> --for <record> --message "<line>"
 #          [--ref <file>] [--notify human_decision|abandon_decision] [--decision d-<n>]
 #          [--quick-call continue]
+#        bash .claude/lib/team-verdict.sh run close --for <acked record|asks/a-<n>.json>
+#          --reason delivered-elsewhere|team-part-ended --message "<line>"
 #        bash .claude/lib/team-verdict.sh event collision --ref <file> --message "<line>"
 #        bash .claude/lib/team-verdict.sh wrapup decide --for <wrapup_proposals-<a>_<k>.json>
 #          --ref .agents/team/runs/<run>/wrapup-decision-<n>.md --message "<line>"
@@ -18,7 +20,7 @@
 #   rework needs --quick-call continue); abandon-recommended needs --decision d-<n>, pending, opened
 #   with --notify abandon_decision.
 #   decision → escalate|continue|close|resolved: --for is any file under runs/<run>/ (a record, a
-#   verdict, decisions/req-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
+#   verdict, asks/a-<n>.json) or attention:<line>; escalate needs --ref <the decision file>;
 #   continue/close need --decision d-<n> answered with that answer_outcome; resolved closes a
 #   decision without changing the run. A used decision becomes status: consumed (once).
 #   wrapup → decide: --for is the proposals file the wrapup's newest record (blocked, proposals)
@@ -26,6 +28,11 @@
 #   accept `needed because`, one optional correction line, the run's cap, a group B opinion). Once
 #   per proposals file; the items and the file's sha256 land in the verdict, the items also under
 #   `## Wrapup decisions` in the notes.
+#   run → close --reason delivered-elsewhere|team-part-ended: --for the acked record or a live ask
+#   (asks/a-<n>.json) of the current stage (role, attempt, round). Refused (4) when the close would
+#   lose unmerged work (team_close_safe: a coder record or a PR of the run, a dirty tree, a commit
+#   beyond base_sha touching anything but .agents/specs/** and .agents/plans/**) — open a decision.
+#   The runner re-checks, pushes the branch and closes the run.
 #   Writes .agents/team/runs/<run>/teamlead-<gate>-<seq>.json.
 #   Tracker comments (opt-in workflow.tracker_comments, tracker not none): plan approve and
 #   acceptance accept need the planner's ledger + snapshot and the lead's fresh read
@@ -38,15 +45,16 @@
 #   Contract: .agents/reference/team-lead.md §4, §5, §8, §9, §11
 set -euo pipefail
 
-usage() { sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
-FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""
+FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""; REASON=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
     --for) FOR="$(basename "$2")"; FOR_RAW="$2" ;; --ref) REF="$2" ;; --notify) NOTIFY="$2" ;;
     --message) MESSAGE="$2" ;; --decision) DECISION="$2" ;; --quick-call) QUICK_CALL="$2" ;;
+    --reason) REASON="$2" ;;
     *) usage ;;
   esac
   shift 2
@@ -87,13 +95,15 @@ write_verdict() {  # → prints the written file
     --arg decision "$DECISION" --arg written_at "$(team_utc)" \
     --arg session_id "$(team_lead_json session_id)" --arg quick_call "$QUICK_CALL" \
     --arg tracker "$TRACKER_LINE" --argjson items "${ITEMS:-null}" --arg psha "${PROPOSALS_SHA:-}" \
+    --arg reason "$REASON" \
     '{team: $team, ticket: $ticket, run: $run, gate: $gate, seq: $seq, for: $for, verdict: $verdict,
       ref: $ref, notify: $notify, message: $message,
       decision: $decision, written_at: $written_at, session_id: $session_id}
      + (if $quick_call == "" then {} else {quick_call: $quick_call} end)
      + (if $tracker == "" then {} else {tracker: $tracker} end)
      + (if $items == null then {} else {items: $items} end)
-     + (if $psha == "" then {} else {proposals_sha256: $psha} end)' > "$tmp"
+     + (if $psha == "" then {} else {proposals_sha256: $psha} end)
+     + (if $reason == "" then {} else {reason: $reason} end)' > "$tmp"
   [ ! -e "$target" ] || { rm -f "$tmp"; echo "error: $target already exists" >&2; exit 1; }
   mv "$tmp" "$target"
   echo "$target"
@@ -182,6 +192,32 @@ if [ "$GATE" = wrapup ]; then
   echo "$t"; exit 0
 fi
 
+# A run with nothing left to lose: the lead closes it (work delivered elsewhere, or the plan ends
+# the team's part). Anything that could lose unmerged work stays the Operator's decision close.
+if [ "$GATE" = run ]; then
+  [ "$VERDICT" = close ] || bad "verdict $VERDICT is not allowed at the run gate (close)"
+  case "$REASON" in delivered-elsewhere|team-part-ended) ;;
+    *) bad "close needs --reason delivered-elsewhere|team-part-ended" ;; esac
+  [ -f "$TD/session.json" ] || bad "no stage session to close on"
+  FOR="${FOR_RAW#"$RD"/}"; FOR="${FOR#.agents/team/runs/"$RUN"/}"
+  case "$FOR" in ""|/*|*..*) bad "--for must be the acked record or asks/a-<n>.json under runs/$RUN/" ;; esac
+  case "$FOR" in
+    asks/a-*.json)
+      [ -f "$RD/$FOR" ] || bad "--for $FOR is not an ask of runs/$RUN/"
+      [ "$(rec "$RD/$FOR" role)" = "$(session_json role)" ] \
+        && [ "$(rec "$RD/$FOR" attempt)" = "$(session_json attempt)" ] \
+        && [ "$(rec "$RD/$FOR" round)" = "$(jq -r '.round // 1' "$TD/session.json")" ] \
+        || bad "$FOR is not an ask of the current stage"
+      case "$(rec "$RD/$FOR" state)" in delivered|withdrawn) bad "$FOR is $(rec "$RD/$FOR" state), not open" ;; esac ;;
+    *)
+      [ "$FOR" = "$(cat "$TD/acked" 2>/dev/null)" ] && [ -f "$RD/$FOR" ] \
+        || bad "--for $FOR is not the acked record ($(cat "$TD/acked" 2>/dev/null || echo none))" ;;
+  esac
+  why="$(team_close_safe "$(team_root)" "$(team_json base_sha)" "$RUN" "$RREF" 2>&1)" \
+    || bad "close would lose unmerged work — open a decision ($why)"
+  write_verdict; exit 0
+fi
+
 # The gated record: the gated role's newest record of the launched attempt, in the gate's verdict.
 case "$GATE" in
   # Sentinel: team-run-lead.sh lead_start greps a clone's copy of this file for the spec) refusal
@@ -189,7 +225,7 @@ case "$GATE" in
   spec) bad "no spec gate: the first gate is the plan gate" ;;
   plan) role=planner; want=done ;;
   acceptance) role=qa; want=done ;;
-  *) bad "unknown gate $GATE (plan|acceptance|decision|wrapup)" ;;
+  *) bad "unknown gate $GATE (plan|acceptance|decision|wrapup|run)" ;;
 esac
 [ -f "$TD/session.json" ] && [ "$(session_json role)" = "$role" ] \
   || bad "no $role session — the $GATE gate is the $role's"

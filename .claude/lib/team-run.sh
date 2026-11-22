@@ -48,6 +48,8 @@ TEAM_ROLES="$(sed -n 's/^TEAM_ROLES="\([a-z ]*\)"$/\1/p' "$CLONE/.claude/lib/tea
 . "$root/.claude/lib/team-channel.sh"
 . "$root/.claude/lib/team-lead-lib.sh"
 . "$root/.claude/lib/team-run-lead.sh"
+. "$root/.claude/lib/team-ask.sh"
+. "$root/.claude/lib/team-run-asks.sh"
 . "$root/.claude/lib/team-run-dialog.sh"
 . "$root/.claude/lib/team-run-stop.sh"
 
@@ -73,7 +75,8 @@ MODE="$(team_mode "$TD/team.json")" || { echo "error: cannot read the mode of $T
 die() { echo "$2" >&2; exit "$1"; }
 rec() { jq -r --arg f "$2" '.[$f] // empty | if type == "array" then join(",") else . end' "$1"; }
 sess_name() { team_tmux_name "$TEAM" "$1"; }
-# The planner and the wrapup are attended: the developer answers them in their window.
+# In a run without a per-run TeamLead the planner and the wrapup are attended: the developer
+# answers them in their window. With a lead every stage asks through the ask channel.
 attended() { case "$1" in planner|wrapup) ;; *) return 1 ;; esac; }
 artifact() { jq -r --arg p "$2" '[.artifacts[] | select(startswith($p))][0] // empty' "$1"; }
 
@@ -212,7 +215,13 @@ launch() {
     || echo "warn: anchor not written" >&2
   printf '%s\n' "$sid" > "$TD/runs/$(run_ref)/$role-$attempt.session"; stop_resolve
   render_prompt "$role" "$attempt" "$pf"
-  attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
+  if team_lead_on; then
+    # The ask channel: every stage may ask, the run's TeamLead answers (team-lead.md §6).
+    stage_hooks_materialise || die 4 "stage hooks not materialised from $root/.claude/team/stage-hooks.json"
+    extra="$extra--settings '$TD/stage-hooks.settings.json' "
+  else
+    attended "$role" || extra="$extra--disallowedTools AskUserQuestion "
+  fi
   # `--` is required: --disallowedTools is variadic and would swallow the prompt as a tool name.
   # CODEX_HOME per session, never `-g`: that would move other projects onto this licence.
   # CLAUDE_CONFIG_DIR the same way (team_claude_home: .claude/claude-profile, else this process's
@@ -276,6 +285,7 @@ wait_loop() {
     if ! team_tmux_alive "$name"; then
       r="$(new_record "$role" "$attempt")"
       if [ -n "$r" ]; then rc=0; handle_record "$r" || rc=$?; [ "$rc" = 2 ] || return 0; waiting=1; continue; fi
+      ! lead_close_hold "$role" "$attempt" || { sleep "$POLL"; continue; }
       dead_attempt "$role" "$attempt"
       attempt="$(session_json attempt)"; start="$(team_now)"; last="$start"; continue
     fi
@@ -385,6 +395,9 @@ cmd_status() {
 cmd_stop() {
   local pid waited=0 role
   touch "$TD/cancel"
+  # Every open ask of the run is withdrawn: the sender and the hook refuse an answer from now on.
+  RUN="$(cat "$TD/run" 2>/dev/null || true)"
+  [ -z "$RUN" ] || lead_withdraw_asks all "team stopped" || true
   pid="$(cat "$TD/lock/pid" 2>/dev/null || true)"
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$STOP_WAIT" ]; do sleep 1; waited=$((waited + 1)); done

@@ -3,17 +3,22 @@
 # team-lead.sh after resolve (TD, RUN, MAIN, LIB set), never executed. Bash 3.2.
 #   decision open <team> --source <run file|attention:<n>> --question "<text>" [--options "<a|b>"]
 #     [--recommend "<text>"] [--notify human_decision|abandon_decision] [--gate plan]
-#   decision open <team> --request req-<n>      (the runner's human-only request: binding copied)
-#   decision answer <team> d-<n> --text "<Operator answer>" [--outcome continue|close|more-revise|approve]
+#   decision open <team> --ask a-<n> [--question "<text>"] [--options "<a|b>"] [--recommend "<text>"]
+#     (an operator-tier ask, or a workflow human gate in a question: bound to the ask)
+#   decision answer <team> d-<n> --text "<Operator answer>"
+#     [--outcome continue|close|more-revise|approve|allow|deny]
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
 # open writes the file (status pending), then the escalate verdict with --notify, so the runner
 # notifies the Operator once. answer asks for a human: from a terminal (a TTY, the id typed to
 # confirm), or from the TeamLead window, where the lead's own transcript must hold a typed Operator
 # message (not a doorbell, after created_at) containing the answer text. Both raise the bar; neither
-# is proof (team-lead.md §7, "Limit of the human binding"). A decision opened from a request (a
-# human-only prompt) carries `answer_in: <role>`: the Operator answers it in that stage's window and
-# only the runner closes it (resolved / withdrawn) — answer and withdraw refuse it with exit 7.
+# is proof (team-lead.md §7, "Limit of the human binding"). A decision bound to an ask (bind_ask)
+# is answered by a fixed reply the Operator types — `d-<n> allow` | `d-<n> deny: <what instead>`
+# (permission, plan) or `d-<n> <answer>` (question, text; several questions:
+# `d-<n> <header>: <label>; <header>: <label>`) — and answer derives answer_outcome /
+# answer_value / answer_map from it; team-answer.sh relays exactly those. A human answer appends
+# `<utc> decision d-<n>` to runs/<run>/operator-touches.
 
 dfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
@@ -22,9 +27,8 @@ dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter k
   mv "$1.tmp" "$1"
 }
 d_bad() { echo "error: $2" >&2; exit "$1"; }
-d_window() {  # d_window <file> — exit 7 for a human-only prompt's decision (answer_in)
-  local r; r="$(dfm "$1" answer_in)"; [ -z "$r" ] || d_bad 7 \
-    "human-only prompt: the Operator answers it in the $r window; the runner records it — nothing applied"
+d_reply_shape() {  # d_reply_shape <a-n> — the reply form of a multi-question ask
+  jq -r '[.payload.tool_input.questions[] | "\(.header // .question): <label>"] | join("; ")' "$ASK_D/$1.json"
 }
 d_resolve() {  # d_resolve <file> — its Operator notification is answered or moot (#97); never fails
   [ -n "$(dfm "$1" notify)" ] || return 0
@@ -67,25 +71,36 @@ notes_tune() {
 }
 
 decision_open() {
-  local src="" q="" opts="" rec="" notify=human_decision gate="" req="" n f tmp v rel bind="" win=""
+  local src="" q="" opts="" rec="" notify=human_decision gate="" ask="" n f tmp v rel bind="" kind=""
+  local reply=""
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
     case "$1" in
       --source) src="$2" ;; --question) q="$2" ;; --options) opts="$2" ;; --recommend) rec="$2" ;;
-      --notify) notify="$2" ;; --gate) gate="$2" ;; --request) req="$2" ;; *) usage ;;
+      --notify) notify="$2" ;; --gate) gate="$2" ;; --ask) ask="$2" ;; *) usage ;;
     esac
     shift 2
   done
   team_lead_caller || d_bad 3 "only this run's TeamLead opens decisions"
   case "$notify" in human_decision|abandon_decision) ;; *) d_bad 2 "--notify human_decision|abandon_decision" ;; esac
   case "$gate" in ""|plan) ;; *) d_bad 2 "--gate plan" ;; esac
-  if [ -n "$req" ]; then
-    [[ "$req" =~ ^req-[0-9]+$ ]] && [ -f "$DD/$req.json" ] || d_bad 4 "no request $req in runs/$RUN/decisions/"
-    src="decisions/$req.json"
-    [ -n "$q" ] || q="$(jq -r '"\(.role): \(.tool) \(.command)"' "$DD/$req.json")"
-    bind="$(jq -r '.binding // {} | to_entries[] | "bind_\(.key): \(.value)"' "$DD/$req.json")"
-    win="$(jq -r '.role // empty' "$DD/$req.json")"
-    [ -n "$win" ] || d_bad 4 "request $req names no role"
+  if [ -n "$ask" ]; then
+    ask_init "$TD" || d_bad 4 "no current run"
+    ask_valid_id "$ask" && [ -f "$ASK_D/$ask.json" ] || d_bad 4 "no ask $ask in runs/$RUN/asks/"
+    case "$(ask_state "$ask")" in waiting|timed-out) ;;
+      *) d_bad 4 "ask $ask is $(ask_get "$ask" state), not open" ;; esac
+    src="asks/$ask.json"; kind="$(ask_get "$ask" kind)"
+    [ -n "$q" ] || q="$(ask_get "$ask" role): $(ask_one_line "$ask")"
+    bind="bind_ask: $ask
+bind_session_id: $(ask_get "$ask" session_id)
+bind_attempt: $(ask_get "$ask" attempt)
+ask_kind: $kind"
+    case "$kind" in
+      permission|plan) reply="reply: \"d-<n> allow\" | \"d-<n> deny: <what instead>\"" ;;
+      *) if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json")" -gt 1 ]; then
+           reply="reply: \"d-<n> $(d_reply_shape "$ask")\""
+         else reply="reply: \"d-<n> <answer>\""; fi ;;
+    esac
   fi
   [ -n "$src" ] && one_line "$q" || d_bad 2 "decision open needs --source and a one-line --question"
   mkdir -p "$DD"
@@ -96,7 +111,6 @@ decision_open() {
     echo "attempt: $(jq -r '.attempt // "-"' "$TD/session.json" 2>/dev/null || echo -)"
     echo "source: $src"; echo "created_at: $(team_utc)"; echo "notify: $notify"
     [ -z "$gate" ] || echo "gate: $gate"
-    [ -z "$win" ] || echo "answer_in: $win"
     [ -z "$bind" ] || printf '%s\n' "$bind"
     echo "---"; echo "## Question"; echo "$q"
     [ -z "$opts" ] || { echo; echo "## Options"; tr '|' '\n' <<<"$opts" | sed 's/^/- /'; }
@@ -104,6 +118,12 @@ decision_open() {
   } > "$tmp"
   [ ! -e "$f" ] || { rm -f "$tmp"; d_bad 1 "$f already exists"; }
   mv "$tmp" "$f"
+  # From now on only the Operator's relay answers an escalated question or stop.
+  if [ -n "$ask" ]; then
+    case "$kind" in question|text)
+      ask_lock && ask_set "$ask" '.requires_decision = $d' --arg d "d-$n"; ask_unlock ;;
+    esac
+  fi
   rel="${src#.agents/team/runs/"$RUN"/}"
   v="$( (cd "${TD%/.agents/team}" && bash "$LIB/team-verdict.sh" decision escalate --for "$rel" \
     --ref "$f" --notify "$notify" --message "d-$n: ${q:0:120}") )" \
@@ -111,6 +131,7 @@ decision_open() {
   # The one-line question only, cut as in the verdict message — never a prompt or a file's content.
   notes_add "## Operator cases" "- d-$n ${q:0:120} — tuning: pending"
   echo "[d-$n] $q"
+  [ -z "$reply" ] || echo "${reply//d-<n>/d-$n}"
   echo "file: $f"; echo "verdict: $v"
 }
 
@@ -142,8 +163,8 @@ decision_answer() {
     shift 2
   done
   one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
-  case "$outcome" in ""|continue|close|more-revise|approve) ;;
-    *) d_bad 2 "--outcome continue|close|more-revise|approve" ;; esac
+  case "$outcome" in ""|continue|close|more-revise|approve|allow|deny) ;;
+    *) d_bad 2 "--outcome continue|close|more-revise|approve|allow|deny" ;; esac
   case "$tuning" in ""|rule|TeamLead|none) ;; *) d_bad 2 "--tuning rule|TeamLead|none" ;; esac
   # The tuning question (could a rule or the TeamLead have covered this?) is the lead's to answer.
   if team_lead_caller; then
@@ -151,7 +172,30 @@ decision_answer() {
   fi
   [ -z "$tuning" ] || one_line "$why" || d_bad 2 "--tuning needs a one-line --why"
   f="$(d_file "$id")"
-  d_window "$f"
+  local ask kind rest aval="" amap=""
+  ask="$(dfm "$f" bind_ask)"
+  if [ -n "$ask" ]; then
+    # The Operator's reply names the decision, so two pending decisions never share one reply.
+    case "$text" in "$id "*) rest="${text#"$id "}" ;; *) d_bad 7 "reply must start with \"$id \"" ;; esac
+    kind="$(dfm "$f" ask_kind)"
+    case "$kind" in
+      permission|plan)
+        case "$rest" in
+          allow) aval="" ; [ -n "$outcome" ] || outcome=allow; [ "$outcome" = allow ] || d_bad 7 "the reply reads allow, not --outcome $outcome" ;;
+          deny|"deny:"*) aval="${rest#deny}"; aval="${aval#:}"; aval="${aval# }"
+            [ -n "$outcome" ] || outcome=deny; [ "$outcome" = deny ] || d_bad 7 "the reply reads deny, not --outcome $outcome" ;;
+          *) d_bad 7 "reply must read $id allow|deny" ;;
+        esac ;;
+      *)
+        [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
+        aval="$rest"
+        ask_init "$TD" || d_bad 4 "no current run"
+        if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then
+          amap="$(ask_reply_map "$ask" "$rest")" || d_bad 7 "reply must read $id $(d_reply_shape "$ask")"
+          aval=""
+        fi ;;
+    esac
+  fi
   if [ "$(dfm "$f" status)" = withdrawn ]; then
     notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"
   fi
@@ -168,6 +212,11 @@ decision_answer() {
   fi
   dfm_set "$f" status answered; dfm_set "$f" answered_at "$(team_utc)"; dfm_set "$f" answered_via "$how"
   [ -z "$outcome" ] || dfm_set "$f" answer_outcome "$outcome"
+  if [ -n "$ask" ]; then
+    [ -z "$aval" ] || dfm_set "$f" answer_value "$aval"
+    [ -z "$amap" ] || dfm_set "$f" answer_map "$amap"
+  fi
+  echo "$(team_utc) decision $id" >> "$TD/runs/$RUN/operator-touches"
   printf '\n## Answer\n%s\n' "$text" >> "$f"
   [ -z "$tuning" ] || notes_tune "$id" "$tuning" "$why"
   d_resolve "$f"
@@ -180,7 +229,6 @@ decision_withdraw() {
   [ $# -eq 2 ] && [ "$1" = --why ] && one_line "$2" || usage; why="$2"
   team_lead_caller || d_bad 3 "only this run's TeamLead withdraws decisions"
   f="$(d_file "$id")"
-  d_window "$f"
   [ "$(dfm "$f" status)" = pending ] || d_bad 4 "$id is $(dfm "$f" status), not pending"
   dfm_set "$f" status withdrawn; dfm_set "$f" withdrawn_at "$(team_utc)"
   printf '\n## Withdrawn\n%s\n' "$why" >> "$f"

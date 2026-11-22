@@ -103,6 +103,10 @@ lead_start() {
   [ "$MODE" = quick ] || [ -n "$(accepted_record planner)" ] \
     || grep -q 'the first gate is the plan gate' "$CLONE/.claude/lib/team-verdict.sh" \
     || die 4 "clone base still has the spec gate (its team-verdict.sh predates the plan-gate-only TeamLead) — this brainstorm run cannot finish planning on the current runner: finish planning before updating the main checkout, or the Operator restarts the ticket on a fresh clone (team-new.sh)"
+  # The lead runs the clone's sender, the hook the main checkout's: both must share the ask format.
+  # Refused once here, at runner start, so no run is stranded between stages.
+  grep -q -- '--allow' "$CLONE/.claude/lib/team-answer.sh" 2>/dev/null \
+    || die 4 "clone base lacks the ask channel (its team-answer.sh predates the hook answering path) — finish this run on a main checkout from before the change, or the Operator restarts the ticket on a fresh clone (team-new.sh)"
   if [ "$(team_lead_json run)" = "$RUN" ] && team_tmux_alive "$(sess_name lead)"; then
     echo "TeamLead reused: $(sess_name lead)"; return 0
   fi
@@ -115,19 +119,33 @@ lead_event() {  # lead_event <event> <ref> [<body line>] — one Supervisor even
     || echo "warn: Supervisor event $1 not written" >&2
 }
 
-lead_stop() {  # lead_stop <record> — a stage's blocked/failed record: ack it once, ring the lead
+# lead_stop <record> — a stage's blocked/failed record: ack it once. A blocked record reaches the
+# lead as the ask the stage hook files at the stage's Stop (lead_asks rings one that never got an
+# ask); a failed record is rung here.
+lead_stop() {
   ack_name "$1" > "$TD/acked"
+  [ "$(rec "$1" verdict)" = blocked ] && return 0
   team_session_doorbell "$TD" lead "stop $(rec "$1" role) $(rec "$1" attempt): ${1#"$CLONE"/} — $(rec "$1" message)"
 }
 
+# lead_open_ask <role> <attempt> — true while an ask of that attempt waits for the lead or for an
+# open decision bound to it.
+lead_open_ask() {
+  local id
+  ask_init "$TD" || return 1
+  for id in $(ask_ids); do
+    [ "$(ask_get "$id" role)" = "$1" ] && [ "$(ask_get "$id" attempt)" = "$2" ] || continue
+    case "$(ask_get "$id" state)" in waiting|timed-out) return 0 ;; esac
+  done
+  return 1
+}
+
 # lead_waiting <role> <attempt> — true while this attempt's acked stop or gate input has no
-# <record>.answered marker (team-answer.sh writes it for a stop). Derived from files, so a resumed
-# runner sees it too.
+# <record>.answered marker (team-answer.sh writes it for a stop), or an ask of the attempt is open.
+# Derived from files, so a resumed runner sees it too.
 lead_waiting() {
   local a r
-  # A human-only prompt waits on the Operator in the stage window: the clock stops until the runner
-  # closes its decision (lead_window).
-  ! lead_window_pending "$1" "$2" || return 0
+  ! lead_open_ask "$1" "$2" || return 0
   a="$(cat "$TD/acked" 2>/dev/null)" || return 1
   case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
   r="$TD/runs/$RUN/$a"
@@ -148,7 +166,8 @@ lead_poll() {
     touch "$TD/lead-dead"
     echo "TeamLead died — /start-team $TEAM relaunches it"
   fi
-  lead_window
+  lead_asks
+  lead_attention_deferred
   lead_notify
 }
 
@@ -167,7 +186,7 @@ lead_notify() {
     d="$(rec "$f" ref)"; id=""; q=""
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
     team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # only for the prefix; a broken channel block → the dir slug
-    w="lead"; [ ! -f "$d" ] || w="$(lfm "$d" answer_in)"; w="${w:-lead}"  # human-only: the stage window
+    w="lead"  # every decision is answered in the lead's window
     h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" \
       || h="no $(sess_name "$w") session found — bash .claude/lib/session-host.sh status $(sess_name "$w")"  # no host: say so, never kill the runner
     p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
@@ -184,111 +203,11 @@ lead_notify() {
   done
 }
 
-# lead_attention <role> <line> — a new attention line with the lead on. A permission prompt is tried
-# at authority class first, so a deterministic class answers without waking the lead; a human-only
-# refusal (9) becomes a request runs/<run>/decisions/req-<n>.json the lead opens a decision from;
-# otherwise the lead is rung with the prompt's tool and command, read from the transcript-bound
-# parse (never from the screen alone; unreadable → said so).
-lead_attention() {
-  local role="$1" line kind name t p tool cmd rc=0 n d ev gen
-  line="$(sed -n "${2}p" "$TD/runs/$RUN/attention" 2>/dev/null)"; kind="$(cut -d' ' -f2 <<<"$line")"
-  name="$(sess_name "$role")"
-  if [ "$kind" = idle_prompt ]; then
-    team_session_doorbell "$TD" lead "prompt $role: idle — look at the screen; nothing is owed unless it is stuck — $(cut -d' ' -f3- <<<"$line")"
-    return 0
-  fi
-  if [ "$kind" != permission_prompt ]; then
-    team_session_doorbell "$TD" lead "prompt $role: ${kind:-attention} — $(cut -d' ' -f3- <<<"$line")"
-    return 0
-  fi
-  bash "$root/.claude/lib/team-answer.sh" "$TEAM" "$role" yes --authority class \
-    --why "deterministic class" --clone "$CLONE" --root "$root" >/dev/null 2>&1 || rc=$?
-  if [ "$rc" = 0 ]; then echo "answered at authority class: $role prompt"; return 0; fi
-  t="$(team_role_transcript "$CLONE" "$(session_json session_id)" "$(session_json claude_config_dir)")"
-  p="$(team_pane_history "$name" 200 \
-    | python3 -I "$root/.claude/lib/team_prompt.py" parse --transcript "${t:--}" 2>/dev/null)" || p='{}'
-  if ! jq -e '.kind == "permission" and .complete' <<<"$p" >/dev/null 2>&1; then
-    team_session_doorbell "$TD" lead "prompt $role: unreadable — $(sh_hint "$name")"; return 0
-  fi
-  tool="$(jq -r '.header // "?"' <<<"$p")"
-  cmd="$(jq -r '.command // ""' <<<"$p" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c1-200)"
-  if [ "$rc" != 9 ]; then
-    team_session_doorbell "$TD" lead \
-      "prompt $role: $tool $cmd — team-answer.sh $TEAM $role yes|no --authority teamlead --why …"
-    return 0
-  fi
-  d="$TD/runs/$RUN/decisions"; mkdir -p "$d"
-  n="$(ls "$d" | sed -n 's/^req-\([0-9]*\)\.json$/\1/p' | sort -n | tail -n 1)"; n=$(( ${n:-0} + 1 ))
-  ev="$(printf '%s' "$p" | python3 -I "$root/.claude/lib/team_prompt.py" event "$t" permission 2>/dev/null)" || ev=-
-  gen="$(team_pane_gen "$name")" || gen=-
-  jq -n --arg src "attention:$2" --arg role "$role" --arg tool "$tool" --arg cmd "$cmd" \
-    --arg sid "$(session_json session_id)" --arg run "$RUN" --arg att "$(session_json attempt)" \
-    --arg fp "$(jq -r '.fp // ""' <<<"$p")" --arg ev "$ev" --arg pane "$gen" --arg at "$(team_utc)" \
-    '{source: $src, role: $role, tool: $tool, command: $cmd, written_at: $at,
-      binding: {session_id: $sid, run: $run, attempt: $att, fp: $fp, event: $ev, pane: $pane}}' \
-    > "$d/.req-$n.json.tmp"
-  mv "$d/.req-$n.json.tmp" "$d/req-$n.json"
-  team_session_doorbell "$TD" lead "human-only $role: $tool $cmd — open a decision for req-$n"
-}
-
 lfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 lfm_set() {  # lfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
   awk -v k="$2" -v v="$3" '/^---$/ { n++; if (n == 2 && !done) print k ": " v; print; next }
     n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
   mv "$1.tmp" "$1"
-}
-
-# lead_window_pending <role> <attempt> — a pending human-only decision (answer_in) of that attempt.
-lead_window_pending() {
-  local f
-  for f in "$TD/runs/$RUN"/decisions/d-*.md; do
-    [ -f "$f" ] && [ "$(lfm "$f" status)" = pending ] && [ "$(lfm "$f" answer_in)" = "$1" ] \
-      && [ "$(lfm "$f" bind_attempt)" = "$2" ] && return 0
-  done
-  return 1
-}
-
-# lead_window — every poll: only the runner closes a human-only prompt's decision (answer_in), from
-# the stage's own transcript. The Operator's answer in the stage window resolves it (approved,
-# approved (rule added), rejected); a prompt that is no longer open, or whose stage session or
-# attempt was replaced, withdraws it (prompt gone). The lead can neither answer nor withdraw it.
-lead_window() {
-  local f role id sid att t out q did
-  for f in "$TD/runs/$RUN"/decisions/d-*.md; do
-    [ -f "$f" ] && [ "$(lfm "$f" status)" = pending ] || continue
-    role="$(lfm "$f" answer_in)"; [ -n "$role" ] || continue
-    id="$(lfm "$f" bind_event)"; sid="$(lfm "$f" bind_session_id)"; att="$(lfm "$f" bind_attempt)"
-    did="$(lfm "$f" id)"; out=pending
-    if [ -n "$id" ] && [ "$id" != - ] && [ "$id" != ambiguous ]; then
-      t="$(team_role_transcript "$CLONE" "${sid:--}" "$(session_json claude_config_dir)")"
-      out="$(python3 -I "$root/.claude/lib/team_prompt.py" outcome "${t:--}" "$id" 2>/dev/null)" || out=unknown
-    else
-      # Unbound prompt: no outcome to read; once the stage has no open call, the prompt is gone
-      # (otherwise this decision, which nobody else may close, would stop the clock for the attempt).
-      t="$(team_role_transcript "$CLONE" "${sid:--}" "$(session_json claude_config_dir)")"
-      [ "$(python3 -I "$root/.claude/lib/team_prompt.py" pending-tool "${t:--}" 2>/dev/null)" != "{}" ] \
-        || out=gone
-    fi
-    # An open prompt whose session or attempt is no longer the stage's can never be answered.
-    if [ "$out" = pending ] || [ "$out" = unknown ]; then
-      [ "$sid" = "$(session_json session_id)" ] && [ "$att" = "$(session_json attempt)" ] || out=gone
-    fi
-    case "$out" in pending|unknown|"") continue ;; esac
-    if [ "$out" = gone ]; then
-      lfm_set "$f" status withdrawn; lfm_set "$f" withdrawn_at "$(team_utc)"
-      printf '\n## Withdrawn\nprompt gone (the runner)\n' >> "$f"
-      team_session_doorbell "$TD" lead "human-only $role: $did withdrawn — prompt gone"
-      lead_resolve "$did"; continue
-    fi
-    lfm_set "$f" status resolved; lfm_set "$f" answered_at "$(team_utc)"
-    lfm_set "$f" answered_via "stage-window $id"; lfm_set "$f" answer_outcome "$out"
-    printf '\n## Answer\n%s — by the Operator in the %s window\n' "$out" "$role" >> "$f"
-    q="$(sed -n '/^## Question$/{n;p;q;}' "$f")"
-    printf -- '- %s [%s %s] %s → %s — Operator in the stage window [authority operator-window] [decision %s]\n' \
-      "$(team_utc)" "$role" "$att" "$q" "$out" "$did" >> "$TD/runs/$RUN/answers.md"
-    team_session_doorbell "$TD" lead "human-only $role: $did answered in the stage window — $out"
-    lead_resolve "$did"
-  done
 }
 
 # lead_resolve <d-n> — the Operator's notification of that decision is answered or moot: no more
@@ -329,13 +248,35 @@ lead_say() {
 # order; $TD/verdict-acked lists the verdicts already acted on. → 0 when a verdict accepted the
 # record or opened a rework round; 1 keep waiting (escalate, revise, a message to retry, no verdict).
 lead_gate() {
-  local a f v rel
-  a="$(cat "$TD/acked" 2>/dev/null)" || return 1
-  case "$a" in "$(rp)$1-$2-"*) ;; *) return 1 ;; esac
-  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(plan|acceptance|decision)-[0-9]+\.json$' \
+  local a f v rel for mine=""
+  a="$(cat "$TD/acked" 2>/dev/null || true)"
+  case "$a" in "$(rp)$1-$2-"*) mine=1 ;; esac
+  for f in $(ls "$TD/runs/$RUN" | grep -E '^teamlead-(plan|acceptance|decision|run)-[0-9]+\.json$' \
       | sort -t- -k3,3n || true); do
-    [ "$(rec "$TD/runs/$RUN/$f" for)" = "$a" ] || continue
     ! grep -qxF "$f" "$TD/verdict-acked" 2>/dev/null || continue
+    for="$(rec "$TD/runs/$RUN/$f" for)"
+    # A run close names the acked record of this attempt or a live ask of the current stage, so a
+    # stage that asks before its first record can be closed.
+    if [ "$(rec "$TD/runs/$RUN/$f" gate)" = run ]; then
+      case "$for" in
+        asks/a-*.json) [ "$(jq -r .role "$TD/runs/$RUN/$for" 2>/dev/null || true)" = "$1" ] \
+          && [ "$(jq -r '.attempt | tostring' "$TD/runs/$RUN/$for" 2>/dev/null || true)" = "$2" ] || continue ;;
+        *) [ -n "$mine" ] && [ "$for" = "$a" ] || continue ;;
+      esac
+      lead_close "$f"; continue
+    fi
+    # The Operator's close of a stage that has no acked record of its own (it asked before its
+    # first record): the decision close names the refused run close or a live ask of the stage.
+    if [ "$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)" = "decision close" ]; then
+      case "$for" in
+        teamlead-run-*.json) [ "$(rec "$TD/runs/$RUN/$for" gate)" = run ] || continue
+          echo "$f" >> "$TD/verdict-acked"; close_run abandon ".agents/team/runs/$RUN/$f" ;;
+        asks/a-*.json) [ "$(jq -r .role "$TD/runs/$RUN/$for" 2>/dev/null || true)" = "$1" ] \
+          && [ "$(jq -r '.attempt | tostring' "$TD/runs/$RUN/$for" 2>/dev/null || true)" = "$2" ] || continue
+          echo "$f" >> "$TD/verdict-acked"; close_run abandon ".agents/team/runs/$RUN/$f" ;;
+      esac
+    fi
+    [ -n "$mine" ] && [ "$for" = "$a" ] || continue
     rel=".agents/team/runs/$RUN/$f"; v="$(rec "$TD/runs/$RUN/$f" gate) $(rec "$TD/runs/$RUN/$f" verdict)"
     case "$v" in
       "plan revise") lead_say "[team-run] TeamLead: amend the plan — findings in $(rec "$TD/runs/$RUN/$f" ref). Commit, then record done again." || return 1 ;;
@@ -378,15 +319,18 @@ lead_accepted() {
   team_utc > "$TD/runs/$RUN/accepted.sent"
 }
 
-# close_run <reason> <ref> — end the run without a merge. closed.json goes first, so a resume
-# refuses the run even when a later step fails; then the Supervisor event, the lead, the run's
-# notifications, the stage.
+# close_run <reason> <ref> [branch sha] — end the run without a merge. closed.json goes first, so a
+# resume refuses the run even when a later step fails; then the Supervisor event, the lead, the
+# run's notifications, the stage. A lead close records the pushed branch and its verified sha.
 close_run() {
   local r pr="" next
   r="$(team_accepted_record "$RUN" coder)"; [ -z "$r" ] || pr="$(rec "$r" pr_id)"
   jq -n --arg reason "$1" --arg ref "$2" --arg at "$(team_utc)" --arg pr "$pr" \
+    --arg branch "${3:-}" --arg sha "${4:-}" \
     '{reason: $reason, ref: $ref, closed_at: $at,
-      pr_id: (if $pr == "" then null else ($pr | tonumber) end)}' > "$TD/runs/$RUN/closed.json"
+      pr_id: (if $pr == "" then null else ($pr | tonumber) end)}
+     + (if $branch == "" then {} else {branch: $branch, sha: $sha} end)' > "$TD/runs/$RUN/closed.json"
+  rm -f "$TD/closing"
   if [ -n "$pr" ]; then next="PR $pr to abandon before team-next"; else next="clone free"; fi
   lead_event closed "$2" "reason: $1 — $next"
   # The run's notes go to the shared log before the lead ends; a log failure never blocks the close.

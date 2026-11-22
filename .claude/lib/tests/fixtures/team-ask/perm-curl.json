@@ -1,0 +1,2 @@
+{"session_id": "sid-1", "hook_event_name": "PermissionRequest", "cwd": "__CWD__", "permission_mode": "auto",
+ "tool_name": "Bash", "tool_input": {"command": "curl -s https://example.invalid/x"}, "permission_suggestions": []}

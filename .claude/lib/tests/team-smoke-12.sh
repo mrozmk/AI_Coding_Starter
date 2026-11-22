@@ -16,7 +16,7 @@ cap() { [ "$(wc -l < "$1")" -le "$2" ] || fail "$(basename "$1") has more than $
 for f in team-run.sh team_prompt.py team_transcript.py team_prompt_check.py team_prompt_classes.py \
   team_prompt_settings.py team-anchor.sh team-answer.sh team-lib.sh team-watch.sh \
   team-new.sh team-lead-lib.sh team-next.sh tests/team-smoke-12.sh ../hooks/lib/guard_team_egress.py \
-  team-run-lead.sh team-run-dialog.sh team-run-stop.sh team_prompt_authority.py team-answer-lead.sh team-answer-herdr.sh team-seed-lib.sh; do cap "$L/$f" 500; done
+  team-run-lead.sh team-run-asks.sh team-run-dialog.sh team-run-stop.sh team_prompt_authority.py team-answer-lead.sh team-ask.sh team-seed-lib.sh ../hooks/team-ask-hook.sh; do cap "$L/$f" 500; done
 [ "$(python3 -I "$L/team_prompt_classes.py" names | tr '\n' ' ' | sed 's/ $//')" \
   = "$(sed -n 's/^TEAM_CLASSES="\(.*\)"$/\1/p' "$L/team-lib.sh")" ] || fail "class names differ"
 for t in '. "$root/.claude/lib/team-lib.sh"' '. "$root/.claude/lib/team-anchor.sh"' \
@@ -414,36 +414,27 @@ rm -rf "$W"; printf 'not json\n' > "$W"
 rm -rf "$W"; cp "$WORK/state.bak" "$W"
 echo "team-smoke-12: (197) switches OK"
 
-# ---- (198) class answer end-to-end ------------------------------------------------------------
-ANS="bash .claude/lib/team-answer.sh"
-bashp "$MERGE"
-: > "$STUB_LOG"
-run "$MAIN" $ANS alfa coder yes --authority class --why "class merge-line: line"
-expect 0 "policy-class: merge-line" "class answer"
-[ "$(keyc)" = 1 ] || fail "class answer keys $(keyc)"
-grep -q '\[authority class\]' "$RD/answers.md" || fail "answers.md lacks the class answer"
-grep -q 'q=authority:class' "$TD/send-coder.log" || fail "no class dispatch line"
-bashp "$MERGE"
-: > "$STUB_LOG"
-run "$MAIN" $ANS alfa coder yes
-expect 7 "Operator answers in the window" "a bare yes takes no class"
-[ "$(keyc)" = 0 ] || fail "bare yes keys $(keyc)"
-echo "team-smoke-12: (198) class answer OK"
-
-# ---- (199) re-bind before the first key -------------------------------------------------------
-bashp "$MERGE"
-perm "Run it" "git status" > /dev/null; cp "$WORK/pane" "$WORK/pane2"
-perm "Run it" "$MERGE"
-: > "$STUB_LOG"; echo 0 > "$WORK/capn"
-# The sender's second capture is the re-bind: the stub swaps the prompt just before it.
-{ echo "n=\$(( \$(cat '$WORK/capn') + 1 )); echo \"\$n\" > '$WORK/capn'"
-  echo "[ \"\$n\" -lt 2 ] || cp '$WORK/pane2' '$WORK/pane'"; } > "$WORK/oncap.sh"
-export STUB_ON_CAPTURE="bash $WORK/oncap.sh"
-run "$MAIN" $ANS alfa coder yes --authority class --why "class merge-line"
-unset STUB_ON_CAPTURE
-expect 6 "prompt changed during classification" "prompt replaced during classification"
-[ "$(keyc)" = 0 ] || fail "re-bind refusal sent keys"
-echo "team-smoke-12: (199) re-bind OK"
+# ---- (198) the stage hook's tier of a structured permission (--input-json) --------------------
+tier() {  # tier <expected line prefix> <label> <tool> <json input> [cwd]
+  jq -cn --arg t "$3" --argjson i "$4" --arg c "${5-$CREAL}" '{tool_name: $t, tool_input: $i, cwd: $c}' \
+    > "$WORK/in.json"
+  set +e; $PC "$CLONE" --input-json "$WORK/in.json" --main "$MAIN" > "$WORK/out" 2>&1; RC=$?; set -e
+  expect 0 "" "$2"
+  case "$(head -n 1 "$WORK/out")" in "$1"*) ;; *) fail "$2: $(head -n 1 "$WORK/out"), expected $1" ;; esac
+}
+binp() { jq -cn --arg c "$1" '{command: $c, description: "Run it"}'; }
+tier "tier: class merge-line" "merge-line takes its class" Bash "$(binp "$MERGE")"
+tier "tier: operator — " "a deny-tier rebase is the Operator's" Bash "$(binp "git rebase origin/$LINE")"
+tier "tier: operator — egress" "egress is the Operator's" Bash "$(binp "curl https://x.example")"
+tier "tier: lead" "no rule matches: a lead checkpoint" Bash "$(binp "ls")"
+tier "tier: lead" "an ask match outside the class shape" Bash "$(binp "$MERGE -X ours")"
+run "$MAIN" bash .claude/lib/team-watch.sh mode class merge-line off
+tier "tier: lead" "class off: the ask match is the lead's" Bash "$(binp "$MERGE")"
+run "$MAIN" bash .claude/lib/team-watch.sh mode class merge-line on
+printf 'not json' > "$WORK/bad.json"
+set +e; $PC "$CLONE" --input-json "$WORK/bad.json" --main "$MAIN" > "$WORK/out" 2>&1; RC=$?; set -e
+expect 2 "could not read" "an unreadable input file"
+echo "team-smoke-12: (198) input tier OK"
 
 # ---- (200) point (a): a clipped prompt read from the role transcript --------------------------
 PY="$SRC/.claude/lib/team_prompt.py"; CLIP="$FIX/perm-clipped.txt"

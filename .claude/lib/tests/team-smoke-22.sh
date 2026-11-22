@@ -2,8 +2,9 @@
 # per-run TeamLead lifecycle in the runner: launch before the planner, reuse, wait in place on a
 # stop, doorbell (socket and logged skip), dead lead → session_dead once → relaunch, inbox rings,
 # execution-time limit paused while waiting, old base, cli, end/finalize, team-watch filter, and
-# the run-scoped root files archived by team-next; the TeamLead's answers on an authority
-# (human-only first, production asks, never-waived refusals, answers.md, the .answered marker).
+# the run-scoped root files archived by team-next; the stage hook's tier of a permission (operator
+# causes, production asks, never-waived refusals) and the TeamLead's ask answers (team-answer.sh:
+# caller, tier, form, decision relay, answers.md, the .answered marker); the runner rings asks.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
 smoke_init
@@ -216,7 +217,9 @@ echo "team-smoke-22: (e) dead lead + relaunch OK"
 
 # ---- execution-time limit pauses while waiting on the lead (fixture clock) ------------------------
 echo 1000000 > "$WORK/clock"
-export TEAM_NOW_CMD='n=$(cat "$WORK/clock"); echo $((n + 5000)) > "$WORK/clock"; echo "$n"'
+# Every team_now call steps the clock; a waiting poll reads it three times (the poll, lead_asks, the
+# limit check), so one step stays well below a third of the qa limit (10800 s).
+export TEAM_NOW_CMD='n=$(cat "$WORK/clock"); echo $((n + 3000)) > "$WORK/clock"; echo "$n"'
 reset; lead_json; printf 'alfa-lead\nalfa-qa\n' > "$WORK/alive"; session qa 1 "$BASE"
 run "$MAIN" $TR alfa; expect 3 "stalled" "(clock) the qa limit still applies without a wait"
 reset; lead_json; printf 'alfa-lead\nalfa-qa\n' > "$WORK/alive"; session qa 1 "$BASE"
@@ -371,9 +374,11 @@ printf '%s\n' '**Integration:** `develop`' '**Protected:** `develop`' > "$MAIN/C
 mkdir -p "$CLONE/.claude/lib"; printf 'echo hi\n' > "$CLONE/.claude/lib/x.sh"
 RULE="$(printf '─%.0s' $(seq 120))"; DASH="$(printf '╌%.0s' $(seq 120))"; LAST=""; N=0
 PCM="python3 -I $MAIN/.claude/lib/team_prompt_check.py"
-pend() {  # pend <tool> <json input> — the role's single pending call
+pend() {  # pend <tool> <json input> — the role's single pending call; $WORK/in.json its hook input
   [ -z "$LAST" ] || tool_done "$SID" "$LAST"
   N=$((N + 1)); LAST="t$N"; pending_tool "$SID" "$LAST" "$1" "$2" "$CREAL"
+  jq -cn --arg t "$1" --argjson i "$2" --arg c "$CREAL" '{tool_name: $t, tool_input: $i, cwd: $c}' \
+    > "$WORK/in.json"
 }
 bashp() {  # bashp <one-line command> — pending Bash call + its permission prompt
   pend Bash "$(jq -cn --arg c "$1" '{command: $c, description: "Run it"}')"
@@ -390,41 +395,38 @@ editp() {  # editp <file_path> <shown> <old> <new> — pending Edit + its prompt
     echo " Do you want to make this edit to $(basename "$f")?"
     echo " ❯ 1. Yes"; echo "   2. No"; echo " Esc to cancel"; } > "$WORK/pane"
 }
-chk() {  # chk <authority|--classes> → RC, $WORK/out
-  local a=(--authority "$1"); [ "$1" != --classes ] || a=(--classes)
-  set +e; $PCM "$CLONE" --strict --transcript "$T" "${a[@]}" --main "$MAIN" < "$WORK/pane" \
+chk() {  # chk --classes → RC, $WORK/out: the screen checker's class waiver (its direct entry)
+  set +e; $PCM "$CLONE" --strict --transcript "$T" --classes --main "$MAIN" < "$WORK/pane" \
     > "$WORK/out" 2>&1; RC=$?; set -e
 }
+tier() {  # tier <expected line prefix> <label> — the stage hook's tier of the last pending call
+  set +e; $PCM "$CLONE" --input-json "$WORK/in.json" --main "$MAIN" > "$WORK/out" 2>&1; RC=$?; set -e
+  expect 0 "" "$2"
+  case "$(head -n 1 "$WORK/out")" in "$1"*) ;; *) fail "$2: '$(head -n 1 "$WORK/out")', expected '$1'" ;; esac
+}
 A0='"Bash(bash -n:*)"'
-# ---- (j) a settings edit is human-only for class and teamlead, even with allow-offline on ---------
+# ---- (j) a settings edit is the Operator's, even with allow-offline on ----------------------------
 editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""
 chk --classes; expect 0 "policy-class: allow-offline" "(j) legacy --classes keeps its class waiver"
-for a in class teamlead; do
-  chk "$a"; expect 1 "human-only: settings edit" "(j) settings edit, authority $a"
-done
-chk operator; expect 1 "human-only: settings edit" "(j) settings edit, operator (the Operator answers in the window)"
+tier "tier: operator — settings edit" "(j) settings edit"
 mkdir -p "$CLONE/.claude/team/sessions"; echo '{"permissions": {"allow": []}}' > "$CLONE/.claude/team/sessions/TeamLead.settings.json"
 editp "$CREAL/.claude/team/sessions/TeamLead.settings.json" .claude/team/sessions/TeamLead.settings.json \
   '"allow": []' '"allow": ["Bash(*)"]'
-chk teamlead; expect 1 "human-only: settings edit" "(j) guard profile edit"
-bashp "cp /tmp/s .claude/settings.json"; chk teamlead; expect 1 "human-only: settings edit" "(j) settings via Bash"
-echo "team-smoke-22: (j) settings edit human-only OK"
-# ---- (k) a project-added ask is human-only; a baseline ask is the lead's --------------------------
-bashp "az webapp restart --name x"; chk teamlead
-expect 1 "human-only: production ask: Bash(az webapp restart*)" "(k) project-added ask, teamlead"
-chk operator; expect 1 "human-only: production ask: Bash(az webapp restart*)" "(k) project-added ask, operator"
-bashp "git rm old.txt"; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline ask, teamlead"
-chk class; expect 1 "class:" "(k) baseline ask, class without a matching class"
+tier "tier: operator — settings edit" "(j) guard profile edit"
+bashp "cp /tmp/s .claude/settings.json"; tier "tier: operator — settings edit" "(j) settings via Bash"
+echo "team-smoke-22: (j) settings edit operator tier OK"
+# ---- (k) a project-added ask is the Operator's; a baseline ask is the lead's ----------------------
+bashp "az webapp restart --name x"
+tier "tier: operator — production ask: Bash(az webapp restart*)" "(k) project-added ask"
+bashp "git rm old.txt"; tier "tier: lead" "(k) baseline ask without a matching class"
 mv "$MAIN/.claude/team/baseline-ask.json" "$WORK/baseline.json"
-chk teamlead; expect 1 "human-only: production ask: Bash(git rm*)" "(k) missing baseline: every ask"
+tier "tier: operator — production ask: Bash(git rm*)" "(k) missing baseline: every ask"
 mv "$WORK/baseline.json" "$MAIN/.claude/team/baseline-ask.json"
-# Edit/Write ask rules match the edited path: a project rule is human-only, a baseline rule the lead's.
+# Edit/Write ask rules match the edited path: a project rule is the Operator's, a baseline rule the lead's.
 mkdir -p "$CLONE/infra"; echo 'size = 1' > "$CLONE/infra/main.tf"; echo 'A=1' > "$CLONE/.env.local"
-editp "$CREAL/infra/main.tf" infra/main.tf 'size = 1' 'size = 2'; chk teamlead
-expect 1 "human-only: production ask: Edit(infra/**)" "(k) project-added Edit rule"
-editp "$CREAL/.env.local" .env.local 'A=1' 'A=2'; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline Edit rule"
-chk class; expect 1 "class:" "(k) baseline Edit rule, class"
-chk operator; expect 0 "policy-authority: operator" "(k) baseline Edit rule, operator relay"
+editp "$CREAL/infra/main.tf" infra/main.tf 'size = 1' 'size = 2'
+tier "tier: operator — production ask: Edit(infra/**)" "(k) project-added Edit rule"
+editp "$CREAL/.env.local" .env.local 'A=1' 'A=2'; tier "tier: lead" "(k) baseline Edit rule"
 jq -e 'index("Edit(**/.env.*)")' "$MAIN/.claude/team/baseline-ask.json" >/dev/null \
   || fail "(k) Edit(**/.env.*) left the baseline: it would become human-only (owner: the lead approves it)"
 # .env itself is a deny rule of the starter: Claude Code shows no prompt for it, so no authority can.
@@ -434,118 +436,136 @@ jq -e '.permissions.deny | index("Edit(**/.env)")' "$SRC/.claude/settings.json" 
 # The fixture lives under the system temp dir: a separate TMPDIR keeps the clone outside "temp".
 OLD_TMPDIR="$TMPDIR"; export TMPDIR="$WORK/tz"; mkdir -p "$TMPDIR" "$CLONE/sub"
 for c in "rm -rf build/" "rm -fr $TMPDIR/x" "rm -r -f sub/y"; do
-  bashp "$c"; chk teamlead; expect 0 "" "(k) rm inside: $c"
+  bashp "$c"; tier "tier: lead" "(k) rm inside: $c"
 done
 for c in "rm -rf ~/x" "rm -rf /usr/local/x" "rm -rf ../x" "rm -rf \$HOME/x" "sudo rm -r -f ~/x" \
   "cd sub && rm -rf y" "rm -rf nothing-*"; do
-  bashp "$c"; chk teamlead; expect 1 "human-only: irreversible delete outside the clone" "(k) rm outside: $c"
+  bashp "$c"; tier "tier: operator — irreversible delete outside the clone" "(k) rm outside: $c"
 done
-bashp "rm -rf ~/x"; chk class; expect 1 "human-only: irreversible delete" "(k) rm outside, class"
-chk operator; expect 1 "human-only: irreversible delete" "(k) rm outside, operator"
-for c in "rm -rf .git/objects" "rm -rf .git/refs/heads/x"; do
-  bashp "$c"
-  for a in teamlead class; do chk "$a"; expect 1 "human-only: irreversible delete inside the git dir" "(k) $c, $a"; done
-  chk operator; expect 1 "human-only: irreversible delete inside the git dir" "(k) $c, operator"
+for c in "rm -rf .git/objects" "rm -rf .git/refs/heads/x" "rm -rf .GIT/objects"; do
+  bashp "$c"; tier "tier: operator — irreversible delete inside the git dir" "(k) $c"
 done
-bashp "rm -rf .GIT/objects"; chk teamlead; expect 1 "inside the git dir" "(k) case-folded git dir path"
 for c in "rm -rf ." "rm -rf .git" "rm -rf $CREAL" "rm -rf $CREAL/.git/" "rm -rf .Git" "rm -rf .GIT/" "rm -rf /"; do
-  bashp "$c"; chk operator; expect 1 "clone root or its .git — never" "(k) rm of the clone root: $c"
+  bashp "$c"; tier "tier: operator — refuse: rm -r of the clone root or its .git — never" "(k) rm of the clone root: $c"
 done
 # With the clone under a temp root its ancestors are strictly "inside temp": still never.
 export TMPDIR="$(dirname "$WORK")"
 for c in "rm -rf .." "rm -rf $(dirname "$CREAL")"; do
-  bashp "$c"
-  for a in teamlead operator; do chk "$a"; expect 1 "clone root or its .git — never" "(k) ancestor under temp: $c, $a"; done
+  bashp "$c"; tier "tier: operator — refuse: rm -r of the clone root or its .git — never" "(k) ancestor under temp: $c"
 done
 export TMPDIR="$WORK/tz"
-bashp "git remote add x https://example.invalid/r.git"
-for a in teamlead class; do chk "$a"; expect 1 "human-only: egress: git remote add" "(k) git remote add, $a"; done
-chk operator; expect 1 "human-only: egress: git remote add" "(k) git remote add, operator"
-bashp "rm -rf build/"; chk teamlead; expect 0 "policy-authority: teamlead" "(k) baseline rm -rf inside, waived"
+bashp "git remote add x https://example.invalid/r.git"; tier "tier: operator — egress" "(k) git remote add"
+bashp "rm -rf build/"; tier "tier: lead" "(k) baseline rm -rf inside: the lead's"
 export TMPDIR="$OLD_TMPDIR"
-bashp "git status"; chk teamlead; expect 0 "" "(k) no match, nothing to waive"
-has "policy-" "$WORK/out" && fail "(k) a waiver printed for a clean prompt"
+bashp "git status"; tier "tier: lead" "(k) no match: a lead checkpoint"
 echo "team-smoke-22: (k) production asks OK"
-# ---- never waived: deny, SQL, unreadable, no transcript; egress needs the Operator -----------------
-for a in teamlead operator; do
-  bashp "git rebase -i HEAD~2"; chk "$a"; expect 1 "deny-tier" "(never) deny, $a"
-  bashp "sqlcmd -Q 'DROP TABLE x'"; chk "$a"; expect 1 "refuse (" "(never) SQL, $a"
-  has "human-only" "$WORK/out" && fail "(never) SQL offered to the Operator"
-  bashp 'echo "unbalanced'; chk "$a"; expect 1 "cannot be parsed" "(never) unreadable, $a"
-done
-set +e; $PCM "$CLONE" --strict --authority operator < "$WORK/pane" > "$WORK/out" 2>&1; RC=$?; set -e
-expect 1 "no transcript" "(never) no transcript"
-bashp "curl https://example.invalid/x"; chk teamlead; expect 1 "human-only: egress: curl" "(egress) teamlead"
-chk operator; expect 1 "human-only: egress: curl" "(egress) operator"
-echo "team-smoke-22: authority never-waived + egress OK"
+# ---- never waived: deny, SQL, unreadable; egress needs the Operator --------------------------------
+bashp "git rebase -i HEAD~2"; tier "tier: operator — refuse (deny-tier)" "(never) deny"
+bashp "sqlcmd -Q 'DROP TABLE x'"; tier "tier: operator — refuse (" "(never) SQL"
+bashp 'echo "unbalanced'; tier "tier: operator — refuse: command quoting cannot be parsed" "(never) unreadable"
+bashp "curl https://example.invalid/x"; tier "tier: operator — egress" "(egress) curl"
+echo "team-smoke-22: tier never-waived + egress OK"
 
-# ---- sender: a TeamLead's bare call, caller rules, decision, answers.md, the .answered marker ------
+# ---- sender: an ask answer — caller rules, tier, form, decision relay, answers.md, the marker -------
 ANS="bash .claude/lib/team-answer.sh"
-lead() { run "$MAIN" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM="${LT:-alfa}" $ANS "$@"; }
-bashp "git rm old.txt"
-# A pending human-only request on the open prompt: a bare TeamLead call would skip that check.
-mkdir -p "$RD/decisions"; echo '{"binding": {"event": "toolu_human"}}' > "$RD/decisions/req-1.json"
-n0="$(grep -c '^tmux send-keys' "$STUB_LOG" || true)"
-lead alfa coder no; expect 7 "a TeamLead answers only with --authority" "(bare) TeamLead call without --authority"
-[ "$(grep -c '^tmux send-keys' "$STUB_LOG" || true)" = "$n0" ] || fail "(bare) keys sent on a refused TeamLead call"
-! grep -q 'operator-window' "$RD/answers.md" 2>/dev/null || fail "(bare) a refused call logged an answer"
-# Outside a TeamLead session the same bare call is not refused by that rule: the Escape goes out
-# (this stub pane stays on the prompt, so it may end as exit 4, which still proves delivery).
-run "$MAIN" $ANS alfa coder no
-! has "a TeamLead answers only" "$WORK/out" || fail "(bare) a non-TeamLead call was refused as a TeamLead"
-[ "$(grep -c '^tmux send-keys' "$STUB_LOG" || true)" -gt "$n0" ] || fail "(bare) a non-TeamLead bare call sent nothing"
-rm -f "$RD/decisions/req-1.json"; bashp "git rm old.txt"; : > "$STUB_LOG"
-run "$MAIN" $ANS alfa coder yes --authority teamlead --why w; expect 7 "is the run's TeamLead's" "(caller) not the lead"
-lead alfa coder yes --authority teamlead; expect 2 "needs --why" "(caller) no --why"
-LT=beta lead alfa coder yes --authority teamlead --why w; expect 7 "only its own team" "(caller) another team"
-lead alfa coder yes --authority operator --why w; expect 7 "needs --decision" "(l) operator without a decision"
-mkdir -p "$RD/decisions"; printf -- '---\nid: d-1\nstatus: pending\n---\nq\n' > "$RD/decisions/d-1.md"
-lead alfa coder yes --authority operator --why w --decision "$RD/decisions/d-1.md"
+lead() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM="${LT:-alfa}" $ANS "$@"; }
+hookin() { jq -c '{tool_name, tool_input}' "$WORK/in.json"; }   # the hook's payload of the last call
+sleep 600 & WPID=$!   # a live stage hook waiting on its permission asks
+bashp "git rm old.txt"; mkask a-1 permission lead "$(hookin)" "$WPID"
+lead alfa a-1 --allow; expect 2 "--authority must be teamlead or operator" "(bare) a call without --authority"
+run "$CLONE" $ANS alfa a-1 --allow --authority teamlead --why w; expect 7 "is the run's TeamLead's" "(caller) not the lead"
+lead alfa a-1 --allow --authority teamlead; expect 2 "needs --why" "(caller) no --why"
+LT=beta lead alfa a-1 --allow --authority teamlead --why w; expect 7 "only its own team" "(caller) another team"
+lead beta a-1 --allow --authority teamlead --why w; expect 7 "not team beta's clone" "(caller) another team's ask"
+lead alfa coder --allow --authority teamlead --why w; expect 2 "the ask id must be a-<n>" "(usage) a role, not an ask id"
+lead alfa a-1 --allow --deny no --authority teamlead --why w; expect 2 "one answer form only" "(usage) two forms"
+lead alfa a-1 --allow --authority operator --why w; expect 7 "needs --decision" "(l) operator without a decision"
+mkdir -p "$RD/decisions"; printf -- '---\nid: d-1\nstatus: pending\nbind_ask: a-1\n---\nq\n' > "$RD/decisions/d-1.md"
+lead alfa a-1 --allow --authority operator --why w --decision "$RD/decisions/d-1.md"
 expect 7 "needs --decision" "(l) operator with a pending decision"
-bashp "rm -rf ~/x"
-lead alfa coder yes --authority teamlead --why "clean up"
-expect 9 "irreversible delete outside the clone" "(k) sender: rm outside the clone is exit 9"
-[ "$(grep -c '^tmux send-keys' "$STUB_LOG")" = 0 ] || fail "(k) keys sent on an rm outside the clone"
-editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""
-lead alfa coder yes --authority teamlead --why "allow a syntax check"
-expect 9 "human-only: settings edit" "(j) sender maps human-only to exit 9"
-[ "$(grep -c '^tmux send-keys' "$STUB_LOG")" = 0 ] || fail "(j) keys sent on a human-only refusal"
-sed -i.bak 's/^status: pending/status: answered/' "$RD/decisions/d-1.md"
-: > "$STUB_LOG"
-lead alfa coder yes --authority operator --why "Operator approved" --decision "$RD/decisions/d-1.md"
-expect 9 "human-only: settings edit" "(l) an operator relay never answers a human-only prompt"
-[ "$(grep -c '^tmux send-keys' "$STUB_LOG")" = 0 ] || fail "(l) keys sent on a human-only relay"
-grep -q '^status: answered' "$RD/decisions/d-1.md" || fail "(l) a refused relay spent the decision"
-bashp "git rm old.txt"
-lead alfa coder yes --authority operator --why "Operator approved" --decision "$RD/decisions/d-1.md"
-expect 0 "sent yes" "(l) operator relay of a baseline ask"
-grep -q "\[coder 1\] .* → yes — Operator approved \[authority operator\] \[decision d-1\]$" "$RD/answers.md" \
-  || { cp "$RD/answers.md" "$WORK/out"; fail "(p) operator answer not in answers.md"; }
-# A blocked coder: a say on the lead's authority writes the stop's marker; a refused one does not.
+lead alfa a-9 --allow --authority teamlead --why w; expect 6 "no ask a-9" "(stale) no such ask"
+lead alfa a-1 --pick "Yes" --authority teamlead --why w; expect 7 "does not answer a permission ask" "(form) a pick on a permission"
+lead alfa a-1 --allow --authority teamlead --why "baseline git rm"
+expect 0 "answered: a-1 (allow)" "(teamlead) a lead-tier permission"
+jq -e '.form == "allow" and .authority == "teamlead" and .lead_session_id == "sid-lead"' "$RD/asks/a-1.answer.json" \
+  >/dev/null || fail "(teamlead) answer file: $(cat "$RD/asks/a-1.answer.json" 2>/dev/null)"
+[ "$(jq -r .state "$RD/asks/a-1.json")" = answered ] || fail "(teamlead) the ask is not answered"
+grep -q "\[coder 1\] ask a-1 Bash git rm old.txt → allow — baseline git rm \[authority teamlead\]$" "$RD/answers.md" \
+  || { cp "$RD/answers.md" "$WORK/out"; fail "(p) teamlead answer not in answers.md"; }
+lead alfa a-1 --deny no --authority teamlead --why again; expect 6 "already answered" "(once) a second answer"
+# An operator-tier ask: the lead's own answer is refused (9); only a relay of a bound decision answers.
+bashp "az webapp restart --name x"; mkask a-2 permission operator "$(hookin)" "$WPID"
+lead alfa a-2 --allow --authority teamlead --why w; expect 9 "is the Operator's" "(tier) an operator-tier ask"
+[ ! -e "$RD/asks/a-2.answer.json" ] || fail "(tier) a refused answer wrote an answer file"
+printf -- '---\nid: d-2\nstatus: answered\nbind_ask: a-1\nanswer_outcome: allow\n---\nq\n' > "$RD/decisions/d-2.md"
+lead alfa a-2 --allow --authority operator --why w --decision "$RD/decisions/d-2.md"
+expect 7 "is bound to a-1, not a-2" "(l) a decision bound to another ask"
+printf -- '---\nid: d-3\nstatus: answered\nbind_ask: a-2\nanswer_outcome: deny\nanswer_value: not now\n---\nq\n' \
+  > "$RD/decisions/d-3.md"
+lead alfa a-2 --allow --authority operator --why w --decision "$RD/decisions/d-3.md"
+expect 7 "deny, not --allow" "(l) a relay never rewords the decision's outcome"
+lead alfa a-2 --deny "later" --authority operator --why w --decision "$RD/decisions/d-3.md"
+expect 7 "differs from decision d-3" "(l) a relay never rewords the decision's value"
+lead alfa a-2 --deny "not now" --authority operator --why "Operator: not now" --decision "$RD/decisions/d-3.md"
+expect 0 "answered: a-2 (deny) — the stage hook returns it [decision d-3]" "(l) operator relay"
+grep -q '^status: dispatched' "$RD/decisions/d-3.md" && grep -q '^dispatched_at: ' "$RD/decisions/d-3.md" \
+  || fail "(once) the relayed decision is not dispatched"
+grep -q "ask a-2 Bash az webapp restart --name x → deny: not now — Operator: not now \[authority operator\] \[decision d-3\]$" \
+  "$RD/answers.md" || { cp "$RD/answers.md" "$WORK/out"; fail "(p) operator answer not in answers.md"; }
+# A blocked coder's Stop: a text ask from its record; the answer writes the record's marker.
 mkrec coder "$BASE" blocked; jq '.attempt = 1 | .message = "which endpoint?"' "$RD/coder-1-1.json" \
   > "$WORK/r" && mv "$WORK/r" "$RD/coder-1-1.json"; echo coder-1-1.json > "$TD/acked"
-bashp "git status"
-lead alfa coder say "Use the existing endpoint." --authority teamlead --why "order line 2"
-expect 6 "a menu or permission prompt is open" "(marker) refused say"
-[ ! -e "$RD/coder-1-1.json.answered" ] || fail "(marker) a refused say wrote the marker"
-tool_done "$SID" "$LAST"; LAST=""; cp "$FIX/idle.txt" "$WORK/pane"
-lead alfa coder say "Use the existing endpoint." --authority teamlead --why "order line 2"
-expect 0 "sent say" "(marker) say on the lead's authority"
-[ -e "$RD/coder-1-1.json.answered" ] || fail "(marker) no .answered after the say"
-grep -q "\[coder 1\] which endpoint? → say: Use the existing endpoint. — order line 2 \[authority teamlead\]$" \
-  "$RD/answers.md" || { cp "$RD/answers.md" "$WORK/out"; fail "(p) say not in answers.md"; }
-[ "$(grep -c '^- ' "$RD/answers.md")" = 2 ] || fail "(p) answers.md is not one line per send"
-grep -q 'q=authority:teamlead' "$TD/send-coder.log" || fail "(p) dispatch not journalled on the authority"
+mkask a-3 text lead '{"text": "which endpoint?", "source": "record:coder-1-1.json"}'
+lead alfa a-3 --allow --authority teamlead --why w; expect 7 "does not answer a text ask" "(marker) a refused answer"
+[ ! -e "$RD/coder-1-1.json.answered" ] || fail "(marker) a refused answer wrote the marker"
+lead alfa a-3 --text "Use the existing endpoint." --authority teamlead --why "order line 2"
+expect 0 "answered: a-3 (text)" "(marker) a text answer on the lead's authority"
+[ -e "$RD/coder-1-1.json.answered" ] || fail "(marker) no .answered after the answer"
+grep -q "\[coder 1\] ask a-3 which endpoint? → text: Use the existing endpoint. — order line 2 \[authority teamlead\]$" \
+  "$RD/answers.md" || { cp "$RD/answers.md" "$WORK/out"; fail "(p) text answer not in answers.md"; }
+[ "$(grep -c '^- ' "$RD/answers.md")" = 3 ] || fail "(p) answers.md is not one line per answer"
+# A question ask: every question answered, by its exact text.
+Q='{"tool_name": "AskUserQuestion", "tool_input": {"questions": [
+  {"question": "Which retry?", "header": "Retry", "options": [{"label": "Counter"}, {"label": "Backoff"}]},
+  {"question": "Log it?", "header": "Log", "options": [{"label": "Yes"}, {"label": "No"}]}]}}'
+mkask a-4 question lead "$Q"
+lead alfa a-4 --pick Counter --authority teamlead --why w; expect 7 "single-question ask" "(form) a pick on two questions"
+lead alfa a-4 --answers '{"Which retry?": "Counter"}' --authority teamlead --why w
+expect 7 "exactly the asked question texts" "(form) a question left out"
+lead alfa a-4 --answers '{"Which retry?": "Counter", "Log it?": "Yes"}' --authority teamlead --why "the order"
+expect 0 "answered: a-4 (answers)" "(form) two questions in one answer"
+# A replaced session's ask and a stopped team are refused (6).
+mkask a-5 text lead '{"text": "x", "source": "message"}'
+jq '.session_id = "sid-old"' "$RD/asks/a-5.json" > "$WORK/a5" && mv "$WORK/a5" "$RD/asks/a-5.json"
+lead alfa a-5 --text y --authority teamlead --why w; expect 6 "replaced session" "(stale) an ask of a replaced session"
+mkask a-6 text lead '{"text": "x", "source": "message"}'; touch "$TD/cancel"
+lead alfa a-6 --text y --authority teamlead --why w; expect 6 "team stopped" "(stale) a stopped team"
+rm -f "$TD/cancel"
+kill "$WPID" 2>/dev/null || true; wait "$WPID" 2>/dev/null || true
+# The hand-made decisions: d-1 stays (answered, never pending again), (m) opens d-2 for real.
+printf -- '---\nid: d-1\nstatus: answered\nbind_ask: a-1\n---\nq\n' > "$RD/decisions/d-1.md"
+rm -f "$RD/decisions/d-2.md" "$RD/decisions/d-3.md"
 echo "team-smoke-22: sender authority + answers.md + marker OK"
 
-# ---- the hook binds team-answer.sh --authority to the lead's session id ---------------------------
+# ---- the hook binds team-answer.sh and the asks/ and decisions/ files to the lead's session ------
 HOOK="$SRC/.claude/hooks/guard-team-verdict.sh"
 vp() { jq -cn --arg s "$1" --arg c "$2" '{session_id: $s, tool_name: "Bash", tool_input: {command: $c}}'; }
-FORGE="TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-answer.sh alfa coder yes --authority teamlead --why w"
+FORGE="TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-answer.sh alfa a-1 --allow --authority teamlead --why w"
 hook "$CLONE" "$(vp sid-coder-1 "$FORGE")"; expect 2 "not it (refused)" "(hook) forged authority call"
-TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-answer.sh alfa coder yes --authority teamlead --why w")"
+hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-answer.sh alfa a-1 --allow")"
+expect 2 "not it (refused)" "(hook) an ask answer without --authority"
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "bash .claude/lib/team-answer.sh alfa a-1 --allow --authority teamlead --why w")"
 expect 0 "" "(hook) the lead's own session"
-hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-answer.sh alfa coder say hi")"; expect 0 "" "(hook) plain sender use"
+for c in "cat .agents/team/runs/$RUN_ID/asks/a-1.json" "ls ./.agents/team/runs/$RUN_ID/asks" \
+  "echo x > $CREAL/.agents/team/runs/$RUN_ID/decisions/d-9.md" \
+  "bash $MAIN/.claude/lib/team-ask.sh wait a-1; cat .agents/team/runs/$RUN_ID/asks/a-1.answer.json"; do
+  hook "$CLONE" "$(vp sid-coder-1 "$c")"; expect 2 "not it (refused)" "(hook) a stage naming the ask files: $c"
+done
+TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(vp sid-lead "cat .agents/team/runs/$RUN_ID/asks/a-1.json")"
+expect 0 "" "(hook) the lead reads an ask"
+for c in "bash $MAIN/.claude/lib/team-ask.sh wait a-1" "bash $MAIN/.claude/lib/team-ask.sh wait a-1 --secs 60"; do
+  hook "$CLONE" "$(vp sid-coder-1 "$c")"; expect 0 "" "(hook) a stage waits on its ask: $c"
+done
 echo "team-smoke-22: authority hook OK"
 
 # ==== pending decisions, the runner's class-first answering and the Operator notification =========
@@ -618,7 +638,7 @@ jq -e '.event == "human_decision" and .team == "alfa" and .decision == "d-2" and
 [ ! -e "$TD/runs/$RUN_ID/.notified" ] || fail "(m) .notified still written"
 run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
 head -n 1 "$WORK/out" | grep -q "^decision .agents/team/runs/$RUN_ID/decisions/d-2.md — Allow the coder" \
-  || fail "(m) pending does not list the open decision first"
+  || fail "(m) pending does not list the open decision first: $(head -n 3 "$WORK/out")"
 echo "team-smoke-22: (m) open + one notification OK"
 
 # ---- (n) two pending: answered by id, bound to the Operator's own words; a second answer → 4 ------
@@ -651,50 +671,68 @@ run "$CLONE" bash .claude/lib/team-lead.sh decision list alfa --pending; expect 
 [ ! -s "$WORK/out" ] || fail "(o) a pending decision is left: $(cat "$WORK/out")"
 echo "team-smoke-22: (o) withdraw OK"
 
-# ---- the Operator's relay is bound to the prompt instance and dispatched once ---------------------
-bashp "git rm old.txt"; : > "$STUB_LOG"
-ldec open alfa --source coder-1-1.json --question "Remove old.txt?"; expect 0 "[d-4]" "(bind) open"
-printf '%s\n' "bind_session_id: sid-someone-else" > "$WORK/bind"
-awk -v b="$(cat "$WORK/bind")" '/^---$/ && ++n == 2 { print b } { print }' "$DLD/d-4.md" > "$WORK/d4" && mv "$WORK/d4" "$DLD/d-4.md"
-said_in_lead "d-4 yes remove it"; ldec answer alfa d-4 --text "yes remove it"; expect 0 "answered: d-4" "(bind) answer"
-lead alfa coder yes --authority operator --why "Operator: remove" --decision "$DLD/d-4.md"
-expect 6 "session changed" "(bind) a decision bound to another session instance"
-ldec open alfa --source coder-1-1.json --question "Remove old.txt now?"; expect 0 "[d-5]" "(once) open"
-said_in_lead "d-5 yes"; ldec answer alfa d-5 --text "yes"; expect 0 "" "(once) answer"
-lead alfa coder yes --authority operator --why "Operator: remove" --decision "$DLD/d-5.md"; expect 0 "sent yes" "(once) relay"
-grep -q '^status: dispatched' "$DLD/d-5.md" && grep -q '^dispatched_at: ' "$DLD/d-5.md" || fail "(once) not journalled"
-lead alfa coder yes --authority operator --why "again" --decision "$DLD/d-5.md"; expect 7 "needs --decision" "(once) second relay"
+# ---- the Operator's relay is bound to its ask, worded by the Operator's reply, dispatched once -----
+sleep 600 & WPID=$!
+bashp "az webapp restart --name y"; mkask a-7 permission operator "$(hookin)" "$WPID"
+ldec open alfa --ask a-7; expect 0 "[d-4] coder: Bash az webapp restart --name y" "(bind) open from the ask"
+has 'reply: "d-4 allow" | "d-4 deny: <what instead>"' "$WORK/out" || fail "(bind) open names no reply form"
+grep -q '^bind_ask: a-7$' "$DLD/d-4.md" && grep -q '^bind_session_id: sid-auth-1$' "$DLD/d-4.md" \
+  && grep -q '^source: asks/a-7.json$' "$DLD/d-4.md" || fail "(bind) the decision is not bound to the ask"
+ldec open alfa --ask a-1; expect 4 "ask a-1 is answered, not open" "(bind) an answered ask takes no decision"
+said_in_lead "allow"; ldec answer alfa d-4 --text "allow"; expect 7 "reply must start with \"d-4 \"" "(bind) a reply without its id"
+said_in_lead "d-4 maybe"; ldec answer alfa d-4 --text "d-4 maybe"; expect 7 "reply must read d-4 allow|deny" "(bind) a reply of no form"
+said_in_lead "d-4 allow"; ldec answer alfa d-4 --text "d-4 allow"; expect 0 "answered: d-4" "(bind) answer"
+grep -q '^answer_outcome: allow$' "$DLD/d-4.md" || fail "(bind) the reply's outcome is not stored"
+lead alfa a-7 --allow --authority operator --why "Operator: restart" --decision "$DLD/d-4.md"
+expect 0 "answered: a-7 (allow)" "(once) relay"
+grep -q '^status: dispatched' "$DLD/d-4.md" && grep -q '^dispatched_at: ' "$DLD/d-4.md" || fail "(once) not journalled"
+lead alfa a-7 --allow --authority operator --why "again" --decision "$DLD/d-4.md"; expect 7 "needs --decision" "(once) second relay"
+kill "$WPID" 2>/dev/null || true; wait "$WPID" 2>/dev/null || true
 hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-lead.sh decision answer alfa d-5 --text yes")"
 expect 2 "not it (refused)" "(hook) a stage answering a decision"
 hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-lead.sh decision list alfa")"; expect 0 "" "(hook) list is free"
 echo "team-smoke-22: decision binding + dispatch once + hook OK"
 
-# ---- (i) the runner answers at authority class first; human-only → a request; else the lead's ------
+# ---- (i) the runner rings the lead for every open ask; it reads no pane and answers nothing ---------
 runner_attention() {  # runner_attention <label> [<line>] — one attention line, a runner start, stopped
   echo "${2:-2026-11-14T12:00:00Z permission_prompt Claude needs your permission}" > "$RD/attention"
   rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$TD/send-lead.log"; : > "$STUB_LOG"
   STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=10 run "$MAIN" $TR alfa
   cp "$WORK/out" "$WORK/runner.out"
 }
-bashp "git status"; runner_attention "(i) clean prompt"
-has "answered at authority class: coder prompt" "$WORK/runner.out" || { cp "$WORK/runner.out" "$WORK/out"; fail "(i) the runner did not answer at class"; }
-grep -q 'send-keys -t %1 Enter' "$STUB_LOG" || fail "(i) no Enter sent to the stage"
-! grep -q 'prompt coder' "$TD/send-lead.log" 2>/dev/null && ! grep -q 'send-keys -t =smk-alfa-lead: -l -- prompt' "$STUB_LOG" \
-  || fail "(i) the lead was rung for a class-answered prompt"
-grep -q "\[authority class\]" "$RD/answers.md" || fail "(i) class answer not in answers.md"
-editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""; runner_attention "(i) human-only"
-[ -f "$DLD/req-1.json" ] && jq -e '.role == "coder" and .tool == "Edit file" and .binding.session_id == "sid-auth-1"
-  and (.binding.event | length > 0) and .source == "attention:1"' "$DLD/req-1.json" >/dev/null \
-  || fail "(i) no request for a human-only prompt"
-grep -q 'human-only coder: Edit file .* — open a decision for req-1' "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null \
-  || fail "(i) the lead was not rung for the request"
-ldec open alfa --request req-1; expect 0 "[d-6] coder: Edit file" "(i) open from the request"
-grep -q '^bind_session_id: sid-auth-1' "$DLD/d-6.md" && grep -q '^source: decisions/req-1.json' "$DLD/d-6.md" \
-  || fail "(i) binding not copied from the request"
-bashp "git rm old.txt"; prof '.teams.policy.classes = {}'; runner_attention "(i) no class"
-grep -q 'prompt coder: Bash command git rm old.txt — team-answer.sh alfa coder yes|no --authority teamlead' \
-  "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || { { cat "$TD/send-lead.log"; grep alfa-lead "$STUB_LOG"; } > "$WORK/out" 2>&1; fail "(i) the lead was not rung with the command"; }
-echo "team-smoke-22: (i) runner class-first OK"
+rang() { grep -qF -- "$1" "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null; }
+win() {  # win <fn> [args…] → one runner function in the runner's shell; doorbells to $WORK/bells
+  set +e; (cd "$CREAL" && TEAM=alfa RUN="$RUN_ID" CLONE="$CREAL" root="$MAIN" MODE=normal
+    . "$MAIN/.claude/lib/team-lib.sh"; TD="$(team_dir)"; . "$MAIN/.claude/lib/team-run-lead.sh"
+    . "$MAIN/.claude/lib/team-ask.sh"; . "$MAIN/.claude/lib/team-run-asks.sh"   # as team-run.sh sources them
+    team_session_doorbell() { echo "$3" >> "$WORK/bells"; }
+    "$@") > "$WORK/out" 2>&1; RC=$?; set -e
+}
+sleep 600 & WPID=$!
+bashp "git rm older.txt"; mkask a-8 permission lead "$(hookin)" "$WPID"
+bashp "az webapp restart --name z"; mkask a-9 permission operator "$(hookin)" "$WPID"
+# The stage hook rings the lead when it files an ask; the runner re-rings an unanswered one after
+# TEAM_ASK_RERING_SECS (0 here: at once).
+TEAM_ASK_RERING_SECS=0 runner_attention "(i) open asks"
+rang "ask coder a-8: Bash git rm older.txt" || { cp "$WORK/runner.out" "$WORK/out"
+  fail "(i) the lead was not rung for a lead-tier ask: $(cat "$TD/send-lead.log" 2>/dev/null; grep -- '-lead' "$STUB_LOG")"; }
+rang "ask coder a-9 operator: Bash az webapp restart --name z" || fail "(i) the lead was not rung for an operator-tier ask"
+[ -f "$RD/asks/.rung-a-8" ] || fail "(i) no ring stamp for a-8"
+# a-5 (a replaced session's) was withdrawn by the first runner after the sender cases, in (m).
+[ "$(jq -r .state "$RD/asks/a-5.json")" = withdrawn ] || fail "(i) an ask of a replaced session was not withdrawn"
+! grep -q 'send-keys -t %1 ' "$STUB_LOG" || fail "(i) the runner typed into the stage"
+! has "answered at authority" "$WORK/runner.out" || fail "(i) the runner answered a prompt"
+[ ! -e "$RD/asks/a-8.answer.json" ] && [ ! -e "$RD/asks/a-9.answer.json" ] || fail "(i) the runner wrote an answer"
+run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
+grep -q "^ask .agents/team/runs/$RUN_ID/asks/a-8.json — coder permission — Bash git rm older.txt$" "$WORK/out" \
+  && grep -q "^ask .agents/team/runs/$RUN_ID/asks/a-9.json — coder permission operator — " "$WORK/out" \
+  || fail "(i) pending does not list the open asks"
+grep -q 'a-1.json\|a-5.json' "$WORK/out" && fail "(i) pending lists an answered or withdrawn ask"
+: > "$WORK/bells"; win lead_withdraw_asks all "fixture: the stage moved on"
+[ "$(jq -r .state "$RD/asks/a-8.json")" = withdrawn ] && grep -qxF "ask coder a-9 withdrawn — fixture: the stage moved on" "$WORK/bells" \
+  || fail "(i) withdraw all: $(cat "$WORK/bells")"
+kill "$WPID" 2>/dev/null || true; wait "$WPID" 2>/dev/null || true
+echo "team-smoke-22: (i) runner rings asks OK"
 
 # ---- (idle) an idle stage rings the lead once per line, but is no item the lead owes ---------------
 IDLE="2099-01-01T00:00:01Z idle_prompt Claude is waiting for your input"
@@ -711,34 +749,24 @@ for k in permission_prompt elicitation_dialog agent_needs_input some_new_kind; d
 done
 grep -q idle_prompt "$WORK/out" && fail "(idle) pending lists the idle line among others"
 runner_attention "(idle) ring" "$IDLE"
-grep -q 'prompt coder: idle — look at the screen; nothing is owed unless it is stuck — Claude is waiting' \
-  "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || { cp "$WORK/runner.out" "$WORK/out"; fail "(idle) the lead was not rung for an idle stage"; }
-has "answered at authority class" "$WORK/runner.out" && fail "(idle) the runner tried to answer an idle stage"
+rang "attention coder: idle with no ask (the stop hook did not file one)" \
+  || { cp "$WORK/runner.out" "$WORK/out"; fail "(idle) the lead was not rung for an idle stage"; }
+! grep -q 'prompt coder' "$TD/send-lead.log" "$STUB_LOG" 2>/dev/null || fail "(idle) a prompt ring (the retired screen form)"
 echo "team-smoke-22: (idle) idle stage OK"
 
 # ---- one typed message answers one decision, unless it names the others' ids -----------------------
-ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?"; expect 0 "[d-7]" "(once-ev) open d-7"
-ldec open alfa --source coder-1-1.json --question "Keep the old table?"; expect 0 "[d-8]" "(once-ev) open d-8"
+ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?"; expect 0 "[d-5]" "(once-ev) open d-5"
+ldec open alfa --source coder-1-1.json --question "Keep the old table?"; expect 0 "[d-6]" "(once-ev) open d-6"
 said_in_lead "yes"
-ldec answer alfa d-7 --text yes; expect 0 "answered: d-7" "(once-ev) the first answer"
-ldec answer alfa d-8 --text yes; expect 7 "no Operator message" "(once-ev) the same message twice"
-ldec open alfa --source coder-1-1.json --question "Ship today?"; expect 0 "[d-9]" "(once-ev) open d-9"
-said_in_lead "d-8 yes, d-9 no"
-ldec answer alfa d-8 --text yes; expect 0 "answered: d-8" "(once-ev) a message naming d-8"
-ldec answer alfa d-9 --text no; expect 0 "answered: d-9" "(once-ev) the same message names d-9"
+ldec answer alfa d-5 --text yes; expect 0 "answered: d-5" "(once-ev) the first answer"
+ldec answer alfa d-6 --text yes; expect 7 "no Operator message" "(once-ev) the same message twice"
+ldec open alfa --source coder-1-1.json --question "Ship today?"; expect 0 "[d-7]" "(once-ev) open d-7"
+said_in_lead "d-6 yes, d-7 no"
+ldec answer alfa d-6 --text yes; expect 0 "answered: d-6" "(once-ev) a message naming d-6"
+ldec answer alfa d-7 --text no; expect 0 "answered: d-7" "(once-ev) the same message names d-7"
 echo "team-smoke-22: single-use evidence OK"
 
-# ---- (w) a human-only prompt is the Operator's, in the stage window; only the runner closes it -----
-# d-6 (opened from req-1 in (i)) was already resolved by the runner of a later section: the stage's
-# own transcript got the result of that call. The cases below use fresh copies of it.
-grep -q '^answer_in: coder$' "$DLD/d-6.md" || fail "(w) answer_in not written from the request"
-grep -q '^answered_via: stage-window ' "$DLD/d-6.md" || fail "(w) the live runner did not resolve d-6"
-win() {  # win <fn> [args…] → one runner function in the runner's shell; doorbells to $WORK/bells
-  set +e; (cd "$CREAL" && TEAM=alfa RUN="$RUN_ID" CLONE="$CREAL" root="$MAIN" MODE=normal
-    . "$MAIN/.claude/lib/team-lib.sh"; TD="$(team_dir)"; . "$MAIN/.claude/lib/team-run-lead.sh"
-    team_session_doorbell() { echo "$3" >> "$WORK/bells"; }
-    "$@") > "$WORK/out" 2>&1; RC=$?; set -e
-}
+# ---- (w) an operator-tier ask: the stage clock stops while it is open; the lead window answers ----
 # No session host for the decision's window (step 10): the hint passed to notify.sh says so and names
 # the status command, never a guessed tmux name; the runner goes on.
 nohost_notify() {
@@ -755,54 +783,30 @@ grep -A1 -x -- "--hint" "$WORK/nargs.log" 2>/dev/null | tail -n 1 \
   | grep -qx "no alfa-lead session found — bash .claude/lib/session-host.sh status alfa-lead" \
   || { cp "$WORK/nargs.log" "$WORK/out" 2>/dev/null || true; fail "(m) no host: the fallback hint"; }
 st() { sed -n 's/^status: //p' "$DLD/$1.md"; }
-res() {  # res <tool_use id> <entry fields> — the stage's own answer to its prompt, in its transcript
-  jq -cn --arg id "$1" --argjson x "$2" '{type: "user", uuid: ("u-" + $id),
-    message: {content: [{type: "tool_result", tool_use_id: $id, content: "ok"}]}} * $x' >> "$T"
-}
-mkd() {  # mkd <n> <tool_use id> [no-call] → d-<n>: a pending copy of d-6 bound to another call
-  sed -e "s/^id: d-6$/id: d-$1/" -e "s/^bind_event: .*/bind_event: $2/" -e '/^## Answer/,$d' \
-    -e "s/^status: .*/status: pending/" -e '/^answered_at: /d' -e '/^answered_via: /d' -e '/^answer_outcome: /d' "$DLD/d-6.md" > "$DLD/d-$1.md"
-  [ -n "${3:-}" ] || jq -cn --arg id "$2" '{type: "assistant", uuid: ("a-" + $id),
-    message: {content: [{type: "tool_use", id: $id, name: "Bash", input: {command: "curl x"}}]}}' >> "$T"
-}
-mkd 30 tu-30; : > "$WORK/bells"
-said_in_lead "d-30 yes"
-ldec answer alfa d-30 --text yes; expect 7 "answers it in the coder window" "(w) decision answer refused"
-[ "$(st d-30)" = pending ] && ! grep -q '^## Answer' "$DLD/d-30.md" || fail "(w) a refused answer changed d-30"
-ldec withdraw alfa d-30 --why "not needed"; expect 7 "answers it in the coder window" "(w) withdraw refused"
-lead alfa coder yes --authority operator --why w --decision "$DLD/d-30.md"; expect 7 "answers it in the coder window" "(w) relay refused"
-win lead_window; [ "$(st d-30)" = pending ] || fail "(w) resolved with no answer in the window"
-win lead_waiting coder 1; [ "$RC" = 0 ] || fail "(w) the stage clock runs while the Operator is asked"
-mkd 20 tu-20; mkd 21 tu-21; mkd 22 tu-22; mkd 23 tu-23 no-call
-res tu-30 '{"permissionDecision": {"decision": "accept", "source": "user_temporary"}}'
-res tu-20 '{"permissionDecision": {"decision": "accept", "source": "user_permanent"}}'
-res tu-21 '{"toolDenialKind": "user-rejected", "message": {"content": [{"type": "tool_result", "tool_use_id": "tu-21", "is_error": true, "content": "The user doesn'"'"'t want to proceed with this tool use. The tool use was rejected"}]}}'
-win lead_window
-for x in "d-30 approved" "d-20 approved (rule added)" "d-21 rejected"; do
-  d="${x%% *}"; o="${x#* }"
-  [ "$(st "$d")" = resolved ] && grep -qxF "answer_outcome: $o" "$DLD/$d.md" \
-    && grep -q '^answered_via: stage-window tu-' "$DLD/$d.md" || fail "(w) $d not resolved as $o: $(cat "$DLD/$d.md")"
-  grep -qF "→ $o — Operator in the stage window [authority operator-window] [decision $d]" "$RD/answers.md" \
-    || fail "(w) $d: no answers.md line"
-  grep -qxF "human-only coder: $d answered in the stage window — $o" "$WORK/bells" || fail "(w) $d: the lead was not rung"
-done
-[ "$(st d-22)" = pending ] || fail "(w) an open prompt was closed"
-[ "$(st d-23)" = withdrawn ] && grep -q '^prompt gone (the runner)$' "$DLD/d-23.md" || fail "(w) a call never made was not withdrawn"
-cp "$TD/session.json" "$WORK/sj1"; jq '.attempt = 2' "$WORK/sj1" > "$TD/session.json"
-win lead_window; cp "$WORK/sj1" "$TD/session.json"
-[ "$(st d-22)" = withdrawn ] || fail "(w) a prompt of a replaced attempt was not withdrawn"
-grep -qxF "human-only coder: d-22 withdrawn — prompt gone" "$WORK/bells" || fail "(w) no doorbell for prompt gone"
-win lead_waiting coder 1; [ "$RC" = 1 ] || fail "(w) the stage clock still stopped after the runner closed the decisions"
-[ "$(python3 -I "$MAIN/.claude/lib/team_prompt.py" outcome "$WORK/none.jsonl" tu-1)" = unknown ] || fail "(w) outcome of an unreadable transcript"
-# The Operator is pointed at the stage window, not the lead's.
-mkd 31 tu-31
-jq -n --arg r "$DLD/d-31.md" '{gate: "decision", verdict: "escalate", notify: "human_decision", ref: $r,
-  message: "d-31: coder: Bash curl x"}' > "$RD/teamlead-decision-99.json"
+sleep 600 & WPID=$!
+bashp "curl https://example.invalid/w"; mkask a-10 permission operator "$(hookin)" "$WPID"
+win lead_waiting coder 1; [ "$RC" = 0 ] || fail "(w) the stage clock runs while an ask is open"
+ldec open alfa --ask a-10; expect 0 "coder: Bash curl https://example.invalid/w" "(w) open from the ask"
+DW="$(sed -n 's/^\[\(d-[0-9]*\)\].*/\1/p' "$WORK/out" | head -n 1)"; [ -n "$DW" ] || fail "(w) no decision id"
+# Every decision is answered in the lead's window: the Operator's event names it, never a stage's.
+jq -n --arg r "$DLD/$DW.md" --arg m "$DW: coder: Bash curl" '{gate: "decision", verdict: "escalate",
+  notify: "human_decision", ref: $r, message: $m}' > "$RD/teamlead-decision-99.json"
 win eval ". '$MAIN/.claude/lib/team-channel.sh'; sess_name() { team_tmux_name alfa \"\$1\"; }
   rec() { jq -r --arg f \"\$2\" '.[\$f] // empty' \"\$1\"; }; lead_notify"
-jq -e '.event == "human_decision" and (.answer | tostring | test("alfa-coder"))' "$OB/events/"*"_alfa_${RUN_ID}_d-31.json" >/dev/null 2>&1 \
-  || fail "(w) the event does not name the stage window: $(cat "$OB/events/"*"_d-31.json" 2>/dev/null) $(cat "$WORK/out")"
+jq -e '.event == "human_decision" and (.answer | tostring | test("alfa-lead")) and (.answer | tostring | test("alfa-coder") | not)' \
+  "$OB/events/"*"_alfa_${RUN_ID}_$DW.json" >/dev/null 2>&1 \
+  || fail "(w) the event does not name the lead window: $(cat "$OB/events/"*"_$DW.json" 2>/dev/null) $(cat "$WORK/out")"
 rm -f "$RD/teamlead-decision-99.json"
-echo "team-smoke-22: (w) human-only prompts answered in the stage window OK"
+# The stage's attempt is replaced: its asks are withdrawn, and the decisions bound to them.
+cp "$TD/session.json" "$WORK/sj1"; jq '.attempt = 2' "$WORK/sj1" > "$TD/session.json"
+: > "$WORK/bells"; win lead_withdraw_asks stale "the stage session or attempt was replaced"
+cp "$WORK/sj1" "$TD/session.json"
+[ "$(jq -r .state "$RD/asks/a-10.json")" = withdrawn ] && [ "$(st "$DW")" = withdrawn ] \
+  && grep -q '^ask gone (the runner): ' "$DLD/$DW.md" || fail "(w) a replaced attempt's ask or decision not withdrawn"
+grep -qxF "ask coder a-10 withdrawn — the stage session or attempt was replaced" "$WORK/bells" \
+  || fail "(w) no doorbell for a withdrawn ask: $(cat "$WORK/bells")"
+win lead_waiting coder 1; [ "$RC" = 1 ] || fail "(w) the stage clock still stopped after the asks were withdrawn"
+kill "$WPID" 2>/dev/null || true; wait "$WPID" 2>/dev/null || true
+echo "team-smoke-22: (w) operator-tier ask OK"
 
 echo "team-smoke-22: OK"

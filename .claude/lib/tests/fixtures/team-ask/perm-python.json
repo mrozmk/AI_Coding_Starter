@@ -1,0 +1,3 @@
+{"session_id": "sid-1", "hook_event_name": "PermissionRequest", "cwd": "__CWD__", "permission_mode": "auto",
+ "agent_id": "q9", "agent_type": "general-purpose",
+ "tool_name": "Bash", "tool_input": {"command": "python3 -c 'print(1)'"}, "permission_suggestions": []}

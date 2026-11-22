@@ -14,32 +14,18 @@ pane_prompt_kind() {
   case "$k" in permission|menu|checkbox|review|none) echo "$k" ;; *) echo unreadable ;; esac
 }
 
-# team_actions <team> <role> <status> <prompt kind> → JSON array of copyable commands. For
-# `attention` they follow the pane in the order a reader acts on them: menu → pick/other, permission prompt →
-# yes/no, else say. An unreadable kind uses the greps; menu first there: a Yes/No
-# AskUserQuestion also matches team_prompt_open's `❯ 1. Yes`.
+# team_actions <team> <role> <status> <prompt kind> <clone team dir> → JSON array of copyable
+# commands. Nothing answers a stage by its screen any more: in a run with a per-run TeamLead the
+# lead answers every stop through the ask channel, so the actions are the lead's pending list and
+# its window; a run without a lead keeps the stage's window and /start-team.
 team_actions() {
-  local k="" pane
-  if [ "$3" = attention ]; then
-    case "${4:-unreadable}" in
-      menu) k=menu ;;
-      permission) k=prompt ;;
-      none|checkbox|review) k=text ;;
-      *)
-        pane="$(team_pane "$1-$2" 40)"
-        if grep -qF 'Enter to select' <<<"$pane" && grep -qF 'Type something.' <<<"$pane"; then
-          k=menu
-        elif team_prompt_open "$1-$2"; then k=prompt
-        else k=text; fi ;;
-    esac
-  fi
-  jq -cn --arg t "$1" --arg r "$2" --arg s "$3" --arg k "$k" '
-    "bash .claude/lib/team-answer.sh \($t) \($r)" as $a
-    | "bash .claude/lib/session-host.sh hint \($t)-\($r)" as $at
-    | if $s != "attention" then [$at, "\($a) say \"<answer>\"", "/start-team \($t)"]
-      elif $k == "prompt" then ["\($a) yes", "\($a) no \"<reason>\"", $at]
-      elif $k == "menu" then ["\($a) pick <n>", "\($a) other \"<answer>\"", $at]
-      else ["\($a) say \"<answer>\"", $at] end'
+  local lead=""
+  [ -z "${5:-}" ] || [ "$(jq -r '.run // empty' "$5/teamlead.json" 2>/dev/null)" != "$(cat "$5/run" 2>/dev/null)" ] \
+    || [ -z "$(cat "$5/run" 2>/dev/null)" ] || lead=1
+  jq -cn --arg t "$1" --arg r "$2" --arg lead "$lead" '
+    if $lead == "1" then ["bash .claude/lib/team-lead.sh pending \($t)",
+      "bash .claude/lib/session-host.sh hint \($t)-lead"]
+    else ["bash .claude/lib/session-host.sh hint \($t)-\($r)", "/start-team \($t)"] end'
 }
 
 # role_session <session> → alive | absent | unknown. A failed probe alone is not proof of absence
@@ -218,7 +204,7 @@ team_role() {  # team_role <td> <team> <run> <role> <cur role> <runner> <overrid
     screen="$(team_screen "$team-$role" "$po" | jq -R . | jq -sc .)"
   fi
   case "$status" in
-    attention|blocked|failed) actions="$(team_actions "$team" "$role" "$status" "$pk")" ;;
+    attention|blocked|failed) actions="$(team_actions "$team" "$role" "$status" "$pk" "$td")" ;;
   esac
   if [ -n "$base" ] || [ "$role" = cli ]; then
     cfg="$(team_role_cfg "$base" "$ov" "$role" "$root/.claude/project-profile.json" 2>/dev/null)" \

@@ -1,0 +1,5 @@
+{"session_id": "sid-1", "hook_event_name": "PreToolUse", "cwd": "__CWD__", "permission_mode": "auto",
+ "tool_name": "AskUserQuestion",
+ "tool_input": {"questions": [
+   {"question": "Keep the old endpoint?", "header": "Endpoint", "multiSelect": false,
+    "options": [{"label": "Keep it", "description": ""}, {"label": "Remove it", "description": ""}]}]}}

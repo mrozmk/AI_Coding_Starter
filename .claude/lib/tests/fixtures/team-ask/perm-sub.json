@@ -1,0 +1,4 @@
+{"session_id": "sid-1", "hook_event_name": "PermissionRequest", "cwd": "__CWD__", "permission_mode": "auto",
+ "agent_id": "a1b2c3", "agent_type": "general-purpose",
+ "tool_name": "Bash", "tool_input": {"command": "wc -l README.md", "description": "count lines"},
+ "permission_suggestions": []}

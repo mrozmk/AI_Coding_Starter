@@ -10,9 +10,10 @@
 # could run the script piped to it (cat X | bash). Best effort: a path in a variable or a renamed
 # copy never shows the name. The main checkout and a clone between stages pass untouched.
 #
-# 2. Verdicts — only this run's TeamLead session runs team-verdict.sh and team-answer.sh on an
-# authority (--authority class|teamlead|operator), and changes the run's pending decisions
-# (team-lead.sh decision open|answer|withdraw).
+# 2. Verdicts — only this run's TeamLead session runs team-verdict.sh and team-answer.sh (an ask
+# answer, --authority teamlead|operator), and changes the run's pending decisions (team-lead.sh
+# decision open|answer|withdraw). 3. The ask channel — a command naming runs/<run>/asks/ or
+# decisions/ is the lead's too; a stage may only run `bash <abs>/.claude/lib/team-ask.sh wait a-<n>`.
 #
 # Problem rule 2 solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
@@ -27,7 +28,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 PAYLOAD=$(cat)
 # Cheap pre-filter: this hook runs on every Bash call in a clone.
 case "$PAYLOAD" in
-  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*) ;;
+  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*|*asks*|*decisions*) ;;
   *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*) ;;
   *) exit 0 ;;
 esac
@@ -56,11 +57,17 @@ fi
 
 # Only an invocation — the script name followed by a gate — is checked, so git add, bash -n, cat or
 # grep on the file pass (a team working on the starter itself touches it).
-INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event|wrapup)([^a-z]|$)'
-# A sender call on an authority: the script name, later the option (plain stage use passes).
-ANSWER='team-answer\.sh.*--authority'
+INVOKE='team-verdict\.sh["'"'"']?[[:space:]]+["'"'"']?(spec|plan|acceptance|decision|event|wrapup|run)([^a-z]|$)'
+# A sender call on an authority or an ask: the script name, later the option or the ask id.
+ANSWER='team-answer\.sh.*(--authority|[[:space:]]a-[0-9])'
 DECIDE='team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?(open|answer|withdraw)'
-[[ "$CMD" =~ $INVOKE ]] || [[ "$CMD" =~ $ANSWER ]] || [[ "$CMD" =~ $DECIDE ]] || exit 0
+# 3. The ask channel's files — a command naming runs/<run>/asks/ or decisions/ (relative, ./ or
+# absolute) is the lead's; a stage only waits on its ask with the main checkout's team-ask.sh.
+ASKS='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/runs/|[^[:space:]]*/\.agents/team/runs/)[^[:space:]]*/(asks|decisions)(/|[[:space:]]|$)'
+WAITF='^[[:space:]]*bash[[:space:]]+/[^[:space:]]*/\.claude/lib/team-ask\.sh[[:space:]]+wait[[:space:]]+a-[0-9]+([[:space:]]+--secs[[:space:]]+[0-9]+)?[[:space:]]*$'
+ASKCMD=""
+[[ "$CMD" =~ $ASKS ]] && ! [[ "$CMD" =~ $WAITF ]] && ASKCMD=1
+[ -n "$ASKCMD" ] || [[ "$CMD" =~ $INVOKE ]] || [[ "$CMD" =~ $ANSWER ]] || [[ "$CMD" =~ $DECIDE ]] || exit 0
 
 LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
 cd "$ROOT" 2>/dev/null || refuse "verdict guard: cannot enter $ROOT — refused"
@@ -69,5 +76,5 @@ cd "$ROOT" 2>/dev/null || refuse "verdict guard: cannot enter $ROOT — refused"
 SID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""' 2>/dev/null)
 # An empty sid would skip the session comparison in team_lead_caller: fail closed.
 [ -n "$SID" ] && team_lead_caller "$SID" \
-  || refuse "team-verdict.sh, team-answer.sh --authority and team-lead.sh decision are the per-run TeamLead's — this session is not it (refused)"
+  || refuse "team-verdict.sh, team-answer.sh, team-lead.sh decision and the runs/<run>/asks/ and decisions/ files are the per-run TeamLead's — this session is not it (refused)"
 exit 0

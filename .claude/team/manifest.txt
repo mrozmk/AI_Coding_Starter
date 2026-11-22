@@ -71,6 +71,8 @@ own .claude/commands/start-team.md
 own .claude/hooks/guard-team-memory.sh
 own .claude/hooks/guard-team-question.sh
 own .claude/hooks/team-attention.sh
+own .claude/hooks/team-ask-hook.sh
+own .claude/team/stage-hooks.json
 own .claude/lib/costs/bindings.py
 own .claude/lib/costs/claude_adapter.py
 own .claude/lib/costs/codex_adapter.py
@@ -87,7 +89,7 @@ own .claude/lib/costs/summary.py
 own .agents/reference/token-usage.md
 own .claude/commands/ai-costs.md
 own .claude/lib/team-answer.sh
-own .claude/lib/team-answer-herdr.sh
+own .claude/lib/team-ask.sh
 own .claude/lib/team-integrate-lib.sh
 own .claude/lib/team-integrate-lock.sh
 own .claude/lib/team-integrate.sh
@@ -217,6 +219,7 @@ own .claude/lib/team-brief.sh
 own .claude/lib/team-lead-lib.sh
 own .claude/lib/team-run-lead.sh
 own .claude/lib/team-run-dialog.sh
+own .claude/lib/team-run-asks.sh
 own .claude/lib/team-run-stop.sh
 own .claude/lib/team-inbox.sh
 own .claude/lib/team-verdict.sh
@@ -284,3 +287,6 @@ retired .agents/reference/team-questions.md 78671ac7b3f7b767eccc8e4750a23a734234
 
 # --- retired: the per-run lead's provisional profile name (global TeamLead retirement, slice 4); all shipped blob ids ---
 retired .claude/team/sessions/TeamLead-run.settings.json 07aa0eb3cff00d17638f765c32b95d6470e27e27 a26d864a07646bad06cf7807a98ffbbcfedaf206 c7cfeaa07e29adf7d7b5a42bbe80d259f93f985c e5a74032a0e0874c862521a69475c575029de6ea e95f6c18640ed1d91dc7a8ae2483e370b1c15089
+
+# --- retired: the Herdr screen sender (the ask channel replaces the screen sender); all shipped blob ids ---
+retired .claude/lib/team-answer-herdr.sh 0af98d414aee3049099e3038b46273866ace092b fb132120617bf085bddfb74d7730078351106c24

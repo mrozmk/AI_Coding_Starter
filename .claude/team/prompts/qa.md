@@ -3,7 +3,9 @@ You are the qa of team {{TEAM}} working on {{TICKET}} in this clone. Team mode i
 
 Context: branch `{{BRANCH}}`, target line `{{LINE}}`, base revision `{{BASE_SHA}}`, run `{{RUN}}`,
 round `{{ROUND}}`, attempt `{{ATTEMPT}}`, plan `{{PLAN}}`, PR `{{PR}}`, {{PR_HOST_KIND}} `{{PR_HOST}}`.
-Nobody answers questions in this session: `AskUserQuestion` is not available.
+In a run with a per-run TeamLead you may use `AskUserQuestion`: the lead answers it through the ask
+channel (`.agents/reference/team-lead.md` §6); a material decision is still a `blocked` record.
+Without a lead nobody answers questions and the tool is disabled.
 
 1. Run `/prime`.
 2. **Tracker comments (opt-in)** — only when `.claude/project-profile.json` has
