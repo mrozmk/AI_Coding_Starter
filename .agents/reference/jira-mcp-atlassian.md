@@ -67,6 +67,8 @@ Jira Cloud REST API v3 requires **ADF (Atlassian Document Format)** — a JSON s
 
 **Do NOT use** Jira wiki markup (`h3.`, `{{code}}`, `*bold*` with Jira semantics). That's Server/DC syntax and will be treated as literal markdown in Cloud, rendering wrong.
 
+**Key-shaped text becomes a link.** Jira turns text shaped like an issue key into an issue link, so a criterion id such as `AC-3` in a comment is written `AC3` (`/qa-verify`'s record does this — `qa-evidence-families.md` §7b). Ids that are not key-shaped as a whole token (`E1-2.AC3`) stay.
+
 ---
 
 ## 4. Tool catalog

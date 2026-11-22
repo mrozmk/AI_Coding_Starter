@@ -75,6 +75,45 @@ run snapshot --github "$WORK/show4.json" --out "$WORK/f4.json"
 run compare "$WORK/base.json" "$WORK/f4.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 905; edited 900" ] || fail "4 own handling: $RC $OUT"
 
+# (4b) the /qa-verify record: a genuine marker as the last line and the Jira-joined form are own; an
+#      earlier-line quote, a partial marker and a blockquoted complete marker are human comments
+QAM='qa-verify:v1 record run=20261122T100000Z ticket=7 mode=first group=- build=- pass=1 fail=0 cited=0 deferred=0 env=0 needs-human=0'
+QAV='**Blockers: 0.** Acceptable — move the ticket yourself'
+gh_show "$WORK/show4b.json" "SECRETWORD two"
+jq --arg m "$QAM" --arg v "$QAV" '.comments += [
+    {id: "910", author: "dev", created: "2026-11-06T08:00:00Z", updated: "2026-11-06T08:00:00Z",
+     body: ("SECRETWORD record\n\n" + $v + "\n" + $m)},
+    {id: "911", author: "dev", created: "2026-11-06T08:01:00Z", updated: "2026-11-06T08:01:00Z",
+     body: ("SECRETWORD quoting\n" + $m + "\nplease look at AC2 again")},
+    {id: "912", author: "dev", created: "2026-11-06T08:02:00Z", updated: "2026-11-06T08:02:00Z",
+     body: ("SECRETWORD record\n\n" + $v + " " + $m)},
+    {id: "913", author: "dev", created: "2026-11-06T08:03:00Z", updated: "2026-11-06T08:03:00Z",
+     body: "SECRETWORD see qa-verify:v1 record run=x ticket=y"},
+    {id: "914", author: "dev", created: "2026-11-06T08:04:00Z", updated: "2026-11-06T08:04:00Z",
+     body: ("SECRETWORD please change AC2\n> " + $m)}]' "$WORK/show4b.json" > "$WORK/t" && mv "$WORK/t" "$WORK/show4b.json"
+run snapshot --github "$WORK/show4b.json" --out "$WORK/f4b.json"
+[ "$(jq -c '[.comments[3:][].own]' "$WORK/f4b.json")" = '[true,false,true,false,false]' ] || fail "4b qa record own flags"
+run compare "$WORK/base.json" "$WORK/f4b.json"
+[ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 911 913 914" ] || fail "4b qa record compare: $RC $OUT"
+
+# (4c) the /qa-verify record in a Jira ADF body: only a top-level paragraph carries an own marker
+jq -n --arg m "$QAM" '{key: "AB-2", fields: {description: "SECRETWORD d", updated: "2026-11-06T09:00:00.000+0000",
+  comment: {startAt: 0, maxResults: 2, total: 2, comments: [
+    {id: "920", created: "2026-11-06 09:00:00+00:00", updated: "2026-11-06 09:00:00+00:00",
+     body: {type: "doc", version: 1, content: [
+       {type: "paragraph", content: [{type: "text", text: "SECRETWORD record"}]},
+       {type: "paragraph", content: [{type: "text", text: $m}]}]}},
+    {id: "921", created: "2026-11-06 09:01:00+00:00", updated: "2026-11-06 09:01:00+00:00",
+     body: {type: "doc", version: 1, content: [
+       {type: "paragraph", content: [{type: "text", text: "SECRETWORD please change AC2"}]},
+       {type: "blockquote", content: [{type: "paragraph", content: [{type: "text", text: $m}]}]}]}}]}}}' > "$WORK/j-qa.json"
+jq '.fields.comment.comments = [] | .fields.comment.total = 0 | .fields.comment.maxResults = 0' "$WORK/j-qa.json" > "$WORK/j-qa0.json"
+run snapshot --jira "$WORK/j-qa.json" --out "$WORK/jq1.json"
+[ "$(jq -c '[.comments[].own]' "$WORK/jq1.json")" = '[true,false]' ] || fail "4c jira ADF qa record own flags"
+run snapshot --jira "$WORK/j-qa0.json" --out "$WORK/jq0.json"
+run compare "$WORK/jq0.json" "$WORK/jq1.json"
+[ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 921" ] || fail "4c jira ADF compare: $RC $OUT"
+
 # (5) no baseline → everything non-own is new, description counts as changed
 run compare - "$WORK/same.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 900 901; no baseline — description and every comment count as new" ] \

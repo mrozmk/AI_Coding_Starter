@@ -4,7 +4,7 @@ The contract shared by `/qa-verify` (the router) and every verifier it spawns. A
 
 **Section numbering is a public contract.** `.claude/commands/qa-verify.md` and `.claude/agents/qa-contract.md` cite sections as `registry §N`. Do not renumber; append new sections at the end.
 
-**Ownership.** Each `##` heading below is marked `[framework]` or `[project]`. Framework sections (§1, §3, §4, §6) are overwritten wholesale by `/maintain:sync-from-starter`; project sections (§2, §5) are preserved across syncs. See `.claude/starter-sync-playbook.md` → Category B.
+**Ownership.** Each `##` heading below is marked `[framework]` or `[project]`. Framework sections (§1, §3, §4, §6, §7) are overwritten wholesale by `/maintain:sync-from-starter`; project sections (§2, §5) are preserved across syncs. See `.claude/starter-sync-playbook.md` → Category B.
 
 ---
 
@@ -206,3 +206,122 @@ Every verifier ends its turn with **only** this JSON array — no prose before o
 - Only all-`PASS` → merged `PASS`.
 
 **Both source rows always survive into the matrix.** The merge adds a verdict; it never replaces or hides the rows that produced it.
+
+---
+
+## 7. Router dispositions and the run record  `[framework]`
+
+### 7a. Dispositions
+
+Verifiers return only §6 verdicts (`PASS` · `FAIL` · `NEEDS-HUMAN`) and never these. The router assigns three more:
+
+| Disposition | Meaning | Assigned when |
+|---|---|---|
+| `CITED` | The criterion's static part is taken from the task ledger's `met` row, with its `file:line` | Only when the run has a task ledger to cite; a run without one never writes it |
+| `DEFERRED → <KEY>` | The criterion cannot be settled until ticket `<KEY>` lands | The Operator confirms it for a `NEEDS-HUMAN` row in the one-pass decision; with no ticket to name, the row stays `NEEDS-HUMAN` |
+| `ENV` | A failure whose cause is shown to be the environment, not the ticket's code | Only under the command's environment-evidence rule; without that evidence the row stays `FAIL` |
+
+`DEFERRED` comes only from the Operator's one-pass decision on a `NEEDS-HUMAN` row — no key named, the row stays `NEEDS-HUMAN`. `CITED` and `ENV` are written only by a command step that states their evidence rule; a revision of the command without that step never writes them.
+
+Merge order for one criterion: `FAIL` › `ENV` › `NEEDS-HUMAN` › `DEFERRED` › `PASS` / `CITED`.
+
+Carried forms (re-check only): `PASS (carried from <YYYY-MM-DD>)` and `CITED (carried from <YYYY-MM-DD>)`.
+
+### 7b. The record
+
+One record per ticket per run, in exactly this shape:
+
+```markdown
+## QA verification — <ticket or feature title>
+
+- Run: <UTC date> · <first | re-check of <date> | light> · group: <keys, or single>
+- Environment: <host> (<reason>) · build: <sha | skew state>
+- Criteria from: <ticket description | spec path> (<n> criteria)
+
+### Criteria
+- <id> [<fp>] — PASS — <family> — <observed value, one line>
+- <id> [<fp>] — FAIL / <blocker|major|minor> — <family> — <observed value; the clause it contradicts>
+- <id> [<fp>] — CITED — task ledger: met (<file:line>)
+- <id> [<fp>] — DEFERRED → <KEY> — <what must land there first>
+- <id> [<fp>] — ENV — <what in the environment is not ready, and how that was shown>
+- <id> [<fp>] — NEEDS-HUMAN — <reason>
+
+### Feature path
+- F1 — PASS — <steps in one line> (<from spec … | derived>)
+
+### Outside the criteria
+- <observation, with the ticket it concerns when known>
+
+**Blockers: <n>.** <Acceptable — move the ticket yourself | Not acceptable | Not verifiable now — environment>
+qa-verify:v1 record run=<utc> ticket=<KEY> mode=<first|recheck|light> group=<id|-> build=<sha|-> pass=<n> fail=<n> cited=<n> deferred=<n> env=<n> needs-human=<n>
+```
+
+Rules:
+
+- Headings and one-level bullets only — no table, no task list (`jira-mcp-atlassian.md` §3).
+- `<UTC date>` and every `<date>` are `YYYY-MM-DD`; `run=` is `YYYYMMDDTHHMMSSZ`, the run's start.
+- One row per criterion, carrying its merged disposition (§7a merge order); `<family>` names the deciding family, several families joined with ` + `. A criterion carries more than one row (same id and fp) only where the command says so — readers group rows by fp.
+- `### Feature path` and `### Outside the criteria` are always present; an empty one holds `- none`. A single-ticket run writes `- none` under `### Feature path`.
+- The verdict line: `<n>` = `FAIL` rows with severity `blocker`. `n ≥ 1` → `Not acceptable`; `n = 0` and at least one `ENV` row → `Not verifiable now — environment`; otherwise `Acceptable — move the ticket yourself`. The three texts are fixed. "Acceptable" means nothing was found that stops the ticket, not that every criterion was observed — the `NEEDS-HUMAN` rows say what is left.
+- The marker is the last line; fields in exactly that order, single spaces. Counts are **rows** by disposition, carried rows included. `ticket=` is the tracker key (a GitHub issue as its bare number), or the record file's slug for a file record. `group=-` and `mode=first|recheck` in this revision; `light` is reserved.
+- **Finding the record — select first, then validate.** Candidates are the comments (for a file record, the files) whose last non-empty line ends with a segment that starts `qa-verify:v` followed by a version and ` record ` — a converter may join the marker onto the verdict line, or turn a key into a link; link markup is stripped before parsing. The **newest** candidate is the record; it is then validated, and an invalid newest record is never skipped in favour of an older valid one.
+- The deferral comment carries its own reserved marker:
+
+  `qa-verify:v1 deferral src=<SRC> row=<id> fp=<fp>`
+
+  A deferral marker is never a record candidate.
+- **A valid record:** version `v1`; the marker's `ticket=` is this target; the three `###` sections are present; every bullet under `### Criteria` matches `- <id> [<6 lowercase hex>] — <disposition>[ (carried from <YYYY-MM-DD>)][ / <severity>] — …` with a §6 or §7a disposition; the marker's counts equal the rows counted by disposition. Anything else — an unknown version, a missing section, a row that does not parse or has no fingerprint, counts that disagree with the rows (a human edited the record) — is an older format: full run.
+- **Jira:** a criterion id shaped like an issue key (`AC-3`) is written `AC3` in a Jira comment; backlog ids such as `E1-2.AC3` stay (`jira-mcp-atlassian.md` §3).
+
+### 7c. The criterion fingerprint
+
+Input on stdin: the criterion verbatim as its source shows it — one bullet, possibly over several lines, list marker and id included. Output on stdout: six lowercase hex digits. Steps:
+
+1. `LC_ALL=C` throughout (byte semantics, the same on BSD and GNU tools).
+2. CR, LF and TAB → a space.
+3. Strip a leading list marker (`-`, `*`, `+` or `<digits>.` followed by spaces).
+4. Strip a leading criterion id as a complete token — optional `**`, `(E<n>-<m>.)?AC-?<n>`, optional `**`, an optional separator `—`, `–`, `-`, `:` or `.`, then at least one space (`AC1 text`, `**AC1** text`, `**E1-2.AC1** — text`, `AC-3: text`, `AC1. text`). Ids shift when a ticket is edited; the fingerprint must not. Text that merely starts with the letters `AC` (`ACME …`) is not an id.
+5. Split the text into code spans by backtick **runs** — a run of N backticks opens a span that only a run of exactly N closes (so ``` ``a`b`` ``` is one span); an unclosed run makes the rest a span. **Inside a code span every character is kept literally** — only the delimiting runs go; a literal `[KEY](url)` there stays. **Outside**, links `[text](url)` → `text`, then every `*` is deleted, a `~~` pair is deleted (a single `~` stays), and an `_` is deleted unless it sits between two alphanumerics (so `foo_bar` keeps it, `_menu_` loses both).
+6. Collapse runs of spaces to one; trim both ends; no trailing newline.
+7. SHA-256 of the remaining bytes (`shasum -a 256`, else `sha256sum`); the first six hex digits.
+
+<!-- qa-fingerprint:begin -->
+```bash
+set -o pipefail
+LC_ALL=C tr '\r\n\t' '   ' \
+| LC_ALL=C sed -E -e 's/^ *([-*+]|[0-9]+\.) +//' \
+    -e 's/^\*{0,2}(E[0-9]+-[0-9]+\.)?AC-?[0-9]+\*{0,2}( *(—|–|-|:|\.))? +//' \
+| LC_ALL=C awk 'function prose(s,   m, t, n, j, c, p, q) {
+      while (match(s, /\[[^]]*\]\([^)]*\)/)) { m = substr(s, RSTART, RLENGTH)
+        s = substr(s, 1, RSTART - 1) substr(m, 2, index(m, "](") - 2) substr(s, RSTART + RLENGTH) }
+      t = ""; n = length(s)
+      for (j = 1; j <= n; j++) { c = substr(s, j, 1)
+        if (c == "*") continue
+        if (c == "~" && substr(s, j + 1, 1) == "~") { j++; continue }
+        if (c == "_") { p = (j > 1) ? substr(s, j - 1, 1) : ""; q = substr(s, j + 1, 1)
+          if (!(p ~ /[[:alnum:]]/ && q ~ /[[:alnum:]]/)) continue }
+        t = t c }
+      return t }
+    { o = ""; buf = ""; code = 0; i = 1; n = length($0)
+      while (i <= n) { c = substr($0, i, 1)
+        if (c != "`") { buf = buf c; i++; continue }
+        k = i; while (k <= n && substr($0, k, 1) == "`") k++
+        run = k - i; i = k
+        if (!code) { o = o prose(buf); buf = ""; code = run }
+        else if (run == code) { o = o buf; buf = ""; code = 0 }
+        else { buf = buf substr($0, i - run, run) } }
+      o = o (code ? buf : prose(buf))
+      print o }' \
+| LC_ALL=C sed -E -e 's/  */ /g' -e 's/^ //' -e 's/ $//' \
+| LC_ALL=C tr -d '\n' \
+| { if command -v shasum >/dev/null 2>&1; then shasum -a 256; else sha256sum; fi; } \
+| cut -c1-6
+```
+<!-- qa-fingerprint:end -->
+
+How to run it: extract the block **once** into a file with the anchored extractor `awk '/^<!-- qa-fingerprint:end -->$/{exit} f; /^<!-- qa-fingerprint:begin -->$/{f=1}' .agents/reference/qa-evidence-families.md | sed '/^```/d' > <scratchpad>/qa-fp.sh` (the markers match only as whole lines, so this sentence, which quotes them inside backticks, is never a start or an end; extraction stops at the end marker) and feed each criterion file to the whole block with `bash <scratchpad>/qa-fp.sh < <criterion file>` — never paste the block and append `< file` (that redirects only the final `cut`), and never pass criterion text through a shell argument (quotes and backticks would break it).
+
+- Case is kept: a changed letter case is a rewording.
+- Identical text in two criteria gives one fingerprint; re-check treats that as ambiguous.
+- `set -o pipefail` makes a failing stage fail the whole block.
+- `/qa-verify` Phase 0 step 1b checks the result at runtime before anything uses a fingerprint.
