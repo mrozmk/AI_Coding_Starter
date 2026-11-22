@@ -1,7 +1,10 @@
 """Binds a parsed team prompt to its role transcript event (split from team_prompt.py).
 
 Library only, imported by team_prompt.py: entries/pending read the role's JSONL transcript,
-associated finds the one pending tool_use a visible prompt belongs to.
+associated finds the one pending tool_use a visible prompt belongs to (the parser's recovery of a
+clipped header, team_prompt_check.py --classes), tool_cwd its cwd, pending_tool what an idle
+session waits on (session-host-lib.sh). The answer-binding helpers of the retired screen sender
+(last_assistant, has_result, user_after, outcome) are gone: the ask channel needs no screen.
 """
 import json
 import os
@@ -177,56 +180,3 @@ def tool_cwd(path, tid):
                                             and i.get("id") == tid for i in content(e)):
             return e.get("cwd")
     return None
-
-
-def last_assistant(path):
-    es = entries(path)
-    uid = next((e.get("uuid") for e in reversed(es or []) if e["type"] == "assistant"), None)
-    return uid or "-"
-
-
-def has_result(path, tid):
-    return any(item.get("type") == "tool_result" and item.get("tool_use_id") == tid
-               for e in entries(path) or [] if e["type"] == "user"
-               for item in content(e) if isinstance(item, dict))
-
-
-def user_after(path, uid, text):
-    want, seen = text[:40], False
-    for e in entries(path) or []:
-        if seen and e["type"] == "user":
-            c = (e.get("message") or {}).get("content")
-            texts = [c] if isinstance(c, str) else [i.get("text", "") for i in content(e)
-                                                    if isinstance(i, dict) and i.get("type") == "text"]
-            if any(t.startswith(want) for t in texts):
-                return True
-        seen = seen or e.get("uuid") == uid
-    return False
-
-
-# Both the reject ("…to proceed with this tool use") and the cancel ("…to take this action right
-# now") texts, plus an interrupt at the prompt.
-REJECTED = ("The user doesn't want to", "[Request interrupted by user for tool use]")
-
-
-def outcome(path, tid):
-    """How the prompt of tool_use <tid> was answered in the role's own window: approved, approved
-    (rule added) — "don't ask again" (permissionDecision.source user_permanent) —, rejected, pending
-    (open), gone (neither open nor answered), or None for an unreadable transcript."""
-    es = entries(path)
-    if es is None:
-        return None
-    for e in (e for e in es if e["type"] == "user"):
-        for item in content(e):
-            if not (isinstance(item, dict) and item.get("type") == "tool_result"
-                    and item.get("tool_use_id") == tid):
-                continue
-            pd = e.get("permissionDecision")
-            pd = pd if isinstance(pd, dict) else {}
-            text = item.get("content")
-            text = text if isinstance(text, str) else json.dumps(text)
-            if (e.get("toolDenialKind") == "user-rejected" or pd.get("decision") == "reject"
-                    or (item.get("is_error") and any(r in text for r in REJECTED))):
-                return "rejected"
-            return "approved (rule added)" if pd.get("source") == "user_permanent" else "approved"
-    return "pending" if tid in pending(es) else "gone"

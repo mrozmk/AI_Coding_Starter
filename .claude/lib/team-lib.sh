@@ -269,6 +269,53 @@ team_newest_record() {
     || true
 }
 
+# team_close_safe <clone> <base_sha> <run> <round ref> [branch] → 0 when closing the run loses no
+# unmerged work: no coder record of the run (any round, accepted or not — a coder opens its PR
+# before its done), no record carrying a pr_id, no PR of the branch at the provider (a failed
+# lookup is not safe), a clean tree, base_sha an ancestor of HEAD and every commit beyond it
+# (merge commits included) touching only .agents/specs/** and .agents/plans/**. Else prints the
+# reason and returns 1. The verdict (clone copy) and the runner (main copy) call the same body.
+team_close_safe() {
+  local clone="$1" base="$2" run="$3" br="${5:-}" rd f ids bad
+  rd="$clone/.agents/team/runs/$run"
+  for f in "$rd"/coder-*.json "$rd"/r*/coder-*.json; do
+    [ -f "$f" ] && { echo "the run has a coder record ($(basename "$f"))"; return 1; }
+  done
+  for f in "$rd"/*-*-*.json "$rd"/r*/*-*-*.json; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in teamlead-*) continue ;; esac
+    [ -z "$(jq -r '.pr_id // empty' "$f" 2>/dev/null)" ] \
+      || { echo "record $(basename "$f") carries a PR"; return 1; }
+  done
+  [ -n "$br" ] || br="$(git -C "$clone" branch --show-current 2>/dev/null)"
+  [ -n "$br" ] || { echo "no branch"; return 1; }
+  ids="$(cd "$clone" && bash "$(dirname "${BASH_SOURCE[0]}")/team-pr.sh" by-branch "$br" 2>/dev/null)" \
+    || { echo "the PR lookup for $br failed"; return 1; }
+  [ "$ids" = none ] || { echo "branch $br has PR $ids"; return 1; }
+  [ -z "$(git -C "$clone" status --porcelain 2>/dev/null)" ] || { echo "the tree is not clean"; return 1; }
+  git -C "$clone" merge-base --is-ancestor "$base" HEAD 2>/dev/null \
+    || { echo "base $base is not an ancestor of HEAD"; return 1; }
+  bad="$(git -C "$clone" log -m --format= --name-only "$base..HEAD" 2>/dev/null \
+    | grep -v -E '^$|^\.agents/(specs|plans)/' | head -n 1)"
+  [ -z "$bad" ] || { echo "a commit beyond base touches $bad"; return 1; }
+  return 0
+}
+
+# team_close_receipt_ok <main> <team> <clone> <branch> → prints the tip and returns 0 when the main
+# checkout's anchor holds the runner's receipt of a lead close (team_anchor_closed) for the clone's
+# last run and this branch, at a sha equal to the local and the remote tip. team-next.sh waives its
+# "commits on the branch but no PR" refusal only then; a clone-local closed.json never counts.
+team_close_receipt_ok() {
+  local r tip
+  r="$(jq -c '.closed // empty' "$1/.agents/team/anchors/$2.json" 2>/dev/null || true)"
+  [ -n "$r" ] || return 1
+  tip="$(git -C "$3" rev-parse "refs/heads/$4" 2>/dev/null || true)"
+  [ -n "$tip" ] && [ "$(jq -r .run <<<"$r")" = "$(cat "$3/.agents/team/run" 2>/dev/null || true)" ] \
+    && [ "$(jq -r .branch <<<"$r")" = "$4" ] && [ "$(jq -r .sha <<<"$r")" = "$tip" ] \
+    && [ "$(git -C "$3" ls-remote origin "refs/heads/$4" 2>/dev/null | cut -f1)" = "$tip" ] || return 1
+  echo "$tip"
+}
+
 team_next_seq() {
   local last
   last="$(team_records "$1" "$2" "$3" | tail -n 1)"

@@ -1,22 +1,20 @@
-"""Decides whether the supervisor may press Enter on a team role's permission prompt.
+"""Tiers a team role's permission request, and checks a pane's permission prompt for display.
 
-Usage: team_prompt_check.py [<root>] [--settings <file>]... [--block] < pane history
-       team_prompt_check.py [<root>] [--settings <file>]... --strict [--transcript <file>] < pane
-       team_prompt_check.py <clone> --strict --transcript <file> --classes [--report]
-         [--main <main checkout>] < pane
-       team_prompt_check.py <clone> --strict --transcript <file> --authority class|teamlead|operator
-         [--main <main checkout>] < pane   (team_prompt_authority.py: human-only first)
+Usage: team_prompt_check.py <clone> --input-json <file> [--main <main checkout>]   (the stage
+         hook: {tool_name, tool_input, cwd} → `tier: class <name>|lead|operator — <cause>`; 2 = unreadable)
+       team_prompt_check.py [<root>] [--settings <file>]... [--block | --strict [--transcript <f>]
+         [--classes [--report] [--main <main checkout>]]] < pane   (display, the class tests)
 Exit 0 = may be approved (no egress, nothing in the prompt matches an ask/deny rule of <root>'s settings or
 a --settings file and the SQL guard stays quiet), exit 1 = the Operator must answer in the window,
 with the reason on stderr. Default: the newest prompt in the history is the one checked.
---strict (the sender): team_prompt.py must read a complete active permission prompt;
---transcript also checks the original input of its unique pending tool_use.
+--strict: team_prompt.py must read a complete active permission prompt; --transcript also checks
+the original input of its unique pending tool_use.
 Refused too: a prompt whose command cannot be read (never approve what was not read), a WebFetch
 prompt or a Bash command naming an egress tool (human-only, team-decision-model.md §3) and an
 unreadable policy, an Edit/Write of .claude/settings*.json or a Bash command naming one
 and, with a --main other than <root>, an Edit/Write outside <root> or a Bash path under <main>
 (the classes trust its .git, CLAUDE.md and .agents/team/). --block prints the
-command block and exits 0, or 1 when there is none. --classes (the class tests' direct entry; at runtime the sender reaches the classes through --authority class): a refusal
+command block and exits 0, or 1 when there is none. --classes (the class tests' direct entry; at runtime the stage hook reaches the classes through --input-json): a refusal
 whose only cause is ask-tier rule matches or the settings refusal is waived when the prompt is in
 one enabled team_prompt_classes.py class — prints `policy-class: <name>`, exit 0; deny, egress, the
 SQL guard and unreadable prompts are never waived. --report prints `class: <name>`, `class: not
@@ -442,7 +440,7 @@ def run_checks(root, main, extra, pane, strict, transcript, block_only):
 
 def args(argv):
     o = {"root": os.getcwd(), "extra": [], "block": False, "strict": False, "transcript": None,
-         "classes": False, "report": False, "main": None, "authority": None}
+         "classes": False, "report": False, "main": None, "input_json": None}
     flags = {"--block": "block", "--strict": "strict", "--classes": "classes", "--report": "report"}
     while argv:
         a = argv.pop(0)
@@ -450,7 +448,9 @@ def args(argv):
             o[flags[a]] = True
         elif a == "--settings" and argv:
             o["extra"].append(argv.pop(0))
-        elif a in ("--transcript", "--main", "--authority") and argv:
+        elif a == "--input-json" and argv:
+            o["input_json"] = argv.pop(0)
+        elif a in ("--transcript", "--main") and argv:
             o[a[2:]] = argv.pop(0)
         elif a.startswith("-"):
             return None
@@ -463,20 +463,20 @@ def args(argv):
 
 def main(argv):
     o = args(argv)
-    if o is None or ((o["classes"] or o["report"] or o["authority"]) and not o["strict"]) \
-            or o["authority"] not in (None,) + team_prompt_authority.AUTHORITIES:
-        print("usage: team_prompt_check.py [<root>] [--settings <file>]... [--block]"
+    if o is None or ((o["classes"] or o["report"]) and not o["strict"]):
+        print("usage: team_prompt_check.py <clone> --input-json <file> [--main <root>]"
+              " | [<root>] [--settings <file>]... [--block]"
               " [--strict [--transcript <file>] [--classes [--report] [--main <root>]]]",
               file=sys.stderr)
         return 2
+    if o["input_json"]:
+        line = team_prompt_authority.input_tier(sys.modules[__name__], o["root"],
+                                                o["main"] or o["root"], o["extra"], o["input_json"])
+        print(line or "error: could not read %s" % o["input_json"],
+              file=sys.stdout if line else sys.stderr)
+        return 0 if line else 2
     pane = sys.stdin.read()
     try:
-        if o["authority"]:
-            name = team_prompt_authority.flow(sys.modules[__name__], o["root"], o["main"] or o["root"],
-                                              pane, o["transcript"], o["extra"], o["authority"])
-            if name:
-                print("policy-%s: %s" % ("class" if o["authority"] == "class" else "authority", name))
-            return 0
         if o["classes"] or o["report"]:
             name = classes_flow(o["root"], o["main"] or o["root"], pane, o["transcript"],
                                 o["extra"])

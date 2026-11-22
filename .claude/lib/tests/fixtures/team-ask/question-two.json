@@ -1,0 +1,7 @@
+{"session_id": "sid-1", "hook_event_name": "PreToolUse", "cwd": "__CWD__", "permission_mode": "auto",
+ "tool_name": "AskUserQuestion",
+ "tool_input": {"questions": [
+   {"question": "Which storage?", "header": "Storage", "multiSelect": false,
+    "options": [{"label": "Files", "description": "plain files"}, {"label": "SQLite", "description": "a db"}]},
+   {"question": "Which outputs?", "header": "Outputs", "multiSelect": true,
+    "options": [{"label": "JSON", "description": ""}, {"label": "Markdown", "description": ""}, {"label": "HTML", "description": ""}]}]}}

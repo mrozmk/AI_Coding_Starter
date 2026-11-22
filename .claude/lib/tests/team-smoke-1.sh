@@ -79,10 +79,9 @@ question_hook() {
 }
 question_hook "$QROOT" "$ONE"
 expect 0 "" "question guard passes one in team"
+# The ask channel returns every answer of a call, so a stage may ask several questions at once.
 question_hook "$QROOT" "$TWO"
-expect 2 "one question per AskUserQuestion call" "question guard blocks two in team"
-has "only after receiving the answer" "$WORK/out" ||
-  fail "question guard lacks sequence instruction"
+expect 0 "" "question guard passes two in team"
 question_hook "$OUTSIDE" "$TWO"
 expect 0 "" "question guard passes two outside team"
 
@@ -457,30 +456,9 @@ git -C "$CLONE" rev-parse --verify --quiet refs/heads/feature/AB-792-next >/dev/
 ls -d "$TD"/archive/AB-792-*/runs/"$NEXT_RUN" >/dev/null 2>&1 \
   || fail "--abandoned did not archive AB-792"
 
-# ---- (11) team-answer ------------------------------------------------------------------------------
+# ---- (11) a permission prompt on the stage's screen (the snapshot below reads it) -------------------
+# Nothing answers a pane any more (the screen sender is retired: the ask channel, team-ask.sh).
 cp "$FIX/perm-awk.txt" "$WORK/pane"
-export STUB_PANE="$WORK/pane"
-echo "$RUN_ID" > "$TD/run"; mkdir -p "$TD/runs/$RUN_ID"
-session coder 1 "$BASE"; echo "2026-10-02T10:00:00Z permission_prompt Claude needs your permission" >> "$TD/runs/$RUN_ID/attention"
-
-ANSWER="bash .claude/lib/team-answer.sh"
-: > "$STUB_LOG"
-STUB_TMUX_ALIVE=0 STUB_PANE="$FIX/idle.txt" run "$MAIN" $ANSWER alfa coder yes
-expect 6 "no permission prompt on screen" "answer yes without a prompt"
-has "send-keys" "$STUB_LOG" && fail "answer sent keys without a prompt"
-STUB_TMUX_ALIVE=0 run "$MAIN" $ANSWER alfa coder yes
-expect 0 "sent yes to alfa-coder" "answer yes with a prompt"
-has "send-keys -t %1 Enter" "$STUB_LOG" || fail "answer yes did not press Enter"
-: > "$STUB_LOG"
-STUB_TMUX_ALIVE=0 run "$MAIN" $ANSWER alfa coder say "use the existing endpoint"
-expect 6 "a menu or permission prompt is open" "answer say over a prompt"
-has "send-keys" "$STUB_LOG" && fail "say typed over a permission prompt"
-STUB_TMUX_ALIVE=0 STUB_PANE="$FIX/idle.txt" run "$MAIN" $ANSWER alfa coder say "use the existing endpoint"
-expect 0 "sent say" "answer say"
-has "send-keys -t %1 -l -- use the existing endpoint" "$STUB_LOG" || fail "answer say did not type the text"
-run "$MAIN" $ANSWER alfa coder yes
-expect 6 "session gone" "answer to a dead session"
-rm -f "$TD/session.json"; unset STUB_PANE
 
 # ---- (12) team-snapshot -------------------------------------------------------------------------
 SNAP="bash .claude/lib/team-snapshot.sh"
@@ -498,7 +476,8 @@ export TEAM_DASH_PROJECT_DIR="$CL" TEAM_DASH_SESSION=sess-1
 RUN_ID=alfa-20261003-000000; echo "$RUN_ID" > "$TD/run"; mkdir -p "$TD/runs/$RUN_ID"
 session coder 1 "$BASE"
 STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane" snap "prompt open" '.schema == 1 and (.codex | type == "array")
-  and (coder | .status == "attention" and any(.actions[]; . == "bash .claude/lib/team-answer.sh alfa coder yes"))
+  and (coder | .status == "attention"
+    and .actions == ["bash .claude/lib/session-host.sh hint alfa-coder", "/start-team alfa"])
   and .supervisor.model == "claude-opus-5-5"
   and (.subagents[] | select(.id == "a1") | .model == "claude-fable-5-1" and .status == "done")
   and (.subagents[] | select(.id == "a2") | .status == "running")'
@@ -508,8 +487,14 @@ STUB_TMUX_ALIVE=1 STUB_TMUX_ERR="protocol version mismatch" snap "tmux probe err
 TEAM_DASH_SESSION= snap "empty session pin" '.supervisor.status == "unknown"'
 R=$(record --verdict blocked --message "which endpoint?")
 STUB_TMUX_ALIVE=0 STUB_PANE= snap "unresolved blocker" '(coder | .status == "blocked"
-  and .record.message == "which endpoint?" and any(.actions[]; test(" say ")))
+  and .record.message == "which endpoint?"
+  and .actions == ["bash .claude/lib/session-host.sh hint alfa-coder", "/start-team alfa"])
   and any(.events[]; .source == "alfa/coder" and .at != null and (.text | test("blocked")))'
+# A run with a per-run TeamLead: the lead answers every stop, so the actions are its pending list.
+jq -n --arg r "$RUN_ID" '{run: $r}' > "$TD/teamlead.json"
+STUB_TMUX_ALIVE=0 STUB_PANE= snap "blocker in a lead run" '(coder | .status == "blocked"
+  and .actions == ["bash .claude/lib/team-lead.sh pending alfa", "bash .claude/lib/session-host.sh hint alfa-lead"])'
+rm -f "$TD/teamlead.json"
 basename "$R" > "$TD/acked"; mkdir "$TD/lock"; echo $$ > "$TD/lock/pid"
 STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane" snap "acked blocker + prompt" \
   '(coder | .status) == "attention" and .teams[0].runner == "up"'

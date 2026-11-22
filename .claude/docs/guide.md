@@ -645,7 +645,8 @@ Full rules live in [CLAUDE.md](../../CLAUDE.md).
   | before `git commit` | `guard-commit` | blocks a commit with nothing staged (so `git add … && git commit` in one call is blocked too), scans the staged changes for credentials, and logs the staged set |
   | before `git push` | `guard-push` | pre-publication secret scan (above) |
   | before Edit/Write | `guard-memory`, `guard-team-memory` | memory-distillation gate; team clones may write memory only from the wrap-up role |
-  | before AskUserQuestion | `guard-team-question` | holds a team stage to one question per AskUserQuestion call |
+  | before AskUserQuestion | `guard-team-question` | a no-op kept for its settings entry (the ask channel answers several questions in one call) |
+  | team stage, lead runs (runner's `--settings`) | `team-ask-hook` | hands every stage stop to the run's ask channel and returns the TeamLead's answer as hook JSON; guards `asks/` and `decisions/` against stage writes |
   | after Edit/Write | `guard-comments`, `nudge-files`, `guard-memory-scope` | comment-noise nudge, file-size nudge, memory-scope check |
   | after Read/Bash | `track-memory-read` | memory read telemetry |
   | around Grep/LSP | `nudge-lsp`, `warm-lsp` | nudge toward LSP for symbol searches; warm tsserver before cross-project queries (TS/JS) |

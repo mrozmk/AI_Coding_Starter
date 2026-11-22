@@ -45,6 +45,18 @@ team_anchor_launch() {
     --arg sid "$7" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 
+# Usage: team_anchor_closed <main> <team> <run> <branch> <sha> <reason> — the receipt of a lead
+# close (the pushed branch and its verified remote sha); team-next.sh waives its "commits but no
+# PR" refusal only on this receipt, never on the clone's own closed.json.
+team_anchor_closed() {
+  local f
+  f="$(team_anchor_file "$1" "$2")"
+  [ -f "$f" ] || return 1
+  team_anchor_put "$f" '.closed = {run: $run, branch: $br, sha: $sha, reason: $reason, at: $now}' \
+    --arg run "$3" --arg br "$4" --arg sha "$5" --arg reason "$6" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+
 # Usage: team_anchor_planner <main> <team> <record> — an accepted planner record of the run.
 team_anchor_planner() {
   local f r="$3"

@@ -72,9 +72,11 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `<main checkout>/.agents/team/anchors/<team>.json` | team-new/next, team-run (main checkout only) | ticket/branch/line/base_sha, run/role/attempt/session_id, `planner` on acceptance; trusted by the classes, a differing clone `team.json` → `mismatch` (no class) |
 | `runs/<run>/wrapup-state.json` | wrapup | tracker intents (`op`, `marker`, `state`, id/key) — makes retries safe (§2a) |
 | `runs/<run>/attention` | `team-attention.sh` hook | one line per `Notification` |
-| `runs/<run>/drafts/<role>-<attempt>-<utc>.txt` | `team-answer.sh` | a human draft saved before the sender cleared it; no run file → `drafts/` |
-| `send-<role>.lock/` (`pid`, `owner`) | `team-answer.sh`, `team-run.sh end_session` | per-target send lock: one writer of keys into the role's pane; never reclaimed automatically (the sender prints the stale lock's directory; remove it once its pid is dead) |
-| `send-<role>.log` | `team-answer.sh`, `team-run.sh` | append-only: `dispatch <utc> <instance sha1> q=authority:<a> attempt=<k> pid=<p>` before the first key; `stop-during-send <utc> <owner>` when a stop found the lock held |
+| `runs/<run>/asks/a-<n>.json`, `a-<n>.answer.json` | the stage hook (`team-ask-hook.sh`); `team-answer.sh` (the lead) | every stop of a stage in a lead run and its one answer — the ask channel, team-lead.md §6 |
+| `stage-hooks.settings.json` | `team-run.sh launch` (lead runs) | the stage's `--settings` layer: the ask hooks, materialised from `<main>/.claude/team/stage-hooks.json` |
+| `runs/<run>/operator-touches` | `team-lead.sh decision answer`, the runner's dialog watch | one line per human action the run needed (team-lead.md §10) |
+| `send-<role>.lock/` (`pid`, `owner`) | the session-host driver (`sh_send`, `sh_kill`), `team-run.sh end_session` | per-target send lock: one writer of keys into the role's pane (the doorbell, `/exit`); never reclaimed automatically (remove a stale lock once its pid is dead) |
+| `send-<role>.log` | the driver, `team-run.sh` | append-only: `doorbell-skipped …`; `stop-during-send <utc> <owner>` when a stop found the lock held |
 
 **Run audit, outside the clone.** `<main checkout>/.agents/team/audit/` holds
 `<YYYYMMDD>-<team>-<ticket>-<run>.{md,json}`, `index.jsonl` (one line per run) and `*.retro.md/log`.
@@ -128,9 +130,9 @@ branch's base and equal to the supervisor's, or the start is refused.
 
 | Role | Questions | Memory | Material decision | End |
 |---|---|---|---|---|
-| planner | asked normally (attended); `/brainstorm` approves the spec itself (`Approved (auto — team mode)`) with or without a TeamLead; with a per-run TeamLead its `done` waits for the plan gate (team-lead.md §4) | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
-| coder | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
-| qa | never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
+| planner | asked normally — with a per-run TeamLead the lead answers through the ask channel, without one the developer in the window (attended); `/brainstorm` approves the spec itself (`Approved (auto — team mode)`) with or without a TeamLead; with a per-run TeamLead its `done` waits for the plan gate (team-lead.md §4) | → notes `## Learnings` | asked normally | `/commit` spec+plan, `team-record --verdict done` |
+| coder | with a per-run TeamLead: may ask, the lead answers (ask channel); without one never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | draft PR via `team-pr.sh create --draft`, `team-record --verdict done --pr <id>` |
+| qa | with a per-run TeamLead: may ask, the lead answers (ask channel); without one never — `--disallowedTools AskUserQuestion` | → notes | `team-record --verdict blocked`, stay idle | QA report, PR description, publish, `team-record --verdict done` |
 | wrapup | asked normally (attended), only when it has recommendations; with a per-run TeamLead never — a proposals stop instead | writes `.agents/memory/**` after acceptance per team-decision-model.md §3 (TeamLead or Advisor; with a per-run TeamLead the wrapup asks nothing: it stops with a proposals file and the lead decides every item, team-lead.md §10) | asked normally | summary (Jira comment + PR `## Wrap-up`), accepted memory commit, `team-record --verdict done --pr <id>` |
 | cli | never — `--disallowedTools AskUserQuestion` | → notes, copied into the PR (no wrapup) | `team-record --verdict blocked` (also on an eligibility-guard hit), stay idle | published PR via `team-pr.sh create --ready`, `team-record --verdict done --pr <id>` |
 
@@ -138,15 +140,11 @@ branch's base and equal to the supervisor's, or the start is refused.
 authority ([team-lead.md](team-lead.md) §6; the wrapup's proposals §10) and only human-only items reach
 the Operator as pending decisions.
 
-**One question per call.** Roles allowed to ask use exactly one question in each
-`AskUserQuestion` call, including a single multiSelect question. Wait for its answer before
-asking the next question; dependent questions use the preceding answer. The synchronous
-PreToolUse hook `guard-team-question.sh` blocks calls with more than one question when
-`session.json` exists and instructs the role to retry one at a time. Outside team mode unchanged.
-This rule grants no question permission to coder/qa/cli.
-An existing menu with multiple question tabs is a role error; the Operator answers it in the window,
-with no automatic retry. Ask the developer to have the role retry one question at a time in
-its window. Clones retain their base harness until the next `team-next`.
+**Questions in a lead run.** Every stage stop — an `AskUserQuestion` with one or several questions,
+a plan approval, a permission prompt of the stage or a sub-agent, a blocked record, a plain-text
+stop — is filed by the stage hook as an ask and answered by the run's TeamLead (team-lead.md §6);
+`guard-team-question.sh` is a no-op kept for its settings entry. Mode cli and a run without a lead
+keep `--disallowedTools AskUserQuestion` for coder, qa and cli.
 
 No role exits its session — the runner ends it after accepting the record. Each role runs with the
 `--model` / `--effort` / `--permission-mode` set for it in `.claude/team/roles.json` (the shipped
@@ -205,14 +203,17 @@ DevOps (deploy, release creation, App Service config, branch lock, policy change
 nothing a ticket legitimately needs is `deny`, and every such command waits for approval. Merging
 to the line triggers no deploy and stays the supervisor's `/pr-merge`. The
 session shows a permission prompt, the `Notification` hook flags it, the runner prints
-`needs attention`, and the developer approves or rejects in that session's window (`session-host.sh hint <team>-<role>`). Keep waiting; never write a
+`needs attention`, and the developer approves or rejects in that session's window (`session-host.sh hint <team>-<role>`) — in a lead run the prompt is an ask of tier `operator` instead, answered through the lead's decision (team-lead.md §6–§7). Keep waiting; never write a
 `blocked` record for a prompt and never work around a rejected one — a rejection is a material
 question (`blocked`). Secrets stay `deny` for every role: read setting **names** only
 (`--query "[].name"`), never values, keys or connection strings.
 
-**Routing with a per-run TeamLead:** stage → the run's TeamLead → Operator. The runner rings the
-lead for every stop, gate and prompt; the lead answers on an authority (`class | teamlead | operator`)
-and opens a pending decision for a human-only item, which notifies the Operator once
+**Routing with a per-run TeamLead:** stage → the run's TeamLead → Operator. Every stop of a stage
+(a question, a plan approval, a permission prompt, a blocked record, a plain-text stop) is filed by
+the stage hook as an ask and rung to the lead; the runner rings gates. The stage hook answers a
+class-tier permission itself; the lead answers an ask at `teamlead` and opens a pending decision
+for an operator-tier ask (allow or deny), which notifies the Operator once — the Operator answers
+in the lead's window, never in a stage's
 ([team-decision-model.md](team-decision-model.md) §3, [team-lead.md](team-lead.md) §6–§7). The roles'
 behaviour below is the same.
 

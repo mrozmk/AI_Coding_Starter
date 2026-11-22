@@ -8,6 +8,8 @@
 #   readiness <pr>                           → {merge, target_sha, merge_sha, source_sha, parents_ok}
 #   create --draft|--ready --head <b> --base <b> --title <t> --body-file <f>   → pr=<n>
 #   publish <pr> · body-get <pr> · body-set <pr> <file>
+#   by-branch <b>                            → `none` or this repo's PR numbers of head <b>, any
+#                                              state (read-only; exit 4 on a failed lookup)
 #
 # `readiness` is deliberately separate from `state`: a merged or closed PR has no merge ref and
 # often no source branch, and that must still read as a valid lifecycle. `merge=ok` requires the
@@ -41,7 +43,7 @@ die() { echo "error: $2" >&2; exit "$1"; }
 [ "$TEAM_PR_PROVIDER" != none ] \
   || die 2 "teams.pr_provider=none: the PR layer is off — team-pr.sh needs pr_provider=github"
 if [ "$TEAM_PR_PROVIDER" = azure-devops ]; then
-  case "${1:-}" in create|publish) exec bash "$(dirname "${BASH_SOURCE[0]}")/team-pr-ado.sh" "$@" ;; esac
+  case "${1:-}" in create|publish|by-branch) exec bash "$(dirname "${BASH_SOURCE[0]}")/team-pr-ado.sh" "$@" ;; esac
 fi
 [ "$TEAM_PR_PROVIDER" = github ] \
   || die 2 "azure-devops uses the team-lib.sh helpers (team-pr.sh is github-only)"
@@ -245,8 +247,8 @@ op_create() {  # op_create draft|ready <head> <base> <title> <body file>
 
 op="${1:-}"; [ $# -eq 0 ] || shift
 case "$op" in
-  coords|state|identity|readiness|create|publish|body-get|body-set) ;;
-  *) die 2 "usage: team-pr.sh coords|state|identity|readiness|create|publish|body-get|body-set …" ;;
+  coords|state|identity|readiness|create|publish|body-get|body-set|by-branch) ;;
+  *) die 2 "usage: team-pr.sh coords|state|identity|readiness|create|publish|body-get|body-set|by-branch …" ;;
 esac
 
 # Nothing talks to GitHub before origin is confirmed to be the profile's repo.
@@ -268,6 +270,16 @@ done
 set -- ${POS[@]+"${POS[@]}"}
 
 case "$op" in
+  by-branch)
+    [ $# -eq 1 ] && [ -n "$1" ] || die 2 "usage: by-branch <branch>"
+    ghc pr list --repo "$TEAM_GH_REPO" --head "$1" --state all \
+      --json number,headRefName,headRepositoryOwner,headRepository --limit 50 \
+      > "$TMP/list.json" 2>"$TMP/err" \
+      || { sed 's/^/  | /' "$TMP/err" >&2; die 4 "gh pr list for $1 failed — recoverable"; }
+    ids="$(jq -r --arg r "$TEAM_GH_REPO" --arg h "$1" '[.[] | select(((.headRepositoryOwner.login // "")
+      + "/" + (.headRepository.name // "")) == $r and .headRefName == $h) | .number | tostring]
+      | join(" ")' "$TMP/list.json")" || die 4 "the PR list for $1 is not parseable"
+    echo "${ids:-none}" ;;
   coords)
     [ $# -eq 0 ] || die 2 "coords takes no arguments"
     printf '%s\n' "$GH_OR" ;;

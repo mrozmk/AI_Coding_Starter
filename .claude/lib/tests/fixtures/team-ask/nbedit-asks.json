@@ -1,0 +1,2 @@
+{"session_id": "sid-1", "hook_event_name": "PreToolUse", "cwd": "__CWD__", "permission_mode": "auto",
+ "tool_name": "NotebookEdit", "tool_input": {"notebook_path": "__ASKFILE__", "new_source": "x"}}

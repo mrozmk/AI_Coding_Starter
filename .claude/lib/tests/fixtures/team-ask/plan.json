@@ -1,0 +1,2 @@
+{"session_id": "sid-1", "hook_event_name": "PreToolUse", "cwd": "__CWD__", "permission_mode": "auto",
+ "tool_name": "ExitPlanMode", "tool_input": {"plan": "Plan: add the counter\n1. write it\n2. test it"}}

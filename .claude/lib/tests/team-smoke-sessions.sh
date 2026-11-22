@@ -59,7 +59,7 @@ MP="$(cd "$MAIN" && pwd -P)"
 
 # Stubs. claude: a role session that logs its argv and environment and stays up; launchctl and
 # crontab: no scheduler entry; tmux: the watch stub plus pane ids, send-keys hooks and pane files
-# addressed by pane id (team-answer.sh targets `%<id>`).
+# addressed by pane id (`%<id>`).
 cat > "$WORK/bin/claude" <<'STUB'
 #!/usr/bin/env bash
 [ "$*" != --version ] || { echo "${STUB_CLAUDE_VERSION:-2.1.301} (Claude Code)"; exit 0; }

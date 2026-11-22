@@ -8,8 +8,10 @@
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
-#   pending lists the lead's open items — pending decisions first, then stop, rejected, gate, attention
-#   (not idle_prompt), inbox (this run's or run-less messages), oldest first:
+#   pending lists the lead's open items — pending decisions first, then ask (runs/<run>/asks/, not
+#   class-tier, not bound to a pending decision), stop (no ask, no .answered), rejected, gate,
+#   attention (not idle_prompt, not a permission prompt an ask covers), inbox (this run's or
+#   run-less messages), oldest first:
 #   `<kind> <ref> — <summary>`. end stops the lead session (0 when none runs); finalize ends it
 #   once per run, resolves its notifications and marks runs/<run>/finalized; relaunch asks the live runner to relaunch a dead
 #   lead. notes-init creates runs/<run>/teamlead-notes.md (six headings) when absent; log-append
@@ -26,12 +28,13 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
 LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lead-decision.sh"
+. "$LIB/team-ask.sh"
 
 # resolve <team> → TD (the clone's team dir) and MAIN (the main checkout), from either side. In the
 # clone the main checkout is the one the runner recorded, never `git rev-parse` of the clone.
@@ -58,6 +61,36 @@ gate_decided() {  # gate_decided <record basename> — a non-escalate verdict na
   return 1
 }
 
+pending_decision_for() {  # pending_decision_for <a-n> — a pending decision is bound to that ask
+  local f
+  for f in "$TD/runs/$RUN"/decisions/d-*.md; do
+    [ -f "$f" ] && [ "$(dfm "$f" bind_ask)" = "$1" ] && [ "$(dfm "$f" status)" = pending ] && return 0
+  done
+  return 1
+}
+epoch_of() { date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null || echo 0; }
+# ask_covers <role> <utc> — an ask of that stage is waiting, or was filed within 10 s of <utc>.
+ask_covers() {
+  local a d
+  for a in $(ask_ids); do
+    [ "$(ask_get "$a" role)" = "$1" ] || continue
+    [ "$(ask_get "$a" state)" != waiting ] || return 0
+    d=$(( $(epoch_of "$2") - $(epoch_of "$(ask_get "$a" filed_at)") )); d="${d#-}"
+    [ "$d" -gt 10 ] || return 0
+  done
+  return 1
+}
+
+# operator_touches — every human action the run needed: the distinct lines of runs/<run>/
+# operator-touches (a human-answered decision, a startup dialog first seen) plus an older run's
+# operator-window answers in answers.md. team_audit.py counts by the same rule.
+operator_touches() {
+  local rd="$TD/runs/$RUN" n=0 w=0
+  [ ! -f "$rd/operator-touches" ] || n="$(cut -d' ' -f2- "$rd/operator-touches" | sort -u | grep -c . || true)"
+  [ ! -f "$rd/answers.md" ] || w="$(grep -c '\[authority operator-window\]' "$rd/answers.md" || true)"
+  echo $(( ${n:-0} + ${w:-0} ))
+}
+
 # One line per item, sorted by a 14-digit UTC key that is cut off before printing.
 pending() {
   local f role attempt last ts since="" stage l gate rr ir a
@@ -70,6 +103,15 @@ pending() {
       for f in "$TD/runs/$RUN"/decisions/d-*.md; do
         [ -f "$f" ] && [ "$(dfm "$f" status)" = pending ] || continue
         echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
+      done
+      # Open asks of the stages (team-lead.md §6): not answered, not bound to a pending decision; a
+      # class ask is answered by the hook itself within the same call.
+      ask_init "$TD" 2>/dev/null || true
+      for a in $(ask_ids); do
+        case "$(ask_get "$a" state)" in waiting|timed-out) ;; *) continue ;; esac
+        [ "$(ask_get "$a" tier)" != class ] && [ ! -f "$ASK_D/$a.answer.json" ] || continue
+        pending_decision_for "$a" && continue
+        echo "$(ask_get "$a" filed_at | tr -dc 0-9) ask .agents/team/runs/$RUN/asks/$a.json — $(ask_get "$a" role) $(ask_get "$a" kind)$([ "$(ask_get "$a" tier)" != operator ] || echo ' operator') — $(ask_one_line "$a")"
       done
       for f in "$TD/runs/$rr"/*-*-*.json; do
         [ -f "$f" ] || continue
@@ -88,6 +130,8 @@ pending() {
         fi
         case "$role $(jq -r .verdict "$f")" in
           *" blocked"|*" failed")
+            # Answered, or listed once as its ask.
+            [ ! -e "$f.answered" ] && [ -z "$(ask_open_for_record "$a")" ] || continue
             echo "$ts stop .agents/team/runs/$rr/$(basename "$f") — $(jq -r '.message // ""' "$f")" ;;
           # A gate stays open until a verdict other than escalate names its record.
           "planner done")
@@ -106,6 +150,10 @@ pending() {
         [ -n "$ts" ] && [[ "$ts" > "$since" ]] || continue
         # An idle stage is a notice, not a decision owed (the ring still comes, team-lead.md §6).
         [ "$(cut -d' ' -f2 <<<"$l")" != idle_prompt ] || continue
+        # A permission prompt the ask channel covers is listed as its ask.
+        if [ "$(cut -d' ' -f2 <<<"$l")" = permission_prompt ] && ask_covers "${stage:-}" "${l%% *}"; then
+          continue
+        fi
         echo "$ts attention .agents/team/runs/$RUN/attention — ${stage:-?}: ${l#* }"
       done < "$TD/runs/$RUN/attention"
     fi
@@ -207,7 +255,7 @@ notes_init() {
 # checkout, once per run. The block is built aside and appended under a mkdir lock, so blocks of
 # clones finishing at once never interleave.
 log_append() {
-  local outcome="$2" rd log lock tmp waited=0 max
+  local outcome="$2" rd log lock tmp waited=0 max f
   resolve "$1"
   case "$outcome" in merged|closed) ;; *) usage ;; esac
   [ -n "$RUN" ] && [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ] \
@@ -219,6 +267,10 @@ log_append() {
   mkdir -p "$MAIN/.agents/team"
   log="$MAIN/.agents/team/teamlead-log.md"; lock="$MAIN/.agents/team/teamlead-log.lock"
   tmp="$rd/.teamlead-log-block.tmp"
+  # The run's own notes carry the count first, so the shared log inherits it (team-lead.md §10).
+  f="$rd/teamlead-notes.md"; touch "$f"
+  { echo "Operator touches: $(operator_touches)"; grep -v '^Operator touches: ' "$f" || true; } > "$f.tmp" \
+    && mv "$f.tmp" "$f"
   { echo "### $(team_utc) $1 $(jq -r '.ticket // "-"' "$TD/team.json") $RUN — $outcome"; echo
     if [ -s "$rd/teamlead-notes.md" ]; then cat "$rd/teamlead-notes.md"; else echo "(no notes)"; fi
     echo; } > "$tmp"

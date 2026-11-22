@@ -1,0 +1,3 @@
+{"session_id": "sid-1", "hook_event_name": "Stop", "cwd": "__CWD__", "permission_mode": "auto",
+ "stop_hook_active": false, "last_assistant_message": "Next check in 3 minutes.",
+ "background_tasks": [], "session_crons": [{"id": "c1", "schedule": "0 12 * * *", "recurring": false, "prompt": "check"}]}

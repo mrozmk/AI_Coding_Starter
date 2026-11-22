@@ -142,14 +142,15 @@ W4="PR identity mismatch (qa pr_id 9999 is not the coder's)"
 run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
 expect 0 "rejected .agents/team/runs/$RUN_ID/qa-1-3.json — $W4" "(4) pending lists the rejected record"
 [ "$(grep -c '^rejected ' "$WORK/out")" = 1 ] && ! grep -q '^stop \|^gate ' "$WORK/out" || fail "(4) pending lists more than the one rejected record"
-rm -f "$TD/cancel"; export STUB_PANE="$FIX/idle.txt" STUB_TMUX_ALIVE=0; : > "$STUB_LOG"   # the stage session, alive again, at an idle prompt
-run "$MAIN" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh alfa qa say "Use the coder's PR." \
-  --authority teamlead --why "the coder's PR is the run's PR"
-expect 0 "sent say" "(4) the lead's say"
-[ -e "$RD/qa-1-3.json.answered" ] || fail "(4) the say wrote no .answered"
+rm -f "$TD/cancel"; : > "$STUB_LOG"
+# The stage's Stop hook files the rejected record as a text ask; the lead answers it.
+mkask a-1 text lead "$(jq -cn '{text: "PR identity mismatch", source: "record:qa-1-3.json"}')"
+run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh alfa a-1 \
+  --text "Use the coder's PR." --authority teamlead --why "the coder's PR is the run's PR"
+expect 0 "answered: a-1 (text)" "(4) the lead's answer"
+[ -e "$RD/qa-1-3.json.answered" ] || fail "(4) the answer wrote no .answered"
 run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
 ! has "rejected " "$WORK/out" || fail "(4) pending still lists the answered record"
-unset STUB_PANE STUB_TMUX_ALIVE
 qa4 4 "$RD" 8371; rm -f "$TD/lock" "$TD/cancel"; : > "$STUB_LOG"; echo 1000000 > "$WORK/clock"; unset REC2_AT REC3_AT
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate acceptance qa-1-4.json" "(4) the stage's next record validates"
 ! has "rejected: qa-1-4.json" "$WORK/out" || fail "(4) the fixed record was rejected"

@@ -1,0 +1,3 @@
+{"session_id": "sid-1", "hook_event_name": "Stop", "cwd": "__CWD__", "permission_mode": "auto",
+ "stop_hook_active": false, "last_assistant_message": "Should the counter reset at midnight or never?",
+ "background_tasks": [], "session_crons": []}

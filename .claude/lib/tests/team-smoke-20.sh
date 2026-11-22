@@ -70,7 +70,7 @@ ls "$RD"/coder-*.json >/dev/null 2>&1 && fail "(d) the lead wrote a stage record
 Q2='{"session_id": "sid-lead", "tool_input": {"questions": [{"q": 1}, {"q": 2}]}}'
 lhook guard-team-question.sh "$Q2"; expect 0 "" "(d) question guard skips the lead"
 shook guard-team-question.sh "$(jq -c '.session_id = "x"' <<<"$Q2")"
-expect 2 "one question" "(d) question guard still holds stages"
+expect 0 "" "(d) question guard passes two questions of a stage (the ask channel answers all)"
 echo "team-smoke-20: (d) record + question OK"
 
 # ---- (e) guard-teamlead-write.sh ---------------------------------------------------------------
@@ -82,7 +82,7 @@ done
 lhook $G "$(write_p Edit ".agents/team/runs/$RUN_ID/digest.md")"; expect 0 "" "(e) relative run path"
 lhook $G "$(write_p Write "/private/tmp/claude-$(id -u)/s/notes.md")"; expect 0 "" "(e) scratchpad"
 # Verdicts, decisions, answers, markers and records belong to the scripts (owner, 2026-11-15).
-for f in answers.md decisions/d-1.md decisions/req-1.json teamlead-plan-1.json closed.json \
+for f in answers.md decisions/d-1.md asks/a-1.json asks/a-1.answer.json teamlead-plan-1.json closed.json \
   coder-1-1.json.answered coder-1-1.json order-brief.md r2/answers.md attention x.md \
   teamlead-wrapup-1.json wrapup_proposals-1_1.json wrapup-state.json; do
   lhook $G "$(write_p Write "$CLONE/.agents/team/runs/$RUN_ID/$f")"
@@ -131,7 +131,8 @@ cd .agents && cd reference && cd ../team/runs/$RUN_ID && echo x > answers.md
 echo x > "\$CLAUDE_PROJECT_DIR/$R/answers.md"
 sed -i s/x/y/ .claude/hooks/guard-teamlead-bash.sh
 bash /tmp/team-answer.sh x > $R/answers.md
-bash .claude/lib/team-answer.sh alfa coder yes > $R/answers.md
+bash .claude/lib/team-answer.sh alfa a-1 --allow > $R/answers.md
+echo '{}' > $R/asks/a-1.answer.json
 bash .claude/lib/costs/runtime-mark.sh stage end prime
 bash .claude/lib/costs/runtime-mark.sh stage end prime --session x
 bash .claude/lib/costs/runtime-mark.sh session --provider claude --source team-run
@@ -160,7 +161,8 @@ EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 0 "" "(e2) allowed: $c"
 done <<EOF2
-bash .claude/lib/team-answer.sh alfa coder yes --authority teamlead --why w --decision $R/decisions/d-1.md
+bash .claude/lib/team-answer.sh alfa a-1 --allow --authority operator --why w --decision $R/decisions/d-1.md
+cat $R/asks/a-1.json
 bash .claude/lib/team-verdict.sh plan approve --for $R/planner-1-1.json --ref $R/gate-plan-1.md
 cat $R/answers.md
 jq . $R/decisions/d-1.md

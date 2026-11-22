@@ -1,0 +1,2 @@
+{"session_id": "sid-1", "hook_event_name": "PreToolUse", "cwd": "__CWD__", "permission_mode": "auto",
+ "tool_name": "Edit", "tool_input": {"file_path": "__ASKFILE__", "old_string": "a", "new_string": "b"}}

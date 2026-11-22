@@ -254,8 +254,19 @@ def question_counts(qdir):
     return c
 
 
+def operator_touches(run_dir):
+    """Every human action the run needed: the distinct lines of runs/<run>/operator-touches (a
+    human-answered decision, a startup dialog first seen) plus an older run's operator-window
+    answers in answers.md — the rule of team-lead.sh operator_touches."""
+    lines = (read_text(os.path.join(run_dir, "operator-touches")) or "").splitlines()
+    distinct = {l.split(" ", 1)[1] for l in lines if " " in l.strip()}
+    answers = read_text(os.path.join(run_dir, "answers.md")) or ""
+    return len(distinct) + answers.count("[authority operator-window]")
+
+
 def run_counts(run_dir, recs):
     c = question_counts(os.path.join(run_dir, "questions"))
+    c["operator_touches"] = operator_touches(run_dir)
     attention = read_text(os.path.join(run_dir, "attention")) or ""
     c["attention"] = len([l for l in attention.splitlines() if l.strip()])
     c["qa_rounds"] = sum(1 for r in recs if r["_role"] == "qa")
@@ -430,6 +441,7 @@ def render_md(doc):
     vals = dict(h, state=doc["state"], final=doc["final"] or "-")
     out = [f"# Team run audit: {h['ticket']} {h['run']}", "", "| Field | Value |", "|---|---|"]
     out += [f"| {k} | {vals.get(k, '-')} |" for k in keys]
+    out += ["", "Operator touches: %s" % doc["counts"].get("operator_touches", 0)]
     out += ["", "## Stages", ""]
     out += table(doc["stages"], ("role", "status", "records", "attempts", "accepted", "start",
                                  "end", "minutes", "slow"))

@@ -1,20 +1,18 @@
-"""Reads the active prompt of a team role's pane and binds it to its transcript event.
+"""Reads the active prompt of a team role's pane — for display and idle detection, never to
+answer it (the per-run TeamLead answers through the ask channel, team-ask.sh).
 
 Usage: python3 -I team_prompt.py parse [--transcript <file>|-]  < pane   → one JSON line, exit 0
-       python3 -I team_prompt.py event <transcript> <kind>      [< parse JSON] → id|ambiguous|-
-       python3 -I team_prompt.py result <transcript> <tool_use_id>           → yes|no
-       python3 -I team_prompt.py pending <transcript> <tool_use_id>          → yes|no|unknown
-       python3 -I team_prompt.py outcome <transcript> <tool_use_id>
-                                     → approved|approved (rule added)|rejected|pending|gone|unknown
        python3 -I team_prompt.py pending-tool <transcript>       → {"tool", "detail"}|{}|unknown
-       python3 -I team_prompt.py user-after <transcript> <uuid> <text>       → yes|no
-       python3 -I team_prompt.py typed <text>                   < pane   → yes|no
        python3 -I team_prompt.py strip                          < pane   → pane without escapes
-Usage errors exit 2. Only the bottom-most prompt whose footer is the last line counts; anything
-the parser cannot read positively is `unreadable` — the sender then types nothing. A pane captured
-with `capture-pane -e` is read without its escapes; on the input line a dim run is Claude Code's
-prompt suggestion, not typed text, so it is dropped. A permission prompt whose header
-scrolled off is read from the role's own transcript, else unreadable.
+Usage errors exit 2. Callers (the kept surface): parse — session-host-lib.sh (the doorbell's idle
+check, sh_* idle detection), team-lead-lib.sh team_pane_idle, team-snapshot-teams.sh (prompt kind);
+pending-tool — session-host-lib.sh (what an idle session waits on); strip — the smoke suite's
+screen fixtures. team_prompt_check.py imports the parser and the transcript binding for --block,
+--classes and --report. Only the bottom-most prompt whose footer is the last line counts; anything
+the parser cannot read positively is `unreadable`. A pane captured with `capture-pane -e` is read
+without its escapes; on the input line a dim run is Claude Code's prompt suggestion, not typed
+text, so it is dropped. A permission prompt whose header scrolled off is read from the role's own
+transcript, else unreadable.
 """
 import hashlib
 import json
@@ -27,8 +25,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Re-exported: callers keep reading the transcript through team_prompt.
 from team_transcript import (  # noqa: E402,F401
-    CONT_ROW, CONTEXT_ROW, EDIT_ROW, associated, diff_rows, entries, has_result, last_assistant,
-    outcome, pending, pending_tool, squash, tool_cwd, user_after)
+    CONT_ROW, CONTEXT_ROW, EDIT_ROW, associated, diff_rows, entries, pending, pending_tool, squash,
+    tool_cwd)
 
 RULE = re.compile(r"^\s*─{20,}\s*$")
 NAMED_RULE = re.compile(r"^\s*─{20,}(\s+[A-Za-z0-9._-]+\s+─)?\s*$")
@@ -416,28 +414,6 @@ def unbordered(lines):
     return lines[:-1] if lines and BORDER.match(lines[-1]) else lines
 
 
-def field_text(p, lines):
-    """What the active field holds: the menu row under the cursor, or the input box's content."""
-    if p["kind"] == "menu" and p["complete"]:
-        o = next((o for o in p["options"] if o["n"] == p["cursor"]), None)
-        return "" if o is None else squash(o["label"]) + "".join(squash(d) for d in o["desc"])
-    if p["kind"] in ("permission", "checkbox", "review"):
-        return ""
-    # Menus returned above, so a numbered answer ("❯ 1. …") here is typed text, not a cursor row.
-    top = next((i for i in range(len(lines) - 2, -1, -1) if NAMED_RULE.match(lines[i])
-                and INPUT.match(lines[i + 1])), None)
-    end = next((k for k in range(top + 2, len(lines)) if RULE.match(lines[k])), None) \
-        if top is not None else None
-    if end is None:
-        return ""
-    return re.sub(r"^❯", "", "".join(squash(gutter(l)) for l in lines[top + 1:end]))
-
-
-def typed(text, pane):
-    """True when the active field holds exactly the text; Ink hard-wraps long input."""
-    want = squash(text)
-    return bool(want) and field_text(parse(pane), unbordered(screen_lines(pane))) == want
-
 
 def parse(text, transcript=None):
     lines = screen_lines(text)
@@ -463,31 +439,9 @@ def main():
         t = a[2] if len(a) == 3 and a[2] != "-" else None
         print(json.dumps(parse(sys.stdin.read(), t), ensure_ascii=False))
         return 0
-    if len(a) == 3 and a[0] == "event" and a[2] in ("permission", "menu", "blocked", "idle"):
-        if a[2] in ("blocked", "idle"):
-            print(last_assistant(a[1]))
-        else:
-            print(associated(json.loads(sys.stdin.read()), a[1])[0])
-        return 0
-    if len(a) == 3 and a[0] == "result":
-        print("yes" if has_result(a[1], a[2]) else "no")
-        return 0
-    if len(a) == 3 and a[0] == "pending":
-        es = entries(a[1])
-        print("unknown" if es is None else "yes" if a[2] in pending(es) else "no")
-        return 0
-    if len(a) == 3 and a[0] == "outcome":
-        print(outcome(a[1], a[2]) or "unknown")
-        return 0
     if len(a) == 2 and a[0] == "pending-tool":
         es = entries(a[1])
         print("unknown" if es is None else json.dumps(pending_tool(es), ensure_ascii=False))
-        return 0
-    if len(a) == 4 and a[0] == "user-after":
-        print("yes" if user_after(a[1], a[2], a[3]) else "no")
-        return 0
-    if len(a) == 2 and a[0] == "typed":
-        print("yes" if typed(a[1], sys.stdin.read()) else "no")
         return 0
     if a == ["strip"]:
         sys.stdout.write("".join(strip_ansi(l) for l in sys.stdin.read().splitlines(True)))

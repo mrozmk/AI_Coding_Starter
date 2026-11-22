@@ -1,0 +1,4 @@
+{"session_id": "sid-1", "hook_event_name": "Stop", "cwd": "__CWD__", "permission_mode": "auto",
+ "stop_hook_active": false, "last_assistant_message": "Waiting for the Codex review.",
+ "background_tasks": [{"id": "b1", "type": "shell", "status": "running", "command": "bash .claude/lib/codex-bg.sh"}],
+ "session_crons": []}

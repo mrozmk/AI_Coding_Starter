@@ -38,7 +38,7 @@ In the main checkout the Supervisor can lift the guard's `gh` prompt per clone w
 
 ## The prompt check
 
-`team_prompt_check.py` decides whether a sender (`team-answer.sh`) may press Enter on a team role's permission prompt. On the Operator's direct call it answers *yes* only when all of these hold:
+`team_prompt_check.py` tiers a team role's permission request. In a run with a per-run TeamLead the stage hook passes it the structured tool input (`--input-json`) and it returns `class` (the hook answers), `lead` (the TeamLead allows or denies) or `operator` (only an Operator decision answers) — [team-lead.md §6](../../.agents/reference/team-lead.md#6-answering-through-the-ask-channel). Nothing presses Enter on a pane any more. Its pane modes (`--block`, `--classes`) still read a prompt for the dashboard and the class tests, and call a prompt approvable only when all of these hold:
 
 - the prompt's command is readable;
 - the command names no egress tool and is not a web fetch;

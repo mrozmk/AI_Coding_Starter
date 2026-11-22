@@ -33,18 +33,18 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
   `.answered`, so the clock runs); the lead hears `rejected <role> <attempt>: <record> — <why> (sent
   back to the stage, <n> of 2)`. The 3rd is not sent back: `… (3rd rejection, the stage is not asked
   again)`, acked, and the clock waits for the lead's answer as for a stop; `pending` lists it as
-  `rejected` until then. The lead reads the reason and either answers the stage with a hint it may
-  give (`team-answer.sh … say`, which writes `.answered`; the stage's next record is validated
-  afresh), or opens a human decision when the cause is outside the team (a harness defect, a
-  missing tool); the Operator's `close` ends the run.
+  `rejected` until then. Nothing is typed into a stage with no open ask, so the lead closes the run
+  when nothing is lost (`run close`, §4), or opens a human decision (also when the cause is outside
+  the team: a harness defect, a missing tool); the Operator's `close` ends the run.
 - **Doorbell.** The driver's `session-host.sh send` is the one transport (`team_session_doorbell`
   in `team-lead-lib.sh` wraps it). First Claude's messaging socket from the session's registration
   in the main checkout's registry, `registry/<team>-lead.reg.json` for the lead (draft- and
   dialog-safe). Otherwise `send-keys` on a recognised empty idle input under the send lock.
   Otherwise skip and log `doorbell-skipped` to `send-lead.log`. Pending work is derived from files,
-  so a lost doorbell only delays. The runner rings on a stop and a new attention line (`prompt
-  <role>: needs a decision`); a new file in the team's inbox rings the lead from `team-inbox.sh
-  write` itself (§3).
+  so a lost doorbell only delays. The stage hook rings a new ask (`ask <role> a-<n>[ operator]: …`,
+  §6) and the runner re-rings one that stays unanswered; the runner rings a `failed` stop and an
+  attention line no ask covers (`attention <role>: …`); a new file in the team's inbox rings the
+  lead from `team-inbox.sh write` itself (§3).
 - **Identity.** `team_lead_caller` (`team-lead-lib.sh`): role env `TeamLead` + `teamlead.json` of the
   current run (+ the hook's session id). The SessionStart hook `session-registry.sh` moves
   `teamlead.json.session_id` (and the registry record `<team>-lead`) to the live id after `/clear`,
@@ -78,27 +78,34 @@ Profile keys (`teams.teamlead.*`, `teams.sessions.TeamLead`): `.claude/project-p
 | `runs/<run>/rework-<n>.md`, `runs/<run>/r<n>/` | the lead; runner + stages | the round's rework order; round n's records, prompts, sessions, reports and acceptance files |
 | `runs/<run>/teamlead-<gate>-<seq>.json` | `team-verdict.sh` (lead only) | a gate verdict, §4 |
 | `runs/<run>/gate-<gate>-<n>.md` | the lead | gate findings; a verdict's `ref` |
-| `runs/<run>/answers.md` | `team-answer.sh` (every authority answer); the runner (a human-only prompt answered in the stage window, §7) | `- <utc> [<role> <attempt>] <question> → <answer> — <why> [authority <a>] [decision <id>]` |
-| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision`; the runner closes an `answer_in` decision (§7) | a human decision, §7 |
-| `runs/<run>/decisions/req-<n>.json` | runner (`lead_attention`) | a human-only prompt the lead opens a decision from: source, tool, command, binding |
+| `runs/<run>/asks/a-<n>.json`, `a-<n>.answer.json` | the stage hook (`team-ask-hook.sh`, main checkout) files the ask; `team-answer.sh` (the lead) or the hook (class tier) writes the answer once | §6 — the ask: `id, kind, role, attempt, round, session_id, agent_id, agent_type, payload, tier, tier_cause, fp, state, filed_at`; the answer: `id, form, value, authority, why, decision, answered_at, lead_session_id`. The format is `team-ask.sh`'s header |
+| `stage-hooks.settings.json` | runner, at every stage launch of a lead run (from `<main>/.claude/team/stage-hooks.json`) | the stage's `--settings` layer: the ask hooks and the asks write guard, every command an absolute path into the main checkout |
+| `runs/<run>/answers.md` | `team-answer.sh` and the class-tier hook (every ask answer); the runner re-derives a missing line from an answer file | `- <utc> [<role> <attempt>] ask a-<n> <one line> → <form>: <value> — <why> [authority <a>] [decision <id>]`; the value is never cut (a tracker reconciliation's `id@sha256` tokens are read back) |
+| `runs/<run>/decisions/d-<n>.md` | `team-lead.sh decision`; the runner withdraws one whose ask is withdrawn | a human decision, §7 |
+| `runs/<run>/operator-touches` | `team-lead.sh decision answer` (a human answer), the runner's dialog watch (a startup dialog, first sight) | `<utc> decision d-<n>` / `<utc> dialog <who>:<kind>` — append-only, §10 |
+| `closing`, `runs/<run>/close-refused` | runner (`lead_close`, §4) | the close fence (the sender and the hook refuse every answer while it exists); a refused close after the stage was ended (nothing is relaunched) |
 | `runs/<run>/digest.md` | the lead (its digest sub-agent's answer, verbatim) | `scope: <paths>`, `made_at: <UTC>`, then the cited constraints — §5 |
 | `verdict-acked` | runner | the verdict files already acted on, one per line |
-| `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` — a closed run; the runner and `/start-team` refuse to resume it |
-| `runs/<run>/<record>.answered` | `team-answer.sh`, after delivering the answer to that stop (step 6) | ends the wait: the stage time limit (coder 4 h, qa 3 h) is paused while `acked` names a stop without this marker, and counts again from the poll that sees it |
+| `runs/<run>/closed.json` | runner (`close_run`) | `reason, ref, closed_at, pr_id` (+ `branch, sha` for a lead close) — a closed run; the runner and `/start-team` refuse to resume it |
+| `runs/<run>/<record>.answered` | `team-answer.sh` (or the runner's re-derivation), after the answer to that record's ask | ends the wait: the stage time limit (coder 4 h, qa 3 h) is paused while `acked` names a stop without this marker, or an ask of the attempt is open, and counts again from the poll that sees neither |
 
 The team-dir root files of a lead (`teamlead.*`, `round`, `verdict-acked`, `lead-dead`,
 `relaunch-lead`) are run-scoped: `team-next.sh` and `team-remode.sh` archive them.
 Every ownership check requires `teamlead.json.run` = the current `run`, so a stale file never
 switches a later run to the lead branch.
 
-`team-lead.sh pending <team>` lists, oldest first:
-- `stop` — a role/attempt whose newest record is `blocked` or `failed`;
+`team-lead.sh pending <team>` lists, oldest first (pending decisions before everything):
+- `ask` — an open ask (`waiting|timed-out`, no answer, not class-tier, not bound to a pending
+  decision): `ask .agents/team/runs/<run>/asks/a-<n>.json — <role> <kind>[ operator] — <one line>`;
+- `stop` — a role/attempt whose newest record is `blocked` or `failed`, with no ask and no
+  `.answered` marker (a blocked record is listed once, as its ask);
 - `rejected` — the acked newest record the runner rejected a 3rd time (`rejected-<record>` holds the
   reason), until its `.answered` marker;
 - `gate` — an unaccepted planner `done` (plan gate) that no verdict other than `escalate` names
   yet;
 - `attention` — attention lines after the active stage's newest record, except `idle_prompt` (a
-  stage at an empty prompt is a notice, not a decision owed: §6);
+  stage at an empty prompt is a notice, not a decision owed: §6) and a `permission_prompt` an ask
+  covers;
 - `inbox` — files in `<main>/.agents/team/inbox/<team>/new/`.
 
 ## 3. Events to the Supervisor
@@ -151,6 +158,7 @@ for, verdict, ref, notify, message, written_at, session_id`).
 | Gate | Input (`--for`) | Verdicts | Runner |
 |---|---|---|---|
 | `plan` | the planner's `done` record, before validation | `approve` · `revise` · `escalate` · `remode` (quick) | approve → validate + accept, the next stage launches; revise → `[team-run] TeamLead: amend the plan …`; remode → `close_run remode`; escalate → keeps waiting |
+| `run` | the acked record of the current stage, or a live ask `asks/a-<n>.json` of it (role, attempt, round) | `close --reason delivered-elsewhere\|team-part-ended` | fence, quiesce, check, push, receipt: `closing`, open asks withdrawn, the stage ended, `team_close_safe` re-run on `HEAD` with the main checkout's anchor (`base_sha`, branch; a clone, run or branch that differs refuses), a plain push of the branch verified by `ls-remote`, `closed: {run, branch, sha, reason, at}` in the anchor, then `close_run lead-close:<reason>` |
 
 There is no spec gate: the planner approves its own spec (`Approved (auto — team mode)`) and the
 plan gate is the first lead check.
@@ -159,7 +167,11 @@ plan gate is the first lead check.
   a verdict outside the gate's set, `--for` that is not the planner's newest record or not in the
   gate's verdict, `revise` without `--ref`, the gate `spec` ("no spec gate: the first gate is the
   plan gate"); `5` revise limit; `7` constraint digest missing (§5); `10` tracker comments not
-  current (§11).
+  current (§11). `run close` refuses (4) `close would lose unmerged work — open a decision
+  (<why>)` unless `team_close_safe` holds: no coder record of the run (any round, accepted or
+  not), no record with a `pr_id`, no PR of the branch (`team-pr.sh by-branch`; a failed lookup is
+  not safe), a clean tree, and every commit beyond `base_sha` (merges included) touching only
+  `.agents/specs/**` and `.agents/plans/**`.
 - **Caller guard.** The script's own check (role env + `teamlead.json`) can be forged by a stage
   that prefixes `TEAM_SESSION_ROLE=TeamLead`. `guard-team-verdict.sh` (PreToolUse `Bash`, project
   settings, `/setup:teams` id `V`) refuses an invocation of `team-verdict.sh` (and of
@@ -196,7 +208,13 @@ plan gate is the first lead check.
   lock). A skipped message leaves its verdict unacted, and the next poll retries it.
 - **Close.** `close_run <reason> <ref>` writes `closed.json`, the `closed` event, ends the lead and
   the stage session, removes `session.json` and exits **8** (closed without merge; audit
-  `--final closed`). `team-remode.sh <team> brainstorm` accepts a quick run closed by a plan-gate
+  `--final closed`). The lead may close a run itself only when nothing is lost (`run close` above);
+  any other close stays the Operator's `decision close`. A refusal before the fence leaves the
+  stage running; one after it (the re-check, the push) leaves the stage ended and nothing is
+  relaunched (`runs/<run>/close-refused`): the lead hears `close refused: <why>` and opens a
+  decision. After a lead close `team-next.sh` waives its "commits on the branch but no PR"
+  refusal only on the anchor's `closed` receipt (this run, this branch, a sha equal to the local
+  and the remote tip) — never on the clone's own `closed.json`. `team-remode.sh <team> brainstorm` accepts a quick run closed by a plan-gate
   `remode`: the new brainstorm run starts from the current `HEAD` (the committed quick plan stays in
   history) and keeps the order brief.
 - **Collision.** `team-verdict.sh event collision --ref <file> --message "<line>"` writes the
@@ -224,52 +242,101 @@ domains, so quick never needs one. `team-lead.sh digest-check <team> <plan path>
 `team-verdict.sh` runs it before every plan `approve` and refuses
 with exit 7 (`constraint digest missing — see the Digest section of the TeamLead prompt`).
 
-## 6. Answering on an authority
+## 6. Answering through the ask channel
 
-`team-answer.sh <team> <role> <action> … --authority class|teamlead|operator --why "<line>"
-[--decision <answered runs/<run>/decisions/d-<n>.md>]` (`team-answer-lead.sh`). The checker
-(`team_prompt_check.py --authority`, rules in `team_prompt_authority.py`) runs the **human-only
-check first**, before any waiver.
+Every blocking stop of a stage in a lead run reaches the lead as an **ask** — a file, never a
+screen. No pane is read and no key is typed into a stage, on tmux and Herdr alike.
 
-| | class | teamlead | operator |
+**Stage hooks.** At each stage launch the runner materialises `<main>/.claude/team/stage-hooks.json`
+into `<clone>/.agents/team/stage-hooks.settings.json` (every command an absolute path into the
+**main checkout's** `.claude/hooks/team-ask-hook.sh`, so a ticket editing the hook or the checker
+cannot change its own run) and passes it with `--settings`; `--disallowedTools AskUserQuestion` is
+dropped. One script, five registrations:
+
+| Stop | Hook | Ask kind | Answer → hook output |
 |---|---|---|---|
-| Caller | the runner, or the lead | the lead only (own team) | the lead, relaying an answered decision (a baseline ask it escalated, or a `say` to a stop) |
-| Prompt with no ask/deny match, no human-only cause | sent | sent | sent |
-| Baseline ask match (a `Bash(…)` rule meeting the command, or an `Edit(…)`/`Write(…)` rule meeting the edited path, that is in `.claude/team/baseline-ask.json`) | only in an enabled class | sent | sent |
-| **Human-only** → exit 9 below operator: an Edit/Write or Bash naming `.claude/settings*.json` or `.claude/team/sessions/*.settings.json`; a project-added ask rule, Bash or Edit/Write (not in the baseline; no readable baseline → every ask); egress (WebFetch, curl/wget/ssh/scp/rsync/nc, `git remote add`/`set-url`); a recursive `rm` (`-rf`, `-fr`, `-r -f`, `--recursive`, behind wrappers) with a target outside the clone and the temp roots (`/tmp`, `/private/tmp`, the system temp dir, `$TMPDIR` — the scratchpad is under `/tmp`), or one that cannot be resolved (`$VAR`, a glob with no match, a relative path after a `cd`) | refused (9) | refused (9) | refused (9) — the Operator answers it in the stage window, §7 |
-| **Never**: a deny match, the SQL guard, an unreadable or unbound prompt (no transcript, no unique pending tool_use, screen differs from it), an edit or path outside the clone; a recursive `rm` of the clone root or its `.git`; and, when anything needs a waiver, a recovered prompt (header off screen) or no live session | refused | refused | refused |
+| `AskUserQuestion` (one or several questions, multi-select, free text) | `PreToolUse` | `question` | `--answers` / `--pick` → `allow` + `updatedInput` (the questions + `answers`, question text → label, multi-select labels comma-joined); `--text` → `deny` with the answer spelled out in the reason |
+| `ExitPlanMode` | `PreToolUse` | `plan` | `--allow` → `allow` + the input echoed; `--deny "<change>"` → `deny` + the change |
+| a permission prompt of the stage or a sub-agent (also a `PreToolUse` hook's own `ask`, e.g. the egress guard's) | `PermissionRequest` | `permission` (`agent_id`, `agent_type` recorded) | `--allow` → `behavior: allow`; `--deny "<alt>"` → `behavior: deny` + message. Never a rule written: a deny rule is evaluated before the hook |
+| a `blocked` record, a plain-text stop | `Stop` | `text` | `--text` → `decision: block` + the answer as the reason |
+| — | `PreToolUse` `Edit\|Write\|NotebookEdit` | — | the write guard: a path under `runs/*/asks/` or `runs/*/decisions/` is denied; fails closed (`onFailure: block`) |
 
-- Waivable by the lead on its own, from the baseline: `git merge --no-ff`/`--squash`,
-  `git branch -d`/`-D`, `git rm`, `Edit(**/.env.*)` (owner's decision, 2026-11-15; `.env` itself
-  is a deny rule, so no prompt exists for it), and `rm -rf` whose every target is inside the clone
-  (not its root or `.git`) or a temp root.
-- A TeamLead session's bare call (no `--authority`) is refused with exit 7, so the human-only
-  check cannot be bypassed.
-- Without a ledger the identity checks run on every authority call: the stage transcript from
-  `session.json`, a readable and unambiguous live event (equal to `--expect-event` when given), the
-  dispatch journalled in `send-<role>.log` as `q=authority:<a>`.
-- Every delivered authority answer appends `- <utc> [<role> <attempt>] <question> → <answer> —
-  <why> [authority <a>] [decision <id>]` to `runs/<run>/answers.md`. A delivered `say` (or yes/no
-  on an authority) to the role/attempt named by `acked` writes `runs/<run>/<record>.answered`, which
-  restarts the stage clock (§2).
-- Exit codes beyond the sender's usual ones: 7 caller or decision rule, 9 human-only (open a
-  pending decision, §7).
-- **The runner answers first:** a new `permission_prompt` attention line is tried at `--authority
-  class` (no model wakes). Exit 0 → answered (`answers.md`); exit 9 → `decisions/req-<n>.json` and
-  the doorbell `human-only <role>: <tool> <command> — open a decision for req-<n>`; any other refusal
-  → `prompt <role>: <tool> <command> — team-answer.sh … --authority teamlead`. The tool and command
-  come from the transcript-bound parse; an unreadable one rings `prompt <role>: unreadable`. Other
-  attention kinds ring `prompt <role>: <kind> — <message>`.
-- **An idle stage** (`idle_prompt`) rings once per line, `prompt <role>: idle — look at the screen;
-  nothing is owed unless it is stuck — <message>`, and `pending` never lists it. The lead reads the
-  stage's screen (`session-host.sh read`), never its transcript. It is stuck only when all three
-  hold: no background task is shown, nothing is running, and no new record came. Then the lead
-  prints it for the Operator in plain text (as any other item) and notes it under `## No-rule
-  questions`; it never types into the stage. In doubt it does nothing: the raw attention file
-  still reaches the Supervisor (`team-watch`, the team snapshot). A stage waiting on its own
-  background shell (a Codex review) is the normal case. `permission_prompt`,
-  `elicitation_dialog`, `agent_needs_input` and any other kind stay listed until the stage's next
-  record.
+**Which `Stop` is an ask**, in order: this session's Stop-fallback ask still open → block again
+(its answer, or the same fallback); the newest record of the attempt `blocked`, no `.answered`, no
+ask → a `text` ask, source `record:<round>/<record>` (the wrapup's proposals stop included); the
+turn wrote a `done`/`failed` record (newer than the session's previous Stop) → through;
+`stop_hook_active` and the same message as the ask just delivered → through (the loop guard); a
+self-wake pending (`background_tasks` or `session_crons` non-empty — a background shell, a
+background sub-agent, a `ScheduleWakeup`) → through; otherwise a `text` ask with
+`last_assistant_message` (the lead answers how to go on).
+
+**Tier first.** For a permission the hook runs the main checkout's `team_prompt_check.py <clone>
+--input-json` (rules in `team_prompt_authority.py tier`) on the structured tool input, before the
+ask is published:
+
+| Tier | Cause | Who answers |
+|---|---|---|
+| `class` | ask matches only, in one enabled `team_prompt_classes.py` class (Bash, file edits) | the hook, at once: answer `authority: class`, an `answers.md` line, no ring |
+| `lead` | no human-only cause — a baseline ask match, no rule at all (a guard's own `ask` leaves no trace in the payload), an MCP or other unevaluated tool with a baseline rule or none | the lead: `--allow` or `--deny` |
+| `operator` | egress by the real egress classifier (`guard_team_egress.bash_reason` / `webfetch_reason`, so an inline interpreter is caught), a settings or guard-profile edit, a project-added ask rule (Bash, Edit/Write or a tool name), a recursive `rm` outside the clone and the temp roots or unresolvable; and what the old table never waived — the SQL guard, an edit or path outside the clone, a recursive `rm` of the clone root or `.git` | only an Operator decision, **allow or deny** (§7); the lead opens it |
+
+Relative operands resolve against the payload's `cwd`; the clone root stays the boundary.
+`question` and `text` asks are tier `lead`, unless the lead finds a workflow human gate in one — a
+`/quick-change` Phase 0 override other than size, a scope or criteria change the order does not
+cover — and opens a decision (`requires_decision` on the ask; from then on only the Operator's
+relay answers it).
+
+**Filing and states** (`team-ask.sh`, its header is the file contract): `a-<n>.json` written
+atomically under the ask lock; `waiting` (a live `waiter_pid`) → `timed-out` (the hook returned its
+fallback) → `answered` (the answer file exists) → `delivering` → `delivered`, or `withdrawn`
+(terminal both). A retry of a question, plan or stop with the same session and fingerprint claims a
+`timed-out` or undelivered `answered` ask, so the lead is never asked twice; a `waiting` ask is
+never shared (two identical live calls → two asks). A permission ask is never claimed by content
+(no `tool_use_id`): on timeout it is withdrawn and the retry files a new ask.
+
+**Waiting.** The hook rings the lead (`ask <role> a-<n>[ operator]: <one line>`, detached) and
+polls for the answer to its deadline, the registration's timeout − 15 s (measured: a 700 s hook
+wait works; the runner sets 715 s, `TEAM_ASK_TIMEOUT_SECS`). On the deadline it returns the
+fallback and leaves the ask open: `PreToolUse` → deny "No answer from the TeamLead yet (ask a-<n> is
+still open). Ask again with the same input — the answer will be waiting."; `PermissionRequest` →
+deny, retry to ask again; `Stop` → block "… Run `bash <main>/.claude/lib/team-ask.sh wait a-<n>`
+(waits up to 9 min) …". A failing hook fails open (exit 0, no output: the normal prompt shows and
+the `Notification` line reaches the runner).
+
+**Answering.** `team-answer.sh <team> a-<n> --answers '<json>' | --pick "<label>" | --text "<free
+text>" | --allow | --deny "<instead>" --authority teamlead|operator --why "<line>" [--decision
+<answered d-<n>.md>]`, run from the team's clone (its `team.json` must name `<team>` and
+`$TEAM_RUN_TEAM`). It refuses: 6 the team stopped or closing, no such ask, an ask of a replaced
+session or attempt, an ask already answered, delivered or withdrawn, an unclassified ask; 7 a
+caller that is not the run's lead, a form the ask's kind or payload refuses (a `--pick` label that
+is no option, `--answers` keys other than the asked questions), an operator relay whose form
+differs from the decision's stored answer; 9 an `operator` tier (or `requires_decision`) answered
+without `--authority operator --decision <that d-n>`. The answer file is written once (`ln`, never
+over a file); then the decision is spent, the `answers.md` line written (once per ask) and a
+record's `.answered` marker touched. Before returning an Operator-authorised answer the
+main-checkout hook re-verifies it (the decision bound to the ask, the Operator's typed `d-<n> …`
+message at the recorded uuid in the lead's transcript) — neither the clone's sender nor a
+stage-edited decision file can mint one.
+
+**The runner** (`lead_asks`, each poll): re-derives the `answers.md` line and `.answered` from any
+answer file (an interrupted sender, an answer before the ack), spends a decision an answer names,
+withdraws asks of a replaced session or attempt (and the pending decisions bound to them), re-rings
+an ask with no answer and no pending decision every `TEAM_ASK_RERING_SECS` (300), and rings once
+`stop <role> <attempt>: … (no ask filed)` for a blocked record that after 60 s has neither an ask
+nor `.answered`. `team-run.sh stop` withdraws every open ask. The stage clock stops while an ask of
+the attempt is open.
+
+**Attention lines** no longer read a pane: an `idle_prompt` or `stop-failed` line rings `attention
+<role>: idle with no ask (the stop hook did not file one) — print it for the Operator` only when
+the attempt's newest record is not final, no ask was filed or delivered within 120 s and no
+background task is named; a `permission_prompt` line rings `attention <role>: permission prompt with
+no ask — … (the channel did not see it; the Operator answers it in the window)` only when no ask
+covers it after one poll; other kinds ring `attention <role>: <kind> — <message>`.
+
+**Guards.** `guard-team-verdict.sh` refuses, from any session but the lead's, an ask-keyed
+`team-answer.sh` call and any command naming `runs/<run>/asks/` or `decisions/` (relative, `./` or
+absolute) — except `bash <abs>/.claude/lib/team-ask.sh wait a-<n>` for the stage. Same uid, same
+clone: like §7's "Limit of the human binding", this raises the bar, it is not proof.
 
 ## 7. Human decisions
 
@@ -278,9 +345,9 @@ cannot make becomes a file, and the stop that needs it waits while everything el
 
 - **Open** (lead only): `team-lead.sh decision open <team> --source <run file|attention:<n>>
   --question "<line>" [--options "a|b"] [--recommend "<line>"] [--notify human_decision|abandon_decision]
-  [--gate plan]`, or `--request req-<n>` (the runner's request: source, question and the prompt
-  binding `bind_session_id, bind_run, bind_attempt, bind_fp, bind_event, bind_pane` are copied). It
-  writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
+  [--gate plan]`, or `--ask a-<n>` (an open ask: source `asks/a-<n>.json`, the binding `bind_ask,
+  bind_session_id, bind_attempt, ask_kind`; a question or stop ask gets `requires_decision: d-<n>`).
+  It prints the decision with its reply format and writes `decisions/d-<n>.md` (frontmatter `id, status: pending, stage, attempt, source, created_at,
   notify`; body `## Question`, `## Options`, `## Recommendation`) and the verdict
   `team-verdict.sh decision escalate --for <source> --ref <file> --notify <event>`.
 - **Notify:** the runner sends each verdict with `notify` set through `.claude/lib/notify.sh
@@ -291,34 +358,32 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   `no <team>-lead session found — bash .claude/lib/session-host.sh status <team>-lead`. A failed call (exit ≠ 0) is retried on the next tick, three
   tries per verdict, then one `warn: notify.sh failed 3× for <verdict> — the decision waits in
   <window>`; the decision stays pending and shows in `/tasks-status` either way.
-- **Human-only prompt (owner, 2026-11-15).** A decision opened `--request req-<n>` carries
-  `answer_in: <role>`. Only the Operator answers it, alone, in that stage's own window; the notify
-  hint names the stage session, not the lead's. The lead opens it and waits: `decision answer`,
-  `decision withdraw` and an `--authority operator` relay of it refuse with exit 7, and the checker
-  refuses a human-only cause at every authority (9). Only the runner closes it (`lead_window`,
-  each poll), from the stage's own transcript (`team_prompt.py outcome <transcript> <bind_event>`):
-  - a `tool_result` for the bound call → `status: resolved`, `answered_via: stage-window
-    <tool_use id>`, `answer_outcome: approved` / `approved (rule added)` (the Operator chose
-    "don't ask again": `permissionDecision.source` `user_permanent`) / `rejected`, an `answers.md`
-    line `[authority operator-window]`, and the doorbell `human-only <role>: d-<n> answered in the
-    stage window — <outcome>`;
-  - the call no longer open, or the stage's session or attempt replaced → `status: withdrawn`
-    (`prompt gone (the runner)`) and `human-only <role>: d-<n> withdrawn — prompt gone`.
-
-  While it is pending the stage clock stops (`lead_waiting`), as for a stop.
+- **Human-only and operator-tier asks — through the lead's window.** An ask of tier `operator`
+  (§6) is rung `ask <role> a-<n> operator: …`; the lead opens a decision `--ask a-<n> --options
+  "allow|deny"` and the Operator answers **in the lead's window**, allow or deny — never in a
+  stage window. This supersedes the 2026-11-15 owner decision (human-only prompts answered in the
+  stage window). While the decision is pending the stage clock stops (`lead_waiting`). A withdrawn
+  ask (replaced session or attempt, a stop) withdraws its pending decision.
 - **Answer:** `team-lead.sh decision answer <team> d-<n> --text "<Operator's words>"
-  [--outcome continue|close|more-revise|approve]` → `status: answered`, `answered_at`,
-  `answered_via`, `## Answer`. It asks for a human: from a **terminal** (stdin is a TTY and the id
+  [--outcome continue|close|more-revise|approve|allow|deny]` → `status: answered`, `answered_at`,
+  `answered_via`, `## Answer`, and `<utc> decision d-<n>` appended to `runs/<run>/operator-touches`.
+  For an ask decision the Operator's reply has a fixed form, so two pending decisions never share
+  one: it must start with `d-<n> `, then `allow` | `deny: <what instead>` (permission, plan — the
+  outcome is read from it; anything else, e.g. "do not allow", refuses with 7) or the answer
+  (question, stop: `answer_value`; several questions `d-<n> <header>: <label>; …` stored as the
+  canonical `answer_map`). A given `--outcome` must equal the derived one (7). It asks for a human: from a **terminal** (stdin is a TTY and the id
   is typed to confirm — `answered_via: terminal`), or from the **lead window**, where the lead's own
   transcript must hold a typed user message after `created_at`, not a doorbell or `[team-run]` line,
   that contains the answer text (`answered_via: teamlead-window <message uuid>`); else exit 7. One
   message is evidence for one decision, unless it names the other decision's id too
   (`d-8 yes, d-9 no`). A non-pending decision refuses with exit 4 (a late answer to a withdrawn
   decision is never applied).
-- **Relay:** `team-answer.sh … --authority operator --decision <d-n.md>` requires `status: answered`,
-  checks the bound prompt instance (`--expect-*` from `bind_*`: a successor prompt refuses with 6) and,
-  under the send lock before the first key, sets `status: dispatched` + `dispatched_at` — one relay
-  per decision.
+- **Relay:** `team-answer.sh <team> a-<n> <form> --authority operator --decision <d-n.md>` requires
+  `status: answered` and `bind_ask` = this ask (another ask refuses with 7), the form equal to the
+  stored answer (`--allow|--deny` = `answer_outcome`, `--pick|--text|--deny` text = `answer_value`,
+  `--answers` = `answer_map`; else 7) and, after the answer file exists, sets `status: dispatched` +
+  `dispatched_at` — one relay per decision (the runner completes a relay interrupted between the
+  two).
 - **Decision gate** (`team-verdict.sh decision <verdict> --for <run file|attention:<n>>`):
   `escalate` (needs `--ref`), `continue` / `close` (need `--decision d-<n>` answered with that
   `answer_outcome`; the decision becomes `status: consumed`, once), `resolved` (closes a pending or
@@ -337,9 +402,13 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   A lead in auto mode can still create a pty (`script`, a tmux window it types into) to satisfy the
   terminal path, or append a user line to its own transcript for the window path. Both are
   deliberate acts, visible in the lead's tool log, not something it does by accident. A hard
-  guarantee is an owner decision, outside these files.
-- **Limit of the window answer and the write lock.** A stage-window answer is evidence of a keypress
-  in that pane, not proof of a human. The lead's profile denies `tmux send-keys|send|paste-buffer`,
+  guarantee is an owner decision, outside these files. The same holds for the asks directory: a
+  stage under the same uid could write an answer file by means the write guard and the verdict
+  guard do not see; the hook's main-checkout re-verification of an Operator answer raises that bar,
+  it does not remove it. The evidence matcher (`team-evidence.sh`) excludes the machine prefixes
+  `ask ` and `attention ` too, so a doorbell that arrives while a decision is pending never counts
+  as the Operator's words.
+- **Limit of the write lock.** The lead's profile denies `tmux send-keys|send|paste-buffer`,
   `hc keys|send|interrupt`, `session-host.sh keys|type` and `session-host.sh send` to a stage
   address, and `guard-teamlead-bash.sh` refuses the same and any command writing a script-owned
   file; both read command text, so a path or command built at run time can pass. Hard enforcement
@@ -440,6 +509,13 @@ runs again.
     `— tuning: <x> — <why>`; both flags are required when the lead records the answer (a terminal
     answer may leave the tuning pending for the lead).
   - An answer to a withdrawn decision is refused (exit 4) and added under `## Late answers`.
+  - **`Operator touches: <n>`** — every human action the run needed: the distinct lines of the
+    append-only `runs/<run>/operator-touches` (a decision answered by a human — terminal or the
+    lead window —, and a startup dialog the runner waited on, written at first sight so its later
+    cleanup does not erase it) plus an older run's `[authority operator-window]` lines of
+    `answers.md`. `log-append` writes it as the first line of the run's notes (replacing an earlier
+    one), so the shared log carries it; `team_audit.py` prints the same count in the run's report
+    (`team-lead.sh operator_touches` and `team_audit.py operator_touches`, one rule).
   - **Never in the notes:** credentials, tokens, `.env` values, a full prompt, a file's content or a
     transcript excerpt. The notes leave the clone (the shared log), so they hold one-line summaries
     only.
@@ -474,8 +550,8 @@ runs again.
     checks it — every item once, non-empty reasons, the run's cap, a group B accept naming its
     `opinion-<n>.md` — writes `teamlead-wrapup-<n>.json` with the items and the proposals file's
     sha256, and fills `## Wrapup decisions`. The hook `guard-team-verdict.sh` checks the session, so
-    a stage cannot call it under a forged role. Then
-    `team-answer.sh <team> wrapup say "decided: <verdict file>" --authority teamlead --why …`.
+    a stage cannot call it under a forged role. Then the lead answers the proposals stop's ask:
+    `team-answer.sh <team> a-<n> --text "decided: <verdict file>" --authority teamlead --why …`.
   - **The filter.** Default **no**. A follow-up ticket passes only when the product needs it: a
     defect the user or the next run would hit, or ordered work that was cut — never a
     nice-to-have, a tidy-up, or an idea the implementation itself suggested. A memory entry passes
@@ -528,7 +604,8 @@ a run tracker other than `none`. With the switch off nothing below runs. The con
 - **Stages.** coder (every round, before code), qa (before its gates) and cli (before `/commit`)
   run the contract's freshness check. Exit 3 → `blocked` "new tracker input after plan: <ids>";
   exit 4 → `blocked` "tracker read uncertain". The lead reacts through the existing transitions
-  only: informational → `say` with `<id>@<sha>` (it lands in `answers.md`); inside the approved
+  only: informational → the stop's ask answered `--text` with `<id>@<sha>` (it lands in
+  `answers.md`, never cut); inside the approved
   criteria → an answer, or `rework` from the qa `blocked` record; a scope change or an uncertain
   read → a decision (`--recommend close` for a scope change). No in-run re-planning.
 - **After `ready`.** The lead is not involved. The Supervisor checks before the merge

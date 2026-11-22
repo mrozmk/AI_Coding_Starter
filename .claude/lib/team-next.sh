@@ -95,7 +95,14 @@ if [ -n "$pr" ]; then
     *) TEAM_PROBLEMS+=("previous PR #$pr of $old_ticket is $status — merge or abandon it first") ;;
   esac
 elif [ "$(git -C "$dir" rev-parse "refs/heads/$old_branch" 2>/dev/null)" != "$old_base" ]; then
-  TEAM_PROBLEMS+=("$old_ticket has commits on $old_branch but no PR — finish it, or remove the clone and use team-new.sh")
+  # Waived only by the runner's receipt of a safe lead close in the main checkout's anchor (the run,
+  # this branch, and a sha equal to the local and the remote tip) — a clone-local closed.json alone
+  # never waives it: the clone is role-writable.
+  if rcpt="$(team_close_receipt_ok "$root" "$team" "$dir" "$old_branch")"; then
+    echo "closed run: $old_branch kept at $rcpt (a lead close)"
+  else
+    TEAM_PROBLEMS+=("$old_ticket has commits on $old_branch but no PR — finish it, or remove the clone and use team-new.sh")
+  fi
 fi
 
 team_ticket_checks "$root" "$key" "$branch" "$base" "$team"
