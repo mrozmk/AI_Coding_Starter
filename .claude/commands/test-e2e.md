@@ -51,7 +51,7 @@ If `playwright.config.*` doesn't exist, note in your output (don't fail):
 The relevant files for E2E test work are:
 
 - `CLAUDE.md` → `Language Rules` (UI language for selector matchers)
-- `.agents/memory/project-brief.md` (distilled goal and success criteria, 50-line cap)
+- `.agents/memory/project-brief.md` (distilled goal and success criteria, 60-line cap)
 - `.agents/memory/architecture.md` (route map, naming conventions)
 - `.agents/memory/domain/*.md` (domain rules invisible from the DOM — caching, gating, async pipelines)
 
