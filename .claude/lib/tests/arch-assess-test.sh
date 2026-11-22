@@ -343,6 +343,10 @@ printf '```\n{"results":[%s,%s]}\n```\n' "$(res R1 confirmed)" "$(res R2 refuted
 run check refutation "$WORK/f6.md" --submitted "$WORK/sub.json"
 [ "$RC" = 0 ] && [ "$OUT" = "valid refutation results=2 missing=0" ] || fail "C9 refutation bare fence: $RC $OUT"
 ok "C9 a reply in a bare fence, like the prompts' example, passes check auditor and check refutation"
+printf 'Probe:\n```bash\nnode x.mjs\n```\n```json\n%s\n```\n' "$AUD" > "$WORK/a8.md"
+run check auditor "$WORK/a8.md"
+[ "$RC" = 0 ] && [ "$OUT" = "valid auditor findings=1" ] || fail "C10 bash fence before json: $RC $OUT"
+ok "C10 another language's fence before the JSON block is skipped whole"
 
 M_FILE="$WORK/m.json"
 jq -n '{areas: [{name: "A", source_lines: 60}, {name: "B", source_lines: 40}], files: [{path: "a/big.py", area: "A"}], safety_flags: []}' > "$M_FILE"

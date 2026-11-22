@@ -678,12 +678,14 @@ export function extractJson(text) {
   const lines = text.split('\n');
   const blocks = [];
   for (let i = 0; i < lines.length; i++) {
-    // A bare fence too: both prompts show their output example in one.
-    if (!/^\s*```(json)?\s*$/i.test(lines[i])) continue;
+    // Every fence opens a block, so another language's closer is never read as an opener; only a
+    // bare or json block is a candidate (both prompts show their output example in a bare one).
+    const open = /^\s*```(\S*)\s*$/.exec(lines[i]);
+    if (!open) continue;
     let j = i + 1;
     while (j < lines.length && !/^\s*```\s*$/.test(lines[j])) j++;
     if (j >= lines.length) break;
-    blocks.push(lines.slice(i + 1, j).join('\n'));
+    if (/^(json)?$/i.test(open[1])) blocks.push(lines.slice(i + 1, j).join('\n'));
     i = j;
   }
   if (blocks.length !== 1) invalid('no single JSON object');
