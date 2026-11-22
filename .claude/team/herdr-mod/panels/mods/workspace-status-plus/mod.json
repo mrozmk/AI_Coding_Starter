@@ -1,0 +1,8 @@
+{
+  "place": "none",
+  "title": "Status",
+  "cloned_from": {
+    "name": "workspace-status",
+    "version": "0.1.16"
+  }
+}

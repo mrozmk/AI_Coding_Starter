@@ -35,17 +35,6 @@
                 "weight": 1
               },
               "min": 90
-            },
-            {
-              "id": "agents",
-              "type": "block",
-              "content": {
-                "mod": "agents"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90
             }
           ]
         },
@@ -174,7 +163,7 @@
           "id": "status",
           "type": "block",
           "content": {
-            "mod": "workspace-status"
+            "mod": "workspace-status-plus"
           },
           "size": {
             "px": 28
