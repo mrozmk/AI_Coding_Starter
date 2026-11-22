@@ -1,7 +1,8 @@
 # Discovery template — `docs/discovery.md`
 
-`/discover` Phase 5 fills this skeleton first; the PRD is derived from it. It is the working
-record of discovery — coverage, every answer, the flows, the rules, the glossary, the assumptions
+`/discover` Phase 5 fills this skeleton first; the PRD is derived from it.
+`/discover --fault-lines` on a project without this file writes only the header,
+`## Clarifications` and `## Open questions`. It is the working record of discovery — coverage, every answer, the flows, the rules, the glossary, the assumptions
 — and the file `backlog-check.mjs` (and later `/architect`) reads for `FL-n` / `FL-n.Ak` / `BR-n` /
 `A-n` / `Q-n` ids. Id syntax is umbrella D5 exactly:
 
@@ -18,8 +19,8 @@ The skeleton — copy from the first `---` to the end into `docs/discovery.md`:
 
 # Discovery — <Project name>
 
-**Date:** YYYY-MM-DD · **Mode:** interview | import · **Project type:** greenfield product |
-internal tool | integration | data / AI | existing codebase extension
+**Date:** YYYY-MM-DD · **Mode:** interview | import | fault-lines · **Project type:** greenfield
+product | internal tool | integration | data / AI | existing codebase extension
 **Sources:** <`.agents/sources/<file>`, imported `<path>` (rows n), or "conversation only">
 
 ## Coverage
@@ -141,11 +142,19 @@ Source of truth per entity:
 - **Q-1** — <question> · owner <role> · blocks slice 1: yes | no · <accepted as open by <owner>,
   when applicable>
 - **Q-2** — <question> · owner PO · blocks slice 1: no → D-3
+- **Q-3** — Fault line (<lens>): someone proposes <change> for <horizon> — in or out? · tests
+  <principle id or quote> · for: <one sentence> · against: <one sentence> · owner team |
+  analyst | client · blocks slice 1: yes | no
 - …
 
 This file owns every `Q-n`'s text and state. Closing a question appends ` → D-n` (the scope
 decision in `docs/PRD.md` → `## Change log`) or ` → answered in session YYYY-MM-DD` to its line —
-the line is never deleted. PRD §13 mirrors the **open** ids only.
+the line is never deleted. A fault-line question (`coverage.md` §5) closes with
+` → answered in session YYYY-MM-DD (team: in | out, horizon now | slice 1 | later)`, and its
+Clarifications line names the id and the chosen outcome; its answer writes no other section. One
+that an existing record decides closes with
+` → resolved by <file id | file:line> (in | out, horizon now | slice 1 | later)`. PRD §13 mirrors
+the **open** ids only.
 
 ## Risks & pre-mortem
 

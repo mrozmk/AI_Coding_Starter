@@ -1,6 +1,6 @@
 ---
 description: Business-analysis discovery before any design — interview (or import existing requirements) → coverage-driven clarify loop → docs/discovery.md + docs/PRD.md with stable ids, judged by an independent critic
-argument-hint: "[idea in one line] | --import <path> [--import <path> …]"
+argument-hint: "[idea in one line] | --import <path> [--import <path> …] | --fault-lines"
 ---
 
 # /discover — Business-Analysis Discovery
@@ -77,6 +77,8 @@ Sources on disk (listing only — read them in step 2):
 1. **Parse the argument.** `$ARGUMENTS` is either a one-line idea, empty (the idea comes from the
    sources or the conversation), or one or more `--import <path>` flags → Import mode (below)
    runs before Phase 1. A bare `--import` with no path → ask for the path in one line.
+   `--fault-lines` → Fault-line mode (below) instead of Phases 1–8; it takes no other argument —
+   combined with an idea or `--import`, stop: "`--fault-lines` takes no other argument".
 2. **Ingest the sources** (rules carried from the retired `create-PRD`) — the **effective source set**: every `.agents/meeting-notes/*.md` note with its corrections applied (every `-correction*` note whose `**Corrects:**` names it, in suffix order — metadata corrections first), plus every raw source that no note with `**Coverage:** full` names in its `**Source:**` line (a transcript named only by `partial` notes is still read). None → skip
    silently. Files present → read each as requirement context **on equal footing with the
    conversation**; prefer source content over guesswork. Sources are **immutable** — never edit
@@ -140,6 +142,49 @@ brief, Jira exports saved as CSV).
 - Then run the **same coverage scan** as step 6. Import does not skip the clarify loop — it only
   shrinks it: questions are asked for gaps only, never to re-confirm what a row already says.
 
+### Fault-line mode (`--fault-lines`)
+
+For a project already past discovery, or one `/setup:map-codebase` brought in with a
+reconstructed PRD: the fourth Challenge pass runs alone against the PRD on disk, so its
+undecided "in or out?" questions become owned `Q-n` without a new interview.
+
+1. **Precondition** — `docs/PRD.md` exists; absent → stop: "no PRD — run `/discover` (or
+   `/setup:map-codebase`) first". `docs/PRD.reconstructed.md` is not read: `docs/PRD.md` is
+   the PRD.
+2. **Intake** — step 2 (the effective source set, read as records), `docs/PRD.md` and
+   `docs/discovery.md` when present. Not run: register adoption and `D-n` (step 3), steps 4–6
+   (no coverage table, no Tier 0), Phases 1–2, passes 1–3 of Phase 3.
+3. **Pass 4** of Phase 3, exactly as in a full run.
+4. **One question round** — the `team`-owned survivors and the fault-line `Q-n` still open and
+   `team`-owned from an earlier run, ranked, at most 5 (`.claude/skills/discover/coverage.md`
+   §2); those left over stay open. Never a second round.
+5. **Write `docs/discovery.md`** — append the new `Q-n` (next free id); close each answered one
+   — new or earlier — and log it under `## Clarifications` / `### Session YYYY-MM-DD`
+   (`coverage.md` §5 item 7). File absent → create it with the template header
+   (`**Mode:** fault-lines`, the project type derived as in step 5), `## Clarifications` and
+   `## Open questions` only, plus the line
+   `Other sections: not written yet — a full /discover run writes them.` After closing and
+   re-owning, recompute the last `## Definition of Ready` item from its full predicate
+   (`coverage.md` §4: every open question is an owned `Q-n`, and every open blocker is
+   accepted in writing by its current owner). Each `reopened by Q-n` line whose `Q-n` is now
+   closed or accepted is removed; each open, unaccepted blocker without one gets
+   `reopened by Q-n (fault-line run YYYY-MM-DD) — needs <owner>'s decision`. The item is
+   ticked only when the predicate holds and no `reopened by` line remains, and unticked
+   otherwise.
+6. **Write `docs/PRD.md`** — only `## 13. Open questions`, synced by id from
+   `docs/discovery.md` for every `Q-n` this run touched: a new open one is added in the
+   template's line shape, a closed one is dropped, a still-open one gets its current owner and
+   `blocks slice 1`; other rows stay as they are. No such section (a reconstructed or legacy
+   PRD) → append it at the end with the heading and intro line of
+   `.claude/skills/discover/prd-template.md` §13. Nothing else in the PRD changes: no non-goal,
+   no register id, no `**Current:**` bump.
+7. **Skipped** — the Definition of Ready gate (no PRD rewrite), Phase 6 and Phase 7: the run
+   writes questions and clarifications, never a requirement.
+8. **Report** (instead of Phase 8) — files touched; the fault-line tally (Phase 8 item 4a);
+   asked / answered; each `blocks slice 1: yes` with the DoR line it reopened; the non-`team`
+   `Q-n` listed per owner with the route their decision takes (`coverage.md` §5 item 7);
+   `Critic: skipped — fault-line mode`.
+
 ---
 
 ## Phase 1 — Frame (Tier 0)
@@ -178,8 +223,10 @@ user needs to decide; do not start Phase 2 on a project whose problem is unknown
 
 ## Phase 3 — Challenge
 
-Three passes over what Phases 1–2 produced; each writes into `docs/discovery.md` sections, none
-asks more than one round in total (fold the questions into the next Phase 4 round if needed):
+Four passes over what Phases 1–2 produced; each writes into `docs/discovery.md` sections, none
+asks more than one round in total (fold the questions into the next Phase 4 round if needed —
+pass 4's `team`-owned questions too; when Phase 4 opens no round and the user has not said done,
+they take this phase's one round):
 
 1. **Pre-mortem** — "It is six months later and this failed. Why?" Use the Tier 0 answer; add
    your own two most likely causes from the sources and repo. → `## Risks & pre-mortem`.
@@ -189,6 +236,14 @@ asks more than one round in total (fold the questions into the next Phase 4 roun
 3. **Red-team the load-bearing claims** — for each `G-n` and each `R-n` on the critical flow:
    "This fails if ___", then the cheapest test that would show it. A claim with no cheap test and
    confidence L is a risk with an owner. → risks table + `A-n` validate-by.
+4. **Fault lines** — what the plan has not decided: "someone proposes X — in or out?". Read
+   the principles from the working state of Phases 0–2 (quote what has no id yet); draft 8–12
+   concrete change proposals through the four lenses in
+   `.claude/skills/discover/question-bank.md` → Fault lines, each with the principle it tests
+   and both sides argued; discard every proposal an active record already decides, citing it;
+   each survivor becomes a `Q-n` owned by `team`, `analyst` or `client`. Only `team`-owned ones
+   are asked; the others are listed for their owner. Rules:
+   `.claude/skills/discover/coverage.md` §5. → `## Open questions`, PRD §13.
 
 ## Phase 4 — Clarify loop
 
@@ -330,6 +385,8 @@ In chat, in the project's communication language, ≤40 lines:
    otherwise by hand + `node .claude/lib/backlog-check.mjs`", then the Tasks whose `Traces` name an
    id superseded or withdrawn this run. `/discover` never edits the backlog.
 4. **Open questions** — every `Q-n` with owner and whether it blocks slice 1.
+4a. **Fault lines** — drafted <n> · discarded <d>, each with the record it cites · kept <k>
+   (`team` <t> / `analyst` <a> / `client` <c>) · asked <q>; fewer than 8 drafted → why.
 5. **Review** — critic verdict per round and the kept/dropped tally; every dropped blocker/major
    with its evidence; Codex verdict or the skip reason; any 🔶 rethink signal.
 6. **Next steps**, in order: `/architect` (subdomains, contexts, `AD-n` decisions, fills PRD §7–§8)
