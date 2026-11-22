@@ -1,10 +1,8 @@
-"""The Supervisor's side of guard_team_egress.py: the gh host/taint checks and settings readers it
-shares, a strict quote-aware reader of plain compounds (plain_segments), gh's option layout for the
-formatting values (format_bindings, format_masked), the Supervisor's compound and inline-Python
-exemption (supervisor_verdict) and the Operator touch-log writer (record_touch). The guard never
-allows: an exemption only means no ask. Every parser is fail-closed — what it does not model returns
-None / False / "defer", and guard_team_egress.py's own classifier decides.
-"""
+"""gh-rule helpers and Supervisor policy beside guard_team_egress.py: the gh host/taint checks and
+settings readers both share, a strict quote-aware reader of plain compounds (plain_segments), gh's
+option layout for formatting values (format_bindings; format_masked serves every role's read path),
+the Supervisor's compound and inline-Python exemption (supervisor_verdict), the touch-log writer
+(record_touch). Never allows; every parser is fail-closed (None / False / "defer": today's path)."""
 import collections
 import json
 import os
@@ -320,10 +318,8 @@ def companion_safe(vals, egress_in):
     if not vals or vals[0] not in COMPANIONS:
         return False
     head, args = vals[0], vals[1:]
-    if head == "cd" and len(args) > 1:
-        return False
     # GNU/BSD sort accept abbreviated long options (an abbreviation of --compress-program).
-    if head == "sort" and any(a.startswith("--") for a in args):
+    if (head == "cd" and len(args) > 1) or (head == "sort" and any(a[:2] == "--" for a in args)):
         return False
     if head == "printf" and args and (args[0].startswith("-") or not PRINTF_OK.fullmatch(args[0])
                                       or any(a.startswith("-v") for a in args[1:])):
@@ -340,14 +336,17 @@ def stdin_executor(vals):
     head = os.path.basename(vals[0]) if vals else ""
     if head not in SHELLS_I and head not in INTERP:
         return head in STDIN_CODE or head in MODIFIERS
-    k = 1
-    while k < len(vals) and vals[k].startswith("-") and vals[k] != "-":
-        if head in SHELLS_I and re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*", vals[k]):
-            return True  # `bash -s x`: the script comes from stdin, x is $1
-        k += 1
-        if vals[k - 1] == "--":
+    k, sh = 1, head in SHELLS_I
+    while k < len(vals) and vals[k][:1] in ("-+" if sh else "-") and vals[k] not in ("-", "+"):
+        w, k = vals[k], k + 1
+        if w == "--":
             break
-    return k == len(vals) or vals[k] in STDIN_PATHS
+        if sh and re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*", w):
+            return True  # `bash -s x`: the script comes from stdin, x is $1
+        if (sh and (w in ("--rcfile", "--init-file") or re.fullmatch(r"[-+][A-Za-z]*[oO]", w))
+                or (not sh and w in ("-W", "-X"))):
+            k += 1  # an option's value, no script: `-o pipefail`, `+O x`, `--rcfile f`, `-W x`
+    return k >= len(vals) or vals[k] in STDIN_PATHS
 
 
 def piped_verdict(cmds, ops):
@@ -358,7 +357,7 @@ def piped_verdict(cmds, ops):
             gh = False
         elif gh and stdin_executor(vals):
             return "ask", "gh output piped into " + os.path.basename(vals[0]) + " (Supervisor)"
-        gh = gh or vals[:1] == ["gh"]
+        gh = gh or os.path.basename("".join(vals[:1])) == "gh"
     return "defer", ""
 
 
@@ -396,16 +395,19 @@ def backstop(cmd):
         return "defer", ""
     cmds, ops, cur = [], [], []
     for t in tokens:
-        if not (t and set(t) <= SEPARATORS):
-            cur.append(t)
+        s = t.strip("\n")
+        if t == "{" and not cur:
+            continue  # a group opener: its first command reads the same stdin
+        if not (t and set(t) <= SEPARATORS) or (s[:1] == "&" and cur and cur[-1][-1] in "<>"):
+            cur.append(t)  # `2>&1` tokenizes as `2>`, `&`, `1`: that `&` is the redirection's
             continue
-        op = "|" if t.strip("\n") in ("|", "|&") else t
+        op = "|" if s[:1] == "|" and s[:2] != "||" else t  # `|`, `|&`, `|(` all pipe
         if cur:
             cmds.append(cur)
             ops.append(op)
             cur = []
-        elif ops and t.strip("\n"):
-            ops[-1] = op
+        elif ops and s and not (ops[-1] == "|" and set(s) <= {"("}):
+            ops[-1] = op  # `| (bash)`: the pipe reaches the group's first command
     return piped_verdict(cmds + [cur] if cur else cmds, ops)
 
 
