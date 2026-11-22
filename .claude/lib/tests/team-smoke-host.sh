@@ -837,7 +837,11 @@ mkdir -p "$WORK/pg"; ln -s "$(command -v sleep)" "$WORK/pg/claude"; "$WORK/pg/cl
 PG="$(ps -o pgid= -p $$ | tr -d ' ')"
 STUB_HC_FG=/bin/sh STUB_HC_FG_NAME=sh STUB_HC_FG_PID="$PG" run "$MAIN" $SH alive Hrole
 expect 0 "" "(H3) claude in the foreground group (sh -c '…; read')"
+# The probe itself runs under that claude: a session asking about itself (BSD pgrep skips ancestors).
+mkdir -p "$WORK/pg/self"; ln -s "$(command -v bash)" "$WORK/pg/self/claude"
 kill "$PGC" 2>/dev/null || true; wait "$PGC" 2>/dev/null || true
+STUB_HC_FG=/bin/sh STUB_HC_FG_NAME=sh STUB_HC_FG_PID="$PG" run "$MAIN" "$WORK/pg/self/claude" -c "$SH alive Hrole; exit \$?"
+expect 0 "" "(H3) claude probing itself is alive"
 STUB_HC_FG=/bin/sh STUB_HC_FG_NAME=sh STUB_HC_FG_PID="$PG" run "$MAIN" $SH alive Hrole
 expect 3 "" "(H3) sh -c with claude gone"
 STUB_HC_GONE=1 run "$MAIN" $SH alive Hrole; expect 3 "" "(H3) not found"

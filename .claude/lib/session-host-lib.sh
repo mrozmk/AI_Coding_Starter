@@ -544,7 +544,9 @@ sh_herdr_get() {
 # sh_herdr_alive <handle> [program] → 0 alive, 3 gone, 1 the probe failed. With a program, alive also
 # means that program runs in the foreground: foreground.argv[0] or .name is it, or — a command run
 # through `sh -c '…; read'` keeps sh as the group leader — the foreground process group holds it.
-# A kept or `; read` shell is gone.
+# A kept or `; read` shell is gone. `pgrep -a`: BSD pgrep leaves its own ancestors out by default, so a
+# session probing itself (the Supervisor in `roles.sh status`) would read as gone; procps takes the
+# flag as `--list-full`, which changes only the discarded output.
 sh_herdr_alive() {
   local j rc fg nm pg
   j="$(sh_herdr_get "$1")"; rc=$?
@@ -555,7 +557,7 @@ sh_herdr_alive() {
   nm="$(jq -r '.foreground.name // "" | strings' <<<"$j" 2>/dev/null)"
   [ "${fg##*/}" != "$2" ] && [ "$nm" != "$2" ] || return 0
   pg="$(jq -r '.foreground.pid // "" | tostring' <<<"$j" 2>/dev/null)"
-  [[ "$pg" =~ ^[0-9]+$ ]] && pgrep -g "$pg" -x "$2" >/dev/null 2>&1 && return 0
+  [[ "$pg" =~ ^[0-9]+$ ]] && pgrep -a -g "$pg" -x "$2" >/dev/null 2>&1 && return 0
   return 3
 }
 
