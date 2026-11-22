@@ -284,6 +284,8 @@ The `- [ ]` body line is a **parse anchor** for `/gates:verify-implementation` �
 - **Sensitive paths (payment / auth / webhook / license / locale-redirect) MUST have unit tests** — this is enforced by the Step 5.1d grilling gate, not optional here.
 - Coverage target: 70%+ (adjust if the project states its own standard in `CLAUDE.md`).
 
+**Per criterion (every project size):** every active criterion of `## ACCEPTANCE CRITERIA` names its proof (the `Proof:` lines there). Pick the kind by what settles the criterion: a **unit** test for a logic criterion; an **integration** test for a flow across modules or scripts; `manual` at task level for anything a user sees or clicks — end-to-end checks belong to the Operator's QA and the regression suite, not to this plan; `static` for structure and text. `none — <why>` is allowed only where the test policy above makes the test optional; Step 5.1f grills the choice.
+
 ### Core Functions to Test (if applicable)
 
 ### Edge Cases (if applicable)
@@ -307,6 +309,21 @@ Execute every applicable command to ensure zero regressions and feature correctn
 ## ACCEPTANCE CRITERIA
 
 <Copy the spec's `## Acceptance Criteria` **verbatim, ids included** (`- **E1-2.AC1** — …`) — these are **judged, never counted** (by a human or a reviewing agent); the counted list is `## STEP-BY-STEP TASKS`, which carries the `EXPECT` assertions a gate can mechanically verify. You may add technical checks as **unnumbered** bullets under a `Technical checks` sub-list; never add, renumber or reword an id'd criterion — a criterion changes only in a spec, by marking the old one `(withdrawn)` after the bold id and adding a new id. Spec without the section (older specs): derive from Summary, Edge Cases and Out of Scope as before — feature-specific, one bullet each; generic lines ("code follows conventions", "no regressions") are what the validation commands and the gate already check, so do not restate them here.>
+
+<**Proof lines — every active criterion.** Under each criterion write one or more `Proof:` lines as nested list items, in exactly one of these four forms (em dash and ` :: ` as shown):
+
+- `Proof: static — <path>[ :: <literal>]` — the criterion is a structural fact provable without running anything (what a module exports, a type at a boundary, a text or config value).
+- `Proof: test — <test file> :: <test name literal>` — the criterion asserts an outcome that appears only when something runs (a returned value, a written record, an exit code, a refusal).
+- `Proof: manual — <what a human observes, and where>` — the criterion can only be observed in a running app, a browser, a device or an external system this run cannot reach.
+- `Proof: none — <why>` — the criterion is behavioural, could be tested, and the plan deliberately adds no test.
+
+Criteria without an id get plan-local labels `AC-1 … AC-n` in document order, written in the id position (`- **AC-1** — <text>`), skipping numbers already used — the same rule `/qa-verify` Phase 0 uses. The `Technical checks` sub-list takes neither labels nor `Proof:` lines. A criterion marked `(withdrawn)` keeps its id and text but takes no `Proof:` line and is not counted. A `test` proof is backed by an ordinary task in `## STEP-BY-STEP TASKS` whose `EXPECT` is `contains — <test file> :: <test name literal>`, unless that named test case already exists in the repo (an existing file without the case still needs the task). Order that task before the task(s) that implement the behaviour it proves, so `/execute` can see the test fail first — in an umbrella, in the same sub-step as that behaviour, never in a separate tests-only sub-step. An existing case gets no task of its own, but a task of the sub-step that implements the behaviour names it (`<test file> :: <test name literal>` in its `IMPLEMENT` or `GOTCHA`), so `/execute` of that sub-step runs it first. Example:
+
+- **AC-1** — `/report` lists every open ticket.
+  - Proof: test — tests/report.test.ts :: lists every open ticket
+- **AC-2** — The report module exports `renderReport`.
+  - Proof: static — src/report.ts :: export function renderReport
+>
 
 ---
 
@@ -403,7 +420,7 @@ Use `AskUserQuestion`. Present only the options that apply, recommend one, and *
 **Option (b) — parallel top-level plans.** One plan per track from Gate A. These are peers, not a hierarchy:
 
 1. Name them for their track, not with step ordinals: `<feature>-<track>.md` (e.g. `checkout-payments.md`, `checkout-shipping.md`). Ordinals imply a sequence that does not exist here.
-2. Each is a **complete standalone plan** with the full single-file structure — its own tasks, DoD, validation commands, and `**Source spec:**` line pointing at the shared spec.
+2. Each is a **complete standalone plan** with the full single-file structure — its own tasks, DoD, validation commands, and `**Source spec:**` line pointing at the shared spec. It carries only the active criteria whose behaviour its track owns — each with its `Proof:` lines and their backing tasks; `AC-n` labels are assigned before the split, so two peers never reuse one, and together the peers cover every active criterion. A `(withdrawn)` criterion goes, unchanged and without a proof, into exactly one peer — the one that owns its successor or its former scope. A proof that needs changes from two tracks means the tracks are not disjoint (Gate A).
 3. **No `## Execution Plan` section in any of them** — they are single-file plans (see Phase 4.6), and each will be run by its own `/orchestrate` invocation in flat mode.
 4. Record the disjointness you asserted in Gate A: give each plan a one-line `**Parallel track:** <name> — owns <file globs>; does not touch <the other tracks' globs>`. This is what the operator checks before running them concurrently, and what makes an integration conflict diagnosable instead of surprising.
 5. Tell the user how to actually run them, since this shape needs an operator flow the single-plan case does not: one clone per plan, then a single `--integrate` pass. Point at [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md) rather than restating the runbook.
@@ -415,7 +432,7 @@ Use `AskUserQuestion`. Present only the options that apply, recommend one, and *
 **Sub-step over hard cap (e.g. a 675 LOC implementation step):**
 
 1. Read the file, identify natural split boundaries in the **already-existing `##` sections**. Preferred boundaries (in order):
-   - **Functional** — distinct responsibilities (e.g. "API endpoints" vs "webhook handler" vs "Tests") → `Xa-endpoints`, `Xb-webhook`, `Xc-tests`
+   - **Functional** — distinct responsibilities (e.g. "API endpoints" vs "webhook handler" vs "Tests") → `Xa-endpoints`, `Xb-webhook`, `Xc-tests` — a tests-only sub-step never holds a test a `Proof: test` line names; that test stays in the sub-step of the behaviour it proves
    - **Dependency-based** — A blocks B (e.g. "DB migration" before "Endpoints that use it")
    - **Surface-based** — backend vs frontend vs ops
 2. Create new files `<plan>-Xa-<descriptor>.md`, `<plan>-Xb-<descriptor>.md` etc. using the natural name from the section.
@@ -644,7 +661,21 @@ Any of 1–5 failing → raise a 🔴 CRITICAL finding: _"Step <consumer> consum
 
 **Re-run on change.** The gate judges the **final** plan: after any Phase 6 fix or accepted Phase 7 patchable fix that touches a step's inputs, outputs, retention, invocations or the `Depends On` column — or that turns a single-file plan into an umbrella — re-run it for the affected steps together with the Step 6.2 re-sync.
 
-> These four gates target a recurring root cause: it is not that the planning model is too weak — backend plans from the same model pass clean. It is that grilling did not press UI plans for a structural contract, did not force latent product decisions, let sensitive-path test gaps fall through to a skippable severity, and never checked the seams between umbrella steps. These gates close those gaps without needing a stronger model.
+### Step 5.1f — AC proof gate (MANDATORY for every plan with `## ACCEPTANCE CRITERIA`)
+
+**Trigger:** always — every plan carries acceptance criteria. In an umbrella the criteria live in the umbrella and are judged there; "a task" below means a task in any of its sub-steps. Withdrawn criteria and the `Technical checks` sub-list are skipped.
+
+The other gates decide tests per component and per path; nothing asks "which test proves this criterion", so a behavioural criterion can be accepted on a code reading alone. For every active criterion, raise a 🟠 MAJOR finding when:
+
+1. it has no `Proof:` line, or a `Proof:` line outside the four forms (`static`, `test`, `manual`, `none`);
+2. it is behavioural (it asserts what happens when something runs) and carries only `static` proofs;
+3. a `test` proof names a test — file and case — that no task creates or updates (an `EXPECT: contains — <test file> :: <test name literal>`) and that does not already exist in the repo; in an umbrella, also when the sub-step that implements the behaviour neither writes that test (before the behaviour) nor names the existing case;
+4. it uses `none` on a path where the `CLAUDE.md → Validation` test policy says a test MUST exist;
+5. the plan changes behaviour an existing test covers and names no task that updates or removes that test.
+
+Finding text: _"Criterion <id> <has no proof | is behavioural but proven only by `static` | names test <file :: case> that no task writes and the repo lacks | uses `none` on MUST path <path> | changes behaviour covered by <test file> with no task updating it>; the criterion will be accepted on a code reading, or the run will stop on a missing test. FIX: <add the `Proof:` line | add a `test` proof and its task | name the existing case | replace `none` with a test | add the task that updates or removes the test>."_ It is 🟠, not 🟡: Step 5.4's frugal scope would drop a 🟡 — the gap 5.1d closed for sensitive paths.
+
+> These five gates target a recurring root cause: it is not that the planning model is too weak — backend plans from the same model pass clean. It is that grilling did not press UI plans for a structural contract, did not force latent product decisions, let sensitive-path test gaps fall through to a skippable severity, never checked the seams between umbrella steps, and never asked what proves each acceptance criterion. These gates close those gaps without needing a stronger model.
 
 ### Step 5.2 — Raw critique pass (4 categories)
 
@@ -887,6 +918,7 @@ The prompt must open codex up to find **new** classes of problem (not a checklis
 > - **Scope & correctness of the goal** — is the plan solving the right problem? Building something the spec didn't ask for, or missing something it implied?
 > - **Collisions** — does this duplicate, conflict with, or break an existing module / pattern / contract in the repo?
 > - **Executability holes** — missing / contradictory steps, references to files / functions that don't exist, wrong assumptions about the codebase.
+> - **Acceptance proofs** — a criterion whose declared `Proof:` does not settle it: a behavioural criterion proven only by `static`, a named test that would not exercise the criterion, `manual` or `none` where a test is cheap and the test policy expects one.
 > - **Risk** — untested sensitive paths (payment / auth / webhook / license / locale), data / security / concurrency hazards.
 > - **Anything else that makes you stop and say "wait, are we sure about this?"**
 >
@@ -1031,6 +1063,7 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 - [ ] Each task is atomic and independently testable
 - [ ] Pattern references include specific `file:line` numbers
 - [ ] Executor effort is carried **in the plan file** (header `**Execution effort:**` or the table's `Effort` cell), not only in the report
+- [ ] Every active acceptance criterion carries a `Proof:` line in the four-kind grammar, and every `test` proof is backed by a task or an existing test case (Step 5.1f)
 
 ### Pattern Consistency ✓
 

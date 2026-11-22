@@ -120,6 +120,8 @@ Claude stays the **supervisor**: it resolves the plan, guards the tree, spawns o
 
 ### 2. Execute Tasks in Order
 
+**Proof tests first — red before green.** Before the task loop, collect the tests the plan's `## ACCEPTANCE CRITERIA` names in `Proof: test — <test file> :: <test name literal>` lines (for an explicitly passed umbrella sub-step, read them from the umbrella's `## ACCEPTANCE CRITERIA` and apply those whose test this sub-step's tasks name). For each such test: write it first — or, for an existing case the plan names without a task that changes it, leave it unchanged — then run it before implementing the behaviour it proves, and see it fail; a test that cannot compile yet counts as failing. A test that passes without the change proves nothing about the change. When the plan orders the test's task after the task that implements the behaviour, pull the test task forward and log it as a routine deviation. Record one line per such test under `### Tests Added`: `red before green: <test> — yes | n/a — <why>` (`n/a` only when the criterion describes behaviour that already holds and the test characterises it). Team mode: the same line also goes under `## Unattended decisions` in the run notes (§7).
+
 For EACH task in "Step by Step Tasks":
 
 #### a. Navigate to the task
@@ -166,8 +168,9 @@ If the plan requires browser validation (e.g. a task or acceptance criterion rea
 
 After completing implementation tasks:
 
-- Create all test files specified in the plan
-- Implement all test cases mentioned
+- Create the remaining test files the plan specifies (proof tests were already written or run in §2, recorded there as `yes` or a justified `n/a`)
+- Implement the remaining test cases mentioned — a proof case is not rewritten here, it was written or run in §2
+- Re-run every proof test from §2 and see it pass
 - Follow the testing approach outlined
 - Ensure tests cover edge cases
 
@@ -212,7 +215,7 @@ This marks the feature as fully implemented.
 
 **Guard first — skip this step if you will run `/check-implementation` or `/orchestrate` next.** Those reflect with the same protocol and richer context, so reflecting here too would risk a duplicate entry. Run this step **only** when `/execute` is your final action before `/commit` (raw execute → commit, no quality loop).
 
-**Team mode** (`.agents/team/session.json` exists): this step is **skipped** — the lesson goes under `## Learnings` in `.agents/team/runs/<run>/notes.md` instead, because `guard-team-memory.sh` rejects a `.agents/memory/` write from every role but `wrapup`. A routine deviation from the plan goes to `## Unattended decisions` in the same notes file; a material one stops the run with `TEAM-BLOCKED: <question>` before `/commit`.
+**Team mode** (`.agents/team/session.json` exists): this step is **skipped** — the lesson goes under `## Learnings` in `.agents/team/runs/<run>/notes.md` instead, because `guard-team-memory.sh` rejects a `.agents/memory/` write from every role but `wrapup`. A routine deviation from the plan goes to `## Unattended decisions` in the same notes file; a material one stops the run with `TEAM-BLOCKED: <question>` before `/commit`. Each `red before green: <test> — …` line from `### Tests Added` goes to `## Unattended decisions` as well, where QA and the TeamLead read it.
 
 If it applies, read [.agents/memory/reflection-protocol.md](../../.agents/memory/reflection-protocol.md) and run the **Memory Reflection Protocol** over what you just implemented. Apply its bar strictly — **the default is to save nothing**; a plan that executed cleanly rarely teaches a fresh Claude anything. Save only a non-obvious bug root-cause you hit (`errors.md`), an undocumented quirk that bit you (`api.md`), or a deliberate fix-direction decision (`decisions.md`). Append at most one entry, at the END of the file, and **do not duplicate** anything already in the target file. This does not commit — the memory write is left in the tree for your `/commit`.
 
@@ -227,6 +230,7 @@ Provide summary. First line: `Executor: <claude | codex · effort medium · <ela
 
 ### Tests Added
 - Test files created
+- `red before green: <test> — yes | n/a — <why>` — one line per test a `Proof: test` line names (§2)
 - Test cases implemented
 - Test results
 

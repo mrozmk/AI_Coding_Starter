@@ -339,7 +339,7 @@ record, not `done`. Free text may follow; it records `Load: start … end … (w
 |---|---|
 | `/brainstorm` | Step 8.8 rule → notes `## Learnings`, not `patterns.md`; Step 9 approves the spec itself (`Approved (auto — team mode)`) unless a rethink signal and continues in the same turn |
 | `/plan-feature` | grill memory update and Step 7.9 → notes `## Learnings` |
-| `/execute` | Step 7 skipped (→ notes); routine deviation → `## Unattended decisions`; material → `TEAM-BLOCKED: <question>` before `/commit` |
+| `/execute` | Step 7 skipped (→ notes); routine deviation → `## Unattended decisions`; each `red before green: <test> — yes \| n/a — <why>` line → `## Unattended decisions`; material → `TEAM-BLOCKED: <question>` before `/commit` |
 | `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks; a finder `FALLBACK` line → `Warnings:` (§7) and the PR's `## QA`, verbatim |
 | `/commit` | Step 9 memory checkpoint skipped |
 | `/quick-change` | quick planner: Phases 0–2, then the plan file, no code |

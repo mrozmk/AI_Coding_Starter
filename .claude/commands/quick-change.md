@@ -64,7 +64,7 @@ mandatory. A worker handoff alone never means this workflow is complete.
   - `## Feature Description` (Cel) and `## Solution Statement` (Podejście + odrzucona alternatywa + Ryzyko + the `Reuse:` line)
   - `## STEP-BY-STEP TASKS` — one `### {ACTION} <path>` per file, each with `- [ ]`, `- **IMPLEMENT**:`, `- **EXPECT**:` (`present` / `contains` …) and `- **VALIDATE**:`
   - `## VALIDATION COMMANDS` (Level 1 = `CLAUDE.md → Validation`)
-  - `## ACCEPTANCE CRITERIA` (the one-sentence "done")
+  - `## ACCEPTANCE CRITERIA` (the one-sentence "done", with the `Testy` line's `Proof:` line as a nested item under it — `- **AC-1** — <done>` then `  - Proof: <kind> — …`; a `test` proof is backed by a task whose `EXPECT` is `contains — <test file> :: <test name literal>`, unless that case already exists, and the task that writes or changes a proof test comes before the task that implements the behaviour it proves)
   - `## NOTES` with the Codex outcome line (`Codex: czysto` / the folded findings / `brak opinii — <reason>`)
 - **Never** add a `## Execution Plan` section — the runner refuses it. `/gates:verify-implementation` counts the `- [ ]` anchors and checks the `EXPECT` lines, so a plan without them fails QA's gate.
 - **Phases 3–6 belong to the coder and QA** — skip them here.
@@ -116,7 +116,7 @@ Write a plan that is genuinely short — **5–12 lines**, and it stays in the c
 - **Podejście i odrzucona alternatywa** — the direction, plus the one option you considered and dropped, with the reason. *This is the part Codex reviews hardest; a plan with no alternative gives it nothing to push against.*
 - **Reuse** — one line: `Reuse: <existing path:line> | none found (searched: <terms / paths>)`, after searching the whole repository (by name and by behaviour) for an existing equivalent of anything new the change adds; several new pieces → one entry each, `;`-separated. When `docs/coding-standards.md` exists, the line also names the review-enforced `CS-<n>` rules the change touches and the `## Shared helpers` / `## One shape per problem` row it follows.
 - **Ryzyko** — what could break, and what already covers it (existing test, type, guard) or does not.
-- **Testy** — what gets a test and what deliberately does not, per `CLAUDE.md` → Validation test policy.
+- **Testy** — what gets a test and what deliberately does not, per `CLAUDE.md` → Validation test policy; then the proof of the one-sentence "done" in the `/plan-feature` grammar — `Proof: static — <path>[ :: <literal>]` | `Proof: test — <test file> :: <test name literal>` | `Proof: manual — <what a human observes, and where>` | `Proof: none — <why>`.
 
 Do **not** start editing yet. Not one line.
 

@@ -3,7 +3,10 @@
 # (.agents/reference/coding-standards.md.example) has the fixed shape, and the memory index, the
 # reflection protocol and the guide name docs/coding-standards.md. It also pins the reuse statement the
 # planning commands require (`/plan-feature`'s reuse lookup, `**Reuse:**` block, grilling finding and
-# cross-model conventions; `/quick-change`'s `Reuse:` line). Text checks only. It also asserts that
+# cross-model conventions; `/quick-change`'s `Reuse:` line).
+# It also pins the per-criterion proof contract: the four-kind `Proof:` grammar, `AC-n` labels and
+# the withdrawn exclusion in `/plan-feature` and `/quick-change`, grill step 5.1f, and `/execute`'s
+# red-before-green line. Text checks only. It also asserts that
 # `/setup:map-codebase`, the map-codebase workflow's standards prompt and the seed agree on the four
 # section names, and that the renderer hard-codes none.
 #
@@ -41,6 +44,31 @@ def section(text, name):
 
 def between(text, start, end):
     return text.split(start, 1)[1].split(end, 1)[0] if start in text else ""
+
+def heading_slice(text, start, end):
+    """(found, slice) between two headings, each matched as a whole line, end after start."""
+    m = re.search(r"^" + re.escape(start) + r"$", text, re.M)
+    n = re.compile(r"^" + re.escape(end) + r"$", re.M).search(text, m.end()) if m else None
+    return (True, text[m.end():n.start()]) if m and n else (False, "")
+
+def strict_between(text, start, end, what):
+    """Fail closed: a missing or renamed start or end heading is a failure, never a widened slice."""
+    found, body = heading_slice(text, start, end)
+    check(found, f"{what}: heading lines {start!r} … {end!r} not found in order")
+    return body
+
+# The helper itself: a missing end fails, a renamed heading that keeps the old prefix fails,
+# and a mid-line mention of the start is not the heading.
+check(heading_slice("## A\nx\n", "## A", "## B") == (False, ""), "heading_slice accepts a missing end")
+check(heading_slice("## A\nx\n## B2\n", "## A", "## B") == (False, ""),
+      "heading_slice accepts a renamed end heading that keeps the old prefix")
+check(heading_slice("see `## A`\n## A\ny\n## B\n", "## A", "## B") == (True, "\ny\n"),
+      "heading_slice matches a mid-line mention instead of the heading")
+
+GRAMMAR = ("Proof: static — <path>[ :: <literal>]",
+           "Proof: test — <test file> :: <test name literal>",
+           "Proof: manual — <what a human observes, and where>",
+           "Proof: none — <why>")
 
 seed = read(SEED)
 lines = seed.splitlines()
@@ -96,6 +124,35 @@ for needle in ("**Reuse:**", "## One shape per problem", "## Shared helpers"):
     check(needle in major, f"grilling MAJOR list lacks {needle!r}")
 p7 = between(pf, "### Step 7.3", "### Step 7.4")
 check(DOC in p7, f"Phase 7 prompt does not name {DOC}")
+ac = strict_between(pf, "## ACCEPTANCE CRITERIA", "## NOTES", "plan template ACCEPTANCE CRITERIA")
+for needle in GRAMMAR + ("**Proof lines — every active criterion.**",
+                         "Under each criterion write one or more `Proof:` lines as nested list items",
+                         "`AC-1 … AC-n` in document order", "skipping numbers already used",
+                         "`(withdrawn)` keeps its id and text but takes no `Proof:` line",
+                         "The `Technical checks` sub-list takes neither",
+                         "`contains — <test file> :: <test name literal>`",
+                         "unless that named test case already exists",
+                         "never in a separate tests-only sub-step"):
+    check(needle in ac, f"plan template ACCEPTANCE CRITERIA lacks {needle!r}")
+ts = strict_between(pf, "## TESTING STRATEGY", "### Core Functions to Test (if applicable)",
+                    "plan template TESTING STRATEGY")
+for needle in ("**Per criterion (every project size):**", "**unit** test", "**integration** test",
+               "`manual` at task level", "`static` for structure and text"):
+    check(needle in ts, f"plan template TESTING STRATEGY lacks {needle!r}")
+check("/test-e2e" not in ts, "plan template TESTING STRATEGY names /test-e2e")
+gate = strict_between(pf, "### Step 5.1f — AC proof gate (MANDATORY for every plan with `## ACCEPTANCE CRITERIA`)",
+                      "### Step 5.2 — Raw critique pass (4 categories)", "grill step 5.1f")
+for needle in ("**Trigger:** always", "🟠 MAJOR", "no `Proof:` line", "carries only `static` proofs",
+               "no task creates or updates", "test policy says a test MUST exist",
+               "behaviour an existing test covers and names no task that updates or removes that test",
+               "neither writes that test (before the behaviour) nor names the existing case"):
+    check(needle in gate, f"grill step 5.1f lacks {needle!r}")
+check("These five gates" in pf, "plan-feature gates note does not count five gates")
+check("a tests-only sub-step never holds a test a `Proof: test` line names" in pf,
+      "plan-feature split mechanics still allow a proof test in a tests-only sub-step")
+p7s = strict_between(pf, "### Step 7.3 — Build the review prompt (BROAD mandate + strict evidence bar)",
+                     "### Step 7.4 — Invoke codex in the background, then poll (per round)", "Phase 7 prompt")
+check("**Acceptance proofs**" in p7s, "Phase 7 prompt lacks the Acceptance proofs bullet")
 
 qc = read(".claude/commands/quick-change.md")
 q1 = between(qc, "## Phase 1 —", "## Phase 2 —")
@@ -106,6 +163,38 @@ q2 = between(qc, "## Phase 2 —", "## Phase 3 —")
 check("(its `Reuse:` line included)" in q2, "quick-change Phase 2 brief does not carry the Reuse: line")
 tm = between(qc, "## Team mode (quick planner)", "## Phase 0")
 check("the `Reuse:` line" in tm, "quick-change team-mode plan shape lacks the Reuse: line")
+q1s = strict_between(qc, "## Phase 1 — The short plan (in chat, no file)",
+                     "## Phase 2 — Codex reviews the plan (idea mode) — mandatory when `codex` exists",
+                     "quick-change Phase 1")
+for needle in GRAMMAR:
+    check(needle in q1s, f"quick-change Phase 1 Testy line lacks {needle!r}")
+tms = strict_between(qc, "## Team mode (quick planner)", "## Phase 0 — Is this actually small? (the guard)",
+                     "quick-change team mode")
+for needle in ("`Proof:` line as a nested item", "`- **AC-1** — <done>` then `  - Proof: <kind> — …`",
+               "`contains — <test file> :: <test name literal>`",
+               "the task that writes or changes a proof test comes before the task that implements"):
+    check(needle in tms, f"quick-change team-mode plan shape lacks {needle!r}")
+
+ex = read(".claude/commands/execute.md")
+e2 = strict_between(ex, "### 2. Execute Tasks in Order", "#### a. Navigate to the task", "execute §2 head")
+for needle in ("**Proof tests first — red before green.**", "see it fail",
+               "a test that cannot compile yet counts as failing", "pull the test task forward",
+               "the umbrella's `## ACCEPTANCE CRITERIA`",
+               "`red before green: <test> — yes | n/a — <why>`", "`## Unattended decisions`"):
+    check(needle in e2, f"execute §2 lacks {needle!r}")
+e3 = strict_between(ex, "### 3. Implement Testing Strategy", "### 4. Run Validation Commands", "execute §3")
+check("proof tests were already written or run in §2" in e3, "execute §3 still writes proof tests after the code")
+check("Re-run every proof test" in e3, "execute §3 does not re-run proof tests for green")
+check("Implement all test cases mentioned" not in e3, "execute §3 still implements every test case after the code")
+added = strict_between(ex, "### Tests Added", "### Validation Results", "execute Tests Added")
+check("`red before green: <test> — yes | n/a — <why>`" in added, "execute Tests Added lacks the red-before-green line")
+e7 = strict_between(ex, "### 7. Memory reflection", "## Output Report", "execute §7")
+check("`red before green: <test> — …`" in e7, "execute §7 team paragraph does not route the red-before-green line")
+tmd = read(".agents/reference/team-mode.md")
+t8 = strict_between(tmd, "## 8. What team mode changes per command", "## 8a. PR provider", "team-mode §8")
+row = [l for l in t8.splitlines() if l.startswith("| `/execute` |")]
+check(len(row) == 1 and "red before green" in row[0] and "## Unattended decisions" in row[0],
+      "team-mode §8 /execute row does not name the red-before-green notes line")
 
 names = ["## " + s for s in SECTIONS]
 def in_order(text):
