@@ -17,6 +17,13 @@ const die = (msg) => { process.stderr.write(`tracker-snapshot: ${msg}\n`); proce
 // "[object Object]" and hide every edit.
 const sha = (text) => createHash('sha256')
   .update(typeof text === 'object' && text !== null ? JSON.stringify(text) : String(text ?? ''), 'utf8').digest('hex');
+// Plain text of an ADF node: text nodes, hard breaks as newlines, containers by their children.
+const adfText = (node) => {
+  if (!node || typeof node !== 'object') return '';
+  if (node.type === 'text') return String(node.text ?? '');
+  if (node.type === 'hardBreak') return '\n';
+  return Array.isArray(node.content) ? node.content.map(adfText).join('') : '';
+};
 const readJson = (path, what) => {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return die(`${what} ${path} is not readable JSON`); }
 };
@@ -24,13 +31,33 @@ const flag = (args, name) => { const i = args.indexOf(name); return i >= 0 ? arg
 
 // A producer's own marker, at the position that producer writes it: the team wrapup's
 // `[wrapup <run> <intent>]` as the LAST line; the cost report's `token-usage-report: <KEY>` as the
-// FIRST line. A marker anywhere else (a quote) does not count.
-function ownMarker(body) {
-  const lines = String(body ?? '').replace(/\r/g, '').split('\n');
+// FIRST line; /qa-verify's complete v1 record marker as the whole LAST line, optionally after the
+// record's own verdict text (a Jira converter joins the two). A marker anywhere else (a quote) does
+// not count. An ADF body counts only through a top-level paragraph — a blockquote, code block or list
+// holding a marker is a quote.
+function lineList(text) {
+  const lines = String(text ?? '').replace(/\r/g, '').split('\n');
   while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
-  const last = (lines[lines.length - 1] ?? '').trim();
-  const first = (lines[0] ?? '').trim();
-  return /^\[wrapup \S+ [a-z]+-\S+\]$/.test(last) || /^token-usage-report: \S+$/.test(first);
+  return lines;
+}
+function ownMarker(body) {
+  let last, first;
+  if (typeof body === 'object' && body !== null) {
+    // Trailing blank paragraphs go, like lineList's trailing blank lines; any other block stays the tail.
+    const blocks = Array.isArray(body.content) ? [...body.content] : [];
+    const blank = (b) => b && b.type === 'paragraph' && adfText(b).trim() === '';
+    while (blocks.length && blank(blocks[blocks.length - 1])) blocks.pop();
+    const para = (b) => (b && b.type === 'paragraph' ? lineList(adfText(b)) : []);
+    const tail = para(blocks[blocks.length - 1]);
+    last = (tail[tail.length - 1] ?? '').trim();
+    first = (para(blocks[0])[0] ?? '').trim();
+  } else {
+    const lines = lineList(body);
+    last = (lines[lines.length - 1] ?? '').trim();
+    first = (lines[0] ?? '').trim();
+  }
+  return /^\[wrapup \S+ [a-z]+-\S+\]$/.test(last) || /^token-usage-report: \S+$/.test(first)
+    || /^(?:(?:\*\*)?Blockers: \d+\.(?:\*\*)? (?:Acceptable — move the ticket yourself|Not acceptable|Not verifiable now — environment) )?qa-verify:v1 record run=\S+ ticket=\S+ mode=(?:first|recheck|light) group=\S+ build=\S+ pass=\d+ fail=\d+ cited=\d+ deferred=\d+ env=\d+ needs-human=\d+$/.test(last);
 }
 
 // No author: the comparator does not need it, and a snapshot stored next to a spec is committed.
