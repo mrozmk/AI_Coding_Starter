@@ -690,10 +690,10 @@ EOF'
 # every suffix is read once: 1000 leading redirections must not make the hook slow. Against a
 # same-load control (the same hook call with one redirection) only the extra parsing counts; margin
 # 4 s — a linear pass costs well under a second, a quadratic one blows it whatever the load.
-now() { perl -MTime::HiRes=time -e 'printf "%.3f\n", time'; }
-c0=$(now); check none "one leading redirection" "$(hook "$(bash_cmd '>x1 ')")"; c1=$(now)
-s0=$(now); check none "1000 leading redirections" "$(hook "$(bash_cmd "$(printf '>x%s ' $(seq 1 1000))")")"; s1=$(now)
-awk -v a="$s0" -v b="$s1" -v c="$c0" -v d="$c1" 'BEGIN { exit !((b - a) - (d - c) < 4) }' \
+. "$(dirname "${BASH_SOURCE[0]}")/suite-case-time.sh"
+c0=$(case_now); check none "one leading redirection" "$(hook "$(bash_cmd '>x1 ')")"; c1=$(case_now)
+s0=$(case_now); check none "1000 leading redirections" "$(hook "$(bash_cmd "$(printf '>x%s ' $(seq 1 1000))")")"; s1=$(case_now)
+case_under "$s0" "$s1" "$c0" "$c1" 4 \
   || { echo "FAIL 1000 leading redirections took $s0→$s1 against the control $c0→$c1"; fail=1; }
 # --- bytecode (F31): both guard hooks run python3 -I -B, and every module that imports local
 # modules sets dont_write_bytecode itself, so no caller writes __pycache__ into the project. Apple's

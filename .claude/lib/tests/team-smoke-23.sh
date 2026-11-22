@@ -50,7 +50,6 @@ greset() {  # greset <alive sessions...> — a runner start: lock, cancel, logs 
   rm -rf "$TD/lock" "$TD/cancel" "$WORK/hs.n" "$WORK/cancel.why"; : > "$STUB_LOG"; printf '%s\n' "$@" > "$WORK/alive"
   unset CANCEL_ON; export CANCEL_AT=12
 }
-on_event() { export CANCEL_ON="$1" CANCEL_AT=60; }  # on_event <line> — stop the runner on that line
 TR="bash .claude/lib/team-run.sh"
 V() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh "$@"; }
 # The lead records every answer with the tuning question (team-lead.md §10).
@@ -518,11 +517,7 @@ jq '.team = "beta" | .run = "beta-20261115-230000"' "$BTD/teamlead.json" > "$WOR
 printf '## Gate misses\n- beta-marker\n' > "$BTD/runs/beta-20261115-230000/teamlead-notes.md"
 # A mkdir spy proves both writers tried the held lock before it is released (no fixed sleep): a
 # failed mkdir of the lock logs its caller, the writer's team-lead.sh shell.
-mkdir -p "$WORK/spy"; : > "$WORK/spy.log"
-printf '%s\n' '#!/usr/bin/env bash' '/bin/mkdir "$@"; rc=$?' \
-  "[ \"\$rc\" = 0 ] || case \"\${!#}\" in *teamlead-log.lock) echo \"\$PPID\" >> '$WORK/spy.log' ;; esac" \
-  'exit "$rc"' > "$WORK/spy/mkdir"
-chmod +x "$WORK/spy/mkdir"
+mkdir_spy '*teamlead-log.lock'
 ( cd "$MAIN" && PATH="$WORK/spy:$PATH" bash .claude/lib/team-lead.sh log-append alfa merged > "$WORK/la1" 2>&1 ) &
 ( cd "$MAIN" && PATH="$WORK/spy:$PATH" bash .claude/lib/team-lead.sh log-append beta merged > "$WORK/la2" 2>&1 ) &
 for _ in $(seq 1 100); do [ "$(cut -d' ' -f1 "$WORK/spy.log" | sort -u | wc -l)" -ge 2 ] && break; sleep 0.1; done

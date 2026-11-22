@@ -441,11 +441,7 @@ nt flush; expect 1 "the outbox lock is held by pid $HOLDER" "(l) flush without t
 # --check is read-only on a busy outbox: no wait, exit 0, prune skipped, the holder's lock untouched.
 # "No wait" as an attempt count, not a clock: a mkdir spy logs every failed try of the outbox lock;
 # exactly one means --check never retried the held lock (notify.sh lock_try 0).
-mkdir -p "$WORK/spy"; : > "$WORK/spy.log"
-printf '%s\n' '#!/usr/bin/env bash' '/bin/mkdir "$@"; rc=$?' \
-  "[ \"\$rc\" = 0 ] || case \"\${!#}\" in *.flush.lock) echo try >> '$WORK/spy.log' ;; esac" \
-  'exit "$rc"' > "$WORK/spy/mkdir"
-chmod +x "$WORK/spy/mkdir"
+mkdir_spy '*.flush.lock'
 PATH="$WORK/spy:$PATH" nt --check; expect 0 " events (prune skipped: outbox busy)" "(l) --check while the lock is held"
 [ "$(wc -l < "$WORK/spy.log" | tr -d ' ')" = 1 ] || fail "(l) --check tried the held lock $(wc -l < "$WORK/spy.log" | tr -d ' ') times, expected once"
 has "imessage on, recipient set" "$WORK/out" || fail "(l) --check lost the switch lines on a busy outbox"

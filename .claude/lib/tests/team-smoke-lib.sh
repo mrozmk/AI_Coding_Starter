@@ -739,6 +739,18 @@ cancelled_by_event() {  # cancelled_by_event <label> — the runner stopped on C
   [ "$(cat "$WORK/cancel.why" 2>/dev/null)" = event ] \
     || fail "$1: the runner was not stopped by its event '${CANCEL_ON:-}' ($(cat "$WORK/cancel.why" 2>/dev/null || echo none))"
 }
+on_event() { export CANCEL_ON="$1" CANCEL_AT=60; }  # on_event <line> — stop the runner on that line
+
+# mkdir_spy <path glob> — writes $WORK/spy/mkdir (put "$WORK/spy" first on PATH) and empties
+# $WORK/spy.log: a failed mkdir of a path matching the glob appends its caller's pid ($PPID). Lock
+# attempts as a count, never a clock: one line per failed try of the held lock.
+mkdir_spy() {
+  mkdir -p "$WORK/spy"; : > "$WORK/spy.log"
+  printf '%s\n' '#!/usr/bin/env bash' '/bin/mkdir "$@"; rc=$?' \
+    "[ \"\$rc\" = 0 ] || case \"\${!#}\" in $1) echo \"\$PPID\" >> '$WORK/spy.log' ;; esac" \
+    'exit "$rc"' > "$WORK/spy/mkdir"
+  chmod +x "$WORK/spy/mkdir"
+}
 
 smoke_team() {  # smoke_team <ticket> <branch>; build a fresh team via the real producer.
   chmod 600 "$MAIN/.env"

@@ -127,7 +127,6 @@ greset() {  # greset <alive sessions...> — a runner start on this run; records
   rm -rf "$TD/lock" "$TD/cancel" "$WORK/hs.n" "$WORK/cancel.why"; : > "$STUB_LOG"; printf '%s\n' "$@" > "$WORK/alive"
   unset CANCEL_ON; export CANCEL_AT=12
 }
-on_event() { export CANCEL_ON="$1" CANCEL_AT=60; }  # on_event <line> — stop the runner on that line
 V() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh "$@"; }
 prec() { run "$CLONE" bash .claude/lib/team-record.sh "$@"; }
 spec_body() { mkdir -p "$CLONE/.agents/specs"; printf '# Spec\n\n**Status:** %s\n\n%s\n' "$1" "$2" > "$CLONE/$SPEC"

@@ -151,12 +151,14 @@ case_report() {
     }' "$1")"
 }
 
-# step_ready <name> → 0 it runs · 1 not selected, or skipped (its skip line printed) · 2 refused
+# step_ready <name> → 0 it runs · 1 not selected, or skipped · 2 refused (RC=1). The skip or refusal
+# line goes to READY_LINE, never printed here: the serial run says it at once, jobs mode queues it.
 step_ready() {
+  READY_LINE=""
   want "$1" || return 1
-  if skipped "$1"; then say "skip $1 (TEAM_SUITE_SKIP)"; return 1; fi
+  if skipped "$1"; then READY_LINE="skip $1 (TEAM_SUITE_SKIP)"; return 1; fi
   if [ -n "${CLAUDE_CODE_MESSAGING_SOCKET:-}${CLAUDE_CODE_MESSAGING_TOKEN:-}" ]; then
-    say "FAIL $1 — a Claude messaging socket is set in the step environment"; RC=1; return 2
+    READY_LINE="FAIL $1 — a Claude messaging socket is set in the step environment"; RC=1; return 2
   fi
 }
 
@@ -181,7 +183,10 @@ step_report() {
 # step <name> <cmd…> — run in the foreground, count, log one line; returns non-zero on a failed step.
 step() {
   local name="$1" t0 rc cases=""; shift
-  step_ready "$name"; case $? in 1) return 0 ;; 2) [ -n "$KEEP" ] || finish; return 1 ;; esac
+  step_ready "$name"; case $? in
+    1) [ -z "$READY_LINE" ] || say "$READY_LINE"; return 0 ;;
+    2) say "$READY_LINE"; [ -n "$KEEP" ] || finish; return 1 ;;
+  esac
   t0=$(date +%s)
   if [ -n "$CASES_ON" ]; then cases="$OUT/$name.cases"; printf '%s\tstart\n' "$(case_now)" > "$cases"; fi
   # Exported inside the subshell, never through `env`: a step command may be a shell function.
@@ -197,9 +202,8 @@ QN=() QC=() QS=() QR=()   # name, quoted command, 1 = serial tail, a ready line 
 add() {  # add <0|1 serial> <name> <cmd…> — the serial run runs the step now; jobs mode queues it
   local ser="$1" name="$2" i; shift 2
   if [ "$JOBS" = 1 ]; then step "$name" "$@"; return; fi
-  want "$name" || return 0
-  i=${#QN[@]}; QN[i]="$name"; QS[i]="$ser"; QR[i]=""; QC[i]="$(printf '%q ' "$@")"
-  ! skipped "$name" || QR[i]="skip $name (TEAM_SUITE_SKIP)"
+  step_ready "$name" || [ -n "$READY_LINE" ] || return 0
+  i=${#QN[@]}; QN[i]="$name"; QS[i]="$ser"; QR[i]="$READY_LINE"; QC[i]="$(printf '%q ' "$@")"
 }
 add_note() {  # add_note <name> <line> — a selected step that cannot run: only its line, in order
   local i
@@ -236,13 +240,14 @@ jobs_reap() {
   done
 }
 
-# jobs_flush — report in the serial run's order: the head of the unreported queue, while finished.
+# jobs_flush [all] — report in the serial run's order: the head of the unreported queue, while
+# finished. `all` (after a stop) passes over what never started instead of waiting for it.
 jobs_flush() {
   while [ "$HEAD" -lt "${#QN[@]}" ]; do
     case "${JST[HEAD]}" in
       done) step_report "${QN[HEAD]}" "${JRCV[HEAD]}" "${JSECS[HEAD]}" || true ;;
       skip) say "${QR[HEAD]}" ;;
-      *) return 0 ;;
+      *) [ -n "${1:-}" ] || return 0 ;;
     esac
     HEAD=$((HEAD + 1))
   done
@@ -285,13 +290,7 @@ run_jobs() {
   done
   set +m
   trap - INT TERM
-  while [ "$HEAD" -lt "${#QN[@]}" ]; do   # after a stop: what ran, in order; never a step that did not start
-    case "${JST[HEAD]}" in
-      done) step_report "${QN[HEAD]}" "${JRCV[HEAD]}" "${JSECS[HEAD]}" || true ;;
-      skip) say "${QR[HEAD]}" ;;
-    esac
-    HEAD=$((HEAD + 1))
-  done
+  jobs_flush all   # after a stop: what ran, in order; never a step that did not start
 }
 
 redact() {

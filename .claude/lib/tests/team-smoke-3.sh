@@ -286,8 +286,6 @@ az_gone() {
   for _ in $(seq 1 20); do kill -0 "$(cat "$1")" 2>/dev/null || return 0; sleep 0.1; done
   fail "$2 still running after the snapshot"
 }
-# under <slow> <control> <margin> — the slow run cost less than <margin> s over its same-load control.
-under() { awk -v s="$1" -v c="$2" -v m="$3" 'BEGIN { exit !(s - c < m) }'; }
 
 TEAM='.teams[] | select(.team == "alfa")'
 fresh_run alfa-20261006-000005
@@ -321,7 +319,7 @@ STUB_AZ_SLEEP=30 TEAM_DASH_PR_SECS=1 STUB_TOUCH="$WORK/az-end" STUB_AZ_PIDFILE="
 s1=$(case_now)
 az_gone "$WORK/az.pid" "slow az"
 [ ! -e "$WORK/az-end" ] || fail "slow az ran to its end"
-under "$(awk -v a="$s0" -v b="$s1" 'BEGIN { print b - a }')" "$(awk -v a="$c0" -v b="$c1" 'BEGIN { print b - a }')" 4 \
+case_under "$s0" "$s1" "$c0" "$c1" 4 \
   || fail "slow az held the snapshot: $s0→$s1 against control $c0→$c1"
 grep -qx unknown "$TEAM_DASH_CACHE/pr-alfa-8371" || fail "timeout not cached as unknown"
 unset TEAM_DASH_CACHE
@@ -413,7 +411,7 @@ s1=$(case_now)
 [ "$(grep -c 'repos pr show' "$STUB_LOG")" = 1 ] || fail "az called again after a timeout"
 az_gone "$WORK/az2.pid" "hung ADO"
 [ ! -e "$WORK/az-end2" ] || fail "hung ADO ran to its end"
-under "$(awk -v a="$s0" -v b="$s1" 'BEGIN { print b - a }')" "$(awk -v a="$c0" -v b="$c1" 'BEGIN { print b - a }')" 4 \
+case_under "$s0" "$s1" "$c0" "$c1" 4 \
   || fail "hung ADO held two teams: $s0→$s1 against control $c0→$c1"
 has "beta: PR 8372 skipped" "$WORK/w5/errors" || fail "skipped PR not reported"
 # Second, cheap proof well inside the stubs' 30 s: neither killed az reached its end marker.
