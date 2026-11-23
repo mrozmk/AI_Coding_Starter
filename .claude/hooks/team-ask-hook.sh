@@ -58,6 +58,7 @@ LIB="$MAIN/.claude/lib"
 . "$LIB/team-lib.sh" >/dev/null 2>&1 || exit 0
 . "$LIB/team-lead-lib.sh" >/dev/null 2>&1 || exit 0
 . "$LIB/team-ask.sh" || exit 0
+. "$LIB/team-evidence.sh" || exit 0
 sj() { jq -r --arg f "$1" '.[$f] // empty | tostring' "$TD/session.json" 2>/dev/null; }
 SID="$(jq -r '.session_id // ""' <<<"$PAYLOAD")"
 team_lead_caller "$SID" 2>/dev/null && exit 0
@@ -117,10 +118,11 @@ fallback() {
 }
 
 # verify_operator <id> <answer json> — an Operator-authorised answer is re-checked here, from
-# main-checkout code: the decision is bound to this ask, answered by the Operator (terminal, or a
-# typed `d-<n> …` message in the lead's own transcript) with this very answer.
+# main-checkout code: the decision is bound to this ask, answered by the Operator (terminal, a
+# typed `d-<n> …` message in the lead's own transcript, or the answer entry of the decision's
+# AskUserQuestion dialog there) with this very answer.
 verify_operator() {
-  local id="$1" a="$2" did f via uuid t form val msg p x
+  local id="$1" a="$2" did f via uuid t form val msg p x cfg r
   did="$(jq -r '.decision // ""' <<<"$a")"
   [[ "$did" =~ ^d-[0-9]+$ ]] || return 1
   f="$ASK_TD/runs/$ASK_RUN/decisions/$did.md"
@@ -139,22 +141,47 @@ verify_operator() {
   case "$via" in
     terminal) return 0 ;;  # the same-uid limit of team-lead.md §7: not re-verifiable from a file
     "teamlead-window "*) uuid="${via#teamlead-window }" ;;
+    "teamlead-ask "*)
+      uuid="${via#teamlead-ask }"
+      # The answering session must be named and recorded by the runner (never the legacy
+      # teamlead.json fallback), its launch snapshot clean and the registrations unchanged now —
+      # its own snapshot's config dir, not lead_sessions.config_dir, which a relaunch overwrites
+      # (team_evidence_provenance: that snapshot, then team_evidence_ask_hooks on today's files).
+      [ -n "$(dfm_h answered_session)" ] || return 1
+      x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
+      [ -n "$x" ] && [ "$(cut -f3 <<<"$x")" != legacy ] || return 1
+      cfg="$(team_evidence_provenance "$MAIN" "$CLONE" "$RUN" "$(cut -f1 <<<"$x")")" || return 1
+      t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
+        "$(cut -f1 <<<"$x")" "$cfg")"
+      [ -f "$t" ] || return 1
+      # ## Dialog is clone-side, yet safe: every dialog naming d-<n> must equal it, so an edit to
+      # another wording only removes the evidence (team_evidence_dialog_valid).
+      r="$(team_evidence_dialog_read "$t" "$uuid" "$did" "$(dfm_h created_at)" \
+        "$(sed -n '/^## Dialog$/{n;p;q;}' "$f")")"
+      [ -n "$r" ] || return 1
+      if [ "$form" = answers ]; then
+        [ "$(jq -cS .map <<<"$r")" = "$(jq -cS .value <<<"$a")" ]; return
+      fi
+      msg="$(jq -r .reply <<<"$r")" ;;
     *) return 1 ;;
   esac
-  # The lead session and its config dir from the main checkout's anchor (the runner's lead_sessions),
-  # never from the clone's teamlead.json; no answered_session (an older decision) → current_id.
-  x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
-  # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
-  t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
-    "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
-  [ -f "$t" ] || return 1
-  # The message must be eligible as the writer's evidence was: typed after the decision opened.
-  msg="$(jq -r -s --arg u "$uuid" --arg since "$(dfm_h created_at)" '
-    map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
-        and ((.timestamp // "") >= $since)))
-    | map(.message.content | if type == "string" then . elif type == "array"
-        then (map(select(.type == "text") | .text) | join(" ")) else "" end
-        | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1
+  if [ "${via%% *}" = teamlead-window ]; then
+    # The lead session and its config dir from the main checkout's anchor (the runner's
+    # lead_sessions), never from the clone's teamlead.json; no answered_session (an older
+    # decision) → current_id.
+    x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
+    # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
+    t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
+      "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
+    [ -f "$t" ] || return 1
+    # The message must be eligible as the writer's evidence was: typed after the decision opened.
+    msg="$(jq -r -s --arg u "$uuid" --arg since "$(dfm_h created_at)" '
+      map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
+          and ((.timestamp // "") >= $since)))
+      | map(.message.content | if type == "string" then . elif type == "array"
+          then (map(select(.type == "text") | .text) | join(" ")) else "" end
+          | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1
+  fi
   # The Operator's whole reply, parsed by the writer's own parser, must be this very answer.
   p="$(ask_parse_reply "$id" "$did" "$msg")" || return 1
   case "$form" in allow|deny) [ "$(jq -r .outcome <<<"$p")" = "$form" ] || return 1 ;; esac
