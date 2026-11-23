@@ -69,7 +69,8 @@ STUB_PANE="$FIX/perm-awk.txt" snap "permission prompt" \
     and .actions == ["bash .claude/lib/session-host.sh hint alfa-coder", "/start-team alfa"]'
 STUB_PANE="$FIX/menu-wrapup.txt" snap "menu" 'coder | .menu_open'
 STUB_PANE="$FIX/idle.txt" snap "idle" 'coder | (.prompt_open | not) and (.menu_open | not)'
-( . "$SRC/.claude/lib/team-lib.sh"; STUB_PANE="$FIX/busy-stale-yes.txt" \
+# HARNESS_MAIN pins the fixture: from the real checkout, sh_main_root would read its registry.
+( export HARNESS_MAIN="$MAIN"; . "$SRC/.claude/lib/team-lib.sh"; STUB_PANE="$FIX/busy-stale-yes.txt" \
   team_prompt_open alfa-coder ) \
   || fail "busy-stale-yes.txt no longer exercises the regex false positive"
 echo "team-smoke-6: (114) parser-first detection OK"

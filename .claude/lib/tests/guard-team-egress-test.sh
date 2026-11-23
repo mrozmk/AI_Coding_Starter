@@ -730,7 +730,8 @@ n=$(grep -c . "$D/pyargs"); b=$(grep -c '^-I -B ' "$D/pyargs")
 mkdir -p "$D/tree/.claude/lib" "$D/tree/.claude/hooks/lib"
 cp .claude/lib/*.py "$D/tree/.claude/lib/"; cp .claude/hooks/lib/*.py "$D/tree/.claude/hooks/lib/"
 for m in lib/team_prompt_check lib/team_prompt_classes lib/team_prompt lib/team_settings_diff \
-         hooks/lib/guard_team_egress hooks/lib/guard_team_egress_supervisor; do
+         hooks/lib/guard_team_egress hooks/lib/guard_team_egress_supervisor \
+         hooks/lib/guard_team_egress_loops; do
   "$REALPY" -I -c 'import runpy, sys; sys.dont_write_bytecode = False
 runpy.run_path(sys.argv[1], run_name="bytecode_probe")' "$D/tree/.claude/$m.py" >/dev/null 2>&1
   c=$(find "$D/tree" -name __pycache__ | head -1)

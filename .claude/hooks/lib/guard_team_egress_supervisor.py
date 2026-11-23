@@ -18,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import SEPARATORS, tokenize  # noqa: E402
+from guard_team_egress_loops import loop_verdict  # noqa: E402
 
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
 # backslash anywhere else -> ignored (still asked).
@@ -409,66 +410,14 @@ def backstop(cmd):
     return piped_verdict(cmds + [cur] if cur else cmds, ops)
 
 
-# The whole command is `for NAME in <words>; do <body>; done` (`;` or a newline before `do` and
-# `done`). Anything around the loop (`| bash`, `> f`, a second command) does not match.
-FOR_LOOP = re.compile(
-    r"[ \t\n]*for ([A-Za-z_][A-Za-z0-9_]*) in ([^;\n]*)(?:;|\n)[ \t\n]*do[ \t\n](.*?)"
-    r"(?:;|\n)[ \t\n]*done[ \t\n]*", re.S)
-FOR_MAX = 64
-
-
-def for_bodies(cmd):
-    """The bodies of a literal `for` loop that is all of <cmd>, one per value, the variable written
-    in; None for any other shape. Values: 1..FOR_MAX SAFE words, none starting with `-` or `=`.
-    `$NAME` / `${NAME}` is replaced outside single quotes only (bash and zsh expand it unquoted
-    and in double quotes; a SAFE value has nothing to split or glob); a `\\` outside single
-    quotes or an unclosed quote -> None. Every other `$` stays in the body for the checks."""
-    m = FOR_LOOP.fullmatch(cmd)
-    if not m:
-        return None
-    name, words, body = m.group(1), m.group(2).split(), m.group(3)
-    if not 0 < len(words) <= FOR_MAX or not all(
-            SAFE.fullmatch(w) and w[0] not in "-=" for w in words):
-        return None
-    ref = re.compile(r"\$(?:\{%s\}|%s(?![A-Za-z0-9_]))" % (name, name))
-    pieces, state, i = [], None, 0  # (text, substitutable) runs of the body; state: None ' "
-    for k, c in enumerate(body):
-        if state == "'":
-            if c == "'":
-                pieces.append((body[i:k + 1], False))
-                state, i = None, k + 1
-        elif c == "\\":
-            return None
-        elif c == "'" and state is None:
-            pieces.append((body[i:k], True))
-            state, i = "'", k
-        elif c == '"':
-            state = None if state == '"' else '"'
-    if state == "'" or state == '"':
-        return None
-    pieces.append((body[i:], True))
-    return ["".join(ref.sub(w, t) if sub else t for t, sub in pieces) for w in words]
-
-
-def supervisor_verdict(cmd, project, egress_in):
+def supervisor_verdict(cmd, project, egress_in, loop=True):
     """("exempt" | "ask" | "defer", reason). exempt: every simple command is a locally covered gh, an
     opted-in python3 -c or a safe companion; ask: gh output piped into a stdin executor; defer (also
-    for every session but the Supervisor's in the main checkout): today's path decides. A literal
-    `for` loop (for_bodies) is judged per value: exempt only when every body is exempt, ask when
-    one asks, else defer with the whole loop."""
+    for every session but the Supervisor's in the main checkout): today's path; a loop: loop_verdict."""
     if not supervisor_main_checkout(project):
         return "defer", ""
-    bodies = for_bodies(cmd)
-    if bodies is not None:
-        verdicts = [segments_verdict(b, project, egress_in) for b in bodies]
-        if all(v[0] == "exempt" for v in verdicts):
-            return "exempt", ""
-        return next((v for v in verdicts if v[0] == "ask"), ("defer", ""))
-    return segments_verdict(cmd, project, egress_in)
-
-
-def segments_verdict(cmd, project, egress_in):
-    """supervisor_verdict for one command without a loop, the main-checkout check already passed."""
+    if loop and (judged := loop_verdict(cmd, SAFE, supervisor_verdict, project, egress_in)):
+        return judged
     allow = local_rules(project)
     py = python_forms_of(allow)
     if python_heredoc_ok(cmd, py):
