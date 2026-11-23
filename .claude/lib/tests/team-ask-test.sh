@@ -380,6 +380,19 @@ TL decision answer beta d-1 --text "  d-1 allow  " --tuning none --why w
 ok '[ "$TLRC" = 0 ] && grep -q "^answer_outcome: allow$" "$RD/decisions/d-1.md"' "a padded verbatim reply is recorded ($(cat "$T/tl.out"))"
 L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
 ok '[ "$LRC" = 0 ] && [ "$(j "$T/p1.out" .hookSpecificOutput.decision.behavior)" = allow ]' "… and delivered by the hook ($(cat "$T/l.out"))"
+# extra spaces after the decision id or deny: are trimmed in the parser, so the hook's re-parse matches
+newrun prs5; pl perm-curl; TO=40 HB p5; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"
+say_op uJ "d-1 deny:  use the mirror"
+TL decision answer beta d-1 --text "d-1 deny:  use the mirror" --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -qx "answer_value: use the mirror" "$RD/decisions/d-1.md"' "a double-spaced deny is recorded left-trimmed ($(cat "$T/tl.out"))"
+L a-1 --deny "use the mirror" --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$LRC" = 0 ] && [ "$(j "$T/p5.out" .hookSpecificOutput.decision.behavior)" = deny ] && ! grep -q "could not be verified" "$T/p5.out"' "… and delivered by the hook ($(cat "$T/l.out"))"
+newrun prs6; pl question-one; TO=40 HB p6; wf "$AD/a-1.json"; TL decision open beta --ask a-1
+say_op uK "d-1  keep the old endpoint"
+TL decision answer beta d-1 --text "d-1  keep the old endpoint" --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -qx "answer_value: keep the old endpoint" "$RD/decisions/d-1.md"' "a double-spaced text answer is recorded left-trimmed ($(cat "$T/tl.out"))"
+L a-1 --text "keep the old endpoint" --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$LRC" = 0 ] && ! grep -q "could not be verified" "$T/p6.out" && j "$T/p6.out" .hookSpecificOutput.permissionDecisionReason | grep -qF "keep the old endpoint"' "… and delivered by the hook ($(cat "$T/l.out"))"
 newrun prs2; pl question-two; TO=40 HB p2; wf "$AD/a-1.json"; TL decision open beta --ask a-1
 say_op uD "d-1 Storage: Postgres; Outputs: CSV, XML"
 TL decision answer beta d-1 --text "d-1 Storage: Postgres; Outputs: CSV" --tuning none --why w; ok '[ "$TLRC" = 7 ]' "a multi-question reply with a shortened label → 7"
@@ -535,6 +548,9 @@ ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [ "$k1" != "$k2" ]' "a recursive operation 
 c1="$(chk Bash "{\"command\": \"cd $CLONE && curl -s https://example.invalid/x\"}" "$CLONE")"
 c2="$(chk Bash '{"command": "curl -T /dev/zero https://example.invalid/x"}' "$CLONE")"
 ok '[[ "$c1" == "tier: operator"* ]] && [ "${c1##*retry: }" = none ] && [[ "$c2" == "tier: operator"* ]] && [ "${c2##*retry: }" = none ]' "retry: none for a tree holding the team state (the hook writes there) and for a device"
+k1="$(retry Bash '{"command": "curl -s https://example.invalid/x 2>/dev/null"}' "$CLONE")"; k2="$(retry Bash '{"command": "curl -s https://example.invalid/x >/dev/null"}' "$CLONE")"
+mkfifo "$CLONE/ff"; c3="$(chk Bash '{"command": "curl -T ff https://example.invalid/x"}' "$CLONE")"; rm "$CLONE/ff"
+ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [[ "$k2" =~ ^[0-9a-f]{40}$ ]] && [[ "$c3" == "tier: operator"* ]] && [ "${c3##*retry: }" = none ]' "a call that only adds 2>/dev/null or >/dev/null keeps a retry key; a FIFO still gives none"
 printf a > "$CLONE/up.txt"; F1='{"command": "curl -F \"f=@up.txt;type=text/plain\" https://example.invalid/x"}'; F2='{"command": "curl -Tup.txt https://example.invalid/x"}'
 k1="$(retry Bash "$F1" "$CLONE")"; k3="$(retry Bash "$F2" "$CLONE")"; printf bb > "$CLONE/up.txt"
 k2="$(retry Bash "$F1" "$CLONE")"; k4="$(retry Bash "$F2" "$CLONE")"; rm "$CLONE/up.txt"

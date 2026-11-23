@@ -346,11 +346,14 @@ ask_parse_reply() {
   local id="$1" did="$2" m rest out="" val="" map=null
   m="$(jq -rn --arg m "$3" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')" || return 1
   case "$m" in "$did "*) rest="${m#"$did "}" ;; *) return 1 ;; esac
+  # Left-trim like the frontmatter readers (dfm, dfm_h) so the recorded answer and the hook's
+  # re-parse hold the same string.
+  rest="${rest#"${rest%%[![:space:]]*}"}"
   case "$(ask_get "$id" kind)" in
     permission|plan)
       case "$rest" in
         allow) out=allow ;;
-        deny|"deny:"*) out=deny; val="${rest#deny}"; val="${val#:}"; val="${val# }" ;;
+        deny|"deny:"*) out=deny; val="${rest#deny}"; val="${val#:}"; val="${val#"${val%%[![:space:]]*}"}" ;;
         *) return 1 ;;
       esac ;;
     *) if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$id.json")" -gt 1 ]; then

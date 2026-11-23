@@ -322,10 +322,13 @@ def path_digest(p):
     """A file → (realpath, size, mtime_ns, sha1); a directory → a tree digest of its entries
     (no symlink following); a missing path → (realpath, absent). Unpinned for a tree holding a
     team state dir (the hook writes the ask there, so its key would never match again) and for
-    anything but a regular file or a directory (a device or FIFO never reads to an end)."""
+    anything but a regular file or a directory (a device or FIFO never reads to an end), except
+    /dev/null, which gets a fixed digest without a read."""
     real = os.path.realpath(p)
     if not os.path.lexists(p):
         return [real, "absent"]
+    if real == "/dev/null":
+        return [real, "null"]
     if os.path.isdir(real):
         if TEAM_STATE.search(real):
             raise Unpinned("state")

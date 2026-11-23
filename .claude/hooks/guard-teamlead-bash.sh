@@ -35,7 +35,7 @@ PROOT="$(pwd -P)"
 MR="$(team_lead_json main_root)"
 if [ "$OWN" != "$PROOT" ]; then
   if [ -n "$MR" ] && [ "$( (cd "$MR" 2>/dev/null && pwd -P) || echo "$MR")" != "$OWN" ]; then
-    refuse "TeamLead identity: main_root differs from the guard's checkout — the profile and the main checkout disagree; the Operator re-materialises it from the main checkout: bash .claude/lib/team-lead.sh materialize <team>, then team-lead.sh relaunch <team>"
+    refuse "TeamLead identity: main_root differs from the guard's checkout — the profile and the main checkout disagree; the Operator re-materialises it from the main checkout: bash .claude/lib/team-run.sh <team> stop, then bash .claude/lib/team-lead.sh end <team>, then /start-team <team> (never team-lead.sh relaunch on a live lead)"
   fi
   WHY=$(printf '%s' "$CMD" | python3 -I "$LIB/team_lead_bash.py" "$ROOT" "$(team_lead_json run)" "$OWN" 2>&1) \
     || refuse "${WHY:-TeamLead Bash guard: check failed — refused}"
