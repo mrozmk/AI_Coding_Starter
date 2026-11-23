@@ -57,6 +57,12 @@ timebox() {  # timebox <secs> <cmd…> → exit 124 on timeout (pr_timebox, team
     $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 124 };
     alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
 }
+hc_name() {  # the herdr-core CLI, as sh_hc_name in session-host-lib.sh (hc.exe: Herdr for Windows)
+  if [ -n "${HC_BIN:-}" ]; then echo "$HC_BIN"
+  elif [ -n "${WSL_DISTRO_NAME:-}" ] && ! command -v hc >/dev/null 2>&1 \
+    && command -v hc.exe >/dev/null 2>&1; then echo hc.exe
+  else echo hc; fi
+}
 # Direct tmux calls, never the driver: a hook must not pay for sourcing session-host-lib.sh (a
 # permanent exception of part host (35)).
 tmux_name() {  # the tmux session of this pane, from $TMUX (socket,pid,index) and $TMUX_PANE
@@ -65,7 +71,7 @@ tmux_name() {  # the tmux session of this pane, from $TMUX (socket,pid,index) an
 }
 handle_alive() {  # handle_alive <backend> <handle>
   case "$1" in
-    herdr) timebox 2 "${HC_BIN:-hc}" get "$2" --json >/dev/null 2>&1 ;;
+    herdr) timebox 2 "$(hc_name)" get "$2" --json >/dev/null 2>&1 ;;
     tmux) tmux has-session -t "=$2" 2>/dev/null ;;
     *) return 1 ;;
   esac
@@ -191,7 +197,7 @@ REG="$ROOT/.agents/team/registry"
 be="" h="" name="" tab=""
 if [ -n "${HC_TERMINAL_ID:-}" ] && [[ "$HC_TERMINAL_ID" =~ ^[A-Za-z0-9_/-]+$ ]]; then
   be=herdr h="$HC_TERMINAL_ID"
-  j="$(timebox 2 "${HC_BIN:-hc}" get "$h" --json 2>/dev/null || true)"
+  j="$(timebox 2 "$(hc_name)" get "$h" --json 2>/dev/null || true)"
   name="$(printf '%s' "$j" | jq -r '.name // empty' 2>/dev/null)"
   tab="$(printf '%s' "$j" | jq -r '.tab.name // .tab // empty | strings' 2>/dev/null)"
 elif h="$(tmux_name)" && [ -n "$h" ]; then

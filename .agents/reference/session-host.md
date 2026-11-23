@@ -6,7 +6,8 @@ key, typed text, doorbell, stop and attach hint goes through them. `/roles` (`ro
 team runner are their main callers. `session-host-layout.sh` places running terminals in the
 Herdr window.
 
-Verified on `hc 0.1.20` and `herdr-app 0.1.15`. Herdr rewrites its docs with every update; re-read
+Verified on `hc 0.1.20` and `herdr-app 0.1.15`; Herdr for Windows: core 0.1.22 under WSL2
+(2026-11-23). Herdr rewrites its docs with every update; re-read
 `hc --skill` and `herdr-app commands` before you change the Herdr backend.
 
 This reference supersedes the launch parts of [supervisor-sessions.md](supervisor-sessions.md) (`up`,
@@ -82,6 +83,26 @@ still describes live code until the release that retires it.
   machine's real server. Under `TEAM_SMOKE=1` the `auto` probe runs only with
   `TEAM_SMOKE_AUTO_HERDR=1` (part host sets it), so a fixture with an `hc` stub stays on tmux.
 
+**Herdr for Windows driven from WSL** (the repo in WSL, only `hc.exe` / `herdr-app.exe` installed;
+smoke part `host-wsl`, case H19):
+
+- **Discovery:** `sh_hc_wsl` holds when `WSL_DISTRO_NAME` is set and the resolved CLI is `*.exe`.
+  `hc.exe` / `herdr-app.exe` are taken only when no Linux binary of that name is on PATH;
+  `HC_BIN` / `HERDR_APP_BIN` win over both, and the app follows the core's family (`hc.exe` pairs
+  with `herdr-app.exe`). Under `auto` only role sessions go there — team and helper sessions stay
+  on tmux until team runs are verified on it; an explicit `herdr` takes every kind.
+- **Launch:** the core starts Windows programs, so the line runs as
+  `wsl.exe -d <distro> -u <user> --cd <cwd> -e /bin/bash -lc 'exec "$@"' harness-wsl <line>` — a
+  login shell, because `wsl.exe -e` skips the profile and `~/.local/bin` would be off PATH — and
+  carries the env word `HC_WSL_TERMINAL=<terminal name>`.
+- **Liveness:** the core sees only `wsl.exe` in the foreground. Alive = a process of the program,
+  of this user, inside WSL whose environment holds that marker: `0` found · `3` the scan completed
+  without one · `1` it could not complete (no terminal name, `pgrep` failed, a live candidate's
+  environ unreadable) — only `3` lets a start kill, replace or restart. `sh_pane_pid` answers no pid
+  (the core's pid is a Windows pid). Attach hints print `hc.exe attach …`.
+- **Placement:** the app keeps a WSL space folder as its UNC path; the space is matched and created
+  by `wslpath -w <main>`.
+
 ## 4. Verbs
 
 `bash .claude/lib/session-host.sh <verb> <address> [options]`. Common options:
@@ -97,7 +118,7 @@ input not safe) · `1` other.
 | Verb | Contract | tmux | Herdr |
 |---|---|---|---|
 | `start --kind role\|team\|helper --cwd <dir> --cli claude\|codex\|script [--env K=V]… [--claude-home auto] [--program <exe>] [--session-id <id>] [--wait-ready] [--no-probe] -- <argv…>` | Start the address if it is not running; write the registry record; print the name. `1` when it is already running (with its hint) or the name belongs to another checkout | `new-session -d -s <name> -c <cwd>` with `-e` words. The caller's `CLAUDECODE*` and messaging variables are dropped. `CLAUDE_CONFIG_DIR` is unset unless `--claude-home auto` passes one | `hc run --bg --no-parent --json --name <name> --cwd <cwd>` with the labels. Every variable is a word for `/usr/bin/env`, because an hc terminal gets the login session's environment, not the caller's. The record keeps `handle` and `created_ms` |
-| `alive` | `0` alive · `3` gone · `1` the probe failed. With a recorded `program`, alive also means that program runs in the foreground: a role's `; read` shell left after an exit is gone | `has-session`; `pane_current_command` | `hc get`: state `live`, and the program is `foreground.argv[0]`/`.name` or in the foreground process group |
+| `alive` | `0` alive · `3` gone · `1` the probe failed. With a recorded `program`, alive also means that program runs in the foreground: a role's `; read` shell left after an exit is gone | `has-session`; `pane_current_command` | `hc get`: state `live`, and the program is `foreground.argv[0]`/`.name` or in the foreground process group; under Herdr for Windows, a WSL process of the program with the terminal's marker |
 | `status` | One JSON line `{state, kind, msg, source}`. `state`: `starting · idle · working · done · blocked · error · unknown · gone` | Claude: the hook's state file (§8). A permission prompt's `msg` is `<tool>: <detail>` from the transcript's open tool call. Codex and script: `unknown` while alive | The program's own status (`status.state/kind/msg`), Codex included; `null` → `starting`. The screen is never read for this |
 | `read [--lines N \| --history N]` | The last non-empty lines, or screen plus scrollback | `capture-pane` | `hc read`. While working, blocked or in error, `--history` returns the screen only; hc's note line after it (`[hc] only its screen: …`) is dropped |
 | `keys [--target <pane>] <key…>` | Keys from a fixed list (`enter esc up down tab ctrl-c ctrl-e ctrl-u` and tmux's own names); anything else is refused, never typed. Under the target lock | `send-keys` | `hc keys` |

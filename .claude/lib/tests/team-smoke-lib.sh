@@ -114,9 +114,10 @@ smoke_init() {
   # Nor may it see the calling session's identity: run from a team role session, the driver's
   # HARNESS_* (HARNESS_MAIN/HARNESS_REGISTRY win over the fixture root in sh_main_root), the run's
   # TEAM_RUN_* and the host's terminal ids would point the fixtures at the real registry and
-  # terminal. A case that needs one sets it per call.
+  # terminal. Nor WSL_DISTRO_NAME: a fixture run inside WSL behaves like any other host. A case
+  # that needs one sets it per call.
   unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM TEAM_RUN_ROLE TEAM_RUN_ID TEAM_RUN_ATTEMPT \
-    HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE
+    HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE WSL_DISTRO_NAME
   mkdir -p "$HOME/.codex-acmeshop"
   export TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1
@@ -238,7 +239,8 @@ STUB
   # one word per line, to $STUB_HC_RUN_ARGV. Behaviour from STUB_HC_*: SERVER (server status rc),
   # ADDR (the handle), STATE (live|finished), FG / FG_NAME / FG_PID (foreground), STATUS (null|idle|
   # working|blocked|done; STATUS_FILE wins and `keys … esc` writes idle into it), KIND, MSG, LABELS
-  # (JSON), CREATED, PID, SCREEN (a file `read` prints), ON_SEND (shell text `send` evals). Gone:
+  # (JSON), CREATED, PID, NAME (the terminal's name), SCREEN (a file `read` prints), ON_SEND (shell
+  # text `send` evals). Gone:
   # STUB_HC_GONE=1 or $STUB_HC_GONE_FILE exists (kill and a `send … /exit` create it) — get, keys,
   # send and read exit 3, or 11 when finished. STUB_HC_IDLOG: each call also logged there as
   # `id-set|id-unset hc $*` — whether HC_TERMINAL_ID reached it (a send with it set arrives wrapped).
@@ -270,8 +272,9 @@ case "$1" in
          --arg fn "${STUB_HC_FG_NAME:-${STUB_HC_FG:-claude}}" --argjson fp "${STUB_HC_FG_PID:-999999}" \
          --arg s "$s" --arg k "${STUB_HC_KIND:-}" --arg m "${STUB_HC_MSG:-}" \
          --argjson l "$l" --argjson c "${STUB_HC_CREATED:-1700000000000}" \
-         --argjson p "${STUB_HC_PID:-4243}" --arg cwd "${STUB_HC_CWD:-/fixture}" \
-         '{address: $a, state: $state, labels: $l, created_ms: $c, pid: $p, cwd: $cwd, argv: ["sh"],
+         --argjson p "${STUB_HC_PID:-4243}" --arg cwd "${STUB_HC_CWD:-/fixture}" --arg n "${STUB_HC_NAME:-}" \
+         '{address: $a, state: $state, labels: $l, created_ms: $c, pid: $p, cwd: $cwd, argv: ["sh"]}
+           + (if $n != "" then {name: $n} else {} end) + {
            foreground: (if $state == "live" then {argv: [$fg], name: $fn, pid: $fp, cwd: $cwd} else null end),
            status: (if $s == "null" or $state != "live" then null
              else {state: $s} + (if $k != "" then {kind: $k} else {} end) + (if $m != "" then {msg: $m} else {} end) end)}' ;;
