@@ -1121,7 +1121,8 @@ cl_reset() {
     && mv "$GH_DIR/t" "$GH_DIR/fields.json"
   jq 'map(.content.repository = "acme/widgets")' "$GH_DIR/items.json" > "$GH_DIR/t" \
     && mv "$GH_DIR/t" "$GH_DIR/items.json"
-  rm -f "$GH_DIR"/timeline-*.json "$GH_DIR"/pr-*.json "$GH_DIR/race-claim.txt" "$GH_DIR/post-fail-once"
+  rm -f "$GH_DIR"/timeline-*.json "$GH_DIR"/pr-*.json "$GH_DIR/race-claim.txt" "$GH_DIR/post-fail-once" \
+    "$GH_DIR/race-reread.txt" "$GH_DIR/race-reread.seen"
   : > "$GH_LOG"
 }
 st44() { jq -r '[.[] | select(.id == "item-44")][0].status // "null"' "$GH_DIR/items.json"; }
@@ -1273,6 +1274,16 @@ set44 Delivered
 run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
 expect 3 "status moved on to Delivered" "claim: an own claim never moves an advanced status back"
 [ "$(posts)" = 0 ] && [ "$(edits)" = 0 ] || fail "claim: an own claim never moves an advanced status back — it wrote"
+# A held claim confirms too: a takeover landing between its check and its confirm wins.
+cl_reset
+seed_comment "$(claim_body "$OWN" "$ME" alfa feat/7-fix Todo)"
+claim_body "$FID" othermac beta feat/7-other Todo "$OWN" > "$GH_DIR/race-reread.txt"
+run "$MAIN" $CLM claim 7 --who alfa --branch feat/7-fix
+expect 3 "lost the race: held by beta on othermac" "claim: a held claim superseded before the confirm is withdrawn, status untouched"
+[ "$(st44)" = Todo ] && [ "$(edits)" = 0 ] \
+  || fail "claim: a held claim superseded before the confirm is withdrawn, status untouched — status $(st44), $(edits) edits"
+[ "$(n_bodies "team:claim-released v1 id=$OWN reason=lost-race")" = 1 ] \
+  || fail "claim: a held claim superseded before the confirm is withdrawn — no release comment"
 
 # 12. a takeover only with --takeover, recorded in the marker; never over the new branch itself.
 cl_reset

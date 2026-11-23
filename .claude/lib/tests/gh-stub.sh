@@ -4,8 +4,9 @@
 # `gh pr view`), 30 items per page, failures by env switch (STUB_GH_PAGE2_FAIL,
 # STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY, STUB_GH_SUB_DENY) and by
 # one-shot file: race-claim.txt (a comment POST first stores a foreign comment with that body — a
-# competing claim landing before ours) and post-fail-once (the next comment POST fails, nothing
-# stored). Sourced; needs $WORK/bin on PATH.
+# competing claim landing before ours), race-reread.txt (the SECOND comment read first stores a
+# foreign comment with that body — a takeover landing between a check and its confirm) and
+# post-fail-once (the next comment POST fails, nothing stored). Sourced; needs $WORK/bin on PATH.
 gh_stub_install() {
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -93,6 +94,17 @@ case "${1:-}" in
           && mv "$G/t" "$G/subs-$n.json"
         echo '{}' ;;
       "GET "*/comments)
+        if [ -f "$G/race-reread.txt" ]; then
+          if [ -f "$G/race-reread.seen" ]; then
+            id=$(( $(jq 'length' "$G/comments.json") + 900 ))
+            jq --argjson i "$id" --rawfile b "$G/race-reread.txt" \
+              '. + [{id: $i, created_at: "2026-11-23T10:00:00Z", body: $b}]' \
+              "$G/comments.json" > "$G/t" && mv "$G/t" "$G/comments.json"
+            rm -f "$G/race-reread.txt" "$G/race-reread.seen"
+          else
+            : > "$G/race-reread.seen"
+          fi
+        fi
         pages "$G/comments.json" ;;
       "POST "*/comments)
         if [ -f "$G/post-fail-once" ]; then

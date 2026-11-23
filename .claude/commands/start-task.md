@@ -135,7 +135,8 @@ the winner moves the status. Invoking this command is the consent for these trac
   --lines <f> --who solo`. Refuse with one line naming the status, the PRs, the branches and the
   holder when the status category is `In Progress` or `Done` (unless the holder is ours or
   `TAKEOVER`), a foreign holder exists (unless `TAKEOVER`), or `refs` printed a `branch` or `pr`
-  line (with `TAKEOVER` only a branch equal to `BRANCH` still refuses). **Held** (`self=yes`):
+  line (unless the holder is ours — an own claim's pushed refs do not refuse; with `TAKEOVER` only
+  a branch equal to `BRANCH` still refuses). **Held** (`self=yes`):
   reuse that claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous` (the marker stores
   it percent-encoded: decode it, `To%20Do` → `To Do`, before any comparison or transition — here
   and in step 7's release), post nothing in Claim, confirm that exact id, no transition when the status already is `jira.started_status` —

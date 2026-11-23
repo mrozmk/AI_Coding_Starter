@@ -283,23 +283,26 @@ op_claim() {
       show_err "$TMP/claim.err"
       die 4 "claim comment not posted$(release_or_say "$id" post-failed)"
     fi
-    # Confirm: the first unreleased claim wins — read every comment again.
-    rc=0
-    trk show "$KEY" --out "$TMP/show2.json" > "$TMP/show2.out" 2> "$TMP/show2.err" || rc=$?
-    if [ "$rc" != 0 ]; then
-      show_err "$TMP/show2.err"
-      die 4 "the claim cannot be confirmed$(release_or_say "$id" not-visible)"
+  fi
+  # Confirm, a held claim included: the first unreleased claim wins — read every comment again (a
+  # takeover may have landed since the check).
+  rc=0
+  trk show "$KEY" --out "$TMP/show2.json" > "$TMP/show2.out" 2> "$TMP/show2.err" || rc=$?
+  if [ "$rc" != 0 ]; then
+    show_err "$TMP/show2.err"
+    # A held claim stays for the next retry; a new one is withdrawn.
+    [ "$result" != held ] || die 4 "held claim $id cannot be confirmed — nothing written, rerun"
+    die 4 "the claim cannot be confirmed$(release_or_say "$id" not-visible)"
+  fi
+  claim_lines "$TMP/show2.json" > "$TMP/lines2.tsv"
+  h="$(holder_judge "$TMP/lines2.tsv" "$WHO")"
+  if [ "$(kv "$h" id)" != "$id" ]; then
+    if [ "$h" = "holder none" ] || ! grep -qF "id=$id " "$TMP/lines2.tsv"; then
+      die 4 "claim $id is not visible on the re-read$(release_or_say "$id" not-visible)"
     fi
-    claim_lines "$TMP/show2.json" > "$TMP/lines2.tsv"
-    h="$(holder_judge "$TMP/lines2.tsv" "$WHO")"
-    if [ "$(kv "$h" id)" != "$id" ]; then
-      if [ "$h" = "holder none" ] || ! grep -qF "id=$id " "$TMP/lines2.tsv"; then
-        die 4 "claim $id is not visible after posting$(release_or_say "$id" not-visible)"
-      fi
-      # The loser never writes the status.
-      echo "refused: #$KEY — lost the race: held by $(kv "$h" who) on $(kv "$h" machine) (claim $(kv "$h" id))$(release_or_say "$id" lost-race)"
-      exit 3
-    fi
+    # The loser never writes the status.
+    echo "refused: #$KEY — lost the race: held by $(kv "$h" who) on $(kv "$h" machine) (claim $(kv "$h" id))$(release_or_say "$id" lost-race)"
+    exit 3
   fi
   rc=0
   trk set-status "$KEY" started > "$TMP/status.out" 2> "$TMP/status.err" || rc=$?

@@ -165,8 +165,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      comment — into a scratchpad file → `bash .claude/lib/team-claim.sh holder --lines <f> --who
      <TEAM>`. Refuse with one line naming the status, the PRs, the branches and the holder when
      the status category is `In Progress` or `Done` (unless the holder is ours or `TAKEOVER`), a
-     foreign holder exists (unless `TAKEOVER`), or `refs` printed a `branch` or `pr` line (with
-     `TAKEOVER` only a branch equal to `BRANCH` still refuses). **Held** (`self=yes`): reuse that
+     foreign holder exists (unless `TAKEOVER`), or `refs` printed a `branch` or `pr` line (unless
+     the holder is ours — an own claim's pushed refs do not refuse; with `TAKEOVER` only a branch
+     equal to `BRANCH` still refuses). **Held** (`self=yes`): reuse that
      claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous` (the marker stores it
      percent-encoded: decode it, `To%20Do` → `To Do`, before any comparison or transition — here
      and in step 4's release), post nothing in Claim,
