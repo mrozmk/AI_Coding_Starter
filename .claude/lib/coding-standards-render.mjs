@@ -101,14 +101,12 @@ function evidence(repo, outRoot) {
   };
 }
 
-// The rules of a config the scan found enforced.
-const enforcedRules = (c) => c.rules.filter((r) => !(c.notEnforced || []).includes(r.rule));
-
 function toolRules(scan, ok, dropped) {
   const out = [];
   for (const t of scan.tools.filter((x) => x.enforced)) {
     // A config with no presets whose every extracted rule the scan found not enforced backs no claim.
-    const cfgs = (t.configs || []).filter((c) => c.attributed && (c.presets.length || !c.rules.length || enforcedRules(c).length));
+    const cfgs = (t.configs || []).filter((c) => c.attributed
+      && !(c.presets.length === 0 && c.rules.length > 0 && c.rules.every((r) => (c.notEnforced || []).includes(r.rule))));
     const title = t.class === 'compiler' ? `Code builds under ${t.display} with the project settings`
       : `Code passes ${t.display}${cfgs.length || t.selected ? ' with the project config' : ''}`;
     let by;
@@ -123,7 +121,7 @@ function toolRules(scan, ok, dropped) {
       example = t.ciChecks[0].at;
     } else if (cfgs.length) {
       const c = cfgs[0];
-      const items = enforcedRules(c);
+      const items = c.rules.filter((r) => !(c.notEnforced || []).includes(r.rule));
       const desc = c.presets.length ? c.presets.map((p) => p.name).join(', ')
         : items.length ? items.slice(0, 3).map((r) => r.rule).join(', ') + (items.length > 3 ? `, +${items.length - 3} more` : '') : 'whole config';
       const more = cfgs.length - 1;
