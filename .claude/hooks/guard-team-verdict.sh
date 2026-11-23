@@ -2,8 +2,8 @@
 # PreToolUse(Bash) guard with two rules for a team clone.
 #
 # 1. Trunk writers — in a role session (.agents/team/session.json exists) a command naming
-# team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh or team-automerge-check.sh is
-# refused, whatever the ask rules and workflow.team_merge say: under team_merge=auto the roles lose
+# team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh, team-automerge-check.sh or
+# team-starter-land.sh is refused, whatever the ask rules and workflow.team_merge say: under team_merge=auto the roles lose
 # the prompt, and the scripts check only that the *target* team is idle, never the caller. The rule
 # is a fail-closed allowlist: when a command names one, every segment of it must be a non-executing
 # form (the INSPECT and SYNTAX regexes below) with no $( or backtick and no prefix — a segment without the name
@@ -29,16 +29,16 @@ PAYLOAD=$(cat)
 # Cheap pre-filter: this hook runs on every Bash call in a clone.
 case "$PAYLOAD" in
   *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*|*asks*|*decisions*) ;;
-  *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*) ;;
+  *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*|*team-starter-land.sh*) ;;
   *) exit 0 ;;
 esac
 refuse() { echo "$*" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "verdict guard needs jq — refused"
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-TRUNK='team-(merge-check|integrate|integrate-lock|automerge-check)\.sh'
+TRUNK='team-(merge-check|integrate|integrate-lock|automerge-check|starter-land)\.sh'
 if [ -f "$ROOT/.agents/team/session.json" ] && [[ "$CMD" =~ $TRUNK ]]; then
-  TRUNK_MSG="team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh and team-automerge-check.sh are the Supervisor's — run them from the main checkout, never from a role session (refused)"
+  TRUNK_MSG="team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh, team-automerge-check.sh and team-starter-land.sh are the Supervisor's — run them from the main checkout, never from a role session (refused)"
   # INSPECT is matched on the segment with quoted spans masked (no git grep: -O runs a pager command).
   # SYNTAX on the raw segment: bash|sh -n takes plain path operands only — a quote, $, \, glob or
   # brace could turn one into +n / -c.

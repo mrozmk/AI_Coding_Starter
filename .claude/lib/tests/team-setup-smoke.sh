@@ -839,7 +839,7 @@ case_mark "(27) workflow.team_merge: auto leaves th"
 T=$(mktarget tm)
 S="$T/.claude/settings.json"
 P="$T/.claude/project-profile.json"
-TM_RULES="team-integrate.sh team-integrate-lock.sh team-merge-check.sh"
+TM_RULES="team-integrate.sh team-integrate-lock.sh team-merge-check.sh team-starter-land.sh"
 tm_count() {  # tm_count <expected> <case> — each trunk writer on ask exactly <expected> times
   local r
   for r in $TM_RULES; do

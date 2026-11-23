@@ -155,6 +155,53 @@ team_merge_commit_now() {
   fi
 }
 
+# Usage: team_ie_no <message> → prints `error: <message>` on stderr, rc 3 (the refusal formatter).
+team_ie_no() { echo "error: $1" >&2; return 3; }
+
+# Usage: team_run_ready <team> <clone> <run> <mode> → rc 0 ready · 3 refusal (`error: …` on stderr)
+#   The ONE definition of "accepted and idle", shared by integrate (through
+#   team_integration_eligible) and team-starter-land.sh: the work is accepted and nobody works on it.
+team_run_ready() {  # <team> <clone> <run> <mode>
+  local team="$1" clone="$2" run="$3" mode="$4"
+  local td="$clone/.agents/team" rd role rec
+  [ -n "$run" ] || { team_ie_no "no run id for team $team — nothing to integrate"; return 3; }
+  rd="$td/runs/$(team_ie_run_ref "$td" "$run")"
+
+  # (1) the work is accepted: cli alone in cli mode, otherwise qa AND wrapup (Amendment 3).
+  ie_accepted() {  # ie_accepted <role> → the record path
+    local f
+    f="$(ls -1 "$rd/$1-"*.json.accepted 2>/dev/null | tail -n 1)" || true
+    [ -n "$f" ] || return 1
+    printf '%s\n' "${f%.accepted}"
+  }
+  if [ "$mode" = cli ]; then
+    rec="$(ie_accepted cli)" || { team_ie_no "no accepted cli record in run '$run'"; return 3; }
+    [ "$(jq -r .verdict "$rec")" = done ] || { team_ie_no "accepted cli record is not done"; return 3; }
+  else
+    rec="$(ie_accepted qa)" || { team_ie_no "no accepted qa record in run '$run'"; return 3; }
+    [ "$(jq -r .verdict "$rec")" = done ] || { team_ie_no "accepted qa record is not done"; return 3; }
+    rec="$(ie_accepted wrapup)" || { team_ie_no "wrapup not done in run '$run'"; return 3; }
+    [ "$(jq -r .verdict "$rec")" = done ] || { team_ie_no "accepted wrapup record is not done"; return 3; }
+  fi
+
+  # (2) nobody is working: no live role, no runner, no role tmux session.
+  [ ! -f "$td/session.json" ] \
+    || { team_ie_no "a role is still live ($(jq -r .role "$td/session.json")) — wait for it to finish"
+         return 3; }
+  # `$TD/lock` is the runner's authoritative state, not tmux: `team-run.sh <team>; read` leaves the
+  # `<team>-runner` session alive long after the runner exited, so tmux would refuse forever.
+  [ ! -e "$td/lock" ] \
+    || { team_ie_no "the runner still holds $td/lock (pid $(cat "$td/lock/pid" 2>/dev/null || echo none))"
+         return 3; }
+  local m; m="$(sh_main_root 2>/dev/null)" || m=""
+  if [ -n "$m" ]; then
+    for role in ${TEAM_ROLES:-planner coder qa wrapup} cli; do
+      ! sh_alive_addr "$m" "$team-$role" 2>/dev/null \
+        || { team_ie_no "the $role session of $team is still alive"; return 3; }
+    done
+  fi
+}
+
 # Usage: team_integration_eligible <team> <clone> <run> <mode> <pr>
 #   rc 0 eligible · 3 refusal · 4 recoverable (GitHub still recomputing the merge ref)
 #   sets IE_SRC / IE_TGT / IE_MERGE from `team-pr.sh readiness`, and IE_MERGE_REF to the clone ref
@@ -168,47 +215,12 @@ team_merge_commit_now() {
 IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
 team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   local team="$1" clone="$2" run="$3" mode="$4" pr="$5"
-  local td="$clone/.agents/team" rd branch line role rec out
+  local td="$clone/.agents/team" branch line out
   IE_SRC=""; IE_TGT=""; IE_MERGE=""; IE_MERGE_REF=""
-  ie_no() { echo "error: $1" >&2; return 3; }
-  [ -n "$run" ] || { ie_no "no run id for team $team — nothing to integrate"; return 3; }
-  rd="$td/runs/$(team_ie_run_ref "$td" "$run")"
-  branch="$(jq -r '.branch // ""' "$td/team.json")" || { ie_no "cannot read $td/team.json"; return 3; }
+  # (1)–(2) accepted and idle.
+  team_run_ready "$team" "$clone" "$run" "$mode" || return 3
+  branch="$(jq -r '.branch // ""' "$td/team.json")" || { team_ie_no "cannot read $td/team.json"; return 3; }
   line="$(jq -r '.line // ""' "$td/team.json")"
-
-  # (1) the work is accepted: cli alone in cli mode, otherwise qa AND wrapup (Amendment 3).
-  ie_accepted() {  # ie_accepted <role> → the record path
-    local f
-    f="$(ls -1 "$rd/$1-"*.json.accepted 2>/dev/null | tail -n 1)" || true
-    [ -n "$f" ] || return 1
-    printf '%s\n' "${f%.accepted}"
-  }
-  if [ "$mode" = cli ]; then
-    rec="$(ie_accepted cli)" || { ie_no "no accepted cli record in run '$run'"; return 3; }
-    [ "$(jq -r .verdict "$rec")" = done ] || { ie_no "accepted cli record is not done"; return 3; }
-  else
-    rec="$(ie_accepted qa)" || { ie_no "no accepted qa record in run '$run'"; return 3; }
-    [ "$(jq -r .verdict "$rec")" = done ] || { ie_no "accepted qa record is not done"; return 3; }
-    rec="$(ie_accepted wrapup)" || { ie_no "wrapup not done in run '$run'"; return 3; }
-    [ "$(jq -r .verdict "$rec")" = done ] || { ie_no "accepted wrapup record is not done"; return 3; }
-  fi
-
-  # (2) nobody is working: no live role, no runner, no role tmux session.
-  [ ! -f "$td/session.json" ] \
-    || { ie_no "a role is still live ($(jq -r .role "$td/session.json")) — wait for it to finish"
-         return 3; }
-  # `$TD/lock` is the runner's authoritative state, not tmux: `team-run.sh <team>; read` leaves the
-  # `<team>-runner` session alive long after the runner exited, so tmux would refuse forever.
-  [ ! -e "$td/lock" ] \
-    || { ie_no "the runner still holds $td/lock (pid $(cat "$td/lock/pid" 2>/dev/null || echo none))"
-         return 3; }
-  local m; m="$(sh_main_root 2>/dev/null)" || m=""
-  if [ -n "$m" ]; then
-    for role in ${TEAM_ROLES:-planner coder qa wrapup} cli; do
-      ! sh_alive_addr "$m" "$team-$role" 2>/dev/null \
-        || { ie_no "the $role session of $team is still alive"; return 3; }
-    done
-  fi
 
   # (3) the clone is clean: an uncommitted file is work that never reached the PR. The exit status
   # is read SEPARATELY from the output — a `git status` that FAILS prints nothing on stdout, so
@@ -216,16 +228,16 @@ team_integration_eligible() {  # <team> <clone> <run> <mode> <pr>
   local st_out st_rc=0
   st_out="$(git -C "$clone" status --porcelain 2>&1)" || st_rc=$?
   [ "$st_rc" = 0 ] \
-    || { ie_no "cannot read the status of $clone (git exit $st_rc): $st_out"; return 3; }
-  [ -z "$st_out" ] || { ie_no "clone $clone is dirty"; return 3; }
+    || { team_ie_no "cannot read the status of $clone (git exit $st_rc): $st_out"; return 3; }
+  [ -z "$st_out" ] || { team_ie_no "clone $clone is dirty"; return 3; }
 
   # (4) the PR is ours, active, published, and on exactly the refs team.json names.
   ( cd "$clone" && bash .claude/lib/team-pr.sh identity "$pr" "$branch" "$line" ) \
-    || { ie_no "PR #$pr identity mismatch ($branch → $line)"; return 3; }
+    || { team_ie_no "PR #$pr identity mismatch ($branch → $line)"; return 3; }
   out="$( cd "$clone" && bash .claude/lib/team-pr.sh state "$pr" )" \
-    || { ie_no "cannot read the state of PR #$pr"; return 3; }
+    || { team_ie_no "cannot read the state of PR #$pr"; return 3; }
   [ "$(jq -r '.draft' <<<"$out")" = false ] \
-    || { ie_no "PR #$pr is still a draft — publish it first"; return 3; }
+    || { team_ie_no "PR #$pr is still a draft — publish it first"; return 3; }
 
   # (5) readiness: the tested merge commit.
   team_merge_commit_now "$clone" "$pr" "$line" "$branch" || return $?

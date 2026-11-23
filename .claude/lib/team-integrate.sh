@@ -13,7 +13,10 @@
 #
 # Order: lock the base · read-only recovery of an earlier intent · merge-check.json · the base is
 # still the validated target · re-run the eligibility check under the lock · write the intent ·
-# push · verify the base is M and the PR is MERGED.
+# push · verify the base is M and the PR is MERGED · delete the team's remote branch when it still
+# points at the validated source (one line: deleted / kept / delete failed; never changes the exit
+# code; a push between the read and the plain delete is not caught — the same accepted window as
+# /pr-merge).
 #
 # Exit: 0 integrated, PR MERGED · 2 usage / ADO profile
 #   3 refused with NO effect (lock held, missing or stale merge-check, moved sha, non-ff push)
@@ -21,7 +24,7 @@
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 die() { echo "error: $2" >&2; exit "$1"; }
 
 TEAM=""; BASE_OPT=""
@@ -75,6 +78,60 @@ ls_rem() {  # ls_rem <ref> → the sha on origin, empty when absent; rc 1 when t
   printf '%s' "$o" | awk 'NR == 1 { print $1 }'
 }
 
+# The team's remote branch, once the PR is in: deleted only while it still points at the validated
+# S, is the team's own branch the validation bound, is no long-lived branch and no other open PR's
+# head. Exactly one line (deleted / kept / delete failed), always rc 0 — the merge is already done.
+delete_source() {
+  local br="$BRANCH" kf krc=0 keep prot ids id st now out drc=0 err
+  if [ -z "$br" ] || [ "$br" = "$B" ] || [ "$br" = "$TEAM_TRUNK" ]; then
+    echo "kept: ${br:-<none>} — long-lived or target branch"; return 0
+  fi
+  [ -n "$VHEAD" ] || { echo "kept: $br — intent names no head ref"; return 0; }
+  [ "$VHEAD" = "$br" ] || { echo "kept: $br — intent head ref is $VHEAD"; return 0; }
+  # KEEP: the /pr-merge rule (pr-merge.md → Guardrails), read from the main checkout.
+  kf="$( cd "$root" && bash .claude/lib/branch-model.sh fields 2>&1 )" || krc=$?
+  if [ "$krc" != 0 ] && [ "$krc" != 3 ]; then
+    echo "kept: $br — branch model unreadable"; return 0
+  fi
+  keep=""; prot=""
+  if [ "$krc" = 0 ]; then
+    keep="$(printf '%s\n' "$kf" | sed -nE 's/^(trunk|integration|maintenance|protected)=//p' \
+      | tr '\n' ' ')" || keep=""
+    prot="$(printf '%s\n' "$kf" | sed -n 's/^protected=//p')" || prot=""
+  fi
+  # No Branch model block (rc 3) or an empty Protected field → the /push fallback set.
+  [ -n "${prot// /}" ] || keep="$keep main master trunk develop"
+  case " $keep " in *" $br "*) echo "kept: $br — long-lived branch"; return 0 ;; esac
+  # Shared head: deleting the branch would close another open PR on it (/pr-merge Step 6 item 0).
+  ids="$( bash .claude/lib/team-pr.sh by-branch "$br" 2>/dev/null )" \
+    || { echo "kept: $br — open-PR lookup failed"; return 0; }
+  for id in $ids; do
+    [ "$id" != none ] && [ "$id" != "$PR" ] || continue
+    st="$( bash .claude/lib/team-pr.sh state "$id" 2>/dev/null | jq -r '.status // ""' 2>/dev/null )" \
+      || st=""
+    case "$st" in
+      completed|abandoned) ;;
+      active) echo "kept: $br — head of open PR #$id"; return 0 ;;
+      *)      echo "kept: $br — PR #$id state unknown"; return 0 ;;
+    esac
+  done
+  now="$(ls_rem "refs/heads/$br" 2>/dev/null)" \
+    || { echo "delete failed: cannot read origin $br"; return 0; }
+  [ -n "$now" ] || { echo "deleted: $br (already absent on origin)"; return 0; }
+  [ "$now" = "$S" ] || { echo "kept: $br moved to $now after validation"; return 0; }
+  # Plain delete: a push landing between the read above and this call is not caught (the same
+  # accepted window as /pr-merge — a compare-and-swap would need a forced push, banned here).
+  out="$(git -C "$CLONE" push --porcelain origin --delete "refs/heads/$br" 2>&1)" || drc=$?
+  if [ "$drc" = 0 ]; then
+    echo "deleted: $br"
+  else
+    err="$(printf '%s\n' "$out" | grep -v -e '^To ' -e '^Done$' -e '^[[:space:]]*$' | sed -n 1p)" \
+      || err=""
+    echo "delete failed: ${err:-git push exit $drc}"
+  fi
+  return 0
+}
+
 # ---- 2. the integration lock for this base ------------------------------------------------------
 
 # `$root` was resolved BEFORE the cd: inside the clone `--show-toplevel` answers the clone, and the
@@ -88,14 +145,18 @@ trap 'til_release "$root" "$B" "$OWNER" "$TIL_TOKEN" >/dev/null 2>&1 || true' EX
 # ---- the intent -------------------------------------------------------------------------------
 
 INTENT="$root/.agents/team/integrate/$TEAM-$RUN.json"
-PR=""; T=""; S=""; M=""; DIG=""; NOTE=""
+# VHEAD: the head ref a merge-check validated for this integration — bound once (fresh path or the
+# intent) and carried through every rewrite, so an old intent without it stays without it.
+PR=""; T=""; S=""; M=""; DIG=""; NOTE=""; VHEAD=""
 intent_write() {  # intent_write <state> [note]
   mkdir -p "$(dirname "$INTENT")"
   jq -n --arg team "$TEAM" --arg run "$RUN" --arg repo "$TEAM_GH_REPO" --arg pr "$PR" \
     --arg base "$B" --arg t "$T" --arg s "$S" --arg m "$M" --arg dig "$DIG" \
+    --arg head "$VHEAD" \
     --arg st "$1" --arg note "${2:-}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{team: $team, run: $run, repo: $repo, pr: $pr, base: $base, target_sha: $t, source_sha: $s,
-      merge_sha: $m, records_digest: $dig, state: $st, at: $at, note: $note}' \
+      merge_sha: $m, records_digest: $dig, state: $st, at: $at, note: $note}
+     + (if $head == "" then {} else {head_ref: $head} end)' \
     > "$INTENT.tmp" && mv "$INTENT.tmp" "$INTENT"
 }
 
@@ -108,7 +169,7 @@ if [ -f "$INTENT" ]; then
   ist="$(jq -r '.state // ""' "$INTENT")"
   PR="$(jq -r '.pr // ""' "$INTENT")"; T="$(jq -r '.target_sha // ""' "$INTENT")"
   S="$(jq -r '.source_sha // ""' "$INTENT")"; M="$(jq -r '.merge_sha // ""' "$INTENT")"
-  DIG="$(jq -r '.records_digest // ""' "$INTENT")"
+  DIG="$(jq -r '.records_digest // ""' "$INTENT")"; VHEAD="$(jq -r '.head_ref // ""' "$INTENT")"
   ibase="$(jq -r '.base // ""' "$INTENT")"
   [ "$ibase" = "$B" ] \
     || die 3 "the intent of run $RUN targets $ibase, not $B — integrate that base or remove it"
@@ -120,6 +181,7 @@ if [ -f "$INTENT" ]; then
     [ "$dnow" = "$M" ] \
       || die 3 "base moved past M — manual check (base $dnow, recorded M $M, intent done)"
     echo "already integrated: PR #$PR M=$M"
+    delete_source
     finalize_lead
     exit 0
   fi
@@ -174,6 +236,7 @@ for pair in "run=$RUN" "pr=$PR" "repo=$TEAM_GH_REPO" "head_ref=$BRANCH" "base_re
   [ "$got" = "$want" ] \
     || die 3 "merge-check $k is '$got', not '$want' — rerun team-merge-check.sh $TEAM"
 done
+VHEAD="$BRANCH"
 [ "$(mcf base_ref)" = "$B" ] || die 3 "merge-check targets another base — rerun"
 T="$(mcf target_sha)"; S="$(mcf source_sha)"
 M="$(mcf merge_sha)"; DIG="$(mcf records_digest)"
@@ -297,6 +360,7 @@ if [ "$status" = completed ]; then
     || die 4 "base moved past M while the PR was closing — manual check (base $final, tested M $M)"
   intent_write done "${NOTE:-}"
   echo "integrated: PR #$PR into $B T=$T S=$S M=$M"
+  delete_source
   finalize_lead
   exit 0
 fi

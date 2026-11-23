@@ -45,6 +45,8 @@ refused 'bash ".claude/lib/team-integrate.sh" beta'
 refused './.claude/lib/team-integrate.sh beta'
 refused 'source .claude/lib/team-integrate-lock.sh'
 refused "bash -n -c 'bash .claude/lib/team-integrate.sh'"
+refused 'bash .claude/lib/team-starter-land.sh alfa'
+passes 'cat .claude/lib/team-starter-land.sh'
 refused "git -c alias.x='!bash .claude/lib/team-integrate.sh' x"
 # a segment without the name runs the script fed by an allowed one
 refused 'cat .claude/lib/team-integrate.sh | bash -s beta'

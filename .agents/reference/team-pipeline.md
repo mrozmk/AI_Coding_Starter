@@ -236,7 +236,7 @@ the contract is [team-lead.md](team-lead.md). Before you rely on it, read the li
 
    | Event | Means | Run |
    |---|---|---|
-   | `accepted` | the lead accepted the delivery and the wrapup is done; the runner printed `ready:` | `bash .claude/lib/team-merge-check.sh <team>`, then (github) `bash .claude/lib/team-integrate.sh <team>` or (ADO) `/pr-merge`; the brief is the event's `ref` |
+   | `accepted` | the lead accepted the delivery and the wrapup is done; the runner printed `ready:` | (github) `bash .claude/lib/team-starter-land.sh <team>` when the run has a starter half (§6), then `bash .claude/lib/team-merge-check.sh <team>`, then `bash .claude/lib/team-integrate.sh <team>`; (ADO) `bash .claude/lib/team-merge-check.sh <team>`, then `/pr-merge`; the brief is the event's `ref` |
    | `closed` | the run ended without merge (exit 8); the body says `PR <id> to abandon before team-next` or `clone free` | reason `remode` → `bash .claude/lib/team-remode.sh <team> brainstorm`, then `/start-team <team>`; else abandon the named PR (if any) and free the clone with `team-next` |
    | `collision` | the lead found another team's in-flight work touching this run | answer the lead: `bash .claude/lib/team-inbox.sh write <team> collision-answer --from Supervisor --ticket <k> --run <run> --message "<line>"` |
    | `session_dead` | the lead died, or a stage died with partial work (`ref` = its `.session`) | `/start-team <team>` (it relaunches the lead, or resumes the stage) |
@@ -267,6 +267,32 @@ The Operator answers human-only decisions in the `<team>-lead` window; you are n
 team question.
 
 ## 6. Merge
+
+**GitHub, in order:**
+1. **Start signal** — the `accepted` event (wrapup done) in a run with a TeamLead; in mode cli
+   (no TeamLead, no `accepted` event) the runner's `ready:` line with an accepted cli record.
+2. **Release freeze and the tracker check** — §5 item 5, as before.
+3. **The starter half** — only in the project that develops the starter (`teams.starter_root` set),
+   when the PR description names starter commits: `bash .claude/lib/team-starter-land.sh <team>`.
+   It merges the run's starter worktree branch (`<starter>-<team>-<ticket>`, or `--worktree`) into
+   the starter's `main` with `--no-ff`, pushes it and removes the worktree and the branch. Exit 0 —
+   `landed: <b> into main M=<sha>` (or `already merged: … M=<sha>`), then one line per cleanup step
+   (`removed:` / `deleted:` / `kept: … — <why>`); 2 — not configured, or the starter checkout is
+   not the `starter_repo`; 3 — refused, nothing merged or pushed — the local `main` may have been
+   fast-forwarded to `origin/main` (run not ready, no or a wrong worktree, the
+   starter checkout dirty, off `main`, or `main` ahead of `origin/main`); 4 — merged locally, the
+   push refused (reconcile by hand as printed, then rerun); 5 — a merge conflict left in the
+   starter checkout for you. A refusal stops both halves: nothing is merge-checked or integrated
+   until the starter half is landed. After an exit-5 conflict resolved in the starter, compare each
+   resolved path the team PR also carries with the PR's version before step 4 — a difference stops
+   for the Operator (the PR must carry the same resolution). A rerun after a successful landing
+   finds no worktree (exit 3): the earlier `landed: … M=<sha>` line, or that merge on the starter's
+   `origin/main`, is the evidence to continue at step 4. A run without a starter half skips this.
+4. `bash .claude/lib/team-merge-check.sh <team>` (below).
+5. `bash .claude/lib/team-integrate.sh <team>` (§8a of team-mode.md). It deletes the team's remote
+   branch itself: `deleted: <branch>`, `kept: <branch> moved to <sha> after validation`,
+   `kept: <branch> — head of open PR #<n>` (or another `kept: … — <reason>`), or
+   `delete failed: <error>` — none of them fails the integration, and a rerun retries the delete.
 
 ```bash
 bash .claude/lib/team-merge-check.sh alfa
