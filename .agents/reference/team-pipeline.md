@@ -278,7 +278,8 @@ team question.
    the starter's `main` with `--no-ff`, pushes it and removes the worktree and the branch. Exit 0 —
    `landed: <b> into main M=<sha>` (or `already merged: … M=<sha>`), then one line per cleanup step
    (`removed:` / `deleted:` / `kept: … — <why>`); 2 — not configured, or the starter checkout is
-   not the `starter_repo`; 3 — refused, nothing changed (run not ready, no or a wrong worktree, the
+   not the `starter_repo`; 3 — refused, nothing merged or pushed — the local `main` may have been
+   fast-forwarded to `origin/main` (run not ready, no or a wrong worktree, the
    starter checkout dirty, off `main`, or `main` ahead of `origin/main`); 4 — merged locally, the
    push refused (reconcile by hand as printed, then rerun); 5 — a merge conflict left in the
    starter checkout for you. A refusal stops both halves: nothing is merge-checked or integrated

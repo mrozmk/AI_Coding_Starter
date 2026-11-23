@@ -118,6 +118,13 @@ land
 if ok "$L" 0 "already merged" "removed: worktree" "deleted: branch feat/x"; then
   [ ! -d "$W" ] && ! has_branch feat/x || bad "$L" "worktree or branch still there"
 fi
+L="conflict with --worktree: the recovery rerun names it"
+fx conflictwt
+printf 'worktree\n' > "$W/f.txt"; git -C "$W" commit -qam wt || die "conflictwt wt"
+printf 'main\n' > "$ST/f.txt"; git -C "$ST" commit -qam main && git -C "$ST" push -q origin main \
+  || die "conflictwt main"
+land --worktree "$W"
+ok "$L" 5 "rerun: bash .claude/lib/team-starter-land.sh alfa --worktree $(printf '%q' "$W")"
 
 # ---- local main ahead of origin -----------------------------------------------------------------
 L="local main ahead of origin: refused"

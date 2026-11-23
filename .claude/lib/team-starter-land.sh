@@ -17,8 +17,8 @@
 #
 # Exit: 0 landed (the cleanup lines tell the rest)
 #   2 usage / not configured / starter checkout missing or not the starter_repo (fetch or push URL)
-#   3 refused, nothing changed · 4 merged locally, push refused · 5 merge conflict left for the
-#   Supervisor
+#   3 refused, nothing merged or pushed (main may be fast-forwarded to origin/main) · 4 merged
+#   locally, push refused · 5 merge conflict left for the Supervisor
 # Never --force, never branch -D, never merge --abort. Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
@@ -152,6 +152,10 @@ case "$wref" in
   *) die 3 "worktree $W has a detached HEAD at $TIP — no branch to land" ;;
 esac
 [ -n "$TIP" ] || die 3 "worktree $W names no HEAD"
+# The rerun the recovery messages print: the same starter and worktree selection as this run.
+RERUN="bash .claude/lib/team-starter-land.sh $(printf '%q' "$TEAM")"
+[ -z "$ST_OPT" ] || RERUN="$RERUN --starter $(printf '%q' "$ST")"
+[ -z "$WT_OPT" ] || RERUN="$RERUN --worktree $(printf '%q' "$W")"
 
 # KEEP: the starter's long-lived branches are never landed from (nor deleted).
 keep="main release master trunk develop"
@@ -218,7 +222,7 @@ else
       cat <<EOF
 Two ways on:
   (a) resolve the paths, then: git -C $ST commit --no-edit && git -C $ST push origin main
-      then rerun: bash .claude/lib/team-starter-land.sh $TEAM   (it finds the merge and cleans up)
+      then rerun: $RERUN   (it finds the merge and cleans up)
   (b) git -C $ST merge --abort, and land the branch by hand
 The resolution may change what the port must ship: before the merge-check, compare each resolved
 path that the team PR also carries (git -C $CLONE show <PR head>:<path> vs the starter's resolved
@@ -245,7 +249,7 @@ if [ "$FRESH" = 1 ]; then
   printf '%s\n' "$pout" | sed 's/^/  | /'
   if [ "$prc" != 0 ]; then
     echo "merged locally, not pushed: M=$M. Recovery: git -C $ST pull --no-rebase origin main &&" \
-      "git -C $ST push origin main, then rerun this helper (it finds M and cleans up)." >&2
+      "git -C $ST push origin main, then rerun: $RERUN (it finds M and cleans up)." >&2
     exit 4
   fi
   ro="$(git -C "$ST" ls-remote origin refs/heads/main 2>&1)" \
@@ -268,7 +272,9 @@ if [ "$ig_rc" != 0 ]; then
   echo "kept: worktree $W — status unreadable (branch $WB kept too)"; exit 0
 fi
 # `worktree remove` deletes ignored files silently (local drafts, a developer profile).
-if printf '%s\n' "$ig" | grep -q '^!! '; then
+# A here-string, not a pipe: under pipefail an early `grep -q` exit can SIGPIPE the writer and read
+# as "no ignored files".
+if grep -q '^!! ' <<<"$ig"; then
   echo "kept: worktree $W — ignored files (branch $WB kept too)"; exit 0
 fi
 rrc=0; rout="$(git -C "$ST" worktree remove "$W" 2>&1)" || rrc=$?
