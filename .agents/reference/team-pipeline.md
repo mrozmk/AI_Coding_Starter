@@ -179,6 +179,51 @@ under the runner lock after it, so a record written during the stop is caught. T
 run starts with the notes carried over, and `team.json` mode becomes `brainstorm`; the branch,
 `base_sha` and `roles.override.json` stay. Next: `/start-team alfa`.
 
+### Claim at the start
+
+Two machines (or a team and a solo session) may start the same ticket. A NEW `/start-team`
+(step 3b) and `/start-task` (step 6b) therefore claim the ticket in the tracker **before** any clone
+or branch names it, in this order:
+
+1. **Check** — refuse when the ticket is closed, in the `started` or `delivered` status (Jira: status
+   category `In Progress` or `Done`), held by another machine or team (an unreleased claim comment),
+   or has an open PR (`closes`/`branch`) or a remote branch `<type>/<KEY>-…` carrying its key. The
+   refusal is one line naming the status, the PR URLs, the branches and the holder's team and machine:
+   `refused: #<KEY> — <findings>`.
+2. **Claim** — post one claim comment whose last line is the marker
+   `team:claim v1 id=<machine>.<who>.<UTC> machine=… who=<team|solo> branch=… at=… previous=<status>`
+   (`<!-- … -->` on GitHub, plain on Jira; `previous` percent-encoded, `none` for no status,
+   `no-project` without a board).
+3. **Confirm** — read every comment again: the **first unreleased claim wins** (ordered by the
+   numeric comment id; a `takeover=` claim clears the earlier ones). A loser posts
+   `team:claim-released v1 id=<id> reason=lost-race` and stops naming the holder — it never writes
+   the status. Only the winner moves the ticket to `started`. A failed post or status move stops the
+   start with a release comment; `skipped (no project)` is the one tolerated status answer.
+
+GitHub runs all three in one call, `bash .claude/lib/team-claim.sh claim <KEY> --who <team|solo>
+--branch <branch> [--takeover]`, composing `team-tracker.sh` (`show`, `item-status`, `comment`,
+`set-status`) and `team-pr.sh prs` — it calls no `gh` itself. Jira runs them through the session's
+MCP (`jira_get_issue` with `include="comments", comment_limit=100`, judged by
+`tracker-snapshot.mjs` — `possibly-truncated` stops, `unknown` passes only in Check;
+`team-claim.sh refs`, `body` and `holder`), transitions the winner to `jira.started_status` (asked
+once and saved when missing; `/setup:start` asks it up front), and `guard-jira-transition.sh` rules
+apply. Tracker `none` has no shared signal: one line, and the start continues as before.
+
+- **Release on a failed start.** A start that fails after a won claim and before the clone or
+  branch names the ticket gives it back: `team-claim.sh release <KEY> --id <id> --reason
+  start-failed` restores the status to the claim marker's `previous` **first** (only while that
+  claim still holds and the status still reads `started`; `previous` comes from the marker, never
+  from a fresh read), then posts the release comment. A rerun writes nothing new.
+- **Resume never claims.** `/start-team <team>` and `/start-task` on an existing local branch skip
+  the claim. An own unreleased claim from a crashed start passes as `held` — no second comment, the
+  `previous` of its first marker — unless the status has moved past `started` (refused).
+- **Takeover** only with `--takeover` written by the Operator in that invocation; the new marker
+  records `takeover=<superseded id|status>`. It still refuses a closed ticket and a remote branch
+  equal to the new branch.
+- **Limits.** An open issue sitting in a "Done"-like column that is not the profile's `delivered`
+  option is not detected; an issue off the board stops with the hint `team-tracker.sh project-add
+  <KEY>`. The claim and release comments are own entries for the tracker-comments freshness check.
+
 ## 4. Run
 
 The runner blocks for hours — longer than a Claude Bash call (10 min max) — so `/start-team` starts it

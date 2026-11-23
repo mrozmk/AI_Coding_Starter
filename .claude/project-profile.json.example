@@ -153,8 +153,8 @@
     }
   },
 
-  "_jira_doc": "Jira sync settings. estimates: none | timetracking | <custom field id> — none = no time estimate is sent (sizes stay in the description); absent = the field remembered in .agents/memory/domain/jira.md, else $JIRA_ESTIMATE_FIELD, else timetracking. commit_drafts: reserved — committing .agents/jira/ is unsupported in v1.",
-  "jira": { "estimates": "timetracking", "commit_drafts": false },
+  "_jira_doc": "Jira sync settings. estimates: none | timetracking | <custom field id> — none = no time estimate is sent (sizes stay in the description); absent = the field remembered in .agents/memory/domain/jira.md, else $JIRA_ESTIMATE_FIELD, else timetracking. commit_drafts: reserved — committing .agents/jira/ is unsupported in v1. started_status: the Jira status the start's claim transitions a won ticket to (/start-team, /start-task); absent = asked once on the first start, then saved here.",
+  "jira": { "estimates": "timetracking", "commit_drafts": false, "started_status": "In Progress" },
 
   "_ba_doc": "BA profile. enabled: a Business Analyst runs discovery and the backlog in this repo (written by /setup:start later; nothing reads it yet). meetings_dir: where raw transcripts are dropped for /meeting-notes. vendor / client: participant-group labels in meeting notes (defaults Vendor / Client). Absent block = BA profile off.",
   "ba": { "enabled": false, "meetings_dir": ".agents/sources/meetings/", "vendor": "", "client": "" },

@@ -8,6 +8,8 @@
 
 Each **team** is a permanent git clone of the project, a workstation reused ticket after ticket. Where clones live and what they are called is configuration: `teams.clone_parent`, and `teams.clone_name` (default `<repo dir>-{team}`, next to the main checkout).
 
+Before a clone takes a new ticket, the start claims the ticket in the tracker: a check (closed, already started, an open PR or a remote branch for its key, another holder), a claim comment, and a confirm — the first claim wins and only the winner moves the status. A second machine or team starting the same ticket is refused with the holder's team and machine, and a start that fails before the clone names the ticket gives it back. Details: [`team-pipeline.md` → Claim at the start](../../.agents/reference/team-pipeline.md#claim-at-the-start).
+
 Clones are used rather than worktrees because a worktree shares one git database with the main checkout — branches, stash, config, hooks and `.git/info/exclude` — and a clone has its own:
 
 - **Blast radius.** Roles work unattended. In a worktree a wrong `git branch -D`, `git stash` or `git gc` hits every team and the Operator's checkout; in a clone it stays in the clone, and the only way out is a push and a PR, where the gates stand.
