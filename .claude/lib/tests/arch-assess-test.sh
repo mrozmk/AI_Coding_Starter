@@ -312,6 +312,24 @@ q sib '.files[] | select(.path == "dao/UserDAO.java") | .sibling_test == true' |
 q sib '.files[] | select(.path == "lib/foo.rb") | .sibling_test == true' || fail "M17 _spec name: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
 ok "M17 sibling tests: one language, a mirrored sub-path, an ambiguous stem credits none, FooTest and _spec names"
 
+repo sib2; S2="$WORK/sib2"
+put "$S2/src/foo/__tests__/index.test.ts" "import { x } from '../index';"
+for f in src/foo/index.ts src/foo/bar/index.ts; do put "$S2/$f" "export const x = 1;"; done
+put "$S2/ui/Foo.vue" "<template><p/></template>"
+put "$S2/ui/Foo.spec.ts" "test('foo', () => {});"
+put "$S2/ui/Bar.svelte" "<p/>"
+put "$S2/ui/Bar.spec.ts" "test('bar', () => {});"
+put "$S2/bin/run.bash" "echo run"
+put "$S2/bin/run-test.sh" "bash run.bash"
+put "$S2/py/utils.ts" "export const u = 1;"
+put "$S2/py/test_utils.py" "x = 1"
+commit "$S2"
+measure sib2
+q sib2 '(.files[] | select(.path == "src/foo/index.ts") | .sibling_test == true) and (.files[] | select(.path == "src/foo/bar/index.ts") | .sibling_test == false)' || fail "M17b closest placement: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib2.json")"
+q sib2 '[.files[] | select(.path == "ui/Foo.vue" or .path == "ui/Bar.svelte" or .path == "bin/run.bash") | .sibling_test] == [true, true, true]' || fail "M17b language family: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib2.json")"
+q sib2 '.files[] | select(.path == "py/utils.ts") | .sibling_test == false' || fail "M17b python test credits a ts file: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib2.json")"
+ok "M17b sibling tests: the closest placement wins, a .vue/.svelte/.bash source is credited by its family's test, never across languages"
+
 repo pyroot; PR="$WORK/pyroot"
 put "$PR/app/__init__.py" ""
 put "$PR/app/utils/__init__.py" ""

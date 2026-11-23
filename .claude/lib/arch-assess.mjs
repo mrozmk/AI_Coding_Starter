@@ -173,9 +173,12 @@ function testStem(base) {
 // Does test directory `testDir` sit where a test of a source in `srcDir` lives? Same directory, or
 // `<a>/<d>` / `<a>/<d>/<sub>` for an ancestor `a` of srcDir (`.` included), a test dir `d`, and
 // `<sub>` a whole-segment suffix of srcDir below `a` (empty allowed). `spec` counts only for Ruby.
+// Returns the placement distance — how many segments of srcDir below `a` the test dir does not
+// mirror (0 = beside it or a full mirror) — or -1 when the test does not sit there.
 function testPlacedFor(testDir, srcDir, lang) {
-  if (testDir === srcDir) return true;
+  if (testDir === srcDir) return 0;
   const dirs = lang === 'rb' ? [...TEST_DIRS] : [...TEST_DIRS].filter((d) => d !== 'spec');
+  let best = -1;
   for (let a = srcDir; ; a = path.posix.dirname(a)) {
     const below = a === '.' ? srcDir : srcDir === a ? '' : srcDir.slice(a.length + 1);
     const segs = below && below !== '.' ? below.split('/') : [];
@@ -183,10 +186,10 @@ function testPlacedFor(testDir, srcDir, lang) {
       const home = a === '.' ? d : `${a}/${d}`;
       for (let i = 0; i <= segs.length; i++) {
         const sub = segs.slice(i).join('/');
-        if (testDir === (sub ? `${home}/${sub}` : home)) return true;
+        if (testDir === (sub ? `${home}/${sub}` : home) && (best < 0 || i < best)) best = i;
       }
     }
-    if (a === '.') return false;
+    if (a === '.') return best;
   }
 }
 
@@ -520,8 +523,11 @@ export async function measure(opts) {
 
   // sizes, branches, sibling tests
   // A test credits one source: same stem, same language, placed beside it or in a mirrored test
-  // dir; a tie narrows to the test's own dir, then its extension, and an ambiguous stem credits none.
-  const normLang = (l) => (l === 'kts' ? 'kt' : l);
+  // dir; a tie narrows to the closest placement, then the test's own dir, then its extension, and an
+  // ambiguous stem credits none. A language family tests as one: a `.vue`/`.svelte` component by a
+  // JS/TS spec, a `.bash` script by a `-test.sh`.
+  const LANG_FAMILY = { kts: 'kt', vue: 'js', svelte: 'js', bash: 'sh' };
+  const normLang = (l) => LANG_FAMILY[l] ?? l;
   const sources = new Map(); // "<lang>\0<stem>" → [entry]
   for (const e of entries) {
     e.branches = e.lang === 'def' ? null : countBranches(e.text, e.lang);
@@ -534,8 +540,10 @@ export async function measure(opts) {
   for (const t of entries.filter((x) => x.test)) {
     const tDir = path.posix.dirname(t.path);
     const lang = normLang(t.lang);
-    let hits = (sources.get(`${lang}\0${testStem(path.posix.basename(t.path))}`) ?? [])
-      .filter((s) => testPlacedFor(tDir, path.posix.dirname(s.path), lang));
+    const placed = (sources.get(`${lang}\0${testStem(path.posix.basename(t.path))}`) ?? [])
+      .map((s) => ({ s, d: testPlacedFor(tDir, path.posix.dirname(s.path), lang) })).filter((x) => x.d >= 0);
+    const closest = Math.min(...placed.map((x) => x.d));
+    let hits = placed.filter((x) => x.d === closest).map((x) => x.s);
     const narrow = (keep) => { const n = hits.filter(keep); if (n.length) hits = n; };
     if (hits.length > 1) narrow((s) => path.posix.dirname(s.path) === tDir);
     if (hits.length > 1) narrow((s) => extOf(path.posix.basename(s.path)) === extOf(path.posix.basename(t.path)));

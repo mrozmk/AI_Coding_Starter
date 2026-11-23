@@ -118,6 +118,19 @@ test('scanner: clippy enforces only with -D warnings', async () => {
   assert.ok(!group || group.enforced === false);
 });
 
+test('scanner: a bare cargo clippy checks when Cargo.toml denies a lint', async () => {
+  const clippy = async (cargo) => tool(await miniScan({ 'Cargo.toml': `[package]\nname = "x"\n\n${cargo}`, Makefile: 'lint:\n\tcargo clippy\n', 'src/main.rs': 'fn main() {}\n' }), 'clippy');
+  const crate = await clippy('[lints.clippy]\nunwrap_used = "deny"\n');
+  assert.equal(crate.enforced, true);
+  assert.equal(crate.runs[0].strict, true);
+  assert.equal((await clippy('[workspace.lints.clippy]\nall = { level = "deny", priority = -1 }\n')).enforced, true);
+  assert.equal((await clippy('[lints.clippy]\npedantic = "forbid"\n')).enforced, true);
+  const warnOnly = await clippy('[lints.clippy]\npedantic = "warn"\n\n[lints.rust]\nunsafe_code = "deny"\n');
+  assert.ok(!warnOnly || warnOnly.enforced === false);
+  const none = await clippy('[dependencies]\nserde = "1"\n');
+  assert.ok(!none || none.enforced === false);
+});
+
 const BIOME_MIXED = '{"linter":{"rules":{"style":{"noVar":"warn"},"suspicious":{"noDebugger":"error"}}}}\n';
 const BIOME_WARN = '{"linter":{"rules":{"style":{"noVar":"warn"}}}}\n';
 const biomeRepo = (config, lint, extra = {}) => miniRepo({ 'biome.json': config, 'package.json': JSON.stringify({ scripts: { lint } }) + '\n', 'src/a.ts': 'export const a = 1;\n', ...extra });
@@ -150,6 +163,13 @@ test('scanner: a flag value is not a target', async () => {
   assert.deepEqual(ruff.runs[0].targets, ['src']);
   const eslint = tool(await miniScan({ 'eslint.config.mjs': "export default [{ rules: { eqeqeq: 'error' } }];\n", 'src/a.js': 'export const a = 1;\n', 'package.json': '{ "scripts": { "lint": "eslint --cache src" } }\n' }), 'eslint');
   assert.deepEqual(eslint.runs[0].targets, ['src']);
+  // A file-like value of an unknown flag is no target: an output file is neither scanned nor a source.
+  const flake8 = tool(await miniScan({ '.flake8': '[flake8]\nmax-line-length = 100\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\tflake8 --output-file flake8.txt .\n' }), 'flake8');
+  assert.deepEqual(flake8.runs[0].targets, []);
+  assert.ok(!flake8.appliesTo.some((a) => a.includes('flake8.txt')));
+  const mypy = tool(await miniScan({ 'mypy.ini': '[mypy]\nstrict = True\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\tmypy --junit-xml reports/mypy.xml src\n' }), 'mypy');
+  assert.deepEqual(mypy.runs[0].targets, ['src']);
+  assert.ok(!mypy.appliesTo.some((a) => a.includes('reports')));
 });
 
 test('scanner: a quoted eslint -c attributes that config', async () => {

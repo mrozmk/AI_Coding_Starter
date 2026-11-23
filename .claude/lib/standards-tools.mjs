@@ -98,7 +98,9 @@ export const TOOLS = [
     configs: [/(^|\/)\.?rustfmt\.toml$/], runs: /\bcargo\s+fmt\b.*--check|\brustfmt\b.*--check/, bin: /^(.*\/)?(cargo|rustfmt)$/,
     sub: ['fmt'], stopAt: '--', observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
   }),
-  // Clippy's lint levels live on the command line, not in clippy.toml: only a run that denies warnings checks.
+  // Clippy's lint levels live on the command line or in Cargo.toml's [lints.clippy] /
+  // [workspace.lints.clippy], never in clippy.toml: only a run that denies warnings, or a bare run
+  // in a crate whose Cargo.toml denies a lint, checks.
   T('clippy', 'Clippy', 'lint', {
     configs: [/(^|\/)\.?clippy\.toml$/], runs: /\bcargo\s+clippy\b/, bin: /^(.*\/)?cargo$/, sub: ['clippy'], stopAt: '--',
     strictRe: /(^|[\s=])(-D\s*warnings|--deny[=\s]+warnings)(\s|$)/, requireStrict: true, appliesTo: RS,
@@ -248,17 +250,22 @@ function extract(t, file, text) {
 // One checking invocation parsed per tool: positional targets, excludes, an explicit selection and
 // the strict flag. null when the text is not a checking invocation of that tool. `isPath` tells
 // whether a token names a scanned path: a token right after an unknown flag is that flag's value
-// unless it looks like a path or names one; the default treats every token as a path (a target).
+// unless it names one, carries a glob, or is a file of the kind the tool checks (`tsc --noEmit
+// src/a.ts`); the default treats every token as a path (a target). `strictByConfig`: the repo
+// itself sets the strictness a `requireStrict` tool otherwise takes from its command line.
 const unquote = (s) => s.replace(/^["']|["']$/g, '');
-export function parseRun(toolId, text, isPath = () => true) {
+const extOfTok = (tok) => /\.(\w+)$/.exec(path.posix.basename(tok))?.[1] ?? '';
+const srcExts = (glob) => { const m = /\*\.(?:\{([^}]+)\}|(\w+))$/.exec(glob); return m ? (m[1] ? m[1].split(',') : [m[2]]) : []; };
+export function parseRun(toolId, text, isPath = () => true, { strictByConfig = false } = {}) {
   const t = BY_ID.get(toolId);
   if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text) || INFO_ONLY.test(text)) return null;
   const bare = text.replace(/["']/g, ' ');
-  if (t.requireStrict && !t.strictRe.test(bare)) return null;
+  if (t.requireStrict && !strictByConfig && !t.strictRe.test(bare)) return null;
   const toks = text.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
   let i = toks.findIndex((x) => t.bin.test(unquote(x)));
   const run = { targets: [], excludes: [], selected: null, strict: false, scopeUnknown: false };
-  if (t.strictRe && t.strictRe.test(bare)) run.strict = true;
+  if (strictByConfig || (t.strictRe && t.strictRe.test(bare))) run.strict = true;
+  const exts = srcExts(t.appliesTo);
   // No binary token: a run only when the binary sits in a command substitution (`test -z "$(gofmt -l .)"`).
   if (i < 0) return toks.some((x) => { const m = /\$\(\s*([^\s)]+)/.exec(x); return m && t.bin.test(m[1]); }) ? run : null;
   if (/^(.*\/)?(ng|nx)$/.test(toks[i])) return run;
@@ -286,8 +293,9 @@ export function parseRun(toolId, text, isPath = () => true) {
     }
     if (/[$`(]/.test(tok)) { run.scopeUnknown = true; continue; }
     const target = unquote(tok).replace(/^\.\//, '').replace(/\/?\.\.\.$/, '').replace(/\/$/, '');
-    // `--timeout 5m`, `--output-format github`: a bare word after an unknown flag that names no path is its value.
-    if (after && !/[*?[{/]/.test(target) && !/\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(target) && !isPath(target)) continue;
+    // `--timeout 5m`, `--output-file flake8.txt`, `--junit-xml reports/mypy.xml`: a token after an
+    // unknown flag that names no scanned path, has no glob and is no source file of the tool is its value.
+    if (after && !/[*?[{]/.test(target) && !exts.includes(extOfTok(target)) && !isPath(target)) continue;
     if (target && target !== '.') run.targets.push(target);
   }
   return run;
@@ -328,8 +336,22 @@ function commands(file, text) {
   return out;
 }
 
+// Whether a Cargo.toml sets a `deny` or `forbid` level under [lints.clippy] or
+// [workspace.lints.clippy] (`x = "deny"` or `x = { level = "deny", … }`).
+function cargoDeniesClippy(text) {
+  let inTable = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s#.*$|^#.*$/, '').trim();
+    const h = /^\[([^\]]+)\]$/.exec(line);
+    if (h) { inTable = /^(workspace\.)?lints\.clippy$/.test(h[1].replace(/\s+/g, '')); continue; }
+    if (inTable && /=\s*(\{.*\blevel\s*=\s*)?["'](deny|forbid)["']/.test(line)) return true;
+  }
+  return false;
+}
+
 // isPath(dir, token): whether the token, resolved against the run directory, names a scanned path.
-function runsOf(cmds, isPath) {
+// strictAt(tool, dir): whether the repo's own config makes a run of that tool in that directory strict.
+function runsOf(cmds, isPath, strictAt = () => false) {
   const runs = [];
   const seen = new Set();
   for (const c of cmds) {
@@ -344,7 +366,7 @@ function runsOf(cmds, isPath) {
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
         if (masked || (/fix/i.test(c.key) && /--fix\b/.test(seg))) continue;
-        const r = parseRun(t.tool, seg, (x) => isPath(dir, x));
+        const r = parseRun(t.tool, seg, (x) => isPath(dir, x), { strictByConfig: strictAt(t.tool, dir) });
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }
     }
@@ -372,7 +394,11 @@ export function scan({ repo, files }) {
   const hasProject = files.some((f) => /\.(csproj|sln)$/.test(f) && !HARNESS.test(f));
   const fileSet = new Set(files);
   const isPath = (dir, x) => { const p = posix(dir, x); return p === '' || fileSet.has(p) || files.some((f) => f.startsWith(`${p}/`)); };
-  const { runs, seen } = runsOf(wiring.flatMap((w) => commands(w.file, w.text)), isPath);
+  // A Cargo.toml that denies a Clippy lint: a bare `cargo clippy` in its directory fails on it.
+  const clippyDenyDirs = new Set(files.filter((f) => /(^|\/)Cargo\.toml$/.test(f) && !HARNESS.test(f))
+    .filter((f) => { const r = safeRead(repo, f, realRepo); return r.text != null && cargoDeniesClippy(r.text); }).map(dirOf));
+  const strictAt = (tool, dir) => tool === 'clippy' && clippyDenyDirs.has(dir);
+  const { runs, seen } = runsOf(wiring.flatMap((w) => commands(w.file, w.text)), isPath, strictAt);
   const rootPkg = wiring.find((w) => w.file === 'package.json');
   let eslintMajor = 0;
   try { const p = JSON.parse(rootPkg.text); eslintMajor = Number(/\d+/.exec((p.devDependencies || {}).eslint || (p.dependencies || {}).eslint || '')?.[0] || 0); } catch { /* no root package.json */ }
