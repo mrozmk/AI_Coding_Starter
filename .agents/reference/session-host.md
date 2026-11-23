@@ -293,7 +293,7 @@ the inbox file; the line only wakes the session.
   Codex role restores fresh only; to continue its last conversation, run `codex resume --last` by
   hand in the main checkout.
 - **`place <address>`** (Herdr) puts a running terminal into its tab:
-  - a role into its `place.tab` (`Lead` for the shipped roles: the `main` slot left, `side` roles
+  - a role into its `place.tab` (`Supervisor` for the shipped roles: the `main` slot left, `side` roles
     stacked right);
   - a team session into **its team's own tab**, named after the team (`<team>-<role>` → tab
     `<team>`), by label adoption. The runner places the TeamLead at launch, so it is the tab's

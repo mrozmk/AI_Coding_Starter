@@ -3,6 +3,20 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## The roles' Herdr tab is named Supervisor
+
+**Before:** `/roles` put the shipped roles (Supervisor, Fable, Astra) into a Herdr tab named `Lead`.
+
+**Now:** the shipped `place.tab` is `Supervisor`. A team still may not be named `lead` (older
+windows keep a `Lead` tab) nor like a role (`supervisor`, `fable` …). `TeamLead` is unchanged: each
+team's tab keeps its TeamLead on the left.
+
+**Action:**
+1. A profile whose `teams.sessions` roles declare `"place": {"tab": "Lead", …}` keeps its `Lead`
+   tab — change those entries to `"Supervisor"` to follow the default (or drop `place` to take it).
+2. A Herdr window still open with a `Lead` tab: the next `/roles` puts the roles into a new
+   `Supervisor` tab; rename the old tab to `Supervisor` first (or close it once empty).
+
 ## A Codex role starts on the CLI's default model
 
 **Before:** `/roles` always launched a Codex role with `-m <model>`. The shipped Astra default,

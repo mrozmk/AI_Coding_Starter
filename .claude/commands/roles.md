@@ -41,6 +41,6 @@ allowed-tools: Bash(bash .claude/lib/roles.sh:*), AskUserQuestion
 - The ad-hoc lines (`ad-hoc sessions (gone):`) are for the Operator to paste; never run them.
 - The roles, their CLI, model, contract and place: `teams.sessions` in
   `.claude/project-profile.json`; the contracts: `.agents/reference/roles/`.
-- Herdr: the roles go to their `place.tab` (`Lead` for the shipped ones); each team has its own tab,
+- Herdr: the roles go to their `place.tab` (`Supervisor` for the shipped ones); each team has its own tab,
   named after the team (TeamLead left, the working stage right). `place <team>-<role>` puts a team
   session there; a team named like a roles tab is never placed.

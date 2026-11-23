@@ -39,11 +39,11 @@ team_check_name() {
 }
 
 # team_tab_clash <team> <main> → prints the roles tab and returns 0 when the team's Herdr tab (named
-# after the team) would be a roles tab: Lead, or any teams.sessions place.tab, case-insensitive.
+# after the team) would be a roles tab: Supervisor, Lead (its old name), or any teams.sessions place.tab, case-insensitive.
 team_tab_clash() {
   local n t
   n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-  for t in Lead $(jq -r '.teams.sessions // {} | .[]? | .place.tab? // empty | strings' \
+  for t in Supervisor Lead $(jq -r '.teams.sessions // {} | .[]? | .place.tab? // empty | strings' \
     "$2/.claude/project-profile.json" 2>/dev/null); do
     [ "$n" != "$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')" ] || { echo "$t"; return 0; }
   done

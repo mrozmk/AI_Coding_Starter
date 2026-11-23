@@ -81,7 +81,7 @@ decision that needs you notifies you (`notify.sh`, opt-in channels — below). A
   ends; a tmux attach ends when you detach (Ctrl-b d).
 - **Supervisor egress:** in the main checkout the Supervisor's routine gh compounds, jq filters and opt-in inline Python pass under its local rules; the limits are in `security-egress.md` → Local `gh` rules for the Supervisor.
 - **One window for all teams:** Herdr: one tab per team (its name), each with the team's TeamLead
-  and the stage running now; a team may not be named like the roles tab `Lead`. tmux: `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter switch.
+  and the stage running now; a team may not be named like the roles tab `Supervisor`. tmux: `tmux attach`, then `Ctrl-b s` lists every session — arrows + Enter switch.
   `bash .claude/lib/team-run.sh alfa status` peeks without attaching.
 - **Notifications** reach you for four events only (a human decision, an abandon decision, an
   unrepaired failure, a release step), through `.claude/lib/notify.sh`, on the channels you switch
