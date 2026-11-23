@@ -73,7 +73,7 @@ Slash commands **MUST NOT** re-load project context that `/prime` already loads.
 | Tool-specific configs the command operates on (e.g. `playwright.config.ts` for `/test-e2e`, `pyproject.toml` for a Python-aware command) | The command itself | That command only |
 | Source-of-truth files for transformation (e.g. `docs/PRD.md` for `/maintain:refresh-brief`, `/discover`, `/architect`, `/setup:create-backlog`) | The transforming command | The transforming command only |
 
-**Why this matters:** PRD can be 2000+ lines. Re-reading it inside every command burns the token budget for context that should already be in the conversation as a 50-line `project-brief.md`. The `When to Read` table above tells the agent which memory files to *consult* on demand; `/prime` is what *loaded* them in the first place.
+**Why this matters:** PRD can be 2000+ lines. Re-reading it inside every command burns the token budget for context that should already be in the conversation as a 60-line `project-brief.md`. The `When to Read` table above tells the agent which memory files to *consult* on demand; `/prime` is what *loaded* them in the first place.
 
 **When writing a new slash command — guardrails:**
 
