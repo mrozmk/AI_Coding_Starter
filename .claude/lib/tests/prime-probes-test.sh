@@ -3,10 +3,11 @@
 # empty and partial input, keeps its semantics, and uses no form the team-clone skill-load
 # permission check rejects (`-exec`, awk, sed, sort, xargs, `$(`). Also covers the browser
 # lines of .claude/lib/qa-probe.sh (driver, project-local Playwright, launch summary) and
-# its deployed-sha and readiness lines (offline, through a curl stub on PATH).
+# its deployed-sha and readiness lines (offline, through a curl stub on PATH), and the upkeep
+# probe (silent without a profile).
 set -u
 PRIME="$(cd "$(dirname "$0")/../.." && pwd)/commands/prime.md"
-EXPECTED_PROBES=12
+EXPECTED_PROBES=13
 [ -f "$PRIME" ] || { echo "prime-probes-test: FAIL — $PRIME missing"; exit 1; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/prime probes.XXXXXX") \
   || { echo "prime-probes-test: FAIL — mktemp"; exit 1; }
@@ -24,6 +25,8 @@ if ! command -v rg >/dev/null 2>&1; then
   export PATH="$T/bin:$PATH"
 fi
 
+UPK="$(cd "$(dirname "$0")/.." && pwd)/upkeep.sh"
+[ -f "$UPK" ] || { echo "prime-probes-test: FAIL — upkeep.sh missing"; exit 1; }
 probes=()
 while IFS= read -r line; do probes+=("$line"); done \
   < <(sed -n 's/^[[:space:]]*!`\(.*\)`$/\1/p' "$PRIME")
@@ -47,6 +50,7 @@ P_TREE=$(probe 'rg --files --max-depth') && P_DOMAIN=$(probe 'memory/domain/*.md
   && P_SPECS=$(probe SPECS_TOTAL) && P_NL=$(probe NOT_LOADED) \
   && P_ACTIVE=$(probe 'plans/active') && P_DONE=$(probe 'plans/done') \
   && P_SYNC=$(probe 'status -sb') && P_STAT=$(probe "archive/*' -type f -ls") \
+  && P_UPK=$(probe 'upkeep.sh due') \
   || die "probe lookup"
 
 run_all() {  # <repo> <label> — every probe must exit 0
@@ -59,9 +63,10 @@ run_all() {  # <repo> <label> — every probe must exit 0
 out() {  # <repo> <probe> → its stdout
   (cd "$1" && bash -c "$2" 2>/dev/null </dev/null)
 }
-repo() {  # <dir> — a one-commit repo, no remote
+repo() {  # <dir> — a one-commit repo, no remote, seeded with upkeep.sh so all probes run
   mkdir -p "$1" && git -C "$1" init -q \
     && git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+    && mkdir -p "$1/.claude/lib" && cp "$UPK" "$1/.claude/lib/upkeep.sh" \
     || die "git repo $1"
 }
 fill() {  # <file> <bytes>
@@ -159,6 +164,15 @@ line='  1  0 -rw-r--r--   1 u  g   1234 Nov 14 18:12 ./.agents/specs/a\ b\\c\"d.
 got=$(printf '%s\n' "$line" | eval "jq $(jqpart "$P_SPECS")" | head -1)
 [ "$got" = "1234${TAB}./.agents/specs/a b\\c\"d.md" ] || bad gnu "escaped name: $got"
 CHECKS=$((CHECKS + 1))
+
+# (e2) upkeep probe: silent without a profile, silent with nothing due
+U1="$T/upkeep no profile"; repo "$U1"
+[ -z "$(out "$U1" "$P_UPK")" ] || bad upkeep "output without a profile"
+U2="$T/upkeep profile"; repo "$U2"
+printf '{"schema":1}\n' > "$U2/.claude/project-profile.json" || die "upkeep profile"
+run_all "$U2" "upkeep probe: exit 0, empty output"
+[ -z "$(out "$U2" "$P_UPK")" ] || bad upkeep "output with nothing due"
+CHECKS=$((CHECKS + 2))
 
 # (f) qa-probe.sh browser lines: driver, project-local Playwright resolution, launch summary
 QAP="$(cd "$(dirname "$0")/.." && pwd)/qa-probe.sh"

@@ -53,7 +53,7 @@ Derived facts:
 
 Ask with `AskUserQuestion`, one call per screen, the detected value pre-selected and marked **(Recommended)**. The copy below is the **approved wording** — ship it verbatim. Screen 0 is bilingual; every later screen renders in the language chosen on Screen 0 (English column is a 1:1 translation). `app_surface` is **not asked** — it is written as `unknown`.
 
-Shaping rule: 3 screens, ≤4 questions each — yields only when a detected value is wrong and the user asks to change it (then re-ask that one question, nothing else).
+Shaping rule: 3 screens, ≤4 questions each — yields only when a detected value is wrong and the user asks to change it (then re-ask that one question, nothing else). Screen 2's Q8 is its one unconditional follow-up call (the main call already holds four questions, the tool's maximum).
 
 **Screen 0 — Język / Language**
 
@@ -98,6 +98,11 @@ Shaping rule: 3 screens, ≤4 questions each — yields only when a detected val
    Potwierdzam każdy merge (Recommended) · Automatycznie / I confirm each merge (Recommended) · Automatically
    *Dotyczy tylko równoległych zespołów AI (`/setup:teams`). Potwierdzam: kroki `team-merge-check.sh`, `team-integrate.sh` i `team-integrate-lock.sh` czekają na Twoje kliknięcie (reguły `ask`). Automatycznie: te trzy reguły znikają z `.claude/settings.json` — także dla ról w klonach zespołów. Merge w Azure DevOps (`/pr-merge`) i decyzja Supervisora o auto-merge ich nie czytają.* / *Only for the parallel AI teams (`/setup:teams`). I confirm: the `team-merge-check.sh`, `team-integrate.sh` and `team-integrate-lock.sh` steps wait for your click (`ask` rules). Automatically: those three rules are removed from `.claude/settings.json` — for the roles in the team clones too. The Azure DevOps merge (`/pr-merge`) and the Supervisor's auto-merge decision do not read them.* → `workflow.team_merge` (`confirm` | `auto`)
 
+   **Asked as its own call after Q4–Q7:**
+8. **Czy przypominać, kiedy trzeba uruchomić komendy porządkowe?** / **Remind you when upkeep commands are due?**
+   Tak, domyślne progi (Recommended) · Nie / Yes, default thresholds (Recommended) · No
+   *`/prime` i `/tasks-status` pokażą linię, gdy `/maintain:refresh-brief`, `/maintain:cleanup-workflow` albo `/architecture-review` jest do zrobienia — liczone z historii git, nic nie uruchamia się samo. Progi zmienisz w `.claude/project-profile.json` → `upkeep`.* / *`/prime` and `/tasks-status` show a line when `/maintain:refresh-brief`, `/maintain:cleanup-workflow` or `/architecture-review` is due — counted from git history, nothing runs by itself. Change the thresholds in `.claude/project-profile.json` → `upkeep`.* → `upkeep`
+
 **Screen 3 — Podsumowanie / Summary** — after A.3 derivation, before Phase B. One table: **co utworzę / will create** · **co usunę / will remove** (files per disabled group) · **co musisz zrobić ręcznie / manual steps** (`cp .env.example .env`, keys to fill, restart; the LSP activation gate from step 6b, when a manifest is present; the step 9 restart and commit + push for the team clones, when it changes the settings; the `teams` compatibility notes from A.3, when any). Options: **Zatwierdź i wykonaj / Approve and run** · **Zmień coś / Change something** (→ re-ask the named question only). No new facts are collected here.
 
 ### A.3 Derive the profile
@@ -113,6 +118,7 @@ Expand the answers into `.claude/project-profile.json` (schema and field docs: `
 - `commands`: `pr` = `git_host != none || <user keeps PR tooling>` (with `git_host=none` recommend **keep**), `jira` = **Jira in use** (below), `confluence`, `codex` = the Screen 2 answer, `qa_runtime_ui` = `true` (because `app_surface=unknown`), `herdr` = the profile's existing `commands.herdr` when the key is present, else `true` (no question: `/maintain:sync-herdr-kit` is a no-op without a Herdr app home, and a plain derived `true` would overwrite a project's `false` through the merge below).
 - **Jira in use** = `tracker == jira`, or the profile keeps a `teams` block with `teams.tracker == jira`. `commands.jira`, the step 1 Jira block and the step 2 `atlassian` removal key on it — never on the Q4 answer alone — so a kept `teams.tracker=jira` keeps the Jira tooling until the two tracker answers agree.
 - `workflow.team_merge` = the Q7 answer (`confirm` | `auto`).
+- `upkeep` = the Q8 answer: **Yes** + an existing `upkeep` object → that object, unchanged; **Yes** + absent or `false` → `{"cleanup_workflow": {"commits": 200, "min_days": 14}, "architecture_review": {"feat_commits": 40, "min_days": 14, "repo": ""}, "refresh_brief": true}`; **No** → `false`. It goes through the merge below like any derived top-level key.
 
 Show the full profile and the `commands.*` manifest on Screen 3. Write the file only after **Approve and run**. No profile yet → write `schema` plus the derived keys. An existing profile → merge with `jq` (write to a temp file in `.claude/`, then move it over): each derived top-level key replaces its value, `commands` and `workflow` are merged key by key, every key A.3 does not derive is kept (`teams` from `/setup:teams`, `ba`, `status_report`, `jira`, `commands.ba`, `workflow.tracker_comments` and the other opt-ins the example documents), and A.3 never deletes a key it does not own. The `workflow` keys A.3 owns — `preset pr_required trunk integration branch_types branch_pattern pr_dest protected merge orchestrate_publish team_merge` — are dropped first when the new derivation omits them, so a Q3 change from (a) leaves no stale `pr_required: false` / `merge: ff` behind. With the derived keys in `$d` and that list in `$own`: `. as $p | $p + ($d | del(.workflow, .commands)) | .commands = (($p.commands // {}) + $d.commands) | .workflow = ((($p.workflow // {}) | with_entries(select(.key as $k | $own | index($k) | not))) + $d.workflow)`. Why: a fresh write drops the `teams` block, and step 9 then skips a changed Q7.
 
@@ -273,6 +279,7 @@ UI-heavy product: `/design-ui` after `/architect` for the critical flow's key sc
 - Show the current profile as a table; for each screen ask **keep / change**. Changed answers re-derive the profile (A.3 merges into the existing file — keys it does not derive stay) and re-run Phase B — steps report `kept` for anything already in place.
 - Enabled → disabled for a group: the normal pruning path (step 7).
 - A profile without `workflow.team_merge` shows Q7 as `confirm (default)`; changing it re-runs step 9.
+- A profile without `upkeep` shows Q8 as `yes (default)`; a kept answer keeps the block as it is.
 - **Disabled → enabled for a pruned group is refused.** Print exactly: `Group <x> was pruned. To restore: remove its paths from .claude/.starter-sync.json → excluded, then run /maintain:sync-from-starter — it re-offers them.` Restoring is not built into this command.
 - Never re-create a file reported `kept`; never re-delete. Step 6b is idempotent: an `enabledPlugins` entry already `true` and a preflight line already present both report `kept`. Unresolved `{slot}` tokens in `TESTING.md` are filled by `/setup:create-CLAUDE_MD`, not by a re-run.
 

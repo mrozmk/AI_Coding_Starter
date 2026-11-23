@@ -168,6 +168,13 @@
               "tl_scale_share": 0.5, "core_developers": "auto" }
   },
 
+  "_upkeep_doc": "Upkeep reminders, read by .claude/lib/upkeep.sh (/prime, /tasks-status). Asked by /setup:start (Screen 2, Q8); absent = these defaults; false = off. cleanup_workflow: due when commits since its last recorded run >= commits AND days >= min_days. architecture_review: the same with commits whose subject starts with feat (feat_commits). refresh_brief: true = due when docs/PRD.md's content differs from the one recorded at the last refresh. An item set to false is off. commits and feat_commits are integers >= 1, min_days >= 0. Each command records its run in .agents/upkeep.json (commit it). The template's own checkout keeps .agents/upkeep.json in .git/info/exclude.",
+  "upkeep": {
+    "cleanup_workflow": { "commits": 200, "min_days": 14 },
+    "architecture_review": { "_repo_doc": "Another checkout (relative to this one) whose history and .agents/upkeep.json decide this item, for a repo whose workflow is developed elsewhere; empty = this repo.", "feat_commits": 40, "min_days": 14, "repo": "" },
+    "refresh_brief": true
+  },
+
   "_commands_doc": "The command-group manifest, DERIVED from the answers above and shown for confirmation. false => /setup:start offers to prune the group (files + coupled edits) and records the deleted paths in .claude/.starter-sync.json → excluded. qa_runtime_ui is true whenever app_surface is unknown or web. ba = the BA command group (meeting-notes, update-backlog, check-backlog, resync) — pruning arrives with the /setup:start interview. herdr = /maintain:sync-herdr-kit, the opt-in installer of the Herdr panels kit; derived from its existing value, else true (a no-op without a Herdr app home).",
   "commands": {
     "pr": true,

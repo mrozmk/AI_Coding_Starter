@@ -57,6 +57,7 @@
       "Bash(git worktree prune:*)",
       "Bash(git worktree remove:*)",
       "Bash(bash .claude/lib/qa-probe.sh)",
+      "Bash(bash .claude/lib/upkeep.sh due --format prime)",
       "Bash(bash .claude/lib/rm-in-project.sh:*)",
       "Bash(bash .claude/lib/rm-in-scratchpad.sh:*)",
       "Bash(bash .claude/lib/git-baseline.sh:*)",

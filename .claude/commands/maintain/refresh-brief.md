@@ -36,6 +36,8 @@ Read the full PRD. Identify which sections are present:
 
 When `docs/architecture.md` exists, the PRD's `Technology Stack` / `Core Architecture & Patterns` sections are its digest (written by `/architect`); take Stack/Architecture from them and add `docs/architecture.md` to the brief's Key Files.
 
+When the PRD path is the default `docs/PRD.md`, note its content hash before reading it: `git hash-object docs/PRD.md` — Step 6 records it.
+
 ### 3. Write `project-brief.md`
 
 Path: `.agents/memory/project-brief.md`.
@@ -105,6 +107,8 @@ description: Operational facts about pricing, plans, billing — what the code n
 
 ### 6. Report
 
+**Record the run first.** When the resolved PRD path (Step 1) is the default `docs/PRD.md`, run `bash .claude/lib/upkeep.sh record refresh-brief --only-if-home --expect-prd-blob <the hash noted in Step 2>` — it stores that content hash (and records nothing if the PRD changed since you read it), so `/prime` stops reminding until the PRD changes again. Keep the line it prints (the record path, or why nothing was recorded); a non-zero exit is reported in one line and never fails this command. Any other PRD path → record nothing; the line is `source is <path>, not docs/PRD.md — not recorded`.
+
 Output a short summary:
 
 ```markdown
@@ -118,6 +122,8 @@ Output a short summary:
 
 **Skipped:**
 - `business-model.md` — no pricing/billing content in PRD  ← only if skipped
+
+**Upkeep record:** <the line upkeep.sh printed>  ← only after exit 0 with `upkeep: recorded refresh-brief in <path>`: commit that file with the brief (unless the checkout keeps it out of git); any other line is shown alone
 
 **Warnings:**
 - ⚠️ PRD has no non-goals list (an `Out of scope …` list under its Scope heading), or it is empty — Non-goals and Change test omitted; add one and refresh.  ← only when that list is absent or empty

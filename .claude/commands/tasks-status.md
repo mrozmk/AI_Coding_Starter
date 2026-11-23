@@ -62,7 +62,8 @@ file stays English. Scratch files go to one `mktemp -d` directory, never into th
    a new source is one more line, not a new step.
    - **Waiting for you** — only decisions that are the Operator's:
      1. tasks whose extracted "waiting on" is the Operator, with the evidence that says so;
-     2. *(when the per-run TeamLead lands)* its pending human-decision files.
+     2. *(when the per-run TeamLead lands)* its pending human-decision files;
+     3. each `UPKEEP_DUE` row of `bash .claude/lib/upkeep.sh due --format prime`, run once (a missing script, a non-zero exit or no row → nothing): Team / task `upkeep`, Decision needed `run <command> — <reason>`, Since `—`, Next action `run <command> in your own session`.
    - **Waiting on the team** — everything the TeamLead, Advisor or Supervisor acts on:
      `attention[]` items (role questions, prompts, `blocked`/`failed` records with their
      `resume_hint`) and PRs `awaiting_merge` (the Supervisor's merge gate; it reaches the Operator

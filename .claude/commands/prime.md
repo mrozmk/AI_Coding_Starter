@@ -124,6 +124,9 @@ Do not read plan files in `/prime` itself. Read them only when the user's concre
 Branch sync — the `## <branch>...<upstream> [ahead N, behind M]` header (no `...<upstream>` part = no tracking branch):
 !`git status -sb 2>/dev/null | head -1`
 
+Upkeep due — one `UPKEEP_DUE<TAB><command><TAB><reason>` row per due item, nothing when none (`.claude/lib/upkeep.sh`; silent without a profile and in a team clone):
+!`bash .claude/lib/upkeep.sh due --format prime`
+
 ### 8. Skipped deliberately
 
 - `.agents/sources/` — raw inputs for `/discover` and `/prime-ba`, never loaded by engineering `/prime`.
@@ -180,6 +183,7 @@ Say `*.md` documents, not `files` — the probes count only top-level Markdown, 
 - ⚠️ <N> reference file(s) skipped — `REFERENCE_BUDGET` exhausted; raise `REFERENCE_BUDGET` or read on demand
 - ⚠️ <N> reference file(s) skipped — larger than `PER_FILE_CAP`; raise `PER_FILE_CAP` or read on demand
 - ⚠️ <N> reference file(s) skipped — `MAXLOAD` reached; the residue is a file-count limit, not a byte limit
+- ⚠️ upkeep due: <command> — <reason>   ← one per `UPKEEP_DUE` row of Step 7; no row → no line
 
 One warning **per skip reason**, with its own count and bytes — never collapsed. A reader told "over budget" when the real constraint was `PER_FILE_CAP` will raise `REFERENCE_BUDGET` and watch the file stay unloaded.
 
