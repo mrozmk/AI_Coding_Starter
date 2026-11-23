@@ -4,6 +4,9 @@
   "_base_url_doc": "Candidate DEPLOYED host QA verifies against, no trailing slash. Empty => skip deployed probing and go straight to local.",
   "base_url": "",
 
+  "_deployed_branch_doc": "Branch the DEPLOYED host (base_url) serves — the line whose merges /qa-verify Step 0.76 checks against the deployed build (a PR merged into another base is no evidence about it). Empty => workflow.integration of .claude/project-profile.json, else workflow.trunk; the gate prints which one it used.",
+  "deployed_branch": "",
+
   "_probe_paths_doc": "Paths appended to base_url that must ALL be reachable for the deployed host to be chosen. Name the routes QA actually needs (the app entry point, a component workbench, an API health route) — not just '/', or a half-deployed host reads as healthy.",
   "probe_paths": ["/"],
 
