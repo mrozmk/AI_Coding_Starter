@@ -121,7 +121,8 @@ check_qa_report() {
 # The optional AC: line (team-mode.md §7). Absent → accepted: this validator comes from the main
 # checkout while the QA prompt and the gate come from the clone, and an older clone writes none.
 # Counts read base 10 (`08` is an octal error in $(( )) otherwise); a count longer than 9 digits
-# once its leading zeros are dropped would overflow the sum, so it is malformed.
+# once its leading zeros are dropped is refused as malformed, as §7 says (no real ledger is that
+# long, and it keeps the sum far from a 64-bit wrap).
 # unconfirmed > 0 is judged on the first Verdict: line — the one team-verdict.sh acceptance reads.
 check_qa_ac() {
   local f="$1" n line x t m u d

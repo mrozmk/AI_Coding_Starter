@@ -45,7 +45,8 @@ Without a lead nobody answers questions and the tool is disabled.
    - An escalated attempt (step 6) — this branch wins over the others: keep `Verdict: escalated`,
      no `AC:` line and no AC `Warnings:` items. Under `Acceptance criteria ledger:` copy the final
      gate pass's rows verbatim with their effect; when that pass stopped before §6, copy the final
-     `not evaluated — …` status line instead — never an earlier pass's rows.
+     `not evaluated — …` status line instead — never an earlier pass's rows. An attempt a rethink
+     signal sends to step 6 takes this branch too, keeping the verdict the gates made.
    - Counts and a ledger, on an attempt you will publish: write
      `AC: total=<n> met=<n> unconfirmed=<n> deferred=<n>` after `Tests:`; add one
      `Warnings:` item `AC <id> unconfirmed` per `unconfirmed` row (replacing `none`). At least one
@@ -75,7 +76,8 @@ Without a lead nobody answers questions and the tool is disabled.
      (`- <id> — <criterion text> — <evidence>`); `To check by hand:` with every `deferred` row in
      full (`- <id> — <criterion text> — <manual check>`); `Met:` with one `- <id> — <criterion
      text>` per `met` row. To fit 4000 characters, first collapse `Met:` to a comma-separated id
-     list, then to `Met: <n> criteria`, then shrink the other QA prose. Rows that are not `met`,
+     list, then to `Met: <n> criteria`, then shrink the other QA prose, then summarise the
+     `## Unattended decisions` and `## Learnings` entries. Rows that are not `met`,
      the template checklist and the `FALLBACK` lines are never trimmed — they take precedence over
      the budget. When the host still refuses the body (the Azure DevOps hard cap), run
      `bash .claude/lib/team-record.sh --verdict blocked --message "PR body over the host limit with <n> open criteria"`

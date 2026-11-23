@@ -342,10 +342,12 @@ reaches a `done` record. Each `unconfirmed` criterion is one `Warnings:` item `A
 (the id only — the line is split at every comma), and `unconfirmed > 0` requires
 `Verdict: ready-with-warnings`; with no `unconfirmed` criterion the verdict stays what the other
 gates made it. A `deferred` criterion is no warning. The line is absent on an escalated attempt
-(`Verdict: escalated` — that rule wins over every other here), when the gate printed no ledger (a
-clone on an older base: the runner's validator comes from the main checkout, the QA prompt and the
-gate from the clone), and when the status is `n/a (…)` or `not evaluated — …` (on an attempt QA
-publishes, the latter adds the `Warnings:` item `AC not evaluated`). When it is present,
+(`Verdict: escalated` — that rule wins over every other here, and covers an attempt a rethink
+signal sends to a `blocked` record, which keeps the verdict the gates made), when the gate printed
+no ledger (a clone on an older base: the runner's validator comes from the main checkout, the QA
+prompt and the gate from the clone), and when the status is `n/a (…)` or `not evaluated — …` (on
+an attempt QA publishes, the latter adds the `Warnings:` item `AC not evaluated` and sets
+`Verdict: ready-with-warnings`). When it is present,
 `team-validate.sh` refuses a second `AC:` line, a line off this shape, a count longer than 9
 digits once its leading zeros are dropped, counts whose `met + unconfirmed + deferred` is not
 `total`, and `unconfirmed > 0` unless the report's first `Verdict:` line — the one the acceptance
