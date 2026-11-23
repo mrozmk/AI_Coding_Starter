@@ -94,6 +94,68 @@ test('scanner: a strict run enforces warning-level rules', async () => {
   assert.ok(!cfg(tool(s, 'eslint'), 'eslint.config.mjs').notEnforced.includes('no-empty'));
 });
 
+// A tiny repository: { path: text } written under a fresh temp dir; returns the dir.
+function miniRepo(files) {
+  const dir = tmp();
+  for (const [p, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true });
+    fs.writeFileSync(path.join(dir, p), text);
+  }
+  return dir;
+}
+const miniScan = (files) => { const repo = miniRepo(files); return fixtureScan(repo, listFiles(repo)); };
+
+test('scanner: clippy enforces only with -D warnings', async () => {
+  const clippy = async (line) => tool(await miniScan({ Makefile: `lint:\n\t${line}\n`, 'src/main.rs': 'fn main() {}\n' }), 'clippy');
+  const bare = await clippy('cargo clippy --all-targets');
+  assert.ok(!bare || bare.enforced === false);
+  const strict = await clippy('cargo clippy --all-targets -- -D warnings');
+  assert.equal(strict.enforced, true);
+  assert.deepEqual(strict.runs[0].targets, []);
+  assert.equal((await clippy('RUSTFLAGS="-D warnings" cargo clippy')).enforced, true);
+  assert.equal((await clippy('RUSTFLAGS="--deny warnings" cargo clippy')).enforced, true);
+  const group = await clippy('cargo clippy -- -D clippy::all');
+  assert.ok(!group || group.enforced === false);
+});
+
+const BIOME_MIXED = '{"linter":{"rules":{"style":{"noVar":"warn"},"suspicious":{"noDebugger":"error"}}}}\n';
+const BIOME_WARN = '{"linter":{"rules":{"style":{"noVar":"warn"}}}}\n';
+const biomeRepo = (config, lint, extra = {}) => miniRepo({ 'biome.json': config, 'package.json': JSON.stringify({ scripts: { lint } }) + '\n', 'src/a.ts': 'export const a = 1;\n', ...extra });
+
+test('scanner: biome warn rules need --error-on-warnings', async () => {
+  const bare = biomeRepo(BIOME_MIXED, 'biome check src');
+  const c = cfg(tool(await fixtureScan(bare, listFiles(bare)), 'biome'), 'biome.json');
+  assert.ok(c.notEnforced.includes('noVar'));
+  assert.ok(!c.notEnforced.includes('noDebugger'));
+  const strict = biomeRepo(BIOME_MIXED, 'biome check --error-on-warnings src');
+  assert.deepEqual(cfg(tool(await fixtureScan(strict, listFiles(strict)), 'biome'), 'biome.json').notEnforced, []);
+});
+
+test('scanner: a flag value is not a target', async () => {
+  const golangci = async (flag) => tool(await miniScan({ '.golangci.yml': 'linters:\n  enable:\n    - govet\n', Makefile: `lint:\n\tgolangci-lint run ${flag} ./...\n`, 'src/x.go': 'package x\n' }), 'golangci');
+  const g = await golangci('--timeout 5m');
+  assert.deepEqual(g.runs[0].targets, []);
+  assert.ok(!g.appliesTo.some((a) => a.includes('5m')));
+  assert.deepEqual((await golangci('--timeout 1.5s')).runs[0].targets, []);
+  const ruff = tool(await miniScan({ 'ruff.toml': 'line-length = 100\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\truff check --output-format github src\n' }), 'ruff');
+  assert.deepEqual(ruff.runs[0].targets, ['src']);
+  const eslint = tool(await miniScan({ 'eslint.config.mjs': "export default [{ rules: { eqeqeq: 'error' } }];\n", 'src/a.js': 'export const a = 1;\n', 'package.json': '{ "scripts": { "lint": "eslint --cache src" } }\n' }), 'eslint');
+  assert.deepEqual(eslint.runs[0].targets, ['src']);
+});
+
+test('scanner: a quoted eslint -c attributes that config', async () => {
+  const s = await miniScan({
+    '.eslintrc.json': '{ "rules": { "eqeqeq": "error" } }\n',
+    'package.json': '{ "scripts": { "lint": "eslint -c \\".eslintrc.json\\" src" } }\n',
+    'src/a.js': 'export const a = 1;\n',
+  });
+  const eslint = tool(s, 'eslint');
+  const c = cfg(eslint, '.eslintrc.json');
+  assert.equal(c.attributed, true);
+  assert.ok(!c.notEnforced.includes('eqeqeq'));
+  assert.ok(!s.notLoaded.includes('.eslintrc.json'));
+});
+
 test('scanner: extracted items carry their lines', async () => {
   const s = await fixtureScan();
   const eslint = tool(s, 'eslint');
@@ -159,6 +221,7 @@ test('scanner: option parsing per tool', async () => {
   const e = parseRun('eslint', 'eslint -c custom.config.mjs src');
   assert.equal(e.selected, 'custom.config.mjs');
   assert.deepEqual(e.targets, ['src']);
+  assert.equal(parseRun('eslint', 'eslint -c ".eslintrc.json" src').selected, '.eslintrc.json');
   const ph = parseRun('phpcs', 'phpcs --standard=PSR12 --ignore=src/legacy/* src tests');
   assert.deepEqual(ph.targets, ['src', 'tests']);
   assert.deepEqual(ph.excludes, ['src/legacy/*']);
@@ -417,6 +480,14 @@ test('renderer: tools-only writes the tool rules alone', async () => {
   assert.deepEqual(summary.open, []);
   for (const l of text.split('\n').filter((x) => x.startsWith('|'))) assert.ok(/^\| (Need|Problem) |^\|---/.test(l), l);
   assert.ok(!/^- .*a person picks one/m.test(text));
+});
+
+test('renderer: a config whose every rule is not enforced makes no tool claim', async () => {
+  const toolsOnly = async (repo) => (await renderIn(repo, { draft: null, toolsOnly: true })).text;
+  assert.doesNotMatch(await toolsOnly(biomeRepo(BIOME_WARN, 'biome check src')), /Biome/);
+  assert.match(await toolsOnly(biomeRepo(BIOME_MIXED, 'biome check src')), /noDebugger/);
+  const nested = biomeRepo(BIOME_WARN, 'biome check', { 'pkg/biome.json': '{"linter":{"rules":{"suspicious":{"noDebugger":"error"}}}}\n' });
+  assert.match(await toolsOnly(nested), /Enforced by: tool \(pkg\/biome\.json: noDebugger\)/);
 });
 
 test('renderer: a missing seed is a usage error', async () => {

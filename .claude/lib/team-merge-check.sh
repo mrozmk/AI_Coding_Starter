@@ -124,8 +124,28 @@ delta=""
 if [ -n "$delta" ]; then
   tr_rev="$(sed -n 's/^target_rev: //p' "$TD/runs/$(team_run_ref "$TD" "$RUN")/wrapup-$(jq -r .attempt "$wr").md" 2>/dev/null)"
   [ -n "$tr_rev" ] || die 3 "wrapup summary has no target_rev"
-  tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory docs/coding-standards.md)" \
-    || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
+  # The standards writer may have rendered on an earlier target_rev than the summary names
+  # (standards-render.json): that base judges docs/coding-standards.md, and patterns.md only when
+  # the item promoted an entry there; every other memory path keeps the summary's base.
+  rerr="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" 2>&1 >/dev/null)" || die 3 "$rerr"
+  rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev")"
+  rp="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" promotion)"
+  if [ -z "$rb" ]; then
+    tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory docs/coding-standards.md)" \
+      || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
+  else
+    tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory)" \
+      || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
+    [ -z "$rp" ] || tdelta="$(printf '%s\n' "$tdelta" | grep -vxF .agents/memory/patterns.md || true)"
+    sd="$(git diff --no-renames --name-only "$rb" "$TGT" -- docs/coding-standards.md)" \
+      || die 3 "standards render base $rb unknown or not comparable with $TGT"
+    tdelta="$tdelta"$'\n'"$sd"
+    if [ -n "$rp" ]; then
+      sd="$(git diff --no-renames --name-only "$rp" "$TGT" -- .agents/memory/patterns.md)" \
+        || die 3 "standards render base $rp unknown or not comparable with $TGT"
+      tdelta="$tdelta"$'\n'"$sd"
+    fi
+  fi
   # Union merge would splice both versions silently; a human reads them first.
   ov="$(comm -12 <(printf '%s\n' "$delta" | sort) <(printf '%s\n' "$tdelta" | sort) | grep -v '^$' || true)"
   if [ -n "$ov" ]; then
@@ -186,8 +206,12 @@ fi
 # An accepted standards item must stand once in the merge, and a promotion's pointer must name its
 # final CS id — a reviewed conflict fix may renumber the rule and leave the pointer behind.
 if [ "$STD_OK" = 1 ]; then
-  sw="$(team_blob_tmp "$want" docs/coding-standards.md)"; sm="$(team_blob_tmp "$merge_commit" docs/coding-standards.md)"
-  pm="$(team_blob_tmp "$merge_commit" .agents/memory/patterns.md)"
+  sw="$(team_blob_tmp "$want" docs/coding-standards.md)" \
+    || die 4 "cannot read the standards blob at $want — retry"
+  sm="$(team_blob_tmp "$merge_commit" docs/coding-standards.md)" \
+    || { team_rm_blobs "$sw"; die 4 "cannot read the standards blob at $merge_commit — retry"; }
+  pm="$(team_blob_tmp "$merge_commit" .agents/memory/patterns.md)" \
+    || { team_rm_blobs "$sw" "$sm"; die 4 "cannot read the patterns blob at $merge_commit — retry"; }
   src=0
   sout="$(python3 -I "$root/.claude/lib/team_wrapup.py" standards-merged "$TD/runs/$RUN" "$sw" "$sm" "$pm" 2>&1 >/dev/null)" \
     || src=$?

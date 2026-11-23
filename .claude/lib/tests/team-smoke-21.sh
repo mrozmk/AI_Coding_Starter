@@ -397,7 +397,10 @@ QA="$(git -C "$CLONE" rev-parse HEAD)"
 session wrapup 1 "$QA"
 ST() { run "$CLONE" bash .claude/lib/team-standards.sh "$@"; }
 SV() { run "$CLONE" python3 -I "$CL/team_wrapup.py" standards-verify "$RD" "$@"; }
-qa_files() { git -C "$CLONE" checkout --quiet "$QA" -- docs/coding-standards.md .agents/memory/patterns.md; }
+qa_files() {
+  git -C "$CLONE" checkout --quiet "$QA" -- docs/coding-standards.md .agents/memory/patterns.md
+  rm -f "$RD/standards-render.json"
+}
 git -C "$CLONE" show "$QA:docs/coding-standards.md" > "$WORK/ws-qs"; QS="$WORK/ws-qs"
 git -C "$CLONE" show "$QA:.agents/memory/patterns.md" > "$WORK/ws-qp"; QP="$WORK/ws-qp"
 std_item() {  # std_item <id> <group> <section> <text> [<promotes> <sha>] → one JSON item
@@ -535,6 +538,7 @@ git -C "$CLONE" switch --quiet "$BR0"
 cmp -s "$DOC" "$QS" || fail "(ws) the worktree is not QA's doc"
 ST add --verdict "$VF" --item memory-1 --target-rev "$T"; expect 0 "applied CS-8" "(ws) written on the target version"
 has "### CS-7 — z" "$DOC" && has "### CS-8 — c" "$DOC" || fail "(ws) not the target version plus CS-8: $(cat "$DOC")"
+cp "$DOC" "$WORK/ws-t-doc"; cp "$PAT" "$WORK/ws-t-pat"
 git -C "$CLONE" show "$T:docs/coding-standards.md" > "$WORK/ws-ts"
 SV "$WORK/ws-ts" "$QS" "$DOC" "$QP" "$QP" "$PAT"; expect 0 "" "(ws) verify on the target base"
 qa_files; git -C "$CLONE" switch --quiet -c ws-side2 "$QA"
@@ -544,6 +548,92 @@ ST add --verdict "$VF" --item memory-1 --target-rev "$T2"; expect 4 "section Rul
 cmp -s "$DOC" "$QS" && cmp -s "$PAT" "$QP" || fail "(ws) a refused write changed a file"
 git -C "$CLONE" show "$T2:docs/coding-standards.md" > "$WORK/ws-t2s"
 SV "$WORK/ws-t2s" "$QS" "$QS" "$QP" "$QP" "$QP"; expect 0 "" "(ws) verify re-derives the refusal"
+# The render base: the writer records the target_rev it rendered on, bound to the QA revision, and
+# every later call of the round renders on it.
+loose() { echo "$1/.git/objects/${2:0:2}/${2:2}"; }  # loose <repo> <object id> → its loose object path
+rrec() {  # rrec <qa> <target_rev> <run> <promotes JSON or "none"> → standards-render.json
+  jq -n --arg r "$3" --arg q "$1" --arg t "$2" --arg p "$4" \
+    '{run: $r, qa_rev: $q, item: "memory-1", target_rev: $t}
+     + (if $p == "none" then {} else {promotes: ($p | fromjson)} end)' > "$RD/standards-render.json"
+}
+qa_files
+ST add --verdict "$VF" --item memory-1 --target-rev "$T"; expect 0 "applied CS-8" "(ws) render base recorded: written"
+jq -e --arg r "$RUN_ID" --arg q "$QA" --arg t "$T" \
+  '.run == $r and .qa_rev == $q and .target_rev == $t and .item == "memory-1" and .promotes == true' \
+  "$RD/standards-render.json" >/dev/null || fail "(ws) render base recorded: $(cat "$RD/standards-render.json" 2>&1)"
+ST add --verdict "$VF" --item memory-1 --target-rev "$T2"; expect 0 "already applied" "(ws) render base recorded: a rerun"
+jq -e --arg t "$T" '.target_rev == $t' "$RD/standards-render.json" >/dev/null \
+  || fail "(ws) render base recorded: a rerun rewrote the record"
+# An interrupted promotion: the record exists before the first replacement; the resume, passed a
+# newer line commit TP that changed patterns.md, still renders both files on T.
+qa_files; git -C "$CLONE" switch --quiet -c ws-side3 "$QA"
+printf '\n## Line entry (2026-01-05)\n\nline\n' >> "$PAT"
+git -C "$CLONE" commit --quiet -am "line patterns"; TP="$(git -C "$CLONE" rev-parse HEAD)"
+git -C "$CLONE" switch --quiet "$BR0"; qa_files
+chmod 555 "$CLONE/.agents/memory"
+ST add --verdict "$VF" --item memory-1 --target-rev "$T"; RC0="$RC"; chmod 755 "$CLONE/.agents/memory"
+[ "$RC0" = 4 ] || fail "(ws) interrupted promotion finished on T1: the staged write did not fail (exit $RC0)"
+jq -e --arg t "$T" '.target_rev == $t' "$RD/standards-render.json" >/dev/null \
+  || fail "(ws) interrupted promotion finished on T1: no render base recorded before the write"
+cmp -s "$DOC" "$QS" && cmp -s "$PAT" "$QP" || fail "(ws) interrupted promotion finished on T1: a file was replaced"
+cp "$WORK/ws-t-doc" "$DOC"  # the crash came after the standards file was replaced
+ST add --verdict "$VF" --item memory-1 --target-rev "$TP"; expect 0 "pointer written" "(ws) interrupted promotion finished on T1: resume"
+cmp -s "$DOC" "$WORK/ws-t-doc" && cmp -s "$PAT" "$WORK/ws-t-pat" \
+  || fail "(ws) interrupted promotion finished on T1: not rendered on T: $(cat "$PAT")"
+SV "$WORK/ws-ts" "$QS" "$DOC" "$QP" "$QP" "$PAT"; expect 0 "promoted" "(ws) interrupted promotion finished on T1"
+# The runner: no record (an older-base clone's writer) → the summary's target_rev, as before.
+rm -f "$RD/standards-render.json"
+cws "$S0" "$SW" "$S0" "$S0" refs/heads/line; expect 0 "" "(ws) runner: an older-base clone writes no render record"
+cws "$S0" "$SX" "$S0" "$S0" refs/heads/line
+expect 1 "beyond the TeamLead's accepted standards item" "(ws) runner: an older-base clone writes no render record, extra edit"
+rrec "$S0" "$S0" "$RUN_ID" true
+cws "$S0" "$SW" "$SS" "$S0" refs/heads/line; expect 1 "is not on the target line" "(ws) runner keeps the summary's ancestry check"
+# The runner uses the recorded base: rendered on T1, the line changed the doc again in T2.
+git -C "$SG" switch --quiet --detach "$S0"; cp "$WORK/ws-ts" "$SG/docs/coding-standards.md"; ST1="$(sgc line-t1)"
+printf '\n### CS-9 — w\n- Enforced by: review\n- Applies to: all\n- Example: w.sh:1\n- Why: w\n' >> "$SG/docs/coding-standards.md"
+ST2="$(sgc line-t2)"; git -C "$SG" branch -f line "$ST2"
+SW1="$(sgw "$WORK/ws-t-doc" "$WORK/ws-t-pat")"
+rrec "$S0" "$ST1" "$RUN_ID" true
+cws "$S0" "$SW1" "$ST2" "$S0" refs/heads/line; expect 0 "" "(ws) runner uses the recorded base"
+rrec "$S0" "$ST1" other true
+cws "$S0" "$SW1" "$ST2" "$S0" refs/heads/line; expect 1 "standards render base unreadable" "(ws) runner uses the recorded base: another run"
+rrec "$S0" "$ST1" "$RUN_ID" none
+cws "$S0" "$SW1" "$ST2" "$S0" refs/heads/line; expect 1 "standards render base unreadable" "(ws) runner uses the recorded base: no promotes"
+rrec "$S0" "$ST1" "$RUN_ID" false
+cws "$S0" "$SW1" "$ST2" "$S0" refs/heads/line; expect 1 "does not match the accepted item" "(ws) runner uses the recorded base: promotes false"
+rrec "$QA" "$ST1" "$RUN_ID" true
+cws "$S0" "$SW1" "$ST2" "$S0" refs/heads/line
+expect 1 "beyond the TeamLead's accepted standards item" "(ws) runner uses the recorded base: another round's record"
+rm -f "$RD/standards-render.json"
+# Unreadable objects are errors, never absence.
+git -C "$SG" switch --quiet --detach "$S0"; mkdir -p "$SG/docs/sub"; echo "tv $RUN_ID" > "$SG/docs/sub/x.md"; TV="$(sgc tv)"
+git -C "$SG" switch --quiet --detach "$S0"; rm -f "$(loose "$SG" "$(git -C "$SG" rev-parse "$TV:docs")")"
+run "$SG" bash -c '. "$1"; team_blob_tmp "$2" docs/coding-standards.md' _ "$CL/team-lib.sh" "$TV"
+expect 1 "cannot read" "(ws) unreadable tree"
+mv "$TD/teamlead.json" "$WORK/tl.json"
+cws "$S0" "$TV" "$S0" "$S0" refs/heads/line; expect 1 "cannot read" "(ws) runner: an unreadable tree with no standards item"
+mv "$WORK/tl.json" "$TD/teamlead.json"
+run "$SG" bash -c '. "$1"; team_blob_tmp 0000000000000000000000000000000000000001 docs/coding-standards.md' _ "$CL/team-lib.sh"
+expect 1 "cannot read" "(ws) unreadable blob: a revision that does not resolve"
+run "$SG" bash -c '. "$1"; team_blob_tmp "$2" nosuch/path' _ "$CL/team-lib.sh" "$S0"
+expect 0 "" "(ws) unreadable blob: an absent path"; [ "$(cat "$WORK/out")" = - ] || fail "(ws) an absent path is not '-'"
+echo "unique tu $RUN_ID" >> "$SG/docs/coding-standards.md"; TU="$(sgc tu)"; git -C "$SG" switch --quiet --detach "$S0"
+rm -f "$(loose "$SG" "$(git -C "$SG" rev-parse "$TU:docs/coding-standards.md")")"
+run "$SG" bash -c '. "$1"; team_blob_tmp "$2" docs/coding-standards.md' _ "$CL/team-lib.sh" "$TU"
+expect 1 "cannot read" "(ws) unreadable blob"
+git -C "$SG" branch -f line "$TU"
+cws "$S0" "$SW" "$TU" "$S0" refs/heads/line; expect 1 "docs/coding-standards.md" "(ws) unreadable blob: the runner stops"
+git -C "$SG" branch -f line "$S0"
+qa_files; git -C "$CLONE" switch --quiet -c ws-side4 "$QA"
+echo "unique tw $RUN_ID" >> "$DOC"; git -C "$CLONE" commit --quiet -am "line tw"; TW="$(git -C "$CLONE" rev-parse HEAD)"
+git -C "$CLONE" switch --quiet "$BR0"
+rm -f "$(loose "$CLONE" "$(git -C "$CLONE" rev-parse "$TW:docs/coding-standards.md")")"
+qa_files
+# git diff may hit the missing blob first ("cannot compare"), else the read does ("cannot read").
+ST add --verdict "$VF" --item memory-1 --target-rev "$TW"; expect 4 "$TW" "(ws) unreadable blob: the writer stops"
+grep -Eq "cannot (read|compare) .*docs/coding-standards\.md" "$WORK/out" || fail "(ws) unreadable blob: the writer's reason"
+cmp -s "$DOC" "$QS" && cmp -s "$PAT" "$QP" || fail "(ws) unreadable blob: the writer changed a file"
+[ ! -e "$RD/standards-render.json" ] || fail "(ws) unreadable blob: the writer recorded a base"
 
 # (D) a stale promoted entry: refused, nothing written; the runner re-derives it.
 slate

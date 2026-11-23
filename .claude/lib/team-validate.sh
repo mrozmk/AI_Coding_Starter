@@ -275,9 +275,14 @@ check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
 # since the team base, else the QA version), the accepted item re-rendered on it, bytes compared.
 # Sets STD_PATTERNS_OK=1 only when an accepted promotion was applied and its patterns.md change is
 # verified here; a refused promotion leaves patterns.md to check_wrapup_lead.
+# The render base is the target_rev the writer recorded for this QA revision in
+# runs/<run>/standards-render.json (team_standards_render_rev), else the summary's target_rev; both
+# must lie on the line after the team base. An unreadable git object is an error, never "absent".
 check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <line ref>
   local qa="$1" rev="$2" trev="$3" base="$4" line="$5" std=docs/coding-standards.md
-  local pat=.agents/memory/patterns.md lib n=0 promo=0 lead=0 f e_qa e_w files="" b out rc=0 acc
+  local pat=.agents/memory/patterns.md lib n=0 promo=0 lead=0 f e_qa e_w b out rc=0 acc
+  local rb="" err sb r t l rp ri rf
+  local -a files=()
   STD_PATTERNS_OK=0
   lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [ "$(jq -r '.run // empty' "$TD/teamlead.json" 2>/dev/null)" = "$RUN" ]; then
@@ -287,7 +292,9 @@ check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <lin
     promo="$(jq --arg t "$std" '[.[] | select(.target == $t and has("promotes"))] | length' <<<"$acc")" || promo=0
   fi
   if [ "${n:-0}" = 0 ]; then
-    [ "$(git ls-tree "$qa" -- "$std")" = "$(git ls-tree "$rev" -- "$std")" ] && return 0
+    e_qa="$(git ls-tree "$qa" -- "$std" 2>/dev/null)" || { fail "cannot read $qa:$std" || return 1; }
+    e_w="$(git ls-tree "$rev" -- "$std" 2>/dev/null)" || { fail "cannot read $rev:$std" || return 1; }
+    [ "$e_qa" = "$e_w" ] && return 0
     [ "$lead" = 1 ] || fail "wrapup changed $std without this run's TeamLead" || return 1
     fail "wrapup changed $std without an accepted standards item"; return 1
   fi
@@ -300,14 +307,38 @@ check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <lin
   done
   git merge-base --is-ancestor "$base" "$trev" 2>/dev/null && git merge-base --is-ancestor "$trev" "$line" 2>/dev/null \
     || fail "target_rev $trev is not on the target line after the team base" || return 1
+  err="$(team_standards_render_rev "$TD/runs/$RUN" "$qa" 2>&1 >/dev/null)" \
+    && rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa" 2>/dev/null)" \
+    || { fail "${err:-standards render base unreadable}" || return 1; }
+  if [ -n "$rb" ]; then
+    rf="$TD/runs/$RUN/standards-render.json"
+    rp="$(jq -r .promotes "$rf")"; ri="$(jq -r .item "$rf")"
+    if [ "$rp" != "$([ "${promo:-0}" = 0 ] && echo false || echo true)" ] \
+        || ! jq -e --arg t "$std" --arg i "$ri" 'any(.[]; .target == $t and .id == $i)' <<<"$acc" >/dev/null; then
+      fail "standards render base does not match the accepted item"; return 1
+    fi
+    git merge-base --is-ancestor "$base" "$rb" 2>/dev/null && git merge-base --is-ancestor "$rb" "$line" 2>/dev/null \
+      || fail "standards render base $rb is not on the target line after the team base" || return 1
+  fi
+  sb="${rb:-$trev}"
   for f in "$std" "$pat"; do
-    b="$qa"
-    if ! git diff --quiet "$base" "$trev" -- "$f" 2>/dev/null && git cat-file -e "$trev:$f" 2>/dev/null; then b="$trev"; fi
-    files="$files $(team_blob_tmp "$b" "$f") $(team_blob_tmp "$qa" "$f") $(team_blob_tmp "$rev" "$f")"
+    rc=0; git diff --quiet "$base" "$sb" -- "$f" 2>/dev/null || rc=$?
+    case "$rc" in
+      0) b="$qa" ;;
+      1) l="$(git ls-tree "$sb" -- "$f" 2>/dev/null)" \
+           || { team_rm_blobs ${files[@]+"${files[@]}"}; fail "cannot read $sb:$f" || return 1; }
+         if [ -n "$l" ]; then b="$sb"; else b="$qa"; fi ;;
+      *) team_rm_blobs ${files[@]+"${files[@]}"}; fail "cannot compare $base..$sb for $f" || return 1 ;;
+    esac
+    for r in "$b" "$qa" "$rev"; do
+      t="$(team_blob_tmp "$r" "$f" 2>/dev/null)" \
+        || { team_rm_blobs ${files[@]+"${files[@]}"}; fail "cannot read $r:$f" || return 1; }
+      files+=("$t")
+    done
   done
-  # shellcheck disable=SC2086  # $files: six temp paths (or -), no spaces in mktemp names
-  out="$(python3 -I "$lib/team_wrapup.py" standards-verify "$TD/runs/$RUN" $files 2>&1)" || rc=$?
-  for f in $files; do [ "$f" = - ] || rm -f "$f"; done
+  rc=0
+  out="$(python3 -I "$lib/team_wrapup.py" standards-verify "$TD/runs/$RUN" "${files[@]}" 2>&1)" || rc=$?
+  team_rm_blobs "${files[@]}"
   [ "$rc" = 0 ] || fail "wrapup changed $std beyond the TeamLead's accepted standards item: ${out#error: }" || return 1
   [ "$out" != promoted ] || STD_PATTERNS_OK=1
 }

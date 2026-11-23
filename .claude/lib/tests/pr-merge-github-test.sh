@@ -118,10 +118,12 @@ G7=$(gh_line '### Step G7') || fail "no Step G7"
 slice "$G6" "$G7" | grep -qF -- '--json mergeCommit' && fail "Step G6 still re-reads mergeCommit"
 N=$((N + 4))
 
-# (8) Cleanup order inside G7; both deletions guarded by HEAD_SHA on their own line.
-prev=$G7
+# (8) Cleanup order inside G7 items 0–2 (the KEEP read before item 0 is pinned by (20)); both
+#     deletions guarded by HEAD_SHA on their own line.
+G0=$(line_between '0. **Shared head.**' "$G7" "$GH_END") || fail "Step G7 lacks item 0 (Shared head)"
+prev=$((G0 - 1))
 for p in '--head <HEAD> --state open' 'git ls-remote --exit-code' 'git push origin --delete' 'git switch <BASE>' 'git pull --ff-only' 'git branch -D' 'git fetch origin --prune'; do
-  l=$(line_between "$p" "$G7" "$GH_END") || fail "Step G7 lacks: $p"
+  l=$(line_between "$p" "$((G0 - 1))" "$GH_END") || fail "Step G7 items 0–2 lack: $p"
   [ "$l" -gt "$prev" ] || fail "Step G7 order: $p (line $l) not after line $prev"
   prev=$l
 done
@@ -213,11 +215,14 @@ within "$G73" "$G73" 'only when item 2 reached its pull' || fail "Step G7 item 3
 in_gh 'skipped — why, with no base-state line'
 N=$((N + 5))
 
-# (16) ls-remote matches the exact ref on both paths.
+# (16) ls-remote matches the exact ref on both paths — the deleting reads, after the shared-head
+#      lookup (G7 item 0) and after the other-active-PR lookup (Azure Step 6); the KEEP reads
+#      before them are pinned by (20) and (21).
 grep -qF 'ls-remote --heads' "$F" && fail "pr-merge.md still uses ls-remote --heads"
-LR=$(line_of 'git ls-remote --exit-code' "$G7")
+LR=$(line_of 'git ls-remote --exit-code' "$G0")
 within "$LR" "$LR" 'refs/heads/<HEAD>' || fail "Step G7 ls-remote is not refs/heads/<HEAD>"
-LRA=$(az_line 'git ls-remote --exit-code' "$A6") || fail "Azure Step 6 lacks git ls-remote --exit-code"
+ASRC=$(az_line '--source-branch "<SOURCE>" --status active' "$A6") || fail "Azure Step 6 lacks the other-active-PR lookup"
+LRA=$(az_line 'git ls-remote --exit-code' "$ASRC") || fail "Azure Step 6 lacks git ls-remote --exit-code after the active-PR lookup"
 within "$LRA" "$LRA" 'refs/heads/<SOURCE>' || fail "Azure Step 6 ls-remote is not refs/heads/<SOURCE>"
 N=$((N + 3))
 
@@ -262,5 +267,50 @@ for p in 'deleted only by a re-run' 'tip ≠ `MERGED_SRC`' 'failed switch'; do
   printf '%s\n' "$A7SEC" | grep -qF -- "$p" || fail "Azure Step 7 lacks: $p"
 done
 N=$((N + 11))
+
+# (20) G7 KEEP: a long-lived head is reported from an exact-ref existence read, before item 0 —
+#      kept, gone from origin, or existence unknown; never a bare "kept".
+KL=$(line_between '**Long-lived head.**' "$G7" "$G0") || fail "Step G7 lacks the Long-lived head item before item 0"
+line_between 'git ls-remote --exit-code origin refs/heads/<HEAD>' "$((KL - 1))" "$G0" >/dev/null \
+  || fail "Step G7 Long-lived head lacks the exact-ref read git ls-remote --exit-code origin refs/heads/<HEAD>"
+for p in 'long-lived branch — kept' 'gone from origin; restore it on the host' 'existence on origin unknown'; do
+  slice "$((KL - 1))" "$G0" | grep -qF -- "$p" || fail "Step G7 Long-lived head lacks: $p"
+done
+N=$((N + 2))
+
+# (21) Azure Step 6.1 KEEP: the same exact-ref read for <SOURCE>, on or after the KEEP bullet and
+#      before the other-active-PR lookup; the three reports in Step 6.
+AK=$(a6_line 'KEEP') || fail "Azure Step 6 lacks the KEEP bullet"
+line_between 'git ls-remote --exit-code origin refs/heads/<SOURCE>' "$((AK - 1))" "$ASRC" >/dev/null \
+  || fail "Azure Step 6.1 KEEP bullet lacks the exact-ref read git ls-remote --exit-code origin refs/heads/<SOURCE>"
+for p in 'long-lived branch — kept' 'gone from origin; restore it on the host' 'existence on origin unknown'; do
+  slice "$A6" "$A7" | grep -qF -- "$p" || fail "Azure Step 6 lacks: $p"
+done
+N=$((N + 2))
+
+# (20b) The final reports carry the exact-ref result of a long-lived branch: Azure Step 7 and G8.
+G8=$(gh_line '### Step G8') || fail "no Step G8"
+for p in 'gone from origin' 'existence on origin unknown'; do
+  printf '%s\n' "$A7SEC" | grep -qF -- "$p" || fail "Azure Step 7 lacks: $p"
+  slice "$G8" "$GH_END" | grep -qF -- "$p" || fail "Step G8 lacks: $p"
+done
+N=$((N + 2))
+
+# (22) Azure C2: Step 3 reads completionOptions.deleteSourceBranch; a Step 4 row disarms an
+#      auto-complete armed with source deletion before the draft and vote rows, and STOPs when it
+#      stays armed.
+A3=$(az_line '### Step 3') || fail "no Azure Step 3"
+A4=$(az_line '### Step 4 ' "$A3") || fail "no Azure Step 4"
+QL=$(line_between 'az repos pr show --id <PR_ID>' "$A3" "$A4") || fail "Azure Step 3 lacks its az repos pr show read"
+within "$QL" "$QL" 'deleteSource:completionOptions.deleteSourceBranch' \
+  || fail "Azure Step 3 query lacks deleteSource:completionOptions.deleteSourceBranch"
+DS=$(az_line '`deleteSource: true`' "$A4") || fail "Azure Step 4 lacks the deleteSource: true row"
+DR=$(az_line '| `isDraft: true` |' "$A4") || fail "Azure Step 4 lacks the isDraft row"
+VR=$(az_line 'az repos pr set-vote' "$A4") || fail "Azure Step 4 lacks the set-vote row"
+[ "$DS" -lt "$DR" ] && [ "$DS" -lt "$VR" ] || fail "Azure Step 4: the deleteSource row does not precede the draft and vote rows"
+within "$DS" "$DS" '--auto-complete false' || fail "Azure Step 4 deleteSource row does not disarm with --auto-complete false"
+within "$DS" "$DS" 'auto-complete is still set with source deletion on' \
+  || fail "Azure Step 4 deleteSource row lacks its still-armed STOP"
+N=$((N + 3))
 
 echo "pr-merge-github-test: OK ($N checks)"

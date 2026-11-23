@@ -15,7 +15,8 @@ import { parseYaml } from './yaml-subset.mjs';
 
 const T = (tool, display, cls, o = {}) => ({
   tool, display, class: cls, aliases: [], configs: [], runs: null, bin: null, sub: [], selectFlags: [],
-  excludeFlags: [], strictFlags: [], valueFlags: [], observe: new RegExp(`\\b${tool}\\b`, 'i'), appliesTo: '**/*', ...o,
+  excludeFlags: [], strictFlags: [], valueFlags: [], strictRe: null, requireStrict: false, stopAt: null,
+  observe: new RegExp(`\\b${tool}\\b`, 'i'), appliesTo: '**/*', ...o,
 });
 const PY = '**/*.py';
 const PHP = '**/*.php';
@@ -45,7 +46,7 @@ export const TOOLS = [
   }),
   T('biome', 'Biome', 'lint', {
     configs: [/(^|\/)biome\.jsonc?$/], runs: /\bbiome\s+(check|ci|lint)\b/, bin: /^(.*\/)?biome$/,
-    sub: ['check', 'ci', 'lint'], selectFlags: ['--config-path'],
+    sub: ['check', 'ci', 'lint'], selectFlags: ['--config-path'], strictRe: /(^|\s)--error-on-warnings(\s|=|$)/,
   }),
   T('typescript', 'TypeScript compiler', 'compiler', {
     aliases: ['tsc'], configs: [/(^|\/)tsconfig(\.[\w-]+)?\.json$/], runs: /(^|[\s/])(tsc|vue-tsc)(\s|$)|\bng\s+build\b/,
@@ -95,9 +96,13 @@ export const TOOLS = [
   T('govet', 'go vet', 'analyzer', { aliases: ['go vet'], runs: /\bgo\s+vet\b/, bin: /^go$/, sub: ['vet'], observe: /\bgo\s+vet\b/, appliesTo: GO }),
   T('rustfmt', 'rustfmt', 'format', {
     configs: [/(^|\/)\.?rustfmt\.toml$/], runs: /\bcargo\s+fmt\b.*--check|\brustfmt\b.*--check/, bin: /^(.*\/)?(cargo|rustfmt)$/,
-    sub: ['fmt'], observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
+    sub: ['fmt'], stopAt: '--', observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
   }),
-  T('clippy', 'Clippy', 'lint', { configs: [/(^|\/)\.?clippy\.toml$/], runs: /\bcargo\s+clippy\b/, bin: /^(.*\/)?cargo$/, sub: ['clippy'], appliesTo: RS }),
+  // Clippy's lint levels live on the command line, not in clippy.toml: only a run that denies warnings checks.
+  T('clippy', 'Clippy', 'lint', {
+    configs: [/(^|\/)\.?clippy\.toml$/], runs: /\bcargo\s+clippy\b/, bin: /^(.*\/)?cargo$/, sub: ['clippy'], stopAt: '--',
+    strictRe: /(^|[\s=])(-D\s*warnings|--deny[=\s]+warnings)(\s|$)/, requireStrict: true, appliesTo: RS,
+  }),
   T('rubocop', 'RuboCop', 'lint', { configs: [/(^|\/)\.rubocop\.ya?ml$/], runs: /\brubocop\b/, bin: /^(.*\/)?rubocop$/, selectFlags: ['-c', '--config'], appliesTo: '**/*.rb' }),
   T('dotnet-format', 'dotnet format', 'format', {
     aliases: ['dotnet format'], runs: /\bdotnet\s+format\b.*--verify-no-changes/, bin: /^(.*\/)?dotnet$/, sub: ['format'],
@@ -238,33 +243,48 @@ function extract(t, file, text) {
 }
 
 // One checking invocation parsed per tool: positional targets, excludes, an explicit selection and
-// the strict flag. null when the text is not a checking invocation of that tool.
-export function parseRun(toolId, text) {
+// the strict flag. null when the text is not a checking invocation of that tool. `isPath` (optional)
+// tells whether a token names a scanned path: a token right after an unknown flag is that flag's value
+// unless it looks like a path or names one; without `isPath` it stays a target.
+const unquote = (s) => s.replace(/^["']|["']$/g, '');
+export function parseRun(toolId, text, isPath = null) {
   const t = BY_ID.get(toolId);
   if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text) || INFO_ONLY.test(text)) return null;
+  const bare = text.replace(/["']/g, ' ');
+  if (t.requireStrict && !t.strictRe.test(bare)) return null;
   const toks = text.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
-  let i = toks.findIndex((x) => t.bin.test(x.replace(/^["']|["']$/g, '')));
+  let i = toks.findIndex((x) => t.bin.test(unquote(x)));
   const run = { targets: [], excludes: [], selected: null, strict: false, scopeUnknown: false };
+  if (t.strictRe && t.strictRe.test(bare)) run.strict = true;
   // No binary token: a run only when the binary sits in a command substitution (`test -z "$(gofmt -l .)"`).
   if (i < 0) return toks.some((x) => { const m = /\$\(\s*([^\s)]+)/.exec(x); return m && t.bin.test(m[1]); }) ? run : null;
   if (/^(.*\/)?(ng|nx)$/.test(toks[i])) return run;
   i += 1;
   while (i < toks.length && t.sub.includes(toks[i])) i++;
   const flagVal = (tok, eq) => (eq >= 0 ? tok.slice(eq + 1) : toks[++i]);
+  // pending: the previous token was a flag of none of the tool's lists, with no `=` (a bare `--` too).
+  let pending = false;
   for (; i < toks.length; i++) {
     const tok = toks[i];
     if (/^\d*[<>]/.test(tok)) break;
+    // `cargo clippy -- -D warnings`: what follows `--` goes to the linter (lint levels), never a target.
+    if (t.stopAt && tok === t.stopAt) break;
+    const after = pending;
+    pending = false;
     if (tok.startsWith('-')) {
       const eq = tok.indexOf('=');
       const name = eq >= 0 ? tok.slice(0, eq) : tok;
-      if (t.selectFlags.includes(name)) run.selected = flagVal(tok, eq) ?? null;
-      else if (t.excludeFlags.includes(name)) run.excludes.push(String(flagVal(tok, eq) ?? '').replace(/^["']|["']$/g, ''));
+      if (t.selectFlags.includes(name)) { const v = flagVal(tok, eq); run.selected = v == null ? null : unquote(v); }
+      else if (t.excludeFlags.includes(name)) run.excludes.push(unquote(String(flagVal(tok, eq) ?? '')));
       else if (t.strictFlags.includes(name)) run.strict = String(flagVal(tok, eq)) === '0';
-      else if (t.valueFlags.includes(name) && eq < 0) i++;
+      else if (t.valueFlags.includes(name)) { if (eq < 0) i++; }
+      else pending = eq < 0;
       continue;
     }
     if (/[$`(]/.test(tok)) { run.scopeUnknown = true; continue; }
-    const target = tok.replace(/^["']|["']$/g, '').replace(/^\.\//, '').replace(/\/?\.\.\.$/, '').replace(/\/$/, '');
+    const target = unquote(tok).replace(/^\.\//, '').replace(/\/?\.\.\.$/, '').replace(/\/$/, '');
+    // `--timeout 5m`, `--output-format github`: a bare word after an unknown flag that names no path is its value.
+    if (after && isPath && !/[*?[{/]/.test(target) && !/\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(target) && !isPath(target)) continue;
     if (target && target !== '.') run.targets.push(target);
   }
   return run;
@@ -305,7 +325,8 @@ function commands(file, text) {
   return out;
 }
 
-function runsOf(cmds) {
+// isPath(dir, token): whether the token, resolved against the run directory, names a scanned path.
+function runsOf(cmds, isPath = null) {
   const runs = [];
   const seen = new Set();
   for (const c of cmds) {
@@ -320,7 +341,7 @@ function runsOf(cmds) {
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
         if (masked || (/fix/i.test(c.key) && /--fix\b/.test(seg))) continue;
-        const r = parseRun(t.tool, seg);
+        const r = parseRun(t.tool, seg, isPath && ((x) => isPath(dir, x)));
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }
     }
@@ -346,7 +367,9 @@ export function scan({ repo, files }) {
     if (wires) wiring.push({ file: f, text: r.text });
   }
   const hasProject = files.some((f) => /\.(csproj|sln)$/.test(f) && !HARNESS.test(f));
-  const { runs, seen } = runsOf(wiring.flatMap((w) => commands(w.file, w.text)));
+  const fileSet = new Set(files);
+  const isPath = (dir, x) => { const p = posix(dir, x); return p === '' || fileSet.has(p) || files.some((f) => f.startsWith(`${p}/`)); };
+  const { runs, seen } = runsOf(wiring.flatMap((w) => commands(w.file, w.text)), isPath);
   const rootPkg = wiring.find((w) => w.file === 'package.json');
   let eslintMajor = 0;
   try { const p = JSON.parse(rootPkg.text); eslintMajor = Number(/\d+/.exec((p.devDependencies || {}).eslint || (p.dependencies || {}).eslint || '')?.[0] || 0); } catch { /* no root package.json */ }
@@ -402,7 +425,7 @@ export function scan({ repo, files }) {
       if (!c.attributed) continue;
       cov.forEach((r) => enforcing.add(r));
       if (cov.every((r) => r.selected && !selects(r, c)) && t.tool !== 'typescript') c.notEnforced = c.rules.map((r) => r.rule);
-      else if ((t.tool === 'eslint' || t.tool === 'stylelint') && !cov.some((r) => r.strict)) c.notEnforced = c.rules.filter((r) => r.setting === 'warn').map((r) => r.rule);
+      else if ((t.tool === 'eslint' || t.tool === 'stylelint' || t.tool === 'biome') && !cov.some((r) => r.strict)) c.notEnforced = c.rules.filter((r) => r.setting === 'warn').map((r) => r.rule);
     }
     if (external) enforcing.add(external);
     if (!cfgs.length) eff.forEach((r) => enforcing.add(r));

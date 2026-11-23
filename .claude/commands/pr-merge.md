@@ -98,7 +98,7 @@ Pass flags inline — in zsh a `$VAR` holding several flags is not word-split.
 
 Run in parallel:
 
-- `az repos pr show --id <PR_ID> --org "$ORG_URL" --query "{title:title,status:status,isDraft:isDraft,mergeStatus:mergeStatus,source:sourceRefName,target:targetRefName,autoComplete:autoCompleteSetBy.displayName,commit:lastMergeCommit.commitId,reviewers:reviewers[].{name:displayName,vote:vote,required:isRequired}}" -o json`
+- `az repos pr show --id <PR_ID> --org "$ORG_URL" --query "{title:title,status:status,isDraft:isDraft,mergeStatus:mergeStatus,source:sourceRefName,target:targetRefName,autoComplete:autoCompleteSetBy.displayName,deleteSource:completionOptions.deleteSourceBranch,commit:lastMergeCommit.commitId,reviewers:reviewers[].{name:displayName,vote:vote,required:isRequired}}" -o json`
 - `az repos pr policy list --id <PR_ID> --org "$ORG_URL" --query "[].{policy:configuration.type.displayName,blocking:configuration.isBlocking,status:status}" -o json`
 
 **`--auto`, first action after this read:** `autoComplete` is set (a legacy-armed PR could
@@ -122,6 +122,7 @@ Apply the first matching row; after any *resolve* action re-read Step 3 (at most
 |---|---|
 | `status: completed` | → **Step 6a** (Jira), Step 6b (team run), then Step 6 (cleanup) and Step 7 |
 | `status: abandoned`, `mergeStatus: conflicts`, a vote `-10`/`-5`, or a blocking policy `rejected` | **STOP** — name the blocker and the fix (conflicts: merge `<TARGET>` into the branch, push, re-run) |
+| `autoComplete` set and `deleteSource: true` (armed earlier with source deletion) | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --auto-complete false -o none` — disarm before any vote can complete it; the normal rows then run 4a and 5a / 5b with `--delete-source-branch false`. Still armed after the re-read → **STOP** `auto-complete is still set with source deletion on — clear it on the PR, then re-run` |
 | `isDraft: true` | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --draft false -o none` |
 | a *Minimum number of reviewers* policy exists, is not `approved`, and the current user has no vote ≥ 5 | `self_approve` off → **STOP** `needs an approval — teams.policy.pr.self_approve is off`. On → *resolve:* `az repos pr set-vote --id <PR_ID> --org "$ORG_URL" --vote approve -o none` — report it as a **self-approval**. No such policy → never vote. |
 | a blocking policy `queued` / `running` (e.g. the build, a required reviewer) | `self_approve` off → **STOP** `policies running — re-run when they pass (auto-complete needs teams.policy.pr.self_approve)`. On → **4a**, then **5b** set auto-complete, then **5c** wait. With `--auto` → **STOP** `deferred: policies running — Supervisor retries on the next READY reminder` (no 5b) |
@@ -225,7 +226,11 @@ Step 6b runs first on every path that reaches this step (the "go to Step 6" exit
 1. **Remote branch.** `MERGED_SRC` =
    `az repos pr show --id <PR_ID> --org "$ORG_URL" --query lastMergeSourceCommit.commitId -o tsv`
    (one read). Keep the remote branch, and say why, when any of these holds:
-   - `SOURCE` is in `KEEP` (`## Guardrails`) → "`<SOURCE>` is a long-lived branch — kept";
+   - `SOURCE` is in `KEEP` (`## Guardrails`) → nothing is deleted on any outcome; run
+     `git ls-remote --exit-code origin refs/heads/<SOURCE>` (exact ref) for the report: found →
+     "`<SOURCE>` is a long-lived branch — kept"; exit 2 → "`<SOURCE>` is a long-lived branch —
+     gone from origin; restore it on the host"; any other exit → the error verbatim and
+     "`<SOURCE>` is a long-lived branch — existence on origin unknown";
    - another active PR has it as its source —
      `az repos pr list --org "$ORG_URL" --project "<project>" --repository "<repo>" --source-branch "<SOURCE>" --status active --query "[].pullRequestId" -o json`
      is non-empty, or the lookup fails → "`<SOURCE>` is the source of active PR `#…` — kept";
@@ -249,7 +254,9 @@ Step 6b runs first on every path that reaches this step (the "go to Step 6" exit
 ### Step 7 — Report
 
 ✅ PR `#<id>` completed · self-approval if cast · strategy · merge commit (`lastMergeCommit`) ·
-remote branch (deleted by this command / kept — why) · local state as Step 6.2 ran it (`<TARGET>`
+remote branch (deleted by this command / kept — why; a long-lived branch as its exact-ref read
+found it: kept / gone from origin — restore it on the host / existence on origin unknown, never a
+bare "kept") · local state as Step 6.2 ran it (`<TARGET>`
 up to date, then local branch removed / kept — why (`KEEP`, tip ≠ `MERGED_SRC`) / absent; or the
 local step skipped — why (dirty tree, failed switch); never "removed" for a branch that was not) ·
 URL `<ORG_URL>/<project>/_git/<repo>/pullrequest/<id>`. Then one line on
@@ -404,8 +411,11 @@ Step G7.
 In this order:
 
 - **Long-lived head.** `HEAD` in `KEEP` (`## Guardrails`) → skip item 0 and item 1 (no remote
-  deletion) and the local branch deletion in item 2; report "`<HEAD>` is a long-lived branch —
-  kept".
+  deletion) and the local branch deletion in item 2; nothing is deleted on any outcome. Run
+  `git ls-remote --exit-code origin refs/heads/<HEAD>` (exact ref) for the report: found →
+  "`<HEAD>` is a long-lived branch — kept"; exit 2 → "`<HEAD>` is a long-lived branch —
+  gone from origin; restore it on the host"; any other exit → the error verbatim and
+  "`<HEAD>` is a long-lived branch — existence on origin unknown".
 
 0. **Shared head.** `gh pr list --repo <owner>/<repo> --head <HEAD> --state open --json number,headRepositoryOwner,headRepository`,
    filtered to `<owner>/<repo>` as in Step G2: another open PR still uses `<HEAD>`, or the lookup
@@ -436,7 +446,9 @@ In this order:
 ### Step G8 — Report
 
 ✅ PR `#<n>` merged · strategy · merge commit `MERGE_SHA` · remote branch (deleted by GitHub / by
-this command / kept — why, a long-lived head named as such) · local state as Step G7 ran it
+this command / kept — why; a long-lived head named as such, with its exact-ref read: kept /
+gone from origin — restore it on the host / existence on origin unknown, never a bare "kept") ·
+local state as Step G7 ran it
 (`BASE_SHA`, contains the merge commit, local branch removed or kept — why; or the local step
 skipped — why, with no base-state line) · URL. Add `Tracker comments: …` when Step 4a ran and `Tracker: …` (tracker
 jira) as in Step 7. On a STOP: what blocks and the fix.

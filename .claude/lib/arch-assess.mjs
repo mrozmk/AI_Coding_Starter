@@ -142,7 +142,8 @@ function isTestPath(rel) {
   const parts = rel.split('/');
   const base = parts.pop();
   if (parts.some((p) => TEST_DIRS.has(p))) return true;
-  return /^test_.+\.py$/.test(base) || /_test\.(py|go)$/.test(base) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(base) || /[-_.]test\.sh$/.test(base);
+  return /^test_.+\.py$/.test(base) || /_test\.(py|go)$/.test(base) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(base) || /[-_.]test\.sh$/.test(base)
+    || /^[A-Z]\w*Tests?\.(java|kt|kts|cs|php)$/.test(base) || /_spec\.rb$/.test(base);
 }
 
 function countLines(text) {
@@ -160,9 +161,33 @@ export function countBranches(text, lang) {
 }
 
 function testStem(base) {
+  const ext = extOf(base);
   let s = base.replace(/\.[^.]+$/, '');
   if (s.startsWith('test_')) s = s.slice(5);
-  return s.replace(/(_test|-test|\.test|\.spec)$/, '');
+  s = s.replace(/(_test|-test|\.test|\.spec)$/, '');
+  if (['java', 'kt', 'kts', 'cs', 'php'].includes(ext)) s = s.replace(/(?<=[a-z0-9])Tests?$/, '');
+  if (ext === 'rb') s = s.replace(/_spec$/, '');
+  return s;
+}
+
+// Does test directory `testDir` sit where a test of a source in `srcDir` lives? Same directory, or
+// `<a>/<d>` / `<a>/<d>/<sub>` for an ancestor `a` of srcDir (`.` included), a test dir `d`, and
+// `<sub>` a whole-segment suffix of srcDir below `a` (empty allowed). `spec` counts only for Ruby.
+function testPlacedFor(testDir, srcDir, lang) {
+  if (testDir === srcDir) return true;
+  const dirs = lang === 'rb' ? [...TEST_DIRS] : [...TEST_DIRS].filter((d) => d !== 'spec');
+  for (let a = srcDir; ; a = path.posix.dirname(a)) {
+    const below = a === '.' ? srcDir : srcDir === a ? '' : srcDir.slice(a.length + 1);
+    const segs = below && below !== '.' ? below.split('/') : [];
+    for (const d of dirs) {
+      const home = a === '.' ? d : `${a}/${d}`;
+      for (let i = 0; i <= segs.length; i++) {
+        const sub = segs.slice(i).join('/');
+        if (testDir === (sub ? `${home}/${sub}` : home)) return true;
+      }
+    }
+    if (a === '.') return false;
+  }
 }
 
 // Path-like tokens of a text and their suffixes at `/` boundaries: what `mentions` keys match.
@@ -179,12 +204,23 @@ function mentionTokens(text) {
 
 // ---------------------------------------------------------------- measure: import graph
 
-function pyModuleIndex(pyFiles) {
+// Import roots: the repository root plus the parent of every top-level package (a dir with an
+// __init__.py whose parent has none). `initFiles` is the full listing's __init__.py files, so a
+// focus inside a package still sees the package above it. A module is indexed only under the
+// dotted name its path has below an import root — `import json` never hits `app/utils/json.py`.
+function pyModuleIndex(pyFiles, initFiles) {
+  const pkgs = new Set(initFiles.map((f) => path.posix.dirname(f)));
+  const roots = new Set(['']);
+  for (const d of pkgs) {
+    const parent = path.posix.dirname(d);
+    if (d !== '.' && !pkgs.has(parent)) roots.add(parent === '.' ? '' : parent);
+  }
   const index = new Map();
   for (const f of pyFiles) {
     const parts = f.replace(/\.py$/, '').split('/');
     if (parts[parts.length - 1] === '__init__') parts.pop();
     for (let i = 0; i < parts.length; i++) {
+      if (!roots.has(parts.slice(0, i).join('/'))) continue;
       const name = parts.slice(i).join('.');
       if (!index.has(name)) index.set(name, new Set());
       index.get(name).add(f);
@@ -448,9 +484,9 @@ export async function measure(opts) {
   const focus = (opts.focus ?? '').replace(/^\.\//, '').replace(/\/+$/, '');
   const R = focus === '.' ? '' : focus;
   const excludes = [...BUILTIN_EXCLUDES, ...(opts.exclude ?? [])].map(globToRegExp);
-  const candidates = [...new Set(listing.split('\0').filter(Boolean))].sort(cmp)
-    .filter((p) => !R || p === R || p.startsWith(R + '/'))
-    .filter((p) => !excludes.some((re) => re.test(p)));
+  const listed = [...new Set(listing.split('\0').filter(Boolean))].sort(cmp);
+  const inFocus = listed.filter((p) => !R || p === R || p.startsWith(R + '/'));
+  const candidates = inFocus.filter((p) => !excludes.some((re) => re.test(p)));
 
   const entries = [];
   let skipped = 0;
@@ -473,31 +509,39 @@ export async function measure(opts) {
     const lang = langOf(rel);
     entries.push({ path: rel, text, lang, lines: countLines(text), test: lang !== 'def' && isTestPath(rel) });
   }
+  if (R && entries.length === 0) usage(inFocus.length ? `--focus ${focus} matches no measurable file (all excluded, prose or binary)` : `--focus ${focus} matches no file`);
   const fileSet = new Set(entries.map((e) => e.path));
 
   // sizes, branches, sibling tests
-  const testStems = new Map(); // stem → [dir]
-  for (const e of entries.filter((x) => x.test)) {
-    const stem = testStem(path.posix.basename(e.path));
-    if (!testStems.has(stem)) testStems.set(stem, []);
-    testStems.get(stem).push(path.posix.dirname(e.path));
-  }
+  // A test credits one source: same stem, same language, placed beside it or in a mirrored test
+  // dir; a tie narrows to the test's own dir, then its extension, and an ambiguous stem credits none.
+  const normLang = (l) => (l === 'kts' ? 'kt' : l);
+  const sources = new Map(); // "<lang>\0<stem>" → [entry]
   for (const e of entries) {
     e.branches = e.lang === 'def' ? null : countBranches(e.text, e.lang);
-    const stem = path.posix.basename(e.path).replace(/\.[^.]+$/, '');
-    const dir = path.posix.dirname(e.path);
-    const ancestors = [];
-    for (let d = dir; ; d = path.posix.dirname(d)) { ancestors.push(d); if (d === '.') break; }
-    const homes = new Set([dir]);
-    for (const a of ancestors) for (const t of TEST_DIRS) if (t !== 'spec') homes.add(a === '.' ? t : `${a}/${t}`);
-    e.sibling_test = !e.test && (testStems.get(stem) ?? []).some((d) => homes.has(d));
+    if (e.test || e.lang === 'def') continue;
+    const k = `${normLang(e.lang)}\0${path.posix.basename(e.path).replace(/\.[^.]+$/, '')}`;
+    if (!sources.has(k)) sources.set(k, []);
+    sources.get(k).push(e);
   }
+  const credited = new Set();
+  for (const t of entries.filter((x) => x.test)) {
+    const tDir = path.posix.dirname(t.path);
+    const lang = normLang(t.lang);
+    let hits = (sources.get(`${lang}\0${testStem(path.posix.basename(t.path))}`) ?? [])
+      .filter((s) => testPlacedFor(tDir, path.posix.dirname(s.path), lang));
+    const narrow = (keep) => { const n = hits.filter(keep); if (n.length) hits = n; };
+    if (hits.length > 1) narrow((s) => path.posix.dirname(s.path) === tDir);
+    if (hits.length > 1) narrow((s) => extOf(path.posix.basename(s.path)) === extOf(path.posix.basename(t.path)));
+    if (hits.length === 1) credited.add(hits[0].path);
+  }
+  for (const e of entries) e.sibling_test = !e.test && credited.has(e.path);
 
   // import graph
   const fileEdges = new Map();
   const unresolved = {};
   const graphed = new Set();
-  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path));
+  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path), listed.filter((p) => path.posix.basename(p) === '__init__.py'));
   for (const e of entries) {
     if (e.lang !== 'py' && e.lang !== 'js') continue;
     graphed.add(e.lang);
@@ -712,6 +756,11 @@ function uniqueIds(list, label) {
   return seen;
 }
 
+// ASSESSMENT.md §6: a `now` record must have been re-read by the main session or Codex.
+function noSweepOnlyNow(list) {
+  for (const r of list) if (r.tier === 'now' && r.verified_by === 'sweep-only') invalid(`records: ${r.id} is tier now but verified_by sweep-only (ASSESSMENT.md §6)`);
+}
+
 export function check(kind, file, opts = {}) {
   if (!['auditor', 'refutation', 'records'].includes(kind)) usage(`check wants auditor|refutation|records, got ${kind ?? 'nothing'}`);
   if (!file) usage(`check ${kind} needs a file`);
@@ -722,6 +771,7 @@ export function check(kind, file, opts = {}) {
     value = readJson(file);
     validOrFail('records', value, 'records');
     uniqueIds(value.records, 'records');
+    noSweepOnlyNow(value.records);
     line = `valid records records=${value.records.length}`;
   } else {
     value = extractJson(readText(file));
@@ -756,6 +806,7 @@ const roundHalf = (x) => Math.round(x * 2) / 2;
 export function score({ records, measure: m, assessed }) {
   validOrFail('records', records, 'records');
   uniqueIds(records.records, 'records');
+  noSweepOnlyNow(records.records);
   if (!Array.isArray(m?.areas) || !Array.isArray(m?.files) || !Array.isArray(m?.safety_flags)) invalid('measure: expected areas[], files[], safety_flags[]');
   const areaNames = m.areas.map((a) => a.name);
   const known = new Set(areaNames);

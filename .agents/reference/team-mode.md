@@ -71,6 +71,7 @@ All under `.agents/team/` (git-ignored, local to the clone):
 | `runs/<run>/cli-<attempt>.md` | cli | plain summary for the Supervisor |
 | `<main checkout>/.agents/team/anchors/<team>.json` | team-new/next, team-run (main checkout only) | ticket/branch/line/base_sha, run/role/attempt/session_id, `planner` on acceptance; trusted by the classes, a differing clone `team.json` → `mismatch` (no class) |
 | `runs/<run>/wrapup-state.json` | wrapup | tracker intents (`op`, `marker`, `state`, id/key) — makes retries safe (§2a) |
+| `runs/<run>/standards-render.json` | wrapup (`team_wrapup.py standards-add`) | the `target_rev` the standards writer rendered on, bound to its round by `qa_rev`; read by `check_wrapup_standards` and the merge-check overlap test |
 | `runs/<run>/attention` | `team-attention.sh` hook | one line per `Notification` |
 | `runs/<run>/asks/a-<n>.json`, `a-<n>.answer.json` | the stage hook (`team-ask-hook.sh`); `team-answer.sh` (the lead) | every stop of a stage in a lead run and its one answer — the ask channel, team-lead.md §6 |
 | `stage-hooks.settings.json` | `team-run.sh launch` (lead runs) | the stage's `--settings` layer: the ask hooks, materialised from `<main>/.claude/team/stage-hooks.json` |

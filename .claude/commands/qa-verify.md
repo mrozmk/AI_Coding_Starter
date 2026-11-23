@@ -227,7 +227,7 @@ Every mode, every ticket. The probe reports the candidate host and the deployed 
 Group and pool runs. **A group run (2–5 arguments) is one group by the Operator's choice:** its edges and cross-references are computed and shown at the gate, never used to split it (its cap is the Step 0.1 refusal); GitHub dependency and mention edges come from the pool read, so a group run shows none. Pool runs build groups by the rules below. An edge joins two tickets of the run and names its signal, in this precedence (1 strongest):
 
 1. **link** — a Jira issue link; a GitHub dependency (`blocked_by` / `blocking`) or cross-reference (`mentions`) between two pool issues; or a **deferral** edge — an incoming deferral comment, or a `DEFERRED → <KEY>` row in a newest record, between two tickets of the run;
-2. **files** — the tickets' PRs (`closes` / `branch`) share a changed path, or the two tickets name the same route or screen in their criteria or PR descriptions;
+2. **files** — the tickets' PRs (`closes` / `branch`) share a changed path, or the two tickets name the same route or screen in their criteria or PR descriptions — ignoring **shared-by-design paths**: lockfiles (`package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `*.lock`, `go.sum`, `Package.resolved`), changelogs (`CHANGELOG*`, `CHANGES*`, `HISTORY*`, at any depth), `.agents/memory/**` and the team suite registry `.claude/lib/tests/team-suite.sh`. The filter applies to the shared-changed-path signal only: two tickets whose only shared paths are on this list get no edge from them, while a shared route or screen still makes the edge;
 3. **spec** — both name the same `.agents/specs/<file>.md` in the ticket body or a PR description;
 4. **epic** — the same parent; applied among an epic's children in the run only when at least one pair of them already has a link or files edge (bugs sit under catch-all epics).
 
@@ -300,6 +300,8 @@ Which verifiers actually exist on disk, injected at command load:
 
    `- none` is written under `### Feature path` only when there are neither derived nor carried rows. The gate shows open rows apart from derived ones. Example: a failure seen by A+B and charged to A → a run of A alone carries it; A+C carries it; A+B (or A+B+C) verifies it as `open F1 from group A+B`.
 
+   **Ids of carried rows.** Every row carried in from a newest record — joined as `open F<n> from group <id>` or carried unchanged — is `F<n>@<group id>` in this run (`<group id>` its origin group): in the gate, Phase 2 keys, its script `<group id>-F<n>@<origin group id>.mjs`, the completeness assertion, the one-pass answer and the end-of-run lines. Derived rows stay `F1 … Fn`; **the numbers of open rows whose origin group is this group are reserved** — derived numbering skips them, so two different steps of one group are never recorded under one `F<n>` (an open `F1` of `A+B` in an `A+B` run → the derived path starts at `F2`; the carried row is still `F1@A+B`, and both rows are listed and counted once). **One row per origin group and number:** the same charged row is written on every ticket of its group, so copies read from several newest records with the same `F<n>@<group id>` are coalesced before numbers are reserved or rows dispatched — one recheck, one decision, its full charge set kept (the union of the copies' `charged to` keys; copies whose steps differ are not merged — the gate lists them as `conflicting copies of F<n>@<group id>` and each stays carried unchanged). **A rechecked open row keeps its identity in the record:** its new verdict is written with its origin number and `(group <origin id>)`, never renumbered into this group's path — so after an `A+B+C` run that derives a new `F1` and rechecks `F1@A+B`, the next read still sees `F1@A+B+C` and `F1@A+B` apart (a `PASS` needs no origin: only charged rows are read back). The record row shape (`registry §7b`) is unchanged.
+
 **An AC that maps to no family is a legitimate outcome, not a failure of the run.** Criteria like *"the code should be maintainable"* carry no evidence family. Give it **one row** with `family: (unclassifiable)`, `agent: (none)`, `verdict: NEEDS-HUMAN`, and a note saying why it carries no evidence family. Do **not** stretch a classification to fit, and do **not** let the Phase-3 completeness assertion read it as a bug — an unclassifiable AC *has* its row.
 
 ---
@@ -351,7 +353,7 @@ Print, in this order — a single run prints items 1, 2, 6 and 8; a group or poo
    |---|---|---|---|---|---|---|
 
    and the incoming rows marked `deferred-in from <SRC>`, with the stale deferrals and their reasons.
-7. In a group or pool run, the feature path per group — derived rows `F1 … Fn` with their source, and the open charged rows (`open F<n> from group <id>`) apart — classified like the criteria (Phase 0 step 5), with `FEATURE PATH HOST: <deployed <D> | local <url> | none — <reason>>` per group (Step 0.76 → Feature-path host).
+7. In a group or pool run, the feature path per group — derived rows `F1 … Fn` with their source, and the open charged rows (`open F<n> from group <id>`, each listed by its id `F<n>@<group id>`) apart, with any `conflicting copies of F<n>@<group id>` (Phase 0 step 5) — classified like the criteria (Phase 0 step 5), with `FEATURE PATH HOST: <deployed <D> | local <url> | none — <reason>>` per group (Step 0.76 → Feature-path host).
 8. Then **stop and ask for explicit approval.**
 
 State plainly: **nothing has run yet**; correcting a misclassification, a wrong `SUBJECT`, a wrong `GATE_STATUS`, or a wrong host right now is free. Do not proceed on silence, on a "looks good" that arrived before the table, or on an approval of something else.
@@ -366,7 +368,7 @@ In a group or pool run the Operator may also regroup, reorder, remove a ticket, 
 
 In re-check mode only the rows planned `verify` or `new` (Phase 0.5) are dispatched; carried rows are not re-sent to any verifier.
 
-**A group or pool run** verifies the picked groups one after another; for each group Phases 2 → 2.5 → 3 finish before the next starts, so an interrupted session loses nothing already decided. Subsets are keyed `<KEY>:<ac_id>` (two tickets' `AC-1` never collide) and dispatched per ticket with that ticket's own `SUBJECT`; feature-path rows travel keyed `F<n>` with the `SUBJECT`s of the group. The probe runs before and after every group's observations (Step 0.76 → Build drift around the observation).
+**A group or pool run** verifies the picked groups one after another; for each group Phases 2 → 2.5 → 3 finish before the next starts, so an interrupted session loses nothing already decided. Subsets are keyed `<KEY>:<ac_id>` (two tickets' `AC-1` never collide) and dispatched per ticket with that ticket's own `SUBJECT`; feature-path rows travel keyed `F<n>` (derived) or `F<n>@<group id>` (carried) — two distinct keys in one `AC_SUBSET`, e.g. `F1` and `F1@A+B` — with the `SUBJECT`s of the group. The probe runs before and after every group's observations (Step 0.76 → Build drift around the observation).
 
 **Lanes P and S are built; Lane I is still guarded.** Lane S runs in the main session under `script`/`mcp`, as a spawned `qa-runtime-ui` only under `subagent` (Phase 0 step 3b picks the driver). Never write or improvise dispatch for a verifier that is not in the injected listing — the Phase-0 guards decide what runs, not this section.
 
@@ -384,13 +386,13 @@ The driver sub-sections below govern the rows the roster binds to `qa-runtime-ui
 
 #### Before the first browser row (every driver)
 
-1. **The committable-directory guard.** Take the run directory `ARTIFACTS_DIR` (`qa-env.json → artifacts_dir` + `/<run>`, where `<run>` is the record's `run=` value), absolute; find its nearest existing ancestor and ask git from there which work tree owns it: `git -C <ancestor> rev-parse --show-toplevel` fails → no repository owns it → the guard passes; it succeeds → that work tree (this project's, or any other checkout the path lands in) is the one to check, and the directory must be ignored there — `git -C <owner> check-ignore -q` on its path and on its trailing-slash form (the probe's idiom: a directory-only rule matches a not-yet-existing path only in the slash form). Committable → every browser row `NEEDS-HUMAN` — `artifacts dir <dir> is committable`, and no file is written. The fix the gate prints names the owner's exclude file from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (a linked worktree has a `.git` file, not a directory). Under `mcp` and `subagent` the same owner-aware check also covers **the browser MCP server's own output directory** (where it writes auto-named files and console logs): the `--output-dir <dir>` argument of the browser server in `qa-env.json → mcp_config_file`, resolved against the project root. No such argument found → the gate says `MCP output directory not established — the server may write logs into the work tree`, and the lane is guarded like a committable directory.
+1. **The committable-directory guard.** Take the run directory `ARTIFACTS_DIR` (`qa-env.json → artifacts_dir` + `/<run>`, where `<run>` is the record's `run=` value), absolute; find its nearest existing ancestor and ask git from there which work tree owns it: `LC_ALL=C git -C <ancestor> rev-parse --show-toplevel` fails with one of git's two discovery-exhausted diagnostics — `not a git repository (or any of the parent directories)` or `not a git repository (or any parent up to mount point <dir>)` (discovery stopped at a filesystem boundary, as git itself does for every command run there) — → no repository owns it → the guard passes; any other failure (a `detected dubious ownership` refusal, a broken `GIT_DIR` or linked-worktree metadata — `not a git repository: '<path>'` — exit 128) → every browser row `NEEDS-HUMAN` — `cannot tell which repository owns <dir> — <git's first error line>`, and no file is written; it succeeds → that work tree (this project's, or any other checkout the path lands in) is the one to check, and the directory must be ignored there — `git -C <owner> check-ignore -q` on its path and on its trailing-slash form (the probe's idiom: a directory-only rule matches a not-yet-existing path only in the slash form). Committable → every browser row `NEEDS-HUMAN` — `artifacts dir <dir> is committable`, and no file is written. The fix the gate prints names the owner's exclude file from `git -C <owner> rev-parse --path-format=absolute --git-path info/exclude` (a linked worktree has a `.git` file, not a directory). Under `mcp` and `subagent` the same owner-aware check also covers **the browser MCP server's own output directory** (where it writes auto-named files and console logs): the `--output-dir <dir>` argument of the browser server in `qa-env.json → mcp_config_file`, resolved against the project root. No such argument found → the gate says `MCP output directory not established — the server may write logs into the work tree`, and the lane is guarded like a committable directory.
 2. **Reserve `ARTIFACTS_DIR` atomically** — `mkdir -p` the parents, then a plain `mkdir` on the leaf. The leaf already exists → another session took that second: take the next second as the run's `run=` value, carry it into the record and every artifact path, and try again — never write into a run directory this run did not create. A re-check therefore never overwrites the captures behind an earlier record.
 3. **Under `script` and `mcp`, Read `.claude/agents/qa-runtime-ui.md`** → `## Inputs`, `## Observation discipline`, `## Browser hazards`, `## Artifacts`, and apply them as the main session's own rules. The inputs are the ones the sub-agent gets: `MOUNT_TARGETS` built from `qa-env.json → component_mount_url_template`, `SWEEP_WIDTHS` = `pointer_sweep_widths` for a tier-scoped criterion, `KEY`, `ARTIFACTS_DIR`, the row's ticket host (Step 0.76). **An empty mount template skips the lane** — its rows `NEEDS-HUMAN` with `no component mount point configured`, as under every driver.
 
 #### Driver `script` (default)
 
-One script per observed row at `<artifacts_dir>/<run>/<KEY>-<ac_id>.mjs` (feature-path rows: `<artifacts_dir>/<run>/<group id>-F<n>.mjs`), written with the Write tool from the skeleton below and never overwritten — a rewrite for the same row is `-2`, `-3`. Run it from the project root:
+One script per observed row at `<artifacts_dir>/<run>/<KEY>-<ac_id>.mjs` (feature-path rows: `<artifacts_dir>/<run>/<group id>-F<n>.mjs`; a carried row `F<n>@<origin group id>`: `<artifacts_dir>/<run>/<group id>-F<n>@<origin group id>.mjs`, so it never shares a name with a derived row), written with the Write tool from the skeleton below and never overwritten — a rewrite for the same row is `-2`, `-3`. Run it from the project root:
 
 ```bash
 node --no-global-search-paths <script> > <script without .mjs>.json; echo "exit=$?"
@@ -400,7 +402,7 @@ node --no-global-search-paths <script> > <script without .mjs>.json; echo "exit=
 
 - **Every script starts from the skeleton.** The package the probe selected (`PKG` = the `<pkg>` of the probe's `playwright: resolves from the project (<pkg> <ver>)` line) is required from the project root; a fresh browser and a new isolated context — never `launchPersistentContext`, never a user-data directory; `browser_launch` applied; explicit action (10 s) and navigation (30 s) timeouts; the hard limit (120 s) is a timer that prints the JSON with `status: "hard-limit"` and exits with status 124 — a timer, because macOS has no `timeout`; waits on conditions only — never `waitForTimeout` or a sleep; the accessibility snapshot before the screenshot; every artifact named from the script's own basename (`BASE`, attempt suffix included) — screenshots `<ARTIFACTS_DIR>/<BASE>-<width tag>.png`, so a `-2` attempt never overwrites the evidence behind the first; one JSON object on stdout.
 - **How `browser_launch` lands in `LAUNCH`:** an empty `channel` or `user_agent` is written as `undefined` (never `''` — an empty user agent is sent as-is, and an empty channel is not the bundled browser); `ignore_https_errors` as a boolean; a string value as a JS string literal (`JSON.stringify` of the value).
-- **The main response is checked at every navigation.** Its status and final URL are observed; a status ≥ 400 ends the script as an environment error (`HTTP <status> at <url>`) unless `EXPECT_HTTP_ERROR` is set for a criterion about an error page — so a CDN denial or a broken mount route is never observed as the component. Then **the mount is verified on the parsed final URL**: same origin, same pathname, the same fragment when `TARGET` has one (a hash router's route), and every query parameter of `TARGET` (or of `EXPECT_URL`, set only for an intended redirect) present with the same value, each value of a repeated key included — so a component workbench that picks the story by `?path=` cannot pass on another story, and a login page whose URL merely contains the route (`/login?return=/route`) cannot pass either.
+- **The main response is checked at every navigation.** Its status and final URL are observed; a status ≥ 400 ends the script as an environment error (`HTTP <status> at <url>`) unless `EXPECT_HTTP_ERROR` is set for a criterion about an error page — so a CDN denial or a broken mount route is never observed as the component. Then **the mount is verified on the parsed final URL**: same origin, same pathname, the same fragment when `TARGET` has one (a hash router's route), and every query parameter of `TARGET` (or of `EXPECT_URL`, set only for an intended redirect) present with the same value, each value of a repeated key included — so a component workbench that picks the story by `?path=` cannot pass on another story, and a login page whose URL merely contains the route (`/login?return=/route`) cannot pass either. The same predicate runs again on the current URL after the observation wait — after it succeeds and after it times out — before any screenshot or assertion: a page that left the mount target meanwhile (a client-side redirect to a login page) ends the script as an error, `redirected to <url> after load, not the mount target <target>`, never as `condition not met`.
 - **Screenshots:** the viewport (`page.screenshot`) is captured **before** anything can scroll, then the element crop (`locator.screenshot` scrolls the element into view and crops it). A criterion about visibility without scrolling, placement or overflow is judged on the viewport capture.
 - **A tier-scoped criterion:** one context per width of `SWEEP_WIDTHS` (the skeleton's `WIDTHS`), observations keyed by width tag; the JSON's `required` lists every tag the script was asked to cover. A tier-scoped criterion with `pointer_sweep_widths` unset is observed at the default viewport and its row notes `pointer_sweep_widths unset — default viewport only`; it cannot `PASS` a claim about a named tier.
 - A wait that times out at the action timeout is an observation, not a crash — recorded as `condition not met within <n> ms` and judged under Observation discipline 4 (enumerate before claiming absence), never a `FAIL` on its own.
@@ -446,6 +448,7 @@ let browser;
 try {
   result.step = 'launch';
   browser = await pw.chromium.launch({ headless: true, channel: LAUNCH.channel });
+  const want = new URL(EXPECT_URL || TARGET);     // the mount target every check compares against
   for (const width of (WIDTHS.length ? WIDTHS : [null])) {
     const tag = width ? `w${width}` : 'default';
     result.required.push(tag);
@@ -463,16 +466,18 @@ try {
     result.observed[`${tag}.http`] = status;
     result.observed[`${tag}.url`] = page.url();
     if (status !== null && status >= 400 && !EXPECT_HTTP_ERROR) throw new Error(`HTTP ${status} at ${page.url()}`);
-    const want = new URL(EXPECT_URL || TARGET);
-    const got = new URL(page.url());
-    const hasAll = (k) => {                       // every value of a repeated key, each matched once
-      const have = got.searchParams.getAll(k);
-      return want.searchParams.getAll(k).every((v) => { const i = have.indexOf(v); if (i < 0) return false; have.splice(i, 1); return true; });
+    const onTarget = () => {                      // the mount predicate on the page's current URL
+      const got = new URL(page.url());
+      const hasAll = (k) => {                     // every value of a repeated key, each matched once
+        const have = got.searchParams.getAll(k);
+        return want.searchParams.getAll(k).every((v) => { const i = have.indexOf(v); if (i < 0) return false; have.splice(i, 1); return true; });
+      };
+      return got.origin === want.origin && got.pathname === want.pathname
+        && (!want.hash || got.hash === want.hash) // a hash router's route lives in the fragment
+        && [...new Set(want.searchParams.keys())].every(hasAll);
     };
-    const mounted = got.origin === want.origin && got.pathname === want.pathname
-      && (!want.hash || got.hash === want.hash)   // a hash router's route lives in the fragment
-      && [...new Set(want.searchParams.keys())].every(hasAll);
-    if (!mounted) throw new Error(`landed on ${page.url()}, not the mount target ${want.href}`);
+    const late = () => new Error(`redirected to ${page.url()} after load, not the mount target ${want.href}`);
+    if (!onTarget()) throw new Error(`landed on ${page.url()}, not the mount target ${want.href}`);
     // Observe: wait on conditions only (locator.waitFor, page.waitForFunction, load states).
     result.step = `observe ${tag}`;
     const el = page.locator('<selector>');
@@ -480,10 +485,12 @@ try {
       await el.waitFor({ state: 'visible' });
     } catch (e) {
       if (e?.name !== 'TimeoutError') throw e;
+      if (!onTarget()) throw late();              // a redirect during the wait is reported as such
       result.observed[`${tag}.visible`] = `condition not met within ${ACTION_MS} ms`;
       await context.close();
       continue;
     }
+    if (!onTarget()) throw late();                // checked again after the wait, before any capture
     const view = `${OUT}/${BASE}-${tag}-viewport.png`;  // the viewport as the user sees it, before anything can scroll
     await page.screenshot({ path: view });
     result.screenshots.push(view);
@@ -511,7 +518,7 @@ The constant lines stay one per line (`const HARD_LIMIT_MS = …;`) — the cont
 
 #### Driver `mcp`
 
-The main session drives the browser MCP tools itself, one row at a time. Every wait it issues carries a timeout no longer than the action timeout (the tool's own timeout argument where it has one); a navigation or wait that reports a timeout ends the row `NEEDS-HUMAN` with the timeout quoted; the row budget (120 s) is checked between calls, and a row past it is abandoned; no retry loop; the same sweep, screenshot and conversion rules as `script`. Every navigation is checked as under `script`: the final URL the tool reports must match the row's mount target by the same rule (origin, pathname, fragment, query parameters), and a main-response status ≥ 400 the tool reports ends the row as an environment error; the step log records both for each navigation, and a navigation whose final URL the tool does not report leaves the row `NEEDS-HUMAN` — `mount not verified under mcp`. A single outstanding MCP call is bounded only by the server's own timeouts — the router cannot cancel a call in flight; it runs in the observed main session, where the Operator can interrupt it.
+The main session drives the browser MCP tools itself, one row at a time. Every wait it issues carries a timeout no longer than the action timeout (the tool's own timeout argument where it has one); a navigation or wait that reports a timeout ends the row `NEEDS-HUMAN` with the timeout quoted; the row budget (120 s) is checked between calls, and a row past it is abandoned; no retry loop; the same sweep, screenshot and conversion rules as `script`. Every navigation is checked as under `script`: the final URL the tool reports must match the row's mount target by the same rule (origin, pathname, fragment, query parameters), and a main-response status ≥ 400 the tool reports ends the row as an environment error; the final URL is read again after the observation wait, before any screenshot or assertion — a different one ends the row `NEEDS-HUMAN` — `redirected to <url> after load`; the step log records both for each navigation and the re-read, and a navigation whose final URL the tool does not report leaves the row `NEEDS-HUMAN` — `mount not verified under mcp`. A single outstanding MCP call is bounded only by the server's own timeouts — the router cannot cancel a call in flight; it runs in the observed main session, where the Operator can interrupt it.
 
 Artifacts: the screenshots as above (named from the log's basename), plus the step log `<artifacts_dir>/<run>/<KEY>-<ac_id>.mcp.md` — each call and the value it observed, then, as its last section, a fenced JSON block **in the script result's shape** (`status` `done` | `hard-limit` | `error`, `required` — the dispatched width tags, `observed`, `assertions` with `name`/`expected`/`actual`/`ok`, `screenshots`, `error`), written by the main session when the row ends. The conversion reads that block exactly as it reads a script's JSON.
 
@@ -554,9 +561,9 @@ The `qa-runtime-ui` sub-agent is spawned, as before — **one subset per host** 
 **Conversion of a script result (or an MCP step log's JSON block) to a registry §6 row:** `agent: "qa-runtime-ui"`, with `notes` starting `driver: script (main session)` or `driver: mcp (main session)`; `methods` one per independent method (`aria snapshot of <locator>`, `getComputedStyle on <locator>`, `screenshot viewed: <path>`); `evidence` the observed values quoted from the JSON; `artifacts` the script, its JSON and the screenshots (`mcp`: the `.mcp.md` log and the screenshots). The checks run in this order:
 
 1. `status` `hard-limit` or `error` → `NEEDS-HUMAN` with that diagnostic quoted verbatim (the limit and the step, or the error) — nothing later replaces it.
-2. A false assertion at any width → `FAIL` with its width named and any uncovered width listed in `notes` (an observed defect is never hidden behind an unobserved width); severity set by the router; it then faces Phase 2.5.
+2. A false assertion at a **dispatched** width tag (one of the tags step 4 derives) → `FAIL` with its width named and any uncovered width listed in `notes` (an observed defect is never hidden behind an unobserved width); severity set by the router; it then faces Phase 2.5. Only a false assertion at a dispatched width tag is defect evidence; a false assertion at a tag the router did not dispatch is not — step 4 decides the row.
 3. The screenshot check above.
-4. **Coverage** — the router compares the result's `required` with the dispatched width tags it derives itself (`w<width>` for each `SWEEP_WIDTHS` entry it passed, `default` when it passed none): any difference → `NEEDS-HUMAN` — `script covered <tags>, dispatched <tags>` (a script left at `WIDTHS = []` cannot pass a two-tier row).
+4. **Coverage** — the router compares the result's `required` with the dispatched width tags it derives itself (`w<width>` for each `SWEEP_WIDTHS` entry it passed, `default` when it passed none): any difference → `NEEDS-HUMAN` — `script covered <tags>, dispatched <tags>` (a script left at `WIDTHS = []` cannot pass a two-tier row). It also compares the tags in the assertion names (`<tag>: …`) with the dispatched tags: an assertion tag not dispatched → `NEEDS-HUMAN` — `script asserted <tags>, dispatched <tags>`, so a correct `required` with a stray false assertion cannot reach `PASS`.
 5. **Verdict** — `PASS` only when `status` is `done`, every tag in `required` has at least one assertion and all of them are `ok`, and the observation rules are met. A required tag with no assertion (a `condition not met` observation, a skipped width) leaves the row `NEEDS-HUMAN` — `not observed at <tag>` — unless other evidence settles that width: `PASS` is never audited by Phase 2.5, so it must be complete here. `severity` only on `FAIL`.
 
 Worked rows — (a) a script that finished with one false assertion, (b) a script that hit its hard limit, (c) an `mcp` row whose step log ends with a passing block:
@@ -637,7 +644,7 @@ This phase is **auto-applied, with no user gate**: grilling governs evidence *qu
 
 Merge multi-family verdicts per `registry §6` (`FAIL` › `NEEDS-HUMAN` › `PASS`) and dispositions per the `registry §7a` merge order, keeping **both source rows** in the working file alongside the merged result.
 
-**Completeness assertion.** Every `ac_id` assigned in Phase 0 appears **exactly once** with a merged disposition — verified **and** carried rows, including every `(unclassifiable)` row. A missing or duplicated id is a bug in the run: surface it at the top of the working file and the terminal. Never drop it to make the list tidy. Removed rows (Phase 0.5) are listed, not counted. In a group run the assertion counts `(<KEY>, <ac_id>)` pairs, and every feature-path row `F<n>` appears exactly once.
+**Completeness assertion.** Every `ac_id` assigned in Phase 0 appears **exactly once** with a merged disposition — verified **and** carried rows, including every `(unclassifiable)` row. A missing or duplicated id is a bug in the run: surface it at the top of the working file and the terminal. Never drop it to make the list tidy. Removed rows (Phase 0.5) are listed, not counted. In a group run the assertion counts `(<KEY>, <ac_id>)` pairs, and every feature-path row — `F<n>` and `F<n>@<group id>` — appears exactly once.
 
 ### 2. One-pass decisions
 
@@ -645,11 +652,11 @@ Show **one list** of every `FAIL`, `ENV` and `NEEDS-HUMAN` row — the group's t
 
 - a `FAIL` keeps its severity;
 - a feature-path `FAIL` gets a recommended charge: the ticket whose PRs changed the failing step's surface; none identifiable → every ticket of the group. It is written `— charged to <KEY>[+<KEY>…] (group <id>)`;
-- a `NEEDS-HUMAN` whose evidence names a ticket that has not landed → `DEFERRED → <KEY>`. `DEFERRED` is never offered for a ticket of the run's own group — it has landed and is verified here;
+- a `NEEDS-HUMAN` **criterion row** whose evidence names a ticket that has not landed → `DEFERRED → <KEY>` — `DEFERRED → <KEY>` is offered only for a criterion row (the pointer needs its fingerprint); a feature-path row is never deferred and keeps `NEEDS-HUMAN`. `DEFERRED` is never offered for a ticket of the run's own group — it has landed and is verified here;
 - a `DEFERRED → <KEY>` row whose **source** has a file record target (a spec path, a Task with an empty or `(unverified)` `Jira` cell) stays local — the list says `file record — no pointer posted; re-run this source when <KEY> lands`;
 - anything else → unchanged.
 
-Then **one** `AskUserQuestion`: `Accept all recommendations` (first, recommended) or `Change some` — the free-text answer lists one `<id> <change>` per line (in a group run, or whenever the list holds rows of more than one ticket — incoming `deferred-in` rows included — one `<KEY> <id> <change>` per line, `<KEY>` the row's own ticket; feature-path rows as `F<n> <change>`). Allowed changes: a `FAIL`'s severity; a `FAIL` → `NEEDS-HUMAN` with the Operator's reason; a `NEEDS-HUMAN` → `DEFERRED → <KEY>` (a key is required); a feature-path `FAIL`'s charge; keep. Asked once — no per-finding round trips. An empty list skips the question.
+Then **one** `AskUserQuestion`: `Accept all recommendations` (first, recommended) or `Change some` — the free-text answer lists one `<id> <change>` per line (in a group run, or whenever the list holds rows of more than one ticket — incoming `deferred-in` rows included — one `<KEY> <id> <change>` per line, `<KEY>` the row's own ticket; feature-path rows as `F<n> <change>` or `F<n>@<group id> <change>`). Allowed changes: a `FAIL`'s severity; a `FAIL` → `NEEDS-HUMAN` with the Operator's reason; a `NEEDS-HUMAN` → `DEFERRED → <KEY>` on a criterion row (a key is required); a feature-path `FAIL`'s charge; keep. A `NEEDS-HUMAN` → `DEFERRED` on a feature-path row is refused with that reason and the list is asked again once. Asked once — no per-finding round trips. An empty list skips the question.
 
 ### 3. The record
 
@@ -737,7 +744,7 @@ Print, per ticket, the verdict line's text — `Acceptable — move the ticket y
 
 - `check <ids> yourself before you move it` when `NEEDS-HUMAN` rows exist;
 - `<ids> wait for <KEY>` per `DEFERRED → <KEY>` target;
-- `F<n> is charged here — verify it in a group run with <keys>` per charged feature-path `FAIL`, `<keys>` from the row's `(group <id>)`;
+- `F<n> is charged here — verify it in a group run with <keys>` (a carried row: `F<n>@<group id>`) per charged feature-path `FAIL`, `<keys>` from the row's `(group <id>)`;
 - `do not trust the newest verdict line of <SRC> — re-check it` after a sibling result (Deferral results);
 - `nothing was observed or carried — verify by hand before you move it` when no row is `PASS`, `FAIL` or `CITED` (carried included). The one-pass decision changes a disposition, never adds an observation, so an all-`DEFERRED` ticket gets this line too.
 
