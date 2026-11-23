@@ -229,6 +229,59 @@ run "$CL" $SH alive alfa-coder --main "$MAIN"; expect 3 "" "(15) --main from a c
 echo '{"address":"Supervisor","backend":"tmux","program":"claude"}' > "$REG/Supervisor.json"
 STUB_TMUX_ALIVE=0 STUB_PANE_CMD=bash run "$MAIN" $SH alive Supervisor; expect 3 "" "(16) a shell is not the program"
 STUB_TMUX_ALIVE=0 run "$MAIN" $SH alive Supervisor; expect 0 "" "(16) the program runs"
+# (16b) Linux: tmux names a pane after its foreground group leader, so `bash -c 'claude …; read'`
+# reads `bash`; claude runs in that group. A symlink to bash keeps the name `claude` (a multi-call
+# coreutils refuses a renamed sleep); `sleep 30; :` keeps bash from exec'ing away.
+mkdir -p "$WORK/pgt"; ln -sf "$(command -v bash)" "$WORK/pgt/claude"
+"$WORK/pgt/claude" -c 'sleep 30; :' & PGT=$!
+PGTG="$(ps -o pgid= -p "$PGT" | tr -d ' ')"
+STUB_TMUX_ALIVE=0 STUB_PANE_CMD=bash STUB_PANES_PID="$PGTG" run "$MAIN" $SH alive Supervisor
+expect 0 "" "(16b) claude in the pane's process group (Linux: bash -c '…; read' leads it)"
+clr; STUB_TMUX_ALIVE=0 STUB_PANES="99999999 bash\n$PGTG zsh" run "$MAIN" $SH alive Supervisor
+expect 0 "" "(16b) claude in a pane that is not the active one"
+line "tmux list-panes -s -t =smk-supervisor: -F #{pane_pid} #{pane_current_command}" "(16b) every pane of the session"
+STUB_TMUX_ALIVE=0 STUB_PANES="x bash" run "$MAIN" $SH alive Supervisor
+expect 1 "smk-supervisor" "(16b) a pane pid that is not a number"
+STUB_TMUX_ALIVE=0 STUB_PANES="x bash\n$PGTG bash" run "$MAIN" $SH alive Supervisor
+expect 0 "" "(16b) a match wins over an unreadable row"
+STUB_TMUX_ALIVE=0 STUB_PANES="$PGTG bash\nx bash" run "$MAIN" $SH alive Supervisor
+expect 0 "" "(16b) a match wins over an unreadable row (other order)"
+STUB_TMUX_ALIVE=0 STUB_LIST_PANES_RC=1 run "$MAIN" $SH alive Supervisor
+expect 1 "" "(16b) list-panes fails, the session still there"
+rm -f "$WORK/hs1"
+STUB_TMUX_ALIVE=0 STUB_LIST_PANES_RC=1 STUB_ON_HAS_SESSION="[ ! -f '$WORK/hs1' ] || STUB_TMUX_ALIVE=1; touch '$WORK/hs1'" \
+  run "$MAIN" $SH alive Supervisor
+expect 3 "" "(16b) the session ended during the probe"
+rm -f "$WORK/hs2"
+STUB_TMUX_ALIVE=0 STUB_LIST_PANES_RC=1 \
+  STUB_ON_HAS_SESSION="[ ! -f '$WORK/hs2' ] || { STUB_TMUX_ALIVE=1; STUB_TMUX_ERR='protocol version mismatch'; }; touch '$WORK/hs2'" \
+  run "$MAIN" $SH alive Supervisor
+expect 1 "" "(16b) the re-check fails, never gone"
+cp "$REG/Supervisor.json" "$WORK/sup16b.bak"
+clr; STUB_TMUX_ALIVE=0 STUB_LIST_PANES_RC=1 run "$MAIN" $SH start Supervisor --kind role --cwd "$CL" --cli claude \
+  --program claude -- 'claude; read'
+expect 1 "liveness probe failed — not starting over a session it cannot classify" "(16b) start refuses an unclassifiable session"
+cmp -s "$REG/Supervisor.json" "$WORK/sup16b.bak" || fail "(16b) start refuses an unclassifiable session: record changed"
+noline "kill-session" "(16b) start refuses an unclassifiable session"
+noline "new-session" "(16b) start refuses an unclassifiable session"
+mkdir -p "$WORK/pgfail"; printf '#!/bin/sh\nexit 3\n' > "$WORK/pgfail/pgrep"; chmod +x "$WORK/pgfail/pgrep"
+STUB_TMUX_ALIVE=0 STUB_PANE_CMD=bash run "$MAIN" env PATH="$WORK/pgfail:$PATH" $SH alive Supervisor
+expect 1 "" "(16b) pgrep fails"
+# A `here` record (pid + pid_start) is judged by that identity, not by the panes.
+LS="$(ps -o lstart= -p $$ | sed 's/^ *//; s/ *$//')"
+jq -n --argjson p $$ '{address:"Supervisor",backend:"tmux",name:"smk-supervisor",program:"claude",pid:$p,pid_start:""}' > "$REG/Supervisor.json"
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH alive Supervisor; expect 1 "" "(16b) a here pid without a start time is not gone"
+jq -n --argjson p $$ --arg s "$LS" '{address:"Supervisor",backend:"tmux",name:"smk-supervisor",program:"claude",pid:$p,pid_start:$s}' > "$REG/Supervisor.json"
+STUB_TMUX_ALIVE=0 STUB_PANE_CMD=bash run "$MAIN" $SH alive Supervisor; expect 0 "" "(16b) a here pid with its start time is alive"
+jq -n --arg s "$LS" '{address:"Supervisor",backend:"tmux",name:"smk-supervisor",program:"claude",pid:99999999,pid_start:$s}' > "$REG/Supervisor.json"
+STUB_TMUX_ALIVE=0 run "$MAIN" $SH alive Supervisor; expect 3 "" "(16b) a here pid that is gone"
+cp "$WORK/sup16b.bak" "$REG/Supervisor.json"
+# The probe runs under that claude itself: a session asking about itself.
+PG="$(ps -o pgid= -p $$ | tr -d ' ')"
+mkdir -p "$WORK/pgt/self"; ln -sf "$(command -v bash)" "$WORK/pgt/self/claude"
+kill "$PGT" 2>/dev/null || true; wait "$PGT" 2>/dev/null || true
+STUB_TMUX_ALIVE=0 STUB_PANE_CMD=bash STUB_PANES_PID="$PG" run "$MAIN" "$WORK/pgt/self/claude" -c "$SH alive Supervisor; exit \$?"
+expect 0 "" "(16b) claude probing itself"
 STUB_TMUX_ALIVE=0 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"starting"' "(17) status alive, no state yet"
 run "$MAIN" $SH status alfa-coder; expect 0 '"state":"gone"' "(17) status gone"
 run "$MAIN" $SH start adhoc-t1 --kind role --cwd "$CL" --cli claude -- claude; expect 2 "registry only" "(18) adhoc"
@@ -236,7 +289,7 @@ run "$MAIN" $SH alive 'bad name'; expect 2 "must match" "(18) malformed address"
 run "$MAIN" $SH; expect 2 "Usage" "(18) usage"
 run "$MAIN" $SH frob x; expect 2 "unknown verb" "(18) unknown verb"
 
-echo "team-smoke-host: (14) hint, (15) main root, (16) program check, (17) status, (18) refusals OK"
+echo "team-smoke-host: (14) hint, (15) main root, (16) program check, (16b) tmux process group, (17) status, (18) refusals OK"
 # ---- (19) status hook without HARNESS_ADDRESS: no file, no output, no tmux call (no OSC, #29) -----
 HK="$SRC/.claude/hooks/team-status.sh"
 hk() {  # hk <payload> [env…] → RC, $WORK/out
