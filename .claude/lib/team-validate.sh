@@ -114,7 +114,32 @@ check_qa_report() {
   # profile, loaded by the runner before it enters the clone — never from the clone QA can edit.
   [ "$1" -gt 0 ] || [ "${TEAM_TEST_GATE:-}" = none ] || fail "qa report Tests: passed=0 — no tests ran" || return 1
   [ "$2" -le "$4" ] || fail "qa report Tests: failed=$2 exceeds baseline=$4" || return 1
-  grep -qx 'Rethink signals: none' "$f" || fail "qa report needs 'Rethink signals: none'"
+  grep -qx 'Rethink signals: none' "$f" || fail "qa report needs 'Rethink signals: none'" || return 1
+  check_qa_ac "$f"
+}
+
+# The optional AC: line (team-mode.md §7). Absent → accepted: this validator comes from the main
+# checkout while the QA prompt and the gate come from the clone, and an older clone writes none.
+# Counts read base 10 (`08` is an octal error in $(( )) otherwise); a count longer than 9 digits
+# once its leading zeros are dropped is refused as malformed, as §7 says (no real ledger is that
+# long, and it keeps the sum far from a 64-bit wrap).
+# unconfirmed > 0 is judged on the first Verdict: line — the one team-verdict.sh acceptance reads.
+check_qa_ac() {
+  local f="$1" n line x t m u d
+  n="$(grep -c '^AC:' "$f" || true)"
+  [ "$n" -le 1 ] || fail "qa report has $n AC: lines" || return 1
+  [ "$n" = 1 ] || return 0
+  line="$(grep -Ex 'AC: total=[0-9]+ met=[0-9]+ unconfirmed=[0-9]+ deferred=[0-9]+' "$f")" \
+    || fail "qa report AC line malformed" || return 1
+  set -- $(tr -c '0-9\n' ' ' <<<"$line")
+  for x in "$@"; do
+    x="${x#"${x%%[!0]*}"}"
+    [ "${#x}" -le 9 ] || fail "qa report AC line malformed (a count over 9 digits)" || return 1
+  done
+  t=$((10#$1)); m=$((10#$2)); u=$((10#$3)); d=$((10#$4))
+  [ $((m + u + d)) -eq "$t" ] || fail "qa report AC counts do not sum to total ($m+$u+$d != $t)" || return 1
+  [ "$u" -eq 0 ] || [ "$(sed -n 's/^Verdict: //p' "$f" | head -n 1)" = ready-with-warnings ] \
+    || fail "qa report AC unconfirmed=$u needs Verdict: ready-with-warnings"
 }
 
 # The coder must hand over the planner's own plan, moved to done/ by /execute.

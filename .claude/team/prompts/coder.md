@@ -51,6 +51,11 @@ heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. 
 short, one action. Never `rm -rf`: write to a new output directory instead.
 Edit the run notes and every other file with the Edit tool, never with `python3 -`, `python3 -c`
 or `sed -i` through a here-doc: the egress guard stops an inline interpreter for the Operator.
+Check syntax with `bash -n <file>`, `node --check <file>`, `jq empty <file>`, and for Python
+`d="$(mktemp -d)" && python3 -I -X pycache_prefix="$d" -m py_compile <file>` (the cache goes to a
+fresh temporary directory; plain `python3 -m py_compile`, even with `-B`, writes a `__pycache__`
+beside the file) — never `python3 -c` or `node -e`, which the egress guard sends to the Operator. Target and project permission rules still apply: a check
+that names a protected file such as `.claude/settings.json` can still prompt.
 
 Lessons go to `## Learnings` in the notes, never to `.agents/memory/`.
 Anything you noticed but did not do (out of scope, a smell, a missing test) → `## Follow-ups`

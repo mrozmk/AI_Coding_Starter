@@ -12,7 +12,14 @@ Refused:
   - team-inbox.sh done or close-run for any address but the lead's own team (another inbox is not its
     to clear);
   - any command that names a protected path, unless it only reads it or is one of the scripts that
-    own those files. Protected: everything under the clone's and the main checkout's
+    own those files. Read-only: cat/head/tail/grep/rg/wc/ls/diff/cmp/stat/file/echo/printf and
+    the like, sed without -i or a w/W/e command, awk whose program has no >, |, system or getline,
+    sort without -o, find without -delete/-exec/-ok/-fprint, git log|show|diff|ls-tree|status|
+    rev-parse|cat-file|blame|ls-files|grep|merge-base|describe|shortlog (no --output), bash/sh -n,
+    a `for NAME in …` header, a bare assignment, and an input redirection (`< file`); a shell
+    keyword (do, then, else, if, while, until, !) is dropped before the command is judged. Such a
+    read is refused when the same command feeds a command taking its targets from stdin (xargs,
+    parallel, read, eval, source, a shell reading stdin). Protected: everything under the clone's and the main checkout's
     .agents/team/ except the lead's own files under runs/<run>/ (and its round dirs r<n>/), the clone's
     and the main checkout's .claude/ (the scripts and guards themselves) and any *.jsonl (a stage
     transcript). The owning scripts count only when run from the main checkout's .claude/lib/ — the
@@ -25,6 +32,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import sys
 sys.dont_write_bytecode = True
 
@@ -38,7 +46,21 @@ SCRIPTS = {"team-verdict.sh", "team-answer.sh", "team-lead.sh", "team-tracker.sh
            "tracker-snapshot.mjs", "codex-bg.sh", "session-host.sh"}
 # Commands that only read their file operands (sort -o, uniq <out>, sed -i write, so they are not here).
 READERS = {"cat", "head", "tail", "less", "jq", "grep", "egrep", "rg", "wc", "ls", "diff", "stat",
-           "file", "cut", "shasum", "md5", "test", "[", "realpath", "cd", "pushd"}
+           "file", "cut", "shasum", "md5", "test", "[", "realpath", "cd", "pushd", "cmp", "comm",
+           "echo", "printf", "true", "false", ":", "basename", "dirname", "readlink", "nl", "od",
+           "column", "fold", "paste", "rev", "tac", "tr", "du", "tree", "md5sum", "sha256sum",
+           "sha1sum", "fgrep", "zcat", "less", "more"}
+# Read-only git subcommands; --output (log/diff/show) writes a file, so it stays refused.
+GIT_READS = {"log", "show", "diff", "ls-tree", "status", "rev-parse", "cat-file", "blame", "ls-files",
+             "grep", "merge-base", "describe", "shortlog", "name-rev", "for-each-ref", "cherry",
+             "whatchanged"}
+# Shell keywords that start a command without being one: `do cmp a b`, `if grep -q x f`.
+KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!", "{", "}", "done", "fi",
+            "esac"}
+SED_WRITE = re.compile(r"(^|[;{}\s])[wWe](\s+\S|$)|/[gpIiM0-9]*[wWe](\s+\S|$)")
+AWK_WRITE = re.compile(r"[>|]|system|getline")
+FIND_WRITE = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf",
+              "-fls"}
 STAGES = re.compile(r"^[a-z0-9-]+-(planner|coder|qa|wrapup|cli)$")
 TEAM_TEXT = re.compile(r"[A-Za-z0-9_./~${}`*?-]*\.agents/team(/[A-Za-z0-9_./~${}`*?<>-]*)?")
 
@@ -128,6 +150,71 @@ class Paths:
         return False
 
 
+def read_only(w):
+    """True when argv <w> only reads its file operands (redirection operands are judged apart)."""
+    name = os.path.basename(w[0]) if w else ""
+    args = w[1:]
+    if name in READERS:
+        return True
+    if name == "git":
+        return args[:1] and args[0] in GIT_READS and not any(
+            a.startswith("--output") for a in args)
+    if name == "sed":
+        opts = [a for a in args if a.startswith("-")]
+        if any(a.startswith("--in-place") or (not a.startswith("--") and "i" in a[1:])
+               for a in opts):
+            return False
+        return not any(SED_WRITE.search(a) for a in args if not a.startswith("-"))
+    if name in ("awk", "gawk", "nawk"):
+        prog = [a for a in args if not a.startswith("-")][:1]
+        return "-f" not in args and not any(a.startswith("-i") for a in args) and bool(prog) \
+            and not AWK_WRITE.search(prog[0])
+    if name == "sort":
+        return not any(a == "-o" or a.startswith(("--output", "-o")) for a in args)
+    if name == "uniq":
+        return len([a for a in args if not a.startswith("-")]) <= 1
+    if name == "find":
+        return not any(a in FIND_WRITE for a in args)
+    if name == "for":
+        return True  # `for NAME in …` only binds a name; the body is its own command
+    return False
+
+
+def strip_keywords(words):
+    words = list(words)
+    while words and words[0] in KEYWORDS:
+        words = words[1:]
+    return words
+
+
+def stdin_executor(w):
+    """True for a command that takes what it acts on from stdin: xargs, parallel, read, a shell or
+    eval/source reading its script from stdin."""
+    name = os.path.basename(w[0]) if w else ""
+    if name in ("xargs", "parallel", "read", "eval", "source", "."):
+        return True
+    return name in ("bash", "sh", "zsh") and (len(w) == 1 or "-s" in w[1:])
+
+
+def input_operands(cmd):
+    """Words read through `<` and words written through any `>`-redirection, as canonical() names
+    them (normalised paths): an input redirection is a read, the same word also written is not."""
+    reads, writes = set(), set()
+    try:
+        lex = shlex.shlex(c.CONTINUATION.sub("", cmd).replace("\n", " ; "), posix=True,
+                          punctuation_chars=True)
+        lex.whitespace_split, lex.commenters = True, ""
+        toks = list(lex)
+    except ValueError:
+        return set(), set()
+    for op, word in zip(toks, toks[1:]):
+        if not (set(op) <= c.PUNCT and re.search("[<>]", op)) or set(word) <= c.PUNCT:
+            continue
+        norm = os.path.normpath(re.sub("/+", "/", word)) if "/" in word else word
+        (reads if op == "<" else writes).add(norm)
+    return reads - writes, writes
+
+
 def check(clone, run, main, cmd, trust_clone=False):
     """→ None when allowed, else the refusal line."""
     try:
@@ -143,6 +230,8 @@ def check(clone, run, main, cmd, trust_clone=False):
             if re.search(r"[$`]", w[1]):
                 return "TeamLead Bash: cd %s cannot be resolved — use paths from the clone root" % w[1]
             bases += [os.path.realpath(os.path.join(b, os.path.expanduser(w[1]))) for b in bases]
+    reads, _ = input_operands(cmd)
+    relied = False
     for words in cmds:
         w = c.argv_plain(words)
         why = keys_refusal(w) or keys_refusal(c.shell_words(words)) or inbox_refusal(w, clone)
@@ -150,15 +239,36 @@ def check(clone, run, main, cmd, trust_clone=False):
             return why
         if not any(paths.hit(x, bases) for x in words):
             continue
-        name = os.path.basename(w[0]) if w else ""
-        prog = w[1] if name in ("bash", "sh", "node") and len(w) > 1 else w[0] if w else ""
+        # An input redirection's operand (`wc -l < file`) is read, not written.
+        if len(words) == 1 and words[0] in reads:
+            continue
+        lead = strip_keywords(words)
+        w = c.argv_plain(lead) if lead else []
+        if not w:
+            # Only keywords or assignments (`R=.agents/team/runs/x`): nothing runs, nothing written.
+            continue
+        name = os.path.basename(w[0])
+        prog = w[1] if name in ("bash", "sh", "node") and len(w) > 1 else w[0]
         script = os.path.basename(prog) in SCRIPTS and os.path.realpath(
             os.path.join(paths.clone, prog)) == os.path.join(paths.lib, os.path.basename(prog))
         # One word alone is a redirection operand (`> file`) or the file run as a program.
-        if script or (name in READERS and len(words) > 1):
+        if script:
+            continue
+        # argv_plain drops shell options: `bash -n x.sh` (a syntax check) is read from the raw words.
+        raw = c.shell_words(lead)
+        syntax = name in ("bash", "sh") and len(raw) > 2 and raw[1] == "-n"
+        if syntax or (len(w) > 1 and read_only(w)):
+            relied = True
             continue
         return ("TeamLead Bash: %s names a protected file — verdicts, decisions and answers are "
-                "written by the scripts, never by the lead" % (name or "a command"))
+                "written by the scripts, never by the lead" % name)
+    # A read that names a protected path must not feed a command taking its targets from stdin.
+    # Raw first words too: argv_plain strips wrappers such as xargs.
+    feeder = next((w for x in cmds for w in (strip_keywords(x), c.argv_plain(strip_keywords(x)))
+                   if stdin_executor(w)), None) if relied else None
+    if feeder:
+        return ("TeamLead Bash: a protected path read into %s — verdicts, decisions and answers are "
+                "written by the scripts, never by the lead" % os.path.basename(feeder[0]))
     return None
 
 

@@ -14,7 +14,7 @@
 [ "${TEAM_SESSION_ROLE:-}" = TeamLead ] || exit 0
 ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 [ -f "$ROOT/.agents/team/team.json" ] || exit 0
-refuse() { echo "$*" >&2; exit 2; }
+refuse() { echo "$*" >&2; [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-teamlead-bash --what "$*" >/dev/null 2>&1; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "TeamLead Bash guard needs jq — refused"
 LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
 cd "$ROOT" 2>/dev/null || refuse "TeamLead Bash guard: cannot enter $ROOT — refused"

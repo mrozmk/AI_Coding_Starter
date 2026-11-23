@@ -7,10 +7,14 @@ pip pip3 pipx uvx osascript; python/python3 with -c, -, no arguments or -m other
 module, node with -e/-p/--eval/-) -> ask, also inside bash -c, tmux arguments, eval, $(...),
 here-doc lines and the strings of flock -c / env -S; a command with a redirection before its verb
 is also read from every later word (`</dev/null curl …`), and a brace-expanded verb (`{curl,} …`)
-asks. gh pr view / gh issue view pass only as the simple command's own first word (also
+asks. The read-only gh forms (GH_READ_FORMS, #268) pass only as the simple command's own first word (also
 in a string nested under no wrapper), with a plain OWNER/REPO repo value, no URL, --hostname, brace
 expansion or option-shaped glob, and no $, backtick, #, backslash, GH_HOST or GH_REPO in the text
-or its tokens (a quoted ';' does not hide an argument: the whole string is checked). A /dev/tcp or
+or its tokens (a quoted ';' does not hide an argument: the whole string is checked). Literal
+`NAME=<value>;` heads are written into the rest first (inline_literals). #272: python3 -c code and
+quoted-delimiter `python3 -` here-docs are judged by their code (py_code_safe: local-only modules,
+no process/network/introspection API) — not egress when it passes, for every role; Python output
+piped into a shell or interpreter asks; a `cat` data here-doc's body is not scanned. A /dev/tcp or
 /dev/udp path (bash's sockets) -> ask, whatever the verb, at every nesting level. Never emits
 allow: no output leaves the decision to Claude Code's own rules, so deny still wins. Unreadable
 input -> ask (fail-closed).
@@ -40,11 +44,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans, strip_wrappers,
-    tokenize, unredirected)
+    SHELL_C, base_comment_reading, comment_splits, commands, doc_heredocs_removed,
+    needs_base_reading, redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
+from guard_team_egress_effect import (  # noqa: E402
+    GH_READ_FORMS, inline_literals, py_code_safe, python_heredocs_judged)
+from guard_team_egress_loops import backstop  # noqa: E402
 from guard_team_egress_supervisor import (  # noqa: E402
-    BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
-    supervisor_verdict)
+    BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector,
+    record_touch, supervisor_verdict)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -55,8 +62,6 @@ INLINE = {"python": {"-c", "-m", "-"}, "python3": {"-c", "-m", "-"},
           "node": {"-e", "-p", "--eval", "--print", "-"}}
 # `python -m <module>` for these runs the project's own tests / stdlib tools, not a network client.
 LOCAL_MODULES = {"pytest", "unittest", "doctest", "py_compile", "compileall", "json.tool"}
-# The read-only gh forms /setup:teams puts on the roles' allow list.
-GH_READS = (["pr", "view"], ["issue", "view"])
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
@@ -104,7 +109,7 @@ def loopback_probe(words):
 
 def egress_capable(verb, words, reads_ok=True):
     """False for the forms of an egress verb that are not egress: an interpreter running a file,
-    the read-only gh views the roles are allowed. <reads_ok> False: a gh read is egress too."""
+    the read-only gh forms (GH_READ_FORMS). <reads_ok> False: a gh read is egress too."""
     if verb in INLINE:
         # No arguments at all reads the program from stdin (`python3 <<EOF`).
         if len(words) == 1:
@@ -114,10 +119,13 @@ def egress_capable(verb, words, reads_ok=True):
             if w == "-m" or (short and w.endswith("m") and "c" not in w[1:]):
                 return "".join(words[i + 1:i + 2]) not in LOCAL_MODULES
             if w in INLINE[verb] or (short and "c" in w[1:]):
+                # #272: python3 [-I…] -c '<code>' whose code py_code_safe accepts is not egress.
+                if verb != "node" and re.fullmatch(r"-[IBEsSu]*c", w) and i + 1 < len(words):
+                    return not py_code_safe(words[i + 1])
                 return True
         return False
     if verb == "gh":
-        return not reads_ok or words[1:3] not in GH_READS
+        return not reads_ok or tuple(words[1:3]) not in GH_READ_FORMS
     return True
 
 
@@ -296,11 +304,29 @@ def gh_read_tainted(cmd, tokens=()):
 
 
 def bash_reason(cmd, project):
+    mark = comment_splits()
+    reason = reading_reason(cmd, project)
+    if reason or not needs_base_reading(mark):
+        return reason
+    # The pre-#230 reading must not lose a verdict either (QA: a `git push <remote>` before a line
+    # whose uncovered quote breaks or hides the rest).
+    with base_comment_reading():
+        return reading_reason(cmd, project)
+
+
+def reading_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
         return NET_FOUND
+    # #272: a safe Python here-doc is `true <args>`, a `cat` data here-doc loses its body; then the
+    # literal heads (inline_literals keeps a command with any other here-doc as it is).
+    cmd = inline_literals(python_heredocs_judged(cmd))
     decision, why = supervisor_verdict(cmd, project, egress_in)
     if decision != "defer":
+        return why
+    # Python judged safe above still never feeds a shell or interpreter through a pipe.
+    piped, why = backstop(cmd, ("python3", "python"), "")
+    if piped == "ask":
         return why
     try:
         found = egress_in(cmd)

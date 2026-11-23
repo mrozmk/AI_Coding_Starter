@@ -34,6 +34,7 @@ switch='workflow.jira_transition_comment in .claude/project-profile.json'
 if [ -z "${comment//[[:space:]]/}" ]; then
   printf '%s\n' "Jira guard: the transition of $key without a comment is blocked." \
     "Pass comment= with the evidence (what changed, the PR, the verification). Switch: $switch." >&2
+  [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-jira-transition --what "transition of $key without a comment" >/dev/null 2>&1  # hook-block log, never fails the guard
   exit 2
 fi
 
@@ -49,6 +50,7 @@ case $? in
   0) exit 0 ;;
   1) printf '%s\n' "Jira guard: transition $tid of $key needs evidence in the comment matching: $rule" \
        "(workflow.jira_transition_evidence[\"$rkey\"] in .claude/project-profile.json)." >&2
+     [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-jira-transition --what "transition $tid of $key without the required evidence" >/dev/null 2>&1  # hook-block log, never fails the guard
      exit 2 ;;
   *) jq -cn --arg m "Jira guard: workflow.jira_transition_evidence[\"$rkey\"] is not a valid regex — the evidence check is skipped." \
        '{systemMessage: $m}'

@@ -145,6 +145,17 @@ bash .claude/lib/costs/runtime-mark.sh stage end prime > .claude/lib/costs/x
 sh .claude/lib/costs/runtime-mark.sh stage end prime
 python3 .claude/lib/costs/cost.py collect
 bash .claude/lib/costs/runtime-mark.sh stage end prime; echo x > .claude/lib/costs/runtime-mark.sh
+sed -n 'w /tmp/o' $R/answers.md
+sed 's/a/b/w $R/x.md' /tmp/f
+sort -o $R/answers.md $R/answers.md
+git diff --output=$R/x.md
+find $R -name x -delete
+cat $R/answers.md > $R/answers.md
+wc -l < $R/attention > $R/attention
+do rm $R/answers.md
+awk '{print > "x"}' $R/answers.md
+echo $R/answers.md | xargs rm
+ls $R/asks | while read f; do rm "\$f"; done
 EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 2 "never" "(e2) key refused: $c"
@@ -183,6 +194,17 @@ bash ${ML}team-inbox.sh --main $MAIN done alfa $MAIN/.agents/team/inbox/alfa/new
 bash ${ML}team-inbox.sh --main $MAIN list alfa
 hc read t1
 git status
+cd $R; ls -la asks/; echo '--- notes.md'; cat notes.md; ls -la ../../ | head -40
+git -C \$W ls-tree -r HEAD -- .claude/team/prompts/qa.md .claude/lib/team-run.sh
+sed -n '88,112p' .claude/lib/team-run.sh
+R2=$R; cat \$R2/qa-report-1.md; cat \$R2/answers.md
+for f in .claude/team/prompts/qa.md .claude/lib/team-run.sh; do cmp \$f /tmp/\$f; done
+wc -l < $R/attention
+git log --oneline -3 -- .claude/lib/team-run.sh
+git show HEAD:.claude/lib/team-run.sh
+awk '/x/{print \$1}' $R/notes.md
+grep -n foo $R/notes.md | sort | uniq -c
+bash -n .claude/hooks/guard-teamlead-bash.sh
 EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 2 "only its own team's inbox done" "(e2) inbox refused: $c"

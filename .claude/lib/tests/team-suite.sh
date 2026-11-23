@@ -57,7 +57,7 @@ case "$OUT" in ''|/*) ;; *) OUT="$PWD/$OUT" ;; esac
 STANDALONE=(team-setup-smoke team-profile-smoke team-tracker-smoke team-tracker-sync-smoke team-pr-smoke worker-smoke
   cost-tests guard-team-egress-test guard-team-trunk-test guard-destructive-sql-test guard-leak-smoke team-audit-test
   gate-lock-smoke rm-in-project-smoke rm-in-scratchpad-smoke
-  finder-model-test check-impl-contract-test coding-standards-contract-test coding-standards-gen-test qa-verify-contract-test refresh-brief-contract-test team-inbox-test team-ask-test herdr-dock-test herdr-kit-test herdr-kit-sync-test herdr-rate-limits-test notify-resolve-test touches-test
+  finder-model-test check-impl-contract-test coding-standards-contract-test coding-standards-gen-test qa-verify-contract-test refresh-brief-contract-test check-backlog-upkeep-contract-test team-inbox-test team-ask-test herdr-dock-test herdr-kit-test herdr-kit-sync-test herdr-rate-limits-test notify-resolve-test touches-test
   prime-probes-test arch-assess-test upkeep-test
   starter-fork-commit-test team-starter-land-test fix-snapshot-test branch-model-test guard-push-protected-test
   guard-jira-transition-test tracker-snapshot-test tracker-pointers-test pr-create-open-test pr-merge-github-test
@@ -102,6 +102,9 @@ unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
 # standalone steps and the mail part.
 unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM TEAM_RUN_ROLE TEAM_RUN_ID TEAM_RUN_ATTEMPT \
   HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE
+# A guard refused in a fixture whose teamlead.json main_root is this checkout would log the block
+# into the real touch log: touches.sh block stands down (touches-test unsets it to test block).
+export TOUCHES_BLOCK_OFF=1
 
 OUT="${OUT:-${TMPDIR%/}/team-suite}"
 mkdir -p "$OUT" || { echo "team-suite: cannot create $OUT" >&2; exit 2; }

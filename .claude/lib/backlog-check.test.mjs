@@ -1844,7 +1844,7 @@ test('quality: off type/size/scope and unknown markers warn', () => {
   assert.ok(resized.warnings.includes('Task E3-5 [audit:security]: expected tech · H · MUST, found tech · M · MUST'), resized.warnings.join('\n'));
   const typo = quality(qrow('E3-5', '| E3-5 | E3 | [audit:securty] Run /audit-security | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |'));
   assert.deepEqual(typo.errors, []);
-  assert.ok(typo.warnings.includes('Task E3-5: unknown quality marker [audit:securty] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow]'), typo.warnings.join('\n'));
+  assert.ok(typo.warnings.includes('Task E3-5: unknown quality marker [audit:securty] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow], [upkeep:refresh-brief]'), typo.warnings.join('\n'));
   const clean = quality();
   assert.ok(!clean.warnings.some((w) => /expected tech ·|unknown quality marker/.test(w)), clean.warnings.join('\n'));
 });
@@ -1857,4 +1857,34 @@ test('quality: CORE minimality ignores quality consumers', () => {
   assert.deepEqual(res.errors, []);
   assert.ok(res.warnings.includes('Task E0-3: CORE, but nothing outside CORE depends on it — candidate to leave CORE'), res.warnings.join('\n'));
   assert.ok(!res.warnings.some((w) => /Task E0-[12]: CORE, but/.test(w)), res.warnings.join('\n'));
+});
+
+test('quality: reminder Tasks for every upkeep id need no trace and raise no quality warning', () => {
+  const rows = [
+    ...QUALITY_ROWS,
+    '| E3-8 | E3 | [upkeep:refresh-brief] Run /maintain:refresh-brief | tech | M | 4 | — | MUST | — | — | TODO | — | — |',
+    '| E3-9 | E3 | [upkeep:cleanup-workflow] Run /maintain:cleanup-workflow | tech | M | 4 | — | MUST | — | — | TODO | — | — |',
+    '| E3-10 | E3 | [upkeep:architecture-review] Run /architecture-review | tech | M | 4 | — | MUST | — | — | TODO | — | — |',
+  ];
+  const res = quality(rows, { epics: [...BASE_EPICS, qepic(52)] });
+  assert.deepEqual(res.errors, []);
+  assert.deepEqual(qw(res), [], res.warnings.join('\n'));
+  assert.ok(!res.warnings.some((w) => /^Task E3-(8|9|10): tech Task with no trace/.test(w)), res.warnings.join('\n'));
+});
+
+test('quality: a tech Task without a marker and no trace still warns', () => {
+  const res = quality([...QUALITY_ROWS, '| E3-8 | E3 | Run the brief refresh | tech | M | 4 | — | COULD | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(44)] });
+  assert.ok(res.warnings.includes('Task E3-8: tech Task with no trace (AD-n / NFR-n)'), res.warnings.join('\n'));
+});
+
+test('quality: an unknown upkeep id is neither recognized nor trace-exempt', () => {
+  const res = quality([...QUALITY_ROWS, '| E3-8 | E3 | [upkeep:foo] Run /foo | tech | M | 4 | — | COULD | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(44)] });
+  assert.ok(res.warnings.includes('Task E3-8: unknown quality marker [upkeep:foo] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow], [upkeep:refresh-brief]'), res.warnings.join('\n'));
+  assert.ok(res.warnings.includes('Task E3-8: tech Task with no trace (AD-n / NFR-n)'), res.warnings.join('\n'));
+});
+
+test('quality: a refresh-brief reminder is never required and plans nothing', () => {
+  const res = quality(['| E3-1 | E3 | [upkeep:refresh-brief] Run /maintain:refresh-brief | tech | M | 4 | — | MUST | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(4)] });
+  assert.deepEqual(res.errors, []);
+  assert.deepEqual(qw(res), [ALL_UNPLANNED], res.warnings.join('\n'));
 });

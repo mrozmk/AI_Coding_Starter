@@ -309,7 +309,20 @@ sh_live() {
     herdr) local h; h="$(sh_herdr_handle "$1" "$2")" || return 3
            sh_herdr_alive "$h" "$(sh_record_get "$1" "$2" program)"; return ;;
   esac
-  sh_tmux_alive "$(sh_target "$1" "$2")" "$(sh_record_get "$1" "$2" program)"
+  local t p s c; t="$(sh_target "$1" "$2")"
+  # `roles.sh here` records pid + pid_start for every backend and `exec` keeps that pid for the
+  # CLI: its identity, not the panes — another Claude in the Operator's terminal is not the role.
+  p="$(sh_record_get "$1" "$2" pid)"
+  if [ -n "$p" ]; then
+    sh_tmux_alive "$t" || return $?
+    [[ "$p" =~ ^[0-9]+$ ]] && kill -0 "$p" 2>/dev/null || return 3
+    s="$(sh_record_get "$1" "$2" pid_start)"; c="$(sh_lstart "$p")"
+    # A live pid whose start time cannot be compared is not a verdict: never gone.
+    [ -n "$s" ] && [ -n "$c" ] || { sh_err "$2: pid $p runs, but its start time cannot be compared"; return 1; }
+    [ "$c" = "$s" ] && return 0
+    return 3   # a reused pid
+  fi
+  sh_tmux_alive "$t" "$(sh_record_get "$1" "$2" program)"
 }
 # sh_alive_addr <main> <address> → sh_live with the record's backend (the team-lib.sh wrappers).
 sh_alive_addr() {
@@ -387,18 +400,21 @@ sh_log() {
 # finds no pane for `=NAME`).
 
 # sh_tmux_alive <name> [program] → 0 alive, 3 gone, 1 the probe failed (stderr passed through).
-# With a program (records written by roles.sh), alive also means that program is the foreground:
-# a dead session leaves a `; read` shell behind.
+# With a program (records written by roles.sh), alive also means that program runs in one of the
+# session's panes (sh_tmux_runs). A `; read` shell left after the program exited is gone.
 sh_tmux_alive() {
-  local out cmd
+  local out rc
   # No tmux on this machine (a Herdr-only setup): no tmux session can be alive. Without this a
   # session that has no record yet — read as tmux — could never be started.
   command -v "${TMUX_BIN:-tmux}" >/dev/null 2>&1 || return 3
   if out="$(sh_tmux has-session -t "=$1" 2>&1)"; then
     [ -n "${2:-}" ] || return 0
-    cmd="$(sh_tmux display-message -p -t "=$1:" '#{pane_current_command}' 2>/dev/null || true)"
-    [ "$cmd" = "$2" ] && return 0
-    return 3
+    sh_tmux_runs "$1" "$2"; rc=$?
+    [ $rc -eq 1 ] || return $rc
+    # Not classified: a session that ended meanwhile is gone; one still there, or a re-check that
+    # fails itself (a protocol error), is a failed probe — never gone.
+    sh_tmux_alive "$1" 2>/dev/null; [ $? -eq 3 ] && return 3
+    return 1
   fi
   case "$out" in
     *"can't find session"*|*"no server running"*) return 3 ;;
@@ -406,6 +422,30 @@ sh_tmux_alive() {
   esac
   [ -z "$out" ] || printf '%s\n' "$out" >&2
   return 1
+}
+
+# sh_tmux_runs <name> <program> → 0 runs · 3 does not · 1 cannot tell (why on stderr). Every pane
+# of the session, not only the active one (`=NAME:`). A pane's command is the program, or the
+# program runs in a pane's process group: on Linux tmux names a pane after its foreground group
+# leader's argv[0], and `bash -c 'claude …; read'` keeps bash the leader (#266). `pgrep -a`: see
+# sh_herdr_alive.
+sh_tmux_runs() {
+  local panes pid cmd pids="" bad="" rc
+  panes="$(sh_tmux list-panes -s -t "=$1:" -F '#{pane_pid} #{pane_current_command}' 2>/dev/null)" \
+    || { sh_err "$1: list-panes failed"; return 1; }
+  [ -n "$panes" ] || { sh_err "$1: list-panes listed no pane"; return 1; }
+  # Every row first: a match anywhere wins over a row that cannot be read, whatever the order.
+  while read -r pid cmd; do
+    [ "$cmd" != "$2" ] || return 0
+    if [[ "$pid" =~ ^[0-9]+$ ]]; then pids="${pids:+$pids,}$pid"; else bad="pane pid '$pid' is not a number"; fi
+  done <<<"$panes"
+  if [ -n "$pids" ]; then
+    command -v pgrep >/dev/null 2>&1 || { sh_err "$1: pgrep not found"; return 1; }
+    pgrep -a -g "$pids" -x "$2" >/dev/null 2>&1; rc=$?
+    case $rc in 0) return 0 ;; 1) ;; *) sh_err "$1: pgrep failed (exit $rc)"; return 1 ;; esac
+  fi
+  [ -z "$bad" ] || { sh_err "$1: $bad"; return 1; }
+  return 3
 }
 
 # sh_tmux_read <name> [lines] → the last non-empty lines of the pane (team_pane); rc 3 when gone.
@@ -1199,17 +1239,22 @@ sh_start() {
   fi
   if [ "$be" = herdr ]; then
     [ -z "$probe" ] || sh_herdr_start_probe "$a" "$n" "$cwd" || return $?
-  elif [ -n "$probe" ] && sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)" 2>/dev/null; then
-    if [ ! -f "$(sh_record_file "$SH_MAIN" "$a")" ]; then
-      # The name is alive and no record of ours names it: our own session with a lost record when it
-      # runs in this start's cwd, else (or unreadable) another checkout with the same prefix.
-      w="$(sh_tmux display-message -p -t "=$n:" '#{session_path}' 2>/dev/null || true)"
-      if [ -z "$w" ] || [ "$(cd "$w" 2>/dev/null && pwd -P)" != "$(cd "$cwd" && pwd -P)" ]; then
-        sh_err "$n belongs to another checkout (${w:-unknown path}); this one is $cwd — set a different teams.session_prefix"
-        return 1
+  elif [ -n "$probe" ]; then
+    sh_tmux_alive "$n" "$(sh_record_get "$SH_MAIN" "$a" program)" 2>/dev/null; rc=$?
+    if [ $rc -eq 0 ]; then
+      if [ ! -f "$(sh_record_file "$SH_MAIN" "$a")" ]; then
+        # The name is alive and no record of ours names it: our own session with a lost record when it
+        # runs in this start's cwd, else (or unreadable) another checkout with the same prefix.
+        w="$(sh_tmux display-message -p -t "=$n:" '#{session_path}' 2>/dev/null || true)"
+        if [ -z "$w" ] || [ "$(cd "$w" 2>/dev/null && pwd -P)" != "$(cd "$cwd" && pwd -P)" ]; then
+          sh_err "$n belongs to another checkout (${w:-unknown path}); this one is $cwd — set a different teams.session_prefix"
+          return 1
+        fi
       fi
+      sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1
     fi
-    sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1
+    # A session it cannot classify may hold a live program: never kill or start over it.
+    [ $rc -ne 1 ] || { sh_err "$a: liveness probe failed — not starting over a session it cannot classify"; return 1; }
   fi
   # A recorded program that no longer runs leaves its shell behind (a `; read` pane): end it. Only
   # records that carry `program` (roles.sh) — the runner's own `; read` cleanup stays its caller's.

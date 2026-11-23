@@ -386,7 +386,7 @@ It does it all itself: design → plan → write code → clean up → check →
 
 **What we'll build:** the same TODO, but **with a screen** — backend (API) + frontend (the interface you click). The user adds tasks in the browser, not just through the API.
 
-**What you'll learn:** the same rhythm as in Scenario 1 **plus** two new commands for the visual layer: **`/design-ui`** (UI design) and **`/test-e2e`** (browser tests).
+**What you'll learn:** the same rhythm as in Scenario 1 **plus** one new command for the visual layer: **`/design-ui`** (UI design).
 
 > 📌 **This is an extension of Scenario 1, not a new scheme.** The rhythm `PRD → stack → backlog → prime → brainstorm → plan → execute → check → commit` is identical. Below I describe **only what's added or changes** — take the rest straight from Scenario 1. If you haven't done S1 — start there, this will be easier.
 
@@ -464,7 +464,7 @@ Fresh chat → `/prime`, then design the feature — [just like in Step 6 of S1]
 
 Do [Step 7](#step-7-make-a-detailed-plan-plan-feature) and [Step 8](#step-8-write-the-code-execute) **unchanged**. The only difference is in the content: `/plan-feature` will account for the mockup in `Ready/`, and `/execute` will write **both backend and frontend** per the plan.
 
-⏭️ **Next:** Step 9 — quality, where browser tests are added.
+⏭️ **Next:** Step 9 — quality.
 
 ---
 
@@ -472,30 +472,7 @@ Do [Step 7](#step-7-make-a-detailed-plan-plan-feature) and [Step 8](#step-8-writ
 
 Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the same code-review → gates loop, leaves a clean tree, doesn't commit itself.
 
-⏭️ **Next:** Step 9.5 — **NEW: browser tests.**
-
----
-
-### 🆕 Step 9.5: Test by clicking (test-e2e)
-
-> A second step that isn't in S1. Since you have a screen, it's worth verifying it **actually works in the browser** — clicking "add", the task appearing, checking it off.
-
-📋 **Type:**
-```
-/test-e2e adding a task
-```
-
-💬 **What happens:** Claude **first clicks through** your screen in a real browser (via Playwright), shows the test plan, and **waits for your approval** — only then does it generate the E2E tests and run them.
-
-✅ **How you know it's OK:** an E2E test file is created, and the run finishes green (Claude will show the result).
-
 ⏭️ **Next:** Step 10 — commit.
-
-<details>
-<summary>💡 TIP — what if I don't have Playwright configured yet</summary>
-
-`/test-e2e` uses MCP Playwright (browser automation). If your frontend doesn't yet expose a dev server or you don't have Playwright, Claude will say so and suggest what to configure. On the first, simple screen you can skip this step and come back to it later — E2E tests aren't required to commit. The argument can also be empty (`/test-e2e`) — then it takes the flow list from the `Testing Strategy` in the active plan.
-</details>
 
 ---
 
@@ -507,10 +484,10 @@ Do [Step 9](#step-9-check-quality-check-implementation) **unchanged** — the sa
 
 ## 🎉 Congratulations — you have a working app with a screen!
 
-The cycle is the same as in S1, enriched with two visual steps:
-**idea → PRD → stack → backlog → scaffold → brainstorm → 🆕 design → plan → code → quality → 🆕 E2E tests → commit.**
+The cycle is the same as in S1, enriched with a visual step:
+**idea → PRD → stack → backlog → scaffold → brainstorm → 🆕 design → plan → code → quality → commit.**
 
-**Another feature with a screen?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → `/design-ui <screen>` → `/plan-feature` → `/execute` → `/check-implementation` → `/test-e2e <flow>` → `/commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/design-ui` and `/test-e2e`.
+**Another feature with a screen?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → `/design-ui <screen>` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit`. Features *without* a visual layer (purely backend) you do via the shorter path from S1 — you skip `/design-ui`.
 
 > Already have mockups (HTML/Figma) instead of generating them with `/design-ui`? → **Scenario 3**.
 
@@ -603,7 +580,7 @@ Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-f
 
 ✅ **How you know it's OK:** you get a deviation report. No differences (or only "authorized" ones) = parity achieved.
 
-⏭️ **Next:** if there are deviations → fix them (`/execute` or `/check-implementation`) and run the gate again. When clean → Step 9.5.
+⏭️ **Next:** if there are deviations → fix them (`/execute` or `/check-implementation`) and run the gate again. When clean → Step 10.
 
 <details>
 <summary>💡 TIP — it's a reporting gate, not a fixing one</summary>
@@ -613,18 +590,18 @@ Do [Steps 7–8 (`/plan-feature` → `/execute`)](#steps-78-plan-and-code-plan-f
 
 ---
 
-### Steps 9.5–11: E2E tests, commit, push — like in S2
+### Steps 10–11: Commit and push — like in S2
 
-[Step 9.5 (`/test-e2e`)](#-step-95-test-by-clicking-test-e2e), [Step 10 (`/commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/push`)](#step-11-push-to-github-optional) — **unchanged**.
+[Step 10 (`/commit`)](#step-10-save-the-changes-commit) and [Step 11 (`/push`)](#step-11-push-to-github-optional) — **unchanged**.
 
 ---
 
 ## 🎉 Congratulations — you've implemented your own design!
 
 The cycle is like in S2, but the look comes from you, and the code is verified against it pixel for pixel:
-**idea → PRD → stack → backlog → scaffold → brainstorm → 🔀 your design in `Ready/` → plan → code → quality → 🆕 design parity → E2E tests → commit.**
+**idea → PRD → stack → backlog → scaffold → brainstorm → 🔀 your design in `Ready/` → plan → code → quality → 🆕 design parity → commit.**
 
-**Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <section>` → `/test-e2e <flow>` → `/commit`.
+**Another screen with a ready design?** You repeat: fresh chat → `/prime` → `/brainstorm <feature>` → *(put the mockup in `Ready/`)* → `/plan-feature` → `/execute` → `/check-implementation` → `/gates:design-quality-check <section>` → `/commit`.
 
 > Want Claude to **design the look itself** instead of supplying your own? → **Scenario 2** (the `/design-ui` step).
 
@@ -742,7 +719,7 @@ A large, existing codebase won't fit in a single context. `/setup:map-codebase` 
 
 ⏭️ **Next:** you repeat Step 3 for each subsequent change; `/push` when you want to push (like [Step 11 of S1](#step-11-push-to-github-optional)).
 
-> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design-ui` (or your own mockup in `Ready/`), `/gates:design-quality-check`, `/test-e2e`. Brownfield combines with each of them.
+> 🖥️ **Does the project have a frontend / ready designs?** Add the steps from S2/S3 to this cycle — `/design-ui` (or your own mockup in `Ready/`), `/gates:design-quality-check`. Brownfield combines with each of them.
 
 ---
 

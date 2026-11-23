@@ -8,7 +8,7 @@
 #   readiness <pr>                           → {merge, target_sha, merge_sha, source_sha, parents_ok}
 #   create --draft|--ready --head <b> --base <b> --title <t> --body-file <f>   → pr=<n>
 #   publish <pr> · body-get <pr> · body-set <pr> <file>
-#   prs <issue number | KEY>  → [{number,title,state,merged_at,updated_at,merge_commit,head_ref,url,relation}]
+#   prs <issue number | KEY>  → [{number,title,state,merged_at,updated_at,merge_commit,head_ref,base_ref,url,relation}]
 #   files <pr>                → {pr, files, truncated}
 #   (prs and files are read-only — the PR facts /qa-verify groups tickets by)
 #   by-branch <b>                            → `none` or this repo's PR numbers of head <b>, any
@@ -248,13 +248,13 @@ op_create() {  # op_create draft|ready <head> <base> <title> <body file>
 
 # ---- prs / files (read-only: GETs only) ---------------------------------------------------------
 
-PR_FIELDS=number,title,state,mergedAt,updatedAt,mergeCommit,headRefName,url,body
+PR_FIELDS=number,title,state,mergedAt,updatedAt,mergeCommit,headRefName,baseRefName,url,body
 # One output row per PR; `merged_at` / `merge_commit` only for a merged PR. `is_branch($k)`: the
 # head branch is `<type>/<k>-…` — one rule for both doors (`tostring` takes a number or a key).
 PR_ROW='def row($rel): {number, title: (.title // ""), state: (.state // ""),
   merged_at: (if .state == "MERGED" then .mergedAt else null end), updated_at: (.updatedAt // null),
   merge_commit: (if .state == "MERGED" then (.mergeCommit.oid? // null) else null end),
-  head_ref: (.headRefName // ""), url: (.url // ""), relation: $rel};
+  head_ref: (.headRefName // ""), base_ref: (.baseRefName // ""), url: (.url // ""), relation: $rel};
 def is_branch($k): ((.headRefName // "") | test("^[^/]+/" + ($k | tostring) + "-"));'
 
 # prs_issue <n> → rows on $TMP/rows.jsonl: the issue's cross-referencing PRs united with its closing

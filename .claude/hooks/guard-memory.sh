@@ -119,4 +119,5 @@ MARK="${MARKDIR}/${DOMAIN}"
   echo "trusted, like guard-commit trusts you to 'git add'. For a genuinely trivial change you may touch"
   echo "it directly; that is the deliberate decision point, not a proof of execution.)"
 } >&2
+[ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-memory --what "first code edit in domain $DOMAIN — distill memory first" >/dev/null 2>&1  # hook-block log, never fails the guard
 exit 2

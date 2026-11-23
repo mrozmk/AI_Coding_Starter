@@ -17,7 +17,7 @@
 ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 # The global TeamLead runs in the main checkout with the same role value; it is not a run lead.
 [ -f "$ROOT/.agents/team/team.json" ] || exit 0
-refuse() { echo "$*" >&2; exit 2; }
+refuse() { echo "$*" >&2; [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-teamlead-write --what "$*" >/dev/null 2>&1; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "TeamLead write guard needs jq — refused"
 LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)"
 cd "$ROOT" 2>/dev/null || refuse "TeamLead write guard: cannot enter $ROOT — refused"

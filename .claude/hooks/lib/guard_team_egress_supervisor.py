@@ -7,7 +7,6 @@ import collections
 import json
 import os
 import re
-import shlex
 import stat
 import sys
 import time
@@ -17,8 +16,12 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
-from guard_destructive_sql import SEPARATORS, tokenize  # noqa: E402
-from guard_team_egress_loops import loop_verdict  # noqa: E402
+from guard_destructive_sql import SEPARATORS  # noqa: E402
+from guard_team_egress_effect import (  # noqa: E402
+    GH_READ_FORMS, format_words, gh_api_read, graphql_values, py_code_safe, py_flags,
+    python_heredoc_ok)
+from guard_team_egress_loops import (  # noqa: E402
+    SUB_MARK, backstop, companion_safe, loop_verdict, piped_verdict, substituted)
 
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
 # backslash anywhere else -> ignored (still asked).
@@ -57,6 +60,11 @@ def gh_host_selector(words):
     OWNER/REPO (any -R / --repo spelling, also a short-flag cluster), a URL, --hostname, or the
     gh auth -h shorthand in any short-flag cluster. Over-matching only asks more."""
     auth = words[1:2] == ["auth"]
+    # `gh repo view [HOST/]OWNER/REPO`: the repository is positional there.
+    if words[1:3] == ["repo", "view"]:
+        pos = [w for w in words[3:] if not w.startswith("-")]
+        if pos and not GH_PLAIN_REPO.match(pos[0]):
+            return True
     for i, w in enumerate(words):
         # A glued redirection stays in the token: gh gets `--repo>/dev/null h/o/r` as --repo h/o/r.
         w = re.split(r"[<>]", w, maxsplit=1)[0]
@@ -117,9 +125,15 @@ def python_forms_of(allow):
 
 def read_word(cmd, i):
     """(parts, end) of the word starting at <i>; None for anything the reader does not model."""
-    parts, n = [], len(cmd)
+    parts, n, start = [], len(cmd), i
     while i < n and cmd[i] not in BOUNDARY:
         c = cmd[i]
+        # #272: a leading `~` (the home dir) and `*` / `?` globs (companion_safe and gh_covered
+        # judge where a glob may stand; a redirection target refuses one).
+        if (c == "~" and i == start and (i + 1 == n or cmd[i + 1] in "/" + BOUNDARY)) or c in "*?":
+            parts.append(("g" if c in "*?" else "u", c))
+            i += 1
+            continue
         if c in "'\"":
             k = cmd.find(c, i + 1)
             # Inside double quotes bash still expands `$`, backquotes and reads `\`.
@@ -155,7 +169,7 @@ def redirection(cmd, i):
     while i < n and cmd[i] in " \t":
         i += 1
     got = read_word(cmd, i) if i < n and cmd[i] not in BOUNDARY else None
-    if not got or not "".join(t for _, t in got[0]):
+    if not got or not "".join(t for _, t in got[0]) or any(k == "g" for k, _ in got[0]):
         return None
     return None if got[1] < n and cmd[got[1]] in "&>" else got[1]
 
@@ -235,7 +249,8 @@ _FORMAT = {
 }
 GH_FORMAT_CMDS = {tuple(k.split()): (set(v.split()), set(b.split()) | {"--help"})
                   for k, (v, b) in _FORMAT.items()}
-GH_VIEWS = (("gh", "pr", "view"), ("gh", "issue", "view"))
+
+GH_VIEWS = tuple(("gh",) + f for f in GH_READ_FORMS)
 
 
 def format_bindings(values):
@@ -279,16 +294,29 @@ def bound_words(seg):
             if (len(p) == 1 and p[0][0] == "s") or (len(p) == 2 and p[0] in glued and p[1][0] == "s")}
 
 
+def py_code_word(seg):
+    """Index of the single-quoted code of a `python3 [flags] -c '<code>'` that py_code_safe accepts."""
+    vals = [w.value for w in seg]
+    j = py_flags(vals)
+    if vals[:1] != ["python3"] or vals[j:j + 1] != ["-c"] or len(seg) < j + 2:
+        return None
+    code = seg[j + 1].parts
+    return j + 1 if len(code) == 1 and code[0][0] == "s" and py_code_safe(code[0][1]) else None
+
+
 def format_masked(cmd, egress_in):
     """<cmd> with each single-quoted bound --jq/--template value of a gh pr|issue view replaced by
     `_`, so the read-path taint checks skip data. Unchanged unless every simple command is such a
-    view or a safe companion — never masked toward an interpreter (`… -q '\\(.x)' | bash`)."""
+    view or a safe companion — never masked toward an interpreter (`… -q '\\(.x)' | bash`). The code
+    of a safe `python3 -c` filter is masked the same way (#272)."""
     segs = plain_segments(cmd) or []
     views = [tuple(w.value for w in s[:3]) in GH_VIEWS for s in segs]
-    if not any(views) or not all(v or companion_safe([w.value for w in s], egress_in)
-                                 for s, v in zip(segs, views)):
+    pys = [py_code_word(s) for s in segs]
+    if not any(views) or not all(v or k is not None
+                                 or companion_safe([w.value for w in s], egress_in, s)
+                                 for s, v, k in zip(segs, views, pys)):
         return cmd
-    words = []
+    words = [s[k] for s, k in zip(segs, pys) if k is not None]
     for s in (s for s, v in zip(segs, views) if v):
         words += [s[i] for i in bound_words(s)]
     for w in sorted(words, key=lambda w: w.start, reverse=True):
@@ -297,145 +325,61 @@ def format_masked(cmd, egress_in):
     return cmd
 
 
-COMPANIONS = {"cd", "jq", "head", "tail", "sort", "uniq", "wc", "grep", "cut", "tr", "cat",
-              "column", "tee", "echo", "printf", "true"}
-SHELLS_I = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
-INTERP = {"python", "python3", "node", "perl", "ruby", "php", "lua"}
-STDIN_CODE = {"xargs", "source", ".", "eval"}
-STDIN_PATHS = {"-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"}  # script operands read stdin too
-# What these run cannot be verified here.
-MODIFIERS = {"noglob", "nocorrect", "builtin", "command", "exec", "env", "nohup", "sudo", "time",
-             "nice", "timeout", "stdbuf", "caffeinate", "watch", "flock", "chrt", "ionice"}
-# `python3 - <<DELIM` + newline, ASCII delimiter only (never `\w`: Unicode in Python 3); no `<<-`.
-HEREDOC = re.compile(
-    r"python3 -[ ]*<<[ ]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|([A-Za-z0-9_]+))\n")
-# A printf format with only %s and %%: zsh evaluates numeric conversions' operands as arithmetic.
-PRINTF_OK = re.compile(r"(?:[^%]|%[s%])*", re.S)
-
-
-def companion_safe(vals, egress_in):
-    """True for an allowlisted companion that passes its option checks and the egress check."""
-    if not vals or vals[0] not in COMPANIONS:
-        return False
-    head, args = vals[0], vals[1:]
-    # GNU/BSD sort accept abbreviated long options (an abbreviation of --compress-program).
-    if (head == "cd" and len(args) > 1) or (head == "sort" and any(a[:2] == "--" for a in args)):
-        return False
-    if head == "printf" and args and (args[0].startswith("-") or not PRINTF_OK.fullmatch(args[0])
-                                      or any(a.startswith("-v") for a in args[1:])):
-        return False
-    try:
-        return egress_in(shlex.join(vals)) == ""
-    except ValueError:
-        return False
-
-
-def stdin_executor(vals):
-    """True when this command runs what it reads on stdin: a shell or interpreter with no script
-    operand (or `-`, /dev/stdin, a shell's -s), xargs / source / . / eval, or an unverifiable wrapper."""
-    head = os.path.basename(vals[0]) if vals else ""
-    if head not in SHELLS_I and head not in INTERP:
-        return head in STDIN_CODE or head in MODIFIERS
-    k, sh = 1, head in SHELLS_I
-    while k < len(vals) and vals[k][:1] in ("-+" if sh else "-") and vals[k] not in ("-", "+"):
-        w, k = vals[k], k + 1
-        if w == "--":
-            break
-        if sh and re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*", w):
-            return True  # `bash -s x`: the script comes from stdin, x is $1
-        if (sh and (w in ("--rcfile", "--init-file") or re.fullmatch(r"[-+][A-Za-z]*[oO]", w))
-                or (not sh and w in ("-W", "-X"))):
-            k += 1  # an option's value, no script: `-o pipefail`, `+O x`, `--rcfile f`, `-W x`
-    return k >= len(vals) or vals[k] in STDIN_PATHS
-
-
-def piped_verdict(cmds, ops):
-    """ask when a stdin executor reads a pipe from a chain with a gh command upstream, else defer."""
-    gh = False
-    for k, vals in enumerate(cmds):
-        if not (k and ops[k - 1] == "|"):
-            gh = False
-        elif gh and stdin_executor(vals):
-            return "ask", "gh output piped into " + os.path.basename(vals[0]) + " (Supervisor)"
-        gh = gh or os.path.basename("".join(vals[:1])) == "gh"
-    return "defer", ""
-
-
-def python_heredoc_ok(cmd, forms):
-    """`python3 - <<DELIM` whose first delimiter line ends the command, the body literal (quoted
-    delimiter, or no `$` / backquote / `\\`), under the local Bash(python3 -) opt-in (<forms>)."""
-    m = HEREDOC.match(cmd)
-    lines = cmd[m.end():].split("\n") if m else []
-    delim = m and (m.group(1) or m.group(2) or m.group(3))
-    if delim not in lines or lines[lines.index(delim) + 1:] not in ([], [""]):
-        return False
-    if m.group(3) and re.search(r"[$`\\]", "\n".join(lines[:lines.index(delim)])):
-        return False
-    return "-" in forms
-
-
 def gh_covered(seg, vals, rules):
-    """A locally covered gh command by #148's plain test, no stricter (no GH_READS_TAINT): no unplain
-    text outside single-quoted formatting values, no word of separators only (`'()'`), no host selector."""
+    """A locally covered gh command — or a built-in read (GH_READ_FORMS, a GET `gh api`, a graphql
+    query) — by #148's plain test, no stricter (no GH_READS_TAINT): no unplain text outside
+    single-quoted formatting values or query fields, no glob, no word of separators only (`'()'`),
+    no host selector."""
     rest = tuple(vals[1:])
-    if not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
+    builtin = rest[:2] in GH_READ_FORMS or gh_api_read(vals)
+    if not builtin and not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
         return False
-    ok = bound_words(seg)
+    if any(k == "g" for w in seg for k, _ in w.parts):
+        return False
+    ok = bound_words(seg) | (format_words(seg, FMT, GH_FORMAT_CMDS) | graphql_values(seg)
+                             if builtin else set())
     text = " ".join(w.raw for i, w in enumerate(seg) if i not in ok)
     return not (UNPLAIN.search(text) or any(set(v) <= SEPARATORS for v in vals)
                 or gh_host_selector(["_" if i in ok else v for i, v in enumerate(vals)]))
 
 
-def backstop(cmd):
-    """For a layout the reader refuses: piped_verdict over today's token stream; defer if unparsable."""
-    try:
-        tokens = tokenize(cmd)
-    except ValueError:
-        return "defer", ""
-    cmds, ops, cur = [], [], []
-    for t in tokens:
-        s = t.strip("\n")
-        if t == "{" and not cur:
-            continue  # a group opener: its first command reads the same stdin
-        if not (t and set(t) <= SEPARATORS) or (s[:1] == "&" and cur and cur[-1][-1:] in ("<", ">")):
-            cur.append(t)  # `2>&1` tokenizes as `2>`, `&`, `1`: that `&` is the redirection's
-            continue
-        op = "|" if s[:1] == "|" and s[:2] != "||" else t  # `|`, `|&`, `|(` all pipe
-        if cur:
-            cmds.append(cur)
-            ops.append(op)
-            cur = []
-        elif ops and s and not (ops[-1] == "|" and set(s) <= {"("}):
-            ops[-1] = op  # `| (bash)`: the pipe reaches the group's first command
-    return piped_verdict(cmds + [cur] if cur else cmds, ops)
-
-
-def supervisor_verdict(cmd, project, egress_in, loop=True):
-    """("exempt" | "ask" | "defer", reason). exempt: every simple command is a locally covered gh, an
-    opted-in python3 -c or a safe companion; ask: gh output piped into a stdin executor; defer (also
-    for every session but the Supervisor's in the main checkout): today's path; a loop: loop_verdict."""
+def supervisor_verdict(cmd, project, egress_in, width=0):
+    """("exempt" | "ask" | "defer", reason). exempt: every simple command is a locally covered gh or
+    built-in gh read, a python3 -c whose code py_code_safe accepts (or under the local opt-in) or
+    a safe companion, `$(…)` of such reads standing in an echo; ask: gh output piped into a stdin
+    executor; defer (also for every session but the Supervisor's in the main checkout): today's
+    path. A literal loop anywhere is unrolled (loop_verdict); <width>: texts unrolled so far."""
     if not supervisor_main_checkout(project):
         return "defer", ""
-    if loop and (judged := loop_verdict(cmd, SAFE, supervisor_verdict, project, egress_in)):
+    def judge(text, w=width or 1):
+        return supervisor_verdict(text, project, egress_in, w)
+    if (judged := loop_verdict(cmd, SAFE, judge, width or 1)):
         return judged
     allow = local_rules(project)
     py = python_forms_of(allow)
     if python_heredoc_ok(cmd, py):
         return "exempt", ""
-    segs = plain_segments(cmd)
+    plain = substituted(cmd, judge)
+    segs = plain_segments(plain) if plain is not None else None
     if segs is None:
         return backstop(cmd)
     gh_rules = gh_rules_of(allow)
-    kinds = []
+    kinds = ["gh"] if plain != cmd else []
     for seg in segs:
         vals = [w.value for w in seg]
-        if vals[0] == "gh":
+        if SUB_MARK in " ".join(vals) and vals[0] != "echo":
+            kinds.append("other")  # a substitution's output never reaches gh, python or a filter
+        elif vals[0] == "gh":
             kinds.append("gh" if gh_covered(seg, vals, gh_rules) else "other")
-        elif vals[:2] == ["python3", "-c"]:
-            code = seg[2].parts if len(seg) == 3 else []
-            kinds.append("py" if "-c" in py and len(code) == 1 and code[0][0] in "sd" else "other")
+        elif vals[:1] == ["python3"] and vals[py_flags(vals):][:1] == ["-c"]:
+            j = py_flags(vals)
+            # Words after the code are its sys.argv (the reader already refused any expansion).
+            code = seg[j + 1].parts if len(seg) >= j + 2 else []
+            quoted = len(code) == 1 and code[0][0] in "sd"
+            safe = quoted and py_code_safe(code[0][1])
+            kinds.append("py" if quoted and ("-c" in py or safe) else "other")
         else:
-            kinds.append("safe" if companion_safe(vals, egress_in) else "other")
+            kinds.append("safe" if companion_safe(vals, egress_in, seg) else "other")
     if "other" not in kinds and ("gh" in kinds or "py" in kinds):
         return "exempt", ""
     return piped_verdict([[w.value for w in s] for s in segs], [s.op for s in segs])

@@ -92,6 +92,9 @@ case "$1" in
     [ -f "$D/$n.pid" ] && kill -0 "$(cat "$D/$n.pid")" 2>/dev/null || exit 1
     case "$*" in *'#{pane_current_command}'*) echo claude; exit 0 ;; esac
     echo "%$n@1700000000"; exit 0 ;;
+  list-panes) n="$(tgt "$@")"
+    [ -f "$D/$n.pid" ] && kill -0 "$(cat "$D/$n.pid")" 2>/dev/null || exit 1
+    echo "$(cat "$D/$n.pid") claude"; exit 0 ;;
   send-keys) case " $* " in *" Enter "*) [ -z "${STUB_ON_ENTER:-}" ] || eval "$STUB_ON_ENTER" ;; esac
     exit 0 ;;
   capture-pane) n="$(tgt "$@")"
