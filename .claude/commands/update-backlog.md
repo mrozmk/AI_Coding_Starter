@@ -164,6 +164,8 @@ preview. Always asked, even when the source is clear:
   `Scope` (`CORE` / `MUST` / `COULD`), Node, Size, `Depends on` / `Relates`;
 - an intent whose impact touches `CORE` or a protected Task: **accept / reject**.
 
+An upkeep reminder intent from `/check-backlog` step 5a arrives placed: its Epic, `Scope`, `Size`, `Node` and `Depends on` come from `.claude/skills/backlog/quality-tasks.md` → Reminder Tasks, and a missing `Quality & upkeep` Epic takes that file's Epic fields — the placement questions above are not asked for it (the **Add the Task** answer was that decision). Each time Phase 6 builds or rebuilds the candidate (a Phase 7 patch included), after the cadence placement, the intent is left out of that candidate when it already holds another Task with the same marker that step 5a counts as covering — its `Task` cell contains `[upkeep:<id>]`, does not contain `(withdrawn)`, and its `Status` is not `DONE` (a DONE occurrence never covers; the checker's own "live" includes DONE rows) — e.g. a numbered occurrence this run adds because the product points moved `n`; kept otherwise; the decision is remade on every rebuild, and `/check-backlog` reports `upkeep <id>: already planned as <Task id>` only after Phase 8 verified the write.
+
 ## Phase 5 — Impact
 
 `node .claude/lib/backlog-check.mjs --impact <ids>` for each intent's targets → tracing Tasks with
