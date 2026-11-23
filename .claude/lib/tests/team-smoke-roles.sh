@@ -85,7 +85,7 @@ line "Contract: .agents/reference/roles/advisor.md'" "$WORK/astra" "(1) Astra co
 noline "--settings" "$WORK/astra" "(1) Astra settings"; noline "; read" "$WORK/astra" "(1) Astra read"
 grep '^tmux new-session.* -s smk-fable ' "$STUB_LOG" > "$WORK/fable"
 line "claude --name 'Fable' --session-id " "$WORK/fable" "(1) Fable argv"
-line " --model fable --effort high --settings .agents/team/watch/profiles/Fable.settings.json -- 'You are Fable." "$WORK/fable" "(1) Fable flags"
+line " --model fable --effort medium --settings .agents/team/watch/profiles/Fable.settings.json -- 'You are Fable." "$WORK/fable" "(1) Fable flags"
 line "; read" "$WORK/fable" "(1) Fable keeps its pane"
 for r in Supervisor Fable; do
   [ "$(jq -r .env.TEAM_SESSION_ROLE "$MP/.agents/team/watch/profiles/$r.settings.json")" = "$r" ] \
@@ -390,7 +390,7 @@ run "$MAIN" $RS stop Supervisor; expect 0 "" "(13) stop"
 run "$MAIN" $RS status; grep -E '^Supervisor +tmux +stopped +gone ' "$WORK/out" >/dev/null || fail "(13) stopped row"
 clr; run "$MAIN" $RS resume Supervisor; expect 0 "Supervisor: resumed $S1" "(13) resume"
 grep '^tmux new-session.* -s smk-supervisor ' "$STUB_LOG" > "$WORK/res"
-line "claude --name 'Supervisor' --resume $S1 --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json; read" "$WORK/res" "(13) argv"
+line "claude --name 'Supervisor' --resume $S1 --model opus --effort high --settings .agents/team/watch/profiles/Supervisor.settings.json; read" "$WORK/res" "(13) argv"
 noline "--session-id" "$WORK/res" "(13) a new session id"; noline "You are Supervisor" "$WORK/res" "(13) bootstrap line"
 [ "$(jq -r '.session_id // empty' "$REG/Supervisor.json")" = "$S1" ] || fail "(13) the resumed record lost its session id"
 run "$MAIN" $RS resume Astra; expect 2 "Codex roles restore fresh" "(13) Codex"

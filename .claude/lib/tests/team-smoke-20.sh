@@ -306,11 +306,11 @@ load() {  # load <jq edit> → RC + $WORK/out of the profile load in a scratch r
       "$TEAM_LEAD_BUDGET_QUICK $TEAM_LEAD_MODEL $TEAM_LEAD_EFFORT" \
       "$(printf '%s' "$TEAM_LEAD_HUMAN_ONLY" | tr '\n' ,)") > "$WORK/out" 2>&1; RC=$?; set -e
 }
-load .; expect 0 "3 2 1 fable high settings-profiles,prod-ask" "(h) defaults"
+load .; expect 0 "3 2 1 fable medium settings-profiles,prod-ask" "(h) defaults"
 # The removed switch: true is an accepted no-op.
 load '.teams.teamlead = {enabled: true, revise_limit: 5, rework_budget: {quick: 0}}
   | .teams.sessions.TeamLead = {model: "claude-fable-5-2"}'
-expect 0 "5 2 0 claude-fable-5-2 high" "(h) set values"
+expect 0 "5 2 0 claude-fable-5-2 medium" "(h) set values"
 load '.teams.teamlead = {enabled: false}'; expect 2 "teams.teamlead.enabled was removed" "(h) enabled false refused"
 load '.teams.teamlead.revise_limit = 0'; expect 2 "teams.teamlead.revise_limit" "(h) revise_limit 0"
 load '.teams.teamlead.enabled = "yes"'; expect 2 "teams.teamlead.enabled" "(h) enabled not boolean"
