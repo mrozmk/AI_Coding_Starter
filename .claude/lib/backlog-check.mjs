@@ -33,13 +33,14 @@ const AC_ID = /^E\d+-\d+\.AC\d+$/;
 export const SCOPES = ['CORE', 'MUST', 'COULD'];
 export const NO_CORE_WARNING = 'no CORE Task — the delivery plan starts every session on day 0; mark the Tasks that must exist before parallel work';
 // Quality Tasks — .claude/skills/backlog/quality-tasks.md (keep the two tables in step).
-// `planned: false` would mark a reminder-only marker (never required on a backlog, never counted).
+// `planned: false` marks a reminder-only marker: added by /check-backlog when an upkeep item is due, never required on a backlog, never counted.
 export const QUALITY_MARKERS = {
   'audit:security': { kind: 'closing', command: '/audit-security', size: 'H', conditional: false, planned: true },
   'audit:seo-geo': { kind: 'closing', command: '/seo-geo-audit', size: 'H', conditional: true, planned: true },
   'audit:wcag': { kind: 'closing', command: '/wcag', size: 'H', conditional: true, planned: true },
   'upkeep:architecture-review': { kind: 'recurring', command: '/architecture-review', size: 'M', conditional: false, planned: true },
   'upkeep:cleanup-workflow': { kind: 'recurring', command: '/maintain:cleanup-workflow', size: 'M', conditional: false, planned: true },
+  'upkeep:refresh-brief': { kind: 'reminder', command: '/maintain:refresh-brief', size: 'M', conditional: false, planned: false },
 };
 export const QUALITY_CADENCE_POINTS = 160;
 export const QUALITY_MIN_OCCURRENCES = 2;

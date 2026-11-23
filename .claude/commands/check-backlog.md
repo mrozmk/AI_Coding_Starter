@@ -12,7 +12,7 @@ and minimal, is this `H` really an `XH`, are the criteria testable outcomes, is 
 developer-only, is a dependency really a soft relation — need an independent reader. This command
 adds one (plus one cross-model Codex review), and routes every accepted fix through `/update-backlog` (the backlog's only structural writer).
 
-**This command writes nothing itself** except the one `**Last check:**` header line (step 10).
+**This command writes nothing itself** except the `**Last check:**` header line (step 10) and an upkeep decline (`upkeep.sh decline`, step 5a) in the item's home record.
 Every structural change goes through `/update-backlog`'s apply phases.
 
 Mode: read from the backlog header's `**Detail:**` field. **Structure** (`**Detail:** structure`,
@@ -104,6 +104,18 @@ answers become **intents** in `/update-backlog`'s model:
 A split or merge whose dependent is protected, or whose redirect is ambiguous, becomes a question —
 never a silent rewire.
 
+## 5a. Upkeep due
+
+Runs in every scope; the due check and the dedupe read the whole backlog, whatever `--epic` /
+`--since` says.
+
+1. `bash .claude/lib/upkeep.sh due --format json`, judged in this order: a non-zero exit → the report line `Upkeep: not checked — <reason>`; exit 0 with empty output (one of the silent cases listed in the header of `.claude/lib/upkeep.sh`) → this step says nothing; any other output must be exactly one JSON object with `schema` equal to `1` and an `items` array, else `Upkeep: not checked — <reason>`; no item with `ask: true` → this step says nothing. The check goes on in every case.
+2. Per item with `ask: true`: a **live** Task — its `Task` cell does not contain `(withdrawn)` and its `Status` is not `DONE` — whose `Task` cell contains `[upkeep:<id>]` (a numbered occurrence or an unnumbered run alike) → report `upkeep <id>: already planned as <Task id>`, no question.
+3. The other items → **one** `AskUserQuestion` call, one question per item (at most three; outside the grill's cap of 8): *"Upkeep due: `<command>` — `<reason>`. Add a backlog Task?"* — **Add the Task (Recommended)** / **Not now**. `<command>` and `<reason>` are the item's json fields, verbatim.
+4. **Add the Task** → an `add (tech)` intent for the reminder Task of `.claude/skills/backlog/quality-tasks.md` → Reminder Tasks, carrying the item's `id`, `command`, `home` and `record`. It joins the grill's intents, so step 6 writes everything in one `/update-backlog` run and one `D-n`; with no grill intent, step 6 runs for these alone. The outcome is reported only after `/update-backlog` Phase 8 verified the write: the reminder written → `added as <Task id> (D-n)`; left out because the written candidate holds a live Task with that marker → `already planned as <Task id>`; the candidate fails the checker or is cancelled at the preview → `upkeep <id>: not added — <reason>`, no decline, the next run asks again; Phase 8 installed files but its verification failed → `upkeep <id>: write pending recovery — rerun /update-backlog` (its Phase 0 recovers), never a success line. An Add belongs to the first `/update-backlog` run only: kept across that run's rebuilds and consumed by its outcome; step 8's apply gets only the Codex intents it accepted.
+5. **Not now** → keep the answer; `bash .claude/lib/upkeep.sh decline <id>` runs after the run's last apply — after step 8's apply when Codex ran, else after step 6 / 7 — right before step 9, and on every earlier exit once this step has asked; several declines run one after another — the next starts when the previous process has exited, whatever its result (they rewrite one record file) — and each is reported from its own exit code and output: the `upkeep: declined <id> in <path>` line → `declined`; anything else → `decline not recorded — <message>`, and the next run asks again. Never before the apply: the run's `/update-backlog` write adds a `D-n` to the PRD, and a `refresh-brief` decline stores the PRD's content hash, so an earlier decline would be undone by the same run. The script then keeps the item quiet here until its thresholds are crossed again counted from the decline; `/prime` keeps showing the fact.
+6. Before step 9, every line of this step that names a Task — `already planned as <Task id>` (item 2 or `/update-backlog` Phase 4) and `added as <Task id> (D-n)` — is checked again against the backlog as written, since an applied fix (step 6, or step 8's apply) may have withdrawn or changed the named Task: it is still a live Task (not `(withdrawn)`, `Status` not `DONE`) whose `Task` cell contains `[upkeep:<id>]` → the line stands; it is not, but another such Task is → the line names that Task as `already planned as <Task id>`; none is left → the line becomes `upkeep <id>: due, no live Task left — asked next run`.
+
 ## 6. Apply
 
 When any intent exists: run `/update-backlog` with these intents as its input — its **Phase 0**
@@ -112,13 +124,14 @@ When any intent exists: run `/update-backlog` with these intents as its input �
 Phase 5 impact → Phase 6 candidate → Phase 7 preview → Phase 8 write — the `D-n` titled `check-backlog <date>` and
 `Sources: BA direct decision (check-backlog findings #…)`. A candidate that fails the checker leaves
 the finding open; nothing is written.
+The step 5a upkeep intents are part of this input (`/update-backlog` leaves one out of a candidate that already covers its marker — its Phase 4); the `D-n`'s `Sources:` names each accepted reminder as `BA direct decision (upkeep <id>: Add the Task)`, next to the finding numbers of the grill fixes that joined the write — an upkeep-only write cites no finding.
 
 ## 7. Post-fix review
 
-After a structural write: regenerate the current view (step 2), then **one** more critic call —
+After a structural write: regenerate the current view (step 2) for the round-2 `SCOPE` below — Tasks outside the run's `--epic` / `--since` scope included, so a Task the run added elsewhere (an upkeep reminder in `Quality & upkeep`) reaches the critic with its Summary and criteria — then **one** more critic call —
 `SCOPE` = the changed and new **live** Task ids (a Task withdrawn by the fix is history, not
 re-graded) plus the outside rows the run changed or whose `Needed by` / `Starts after` / `Traces` touch those Tasks,
-all rules, `ROUND: 2`, `PRIOR` = the applied findings. Unresolved findings are
+all rules, `ROUND: 2`, `PRIOR` = the applied findings, `SOURCES` as in step 3, with `.claude/skills/backlog/quality-tasks.md` when the round-2 scope holds a quality Task. Unresolved findings are
 reported; never a third round.
 
 ## 8. Cross-model review (Codex) — once
@@ -187,7 +200,8 @@ re-enter step 7. The step never changes the critic's verdict by itself: an accep
 ## 9. Report
 
 `Mode: structure | detail`; per rule: kept / dropped; fixes applied (with the `D-n`); open findings; checker warnings verbatim;
-`Codex: <n> raised · <a> accepted · <d> dropped | not reviewed — <reason>`; the verdict
+`Codex: <n> raised · <a> accepted · <d> dropped | not reviewed — <reason>`;
+`Upkeep:` one line per item step 5a reported or asked about (`added as <Task id> (D-n)` · `already planned as <Task id>` · `due, no live Task left — asked next run` · `declined` · `not added — <reason>` · `write pending recovery — rerun /update-backlog` · `decline not recorded — <message>`), or `Upkeep: not checked — <reason>`; nothing when nothing was due; the verdict
 `ship | revise | rethink`.
 
 ## 10. Record
@@ -219,5 +233,4 @@ detail check — `/setup:delivery-plan` details the Epics, and a `/check-backlog
 
 - Not folded into `/setup:create-backlog` — the backlog changes for months after creation; run this
   after each `/update-backlog` (`--since D-k`) and before each `/jira draft`.
-- The critic never writes; this command never writes outside the `/update-backlog` apply phases and
-  the `**Last check:**` line.
+- The critic never writes; this command never writes outside the `/update-backlog` apply phases, the `**Last check:**` line and the step 5a upkeep decline.
