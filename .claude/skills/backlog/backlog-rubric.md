@@ -15,7 +15,7 @@ outside row), a critical activity with no CORE / MUST Task, outside rows' ids, `
 `Starts after` (their ids, a withdrawn Task named there, a wait cycle through outside rows) and
 traces, no CORE Task, a CORE Task nothing outside CORE depends on, XH stories with more than 5 AC,
 a tech Task without a trace, a leaf without a Task, `Relates` / `Chain` validity, a live Task
-without its block or its Summary in its Epic file, a `full` backlog Task without criteria.
+without its block or its Summary in its Epic file, a `full` backlog Task without criteria. Quality Tasks (`.claude/skills/backlog/quality-tasks.md`): their markers, type / size / scope, a closing audit not waiting for all product work, the occurrence count, an occurrence without prerequisites, a marker neither planned nor ruled out.
 
 **Modes** (`MODE` in the spawn, from the backlog header's `**Detail:**`). **Structure**
 (`structure` — after `/setup:create-backlog`): Tasks carry a one-line `**Summary:**` and criteria
@@ -28,7 +28,7 @@ Criteria that already exist are still graded by every rule. **Detail** (`full` �
 
 **Trace contract** (decisions D-A15): a `story` traces an active `R-n` and/or `FL-n.Ak`; a `tech`
 Task traces an active `AD-n` and/or `NFR-n` (an `R-n` is allowed too). A story tracing only a flow
-activity is valid.
+activity is valid. A **quality Task** (a marker of `.claude/skills/backlog/quality-tasks.md`) traces nothing: that file justifies it, its criteria come from its templates, and K1 (valuable), K6 and K10 do not grade its missing trace.
 
 ---
 
@@ -42,11 +42,11 @@ activity is valid.
 | **K4 Critical-flow coverage and MUST honesty** | each critical activity covered once by CORE / MUST; extra Tasks on one activity need a reason; a `MUST` whose requirement the PRD marks optional, or a `COULD` the critical flow needs |
 | **K5 AC quality** (*criteria-based* — structure mode grades only the criteria that exist) | outcome, not verification method; no bracket labels; no vague adjectives; ≥1 unwanted-behaviour criterion per story; **no time estimates** (sizes / points are fine) |
 | **K6 Trace substance** | a trace that does not justify the work; trace padding (many `R-n` one Task cannot deliver); an **unprotected** Task (Status `TODO`, empty `Ref`, no key) tracing a superseded id |
-| **K7 Epic is an outcome** | `Outcome`, `Key assumption`, appetite, cut-first specific; 3–12 live Tasks is the healthy band — outside it, explain (one deliverable in disguise, or two outcomes) |
+| **K7 Epic is an outcome** | `Outcome`, `Key assumption`, appetite, cut-first specific; 3–12 live Tasks is the healthy band — outside it, explain (one deliverable in disguise, or two outcomes) — the `Quality & upkeep` Epic is exempt from the band (its size follows the cadence) |
 | **K8 Parallel plausibility** | Tasks that will edit the same files despite different Nodes (shared config, tokens, routing tables) |
 | **K9 Relation sanity** | a `Depends on` that is really `Relates`; a dependency the AC imply but the DAG lacks (*criteria-based*); a `Chain` that should be one Task |
 | **K10 Scope drift** | a Task whose traces do not justify it under the trace contract above; first-release requirements whose every Task sits in `COULD`; a Task whose `R-n` a later `D-n` touched while the Task did not change |
-| **K11 Developer work only** | a Task whose deliverable belongs to another team (pipeline, environment, monitoring setup, test plan / QA run, design) → move it to `Outside the dev backlog`; a **mixed** Task — part of its Summary, scope lines or criteria is developer work, part only another team can satisfy → split it: the developer part stays a Task, the rest becomes an outside row naming that Task under `Starts after` or `Needed by`; an outside row a developer must in fact build → a Task; an outside row that plainly waits for developer work (a test run, an audit, a rehearsal) with an empty `Starts after` |
+| **K11 Developer work only** | a Task whose deliverable belongs to another team (pipeline, environment, monitoring setup, test plan / QA run, design) → move it to `Outside the dev backlog`; a **mixed** Task — part of its Summary, scope lines or criteria is developer work, part only another team can satisfy → split it: the developer part stays a Task, the rest becomes an outside row naming that Task under `Starts after` or `Needed by`; an outside row a developer must in fact build → a Task; an outside row that plainly waits for developer work (a test run, an audit, a rehearsal) with an empty `Starts after`; an audit the team runs with a workflow command is a quality Task, never an outside row or an external blocker |
 
 Calibration from a previous BA engagement: a healthy Task was one UI component or one runtime
 primitive (one service, one integration step); Epics held 3–12 Tasks.

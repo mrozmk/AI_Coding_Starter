@@ -1,7 +1,7 @@
 // Validator + generator for `.agents/backlog.md` (Epics + Tasks), its Epic files
 // (`.agents/backlog/E<n>-<slug>.md` — per-Task Summary / Goal / scope and acceptance criteria) and
 // `docs/map/system.yaml`. Owns every check a model must not self-grade: ids, DAG, sizes, trace
-// coverage, system-tree integrity, Scope order, the `## Outside the dev backlog` rows, where each
+// coverage, system-tree integrity, Scope order, quality Tasks, the `## Outside the dev backlog` rows, where each
 // criterion lives, and the derived story map + Epic-file meta lines it writes back (`--write`).
 // Scheduling lives in `delivery-plan.mjs`, not here. Also warns on a Task delivered by a done plan
 // whose Status / Ref was never written back. `--candidate <dir>` validates `<dir>/PRD.md` +
@@ -32,6 +32,28 @@ const EPIC_ID = /^E\d+$/;
 const AC_ID = /^E\d+-\d+\.AC\d+$/;
 export const SCOPES = ['CORE', 'MUST', 'COULD'];
 export const NO_CORE_WARNING = 'no CORE Task — the delivery plan starts every session on day 0; mark the Tasks that must exist before parallel work';
+// Quality Tasks — .claude/skills/backlog/quality-tasks.md (keep the two tables in step).
+// `planned: false` would mark a reminder-only marker (never required on a backlog, never counted).
+export const QUALITY_MARKERS = {
+  'audit:security': { kind: 'closing', command: '/audit-security', size: 'H', conditional: false, planned: true },
+  'audit:seo-geo': { kind: 'closing', command: '/seo-geo-audit', size: 'H', conditional: true, planned: true },
+  'audit:wcag': { kind: 'closing', command: '/wcag', size: 'H', conditional: true, planned: true },
+  'upkeep:architecture-review': { kind: 'recurring', command: '/architecture-review', size: 'M', conditional: false, planned: true },
+  'upkeep:cleanup-workflow': { kind: 'recurring', command: '/maintain:cleanup-workflow', size: 'M', conditional: false, planned: true },
+};
+export const QUALITY_CADENCE_POINTS = 160;
+export const QUALITY_MIN_OCCURRENCES = 2;
+const QUALITY_PREFIX = /^\[((?:audit|upkeep):[a-z0-9-]+)\]/;
+const QUALITY_TOKEN = /\[((?:audit|upkeep):[a-z0-9-]+)\]/g;
+const OCCURRENCE = /[—-]\s*occurrence\s+(\d+)\b/i;
+const OUT_OF_SCOPE_HEADING = /^##\s+Consciously out of scope\b/i;
+/** `{ marker, known, kind?, command?, size?, conditional?, occurrence }` for a Task cell that begins with a quality marker, else null. */
+export function qualityMarker(title) {
+  const m = QUALITY_PREFIX.exec(title ?? '');
+  if (!m) return null;
+  const occ = OCCURRENCE.exec(title);
+  return { marker: m[1], known: Object.hasOwn(QUALITY_MARKERS, m[1]), ...(QUALITY_MARKERS[m[1]] ?? {}), occurrence: occ ? Number(occ[1]) : null };
+}
 const OUTSIDE_ID = /^X-\d+$/;
 export const OUTSIDE_HEADING = /^##\s+Outside the dev backlog\b/;
 export const PRE_SCOPE_MESSAGE = 'pre-Scope backlog (Wave / Slice columns) — run: node .claude/lib/backlog-migrate.mjs --write';
@@ -317,12 +339,20 @@ export function parseBacklog(md, { epicFiles = [] } = {}) {
   });
 
   const lines = md.split(/\r?\n/);
+  // Quality markers ruled out under `## Consciously out of scope` (up to the next `## ` heading).
+  const ruledOut = [];
+  const outStart = lines.findIndex((l, i) => !fenced[i] && OUT_OF_SCOPE_HEADING.test(l));
+  if (outStart !== -1) {
+    for (let i = outStart + 1; i < lines.length && !lines[i].startsWith('## '); i++) {
+      for (const m of lines[i].matchAll(QUALITY_TOKEN)) ruledOut.push(m[1]);
+    }
+  }
   const firstSection = lines.findIndex((l) => l.startsWith('## '));
   const header = (firstSection === -1 ? lines : lines.slice(0, firstSection)).join('\n');
   const prd = /\*\*Source PRD:\*\*\s*`([^`]+)`/.exec(md);
   return {
     legacy: false, preScope: false, preDetail: false, epics, tasks, acs, strayAcs, outside, problems,
-    detail: DETAIL.exec(header)?.[1] ?? null, details, files,
+    detail: DETAIL.exec(header)?.[1] ?? null, details, files, ruledOut,
     sourcePrd: prd ? prd[1].trim() : null, scopeRev: SCOPE_REV.exec(md)?.[1] ?? null, raw: md,
   };
 }
@@ -799,8 +829,9 @@ export function checkBacklog({ backlog, inventory, system }) {
       else if (def.state === 'superseded') errors.push(`Task ${t.id}: traces ${id}, superseded by ${def.successor} — trace ${def.successor} instead`);
       traced.add(id);
     }
-    if (!t.withdrawn && t.type === 'tech' && t.traces.length === 0) warnings.push(`Task ${t.id}: tech Task with no trace (AD-n / NFR-n)`);
+    if (!t.withdrawn && t.type === 'tech' && t.traces.length === 0 && !qualityMarker(t.title)?.known) warnings.push(`Task ${t.id}: tech Task with no trace (AD-n / NFR-n)`);
   }
+  if (!taskCycle) { const q = qualityChecks(b, live); errors.push(...q.errors); warnings.push(...q.warnings); }
   // --- outside rows: work the dev team needs but does not do; their traces count for coverage
   const tracedOutside = new Set();
   const seenOutside = new Set();
@@ -878,14 +909,61 @@ export function checkBacklog({ backlog, inventory, system }) {
 function scopeWarnings(live) {
   const core = live.filter((t) => t.scope === 'CORE');
   if (!core.length) return [NO_CORE_WARNING];
-  const later = live.filter((t) => t.scope !== 'CORE');
+  const later = live.filter((t) => t.scope !== 'CORE' && !qualityMarker(t.title)?.known);
   if (!later.length) return [];
-  // Every Task some live non-CORE Task needs, directly or transitively.
+  // Every Task some live non-CORE product Task needs, directly or transitively.
   const byId = new Map(live.map((t) => [t.id, t]));
   const needed = new Set();
   const walk = (t) => { for (const d of t.deps) if (byId.has(d) && !needed.has(d)) { needed.add(d); walk(byId.get(d)); } };
   later.forEach(walk);
   return core.filter((t) => !needed.has(t.id)).map((t) => `Task ${t.id}: CORE, but nothing outside CORE depends on it — candidate to leave CORE`);
+}
+
+/** Quality Tasks (quality-tasks.md) over a valid DAG: closing audits wait for all product work, the recurring cadence, and nothing left unplanned. */
+function qualityChecks(b, live) {
+  const errors = [];
+  const warnings = [];
+  const q = new Map(live.map((t) => [t.id, qualityMarker(t.title)]));
+  const product = live.filter((t) => !q.get(t.id) && (t.scope === 'CORE' || t.scope === 'MUST'));
+  if (!product.length) return { errors, warnings };
+  const byId = new Map(live.map((t) => [t.id, t]));
+  // "Waits for" walks open Tasks only, as delivery-plan.mjs does (a DONE Task is dropped there, so a path through it is no wait).
+  const open = (t) => t.status !== 'DONE';
+  const ancestors = (t) => { const seen = new Set(); const walk = (x) => { for (const d of x.deps) { const y = byId.get(d); if (y && open(y) && !seen.has(d)) { seen.add(d); walk(y); } } }; walk(t); return seen; };
+  const sinks = (ids) => [...ids].filter((id) => !product.some((t) => ids.has(t.id) && t.deps.includes(id))).sort(byIdAsc);
+  // Per closing marker the newest live audit (any status) is the one that counts — a re-audit supersedes an earlier one; it must wait only while TODO / BLOCKED.
+  const newest = new Map();
+  for (const t of live) {
+    const m = q.get(t.id);
+    if (m?.known && m.kind === 'closing' && (!newest.has(m.marker) || byIdAsc(t.id, newest.get(m.marker)) > 0)) newest.set(m.marker, t.id);
+  }
+  const points = product.reduce((a, t) => a + (pointsOf(t.size) ?? 0), 0);
+  const n = Math.max(QUALITY_MIN_OCCURRENCES, Math.ceil(points / QUALITY_CADENCE_POINTS));
+  const known = Object.keys(QUALITY_MARKERS).map((k) => `[${k}]`).join(', ');
+  const conditional = Object.entries(QUALITY_MARKERS).filter(([, d]) => d.conditional).map(([k]) => `[${k}]`).join(' and ');
+  for (const t of live) {
+    const m = q.get(t.id);
+    if (!m) continue;
+    if (!m.known) { warnings.push(`Task ${t.id}: unknown quality marker [${m.marker}] — use one of ${known}`); continue; }
+    if (t.type !== 'tech' || t.scope !== 'MUST' || t.size !== m.size) warnings.push(`Task ${t.id} [${m.marker}]: expected tech · ${m.size} · MUST, found ${t.type} · ${t.size} · ${t.scope}`);
+    if (m.kind === 'closing' && newest.get(m.marker) === t.id && (t.status === 'TODO' || t.status === 'BLOCKED')) {
+      const anc = ancestors(t);
+      const missing = new Set(product.filter(open).map((p) => p.id).filter((id) => !anc.has(id)));
+      if (missing.size) errors.push(`Task ${t.id} [${m.marker}]: a closing audit must wait for every live CORE/MUST product Task — add ${sinks(missing).join(', ')} to Depends on`);
+    }
+    if (m.kind === 'recurring' && m.occurrence !== null && t.status !== 'DONE' && !t.deps.length) warnings.push(`Task ${t.id} [${m.marker}]: occurrence ${m.occurrence} has no Depends on — it would be free on day one; place it after its share of the product work`);
+  }
+  for (const [marker, def] of Object.entries(QUALITY_MARKERS)) {
+    if (def.kind !== 'recurring' || !def.planned) continue;
+    const k = live.filter((t) => q.get(t.id)?.marker === marker && q.get(t.id).occurrence !== null).length;
+    if (k > 0 && k !== n) warnings.push(`[${marker}]: ${k} occurrence(s) planned, ${n} expected for ${points} CORE/MUST product points (one per ${QUALITY_CADENCE_POINTS}, at least ${QUALITY_MIN_OCCURRENCES}) — add or withdraw one with /update-backlog`);
+  }
+  // A reminder's unnumbered Task does not plan a recurring command; a numbered occurrence does.
+  const planned = new Set([...q.values()].filter((m) => m?.known && (m.kind !== 'recurring' || m.occurrence !== null)).map((m) => m.marker));
+  const ruledOut = new Set(b.ruledOut ?? []);
+  const missing = Object.entries(QUALITY_MARKERS).filter(([marker, def]) => def.planned && !planned.has(marker) && !(def.conditional && ruledOut.has(marker))).map(([marker]) => `[${marker}]`);
+  if (missing.length) warnings.push(`quality Tasks not planned: ${missing.join(', ')} — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only ${conditional} may be ruled out under ## Consciously out of scope`);
+  return { errors, warnings };
 }
 
 /**

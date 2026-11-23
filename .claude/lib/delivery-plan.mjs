@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   backlogFingerprint, byIdAsc, chainPaths, checkAgainstRoot, NO_CORE_WARNING, parseBacklog, readBacklogFiles,
-  readIfExists, SCOPES, SIZE_POINTS, writeAtomic,
+  qualityMarker, readIfExists, SCOPES, SIZE_POINTS, writeAtomic,
 } from './backlog-check.mjs';
 
 export const DEFAULTS = {
@@ -106,8 +106,8 @@ export function loadConfig(root, flags = {}) {
 // Engine
 // ---------------------------------------------------------------------------------------------
 
-/** Ready-Task order: critical first, then the longest chain, then id. */
-const priority = (a, b) => Number(b.critical) - Number(a.critical) || b.chain - a.chain || byIdAsc(a.id, b.id);
+/** Ready-Task order: a numbered upkeep occurrence first (quality-tasks.md), then critical, then the longest chain, then id. */
+const priority = (a, b) => Number(Boolean(b.occurrence)) - Number(Boolean(a.occurrence)) || Number(b.critical) - Number(a.critical) || b.chain - a.chain || byIdAsc(a.id, b.id);
 
 /**
  * Event-driven simulation of one phase set. `tasks` = `[{ id, pts, deps, node, critical, chain }]`,
@@ -235,7 +235,13 @@ function phaseSets(work, critical) {
   for (const scope of SCOPES) {
     const raw = work.filter((t) => t.scope === scope).map((t) => ({ ...t, pts: taskPts(t) }));
     const cv = chainValues(raw);
-    sets[scope] = { tasks: raw.map((t) => ({ id: t.id, pts: t.pts, deps: t.deps, node: t.node, critical: critical.has(t.id), chain: cv.memo.get(t.id) })), cv, raw };
+    sets[scope] = {
+      tasks: raw.map((t) => {
+        const qm = qualityMarker(t.title);
+        return { id: t.id, pts: t.pts, deps: t.deps, node: t.node, critical: critical.has(t.id), chain: cv.memo.get(t.id), occurrence: qm?.kind === 'recurring' && qm.occurrence !== null, quality: Boolean(qm?.known) };
+      }),
+      cv, raw,
+    };
   }
   return sets;
 }
@@ -364,7 +370,7 @@ function planWarnings({ live, work, byId, outside, sets, phases, sprints, member
   if (!solo && sets.MUST.tasks.length) {
     const scaleSessions = laterTeam.reduce((a, p) => a + p.sessions, 0);
     const mustIds = new Set(sets.MUST.tasks.map((t) => t.id));
-    const ready = sets.MUST.tasks.filter((t) => t.deps.every((d) => !mustIds.has(d))).length;
+    const ready = sets.MUST.tasks.filter((t) => !t.quality && t.deps.every((d) => !mustIds.has(d))).length;
     if (ready < scaleSessions) warnings.push(`CORE unlocks too little parallel work: ${ready} ready for ${scaleSessions} sessions at the join — scale sessions will idle`);
   }
   if (!solo && planEnd > coreEnd + EPS) {

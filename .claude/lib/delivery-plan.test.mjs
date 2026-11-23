@@ -30,7 +30,7 @@ function backlogMd(tasks, { outside = [] } = {}) {
     const pts = tasks.filter((t) => t.id.startsWith(`${e}-`)).reduce((a, t) => a + t.pts, 0);
     return `| ${e} | Epic ${e} | outcome ${e} | assumption | ${pts} | — | — |`;
   });
-  const rows = tasks.map((t) => `| ${t.id} | ${t.id.split('-')[0]} | ${t.title ?? `Task ${t.id}`}${t.withdrawn ? ' (withdrawn)' : ''} | story | ${SIZE[t.pts]} | ${t.pts} | ${t.deps.join(', ') || '—'} | — | ${t.chain ?? '—'} | ${t.scope} | ${t.node ?? '—'} | ${(t.traces ?? []).join(', ') || '—'} | ${t.status ?? 'TODO'} | — | — |`);
+  const rows = tasks.map((t) => `| ${t.id} | ${t.id.split('-')[0]} | ${t.title ?? `Task ${t.id}`}${t.withdrawn ? ' (withdrawn)' : ''} | ${t.type ?? 'story'} | ${SIZE[t.pts]} | ${t.pts} | ${t.deps.join(', ') || '—'} | — | ${t.chain ?? '—'} | ${t.scope} | ${t.node ?? '—'} | ${(t.traces ?? []).join(', ') || '—'} | ${t.status ?? 'TODO'} | — | — |`);
   return `# Shop — Backlog (Epics + Tasks)
 **Date:** 2026-10-10 · **Sizes:** M=4 · H=8 · XH=16 points · **Detail:** full
 
@@ -554,4 +554,35 @@ test('an empty COULD tail ends in no sprint', () => {
   assert.equal(p.summary.pessimistic.couldTail.sprint, 0);
   const tail = run(dir).stdout.split('\n').find((l) => l.startsWith('| COULD tail |'));
   assert.ok(!/ends in sprint/.test(tail), tail);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Quality Tasks — .claude/skills/backlog/quality-tasks.md
+// ---------------------------------------------------------------------------------------------
+
+const occ = (marker, command, k) => ({ type: 'tech', title: `[upkeep:${marker}] Run ${command} — occurrence ${k}` });
+
+test('quality: closing audits start after the last product Task; a ready occurrence runs before later product work on one session', () => {
+  // P = 36, n = 2: the prefix to 18 is E0-1…E1-2 → occurrence 1 waits for sink E1-2.
+  const p = planOf([
+    T('E0-1', 'CORE', 4), T('E1-1', 'MUST', 8, ['E0-1']), T('E1-2', 'MUST', 8, ['E1-1']), T('E1-3', 'MUST', 8, ['E1-2']), T('E1-4', 'MUST', 8, ['E1-3']),
+    T('E9-1', 'MUST', 4, ['E1-2'], occ('architecture-review', '/architecture-review', 1)),
+    T('E9-2', 'MUST', 4, ['E1-2', 'E9-1'], occ('cleanup-workflow', '/maintain:cleanup-workflow', 1)),
+    T('E9-3', 'MUST', 4, ['E1-4', 'E9-2'], occ('architecture-review', '/architecture-review', 2)),
+    T('E9-4', 'MUST', 4, ['E1-4', 'E9-3'], occ('cleanup-workflow', '/maintain:cleanup-workflow', 2)),
+    T('E9-5', 'MUST', 8, ['E1-4'], { type: 'tech', title: '[audit:security] Run /audit-security' }),
+  ], { flags: ['--mode', 'solo', '--sessions', '1'] });
+  assert.ok(entry(p, 'E9-1').end <= entry(p, 'E1-3').start + 1e-9, JSON.stringify(p.schedule));
+  assert.ok(entry(p, 'E9-2').end <= entry(p, 'E1-3').start + 1e-9, JSON.stringify(p.schedule));
+  assert.ok(entry(p, 'E9-5').start >= entry(p, 'E1-4').end - 1e-9, JSON.stringify(p.schedule));
+});
+
+test('quality: the join-readiness warning counts product Tasks only', () => {
+  // E9-2 deliberately lacks the E9-1 edge: both occurrences are ready at the join, and only the filter keeps the count at 1.
+  const p = planOf([
+    T('E0-1', 'CORE', 8), T('E1-1', 'MUST', 8, ['E0-1']),
+    T('E9-1', 'MUST', 4, ['E0-1'], occ('architecture-review', '/architecture-review', 1)),
+    T('E9-2', 'MUST', 4, ['E0-1'], occ('cleanup-workflow', '/maintain:cleanup-workflow', 1)),
+  ]);
+  assert.ok(p.warnings.some((w) => w.startsWith('CORE unlocks too little parallel work: 1 ready for 8 sessions')), p.warnings.join('\n'));
 });

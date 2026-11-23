@@ -22,8 +22,8 @@ the Epics later.
 | `METHOD` | `.claude/commands/setup/create-backlog.md` — Phases 3–6 are your method |
 | `OUTPUT` | `.agents/backlog.md` and `.agents/backlog/E<n>-<slug>.md`, one per Epic |
 
-A checker report in a later message (`SendMessage`) means: fix exactly those errors in the files
-you wrote, then answer as below.
+A checker report in a later message (`SendMessage`) means: fix exactly those errors and quality warnings
+in the files you wrote, then answer as below.
 
 ## Method — in this order
 
@@ -35,6 +35,10 @@ you wrote, then answer as below.
    the story-map marker pair with its placeholder body.
 4. **Write the Epic files** — one per Epic, per Task its heading and a one-line `**Summary:**`, in
    Task-table order.
+5. **Plan the `Quality & upkeep` Epic** — Phase 4.5 of the method and
+   `.claude/skills/backlog/quality-tasks.md`, read in full: the marker Tasks, their `Depends on`
+   by its placement rules, rule-out lines under `## Consciously out of scope`, the release outside
+   row's `Starts after`.
 
 ## Rules
 
@@ -46,7 +50,7 @@ you wrote, then answer as below.
   (the checker generates it), no technical approach — a Summary names what the Task delivers as an
   outcome a user or system can observe, in the PRD's words.
 - Every Task traces to source ids; a Task with nothing to trace is a gap in `## Open questions`,
-  not an invented Task.
+  not an invented Task — quality Tasks (Phase 4.5) are the one exception.
 - Ids are never reused or renumbered.
 
 Your final message lists the files you wrote and every open question you recorded, nothing else.

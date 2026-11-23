@@ -1709,3 +1709,152 @@ test('CLI: no plans dir → no delivered-by warning; a done plan warns (exit 0) 
   assert.equal(c.code, 0);
   assert.doesNotMatch(c.out, /delivered by/);
 });
+
+// ---------------------------------------------------------------------------------------------
+// (Q) quality Tasks — .claude/skills/backlog/quality-tasks.md
+// ---------------------------------------------------------------------------------------------
+
+const BASE_EPICS = [
+  '| E0 | Foundation | skeleton everything stands on | monolith is enough | 12 | — | — |',
+  '| E1 | Ordering | first order placed (G-1) | users accept email confirmation | 16 | E0 | — |',
+  '| E2 | Reporting | owners see totals | daily granularity suffices | 12 | E1 | — |',
+];
+const QUALITY_EPIC = '| E3 | Quality & upkeep | the committed scope ships audited | the audits run against the product as built | 40 | — | — |';
+// Product P = 36 → n = 2; the prefix to 18 is E0-1…E1-2 (sinks E1-1, E1-2); the whole set's sinks are E1-1, E1-3, E2-1.
+const QUALITY_ROWS = [
+  '| E3-1 | E3 | [upkeep:architecture-review] Run /architecture-review — occurrence 1 | tech | M | 4 | E1-1, E1-2 | MUST | — | — | TODO | — | — |',
+  '| E3-2 | E3 | [upkeep:cleanup-workflow] Run /maintain:cleanup-workflow — occurrence 1 | tech | M | 4 | E1-1, E1-2, E3-1 | MUST | — | — | TODO | — | — |',
+  '| E3-3 | E3 | [upkeep:architecture-review] Run /architecture-review — occurrence 2 | tech | M | 4 | E1-1, E1-3, E2-1, E3-2 | MUST | — | — | TODO | — | — |',
+  '| E3-4 | E3 | [upkeep:cleanup-workflow] Run /maintain:cleanup-workflow — occurrence 2 | tech | M | 4 | E1-1, E1-3, E2-1, E3-3 | MUST | — | — | TODO | — | — |',
+  '| E3-5 | E3 | [audit:security] Run /audit-security | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
+  '| E3-6 | E3 | [audit:seo-geo] Run /seo-geo-audit | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
+  '| E3-7 | E3 | [audit:wcag] Run /wcag | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |',
+];
+const qepic = (pts) => QUALITY_EPIC.replace('| 40 |', `| ${pts} |`);
+/** The backlog text of a quality fixture; `outOfScope` lines are appended under `## Consciously out of scope`. */
+const qmd = (rows = QUALITY_ROWS, { epics = [...BASE_EPICS, QUALITY_EPIC], base = TASK_ROWS, outOfScope = [] } = {}) =>
+  backlogMd({ rows: [...base, ...rows], epics, detail: 'structure' }).replace('- payments\n', ['- payments', ...outOfScope].join('\n') + '\n');
+const quality = (rows = QUALITY_ROWS, opts = {}) => check(project({ backlog: qmd(rows, opts) }));
+const qw = (res) => res.warnings.filter((w) => /quality|occurrence|\[(audit|upkeep):/.test(w));
+const qrow = (id, cell) => QUALITY_ROWS.map((r) => (r.startsWith(`| ${id} |`) ? cell : r));
+const qdrop = (rows, ...ids) => rows.filter((r) => !ids.some((id) => r.startsWith(`| ${id} |`)));
+const auditError = (res, id) => res.errors.filter((e) => e.startsWith(`Task ${id} [audit:`));
+const ALL_UNPLANNED = 'quality Tasks not planned: [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow] — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only [audit:seo-geo] and [audit:wcag] may be ruled out under ## Consciously out of scope';
+
+test('quality: a fresh backlog with the full quality Epic raises no quality warning and no trace warning', () => {
+  const res = quality();
+  assert.deepEqual(res.errors, []);
+  assert.deepEqual(qw(res), [], res.warnings.join('\n'));
+  assert.ok(!res.warnings.some((w) => /^Task E3-\d+: tech Task with no trace/.test(w)), res.warnings.join('\n'));
+  const base = check(project());
+  assert.deepEqual(base.errors, []);
+  assert.deepEqual(qw(base), [ALL_UNPLANNED], base.warnings.join('\n'));
+});
+
+test('quality: an open closing audit that misses a product sink is an error naming the sinks; WIP and DONE audits are not', () => {
+  const short = (status) => qrow('E3-5', `| E3-5 | E3 | [audit:security] Run /audit-security | tech | H | 8 | E1-1, E1-3 | MUST | — | — | ${status} | — | — |`);
+  const expected = 'Task E3-5 [audit:security]: a closing audit must wait for every live CORE/MUST product Task — add E2-1 to Depends on';
+  assert.deepEqual(quality(short('TODO')).errors, [expected]);
+  assert.deepEqual(quality(short('BLOCKED')).errors, [expected]);
+  assert.deepEqual(quality(short('WIP')).errors, []);
+  assert.deepEqual(quality(short('DONE')).errors, []);
+
+  // A withdrawn product Task is no work to wait for.
+  const withdrawn = TASK_ROWS.map((r) => (r.startsWith('| E2-1 |') ? '| E2-1 | E2 | Report view (withdrawn) | story | H | 8 | E1-2 | MUST | reporting | FL-2.A1, BR-1 | DONE | — | — |' : r));
+  assert.deepEqual(quality(QUALITY_ROWS, { base: withdrawn }).errors, []);
+
+  // A path through DONE Tasks is no wait: a reopened E1-2 behind DONE E1-3 / E2-1 must be named.
+  const reopened = TASK_ROWS.map((r) => (/^\| E(1-3|2-1) \|/.test(r) ? r.replace('| TODO |', '| DONE |') : r));
+  const done = quality(QUALITY_ROWS, { base: reopened });
+  assert.deepEqual(auditError(done, 'E3-5'), ['Task E3-5 [audit:security]: a closing audit must wait for every live CORE/MUST product Task — add E1-2 to Depends on'], done.errors.join('\n'));
+
+  // A re-audit supersedes the earlier audit of its marker; the newest one is the one that must wait.
+  const reaudit = (deps, status = 'TODO') => [...short('TODO'), `| E3-8 | E3 | [audit:security] Run /audit-security | tech | H | 8 | ${deps} | MUST | — | — | ${status} | — | — |`];
+  const e48 = [...BASE_EPICS, qepic(48)];
+  assert.deepEqual(quality(reaudit('E1-1, E1-3, E2-1'), { epics: e48 }).errors, []);
+  const late = quality(reaudit('E1-1'), { epics: e48 });
+  assert.deepEqual(late.errors, ['Task E3-8 [audit:security]: a closing audit must wait for every live CORE/MUST product Task — add E1-3, E2-1 to Depends on']);
+  const fix = '| E2-3 | E2 | Report fix | story | M | 4 | E1-2 | MUST | reporting | FL-2.A1 | TODO | — | — |';
+  const e2 = BASE_EPICS.map((e) => (e.startsWith('| E2 |') ? e.replace('| 12 |', '| 16 |') : e));
+  const closed = quality(reaudit('E1-1, E1-3, E2-1', 'DONE'), { base: [...TASK_ROWS, fix], epics: [...e2, qepic(48)] });
+  assert.deepEqual(auditError(closed, 'E3-5'), [], closed.errors.join('\n'));
+  assert.deepEqual(auditError(closed, 'E3-8'), [], closed.errors.join('\n'));
+});
+
+test('quality: the occurrence count follows max(2, ceil(P / 160)); unnumbered reminder Tasks are not counted', () => {
+  const noE33 = qdrop(QUALITY_ROWS, 'E3-3').map((r) => (r.startsWith('| E3-4 |') ? r.replace('E2-1, E3-3', 'E2-1, E3-2') : r));
+  const one = quality(noE33, { epics: [...BASE_EPICS, qepic(36)] });
+  assert.deepEqual(one.errors, []);
+  assert.deepEqual(qw(one), ['[upkeep:architecture-review]: 1 occurrence(s) planned, 2 expected for 36 CORE/MUST product points (one per 160, at least 2) — add or withdraw one with /update-backlog']);
+
+  // Scaling: 284 bulk points + 36 = 320 → n = 2; one more M (324) → n = 3.
+  const occurrences = QUALITY_ROWS.slice(0, 4);
+  const bulk = (extraM) => [
+    ...Array.from({ length: 17 }, (_, i) => `| E4-${i + 1} | E4 | Bulk ${i + 1} | tech | XH | 16 | E0-1 | MUST | — | AD-1 | TODO | — | — |`),
+    ...Array.from({ length: 3 + extraM }, (_, i) => `| E4-${i + 18} | E4 | Bulk ${i + 18} | tech | M | 4 | E0-1 | MUST | — | AD-1 | TODO | — | — |`),
+  ];
+  const bulkEpic = (pts) => `| E4 | Bulk | bulk work | none | ${pts} | — | — |`;
+  const at320 = quality(occurrences, { base: [...TASK_ROWS, ...bulk(0)], epics: [...BASE_EPICS, qepic(16), bulkEpic(284)] });
+  assert.deepEqual(at320.errors, []);
+  assert.ok(!at320.warnings.some((w) => /occurrence\(s\) planned/.test(w)), at320.warnings.join('\n'));
+  const at324 = quality(occurrences, { base: [...TASK_ROWS, ...bulk(1)], epics: [...BASE_EPICS, qepic(16), bulkEpic(288)] });
+  assert.deepEqual(at324.errors, []);
+  assert.ok(at324.warnings.includes('[upkeep:architecture-review]: 2 occurrence(s) planned, 3 expected for 324 CORE/MUST product points (one per 160, at least 2) — add or withdraw one with /update-backlog'), at324.warnings.join('\n'));
+
+  // A reminder's unnumbered Task neither counts nor needs prerequisites.
+  const doneOcc = QUALITY_ROWS.map((r, i) => (i < 4 ? r.replace('| TODO |', '| DONE |') : r));
+  const reminder = quality([...doneOcc, '| E3-8 | E3 | [upkeep:architecture-review] Run /architecture-review | tech | M | 4 | — | MUST | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(44)] });
+  assert.deepEqual(reminder.errors, []);
+  assert.deepEqual(qw(reminder), [], reminder.warnings.join('\n'));
+});
+
+test('quality: an open numbered occurrence without Depends on warns', () => {
+  const free = (status) => qrow('E3-1', `| E3-1 | E3 | [upkeep:architecture-review] Run /architecture-review — occurrence 1 | tech | M | 4 | — | MUST | — | — | ${status} | — | — |`);
+  const open = quality(free('TODO'));
+  assert.deepEqual(open.errors, []);
+  assert.deepEqual(qw(open), ['Task E3-1 [upkeep:architecture-review]: occurrence 1 has no Depends on — it would be free on day one; place it after its share of the product work']);
+  const done = quality(free('DONE'));
+  assert.deepEqual(done.errors, []);
+  assert.deepEqual(qw(done), [], done.warnings.join('\n'));
+});
+
+test('quality: a missing mandatory marker warns even when ruled out; a conditional one may be ruled out', () => {
+  const conditionalOut = ['- [audit:seo-geo] — no public website', '- [audit:wcag] — no user interface'];
+  const ruledRows = qdrop(QUALITY_ROWS, 'E3-6', 'E3-7');
+  const ruledOpts = { epics: [...BASE_EPICS, qepic(24)], outOfScope: conditionalOut };
+  const ruled = quality(ruledRows, ruledOpts);
+  assert.deepEqual(ruled.errors, []);
+  assert.ok(!ruled.warnings.some((w) => /quality Tasks not planned/.test(w)), ruled.warnings.join('\n'));
+  assert.deepEqual(parseBacklog(qmd(ruledRows, ruledOpts)).ruledOut, ['audit:seo-geo', 'audit:wcag']);
+
+  const noSecurity = quality(qdrop(QUALITY_ROWS, 'E3-5', 'E3-6', 'E3-7'), { epics: [...BASE_EPICS, qepic(16)], outOfScope: [...conditionalOut, '- [audit:security] — not needed'] });
+  assert.deepEqual(noSecurity.errors, []);
+  assert.deepEqual(noSecurity.warnings.filter((w) => /quality Tasks not planned/.test(w)), ['quality Tasks not planned: [audit:security] — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only [audit:seo-geo] and [audit:wcag] may be ruled out under ## Consciously out of scope']);
+
+  // A reminder's unnumbered Task alone does not plan the recurring command.
+  const reminderOnly = qdrop(QUALITY_ROWS, 'E3-1', 'E3-3').map((r) => r.replace('E1-1, E1-2, E3-1', 'E1-1, E1-2').replace('E2-1, E3-3', 'E2-1, E3-2'));
+  const reminder = quality([...reminderOnly, '| E3-8 | E3 | [upkeep:architecture-review] Run /architecture-review | tech | M | 4 | — | MUST | — | — | TODO | — | — |'], { epics: [...BASE_EPICS, qepic(36)] });
+  assert.deepEqual(reminder.errors, []);
+  assert.deepEqual(reminder.warnings.filter((w) => /quality Tasks not planned/.test(w)), ['quality Tasks not planned: [upkeep:architecture-review] — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only [audit:seo-geo] and [audit:wcag] may be ruled out under ## Consciously out of scope']);
+});
+
+test('quality: off type/size/scope and unknown markers warn', () => {
+  const resized = quality(qrow('E3-5', '| E3-5 | E3 | [audit:security] Run /audit-security | tech | M | 4 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |'), { epics: [...BASE_EPICS, qepic(36)] });
+  assert.deepEqual(resized.errors, []);
+  assert.ok(resized.warnings.includes('Task E3-5 [audit:security]: expected tech · H · MUST, found tech · M · MUST'), resized.warnings.join('\n'));
+  const typo = quality(qrow('E3-5', '| E3-5 | E3 | [audit:securty] Run /audit-security | tech | H | 8 | E1-1, E1-3, E2-1 | MUST | — | — | TODO | — | — |'));
+  assert.deepEqual(typo.errors, []);
+  assert.ok(typo.warnings.includes('Task E3-5: unknown quality marker [audit:securty] — use one of [audit:security], [audit:seo-geo], [audit:wcag], [upkeep:architecture-review], [upkeep:cleanup-workflow]'), typo.warnings.join('\n'));
+  const clean = quality();
+  assert.ok(!clean.warnings.some((w) => /expected tech ·|unknown quality marker/.test(w)), clean.warnings.join('\n'));
+});
+
+test('quality: CORE minimality ignores quality consumers', () => {
+  const flags = '| E0-3 | E0 | Feature flags | tech | M | 4 | E0-1 | CORE | platform-core | AD-1 | TODO | — | — |';
+  const e0 = BASE_EPICS.map((e) => (e.startsWith('| E0 |') ? e.replace('| 12 |', '| 16 |') : e));
+  const audits = QUALITY_ROWS.map((r) => (/^\| E3-[567] \|/.test(r) ? r.replace('| E1-1, E1-3, E2-1 |', '| E0-3, E1-1, E1-3, E2-1 |') : r));
+  const res = quality(audits, { base: [...TASK_ROWS, flags], epics: [...e0, QUALITY_EPIC] });
+  assert.deepEqual(res.errors, []);
+  assert.ok(res.warnings.includes('Task E0-3: CORE, but nothing outside CORE depends on it — candidate to leave CORE'), res.warnings.join('\n'));
+  assert.ok(!res.warnings.some((w) => /Task E0-[12]: CORE, but/.test(w)), res.warnings.join('\n'));
+});

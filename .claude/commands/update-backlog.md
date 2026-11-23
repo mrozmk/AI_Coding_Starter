@@ -73,7 +73,10 @@ fills that `D-n`'s `**Tasks:**` / `**Jira refresh:**` lines instead of writing a
   still pending (reconcile mode covers it). A changed file is pending again — say which `D-n`
   processed its earlier version.
 - **"BA direct decision"** — a decision the user states in chat is a source too; quote it.
-- Nothing pending and no chat decision → "nothing to process", stop.
+- **Missing quality Tasks** — `node .claude/lib/backlog-check.mjs` (read-only) prints a `quality
+  Tasks not planned` warning → `.claude/skills/backlog/quality-tasks.md` is a source too (Phase 3
+  → Quality Tasks), with or without arguments.
+- Nothing pending, no chat decision and no missing quality Tasks → "nothing to process", stop.
 
 ## Phase 2 — Load
 
@@ -96,7 +99,7 @@ Scan each source for backlog-actionable statements and build
 | Kind | Register (`docs/PRD.md`) | Backlog |
 |---|---|---|
 | `add` (story) | new `R-n` (next id, `Added: <new Current>`, `Source` / `Quote`) unless the source names an existing **untraced** active `R-n` | new Task (next id), `Traces` incl. that `R-n`, `Status: TODO`, `Jira: —`, AC from `nextAc` |
-| `add` (tech) | none (traces `AD-n` / `NFR-n`) | new Task |
+| `add` (tech) | none (traces `AD-n` / `NFR-n`; a quality Task — `.claude/skills/backlog/quality-tasks.md` — traces nothing) | new Task; a quality Task takes its row, Summary and (under `**Detail:** full`) criteria from that file |
 | `edit` — same meaning | none, or an `editorial` `D-n` for a register wording fix | **unprotected** Task: prose / AC edited — AC text under an existing id is never edited: withdraw it and add a new id |
 | `edit` — meaning changed | old `R-n` `(superseded by R-m per D-k)`, new `R-m` | unprotected Task: `Traces` → `R-m`, AC withdraw + new; **protected Task untouched** + a `delta-linked` intent |
 | `delta-linked` | the `R-m` from the row above | new Task, `Relates: <protected id>`, `Traces: R-m` (a delta of a delta relates to the original protected Task) |
@@ -125,6 +128,27 @@ history, so it is never protected); a withdrawn `R-n` → a question whether the
 exists), or its `Jira` key's live status is not in the project's backlog / waiting set — read
 read-only with the refresh `brainstorm.md` Step 0 a′ uses; tracker unreachable → every keyed Task
 counts as protected (say so once). A protected Task is never edited in place.
+
+**Quality Tasks** (`.claude/skills/backlog/quality-tasks.md`). A change that adds a live `CORE` /
+`MUST` product Task that is a new sink adds it to the `Depends on` of the open closing audit
+each marker binds (its highest-id live audit, while `TODO` / `BLOCKED`) in the same run — the checker
+refuses the candidate otherwise. Any change to the product points or order re-places every
+open, unprotected upkeep occurrence by the placement rule for the new `P` and `n` in the same
+candidate (adding or withdrawing `TODO` occurrences as `n` moves), so the last one still waits
+for all product work. A
+**protected** closing audit is never rewritten: the new work becomes a Phase 4 question with two
+answers — defer the addition until the audit closes, or add it together with a re-audit Task (a
+new id, the same marker, waiting for all product work — as the highest id it becomes the audit
+the checker binds; the release outside row's `Starts after` or the `Release ← closing audits`
+blocker line gets its id, and for `[audit:seo-geo]` so does the staging row's `Needed by`); the
+impact preview names the audit either way. A protected occurrence keeps its number: the question
+is defer, or add an unnumbered follow-up run (`[upkeep:<id>] Run <command>`, depending on the new
+work and on the protected occurrence), which the cadence does not count — a numbered occurrence is
+added only when the new `n` asks for one. A change that adds or removes a public website or a user
+interface re-decides `[audit:seo-geo]` / `[audit:wcag]` by that file's **Planned or ruled out**
+rule in the same candidate: plan the audit with its release and staging edges and drop the
+rule-out line, or the reverse (withdraw a `TODO` audit, add the rule-out line). A backlog written before quality Tasks existed gets them through
+`add (tech)` intents from that file, after the checker's `quality Tasks not planned` warning.
 
 ## Phase 4 — Clarification loop
 

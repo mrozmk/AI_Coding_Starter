@@ -60,6 +60,7 @@ RUBRIC:   .claude/skills/backlog/backlog-rubric.md
 MODE:     structure | detail   (from **Detail:** — structure defers the criteria rules, see the rubric's Modes)
 SOURCES:  docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml (those that exist)
           + every approved spec named in the Ref cell of an in-scope Task
+          + .claude/skills/backlog/quality-tasks.md when an in-scope Task carries a quality marker
 ROUND:    1
 PRIOR:    (the checker warnings, verbatim, as known context)
 SCOPE:    all | E<n> | <the --since Task set>   (+ the in-scope rows of ## Outside the dev backlog)
@@ -154,7 +155,9 @@ bash .claude/lib/codex-bg.sh
 > and raise nothing for criteria not written yet. The rubric is
 > `.claude/skills/backlog/backlog-rubric.md` (K1–K11). The sources the backlog must trace to are
 > `<docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml — those that exist>`
-> plus `<every approved spec named in the Ref cell of an in-scope Task, or "no specs">`. The method
+> plus `<every approved spec named in the Ref cell of an in-scope Task, or "no specs">`. Quality
+> Tasks (a `[audit:` / `[upkeep:` marker) are backed by `.claude/skills/backlog/quality-tasks.md`,
+> not by the PRD. The method
 > reference is `.claude/commands/setup/create-backlog.md` (Phase 3 developer-only scope and split
 > patterns, Phase 4 CORE rules). SCOPE: `<all | E<n> | the --since Task set>` plus the in-scope rows
 > of `## Outside the dev backlog` — report nothing outside it. Read `.claude/agents/start-critic.md`
