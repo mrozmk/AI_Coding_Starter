@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Offline smoke for worker-next.sh: refusals, two assignments in one clone, resume.
+# team-suite: serial
+# serial because: its fake builds are judged by a machine-wide ps probe and appear within a 2 s poll
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$HERE/team-smoke-lib.sh"

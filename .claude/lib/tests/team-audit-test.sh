@@ -3,6 +3,7 @@
 # closed TeamLead run J, completed rework round K.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
+export SMOKE_REAL_AUDIT=1   # the one suite that asserts the runner-exit audit keeps the real script
 smoke_init
 AUD="$SRC/.claude/lib/team_audit.py"
 CFG="$WORK/audit.json"
@@ -151,6 +152,7 @@ pr_json true "$BASE"
 start=$(date +%s)
 STUB_AZ_SLEEP=30 TEAM_AUDIT_PR_SECS=1 run "$CLONE" bash "$MAIN/.claude/lib/team-audit.sh" alfa
 expect 0 "audit: " "G hung az"
+# margin: time box 1 s, stub sleeps 30 s; the 10 s bound absorbs 9 s of load and can never pass by waiting the stub out
 [ $(( $(date +%s) - start )) -lt 10 ] || fail "G: wrapper took $(( $(date +%s) - start ))s"
 has "| title | - |" "$MAIN/.agents/team/audit/20261024-alfa-AB-790-$RUN_ID.md" || fail "G: title"
 has "az repos pr show" "$STUB_LOG" || fail "G: no PR lookup"

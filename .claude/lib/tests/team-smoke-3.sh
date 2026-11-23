@@ -18,6 +18,7 @@ fresh_run() {  # fresh_run <run id> — a new run with no live state
 }
 
 # ---- (19) mode in team.json + status ------------------------------------------------------------
+case_mark "(19) mode in team.json + status"
 [ "$(jq -r .mode "$TD/team.json")" = brainstorm ] || fail "team-new did not write mode brainstorm"
 run "$MAIN" $TR alfa status
 expect 0 "mode: brainstorm" "status shows the mode"
@@ -30,6 +31,7 @@ expect 1 "unknown mode" "status refuses an unknown mode"
 setmode brainstorm
 
 # ---- (20) team-new / team-next mode argument ----------------------------------------------------
+case_mark "(20) team-new / team-next mode argument"
 git -C "$SEED" switch --quiet -c noprompts develop
 git -C "$SEED" rm --quiet .claude/team/prompts/planner-quick.md .claude/team/prompts/cli.md
 git -C "$SEED" commit --quiet -m "no mode prompts" && git -C "$SEED" push --quiet origin noprompts
@@ -58,6 +60,7 @@ for mode in quick cli; do
 done
 
 # ---- (21) cli launch through the real runner — before any commit --------------------------------
+case_mark "(21) cli launch through the real runner"
 setmode cli; fresh_run alfa-20261006-000001
 echo '{"planner":{"model":"x"}}' > "$TD/roles.override.json"
 cp "$TD/roles.override.json" "$WORK/cli-override"
@@ -119,6 +122,7 @@ cp "$WORK/prof-cli" "$PROF"
 rm -f "$TD/session.json" "$TD/roles.override.json"; setmode brainstorm
 
 # ---- (22) quick planner validation --------------------------------------------------------------
+case_mark "(22) quick planner validation"
 setmode quick; fresh_run alfa-20261006-000002
 commit_file .agents/plans/active/p.md "# Feature: p"
 session planner 1 "$BASE"
@@ -131,6 +135,7 @@ expect 4 "no spec" "brainstorm planner still needs a spec"
 rm -f "$TD/session.json"
 
 # ---- (23) cli record validation -----------------------------------------------------------------
+case_mark "(23) cli record validation"
 setmode cli; fresh_run alfa-20261006-000003
 session cli 1 "$BASE"
 commit_file cli.txt change
@@ -149,6 +154,7 @@ expect 4 "does not run in mode cli" "planner record in cli mode"
 rm -f "$TD/session.json" "$RD"/*.json
 
 # ---- (24) merge check and summary in cli mode ---------------------------------------------------
+case_mark "(24) merge check and summary in cli mode"
 MC="bash .claude/lib/team-merge-check.sh"
 mkrec cli "$C1"; merge_at "$C1"
 run "$MAIN" $MC alfa
@@ -212,11 +218,13 @@ has "missing: wrapup-<n>.md" "$WORK/out" || fail "unaccepted wrapup summary show
 has 'UNACCEPTED' "$WORK/out" && fail "summary shown without accepted records"
 
 # ---- (25) team-next sees the cli PR -------------------------------------------------------------
+case_mark "(25) team-next sees the cli PR"
 setmode cli; rm -f "$RD"/coder-1-1.json*; pr_w "$C1"
 run "$MAIN" bash .claude/lib/team-next.sh alfa AB-795 feature/AB-795-x origin/develop
 expect 1 "previous PR #8371" "team-next refuses while the cli PR is active"
 
 # ---- (27) old clone without the new files -------------------------------------------------------
+case_mark "(27) old clone without the new files"
 setmode -; fresh_run alfa-20261006-000004
 mv "$CLONE/.claude/lib/team-modes.sh" "$CLONE/.claude/lib/team-validate.sh" "$WORK/"
 run "$MAIN" $TR alfa status
@@ -230,6 +238,7 @@ mv "$WORK/team-modes.sh" "$WORK/team-validate.sh" "$CLONE/.claude/lib/"
 rm -f "$TD/session.json"; setmode brainstorm
 
 # ---- (27b) Herdr: a stage's pane comes from the main checkout's roles.sh place ------------------
+case_mark "(27b) Herdr: a stage's pane comes from t"
 fresh_run alfa-20261006-000005
 for f in roles.sh; do
   rm -f "$WORK/$f.clone"; [ ! -f "$CLONE/.claude/lib/$f" ] || cp "$CLONE/.claude/lib/$f" "$WORK/$f.clone"
@@ -248,6 +257,7 @@ done
 rm -f "$TD/session.json" "$(cd "$MAIN" && pwd -P)/.agents/team/registry/alfa-planner.json"; rm -rf "$TD/lock"
 
 # ---- (29) dashboard folding and the "waiting for you" bar ---- ------------------------------
+case_mark "(29) dashboard folding and the waiting f"
 CL3="$WORK/claude3"; SUBS="$CL3/s9/subagents"; mkdir -p "$SUBS"
 echo '{"type":"assistant","message":{"model":"m"}}' > "$CL3/s9.jsonl"
 export TEAM_DASH_PROJECT_DIR="$CL3" TEAM_DASH_SESSION=s9
@@ -266,6 +276,16 @@ snap "fresh finish beyond the cap" '(.subagents | map({key: .id, value: .}) | fr
   and $s["old-11"] != null and $s["old-12"] == null
   and (.subagents | map(select(.status != "done")) | length) == 12
   and any(.errors[]; . == "subagents: 1 older finished hidden")'
+# Only the snap above reads .subagents: the rest of (29) parses one transcript, not 25. Same parent
+# as $CL3, which is where the snapshot finds the clone's transcripts.
+CL3S="$WORK/claude3s"; mkdir -p "$CL3S"; cp "$CL3/s9.jsonl" "$CL3S/"; export TEAM_DASH_PROJECT_DIR="$CL3S"
+# az_gone <pid file> <label> — the time-boxed stub is gone (pr_timebox kills its process group,
+# team-lib.sh pr_timebox); a time box that returned but left the child alive fails here.
+az_gone() {
+  [ -s "$1" ] || fail "$2: the az call never started"
+  for _ in $(seq 1 20); do kill -0 "$(cat "$1")" 2>/dev/null || return 0; sleep 0.1; done
+  fail "$2 still running after the snapshot"
+}
 
 TEAM='.teams[] | select(.team == "alfa")'
 fresh_run alfa-20261006-000005
@@ -287,10 +307,20 @@ snap "cache fill" "($TEAM | .state == \"awaiting_merge\")"
 : > "$STUB_LOG"
 snap "cache hit" "($TEAM | .state == \"awaiting_merge\")"
 has "repos pr show" "$STUB_LOG" && fail "cached PR state still called az"
+# A slow az is killed at the time box, not waited out. Latency against a same-load control snap:
+# margin = time box 1 s + 3 s of load; the stub sleeps 30 s, so waiting it out can never pass, and
+# its end marker (written after the sleep) must never appear.
+export TEAM_DASH_CACHE="$WORK/cache2c"; mkdir -p "$TEAM_DASH_CACHE"
+c0=$(case_now); snap "slow az control" "($TEAM | .state == \"awaiting_merge\")"; c1=$(case_now)
 export TEAM_DASH_CACHE="$WORK/cache2"; mkdir -p "$TEAM_DASH_CACHE"
-SECONDS=0
-STUB_AZ_SLEEP=6 TEAM_DASH_PR_SECS=1 snap "slow az" "($TEAM | .state == \"pr_unknown\")"
-[ "$SECONDS" -lt 5 ] || fail "slow az held the snapshot ${SECONDS}s"
+s0=$(case_now)
+STUB_AZ_SLEEP=30 TEAM_DASH_PR_SECS=1 STUB_TOUCH="$WORK/az-end" STUB_AZ_PIDFILE="$WORK/az.pid" \
+  snap "slow az" "($TEAM | .state == \"pr_unknown\")"
+s1=$(case_now)
+az_gone "$WORK/az.pid" "slow az"
+[ ! -e "$WORK/az-end" ] || fail "slow az ran to its end"
+case_under "$s0" "$s1" "$c0" "$c1" 4 \
+  || fail "slow az held the snapshot: $s0→$s1 against control $c0→$c1"
 grep -qx unknown "$TEAM_DASH_CACHE/pr-alfa-8371" || fail "timeout not cached as unknown"
 unset TEAM_DASH_CACHE
 
@@ -362,21 +392,34 @@ snap "failed last role is not finished" '(.teams[] | select(.team == "alfa") | .
 has "repos pr show" "$STUB_LOG" && fail "a team without its last role asked ADO"
 rm -f "$RD"/qa-1-1.json* "$RD"/wrapup-1-1.json*
 
-# One hung ADO costs one timeout per snapshot, not one per finished team.
-: > "$STUB_LOG"; SECONDS=0
-( W="$WORK/w5"; mkdir -p "$W"; : > "$W/errors"; NOW="$(date -u +%s)"
-  err() { printf '%s\n' "$*" >> "$W/errors"; }
-  age() { echo $(( NOW - $(stat -f %m "$1") )); }
-  . "$CLONE/.claude/lib/team-lib.sh"; . "$CLONE/.claude/lib/team-pr-state.sh"
-  cd "$CLONE"; export STUB_AZ_SLEEP=6 TEAM_DASH_PR_SECS=1
-  pr_state "$CLONE" alfa 8371; pr_state "$CLONE" beta 8372 ) > "$WORK/out" 2>&1
+# One hung ADO costs one timeout per snapshot, not one per finished team: the same kill proof and
+# same-load control as the slow az above (margin = time box 1 s + 3 s of load).
+pr2() {  # pr2 <dir> — pr_state for two finished teams in one snapshot-like subshell → $WORK/out
+  ( W="$1"; mkdir -p "$W"; : > "$W/errors"; NOW="$(date -u +%s)"
+    err() { printf '%s\n' "$*" >> "$W/errors"; }
+    age() { echo $(( NOW - $(stat -f %m "$1") )); }
+    . "$CLONE/.claude/lib/team-lib.sh"; . "$CLONE/.claude/lib/team-pr-state.sh"
+    cd "$CLONE"; export TEAM_DASH_PR_SECS=1
+    pr_state "$CLONE" alfa 8371; pr_state "$CLONE" beta 8372 ) > "$WORK/out" 2>&1
+}
+c0=$(case_now); pr2 "$WORK/w5c"; c1=$(case_now)
+: > "$STUB_LOG"
+s0=$(case_now)
+STUB_AZ_SLEEP=30 STUB_TOUCH="$WORK/az-end2" STUB_AZ_PIDFILE="$WORK/az2.pid" pr2 "$WORK/w5"
+s1=$(case_now)
 [ "$(tr '\n' ' ' < "$WORK/out")" = "unknown unknown " ] || fail "pr_state after a timeout"
 [ "$(grep -c 'repos pr show' "$STUB_LOG")" = 1 ] || fail "az called again after a timeout"
-[ "$SECONDS" -lt 4 ] || fail "hung ADO held two teams ${SECONDS}s"
+az_gone "$WORK/az2.pid" "hung ADO"
+[ ! -e "$WORK/az-end2" ] || fail "hung ADO ran to its end"
+case_under "$s0" "$s1" "$c0" "$c1" 4 \
+  || fail "hung ADO held two teams: $s0→$s1 against control $c0→$c1"
 has "beta: PR 8372 skipped" "$WORK/w5/errors" || fail "skipped PR not reported"
+# Second, cheap proof well inside the stubs' 30 s: neither killed az reached its end marker.
+[ ! -e "$WORK/az-end" ] && [ ! -e "$WORK/az-end2" ] || fail "a killed az wrote its end marker later"
 unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 
 # ---- (28) static checks -------------------------------------------------------------------------
+case_mark "(28) static checks"
 [ "$(wc -l < "$SRC/.claude/lib/team-run.sh")" -lt 500 ] || fail "team-run.sh reached 500 lines"
 for f in "$SRC"/.claude/lib/team-snapshot-*.sh; do
   [ "$(wc -l < "$f")" -lt 500 ] || fail "$(basename "$f") reached 500 lines"
@@ -390,6 +433,7 @@ done
   || fail "team-mode.md over 500 lines"
 
 # ---- (30) accepted QA launches the actual wrapup prompt ---------------------------------
+case_mark "(30) accepted QA launches the actual wra"
 setmode brainstorm; fresh_run alfa-20261006-000005
 WRAP_REV="$(git -C "$CLONE" rev-parse HEAD)"
 for role in planner coder qa; do mkrec "$role" "$WRAP_REV"; done

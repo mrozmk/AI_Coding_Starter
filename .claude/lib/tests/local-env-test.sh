@@ -69,8 +69,10 @@ if has results; then
   echo "it: results in $d"; echo "$d" > "$RESULTS_FILE"
 fi
 if has trap; then
-  trap 'echo got-term > "$TERM_FILE"; exit 143' TERM
-  : > "$READY_FILE"; sleep 30 & wait
+  # The background sleep ignores TERM: when the group TERM also killed it, bash 3.2 sometimes
+  # returned from `wait` on the child's death and dropped its own trap (about 1 run in 6).
+  trap 'echo got-term > "$TERM_FILE"; kill -KILL $! 2>/dev/null; exit 143' TERM
+  ( trap '' TERM; exec sleep 30 ) & : > "$READY_FILE"; wait
 fi
 for w in $mode; do case "$w" in rc=*) exit "${w#rc=}" ;; esac; done
 exit 0
@@ -210,6 +212,8 @@ cat "$T/sig.out" >> "$T/all"
 : > "$T/hang"
 run 78 "hung origin, no local origin/HEAD" TRUNK_TRUST_LS_REMOTE_TIMEOUT=2 -- probe; has "git remote set-head origin" "set-head fix"
 (cd "$W" && g remote set-head origin main)
+# margin: the hung ls-remote is cut at TRUNK_TRUST_LS_REMOTE_TIMEOUT=2; the 20 s bound leaves 18 s of
+# load and still fails a run that waits for the 60 s hang.
 s=$(date +%s)
 run 0 "hung ls-remote" TRUNK_TRUST_LS_REMOTE_TIMEOUT=2 -- probe
 [ $(( $(date +%s) - s )) -lt 20 ] || fail "hung ls-remote was not bounded"
