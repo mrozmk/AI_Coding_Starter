@@ -323,6 +323,7 @@ Gate design: <outcome>[ — <reason>]
 Gate cross-model: <outcome>[ — <reason>]
 Gate final-build: <outcome>[ — <reason>]
 Tests: passed=<n> failed=<n> skipped=<n> baseline=<n>
+AC: total=<n> met=<n> unconfirmed=<n> deferred=<n>
 Warnings: none | <list>
 Rethink signals: none | <list>
 ```
@@ -333,6 +334,37 @@ anything but `passed` means no publication. `Tests: passed=0` is accepted only w
 checkout's `teams.test_gate` is `none`. `Verdict: escalated` or any rethink signal means a `blocked`
 record, not `done`. Free text may follow; it records `Load: start … end … (waited …s)` per gate run.
 
+**Acceptance criteria — the optional `AC:` line.** QA writes it from the `Acceptance criteria:`
+status of `/check-implementation`'s final report and the last gate pass's `### Acceptance Criteria`
+block (`/gates:verify-implementation` §6). It counts the active criteria and has no `unmet` count:
+an `unmet` row, like an `unconfirmed` one with effect `BLOCK`, stays in QA's fix loop and never
+reaches a `done` record. Each `unconfirmed` criterion is one `Warnings:` item `AC <id> unconfirmed`
+(the id only — the line is split at every comma), and `unconfirmed > 0` requires
+`Verdict: ready-with-warnings`; with no `unconfirmed` criterion the verdict stays what the other
+gates made it. A `deferred` criterion is no warning. The line is absent on an escalated attempt
+(`Verdict: escalated` — that rule wins over every other here, and covers an attempt a rethink
+signal sends to a `blocked` record, which keeps the verdict the gates made), when the gate printed
+no ledger (a clone on an older base: the runner's validator comes from the main checkout, the QA
+prompt and the gate from the clone), and when the status is `n/a (…)` or `not evaluated — …` (on
+an attempt QA publishes, the latter adds the `Warnings:` item `AC not evaluated` and sets
+`Verdict: ready-with-warnings`). When it is present,
+`team-validate.sh` refuses a second `AC:` line, a line off this shape, a count longer than 9
+digits once its leading zeros are dropped, counts whose `met + unconfirmed + deferred` is not
+`total`, and `unconfirmed > 0` unless the report's first `Verdict:` line — the one the acceptance
+gate reads — is `ready-with-warnings`; it does not cross-check the `Warnings:` items.
+
+The complete ledger follows the keyed lines as free text, opened by the line
+`Acceptance criteria ledger:` — the gate's completeness notice verbatim when it printed one, then
+one line per active criterion in the gate's order, `- <id> — <verdict> — <criterion text> —
+<evidence>`. The criterion text comes from the plan by id; a gate-numbered duplicate `<id> (k)`
+takes the k-th active criterion with that id in plan order and keeps its decorated id in the
+ledger, `Warnings:` and the PR. A `deferred` row ends `manual check:
+<the plan's what-and-where, or its Proof: none reason>`; on a plan without `Proof:` lines,
+`manual check: no procedure in the plan — <the gate's evidence>`. Every ledger line starts with
+`- `, so none reads as a keyed line. An escalated attempt copies the final gate pass's rows
+verbatim with their effect; when that pass stopped before §6 it copies the final
+`not evaluated — …` status instead, never an earlier pass's rows.
+
 ## 8. What team mode changes per command
 
 | Command | Team mode |
@@ -340,7 +372,7 @@ record, not `done`. Free text may follow; it records `Load: start … end … (w
 | `/brainstorm` | Step 8.8 rule → notes `## Learnings`, not `patterns.md`; Step 9 approves the spec itself (`Approved (auto — team mode)`) unless a rethink signal and continues in the same turn |
 | `/plan-feature` | grill memory update and Step 7.9 → notes `## Learnings` |
 | `/execute` | Step 7 skipped (→ notes); routine deviation → `## Unattended decisions`; each `red before green: <test> — yes \| n/a — <why>` line → `## Unattended decisions`; material → `TEAM-BLOCKED: <question>` before `/commit` |
-| `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks; a finder `FALLBACK` line → `Warnings:` (§7) and the PR's `## QA`, verbatim |
+| `/check-implementation` | base from `team.json` `base_sha` for qa (`--base`); Step 2 → notes; Step 3 never asks; a finder `FALLBACK` line → `Warnings:` (§7) and the PR's `## QA`, verbatim; its `Acceptance criteria` status and ledger → the `AC:` line, the `AC <id> unconfirmed` items of `Warnings:` and the ledger (§7) |
 | `/commit` | Step 9 memory checkpoint skipped |
 | `/quick-change` | quick planner: Phases 0–2, then the plan file, no code |
 | `/pr-create` | not used by the team roles — Step 7a stops in team mode; the coder (draft) and cli (published) create the PR with `team-pr.sh create` against `team.json` `line` on both providers (§8a) |
