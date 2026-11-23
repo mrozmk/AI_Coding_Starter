@@ -83,16 +83,35 @@ out_refuse() {  # out_refuse <reason> — the deny/block form of this event
     Stop) out_block "$1" ;; esac
 }
 
-# fallback <id> — the deadline answer of each event (the ask stays open for a retry or a wait).
+# fallback <id> [state] — the deadline answer of each event (the ask stays open for a retry or a
+# wait). state (PermissionRequest only, passed by wait_and_answer, never re-read): ask_timeout's
+# result `timed-out` | `withdrawn`; anything else (`unclaimed` after a failed delivery claim, or
+# empty when ask_timeout failed) gets a neutral deny that asserts no state. An Operator-tier ask
+# is never told to retry now: no lead can answer it and an unattended run would loop (#238).
+# Tier and cause: the ones handle() computed for this very call (dynamic scope: its locals `tier`
+# and `cause`), the ask file only as a fallback — a failed read must never turn an Operator deny
+# into a "retry" (an empty tier would match the lead arms).
 fallback() {
+  local st="${2:-}" t c stop
   case "$EV" in
     PreToolUse) out_pre_deny "No answer from the TeamLead yet (ask $1 is still open). Ask again with the same input — the answer will be waiting." ;;
     PermissionRequest)
-      if [ "$(ask_get "$1" state)" = timed-out ]; then
-        out_perm_deny "No answer yet: ask $1 waits for the Operator's decision and stays open. Retry the same tool call later — the decided answer will be waiting."
-      else
-        out_perm_deny "No answer from the TeamLead yet (ask $1, withdrawn). Retry the same tool call to ask the TeamLead again."
-      fi ;;
+      if stopped; then out_refuse "$STOP_MSG"; return 0; fi
+      t="${tier:-}"; [ -n "$t" ] || t="$(ask_get "$1" tier)"
+      c="${cause:-}"; [ -n "$c" ] || c="$(ask_get "$1" tier_cause)"; c="${c:+ ($c)}"
+      stop="Go on with work that does not depend on it; if your work cannot finish without it, take your own stop path naming $1 (coder, QA, CLI: a \`blocked\` record; planner: ask the TeamLead; a review finder: \`STATUS: failed\`; any other caller: end the turn with a plain-text stop naming $1 and the blocked operation)."
+      case "$t:$st" in
+        operator:timed-out)
+          out_perm_deny "No Operator answer reached ask $1$c before the deadline; it stays open. Do not retry this same command now. $stop Once the answer is relayed to ask $1, a later identical retry from this same session can collect it while the files it names are unchanged and no other open ask matches it." ;;
+        operator:withdrawn)
+          out_perm_deny "No Operator answer reached ask $1$c before the deadline; the ask is withdrawn. Do not retry this same command — an Operator-tier request is not asked again in a loop. $stop" ;;
+        operator:*)
+          out_perm_deny "No Operator answer reached this call for ask $1$c. Do not retry this same command now. $stop" ;;
+        *:withdrawn)
+          out_perm_deny "No answer from the TeamLead yet (ask $1, withdrawn). Retry the same tool call to ask the TeamLead again." ;;
+        *)
+          out_perm_deny "No answer from the TeamLead reached this call (ask $1). Retry the same tool call to ask the TeamLead again." ;;
+      esac ;;
     Stop) out_block "No answer from the TeamLead yet (ask $1). Run \`bash $LIB/team-ask.sh wait $1\` (waits up to 9 min) and follow the answer it prints; repeat while it says pending." ;;
   esac
 }
@@ -209,12 +228,12 @@ wait_and_answer() {
   a="$(ask_poll "$id" "$DEADLINE")"; rc=$?
   if [ "$rc" = 1 ]; then
     st="$(ask_timeout "$id")"
-    if [ "$st" != answered ]; then fallback "$id"; return 0; fi
+    if [ "$st" != answered ]; then fallback "$id" "$st"; return 0; fi
     a="$(cat "$ASK_D/$id.answer.json")"
   elif [ "$rc" = 2 ]; then
     out_refuse "$STOP_MSG"; return 0
   fi
-  if ! ask_claim_delivery "$id"; then fallback "$id"; return 0; fi
+  if ! ask_claim_delivery "$id"; then fallback "$id" unclaimed; return 0; fi
   deliver "$id" "$a"
 }
 

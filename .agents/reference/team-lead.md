@@ -321,8 +321,19 @@ polls for the answer to its deadline, the registration's timeout − 15 s (measu
 wait works; the runner sets 715 s, `TEAM_ASK_TIMEOUT_SECS`). On the deadline it returns the
 fallback and leaves the ask open: `PreToolUse` → deny "No answer from the TeamLead yet (ask a-<n> is
 still open). Ask again with the same input — the answer will be waiting."; `PermissionRequest` →
-deny: a timed-out operator ask "waits for the Operator's decision and stays open. Retry the same
-tool call later", a withdrawn one "retry to ask again"; `Stop` → block "… Run `bash <main>/.claude/lib/team-ask.sh wait a-<n>`
+deny (a stopped team first gets the stop message), by the state the waiter got from `ask_timeout`
+and the tier the hook computed for the call: an Operator-tier ask, timed-out (keyed, stays open) or
+withdrawn (no key), "No Operator answer reached ask a-<n> (<tier cause>) before the deadline … Do
+not retry this same command …" with the caller's own stop path (coder, QA, CLI: a `blocked`
+record; planner: ask the TeamLead; a review finder: `STATUS: failed`; any other caller: a
+plain-text stop naming the ask) — a timed-out one adds that once the answer is relayed to the ask,
+a later identical retry from the same session can collect it while its named files are unchanged
+and no other open ask matches — never "retry now", since no lead can answer it and an unattended
+run would loop (#238); a withdrawn lead-tier ask "retry to ask the TeamLead again"; any other
+state (a failed delivery claim, no state from `ask_timeout`) a neutral deny that asserts no state
+— Operator tier "No Operator answer reached this call … Do not retry this same command now" with
+the stop path, lead tier "No answer from the TeamLead reached this call … retry to ask the
+TeamLead again"; `Stop` → block "… Run `bash <main>/.claude/lib/team-ask.sh wait a-<n>`
 (waits up to 9 min) …". A failing hook fails open (exit 0, no output: the normal prompt shows and
 the `Notification` line reaches the runner).
 

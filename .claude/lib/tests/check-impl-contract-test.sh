@@ -9,6 +9,7 @@
 # `team-lead.md` and the three tracker wrapup blocks, the ticket cap and rework clearing its own
 # findings.
 # It also pins the per-criterion ledger of /gates:verify-implementation and its copy in Step 1c/3.
+# It also pins the sanctioned syntax-check form (#238) in the coder/qa/cli prompts and both finders.
 # Text checks only — nothing is spawned.
 #
 # Usage: bash .claude/lib/tests/check-impl-contract-test.sh [root]   (default: this checkout)
@@ -99,6 +100,21 @@ for name, skill in (("correctness-reviewer", "code-review"), ("structure-reviewe
     never = read(f".claude/agents/{name}.md").split("## Never", 1)[-1].split("\n## ", 1)[0]
     check("`rm -rf`" in never and "mktemp -d" in never and "never cleaned up" in never,
           f"{name}: Never list lacks the no-rm-rf / fresh-mktemp fixture rule")
+
+# The sanctioned syntax check (#238): role prompts and finders name it and warn off inline interpreters.
+PYC = 'd="$(mktemp -d)" && python3 -I -X pycache_prefix="$d" -m py_compile'
+FORMS = ("`bash -n <file>`", "`node --check <file>`", "`jq empty <file>`")
+for rel in (".claude/team/prompts/coder.md", ".claude/team/prompts/qa.md", ".claude/team/prompts/cli.md"):
+    t = read(rel)
+    flat = " ".join(t.split())
+    check(PYC in flat and all(f in flat for f in FORMS) and "never `python3 -c` or `node -e`" in flat
+          and "protected file" in flat, f"{rel}: lacks the sanctioned syntax-check form")
+for name in ("correctness-reviewer", "structure-reviewer"):
+    nv = read(f".claude/agents/{name}.md").split("## Never", 1)[-1].split("\n## ", 1)[0]
+    nv = " ".join(nv.split())
+    check(PYC in nv and all(f in nv for f in FORMS) and "`python3 -c` or `node -e`" in nv
+          and "protected file" in nv and "the one exception" in nv,
+          f"{name}: Never list lacks the sanctioned syntax-check form")
 
 dr = read(".claude/commands/deep-review.md")
 check("## Non-negotiable standards (0–9)" in dr, "deep-review heading does not cover standards 0–9")
