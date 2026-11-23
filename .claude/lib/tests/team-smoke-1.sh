@@ -200,6 +200,24 @@ report 's/^Tests: passed=3/Tests: passed=0/'; run "$MAIN" $TR alfa check "$R"
 expect 0 "valid:" "qa report zero tests, test gate none"
 qa_case 's/^Tests: passed=3 failed=0 skipped=0 baseline=0/Tests: passed=0 failed=1 skipped=0 baseline=0/' "exceeds baseline" "qa report zero tests, gate none, new failure"
 cp "$WORK/prof.json" "$PROF"
+# The optional AC: line (team-mode.md §7): absent is fine; present, it must be well-formed, add up,
+# and unconfirmed > 0 needs ready-with-warnings. deferred alone keeps Verdict: ready.
+ac_case() {  # ac_case <AC line(s)> <verdict> <warnings> <rc> <expected text> <label>
+  report "s/^Verdict: ready\$/Verdict: $2/;s/^Warnings: none\$/Warnings: $3/"
+  printf '%s\n' "$1" >> "$QR"
+  run "$MAIN" $TR alfa check "$R"; expect "$4" "$5" "$6"
+}
+report; run "$MAIN" $TR alfa check "$R"; expect 0 "valid:" "qa report without AC line"
+ac_case 'AC: total=3 met=2 unconfirmed=1 deferred=0' ready-with-warnings 'AC E1-2.AC3 unconfirmed' 0 "valid:" "qa report AC well-formed with a warning"
+ac_case 'AC: total=3 met=2 unconfirmed=0 deferred=1' ready none 0 "valid:" "qa report AC deferred under ready"
+ac_case 'AC: total=08 met=07 unconfirmed=00 deferred=01' ready none 0 "valid:" "qa report AC leading zeros"
+ac_case 'AC: total=0000000003 met=2 unconfirmed=0 deferred=1' ready none 0 "valid:" "qa report AC zero-padded count"
+ac_case 'AC: total=3 met=2 deferred=1' ready none 4 "AC line malformed" "qa report AC malformed"
+ac_case 'AC: total=1234567890 met=1234567890 unconfirmed=0 deferred=0' ready none 4 "AC line malformed" "qa report AC count too long"
+ac_case "$(printf 'AC: total=1 met=1 unconfirmed=0 deferred=0\nAC: total=1 met=1 unconfirmed=0 deferred=0')" ready none 4 "AC: lines" "qa report AC twice"
+ac_case 'AC: total=4 met=2 unconfirmed=0 deferred=1' ready none 4 "do not sum to total" "qa report AC bad sum"
+ac_case 'AC: total=3 met=2 unconfirmed=1 deferred=0' ready 'AC E1-2.AC3 unconfirmed' 4 "needs Verdict: ready-with-warnings" "qa report AC unconfirmed under ready"
+ac_case "$(printf 'AC: total=3 met=2 unconfirmed=1 deferred=0\nVerdict: ready-with-warnings')" ready 'AC E1-2.AC3 unconfirmed' 4 "needs Verdict: ready-with-warnings" "qa report AC unconfirmed with a later verdict line"
 report
 run "$MAIN" $TR alfa check "$R"
 expect 0 "valid:" "qa valid"

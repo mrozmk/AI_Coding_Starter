@@ -35,6 +35,32 @@ Without a lead nobody answers questions and the tool is disabled.
    line after the keyed lines (`F<n>: When …`).
    After the keyed lines add one free-text line per gate run: `Load: start <1m> end <1m>
    (waited <n>s)`, from the gate's "load avg" and "lock waited" lines.
+   **Acceptance criteria** (team-mode.md §7). Read the `Acceptance criteria:` line of
+   `/check-implementation`'s final report first — it alone carries `not evaluated — gate failed to
+   load` — then the `### Acceptance Criteria` block of the last gate pass (the full table; the final
+   report lists only rows that are not `met`). Take each criterion's text from `{{PLAN}}` →
+   `## ACCEPTANCE CRITERIA` by id (the `AC-n` labels as the gate assigned them); a duplicate the
+   gate numbered `<id> (k)` takes the k-th active criterion with that id in plan order and keeps
+   its decorated id everywhere.
+   - An escalated attempt (step 6) — this branch wins over the others: keep `Verdict: escalated`,
+     no `AC:` line and no AC `Warnings:` items. Under `Acceptance criteria ledger:` copy the final
+     gate pass's rows verbatim with their effect; when that pass stopped before §6, copy the final
+     `not evaluated — …` status line instead — never an earlier pass's rows.
+   - Counts and a ledger, on an attempt you will publish: write
+     `AC: total=<n> met=<n> unconfirmed=<n> deferred=<n>` after `Tests:`; add one
+     `Warnings:` item `AC <id> unconfirmed` per `unconfirmed` row (replacing `none`). At least one
+     such item → `Verdict: ready-with-warnings`; none → the verdict stays what the other gates made
+     it (a `deferred` row is no warning). After the keyed lines write
+     `Acceptance criteria ledger:`, the gate's completeness notice verbatim when it printed one,
+     and one line per criterion: `- <id> — <verdict> — <criterion text> — <evidence>`; a
+     `deferred` row ends `manual check: <the plan's what-and-where, or its Proof: none reason>`, or
+     `manual check: no procedure in the plan — <the gate's evidence>` when the plan has no
+     `Proof:` lines. Never invent a manual check.
+   - Status `not evaluated — …` on an attempt you will publish: no `AC:` line; copy the status
+     line verbatim as free text; add the `Warnings:` item `AC not evaluated` and set
+     `Verdict: ready-with-warnings`. Status `n/a (…)`: no `AC:` line; copy it verbatim.
+   - Neither a status line nor a block (a `/check-implementation` older than the ledger): no `AC:`
+     line; write the free-text line `Acceptance criteria: not reported by the gate`.
 6. Verdict `❌ Escalated` (more than 8 own findings included — the message names them as back to
    the coder) or any rethink signal →
    `bash .claude/lib/team-record.sh --verdict blocked --message "<question>"` and wait.
@@ -42,8 +68,18 @@ Without a lead nobody answers questions and the tool is disabled.
    - Build `{{RUN_DIR}}/pr-description.md`: the current body from
      {{PR_BODY_GET}}, with
      `## Unattended decisions` and `## Learnings` replaced from the notes and a `## QA` section from
-     the report (gate outcomes, test counts, cross-model outcome, every finder `FALLBACK` line verbatim). Keep the template checklist;
-     stay ≤ 4000 characters by trimming prose.
+     the report (gate outcomes, test counts, cross-model outcome, every finder `FALLBACK` line
+     verbatim, and — when the report has an `AC:` line — the criteria list below). Keep the
+     template checklist; stay ≤ 4000 characters.
+   - The criteria list, from the report's ledger: the `AC:` line; every `unconfirmed` row in full
+     (`- <id> — <criterion text> — <evidence>`); `To check by hand:` with every `deferred` row in
+     full (`- <id> — <criterion text> — <manual check>`); `Met:` with one `- <id> — <criterion
+     text>` per `met` row. To fit 4000 characters, first collapse `Met:` to a comma-separated id
+     list, then to `Met: <n> criteria`, then shrink the other QA prose. Rows that are not `met`,
+     the template checklist and the `FALLBACK` lines are never trimmed — they take precedence over
+     the budget. When the host still refuses the body (the Azure DevOps hard cap), run
+     `bash .claude/lib/team-record.sh --verdict blocked --message "PR body over the host limit with <n> open criteria"`
+     and wait.
    - {{PR_BODY_SET}}
    - {{PR_PUBLISH}}
    In a later round (a rework) the PR may already be published: the publish step is then a no-op,
