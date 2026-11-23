@@ -73,7 +73,10 @@ fills that `D-n`'s `**Tasks:**` / `**Jira refresh:**` lines instead of writing a
   still pending (reconcile mode covers it). A changed file is pending again — say which `D-n`
   processed its earlier version.
 - **"BA direct decision"** — a decision the user states in chat is a source too; quote it.
-- Nothing pending and no chat decision → "nothing to process", stop.
+- **Missing quality Tasks** — `node .claude/lib/backlog-check.mjs` (read-only) prints a `quality
+  Tasks not planned` warning → `.claude/skills/backlog/quality-tasks.md` is a source too (Phase 3
+  → Quality Tasks), with or without arguments.
+- Nothing pending, no chat decision and no missing quality Tasks → "nothing to process", stop.
 
 ## Phase 2 — Load
 
@@ -138,9 +141,14 @@ answers — defer the addition until the audit closes, or add it together with a
 new id, the same marker, waiting for all product work — as the highest id it becomes the audit
 the checker binds; the release outside row's `Starts after` or the `Release ← closing audits`
 blocker line gets its id, and for `[audit:seo-geo]` so does the staging row's `Needed by`); the
-impact preview names the audit either way. A protected occurrence is handled the same way. A
-backlog written before quality Tasks existed gets them through `add (tech)` intents from that
-file, after the checker's `quality Tasks not planned` warning.
+impact preview names the audit either way. A protected occurrence keeps its number: the question
+is defer, or add an unnumbered follow-up run (`[upkeep:<id>] Run <command>`, depending on the new
+work and on the protected occurrence), which the cadence does not count — a numbered occurrence is
+added only when the new `n` asks for one. A change that adds or removes a public website or a user
+interface re-decides `[audit:seo-geo]` / `[audit:wcag]` by that file's **Planned or ruled out**
+rule in the same candidate: plan the audit with its release and staging edges and drop the
+rule-out line, or the reverse (withdraw a `TODO` audit, add the rule-out line). A backlog written before quality Tasks existed gets them through
+`add (tech)` intents from that file, after the checker's `quality Tasks not planned` warning.
 
 ## Phase 4 — Clarification loop
 
