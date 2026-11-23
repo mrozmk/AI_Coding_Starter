@@ -251,10 +251,10 @@ The auditor outcome is already frozen (Phase A step 0).
 
 1. `bash .claude/lib/tree-fingerprint.sh compare "$SCRATCH/tree.fp"` — exit 1 (the tree changed under the run) or 2 (the compare failed) → state it in report 2's header (re-render the header line); never revert anything.
 2. Move both reports from `$SCRATCH` to `.agents/reference/` (`architecture-review-YYYY-MM-DD.html`, `architecture-assessment-YYYY-MM-DD.html`).
-3. **Record the run** — only when the focus is empty (a whole-codebase run; `--exclude` globs allowed): `bash .claude/lib/upkeep.sh record architecture-review --only-if-home --expect-head <the Preflight revision>` — the script records only when the checkout's `HEAD` still is the reviewed revision, and stores that revision. A focused run records nothing; a moved checkout records nothing (the script's line says so). Keep the printed line; a non-zero exit is reported, never fatal. After exit 0 with `upkeep: recorded architecture-review in <path>`: commit that file with the reports (unless the checkout keeps it out of git).
+3. **Record the run** — only when the focus is empty (a whole-codebase run; `--exclude` globs allowed): `bash .claude/lib/upkeep.sh record architecture-review --only-if-home --expect-head <the Preflight revision>` — the script records only when the checkout's `HEAD` still is the reviewed revision, and stores that revision. A focused run records nothing; a moved checkout records nothing (the script's line says so). Keep the printed line; a non-zero exit is reported, never fatal.
 4. **Reply in chat** — keep it short, the HTML carries the detail:
    - **Clickable markdown links** to both saved reports.
-   - **One line on the upkeep record** — the line step 3 printed, or "focused run — not recorded".
+   - **One line on the upkeep record** — the line step 3 printed, or "focused run — not recorded"; after `upkeep: recorded architecture-review in <path>` it adds the next step: commit that file with the reports (unless the checkout keeps it out of git).
    - **3–5 lines** summarizing the headline finding and the top recommendation.
    - **One line on the auditor** — ran / absent / failed / late, and what it found that the sweep did not, named.
    - **One line on the second sweep**, when `--codex` ran — how many candidates each sweep found alone, and *what Codex caught that we didn't*, named. If Codex was unavailable or never produced a result, say that instead, in one line: the report rests on one sweep.
