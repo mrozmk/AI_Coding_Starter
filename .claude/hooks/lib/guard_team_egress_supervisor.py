@@ -18,6 +18,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import SEPARATORS, tokenize  # noqa: E402
+from guard_team_egress_effect import (  # noqa: E402
+    GH_READ_FORMS, format_words, gh_api_read, py_flags, python_heredoc_ok)
 from guard_team_egress_loops import loop_verdict  # noqa: E402
 
 # Bash(gh <words>) exact, Bash(gh <words> *) / Bash(gh <words>:*) prefix; a `*`, `:`, quote or
@@ -57,6 +59,11 @@ def gh_host_selector(words):
     OWNER/REPO (any -R / --repo spelling, also a short-flag cluster), a URL, --hostname, or the
     gh auth -h shorthand in any short-flag cluster. Over-matching only asks more."""
     auth = words[1:2] == ["auth"]
+    # `gh repo view [HOST/]OWNER/REPO`: the repository is positional there.
+    if words[1:3] == ["repo", "view"]:
+        pos = [w for w in words[3:] if not w.startswith("-")]
+        if pos and not GH_PLAIN_REPO.match(pos[0]):
+            return True
     for i, w in enumerate(words):
         # A glued redirection stays in the token: gh gets `--repo>/dev/null h/o/r` as --repo h/o/r.
         w = re.split(r"[<>]", w, maxsplit=1)[0]
@@ -235,7 +242,8 @@ _FORMAT = {
 }
 GH_FORMAT_CMDS = {tuple(k.split()): (set(v.split()), set(b.split()) | {"--help"})
                   for k, (v, b) in _FORMAT.items()}
-GH_VIEWS = (("gh", "pr", "view"), ("gh", "issue", "view"))
+
+GH_VIEWS = tuple(("gh",) + f for f in GH_READ_FORMS)
 
 
 def format_bindings(values):
@@ -306,9 +314,6 @@ STDIN_PATHS = {"-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"}  # script oper
 # What these run cannot be verified here.
 MODIFIERS = {"noglob", "nocorrect", "builtin", "command", "exec", "env", "nohup", "sudo", "time",
              "nice", "timeout", "stdbuf", "caffeinate", "watch", "flock", "chrt", "ionice"}
-# `python3 - <<DELIM` + newline, ASCII delimiter only (never `\w`: Unicode in Python 3); no `<<-`.
-HEREDOC = re.compile(
-    r"python3 -[ ]*<<[ ]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|([A-Za-z0-9_]+))\n")
 # A printf format with only %s and %%: zsh evaluates numeric conversions' operands as arithmetic.
 PRINTF_OK = re.compile(r"(?:[^%]|%[s%])*", re.S)
 
@@ -361,26 +366,15 @@ def piped_verdict(cmds, ops):
     return "defer", ""
 
 
-def python_heredoc_ok(cmd, forms):
-    """`python3 - <<DELIM` whose first delimiter line ends the command, the body literal (quoted
-    delimiter, or no `$` / backquote / `\\`), under the local Bash(python3 -) opt-in (<forms>)."""
-    m = HEREDOC.match(cmd)
-    lines = cmd[m.end():].split("\n") if m else []
-    delim = m and (m.group(1) or m.group(2) or m.group(3))
-    if delim not in lines or lines[lines.index(delim) + 1:] not in ([], [""]):
-        return False
-    if m.group(3) and re.search(r"[$`\\]", "\n".join(lines[:lines.index(delim)])):
-        return False
-    return "-" in forms
-
-
 def gh_covered(seg, vals, rules):
-    """A locally covered gh command by #148's plain test, no stricter (no GH_READS_TAINT): no unplain
-    text outside single-quoted formatting values, no word of separators only (`'()'`), no host selector."""
+    """A locally covered gh command — or a built-in read (GH_READ_FORMS, a GET `gh api`) — by #148's
+    plain test, no stricter (no GH_READS_TAINT): no unplain text outside single-quoted formatting
+    values, no word of separators only (`'()'`), no host selector."""
     rest = tuple(vals[1:])
-    if not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
+    builtin = rest[:2] in GH_READ_FORMS or gh_api_read(vals)
+    if not builtin and not any(rest[:len(w)] == w if prefix else rest == w for w, prefix in rules):
         return False
-    ok = bound_words(seg)
+    ok = bound_words(seg) | (format_words(seg, FMT, GH_FORMAT_CMDS) if builtin else set())
     text = " ".join(w.raw for i, w in enumerate(seg) if i not in ok)
     return not (UNPLAIN.search(text) or any(set(v) <= SEPARATORS for v in vals)
                 or gh_host_selector(["_" if i in ok else v for i, v in enumerate(vals)]))
@@ -431,8 +425,10 @@ def supervisor_verdict(cmd, project, egress_in, loop=True):
         vals = [w.value for w in seg]
         if vals[0] == "gh":
             kinds.append("gh" if gh_covered(seg, vals, gh_rules) else "other")
-        elif vals[:2] == ["python3", "-c"]:
-            code = seg[2].parts if len(seg) == 3 else []
+        elif vals[:1] == ["python3"] and vals[py_flags(vals):][:1] == ["-c"]:
+            j = py_flags(vals)
+            # Words after the code are its sys.argv (the reader already refused any expansion).
+            code = seg[j + 1].parts if len(seg) >= j + 2 else []
             kinds.append("py" if "-c" in py and len(code) == 1 and code[0][0] in "sd" else "other")
         else:
             kinds.append("safe" if companion_safe(vals, egress_in) else "other")

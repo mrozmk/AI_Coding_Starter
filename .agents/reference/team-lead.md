@@ -466,7 +466,9 @@ cannot make becomes a file, and the stop that needs it waits while everything el
 - **Limit of the write lock.** The lead's profile denies `tmux send-keys|send|paste-buffer`,
   `hc keys|send|interrupt`, `session-host.sh keys|type` and `session-host.sh send` to a stage
   address, and `guard-teamlead-bash.sh` refuses the same and any command writing a script-owned
-  file; both read command text, so a path or command built at run time can pass. Hard enforcement
+  file (a read-only command — `cat`, `sed -n`, `git log|show|ls-tree`, `cmp`, an input
+  redirection — that only names one passes; the full list is in `team_lead_bash.py`); both read
+  command text, so a path or command built at run time can pass. Hard enforcement
   (the Claude Code sandbox, a separate OS user for the lead) comes after the first live runs, which
   are held in the harness's own development repository, not in a production project.
 

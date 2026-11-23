@@ -102,6 +102,9 @@ unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
 # standalone steps and the mail part.
 unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM TEAM_RUN_ROLE TEAM_RUN_ID TEAM_RUN_ATTEMPT \
   HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE
+# A guard refused in a fixture whose teamlead.json main_root is this checkout would log the block
+# into the real touch log: touches.sh block stands down (touches-test unsets it to test block).
+export TOUCHES_BLOCK_OFF=1
 
 OUT="${OUT:-${TMPDIR%/}/team-suite}"
 mkdir -p "$OUT" || { echo "team-suite: cannot create $OUT" >&2; exit 2; }

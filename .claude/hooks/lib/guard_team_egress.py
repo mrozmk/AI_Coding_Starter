@@ -7,10 +7,11 @@ pip pip3 pipx uvx osascript; python/python3 with -c, -, no arguments or -m other
 module, node with -e/-p/--eval/-) -> ask, also inside bash -c, tmux arguments, eval, $(...),
 here-doc lines and the strings of flock -c / env -S; a command with a redirection before its verb
 is also read from every later word (`</dev/null curl …`), and a brace-expanded verb (`{curl,} …`)
-asks. gh pr view / gh issue view pass only as the simple command's own first word (also
+asks. The read-only gh forms (GH_READ_FORMS, #268) pass only as the simple command's own first word (also
 in a string nested under no wrapper), with a plain OWNER/REPO repo value, no URL, --hostname, brace
 expansion or option-shaped glob, and no $, backtick, #, backslash, GH_HOST or GH_REPO in the text
-or its tokens (a quoted ';' does not hide an argument: the whole string is checked). A /dev/tcp or
+or its tokens (a quoted ';' does not hide an argument: the whole string is checked). Literal
+`NAME=<value>;` heads are written into the rest first (inline_literals). A /dev/tcp or
 /dev/udp path (bash's sockets) -> ask, whatever the verb, at every nesting level. Never emits
 allow: no output leaves the decision to Claude Code's own rules, so deny still wins. Unreadable
 input -> ask (fail-closed).
@@ -42,9 +43,10 @@ sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 from guard_destructive_sql import (  # noqa: E402
     SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans, strip_wrappers,
     tokenize, unredirected)
+from guard_team_egress_effect import GH_READ_FORMS, inline_literals  # noqa: E402
 from guard_team_egress_supervisor import (  # noqa: E402
-    BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
-    supervisor_verdict)
+    BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector,
+    record_touch, supervisor_verdict)
 
 EGRESS = {"curl", "wget", "ssh", "scp", "rsync", "nc", "ftp", "sftp",
           "gh", "npm", "npx", "pip", "pip3", "pipx", "uvx", "osascript", "python", "python3",
@@ -55,8 +57,6 @@ INLINE = {"python": {"-c", "-m", "-"}, "python3": {"-c", "-m", "-"},
           "node": {"-e", "-p", "--eval", "--print", "-"}}
 # `python -m <module>` for these runs the project's own tests / stdlib tools, not a network client.
 LOCAL_MODULES = {"pytest", "unittest", "doctest", "py_compile", "compileall", "json.tool"}
-# The read-only gh forms /setup:teams puts on the roles' allow list.
-GH_READS = (["pr", "view"], ["issue", "view"])
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 SHELLS = {"bash", "sh", "zsh"}
 MENTIONS_EGRESS = re.compile(r"\b(" + "|".join(sorted(EGRESS)) + r")\b")
@@ -104,7 +104,7 @@ def loopback_probe(words):
 
 def egress_capable(verb, words, reads_ok=True):
     """False for the forms of an egress verb that are not egress: an interpreter running a file,
-    the read-only gh views the roles are allowed. <reads_ok> False: a gh read is egress too."""
+    the read-only gh forms (GH_READ_FORMS). <reads_ok> False: a gh read is egress too."""
     if verb in INLINE:
         # No arguments at all reads the program from stdin (`python3 <<EOF`).
         if len(words) == 1:
@@ -117,7 +117,7 @@ def egress_capable(verb, words, reads_ok=True):
                 return True
         return False
     if verb == "gh":
-        return not reads_ok or words[1:3] not in GH_READS
+        return not reads_ok or tuple(words[1:3]) not in GH_READ_FORMS
     return True
 
 
@@ -295,10 +295,13 @@ def gh_read_tainted(cmd, tokens=()):
                 or any(GH_READS_TAINT.search(t) for t in tokens))
 
 
+
+
 def bash_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
         return NET_FOUND
+    cmd = inline_literals(cmd)
     decision, why = supervisor_verdict(cmd, project, egress_in)
     if decision != "defer":
         return why

@@ -32,7 +32,7 @@ case "$PAYLOAD" in
   *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*|*team-starter-land.sh*) ;;
   *) exit 0 ;;
 esac
-refuse() { echo "$*" >&2; exit 2; }
+refuse() { echo "$*" >&2; [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-team-verdict --what "$*" >/dev/null 2>&1; exit 2; }
 command -v jq >/dev/null 2>&1 || refuse "verdict guard needs jq — refused"
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null)
 

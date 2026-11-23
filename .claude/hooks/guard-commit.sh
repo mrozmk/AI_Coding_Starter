@@ -2,9 +2,11 @@
 # PreToolUse(Bash) guard for `git commit`.
 #
 # Three jobs, all fail-closed-safe (default to allowing non-commit commands):
-#   D1 (hard block): refuse a `git commit` whose staged set is EMPTY. Side effect by design:
-#       a chained `git add X && git commit` is ALWAYS blocked — the hook runs before the chain,
-#       so the index is still empty. Commands must stage and commit in two calls.
+#   D1 (hard block): refuse a `git commit` whose staged set is EMPTY. The hook runs before the
+#       command, so in a chained `git add <paths> && git commit` the index is still empty: those
+#       explicit paths are staged into a temporary copy of the index first, and that set is what
+#       D1, D3 and D2 judge (`git add -A`/`.`/`-u`/`-p`, another command in the chain, or an add in
+#       another directory → no simulation, the real index decides as before).
 #       Original D1 rationale: refuse a `git commit` whose staged set is EMPTY. This kills the
 #       class where an orchestrate committer reports a SHA for a hallucinated/empty
 #       commit — a prose contract cannot stop that; exit 2 can.
@@ -78,9 +80,88 @@ esac
 # refusing work it simply could not locate.
 git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1 || DIR="${CWD:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 
+# Record a block in the touch log (kind block) — fire-and-forget, never changes the verdict.
+log_block() {
+  local t
+  t="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/touches.sh"
+  [ -f "$t" ] || return 0
+  bash "$t" block --source guard-commit --what "$(printf '%s' "$CMD" | tr '\n' ' ' | cut -c1-200)" \
+    >/dev/null 2>&1 || true
+}
+
 STAGED=$(git -C "$DIR" diff --cached --name-only 2>/dev/null)
 
+# Chained `git add <paths> && git commit`: stage those paths into a temporary index and judge that.
+SIM_DIR=""
+cleanup_sim() { [ -n "$SIM_DIR" ] && rm -rf "$SIM_DIR"; }
+trap cleanup_sim EXIT
+if [ -z "$STAGED" ] && command -v python3 >/dev/null 2>&1; then
+  ADDS=$(printf '%s' "$CMD" | python3 -I -c '
+import shlex, sys
+try:
+    lx = shlex.shlex(sys.stdin.read(), posix=True, punctuation_chars=True)
+    lx.whitespace_split, lx.commenters = True, ""
+    toks = list(lx)
+except ValueError:
+    sys.exit(1)
+segs, ops = [[]], []
+for t in toks:
+    if t and set(t) <= set("();<>|&"):
+        segs.append([]); ops.append(t)
+    else:
+        segs[-1].append(t)
+def git(s):
+    if not s or s[0] != "git":
+        return None, None, []
+    i, d = 1, "-"
+    while i < len(s) and s[i].startswith("-"):
+        if s[i] == "-C" and i + 1 < len(s):
+            d, i = s[i + 1], i + 2
+        else:
+            return None, None, []
+    return (s[i] if i < len(s) else None), d, s[i + 1:]
+ci = next((k for k, s in enumerate(segs) if git(s)[0] == "commit"), None)
+if ci is None or any(o != "&&" for o in ops[:ci]):
+    sys.exit(1)
+cdir, paths = git(segs[ci])[1], []
+for k, s in enumerate(segs[:ci]):
+    if k == 0 and s[:1] == ["cd"] and len(s) == 2:
+        continue
+    sub, d, args = git(s)
+    if sub != "add" or d != cdir:
+        sys.exit(1)
+    dash = False
+    for a in args:
+        if a == "--" and not dash:
+            dash = True
+        elif a.startswith("-") and not dash:
+            if a not in ("-v", "--verbose", "-f", "--force"):
+                sys.exit(1)
+        elif a in (".", "") or a.startswith(":") or chr(10) in a:
+            sys.exit(1)
+        else:
+            paths.append(a)
+if not paths:
+    sys.exit(1)
+print(chr(10).join(paths))
+' 2>/dev/null) || ADDS=""
+  if [ -n "$ADDS" ]; then
+    SIM_DIR=$(mktemp -d 2>/dev/null) || SIM_DIR=""
+    IDX=$(git -C "$DIR" rev-parse --path-format=absolute --git-path index 2>/dev/null)
+    if [ -n "$SIM_DIR" ] && [ -n "$IDX" ]; then
+      [ -f "$IDX" ] && cp "$IDX" "$SIM_DIR/index"
+      PATHS=()
+      while IFS= read -r p; do PATHS+=("$p"); done <<<"$ADDS"
+      if GIT_INDEX_FILE="$SIM_DIR/index" git -C "$DIR" add -f -- "${PATHS[@]}" >/dev/null 2>&1; then
+        export GIT_INDEX_FILE="$SIM_DIR/index"
+        STAGED=$(git -C "$DIR" diff --cached --name-only 2>/dev/null)
+      fi
+    fi
+  fi
+fi
+
 if [ -z "$STAGED" ] && [ "$NO_EDIT" = 0 ]; then
+  log_block
   # D1 — hard block. stderr is fed back to Claude as the block reason.
   echo "BLOCKED: 'git commit' with an empty staged set (git -C '$DIR' diff --cached is empty)." >&2
   echo "Nothing is staged for commit. If this is an orchestrate step, this is the empty/hallucinated-commit guard:" >&2
@@ -102,6 +183,7 @@ else
     leak_report "Credential file staged"
   )
   if [ -n "$D3_REPORT" ]; then
+    log_block
     {
       echo "BLOCKED: guard-commit found likely credentials in the staged changes."
       echo ""

@@ -5,7 +5,7 @@
 # lives in one mktemp -d, and HOME and TMPDIR point inside it. Lines carrying a synthetic secret
 # end with the leak scanner's allow mark. Contract: .agents/reference/operator-touches.md
 set -uo pipefail
-unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM CLAUDE_PROJECT_DIR
+unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM CLAUDE_PROJECT_DIR TOUCHES_BLOCK_OFF
 export TOUCHES_GRACE_S=0
 SRC="$PWD"; T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 T="$(cd "$T" && pwd -P)"
@@ -282,6 +282,39 @@ for x in d e f; do
 done
 [ "$unsafe_ok" = 0 ] && [ ! -s "$T/out-d" ] && [ ! -s "$T/out-e/exclude" ] && [ ! -s "$T/out-f" ]
 ok "14d symlinked exclude, symlinked info dir, hard-linked exclude: nothing written" $?
+
+# (15) block: a kind-block line in the main checkout; silent no-op without one; report keeps it apart.
+mkrepo "$T/m15"; MF15="$(mfile "$T/m15")"
+out=$(cd "$T/m15" && $TS block --source guard-x --what "refused one" 2>&1); r=$?
+[ "$r" = 0 ] && [ -z "$out" ] && [ "$(count "$MF15")" = 1 ] \
+  && [ "$(jq -r '.kind + "|" + .reason + "|" + .what + "|" + .answer + "|" + (.wait_s|tostring) + "|" + .where' "$MF15")" \
+       = "block|hook|guard-x: refused one||null|solo ." ]
+ok "15a block appends kind=block reason=hook, silent, exit 0" $?
+mkdir -p "$T/nogit15"
+out=$(cd "$T/nogit15" && CLAUDE_PROJECT_DIR="$T/nogit15" $TS block --source guard-x --what "no main" 2>&1); r=$?
+out2=$(cd "$T/m15" && $TS block --what "missing source" 2>&1; cd "$T/m15" && $TS block --source s --what w --bogus x 2>&1); r2=$?
+[ "$r" = 0 ] && [ -z "$out" ] && [ "$r2" = 0 ] && [ -z "$out2" ] && [ "$(count "$MF15")" = 1 ] \
+  && [ ! -e "$T/nogit15/.agents" ]
+ok "15b block without a main checkout or with bad args: exit 0, silent, nothing written" $?
+D15="$T/m15/.agents/touches"
+{ entry 2026-09-10T10:00:00Z x "solo ." permission "Bash: ls" direct
+  for n in 1 2 3; do entry "2026-09-1${n}T10:00:00Z" x "solo ." block "guard-teamlead-bash: cat notes.md $n" hook; done; } > "$D15/2026-09.jsonl"
+$TS report --main "$T/m15" --since 2026-09-01 > "$T/r15.out" 2>/dev/null; r=$?
+[ "$r" = 0 ] && grep -q '^Operator touches — 1 since 2026-09-01' "$T/r15.out" \
+  && ! grep -q '  .*  block  ' "$T/r15.out" \
+  && grep -q '^Hook blocks (no human) — 4$' "$T/r15.out" \
+  && grep -q '^  3× — "guard-teamlead-bash: cat notes.md 3"$' "$T/r15.out"
+ok "15c report: blocks out of the Operator count and groups, own section with Recurring" $?
+entry 2026-09-20T10:00:00Z x "team beta / 7 / coder" block "guard-push: secrets" hook >> "$D15/2026-09.jsonl"
+$TS report --brief --main "$T/m15" --team beta --ticket 7 --run beta-20260901-000000 2>/dev/null \
+  | grep -q '^Operator touches: 0$'
+ok "15d --brief never counts blocks" $?
+$TS add --kind block --reason hook --what x --main "$T/m15" >/dev/null 2>&1; r=$?
+[ "$r" = 2 ]
+ok "15e add refuses kind block / reason hook" $?
+out=$(cd "$T/m15" && TOUCHES_BLOCK_OFF=1 $TS block --source guard-x --what "suite run" 2>&1); r=$?
+[ "$r" = 0 ] && [ -z "$out" ] && [ "$(count "$MF15")" = 1 ]
+ok "15f TOUCHES_BLOCK_OFF: block writes nothing" $?
 
 echo "touches-test: $pass passed"
 [ "$fail" = 0 ] || { echo "touches-test: FAILED"; exit 1; }
