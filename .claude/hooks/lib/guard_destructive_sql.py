@@ -130,6 +130,8 @@ SUBST = re.compile(r"\$\(|`|\)")  # same as guard_team_egress.SUBST
 DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
 SCRIPT_REF = re.compile(r"\.(sh|sql)\b")
 CD_WORD = re.compile(r"(^|[\s;&|(])cd\s")
+COMMENT_LINE = re.compile(r"\s*(#|//)")
+HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)^\s*\1\s*$", re.S | re.M)
 MAX_CWDS = 8
 
 
@@ -138,10 +140,21 @@ def worth_scanning(text):
     return bool(MENTIONS_SQL.search(text) or SCRIPT_REF.search(text))
 
 
+def shell_line_verdict(line):
+    """deny | ask | None for one shell line read outside a parsed sqlcmd call: a non-comment line
+    that names sqlcmd and carries an unmistakable statement."""
+    if COMMENT_LINE.match(line) or "sqlcmd" not in line:
+        return None
+    if SHELL_DENY.search(line):
+        return "deny"
+    if SHELL_ASK.search(line):
+        return "ask"
+    return None
+
+
 def sqlcmd_deny_line(line):
     """A non-comment shell line that runs sqlcmd with a DROP/TRUNCATE the guard denies."""
-    return (not re.match(r"\s*(#|//)", line) and "sqlcmd" in line
-            and bool(SHELL_DENY.search(line)))
+    return shell_line_verdict(line) == "deny"
 
 
 def strip_shell_comments(cmd):
@@ -155,7 +168,6 @@ def strip_shell_comments(cmd):
             if c == "\\" and quote == '"' and i + 1 < len(cmd):
                 out.append(cmd[i:i + 2])
                 i += 2
-                word_start = False
                 continue
             if c == quote:
                 quote = None
@@ -333,10 +345,14 @@ def unredirected(tokens, fds=True):
 
 def heredocs(cmd):
     """Bodies of `<<EOF ... EOF` / `<<'EOF'` / `<<-EOF` in the raw command text."""
-    bodies = []
-    for m in re.finditer(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)^\s*\1\s*$", cmd, re.S | re.M):
-        bodies.append(m.group(2))
-    return bodies
+    return [m.group(2) for m in HEREDOC.finditer(cmd)]
+
+
+def heredoc_bodies_removed(cmd):
+    """<cmd> with the bodies of its heredocs dropped and their delimiter lines kept: data, not
+    commands, for a line-by-line read."""
+    return HEREDOC.sub(lambda m: m.group(0)[:m.start(2) - m.start()]
+                       + m.group(0)[m.end(2) - m.start():], cmd)
 
 
 def doc_heredocs_removed(text):
@@ -431,12 +447,11 @@ class Scan:
         if "/tests/" in where:
             return
         for line in text.splitlines():
-            if re.match(r"\s*(#|//)", line) or "sqlcmd" not in line:
-                continue
-            if sqlcmd_deny_line(line):
+            verdict = shell_line_verdict(line)
+            if verdict == "deny":
                 self.deny.append(where)
                 return
-            if SHELL_ASK.search(line):
+            if verdict == "ask":
                 self.ask.append(where)
 
     def unparsable(self, text, where, depth):
@@ -583,8 +598,34 @@ class Scan:
 
 
 def deny_verdict(where):
+    """The deny tuple of classify(): the places that carry a DROP/TRUNCATE."""
     return "deny", ("DROP/TRUNCATE of a table, database or schema in: " + ", ".join(where)
                     + " — never run by an agent; hand the statement to the Operator.")
+
+
+def ask_verdict(where):
+    return "ask", ("SQL write in: " + ", ".join(where) + " — Operator must approve this run (ask).")
+
+
+def unparsable_command(cmd, cwd, project):
+    """A command shlex cannot read as a whole: bash still runs every line before the one it fails
+    on, so an unparsable tail must not demote what a line runs. Each line (continuations joined,
+    heredoc bodies dropped — data, not commands) is scanned on its own, and a sqlcmd line carrying
+    a DROP stays deny even when that line itself does not parse."""
+    lines = re.sub(r"\\\n", "", heredoc_bodies_removed(cmd)).splitlines()
+    scan = Scan(cwd, project)
+    for line in lines:
+        try:
+            scan.command(line, "command (unparsable)", 0)
+        except ValueError:
+            pass
+    if scan.deny or any(sqlcmd_deny_line(line) for line in lines):
+        return deny_verdict(scan.deny or ["command (unparsable)"])
+    if MENTIONS_SQL.search(cmd):
+        return "ask", "Destructive-SQL guard could not parse a command that mentions sqlcmd/.sql"
+    if scan.ask:
+        return ask_verdict(scan.ask)
+    return None, ""
 
 
 def classify(cmd, cwd, project):
@@ -593,17 +634,11 @@ def classify(cmd, cwd, project):
     try:
         scan.command(cmd, "command", 0)
     except ValueError:
-        # An unparsable tail must not demote a DROP the line rule still sees to ask.
-        if any(sqlcmd_deny_line(line) for line in cmd.splitlines()):
-            return deny_verdict(["command (unparsable)"])
-        if MENTIONS_SQL.search(cmd):
-            return "ask", "Destructive-SQL guard could not parse a command that mentions sqlcmd/.sql"
-        return None, ""
+        return unparsable_command(cmd, cwd, project)
     if scan.deny:
         return deny_verdict(scan.deny)
     if scan.ask:
-        return "ask", ("SQL write in: " + ", ".join(scan.ask)
-                       + " — Operator must approve this run (ask).")
+        return ask_verdict(scan.ask)
     return None, ""
 
 

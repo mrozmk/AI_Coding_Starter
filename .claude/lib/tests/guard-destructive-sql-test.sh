@@ -291,6 +291,12 @@ run ask  "unreadable namesake among candidate dirs" "source s.sh && sqlcmd -i dr
 # --- #230: an escaped blank before `#` keeps the rest of the line visible; DROP stays deny
 run deny "escaped blank before # in a parsable command"  "sqlcmd -Q \"DROP TABLE dbo.X\"; echo x\\ # note"
 run deny "escaped blank uncovers an unclosed quote"     "sqlcmd -Q \"DROP TABLE dbo.X\"; echo a\\ #'"
+# bash runs the lines before the one it fails on: an unparsable tail keeps a script's DROP deny
+run deny "unparsable tail after a script with DROP"      $'bash other/del.sh\necho a\\ #\''
+run deny "unparsable tail after a continued sqlcmd line" $'sqlcmd -Q \\\n"DROP TABLE dbo.X"; echo a\\ #\''
+# ... while a heredoc body that quotes a DROP is data: an unparsable command stays ask
+run ask  "cat heredoc quoting a DROP, apostrophe"        $'cat > msg.txt <<\'EOF\'\nfix: keep sqlcmd -Q "DROP TABLE dbo.X" denied when it\'s a tail\nEOF'
+run ask  "tee heredoc with a sqlcmd DROP line"           $'tee msg.txt <<\'EOF\'\nIt\'s the note.\nsqlcmd -Q "DROP TABLE dbo.X"\nEOF'
 # --- The repo's own TeamLead Bash guard parses cleanly: checking or running it never asks
 R="${H%/.claude/hooks/guard-destructive-sql.sh}"
 run none "syntax check of the lead runner naming the lead guard" "bash -n .claude/lib/team-run-lead.sh" "$R"

