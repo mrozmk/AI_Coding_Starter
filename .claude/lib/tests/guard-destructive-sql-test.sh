@@ -288,6 +288,9 @@ run deny "joined -ifile"                              "sqlcmd -idrop.sql"
 run deny "script with a space in \$() of an unparsable script" "bash u.sh" "$D/sp"
 run deny "script with a space in \$()"            "echo \"\$(bash './with space/danger.sh')\"" "$D/sp"
 run ask  "unreadable namesake among candidate dirs" "source s.sh && sqlcmd -i drop.sql" "$D/ur"
+# --- #230: an escaped blank before `#` keeps the rest of the line visible; DROP stays deny
+run deny "escaped blank before # in a parsable command"  "sqlcmd -Q \"DROP TABLE dbo.X\"; echo x\\ # note"
+run deny "escaped blank uncovers an unclosed quote"     "sqlcmd -Q \"DROP TABLE dbo.X\"; echo a\\ #'"
 # --- The repo's own TeamLead Bash guard parses cleanly: checking or running it never asks
 R="${H%/.claude/hooks/guard-destructive-sql.sh}"
 run none "syntax check of the lead runner naming the lead guard" "bash -n .claude/lib/team-run-lead.sh" "$R"

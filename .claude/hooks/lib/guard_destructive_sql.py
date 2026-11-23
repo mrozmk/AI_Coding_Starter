@@ -138,15 +138,24 @@ def worth_scanning(text):
     return bool(MENTIONS_SQL.search(text) or SCRIPT_REF.search(text))
 
 
+def sqlcmd_deny_line(line):
+    """A non-comment shell line that runs sqlcmd with a DROP/TRUNCATE the guard denies."""
+    return (not re.match(r"\s*(#|//)", line) and "sqlcmd" in line
+            and bool(SHELL_DENY.search(line)))
+
+
 def strip_shell_comments(cmd):
-    """Drops `# ...` outside quotes but keeps its newline, so the command separator survives."""
-    out, quote, i = [], None, 0
+    """Drops `# ...` outside quotes but keeps its newline, so the command separator survives.
+    A comment starts only at the beginning of a word — an escaped blank before `#` does not end
+    the word."""
+    out, quote, i, word_start = [], None, 0, True
     while i < len(cmd):
         c = cmd[i]
         if quote:
             if c == "\\" and quote == '"' and i + 1 < len(cmd):
                 out.append(cmd[i:i + 2])
                 i += 2
+                word_start = False
                 continue
             if c == quote:
                 quote = None
@@ -154,12 +163,16 @@ def strip_shell_comments(cmd):
             quote = c
         elif c == "\\" and i + 1 < len(cmd):
             out.append(cmd[i:i + 2])
+            # `\<newline>` is a line continuation, removed before word splitting.
+            if cmd[i + 1] != "\n":
+                word_start = False
             i += 2
             continue
-        elif c == "#" and (i == 0 or cmd[i - 1] in " \t\n;&|()"):
+        elif c == "#" and word_start:
             while i < len(cmd) and cmd[i] != "\n":
                 i += 1
             continue
+        word_start = not quote and c in " \t\n;&|()"
         out.append(c)
         i += 1
     return "".join(out)
@@ -420,7 +433,7 @@ class Scan:
         for line in text.splitlines():
             if re.match(r"\s*(#|//)", line) or "sqlcmd" not in line:
                 continue
-            if SHELL_DENY.search(line):
+            if sqlcmd_deny_line(line):
                 self.deny.append(where)
                 return
             if SHELL_ASK.search(line):
@@ -569,18 +582,25 @@ class Scan:
             self.alt = ends - {self.cwd}
 
 
+def deny_verdict(where):
+    return "deny", ("DROP/TRUNCATE of a table, database or schema in: " + ", ".join(where)
+                    + " — never run by an agent; hand the statement to the Operator.")
+
+
 def classify(cmd, cwd, project):
     """Returns (decision, reason) with decision in deny | ask | None."""
     scan = Scan(cwd, project)
     try:
         scan.command(cmd, "command", 0)
     except ValueError:
+        # An unparsable tail must not demote a DROP the line rule still sees to ask.
+        if any(sqlcmd_deny_line(line) for line in cmd.splitlines()):
+            return deny_verdict(["command (unparsable)"])
         if MENTIONS_SQL.search(cmd):
             return "ask", "Destructive-SQL guard could not parse a command that mentions sqlcmd/.sql"
         return None, ""
     if scan.deny:
-        return "deny", ("DROP/TRUNCATE of a table, database or schema in: " + ", ".join(scan.deny)
-                        + " — never run by an agent; hand the statement to the Operator.")
+        return deny_verdict(scan.deny)
     if scan.ask:
         return "ask", ("SQL write in: " + ", ".join(scan.ask)
                        + " — Operator must approve this run (ask).")

