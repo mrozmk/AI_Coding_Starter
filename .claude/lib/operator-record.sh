@@ -75,7 +75,7 @@ mv "$DIR/.$ID.tmp" "$DIR/$ID.md"
 echo "recorded $ID"
 
 P="$(bash "$LIB/team-channel.sh" get tmux_prefix 2>/dev/null || true)"
-[ -n "$P" ] || P="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')"
+[ -n "$P" ] || P="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._\n-' '-')"
 # The driver's hint names the live (prefixed) Supervisor session. Without one, say so and name the
 # command that shows the roles — never a guessed tmux name.
 H="$(bash "$LIB/session-host.sh" hint Supervisor --main "$ROOT" 2>/dev/null)" || H=""
