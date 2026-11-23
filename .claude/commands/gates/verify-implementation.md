@@ -61,7 +61,7 @@ For each task in `## STEP-BY-STEP TASKS`:
 
 **`M` is the task count.** Every task is mandatory; the only exclusion is at the umbrella level, where rows whose `Status` is `manual` or `skipped` are not counted. Whenever `M` reaches zero — no tasks at all, or every umbrella row excluded — report `Plan Compliance: n/a (no mandatory tasks)` and fall through to the semantic and quality-gate axes. Never report `0%`.
 
-**Umbrella plans aggregate.** Collect tasks from every sub-step file named in the `File` column of the umbrella's `## Execution Plan` table (links are relative to the umbrella's own directory) and report a single combined `X/Y` across all of them — **excluding rows whose `Status` is `manual` or `skipped`**, which are reported separately rather than counted. A `manual` step is by definition one the pipeline cannot verify from the filesystem (external forms, interactive logins, human judgment — `plan-feature.md` Step 4.6.2); counting it mechanically would fail every umbrella that legitimately contains one. The `n/a` path is only for plans with neither own tasks nor sub-steps.
+**Umbrella plans aggregate.** Collect tasks from every sub-step file named in the `File` column of the umbrella's `## Execution Plan` table (links are relative to the umbrella's own directory) and report a single combined `X/Y` across all of them — **excluding rows whose `Status` is `manual` or `skipped`**, which are reported separately rather than counted. A `manual` step is by definition one the pipeline cannot verify from the filesystem (external forms, interactive logins, human judgment); counting it mechanically would fail every umbrella that legitimately contains one. The `n/a` path is only for plans with neither own tasks nor sub-steps.
 
 Report:
 ```

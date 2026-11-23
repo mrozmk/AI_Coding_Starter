@@ -402,6 +402,13 @@ Use `AskUserQuestion`. Present only the options that apply, recommend one, and *
 
 **Step 6.1 re-enters this same question** if grilling pushes a file back over the cap. It does not silently split then either.
 
+**Densifying a monitoring plan over the hard cap (option a):**
+
+Very rare. Strategy:
+
+1. Move runbooks into `docs/runbooks/*.md` (linked from the plan) — a runbook is an operational doc, not part of the implementation plan.
+2. The plan keeps: monitoring setup tasks + alert config + chaos test, without the runbook content.
+
 ### Step 4.5.4b — Split mechanics (only after the user chose b)
 
 Every resulting plan file carries the `**Tasks:**` line of the backlog Tasks it serves — a Task shared by two files appears in each, which is what lets `/execute` apply the whole-Task completion rule (a Task is `DONE` only when no active plan still lists it).
@@ -415,13 +422,6 @@ Every resulting plan file carries the `**Tasks:**` line of the backlog Tasks it 
 5. Tell the user how to run them: one clone and branch per plan run at the same time (or one team per plan), each merged through the project's normal PR flow.
 
 > If the tracks turn out to share a file after all, they are not parallel — fold them back into one plan (option a). A "parallel" split whose branches conflict on merge is strictly worse than never having split.
-
-**Monitoring step over hard cap:**
-
-Very rare. Strategy:
-
-1. Move runbooks into `docs/runbooks/*.md` (linked from the plan) — a runbook is an operational doc, not part of the implementation plan.
-2. The plan keeps: monitoring setup tasks + alert config + chaos test, without the runbook content.
 
 ### Step 4.5.5 — Report the split decision
 

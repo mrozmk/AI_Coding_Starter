@@ -59,7 +59,7 @@ DIR=""
 # 1) explicit `git -C <dir> ... commit`
 DIR=$(printf '%s' "$CMD" | sed -nE "s/.*git[[:space:]]+-C[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p" | head -1)
 
-# 2) leading `cd <dir> && ...` (the shape a sub-agent committer uses)
+# 2) leading `cd <dir> && ...`
 if [ -z "$DIR" ]; then
   DIR=$(printf '%s' "$CMD" | sed -nE "s/^[[:space:]]*cd[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]&;|]+)).*/\2\3\4/p" | head -1)
 fi
@@ -165,7 +165,7 @@ if [ -z "$STAGED" ] && [ "$NO_EDIT" = 0 ]; then
   # D1 — hard block. stderr is fed back to Claude as the block reason.
   echo "BLOCKED: 'git commit' with an empty staged set (git -C '$DIR' diff --cached is empty)." >&2
   echo "Nothing is staged for commit. This is the empty/hallucinated-commit guard:" >&2
-  echo "stage the real FILES_TOUCHED with explicit 'git add <path>' first, or report STATUS: nothing_to_commit." >&2
+  echo "stage the files you changed with an explicit 'git add <path>' first, or stop — there is nothing to commit." >&2
   exit 2
 fi
 
