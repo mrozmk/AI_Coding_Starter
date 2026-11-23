@@ -66,6 +66,7 @@ printf 'echo read-only\n' > "$D/r/sub/drop.sh"
 printf "%s\ncat <<'EOF'\ncd sub\nEOF\nbash ./drop.sh\n" "$U" > "$D/r/unparsable-heredoc-cd.sh"
 printf '%s\nif true; then bash ./drop.sh; fi\n' "$U" > "$D/r/unparsable-then.sh"
 printf "cat <<EOF\n# \$(sqlcmd -Q \"UPDATE dbo.X SET A=1\")\nIt's text\nEOF\n" > "$D/heredoc-hash.sh"
+printf '%s\n' 'sqlcmd -i drop.sql' "echo a\\ #'" > "$D/tail-unparsable.sh"
 # The caller continues after an unparsable script; cwd != project in every case.
 mkdir -p "$D/a" "$D/b/sub" "$D/c/sub" "$D/n/sub" "$D/e/sub" "$D/i/sub" "$D/t/other/sub" \
   "$D/f" "$D/k" "$D/g/sub"
@@ -297,6 +298,10 @@ run deny "unparsable tail after a continued sqlcmd line" $'sqlcmd -Q \\\n"DROP T
 # ... while a heredoc body that quotes a DROP is data: an unparsable command stays ask
 run ask  "cat heredoc quoting a DROP, apostrophe"        $'cat > msg.txt <<\'EOF\'\nfix: keep sqlcmd -Q "DROP TABLE dbo.X" denied when it\'s a tail\nEOF'
 run ask  "tee heredoc with a sqlcmd DROP line"           $'tee msg.txt <<\'EOF\'\nIt\'s the note.\nsqlcmd -Q "DROP TABLE dbo.X"\nEOF'
+# ... and the pre-#230 reading's deny is kept when the uncovered tail does not parse
+run deny "sqlcmd heredoc DROP before an unparsable tail" $'sqlcmd <<EOF\nDROP TABLE dbo.X\nEOF\necho a\\ #\''
+run deny "quoted newline in a DROP before the tail"      $'sqlcmd -Q "DROP\nTABLE dbo.X"\necho a\\ #\''
+run deny "script whose tail turns unparsable"            "bash tail-unparsable.sh"
 # --- The repo's own TeamLead Bash guard parses cleanly: checking or running it never asks
 R="${H%/.claude/hooks/guard-destructive-sql.sh}"
 run none "syntax check of the lead runner naming the lead guard" "bash -n .claude/lib/team-run-lead.sh" "$R"

@@ -40,8 +40,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans, strip_wrappers,
-    tokenize, unredirected)
+    SHELL_C, base_comment_reading, commands, doc_heredocs_removed, in_base_reading,
+    redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
     supervisor_verdict)
@@ -312,7 +312,12 @@ def bash_reason(cmd, project):
             # Unparsable: an egress tool cannot sit in command position without its name.
             if MENTIONS_EGRESS.search(cmd):
                 return "unparsable command mentions an egress tool"
-            return ""
+            if in_base_reading():
+                return ""
+            # The `#` reading may be what left the command unparsable: the pre-#230 reading's
+            # verdict must not be lost (a `git push <remote>` before such a line).
+            with base_comment_reading():
+                return bash_reason(cmd, project)
     if found == NET_FOUND:
         return found
     if found.startswith("git to "):

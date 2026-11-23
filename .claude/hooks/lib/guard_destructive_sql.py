@@ -11,7 +11,10 @@ classified line by line: it asks as unparsable when it mentions sqlcmd/.sql, whe
 script cannot be parsed, or when a script it names cannot be found. After an unparsable script the
 scan continues from the start dir with every dir a read `cd` may have left it in as a candidate,
 scanning all of them; an unreadable `cd` asks. A candidate file that exists but cannot be read asks.
+A command or script the `#` reading leaves unparsable is also read with the pre-#230 comment rule,
+and the stronger of the two verdicts stands.
 """
+import contextlib
 import json
 import os
 import re
@@ -152,15 +155,36 @@ def shell_line_verdict(line):
     return None
 
 
-def sqlcmd_deny_line(line):
-    """A non-comment shell line that runs sqlcmd with a DROP/TRUNCATE the guard denies."""
-    return shell_line_verdict(line) == "deny"
+_BASE_READING = []
+
+
+@contextlib.contextmanager
+def base_comment_reading():
+    """Inside it strip_shell_comments applies the pre-#230 rule (a `#` right after any blank or
+    separator character, escaped or not, starts a comment). A fallback for text the current
+    reading leaves unparsable reads it this way too, so no verdict ends weaker than it was."""
+    _BASE_READING.append(True)
+    try:
+        yield
+    finally:
+        _BASE_READING.pop()
+
+
+def in_base_reading():
+    return bool(_BASE_READING)
+
+
+def stronger(a, b):
+    """The (decision, reason) of a and b that weighs more: deny > ask > None."""
+    rank = {"deny": 2, "ask": 1}
+    return b if rank.get(b[0], 0) > rank.get(a[0], 0) else a
 
 
 def strip_shell_comments(cmd):
     """Drops `# ...` outside quotes but keeps its newline, so the command separator survives.
     A comment starts only at the beginning of a word — an escaped blank before `#` does not end
-    the word."""
+    the word (inside base_comment_reading() the pre-#230 rule applies instead)."""
+    base = in_base_reading()
     out, quote, i, word_start = [], None, 0, True
     while i < len(cmd):
         c = cmd[i]
@@ -180,7 +204,7 @@ def strip_shell_comments(cmd):
                 word_start = False
             i += 2
             continue
-        elif c == "#" and word_start:
+        elif c == "#" and ((i == 0 or cmd[i - 1] in " \t\n;&|()") if base else word_start):
             while i < len(cmd) and cmd[i] != "\n":
                 i += 1
             continue
@@ -444,6 +468,7 @@ class Scan:
                 except ValueError:
                     self.restore(start)
                     self.unparsable(text, where, depth)
+                    self.base_reading(text, where, depth, start)
         if "/tests/" in where:
             return
         for line in text.splitlines():
@@ -453,6 +478,30 @@ class Scan:
                 return
             if verdict == "ask":
                 self.ask.append(where)
+
+    def base_reading(self, text, where, depth, start):
+        """<text> stayed unparsable under the `#` reading: read it again from <start> with the
+        pre-#230 comment rule and keep what that reading finds too (the stronger verdict wins);
+        where it ends stays a candidate dir."""
+        if in_base_reading():
+            return
+        end, found = self.state(), (len(self.deny), len(self.ask))
+        self.restore(start)
+        with base_comment_reading():
+            for body in (text, doc_heredocs_removed(text)):
+                try:
+                    self.command(body, where, depth + 1)
+                    break
+                except ValueError:
+                    self.restore(start)
+            else:
+                self.unparsable(text, where, depth)
+        ends, blind = {self.cwd} | self.alt, self.blind or end[2]
+        self.restore((end[0], end[1], blind))
+        self.alt |= ends - {self.cwd}
+        # A place both readings flagged is named once.
+        self.deny[found[0]:] = [w for w in self.deny[found[0]:] if w not in self.deny[:found[0]]]
+        self.ask[found[1]:] = [w for w in self.ask[found[1]:] if w not in self.ask[:found[1]]]
 
     def unparsable(self, text, where, depth):
         """A body shlex cannot read as a whole is classified line by line; it asks when it names
@@ -610,8 +659,8 @@ def ask_verdict(where):
 def unparsable_command(cmd, cwd, project):
     """A command shlex cannot read as a whole: bash still runs every line before the one it fails
     on, so an unparsable tail must not demote what a line runs. Each line (continuations joined,
-    heredoc bodies dropped — data, not commands) is scanned on its own, and a sqlcmd line carrying
-    a DROP stays deny even when that line itself does not parse."""
+    heredoc bodies dropped — data, not commands) is scanned on its own; a line that does not parse
+    by itself adds nothing here (the ask below covers it)."""
     lines = re.sub(r"\\\n", "", heredoc_bodies_removed(cmd)).splitlines()
     scan = Scan(cwd, project)
     for line in lines:
@@ -619,8 +668,8 @@ def unparsable_command(cmd, cwd, project):
             scan.command(line, "command (unparsable)", 0)
         except ValueError:
             pass
-    if scan.deny or any(sqlcmd_deny_line(line) for line in lines):
-        return deny_verdict(scan.deny or ["command (unparsable)"])
+    if scan.deny:
+        return deny_verdict(scan.deny)
     if MENTIONS_SQL.search(cmd):
         return "ask", "Destructive-SQL guard could not parse a command that mentions sqlcmd/.sql"
     if scan.ask:
@@ -634,7 +683,13 @@ def classify(cmd, cwd, project):
     try:
         scan.command(cmd, "command", 0)
     except ValueError:
-        return unparsable_command(cmd, cwd, project)
+        verdict = unparsable_command(cmd, cwd, project)
+        if verdict[0] == "deny" or in_base_reading():
+            return verdict
+        # The `#` reading may be what left the command unparsable: the pre-#230 reading's verdict
+        # must not be lost.
+        with base_comment_reading():
+            return stronger(verdict, classify(cmd, cwd, project))
     if scan.deny:
         return deny_verdict(scan.deny)
     if scan.ask:
