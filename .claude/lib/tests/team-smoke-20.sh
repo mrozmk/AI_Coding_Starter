@@ -9,15 +9,15 @@ smoke_team AB-1301 feature/AB-1301-x
 L="$SRC/.claude/lib"; H="$SRC/.claude/hooks"
 RUN_ID=alfa-20261114-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 CREAL="$(cd "$CLONE" && pwd -P)"
-lead_json() {  # lead_json <run> <session id>
-  jq -n --arg r "$1" --arg s "$2" '{run: $r, session_id: $s}' > "$TD/teamlead.json"
+lead_json() {  # lead_json <run> <session id> [main_root, default $SRC: the checkout lhook runs the guards from]
+  jq -n --arg r "$1" --arg s "$2" --arg m "${3-$SRC}" '{run: $r, session_id: $s, main_root: $m}' > "$TD/teamlead.json"
 }
 caller() {  # caller <sid|""> → RC of team_lead_caller in the clone, as the lead
   set +e; (cd "$CLONE" && . "$L/team-lib.sh" && . "$L/team-lead-lib.sh" && TEAM_SESSION_ROLE=TeamLead team_lead_caller "$1") \
     > "$WORK/out" 2>&1; RC=$?; set -e
 }
 # Here-strings, not pipes: a hook that exits before reading stdin would give printf EPIPE.
-lhook() {  # lhook <hook> <json> — the hook as the lead (role env set), cwd outside the clone
+lhook() {  # lhook <hook> <json> — the hook as the lead (role env set), cwd outside the clone; its checkout ($SRC) is the main one
   set +e; CLAUDE_PROJECT_DIR="$CLONE" TEAM_SESSION_ROLE=TeamLead bash "$H/$1" <<<"$2" \
     > "$WORK/out" 2>&1; RC=$?; set -e
 }
@@ -119,6 +119,7 @@ echo "team-smoke-20: (e) write guard OK"
 
 # ---- (e2) guard-teamlead-bash.sh: no script-owned file by Bash, no key into a session ------------
 G=guard-teamlead-bash.sh; R=".agents/team/runs/$RUN_ID"
+ML="$(. "$L/team-lib.sh" && . "$L/team-lead-lib.sh" && team_lead_lib_prefix "$SRC")"  # the lead's tool prefix (the guard's checkout)
 bash_p() { jq -cn --arg c "$1" --arg s "${2-sid-lead}" '{session_id: $s, tool_name: "Bash", tool_input: {command: $c}}'; }
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 2 "written by the scripts" "(e2) refused: $c"
@@ -165,21 +166,21 @@ EOF2
 while IFS= read -r c; do
   lhook $G "$(bash_p "$c")"; expect 0 "" "(e2) allowed: $c"
 done <<EOF2
-bash .claude/lib/team-answer.sh alfa a-1 --allow --authority operator --why w --decision $R/decisions/d-1.md
+bash ${ML}team-answer.sh alfa a-1 --allow --authority operator --why w --decision $R/decisions/d-1.md
 cat $R/asks/a-1.json
-bash .claude/lib/team-verdict.sh plan approve --for $R/planner-1-1.json --ref $R/gate-plan-1.md
+bash ${ML}team-verdict.sh plan approve --for $R/planner-1-1.json --ref $R/gate-plan-1.md
 cat $R/answers.md
 jq . $R/decisions/d-1.md
 cd $R && cat digest.md
 echo hi > $R/gate-spec-1.md
 echo hi > $R/r2/acceptance-brief.md
 echo hi > $R/wrapup-decision-1.md
-bash .claude/lib/session-host.sh status alfa-coder
-bash .claude/lib/session-host.sh read alfa-coder --lines 40
-bash .claude/lib/session-host.sh alive alfa-coder
-bash .claude/lib/team-inbox.sh write Supervisor gate --from alfa
-bash .claude/lib/team-inbox.sh --main $MAIN done alfa $MAIN/.agents/team/inbox/alfa/new/20261115T120000Z-Supervisor-collision-answer.md
-bash .claude/lib/team-inbox.sh --main $MAIN list alfa
+bash ${ML}session-host.sh status alfa-coder
+bash ${ML}session-host.sh read alfa-coder --lines 40
+bash ${ML}session-host.sh alive alfa-coder
+bash ${ML}team-inbox.sh write Supervisor gate --from alfa
+bash ${ML}team-inbox.sh --main $MAIN done alfa $MAIN/.agents/team/inbox/alfa/new/20261115T120000Z-Supervisor-collision-answer.md
+bash ${ML}team-inbox.sh --main $MAIN list alfa
 hc read t1
 git status
 EOF2
@@ -195,6 +196,37 @@ EOF2
 lhook $G "$(bash_p 'cd "$X" && echo > answers.md')"; expect 2 "cannot be resolved" "(e2) a cd behind a variable"
 lhook $G "$(bash_p "git status" sid-stale)"; expect 2 "identity not current" "(e2) stale identity fails closed"
 shook $G "$(bash_p "echo x >> $R/answers.md" sid-coder-1)"; expect 0 "" "(e2) a stage passes"
+# The owning scripts are the main checkout's: the clone spelling naming a runs file is refused, both
+# .claude/ trees are protected, and the guard trusts the checkout it runs from.
+lhook $G "$(bash_p "bash .claude/lib/team-answer.sh alfa a-1 --text x --authority teamlead --why w > $R/x.md")"
+expect 2 "written by the scripts" "(e2) the clone's sender naming a runs file is refused"
+lhook $G "$(bash_p "bash .claude/lib/team-verdict.sh plan approve --for $R/planner-1-1.json")"
+expect 2 "written by the scripts" "(e2) the clone's team-verdict.sh naming a runs file is refused"
+lhook $G "$(bash_p "echo x > $SRC/.claude/lib/team-answer.sh")"; expect 2 "written by the scripts" "(e2) a write into the main checkout's .claude/ is refused"
+lead_json "$RUN_ID" sid-lead "$WORK"
+lhook $G "$(bash_p "git status")"; expect 2 "main_root differs from the guard's checkout" "(e2) a main_root other than the guard's checkout → identity refusal"
+lead_json "$RUN_ID" sid-lead ""
+lhook $G "$(bash_p "bash ${ML}team-verdict.sh plan approve --for $R/planner-1-1.json")"; expect 0 "" "(e2) an empty main_root: the guard's own checkout is used"
+lead_json "$RUN_ID" sid-lead
+# The clone's own copy of the guard (an older profile registered it); the fixture clone carries
+# no lead guard, so the copy and its Python libs are added for these cases and removed after.
+ADDED=""
+for x in "$H/$G" "$L"/*.py; do
+  d="$CLONE/.claude/$( [ "$x" = "$H/$G" ] && echo hooks || echo lib )/$(basename "$x")"
+  [ -e "$d" ] || { cp "$x" "$d"; ADDED="$ADDED $d"; }
+done
+chook() {  # chook <json> — the clone's own guard, as the lead
+  set +e; CLAUDE_PROJECT_DIR="$CLONE" TEAM_SESSION_ROLE=TeamLead bash "$CLONE/.claude/hooks/$G" <<<"$1" \
+    > "$WORK/out" 2>&1; RC=$?; set -e
+}
+chook "$(bash_p "bash .claude/lib/team-answer.sh alfa a-1 --allow --authority operator --why w --decision $R/decisions/d-1.md")"
+expect 0 "" "(e2) the clone-registered guard keeps the clone's scripts (--trust clone)"
+chook "$(bash_p "echo x > .claude/lib/team-answer.sh")"; expect 2 "written by the scripts" "(e2) … and still refuses a write into the clone's .claude/"
+chook "$(bash_p "echo x > $SRC/.claude/lib/team-answer.sh")"; expect 2 "written by the scripts" "(e2) … and into main_root's .claude/"
+for d in $ADDED; do rm -f "$d"; done
+set +e; (cd "$CLONE" && python3 -I "$L/team_lead_bash.py" "$CLONE" "$RUN_ID" \
+  <<<"bash .claude/lib/team-answer.sh alfa a-1 --allow --decision $R/decisions/d-1.md") > "$WORK/out" 2>&1; RC=$?; set -e
+expect 0 "" "(e2) team_lead_bash.py without a main checkout falls back to the clone's lib"
 # The lead's bootstrap is a fixed read set, not /prime — so no stage marker to allow above.
 BOOT="$(sed -n '/^## Bootstrap/,/^## Every turn/p' "$SRC/.claude/team/prompts/teamlead.md")"
 case "$BOOT" in *'Run `/prime`'*) fail "(e2) the lead's bootstrap still runs /prime" ;; esac
@@ -206,9 +238,26 @@ mkdir -p "$MAIN/.claude/team/sessions"
 cp "$SRC/.claude/team/sessions/TeamLead.settings.json" "$MAIN/.claude/team/sessions/"
 jq '.permissions.deny = ["Bash(git rebase*)"] | .permissions.ask = ["Bash(git tag*)"]' \
   "$MAIN/.claude/settings.json" > "$WORK/s" && cp "$WORK/s" "$MAIN/.claude/settings.json"
+CLS="$CLONE/.claude/settings.local.json"; [ ! -e "$CLS" ] || cp "$CLS" "$WORK/cls.keep"
+jq -n '{permissions: {ask: ["Bash(bash .claude/lib/team-verdict.sh run close*)"]}}' > "$CLS"
 run "$MAIN" bash .claude/lib/team-lead.sh materialize alfa
 expect 0 "profile TeamLead:" "(g) materialize"
 P="$TD/teamlead.settings.json"
+MP="$(cd "$MAIN" && pwd -P)"; MLM="$(. "$L/team-lib.sh" && . "$L/team-lead-lib.sh" && team_lead_lib_prefix "$MP")"
+jq -e --arg L "$MLM" --arg M "$MP" '._main_lib == $L
+  and (.permissions.allow | index("Bash(bash " + $L + "team-answer.sh *)"))
+  and ([.permissions.allow[] | select(startswith("Bash(bash .claude/lib/") or startswith("Bash(node .claude/lib/"))] | length == 0)
+  and (.permissions.allow | index("Bash(bash " + $L + "team-inbox.sh --main " + $M + " done alfa *)"))
+  and ([.permissions.allow[] | select(contains("team-inbox.sh"))] | length == 1)
+  and (.permissions.deny | index("Bash(bash .claude/lib/team-answer.sh*)"))
+  and (.permissions.deny | index("Bash(bash " + $L + "team-record.sh*)"))
+  and (.permissions.deny | index("Bash(bash .claude/lib/team-inbox.sh*)"))
+  and (.permissions.ask | index("Bash(bash .claude/lib/team-verdict.sh run close*)"))
+  and (.permissions.ask | index("Bash(bash " + $L + "team-verdict.sh run close*)"))
+  and (.hooks.PreToolUse[0].hooks[0].command | contains($M + "/.claude/hooks/"))
+  and (.hooks.PreToolUse[1].hooks[0].command | contains($M + "/.claude/hooks/"))' "$P" >/dev/null \
+  || fail "(g) the materialised profile allows the team tools only by their main-checkout path"
+if [ -e "$WORK/cls.keep" ]; then cp "$WORK/cls.keep" "$CLS"; else rm -f "$CLS"; fi
 [ "$(ls -l "$P" | cut -c1-10)" = "-rw-------" ] || fail "(g) profile is not mode 600"
 jq -e '(.permissions.deny | index("Bash(az repos pr update*)")) and
   (.permissions.deny | index("Bash(git push*)")) and (.permissions.ask | index("Bash(git tag*)"))

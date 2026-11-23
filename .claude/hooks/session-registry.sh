@@ -133,7 +133,12 @@ if [ "${TEAM_SESSION_ROLE:-}" = TeamLead ]; then
       --arg sid "$sid" --arg at "$now" --arg r "$r"
   fi
   echo "TeamLead of $team, run $run. Pending (oldest first; the files are the truth):"
-  p="$(bash "$LIB/team-lead.sh" pending "$team" 2>/dev/null)"
+  # The main checkout's copy, as every other team tool of the lead; never the clone's.
+  if [ -n "$main" ] && [ -f "$main/.claude/lib/team-lead.sh" ]; then
+    p="$(bash "$main/.claude/lib/team-lead.sh" pending "$team" 2>/dev/null)"
+  else
+    p="error: the main checkout's team-lead.sh is missing ($main) — run pending from the prompt"
+  fi
   printf '%s\n' "${p:-none}"
   exit 0
 fi

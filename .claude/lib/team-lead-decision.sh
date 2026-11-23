@@ -25,8 +25,9 @@
 
 dfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
-  awk -v k="$2" -v v="$3" '/^---$/ { n++; if (n == 2 && !done) print k ": " v; print; next }
-    n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
+  # ENVIRON, not -v: awk -v expands backslash escapes, so `C:\tmp` or `\"` would be mangled.
+  FM_K="$2" FM_V="$3" awk '/^---$/ { n++; if (n == 2 && !done) print ENVIRON["FM_K"] ": " ENVIRON["FM_V"]; print; next }
+    n == 1 && index($0, ENVIRON["FM_K"] ": ") == 1 { print ENVIRON["FM_K"] ": " ENVIRON["FM_V"]; done = 1; next } { print }' "$1" > "$1.tmp"
   mv "$1.tmp" "$1"
 }
 d_bad() { echo "error: $2" >&2; exit "$1"; }
@@ -82,20 +83,21 @@ notes_add() {
   local f="$TD/runs/$RUN/teamlead-notes.md" h
   [ -f "$f" ] || ( IFS='|'; for h in $NOTES_HEADINGS; do printf '%s\n\n' "$h"; done ) > "$f"
   grep -qxF "$1" "$f" || printf '\n%s\n' "$1" >> "$f"
-  awk -v h="$1" -v l="$2" '
-    s && /^## / { print l; print ""; s = 0; b = 0 }
+  NH="$1" NL="$2" awk '
+    s && /^## / { print ENVIRON["NL"]; print ""; s = 0; b = 0 }
     s && /^$/ { b++; next }
     s { for (; b > 0; b--) print ""; print; next }
-    $0 == h { s = 1; print; next }
+    $0 == ENVIRON["NH"] { s = 1; print; next }
     { print }
-    END { if (s) print l }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    END { if (s) print ENVIRON["NL"] }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 }
 
 # notes_tune <d-n> <tuning> <why> — completes the decision's Operator-case line (added by open).
 notes_tune() {
   local f="$TD/runs/$RUN/teamlead-notes.md" p="- $1 " t="— tuning: pending"
   if grep -q "^- $1 .*— tuning: pending\$" "$f" 2>/dev/null; then
-    awk -v p="$p" -v t="$t" -v r="— tuning: $2 — $3" '
+    NP="$p" NT="$t" NR="— tuning: $2 — $3" awk '
+      BEGIN { p = ENVIRON["NP"]; t = ENVIRON["NT"]; r = ENVIRON["NR"] }
       index($0, p) == 1 && substr($0, length($0) - length(t) + 1) == t {
         $0 = substr($0, 1, length($0) - length(t)) r }
       { print }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
@@ -176,13 +178,19 @@ ask_kind: $kind"
 }
 
 # The Operator's message in the lead's own transcript: a typed user entry after created_at that is
-# not a doorbell or a runner line, containing the answer text → its uuid. A message already used as
-# another decision's evidence counts again only when it names this decision's id.
+# not a doorbell or a runner line, containing the answer text (an ask-bound reply: equal to it) →
+# "<lead session> <uuid>[ legacy]". The session must be one the runner recorded for this run in the
+# main checkout's anchor (team_lead_trusted, looked up from the checkout this script runs from);
+# its config dir comes from there too. A message already used as another decision's evidence
+# counts again only when it names this decision's id.
 d_evidence() {
-  local sid t f used=""
+  local sid t f used="" x cfg leg="" uuid trust
   sid="$(jq -r '.session_id // empty' "$TD/teamlead.json" 2>/dev/null)"
-  t="$(team_role_transcript "${TD%/.agents/team}" "${sid:--}" \
-    "$(jq -r '.claude_config_dir // empty' "$TD/teamlead.json" 2>/dev/null)")"
+  trust="$(cd "$LIB/../.." && pwd -P)"
+  x="$(team_lead_trusted "$trust" "${TD%/.agents/team}" "$RUN" "$sid")" || return 3
+  sid="$(cut -f1 <<<"$x")"; cfg="$(cut -f2 <<<"$x")"
+  [ "$(cut -f3 <<<"$x")" != legacy ] || leg=" legacy"
+  t="$(team_role_transcript "${TD%/.agents/team}" "${sid:--}" "$cfg")"
   [ "$t" != - ] && [ -f "$t" ] || return 1
   for f in "$DD"/d-*.md; do
     [ -f "$f" ] && [ "$f" != "$1" ] || continue
@@ -190,7 +198,8 @@ d_evidence() {
   done
   # A base without the matcher has no window evidence: the answer then needs the terminal.
   . "$LIB/team-evidence.sh" 2>/dev/null || return 1
-  team_evidence_match "$t" "$2" "$(dfm "$1" created_at)" "$(basename "$1" .md)" "$used"
+  uuid="$(team_evidence_match "$t" "$2" "$(dfm "$1" created_at)" "$(basename "$1" .md)" "$used" "${3:-}")"
+  [ -z "$uuid" ] || echo "$sid $uuid$leg"
 }
 
 decision_answer() {
@@ -203,6 +212,9 @@ decision_answer() {
     shift 2
   done
   one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
+  # Trimmed once, so a padded verbatim reply reads the same here and in the hook.
+  text="$(jq -rn --arg m "$text" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')"
+  one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
   case "$outcome" in ""|continue|close|more-revise|approve|allow|deny) ;;
     *) d_bad 2 "--outcome continue|close|more-revise|approve|allow|deny" ;; esac
   case "$tuning" in ""|rule|TeamLead|none) ;; *) d_bad 2 "--tuning rule|TeamLead|none" ;; esac
@@ -212,29 +224,28 @@ decision_answer() {
   fi
   [ -z "$tuning" ] || one_line "$why" || d_bad 2 "--tuning needs a one-line --why"
   f="$(d_file "$id")"
-  local ask kind rest aval="" amap=""
+  local ask kind p po aval="" amap=""
   ask="$(dfm "$f" bind_ask)"
   if [ -n "$ask" ]; then
     # The Operator's reply names the decision, so two pending decisions never share one reply.
-    case "$text" in "$id "*) rest="${text#"$id "}" ;; *) d_bad 7 "reply must start with \"$id \"" ;; esac
+    case "$text" in "$id "*) ;; *) d_bad 7 "reply must start with \"$id \"" ;; esac
     kind="$(dfm "$f" ask_kind)"
-    case "$kind" in
-      permission|plan)
-        case "$rest" in
-          allow) aval="" ; [ -n "$outcome" ] || outcome=allow; [ "$outcome" = allow ] || d_bad 7 "the reply reads allow, not --outcome $outcome" ;;
-          deny|"deny:"*) aval="${rest#deny}"; aval="${aval#:}"; aval="${aval# }"
-            [ -n "$outcome" ] || outcome=deny; [ "$outcome" = deny ] || d_bad 7 "the reply reads deny, not --outcome $outcome" ;;
-          *) d_bad 7 "reply must read $id allow|deny" ;;
-        esac ;;
-      *)
-        [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
-        aval="$rest"
-        ask_init "$TD" || d_bad 4 "no current run"
-        if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then
-          amap="$(ask_reply_map "$ask" "$rest")" || d_bad 7 "reply must read $id $(d_reply_shape "$ask")"
-          aval=""
-        fi ;;
-    esac
+    ask_init "$TD" || d_bad 4 "no current run"
+    # ask_parse_reply is the hook's parser too: a reply it refuses is never recorded as answered.
+    if ! p="$(ask_parse_reply "$ask" "$id" "$text")"; then
+      case "$kind" in
+        permission|plan) d_bad 7 "reply must read $id allow|deny" ;;
+        *) d_bad 7 "reply must read $id $(if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then d_reply_shape "$ask"; else echo '<answer>'; fi)" ;;
+      esac
+    fi
+    po="$(jq -r .outcome <<<"$p")"
+    if [ -n "$po" ]; then
+      [ -n "$outcome" ] || outcome="$po"
+      [ "$outcome" = "$po" ] || d_bad 7 "the reply reads $po, not --outcome $outcome"
+    else
+      [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
+    fi
+    aval="$(jq -r .value <<<"$p")"; amap="$(jq -c '.map // empty' <<<"$p")"
   fi
   if [ "$(dfm "$f" status)" = withdrawn ]; then
     notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"
@@ -246,11 +257,16 @@ decision_answer() {
     [ "$c" = "$id" ] || d_bad 7 "not confirmed — nothing applied"
     how="terminal"
   else
-    ev="$(d_evidence "$f" "$text")" || ev=""
+    local erc=0 esid
+    if [ -n "$ask" ]; then ev="$(d_evidence "$f" "$text" exact)" || erc=$?
+    else ev="$(d_evidence "$f" "$text")" || erc=$?; fi
+    [ "$erc" != 3 ] || d_bad 7 "the TeamLead session is not one the runner recorded — answer from a terminal"
     [ -n "$ev" ] || d_bad 7 "no Operator message in the TeamLead window after $(dfm "$f" created_at) contains this answer — answer from a terminal, or relay the Operator's own words"
-    how="teamlead-window $ev"
+    # "<session> <uuid>[ legacy]": a legacy pair came from teamlead.json, so no answered_session.
+    set -- $ev; esid="$1"; how="teamlead-window $2"; [ "${3:-}" != legacy ] || esid=""
   fi
   dfm_set "$f" status answered; dfm_set "$f" answered_at "$(team_utc)"; dfm_set "$f" answered_via "$how"
+  [ -z "${esid:-}" ] || dfm_set "$f" answered_session "$esid"
   [ -z "$outcome" ] || dfm_set "$f" answer_outcome "$outcome"
   if [ -n "$ask" ]; then
     [ -z "$aval" ] || dfm_set "$f" answer_value "$aval"

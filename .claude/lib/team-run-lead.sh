@@ -39,11 +39,30 @@ render_lead_prompt() {
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"
   put BASE_SHA "$(team_json base_sha)"; put RUN "$RUN"; put MODE "$MODE"
   put ORDER_BRIEF ".agents/team/runs/$RUN/order-brief.md"
-  # The prompt comes from main, the lead runs the clone's scripts: offer --reason only if they take it.
-  if grep -q -- '--reason' "$CLONE/.claude/lib/team-lead-decision.sh" 2>/dev/null; then
+  # The lead runs the main checkout's scripts: offer --reason only if they take it.
+  if grep -q -- '--reason' "$root/.claude/lib/team-lead-decision.sh" 2>/dev/null; then
     put DECISION_REASON ' --reason <human-only|no-rule|lead-unsure>'
   else put DECISION_REASON ''; fi
+  # Every team tool with the main checkout's path: the lead runs the copy the runner and the stage
+  # hook run, never the clone's (a ticket may change those).
+  local L a b
+  L="$(team_lead_lib_prefix "$root")" || die 4 "main checkout path holds a quote"
+  a="bash .claude/lib/"; b="bash $L"; p="${p//"$a"/$b}"
+  a="node .claude/lib/"; b="node $L"; p="${p//"$a"/$b}"
   printf '%s\n' "$p" > "$1"
+}
+
+# lead_session_record <sid> <config dir> — the run's lead sessions, in the main checkout's anchor
+# (the runner is their only writer): the Operator-answer check trusts these, never the
+# role-writable clone (team-lead.md §7). A new run starts a fresh list. A missing anchor is
+# initialised first, as team_anchor_launch would: a bare {lead_sessions} one is a mismatch for good.
+lead_session_record() {
+  local f; f="$(team_anchor_file "$root" "$TEAM")"
+  [ -f "$f" ] || team_anchor_init "$root" "$TEAM" "$CLONE" || return 1
+  team_anchor_put "$f" '.lead_sessions = (if (.lead_sessions.run // "") == $r
+      then .lead_sessions else {run: $r, ids: []} end) | .lead_sessions.ids += [$s]
+    | .lead_sessions.ids |= unique | .lead_sessions.current_id = $s | .lead_sessions.config_dir = $cc' \
+    --arg r "$RUN" --arg s "$1" --arg cc "$2"
 }
 
 launch_lead() {
@@ -76,6 +95,7 @@ launch_lead() {
     '{team: $team, run: $run, session_id: $sid, launched_at: $at, launch: $n, model: $model,
       effort: $effort, permission_mode: $perm, main_root: $main, claude_config_dir: $cc}' > "$TD/teamlead.json.tmp"
   mv "$TD/teamlead.json.tmp" "$TD/teamlead.json"
+  lead_session_record "$sid" "$cc" || die 1 "TeamLead session not recorded in the anchor"
   # The .session/.prompt.md pair is how cost.py bind --team-run finds every lead session.
   printf '%s\n' "$sid" > "$TD/runs/$RUN/lead-$n.session"
   render_lead_prompt "$pf"
@@ -107,10 +127,6 @@ lead_start() {
   [ "$MODE" = quick ] || [ -n "$(accepted_record planner)" ] \
     || grep -q 'the first gate is the plan gate' "$CLONE/.claude/lib/team-verdict.sh" \
     || die 4 "clone base still has the spec gate (its team-verdict.sh predates the plan-gate-only TeamLead) — this brainstorm run cannot finish planning on the current runner: finish planning before updating the main checkout, or the Operator restarts the ticket on a fresh clone (team-new.sh)"
-  # The lead runs the clone's sender, the hook the main checkout's: both must share the ask format.
-  # Refused once here, at runner start, so no run is stranded between stages.
-  grep -q -- '--allow' "$CLONE/.claude/lib/team-answer.sh" 2>/dev/null \
-    || die 4 "clone base lacks the ask channel (its team-answer.sh predates the hook answering path) — finish this run on a main checkout from before the change, or the Operator restarts the ticket on a fresh clone (team-new.sh)"
   if [ "$(team_lead_json run)" = "$RUN" ] && team_tmux_alive "$(sess_name lead)"; then
     echo "TeamLead reused: $(sess_name lead)"; return 0
   fi
@@ -209,8 +225,8 @@ lead_notify() {
 
 lfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 lfm_set() {  # lfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
-  awk -v k="$2" -v v="$3" '/^---$/ { n++; if (n == 2 && !done) print k ": " v; print; next }
-    n == 1 && index($0, k ": ") == 1 { print k ": " v; done = 1; next } { print }' "$1" > "$1.tmp"
+  FM_K="$2" FM_V="$3" awk '/^---$/ { n++; if (n == 2 && !done) print ENVIRON["FM_K"] ": " ENVIRON["FM_V"]; print; next }
+    n == 1 && index($0, ENVIRON["FM_K"] ": ") == 1 { print ENVIRON["FM_K"] ": " ENVIRON["FM_V"]; done = 1; next } { print }' "$1" > "$1.tmp"
   mv "$1.tmp" "$1"
 }
 

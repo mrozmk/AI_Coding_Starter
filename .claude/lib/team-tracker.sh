@@ -6,10 +6,11 @@
 #   read --brief <text>|--brief-file <path> --out <dir>      (tracker=none)
 #   comment <key> --marker <m> --body-file <f>
 #   set-status <key> started|delivered
-#   create-followup --marker <m> --title <t> --body-file <f>
+#   create-followup --marker <m> --title <t> --body-file <f>  (adds the issue to the Project)
 #   list --out <file>                                        (read-only; /tasks-status)
 #   show <key> --out <file>                                  (read-only; /tasks-status)
-#   create-issue --marker <m> --title <t> --body-file <f>    (marker on ANY body line; /github-sync)
+#   create-issue --marker <m> --title <t> --body-file <f>    (marker on ANY body line; /github-sync;
+#                                                             adds the issue to the Project)
 #   markers --prefix <p> --out <file>                        (read-only; /github-sync)
 #   sub-issues <parent> --out <file>                         (read-only; /github-sync)
 #   add-sub-issue <parent> <child>                           (idempotent; /github-sync)
@@ -267,9 +268,18 @@ all_issues() {
     || die 4 "issue list of $TEAM_GH_REPO is not parseable"
 }
 
+# Usage: project_after <n> — the board half of a create: `project: added|exists|skipped (no
+# project)`, or a warning line (exit 0): the issue exists, only its board entry is missing.
+project_after() {
+  local out
+  # op_project_add dies on a failure; in this subshell that ends only the board half.
+  if out="$(KEY="$1"; op_project_add 2> "$TMP/padd.err")"; then echo "project: $out"
+  else echo "warning: project add failed for #$1 — rerun: team-tracker.sh project-add $1 ($(tail -n 1 "$TMP/padd.err" 2>/dev/null))"; fi
+}
+
 # Usage: create_marked last|any <title> <body file> — $MARKER_N set by the caller. Looks the marker
 # up over the full list (as the last body line, or as any body line), then 0 → create · 1 → exists ·
-# >1 → recoverable, with nothing written.
+# >1 → recoverable, with nothing written. Either way the issue is then added to the Project.
 create_marked() {
   local mode="$1" title="$2" file="$3" n url hits
   all_issues
@@ -281,13 +291,15 @@ create_marked() {
   [ "$hits" -le 1 ] \
     || die 4 "marker '$MARKER_N' matches $hits issues of $TEAM_GH_REPO — refusing to choose one"
   n="$(jq -r '.[0].number // ""' "$TMP/hits.json")"
-  if [ -n "$n" ]; then echo "exists $n"; return 0; fi
+  if [ -n "$n" ]; then echo "exists $n"; project_after "$n"; return 0; fi
   gh_or4 gh issue create --repo "$TEAM_GH_REPO" --title "$title" --body-file "$file" \
     > "$TMP/created"
   url="$(tail -n 1 "$TMP/created")"
   n="${url##*/}"
   [[ "$n" =~ ^[0-9]+$ ]] || die 4 "gh issue create printed no issue number ('$url')"
   echo "created $n"
+  project_after "$n"
+  return 0
 }
 
 # Usage: write_atomic <src> <dest> — the reader never sees a half-written file.

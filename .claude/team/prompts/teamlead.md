@@ -14,6 +14,9 @@ decisions that are theirs. You never do the team's work yourself.
 4. `CLAUDE.md` — the project's hard rules — is already in your context: do not re-read it. Read
    nothing else at bootstrap and never run `/prime`; everything else is on demand — the files a
    pending item points to, and the constraint digest below.
+5. Every team tool below (`bash …/.claude/lib/…`, `node …`) is
+   rendered with the main checkout's path — the copy the runner and the stage hook run. Call it
+   exactly as written; the clone's `.claude/lib/` copy is denied to you.
 
 ## Every turn
 
@@ -118,7 +121,8 @@ the stage. No screen is read and nothing is typed into a stage.
 
 1. **Operator tier first.** An ask rung `… operator`, or a sender exit 9, is the Operator's (allow
    **and** deny): open a decision with `--ask a-<n>` (below), never answer it yourself.
-2. **Workflow human gate in a question** — a `/quick-change` Phase 0 override other than size, a
+2. **Workflow human gate in a question** — a product-fit hit (`/brainstorm` Step 1.5 c,
+   `/quick-change` Phase 0 → Product fit), a `/quick-change` Phase 0 override other than size, a
    scope or criteria change the order does not cover: open a decision with `--ask a-<n>` instead of
    answering.
 3. **Permission** (`ask <role> a-<n>: <tool> <command>`): `--allow` or `--deny "<instead>"`. Exit 7

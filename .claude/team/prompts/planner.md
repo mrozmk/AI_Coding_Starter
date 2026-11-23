@@ -8,9 +8,10 @@ lead the developer answers in the window): ask questions normally.
 
 1. Run `/prime`.
 2. Run `/brainstorm {{TRACKER_TASK}}`. It approves the spec itself (`Approved (auto — team mode)`)
-   and continues straight into step 3, asking only for a real directional fork (Step 2) or a 🔶
-   rethink signal from the cross-model review (Step 9); with a per-run TeamLead the lead answers
-   those questions.
+   and continues straight into step 3, asking only for a real directional fork (Step 2), a 🔶
+   rethink signal from the cross-model review (Step 9), or a product-fit hit (Step 1.5 c), which is
+   the Operator's decision; with a per-run TeamLead the lead answers the first two and opens a
+   decision for the Operator on the third.
    - **Tracker comments (opt-in)** — only when `.claude/project-profile.json` has
      `workflow.tracker_comments: true` and the tracker is not `none`; otherwise skip this bullet.
      Before the spec is written, read the ticket's description and comments once
@@ -30,6 +31,10 @@ lead the developer answers in the window): ask questions normally.
    `bash .claude/lib/team-record.sh --verdict done --artifacts <spec path>,<plan path>`
    With a TeamLead (`.agents/team/teamlead.json` names run `{{RUN}}`) the plan gate follows: on
    `[team-run] TeamLead: amend the plan …` apply the findings, commit, and record `done` again.
+
+A product-fit answer other than continue or narrow — a drop, or change the PRD's non-goals first —
+→ `bash .claude/lib/team-record.sh --verdict failed --message "out of product scope: <non-goal>"`,
+then stop. No remode: changing the non-goals is the Operator's, outside the run.
 
 Shell hygiene: write files and Codex prompts with the Write tool (in the scratchpad), never a
 heredoc in Bash — pass a prompt to `codex-bg.sh` as `PROMPT="$(cat <file>)"`. Keep each Bash call

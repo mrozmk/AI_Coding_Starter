@@ -57,8 +57,9 @@ lead_asks() {
   for id in $(ask_ids); do
     case "$(ask_get "$id" state)" in
       waiting|timed-out) ;;
-      # A permission ask withdrawn by its own hook's deadline: its decision goes with it.
-      withdrawn) lead_withdraw_decisions "$id" "the ask timed out; the stage's retry files a new ask" \
+      # A lead-tier (or unpinnable) permission ask withdrawn by its own hook's deadline, a
+      # superseded or ambiguous operator ask: its decision goes with it.
+      withdrawn) lead_withdraw_decisions "$id" "the ask was withdrawn; the stage's retry files a new ask" \
           && team_session_doorbell "$TD" lead "ask $(ask_get "$id" role) $id withdrawn — timed out, its decision withdrawn"
         continue ;;
       *) continue ;;

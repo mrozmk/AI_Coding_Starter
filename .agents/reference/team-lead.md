@@ -247,6 +247,18 @@ with exit 7 (`constraint digest missing — see the Digest section of the TeamLe
 Every blocking stop of a stage in a lead run reaches the lead as an **ask** — a file, never a
 screen. No pane is read and no key is typed into a stage, on tmux and Herdr alike.
 
+**The lead's tools are the main checkout's.** The runner renders the lead's prompt with every team
+tool as `bash <main>/.claude/lib/…` / `node <main>/.claude/lib/…` (`team_lead_lib_prefix`,
+single-quoted when the path needs it), and `team-lead.sh materialize` writes the profile the same
+way: the allow rules name the main path, the clone-relative spelling of each is denied, the deny/ask
+union also reads the clone's own project settings, and both lead guards are registered by absolute
+path into the main checkout's `.claude/hooks/`. `guard-teamlead-bash.sh` trusts the checkout it runs
+from (owning scripts from main's lib, both `.claude/` trees protected, a `main_root` naming another
+checkout refused); a guard an older profile registered from the clone keeps the clone's scripts
+(`--trust clone`) until the profile is re-materialised. So a ticket that changes the clone's
+`team-answer.sh`, `team-lead.sh` or `team-verdict.sh` cannot change how its own lead answers, and a
+clone cut before the ask channel no longer refuses the run start for its sender.
+
 **Stage hooks.** At each stage launch the runner materialises `<main>/.claude/team/stage-hooks.json`
 into `<clone>/.agents/team/stage-hooks.settings.json` (every command an absolute path into the
 **main checkout's** `.claude/hooks/team-ask-hook.sh`, so a ticket editing the hook or the checker
@@ -278,12 +290,12 @@ ask is published:
 |---|---|---|
 | `class` | ask matches only, in one enabled `team_prompt_classes.py` class (Bash, file edits) | the hook, at once: answer `authority: class`, an `answers.md` line, no ring |
 | `lead` | no human-only cause — a baseline ask match, no rule at all (a guard's own `ask` leaves no trace in the payload), an MCP or other unevaluated tool with a baseline rule or none | the lead: `--allow` or `--deny` |
-| `operator` | egress by the real egress classifier (`guard_team_egress.bash_reason` / `webfetch_reason`, so an inline interpreter is caught), a settings or guard-profile edit, a project-added ask rule (Bash, Edit/Write or a tool name), a recursive `rm` outside the clone and the temp roots or unresolvable; and what the old table never waived — the SQL guard, an edit or path outside the clone, a recursive `rm` of the clone root or `.git` | only an Operator decision, **allow or deny** (§7); the lead opens it |
+| `operator` | egress by the real egress classifier (`guard_team_egress.bash_reason` / `webfetch_reason`, so an inline interpreter is caught), a settings or guard-profile edit, a project-added ask rule (Bash, Edit/Write, a tool name, a bare `mcp__<server>`, or a parameterized rule of an unevaluated tool — `Skill(<name>)` / `Skill(<name> *)` by the skill name, `Read(<glob>)` and any argument it cannot judge as covered), a recursive `rm` outside the clone and the temp roots or unresolvable; and what the old table never waived — the SQL guard, an edit or path outside the clone, a recursive `rm` of the clone root or `.git` | only an Operator decision, **allow or deny** (§7); the lead opens it |
 
 Relative operands resolve against the payload's `cwd`; the clone root stays the boundary.
 `question` and `text` asks are tier `lead`, unless the lead finds a workflow human gate in one — a
-`/quick-change` Phase 0 override other than size, a scope or criteria change the order does not
-cover — and opens a decision (`requires_decision` on the ask; from then on only the Operator's
+product-fit hit, a `/quick-change` Phase 0 override other than size, a scope or criteria change the
+order does not cover — and opens a decision (`requires_decision` on the ask; from then on only the Operator's
 relay answers it).
 
 **Filing and states** (`team-ask.sh`, its header is the file contract): `a-<n>.json` written
@@ -291,15 +303,26 @@ atomically under the ask lock; `waiting` (a live `waiter_pid`) → `timed-out` (
 fallback) → `answered` (the answer file exists) → `delivering` → `delivered`, or `withdrawn`
 (terminal both). A retry of a question, plan or stop with the same session and fingerprint claims a
 `timed-out` or undelivered `answered` ask, so the lead is never asked twice; a `waiting` ask is
-never shared (two identical live calls → two asks). A permission ask is never claimed by content
-(no `tool_use_id`): on timeout it is withdrawn and the retry files a new ask.
+never shared (two identical live calls → two asks). A permission ask is filed with the canonical
+`cwd` in its payload, the checker's `retry_key` (its second output line `retry: <sha1>|none`: the
+input plus a digest of every file and directory tree the request names) and the payload's
+`session_id` as `hook_session_id`. A lead-tier one, or one whose inputs cannot be pinned
+(`retry: none` — a word behind `$`, a backtick or `$(…)`, a glob, `~user`, a process substitution,
+a tree over 20 000 entries, a checker failure), is withdrawn at its waiter's deadline and its retry
+files a new ask. An **operator-tier** one with a key times out instead (`timed-out`, its decision
+stays pending) and is claimed by the retry of the same session, hook session, attempt, agent, cwd,
+input and key — only when exactly one such ask exists; two or more are all withdrawn and a new ask
+filed. The same call with another key (a named file changed) withdraws the old ask (superseded),
+and the delivery re-runs the checker: a key that changed since the claim gets no allow (`the
+operation's inputs changed since the decision — retry the call`) and the ask is withdrawn.
 
 **Waiting.** The hook rings the lead (`ask <role> a-<n>[ operator]: <one line>`, detached) and
 polls for the answer to its deadline, the registration's timeout − 15 s (measured: a 700 s hook
 wait works; the runner sets 715 s, `TEAM_ASK_TIMEOUT_SECS`). On the deadline it returns the
 fallback and leaves the ask open: `PreToolUse` → deny "No answer from the TeamLead yet (ask a-<n> is
 still open). Ask again with the same input — the answer will be waiting."; `PermissionRequest` →
-deny, retry to ask again; `Stop` → block "… Run `bash <main>/.claude/lib/team-ask.sh wait a-<n>`
+deny: a timed-out operator ask "waits for the Operator's decision and stays open. Retry the same
+tool call later", a withdrawn one "retry to ask again"; `Stop` → block "… Run `bash <main>/.claude/lib/team-ask.sh wait a-<n>`
 (waits up to 9 min) …". A failing hook fails open (exit 0, no output: the normal prompt shows and
 the `Notification` line reaches the runner).
 
@@ -315,8 +338,12 @@ without `--authority operator --decision <that d-n>`. The answer file is written
 over a file); then the decision is spent, the `answers.md` line written (once per ask) and a
 record's `.answered` marker touched. Before returning an Operator-authorised answer the
 main-checkout hook re-verifies it (the decision bound to the ask, the Operator's typed `d-<n> …`
-message at the recorded uuid in the lead's transcript) — neither the clone's sender nor a
-stage-edited decision file can mint one.
+message at the recorded uuid in the lead's transcript, typed after the decision opened) — neither
+the clone's sender nor a stage-edited decision file can mint one. The Operator's whole reply is
+parsed by one function on both sides, `ask_parse_reply` (`team-ask.sh`): `decision answer` records
+only a reply the hook will accept (its evidence must **equal** the reply, trimmed), and the hook
+re-parses the message itself — a preamble ("ok, d-1 allow"), a shortened deny alternative or label,
+a repeated header or a stray fragment is refused by both.
 
 **The runner** (`lead_asks`, each poll): re-derives the `answers.md` line and `.answered` from any
 answer file (an interrupted sender, an answer before the ack), spends a decision an answer names,
@@ -377,7 +404,19 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   canonical `answer_map`). A given `--outcome` must equal the derived one (7). It asks for a human: from a **terminal** (stdin is a TTY and the id
   is typed to confirm — `answered_via: terminal`), or from the **lead window**, where the lead's own
   transcript must hold a typed user message after `created_at`, not a doorbell or `[team-run]` line,
-  that contains the answer text (`answered_via: teamlead-window <message uuid>`); else exit 7. One
+  that contains the answer text — for an ask decision, equals the reply — (`answered_via:
+  teamlead-window <message uuid>`, plus `answered_session: <lead session id>`); else exit 7. The
+  lead session must be one the runner recorded for this run: `launch_lead` writes every lead
+  session of the run into the main checkout's anchor (`lead_sessions: {run, ids, current_id,
+  config_dir}`, found by the clone's physical path), and both `decision answer` (from the checkout
+  it runs from) and the hook (`team_lead_trusted`) read the transcript only from a listed session
+  and the anchor's config dir — never from the clone's `teamlead.json` or `lead-<n>.session`. After
+  a relaunch the previous lead's answer still verifies (`answered_session` names it; a decision
+  without one uses `current_id`). A lead id refreshed by `/clear` is not listed: `decision answer`
+  refuses it up front ("the TeamLead session is not one the runner recorded — answer from a
+  terminal"), the decision stays pending. A run launched by a runner from before `lead_sessions`
+  (no anchor for the clone, or the anchor names another run) keeps the old evidence from
+  `teamlead.json` and writes no `answered_session`. One
   message is evidence for one decision, unless it names the other decision's id too
   (`d-8 yes, d-9 no`). A non-pending decision refuses with exit 4 (a late answer to a withdrawn
   decision is never applied).

@@ -143,7 +143,18 @@ def check_role(main, pdir, role, out, clone=None, template=None):
         fails.append("materialised profile lost %d deny rules" % len(lost))
     rules = tool_rules(perms)
     samples = profile.get("_samples", {})
-    for cmd in samples.get("forbidden", []):
+    # The per-run lead runs the team tools from the main checkout (_main_lib, team-lead.sh
+    # materialize): its samples are checked with that path, and the clone spelling must be denied.
+    ml = (load(mp) or {}).get("_main_lib") if role in RUN_ROLES and materialised else None
+
+    def mapped(cmd):
+        return re.sub(r"^(bash|node) \.claude/lib/", lambda m: m.group(1) + " " + ml, cmd) if ml else cmd
+    if ml:
+        for cmd in samples.get("reads", []):
+            got = classify(cmd, rules)
+            if re.match(r"(bash|node) \.claude/lib/", cmd) and got != "deny":
+                fails.append("%s → %s, expected deny (clone copy)" % (cmd, got))
+    for cmd in map(mapped, samples.get("forbidden", [])):
         got = classify(cmd, rules)
         if got != "deny":
             fails.append("%s → %s, expected deny" % (cmd, got))
@@ -155,7 +166,7 @@ def check_role(main, pdir, role, out, clone=None, template=None):
     for skill in samples.get("skills", []):
         if skill not in perms["deny"]:
             fails.append("%s → absent, expected deny" % skill)
-    for cmd in samples.get("reads", []):
+    for cmd in map(mapped, samples.get("reads", [])):
         got = classify(cmd, rules)
         if got != "allow":
             fails.append("%s → %s, expected allow" % (cmd, got))

@@ -291,7 +291,7 @@ owns() {
 # Same union as supervisor-sessions.sh materialize, written into the clone instead of the main
 # checkout's watch/profiles: the lead runs in the clone, the global roles do not.
 materialize() {
-  local team="$1" root clone loc out tpl pr='[]'
+  local team="$1" root clone out tpl pr='[]' L mq
   team_check_name "$team" || exit 2
   root="$(team_root)"
   [ ! -f "$root/.agents/team/team.json" ] \
@@ -308,22 +308,40 @@ materialize() {
     github) pr='["Bash(gh pr merge*)","Bash(gh pr edit*)"]' ;;
     azure-devops) pr='["Bash(az repos pr update*)"]' ;;
   esac
-  loc="$root/.claude/settings.local.json"
-  [ -f "$loc" ] || loc=/dev/null
+  # The lead runs every team tool and its guards from the main checkout (the copy the runner and the
+  # stage hook run): allow rules take the main path, the clone spelling is denied. The deny/ask
+  # union also reads the clone's project settings, which the lead loads by launching there.
+  L="$(team_lead_lib_prefix "$root")" || { echo "error: main checkout path holds a quote" >&2; exit 1; }
+  mq="$(team_lead_shell_word "$root")"
   out="$clone/.agents/team/teamlead.settings.json"
   ( umask 077
-    jq -s --argjson pr "$pr" '
-      (.[2] // {}) as $l | [.[0], .[1], $l] as $all
-      | {env: .[0].env,
-         permissions: {allow: (.[0].permissions.allow // []),
-                       deny: ([$all[] | .permissions.deny // [] | .[]] + $pr | unique),
-                       ask: ([$all[] | .permissions.ask // [] | .[]] | unique)},
+    jq -n --argjson pr "$pr" --arg L "$L" --arg H "$root/.claude/hooks" --arg Mq "$mq" --arg team "$team" \
+      --slurpfile t "$tpl" --slurpfile m "$root/.claude/settings.json" \
+      --slurpfile ml "$(f="$root/.claude/settings.local.json"; [ -f "$f" ] && echo "$f" || echo /dev/null)" \
+      --slurpfile c "$(f="$clone/.claude/settings.json"; [ -f "$f" ] && echo "$f" || echo /dev/null)" \
+      --slurpfile cl "$(f="$clone/.claude/settings.local.json"; [ -f "$f" ] && echo "$f" || echo /dev/null)" '
+      def cloned: test("^Bash\\(\\*?(bash|node) \\.claude/lib/");
+      def twin: sub("^Bash\\((?<s>\\*?)(?<c>bash|node) \\.claude/lib/"; "Bash(\(.s)\(.c) " + $L);
+      $t[0] as $tp | [$tp, ($m[0] // {}), ($ml[0] // {}), ($c[0] // {}), ($cl[0] // {})] as $all
+      | ($tp.permissions.allow // []) as $a0
+      | [$all[] | .permissions.deny // [] | .[]] as $d0
+      | [$all[] | .permissions.ask // [] | .[]] as $k0
+      | {env: $tp.env, _main_lib: $L,
+         permissions: {
+           allow: ([$a0[] | if cloned then twin
+                    elif . == "Bash(*.claude/lib/codex-bg.sh)" then "Bash(*" + $L + "codex-bg.sh)"
+                    else . end]
+                   + ["Bash(bash " + $L + "team-inbox.sh --main " + $Mq + " done " + $team + " *)"] | unique),
+           deny: ($d0 + $pr
+                  + [$a0[] | select(cloned) | capture("^Bash\\((?<c>bash|node) \\.claude/lib/(?<s>[^ )*]+)")
+                     | "Bash(\(.c) .claude/lib/\(.s)*)"]
+                  + ["Bash(*bash .claude/lib/codex-bg.sh*)", "Bash(bash .claude/lib/team-inbox.sh*)"]
+                  + [$d0[] | select(cloned) | twin] | unique),
+           ask: ($k0 + [$k0[] | select(cloned) | twin] | unique)},
          hooks: {PreToolUse: [{matcher: "Edit|Write|NotebookEdit", hooks: [{type: "command",
-           onFailure: "block",
-           command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-write.sh\""}]},
+           onFailure: "block", command: ("bash \"" + $H + "/guard-teamlead-write.sh\"")}]},
            {matcher: "Bash", hooks: [{type: "command", onFailure: "block",
-           command: "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-teamlead-bash.sh\""}]}]}}' \
-      "$tpl" "$root/.claude/settings.json" "$loc" \
+           command: ("bash \"" + $H + "/guard-teamlead-bash.sh\"")}]}]}}' \
       > "$out.tmp"
     mv "$out.tmp" "$out" )
   jq -r '"profile TeamLead: \(.permissions.deny | length) deny,"

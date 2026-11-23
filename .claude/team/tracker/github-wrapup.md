@@ -21,6 +21,10 @@
      on another attempt. Recommendation numbers are display labels only, never intent ids. Only
      new/unaccepted proposals go through steps 6–7. `drafts` and `create-<n>` intents are for
      tracker tickets only — a memory recommendation is never a draft (step 7).
+   - on a resume, every `done` create intent with `project_add: "failed"` runs
+     `bash .claude/lib/team-tracker.sh project-add <issue>` and moves to `project_add: "ok"` on
+     `added`, `exists` or `skipped (no project)`; an exit 4 leaves it `"failed"` (a warning again,
+     never a block). The create itself is never repeated.
    - **markers are stable across attempts, and their format is exact.** A marker is
      `[wrapup {{RUN}} <intent id>]` — `[wrapup {{RUN}} comment-1]` for the comment,
      `[wrapup {{RUN}} create-<draft id>]` for a follow-up. It is built from `{{RUN}}` and the intent
@@ -32,7 +36,7 @@
    - intents live in the object `intents` under fixed ids: `comment-1`
      `{op: "comment", marker, state, id}`, `set-status-delivered`
      `{op: "set-status", logical: "delivered", state}`, `create-<n>`
-     `{op: "create", draft_id, marker, state, issue}` (`<n>` = the draft id, never a
+     `{op: "create", draft_id, marker, state, issue, project_add}` (`<n>` = the draft id, never a
      recommendation number). Before the write save `state: "pending"`; after it succeeds save
      `state: "done"` and the returned id.
    - (a) write the summary to `{{RUN_DIR}}/tracker-comment.md` with
@@ -110,6 +114,9 @@
      (`{{TICKET}} reconcile memory after <short topic>`) and `/push`;
    - tasks: save the intent `{op: "create", draft_id, marker, state}` as `pending`, then
      `bash .claude/lib/team-tracker.sh create-followup --marker "<m>" --title "<t>" --body-file <file>`;
-     `created` or `exists` → `state: "done"` and the returned number.
+     `created` or `exists` → `state: "done"` and the returned number, and `project_add: "ok"` on its
+     `project:` line or `"failed"` on a `warning:` line (the issue exists, only its board entry is
+     missing). A failed add goes into the wrapup record's `--message` and the summary, never a block;
+     the resume repairs it (step 4).
    - Follow step 4 for every comment/create; a `done` creation is never repeated. Follow the
      stable intent id → issue number mapping even when recommendation order changes.
