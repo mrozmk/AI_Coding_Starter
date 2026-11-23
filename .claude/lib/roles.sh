@@ -380,6 +380,50 @@ status() {
   return "$rc"
 }
 
+# stop_gone <role> — its program is gone (rc 3). A tmux role the driver launched (its record has no
+# pid; `here` writes one) may have left its `; read` shell: close it, so no session of a stopped role
+# stays. A `here` record's session is the Operator's own terminal: left open.
+stop_gone() {
+  local r="$1" n st
+  n="$(sh_record_get "$MAIN" "$r" name)"
+  if [ "$(sh_record_get "$MAIN" "$r" backend)" != tmux ] || [ -z "$n" ]; then
+    echo "$r: not running"; return 0
+  fi
+  sh_tmux_alive "$n" 2>/dev/null; st=$?   # the session itself: 0 there · 3 absent · 1 cannot tell
+  case $st in
+    3) echo "$r: not running"; return 0 ;;
+    0) ;;
+    *) echo "$r: failed: liveness probe (exit $st)"; return 1 ;;
+  esac
+  if [ -n "$(sh_record_get "$MAIN" "$r" pid)" ]; then
+    echo "$r: not running (its terminal $n is not a role wrapper — left open)"; return 0
+  fi
+  # Only a lone `; read` pane is a leftover: a pane the Operator split off (an editor, a shell)
+  # would die with the session.
+  if [ "$(sh_tmux list-panes -s -t "=$n:" -F x 2>/dev/null | wc -l | tr -d ' ')" != 1 ]; then
+    echo "$r: not running (session $n has other panes — left open)"; return 0
+  fi
+  if sh_kill "$r" --main "$MAIN" >/dev/null; then
+    sh_record_put "$MAIN" "$r" '.stopped_at = $at' --arg at "$(sh_utc)" || true
+    echo "$r: not running (closed its leftover shell)"; return 0
+  fi
+  echo "$r: failed: its leftover shell $n is still open"; return 1
+}
+
+# stop_self <role> — the caller's own role, always last. Not graceful: the target lock it would take
+# is never reclaimed once its holder dies, and /exit cannot land while this command runs. A real
+# self-kill ends this process, so `stopping itself` is then its last line.
+stop_self() {
+  local r="$1" old
+  old="$(sh_record_get "$MAIN" "$r" stopped_at)"
+  sh_record_put "$MAIN" "$r" '.stopped_at = $at' --arg at "$(sh_utc)" || true
+  echo "$r: stopping itself"
+  if sh_kill "$r" --main "$MAIN" >/dev/null; then echo "$r: stopped"; return 0; fi
+  if [ -n "$old" ]; then sh_record_put "$MAIN" "$r" '.stopped_at = $at' --arg at "$old" || true
+  else sh_record_put "$MAIN" "$r" 'del(.stopped_at)' || true; fi
+  echo "$r: still running"; return 1
+}
+
 stop() {
   local t="${1:-all}" r list rc=0 st
   if [ "$t" = all ]; then list="$(roles_list --standing)"
@@ -387,15 +431,27 @@ stop() {
     roles_is_declared "$t" || { echo "error: $t is not a role of teams.sessions" >&2; exit 2; }
     list="$t"
   fi
+  # Held to the end, a self-stop included: a dead holder's lock is reclaimed, and holding it keeps a
+  # concurrent `up` from recreating a role mid-stop.
+  roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
+  trap 'roles_unlock "$REG"' EXIT
+  # The caller's own role last: closing its session ends this command's own process tree.
+  if [ -n "${HARNESS_ADDRESS:-}" ] && printf '%s\n' $list | grep -qxF -- "$HARNESS_ADDRESS"; then
+    list="$(printf '%s\n' $list | grep -vxF -- "$HARNESS_ADDRESS" || true) $HARNESS_ADDRESS"
+  fi
   for r in $list; do
     sh_alive "$r" --main "$MAIN" 2>/dev/null; st=$?
     case "$st" in
-      0) if sh_kill "$r" --main "$MAIN" --graceful 15 >/dev/null; then
+      0) if [ "$r" = "${HARNESS_ADDRESS:-}" ]; then
+           # A self-kill would swallow the batch's failed exit status.
+           if [ "$rc" != 0 ]; then echo "$r: not stopped — an earlier role failed"
+           else stop_self "$r" || rc=1; fi
+         elif sh_kill "$r" --main "$MAIN" --graceful 15 >/dev/null; then
            [ ! -f "$(sh_record_file "$MAIN" "$r")" ] \
              || sh_record_put "$MAIN" "$r" '.stopped_at = $at' --arg at "$(sh_utc)"
            echo "$r: stopped"
          else echo "$r: still running"; rc=1; fi ;;
-      3) echo "$r: not running" ;;
+      3) stop_gone "$r" || rc=1 ;;
       *) echo "$r: failed: liveness probe (exit $st)"; rc=1 ;;
     esac
   done
@@ -413,9 +469,13 @@ here() {
   fi
   roles_validate || exit 2
   standing "$r" || { echo "error: $r is not a standing, enabled role of teams.sessions" >&2; exit 2; }
+  roles_lock "$REG" "${TEAM_ROLES_LOCK_WAIT:-30}" || exit 1
+  trap 'roles_unlock "$REG"' EXIT
   sh_alive "$r" --main "$MAIN" 2>/dev/null
   case $? in
     0) echo "refused: $r is already running ($(sh_hint "$r" --main "$MAIN" 2>/dev/null))" >&2; exit 1 ;;
+    3) ;;
+    *) echo "refused: $r: liveness probe failed" >&2; exit 1 ;;
   esac
   if [ -n "${HC_TERMINAL_ID:-}" ] && [[ "$HC_TERMINAL_ID" =~ ^[A-Za-z0-9_/-]+$ ]]; then
     be=herdr h="$HC_TERMINAL_ID" name="$HC_TERMINAL_ID"
@@ -442,6 +502,8 @@ here() {
     --arg a "$r" --arg b "$be" --arg h "$h" --arg n "$name" --arg hcm "$hcm" --arg cwd "$MAIN" --arg cli "$cli" \
     --arg at "$(sh_utc)" --arg pid "$$" --arg ps "$(sh_lstart $$)" --arg tty "$t" \
     --arg sid "$sid" || { echo "error: the registry record could not be written" >&2; exit 1; }
+  # exec replaces this process, so no EXIT trap would run: the CLI must not hold the lock for life.
+  roles_unlock "$REG"; trap - EXIT
   cd "$MAIN" || exit 1
   # env options first, then the assignments: the role's identity, as the driver gives a started one.
   set -- -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN
