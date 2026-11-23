@@ -133,6 +133,26 @@ rc=$(run_hook guard-commit.sh "git commit -m t" "$R")
 rc=$(run_hook guard-commit.sh "git commit --no-edit" "$R")
 [ "$rc" = 0 ] || fail "commit --no-edit empty index: expected 0, got $rc"; ok "commit --no-edit empty index"
 
+# D1 with a chained add: its explicit paths are staged into a temporary index and judged there (the
+# real index stays untouched); -A / . / ; / another command in between keep the real index's verdict.
+chain_case() {  # chain_case <label> <expected rc> <file> <content> <command; @R@ = the repo>
+  N=$((N + 1)); R="$WORK/r$N"; git init -q "$R"; mkdir -p "$(dirname "$R/$3")"
+  printf '%s\n' "$4" > "$R/$3"
+  local rc; rc=$(run_hook guard-commit.sh "${5//@R@/$R}" "$R")
+  [ "$rc" = "$2" ] || fail "commit chain $1: expected $2, got $rc"
+  [ -z "$(git -C "$R" diff --cached --name-only)" ] || fail "commit chain $1: the real index changed"
+  ok "commit chain $1"
+}
+chain_case "add && commit" 0 a.txt hi 'git add a.txt && git commit -m "x && y"'
+chain_case "cd && add && commit" 0 a.txt hi 'cd @R@ && git add a.txt && git commit -m t'
+chain_case "-C add && -C commit" 0 a.txt hi 'git -C @R@ add a.txt && git -C @R@ commit -m t'
+chain_case "credential still scanned" 2 "$F" "token = $GH" "git add $F && git commit -m t"
+chain_case "add -A not simulated" 2 a.txt hi 'git add -A && git commit -m t'
+chain_case "add . not simulated" 2 a.txt hi 'git add . && git commit -m t'
+chain_case "; is not a chain" 2 a.txt hi 'git add a.txt; git commit -m t'
+chain_case "another command between" 2 a.txt hi 'git add a.txt && git status && git commit -m t'
+chain_case "missing path" 2 a.txt hi 'git add nosuch && git commit -m t'
+
 # --- wrapped invocations: subshell, substitution, <shell> -c; quoted text is not one ---------------
 wrap_case() {  # wrap_case <hook> <label> <expected rc> <command; @R@ = the repo>
   new_repo "$F" "token = $GH"; [ "$1" = guard-commit.sh ] || gitc commit -qm t

@@ -143,6 +143,7 @@ protected_check() {  # protected_check <one git push segment> <its repo dir>
       { echo "BLOCKED: guard-push — \`$a\` is protected; it changes only through a PR (/pr-create, then merge)."
         echo "Push a working branch instead. To allow direct pushes again, set \`**Protected push:** confirm\`"
         echo "(or remove that line) in CLAUDE.md → Branch model."; } >&2
+      [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-push --what "push to protected $a" >/dev/null 2>&1  # hook-block log, never fails the guard
       exit 2 ;;
     esac
   done
@@ -151,6 +152,7 @@ protected_check() {  # protected_check <one git push segment> <its repo dir>
       echo "and the Branch model protects $prot (Protected push: pr-only). Name the destination explicitly,"
       echo "e.g. git push origin <branch>:<branch>. To allow direct pushes again, set \`**Protected push:** confirm\`"
       echo "(or remove that line) in CLAUDE.md → Branch model."; } >&2
+    [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-push --what "ambiguous push destination (protected $prot)" >/dev/null 2>&1  # hook-block log, never fails the guard
     exit 2
   fi
   return 0
@@ -272,4 +274,5 @@ fi
   echo "  3. Genuine emergency override (logged to audit.log): re-run as  GUARD_PUSH_SKIP=1 git push ..."
 } >&2
 
+[ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-push --what "secrets in the commits to push ($RANGE)" >/dev/null 2>&1  # hook-block log, never fails the guard
 exit 2

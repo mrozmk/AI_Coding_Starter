@@ -46,6 +46,7 @@ if [ "${TEAM_SESSION_ROLE:-}" = TeamLead ]; then
   else
     echo "TeamLead identity not current — restart the lead" >&2
   fi
+  [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-team-memory --what "TeamLead memory write" >/dev/null 2>&1  # hook-block log, never fails the guard
   exit 2
 fi
 [ "$(jq -r '.role // ""' "$SESSION" 2>/dev/null)" = wrapup ] && exit 0
@@ -53,7 +54,9 @@ fi
 RUN=$(jq -r '.run // "<run>"' "$SESSION" 2>/dev/null)
 if [ "$WHAT" = standards ]; then
   echo "team mode: docs/coding-standards.md is written by the wrapup role only (team-standards.sh add, after the TeamLead accepts) — add the finding under ## Learnings, prefixed standards:, in .agents/team/runs/${RUN}/notes.md" >&2
+  [ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-team-memory --what "coding-standards write outside wrapup" >/dev/null 2>&1  # hook-block log, never fails the guard
   exit 2
 fi
 echo "team mode: project memory is written by the wrapup role only — add the lesson under ## Learnings in .agents/team/runs/${RUN}/notes.md (see .agents/reference/team-mode.md)" >&2
+[ -f "$(dirname "$0")/../lib/touches.sh" ] && bash "$(dirname "$0")/../lib/touches.sh" block --source guard-team-memory --what "memory write outside wrapup" >/dev/null 2>&1  # hook-block log, never fails the guard
 exit 2

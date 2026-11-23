@@ -1,12 +1,16 @@
 """Operator touch log: one JSON line per human intervention for a session, per project and machine,
 in <main checkout>/.agents/touches/<yyyy-mm>.jsonl. CLI and usage: .claude/lib/touches.sh (add |
-report | hook). Contract: .agents/reference/operator-touches.md. Stdlib only and harness-free: the
-global opt-in copies this one file as is."""
+block | report | hook). A `block` line (kind block, reason hook) records a hook that refused a call
+with no human involved; it is never counted as an Operator touch. Contract:
+.agents/reference/operator-touches.md. Stdlib only and harness-free: the global opt-in copies this
+one file as is."""
 import argparse, calendar, collections, contextlib, json, os, re, stat, subprocess, sys, time  # noqa: E401
 
 KEYS = ("at", "machine", "who", "where", "kind", "what", "reason", "answer", "wait_s")
-KINDS = ("question", "permission", "plan", "text", "decision", "restart", "other")
-REASONS = ("human-only", "no-rule", "lead-unsure", "channel-failed", "guard", "direct")
+HUMAN_KINDS = ("question", "permission", "plan", "text", "decision", "restart", "other")
+HUMAN_REASONS = ("human-only", "no-rule", "lead-unsure", "channel-failed", "guard", "direct")
+# A hook's automatic refusal: written only by `block`, reported apart from the Operator touches.
+KINDS, REASONS = HUMAN_KINDS + ("block",), HUMAN_REASONS + ("hook",)
 AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 MONTH_RE, ASK_RE = re.compile(r"^\d{4}-\d{2}\.jsonl$"), re.compile(r"^a-\d+\.json$")
 LINE_MAX, NEAR_S, TAIL_BYTES = 4000, 10, 65536
@@ -223,6 +227,10 @@ def norm(what):
     s = re.sub(r"[\"'`]", "", what.lower())
     return re.sub(r"\s+", " ", re.sub(r"\d+", "#", s)).strip()[:48]
 
+def touches_only(entries):
+    """The Operator touches: every entry but a hook block (no human acted on it)."""
+    return [e for e in entries if e["kind"] != "block"]
+
 def ranked_clusters(entries):
     """[((reason, norm what), entries)] by size, then newest; the hook's generic what never clusters."""
     out = {}
@@ -244,8 +252,8 @@ def report(a, main):
     if not present:
         print("Operator touches — none recorded")
         return 0
-    sel = [e for e in entries if e["at"][:10] >= since and a.who in (None, e["who"])
-           and a.reason in (None, e["reason"])]
+    period = [e for e in entries if e["at"][:10] >= since and a.who in (None, e["who"])]
+    sel = [e for e in touches_only(period) if a.reason in (None, e["reason"])]
     print("Operator touches — %d since %s (%d files%s)"
           % (len(sel), since, files, ", %d malformed skipped" % bad if bad else ""))
     groups = {}
@@ -258,6 +266,11 @@ def report(a, main):
         print("Recurring")
     for (r, _), v in rec:
         print('  %d× %s — "%s"' % (len(v), r, v[-1]["what"]))
+    blocks = [e for e in period if e["kind"] == "block" and a.reason in (None, "hook")]
+    if blocks:
+        print("Hook blocks (no human) — %d" % len(blocks))
+        for (_, _), v in [kv for kv in ranked_clusters(blocks) if len(kv[1]) >= 2][:5]:
+            print('  %d× — "%s"' % (len(v), v[-1]["what"]))
     return 0
 
 def brief(a, main):
@@ -266,7 +279,7 @@ def brief(a, main):
         return _err("--brief needs --team, --ticket and --run <name>-<YYYYMMDD>-<HHMMSS>", 2)
     start = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S"))
     prefix = "team %s / %s / " % (a.team, a.ticket)
-    entries = load(main)[0]
+    entries = touches_only(load(main)[0])
     mine = [e for e in entries if e["where"].startswith(prefix) and e["at"] >= start]
     pairs = collections.Counter((e["reason"], e["kind"]) for e in mine).most_common()
     tail = ", ".join("%d× %s (%s)" % (n, r, k) for (r, k), n in pairs)
@@ -415,11 +428,28 @@ def add(a):
         return _err("touch not written — unsafe or unwritable %s/.agents/touches" % main, 1)
     return 0
 
+def block(argv):
+    """`block --source <hook> --what <text> [--main DIR]`: one kind-block line; always silent, 0."""
+    opts, i = {}, 0
+    while i + 1 < len(argv) and argv[i] in ("--source", "--what", "--main"):
+        opts[argv[i]] = argv[i + 1]
+        i += 2
+    src, what = _clean(opts.get("--source", ""), 60), _clean(opts.get("--what", ""))
+    # TOUCHES_BLOCK_OFF: test fixtures point main_root at the real checkout — never log there.
+    if i != len(argv) or not src or not what or os.environ.get("TOUCHES_BLOCK_OFF"):
+        return 0
+    project = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    main = resolve_main(opts.get("--main"), project)
+    if main:
+        where = default_where(main, project, os.getcwd(), None)
+        append(main, make_entry("block", "%s: %s" % (src, what), "hook", where=where))
+    return 0
+
 def _parser():
     ap = argparse.ArgumentParser(prog="touches.sh")
     sub = ap.add_subparsers(dest="cmd", required=True)
     ad, rp = sub.add_parser("add"), sub.add_parser("report")
-    for f, choices in (("--kind", KINDS), ("--reason", REASONS), ("--what", None)):
+    for f, choices in (("--kind", HUMAN_KINDS), ("--reason", HUMAN_REASONS), ("--what", None)):
         ad.add_argument(f, required=True, choices=choices)
     for f in ("--answer", "--wait-s", "--where", "--main"):
         ad.add_argument(f, default="" if f == "--answer" else None)
@@ -430,6 +460,11 @@ def _parser():
     return ap
 
 def main(argv):
+    if argv[:1] == ["block"]:
+        try:
+            return block(argv[1:])
+        except Exception:  # a refusing hook calls this fire-and-forget: never fail, never print
+            return 0
     if argv[:1] == ["hook"]:
         try:
             return hook("--global" in argv[1:])

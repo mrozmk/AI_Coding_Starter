@@ -30,7 +30,7 @@ Keys, in this order:
 | `machine` | string | 100 | short host name, `[A-Za-z0-9._-]` only |
 | `who` | string | 100 | `$USER`, same filter |
 | `where` | string | 200 | `team <team> / <ticket> / <role>` (role `TeamLead` for the lead) or `solo <path relative to the main checkout>` (`solo .` at its root, `solo ?` outside it) |
-| `kind` | string | — | what stopped: `question` · `permission` · `plan` · `text` · `decision` · `restart` · `other` |
+| `kind` | string | — | what stopped: `question` · `permission` · `plan` · `text` · `decision` · `restart` · `other` — or `block`: a hook refused a call with no human involved (written only by `touches.sh block`; never an Operator touch) |
 | `what` | string | 200 | one line: the question, or `<tool>: <command or path>` |
 | `reason` | string | — | why a human was needed (below) |
 | `answer` | string | 200 | the human's words, or `allow` / `deny` / `deny: <instead>`; empty when unknown |
@@ -46,6 +46,7 @@ Reason codes — the field reports group by — and who assigns each:
 | `channel-failed` | a lead-run stage waited at a permission prompt no ask covered | the Notification hook |
 | `guard` | a guard stopped a Supervisor session for the Operator | the egress guard ([security-egress.md](security-egress.md)) |
 | `direct` | a human acted in a stage window or a solo session without a lead asking | the Notification hook, the dialog watch, a manual `add` |
+| `hook` | no human: a PreToolUse hook refused the call (exit 2) and the session had to retry another way — only with `kind: block` | `touches.sh block`, called by the refusing hook |
 
 ## Main checkout
 
@@ -70,6 +71,7 @@ The global opt-in skips steps 1–3 (see **Global opt-in**).
 | the runner's dialog watch (`team-run-dialog.sh`) | a TeamLead or stage session first seen at the folder trust or MCP servers dialog | `other` / `direct`, `startup dialog <trust\|mcp> in <role>`; once per session and dialog kind (`runs/<run>/<decision>-<kind>.touched`) |
 | the Notification hook (`touch-notify.sh`) | any session, team or solo, waits at a permission prompt | `permission`, `direct` — or `channel-failed` in a lead-run stage no ask covered |
 | the egress guard (`record_touch`) | a Supervisor main-checkout session is stopped for the Operator | `permission` / `guard`; its shell fallback writes `where: "solo ?"` |
+| a refusing PreToolUse hook (`touches.sh block --source <hook> --what <text>`) | the hook exits 2: guard-push, guard-team-verdict, guard-teamlead-bash, guard-teamlead-write, guard-memory, guard-team-memory, guard-jira-transition | `block` / `hook`, `what` = `<hook>: <text>`, `answer` empty, `wait_s` null; fire-and-forget — always exit 0, never output, a missing log or main checkout is a silent no-op; `TOUCHES_BLOCK_OFF=1` (set by `team-suite.sh`) stands it down, since test fixtures point `main_root` at the real checkout |
 | by hand: `touches.sh add` | anything else that reached the Operator (a restart, a manual fix) | as given; the Supervisor passes `--where "team <team> / <ticket> / <role>"` for a team's matter so its wrapup counts it |
 
 Every scripted caller survives a missing or failing `touches.sh`: one `warn: touch not recorded
@@ -82,7 +84,10 @@ Every scripted caller survives a missing or failing `touches.sh`: one `warn: tou
   of two or more entries with the same reason and a similar `what` (lowercased, quotes dropped,
   digits as `#`, first 48 characters). The hook's generic fallback text never forms a cluster.
   A malformed or ill-typed line is skipped and named on stderr (`skipped: <file>:<line> — <why>`),
-  never fatal.
+  never fatal. `kind: block` lines are **not** Operator touches: they stay out of the header count,
+  the groups and `Recurring`, and get their own section `Hook blocks (no human) — <n>` with up to
+  five clusters of two or more (same similarity rule) — the shapes a session keeps hitting.
+  `--brief` never counts them.
 - `touches.sh report --brief --team T --ticket K --run RUN`: the run's count from the run id's
   timestamp (`Operator touches: <n> — <a>× <reason> (<kind>), …`), then `Recurring:` lines for
   clusters of three or more over the whole log that the run contributed to. The wrapup publishes

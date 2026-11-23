@@ -33,4 +33,4 @@ An `allow` cannot be scoped to one command, so **`git worktree` and `git merge -
 
 - Conventional commits: `type(scope): subject`, imperative, lowercase, ≤72 chars; the body explains *why*.
 - `/commit` stages an explicit list and refuses a protected branch; `/push` / `/pull` resolve the current branch; `/release` bumps the detected manifest, CHANGELOG and tag.
-- Chained `git add X && git commit` is blocked by `guard-commit.sh`, which inspects the staged set *before* the chain runs and sees it empty. Stage and commit in two calls.
+- `guard-commit.sh` runs before the command, so for a chained `git add <paths> && git commit` it stages those explicit paths into a temporary copy of the index and judges that set (empty-commit and credential checks); `git add -A` / `.` / `-u`, a `;` or another command in the chain are judged on the real index as before.
