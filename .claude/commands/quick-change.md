@@ -60,7 +60,6 @@ mandatory. A worker handoff alone never means this workflow is complete.
 - **After Phase 2, write the plan — do not implement.** The (revised) plan goes to `.agents/plans/active/<kebab-slug>.md`; this is the one exception to "Writes nothing to `.agents/`". Its minimal `/execute` shape:
   - `# Feature: <title>`
   - `**Source spec:** none (quick mode)`
-  - `**Execution effort:** low|medium`
   - `## Feature Description` (Cel) and `## Solution Statement` (Podejście + odrzucona alternatywa + Ryzyko + the `Reuse:` line)
   - `## STEP-BY-STEP TASKS` — one `### {ACTION} <path>` per file, each with `- [ ]`, `- **IMPLEMENT**:`, `- **EXPECT**:` (`present` / `contains` …) and `- **VALIDATE**:`
   - `## VALIDATION COMMANDS` (Level 1 = `CLAUDE.md → Validation`)

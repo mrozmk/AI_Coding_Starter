@@ -74,7 +74,7 @@ The user often runs multiple Claude/LLM sessions in parallel. A naive `/commit` 
    - Was something module-specific learned? → append to `.agents/memory/domain/{module}.md` (create if needed)
    - If nothing worth remembering — skip silently, do not mention it
    - If memory files were updated as part of this checkpoint, they count as yours — but do **not** fold them into the main commit. `git add` them and create a **separate** `chore(memory): <topic>` commit. A memory write is a different kind of change from the code it came from, and separating them keeps both diffs readable.
-   - Do **not** `git commit --amend`. "The previous commit was seconds ago and unpushed" is not a safe test in this kit: `/orchestrate` pushes step commits as it goes, so the commit you are about to rewrite may already be published. A second commit is always correct; an amend is only sometimes correct, and the difference is invisible from here.
+   - Do **not** `git commit --amend`. "The previous commit was seconds ago and unpushed" is not a safe test in this kit: `/push` or another session may already have published it. A second commit is always correct; an amend is only sometimes correct, and the difference is invisible from here.
 10. Show a brief summary: list of staged files, the commit message used, and the SHA.
 
 ## Commit message canon:

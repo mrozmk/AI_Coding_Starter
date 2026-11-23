@@ -8,7 +8,7 @@
 #       D1, D3 and D2 judge (`git add -A`/`.`/`-u`/`-p`, another command in the chain, or an add in
 #       another directory → no simulation, the real index decides as before).
 #       Original D1 rationale: refuse a `git commit` whose staged set is EMPTY. This kills the
-#       class where an orchestrate committer reports a SHA for a hallucinated/empty
+#       class where a committing agent reports a SHA for a hallucinated/empty
 #       commit — a prose contract cannot stop that; exit 2 can.
 #   D3 (hard block): scan the staged diff's added lines and the staged (non-deleted) file
 #       names for credentials with the guard-push patterns (hooks/lib/leak-patterns.sh).
@@ -59,7 +59,7 @@ DIR=""
 # 1) explicit `git -C <dir> ... commit`
 DIR=$(printf '%s' "$CMD" | sed -nE "s/.*git[[:space:]]+-C[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]]+)).*/\2\3\4/p" | head -1)
 
-# 2) leading `cd <dir> && ...` (the shape the orchestrate committer uses)
+# 2) leading `cd <dir> && ...` (the shape a sub-agent committer uses)
 if [ -z "$DIR" ]; then
   DIR=$(printf '%s' "$CMD" | sed -nE "s/^[[:space:]]*cd[[:space:]]+(\"([^\"]+)\"|'([^']+)'|([^[:space:]&;|]+)).*/\2\3\4/p" | head -1)
 fi
@@ -164,7 +164,7 @@ if [ -z "$STAGED" ] && [ "$NO_EDIT" = 0 ]; then
   log_block
   # D1 — hard block. stderr is fed back to Claude as the block reason.
   echo "BLOCKED: 'git commit' with an empty staged set (git -C '$DIR' diff --cached is empty)." >&2
-  echo "Nothing is staged for commit. If this is an orchestrate step, this is the empty/hallucinated-commit guard:" >&2
+  echo "Nothing is staged for commit. This is the empty/hallucinated-commit guard:" >&2
   echo "stage the real FILES_TOUCHED with explicit 'git add <path>' first, or report STATUS: nothing_to_commit." >&2
   exit 2
 fi

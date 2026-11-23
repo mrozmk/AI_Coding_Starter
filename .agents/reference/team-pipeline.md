@@ -4,7 +4,13 @@ Two AI teams on two tickets at once on one Mac. Each team is a git clone (`teams
 default `../<repo>-<team>`); planner → coder → qa → wrapup run there as fresh Claude sessions on
 the session host (tmux or Herdr, [session-host.md](session-host.md)), driven by `team-run.sh`. You (the supervisor, in the main checkout) answer blockers, run the
 merge check and merge with `/pr-merge`; the wrapup role reconciles memory in the team's PR. Role contract: [team-mode.md](team-mode.md). Why clones
-and not worktrees: [parallel-orchestration.md](parallel-orchestration.md) → Step 1.
+and not worktrees: below.
+
+**Why clones, not worktrees.** A worktree shares the parent repo's `.git`, and two team runs would
+collide on that shared state: `refs/stash` is shared (one run could pop another's stash), the
+branch namespace is shared (two runs creating the same branch name clobber each other), and git's
+per-repo locks and config are shared. A clone gives each team an isolated stash, branch namespace
+and working tree.
 
 Human overview (starter repo only, not installed by `/setup:teams`): `docs/teams/03-team-pipeline.md`.
 

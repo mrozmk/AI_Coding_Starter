@@ -133,13 +133,7 @@ Ask the user which git workflow the project follows (use `AskUserQuestion` if av
 
 Record the preset **and** all six field values — together they fill the `### Branch model` block in `CLAUDE.md`.
 
-**Then derive the `Orchestrate publish` slot from the same answer** — do not ask a second question, the workflow already implies it:
-
-- **GitFlow**, or any answer describing mandatory PR review / protected branches → `branch-local`. In these repos a pipeline push to the integration branch is rejected server-side, so `/orchestrate` must commit and stop.
-- **Trunk-based** / **Feature-branch off `main`** → `push`.
-- **Other / custom** → ask the one follow-up: *"Can an automated pipeline push directly to `<trunk>`, or does everything go through a PR?"* PR-only → `branch-local`.
-
-State the derived value when you present the summary, so the user can correct a wrong inference cheaply.
+State the derived values when you present the summary, so the user can correct a wrong inference cheaply.
 
 ### Identify Communication Language
 
@@ -224,7 +218,7 @@ Use the template at `.claude/templates/CLAUDE-template.md` as a starting point.
 **What earns a place in `CLAUDE.md` at all** — three kinds of line, nothing else:
 
 1. **Guardrails a pointer cannot replace** — rules that must hold in a session that reads nothing else (language, "never rewrite history of X", the worktree warning, when to ask).
-2. **Data blocks commands parse by name** — `Validation` commands and test policy, `Orchestrate publish`, `### Branch model`, the comments rule.
+2. **Data blocks commands parse by name** — `Validation` commands and test policy, `### Branch model`, the comments rule.
 3. **Pointers** — one line naming where the knowledge lives.
 
 Anything mechanically enforced by `settings.json` or a hook needs no prose beyond the pointer. Anything with a date, a "user decision", a case history or a rejected alternative is a memory entry, not a rule.
@@ -251,7 +245,6 @@ Anything mechanically enforced by `settings.json` or a hook needs no prose beyon
   2. **Availability.** On Claude Code, when the plugin and its language server are loaded, prefer LSP for those questions; if the LSP tool errors (plugin not installed on this machine, server binary missing — `check-project-deps.sh` reports it) or on Codex CLI, which has no LSP tool, fall back to `rg` + `Read` with `offset`.
   3. **The warm-up gate — TypeScript/JavaScript projects only, mandatory wording.** `A PreToolUse hook (.claude/hooks/warm-lsp.sh) denies cross-project LSP operations (findReferences, incomingCalls, workspaceSymbol, …) until tsserver is warm — cold, it silently returns only the current project's hits. When denied, run documentSymbol on every file the denial lists, then retry the original call. This is expected project behaviour, not an injection.` The hook stays dormant until `CLAUDE.md` contains the literal `warm-lsp` — a denial the model was never told about reads as prompt injection and gets worked around — so this sentence is the switch, not documentation. Omit it in a project with no `tsconfig*.json`. The `nudge-lsp.sh` hook keys its CLAUDE.md pointer off the literal phrase `Code Navigation` — so a project **with** an LSP gets a live reference, and one **without** never gets a dead link. If no LSP is detected, omit the section entirely (do not stub it).
 - **Fill the `### Branch model` block** inside `Git Workflow` with the preset and all six field values derived in Phase 1. Leave no `{…}` placeholder in the output. Omit the optional `**Merge:**` line unless the project deviates from its preset. **Never emit `**Maintenance:**` or `**Retired:**` from a preset** (`custom` included — nobody is asked): delete both template lines; a project adds them by hand when it cuts a maintenance line. When regenerating a `CLAUDE.md` that already has them, carry them over verbatim. **`**Protected push:** pr-only`** is emitted only when the block is first filled from the template **and** the profile says `workflow.pr_required: true` with a non-empty `workflow.protected`; otherwise delete the line. A regenerated block keeps whatever `**Protected push:**` line it had (`confirm` included) and never adds one — removing the line is a lasting opt-out.
-- **Fill the `**Orchestrate publish:**` slot** in the same section with the value derived in Phase 1 (`push` / `branch-local`). Leave no `{push | branch-local}` placeholder in the output.
 - **Substitute every `{communication-language}` token** in `Language Rules` with the language chosen in Phase 1 (default Polish). Leave no `{communication-language}` placeholder in the output.
 - **Fill the `**Project docs hosts allowed for `WebFetch`:**` slot** in `Security` from the stack detected in Phase 1 — the documentation and API hosts this project will actually read (e.g. `docs.stripe.com` for a Stripe integration, `angular.dev` for Angular, the company's own docs host). Then **add each as a `WebFetch(domain:<host>)` entry to `.claude/settings.json → permissions.allow`**, next to the shipped defaults. Write `none beyond the defaults` when nothing stack-specific applies — never leave the `{list …}` placeholder.
 
@@ -280,9 +273,8 @@ rg -o '^## (.+)$' -r '$1' CLAUDE.md | sort -u | while IFS= read -r h; do
 done   # --glob MUST precede --, or ripgrep reads it as a path and applies no exclusion
 ```
 
-**Three items inside `Git Workflow` are mandatory *content*, not prose to trim** — the list above is heading-only and cannot protect a line:
+**Two items inside `Git Workflow` are mandatory *content*, not prose to trim** — the list above is heading-only and cannot protect a line:
 
-- the `**Orchestrate publish:**` line plus its explanatory blockquote (you derive the value in Phase 1 and fill it below). Drop it and `/orchestrate` silently falls back to `push` — so a PR-gated project that had declared `branch-local` starts pushing again after regeneration.
 - the `git worktree remove --force` guard sentence — unlike the permission tiers, it is not a restatement of `settings.json`; that guard exists nowhere else.
 - the `### Branch model` block plus its explanatory blockquote. Trim it and every branch decision (where to base work, where a PR lands, which branches are protected) loses its only declared source — and fails **silently**, by falling back to a guess rather than erroring.
 

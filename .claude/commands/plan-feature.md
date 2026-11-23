@@ -16,10 +16,9 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
 3. Strategic thinking (Phase 3)
 4. Initial plan draft (Phase 4)
 5. **Split decision — parallelism first, size second; never automatic** (Phase 4.5 — MANDATORY)
-6. **Execution Plan section emission for umbrella plans** (Phase 4.6 — only when Phase 4.5 produced an umbrella)
-7. **Critical self-audit with one self-critique loop** (Phase 5 — MANDATORY)
-8. **User-approved fix application in-place + post-fix size re-check** (Phase 6 — MANDATORY)
-9. **External cross-model review loop via codex** (Phase 7 — CONDITIONAL, auto-skips if `codex` is absent; when it runs, min 2 rounds mandatory, 3rd optional)
+6. **Critical self-audit with one self-critique loop** (Phase 5 — MANDATORY)
+7. **User-approved fix application in-place + post-fix size re-check** (Phase 6 — MANDATORY)
+8. **External cross-model review loop via codex** (Phase 7 — CONDITIONAL, auto-skips if `codex` is absent; when it runs, min 2 rounds mandatory, 3rd optional)
 
 **Core Principle**: We do NOT write code in this phase. The plan must carry everything the executor needs — patterns, mandatory reading, validation commands, external documentation references when required — so implementation succeeds in one pass. Grilling looks for REAL gaps that will stop the executor ad-litteram: keep only findings backed by repo evidence, memory entries, `errors.md` cases, or domain patterns; never manufacture hypothetical ones.
 
@@ -35,7 +34,7 @@ Transform an approved design spec into a **comprehensive, grilled, size-bounded 
    - Architecture, files, edge cases
    - **`External docs required`** field (`yes` / `no`)
    - **`External dependencies`** section (list of libs / APIs / services, if any)
-   - **`Appetite & Cut Lines`** section, if present — the appetite is a **budget on the plan's size**, not a nice-to-have note. A "small appetite" spec that yields a 12-step plan means the plan overshot the design's own bound: cut back to the appetite, or say explicitly why the appetite was wrong. Carry the **Cut first** order verbatim into the plan (see the plan template) so the executor and `/orchestrate` inherit a standing answer to "what do we drop?" instead of improvising one under pressure. Specs written before this section existed simply won't have it — proceed without it, don't STOP.
+   - **`Appetite & Cut Lines`** section, if present — the appetite is a **budget on the plan's size**, not a nice-to-have note. A "small appetite" spec that yields a 12-step plan means the plan overshot the design's own bound: cut back to the appetite, or say explicitly why the appetite was wrong. Carry the **Cut first** order verbatim into the plan (see the plan template) so the executor inherits a standing answer to "what do we drop?" instead of improvising one under pressure. Specs written before this section existed simply won't have it — proceed without it, don't STOP.
 3. If the spec is missing the `External docs required` field, STOP and tell the user: "Spec does not declare `External docs required`. Update the spec via `/brainstorm` or add the field manually, then rerun `/plan-feature`."
 4. **Backlog write-back (opt-in — skip silently if no backlog).** If `.agents/backlog.md` does not exist → do nothing (a project without a backlog has an untouched pipeline); never create the backlog here. If it exists, **detect the format first**: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing, say once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`", and continue. A header matching neither shape is malformed → write nothing, say so, and continue. Never mix the two rule sets. New format → **WIP rule:** for each id in the spec's `**Tasks:**` line, set that Task row's `Status` → `WIP` and add the spec path to its `Ref` cell. No `**Tasks:**` line in the spec → fall back to matching the spec topic against Task titles; one clear match → use it, say which, and carry that id into the plan's `**Tasks:**` line (otherwise the DONE write-back never finds it); ambiguous or none → skip the write-back and say so. Touch only `Status` / `Ref` cells — never the table structure. For a Task with a `Jira` cell the local `Status` is a cache (Jira owns the workflow) — do **not** transition the Jira issue from here.
 
@@ -59,7 +58,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 - Pull conventions (naming, file organization, error handling, logging) from `.agents/memory/patterns.md` and `CLAUDE.md → Style & Conventions`. Only inspect the codebase directly if those are silent on the area you need.
 - Search for similar implementations in the codebase (the spec's "Architecture" and "Files" sections name the relevant areas). **If the project exposes an LSP**, prefer `workspaceSymbol` to locate analogous services/classes and `documentSymbol` to read a pattern file's structure without loading the whole file (see CLAUDE.md → Code Navigation, if present).
-- **Reuse lookup — one statement per new piece.** For every new function, class, component, service or module-level helper the plan is about to introduce, search the **whole repository** — not only the areas the spec names — for an existing equivalent, two ways: *by name* (the planned name and its obvious synonyms; LSP `workspaceSymbol` where a language server runs, else `rg --hidden -g '!.git' <name>` from the root) and *by behaviour* (its distinctive call, literal, regex or path — `rg --hidden -g '!.git' <pattern>` from the root, LSP or not). Plain `rg` skips `.claude/` and every other dot-directory, so a helper there reads as `none found` and gets planned again. When `docs/coding-standards.md` exists, also read its `## Shared helpers` and `## One shape per problem` tables, note the `CS-<n>` rules marked `Enforced by: review` whose `Applies to` covers a file the plan touches — a rule whose heading is marked `(withdrawn)` is skipped — and note every item under `## Open — pick one` the feature hits. Results go into the plan's `**Reuse:**` block (`### Patterns to Follow`). Logic needed by two modules that may not import each other gets one shared place in the plan, never a planned copy. An `## Open — pick one` item the feature hits needs an answer only when the plan must pick a variant: when every touched file sits where one variant is already the local convention, the plan follows it and names the source (`<item> → local convention <path:line>`); otherwise it is a question to the user (`AskUserQuestion`) — in pipeline mode too, as a directional fork (`/orchestrate` → Question policy) — and the plan never silently picks a variant. Absent file → the standards part is skipped; the repository search still runs.
+- **Reuse lookup — one statement per new piece.** For every new function, class, component, service or module-level helper the plan is about to introduce, search the **whole repository** — not only the areas the spec names — for an existing equivalent, two ways: *by name* (the planned name and its obvious synonyms; LSP `workspaceSymbol` where a language server runs, else `rg --hidden -g '!.git' <name>` from the root) and *by behaviour* (its distinctive call, literal, regex or path — `rg --hidden -g '!.git' <pattern>` from the root, LSP or not). Plain `rg` skips `.claude/` and every other dot-directory, so a helper there reads as `none found` and gets planned again. When `docs/coding-standards.md` exists, also read its `## Shared helpers` and `## One shape per problem` tables, note the `CS-<n>` rules marked `Enforced by: review` whose `Applies to` covers a file the plan touches — a rule whose heading is marked `(withdrawn)` is skipped — and note every item under `## Open — pick one` the feature hits. Results go into the plan's `**Reuse:**` block (`### Patterns to Follow`). Logic needed by two modules that may not import each other gets one shared place in the plan, never a planned copy. An `## Open — pick one` item the feature hits needs an answer only when the plan must pick a variant: when every touched file sits where one variant is already the local convention, the plan follows it and names the source (`<item> → local convention <path:line>`); otherwise it is a question to the user (`AskUserQuestion`; in team mode the run's TeamLead answers it) and the plan never silently picks a variant. Absent file → the standards part is skipped; the repository search still runs.
 - Document anti-patterns to avoid — use `.agents/memory/errors.md` as a starting point; past mistakes are recorded there.
 
 **3. Dependency Analysis**
@@ -133,15 +132,13 @@ This produces the **first draft** of the plan. The plan is NOT final until Phase
 
 Plans MUST fit within the effective attention window of the execution model. Even models with a large nominal context (e.g. 200K) have practical attention that degrades above ~50K input tokens. The executor must hold: plan + spec + memory files + CLAUDE.md + grep results + file contents being edited. That leaves ~30K tokens of safe headroom for the plan itself.
 
-> **Phase 4 produces exactly ONE file by default.** Multi-step work lives in that file as `## Step N` sections. Splitting into several files is a decision made in Phase 4.5 — it is **asked, never automatic** — because a split changes the plan's execution contract (worktrees, branches, per-step merges, or a multi-clone run), not just its formatting.
+> **Phase 4 produces exactly ONE file by default.** Multi-step work lives in that file as `## Step N` sections. Splitting into several files is a decision made in Phase 4.5 — it is **asked, never automatic** — because a split changes how the work is run (several plans, each started on its own), not just its formatting.
 
 **Per-file size budget** (enforced in Phase 4.5):
 
 | File type                                                          | Soft target (LOC) | Hard cap (LOC) | Soft (chars) | Hard (chars) | Why                                                                            |
 | ----------------------------------------------------------------- | ----------------- | -------------- | ------------ | ------------ | ------------------------------------------------------------------------------ |
 | **Single-file plan (the default shape)**                          | 600               | 1 200          | 36 000       | 72 000       | No split to gain from — the only limits are executor attention and grillability |
-| **Umbrella / parent** (decisions + risk register + step map)      | 250               | 350            | 15 000       | 21 000       | Loaded by every sub-step as context — must stay lightweight                    |
-| **Sub-step (implementation)**                                     | 400               | 600            | 24 000       | 36 000       | Code snippets + tasks + DoD. High density but still readable in one pass       |
 | **Post-launch / monitoring step** (runbooks, alerts)              | 350               | 500            | 21 000       | 30 000       | Low density (mostly prose + procedure), does not need to be larger             |
 
 > **Both axes assume ~60 chars/LOC** — measure your own plans and re-derive if your prose runs denser or looser. This ratio is load-bearing: at the 40 chars/LOC these caps used to assume, the char axis trips ~1.5× earlier than the LOC axis, so every dual-axis check silently collapses into a char check and the documented LOC caps become decorative. If you change one axis, change both.
@@ -158,9 +155,8 @@ While drafting, target the **soft cap**. Crossing the hard cap does not split th
 The following plan should be complete, but it's important that you validate codebase patterns and task sanity before you start implementing. Pay special attention to naming of existing utils, types, and models. Import from the right files.
 
 **Source spec:** `.agents/specs/<spec-file>.md`
-**Tasks:** <copied verbatim from the spec's `**Tasks:**` line, or the Task id Phase 0's title match resolved; omit this line when neither exists — without it `/execute` and `/orchestrate` never close the Task>
+**Tasks:** <copied verbatim from the spec's `**Tasks:**` line, or the Task id Phase 0's title match resolved; omit this line when neither exists — without it `/execute` never closes the Task>
 **External docs required:** yes | no
-**Execution effort:** low | medium
 **Appetite:** <from the spec's Appetite & Cut Lines — omit this line and the next if the spec has none>
 **Cut first (if this overruns):** <the spec's cut order, verbatim>
 
@@ -298,7 +294,7 @@ Execute every applicable command to ensure zero regressions and feature correctn
 
 ### Level 1: Automated
 
-<Project-specific lint / format / type-check commands, then the test commands. Skip the test line if tests were deemed unnecessary above. `/orchestrate` Step 5.4 parses this section to derive the build command — keep it present and executable even when it is one line.>
+<Project-specific lint / format / type-check commands, then the test commands. Skip the test line if tests were deemed unnecessary above. Keep it present and executable even when it is one line — `/execute` runs it.>
 
 ### Level 2: Manual Validation
 
@@ -317,7 +313,7 @@ Execute every applicable command to ensure zero regressions and feature correctn
 - `Proof: manual — <what a human observes, and where>` — the criterion can only be observed in a running app, a browser, a device or an external system this run cannot reach.
 - `Proof: none — <why>` — the criterion is behavioural, could be tested, and the plan deliberately adds no test.
 
-Criteria without an id get plan-local labels `AC-1 … AC-n` in document order, written in the id position (`- **AC-1** — <text>`), skipping numbers already used — the same rule `/qa-verify` Phase 0 uses. The `Technical checks` sub-list takes neither labels nor `Proof:` lines. A criterion marked `(withdrawn)` keeps its id and text but takes no `Proof:` line and is not counted. A `test` proof is backed by an ordinary task in `## STEP-BY-STEP TASKS` whose `EXPECT` is `contains — <test file> :: <test name literal>`, unless that named test case already exists in the repo (an existing file without the case still needs the task). Order that task before the task(s) that implement the behaviour it proves, so `/execute` can see the test fail first — in an umbrella, in the same sub-step as that behaviour, never in a separate tests-only sub-step. An existing case gets no task of its own, but a task of the sub-step that implements the behaviour names it (`<test file> :: <test name literal>` in its `IMPLEMENT` or `GOTCHA`), so `/execute` of that sub-step runs it first. Example:
+Criteria without an id get plan-local labels `AC-1 … AC-n` in document order, written in the id position (`- **AC-1** — <text>`), skipping numbers already used — the same rule `/qa-verify` Phase 0 uses. The `Technical checks` sub-list takes neither labels nor `Proof:` lines. A criterion marked `(withdrawn)` keeps its id and text but takes no `Proof:` line and is not counted. A `test` proof is backed by an ordinary task in `## STEP-BY-STEP TASKS` whose `EXPECT` is `contains — <test file> :: <test name literal>`, unless that named test case already exists in the repo (an existing file without the case still needs the task). Order that task before the task(s) that implement the behaviour it proves, so `/execute` can see the test fail first. An existing case gets no task of its own, but a task that implements the behaviour names it (`<test file> :: <test name literal>` in its `IMPLEMENT` or `GOTCHA`), so `/execute` runs it first. Example:
 
 - **AC-1** — `/report` lists every open ticket.
   - Proof: test — tests/report.test.ts :: lists every open ticket
@@ -345,7 +341,7 @@ After the Phase 4 draft, decide whether the plan ships as one file or several. T
 - **Gate A — is there parallelism to harvest?** A *structural* question about the work. Asked first, **regardless of size**.
 - **Gate B — is the file too big to execute and grill well?** An *attention* question. Asked only when Gate A says no.
 
-> **What a split actually buys — read this before deciding.** `/orchestrate` Phase 3 does a topological sort and then executes **sequentially — "no parallel branches in MVP, even when DAG allows it"**. So splitting one plan into an umbrella + sub-steps buys **context hygiene only, never speed**; it costs a worktree, a branch, and a merge per step. Real concurrency comes from a different shape: **several independent top-level plans, one per clone**, run as separate `/orchestrate` invocations and merged by `--integrate` ([.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md)). The `Depends On` column exists to record order, not to be parallelized. Do not sell a split as a speedup unless it produces separate plans.
+> A split never buys speed inside one plan — only separately startable plans can run at the same time (each with its own `/execute` or its own team).
 
 ### Step 4.5.1 — Measure
 
@@ -363,12 +359,8 @@ done
 
 Per file, classify the type from its name + content:
 
-- name has a `-N-` or `-Na-` pattern + references an umbrella → **sub-step**
-- name is a root (e.g. `feature-launch.md`) + contains "step map" / "decisions" / "risk register" → **umbrella**
 - name has `monitoring` / `post-launch` / `hardening` / `runbook` → **monitoring**
 - other — a single file that is not part of a split → **single-file plan** (the most common case, and the default shape)
-
-> A single-file plan is measured against the **single-file** budget (600 / 1 200 LOC), never the sub-step budget. The sub-step cap is sized for *one slice of an already-split plan*; applying it to a whole plan means a plan gets split for being a plan.
 
 ### Step 4.5.3 — Gate A: is the work parallel-decomposable?
 
@@ -377,11 +369,11 @@ Ask this **before** looking at any size number, and ask it even when the plan is
 The plan is parallel-decomposable when you can cut it into **≥2 tracks** where **both** hold:
 
 - **No output dependency** — no track consumes what another track creates (no "track B imports the service track A adds"). Shared *read-only* context is fine; shared *new* artifacts are not.
-- **Disjoint file sets** — the tracks edit different files. Overlap means an integration conflict later, which erodes the whole benefit (`parallel-orchestration.md`: "expect an integration conflict on the second branch… it erodes the parallelism benefit").
+- **Disjoint file sets** — the tracks edit different files. Overlap means an integration conflict later, which erodes the whole benefit.
 
 Judge from the task list you just drafted, not from wishful grouping. Two tracks that both touch the same store, router, or shared type are **not** disjoint.
 
-- **Gate A passes** → offer the parallel split (option **b** in Step 4.5.4) *whatever the file size is*. The output is **N independent top-level plans**, not an umbrella.
+- **Gate A passes** → offer the parallel split (option **b** in Step 4.5.4) *whatever the file size is*. The output is **N independent top-level plans**.
 - **Gate A fails** (a strictly sequential chain, or tracks that overlap) → do **not** split for structure. Fall through to Gate B.
 
 **State the verdict either way**, in one line, with the reason — e.g. `Gate A: fails — every task depends on the migration in task 2 (sequential chain)`. A silent gate is one the user cannot correct.
@@ -398,60 +390,31 @@ From the budget in Phase 4, using the class from Step 4.5.2:
 
 ### Step 4.5.4 — Over the hard cap, or Gate A passed: ask the user
 
-**Never split without an answer.** A split changes the plan's execution contract — one file runs under `/execute` or `/orchestrate`'s flat mode with no worktree/branch/merge at all; an umbrella runs the full per-step machinery; separate plans mean a multi-clone operator flow. That is the user's call, not a line-count's.
+**Never split without an answer.** A split changes how the work is run — one file runs under one `/execute`; separate plans mean separate runs merged through the project's normal branch-and-PR flow. That is the user's call, not a line-count's.
 
 Use `AskUserQuestion`. Present only the options that apply, recommend one, and **STOP without an answer** — do not proceed to Phase 5 on an assumption.
 
-**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): do **not** ask. Choose **(a)** when the overflow is modest; **(c)** when the file is still over the hard cap after one honest densify pass; never **(b)** — parallel top-level plans are a multi-clone operator flow the pipeline cannot run. **(d)** is the one case that stays a question, and only when the spec's `Appetite & Cut Lines` say the scope itself is wrong. Report the choice in Step 4.5.5 as `decided by the pipeline` and continue.
-
 - **(a) Keep one file, densify** — *recommended whenever the overflow is modest.* Cut restatement, not content. **Never** cut `Patterns to Follow` (its `**Reuse:**` block included), a per-task `PATTERN` / `GOTCHA` / `EXPECT` / `VALIDATE`, or `VALIDATION COMMANDS` — those are the plan's load-bearing density. If still over cap after one honest pass, re-ask and **name what you already cut**, so the user isn't asked the same question twice with no new information.
-- **(b) Split into parallel top-level plans** — *offered only when Gate A passed.* Produces N independent plans in `.agents/plans/active/`, each runnable in its own clone. This is the only option that buys wall-clock. Say so, and say what it costs (below).
-- **(c) Split into a sequential umbrella + sub-steps** — context hygiene only, **no speedup**. Appropriate when one file is genuinely unwieldy but the work is a dependency chain.
-- **(d) Narrow the scope / return to `/brainstorm`** — the spec is too broad for one task. Point at the spec's `Appetite & Cut Lines` if it has them: the cut order is the standing answer to what goes first.
+- **(b) Split into parallel top-level plans** — *offered only when Gate A passed.* Produces N independent plans in `.agents/plans/active/`, each startable on its own — its own `/execute` in its own clone and branch when run at the same time, or its own team (one plan per team). This is the only option that buys wall-clock. Say so, and say what it costs (below).
+- **(c) Narrow the scope / return to `/brainstorm`** — the spec is too broad for one task. Point at the spec's `Appetite & Cut Lines` if it has them: the cut order is the standing answer to what goes first.
 
-**The cost of option (b), state it when offering.** Separate plans lose the umbrella's shared context — strategic decisions and the risk register live in one place today. Each parallel plan must either restate them (costing the density you just split to protect) or reference the spec. Prefer referencing the spec; if a decision is *not* in the spec, put it there rather than copying it into N plans.
+**The cost of option (b), state it when offering.** Separate plans lose the single plan's shared context — strategic decisions and the risk register live in one place today. Each parallel plan must either restate them (costing the density you just split to protect) or reference the spec. Prefer referencing the spec; if a decision is *not* in the spec, put it there rather than copying it into N plans.
 
 **Step 6.1 re-enters this same question** if grilling pushes a file back over the cap. It does not silently split then either.
 
-### Step 4.5.4b — Split mechanics (only after the user chose b or c)
+### Step 4.5.4b — Split mechanics (only after the user chose b)
 
-**Both options:** every resulting plan file carries the `**Tasks:**` line of the backlog Tasks it serves — a Task shared by two files appears in each, which is what lets `/execute` and `/orchestrate` apply the whole-Task completion rule (a Task is `DONE` only when no active plan still lists it).
+Every resulting plan file carries the `**Tasks:**` line of the backlog Tasks it serves — a Task shared by two files appears in each, which is what lets `/execute` apply the whole-Task completion rule (a Task is `DONE` only when no active plan still lists it).
 
 **Option (b) — parallel top-level plans.** One plan per track from Gate A. These are peers, not a hierarchy:
 
 1. Name them for their track, not with step ordinals: `<feature>-<track>.md` (e.g. `checkout-payments.md`, `checkout-shipping.md`). Ordinals imply a sequence that does not exist here.
 2. Each is a **complete standalone plan** with the full single-file structure — its own tasks, DoD, validation commands, and `**Source spec:**` line pointing at the shared spec. It carries only the active criteria whose behaviour its track owns — each with its `Proof:` lines and their backing tasks; `AC-n` labels are assigned before the split, so two peers never reuse one, and together the peers cover every active criterion. A `(withdrawn)` criterion goes, unchanged and without a proof, into exactly one peer — the one that owns its successor or its former scope. A proof that needs changes from two tracks means the tracks are not disjoint (Gate A).
-3. **No `## Execution Plan` section in any of them** — they are single-file plans (see Phase 4.6), and each will be run by its own `/orchestrate` invocation in flat mode.
+3. **No `## Execution Plan` section in any of them** — they are single-file plans, each run by its own `/execute` or team.
 4. Record the disjointness you asserted in Gate A: give each plan a one-line `**Parallel track:** <name> — owns <file globs>; does not touch <the other tracks' globs>`. This is what the operator checks before running them concurrently, and what makes an integration conflict diagnosable instead of surprising.
-5. Tell the user how to actually run them, since this shape needs an operator flow the single-plan case does not: one clone per plan, then a single `--integrate` pass. Point at [.agents/reference/parallel-orchestration.md](../../.agents/reference/parallel-orchestration.md) rather than restating the runbook.
+5. Tell the user how to run them: one clone and branch per plan run at the same time (or one team per plan), each merged through the project's normal PR flow.
 
-> If the tracks turn out to share a file after all, they are not parallel — fold them back into one plan (option a) or a sequential umbrella (option c). A "parallel" split whose branches conflict on merge is strictly worse than never having split.
-
-**Option (c) — sequential umbrella + sub-steps.** Per file type:
-
-**Sub-step over hard cap (e.g. a 675 LOC implementation step):**
-
-1. Read the file, identify natural split boundaries in the **already-existing `##` sections**. Preferred boundaries (in order):
-   - **Functional** — distinct responsibilities (e.g. "API endpoints" vs "webhook handler" vs "Tests") → `Xa-endpoints`, `Xb-webhook`, `Xc-tests` — a tests-only sub-step never holds a test a `Proof: test` line names; that test stays in the sub-step of the behaviour it proves
-   - **Dependency-based** — A blocks B (e.g. "DB migration" before "Endpoints that use it")
-   - **Surface-based** — backend vs frontend vs ops
-2. Create new files `<plan>-Xa-<descriptor>.md`, `<plan>-Xb-<descriptor>.md` etc. using the natural name from the section.
-3. Each new file gets: a standard sub-step header (Parent / Status / Complexity / Blocker / Pre-read / Design refs / Tasks / DoD / Commit).
-4. **Update the umbrella** (if it exists):
-   - The step map gets new entries `Xa/Xb/Xc` instead of `X`.
-   - The dependency graph reflects the new order.
-   - The complexity-per-step table is updated.
-5. **Update cross-references** in all other plan files that referenced the old `X` — e.g. "Blocker: Step X done" → "Blocker: Step Xa+Xb done".
-6. Delete the old `<plan>-X.md`.
-7. **Re-measure** the split files — if any sub-step STILL exceeds the hard cap, return to Step 4.5.4 and ask again (naming what the split already achieved). Do not split recursively on your own: a second automatic level compounds the same unasked structural decision. If the answer is "split again" twice over, the honest reading is that the spec is too broad for one plan — say so and recommend option (d).
-
-**Umbrella over hard cap:**
-
-Rare but possible (an umbrella with over-detailed decisions). Strategy:
-
-1. Extract "Strategic decisions" into a separate `<plan>-decisions.md` if > 80 LOC.
-2. Extract the "Risk register" into a separate `<plan>-risks.md` if > 60 LOC.
-3. The umbrella keeps: goal, step map, DoD, links to the extracted files.
+> If the tracks turn out to share a file after all, they are not parallel — fold them back into one plan (option a). A "parallel" split whose branches conflict on merge is strictly worse than never having split.
 
 **Monitoring step over hard cap:**
 
@@ -470,120 +433,16 @@ Report a short summary to the user (before Phase 5). Always state **both** gates
 Gate A (parallelism): <passed — <N> disjoint tracks: <names> | failed — <one-line reason>>
 Gate B (size):        <not reached | <file> is <X> LOC / <Y> chars vs <soft>/<hard> cap>
 
-Decision: <single file, no split | parallel plans (user chose b) | sequential umbrella (user chose c) | densified in place (user chose a)>
+Decision: <single file, no split | parallel plans (user chose b) | densified in place (user chose a)>
 
 <If split — the resulting files:>
   <file>.md (<X> LOC)  <for option b: — track "<name>", owns <globs>>
 
 <For option b only:>
-Run them concurrently: one clone per plan, then a single `/orchestrate --integrate` pass.
-See .agents/reference/parallel-orchestration.md.
+Run each plan in its own clone and branch (or team); merge through PRs.
 
 Proceeding to grilling...
 ```
-
----
-
-## Phase 4.6: Execution Plan Section (Umbrella Only)
-
-**Runs only if the user chose option (c) in Step 4.5.4 — a sequential umbrella + sub-steps — or the plan arrived as a multi-step umbrella. Skipped for a single-file plan and for parallel top-level plans (option b), which are single-file plans themselves.**
-
-The orchestrator (`/orchestrate`) reads the umbrella plan to determine step order, dependencies, and progress. This phase emits the canonical machine-readable section it parses.
-
-> **An umbrella is a sequential decomposition.** `/orchestrate` Phase 3 executes its steps one after another — the `Depends On` column records order, it is not exploited for concurrency ("no parallel branches in MVP, even when DAG allows it"). Emit this section for context hygiene, never as a promise of speed.
-
-### Step 4.6.1 — Confirm the umbrella
-
-Umbrella status is **opt-in, not inferred**: the plan is an umbrella only when Step 4.5.4 produced one (option c), or the plan already arrived as one with sub-step files on disk. There is no heuristic — do not infer an umbrella from a section named "Step map", from the word "Steps", or from a dependency graph in the prose.
-
-> **Why the heuristic was removed (a real failure mode):** a single-file plan containing a `## Step map` section used to be detected as an umbrella and given a `## Execution Plan` table whose `File` cells pointed at sub-step files that were never created. `/orchestrate` Phase 2 validates every `File` cell against disk and **fails fast** — so the plan STOPs the orchestrator before a single step runs. Opt-in removes the failure mode at the source.
-
-**Invariant:** a single-file plan **never** carries a `## Execution Plan` section. If you are about to emit one, re-check which shape you are in — emitting it on a single file breaks `/orchestrate`.
-
-Single-file plan (including each parallel plan from option b) → skip this entire phase.
-
-### Step 4.6.2 — Emit `## Execution Plan` section
-
-Insert this section into the umbrella file, **immediately after the "## Step map" / "## Strategic decisions" sections and before "## ACCEPTANCE CRITERIA"** (or an analogous position — near the top, before the risk register).
-
-**Canonical format** (the orchestrator parses by header match + table column names):
-
-```markdown
-## Execution Plan
-
-> **For orchestrator.** Single source of truth for step order, dependencies, and progress. Statuses updated in-place by `/orchestrate` (or manually). Valid statuses: `pending` | `in_progress` | `done` | `blocked` | `skipped` | `manual`.
-
-| Step | File                                                     | Depends On | Status  | Effort |
-| ---- | -------------------------------------------------------- | ---------- | ------- | ------ |
-| 1    | [<plan>-1-<descriptor>.md](./<plan>-1-<descriptor>.md)   | —          | pending | low    |
-| 2    | [<plan>-2-<descriptor>.md](./<plan>-2-<descriptor>.md)   | 1          | pending | medium |
-| 3a   | [<plan>-3a-<descriptor>.md](./<plan>-3a-<descriptor>.md) | 2          | pending | medium |
-| 3b   | [<plan>-3b-<descriptor>.md](./<plan>-3b-<descriptor>.md) | 3a         | pending | low    |
-| ...  | ...                                                      | ...        | pending | ...    |
-```
-
-**Rules for the table:**
-
-- **Step**: identifier matching the sub-file infix (`1`, `2`, `3a`, `3b1`, `3b2`...). Used as the DAG node id.
-- **File**: relative markdown link to the sub-step file. The filename must exist in the same directory.
-- **Depends On**: comma-separated list of Step ids that must reach `done` before this step starts. Use `—` (em dash) for no dependencies.
-- **Status**: all automatable entries start as `pending`. The orchestrator (or user) flips them to `in_progress`, `done`, `blocked`, `skipped`. Use **`manual`** (set by YOU at plan time) for any step that is NOT automatable — external form submissions, interactive logins, screenshot capture, anything needing human judgment. The orchestrator pauses (does not spawn) when it reaches a `manual` step and tells the user to do it by hand, then `--resume`.
-- **Effort**: the difficulty marker that decides which executor agent the orchestrator spawns for that step — `low` | `medium` (or `—` / omit for `low`). Derive it from the per-stage recommendation (see "Execution Effort Recommendation" below): mechanical 1:1-from-pattern steps → `low`; multi-module coordination, copy-sensitive UI, pattern-level decisions, concurrency/state reasoning → `medium`. `medium` spawns `@orchestrator-executor-hard`; everything else spawns `@orchestrator-executor`. Do not invent a third level and do not name a model here — model and effort are fixed in each agent's frontmatter, not passed at spawn time.
-
-**Dependency rules:**
-
-- Every dependency must reference a Step id that exists in the same table.
-- No circular dependencies (the orchestrator detects + fails fast).
-- Multiple steps can depend on the same predecessor (fan-out).
-- Multiple predecessors per step are allowed (fan-in).
-
-### Step 4.6.3 — Preserve human-readable supplements
-
-The ASCII DAG diagram and complexity table (if any) stay in the file as **supplements**, clearly marked as informational. Example:
-
-```markdown
-### Visual DAG (human-readable supplement, not parsed)
-
-\`\`\`
-Step 1 ──┐
-Step 2 ──┴──► Step 3a ──► Step 3b ──► ...
-\`\`\`
-
-### Step complexity (informational, not for orchestrator)
-
-| Step | Complexity |
-| ---- | ---------- |
-| 1    | easy       |
-| 2    | complex    |
-| ...  | ...        |
-```
-
-**Do not** keep a duplicate dependency table elsewhere — `## Execution Plan` is the single source of truth. Complexity, blocker prose, and rationale notes are fine as separate sections.
-
-### Step 4.6.4 — Sub-step file frontmatter (optional but recommended)
-
-Each sub-step file MAY carry a frontmatter line indicating its status, mirroring the umbrella table:
-
-```markdown
-**Status:** pending
-```
-
-The orchestrator does NOT rely on this — the umbrella table is authoritative. But keeping it in sync helps when reading sub-steps in isolation. If included, update both places when status changes.
-
-### Step 4.6.5 — Report
-
-After emitting the section, log briefly:
-
-```
-## 🗺  Execution Plan section emitted
-
-File: .agents/plans/active/<umbrella>.md
-Steps registered: <N>
-DAG validated: ✅ no cycles, all dependencies resolvable
-Ready for /orchestrate.
-```
-
-If validation fails (cycle detected, dangling dependency id) → STOP, report to the user, ask to fix manually before proceeding.
 
 ---
 
@@ -593,7 +452,7 @@ If validation fails (cycle detected, dangling dependency id) → STOP, report to
 
 After Phase 4 the plan exists in `active/`, but it is **not final**. This phase detects gaps, contradictions, and under-specifications before the user or `/execute` relies on it.
 
-**Core principle:** we look for HOLES that will realistically stop the execution agent (`@orchestrator-executor`, the `low` tier, is the reference point — that is the executor the plan must succeed on unless the Execution Effort Recommendation escalates it). We do NOT manufacture holes. Better to return 3 real findings than 15 hypothetical ones.
+**Core principle:** we look for HOLES that will realistically stop the execution agent (the executor — `/execute` in a fresh session, or the team coder — is the reference point). We do NOT manufacture holes. Better to return 3 real findings than 15 hypothetical ones.
 
 ### Step 5.1 — Load grilling context
 
@@ -605,7 +464,7 @@ Re-use the context loaded in Phase 1 (codebase) + Phase 2 (external docs if any)
 
 **Trigger:** the plan (or any of its sub-steps) names a reference design file (e.g. a `Design references:` / `Design source:` line pointing at `.agents/specs/design/Ready/*.html`). Backend-only plans skip this gate entirely.
 
-This gate exists because the most expensive failures in `/orchestrate` runs are UI steps where the plan said _"build X per Design.html"_ but did not enumerate the structural contract — so the executor satisfied the plan's prose while diverging from the design DOM, and the designer gate then returned dozens of gaps. Pointing at a design file is NOT a contract. Force the contract into the plan NOW, at plan-time, where it is cheap.
+This gate exists because the most expensive failures in plan executions are UI steps where the plan said _"build X per Design.html"_ but did not enumerate the structural contract — so the executor satisfied the plan's prose while diverging from the design DOM, and the designer gate then returned dozens of gaps. Pointing at a design file is NOT a contract. Force the contract into the plan NOW, at plan-time, where it is cheap.
 
 For each UI sub-step, open the referenced design HTML and verify the plan enumerates **all** of:
 
@@ -618,20 +477,20 @@ For any of the four that the plan does not pin down → raise a 🟠 MAJOR findi
 
 ### Step 5.1c — Latent product-decision sweep (MANDATORY for any plan that ships customer-facing surface)
 
-The other expensive failure class is product decisions that the plan **defers** rather than resolves — they stay latent until implementation collides with the design, then surface as designer/verifier BLOCKERS mid-pipeline. Sweep the plan for decisions in these classes and confirm each is either **resolved in the plan** or **explicitly marked `DEFER — requires rendered output to decide`**:
+The other expensive failure class is product decisions that the plan **defers** rather than resolves — they stay latent until implementation collides with the design, then surface as designer/verifier BLOCKERS mid-execution. Sweep the plan for decisions in these classes and confirm each is either **resolved in the plan** or **explicitly marked `DEFER — requires rendered output to decide`**:
 
 - **Commercial terms** — pricing numbers, refund window (e.g. 14 vs 30 days), trial length, currency per locale. These must match across plan, copy, emails, terms.
 - **Tier/feature visibility** — which tiers appear on which surface; is a tier hidden, bridged, or fully shown.
 - **Copy positioning** — product-name-first vs problem-first headline; brand voice. A divergence here rewrites many i18n keys.
 - **Semantic choices with UX/SEO impact** — accordion semantics, multi-currency rendering, locale defaults, redirect locale preservation.
 
-For each unresolved decision → raise a 🟠 MAJOR finding naming the decision and where it will explode if left latent. The point is to force these into an `AskUserQuestion` at **plan-time** (cheap, one round) instead of mid-`/orchestrate` (expensive, halts the pipeline).
+For each unresolved decision → raise a 🟠 MAJOR finding naming the decision and where it will explode if left latent. The point is to force these into an `AskUserQuestion` at **plan-time** (cheap, one round) instead of mid-execution (expensive, halts the run).
 
 ### Step 5.1d — Sensitive-path test gate (MANDATORY if the plan touches payment / auth / webhook / license / locale-redirect routing)
 
 **Trigger:** the plan (or any sub-step) creates or modifies code on a sensitive path — payment/checkout/billing, authentication/session, webhook handlers, license issuance/activation, or locale/redirect routing. Plans that touch none of these skip this gate entirely.
 
-This gate is the test-coverage twin of `5.1b`/`5.1c`. Those two closed the UI and product-decision gaps the same way: by forcing a contract into the plan at plan-time instead of letting it surface mid-pipeline. The remaining soft spot is backend tests — a missing test for a webhook or a checkout call lands in `🟡 MEDIUM` (Step 5.2), which the Step 5.4 `AskUserQuestion` drops by default. So the most failure-prone paths in the system (money, access, entitlement) are exactly where the process is weakest. This gate moves those from a skippable 🟡 to a hard gate.
+This gate is the test-coverage twin of `5.1b`/`5.1c`. Those two closed the UI and product-decision gaps the same way: by forcing a contract into the plan at plan-time instead of letting it surface mid-execution. The remaining soft spot is backend tests — a missing test for a webhook or a checkout call lands in `🟡 MEDIUM` (Step 5.2), which the Step 5.4 `AskUserQuestion` drops by default. So the most failure-prone paths in the system (money, access, entitlement) are exactly where the process is weakest. This gate moves those from a skippable 🟡 to a hard gate.
 
 Watch the locality trap: a route file with no sibling `.test.ts` is NOT automatically untested — in thin-adapter architectures the logic lives in `lib/` and is tested there. Judge by **where the logic lives**, not whether `route.ts` has a test neighbor.
 
@@ -642,40 +501,21 @@ For each sensitive path the plan touches, confirm the plan does **one** of:
 
 For any sensitive path that does neither → raise a 🟠 MAJOR finding: _"Step <X> touches <sensitive path> but neither names a test file nor marks `DEFER — why:`; the test gap will ship silently because it would otherwise be a skippable 🟡. FIX: name the unit test + its critical cases, or add the explicit DEFER line."_
 
-### Step 5.1e — Umbrella integration-contract gate (MANDATORY if the plan is an umbrella with a `## Execution Plan` DAG)
-
-**Trigger:** the plan has a `## Execution Plan` table (Phase 4.6). A single-file plan and parallel top-level plans (Step 4.5.4 option b) skip it — there is no seam between steps to break.
-
-**Why a separate gate.** `/orchestrate`'s per-step verifier judges each step against its own Definition of Done, so it is blind to a break on the *seam between two steps*: each step passes its own checklist and the wiring between them is wrong — a step reads a file no earlier step writes, an artifact a later step needs is called throwaway, a runner refuses the very flag a later step calls it with. Such a break surfaces mid-run as a blocked step, after an executor spawn is spent, and the Step 5.2 "internal contradictions" bullet is too generic to force the per-step reading that finds it. The grill is the only place that reads every step at once.
-
-`Depends On` records **order**, not provenance (Phase 4.6 field rules): a consumer may use what a transitive ancestor produced, or something the repo or the environment already provides. So start from each **consumer's inputs**, not from the edges. For every step, list what it consumes — a file, a JSON key, a CSV column, a manifest field, an exported symbol, an env var, a CLI it invokes — and confirm all of:
-
-1. **Every input has a real source with the matching contract.** Name the source: an earlier step (same path and schema as the consumer reads), an existing file or symbol in the repo, or an external input the plan documents. An input with no source is the break.
-2. **A step-produced input is ordered before its consumer** — its producer is an ancestor in the `Depends On` DAG (directly or transitively; no redundant edges required). A producer that is not an ancestor means a missing dependency.
-3. **It reaches the consumer.** Each umbrella step runs in its own worktree and only committed work moves forward (`/orchestrate` Step 5.0b creates a worktree per step; Step 5.4 fast-forwards the step branch). A gitignored output, a scratch file or a process env var set by the producer does not travel; the plan must name how it arrives — committed by the producer, regenerated by the consumer, or a durable store both read.
-4. **No retention contradiction** — nothing a later step needs is described upstream as throwaway, temporary or "delete after".
-5. **Every invocation mode is reachable** — when a later step runs an earlier step's CLI in a specific mode (a flag, a subcommand, an arm), that step's guards actually permit it.
-6. **The cheapest smoke of each planned invocation is named** — a `--help`, dry-run, fixture or tiny-input call the executor can run to prove the mode works before the expensive full run. A plan-time requirement, not something to run now.
-
-Any of 1–5 failing → raise a 🔴 CRITICAL finding: _"Step <consumer> consumes <input> but <it has no source | its producer Step <X> is not an ancestor | it does not reach the consumer's worktree | Step <X> calls it throwaway | Step <X> refuses that mode>; the per-step verifier is DoD-scoped and will not catch this — it surfaces mid-run as a blocked step after an executor spawn is spent. FIX: <write it at the consumed path/schema | add the Depends On edge | commit it or regenerate it in the consumer | drop the throwaway label | permit the mode>."_ A missing smoke (6) is a 🟠 MAJOR.
-
-**Re-run on change.** The gate judges the **final** plan: after any Phase 6 fix or accepted Phase 7 patchable fix that touches a step's inputs, outputs, retention, invocations or the `Depends On` column — or that turns a single-file plan into an umbrella — re-run it for the affected steps together with the Step 6.2 re-sync.
-
 ### Step 5.1f — AC proof gate (MANDATORY for every plan with `## ACCEPTANCE CRITERIA`)
 
-**Trigger:** always — every plan carries acceptance criteria. In an umbrella the criteria live in the umbrella and are judged there; "a task" below means a task in any of its sub-steps. Withdrawn criteria and the `Technical checks` sub-list are skipped.
+**Trigger:** always — every plan carries acceptance criteria. Withdrawn criteria and the `Technical checks` sub-list are skipped.
 
 The other gates decide tests per component and per path; nothing asks "which test proves this criterion", so a behavioural criterion can be accepted on a code reading alone. For every active criterion, raise a 🟠 MAJOR finding when:
 
 1. it has no `Proof:` line, or a `Proof:` line outside the four forms (`static`, `test`, `manual`, `none`);
 2. it is behavioural (it asserts what happens when something runs) and carries only `static` proofs;
-3. a `test` proof names a test — file and case — that no task creates or updates (an `EXPECT: contains — <test file> :: <test name literal>`) and that does not already exist in the repo; in an umbrella, also when the sub-step that implements the behaviour neither writes that test (before the behaviour) nor names the existing case;
+3. a `test` proof names a test — file and case — that no task creates or updates (an `EXPECT: contains — <test file> :: <test name literal>`) and that does not already exist in the repo;
 4. it uses `none` on a path where the `CLAUDE.md → Validation` test policy says a test MUST exist;
 5. the plan changes behaviour an existing test covers and names no task that updates or removes that test — unless that test is an unchanged case a `Proof: test` line names, which already asserts the new behaviour.
 
 Finding text: _"Criterion <id> <has no proof | is behavioural but proven only by `static` | names test <file :: case> that no task writes and the repo lacks | uses `none` on MUST path <path> | changes behaviour covered by <test file> with no task updating it>; the criterion will be accepted on a code reading, or the run will stop on a missing test. FIX: <add the `Proof:` line | add a `test` proof and its task | name the existing case | replace `none` with a test | add the task that updates or removes the test>."_ It is 🟠, not 🟡: Step 5.4's frugal scope would drop a 🟡 — the gap 5.1d closed for sensitive paths.
 
-> These five gates target a recurring root cause: it is not that the planning model is too weak — backend plans from the same model pass clean. It is that grilling did not press UI plans for a structural contract, did not force latent product decisions, let sensitive-path test gaps fall through to a skippable severity, never checked the seams between umbrella steps, and never asked what proves each acceptance criterion. These gates close those gaps without needing a stronger model.
+> These four gates target a recurring root cause: it is not that the planning model is too weak — backend plans from the same model pass clean. It is that grilling did not press UI plans for a structural contract, did not force latent product decisions, let sensitive-path test gaps fall through to a skippable severity, and never asked what proves each acceptance criterion. These gates close those gaps without needing a stronger model.
 
 ### Step 5.2 — Raw critique pass (4 categories)
 
@@ -785,8 +625,6 @@ Show the user a summary of the findings that survived self-check, grouped by sev
 
 The user chooses. Without a choice — STOP, plan stays in Phase 4 draft state, report to the user.
 
-**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): no question — the scope is **All**. Print the findings block anyway (the grill's result is part of the record), add one line `Fix scope: All (pipeline mode)`, and go to Phase 6.
-
 ### Step 5.5 — (Optional, only if findings density is high)
 
 If after self-check there are **>15 findings** or **>5 🔴** — the plan is genuinely not ready. Propose to the user, in the project's communication language (CLAUDE.md → Language Rules):
@@ -799,8 +637,6 @@ If after self-check there are **>15 findings** or **>5 🔴** — the plan is ge
 
 The user decides, default = the first option.
 
-**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): take the first option without asking and say so in the Report's grilling summary — the density reaches `/orchestrate` as a signal in its run file, not as a question.
-
 ---
 
 ## Phase 6: Apply Accepted Fixes
@@ -808,7 +644,7 @@ The user decides, default = the first option.
 Apply ALL findings the user accepted in Step 5.4. For each finding:
 
 1. **Edit in-place** in the plan file (Edit tool). Do NOT create `<plan>.grilling.md` — the user wants ONE plan as the single source of truth.
-2. **If a fix requires a new step** (e.g. post-launch monitoring) — create it, add it to the parent map / dependency graph.
+2. **If a fix requires a new step** (e.g. post-launch monitoring) — create it, add it to the plan.
 3. **Update memory** if grilling uncovered load-bearing knowledge missing from memory (e.g. a project-specific gotcha). Save it to `.agents/memory/patterns.md` or the relevant `domain/*.md` under the appropriate category. Do not save the finding as memory — save the RULE / LESSON that will prevent a similar finding on the next `/plan-feature`.
 
 ### Step 6.1 — Post-fix size re-check (mirror Phase 4.5)
@@ -821,30 +657,13 @@ After applying all fixes, **re-measure every plan file** (fixes may have grown a
 
 This prevents the situation: the plan was 900 LOC (acceptable), grilling added 2 fixes = 1 320 LOC (over cap), and the user receives a final plan that is already too big. Better to settle it now than to improvise in `/execute`.
 
-### Step 6.2 — Execution Plan re-sync (umbrella only)
-
-**Mandatory if the plan is an umbrella (has a `## Execution Plan` section). Skip for single atomic plans.**
-
-Phase 4.6 emitted the `## Execution Plan` table from the *pre-grilling* draft. Phase 6 (and any patchable fix from Phase 7) can **add new steps** (Step 6, point 2), **split a file** into `Xa/Xb/Xc`, or **remove a monolith** — leaving the table pointing at files that no longer exist or at step ids that changed. `/orchestrate` treats that table as authoritative and **validates it fail-fast** (every `File` must exist on disk, every `Depends On` must reference an existing Step — see `orchestrate.md` Phase 2). A stale table = the orchestrator STOPs before it runs.
-
-So after Phase 6 fixes (and again after any Phase 7 patchable fix, per Step 7.6), if any step was added / split / removed, **re-run Phase 4.6 on the umbrella** to regenerate the `## Execution Plan` table, then re-validate: every `File` link resolves on disk, every `Depends On` id exists, no cycle. If validation fails → STOP and report (same as Step 4.6.5). Do not hand the user (or `/orchestrate`) a plan whose table no longer matches its files. A fix that changed a step's inputs, outputs, retention, invocations or the `Depends On` column — or turned a single-file plan into an umbrella — also re-runs the Step 5.1e seam check for the affected steps.
-
 **After applying all fixes:** a short diff summary to the user:
 
 ```
 ## ✅ Applied <N> fixes
 
 Modified files:
-- <plan>.md (umbrella decisions + risk register)
-- <plan>-3b.md (NEW endpoint + idempotency check)
-- <plan>-5.md (integration boundary corrected)
-
-New files:
-- <plan>-3c.md (split out of the monolithic step 3)
-- <plan>-8.md (post-launch hardening)
-
-Removed:
-- <plan>-3.md (monolith, split into 3a/3b/3c)
+- <plan>.md (NEW endpoint + idempotency check)
 
 Memory updated:
 - .agents/memory/patterns.md (new section X)
@@ -967,7 +786,7 @@ Write the score for each finding explicitly (same shape as Step 5.3) so the deci
 
 ### Step 7.6 — Branch by `kind`
 
-- **`kind: "patchable"` and accepted** → apply in-place now (Edit tool, exactly like Phase 6), then run the **Step 6.1 post-fix size re-check** (a codex fix can push a file over the hard cap → re-enter the Step 4.5.4 question) **and the Step 6.2 Execution Plan re-sync** if the fix added / split / removed a step in an umbrella plan (a stale table fails `/orchestrate`'s validation).
+- **`kind: "patchable"` and accepted** → apply in-place now (Edit tool, exactly like Phase 6), then run the **Step 6.1 post-fix size re-check** (a codex fix can push a file over the hard cap → re-enter the Step 4.5.4 question).
 - **`kind: "fundamental"` (any severity that survives scoring)** → do **NOT** apply silently and do **NOT** try to encode it as a plan edit. Collect it as a **🔶 RETHINK SIGNAL**. Fundamental findings are surfaced separately at the end (Step 7.8) and the user is asked explicitly — they are exactly the "is this even the right thing to build?" signal cross-model review exists to catch.
 
 ### Step 7.7 — Loop control
@@ -1027,8 +846,6 @@ codex questions the approach itself (not patchable as a plan edit):
 
 If there were **no** rethink signals, omit that block entirely — a clean cross-model pass is a good outcome.
 
-**Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): this question **still asks** — a 🔶 rethink signal is one of the pipeline's three question cases. `/orchestrate` records the answer in its run file so no later stage re-asks it.
-
 ### Step 7.9 — Memory
 
 If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-feature` keeps producing), save the RULE (not the finding) to `.agents/memory/patterns.md`, exactly as Phase 6 Step 3 does — so the next plan avoids it before codex even runs.
@@ -1062,7 +879,6 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 - [ ] Tasks ordered by dependency (can execute top-to-bottom)
 - [ ] Each task is atomic and independently testable
 - [ ] Pattern references include specific `file:line` numbers
-- [ ] Executor effort is carried **in the plan file** (header `**Execution effort:**` or the table's `Effort` cell), not only in the report
 - [ ] Every active acceptance criterion carries a `Proof:` line in the four-kind grammar, and every `test` proof is backed by a task or an existing test case (Step 5.1f)
 
 ### Pattern Consistency ✓
@@ -1080,25 +896,16 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 
 ### Size Within Budget ✓
 
-- [ ] Every plan file ≤ hard cap (Phase 4.5 thresholds — 1 200 LOC single-file / 600 LOC sub-step / 350 LOC umbrella / 500 LOC monitoring)
-- [ ] A single-file plan was measured against the **single-file** budget, not the sub-step budget
+- [ ] Every plan file ≤ hard cap (Phase 4.5 thresholds — 1 200 LOC single-file / 500 LOC monitoring)
 - [ ] If above soft target, density justifies it (no filler / repetition)
 - [ ] Phase 4.5 split-decision report exists in conversation log, stating **both** gates (proof check ran)
 - [ ] No split happened without an explicit user answer
 - [ ] Post-fix re-check (Step 6.1) shows all files within budget after grilling applied
 
-### Execution Plan ✓ (umbrella only)
+### Split ✓
 
-- [ ] A single-file plan has **no** `## Execution Plan` section (this whole block is skipped)
-- [ ] Parallel top-level plans (option b) each carry a `**Parallel track:**` line and no `## Execution Plan` section
-- [ ] Umbrella plan has `## Execution Plan` section with canonical table format
-- [ ] Every sub-step file is registered in the table
-- [ ] Every `Depends On` references an existing Step id (no dangling refs)
-- [ ] No circular dependencies
-- [ ] All automatable initial statuses are `pending`; human-only steps are `manual` (per Step 4.6.2)
-- [ ] Table re-synced after Phase 6 / Phase 7 fixes (no `File` link or `Depends On` id left stale — Step 6.2)
-- [ ] The **final** plan passes the Step 5.1e seam check: every consumed input has a source with the matching contract, a step-produced input comes from a `Depends On` ancestor and reaches the consumer's worktree, nothing needed is labelled throwaway, every invocation mode is reachable, a smoke is named
-- [ ] Visual DAG and complexity table (if kept) are marked as informational supplements
+- [ ] No plan file carries a `## Execution Plan` section
+- [ ] Separately startable plans (option b) each carry a `**Parallel track:**` line
 
 ---
 
@@ -1117,7 +924,7 @@ If codex surfaced a **recurring** planning mistake (a class of gap our `/plan-fe
 After Phase 6 completes (plan finalized post-grilling), provide:
 
 - Summary of feature and approach
-- Full path to the created plan file(s) — include sub-steps if the plan got split during Phase 6
+- Full path to the created plan file(s) — include every plan file if the plan was split
 - Whether Phase 2 (External Research) ran or was skipped, and why
 - **Grilling summary** — N findings raised, M kept after self-check, K accepted by the user, fixes applied. If the user rejected all → note that the plan is "draft, ungrilled" and confidence is lower.
 - **Cross-model review summary (Phase 7)** — if codex ran: rounds executed, findings accepted vs dropped, whether it early-exited, and any 🔶 rethink signals raised. If codex was absent → state `cross-model review: skipped (codex not on PATH)` in one line.
@@ -1125,51 +932,6 @@ After Phase 6 completes (plan finalized post-grilling), provide:
 - Key implementation risks or considerations (post-grilling — should be minimal if the user accepted critical fixes)
 - Estimated confidence score for one-pass success (POST-grilling — typically +1.5 to +2.5 vs pre-grilling)
 - **Backlog write-back (opt-in)** — if `.agents/backlog.md` exists in the new format, write the finalized plan path(s) into the `Ref` cell (alongside the spec path from Phase 0) for the spec's Tasks (the ids on its `**Tasks:**` line), and confirm each `Status` is `WIP`. Legacy format → repeat the one-line "legacy WP backlog — write-back skipped" note from Phase 0. If no backlog exists, skip silently and omit this line. Do **not** touch the backlog's DAG/structure — only `Ref`/`Status`.
-- **Execution effort recommendation** (see below) — last section of the report
-- **Pipeline mode** (`.claude/orchestrate-run.json` exists with `"stage": "plan"` — `/orchestrate` Stage 2 is driving): the report is the handback. Put the plan path(s) on their own line — `Plan: <path>` (the umbrella first when a split happened) — then return to `/orchestrate` Stage 2. Run nothing after the report: the pipeline compacts the session before the build.
-
----
-
-## Execution Effort Recommendation (mandatory final section of the report)
-
-End the report with **one** explicit recommendation, picking exactly one of two levels. The value is the plan's difficulty marker; it selects which executor agent `/orchestrate` spawns. Model and reasoning effort are fixed in each agent's frontmatter (`.claude/agents/orchestrator-executor*.md`) — never name a model here.
-
-**Levels:**
-
-- **`effort low`** → `@orchestrator-executor`. Enough for mechanical migrations, small refactors, text edits, and components mirrored 1:1 from existing ones. Choose by default when the plan has `file:line` references, concrete keys to reuse, and no copy-language or critical logic.
-- **`effort medium`** → `@orchestrator-executor-hard` (the stronger tier). Required when a step coordinates ≥3 modules in one pass, carries brand-voice or multi-locale copy, makes pattern-level decisions inside the step, refactors >5 files, gives guidance looser than `file:line`, reasons about concurrent state, or where a **silent** failure has a real production cost (payments, auth, compliance, data migration, mass rename across >10 files).
-
-**Where the recommendation must land (this is the part that actually runs):**
-
-| Plan type | Write it into | Orchestrator reads it in |
-| --- | --- | --- |
-| Single-file (default output of this command) | the header field `**Execution effort:** low \| medium` | Phase 1 (flat mode) |
-| Umbrella (`## Execution Plan` table) | the per-step `Effort` cell | Phase 2 |
-
-**Never invent a third level (`high`, `xhigh`, `fast`) or name a different model — the pipeline cannot spawn them.**
-
-**Output format (last section of the report, literally this shape):**
-
-```
-## 🎯 Recommended execution effort
-
-**{effort low → @orchestrator-executor | effort medium → @orchestrator-executor-hard}** — {1-2 sentences of rationale, referencing the real characteristics of THIS plan, not generically}
-
-Written to the plan: `{the exact line or cell you wrote}`
-
-{If the plan is staged — a per-step table with the effort and a 1-sentence why.}
-
-{If a sensible optimization exists (e.g. split step X into two sessions, add one sentence to the executor prompt), list it in 1-2 bullets.}
-```
-
-**Selection rules (apply in order):**
-
-1. Default to **`effort low`** — most tasks deserve it, the plan exists so a cheaper pass can succeed.
-2. Escalate to **`effort medium`** only when the plan hits one of the triggers listed above. One trigger is enough; do not require several.
-3. A staged plan with varied complexity → different effort per step. Don't pretend all steps are equal — that misinforms the user.
-4. Don't hedge. **One recommendation** per task (or per step in a staged plan). If a task tolerates both — pick `low`.
-5. Don't use words like "consider", "it's worth", "maybe". Write: "effort low — because X and Y."
-6. **The recommendation is binding, not advisory.** Write it into the plan file before you report it, and quote the line you wrote. A recommendation that exists only in this report and not in the plan file is a defect: `/orchestrate` reads the plan, not the terminal.
 
 ## Stage end marker (token usage)
 

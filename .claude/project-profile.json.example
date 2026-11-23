@@ -9,7 +9,7 @@
   "_git_host_doc": "github | bitbucket | gitlab | none. Detected from `origin`, confirmed. `none` = no remote yet; PR credentials are deferred until one exists.",
   "git_host": "github",
 
-  "_workflow_doc": "Asked: preset + pr_required (Screen 1, Q3) and team_merge (Screen 2, Q7). Everything else is DERIVED once from the preset table in create-CLAUDE_MD → Identify Git Workflow and never asked. preset is one of trunk | feature-branch | gitflow — `custom` is not a profile value; a custom workflow goes through /setup:create-CLAUDE_MD instead. pr_required=false (\"I push straight to main\") overrides pr_dest / protected / merge / orchestrate_publish as shown here.",
+  "_workflow_doc": "Asked: preset + pr_required (Screen 1, Q3) and team_merge (Screen 2, Q7). Everything else is DERIVED once from the preset table in create-CLAUDE_MD → Identify Git Workflow and never asked. preset is one of trunk | feature-branch | gitflow — `custom` is not a profile value; a custom workflow goes through /setup:create-CLAUDE_MD instead. pr_required=false (\"I push straight to main\") overrides pr_dest / protected / merge as shown here.",
   "workflow": {
     "_preset_doc": "trunk | feature-branch | gitflow",
     "preset": "trunk",
@@ -25,8 +25,6 @@
     "merge": "ff",
     "_team_merge_doc": "confirm | auto. Asked by /setup:start (Screen 2, Q7); absent = confirm. confirm: team-setup.sh (/setup:teams) puts team-merge-check.sh, team-integrate.sh, team-integrate-lock.sh and team-starter-land.sh behind ask, so each of those merge steps waits for a click. auto: team-setup.sh leaves them out and removes them when present — for every session that uses the project settings, the team roles in the clones included (the scripts' own refusals still apply). It gates only these scripts: the Azure DevOps merge (/pr-merge) and the Supervisor's auto-merge decision (supervisor-sessions.md → Auto-merge) do not read it. Role sessions run with a materialized copy of the ask list: restart a running one after a change.",
     "team_merge": "confirm",
-    "_orchestrate_publish_doc": "push | branch-local. gitflow and any PR-gated flow => branch-local; direct push and feature-branch => push.",
-    "orchestrate_publish": "push",
     "_jira_transition_doc": "Opt-in Jira transition guard (.claude/hooks/guard-jira-transition.sh). jira_transition_comment: true → a jira_transition_issue call without a comment is refused. jira_transition_evidence: {\"<PROJECT>:<transition id>\": \"<case-insensitive ERE>\"} — that transition's comment must match, e.g. {\"PROJ:31\": \"Release-[0-9]+|no deploy\"}; ids are workflow-scoped, hence the project prefix. \"*:<transition id>\" applies to every project without its own string key (the exact key wins; an exact \"\" opts a project out). Default: off, no rules.",
     "jira_transition_comment": false,
     "jira_transition_evidence": {},

@@ -31,7 +31,7 @@ Rules and pointers for Claude Code in this repository — loaded into every sess
 
 ## Validation
 
-> **Source of truth for quality gates** — `/gates:verify-implementation` and `/orchestrate` run these in order, stopping on the first failure. Filled by `/setup:create-CLAUDE_MD`; until then the gates use stack-detected defaults.
+> **Source of truth for quality gates** — `/gates:verify-implementation` runs these in order, stopping on the first failure. Filled by `/setup:create-CLAUDE_MD`; until then the gates use stack-detected defaults.
 
 ```bash
 {typecheck-command} && {lint-command} && {test-command}
@@ -70,15 +70,11 @@ Files max **500 lines** · functions max **50 lines** · classes soft **150** / 
 
 ## Git Workflow
 
-- **Commands:** [/commit](.claude/commands/commit.md) · [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) · [/release](.claude/commands/release.md). Permission tiers (`deny` > `ask` > `allow`) live in [.claude/settings.json](.claude/settings.json); tiers, protected branches, `--no-track`, the pipeline's git: [.agents/reference/git-policy.md](.agents/reference/git-policy.md).
+- **Commands:** [/commit](.claude/commands/commit.md) · [/push](.claude/commands/push.md) / [/pull](.claude/commands/pull.md) · [/release](.claude/commands/release.md). Permission tiers (`deny` > `ask` > `allow`) live in [.claude/settings.json](.claude/settings.json); tiers, protected branches, `--no-track`: [.agents/reference/git-policy.md](.agents/reference/git-policy.md).
 - **Shell commands:** absolute paths or `git -C <dir>`, never a leading `cd <dir> && …` — Claude Code's auto-mode classifier reviews such a command without its `cd` and gives no verdict.
-- **`git worktree remove --force` can discard uncommitted work.** Its only guard is [/orchestrate](.claude/commands/orchestrate.md)'s `status --porcelain` check, which force-removes a worktree only when it is clean and fully merged. `git worktree` and `git merge --ff-only` are reserved for the pipeline.
+- **`git worktree remove --force` can discard uncommitted work.** Nothing in this workflow force-removes a worktree (`team-starter-land.sh` removes a landed starter worktree without `--force`); never run it ad hoc.
 - **Never include AI attribution** in commits or PRs. Switched off by the `attribution` key in `settings.json` — keep the key; a rule file alone cannot outrank the host's session instruction.
 - **Architecture cadence:** run [/architecture-review](.claude/commands/architecture-review.md) `--codex` (two independent sweeps, one report) on a cadence you choose — before a minor/major release, or after every few merged features — never on every patch: it is a whole-codebase sweep, slow and analyze-only. Candidates from its report go to `/brainstorm` as their own tasks; nothing is fixed inline during a release.
-
-**Orchestrate publish:** push
-
-> The mode `/orchestrate` uses with no `--publish` flag: `push` pushes each step commit; `branch-local` commits but **never** pushes (PR-gated projects). Omitted → `push`.
 
 ### Branch model
 

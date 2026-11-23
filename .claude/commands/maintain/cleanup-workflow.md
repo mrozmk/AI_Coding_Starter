@@ -107,7 +107,6 @@ For each contract row, by `kind`:
 
 - **`heading`** — normalize every `CLAUDE.md` heading (trim, strip trailing `#`, collapse whitespace) and compare the item **literally and exactly**, regex-escaping it first because names contain `&`. Heading *level* drift (`###` vs `##`) is accepted — consumers read by name, not depth. A prefix match is not: `## Validation Legacy` does not satisfy `Validation`.
 - **`content:<Section>`** — bound the search to that section's body (its heading up to the next `## `) and check **the component, not just its marker**; a marker-only search passes on a gutted section:
-  - `**Orchestrate publish:**` — the label, a real value on the same line (`push` or `branch-local`, never a `{…}` placeholder), **and** its explanatory blockquote, bounded to the span between the label and the next peer item or `### Branch model`. Unbounded, any later blockquote in the section satisfies it.
   - `git worktree remove --force` — the full guard sentence, not an incidental mention of the command elsewhere.
   - `### Branch model` — the heading **and six labelled assignments** (`**Preset:**` … `**Protected:**`) carrying non-placeholder values, matched **outside** blockquote lines. Field *names* are not enough: an explanatory blockquote can name all six and assign none, and that block holds no branch facts at all. The template's assignment form is the shape to require. The optional `**Maintenance:**` / `**Retired:**` lines are not required; when present they must name at least one branch in backticks before ` — ` (or say `none`) — a leftover `{…}` placeholder there is a finding. An optional `**Protected push:**` line must say `pr-only` or `confirm`.
 - **`conditional:lsp`** — match `Code Navigation` by **substring** (the heading ships as `## Code Navigation (LSP)`, and the contract is the substring). This is the single documented exception to exact matching; do not generalize it. Report it missing **only when the precondition holds**, and that precondition is **repo-scoped declaration, never machine state**:
@@ -542,7 +541,7 @@ Then scan each paragraph (a run of non-blank lines outside code fences and table
 | **Long paragraph** | more than 6 lines under any heading other than a code block | wherever the other heuristics point; if none fires, flag as "explain in memory, rule here" |
 | **Wrong language** | prose not in English (code, comments and rule files are English per `Language Rules`) | translate the rule, move the story |
 
-**Exempt:** the `### Branch model` block, the `**Orchestrate publish:**` line and its blockquote, the `Validation` command block and test policy, and the comments rule — these are data other commands parse, and their form is the contract. A heuristic firing on them is a false positive; do not report it.
+**Exempt:** the `### Branch model` block, the `Validation` command block and test policy, and the comments rule — these are data other commands parse, and their form is the contract. A heuristic firing on them is a false positive; do not report it.
 
 **False-positive philosophy, as in Phase 4:** a date inside a one-line rule (`per PRD v2, 2026-03`) is not a decision paragraph — the finding must be a *paragraph* that mostly explains. Prefer silence to a report the reader learns to skim.
 
