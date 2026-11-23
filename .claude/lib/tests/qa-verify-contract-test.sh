@@ -4,9 +4,8 @@
 # the registry and run on fixed vectors, so the test runs the same bytes the command runs — the
 # re-check rules, Phase 3's one-pass decisions and one approval, the modes, the pool, groups, the
 # feature path and deferrals, the task ledger (citation, the rank, the light path), the per-ticket
-# host-and-build decision, the deployed line and the
-# base-filtered merge set, the ENV evidence rule, the
-# browser drivers and the script skeleton (extracted and run against a stub Playwright), and the
+# host-and-build decision, the deployed line and the base-filtered merge set, the ENV evidence rule,
+# the browser drivers and the script skeleton (extracted and run against a stub Playwright), and the
 # neighbouring contracts.
 # Text and pipeline checks only — nothing is spawned, no tracker is called, no real browser runs.
 #
@@ -288,6 +287,12 @@ a smoke invalidated by build drift counts as a failed smoke
 a failed smoke drops that ticket to a full run in the same session
 recomputed after the fallback from the sources actually used
 no checkout or host observed
+merged into <base>, not <L> — its ledger is not used
+only the run of backticked tokens right after the label
+Rank keys 1, 3 and 4 (Step 0.8 → Order) are computed for a single run too
+A single run turns it down with `full` (or `full <KEY>`)
+or `mode=recheck` with the Run line `re-check of <date>` when the ticket's newest record validated
+smoke failed at <target> — <error>; check it before you move it
 as it stands after the one-pass decision (step 2)
 Replacement is per criterion, not per physical row
 - <id> [<fp>] — CITED — task ledger: met (PR #<n>)
@@ -297,6 +302,7 @@ pins .claude/agents/qa-contract.md "qa-contract" <<'EOF'
 only for the static criteria the task ledger does not cite as `met`
 EOF
 lacks "$CMD" 'met (<file:line>)'; check $? "qa-verify still cites a file:line from Met: rows"
+lacks "$CMD" 'on a line or heading containing "sensitive"'; check $? "qa-verify still harvests any line that says sensitive"
 
 # ---- modes, pool, groups ----------------------------------------------------------------------------
 POOL_PINS=$(cat <<'EOF'
