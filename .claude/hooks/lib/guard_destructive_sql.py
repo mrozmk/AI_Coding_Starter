@@ -134,9 +134,11 @@ DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
 SCRIPT_REF = re.compile(r"\.(sh|sql)\b")
 CD_WORD = re.compile(r"(^|[\s;&|(])cd\s")
 COMMENT_LINE = re.compile(r"\s*(#|//)")
-HEREDOC = re.compile(r"<<-?\s*\\?['\"]?(\w+)['\"]?[^\n]*\n(.*?)^\s*\1\s*$", re.S | re.M)
-# The only spot where the two `#` readings can differ: an escaped blank or separator before `#`.
-ESCAPED_HASH = re.compile(r"\\[ \t\n;&|()]#")
+HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)^\s*\1\s*$", re.S | re.M)
+# Bash's own delimiter rules, for dropping heredoc data: any word, `\`- or quote-quoted, closed by
+# a line that is exactly the word (leading tabs allowed only for `<<-`).
+DATA_HEREDOC = re.compile(r"<<(-)?[ \t]*\\?(['\"]?)([^\s'\"\\;&|()<>]+)\2[^\n]*\n(.*?)^(?(1)\t*)\3$",
+                          re.S | re.M)
 RANK = {"deny": 2, "ask": 1}
 MAX_CWDS = 8
 
@@ -159,6 +161,7 @@ def shell_line_verdict(line):
 
 
 _BASE_READING = []
+_SPLITS = [0]  # `#`s the pre-#230 rule would cut where the current one does not, at any depth
 
 
 @contextlib.contextmanager
@@ -177,12 +180,17 @@ def in_base_reading():
     return bool(_BASE_READING)
 
 
-def needs_base_reading(text):
-    """True when <text> must also be read the pre-#230 way: the two rules may cut it differently
-    (at any nesting level — quoting only adds backslashes), and this is not that reading already.
-    Parsing or not does not matter: an uncovered quote can pair with a later one and hide the
-    commands between them while the text still parses."""
-    return not in_base_reading() and bool(ESCAPED_HASH.search(text))
+def comment_splits():
+    """A mark for needs_base_reading(): how many `#`s the two rules have cut differently so far."""
+    return _SPLITS[0]
+
+
+def needs_base_reading(mark):
+    """True when the text read since <mark> must also be read the pre-#230 way: the two rules cut
+    some `#` of it differently (nested strings included — every parse strips its own text), and
+    this is not that reading already. Parsing or not does not matter: an uncovered quote can pair
+    with a later one and hide the commands between them while the text still parses."""
+    return not in_base_reading() and _SPLITS[0] != mark
 
 
 def stronger(a, b):
@@ -241,10 +249,12 @@ def strip_shell_comments(cmd):
                 word_start = False
             i += 2
             continue
-        elif c == "#" and ((i == 0 or cmd[i - 1] in " \t\n;&|()") if base else word_start):
-            while i < len(cmd) and cmd[i] != "\n":
-                i += 1
-            continue
+        elif c == "#" and (i == 0 or cmd[i - 1] in " \t\n;&|()"):
+            if base or word_start:
+                while i < len(cmd) and cmd[i] != "\n":
+                    i += 1
+                continue
+            _SPLITS[0] += 1  # the pre-#230 rule cuts here
         word_start = not quote and c in " \t\n;&|()"
         out.append(c)
         i += 1
@@ -412,8 +422,8 @@ def heredocs(cmd):
 def heredoc_bodies_removed(cmd):
     """<cmd> with the bodies of its heredocs dropped and their delimiter lines kept: data, not
     commands, for a line-by-line read."""
-    return HEREDOC.sub(lambda m: m.group(0)[:m.start(2) - m.start()]
-                       + m.group(0)[m.end(2) - m.start():], cmd)
+    return DATA_HEREDOC.sub(lambda m: m.group(0)[:m.start(4) - m.start()]
+                            + m.group(0)[m.end(4) - m.start():], cmd)
 
 
 def doc_heredocs_removed(text):
@@ -494,10 +504,10 @@ class Scan:
         unmistakable statement catch SQL assembled on the same line. Test fixtures under tests/ only
         get the first pass — they print SQL into files, they do not run it."""
         if depth < 3:
-            start = self.state()
+            start, mark = self.state(), comment_splits()
             if not self.parse_body(text, where, depth, start):
                 self.unparsable(text, where, depth)
-            if needs_base_reading(text):
+            if needs_base_reading(mark):
                 self.base_reading(text, where, depth, start)
         if "/tests/" in where:
             return
@@ -712,14 +722,14 @@ def unparsable_command(cmd, cwd, project):
 
 def classify(cmd, cwd, project):
     """Returns (decision, reason) with decision in deny | ask | None."""
-    scan = Scan(cwd, project)
+    scan, mark = Scan(cwd, project), comment_splits()
     try:
         scan.command(cmd, "command", 0)
         verdict = (deny_verdict(scan.deny) if scan.deny else ask_verdict(scan.ask) if scan.ask
                    else (None, ""))
     except ValueError:
         verdict = unparsable_command(cmd, cwd, project)
-    if verdict[0] == "deny" or not needs_base_reading(cmd):
+    if verdict[0] == "deny" or not needs_base_reading(mark):
         return verdict
     with base_comment_reading():
         return stronger(verdict, classify(cmd, cwd, project))

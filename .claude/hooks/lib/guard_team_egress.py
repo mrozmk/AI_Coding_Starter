@@ -40,8 +40,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, base_comment_reading, commands, doc_heredocs_removed, needs_base_reading,
-    redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
+    SHELL_C, base_comment_reading, comment_splits, commands, doc_heredocs_removed,
+    needs_base_reading, redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
     supervisor_verdict)
@@ -296,8 +296,9 @@ def gh_read_tainted(cmd, tokens=()):
 
 
 def bash_reason(cmd, project):
+    mark = comment_splits()
     reason = reading_reason(cmd, project)
-    if reason or not needs_base_reading(cmd):
+    if reason or not needs_base_reading(mark):
         return reason
     # The pre-#230 reading must not lose a verdict either (QA: a `git push <remote>` before a line
     # whose uncovered quote breaks or hides the rest).
