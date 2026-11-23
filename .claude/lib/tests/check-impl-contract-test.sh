@@ -238,6 +238,8 @@ VI = "gates/verify-implementation.md"
 vi = read(".claude/commands/gates/verify-implementation.md")
 vmeta, _ = front(vi)
 check(vmeta.get("argument-hint") == '"[plan-name] [--base <rev>]"', f"{VI}: argument-hint lacks a quoted --base")
+check("Bash(bash .claude/lib/branch-model.sh fields)" in vmeta.get("allowed-tools", ""),
+      f"{VI}: allowed-tools lacks the base-resolution call")
 v1 = part(vi, "## 1. ", "## 1b. ", VI)
 v2 = part(vi, "## 2. ", "## 3. ", VI)
 v3 = part(vi, "## 3. ", "## 4. ", VI)
@@ -253,6 +255,8 @@ check("Acceptance criteria: not evaluated — gate stopped at §2 task <n>" in v
       and "the failed task backs the proof of <id>" in v2, f"{VI}: §2 lacks the early-exit line")
 check("or its `IMPLEMENT` / `GOTCHA` names that `<test file> :: <test name literal>` pair" in v2,
       f"{VI}: §2 early exit ignores a proof backed by an existing case")
+check("gate stopped at §2 plan contract" in v2 and "§4's Existing tests did not run either" in v2,
+      f"{VI}: §2 early exit lacks the plan-contract form or the Existing-tests note")
 check("Acceptance criteria: not evaluated — gate stopped at §3 <command>" in v3,
       f"{VI}: §3 lacks the early-exit line")
 ex = part(v4, "### HIGH — Existing tests", "### ", VI + " Existing tests")
@@ -263,7 +267,10 @@ for needle in ("git diff -M <BASE>", "git diff -M --name-status <BASE>", "git st
                "no plan task names that test file with that intent",
                "restore the base case (back to its text at the base",
                "undo any skip, filter or selector change that stopped it running",
-               "the runner configuration and selection files the diff changes"):
+               "the runner configuration and selection files the diff changes",
+               "or of another plan whose file `git diff -M --name-status <BASE> -- .agents/plans/` shows added or moved",
+               "of a sub-step of the same umbrella whose `## Execution Plan` row is `done`",
+               "the diff changes or adds, untracked ones included"):
     check(needle in ex, f"{VI}: Existing tests lacks {needle!r}")
 check("Does the code satisfy the plan's **acceptance criteria**?" not in vi,
       f"{VI}: §6 still judges all criteria in one prose question")
@@ -282,6 +289,7 @@ for needle in ("### Acceptance-criteria ledger", "a green file is not enough",
                "a missing or duplicated id is reported at the top of the block, never dropped",
                "can **identify that case**",
                "a selection that excludes the named case (a step list, a filter, a skip flag) settles the row",
+               "once no §3 command that could run it admits it",
                "**Evidence of a `deferred` row** carries the plan's own words",
                "never a direct file call that bypasses its isolation",
                "`unmet` › `unconfirmed` › `deferred` › `met`",
@@ -303,6 +311,9 @@ for needle in ("### Acceptance Criteria",
 c1c = part(ci, "**1c. Code gate", "**1d. ", CI + " 1c")
 check("--base <BASE>" in c1c and "never edits, adds or drops a row" in c1c,
       f"{CI}: 1c does not pass --base or copy the ledger read-only")
+check("in every mode, the merge-base SHA of the branch's line resolved with item 0's chain" in c1c
+      and "Only when that is unresolvable is `--base` left out" in c1c,
+      f"{CI}: 1c does not resolve the branch line for --base in every mode")
 check("Acceptance criteria: not evaluated — gate failed to load" in c1c,
       f"{CI}: 1c reuses a ledger after a substituted gate")
 check("**Then the blocking ledger rows**" in s1 and "four sources" in s1
