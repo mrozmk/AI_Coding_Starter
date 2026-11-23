@@ -302,7 +302,7 @@ If you already have briefs, transcripts, sketches, PDFs, or any written material
 
 > `/setup:start` prints when to run it (after `/architect`, before `/setup:create-backlog`); `/setup:create-CLAUDE_MD` also refreshes it when the brief is still empty or older than the PRD.
 >
-> Either way it generates `.agents/memory/project-brief.md` — a 50-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
+> Either way it generates `.agents/memory/project-brief.md` — a 60-line TL;DR that `/prime` loads instead of the full PRD on every session start — and, if the PRD has pricing/billing/monetization sections, also seeds `.agents/memory/domain/business-model.md` (plan IDs, feature gates, Stripe events).
 
 ### Optional: Map the delivery before brainstorming feature by feature
 

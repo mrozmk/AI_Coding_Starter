@@ -79,7 +79,7 @@ The pipeline is hands-off by contract. **Ask only in these cases**, each through
 
 | Ask | Where it arises |
 |-----|-----------------|
-| A **directional fork** — two incompatible approaches, a scope split, a decision only the owner can make (budget, external dependency) | `/brainstorm` Step 1.5 (topic fails *Small*) and Step 2 |
+| A **directional fork** — two incompatible approaches, a scope split, a decision only the owner can make (budget, external dependency) | `/brainstorm` Step 1.5 (topic fails *Small*) and Step 2 · `/plan-feature` reuse lookup (an `## Open — pick one` item the plan must pick) |
 | A **🔶 rethink signal** — the cross-model reviewer questions the approach or widens the scope | `/brainstorm` Step 8.7 · `/plan-feature` Step 7.8 · runner Phase 7 step 0 |
 | A **blocker the pipeline cannot resolve** — a failed Execution Plan validation, an executor/verifier/designer/committer block after its iteration budget, a push rejected for a reason other than branch protection, a dirty tree that is not yours | `/plan-feature` Phase 0 / Step 4.6.5 · runner Phase 2 / Phase 6 |
 | **A run already in progress** when a new one is requested | Stage 0 |
@@ -123,7 +123,7 @@ Then write the run file (`stage` = the entry stage, `id` = a slug of the argumen
 
 ## Stage 2 — Plan
 
-1. Re-read the spec in full (after a compaction you have not seen it). Run `/plan-feature <spec path>` (the Skill tool), the spec path explicit — never let it pick "newest in `.agents/specs/`". Pipeline mode (`stage: plan`) changes Step 4.5.4 (default split answer, above), Step 5.4 (**All**), Step 5.5 (first option) and its terminal report (hand back to the pipeline). Step 7.8's 🔶 signals and Phase 0's spec problems still ask/stop.
+1. Re-read the spec in full (after a compaction you have not seen it). Run `/plan-feature <spec path>` (the Skill tool), the spec path explicit — never let it pick "newest in `.agents/specs/`". Pipeline mode (`stage: plan`) changes Step 4.5.4 (default split answer, above), Step 5.4 (**All**), Step 5.5 (first option) and its terminal report (hand back to the pipeline). Step 7.8's 🔶 signals, an `## Open — pick one` item the reuse lookup must pick (a directional fork) and Phase 0's spec problems still ask/stop.
 2. When it returns, read the report's plan path(s). Several files (a split happened) → the **umbrella** is the plan; verify it carries `## Execution Plan` with a `File` column, otherwise STOP and show the user (the runner would fail Phase 2 anyway, and that is a blocker, not a default). One file → it is the plan.
 3. Handoff: `plan` = the path, `stage` = `build`, `decisions` / `signals` as above. `focus` names the plan's `VALIDATION COMMANDS` and its `**Execution effort:**` line (or the `Effort` column).
 

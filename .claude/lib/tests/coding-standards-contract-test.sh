@@ -4,6 +4,9 @@
 # reflection protocol and the guide name docs/coding-standards.md. It also pins the reuse statement the
 # planning commands require (`/plan-feature`'s reuse lookup, `**Reuse:**` block, grilling finding and
 # cross-model conventions; `/quick-change`'s `Reuse:` line).
+# It pins the lookup's search too: both searches run `rg --hidden -g '!.git'` (plain `rg` skips
+# dot-directories), withdrawn `CS-n` rules are skipped, and an `## Open — pick one` hit is asked — in
+# pipeline mode as a directional fork that `/orchestrate`'s question policy names — never parked.
 # It also pins the per-criterion proof contract: the four-kind `Proof:` grammar and `AC-n` labels
 # in `/plan-feature` and `/quick-change`, the withdrawn exclusion and the test-first task order in
 # `/plan-feature`, grill step 5.1f, and `/execute`'s red-before-green line. Text checks only. It also asserts that
@@ -108,16 +111,21 @@ check(DOC in read(".claude/docs/guide.md"), f"guide.md names {DOC}")
 
 pf = read(".claude/commands/plan-feature.md")
 lookup = between(pf, "**2. Pattern Recognition**", "**3. Dependency Analysis**")
-for needle in ("whole repository", "rg --hidden", DOC, "## Shared helpers", "## One shape per problem",
-               "## Open — pick one", "**Reuse:**", "Open questions:"):
+for needle in ("whole repository", "rg --hidden -g '!.git' <name>", "rg --hidden -g '!.git' <pattern>",
+               "skips `.claude/` and every other dot-directory", "is marked `(withdrawn)` is skipped",
+               DOC, "## Shared helpers", "## One shape per problem", "## Open — pick one", "**Reuse:**",
+               "in pipeline mode too, as a directional fork", "local convention <path:line>",
+               "the plan never silently picks a variant"):
     check(needle in lookup, f"plan-feature Pattern Recognition lacks {needle!r}")
+check("recorded under `Open questions:`" not in lookup, "plan-feature Pattern Recognition still parks an Open — pick one hit under Open questions:")
 ptf = between(pf, "### Patterns to Follow", "## STEP-BY-STEP TASKS")
 for needle in ("**Reuse:**", "→ reuse <path:line>", "→ none found (searched: <terms / paths>)",
                "→ shared at <path>", "**Standards:**", "skipped — no docs/coding-standards.md",
-               "**Shapes:**", "**Open — pick one:**"):
+               "**Shapes:**", "**Open — pick one:**", "→ local convention <path:line>"):
     check(needle in ptf, f"plan template Patterns to Follow lacks {needle!r}")
+check("open question (`## NOTES`)" not in ptf, "plan template Patterns to Follow still offers an open question in NOTES")
 notes = between(pf, "\n## NOTES\n", "## Phase 4.5")
-check("Open questions:" in notes, "plan template NOTES does not name Open questions:")
+check("Open questions:" not in notes, "plan template NOTES still parks Open — pick one items under Open questions:")
 check("(its `**Reuse:**` block included)" in pf, "densify rule does not protect the Reuse block")
 major = between(pf, "**🟠 MAJOR**", "**🟡 MEDIUM**")
 for needle in ("**Reuse:**", "## One shape per problem", "## Shared helpers"):
@@ -163,7 +171,11 @@ check("**Acceptance proofs**" in p7s, "Phase 7 prompt lacks the Acceptance proof
 qc = read(".claude/commands/quick-change.md")
 q1 = between(qc, "## Phase 1 —", "## Phase 2 —")
 for needle in ("Reuse: <existing path:line> | none found (searched: <terms / paths>)",
-               "whole repository", DOC, "CS-<n>"):
+               "whole repository", DOC, "CS-<n>",
+               "rg --hidden -g '!.git' <name>", "rg --hidden -g '!.git' <pattern>",
+               "skips `.claude/` and every other dot-directory", "(a rule marked `(withdrawn)` is skipped)",
+               "## Open — pick one", "AskUserQuestion", "<item> → <answer>", "local convention <path:line>",
+               "never pick a variant silently"):
     check(needle in q1, f"quick-change Phase 1 lacks {needle!r}")
 q2 = between(qc, "## Phase 2 —", "## Phase 3 —")
 check("(its `Reuse:` line included)" in q2, "quick-change Phase 2 brief does not carry the Reuse: line")
@@ -180,6 +192,14 @@ for needle in ("`Proof:` line as a nested item", "`- **AC-1** — <done>` then `
                "`contains — <test file> :: <test name literal>`",
                "the task that writes or changes a proof test comes before the task that implements"):
     check(needle in tms, f"quick-change team-mode plan shape lacks {needle!r}")
+
+orch = read(".claude/commands/orchestrate.md")
+fork = [l for l in orch.splitlines() if l.startswith("| A **directional fork**")]
+check(len(fork) == 1 and "`/plan-feature` reuse lookup (an `## Open — pick one` item the plan must pick)" in fork[0],
+      "orchestrate question policy: the directional-fork row does not name the plan-feature reuse lookup")
+st2 = strict_between(orch, "## Stage 2 — Plan", "## Stage 3 — Build", "orchestrate Stage 2")
+check("an `## Open — pick one` item the reuse lookup must pick (a directional fork)" in st2,
+      "orchestrate Stage 2 does not list the Open — pick one fork among the questions that still ask")
 
 ex = read(".claude/commands/execute.md")
 e2 = strict_between(ex, "### 2. Execute Tasks in Order", "#### a. Navigate to the task", "execute §2 head")

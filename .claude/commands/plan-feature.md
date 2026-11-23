@@ -59,7 +59,7 @@ Treat the spec as given — do not re-litigate the design. Your job here is to f
 
 - Pull conventions (naming, file organization, error handling, logging) from `.agents/memory/patterns.md` and `CLAUDE.md → Style & Conventions`. Only inspect the codebase directly if those are silent on the area you need.
 - Search for similar implementations in the codebase (the spec's "Architecture" and "Files" sections name the relevant areas). **If the project exposes an LSP**, prefer `workspaceSymbol` to locate analogous services/classes and `documentSymbol` to read a pattern file's structure without loading the whole file (see CLAUDE.md → Code Navigation, if present).
-- **Reuse lookup — one statement per new piece.** For every new function, class, component, service or module-level helper the plan is about to introduce, search the **whole repository** — not only the areas the spec names — for an existing equivalent, two ways: *by name* (the planned name and its obvious synonyms; LSP `workspaceSymbol` where a language server runs, else `rg`) and *by behaviour* (its distinctive call, literal, regex or path — `rg --hidden -g '!.git' <pattern>` from the root). When `docs/coding-standards.md` exists, also read its `## Shared helpers` and `## One shape per problem` tables, note the `CS-<n>` rules marked `Enforced by: review` whose `Applies to` covers a file the plan touches, and note every item under `## Open — pick one` the feature hits. Results go into the plan's `**Reuse:**` block (`### Patterns to Follow`). Logic needed by two modules that may not import each other gets one shared place in the plan, never a planned copy. An `## Open — pick one` item the feature hits is a question to the user (`AskUserQuestion`); in pipeline mode (`.claude/orchestrate-run.json` with `"stage": "plan"`) it is recorded under `Open questions:` in the plan's `## NOTES` instead — the plan never silently picks a variant. Absent file → the standards part is skipped; the repository search still runs.
+- **Reuse lookup — one statement per new piece.** For every new function, class, component, service or module-level helper the plan is about to introduce, search the **whole repository** — not only the areas the spec names — for an existing equivalent, two ways: *by name* (the planned name and its obvious synonyms; LSP `workspaceSymbol` where a language server runs, else `rg --hidden -g '!.git' <name>` from the root) and *by behaviour* (its distinctive call, literal, regex or path — `rg --hidden -g '!.git' <pattern>` from the root, LSP or not). Plain `rg` skips `.claude/` and every other dot-directory, so a helper there reads as `none found` and gets planned again. When `docs/coding-standards.md` exists, also read its `## Shared helpers` and `## One shape per problem` tables, note the `CS-<n>` rules marked `Enforced by: review` whose `Applies to` covers a file the plan touches — a rule whose heading is marked `(withdrawn)` is skipped — and note every item under `## Open — pick one` the feature hits. Results go into the plan's `**Reuse:**` block (`### Patterns to Follow`). Logic needed by two modules that may not import each other gets one shared place in the plan, never a planned copy. An `## Open — pick one` item the feature hits needs an answer only when the plan must pick a variant: when every touched file sits where one variant is already the local convention, the plan follows it and names the source (`<item> → local convention <path:line>`); otherwise it is a question to the user (`AskUserQuestion`) — in pipeline mode too, as a directional fork (`/orchestrate` → Question policy) — and the plan never silently picks a variant. Absent file → the standards part is skipped; the repository search still runs.
 - Document anti-patterns to avoid — use `.agents/memory/errors.md` as a starting point; past mistakes are recorded there.
 
 **3. Dependency Analysis**
@@ -209,7 +209,7 @@ The following plan should be complete, but it's important that you validate code
 
 **Standards:** <`CS-<n>`, … — the review-enforced rules whose `Applies to` covers the touched files> | skipped — no docs/coding-standards.md
 **Shapes:** <Problem> → <the shape to use> (row of `## One shape per problem`), one per recurring problem the feature hits (flag, error body, date/time, logging, loading state …) | none hit
-**Open — pick one:** <item> → <the user's answer> | <item> → open question (`## NOTES`) | none hit
+**Open — pick one:** <item> → <the user's answer> | <item> → local convention <path:line> | none hit
 <With no docs/coding-standards.md only the `Standards:` line stays, reading `skipped — …`.>
 
 **Naming Conventions:**
@@ -329,7 +329,7 @@ Criteria without an id get plan-local labels `AC-1 … AC-n` in document order, 
 
 ## NOTES
 
-<Additional context, design decisions, trade-offs — kept minimal; the spec carries the "why", the plan carries the "how". List the binding `AD-n` rules the spec cites (one line each) so the executor and verifier see them. Pipeline mode: an `Open questions:` sub-list holds every `## Open — pick one` item the reuse lookup left open.>
+<Additional context, design decisions, trade-offs — kept minimal; the spec carries the "why", the plan carries the "how". List the binding `AD-n` rules the spec cites (one line each) so the executor and verifier see them.>
 ```
 
 ---

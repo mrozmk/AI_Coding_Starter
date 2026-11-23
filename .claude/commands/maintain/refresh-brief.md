@@ -30,7 +30,7 @@ Read the full PRD. Identify which sections are present:
 
 - Executive Summary / Mission / Target Users / MVP Scope → feed `project-brief.md`
 - Tech Stack / Architecture → feed `project-brief.md`
-- Scope → Out of scope (non-goals) (§4), Goals (§2), Core Architecture & Patterns (§7) → feed the brief's Non-goals and Change test sections
+- Scope → its `Out of scope …` list (non-goals), Goals, Core Architecture & Patterns → feed the brief's Non-goals and Change test sections. Find each by its heading — the Scope section's list whose label starts `Out of scope`, the `Goals` section, the `Core Architecture & Patterns` section; the `/discover` template's numbers (§4, §2, §7) are only a hint: a legacy PRD numbers them differently (its §7 can be Tools / Features) and may have no Goals section at all.
 - Users & stakeholders → **Source precedence** (§3) → feeds one Key Conventions bullet
 - Pricing / Plans / Monetization / Billing / Subscription / Stripe → feed `business-model.md`
 
@@ -55,17 +55,17 @@ description: Distilled TL;DR of the PRD — loaded by /prime instead of full PRD
 
 1. **What** — one paragraph (≤4 lines). Product purpose and value proposition.
 2. **Who** — one or two lines per primary persona. Maximum 3 personas.
-3. **Non-goals** — the PRD's `Out of scope (non-goals)` list (§4), one bullet each: `<excluded thing> — <reason>`, in the PRD's wording. Keep a horizon qualifier the PRD gives (`in slice 1`, `this cycle`) — never widen a time-boxed exclusion into a permanent one. At most 5 bullets; a longer list → the 5 that most constrain day-to-day changes, then one line `+<N> more — <PRD path> §4` with the path Step 1 resolved. No §4 list, or an empty one → omit this section and Change test; never derive non-goals from other sections (Step 6 warns).
-4. **Change test** — exactly two lines, written only when Non-goals is: `A change fits when …` — from the active goals (the active-ids rule of Step 5, **Scope rule — active ids only**, applies to `G-n` here too) and the in-scope list; `Resist a change when …` — from the non-goals and, when §7 holds binding `AD-n` decisions rather than *pending `/architect`*, from those. Keep the PRD's horizon qualifiers.
+3. **Non-goals** — the PRD's non-goals list (Step 2: the `Out of scope …` list under its Scope heading, whatever its number), one bullet each, in the PRD's wording: `<excluded thing> — <reason>` when the PRD gives a reason, `<excluded thing>` alone when it gives a bare exclusion — never invent a reason. Keep a horizon qualifier the PRD gives, on the item or on the list's label (`in slice 1`, `this cycle`) — never widen a time-boxed exclusion into a permanent one. At most 5 bullets; a longer list → the 5 that most constrain day-to-day changes, then one line `+<N> more — <PRD path> → <the list's heading>` with the path Step 1 resolved. No non-goals list, or an empty one → omit this section and Change test; never derive non-goals from other sections (Step 6 warns).
+4. **Change test** — exactly two lines, written only when Non-goals is: `A change fits when …` — from the active goals of the Goals section (the active-ids rule of Step 5, **Scope rule — active ids only**, applies to `G-n` here too; no Goals section → from the in-scope list alone) and the in-scope list; `Resist a change when …` — from the non-goals and, when the Core Architecture & Patterns section holds binding `AD-n` decisions rather than *pending `/architect`*, from those. Keep the PRD's horizon qualifiers.
 5. **Stack** — single line summary (e.g. "Next.js 14 + Prisma + Postgres + BullMQ + Redis"). No deep detail — that lives in `architecture.md`.
 6. **Architecture** — 5-7 bullets. Top-level pattern, data flow, async/jobs, auth model, deployment shape.
 7. **Status** — one line. Phase: bootstrapping / MVP build / post-MVP / mature. Optionally with current focus. When the PRD header carries `**Baseline:**`, add one sub-line `Scope register: Baseline v1.0 (<date>, approved by <who> | proposed) · Current v1.N (<date>) · newest: D-k <title> (<approval>), …` with the three newest `D-n` from `## Change log`. No baseline header → no sub-line.
-8. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one. When PRD §3 has a **Source precedence** block, one of these bullets is `Source precedence (recommended to the decision owner): <default>[; <subject> — <source>] — overrides recorded by <who> in <where>`, in the PRD's wording; an open block (`Open — Q-n`) → `Source precedence: open — <Q-n>`; no block → no bullet and no warning.
+8. **Key Conventions** — 3-5 bullets. The conventions a fresh contributor would hit on day one. When the PRD's Users & stakeholders section (§3 in the template) has a **Source precedence** block, one of these bullets is `Source precedence (recommended to the decision owner): <default>[; <subject> — <source>] — overrides recorded by <who> in <where>`, in the PRD's wording; an open block (`Open — Q-n`) → `Source precedence: open — <Q-n>`; no block → no bullet and no warning.
 9. **Key Files** — table. Always include: `docs/PRD.md`, `CLAUDE.md`, `README.md`, `.agents/memory/index.md`, `.agents/memory/architecture.md`, `.agents/plans/active/`. Add 2-4 project-critical files if they exist.
 
 **Overwrite policy:** the file is regenerated wholesale — preserve no prior content. Brief is derived state from PRD.
 
-**Non-goals about to vanish:** when the existing brief has a `## Non-goals` section and this PRD has no §4 list, stop before writing: show that section and ask the user — move the still-valid items into PRD §4 and refresh again, or confirm they are dropped. Never carry the old section over: the command cannot tell a hand-written list from one it generated earlier, so carrying it would republish an exclusion the PRD has since removed.
+**Non-goals about to vanish:** stop before writing when the existing brief has a `## Non-goals` section and either this PRD's non-goals list is absent or empty, or an item of that section is missing from the PRD's **full** list (not only the 5 bullets this refresh would write; the `+<N> more` line is not an item). Same item = the same excluded thing once list syntax (`- [ ]`), the reason and the horizon qualifier are set aside — a horizon the PRD gives on the list's label counts as given for each of its items; a reworded item whose excluded thing is clearly the same is present; doubt → treat it as missing. Show the missing items (the whole section when the list is absent or empty) and ask the user — move the still-valid items into the PRD's non-goals list and refresh again, or confirm they are dropped. Never carry an old item over: the command cannot tell a hand-written item from one it generated earlier, so carrying it would republish an exclusion the PRD has since removed.
 
 ### 4. Decide on `business-model.md`
 
@@ -120,7 +120,7 @@ Output a short summary:
 - `business-model.md` — no pricing/billing content in PRD  ← only if skipped
 
 **Warnings:**
-- ⚠️ PRD has no Out of scope (non-goals) list (§4) — Non-goals and Change test omitted; add §4 and refresh.  ← only when §4 is absent or empty
+- ⚠️ PRD has no non-goals list (an `Out of scope …` list under its Scope heading), or it is empty — Non-goals and Change test omitted; add one and refresh.  ← only when that list is absent or empty
 
 **Next:** `/prime` will now load brief instead of full PRD.
 ```
