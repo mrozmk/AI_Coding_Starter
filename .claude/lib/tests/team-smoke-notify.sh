@@ -199,9 +199,11 @@ echo "team-smoke-notify: (i) operator-record OK"
 mkdir -p "$WORK/prof"
 jq '.permissions.deny -= ["Bash(*notify.sh*)"]' "$SRC/.claude/team/sessions/Supervisor.settings.json" \
   > "$WORK/prof/Supervisor.settings.json"
-run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$WORK/prof" Supervisor
+# Against the fixture main: a checkout whose Supervisor runs holds a materialised profile
+# (.agents/team/watch/profiles/), which the check reads instead of --profiles, and its own settings.
+run "$MAIN" python3 -I "$SRC/.claude/lib/session_profile_check.py" "$MAIN" --profiles "$WORK/prof" Supervisor
 [ "$RC" != 0 ] && has "notify.sh flush' → prompt, expected deny" "$WORK/out" || fail "(j) a missing deny passed"
-run "$SRC" python3 -I .claude/lib/session_profile_check.py "$SRC" --profiles "$SRC/.claude/team/sessions" Supervisor
+run "$MAIN" python3 -I "$SRC/.claude/lib/session_profile_check.py" "$MAIN" --profiles "$SRC/.claude/team/sessions" Supervisor
 expect 0 "Supervisor OK" "(j) the shipped profile"
 echo "team-smoke-notify: (j) profile deny OK"
 
