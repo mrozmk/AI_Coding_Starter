@@ -297,8 +297,8 @@ done
 N=$((N + 2))
 
 # (22) Azure C2: Step 3 reads completionOptions.deleteSourceBranch; a Step 4 row disarms an
-#      auto-complete armed with source deletion before the draft and vote rows, and STOPs when it
-#      stays armed.
+#      auto-complete armed with source deletion before the blocker STOP, draft and vote rows, and
+#      STOPs when it stays armed.
 A3=$(az_line '### Step 3') || fail "no Azure Step 3"
 A4=$(az_line '### Step 4 ' "$A3") || fail "no Azure Step 4"
 QL=$(line_between 'az repos pr show --id <PR_ID>' "$A3" "$A4") || fail "Azure Step 3 lacks its az repos pr show read"
@@ -308,6 +308,8 @@ DS=$(az_line '`deleteSource: true`' "$A4") || fail "Azure Step 4 lacks the delet
 DR=$(az_line '| `isDraft: true` |' "$A4") || fail "Azure Step 4 lacks the isDraft row"
 VR=$(az_line 'az repos pr set-vote' "$A4") || fail "Azure Step 4 lacks the set-vote row"
 [ "$DS" -lt "$DR" ] && [ "$DS" -lt "$VR" ] || fail "Azure Step 4: the deleteSource row does not precede the draft and vote rows"
+BR=$(az_line '| `status: abandoned`, `mergeStatus: conflicts`' "$A4") || fail "Azure Step 4 lacks the blocker STOP row"
+[ "$DS" -lt "$BR" ] || fail "Azure Step 4: the deleteSource row does not precede the blocker STOP row"
 within "$DS" "$DS" '--auto-complete false' || fail "Azure Step 4 deleteSource row does not disarm with --auto-complete false"
 within "$DS" "$DS" 'auto-complete is still set with source deletion on' \
   || fail "Azure Step 4 deleteSource row lacks its still-armed STOP"

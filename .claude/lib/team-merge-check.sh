@@ -129,23 +129,14 @@ if [ -n "$delta" ]; then
   # (standards-render.json): that base judges docs/coding-standards.md, and patterns.md only when
   # the item promoted an entry there; every other memory path keeps the summary's base.
   rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" 2>&1)" || die 3 "$rb"
-  rp="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" promotion)"
-  if [ -z "$rb" ]; then
-    tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory docs/coding-standards.md)" \
-      || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
-  else
-    tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory)" \
-      || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
-    [ -z "$rp" ] || tdelta="$(printf '%s\n' "$tdelta" | grep -vxF .agents/memory/patterns.md || true)"
-    sd="$(git diff --no-renames --name-only "$rb" "$TGT" -- docs/coding-standards.md)" \
-      || die 3 "standards render base $rb unknown or not comparable with $TGT"
-    tdelta="$tdelta"$'\n'"$sd"
-    if [ -n "$rp" ]; then
-      sd="$(git diff --no-renames --name-only "$rp" "$TGT" -- .agents/memory/patterns.md)" \
-        || die 3 "standards render base $rp unknown or not comparable with $TGT"
-      tdelta="$tdelta"$'\n'"$sd"
-    fi
-  fi
+  rp="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" promotion 2>&1)" || die 3 "$rp"
+  md="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory ':!.agents/memory/patterns.md')" \
+    || die 3 "target_rev $tr_rev unknown or not comparable with $TGT"
+  sd="$(git diff --no-renames --name-only "${rb:-$tr_rev}" "$TGT" -- docs/coding-standards.md)" \
+    || die 3 "standards render base ${rb:-$tr_rev} unknown or not comparable with $TGT"
+  pd="$(git diff --no-renames --name-only "${rp:-$tr_rev}" "$TGT" -- .agents/memory/patterns.md)" \
+    || die 3 "standards render base ${rp:-$tr_rev} unknown or not comparable with $TGT"
+  tdelta="$md"$'\n'"$sd"$'\n'"$pd"
   # Union merge would splice both versions silently; a human reads them first.
   ov="$(comm -12 <(printf '%s\n' "$delta" | sort) <(printf '%s\n' "$tdelta" | sort) | grep -v '^$' || true)"
   if [ -n "$ov" ]; then

@@ -15,7 +15,7 @@ import { parseYaml } from './yaml-subset.mjs';
 
 const T = (tool, display, cls, o = {}) => ({
   tool, display, class: cls, aliases: [], configs: [], runs: null, bin: null, sub: [], selectFlags: [],
-  excludeFlags: [], strictFlags: [], valueFlags: [], strictRe: null, requireStrict: false, stopAt: null,
+  excludeFlags: [], strictFlags: [], valueFlags: [], scopeFlags: [], strictRe: null, requireStrict: false, stopAt: null,
   observe: new RegExp(`\\b${tool}\\b`, 'i'), appliesTo: '**/*', ...o,
 });
 const PY = '**/*.py';
@@ -82,7 +82,9 @@ export const TOOLS = [
   }),
   T('mypy', 'mypy', 'analyzer', {
     configs: [/(^|\/)\.?mypy\.ini$/, /(^|\/)pyproject\.toml$/, /(^|\/)setup\.cfg$/], section: 'mypy', runs: /\bmypy\b/,
-    bin: /^(.*\/)?mypy$/, selectFlags: ['--config-file'], excludeFlags: ['--exclude'], appliesTo: PY,
+    // `-p mypkg` / `-m mod` name a package or module, not a path: such a run's file scope is unknown.
+    bin: /^(.*\/)?mypy$/, selectFlags: ['--config-file'], excludeFlags: ['--exclude'],
+    scopeFlags: ['-p', '--package', '-m', '--module'], appliesTo: PY,
   }),
   T('flake8', 'Flake8', 'lint', {
     configs: [/(^|\/)\.flake8$/, /(^|\/)setup\.cfg$/, /(^|\/)tox\.ini$/], section: 'flake8', runs: /\bflake8\b/,
@@ -173,14 +175,27 @@ function fromObject(t, obj, lines, q) {
       if (/^(strict\w*|noImplicit\w*|noUnused\w*|noFallthroughCasesInSwitch|exactOptionalPropertyTypes|noUncheckedIndexedAccess)$/.test(k) && v !== false) rules.push({ rule: k, setting: String(v), line: at(k) });
     }
     addPresets(obj.extends);
+  } else if (t.tool === 'biome') {
+    // Biome's lint rules live only under linter.rules (and overrides[].linter.rules), as
+    // `<group>.<rule>`: a level string, or the object form `{"level": "warn", "options": {...}}`.
+    // `recommended` / `all` set to true is a preset; the rest of the config (formatter, files,
+    // linter.enabled …) is no rule.
+    addPresets(obj.extends);
+    const group = (o) => {
+      for (const [k, v] of Object.entries(o || {})) {
+        if (k === 'recommended' || k === 'all') { if (v === true && !presets.some((p) => p.name === k)) presets.push({ name: k, line: at(k) }); }
+        else if (typeof v === 'string') rules.push({ rule: k, setting: v, line: at(k) });
+        else if (v && typeof v === 'object' && typeof v.level === 'string') rules.push({ rule: k, setting: v.level, line: at(k) });
+        else if (v && typeof v === 'object' && !Array.isArray(v)) group(v);
+      }
+    };
+    for (const r of [obj.linter?.rules, ...[].concat(obj.overrides ?? []).map((o) => o?.linter?.rules)]) group(r);
   } else {
     addPresets(t.tool === 'phpstan' || t.tool === 'rubocop' ? obj.includes ?? obj.inherit_from : obj.extends);
     const walk = (o) => {
       for (const [k, v] of Object.entries(o)) {
         if (['extends', 'includes', 'inherit_from', '$schema'].includes(k)) continue;
         if (Array.isArray(v)) { for (const s of v) if (typeof s !== 'object') rules.push({ rule: String(s), setting: k, line: lineOf(lines, String(s)) }); else if (s) walk(s); }
-        // Biome's object form `"noVar": {"level": "warn", "options": {...}}` is one rule at that level.
-        else if (v && typeof v === 'object' && t.tool === 'biome' && typeof v.level === 'string') rules.push({ rule: k, setting: v.level, line: at(k) });
         else if (v && typeof v === 'object') walk(v);
         else rules.push({ rule: k, setting: String(v), line: at(k) });
       }
@@ -247,16 +262,16 @@ function extract(t, file, text) {
   return { rules, presets };
 }
 
+const unquote = (s) => s.replace(/^["']|["']$/g, '');
+const extOfTok = (tok) => /\.(\w+)$/.exec(path.posix.basename(tok))?.[1] ?? '';
+const srcExts = (glob) => { const m = /\*\.(?:\{([^}]+)\}|(\w+))$/.exec(glob); return m ? (m[1] ? m[1].split(',') : [m[2]]) : []; };
 // One checking invocation parsed per tool: positional targets, excludes, an explicit selection and
 // the strict flag. null when the text is not a checking invocation of that tool. `isPath` tells
 // whether a token names a scanned path: a token right after an unknown flag is that flag's value
 // unless it names one, carries a glob, or is a file of the kind the tool checks (`tsc --noEmit
 // src/a.ts`); the default treats every token as a path (a target). `strictByConfig`: the repo
 // itself sets the strictness a `requireStrict` tool otherwise takes from its command line.
-const unquote = (s) => s.replace(/^["']|["']$/g, '');
-const extOfTok = (tok) => /\.(\w+)$/.exec(path.posix.basename(tok))?.[1] ?? '';
-const srcExts = (glob) => { const m = /\*\.(?:\{([^}]+)\}|(\w+))$/.exec(glob); return m ? (m[1] ? m[1].split(',') : [m[2]]) : []; };
-export function parseRun(toolId, text, isPath = () => true, { strictByConfig = false } = {}) {
+export function parseRun(toolId, text, { isPath = () => true, strictByConfig = false } = {}) {
   const t = BY_ID.get(toolId);
   if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text) || INFO_ONLY.test(text)) return null;
   const bare = text.replace(/["']/g, ' ');
@@ -288,6 +303,7 @@ export function parseRun(toolId, text, isPath = () => true, { strictByConfig = f
       else if (t.excludeFlags.includes(name)) run.excludes.push(unquote(String(flagVal(tok, eq) ?? '')));
       else if (t.strictFlags.includes(name)) run.strict = String(flagVal(tok, eq)) === '0';
       else if (t.valueFlags.includes(name)) { if (eq < 0) i++; }
+      else if (t.scopeFlags.includes(name)) { run.scopeUnknown = true; if (eq < 0) i++; }
       else pending = eq < 0;
       continue;
     }
@@ -366,7 +382,7 @@ function runsOf(cmds, isPath, strictAt = () => false) {
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
         if (masked || (/fix/i.test(c.key) && /--fix\b/.test(seg))) continue;
-        const r = parseRun(t.tool, seg, (x) => isPath(dir, x), { strictByConfig: strictAt(t.tool, dir) });
+        const r = parseRun(t.tool, seg, { isPath: (x) => isPath(dir, x), strictByConfig: strictAt(t.tool, dir) });
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }
     }

@@ -193,6 +193,38 @@ function testPlacedFor(testDir, srcDir, lang) {
   }
 }
 
+// A language family tests as one: a `.vue`/`.svelte` component by a JS/TS spec, a `.bash` script
+// by a `-test.sh`.
+const LANG_FAMILY = { kts: 'kt', vue: 'js', svelte: 'js', bash: 'sh' };
+const normLang = (l) => LANG_FAMILY[l] ?? l;
+
+// The paths of the sources a test credits. A test credits one source: same stem, same language
+// family, placed beside it or in a mirrored test dir; a tie narrows to the closest placement, then
+// the test's own dir, then its extension, and an ambiguous stem credits none.
+function creditedSources(entries) {
+  const sources = new Map(); // "<lang>\0<stem>" → [entry]
+  for (const e of entries) {
+    if (e.test || e.lang === 'def') continue;
+    const k = `${normLang(e.lang)}\0${path.posix.basename(e.path).replace(/\.[^.]+$/, '')}`;
+    if (!sources.has(k)) sources.set(k, []);
+    sources.get(k).push(e);
+  }
+  const credited = new Set();
+  for (const t of entries.filter((x) => x.test)) {
+    const tDir = path.posix.dirname(t.path);
+    const lang = normLang(t.lang);
+    const placed = (sources.get(`${lang}\0${testStem(path.posix.basename(t.path))}`) ?? [])
+      .map((s) => ({ s, d: testPlacedFor(tDir, path.posix.dirname(s.path), lang) })).filter((x) => x.d >= 0);
+    const closest = Math.min(...placed.map((x) => x.d));
+    let hits = placed.filter((x) => x.d === closest).map((x) => x.s);
+    const narrow = (keep) => { const n = hits.filter(keep); if (n.length) hits = n; };
+    if (hits.length > 1) narrow((s) => path.posix.dirname(s.path) === tDir);
+    if (hits.length > 1) narrow((s) => extOf(path.posix.basename(s.path)) === extOf(path.posix.basename(t.path)));
+    if (hits.length === 1) credited.add(hits[0].path);
+  }
+  return credited;
+}
+
 // Path-like tokens of a text and their suffixes at `/` boundaries: what `mentions` keys match.
 function mentionTokens(text) {
   const out = new Set();
@@ -522,33 +554,8 @@ export async function measure(opts) {
   const fileSet = new Set(entries.map((e) => e.path));
 
   // sizes, branches, sibling tests
-  // A test credits one source: same stem, same language, placed beside it or in a mirrored test
-  // dir; a tie narrows to the closest placement, then the test's own dir, then its extension, and an
-  // ambiguous stem credits none. A language family tests as one: a `.vue`/`.svelte` component by a
-  // JS/TS spec, a `.bash` script by a `-test.sh`.
-  const LANG_FAMILY = { kts: 'kt', vue: 'js', svelte: 'js', bash: 'sh' };
-  const normLang = (l) => LANG_FAMILY[l] ?? l;
-  const sources = new Map(); // "<lang>\0<stem>" → [entry]
-  for (const e of entries) {
-    e.branches = e.lang === 'def' ? null : countBranches(e.text, e.lang);
-    if (e.test || e.lang === 'def') continue;
-    const k = `${normLang(e.lang)}\0${path.posix.basename(e.path).replace(/\.[^.]+$/, '')}`;
-    if (!sources.has(k)) sources.set(k, []);
-    sources.get(k).push(e);
-  }
-  const credited = new Set();
-  for (const t of entries.filter((x) => x.test)) {
-    const tDir = path.posix.dirname(t.path);
-    const lang = normLang(t.lang);
-    const placed = (sources.get(`${lang}\0${testStem(path.posix.basename(t.path))}`) ?? [])
-      .map((s) => ({ s, d: testPlacedFor(tDir, path.posix.dirname(s.path), lang) })).filter((x) => x.d >= 0);
-    const closest = Math.min(...placed.map((x) => x.d));
-    let hits = placed.filter((x) => x.d === closest).map((x) => x.s);
-    const narrow = (keep) => { const n = hits.filter(keep); if (n.length) hits = n; };
-    if (hits.length > 1) narrow((s) => path.posix.dirname(s.path) === tDir);
-    if (hits.length > 1) narrow((s) => extOf(path.posix.basename(s.path)) === extOf(path.posix.basename(t.path)));
-    if (hits.length === 1) credited.add(hits[0].path);
-  }
+  for (const e of entries) e.branches = e.lang === 'def' ? null : countBranches(e.text, e.lang);
+  const credited = creditedSources(entries);
   for (const e of entries) e.sibling_test = !e.test && credited.has(e.path);
 
   // import graph

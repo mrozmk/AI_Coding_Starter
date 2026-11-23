@@ -170,6 +170,13 @@ test('scanner: a flag value is not a target', async () => {
   const mypy = tool(await miniScan({ 'mypy.ini': '[mypy]\nstrict = True\n', 'src/a.py': 'x = 1\n', Makefile: 'lint:\n\tmypy --junit-xml reports/mypy.xml src\n' }), 'mypy');
   assert.deepEqual(mypy.runs[0].targets, ['src']);
   assert.ok(!mypy.appliesTo.some((a) => a.includes('reports')));
+  // `-p` / `--module=` name a package or module, not a path: the scope is unknown, never the whole repo.
+  for (const run of ['mypy -p mypkg', 'mypy --module=mypkg.cli']) {
+    const m = tool(await miniScan({ 'mypy.ini': '[mypy]\nstrict = True\n', 'src/mypkg/__init__.py': '', 'scripts/tool.py': 'x = 1\n', Makefile: `lint:\n\t${run}\n` }), 'mypy');
+    assert.equal(m.runs[0].scopeUnknown, true, run);
+    assert.deepEqual(m.runs[0].targets, [], run);
+    assert.ok(!m.enforced, run);
+  }
 });
 
 test('scanner: a quoted eslint -c attributes that config', async () => {
@@ -517,6 +524,13 @@ test('renderer: a config whose every rule is not enforced makes no tool claim', 
   assert.match(await toolsOnly(biomeRepo(BIOME_MIXED, 'biome check src')), /noDebugger/);
   const nested = biomeRepo(BIOME_WARN, 'biome check', { 'pkg/biome.json': '{"linter":{"rules":{"suspicious":{"noDebugger":"error"}}}}\n' });
   assert.match(await toolsOnly(nested), /Enforced by: tool \(pkg\/biome\.json: noDebugger\)/);
+  // A real biome.json: formatter, files and linter.enabled are no rules; `recommended: true` is a preset.
+  const real = '{"$schema":"https://biomejs.dev/schemas/1.9.4/schema.json","formatter":{"enabled":true,"indentStyle":"space"},"files":{"ignore":["dist"]},"linter":{"enabled":true,"rules":{"recommended":false,"style":{"noVar":"warn"}}}}\n';
+  const realRepo = biomeRepo(real, 'biome check src');
+  assert.deepEqual(cfg(tool(await fixtureScan(realRepo, listFiles(realRepo)), 'biome'), 'biome.json').rules.map((r) => `${r.rule}=${r.setting}`), ['noVar=warn']);
+  assert.doesNotMatch(await toolsOnly(realRepo), /Biome/);
+  const rec = biomeRepo('{"linter":{"enabled":true,"rules":{"recommended":true}}}\n', 'biome check src');
+  assert.match(await toolsOnly(rec), /Enforced by: tool \(biome\.json: recommended\)/);
 });
 
 test('renderer: a missing seed is a usage error', async () => {
