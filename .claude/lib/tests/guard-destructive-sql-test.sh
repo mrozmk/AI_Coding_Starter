@@ -288,4 +288,9 @@ run deny "joined -ifile"                              "sqlcmd -idrop.sql"
 run deny "script with a space in \$() of an unparsable script" "bash u.sh" "$D/sp"
 run deny "script with a space in \$()"            "echo \"\$(bash './with space/danger.sh')\"" "$D/sp"
 run ask  "unreadable namesake among candidate dirs" "source s.sh && sqlcmd -i drop.sql" "$D/ur"
+# --- The repo's own TeamLead Bash guard parses cleanly: checking or running it never asks
+R="${H%/.claude/hooks/guard-destructive-sql.sh}"
+run none "syntax check of the lead runner naming the lead guard" "bash -n .claude/lib/team-run-lead.sh" "$R"
+run none "syntax check of the lead guard"                        "bash -n .claude/hooks/guard-teamlead-bash.sh" "$R"
+run none "direct run of the lead guard"                          "bash .claude/hooks/guard-teamlead-bash.sh" "$R"
 exit $fail
