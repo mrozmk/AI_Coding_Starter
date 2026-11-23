@@ -122,14 +122,7 @@ D_RECFIRST='def recfirst($r): (map(select(.label == $r)) | map(.description = ("
 # Operator's AskUserQuestion input of a new-path decision, built from the filed ask payload (never
 # the shortened one-line summary); d_bad 2, nothing written, when it does not validate.
 d_dialog() {
-  local d="$1" ask="$2" kind="$3" dq="$4" opts="$5" rec="$6" j
-  case "$kind" in permission|plan|question) ;; *)
-    if [ -z "$opts" ]; then
-      if [ "$8" = abandon_decision ]; then opts="continue|close"
-      elif [ "$7" = plan ]; then opts="approve|revise|close"
-      else d_bad 2 "decision open needs --options \"a|b\" (the Operator's dialog choices)"; fi
-    fi ;;
-  esac
+  local d="$1" ask="$2" kind="$3" dq="$4" opts="$5" rec="$6" gate="$7" notify="$8" j
   case "$kind" in
     permission|plan)
       # The target is what the Operator decides on: never cut (Bash the whole command, an MCP or
@@ -154,6 +147,11 @@ d_dialog() {
                options: ([(.options // [])[] | {label, description: (.description // "")}]
                  | if $k == 0 then recfirst($r) else . end)}]}' "$ASK_D/$ask.json")" ;;
     *)
+      if [ -z "$opts" ]; then
+        if [ "$notify" = abandon_decision ]; then opts="continue|close"
+        elif [ "$gate" = plan ]; then opts="approve|revise|close"
+        else d_bad 2 "decision open needs --options \"a|b\" (the Operator's dialog choices)"; fi
+      fi
       j="$(jq -cn --arg d "$d" --arg q "$dq" --arg o "$opts" --arg r "$rec" "$D_RECFIRST"'
         def desc: {continue: "keep the run going", close: "close the run without a merge",
           approve: "approve the plan", revise: "send the plan back for a revision",
@@ -221,7 +219,7 @@ ask_kind: $kind"
     [ -n "$rec" ] || d_bad 2 "decision open needs --recommend <one of the Operator's options>"
     dq="$q"
     if [ "$kind" = text ] && [ -z "$qgiven" ]; then
-      dq="$(ask_get "$ask" role): $(jq -r '.payload.last_assistant_message // ""' "$ASK_D/$ask.json")"
+      dq="$(ask_get "$ask" role): $(jq -r '.payload.text // ""' "$ASK_D/$ask.json")"
     fi
     dialog="$(d_dialog "d-$n" "$ask" "$kind" "$dq" "$opts" "$rec" "$gate" "$notify")" || exit $?
   fi
@@ -332,14 +330,18 @@ decision_answer() {
   [ -z "$tuning" ] || one_line "$why" || d_bad 2 "--tuning needs a one-line --why"
   f="$(d_file "$id")"
   if [ -n "$fromask" ]; then
-    # "<session>\t<uuid>\t{reply, map}" of the Operator's dialog answer, or d_bad 7.
     r="$(d_from_ask "$f" "$id")" || exit $?
     esid="$(cut -f1 <<<"$r")"; uuid="$(cut -f2 <<<"$r")"; r="$(cut -f3- <<<"$r")"
     text="$(jq -r .reply <<<"$r")"
   fi
   # Trimmed once, so a padded verbatim reply reads the same here and in the hook.
   text="$(jq -rn --arg m "$text" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')"
-  [ -n "$fromask" ] || one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
+  # A multi-line dialog answer would not survive the one-line frontmatter: nothing is written.
+  if [ -n "$fromask" ]; then
+    one_line "$text" || d_bad 7 "the dialog answer of $id spans several lines — the decision stays pending; ask again, or the Operator types the $id reply"
+  else
+    one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
+  fi
   local ask kind p po aval="" amap="" nq ans labels
   ask="$(dfm "$f" bind_ask)"
   if [ -n "$ask" ]; then
@@ -361,7 +363,7 @@ decision_answer() {
     elif ! p="$(ask_parse_reply "$ask" "$id" "$text")"; then
       case "$kind" in
         permission|plan) d_bad 7 "reply must read $id allow|deny" ;;
-        *) d_bad 7 "reply must read $id $(if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then d_reply_shape "$ask"; else echo '<answer>'; fi)" ;;
+        *) d_bad 7 "reply must read $id $(if [ "${nq:-0}" -gt 1 ]; then d_reply_shape "$ask"; else echo '<answer>'; fi)" ;;
       esac
     fi
     po="$(jq -r .outcome <<<"$p")"
@@ -381,14 +383,11 @@ decision_answer() {
         || d_bad 7 "a free-text answer to a control decision is not recorded — the decision stays pending; ask again with the options"
     fi
     aval="$ans"
-    case "$ans" in
-      continue|close|more-revise|approve)
-        if grep -qxF -- "$ans" <<<"$labels"; then
-          [ -n "$outcome" ] || outcome="$ans"
-          [ "$outcome" = "$ans" ] || d_bad 7 "the Operator chose $ans, not --outcome $outcome"
-        fi ;;
-    esac
-    [ -z "$outcome" ] || [ "$outcome" = "$ans" ] || d_bad 7 "--outcome $outcome does not fit the Operator's free-text answer"
+    # An outcome comes only from an offered label in the outcome enum: never from free text.
+    local onmenu=""; ! grep -qxF -- "$ans" <<<"$labels" || onmenu=1
+    case "$ans" in continue|close|more-revise|approve) [ -z "$onmenu" ] || outcome="${outcome:-$ans}" ;; esac
+    [ -z "$outcome" ] || { [ -n "$onmenu" ] && [ "$outcome" = "$ans" ]; } \
+      || d_bad 7 "--outcome $outcome does not fit the Operator's answer: $ans"
   fi
   if [ "$(dfm "$f" status)" = withdrawn ]; then
     notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"

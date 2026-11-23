@@ -63,18 +63,18 @@ render_lead_prompt() {
 # <ask hooks> (team_evidence_ask_hooks' line) becomes the session's own launch snapshot,
 # lead_ask_hooks[<sid>], in the same write: a relaunch never overwrites an earlier session's.
 lead_session_record() {  # lead_session_record <sid> <config dir> [ask hooks]
-  local f; f="$(team_anchor_file "$root" "$TEAM")"
+  local f snap='{"clean":false,"digest":"","cause":"no registration check"}'
+  # A line comes only from a runner that sourced team-evidence.sh, which owns its format.
+  [ -z "${3:-}" ] || snap="$(team_evidence_snapshot "$3")" || return 1
+  f="$(team_anchor_file "$root" "$TEAM")"
   [ -f "$f" ] || team_anchor_init "$root" "$TEAM" "$CLONE" || return 1
   team_anchor_put "$f" '.lead_ask_hooks = (if (.lead_sessions.run // "") == $r
       then (.lead_ask_hooks // {}) else {} end)
     | .lead_sessions = (if (.lead_sessions.run // "") == $r
       then .lead_sessions else {run: $r, ids: []} end) | .lead_sessions.ids += [$s]
     | .lead_sessions.ids |= unique | .lead_sessions.current_id = $s | .lead_sessions.config_dir = $cc
-    | .lead_ask_hooks[$s] = {run: $r, clean: ($ah | startswith("clean ")),
-        digest: (if ($ah | startswith("clean ")) then ($ah | ltrimstr("clean ")) else "" end),
-        cause: (if ($ah | startswith("clean ")) then "" elif $ah == "" then "no registration check"
-          else ($ah | ltrimstr("unclean ")) end), config_dir: $cc, at: $at}' \
-    --arg r "$RUN" --arg s "$1" --arg cc "$2" --arg ah "${3:-}" --arg at "$(team_utc)"
+    | .lead_ask_hooks[$s] = ($snap + {run: $r, config_dir: $cc, at: $at})' \
+    --arg r "$RUN" --arg s "$1" --arg cc "$2" --argjson snap "$snap" --arg at "$(team_utc)"
 }
 
 launch_lead() {

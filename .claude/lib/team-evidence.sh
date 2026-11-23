@@ -17,6 +17,7 @@
 #   team_evidence_dialog_raised <transcript> <since> → the d-<n> ids any AskUserQuestion call named
 #   team_evidence_ask_hooks <main> <clone> <config dir> → "clean <digest>" (rc 0) or
 #     "unclean <cause>" (rc 1): the effective AskUserQuestion hook registrations of a lead session
+#   team_evidence_snapshot <ask hooks line> → {clean, digest, cause}: that line as a launch snapshot
 #   team_evidence_anchor <main> <clone> → the main checkout's anchor of that clone (by physical path)
 #   team_evidence_provenance <main> <clone> <run> <session id> → "<config dir>" (rc 0) when that
 #     session's launch snapshot is clean and the registrations still match it, else the cause (rc 1)
@@ -135,21 +136,28 @@ team_evidence_ask_hooks() {
     # A plugin brings hooks from its own manifest, which cannot be inventoried here: fail closed.
     plugins="$(jq -r '(.enabledPlugins // {}) | if type == "object" then to_entries[] | select(.value == true) | .key else empty end' "$f" 2>/dev/null)"
     [ -z "$plugins" ] || { echo "unclean $name: enabled plugin $(head -n 1 <<<"$plugins")"; return 1; }
-    # Unanchored, as Claude Code matches; an invalid regex counts as matching (fails closed).
-    e="$(jq -c --arg src "$name" '(.hooks.PreToolUse // []) | if type == "array" then .[] else empty end
-      | select(type == "object") | (.matcher // "") as $m
-      | select($m == "" or $m == "*" or (try ("AskUserQuestion" | test($m)) catch true))
-      | {src: $src, matcher: $m, cmds: [(.hooks // []) | if type == "array" then .[] else empty end
+    # PreToolUse and PermissionRequest hooks can both answer the dialog (updatedInput). A matcher
+    # matches as a name list (comma or pipe) or unanchored, as Claude Code matches; an invalid regex
+    # counts as matching (fails closed).
+    e="$(jq -c --arg src "$name" '
+      def hits($m): $m == "" or $m == "*"
+        or any($m | split(",")[] | split("|")[] | gsub("^\\s+|\\s+$"; ""); . == "AskUserQuestion")
+        or (try ("AskUserQuestion" | test($m)) catch true);
+      ((.hooks.PreToolUse // []) | if type == "array" then .[] else empty end | {ev: "PreToolUse", h: .}),
+      ((.hooks.PermissionRequest // []) | if type == "array" then .[] else empty end | {ev: "PermissionRequest", h: .})
+      | .ev as $ev | .h | select(type == "object") | (.matcher // "") as $m
+      | select(hits($m))
+      | {src: $src, event: $ev, matcher: $m, cmds: [(.hooks // []) | if type == "array" then .[] else empty end
           | if (.type // "command") == "command" then (.command // "") else "<\(.type)>" end]}' "$f" 2>/dev/null)" \
       || { echo "unclean $name: unreadable hooks"; return 1; }
     [ -z "$e" ] || ents="$ents$e"$'\n'
   done
   while IFS= read -r e; do
     [ -n "$e" ] || continue
-    if jq -e --arg c "$TEAM_EVIDENCE_GUARD" '.src == "project settings.json" and .cmds == [$c]' <<<"$e" >/dev/null 2>&1; then
+    if jq -e --arg c "$TEAM_EVIDENCE_GUARD" '.src == "project settings.json" and .event == "PreToolUse" and .cmds == [$c]' <<<"$e" >/dev/null 2>&1; then
       g=1; continue
     fi
-    echo "unclean $(jq -r '"\(.src): \(if .matcher == "" then "(no matcher)" else .matcher end) \(.cmds | join(" ; "))"' <<<"$e")"
+    echo "unclean $(jq -r '"\(.src): \(.event) \(if .matcher == "" then "(no matcher)" else .matcher end) \(.cmds | join(" ; "))"' <<<"$e")"
     return 1
   done <<<"$ents"
   m="$main/.claude/hooks/guard-team-question.sh"
@@ -179,6 +187,11 @@ team_evidence_ask_hooks() {
           printf '%s %s\n' "$d/$f" "$(team_evidence_sha < "$f")"; done )
     done; } | team_evidence_sha)" && [ -n "$h" ] || { echo "unclean no sha256 tool"; return 1; }
   echo "clean $h"
+}
+
+team_evidence_snapshot() {
+  jq -nc --arg h "$1" 'if ($h | startswith("clean ")) then {clean: true, digest: ($h | ltrimstr("clean ")), cause: ""}
+    else {clean: false, digest: "", cause: (if $h == "" then "no registration check" else ($h | ltrimstr("unclean ")) end)} end'
 }
 
 team_evidence_anchor() {

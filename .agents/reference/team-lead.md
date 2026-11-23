@@ -510,8 +510,10 @@ decision in plain text and the Operator types the reply.
   answer the dialog with no menu shown. `team_evidence_ask_hooks <main> <clone> <config dir>`
   (`team-evidence.sh`) reads the user profile (`<config dir>/settings.json`), the project
   `settings.json`, `settings.local.json` and the lead's `teamlead.settings.json`, and takes every
-  `PreToolUse` entry whose matcher is absent, empty, `*` or a regex matching `AskUserQuestion`
-  (unanchored; an invalid regex counts). Clean iff the only such entries are the project's
+  `PreToolUse` and `PermissionRequest` entry (both can answer the dialog through `updatedInput`)
+  whose matcher is absent, empty, `*`, a comma- or pipe-separated name list naming
+  `AskUserQuestion`, or a regex matching it (unanchored; an invalid regex counts). Clean iff the
+  only such entries are the project's `PreToolUse`
   `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"` (one command each), the clone's
   guard equals main's byte for byte and main's is inert (`exit 0` only); an enabled plugin in any
   source, a clone mod (`.claude/skills/<name>/hooks/`) that differs from main's tree, or any

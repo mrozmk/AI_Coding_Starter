@@ -618,8 +618,9 @@ ANC22="$MAIN/.agents/team/anchors/alfa.json"
 jq '.ask_operator = true' "$TD/teamlead.json" > "$WORK/tlj" && mv "$WORK/tlj" "$TD/teamlead.json"
 AH="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_ask_hooks "$MAIN" "$CREAL" "" || true)"
 [ "${AH%% *}" = clean ] || fail "(m) the fixture's lead registrations are not clean: $AH"
-jq --arg r "$RUN_ID" --arg h "$AH" '.lead_sessions = {run: $r, ids: ["sid-lead"], current_id: "sid-lead", config_dir: ""}
-  | .lead_ask_hooks = {"sid-lead": {run: $r, clean: true, digest: ($h | ltrimstr("clean ")), cause: "", config_dir: ""}}' \
+SN="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_snapshot "$AH")"
+jq --arg r "$RUN_ID" --argjson o "$SN" '.lead_sessions = {run: $r, ids: ["sid-lead"], current_id: "sid-lead", config_dir: ""}
+  | .lead_ask_hooks = {"sid-lead": ($o + {run: $r, config_dir: ""})}' \
   "$ANC22" > "$WORK/anc" && mv "$WORK/anc" "$ANC22"
 SAID=0
 said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead window, now
@@ -885,7 +886,8 @@ echo "team-smoke-22: (w) operator-tier ask OK"
 case_mark "(m) the unasked reminder's timing"
 AH="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_ask_hooks "$MAIN" "$CREAL" "" || true)"
 [ "${AH%% *}" = clean ] || fail "(m) timing: the fixture's lead registrations are not clean: $AH"
-jq --arg r "$RUN_ID" --arg h "$AH" '.lead_ask_hooks["sid-lead"] = {run: $r, clean: true, digest: ($h | ltrimstr("clean ")), cause: "", config_dir: ""}' \
+SN="$( . "$MAIN/.claude/lib/team-evidence.sh"; team_evidence_snapshot "$AH")"
+jq --arg r "$RUN_ID" --argjson o "$SN" '.lead_ask_hooks["sid-lead"] = ($o + {run: $r, config_dir: ""})' \
   "$ANC22" > "$WORK/anc" && mv "$WORK/anc" "$ANC22"; cp "$ANC22" "$WORK/anc.keep"
 ldec open alfa --source coder-1-1.json --question "Rename the export flag?" --options "yes|no" --recommend yes
 DR="$(sed -n 's/^\[\(d-[0-9]*\)\].*/\1/p' "$WORK/out" | head -n 1)"; [ -n "$DR" ] || fail "(m) timing: no decision id"

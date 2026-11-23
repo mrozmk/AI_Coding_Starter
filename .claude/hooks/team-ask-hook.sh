@@ -140,7 +140,23 @@ verify_operator() {
   via="$(dfm_h answered_via)"
   case "$via" in
     terminal) return 0 ;;  # the same-uid limit of team-lead.md §7: not re-verifiable from a file
-    "teamlead-window "*) uuid="${via#teamlead-window }" ;;
+    "teamlead-window "*)
+      uuid="${via#teamlead-window }"
+      # The lead session and its config dir from the main checkout's anchor (the runner's
+      # lead_sessions), never from the clone's teamlead.json; no answered_session (an older
+      # decision) → current_id.
+      x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
+      # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
+      t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
+        "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
+      [ -f "$t" ] || return 1
+      # The message must be eligible as the writer's evidence was: typed after the decision opened.
+      msg="$(jq -r -s --arg u "$uuid" --arg since "$(dfm_h created_at)" '
+        map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
+            and ((.timestamp // "") >= $since)))
+        | map(.message.content | if type == "string" then . elif type == "array"
+            then (map(select(.type == "text") | .text) | join(" ")) else "" end
+            | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1 ;;
     "teamlead-ask "*)
       uuid="${via#teamlead-ask }"
       # The answering session must be named and recorded by the runner (never the legacy
@@ -165,23 +181,6 @@ verify_operator() {
       msg="$(jq -r .reply <<<"$r")" ;;
     *) return 1 ;;
   esac
-  if [ "${via%% *}" = teamlead-window ]; then
-    # The lead session and its config dir from the main checkout's anchor (the runner's
-    # lead_sessions), never from the clone's teamlead.json; no answered_session (an older
-    # decision) → current_id.
-    x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
-    # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
-    t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
-      "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
-    [ -f "$t" ] || return 1
-    # The message must be eligible as the writer's evidence was: typed after the decision opened.
-    msg="$(jq -r -s --arg u "$uuid" --arg since "$(dfm_h created_at)" '
-      map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
-          and ((.timestamp // "") >= $since)))
-      | map(.message.content | if type == "string" then . elif type == "array"
-          then (map(select(.type == "text") | .text) | join(" ")) else "" end
-          | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1
-  fi
   # The Operator's whole reply, parsed by the writer's own parser, must be this very answer.
   p="$(ask_parse_reply "$id" "$did" "$msg")" || return 1
   case "$form" in allow|deny) [ "$(jq -r .outcome <<<"$p")" = "$form" ] || return 1 ;; esac

@@ -499,10 +499,8 @@ a1() { jq -c --arg v "$2" '{(.questions[0].question): $v}' <<<"$1"; }   # a1 <di
 snap() {  # snap [sid] [config dir] — the runner's launch snapshot of a lead session, into the anchor
   local s="${1:-lid-1}" c="${2:-$T/cc}"
   SNAP="$(team_evidence_ask_hooks "$MAIN" "$CLONE" "$c")"
-  jq --arg s "$s" --arg r "$RUN" --arg c "$c" --arg h "$SNAP" '.lead_ask_hooks[$s] = {run: $r,
-    clean: ($h | startswith("clean ")), digest: (if ($h | startswith("clean ")) then ($h | ltrimstr("clean ")) else "" end),
-    cause: (if ($h | startswith("clean ")) then "" else ($h | ltrimstr("unclean ")) end), config_dir: $c}' \
-    "$ANC" > "$T/anc" && mv "$T/anc" "$ANC"
+  jq --arg s "$s" --arg r "$RUN" --arg c "$c" --argjson o "$(team_evidence_snapshot "$SNAP")" \
+    '.lead_ask_hooks[$s] = ($o + {run: $r, config_dir: $c})' "$ANC" > "$T/anc" && mv "$T/anc" "$ANC"
 }
 new_path() {  # an isolated transcript, the local settings without the project's AskUserQuestion
   : > "$LT"   # entry, an ask_operator lead and a clean launch snapshot
@@ -529,6 +527,8 @@ sub '[ -n "$DJ" ] && [ "$(dlg d-1)" = "$DJ" ] && grep -q "^reply: \"d-1 allow\""
 hk; pl stop-plain; TO=40 HB dl1t; wf "$AD/a-2.json"
 TL decision open beta --ask a-2 --recommend yes
 sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-2.md" ]' "a text ask without --options"
+TL decision open beta --ask a-2 --options "yes|no" --recommend yes
+sub '[ "$TLRC" = 0 ] && aop | jq -e ".questions[0].question | startswith(\"d-2 \") and endswith(\"Should the counter reset at midnight or never?\")" >/dev/null' "a text-ask dialog carries the stop text ($(cat "$T/tl.out"))"
 hk
 newrun dlg1m; new_path; pl question-multi; TO=40 HB dl1m; wf "$AD/a-1.json"
 TL decision open beta --ask a-1 --recommend JSON
@@ -603,6 +603,14 @@ ask_op 5f "$DJ" "$(a1 "$DJ" "only the CLI flag")"
 TL decision answer beta d-4 --from-ask --tuning none --why w
 sub '[ "$TLRC" = 0 ] && grep -qx "answer_value: only the CLI flag" "$RD/decisions/d-4.md" && ! grep -q "^answer_outcome:" "$RD/decisions/d-4.md"' "a yes|no decision with an Other text → answer_value, no outcome ($(cat "$T/tl.out"))"
 ok '[ -z "$SUBF" ]' "dialog answer: an unbound continue|close decision takes its outcome from the label$SUBF"
+TL decision open beta --source qa-1-1.json --question "which flag?" --options "yes|no" --recommend no; DJ="$(dlg d-5)"
+ask_op 5g "$DJ" "$(a1 "$DJ" "$(printf 'line one\nline two')")"
+TL decision answer beta d-5 --from-ask --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-5.md" && ! grep -q "^answer_value:" "$RD/decisions/d-5.md"' "dialog answer: a multi-line answer is refused and the decision stays pending ($(cat "$T/tl.out"))"
+TL decision open beta --source qa-1-1.json --question "keep the flag?" --options "yes|no" --recommend yes; DJ="$(dlg d-6)"
+ask_op 5h "$DJ" "$(a1 "$DJ" close)"
+TL decision answer beta d-6 --from-ask --outcome close --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-6.md" && ! grep -q "^answer_outcome:" "$RD/decisions/d-6.md"' "dialog answer: --outcome never comes from a free-text answer ($(cat "$T/tl.out"))"
 
 # 6. the hook re-reads the recorded entry
 newrun dlg6; SUBF=""; new_path; pl perm-curl; TO=40 HB dl6; wf "$AD/a-1.json"
@@ -716,6 +724,12 @@ p9 e; anc 'del(.lead_ask_hooks)'; a9
 sub '[ "$TLRC" = 7 ] && grep -q "no launch snapshot" "$T/tl.out"' "(e) no launch snapshot ($(cat "$T/tl.out"))"
 p9 f; anc '.lead_ask_hooks["lid-1"].digest = "0000"'; a9
 sub '[ "$TLRC" = 7 ] && grep -q "changed since launch" "$T/tl.out"' "(f) a snapshot digest unlike the current registrations ($(cat "$T/tl.out"))"
+p9 h; jq '.hooks.PermissionRequest += [{hooks: [{type: "command", command: "echo p"}]}]' "$CLONE/.claude/settings.local.json" > "$T/sl" \
+  && mv "$T/sl" "$CLONE/.claude/settings.local.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "PermissionRequest" "$T/tl.out" && grep -qx "status: pending" "$RD/decisions/d-1.md"' "(h) a matcher-less PermissionRequest entry ($(cat "$T/tl.out"))"
+p9 i; jq '.hooks.PreToolUse += [{matcher: "Edit, AskUserQuestion", hooks: [{type: "command", command: "echo l"}]}]' "$CLONE/.claude/settings.local.json" > "$T/sl" \
+  && mv "$T/sl" "$CLONE/.claude/settings.local.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "Edit, AskUserQuestion" "$T/tl.out"' "(i) a name-list matcher naming AskUserQuestion ($(cat "$T/tl.out"))"
 newrun dlg9g; new_path; pl perm-curl; TO=40 HB dl9g; wf "$AD/a-1.json"
 TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; ask_op 9g "$DJ" "$(a1 "$DJ" allow)"
 TL decision answer beta d-1 --from-ask --tuning none --why w; G9=$TLRC
