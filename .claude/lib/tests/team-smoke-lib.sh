@@ -114,10 +114,10 @@ smoke_init() {
   # Nor may it see the calling session's identity: run from a team role session, the driver's
   # HARNESS_* (HARNESS_MAIN/HARNESS_REGISTRY win over the fixture root in sh_main_root), the run's
   # TEAM_RUN_* and the host's terminal ids would point the fixtures at the real registry and
-  # terminal. Nor WSL_DISTRO_NAME: a fixture run inside WSL behaves like any other host. A case
-  # that needs one sets it per call.
+  # terminal. Nor WSL_DISTRO_NAME or a Herdr for Windows terminal's HC_WSL_TERMINAL: a fixture run
+  # inside WSL behaves like any other host. A case that needs one sets it per call.
   unset ${!HARNESS_@} TEAM_SESSION_ROLE TEAM_RUN_TEAM TEAM_RUN_ROLE TEAM_RUN_ID TEAM_RUN_ATTEMPT \
-    HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE WSL_DISTRO_NAME
+    HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE TMUX TMUX_PANE WSL_DISTRO_NAME HC_WSL_TERMINAL
   mkdir -p "$HOME/.codex-acmeshop"
   export TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1

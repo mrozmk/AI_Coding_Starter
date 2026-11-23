@@ -496,8 +496,7 @@ sh_pane_pid() {
            p="$(sh_herdr_handle "$1" "$2" 2>/dev/null)" || return 1
            j="$(sh_herdr_get "$p" 2>/dev/null)" || return 1
            # A Windows core reached through HC_BIN: a wsl.exe foreground has a Windows pid too.
-           [ "$(jq -r '.foreground.name // "" | strings' <<<"$j" 2>/dev/null)" != wsl.exe ] || return 1
-           case "$(jq -r '.foreground.argv[0] // "" | strings' <<<"$j" 2>/dev/null)" in *\\wsl.exe) return 1 ;; esac
+           ! sh_herdr_fg_wsl "$j" || return 1
            p="$(jq -r '.pid // empty | tostring' <<<"$j" 2>/dev/null)"
            [[ "$p" =~ ^[0-9]+$ ]] || return 1; echo "$p"; return 0 ;;
     none) sh_none_alive "$1" "$2" || return 1; sh_record_get "$1" "$2" pid; return 0 ;;
@@ -570,6 +569,15 @@ sh_herdr_get() {
   printf '%s\n' "$j"
 }
 
+# sh_herdr_fg_wsl <terminal JSON> → 0 when its foreground is wsl.exe (by name, or argv[0] ending in
+# \wsl.exe): a Herdr for Windows terminal, whose program runs inside WSL out of the core's sight.
+sh_herdr_fg_wsl() {
+  local fg
+  [ "$(jq -r '.foreground.name // "" | strings' <<<"$1" 2>/dev/null)" != wsl.exe ] || return 0
+  fg="$(jq -r '.foreground.argv[0] // "" | strings' <<<"$1" 2>/dev/null)"
+  [ "${fg##*\\}" = wsl.exe ]
+}
+
 # sh_herdr_alive <handle> [program] → 0 alive, 3 gone, 1 the probe failed. With a program, alive also
 # means that program runs in the foreground: foreground.argv[0] or .name is it, or — a command run
 # through `sh -c '…; read'` keeps sh as the group leader — the foreground process group holds it.
@@ -586,9 +594,7 @@ sh_herdr_alive() {
   fg="$(jq -r '.foreground.argv[0] // "" | strings' <<<"$j" 2>/dev/null)"
   nm="$(jq -r '.foreground.name // "" | strings' <<<"$j" 2>/dev/null)"
   [ "${fg##*/}" != "$2" ] && [ "$nm" != "$2" ] || return 0
-  # Herdr for Windows sees only wsl.exe: look inside WSL by this terminal's marker (HC_WSL_TERMINAL,
-  # sh_herdr_run).
-  if [ "$nm" = wsl.exe ] || [ "${fg##*\\}" = wsl.exe ]; then
+  if sh_herdr_fg_wsl "$j"; then
     sh_wsl_has "$2" "$(jq -r '.name // "" | strings' <<<"$j" 2>/dev/null)"; return $?
   fi
   pg="$(jq -r '.foreground.pid // "" | tostring' <<<"$j" 2>/dev/null)"
@@ -1119,15 +1125,16 @@ sh_herdr_start_probe() {
 # new terminal (created_ms from the run reply, else from `hc get`; empty when neither gives it).
 # `hc run --bg --no-parent`: no parent to end it with, never kept, labelled for the probe above.
 sh_herdr_run() {
-  local a="$1" k="$2" n="$3" cwd="$4" cli="$5" kv=() lab out h c
+  local a="$1" k="$2" n="$3" cwd="$4" cli="$5" kv=() lab out h c wsl=""
   shift 5
   while [ $# -gt 0 ] && [ "$1" != -- ]; do [ "$1" = -e ] || kv+=("$1"); shift; done
   shift
-  ! sh_hc_wsl || kv+=("HC_WSL_TERMINAL=$n")
+  ! sh_hc_wsl || wsl=1
+  [ -z "$wsl" ] || kv+=("HC_WSL_TERMINAL=$n")
   sh_herdr_launch_line "$cli" "$a" ${kv[@]+"${kv[@]}"} -- "$@"
   # Herdr for Windows starts Windows programs: the line runs in this WSL distro as this user, in a
   # login shell (wsl.exe -e skips the profile, so ~/.local/bin would be off PATH).
-  if sh_hc_wsl; then
+  if [ -n "$wsl" ]; then
     SH_LINE=(wsl.exe -d "$WSL_DISTRO_NAME" -u "$(id -un)" --cd "$cwd" -e /bin/bash -lc 'exec "$@"'
       harness-wsl "${SH_LINE[@]}")
   fi
@@ -1229,9 +1236,14 @@ sh_start() {
     # environment, so the session must not inherit it (spec §1 Environment).
     case " ${envs[*]} " in *" CLAUDE_CONFIG_DIR="*) ;; *)
       [ "$cli" != claude ] || cmd="env -u CLAUDE_CONFIG_DIR $cmd" ;; esac
+    # A Herdr for Windows terminal's marker (sh_herdr_run) must not reach a tmux pane: a server
+    # started from that terminal copies it into its global environment, and a claude in any pane
+    # would then keep the terminal's role reading as alive (sh_wsl_has). An empty value never
+    # matches the marker; a server that already holds it is covered by the session's own -e.
+    [ -z "${HC_WSL_TERMINAL:-}" ] && ! sh_hc_wsl || envs+=(-e "HC_WSL_TERMINAL=")
     w="$(sh_tmux_path)" || return 1
     env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET \
-      -u CLAUDE_CODE_MESSAGING_TOKEN "$w" \
+      -u CLAUDE_CODE_MESSAGING_TOKEN -u HC_WSL_TERMINAL "$w" \
       new-session -d -s "$n" -c "$cwd" "${envs[@]}" "$cmd" || { sh_err "$a: tmux new-session failed"; return 1; }
   fi
   s=""; [ "$k" != team ] || s="$(cd "$cwd" && pwd)/.agents/team"

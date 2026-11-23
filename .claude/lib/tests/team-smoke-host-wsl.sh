@@ -33,7 +33,6 @@ P="$MAIN/.claude/project-profile.json"; cp "$P" "$WORK/prof.bak"
 prof() { jq "$1" "$WORK/prof.bak" > "$P"; }
 clr() { : > "$STUB_LOG"; rm -f "$STUB_LOG.typed"; }
 noline() { ! grep -qF -- "$1" "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "$2: unexpected '$1'"; }; }
-hclr() { clr; }
 out_is() { [ "$(cat "$WORK/out")" = "$1" ] || fail "$2: got '$(cat "$WORK/out")', expected '$1'"; }
 prof '.teams.session_host = "herdr"'
 export STUB_HC_RUN_ARGV="$WORK/hc-argv"
@@ -78,7 +77,7 @@ mv "$WORK/bin/hc.linux" "$WORK/bin/hc"; prof '.teams.session_host = "herdr"'
 
 # (4) start: the line runs through wsl.exe in a login shell and carries the terminal's marker
 rm -f "$REG/HWsl.json"
-hclr; STUB_HC_GONE=1 STUB_HC_ADDR=t7w run "$MAIN" env -u TEAM_SESSION_HOST WSL_DISTRO_NAME=Dx "HC_BIN=$HXE" \
+clr; STUB_HC_GONE=1 STUB_HC_ADDR=t7w run "$MAIN" env -u TEAM_SESSION_HOST WSL_DISTRO_NAME=Dx "HC_BIN=$HXE" \
   $SH start HWsl --kind role --cwd "$CL" --cli claude --program "$PG" -- "$PG; read"
 expect 0 "" "(H19) start"
 sed -n '/^--$/,$p' "$STUB_HC_RUN_ARGV" | sed -n '2,14p' > "$WORK/argv.got"
@@ -108,7 +107,7 @@ run "$MAIN" env PATH="$WORK/pgfail:$PATH" $W $SH alive HWsl; expect 1 "" "(H19) 
 
 # (8) no terminal name: cannot tell — and a start then neither kills nor replaces
 run "$MAIN" env ${W/STUB_HC_NAME=smk-hwsl/} $SH alive HWsl; expect 1 "" "(H19) no terminal name"
-hclr; run "$MAIN" env -u TEAM_SESSION_HOST ${W/STUB_HC_NAME=smk-hwsl/} \
+clr; run "$MAIN" env -u TEAM_SESSION_HOST ${W/STUB_HC_NAME=smk-hwsl/} \
   'STUB_HC_LABELS={"harness":"smk","kind":"role","address":"HWsl"}' WSL_DISTRO_NAME=Dx "HC_BIN=$HXE" \
   $SH start HWsl --kind role --cwd "$CL" --cli claude --program "$PG" -- "$PG; read"
 [ "$RC" != 0 ] || fail "(H19) no terminal name: start succeeded"
@@ -128,11 +127,11 @@ if [ -r /proc/self/environ ]; then
   env HC_WSL_TERMINAL=smk-hwsl BIG="$(head -c 100000 /dev/zero | tr '\0' x)" "$WORK/wsl/$PG" -c 'sleep 30; :' \
     </dev/null >/dev/null 2>&1 & WP3=$!
   run "$MAIN" env $W $SH alive HWsl; expect 0 "" "(H19) claude with the marker is alive"
-  hclr; run "$MAIN" env -u TEAM_SESSION_HOST $W WSL_DISTRO_NAME=Dx "HC_BIN=$HXE" \
+  clr; run "$MAIN" env -u TEAM_SESSION_HOST $W WSL_DISTRO_NAME=Dx "HC_BIN=$HXE" \
     $SH start HWsl --kind role --cwd "$CL" --cli claude --program "$PG" -- "$PG; read"
   expect 1 "already running" "(H19) second start: already running"; noline "hc run" "(H19) second start: already running"
   cp "$REG/HWsl.json" "$WORK/rec.before"
-  hclr; run "$MAIN" env -u TEAM_SESSION_HOST $W STUB_HC_GET_RC_HANDLE=5 STUB_HC_NONAME=1 WSL_DISTRO_NAME=Dx \
+  clr; run "$MAIN" env -u TEAM_SESSION_HOST $W STUB_HC_GET_RC_HANDLE=5 STUB_HC_NONAME=1 WSL_DISTRO_NAME=Dx \
     "HC_BIN=$HXE" $SH start HWsl --kind role --cwd "$CL" --cli claude --program "$PG" -- "$PG; read"
   expect 1 "cannot probe" "(H19) a failed handle probe starts nothing"
   cmp -s "$WORK/rec.before" "$REG/HWsl.json" || fail "(H19) a failed handle probe starts nothing: record changed"
@@ -155,6 +154,16 @@ expect 0 "LY_SPACE=s1" "(H19) the space by its UNC folder"
 run "$MAIN" env STUB_HERDR_LS="$WORK/ls.json" bash -c "$LL; ly_ls && ly_space '$MP' no"
 expect 1 "" "(H19) outside WSL the UNC folder is not this checkout"
 rm -f "$WORK/bin/wslpath"
+
+# (11) a tmux session never carries a Herdr for Windows terminal's marker: started from a marked
+# role terminal (auto: team and helper sessions stay on tmux), it resets the variable for its panes.
+clr; run "$MAIN" env HC_WSL_TERMINAL=smk-supervisor WSL_DISTRO_NAME=Dx "HC_BIN=$HXE" \
+  $SH start helper:wm --kind helper --cwd "$CL" --cli script -- true
+expect 0 "" "(H19) tmux from a marked terminal"
+grep -q '^tmux new-session .* -e HC_WSL_TERMINAL= ' "$STUB_LOG" \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(H19) tmux from a marked terminal resets the marker"; }
+clr; run "$MAIN" $SH start helper:wn --kind helper --cwd "$CL" --cli script -- true
+expect 0 "" "(H19) native tmux start"; noline "HC_WSL_TERMINAL" "(H19) native tmux start"
 
 rm -f "$WORK/bin/hc.exe" "$REG/HWsl.json"
 echo "team-smoke-host-wsl: (H19) herdr for windows under wsl OK"

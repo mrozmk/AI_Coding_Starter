@@ -87,14 +87,14 @@ still describes live code until the release that retires it.
 smoke part `host-wsl`, case H19):
 
 - **Discovery:** `sh_hc_wsl` holds when `WSL_DISTRO_NAME` is set and the resolved CLI is `*.exe`.
-  `hc.exe` / `herdr-app.exe` are taken only when no Linux binary of that name is on PATH;
-  `HC_BIN` / `HERDR_APP_BIN` win over both, and the app follows the core's family (`hc.exe` pairs
-  with `herdr-app.exe`). Under `auto` only role sessions go there — team and helper sessions stay
+  `hc.exe` is taken only when no Linux `hc` is on PATH; the app follows the core's family (`hc.exe`
+  → `herdr-app.exe`, a Linux `hc` → `herdr-app`); `HC_BIN` / `HERDR_APP_BIN` win. Under `auto` only role sessions go there — team and helper sessions stay
   on tmux until team runs are verified on it; an explicit `herdr` takes every kind.
 - **Launch:** the core starts Windows programs, so the line runs as
   `wsl.exe -d <distro> -u <user> --cd <cwd> -e /bin/bash -lc 'exec "$@"' harness-wsl <line>` — a
   login shell, because `wsl.exe -e` skips the profile and `~/.local/bin` would be off PATH — and
-  carries the env word `HC_WSL_TERMINAL=<terminal name>`.
+  carries the env word `HC_WSL_TERMINAL=<terminal name>`. A tmux session started from such a
+  terminal resets it (`-e HC_WSL_TERMINAL=`), so no pane claude can pose as the terminal's program.
 - **Liveness:** the core sees only `wsl.exe` in the foreground. Alive = a process of the program,
   of this user, inside WSL whose environment holds that marker: `0` found · `3` the scan completed
   without one · `1` it could not complete (no terminal name, `pgrep` failed, a live candidate's
