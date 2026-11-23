@@ -40,7 +40,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, base_comment_reading, commands, doc_heredocs_removed, in_base_reading,
+    SHELL_C, base_comment_reading, commands, doc_heredocs_removed, needs_base_reading,
     redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector, record_touch,
@@ -296,6 +296,16 @@ def gh_read_tainted(cmd, tokens=()):
 
 
 def bash_reason(cmd, project):
+    reason = reading_reason(cmd, project)
+    if reason or not needs_base_reading(cmd):
+        return reason
+    # The pre-#230 reading must not lose a verdict either (QA: a `git push <remote>` before a line
+    # whose uncovered quote breaks or hides the rest).
+    with base_comment_reading():
+        return reading_reason(cmd, project)
+
+
+def reading_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
         return NET_FOUND
@@ -312,12 +322,7 @@ def bash_reason(cmd, project):
             # Unparsable: an egress tool cannot sit in command position without its name.
             if MENTIONS_EGRESS.search(cmd):
                 return "unparsable command mentions an egress tool"
-            if in_base_reading():
-                return ""
-            # The `#` reading may be what left the command unparsable: the pre-#230 reading's
-            # verdict must not be lost (a `git push <remote>` before such a line).
-            with base_comment_reading():
-                return bash_reason(cmd, project)
+            return ""
     if found == NET_FOUND:
         return found
     if found.startswith("git to "):

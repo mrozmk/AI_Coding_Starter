@@ -67,6 +67,8 @@ printf "%s\ncat <<'EOF'\ncd sub\nEOF\nbash ./drop.sh\n" "$U" > "$D/r/unparsable-
 printf '%s\nif true; then bash ./drop.sh; fi\n' "$U" > "$D/r/unparsable-then.sh"
 printf "cat <<EOF\n# \$(sqlcmd -Q \"UPDATE dbo.X SET A=1\")\nIt's text\nEOF\n" > "$D/heredoc-hash.sh"
 printf '%s\n' 'sqlcmd -i drop.sql' "echo a\\ #'" > "$D/tail-unparsable.sh"
+printf '%s\n' 'cat <<EOF' "a\\ #'" EOF 'sqlcmd -i drop.sql' 'cat <<EOF' "b\\ #'" EOF \
+  > "$D/two-heredocs.sh"
 # The caller continues after an unparsable script; cwd != project in every case.
 mkdir -p "$D/a" "$D/b/sub" "$D/c/sub" "$D/n/sub" "$D/e/sub" "$D/i/sub" "$D/t/other/sub" \
   "$D/f" "$D/k" "$D/g/sub"
@@ -302,6 +304,13 @@ run ask  "tee heredoc with a sqlcmd DROP line"           $'tee msg.txt <<\'EOF\'
 run deny "sqlcmd heredoc DROP before an unparsable tail" $'sqlcmd <<EOF\nDROP TABLE dbo.X\nEOF\necho a\\ #\''
 run deny "quoted newline in a DROP before the tail"      $'sqlcmd -Q "DROP\nTABLE dbo.X"\necho a\\ #\''
 run deny "script whose tail turns unparsable"            "bash tail-unparsable.sh"
+# ... and when an uncovered quote pairs with a later one: the text parses but hides the commands
+run deny "uncovered quotes pair across heredocs"         $'cat <<EOF\na\\ #\'\nEOF\nsqlcmd -Q "DROP TABLE dbo.X"\ncat <<EOF\nb\\ #\'\nEOF'
+run deny "script whose uncovered quotes pair"            "bash two-heredocs.sh"
+# an unparsable command is read by logical lines: a newline inside quotes starts no command
+run ask  "DROP in a multi-line quoted string"            $'printf %s \'Test plan:\nsqlcmd -Q "DROP TABLE dbo.X" is denied\n\' && echo it\'s'
+run deny "DROP after a closed multi-line quote"          $'echo "a\nb"\nsqlcmd -Q "DROP TABLE dbo.X"\necho it\'s'
+run ask  "backslash-quoted heredoc with a DROP line"     $'tee msg.txt <<\\EOF\nIt\'s the note.\nsqlcmd -Q "DROP TABLE dbo.X"\nEOF'
 # --- The repo's own TeamLead Bash guard parses cleanly: checking or running it never asks
 R="${H%/.claude/hooks/guard-destructive-sql.sh}"
 run none "syntax check of the lead runner naming the lead guard" "bash -n .claude/lib/team-run-lead.sh" "$R"

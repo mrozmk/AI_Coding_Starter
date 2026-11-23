@@ -11,8 +11,8 @@ classified line by line: it asks as unparsable when it mentions sqlcmd/.sql, whe
 script cannot be parsed, or when a script it names cannot be found. After an unparsable script the
 scan continues from the start dir with every dir a read `cd` may have left it in as a candidate,
 scanning all of them; an unreadable `cd` asks. A candidate file that exists but cannot be read asks.
-A command or script the `#` reading leaves unparsable is also read with the pre-#230 comment rule,
-and the stronger of the two verdicts stands.
+A command or script the two `#` readings may cut differently (an escaped blank or separator before
+`#`) is also read with the pre-#230 comment rule, and the stronger of the two verdicts stands.
 """
 import contextlib
 import json
@@ -134,7 +134,10 @@ DOC_HEREDOC = re.compile(r"<<-?[ \t]*(['\"])(\w+)\1")
 SCRIPT_REF = re.compile(r"\.(sh|sql)\b")
 CD_WORD = re.compile(r"(^|[\s;&|(])cd\s")
 COMMENT_LINE = re.compile(r"\s*(#|//)")
-HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)^\s*\1\s*$", re.S | re.M)
+HEREDOC = re.compile(r"<<-?\s*\\?['\"]?(\w+)['\"]?[^\n]*\n(.*?)^\s*\1\s*$", re.S | re.M)
+# The only spot where the two `#` readings can differ: an escaped blank or separator before `#`.
+ESCAPED_HASH = re.compile(r"\\[ \t\n;&|()]#")
+RANK = {"deny": 2, "ask": 1}
 MAX_CWDS = 8
 
 
@@ -161,8 +164,8 @@ _BASE_READING = []
 @contextlib.contextmanager
 def base_comment_reading():
     """Inside it strip_shell_comments applies the pre-#230 rule (a `#` right after any blank or
-    separator character, escaped or not, starts a comment). A fallback for text the current
-    reading leaves unparsable reads it this way too, so no verdict ends weaker than it was."""
+    separator character, escaped or not, starts a comment). Text the two rules may cut differently
+    is read this way too, so no verdict ends weaker than it was."""
     _BASE_READING.append(True)
     try:
         yield
@@ -174,10 +177,44 @@ def in_base_reading():
     return bool(_BASE_READING)
 
 
+def needs_base_reading(text):
+    """True when <text> must also be read the pre-#230 way: the two rules may cut it differently
+    (at any nesting level — quoting only adds backslashes), and this is not that reading already.
+    Parsing or not does not matter: an uncovered quote can pair with a later one and hide the
+    commands between them while the text still parses."""
+    return not in_base_reading() and bool(ESCAPED_HASH.search(text))
+
+
 def stronger(a, b):
     """The (decision, reason) of a and b that weighs more: deny > ask > None."""
-    rank = {"deny": 2, "ask": 1}
-    return b if rank.get(b[0], 0) > rank.get(a[0], 0) else a
+    return b if RANK.get(b[0], 0) > RANK.get(a[0], 0) else a
+
+
+def logical_lines(text):
+    """<text> split at its unquoted newlines, line continuations removed: a newline inside a quoted
+    string belongs to the word, it does not start a command."""
+    lines, cur, quote, i = [], [], None, 0
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and quote != "'" and i + 1 < len(text):
+            if text[i + 1] != "\n":
+                cur.append(text[i:i + 2])
+            i += 2
+            continue
+        if quote:
+            if c == quote:
+                quote = None
+        elif c in "'\"":
+            quote = c
+        elif c == "\n":
+            lines.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    lines.append("".join(cur))
+    return lines
 
 
 def strip_shell_comments(cmd):
@@ -458,17 +495,10 @@ class Scan:
         get the first pass — they print SQL into files, they do not run it."""
         if depth < 3:
             start = self.state()
-            try:
-                self.command(text, where, depth + 1)
-            except ValueError:
-                # A pass that failed midway has already applied its `cd` lines.
-                self.restore(start)
-                try:
-                    self.command(doc_heredocs_removed(text), where, depth + 1)
-                except ValueError:
-                    self.restore(start)
-                    self.unparsable(text, where, depth)
-                    self.base_reading(text, where, depth, start)
+            if not self.parse_body(text, where, depth, start):
+                self.unparsable(text, where, depth)
+            if needs_base_reading(text):
+                self.base_reading(text, where, depth, start)
         if "/tests/" in where:
             return
         for line in text.splitlines():
@@ -479,22 +509,25 @@ class Scan:
             if verdict == "ask":
                 self.ask.append(where)
 
+    def parse_body(self, text, where, depth, start):
+        """Reads <text> as commands, then with its doc heredocs' quotes blanked; False when neither
+        parses (the state is back at <start>)."""
+        for body in (text, doc_heredocs_removed(text)):
+            try:
+                self.command(body, where, depth + 1)
+                return True
+            except ValueError:
+                # A pass that failed midway has already applied its `cd` lines.
+                self.restore(start)
+        return False
+
     def base_reading(self, text, where, depth, start):
-        """<text> stayed unparsable under the `#` reading: read it again from <start> with the
-        pre-#230 comment rule and keep what that reading finds too (the stronger verdict wins);
-        where it ends stays a candidate dir."""
-        if in_base_reading():
-            return
+        """Reads <text> again from <start> with the pre-#230 comment rule and keeps what that
+        reading finds too (the stronger verdict wins); where it ends stays a candidate dir."""
         end, found = self.state(), (len(self.deny), len(self.ask))
         self.restore(start)
         with base_comment_reading():
-            for body in (text, doc_heredocs_removed(text)):
-                try:
-                    self.command(body, where, depth + 1)
-                    break
-                except ValueError:
-                    self.restore(start)
-            else:
+            if not self.parse_body(text, where, depth, start):
                 self.unparsable(text, where, depth)
         ends, blind = {self.cwd} | self.alt, self.blind or end[2]
         self.restore((end[0], end[1], blind))
@@ -658,10 +691,10 @@ def ask_verdict(where):
 
 def unparsable_command(cmd, cwd, project):
     """A command shlex cannot read as a whole: bash still runs every line before the one it fails
-    on, so an unparsable tail must not demote what a line runs. Each line (continuations joined,
-    heredoc bodies dropped — data, not commands) is scanned on its own; a line that does not parse
-    by itself adds nothing here (the ask below covers it)."""
-    lines = re.sub(r"\\\n", "", heredoc_bodies_removed(cmd)).splitlines()
+    on, so an unparsable tail must not demote what a line runs. Each logical line (comments and
+    heredoc bodies dropped — data, not commands; a newline inside quotes does not split) is scanned
+    on its own; a line that does not parse by itself adds nothing here (the ask below covers it)."""
+    lines = logical_lines(strip_shell_comments(heredoc_bodies_removed(cmd)))
     scan = Scan(cwd, project)
     for line in lines:
         try:
@@ -682,19 +715,14 @@ def classify(cmd, cwd, project):
     scan = Scan(cwd, project)
     try:
         scan.command(cmd, "command", 0)
+        verdict = (deny_verdict(scan.deny) if scan.deny else ask_verdict(scan.ask) if scan.ask
+                   else (None, ""))
     except ValueError:
         verdict = unparsable_command(cmd, cwd, project)
-        if verdict[0] == "deny" or in_base_reading():
-            return verdict
-        # The `#` reading may be what left the command unparsable: the pre-#230 reading's verdict
-        # must not be lost.
-        with base_comment_reading():
-            return stronger(verdict, classify(cmd, cwd, project))
-    if scan.deny:
-        return deny_verdict(scan.deny)
-    if scan.ask:
-        return ask_verdict(scan.ask)
-    return None, ""
+    if verdict[0] == "deny" or not needs_base_reading(cmd):
+        return verdict
+    with base_comment_reading():
+        return stronger(verdict, classify(cmd, cwd, project))
 
 
 def main():
