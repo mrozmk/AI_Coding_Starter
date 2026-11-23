@@ -100,6 +100,21 @@ has "$RUN_ID" "$RD/lead-1.prompt.md" && ! grep -q '{{' "$RD/lead-1.prompt.md" ||
 [ "$(ls "$SUP" | wc -l | tr -d ' ')" = 1 ] && grep -q '^event: session_dead' "$SUP"/* \
   && grep -q "^ref: runs/$RUN_ID/planner-" "$SUP"/* || fail "(b) dead planner: no single session_dead"
 echo "team-smoke-22: (b) launch OK"
+# The lead's session id comes from new_uuid: Python stands in for a missing uuidgen, and no
+# generator at all stops the lead launch before its session file or tmux session.
+PY3="$(command -v python3)"
+printf '#!/bin/sh\nexit 127\n' > "$WORK/bin/uuidgen"; chmod +x "$WORK/bin/uuidgen"
+reset; run "$MAIN" $TR alfa
+grep -Eqx '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}' "$RD/lead-1.session" \
+  || fail "(u) a lead session id without uuidgen: $(cat "$RD/lead-1.session" 2>&1)"
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/uuidgen"
+printf '#!/bin/sh\ncase "$*" in *uuid.uuid4*) exit 1 ;; esac\nexec "%s" "$@"\n' "$PY3" > "$WORK/bin/python3"
+chmod +x "$WORK/bin/python3"
+reset; run "$MAIN" $TR alfa
+has "error: new_uuid gave no UUID" "$WORK/out" && [ ! -e "$RD/lead-1.session" ] \
+  && ! has "-s smk-alfa-lead" "$STUB_LOG" || fail "(u) no UUID generator stops the lead launch: exit $RC"
+rm -f "$WORK/bin/uuidgen" "$WORK/bin/python3"
+echo "team-smoke-22: (u) lead session id OK"
 
 # ---- (b2) Herdr: the lead's terminal into its team's tab through the main checkout's roles.sh place
 case_mark "(b2) Herdr: the lead's terminal into its"

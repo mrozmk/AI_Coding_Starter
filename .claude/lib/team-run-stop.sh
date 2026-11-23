@@ -17,7 +17,7 @@ stop_notify() {
   local f="$TD/runs/$RUN/operator-$1" p
   [ ! -f "$f" ] || return 0
   team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # the project id, as lead_notify
-  p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
+  p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._\n-' '-')}"
   if bash "$root/.claude/lib/notify.sh" human_decision --project "$p" --team "$TEAM" \
     --ticket "$(team_json ticket)" --run "$RUN" --decision "$1" --summary "$2" \
     --answer "$3" --hint "$(dialog_where "$3")" --source runner --main "$root" >/dev/null 2>&1; then

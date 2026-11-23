@@ -85,8 +85,7 @@ launch_lead() {
   ch="$(codex_home)" || die 1 "$ch"
   # The project's Claude profile, as launch() takes it (team_claude_home, team-profile.sh).
   cc="$(team_claude_home "$root")" || die 1 "$cc"
-  sid="$(uuidgen | tr 'A-Z' 'a-z')"
-  [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
+  sid="$(new_uuid)" || die 1 "error: new_uuid gave no UUID"
   # pipefail: no earlier session makes ls fail, which must not end the runner.
   n="$(ls "$TD/runs/$RUN"/lead-*.session 2>/dev/null | wc -l | tr -d ' ' || true)"; n=$((n + 1))
   pf="$TD/runs/$RUN/lead-$n.prompt.md"
@@ -213,7 +212,7 @@ lead_notify() {
     w="lead"  # every decision is answered in the lead's window
     h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" \
       || h="no $(sess_name "$w") session found — bash .claude/lib/session-host.sh status $(sess_name "$w")"  # no host: say so, never kill the runner
-    p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
+    p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._\n-' '-')}"
     rc=0; bash "$root/.claude/lib/notify.sh" "$ev" --project "$p" --team "$TEAM" \
       --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \
       --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name "$w")" \

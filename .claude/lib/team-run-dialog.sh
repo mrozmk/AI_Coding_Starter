@@ -68,7 +68,7 @@ dialog_tick() {
   [ -z "$o" ] || return 0
   mkdir -p "$TD/runs/$RUN"
   team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # the project id, as lead_notify
-  p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-\n' '-')}"
+  p="${TEAM_CHANNEL_TMUX_PREFIX:-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._\n-' '-')}"
   rc=0; bash "$root/.claude/lib/notify.sh" human_decision --project "$p" --team "$TEAM" \
     --ticket "$(team_json ticket)" --run "$RUN" --decision "$3" \
     --summary "$TEAM $1 waits at $(dialog_what "$k") in $(basename "$CLONE") — $(dialog_how "$k")" \

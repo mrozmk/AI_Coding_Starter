@@ -260,6 +260,8 @@ own .claude/hooks/session-registry.sh
 own .claude/hooks/inbox-count.sh
 own .claude/hooks/team-status.sh
 own .claude/lib/roles-lib.sh
+# sourced by team-lib.sh and roles-lib.sh: GNU/BSD userland helpers
+own .claude/lib/portable-lib.sh
 own .claude/lib/roles.sh
 own .claude/commands/roles.md
 own .claude/lib/team-lineage.sh

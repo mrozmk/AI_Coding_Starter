@@ -12,7 +12,7 @@ smoke_init
 L="$WORK/drv"; mkdir -p "$L"
 cp "$SRC/.claude/lib/session-host.sh" "$SRC/.claude/lib/session-host-lib.sh" \
   "$SRC/.claude/lib/team-send-lock.sh" "$SRC/.claude/lib/team-channel.sh" "$SRC/.claude/lib/roles-lib.sh" \
-  "$SRC/.claude/lib/team-profile.sh" "$SRC/.claude/lib/team_prompt.py" \
+  "$SRC/.claude/lib/team-profile.sh" "$SRC/.claude/lib/team_prompt.py" "$SRC/.claude/lib/portable-lib.sh" \
   "$SRC/.claude/lib/team_transcript.py" "$L/"
 cat > "$L/team-watch-send.py" <<'PY'
 import os, sys

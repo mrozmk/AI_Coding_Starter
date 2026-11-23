@@ -50,8 +50,8 @@ event() {  # event <at> <source> <text>
   jq -cn --arg at "$1" --arg source "$2" --arg text "$3" '{at: $at, source: $source, text: $text}' \
     >> "$W/events"
 }
-iso() { date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
-mtime() { stat -f %m "$1"; }
+iso() { epoch_fmt -u "$1" +%Y-%m-%dT%H:%M:%SZ; }
+mtime() { file_mtime "$1"; }
 age() { echo $(( NOW - $(mtime "$1") )); }
 # Bounded reads: transcripts reach many MB; the first, cut line fails fromjson and drops out.
 jl_tail() { tail -c 262144 "$1" | jq -cR 'fromjson? // empty'; }
