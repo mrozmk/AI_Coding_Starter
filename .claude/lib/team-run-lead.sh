@@ -33,7 +33,11 @@ team_lead_base_ok() {
 
 # The prompt comes from the main checkout: a clone on an older base must not run an old lead.
 render_lead_prompt() {
-  local p
+  # LC_ALL=C for the substitutions: macOS /bin/bash 3.2 matches ${p//pat/rep} character by
+  # character in a UTF-8 locale, ~6 s per substitution on this ~26 KB prompt (eleven of them held
+  # the lead's launch for a minute); byte-wise is ~0.1 s and gives the same text — every pattern is
+  # ASCII, and an ASCII byte never occurs inside a UTF-8 multibyte character.
+  local p LC_ALL=C
   p="$(cat "$root/.claude/team/prompts/teamlead.md")" || die 4 "no TeamLead prompt in $root"
   put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
   put TEAM "$TEAM"; put TICKET "$(team_json ticket)"; put BRANCH "$BRANCH"; put LINE "$LINE"

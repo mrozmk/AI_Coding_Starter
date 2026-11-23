@@ -134,7 +134,7 @@ cmd_retro_run() {
   trap 'rm -rf "$TMPD"' EXIT
   list="$(retro_metrics "$TMPD" "$doc")" || { mark_retro "failed: extractor"; exit 1; }
   p="$(cat "$root/.claude/team/prompts/retro-run.md")"
-  put() { local k="{{$1}}"; p="${p//"$k"/$2}"; }
+  put() { local LC_ALL=C k="{{$1}}"; p="${p//"$k"/$2}"; }  # C: see team-run-lead.sh render_lead_prompt
   put RUN "$RUN"; put TICKET "$(jq -r '.header.ticket' "$doc")"; put AUDIT "$md"
   put TRANSCRIPTS "$list"
   run_claude "$p" > "$base.retro.md" 2> "$base.retro.log" || rc=$?
