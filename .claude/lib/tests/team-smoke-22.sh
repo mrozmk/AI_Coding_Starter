@@ -815,13 +815,28 @@ nohost_notify() {
   sh_hint() { return 1; }
   LEAD_NOTIFIED=" "; lead_notify
 }
+# Its own pending decision: the earlier ones are answered, consumed or withdrawn by now, and a
+# decision that left pending is never notified.
+ldec open alfa --source coder-1-1.json --question "Notify the Operator?"; expect 0 "" "(m) no host: open a pending decision"
+DN="$(sed -n 's/^\[\(d-[0-9]*\)\].*/\1/p' "$WORK/out" | head -n 1)"; [ -n "$DN" ] || fail "(m) no host: no decision id"
 cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.sh.nohost"; rm -f "$WORK/nargs.log"
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "%s/nargs.log"\n' "$WORK" > "$MAIN/.claude/lib/notify.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" -- >> "%s/nargs.log"\n' "$WORK" > "$MAIN/.claude/lib/notify.sh"
 win nohost_notify; cp "$WORK/notify.sh.nohost" "$MAIN/.claude/lib/notify.sh"
 [ "$RC" = 0 ] || fail "(m) no host: lead_notify failed"
 grep -A1 -x -- "--hint" "$WORK/nargs.log" 2>/dev/null | tail -n 1 \
   | grep -qx "no alfa-lead session found — bash .claude/lib/session-host.sh status alfa-lead" \
   || { cp "$WORK/nargs.log" "$WORK/out" 2>/dev/null || true; fail "(m) no host: the fallback hint"; }
+grep -A1 -x -- "--decision" "$WORK/nargs.log" | grep -qx "$DN" || fail "(m) no host: the pending $DN was not notified"
+! grep -A1 -x -- "--decision" "$WORK/nargs.log" | grep -qx d-3 || fail "(m) a decision that left pending is not notified (d-3 was sent)"
+# Answered while its event went out (a relay between the read and the send): resolved right after.
+ldec open alfa --source coder-1-1.json --question "Answered meanwhile?"; expect 0 "" "(m) late send: open"
+DL="$(sed -n 's/^\[\(d-[0-9]*\)\].*/\1/p' "$WORK/out" | head -n 1)"; rm -f "$WORK/nlate.log"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/nlate.log"\ncase "$* " in *"--decision %s "*) [ "$1" = resolve ] || sed -i.bak "s/^status: pending$/status: answered/" "%s/%s.md" ;; esac\n' \
+  "$WORK" "$DL" "$DLD" "$DL" > "$MAIN/.claude/lib/notify.sh"
+win nohost_notify; cp "$WORK/notify.sh.nohost" "$MAIN/.claude/lib/notify.sh"
+grep -q "^human_decision .*--decision $DL " "$WORK/nlate.log" && grep -q "^resolve .*--decision $DL\$" "$WORK/nlate.log" \
+  || { cp "$WORK/nlate.log" "$WORK/out" 2>/dev/null || true; fail "(m) late send: the answered decision's event was not resolved"; }
+ldec withdraw alfa "$DN" --why "fixture: notify cases done"; expect 0 "withdrawn: $DN" "(m) no host: withdraw $DN"
 st() { sed -n 's/^status: //p' "$DLD/$1.md"; }
 sleep 600 & WPID=$!
 bashp "curl https://example.invalid/w"; mkask a-10 permission operator "$(hookin)" "$WPID"

@@ -57,6 +57,15 @@ add_in "$T/main" --kind other --reason direct --what "first touch" >/dev/null 2>
   && [ "$(jq -r .where "$MF")" = "solo ." ] && [ "$(jq -r .wait_s "$MF")" = null ]
 ok "1 add in main: one line, contract keys, solo ." $?
 
+# (1b) a relayed decision names who relayed it; an add without the options has neither key.
+mkrepo "$T/m1b"; F1B="$(mfile "$T/m1b")"
+add_in "$T/m1b" --kind decision --reason human-only --what q --relayed-by Supervisor --relayed-session sup-1 >/dev/null 2>&1
+add_in "$T/m1b" --kind decision --reason human-only --what q >/dev/null 2>&1
+[ "$(count "$F1B")" = 2 ] \
+  && sed -n 1p "$F1B" | jq -e '.relayed_by == "Supervisor" and .relayed_session == "sup-1"' >/dev/null \
+  && sed -n 2p "$F1B" | jq -e 'has("relayed_by") or has("relayed_session") | not' >/dev/null
+ok "add --relayed-by and --relayed-session are stored" $?
+
 # (2) usage errors exit 2 and write nothing.
 mkrepo "$T/m2"; r=""
 add_in "$T/m2" --kind nope --reason direct --what x >/dev/null 2>&1; r="$r$?"

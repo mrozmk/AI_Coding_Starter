@@ -846,6 +846,31 @@ sh_keys() {
   case $rc in 0) ;; 3) return 3 ;; *) return 1 ;; esac
 }
 
+# sh_peer_mark <address> <registration|""> <text> → the text, `[peer] `-prefixed when it goes to an
+# evidence window — the Supervisor's or a TeamLead's, whose typed lines count as the Operator's
+# (team-evidence.sh) — and is no machine line. Judged on the canonical address, the registration's
+# name and the final delivery target (a helper spelling can derive the Supervisor's session name).
+# Without the matcher every line to such a window is marked (fail closed).
+sh_peer_mark() {
+  local a="$1" text="$3" c ev="" t r f
+  c="$(sh_record_get "$SH_MAIN" "$a" address)"; [ -n "$c" ] || c="$a"
+  case "$(printf '%s' "$c" | tr '[:upper:]' '[:lower:]')" in supervisor|*-lead) ev=1 ;; esac
+  case "$(basename "${2:-none}" | tr '[:upper:]' '[:lower:]')" in supervisor.reg.json|*-lead.reg.json) ev=1 ;; esac
+  if [ -z "$ev" ] && t="$(sh_target "$SH_MAIN" "$a" 2>/dev/null)" && [ -n "$t" ]; then
+    for f in Supervisor.json "$(sh_reg_dir "$SH_MAIN")"/*-lead.json; do
+      r="$(basename "$f" .json)"
+      [ "$(sh_target "$SH_MAIN" "$r" 2>/dev/null)" != "$t" ] || { ev=1; break; }
+    done
+  fi
+  if [ -n "$ev" ]; then
+    declare -F team_evidence_machine_line >/dev/null || . "$SH_LIB/team-evidence.sh" 2>/dev/null || true
+    if ! declare -F team_evidence_machine_line >/dev/null || ! team_evidence_machine_line "$text"; then
+      text="[peer] $text"
+    fi
+  fi
+  printf '%s\n' "$text"
+}
+
 # type <address> [--target <pane id|handle>] <text> [--enter] — herdr: pasted and submitted at once
 # (prints typed+submitted; --enter is implied), refused with 9 while a prompt is open.
 sh_type() {
@@ -854,7 +879,7 @@ sh_type() {
   set -- ${SH_ARGS[@]+"${SH_ARGS[@]}"}
   if [ "${1:-}" = --target ]; then t="${2:-}"; shift 2 || { sh_err "--target needs a value"; return 2; }; fi
   [ $# -ge 1 ] || { sh_err "type: no text given"; return 2; }
-  text="$1"; [ "${2:-}" != --enter ] || enter=--enter
+  text="$(sh_peer_mark "$a" "" "$1")"; [ "${2:-}" != --enter ] || enter=--enter
   sh_screen_backend "$SH_MAIN" "$a" || return $?
   n="$(sh_target "$SH_MAIN" "$a")" || return $?
   b="$(sh_backend "$SH_MAIN" "$a")"
@@ -878,6 +903,7 @@ sh_send() {
   [ $# -ge 1 ] || { sh_err "send: no line given"; return 2; }
   text="${1//$'\n'/ }"; shift
   if [ "${1:-}" = --reg ]; then reg="${2:-}"; fi
+  text="$(sh_peer_mark "$a" "$reg" "$text")"
   if [ "$(sh_record_get "$SH_MAIN" "$a" cli)" = script ]; then
     sh_err "$a is a script session — send is refused"; return 2
   fi

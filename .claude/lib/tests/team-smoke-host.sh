@@ -13,12 +13,14 @@ L="$WORK/drv"; mkdir -p "$L"
 cp "$SRC/.claude/lib/session-host.sh" "$SRC/.claude/lib/session-host-lib.sh" \
   "$SRC/.claude/lib/team-send-lock.sh" "$SRC/.claude/lib/team-channel.sh" "$SRC/.claude/lib/roles-lib.sh" \
   "$SRC/.claude/lib/team-profile.sh" "$SRC/.claude/lib/team_prompt.py" \
-  "$SRC/.claude/lib/team_transcript.py" "$L/"
+  "$SRC/.claude/lib/team_transcript.py" "$SRC/.claude/lib/team-evidence.sh" "$L/"
 cat > "$L/team-watch-send.py" <<'PY'
 import os, sys
-sys.stdin.read()
+text = sys.stdin.read()
 with open(os.environ["STUB_LOG"], "a") as f:
     f.write("socket " + sys.argv[1] + "\n")
+with open(os.environ["STUB_LOG"] + ".sockin", "a") as f:
+    f.write(text)
 sys.exit(int(os.environ.get("STUB_SOCK_RC", "1")))
 PY
 SH="bash $L/session-host.sh"
@@ -97,6 +99,28 @@ mkdir -p "$REG"; echo '{"address":"alfa-runner","cli":"script","backend":"tmux"}
 run "$MAIN" $SH send alfa-runner "x"; expect 2 "script session" "(5) script refused"
 
 echo "team-smoke-host: (5) send: socket → idle input → skip OK"
+
+# ---- (5b) a peer line to an evidence window is marked ---------------------------------------------------
+# The Supervisor's and a TeamLead's typed lines count as the Operator's (team-evidence.sh): a line a
+# peer sends there carries `[peer] `, a machine line (a doorbell) and a line to any other window not.
+echo '{"address":"alfa-lead","name":"smk-alfa-lead","backend":"tmux"}' > "$REG/alfa-lead.json"
+clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-lead "alfa d-1 allow" --team-dir "$TDX"
+expect 0 "" "(5b) lead send"; line "tmux send-keys -t =smk-alfa-lead: -l -- [peer] alfa d-1 allow" "(5b) lead marked"
+clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-lead "inbox: x" --team-dir "$TDX"
+line "tmux send-keys -t =smk-alfa-lead: -l -- inbox: x" "(5b) machine line unmarked"
+clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH send alfa-coder "alfa d-1 allow" --team-dir "$TDX"
+line "tmux send-keys -t =smk-alfa-coder: -l -- alfa d-1 allow" "(5b) coder unmarked"
+echo '{}' > "$WORK/alfa-lead.reg.json"; rm -f "$STUB_LOG.sockin"
+clr; STUB_SOCK_RC=0 STUB_TMUX_ALIVE=0 run "$MAIN" $SH send alfa-coder "alfa d-1 allow" --team-dir "$TDX" --reg "$WORK/alfa-lead.reg.json"
+expect 0 "" "(5b) socket"; grep -qxF "[peer] alfa d-1 allow" "$STUB_LOG.sockin" || fail "(5b) socket text not marked"
+clr; run "$MAIN" $SH type alfa-lead --team-dir "$TDX" "alfa d-1 allow"
+line "tmux send-keys -t =smk-alfa-lead: -l -- [peer] alfa d-1 allow" "(5b) type marked"
+# An unregistered helper spelling that derives the Supervisor's session name: judged by the target.
+clr; run "$MAIN" $SH type helper:supervisor "alfa d-1 allow"
+line "tmux send-keys -t =smk-supervisor: -l -- [peer] alfa d-1 allow" "(5b) helper alias marked"
+rm -f "$REG/alfa-lead.json" "$WORK/alfa-lead.reg.json" "$STUB_LOG.sockin"
+
+echo "team-smoke-host: (5b) a peer line to an evidence window is marked OK"
 
 # ---- (6) kill ----------------------------------------------------------------------------------------
 clr; STUB_TMUX_ALIVE=0 STUB_PANE="$PANES/idle.txt" run "$MAIN" $SH kill alfa-coder --graceful 1 --team-dir "$TDX"
@@ -813,7 +837,12 @@ for t in supervisor fable adhoc-x team-watch abcdefghijklmnopqrstuvwxy; do
   [ "$RC" != 0 ] || fail "(43) team $t accepted"
 done
 run "$MAIN" bash .claude/lib/team-new.sh supervisor AB-1 feature/AB-1-x origin/develop; has "team name supervisor is a declared role" "$WORK/out" || fail "(43) role message"
-run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/develop; has "is reserved (adhoc-*, team-watch, retro)" "$WORK/out" || fail "(43) reserved message"
+run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/develop; has "is reserved (adhoc-*, team-watch, retro, a machine-line word)" "$WORK/out" || fail "(43) reserved message"
+# a machine-prefix word is refused as a team name: a reply "gate d-1 allow" would read as a doorbell
+for t in gate human-only; do
+  run "$MAIN" bash .claude/lib/team-new.sh "$t" AB-1 feature/AB-1-x origin/develop
+  [ "$RC" != 0 ] && has "team name $t is reserved" "$WORK/out" && [ ! -d "$WORK/main-$t" ] || fail "(43) a machine-prefix word is refused as a team name: $t"
+done
 run "$MAIN" bash .claude/lib/team-new.sh abcdefghijklmnopqrstuvwxy AB-1 feature/AB-1-x origin/develop
 has "session name smk-abcdefghijklmnopqrstuvwxy-wrapup is over 32 characters" "$WORK/out" || fail "(43) length message"
 [ ! -d "$WORK/main-supervisor" ] && [ ! -d "$WORK/main-adhoc-x" ] || fail "(43) a refused team got a clone"

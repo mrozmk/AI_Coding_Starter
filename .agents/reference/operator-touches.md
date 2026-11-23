@@ -35,6 +35,8 @@ Keys, in this order:
 | `reason` | string | — | why a human was needed (below) |
 | `answer` | string | 200 | the human's words, or `allow` / `deny` / `deny: <instead>`; empty when unknown |
 | `wait_s` | int or null | — | seconds from the stop to the answer, when known |
+| `relayed_by` | string, optional | 60 | `Supervisor` when the Supervisor relayed the Operator's answer (`team-lead.sh decision relay`); absent otherwise |
+| `relayed_session` | string, optional | 100 | the Supervisor's session id for a relayed answer; absent otherwise |
 
 Reason codes — the field reports group by — and who assigns each:
 

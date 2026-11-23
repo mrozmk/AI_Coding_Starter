@@ -25,16 +25,20 @@ lead_withdraw_asks() {
 }
 
 # lead_withdraw_decisions <a-n> <why> — withdraw and resolve every pending decision bound to that
-# ask. → 0 when one was withdrawn.
+# ask. → 0 when one was withdrawn. Under the ask lock, which every decision writer takes
+# (team-lead-decision.sh): a relay or an answer racing the withdrawal sees one or the other.
 lead_withdraw_decisions() {
-  local f did rc=1
+  local f did rc=1 gone=""
+  ask_lock || return 1
   for f in "$ASK_TD/runs/$ASK_RUN"/decisions/d-*.md; do
     [ -f "$f" ] && [ "$(lfm "$f" bind_ask)" = "$1" ] && [ "$(lfm "$f" status)" = pending ] || continue
     did="$(lfm "$f" id)"
     lfm_set "$f" status withdrawn; lfm_set "$f" withdrawn_at "$(team_utc)"
     printf '\n## Withdrawn\nask gone (the runner): %s\n' "$2" >> "$f"
-    lead_resolve "$did"; rc=0
+    gone="$gone $did"; rc=0
   done
+  ask_unlock
+  for did in $gone; do lead_resolve "$did"; done
   return "$rc"
 }
 

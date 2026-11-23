@@ -10,6 +10,7 @@
 #   decision answer <team> d-<n> --text "<Operator answer>"
 #     [--outcome continue|close|more-revise|approve|allow|deny]
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
+#   decision relay <team> d-<n> --text "<team> d-<n> <reply>"   (the Supervisor, main checkout)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
 # open writes the file (status pending), then the escalate verdict with --notify, so the runner
 # notifies the Operator once. answer asks for a human: from a terminal (a TTY, the id typed to
@@ -22,6 +23,13 @@
 # answer_value / answer_map from it; team-answer.sh relays exactly those. A human answer appends
 # `<utc> decision d-<n>` to runs/<run>/operator-touches and one entry to the project's touch log
 # (`touches.sh add`, .agents/reference/operator-touches.md).
+# relay: the Operator typed `<team> d-<n> <reply>` in the Supervisor window; the Supervisor passes
+# that exact message. It must be the newest such message in the Supervisor's own transcript (typed,
+# no machine or [peer] line, after the decision opened and never before the run started); the
+# answer is recorded as answer would (answered_via: supervisor-window <uuid>, relayed_by,
+# relayed_session), pinned once in <main>/.agents/team/relays/<team>-<run>-d-<n>.json, and the lead
+# is rung to apply it. A run whose lead prompt predates the relay is refused (answer in its window).
+# Every decision write takes the run's ask lock (team-ask.sh ask_lock), as the runner's do.
 
 dfm() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p" | head -n 1; }
 dfm_set() {  # dfm_set <file> <key> <value> — replace or add one frontmatter key, atomically
@@ -52,8 +60,9 @@ d_touch_reason() {  # d_touch_reason <file> — its touch_reason, derived for a 
   [ -n "$r" ] || r="$(d_reason_default "$(dfm "$1" bind_ask)" "$(dfm "$1" gate)" "$(dfm "$1" notify)")"
   echo "$r"
 }
-# d_touch_log <file> <d-n> <ask> <ask kind> <outcome> <answer value> <reply rest> <text> — the
-# answered decision as one entry of the project's touch log; a failure warns, the answer stands.
+# d_touch_log <file> <d-n> <ask> <ask kind> <outcome> <answer value> <reply rest> <text>
+# [<relay session>] — the answered decision as one entry of the project's touch log (a relayed one
+# names the Supervisor and its session); a failure warns, the answer stands.
 d_touch_log() {
   local f="$1" kind=decision ans c a ws="" stage
   if [ -n "$3" ]; then kind="${4:-decision}"; elif [ "$(dfm "$f" gate)" = plan ]; then kind=plan; fi
@@ -68,8 +77,45 @@ d_touch_log() {
   bash "$LIB/touches.sh" add --main "$MAIN" \
     --where "team $(jq -r .team "$TD/team.json") / $(jq -r .ticket "$TD/team.json") / $stage" \
     --kind "$kind" --reason "$(d_touch_reason "$f")" --what "$(sed -n '/^## Question$/{n;p;q;}' "$f")" \
-    --answer "$ans" ${ws:+--wait-s "$ws"} >/dev/null 2>&1 || echo "warn: touch not recorded ($2)" >&2
+    --answer "$ans" ${ws:+--wait-s "$ws"} ${9:+--relayed-by Supervisor --relayed-session "$9"} \
+    >/dev/null 2>&1 || echo "warn: touch not recorded ($2)" >&2
 }
+
+# d_record <file> <d-n> <how> <outcome> <answer value> <answer map> <text> [<answered session>]
+# [<relay session>] — publish the answered decision in one rename: the question part kept, every
+# status/answered_*/answer_*/relayed_* key and any ## Answer body rewritten from the arguments, so
+# `status: answered` never appears without its fields. The caller holds the ask lock.
+d_record() {
+  local tmp="$DD/.$2.md.rec.$$"
+  R_HOW="$3" R_OUT="$4" R_VAL="$5" R_MAP="$6" R_TXT="$7" R_ES="${8:-}" R_RS="${9:-}" R_AT="$(team_utc)" awk '
+    function e(k, v) { if (v != "") print k ": " v }
+    /^---$/ && fm < 2 { fm++
+      if (fm == 2) { print "status: answered"; e("answered_at", ENVIRON["R_AT"]); e("answered_via", ENVIRON["R_HOW"])
+        e("answered_session", ENVIRON["R_ES"]); e("answer_outcome", ENVIRON["R_OUT"])
+        e("answer_value", ENVIRON["R_VAL"]); e("answer_map", ENVIRON["R_MAP"])
+        if (ENVIRON["R_RS"] != "") { print "relayed_by: Supervisor"; e("relayed_session", ENVIRON["R_RS"]) } }
+      print; next }
+    fm == 1 && /^(status|answered_[a-z_]*|answer_[a-z_]*|relayed_[a-z_]*):/ { next }
+    fm == 2 && /^## Answer$/ { skip = 1; next }
+    skip && /^## / { skip = 0 }
+    skip { next }
+    { print }
+    END { printf "\n## Answer\n%s\n", ENVIRON["R_TXT"] }' "$1" > "$tmp" && mv "$tmp" "$1" \
+    || { rm -f "$tmp"; return 1; }
+}
+
+# d_record_post <file> <d-n> <ask> <ask kind> <outcome> <answer value> <text> [<relay session>] —
+# after the lock: the Operator touch, the touch-log entry, the notification resolved.
+d_record_post() {
+  echo "$(team_utc) decision $2" >> "$TD/runs/$RUN/operator-touches"
+  d_touch_log "$1" "$2" "$3" "$4" "$5" "$6" "${rest:-}" "$7" "${8:-}"
+  d_resolve "$1"
+}
+
+# d_lock — the run's ask lock (one lock for its asks and decisions); exit 4 when it cannot be taken.
+d_lock() { ask_init "$TD" && ask_lock || d_bad 4 "cannot take the ask lock of run $RUN"; }
+# d_ask_state <a-n> — ask_state for a caller holding the lock (ask_state takes it, not reentrant).
+d_ask_state() { [ ! -f "$ASK_D/$1.json" ] || ask_reconcile "$1"; ask_get "$1" state; }
 d_file() {  # d_file <d-n> → path, or exit 2/4
   [[ "$1" =~ ^d-[0-9]+$ ]] || d_bad 2 "decision id must be d-<n>"
   [ -f "$DD/$1.md" ] || d_bad 4 "no decision $1 in runs/$RUN/decisions/"
@@ -129,6 +175,12 @@ decision_open() {
     ask_valid_id "$ask" && [ -f "$ASK_D/$ask.json" ] || d_bad 4 "no ask $ask in runs/$RUN/asks/"
     case "$(ask_state "$ask")" in waiting|timed-out) ;;
       *) d_bad 4 "ask $ask is $(ask_get "$ask" state), not open" ;; esac
+    # An answer stored for this ask (a relay whose ring was lost) is applied, never asked again.
+    for v in "$DD"/d-*.md; do
+      if [ -f "$v" ] && [ "$(dfm "$v" bind_ask)" = "$ask" ] && [ "$(dfm "$v" status)" = answered ]; then
+        d_bad 4 "$(dfm "$v" id) already answers ask $ask — relay it"
+      fi
+    done
     src="asks/$ask.json"; kind="$(ask_get "$ask" kind)"
     [ -n "$q" ] || q="$(ask_get "$ask" role): $(ask_one_line "$ask")"
     bind="bind_ask: $ask
@@ -265,19 +317,134 @@ decision_answer() {
     # "<session> <uuid>[ legacy]": a legacy pair came from teamlead.json, so no answered_session.
     set -- $ev; esid="$1"; how="teamlead-window $2"; [ "${3:-}" != legacy ] || esid=""
   fi
-  dfm_set "$f" status answered; dfm_set "$f" answered_at "$(team_utc)"; dfm_set "$f" answered_via "$how"
-  [ -z "${esid:-}" ] || dfm_set "$f" answered_session "$esid"
-  [ -z "$outcome" ] || dfm_set "$f" answer_outcome "$outcome"
+  # The confirmation and the evidence ran outside the lock; the state is re-checked under it.
+  d_lock
+  [ "$(dfm "$f" status)" = pending ] || { ask_unlock; d_bad 4 "$id is $(dfm "$f" status), not pending — nothing applied"; }
   if [ -n "$ask" ]; then
-    [ -z "$aval" ] || dfm_set "$f" answer_value "$aval"
-    [ -z "$amap" ] || dfm_set "$f" answer_map "$amap"
+    case "$(d_ask_state "$ask")" in waiting|timed-out) ;;
+      *) ask_unlock; d_bad 4 "ask $ask is $(ask_get "$ask" state), not open — nothing applied" ;; esac
   fi
-  echo "$(team_utc) decision $id" >> "$TD/runs/$RUN/operator-touches"
-  d_touch_log "$f" "$id" "$ask" "${kind:-}" "$outcome" "$aval" "${rest:-}" "$text"
-  printf '\n## Answer\n%s\n' "$text" >> "$f"
+  d_record "$f" "$id" "$how" "$outcome" "$aval" "$amap" "$text" "${esid:-}" \
+    || { ask_unlock; d_bad 1 "$id could not be written"; }
+  ask_unlock
+  d_record_post "$f" "$id" "$ask" "${kind:-}" "$outcome" "$aval" "$text"
   [ -z "$tuning" ] || notes_tune "$id" "$tuning" "$why"
-  d_resolve "$f"
   echo "answered: $id${outcome:+ ($outcome)} via ${how%% *}"
+}
+
+# d_ledger_names <ledger> <team> <d-n> <ask> [<uuid>] — the relay ledger pins this decision (and uuid)
+d_ledger_names() {
+  jq -e --arg t "$2" --arg r "$RUN" --arg d "$3" --arg a "$4" --arg u "${5:-}" \
+    '.team == $t and .run == $r and .decision == $d and .ask == $a and ($u == "" or .uuid == $u)' \
+    "$1" >/dev/null 2>&1
+}
+d_relay_ring() {
+  team_session_doorbell "$TD" lead "relayed: $1 — the Operator answered through the Supervisor; apply it"
+}
+
+decision_relay() {
+  local id="${1:-}" text f team re reply rest="" ask kind lf rd u pl sid cwd cfg tx floor rf sel uuid
+  local p outcome="" aval="" amap="" w tmp x
+  [ -n "$id" ] || usage; shift
+  [ $# -eq 2 ] && [ "$1" = --text ] || usage; text="$2"
+  [ "${TEAM_SESSION_ROLE:-}" = Supervisor ] && [ ! -f "$(team_root)/.agents/team/team.json" ] \
+    || d_bad 3 "decision relay is the Supervisor's, from the main checkout"
+  one_line "$text" || d_bad 2 "decision relay needs a one-line --text"
+  text="$(jq -rn --arg m "$text" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')"
+  one_line "$text" || d_bad 2 "decision relay needs a one-line --text"
+  f="$(d_file "$id")"
+  team="$(jq -r .team "$TD/team.json")"
+  re="^${team}[[:space:]]+${id}([[:space:]]|\$)"
+  [[ "$text" =~ $re ]] || d_bad 7 "reply must start with \"$team $id \""
+  reply="${text#"$team"}"; reply="${reply#"${reply%%[![:space:]]*}"}"
+  rest="${reply#"$id"}"; rest="${rest#"${rest%%[![:space:]]*}"}"
+  # Every ask read and the lock use the run this team is on, never another session's.
+  ask_init "$TD" && [ "$ASK_RUN" = "$RUN" ] || d_bad 4 "team $team's session is not on run $RUN"
+  ask="$(dfm "$f" bind_ask)"; kind="$(dfm "$f" ask_kind)"
+  lf="$MAIN/.agents/team/relays/$team-$RUN-$id.json"
+  # A committed relay retried (a lost ring, an interrupted bookkeeping step): no transcript read.
+  u="$(dfm "$f" answered_via)"
+  if [ "$(dfm "$f" status)" = answered ] && [ "${u%% *}" = supervisor-window ] \
+      && d_ledger_names "$lf" "$team" "$id" "$ask" "${u#supervisor-window }"; then
+    pl="$(jq -r .reply "$lf")"
+    [ "$text" = "$pl" ] || d_bad 4 "$id is already answered with \"$pl\" — a new answer needs a new decision"
+    if ! grep -q " decision $id\$" "$TD/runs/$RUN/operator-touches" 2>/dev/null; then
+      echo "$(team_utc) decision $id" >> "$TD/runs/$RUN/operator-touches"
+      d_touch_log "$f" "$id" "$ask" "$kind" "$(dfm "$f" answer_outcome)" "$(dfm "$f" answer_value)" "$rest" \
+        "$text" "$(dfm "$f" relayed_session)"
+    fi
+    d_resolve "$f"; d_relay_ring "$id"
+    x="$(dfm "$f" answer_outcome)"; echo "answered: $id${x:+ ($x)} via supervisor-window"; return 0
+  fi
+  # The lead applies the stored answer by its prompt; a lead launched before the relay has no rule.
+  rd="$TD/runs/$RUN"
+  pl="$(ls "$rd" 2>/dev/null | sed -n 's/^lead-\([0-9]*\)\.prompt\.md$/\1/p' | sort -n | tail -n 1 || true)"
+  [ -n "$pl" ] && grep -q 'Relayed by the Supervisor' "$rd/lead-$pl.prompt.md" 2>/dev/null \
+    || d_bad 4 "team $team's TeamLead was launched before the Supervisor relay existed — the Operator answers in its window ($team-lead, \"$id …\"), or relaunch it first: bash .claude/lib/team-lead.sh relaunch $team"
+  # The Supervisor's own transcript: the registry's session, the declared Claude profile (never the
+  # caller's environment).
+  sid="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"
+  cwd="$(jq -r '.cwd // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"; cwd="${cwd:-$MAIN}"
+  cfg="$(team_supervisor_home "$MAIN")" || cfg=""
+  tx="$cfg/projects/$(team_project_slug "$cwd")/$sid.jsonl"
+  [ -n "$sid" ] && [ -n "$cfg" ] && [ -f "$tx" ] \
+    || d_bad 7 "no Supervisor session recorded — answer from a terminal or in the TeamLead window"
+  x="$(team_anchor_team "$MAIN" "${TD%/.agents/team}")" && [ "$x" = "$team"$'\t'"$RUN" ] \
+    || d_bad 4 "team $team is not on run $RUN"
+  floor="$(dfm "$f" created_at)"; rf="$(team_run_floor "$RUN")"
+  [[ ! "$rf" > "$floor" ]] || floor="$rf"
+  . "$LIB/team-evidence.sh" || d_bad 7 "no evidence matcher (team-evidence.sh)"
+  # The reply's meaning: the ask's parser for a bound decision, else a control word or plain text.
+  if [ -n "$ask" ]; then
+    if ! p="$(ask_parse_reply "$ask" "$id" "$reply")"; then
+      case "$kind" in
+        permission|plan) d_bad 7 "reply must read $team $id allow|deny" ;;
+        *) d_bad 7 "reply must read $team $id $(if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then d_reply_shape "$ask"; else echo '<answer>'; fi)" ;;
+      esac
+    fi
+    outcome="$(jq -r .outcome <<<"$p")"; aval="$(jq -r .value <<<"$p")"; amap="$(jq -c '.map // empty' <<<"$p")"
+  else
+    w="${rest%%[[:space:]]*}"; w="${w%:}"
+    case "$w" in continue|close|more-revise|approve) outcome="$w" ;; esac
+  fi
+  d_lock
+  if [ "$(dfm "$f" status)" = withdrawn ]; then
+    notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"
+  fi
+  [ "$(dfm "$f" status)" = pending ] || { ask_unlock; d_bad 4 "$id is $(dfm "$f" status), not pending — nothing applied"; }
+  if [ -n "$ask" ]; then
+    case "$(d_ask_state "$ask")" in waiting|timed-out) ;;
+      *) ask_unlock; d_bad 4 "ask $ask is $(ask_get "$ask" state), not open — nothing applied" ;; esac
+  fi
+  # Selected under the lock: a correction typed while the relay waited wins.
+  sel="$(team_evidence_latest "$tx" "$team" "$id" "$floor" || true)"
+  uuid="$(cut -f1 <<<"$sel")"
+  [ -n "$sel" ] && [ "$(cut -f2- <<<"$sel")" = "$text" ] \
+    || { ask_unlock; d_bad 7 "the newest Supervisor-window reply to $team $id is not this text"; }
+  for x in "$MAIN"/.agents/team/relays/*.json; do
+    [ -f "$x" ] && [ "$x" != "$lf" ] || continue
+    ! jq -e --arg u "$uuid" '.uuid == $u' "$x" >/dev/null 2>&1 \
+      || { ask_unlock; d_bad 7 "that Supervisor message already answered another decision ($(basename "$x" .json))"; }
+  done
+  if [ -e "$lf" ]; then
+    # An interrupted attempt is completed only with its own pinned values.
+    d_ledger_names "$lf" "$team" "$id" "$ask" "$uuid" && [ "$(jq -r .reply "$lf")" = "$text" ] \
+      || { ask_unlock; d_bad 4 "relay ledger already holds $id ($(jq -r '.ask // ""' "$lf"), $(jq -r '.uuid // ""' "$lf")) — a different answer needs a new decision"; }
+  else
+    mkdir -p "$(dirname "$lf")"; tmp="$lf.tmp.$$"
+    jq -n --arg t "$team" --arg r "$RUN" --arg d "$id" --arg a "$ask" --arg s "$sid" --arg c "$cwd" \
+      --arg cf "$cfg" --arg u "$uuid" --arg p "$text" --arg fl "$floor" --arg at "$(team_utc)" \
+      '{team: $t, run: $r, decision: $d, ask: $a, session_id: $s, cwd: $c, config_dir: $cf, uuid: $u,
+        reply: $p, created_at: $fl, relayed_at: $at}' > "$tmp" && ln "$tmp" "$lf" 2>/dev/null
+    x=$?; rm -f "$tmp"
+    [ "$x" = 0 ] || { ask_unlock; d_bad 4 "relay ledger $lf could not be written once"; }
+  fi
+  d_record "$f" "$id" "supervisor-window $uuid" "$outcome" "$aval" "$amap" "$text" "" "$sid" \
+    || { ask_unlock; d_bad 1 "$id could not be written"; }
+  ask_unlock
+  d_record_post "$f" "$id" "$ask" "$kind" "$outcome" "$aval" "$text" "$sid"
+  d_relay_ring "$id"
+  echo "answered: $id${outcome:+ ($outcome)} via supervisor-window"
 }
 
 decision_withdraw() {
@@ -286,9 +453,11 @@ decision_withdraw() {
   [ $# -eq 2 ] && [ "$1" = --why ] && one_line "$2" || usage; why="$2"
   team_lead_caller || d_bad 3 "only this run's TeamLead withdraws decisions"
   f="$(d_file "$id")"
-  [ "$(dfm "$f" status)" = pending ] || d_bad 4 "$id is $(dfm "$f" status), not pending"
+  d_lock
+  [ "$(dfm "$f" status)" = pending ] || { ask_unlock; d_bad 4 "$id is $(dfm "$f" status), not pending"; }
   dfm_set "$f" status withdrawn; dfm_set "$f" withdrawn_at "$(team_utc)"
   printf '\n## Withdrawn\n%s\n' "$why" >> "$f"
+  ask_unlock
   d_resolve "$f"
   echo "withdrawn: $id"
 }
@@ -310,7 +479,7 @@ decision_main() {  # decision_main <op> <team> …
   [ -n "$RUN" ] || d_bad 4 "no current run"
   DD="$TD/runs/$RUN/decisions"
   case "$op" in
-    open) decision_open "$@" ;; answer) decision_answer "$@" ;;
+    open) decision_open "$@" ;; answer) decision_answer "$@" ;; relay) decision_relay "$@" ;;
     withdraw) decision_withdraw "$@" ;; list) decision_list "$@" ;; *) usage ;;
   esac
 }

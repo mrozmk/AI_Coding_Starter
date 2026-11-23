@@ -273,6 +273,10 @@ the inbox file; the line only wakes the session.
    - **Plain terminal:** skip and log.
 4. Every skip logs `doorbell-skipped <utc> <why> — <line>` in the per-target log (§6). The per-run
    TeamLead's own doorbell (`team_session_doorbell`) follows the same three steps and log line.
+5. **Evidence windows are marked.** A line `send` or `type` delivers to the Supervisor or a
+   `<team>-lead` session — by canonical address, explicit registration or final target — that is
+   not a machine line (`team-evidence.sh`) gets the prefix `[peer] `, so it never counts as the
+   Operator's typed words (team-lead.md §7, "Limit of the human binding").
 
 ## 13. `/roles`, restore, and what is not restored
 
