@@ -67,7 +67,10 @@ out_is herdr-app "(H19) a Linux hc pairs with herdr-app"
 # (0) auto with only the Windows CLI on PATH (the ticket's failure): herdr, for role sessions only.
 # The narrowed PATH keeps a machine's own hc out (the fixture rule would refuse it: auto would read tmux).
 mv "$WORK/bin/hc" "$WORK/bin/hc.linux"; prof '.teams.session_host = "auto"'
-NP="$WORK/bin:/usr/bin:/bin"
+# The driver's own tools come along by link (jq may live only under Homebrew); their directory never
+# joins PATH, since it may hold a native hc too.
+mkdir -p "$WORK/np"; ln -sf "$(command -v jq)" "$WORK/np/jq"; ln -sf "$(command -v perl)" "$WORK/np/perl"
+NP="$WORK/bin:$WORK/np:/usr/bin:/bin"
 run "$MAIN" env -u HC_BIN -u TEAM_SESSION_HOST TEAM_SMOKE_AUTO_HERDR=1 WSL_DISTRO_NAME=Dx PATH="$NP" $SH --check-host
 expect 0 "" "(H19) auto picks herdr for windows"; out_is herdr "(H19) auto picks herdr for windows"
 run "$MAIN" env -u HC_BIN -u TEAM_SESSION_HOST TEAM_SMOKE_AUTO_HERDR=1 WSL_DISTRO_NAME=Dx PATH="$NP" \
