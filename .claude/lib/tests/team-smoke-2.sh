@@ -7,6 +7,7 @@ smoke_init
 smoke_team AB-792 feature/AB-792-next
 
 # ---- retry after a failed /start-team roles override ---------------------------------------------
+case_mark "retry after a failed /start-team roles o"
 cp "$TD/team.json" "$WORK/retry-team.json"
 RETRY_HEAD="$(git -C "$CLONE" rev-parse HEAD)"
 run "$MAIN" $TR alfa roles planner=claude-fable-5-1/high
@@ -53,6 +54,7 @@ expect 0 "roles override cleared" "retry fixture clears override"
 commit_file wip.txt wip
 
 # ---- (14) wrapup role ----------------------------------------------------------------------------
+case_mark "(14) wrapup role"
 BR="$(jq -r .branch "$TD/team.json")"
 RUN_ID=alfa-20261004-000000; echo "$RUN_ID" > "$TD/run"; mkdir -p "$TD/runs/$RUN_ID"
 RD="$TD/runs/$RUN_ID"
@@ -99,6 +101,7 @@ expect 0 "valid:" "wrapup with nothing to save"
 rm -f "$RD"/wrapup-1-*.json "$TD/session.json"
 
 # ---- (15) team-merge-check with wrapup -----------------------------------------------------------
+case_mark "(15) team-merge-check with wrapup"
 MC="bash .claude/lib/team-merge-check.sh"
 run "$MAIN" $MC alfa
 expect 3 "wrapup not done" "merge-check before wrapup"
@@ -173,6 +176,7 @@ rm -f "$RD/teamlead-wrapup-1.json"
 unset MERGE_SHA; rm -f "$RD"/wrapup-1-1.json*; point "$Q"
 
 # ---- (16) hook, notes, unlock, static checks -----------------------------------------------------
+case_mark "(16) hook, notes, unlock, static checks"
 session wrapup 1 "$Q"
 hook "$CLONE" '{"tool_input":{"file_path":".agents/memory/errors.md"}}'
 expect 0 "" "guard lets wrapup write memory"
@@ -203,6 +207,7 @@ bad="$(grep -o '{{[A-Z_]*}}' "$SRC/.claude/team/prompts/wrapup.md" | sort -u \
   || fail "unquoted tmux -t =NAME in docs"
 
 # ---- (17) snapshot: skill trail, sub-agent runs, role transcript, resume hint ---------------------
+case_mark "(17) snapshot: skill trail, sub-agent ru"
 CL2="$WORK/claude2"; mkdir -p "$CL2/s2/subagents" "$MAIN/.claude/agents"
 cp "$SRC/.claude/agents/correctness-reviewer.md" "$MAIN/.claude/agents/"
 skill_line() {  # skill_line <ts> <skill>
@@ -281,6 +286,9 @@ snap "fresh finishes beat the cap" '
   and (.subagents | map(select(.status != "done")) | length) == 7
   and any(.errors[]; . == "subagents: 2 older finished hidden")'
 for n in $(seq 1 14); do rm -f "$CL2/s2/subagents/agent-finished-$n.jsonl"; done
+# No snap below reads .subagents: point the dashboard at a small sibling (same parent as $CL2, where
+# the snapshot looks for the clone's transcripts), so each snap parses one transcript, not ten.
+CL2S="$WORK/claude2s"; mkdir -p "$CL2S"; cp "$CL2/s2.jsonl" "$CL2S/"; export TEAM_DASH_PROJECT_DIR="$CL2S"
 
 # The clone's transcripts live beside the supervisor's project dir, named after the clone path.
 WR='(.teams[0].roles[] | select(.role == "wrapup")'
@@ -305,6 +313,7 @@ STUB_TMUX_ALIVE=1 snap "resume hint" '.teams[0].resume_hint == "/start-team alfa
 rm -f "$RD/coder-1-1.json"; unset TEAM_DASH_PROJECT_DIR TEAM_DASH_SESSION
 
 # ---- (18) per-ticket roles override -------------------------------------------------------------
+case_mark "(18) per-ticket roles override"
 OV="$TD/roles.override.json"
 RUN_ID=alfa-20261005-000000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 rm -f "$TD/session.json"; rm -rf "$TD/lock" "$TD/acked"
@@ -382,6 +391,7 @@ for effort in low medium high xhigh max; do
     || fail "launch dropped valid effort $effort"
 done
 # ---- (18b) permission mode: override grammar, launch line, auto preflight ------------
+case_mark "(18b) permission mode: override grammar"
 cp "$OV" "$WORK/effort-ov.bak"; rm -f "$OV"
 run "$MAIN" $TR alfa roles coder=//manual
 expect 0 'roles override: {"coder":{"permission":"manual"}}' "roles writes a permission"

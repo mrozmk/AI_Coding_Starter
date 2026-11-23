@@ -439,8 +439,11 @@ NOTIFY_LOCK_WAIT=1 rel b1 "busy one"; expect 0 "written acme:release:b1 (deliver
 NOTIFY_LOCK_WAIT=1 rel b1 "busy one"; expect 0 "duplicate acme:release:b1 (delivery deferred: outbox busy)" "(l) a deferred duplicate"
 nt flush; expect 1 "the outbox lock is held by pid $HOLDER" "(l) flush without the lock"
 # --check is read-only on a busy outbox: no wait, exit 0, prune skipped, the holder's lock untouched.
-t0=$SECONDS; nt --check; expect 0 " events (prune skipped: outbox busy)" "(l) --check while the lock is held"
-[ $((SECONDS - t0)) -lt 2 ] || fail "(l) --check waited $((SECONDS - t0)) s for the lock"
+# "No wait" as an attempt count, not a clock: a mkdir spy logs every failed try of the outbox lock;
+# exactly one means --check never retried the held lock (notify.sh lock_try 0).
+mkdir_spy '*.flush.lock'
+PATH="$WORK/spy:$PATH" nt --check; expect 0 " events (prune skipped: outbox busy)" "(l) --check while the lock is held"
+[ "$(wc -l < "$WORK/spy.log" | tr -d ' ')" = 1 ] || fail "(l) --check tried the held lock $(wc -l < "$WORK/spy.log" | tr -d ' ') times, expected once"
 has "imessage on, recipient set" "$WORK/out" || fail "(l) --check lost the switch lines on a busy outbox"
 [ "$(cat "$OB/.flush.lock/pid" 2>/dev/null)" = "$HOLDER" ] || fail "(l) --check touched the held lock"
 kill "$HOLDER"; wait "$HOLDER" 2>/dev/null || true; trap "$KEEP_TRAP" EXIT

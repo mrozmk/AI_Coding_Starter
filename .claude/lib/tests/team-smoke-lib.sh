@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Shared offline fixtures; each suite part owns its workspace and EXIT cleanup.
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+. "$HERE/suite-case-time.sh"
 SRC=$(cd "$HERE/../../.." && pwd)
 FIX="$SRC/.claude/lib/tests/fixtures/prompts"
 
@@ -119,7 +120,7 @@ smoke_init() {
   mkdir -p "$HOME/.codex-acmeshop"
   export TEAM_POLL_SECS=0 TEAM_ADO_WAIT_SECS=0 TEAM_ADO_POLL_SECS=1
   export TEAM_EXIT_WAIT_SECS=0 TEAM_STOP_WAIT_SECS=1
-  export TEAM_CONFIRM_SECS=0 TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
+  export TEAM_SEND_LOCK_WAIT=1 TEAM_SEND_LOCK_WAIT_SENDER=0
   export TEAM_GATE_LOCK_POLL=0.1
   # No per-run TeamLead in a fixture unless the part unsets TEAM_SMOKE_NO_LEAD (the lead parts).
   export TEAM_SMOKE=1 TEAM_SMOKE_NO_LEAD=1
@@ -227,7 +228,8 @@ STUB
 echo "az $*" >> "$STUB_LOG"
 case "$*" in
   "account show"*) echo '{}' ;;
-  "repos pr show"*) [ -z "${STUB_AZ_SLEEP:-}" ] || sleep "$STUB_AZ_SLEEP"
+  "repos pr show"*) [ -z "${STUB_AZ_PIDFILE:-}" ] || echo $$ > "$STUB_AZ_PIDFILE"
+    [ -z "${STUB_AZ_SLEEP:-}" ] || sleep "$STUB_AZ_SLEEP"
     [ -z "${STUB_TOUCH:-}" ] || touch "$STUB_TOUCH"; cat "$STUB_PR" ;;
   *) exit 1 ;;
 esac
@@ -643,6 +645,13 @@ smoke_repos() {
   SEED="$WORK/seed"
   mkdir -p "$SEED/.claude/lib" "$SEED/.claude/hooks" "$SEED/.claude/team/prompts"
   cp "$SRC"/.claude/lib/team-*.sh "$SRC"/.claude/lib/session-host*.sh "$SRC"/.claude/lib/roles-lib.sh "$SEED/.claude/lib/"
+  # Every runner exit paid a python3 audit (team-run.sh on_exit), and only team-audit-test.sh asserts
+  # it: the fixture gets a no-op unless that suite asks for the real one.
+  if [ "${SMOKE_REAL_AUDIT:-}" != 1 ]; then
+    printf '%s\n' '#!/usr/bin/env bash' \
+      '# fixture: the runner-exit audit is a no-op here; team-audit-test.sh keeps the real one' \
+      'exit 0' > "$SEED/.claude/lib/team-audit.sh"
+  fi
   cp "$SRC/.claude/lib/team_prompt_check.py" "$SRC/.claude/lib/team_prompt.py" \
     "$SRC/.claude/lib/team_prompt_classes.py" "$SRC/.claude/lib/team_prompt_settings.py" \
     "$SRC/.claude/lib/team_transcript.py" "$SRC/.claude/lib/team_settings_diff.py" \
@@ -708,6 +717,39 @@ smoke_repos() {
   [ -f "$MAIN/.claude/team/prompts/qa.md" ] || fail "fixture: prompts missing"
   NEW="bash .claude/lib/team-new.sh"
 
+}
+
+# smoke_cancel_hook — writes $WORK/cancel-check.sh, sourced by a part's has-session hook after its
+# call counter `n`: the first cause wins ($TD/cancel already there → nothing more, so the shutdown's
+# own liveness probes never overwrite it); CANCEL_ON (a fixed string the runner printed to $WORK/out)
+# stops the runner on that event, CANCEL_AT (a call count) is the safety cap. $WORK/cancel.why says
+# which: `event` or `cap`. `run` truncates $WORK/out per call, so an earlier run's text never matches.
+smoke_cancel_hook() {
+  cat > "$WORK/cancel-check.sh" <<'CC'
+if [ ! -e "$TD/cancel" ]; then
+  if [ -n "${CANCEL_ON:-}" ] && grep -qF -- "$CANCEL_ON" "$WORK/out" 2>/dev/null; then
+    echo event > "$WORK/cancel.why"; touch "$TD/cancel"
+  elif [ -n "${CANCEL_AT:-}" ] && [ "$n" -ge "$CANCEL_AT" ]; then
+    echo cap > "$WORK/cancel.why"; touch "$TD/cancel"
+  fi
+fi
+CC
+}
+cancelled_by_event() {  # cancelled_by_event <label> — the runner stopped on CANCEL_ON, not on the cap
+  [ "$(cat "$WORK/cancel.why" 2>/dev/null)" = event ] \
+    || fail "$1: the runner was not stopped by its event '${CANCEL_ON:-}' ($(cat "$WORK/cancel.why" 2>/dev/null || echo none))"
+}
+on_event() { export CANCEL_ON="$1" CANCEL_AT=60; }  # on_event <line> — stop the runner on that line
+
+# mkdir_spy <path glob> — writes $WORK/spy/mkdir (put "$WORK/spy" first on PATH) and empties
+# $WORK/spy.log: a failed mkdir of a path matching the glob appends its caller's pid ($PPID). Lock
+# attempts as a count, never a clock: one line per failed try of the held lock.
+mkdir_spy() {
+  mkdir -p "$WORK/spy"; : > "$WORK/spy.log"
+  printf '%s\n' '#!/usr/bin/env bash' '/bin/mkdir "$@"; rc=$?' \
+    "[ \"\$rc\" = 0 ] || case \"\${!#}\" in $1) echo \"\$PPID\" >> '$WORK/spy.log' ;; esac" \
+    'exit "$rc"' > "$WORK/spy/mkdir"
+  chmod +x "$WORK/spy/mkdir"
 }
 
 smoke_team() {  # smoke_team <ticket> <branch>; build a fresh team via the real producer.

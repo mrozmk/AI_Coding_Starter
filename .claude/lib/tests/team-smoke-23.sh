@@ -36,18 +36,19 @@ git -C "$CLONE" push --quiet origin "$BR"
 [ -z "$(git -C "$CLONE" status --porcelain)" ] || fail "fixture clone not clean"
 pr_json false "$C1"; pr_set --arg b "refs/heads/$BR" '.sourceRefName = $b'
 
+smoke_cancel_hook
 cat > "$WORK/hs.sh" <<'HS'
 n=$(( $(cat "$WORK/hs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$WORK/hs.n"
 s="${3#=}"; s="${s#smk-}"   # alive lists and cases name addresses; tmux names carry smk-
-[ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
+. "$WORK/cancel-check.sh"
 ! grep -q -- "kill-session -t =smk-$s\$" "$STUB_LOG" || exit 1
 grep -qx -- "$s" "$WORK/alive" 2>/dev/null && exit 0
 exit 1
 HS
 export STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" STUB_PANE="$FIX/idle.txt"
 greset() {  # greset <alive sessions...> — a runner start: lock, cancel, logs cleared
-  rm -rf "$TD/lock" "$TD/cancel" "$WORK/hs.n"; : > "$STUB_LOG"; printf '%s\n' "$@" > "$WORK/alive"
-  export CANCEL_AT=12
+  rm -rf "$TD/lock" "$TD/cancel" "$WORK/hs.n" "$WORK/cancel.why"; : > "$STUB_LOG"; printf '%s\n' "$@" > "$WORK/alive"
+  unset CANCEL_ON; export CANCEL_AT=12
 }
 TR="bash .claude/lib/team-run.sh"
 V() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-verdict.sh "$@"; }
@@ -87,6 +88,7 @@ unset TEAM_SMOKE_NO_LEAD
 setup_run alfa-20261115-100000
 
 # ---- (a) qa done with the lead on: validated, the acceptance gate rung, no wrapup yet -------------
+case_mark "(a) qa done with the lead on: validated"
 greset alfa-lead alfa-qa
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate acceptance qa-1-1.json" "(a) runner"
 ! has "-s smk-alfa-wrapup" "$STUB_LOG" || fail "(a) the wrapup launched before a verdict"
@@ -96,8 +98,10 @@ grep -qsF "gate acceptance: .agents/team/runs/$RUN_ID/qa-1-1.json" "$STUB_LOG" "
 echo "team-smoke-23: (a) acceptance gate OK"
 
 # ---- (b) accept needs the blind check first, then a complete brief -------------------------------
+case_mark "(b) accept needs the blind check first"
 V acceptance accept --for qa-1-1.json --message ok; expect 8 "blind-check.md missing" "(b) no blind check"
-brief; sleep 1; echo "- export button → src/export.txt" > "$RD/blind-check.md"
+brief; touch -t "$(date -v-10S +%Y%m%d%H%M.%S)" "$RD/acceptance-brief.md"   # strictly older (-ot)
+echo "- export button → src/export.txt" > "$RD/blind-check.md"
 V acceptance accept --for qa-1-1.json --message ok; expect 8 "older than blind-check.md" "(b) brief before the blind check"
 brief; sed -i.bak '/^## Fit risks$/d' "$RD/acceptance-brief.md"
 V acceptance accept --for qa-1-1.json --message ok; expect 8 "lacks the heading '## Fit risks'" "(b) missing heading"
@@ -106,6 +110,7 @@ V acceptance remode --for qa-1-1.json --message x; expect 4 "not allowed at the 
 echo "team-smoke-23: (b) blind check + brief OK"
 
 # ---- (c) ready-with-warnings: one decision line per warning ---------------------------------------
+case_mark "(c) ready-with-warnings: one decision li"
 sed -i.bak 's/^Verdict: ready$/Verdict: ready-with-warnings/; s/^Warnings: none$/Warnings: flaky e2e, slow build/' "$RD/qa-report-1.md"
 brief "- flaky e2e → follow-up — tracked as a test-infra ticket"
 V acceptance accept --for qa-1-1.json --message ok; expect 8 "no '- slow build → keep|fix|follow-up" "(c) a warning without a decision"
@@ -118,7 +123,9 @@ V acceptance accept --for qa-1-1.json --message "covers the order"; expect 0 "te
 echo "team-smoke-23: (c) warnings OK"
 
 # ---- (d) accept → qa accepted, wrapup launched; after the wrapup one accepted event and ready ------
+case_mark "(d) accept → qa accepted, wrapup launc"
 greset alfa-lead alfa-qa; export CANCEL_AT=40
+# count kept: (d) asserts no accepted event while wrapup is unfinished — a later poll must have the chance to emit it
 run "$MAIN" $TR alfa
 [ -e "$RD/qa-1-1.json.accepted" ] || fail "(d) qa record not accepted (exit $RC)"
 has "launched: wrapup attempt 1" "$WORK/out" || fail "(d) the wrapup did not launch"
@@ -132,12 +139,14 @@ grep -q "^ref: runs/$RUN_ID/acceptance-brief.md" "$(grep -l '^event: accepted' "
 echo "team-smoke-23: (d) accept → wrapup → ready OK"
 
 # ---- (e) a resume after ready sends no second accepted ---------------------------------------------
+case_mark "(e) a resume after ready sends no second"
 greset alfa-lead
 run "$MAIN" $TR alfa; expect 0 "ready:" "(e) resume after ready"
 [ "$(grep -l '^event: accepted' "$SUP"/* | wc -l | tr -d ' ')" = 1 ] || fail "(e) a second accepted event"
 echo "team-smoke-23: (e) single accepted OK"
 
 # ---- (f) abandon-recommended goes through an abandon_decision; decision close closes the run -------
+case_mark "(f) abandon-recommended goes through an"
 setup_run alfa-20261115-110000
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "gate acceptance qa-1-1.json" "(f) gate rung"
 V acceptance abandon-recommended --for qa-1-1.json --message x; expect 4 "needs --decision" "(f) bare abandon"
@@ -180,6 +189,7 @@ grep -l '^event: closed' "$SUP"/* | xargs grep -l "run: $RUN_ID" >/dev/null || f
 echo "team-smoke-23: (f) abandon through a decision OK"
 
 # ---- (g) no lead (the fixture seam): ready as without a lead, no inbox file ------------------------
+case_mark "(g) no lead (the fixture seam): ready as"
 setup_run alfa-20261115-120000; touch "$RD/qa-1-1.json.accepted"
 rec_json wrapup "$C1" "$C1" 8371 '[]'; touch "$RD/wrapup-1-1.json.accepted"; rm -f "$TD/session.json"
 N0="$(ls "$SUP" | wc -l | tr -d ' ')"
@@ -188,6 +198,7 @@ greset; TEAM_SMOKE_NO_LEAD=1 run "$MAIN" $TR alfa; expect 0 "ready:" "(g) ready 
 echo "team-smoke-23: (g) no lead OK"
 
 # ---- (h) the acceptance patch holds no line of this run's spec or plan -----------------------------
+case_mark "(h) the acceptance patch holds no line o"
 run "$CLONE" bash .claude/lib/team-lead.sh diff alfa; expect 0 "acceptance-diff.patch" "(h) diff"
 has "src/export.txt" "$RD/acceptance-diff.patch" || fail "(h) the delivery is not in the patch"
 ! grep -q 'Speculative\|Add the export button' "$RD/acceptance-diff.patch" || fail "(h) spec or plan lines in the patch"
@@ -195,6 +206,7 @@ has "src/export.txt" "$RD/acceptance-diff.patch" || fail "(h) the delivery is no
 echo "team-smoke-23: (h) blind patch OK"
 
 # ---- (i) a lead resumed after the qa was accepted: ready, but no accepted event without a verdict
+case_mark "(i) a lead resumed after the qa was acce"
 setup_run alfa-20261115-130000; touch "$RD/qa-1-1.json.accepted"
 rec_json wrapup "$C1" "$C1" 8371 '[]'; touch "$RD/wrapup-1-1.json.accepted"; rm -f "$TD/session.json"
 greset alfa-lead; run "$MAIN" $TR alfa; expect 0 "accepted event skipped: no acceptance accept verdict" "(i) ready"
@@ -204,6 +216,7 @@ has "ready:" "$WORK/out" || fail "(i) not ready"
 echo "team-smoke-23: (i) accepted only after an accept verdict OK"
 
 # ---- (j) decision close is not limited to the acceptance gate: it closes the run at the plan gate -
+case_mark "(j) decision close is not limited to the"
 setup_run alfa-20261115-140000; rm -f "$RD"/coder-* "$RD"/qa-* "$RD"/planner-1-1.json.accepted
 session planner 1 "$BASE"; echo planner-1-1.json > "$TD/acked"
 ldec open alfa --source planner-1-1.json --question "Close AB-1600 at the plan gate?"; expect 0 "[d-1]" "(j) open"
@@ -216,10 +229,11 @@ jq -e '.reason == "abandon"' "$RD/closed.json" >/dev/null || fail "(j) closed.js
 echo "team-smoke-23: (j) close at the plan gate OK"
 
 # ---- rework fixtures: a launched session stays alive until it is killed ------------------------------
+case_mark "rework fixtures: a launched session stay"
 cat > "$WORK/hs2.sh" <<'HS'
 n=$(( $(cat "$WORK/hs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$WORK/hs.n"
 s="${3#=}"
-[ -z "${CANCEL_AT:-}" ] || [ "$n" -lt "$CANCEL_AT" ] || touch "$TD/cancel"
+. "$WORK/cancel-check.sh"
 l="$(grep -E -- "new-session -d -s $s |kill-session -t =$s\$" "$STUB_LOG" | tail -n 1)"
 case "$l" in *new-session*) exit 0 ;; *kill-session*) exit 1 ;; esac
 grep -qx -- "${s#smk-}" "$WORK/alive" 2>/dev/null && exit 0
@@ -249,14 +263,15 @@ commit_file src/qa-fix.txt "qa fix"; Q1="$(git -C "$CLONE" rev-parse HEAD)"
 git -C "$CLONE" push --quiet origin "$BR"; pr_set --arg s "$Q1" '.lastMergeSourceCommit.commitId = $s'
 
 # ---- (k) rework → r2/, the coder relaunched on the round-1 qa revision with the order rendered -------
+case_mark "(k) rework → r2/, the coder relaunched"
 rework_ready alfa-20261115-150000
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-3.md --message x
 expect 4 "rework needs --ref runs/$RUN_ID/rework-2.md" "(k) wrong round in --ref"
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message "remove the CSV import"
 expect 0 "teamlead-acceptance-1.json" "(k) rework"
 jq -e --arg r ".agents/team/runs/$RUN_ID/rework-2.md" '.for == "qa-1-1.json" and .ref == $r' "$RD/teamlead-acceptance-1.json" >/dev/null || fail "(k) verdict for/ref"
-greset alfa-lead alfa-qa; export CANCEL_AT=40
-run "$MAIN" $TR alfa; expect 6 "round 2 started" "(k) runner"
+greset alfa-lead alfa-qa; on_event "launched: coder attempt 1"
+run "$MAIN" $TR alfa; expect 6 "round 2 started" "(k) runner"; cancelled_by_event "(k) runner"
 has "kill-session -t =smk-alfa-qa" "$STUB_LOG" || fail "(k) the qa session was not ended"
 has "launched: coder attempt 1" "$WORK/out" || fail "(k) the coder did not relaunch"
 jq -e --arg r "$RUN_ID" '.run == $r and .round == 2 and .pr_published == true' "$TD/round" >/dev/null || fail "(k) round file"
@@ -272,6 +287,7 @@ run "$MAIN" $TR alfa status; expect 0 "run: $RUN_ID round 2" "(k) status"
 echo "team-smoke-23: (k) rework opens round 2 OK"
 
 # ---- (l) the round-2 coder: same PR and a descendant of the qa revision, else rejected ---------------
+case_mark "(l) the round-2 coder: same PR and a des"
 rm -f "$TD/cancel"  # the last runner was stopped by the fixture; `check` honours the stop too
 git -C "$CLONE" checkout --quiet -B "$BR" "$C1"; commit_file src/side.txt "not on the qa revision"
 X="$(git -C "$CLONE" rev-parse HEAD)"; rec2 coder "$Q1" "$X" 8371
@@ -290,16 +306,19 @@ jq -e --arg c "$C2" '.round == 2 and .role == "qa" and .input_rev == $c' "$TD/se
 echo "team-smoke-23: (l) round-2 coder on the published PR OK"
 
 # ---- (r) a complete round 2: report header run: <run>, acceptance on round-2 files, wrapup under r2/ --
+case_mark "(r) a complete round 2: report header ru"
 report "$RD/r2/qa-report-1.md" "$C2"; rec2 qa "$C2" "$C2" 8371
 greset alfa-lead alfa-qa; run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: gate acceptance qa-1-1.json" "(r) round-2 qa at the gate"
 [ "$(cat "$TD/acked")" = r2/qa-1-1.json ] || fail "(r) acked is not round 2's: $(cat "$TD/acked")"
-echo "- export button" > "$RD/blind-check.md"; sleep 1; brief
+echo "- export button" > "$RD/blind-check.md"; brief
 V acceptance accept --for qa-1-1.json --message ok; expect 8 "runs/$RUN_ID/r2/blind-check.md missing" "(r) round 1's files do not count"
 run "$CLONE" bash .claude/lib/team-lead.sh diff alfa; expect 0 "r2/acceptance-diff.patch" "(r) diff into r2/"
-cp "$RD/blind-check.md" "$RD/r2/blind-check.md"; sleep 1; cp "$RD/acceptance-brief.md" "$RD/r2/acceptance-brief.md"
+cp "$RD/blind-check.md" "$RD/r2/blind-check.md"; cp "$RD/acceptance-brief.md" "$RD/r2/acceptance-brief.md"
+touch -r "$RD/r2/blind-check.md" "$RD/r2/acceptance-brief.md"   # equal mtimes: the brief is not older
 V acceptance accept --for qa-1-1.json --message ok; expect 0 "teamlead-acceptance-2.json" "(r) round-2 accept"
 jq -e '.for == "r2/qa-1-1.json"' "$RD/teamlead-acceptance-2.json" >/dev/null || fail "(r) verdict for"
-greset alfa-lead alfa-qa; export CANCEL_AT=40; run "$MAIN" $TR alfa; expect 6 "launched: wrapup attempt 1" "(r) wrapup launched"
+greset alfa-lead alfa-qa; on_event "launched: wrapup attempt 1"
+run "$MAIN" $TR alfa; expect 6 "launched: wrapup attempt 1" "(r) wrapup launched"; cancelled_by_event "(r) wrapup launched"
 [ -e "$RD/r2/qa-1-1.json.accepted" ] || fail "(r) round-2 qa not accepted"
 # The lead's notes are per run: the round-2 wrapup reads them at the run root.
 has ".agents/team/runs/$RUN_ID/teamlead-notes.md" "$RD/r2/wrapup-1.prompt.md" \
@@ -341,6 +360,7 @@ grep -l '^event: accepted' "$SUP"/* | xargs grep -l "run: $RUN_ID" | xargs grep 
 echo "team-smoke-23: (r) complete round 2 OK"
 
 # ---- (m) budget: a third rework in brainstorm (budget 2) → 9; (n) an Operator continue adds one -----
+case_mark "(m) budget: a third rework in brainstorm"
 rework_ready alfa-20261115-160000
 for i in 1 2; do
   V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message "round $i"
@@ -354,6 +374,7 @@ expect 0 "[d-1]" "(n) abandon decision"
 V acceptance abandon-recommended --for qa-1-1.json --decision d-1 --message "budget spent"; expect 0 "teamlead-acceptance-3.json" "(n) abandon-recommended"
 # The two rework rounds happened; the runner acts only on what comes after them.
 printf 'teamlead-acceptance-1.json\nteamlead-acceptance-2.json\n' >> "$TD/verdict-acked"
+# count kept: (n) expects no line — the abandon_decision event it reads afterwards needs the polls
 greset alfa-lead alfa-qa; export CANCEL_AT=12; run "$MAIN" $TR alfa; expect 6 "" "(n) runner notifies"
 [ "$(nab)" = 1 ] || fail "(n) not exactly one abandon_decision event"
 jq -cn --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
@@ -369,6 +390,7 @@ V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.m
 echo "team-smoke-23: (m) budget + (n) one grant OK"
 
 # ---- (o) quick: the first rework states continue; budget 1 -------------------------------------------
+case_mark "(o) quick: the first rework states conti"
 rework_ready alfa-20261115-170000; jq '.mode = "quick"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/team.json"
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message x
 expect 4 "quick: --quick-call continue, or abandon-recommended to stop" "(o) quick without continue"
@@ -382,6 +404,7 @@ jq '.mode = "brainstorm"' "$TD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/tea
 echo "team-smoke-23: (o) quick OK"
 
 # ---- (s) a runner killed after the intent (3), the mkdir (4) or the round file (4a) resumes into the
+case_mark "(s) a runner killed after the intent (3)"
 #      round-2 coder; (p) killed after the round, before the launch, too ------------------------------
 for p in 3:180003 4:180004 4a:180005; do
   at="${p%%:*}"; rework_ready "alfa-20261115-${p#*:}"
@@ -391,8 +414,9 @@ for p in 3:180003 4:180004 4a:180005; do
   [ "$RC" = 137 ] || fail "(s) crash at $at: exit $RC"
   ! has "launched: coder" "$WORK/out" || fail "(s) crash at $at launched the coder"
   # A crash at 3 left the qa session alive (the resume ends it); at 4/4a it was already ended.
-  if [ "$at" = 3 ]; then greset alfa-lead alfa-qa; else greset alfa-lead; fi; export CANCEL_AT=40
+  if [ "$at" = 3 ]; then greset alfa-lead alfa-qa; else greset alfa-lead; fi; on_event "launched: coder attempt 1"
   run "$MAIN" $TR alfa; expect 6 "launched: coder attempt 1" "(s) resume after a crash at $at"
+  cancelled_by_event "(s) resume after a crash at $at"
   [ ! -e "$TD/round-transition" ] && jq -e '.round == 2' "$TD/round" >/dev/null && [ -s "$RD/r2/coder-1.session" ] \
     || fail "(s) crash at $at not completed"
   jq -e '.round == 2 and .role == "coder"' "$TD/session.json" >/dev/null || fail "(s) crash at $at: session.json"
@@ -405,18 +429,24 @@ printf '%s\n' "if [ \"\$3\" = =smk-alfa-coder ] && jq -e '.run == \"$RUN_ID\" an
 greset alfa-lead alfa-qa; export CANCEL_AT=40
 STUB_ON_HAS_SESSION=". '$WORK/hs3.sh'" run "$MAIN" $TR alfa
 [ "$RC" = 137 ] && ! has "launched: coder" "$WORK/out" || fail "(p) not killed before the launch (exit $RC)"
-greset alfa-lead; run "$MAIN" $TR alfa; expect 6 "launched: coder attempt 1" "(p) resume into the round-2 coder"
+greset alfa-lead; on_event "launched: coder attempt 1"
+run "$MAIN" $TR alfa; expect 6 "launched: coder attempt 1" "(p) resume into the round-2 coder"
+cancelled_by_event "(p) resume into the round-2 coder"
 jq -e '.round == 2 and .role == "coder"' "$TD/session.json" >/dev/null || fail "(p) session.json"
 echo "team-smoke-23: (s) crash at 3/4/4a + (p) killed before the launch OK"
 
 # ---- (q) qa blocked before publishing → rework → the round-2 coder on the still-draft PR → qa publishes
+case_mark "(q) qa blocked before publishing → rew"
 rework_ready alfa-20261115-200000; rm -f "$TD/acked"
 jq '.verdict = "blocked" | .message = "the CSV import breaks the order"' "$RD/qa-1-1.json" > "$WORK/r" && mv "$WORK/r" "$RD/qa-1-1.json"
 pr_set --arg s "$Q1" '.isDraft = true | .lastMergeSourceCommit.commitId = $s'
-greset alfa-lead alfa-qa; export CANCEL_AT=12; run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: qa-1-1.json" "(q) qa blocked → the lead"
+greset alfa-lead alfa-qa; on_event "waiting for TeamLead: qa-1-1.json"
+run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: qa-1-1.json" "(q) qa blocked → the lead"
+cancelled_by_event "(q) qa blocked → the lead"
 V acceptance accept --for qa-1-1.json --message x; expect 4 "is blocked, the acceptance gate needs done" "(q) accept on a blocked record"
 V acceptance rework --for qa-1-1.json --ref .agents/team/runs/$RUN_ID/rework-2.md --message "fix the blocker"; expect 0 "" "(q) rework on blocked"
-greset alfa-lead alfa-qa; export CANCEL_AT=40; run "$MAIN" $TR alfa; expect 6 "launched: coder attempt 1" "(q) round 2"
+greset alfa-lead alfa-qa; on_event "launched: coder attempt 1"
+run "$MAIN" $TR alfa; expect 6 "launched: coder attempt 1" "(q) round 2"; cancelled_by_event "(q) round 2"
 jq -e '.pr_published == false' "$TD/round" >/dev/null || fail "(q) draft not carried: $(cat "$TD/round")"
 commit_file src/export.txt "export button, blocker fixed"
 C3="$(git -C "$CLONE" rev-parse HEAD)"; git -C "$CLONE" push --quiet origin "$BR"
@@ -431,9 +461,11 @@ echo "team-smoke-23: (q) blocked → draft rework → publish OK"
 unset STUB_ON_HAS_SESSION CANCEL_AT
 
 # ---- (u) a launched lead gets its notes file with the six headings ----------------------------------
+case_mark "(u) a launched lead gets its notes file"
 export STUB_ON_HAS_SESSION=". '$WORK/hs2.sh'"
 setup_run alfa-20261115-210000; echo qa-1-1.json > "$TD/acked"
-greset alfa-qa; export CANCEL_AT=12; run "$MAIN" $TR alfa; expect 6 "launched: TeamLead" "(u) lead launched"
+greset alfa-qa; on_event "launched: TeamLead"
+run "$MAIN" $TR alfa; expect 6 "launched: TeamLead" "(u) lead launched"; cancelled_by_event "(u) lead launched"
 NOTES="$RD/teamlead-notes.md"
 [ "$(grep -c '^## ' "$NOTES" 2>/dev/null)" = 6 ] || fail "(u) notes: $(cat "$NOTES" 2>/dev/null)"
 for h in "## Order ambiguities" "## No-rule questions" "## Gate misses" "## Operator cases" "## Wrapup decisions" "## Late answers"; do
@@ -442,6 +474,7 @@ done
 echo "team-smoke-23: (u) notes created at launch OK"
 
 # ---- (v) every Operator case is in the notes with the tuning question; a late answer too -----------
+case_mark "(v) every Operator case is in the notes"
 setup_run alfa-20261115-220000; NOTES="$RD/teamlead-notes.md"; echo qa-1-1.json > "$TD/acked"
 said() { jq -cn --arg t "$1" --arg u "$2" --arg ts "$(date -u -v+1S +%Y-%m-%dT%H:%M:%SZ)" \
   '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"; }
@@ -464,6 +497,7 @@ section "## Late answers" | grep -q -- "^- d-2 (withdrawn .*): no keep it$" || f
 echo "team-smoke-23: (v) Operator cases + tuning + late answer OK"
 
 # ---- (w) close_run appends the notes once; a resume of the closed run appends nothing ---------------
+case_mark "(w) close_run appends the notes once; a"
 LOG="$MAIN/.agents/team/teamlead-log.md"
 blocks() { grep -c "^### .* alfa AB-1600 $1 — " "$LOG" 2>/dev/null || true; }
 ldec open alfa --source qa-1-1.json --question "Close it?"; expect 0 "[d-3]" "(w) open"
@@ -479,6 +513,7 @@ run "$MAIN" bash .claude/lib/team-lead.sh log-append alfa closed; expect 0 "alre
 echo "team-smoke-23: (w) close appends once OK"
 
 # ---- (x) the log lock: a held lock times out without appending; two clones at once both land ---------
+case_mark "(x) the log lock: a held lock times out"
 setup_run alfa-20261115-230000; echo "- alfa-marker" >> "$RD/teamlead-notes.md"
 mkdir "$MAIN/.agents/team/teamlead-log.lock"
 TEAM_LOG_LOCK_SECS=1 run "$MAIN" bash .claude/lib/team-lead.sh log-append alfa merged; expect 1 "held for 1s" "(x) lock timeout"
@@ -488,9 +523,14 @@ jq '.team = "beta"' "$BTD/team.json" > "$WORK/tj" && mv "$WORK/tj" "$BTD/team.js
 echo beta-20261115-230000 > "$BTD/run"; mkdir -p "$BTD/runs/beta-20261115-230000"
 jq '.team = "beta" | .run = "beta-20261115-230000"' "$BTD/teamlead.json" > "$WORK/tj" && mv "$WORK/tj" "$BTD/teamlead.json"
 printf '## Gate misses\n- beta-marker\n' > "$BTD/runs/beta-20261115-230000/teamlead-notes.md"
-( cd "$MAIN" && bash .claude/lib/team-lead.sh log-append alfa merged > "$WORK/la1" 2>&1 ) &
-( cd "$MAIN" && bash .claude/lib/team-lead.sh log-append beta merged > "$WORK/la2" 2>&1 ) &
-sleep 1; rmdir "$MAIN/.agents/team/teamlead-log.lock"; wait
+# A mkdir spy proves both writers tried the held lock before it is released (no fixed sleep): a
+# failed mkdir of the lock logs its caller, the writer's team-lead.sh shell.
+mkdir_spy '*teamlead-log.lock'
+( cd "$MAIN" && PATH="$WORK/spy:$PATH" bash .claude/lib/team-lead.sh log-append alfa merged > "$WORK/la1" 2>&1 ) &
+( cd "$MAIN" && PATH="$WORK/spy:$PATH" bash .claude/lib/team-lead.sh log-append beta merged > "$WORK/la2" 2>&1 ) &
+for _ in $(seq 1 100); do [ "$(cut -d' ' -f1 "$WORK/spy.log" | sort -u | wc -l)" -ge 2 ] && break; sleep 0.1; done
+[ "$(cut -d' ' -f1 "$WORK/spy.log" | sort -u | wc -l)" -ge 2 ] || { rmdir "$MAIN/.agents/team/teamlead-log.lock"; wait; fail "(x) writers never contended"; }
+rmdir "$MAIN/.agents/team/teamlead-log.lock"; wait
 grep -q "appended" "$WORK/la1" && grep -q "appended" "$WORK/la2" || fail "(x) $(cat "$WORK/la1" "$WORK/la2")"
 [ "$(blocks "$RUN_ID")" = 1 ] && [ "$(grep -c '^### .* beta .* beta-20261115-230000 — merged$' "$LOG")" = 1 ] || fail "(x) not both blocks"
 awk -v a="alfa AB-1600 $RUN_ID" '/^### / { cur = index($0, a) ? "alfa" : (index($0, "beta-20261115-230000") ? "beta" : "") }
@@ -500,6 +540,7 @@ rm -rf "$WORK/main-beta"
 echo "team-smoke-23: (x) log lock OK"
 
 # ---- (y) owns: the global TeamLead's policy log skips runs with their own lead ----------------------
+case_mark "(y) owns: the global TeamLead's policy l"
 run "$MAIN" bash .claude/lib/team-lead.sh owns alfa; expect 0 "" "(y) a run with its own lead"
 jq '.run = "alfa-older"' "$TD/teamlead.json" > "$WORK/tj" && mv "$WORK/tj" "$TD/teamlead.json"
 run "$MAIN" bash .claude/lib/team-lead.sh owns alfa; expect 1 "" "(y) a run without one"
@@ -507,6 +548,7 @@ run "$MAIN" bash .claude/lib/team-lead.sh log-append alfa merged; expect 0 "no T
 echo "team-smoke-23: (y) owns OK"
 
 # ---- (z) the lead writes its notes, never memory --------------------------------------------------
+case_mark "(z) the lead writes its notes, never mem"
 setup_run alfa-20261115-235900; HOOK="$CLONE/.claude/hooks/guard-teamlead-write.sh"
 gp() { jq -cn --arg f "$1" '{session_id: "sid-lead", tool_name: "Write", tool_input: {file_path: $f}}'; }
 TEAM_SESSION_ROLE=TeamLead hook "$CLONE" "$(gp "$CLONE/.agents/memory/decisions.md")"; expect 2 "" "(z) memory write refused"

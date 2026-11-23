@@ -59,11 +59,13 @@ l="$(grep -E -- "new-session -d -s $s |kill-session -t =$s\$" "$STUB_LOG" | tail
 case "$l" in *new-session*) exit 0 ;; esac
 exit 1
 HS
-export STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" STUB_PANE="$FIX/idle.txt" TEAM_POLL_SECS=1
+# fractional: the runner polls 4× a second; wait_for polls conditions, so a faster runner only finds them sooner
+export STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" STUB_PANE="$FIX/idle.txt" TEAM_POLL_SECS=0.25
 # has-session is answered by hs.sh; STUB_TMUX_ALIVE=0 lets display-message name the pane (prompt binding).
 export STUB_TMUX_ALIVE=0
 
 # ---- helpers ---------------------------------------------------------------------------------------
+case_mark "helpers"
 # A deadline bounds a failure, it never paces a pass: 60 s absorbs the whole suite running in
 # parallel (a reaction takes 1–3 s idle, up to ~25 s under that load).
 WAIT_POLLS=$(( ${TEAM_SMOKE_WAIT_SECS:-60} * 5 ))
@@ -151,6 +153,7 @@ qa_done() {  # qa_done <run dir> — report, the PR published, the record
 unset TEAM_SMOKE_NO_LEAD
 
 # ==== alfa: brainstorm, clean ==========================================================================
+case_mark "alfa: brainstorm, clean"
 fresh alfa-20261116-100000 brainstorm
 start_runner
 launched planner 1
@@ -184,6 +187,7 @@ has "ready: bash .claude/lib/team-merge-check.sh alfa" "$WORK/runner.out" || fai
 echo "team-smoke-24: alfa (brainstorm, clean) OK"
 
 # ==== beta: quick, an operator-tier ask (the real stage hook) → decision → the lead relays the reply ===
+case_mark "beta: quick, an operator-tier ask (the r"
 fresh alfa-20261116-110000 quick
 start_runner
 launched planner 1; on_stage planner
@@ -250,6 +254,7 @@ runner_rc 0 "beta"
 echo "team-smoke-24: beta (quick, human decision) OK"
 
 # ==== gamma: revise + collision, two reworks, the third refused, abandon → closed ======================
+case_mark "gamma: revise + collision, two reworks"
 fresh alfa-20261116-120000 brainstorm
 start_runner
 launched planner 1; on_stage planner
@@ -301,6 +306,7 @@ grep -q "^### .* alfa AB-2400 $RUN_ID — closed$" "$MAIN/.agents/team/teamlead-
 echo "team-smoke-24: gamma (revise, collision, rework budget, abandon) OK"
 
 # ==== trk: brainstorm, tracker comments on (github-shaped reads) ====================================================
+case_mark "trk: brainstorm, tracker comments on (gi"
 cp "$SRC/.claude/lib/tracker-snapshot.mjs" "$CLONE/.claude/lib/"
 git -C "$CLONE" add .claude/lib && git -C "$CLONE" commit --quiet -m "fixture snapshot tool"
 prof '.workflow.tracker_comments = true'
@@ -357,6 +363,7 @@ prof '.workflow.tracker_comments = false'
 echo "team-smoke-24: trk (tracker comments on) OK"
 
 # ==== off: the fixture seam — no lead, Approved (auto — team mode), a blocked coder ends the runner ====
+case_mark "off: the fixture seam — no lead, Appro"
 export TEAM_SMOKE_NO_LEAD=1
 fresh alfa-20261116-130000 brainstorm; rm -f "$TD/teamlead.json"
 start_runner
@@ -372,6 +379,7 @@ runner_rc 2 "off"
 echo "team-smoke-24: off (switch off) OK"
 
 # ---- nothing outside the fixture ------------------------------------------------------------------
+case_mark "nothing outside the fixture"
 REAL="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
 fixture_files() {  # fixture_files <dir> — files newer than $T0 that carry a fixture id in their path (relative to <dir>) or contents
   [ -d "$1" ] || return 0

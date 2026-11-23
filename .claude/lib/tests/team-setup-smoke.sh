@@ -9,6 +9,7 @@ set -euo pipefail
 ST=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SETUP="$ST/.claude/lib/team-setup.sh"
 MANIFEST="$ST/.claude/team/manifest.txt"
+. "$ST/.claude/lib/tests/suite-case-time.sh"
 # The suite also runs in a project where /setup:teams already ran; there the starter-side checks of
 # this repo's own settings expect what the installer wrote. Same test as team-setup.sh's profile check.
 ST_INSTALLED=""
@@ -36,22 +37,26 @@ field() {  # field <status> [class] → how many output lines carry it
 }
 treehash() { (cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort \
   | xargs shasum -a 256 | shasum -a 256); }
-mktarget() {  # mktarget <name> → a fresh one-commit repo at $WORK/<name>
-  local t="$WORK/$1"
-  mkdir -p "$t"; git -C "$t" init --quiet
-  echo README > "$t/README"; git -C "$t" add README; git -C "$t" commit --quiet -m README
-  # The core files a synced project already has (team-setup.sh refuses without them, see (20)).
-  mkdir -p "$t/.claude/lib/costs" "$t/.claude/hooks/lib"
-  cp "$ST/.claude/lib/team-profile.sh" "$ST/.claude/lib/team-tracker.sh" "$t/.claude/lib/"
-  cp "$ST/.claude/lib/costs/runtime-mark.sh" "$t/.claude/lib/costs/"
-  cp "$ST/.claude/hooks/lib/guard_destructive_sql.py" "$t/.claude/hooks/lib/"
-  printf '%s' "$t"
+# The one fresh one-commit repo every case starts from, built once.
+TPL="$WORK/.tpl"
+mkdir -p "$TPL"; git -C "$TPL" init --quiet
+echo README > "$TPL/README"; git -C "$TPL" add README; git -C "$TPL" commit --quiet -m README
+# The core files a synced project already has (team-setup.sh refuses without them, see (20)).
+mkdir -p "$TPL/.claude/lib/costs" "$TPL/.claude/hooks/lib"
+cp "$ST/.claude/lib/team-profile.sh" "$ST/.claude/lib/team-tracker.sh" "$TPL/.claude/lib/"
+cp "$ST/.claude/lib/costs/runtime-mark.sh" "$TPL/.claude/lib/costs/"
+cp "$ST/.claude/hooks/lib/guard_destructive_sql.py" "$TPL/.claude/hooks/lib/"
+# Plain cp -R (no -p): every copy gets fresh mtimes, as a fresh build did.
+mktarget() {  # mktarget <name> → $WORK/<name>, a copy of one fresh one-commit repo
+  cp -R "$TPL" "$WORK/$1"
+  printf '%s' "$WORK/$1"
 }
 # Entries the manifest distributes — counted from the file, never hardcoded.
 ENTRIES=$(grep -c '^own \|^shared ' "$MANIFEST")
 [ "$ENTRIES" -gt 50 ] || fail "manifest has only $ENTRIES entries — wrong file?"
 
 # ---- (1) --check on an empty target writes nothing ----------------------------------------------
+case_mark "(1) --check on an empty target writes no"
 T=$(mktarget t1)
 touch "$WORK/marker"
 setup "$T" --check
@@ -62,6 +67,7 @@ touched=$(find "$T" -path "$T/.git" -prune -o -newer "$WORK/marker" -print)
 [ -z "$touched" ] || fail "1: --check wrote $touched"
 
 # ---- (2) the installation ----------------------------------------------------------------------
+case_mark "(2) the installation"
 setup "$T"
 [ "$RC" = 3 ] || fail "2: install into a profile-less target: exit $RC, expected 3"
 n=$(awk -F'\t' '$1 == "created" && ($2 == "own" || $2 == "shared")' "$WORK/out" | wc -l | tr -d ' ')
@@ -176,6 +182,7 @@ else
 fi
 
 # ---- (3) the second run changes nothing --------------------------------------------------------
+case_mark "(3) the second run changes nothing"
 echo '{"teams":{}}' > "$T/.claude/project-profile.json"
 H0=$(treehash "$T")
 setup "$T"
@@ -186,6 +193,7 @@ has "conflict=0 merged=0" || fail "3: the second run merged something"
 [ "$(treehash "$T")" = "$H0" ] || fail "3: the second run changed the tree"
 
 # ---- (4) a locally edited own file is never overwritten -----------------------------------------
+case_mark "(4) a locally edited own file is never o"
 echo x >> "$T/.claude/lib/team-run.sh"
 cp "$T/.claude/lib/team-run.sh" "$WORK/edited"
 setup "$T"
@@ -195,6 +203,7 @@ has "--- conflict .claude/lib/team-run.sh" || fail "4: no diff header for the co
 cmp -s "$WORK/edited" "$T/.claude/lib/team-run.sh" || fail "4: the local edit was overwritten"
 
 # ---- (5) a differing shared file says so, and stays ---------------------------------------------
+case_mark "(5) a differing shared file says so, and"
 echo local > "$T/AGENTS.md"
 setup "$T"
 [ "$RC" = 1 ] || fail "5: a shared conflict exited $RC, expected 1"
@@ -202,6 +211,7 @@ has "conflict (shared — merge by hand)	shared	AGENTS.md" || fail "5: shared co
 [ "$(cat "$T/AGENTS.md")" = local ] || fail "5: the project's AGENTS.md was overwritten"
 
 # ---- (6) M joins the project's own Edit|Write|MultiEdit entry -----------------------------------
+case_mark "(6) M joins the project's own Edit|Write"
 T=$(mktarget t6)
 mkdir -p "$T/.claude"
 jq -n --arg m 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-memory.sh"' \
@@ -224,6 +234,7 @@ setup "$T"
   "$S")" = 1 ] || fail "6: the second run duplicated hook M"
 
 # ---- (7) wrong event: the project's entry stays, a correct one is added -------------------------
+case_mark "(7) wrong event: the project's entry sta"
 T=$(mktarget t7)
 mkdir -p "$T/.claude"
 jq -n --arg q 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"' \
@@ -240,6 +251,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[]
   || fail "7: no correct PreToolUse entry was added"
 
 # ---- (8) wrong matcher: a new entry covering Edit and Write -------------------------------------
+case_mark "(8) wrong matcher: a new entry covering"
 T=$(mktarget t8)
 mkdir -p "$T/.claude"
 jq -n --arg m 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-memory.sh"' \
@@ -255,6 +267,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") as $t | ($t | index("
 jq -e '.hooks.PreToolUse[0].matcher == "Edit"' "$S" >/dev/null || fail "8: the project's entry moved"
 
 # ---- (9) async guard: a guard must run synchronously --------------------------------------------
+case_mark "(9) async guard: a guard must run synchr"
 T=$(mktarget t9)
 mkdir -p "$T/.claude"
 jq -n --arg q 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-team-question.sh"' \
@@ -270,6 +283,7 @@ jq -e '[.hooks.PreToolUse[].hooks[] | select(.async == true)] | length == 1' "$S
   || fail "9: the project's async entry was rewritten"
 
 # ---- (10) the project's own permissions and settings.local.json are left alone ------------------
+case_mark "(10) the project's own permissions and s"
 T=$(mktarget t10)
 mkdir -p "$T/.claude"
 jq -n '{permissions: {allow: ["Bash(ls:*)", "Bash(rg:*)"], deny: ["Bash(curl:*)"]},
@@ -286,6 +300,7 @@ S="$T/.claude/settings.json"
 cmp -s "$WORK/local.before" "$T/.claude/settings.local.json" || fail "10: settings.local.json changed"
 
 # ---- (11) manifest completeness: nothing in the harness trees is left behind ---------------------
+case_mark "(11) manifest completeness: nothing in t"
 excluded() {  # excluded <path> — a `!` entry of the manifest matches it (team-setup.sh's rule)
   local g
   while IFS= read -r g; do case "$1" in $g) return 0 ;; esac; done < <(sed -n 's/^!//p' "$MANIFEST")
@@ -302,6 +317,7 @@ done < <(git -C "$ST" ls-files '.claude/lib/team-*.sh' .claude/team \
   .claude/lib/costs .claude/hooks/lib)
 
 # ---- (12) seed preflight: a seed file tracked on the base with other content is refused ---------
+case_mark "(12) seed preflight: a seed file tracked"
 T=$(mktarget t12)
 mkdir -p "$T/.claude" "$T/.agents/memory"
 jq -n '{schema: 1, teams: {tracker: "none", pr_provider: "azure-devops", trunk: "main",
@@ -332,6 +348,7 @@ seed_checks "$T"
 has "problems=0" || fail "12: an untracked or identical seed file raised a problem"
 
 # ---- (13) the target must be a repo ROOT, and a refusal creates nothing -------------------------
+case_mark "(13) the target must be a repo ROOT, and"
 T="$WORK/nosuch/x"
 setup "$T"
 [ "$RC" = 2 ] || fail "13: a missing target exited $RC, expected 2"
@@ -348,6 +365,7 @@ has "is not the repo root" || fail "13: the refusal does not name the repo root"
 [ -z "$(ls -A "$T/sub")" ] || fail "13: a refused run wrote into a subdirectory"
 
 # ---- (14) the settings.json write never goes through a planted temp name -----------------------
+case_mark "(14) the settings.json write never goes"
 T=$(mktarget t14)
 mkdir -p "$T/.claude"
 printf '{"local": true}\n' > "$T/.claude/settings.local.json"
@@ -363,6 +381,7 @@ jq -e '.permissions.allow | length == 35' "$T/.claude/settings.json" >/dev/null 
 [ -z "$(ls "$T/.claude"/.team-setup.* 2>/dev/null)" ] || fail "14: a temp file was left behind"
 
 # ---- (15) no write may pass through a symlinked target component -------------------------------
+case_mark "(15) no write may pass through a symlink"
 T=$(mktarget t15a)
 rm -rf "$T/.claude"                                       # the symlink takes the directory's place
 mkdir -p "$T/outside"
@@ -396,6 +415,7 @@ setup "$T"
 has "is not a directory" || fail "15d: the refusal does not name the type clash"
 
 # ---- (16) manifest paths stay inside both roots ------------------------------------------------
+case_mark "(16) manifest paths stay inside both roo"
 FS="$WORK/fakestarter"
 mkdir -p "$FS/.claude/team"
 fake_manifest() { printf '%s\n' "$1" > "$FS/.claude/team/manifest.txt"; }
@@ -418,6 +438,7 @@ has "is a symlink" || fail "16: the refusal does not name the symlinked source"
 [ "$(treehash "$T")" = "$H0" ] || fail "16: a refused manifest run wrote something"
 
 # ---- (17) settings.json must be one JSON object, checked before any write -----------------------
+case_mark "(17) settings.json must be one JSON obje"
 for bad in "" "{}
 {}" "{ oops" "[]"; do
   T=$(mktarget "t17-$(echo "$bad" | cksum | tr -d ' ')")
@@ -439,6 +460,7 @@ jq -e '.permissions.allow | length == 35' "$T/.claude/settings.json" >/dev/null 
   || fail "17: the merge did not run on a valid {}"
 
 # ---- (18) the egress guard joins the project's exact Bash entry; a non-blocking one is a conflict
+case_mark "(18) the egress guard joins the project'"
 T=$(mktarget t18)
 mkdir -p "$T/.claude"
 printf '.agents/team/\n' > "$T/.gitignore"
@@ -466,6 +488,7 @@ setup "$T"
 cmp -s "$S" "$WORK/s18" || fail "18: the rerun changed settings.json"
 
 # ---- (19) team-watch hooks: idempotent; an async W or a startup-only W is a conflict -------------
+case_mark "(19) team-watch hooks: idempotent; an as"
 T=$(mktarget t19)
 mkdir -p "$T/.claude"
 echo '{"teams":{}}' > "$T/.claude/project-profile.json"
@@ -493,6 +516,7 @@ for bad in '{type: "command", command: $w, async: true}' 'startup'; do
 done
 
 # ---- (20) core prerequisites: never a harness on top of a missing or stale adapter/profile -------
+case_mark "(20) core prerequisites: never a harness"
 for c in missing stale; do
   T=$(mktarget "core-$c")
   if [ "$c" = missing ]; then rm -f "$T/.claude/lib/team-profile.sh"
@@ -520,20 +544,25 @@ setup "$T" --check
 [ "$RC" != 2 ] || fail "20: current core files are refused: $(cat "$WORK/out")"
 
 # ---- (21) a project without teams has every file the core tracker commands call -----------------
+case_mark "(21) a project without teams has every f"
 # The tree a sync gives a project that never installed the harness: the starter's tracked files
 # minus every manifest own/shared path and the tests, and directly in .claude/lib/ only what the
 # playbook's category A routes there (*.sh, *.mjs, never *.test.mjs, plus the touch log's worker
 # touches.py). The sync itself is prose this cannot run; this checks that the routing rule carries
 # the commands' whole closure.
+# One pass: drop tests and manifest own/shared paths, keep .claude/lib/*/*, .claude/lib/*.sh|*.mjs
+# and .claude/lib/touches.py,
+# drop the rest of .claude/lib/, keep everything else; then one tar copy.
 D="$WORK/solo"; mkdir -p "$D"
-while IFS= read -r p; do
-  case "$p" in */tests/*|*.test.mjs) continue ;; esac
-  grep -qxF "own $p" "$MANIFEST" && continue
-  grep -qxF "shared $p" "$MANIFEST" && continue
-  case "$p" in .claude/lib/*/*) ;; .claude/lib/*.sh|.claude/lib/*.mjs) ;; .claude/lib/touches.py) ;;
-    .claude/lib/*) continue ;; esac
-  mkdir -p "$D/$(dirname "$p")"; cp "$ST/$p" "$D/$p"
-done < <(git -C "$ST" ls-files)
+git -C "$ST" ls-files | awk -v m="$MANIFEST" '
+  BEGIN { while ((getline l < m) > 0) if (l ~ /^(own|shared) /) { sub(/^(own|shared) /, "", l); man[l] = 1 } }
+  /\/tests\// || /\.test\.mjs$/ { next }
+  $0 in man { next }
+  /^\.claude\/lib\/.*\// || /^\.claude\/lib\/.*\.(sh|mjs)$/ { print; next }
+  /^\.claude\/lib\/touches\.py$/ { print; next }
+  /^\.claude\/lib\// { next }
+  { print }' > "$WORK/solo.list"
+(cd "$ST" && tar cf - -T "$WORK/solo.list") | (cd "$D" && tar xf -)
 git -C "$D" init --quiet
 for f in team-tracker.sh team-profile.sh github-sync.mjs backlog-check.mjs yaml-subset.mjs delivery-plan.mjs backlog-migrate.mjs touches.sh touches.py; do
   [ -f "$D/.claude/lib/$f" ] || fail "21: a project without teams lacks .claude/lib/$f"
@@ -606,6 +635,7 @@ done
   || fail "21: the narrow allow does not cover the end step"
 
 # ---- (22) stage hook: an async or unfiltered existing registration is a conflict, kept, fixed ----
+case_mark "(22) stage hook: an async or unfiltered"
 T=$(mktarget t22)
 mkdir -p "$T/.claude"
 SM='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/stage-mark.sh"'
@@ -627,6 +657,7 @@ setup "$T"
 cmp -s "$S" "$WORK/s22" || fail "22: the rerun changed settings.json"
 
 # ---- (23) session-host state hook: once per event, synchronous; a fresh target writes state ------
+case_mark "(23) session-host state hook: once per e"
 NT='permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input'
 tstat() {  # tstat <settings> <event> <matcher|''> → how many correct team-status entries
   jq --arg ev "$2" --arg m "$3" '[.hooks[$ev][]? | select((.matcher // "") == $m) | .hooks[]
@@ -680,6 +711,7 @@ setup "$T"
 cmp -s "$S" "$WORK/s23" || fail "23: the rerun changed settings.json"
 
 # ---- (24) session registry: the old TeamLead hook is retired, a foreign look-alike stays ----------
+case_mark "(24) session registry: the old TeamLead"
 T=$(mktarget t24)
 mkdir -p "$T/.claude"
 OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/teamlead-register.sh"'
@@ -716,6 +748,7 @@ jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("teamlead-register"))] | 
 true
 
 # ---- (25) roles: the old session-role.sh hook is retired; a fresh target has what /roles needs ---
+case_mark "(25) roles: the old session-role.sh hook"
 T=$(mktarget t25)
 mkdir -p "$T/.claude"
 OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/session-role.sh"'
@@ -749,6 +782,7 @@ jq -e '[.hooks[]?[]?.hooks[]? | select(.command | test("session-role"))] | lengt
   "$ST/.claude/settings.json" >/dev/null || fail "25: the starter's own settings still name session-role"
 
 # ---- (26) retired files: an unchanged shipped version is deleted, a changed one stays a conflict ---
+case_mark "(26) retired files: an unchanged shipped"
 # The five deprecated /roles pointers (step 9a-1) are `retired` manifest lines with the blob ids of
 # the versions the starter shipped, and so are the six files of the removed escalation path, and the
 # role wake loop's two files. So are the allow/ask rules for the launcher verbs 9a removed.
@@ -801,6 +835,7 @@ printf 'own .claude/team/ok\nretired .claude/commands/nope.md not-a-blob-id\n' >
 fake_setup "$T"; [ "$RC" = 2 ] && has "is not a blob id" || fail "26: a bad blob id is not drift"
 
 # ---- (27) workflow.team_merge: auto leaves the trunk writers off ask, confirm puts them back ---
+case_mark "(27) workflow.team_merge: auto leaves th"
 T=$(mktarget tm)
 S="$T/.claude/settings.json"
 P="$T/.claude/project-profile.json"
@@ -836,6 +871,7 @@ setup "$T"
 tm_count 1 "no workflow key (default)"
 
 # ---- (28) the role wake loop is retired: its Stop hook and allow rule leave on a re-run ----------
+case_mark "(28) the role wake loop is retired: its"
 T=$(mktarget t28)
 mkdir -p "$T/.claude"
 OLD='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/monitoring-rearm.sh"'
@@ -856,6 +892,7 @@ setup "$T"
 ! has "retired settings.json" || fail "28: the rerun retired again"
 
 # ---- (29) the answer verb is retired: its allow rule leaves on a re-run ----
+case_mark "(29) the answer verb is retired: its all"
 T=$(mktarget t29)
 mkdir -p "$T/.claude"
 AA='Bash(bash .claude/lib/supervisor-sessions.sh answer *)'

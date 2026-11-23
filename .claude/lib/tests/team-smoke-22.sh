@@ -49,6 +49,7 @@ line_of() { grep -n -- "$1" "$STUB_LOG" | head -n 1 | cut -d: -f1; }
 TR="bash .claude/lib/team-run.sh"
 
 # ---- (a) fixture seam: no lead, unchanged launch order -------------------------------------------
+case_mark "(a) fixture seam: no lead, unchanged lau"
 reset
 run "$MAIN" $TR alfa; expect 5 "dead attempt" "(a) runner, no-lead seam"
 has "-s smk-alfa-lead" "$STUB_LOG" && fail "(a) a lead launched under the no-lead seam"
@@ -65,6 +66,7 @@ echo "team-smoke-22: (a) no-lead seam OK"
 unset TEAM_SMOKE_NO_LEAD
 
 # ---- (c) no brief → exit 4, no lead --------------------------------------------------------------
+case_mark "(c) no brief → exit 4, no lead"
 reset; mv "$TD/order-brief.md" "$WORK/placed-brief.md"
 run "$MAIN" $TR alfa; expect 4 "no order brief" "(c) no brief"
 has "-s alfa-" "$STUB_LOG" && fail "(c) a session launched without a brief"
@@ -73,6 +75,7 @@ mv "$WORK/placed-brief.md" "$TD/order-brief.md"
 echo "team-smoke-22: (c) brief required OK"
 
 # ---- (g) old base (no teamlead.md in the clone) → exit 4 -----------------------------------------
+case_mark "(g) old base (no teamlead.md in the clon"
 reset; mv "$CLONE/.claude/team/prompts/teamlead.md" "$WORK/tl.md"
 run "$MAIN" $TR alfa; expect 4 "team-next onto a current line" "(g) old base"
 has "-s alfa-" "$STUB_LOG" && fail "(g) a session launched on an old base"
@@ -80,6 +83,7 @@ mv "$WORK/tl.md" "$CLONE/.claude/team/prompts/teamlead.md"
 echo "team-smoke-22: (g) old base OK"
 
 # ---- (b) brainstorm: the lead launches first, with its profile -----------------------------------
+case_mark "(b) brainstorm: the lead launches first"
 reset
 run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/high)" "(b) runner, brainstorm"
 [ -n "$(line_of '-s smk-alfa-lead')" ] && [ -n "$(line_of '-s smk-alfa-planner')" ] \
@@ -98,6 +102,7 @@ has "$RUN_ID" "$RD/lead-1.prompt.md" && ! grep -q '{{' "$RD/lead-1.prompt.md" ||
 echo "team-smoke-22: (b) launch OK"
 
 # ---- (b2) Herdr: the lead's terminal into its team's tab through the main checkout's roles.sh place
+case_mark "(b2) Herdr: the lead's terminal into its"
 reset; RB="$MAIN/.claude/lib/roles.sh"; rm -f "$WORK/roles.main"; [ ! -f "$RB" ] || cp "$RB" "$WORK/roles.main"
 printf '#!/usr/bin/env bash\necho "PLACE $*" >> "$STUB_LOG"\n' > "$RB"
 RGD="$(cd "$MAIN" && pwd -P)/.agents/team/registry"; rm -rf "$WORK/reg.keep"; mkdir -p "$RGD"; cp -R "$RGD" "$WORK/reg.keep"
@@ -108,6 +113,7 @@ rm -rf "$RGD"; cp -R "$WORK/reg.keep" "$RGD"   # the herdr records of this case 
 echo "team-smoke-22: (b2) herdr lead placement OK"
 
 # ---- (d) a blocked record keeps the runner waiting; the lead is rung over its socket -------------
+case_mark "(d) a blocked record keeps the runner wa"
 cat > "$WORK/srv.py" <<'PY'
 import os, socket, sys
 path, out = sys.argv[1:3]
@@ -138,6 +144,7 @@ mkdir -p "$(dirname "$LREG")"; jq -n --arg s "$SD/l.sock" '{socket: $s, token: "
 session planner 1 "$BASE"; mkrec planner "$BASE" blocked
 jq '.message = "which endpoint?"' "$RD/planner-1-1.json" > "$WORK/r" && mv "$WORK/r" "$RD/planner-1-1.json"
 mkdir -p "$MAIN/.agents/team/inbox/alfa/new"; echo x > "$MAIN/.agents/team/inbox/alfa/new/20261114T100500Z-Supervisor-collision-answer.md"
+# count kept: (d) proves the stop doorbell rings exactly once — later polls must have the chance to ring it again
 export CANCEL_AT=15
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: planner-1-1.json" "(d) runner on a stop"
 has "TeamLead reused: alfa-lead" "$WORK/out" || fail "(d) the live lead of this run was not reused"
@@ -148,6 +155,7 @@ touch "$WORK/recv"
 [ "$(grep -o 'stop planner 1: [^"]*which endpoint' "$WORK/recv" | wc -l | tr -d ' ')" = 1 ] \
   || { { cat "$WORK/recv"; cat "$TD/send-lead.log" 2>/dev/null; } >> "$WORK/out"; fail "(d) not exactly one stop doorbell"; }
 # ---- (j) the runner no longer rings inbox files; team-inbox.sh write rings the lead once ----------
+case_mark "(j) the runner no longer rings inbox fil"
 grep -q 'inbox: 20261114T100500Z' "$WORK/recv" && { cp "$WORK/recv" "$WORK/out"; fail "(j) the runner rang an inbox file"; }
 [ ! -e "$TD/inbox-rung" ] || fail "(j) the runner wrote inbox-rung"
 run "$MAIN" bash .claude/lib/team-inbox.sh write alfa collision-answer --from Supervisor --ticket AB-1500 --run "$RUN_ID"
@@ -175,6 +183,7 @@ run "$MAIN" bash .claude/lib/team-lead.sh pending alfa
 expect 0 "stop .agents/team/runs/$RUN_ID/planner-1-1.json — which endpoint?" "(d) pending lists the stop"
 grep -q '^inbox .*/main/.agents/team/inbox/alfa/new/20261114T100500Z' "$WORK/out" || fail "(d) pending lacks the inbox file"
 # (d2) pending lists this run's and run-less messages only; a done message is gone from it.
+case_mark "(d2) pending lists this run's messages"
 grep -q "^inbox .*-Supervisor-collision-answer.md — collision-answer" "$WORK/out" || fail "(d2) this run's message missing"
 run "$MAIN" $TI write alfa message --from Supervisor --run alfa-20000101-000000; OLD="$(head -n 1 "$WORK/out")"
 run "$MAIN" $TI done alfa 20261114T100500Z-Supervisor-collision-answer.md; expect 0 "/inbox/alfa/done/" "(d2) done"
@@ -191,6 +200,7 @@ run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead" "(d) failed record, no soc
 echo "team-smoke-22: (d) wait in place + (j) inbox write ring OK"
 
 # ---- (e) a dead lead: one session_dead, then relaunch-lead relaunches it --------------------------
+case_mark "(e) a dead lead: one session_dead, then"
 reset; lead_json; printf 'alfa-lead\nalfa-planner\n' > "$WORK/alive"; session planner 1 "$BASE"
 export CANCEL_AT=400   # a safety net: the case script cancels long before
 cat > "$WORK/hs.case" <<'HS'
@@ -216,6 +226,7 @@ expect 0 "teamlead: alive — session $(jq -r .session_id "$TD/teamlead.json") �
 echo "team-smoke-22: (e) dead lead + relaunch OK"
 
 # ---- execution-time limit pauses while waiting on the lead (fixture clock) ------------------------
+case_mark "execution-time limit pauses while waitin"
 echo 1000000 > "$WORK/clock"
 # Every team_now call steps the clock; a waiting poll reads it three times (the poll, lead_asks, the
 # limit check), so one step stays well below a third of the qa limit (10800 s).
@@ -223,6 +234,7 @@ export TEAM_NOW_CMD='n=$(cat "$WORK/clock"); echo $((n + 3000)) > "$WORK/clock";
 reset; lead_json; printf 'alfa-lead\nalfa-qa\n' > "$WORK/alive"; session qa 1 "$BASE"
 run "$MAIN" $TR alfa; expect 3 "stalled" "(clock) the qa limit still applies without a wait"
 reset; lead_json; printf 'alfa-lead\nalfa-qa\n' > "$WORK/alive"; session qa 1 "$BASE"
+# count kept: the clock cases count team_now reads per poll — the polls past the limit are the proof
 mkrec qa "$BASE" blocked; export CANCEL_AT=20
 run "$MAIN" $TR alfa; expect 6 "waiting for TeamLead: qa-1-1.json" "(clock) a held decision is not a stall"
 # The answer marker ends the pause: polls well past the limit while waiting, then the clock counts.
@@ -239,6 +251,7 @@ unset TEAM_NOW_CMD
 echo "team-smoke-22: execution-time limit OK"
 
 # ---- (f) mode cli → no lead -----------------------------------------------------------------------
+case_mark "(f) mode cli → no lead"
 reset; jq '.mode = "cli"' "$TD/team.json" > "$WORK/t" && cp "$WORK/t" "$TD/team.json"
 run "$MAIN" $TR alfa
 has "-s smk-alfa-lead" "$STUB_LOG" && fail "(f) a lead launched in mode cli"
@@ -247,6 +260,7 @@ jq '.mode = "brainstorm"' "$TD/team.json" > "$WORK/t" && cp "$WORK/t" "$TD/team.
 echo "team-smoke-22: (f) cli OK"
 
 # ---- (h) end / finalize; team-integrate calls finalize on both success exits ----------------------
+case_mark "(h) end / finalize; team-integrate calls"
 reset; lead_json; echo alfa-lead > "$WORK/alive"; mkdir -p "$(dirname "$LREG")"; echo '{}' > "$LREG"
 # The run's own inbox messages leave new/ when it ends; another run's stay (team-inbox.sh close-run).
 IBA="$MAIN/.agents/team/inbox/alfa"; mkdir -p "$IBA/new"
@@ -284,6 +298,7 @@ run "$MAIN" bash .claude/lib/team-lead.sh end alfa; expect 0 "TeamLead ended" "(
 echo "team-smoke-22: (h) end/finalize OK"
 
 # ---- SessionStart hook: registration, /clear identity refresh, silent for others -----------------
+case_mark "SessionStart hook: registration, /clear"
 reset; lead_json; H="$SRC/.claude/hooks/session-registry.sh"
 LR="$MAIN/.agents/team/registry/alfa-lead.json"; mkdir -p "$(dirname "$LR")"
 [ -f "$LR" ] || echo '{"address": "alfa-lead", "kind": "team"}' > "$LR"
@@ -311,6 +326,7 @@ jq -e '.session_id == "sid-after-clear" and .reg == "alfa-lead.reg.json"' "$LR" 
 echo "team-smoke-22: SessionStart registration OK"
 
 # ---- (i) team-watch: no team signal for a run with or without its own lead -----------------------
+case_mark "(i) team-watch: no team signal for a run"
 reset; lead_json
 run "$MAIN" bash .claude/lib/team-snapshot.sh --out "$WORK/snap.json"; expect 0 "" "(i) snapshot"
 jq -e '.teams[] | select(.team == "alfa") | .lead == true' "$WORK/snap.json" >/dev/null || fail "(i) snapshot lead flag"
@@ -327,6 +343,7 @@ jq -e '[.[] | select(.kind | IN("attention","record","runner","ready","escalatio
 echo "team-smoke-22: (i) team-watch filter OK"
 
 # ---- (k) team-next archives the run-scoped root files; the next ticket takes the no-lead branch ---
+case_mark "(k) team-next archives the run-scoped ro"
 reset; lead_json
 for f in teamlead.settings.json round verdict-acked lead-dead relaunch-lead; do echo x > "$TD/$f"; done
 rm -f "$CLONE/.claude/hooks/guard-teamlead-write.sh" "$CLONE/.claude/hooks/guard-teamlead-bash.sh"
@@ -358,6 +375,7 @@ has "-s smk-alfa-planner" "$STUB_LOG" && ! has "-s smk-alfa-lead" "$STUB_LOG" ||
 echo "team-smoke-22: (k) team-next OK"
 
 # ==== authority: the per-run TeamLead's answers (checker, sender, hook) ===========================
+case_mark "authority: the per-run TeamLead's answer"
 RUN_ID=alfa-20261114-120000; echo "$RUN_ID" > "$TD/run"; RD="$TD/runs/$RUN_ID"; mkdir -p "$RD"
 lead_json; rm -f "$WORK/hs.case"; unset STUB_ON_HAS_SESSION CANCEL_AT
 export STUB_TMUX_ALIVE=0 STUB_PANE="$WORK/pane" TEAM_CONFIRM_SECS=1
@@ -406,6 +424,7 @@ tier() {  # tier <expected line prefix> <label> — the stage hook's tier of the
 }
 A0='"Bash(bash -n:*)"'
 # ---- (j) a settings edit is the Operator's, even with allow-offline on ----------------------------
+case_mark "(j) a settings edit is the Operator's, e"
 editp "$SET" .claude/settings.json "$A0" "$A0, \"Bash(bash -n .claude/lib/x.sh)\""
 chk --classes; expect 0 "policy-class: allow-offline" "(j) legacy --classes keeps its class waiver"
 tier "tier: operator — settings edit" "(j) settings edit"
@@ -416,6 +435,7 @@ tier "tier: operator — settings edit" "(j) guard profile edit"
 bashp "cp /tmp/s .claude/settings.json"; tier "tier: operator — settings edit" "(j) settings via Bash"
 echo "team-smoke-22: (j) settings edit operator tier OK"
 # ---- (k) a project-added ask is the Operator's; a baseline ask is the lead's ----------------------
+case_mark "(k) a project-added ask is the Operator'"
 bashp "az webapp restart --name x"
 tier "tier: operator — production ask: Bash(az webapp restart*)" "(k) project-added ask"
 bashp "git rm old.txt"; tier "tier: lead" "(k) baseline ask without a matching class"
@@ -460,6 +480,7 @@ export TMPDIR="$OLD_TMPDIR"
 bashp "git status"; tier "tier: lead" "(k) no match: a lead checkpoint"
 echo "team-smoke-22: (k) production asks OK"
 # ---- never waived: deny, SQL, unreadable; egress needs the Operator --------------------------------
+case_mark "never waived: deny, SQL, unreadable; egr"
 bashp "git rebase -i HEAD~2"; tier "tier: operator — refuse (deny-tier)" "(never) deny"
 bashp "sqlcmd -Q 'DROP TABLE x'"; tier "tier: operator — refuse (" "(never) SQL"
 bashp 'echo "unbalanced'; tier "tier: operator — refuse: command quoting cannot be parsed" "(never) unreadable"
@@ -467,6 +488,7 @@ bashp "curl https://example.invalid/x"; tier "tier: operator — egress" "(egres
 echo "team-smoke-22: tier never-waived + egress OK"
 
 # ---- sender: an ask answer — caller rules, tier, form, decision relay, answers.md, the marker -------
+case_mark "sender: an ask answer — caller rules"
 ANS="bash .claude/lib/team-answer.sh"
 lead() { run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM="${LT:-alfa}" $ANS "$@"; }
 hookin() { jq -c '{tool_name, tool_input}' "$WORK/in.json"; }   # the hook's payload of the last call
@@ -548,6 +570,7 @@ rm -f "$RD/decisions/d-2.md" "$RD/decisions/d-3.md"
 echo "team-smoke-22: sender authority + answers.md + marker OK"
 
 # ---- the hook binds team-answer.sh and the asks/ and decisions/ files to the lead's session ------
+case_mark "the hook binds team-answer.sh and the as"
 HOOK="$SRC/.claude/hooks/guard-team-verdict.sh"
 vp() { jq -cn --arg s "$1" --arg c "$2" '{session_id: $s, tool_name: "Bash", tool_input: {command: $c}}'; }
 FORGE="TEAM_SESSION_ROLE=TeamLead bash .claude/lib/team-answer.sh alfa a-1 --allow --authority teamlead --why w"
@@ -569,6 +592,7 @@ done
 echo "team-smoke-22: authority hook OK"
 
 # ==== pending decisions, the runner's class-first answering and the Operator notification =========
+case_mark "pending decisions, the runner's class-fi"
 DLD="$RD/decisions"; LTX="$(transcript sid-lead)"; mkdir -p "$(dirname "$LTX")"; : > "$LTX"
 unset TEAM_SMOKE_NO_LEAD  # (k) above ran the next ticket without a lead
 DEC="bash .claude/lib/team-lead.sh decision"
@@ -582,6 +606,7 @@ said_in_lead() {  # said_in_lead <text> — the Operator typed it into the lead 
     '{type: "user", uuid: $u, timestamp: $ts, message: {role: "user", content: $t}}' >> "$LTX"
 }
 # ---- (m) open: a pending file, the escalate verdict with notify, one notification -----------------
+case_mark "(m) open: a pending file, the escalate v"
 OB="$HOME/.agent-comms/outbox"
 nev() { ls "$OB/events" 2>/dev/null | grep -c "_alfa_${RUN_ID}_$1\.json$" || true; }
 run "$CLONE" $DEC open alfa --source coder-1-1.json --question "Edit the settings?"
@@ -598,6 +623,7 @@ ldec open alfa --source nothere.json --question q; expect 1 "verdict was refused
 rm -f "$DLD/d-3.md"
 cp "$SRC/.claude/hooks/guard-teamlead-write.sh" "$SRC/.claude/hooks/guard-teamlead-bash.sh" "$CLONE/.claude/hooks/"
 printf 'alfa-lead\nalfa-coder\n' > "$WORK/alive"; rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock"
+# count kept: (m) asserts exactly one notification over several ticks, and the notify retries need later ticks
 STUB_ON_HAS_SESSION=". '$WORK/hs.sh'" CANCEL_AT=14 run "$MAIN" $TR alfa; expect 6 "" "(m) runner polls"
 [ "$(nev d-2)" = 1 ] || { ls -la "$OB/events" > "$WORK/out" 2>&1 || true; fail "(m) not exactly one human_decision event"; }
 # A failing notify.sh (exit 1) is retried on the next ticks, three tries per verdict, then one warn:
@@ -642,6 +668,7 @@ head -n 1 "$WORK/out" | grep -q "^decision .agents/team/runs/$RUN_ID/decisions/d
 echo "team-smoke-22: (m) open + one notification OK"
 
 # ---- (n) two pending: answered by id, bound to the Operator's own words; a second answer → 4 ------
+case_mark "(n) two pending: answered by id, bound t"
 ldec open alfa --source coder-1-1.json --question "Which endpoint?" --options "old|new"; expect 0 "[d-3]" "(n) open d-3"
 ldec answer d-3 --text "use the old one"; expect 1 "not team d-3" "(n) answer without a team"
 ldec answer alfa d-3 --text "use the old one"; expect 7 "no Operator message" "(n) no Operator input yet"
@@ -663,6 +690,7 @@ run "$CLONE" $VD decision escalate --for attention:x --ref "$DLD/d-2.md" --messa
 echo "team-smoke-22: (n) answer by id + decision gate OK"
 
 # ---- (o) withdraw, then a late answer is refused ---------------------------------------------------
+case_mark "(o) withdraw, then a late answer is refu"
 ldec withdraw alfa d-2 --why "the coder found another way"; expect 0 "withdrawn: d-2" "(o) withdraw"
 ls "$OB/state" 2>/dev/null | grep -q "_alfa_${RUN_ID}_d-2[.]resolved$" || fail "(o) the withdrawn decision's notification is not resolved"
 said_in_lead "d-2 yes"
@@ -672,6 +700,7 @@ run "$CLONE" bash .claude/lib/team-lead.sh decision list alfa --pending; expect 
 echo "team-smoke-22: (o) withdraw OK"
 
 # ---- the Operator's relay is bound to its ask, worded by the Operator's reply, dispatched once -----
+case_mark "the Operator's relay is bound to its ask"
 sleep 600 & WPID=$!
 bashp "az webapp restart --name y"; mkask a-7 permission operator "$(hookin)" "$WPID"
 ldec open alfa --ask a-7; expect 0 "[d-4] coder: Bash az webapp restart --name y" "(bind) open from the ask"
@@ -694,6 +723,7 @@ hook "$CLONE" "$(vp sid-coder-1 "bash .claude/lib/team-lead.sh decision list alf
 echo "team-smoke-22: decision binding + dispatch once + hook OK"
 
 # ---- (i) the runner rings the lead for every open ask; it reads no pane and answers nothing ---------
+case_mark "(i) the runner rings the lead for every"
 runner_attention() {  # runner_attention <label> [<line>] — one attention line, a runner start, stopped
   echo "${2:-2026-11-14T12:00:00Z permission_prompt Claude needs your permission}" > "$RD/attention"
   rm -f "$WORK/hs.n" "$TD/cancel" "$TD/lock" "$TD/send-lead.log"; : > "$STUB_LOG"
@@ -735,6 +765,7 @@ kill "$WPID" 2>/dev/null || true; wait "$WPID" 2>/dev/null || true
 echo "team-smoke-22: (i) runner rings asks OK"
 
 # ---- (idle) an idle stage rings the lead once per line, but is no item the lead owes ---------------
+case_mark "(idle) an idle stage rings the lead once"
 IDLE="2099-01-01T00:00:01Z idle_prompt Claude is waiting for your input"
 printf '%s\n' "$IDLE" > "$RD/attention"
 run "$CLONE" bash .claude/lib/team-lead.sh pending alfa
@@ -755,6 +786,7 @@ rang "attention coder: idle with no ask (the stop hook did not file one)" \
 echo "team-smoke-22: (idle) idle stage OK"
 
 # ---- one typed message answers one decision, unless it names the others' ids -----------------------
+case_mark "one typed message answers one decision"
 ldec open alfa --source coder-1-1.json --question "Keep the old endpoint?"; expect 0 "[d-5]" "(once-ev) open d-5"
 ldec open alfa --source coder-1-1.json --question "Keep the old table?"; expect 0 "[d-6]" "(once-ev) open d-6"
 said_in_lead "yes"
@@ -767,6 +799,7 @@ ldec answer alfa d-7 --text no; expect 0 "answered: d-7" "(once-ev) the same mes
 echo "team-smoke-22: single-use evidence OK"
 
 # ---- (w) an operator-tier ask: the stage clock stops while it is open; the lead window answers ----
+case_mark "(w) an operator-tier ask: the stage cloc"
 # No session host for the decision's window (step 10): the hint passed to notify.sh says so and names
 # the status command, never a guessed tmux name; the runner goes on.
 nohost_notify() {
