@@ -251,8 +251,10 @@ The auditor outcome is already frozen (Phase A step 0).
 
 1. `bash .claude/lib/tree-fingerprint.sh compare "$SCRATCH/tree.fp"` — exit 1 (the tree changed under the run) or 2 (the compare failed) → state it in report 2's header (re-render the header line); never revert anything.
 2. Move both reports from `$SCRATCH` to `.agents/reference/` (`architecture-review-YYYY-MM-DD.html`, `architecture-assessment-YYYY-MM-DD.html`).
-3. **Reply in chat** — keep it short, the HTML carries the detail:
+3. **Record the run** — only when the focus is empty (a whole-codebase run; `--exclude` globs allowed): `bash .claude/lib/upkeep.sh record architecture-review --only-if-home --expect-head <the Preflight revision>` — the script records only when the checkout's `HEAD` still is the reviewed revision, and stores that revision. A focused run records nothing; a moved checkout records nothing (the script's line says so). Keep the printed line; a non-zero exit is reported, never fatal.
+4. **Reply in chat** — keep it short, the HTML carries the detail:
    - **Clickable markdown links** to both saved reports.
+   - **One line on the upkeep record** — the line step 3 printed, or "focused run — not recorded"; after `upkeep: recorded architecture-review in <path>` it adds the next step: commit that file with the reports (unless the checkout keeps it out of git).
    - **3–5 lines** summarizing the headline finding and the top recommendation.
    - **One line on the auditor** — ran / absent / failed / late, and what it found that the sweep did not, named.
    - **One line on the second sweep**, when `--codex` ran — how many candidates each sweep found alone, and *what Codex caught that we didn't*, named. If Codex was unavailable or never produced a result, say that instead, in one line: the report rests on one sweep.
@@ -286,4 +288,4 @@ Walk the design tree with the user — constraints, dependency category (per [`D
 - **Analyze-only** stays absolute for both reports and both Codex runs (`SANDBOX=read-only`, no `SCHEMA`).
 - **No re-litigation.** Settled decisions are not reopened in either report; a finding contradicting one is raised only with concrete friction and marked as such.
 - **Never fabricate a Codex run** — absent, late or failed is stated, and report 2 then rests on one lens.
-- **Writes.** Until both reports exist, the command writes only under `$SCRATCH` and `.agents/reference/` (and nothing of this run reaches `.agents/reference/` before Publish); Phase 3 keeps its two consented memory updates.
+- **Writes.** Until both reports exist, the command writes only under `$SCRATCH` and `.agents/reference/` (and nothing of this run reaches `.agents/reference/` before Publish); Publish step 3 adds the upkeep record (`.agents/upkeep.json` of the item's home), and Phase 3 keeps its two consented memory updates.

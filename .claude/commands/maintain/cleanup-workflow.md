@@ -691,7 +691,7 @@ After the last finding, **re-measure** with 3.6's two `wc` lines and print befor
 
 ## Final Report
 
-After all 5 phases:
+After all 5 phases — whichever were skipped — run `bash .claude/lib/upkeep.sh record cleanup-workflow --only-if-home` (it resets the `/prime` reminder; a non-zero exit is reported in one line, never fatal), then print:
 
 ```markdown
 # /maintain:cleanup-workflow run summary — YYYY-MM-DD
@@ -720,6 +720,7 @@ After all 5 phases:
    <M> moved, <D> deleted as duplicates, <K> kept (<K_contract> of them contract). <L> lines / <C> chars → <L'> / <C'> (cap 165 / 9 500).
 
 ## Next steps
+   - Upkeep record: <the line upkeep.sh printed> — only after exit 0 with "upkeep: recorded cleanup-workflow in <path>": commit that file with this run (unless the checkout keeps it out of git); any other line is shown alone.
    - Fix Phase 1 broken refs (manual).
    - Address Phase 3 warnings as time permits.
    - Commit the Phase 5 moves on their own (memory files carry `merge=union` for local merges only, see Phase 2).

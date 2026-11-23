@@ -9,6 +9,7 @@
 #        example, the reviewer agents and their fallbacks, AGENTS.md, the reflection protocol)
 # Role names in code are Supervisor / TeamLead / Advisor / Reviewer; project names enter only
 # through configuration (teams.channel.mail_suffix), never as literals.
+# A git root must also not track .agents/upkeep.json — the template's own upkeep record stays local.
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT="${1:-$(cd "$HERE/../../.." && pwd)}"
@@ -64,6 +65,13 @@ print("team-purity: OK")
 PY
 }
 
+tracked_record() {  # tracked_record <root> — rc 1 when a git root tracks its upkeep record
+  git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  if git -C "$1" ls-files --error-unmatch .agents/upkeep.json >/dev/null 2>&1; then
+    echo ".agents/upkeep.json: tracked in the template"; return 1
+  fi
+}
+
 # The test of the test: a planted leak in a scratch root must fail, the pin line must not.
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/.claude/lib" "$T/.claude/team"
@@ -100,5 +108,10 @@ for leak in 'wc -c /private/tmp/claude-501/-Users-mrozo-Desktop-x/y.md' 'assigne
   ! scan "$T" > "$T/out" || { echo "team-purity: FAIL — '$leak' in a fixture passed"; exit 1; }
 done
 rm -f "$T/.claude/lib/tests/fixtures/prompts/x.txt"
+G="$T/git-root"; mkdir -p "$G/.agents"; git -C "$G" init -q; printf '{}\n' > "$G/.agents/upkeep.json"
+tracked_record "$G" > "$T/out" || { echo "team-purity: FAIL — an untracked record was flagged"; exit 1; }
+git -C "$G" add .agents/upkeep.json
+! tracked_record "$G" > "$T/out" || { echo "team-purity: FAIL — a tracked record passed"; exit 1; }
 
+tracked_record "$ROOT" || { echo "team-purity: FAIL — the template tracks its upkeep record"; exit 1; }
 scan "$ROOT"
