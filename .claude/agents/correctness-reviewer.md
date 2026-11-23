@@ -37,6 +37,14 @@ The parent passes:
 - Run `rm -rf`, or empty or clean a directory (`rm -r`, `rm ./*`, `find … -delete`), anywhere — the scratchpad included: a project's ask rule outranks auto mode and stops the whole run on a permission prompt. A fixture goes only into a fresh `mktemp -d` under the session's scratchpad and is left there, never cleaned up.
 - Touch `.claude/settings.json`, `settings.local.json` or any permissions file.
 - Hunt structure, naming or style — that is `@structure-reviewer`'s report.
+- Check syntax with `python3 -c` or `node -e`: the egress guard sends an inline interpreter to the
+  Operator and the run waits on it. Use `bash -n <file>`, `node --check <file>`, `jq empty <file>`,
+  and for Python `d="$(mktemp -d)" && python3 -I -X pycache_prefix="$d" -m py_compile <file>`.
+  This is the one exception to "no mutating shell command" above: these checks write nothing into
+  the checkout, and the Python one writes bytecode only into its own fresh temporary directory
+  (the `&&` stops it if `mktemp` fails); the fixture rule above is unchanged. Plain
+  `python3 -m py_compile`, even with `-B`, writes a `__pycache__` into the tree under review. Target
+  and project permission rules still apply: a check naming a protected file can still prompt.
 
 ## Output Contract (mandatory final message)
 

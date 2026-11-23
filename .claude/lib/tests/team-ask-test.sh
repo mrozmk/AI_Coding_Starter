@@ -212,6 +212,7 @@ L a-1 --pick "Keep it" --authority teamlead --why w; wait "$HP"
 # a permission ask that timed out is withdrawn; its retry is new; a late answer refused
 newrun pto; pl perm-wc; TO=16 H "$T/p1.out"
 ok '[ "$(j "$T/p1.out" .hookSpecificOutput.decision.behavior)" = deny ] && [ "$(st a-1)" = withdrawn ]' "PermissionRequest deadline → deny, the ask withdrawn"
+ok 'grep -qF "Retry the same tool call to ask the TeamLead again" "$T/p1.out"' "the lead-tier withdrawn deny keeps the retry text"
 L a-1 --allow --authority teamlead --why late; ok '[ "$LRC" = 6 ] && grep -q "withdrawn — answer the newer ask" "$T/l.out"' "a late answer to a withdrawn permission ask → 6"
 pl perm-wc; HB p2; wf "$AD/a-2.json"; ok '[ -e "$AD/a-2.json" ]' "the identical command later files a new ask"
 L a-2 --allow --authority teamlead --why w; wait "$HP"
@@ -519,7 +520,8 @@ answer_op() {  # answer_op <d-n> <a-n> — the Operator types the allow reply, t
 waitst() { local i=0; while [ "$(st "$1")" != "$2" ] && [ "$i" -lt 50 ]; do sleep 0.2; i=$((i + 1)); done; }
 newrun ptd; pl perm-curl; TO=21 HB pt; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"
 wait "$HP" 2>/dev/null; : > "$RINGS"; runner lead_asks
-ok '[ "$(st a-1)" = timed-out ] && grep -q "^status: pending$" "$RD/decisions/d-1.md" && ! grep -q withdrawn "$RINGS" && grep -q "waits for the Operator.s decision and stays open" "$T/pt.out"' "an operator permission ask times out, its decision stays pending, nothing withdrawn"
+ok '[ "$(st a-1)" = timed-out ] && grep -q "^status: pending$" "$RD/decisions/d-1.md" && ! grep -q withdrawn "$RINGS" && grep -qF "Do not retry this same command now" "$T/pt.out"' "an operator permission ask times out, its decision stays pending, nothing withdrawn"
+ok '[ "$(j "$T/pt.out" .hookSpecificOutput.decision.behavior)" = deny ] && grep -qF "No Operator answer reached ask a-1 (egress: curl" "$T/pt.out" && grep -qF "Once the answer is relayed to ask a-1" "$T/pt.out" && grep -qF "take your own stop path naming a-1" "$T/pt.out" && grep -qF blocked "$T/pt.out" && grep -qF "STATUS: failed" "$T/pt.out" && ! grep -qF "Retry the same tool call" "$T/pt.out"' "the timed-out operator deny says do not retry, names the ask, cause and stop path"
 answer_op d-1 a-1; ok '[ "$LRC" = 0 ] && [ "$(st a-1)" = answered ]' "the Operator's late answer is relayed ($(cat "$T/l.out"))"
 TO=21 H "$T/pt2.out"
 ok '[ ! -e "$AD/a-2.json" ] && [ "$(j "$T/pt2.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ "$(st a-1)" = delivered ]' "the retry of the same call claims it and gets the allow"
@@ -553,11 +555,31 @@ jq '.session_id = "sid-other"' "$T/p.json" > "$T/p2.json" && mv "$T/p2.json" "$T
 ok '[ -e "$AD/a-2.json" ] && [ "$(st a-1)" = answered ]' "another stage conversation (a /clear) never claims a late answer"; kill "$HP" 2>/dev/null; wait "$HP" 2>/dev/null
 newrun punc; perm 'curl "$URL"'; TO=21 HB u1; wf "$AD/a-1.json"; TL decision open beta --ask a-1 --options "allow|deny"; wait "$HP" 2>/dev/null
 ok '[ "$(st a-1)" = withdrawn ] && [ "$(j "$AD/a-1.json" .retry_key)" = none ]' "a \$VAR operand cannot be pinned: withdrawn at its deadline"
+ok '[ "$(j "$T/u1.out" .hookSpecificOutput.decision.behavior)" = deny ] && grep -qF "the ask is withdrawn. Do not retry this same command" "$T/u1.out" && grep -qF "(egress: curl" "$T/u1.out" && grep -qF "take your own stop path naming a-1" "$T/u1.out" && grep -qF blocked "$T/u1.out" && grep -qF "STATUS: failed" "$T/u1.out" && ! grep -qF "Retry the same tool call" "$T/u1.out"' "the withdrawn operator deny says do not retry, names the ask, cause and stop path"
 runner lead_asks; ok 'grep -q "^status: withdrawn$" "$RD/decisions/d-1.md"' "… the runner withdraws its decision"
 TO=21 HB u2; wf "$AD/a-2.json"; TL decision open beta --ask a-2 --options "allow|deny"; answer_op d-2 a-2; wait "$HP" 2>/dev/null
 runner 'lead_open_ask coder 1'; ok '[ "$(j "$T/u2.out" .hookSpecificOutput.decision.behavior)" = allow ] && [ "$RRC" = 1 ]' "… its replacement is answered and nothing stays open"
+cp "$MAIN/.claude/lib/team-ask.sh" "$T/ask-lib.keep"
+# (a) ask_timeout reports timed-out while the stored state is still waiting, and the stored tier is
+# blanked: the message follows the passed state and the hook-computed tier, never a re-read
+printf '\nask_timeout() { ask_set "$1" %s; echo timed-out; }\n' "'.tier = \"\"'" >> "$MAIN/.claude/lib/team-ask.sh"
+newrun pst; perm 'curl "$URL"'; TO=16 H "$T/s1.out"
+cp "$T/ask-lib.keep" "$MAIN/.claude/lib/team-ask.sh"
+ok '[ "$(j "$T/s1.out" .hookSpecificOutput.decision.behavior)" = deny ] && [ -z "$(j "$AD/a-1.json" .tier)" ] && grep -qF "it stays open. Do not retry this same command now" "$T/s1.out" && ! grep -qF withdrawn "$T/s1.out" && ! grep -qF "Retry the same tool call" "$T/s1.out"' "the deadline deny follows the state ask_timeout returned, not a re-read"
+# (b) an answer is there at once (ask_poll) but the delivery claim fails: a neutral deny, no withdrawal, no retry promise
+printf '\nask_poll() { echo "{}"; return 0; }\nask_claim_delivery() { touch "$ASK_TD/claim-called"; return 1; }\n' >> "$MAIN/.claude/lib/team-ask.sh"
+newrun pcl; rm -f "$TD/claim-called"; pl perm-curl; TO=16 H "$T/cl1.out"
+cp "$T/ask-lib.keep" "$MAIN/.claude/lib/team-ask.sh"
+ok '[ -e "$TD/claim-called" ] && [ "$(j "$T/cl1.out" .hookSpecificOutput.decision.behavior)" = deny ] && grep -qF "No Operator answer reached this call for ask a-1" "$T/cl1.out" && ! grep -qF withdrawn "$T/cl1.out" && ! grep -qF "Retry the same tool call" "$T/cl1.out"' "a failed delivery claim gets a neutral deny: no withdrawal, no retry promise"
+# (c) the team is stopped between the poll and the fallback: the stop message wins
+printf '\nask_timeout() { touch "$ASK_TD/cancel"; echo timed-out; }\n' >> "$MAIN/.claude/lib/team-ask.sh"
+newrun pstp; perm 'curl "$URL"'; TO=16 H "$T/sp1.out"
+cp "$T/ask-lib.keep" "$MAIN/.claude/lib/team-ask.sh"; rm -f "$TD/cancel"
+ok '[ "$(j "$T/sp1.out" .hookSpecificOutput.decision.behavior)" = deny ] && grep -qF "the team was stopped" "$T/sp1.out" && ! grep -qF "Go on with work" "$T/sp1.out"' "a stop between the poll and the fallback wins over the deadline text"
 k1="$(retry Bash '{"command": "curl -s https://example.invalid/x"}' "$CLONE")"; k2="$(retry Edit '{"file_path": "/etc/x.conf", "old_string": "a", "new_string": "b"}' "$CLONE")"
 ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [[ "$k2" =~ ^[0-9a-f]{40}$ ]]' "retry keys for a plain egress command and an outside-clone Edit ($k1 | $k2)"
+t1="$(tier Bash '{"command": "d=\"$(mktemp -d)\" && python3 -I -X pycache_prefix=\"$d\" -m py_compile README.md"}' "$CLONE")"; t2="$(tier Bash '{"command": "jq empty .claude/settings.json"}' "$CLONE")"
+ok '[ "$t1" = "tier: lead" ] && [[ "$t2" == "tier: operator — settings edit"* ]]' "the sanctioned python syntax check is not operator-tier; a check naming settings.json still is ($t1 | $t2)"
 ok '[ "$(retry Bash "{\"command\": \"curl \\\"\$URL\\\"\"}" "$CLONE")" = none ] && [ "$(retry Bash "{\"command\": \"curl https://example.invalid/*\"}" "$CLONE")" = none ]' "retry: none for a \$VAR operand and a glob"
 mkdir -p "$CLONE/tree"; k1="$(retry Bash '{"command": "scp -r tree h.example.invalid:"}' "$CLONE")"; touch "$CLONE/tree/new"
 k2="$(retry Bash '{"command": "scp -r tree h.example.invalid:"}' "$CLONE")"; rm -r "$CLONE/tree"
