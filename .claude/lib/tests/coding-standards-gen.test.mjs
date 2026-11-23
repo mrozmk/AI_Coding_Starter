@@ -116,6 +116,14 @@ test('scanner: clippy enforces only with -D warnings', async () => {
   assert.equal((await clippy('RUSTFLAGS="--deny warnings" cargo clippy')).enforced, true);
   const group = await clippy('cargo clippy -- -D clippy::all');
   assert.ok(!group || group.enforced === false);
+  // `-p <crate>` names a package, not a path: the scope is unknown, never every .rs file.
+  const pkg = await clippy('cargo clippy -p corelib -- -D warnings');
+  assert.equal(pkg.runs[0].scopeUnknown, true);
+  assert.deepEqual(pkg.runs[0].targets, []);
+  assert.ok(!pkg.enforced);
+  const fmt = tool(await miniScan({ Makefile: 'fmt:\n\tcargo fmt -p corelib -- --check\n', 'src/main.rs': 'fn main() {}\n' }), 'rustfmt');
+  assert.equal(fmt.runs[0].scopeUnknown, true);
+  assert.ok(!fmt.enforced);
 });
 
 test('scanner: a bare cargo clippy checks when Cargo.toml denies a lint', async () => {
@@ -531,6 +539,10 @@ test('renderer: a config whose every rule is not enforced makes no tool claim', 
   assert.doesNotMatch(await toolsOnly(realRepo), /Biome/);
   const rec = biomeRepo('{"linter":{"enabled":true,"rules":{"recommended":true}}}\n', 'biome check src');
   assert.match(await toolsOnly(rec), /Enforced by: tool \(biome\.json: recommended\)/);
+  // A disabled linter checks no rule, whatever its rules block says.
+  const off = biomeRepo('{"linter":{"enabled":false,"rules":{"suspicious":{"noDebugger":"error"}}}}\n', 'biome check src');
+  assert.deepEqual(cfg(tool(await fixtureScan(off, listFiles(off)), 'biome'), 'biome.json').rules, []);
+  assert.doesNotMatch(await toolsOnly(off), /noDebugger/);
 });
 
 test('renderer: a missing seed is a usage error', async () => {

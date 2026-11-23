@@ -98,14 +98,15 @@ export const TOOLS = [
   T('govet', 'go vet', 'analyzer', { aliases: ['go vet'], runs: /\bgo\s+vet\b/, bin: /^go$/, sub: ['vet'], observe: /\bgo\s+vet\b/, appliesTo: GO }),
   T('rustfmt', 'rustfmt', 'format', {
     configs: [/(^|\/)\.?rustfmt\.toml$/], runs: /\bcargo\s+fmt\b.*--check|\brustfmt\b.*--check/, bin: /^(.*\/)?(cargo|rustfmt)$/,
-    sub: ['fmt'], stopAt: '--', observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
+    // `-p <crate>` names a package, not a path: such a run's file scope is unknown.
+    sub: ['fmt'], stopAt: '--', scopeFlags: ['-p', '--package'], observe: /\brustfmt\b|\bcargo\s+fmt\b/, appliesTo: RS,
   }),
   // Clippy's lint levels live on the command line or in Cargo.toml's [lints.clippy] /
   // [workspace.lints.clippy], never in clippy.toml: only a run that denies warnings, or a bare run
   // in a crate whose Cargo.toml denies a lint, checks.
   T('clippy', 'Clippy', 'lint', {
     configs: [/(^|\/)\.?clippy\.toml$/], runs: /\bcargo\s+clippy\b/, bin: /^(.*\/)?cargo$/, sub: ['clippy'], stopAt: '--',
-    strictRe: /(^|[\s=])(-D\s*warnings|--deny[=\s]+warnings)(\s|$)/, requireStrict: true, appliesTo: RS,
+    scopeFlags: ['-p', '--package'], strictRe: /(^|[\s=])(-D\s*warnings|--deny[=\s]+warnings)(\s|$)/, requireStrict: true, appliesTo: RS,
   }),
   T('rubocop', 'RuboCop', 'lint', { configs: [/(^|\/)\.rubocop\.ya?ml$/], runs: /\brubocop\b/, bin: /^(.*\/)?rubocop$/, selectFlags: ['-c', '--config'], appliesTo: '**/*.rb' }),
   T('dotnet-format', 'dotnet format', 'format', {
@@ -179,7 +180,7 @@ function fromObject(t, obj, lines, q) {
     // Biome's lint rules live only under linter.rules (and overrides[].linter.rules), as
     // `<group>.<rule>`: a level string, or the object form `{"level": "warn", "options": {...}}`.
     // `recommended` / `all` set to true is a preset; the rest of the config (formatter, files,
-    // linter.enabled …) is no rule.
+    // linter.enabled …) is no rule, and a linter section with `enabled: false` checks nothing.
     addPresets(obj.extends);
     const group = (o) => {
       for (const [k, v] of Object.entries(o || {})) {
@@ -189,7 +190,8 @@ function fromObject(t, obj, lines, q) {
         else if (v && typeof v === 'object' && !Array.isArray(v)) group(v);
       }
     };
-    for (const r of [obj.linter?.rules, ...[].concat(obj.overrides ?? []).map((o) => o?.linter?.rules)]) group(r);
+    const lintRules = (l) => (l && l.enabled !== false ? l.rules : null);
+    if (obj.linter?.enabled !== false) for (const r of [lintRules(obj.linter), ...[].concat(obj.overrides ?? []).map((o) => lintRules(o?.linter))]) group(r);
   } else {
     addPresets(t.tool === 'phpstan' || t.tool === 'rubocop' ? obj.includes ?? obj.inherit_from : obj.extends);
     const walk = (o) => {
