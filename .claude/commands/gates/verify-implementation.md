@@ -1,6 +1,6 @@
 ---
 description: Verify implementation correctness and code quality after executing a plan
-argument-hint: [plan-name]
+argument-hint: "[plan-name] [--base <rev>]"
 ---
 
 # /gates:verify-implementation — Verify Plan Execution & Code Quality
@@ -31,12 +31,13 @@ Use these flags in Steps 3-5 to skip irrelevant sections. Report the detected st
 
 ## 1. Resolve Plan Context
 
+0. **Base for the existing-test check.** Strip `--base <rev>` from `$ARGUMENTS` (→ `BASE`) before resolving the plan. `git cat-file -e "<rev>^{commit}"` fails → `BASE = none (base <rev> is not a commit)`. No `--base` → `BASE` = `git merge-base HEAD <ref>`, where `<ref>` is the first that resolves: `origin/<trunk>` with `<trunk>` = the `trunk=` value of `bash .claude/lib/branch-model.sh fields`; on an empty value or exit 3, the ref `git symbolic-ref --short refs/remotes/origin/HEAD` prints, used as is (it already reads `origin/<name>`); then `origin/main`; then `origin/master`. Unresolvable → `BASE = none (no base)`. Only §4's Existing tests reads `BASE`; `none` never stops the gate.
 1. If `$ARGUMENTS` looks like a plan name (e.g. `phase-3b-ui-hero-score`) → resolve the file under `.agents/plans/active/` or `.agents/plans/done/`.
 2. If no argument given → use the **most recently modified** plan file in `.agents/plans/active/`.
 3. If no plan found → **diff-only mode** (no spec to compare against). Do **not** STOP. Set `PLAN = none`, derive the scope from the working tree (`git status --porcelain` + `git diff`), skip the checklist/acceptance-criteria/spec axes (Steps 2 and the spec-dependent checks in Step 6), and run only the stack-detected quality gates and the semantic review over the changed files. Tell the user once: `No plan found — running in diff-only mode (checklist skipped; quality gates + semantic review over the working-tree diff).` This mode is what `/check-implementation` invokes when it has no plan; it must not abort here.
 4. If a plan was found, read the plan file. Extract:
    - **Tasks** — `## STEP-BY-STEP TASKS`, each with its `- [ ]` marker, `EXPECT` assertions and `VALIDATE` command
-   - **Acceptance criteria**
+   - **Acceptance criteria** — every criterion of `## ACCEPTANCE CRITERIA` with its id (`**E1-2.AC1**`, or the plan-local `**AC-n**` label) and the `Proof:` lines nested under it (`static`, `test`, `manual`, `none` — `/plan-feature` → `## ACCEPTANCE CRITERIA`); mark each `(withdrawn)` criterion; the `Technical checks` sub-list is not a criterion. A criterion without an id gets the label `AC-n` in document order, skipping numbers already used (the same `/plan-feature` rule), so a plan written before the labels still gets stable row ids. A plan that is an umbrella sub-step (`<base>-<N|Na>-*.md` with `<base>.md` in the same directory, `<base>` derived as in `/execute` Phase 0) **and has no active criteria of its own** → §6 reports `Acceptance criteria: n/a (umbrella sub-step — judged on <base>.md)`; a sub-step that carries local criteria gets rows for those, and the feature-wide criteria stay with the umbrella.
    - **Design references** (Figma links, `design.md`, or `.agents/memory/domain/design.md` if the project has one)
    - **Test commands** (from Testing Strategy section)
    - **Files expected** to be created or modified
@@ -53,7 +54,7 @@ A delta pass re-proves the fix, never less than the gates:
 - **§2 and §3 run in full**, as written — the task checks and the quality gates are the regression floor.
 - Judge every `PREVIOUS_GAPS` item **resolved** or **still-open**, citing what you checked.
 - **§4 semantic review** and **§5 design compliance** cover the fix diff only: `git diff <FIX_BASE> <FIX_HEAD>`.
-- **§6 spec axis** covers the fix diff **and every acceptance criterion or task whose implementation lives in a changed file** — re-judge those; no earlier result carries over for changed code (the "a fix that satisfies the linter can still remove behaviour" rule in §3).
+- **§6 spec axis** covers the fix diff **and every acceptance criterion or task whose implementation lives in a changed file** — re-judge those; no earlier result carries over for changed code (the "a fix that satisfies the linter can still remove behaviour" rule in §3). The §6 acceptance-criteria ledger is still built for every active criterion — completeness needs every row, and its test rows come from this pass's §3 run.
 - A new issue the fix introduced is reported like any other finding.
 
 ## 2. Task Validation
@@ -84,6 +85,8 @@ Missing: [list if any — per task: which EXPECT or VALIDATE failed, and the pat
 
 If any mandatory task fails, STOP and report as **BLOCK**.
 
+The report then also carries `Acceptance criteria: not evaluated — gate stopped at §2 task <n>` — followed by `— the failed task backs the proof of <id>` for each active criterion whose `Proof: test — <test file> :: <test name literal>` that task backs: its `EXPECT` is `contains — <test file> :: <test name literal>`, or its `IMPLEMENT` / `GOTCHA` names that `<test file> :: <test name literal>` pair (an existing case the plan runs first) — and claims no ledger row (§6 never ran).
+
 ## 3. Quality Gates
 
 **Source of truth: `CLAUDE.md` → `Validation` section.** That section is filled per-project by `/setup:create-CLAUDE_MD` with the actual commands the project uses. Read it and run those commands in sequence.
@@ -100,6 +103,8 @@ If `CLAUDE.md` has no `Validation` section, or the section still contains placeh
 | (none detected) | Skip Quality Gates with a note; checklist + semantic review still run |
 
 If any command fails, STOP (fail fast) and report which gate failed.
+
+The report then also carries `Acceptance criteria: not evaluated — gate stopped at §3 <command>` and claims no ledger row; §4's Existing tests did not run either.
 
 **Red before you touched anything?** Prove it before blaming the change: `git stash push -u` → re-run the failing gate → `git stash pop`. Still red → pre-existing, report it as such (stale gitignored build output is the recurring cause — never "fix" it with `git clean -f*`). Green after stash → the change did break it.
 
@@ -176,6 +181,17 @@ The most dangerous defects are not thrown exceptions — they are code that sile
 - **Stub-beside-real.** Two similarly-named functions where one is a stub/`TODO` (`send` / `sendReal`, `process` / `processFull`) and the caller is wired to the stub → the feature silently no-ops. A green test that asserts the **stub** was called is a false signal — it encodes the bug. Before trusting a feature works, grep which implementation the caller actually imports; require a real end-to-end check for any "X happens on event Y" claim, not just a unit test.
 - **Fire-and-forget on a critical path.** A side effect that **is** the business outcome (email, payment, webhook, queue enqueue) dispatched without awaiting its result and without surfacing failure (`.send().catch(log)` then return success). If the effect is the outcome, await it and propagate a non-success result; reserve fire-and-forget for genuinely best-effort work. Every form/action needs a visible error state for the failure branch — a silent success looks like a stuck button.
 
+### HIGH — Existing tests (language-agnostic)
+
+A test that existed at the base is a regression guard for a criterion an earlier task delivered; making it pass by weakening it removes that guarantee silently.
+
+- **Scope:** files present at `BASE` (§1 item 0) that are tests by this project's own conventions (its test directories, `*test*` / `*spec*` names), plus every file a `Proof: test` line names, plus the runner configuration and selection files the diff changes (a changed selector can stop an unchanged base case from running). Read `git diff -M <BASE> -- <those files>` — the working tree against the base, so an uncommitted fix counts.
+- **Moved, not removed.** Before judging a removed case or file, look for where it went: rename pairs in `git diff -M --name-status <BASE>` over the **whole** tree (a path filter drops a destination that is not a test path at the base), and the untracked files in `git status --porcelain` (an unstaged move leaves its destination untracked, invisible to `git diff`). A case found intact at the destination was moved — no finding — but only when the project's runner still discovers it there (its configuration or case listing shows the destination is collected); a move out of discovery is judged like an added skip.
+- **Finding:** the diff deletes, skips or loosens a test case present at the base — a removed case or file, a removed or weakened assertion (an exact check made looser, an assertion turned into a no-op, an expected value changed to match the new output), an added skip / only / xfail marker or filter — **and** no plan task names that test file with that intent (update, remove or rewrite that case). Adding cases to an existing test file is not this finding.
+- **Severity:** High (→ `BLOCK`) with a plan; with no plan (diff-only mode) Medium — reported, not blocking.
+- **Row:** the file, the case, and the edit that weakened it or stopped it running; fix direction `restore the base case (back to its text at the base, and undo any skip, filter or selector change that stopped it running) and fix the code until it passes; if it cannot pass without changing behaviour the plan asked for, it is a decision, not a fix`.
+- `BASE = none` → `Existing tests: not evaluated — <why>`; never a pass claim.
+
 ### HIGH — Idiomatic Patterns *(JavaScript/TypeScript only — skip if `!IS_NODE`)*
 
 - Module-level mutable shared state — prefer immutable data and pure functions
@@ -247,19 +263,40 @@ Skip this section if the plan has no design references.
 
 This is the **spec axis**: distinct from the semantic review above (which judged whether the code is *correct*), this judges whether the change implements the *right thing* — what the plan asked for, no more and no less. Correct code that builds the wrong feature still fails here. Check the diff against the plan along three independent lines, and **quote the plan/spec** for every finding:
 
-- **(a) Missing / partial requirements** — a requirement, acceptance criterion, or task in the plan that is not implemented, or only partially. Name the unmet criterion verbatim.
+- **(a) Missing / partial requirements** — a requirement or task in the plan that is not implemented, or only partially. Name it verbatim. Acceptance criteria are judged in the ledger below, never twice.
 - **(b) Unasked-for behavior / scope creep** — code that does something the plan did **not** ask for (extra endpoints, options, side effects, abstractions built "for later"). Unrequested scope is a risk, not a bonus — flag it so the user decides whether it belongs.
 - **(c) Wrong implementation** — a requirement that *is* addressed, but in a way that contradicts the plan's intent or contract (different shape, different semantics, different edge-case behavior than the spec describes).
 
 Then the concrete checks:
 
-- Does the code satisfy the plan's **acceptance criteria**?
+- The **acceptance-criteria ledger** below — one row per active criterion.
 - Are all **dependencies** declared in the plan actually imported and used?
 - If the plan specified **test files** — do they exist, run, and pass?
 - If the plan specified **i18n keys** — are they present in all locale files?
 - If the plan required **E2E** — was it validated? Use the project's test runner, MCP Playwright via `/test-e2e` if available, or document a manual check.
 
-If there is no plan (diff-only mode), skip (a)-(c) — there is no spec to compare against — and run only the concrete checks that apply.
+If there is no plan (diff-only mode), skip (a)-(c) and the ledger — there is no spec to compare against — report `Acceptance criteria: n/a (no plan)`, and run only the concrete checks that apply.
+
+### Acceptance-criteria ledger
+
+One row per active criterion of the plan — id, verdict, effect, evidence. It replaces a single judgement over all criteria: a criterion nobody judged shows as a row, it never disappears.
+
+| Verdict | When | Effect |
+|---|---|---|
+| `met` | the declared proof holds: static evidence cited `file:line`; or the named test exists, **that named case ran and passed** in the §3 run (not skipped, not filtered out — a green file is not enough) and its assertions exercise the criterion | `—` |
+| `unmet` | the code contradicts or misses the criterion; a declared `static` literal is absent | `BLOCK` (High) |
+| `unconfirmed` (declared `test`) | the declared test is missing, failing, or does not assert the criterion | `BLOCK` (High) |
+| `unconfirmed` (other) | a `static` proof on a criterion the gate judges behavioural; a test that exists but whose run cannot be shown | `WARN` (Medium) |
+| `deferred` | `Proof: manual`, `Proof: none — <why>`; a behavioural criterion without a test in a plan that has no `Proof:` lines at all | `—` — informational: listed, no warning, verdict unchanged |
+
+- **That named case ran.** First read the §3 command itself and its effective selectors: a selection that excludes the named case (a step list, a filter, a skip flag) settles the row — filtered out, `unconfirmed` with effect `BLOCK` against a declared `test` — even when the log prints no skip line. Then read the §3 run's detailed output for the named case (a suite's per-step log, not only its summary line). When the selection admitted the case but the output does not list cases, run once more only when the project's supported invocation can **identify that case** — select it, or report per case — with its fixture setup and isolation (never a direct file call that bypasses them), and only when no standing restriction forbids test runs (an order suspending them, say); one such run serves every criterion backed by the same invocation. A step that reruns a whole group with the same summary-only output shows nothing new: skip it. No such invocation, or a forbidden run → `unconfirmed — test exists, run not shown` (`WARN`), never a direct file call that bypasses its isolation. A run that shows the named case skipped, filtered out or failing is not "not shown": against a declared `test` it is `unconfirmed` with effect `BLOCK`.
+- **Several proofs, one row.** The weakest verdict wins: `unmet` › `unconfirmed` › `deferred` › `met`. Between two `unconfirmed` proofs the one with effect `BLOCK` wins over `WARN`, and the row keeps that proof's file, case and reason as its evidence.
+- **Evidence of a `deferred` row** carries the plan's own words: the what-and-where of a `Proof: manual` line, or the reason of a `Proof: none` line — it is the manual-check list a reader acts on without reopening the plan.
+- **Red before.** A `met` row proven by a test shows the coder's declaration — `red before: declared yes | n/a | not recorded` — read from the `red before green: <test> — …` line (`/execute` → `### Tests Added`; in team mode the run notes' `## Unattended decisions`). It never changes the verdict.
+- **Completeness.** On a complete audit every active criterion appears exactly once; a missing or duplicated id is reported at the top of the block, never dropped. Before the verdict, compare the rows with the plan's active criteria and add a row for any the ledger lacks. Two active criteria that share an id each get their own row (`<id> (1)`, `<id> (2)`) — one row never stands for two criteria — and the notice names the id. Withdrawn criteria get no row and are not counted.
+- **Legacy plan — no `Proof:` line anywhere.** It does not block: classify each criterion yourself — a structural one is judged as `static` (cite `file:line`), a behavioural one is `met` only through a test as above, else `deferred`.
+- **A criterion without a valid `Proof:` line in a plan that has them** is classified the same way, but a row that would be `deferred` is `unconfirmed — no proof declared` (`WARN`).
+- **No plan** → `Acceptance criteria: n/a (no plan)`; an umbrella sub-step without local criteria → the §1 `n/a (umbrella sub-step …)` line.
 
 ## 7. Final Verdict
 
@@ -287,6 +324,15 @@ Critical: [N] | High: [N] | Medium: [N]
 | Severity | File | Line | Issue | Fix |
 |----------|------|------|-------|-----|
 
+Existing tests: [<n> findings | none | not evaluated — <why>]
+
+### Acceptance Criteria
+[Completeness: missing <ids> | duplicated <ids>]   ← only when not complete
+Acceptance criteria: total=<n> met=<n> unmet=<n> unconfirmed=<n> deferred=<n>
+| Id | Verdict | Effect | Evidence |
+|----|---------|--------|----------|
+[or the single line:] Acceptance criteria: n/a (no plan) | n/a (umbrella sub-step — judged on <base>.md) | not evaluated — gate stopped at <§2 task <n> | §3 <command>>
+
 ### Design Compliance
 [✅ Pass / ⚠️ Warn / N/A]
 
@@ -296,17 +342,17 @@ Critical: [N] | High: [N] | Medium: [N]
 Next steps: [ready for commit / fix listed issues / ask user]
 ```
 
-> **Diff-only mode (`PLAN = none`):** there is no plan, so report `Plan Compliance: N/A` and **drop every task clause below** — the verdict is decided by quality gates + semantic-review severity **only**. Read each rule as if its task clause were absent (e.g. Approve = no Critical/High issues and all gates pass; Warn = only Medium issues; Block = any Critical/High issue, or any gate fails).
+> **Diff-only mode (`PLAN = none`):** there is no plan, so report `Plan Compliance: N/A` and **drop every task clause below** — the verdict is decided by quality gates + semantic-review severity **only** — there is no ledger (`Acceptance criteria: n/a (no plan)`), and the Existing-tests finding is Medium. Read each rule as if its task clause were absent (e.g. Approve = no Critical/High issues and all gates pass; Warn = only Medium issues; Block = any Critical/High issue, or any gate fails).
 
-The two axes are decided separately. **Task axis** (`## STEP-BY-STEP TASKS`, §2): any mandatory task failing → `Block`; all passing, or `n/a`, → no objection from this axis — there is no warn band here, because a task is either done or it is not. **Semantic axis** (acceptance criteria + review issues): the Medium-only warn band lives here, where a finding is a matter of judgement.
+The two axes are decided separately. **Task axis** (`## STEP-BY-STEP TASKS`, §2): any mandatory task failing → `Block`; all passing, or `n/a`, → no objection from this axis — there is no warn band here, because a task is either done or it is not. **Semantic axis** (the acceptance-criteria ledger + review issues): the warn band lives here — Medium issues and `WARN` ledger rows — where a finding is a matter of judgement. `deferred` rows are listed and change no verdict.
 
-**Approve**: No Critical/High issues, all gates pass, all mandatory tasks pass or `n/a` *(task clause N/A in diff-only)*.
-**Warn**: Only Medium issues, with the task axis clean *(task clause N/A in diff-only)*. **Report** the Medium issues in the verdict and stop there — this gate is read-only (see CRITICAL Rules). Recording them in `.agents/memory/errors.md` and any user decision belong to the caller (`/check-implementation`'s memory-reflection / escalation steps), not to the judge.
-**Block**: Any Critical issue, or **any High issue**, or any gate fails, or **any mandatory task fails**, or a plan-contract error *(task clause N/A in diff-only)*. (Any High blocks — this closes the 1–2 High gap so every gates-pass outcome maps to exactly one of `APPROVE`/`WARN`/`BLOCK`, which the caller requires; it also aligns with Approve's "no Critical/High". The earlier "≥3 High" threshold left 1–2 High with no verdict once the task clause is N/A.)
+**Approve**: No Critical/High issues, all gates pass, all mandatory tasks pass or `n/a`, and no `unmet` or `unconfirmed` ledger row *(task and ledger clauses N/A in diff-only)*.
+**Warn**: Only Medium issues and/or `unconfirmed` ledger rows with effect `WARN`, with the task axis clean *(task clause N/A in diff-only)*. **Report** the Medium issues in the verdict and stop there — this gate is read-only (see CRITICAL Rules). Recording them in `.agents/memory/errors.md` and any user decision belong to the caller (`/check-implementation`'s memory-reflection / escalation steps), not to the judge.
+**Block**: Any Critical issue, or **any High issue**, or any gate fails, or **any mandatory task fails**, or a plan-contract error, or any `unmet` ledger row, or any `unconfirmed` ledger row with effect `BLOCK`, or an Existing-tests High finding *(task and ledger clauses N/A in diff-only)*. (Any High blocks — this closes the 1–2 High gap so every gates-pass outcome maps to exactly one of `APPROVE`/`WARN`/`BLOCK`, which the caller requires; it also aligns with Approve's "no Critical/High". The earlier "≥3 High" threshold left 1–2 High with no verdict once the task clause is N/A.)
 
 ## CRITICAL Rules
 
 - **NEVER auto-fix or rewrite code** — report only.
-- If quality gates fail, skip semantic review (fail fast).
+- If quality gates fail, skip semantic review and the ledger (fail fast) — report `Acceptance criteria: not evaluated — gate stopped at …`.
 - If E2E infrastructure is missing, do NOT block — note it and continue.
 - Respect the project's actual toolchain as defined in `CLAUDE.md` (especially the `Validation` section) and the plan.

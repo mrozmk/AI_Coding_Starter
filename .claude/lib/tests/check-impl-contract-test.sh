@@ -8,6 +8,7 @@
 # tags in the qa prompt, the one-defect ticket bar in the wrapup prompt, the TeamLead prompt,
 # `team-lead.md` and the three tracker wrapup blocks, the ticket cap and rework clearing its own
 # findings.
+# It also pins the per-criterion ledger of /gates:verify-implementation and its copy in Step 1c/3.
 # Text checks only — nothing is spawned.
 #
 # Usage: bash .claude/lib/tests/check-impl-contract-test.sh [root]   (default: this checkout)
@@ -222,6 +223,102 @@ for p in (".claude/agents/correctness-reviewer.md", ".claude/agents/correctness-
           ".claude/lib/tree-fingerprint.sh"):
     check(f"!{p}" in man and f"own {p}" not in man and f"shared {p}" not in man,
           f"manifest: {p} is not core")
+
+def part(text, start, end, what):
+    """Lines from the first one starting with `start` to the next later one starting with `end`; fail closed."""
+    lines = text.splitlines()
+    i = next((n for n, l in enumerate(lines) if l.startswith(start)), None)
+    j = None if i is None else next((n for n in range(i + 1, len(lines)) if lines[n].startswith(end)), None)
+    if i is None or j is None:
+        fails.append(f"{what}: heading lines {start!r} … {end!r} not found in order")
+        return ""
+    return "\n".join(lines[i:j])
+
+VI = "gates/verify-implementation.md"
+vi = read(".claude/commands/gates/verify-implementation.md")
+vmeta, _ = front(vi)
+check(vmeta.get("argument-hint") == '"[plan-name] [--base <rev>]"', f"{VI}: argument-hint lacks a quoted --base")
+v1 = part(vi, "## 1. ", "## 1b. ", VI)
+v2 = part(vi, "## 2. ", "## 3. ", VI)
+v3 = part(vi, "## 3. ", "## 4. ", VI)
+v4 = part(vi, "## 4. ", "## 5. ", VI)
+v6 = part(vi, "## 6. ", "## 7. ", VI)
+v7 = part(vi, "## 7. ", "## CRITICAL", VI)
+check("0. **Base for the existing-test check.**" in v1 and "branch-model.sh fields" in v1,
+      f"{VI}: §1 lacks the --base resolution")
+check("`Proof:` lines nested under it" in v1 and "skipping numbers already used" in v1,
+      f"{VI}: §1 does not extract the Proof: lines or label AC-n")
+check("**and has no active criteria of its own**" in v1, f"{VI}: §1 skips a sub-step's own criteria")
+check("Acceptance criteria: not evaluated — gate stopped at §2 task <n>" in v2
+      and "the failed task backs the proof of <id>" in v2, f"{VI}: §2 lacks the early-exit line")
+check("or its `IMPLEMENT` / `GOTCHA` names that `<test file> :: <test name literal>` pair" in v2,
+      f"{VI}: §2 early exit ignores a proof backed by an existing case")
+check("Acceptance criteria: not evaluated — gate stopped at §3 <command>" in v3,
+      f"{VI}: §3 lacks the early-exit line")
+ex = part(v4, "### HIGH — Existing tests", "### ", VI + " Existing tests")
+for needle in ("git diff -M <BASE>", "git diff -M --name-status <BASE>", "git status --porcelain",
+               "a move out of discovery is judged like an added skip",
+               "Adding cases to an existing test file is not this finding.",
+               "High (→ `BLOCK`) with a plan; with no plan (diff-only mode) Medium",
+               "no plan task names that test file with that intent",
+               "restore the base case (back to its text at the base",
+               "undo any skip, filter or selector change that stopped it running",
+               "the runner configuration and selection files the diff changes"):
+    check(needle in ex, f"{VI}: Existing tests lacks {needle!r}")
+check("Does the code satisfy the plan's **acceptance criteria**?" not in vi,
+      f"{VI}: §6 still judges all criteria in one prose question")
+rows = {l.split(" | ", 1)[0]: l for l in v6.splitlines() if l.startswith("| `")}
+for verdict, cond, effect in (
+        ("| `met`", "**that named case ran and passed**", "| `—` |"),
+        ("| `unmet`", "a declared `static` literal is absent", "| `BLOCK` (High) |"),
+        ("| `unconfirmed` (declared `test`)", "the declared test is missing, failing", "| `BLOCK` (High) |"),
+        ("| `unconfirmed` (other)", "a test that exists but whose run cannot be shown", "| `WARN` (Medium) |"),
+        ("| `deferred`", "`Proof: manual`, `Proof: none — <why>`",
+         "| `—` — informational: listed, no warning, verdict unchanged |")):
+    row = rows.get(verdict, "")
+    check(cond in row and row.endswith(effect), f"{VI}: ledger row {verdict!r} lost its condition or effect")
+for needle in ("### Acceptance-criteria ledger", "a green file is not enough",
+               "`unconfirmed — test exists, run not shown`",
+               "a missing or duplicated id is reported at the top of the block, never dropped",
+               "can **identify that case**",
+               "a selection that excludes the named case (a step list, a filter, a skip flag) settles the row",
+               "**Evidence of a `deferred` row** carries the plan's own words",
+               "never a direct file call that bypasses its isolation",
+               "`unmet` › `unconfirmed` › `deferred` › `met`",
+               "the one with effect `BLOCK` wins over `WARN`",
+               "red before: declared yes | n/a | not recorded",
+               "every active criterion appears exactly once", "(`<id> (1)`, `<id> (2)`)",
+               "Withdrawn criteria get no row",
+               "**Legacy plan — no `Proof:` line anywhere.** It does not block",
+               "`unconfirmed — no proof declared`", "Acceptance criteria: n/a (no plan)"):
+    check(needle in v6, f"{VI}: §6 ledger lacks {needle!r}")
+for needle in ("### Acceptance Criteria",
+               "Acceptance criteria: total=<n> met=<n> unmet=<n> unconfirmed=<n> deferred=<n>",
+               "| Id | Verdict | Effect | Evidence |", "Existing tests: [",
+               "no `unmet` or `unconfirmed` ledger row",
+               "`unconfirmed` ledger rows with effect `WARN`",
+               "any `unconfirmed` ledger row with effect `BLOCK`, or an Existing-tests High finding"):
+    check(needle in v7, f"{VI}: §7 lacks {needle!r}")
+
+c1c = part(ci, "**1c. Code gate", "**1d. ", CI + " 1c")
+check("--base <BASE>" in c1c and "never edits, adds or drops a row" in c1c,
+      f"{CI}: 1c does not pass --base or copy the ledger read-only")
+check("Acceptance criteria: not evaluated — gate failed to load" in c1c,
+      f"{CI}: 1c reuses a ledger after a substituted gate")
+check("**Then the blocking ledger rows**" in s1 and "four sources" in s1
+      and "never enters `FOCUS`" in s1, f"{CI}: FOCUS lacks the blocking ledger rows")
+check("**An Existing-tests finding is never cleared by editing the test further**" in item1,
+      f"{CI}: 1ab-apply item 1 lacks the existing-test fixer rule")
+check("to its base text and make the code pass it" in codex_,
+      f"{CI}: 1ab-codex lacks the existing-test rule")
+check("the blocking ledger rows of the gate's `### Acceptance Criteria` block, and **all** design-gate"
+      in codex_, f"{CI}: 1ab-codex fix list omits the blocking ledger rows")
+check("never the diff-only Medium Existing-tests finding, which stays in the report" in s15,
+      f"{CI}: 1.5e re-gate feeds the diff-only Medium finding to the fixer")
+check("- Acceptance criteria: <the gate's completeness notice" in rep,
+      f"{CI}: Step 3 report lacks the Acceptance criteria block")
+check("repeats the gate's `Acceptance criteria: not evaluated — gate stopped at …` line" in rep,
+      f"{CI}: Step 3 does not repeat the not-evaluated line on escalation")
 
 for f in fails:
     print(f"FAIL [{f}]")
