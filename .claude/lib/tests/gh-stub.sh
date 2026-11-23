@@ -1,8 +1,11 @@
 # Shared gh stub for the tracker smokes: every call is logged to $GH_LOG, all state lives in
 # $GH_DIR (issues.json, comments.json, items.json, fields.json, issue-<n>.json, subs-<n>.json,
-# pool-items.json for `gh api graphql`), 30 items per page, failures by env switch
-# (STUB_GH_PAGE2_FAIL, STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY,
-# STUB_GH_SUB_DENY). Sourced; needs $WORK/bin on PATH.
+# pool-items.json for `gh api graphql`, timeline-<n>.json for an issue timeline, pr-<n>.json for
+# `gh pr view`), 30 items per page, failures by env switch (STUB_GH_PAGE2_FAIL,
+# STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY, STUB_GH_SUB_DENY) and by
+# one-shot file: race-claim.txt (a comment POST first stores a foreign comment with that body — a
+# competing claim landing before ours) and post-fail-once (the next comment POST fails, nothing
+# stored). Sourced; needs $WORK/bin on PATH.
 gh_stub_install() {
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -92,8 +95,19 @@ case "${1:-}" in
       "GET "*/comments)
         pages "$G/comments.json" ;;
       "POST "*/comments)
+        if [ -f "$G/post-fail-once" ]; then
+          rm -f "$G/post-fail-once"; echo "gh: HTTP 502" >&2; exit 1
+        fi
+        if [ -f "$G/race-claim.txt" ]; then
+          id=$(( $(jq 'length' "$G/comments.json") + 900 ))
+          jq --argjson i "$id" --rawfile b "$G/race-claim.txt" \
+            '. + [{id: $i, created_at: "2026-11-23T10:00:00Z", body: $b}]' \
+            "$G/comments.json" > "$G/t" && mv "$G/t" "$G/comments.json"
+          rm -f "$G/race-claim.txt"
+        fi
         id=$(( $(jq 'length' "$G/comments.json") + 900 ))
-        jq --argjson i "$id" --slurpfile p "$input" '. + [{id: $i, body: $p[0].body}]' \
+        jq --argjson i "$id" --slurpfile p "$input" \
+          '. + [{id: $i, created_at: "2026-11-23T10:00:00Z", body: $p[0].body}]' \
           "$G/comments.json" > "$G/t" && mv "$G/t" "$G/comments.json"
         # Same uncertain write for comments: stored, then a non-zero exit (error/timeout).
         [ "${STUB_GH_POST_THEN_FAIL:-0}" != 1 ] \
@@ -101,6 +115,9 @@ case "${1:-}" in
         printf '{"id": %s}\n' "$id" ;;
       "GET "*issues\?*)
         pages "$G/issues.json" ;;
+      "GET "*/issues/[0-9]*/timeline*)
+        n="${path%/timeline*}"; n="${n##*/}"
+        if [ -f "$G/timeline-$n.json" ]; then pages "$G/timeline-$n.json"; else echo '[]'; fi ;;
       "GET "*/issues/[0-9]*)
         n="${path##*/}"
         printf '{"id": %s, "number": %s}\n' "$(( 10000 + n ))" "$n" ;;
@@ -125,10 +142,17 @@ case "${1:-}" in
       item-edit)
         [ "${STUB_GH_EDIT_DENY:-0}" != 1 ] \
           || { echo "your token has not been granted the required scopes: project" >&2; exit 1; }
-        id=""; opt=""
+        id=""; opt=""; clr=0
         while [ $# -gt 0 ]; do case "$1" in
           --id) id="$2"; shift 2 ;; --single-select-option-id) opt="$2"; shift 2 ;;
+          --clear) clr=1; shift ;;
           *) shift ;; esac; done
+        if [ "$clr" = 1 ]; then
+          jq --arg id "$id" 'map(if .id == $id then .status = null else . end)' \
+            "$G/items.json" > "$G/t" && mv "$G/t" "$G/items.json"
+          : > "$G/status"
+          echo '{}'; exit 0
+        fi
         name=$(jq -r --arg o "$opt" \
           '[.fields[]? | .options[]? | select(.id == $o) | .name] | .[0] // ""' "$G/fields.json")
         jq --arg id "$id" --arg s "$name" 'map(if .id == $id then .status = $s else . end)' \
@@ -137,6 +161,9 @@ case "${1:-}" in
         echo '{}' ;;
       *) echo "stub: gh project $2" >&2; exit 1 ;;
     esac ;;
+  pr)
+    if [ "${2:-}" = view ] && [ -f "$G/pr-${3:-}.json" ]; then cat "$G/pr-$3.json"
+    else echo "stub: gh pr $*" >&2; exit 1; fi ;;
   *) echo "stub: gh $*" >&2; exit 1 ;;
 esac
 STUB

@@ -373,7 +373,7 @@ cmd_status() {
   local role r pid
   jq -c '{team, ticket, branch, line, base_sha}' "$TD/team.json"
   echo "mode: $MODE"
-  # Durable non-fatal failures (team-warn.sh) — e.g. /start-team 4b `set-status started`.
+  # Durable non-fatal failures recorded by team-warn.sh.
   jq -r '(.warnings // [])[] | "warn: " + .text + " (" + .at + ")"' "$TD/team.json"
   RUN="$(cat "$TD/run" 2>/dev/null || true)"; echo "run: ${RUN:-none}$([ "$(run_ref)" = "$RUN" ] || echo " round $(cur_round)")"
   [ ! -f "$TD/runs/${RUN:-none}/closed.json" ] || echo "closed: $(jq -r .reason "$TD/runs/$RUN/closed.json")"

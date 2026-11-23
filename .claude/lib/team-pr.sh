@@ -10,7 +10,8 @@
 #   publish <pr> · body-get <pr> · body-set <pr> <file>
 #   prs <issue number | KEY>  → [{number,title,state,merged_at,updated_at,merge_commit,head_ref,base_ref,url,relation}]
 #   files <pr>                → {pr, files, truncated}
-#   (prs and files are read-only — the PR facts /qa-verify groups tickets by)
+#   (prs and files are read-only — the PR facts /qa-verify groups tickets by; `prs` also runs on a
+#   solo profile (no teams block) — the start's claim checks open PRs with it)
 #   by-branch <b>                            → `none` or this repo's PR numbers of head <b>, any
 #                                              state (read-only; exit 4 on a failed lookup)
 #
@@ -39,9 +40,37 @@ set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/team-profile.sh"
 root="$(git rev-parse --show-toplevel)"
-team_profile_load "$root"
 
 die() { echo "error: $2" >&2; exit "$1"; }
+
+# `prs` alone, read-only, runs on a solo profile (no teams block): the repo is the top-level
+# github.repo (whatever the tracker — op_coords then still refuses an origin that differs from it),
+# else origin's own owner/repo. Every other op, and prs with a teams block, needs the teams block.
+pf="$root/.claude/project-profile.json"
+if [ "${1:-}" = prs ] && ! { [ -f "$pf" ] && jq -e '.teams | type == "object"' "$pf" >/dev/null 2>&1; }; then
+  team_tracker_profile_load "$root"
+  if [ -z "$TEAM_GH_REPO" ]; then
+    solo_repo="$( [ ! -f "$pf" ] || jq -r '.github.repo // empty' "$pf" 2>/dev/null || true)"
+    if [ -n "$solo_repo" ]; then
+      [[ "$solo_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+        || die 2 "github.repo '$solo_repo' must be owner/repo"
+      TEAM_GH_REPO="$solo_repo"
+    else
+      # The same URL shapes as team_gh_origin_require (team-profile.sh).
+      solo_url="$(git -C "$root" remote get-url origin 2>/dev/null || true)"; solo_url="${solo_url%.git}"
+      case "$solo_url" in
+        https://github.com/*)   TEAM_GH_REPO="${solo_url#https://github.com/}" ;;
+        https://*@github.com/*) TEAM_GH_REPO="${solo_url#*@github.com/}" ;;
+        git@github.com:*)       TEAM_GH_REPO="${solo_url#git@github.com:}" ;;
+        ssh://git@github.com/*) TEAM_GH_REPO="${solo_url#ssh://git@github.com/}" ;;
+        *) die 2 "prs: origin is not a github.com repo — no GitHub PR layer" ;;
+      esac
+    fi
+  fi
+  TEAM_PR_PROVIDER=github
+else
+  team_profile_load "$root"
+fi
 
 [ "$TEAM_PR_PROVIDER" != none ] \
   || die 2 "teams.pr_provider=none: the PR layer is off — team-pr.sh needs pr_provider=github"

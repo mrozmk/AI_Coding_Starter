@@ -1482,6 +1482,31 @@ grep -q 'issues/175/timeline' "$RO_LOG" || fail "the read stub saw no prs call"
 ! grep -E 'api -X|--method|pr (create|edit|ready|merge)' "$RO_LOG" || fail "a read op made a write call"
 
 # ================================================================================================
+# (E1b) prs on a solo profile (no teams block): the claim's PR check works without teams
+# ================================================================================================
+echo '{"schema": 1, "tracker": "github", "github": {"repo": "acme/widgets"}}' > "$P"
+REF176='[{"number": 176, "repository": {"name": "widgets", "owner": {"login": "acme"}}}]'
+xref 70 acme/widgets true | jq -s '[.]' > "$RO_DIR/timeline-176.json"
+echo '{"closedByPullRequestsReferences": []}' > "$RO_DIR/closed-176.json"
+ro_pr 70 OPEN chore/cleanup-x "no key here" "$REF176"
+ro prs 176
+expect 0 "" "prs: a solo profile lists a closing PR whose branch lacks the key"
+jq -e 'length == 1 and .[0].number == 70 and .[0].relation == "closes"' "$WORK/out" >/dev/null \
+  || fail "prs: a solo profile lists a closing PR whose branch lacks the key (rows)"
+run "$MAIN" $PR body-get 70
+expect 2 "" "prs: a write or other op on a solo profile still refuses"
+echo '{"schema": 1, "tracker": "github", "github": {"repo": "acme/other"}}' > "$P"
+ro prs 176
+expect 2 "" "prs: a solo github.repo that differs from origin is refused"
+echo '{"schema": 1, "tracker": "jira", "github": {"repo": "acme/other"}}' > "$P"
+ro prs 176
+expect 2 "" "prs: a solo github.repo is read whatever the tracker"
+echo '{"schema": 1, "tracker": "jira"}' > "$P"
+ro prs 176
+expect 0 "" "prs: a solo profile without github.repo takes the repo from origin"
+setprofile
+
+# ================================================================================================
 # (C13) nothing in this suite ever merged or forced anything through gh or git
 # ================================================================================================
 ! grep -E 'pr merge|--admin|--force' "$GH_LOG" "$STUB_LOG" "$GIT_LOG" \

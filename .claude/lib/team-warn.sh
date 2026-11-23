@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Append a durable warning to a team clone's team.json — for a non-fatal failure the run walks past
-# but a human must still be able to recover (today: `/start-team` 4b `set-status started`).
+# but a human must still be able to recover (e.g. a recoverable step after the clone exists).
 #
 # Usage: bash .claude/lib/team-warn.sh <team> <text>
 # Exit: 0 recorded · 1 no clone / cannot write · 2 usage
