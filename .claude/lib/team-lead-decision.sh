@@ -7,10 +7,18 @@
 #   decision open <team> --ask a-<n> [--question "<text>"] [--options "<a|b>"] [--recommend "<text>"]
 #     [--reason human-only|no-rule|lead-unsure|channel-failed|guard]
 #     (an operator-tier ask, or a workflow human gate in a question: bound to the ask)
-#   decision answer <team> d-<n> --text "<Operator answer>"
+#   decision answer <team> d-<n> --text "<Operator answer>" | --from-ask
 #     [--outcome continue|close|more-revise|approve|allow|deny]
 #     [--tuning rule|TeamLead|none --why "<line>"]   (both required when the lead records the answer)
 #   decision withdraw <team> d-<n> --why "<line>"     decision list <team> [--pending]
+# A lead launched with teamlead.json ask_operator (the new path; an older lead keeps the contract
+# below unchanged): open needs the Operator's choices — --options "a|b" (2–4), derived for an ask
+# (permission/plan allow|deny, a question its labels), for --notify abandon_decision
+# (continue|close) and for --gate plan (approve|revise|close) — and --recommend <one of them>; it
+# stores the AskUserQuestion input under `## Dialog` and prints it as `ask-operator: <json>`. The
+# lead raises that dialog verbatim; answer --from-ask then reads the Operator's answer entry from
+# the lead's own transcript (team-evidence.sh: a dialog equal to ## Dialog, a lead session the
+# anchor records, a clean registration snapshot) and records answered_via `teamlead-ask <uuid>`.
 # open writes the file (status pending), then the escalate verdict with --notify, so the runner
 # notifies the Operator once. answer asks for a human: from a terminal (a TTY, the id typed to
 # confirm), or from the TeamLead window, where the lead's own transcript must hold a typed Operator
@@ -106,9 +114,66 @@ notes_tune() {
   fi
 }
 
+# The dialog's recommended option goes first, its description marked; every other text is kept.
+D_RECFIRST='def recfirst($r): (map(select(.label == $r)) | map(.description = ("Recommended — " + .label
+  + (if (.description // "") == "" then "" else ". " + .description end)))) + map(select(.label != $r));'
+
+# d_dialog <d-n> <ask|""> <kind> <dialog question> <options> <recommend> <gate> <notify> — the
+# Operator's AskUserQuestion input of a new-path decision, built from the filed ask payload (never
+# the shortened one-line summary); d_bad 2, nothing written, when it does not validate.
+d_dialog() {
+  local d="$1" ask="$2" kind="$3" dq="$4" opts="$5" rec="$6" gate="$7" notify="$8" j
+  case "$kind" in
+    permission|plan)
+      # The target is what the Operator decides on: never cut (Bash the whole command, an MCP or
+      # other tool its whole input).
+      j="$(jq -c --arg d "$d" --arg a "$ask" --arg r "$rec" --arg k "$kind" "$D_RECFIRST"'
+        .role as $role | .payload as $p | ($p.tool_name // "?") as $t | ($p.tool_input // {}) as $i
+        | (if $t == "Bash" then ($i.command // "")
+           elif ($t == "Edit" or $t == "Write" or $t == "NotebookEdit" or $t == "MultiEdit") then ($i.file_path // $i.notebook_path // "")
+           elif $t == "WebFetch" then ($i.url // "")
+           elif $t == "ExitPlanMode" then ((($i.plan // "") | split("\n") | map(select(test("\\S"))) | .[0] // "") + " (full plan: asks/\($a).json)")
+           else ($i | tojson) end) as $target
+        | {questions: [{question: "\($d) \($role): \($t) \($target)", header: $d, multiSelect: false,
+            options: ([{label: "allow", description: (if $k == "plan" then "approve the plan as written" else "run it as asked" end)},
+              {label: "deny", description: "type \"deny: <what instead>\" through Other"}] | recfirst($r))}]}' "$ASK_D/$ask.json")" ;;
+    question)
+      j="$(jq -c --arg d "$d" --arg r "$rec" "$D_RECFIRST"'
+        .role as $role | (.payload.tool_input.questions // []) as $qs
+        | {questions: [$qs | to_entries[] | .key as $k | .value
+            | {question: ("\($d) " + (if ($qs | length) == 1 then "\($role): " else "" end) + .question),
+               header: (if ($qs | length) == 1 then $d else (.header // "\($d)/\($k + 1)") end),
+               multiSelect: (.multiSelect // false),
+               options: ([(.options // [])[] | {label, description: (.description // "")}]
+                 | if $k == 0 then recfirst($r) else . end)}]}' "$ASK_D/$ask.json")" ;;
+    *)
+      if [ -z "$opts" ]; then
+        if [ "$notify" = abandon_decision ]; then opts="continue|close"
+        elif [ "$gate" = plan ]; then opts="approve|revise|close"
+        else d_bad 2 "decision open needs --options \"a|b\" (the Operator's dialog choices)"; fi
+      fi
+      j="$(jq -cn --arg d "$d" --arg q "$dq" --arg o "$opts" --arg r "$rec" "$D_RECFIRST"'
+        def desc: {continue: "keep the run going", close: "close the run without a merge",
+          approve: "approve the plan", revise: "send the plan back for a revision",
+          "more-revise": "grant one more plan revision past the limit"}[.] // "answer \(.)";
+        {questions: [{question: "\($d) \($q)", header: $d, multiSelect: false,
+          options: ([$o | split("|")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(. != "")
+            | {label: ., description: desc}] | recfirst($r))}]}')" ;;
+  esac
+  [ -n "$j" ] || d_bad 2 "the dialog of $d could not be built"
+  jq -e --arg r "$rec" 'any(.questions[0].options[]; .label == $r)' <<<"$j" >/dev/null 2>&1 \
+    || d_bad 2 "--recommend must name one of: $(jq -r '[.questions[0].options[].label] | sort | join("|")' <<<"$j")"
+  jq -e '(.questions | length) >= 1 and (.questions | length) <= 4
+    and all(.questions[]; (.options | length) >= 2 and (.options | length) <= 4
+      and ((.header // "") | length) <= 12 and ((.options | map(.label) | unique | length) == (.options | length)))' \
+    <<<"$j" >/dev/null 2>&1 \
+    || d_bad 2 "the dialog of $d does not validate (1–4 questions, 2–4 distinct options each, a header of at most 12 characters)"
+  printf '%s\n' "$j"
+}
+
 decision_open() {
   local src="" q="" opts="" rec="" notify=human_decision gate="" ask="" n f tmp v rel bind="" kind=""
-  local reply="" reason=""
+  local reply="" reason="" new="" qgiven="" dq="" dialog=""
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || usage
     case "$1" in
@@ -124,6 +189,9 @@ decision_open() {
     *) d_bad 2 "--reason human-only|no-rule|lead-unsure|channel-failed|guard" ;; esac
   case "$notify" in human_decision|abandon_decision) ;; *) d_bad 2 "--notify human_decision|abandon_decision" ;; esac
   case "$gate" in ""|plan) ;; *) d_bad 2 "--gate plan" ;; esac
+  # The new path only for a lead the new runner launched: a reused older lead keeps its contract.
+  ! jq -e '.ask_operator == true' "$TD/teamlead.json" >/dev/null 2>&1 || new=1
+  qgiven="$q"
   if [ -n "$ask" ]; then
     ask_init "$TD" || d_bad 4 "no current run"
     ask_valid_id "$ask" && [ -f "$ASK_D/$ask.json" ] || d_bad 4 "no ask $ask in runs/$RUN/asks/"
@@ -147,6 +215,14 @@ ask_kind: $kind"
   mkdir -p "$DD"
   n="$(ls "$DD" 2>/dev/null | sed -n 's/^d-\([0-9]*\)\.md$/\1/p' | sort -n | tail -n 1)"
   n=$(( ${n:-0} + 1 )); f="$DD/d-$n.md"; tmp="$DD/.d-$n.md.tmp"
+  if [ -n "$new" ]; then
+    [ -n "$rec" ] || d_bad 2 "decision open needs --recommend <one of the Operator's options>"
+    dq="$q"
+    if [ "$kind" = text ] && [ -z "$qgiven" ]; then
+      dq="$(ask_get "$ask" role): $(jq -r '.payload.text // ""' "$ASK_D/$ask.json")"
+    fi
+    dialog="$(d_dialog "d-$n" "$ask" "$kind" "$dq" "$opts" "$rec" "$gate" "$notify")" || exit $?
+  fi
   { echo "---"; echo "id: d-$n"; echo "status: pending"
     echo "stage: $(jq -r '.role // "-"' "$TD/session.json" 2>/dev/null || echo -)"
     echo "attempt: $(jq -r '.attempt // "-"' "$TD/session.json" 2>/dev/null || echo -)"
@@ -157,6 +233,7 @@ ask_kind: $kind"
     echo "---"; echo "## Question"; echo "$q"
     [ -z "$opts" ] || { echo; echo "## Options"; tr '|' '\n' <<<"$opts" | sed 's/^/- /'; }
     [ -z "$rec" ] || { echo; echo "## Recommendation"; echo "$rec"; }
+    [ -z "$dialog" ] || { echo; echo "## Dialog"; echo "$dialog"; }
   } > "$tmp"
   [ ! -e "$f" ] || { rm -f "$tmp"; d_bad 1 "$f already exists"; }
   mv "$tmp" "$f"
@@ -175,6 +252,7 @@ ask_kind: $kind"
   echo "[d-$n] $q"
   [ -z "$reply" ] || echo "${reply//d-<n>/d-$n}"
   echo "file: $f"; echo "verdict: $v"
+  [ -z "$dialog" ] || echo "ask-operator: $dialog"
 }
 
 # The Operator's message in the lead's own transcript: a typed user entry after created_at that is
@@ -202,19 +280,46 @@ d_evidence() {
   [ -z "$uuid" ] || echo "$sid $uuid$leg"
 }
 
+# d_from_ask <file> <d-n> → "<session>\t<uuid>\t{reply, map}": the Operator's answer to the
+# decision's own dialog in the current lead session's transcript. Only a session the anchor records
+# (never the legacy teamlead.json fallback), whose launch snapshot is clean and still matches the
+# registrations: any other AskUserQuestion hook could answer with no menu shown. The writer searches
+# only the current session; an answer left in an earlier session is asked again after a relaunch.
+d_from_ask() {
+  local f="$1" id="$2" dlg sid trust clone x cfg t uuid r
+  dlg="$(sed -n '/^## Dialog$/{n;p;q;}' "$f")"
+  [ -n "$dlg" ] || d_bad 7 "$id was opened without a dialog — answer from the window or a terminal"
+  . "$LIB/team-evidence.sh" 2>/dev/null && command -v team_evidence_provenance >/dev/null 2>&1 \
+    || d_bad 7 "no dialog evidence — this checkout lacks the dialog reader; answer from a terminal"
+  sid="$(jq -r '.session_id // empty' "$TD/teamlead.json" 2>/dev/null)"
+  trust="$(cd "$LIB/../.." && pwd -P)"; clone="${TD%/.agents/team}"
+  x="$(team_lead_trusted "$trust" "$clone" "$RUN" "$sid")" && [ -n "$x" ] && [ "$(cut -f3 <<<"$x")" != legacy ] \
+    || d_bad 7 "no dialog evidence — the TeamLead session is not one the anchor records; answer from a terminal"
+  sid="$(cut -f1 <<<"$x")"
+  cfg="$(team_evidence_provenance "$trust" "$clone" "$RUN" "$sid")" \
+    || d_bad 7 "no dialog evidence — $cfg; the Operator types the $id reply"
+  t="$(team_role_transcript "$clone" "$sid" "$cfg")"
+  uuid="$(team_evidence_dialog_find "$t" "$id" "$(dfm "$f" created_at)" "$dlg")"
+  [ -n "$uuid" ] && r="$(team_evidence_dialog_read "$t" "$uuid" "$id" "$(dfm "$f" created_at)" "$dlg")" && [ -n "$r" ] \
+    || d_bad 7 "no AskUserQuestion answer for $id after $(dfm "$f" created_at) matching its dialog"
+  printf '%s\t%s\t%s\n' "$sid" "$uuid" "$r"
+}
+
 decision_answer() {
-  local id="${1:-}" text="" outcome="" tuning="" why="" f how ev c
+  local id="${1:-}" text="" outcome="" tuning="" why="" f how ev c fromask="" uuid="" r esid=""
   [ -n "$id" ] || usage; shift
   while [ $# -gt 0 ]; do
+    [ "$1" != --from-ask ] || { fromask=1; shift; continue; }
     [ $# -ge 2 ] || usage
     case "$1" in --text) text="$2" ;; --outcome) outcome="$2" ;; --tuning) tuning="$2" ;;
       --why) why="$2" ;; *) usage ;; esac
     shift 2
   done
-  one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
-  # Trimmed once, so a padded verbatim reply reads the same here and in the hook.
-  text="$(jq -rn --arg m "$text" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')"
-  one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
+  if [ -n "$fromask" ]; then
+    [ -z "$text" ] || d_bad 2 "decision answer takes --text or --from-ask, not both"
+  else
+    one_line "$text" || d_bad 2 "decision answer needs a one-line --text (or --from-ask)"
+  fi
   case "$outcome" in ""|continue|close|more-revise|approve|allow|deny) ;;
     *) d_bad 2 "--outcome continue|close|more-revise|approve|allow|deny" ;; esac
   case "$tuning" in ""|rule|TeamLead|none) ;; *) d_bad 2 "--tuning rule|TeamLead|none" ;; esac
@@ -224,18 +329,41 @@ decision_answer() {
   fi
   [ -z "$tuning" ] || one_line "$why" || d_bad 2 "--tuning needs a one-line --why"
   f="$(d_file "$id")"
-  local ask kind p po aval="" amap=""
+  if [ -n "$fromask" ]; then
+    r="$(d_from_ask "$f" "$id")" || exit $?
+    esid="$(cut -f1 <<<"$r")"; uuid="$(cut -f2 <<<"$r")"; r="$(cut -f3- <<<"$r")"
+    text="$(jq -r .reply <<<"$r")"
+  fi
+  # Trimmed once, so a padded verbatim reply reads the same here and in the hook.
+  text="$(jq -rn --arg m "$text" '$m | sub("^\\s+"; "") | sub("\\s+$"; "")')"
+  # A multi-line dialog answer would not survive the one-line frontmatter: nothing is written.
+  if [ -n "$fromask" ]; then
+    one_line "$text" || d_bad 7 "the dialog answer of $id spans several lines — the decision stays pending; ask again, or the Operator types the $id reply"
+  else
+    one_line "$text" || d_bad 2 "decision answer needs a one-line --text"
+  fi
+  local ask kind p po aval="" amap="" nq ans labels
   ask="$(dfm "$f" bind_ask)"
   if [ -n "$ask" ]; then
     # The Operator's reply names the decision, so two pending decisions never share one reply.
     case "$text" in "$id "*) ;; *) d_bad 7 "reply must start with \"$id \"" ;; esac
     kind="$(dfm "$f" ask_kind)"
     ask_init "$TD" || d_bad 4 "no current run"
+    nq="$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)"
+    if [ -n "$fromask" ] && [ "${nq:-0}" -gt 1 ]; then
+      # Several questions: the dialog's structured answers as they are, never a text round-trip,
+      # so a ";" or ":" inside an answer survives.
+      amap="$(jq -cS 'select(type == "object") | .map // empty' <<<"$r")"
+      jq -e --slurpfile a "$ASK_D/$ask.json" '(keys | sort) == ($a[0].payload.tool_input.questions | map(.question) | sort)
+        and all(.[]; type == "string" and length > 0)' <<<"${amap:-null}" >/dev/null 2>&1 \
+        || d_bad 7 "the dialog answer of $id does not answer every question of $ask"
+      [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
+      p='{"outcome":"","value":"","map":null}'
     # ask_parse_reply is the hook's parser too: a reply it refuses is never recorded as answered.
-    if ! p="$(ask_parse_reply "$ask" "$id" "$text")"; then
+    elif ! p="$(ask_parse_reply "$ask" "$id" "$text")"; then
       case "$kind" in
         permission|plan) d_bad 7 "reply must read $id allow|deny" ;;
-        *) d_bad 7 "reply must read $id $(if [ "$(jq -r '.payload.tool_input.questions // [] | length' "$ASK_D/$ask.json" 2>/dev/null)" -gt 1 ]; then d_reply_shape "$ask"; else echo '<answer>'; fi)" ;;
+        *) d_bad 7 "reply must read $id $(if [ "${nq:-0}" -gt 1 ]; then d_reply_shape "$ask"; else echo '<answer>'; fi)" ;;
       esac
     fi
     po="$(jq -r .outcome <<<"$p")"
@@ -245,19 +373,35 @@ decision_answer() {
     else
       [ -z "$outcome" ] || d_bad 7 "--outcome does not apply to a $kind ask"
     fi
-    aval="$(jq -r .value <<<"$p")"; amap="$(jq -c '.map // empty' <<<"$p")"
+    aval="$(jq -r .value <<<"$p")"; [ -n "$amap" ] || amap="$(jq -c '.map // empty' <<<"$p")"
+  elif [ -n "$fromask" ]; then
+    ans="${text#"$id "}"
+    labels="$(sed -n '/^## Dialog$/{n;p;q;}' "$f" | jq -r '.questions[0].options[].label' 2>/dev/null)"
+    if [ "$(dfm "$f" gate)" = plan ] || [ "$(dfm "$f" notify)" = abandon_decision ]; then
+      # A control decision acts on its label alone: a free text could read as any outcome.
+      grep -qxF -- "$ans" <<<"$labels" \
+        || d_bad 7 "a free-text answer to a control decision is not recorded — the decision stays pending; ask again with the options"
+    fi
+    aval="$ans"
+    # An outcome comes only from an offered label in the outcome enum: never from free text.
+    local onmenu=""; ! grep -qxF -- "$ans" <<<"$labels" || onmenu=1
+    case "$ans" in continue|close|more-revise|approve) [ -z "$onmenu" ] || outcome="${outcome:-$ans}" ;; esac
+    [ -z "$outcome" ] || { [ -n "$onmenu" ] && [ "$outcome" = "$ans" ]; } \
+      || d_bad 7 "--outcome $outcome does not fit the Operator's answer: $ans"
   fi
   if [ "$(dfm "$f" status)" = withdrawn ]; then
     notes_add "## Late answers" "- $id (withdrawn $(dfm "$f" withdrawn_at)): ${text:0:120}"
   fi
   [ "$(dfm "$f" status)" = pending ] || d_bad 4 "$id is $(dfm "$f" status), not pending — nothing applied"
-  if [ -t 0 ] && [ -r /dev/tty ]; then
+  if [ -n "$fromask" ]; then
+    how="teamlead-ask $uuid"
+  elif [ -t 0 ] && [ -r /dev/tty ]; then
     printf 'Operator answer to %s: %s\nconfirm by typing %s: ' "$id" "$text" "$id" > /dev/tty
     IFS= read -r c < /dev/tty || c=""
     [ "$c" = "$id" ] || d_bad 7 "not confirmed — nothing applied"
     how="terminal"
   else
-    local erc=0 esid
+    local erc=0
     if [ -n "$ask" ]; then ev="$(d_evidence "$f" "$text" exact)" || erc=$?
     else ev="$(d_evidence "$f" "$text")" || erc=$?; fi
     [ "$erc" != 3 ] || d_bad 7 "the TeamLead session is not one the runner recorded — answer from a terminal"
@@ -268,7 +412,7 @@ decision_answer() {
   dfm_set "$f" status answered; dfm_set "$f" answered_at "$(team_utc)"; dfm_set "$f" answered_via "$how"
   [ -z "${esid:-}" ] || dfm_set "$f" answered_session "$esid"
   [ -z "$outcome" ] || dfm_set "$f" answer_outcome "$outcome"
-  if [ -n "$ask" ]; then
+  if [ -n "$ask" ] || [ -n "$fromask" ]; then
     [ -z "$aval" ] || dfm_set "$f" answer_value "$aval"
     [ -z "$amap" ] || dfm_set "$f" answer_map "$amap"
   fi

@@ -60,17 +60,25 @@ render_lead_prompt() {
 # (the runner is their only writer): the Operator-answer check trusts these, never the
 # role-writable clone (team-lead.md §7). A new run starts a fresh list. A missing anchor is
 # initialised first, as team_anchor_launch would: a bare {lead_sessions} one is a mismatch for good.
-lead_session_record() {
-  local f; f="$(team_anchor_file "$root" "$TEAM")"
+# <ask hooks> (team_evidence_ask_hooks' line) becomes the session's own launch snapshot,
+# lead_ask_hooks[<sid>], in the same write: a relaunch never overwrites an earlier session's.
+lead_session_record() {  # lead_session_record <sid> <config dir> [ask hooks]
+  local f snap='{"clean":false,"digest":"","cause":"no registration check"}'
+  # A line comes only from a runner that sourced team-evidence.sh, which owns its format.
+  [ -z "${3:-}" ] || snap="$(team_evidence_snapshot "$3")" || return 1
+  f="$(team_anchor_file "$root" "$TEAM")"
   [ -f "$f" ] || team_anchor_init "$root" "$TEAM" "$CLONE" || return 1
-  team_anchor_put "$f" '.lead_sessions = (if (.lead_sessions.run // "") == $r
+  team_anchor_put "$f" '.lead_ask_hooks = (if (.lead_sessions.run // "") == $r
+      then (.lead_ask_hooks // {}) else {} end)
+    | .lead_sessions = (if (.lead_sessions.run // "") == $r
       then .lead_sessions else {run: $r, ids: []} end) | .lead_sessions.ids += [$s]
-    | .lead_sessions.ids |= unique | .lead_sessions.current_id = $s | .lead_sessions.config_dir = $cc' \
-    --arg r "$RUN" --arg s "$1" --arg cc "$2"
+    | .lead_sessions.ids |= unique | .lead_sessions.current_id = $s | .lead_sessions.config_dir = $cc
+    | .lead_ask_hooks[$s] = ($snap + {run: $r, config_dir: $cc, at: $at})' \
+    --arg r "$RUN" --arg s "$1" --arg cc "$2" --argjson snap "$snap" --arg at "$(team_utc)"
 }
 
 launch_lead() {
-  local name pf sid n perm=auto why ch cc ck costs=()
+  local name pf sid n perm=auto why ch cc ck ah="" costs=()
   team_cancelled && cancel_exit
   name="$(sess_name lead)"
   (cd "$root" && bash .claude/lib/team-brief.sh check "$TEAM") >/dev/null \
@@ -92,13 +100,24 @@ launch_lead() {
   ck="$(team_json cost_key)"; [ -n "$ck" ] || ck="$(team_json ticket)"
   # A relaunch must not ring the dead session's socket.
   rm -f "$(sh_reg_dir "$root")/$(sess_name lead).reg.json"
+  # ask_operator: this lead raises the Operator's AskUserQuestion dialog (team-lead.md §7); a lead
+  # an older runner launched has no key and keeps the older decision contract.
   jq -n --arg team "$TEAM" --arg run "$RUN" --arg sid "$sid" --arg at "$(team_utc)" \
     --arg model "$TEAM_LEAD_MODEL" --arg effort "$TEAM_LEAD_EFFORT" --arg perm "$perm" \
     --arg main "$root" --argjson n "$n" --arg cc "$cc" \
     '{team: $team, run: $run, session_id: $sid, launched_at: $at, launch: $n, model: $model,
-      effort: $effort, permission_mode: $perm, main_root: $main, claude_config_dir: $cc}' > "$TD/teamlead.json.tmp"
+      effort: $effort, permission_mode: $perm, main_root: $main, claude_config_dir: $cc,
+      ask_operator: true}' > "$TD/teamlead.json.tmp"
   mv "$TD/teamlead.json.tmp" "$TD/teamlead.json"
-  lead_session_record "$sid" "$cc" || die 1 "TeamLead session not recorded in the anchor"
+  # The launch snapshot of the lead's effective AskUserQuestion registrations (after materialize
+  # wrote its --settings): a dialog answer counts as Operator evidence only while they stay clean.
+  if . "$root/.claude/lib/team-evidence.sh" 2>/dev/null && command -v team_evidence_ask_hooks >/dev/null 2>&1; then
+    ah="$(team_evidence_ask_hooks "$root" "$CLONE" "$cc")" || true
+  fi
+  lead_session_record "$sid" "$cc" "$ah" || die 1 "TeamLead session not recorded in the anchor"
+  case "$ah" in clean\ *) ;; *)
+    echo "warn: TeamLead dialog — answers will not count as Operator evidence and the dialog may not surface (${ah#unclean }); decisions wait in $name" ;;
+  esac
   # The .session/.prompt.md pair is how cost.py bind --team-run finds every lead session.
   printf '%s\n' "$sid" > "$TD/runs/$RUN/lead-$n.session"
   render_lead_prompt "$pf"
@@ -107,7 +126,7 @@ launch_lead() {
   sh_start "$name" --kind team --cwd "$CLONE" --cli claude --no-probe --env "TEAM_RUN_TEAM=$TEAM" --env "TEAM_RUN_ROLE=lead" \
     --env "TEAM_RUN_ID=$RUN" --env "TEAM_SESSION_ROLE=TeamLead" --env "CODEX_HOME=$ch" \
     ${cc:+--env "CLAUDE_CONFIG_DIR=$cc"} ${costs[@]+"${costs[@]}"} \
-    -- "claude --session-id $sid -n $name --settings '$TD/teamlead.settings.json' --model '$TEAM_LEAD_MODEL' --effort '$TEAM_LEAD_EFFORT' --permission-mode '$perm' --disallowedTools AskUserQuestion -- \"\$(cat '$pf')\"" >/dev/null
+    -- "claude --session-id $sid -n $name --settings '$TD/teamlead.settings.json' --model '$TEAM_LEAD_MODEL' --effort '$TEAM_LEAD_EFFORT' --permission-mode '$perm' -- \"\$(cat '$pf')\"" >/dev/null
   bash "$root/.claude/lib/costs/runtime-mark.sh" session --provider claude --session "$sid" \
     --source team-run --name "$name" --ticket "$ck" --team "$TEAM" \
     --role lead --run "$RUN" --attempt "$n" --cwd "$CLONE" 2>/dev/null \
@@ -192,6 +211,7 @@ lead_poll() {
   lead_asks
   lead_attention_deferred
   lead_notify
+  lead_unasked_decisions || true
 }
 
 # A verdict with notify (human_decision, abandon_decision) reaches the Operator once, through
