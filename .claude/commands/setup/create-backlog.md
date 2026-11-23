@@ -17,6 +17,7 @@ There are two levels of "what to build" in this template, and the backlog turns 
 |-------|----------|-------|---------|
 | Product intent | `docs/PRD.md` (+ `docs/discovery.md`, `docs/architecture.md`) | *what & why*, ids `G-/R-/NFR-/BR-/FL-/AD-` | human, `/brainstorm` |
 | **Delivery map** | **`.agents/backlog.md` + `.agents/backlog/E<n>-<slug>.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, `Scope` CORE / MUST / COULD (CORE first, then parallel sessions), developer work only, a Summary per Task; criteria come from `/setup:delivery-plan` | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
+
 The PRD says *what & why*. The backlog **operationalizes** it into Epics and Tasks with dependencies and sizes. It **does not** restate the PRD — it traces to its ids. Jira mirrors the backlog 1:1 via `/jira sync` (create-only) and, for synced Tasks, owns workflow status (umbrella D7: a Task with a `Jira` key takes its `Status` from Jira; without one the local cell is authoritative).
 
 > **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE Task (or an explicitly listed few); the backlog decides *which* Tasks exist, how big they are, what must be built first (`CORE`) before several sessions can work at once, and what is committed (`MUST`) or optional (`COULD`). Who builds what in which order is `/setup:delivery-plan`'s job.

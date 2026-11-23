@@ -5,7 +5,7 @@ description: Memory-reflection protocol + entry-format templates + domain-file t
 
 # Memory Reflection Protocol & Templates
 
-> **Not a `/prime` file.** Loaded **only** by the reflection callers — [`/execute`](../../.claude/commands/execute.md), [`/check-implementation`](../../.claude/commands/check-implementation.md), [`/orchestrate`](../../.claude/commands/orchestrate.md) — at the end of a completed unit of work, and by anything that needs to create a `domain/` file. For routing (*what to write where* / *what to read when*) see [index.md](index.md), which every session loads.
+> **Not a `/prime` file.** Loaded **only** by the reflection callers — [`/execute`](../../.claude/commands/execute.md), [`/check-implementation`](../../.claude/commands/check-implementation.md) — at the end of a completed unit of work, and by anything that needs to create a `domain/` file. For routing (*what to write where* / *what to read when*) see [index.md](index.md), which every session loads.
 >
 > The split exists because `/prime` reads `index.md` in **every** session while this protocol matters in a handful of turns at the very end of a run. Keeping it here is the [Loader Convention](index.md#loader-convention--prime-loads-commands-trust) applied to memory itself.
 
@@ -17,9 +17,8 @@ It runs at the end of a **completed unit of work**, never mid-task:
 
 | Caller | When | Source it reflects on |
 |--------|------|-----------------------|
-| [`/orchestrate`](../../.claude/commands/orchestrate.md) | Phase 7, **friction-gated** — only when the run-log shows a step needed >1 fix iteration, an escalated blocker the user resolved via guidance, or a designer mega-fix. A clean run (everything passed first try) learns nothing → skip. | the durable run-log |
 | [`/check-implementation`](../../.claude/commands/check-implementation.md) | after the final report | the loop's first-hand context — bugs `/code-review` fixed, gate iterations |
-| [`/execute`](../../.claude/commands/execute.md) | after moving the plan to `done/`, **only if no `/check-implementation` or `/orchestrate` follows** (else those reflect instead) | what was just implemented |
+| [`/execute`](../../.claude/commands/execute.md) | after moving the plan to `done/`, **only if no `/check-implementation` follows** (else it reflects instead) | what was just implemented |
 | [`/commit`](../../.claude/commands/commit.md) | Step 9 memory checkpoint — a lightweight pass over what the commit just captured; the bar and de-dup guard below apply in full (an earlier reflection in the same flow usually means there is nothing left to save) | the committed change set |
 
 There is no `/remember` command. Manual capture still works: ask Claude to save it to memory — in the project's communication language (CLAUDE.md → Language Rules) — and follow the routing in [Quick Reference in index.md](index.md#quick-reference--where-to-write-discoveries).
@@ -94,7 +93,7 @@ If a discovery is one of the project's most important "always check this" lesson
 
 ### These log files carry `merge=union`
 
-`.gitattributes` declares the built-in `union` merge driver for the append-mode logs (`errors.md`, `decisions.md`, `patterns.md`, `api.md`, `domain/*.md`, `archive/**`). So a **local** merge (a team clone's `git merge origin/main`, `/orchestrate --integrate`) of two branches whose reflection passes both added an entry finishes without conflict markers. The PR merge on the provider (GitHub) does not rely on the driver: a PR can still report a conflict in these logs — resolve it per [team-pipeline.md §6](../reference/team-pipeline.md) ("PR conflicting in memory files"). Consequences you own:
+`.gitattributes` declares the built-in `union` merge driver for the append-mode logs (`errors.md`, `decisions.md`, `patterns.md`, `api.md`, `domain/*.md`, `archive/**`). So a **local** merge (a team clone's `git merge origin/main`) of two branches whose reflection passes both added an entry finishes without conflict markers. The PR merge on the provider (GitHub) does not rely on the driver: a PR can still report a conflict in these logs — resolve it per [team-pipeline.md §6](../reference/team-pipeline.md) ("PR conflicting in memory files"). Consequences you own:
 
 - **"Never reformat existing entries" is load-bearing, not stylistic.** Union emits **no conflict markers**. If two branches change the *same existing line* differently, both versions survive into the merged file and nothing flags it — a silent duplicate that only a reader will ever catch. A clean exit is not a clean result either: union can drop the blank line between two new entries, so review every locally merged log for order, blank lines and duplicated or spliced entries (§6 step 2). Editing what is already there multiplies the risk.
 - **After a merge, restore date order.** Union emits the current branch's lines first, not by date, so a newer entry from the other side can land below an older one. Move the newer entry (date in its heading; in topical files keep it inside its topic section) to the top by hand and restore the blank line between entries — required, not cosmetic (§6 step 2).
