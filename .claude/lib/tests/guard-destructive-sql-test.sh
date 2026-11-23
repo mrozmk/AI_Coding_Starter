@@ -66,6 +66,9 @@ printf 'echo read-only\n' > "$D/r/sub/drop.sh"
 printf "%s\ncat <<'EOF'\ncd sub\nEOF\nbash ./drop.sh\n" "$U" > "$D/r/unparsable-heredoc-cd.sh"
 printf '%s\nif true; then bash ./drop.sh; fi\n' "$U" > "$D/r/unparsable-then.sh"
 printf "cat <<EOF\n# \$(sqlcmd -Q \"UPDATE dbo.X SET A=1\")\nIt's text\nEOF\n" > "$D/heredoc-hash.sh"
+printf '%s\n' 'sqlcmd -i drop.sql' "echo a\\ #'" > "$D/tail-unparsable.sh"
+printf '%s\n' 'cat <<EOF' "a\\ #'" EOF 'sqlcmd -i drop.sql' 'cat <<EOF' "b\\ #'" EOF \
+  > "$D/two-heredocs.sh"
 # The caller continues after an unparsable script; cwd != project in every case.
 mkdir -p "$D/a" "$D/b/sub" "$D/c/sub" "$D/n/sub" "$D/e/sub" "$D/i/sub" "$D/t/other/sub" \
   "$D/f" "$D/k" "$D/g/sub"
@@ -288,6 +291,30 @@ run deny "joined -ifile"                              "sqlcmd -idrop.sql"
 run deny "script with a space in \$() of an unparsable script" "bash u.sh" "$D/sp"
 run deny "script with a space in \$()"            "echo \"\$(bash './with space/danger.sh')\"" "$D/sp"
 run ask  "unreadable namesake among candidate dirs" "source s.sh && sqlcmd -i drop.sql" "$D/ur"
+# --- #230: an escaped blank before `#` keeps the rest of the line visible; DROP stays deny
+run deny "escaped blank before # in a parsable command"  "sqlcmd -Q \"DROP TABLE dbo.X\"; echo x\\ # note"
+run deny "escaped blank uncovers an unclosed quote"     "sqlcmd -Q \"DROP TABLE dbo.X\"; echo a\\ #'"
+# bash runs the lines before the one it fails on: an unparsable tail keeps a script's DROP deny
+run deny "unparsable tail after a script with DROP"      $'bash other/del.sh\necho a\\ #\''
+run deny "unparsable tail after a continued sqlcmd line" $'sqlcmd -Q \\\n"DROP TABLE dbo.X"; echo a\\ #\''
+# ... while a heredoc body that quotes a DROP is data: an unparsable command stays ask
+run ask  "cat heredoc quoting a DROP, apostrophe"        $'cat > msg.txt <<\'EOF\'\nfix: keep sqlcmd -Q "DROP TABLE dbo.X" denied when it\'s a tail\nEOF'
+run ask  "tee heredoc with a sqlcmd DROP line"           $'tee msg.txt <<\'EOF\'\nIt\'s the note.\nsqlcmd -Q "DROP TABLE dbo.X"\nEOF'
+# ... and the pre-#230 reading's deny is kept when the uncovered tail does not parse
+run deny "sqlcmd heredoc DROP before an unparsable tail" $'sqlcmd <<EOF\nDROP TABLE dbo.X\nEOF\necho a\\ #\''
+run deny "quoted newline in a DROP before the tail"      $'sqlcmd -Q "DROP\nTABLE dbo.X"\necho a\\ #\''
+run deny "script whose tail turns unparsable"            "bash tail-unparsable.sh"
+# ... and when an uncovered quote pairs with a later one: the text parses but hides the commands
+run deny "uncovered quotes pair across heredocs"         $'cat <<EOF\na\\ #\'\nEOF\nsqlcmd -Q "DROP TABLE dbo.X"\ncat <<EOF\nb\\ #\'\nEOF'
+run deny "script whose uncovered quotes pair"            "bash two-heredocs.sh"
+run deny "uncovered quotes pair inside bash -c"          $'bash -c \'cat <<EOF\na\\\'\' #\'"\'"\'\nEOF\nsqlcmd -Q "DROP TABLE dbo.X"\ncat <<EOF\nb\\\'\' #\'"\'"\'\nEOF\''
+# an unparsable command is read by logical lines: a newline inside quotes starts no command
+run ask  "DROP in a multi-line quoted string"            $'printf %s \'Test plan:\nsqlcmd -Q "DROP TABLE dbo.X" is denied\n\' && echo it\'s'
+run deny "DROP after a closed multi-line quote"          $'echo "a\nb"\nsqlcmd -Q "DROP TABLE dbo.X"\necho it\'s'
+run ask  "backslash-quoted heredoc with a DROP line"     $'tee msg.txt <<\\EOF\nIt\'s the note.\nsqlcmd -Q "DROP TABLE dbo.X"\nEOF'
+run ask  "hyphenated heredoc delimiter with a DROP line" $'cat > msg.txt <<\'END-NOTE\'\nfix: keep sqlcmd -Q "DROP TABLE dbo.X" denied when it\'s a tail\nEND-NOTE'
+run ask  "indented delimiter lookalike in a heredoc"     $'cat > msg.txt <<\'EOF\'\n  EOF\nsqlcmd -Q "DROP TABLE dbo.X"\nit\'s\nEOF'
+run none "<<\\EOF body of a cat is not sqlcmd input"     $'sqlcmd -Q "SELECT 1"; cat <<\\EOF\nDROP TABLE dbo.X\nEOF'
 # --- The repo's own TeamLead Bash guard parses cleanly: checking or running it never asks
 R="${H%/.claude/hooks/guard-destructive-sql.sh}"
 run none "syntax check of the lead runner naming the lead guard" "bash -n .claude/lib/team-run-lead.sh" "$R"

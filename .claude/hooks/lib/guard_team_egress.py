@@ -41,8 +41,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 
 from guard_destructive_sql import (  # noqa: E402
-    SHELL_C, commands, doc_heredocs_removed, redirection_led, split_spans, strip_wrappers,
-    tokenize, unredirected)
+    SHELL_C, base_comment_reading, comment_splits, commands, doc_heredocs_removed,
+    needs_base_reading, redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
 from guard_team_egress_effect import GH_READ_FORMS, inline_literals  # noqa: E402
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector,
@@ -295,9 +295,18 @@ def gh_read_tainted(cmd, tokens=()):
                 or any(GH_READS_TAINT.search(t) for t in tokens))
 
 
-
-
 def bash_reason(cmd, project):
+    mark = comment_splits()
+    reason = reading_reason(cmd, project)
+    if reason or not needs_base_reading(mark):
+        return reason
+    # The pre-#230 reading must not lose a verdict either (QA: a `git push <remote>` before a line
+    # whose uncovered quote breaks or hides the rest).
+    with base_comment_reading():
+        return reading_reason(cmd, project)
+
+
+def reading_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
         return NET_FOUND

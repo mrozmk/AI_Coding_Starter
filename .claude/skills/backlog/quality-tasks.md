@@ -16,6 +16,7 @@ A quality Task's `Task` cell **begins** with one marker:
 | `[audit:wcag]` | `/wcag` — not in this workflow yet | closing | `H` | when the product has a user interface people operate |
 | `[upkeep:architecture-review]` | `/architecture-review` | recurring | `M` | always, `n` numbered occurrences |
 | `[upkeep:cleanup-workflow]` | `/maintain:cleanup-workflow` | recurring | `M` | always, `n` numbered occurrences |
+| `[upkeep:refresh-brief]` | `/maintain:refresh-brief` | reminder | `M` | never planned — only `/check-backlog` adds one, when the PRD changed after the brief (Reminder Tasks) |
 
 Every quality Task: `Type` `tech` · `Scope` `MUST` · `Node` `—` · `Relates` `—` · `Chain` `—` ·
 `Traces` `—` (an `NFR-n` the PRD states for security or accessibility may be traced; never
@@ -97,8 +98,21 @@ Summary when it is another one. An earlier run resets
 the reminder's clock and closes nothing; later occurrences stay open. The person closes the Task
 through its status owner (the local `Status` cell, or Jira for a synced Task).
 
+## Reminder Tasks
+
+`/check-backlog` step 5a adds one when `upkeep.sh due` marks an upkeep item and the Operator
+answers **Add the Task** (`refresh-brief`, `cleanup-workflow` or `architecture-review`):
+
+- Row: `Task` `[upkeep:<id>] Run <command>` (unnumbered — the cadence never counts it) · `Type` `tech` · `Size` `M` · `Scope` `MUST` · `Depends on` `—` · `Node` `—` · `Relates` `—` · `Chain` `—` · `Traces` `—` · `Status` `TODO` · `Jira` `—`.
+- Epic: `Quality & upkeep`; absent → created with the Epic fields above (Outcome, Key assumption, `Depends on` `—`, the appetite line), last in the Epic map.
+- Summary: the **Upkeep occurrence** line above; `architecture-review` adds its sentence; when the item's `home` is not `.`, add *Run it from `<home>`.*
+- Under `**Detail:** full` — Goal: *the brief matches the current PRD* (`refresh-brief`), *the architecture is reviewed* (`architecture-review`), *the workflow is cleaned up* (`cleanup-workflow`). In scope: *one run of `<command>` and acting on its report.* Out of scope: *the refactors or cleanups it proposes beyond its own commit — each becomes its own Task.* Criterion:
+  - *Given this Task is open, when a whole-codebase run of `<command>` in `<home checkout>` finishes and prints `upkeep: recorded <id> in <path>`, where `<path>` resolved from `<home checkout>` is `<record>`, then `<record>` holds that run as the item's `last_run` and the run's result is committed.* (`<record>` is the item's `record` from `upkeep.sh due --format json`, relative to the checkout that ran `/check-backlog` — e.g. `../review-home/.agents/upkeep.json` — while the run in the home checkout prints the path relative to itself, `.agents/upkeep.json`; both name one file.)
+- Crediting: a run that records itself while the Task is open closes it once the run's result is committed (the criterion above) — it has no prerequisites. A run that records nothing (a focused `/architecture-review`, a moved `HEAD`, a PRD changed during the refresh) leaves it open. The person closes it through its status owner.
+
 ## Detail templates (`/setup:delivery-plan` step 2, `/update-backlog` under `**Detail:** full`)
 
+- **Reminder Task** — an unnumbered `[upkeep:<id>] Run <command>` with `Depends on` `—` (any of the three upkeep ids): Goal, scope lines and criterion from **Reminder Tasks** above, never the occurrence template. (An unnumbered follow-up run `/update-backlog` adds after a protected occurrence has prerequisites and keeps the occurrence template.)
 - **Audit** — Goal: *the committed scope ships with a `<command>` report on the revision that holds
   it.* In scope: *one run of `<command>` over the product as built; triage of every finding.* Out
   of scope: *fixing the findings — each becomes its own Task.* Criteria:
