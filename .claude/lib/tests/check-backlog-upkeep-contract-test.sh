@@ -100,8 +100,7 @@ EOF
 DT=$(awk 'f { print } $0 == "## Detail templates (`/setup:delivery-plan` step 2, `/update-backlog` under `**Detail:** full`)" { f = 1 }' "$ROOT/$QT")
 in_slice "$DT" '- **Reminder Task** — an unnumbered'; check $? "quality-tasks Detail templates lack the Reminder Task bullet"
 
-grep -qF "'upkeep:refresh-brief': { kind: 'reminder'" "$ROOT/$BC"; check $? "backlog-check.mjs lacks the refresh-brief marker"
-grep -qF 'planned: false }' "$ROOT/$BC"; check $? "backlog-check.mjs refresh-brief marker is not reminder-only"
+grep -qF "'upkeep:refresh-brief': { kind: 'reminder', command: '/maintain:refresh-brief', size: 'M', conditional: false, planned: false }" "$ROOT/$BC"; check $? "backlog-check.mjs lacks the reminder-only refresh-brief marker"
 
 grep -qF 'arrives placed' "$ROOT/$UB"; check $? "update-backlog Phase 4 lacks the placed upkeep intent"
 grep -qF 'already planned as <Task id>' "$ROOT/$UB"; check $? "update-backlog Phase 4 lacks the upkeep dedupe"
