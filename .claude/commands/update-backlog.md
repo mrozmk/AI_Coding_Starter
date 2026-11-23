@@ -128,7 +128,7 @@ counts as protected (say so once). A protected Task is never edited in place.
 
 **Quality Tasks** (`.claude/skills/backlog/quality-tasks.md`). A change that adds a live `CORE` /
 `MUST` product Task that is a new sink adds it to the `Depends on` of the open closing audit
-each marker binds (its highest-id `TODO` / `BLOCKED` audit) in the same run — the checker
+each marker binds (its highest-id live audit, while `TODO` / `BLOCKED`) in the same run — the checker
 refuses the candidate otherwise. Any change to the product points or order re-places every
 open, unprotected upkeep occurrence by the placement rule for the new `P` and `n` in the same
 candidate (adding or withdrawing `TODO` occurrences as `n` moves), so the last one still waits

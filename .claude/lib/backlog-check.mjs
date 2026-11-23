@@ -940,6 +940,7 @@ function qualityChecks(b, live) {
   const points = product.reduce((a, t) => a + (pointsOf(t.size) ?? 0), 0);
   const n = Math.max(QUALITY_MIN_OCCURRENCES, Math.ceil(points / QUALITY_CADENCE_POINTS));
   const known = Object.keys(QUALITY_MARKERS).map((k) => `[${k}]`).join(', ');
+  const conditional = Object.entries(QUALITY_MARKERS).filter(([, d]) => d.conditional).map(([k]) => `[${k}]`).join(' and ');
   for (const t of live) {
     const m = q.get(t.id);
     if (!m) continue;
@@ -961,7 +962,7 @@ function qualityChecks(b, live) {
   const planned = new Set([...q.values()].filter((m) => m?.known && (m.kind !== 'recurring' || m.occurrence !== null)).map((m) => m.marker));
   const ruledOut = new Set(b.ruledOut ?? []);
   const missing = Object.entries(QUALITY_MARKERS).filter(([marker, def]) => def.planned && !planned.has(marker) && !(def.conditional && ruledOut.has(marker))).map(([marker]) => `[${marker}]`);
-  if (missing.length) warnings.push(`quality Tasks not planned: ${missing.join(', ')} — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only [audit:seo-geo] and [audit:wcag] may be ruled out under ## Consciously out of scope`);
+  if (missing.length) warnings.push(`quality Tasks not planned: ${missing.join(', ')} — add them with /update-backlog (.claude/skills/backlog/quality-tasks.md); only ${conditional} may be ruled out under ## Consciously out of scope`);
   return { errors, warnings };
 }
 

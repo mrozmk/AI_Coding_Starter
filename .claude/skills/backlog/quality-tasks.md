@@ -49,7 +49,8 @@ other product Task depends on.
 - **Closing audit** — depends on every product sink, so it waits for all product work. The audits
   are independent of each other. A re-audit (a later Task with the same marker, added when new
   work arrives while the first audit is protected) waits for all product work too; per marker the
-  open audit with the highest id is the one that must wait, and a release row waits for it.
+  live audit with the highest id (any status) is the one the checker binds — it must wait while
+  `TODO` / `BLOCKED` — and a release row waits for it.
 - **Cadence** — `P` = the points of the product Tasks; `n = max(2, ceil(P / 160))` occurrences of
   each recurring command.
 - **Placement** — walk the product Tasks in dependency order (Task-table order, except that a Task
