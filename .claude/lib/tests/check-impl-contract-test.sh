@@ -131,7 +131,7 @@ s5 = dr.split("**5. ", 1)[-1].split("**6. ", 1)[0]
 check("String-coded control flow" in s5, "deep-review standard 5 does not name string-coded control flow")
 check("rule: CS-<n>" in dr.split("## Non-negotiable", 1)[0],
       "deep-review report-only output shape does not name the tags")
-for rel in (".claude/agents/orchestrator-refiner.md", ".claude/commands/quick-change.md"):
+for rel in (".claude/commands/quick-change.md",):
     check("Enforced by: review" not in read(rel), f"{rel} carries a copy of standard 9")
 
 sr = read(".claude/agents/structure-reviewer.md")
@@ -256,7 +256,7 @@ vmeta, _ = front(vi)
 check(vmeta.get("argument-hint") == '"[plan-name] [--base <rev>]"', f"{VI}: argument-hint lacks a quoted --base")
 check("Bash(bash .claude/lib/branch-model.sh fields)" in vmeta.get("allowed-tools", ""),
       f"{VI}: allowed-tools lacks the base-resolution call")
-v1 = part(vi, "## 1. ", "## 1b. ", VI)
+v1 = part(vi, "## 1. ", "## 2. ", VI)
 v2 = part(vi, "## 2. ", "## 3. ", VI)
 v3 = part(vi, "## 3. ", "## 4. ", VI)
 v4 = part(vi, "## 4. ", "## 5. ", VI)

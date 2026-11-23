@@ -29,5 +29,5 @@ Options (`userConfig`): `cacheTtl` (`1h` on a subscription, `5m` in overage), `b
 `autoHcMinutes`, `autoHcForceMinutes`. The cache clock is the last main-thread response; after a
 reload it is seeded from the session transcript under `~/.claude/projects/`.
 
-Loaded automatically in a trusted project, like `stage-handoff`. Tests: `claude plugin test
+Loaded automatically in a trusted project. Tests: `claude plugin test
 .claude/skills/cache-handoff` (the `.claude-plugin/types/` folder the engine writes is git-ignored).

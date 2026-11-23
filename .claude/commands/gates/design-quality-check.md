@@ -25,7 +25,7 @@ Only differences explicitly authorized by the user (documented in the plan or in
 
 ## 0. The reference-design contract
 
-The reference design lives in **`.agents/specs/design/Ready/`** *or* in a **live Figma file exposed via Figma MCP** (`mcp__figma__*`). At least one must exist — if neither does, there is nothing to audit against (and `/orchestrate` skips the design phase entirely). A reference artifact may be any of:
+The reference design lives in **`.agents/specs/design/Ready/`** *or* in a **live Figma file exposed via Figma MCP** (`mcp__figma__*`). At least one must exist — if neither does, there is nothing to audit against (and `/check-implementation` skips the design gate entirely). A reference artifact may be any of:
 
 - a **live Figma node via Figma MCP** (`mcp__figma__*`) — the canonical source when the design tool is connected (see the priority rule below),
 - a **standalone HTML/CSS mockup** (the most precise *static* form — every value is inspectable),
@@ -224,7 +224,7 @@ Count total findings:
 - **26+** → BLOCK. Do **not** dump all findings into chat. Instead:
   1. Write the full report to `.agents/plans/active/<section>-design-fixes-YYYY-MM-DD.md` (today's date).
   2. In chat: total count, breakdown by category, top 5 most impactful defects, and the file path.
-  3. Recommend `/execute` (or `/orchestrate`) against the new plan once the user approves.
+  3. Recommend `/execute` against the new plan once the user approves.
 
 The threshold exists because dumping 50+ findings into chat buries the conclusion and burns context. The plan file is the artifact the implementer (and `/execute`) actually consumes.
 

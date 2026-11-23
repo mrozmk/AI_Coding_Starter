@@ -372,13 +372,13 @@ You've just gone all the way: **idea → PRD → stack → design → plan → c
 
 **Another feature?** Repeat **steps 6–10** for a new thing (e.g. "mark a task as done"). Fresh chat → `/prime` → `/brainstorm <feature>` → `/plan-feature` → `/execute` → `/check-implementation` → `/commit`. That's your daily rhythm — the same one you practiced twice (on the scaffold and on the first feature).
 
-**Want it faster, without clicking through each step?** Once you're comfortable, you can replace steps 6–11 with **one** command:
+**Want it hands-off, without clicking through each step?** Once you're comfortable, the opt-in team pipeline (`/setup:teams`) can run steps 6–11 for a ticket in its own sessions:
 ```
-/orchestrate <feature>
+/start-team <team> <ticket>
 ```
-It does it all itself: design → plan → write code → clean up → check → commit → push, compacting its own context between the stages and asking you only at a real fork or a real problem. Give it a plan path instead and it starts at the build. That's the "hands-off" path. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
+A team clone runs design → plan → code → quality check → PR on its own, with a per-run TeamLead answering its questions and asking you only for decisions a human must make. **I recommend it only once you understand what happens in steps 7–9 separately** — so you can react when something goes wrong.
 
-> A full comparison of both paths (manual A and automatic B) and a description of exactly what each command does: [Framework guide → Two daily flows](../.claude/docs/guide.md#two-daily-flows).
+> A full comparison of both paths (manual A and team B) and a description of exactly what each command does: [Framework guide → Two daily flows](../.claude/docs/guide.md#two-daily-flows).
 
 ---
 
@@ -455,7 +455,7 @@ Fresh chat → `/prime`, then design the feature — [just like in Step 6 of S1]
 <details>
 <summary>💡 TIP — what "Ready/" is and why design is a separate step</summary>
 
-`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/gates:design-quality-check` gate and the `/orchestrate` pipeline reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
+`.agents/specs/design/Ready/` is the agreed place for **approved** mockups — the `/gates:design-quality-check` gate and `/check-implementation`'s design gate reach into it later to compare the finished UI against the design. Separating "how it should look" (design) from "how to write it" (plan) means `/execute` has a concrete reference to reproduce, rather than guessing the layout. If you **already have designs** (HTML/Figma) and don't want to generate them — that's Scenario 3.
 </details>
 
 ---
@@ -550,7 +550,7 @@ You don't copy anything. Keep the **link to the Figma node/screen** handy — yo
 <details>
 <summary>💡 TIP — why "Ready/" specifically and what that frontmatter is</summary>
 
-`.agents/specs/design/Ready/` is the same place `/design-ui` saves *generated* mockups — so the rest of the tooling (the parity gate, `/orchestrate`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
+`.agents/specs/design/Ready/` is the same place `/design-ui` saves *generated* mockups — so the rest of the tooling (the parity gate, `/check-implementation`) always looks for the design there, whether it was created automatically or you brought it in. The frontmatter (`name` + `priority` + `status`) at the top of the file lets the tools recognize and order the mockups. Figma doesn't require copying to `Ready/` — with MCP wired up, the gate reads the design directly and it wins over any static HTML on a conflict.
 </details>
 
 ---

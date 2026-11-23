@@ -14,6 +14,6 @@
   "_doc_stage_skills": "Optional, top-level pipeline skills that open a --by-stage segment.",
   "stage_skills": [
     "prime", "brainstorm", "plan-feature", "execute", "check-implementation", "qa-verify",
-    "pr-create", "orchestrate", "quick-change", "pr-merge"
+    "pr-create", "quick-change", "pr-merge"
   ]
 }

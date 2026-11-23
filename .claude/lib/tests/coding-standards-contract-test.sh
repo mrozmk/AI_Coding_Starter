@@ -5,13 +5,14 @@
 # planning commands require (`/plan-feature`'s reuse lookup, `**Reuse:**` block, grilling finding and
 # cross-model conventions; `/quick-change`'s `Reuse:` line).
 # It pins the lookup's search too: both searches run `rg --hidden -g '!.git'` (plain `rg` skips
-# dot-directories), withdrawn `CS-n` rules are skipped, and an `## Open — pick one` hit is asked — in
-# pipeline mode as a directional fork that `/orchestrate`'s question policy names — never parked.
+# dot-directories), withdrawn `CS-n` rules are skipped, and an `## Open — pick one` hit is asked —
+# never parked.
 # It also pins the per-criterion proof contract: the four-kind `Proof:` grammar and `AC-n` labels
 # in `/plan-feature` and `/quick-change`, the withdrawn exclusion and the test-first task order in
 # `/plan-feature`, grill step 5.1f, and `/execute`'s red-before-green line. Text checks only. It also asserts that
 # `/setup:map-codebase`, the map-codebase workflow's standards prompt and the seed agree on the four
-# section names, and that the renderer hard-codes none.
+# section names, and that the renderer hard-codes none. It also asserts that the planning commands
+# carry no `/orchestrate` pipeline mode, umbrella producer or `Execution effort` marker.
 #
 # Usage: bash .claude/lib/tests/coding-standards-contract-test.sh [root]   (default: this checkout)
 set -u
@@ -114,7 +115,7 @@ lookup = between(pf, "**2. Pattern Recognition**", "**3. Dependency Analysis**")
 for needle in ("whole repository", "rg --hidden -g '!.git' <name>", "rg --hidden -g '!.git' <pattern>",
                "skips `.claude/` and every other dot-directory", "is marked `(withdrawn)` is skipped",
                DOC, "## Shared helpers", "## One shape per problem", "## Open — pick one", "**Reuse:**",
-               "in pipeline mode too, as a directional fork", "local convention <path:line>",
+               "in team mode the run's TeamLead answers it", "local convention <path:line>",
                "the plan never silently picks a variant"):
     check(needle in lookup, f"plan-feature Pattern Recognition lacks {needle!r}")
 check("recorded under `Open questions:`" not in lookup, "plan-feature Pattern Recognition still parks an Open — pick one hit under Open questions:")
@@ -141,7 +142,6 @@ for needle in GRAMMAR + ("**Proof lines — every active criterion.**",
                          "`contains — <test file> :: <test name literal>`",
                          "unless that named test case already exists",
                          "Order that task before the task(s) that implement the behaviour it proves",
-                         "never in a separate tests-only sub-step",
                          "the criterion is a structural fact provable without running anything",
                          "the criterion asserts an outcome that appears only when something runs",
                          "the criterion can only be observed in a running app",
@@ -157,12 +157,9 @@ gate = strict_between(pf, "### Step 5.1f — AC proof gate (MANDATORY for every 
 for needle in ("**Trigger:** always", "🟠 MAJOR", "no `Proof:` line", "carries only `static` proofs",
                "no task creates or updates", "test policy says a test MUST exist",
                "behaviour an existing test covers and names no task that updates or removes that test",
-               "neither writes that test (before the behaviour) nor names the existing case",
                "unless that test is an unchanged case a `Proof: test` line names"):
     check(needle in gate, f"grill step 5.1f lacks {needle!r}")
-check("These five gates" in gate, "plan-feature gates note does not count five gates")
-check("a tests-only sub-step never holds a test a `Proof: test` line names" in pf,
-      "plan-feature split mechanics still allow a proof test in a tests-only sub-step")
+check("These four gates" in gate, "plan-feature gates note does not count four gates")
 p7s = strict_between(pf, "### Step 7.3 — Build the review prompt (BROAD mandate + strict evidence bar)",
                      "### Step 7.4 — Invoke codex in the background, then poll (per round)", "Phase 7 prompt")
 check("**Acceptance proofs**" in p7s, "Phase 7 prompt lacks the Acceptance proofs bullet")
@@ -192,14 +189,6 @@ for needle in ("`Proof:` line as a nested item", "`- **AC-1** — <done>` then `
                "the task that writes or changes a proof test comes before the task that implements"):
     check(needle in tms, f"quick-change team-mode plan shape lacks {needle!r}")
 
-orch = read(".claude/commands/orchestrate.md")
-fork = [l for l in orch.splitlines() if l.startswith("| A **directional fork**")]
-check(len(fork) == 1 and "`/plan-feature` reuse lookup (an `## Open — pick one` item the plan must pick)" in fork[0],
-      "orchestrate question policy: the directional-fork row does not name the plan-feature reuse lookup")
-st2 = strict_between(orch, "## Stage 2 — Plan", "## Stage 3 — Build", "orchestrate Stage 2")
-check("an `## Open — pick one` item the reuse lookup must pick (a directional fork)" in st2,
-      "orchestrate Stage 2 does not list the Open — pick one fork among the questions that still ask")
-
 ex = read(".claude/commands/execute.md")
 e2 = strict_between(ex, "### 2. Execute Tasks in Order", "#### a. Navigate to the task", "execute §2 head")
 for needle in ("**Proof tests first — red before green.**", "see it fail",
@@ -223,6 +212,21 @@ t8 = strict_between(tmd, "## 8. What team mode changes per command", "## 8a. PR 
 row = [l for l in t8.splitlines() if l.startswith("| `/execute` |")]
 check(len(row) == 1 and "red before green" in row[0] and "## Unattended decisions" in row[0],
       "team-mode §8 /execute row does not name the red-before-green notes line")
+
+# Removal of /orchestrate: no pipeline-mode branch, umbrella producer or Execution effort marker survives.
+bs = read(".claude/commands/brainstorm.md")
+check(".claude/orchestrate-run.json" not in bs and "**Pipeline mode**" not in bs,
+      "removal: brainstorm.md still carries a pipeline-mode branch")
+check(".claude/orchestrate-run.json" not in pf and "**Pipeline mode**" not in pf,
+      "removal: plan-feature.md still carries a pipeline-mode branch")
+check("## Phase 4.6" not in pf and "Split into a sequential umbrella" not in pf,
+      "removal: plan-feature.md still produces an umbrella")
+check("Execution effort" not in pf, "removal: plan-feature.md still writes Execution effort")
+check("Execution effort" not in qc, "removal: quick-change.md still writes Execution effort")
+check("/orchestrate" not in ex, "removal: execute.md still points at /orchestrate")
+vi_text = read(".claude/commands/gates/verify-implementation.md")
+check("VERIFY_MODE" not in vi_text and "FIX_BASE" not in vi_text,
+      "removal: verify-implementation.md still has delta mode")
 
 names = ["## " + s for s in SECTIONS]
 def in_order(text):

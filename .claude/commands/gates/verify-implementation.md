@@ -43,21 +43,6 @@ Use these flags in Steps 3-5 to skip irrelevant sections. Report the detected st
    - **Test commands** (from Testing Strategy section)
    - **Files expected** to be created or modified
 
-## 1b. Delta mode — a re-verification after a fix (caller-driven)
-
-**Default is full.** Delta applies only when the caller passes `VERIFY_MODE: delta` together with `PREVIOUS_GAPS` (the failed pass's `GAPS`, verbatim) and `FIX_BASE` / `FIX_HEAD` (working-tree snapshots from `.claude/lib/fix-snapshot.sh`, taken before and after the fix). Today only `/orchestrate`'s verifier fix loop does; a direct run and `/check-implementation` are always full.
-
-Run **full** instead, and say why in the report, when either holds:
-- the previous pass was not a complete audit — it stopped at a failing task (§2) or gate (§3), so §4–§6 never judged the code and there is nothing to narrow from;
-- `git diff --name-only <FIX_BASE> <FIX_HEAD>` fails.
-
-A delta pass re-proves the fix, never less than the gates:
-- **§2 and §3 run in full**, as written — the task checks and the quality gates are the regression floor.
-- Judge every `PREVIOUS_GAPS` item **resolved** or **still-open**, citing what you checked.
-- **§4 semantic review** and **§5 design compliance** cover the fix diff only: `git diff <FIX_BASE> <FIX_HEAD>`.
-- **§6 spec axis** covers the fix diff **and every acceptance criterion or task whose implementation lives in a changed file** — re-judge those; no earlier result carries over for changed code (the "a fix that satisfies the linter can still remove behaviour" rule in §3). The §6 acceptance-criteria ledger is still built for every active criterion — completeness needs every row, and its test rows come from this pass's §3 run.
-- A new issue the fix introduced is reported like any other finding.
-
 ## 2. Task Validation
 
 **The counted list is `## STEP-BY-STEP TASKS`, not `## ACCEPTANCE CRITERIA`.** The acceptance criteria are prose assertions naming no file and no content — they are judged semantically in the review axis (Step 6), never turned into a percentage.
@@ -76,7 +61,7 @@ For each task in `## STEP-BY-STEP TASKS`:
 
 **`M` is the task count.** Every task is mandatory; the only exclusion is at the umbrella level, where rows whose `Status` is `manual` or `skipped` are not counted. Whenever `M` reaches zero — no tasks at all, or every umbrella row excluded — report `Plan Compliance: n/a (no mandatory tasks)` and fall through to the semantic and quality-gate axes. Never report `0%`.
 
-**Umbrella plans aggregate.** Collect tasks from every sub-step file named in the `File` column of the umbrella's `## Execution Plan` table (links are relative to the umbrella's own directory) and report a single combined `X/Y` across all of them — **excluding rows whose `Status` is `manual` or `skipped`**, which are reported separately rather than counted. A `manual` step is by definition one the pipeline cannot verify from the filesystem (external forms, interactive logins, human judgment — `plan-feature.md` Step 4.6.2); counting it mechanically would fail every umbrella that legitimately contains one. The `n/a` path is only for plans with neither own tasks nor sub-steps.
+**Umbrella plans aggregate.** Collect tasks from every sub-step file named in the `File` column of the umbrella's `## Execution Plan` table (links are relative to the umbrella's own directory) and report a single combined `X/Y` across all of them — **excluding rows whose `Status` is `manual` or `skipped`**, which are reported separately rather than counted. A `manual` step is by definition one the pipeline cannot verify from the filesystem (external forms, interactive logins, human judgment); counting it mechanically would fail every umbrella that legitimately contains one. The `n/a` path is only for plans with neither own tasks nor sub-steps.
 
 Report:
 ```
@@ -303,9 +288,6 @@ One row per active criterion of the plan — id, verdict, effect, evidence. It r
 
 ```markdown
 ## Verification Report: [plan-name]
-
-### Mode
-[full | delta (fix scope: N files) | full — delta refused: <reason>]
 
 ### Detected Stack
 [e.g. "TypeScript + Next.js + Tailwind" / "Python + FastAPI" / "Go" / "unknown"]

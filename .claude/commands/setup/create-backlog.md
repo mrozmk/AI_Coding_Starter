@@ -11,14 +11,12 @@ argument-hint: "[path-to-prd | optional — defaults to docs/PRD.md]"
 
 This command writes the backlog **structure**: `.agents/backlog.md` (the index — Epic map, Task table, story map, outside rows) and one Epic file per Epic, `.agents/backlog/E<n>-<slug>.md`, with a heading and a one-line `**Summary:**` per Task. It writes **no acceptance criteria and no Goal / scope lines** — `/setup:delivery-plan` details every Epic later. The backlog is the **planning source of truth** for delivery — a pipeline-steering meta-artifact, not another planning document and not a spec.
 
-There are three levels of "what to build" in this template, and the backlog fills the gap between the other two:
+There are two levels of "what to build" in this template, and the backlog turns the first into the second:
 
 | Level | Artifact | Scope | Read by |
 |-------|----------|-------|---------|
 | Product intent | `docs/PRD.md` (+ `docs/discovery.md`, `docs/architecture.md`) | *what & why*, ids `G-/R-/NFR-/BR-/FL-/AD-` | human, `/brainstorm` |
 | **Delivery map** | **`.agents/backlog.md` + `.agents/backlog/E<n>-<slug>.md` ← this command** | *in what structure to ship it* — Epics, Tasks with sizes, DAG, `Scope` CORE / MUST / COULD (CORE first, then parallel sessions), developer work only, a Summary per Task; criteria come from `/setup:delivery-plan` | human, `/brainstorm` / `/quick-change` (per Task), `/jira sync` |
-| Per-feature DAG | umbrella plan `## Execution Plan` | sub-steps of ONE Task (or a few) | `/orchestrate` |
-
 The PRD says *what & why*. The backlog **operationalizes** it into Epics and Tasks with dependencies and sizes. It **does not** restate the PRD — it traces to its ids. Jira mirrors the backlog 1:1 via `/jira sync` (create-only) and, for synced Tasks, owns workflow status (umbrella D7: a Task with a `Jira` key takes its `Status` from Jira; without one the local cell is authoritative).
 
 > **The backlog is the input to `/brainstorm`, not the output.** `/brainstorm` designs ONE Task (or an explicitly listed few); the backlog decides *which* Tasks exist, how big they are, what must be built first (`CORE`) before several sessions can work at once, and what is committed (`MUST`) or optional (`COULD`). Who builds what in which order is `/setup:delivery-plan`'s job.
@@ -245,7 +243,7 @@ Keep the report to this skeleton — add lines only for a blocker the user must 
 
 ## Maintenance contract (how the backlog stays honest)
 
-- **`Status`, `Ref` and `Jira` cells are written by the pipeline** — `/plan-feature` (Status → `WIP`, Ref → spec + plan), `/execute` and `/orchestrate` (Status → `DONE` per the whole-Task rule: only when no active plan still lists the Task), `/quick-change` (`DONE` on completion), `/brainstorm` Step 0 (read-only status refresh from Jira for Tasks with a key), `/jira sync` (keys) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation on the file's content; it is mechanical and safe.
+- **`Status`, `Ref` and `Jira` cells are written by the pipeline** — `/plan-feature` (Status → `WIP`, Ref → spec + plan), `/execute` (Status → `DONE` per the whole-Task rule: only when no active plan still lists the Task), `/quick-change` (`DONE` on completion), `/brainstorm` Step 0 (read-only status refresh from Jira for Tasks with a key), `/jira sync` (keys) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation on the file's content; it is mechanical and safe.
 - **Structural change (new Epic, new or re-sized Task, re-shaped DAG) goes through `/update-backlog`** (and `/check-backlog` through it): it previews every change, shows its impact, protects work in progress, records one `D-n` in the PRD change log and validates the candidate before writing. A hand edit stays allowed — then run `node .claude/lib/backlog-check.mjs --write`; the next `/update-backlog` (or the checker's `Scope rev` warning) surfaces it. No other automated step rewrites the DAG; that is how a backlog starts "pretending to be the truth".
 - **Quality Tasks follow `.claude/skills/backlog/quality-tasks.md`.** `/update-backlog` keeps open closing audits waiting for new product work and the occurrence count in step with the product points; the checker warns when they drift.
 - **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its block in the Epic file and its AC ids stay. The checker still validates its ids but leaves it out of the story map, the delivery plan and trace coverage. Jira issues are never deleted by the pipeline.

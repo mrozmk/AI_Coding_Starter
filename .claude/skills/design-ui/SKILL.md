@@ -280,5 +280,5 @@ Saved: <reference-dir>/{area}/{Name}.html  ·  Shots: $RUN/shots-x-r<last>/
 - `design-render.sh` needs `npx` and a browser (system Chrome, or Playwright's Chromium). Missing → `not-verified`, stated in the report — never a silent pass.
 - Codex runs once, on the chosen design only, with images via the wrapper's `IMAGES` — never raw `codex exec` (its `-i` flag is variadic and swallows the prompt).
 - BOOTSTRAP proposes, never auto-scaffolds.
-- No worktree/branch/merge machinery — that is `/orchestrate`'s job for committed code; `/design-ui` produces HTML artifacts.
+- No worktree/branch/merge machinery — `/design-ui` produces HTML artifacts.
 - Index / token-check scripts are **optional**: probe `package.json` (and `scripts/`) and run only what exists.
