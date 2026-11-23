@@ -24,9 +24,16 @@
 
 LY_LS=""; LY_SPACE=""; LY_WHY=""; LY_MOVED=""
 
+# ly_app_bin → the app of the core's family: a Linux hc never pairs with herdr-app.exe, hc.exe never
+# with a Linux herdr-app. HERDR_APP_BIN wins.
+ly_app_bin() {
+  if [ -n "${HERDR_APP_BIN:-}" ]; then echo "$HERDR_APP_BIN"
+  elif sh_hc_wsl; then echo herdr-app.exe
+  else echo herdr-app; fi
+}
 ly_app() {  # ly_app <args…> — herdr-app, fixture rule, time-boxed
   local p
-  p="$(sh_bin_path "${HERDR_APP_BIN:-herdr-app}" herdr-app 2>/dev/null)" || { LY_WHY="herdr-app not found"; return 1; }
+  p="$(sh_bin_path "$(ly_app_bin)" herdr-app 2>/dev/null)" || { LY_WHY="herdr-app not found"; return 1; }
   sh_timebox "${TEAM_LAYOUT_APP_SECS:-5}" "$p" "$@"
 }
 ly_do() {  # ly_do <command> [--arg value…]
@@ -65,17 +72,19 @@ ly_wait_listed() {  # ly_wait_listed <handle> → its tab id once the window lis
 # ly_space <main> <yes|no> → LY_SPACE: the space whose folder is the main checkout (physical path);
 # yes: create it when missing (only /roles up — the Operator asked; a runner never creates one).
 ly_space() {
-  local main n i
+  local main n i fd
   main="$(cd "$1" && pwd -P)"
-  n="$(jq -r --arg f "$main" '[.spaces[]? | select(.folder == $f)] | length' <<<"$LY_LS" 2>/dev/null)"
-  LY_SPACE="$(jq -r --arg f "$main" '[.spaces[]? | select(.folder == $f)][0].id // empty' <<<"$LY_LS" 2>/dev/null)"
+  # Herdr for Windows keeps a WSL folder as its UNC path (\\wsl.localhost\<distro>\…).
+  fd="$main"; ! sh_hc_wsl || fd="$(wslpath -w "$main" 2>/dev/null)" || fd="$main"
+  n="$(jq -r --arg f "$fd" '[.spaces[]? | select(.folder == $f)] | length' <<<"$LY_LS" 2>/dev/null)"
+  LY_SPACE="$(jq -r --arg f "$fd" '[.spaces[]? | select(.folder == $f)][0].id // empty' <<<"$LY_LS" 2>/dev/null)"
   [ "${n:-0}" -le 1 ] || echo "warn: $n Herdr spaces hold $main — using the first ($LY_SPACE)"
   [ -z "$LY_SPACE" ] || return 0
   [ "$2" = yes ] || { LY_WHY="open the project as a Herdr space (or run /roles)"; return 1; }
   # space.new shows the new space (the focus moves) and answers {space, tab, terminal}; its first tab
   # holds a shell, which is never closed here.
   LY_MOVED=1
-  LY_SPACE="$(ly_app do space.new --name "$(sh_prefix "$1")" --folder "$main" 2>/dev/null \
+  LY_SPACE="$(ly_app do space.new --name "$(sh_prefix "$1")" --folder "$fd" 2>/dev/null \
     | jq -r '.space // empty | strings' 2>/dev/null)" || LY_SPACE=""
   if [ -n "$LY_SPACE" ]; then
     echo "created: Herdr space $(sh_prefix "$1") for $main"
@@ -84,7 +93,7 @@ ly_space() {
   fi
   for i in 1 2 3 4 5; do
     ly_ls || return 1
-    LY_SPACE="$(jq -r --arg f "$main" '[.spaces[]? | select(.folder == $f)][0].id // empty' <<<"$LY_LS" 2>/dev/null)"
+    LY_SPACE="$(jq -r --arg f "$fd" '[.spaces[]? | select(.folder == $f)][0].id // empty' <<<"$LY_LS" 2>/dev/null)"
     [ -z "$LY_SPACE" ] || { echo "created: Herdr space $(sh_prefix "$1") for $main"; return 0; }
     sleep "${TEAM_LAYOUT_POLL:-1}"
   done

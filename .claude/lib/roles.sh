@@ -238,7 +238,7 @@ runs_report() {
 # when its claude pid is dead. A conversation that ended normally (ended_at, written by the
 # SessionEnd hook) gets no line; the terminal is never touched.
 hc_bin() {  # the Herdr CLI, or nothing; under TEAM_SMOKE=1 only a fixture binary
-  local p; p="$(command -v "${HC_BIN:-hc}" 2>/dev/null)" || return 1
+  local p; p="$(command -v "$(sh_hc_name)" 2>/dev/null)" || return 1
   if [ "${TEAM_SMOKE:-}" = 1 ] && [ "$(cd "$(dirname "$p")" && pwd -P)" != "$(cd "${TEAM_SMOKE_BIN_DIR:-/nonexistent}" 2>/dev/null && pwd -P)" ]; then
     return 1
   fi
@@ -260,10 +260,12 @@ adhoc_gone() {  # adhoc_gone <record> → 0 when its conversation is gone
           fg="$(sh_tmux display-message -p -t "=$h:" '#{pane_current_command}' 2>/dev/null || true)" ;;
     herdr) hc="$(hc_bin)" || return 0
            j="$(timebox 2 "$hc" get "$h" --json 2>/dev/null)" || return 0
-           fg="$(jq -r '.foreground.argv[0] // empty | strings' <<<"$j" 2>/dev/null)"; fg="${fg##*/}" ;;
+           fg="$(jq -r '.foreground.argv[0] // empty | strings' <<<"$j" 2>/dev/null)"
+           fg="${fg##*/}"; fg="${fg##*\\}" ;;
     *) return 0 ;;
   esac
-  case "$fg" in claude*) ;; *) return 0 ;; esac
+  # wsl.exe: Herdr for Windows cannot see inside WSL, so the claude pid below decides.
+  case "$fg" in claude*|wsl.exe) ;; *) return 0 ;; esac
   [ -z "$p" ] || kill -0 "$p" 2>/dev/null || return 0
   return 1
 }

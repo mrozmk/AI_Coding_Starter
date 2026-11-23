@@ -185,7 +185,25 @@ sh_tmux() {
 }
 # herdr-core's CLI, under the same fixture rule. Never `server stop|restart`, never the force flag of
 # send (it would answer a dialog), never keep (a lost program must stay lost, not become a shell).
-sh_hc_path() { sh_bin_path "${HC_BIN:-hc}" hc; }
+# sh_wsl_exe <name> → <name>, or <name>.exe under WSL when only the Windows binary is on PATH
+# (Herdr for Windows driving WSL: hc.exe, herdr-app.exe — sh_hc_wsl).
+sh_wsl_exe() {
+  if [ -n "${WSL_DISTRO_NAME:-}" ] && ! command -v "$1" >/dev/null 2>&1 \
+    && command -v "$1.exe" >/dev/null 2>&1; then echo "$1.exe"
+  else echo "$1"; fi
+}
+# sh_hc_name → the CLI's name: HC_BIN, else hc (sh_wsl_exe).
+sh_hc_name() { echo "${HC_BIN:-$(sh_wsl_exe hc)}"; }
+# sh_hc_wsl → 0 when the CLI is a Windows binary run from WSL: its terminals start Windows
+# programs, so a launch line goes through wsl.exe (sh_herdr_run) and the foreground program it
+# reports is wsl.exe (sh_herdr_alive looks inside WSL).
+sh_hc_wsl() {
+  [ -n "${WSL_DISTRO_NAME:-}" ] || return 1
+  case "$(sh_hc_name)" in *.exe) return 0 ;; *) return 1 ;; esac
+}
+sh_hc_path() { sh_bin_path "$(sh_hc_name)" hc; }
+# sh_hc_cmd → the CLI name an attach hint prints: hc, or hc.exe under Herdr for Windows.
+sh_hc_cmd() { local n; n="$(sh_hc_name)"; echo "${n##*/}"; }
 sh_hc() {
   local p; p="$(sh_hc_path)" || return 1
   "$p" "$@"
@@ -235,13 +253,18 @@ sh_configured_host() {
   esac
 }
 
-# sh_pick_host <main> → the backend a fresh start uses; rc 6 when there is none.
+# sh_pick_host <main> [kind] → the backend a fresh start of a <kind> session uses (no kind = role);
+# rc 6 when there is none.
 sh_pick_host() {
   local h; h="$(sh_configured_host "$1")" || return $?
   case "$h" in
     herdr) sh_herdr_up || { sh_err "no session host: herdr core not answering"; return 6; }
            echo herdr; return 0 ;;
-    auto) if sh_auto_herdr && sh_herdr_up; then echo herdr; return 0; fi ;;
+    # Herdr for Windows under auto: roles only — team and helper sessions stay on tmux until team
+    # runs are verified there (#265; the TeamLead's ownership probe has no Linux pane pid).
+    auto) if sh_auto_herdr && sh_herdr_up && { ! sh_hc_wsl || [ "${2:-role}" = role ]; }; then
+            echo herdr; return 0
+          fi ;;
   esac
   command -v "${TMUX_BIN:-tmux}" >/dev/null 2>&1 \
     || { sh_err "no session host: install tmux or Herdr"; return 6; }
@@ -258,7 +281,7 @@ sh_backend() {
     if [ "$b" = herdr ] && sh_herdr_alive "$(sh_herdr_handle "$1" "$2" 2>/dev/null)" 2>/dev/null; then
       echo herdr; return 0
     fi
-    sh_pick_host "$1"; return $?
+    sh_pick_host "$1" "$(sh_kind "$2")"; return $?
   fi
   case "${b:-tmux}" in
     tmux) echo tmux ;;
@@ -504,12 +527,17 @@ sh_pid() {
 
 # sh_pane_pid <main> <address> → the foreground pane's process id of the live session
 # (session-registry.sh's TeamLead ownership probe). Herdr: the terminal's root program pid, an
-# ancestor of everything that runs in it.
+# ancestor of everything that runs in it. Herdr for Windows: none — its pid is a Windows pid, and the
+# TeamLead probe compares Linux ancestors (session-registry.sh).
 sh_pane_pid() {
-  local p
+  local p j
   case "$(sh_record_get "$1" "$2" backend)" in
-    herdr) p="$(sh_herdr_handle "$1" "$2" 2>/dev/null)" || return 1
-           p="$(sh_herdr_get "$p" 2>/dev/null | jq -r '.pid // empty | tostring')"
+    herdr) ! sh_hc_wsl || return 1
+           p="$(sh_herdr_handle "$1" "$2" 2>/dev/null)" || return 1
+           j="$(sh_herdr_get "$p" 2>/dev/null)" || return 1
+           # A Windows core reached through HC_BIN: a wsl.exe foreground has a Windows pid too.
+           ! sh_herdr_fg_wsl "$j" || return 1
+           p="$(jq -r '.pid // empty | tostring' <<<"$j" 2>/dev/null)"
            [[ "$p" =~ ^[0-9]+$ ]] || return 1; echo "$p"; return 0 ;;
     none) sh_none_alive "$1" "$2" || return 1; sh_record_get "$1" "$2" pid; return 0 ;;
   esac
@@ -581,12 +609,22 @@ sh_herdr_get() {
   printf '%s\n' "$j"
 }
 
+# sh_herdr_fg_wsl <terminal JSON> → 0 when its foreground is wsl.exe (by name, or argv[0] ending in
+# \wsl.exe): a Herdr for Windows terminal, whose program runs inside WSL out of the core's sight.
+sh_herdr_fg_wsl() {
+  local fg
+  [ "$(jq -r '.foreground.name // "" | strings' <<<"$1" 2>/dev/null)" != wsl.exe ] || return 0
+  fg="$(jq -r '.foreground.argv[0] // "" | strings' <<<"$1" 2>/dev/null)"
+  [ "${fg##*\\}" = wsl.exe ]
+}
+
 # sh_herdr_alive <handle> [program] → 0 alive, 3 gone, 1 the probe failed. With a program, alive also
 # means that program runs in the foreground: foreground.argv[0] or .name is it, or — a command run
 # through `sh -c '…; read'` keeps sh as the group leader — the foreground process group holds it.
 # A kept or `; read` shell is gone. `pgrep -a`: BSD pgrep leaves its own ancestors out by default, so a
 # session probing itself (the Supervisor in `roles.sh status`) would read as gone; procps takes the
-# flag as `--list-full`, which changes only the discarded output.
+# flag as `--list-full`, which changes only the discarded output. Herdr for Windows sees only
+# wsl.exe: look inside WSL by this terminal's marker (HC_WSL_TERMINAL, sh_herdr_run).
 sh_herdr_alive() {
   local j rc fg nm pg
   j="$(sh_herdr_get "$1")"; rc=$?
@@ -596,8 +634,35 @@ sh_herdr_alive() {
   fg="$(jq -r '.foreground.argv[0] // "" | strings' <<<"$j" 2>/dev/null)"
   nm="$(jq -r '.foreground.name // "" | strings' <<<"$j" 2>/dev/null)"
   [ "${fg##*/}" != "$2" ] && [ "$nm" != "$2" ] || return 0
+  if sh_herdr_fg_wsl "$j"; then
+    sh_wsl_has "$2" "$(jq -r '.name // "" | strings' <<<"$j" 2>/dev/null)"; return $?
+  fi
   pg="$(jq -r '.foreground.pid // "" | tostring' <<<"$j" 2>/dev/null)"
   [[ "$pg" =~ ^[0-9]+$ ]] && pgrep -a -g "$pg" -x "$2" >/dev/null 2>&1 && return 0
+  return 3
+}
+
+# sh_wsl_has <program> <terminal name> → 0 a process of this user named <program> carries
+# HC_WSL_TERMINAL=<terminal name> · 3 the check completed and found none · 1 it could not
+# complete (no name, pgrep failed, a live candidate's environ unreadable). Only 3 may let a
+# caller kill or restart (sh_herdr_start_probe, roles.sh up).
+sh_wsl_has() {
+  local ps p rc un=""
+  [ -n "$2" ] || return 1
+  ps="$(pgrep -u "$(id -u)" -x "$1" 2>/dev/null)"; rc=$?
+  [ "$rc" -eq 0 ] || { [ "$rc" -eq 1 ] && return 3; return 1; }
+  for p in $ps; do
+    # Whole NUL-delimited entries, read by grep itself: no pipeline (pipefail + an early grep
+    # exit would fail tr with SIGPIPE), and a newline inside another variable's value cannot
+    # pose as the marker.
+    grep -qzxF "HC_WSL_TERMINAL=$2" "/proc/$p/environ" 2>/dev/null; rc=$?
+    case "$rc" in
+      0) return 0 ;;
+      1) ;;
+      *) ! kill -0 "$p" 2>/dev/null || un=1 ;;   # live but unreadable: cannot tell
+    esac
+  done
+  [ -z "$un" ] || return 1
   return 3
 }
 
@@ -655,7 +720,7 @@ sh_herdr_type() {
   [ "$st" != blocked ] \
     || { sh_err "type into an open prompt is not supported under herdr"; return 9; }
   [ -n "$st" ] || [ "${3:-}" = script ] \
-    || { sh_err "${4:-$1}: still starting (a startup dialog may be open) — answer it in hc attach $1"; return 9; }
+    || { sh_err "${4:-$1}: still starting (a startup dialog may be open) — answer it in $(sh_hc_cmd) attach $1"; return 9; }
   case "$2" in
     /*) sh_hc_bare send "$1" "$2" >/dev/null ;;
     *) sh_hc send "$1" "$2" >/dev/null ;;
@@ -967,7 +1032,7 @@ sh_hint() {
   [ "$b" = herdr ] || n="$(sh_target "$SH_MAIN" "$a")" || return $?
   if [ "$b" = herdr ]; then
     # `hc attach` first: a terminal the layout has not placed yet is listed nowhere in the window.
-    echo "hc attach $n · herdr: $(sh_record_get "$SH_MAIN" "$a" name | grep . || echo "$n") (in the agent list once placed)"
+    echo "$(sh_hc_cmd) attach $n · herdr: $(sh_record_get "$SH_MAIN" "$a" name | grep . || echo "$n") (in the agent list once placed)"
     return 0
   fi
   echo "$(sh_tmux_env)tmux attach -t $n"
@@ -1071,8 +1136,12 @@ sh_herdr_start_probe() {
   local a="$1" n="$2" prog j h p rc
   prog="$(sh_record_get "$SH_MAIN" "$a" program)"
   if [ "$(sh_record_get "$SH_MAIN" "$a" backend)" = herdr ] \
-    && h="$(sh_herdr_handle "$SH_MAIN" "$a" 2>/dev/null)" && sh_herdr_alive "$h" "$prog" 2>/dev/null; then
-    sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1
+    && h="$(sh_herdr_handle "$SH_MAIN" "$a" 2>/dev/null)"; then
+    sh_herdr_alive "$h" "$prog" 2>/dev/null; rc=$?
+    [ "$rc" -ne 0 ] || { sh_err "$a is already running ($(sh_hint "$a" --main "$SH_MAIN"))"; return 1; }
+    # Herdr for Windows: the marker probe adds failures of its own (no name, a failed pgrep), and the
+    # lookup by name below would launch a duplicate when that name is absent.
+    if [ "$rc" -eq 1 ] && sh_hc_wsl; then sh_err "$a: cannot probe its terminal $h — not started"; return 1; fi
   fi
   j="$(sh_herdr_get "$n" 2>/dev/null)" || return 0
   h="$(jq -r '.address // empty' <<<"$j")"; p="$(sh_prefix "$SH_MAIN")"
@@ -1080,7 +1149,7 @@ sh_herdr_start_probe() {
     [ -n "$h" ] || return 0
     sh_herdr_alive "$h" "$prog" 2>/dev/null; rc=$?
     case $rc in   # kill and remove only what is known gone; a failed probe is not "dead"
-      0) sh_err "$a is already running (herdr: $n · hc attach $h)"; return 1 ;;
+      0) sh_err "$a is already running (herdr: $n · $(sh_hc_cmd) attach $h)"; return 1 ;;
       3) sh_hc kill "$h" >/dev/null 2>&1 || true; sh_hc rm "$h" >/dev/null 2>&1 || true; return 0 ;;
       *) sh_err "$a: cannot probe $n — not started"; return 1 ;;
     esac
@@ -1096,11 +1165,19 @@ sh_herdr_start_probe() {
 # new terminal (created_ms from the run reply, else from `hc get`; empty when neither gives it).
 # `hc run --bg --no-parent`: no parent to end it with, never kept, labelled for the probe above.
 sh_herdr_run() {
-  local a="$1" k="$2" n="$3" cwd="$4" cli="$5" kv=() lab out h c
+  local a="$1" k="$2" n="$3" cwd="$4" cli="$5" kv=() lab out h c wsl=""
   shift 5
   while [ $# -gt 0 ] && [ "$1" != -- ]; do [ "$1" = -e ] || kv+=("$1"); shift; done
   shift
+  ! sh_hc_wsl || wsl=1
+  [ -z "$wsl" ] || kv+=("HC_WSL_TERMINAL=$n")
   sh_herdr_launch_line "$cli" "$a" ${kv[@]+"${kv[@]}"} -- "$@"
+  # Herdr for Windows starts Windows programs: the line runs in this WSL distro as this user, in a
+  # login shell (wsl.exe -e skips the profile, so ~/.local/bin would be off PATH).
+  if [ -n "$wsl" ]; then
+    SH_LINE=(wsl.exe -d "$WSL_DISTRO_NAME" -u "$(id -un)" --cd "$cwd" -e /bin/bash -lc 'exec "$@"'
+      harness-wsl "${SH_LINE[@]}")
+  fi
   lab=(--label "harness=$(sh_prefix "$SH_MAIN")" --label "kind=$k" --label "address=$a")
   [ "$k" != team ] || lab+=(--label "team=${a%-*}")
   out="$(sh_hc run --bg --no-parent --json --name "$n" --cwd "$cwd" "${lab[@]}" -- "${SH_LINE[@]}" 2>&1)"
@@ -1151,7 +1228,7 @@ sh_start() {
   # --host tmux (lib only): team-watch.sh keeps its helpers on tmux until it is retired (step 9a).
   case "$host" in
     "") if [ -n "$probe" ]; then be="$(sh_backend "$SH_MAIN" "$a" --for-start)" || return $?
-        else be="$(sh_pick_host "$SH_MAIN")" || return $?; fi ;;
+        else be="$(sh_pick_host "$SH_MAIN" "$(sh_kind "$a")")" || return $?; fi ;;
     tmux) command -v "${TMUX_BIN:-tmux}" >/dev/null 2>&1             || { sh_err "no session host: install tmux or Herdr"; return 6; }
           be=tmux ;;
     *) sh_err "start: --host takes only tmux"; return 2 ;;
@@ -1204,9 +1281,14 @@ sh_start() {
     # environment, so the session must not inherit it (spec §1 Environment).
     case " ${envs[*]} " in *" CLAUDE_CONFIG_DIR="*) ;; *)
       [ "$cli" != claude ] || cmd="env -u CLAUDE_CONFIG_DIR $cmd" ;; esac
+    # A Herdr for Windows terminal's marker (sh_herdr_run) must not reach a tmux pane: a server
+    # started from that terminal copies it into its global environment, and a claude in any pane
+    # would then keep the terminal's role reading as alive (sh_wsl_has). An empty value never
+    # matches the marker; a server that already holds it is covered by the session's own -e.
+    [ -z "${HC_WSL_TERMINAL:-}" ] && ! sh_hc_wsl || envs+=(-e "HC_WSL_TERMINAL=")
     w="$(sh_tmux_path)" || return 1
     env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_MESSAGING_SOCKET \
-      -u CLAUDE_CODE_MESSAGING_TOKEN "$w" \
+      -u CLAUDE_CODE_MESSAGING_TOKEN -u HC_WSL_TERMINAL "$w" \
       new-session -d -s "$n" -c "$cwd" "${envs[@]}" "$cmd" || { sh_err "$a: tmux new-session failed"; return 1; }
   fi
   s=""; [ "$k" != team ] || s="$(cd "$cwd" && pwd)/.agents/team"
@@ -1233,7 +1315,7 @@ sh_start() {
 # screen decides meanwhile.
 sh_wait_ready() {
   local i=0 max="${TEAM_HOST_READY_SECS:-20}" poll="${TEAM_HOST_READY_POLL:-1}" esc="" scr st hint
-  hint="$(sh_tmux_env)tmux attach -t $2"; [ "${4:-tmux}" != herdr ] || hint="hc attach $2"
+  hint="$(sh_tmux_env)tmux attach -t $2"; [ "${4:-tmux}" != herdr ] || hint="$(sh_hc_cmd) attach $2"
   while [ "$i" -lt "$max" ]; do
     if [ "${4:-tmux}" = herdr ]; then
       [ -z "$(sh_herdr_state "$2")" ] || return 0
