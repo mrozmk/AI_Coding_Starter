@@ -122,7 +122,7 @@ Apply the first matching row; after any *resolve* action re-read Step 3 (at most
 |---|---|
 | `status: completed` | → **Step 6a** (Jira), Step 6b (team run), then Step 6 (cleanup) and Step 7 |
 | `status: abandoned`, `mergeStatus: conflicts`, a vote `-10`/`-5`, or a blocking policy `rejected` | **STOP** — name the blocker and the fix (conflicts: merge `<TARGET>` into the branch, push, re-run) |
-| `autoComplete` set and `deleteSource: true` (armed earlier with source deletion) | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --auto-complete false -o none` — disarm before any vote can complete it; the normal rows then run 4a and 5a / 5b with `--delete-source-branch false`. Still armed after the re-read → **STOP** `auto-complete is still set with source deletion on — clear it on the PR, then re-run` |
+| `autoComplete` set and `deleteSource: true` (armed earlier with source deletion) | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --auto-complete false -o none` — disarm before any vote can complete it, and carry the line `auto-complete (armed with source deletion) disarmed` into every STOP after it and the Step 7 report; the normal rows then run 4a and 5a / 5b with `--delete-source-branch false`. Still armed after the re-read → **STOP** `auto-complete is still set with source deletion on — clear it on the PR, then re-run` |
 | `isDraft: true` | *resolve:* `az repos pr update --id <PR_ID> --org "$ORG_URL" --draft false -o none` |
 | a *Minimum number of reviewers* policy exists, is not `approved`, and the current user has no vote ≥ 5 | `self_approve` off → **STOP** `needs an approval — teams.policy.pr.self_approve is off`. On → *resolve:* `az repos pr set-vote --id <PR_ID> --org "$ORG_URL" --vote approve -o none` — report it as a **self-approval**. No such policy → never vote. |
 | a blocking policy `queued` / `running` (e.g. the build, a required reviewer) | `self_approve` off → **STOP** `policies running — re-run when they pass (auto-complete needs teams.policy.pr.self_approve)`. On → **4a**, then **5b** set auto-complete, then **5c** wait. With `--auto` → **STOP** `deferred: policies running — Supervisor retries on the next READY reminder` (no 5b) |
@@ -263,8 +263,11 @@ URL `<ORG_URL>/<project>/_git/<repo>/pullrequest/<id>`. Then one line on
 what happens next per `.agents/reference/git-policy.md` (the project's build/deploy after a merge).
 Add `Tracker comments: <none new … | the STOP line | skipped — <reason>>` when Step 4a ran.
 Add `Tracker: <KEY> → <status> | already <status> | not transitioned — <reason>` (tracker jira).
-If it stopped or timed out: what it waits for, that auto-complete is still set (never with
-`--auto`, which never arms it), and that the source branch is deleted only by a re-run
+If it stopped or timed out: what it waits for; whether auto-complete is set now — after 5b it is
+still set, without source deletion (never with `--auto`, which never arms it); a STOP before 5b
+leaves the PR's own setting — and, when Step 4 disarmed one armed with source deletion, the line
+`auto-complete (armed with source deletion) disarmed` as history (with no 5b after it the PR does
+not complete by itself); and that the source branch is deleted only by a re-run
 (`/pr-merge <id>`) after the PR completes. With `--auto` the report is the one-line note
 `auto-merge <team> PR #<id> <merge commit> (QA <Verdict>)` for Supervisor.
 

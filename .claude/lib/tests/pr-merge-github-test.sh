@@ -311,6 +311,14 @@ VR=$(az_line 'az repos pr set-vote' "$A4") || fail "Azure Step 4 lacks the set-v
 within "$DS" "$DS" '--auto-complete false' || fail "Azure Step 4 deleteSource row does not disarm with --auto-complete false"
 within "$DS" "$DS" 'auto-complete is still set with source deletion on' \
   || fail "Azure Step 4 deleteSource row lacks its still-armed STOP"
-N=$((N + 3))
+# The disarm is reported: a later STOP and the Step 7 report say the PR no longer completes by itself.
+within "$DS" "$DS" 'auto-complete (armed with source deletion) disarmed' \
+  || fail "Azure Step 4 deleteSource row does not report the disarm"
+printf '%s\n' "$A7SEC" | grep -qF -- 'auto-complete (armed with source deletion) disarmed' \
+  || fail "Azure Step 7 does not report the disarm"
+# A 5b after the disarm re-arms auto-complete without source deletion: Step 7 reads the state now.
+printf '%s\n' "$A7SEC" | grep -qF -- 'whether auto-complete is set now — after 5b it is' \
+  || fail "Azure Step 7 does not report the current auto-complete state"
+N=$((N + 6))
 
 echo "pr-merge-github-test: OK ($N checks)"

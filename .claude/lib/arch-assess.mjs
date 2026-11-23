@@ -165,7 +165,7 @@ function testStem(base) {
   let s = base.replace(/\.[^.]+$/, '');
   if (s.startsWith('test_')) s = s.slice(5);
   s = s.replace(/(_test|-test|\.test|\.spec)$/, '');
-  if (['java', 'kt', 'kts', 'cs', 'php'].includes(ext)) s = s.replace(/(?<=[a-z0-9])Tests?$/, '');
+  if (['java', 'kt', 'kts', 'cs', 'php'].includes(ext)) s = s.replace(/(?<=.)Tests?$/, '');
   if (ext === 'rb') s = s.replace(/_spec$/, '');
   return s;
 }
@@ -229,18 +229,24 @@ function pyModuleIndex(pyFiles, initFiles) {
   return index;
 }
 
-function pyImports(rel, text, index, fileSet) {
+// `pkgDirs`: the directories holding an __init__.py. A file outside a package is a script, and Python
+// puts a script's own directory first on sys.path — so an absolute name is looked up beside it before
+// the import roots (`import helper` in tools/run.py → tools/helper.py, even with a root helper.py).
+function pyImports(rel, text, index, fileSet, pkgDirs) {
   const targets = new Set();
   let unresolved = 0;
   const exact = (name) => { const s = index.get(name); return s && s.size === 1 ? [...s][0] : null; };
-  const absolute = (name) => {
-    const parts = name.split('.');
-    for (let n = parts.length; n > 0; n--) { const hit = exact(parts.slice(0, n).join('.')); if (hit) return hit; }
-    return null;
-  };
   const relFile = (dir, parts) => {
     const p = parts ? path.posix.join(dir, parts.replace(/\./g, '/')) : dir;
     for (const c of [`${p}.py`, `${p}/__init__.py`]) if (fileSet.has(c.replace(/^\.\//, ''))) return c.replace(/^\.\//, '');
+    return null;
+  };
+  const scriptDir = pkgDirs.has(path.posix.dirname(rel)) ? null : path.posix.dirname(rel);
+  const beside = (name) => (scriptDir === null ? null : relFile(scriptDir, name));
+  const absolute = (name) => {
+    const parts = name.split('.');
+    for (let n = parts.length; n > 0; n--) { const hit = beside(parts.slice(0, n).join('.')); if (hit) return hit; }
+    for (let n = parts.length; n > 0; n--) { const hit = exact(parts.slice(0, n).join('.')); if (hit) return hit; }
     return null;
   };
   for (const line of text.split('\n')) {
@@ -260,7 +266,7 @@ function pyImports(rel, text, index, fileSet) {
       } else {
         const base = absolute(mod);
         if (base) hits.push(base);
-        for (const n of names) { const sub = exact(`${mod}.${n}`); if (sub) hits.push(sub); }
+        for (const n of names) { const sub = beside(`${mod}.${n}`) ?? exact(`${mod}.${n}`); if (sub) hits.push(sub); }
       }
       if (hits.length) hits.forEach((h) => targets.add(h)); else unresolved++;
       continue;
@@ -541,11 +547,13 @@ export async function measure(opts) {
   const fileEdges = new Map();
   const unresolved = {};
   const graphed = new Set();
-  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path), listed.filter((p) => path.posix.basename(p) === '__init__.py'));
+  const pyInits = listed.filter((p) => path.posix.basename(p) === '__init__.py');
+  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path), pyInits);
+  const pyPkgs = new Set(pyInits.map((f) => path.posix.dirname(f)));
   for (const e of entries) {
     if (e.lang !== 'py' && e.lang !== 'js') continue;
     graphed.add(e.lang);
-    const { targets, unresolved: u } = e.lang === 'py' ? pyImports(e.path, e.text, pyIndex, fileSet) : jsImports(e.path, e.text, fileSet);
+    const { targets, unresolved: u } = e.lang === 'py' ? pyImports(e.path, e.text, pyIndex, fileSet, pyPkgs) : jsImports(e.path, e.text, fileSet);
     unresolved[e.lang] = (unresolved[e.lang] ?? 0) + u;
     fileEdges.set(e.path, targets);
   }

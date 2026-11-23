@@ -176,7 +176,10 @@ function fromObject(t, obj, lines, q) {
     const walk = (o) => {
       for (const [k, v] of Object.entries(o)) {
         if (['extends', 'includes', 'inherit_from', '$schema'].includes(k)) continue;
-        if (Array.isArray(v)) { for (const s of v) if (typeof s !== 'object') rules.push({ rule: String(s), setting: k, line: lineOf(lines, String(s)) }); else if (s) walk(s); } else if (v && typeof v === 'object') walk(v);
+        if (Array.isArray(v)) { for (const s of v) if (typeof s !== 'object') rules.push({ rule: String(s), setting: k, line: lineOf(lines, String(s)) }); else if (s) walk(s); }
+        // Biome's object form `"noVar": {"level": "warn", "options": {...}}` is one rule at that level.
+        else if (v && typeof v === 'object' && t.tool === 'biome' && typeof v.level === 'string') rules.push({ rule: k, setting: v.level, line: at(k) });
+        else if (v && typeof v === 'object') walk(v);
         else rules.push({ rule: k, setting: String(v), line: at(k) });
       }
     };
@@ -243,11 +246,11 @@ function extract(t, file, text) {
 }
 
 // One checking invocation parsed per tool: positional targets, excludes, an explicit selection and
-// the strict flag. null when the text is not a checking invocation of that tool. `isPath` (optional)
-// tells whether a token names a scanned path: a token right after an unknown flag is that flag's value
-// unless it looks like a path or names one; without `isPath` it stays a target.
+// the strict flag. null when the text is not a checking invocation of that tool. `isPath` tells
+// whether a token names a scanned path: a token right after an unknown flag is that flag's value
+// unless it looks like a path or names one; the default treats every token as a path (a target).
 const unquote = (s) => s.replace(/^["']|["']$/g, '');
-export function parseRun(toolId, text, isPath = null) {
+export function parseRun(toolId, text, isPath = () => true) {
   const t = BY_ID.get(toolId);
   if (!t || !t.runs || !t.runs.test(text) || (t.reject && t.reject.test(text)) || NOT_A_RUN.test(text) || INFO_ONLY.test(text)) return null;
   const bare = text.replace(/["']/g, ' ');
@@ -284,7 +287,7 @@ export function parseRun(toolId, text, isPath = null) {
     if (/[$`(]/.test(tok)) { run.scopeUnknown = true; continue; }
     const target = unquote(tok).replace(/^\.\//, '').replace(/\/?\.\.\.$/, '').replace(/\/$/, '');
     // `--timeout 5m`, `--output-format github`: a bare word after an unknown flag that names no path is its value.
-    if (after && isPath && !/[*?[{/]/.test(target) && !/\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(target) && !isPath(target)) continue;
+    if (after && !/[*?[{/]/.test(target) && !/\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(target) && !isPath(target)) continue;
     if (target && target !== '.') run.targets.push(target);
   }
   return run;
@@ -326,7 +329,7 @@ function commands(file, text) {
 }
 
 // isPath(dir, token): whether the token, resolved against the run directory, names a scanned path.
-function runsOf(cmds, isPath = null) {
+function runsOf(cmds, isPath) {
   const runs = [];
   const seen = new Set();
   for (const c of cmds) {
@@ -341,7 +344,7 @@ function runsOf(cmds, isPath = null) {
       for (const t of TOOLS) {
         if (t.observe.test(seg)) seen.add(t.tool);
         if (masked || (/fix/i.test(c.key) && /--fix\b/.test(seg))) continue;
-        const r = parseRun(t.tool, seg, isPath && ((x) => isPath(dir, x)));
+        const r = parseRun(t.tool, seg, (x) => isPath(dir, x));
         if (r) runs.push({ tool: t.tool, at: c.at, dir, command: seg.trim(), legacyFlag: /ESLINT_USE_FLAT_CONFIG=false/.test(seg), ...r });
       }
     }
@@ -425,7 +428,9 @@ export function scan({ repo, files }) {
       if (!c.attributed) continue;
       cov.forEach((r) => enforcing.add(r));
       if (cov.every((r) => r.selected && !selects(r, c)) && t.tool !== 'typescript') c.notEnforced = c.rules.map((r) => r.rule);
-      else if ((t.tool === 'eslint' || t.tool === 'stylelint' || t.tool === 'biome') && !cov.some((r) => r.strict)) c.notEnforced = c.rules.filter((r) => r.setting === 'warn').map((r) => r.rule);
+      // Biome: an `info` rule never fails a run and an `off` rule is disabled, strict or not.
+      else if (t.tool === 'biome') c.notEnforced = c.rules.filter((r) => r.setting === 'info' || r.setting === 'off' || (r.setting === 'warn' && !cov.some((x) => x.strict))).map((r) => r.rule);
+      else if ((t.tool === 'eslint' || t.tool === 'stylelint') && !cov.some((r) => r.strict)) c.notEnforced = c.rules.filter((r) => r.setting === 'warn').map((r) => r.rule);
     }
     if (external) enforcing.add(external);
     if (!cfgs.length) eff.forEach((r) => enforcing.add(r));

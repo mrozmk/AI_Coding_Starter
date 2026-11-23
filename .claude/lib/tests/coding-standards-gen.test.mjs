@@ -129,6 +129,15 @@ test('scanner: biome warn rules need --error-on-warnings', async () => {
   assert.ok(!c.notEnforced.includes('noDebugger'));
   const strict = biomeRepo(BIOME_MIXED, 'biome check --error-on-warnings src');
   assert.deepEqual(cfg(tool(await fixtureScan(strict, listFiles(strict)), 'biome'), 'biome.json').notEnforced, []);
+  // An `info` rule never fails a run and an `off` rule is disabled, even with --error-on-warnings.
+  const levels = biomeRepo('{"linter":{"rules":{"style":{"noVar":"info","noParameterAssign":"off"},"suspicious":{"noDebugger":"error"}}}}\n', 'biome check --error-on-warnings src');
+  assert.deepEqual(cfg(tool(await fixtureScan(levels, listFiles(levels)), 'biome'), 'biome.json').notEnforced.sort(), ['noParameterAssign', 'noVar']);
+  // The object form is one rule at its `level`; its options are no rules.
+  const objForm = biomeRepo('{"linter":{"rules":{"style":{"noVar":{"level":"warn","options":{"strictCase":true}}},"suspicious":{"noDebugger":{"level":"error"}}}}}\n', 'biome check src');
+  const oc = cfg(tool(await fixtureScan(objForm, listFiles(objForm)), 'biome'), 'biome.json');
+  assert.deepEqual(oc.rules.map((r) => `${r.rule}=${r.setting}`).sort(), ['noDebugger=error', 'noVar=warn']);
+  assert.deepEqual(oc.notEnforced, ['noVar']);
+  assert.match((await renderIn(objForm, { draft: null, toolsOnly: true })).text, /noDebugger/);
 });
 
 test('scanner: a flag value is not a target', async () => {

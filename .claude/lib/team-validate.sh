@@ -281,7 +281,7 @@ check_wrapup_lead() {  # check_wrapup_lead <qa rev> <wrapup rev>
 check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <line ref>
   local qa="$1" rev="$2" trev="$3" base="$4" line="$5" std=docs/coding-standards.md
   local pat=.agents/memory/patterns.md lib n=0 promo=0 lead=0 f e_qa e_w b out rc=0 acc
-  local rb="" err sb r t l rp ri rf
+  local rb="" sb r t l rp ri rf
   local -a files=()
   STD_PATTERNS_OK=0
   lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -307,9 +307,8 @@ check_wrapup_standards() {  # <qa rev> <wrapup rev> <target_rev> <base_sha> <lin
   done
   git merge-base --is-ancestor "$base" "$trev" 2>/dev/null && git merge-base --is-ancestor "$trev" "$line" 2>/dev/null \
     || fail "target_rev $trev is not on the target line after the team base" || return 1
-  err="$(team_standards_render_rev "$TD/runs/$RUN" "$qa" 2>&1 >/dev/null)" \
-    && rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa" 2>/dev/null)" \
-    || { fail "${err:-standards render base unreadable}" || return 1; }
+  rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa" 2>&1)" \
+    || { fail "${rb:-standards render base unreadable}" || return 1; }
   if [ -n "$rb" ]; then
     rf="$TD/runs/$RUN/standards-render.json"
     rp="$(jq -r .promotes "$rf")"; ri="$(jq -r .item "$rf")"

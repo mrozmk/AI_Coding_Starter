@@ -299,6 +299,8 @@ put "$SB/web/utils.ts" "export const x = 1;"
 for f in src/main/java/x/Foo.java src/main/java/y/Foo.java src/test/java/x/FooTest.java; do put "$SB/$f" "class Foo {}"; done
 put "$SB/pkg/Bar.kt" "class Bar"
 put "$SB/pkg/BarTest.kt" "class BarTest"
+put "$SB/dao/UserDAO.java" "class UserDAO {}"
+put "$SB/dao/UserDAOTest.java" "class UserDAOTest {}"
 put "$SB/lib/foo.rb" "x = 1"
 put "$SB/spec/foo_spec.rb" "x = 1"
 commit "$SB"
@@ -306,6 +308,7 @@ measure sib
 q sib '[.files[] | select(.path == "app/utils.py" or .path == "lib/utils.py" or .path == "web/utils.ts") | .sibling_test] == [false, false, false]' || fail "M17 utils credited: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
 q sib '(.files[] | select(.path == "src/main/java/x/Foo.java") | .sibling_test == true) and (.files[] | select(.path == "src/main/java/y/Foo.java") | .sibling_test == false)' || fail "M17 java mirrored path: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
 q sib '(.files[] | select(.path == "pkg/Bar.kt") | .sibling_test == true) and (.files[] | select(.path == "pkg/BarTest.kt") | .test == true)' || fail "M17 FooTest name: $(jq -c '[.files[]|{path,sibling_test,test}]' "$WORK/sib.json")"
+q sib '.files[] | select(.path == "dao/UserDAO.java") | .sibling_test == true' || fail "M17 an acronym before Test: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
 q sib '.files[] | select(.path == "lib/foo.rb") | .sibling_test == true' || fail "M17 _spec name: $(jq -c '[.files[]|{path,sibling_test}]' "$WORK/sib.json")"
 ok "M17 sibling tests: one language, a mirrored sub-path, an ambiguous stem credits none, FooTest and _spec names"
 
@@ -323,6 +326,27 @@ commit "$PR"
 measure pyroot --focus app/utils
 q pyroot '.files[] | select(.path == "app/utils/json.py") | .fan_in == 0' || fail "M18 focus keeps the full package tree: $(jq -c '[.files[]|{path,fan_in}]' "$WORK/pyroot.json")"
 ok "M18 a Python absolute import resolves only from an import root"
+
+repo pyscript; PS="$WORK/pyscript"
+put "$PS/tools/helper.py" "x = 1"
+put "$PS/tools/conf.py" "y = 1"
+put "$PS/shared.py" "z = 1"
+put "$PS/tools/shared.py" "z = 1"
+put "$PS/tools/run.py" "import helper
+import shared
+from conf import y"
+put "$PS/pkg/__init__.py" ""
+put "$PS/pkg/helper.py" "x = 1"
+put "$PS/pkg/main.py" "import helper"
+commit "$PS"
+measure pyscript
+q pyscript '(.files[] | select(.path == "tools/helper.py") | .fan_in == 1) and (.files[] | select(.path == "tools/conf.py") | .fan_in == 1)' \
+  || fail "M19 a script's own folder: $(jq -c '[.files[]|{path,fan_in}]' "$WORK/pyscript.json")"
+q pyscript '(.files[] | select(.path == "tools/shared.py") | .fan_in == 1) and (.files[] | select(.path == "shared.py") | .fan_in == 0)' \
+  || fail "M19 the script's folder before the root: $(jq -c '[.files[]|{path,fan_in}]' "$WORK/pyscript.json")"
+q pyscript '(.files[] | select(.path == "pkg/helper.py") | .fan_in == 0) and .coverage_limits.unresolved_specifiers.py == 1' \
+  || fail "M19 a package module stays on import roots: $(jq -c '[.files[]|{path,fan_in}], .coverage_limits' "$WORK/pyscript.json")"
+ok "M19 a script outside a package imports a sibling from its own folder"
 
 # ---- check ------------------------------------------------------------------------------------
 FIND='{"invariant":"i","entry_point":"e","trigger":"t","user_impact":"u","anchors":[{"path":"a.py","line":1}],"evidence_kind":"static","command":null,"observed":"o","uncertainty":"u","recommended_action":"r"}'

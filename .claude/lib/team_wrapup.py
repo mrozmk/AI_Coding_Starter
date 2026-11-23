@@ -508,19 +508,6 @@ def recorded_render_base(run_dir, run, qa_rev):
     return rec["target_rev"] if rec["qa_rev"] == qa_rev else None
 
 
-def record_render_base(run_dir, record):
-    """Write standards-render.json atomically, before any destination file is replaced."""
-    fd, tmp = tempfile.mkstemp(dir=run_dir, prefix="." + RENDER_NAME + ".")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(record, f)
-            f.write("\n")
-        os.replace(tmp, os.path.join(run_dir, RENDER_NAME))
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-
-
 def verdict_item(verdict_path, vdoc, item_id):
     it = next((x for x in vdoc.get("items") or [] if isinstance(x, dict) and x.get("id") == item_id), None)
     if it is None or it.get("decision") != "accept":
@@ -531,13 +518,15 @@ def verdict_item(verdict_path, vdoc, item_id):
 
 
 def write_all(changes):
-    """Stage every changed file beside its destination, then replace them in order."""
+    """Stage every changed file beside its destination, then replace them in order (a new
+    destination keeps mkstemp's mode)."""
     temps = []
     try:
         for dest, content in changes:
             fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix="." + os.path.basename(dest) + ".")
             temps.append(tmp)
-            os.fchmod(fd, os.stat(dest).st_mode & 0o7777)
+            if os.path.exists(dest):
+                os.fchmod(fd, os.stat(dest).st_mode & 0o7777)
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
                 f.write(content)
         for (dest, _), tmp in zip(changes, temps):
@@ -584,9 +573,10 @@ def standards_add(root, item_id, verdict, target_rev):
         new_pat = promote(render_base(root, PATTERNS, pat_cur, qa_rev, base_sha, target_rev), item, cs)
         if new_pat != pat_cur:
             changes.append((pat, new_pat))
-    if changes and not recorded:
-        record_render_base(run_dir, {"run": sess["run"], "qa_rev": qa_rev, "item": item_id,
-                                     "target_rev": target_rev, "promotes": "promotes" in item})
+    if changes and not recorded:  # recorded before any destination is replaced
+        record = {"run": sess["run"], "qa_rev": qa_rev, "item": item_id,
+                  "target_rev": target_rev, "promotes": "promotes" in item}
+        write_all([(os.path.join(run_dir, RENDER_NAME), json.dumps(record) + "\n")])
     write_all(changes)
     if already and not changes:
         return "already applied %s" % what

@@ -16,10 +16,11 @@
 # Exit: 0 VERDICT ok · 1 VERDICT fail or dirty clone
 #   3 refused (identity, stale merge, moved tips, records changed during the check, gate lock,
 #     a local merge that conflicts or overlaps union-merged memory logs)
-#   4 recalculating (github merge ref pending)
+#   4 recalculating (github merge ref pending), or an unreadable standards/patterns blob (repair the
+#     clone's objects, e.g. git fetch, then rerun)
 set -euo pipefail
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 case "${2:-}" in "") REVIEWED=0 ;; --memory-reviewed) REVIEWED=1 ;; *) usage ;; esac
 TEAM="$1"
@@ -127,8 +128,7 @@ if [ -n "$delta" ]; then
   # The standards writer may have rendered on an earlier target_rev than the summary names
   # (standards-render.json): that base judges docs/coding-standards.md, and patterns.md only when
   # the item promoted an entry there; every other memory path keeps the summary's base.
-  rerr="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" 2>&1 >/dev/null)" || die 3 "$rerr"
-  rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev")"
+  rb="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" 2>&1)" || die 3 "$rb"
   rp="$(team_standards_render_rev "$TD/runs/$RUN" "$qa_rev" promotion)"
   if [ -z "$rb" ]; then
     tdelta="$(git diff --no-renames --name-only "$tr_rev" "$TGT" -- .agents/memory docs/coding-standards.md)" \
@@ -215,7 +215,7 @@ if [ "$STD_OK" = 1 ]; then
   src=0
   sout="$(python3 -I "$root/.claude/lib/team_wrapup.py" standards-merged "$TD/runs/$RUN" "$sw" "$sm" "$pm" 2>&1 >/dev/null)" \
     || src=$?
-  for t in "$sw" "$sm" "$pm"; do [ "$t" = - ] || rm -f "$t"; done
+  team_rm_blobs "$sw" "$sm" "$pm"
   [ "$src" = 0 ] || die 3 "standards item not intact after the merge: ${sout#error: } — fix it in the reviewed merge"
 fi
 

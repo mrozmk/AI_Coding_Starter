@@ -491,6 +491,7 @@ cannot tell which repository owns <dir>
 a false assertion at a dispatched width tag
 script asserted <tags>, dispatched <tags>
 redirected to
+one that fails the same mount rule ends the row
 EOF
 BROWSER_PINS=$(cat "$WORK/browser-pins.txt")
 pins "$CMD" "browser" <<< "$BROWSER_PINS"
