@@ -82,12 +82,24 @@ team_supervisor_home() {
   printf '%s\n' "${c:-$HOME/.claude}"
 }
 
-# team_run_floor <run id> → the run's start, YYYY-MM-DDTHH:MM:SSZ, from <team>-<YYYYMMDD>-<HHMMSS>;
-# empty when the id carries no such suffix.
+# team_run_floor <run id> [<created_at>] → the later of <created_at> and the run's start
+# (YYYY-MM-DDTHH:MM:SSZ, from <team>-<YYYYMMDD>-<HHMMSS>); either alone when the other is empty or
+# the id carries no such suffix — the relay's evidence floor, for the writer and the hook alike.
 team_run_floor() {
-  [[ "$1" =~ -([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$ ]] || return 0
-  printf '%s-%s-%sT%s:%s:%sZ\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" \
-    "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}"
+  local f="${2:-}" rf=""
+  if [[ "$1" =~ -([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$ ]]; then
+    rf="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}T${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]}Z"
+  fi
+  [[ ! "$rf" > "$f" ]] || f="$rf"
+  [ -z "$f" ] || printf '%s\n' "$f"
+}
+
+# team_relay_pins <ledger> <team> <run> <d-n> <ask> [<uuid>] — the relay ledger pins this team, run,
+# decision and ask (and this uuid when given); the relay writer and the stage hook share it.
+team_relay_pins() {
+  jq -e --arg t "$2" --arg r "$3" --arg d "$4" --arg a "$5" --arg u "${6:-}" \
+    '.team == $t and .run == $r and .decision == $d and .ask == $a and ($u == "" or .uuid == $u)' \
+    "$1" >/dev/null 2>&1
 }
 
 # team_lead_shell_word <path> — the path as the lead types it and as its permission rules spell it:

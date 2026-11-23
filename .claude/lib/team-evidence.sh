@@ -9,7 +9,8 @@
 #       <id>. Nothing when no match.
 #   team_evidence_latest <transcript> <team> <d-n> <since>
 #     → "<uuid>\t<trimmed message>" of the newest typed, non-machine user message at or after
-#       <since> addressed to that decision (`<team> <d-n>` first); nothing when none.
+#       <since> addressed to that decision (`<team> <d-n>` first); nothing when none. A multi-line
+#       newest message prints an empty text: it still wins, so no older one-line reply matches.
 #   team_evidence_machine_line <text> → 0 when the text is a machine line.
 # Callers: team-lead-decision.sh d_evidence (the TeamLead window) and decision relay (the
 # Supervisor window), team-lineage.sh consent (the Supervisor window), session-host-lib.sh
@@ -44,7 +45,6 @@ team_evidence_latest() {
         elif type == "array" then (map(select(.type == "text") | .text) | join(" ")) else "" end) as $m
     | select($m != "" and ($m | test($re) | not))
     | ($m | sub("^\\s+"; "") | sub("\\s+$"; "")) as $t
-    | select(($t | split("\n") | length) == 1)
     | select($t | test("^" + $team + "[[:space:]]+" + $id + "([[:space:]]|$)"))
-    | "\($uid)\t\($t)"' "$1" 2>/dev/null | tail -n 1
+    | "\($uid)\t\(if ($t | contains("\n")) then "" else $t end)"' "$1" 2>/dev/null | tail -n 1
 }

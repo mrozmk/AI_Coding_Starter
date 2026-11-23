@@ -104,11 +104,11 @@ d_record() {
     || { rm -f "$tmp"; return 1; }
 }
 
-# d_record_post <file> <d-n> <ask> <ask kind> <outcome> <answer value> <text> [<relay session>] —
-# after the lock: the Operator touch, the touch-log entry, the notification resolved.
+# d_record_post <file> <d-n> <ask> <ask kind> <outcome> <answer value> <reply rest> <text>
+# [<relay session>] — after the lock: the Operator touch, the touch-log entry, the notification resolved.
 d_record_post() {
   echo "$(team_utc) decision $2" >> "$TD/runs/$RUN/operator-touches"
-  d_touch_log "$1" "$2" "$3" "$4" "$5" "$6" "${rest:-}" "$7" "${8:-}"
+  d_touch_log "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "${9:-}"
   d_resolve "$1"
 }
 
@@ -327,23 +327,17 @@ decision_answer() {
   d_record "$f" "$id" "$how" "$outcome" "$aval" "$amap" "$text" "${esid:-}" \
     || { ask_unlock; d_bad 1 "$id could not be written"; }
   ask_unlock
-  d_record_post "$f" "$id" "$ask" "${kind:-}" "$outcome" "$aval" "$text"
+  d_record_post "$f" "$id" "$ask" "${kind:-}" "$outcome" "$aval" "${rest:-}" "$text"
   [ -z "$tuning" ] || notes_tune "$id" "$tuning" "$why"
   echo "answered: $id${outcome:+ ($outcome)} via ${how%% *}"
 }
 
-# d_ledger_names <ledger> <team> <d-n> <ask> [<uuid>] — the relay ledger pins this decision (and uuid)
-d_ledger_names() {
-  jq -e --arg t "$2" --arg r "$RUN" --arg d "$3" --arg a "$4" --arg u "${5:-}" \
-    '.team == $t and .run == $r and .decision == $d and .ask == $a and ($u == "" or .uuid == $u)' \
-    "$1" >/dev/null 2>&1
-}
 d_relay_ring() {
   team_session_doorbell "$TD" lead "relayed: $1 — the Operator answered through the Supervisor; apply it"
 }
 
 decision_relay() {
-  local id="${1:-}" text f team re reply rest="" ask kind lf rd u pl sid cwd cfg tx floor rf sel uuid
+  local id="${1:-}" text f team re reply rest="" ask kind lf rd u pl sid cwd cfg tx floor sel uuid
   local p outcome="" aval="" amap="" w tmp x
   [ -n "$id" ] || usage; shift
   [ $# -eq 2 ] && [ "$1" = --text ] || usage; text="$2"
@@ -358,6 +352,7 @@ decision_relay() {
   [[ "$text" =~ $re ]] || d_bad 7 "reply must start with \"$team $id \""
   reply="${text#"$team"}"; reply="${reply#"${reply%%[![:space:]]*}"}"
   rest="${reply#"$id"}"; rest="${rest#"${rest%%[![:space:]]*}"}"
+  [ -n "$rest" ] || d_bad 7 "reply must say something after \"$team $id\""
   # Every ask read and the lock use the run this team is on, never another session's.
   ask_init "$TD" && [ "$ASK_RUN" = "$RUN" ] || d_bad 4 "team $team's session is not on run $RUN"
   ask="$(dfm "$f" bind_ask)"; kind="$(dfm "$f" ask_kind)"
@@ -365,7 +360,7 @@ decision_relay() {
   # A committed relay retried (a lost ring, an interrupted bookkeeping step): no transcript read.
   u="$(dfm "$f" answered_via)"
   if [ "$(dfm "$f" status)" = answered ] && [ "${u%% *}" = supervisor-window ] \
-      && d_ledger_names "$lf" "$team" "$id" "$ask" "${u#supervisor-window }"; then
+      && team_relay_pins "$lf" "$team" "$RUN" "$id" "$ask" "${u#supervisor-window }"; then
     pl="$(jq -r .reply "$lf")"
     [ "$text" = "$pl" ] || d_bad 4 "$id is already answered with \"$pl\" — a new answer needs a new decision"
     if ! grep -q " decision $id\$" "$TD/runs/$RUN/operator-touches" 2>/dev/null; then
@@ -380,19 +375,18 @@ decision_relay() {
   rd="$TD/runs/$RUN"
   pl="$(ls "$rd" 2>/dev/null | sed -n 's/^lead-\([0-9]*\)\.prompt\.md$/\1/p' | sort -n | tail -n 1 || true)"
   [ -n "$pl" ] && grep -q 'Relayed by the Supervisor' "$rd/lead-$pl.prompt.md" 2>/dev/null \
-    || d_bad 4 "team $team's TeamLead was launched before the Supervisor relay existed — the Operator answers in its window ($team-lead, \"$id …\"), or relaunch it first: bash .claude/lib/team-lead.sh relaunch $team"
+    || d_bad 4 "team $team's TeamLead was launched before the Supervisor relay existed — the Operator answers in its window ($team-lead, \"$id …\"), or end it and then relaunch it (a relaunch of a running lead strips its authority): bash .claude/lib/team-lead.sh end $team, then bash .claude/lib/team-lead.sh relaunch $team"
   # The Supervisor's own transcript: the registry's session, the declared Claude profile (never the
   # caller's environment).
   sid="$(jq -r '.session_id // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"
   cwd="$(jq -r '.cwd // empty' "$MAIN/.agents/team/registry/Supervisor.json" 2>/dev/null || true)"; cwd="${cwd:-$MAIN}"
   cfg="$(team_supervisor_home "$MAIN")" || cfg=""
-  tx="$cfg/projects/$(team_project_slug "$cwd")/$sid.jsonl"
+  tx="$(team_role_transcript "$cwd" "$sid" "$cfg")"
   [ -n "$sid" ] && [ -n "$cfg" ] && [ -f "$tx" ] \
     || d_bad 7 "no Supervisor session recorded — answer from a terminal or in the TeamLead window"
   x="$(team_anchor_team "$MAIN" "${TD%/.agents/team}")" && [ "$x" = "$team"$'\t'"$RUN" ] \
     || d_bad 4 "team $team is not on run $RUN"
-  floor="$(dfm "$f" created_at)"; rf="$(team_run_floor "$RUN")"
-  [[ ! "$rf" > "$floor" ]] || floor="$rf"
+  floor="$(team_run_floor "$RUN" "$(dfm "$f" created_at)")"
   . "$LIB/team-evidence.sh" || d_bad 7 "no evidence matcher (team-evidence.sh)"
   # The reply's meaning: the ask's parser for a bound decision, else a control word or plain text.
   if [ -n "$ask" ]; then
@@ -428,7 +422,7 @@ decision_relay() {
   done
   if [ -e "$lf" ]; then
     # An interrupted attempt is completed only with its own pinned values.
-    d_ledger_names "$lf" "$team" "$id" "$ask" "$uuid" && [ "$(jq -r .reply "$lf")" = "$text" ] \
+    team_relay_pins "$lf" "$team" "$RUN" "$id" "$ask" "$uuid" && [ "$(jq -r .reply "$lf")" = "$text" ] \
       || { ask_unlock; d_bad 4 "relay ledger already holds $id ($(jq -r '.ask // ""' "$lf"), $(jq -r '.uuid // ""' "$lf")) — a different answer needs a new decision"; }
   else
     mkdir -p "$(dirname "$lf")"; tmp="$lf.tmp.$$"
@@ -442,7 +436,7 @@ decision_relay() {
   d_record "$f" "$id" "supervisor-window $uuid" "$outcome" "$aval" "$amap" "$text" "" "$sid" \
     || { ask_unlock; d_bad 1 "$id could not be written"; }
   ask_unlock
-  d_record_post "$f" "$id" "$ask" "$kind" "$outcome" "$aval" "$text" "$sid"
+  d_record_post "$f" "$id" "$ask" "$kind" "$outcome" "$aval" "$rest" "$text" "$sid"
   d_relay_ring "$id"
   echo "answered: $id${outcome:+ ($outcome)} via supervisor-window"
 }

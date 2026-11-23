@@ -106,7 +106,9 @@ want to answer it to you instead of in that team's TeamLead window:
 - **Never type it for them, never reword it, never add an outcome.** Your own words are never the
   Operator's answer. Exit 7 means the transcript holds no such message — tell them exactly what to
   type. Exit 4 means the decision is no longer open, or its TeamLead predates the relay — say so;
-  for the latter they answer in that team's TeamLead window (or the lead is relaunched first).
+  for the latter they answer in that team's TeamLead window (or the lead is ended and then
+  relaunched first: `team-lead.sh end <team>`, then `team-lead.sh relaunch <team>` — never a
+  relaunch of a live lead).
 - **Limit:** as with consent, only the listed delivery forms are filtered; the relay raises the
   bar, it is not proof that a human answered (`team-lead.md` §7, "Limit of the human binding").
 

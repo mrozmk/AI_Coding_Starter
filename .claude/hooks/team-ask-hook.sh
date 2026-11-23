@@ -188,18 +188,16 @@ reply_matches() {
 # Supervisor's transcript under the declared profile, the message `<team> <d-n> …` at that uuid,
 # typed no earlier than the decision opened (the ledger's floor) nor before the run started.
 verify_relay() {
-  local x team lf cfg t floor rf msg
+  local x team lf cfg t floor msg
+  [ -n "$3" ] || return 1
   x="$(team_anchor_team "$MAIN" "$CLONE")" || return 1
   team="$(cut -f1 <<<"$x")"; [ "$(cut -f2 <<<"$x")" = "$RUN" ] || return 1
   lf="$MAIN/.agents/team/relays/$team-$RUN-$2.json"
-  jq -e --arg t "$team" --arg r "$RUN" --arg d "$2" --arg a "$1" --arg u "$3" \
-    '.team == $t and .run == $r and .decision == $d and .ask == $a and .uuid == $u' "$lf" >/dev/null 2>&1 \
-    || return 1
+  team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" "$3" || return 1
   cfg="$(team_supervisor_home "$MAIN")" || return 1
-  t="$cfg/projects/$(team_project_slug "$(jq -r '.cwd // ""' "$lf")")/$(jq -r '.session_id // ""' "$lf").jsonl"
+  t="$(team_role_transcript "$(jq -r '.cwd // ""' "$lf")" "$(jq -r '.session_id // ""' "$lf")" "$cfg")"
   [ -f "$t" ] || return 1
-  floor="$(jq -r '.created_at // ""' "$lf")"; rf="$(team_run_floor "$RUN")"
-  [[ ! "$rf" > "$floor" ]] || floor="$rf"
+  floor="$(team_run_floor "$RUN" "$(jq -r '.created_at // ""' "$lf")")"
   [ -n "$floor" ] || return 1
   msg="$(msg_at "$t" "$3" "$floor")" || return 1
   case "$msg" in "$team "*) msg="${msg#"$team "}"; msg="${msg#"${msg%%[![:space:]]*}"}" ;; *) return 1 ;; esac

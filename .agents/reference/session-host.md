@@ -276,7 +276,8 @@ the inbox file; the line only wakes the session.
 5. **Evidence windows are marked.** A line `send` or `type` delivers to the Supervisor or a
    `<team>-lead` session — by canonical address, explicit registration or final target — that is
    not a machine line (`team-evidence.sh`) gets the prefix `[peer] `, so it never counts as the
-   Operator's typed words (team-lead.md §7, "Limit of the human binding").
+   Operator's typed words (team-lead.md §7, "Limit of the human binding"). A bare slash command
+   (`/clear`, no arguments) stays unmarked, so it still runs as a command.
 
 ## 13. `/roles`, restore, and what is not restored
 

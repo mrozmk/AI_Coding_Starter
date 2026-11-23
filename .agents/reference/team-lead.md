@@ -460,7 +460,9 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   the decision's `tuning: pending` line in its notes itself, then applies the stored answer as after
   a window answer (an unbound reply with no outcome closes with `decision resolved`). A run whose
   lead prompt (`runs/<run>/lead-<n>.prompt.md`) predates the relay has no such rule: the relay
-  refuses with 4 — answer in its window, or `team-lead.sh relaunch <team>` first.
+  refuses with 4 — answer in its window, or end the lead and relaunch it first
+  (`team-lead.sh end <team>`, then `team-lead.sh relaunch <team>`; a relaunch of a running lead
+  replaces its identity while the old session keeps running, without authority).
 - **Relay:** `team-answer.sh <team> a-<n> <form> --authority operator --decision <d-n.md>` requires
   `status: answered` and `bind_ask` = this ask (another ask refuses with 7), the form equal to the
   stored answer (`--allow|--deny` = `answer_outcome`, `--pick|--text|--deny` text = `answer_value`,
@@ -507,7 +509,8 @@ cannot make becomes a file, and the stop that needs it waits while everything el
   `type` (session-host-lib.sh `sh_peer_mark`) prefix `[peer] ` to every non-machine line bound for
   the Supervisor or a `*-lead` session — judged by the canonical address, an explicit registration
   (`Supervisor.reg.json`, `*-lead.reg.json`) and the final delivery target — and the matcher never
-  counts a `[peer] ` line. What stays outside: a direct socket write, raw `tmux send-keys` / `hc
+  counts a `[peer] ` line; a bare slash command (`/clear`, no arguments) stays unmarked, so it still
+  runs as a command. What stays outside: a direct socket write, raw `tmux send-keys` / `hc
   send`, `type --target` at another session's pane, a team clone on an older base running its own
   driver, a session launched with the Supervisor's address, and a same-uid write to the relay ledger.
 - **Limit of the write lock.** The lead's profile denies `tmux send-keys|send|paste-buffer`,

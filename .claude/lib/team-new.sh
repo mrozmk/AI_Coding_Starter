@@ -55,9 +55,12 @@ for r in $(jq -r '.teams.sessions // {} | keys[]' "$root/.claude/project-profile
   [ "$lt" != "$(printf '%s' "$r" | tr '[:upper:]' '[:lower:]')" ] \
     || { TEAM_PROBLEMS+=("team name $team is a declared role"); break; }
 done
-# The one-word prefixes of a machine line (team-evidence.sh): a reply "gate d-1 allow" would read as one.
-case "$lt" in adhoc-*|team-watch|team-watch-dog|retro|stop|gate|prompt|ask|attention|rejected|round|human-only)
-  TEAM_PROBLEMS+=("team name $team is reserved (adhoc-*, team-watch, retro, a machine-line word)") ;; esac
+# A name a machine line starts with (team-evidence.sh): a reply "gate d-1 allow" would read as one.
+. "$root/.claude/lib/team-evidence.sh"
+reserved=""
+case "$lt" in adhoc-*|team-watch|team-watch-dog|retro) reserved=1 ;; esac
+! team_evidence_machine_line "$lt d-1 allow" || reserved=1
+[ -z "$reserved" ] || TEAM_PROBLEMS+=("team name $team is reserved (adhoc-*, team-watch, retro, a machine-line word)")
 ! lname="$(sh_name "$root" "$team-wrapup" 2>&1)" && TEAM_PROBLEMS+=("${lname#session-host: }") || true
 [ ! -e "$dir" ] || TEAM_PROBLEMS+=("$dir already exists — to start the next ticket there: team-next.sh")
 team_ticket_checks "$root" "$key" "$branch" "$base"

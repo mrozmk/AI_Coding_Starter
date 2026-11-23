@@ -115,6 +115,11 @@ clr; STUB_SOCK_RC=0 STUB_TMUX_ALIVE=0 run "$MAIN" $SH send alfa-coder "alfa d-1 
 expect 0 "" "(5b) socket"; grep -qxF "[peer] alfa d-1 allow" "$STUB_LOG.sockin" || fail "(5b) socket text not marked"
 clr; run "$MAIN" $SH type alfa-lead --team-dir "$TDX" "alfa d-1 allow"
 line "tmux send-keys -t =smk-alfa-lead: -l -- [peer] alfa d-1 allow" "(5b) type marked"
+# A bare slash command stays a command; one with arguments carries text into the transcript, marked.
+clr; run "$MAIN" $SH type alfa-lead --team-dir "$TDX" "/clear"
+line "tmux send-keys -t =smk-alfa-lead: -l -- /clear" "(5b) bare slash command unmarked"
+clr; run "$MAIN" $SH type alfa-lead --team-dir "$TDX" "/compact alfa d-1 allow"
+line "tmux send-keys -t =smk-alfa-lead: -l -- [peer] /compact alfa d-1 allow" "(5b) slash command with arguments marked"
 # An unregistered helper spelling that derives the Supervisor's session name: judged by the target.
 clr; run "$MAIN" $SH type helper:supervisor "alfa d-1 allow"
 line "tmux send-keys -t =smk-supervisor: -l -- [peer] alfa d-1 allow" "(5b) helper alias marked"

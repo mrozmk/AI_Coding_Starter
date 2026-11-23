@@ -850,9 +850,12 @@ sh_keys() {
 # evidence window — the Supervisor's or a TeamLead's, whose typed lines count as the Operator's
 # (team-evidence.sh) — and is no machine line. Judged on the canonical address, the registration's
 # name and the final delivery target (a helper spelling can derive the Supervisor's session name).
-# Without the matcher every line to such a window is marked (fail closed).
+# Without the matcher every line to such a window is marked (fail closed). A bare slash command (no
+# arguments, e.g. /clear) stays unmarked: a prefix would turn it into text, and with no arguments it
+# carries no reply (a command's arguments land in the transcript, so those lines are still marked).
 sh_peer_mark() {
   local a="$1" text="$3" c ev="" t r f
+  [[ ! "$text" =~ ^/[A-Za-z0-9:_-]+$ ]] || { printf '%s\n' "$text"; return 0; }
   c="$(sh_record_get "$SH_MAIN" "$a" address)"; [ -n "$c" ] || c="$a"
   case "$(printf '%s' "$c" | tr '[:upper:]' '[:lower:]')" in supervisor|*-lead) ev=1 ;; esac
   case "$(basename "${2:-none}" | tr '[:upper:]' '[:lower:]')" in supervisor.reg.json|*-lead.reg.json) ev=1 ;; esac
