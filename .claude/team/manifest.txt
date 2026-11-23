@@ -93,6 +93,7 @@ own .claude/lib/team-ask.sh
 own .claude/lib/team-integrate-lib.sh
 own .claude/lib/team-integrate-lock.sh
 own .claude/lib/team-integrate.sh
+own .claude/lib/team-starter-land.sh
 own .claude/lib/team-lib.sh
 own .claude/lib/team-seed-lib.sh
 own .claude/lib/team-merge-check.sh

@@ -418,11 +418,12 @@ NEW="$(printf '%s' "$NEW" | jq --arg tm "$TEAM_MERGE" '
    "Bash(bash .claude/lib/costs/runtime-mark.sh:*)"] as $want
   # The team-*.sh allow would also cover the supervisor-only trunk writers; `ask` beats `allow`,
   # so a role can never integrate unattended and the supervisor still gets the Operator prompt.
-  # Under workflow.team_merge=auto (the owner answer to /setup:start) the three are left out and
-  # removed — the roles in the clones lose the prompt, but guard-team-verdict.sh refuses the trunk
-  # writers (and team-automerge-check.sh) from any role session.
+  # Under workflow.team_merge=auto (the owner answer to /setup:start) the trunk writers are left out
+  # and removed — the roles in the clones lose the prompt, but guard-team-verdict.sh refuses the
+  # trunk writers (and team-automerge-check.sh) from any role session.
   | ["Bash(bash .claude/lib/team-integrate.sh*)", "Bash(bash .claude/lib/team-integrate-lock.sh*)",
-     "Bash(bash .claude/lib/team-merge-check.sh*)"] as $merge
+     "Bash(bash .claude/lib/team-merge-check.sh*)",
+     "Bash(bash .claude/lib/team-starter-land.sh*)"] as $merge
   | ((if $tm == "auto" then [] else $merge end) + [
      # The channel step writes the machine registry and boxes outside the repo.
      "Bash(bash .claude/lib/team-mail-setup.sh*)",

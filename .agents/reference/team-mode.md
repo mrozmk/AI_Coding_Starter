@@ -369,7 +369,9 @@ github goes only through `.claude/lib/team-pr.sh` (needs `gh`, `teams.github.rep
 - `team-integrate.sh` steps: lock the base (`team-integrate-lock.sh`, shared with the solo worker) ->
   recover an earlier intent read-only -> read `merge-check.json` -> base still the validated target ->
   re-check eligibility -> write the intent (`<main root>/.agents/team/integrate/<team>-<run>.json`) ->
-  plain non-force push of the tested merge commit M -> verify base == M and PR `MERGED`.
+  plain non-force push of the tested merge commit M -> verify base == M and PR `MERGED` ->
+  delete the team's remote branch (only at the validated S, never a long-lived branch or another
+  open PR's head; one line, never changes the exit).
   Exit: 0 integrated · 2 usage/ADO · 3 refused, no effect · 4 partial/unknown effect (inspect the
   intent, then rerun: recovery is state-dependent).
 - Integration contract: after a successful push the base equals the tested M. This is weaker than a

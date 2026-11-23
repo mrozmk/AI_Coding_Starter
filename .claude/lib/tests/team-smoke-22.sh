@@ -291,9 +291,16 @@ cp "$RD/finalized" "$WORK/fin1"
 run "$MAIN" bash .claude/lib/team-lead.sh finalize alfa merged; expect 0 "finalized:" "(h) finalize again"
 cmp -s "$RD/finalized" "$WORK/fin1" || fail "(h) finalize is not idempotent"
 run "$MAIN" bash .claude/lib/team-lead.sh end alfa; expect 0 "TeamLead ended" "(h) end with no session"
+# Each success exit: its message, then the best-effort branch cleanup, then finalize_lead, then exit 0.
+ti_exit_ok() {  # ti_exit_ok <message start> → rc 0 when that block calls delete_source before finalize_lead
+  awk -v s="$1" 'index($0, s) { on = 1 } on { print } on && /^[[:space:]]*exit 0$/ { exit }' \
+    "$SRC/.claude/lib/team-integrate.sh" \
+    | awk '/^[[:space:]]*delete_source$/ { d = NR } /^[[:space:]]*finalize_lead$/ { f = NR }
+           END { exit !(d && f && d < f) }'
+}
 [ "$(grep -c 'finalize_lead$' "$SRC/.claude/lib/team-integrate.sh")" = 2 ] \
-  && grep -B1 'finalize_lead$' "$SRC/.claude/lib/team-integrate.sh" | grep -q 'already integrated' \
-  && grep -B1 'finalize_lead$' "$SRC/.claude/lib/team-integrate.sh" | grep -q '"integrated: ' \
+  && ti_exit_ok 'echo "already integrated:' \
+  && ti_exit_ok 'echo "integrated: ' \
   || fail "(h) team-integrate does not finalize after both integrated exits"
 echo "team-smoke-22: (h) end/finalize OK"
 

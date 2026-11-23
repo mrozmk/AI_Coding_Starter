@@ -16,7 +16,10 @@ Operator's consent.
   [team-pipeline.md → Which mode](../team-pipeline.md) allow, and names the mode with one sentence
   of reason in the start report.
 - The **automatic merge** after a run's acceptance brief ([supervisor-sessions.md →
-  Auto-merge](../supervisor-sessions.md#auto-merge)); tracker bookkeeping.
+  Auto-merge](../supervisor-sessions.md#auto-merge)); tracker bookkeeping. On GitHub the merge
+  is the starter half first (`team-starter-land.sh`, only in the project that develops the
+  starter), then merge-check and integrate, which deletes the team's remote branch
+  ([team-pipeline.md → Merge](../team-pipeline.md)).
 - Releases ordered by the Operator: `supervisor-sessions.sh freeze on <release>` before, and the
   Operator's `freeze off` after the post-check.
 - Operator records (`operator-record.sh failure|release`, [supervisor-sessions.md → Operator
@@ -109,6 +112,7 @@ path; say each finding in the Operator's terms.
 
 `bash .claude/lib/roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
+`team-starter-land.sh <team> [--starter <path>] [--worktree <path>]`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` request, then `/start-team <team>`),
 `operator-record.sh failure|release|close <id>`.
 

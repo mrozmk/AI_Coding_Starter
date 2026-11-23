@@ -521,6 +521,13 @@ cat > "$WORK/origin.git/hooks/pre-receive" <<HOOK
   echo "remote: error: GH006: Protected branch update failed" >&2
   exit 1
 }
+# protect-delete: a rule that refuses branch deletion only (new sha = forty zeros).
+[ ! -f "$WORK/protect-delete" ] || while read old new ref; do
+  [ "\$new" != 0000000000000000000000000000000000000000 ] || {
+    echo "remote: error: GH006: branch deletion refused (\$ref)" >&2
+    exit 1
+  }
+done
 HOOK
 chmod +x "$WORK/origin.git/hooks/pre-receive"
 
@@ -556,7 +563,8 @@ mk_ready() {
   RDC="$TDC/runs/$RUNC"; mkdir -p "$RDC"
   rm -f "$TDC/session.json"; rm -rf "$TDC/lock"
   c_record "$RDC" "$RUNC" "$pr" "$Sx"
-  pr_file "$pr" "$BRC" "$base" false
+  # The head sha is recorded so a merged PR still reads MERGED once integrate deleted its branch.
+  pr_file "$pr" "$BRC" "$base" false acme false "$Sx"
   c_refresh "$pr" "$BRC" "$base"
 }
 
@@ -792,6 +800,9 @@ run "$MAIN" $IT gamma --base it-base
 expect 0 "integrated: PR #43 into it-base" "integrate publishes onto the explicit base"
 [ "$(bare rev-parse refs/heads/it-base)" = "$M_G" ] || fail "it-base is not the tested merge commit"
 [ "$(bare rev-parse "refs/heads/$TRUNK")" = "$TRUNK_BEFORE" ] || fail "the trunk moved"
+bare rev-parse -q --verify refs/heads/it-base >/dev/null \
+  && ! bare rev-parse -q --verify "refs/heads/$BRC" >/dev/null \
+  || fail "the target base survives the cleanup (and gamma's branch is gone)"
 
 # (C1) alfa and beta from one trunk: alfa lands, beta's old readiness is dead, beta re-validates
 mk_ready alfa 41
@@ -818,6 +829,11 @@ expect 0 "" "the solo integrator releases the base lock"
 run "$MAIN" $IT alfa
 expect 0 "integrated: PR #41 into $TRUNK" "integrate publishes the tested merge commit"
 [ "$(bare rev-parse "refs/heads/$TRUNK")" = "$M_A" ] || fail "the trunk is not alfa's merge commit"
+has "deleted: $BR_A" "$WORK/out" && ! bare rev-parse -q --verify "refs/heads/$BR_A" >/dev/null \
+  || fail "integrate deletes the team's remote branch at S"
+bare rev-parse -q --verify "refs/heads/$BR_B" >/dev/null \
+  && bare rev-parse -q --verify "refs/heads/$TRUNK" >/dev/null \
+  || fail "the cleanup never touches another team's branch or the trunk"
 run "$MAIN" bash .claude/lib/team-pr.sh state 41
 expect 0 '"status":"completed"' "PR 41 reads as merged after the push"
 [ "$(jq -r .state "$MAIN/.agents/team/integrate/alfa-$(cat "$CL_A/.agents/team/run").json")" = done ] \
@@ -1228,6 +1244,88 @@ expect 3 "base moved past M — manual check" "a done intent on a base past M is
 has "intent done" "$WORK/out" || fail "the done-intent refusal does not say which intent it read"
 [ "$(jq -r .state "$KINT")" = done ] || fail "the refused done check rewrote the intent"
 
+# (C18) remote branch cleanup: integrate deletes the team's branch only at the validated S, prints
+# one line, and never changes its exit code.
+has_ref() { bare rev-parse -q --verify "refs/heads/$1" >/dev/null; }
+
+# moved after validation: the gh stub pushes onto the head the moment it answers MERGED.
+mk_ready upsilon 80
+run "$MAIN" $MC upsilon
+expect 0 "VERDICT: ok" "merge check upsilon"
+M_UP="$Mx"; BR_UP="$BRC"
+rm -rf "$WORK/upwc"
+"$REAL_GIT" clone --quiet "$WORK/origin.git" "$WORK/upwc"
+git -C "$WORK/upwc" checkout --quiet -B "$BR_UP" "origin/$BR_UP"
+printf 'late\n' > "$WORK/upwc/late.txt"
+git -C "$WORK/upwc" add late.txt && git -C "$WORK/upwc" commit --quiet -m late
+LATE_UP="$(git -C "$WORK/upwc" rev-parse HEAD)"
+export STUB_GH_ON_MERGED="$REAL_GIT -C $WORK/upwc push --quiet origin HEAD:refs/heads/$BR_UP"
+run "$MAIN" $IT upsilon
+unset STUB_GH_ON_MERGED; rm -f "$GH_DIR"/on-merged-80
+expect 0 "kept: $BR_UP moved to $LATE_UP after validation" "a branch moved after validation is kept and named"
+[ "$(bare rev-parse "refs/heads/$BR_UP")" = "$LATE_UP" ] || fail "the moved branch is not at its new sha"
+[ "$(bare rev-parse "refs/heads/$TRUNK")" = "$M_UP" ] || fail "upsilon's M did not land"
+
+# the remote refuses the delete: integration still done; a plain rerun retries the delete.
+mk_ready phi 81
+run "$MAIN" $MC phi
+expect 0 "VERDICT: ok" "merge check phi"
+M_PH="$Mx"; BR_PH="$BRC"; PHINT="$MAIN/.agents/team/integrate/phi-$RUNC.json"
+touch "$WORK/protect-delete"
+run "$MAIN" $IT phi
+rm -f "$WORK/protect-delete"
+expect 0 "delete failed:" "a refused delete still integrates"
+[ "$(bare rev-parse "refs/heads/$TRUNK")" = "$M_PH" ] || fail "phi's M did not land"
+[ "$(jq -r .state "$PHINT")" = done ] || fail "a refused delete left phi's intent not done"
+[ "$(jq -r .head_ref "$PHINT")" = "$BR_PH" ] || fail "phi's intent does not bind its head ref"
+has_ref "$BR_PH" || fail "a refused delete removed the branch anyway"
+run "$MAIN" $IT phi
+expect 0 "already integrated" "a rerun after a refused delete is already integrated"
+has "deleted: $BR_PH" "$WORK/out" && ! has_ref "$BR_PH" || fail "a rerun retries the delete"
+
+# a head shared with another open PR (into another base) is kept.
+mk_ready chi 82
+run "$MAIN" $MC chi
+expect 0 "VERDICT: ok" "merge check chi"
+BR_CH="$BRC"
+pr_file 83 "$BR_CH" it-base false
+run "$MAIN" $IT chi
+rm -f "$GH_DIR/pr-83.json"
+expect 0 "kept: $BR_CH — head of open PR #83" "a head shared with another open PR is kept"
+has_ref "$BR_CH" || fail "a shared head was deleted"
+
+# an intent written before head_ref existed: kept, on every rerun.
+mk_ready psi 84
+run "$MAIN" $MC psi
+expect 0 "VERDICT: ok" "merge check psi"
+BR_PS="$BRC"; PSINT="$MAIN/.agents/team/integrate/psi-$RUNC.json"
+touch "$WORK/protect-delete"
+run "$MAIN" $IT psi
+rm -f "$WORK/protect-delete"
+expect 0 "delete failed:" "fixture: psi integrates with its delete refused"
+jq 'del(.head_ref)' "$PSINT" > "$PSINT.tmp" && mv "$PSINT.tmp" "$PSINT"
+for i in 1 2; do
+  run "$MAIN" $IT psi
+  expect 0 "already integrated" "an intent without a head ref keeps the branch on every rerun ($i)"
+  has "kept: $BR_PS — intent names no head ref" "$WORK/out" && has_ref "$BR_PS" \
+    || fail "an intent without a head ref keeps the branch on every rerun ($i)"
+done
+[ "$(jq -r '.head_ref // "absent"' "$PSINT")" = absent ] || fail "a rerun re-bound psi's head ref"
+
+# a branch the Branch model protects is kept (the main checkout's CLAUDE.md is the source).
+mk_ready omega 85
+run "$MAIN" $MC omega
+expect 0 "VERDICT: ok" "merge check omega"
+BR_OM="$BRC"
+rm -f "$WORK/claude-md.bak"
+[ ! -f "$MAIN/CLAUDE.md" ] || cp "$MAIN/CLAUDE.md" "$WORK/claude-md.bak"
+printf '### Branch model\n\n**Trunk:** `%s` · **Integration:** `%s`\n**Protected:** `%s`, `%s`\n' \
+  "$TRUNK" "$TRUNK" "$TRUNK" "$BR_OM" > "$MAIN/CLAUDE.md"
+run "$MAIN" $IT omega
+if [ -f "$WORK/claude-md.bak" ]; then mv "$WORK/claude-md.bak" "$MAIN/CLAUDE.md"; else rm -f "$MAIN/CLAUDE.md"; fi
+expect 0 "kept: $BR_OM — long-lived branch" "a branch the Branch model protects is kept"
+has_ref "$BR_OM" || fail "a protected branch was deleted"
+
 # ================================================================================================
 # (D1) dashboard attention: a github team awaiting merge gets the integrate command, ADO keeps /pr-merge
 # ================================================================================================
@@ -1381,7 +1479,7 @@ grep -q 'issues/175/timeline' "$RO_LOG" || fail "the read stub saw no prs call"
 # ================================================================================================
 ! grep -E 'pr merge|--admin|--force' "$GH_LOG" "$STUB_LOG" "$GIT_LOG" \
   || fail "a stub log contains a merge/admin/force call"
-for f in team-pr.sh team-integrate.sh team-integrate-lock.sh team-integrate-lib.sh; do
+for f in team-pr.sh team-integrate.sh team-integrate-lock.sh team-integrate-lib.sh team-starter-land.sh; do
   ! grep -nE '^[^#]*(pr merge|--admin|--force|git rebase)' "$SRC/.claude/lib/$f" \
     || fail "$f carries a merge/admin/force/rebase call"
 done
