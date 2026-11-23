@@ -4,7 +4,8 @@
 # stopped_at), here on the three backends (Herdr id, tmux session, a plain terminal's pid), the
 # validator stopping everything, the legacy Advisor key, a project role added in the profile only,
 # the window line, roles.lock; a Codex role's floating ("default", no -m) and pinned model; the
-# SessionStart contract line (session-registry.sh).
+# SessionStart contract line (session-registry.sh); Linux tmux liveness (bash leads the pane, claude in
+# its group), stop's leftover close and self-last order, here's probe-failure refusal.
 # A stateful stub tmux (sessions are files) and stub claude / codex; nothing reaches a real server.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -36,8 +37,17 @@ D="$STUB_TMUX_DIR"
 [ "$1" != -S ] || shift 2   # the hook names the server socket
 nm() { local a; for a in "$@"; do case "$a" in =*) a="${a#=}"; echo "${a%%:*}"; return ;; esac; done; }
 case "$1" in
-  has-session) [ -f "$D/$(nm "$@")" ] && exit 0; echo "can't find session: $(nm "$@")" >&2; exit 1 ;;
-  kill-session) rm -f "$D/$(nm "$@")"; exit 0 ;;
+  has-session) [ -z "${STUB_HAS_SESSION_ERR:-}" ] || { echo "$STUB_HAS_SESSION_ERR" >&2; exit 1; }
+    [ -f "$D/$(nm "$@")" ] && exit 0; echo "can't find session: $(nm "$@")" >&2; exit 1 ;;
+  kill-session) [ -n "${STUB_KILL_KEEP:-}" ] || rm -f "$D/$(nm "$@")"; exit 0 ;;
+  list-panes) n="$(nm "$@")"
+    [ "${STUB_LIST_PANES_RC:-0}" = 0 ] || { echo "list-panes failed" >&2; exit "$STUB_LIST_PANES_RC"; }
+    [ -f "$D/$n" ] || { echo "can't find session: $n" >&2; exit 1; }
+    # A session file holds one pane per line: `<pid> <cmd>`, or a bare command (group 99999999, no claude).
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      case "$l" in *" "*) echo "$l" ;; *) echo "99999999 $l" ;; esac
+    done < "$D/$n"; exit 0 ;;
   new-session) shift; n=""
     while [ $# -gt 0 ]; do case "$1" in -s) n="$2"; shift 2 ;; -c|-e) shift 2 ;; *) shift ;; esac; done
     [ ! -f "$D/$n" ] || { echo "duplicate session: $n" >&2; exit 1; }
@@ -198,6 +208,11 @@ mkdir -p "$REG/roles.lock"; ps -o lstart= -p "$H" | sed 's/^ *//; s/ *$//' > "$R
 echo "$H" > "$REG/roles.lock/pid"
 clr; run "$MAIN" $RS up Fable; expect 1 "another /roles is running (pid $H)" "(7) busy"
 [ "$(starts)" = 0 ] || fail "(7) a busy lock still started something"
+clr; run "$MAIN" $RS stop Fable; expect 1 "another /roles is running (pid $H)" "(7) stop waits for roles.lock"
+noline "kill-session" "$STUB_LOG" "(7) stop waits for roles.lock"
+clr; TMUX=/tmp/fake,1,0 STUB_SELF=smk-other run "$MAIN" $RS here Fable
+expect 1 "another /roles is running (pid $H)" "(7) here waits for roles.lock"
+noline "claude --name" "$STUB_LOG" "(7) here waits for roles.lock"
 kill -9 "$H"; wait "$H" 2>/dev/null || true; SPID=""
 run "$MAIN" $RS up Fable; expect 0 "Fable: started" "(7) reclaimed"
 [ ! -d "$REG/roles.lock" ] || fail "(7) the lock was left behind"
@@ -228,15 +243,20 @@ run "$MAIN" $RS stop Supervisor; expect 0 "Supervisor: stopped" "(8) none: stop"
 for _ in $(seq 1 30); do kill -0 "$HP" 2>/dev/null || break; sleep 0.1; done; SPID=""
 ! kill -0 "$HP" 2>/dev/null || fail "(8) none: the CLI survived stop"
 run "$MAIN" $RS stop all; expect 0 "" "(8) stop all"
-# tmux: the record names this tmux session
+# tmux: the record names this tmux session; its pid (exec keeps it) is the role's identity
 echo claude > "$D/smk-mine"
-clr; TMUX=/tmp/fake,1,0 STUB_SELF=smk-mine run "$MAIN" $RS here Supervisor; expect 0 "" "(8) tmux: here"
+clr; ( cd "$MAIN" && TMUX=/tmp/fake,1,0 STUB_SELF=smk-mine STUB_CLI_STAY=1 exec $RS here Supervisor ) \
+  > "$WORK/here-t.out" 2>&1 & HP=$!; SPID=$HP
+disown "$HP"
+for _ in $(seq 1 50); do grep -q '^claude ' "$STUB_LOG" 2>/dev/null && break; sleep 0.1; done
+line "claude --name Supervisor --session-id " "$STUB_LOG" "(8) tmux: here"
 line "be=tmux" "$STUB_LOG" "(8) tmux: env"
 [ "$(jq -r '.backend + " " + .name' "$REG/Supervisor.json")" = "tmux smk-mine" ] || fail "(8) tmux: record"
 run "$MAIN" $RS status; grep -E '^Supervisor +tmux +alive ' "$WORK/out" >/dev/null || fail "(8) tmux: status"
 clr; run "$MAIN" $RS up Supervisor; expect 0 "Supervisor: already running" "(8) tmux: up"
 run "$MAIN" $RS stop Supervisor; expect 0 "Supervisor: stopped" "(8) tmux: stop"
 [ ! -f "$D/smk-mine" ] || fail "(8) tmux: the session survived stop"
+kill "$HP" 2>/dev/null || true; SPID=""   # the stub's kill-session only removes the file
 # Herdr (step 6): the record's handle is driven through the fake hc like any session
 clr; HC_TERMINAL_ID=t9 run "$MAIN" $RS here Supervisor; expect 0 "" "(8) herdr: here"
 [ "$(jq -r '.backend + " " + .handle' "$REG/Supervisor.json")" = "herdr t9" ] || fail "(8) herdr: record"
@@ -427,6 +447,87 @@ for r in Supervisor Fable Astra; do line "$r: started" "$WORK/out" "(14) $r"; do
 noline "team-run.sh" "$STUB_LOG" "(14) a runner was started"; noline "start-team" "$STUB_LOG" "(14) /start-team ran"
 [ "$(starts)" = 3 ] || fail "(14) $(starts) sessions started, expected 3"
 echo "team-smoke-roles: (14) restart simulation OK"
+
+# ---- (15) Linux tmux: bash leads the pane, claude runs in its group (#266) --------------------------
+# A process named claude in a known group: a symlink to bash (a multi-call coreutils refuses a renamed
+# sleep). Gone expectations never use this group — the suite shares process groups — only 99999999.
+mkdir -p "$WORK/pgt"; ln -sf "$(command -v bash)" "$WORK/pgt/claude"
+"$WORK/pgt/claude" -c 'sleep 60; :' & PGT=$!; SPID=$PGT
+PGTG="$(ps -o pgid= -p "$PGT" | tr -d ' ')"
+sjq() { jq -r ".${2} // empty" "$REG/$1.json"; }
+run "$MAIN" $RS stop all; expect 0 "" "(15) clean slate"; rm -f "$D"/smk-*
+clr; run "$MAIN" $RS up; expect 0 "Supervisor: started" "(15) start"
+for r in Fable Astra; do line "$r: started" "$WORK/out" "(15) start"; done
+echo "$PGTG bash" > "$D/smk-supervisor"; echo "$PGTG bash" > "$D/smk-fable"
+clr; run "$MAIN" $RS up; expect 0 "Supervisor: already running" "(15) up leaves live roles alone"
+line "Fable: already running" "$WORK/out" "(15) up leaves live roles alone"
+[ "$(starts)" = 0 ] || fail "(15) up leaves live roles alone: $(starts) sessions started"
+noline "kill-session" "$STUB_LOG" "(15) up leaves live roles alone"
+run "$MAIN" $RS status; expect 0 "" "(15) status"
+grep -E '^Supervisor +tmux +alive ' "$WORK/out" >/dev/null && grep -E '^Fable +tmux +alive ' "$WORK/out" >/dev/null \
+  || fail "(15) status"
+printf '99999999 bash\n%s bash\n' "$PGTG" > "$D/smk-fable"
+clr; run "$MAIN" $RS up Fable; expect 0 "Fable: already running" "(15) a split pane, a shell selected"
+[ "$(starts)" = 0 ] || fail "(15) a split pane, a shell selected: a session started"
+STUB_LIST_PANES_RC=1 run "$MAIN" $RS stop Fable; expect 1 "Fable: failed: liveness probe (exit 1)" "(15) stop on an unclassifiable pane"
+[ -f "$D/smk-fable" ] || fail "(15) stop on an unclassifiable pane: the session was closed"
+clr; STUB_LIST_PANES_RC=1 run "$MAIN" $RS up Fable; expect 1 "Fable: failed: liveness probe" "(15) up on an unclassifiable pane"
+[ "$(starts)" = 0 ] || fail "(15) up on an unclassifiable pane: a session started"
+noline "kill-session" "$STUB_LOG" "(15) up on an unclassifiable pane"
+# Stop all from the Supervisor's own session: the others first, itself last and not gracefully.
+clr; HARNESS_ADDRESS=Supervisor run "$MAIN" $RS stop all; expect 0 "Supervisor: stopped" "(15) the caller's own role goes last"
+for r in Fable Astra; do line "$r: stopped" "$WORK/out" "(15) the caller's own role goes last"; done
+ks="$(grep -n 'kill-session -t =smk-supervisor' "$STUB_LOG" | head -n 1 | cut -d: -f1)"
+kf="$(grep -n 'kill-session -t =smk-fable' "$STUB_LOG" | head -n 1 | cut -d: -f1)"
+ka="$(grep -n 'kill-session -t =smk-astra' "$STUB_LOG" | head -n 1 | cut -d: -f1)"
+[ -n "$ks" ] && [ -n "$kf" ] && [ -n "$ka" ] && [ "$ks" -gt "$kf" ] && [ "$ks" -gt "$ka" ] \
+  || { cp "$STUB_LOG" "$WORK/out"; fail "(15) the caller's own role goes last: kill order"; }
+noline "send-keys -t =smk-supervisor:" "$STUB_LOG" "(15) the caller's own role goes last"
+[ ! -e "$REG/Supervisor.lock" ] && [ ! -e "$REG/roles.lock" ] || fail "(15) the caller's own role goes last: a lock left behind"
+[ -n "$(sjq Supervisor stopped_at)" ] || fail "(15) the caller's own role goes last: no stopped_at"
+# A self-stop whose session survives: reported, stopped_at put back.
+run "$MAIN" $RS up Supervisor; expect 0 "Supervisor: started" "(15) restart Supervisor"
+echo "$PGTG bash" > "$D/smk-supervisor"; old="$(sjq Supervisor stopped_at)"
+clr; STUB_KILL_KEEP=1 HARNESS_ADDRESS=Supervisor run "$MAIN" $RS stop Supervisor
+expect 1 "Supervisor: still running" "(15) a refused self-stop is reported"
+[ "$(sjq Supervisor stopped_at)" = "$old" ] || fail "(15) a refused self-stop is reported: stopped_at changed"
+run "$MAIN" $RS stop Supervisor; expect 0 "Supervisor: stopped" "(15) clean up"
+# The program exited, its `; read` shell waits: the driver-launched session is closed.
+run "$MAIN" $RS up Fable; expect 0 "Fable: started" "(15) restart Fable"; echo bash > "$D/smk-fable"
+clr; run "$MAIN" $RS stop Fable; expect 0 "Fable: not running (closed its leftover shell)" "(15) stop closes a leftover shell"
+[ ! -f "$D/smk-fable" ] || fail "(15) stop closes a leftover shell: the session stayed"
+[ -n "$(sjq Fable stopped_at)" ] || fail "(15) stop closes a leftover shell: no stopped_at"
+run "$MAIN" $RS up Fable; expect 0 "Fable: started" "(15) restart Fable"; printf 'bash\nvim\n' > "$D/smk-fable"
+clr; run "$MAIN" $RS stop Fable
+expect 0 "Fable: not running (session smk-fable has other panes — left open)" "(15) a leftover with another pane stays open"
+[ -f "$D/smk-fable" ] || fail "(15) a leftover with another pane stays open: closed"
+noline "kill-session" "$STUB_LOG" "(15) a leftover with another pane stays open"
+rm -f "$D/smk-fable"
+# An earlier failure of the batch: the caller does not stop itself (its exit status would be lost).
+run "$MAIN" $RS up; expect 0 "" "(15) all up"
+echo "$PGTG bash" > "$D/smk-supervisor"; echo "x bash" > "$D/smk-fable"
+clr; HARNESS_ADDRESS=Supervisor run "$MAIN" $RS stop all; expect 1 "Fable: failed: liveness probe (exit 1)" "(15) a failed batch does not stop the caller"
+line "Supervisor: not stopped — an earlier role failed" "$WORK/out" "(15) a failed batch does not stop the caller"
+noline "kill-session -t =smk-supervisor" "$STUB_LOG" "(15) a failed batch does not stop the caller"
+echo claude > "$D/smk-fable"; run "$MAIN" $RS stop all; expect 0 "" "(15) clean up"
+# A `here` terminal whose role ended, another Claude in a sibling pane: the Operator's terminal stays.
+echo claude > "$D/smk-mine"
+TMUX=/tmp/fake,1,0 STUB_SELF=smk-mine run "$MAIN" $RS here Supervisor; expect 0 "" "(15) here"
+printf 'bash\n%s claude\n' "$PGTG" > "$D/smk-mine"
+clr; run "$MAIN" $RS stop Supervisor
+expect 0 "Supervisor: not running (its terminal smk-mine is not a role wrapper — left open)" "(15) a here terminal stays open"
+[ -f "$D/smk-mine" ] || fail "(15) a here terminal stays open: closed"
+noline "kill-session" "$STUB_LOG" "(15) a here terminal stays open"
+run "$MAIN" $RS status; ! grep -E '^Supervisor +tmux +alive ' "$WORK/out" >/dev/null || fail "(15) a here terminal stays open: status alive"
+# here over a session it cannot classify: refused, the record untouched, no CLI.
+cp "$REG/Supervisor.json" "$WORK/sup.bak"
+clr; STUB_HAS_SESSION_ERR='protocol version mismatch' TMUX=/tmp/fake,1,0 STUB_SELF=smk-mine run "$MAIN" $RS here Supervisor
+expect 1 "refused: Supervisor: liveness probe failed" "(15) here refuses an unclassifiable session"
+cmp -s "$REG/Supervisor.json" "$WORK/sup.bak" || fail "(15) here refuses an unclassifiable session: record changed"
+noline "claude --name" "$STUB_LOG" "(15) here refuses an unclassifiable session"
+kill "$PGT" 2>/dev/null || true; wait "$PGT" 2>/dev/null || true; SPID=""
+rm -f "$REG/Supervisor.json" "$D"/smk-*
+echo "team-smoke-roles: (15) Linux tmux liveness OK"
 
 # ---- (L) the Herdr layout (#35): tab Lead and one tab per team over a model window ----------------
 # The fake herdr-app keeps a window model in $STUB_HERDR_LS; `hc label … herdr.space=` adopts into it.

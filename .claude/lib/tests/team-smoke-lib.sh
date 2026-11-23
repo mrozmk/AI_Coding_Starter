@@ -182,6 +182,13 @@ fi
 # Real tmux finds no pane for `-t =NAME` (session-only form); pane commands need `=NAME:`.
 case "$1 $*" in capture-pane*" -t ="*|send-keys*" -t ="*) case "$*" in *" -t ="*:*) ;;
   *) echo "can't find pane" >&2; exit 1 ;; esac ;; esac
+if [ "$1" = list-panes ]; then
+  [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || exit 1
+  [ "${STUB_LIST_PANES_RC:-0}" = 0 ] || { echo "no such session" >&2; exit "$STUB_LIST_PANES_RC"; }
+  # Rows `<pane pid> <command>`; the default group 99999999 is above every pid_max, so it holds no claude.
+  [ -z "${STUB_PANES:-}" ] || { printf '%b\n' "$STUB_PANES"; exit 0; }
+  echo "${STUB_PANES_PID:-99999999} ${STUB_PANE_CMD:-claude}"; exit 0
+fi
 if [ "$1" = display-message ]; then
   [ "${STUB_TMUX_ALIVE:-1}" = 0 ] || exit 1
   # The driver's pane-pid and foreground probes; every other format keeps its old answer.
