@@ -1376,9 +1376,10 @@ esac
 STUB
 chmod +x "$WORK/bin-ro/gh"
 ro() { PATH="$WORK/bin-ro:$PATH" run "$MAIN" $PR "$@"; }
-ro_pr() {  # ro_pr <n> <state> <head> <body> [closing refs json] [title]
+ro_pr() {  # ro_pr <n> <state> <head> <body> [closing refs json] [title] [base]
   jq -n --argjson n "$1" --arg s "$2" --arg h "$3" --arg b "$4" --argjson c "${5:-[]}" \
-    --arg t "${6:-PR $1}" '{number: $n, title: $t, state: $s, headRefName: $h, body: $b,
+    --arg t "${6:-PR $1}" --arg base "${7:-main}" '{number: $n, title: $t, state: $s,
+      headRefName: $h, baseRefName: $base, body: $b,
       mergedAt: (if $s == "MERGED" then "2026-11-20T10:00:00Z" else null end),
       updatedAt: "2026-11-21T10:00:00Z",
       mergeCommit: (if $s == "MERGED" then {oid: ("abc" + ($n | tostring))} else null end),
@@ -1402,10 +1403,13 @@ echo '{"closedByPullRequestsReferences": [{"number": 54,
 ro_pr 50 MERGED feat/175-pool "Closes #175" "$REF175"
 ro_pr 51 OPEN fix/175-retry "retry"
 ro_pr 52 MERGED feat/176-x "after #175"
-ro_pr 54 MERGED chore/cleanup "squashed"
+jq 'del(.baseRefName)' "$RO_DIR/pr-52.json" > "$RO_DIR/pr-52.tmp" && mv "$RO_DIR/pr-52.tmp" "$RO_DIR/pr-52.json"
+ro_pr 54 MERGED chore/cleanup "squashed" "[]" "PR 54" release/1.2
 ro_pr 55 OPEN docs/notes "see #175" "$REF175O"
 ro prs 175
 expect 0 "" "prs of a GitHub issue"
+jq -e '.[0].base_ref == "main" and .[2].base_ref == "" and .[3].base_ref == "release/1.2"' "$WORK/out" >/dev/null || fail "prs 175: base_ref (target branch, \"\" when absent)"
+grep -Eq '^gh pr view 50 .*--json [^ ]*baseRefName' "$RO_LOG" || fail "prs 175: the issue door does not request baseRefName"
 jq -e 'map(.number) == [50, 51, 52, 54, 55]
     and map(.relation) == ["closes", "branch", "mentions", "closes", "mentions"]' "$WORK/out" \
   >/dev/null || fail "prs 175: numbers/relations (fork and non-PR excluded, closing ref united)"
@@ -1437,6 +1441,9 @@ jira_fx() {
 jira_fx
 ro prs ABC-175
 expect 0 "" "prs of a Jira key"
+jq -e 'all(.[]; .base_ref == "main")' "$WORK/out" >/dev/null || fail "prs ABC-175: base_ref on the key door"
+grep -Eq '^gh pr list .*--search ABC-175 .*--json [^ ]*baseRefName' "$RO_LOG" || fail "prs ABC-175: the key search does not request baseRefName"
+grep -Eq '^gh pr view 64 .*--json [^ ]*baseRefName' "$RO_LOG" || fail "prs ABC-175: the branch-only read does not request baseRefName"
 jq -e 'map(.number) == [60, 61, 64, 66, 67, 68]
     and map(.relation) == ["closes", "branch", "branch", "mentions", "mentions", "closes"]' \
   "$WORK/out" >/dev/null \
