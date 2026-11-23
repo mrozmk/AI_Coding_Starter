@@ -136,8 +136,9 @@ the winner moves the status. Invoking this command is the consent for these trac
   holder when the status category is `In Progress` or `Done` (unless the holder is ours or
   `TAKEOVER`), a foreign holder exists (unless `TAKEOVER`), or `refs` printed a `branch` or `pr`
   line (with `TAKEOVER` only a branch equal to `BRANCH` still refuses). **Held** (`self=yes`):
-  reuse that claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous`, post nothing in
-  Claim, confirm that exact id, no transition when the status already is `jira.started_status` —
+  reuse that claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous` (the marker stores
+  it percent-encoded: decode it, `To%20Do` → `To Do`, before any comparison or transition — here
+  and in step 7's release), post nothing in Claim, confirm that exact id, no transition when the status already is `jira.started_status` —
   the crash-recovery path, never a second claim; a status that is neither that `previous` nor
   `jira.started_status` → refuse "held here but the status moved on", nothing written.
 - **Claim.** github: `bash .claude/lib/team-claim.sh claim KEY --who solo --branch <BRANCH>
@@ -165,8 +166,8 @@ the winner moves the status. Invoking this command is the consent for these trac
 - Local: `git rev-parse --verify --quiet "refs/heads/<BRANCH>"` · Remote:
   `git ls-remote --heads origin "<BRANCH>"`.
   - **Exists locally** → `git switch "<BRANCH>"` — tell the user it is resumed.
-  - **Remote only** → `git switch -c "<BRANCH>" --track "origin/<BRANCH>"` (tracker none only —
-    with a tracker the claim refuses a remote branch carrying the key).
+  - **Remote only** → `git switch -c "<BRANCH>" --track "origin/<BRANCH>"` (tracker none, or a
+    claim step 6b found **Held** — otherwise the claim refuses a remote branch carrying the key).
   - **New** → `git switch -c "<BRANCH>" --no-track` — `--no-track` so a bare `git push` can never
     target the protected base (CLAUDE.md → Git Workflow); `/push` sets the upstream on first push.
   - `git switch -c` failing after step 6b won or held a claim → release it before stopping: github

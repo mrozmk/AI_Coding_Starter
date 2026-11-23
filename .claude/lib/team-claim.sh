@@ -375,7 +375,7 @@ case "$op" in
       || die 2 "jira runs the claim through the session's MCP — use refs, body and holder" ;;
 esac
 
-WHO=""; BRANCH=""; TAKEOVER=0; ID=""; REASON=""; LINES=""; PREVIOUS=""; HAS_PREVIOUS=0
+WHO=""; BRANCH=""; TAKEOVER=0; ID=""; REASON=""; LINES=""; PREVIOUS=""
 FORMAT=github; SUPERSEDED=""; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -385,7 +385,7 @@ while [ $# -gt 0 ]; do
     --id)         ID="${2:-}"; shift 2 || die 2 "--id needs a claim id" ;;
     --reason)     REASON="${2:-}"; shift 2 || die 2 "--reason needs a word" ;;
     --lines)      LINES="${2:-}"; shift 2 || die 2 "--lines needs a file" ;;
-    --previous)   PREVIOUS="${2:-}"; HAS_PREVIOUS=1; shift 2 || die 2 "--previous needs a status" ;;
+    --previous)   PREVIOUS="${2:-}"; shift 2 || die 2 "--previous needs a status" ;;
     --format)     FORMAT="${2:-}"; shift 2 || die 2 "--format needs github|jira" ;;
     --superseded) SUPERSEDED="${2:-}"; shift 2 || die 2 "--superseded needs an id" ;;
     -*)           die 2 "unknown option '$1'" ;;
@@ -432,7 +432,7 @@ case "$op" in
       claim)
         [ -n "$WHO" ] || die 2 "body claim needs --who"
         [ -n "$BRANCH" ] || die 2 "body claim needs --branch"
-        [ "$HAS_PREVIOUS" = 1 ] && [ -n "$PREVIOUS" ] || die 2 "body claim needs --previous <status|none|no-project>"
+        [ -n "$PREVIOUS" ] || die 2 "body claim needs --previous <status|none|no-project>"
         body_claim "${ID:-$(new_id)}" "$PREVIOUS" "$SUPERSEDED" ;;
       release)
         [ -n "$ID" ] || die 2 "body release needs --id"

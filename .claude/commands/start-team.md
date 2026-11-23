@@ -167,7 +167,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      the status category is `In Progress` or `Done` (unless the holder is ours or `TAKEOVER`), a
      foreign holder exists (unless `TAKEOVER`), or `refs` printed a `branch` or `pr` line (with
      `TAKEOVER` only a branch equal to `BRANCH` still refuses). **Held** (`self=yes`): reuse that
-     claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous`, post nothing in Claim,
+     claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous` (the marker stores it
+     percent-encoded: decode it, `To%20Do` → `To Do`, before any comparison or transition — here
+     and in step 4's release), post nothing in Claim,
      confirm that exact id, and skip the transition when the status already is
      `jira.started_status` — the crash-recovery path, never a second claim; a status that is
      neither that `previous` nor `jira.started_status` (e.g. Done) → refuse "held here but the
