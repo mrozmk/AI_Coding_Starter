@@ -63,6 +63,10 @@ Two marks decide what a Task gets:
    moves the requirement into the committed scope. Write product criteria for it only as far as
    the sources state the behaviour, each one conditional on that decision.
 
+   A **quality Task** — its Task cell begins with a marker from
+   `.claude/skills/backlog/quality-tasks.md` — takes its Goal, In scope, Out of scope and criteria from that file's detail templates
+   for its kind, with its command and prerequisites filled in; it needs no trace and no PRD source.
+
    A Task that already has criteria keeps every one of them unchanged: you add the three lines,
    and a criterion only where a traced requirement has none. A spec-owned Task and a protected
    Task get the three lines and no criterion at all.
@@ -81,7 +85,7 @@ order.
 - Criterion text under an existing id is never rewritten and an id is never reused or renumbered.
 - No technical approach — no library, framework, class, table or endpoint names; criteria state
   what can be observed, not how it is built.
-- Nothing the sources do not support. An assumption you needed is listed in your final message,
+- Nothing the sources do not support. (The quality-Task templates are a source.) An assumption you needed is listed in your final message,
   never written as a criterion.
 - A spec-owned or protected Task that seems to lack a criterion is reported in your final message
   (the caller proposes it through `/brainstorm <Task id>` or `/update-backlog`), never written.

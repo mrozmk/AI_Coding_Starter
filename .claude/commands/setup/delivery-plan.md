@@ -157,6 +157,7 @@ ARTIFACT: .agents/backlog.md .agents/backlog/E<n>-<slug>.md $SCRATCH/delivery-pl
 RUBRIC:   .claude/skills/backlog/backlog-rubric.md
 SOURCES:  docs/PRD.md docs/discovery.md docs/architecture.md docs/map/system.yaml (those that exist)
           + every approved spec named in the Ref cell of a Task of E<n>
+          + .claude/skills/backlog/quality-tasks.md when E<n> holds a quality Task
 MODE:     detail
 ROUND:    1 | 2
 PRIOR:    the checker warnings, verbatim, as known context; from round 2 also the previous
@@ -231,7 +232,9 @@ another, each with `backlog.md` as the index and its own `OUT` / `LOG` (`-<k>` s
 > criterion backed by the PRD, discovery or an architecture decision (`AD-n`) that governs the
 > Task's Node, nothing invented and nothing lost, one behaviour not
 > defined in two Epics, contracts at Epic boundaries (what one Epic's criteria assume of
-> another's), outcome not method, size against criteria. These checker warnings are known context
+> another's), outcome not method, size against criteria. A quality Task (its Task cell begins with
+> `[audit:` or `[upkeep:`) is backed by `.claude/skills/backlog/quality-tasks.md` — its criteria
+> come from that file's templates, not from the PRD; read it. These checker warnings are known context
 > — do not re-report them: `<the checker warnings, verbatim, or "none">`. Decisions the operator
 > recorded in the PRD change log (`D-n`) are out of bounds unless they contradict a stated
 > requirement. You are read-only: do not edit, create or reformat any file and do not run
@@ -336,6 +339,8 @@ In the project's communication language:
 - CORE duration for "Tech Lead alone" and "Tech Lead + 1", the recommendation and the rule or
   override that decided it;
 - the join day;
+- the closing audits' start days and each recurring occurrence's day (pessimistic / optimal), from
+  the schedule — none planned → one line saying so;
 - development done (CORE + MUST) and the COULD tail — days / weeks / sprints, pessimistic and
   optimal;
 - what other teams need to know, from the plan's `## Needed from other teams`: per outside row

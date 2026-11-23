@@ -87,7 +87,7 @@ After the questions, the main session spawns `@backlog-author` once (pinned mode
 | `METHOD` | `.claude/commands/setup/create-backlog.md` — Phases 3–6 |
 | `OUTPUT` | `.agents/backlog.md` and `.agents/backlog/E<n>-<slug>.md`, one per Epic |
 
-The agent follows Phases 3–6 below and returns the list of files written and its open questions. The main session then runs the Phase 7 gate. Errors go back to the same agent (`SendMessage`) with the checker output verbatim, at most twice; still red after that → the main session fixes the files itself. Agent unavailable (not installed, rate or usage limit, pinned model unavailable) → the main session writes Phases 3–6 itself, and the report says `**Author:** main session — @backlog-author unavailable`.
+The agent follows Phases 3–6 below and returns the list of files written and its open questions. The main session then runs the Phase 7 gate. Errors — and the quality warnings of Phase 4.5 — go back to the same agent (`SendMessage`) with the checker output verbatim, at most twice; still red after that → the main session fixes the files itself. Agent unavailable (not installed, rate or usage limit, pinned model unavailable) → the main session writes Phases 3–6 itself, and the report says `**Author:** main session — @backlog-author unavailable`.
 
 ### Phase 3: What a Task is
 
@@ -108,7 +108,7 @@ The hierarchy is **Epic → Task**, nothing in between. A Task is one of two thi
 
 1. **Work another team delivers goes to `## Outside the dev backlog`, never to a Task** — CI/CD and deploy pipelines, environments, monitoring / alerting setup, test plans and QA execution, designs. Each is an `X-n` row: `Owner` (the team — DevOps, QA, Design, …), `Item`, `Needed by` (the Task ids that need it, or `—`), `Starts after` (the Task ids the item itself waits for — developer work that must be done before the other team can begin, e.g. the flow an end-to-end run exercises — or `—`), `Traces` (the `R-` / `NFR-` / `AD-` ids it delivers, or `—`), `Notes`. An outside row carries no points and no status and is never scheduled; the delivery plan prints the day its `Needed by` Tasks first start and the day its `Starts after` Tasks end. A requirement it traces counts as covered.
 2. **`E0 Foundation` stays the first Epic, and its scaffold Task (`E0-1`) MUST be the first Task with no dependencies** — on greenfield it is the literal entry point that creates the project skeleton everything else stands on. E0 holds no CI/CD: the pipeline is an outside row. The HARD-GATE still holds: the backlog *describes* `E0-1`, it does not scaffold files — `E0-1` produces the skeleton later, when it runs through the pipeline like any other Task. (Brownfield exception: a mapped codebase already has a skeleton, so `E0-1` is "adopt/normalize existing scaffold" or omitted — record which.)
-3. **Conditions one waits for stay OUTSIDE the DAG in `External blockers`**, not work you implement: a dependency security audit → *blocks release*; a pen-test → *blocks prod*; a legal/product decision → *blocks an Epic*. Record what each one gates ("Security audit → blocks E5+"). You don't "design and implement" an audit — you commission it and wait.
+3. **Conditions one waits for stay OUTSIDE the DAG in `External blockers`**, not work you implement: a dependency security audit → *blocks release*; a pen-test → *blocks prod*; a legal/product decision → *blocks an Epic*. Record what each one gates ("Security audit → blocks E5+"). You don't "design and implement" an audit — you commission it and wait. An audit the team runs itself with a workflow command (`/audit-security`, `/seo-geo-audit`, `/wcag`) is not such a condition: it is a quality Task (Phase 4.5); only an audit commissioned from outside stays a blocker.
 
 > If the PRD has a "Security & Configuration" or "Deployment" section, mine it here: application work becomes Tasks; work another team delivers becomes outside rows; sign-off-style items become external blockers.
 
@@ -122,6 +122,28 @@ The hierarchy is **Epic → Task**, nothing in between. A Task is one of two thi
 4. **`MUST` = committed scope, `COULD` = optional scope awaiting a decision.** A `MUST` Task never depends on a `COULD` Task (checker error). `Scope` is not an order inside a phase: Tasks with no mutual dependency run in parallel; encode every ordering need in `Depends on`.
 5. **Each Epic carries its *why*** — **Outcome** (the product effect, traced to a `G-n` / PRD section) and **Key assumption** (the most load-bearing thing you're *not yet sure of*). One sentence each. Below the Epic map, each Epic also gets **appetite** (how much it is *worth* — the budget, not the estimate) and **cut first** (what drops first when the Epic grows). An AI agent has no "that's enough" instinct; the cut line is the hand-brake.
 6. **The DAG is the only order.** `Chain` names a sequence for a human; nothing schedules by it. Encode a real ordering need in `Depends on`.
+
+### Phase 4.5: Quality & upkeep — on every backlog
+
+Every backlog plans the project's closing audits and its recurring upkeep as Tasks of one fixed
+last Epic, `Quality & upkeep`, so they are sized, ordered and never forgotten. The markers,
+sizes, applicability tests, cadence, placement, Summary lines and detail templates live in
+[`.claude/skills/backlog/quality-tasks.md`](../../skills/backlog/quality-tasks.md) — read it and
+apply it; do not restate it here. In short:
+
+1. `[audit:security]` (`H`) and numbered occurrences of `[upkeep:architecture-review]` and
+   `[upkeep:cleanup-workflow]` (`M`) are always planned; `[audit:seo-geo]` and `[audit:wcag]`
+   (`H`) when the sources describe a public website / a user interface — otherwise one line each
+   under `## Consciously out of scope` with the reason.
+2. Every quality Task is `tech` · `MUST` · `Node` `—` · `Traces` `—` — the one Task a backlog
+   writes without a source id: the reference is its source.
+3. Order is `Depends on` only: a closing audit waits for every live `CORE`/`MUST` product Task;
+   occurrence `k` of `n = max(2, ceil(P / 160))` waits for its share of the product points.
+   A release outside row waits for the closing audits.
+4. `backlog-check.mjs` checks the markers, sizes, audit waits and the occurrence count; on a
+   fresh backlog its quality warnings are fixed like errors (Phase 2.5, Phase 7). Placement it
+   does not check: after it passes, recompute `P`, `n`, the prefixes and their sinks yourself
+   and send any occurrence whose `Depends on` differs back to the author with the errors.
 
 ### Phase 5: Story map
 
@@ -148,6 +170,7 @@ Create `.agents/` and `.agents/backlog/` if needed. Write `.agents/backlog.md` *
 | ID | Epic | Task | Type | Size | Pts | Depends on | Relates | Chain | Scope | Node | Traces | Status | Jira | Ref |
 |----|------|------|------|------|-----|------------|---------|-------|-------|------|--------|--------|------|-----|
 | E0-1 | E0 | Project scaffold | tech | H | 8 | — | — | — | CORE | platform-core | AD-1 | TODO | — | — |
+| E9-5 | E9 | [audit:security] Run /audit-security | tech | H | 8 | E3-4, E5-2 | — | — | MUST | — | — | TODO | — | — |
 
 ## Story map
 <!-- storymap:begin -->
@@ -160,6 +183,7 @@ Create `.agents/` and `.agents/backlog/` if needed. Write `.agents/backlog.md` *
 | X-1 | DevOps | Deployment pipeline | E0-1 | — | NFR-1 | — |
 
 ## External blockers · ## Open questions · ## Consciously out of scope
+(`## Consciously out of scope` also holds the rule-out line of a conditional audit, e.g. `- [audit:seo-geo] — no public website (PRD §2)`)
 ```
 
 **Cell rules** (the checker enforces them): `Depends on` / `Traces` — comma-separated ids or `—`; `Relates` — Task ids or `—`, not itself, not a pair already in `Depends on` (either direction); `Chain` — a kebab token or `—`, members one linear `Depends on` path within one Epic and one `Node` (the two columns are optional for older backlogs — absent reads as `—`); `Type` `story|tech`; `Size` `M|H|XH`; `Pts` = size points; `Scope` `CORE|MUST|COULD`; `Node` a `system.yaml` node id or `—`; `Traces` — `G-/R-/NFR-/BR-/FL-n.Ak/AD-` ids from the sources (every active `R-`/`NFR-` must be traced by some Task or outside row); `Status` `TODO|WIP|DONE|BLOCKED`; `Jira` key or `—`; `Ref` spec/plan paths or `—`. Ids are case-sensitive and never renumbered. Outside rows: `ID` `X-n`; `Needed by` — Task ids or `—`; `Starts after` — Task ids or `—`, never closing a wait cycle: a Task waits for its `Depends on` Tasks and for the items that list it under `Needed by`, an item for its `Starts after` Tasks (so not a Task named in the row's own `Needed by`, nor one that depends on such a Task); `Traces` — active `R-`/`NFR-`/`AD-` ids or `—` (an active `R-`/`NFR-` traced only here counts as covered). The section is optional for the checker, but write it — with an empty table when nothing falls outside. The last three headings are separate `##` sections in the real file (one line each when empty). `**Detail:** structure` says the Epic files carry Summary lines only; `/setup:delivery-plan` sets it to `full` once every live Task has criteria.
@@ -181,7 +205,7 @@ No `**Goal:**`, `**In scope:**` or `**Out of scope:**` lines and no acceptance-c
 node .claude/lib/backlog-check.mjs --write
 ```
 
-Run from the project root. It reads the PRD path from the header written in Phase 6, the Epic files in `.agents/backlog/`, and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, trace coverage, `Node` cells, the system tree and the Epic files (every live Task has its block in its Epic's file with a `**Summary:**` — under `**Detail:** structure` criteria may be missing, and any that exist are validated); then — only when there are **no errors** — fills the `storymap` marker region and the `>` meta line under each Task heading in the Epic files (ordering and parallel work are `/setup:delivery-plan`'s job). **Fix every error and rerun until it exits 0** — through `@backlog-author` first, as Phase 2.5 says. Quote every warning verbatim in the report — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker region or a `>` meta line; `--write` owns them. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
+Run from the project root. It reads the PRD path from the header written in Phase 6, the Epic files in `.agents/backlog/`, and `docs/discovery.md`, `docs/architecture.md`, `docs/map/system.yaml` when present; validates ids, the DAG, sizes, trace coverage, `Node` cells, the system tree and the Epic files (every live Task has its block in its Epic's file with a `**Summary:**` — under `**Detail:** structure` criteria may be missing, and any that exist are validated); then — only when there are **no errors** — fills the `storymap` marker region and the `>` meta line under each Task heading in the Epic files (ordering and parallel work are `/setup:delivery-plan`'s job). **Fix every error and rerun until it exits 0** — through `@backlog-author` first, as Phase 2.5 says. Quote every warning verbatim in the report — except the quality warnings (Phase 4.5): they go back to `@backlog-author` with the errors first, and only one still there after that is quoted — a warning is a judgment call for the human, not something to silence by editing the checker's input into shape. Never hand-edit the marker region or a `>` meta line; `--write` owns them. If the script is missing (a workflow older than this command) record `backlog: not validated — backlog-check.mjs missing` in the report and continue; that line is never dropped.
 
 ### Phase 7.5: Independent check — `/check-backlog` (recommended)
 
@@ -202,6 +226,7 @@ applied)`; later → `**Check:** not run — /check-backlog before the first /ji
 **Scope:** CORE <T> Tasks / <p> pts · MUST <p> pts · COULD <p> pts
 **Outside the dev backlog:** <N> rows (<owners>)
 **Chains:** <token: E1-2 → E1-3 (12 pts), … — or "none">
+**Quality & upkeep:** <E<n>> — audits <ids> · <n> occurrences of each recurring command (<P> product pts) · ruled out: <marker — reason, or "none">
 **Check:** <verdict from Phase 7.5, or "not run — /check-backlog before the first /jira draft">
 **backlog-check warnings:** <each one verbatim, or "none">
 
@@ -222,11 +247,12 @@ Keep the report to this skeleton — add lines only for a blocker the user must 
 
 - **`Status`, `Ref` and `Jira` cells are written by the pipeline** — `/plan-feature` (Status → `WIP`, Ref → spec + plan), `/execute` and `/orchestrate` (Status → `DONE` per the whole-Task rule: only when no active plan still lists the Task), `/quick-change` (`DONE` on completion), `/brainstorm` Step 0 (read-only status refresh from Jira for Tasks with a key), `/jira sync` (keys) — **but only if `.agents/backlog.md` exists.** No backlog → those steps are silent no-ops. This is the *only* automation on the file's content; it is mechanical and safe.
 - **Structural change (new Epic, new or re-sized Task, re-shaped DAG) goes through `/update-backlog`** (and `/check-backlog` through it): it previews every change, shows its impact, protects work in progress, records one `D-n` in the PRD change log and validates the candidate before writing. A hand edit stays allowed — then run `node .claude/lib/backlog-check.mjs --write`; the next `/update-backlog` (or the checker's `Scope rev` warning) surfaces it. No other automated step rewrites the DAG; that is how a backlog starts "pretending to be the truth".
+- **Quality Tasks follow `.claude/skills/backlog/quality-tasks.md`.** `/update-backlog` keeps open closing audits waiting for new product work and the occurrence count in step with the product points; the checker warns when they drift.
 - **Ids are append-only.** A removed Task keeps its row with `(withdrawn)` in the `Task` cell and `Status` `DONE` or `BLOCKED`; its block in the Epic file and its AC ids stay. The checker still validates its ids but leaves it out of the story map, the delivery plan and trace coverage. Jira issues are never deleted by the pipeline.
 - The backlog is **short, tabular, referential**. If it grows narrative, it has drifted from its job — prune it back to tables + references.
 
 ## Notes
 
 - Same language policy as the PRD (technical content in English per repo conventions).
-- Do not invent content with no source. If a Task has no `R-`/`FL-`/`AD-` to trace, either the sources have a gap (record it in "Open questions") or the Task should not exist.
+- Do not invent content with no source. (Quality Tasks, Phase 4.5, are the one exception.) If a Task has no `R-`/`FL-`/`AD-` to trace, either the sources have a gap (record it in "Open questions") or the Task should not exist.
 - This command does not call `/brainstorm`, `/quick-change`, `/plan-feature` or `/jira` — it only produces the map that feeds them.
