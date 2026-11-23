@@ -113,5 +113,5 @@ tracked_record "$G" > "$T/out" || { echo "team-purity: FAIL — an untracked rec
 git -C "$G" add .agents/upkeep.json
 ! tracked_record "$G" > "$T/out" || { echo "team-purity: FAIL — a tracked record passed"; exit 1; }
 
-scan "$ROOT"
 tracked_record "$ROOT" || { echo "team-purity: FAIL — the template tracks its upkeep record"; exit 1; }
+scan "$ROOT"

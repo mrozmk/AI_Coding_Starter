@@ -81,10 +81,13 @@ TOP=$(cd "$TOP" && pwd -P) || exit 1
 PROFILE_FILE="$TOP/.claude/project-profile.json"
 SEP=$'\037'
 
+one_object() {  # <file> — exactly one JSON object (jq empty alone accepts "" and "{}{}")
+  jq -s -e 'length == 1 and (.[0] | type == "object")' "$1" >/dev/null 2>&1
+}
+
 # ---- profile ---------------------------------------------------------------------------------
 PROF='{}'
-if [ -f "$PROFILE_FILE" ] \
-  && jq -s -e 'length == 1 and (.[0] | type == "object")' "$PROFILE_FILE" >/dev/null 2>&1; then
+if [ -f "$PROFILE_FILE" ] && one_object "$PROFILE_FILE"; then
   PROF=$(jq -c . "$PROFILE_FILE")
 elif [ "$CMD" = due ]; then
   exit 0
@@ -169,13 +172,10 @@ home_of() {  # <repo> → H_DIR H_DISP H_REC_DISP, or H_ERR and rc 1
 }
 
 # ---- the record ----------------------------------------------------------------------------------
-record_ok() {  # <file> — exactly one JSON object (jq empty alone accepts "" and "{}{}")
-  jq -s -e 'length == 1 and (.[0] | type == "object")' "$1" >/dev/null 2>&1
-}
 read_record() {  # <file> → REC (compact json), REC_ERR true|false
   REC='{}' REC_ERR=false
   [ -e "$1" ] || return 0
-  if record_ok "$1"; then REC=$(jq -c . "$1"); else REC_ERR=true; fi
+  if one_object "$1"; then REC=$(jq -c . "$1"); else REC_ERR=true; fi
 }
 rec_fields() {  # <id> → L_HAS L_COMMIT L_DATE L_BLOB D_HAS D_COMMIT D_DATE D_BLOB
   local line
@@ -365,7 +365,7 @@ fi
 FILE="$H_DIR/.agents/upkeep.json"
 BASE='{}'
 if [ -e "$FILE" ]; then
-  record_ok "$FILE" || { echo "upkeep: $H_REC_DISP is not one JSON object — nothing recorded" >&2; exit 1; }
+  one_object "$FILE" || { echo "upkeep: $H_REC_DISP is not one JSON object — nothing recorded" >&2; exit 1; }
   BASE=$(jq -c . "$FILE")
 fi
 KIND=last_run; [ "$CMD" = decline ] && KIND=declined
@@ -381,7 +381,7 @@ printf '%s' "$BASE" | jq --arg id "$ID" --arg kind "$KIND" --arg date "$TODAY" -
   | .items[$id][$kind] = ({date: $date, commit: $commit}
       + (if $withblob then {prd_blob: (if $blob == "" then null else $blob end)} else {} end))
   | if $kind == "last_run" then del(.items[$id].declined) else . end' > "$tmp" 2>/dev/null || fail_write
-record_ok "$tmp" && jq -e --arg id "$ID" --arg kind "$KIND" '.items[$id][$kind].commit' "$tmp" >/dev/null 2>&1 \
+one_object "$tmp" && jq -e --arg id "$ID" --arg kind "$KIND" '.items[$id][$kind].commit' "$tmp" >/dev/null 2>&1 \
   || fail_write
 mv -f "$tmp" "$FILE" 2>/dev/null || fail_write
 if [ "$CMD" = decline ]; then
