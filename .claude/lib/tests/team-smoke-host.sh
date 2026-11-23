@@ -495,7 +495,7 @@ rp '{"teams":{"sessions":{"Fable":{},"Advisor":{"model":"sonnet"}}}}'
 rl 'roles_validate && roles_list && roles_cfg Advisor model'
 expect 0 "deprecated — read as Fable (ignored: Fable is declared)" "(29) Advisor beside Fable"
 [ "$(sed -n 2,3p "$WORK/out" | tr '\n' ' ')" = "Fable opus " ] || fail "(29) Advisor beside Fable is not ignored"
-rp '{"teams":{"sessions":{"supervisor":{},"Ab":{"cli":"x","model":"a b","effort":"huge","standing":"y"},"Mon":{"contract":"../x","settings":"a/b","place":{"tab":"Lead","slot":"main"}},"Supervisor":{},"Cx":{"cli":"codex","settings":"Advisor","contract":"none.md","place":{"tab":"","slot":"top"}},"Dx":{"settings":"Gone","contract":"/abs.md"},"Z":3,"Éa":{},"TeamLead":{"effort":"none"}}}}'
+rp '{"teams":{"sessions":{"supervisor":{},"Ab":{"cli":"x","model":"a b","effort":"huge","standing":"y"},"Mon":{"contract":"../x","settings":"a/b","place":{"tab":"Supervisor","slot":"main"}},"Supervisor":{},"Cx":{"cli":"codex","settings":"Advisor","contract":"none.md","place":{"tab":"","slot":"top"}},"Dx":{"settings":"Gone","contract":"/abs.md"},"Z":3,"Éa":{},"TeamLead":{"effort":"none"}}}}'
 rl 'roles_validate'; expect 2 "" "(29) a bad list"
 for e in \
   'error: teams.sessions.supervisor: the role name must match ^[A-Z][A-Za-z0-9]{1,23}$' \
@@ -514,7 +514,7 @@ for e in \
   'error: teams.sessions.Dx.contract=/abs.md must be a path inside the repo' \
   'error: teams.sessions.Dx.settings=Gone: no .claude/team/sessions/Gone.settings.json' \
   'error: teams.sessions.TeamLead.effort=none must be low|medium|high|xhigh|max' \
-  'error: teams.sessions: tab Lead has more than one main slot (Mon, Supervisor)'; do
+  'error: teams.sessions: tab Supervisor has more than one main slot (Mon, Supervisor)'; do
   grep -qxF -- "$e" "$WORK/out" || fail "(29) missing: $e"
 done
 [ "$(grep -c '^error: ' "$WORK/out")" = 17 ] || fail "(29) not every error collected, or an extra one"
@@ -545,8 +545,8 @@ expect 0 "" "(30) a project role"
 ! grep -q 'Monitor' "$RL" || fail "(30) roles-lib.sh names the project role"
 rm "$RR/.claude/team/sessions/Monitor.settings.json"
 rl 'roles_validate'; expect 2 "error: teams.sessions.Monitor.settings=Monitor: no .claude/team/sessions/Monitor.settings.json" "(30) its settings file is required"
-rp '{"teams":{"sessions":{"Monitor":{"model":"sonnet","contract":"docs/roles/monitor.md","place":{"tab":"Lead","slot":"main"}},"Supervisor":{}}}}'
-rl 'roles_validate'; expect 2 "error: teams.sessions: tab Lead has more than one main slot (Monitor, Supervisor)" "(30) two mains in one tab"
+rp '{"teams":{"sessions":{"Monitor":{"model":"sonnet","contract":"docs/roles/monitor.md","place":{"tab":"Supervisor","slot":"main"}},"Supervisor":{}}}}'
+rl 'roles_validate'; expect 2 "error: teams.sessions: tab Supervisor has more than one main slot (Monitor, Supervisor)" "(30) two mains in one tab"
 # The Advisor template passes the profile check (its _samples), and the shipped default names
 # contracts and settings that exist in the starter itself.
 run "$SRC" python3 -I -c 'import sys; sys.path.insert(0, ".claude/lib"); import session_profile_check as s
@@ -817,7 +817,7 @@ run "$MAIN" bash .claude/lib/team-new.sh adhoc-x AB-1 feature/AB-1-x origin/deve
 run "$MAIN" bash .claude/lib/team-new.sh abcdefghijklmnopqrstuvwxy AB-1 feature/AB-1-x origin/develop
 has "session name smk-abcdefghijklmnopqrstuvwxy-wrapup is over 32 characters" "$WORK/out" || fail "(43) length message"
 [ ! -d "$WORK/main-supervisor" ] && [ ! -d "$WORK/main-adhoc-x" ] || fail "(43) a refused team got a clone"
-# A team's Herdr tab is named after it: the roles tab's name (Lead, case-insensitive) is refused.
+# A team's Herdr tab is named after it: a roles tab's name (Supervisor, its old name Lead, any case) is refused.
 run "$MAIN" bash .claude/lib/team-new.sh lead AB-1 feature/AB-1-x origin/develop
 [ "$RC" != 0 ] && has "team name lead is the roles' Herdr tab Lead" "$WORK/out" && [ ! -d "$WORK/main-lead" ] \
   || fail "(43) a team named lead was not refused"

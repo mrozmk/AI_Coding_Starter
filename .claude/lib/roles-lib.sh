@@ -20,21 +20,21 @@ ROLES_MODEL_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$'   # = team-p
 ROLES_NAME_RE='^[A-Z][A-Za-z0-9]{1,23}$'   # checked in jq (Oniguruma): ASCII, not locale collation
 ROLES_SHIPPED='{
   "Supervisor": {"cli": "claude", "model": "opus", "effort": "high", "settings": "Supervisor",
-                 "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Lead", "slot": "main"}},
+                 "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Supervisor", "slot": "main"}},
   "Fable": {"cli": "claude", "model": "fable", "effort": "medium", "settings": "Advisor",
-            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
+            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Supervisor", "slot": "side"}},
   "Astra": {"cli": "codex", "model": "default", "effort": "high",
-            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
+            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Supervisor", "slot": "side"}},
   "TeamLead": {"standing": false, "cli": "claude", "model": "fable", "effort": "medium"}}'
 ROLES_GENERIC='{"cli": "claude", "model": "opus", "effort": "high", "standing": true, "enabled": true}'
 # Per-name defaults for the fields a declaration leaves out (the old shape had only model/effort).
 ROLES_DEFAULTS='{
   "Supervisor": {"settings": "Supervisor",
-                 "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Lead", "slot": "main"}},
+                 "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Supervisor", "slot": "main"}},
   "Fable": {"effort": "medium", "settings": "Advisor",
-            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
+            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Supervisor", "slot": "side"}},
   "Astra": {"cli": "codex", "contract": ".agents/reference/roles/advisor.md",
-            "place": {"tab": "Lead", "slot": "side"}},
+            "place": {"tab": "Supervisor", "slot": "side"}},
   "TeamLead": {"standing": false, "model": "fable", "effort": "medium"}}'
 # → [{key, name, decl, cfg}] in declaration order. key: the profile key; name: the role (Advisor →
 # Fable; dropped when Fable is declared too); cfg: generic * name defaults * declaration (null when
