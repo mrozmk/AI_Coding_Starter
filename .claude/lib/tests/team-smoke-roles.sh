@@ -187,6 +187,9 @@ noline "send-keys" "$STUB_LOG" "(6) the trust dialog was answered"
 TMUX=/tmp/fake,1,0 STUB_SELF=smk-fable run "$MAIN" $RS up Fable; expect 0 "Fable: already running" "(6) role window"
 noline "This window is not a role" "$WORK/out" "(6) a role's own window"
 run "$MAIN" $RS stop Fable; expect 0 "" "(6) stop"
+clr; STUB_PANE="$WORK/trust.txt" run "$MAIN" $RS up Astra
+expect 0 "Astra: started (needs trust — pick Yes; Enter alone exits) — model: CLI default · effort high" "(6) codex trust"
+run "$MAIN" $RS stop Astra; expect 0 "Astra: stopped" "(6) stop Astra"
 echo "team-smoke-roles: (6) window line, trust OK"
 
 # ---- (7) roles.lock: a live holder refuses, a killed one is reclaimed -----------------------------

@@ -240,7 +240,8 @@ session would otherwise hand `CLAUDECODE=1` to every later session. `up` runs, p
 with `claude --name <Role><suffix> --session-id <uuid> --model <m> --effort <e> --settings
 <materialised profile>` (plus `TEAM_SESSIONS_CLAUDE_FLAGS`) and the bootstrap line "You are <Role>.
 Follow the role contract the session context names and reconcile now …"; a Codex role gets `codex
---no-daemon -m <m> -c model_reasoning_effort=<e> "<bootstrap line> Contract: <path>"`. `CODEX_HOME` /
+--no-daemon [-m <m>] -c model_reasoning_effort=<e> "<bootstrap line> Contract: <path>"` (no `-m`
+when its model is `default`). `CODEX_HOME` /
 `CLAUDE_CONFIG_DIR` are forwarded per session, never with `tmux set-environment -g`.
 `CLAUDE_CONFIG_DIR` comes from `.claude/claude-profile` when it has a value line (`here` and the
 preflight's settings check use the same dir), else from the launcher's own environment; a declared
