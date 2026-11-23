@@ -1,13 +1,12 @@
 # Reference: promoting a QA run to a regression test
 
-`/qa-verify` is *"not a regression-test author — that is `/test-e2e`"*. This is the procedure for
-that hand-off: turning the interaction sequence a QA run already executed into a permanent test.
+`/qa-verify` does not write regression tests, and no command does yet — a regression command is to be designed (#173). This is the procedure for the hand-off meanwhile: turning the interaction sequence a QA run already executed into a permanent test.
 
 It is **not** a slash command. It is a procedure a human asks for after a QA run.
 
 **Why bother.** A Lane S run with interaction (browser: Playwright; non-browser app: a Tier-2
 driver run — `qa-evidence-families.md` §2) already drove the app — clicked, scrolled, typed,
-waited — and recorded every call in each row's `methods`, because registry §6 demands it. That
+waited — and left the sequence in each row's `artifacts` — the script and its JSON (driver `script`), the `.mcp.md` step log (driver `mcp`), the driver run (non-browser). That
 sequence *is* a test; it just evaporates when the session ends.
 
 **Why it is not part of `/qa-verify`.** That command carries a hard gate — *QA never mutates*.
@@ -21,16 +20,15 @@ that makes its verdicts trustworthy.
 `.agents/handoffs/qa-<slug>-ac-matrix.md`, written by `/qa-verify` Phase 3. Several numbered
 runs (`-2`, `-3`) → use the **newest** and say which.
 
-**Stop if the matrix has no interaction rows** (browser: no `methods` beyond navigation and
-reads; non-browser: no Tier-2 rows). An inspection-only run never acted on the app, so there is
+**Stop if the matrix has no interaction rows** (browser: no row whose artifacts record an action beyond navigation and reads; non-browser: no Tier-2 rows). An inspection-only run never acted on the app, so there is
 no sequence to promote. That is a normal outcome, not a failure.
 
 ## 2. Extract the sequence — and refuse to fill gaps
 
-Read `methods`, `evidence` and (non-browser) the tier stamp in `notes` of each row.
+Read each row's `artifacts` first — they hold the action sequence; `methods` lists only how a value was observed (ARIA snapshot, computed style, screenshot viewed). Then `evidence` and (non-browser) the tier stamp in `notes`.
 
 **The one rule that makes this trustworthy: never invent a step the run did not perform.** If
-the recorded methods do not spell out a reproducible sequence — locator, action, assertion —
+the row's artifacts do not spell out a reproducible sequence — locator, action, assertion —
 name the row as unusable and leave it out. A test assembled from a plausible reconstruction
 asserts what the author *thinks* happened, and a green run of it proves nothing.
 
@@ -73,15 +71,16 @@ Match the existing tests; do not invent a house style. Rules that hold everywher
 - **Never overwrite an existing test file.** Add a case to it or create a new one — a previous
   case may encode behaviour nobody has re-verified.
 - Name the test after the criterion it encodes and cite the `ac_id` + tracker key in a comment.
-- Never assert translated copy when a stable role/label/test-id exists (`/test-e2e` rule).
+- Locators in this order: role (`getByRole`), then test id, then label, then placeholder. Never CSS selectors, never XPath.
+- Wait on a condition (`expect(locator).toBeVisible()`, a response the action triggers), never a fixed sleep (`waitForTimeout`).
+- Never assert translated copy when a stable role/label/test-id exists.
 
 ## 5. Report
 
 State what was written, which ACs it covers, which rows were skipped and why, and every place
 the translation was not one-to-one.
 
-Then say plainly that it was **not run** — running needs the project's test command (CLAUDE.md
-→ Validation, or the e2e command from `/test-e2e`). If the QA environment differed from the
+Then run it with the project's test command (CLAUDE.md → Validation) and show the runner output — claim the test only when that run is green. When it cannot be run here, say plainly that it was **not run**. If the QA environment differed from the
 test environment (another flavor, base URL, market, feature-flag state), say so: a sequence
 that held under QA is a *hypothesis* under the test target until a run says otherwise.
 
