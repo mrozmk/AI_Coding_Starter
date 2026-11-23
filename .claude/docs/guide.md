@@ -70,7 +70,7 @@ Full routing of "what to read when" lives in [.agents/memory/index.md](../../.ag
 | **Business analyst** | `/prime-ba`, `/discover`, `/architect`, `/design-ui`, `/setup:create-backlog`, `/check-backlog`, `/setup:delivery-plan`, `/meeting-notes`, `/update-backlog`, `/jira`, `/github-sync`, `/confluence` |
 | **Developer** | `/prime`, `/start-task`, `/tasks-status`, `/recon`, `/brainstorm`, `/plan-feature`, `/execute`, `/check-implementation`, `/quick-change`, `/commit`, `/push`, `/pull`, `/pr-create`, `/pr-comments`, `/pr-merge`, `/release`, `/orchestrate` |
 | **Review and gates** | `/codex-review`, `/deep-review`, `/architecture-review`, `/gates:verify-implementation`, `/gates:design-quality-check`, `/architecture-doc` |
-| **QA and security** | `/prime-qa`, `/qa-verify`, `/test-e2e`, `/audit-security`, `/seo-geo-audit` |
+| **QA and security** | `/prime-qa`, `/qa-verify`, `/audit-security`, `/seo-geo-audit` |
 | **Teams (opt-in)** | `/setup:teams`, `/roles`, `/start-team`, `/tasks-status` |
 | **Session and upkeep** | `/handoff`, `/hc`, `/analysis`, `/simply`, `/retro`, `/maintain:refresh-brief`, `/maintain:cleanup-workflow`, `/maintain:sync-from-starter`, `/maintain:sync-herdr-kit` |
 
@@ -174,9 +174,9 @@ New chat → /prime → /quick-change <what to change> → /commit
 - [`codex`](https://github.com/openai/codex) CLI *(optional)* — enables **cross-model review**: a second, independent model (GPT-class) reviews work the primary thread produced. Used by `/codex-review` (standalone diff/proposal review), by `/quick-change` (Phase 2, on the plan before any code exists), and as a conditional gate inside `/plan-feature` (Phase 7), `/brainstorm` (Step 8), `/check-implementation` (Step 1.5, on the gate-approved diff), `/architecture-review` (Phase 0b blind auditor and the refutation pass by default; Phase 0 second deepening sweep with `--codex`), `/orchestrate` (Step 5.3b per `medium` step, and Phase 7 step 0 on the whole run's diff), `/discover`, `/architect`, `/check-backlog`, `/design-ui` and `/audit-security`. It also writes code in `/execute codex` and fixes it in `/check-implementation codex`. The conditional gates **skip cleanly** when `codex` is not on `PATH` (each logs one "skipped — codex not on PATH" line, no error), keeping the harness portable; the standalone `/codex-review` instead **hard-stops** with a clear install/login message, since running it without `codex` has no fallback. **`/quick-change` sits between the two:** its review is mandatory in the sense that nothing you can type disables it, but an absent `codex` degrades the run rather than blocking it — the missing opinion is reported on its own line instead of being silently dropped. Install + `codex login` to activate.
 
 **Optional (per integration):**
-- **Jira Cloud + `mcp-atlassian`** — needed for `/jira`, `/confluence` and every command that reads a ticket (`/start-task`, `/brainstorm <KEY>`, `/prime-ba`, `/qa-verify`, `/test-e2e CS-1`, `/pr-create`, `/pr-merge`, the team commands). The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
+- **Jira Cloud + `mcp-atlassian`** — needed for `/jira`, `/confluence` and every command that reads a ticket (`/start-task`, `/brainstorm <KEY>`, `/prime-ba`, `/qa-verify`, `/pr-create`, `/pr-merge`, the team commands). The starter ships the skill itself but does not require Jira to function. See [Jira integration setup](#jira-integration-optional) below.
 - **`uvx`** (from [uv](https://github.com/astral-sh/uv)) — runtime for the `mcp-atlassian` MCP server, only if you wire up Jira.
-- **MCP Playwright** — needed for browser work: `/test-e2e`, `/qa-verify` UI checks under its `mcp` or `subagent` driver (the default `script` driver runs the project's own Playwright), `/design-ui`, `/gates:design-quality-check`, `/seo-geo-audit`.
+- **MCP Playwright** — needed for browser work: `/qa-verify` UI checks under its `mcp` or `subagent` driver (the default `script` driver runs the project's own Playwright), `/design-ui`, `/gates:design-quality-check`, `/seo-geo-audit`.
 - **Team layer** — macOS, a session host (Herdr or `tmux` — `teams.session_host: "auto"`, the default, takes Herdr when it answers, else tmux), `python3`, `perl` and the Codex CLI (`sqlite3` only for the optional agent-mail kit); see [Team supervision](#team-supervision-opt-in). See [MCP Playwright setup](#mcp-playwright-optional) below.
 
 That's it. No language runtime is required by the starter itself — pick your stack when scaffolding the actual project (the seed `CLAUDE.md` is stack-agnostic; `/setup:create-CLAUDE_MD` adapts to whatever you initialize).
@@ -188,8 +188,8 @@ These three MCP servers extend the shipped commands. All three are already decla
 | MCP | What it does | Repo | Used by |
 |-----|--------------|------|---------|
 | **context7** | Fetches up-to-date library / API docs on demand | [upstash/context7](https://github.com/upstash/context7) | Any command researching external libs (`/plan-feature` Phase 2, `/architect` stack research, `/execute`, `/recon`) |
-| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/test-e2e`, `/qa-verify` (drivers `mcp` and `subagent`), `/design-ui`, `/gates:design-quality-check`, `/seo-geo-audit` |
-| **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira`, `/confluence`, `/start-task`, `/brainstorm <KEY>`, `/prime-ba`, `/qa-verify`, `/recon`, `/test-e2e CS-1`, PR and team commands |
+| **playwright-mcp** | Browser automation — drives a real browser for testing and UI verification | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `/qa-verify` (drivers `mcp` and `subagent`), `/design-ui`, `/gates:design-quality-check`, `/seo-geo-audit` |
+| **mcp-atlassian** | Jira Cloud — create / edit / search / transition Epics, Tasks, Bugs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | `/jira`, `/confluence`, `/start-task`, `/brainstorm <KEY>`, `/prime-ba`, `/qa-verify`, `/recon`, PR and team commands |
 
 **Installing outside this project** (the `.mcp.json` entries already cover it here):
 
@@ -222,8 +222,6 @@ The committed `.mcp.json` declares the `atlassian` server (next to `context7` an
 ### MCP Playwright (optional)
 
 Needed for the browser-driven commands (see the table above). The starter uses Microsoft's [playwright-mcp](https://github.com/microsoft/playwright-mcp), already declared in `.mcp.json` (isolated profile, output in `.playwright-mcp/`). Outside this project: `claude mcp add playwright -- npx -y @playwright/mcp@latest`.
-
-Once installed, `/test-e2e` can drive a real browser to explore your UI and generate Playwright test files. If you skip this, `/test-e2e` falls back to a degraded mode (plan derived from code/spec inspection) instead of failing.
 
 ---
 
@@ -368,8 +366,8 @@ Reads the approved spec, analyzes the codebase, and — **only if** the spec dec
 
 Runs the active plan. Moves it to `.agents/plans/done/` when complete and, when a backlog exists, marks the Task `DONE`. `/execute codex` has Codex write the code while Claude supervises.
 
-> If the feature includes UI, run `/test-e2e <flow-name>` (or `/test-e2e CS-1` to pull acceptance criteria from a Jira issue) after implementation to generate Playwright E2E tests. Requires MCP Playwright (see Requirements above); falls back to degraded mode without it.
->
+> E2E regression tests: no command writes them yet — one is planned. Today they come from the Operator's QA run (`/qa-verify`), promoted by hand with [the regression-test procedure](../../.agents/reference/qa-to-regression-test.md).
+
 ### 10. Check the implementation
 
 ```
@@ -425,7 +423,6 @@ Checks what shipped against the Task's acceptance criteria, one by one, and leav
 | `/architecture-review [area] [--codex]` | Codebase-wide, analyze-only architecture audit — two HTML reports under `.agents/reference/` (deepening candidates, architecture assessment). `/prime` reminds you when it is due (`.claude/lib/upkeep.sh`, thresholds in the profile's `upkeep` block); a whole-codebase run is recorded in `.agents/upkeep.json`. |
 | `/architecture-doc [scope]` | When you want to *see* how the built system fits together — renders 3–5 complementary flows (technical, data, temporal, business, state…) as Mermaid diagrams in one self-contained HTML under `.agents/reference/`, every box verified against code, with an exists / to build / later legend. Analyze-only. Not `/architect` (decides structure before code) and not `/architecture-review` (audits code for refactors and writes two reports: deepening candidates and an architecture assessment). |
 | `/setup:map-codebase` | **Brownfield bootstrap** — adopting the workflow into a large existing codebase that never had AI. One run: parallel fan-out comprehension (distilled summaries, no context flooding) → `architecture.md` + reconstructed `docs/PRD.md` → cascades into `/maintain:refresh-brief` + `/setup:create-CLAUDE_MD`. Two review checkpoints (scope; PRD validation). See [.claude/commands/setup/map-codebase.md](../commands/setup/map-codebase.md). |
-| `/test-e2e <flow\|jira-key>` | After implementing a UI feature — explores the UI with MCP Playwright, produces a test plan for approval, generates Playwright tests under the project's test directory. Three input modes: empty (reads latest plan in `.agents/plans/active/`), Jira key like `CS-1` (pulls acceptance criteria via mcp-atlassian), or a flow name. Requires MCP Playwright; falls back to degraded mode otherwise. |
 | `/maintain:sync-from-starter [--check\|<ref>]` | Pull newer workflow definitions from the upstream starter (commands, agents, skills, hooks, config) without touching project knowledge. 3-way aware via a committed `.claude/.starter-sync.json` provenance manifest; recommends but asks on `settings.json`/hook conflicts. `--check` = dry-run only; `<ref>` = pin to a tag. See [.claude/starter-sync-playbook.md](../starter-sync-playbook.md). |
 | `/maintain:sync-herdr-kit [<ref>]` | Opt-in, per developer: install or update the Herdr panels kit (side panels and the `harness` layout) from the starter into your Herdr app home (`~/.config/herdr-app`). Clones the starter, shows the kit installer's dry run, writes only after your yes, never moves a folder you copied by hand; does nothing without a Herdr app home. `/maintain:sync-from-starter` never runs it — it only names it when the kit changed upstream. |
 | `/maintain:cleanup-workflow` | Periodic AI-workflow housekeeping. Five sequential phases: (1) reference integrity check across 6 categories — markdown links, path refs, section anchors, slash commands, MCP tool refs, the `CLAUDE.md` section contract; (2) memory pruning — surfaces stale entries in `errors.md` / `decisions.md` / `patterns.md` / `api.md` / `domain/*` and archives them (per-entry user decision) to `.agents/memory/archive/`; (3) workflow health warnings — empty status stuck >30 days, orphan specs, stale active plans, audit log size, large memory files, `CLAUDE.md` over its cap or carrying narrative that belongs in memory; (4) workflow optimization audit — systemic drift in the workflow itself (stale auto-loads, internal contradictions, unbounded automation, config gaps); (5) `CLAUDE.md` diet — opt-in, per-paragraph: moves history and rationale into `decisions.md` / `errors.md` / `reference/` and leaves a one-line pointer, measuring before and after. No auto-fix in Phase 1, archive-not-delete in Phase 2, signal-only in Phases 3–4, consent per move in Phase 5. `/prime` reminds you when it is due (`.claude/lib/upkeep.sh`, thresholds in the profile's `upkeep` block); the run is recorded in `.agents/upkeep.json`. |

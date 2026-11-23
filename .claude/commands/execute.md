@@ -147,7 +147,7 @@ For EACH task in "Step by Step Tasks":
 
 If the plan requires browser validation (e.g. a task or acceptance criterion reading "E2E flow tested in the browser" or similar), validate the running app, not just the code:
 
-1. **If the project has an E2E-generation command** (e.g. a `/test-e2e [flow-name]` command), run it to generate browser tests via MCP exploration. It typically needs the dev server running in the background.
+1. **If the project has its own E2E-generation command**, run it to generate browser tests. It typically needs the dev server running in the background.
    - Use the flow name from the plan. If unsure, validate the full set.
    - If no such command exists, fall back to step 2.
 

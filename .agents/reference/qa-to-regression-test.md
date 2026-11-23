@@ -1,14 +1,18 @@
 # Reference: promoting a QA run to a regression test
 
-`/qa-verify` is *"not a regression-test author — that is `/test-e2e`"*. This is the procedure for
-that hand-off: turning the interaction sequence a QA run already executed into a permanent test.
+`/qa-verify` does not write regression tests, and no command does yet —
+a regression command is to be designed (#173). This is the procedure for the hand-off meanwhile:
+turning the interaction sequence a QA run already executed into a permanent test.
 
 It is **not** a slash command. It is a procedure a human asks for after a QA run.
 
 **Why bother.** A Lane S run with interaction (browser: Playwright; non-browser app: a Tier-2
 driver run — `qa-evidence-families.md` §2) already drove the app — clicked, scrolled, typed,
-waited — and recorded every call in each row's `methods`, because registry §6 demands it. That
-sequence *is* a test; it just evaporates when the session ends.
+waited — and left the sequence behind: browser driver `script` or `mcp` in the row's
+`artifacts` (the script and its JSON, the `.mcp.md` step log), browser driver `subagent` and a
+non-browser Tier-2 run in the row itself (non-browser: call by call,
+`.claude/agents/qa-runtime-app.md.example` rule 8). That sequence *is* a test; it just
+evaporates when the session ends.
 
 **Why it is not part of `/qa-verify`.** That command carries a hard gate — *QA never mutates*.
 Writing a test file is a source edit, so the verifier cannot do it without breaking the boundary
@@ -21,17 +25,24 @@ that makes its verdicts trustworthy.
 `.agents/handoffs/qa-<slug>-ac-matrix.md`, written by `/qa-verify` Phase 3. Several numbered
 runs (`-2`, `-3`) → use the **newest** and say which.
 
-**Stop if the matrix has no interaction rows** (browser: no `methods` beyond navigation and
-reads; non-browser: no Tier-2 rows). An inspection-only run never acted on the app, so there is
-no sequence to promote. That is a normal outcome, not a failure.
+**Stop if the matrix has no interaction rows** (browser: no row whose recorded sequence, read as
+§2 says, shows an action beyond navigation and reads; non-browser: no Tier-2 rows). An
+inspection-only run never acted on the app, so there is no sequence to promote. That is a
+normal outcome, not a failure.
 
 ## 2. Extract the sequence — and refuse to fill gaps
 
-Read `methods`, `evidence` and (non-browser) the tier stamp in `notes` of each row.
+Browser rows of driver `script` or `mcp` (`notes` starts `driver: script` / `driver: mcp`):
+read each row's `artifacts` first — they hold the action sequence; `methods` lists only how a
+value was observed (ARIA snapshot, computed style, screenshot viewed). Browser rows of driver
+`subagent` (a `qa-runtime-ui` row without that prefix; its artifacts are screenshots) and
+non-browser rows: read the sequence the verifier recorded in the row itself (`methods`,
+`evidence`; non-browser: call by call, with the tier stamp in `notes`). Then `evidence` for the
+values to assert.
 
 **The one rule that makes this trustworthy: never invent a step the run did not perform.** If
-the recorded methods do not spell out a reproducible sequence — locator, action, assertion —
-name the row as unusable and leave it out. A test assembled from a plausible reconstruction
+the row's recorded sequence (as above, by driver) does not spell out a reproducible sequence —
+locator, action, assertion — name the row as unusable and leave it out. A test assembled from a plausible reconstruction
 asserts what the author *thinks* happened, and a green run of it proves nothing.
 
 | Row verdict | Action |
@@ -61,8 +72,9 @@ settling}`. A driver call with **no** equivalent (frame-sync switches, device-le
 a hazard to report, not a step to approximate.
 
 **Every interaction is followed by the framework's settle/wait.** The QA driver waited on a
-condition; a test that acts without waiting asserts against the pre-action frame. Prefer
-condition waits (`expect(...).toBeVisible()`) over fixed sleeps, exactly as the QA rule says.
+condition; a test that acts without waiting asserts against the pre-action frame. Wait on a
+condition (`expect(locator).toBeVisible()`, a response the action triggers), never a fixed sleep
+(`waitForTimeout`), exactly as the QA rule says.
 
 ## 4. Write it the way this repo writes them
 
@@ -73,17 +85,25 @@ Match the existing tests; do not invent a house style. Rules that hold everywher
 - **Never overwrite an existing test file.** Add a case to it or create a new one — a previous
   case may encode behaviour nobody has re-verified.
 - Name the test after the criterion it encodes and cite the `ac_id` + tracker key in a comment.
-- Never assert translated copy when a stable role/label/test-id exists (`/test-e2e` rule).
+- Browser (Playwright) locators in this order: role (`getByRole`) first; test id when the role is
+  ambiguous; label for a form field; placeholder for an input without a label.
+  Never CSS selectors, never XPath. A non-browser test keeps the finder the run recorded, mapped
+  by the §3 table.
+- Never assert translated copy when a stable role/label/test-id exists.
 
 ## 5. Report
 
 State what was written, which ACs it covers, which rows were skipped and why, and every place
 the translation was not one-to-one.
 
-Then say plainly that it was **not run** — running needs the project's test command (CLAUDE.md
-→ Validation, or the e2e command from `/test-e2e`). If the QA environment differed from the
-test environment (another flavor, base URL, market, feature-flag state), say so: a sequence
-that held under QA is a *hypothesis* under the test target until a run says otherwise.
+Then run the new test itself — with the project's test command (CLAUDE.md → Validation) when
+that command runs it, else with the test runner's own CLI on the new file (e.g.
+`npx playwright test <file>`) — and show output that reports the new case itself as passed; a
+case reported skipped or pending, or not listed at all, counts as not run, however green the
+rest of the run is. Then claim the test only when that run is green.
+When it cannot be run here, say plainly that it was **not run**. If the QA environment differed
+from the test environment (another flavor, base URL, market, feature-flag state), say so: a
+sequence that held under QA is a *hypothesis* under the test target until a run says otherwise.
 
 Claiming a green test that was never executed is the worst possible outcome of a procedure
 whose whole purpose is making evidence durable.

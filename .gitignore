@@ -160,8 +160,8 @@ captures/
 # ============================================================
 # QA / browser-automation evidence — point-in-time, never repo history
 # ============================================================
-# Screenshots, traces and network dumps written by Playwright MCP during /test-e2e
-# and QA runs. Keep the path in sync with .claude/qa-env.json -> artifacts_dir;
+# Screenshots, traces and network dumps written by Playwright MCP during QA runs.
+# Keep the path in sync with .claude/qa-env.json -> artifacts_dir;
 # .claude/lib/qa-probe.sh warns when the two disagree.
 .playwright-mcp/
 

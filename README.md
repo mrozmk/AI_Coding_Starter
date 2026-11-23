@@ -111,7 +111,6 @@ What makes it different from "just ask the AI":
 
 ```text
 /qa-verify PROJ-142    checks every acceptance criterion one by one, returns a signed verdict table
-/test-e2e              writes end-to-end tests by driving a real browser
 /audit-security        scanners plus two models hunting for attack paths, merged into one report
 ```
 

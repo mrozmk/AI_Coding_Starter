@@ -152,7 +152,6 @@ ts = strict_between(pf, "## TESTING STRATEGY", "### Core Functions to Test (if a
 for needle in ("**Per criterion (every project size):**", "**unit** test", "**integration** test",
                "`manual` at task level", "`static` for structure and text"):
     check(needle in ts, f"plan template TESTING STRATEGY lacks {needle!r}")
-check("/test-e2e" not in ts, "plan template TESTING STRATEGY names /test-e2e")
 gate = strict_between(pf, "### Step 5.1f — AC proof gate (MANDATORY for every plan with `## ACCEPTANCE CRITERIA`)",
                       "### Step 5.2 — Raw critique pass (4 categories)", "grill step 5.1f")
 for needle in ("**Trigger:** always", "🟠 MAJOR", "no `Proof:` line", "carries only `static` proofs",
