@@ -37,7 +37,6 @@ REG="$(sh_reg_dir "$MAIN")"
 boot() {
   echo "You are $1. Follow the role contract the session context names and reconcile now — inbox \`new/\`, open records, pending decisions."
 }
-new_sid() { new_uuid; }
 # The claude --name of a role: <Role><teams.channel.mail_suffix>, as the operator kit's health check
 # looks for it.
 claude_name() {
@@ -306,7 +305,7 @@ up() {
   err="$(mktemp "${TMPDIR:-/tmp}/roles-start.XXXXXX")"
   for r in $todo; do
     cli="$(roles_cfg "$r" cli)"; sid=""; ch=""
-    if [ "$cli" = claude ]; then sid="$(new_sid)" || { res="$res$r: failed: no session id (new_uuid)"$'\n'; rc=1; continue; }; ch="$(codex_home)"; fi
+    if [ "$cli" = claude ]; then sid="$(new_uuid)" || { res="$res$r: failed: no session id (new_uuid)"$'\n'; rc=1; continue; }; ch="$(codex_home)"; fi
     cmd="$(launch_cmd "$r" "$sid")" || { res="$res$r: failed: bad model or effort"$'\n'; rc=1; continue; }
     if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli "$cli" \
          --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} \
@@ -489,7 +488,7 @@ here() {
     materialize "$r" || exit 1
     . "$LIB/team-profile.sh"
     w="$(team_claude_home "$MAIN")" || { echo "refused: $w" >&2; exit 1; }
-    sid="$(new_sid)" || { echo "error: no session id — new_uuid failed" >&2; exit 1; }; ch="$(codex_home)"
+    sid="$(new_uuid)" || { echo "error: no session id — new_uuid failed" >&2; exit 1; }; ch="$(codex_home)"
   fi
   t="$(tty 2>/dev/null)" || t=none
   sh_record_put "$MAIN" "$r" '{address: $a, kind: "role", backend: $b, handle: $h, name: $n, cwd: $cwd,
