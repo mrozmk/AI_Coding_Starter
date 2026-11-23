@@ -38,7 +38,9 @@ duplicates work.
 - **A Claude Advisor** gets this contract from the `SessionStart` hook on `startup`, `resume`,
   `clear` and `compact`.
 - **A Codex Advisor** (Astra) has no such hook: it gets this file on its launch line. It checks
-  `inbox/<Role>/new` at start and again on every doorbell.
+  `inbox/<Role>/new` at start and again on every doorbell. It starts on the Codex default model of
+  its environment (`teams.sessions.Astra.model = "default"`, no `-m`) with its effort pinned; a
+  named model pins it. `/status` in its window shows the model it runs on.
 
 ## Bootstrap (start, resume, `/clear`, compaction)
 

@@ -3,7 +3,8 @@
 # `; read` pane, reports the trust dialog, places nothing under tmux; status, stop (record kept,
 # stopped_at), here on the three backends (Herdr id, tmux session, a plain terminal's pid), the
 # validator stopping everything, the legacy Advisor key, a project role added in the profile only,
-# the window line, roles.lock; the SessionStart contract line (session-registry.sh).
+# the window line, roles.lock; a Codex role's floating ("default", no -m) and pinned model; the
+# SessionStart contract line (session-registry.sh).
 # A stateful stub tmux (sessions are files) and stub claude / codex; nothing reaches a real server.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -69,6 +70,7 @@ starts() { grep -c '^tmux new-session' "$STUB_LOG" || true; }
 # ---- (1) up: three roles, argv, env, profiles, hints; a second up starts nothing -----------------
 clr; run "$MAIN" $RS; expect 0 "Supervisor: started" "(1) up"
 for r in Fable Astra; do line "$r: started" "$WORK/out" "(1) up"; done
+line "Astra: started — model: CLI default · effort high" "$WORK/out" "(1) Astra model line"
 line "  Supervisor: tmux attach -t smk-supervisor" "$WORK/out" "(1) hint"
 noline "This window is not a role" "$WORK/out" "(1) plain shell"
 noline "error: team channel" "$WORK/out" "(1) the optional channel's absence leaked to stderr"
@@ -77,7 +79,8 @@ for r in Supervisor Fable Astra; do for d in tmp new done; do
 [ "$(starts)" = 3 ] || fail "(1) $(starts) new-session calls, expected 3"
 for r in Supervisor Fable Astra; do line "-e TEAM_SESSION_ROLE=$r -e HARNESS_ADDRESS=$r" "$STUB_LOG" "(1) env $r"; done
 grep '^tmux new-session.* -s smk-astra ' "$STUB_LOG" > "$WORK/astra"
-line "codex --no-daemon -m astra -c model_reasoning_effort=high 'You are Astra. Follow the role contract" "$WORK/astra" "(1) Astra argv"
+line "codex --no-daemon -c model_reasoning_effort=high 'You are Astra. Follow the role contract" "$WORK/astra" "(1) Astra argv"
+noline " -m " "$WORK/astra" "(1) Astra floating model"
 line "Contract: .agents/reference/roles/advisor.md'" "$WORK/astra" "(1) Astra contract"
 noline "--settings" "$WORK/astra" "(1) Astra settings"; noline "; read" "$WORK/astra" "(1) Astra read"
 grep '^tmux new-session.* -s smk-fable ' "$STUB_LOG" > "$WORK/fable"
@@ -133,6 +136,8 @@ bad "effort" '.teams.sessions.Astra.effort = "huge"' "teams.sessions.Astra.effor
 bad "contract" '.teams.sessions.Fable.contract = "docs/none.md"' "teams.sessions.Fable.contract=docs/none.md: no such file"
 bad "two mains" '.teams.sessions.Fable.place.slot = "main"' "tab Lead has more than one main slot"
 bad "codex settings" '.teams.sessions.Astra.settings = "Advisor"' "teams.sessions.Astra.settings is for claude roles only"
+bad "codex model" '.teams.sessions.Astra.model = "bad model"' "teams.sessions.Astra.model=bad model is not a model name"
+bad "empty model" '.teams.sessions.Fable.model = ""' "teams.sessions.Fable.model= is not a model name"
 echo "team-smoke-roles: (4) validation OK"
 
 # ---- (5) legacy Advisor; a project role from the profile only ---------------------------------------
@@ -151,6 +156,28 @@ line "--settings .agents/team/watch/profiles/Monitor.settings.json" "$STUB_LOG" 
 run "$MAIN" $RS stop Monitor; expect 0 "Monitor: stopped" "(5) stop Monitor"
 cp "$WORK/prof.bak" "$P"
 echo "team-smoke-roles: (5) legacy key, project role OK"
+
+# ---- (5b) a Codex role's model: pinned → -m; none → floating; the rule never reaches a Claude role --
+astra() {  # astra <label> <jq> — up Astra alone, its tmux line into $WORK/astra, stopped again
+  prof "$2"; clr; run "$MAIN" $RS up Astra; expect 0 "Astra: started" "(5b) $1"
+  grep '^tmux new-session.* -s smk-astra ' "$STUB_LOG" > "$WORK/astra" || true
+}
+astra "pinned" '.teams.sessions.Astra.model = "gpt-6-astra"'
+line "Astra: started — model: gpt-6-astra · effort high" "$WORK/out" "(5b) pinned line"
+line "codex --no-daemon -m gpt-6-astra -c model_reasoning_effort=high 'You are Astra." "$WORK/astra" "(5b) pinned argv"
+run "$MAIN" $RS stop Astra; expect 0 "Astra: stopped" "(5b) stop pinned"
+astra "no model" 'del(.teams.sessions.Astra.model)'
+line "Astra: started — model: CLI default · effort high" "$WORK/out" "(5b) no-model line"
+line "codex --no-daemon -c model_reasoning_effort=high 'You are Astra." "$WORK/astra" "(5b) no-model argv"
+noline " -m " "$WORK/astra" "(5b) no-model -m"
+run "$MAIN" $RS stop Astra; expect 0 "Astra: stopped" "(5b) stop no model"
+astra "claude Astra" '.teams.sessions.Astra = {cli: "claude", effort: "high",
+  contract: ".agents/reference/roles/advisor.md", place: {tab: "Lead", slot: "side"}}'
+line " --model opus --effort high" "$WORK/astra" "(5b) claude Astra keeps the generic model"
+noline "model: CLI default" "$WORK/out" "(5b) claude Astra model line"
+run "$MAIN" $RS stop Astra; expect 0 "Astra: stopped" "(5b) stop claude Astra"
+cp "$WORK/prof.bak" "$P"
+echo "team-smoke-roles: (5b) codex model, floating and pinned OK"
 
 # ---- (6) the window line; the trust dialog -----------------------------------------------------------
 printf 'Do you trust the files in this folder?\n' > "$WORK/trust.txt"
