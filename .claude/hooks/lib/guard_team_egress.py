@@ -11,7 +11,10 @@ asks. The read-only gh forms (GH_READ_FORMS, #268) pass only as the simple comma
 in a string nested under no wrapper), with a plain OWNER/REPO repo value, no URL, --hostname, brace
 expansion or option-shaped glob, and no $, backtick, #, backslash, GH_HOST or GH_REPO in the text
 or its tokens (a quoted ';' does not hide an argument: the whole string is checked). Literal
-`NAME=<value>;` heads are written into the rest first (inline_literals). A /dev/tcp or
+`NAME=<value>;` heads are written into the rest first (inline_literals). #272: python3 -c code and
+quoted-delimiter `python3 -` here-docs are judged by their code (py_code_safe: local-only modules,
+no process/network/introspection API) — not egress when it passes, for every role; Python output
+piped into a shell or interpreter asks; a `cat` data here-doc's body is not scanned. A /dev/tcp or
 /dev/udp path (bash's sockets) -> ask, whatever the verb, at every nesting level. Never emits
 allow: no output leaves the decision to Claude Code's own rules, so deny still wins. Unreadable
 input -> ask (fail-closed).
@@ -43,7 +46,9 @@ sys.path.insert(0, HERE)  # python3 -I drops the script dir from sys.path
 from guard_destructive_sql import (  # noqa: E402
     SHELL_C, base_comment_reading, comment_splits, commands, doc_heredocs_removed,
     needs_base_reading, redirection_led, split_spans, strip_wrappers, tokenize, unredirected)
-from guard_team_egress_effect import GH_READ_FORMS, inline_literals  # noqa: E402
+from guard_team_egress_effect import (  # noqa: E402
+    GH_READ_FORMS, inline_literals, py_code_safe, python_heredocs_judged)
+from guard_team_egress_loops import backstop  # noqa: E402
 from guard_team_egress_supervisor import (  # noqa: E402
     BRACE, GH_READS_TAINT, allow_rules, format_masked, gh_host_selector,
     record_touch, supervisor_verdict)
@@ -114,6 +119,9 @@ def egress_capable(verb, words, reads_ok=True):
             if w == "-m" or (short and w.endswith("m") and "c" not in w[1:]):
                 return "".join(words[i + 1:i + 2]) not in LOCAL_MODULES
             if w in INLINE[verb] or (short and "c" in w[1:]):
+                # #272: python3 [-I…] -c '<code>' whose code py_code_safe accepts is not egress.
+                if verb != "node" and re.fullmatch(r"-[IBEsSu]*c", w) and i + 1 < len(words):
+                    return not py_code_safe(words[i + 1])
                 return True
         return False
     if verb == "gh":
@@ -310,9 +318,15 @@ def reading_reason(cmd, project):
     # Raw text first: an unparsable command never reaches verb_in's per-level check.
     if net_device(cmd, [unquoted(cmd)]):
         return NET_FOUND
-    cmd = inline_literals(cmd)
+    # #272: a safe Python here-doc is `true <args>`, a `cat` data here-doc loses its body; then the
+    # literal heads (inline_literals keeps a command with any other here-doc as it is).
+    cmd = inline_literals(python_heredocs_judged(cmd))
     decision, why = supervisor_verdict(cmd, project, egress_in)
     if decision != "defer":
+        return why
+    # Python judged safe above still never feeds a shell or interpreter through a pipe.
+    piped, why = backstop(cmd, ("python3", "python"), "")
+    if piped == "ask":
         return why
     try:
         found = egress_in(cmd)
