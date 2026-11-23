@@ -126,17 +126,16 @@ test('scanner: clippy enforces only with -D warnings', async () => {
   assert.ok(!fmt.enforced);
 });
 
-test('scanner: a bare cargo clippy checks when Cargo.toml denies a lint', async () => {
-  const clippy = async (cargo) => tool(await miniScan({ 'Cargo.toml': `[package]\nname = "x"\n\n${cargo}`, Makefile: 'lint:\n\tcargo clippy\n', 'src/main.rs': 'fn main() {}\n' }), 'clippy');
-  const crate = await clippy('[lints.clippy]\nunwrap_used = "deny"\n');
-  assert.equal(crate.enforced, true);
-  assert.equal(crate.runs[0].strict, true);
-  assert.equal((await clippy('[workspace.lints.clippy]\nall = { level = "deny", priority = -1 }\n')).enforced, true);
-  assert.equal((await clippy('[lints.clippy]\npedantic = "forbid"\n')).enforced, true);
-  const warnOnly = await clippy('[lints.clippy]\npedantic = "warn"\n\n[lints.rust]\nunsafe_code = "deny"\n');
-  assert.ok(!warnOnly || warnOnly.enforced === false);
-  const none = await clippy('[dependencies]\nserde = "1"\n');
-  assert.ok(!none || none.enforced === false);
+test('scanner: a bare cargo clippy makes no Clippy claim, whatever Cargo.toml denies', async () => {
+  // Warn-level lints still pass a bare run, so a deny entry in Cargo.toml never makes it a checking run.
+  const rust = (lint) => miniRepo({ 'Cargo.toml': '[package]\nname = "x"\n\n[lints.clippy]\nunwrap_used = "deny"\n', 'clippy.toml': 'msrv = "1.70"\n', Makefile: `lint:\n\t${lint}\n`, 'src/main.rs': 'fn main() {}\n' });
+  const bare = rust('cargo clippy');
+  const t = tool(await fixtureScan(bare, listFiles(bare)), 'clippy');
+  assert.ok(!t || (t.enforced === false && t.runs.length === 0));
+  assert.doesNotMatch((await renderIn(bare, { draft: null, toolsOnly: true })).text, /Clippy/);
+  // Control: the same repo with a run that denies warnings renders the claim.
+  const strict = rust('cargo clippy -- -D warnings');
+  assert.match((await renderIn(strict, { draft: null, toolsOnly: true })).text, /Code passes Clippy/);
 });
 
 const BIOME_MIXED = '{"linter":{"rules":{"style":{"noVar":"warn"},"suspicious":{"noDebugger":"error"}}}}\n';

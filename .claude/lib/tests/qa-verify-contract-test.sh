@@ -282,6 +282,14 @@ F<n>@<group id>
 the numbers of open rows whose origin group is this group are reserved
 One row per origin group and number
 conflicting copies of F<n>@<group id>
+**Each conflicting copy has its own id** `F<n>@<group id>~<KEY>`, `<KEY>` the ticket whose record the copy was read from
+`F1@A+B~A` and `F1@A+B~B`
+<group id>-F<n>@<origin group id>~<KEY>.mjs
+each copy listed by its own id `F<n>@<group id>~<KEY>`
+`F<n>@<group id>~<KEY>` (a conflicting copy)
+each conflicting copy's `F<n>@<group id>~<KEY>` — appears exactly once
+`F<n>@<group id>~<KEY> <change>`
+a conflicting copy: `F<n>@<group id>~<KEY>`) per charged feature-path `FAIL`
 A rechecked open row keeps its identity in the record
 F1@A+B
 a shared route or screen still makes the edge
