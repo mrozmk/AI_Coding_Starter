@@ -23,7 +23,7 @@ ROLES_SHIPPED='{
                  "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Lead", "slot": "main"}},
   "Fable": {"cli": "claude", "model": "fable", "effort": "high", "settings": "Advisor",
             "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
-  "Astra": {"cli": "codex", "model": "astra", "effort": "high",
+  "Astra": {"cli": "codex", "model": "default", "effort": "high",
             "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
   "TeamLead": {"standing": false, "cli": "claude", "model": "fable", "effort": "high"}}'
 ROLES_GENERIC='{"cli": "claude", "model": "opus", "effort": "high", "standing": true, "enabled": true}'
@@ -39,10 +39,13 @@ ROLES_DEFAULTS='{
 # → [{key, name, decl, cfg}] in declaration order. key: the profile key; name: the role (Advisor →
 # Fable; dropped when Fable is declared too); cfg: generic * name defaults * declaration (null when
 # the declaration is no object). A codex role keeps a default settings only if it declared one.
+# Model of a codex role: the keyword "default" (or no model declared) launches it without -m, on the
+# Codex default model of the role's environment; any other value is passed as -m <model>.
 ROLES_JQ_NORM='
   def clean: if type == "object" then with_entries(select(.value != null)) else . end;
   def merged($n; $d): ($generic * ($defaults[$n] // {}) * ($d | clean))
-    | if .cli == "codex" and ($d | has("settings") | not) then del(.settings) else . end;
+    | if .cli == "codex" and ($d | has("settings") | not) then del(.settings) else . end
+    | if .cli == "codex" and ($d | clean | has("model") | not) then .model = "default" else . end;
   (.teams.sessions // $shipped) as $s
   | if ($s | type) != "object" then error("teams.sessions is not an object") else . end
   | [$s | keys_unsorted[] | select(startswith("_") | not)] as $ks

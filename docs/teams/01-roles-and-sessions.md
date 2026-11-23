@@ -35,7 +35,7 @@ Who decides what: [02 — Decision model](02-decision-model.md). What gets pushe
 
 ## Models
 
-Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, the Supervisor runs `opus` at effort `medium` and the Advisors run at `high` (Fable on `fable`, Astra on Codex). The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `roles.sh stop <Role>` and `roles.sh up <Role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort (default `fable` / `high`, read by the runner at each launch); it starts no role session.
+Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`. Without it, the Supervisor runs `opus` at effort `medium` and the Advisors run at `high` (Fable on `fable`, Astra on Codex's default model: `model: "default"`, no `-m`, effort pinned — a named model pins it). The profile example carries the block with these defaults, and an invalid value stops the launch with an error naming the key. A running window picks up a change only after `roles.sh stop <Role>` and `roles.sh up <Role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort (default `fable` / `high`, read by the runner at each launch); it starts no role session.
 
 ## Role profiles and their check
 

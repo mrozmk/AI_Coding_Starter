@@ -84,6 +84,11 @@ materialize() {
   return 1
 }
 
+# A codex role's model "default" omits -m: Codex then runs the default model of its environment.
+codex_model_flag() { [ "$1" = default ] || printf -- '-m %s ' "$1"; }
+# The model a started codex role runs on, as /roles prints it.
+codex_model_label() { if [ "$1" = default ]; then echo "CLI default"; else echo "$1"; fi; }
+
 # launch_cmd <role> <session id> [resume] → the one shell line the session runs. A Claude role keeps
 # its pane after an exit (`; read`, so an error stays readable; start replaces that pane next time).
 # resume: `--resume <id>` and no bootstrap line (the conversation holds its role; the hook re-adds
@@ -93,7 +98,7 @@ launch_cmd() {
   m="$(roles_cfg "$r" model)" && e="$(roles_cfg "$r" effort)" || return 2
   if [ "$(roles_cfg "$r" cli)" = codex ]; then
     c="$(roles_cfg "$r" contract)"
-    echo "codex --no-daemon -m $m -c model_reasoning_effort=$e $(sh_quote "$(boot "$r") Contract: $c")"
+    echo "codex --no-daemon $(codex_model_flag "$m")-c model_reasoning_effort=$e $(sh_quote "$(boot "$r") Contract: $c")"
     return 0
   fi
   s="$(roles_cfg "$r" settings)"
@@ -307,7 +312,9 @@ up() {
     if name="$(sh_start "$r" --main "$MAIN" --kind role --cwd "$MAIN" --cli "$cli" \
          --env "TEAM_SESSION_ROLE=$r" ${ch:+--env "CODEX_HOME=$ch"} \
          ${sid:+--session-id "$sid" --program claude --claude-home auto} -- "$cmd" 2>"$err")"; then
-      res="$res$r: started"$'\n'; wait="$wait $r:$name:$cli"
+      res="$res$r: started"
+      [ "$cli" != codex ] || res="$res — model: $(codex_model_label "$(roles_cfg "$r" model)") · effort $(roles_cfg "$r" effort)"
+      res="$res"$'\n'; wait="$wait $r:$name:$cli"
     else
       res="$res$r: failed: $(sed 's/^session-host: //' "$err" | tail -n 1)"$'\n'; rc=1
     fi
@@ -317,7 +324,10 @@ up() {
   while IFS= read -r out; do
     [ -n "$out" ] || continue
     r="${out%%:*}"
-    if [ "$out" = "$r: started" ]; then echo "$out$(held_word "$r" "$trust")"; else echo "$out"; fi
+    case "$out" in
+      "$r: started"|"$r: started — "*) echo "$out$(held_word "$r" "$trust")" ;;
+      *) echo "$out" ;;
+    esac
   done <<<"$res"
   # Step 3: the running roles into their Herdr tabs (a failure only warns; tmux: nothing).
   layout_place_roles "$MAIN"
@@ -440,7 +450,10 @@ here() {
   [ -z "$ch" ] || set -- "$@" CODEX_HOME="$ch"
   if [ "$cli" = codex ]; then
     c="$(roles_cfg "$r" contract)"
-    exec env "$@" codex --no-daemon -m "$m" -c "model_reasoning_effort=$e" "$(boot "$r") Contract: $c"
+    echo "$r: model: $(codex_model_label "$m") · effort $e"
+    set -- "$@" codex --no-daemon
+    [ "$m" = default ] || set -- "$@" -m "$m"
+    exec env "$@" -c "model_reasoning_effort=$e" "$(boot "$r") Contract: $c"
   fi
   s="$(roles_cfg "$r" settings)"
   # shellcheck disable=SC2086

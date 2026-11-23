@@ -3,6 +3,24 @@
 Changes that need an action, or a second look, in a project that already runs the team layer.
 Newest first.
 
+## A Codex role starts on the CLI's default model
+
+**Before:** `/roles` always launched a Codex role with `-m <model>`. The shipped Astra default,
+`"model": "astra"`, is no Codex model: `codex -m astra` fails (`The 'astra' model is not
+supported…`), so the role did not start.
+
+**Now:** on a `cli: "codex"` role, `"model": "default"` — or no `model` at all — launches Codex
+without `-m`, on the Codex default model of the role's environment (`model` in
+`$CODEX_HOME/config.toml`); `-c model_reasoning_effort=<effort>` is always passed. A named model
+starts with `-m <model>` as before. Claude roles are unchanged. The start line prints the model:
+`Astra: started — model: CLI default · effort high`, or the pinned name; `/status` in the role's
+window names the model it runs on.
+
+**Action:**
+1. A profile with `"model": "astra"` on a Codex role → change it to `"default"`, or to a current
+   versioned name to pin it.
+2. Restart the role: `/roles stop Astra`, then `/roles`.
+
 ## The TeamLead runs the team tools from the main checkout; follow-ups land on the board
 
 **Before:** the per-run TeamLead called `bash .claude/lib/team-answer.sh|team-lead.sh|team-verdict.sh`

@@ -34,7 +34,8 @@ two projects on one machine never share a tmux session, a recipient or a process
 
 Models are config: `teams.sessions.<Role>.{model,effort}` in `.claude/project-profile.json`.
 Without it the Supervisor runs `opus` at effort `medium` and the Advisors at `high` (Fable `fable`,
-Astra on Codex); a project that wants a stronger Advisor model names it there (the profile example
+Astra on Codex's default model: `model: "default"`, no `-m`, effort pinned — a named model pins
+it); a project that wants a stronger Advisor model names it there (the profile example
 carries the block with the defaults). A running window changes model or effort only after
 `stop <role>` + `start <role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort
 (default `fable` / `high`, read by the runner at each launch); it starts no role session.
