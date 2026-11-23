@@ -15,6 +15,7 @@
 # the fields they omit, so a profile in the old two-field shape ({model, effort}) still reads; the
 # legacy key Advisor is read as Fable. Without teams.sessions the shipped default list applies.
 # The profile is <ROLES_ROOT, default $PWD>/.claude/project-profile.json.
+. "$(dirname "${BASH_SOURCE[0]}")/portable-lib.sh"
 
 ROLES_MODEL_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$'   # = team-profile.sh's TeamLead model check
 ROLES_NAME_RE='^[A-Z][A-Za-z0-9]{1,23}$'   # checked in jq (Oniguruma): ASCII, not locale collation
@@ -168,7 +169,7 @@ EOF
 # when no pid appeared within 2 s; a live holder is waited on. The reclaim is serialised as in
 # team-watch-lib.sh (tw_claim / tw_stale / tw_reclaim): two waiters that judged the same dead holder
 # would otherwise each rm + mkdir, the second removing the first one's fresh lock.
-roles_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+roles_mtime() { file_mtime "$1" || echo 0; }
 roles_lstart() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
 
 roles_lock_stale() {  # roles_lock_stale <lock dir>

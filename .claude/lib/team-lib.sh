@@ -5,6 +5,7 @@
 
 # Project values (trunk, tools, clone parent, gates) live in the profile, not here.
 # BASH_SOURCE, not $0: the dashboard and the smoke suites source this file from another directory.
+. "$(dirname "${BASH_SOURCE[0]}")/portable-lib.sh"
 . "$(dirname "${BASH_SOURCE[0]}")/team-profile.sh"
 # The session-host driver: every tmux call goes through it (the wrappers below keep their names).
 [ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"
@@ -387,7 +388,7 @@ team_ticket_checks() {
   if [ "$TEAM_ENV_REQUIRED" = true ]; then
     if [ ! -f "$root/.env" ]; then
       TEAM_PROBLEMS+=("$root/.env missing")
-    elif [ "$(stat -f %Lp "$root/.env")" != 600 ]; then
+    elif [ "$(file_mode "$root/.env")" != 600 ]; then
       TEAM_PROBLEMS+=(".env is not mode 600 — run: chmod 600 .env")
     fi
   fi

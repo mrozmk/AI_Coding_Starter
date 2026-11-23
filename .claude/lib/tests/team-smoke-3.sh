@@ -119,7 +119,22 @@ rm -f "$TD/session.json" "$TD/roles.override.json"
 : > "$STUB_LOG"; run "$MAIN" $TR alfa
 [ "$RC" != 0 ] && has "teams.roles" "$WORK/out" || fail "a bad teams.roles model was not refused"
 cp "$WORK/prof-cli" "$PROF"
-rm -f "$TD/session.json" "$TD/roles.override.json"; setmode brainstorm
+rm -f "$TD/session.json" "$TD/roles.override.json"
+# A stage's session id comes from new_uuid: no uuidgen (stock WSL) falls back to Python, and no
+# generator at all stops the launch before a session file is written.
+PY3="$(command -v python3)"
+printf '#!/bin/sh\nexit 127\n' > "$WORK/bin/uuidgen"; chmod +x "$WORK/bin/uuidgen"
+fresh_run alfa-20261006-000091; : > "$STUB_LOG"; run "$MAIN" $TR alfa
+grep -Eqx '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}' "$RD/cli-1.session" \
+  || fail "(u) a stage session id without uuidgen: $(cat "$RD/cli-1.session" 2>&1)"
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/uuidgen"
+printf '#!/bin/sh\ncase "$*" in *uuid.uuid4*) exit 1 ;; esac\nexec "%s" "$@"\n' "$PY3" > "$WORK/bin/python3"
+chmod +x "$WORK/bin/python3"
+fresh_run alfa-20261006-000092; : > "$STUB_LOG"; run "$MAIN" $TR alfa
+[ "$RC" != 0 ] && has "error: new_uuid gave no UUID" "$WORK/out" \
+  || fail "(u) no UUID generator refuses the launch: exit $RC"
+! ls "$RD"/*.session >/dev/null 2>&1 || fail "(u) no UUID generator refuses the launch: a session file"
+rm -f "$WORK/bin/uuidgen" "$WORK/bin/python3" "$TD/session.json"; setmode brainstorm
 
 # ---- (22) quick planner validation --------------------------------------------------------------
 case_mark "(22) quick planner validation"

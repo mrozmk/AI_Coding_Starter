@@ -196,8 +196,7 @@ launch() {
   cc="$(team_claude_home "$root")" || die 1 "$cc"
   mkdir -p "$TD/runs/$(run_ref)"
   # A known session id makes token-usage bindings explicit; transcripts are lower-case.
-  sid="$(uuidgen | tr 'A-Z' 'a-z')"
-  [[ "$sid" =~ ^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$ ]] || die 1 "error: uuidgen gave no UUID"
+  sid="$(new_uuid)" || die 1 "error: new_uuid gave no UUID"
   # A team.json written before 2b has no cost_key; jq's `//` would keep the empty string.
   ck="$(team_json cost_key)"; [ -n "$ck" ] || ck="$(team_json ticket)"
   jq -n --arg team "$TEAM" --arg role "$role" --arg run "$RUN" --argjson attempt "$attempt" \
@@ -451,13 +450,13 @@ summary_file() {  # summary_file <label> <file> — the body without the machine
 
 # Deliberate, supervisor-run removal of a dead runner's lock; never automatic, it would race a start.
 cmd_unlock() {
-  local pid age
+  local pid age m
   refuse() { echo "$1" >&2; exit 1; }
   [ -d "$TD/lock" ] || refuse "no lock to remove"
   pid="$(cat "$TD/lock/pid" 2>/dev/null || true)"
   [[ "$pid" =~ ^[0-9]+$ ]] || refuse "lock is not stale — no pid recorded (a runner may be starting)"
   ! kill -0 "$pid" 2>/dev/null || refuse "lock is not stale — runner $pid is alive"
-  age=$(( $(date +%s) - $(stat -f %m "$TD/lock") ))
+  m="$(file_mtime "$TD/lock")" || refuse "lock is not stale — its age cannot be read"; age=$(( $(date +%s) - m ))
   [ "$age" -gt 10 ] || refuse "lock is not stale — created ${age}s ago"
   rm -rf "$TD/lock"
   echo "removed stale lock (pid $pid dead)"

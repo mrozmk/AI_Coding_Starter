@@ -267,6 +267,25 @@ rm -f "$WORK/hc-gone"; clr; STUB_HC_ADDR=t9 STUB_HC_GONE_FILE="$WORK/hc-gone" ru
 expect 0 "Supervisor: stopped" "(8) herdr: stop"; line "hc send t9 /exit" "$STUB_LOG" "(8) herdr: /exit"
 line "hc rm t9" "$STUB_LOG" "(8) herdr: rm"
 rm -f "$REG/Supervisor.json" "$WORK/hc-gone"
+# No UUID generator (no uuidgen, Python refusing uuid4): a claude role is never started with an
+# empty --session-id, and here leaves the record as it was.
+run "$MAIN" $RS up Supervisor; expect 0 "" "(u) start"; run "$MAIN" $RS stop Supervisor; expect 0 "" "(u) stop"
+cp "$REG/Supervisor.json" "$WORK/sup-u.bak"
+PY3="$(command -v python3)"
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/uuidgen"
+printf '#!/bin/sh\ncase "$*" in *uuid.uuid4*) exit 1 ;; esac\nexec "%s" "$@"\n' "$PY3" > "$WORK/bin/python3"
+chmod +x "$WORK/bin/uuidgen" "$WORK/bin/python3"
+clr; run "$MAIN" $RS up Fable
+[ "$RC" != 0 ] || fail "(u) no UUID generator: no start, no record: exit 0"
+line "Fable: failed: no session id" "$WORK/out" "(u) no UUID generator: no start, no record"
+noline "-s smk-fable" "$STUB_LOG" "(u) no UUID generator: no start, no record"
+! jq -e 'select(.session_id == "")' "$REG"/*.json >/dev/null 2>&1 \
+  || fail "(u) no UUID generator: no start, no record: an empty session_id"
+clr; run "$MAIN" $RS here Supervisor
+[ "$RC" != 0 ] || fail "(u) here without a UUID generator keeps the record: exit 0"
+noline "claude --name" "$STUB_LOG" "(u) here without a UUID generator keeps the record"
+cmp -s "$REG/Supervisor.json" "$WORK/sup-u.bak" || fail "(u) here without a UUID generator keeps the record: record changed"
+rm -f "$WORK/bin/uuidgen" "$WORK/bin/python3" "$REG/Supervisor.json"
 echo "team-smoke-roles: (8) here on herdr / tmux / a plain terminal OK"
 
 # ---- (9) SessionStart: the contract line on every source, session.json on the live id -------------

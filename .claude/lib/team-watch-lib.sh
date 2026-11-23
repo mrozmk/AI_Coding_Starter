@@ -37,8 +37,8 @@ tw_init() {
 
 tw_log() { echo "team-watch: $(team_utc) $*"; }
 tw_now() { date -u +%s; }
-tw_mtime() { stat -f %m "$1" 2>/dev/null || echo 0; }
-tw_iso() { date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
+tw_mtime() { file_mtime "$1" || echo 0; }
+tw_iso() { epoch_fmt -u "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
 # tmp + mv in the target dir: a reader never sees a half-written file.
 tw_put() {  # tw_put <file> ← stdin

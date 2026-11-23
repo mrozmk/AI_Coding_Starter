@@ -54,7 +54,8 @@ role_session() {
 attention_pending() {
   local at
   at="$(awk 'NF && $2 != "permission_prompt" {l = $1} END {print l}' "$1")"
-  at="$(date -u -j -f %Y-%m-%dT%H:%M:%SZ "$at" +%s 2>/dev/null)" || return 1
+  [[ "$at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
+  at="$(team_epoch "$at")"; [ "$at" != 0 ] || return 1
   [ "$at" -ge "$(mtime "$2")" ]
 }
 
