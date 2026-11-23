@@ -147,6 +147,9 @@ verify_operator() {
 }
 
 # deliver <id> <answer json> — emits the hook output of this event for the answer.
+# check_input <{tool_name, tool_input, cwd} file> — the checker's tier line and `retry: <key>|none`.
+check_input() { python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$1" --main "$MAIN" 2>/dev/null; }
+
 deliver() {
   local id="$1" a="$2" kind form val q1
   kind="$(ask_get "$id" kind)"; form="$(jq -r .form <<<"$a")"
@@ -169,8 +172,7 @@ deliver() {
   rk="$(ask_get "$id" retry_key)"
   if [ "$kind:$form" = permission:allow ] && [ -n "$rk" ] && [ "$rk" != none ]; then
     jq -c .payload "$ASK_D/$id.json" > "$TMP.re" 2>/dev/null
-    now="$(python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$TMP.re" --main "$MAIN" 2>/dev/null \
-      | sed -n 's/^retry: //p')"
+    now="$(check_input "$TMP.re" | sed -n 's/^retry: //p')"
     if [ "$now" != "$rk" ]; then
       ask_cas "$id" "delivering" withdrawn || true
       out_perm_deny "the operation's inputs changed since the decision — retry the call"; return 0
@@ -320,7 +322,7 @@ case "$EV:$TOOL" in
     # The filed payload carries the canonical cwd: a retry claims an ask only from the same cwd.
     c="$(jq -r '.cwd // ""' <<<"$PAYLOAD")"; c="$( (cd "$c" 2>/dev/null && pwd -P) || printf '%s' "$c")"
     jq -c --arg c "$c" '{tool_name, tool_input, cwd: $c}' <<<"$PAYLOAD" > "$TMP.in" || exit 0
-    out="$(python3 -I "$LIB/team_prompt_check.py" "$CLONE" --input-json "$TMP.in" --main "$MAIN" 2>/dev/null)" || exit 0
+    out="$(check_input "$TMP.in")" || exit 0
     line="$(sed -n 1p <<<"$out")"
     # An operator-tier ask with a retry key outlives the deadline (timed-out, claimable); none → withdrawn.
     RETRY_KEY="$(sed -n 's/^retry: //p' <<<"$out")"; [ -n "$RETRY_KEY" ] || RETRY_KEY=none

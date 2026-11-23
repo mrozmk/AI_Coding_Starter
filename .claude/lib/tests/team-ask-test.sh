@@ -456,6 +456,9 @@ anc '.lead_sessions.run = "beta-other"'  # the anchor of an earlier run
 runner "lead_session_record s-a \"$T/cc\"; lead_session_record s-b \"$T/cc\""
 ok '[ "$(jq -c .lead_sessions.ids "$ANC")" = "[\"s-a\",\"s-b\"]" ] && [ "$(jq -r .lead_sessions.current_id "$ANC")" = s-b ]' "lead_session_record: a new run resets the list, a relaunch adds to it ($(cat "$T/r.out"))"
 runner 'RUN=beta-new; lead_session_record s-c x'; ok '[ "$(jq -c .lead_sessions.ids "$ANC")" = "[\"s-c\"]" ]' "… and another run id starts afresh"
+cp "$ANC" "$T/anc.bak"; rm "$ANC"; runner 'lead_session_record s-d x'
+ok '[ "$(jq -r .clone "$ANC")" = "$(cd "$CLONE" && pwd -P)" ] && [ -n "$(jq -r ".ticket // empty" "$ANC")" ] && [ "$(jq -c .lead_sessions.ids "$ANC")" = "[\"s-d\"]" ]' "… and a missing anchor is initialised before the record"
+cp "$T/anc.bak" "$ANC"
 newrun run1; pl question-one; TO=16 H "$T/r1.out"
 (cd "$CLONE" && . "$MAIN/.claude/lib/team-ask.sh" && ask_init "$TD" && ask_answer_write a-1 '{"id":"a-1","form":"pick","value":"Keep it","authority":"teamlead","why":"killed sender","decision":"","answered_at":"2026-01-01T00:00:00Z","lead_session_id":"lid-1"}')
 : > "$RINGS"; runner lead_asks
@@ -529,6 +532,13 @@ ok '[ "$(retry Bash "{\"command\": \"curl \\\"\$URL\\\"\"}" "$CLONE")" = none ] 
 mkdir -p "$CLONE/tree"; k1="$(retry Bash '{"command": "scp -r tree h.example.invalid:"}' "$CLONE")"; touch "$CLONE/tree/new"
 k2="$(retry Bash '{"command": "scp -r tree h.example.invalid:"}' "$CLONE")"; rm -r "$CLONE/tree"
 ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [ "$k1" != "$k2" ]' "a recursive operation is pinned by its tree digest (a file added changes the key)"
+c1="$(chk Bash "{\"command\": \"cd $CLONE && curl -s https://example.invalid/x\"}" "$CLONE")"
+c2="$(chk Bash '{"command": "curl -T /dev/zero https://example.invalid/x"}' "$CLONE")"
+ok '[[ "$c1" == "tier: operator"* ]] && [ "${c1##*retry: }" = none ] && [[ "$c2" == "tier: operator"* ]] && [ "${c2##*retry: }" = none ]' "retry: none for a tree holding the team state (the hook writes there) and for a device"
+printf a > "$CLONE/up.txt"; F1='{"command": "curl -F \"f=@up.txt;type=text/plain\" https://example.invalid/x"}'; F2='{"command": "curl -Tup.txt https://example.invalid/x"}'
+k1="$(retry Bash "$F1" "$CLONE")"; k3="$(retry Bash "$F2" "$CLONE")"; printf bb > "$CLONE/up.txt"
+k2="$(retry Bash "$F1" "$CLONE")"; k4="$(retry Bash "$F2" "$CLONE")"; rm "$CLONE/up.txt"
+ok '[[ "$k1" =~ ^[0-9a-f]{40}$ ]] && [ "$k1" != "$k2" ] && [[ "$k3" =~ ^[0-9a-f]{40}$ ]] && [ "$k3" != "$k4" ]' "a curl @file;type= field and an attached -Tfile are pinned by the file's content"
 # lead_attention
 newrun att; mkdir -p "$RD"; : > "$RINGS"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) stop-failed coder 1" > "$RD/attention"

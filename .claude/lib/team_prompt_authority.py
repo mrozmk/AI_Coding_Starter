@@ -28,6 +28,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import tempfile
 
@@ -314,13 +315,20 @@ class Unpinned(Exception):
     """The request names an input the checker cannot know."""
 
 
+TEAM_STATE = re.compile(r"/\.agents/team(/|$)")
+
+
 def path_digest(p):
     """A file → (realpath, size, mtime_ns, sha1); a directory → a tree digest of its entries
-    (no symlink following); a missing path → (realpath, absent)."""
+    (no symlink following); a missing path → (realpath, absent). Unpinned for a tree holding a
+    team state dir (the hook writes the ask there, so its key would never match again) and for
+    anything but a regular file or a directory (a device or FIFO never reads to an end)."""
     real = os.path.realpath(p)
     if not os.path.lexists(p):
         return [real, "absent"]
     if os.path.isdir(real):
+        if TEAM_STATE.search(real):
+            raise Unpinned("state")
         rows, n = [], 0
         for top, dirs, files in os.walk(real):
             for name in sorted(dirs) + sorted(files):
@@ -328,11 +336,15 @@ def path_digest(p):
                 if n > TREE_MAX:
                     raise Unpinned("tree")
                 full = os.path.join(top, name)
+                if TEAM_STATE.search(full):
+                    raise Unpinned("state")
                 st = os.lstat(full)
                 kind = "l" if os.path.islink(full) else "d" if os.path.isdir(full) else "f"
                 rows.append([os.path.relpath(full, real), kind, st.st_size, st.st_mtime_ns])
         return [real, "tree", hashlib.sha1(json.dumps(sorted(rows)).encode()).hexdigest()]
     st = os.stat(real)
+    if not stat.S_ISREG(st.st_mode):
+        raise Unpinned("special")
     h = hashlib.sha1()
     with open(real, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -341,8 +353,8 @@ def path_digest(p):
 
 
 def bash_paths(cmd, cwd):
-    """Every existing path a Bash command names: each word and each word's part after @, < or =
-    (redirection targets included), joined to cwd. Unpinned for $, a backtick, $(…), a process
+    """Every existing path a Bash command names: each word, each word's part after @, < or = (up to
+    a `;`), an attached short option's value (redirection targets included), joined to cwd. Unpinned for $, a backtick, $(…), a process
     substitution, a glob or ~user."""
     if UNPINNED.search(cmd):
         raise Unpinned("expansion")
@@ -355,6 +367,10 @@ def bash_paths(cmd, cwd):
         if re.search(r"[*?\[]", word) or re.match(r"~[^/]", word):
             raise Unpinned("glob")
         parts = [word] + [word.split(s, 1)[1] for s in "@<=" if s in word]
+        # curl's `@file;type=…` / `<file;filename=…`, and an attached short option (`-Tfile`).
+        parts += [p.split(";", 1)[0] for p in parts if ";" in p]
+        if re.match(r"-[A-Za-z].", word):
+            parts.append(word[2:])
         for part in parts:
             if not part:
                 continue

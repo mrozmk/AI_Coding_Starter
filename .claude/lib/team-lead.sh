@@ -312,7 +312,7 @@ materialize() {
   # stage hook run): allow rules take the main path, the clone spelling is denied. The deny/ask
   # union also reads the clone's project settings, which the lead loads by launching there.
   L="$(team_lead_lib_prefix "$root")" || { echo "error: main checkout path holds a quote" >&2; exit 1; }
-  case "$root" in *[!A-Za-z0-9._/+@-]*) mq="'$root'" ;; *) mq="$root" ;; esac
+  mq="$(team_lead_shell_word "$root")"
   out="$clone/.agents/team/teamlead.settings.json"
   ( umask 077
     jq -n --argjson pr "$pr" --arg L "$L" --arg H "$root/.claude/hooks" --arg Mq "$mq" --arg team "$team" \

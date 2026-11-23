@@ -62,12 +62,15 @@ team_lead_trusted() {
   jq -er --arg s "$sess" 'select(.lead_sessions.ids | index($s)) | "\($s)\t\(.lead_sessions.config_dir // "")"' "$anc"
 }
 
-# team_lead_lib_prefix <main> — the main checkout's .claude/lib/ as the lead types it and as its
-# permission rules spell it; single-quoted when the path holds a character a word would split on.
-team_lead_lib_prefix() {
+# team_lead_shell_word <path> — the path as the lead types it and as its permission rules spell it:
+# single-quoted when it holds a character a word would split on; rc 1 on an embedded quote.
+team_lead_shell_word() {
   case "$1" in
     *"'"*) return 1 ;;
-    *[!A-Za-z0-9._/+@-]*) printf "'%s/.claude/lib/'" "$1" ;;
-    *) printf '%s/.claude/lib/' "$1" ;;
+    *[!A-Za-z0-9._/+@-]*) printf "'%s'" "$1" ;;
+    *) printf '%s' "$1" ;;
   esac
 }
+
+# team_lead_lib_prefix <main> — the main checkout's .claude/lib/ as a shell word.
+team_lead_lib_prefix() { team_lead_shell_word "$1/.claude/lib/"; }

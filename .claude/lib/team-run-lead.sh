@@ -50,9 +50,12 @@ render_lead_prompt() {
 
 # lead_session_record <sid> <config dir> — the run's lead sessions, in the main checkout's anchor
 # (the runner is their only writer): the Operator-answer check trusts these, never the
-# role-writable clone (team-lead.md §7). A new run starts a fresh list.
+# role-writable clone (team-lead.md §7). A new run starts a fresh list. A missing anchor is
+# initialised first, as team_anchor_launch would: a bare {lead_sessions} one is a mismatch for good.
 lead_session_record() {
-  team_anchor_put "$(team_anchor_file "$root" "$TEAM")" '.lead_sessions = (if (.lead_sessions.run // "") == $r
+  local f; f="$(team_anchor_file "$root" "$TEAM")"
+  [ -f "$f" ] || team_anchor_init "$root" "$TEAM" "$CLONE" || return 1
+  team_anchor_put "$f" '.lead_sessions = (if (.lead_sessions.run // "") == $r
       then .lead_sessions else {run: $r, ids: []} end) | .lead_sessions.ids += [$s]
     | .lead_sessions.ids |= unique | .lead_sessions.current_id = $s | .lead_sessions.config_dir = $cc' \
     --arg r "$RUN" --arg s "$1" --arg cc "$2"

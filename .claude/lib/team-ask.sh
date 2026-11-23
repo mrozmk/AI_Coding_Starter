@@ -7,8 +7,8 @@
 # wait prints the answer's text form and marks the ask delivered, or `pending — run this again`;
 # exit 0 either way (2 usage, 4 no such ask).
 #
-# File contract (the hook runs the main checkout's copy, the lead the clone's: this is the format
-# both share). <clone>/.agents/team/runs/<run>/asks/ — every round of the run, each ask carries it:
+# File contract (the hook and the lead run the main checkout's copy; a lead on an older profile
+# still runs the clone's: this is the format every copy shares). <clone>/.agents/team/runs/<run>/asks/ — every round of the run, each ask carries it:
 #   a-<n>.json         {id, kind: question|permission|plan|text, role, attempt, round, session_id,
 #                       hook_session_id?, agent_id, agent_type, payload, tier: class|lead|operator,
 #                       tier_cause, retry_key?, fp, state, filed_at, waiter_pid?, claimed_by?,
@@ -133,8 +133,39 @@ ask_fp() {  # ask_fp <kind> <agent_id> <payload json>
 # never a waiting one. A permission claims only under ask_retry_ok's rule (see the header): one
 # match → claimed, several → all withdrawn; the same call with another key withdraws its old ask.
 # Else files a-<max+1>. The ask is published with its tier already set.
+# ask_retry_claim <sid> <hook sid> <attempt> <agent id> <fp> <retry key> — under the lock: prints
+# the one timed-out (or answered, waiter gone) operator-tier permission ask this call repeats; rc 1
+# when none. An ask of the same call with another key is superseded, several matches are ambiguous.
+ask_retry_claim() {
+  local id st cands=""
+  for id in $(ask_ids); do
+    jq -e --arg sid "$1" --arg hs "$2" --arg att "$3" --arg aid "$4" --arg fp "$5" '
+      def g($k): [.[$k] // empty | tostring][0] // "";
+      g("kind") == "permission" and g("session_id") == $sid and g("hook_session_id") == $hs
+      and g("attempt") == $att and g("agent_id") == $aid and g("fp") == $fp
+      and g("tier") == "operator" and (.payload | has("cwd"))' "$ASK_D/$id.json" >/dev/null 2>&1 \
+      || continue
+    ask_reconcile "$id"; st="$(ask_get "$id" state)"
+    if [ "$(ask_get "$id" retry_key)" != "$6" ]; then
+      # Superseded: the same call, but a file it names changed — that approval cannot apply.
+      [ "$st" != timed-out ] || ask_set "$id" '.state = "withdrawn"'
+      continue
+    fi
+    case "$st" in
+      timed-out) cands="$cands $id" ;;
+      answered) ask_alive "$(ask_get "$id" waiter_pid)" || cands="$cands $id" ;;
+    esac
+  done
+  case "$(wc -w <<<"$cands" | tr -d ' ')" in
+    0) return 1 ;;
+    1) printf '%s\n' "${cands# }" ;;
+    # Ambiguous: no guess. Each is withdrawn (the runner withdraws its decision), a new ask filed.
+    *) for id in $cands; do ask_set "$id" '.state = "withdrawn"'; done; return 1 ;;
+  esac
+}
+
 ask_file() {
-  local in="$1" kind sid fp id n st w rk hs att aid cands
+  local in="$1" kind sid fp id n st w rk
   ASK_ID=""; ASK_NEW=0
   kind="$(jq -r .kind "$in")"; sid="$(jq -r '.session_id // ""' "$in")"
   fp="$(ask_fp "$kind" "$(jq -r '.agent_id // ""' "$in")" "$(jq -c '.payload' "$in")")"
@@ -154,35 +185,13 @@ ask_file() {
   elif [ "$(jq -r '.tier // ""' "$in")" = operator ] && rk="$(jq -r '.retry_key // ""' "$in")" \
       && [ -n "$rk" ] && [ "$rk" != none ]; then
     # An operator-tier permission retried after its deadline claims the one ask it repeats.
-    hs="$(jq -r '.hook_session_id // ""' "$in")"; att="$(jq -r '.attempt | tostring' "$in")"
-    aid="$(jq -r '.agent_id // ""' "$in")"; cands=""
-    for id in $(ask_ids); do
-      [ "$(ask_get "$id" kind)" = permission ] && [ "$(ask_get "$id" session_id)" = "$sid" ] \
-        && [ "$(ask_get "$id" hook_session_id)" = "$hs" ] && [ "$(ask_get "$id" attempt)" = "$att" ] \
-        && [ "$(ask_get "$id" agent_id)" = "$aid" ] && [ "$(ask_get "$id" fp)" = "$fp" ] \
-        && [ "$(ask_get "$id" tier)" = operator ] \
-        && jq -e '.payload | has("cwd")' "$ASK_D/$id.json" >/dev/null 2>&1 || continue
-      ask_reconcile "$id"; st="$(ask_get "$id" state)"
-      if [ "$(ask_get "$id" retry_key)" != "$rk" ]; then
-        # Superseded: the same call, but a file it names changed — that approval cannot apply.
-        [ "$st" != timed-out ] || ask_set "$id" '.state = "withdrawn"'
-        continue
-      fi
-      case "$st" in
-        timed-out) cands="$cands $id" ;;
-        answered) ask_alive "$(ask_get "$id" waiter_pid)" || cands="$cands $id" ;;
-      esac
-    done
-    case "$(wc -w <<<"$cands" | tr -d ' ')" in
-      0) ;;
-      1) id="${cands# }"
-        if [ "$(ask_get "$id" state)" = timed-out ]; then
-          ask_set "$id" '.state = "waiting" | .waiter_pid = ($p | tonumber)' --arg p "${ASK_PID:-$$}"
-        else ask_set "$id" '.waiter_pid = ($p | tonumber)' --arg p "${ASK_PID:-$$}"; fi
-        ask_unlock; ASK_ID="$id"; echo "$id"; return 0 ;;
-      # Ambiguous: no guess. Each is withdrawn (the runner withdraws its decision), a new ask filed.
-      *) for id in $cands; do ask_set "$id" '.state = "withdrawn"'; done ;;
-    esac
+    if id="$(ask_retry_claim "$sid" "$(jq -r '.hook_session_id // ""' "$in")" \
+        "$(jq -r '.attempt | tostring' "$in")" "$(jq -r '.agent_id // ""' "$in")" "$fp" "$rk")"; then
+      if [ "$(ask_get "$id" state)" = timed-out ]; then
+        ask_set "$id" '.state = "waiting" | .waiter_pid = ($p | tonumber)' --arg p "${ASK_PID:-$$}"
+      else ask_set "$id" '.waiter_pid = ($p | tonumber)' --arg p "${ASK_PID:-$$}"; fi
+      ask_unlock; ASK_ID="$id"; echo "$id"; return 0
+    fi
   fi
   n="$(ls "$ASK_D" 2>/dev/null | sed -n 's/^a-\([0-9]*\)\.json$/\1/p' | sort -n | tail -n 1)"
   n=$(( ${n:-0} + 1 )); id="a-$n"

@@ -14,9 +14,9 @@ decisions that are theirs. You never do the team's work yourself.
 4. `CLAUDE.md` — the project's hard rules — is already in your context: do not re-read it. Read
    nothing else at bootstrap and never run `/prime`; everything else is on demand — the files a
    pending item points to, and the constraint digest below.
-5. Every team tool below (`bash …/.claude/lib/…`, `node …`) is rendered with the main checkout's
-   path — the copy the runner and the stage hook run. Call it exactly as written; the clone's
-   `.claude/lib/` copy is denied to you.
+5. Every team tool below (`bash …/.claude/lib/…`, `node …`) is
+   rendered with the main checkout's path — the copy the runner and the stage hook run. Call it
+   exactly as written; the clone's `.claude/lib/` copy is denied to you.
 
 ## Every turn
 
