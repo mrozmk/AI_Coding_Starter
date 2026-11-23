@@ -134,7 +134,7 @@ run "$MAIN" env CLAUDECODE=1 CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/x.sock $R
 expect 0 "" "(2) roles.sh up"
 for r in Supervisor Fable Astra; do has "$r: started" "$WORK/out" || fail "(2) $r start line"; done
 wait_claude 2
-grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q -- "--model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor." \
+grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q -- "--model opus --effort high --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor." \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(2) Supervisor argv through roles.sh"; }
 grep "^claude --name SupervisorXY " "$STUB_LOG" | grep -q " | role=Supervisor cc=unset sock=unset " \
   || { cp "$STUB_LOG" "$WORK/out"; fail "(2) role env, or a leaked CLAUDECODE/socket"; }
@@ -232,7 +232,7 @@ run "$MAIN" env CLAUDECODE=1 $RS here Supervisor
 expect 1 "open a new terminal and run: bash .claude/lib/roles.sh here Supervisor" "(4) here inside Claude"
 : > "$STUB_LOG"
 run "$MAIN" env STUB_CLAUDE_EXIT=1 $RS here Supervisor; expect 0 "" "(4) here"
-grep -q "^claude --name SupervisorXY --session-id [0-9a-f-]* --model opus --effort medium --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor.* | role=Supervisor cc=unset" \
+grep -q "^claude --name SupervisorXY --session-id [0-9a-f-]* --model opus --effort high --settings .agents/team/watch/profiles/Supervisor.settings.json -- You are Supervisor.* | role=Supervisor cc=unset" \
   "$STUB_LOG" || { cp "$STUB_LOG" "$WORK/out"; fail "(4) here did not exec claude as the Supervisor"; }
 # A declared Claude profile: `here` execs on it; an unresolvable one refuses before the record.
 mkdir -p "$WORK/claude-home"; CH_REAL="$(cd "$WORK/claude-home" && pwd -P)"

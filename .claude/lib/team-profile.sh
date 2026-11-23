@@ -180,7 +180,7 @@ team_profile_load() {
     || team_profile_die "teams.sessions.TeamLead.model=$TEAM_LEAD_MODEL is not a model name"
   TEAM_LEAD_EFFORT="$(jq -r '.teams.sessions.TeamLead.effort // empty | strings' "$f" \
     2>/dev/null || true)"
-  TEAM_LEAD_EFFORT="${TEAM_LEAD_EFFORT:-high}"
+  TEAM_LEAD_EFFORT="${TEAM_LEAD_EFFORT:-medium}"
   case "$TEAM_LEAD_EFFORT" in
     low|medium|high|xhigh|max) ;;
     *) team_profile_die \

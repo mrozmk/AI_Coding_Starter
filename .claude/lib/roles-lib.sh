@@ -19,23 +19,23 @@
 ROLES_MODEL_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[[0-9a-z]+\])?$'   # = team-profile.sh's TeamLead model check
 ROLES_NAME_RE='^[A-Z][A-Za-z0-9]{1,23}$'   # checked in jq (Oniguruma): ASCII, not locale collation
 ROLES_SHIPPED='{
-  "Supervisor": {"cli": "claude", "model": "opus", "effort": "medium", "settings": "Supervisor",
+  "Supervisor": {"cli": "claude", "model": "opus", "effort": "high", "settings": "Supervisor",
                  "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Lead", "slot": "main"}},
-  "Fable": {"cli": "claude", "model": "fable", "effort": "high", "settings": "Advisor",
+  "Fable": {"cli": "claude", "model": "fable", "effort": "medium", "settings": "Advisor",
             "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
   "Astra": {"cli": "codex", "model": "default", "effort": "high",
             "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
-  "TeamLead": {"standing": false, "cli": "claude", "model": "fable", "effort": "high"}}'
+  "TeamLead": {"standing": false, "cli": "claude", "model": "fable", "effort": "medium"}}'
 ROLES_GENERIC='{"cli": "claude", "model": "opus", "effort": "high", "standing": true, "enabled": true}'
 # Per-name defaults for the fields a declaration leaves out (the old shape had only model/effort).
 ROLES_DEFAULTS='{
-  "Supervisor": {"effort": "medium", "settings": "Supervisor",
+  "Supervisor": {"settings": "Supervisor",
                  "contract": ".agents/reference/roles/supervisor.md", "place": {"tab": "Lead", "slot": "main"}},
-  "Fable": {"settings": "Advisor", "contract": ".agents/reference/roles/advisor.md",
-            "place": {"tab": "Lead", "slot": "side"}},
+  "Fable": {"effort": "medium", "settings": "Advisor",
+            "contract": ".agents/reference/roles/advisor.md", "place": {"tab": "Lead", "slot": "side"}},
   "Astra": {"cli": "codex", "contract": ".agents/reference/roles/advisor.md",
             "place": {"tab": "Lead", "slot": "side"}},
-  "TeamLead": {"standing": false}}'
+  "TeamLead": {"standing": false, "model": "fable", "effort": "medium"}}'
 # → [{key, name, decl, cfg}] in declaration order. key: the profile key; name: the role (Advisor →
 # Fable; dropped when Fable is declared too); cfg: generic * name defaults * declaration (null when
 # the declaration is no object). A codex role keeps a default settings only if it declared one.

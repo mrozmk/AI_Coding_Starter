@@ -85,10 +85,10 @@ echo "team-smoke-22: (g) old base OK"
 # ---- (b) brainstorm: the lead launches first, with its profile -----------------------------------
 case_mark "(b) brainstorm: the lead launches first"
 reset
-run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/high)" "(b) runner, brainstorm"
+run "$MAIN" $TR alfa; expect 5 "launched: TeamLead (fable/medium)" "(b) runner, brainstorm"
 [ -n "$(line_of '-s smk-alfa-lead')" ] && [ -n "$(line_of '-s smk-alfa-planner')" ] \
   && [ "$(line_of '-s smk-alfa-lead')" -lt "$(line_of '-s smk-alfa-planner')" ] || fail "(b) lead not before the planner"
-for x in "/main-alfa/.agents/team/teamlead.settings.json' " "--model 'fable' --effort 'high'" \
+for x in "/main-alfa/.agents/team/teamlead.settings.json' " "--model 'fable' --effort 'medium'" \
   "--disallowedTools AskUserQuestion -- " "-e TEAM_SESSION_ROLE=TeamLead"; do
   grep -- "-s smk-alfa-lead" "$STUB_LOG" | grep -qF -- "$x" || fail "(b) lead launch lacks: $x"
 done
