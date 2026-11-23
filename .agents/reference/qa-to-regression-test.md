@@ -8,10 +8,11 @@ It is **not** a slash command. It is a procedure a human asks for after a QA run
 
 **Why bother.** A Lane S run with interaction (browser: Playwright; non-browser app: a Tier-2
 driver run — `qa-evidence-families.md` §2) already drove the app — clicked, scrolled, typed,
-waited — and left the sequence behind: a browser row in its `artifacts` (the script and its
-JSON for driver `script`, the `.mcp.md` step log for driver `mcp`), a non-browser Tier-2 row in
-the row itself, call by call (`.claude/agents/qa-runtime-app.md.example` rule 8). That sequence
-*is* a test; it just evaporates when the session ends.
+waited — and left the sequence behind: browser driver `script` or `mcp` in the row's
+`artifacts` (the script and its JSON, the `.mcp.md` step log), browser driver `subagent` and a
+non-browser Tier-2 run in the row itself (non-browser: call by call,
+`.claude/agents/qa-runtime-app.md.example` rule 8). That sequence *is* a test; it just
+evaporates when the session ends.
 
 **Why it is not part of `/qa-verify`.** That command carries a hard gate — *QA never mutates*.
 Writing a test file is a source edit, so the verifier cannot do it without breaking the boundary
@@ -24,21 +25,24 @@ that makes its verdicts trustworthy.
 `.agents/handoffs/qa-<slug>-ac-matrix.md`, written by `/qa-verify` Phase 3. Several numbered
 runs (`-2`, `-3`) → use the **newest** and say which.
 
-**Stop if the matrix has no interaction rows** (browser: no row whose artifacts record an action
-beyond navigation and reads; non-browser: no Tier-2 rows). An inspection-only run never acted on
-the app, so there is no sequence to promote. That is a normal outcome, not a failure.
+**Stop if the matrix has no interaction rows** (browser: no row whose recorded sequence, read as
+§2 says, shows an action beyond navigation and reads; non-browser: no Tier-2 rows). An
+inspection-only run never acted on the app, so there is no sequence to promote. That is a
+normal outcome, not a failure.
 
 ## 2. Extract the sequence — and refuse to fill gaps
 
-Browser rows: read each row's `artifacts` first — they hold the action sequence; `methods` lists
-only how a value was observed (ARIA snapshot, computed style, screenshot viewed). Non-browser
-rows: read the call-by-call sequence the verifier recorded in the row and the tier stamp in
-`notes`. Then `evidence` for the values to assert.
+Browser rows of driver `script` or `mcp` (`notes` starts `driver: script` / `driver: mcp`):
+read each row's `artifacts` first — they hold the action sequence; `methods` lists only how a
+value was observed (ARIA snapshot, computed style, screenshot viewed). Browser rows of driver
+`subagent` (a `qa-runtime-ui` row without that prefix; its artifacts are screenshots) and
+non-browser rows: read the sequence the verifier recorded in the row itself (`methods`,
+`evidence`; non-browser: call by call, with the tier stamp in `notes`). Then `evidence` for the
+values to assert.
 
 **The one rule that makes this trustworthy: never invent a step the run did not perform.** If
-the row's recorded sequence (browser: its artifacts; non-browser: its recorded calls) does not
-spell out a reproducible sequence — locator, action, assertion —
-name the row as unusable and leave it out. A test assembled from a plausible reconstruction
+the row's recorded sequence (as above, by driver) does not spell out a reproducible sequence —
+locator, action, assertion — name the row as unusable and leave it out. A test assembled from a plausible reconstruction
 asserts what the author *thinks* happened, and a green run of it proves nothing.
 
 | Row verdict | Action |
@@ -81,8 +85,10 @@ Match the existing tests; do not invent a house style. Rules that hold everywher
 - **Never overwrite an existing test file.** Add a case to it or create a new one — a previous
   case may encode behaviour nobody has re-verified.
 - Name the test after the criterion it encodes and cite the `ac_id` + tracker key in a comment.
-- Locators in this order: role (`getByRole`) first; test id when the role is ambiguous; label
-  for a form field; placeholder for an input without a label. Never CSS selectors, never XPath.
+- Browser (Playwright) locators in this order: role (`getByRole`) first; test id when the role is
+  ambiguous; label for a form field; placeholder for an input without a label.
+  Never CSS selectors, never XPath. A non-browser test keeps the finder the run recorded, mapped
+  by the §3 table.
 - Never assert translated copy when a stable role/label/test-id exists.
 
 ## 5. Report
@@ -92,8 +98,9 @@ the translation was not one-to-one.
 
 Then run the new test itself — with the project's test command (CLAUDE.md → Validation) when
 that command runs it, else with the test runner's own CLI on the new file (e.g.
-`npx playwright test <file>`) — and show output that names the new case; a run whose output does
-not list the case counts as not run. Then claim the test only when that run is green.
+`npx playwright test <file>`) — and show output that reports the new case itself as passed; a
+case reported skipped or pending, or not listed at all, counts as not run, however green the
+rest of the run is. Then claim the test only when that run is green.
 When it cannot be run here, say plainly that it was **not run**. If the QA environment differed
 from the test environment (another flavor, base URL, market, feature-flag state), say so: a
 sequence that held under QA is a *hypothesis* under the test target until a run says otherwise.
