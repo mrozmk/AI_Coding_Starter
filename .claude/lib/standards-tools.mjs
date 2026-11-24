@@ -16,6 +16,8 @@ import { parseYaml } from './yaml-subset.mjs';
 const T = (tool, display, cls, o = {}) => ({
   tool, display, class: cls, aliases: [], configs: [], runs: null, bin: null, sub: [], selectFlags: [],
   excludeFlags: [], strictFlags: [], valueFlags: [], scopeFlags: [], strictRe: null, requireStrict: false, stopAt: null,
+  // Rule levels that never fail a run, and whether a `warn` rule fails only a strict run.
+  unenforcedLevels: [], warnNeedsStrict: false,
   observe: new RegExp(`\\b${tool}\\b`, 'i'), appliesTo: '**/*', ...o,
 });
 const PY = '**/*.py';
@@ -32,7 +34,7 @@ export const TOOLS = [
     runs: /(^|[\s/])(eslint|ng\s+lint|nx\s+(lint|run-many|affected)\b.*\blint)(\s|$)/, bin: /^(.*\/)?(eslint|ng|nx)$/,
     selectFlags: ['-c', '--config'], excludeFlags: ['--ignore-pattern'], strictFlags: ['--max-warnings'],
     valueFlags: ['--ext', '-f', '--format', '-o', '--output-file', '--rulesdir', '--cache-location', '--parser', '--rule', '--resolve-plugins-relative-to'],
-    appliesTo: '**/*.{js,jsx,ts,tsx}',
+    warnNeedsStrict: true, appliesTo: '**/*.{js,jsx,ts,tsx}',
   }),
   T('prettier', 'Prettier', 'format', {
     configs: [/(^|\/)\.prettierrc(\.(json|ya?ml|json5|js|cjs|mjs|toml))?$/, /(^|\/)prettier\.config\.(js|cjs|mjs)$/],
@@ -42,11 +44,13 @@ export const TOOLS = [
   T('stylelint', 'Stylelint', 'lint', {
     configs: [/(^|\/)\.stylelintrc(\.(json|ya?ml|js|cjs))?$/, /(^|\/)stylelint\.config\.(js|cjs|mjs)$/],
     runs: /\bstylelint\b/, bin: /^(.*\/)?stylelint$/, selectFlags: ['--config'], excludeFlags: ['--ignore-pattern'],
-    strictFlags: ['--max-warnings'], valueFlags: ['-f', '--formatter', '--ignore-path', '--config-basedir', '--custom-syntax'], appliesTo: '**/*.{css,scss}',
+    strictFlags: ['--max-warnings'], valueFlags: ['-f', '--formatter', '--ignore-path', '--config-basedir', '--custom-syntax'], warnNeedsStrict: true, appliesTo: '**/*.{css,scss}',
   }),
   T('biome', 'Biome', 'lint', {
     configs: [/(^|\/)biome\.jsonc?$/], runs: /\bbiome\s+(check|ci|lint)\b/, bin: /^(.*\/)?biome$/,
     sub: ['check', 'ci', 'lint'], selectFlags: ['--config-path'], strictRe: /(^|\s)--error-on-warnings(\s|=|$)/,
+    // An `info` rule never fails a run and an `off` rule is disabled, strict or not.
+    unenforcedLevels: ['off', 'info'], warnNeedsStrict: true,
   }),
   T('typescript', 'TypeScript compiler', 'compiler', {
     aliases: ['tsc'], configs: [/(^|\/)tsconfig(\.[\w-]+)?\.json$/], runs: /(^|[\s/])(tsc|vue-tsc)(\s|$)|\bng\s+build\b/,
@@ -452,9 +456,10 @@ export function scan({ repo, files }) {
       if (!c.attributed) continue;
       cov.forEach((r) => enforcing.add(r));
       if (cov.every((r) => r.selected && !selects(r, c)) && t.tool !== 'typescript') c.notEnforced = c.rules.map((r) => r.rule);
-      // Biome: an `info` rule never fails a run and an `off` rule is disabled, strict or not.
-      else if (t.tool === 'biome') c.notEnforced = c.rules.filter((r) => r.setting === 'info' || r.setting === 'off' || (r.setting === 'warn' && !cov.some((x) => x.strict))).map((r) => r.rule);
-      else if ((t.tool === 'eslint' || t.tool === 'stylelint') && !cov.some((r) => r.strict)) c.notEnforced = c.rules.filter((r) => r.setting === 'warn').map((r) => r.rule);
+      else {
+        const strict = cov.some((r) => r.strict);
+        c.notEnforced = c.rules.filter((r) => t.unenforcedLevels.includes(r.setting) || (t.warnNeedsStrict && r.setting === 'warn' && !strict)).map((r) => r.rule);
+      }
     }
     if (external) enforcing.add(external);
     if (!cfgs.length) eff.forEach((r) => enforcing.add(r));

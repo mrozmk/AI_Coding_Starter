@@ -59,6 +59,8 @@ const JS_EXT = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'];
 const SIZES_ONLY = new Set(['sh', 'bash', 'go', 'rs', 'java', 'kt', 'kts', 'rb', 'cs', 'php', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'm', 'scala', 'lua', 'dart', 'vue', 'svelte']);
 const HASH_COMMENT = new Set(['py', 'sh', 'bash', 'rb']);
 const TEST_DIRS = new Set(['test', 'tests', '__tests__', 'spec']);
+// Languages whose test files are named after the class under test (`FooTest.java`).
+const CLASS_TEST_EXT = new Set(['java', 'kt', 'kts', 'cs', 'php']);
 const MARKER = /^(__init__\.py|index\.(js|jsx|ts|tsx|mjs|cjs))$/;
 const CLASS_AXIS = { 1: 'runtime', 2: 'runtime', 3: 'runtime', 4: 'runtime', 5: 'runtime', 6: 'runtime', 7: 'runtime', 8: 'boundaries', 11: 'boundaries', 10: 'change_cost', 12: 'change_cost', candidate: 'change_cost', 9: 'safety_net' };
 
@@ -143,7 +145,7 @@ function isTestPath(rel) {
   const base = parts.pop();
   if (parts.some((p) => TEST_DIRS.has(p))) return true;
   return /^test_.+\.py$/.test(base) || /_test\.(py|go)$/.test(base) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(base) || /[-_.]test\.sh$/.test(base)
-    || /^[A-Z]\w*Tests?\.(java|kt|kts|cs|php)$/.test(base) || /_spec\.rb$/.test(base);
+    || (CLASS_TEST_EXT.has(extOf(base)) && /^[A-Z]\w*Tests?\.\w+$/.test(base)) || /_spec\.rb$/.test(base);
 }
 
 function countLines(text) {
@@ -165,7 +167,7 @@ function testStem(base) {
   let s = base.replace(/\.[^.]+$/, '');
   if (s.startsWith('test_')) s = s.slice(5);
   s = s.replace(/(_test|-test|\.test|\.spec)$/, '');
-  if (['java', 'kt', 'kts', 'cs', 'php'].includes(ext)) s = s.replace(/(?<=.)Tests?$/, '');
+  if (CLASS_TEST_EXT.has(ext)) s =s.replace(/(?<=.)Tests?$/, '');
   if (ext === 'rb') s = s.replace(/_spec$/, '');
   return s;
 }
@@ -240,11 +242,11 @@ function mentionTokens(text) {
 // ---------------------------------------------------------------- measure: import graph
 
 // Import roots: the repository root plus the parent of every top-level package (a dir with an
-// __init__.py whose parent has none). `initFiles` is the full listing's __init__.py files, so a
-// focus inside a package still sees the package above it. A module is indexed only under the
-// dotted name its path has below an import root — `import json` never hits `app/utils/json.py`.
-function pyModuleIndex(pyFiles, initFiles) {
-  const pkgs = new Set(initFiles.map((f) => path.posix.dirname(f)));
+// __init__.py whose parent has none). `pkgs` holds the directories of the full listing's
+// __init__.py files, so a focus inside a package still sees the package above it. A module is
+// indexed only under the dotted name its path has below an import root — `import json` never hits
+// `app/utils/json.py`.
+function pyModuleIndex(pyFiles, pkgs) {
   const roots = new Set(['']);
   for (const d of pkgs) {
     const parent = path.posix.dirname(d);
@@ -562,9 +564,8 @@ export async function measure(opts) {
   const fileEdges = new Map();
   const unresolved = {};
   const graphed = new Set();
-  const pyInits = listed.filter((p) => path.posix.basename(p) === '__init__.py');
-  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path), pyInits);
-  const pyPkgs = new Set(pyInits.map((f) => path.posix.dirname(f)));
+  const pyPkgs = new Set(listed.filter((p) => path.posix.basename(p) === '__init__.py').map((p) => path.posix.dirname(p)));
+  const pyIndex = pyModuleIndex(entries.filter((e) => e.lang === 'py').map((e) => e.path), pyPkgs);
   for (const e of entries) {
     if (e.lang !== 'py' && e.lang !== 'js') continue;
     graphed.add(e.lang);
