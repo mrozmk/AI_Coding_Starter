@@ -8,8 +8,8 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # A fixture must never reach the calling Claude session's messaging socket (team-suite.sh says why).
 unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
 case "${TEAM_SMOKE_PART:-all}" in
-  all) parts=(purity 1 2 3 5 6 7 9 10 12 14 15 16 17 18 19 20 21 22 23 24 25 26 mail channel kit policy sessions host host-wsl notify roles dialog stop) ;;
-  4|8|11|13) echo "team-smoke: part $TEAM_SMOKE_PART was removed" >&2; exit 2 ;;
+  all) parts=(purity 1 2 3 5 6 7 9 10 12 14 15 17 20 21 22 23 24 25 26 mail channel kit policy sessions host host-wsl notify roles dialog stop) ;;
+  4|8|11|13|16|18|19) echo "team-smoke: part $TEAM_SMOKE_PART was removed" >&2; exit 2 ;;
   [1-9]|1[0-9]|2[0-9]|mail|channel|kit|policy|sessions|host|host-wsl|notify|roles|dialog|stop) parts=("$TEAM_SMOKE_PART") ;;
   purity) parts=(purity) ;;
   *) echo "team-smoke: TEAM_SMOKE_PART must be all, purity, mail, channel, kit, policy, sessions, host, host-wsl, notify, roles, dialog, stop or 1 … 26" >&2; exit 2 ;;

@@ -48,8 +48,7 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
    `--dry-run` (variants: `--key <KEY>` to reuse an existing box, `--add-roles` to add the role
    names an existing entry lacks). The dry-run's `mode` line says `fresh`. Apply it. It creates the registry, a tool
    copy under `~/.agent-mail/tools/` (named by its content: identical tools share one copy), the box and its `decisions/`, registers the three Claude
-   roles and writes the gitignored `.agents/team/channel.local.json`, then renders
-   `watch.local.json`.
+   roles and writes the gitignored `.agents/team/channel.local.json`.
 5. **Verify:** `bash .claude/lib/team-mail.sh --here check` prints `OK <KEY> (box …, tool …)` and
    `bash .claude/lib/team-channel.sh show` exits 0.
 6. **Operator kit** (an Operator action, run it yourself with `!`):
@@ -62,20 +61,14 @@ own shell, not the agent's); in a terminal, run the same `bash …` line without
 8. **Before the first start:** `bash .claude/lib/supervisor-sessions.sh check` prints `<role> OK`
    for the Supervisor and the TeamLead. A `<role> LEAK: …` line (exit 3) means `settings.local.json`
    allows something the role profile must not; remove it, or `/roles` (`up`, `here`) launches nothing.
-   `bash .claude/lib/supervisor-sessions.sh preflight` on a machine where nothing runs yet prints
-   `WARN receivers live — … not started` and two FAILs that only running sessions clear:
-   `team-watch loops beating` (until `team-watch.sh start`; `/roles` starts no loop) and `mail probe and
-   picked ping per role` (until each role window acks a `team-watch.sh ping <role>`). Every other
-   row should be `ok`. Row 10 prints `unverified: run team-watch.sh ping <role>` on any Claude Code
-   other than the version the socket wire format was verified on.
+   `bash .claude/lib/supervisor-sessions.sh preflight` prints six rows; every row should be `ok`.
+   The Claude Code row prints `unverified: check the doorbell (session-host.sh send) by hand` on
+   any version other than the one the socket wire format was verified on.
 9. **First bring-up:** `/roles` (`bash .claude/lib/roles.sh`) starts the role sessions of
-   `teams.sessions`; while team-watch still runs, start it as below:
-   `bash .claude/lib/team-watch.sh start --no-register`, then `/roles`, then
-   `bash .claude/lib/monitoring.sh start all`. `/roles` starts no daemon, and a plain
-   `team-watch.sh start` from a terminal stops at the receiver registration. Details and the
-   switch to split routing: [01 → The launcher](01-roles-and-sessions.md#the-launcher). The
-   [migration](../../.agents/reference/supervisor-sessions.md#migration) applies only when a single
-   Supervisor window already runs the daemon.
+   `teams.sessions`; it starts no daemon. Details:
+   [01 → Starting, restoring and stopping roles](01-roles-and-sessions.md#starting-restoring-and-stopping-roles).
+   The [migration](../../.agents/reference/supervisor-sessions.md#migration) applies only when a
+   single Supervisor window already runs.
 
 ## A machine that already runs the channel
 

@@ -85,7 +85,7 @@ attended_pending() {
   fi
 }
 
-# team_screen <session> <prompt open> → redacted lines for team-watch: an open permission prompt
+# team_screen <session> <prompt open> → redacted lines for the snapshot readers: an open permission prompt
 # shows its whole command block from the history (a long command scrolls off 15 visible lines).
 team_screen() {
   local b=""
@@ -97,7 +97,7 @@ team_screen() {
 }
 
 # live_fields <td> <team> <run> <role> <transcript or ""> <status> <prompt open> <menu open> → one
-# JSON object with the current role's fields team-watch filters on (additive to schema 1).
+# JSON object with the current role's fields for the snapshot readers (additive to schema 1).
 live_fields() {
   local td="$1" team="$2" run="$3" role="$4" tf="$5" st="$6" po="$7" mo="$8"
   local att="$1/runs/$3/attention" anchor="" ac=0 ap=false adp=false live=true
@@ -180,7 +180,7 @@ team_role() {  # team_role <td> <team> <run> <role> <cur role> <runner> <overrid
     attempt="$(jq -r '.attempt // null' "$td/session.json")" || attempt=null
     [[ "$attempt" =~ ^[0-9]+$ ]] || attempt=null
     tf="$(role_transcript "$td" "$team" "$role" "$run" "$attempt")"
-    # One pane probe per fact, shared by status and the team-watch fields.
+    # One pane probe per fact, shared by status and the snapshot readers' fields.
     [ "$TMUX_OK" = 0 ] || sess="$(role_session "$team-$role")"
     if [ "$sess" = alive ]; then
       # The parse knows busy/idle; the regexes stay only as the fail-open fallback.

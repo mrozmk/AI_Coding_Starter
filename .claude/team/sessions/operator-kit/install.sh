@@ -6,7 +6,7 @@
 # Usage: bash .claude/team/sessions/operator-kit/install.sh
 #   --dry-run                  what would change; writes nothing
 #   --apply                    first-install backup per live file (*.bak-team-kit, never replaced),
-#                              copy/render, then render the team-watch config (team-channel.sh render)
+#                              copy/render
 #   --verify                   exit 0 only when every live file equals its template / fresh render
 #   --rollback                 restore every backup and delete it, remove files that were absent
 #   --print-scheduler launchd|cron   the health-check scheduler entry to install yourself
@@ -27,7 +27,7 @@ KIT="$TEAM_CHANNEL_KIT"
 BAK=.bak-team-kit
 LABEL="team.$(printf '%s' "$TEAM_CHANNEL_CODE" | tr '[:upper:]' '[:lower:]').sessions-health"
 P="$TEAM_CHANNEL_TMUX_PREFIX"
-SESSIONS="$P-supervisor $P-teamlead $P-advisor $P-team-watch $P-team-watch-dog"
+SESSIONS="$P-supervisor $P-teamlead $P-advisor"
 
 refuse() { echo "error: $*" >&2; exit 1; }
 [[ "$KIT" =~ $TEAM_CHANNEL_SAFE ]] || refuse "kit_dir '$KIT' has characters a hook command cannot carry"
@@ -137,12 +137,10 @@ EOF
 
 case "$1" in
   --dry-run)
-    each dry
-    (cd "$root" && bash .claude/lib/team-channel.sh render --dry-run) || true ;;
+    each dry ;;
   --apply)
     mkdir -p "$KIT"; chmod 700 "$KIT"
-    each apply_one
-    (cd "$root" && bash .claude/lib/team-channel.sh render) ;;
+    each apply_one ;;
   --verify)
     each verify_one
     exit "$bad" ;;

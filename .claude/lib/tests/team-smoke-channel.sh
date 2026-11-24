@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The channel config (team-channel.sh): the load and its refusals, the rendered local configs
-# (watch probes, solo, hand-written files kept) and the role-filtered mail probes.
+# The channel config (team-channel.sh): the load and its refusals, the channel step's binding,
+# the exported values and the turn sender.
 # The HOME is throwaway (with a space in its path); nothing reads or writes the real ~/.agent-mail.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
@@ -12,15 +12,13 @@ export HOME="$WORK/home dir"; mkdir -p "$HOME"
 unset AGENT_MAIL_BOX CODEX_HOME
 REG="$HOME/.agent-mail/projects.json"
 CH="bash .claude/lib/team-channel.sh"
-WATCH="$MAIN/.agents/team/watch.local.json"
 LIB="$MAIN/.claude/lib"
 
-# The main checkout gets what /setup:teams installs for the channel: the vendored tool and the
-# templates, committed (the tool copy is named after its commit).
+# The main checkout gets what /setup:teams installs for the channel: the vendored tool, committed
+# (the tool copy is named after its commit).
 mkdir -p "$MAIN/tools"
 cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tests"
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
-cp "$SRC"/.claude/team/*.tmpl "$MAIN/.claude/team/"
 printf '__pycache__/\n' >> "$MAIN/.gitignore"
 git -C "$MAIN" add -A && git -C "$MAIN" commit --quiet -m "channel fixture"
 prof() {  # prof <jq filter> — edit the main checkout's profile in place
@@ -34,32 +32,17 @@ prof '.teams.channel = {project_code: "QX", mail_suffix: "Qx", advisor: "pair"}'
 run "$MAIN" $CH show
 expect 3 "not configured — no .agents/team/channel.local.json" "(1) no local half"
 
-# ---- (2) the channel step binds the box and renders ------------------------------------------
+# ---- (2) the channel step binds the box; it renders nothing --------------------------------------
 run "$MAIN" bash .claude/lib/team-mail-setup.sh "$MAIN" --dry-run
-expect 0 "plan	render" "(2) dry-run plans the render"
-[ ! -e "$WATCH" ] || fail "(2) the dry-run rendered"
+expect 0 "write	channel	.agents/team/channel.local.json" "(2) dry-run plans the channel file"
+[ ! -e "$MAIN/.agents/team/channel.local.json" ] || fail "(2) the dry-run wrote the channel file"
 run "$MAIN" bash .claude/lib/team-mail-setup.sh "$MAIN"
-expect 0 "write	.agents/team/watch.local.json" "(2) fresh setup renders the watch probes"
-! has "escalation" "$WORK/out" || fail "(2) render still names escalation"
-! grep -q '{{' "$WATCH" || fail "(2) an unfilled placeholder"
-jq -e --arg l "$(cd "$LIB" && pwd)" '(._generated | startswith("by team-channel.sh render"))
-  and (.mail.Supervisor | contains("\"" + $l + "/team-mail.sh\" QX inbox --for SupervisorQx --unread --limit 0"))
-  and (.mail | has("TeamLead") | not) and (has("esc_mail") | not)
-  and (.mail_unread | contains("--for SupervisorQx "))
-  and (has("wake_mail") | not)' "$WATCH" >/dev/null \
-  || { cp "$WATCH" "$WORK/out"; fail "(2) watch.local.json content"; }
-! grep -q 'mail\.sqlite\|agent_mail\.py' "$WATCH" || fail "(2) a box or tool path in the probes"
+expect 0 "write	channel	.agents/team/channel.local.json" "(2) fresh setup binds the channel"
+! has "render" "$WORK/out" || fail "(2) the channel step still renders"
+! has "escalation" "$WORK/out" || fail "(2) the channel step still names escalation"
 
-# ---- (2b) render keeps a hand-written file and an identical one -------------------------------
-run "$MAIN" $CH render
-expect 0 "keep	.agents/team/watch.local.json	identical to the template" "(2b) a second render keeps an identical file"
-cp "$WATCH" "$WORK/watch.gen"
-echo '{"_generated": "by hand", "probes": []}' > "$WATCH"; cp "$WATCH" "$WORK/watch.hand"
-run "$MAIN" $CH render
-expect 0 "keep	.agents/team/watch.local.json	hand-written — move it away to render it from the template" \
-  "(2b) render keeps a hand-written file"
-cmp -s "$WATCH" "$WORK/watch.hand" || fail "(2b) render changed a hand-written file"
-cp "$WORK/watch.gen" "$WATCH"
+# ---- (2c) render is no verb any more ------------------------------------------------------------
+run "$MAIN" $CH render; expect 2 "" "(2c) render is no verb any more"
 
 # ---- (3) the exported values ------------------------------------------------------------------
 run "$MAIN" $CH show
@@ -73,8 +56,7 @@ run "$MAIN" $CH name Advisor; expect 0 "AdvisorQx" "(3) name"
 run "$MAIN" $CH name Opus; expect 2 "must be Supervisor|TeamLead|Advisor|Reviewer" "(3) bad role"
 run "$MAIN" $CH get decisions_dir; expect 0 "$HOME/.agent-mail/main/decisions" "(3) get"
 
-# ---- (4) the probes filter by role: the split probe passes turns, the single one drops esc- ----
-probe() { run "$MAIN" bash -c "$(jq -r "$1" "$WATCH")"; }
+# ---- (4) turns and notes reach the Supervisor's box ---------------------------------------------
 run "$MAIN" $CH turn Advisor Supervisor --body "pick up AB-1"
 expect 0 "SENT id=" "(4) turn"
 run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to SupervisorQx --kind report \
@@ -83,13 +65,6 @@ expect 0 "SENT id=" "(4) a Reviewer note on an esc- thread"
 run "$MAIN" bash .claude/lib/team-mail.sh QX send --from ReviewerQx --to SupervisorQx --kind turn \
   --thread esc-r1-q-1 --body "your turn on the escalation"
 expect 0 "SENT id=" "(4) a turn on an esc- thread"
-# Split: kind=turn only — the report waits, both turns wake.
-probe .mail.Supervisor; expect 0 "from=AdvisorQx kind=turn" "(4) split mail probe"
-[ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 2 ] && ! grep -q ' kind=report ' "$WORK/out" \
-  || fail "(4) the split probe is not the two turns"
-# Single window: every kind, but never an esc- thread line.
-probe .mail_unread; expect 0 "from=AdvisorQx kind=turn" "(4) single-window probe"
-[ "$(grep -c '^\[agent-mail\]' "$WORK/out")" = 1 ] || fail "(4) the single-window probe passed an esc- line"
 
 # ---- (5) refusals: stale local half, suffix drift, bad policy ----------------------------------
 cp "$REG" "$WORK/reg.bak"

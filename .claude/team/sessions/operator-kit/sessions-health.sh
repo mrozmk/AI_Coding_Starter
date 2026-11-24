@@ -1,7 +1,7 @@
 #!/bin/bash
 # Health check of the supervision sessions, run by a scheduler (launchd or cron) from the installed
 # kit, outside the checkout: it reads only kit.conf and kit_dir (a launchd job cannot read
-# ~/Desktop). It records which role sessions or team-watch loops are down (sessions-health.state,
+# ~/Desktop). It records which role sessions are down (sessions-health.state,
 # plus one log line per new outage) and notifies nobody. It never restarts anything: a silent
 # restart would hide a crash loop.
 #

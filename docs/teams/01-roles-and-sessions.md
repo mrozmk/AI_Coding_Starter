@@ -4,27 +4,27 @@
 - [`supervisor-sessions.md`](../../.agents/reference/supervisor-sessions.md): the roles, profiles, launcher, preflight, auto-merge, migration and rollback.
 - [`roles.md`](../../.claude/commands/roles.md) (`/roles`, script `roles.sh`): starts, stops, lists and takes the role sessions declared in `teams.sessions`; the role contracts are in [`.agents/reference/roles/`](../../.agents/reference/roles/).
 
-> **`/roles` replaces the old launcher.** The old `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role`, `/monitoring` and `/team-watch` are gone (they were pointers to it for one release, v3.2.0). The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The sections below still describe the team-watch side until it is retired.
+> **`/roles` replaces the old launcher.** The old `supervisor-sessions.sh start|stop|status|up|here`, `/sessions-up`, `/session-role`, `/mail-role` and the two monitoring commands are gone (they were pointers to it for one release, v3.2.0). The `SessionStart` hook `session-registry.sh` now names the role's contract on every start, `/clear` and compaction, and the bootstrap line is on the launch line. The signal daemon that used to push batches into the role sessions is removed (#286): role messages are inbox files rung by the doorbell.
 
 ## Per-run TeamLead (pilot)
 
-In brainstorm and quick mode the TeamLead is not a role session. The runner starts one lead per team run, as `<team>-lead` in the team clone, and ends it with the run. `supervisor-sessions.sh` never starts it, and team-watch carries no team signal. The Supervisor and the Advisor stay as below. Contract: [`team-lead.md`](../../.agents/reference/team-lead.md); the Supervisor's side: [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md).
+In brainstorm and quick mode the TeamLead is not a role session. The runner starts one lead per team run, as `<team>-lead` in the team clone, and ends it with the run. `supervisor-sessions.sh` never starts it. The Supervisor and the Advisor stay as below. Contract: [`team-lead.md`](../../.agents/reference/team-lead.md); the Supervisor's side: [`team-pipeline.md` §5a](../../.agents/reference/team-pipeline.md).
 
 ## The shape
 
-Supervision runs as long-lived **role sessions**, each with one fixed role. Scripts, not models, enforce the routing, the pickup alarms, the modes, the permissions and the merge gate.
+Supervision runs as long-lived **role sessions**, each with one fixed role. Scripts, not models, enforce the modes, the permissions and the merge gate.
 
-The layer is opt-in on top of the single-window flow. As long as there is no `routing.json`, routing is `single Supervisor` and one plain window receives everything.
+The layer is opt-in on top of the single-window flow. A message to a role is an inbox file; the session-host doorbell rings the session ([session-host.md](../../.agents/reference/session-host.md) §12).
 
 | Role | Host | Session (tmux name / Herdr terminal) | Does | Never |
 |---|---|---|---|---|
-| **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze, alarms | answers a team question; switches routing on its own; clears a freeze without the Operator |
-| **Advisor** | Claude | `<prefix>-advisor` | task intake, on request through the Supervisor; under `advisor: pair` it runs the Reviewer's deliver loop | receives team-watch pushes; it reads its agent-mail by hand (with the kit) |
+| **Supervisor** | Claude | `<prefix>-supervisor` | the Operator conversation, operational decisions, auto-merge within the gate, releases and the freeze | answers a team question; clears a freeze without the Operator |
+| **Advisor** | Claude | `<prefix>-advisor` | task intake, on request through the Supervisor; under `advisor: pair` it runs the Reviewer's deliver loop | is woken by mail; it reads its agent-mail by hand (with the kit) |
 | **Reviewer** | Codex | none, an agent-mail recipient | the second opinion the Advisor asks for (`advisor: pair` only) | exists under `advisor: solo` |
 
-The **Operator** is the human. Operator actions (routing, `freeze off`, `here`, `rollback`, `register --takeover`, installing the kit) sit behind `ask` and are never taken by a role on its own.
+The **Operator** is the human. Operator actions (`freeze off`, `here`, `rollback`, installing the kit) sit behind `ask` and are never taken by a role on its own.
 
-Who decides what: [02 — Decision model](02-decision-model.md). What gets pushed to whom: [04 — Signals and monitoring](04-team-watch.md).
+Who decides what: [02 — Decision model](02-decision-model.md).
 
 ## Identity
 
@@ -91,7 +91,7 @@ After a crash or reboot, `/roles` also lists the interrupted team runs (resuming
 `/start-team <team>`) and prints a resume line for each gone ad-hoc conversation. Under Herdr the
 roles land in the `Supervisor` tab of the checkout's space. A role that waits at the folder trust dialog
 is reported as `started (needs trust — pick Yes; Enter alone exits)`: accept it in that window. No
-wake loop and no team-watch daemon start; role messages are inbox files rung by the doorbell.
+loop or daemon starts; role messages are inbox files rung by the doorbell.
 
 Each Claude role runs as `claude --name <role><suffix> --session-id <uuid> --model <m> --effort <e>
 --settings <materialised profile> -- <bootstrap line>; read`, with the caller's `CLAUDECODE*` and
@@ -118,37 +118,24 @@ Other verbs:
 
 | # | Row | WARN / FAIL |
 |---|---|---|
-| 1 | receivers live | see below |
-| 2 | team-watch loops beating | FAIL `beat or dog.beat stale — bash .claude/lib/team-watch.sh start` |
-| 3 | mail probe and picked ping per role | FAIL on a missing `.mail` probe in `watch.local.json`, or a role whose `team-watch.sh ping` was never picked |
-| 4 | team channel loads | FAIL with the loader's last error line |
-| 5 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
-| 6 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
-| 7 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
-| 8 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
-| 9 | Claude Code version | compared with the version the socket wire format was verified on (2.1.318); any other version prints `unverified: run team-watch.sh ping <role>`; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
+| 1 | team channel loads | FAIL with the loader's last error line |
+| 2 | operator kit installed | FAIL on any `install.sh --verify` drift; the fix is the Operator's `install.sh --apply` ([08](08-operator-kit.md)) |
+| 3 | role profiles | FAIL `local allow leak`, or any other failing `supervisor-sessions.sh check` |
+| 4 | notifications | the `.claude/lib/notify.sh --check` lines on one row; both channels off is an ok row |
+| 5 | health check | `sessions-health.sh --scheduled`; none is an ok row that prints the declared loss |
+| 6 | Claude Code version | compared with the version the socket wire format was verified on (2.1.318); any other version prints `unverified: check the doorbell (session-host.sh send) by hand`; FAIL with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no `"crossSessionInbound": "accept"` in the user settings |
 
-**The socket row (1).** Each registered receiver's socket is judged by `team-watch-send.py --check`, the send's own predicate and wording:
-
-| State | Verdict |
-|---|---|
-| a role not started yet (no session or `here` window) | **WARN** `<role> not started` |
-| a running role with no active registration | **FAIL** `<role> not registered` |
-| a running role whose socket is missing | **FAIL** `<role> socket <path> missing` |
-| a socket that is not a 0600 socket owned by the current uid | **FAIL** `socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>` |
-| socket ok, but the pid is gone | **FAIL** `<role> not live (pid gone)` |
-
-On the verified CLI the messaging token is not enforced. The 0600 mode and the owner of the socket are therefore the only boundary ([04 → wire format](04-team-watch.md#the-wire-format-and-its-boundary)).
+On the verified CLI the messaging token is not enforced. The 0600 mode and the owner of the socket are therefore the only boundary ([session-host.md → Socket wire format](../../.agents/reference/session-host.md#socket-wire-format)).
 
 ## After a restart, and rollback
 
-- **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations. It starts no team-watch loop; a single Supervisor window starts it by hand (`bash .claude/lib/team-watch.sh start`).
-- **Rollback:** run `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on), then `install.sh --rollback`. Ownership is back only when a plain `claude` window has run `team-watch.sh start`, and `team-watch.sh status` shows the Supervisor receiver active.
+- **After a machine restart:** run `/roles`. It starts every missing standing role fresh (`roles.sh resume <Role>` continues a Claude role's previous conversation on request), asks which interrupted team runs to resume (`/start-team <team>`, optional), and prints resume lines for gone ad-hoc conversations.
+- **Rollback:** `supervisor-sessions.sh rollback` prints the two Operator steps and calls nothing: `install.sh --rollback`, then a plain `claude` in the main checkout (no `TEAM_SESSION_ROLE`).
 
 The migration steps (for a machine that already runs a single Supervisor window) and the smoke checklist are in the contract.
 
 ## Language
 
-Role names, preflight rows and `LEAK` lines are English only, and no Polish form is parsed at this layer ([04 → Language](04-team-watch.md#language)).
+Role names, preflight rows and `LEAK` lines are English only, and no Polish form is parsed at this layer.
 
 Acceptance rows: [capabilities](capabilities.md).

@@ -65,8 +65,9 @@ origin/<line>` into the team's working branch), `allow-offline` (a settings edit
 offline single-file allow entries for files in the ticket diff), `add-ask` (a settings edit adding
 only ask entries) and `prod-diagnose` (a read-only diagnose script from a directory the project
 names in `teams.policy.classes.prod_diagnose`). Every class is **off until the profile enables it**
-(`teams.policy.classes.<name>.enabled: true`); the Operator's word (`team-watch.sh mode class <name>
-on|off`) can then switch an enabled class off and on again, never enable a disabled one.
+(`teams.policy.classes.<name>.enabled: true`); the Operator's word (a hand edit of `classes.<name>`
+to `"off"` or `"on"` in `.agents/team/watch/state.json`) can then switch an enabled class off and on
+again, never enable a disabled one.
 
 **Tickets from recommendations.** The Supervisor and the Advisor create technical tickets without
 asking (wrapup follow-ups, QA findings, analysis). Each carries the recommendation line —

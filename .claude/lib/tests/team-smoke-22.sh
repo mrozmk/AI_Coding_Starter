@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # per-run TeamLead lifecycle in the runner: launch before the planner, reuse, wait in place on a
 # stop, doorbell (socket and logged skip), dead lead → session_dead once → relaunch, inbox rings,
-# execution-time limit paused while waiting, old base, cli, end/finalize, team-watch filter, and
+# execution-time limit paused while waiting, old base, cli, end/finalize, the snapshot lead flag, and
 # the run-scoped root files archived by team-next; the stage hook's tier of a permission (operator
 # causes, production asks, never-waived refusals) and the TeamLead's ask answers (team-answer.sh:
 # caller, tier, form, decision relay, answers.md, the .answered marker); the runner rings asks.
@@ -353,22 +353,15 @@ jq -e '.session_id == "sid-after-clear" and .reg == "alfa-lead.reg.json"' "$LR" 
   || { cp "$LR" "$WORK/out"; fail "(reg) the registry record did not follow the lead"; }
 echo "team-smoke-22: SessionStart registration OK"
 
-# ---- (i) team-watch: no team signal for a run with or without its own lead -----------------------
-case_mark "(i) team-watch: no team signal for a run"
+# ---- (i) the snapshot's lead flag: this run's teamlead.json only ---------------------------------
+case_mark "(i) the snapshot's lead flag"
 reset; lead_json
 run "$MAIN" bash .claude/lib/team-snapshot.sh --out "$WORK/snap.json"; expect 0 "" "(i) snapshot"
 jq -e '.teams[] | select(.team == "alfa") | .lead == true' "$WORK/snap.json" >/dev/null || fail "(i) snapshot lead flag"
 echo alfa-old > "$TD/run"
 run "$MAIN" bash .claude/lib/team-snapshot.sh --out "$WORK/snap.json"; expect 0 "" "(i) snapshot, stale lead"
 jq -e '.teams[] | select(.team == "alfa") | .lead == false' "$WORK/snap.json" >/dev/null || fail "(i) a stale teamlead.json counts as lead"
-jq -n '{routing: {mode: "split", receiver: "Supervisor", live: {}}, snapshot: {teams: [
-  {team: "alfa", run: "a1", lead: true, runner: "stale", finished: false, roles: []},
-  {team: "beta", run: "b1", runner: "stale", finished: false, roles: []}]}}' \
-  | jq -f "$L/team-watch-signals.jq" > "$WORK/sig.json"
-jq -e '[.[] | select(.kind | IN("attention","record","runner","ready","escalation"))] | length == 0' \
-  "$WORK/sig.json" >/dev/null \
-  || { cp "$WORK/sig.json" "$WORK/out"; fail "(i) signal filter produced a team signal"; }
-echo "team-smoke-22: (i) team-watch filter OK"
+echo "team-smoke-22: (i) snapshot lead flag OK"
 
 # ---- (k) team-next archives the run-scoped root files; the next ticket takes the no-lead branch ---
 case_mark "(k) team-next archives the run-scoped ro"

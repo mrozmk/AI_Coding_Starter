@@ -8,24 +8,22 @@
 > `rollback` stay, and so does `reviewer` (the agent-mail kit's Reviewer check). The tmux tables below describe the
 > old launcher.
 
-The single supervision window (one session receives every team signal, talks to the Operator, runs
-the teams) is split into long-lived role sessions with fixed roles. Identity is
-`TEAM_SESSION_ROLE`, set by the launcher; **scripts, not models**, enforce the routing, the pickup
-alarms, the modes, the permissions and the merge gate. The supervision layer is opt-in on top of
-the single-window flow (routing `single Supervisor`). Mechanics of the push channel:
-[team-watch.md](team-watch.md); the decision model:
+The single supervision window (one session talks to the Operator and runs the teams) is split into
+long-lived role sessions with fixed roles. Identity is `TEAM_SESSION_ROLE`, set by the launcher;
+**scripts, not models**, enforce the modes, the permissions and the merge gate. The supervision
+layer is opt-in on top of the single-window flow. A message to a role is an inbox file rung by the
+session-host doorbell ([session-host.md](session-host.md) §12); the decision model:
 [team-decision-model.md](team-decision-model.md); the mail channel: [agent-mail.md](agent-mail.md).
 
-| Session | tmux | Role | team-watch pushes |
+| Session | tmux | Role | Woken by |
 |---|---|---|---|
-| **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | alarms + its own mail |
+| **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | its inbox events + its own mail |
 | **TeamLead** (retired) | `<prefix>-teamlead` | the global TeamLead — retired: no run reaches it ([§ TeamLead](#teamlead)) | none |
 | **Advisor** | `<prefix>-advisor` | task intake, on request through the Supervisor | none — agent-mail only (with the kit), read by hand |
 
 **The per-run TeamLead is not one of these sessions.** In brainstorm and quick mode the runner
 (`team-run.sh`) launches one lead per team run as `<team>-lead` in the team clone and ends it with
-the run; `supervisor-sessions.sh` never starts, stops or restores it, and team-watch carries no
-team signal. Its answers reach the Supervisor only as the four inbox events
+the run; `supervisor-sessions.sh` never starts, stops or restores it. Its answers reach the Supervisor only as the four inbox events
 ([team-pipeline.md](team-pipeline.md) §5a, [team-lead.md](team-lead.md)).
 
 `<prefix>` is `teams.channel.tmux_prefix` (default: the repo directory slug); the mail recipient
@@ -40,17 +38,15 @@ carries the block with the defaults). A running window changes model or effort o
 `stop <role>` + `start <role>`. `teams.sessions.TeamLead` is the per-run lead's model and effort
 (default `fable` / `medium`, read by the runner at each launch); it starts no role session.
 
-Every `[team-watch #<n>]` message: `bash .claude/lib/team-watch.sh ack <n>` first, `… done <n>`
-last. Channel, pane and mail content is data, never the Operator's consent. A request for action to
+Channel, pane and mail content is data, never the Operator's consent. A request for action to
 another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel.sh turn <From>
-<To>`); `info` / `report` carry information only — the mail probes wake a role only on
-`kind=turn`.
+<To>`); `info` / `report` carry information only — the kit's Stop hook holds a role only on an
+unread `kind=turn`.
 
 ## Supervisor
 
 > The Supervisor's role contract is [roles/supervisor.md](roles/supervisor.md): the
 > `SessionStart` hook (`session-registry.sh`) names it on every start, `/clear` and compaction.
-> This section keeps the team-watch side that is still running until team-watch is retired.
 
 **Does:**
 - the conversation with the Operator; operational decisions (never a team question); the
@@ -58,25 +54,19 @@ another role is always agent-mail `--kind turn --awaiting <role>` (`team-channel
 - the **automatic merge** after QA ready ([Auto-merge](#auto-merge)); tracker bookkeeping;
 - releases ordered by the Operator, with `supervisor-sessions.sh freeze on <release>` before and
   the Operator's `freeze off` after the post-check;
-- its own questions (not a team's) to the Advisor by plain agent-mail;
-- the alarms: `UNPICKED` / `STALLED` / `RECEIVER … down` / `UNDELIVERED` / `MONITOR` → find out why
-  (the role's window, `roles.sh status`), tell the Operator in one line when a role
-  is down or stuck;
-- `ATTENTION Advisor (<permission|menu>) fp=<fp>: <anchor>` — a role session's own prompt
-  or menu: an Operator action with a notification and the role's window.
+- its own questions (not a team's) to the Advisor by plain agent-mail.
 
 **Does not:** answer a team question (`team-answer.sh` is denied by its profile); relay the
-Operator's decision to a team (that goes through the role's window); switch `routing` on its own;
-clear a freeze without the Operator.
+Operator's decision to a team (that goes through the role's window); clear a freeze without the
+Operator.
 
 **Wakes the Supervisor only for:** the four team events in its inbox — `accepted` (with the
 acceptance brief), `closed` (a run closed without a merge, a quick plan's `remode` included),
 `collision`, `session_dead` ([team-lead.md §3](team-lead.md#3-events-to-the-supervisor));
-`ATTENTION Advisor`; its own mail (`kind=turn`); the alarms above. Team questions, routine and
-progress never wake it.
+its own mail (`kind=turn`). Team questions, routine and progress never wake it.
 
 **Bootstrap:** the launch line's bootstrap (`roles.sh`) and the hook's contract line — freeze state,
-`team-watch.sh pending Supervisor`, the latest `decisions.md` commits, unread mail.
+the inbox, the latest `decisions.md` commits, unread mail.
 
 **Operator records** — the Supervisor's only path to a notification:
 `bash .claude/lib/operator-record.sh failure --summary "<line>" [--team <t>] [--ref <file>]` for a
@@ -90,8 +80,7 @@ team and summary is reused, not sent again. `notify.sh` is denied to every role 
 
 **Commands:** `roles.sh status`, `supervisor-sessions.sh freeze on …|freeze status|preflight|reviewer`,
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
-`team-remode.sh <team> brainstorm` (after a `closed` event whose reason is `remode`, then `/start-team <team>`),
-`team-watch.sh status|stats|pending|mode tiers …`.
+`team-remode.sh <team> brainstorm` (after a `closed` event whose reason is `remode`, then `/start-team <team>`).
 
 ## TeamLead
 
@@ -104,31 +93,11 @@ The global TeamLead is retired; the per-run TeamLead is not a supervision sessio
 > Fable's settings template is `.claude/team/sessions/Advisor.settings.json`. What follows is the
 > agent-mail side of the old single Advisor, kept for projects that install the agent-mail kit.
 
-It is no team-watch receiver and nothing wakes it on mail: with the kit it reads unread `turn`s by hand (`team-mail.sh <KEY> inbox --for Advisor<suffix> --unread`) at bootstrap. Under `advisor: pair` it runs the Reviewer's deliver loop:
+Nothing wakes it on mail: with the kit it reads unread `turn`s by hand (`team-mail.sh <KEY> inbox --for Advisor<suffix> --unread`) at bootstrap. Under `advisor: pair` it runs the Reviewer's deliver loop:
 `supervisor-sessions.sh reviewer` reports `Reviewer: deliver ok|missing`, matched on this box's
 path only (another project's same-name loop never counts); a missing one is restored per
 [agent-mail.md](agent-mail.md) → Bring-up. Under `advisor: solo` the Reviewer does not exist
 (`Reviewer: none (advisor solo)`) and every note carries `reviewer: none`.
-
-## Monitoring
-
-**Declaration:** `.claude/team/sessions/monitoring.json` — per role `team_watch`,
-`pause.pass`, `start` steps (allow-list: `mode tiers on`).
-**Commands:** `bash .claude/lib/monitoring.sh start|stop|status [all]` (`all` only from the
-Supervisor or a role-less caller; the `/monitoring` command is gone, the script stays until the
-team-watch side is retired); [team-watch.md § Supervisor](team-watch.md#supervisor) is the
-handling contract of `[team-watch #<n>]` messages.
-
-**Pause:** one durable flag per role in `.agents/team/watch/state.json` `.paused[<role>] = {since,
-by}`; an unreadable flag counts as a pause. A pause holds the team-watch push (routine not sent,
-`pause.pass` sent) and the kit's Stop hook; it **never** acks,
-supersedes, marks `done` or moves a cursor, and never silences alarms or incident threads. A
-bootstrap (start, `/clear`, compact) keeps the pause. Details:
-[team-watch.md](team-watch.md) → Pause.
-
-**Start:** idempotent — only a paused role is rebased (unsent routine retired, alarms re-queued,
-the open set replayed as `(current state)`); it prints `readiness: running | degraded (<why>) |
-missing (<why>)`.
 
 ## Morning / after a restart
 
@@ -146,33 +115,11 @@ missing (<why>)`.
 - `bash .claude/lib/roles.sh resume <Role>` continues a gone Claude role's previous conversation
   instead of a fresh one; plain `/roles` never resumes.
 
-It starts no team-watch: while that still runs, start it with `bash .claude/lib/team-watch.sh start`
-(`/sessions-up` and `supervisor-sessions.sh up` are gone). What is not
+`/sessions-up` and `supervisor-sessions.sh up` are gone. What is not
 restored: [roles/supervisor.md](roles/supervisor.md#not-restored).
 
-**Overnight:** `bash .claude/lib/monitoring.sh stop all` in the Supervisor at night, `… start all` in
-the morning; each role then gets its `(current state)`.
-
-## Routing
-
-`bash .claude/lib/team-watch.sh routing split|single <role>` — an Operator action (an `ask` rule;
-denied to the per-run TeamLead). No `routing.json` = `single Supervisor`: the Supervisor's window receives everything.
-
-| Event | split | single `<r>` |
-|---|---|---|
-| `MAIL` from probe `<role>` | `<role>` | `<r>` |
-| team-watch `ERROR` (snapshot, probe, team snapshot) | Supervisor (a mail-probe error: that role while it is live) | `<r>` |
-| `MONITOR`, `UNDELIVERED`, `UNPICKED`, `STALLED`, `RECEIVER … down` | Supervisor | `<r>` |
-| `ATTENTION Advisor` — a prompt or menu in `<prefix>-advisor` | Supervisor | `<r>`; the Supervisor when `<r>` is the subject |
-
-A team's stops (`ATTENTION`, `RECORD`, `RUNNER`, `READY`) produce no team-watch signal: they reach
-that run's per-run TeamLead, and the Supervisor gets only the four inbox events
-([team-lead.md §3](team-lead.md#3-events-to-the-supervisor)).
-
-A switch is an atomic handover: open batches become `transferred` (the old receiver's `ack` is
-refused), and the next tick re-delivers every open signal as `(current state)` to the new
-receivers. The dedup identity is unchanged, so a signal handled on the old side is refused as
-`(existing …)` / `already answered`.
+A team's stops (`ATTENTION`, `RECORD`, `RUNNER`, `READY`) reach that run's per-run TeamLead, and the
+Supervisor gets only the four inbox events ([team-lead.md §3](team-lead.md#3-events-to-the-supervisor)).
 
 ## Profiles
 
@@ -256,14 +203,12 @@ terminal's handle (Herdr terminal id, tmux session, or — a plain terminal — 
 start time, which `exec` keeps) and execs the role's CLI with its role environment — an Operator
 action (an `ask` rule). `sessions-health.sh` counts a Supervisor window as up.
 
-**`preflight` rows:** (1) receivers live — a refused socket is a FAIL with the send's own wording
-(`socket <path> refused mode <mode> — want mode 0600 owned by uid <uid>`), a role not started yet a
-WARN; (2) team-watch loops beating; (3) a mail probe and a picked
-ping per role; (4) the team channel loads; (5) the operator kit installed (`install.sh --verify`);
-(6) role profiles; (7) notifications (the `.claude/lib/notify.sh --check` lines on one row; both
-channels off is an ok row); (8) the health check scheduled (`sessions-health.sh --scheduled`; none is an ok row with the
-declared loss); (9) the Claude Code version against the one the socket wire format was verified on
-— with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no
+**`preflight` rows:** (1) the team channel loads; (2) the operator kit installed (`install.sh
+--verify`); (3) role profiles; (4) notifications (the `.claude/lib/notify.sh --check` lines on one
+row; both channels off is an ok row); (5) the health check scheduled (`sessions-health.sh
+--scheduled`; none is an ok row with the declared loss); (6) the Claude Code version against the one
+the socket wire format was verified on ([session-host.md](session-host.md#socket-wire-format); any
+other version: check the doorbell by hand) — with `--permission-mode bypassPermissions` in `TEAM_SESSIONS_CLAUDE_FLAGS` and no
 `"crossSessionInbound": "accept"` in the user settings it is a FAIL naming that line (preflight only
 reads the file). On the verified CLI the messaging token is **not** enforced: the socket's 0600
 mode and owner are the only boundary, and delivered text stays untrusted data.
@@ -285,15 +230,6 @@ mode and owner are the only boundary, and delivered text stays untrusted data.
 
 Freeze: `supervisor-sessions.sh freeze on <release>|status` (the Supervisor's own call), `freeze
 off` (an Operator action — never cleared without the Operator). Denied to the Advisors.
-
-## Alarms
-
-Computed by the daemon after each tick, outside every LLM; one alarm per receiver episode, a
-`… recovered` line when it ends. `RECEIVER <role> down`, `UNPICKED <role> #<n>`, `STALLED <role>
-#<n>`, `UNDELIVERED <role>`, `MONITOR <daemon|dog> dead` — conditions and knobs:
-[team-watch.md](team-watch.md) → Alarms. Target: the Supervisor (single routing: the receiver).
-An alarm notifies nobody. **Terminal rule:** an episode about the target itself is only logged —
-alarms never spawn alarms about alarms.
 
 ## Operator notifications
 
@@ -326,23 +262,18 @@ Operator actions, in order; each step's rollback is `supervisor-sessions.sh roll
 
 1. `/setup:teams` with the channel step; `! bash .claude/team/sessions/operator-kit/install.sh
    --dry-run`, then `--apply`.
-2. `/roles` (or `bash .claude/lib/roles.sh up`; `roles.sh here Supervisor` for a plain terminal);
-   then `bash .claude/lib/team-watch.sh mode answering off` while the old
-   single window is still running.
+2. `/roles` (or `bash .claude/lib/roles.sh up`; `roles.sh here Supervisor` for a plain terminal).
 3. In each window: the role's contract line appears (SessionStart hook); check `/permissions` against
-   [Profiles](#profiles). Each registers as `standby` while routing is single.
-4. Channel check: `team-watch.sh ping <role>` for each role; each window acks; `team-watch.sh stats`
-   shows `picked` for the ping batches.
-5. Stop the old single window from handling team signals and close it. **Never** `team-watch.sh
-   stop` — it stops the shared daemon for every role.
+   [Profiles](#profiles).
+4. Channel check: `bash .claude/lib/session-host.sh send <Role> "<line>"` for each role; the line
+   arrives in each window.
+5. Close the old single window.
 6. `supervisor-sessions.sh preflight` until green.
-7. The switch: `bash .claude/lib/team-watch.sh routing split` + `mode answering on`.
-8. Smoke ([Smoke checklist](#smoke-checklist)), then the [Pilot](#pilot).
+7. Smoke ([Smoke checklist](#smoke-checklist)), then the [Pilot](#pilot).
 
-**Rollback:** `supervisor-sessions.sh rollback` (routing `single Supervisor`, answering on, the
-Operator steps printed) and `! bash .claude/team/sessions/operator-kit/install.sh --rollback`.
-Ownership is back only when a plain `claude` window has run `bash .claude/lib/team-watch.sh start` and
-`team-watch.sh status` shows `receiver Supervisor: … active`.
+**Rollback:** `supervisor-sessions.sh rollback` prints the two Operator steps and calls nothing:
+`! bash .claude/team/sessions/operator-kit/install.sh --rollback`, then a plain `claude` in the main
+checkout (no `TEAM_SESSION_ROLE`).
 
 ## Smoke checklist
 
@@ -351,16 +282,12 @@ Ownership is back only when a plain `claude` window has run `bash .claude/lib/te
 | directive per role, silent in a clone | `sessions` (1) | `/clear` in a role window |
 | three sessions under their prefix, role env, clean env, model/effort per role | `sessions` (2) | `start all` |
 | profiles OK, deny floor kept, local leak blocks `start` | `sessions` (3) | `/permissions` per window |
-| role prompt reaches the Supervisor once and notifies nobody | part 17 (78) | a prompt in the Advisor window |
 | preflight single verdict, declared losses | `sessions` (5) | `preflight` on the machine |
 | Reviewer loop of this box only | `sessions` (6) | `reviewer` |
-| `status` lines, `up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` switches routing and answering | `sessions` (9) | `up` after a reboot |
-| a delivered signal handled exactly once, duplicates counted | part 17 (68) | a menu in a test team |
-| `/clear`, a pid restart, alarms outside the LLM, rollback handover | the team-watch parts 15–19 | `/clear` in the Supervisor, kill a test receiver, rollback after the smoke |
+| `status` lines, `up` after a restart (fresh sessions, dead pane replaced, a running role and a `here` Supervisor kept), `rollback` prints the Operator steps only | `sessions` (9) | `up` after a reboot |
+| the doorbell's socket sender: deadline, 0666 refusal, 0600 delivery | part 15 (47) | `session-host.sh send` to a role window |
 
 ## Pilot
 
-1–2 days after the switch. Write down, per day: `bash .claude/lib/team-watch.sh stats --since
-<UTC>` (delivered = wake-ups, pickup p50/max, unpicked/stalled alarms, duplicates per role) and the
-tokens per session (the costs layer, one session id per window). Compare the Supervisor's
-wake-ups with the single window's before the switch.
+1–2 days after the switch. Write down, per day, the tokens per session (the costs layer, one
+session id per window) and compare the Supervisor's with the single window's before the switch.

@@ -4,14 +4,14 @@
 # preflight, the Reviewer deliver check, the SQL guard over the launcher verbs and the rollback. /roles itself: part `roles`.
 # Fixture HOME and channel (registry + box from the channel step), stub claude / tmux / launchctl /
 # crontab: nothing reads or writes the real ~/.agent-mail, ~/.agent-ops or a tmux server.
-# It waits on pickup windows (ping → ack), so the runner keeps it out of a parallel batch.
+# It spawns role sessions and holds the outbox lock, so the runner keeps it out of a parallel batch.
 # team-smoke: serial
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/team-smoke-lib.sh"
-. "$(dirname "${BASH_SOURCE[0]}")/team-smoke-watch-lib.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/team-smoke-sessions-lib.sh"
 smoke_init
 smoke_team AB-1140 chore/AB-1140-sessions
-watch_init
+sessions_init
 unset TEAM_SESSIONS_CLAUDE_FLAGS CODEX_HOME AGENT_MAIL_BOX TMUX TMUX_PANE HC_TERMINAL_ID \
   CLAUDECODE HARNESS_MAIN HARNESS_REGISTRY HARNESS_ADDRESS TEAM_SESSION_ROLE
 export TEAM_ROLES_TRUST_SECS=1
@@ -25,7 +25,7 @@ kill_roles() {
     echo dead > "$TMUXD/$n.pid"
   done
 }
-trap 'kill_roles; kill_loops; for p in $PIDS; do kill "$p" 2>/dev/null || true; done
+trap 'kill_roles; for p in $PIDS; do kill "$p" 2>/dev/null || true; done
   rm -rf "$WORK" "$SD"' EXIT
 SS="bash .claude/lib/supervisor-sessions.sh"
 RS="bash .claude/lib/roles.sh"
@@ -42,11 +42,10 @@ cp "$SRC/.claude/hooks/session-registry.sh" "$MAIN/.claude/hooks/"
 mkdir -p "$MAIN/tools"
 cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tests"
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
-# MAIN carries this repo's own settings (watch-lib). Where /setup:teams already ran, its ask rule for
+# MAIN carries this repo's own settings (sessions-lib). Where /setup:teams already ran, its ask rule for
 # the kit installer outranks a local allow, and the leak cases (3) and (5) need the template's rules.
 jq '.permissions.ask -= ["Bash(bash .claude/team/sessions/operator-kit/install.sh*)"]' \
   "$MAIN/.claude/settings.json" > "$WORK/main-settings.json" && mv "$WORK/main-settings.json" "$MAIN/.claude/settings.json"
-cp "$SRC"/.claude/team/*.tmpl "$MAIN/.claude/team/"
 cp -R "$SRC/.claude/team/sessions/operator-kit" "$MAIN/.claude/team/sessions/"
 printf '__pycache__/\n' >> "$MAIN/.gitignore"
 git -C "$MAIN" add -A && git -C "$MAIN" commit --quiet -m "sessions fixture"
@@ -123,7 +122,7 @@ case "$(hookr 0f0f0f0f-0001)" in *"Session role"*) fail "(1) a contract line wit
   || fail "(1) a contract line in a team clone"
 [ ! -e "$CLONE/.agents/team/watch/sessions" ] || fail "(1) the hook wrote into a team clone"
 hookr 0f0f0f0f-1111 TEAM_SESSION_ROLE=Fable > /dev/null
-[ "$(jq -r '.session_id + " " + .role + " " + .team' "$TWD/sessions/Fable/session.json")" \
+[ "$(jq -r '.session_id + " " + .role + " " + .team' "$WD/sessions/Fable/session.json")" \
   = "0f0f0f0f-1111 Fable -" ] || fail "(1) the hook did not bind session.json to the session id"
 echo "team-smoke-sessions: (1) SessionStart contract line OK"
 
@@ -153,10 +152,10 @@ prof '.teams.sessions.TeamLead.settings = "TeamLead"'
 run "$MAIN" $SS materialize TeamLead; expect 2 "the global TeamLead is retired" \
   "(2) materialize TeamLead with a declared template"
 cp "$WORK/prof.keep" "$MAIN/.claude/project-profile.json"
-[ ! -e "$TWD/profiles/TeamLead.settings.json" ] || fail "(2) a refused materialize wrote a TeamLead profile"
+[ ! -e "$WD/profiles/TeamLead.settings.json" ] || fail "(2) a refused materialize wrote a TeamLead profile"
 run "$MAIN" $SS materialize Supervisor; expect 0 "profile Supervisor:" "(2) materialize Supervisor"
-PF="$TWD/profiles/Supervisor.settings.json"
-[ "$(stat -f %Lp "$PF")" = 600 ] && [ "$(stat -f %Lp "$TWD/profiles")" = 700 ] \
+PF="$WD/profiles/Supervisor.settings.json"
+[ "$(stat -f %Lp "$PF")" = 600 ] && [ "$(stat -f %Lp "$WD/profiles")" = 700 ] \
   || fail "(2) materialised profile not 600 in a 700 dir"
 jq -e --arg c "Read(//$(dirname "$MP" | sed 's|^/||')/main-*/**)" \
   '(.permissions.allow | index($c)) and (tostring | contains("{{CLONES}}") | not)
@@ -165,7 +164,7 @@ jq -e --arg c "Read(//$(dirname "$MP" | sed 's|^/||')/main-*/**)" \
    and (.permissions.deny | index("Bash(gh pr merge*)") | not)' "$PF" >/dev/null \
   || { cp "$PF" "$WORK/out"; fail "(2) materialised Supervisor: clones, env or a PR deny"; }
 run "$MAIN" $SS materialize Fable; expect 0 "profile Fable:" "(2) materialize Fable from the Advisor template"
-jq -e '.env.TEAM_SESSION_ROLE == "Fable"' "$TWD/profiles/Fable.settings.json" >/dev/null \
+jq -e '.env.TEAM_SESSION_ROLE == "Fable"' "$WD/profiles/Fable.settings.json" >/dev/null \
   || fail "(2) the Fable profile carries the template's role"
 run "$MAIN" $SS materialize Astra; expect 2 "Astra has no settings profile" "(2) a Codex role has no profile"
 run "$MAIN" $SS materialize Advisor; expect 2 "Advisor has no settings profile" "(2) the legacy name is no role"
@@ -176,8 +175,7 @@ echo "team-smoke-sessions: (2) launch, removed verbs, materialise OK"
 run "$SRC" $CHK "$SRC"; expect 0 "Supervisor OK" "(3) shipped profiles"
 ! has "TeamLead OK" "$WORK/out" || fail "(3) the retired TeamLead is still checked"
 PY_ROLES="$(sed -n 's/^ROLES = (\(.*\))$/\1/p' "$SRC/.claude/lib/session_profile_check.py" | tr -d '",')"
-SH_ROLES="$(bash -c '. "$1/.claude/lib/team-watch-route.sh"; echo "$TW_ROLES"' _ "$SRC")"
-[ "$PY_ROLES" = "$SH_ROLES" ] || fail "(3) ROLES ($PY_ROLES) != TW_ROLES ($SH_ROLES)"
+[ "$PY_ROLES" = Supervisor ] || fail "(3) ROLES ($PY_ROLES) is not the Supervisor alone"
 run "$MAIN" $CHK "$MAIN" Supervisor; expect 0 "Supervisor OK" "(3) materialised"
 FLOOR="$(jq '.permissions.deny | length' "$MAIN/.claude/settings.json")"
 [ "$(jq '.permissions.deny | length' "$PF")" -gt "$FLOOR" ] || fail "(3) materialised profile lacks the project denies"
@@ -254,69 +252,53 @@ rm -f "$MAIN/.claude/claude-profile" "$MP/.agents/team/registry/Supervisor.json"
 echo "team-smoke-sessions: (4) here OK"
 
 # ---- (5) preflight -------------------------------------------------------------------------------
-mkrole SUP
-mailcfg true
-run "$MAIN" $W routing split; expect 0 "" "(5) routing split"
-as Supervisor SUP $W register; expect 0 "Supervisor registered" "(5) register"
-run "$MAIN" $W ping Supervisor; wait_recv SUP "PING Supervisor" 15
-for n in $(cd "$MAIN" && $W pending Supervisor); do run "$MAIN" env TEAM_SESSION_ROLE=Supervisor $W ack "$n"; done
-beat() { echo "$(date -u +%s) 1 v$TWV" > "$TWD/beat"; echo "$(date -u +%s) 1 v$TWV" > "$TWD/dog.beat"; }
-beat; run "$MAIN" $SS preflight; expect 0 "ok receivers live" "(5) preflight green"
+run "$MAIN" $SS preflight; expect 0 "ok team channel loads" "(5) preflight green"
 grep -q '^FAIL' "$WORK/out" && fail "(5) preflight green printed a FAIL"
-[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 9 ] || fail "(5) preflight must print 9 rows"
-for row in "ok team-watch loops beating" \
-  "ok mail probe and picked ping per role" "ok team channel loads" "ok operator kit installed" \
+! grep -qE 'receivers live|team-watch loops|mail probe and picked ping' "$WORK/out" || fail "(5) preflight prints no team-watch row"
+[ "$(grep -cE '^(ok|WARN|FAIL) ' "$WORK/out")" = 6 ] || fail "(5) preflight must print 6 rows"
+for row in "ok team channel loads" "ok operator kit installed" \
   "ok role profiles" "ok notifications: config: missing (~/.agent-comms/notify.json) · herdr off · imessage off" \
   "ok health check: none — declared loss: a dead tmux server is noticed by nobody" \
-  "ok Claude Code 2.1.301 — unverified: run team-watch.sh ping <role>"; do
+  "ok Claude Code 2.1.301 — unverified: check the doorbell (session-host.sh send) by hand"; do
   has "$row" "$WORK/out" || fail "(5) row: $row"
 done
-beat; run "$MAIN" env STUB_CLAUDE_VERSION=2.1.318 $SS preflight
+run "$MAIN" env STUB_CLAUDE_VERSION=2.1.318 $SS preflight
 expect 0 "ok Claude Code 2.1.318 — socket wire format verified on 2.1.318" "(5) verified CLI"
 # A sender that cannot report its state is a FAIL row, not a silent ok.
 cp "$MAIN/.claude/lib/notify.sh" "$WORK/notify.keep"; printf '#!/usr/bin/env bash\necho broken; exit 1\n' > "$MAIN/.claude/lib/notify.sh"
-beat; run "$MAIN" $SS preflight; expect 1 "FAIL notifications — notify.sh --check exit 1: broken" "(5) a failing notify.sh --check"
+run "$MAIN" $SS preflight; expect 1 "FAIL notifications — notify.sh --check exit 1: broken" "(5) a failing notify.sh --check"
 cp "$WORK/notify.keep" "$MAIN/.claude/lib/notify.sh"
 # A flush or a send holding the outbox lock never stalls or fails the row (the holder dies with the part).
 OBX="$HOME/.agent-comms/outbox"; mkdir -p "$OBX/events"; chmod 700 "$HOME/.agent-comms" "$OBX"
 KEEP_TRAP="$(trap -p EXIT | sed "s/^trap -- '//; s/' EXIT\$//")"; sleep 300 & LHOLD=$!
 trap "kill $LHOLD 2>/dev/null || true; $KEEP_TRAP" EXIT
 mkdir "$OBX/.flush.lock"; echo "$LHOLD" > "$OBX/.flush.lock/pid"
-t0=$SECONDS; beat; run "$MAIN" $SS preflight; expect 0 "ok notifications: config: missing" "(5) preflight with the outbox lock held"
+t0=$SECONDS; run "$MAIN" $SS preflight; expect 0 "ok notifications: config: missing" "(5) preflight with the outbox lock held"
 [ $((SECONDS - t0)) -lt 10 ] || fail "(5) preflight waited $((SECONDS - t0)) s for the outbox lock"
 has "outbox: 0 events (prune skipped: outbox busy)" "$WORK/out" || fail "(5) the notifications row on a busy outbox"
 kill "$LHOLD"; wait "$LHOLD" 2>/dev/null || true; trap "$KEEP_TRAP" EXIT; rm -rf "$OBX/.flush.lock"
-beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
+run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 1 "\"crossSessionInbound\": \"accept\" to $HOME/.claude/settings.json" "(5) bypass without crossSessionInbound"
 [ ! -e "$HOME/.claude/settings.json" ] || fail "(5) preflight wrote the user settings"
 mkdir -p "$HOME/.claude"; echo '{"crossSessionInbound": "accept"}' > "$HOME/.claude/settings.json"
-beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
+run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 0 "ok Claude Code" "(5) bypass with crossSessionInbound"
 # With a Claude profile the check reads the profile's settings, not the inherited dir's.
 mkdir -p "$WORK/claude-pf"; PF_REAL="$(cd "$WORK/claude-pf" && pwd -P)"
 printf '%s\n' "$WORK/claude-pf" > "$MAIN/.claude/claude-profile"
-beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
+run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 1 "\"crossSessionInbound\": \"accept\" to $PF_REAL/settings.json" "(5) bypass checks the Claude profile's settings"
 echo '{"crossSessionInbound": "accept"}' > "$WORK/claude-pf/settings.json"
 rm -f "$HOME/.claude/settings.json"
-beat; run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
+run "$MAIN" env TEAM_SESSIONS_CLAUDE_FLAGS="--permission-mode bypassPermissions" $SS preflight
 expect 0 "ok Claude Code" "(5) bypass with crossSessionInbound in the Claude profile"
 rm -f "$MAIN/.claude/claude-profile"
 rm -f "$HOME/.claude/settings.json"
-# The socket check is team-watch-send.py's: same predicate, same wording; a refused socket fails.
-chmod 644 "$SUP_SOCK"
-beat; run "$MAIN" $SS preflight
-expect 1 "FAIL receivers live — socket $SUP_SOCK refused mode 0644 — want mode 0600 owned by uid $(id -u)" "(5) refused socket"
-chmod 600 "$SUP_SOCK"
-mv "$TWD/receivers/Supervisor.json" "$WORK/sup-recv.keep"
-beat; run "$MAIN" $SS preflight; has "WARN receivers live — Supervisor not started" "$WORK/out" \
-  || fail "(5) a not-started Supervisor is not a WARN"
-mv "$WORK/sup-recv.keep" "$TWD/receivers/Supervisor.json"
 mv "$MAIN/.claude/team/sessions/operator-kit/install.sh" "$WORK/install.keep"
-beat; run "$MAIN" $SS preflight; expect 1 "FAIL operator kit installed — not shipped" "(5) kit absent"
+run "$MAIN" $SS preflight; expect 1 "FAIL operator kit installed — not shipped" "(5) kit absent"
 mv "$WORK/install.keep" "$MAIN/.claude/team/sessions/operator-kit/install.sh"
 echo '{"permissions": {"allow": ["Bash(bash .claude/team/*)"]}}' > "$MAIN/.claude/settings.local.json"
-beat; run "$MAIN" $SS preflight; expect 1 "FAIL role profiles — local allow leak (Operator: settings.local.json)" "(5) leak row"
+run "$MAIN" $SS preflight; expect 1 "FAIL role profiles — local allow leak (Operator: settings.local.json)" "(5) leak row"
 rm -f "$MAIN/.claude/settings.local.json"
 echo "team-smoke-sessions: (5) preflight OK"
 
@@ -363,10 +345,8 @@ echo "team-smoke-sessions: (8) auto-merge restart OK"
 
 # ---- (9) rollback ----------------------------------------------------------------------------------
 kill_roles
-run "$MAIN" $W mode answering off; expect 0 "" "(9) answering off"
-run "$MAIN" $SS rollback; expect 0 "Rollback: routing single Supervisor, answering on." "(9) rollback"
+run "$MAIN" $SS rollback; expect 0 "Rollback:" "(9) rollback"
 has "install.sh --rollback" "$WORK/out" || fail "(9) rollback lacks the Operator's kit step"
-r9="$(cd "$MAIN" && bash -c '. .claude/lib/team-watch-lib.sh; tw_init "$PWD"; echo "$(tw_routing) / $(tw_answering)"')"
-case "$r9" in "single Supervisor / on"*) ;; *) fail "(9) rollback did not switch routing/answering: $r9" ;; esac
+! has "team-watch" "$WORK/out" || fail "(9) rollback names team-watch"
 echo "team-smoke-sessions: (9) rollback OK"
 echo "team-smoke-sessions: OK"

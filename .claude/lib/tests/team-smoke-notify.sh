@@ -527,8 +527,8 @@ left="$(cd "$SRC" && grep -rlE 'osascript|notify-send|terminal-notifier|PushNoti
 jq -e '.hooks | has("Notification") | not' "$SRC/.claude/team/sessions/operator-kit/hooks/role-hooks.settings.json.tmpl" >/dev/null \
   || fail "(m) the kit's role hooks still wire a Notification hook"
 ! grep -q '^notify()' "$SRC/.claude/lib/team-run.sh" || fail "(m) the runner still has notify()"
-! grep -qE 'tw_notify|notifier_line|team_channel_loss_line' "$SRC"/.claude/lib/team-watch*.sh "$SRC/.claude/lib/team-channel.sh" \
-  || fail "(m) team-watch or the channel still notifies"
+! grep -qE 'tw_notify|notifier_line|team_channel_loss_line' "$SRC/.claude/lib/team-channel.sh" \
+  || fail "(m) the channel still notifies"
 jq -e '.teams.channel | has("notifier") | not' "$SRC/.claude/project-profile.json.example" >/dev/null || fail "(m) the profile example still sets a notifier"
 echo "team-smoke-notify: (m) one path to the Operator OK"
 

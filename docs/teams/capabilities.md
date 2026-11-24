@@ -27,15 +27,12 @@ live acceptance line.
 | Operator kit installs, verifies and rolls back outside the repo | P7 | implemented | smoke-kit (6) | to verify (E04, E19) |
 | Role profiles check and preflight | P5 | implemented | smoke-sessions (10), session-profiles (2) | to verify (E05, E06) |
 | Role sessions start under their prefix and report their role | P5 | implemented | smoke-sessions (10) | to verify (E07) |
-| Signal daemon delivers to the role sessions over the messaging socket | P4 | implemented | smoke-15 (10), smoke-16 (8) — a stub receiver socket | to verify (E08, E24) |
+| The doorbell's socket sender: a deadline, a wider socket refused with no byte sent, 0600 delivery | P4 | implemented | smoke-15 (2) — a stub receiver socket | to verify (E08, E24) |
 | Role-to-role mail round-trip (Reviewer only in `pair`) | P2, P5 | implemented | agent-mail-unittest (73) | to verify (E09) |
-| Split routing: routine to the TeamLead, READY and incidents to the Supervisor | P4 | implemented | smoke-16 (8) | to verify (E10, E17) |
-| A menu is answered exactly once | P1 | implemented | smoke-4 (1), smoke-5 (13), smoke-17 (12) | to verify (E11) |
+| A menu is answered exactly once | P1 | implemented | smoke-4 (1), smoke-5 (13) | to verify (E11) |
 | Deny / ask outside an enabled class is never auto-approved | P1, P8 | implemented | smoke-12 (16), smoke-policy (1), guard-team-egress-test (126), guard-destructive-sql-test (87) | to verify (E12) |
-| `/clear` and a pid restart keep the routing | P4 | implemented | smoke-16 (8), smoke-17 (12) | to verify (E14) |
 | An old run or a stale fingerprint is refused | P1 | implemented | smoke-4 (1), smoke-5 (13) (E15) | — offline only |
-| An unavailable receiver raises an alarm outside the LLM | P4 | implemented | smoke-15 (10), smoke-16 (8) | to verify (E18) |
-| Rollback hands control back to one owner | P4, P5, P7 | implemented | smoke-16 (8), smoke-sessions (10), smoke-kit (6) | to verify (E19) |
+| Rollback hands control back to one owner | P5, P7 | implemented | smoke-sessions (10), smoke-kit (6) | to verify (E19) |
 | Menu keystroke path | P1 | implemented | — | to verify (E20, attended) — never run: no TTY, Operator-only |
 | Prompt binding holds across a re-render | P1 | implemented | — | to verify (E21, attended) — never run: no TTY, Operator-only |
 | Health check notices a stopped role once | P7 | implemented | smoke-kit (6) | to verify (E25) |
@@ -45,18 +42,19 @@ live acceptance line.
 
 These are limits, not claims. They hold on every host.
 
-- A dead tmux server takes every loop and every role down; only the external health check notices.
-- The messaging socket is an observed interface. A CLI upgrade can break delivery silently:
-  `UNDELIVERED` detects transport errors and `RECEIVER down` a dead pid or a missing socket, but a
-  silent discard after a successful write is caught only behaviourally (`UNPICKED`).
+- A dead tmux server takes every role down; only the external health check notices.
+- The messaging socket is an observed interface. A CLI upgrade can break delivery silently: the
+  doorbell writes to the socket without a pickup acknowledgement, so a discard after a successful
+  write goes unnoticed (the message itself stays in the inbox, and the prompt hook shows the count).
+  A dead stage or TeamLead session is the runner's `session_dead` event.
 - The prompt-check matcher approximates the host's permission matcher; the live `/permissions`
   view is the truth. The checker refuses any dynamic word (`$VAR`, a runtime path, a path after
   `cd`) and sends it to the Operator.
 - The sender cannot detect a human typing between its last capture and the clear of a draft.
-- The socket predicate is checked, then used: `team-watch-send.py` runs `lstat` (a 0600 socket owned
+- The socket predicate is checked, then used: the doorbell's socket sender runs `lstat` (a 0600 socket owned
   by this uid) and then `connect`. A same-uid process can swap the file in between; the residual is
-  same-uid only, because the receiver files that name the socket live in a 0700 `receivers/`
-  directory and are mode 600.
+  same-uid only, because the registration files that name the socket (`.agents/team/registry/`)
+  are written mode 600.
 - The channel's sender name is declarative; there is no authentication between sessions. A role
   can send mail under another role's name. Known and accepted, not a guarantee.
 - Everything about the Reviewer assumes a CLI with a queue-style wake entry point.

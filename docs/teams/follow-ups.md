@@ -28,7 +28,7 @@ tests.
 | F9 | The source project becomes a downstream of this starter for the team layer, so fixes are made once | decided in principle; its own plan |
 | F10 | Detecting a PR whose host auto-complete was armed outside the gate (Azure DevOps) | not ported; belongs behind the azure-devops PR provider |
 | F11 | `gate_lock_scope: machine|project`. Today one build gate runs at a time per machine, by design, and the wait is visible | later |
-| F12 | Linux hosts: unsupported today. BSD-only calls break the layer there: `stat -f %m` in `team-watch-lib.sh` (`tw_mtime`, the daemon), `team-question.sh` (the ledger's age check), `team-run.sh` (the runner lock age) and `team-snapshot.sh` (`mtime`), and `stat -f %Lp` in `team-lib.sh` (the `.env` mode check). Still to verify after the port: `flock` semantics, `ps` formats, `SIGALRM`, the messaging socket, cron/systemd for the health check. The source never ran there | open: port the stat sites (GNU `stat -c` fallback), then verify |
+| F12 | Linux hosts: unsupported today. BSD-only calls break the layer there: `stat -f %m` in `team-question.sh` (the ledger's age check), `team-run.sh` (the runner lock age) and `team-snapshot.sh` (`mtime`), and `stat -f %Lp` in `team-lib.sh` (the `.env` mode check). Still to verify after the port: `flock` semantics, `ps` formats, `SIGALRM`, the messaging socket, cron/systemd for the health check. The source never ran there | open: port the stat sites (GNU `stat -c` fallback), then verify |
 | F13 | The cross-session messaging socket is an observed, undocumented interface. Re-verify on every Claude Code upgrade | standing check |
 | F16 | The vendored agent-mail tool is re-synced from its upstream by a manual delta, with its tests as the oracle | standing procedure ([`agent-mail.md`](../../.agents/reference/agent-mail.md)) |
 | F19 | The memory-layer key `czytelnik:` (the reader of a recommended memory entry) is Polish in a public template. It is read by the reflection protocol and the memory guard outside the team layer, so renaming it needs every reader changed together plus a migration of existing entries | a separate starter item, not part of the team-layer port |
@@ -49,7 +49,7 @@ tests.
 | F35 | `tw_commit` re-sends a batch when it misses the lock (final review of `f3d7996`) | open: record the delivery before a retry |
 | F36 | The kit `escalate.sh` poll ignores replies that are already acked (final review of `f3d7996`) | open: match a reply by thread and id, not by its unread state |
 | F37 | `gate_lock` acquire spins on a lock directory that is not empty but has no holder file | open: treat a holder-less directory older than the claim window as stale |
-| F38 | `TEAM_WATCH_LOCK_SECS` is not forwarded to the daemon by `team-watch.sh start` | open: add it to the forwarded set |
+| F38 | A lock-timeout knob was not forwarded to the signal daemon | closed: the daemon is removed (#286) |
 | F39 | `claude_version_ok` (preflight row 10) misreads a four-part Claude Code version | open: compare by numeric fields, any count |
 | F40 | Mail identity is not bound to the session: `team-mail.sh --from/--for/--by` take any role name, not only the caller's `TEAM_SESSION_ROLE` | open: refuse a name other than the session's own role in role sessions |
 | F41 | `TEAM_GATE_LOCK_DIR` is taken from the environment and the lock code removes trees under it, so a wrong value steers an rmtree | open: require the directory to carry the lock's own marker before removing |

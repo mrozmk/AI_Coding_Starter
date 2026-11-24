@@ -18,11 +18,10 @@ OK_DIR=.claude/team/sessions/operator-kit
 INST="bash $OK_DIR/install.sh"
 M="bash .claude/lib/team-mail.sh QX"
 
-# The checkout carries what /setup:teams installs: the tool, the templates, the kit, the hook.
+# The checkout carries what /setup:teams installs: the tool, the kit, the hook.
 mkdir -p "$MAIN/tools" "$MAIN/.claude/team/sessions"
 cp -R "$SRC/tools/agent_mail" "$MAIN/tools/"; rm -rf "$MAIN/tools/agent_mail/tests"
 find "$MAIN/tools" -name __pycache__ -prune -exec rm -rf {} +
-cp "$SRC"/.claude/team/*.tmpl "$MAIN/.claude/team/"
 cp -R "$SRC/$OK_DIR" "$MAIN/.claude/team/sessions/"
 printf '__pycache__/\n' >> "$MAIN/.gitignore"
 git -C "$MAIN" add -A && git -C "$MAIN" commit --quiet -m "kit fixture"
@@ -67,7 +66,7 @@ jq -e --arg k "$KIT" '.hooks.Stop[0].hooks[0].command == "bash \"\($k)/hooks/mai
   || fail "(I) role-hooks.settings.json"
 ! grep -q '^NOTIFIER=' "$KIT/kit.conf" || fail "(I) kit.conf still carries NOTIFIER"
 for want in PROJECT_CODE=QX SUPERVISOR_NAME=SupervisorQx LABEL=team.qx.sessions-health \
-  "SESSIONS=main-supervisor main-teamlead main-advisor main-team-watch main-team-watch-dog" "KIT_DIR=$KIT"; do
+  "SESSIONS=main-supervisor main-teamlead main-advisor" "KIT_DIR=$KIT"; do
   grep -qxF "$want" "$KIT/kit.conf" || { cp "$KIT/kit.conf" "$WORK/out"; fail "(I) kit.conf lacks $want"; }
 done
 run "$MAIN" $INST --verify; expect 0 "ok $KIT/kit.conf" "(I) verify clean"
@@ -113,7 +112,7 @@ echo "team-smoke-kit: (I) installer OK"
 
 # ---- (H) the health check ---------------------------------------------------------------------
 hc() { run "$MAIN" env PATH="$KP" bash "$KIT/sessions-health.sh" "$@"; cat "$WORK/out" >> "$WORK/health.log"; }
-printf '%s\n' main-supervisor main-teamlead main-advisor main-team-watch main-team-watch-dog > "$WORK/up"
+printf '%s\n' main-supervisor main-teamlead main-advisor > "$WORK/up"
 : > "$WORK/notify.log"; : > "$WORK/procs"; : > "$WORK/health.log"
 hc; expect 0 "" "(H) all up"
 [ ! -s "$WORK/health.log" ] || fail "(H) logged an outage with everything up"
@@ -148,6 +147,8 @@ guard() {  # guard <role or -> [project dir]
   if [ "$r" = - ]; then run "$MAIN" env -u TEAM_SESSION_ROLE CLAUDE_PROJECT_DIR="$d" bash "$GUARD" <<<'{}'
   else run "$MAIN" env TEAM_SESSION_ROLE="$r" CLAUDE_PROJECT_DIR="$d" bash "$GUARD" <<<'{}'; fi
 }
+guard Supervisor; expect 0 "" "(G) nothing unread"
+[ ! -s "$WORK/out" ] || fail "kit: mail-guard blocks with nothing unread"
 run "$MAIN" $M send --from AdvisorQx --to SupervisorQx --kind turn --thread esc-r1-q-9 --body x
 guard Supervisor; expect 0 "" "(G) esc- only"; [ ! -s "$WORK/out" ] || fail "(G) blocked on an esc- turn"
 run "$MAIN" $M send --from Advisor --to Supervisor --kind turn --thread other --body x
@@ -164,28 +165,10 @@ mkdir -p "$WORK/fakeclone/.agents/team"; echo '{}' > "$WORK/fakeclone/.agents/te
 guard Supervisor "$WORK/fakeclone"; [ ! -s "$WORK/out" ] || fail "(G) a clone was held"
 mv "$CH" "$WORK/ch.away"; guard Supervisor; [ ! -s "$WORK/out" ] || fail "(G) held without a channel"
 mv "$WORK/ch.away" "$CH"
-# the team-watch and monitoring layers, stubbed: pending batches, a paused Supervisor
-cp "$LIB/team-watch.sh" "$WORK/tw.real"
-printf '#!/bin/bash\n# Usage: bash .claude/lib/team-watch.sh pending <role> [<since>] | status\necho "$*" >> "%s/tw.log"\n[ "$1" = pending ] && echo 7\nexit 0\n' "$WORK" > "$LIB/team-watch.sh"
-guard Supervisor; expect 0 "Unacked team-watch message(s) for Supervisor: 7" "(G) pending blocks"
-mkdir -p "$MAIN/.claude/team/sessions"
-echo '{"roles": {"Supervisor": {"pause": {"pass": {"mail_threads": ["incident-"]}}}}}' > "$MAIN/.claude/team/sessions/monitoring.json"
-printf '#!/bin/bash\n[ "$1" = paused ] && echo "2026-11-04T08:00:00Z (Operator)"\n' > "$LIB/monitoring.sh"
+# Every unread turn is listed in the one block reason.
 run "$MAIN" $M send --from TeamLeadQx --to SupervisorQx --kind turn --thread chat-1 --body x
-run "$MAIN" $M send --from TeamLeadQx --to SupervisorQx --kind turn --thread incident-1 --body x
-guard Supervisor; expect 0 "thread=incident-1" "(G) a paused Supervisor holds its pass threads"
-! has "thread=chat-1" "$WORK/out" || fail "(G) a paused role was held on a routine thread"
-grep -q '^pending Supervisor 2026-11-04T08:00:00Z$' "$WORK/tw.log" || fail "(G) the pause since was not passed"
-# An older team-watch.sh (no pending/status in its usage) takes any word as a team name and polls
-# forever: the guard must not call it at all. The stand-in logs every call, so a call is seen even
-# if a timeout would have ended it.
-rm -f "$LIB/monitoring.sh" "$MAIN/.claude/team/sessions/monitoring.json"
-printf '#!/bin/bash\n# Usage: bash .claude/lib/team-watch.sh <team>...\necho "$*" >> "%s/tw-old.log"\nexit 0\n' \
-  "$WORK" > "$LIB/team-watch.sh"
-guard Supervisor; expect 0 "thread=chat-1" "(G) an older team-watch.sh: the unread turn still blocks"
-[ ! -s "$WORK/tw-old.log" ] || fail "(G) the guard called an older team-watch.sh: $(cat "$WORK/tw-old.log")"
-cp "$WORK/tw.real" "$LIB/team-watch.sh"
-guard Supervisor; expect 0 "thread=chat-1" "(G) the real team-watch.sh, no batch pending: only the mail holds"
+guard Supervisor; expect 0 "thread=chat-1" "(G) a second unread turn blocks"
+has "thread=work-1" "$WORK/out" || fail "(G) the block reason lost the first unread turn"
 echo "team-smoke-kit: (G) stop hook OK"
 
 echo "team-smoke-kit: OK"

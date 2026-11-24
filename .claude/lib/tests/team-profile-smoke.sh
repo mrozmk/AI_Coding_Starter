@@ -8,7 +8,6 @@ smoke_init
 
 P="$MAIN/.claude/project-profile.json"
 NEXT="bash .claude/lib/team-next.sh"
-WATCH="bash .claude/lib/team-watch.sh"
 WORKER="bash .claude/lib/worker-next.sh"
 MERGE="bash .claude/lib/team-merge-check.sh"
 
@@ -186,10 +185,6 @@ GTD="$GC/.agents/team"
 mkdir -p "$GTD/runs/gamma-20261017-000001/questions"
 echo gamma-20261017-000001 > "$GTD/run"
 
-run "$MAIN" $WATCH --once gamma
-expect 0 "WATCH gamma" "team-watch finds a clone outside the repo's parent"
-! has "no clone" "$WORK/out" || fail "team-watch reports no clone for a custom clone_parent"
-
 # The role-session preflight (supervisor-sessions.sh preflight) resolves clones through the one
 # resolver — it must not drop this team.
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
@@ -275,7 +270,7 @@ for bad in '{team}-x' 'a/{team}' 'nope' '{team}{team}'; do
     "clone_name '$bad' is refused"
   ! has reached "$WORK/out" || fail "clone_name '$bad' still loaded"
 done
-# Consumers: a clone created under the template is found by the resolver, team-watch and the Supervisor.
+# Consumers: a clone created under the template is found by the resolver and the Supervisor.
 setprofile "$CN"
 run "$MAIN" $NEW zeta AB-795 chore/AB-795-x origin/develop
 expect 0 "next:" "team-new honours clone_name"
@@ -283,9 +278,6 @@ ZC="$PAR2/DTS-Zeta"
 [ -f "$ZC/.agents/team/team.json" ] || fail "clone_name ignored: no clone at $ZC"
 mkdir -p "$ZC/.agents/team/runs/zeta-20261018-000001/questions"
 echo zeta-20261018-000001 > "$ZC/.agents/team/run"
-run "$MAIN" $WATCH --once zeta
-expect 0 "WATCH zeta" "team-watch finds a {Team} clone"
-! has "no clone" "$WORK/out" || fail "team-watch reports no clone for a {Team} template"
 run "$MAIN" bash -c '. .claude/lib/team-profile.sh; team_profile_load
   c="$(team_clone_dir zeta)"; [ -f "$c/.agents/team/team.json" ] && echo "monitor-ok: $c"'
 expect 0 "monitor-ok: $ZC" "the preflight accepts a clone_name template"

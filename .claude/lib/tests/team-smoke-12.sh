@@ -16,7 +16,7 @@ for f in sys.argv[1:]:
   > "$WORK/out" 2>&1 || fail "python compile"
 cap() { [ "$(wc -l < "$1")" -le "$2" ] || fail "$(basename "$1") has more than $2 lines"; }
 for f in team-run.sh team_prompt.py team_transcript.py team_prompt_check.py team_prompt_classes.py \
-  team_prompt_settings.py team-anchor.sh team-answer.sh team-lib.sh team-watch.sh \
+  team_prompt_settings.py team-anchor.sh team-answer.sh team-lib.sh \
   team-new.sh team-lead-lib.sh team-next.sh tests/team-smoke-12.sh ../hooks/lib/guard_team_egress.py ../hooks/lib/guard_team_egress_supervisor.py ../hooks/lib/guard_team_egress_loops.py ../hooks/lib/guard_team_egress_effect.py \
   team-run-lead.sh team-run-asks.sh team-run-dialog.sh team-run-stop.sh team_prompt_authority.py team-answer-lead.sh team-ask.sh team-seed-lib.sh ../hooks/team-ask-hook.sh; do cap "$L/$f" 500; done
 [ "$(python3 -I "$L/team_prompt_classes.py" names | tr '\n' ' ' | sed 's/ $//')" \
@@ -386,13 +386,13 @@ bashp "$DIAG"; no_class "script library names a write wrapper" "write wrapper"
 echo "team-smoke-12: (196) prod-diagnose OK"
 
 # ---- (197) class switches ---------------------------------------------------------------------
+# The runtime switch is the Operator's hand edit of state.json; both readers honour it.
+CSW="$MAIN/.agents/team/watch/state.json"; mkdir -p "$MAIN/.agents/team/watch"
 bashp "$MERGE"
-run "$MAIN" bash .claude/lib/team-watch.sh mode class merge-line off
-expect 0 "class merge-line off" "switch off"
+printf '%s\n' '{"classes":{"merge-line":"off"}}' > "$CSW"
 no_class "class off" "class merge-line off"
-run "$MAIN" bash .claude/lib/team-watch.sh mode class merge-line on
+printf '%s\n' '{"classes":{"merge-line":"on"}}' > "$CSW"
 yes_class merge-line "class on again"
-run "$MAIN" bash .claude/lib/team-watch.sh mode class nope off; expect 2 "" "unknown class"
 run "$MAIN" python3 -I .claude/lib/team_prompt_classes.py switches "$MAIN"
 has "merge-line=on allow-offline=on add-ask=on prod-diagnose=on" "$WORK/out" \
   || fail "switches lack the classes line"
@@ -430,9 +430,9 @@ tier "tier: operator — " "a deny-tier rebase is the Operator's" Bash "$(binp "
 tier "tier: operator — egress" "egress is the Operator's" Bash "$(binp "curl https://x.example")"
 tier "tier: lead" "no rule matches: a lead checkpoint" Bash "$(binp "ls")"
 tier "tier: lead" "an ask match outside the class shape" Bash "$(binp "$MERGE -X ours")"
-run "$MAIN" bash .claude/lib/team-watch.sh mode class merge-line off
+printf '%s\n' '{"classes":{"merge-line":"off"}}' > "$CSW"
 tier "tier: lead" "class off: the ask match is the lead's" Bash "$(binp "$MERGE")"
-run "$MAIN" bash .claude/lib/team-watch.sh mode class merge-line on
+printf '%s\n' '{"classes":{"merge-line":"on"}}' > "$CSW"
 printf 'not json' > "$WORK/bad.json"
 set +e; $PC "$CLONE" --input-json "$WORK/bad.json" --main "$MAIN" > "$WORK/out" 2>&1; RC=$?; set -e
 expect 2 "could not read" "an unreadable input file"

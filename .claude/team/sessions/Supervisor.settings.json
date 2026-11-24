@@ -33,8 +33,7 @@
     "skills": [],
     "allowed": [
       "bash .claude/lib/team-automerge-check.sh alfa",
-      "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0",
-      "bash .claude/lib/team-watch.sh register"
+      "bash .claude/lib/supervisor-sessions.sh freeze on 1.4.0"
     ],
     "reads": [
       "bash .claude/lib/team-mail.sh --here inbox --for Supervisor --unread",

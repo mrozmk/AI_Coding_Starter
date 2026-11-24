@@ -1191,7 +1191,7 @@ sh_herdr_run() {
 # start <address> --kind role|team|helper --cwd <dir> --cli claude|codex|script [--env K=V]…
 #   [--claude-home auto] [--program <exe>] [--session-id <id>] [--wait-ready] [--no-probe] -- <argv…>
 # The backend: the record's while its session lives, else the configured one (sh_pick_host);
-# --host tmux pins tmux (lib only, team-watch.sh until step 9a). Herdr records the terminal's handle.
+# --host tmux pins tmux (lib only; no shipped caller). Herdr records the terminal's handle.
 # --no-probe: the caller has already decided the session is gone (the runner's own liveness
 # checks), so start issues no has-session before new-session — the call sequence stays the
 # caller's, and a live duplicate fails in new-session itself, as a direct call did.
@@ -1225,7 +1225,7 @@ sh_start() {
   [ -n "$cwd" ] && [ -d "$cwd" ] || { sh_err "start: --cwd must be an existing directory"; return 2; }
   [ ${#argv[@]} -gt 0 ] || { sh_err "start: nothing to run after --"; return 2; }
   case "$ch" in ""|auto) ;; *) sh_err "start: --claude-home takes only auto"; return 2 ;; esac
-  # --host tmux (lib only): team-watch.sh keeps its helpers on tmux until it is retired (step 9a).
+  # --host tmux pins tmux (lib only; no shipped caller).
   case "$host" in
     "") if [ -n "$probe" ]; then be="$(sh_backend "$SH_MAIN" "$a" --for-start)" || return $?
         else be="$(sh_pick_host "$SH_MAIN" "$(sh_kind "$a")")" || return $?; fi ;;

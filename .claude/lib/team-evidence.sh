@@ -3,7 +3,7 @@
 #   team_evidence_match <transcript> <text> <since> <id> <used uuids> [exact]
 #     → the uuid of the newest typed user message at or after <since> that contains <text> (with
 #       `exact`: equals it, both trimmed — an ask-bound decision's whole reply) and is
-#       no doorbell (stop, gate, prompt, ask, attention, unasked, …), runner, team-watch or hc message line; a uuid already used by another answer
+#       no doorbell (stop, gate, prompt, ask, attention, unasked, …), runner, legacy team-watch (retired) or hc message line; a uuid already used by another answer
 #       (space-separated list) counts only when that message names <id>. Nothing when no match.
 #   team_evidence_dialog_extract <transcript> <since> → the AskUserQuestion calls and answer entries
 #     at or after <since>, one compact JSON line each (a half-written last line is dropped)
