@@ -42,11 +42,21 @@ lead_withdraw_decisions() {
   return "$rc"
 }
 
+# lead_ring_due <stamp file> <first due epoch> — rc 0, and the stamp set to now, when a ring is due:
+# no stamp yet → at the first due time; after that every TEAM_ASK_RERING_SECS since the last ring.
+lead_ring_due() {
+  local now last due
+  now="$(team_now)"; last="$(cat "$1" 2>/dev/null || true)"
+  if [[ "$last" =~ ^[0-9]+$ ]]; then due=$((last + ${TEAM_ASK_RERING_SECS:-300})); else due="$2"; fi
+  [ "$now" -ge "$due" ] || return 1
+  echo "$now" > "$1"
+}
+
 # lead_asks — every poll: follow-ups re-derived from every answer file (an interrupted sender, an
 # answer before the ack), a decision named by an answer spent, stale asks withdrawn, an unhandled
 # ask re-rung every TEAM_ASK_RERING_SECS, a blocked record that never got an ask rung once.
 lead_asks() {
-  local id a did f now last every="${TEAM_ASK_RERING_SECS:-300}" pending acked r
+  local id a did f now every="${TEAM_ASK_RERING_SECS:-300}" pending acked r
   ask_init "$TD" 2>/dev/null || return 0
   for a in "$ASK_D"/a-*.answer.json; do
     [ -f "$a" ] || continue
@@ -74,10 +84,7 @@ lead_asks() {
       [ -f "$f" ] && [ "$(lfm "$f" bind_ask)" = "$id" ] && [ "$(lfm "$f" status)" = pending ] && pending=1
     done
     [ -z "$pending" ] || continue
-    last="$(cat "$ASK_D/.rung-$id" 2>/dev/null || true)"
-    [[ "$last" =~ ^[0-9]+$ ]] || last="$(team_epoch "$(ask_get "$id" filed_at)")"
-    [ $((now - last)) -ge "$every" ] || continue
-    echo "$now" > "$ASK_D/.rung-$id"
+    lead_ring_due "$ASK_D/.rung-$id" $(( $(team_epoch "$(ask_get "$id" filed_at)") + every )) || continue
     team_session_doorbell "$TD" lead "$(ask_ring_line "$id")"
   done
   # A blocked record the stage hook never turned into an ask (it failed open): ring it once.
@@ -88,6 +95,56 @@ lead_asks() {
   [ $((now - $(team_epoch "$(rec "$r" written_at)"))) -ge 60 ] || return 0
   touch "$r.noask"
   team_session_doorbell "$TD" lead "stop $(rec "$r" role) $(rec "$r" attempt): ${r#"$CLONE"/} — $(rec "$r" message) (no ask filed)"
+}
+
+# lead_unasked_decisions — every poll, for a lead launched with ask_operator: a pending decision with
+# a ## Dialog the lead has not raised as AskUserQuestion is rung `unasked d-<n>: …` after
+# TEAM_UNASKED_GRACE_SECS, then every TEAM_ASK_RERING_SECS — a channel that never depends on
+# notify.sh. Where the dialog is unreliable (an unclean or changed registration snapshot: a hook
+# may answer it with no menu shown) a raised dialog is no attention: the ring goes on, worded to
+# print the decision in plain text, and the runner warns once per decision. Always returns 0.
+lead_unasked_decisions() {
+  local f id c oldest="" list="" x sid t="" raised="" env_ok="" cause="" grace q w msg
+  jq -e '.ask_operator == true' "$TD/teamlead.json" >/dev/null 2>&1 || return 0
+  . "$root/.claude/lib/team-evidence.sh" 2>/dev/null || return 0
+  command -v team_evidence_provenance >/dev/null 2>&1 || return 0
+  for f in "$TD/runs/$RUN"/decisions/d-*.md; do
+    [ -f "$f" ] && [ "$(lfm "$f" status)" = pending ] && grep -qx '## Dialog' "$f" || continue
+    list="$list $(lfm "$f" id)"; c="$(lfm "$f" created_at)"
+    if [ -z "$oldest" ] || [[ "$c" < "$oldest" ]]; then oldest="$c"; fi
+  done
+  [ -n "$list" ] || return 0
+  x="$(team_lead_trusted "$root" "$CLONE" "$RUN" 2>/dev/null)" || x=""
+  sid="$(cut -f1 <<<"$x")"
+  if [ -n "$sid" ] && [ "$(cut -f3 <<<"$x")" != legacy ] \
+      && cause="$(team_evidence_provenance "$root" "$CLONE" "$RUN" "$sid")"; then
+    env_ok=1
+    t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" "$sid" "$cause")"
+    raised=" $(team_evidence_dialog_raised "$t" "$oldest" | tr '\n' ' ')"
+  else
+    [ -n "$cause" ] || cause="the TeamLead session is not one the anchor records"
+  fi
+  grace="${TEAM_UNASKED_GRACE_SECS:-60}"
+  w="$(sess_name lead 2>/dev/null || echo lead)"
+  # Ids, not paths: a clone path with a space must not split.
+  for id in $list; do
+    f="$TD/runs/$RUN/decisions/$id.md"
+    if [ -n "$env_ok" ]; then case "$raised" in *" $id "*) continue ;; esac; fi
+    lead_ring_due "$TD/runs/$RUN/decisions/.unasked-$id" \
+      $(( $(team_epoch "$(lfm "$f" created_at)") + grace )) || continue
+    q="$(sed -n '/^## Question$/{n;p;q;}' "$f")"
+    if [ -n "$env_ok" ]; then
+      msg="unasked $id: no AskUserQuestion raised yet — run decision list --pending, then raise the ask-operator dialog of $id (team-lead.md §7) — ${q:0:120}"
+    else
+      msg="unasked $id: the dialog is unreliable here ($cause) — print $id in plain text for the Operator — ${q:0:120}"
+      if [ ! -e "$TD/runs/$RUN/decisions/.unclean-warned-$id" ]; then
+        touch "$TD/runs/$RUN/decisions/.unclean-warned-$id"
+        echo "warn: $id waits in $w — dialog unreliable ($cause)"
+      fi
+    fi
+    team_session_doorbell "$TD" lead "$msg" || true
+  done
+  return 0
 }
 
 # lead_ask_near <role> <attempt> <epoch> <secs> [waiting] — an ask of that attempt filed or

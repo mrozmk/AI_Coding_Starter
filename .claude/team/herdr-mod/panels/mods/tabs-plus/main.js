@@ -14,7 +14,8 @@ function find(node, id) {
 
 // Tabs that always show a chosen icon, by name, whatever runs in them: the session host's roles tab.
 const TAB_ICONS = {
-  Lead: "mods/tabs-plus/users.svg",
+  Supervisor: "mods/tabs-plus/users.svg",
+  Lead: "mods/tabs-plus/users.svg", // the roles tab before it was named Supervisor
 };
 
 // Pane layouts for the shown tab. The focused terminal is the main one, the rest follow in

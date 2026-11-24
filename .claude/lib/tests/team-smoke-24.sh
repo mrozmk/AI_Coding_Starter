@@ -117,7 +117,8 @@ qa_report() {  # qa_report <file> — a ready report for the clone HEAD, attempt
 }
 brief() {  # brief <dir> — the blind check, then the acceptance brief written from it
   echo "- export button → src/export.txt" > "$1/blind-check.md"
-  { for h in "Ordered vs delivered" "Scope delta" "Fit risks" "Open defects" "Warnings" "Recommendation"; do
+  { for h in "Ordered vs delivered" "Scope delta" "Fit risks" "Open defects" "Warnings" "Recommendation" \
+      "Decided by the TeamLead"; do
       echo "## $h"; echo "none"; echo; done; } > "$1/acceptance-brief.md"
 }
 lead_said() {  # lead_said <text> <uuid> — the Operator typed it into the lead window
@@ -220,7 +221,7 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) permission_prompt Claude needs your permiss
 run "$CLONE" env TEAM_SESSION_ROLE=TeamLead TEAM_RUN_TEAM=alfa bash .claude/lib/team-answer.sh alfa a-1 --allow \
   --authority teamlead --why "looks fine"
 expect 9 "is the Operator's" "beta: the lead cannot answer an operator-tier ask itself"
-ldec open alfa --ask a-1; expect 0 "[d-1] coder: Bash az webapp restart --name x" "beta decision"
+ldec open alfa --ask a-1 --recommend deny; expect 0 "[d-1] coder: Bash az webapp restart --name x" "beta decision"
 wait_for "beta notification" "[ \"\$(notified)\" -ge 1 ]"
 nev '.answer | tostring' | grep -q 'alfa-lead' || fail "beta: the event does not name the lead window: $(nev .)"
 # The Operator types the fixed reply into the lead window; the lead records it, then relays it.
@@ -287,7 +288,7 @@ wait_for "gamma acceptance gate round 3" "rung 'gate acceptance: .agents/team/ru
 echo "- one more" > "$RD/rework-4.md"
 V acceptance rework --for qa-1-1.json --ref ".agents/team/runs/$RUN_ID/rework-4.md" --message x
 expect 9 "rework budget 2 reached" "gamma third rework"
-ldec open alfa --source qa-1-1.json --question "Two reworks spent — abandon AB-2400?" --notify abandon_decision --recommend abandon
+ldec open alfa --source qa-1-1.json --question "Two reworks spent — abandon AB-2400?" --notify abandon_decision --recommend close
 expect 0 "[d-1]" "gamma abandon decision"
 V acceptance abandon-recommended --for qa-1-1.json --decision d-1 --message "budget spent"; expect 0 "" "gamma abandon-recommended"
 wait_for "gamma notification" "[ \"\$(notified)\" -ge 1 ]"

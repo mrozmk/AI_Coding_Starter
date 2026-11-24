@@ -12,7 +12,7 @@ argument-hint: [path-to-plan] [codex]
 0. **Mode detect.** Strip a bare `codex` or `--codex` token from `$ARGUMENTS`; the remainder is the plan argument. Token present → `MODE=codex`; `command -v codex` must succeed, else STOP: "`codex` mode requested but codex is not on PATH — run `/execute <plan>` for the Claude executor." Never fall back silently. Token absent → `MODE=claude` (everything below runs exactly as before).
 1. If the plan argument looks like a path to an existing `.md` file under `.agents/plans/active/` → use it as the plan path.
 2. Otherwise → pick the **newest** file in `.agents/plans/active/` by modification time. If that directory is empty or does not exist, STOP and tell the user: "No active plan found. Run `/plan-feature <spec>` first, or pass an explicit path."
-3. **Umbrella guard — apply before executing anything.** Newest-by-mtime is not safe on its own: when `/plan-feature` Step 4.5.4 option (c) splits a plan, the sub-step files it writes are the newest files in `active/`. Without this guard `/execute` implements **one slice**, reports the feature done, and moves the whole family to `done/`. `/orchestrate` already refuses umbrellas in flat mode; `/execute` must too.
+3. **Umbrella guard — apply before executing anything.** Newest-by-mtime is not safe on its own: when an umbrella plan written before `/plan-feature` stopped producing them sits in `active/`, its sub-step files can be the newest files there. Without this guard `/execute` implements **one slice**, reports the feature done, and moves the whole family to `done/`.
 
    The resolved plan is an **umbrella** when **either**:
 
@@ -27,10 +27,10 @@ argument-hint: [path-to-plan] [codex]
 
    Then act on the classification:
 
-   - **Umbrella** → STOP: "`<file>` is an umbrella plan (N steps). Run `/orchestrate <file>` — `/execute` runs one plan file, it does not walk the step DAG."
+   - **Umbrella** → STOP: "`<file>` is an umbrella plan (N steps). Run its steps one at a time in `## Execution Plan` order: `/execute <step file>` — `/execute` runs one plan file, it does not walk the step DAG."
    - **Sub-step reached by auto-resolution** (no `$ARGUMENTS`) → STOP with the same pointer, naming the umbrella. Never silently implement one step of a multi-step plan.
    - **Sub-step passed explicitly** → proceed, warning once: "Executing step N of `<base>.md` only; steps `<list>` remain."
-   - A file carrying `## Execution Plan` but **no** `File` column and **no** siblings — the legacy in-file step map, from plans written before Phase 4.6 emitted that column — is **not** an umbrella: run it normally. Keep this carve-out even though `/plan-feature` no longer emits that shape, because it covers plans already on disk: without it `/execute` refuses the file while `/orchestrate` rejects it for the missing `File` column, so nothing could run it.
+   - A file carrying `## Execution Plan` but **no** `File` column and **no** siblings — the legacy in-file step map, from plans written before umbrella tables carried that column — is **not** an umbrella: run it normally. Keep this carve-out even though `/plan-feature` no longer emits that shape, because it covers plans already on disk: without it `/execute` refuses the file, and nothing else runs it.
 
 4. Use the resolved path as the plan to execute in every step below.
 
@@ -162,7 +162,7 @@ If the plan requires browser validation (e.g. a task or acceptance criterion rea
    - Record it as **evidence in your output report**: `E2E: validated manually via MCP; dedicated suite pending runner setup.`
    - Do NOT block plan completion on missing test infrastructure — the requirement refers to validation, not test-code generation.
 
-> **Never tick a task's `- [ ]` marker.** Those markers are **parse anchors** for `/gates:verify-implementation` §2; a completion signal written by the agent whose work is being judged measures its self-report rather than the filesystem, which is precisely what the gate exists to avoid. This forbids the *task* marker only — it says nothing about an umbrella's `## Execution Plan` **Status** cells, which `/orchestrate` edits in-place by design.
+> **Never tick a task's `- [ ]` marker.** Those markers are **parse anchors** for `/gates:verify-implementation` §2; a completion signal written by the agent whose work is being judged measures its self-report rather than the filesystem, which is precisely what the gate exists to avoid. This forbids the *task* marker only — it says nothing about an umbrella's `## Execution Plan` **Status** cells, which §6 flips in-place for an explicitly passed sub-step.
 
 ### 3. Implement Testing Strategy
 
@@ -209,11 +209,11 @@ This marks the feature as fully implemented.
 
 **Backlog write-back (opt-in) — after the `mv`.** No `.agents/backlog.md` → silent no-op. Otherwise detect the format first: a Task table header with `| Size |` and `| Depends on |` is the new format; a `## Work packages` heading or a `| Dependencies |` column is the legacy format → write nothing and say once "legacy WP backlog — write-back skipped; regenerate with `/setup:create-backlog`". A header matching neither shape is malformed → write nothing and report it. Never mix the two rule sets. New format → **DONE rule (whole-Task completion):** for each id on the moved plan's `**Tasks:**` line, grep `.agents/plans/active/` for any other file whose `**Tasks:**` line lists that id — none → set the Task's `Status` to `DONE`; one or more → keep `Status: WIP` (another plan still owns part of the Task). In both cases update `Ref`: `/plan-feature` wrote this plan's `active/` path there — replace it with the `done/` path (append if it is missing). A plan with no `**Tasks:**` line → nothing to write; say so. Touch only `Status` / `Ref` cells — never the table structure. The write is **not committed** here — leave it in the tree for `/commit`. A Task with a `Jira` cell keeps its local `Status` as a cache only: never transition the Jira issue from here.
 
-**Exception — an explicitly-passed sub-step** (the third branch of the Phase 0 umbrella guard): do **not** `mv` it. Flip that row's `Status` to `done` in the umbrella's `## Execution Plan` table and leave the whole family in `active/`. The umbrella and its sub-steps move to `done/` together, only once every row is `done` — moving one slice would report a feature as shipped while the rest of it is still unwritten. **No backlog write-back for a sub-step either** — the family's `**Tasks:**` are written back once, when the whole family moves.
+**Exception — an explicitly-passed sub-step** (the third branch of the Phase 0 umbrella guard): do **not** `mv` it. Flip that row's `Status` to `done` in the umbrella's `## Execution Plan` table, then re-read the table. Rows still not `done` (or `skipped`) → leave the whole family in `active/` and report the remaining step ids — moving one slice would report a feature as shipped while the rest of it is still unwritten. Every row now `done` (or `skipped`) → this run moves the family: `mv` the umbrella, every sub-step file its `File` column names and `<umbrella>.run.md` (when present) to `.agents/plans/done/`, then run the backlog write-back above once, on the umbrella's `**Tasks:**` line. **No backlog write-back for a sub-step on its own** — the family's `**Tasks:**` are written back once, when the whole family moves.
 
 ### 7. Memory reflection
 
-**Guard first — skip this step if you will run `/check-implementation` or `/orchestrate` next.** Those reflect with the same protocol and richer context, so reflecting here too would risk a duplicate entry. Run this step **only** when `/execute` is your final action before `/commit` (raw execute → commit, no quality loop).
+**Guard first — skip this step if you will run `/check-implementation` next.** It reflects with the same protocol and richer context, so reflecting here too would risk a duplicate entry. Run this step **only** when `/execute` is your final action before `/commit` (raw execute → commit, no quality loop).
 
 **Team mode** (`.agents/team/session.json` exists): this step is **skipped** — the lesson goes under `## Learnings` in `.agents/team/runs/<run>/notes.md` instead, because `guard-team-memory.sh` rejects a `.agents/memory/` write from every role but `wrapup`. A routine deviation from the plan goes to `## Unattended decisions` in the same notes file; a material one stops the run with `TEAM-BLOCKED: <question>` before `/commit`. Each `red before green: <test> — …` line from `### Tests Added` goes to `## Unattended decisions` as well, where QA and the TeamLead read it.
 
@@ -243,7 +243,7 @@ Provide summary. First line: `Executor: <claude | codex · effort medium · <ela
 - Confirm all changes are complete
 - Confirm all validations pass
 - Tracker comments (opt-in only): <none new (<read UTC>, n) | new/edited ids → <decision> | uncertain → continued without the check | skipped — <reason>>
-- Memory: <appended 1 entry to <file> / nothing worth remembering / skipped — running /check-implementation or /orchestrate next>
+- Memory: <appended 1 entry to <file> / nothing worth remembering / skipped — running /check-implementation next>
 - Backlog: <ids → DONE | ids kept WIP (other plan active: <path>) | no `**Tasks:**` line | legacy — skipped | no backlog | sub-step — deferred to the family move>
 - Ready for `/commit` command
 

@@ -5,6 +5,7 @@
 
 # Project values (trunk, tools, clone parent, gates) live in the profile, not here.
 # BASH_SOURCE, not $0: the dashboard and the smoke suites source this file from another directory.
+. "$(dirname "${BASH_SOURCE[0]}")/portable-lib.sh"
 . "$(dirname "${BASH_SOURCE[0]}")/team-profile.sh"
 # The session-host driver: every tmux call goes through it (the wrappers below keep their names).
 [ -n "${SH_LIB:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/session-host-lib.sh"
@@ -39,11 +40,11 @@ team_check_name() {
 }
 
 # team_tab_clash <team> <main> → prints the roles tab and returns 0 when the team's Herdr tab (named
-# after the team) would be a roles tab: Lead, or any teams.sessions place.tab, case-insensitive.
+# after the team) would be a roles tab: Supervisor, Lead (its old name), or any teams.sessions place.tab, case-insensitive.
 team_tab_clash() {
   local n t
   n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-  for t in Lead $(jq -r '.teams.sessions // {} | .[]? | .place.tab? // empty | strings' \
+  for t in Supervisor Lead $(jq -r '.teams.sessions // {} | .[]? | .place.tab? // empty | strings' \
     "$2/.claude/project-profile.json" 2>/dev/null); do
     [ "$n" != "$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')" ] || { echo "$t"; return 0; }
   done
@@ -387,7 +388,7 @@ team_ticket_checks() {
   if [ "$TEAM_ENV_REQUIRED" = true ]; then
     if [ ! -f "$root/.env" ]; then
       TEAM_PROBLEMS+=("$root/.env missing")
-    elif [ "$(stat -f %Lp "$root/.env")" != 600 ]; then
+    elif [ "$(file_mode "$root/.env")" != 600 ]; then
       TEAM_PROBLEMS+=(".env is not mode 600 — run: chmod 600 .env")
     fi
   fi

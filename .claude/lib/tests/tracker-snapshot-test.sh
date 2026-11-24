@@ -119,6 +119,29 @@ run compare "$WORK/base.json" "$WORK/f4d.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 922 923 924 925 926 927" ] \
   || fail "4b2 deferral pointer compare: $RC $OUT"
 
+# (4b3) the claim at the start: claim and release markers as the last line are own (GitHub
+#       HTML-comment form, Jira plain form); a mid-body quote is not
+gh_show "$WORK/show4e.json" "SECRETWORD two"
+jq '
+  def c($id; $b): {id: $id, author: "dev", created: "2026-11-23T10:00:00Z",
+                   updated: "2026-11-23T10:00:00Z", body: ("SECRETWORD\n" + $b)};
+  .comments += [
+    c("930"; "Claimed by alfa\n<!-- team:claim v1 id=m.alfa.20261123T100000Z machine=m who=alfa branch=feat/7-x at=2026-11-23T10:00:00Z previous=Todo -->"),
+    c("931"; "Claim released\n<!-- team:claim-released v1 id=m.alfa.20261123T100000Z reason=start-failed -->"),
+    c("932"; "Claimed by beta\nteam:claim v1 id=n.beta.20261123T100001Z machine=n who=beta branch=feat/7-y at=2026-11-23T10:00:01Z previous=To%20Do"),
+    c("933"; "<!-- team:claim v1 id=x.y.z machine=x who=y branch=b at=t previous=none -->\nplease look"),
+    c("934"; "see\n> team:claim v1 id=x.y.z machine=x who=y branch=b at=t previous=none"),
+    c("935"; "Claimed by beta on n for branch feat/7-y at 2026-11-23T10:00:02Z. team:claim v1 id=n.beta.20261123T100002Z machine=n who=beta branch=feat/7-y at=2026-11-23T10:00:02Z previous=none"),
+    c("936"; "Claim released (lost-race): n.beta.20261123T100002Z. team:claim-released v1 id=n.beta.20261123T100002Z reason=lost-race"),
+    c("937"; "please see team:claim v1 id=x.y.z machine=x who=y branch=b at=t previous=none")]' \
+  "$WORK/show4e.json" > "$WORK/t" && mv "$WORK/t" "$WORK/show4e.json"
+run snapshot --github "$WORK/show4e.json" --out "$WORK/f4e.json"
+[ "$(jq -c '[.comments[3:][].own]' "$WORK/f4e.json")" = '[true,true,true,false,false,true,true,false]' ] \
+  || fail "4b3 claim markers own flags: $(jq -c '[.comments[3:][].own]' "$WORK/f4e.json")"
+run compare "$WORK/base.json" "$WORK/f4e.json"
+[ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: new 933 934 937" ] \
+  || fail "4b3 claim markers compare: $RC $OUT"
+
 # (4c) the /qa-verify record in a Jira ADF body: only a top-level paragraph carries an own marker
 jq -n --arg m "$QAM" '{key: "AB-2", fields: {description: "SECRETWORD d", updated: "2026-11-06T09:00:00.000+0000",
   comment: {startAt: 0, maxResults: 2, total: 2, comments: [

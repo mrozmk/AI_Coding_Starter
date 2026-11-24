@@ -36,7 +36,7 @@ Thumbs.db
 # ============================================================
 .claude/audit.log
 .claude/settings.local.json
-# /orchestrate umbrella mode creates per-step worktrees (full repo checkouts) here
+# Claude Code worktrees (full repo checkouts) live here
 .claude/worktrees/
 # Local read-usage telemetry written by track-memory-read.sh (per-clone, not shared)
 .claude/memory-usage.json
@@ -44,13 +44,6 @@ Thumbs.db
 .claude/scheduled_tasks.lock
 # Atomic-write temp from the same hook (jq > $DB.tmp && mv) — a crash can leave it behind
 .claude/*.tmp
-# stage-handoff mod — per-run marker written by /orchestrate, consumed when the turn ends
-.claude/stage-handoff.json
-.claude/stage-handoff.last.json
-.claude/stage-handoff.log
-# /orchestrate pipeline state — one live run per clone, retired to .last.json on completion
-.claude/orchestrate-run.json
-.claude/orchestrate-run.last.json
 # Type stubs Claude Code writes next to a loaded mod (editor support only)
 .claude/skills/*/.claude-plugin/types/
 # Guard against accidental copy of ~/.claude/projects/ (transcripts + auto-memory) into repo

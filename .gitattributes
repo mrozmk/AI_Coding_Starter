@@ -1,10 +1,9 @@
 # Merge behaviour for the AI memory layer.
 #
 # WHY THIS FILE EXISTS
-# Parallel `/orchestrate` runs build on separate `orch-<id>` branches, and every one
-# of them ends with a memory-reflection pass that appends a new entry to
-# .agents/memory/errors.md (or a sibling log). `/orchestrate --integrate` then merges
-# those branches LOCALLY (git merge --no-ff — see .agents/reference/parallel-orchestration.md).
+# Team clones merge `origin/main` locally (`git merge`), and parallel branches often
+# add an entry at the end of the same append-only log (.agents/memory/errors.md or a
+# sibling) through their memory-reflection pass.
 # Two branches appending to the same log touch the same hunk, so without `union` that
 # is a guaranteed conflict — on a file where both sides are correct and the right
 # resolution is always "keep both".

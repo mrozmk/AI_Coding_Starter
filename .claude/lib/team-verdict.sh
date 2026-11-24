@@ -14,7 +14,9 @@
 #   acceptance → accept|rework|abandon-recommended on the qa's newest done record (rework: done or
 #   blocked) of the current round; round files live in runs/<run>/ (round 1) or runs/<run>/r<n>/.
 #   accept needs the round's blind-check.md, then acceptance-brief.md (six headings; for a QA verdict
-#   ready-with-warnings one `- <warning> → keep|fix|follow-up — <why>` line per warning);
+#   ready-with-warnings one `- <warning> → keep|fix|follow-up — <why>` line per warning; a lead with
+#   teamlead.json ask_operator adds `## Decided by the TeamLead`, one `- a-<n> …` line per answer of
+#   authority teamlead whose why starts `verification-only:`);
 #   rework needs --ref runs/<run>/rework-<next round>.md and is capped by
 #   teams.teamlead.rework_budget.<mode> plus consumed Operator continue grants (quick: the first
 #   rework needs --quick-call continue); abandon-recommended needs --decision d-<n>, pending, opened
@@ -283,6 +285,19 @@ if [ "$GATE $VERDICT" = "acceptance accept" ]; then
         case "$l" in "- $w → keep — "?*|"- $w → fix — "?*|"- $w → follow-up — "?*) ok=1 ;; esac
       done <<<"$sect"
       [ -n "$ok" ] || acc_fail "## Warnings has no '- $w → keep|fix|follow-up — <why>' line"
+    done
+  fi
+  # A lead launched with ask_operator lists every verification-only answer it gave itself under a
+  # seventh heading; the answers are read from their structured fields, never from a log line.
+  if jq -e '.ask_operator == true' "$TD/teamlead.json" >/dev/null 2>&1; then
+    grep -qxF "## Decided by the TeamLead" "$brief" || acc_fail "acceptance-brief.md lacks the heading '## Decided by the TeamLead'"
+    sect="$(awk '/^## Decided by the TeamLead$/ { f = 1; next } /^## / { f = 0 } f' "$brief")"
+    for a in "$RD"/asks/a-*.answer.json; do
+      [ -f "$a" ] || continue
+      jq -e '.authority == "teamlead" and ((.why // "") | startswith("verification-only:"))' "$a" >/dev/null 2>&1 || continue
+      w="$(basename "$a" .answer.json)"; ok=""
+      while IFS= read -r l; do case "$l" in "- $w "*|"- $w:"*) ok=1 ;; esac; done <<<"$sect"
+      [ -n "$ok" ] || acc_fail "## Decided by the TeamLead has no line for verification-only answer $w"
     done
   fi
 elif [ "$GATE $VERDICT" = "acceptance rework" ]; then

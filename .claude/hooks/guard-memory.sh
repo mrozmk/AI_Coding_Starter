@@ -27,7 +27,7 @@
 #     gets a working-but-silent hook; filling in memory-domains.json sharpens it.
 #   - ACTIVE IN SUBAGENTS: no child-session skip. Subagents get a distinct
 #     session_id => their own markers => each freshly checks memory (full
-#     guarantee, e.g. every /orchestrate executor distills before its first edit).
+#     guarantee).
 #
 # Mechanics (Claude Code hooks): stdin carries the PreToolUse JSON incl.
 # `.tool_input.file_path` and `.session_id`. exit 2 blocks the tool and feeds

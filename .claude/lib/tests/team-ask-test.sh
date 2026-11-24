@@ -469,6 +469,302 @@ jq -nc '{type: "user", uuid: "bell2", timestamp: "2099-01-01T00:00:02Z", message
 ok '[ -z "$(team_evidence_match "$LT" "d-7 allow" 2000-01-01T00:00:00Z d-7 "")" ]' "an ask or attention doorbell never matches team_evidence_match"
 jq -nc '{type: "user", uuid: "peer1", timestamp: "2099-01-01T00:00:03Z", message: {role: "user", content: "[peer] d-7 allow"}}' >> "$LT"
 ok '[ -z "$(team_evidence_match "$LT" "d-7 allow" 2000-01-01T00:00:00Z d-7 "")" ]' "a [peer] line never matches team_evidence_match"
+jq -nc '{type: "user", uuid: "bell3", timestamp: "2099-01-01T00:00:03Z", message: {role: "user", content: "unasked d-7: d-7 allow"}}' >> "$LT"
+ok '[ -z "$(team_evidence_match "$LT" "d-7 allow" 2000-01-01T00:00:00Z d-7 "")" ]' "an unasked reminder never matches team_evidence_match"
+
+# ================================================================================================
+# dialog answers (AskUserQuestion in the lead window)
+# ================================================================================================
+# A lead launched by the new runner (teamlead.json ask_operator) raises the decision's dialog; the
+# Operator's answer entry in its transcript is the evidence, behind the registration snapshot.
+cp "$CLONE/.claude/settings.local.json" "$T/local.keep"
+SUBF=""
+sub() { eval "$1" || SUBF="$SUBF; FAIL $2"; }   # sub <condition> <name> — one sub-check of a case
+hk() { kill "$HP" 2>/dev/null; pkill -f "$MAIN/.claude/hooks/team-ask-hook.sh" 2>/dev/null; wait "$HP" 2>/dev/null; }
+dlg() { sed -n '/^## Dialog$/{n;p;q;}' "$RD/decisions/$1.md"; }   # dlg <d-n> → the stored dialog
+aop() { sed -n 's/^ask-operator: //p' "$T/tl.out"; }               # the printed dialog input
+set_dlg() {  # set_dlg <d-n> <dialog json> — a hand edit of the stored dialog
+  ND="$2" awk 'p { print ENVIRON["ND"]; p = 0; next } $0 == "## Dialog" { p = 1 } { print }' \
+    "$RD/decisions/$1.md" > "$T/sd" && mv "$T/sd" "$RD/decisions/$1.md"
+}
+ask_raised() {  # ask_raised <id> <dialog json> [transcript] — the lead's AskUserQuestion call, no answer
+  jq -nc --arg i "$1" --argjson q "$2" '{type: "assistant", uuid: "ua-\($i)", timestamp: "2099-01-01T00:00:01Z",
+    message: {role: "assistant", content: [{type: "tool_use", id: "toolu_\($i)", name: "AskUserQuestion", input: $q}]}}' >> "${3:-$LT}"
+}
+ask_op() {  # ask_op <id> <dialog json> <answers json> [transcript] — the call and the Operator's answer entry
+  ask_raised "$1" "$2" "${4:-$LT}"
+  jq -nc --arg i "$1" --argjson q "$2" --argjson a "$3" '{type: "user", uuid: "uu-\($i)", timestamp: "2099-01-01T00:00:02Z",
+    message: {role: "user", content: [{type: "tool_result", tool_use_id: "toolu_\($i)", content: "User has answered your questions."}]},
+    toolUseResult: {questions: $q.questions, answers: $a}}' >> "${4:-$LT}"
+}
+a1() { jq -c --arg v "$2" '{(.questions[0].question): $v}' <<<"$1"; }   # a1 <dialog> <value>
+snap() {  # snap [sid] [config dir] — the runner's launch snapshot of a lead session, into the anchor
+  local s="${1:-lid-1}" c="${2:-$T/cc}"
+  SNAP="$(team_evidence_ask_hooks "$MAIN" "$CLONE" "$c")"
+  jq --arg s "$s" --arg r "$RUN" --arg c "$c" --argjson o "$(team_evidence_snapshot "$SNAP")" \
+    '.lead_ask_hooks[$s] = ($o + {run: $r, config_dir: $c})' "$ANC" > "$T/anc" && mv "$T/anc" "$ANC"
+}
+new_path() {  # an isolated transcript, the local settings without the project's AskUserQuestion
+  : > "$LT"   # entry, an ask_operator lead and a clean launch snapshot
+  jq 'del(.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion"))' "$T/local.keep" > "$CLONE/.claude/settings.local.json"
+  tlj '.ask_operator = true'; snap
+  [ "${SNAP%% *}" = clean ] || SUBF="$SUBF; FAIL new_path snapshot not clean ($SNAP)"
+}
+rrec() { echo '{}' > "$RD/qa-1-1.json"; }   # an existing run record, a decision's --source
+
+# 1. decision open on the new path
+newrun dlg1; SUBF=""; new_path; rrec
+TL decision open beta --source qa-1-1.json --question q --recommend yes
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ]' "an unbound open without --options ($(cat "$T/tl.out"))"
+TL decision open beta --source qa-1-1.json --question q --options "yes|no" --recommend maybe
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ] && grep -q "recommend must name one of" "$T/tl.out"' "--recommend not a label"
+TL decision open beta --source qa-1-1.json --question q --options "yes|no"
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-1.md" ]' "an open without --recommend"
+pl perm-curl; TO=40 HB dl1; wf "$AD/a-1.json"
+TL decision open beta --ask a-1
+sub '[ "$TLRC" = 2 ]' "an ask-bound open without --recommend"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(aop)"
+sub '[ "$TLRC" = 0 ] && jq -e "(.questions | length) == 1 and .questions[0].header == \"d-1\" and (.questions[0].question | startswith(\"d-1 \")) and ([.questions[0].options[].label] == [\"deny\", \"allow\"]) and (.questions[0].options[0].description | startswith(\"Recommended — \"))" <<<"$DJ" >/dev/null' "the permission dialog ($(cat "$T/tl.out"))"
+sub '[ -n "$DJ" ] && [ "$(dlg d-1)" = "$DJ" ] && grep -q "^reply: \"d-1 allow\"" "$T/tl.out"' "## Dialog equals the printed input, the reply line stays"
+hk; pl stop-plain; TO=40 HB dl1t; wf "$AD/a-2.json"
+TL decision open beta --ask a-2 --recommend yes
+sub '[ "$TLRC" = 2 ] && [ ! -e "$RD/decisions/d-2.md" ]' "a text ask without --options"
+TL decision open beta --ask a-2 --options "yes|no" --recommend yes
+sub '[ "$TLRC" = 0 ] && aop | jq -e ".questions[0].question | startswith(\"d-2 \") and endswith(\"Should the counter reset at midnight or never?\")" >/dev/null' "a text-ask dialog carries the stop text ($(cat "$T/tl.out"))"
+hk
+newrun dlg1m; new_path; pl question-multi; TO=40 HB dl1m; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend JSON
+sub '[ "$TLRC" = 0 ] && [ "$(aop | jq -r ".questions[0].multiSelect")" = true ]' "a one-question multi-select keeps multiSelect ($(cat "$T/tl.out"))"
+hk
+ok '[ -z "$SUBF" ]' "decision open: options and recommendation validated (new path)$SUBF"
+newrun dlg1o; rrec; TL decision open beta --source qa-1-1.json --question q
+ok '[ "$TLRC" = 0 ] && ! grep -q "^ask-operator:" "$T/tl.out" && ! grep -qx "## Dialog" "$RD/decisions/d-1.md"' "decision open: an older lead keeps the old contract ($(cat "$T/tl.out"))"
+
+# 2. a permission decision
+newrun dlg2; SUBF=""; new_path; pl perm-curl; TO=40 HB dl2; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; D1="$RD/decisions/d-1.md"
+ask_op 2 "$DJ" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && grep -qx "answer_outcome: allow" "$D1" && grep -qx "answered_via: teamlead-ask uu-2" "$D1" && grep -qx "answered_session: lid-1" "$D1"' "recorded from the dialog ($(cat "$T/tl.out"))"
+L a-1 --allow --authority operator --decision "$D1" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl2.out" .hookSpecificOutput.decision.behavior)" = allow ] && grep -qx "status: dispatched" "$D1"' "relayed and delivered ($(cat "$T/l.out"))"
+ok '[ -z "$SUBF" ]' "dialog answer: a permission decision resolved and relayed via --from-ask$SUBF"
+
+# 3. a two-question multi-select ask
+newrun dlg3; SUBF=""; new_path; pl question-two; TO=40 HB dl3; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend SQLite; DJ="$(dlg d-1)"
+sub 'jq -e "(.questions | length) == 2 and ([.questions[].header] == [\"Storage\", \"Outputs\"]) and ([.questions[].multiSelect] == [false, true]) and .questions[0].options[0].label == \"SQLite\"" <<<"$DJ" >/dev/null' "the dialog keeps both questions, headers and multiSelect ($DJ)"
+ask_op 3 "$DJ" "$(jq -c '{(.questions[0].question): "SQLite", (.questions[1].question): "JSON, HTML"}' <<<"$DJ")"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && [ "$(sed -n "s/^answer_map: //p" "$RD/decisions/d-1.md" | jq -cS .)" = "{\"Which outputs?\":\"JSON, HTML\",\"Which storage?\":\"SQLite\"}" ]' "answer_map keyed by the stage questions ($(cat "$T/tl.out"))"
+L a-1 --answers '{"Which storage?":"SQLite","Which outputs?":"JSON, HTML"}' --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl3.out" ".hookSpecificOutput.updatedInput.answers[\"Which outputs?\"]")" = "JSON, HTML" ]' "the relay is delivered ($(cat "$T/l.out"))"
+ok '[ -z "$SUBF" ]' "dialog answer: a two-question multi-select ask relayed end to end$SUBF"
+newrun dlg3b; new_path; pl question-two; TO=40 HB dl3b; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend SQLite; DJ="$(dlg d-1)"
+ask_op 3b "$DJ" "$(jq -c '{(.questions[0].question): "Keep JSON; defer: HTML", (.questions[1].question): "JSON"}' <<<"$DJ")"
+TL decision answer beta d-1 --from-ask --tuning none --why w; cp "$T/tl.out" "$T/tl3b.out"
+L a-1 --answers '{"Which storage?":"Keep JSON; defer: HTML","Which outputs?":"JSON"}' --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$TLRC" = 0 ] && [ "$(sed -n "s/^answer_map: //p" "$RD/decisions/d-1.md" | jq -r ".[\"Which storage?\"]")" = "Keep JSON; defer: HTML" ] && [ "$LRC" = 0 ] && [ "$(j "$T/dl3b.out" ".hookSpecificOutput.updatedInput.answers[\"Which storage?\"]")" = "Keep JSON; defer: HTML" ]' "dialog answer: punctuation in a multi-question answer survives ($(cat "$T/tl3b.out") | $(cat "$T/l.out"))"
+
+# 4. a one-question multi-select ask: the existing --text form
+newrun dlg4; new_path; pl question-multi; TO=40 HB dl4; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend JSON; DJ="$(dlg d-1)"
+ask_op 4 "$DJ" "$(a1 "$DJ" "JSON, HTML")"
+TL decision answer beta d-1 --from-ask --tuning none --why w; cp "$T/tl.out" "$T/tl4.out"
+L a-1 --pick "JSON, HTML" --authority operator --decision "$RD/decisions/d-1.md" --why w; PRC=$LRC
+L a-1 --text "JSON, HTML" --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+ok '[ "$TLRC" = 0 ] && grep -qx "answer_value: JSON, HTML" "$RD/decisions/d-1.md" && [ "$PRC" = 7 ] && [ "$LRC" = 0 ] && j "$T/dl4.out" .hookSpecificOutput.permissionDecisionReason | grep -qF "JSON, HTML"' "dialog answer: a one-question multi-select ask relayed as text ($(cat "$T/tl4.out") | $(cat "$T/l.out"))"
+
+# 5. unbound decisions: the outcome comes from the label
+newrun dlg5; SUBF=""; new_path; rrec
+TL decision open beta --source qa-1-1.json --question "abandon the ticket?" --notify abandon_decision --recommend close; DJ="$(dlg d-1)"
+sub '[ "$TLRC" = 0 ] && [ "$(jq -c "[.questions[0].options[].label]" <<<"$DJ")" = "[\"close\",\"continue\"]" ]' "continue|close derived, the recommendation first ($(cat "$T/tl.out"))"
+ask_op 5a "$DJ" "$(a1 "$DJ" close)"
+TL decision answer beta d-1 --from-ask --outcome continue --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-1.md"' "--outcome continue against the label close → 7"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && grep -qx "answer_outcome: close" "$RD/decisions/d-1.md" && grep -qx "answer_value: close" "$RD/decisions/d-1.md"' "the label close → answer_outcome close ($(cat "$T/tl.out"))"
+TL decision open beta --source qa-1-1.json --question "abandon the ticket?" --notify abandon_decision --recommend continue; DJ="$(dlg d-2)"
+ask_op 5b "$DJ" "$(a1 "$DJ" "maybe later")"
+TL decision answer beta d-2 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-2.md" && grep -q "free-text answer to a control decision" "$T/tl.out"' "an Other text on a control decision → 7, still pending"
+ask_op 5c "$DJ" "$(a1 "$DJ" continue)"
+TL decision answer beta d-2 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && grep -qx "answer_outcome: continue" "$RD/decisions/d-2.md"' "a following labelled answer continue → answered ($(cat "$T/tl.out"))"
+TL decision open beta --source qa-1-1.json --question "plan: drop AC-3?" --gate plan --recommend approve; DJ="$(dlg d-3)"
+sub '[ "$TLRC" = 0 ] && [ "$(jq -c "[.questions[0].options[].label] | sort" <<<"$DJ")" = "[\"approve\",\"close\",\"revise\"]" ]' "the plan menu approve|revise|close derived"
+ask_op 5d "$DJ" "$(a1 "$DJ" "go ahead but later")"
+TL decision answer beta d-3 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-3.md"' "an Other text on the plan menu → 7"
+ask_op 5e "$DJ" "$(a1 "$DJ" revise)"
+TL decision answer beta d-3 --from-ask --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -qx "answer_value: revise" "$RD/decisions/d-3.md" && ! grep -q "^answer_outcome:" "$RD/decisions/d-3.md"' "dialog answer: the plan-gate menu keeps revise answerable ($(cat "$T/tl.out"))"
+TL decision open beta --source qa-1-1.json --question "rename the flag?" --options "yes|no" --recommend no; DJ="$(dlg d-4)"
+ask_op 5f "$DJ" "$(a1 "$DJ" "only the CLI flag")"
+TL decision answer beta d-4 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ] && grep -qx "answer_value: only the CLI flag" "$RD/decisions/d-4.md" && ! grep -q "^answer_outcome:" "$RD/decisions/d-4.md"' "a yes|no decision with an Other text → answer_value, no outcome ($(cat "$T/tl.out"))"
+ok '[ -z "$SUBF" ]' "dialog answer: an unbound continue|close decision takes its outcome from the label$SUBF"
+TL decision open beta --source qa-1-1.json --question "which flag?" --options "yes|no" --recommend no; DJ="$(dlg d-5)"
+ask_op 5g "$DJ" "$(a1 "$DJ" "$(printf 'line one\nline two')")"
+TL decision answer beta d-5 --from-ask --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-5.md" && ! grep -q "^answer_value:" "$RD/decisions/d-5.md"' "dialog answer: a multi-line answer is refused and the decision stays pending ($(cat "$T/tl.out"))"
+TL decision open beta --source qa-1-1.json --question "keep the flag?" --options "yes|no" --recommend yes; DJ="$(dlg d-6)"
+ask_op 5h "$DJ" "$(a1 "$DJ" close)"
+TL decision answer beta d-6 --from-ask --outcome close --tuning none --why w
+ok '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-6.md" && ! grep -q "^answer_outcome:" "$RD/decisions/d-6.md"' "dialog answer: --outcome never comes from a free-text answer ($(cat "$T/tl.out"))"
+
+# 6. the hook re-reads the recorded entry
+newrun dlg6; SUBF=""; new_path; pl perm-curl; TO=40 HB dl6; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"
+ask_op 6a "$DJ" "$(a1 "$DJ" allow)"; TL decision answer beta d-1 --from-ask --tuning none --why w
+ask_op 6b "$DJ" "$(a1 "$DJ" deny)"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl6.out" .hookSpecificOutput.decision.behavior)" = allow ]' "the recorded answer is delivered despite a newer identical dialog ($(cat "$T/l.out"))"
+pl perm-curl; TO=40 HB dl6b; wf "$AD/a-2.json"
+TL decision open beta --ask a-2 --recommend deny; DJ="$(dlg d-2)"
+ask_op 6c "$DJ" "$(a1 "$DJ" allow)"; TL decision answer beta d-2 --from-ask --tuning none --why w
+ask_op 6d "$DJ" "$(a1 "$DJ" deny)"
+sed 's/^answered_via: .*/answered_via: teamlead-ask uu-6d/' "$RD/decisions/d-2.md" > "$T/d" && mv "$T/d" "$RD/decisions/d-2.md"
+L a-2 --allow --authority operator --decision "$RD/decisions/d-2.md" --why w; wait "$HP"
+sub 'grep -q "could not be verified for a-2" "$T/dl6b.out"' "answered_via edited to the newer deny entry, outcome allow → the hook denies"
+ok '[ -z "$SUBF" ]' "dialog answer: the hook reads the recorded uuid, not a newer dialog$SUBF"
+
+# 7. a dialog must equal ## Dialog, and every dialog naming d-n must equal each other
+newrun dlg7; SUBF=""; new_path; pl perm-curl; TO=60 HB dl7; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"
+DX="$(jq -c '.questions[0].question += " (edited)"' <<<"$DJ")"; ask_op 7a "$DX" "$(a1 "$DX" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-1.md"' "(a) other wording → 7, pending"
+: > "$LT"; DX="$(jq -c '.questions[0].options[1].description = "something else"' <<<"$DJ")"; ask_op 7b "$DX" "$(a1 "$DX" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ]' "(b) one option description differs → 7"
+: > "$LT"; DX="$(jq -c '.questions[0].question += " please"' <<<"$DJ")"
+ask_op 7c1 "$DX" "$(a1 "$DX" deny)"; ask_op 7c2 "$DJ" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ]' "(c) two differing dialogs, one equal to ## Dialog → 7"
+set_dlg d-1 "$DX"; TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -qx "status: pending" "$RD/decisions/d-1.md"' "(c) … still 7 after ## Dialog is edited to the other"
+set_dlg d-1 "$DJ"
+: > "$LT"; DX="$(jq -c --argjson a "$(a1 "$DJ" allow)" '. + {answers: $a}' <<<"$DJ")"; ask_op 7d "$DX" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ]' "(d) a call input already carrying answers (the hook-supplied form) → 7"
+ok '[ -z "$SUBF" ]' "dialog answer: differing dialogs under the same d-n are no evidence$SUBF"
+: > "$LT"; ask_op 7e "$DJ" "$(a1 "$DJ" allow)"; printf '{"type":"us' >> "$LT"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+ok '[ "$TLRC" = 0 ] && grep -qx "answered_via: teamlead-ask uu-7e" "$RD/decisions/d-1.md"' "dialog answer: a half-written last transcript line keeps the evidence ($(cat "$T/tl.out"))"
+hk
+
+# 7b. the dialog carries the whole ask, never the shortened summary
+newrun dlg7q; SUBF=""; new_path
+LONGQ="Should the importer keep reading the legacy CSV layout from the shared drive while the new JSON export is rolled out to every region, or switch over at once and drop it?"
+jq --arg q "$LONGQ" '.tool_input.questions[0].question = $q | .tool_input.questions[0].options[0].description = "keeps the old reader"' \
+  "$FX/question-one.json" | sed "s|__CWD__|$CLONE|" > "$T/p.json"
+TO=40 HB dl7q; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend "Keep it"; DJ="$(dlg d-1)"
+sub '[ "$TLRC" = 0 ] && [ "${#LONGQ}" -gt 160 ] && [ "$(jq -r ".questions[0].question" <<<"$DJ")" = "d-1 coder: $LONGQ" ] && jq -e "any(.questions[0].options[]; .description | contains(\"keeps the old reader\"))" <<<"$DJ" >/dev/null' "a question over 160 characters, whole, descriptions kept ($DJ)"
+hk; pl perm-mcp; TO=40 HB dl7m; wf "$AD/a-2.json"; TL decision open beta --ask a-2 --recommend deny; DM1="$(jq -r '.questions[0].question' <<<"$(dlg d-2)")"; hk
+jq '.tool_input = {project_key: "XYZ", summary: "other"}' "$T/p.json" > "$T/p2.json" && mv "$T/p2.json" "$T/p.json"
+TO=40 HB dl7n; wf "$AD/a-3.json"; TL decision open beta --ask a-3 --recommend deny; DM2="$(jq -r '.questions[0].question' <<<"$(dlg d-3)")"; hk
+sub '[ "${DM1#d-2 }" != "${DM2#d-3 }" ] && grep -qF "\"summary\":\"x\"" <<<"$DM1" && grep -qF "\"project_key\":\"XYZ\"" <<<"$DM2"' "two MCP asks of one tool differ by their full tool_input ($DM1 | $DM2)"
+ok '[ -z "$SUBF" ]' "decision open: the dialog shows the full ask$SUBF"
+
+# 8. only a lead session the anchor records, each with its own launch snapshot and config dir
+newrun dlg8; SUBF=""; new_path; pl perm-curl; TO=40 HB dl8; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; ask_op 8a "$DJ" "$(a1 "$DJ" allow)"
+anc '.lead_sessions.run = "beta-other"'
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 7 ] && grep -q "not one the anchor records" "$T/tl.out" && grep -qx "status: pending" "$RD/decisions/d-1.md"' "the legacy fallback (no lead_sessions of this run) → 7 ($(cat "$T/tl.out"))"
+hk
+newrun dlg8b; new_path; pl perm-curl; TO=40 HB dl8b; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; ask_op 8b "$DJ" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ]' "recorded from lid-1 ($(cat "$T/tl.out"))"
+tlj '.session_id = "lid-2"'; anc '.lead_sessions.ids += ["lid-2"] | .lead_sessions.current_id = "lid-2"'; snap lid-2
+anc '.lead_ask_hooks["lid-1"].clean = false | .lead_ask_hooks["lid-1"].cause = "user profile: .* matcher"'
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+sub 'grep -q "could not be verified for a-1" "$T/dl8b.out"' "lid-1 launched unclean, lid-2 clean → an answer recorded from lid-1 is denied"
+newrun dlg8c; new_path; pl perm-curl; TO=40 HB dl8c; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; ask_op 8c "$DJ" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+sub '[ "$TLRC" = 0 ]' "recorded under lid-1's config dir ($(cat "$T/tl.out"))"
+mkdir -p "$T/cc2"; tlj ".session_id = \"lid-2\" | .claude_config_dir = \"$T/cc2\""
+anc ".lead_sessions.ids += [\"lid-2\"] | .lead_sessions.current_id = \"lid-2\" | .lead_sessions.config_dir = \"$T/cc2\""; snap lid-2 "$T/cc2"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl8c.out" .hookSpecificOutput.decision.behavior)" = allow ]' "a relaunch to another config dir: delivered from lid-1's own snapshot ($(cat "$T/l.out"))"
+tlj ".claude_config_dir = \"$T/cc\""
+ok '[ -z "$SUBF" ]' "dialog answer: only an anchor-recorded lead session counts$SUBF"
+
+# 9. the provenance guard: the effective AskUserQuestion registrations of the lead session
+p9() {  # p9 <tag> — a fresh run with an answered yes|no dialog, before the condition under test
+  newrun "dlg9$1"; new_path; rrec
+  TL decision open beta --source qa-1-1.json --question q --options "yes|no" --recommend yes
+  DJ="$(dlg d-1)"; ask_op "9$1" "$DJ" "$(a1 "$DJ" yes)"
+}
+a9() { TL decision answer beta d-1 --from-ask --tuning none --why w; }
+GQ=".claude/hooks/guard-team-question.sh"; MH=".claude/skills/stage-handoff/hooks/hooks.json"
+SUBF=""
+p9 a; echo 'echo hi' >> "$CLONE/$GQ"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "guard-team-question" "$T/tl.out" && grep -qx "status: pending" "$RD/decisions/d-1.md"' "(a) the clone's guard differs from main's ($(cat "$T/tl.out"))"
+cp "$MAIN/$GQ" "$CLONE/$GQ"
+p9 b; jq '.hooks.PreToolUse += [{matcher: "*", hooks: [{type: "command", command: "echo x"}]}]' "$CLONE/.claude/settings.local.json" > "$T/sl" \
+  && mv "$T/sl" "$CLONE/.claude/settings.local.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "settings.local.json" "$T/tl.out"' "(b) a local catch-all entry ($(cat "$T/tl.out"))"
+p9 c; jq -n '{hooks: {PreToolUse: [{matcher: "AskUserQuestion", hooks: [{type: "command", command: "echo y"}]}]}}' > "$TD/teamlead.settings.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "teamlead.settings.json" "$T/tl.out"' "(c) the lead's --settings registers a hook ($(cat "$T/tl.out"))"
+rm -f "$TD/teamlead.settings.json"
+p9 d; jq -n '{hooks: {PreToolUse: [{matcher: ".*", hooks: [{type: "command", command: "echo z"}]}]}}' > "$T/cc/settings.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "user settings.json" "$T/tl.out"' "(d) a user-profile .* entry ($(cat "$T/tl.out"))"
+rm -f "$T/cc/settings.json"
+p9 d2; jq -n '{enabledPlugins: {"x@y": true}}' > "$T/cc/settings.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "x@y" "$T/tl.out"' "(d2) an enabled user plugin ($(cat "$T/tl.out"))"
+rm -f "$T/cc/settings.json"
+p9 d3; echo '' >> "$CLONE/$MH"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "stage-handoff" "$T/tl.out"' "(d3) a clone-side mod file changed ($(cat "$T/tl.out"))"
+cp "$MAIN/$MH" "$CLONE/$MH"
+p9 e; anc 'del(.lead_ask_hooks)'; a9
+sub '[ "$TLRC" = 7 ] && grep -q "no launch snapshot" "$T/tl.out"' "(e) no launch snapshot ($(cat "$T/tl.out"))"
+p9 f; anc '.lead_ask_hooks["lid-1"].digest = "0000"'; a9
+sub '[ "$TLRC" = 7 ] && grep -q "changed since launch" "$T/tl.out"' "(f) a snapshot digest unlike the current registrations ($(cat "$T/tl.out"))"
+p9 h; jq '.hooks.PermissionRequest += [{hooks: [{type: "command", command: "echo p"}]}]' "$CLONE/.claude/settings.local.json" > "$T/sl" \
+  && mv "$T/sl" "$CLONE/.claude/settings.local.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "PermissionRequest" "$T/tl.out" && grep -qx "status: pending" "$RD/decisions/d-1.md"' "(h) a matcher-less PermissionRequest entry ($(cat "$T/tl.out"))"
+p9 i; jq '.hooks.PreToolUse += [{matcher: "Edit, AskUserQuestion", hooks: [{type: "command", command: "echo l"}]}]' "$CLONE/.claude/settings.local.json" > "$T/sl" \
+  && mv "$T/sl" "$CLONE/.claude/settings.local.json"; a9
+sub '[ "$TLRC" = 7 ] && grep -q "Edit, AskUserQuestion" "$T/tl.out"' "(i) a name-list matcher naming AskUserQuestion ($(cat "$T/tl.out"))"
+newrun dlg9g; new_path; pl perm-curl; TO=40 HB dl9g; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; ask_op 9g "$DJ" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w; G9=$TLRC
+echo 'echo hi' >> "$CLONE/$GQ"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+sub '[ "$G9" = 0 ] && grep -q "could not be verified for a-1" "$T/dl9g.out"' "(g) the guard edited between the answer and the relay → the hook denies"
+cp "$MAIN/$GQ" "$CLONE/$GQ"
+ok '[ -z "$SUBF" ]' "dialog answer: a non-inert AskUserQuestion hook gives no evidence$SUBF"
+
+# 10. after a rejected relay: a new decision on the reclaimed ask, or on the fresh one
+SUBF=""
+TL decision open beta --ask a-1 --recommend deny
+sub '[ "$TLRC" = 0 ] && [ -f "$RD/decisions/d-2.md" ]' "(a) a new decision d-2 on the timed-out ask ($(cat "$T/tl.out"))"
+say_op uR10 "d-2 allow"; TL decision answer beta d-2 --text "d-2 allow" --tuning none --why w
+pl perm-curl; TO=40 HB dl10; wfc '[ "$(st a-1)" = waiting ]' 25
+L a-1 --allow --authority operator --decision "$RD/decisions/d-2.md" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl10.out" .hookSpecificOutput.decision.behavior)" = allow ]' "(a) the retry reclaims a-1 and the d-2 relay is delivered ($(cat "$T/l.out"))"
+newrun dlg10b; new_path; perm 'curl "$URL"'; TO=40 HB dl10b; wf "$AD/a-1.json"
+TL decision open beta --ask a-1 --recommend deny; DJ="$(dlg d-1)"; ask_op 10b "$DJ" "$(a1 "$DJ" allow)"
+TL decision answer beta d-1 --from-ask --tuning none --why w
+echo 'echo hi' >> "$CLONE/$GQ"
+L a-1 --allow --authority operator --decision "$RD/decisions/d-1.md" --why w; wait "$HP"
+cp "$MAIN/$GQ" "$CLONE/$GQ"
+sub 'grep -q "could not be verified for a-1" "$T/dl10b.out"' "(b) the unclaimable relay is rejected"
+perm 'curl "$URL"'; TO=40 HB dl10c; wf "$AD/a-2.json"
+TL decision open beta --ask a-1 --recommend deny; say_op uR10b "d-2 allow"; TL decision answer beta d-2 --text "d-2 allow" --tuning none --why w
+L a-1 --allow --authority operator --decision "$RD/decisions/d-2.md" --why w; sleep 1
+sub '[ ! -s "$T/dl10c.out" ] && kill -0 "$HP" 2>/dev/null' "(b) a relay to the old a-1 leaves the fresh ask's waiter unanswered"
+TL decision open beta --ask a-2 --recommend deny; say_op uR10c "d-3 allow"; TL decision answer beta d-3 --text "d-3 allow" --tuning none --why w
+L a-2 --allow --authority operator --decision "$RD/decisions/d-3.md" --why w; wait "$HP"
+sub '[ "$LRC" = 0 ] && [ "$(j "$T/dl10c.out" .hookSpecificOutput.decision.behavior)" = allow ]' "(b) the fresh ask a-2 → d-3 → typed reply → delivered ($(cat "$T/l.out"))"
+ok '[ -z "$SUBF" ]' "dialog answer: a rejected relay recovers through a new decision$SUBF"
+cp "$T/local.keep" "$CLONE/.claude/settings.local.json"; : > "$LT"
 
 # ================================================================================================
 # the runner: lead_asks, lead_attention, lead_close, the base refusal

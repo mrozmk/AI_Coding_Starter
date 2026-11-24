@@ -3,9 +3,9 @@
 # the record template and its rules, both marker types), the criterion fingerprint — extracted from
 # the registry and run on fixed vectors, so the test runs the same bytes the command runs — the
 # re-check rules, Phase 3's one-pass decisions and one approval, the modes, the pool, groups, the
-# feature path and deferrals, the per-ticket host-and-build decision, the deployed line and the
-# base-filtered merge set, the ENV evidence rule, the
-# browser drivers and the script skeleton (extracted and run against a stub Playwright), and the
+# feature path and deferrals, the task ledger (citation, the rank, the light path), the per-ticket
+# host-and-build decision, the deployed line and the base-filtered merge set, the ENV evidence rule,
+# the browser drivers and the script skeleton (extracted and run against a stub Playwright), and the
 # neighbouring contracts.
 # Text and pipeline checks only — nothing is spawned, no tracker is called, no real browser runs.
 #
@@ -87,8 +87,11 @@ Verify it when this ticket reaches <pool status>.
 `group=-` for a single-ticket run
 is a re-check-form record with `build=-`
 any disposition may carry
+mode=first|recheck|light
+history comparisons count that pair as one criterion
 EOF
 lacks "$REG" '`group=-` and `mode=first|recheck` in this revision'; check $? "registry still says group=- only"
+lacks "$REG" '`light` is reserved'; check $? "registry still reserves light"
 
 # Headings outside fenced blocks: ## 1.…7. in order, §7 the last level-two heading, ### 1a. inside §1.
 HEADS=$(awk '/^```/ { fence = !fence; next } !fence && /^##+ / { print NR ":" $0 }' "$ROOT/$REG")
@@ -104,7 +107,8 @@ check $? "registry: ### 1a. is not between ## 1. and ## 2."
 
 # The record template: the first fenced markdown block after ### 7b., whole and in order.
 got_tpl=$(awk '/^### 7b\./ { s = 1 } s && /^```markdown$/ { f = 1; next } f && /^```$/ { exit } f { print }' "$ROOT/$REG")
-want_tpl=$(cat <<'EOF'
+# A plain heredoc file: bash 3.2 reads the `#` of `(PR #<n>)` inside `$( … )` as a comment.
+cat > "$WORK/want-tpl.txt" <<'EOF'
 ## QA verification — <ticket or feature title>
 
 - Run: <UTC date> · <first | re-check of <date> | light> · group: <keys, or single>
@@ -114,7 +118,7 @@ want_tpl=$(cat <<'EOF'
 ### Criteria
 - <id> [<fp>] — PASS — <family> — <observed value, one line>
 - <id> [<fp>] — FAIL / <blocker|major|minor> — <family> — <observed value; the clause it contradicts>
-- <id> [<fp>] — CITED — task ledger: met (<file:line>)
+- <id> [<fp>] — CITED — task ledger: met (PR #<n>)
 - <id> [<fp>] — DEFERRED → <KEY> — <what must land there first>
 - <id> [<fp>] — ENV — <what in the environment is not ready, and how that was shown>
 - <id> [<fp>] — NEEDS-HUMAN — <reason>
@@ -128,7 +132,7 @@ want_tpl=$(cat <<'EOF'
 **Blockers: <n>.** <Acceptable — move the ticket yourself | Not acceptable | Not verifiable now — environment>
 qa-verify:v1 record run=<utc> ticket=<KEY> mode=<first|recheck|light> group=<id|-> build=<sha|-> pass=<n> fail=<n> cited=<n> deferred=<n> env=<n> needs-human=<n>
 EOF
-)
+want_tpl=$(cat "$WORK/want-tpl.txt")
 [ "$got_tpl" = "$want_tpl" ]; check $? "registry §7b: the record template is not verbatim or not in order"
 
 # ---- the fingerprint: extract the registry block and run it --------------------------------------
@@ -238,6 +242,67 @@ EOF
 for neg in 'sign-off box' 'signs each row' 'row by row' '## Tracker comment (prepared)'; do
   lacks "$CMD" "$neg"; check $? "qa-verify still says: $neg"
 done
+
+# ---- the task ledger: citation, the rank, the light path ----------------------------------------------
+pins "$CMD" "ledger" <<'EOF'
+**Task ledger** — read from the PR descriptions above
+an open or closed-unmerged PR's ledger is never read for citation
+Only `present` is a ledger
+To check by hand:
+the row list ends at the first line that is neither a row nor a label
+blank lines between the groups are skipped
+a plan-local `AC-n` is never matched by id
+every eligible ledger must match the criterion as `met`
+a ledger row `met` becomes `CITED` only for the `contract / type / boundary` family
+registry §5 and QA's own earlier `FAIL` win over citation
+history not established — static rows verified, not cited
+a criterion that is both structural and visible gets a `CITED` row and its observed row
+A passing test in the ledger never stands in for an observation
+supporting, not an observation
+`qa-contract` receives only the static rows the ledger does not cite as `met`
+are re-derived from the current ledger, never carried
+a valid two-row pair counts as one criterion
+1. **re-check**
+2. **deferred**
+3. **sensitive**
+4. **UI**
+5. **links**
+6. **time in pool**
+rank <n>: re-check <yes|no> · deferred <n> · sensitive <n>[?] · UI <n>[?] · links <n> · in pool <d>
+L1 — every ticket's ledger is `present` with `met = total`
+L2 — every criterion matches a `met` row
+L3 — every criterion is static-only and still citable after every guard; every feature-path row is static-only
+L4 — complete PR file lists touching no UI and no sensitive path
+L5 — no incoming deferral
+L6 — no open `FAIL` and no stopped ticket
+L7 — complete history
+A ticket without a ledger never gets the light path.
+LIGHT PATH: offered
+a planned smoke resolves its driver like a `qa-runtime-ui` row
+light — no smoke: driver subagent runs no smoke
+`full <group id>`
+`full <group id>` sets the group's ledgers aside
+the empty-template skip of step 3 does not apply to a smoke at a named route
+a smoke invalidated by build drift counts as a failed smoke
+a failed smoke drops that ticket to a full run in the same session
+recomputed after the fallback from the sources actually used
+no checkout or host observed
+merged into <base>, not <L> — its ledger is not used
+only the run of backticked tokens right after the label
+Rank keys 1, 3 and 4 (Step 0.8 → Order) are computed for a single run too
+A single run turns it down with `full` (or `full <KEY>`)
+or `mode=recheck` with the Run line `re-check of <date>` when the ticket's newest record validated
+smoke failed at <target> — <error>; check it before you move it
+as it stands after the one-pass decision (step 2)
+Replacement is per criterion, not per physical row
+- <id> [<fp>] — CITED — task ledger: met (PR #<n>)
+EOF
+pins .claude/agents/qa-contract.md "qa-contract" <<'EOF'
+## When you are spawned
+only for the static criteria the task ledger does not cite as `met`
+EOF
+lacks "$CMD" 'met (<file:line>)'; check $? "qa-verify still cites a file:line from Met: rows"
+lacks "$CMD" 'on a line or heading containing "sensitive"'; check $? "qa-verify still harvests any line that says sensitive"
 
 # ---- modes, pool, groups ----------------------------------------------------------------------------
 POOL_PINS=$(cat <<'EOF'

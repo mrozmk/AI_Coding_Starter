@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 EXAMPLE = ".claude/lib/costs/config.example.json"
 DEFAULT_STAGE_SKILLS = [
     "prime", "brainstorm", "plan-feature", "execute", "check-implementation", "qa-verify",
-    "pr-create", "orchestrate", "quick-change", "pr-merge",
+    "pr-create", "quick-change", "pr-merge",
 ]
 OPEN_END = "9999-12-31T00:00:00.000Z"
 TICKET_RE = re.compile(

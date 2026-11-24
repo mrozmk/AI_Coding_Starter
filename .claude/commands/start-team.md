@@ -1,12 +1,12 @@
 ---
 description: Start (or resume) a parallel AI team on a ticket — provision or reuse its clone, launch the runner (Herdr: a tab per team, its TeamLead and the working stage; tmux: an attach hint line)
-argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
-allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*)
+argument-hint: "<team> [key] [branch] [--mode brainstorm|quick|cli] [--brief \"<text>\" | --brief-file <path>] [--roles <role>=<model>[/<effort>][/<permission>] …] [--permission-mode manual] [--follow-up-of <key>] [--takeover]  (e.g. alfa AB-777 · alfa 7 --mode quick · alfa --brief \"Fix X\" · alfa — resume · alfa AB-787 --roles planner=claude-fable-5-1/high · alfa AB-900 --permission-mode manual)"
+allowed-tools: Bash(bash -c source .claude/lib/team-profile.sh:*), Bash(bash .claude/lib/team-tracker.sh:*), Bash(bash .claude/lib/team-new.sh:*), Bash(bash .claude/lib/team-next.sh:*), Bash(bash .claude/lib/team-lineage.sh:*), Bash(bash .claude/lib/team-brief.sh:*), Bash(bash .claude/lib/team-lead.sh:*), Bash(bash .claude/lib/team-run.sh:*), Bash(bash .claude/lib/session-host.sh:*), Bash(git rev-parse:*), Bash(test:*), mcp__atlassian__jira_get_issue, Bash(bash .claude/lib/costs/runtime-mark.sh:*), Bash(bash .claude/lib/team-claim.sh:*), mcp__atlassian__jira_get_transitions, mcp__atlassian__jira_add_comment, mcp__atlassian__jira_transition_issue, AskUserQuestion, Bash(jq:*), Bash(mv:*), Bash(node .claude/lib/tracker-snapshot.mjs:*)
 ---
 
 # /start-team — run a team on a ticket
 
-Arguments: **$ARGUMENTS** — `<team> [key] [branch] [--mode <mode>] [--brief <text>|--brief-file <path>] [--roles <entries…>] [--permission-mode manual] [--follow-up-of <key>]`. Supervisor command: run it in the **main
+Arguments: **$ARGUMENTS** — `<team> [key] [branch] [--mode <mode>] [--brief <text>|--brief-file <path>] [--roles <entries…>] [--permission-mode manual] [--follow-up-of <key>] [--takeover]`. Supervisor command: run it in the **main
 checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md`.
 
 ## Guardrails
@@ -18,6 +18,9 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
   `--follow-up-of`. `team-lineage.sh` stays callable from this session: its `consent` needs a
   terminal or the Operator's own typed message in this window, so it is not a deny-list entry.
   Never run `consent` on your own words or on a message without the phrase `consent <KEY>`.
+- A claim refusal or a lost race (step 3b) is printed verbatim and never retried under another
+  key, team or branch. `--takeover` only when the Operator wrote it in this invocation — never
+  added on your own.
 
 ## Steps
 
@@ -26,7 +29,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    echo "trunk: $TEAM_TRUNK"; echo "tracker: $TEAM_TRACKER"'`.
    Non-zero exit → print its `error:` line verbatim and stop (no clone, no branch, no tmux session).
    `TEAM_TRUNK` is the trunk used in step 4; `TRACKER` (the `tracker:` line, one of `jira`,
-   `github`, `none`) decides steps 1, 3 and 4. The ticket's mode decides step 4c and the brief
+   `github`, `none`) decides steps 1, 3, 3b and 4. The ticket's mode decides step 4c and the brief
    check in step 2: a per-run TeamLead in brainstorm and quick mode, none in mode `cli`.
 
 1. **Parse.** `TEAM` = first argument (`[a-z0-9-]+`). A `TEAM` equal to a roles tab (`lead`, or
@@ -67,6 +70,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    parse — for `TRACKER=none` they *are* the ticket (there is no key to name).
    `FOLLOW` = the key after `--follow-up-of` (the ticket this one follows up; a leading `#`
    dropped), taken out the same way; no value → stop and ask.
+   `TAKEOVER` = `--takeover` present, taken out the same way (a flag, no value); with
+   `TRACKER=none` say "no claim with tracker none — `--takeover` ignored".
    **This run is NEW** when `KEY` is given, or (only `none`) when `--brief`/`--brief-file` is given;
    otherwise it is a **RESUME** (step 2). Refuse:
    - `--brief`/`--brief-file` with `TRACKER` = `jira` or `github` → "`--brief` is for tracker=none —
@@ -76,6 +81,7 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
      is NEW, so it is allowed;
    - `--follow-up-of` on a RESUME → "the lineage is fixed at the start — the clone's `team.json`
      carries it";
+   - `--takeover` on a RESUME → "`--takeover` is for a new start";
    - `--mode cli` with a `--roles` model/effort entry → "cli always runs opus[1m]/medium; drop
      --roles" (`cli=//manual` from `--permission-mode manual` is allowed).
 
@@ -136,12 +142,80 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    first entry was used — show it) and `title`; then, only when `BRANCH` is not given, slug = the title in **English**, kebab-case,
    3–6 words, `[a-z0-9-]` only, and `BRANCH` = `<type>/<KEY>-<slug>`.
 
+3b. **Claim the ticket** (NEW runs only; after step 3, before step 4 — no clone and no branch
+   names the ticket until this passes). Another machine or team may be starting the same ticket:
+   the first unreleased claim comment wins, and only the winner moves the status. Keep `CLAIM_ID`
+   and the printed `previous` for step 4. First: `<CLONE>/.agents/team/team.json` already names
+   `KEY` → stop before any claim: "this clone already runs `KEY` — resume with `/start-team
+   <TEAM>`" (`team-next.sh` would refuse the same ticket anyway). `TRACKER=none` → one line
+   "tracker none: no shared signal, the start continues as before" and skip this step. The
+   protocol, the grammar and the release order: `.agents/reference/team-pipeline.md` → Claim at the
+   start.
+   - **Check.** github: done by the one `team-claim.sh claim` call under Claim (it checks first).
+     jira: read `mcp__atlassian__jira_get_issue(issue_key=KEY,
+     fields="summary,issuetype,labels,description,status", include="comments", comment_limit=100)`,
+     save the result to a scratchpad file and judge it with the existing predicate —
+     `node .claude/lib/tracker-snapshot.mjs snapshot --jira <result> --limit 100 --out
+     <scratch>/snap.json` → its `.status` (`.agents/reference/tracker-comments.md` §3):
+     `possibly-truncated` → stop: "claim history may be truncated"; `unknown` (no comments) is
+     accepted only here in Check (a fresh ticket), never in Confirm or the release, which need
+     `complete`. Then `bash .claude/lib/team-claim.sh refs <KEY>` (remote branches and open PRs
+     carrying the key), and the claim records — one tab-separated line `<created>\t<id>\t<last
+     line>` per comment whose last non-empty line contains `team:claim`, nothing else of the
+     comment — into a scratchpad file → `bash .claude/lib/team-claim.sh holder --lines <f> --who
+     <TEAM>`. Refuse with one line naming the status, the PRs, the branches and the holder when
+     the status category is `In Progress` or `Done` (unless the holder is ours or `TAKEOVER`), a
+     foreign holder exists (unless `TAKEOVER`), or `refs` printed a `branch` or `pr` line (unless
+     the holder is ours — an own claim's pushed refs do not refuse; with `TAKEOVER` only a branch
+     equal to `BRANCH` still refuses). **Held** (`self=yes`): reuse that
+     claim's `id` and its marker's `previous` as `CLAIM_ID` / `previous` (the marker stores it
+     percent-encoded: decode it, `To%20Do` → `To Do`, before any comparison or transition — here
+     and in step 4's release), post nothing in Claim,
+     confirm that exact id, and skip the transition when the status already is
+     `jira.started_status` — the crash-recovery path, never a second claim; a status that is
+     neither that `previous` nor `jira.started_status` (e.g. Done) → refuse "held here but the
+     status moved on", nothing written.
+   - **Claim.** github: `bash .claude/lib/team-claim.sh claim <KEY> --who <TEAM> --branch <BRANCH>
+     [--takeover]` (checks, posts the claim comment, confirms, then moves the winner's status;
+     an own unreleased claim prints `held` and posts nothing). Exit 3 → print the `refused:` line
+     verbatim and stop before step 4; exit 4 → print it and stop (the script has posted the
+     release itself); exit 2 → print it and stop. jira (skipped when Check found our own claim —
+     **Held**): `jira.started_status` missing from `.claude/project-profile.json` → ask once
+     (`AskUserQuestion`, the target statuses of `mcp__atlassian__jira_get_transitions(KEY)` as
+     options), write it with `jq` (temp file in `.claude/`, then `mv`, every other key kept) and
+     append `## <date> — jira.started_status` with one `**Decision:**` line to
+     `.agents/memory/decisions.md` (as `/qa-verify` Step 0.2 does for its pool status); then
+     `bash .claude/lib/team-claim.sh body claim --who <TEAM> --branch <BRANCH> --previous "<status
+     name>" --format jira [--superseded <id|status>]` → `mcp__atlassian__jira_add_comment` with
+     that body; `CLAIM_ID` = the marker's `id`. A failed comment → post `bash
+     .claude/lib/team-claim.sh body release --id <CLAIM_ID> --reason post-failed --format jira`
+     the same way, stop. The Jira writes stay `ask`-tier: the Operator's prompt is the gate.
+   - **Confirm.** github: inside the same call — its `claimed`/`held` line and `status:` line.
+     jira: re-read as in Check (the snapshot `.status` must be `complete`, else post the release
+     body and stop) → `holder`; holder id ≠ `CLAIM_ID` → post the release body for `CLAIM_ID`
+     (`--reason lost-race`) and stop naming the holder — never transition; holder id = `CLAIM_ID`
+     → status already `jira.started_status` → no transition (unchanged); else
+     `mcp__atlassian__jira_get_transitions(KEY)` → the transition whose target is
+     `jira.started_status` → `mcp__atlassian__jira_transition_issue` with `comment="Started —
+     claim <CLAIM_ID>"` (`guard-jira-transition.sh` rules apply). No such transition, a guard
+     refusal or a declined prompt → post the release body (`--reason status-failed`) and stop,
+     naming the status and the available transitions.
+
 4. **Clone.** `CLONE` absent → `bash .claude/lib/team-new.sh <TEAM> <KEY> <BRANCH>
    origin/<TEAM_TRUNK> <MODE>` (the base-ref is `origin/` plus the trunk from step 0a); present →
    `bash .claude/lib/team-next.sh …` with the same arguments. For `github`/`none` append
    `--ticket-file .agents/team/incoming/<TEAM>/ticket.json` (the file from step 3; `jira` passes none),
    and `--follow-up-of <FOLLOW>` when set (for `github`/`none` the script also reads the follow-up
    line of the `ticket.md` next to the ticket file). Non-zero exit → print its errors and stop.
+   **Release the claim first** when step 3b won or held one and `<CLONE>/.agents/team/team.json`
+   is absent or its `ticket` ≠ `KEY` (nothing names the ticket yet): github `bash
+   .claude/lib/team-claim.sh release <KEY> --id <CLAIM_ID> --reason start-failed`; jira the MCP
+   release — re-read as in step 3b (snapshot `.status` must be `complete`, else stop and report
+   that nothing was restored) → `holder` still `CLAIM_ID`? → status still `jira.started_status`?
+   → transition back to the marker's `previous` with a one-line comment, or say "status left at
+   <started> — no transition back to <previous>" → the release body (`--reason start-failed`) via
+   `mcp__atlassian__jira_add_comment`. Name each failed call as a partial cleanup. The exit-9 case
+   whose clone already names `KEY` keeps the claim (the resume path below).
    Exit **9** is the follow-up cap: this ticket would be the third follow-up of one origin. Print the
    refusal verbatim, add one Polish line for the Operator — the origin, the follow-ups already
    started, and how to consent: in their own terminal
@@ -153,18 +227,6 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    start lost a race in the ledger after provisioning), the clone stays: after the consent, resume
    with `/start-team <TEAM>`, which records it.
 
-4b. **Ticket status** (`TRACKER=github` only, NEW runs only, after step 4 succeeded).
-   `bash .claude/lib/team-tracker.sh set-status <KEY> started`. Non-zero exit → record it DURABLY
-   first: `bash .claude/lib/team-warn.sh <TEAM> "status started not set — <error>"` (appends to
-   `warnings[]` in the clone's `team.json`; `bash .claude/lib/team-run.sh <TEAM> status` prints every
-   entry). Continue **only after that command succeeded**, with one line
-   `warn: status started not set — <error>` in the report; the run then starts regardless, because
-   the failure is recoverable from the clone.
-   `team-warn.sh` itself exiting non-zero → **stop the start**: do not run step 4a and do not launch
-   the runner, print its error verbatim, and report that the ticket status was not set *and* the
-   warning could not be stored. This is the one failure that must not be walked past — it would
-   leave a run going with a ticket that silently never left its old status and no record of why.
-
 4a. **Roles override** (only with `ROLES`). `bash .claude/lib/team-run.sh <TEAM> roles <ROLES…>`.
    New ticket: after step 4, so `team-next.sh` has archived the previous ticket's override first.
    Resume: right after confirming `CLONE` exists, before the status check; with a live runner it
@@ -173,12 +235,14 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    failure in step 4a,
    correct the roles and retry as `/start-team <TEAM> --roles <corrected entries…>` (resume),
    without `KEY` or `BRANCH`. If no override is needed, resume with `/start-team <TEAM>`.
-   Do not repeat the new-ticket invocation or run `team-next` for the same ticket.
+   Do not repeat the new-ticket invocation or run `team-next` for the same ticket. The claim from
+   step 3b stays: the clone names the ticket, so the resume continues under it.
    The override lives until `team-next` (the next ticket); undo with
    `bash .claude/lib/team-run.sh <TEAM> roles --clear`. A role already running keeps its model.
 
-4c. **Order brief** (NEW runs only, only when `MODE` ≠ `cli`; after steps 4
-   and 4b). The per-run TeamLead judges every gate and the acceptance against this file.
+4c. **Order brief** (NEW runs only, only when `MODE` ≠ `cli`; after step 4). The per-run
+   TeamLead judges every gate and the acceptance against this file. A failure here keeps the claim
+   (the clone names the ticket — resume).
    - Run `bash .claude/lib/team-brief.sh inflight <TEAM>`.
    - Write a draft in your scratchpad with exactly these three sections:
      - `## Ticket` — the ticket body copied verbatim, never paraphrased: `ticket.md` from step 3
@@ -217,7 +281,8 @@ checkout**, from any Claude window. Runbook: `.agents/reference/team-pipeline.md
    `bash .claude/lib/session-host.sh hint <TEAM>-<role>` names how to look at any role.
 
 7. **Report** (Polish, short): clone path, ticket (for `none` the key the adapter allocated),
-   `tracker: <TRACKER>`, any `warn:` line from step 4b, branch and `mode: <MODE> — <reason>` (one
+   `tracker: <TRACKER>`, the claim result from step 3b (`claimed`/`held` + `status:`, or
+   `tracker none: no shared signal`), branch and `mode: <MODE> — <reason>` (one
    sentence: the Which-mode criterion that decided it; "set by the Operator (`--mode`)"; "default —
    no `--mode`"; on a RESUME "fixed per ticket"), "Herdr: the team has its own tab `<TEAM>` (TeamLead left, the working stage right) — talk to the planner there; tmux: the
    runner's `attach:` line says how to reach the planner (detach with Ctrl-b d)", and that coder/QA run alone, the

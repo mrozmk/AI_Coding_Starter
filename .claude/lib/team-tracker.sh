@@ -5,7 +5,8 @@
 #   read <key> --out <dir>                                  (tracker=github)
 #   read --brief <text>|--brief-file <path> --out <dir>      (tracker=none)
 #   comment <key> --marker <m> --body-file <f>
-#   set-status <key> started|delivered
+#   set-status <key> started|delivered | --name <option> | --clear   (--name/--clear: the
+#                                                             restore form of a released claim)
 #   create-followup --marker <m> --title <t> --body-file <f>  (adds the issue to the Project)
 #   list --out <file>                                        (read-only; /tasks-status)
 #   show <key> --out <file>                                  (read-only; /tasks-status)
@@ -16,7 +17,8 @@
 #   add-sub-issue <parent> <child>                           (idempotent; /github-sync)
 #   project-add <key>                                        (idempotent; /github-sync)
 #   pool --status <name> --out <file>                        (read-only; /qa-verify)
-#   item-status <key> --out <file>                           (read-only; /qa-verify)
+#   item-status <key> --out <file>                           (read-only; /qa-verify, team-claim.sh;
+#                                                             also the started/delivered option names)
 #
 # Profile: the `teams` block when there is one (full validation), else the top-level `tracker` and
 # `github` block of a single-session project (`team_tracker_profile_load`). A github block without
@@ -215,34 +217,72 @@ project_item_match() {
 $TEAM_GH_PROJECT_NUMBER — refusing to $1"
 }
 
+# Usage: status_target → ITEM, the issue's one project item, and $TMP/fields.json. An issue off the
+# board is exit 4 — set-status never adds it.
+ITEM=""
+status_target() {
+  project_items
+  project_item_match "edit one of them"
+  ITEM="$(jq -r '.[0].id // ""' "$TMP/match.json")"
+  [ -n "$ITEM" ] \
+    || die 4 "issue #$KEY is not in project $TEAM_GH_PROJECT_NUMBER — not adding it"
+  gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
+    --format json > "$TMP/fields.json"
+}
+
+# By item ID, not by issue number: another repo's #<n> may sit in the same project, and reading
+# its status would report `unchanged` while the target item stays where it was.
+item_status_now() {
+  jq -r --arg id "$ITEM" '[.items[] | select(.id == $id)] | .[0].status // ""' "$TMP/items.json"
+}
+
+# Usage: status_edit <option id> — the one board write of every set-status form.
+status_edit() {
+  gh_or4 gh project item-edit --id "$ITEM" --project-id "$TEAM_GH_PROJECT_ID" \
+    --field-id "$TEAM_GH_STATUS_FIELD_ID" --single-select-option-id "$1" >/dev/null
+}
+
 op_set_status() {
-  local logical="$1" opt item name
+  local logical="$1" opt name
   case "$logical" in
     started)   opt="$TEAM_GH_STATUS_STARTED" ;;
     delivered) opt="$TEAM_GH_STATUS_DELIVERED" ;;
     *) die 4 "unknown logical status '$logical' (started|delivered)" ;;
   esac
   if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
-  project_items
-  project_item_match "edit one of them"
-  item="$(jq -r '.[0].id // ""' "$TMP/match.json")"
-  [ -n "$item" ] \
-    || die 4 "issue #$KEY is not in project $TEAM_GH_PROJECT_NUMBER — not adding it"
-  gh_or4 gh project field-list "$TEAM_GH_PROJECT_NUMBER" --owner "$TEAM_GH_PROJECT_OWNER" \
-    --format json > "$TMP/fields.json"
+  status_target
   name="$(jq -r --arg f "$TEAM_GH_STATUS_FIELD_ID" --arg o "$opt" \
     '[.fields[]? | select(.id == $f) | .options[]? | select(.id == $o) | .name] | .[0] // ""' \
     "$TMP/fields.json")"
   [ -n "$name" ] || die 4 "status option '$opt' is not in field $TEAM_GH_STATUS_FIELD_ID"
-  # By item ID, not by issue number: another repo's #<n> may sit in the same project, and reading
-  # its status would report `unchanged` while the target item stays where it was.
-  if [ "$(jq -r --arg id "$item" \
-      '[.items[] | select(.id == $id)] | .[0].status // ""' "$TMP/items.json")" = "$name" ]; then
-    echo "unchanged"; return 0
-  fi
-  gh_or4 gh project item-edit --id "$item" --project-id "$TEAM_GH_PROJECT_ID" \
-    --field-id "$TEAM_GH_STATUS_FIELD_ID" --single-select-option-id "$opt" >/dev/null
+  if [ "$(item_status_now)" = "$name" ]; then echo "unchanged"; return 0; fi
+  status_edit "$opt"
   echo "set $logical"
+}
+
+# set-status --name <option>: the restore form — back to the status a claim's marker recorded, by
+# the option's NAME (the marker never holds an option id).
+op_set_status_name() {
+  local want="$1" opt
+  if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
+  status_target
+  opt="$(jq -r --arg f "$TEAM_GH_STATUS_FIELD_ID" --arg n "$want" \
+    '[.fields[]? | select(.id == $f) | .options[]? | select(.name == $n) | .id] | .[0] // ""' \
+    "$TMP/fields.json")"
+  [ -n "$opt" ] || die 4 "status option '$want' is not in field $TEAM_GH_STATUS_FIELD_ID"
+  if [ "$(item_status_now)" = "$want" ]; then echo "unchanged"; return 0; fi
+  status_edit "$opt"
+  echo "set $want"
+}
+
+# set-status --clear: the restore form for an item that had no status before the claim.
+op_set_status_clear() {
+  if [ -z "$TEAM_GH_PROJECT_NUMBER" ]; then echo "skipped (no project)"; return 0; fi
+  status_target
+  if [ -z "$(item_status_now)" ]; then echo "unchanged"; return 0; fi
+  gh_or4 gh project item-edit --id "$ITEM" --project-id "$TEAM_GH_PROJECT_ID" \
+    --field-id "$TEAM_GH_STATUS_FIELD_ID" --clear >/dev/null
+  echo "cleared"
 }
 
 op_create_followup() {
@@ -483,11 +523,18 @@ op_item_status() {
   project_items
   status_field
   project_item_match "read one of them"
+  # started/delivered: the NAMES of the profile's two option ids (null when not an option) — the
+  # claim compares a status against them.
   jq -n --slurpfile i "$TMP/issue.json" --slurpfile m "$TMP/match.json" \
-    --slurpfile f "$TMP/sfield.json" --arg key "$KEY" \
-    '{key: $key, state: ($i[0].state // ""),
+    --slurpfile f "$TMP/sfield.json" --slurpfile fl "$TMP/fields.json" --arg key "$KEY" \
+    --arg fid "$TEAM_GH_STATUS_FIELD_ID" --arg so "$TEAM_GH_STATUS_STARTED" \
+    --arg sd "$TEAM_GH_STATUS_DELIVERED" \
+    'def oname($o): [$fl[0].fields[]? | select(.id == $fid) | .options[]? | select(.id == $o)
+        | .name] | .[0] // null;
+     {key: $key, state: ($i[0].state // ""),
       status: (if ($m[0] | length) == 1 then ($m[0][0].status // null) else null end),
-      on_board: ($m[0] | length), statuses: $f[0].options}' > "$TMP/is.json" \
+      on_board: ($m[0] | length), statuses: $f[0].options,
+      started: oname($so), delivered: oname($sd)}' > "$TMP/is.json" \
     || die 4 "issue #$KEY cannot be joined with project $TEAM_GH_PROJECT_NUMBER"
   write_atomic "$TMP/is.json" "$out"
   jq -r '"key=" + .key + " status=" + (.status // "null")' "$out"
@@ -575,8 +622,11 @@ fi
   || die 2 "read: local L<n> tickets need the teams block — tracker=none without teams has no tickets"
 
 OUT=""; MARKER=""; BODY_FILE=""; TITLE=""; BRIEF=""; HAS_BRIEF=0; PREFIX=""; STATUS=""; POS=()
+NAME=""; HAS_NAME=0; CLEAR=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --name)       NAME="${2:-}"; HAS_NAME=1; shift 2 || die 2 "--name needs an option name" ;;
+    --clear)      CLEAR=1; shift ;;
     --out)        OUT="${2:-}"; shift 2 || die 2 "--out needs a directory" ;;
     --status)     STATUS="${2:-}"; shift 2 || die 2 "--status needs a name" ;;
     --marker)     MARKER="${2:-}"; shift 2 || die 2 "--marker needs a value" ;;
@@ -611,9 +661,15 @@ case "$op" in
     norm_key "$1"
     op_comment "$MARKER" "$BODY_FILE" ;;
   set-status)
-    [ $# -eq 2 ] || die 2 "usage: set-status <key> started|delivered"
+    SS_USAGE="usage: set-status <key> started|delivered | --name <option> | --clear"
+    { [ $# -eq 1 ] || [ $# -eq 2 ]; } || die 2 "$SS_USAGE"
+    # Exactly one form: the logical positional, --name, or --clear.
+    [ $(( $# - 1 + HAS_NAME + CLEAR )) = 1 ] || die 2 "$SS_USAGE"
+    [ "$HAS_NAME" = 0 ] || [ -n "$NAME" ] || die 2 "--name needs an option name"
     norm_key "$1"
-    op_set_status "$2" ;;
+    if [ "$HAS_NAME" = 1 ]; then op_set_status_name "$NAME"
+    elif [ "$CLEAR" = 1 ]; then op_set_status_clear
+    else op_set_status "$2"; fi ;;
   create-followup)
     [ -n "$MARKER" ] || die 2 "create-followup needs --marker <m>"
     [ -n "$TITLE" ] || die 2 "create-followup needs --title <t>"

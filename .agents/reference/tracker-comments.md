@@ -21,7 +21,9 @@ Tracker `none` → the whole contract is a no-op (`Tracker comments: skipped —
   `token-usage-report: <KEY>` as the first line, and the QA record of `/qa-verify`, whose last
   non-empty line ends with a `qa-verify:v1 record run=… ticket=…` segment (a Jira converter may join
   it onto the verdict line), and `/qa-verify`'s deferral pointer, whose last non-empty line ends
-  with a `qa-verify:v1 deferral src=… row=… fp=…` segment (the same converter join). A new producer
+  with a `qa-verify:v1 deferral src=… row=… fp=…` segment (the same converter join), and the
+  start's claim (`team-claim.sh`), whose last line is a `team:claim v1 …` or `team:claim-released
+  v1 …` marker — wrapped in `<!-- … -->` on GitHub, plain on Jira (the same converter join). A new producer
   adds its rule to
   `.claude/lib/tracker-snapshot.mjs` (`ownMarker`) and here. A human comment that merely quotes a
   marker is not an own entry; an unclear material comment is escalated, never dropped.

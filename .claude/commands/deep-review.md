@@ -6,7 +6,7 @@ argument-hint: [files-or-diff | empty = current working-tree diff] [report-only 
 
 # /deep-review — Deep Structural Quality Audit
 
-An aggressive maintainability reviewer. It audits the **structure** of a change — abstraction quality, file size, spaghetti growth, layering, atomicity — and pushes for the version that makes the code feel inevitable in hindsight. It is the **cleanliness** stage of the quality pipeline (`/orchestrate` Step 5.1b, `@orchestrator-refiner`, `/check-implementation`), run **after** `/code-review --fix` has handled correctness.
+An aggressive maintainability reviewer. It audits the **structure** of a change — abstraction quality, file size, spaghetti growth, layering, atomicity — and pushes for the version that makes the code feel inevitable in hindsight. It is the **cleanliness** stage of the quality pipeline (`/check-implementation`, `/quick-change`), run **after** `/code-review --fix` has handled correctness.
 
 **Scope boundary — read first.** This skill does **not** hunt for logic bugs, security holes, runtime errors, race conditions, null-handling, or wrong API usage. That is `/code-review`'s job, and it runs before this. Do not re-flag correctness defects here. This skill judges *how the change is built*, not *whether it works*.
 
@@ -16,8 +16,8 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 
 **Strip a literal `report-only` token from `$ARGUMENTS` before anything else. If it was present → Report-only mode, whatever the caller — it overrides caller-based detection.** That strip-first rule is what guarantees two bullets never match at once.
 
-- **Report-only mode** (the `report-only` token was passed): **audit, report, apply nothing.** Output shape — one entry per finding: `file:line` · the problem · the remedy, grouped by the routing table's tiers, with human-decision items under a literal `NEEDS_HUMAN` heading (the caller filters on that label and on the anchors); the Approval bar verdict applies. A standard-9 finding ends with the tags that apply — `rule: CS-<n>`, `duplicate of: <path:line>` — and the report closes with standard 9's `Standards:` line and `Duplicate search:` record (every mode prints both). The caller routes the findings to its own fixer — today the only such caller is `/check-implementation codex`, where Codex is the mutator and this skill must stay a finder.
-- **Pipeline mode** (spawned by `orchestrator-refiner`, or `/check-implementation` Step 1b **without** the token, or `/quick-change` Phase 4): **audit then apply high-conviction findings.** You mutate the working tree for findings you are confident about and that have an obvious fix; everything that needs a human decision goes to `NEEDS_HUMAN`. You never pause to ask the user — the pipeline is non-interactive (see "What you do with findings" below).
+- **Report-only mode** (the `report-only` token was passed): **audit, report, apply nothing.** Output shape — one entry per finding: `file:line` · the problem · the remedy, grouped by the routing table's tiers, with human-decision items under a literal `NEEDS_HUMAN` heading (the caller filters on that label and on the anchors); the Approval bar verdict applies. A standard-9 finding ends with the tags that apply — `rule: CS-<n>`, `duplicate of: <path:line>` — and the report closes with standard 9's `Standards:` line and `Duplicate search:` record (every mode prints both). The caller routes the findings to its own fixer — today `/check-implementation` (through `@structure-reviewer`, in both its modes) and delegated `/quick-change`, where this skill must stay a finder.
+- **Pipeline mode** (`/quick-change` Phase 4, solo — the one caller that runs this skill **without** the token): **audit then apply high-conviction findings.** You mutate the working tree for findings you are confident about and that have an obvious fix; everything that needs a human decision goes to `NEEDS_HUMAN`. You never pause to ask the user — the pipeline is non-interactive (see "What you do with findings" below).
 - **Standalone mode** (the user ran `/deep-review` directly): **report-first.** Produce the findings + recommended remedies and stop. Apply nothing until the user says to.
 
 ---
@@ -75,7 +75,7 @@ An aggressive maintainability reviewer. It audits the **structure** of a change 
 - Comment noise is a **high-conviction + obvious-fix** finding — in pipeline mode **apply the deletion**, do not merely note it. It is explicitly **not** a low-tier legibility note; without this line the routing table below files it under "Low tier" and nothing ever removes it.
 - **Keep** every comment that records a genuine *why* — a vendor quirk, a rejected alternative, a non-obvious invariant, or a workaround with a ticket reference. Deleting one of those is a regression, not a cleanup, and this clause is what stops the standard from over-correcting.
 
-> This is the step with **write authority** in the comment loop. `guard-comments.sh` only nudges at write time, and `/gates:verify-implementation` only warns — this standard is reached from two independent paths (`orchestrator-refiner` inside `/orchestrate`, and `/check-implementation` Step 1b), which is why the deletion lives here rather than in either of those — except in report-only mode, where the deletion is reported and the caller's fixer applies it.
+> This is the step with **write authority** in the comment loop. `guard-comments.sh` only nudges at write time, and `/gates:verify-implementation` only warns — this standard is reached from two independent paths (`/check-implementation` through `@structure-reviewer`, report-only, and `/quick-change` Phase 4), which is why the deletion lives here rather than in either of those — except in report-only mode, where the deletion is reported and the caller's fixer applies it.
 
 **9. Measure the change against the project's written standards and against the rest of the repository.**
 Two duties, both in every mode. They read beyond the diff; nothing here widens what a mutator may edit.
@@ -101,7 +101,7 @@ Classify every finding and route it by conviction — this is what keeps the pip
 | **Needs a human decision** (two valid reframings, a trade-off, anything touching a public contract or product behavior) | **Do NOT guess.** Record under `NEEDS_HUMAN` with the recommended direction. It is informational, not a blocker — the read-only verifier gate decides. | Report it as a recommendation. | Report under `NEEDS_HUMAN` — the caller escalates it to the human, never to its fixer. |
 | **Low tier** (file-size nudge, legibility, naming) | Note it; do not block. Apply only if the fix is trivial and isolated. | Report briefly. | Report briefly. |
 
-**Never pause to ask the user mid-pipeline.** A finding you cannot resolve mechanically becomes a `NEEDS_HUMAN` note, not a question. Escalation to the user happens later and only if the verifier gate blocks (that is `/orchestrate` Phase 6's job, not yours).
+**Never pause to ask the user mid-pipeline.** A finding you cannot resolve mechanically becomes a `NEEDS_HUMAN` note, not a question. Escalation to the user happens later, in the caller, and only if its gate blocks — not here.
 
 When you apply a fix, follow the existing code's idiom and stay within the change's surface — act on the touched files and whatever those changes legitimately reach (e.g. a shared util you refactor), never opportunistic edits to unrelated files.
 
