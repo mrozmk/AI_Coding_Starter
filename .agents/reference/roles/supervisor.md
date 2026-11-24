@@ -44,11 +44,15 @@ Operator's consent.
   Questions, waiting and progress never reach it: it pulls team state on demand.
 - A role session that is down or stuck: find out why (`bash .claude/lib/roles.sh status`), restart
   it with `/roles`, and tell the Operator in one line when that fails.
+- The Operator's answer to a team's pending decision, when they give it to you: relayed with
+  `team-lead.sh decision relay` to that team's TeamLead ([Relaying a team's
+  decision](#relaying-a-teams-decision)).
 
 ## Does not
 
 - Answer a team question (`team-answer.sh` is denied by its settings profile).
-- Relay the Operator's decision to a team other than through that team's TeamLead.
+- Relay the Operator's decision to a team other than through that team's TeamLead, or with
+  `team-answer.sh`.
 - Clear a release freeze without the Operator.
 
 ## Follow-up chains
@@ -83,6 +87,30 @@ one after it, each with its own consent.
 - **Never work around it.** Never rewrite a ticket to drop its follow-up line. Never start the work
   under another key, a new ticket or a different team to reset the count. Never split a follow-up
   to stay under the cap.
+
+## Relaying a team's decision
+
+A team's pending decision (`runs/<run>/decisions/d-<n>.md`) is answered by the Operator. When they
+want to answer it to you instead of in that team's TeamLead window:
+
+- **Show the reply form.** `bash .claude/lib/team-lead.sh pending <team>` lists the decision and
+  its question; the reply is `<team> d-<n> <reply>`, the reply exactly as the TeamLead window takes
+  it — `alfa d-1 allow`, `alfa d-1 deny: <what instead>`, `alfa d-2 <answer>`, several questions
+  `alfa d-2 <header>: <label>; …`, a gate or stop `alfa d-3 continue|close|more-revise|approve[:
+  <words>]` or plain words.
+- **After they typed it**, run, with their exact message:
+  `bash .claude/lib/team-lead.sh decision relay <team> d-<n> --text "<their message>"`. The script
+  finds that message in your session's transcript (the newest typed one addressed to that
+  decision, not a doorbell, runner, team-watch, `[peer] ` or `<hc from=…>` line), records the
+  answer with `relayed_by: Supervisor` and rings the team's TeamLead, which applies it.
+- **Never type it for them, never reword it, never add an outcome.** Your own words are never the
+  Operator's answer. Exit 7 means the transcript holds no such message — tell them exactly what to
+  type. Exit 4 means the decision is no longer open, or its TeamLead predates the relay — say so;
+  for the latter they answer in that team's TeamLead window (or the lead is ended and then
+  relaunched first: `team-lead.sh end <team>`, then `team-lead.sh relaunch <team>` — never a
+  relaunch of a live lead).
+- **Limit:** as with consent, only the listed delivery forms are filtered; the relay raises the
+  bar, it is not proof that a human answered (`team-lead.md` §7, "Limit of the human binding").
 
 ## Inbox
 

@@ -11,7 +11,8 @@
       "Bash(bash .claude/lib/team-mail.sh * recipients *)",
       "Bash(bash .claude/lib/team-mail.sh * ack *)",
       "Bash(bash .claude/lib/team-mail.sh * send *)",
-      "Bash(bash .claude/lib/operator-record.sh *)"
+      "Bash(bash .claude/lib/operator-record.sh *)",
+      "Bash(bash .claude/lib/team-lead.sh decision relay *)"
     ],
     "deny": [
       "Bash(bash .claude/lib/team-answer.sh*)",
@@ -39,7 +40,8 @@
       "bash .claude/lib/team-mail.sh --here inbox --for Supervisor --unread",
       "bash .claude/lib/team-mail.sh --here recipients",
       "bash .claude/lib/team-mail.sh --here send --to Advisor --kind info --body x",
-      "bash .claude/lib/operator-record.sh failure --summary x"
+      "bash .claude/lib/operator-record.sh failure --summary x",
+      "bash .claude/lib/team-lead.sh decision relay alfa d-1 --text x"
     ],
     "secrets": [
       "cat .env",

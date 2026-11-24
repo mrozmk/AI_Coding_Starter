@@ -228,6 +228,8 @@ lead_notify() {
     k="$RUN/$(basename "$f")"; case "$LEAD_NOTIFIED" in *" $k "*) continue ;; esac
     d="$(rec "$f" ref)"; id=""; q=""
     if [ -f "$d" ]; then id="$(sed -n 's/^id: //p' "$d" | head -n 1)"; q="$(sed -n '/^## Question$/{n;p;q;}' "$d")"; fi
+    # Answered (a relay, a terminal) or withdrawn before the first tick: nothing to tell the Operator.
+    if [ -f "$d" ] && [ "$(sed -n 's/^status: //p' "$d" | head -n 1)" != pending ]; then LEAD_NOTIFIED="$LEAD_NOTIFIED$k "; continue; fi
     team_channel_names "$root" 2>/dev/null || unset TEAM_CHANNEL_TMUX_PREFIX  # only for the prefix; a broken channel block → the dir slug
     w="lead"  # every decision is answered in the lead's window
     h="$(sh_hint "$(sess_name "$w")" 2>/dev/null)" \
@@ -237,7 +239,14 @@ lead_notify() {
       --ticket "$(team_json ticket)" --run "$RUN" --decision "${id:-$(basename "$f" .json)}" \
       --summary "${q:-$(rec "$f" message)}" --answer "$(sess_name "$w")" \
       --hint "$h" --ref "$d" --source runner --main "$root" >/dev/null 2>&1 || rc=$?
-    if [ "$rc" = 0 ]; then LEAD_NOTIFIED="$LEAD_NOTIFIED$k "; continue; fi
+    if [ "$rc" = 0 ]; then
+      LEAD_NOTIFIED="$LEAD_NOTIFIED$k "
+      # Answered while the event went out: resolve it now, as the answer's own resolve already ran.
+      if [ -n "$id" ] && [ -f "$d" ] && [ "$(sed -n 's/^status: //p' "$d" | head -n 1)" != pending ]; then
+        bash "$root/.claude/lib/notify.sh" resolve --team "$TEAM" --run "$RUN" --decision "$id" >/dev/null 2>&1 || true
+      fi
+      continue
+    fi
     LEAD_NOTIFY_FAILS="$LEAD_NOTIFY_FAILS$k "
     n="$(printf '%s' "$LEAD_NOTIFY_FAILS" | tr ' ' '\n' | grep -cxF "$k")" || n=0
     [ "$n" -ge 3 ] || continue

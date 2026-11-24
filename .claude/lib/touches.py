@@ -424,6 +424,11 @@ def add(a):
         return _err(NO_MAIN, 1)
     entry = make_entry(a.kind, a.what, a.reason, a.answer, None if a.wait_s is None else int(a.wait_s),
                        a.where or default_where(main, cwd, cwd, None))
+    # A decision the Supervisor relayed (team-lead.sh decision relay): who relayed it, after wait_s.
+    if a.relayed_by is not None:
+        entry["relayed_by"] = _clean(a.relayed_by, 60)
+    if a.relayed_session is not None:
+        entry["relayed_session"] = _ident(a.relayed_session)
     if append(main, entry):
         return _err("touch not written — unsafe or unwritable %s/.agents/touches" % main, 1)
     return 0
@@ -451,7 +456,7 @@ def _parser():
     ad, rp = sub.add_parser("add"), sub.add_parser("report")
     for f, choices in (("--kind", HUMAN_KINDS), ("--reason", HUMAN_REASONS), ("--what", None)):
         ad.add_argument(f, required=True, choices=choices)
-    for f in ("--answer", "--wait-s", "--where", "--main"):
+    for f in ("--answer", "--wait-s", "--where", "--main", "--relayed-by", "--relayed-session"):
         ad.add_argument(f, default="" if f == "--answer" else None)
     for f in ("--since", "--who", "--team", "--ticket", "--run", "--main"):
         rp.add_argument(f)

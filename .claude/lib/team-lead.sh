@@ -7,8 +7,11 @@
 #        bash .claude/lib/team-lead.sh digest-check <team> <plan path>
 #        bash .claude/lib/team-lead.sh diff <team>   (acceptance-diff.patch + .stat in the round's dir)
 #        bash .claude/lib/team-lead.sh decision open|answer|withdraw|list <team> …  (team-lead-decision.sh)
+#        bash .claude/lib/team-lead.sh decision relay <team> d-<n> --text "<team> d-<n> <reply>"
+#          (the Supervisor, main checkout)
 #        bash .claude/lib/team-lead.sh notes-init <team> | log-append <team> merged|closed | owns <team>
-#   pending lists the lead's open items — pending decisions first, then ask (runs/<run>/asks/, not
+#   pending lists the lead's open items — pending decisions first, then relayed (an answer the
+#   Supervisor relayed, not applied yet), then ask (runs/<run>/asks/, not
 #   class-tier, not bound to a pending decision), stop (no ask, no .answered), rejected, gate,
 #   attention (not idle_prompt, not a permission prompt an ask covers), inbox (this run's or
 #   run-less messages), oldest first:
@@ -28,7 +31,7 @@
 # Contract: .agents/reference/team-lead.md
 set -euo pipefail
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 . "$(dirname "$0")/team-lib.sh"
 . "$(dirname "$0")/team-lead-lib.sh"
@@ -61,12 +64,21 @@ gate_decided() {  # gate_decided <record basename> — a non-escalate verdict na
   return 1
 }
 
-pending_decision_for() {  # pending_decision_for <a-n> — a pending decision is bound to that ask
+pending_decision_for() {  # pending_decision_for <a-n> — a pending (or relayed) decision is bound to that ask
   local f
   for f in "$TD/runs/$RUN"/decisions/d-*.md; do
-    [ -f "$f" ] && [ "$(dfm "$f" bind_ask)" = "$1" ] && [ "$(dfm "$f" status)" = pending ] && return 0
+    [ -f "$f" ] && [ "$(dfm "$f" bind_ask)" = "$1" ] || continue
+    [ "$(dfm "$f" status)" = pending ] || relayed_unapplied "$f" && return 0
   done
   return 1
+}
+# relayed_unapplied <decision file> — the Supervisor relayed its answer and the lead has not applied
+# it yet: still answered, and (a plan-gate decision) no plan verdict names its source.
+relayed_unapplied() {
+  local v
+  [ "$(dfm "$1" status)" = answered ] || return 1
+  v="$(dfm "$1" answered_via)"; [ "${v%% *}" = supervisor-window ] || return 1
+  [ "$(dfm "$1" gate)" != plan ] || ! gate_decided "$(basename "$(dfm "$1" source)")"
 }
 # ask_covers <role> <utc> — an ask of that stage is waiting, or was filed within 10 s of <utc>.
 ask_covers() {
@@ -102,6 +114,12 @@ pending() {
       for f in "$TD/runs/$RUN"/decisions/d-*.md; do
         [ -f "$f" ] && [ "$(dfm "$f" status)" = pending ] || continue
         echo "00000000000000 decision .agents/team/runs/$RUN/decisions/$(basename "$f") — $(sed -n '/^## Question$/{n;p;q;}' "$f")"
+      done
+      # An answer the Supervisor relayed waits for the lead to apply it (team-lead.md §7).
+      for f in "$TD/runs/$RUN"/decisions/d-*.md; do
+        [ -f "$f" ] && relayed_unapplied "$f" || continue
+        a="$(dfm "$f" bind_ask)"
+        echo "00000000000001 relayed .agents/team/runs/$RUN/decisions/$(basename "$f")${a:+ (ask $a)} — apply the stored answer"
       done
       # Open asks of the stages (team-lead.md §6): not answered, not bound to a pending decision; a
       # class ask is answered by the hook itself within the same call.

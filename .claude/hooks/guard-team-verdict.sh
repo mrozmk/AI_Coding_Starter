@@ -14,6 +14,8 @@
 # answer, --authority teamlead|operator), and changes the run's pending decisions (team-lead.sh
 # decision open|answer|withdraw). 3. The ask channel — a command naming runs/<run>/asks/ or
 # decisions/ is the lead's too; a stage may only run `bash <abs>/.claude/lib/team-ask.sh wait a-<n>`.
+# `team-lead.sh decision relay` and a command naming the relay ledger (.agents/team/relays/) are the
+# Supervisor's, from the main checkout: refused for every session in a clone, the lead included.
 #
 # Problem rule 2 solves: team-verdict.sh proves its caller with the role env and teamlead.json, and any
 # stage session can prefix TEAM_SESSION_ROLE=TeamLead to its own command — the planner could
@@ -28,7 +30,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 PAYLOAD=$(cat)
 # Cheap pre-filter: this hook runs on every Bash call in a clone.
 case "$PAYLOAD" in
-  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*|*asks*|*decisions*) ;;
+  *team-verdict.sh*|*team-answer.sh*|*team-lead.sh*|*asks*|*decisions*|*relays*) ;;
   *team-merge-check.sh*|*team-integrate*|*team-automerge-check.sh*|*team-starter-land.sh*) ;;
   *) exit 0 ;;
 esac
@@ -65,6 +67,11 @@ DECIDE='team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+
 # absolute) is the lead's; a stage only waits on its ask with the main checkout's team-ask.sh.
 ASKS='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/runs/|[^[:space:]]*/\.agents/team/runs/)[^[:space:]]*/(asks|decisions)(/|[[:space:]]|$)'
 WAITF='^[[:space:]]*bash[[:space:]]+/[^[:space:]]*/\.claude/lib/team-ask\.sh[[:space:]]+wait[[:space:]]+a-[0-9]+([[:space:]]+--secs[[:space:]]+[0-9]+)?[[:space:]]*$'
+RELAY='team-lead\.sh["'"'"']?[[:space:]]+["'"'"']?decision["'"'"']?[[:space:]]+["'"'"']?relay'
+RELAYS='(^|[^[:alnum:]_.-])(\./)?(\.agents/team/relays|[^[:space:]]*/\.agents/team/relays)(/|[[:space:]]|$)'
+if [[ "$CMD" =~ $RELAY ]] || [[ "$CMD" =~ $RELAYS ]]; then
+  refuse "team-lead.sh decision relay and the relay ledger (.agents/team/relays/) are the Supervisor's, from the main checkout — never from a team clone (refused)"
+fi
 ASKCMD=""
 [[ "$CMD" =~ $ASKS ]] && ! [[ "$CMD" =~ $WAITF ]] && ASKCMD=1
 [ -n "$ASKCMD" ] || [[ "$CMD" =~ $INVOKE ]] || [[ "$CMD" =~ $ANSWER ]] || [[ "$CMD" =~ $DECIDE ]] || exit 0

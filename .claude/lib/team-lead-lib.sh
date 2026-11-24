@@ -62,6 +62,46 @@ team_lead_trusted() {
   jq -er --arg s "$sess" 'select(.lead_sessions.ids | index($s)) | "\($s)\t\(.lead_sessions.config_dir // "")"' "$anc"
 }
 
+# team_anchor_team <main> <clone> → "<team>\t<run>" of the one anchor in the main checkout whose
+# clone is this clone's physical path (<run>: the anchor's active run); rc 1 on none or several.
+team_anchor_team() {
+  local phys anc="" x
+  phys="$(cd "$2" 2>/dev/null && pwd -P)" || return 1
+  for x in "$1"/.agents/team/anchors/*.json; do
+    [ -f "$x" ] && [ "$(jq -r '.clone // ""' "$x" 2>/dev/null)" = "$phys" ] || continue
+    [ -z "$anc" ] || return 1; anc="$x"
+  done
+  [ -n "$anc" ] || return 1
+  jq -er 'select((.team // "") != "") | "\(.team)\t\(.run // "")"' "$anc" 2>/dev/null
+}
+
+# team_supervisor_home <main> → the Claude config dir of the Supervisor's transcript: the declared
+# .claude/claude-profile, else ~/.claude — never the caller's CLAUDE_CONFIG_DIR. rc 1: unresolvable.
+team_supervisor_home() {
+  local c; c="$(CLAUDE_CONFIG_DIR="" team_claude_home "$1")" || return 1
+  printf '%s\n' "${c:-$HOME/.claude}"
+}
+
+# team_run_floor <run id> [<created_at>] → the later of <created_at> and the run's start
+# (YYYY-MM-DDTHH:MM:SSZ, from <team>-<YYYYMMDD>-<HHMMSS>); either alone when the other is empty or
+# the id carries no such suffix — the relay's evidence floor, for the writer and the hook alike.
+team_run_floor() {
+  local f="${2:-}" rf=""
+  if [[ "$1" =~ -([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$ ]]; then
+    rf="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}T${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]}Z"
+  fi
+  [[ ! "$rf" > "$f" ]] || f="$rf"
+  [ -z "$f" ] || printf '%s\n' "$f"
+}
+
+# team_relay_pins <ledger> <team> <run> <d-n> <ask> [<uuid>] — the relay ledger pins this team, run,
+# decision and ask (and this uuid when given); the relay writer and the stage hook share it.
+team_relay_pins() {
+  jq -e --arg t "$2" --arg r "$3" --arg d "$4" --arg a "$5" --arg u "${6:-}" \
+    '.team == $t and .run == $r and .decision == $d and .ask == $a and ($u == "" or .uuid == $u)' \
+    "$1" >/dev/null 2>&1
+}
+
 # team_lead_shell_word <path> — the path as the lead types it and as its permission rules spell it:
 # single-quoted when it holds a character a word would split on; rc 1 on an embedded quote.
 team_lead_shell_word() {

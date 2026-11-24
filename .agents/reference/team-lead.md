@@ -547,14 +547,50 @@ decision in plain text and the Operator types the reply.
   hook deadline. An operator-tier permission ask that cannot be pinned is withdrawn and its caller
   stops (a coder/QA `blocked` record, a finder `STATUS: failed`); that stop reaches the lead as an
   ask once the dialog closes. Accepted (spec → Assumptions). No hook deadline changes.
-- **Supervisor relay seam (#278, not built).** A Supervisor relaying an Operator answer would be one
-  more `answered_via` kind, verified the same way by the hook.
+- **Relay from the Supervisor.** The Operator may answer in the Supervisor window instead: they
+  type `<team> d-<n> <reply>` there (the reply exactly as in the lead window), and the Supervisor
+  runs, from the main checkout, `team-lead.sh decision relay <team> d-<n> --text "<that exact
+  message>"` (role env `Supervisor`, refused with 3 elsewhere). It refuses with 7 unless the newest
+  typed message in the Supervisor's own transcript addressed to `<team> <d-n>` — not a machine or
+  `[peer] ` line, typed no earlier than the decision's `created_at` and never before the run's start
+  (`<team>-<YYYYMMDD>-<HHMMSS>`) — equals the text. The transcript is the registry's
+  `Supervisor.json` session (`session_id`, `cwd`) under the declared `.claude/claude-profile` (else
+  `~/.claude`), never the caller's `CLAUDE_CONFIG_DIR`; the main checkout's anchor must name this
+  clone and its active run (else 4). One message answers one decision (a uuid another relay pinned
+  refuses with 7). For an ask decision the outcome, value and map come from the same parser as
+  **Answer**; for an unbound one the first word after `<d-n>` sets `answer_outcome` when it is
+  `continue|close|more-revise|approve` (`alfa d-3 close: skip this test, drop AC4`), any other reply
+  has no outcome; the whole message is the `## Answer`. The record is the answer's
+  (`answered_via: supervisor-window <uuid>`, `relayed_by: Supervisor`, `relayed_session: <Supervisor
+  session id>`, the operator touch, a touch-log entry carrying both, `notify.sh resolve`), published
+  in one rename under the run's ask lock — the lock every decision writer takes (answer, withdraw,
+  the runner's withdrawal, `team-verdict.sh decision …`). Before the record the relay pins its
+  evidence once in `<main>/.agents/team/relays/<team>-<run>-<d-n>.json` (`team, run, decision, ask,
+  session_id, cwd, config_dir, uuid, reply, created_at, relayed_at`; written with `ln`, never
+  replaced: a restored pending decision cannot rebind it to another ask or reply, 4). It then rings
+  the lead `relayed: <d-n> — the Operator answered through the Supervisor; apply it`. A retry of a
+  committed relay with the same text completes interrupted bookkeeping and re-rings without
+  reading the transcript; another text refuses with 4. `team-lead.sh pending` lists an answer the
+  lead has not applied yet as `relayed <file> [(ask a-<n>)] — apply the stored answer`, and
+  `decision open --ask` refuses an ask that a relayed decision already answers. The lead completes
+  the decision's `tuning: pending` line in its notes itself, then applies the stored answer as after
+  a window answer (an unbound reply with no outcome closes with `decision resolved`). A run whose
+  lead prompt (`runs/<run>/lead-<n>.prompt.md`) predates the relay has no such rule: the relay
+  refuses with 4 — answer in its window, or end the lead and relaunch it first
+  (`team-lead.sh end <team>`, then `team-lead.sh relaunch <team>`; a relaunch of a running lead
+  replaces its identity while the old session keeps running, without authority).
 - **Relay:** `team-answer.sh <team> a-<n> <form> --authority operator --decision <d-n.md>` requires
   `status: answered` and `bind_ask` = this ask (another ask refuses with 7), the form equal to the
   stored answer (`--allow|--deny` = `answer_outcome`, `--pick|--text|--deny` text = `answer_value`,
   `--answers` = `answer_map`; else 7) and, after the answer file exists, sets `status: dispatched` +
   `dispatched_at` — one relay per decision (the runner completes a relay interrupted between the
-  two).
+  two). The stage hook re-verifies an Operator answer from main-checkout code; for
+  `answered_via: supervisor-window <uuid>` it takes the team and its active run from the main
+  checkout's anchor, requires the relay ledger entry for this run, decision, ask and uuid, reads the
+  message at that uuid in the Supervisor's transcript (the declared profile's config dir, the
+  ledger's session and cwd), typed no earlier than the ledger's floor nor the run's start, and
+  parses `<team> <reply>` with the same parser — a forged decision, a ledger of another run or ask,
+  or a deny presented as allow is refused.
 - **Decision gate** (`team-verdict.sh decision <verdict> --for <run file|attention:<n>>`):
   `escalate` (needs `--ref`), `continue` / `close` (need `--decision d-<n>` answered with that
   `answer_outcome`; the decision becomes `status: consumed`, once), `resolved` (closes a pending or
@@ -570,7 +606,12 @@ decision in plain text and the Operator types the reply.
 - **Withdraw / list:** `decision withdraw <team> d-<n> --why "<line>"` (`status: withdrawn`, lead
   only), `decision list <team> [--pending]`; `team-lead.sh pending` lists pending decisions first.
 - **Guard:** `guard-team-verdict.sh` refuses `team-lead.sh decision open|answer|withdraw` from any
-  session but the lead's (payload session id), like the verdict and authority calls.
+  session but the lead's (payload session id), like the verdict and authority calls. It refuses
+  `team-lead.sh decision relay` and any command naming `.agents/team/relays/` in a team clone for
+  every session, the lead included; the stage hook's write guard denies an Edit/Write there.
+- **Reserved team names.** `team-new.sh` refuses a team named like a one-word machine prefix
+  (`stop`, `gate`, `prompt`, `ask`, `attention`, `unasked`, `rejected`, `round`, `human-only`): its replies
+  `<team> d-<n> …` would read as machine lines.
 - **Limit of the human binding.** Both paths raise the bar; neither is proof that a human answered.
   A lead in auto mode can still create a pty (`script`, a tmux window it types into) to satisfy the
   terminal path, or append a user line to its own transcript for the window path. Both are
@@ -580,10 +621,18 @@ decision in plain text and the Operator types the reply.
   guard do not see; the hook's main-checkout re-verification of an Operator answer raises that bar,
   it does not remove it. The evidence matcher (`team-evidence.sh`) excludes the machine prefixes
   `ask `, `attention ` and `unasked ` too, so a doorbell that arrives while a decision is pending
-  never counts as the Operator's words. The dialog path has the same limit: a lead could write a
-  matching `tool_use`/answer pair into its own transcript, and the window between the provenance
-  check and the dialog call is not closed. Whether an attended answer entry can be told apart from
-  one a `PreToolUse` hook supplied (`updatedInput.answers`) is a manual check on the attended host
+  never counts as the Operator's words. The Supervisor window is an evidence window too: the driver's
+  `send` and `type` (session-host-lib.sh `sh_peer_mark`) prefix `[peer] ` to every non-machine line
+  bound for the Supervisor or a `*-lead` session — judged by the canonical address, an explicit
+  registration (`Supervisor.reg.json`, `*-lead.reg.json`) and the final delivery target — and the
+  matcher never counts a `[peer] ` line; a bare slash command (`/clear`, no arguments) stays
+  unmarked, so it still runs as a command. What stays outside: a direct socket write, raw `tmux
+  send-keys` / `hc send`, `type --target` at another session's pane, a team clone on an older base
+  running its own driver, a session launched with the Supervisor's address, and a same-uid write to
+  the relay ledger. The dialog path has the same limit: a lead could write a matching
+  `tool_use`/answer pair into its own transcript, and the window between the provenance check and
+  the dialog call is not closed. Whether an attended answer entry can be told apart from one a
+  `PreToolUse` hook supplied (`updatedInput.answers`) is a manual check on the attended host
   (TeamLead decision, plan review); a distinguishing field becomes a follow-up that makes it
   required.
 - **Limit of the write lock.** The lead's profile denies `tmux send-keys|send|paste-buffer`,

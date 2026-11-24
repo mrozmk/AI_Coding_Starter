@@ -48,6 +48,12 @@ if [ "$EV" = PreToolUse ]; then
         permissionDecisionReason: "asks/ and decisions/ are written by the hook and the TeamLead'"'"'s scripts only"}}'
       exit 0 ;;
     esac
+    # The Supervisor's relay ledger (team-lead-decision.sh decision relay), wherever it is reached from.
+    case "$P" in */.agents/team/relays|*/.agents/team/relays/*)
+      jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
+        permissionDecisionReason: "the relay ledger is written by the Supervisor'"'"'s decision relay only"}}'
+      exit 0 ;;
+    esac
     exit 0 ;;
   esac
 fi
@@ -120,7 +126,8 @@ fallback() {
 # verify_operator <id> <answer json> — an Operator-authorised answer is re-checked here, from
 # main-checkout code: the decision is bound to this ask, answered by the Operator (terminal, a
 # typed `d-<n> …` message in the lead's own transcript, or the answer entry of the decision's
-# AskUserQuestion dialog there) with this very answer.
+# AskUserQuestion dialog there, or a `<team> d-<n> …` message the Supervisor relayed from its own
+# transcript) with this very answer.
 verify_operator() {
   local id="$1" a="$2" did f via uuid t form val msg p x cfg r
   did="$(jq -r '.decision // ""' <<<"$a")"
@@ -140,23 +147,8 @@ verify_operator() {
   via="$(dfm_h answered_via)"
   case "$via" in
     terminal) return 0 ;;  # the same-uid limit of team-lead.md §7: not re-verifiable from a file
-    "teamlead-window "*)
-      uuid="${via#teamlead-window }"
-      # The lead session and its config dir from the main checkout's anchor (the runner's
-      # lead_sessions), never from the clone's teamlead.json; no answered_session (an older
-      # decision) → current_id.
-      x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
-      # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
-      t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
-        "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
-      [ -f "$t" ] || return 1
-      # The message must be eligible as the writer's evidence was: typed after the decision opened.
-      msg="$(jq -r -s --arg u "$uuid" --arg since "$(dfm_h created_at)" '
-        map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
-            and ((.timestamp // "") >= $since)))
-        | map(.message.content | if type == "string" then . elif type == "array"
-            then (map(select(.type == "text") | .text) | join(" ")) else "" end
-            | sub("^\\s+"; "")) | .[0] // ""' "$t" 2>/dev/null)" || return 1 ;;
+    "teamlead-window "*) uuid="${via#teamlead-window }" ;;
+    "supervisor-window "*) verify_relay "$id" "$did" "${via#supervisor-window }" "$form" "$val" "$a"; return ;;
     "teamlead-ask "*)
       uuid="${via#teamlead-ask }"
       # The answering session must be named and recorded by the runner (never the legacy
@@ -178,17 +170,63 @@ verify_operator() {
       if [ "$form" = answers ]; then
         [ "$(jq -cS .map <<<"$r")" = "$(jq -cS .value <<<"$a")" ]; return
       fi
-      msg="$(jq -r .reply <<<"$r")" ;;
+      reply_matches "$id" "$did" "$(jq -r .reply <<<"$r")" "$form" "$val" "$a"; return ;;
     *) return 1 ;;
   esac
-  # The Operator's whole reply, parsed by the writer's own parser, must be this very answer.
-  p="$(ask_parse_reply "$id" "$did" "$msg")" || return 1
-  case "$form" in allow|deny) [ "$(jq -r .outcome <<<"$p")" = "$form" ] || return 1 ;; esac
-  case "$form" in
-    answers) [ "$(jq -cS .map <<<"$p")" = "$(jq -cS .value <<<"$a")" ] ;;
+  # The lead session and its config dir from the main checkout's anchor (the runner's lead_sessions),
+  # never from the clone's teamlead.json; no answered_session (an older decision) → current_id.
+  x="$(team_lead_trusted "$MAIN" "$CLONE" "$RUN" "$(dfm_h answered_session)")" || return 1
+  # The clone path as team-lead-decision.sh d_evidence derives it (the git top level).
+  t="$(team_role_transcript "$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null || echo "$CLONE")" \
+    "$(cut -f1 <<<"$x")" "$(cut -f2 <<<"$x")")"
+  [ -f "$t" ] || return 1
+  # The message must be eligible as the writer's evidence was: typed after the decision opened.
+  msg="$(msg_at "$t" "$uuid" "$(dfm_h created_at)")" || return 1
+  reply_matches "$id" "$did" "$msg" "$form" "$val" "$a"
+}
+
+# msg_at <transcript> <uuid> <since> → that typed user message, left-trimmed ("" when not eligible).
+msg_at() {
+  jq -r -s --arg u "$2" --arg since "$3" '
+    map(select(.uuid == $u and .type == "user" and ((.isMeta // false) | not)
+        and ((.timestamp // "") >= $since)))
+    | map(.message.content | if type == "string" then . elif type == "array"
+        then (map(select(.type == "text") | .text) | join(" ")) else "" end
+        | sub("^\\s+"; "")) | .[0] // ""' "$1" 2>/dev/null
+}
+
+# reply_matches <id> <did> <msg> <form> <val> <answer json> — the Operator's whole reply, parsed by
+# the writer's own parser, is this very answer.
+reply_matches() {
+  local p
+  p="$(ask_parse_reply "$1" "$2" "$3")" || return 1
+  case "$4" in allow|deny) [ "$(jq -r .outcome <<<"$p")" = "$4" ] || return 1 ;; esac
+  case "$4" in
+    answers) [ "$(jq -cS .map <<<"$p")" = "$(jq -cS .value <<<"$6")" ] ;;
     allow) [ -z "$(jq -r .value <<<"$p")" ] ;;
-    *) [ "$(jq -r .value <<<"$p")" = "$val" ] ;;
+    *) [ "$(jq -r .value <<<"$p")" = "$5" ] ;;
   esac
+}
+
+# verify_relay <id> <did> <uuid> <form> <val> <answer json> — a decision the Supervisor relayed: the
+# team and its active run from the main checkout's anchor, the ledger the relay pinned there, the
+# Supervisor's transcript under the declared profile, the message `<team> <d-n> …` at that uuid,
+# typed no earlier than the decision opened (the ledger's floor) nor before the run started.
+verify_relay() {
+  local x team lf cfg t floor msg
+  [ -n "$3" ] || return 1
+  x="$(team_anchor_team "$MAIN" "$CLONE")" || return 1
+  team="$(cut -f1 <<<"$x")"; [ "$(cut -f2 <<<"$x")" = "$RUN" ] || return 1
+  lf="$MAIN/.agents/team/relays/$team-$RUN-$2.json"
+  team_relay_pins "$lf" "$team" "$RUN" "$2" "$1" "$3" || return 1
+  cfg="$(team_supervisor_home "$MAIN")" || return 1
+  t="$(team_role_transcript "$(jq -r '.cwd // ""' "$lf")" "$(jq -r '.session_id // ""' "$lf")" "$cfg")"
+  [ -f "$t" ] || return 1
+  floor="$(team_run_floor "$RUN" "$(jq -r '.created_at // ""' "$lf")")"
+  [ -n "$floor" ] || return 1
+  msg="$(msg_at "$t" "$3" "$floor")" || return 1
+  case "$msg" in "$team "*) msg="${msg#"$team "}"; msg="${msg#"${msg%%[![:space:]]*}"}" ;; *) return 1 ;; esac
+  reply_matches "$1" "$2" "$msg" "$4" "$5" "$6"
 }
 
 # deliver <id> <answer json> — emits the hook output of this event for the answer.

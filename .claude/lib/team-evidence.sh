@@ -2,9 +2,15 @@
 # Operator evidence in a supervised session's transcript. Sourced, never executed. Bash 3.2 + jq.
 #   team_evidence_match <transcript> <text> <since> <id> <used uuids> [exact]
 #     → the uuid of the newest typed user message at or after <since> that contains <text> (with
-#       `exact`: equals it, both trimmed — an ask-bound decision's whole reply) and is
-#       no doorbell (stop, gate, prompt, ask, attention, unasked, …), runner, legacy team-watch (retired) or hc message line; a uuid already used by another answer
-#       (space-separated list) counts only when that message names <id>. Nothing when no match.
+#       `exact`: equals it, both trimmed — an ask-bound decision's whole reply) and is no machine
+#       line (TEAM_EVIDENCE_MACHINE_RE: a doorbell, runner, legacy team-watch (retired), hc or [peer] line); a uuid
+#       already used by another answer (space-separated list) counts only when that message names
+#       <id>. Nothing when no match.
+#   team_evidence_latest <transcript> <team> <d-n> <since>
+#     → "<uuid>\t<trimmed message>" of the newest typed, non-machine user message at or after
+#       <since> addressed to that decision (`<team> <d-n>` first); nothing when none. A multi-line
+#       newest message prints an empty text: it still wins, so no older one-line reply matches.
+#   team_evidence_machine_line <text> → 0 when the text is a machine line.
 #   team_evidence_dialog_extract <transcript> <since> → the AskUserQuestion calls and answer entries
 #     at or after <since>, one compact JSON line each (a half-written last line is dropped)
 #   team_evidence_dialog_norm <dialog json> <d-n> → the call's <d-n> questions in full and in order,
@@ -21,14 +27,20 @@
 #   team_evidence_anchor <main> <clone> → the main checkout's anchor of that clone (by physical path)
 #   team_evidence_provenance <main> <clone> <run> <session id> → "<config dir>" (rc 0) when that
 #     session's launch snapshot is clean and the registrations still match it, else the cause (rc 1)
-# Callers: team-lead-decision.sh (the TeamLead window, the dialog), team-lineage.sh consent (the
-# Supervisor window), team-ask-hook.sh (re-verification), the runner (snapshot, reminder). It raises
-# the bar; it is not proof (team-lead.md §7).
+# Callers: team-lead-decision.sh d_evidence (the TeamLead window), the dialog and decision relay
+# (the Supervisor window), team-lineage.sh consent (the Supervisor window), team-ask-hook.sh
+# (re-verification), the runner (snapshot, reminder), session-host-lib.sh sh_send / sh_type (the
+# [peer] marker). It raises the bar; it is not proof (team-lead.md §7).
 # Its own file: team-lib.sh has no room, and the callers run from the clone and the main checkout.
+
+# Every line a script or a peer session puts into a supervised window starts with one of these.
+TEAM_EVIDENCE_MACHINE_RE='^(stop |gate |prompt |ask |attention |unasked |inbox:|relaunched: |human-only |rejected |continue granted |round |close refused: |relayed: |\[peer\] |\[team-run\]|\[team-watch |<hc from=)'
+
+team_evidence_machine_line() { [[ "$1" =~ $TEAM_EVIDENCE_MACHINE_RE ]]; }
 
 team_evidence_match() {
   jq -r --arg x "$2" --arg since "$3" --arg id "$4" \
-    --arg used "$5" --arg mode "${6:-}" '
+    --arg used "$5" --arg mode "${6:-}" --arg re "$TEAM_EVIDENCE_MACHINE_RE" '
     def trim: sub("^\\s+"; "") | sub("\\s+$"; "");
     ($used | split(" ") | map(select(. != ""))) as $u
     | select(.type == "user" and ((.isMeta // false) | not) and ((.timestamp // "") >= $since))
@@ -36,9 +48,21 @@ team_evidence_match() {
     | (.message.content | if type == "string" then .
         elif type == "array" then (map(select(.type == "text") | .text) | join(" ")) else "" end) as $m
     | select($m != "" and (if $mode == "exact" then ($m | trim) == ($x | trim) else ($m | contains($x)) end)
-        and ($m | test("^(stop |gate |prompt |ask |attention |unasked |inbox:|relaunched: |human-only |\\[team-run\\]|\\[team-watch |<hc from=)") | not))
+        and ($m | test($re) | not))
     | select((($u | index($uid)) == null) or ($m | test("(^|[^A-Za-z0-9-])" + $id + "([^0-9]|$)")))
     | $uid' "$1" 2>/dev/null | tail -n 1
+}
+
+team_evidence_latest() {
+  jq -r --arg team "$2" --arg id "$3" --arg since "$4" --arg re "$TEAM_EVIDENCE_MACHINE_RE" '
+    select(.type == "user" and ((.isMeta // false) | not) and ((.timestamp // "") >= $since))
+    | (.uuid // "?") as $uid
+    | (.message.content | if type == "string" then .
+        elif type == "array" then (map(select(.type == "text") | .text) | join(" ")) else "" end) as $m
+    | select($m != "" and ($m | test($re) | not))
+    | ($m | sub("^\\s+"; "") | sub("\\s+$"; "")) as $t
+    | select($t | test("^" + $team + "[[:space:]]+" + $id + "([[:space:]]|$)"))
+    | "\($uid)\t\(if ($t | contains("\n")) then "" else $t end)"' "$1" 2>/dev/null | tail -n 1
 }
 
 # The normalised <d-n> questions of a call input: exactly {"questions": [...]}, every field the

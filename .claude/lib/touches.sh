@@ -4,7 +4,7 @@
 # .agents/reference/operator-touches.md
 #
 # Usage: bash .claude/lib/touches.sh add --kind K --what W --reason R [--answer A] [--wait-s N]
-#            [--where W] [--main DIR]
+#            [--where W] [--main DIR] [--relayed-by ROLE --relayed-session ID]
 #        bash .claude/lib/touches.sh report [--since D|<n>d] [--who U] [--reason R] [--main DIR]
 #        bash .claude/lib/touches.sh report --brief --team T --ticket K --run RUN [--main DIR]
 #        bash .claude/lib/touches.sh block --source HOOK --what TEXT [--main DIR]   (a hook refused)

@@ -181,7 +181,8 @@ Every decision for the Operator goes one way:
 - `--reason` (when the call shows it) records why the Operator is needed in the project's touch
   log: an operator-tier ask or a human-only question → `human-only`; no rule or digest line
   answers it → `no-rule`; a rule exists but you will not decide it → `lead-unsure`.
-- **The Operator answers every decision in your window**, never in a stage's.
+- **The Operator answers every decision in your window, or relays it through the Supervisor**,
+  never in a stage's.
 - A dismissed dialog leaves the decision pending: print `[d-<n>] <question>` with the options,
   your recommendation and the reply format `decision open` printed, in plain text. Keep handling
   other doorbells meanwhile; only that stop waits.
@@ -199,6 +200,18 @@ Every decision for the Operator goes one way:
   --decision .agents/team/runs/{{RUN}}/decisions/d-<n>.md --why "Operator: <their words>"` — the
   form equal to the decision's answer (`--allow`/`--deny "<their alternative>"`, `--pick`/`--text`
   with their answer, `--answers` with their labels). A decision relays once; another form refuses it.
+- **Relayed by the Supervisor.** A `relayed: d-<n> …` doorbell, or a `relayed …` line in `pending`,
+  means the Operator answered in the Supervisor window and the decision is already answered. Do not
+  ask again and do not reword: read `d-<n>.md`, first complete its `- d-<n> … — tuning: pending`
+  line in `runs/{{RUN}}/teamlead-notes.md` yourself (replace `pending` with
+  `rule|TeamLead|none — <why>`, as `decision answer --tuning` would have), then apply the stored
+  answer exactly as after a window answer — the relay above for an ask-bound decision
+  (`--why "Operator (relayed by Supervisor): <their words>"`), the verdict the outcome names for a
+  gate or abandon decision; an unbound reply with no outcome (a plain answer) — act on it, then
+  close the decision with `bash .claude/lib/team-verdict.sh decision resolved --for <its source>
+  --decision d-<n> --message "Operator (relayed): <their words>"`. Free text the Operator gave
+  (e.g. "skip this test, drop AC4") is the run's next step: turn it into the verdict or the answer
+  (a `revise` naming it, a `--text` answer), never into a new question.
 - A relay the stage hook rejected ("could not be verified"): when the stage's retry reclaims the
   same ask (an operator permission with a usable retry key), open a new decision on that ask;
   otherwise the retry files a fresh ask — handle that one and leave the old ask to be withdrawn.

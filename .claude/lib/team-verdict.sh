@@ -140,6 +140,11 @@ if [ "$GATE" = decision ]; then
   else
     [ -n "$DECISION" ] || bad "$VERDICT needs --decision d-<n>"
     df="$(decision_file "$DECISION")"
+    # The status check, the verdict and the decision rewrite under the run's ask lock, which every
+    # decision writer takes (team-lead-decision.sh, the runner's withdrawal).
+    . "$LIB/team-ask.sh"
+    { ask_init "$TD" && ask_lock; } || bad "cannot take the ask lock of run $RUN"
+    trap ask_unlock EXIT
     case "$VERDICT:$(fm "$df" status)" in
       resolved:pending|resolved:answered) ;;
       resolved:*) bad "$DECISION is $(fm "$df" status) — nothing to resolve" ;;
