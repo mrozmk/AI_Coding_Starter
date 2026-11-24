@@ -119,6 +119,7 @@ printf 'text\n<!-- backlog:demo:E0-1 -->\n' > "$WORK/b1.md"
 run "$MAIN" $TRK create-issue --marker '<!-- backlog:demo:E0-1 -->' --title t --body-file "$WORK/b1.md"
 expect 0 "exists 5" "create-issue finds the marker above a human note — no duplicate"
 grep -q "^project: \(added\|exists\)$" "$WORK/out" || fail "create-issue printed no project line ($(cat "$WORK/out"))"
+echo "PASS create-issue finds the marker above a human note — no duplicate"
 printf 'no marker here\n' > "$WORK/b2.md"
 run "$MAIN" $TRK create-issue --marker '<!-- backlog:demo:E0-9 -->' --title t --body-file "$WORK/b2.md"
 expect 2 "must be a line of" "create-issue refuses a body without its marker"
@@ -139,6 +140,7 @@ jq -e '. == [{number: 5}]' "$GH_DIR/subs-6.json" >/dev/null || fail "the stub di
 run "$MAIN" $TRK add-sub-issue 6 5
 expect 0 "exists" "a second add-sub-issue is a no-op"
 [ "$(grep -c -- '-X POST' "$GH_LOG" | tr -d ' ')" = 1 ] || fail "the second add-sub-issue posted"
+echo "PASS a second add-sub-issue is a no-op"
 jq -n '[range(35)] | map({number: (900 + .)})' > "$GH_DIR/subs-8.json"
 export STUB_GH_PAGE2_FAIL=1
 run "$MAIN" $TRK add-sub-issue 8 5
@@ -261,5 +263,94 @@ expect 1 "the sync is create-only: an issue created now would never get them" "a
 [ "$(creates)" = 0 ] || fail "a criterion-less Task still created an issue"
 [ "$(writes)" = 0 ] || { sed 's/^/  | /' "$GH_LOG"; fail "the criteria guard still wrote to GitHub"; }
 cmp -s "$B" "$WORK/backlog.before" || fail "the criteria guard changed the backlog"
+
+# ================================================================================================
+# (7) adapter: which / add-labels / set-status --name Todo (/create-task)
+# ================================================================================================
+solo; fx_reset
+run "$MAIN" $TRK which
+expect 0 "tracker=github" "which: solo github profile"
+has "repo=owner/repo" "$WORK/out" || fail "which: solo github profile — no repo line"
+has "project=2" "$WORK/out" || fail "which: solo github profile — no project line"
+[ "$(writes)" = 0 ] || fail "which made a write call"
+! grep -q . "$GH_LOG" || fail "which called gh"
+echo "PASS which: solo github profile"
+
+solo 'del(.github.project_owner, .github.project_number, .github.project_id, .github.status_field_id, .github.status_options)'
+run "$MAIN" $TRK which
+expect 0 "project=none" "which: solo github without a Project"
+echo "PASS which: solo github without a Project"
+
+jq -n '{schema: 1, tracker: "jira"}' > "$P"
+run "$MAIN" $TRK which
+expect 0 "tracker=jira" "which: jira answers instead of exit 3"
+echo "PASS which: jira answers instead of exit 3"
+
+rm -f "$P"
+run "$MAIN" $TRK which
+expect 0 "tracker=none" "which: no profile is none"
+echo "PASS which: no profile is none"
+solo
+run "$MAIN" $TRK which extra
+expect 2 "which takes no arguments" "which: refuses arguments"
+echo "PASS which: refuses arguments"
+
+solo; fx_reset; issue 5 'body'
+run "$MAIN" $TRK add-labels 5 bug enhancement
+expect 0 "labeled bug,enhancement" "add-labels: labels the issue"
+grep -q 'issue edit 5 --repo owner/repo --add-label bug,enhancement' "$GH_LOG" \
+  || fail "add-labels: labels the issue — no gh issue edit call logged"
+jq -e '[.[] | select(.number == 5)][0].labels == ["bug", "enhancement"]' "$GH_DIR/issues.json" \
+  >/dev/null || fail "add-labels: labels the issue — the stub issue lacks the labels"
+echo "PASS add-labels: labels the issue"
+
+echo '["bug"]' > "$GH_DIR/labels.json"
+run "$MAIN" $TRK add-labels 5 nosuch
+expect 4 "recoverable" "add-labels: a missing label is recoverable"
+rm -f "$GH_DIR/labels.json"
+echo "PASS add-labels: a missing label is recoverable"
+
+run "$MAIN" $TRK add-labels 5
+expect 2 "add-labels needs" "add-labels: needs a label"
+echo "PASS add-labels: needs a label"
+run "$MAIN" $TRK add-labels 5 'a,b'
+expect 2 "comma" "add-labels: refuses a comma in a label"
+echo "PASS add-labels: refuses a comma in a label"
+
+jq -n '{schema: 1, tracker: "jira"}' > "$P"
+run "$MAIN" $TRK add-labels 5 bug
+expect 3 "jira runs through the session's MCP" "add-labels: jira is exit 3"
+echo "PASS add-labels: jira is exit 3"
+jq -n '{schema: 1, tracker: "none"}' > "$P"
+run "$MAIN" $TRK add-labels 5 bug
+expect 0 "skipped (tracker=none)" "add-labels: none is skipped"
+echo "PASS add-labels: none is skipped"
+
+solo; fx_reset; issue 5 'body'
+echo '[{"id": "item-5", "status": null, "content": {"type": "Issue", "number": 5, "repository": "owner/repo"}}]' \
+  > "$GH_DIR/items.json"
+jq -n '{fields: [{id: "PVTSSF_x", name: "Status", options: [{id: "opt-started", name: "In Progress"},
+  {id: "opt-delivered", name: "Delivered"}, {id: "opt-todo", name: "Todo"}]}]}' > "$GH_DIR/fields.json"
+run "$MAIN" $TRK set-status 5 --name Todo
+expect 0 "set Todo" "set-status --name Todo: Todo in a later board position"
+jq -e '.[0].status == "Todo"' "$GH_DIR/items.json" >/dev/null \
+  || fail "set-status --name Todo: Todo in a later board position — the item has no Todo"
+echo "PASS set-status --name Todo: Todo in a later board position"
+
+jq '.[0].status = null' "$GH_DIR/items.json" > "$GH_DIR/t" && mv "$GH_DIR/t" "$GH_DIR/items.json"
+jq -n '{fields: [{id: "PVTSSF_x", name: "Status", options: [{id: "opt-started", name: "In Progress"},
+  {id: "opt-delivered", name: "Delivered"}]}]}' > "$GH_DIR/fields.json"
+run "$MAIN" $TRK set-status 5 --name Todo
+expect 4 "is not in field" "set-status --name Todo: a board without Todo is exit 4"
+echo "PASS set-status --name Todo: a board without Todo is exit 4"
+
+solo; fx_reset
+T7='Fix `x` for $HOME "y"'
+printf 'text\n<!-- create-task:2026-11-24:x:abc123 -->\n' > "$WORK/b7.md"
+run "$MAIN" $TRK create-issue --marker '<!-- create-task:2026-11-24:x:abc123 -->' --title "$T7" --body-file "$WORK/b7.md"
+expect 0 "created" "create-issue: a title with backticks, dollar and quotes is stored verbatim"
+jq -e --arg t "$T7" '.[-1].title == $t' "$GH_DIR/issues.json" >/dev/null \
+  || fail "create-issue: a title with backticks, dollar and quotes is stored verbatim — got $(jq -r '.[-1].title' "$GH_DIR/issues.json")"
+echo "PASS create-issue: a title with backticks, dollar and quotes is stored verbatim"
 
 echo "team-tracker-sync-smoke: OK"

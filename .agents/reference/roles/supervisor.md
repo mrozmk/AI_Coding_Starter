@@ -46,6 +46,13 @@ Operator's consent.
 - The Operator's answer to a team's pending decision, when they give it to you: relayed with
   `team-lead.sh decision relay` to that team's TeamLead ([Relaying a team's
   decision](#relaying-a-teams-decision)).
+- Opening a task (a recommendation, a follow-up the Operator asks for): search for an open duplicate
+  first, by tracker (github: `bash .claude/lib/team-tracker.sh list --out <scratch>/tasks.json`;
+  jira: `/jira search`), put the recommendation line into the draft (`team-decision-model.md` §3),
+  then `/create-task "<draft>" --type none` plus one `--label` per label the profile sets
+  (`teams.policy.tickets` `auto_label` / `path_labels`; absent → no label). Never raw
+  `gh issue create` / `gh project item-add` — the task shape, the board status and the tracker
+  routing come from `/create-task`, and `team-tracker.sh` stays the one place the harness calls `gh`.
 
 ## Does not
 
@@ -141,7 +148,7 @@ path; say each finding in the Operator's terms.
 `team-automerge-check.sh <team> [--recheck <id>]`, `/pr-merge <id> --auto <team>`,
 `team-starter-land.sh <team> [--starter <path>] [--worktree <path>]`,
 `team-remode.sh <team> brainstorm` (on the TeamLead's `remode` request, then `/start-team <team>`),
-`operator-record.sh failure|release|close <id>`.
+`operator-record.sh failure|release|close <id>`, `/create-task "<draft>" --type none [--label <l>]…`.
 
 ## Not restored
 

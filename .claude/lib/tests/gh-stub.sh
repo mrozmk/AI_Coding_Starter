@@ -1,7 +1,8 @@
 # Shared gh stub for the tracker smokes: every call is logged to $GH_LOG, all state lives in
 # $GH_DIR (issues.json, comments.json, items.json, fields.json, issue-<n>.json, subs-<n>.json,
 # pool-items.json for `gh api graphql`, timeline-<n>.json for an issue timeline, pr-<n>.json for
-# `gh pr view`), 30 items per page, failures by env switch (STUB_GH_PAGE2_FAIL,
+# `gh pr view`, labels.json for the repo's labels in `gh issue edit --add-label`), 30 items per
+# page, failures by env switch (STUB_GH_PAGE2_FAIL,
 # STUB_GH_CREATE_THEN_FAIL, STUB_GH_POST_THEN_FAIL, STUB_GH_EDIT_DENY, STUB_GH_SUB_DENY) and by
 # one-shot file: race-claim.txt (a comment POST first stores a foreign comment with that body — a
 # competing claim landing before ours), race-reread.txt (the SECOND comment read first stores a
@@ -46,6 +47,22 @@ case "${1:-}" in
         # the answer. The adapter must not conclude "nothing happened".
         [ "${STUB_GH_CREATE_THEN_FAIL:-0}" != 1 ] \
           || { echo "gh: timeout awaiting response headers" >&2; exit 1; }
+        echo "https://github.com/owner/repo/issues/$n" ;;
+      edit)
+        n="$3"; ls=""; shift 3
+        while [ $# -gt 0 ]; do case "$1" in
+          --add-label) ls="$2"; shift 2 ;; *) shift ;; esac; done
+        jq -e --argjson n "$n" 'any(.[]; .number == $n)' "$G/issues.json" >/dev/null 2>&1 \
+          || { echo "could not resolve to an Issue" >&2; exit 1; }
+        if [ -f "$G/labels.json" ]; then
+          for l in $(printf '%s' "$ls" | tr ',' ' '); do
+            jq -e --arg l "$l" 'index($l) != null' "$G/labels.json" >/dev/null \
+              || { echo "could not add label: '$l' not found" >&2; exit 1; }
+          done
+        fi
+        jq --argjson n "$n" --arg ls "$ls" \
+          'map(if .number == $n then .labels = (((.labels // []) + ($ls | split(","))) | unique)
+               else . end)' "$G/issues.json" > "$G/t" && mv "$G/t" "$G/issues.json"
         echo "https://github.com/owner/repo/issues/$n" ;;
       *) echo "stub: gh issue $2" >&2; exit 1 ;;
     esac ;;

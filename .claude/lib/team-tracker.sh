@@ -19,6 +19,8 @@
 #   pool --status <name> --out <file>                        (read-only; /qa-verify)
 #   item-status <key> --out <file>                           (read-only; /qa-verify, team-claim.sh;
 #                                                             also the started/delivered option names)
+#   which                                                    (read-only, local; /create-task)
+#   add-labels <key> <label> [<label>…]                      (idempotent; /create-task)
 #
 # Profile: the `teams` block when there is one (full validation), else the top-level `tracker` and
 # `github` block of a single-session project (`team_tracker_profile_load`). A github block without
@@ -600,13 +602,40 @@ op_project_add() {
   echo "added"
 }
 
+# which: the resolved tracker, local only — answered for jira and none too (no gh call).
+op_which() {
+  echo "tracker=$TEAM_TRACKER"
+  if [ "$TEAM_TRACKER" = github ]; then
+    echo "repo=$TEAM_GH_REPO"
+    echo "project=${TEAM_GH_PROJECT_NUMBER:-none}"
+  fi
+}
+
+# add-labels: `gh issue edit --add-label` is idempotent on GitHub's side; a label the repo lacks is exit 4.
+op_add_labels() {
+  local l joined
+  for l in "$@"; do
+    [ -n "$l" ] || die 2 "label '' is empty"
+    case "$l" in *,*) die 2 "label '$l' contains a comma" ;; esac
+  done
+  joined="$(IFS=,; echo "$*")"
+  gh_or4 gh issue edit "$KEY" --repo "$TEAM_GH_REPO" --add-label "$joined" > /dev/null
+  echo "labeled $joined"
+}
+
 # ---- dispatch -----------------------------------------------------------------------------------
 
 op="${1:-}"; [ $# -eq 0 ] || shift
 case "$op" in
-  read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add|pool|item-status) ;;
-  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add|pool|item-status …" ;;
+  read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add|pool|item-status|which|add-labels) ;;
+  *) die 2 "usage: team-tracker.sh read|comment|set-status|create-followup|create-issue|list|show|markers|sub-issues|add-sub-issue|project-add|pool|item-status|which|add-labels …" ;;
 esac
+
+if [ "$op" = which ]; then
+  [ $# -eq 0 ] || die 2 "which takes no arguments"
+  op_which
+  exit 0
+fi
 
 if [ "$TEAM_TRACKER" = jira ]; then
   echo "error: jira runs through the session's MCP — no adapter op" >&2
@@ -717,4 +746,9 @@ case "$op" in
     [ -n "$OUT" ] || die 2 "item-status needs --out <file>"
     norm_key "$1"
     op_item_status "$OUT" ;;
+  add-labels)
+    [ $# -ge 1 ] || die 2 "add-labels needs a ticket key and a label"
+    norm_key "$1"; shift
+    [ $# -ge 1 ] || die 2 "add-labels needs a label"
+    op_add_labels "$@" ;;
 esac

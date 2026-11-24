@@ -37,7 +37,10 @@
    - **tasks**: one `/jira create` draft per `→ follow-up` line of the accepted
      `acceptance-brief.md` that passes the bar for steps 6–7 (required fields, components,
      description template, queued attachments); the description's first line is
-     the failure sentence (a cut-work ticket: the order line it cuts).
+     the failure sentence (a cut-work ticket: the order line it cuts). The description template's
+     sections carry the content of `.claude/skills/create-task/references/task-shape.md` (problem
+     with evidence, wanted, acceptance, out of scope); `/create-task` itself is not run here — the
+     wrapup is the single writer of tracker intents, through the `/jira create` path below.
      Fetch {{TICKET}} with `fields="parent"`, then fetch that parent's `summary,issuetype`; use
      it only when `issuetype.name == "Epic"`. Never use the run's ordinary Task as parent, or
      substitute a guessed/catch-all epic. An absent/non-Epic parent needs the clarification in
