@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EU AI Act Audit — {{subject}}</title>
+<style>
+  /* Clean Minimalist White · system fonts (no external requests — the report itself is GDPR-clean) */
+  :root {
+    --ink: #1a1a1a; --muted: #6b7280; --line: #e5e7eb; --bg: #ffffff; --card: #f9fafb;
+    --red: #dc2626; --red-bg: #fef2f2; --orange: #ea580c; --orange-bg: #fff7ed;
+    --yellow: #ca8a04; --yellow-bg: #fefce8; --green: #16a34a; --green-bg: #f0fdf4;
+    --blue: #2563eb; --blue-bg: #eff6ff; --dark: #111827;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         color: var(--ink); background: var(--bg); line-height: 1.6; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 64px; }
+  .header { display: flex; justify-content: space-between; align-items: center; gap: 16px;
+            padding-bottom: 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .header .subject { font-size: 14px; color: var(--muted); word-break: break-all; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 10px;
+           border-radius: 999px; text-transform: uppercase; white-space: nowrap; }
+  .badge-mode { background: var(--blue-bg); color: var(--blue); }
+  h1 { font-size: 22px; margin: 4px 0; }
+  h2 { font-size: 17px; margin: 0 0 14px; }
+  .hero { display: flex; gap: 28px; align-items: center; margin: 32px 0; flex-wrap: wrap; }
+  .tier-disc { width: 140px; height: 140px; border-radius: 50%; display: flex; flex-direction: column;
+               justify-content: center; align-items: center; flex-shrink: 0; border: 6px solid; }
+  .tier-disc .t { font-size: 15px; font-weight: 800; text-transform: uppercase;
+                  letter-spacing: 0.04em; text-align: center; padding: 0 10px; }
+  .tier-prohibited { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+  .tier-high-risk { border-color: var(--orange); color: var(--orange); background: var(--orange-bg); }
+  .tier-limited { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-bg); }
+  .tier-minimal { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+  .tier-out-of-scope { border-color: var(--muted); color: var(--muted); background: var(--card); }
+  .hero-text { flex: 1; min-width: 260px; }
+  .hero-text .exposure { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .counts { display: flex; gap: 10px; margin: 8px 0 32px; flex-wrap: wrap; }
+  .count { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 8px; }
+  .c-crit { background: var(--red-bg); color: var(--red); }
+  .c-high { background: var(--orange-bg); color: var(--orange); }
+  .c-med  { background: var(--yellow-bg); color: var(--yellow); }
+  .c-low  { background: var(--blue-bg); color: var(--blue); }
+  .c-info { background: var(--card); color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 22px 24px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+       color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .finding { border-left: 4px solid var(--line); border-radius: 10px; background: #fff;
+             border-top: 1px solid var(--line); border-right: 1px solid var(--line);
+             border-bottom: 1px solid var(--line); padding: 16px 18px; margin-bottom: 14px; }
+  .finding.sev-CRITICAL { border-left-color: var(--red); }
+  .finding.sev-HIGH { border-left-color: var(--orange); }
+  .finding.sev-MEDIUM { border-left-color: var(--yellow); }
+  .finding.sev-LOW { border-left-color: var(--blue); }
+  .finding.sev-INFO { border-left-color: var(--muted); }
+  .finding .top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+                  flex-wrap: wrap; }
+  .finding .title { font-weight: 700; font-size: 15px; }
+  .sev-pill { font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 9px;
+              border-radius: 999px; }
+  .sev-pill.sev-CRITICAL { background: var(--red-bg); color: var(--red); }
+  .sev-pill.sev-HIGH { background: var(--orange-bg); color: var(--orange); }
+  .sev-pill.sev-MEDIUM { background: var(--yellow-bg); color: var(--yellow); }
+  .sev-pill.sev-LOW { background: var(--blue-bg); color: var(--blue); }
+  .sev-pill.sev-INFO { background: var(--card); color: var(--muted); }
+  .finding .article a { font-size: 12px; color: var(--blue); text-decoration: none; }
+  .finding .evidence { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 6px 0;
+                       background: var(--card); border-radius: 6px; padding: 6px 10px; }
+  .finding .remediation { font-size: 13.5px; margin-top: 6px; }
+  .finding .remediation strong { color: var(--green); }
+  .verdict-pass { color: var(--green); font-weight: 700; }
+  .verdict-fail { color: var(--red); font-weight: 700; }
+  .verdict-partial { color: var(--orange); font-weight: 700; }
+  .verdict-needs-owner { color: var(--yellow); font-weight: 700; }
+  .verdict-na { color: var(--muted); }
+  .q { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .q:last-child { border-bottom: none; }
+  .q .qid { font-size: 11px; font-weight: 700; color: var(--blue); }
+  .q .why { font-size: 12.5px; color: var(--muted); }
+  .disclaimer { margin-top: 36px; padding: 18px 22px; background: var(--dark); color: #d1d5db;
+                border-radius: 12px; font-size: 13px; text-align: center; }
+  .footer { display: flex; justify-content: space-between; margin-top: 24px; font-size: 12px;
+            color: #9ca3af; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <div>
+      <h1>EU AI Act — {{reportTitle}}</h1>
+      <div class="subject">{{subject}} · {{date}}</div>
+    </div>
+    <span class="badge badge-mode">{{mode}}</span>
+  </div>
+
+  <div class="hero">
+    <div class="tier-disc tier-{{tier}}"><span class="t">{{tierLabel}}</span></div>
+    <div class="hero-text">
+      <h2>{{verdictHeading}}</h2>
+      <p>{{summary}}</p>
+      <p class="exposure">{{exposure}}</p>
+    </div>
+  </div>
+
+  <div class="counts">
+    <span class="count c-crit">CRITICAL: {{countCritical}}</span>
+    <span class="count c-high">HIGH: {{countHigh}}</span>
+    <span class="count c-med">MEDIUM: {{countMedium}}</span>
+    <span class="count c-low">LOW: {{countLow}}</span>
+    <span class="count c-info">INFO: {{countInfo}}</span>
+  </div>
+
+  <div class="card">
+    <h2>{{touchpointsHeading}}</h2>
+    <table>
+      <tr><th>{{thTouchpoint}}</th><th>{{thTier}}</th><th>{{thRole}}</th><th>{{thRule}}</th></tr>
+      {{touchpointRows}}
+      <!-- row: <tr><td>name</td><td><span class="badge tier-limited">limited</span></td>
+                <td>deployer</td><td>Art. 50(1)</td></tr> -->
+    </table>
+  </div>
+
+  <h2 style="margin-bottom:14px">{{findingsHeading}}</h2>
+  {{findingsCards}}
+  <!-- card:
+  <div class="finding sev-HIGH">
+    <div class="top"><span class="title">F-1 · title</span>
+      <span class="sev-pill sev-HIGH">HIGH</span></div>
+    <div class="article"><a href="https://artificialintelligenceact.eu/article/50/">Art. 50(1)</a>
+      (append " · applies from YYYY-MM-DD", translated, when appliesFrom is set)</div>
+    <div class="evidence">evidence quote / location</div>
+    <p>explanation</p>
+    <p class="remediation"><strong>&rarr;</strong> remediation</p>
+  </div> -->
+
+  <div class="card">
+    <h2>{{checklistHeading}}</h2>
+    <table>
+      <tr><th>ID</th><th>{{thVerdict}}</th><th>{{thNote}}</th></tr>
+      {{checklistRows}}
+      <!-- row: <tr><td>CODE-01</td><td class="verdict-pass">pass</td><td>note</td></tr> -->
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>{{verificationsHeading}}</h2>
+    {{verificationRows}}
+    <!-- Only outcome-changing items (checklist.md ASK rules); omit the whole card when none.
+    row:
+    <div class="q"><span class="qid">ASK-19 · Art. 50(4)</span>
+      <div>concrete action</div>
+      <div class="why">confirmed → consequence · not confirmed → required step</div></div> -->
+  </div>
+
+  <div class="disclaimer">{{disclaimer}}</div>
+
+  <div class="footer">
+    <span>ai-act-audit</span>
+    <span>Regulation (EU) 2024/1689 as amended by (EU) 2026/1744 · {{legalState}}</span>
+  </div>
+
+</div>
+</body>
+</html>
