@@ -39,6 +39,9 @@
 #   Tracker comments (opt-in workflow.tracker_comments, tracker not none): plan approve and
 #   acceptance accept need the planner's ledger + snapshot and the lead's fresh read
 #   runs/<run>/tracker-<gate>-<n>.json (acceptance: in the round's dir) — team-tracker-gate.sh.
+#   An uncertain read (compare exit 4) passes only with --decision d-<n> answered approve whose
+#   source is that fresh read (opened after it); confirmed changes in it keep their exit-3
+#   handling; the decision is consumed.
 #   e.g. bash .claude/lib/team-verdict.sh plan revise --for planner-1-2.json \
 #          --ref .agents/team/runs/alfa-20261114-100000/gate-plan-1.md --message "2 findings"
 # Exit: 0 written · 2 usage · 3 not the lead · 4 bad gate/verdict/for · 5 revise limit
@@ -47,7 +50,7 @@
 #   Contract: .agents/reference/team-lead.md §4, §5, §8, §9, §11
 set -euo pipefail
 
-usage() { sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 GATE="$1"; VERDICT="$2"; shift 2
 FOR=""; FOR_RAW=""; REF=""; NOTIFY=""; MESSAGE=""; DECISION=""; QUICK_CALL=""; REASON=""
@@ -367,8 +370,8 @@ case "$GATE $VERDICT" in
 esac
 
 target="$(write_verdict)"
-# The grant is spent by this verdict.
-if [ -n "$DECISION" ] && [ "$VERDICT" = revise ]; then
-  fm_set "$df" status consumed; fm_set "$df" consumed_by "$(basename "$target")"
+# The grant, or the decision that accepted an uncertain tracker read, is spent by this verdict.
+if [ -n "$DECISION" ] && { [ "$VERDICT" = revise ] || [ -n "${TRK_DECISION:-}" ]; }; then
+  fm_set "${TRK_DECISION:-$df}" status consumed; fm_set "${TRK_DECISION:-$df}" consumed_by "$(basename "$target")"
 fi
 echo "$target"

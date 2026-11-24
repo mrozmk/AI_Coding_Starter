@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Offline test for .claude/lib/tracker-snapshot.mjs: snapshots from a github show result and from the
 # three Jira result shapes (raw REST page, MCP issue, MCP-wrapped string), owner-only files with no
-# ticket text, and every comparator case. Fixture text is dummy; no output may echo it.
+# ticket text, and every comparator case (an empty MCP read stays uncertain). Fixture text is dummy;
+# no output may echo it.
 set -euo pipefail
 
 ST=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -217,7 +218,19 @@ run compare "$WORK/j1.json" "$WORK/j5.json"
 [ "$RC" = 3 ] && [ "$OUT" = "Tracker comments: removed 15101" ] || fail "kept baseline → removed: $RC $OUT"
 run compare "$WORK/j4.json" "$WORK/j5.json"
 [ "$RC" = 0 ] || fail "an incomplete baseline hides the deletion (expected none new): $RC $OUT"
-! grep -q SECRETWORD "$WORK"/j[0-9]*.json || fail "a jira snapshot stores ticket text"
+# an empty MCP read proves nothing: uncertain even against an unchanged, comment-less baseline (#297)
+jq -n '{key: "AB-1", description: "SECRETWORD d", updated: "2026-10-06T19:00:00.000+0000", comments: []}' > "$WORK/j-empty-u.json"
+run snapshot --jira "$WORK/j-empty-u.json" --out "$WORK/ju1.json"
+run snapshot --jira "$WORK/j-empty-u.json" --out "$WORK/ju2.json"
+run compare "$WORK/ju1.json" "$WORK/ju2.json"
+[ "$RC" = 4 ] && case "$OUT" in "Tracker comments: uncertain — unknown, 0 read"*) ;; *) false ;; esac \
+  || fail "empty read stays uncertain: $RC $OUT"
+# … while a raw REST page that reports total 0 proves zero comments
+jq -n '{key: "AB-1", fields: {description: "SECRETWORD d", updated: "2026-10-06T19:00:00.000+0000",
+  comment: {startAt: 0, maxResults: 50, total: 0, comments: []}}}' > "$WORK/j-rest-zero.json"
+run snapshot --jira "$WORK/j-rest-zero.json" --out "$WORK/jz.json"
+[ "$OUT" = "key=AB-1 comments=0 status=complete" ] || fail "jira REST total: 0 is complete: $OUT"
+! grep -q SECRETWORD "$WORK"/j[0-9]*.json "$WORK/ju1.json" "$WORK/jz.json" || fail "a jira snapshot stores ticket text"
 
 # Jira REST v3 bodies are ADF objects: a changed object is a changed hash
 adf() { jq -n --arg t "$1" '{type: "doc", version: 1, content: [{type: "paragraph", content: [{type: "text", text: $t}]}]}'; }
