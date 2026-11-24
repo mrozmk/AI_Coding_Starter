@@ -17,13 +17,11 @@ case "$role" in Supervisor) ;; *) exit 0 ;; esac
 . "$R/.claude/lib/team-channel.sh"
 team_channel_load "$R" >/dev/null 2>&1 || exit 0
 name="$(team_channel_role "$role")" || exit 0
-problems=()
 
 bounded() { perl -e 'alarm shift; exec @ARGV' 10 "$@"; }
 
 unread="$(cd "$R" && bounded bash .claude/lib/team-mail.sh "$TEAM_CHANNEL_KEY" inbox --for "$name" --unread --limit 0 2>/dev/null \
   | grep '^\[agent-mail\]' | grep ' kind=turn ' | grep -v ' thread=esc-' || true)"
-[ -z "$unread" ] || problems+=("Unread agent-mail turn for $name — read, handle and ack it:"$'\n'"$unread")
-[ ${#problems[@]} -eq 0 ] && exit 0
-jq -n --arg r "$(printf '%s\n' "${problems[@]}")" '{decision: "block", reason: $r}'
+[ -n "$unread" ] || exit 0
+jq -n --arg r "Unread agent-mail turn for $name — read, handle and ack it:"$'\n'"$unread" '{decision: "block", reason: $r}'
 exit 0

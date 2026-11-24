@@ -16,8 +16,7 @@ LIB="$(cd "$(dirname "$0")" && pwd)"
 . "$LIB/team-lib.sh"
 . "$LIB/team-channel.sh"
 . "$LIB/roles-lib.sh"
-top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
-root="$top"
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a checkout" >&2; exit 1; }
 team_channel_names "$root" \
   || { echo "error: supervisor-sessions.sh needs a valid teams.channel block" >&2; exit 3; }
 PROFILES="$root/.agents/team/watch/profiles"

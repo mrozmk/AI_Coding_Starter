@@ -17,7 +17,8 @@ the pause script `monitoring.sh` with `.claude/team/sessions/monitoring.json`, a
 **Now:** role messages are inbox files rung by the session-host doorbell. `team-watch-send.py`
 stays — it is the doorbell's socket sender. `preflight` prints six rows (channel, kit, profiles,
 notifications, health check, Claude Code). The class runtime switch is a hand edit:
-`classes.<name>: "off"` in `.agents/team/watch/state.json`. `team-channel.sh` has no `render`
+`classes.<name>: "off"` in `.agents/team/watch/state.json`, keyed by the hyphenated class name
+(`{"classes": {"merge-line": "off"}}`, not `merge_line`). `team-channel.sh` has no `render`
 verb, and `supervisor-sessions.sh rollback` only prints the Operator steps.
 
 **Action:**

@@ -1225,7 +1225,6 @@ sh_start() {
   [ -n "$cwd" ] && [ -d "$cwd" ] || { sh_err "start: --cwd must be an existing directory"; return 2; }
   [ ${#argv[@]} -gt 0 ] || { sh_err "start: nothing to run after --"; return 2; }
   case "$ch" in ""|auto) ;; *) sh_err "start: --claude-home takes only auto"; return 2 ;; esac
-  # --host tmux pins tmux (lib only; no shipped caller).
   case "$host" in
     "") if [ -n "$probe" ]; then be="$(sh_backend "$SH_MAIN" "$a" --for-start)" || return $?
         else be="$(sh_pick_host "$SH_MAIN" "$(sh_kind "$a")")" || return $?; fi ;;

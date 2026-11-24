@@ -12,7 +12,8 @@ switches; clone files (team.json, records, refs) are only compared against them.
 Every class is project policy and OFF until the profile enables it:
 teams.policy.classes.<merge_line|allow_offline|add_ask|prod_diagnose>.enabled = true. A class
 waives an ask match only when it is enabled there AND its runtime switch (`classes.<name>: "off"` in
-.agents/team/watch/state.json, set by the Operator by hand) is not off. prod_diagnose additionally names its
+.agents/team/watch/state.json, set by the Operator by hand) is not off. The switch key is the
+hyphenated class name (`{"classes": {"merge-line": "off"}}`), not the snake_case profile key. prod_diagnose additionally names its
 script directory and the write wrappers a diagnose script must not mention:
 {"enabled": true, "dir": "scripts/ops/", "privileged": "<regex>"}.
 """

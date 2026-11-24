@@ -17,7 +17,7 @@ session-host doorbell ([session-host.md](session-host.md) §12); the decision mo
 
 | Session | tmux | Role | Woken by |
 |---|---|---|---|
-| **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | its inbox events + its own mail |
+| **Supervisor** | `<prefix>-supervisor` | Operator conversation, operational actions (auto-merge within the gate, team start/stop/queue/clones, releases, incidents), the tracker — outside the question loop | its inbox events (doorbell); its own mail wakes nothing — read at bootstrap or by hand |
 | **TeamLead** (retired) | `<prefix>-teamlead` | the global TeamLead — retired: no run reaches it ([§ TeamLead](#teamlead)) | none |
 | **Advisor** | `<prefix>-advisor` | task intake, on request through the Supervisor | none — agent-mail only (with the kit), read by hand |
 
@@ -62,8 +62,10 @@ Operator.
 
 **Wakes the Supervisor only for:** the four team events in its inbox — `accepted` (with the
 acceptance brief), `closed` (a run closed without a merge, a quick plan's `remode` included),
-`collision`, `session_dead` ([team-lead.md §3](team-lead.md#3-events-to-the-supervisor));
-its own mail (`kind=turn`). Team questions, routine and progress never wake it.
+`collision`, `session_dead` ([team-lead.md §3](team-lead.md#3-events-to-the-supervisor)).
+Its own mail (`kind=turn`) is not pushed: the Supervisor is a `monitor` recipient
+([agent-mail.md](agent-mail.md)) and reads it at bootstrap or by hand, and the kit's Stop hook keeps a
+running turn open until it is handled. Team questions, routine and progress never wake it.
 
 **Bootstrap:** the launch line's bootstrap (`roles.sh`) and the hook's contract line — freeze state,
 the inbox, the latest `decisions.md` commits, unread mail.

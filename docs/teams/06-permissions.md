@@ -77,7 +77,7 @@ Each class trusts the main checkout's `.git`, `CLAUDE.md` and the team's anchor 
 
 **Off until enabled.** A class is active only when the project's profile enables it
 (`teams.policy.classes.<name>.enabled: true`) **and** the Operator has not switched it off
-(`classes.<name>: "off"` in `.agents/team/watch/state.json`, a hand edit on his word only). The switch can narrow an enabled class and
+(`classes.<name>: "off"` in `.agents/team/watch/state.json`, a hand edit on the Operator's word only). The switch can narrow an enabled class and
 can never widen one the profile does not enable. `team_prompt_classes.py switches <main>` shows
 each class as `on`, `off` or `disabled` (not enabled in the profile). `prod_diagnose` also needs its
 `dir` and `privileged`.

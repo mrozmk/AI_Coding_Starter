@@ -7,7 +7,7 @@ sessions_init() {
   unset CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN TEAM_SESSION_ROLE \
     CLAUDECODE CLAUDE_CODE_ENTRYPOINT
   PIDS=""
-  SD="$(mktemp -d /tmp/tw.XXXXXX)"   # macOS caps a unix socket path at 104 bytes
+  SD="$(mktemp -d /tmp/smk.XXXXXX)"   # macOS caps a unix socket path at 104 bytes
   TMUXD="$WORK/tmux"; mkdir -p "$TMUXD"; export STUB_TMUX_DIR="$TMUXD"
   trap 'for p in $PIDS; do kill "$p" 2>/dev/null || true; done; rm -rf "$WORK" "$SD"' EXIT
   WD="$MAIN/.agents/team/watch"; mkdir -p "$WD"
@@ -25,7 +25,6 @@ sessions_init() {
     "$MAIN/.claude/project-profile.json" > "$WORK/prof" && mv "$WORK/prof" "$MAIN/.claude/project-profile.json"
   sessions_tmux_stub
   [ "$(command -v tmux)" = "$WORK/bin/tmux" ] || fail "fixture: tmux is not the stub"
-  sessions_srv
 }
 
 # Sessions with a pid file (spawned here) or named smk-* answer by that pid; every other name (team
@@ -65,34 +64,4 @@ esac
 exit 0
 STUB
   chmod +x "$WORK/bin/tmux"
-}
-
-# A stub receiver: the socket file at 0600 (the sender refuses any other mode), every connection's
-# bytes appended to <out>.
-sessions_srv() {
-  cat > "$WORK/srv.py" <<'EOF'
-import os, socket, sys
-path, mode, out = sys.argv[1:4]
-if os.path.exists(path):
-    os.unlink(path)
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.bind(path)
-os.chmod(path, 0o600)
-s.listen(16)
-while True:
-    c, _ = s.accept()
-    c.settimeout(5)
-    data = b""
-    try:
-        while True:
-            b = c.recv(65536)
-            if not b:
-                break
-            data += b
-    except OSError:
-        pass
-    c.close()
-    with open(out, "ab") as f:
-        f.write(data)
-EOF
 }
